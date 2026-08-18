@@ -1,0 +1,30 @@
+---
+- name: Initialize the shared PREPARED result
+  ansible.builtin.set_fact:
+    release_torque_all_prepared: true
+  run_once: true
+  delegate_to: "{{ groups['server'] | first }}"
+  delegate_facts: true
+
+- name: Fold every selected kiosk into the shared PREPARED result
+  ansible.builtin.set_fact:
+    release_torque_all_prepared: >-
+      {{
+        hostvars[groups['server'] | first].release_torque_all_prepared | bool
+        and (hostvars[item].release_torque_host_result.prepared | default(false) | bool)
+      }}
+  loop: "{{ release_torque_cutover_hosts }}"
+  run_once: true
+  delegate_to: "{{ groups['server'] | first }}"
+  delegate_facts: true
+
+- name: Clean every selected kiosk when aggregate PREPARED failed
+  ansible.builtin.include_role:
+    name: release_kiosk
+    tasks_from: cleanup
+  when: >-
+    not (
+      hostvars[groups['server'] | first].release_torque_all_prepared
+      | default(false)
+      | bool
+    )

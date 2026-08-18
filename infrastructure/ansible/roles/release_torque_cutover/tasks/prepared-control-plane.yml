@@ -1,0 +1,22 @@
+---
+- name: Read the single shared PREPARED result
+  ansible.builtin.set_fact:
+    release_torque_control_plane_all_prepared: >-
+      {{
+        release_torque_all_prepared
+        | default(false)
+        | bool
+      }}
+
+- name: Clean unused Pi5 candidates when any kiosk failed PREPARED
+  ansible.builtin.include_role:
+    name: release_pi5
+    tasks_from: prefetch-cleanup
+  when: not (release_torque_control_plane_all_prepared | bool)
+
+- name: Stop before quiesce when aggregate PREPARED failed
+  ansible.builtin.fail:
+    msg: >-
+      Torque PREPARED failed; running services were not stopped and reachable
+      run-scoped candidates were cleaned.
+  when: not (release_torque_control_plane_all_prepared | bool)

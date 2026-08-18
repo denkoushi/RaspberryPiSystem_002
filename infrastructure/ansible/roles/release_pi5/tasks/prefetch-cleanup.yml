@@ -1,0 +1,19 @@
+---
+- name: Remove only newly downloaded unused Pi5 candidates after PREPARED failure
+  ansible.builtin.command:
+    argv: [docker, image, rm, "{{ item.item }}"]
+  loop: "{{ release_pi5_prefetch_pull.results | default([]) }}"
+  register: release_pi5_prefetch_cleanup
+  changed_when: release_pi5_prefetch_cleanup.rc == 0
+  failed_when: false
+  when:
+    - item.changed | default(false) | bool
+    - item.item not in (release_pi5_prefetch_running.stdout | default(''))
+
+- name: Require every removable Pi5 candidate cleanup to succeed
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+    fail_msg: "Unused Pi5 candidate cleanup failed: {{ item.item.item }}"
+  loop: "{{ release_pi5_prefetch_cleanup.results | default([]) }}"
+  when: not (item.skipped | default(false) | bool)

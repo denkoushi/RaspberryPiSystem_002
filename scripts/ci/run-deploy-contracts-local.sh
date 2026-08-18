@@ -6,6 +6,7 @@ set -euo pipefail
 # cannot silently drift apart.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PNPM="${ROOT_DIR}/scripts/ci/pnpm-exact.sh"
 INSTALL_COLLECTIONS=0
 
 usage() {
@@ -46,6 +47,9 @@ for command in bash python3 ansible-inventory ansible-playbook ansible-galaxy; d
     exit 2
   fi
 done
+
+echo "[deploy-contract] resolve repository pnpm toolchain before side effects"
+"$PNPM" --version
 
 if ((INSTALL_COLLECTIONS)); then
   ansible-galaxy collection install community.general

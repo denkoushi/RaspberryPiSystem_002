@@ -1,0 +1,22 @@
+---
+- name: Read the single shared QUIESCED result
+  ansible.builtin.set_fact:
+    release_torque_control_plane_all_quiesced: >-
+      {{
+        release_torque_all_quiesced
+        | default(false)
+        | bool
+      }}
+
+- name: Clean unused Pi5 candidates after shared quiesce failure
+  ansible.builtin.include_role:
+    name: release_pi5
+    tasks_from: prefetch-cleanup
+  when: not (release_torque_control_plane_all_quiesced | bool)
+
+- name: Stop before Pi5 mutation when aggregate QUIESCED failed
+  ansible.builtin.fail:
+    msg: >-
+      Torque QUIESCED failed; Pi5 was not changed and every reachable selected
+      kiosk was restored to its previous stopped image.
+  when: not (release_torque_control_plane_all_quiesced | bool)

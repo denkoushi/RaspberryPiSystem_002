@@ -8,17 +8,25 @@ import os
 import re
 import secrets
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
 import tempfile
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, NamedTuple
 
-from release_artifact_contract import parse_release_set, validate_release_set
+from release_artifact_contract import (
+    ReleaseSet,
+    TORQUE_ADOPTION_PREDICATE_TYPE,
+    TORQUE_PROTOCOL_VERSION,
+    parse_release_set,
+    validate_release_set,
+)
 from release_build_contract import build_config_hash, parse_contract_json
-
+from torque_component_adoption import AdoptionError, validate_adoption_predicate
 
 ROOT = Path(__file__).resolve().parents[2]
 ANSIBLE = ROOT / "infrastructure/ansible"
@@ -61,6 +69,50 @@ RETIRED = {
 
 class UsageError(RuntimeError):
     pass
+
+
+class ReleaseArtifacts(NamedTuple):
+    api: str
+    web: str
+    torque_agent: str | None
+    torque_protocol_version: int | None
+
+
+class TorqueCutoverPlan(NamedTuple):
+    """One verified, run-scoped component plan shared by every selected host."""
+
+    source_sha: str
+    run_id: str
+    hosts: tuple[str, ...]
+    api_image: str
+    web_image: str
+    torque_image: str
+    protocol_version: int
+
+    def ansible_variables(self) -> dict[str, Any]:
+        return {
+            "release_torque_cutover_hosts": list(self.hosts),
+            "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE],
+            "release_kiosk_torque_image": self.torque_image,
+            "release_torque_protocol_version": self.protocol_version,
+        }
+
+    def journal_event(self) -> dict[str, Any]:
+        return {
+            "event": "release-set-v2-prepared",
+            "releaseSha": self.source_sha,
+            "runId": self.run_id,
+            "protocol": {"name": "torque-ownership", "version": self.protocol_version},
+            "images": {
+                "api": self.api_image,
+                "web": self.web_image,
+                "torqueAgent": self.torque_image,
+            },
+            "targets": [
+                {"host": host, "component": TORQUE_CUTOVER_SERVICE}
+                for host in self.hosts
+            ],
+        }
 
 
 class Parser(argparse.ArgumentParser):
@@ -417,8 +469,13 @@ def image_plan(
         suffix = build_hash[:16]
         result["pi5"] = [f"ghcr.io/denkoushi/raspisys-api:{sha}-{suffix}", f"ghcr.io/denkoushi/raspisys-web:{sha}-{suffix}"]
     if "pi4" in profiles:
-        names = ("torque",) if torque_cutover else ("nfc", "barcode", "torque")
-        result["pi4"] = [f"ghcr.io/denkoushi/raspisys-{name}-agent:{sha}" for name in names]
+        if torque_cutover:
+            result["pi4"] = [f"release-set-v2:{sha}:torque-agent"]
+        else:
+            result["pi4"] = [
+                f"ghcr.io/denkoushi/raspisys-{name}-agent:{sha}"
+                for name in ("nfc", "barcode", "torque")
+            ]
     if "pi3" in profiles:
         result["pi3"] = [f"ghcr.io/denkoushi/raspisys-pi3-signage:{sha}"]
     return result
@@ -449,15 +506,33 @@ def plan(args: argparse.Namespace, sha: str, inventory: Path, relative: str, sel
     images = image_plan(sha, profiles, build_hash, torque_cutover=torque_cutover)
     pi4_hosts = list(dict(selection).get("pi4", ()))
     variables = {"release_sha": sha, "release_run_id": "plan-preview", "release_pi5_api_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[0], "release_pi5_web_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[1], "release_signage_artifact_sha256": "0" * 64, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else []}
+    if torque_cutover:
+        variables.update(
+            {
+                "release_kiosk_torque_image": (
+                    f"ghcr.io/denkoushi/raspisys-torque-agent@sha256:{'0' * 64}"
+                ),
+                "release_torque_protocol_contract_version": 1,
+            }
+        )
     for listing in ("--list-hosts", "--list-tasks"):
         run(ansible_argv(str(inventory), args.limit, profiles, variables, listing, torque_cutover=torque_cutover), env=ansible_environment())
     result = {"schemaVersion": 1, "branch": args.branch, "releaseSha": sha, "inventory": relative, "limit": args.limit or None, "fullFleet": args.full_fleet, "executionOrder": [{"profile": profile, "hosts": list(hosts), "images": images[profile]} for profile, hosts in selection]}
     if torque_cutover:
+        result["artifactResolution"] = (
+            "signed-release-set-v2-before-service-quiesce"
+        )
         result["cutoverPhases"] = [
-            {"phase": "quiesce", "hosts": pi4_hosts},
-            {"phase": "pi5", "hosts": list(selection[0][1])},
-            {"phase": "stage-torque-agent", "hosts": pi4_hosts},
-            {"phase": "resume", "hosts": pi4_hosts},
+            {
+                "phase": "PREPARED",
+                "hosts": list(selection[0][1]) + pi4_hosts,
+                "serviceImpact": "none",
+            },
+            {"phase": "QUIESCED", "hosts": pi4_hosts},
+            {"phase": "CONTROL_PLANE", "hosts": list(selection[0][1])},
+            {"phase": "AGENTS_STAGED", "hosts": pi4_hosts},
+            {"phase": "AGENTS_HEALTHY_OFF", "hosts": pi4_hosts},
+            {"phase": "BROWSERS_RESUMED", "hosts": pi4_hosts},
         ]
     return result
 
@@ -492,21 +567,221 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
     return command
 
 
-def release_set_images(sha: str, inventory: Path) -> tuple[str, str]:
-    build_hash = config_hash(sha, inventory)
-    reference = f"ghcr.io/denkoushi/raspisys-release-set:{sha}-{build_hash}"
-    run(["docker", "image", "pull", reference])
+def _exact_repo_digest(reference: str) -> str:
+    inspected = run(
+        ["docker", "image", "inspect", "--format", "{{json .RepoDigests}}", reference]
+    )
+    try:
+        values = json.loads(inspected.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError("pulled release-set image has malformed RepoDigests") from error
+    repository = reference.split(":", 1)[0]
+    matches = [
+        value
+        for value in values
+        if isinstance(value, str) and value.startswith(f"{repository}@sha256:")
+    ] if isinstance(values, list) else []
+    if len(matches) != 1:
+        raise RuntimeError("pulled release-set image has no unique immutable digest")
+    return matches[0]
+
+
+def verify_component_attestation(
+    exact_reference: str,
+    source_sha: str,
+    *,
+    predicate_type: str | None = None,
+    adoption_workflow: tuple[str, int, int] | None = None,
+) -> None:
+    gh = shutil.which("gh")
+    if gh is None:
+        raise RuntimeError("GitHub attestation verifier is unavailable")
+    version = run([gh, "--version"])
+    if not version.stdout.startswith("gh version 2.96.0 "):
+        raise RuntimeError("GitHub attestation verifier is not the pinned 2.96.0 release")
+    command = [
+        gh,
+        "attestation",
+        "verify",
+        f"oci://{exact_reference}",
+        "--bundle-from-oci",
+        "--repo",
+        "denkoushi/RaspberryPiSystem_002",
+        "--source-digest",
+        source_sha,
+        "--source-ref",
+        "refs/heads/main",
+        "--deny-self-hosted-runners",
+    ]
+    if predicate_type is not None:
+        command.extend(["--predicate-type", predicate_type])
+    if adoption_workflow is None:
+        run(command)
+        return
+    command.extend(["--format", "json"])
+    verified = run(command)
+    try:
+        values = json.loads(verified.stdout)
+        predicates = [
+            item["verificationResult"]["statement"]["predicate"]
+            for item in values
+            if isinstance(item, dict)
+            and isinstance(item.get("verificationResult"), dict)
+            and isinstance(item["verificationResult"].get("statement"), dict)
+            and "predicate" in item["verificationResult"]["statement"]
+        ] if isinstance(values, list) else []
+    except (json.JSONDecodeError, KeyError, TypeError) as error:
+        raise RuntimeError("component adoption attestation result is malformed") from error
+    workflow, run_id, run_attempt = adoption_workflow
+    matching = 0
+    for predicate in predicates:
+        try:
+            validate_adoption_predicate(
+                predicate,
+                adoption_sha=source_sha,
+                workflow=workflow,
+                run_id=run_id,
+                run_attempt=run_attempt,
+            )
+        except AdoptionError:
+            continue
+        matching += 1
+    if matching != 1:
+        raise RuntimeError(
+            "component adoption attestation has no unique manifest-bound predicate"
+        )
+
+
+def _read_release_set_from_image(reference: str) -> ReleaseSet:
+    """Read one signed release-set document from an exact OCI reference."""
     container = run(["docker", "create", reference, "/release-set.json"]).stdout.strip()
+    if not container:
+        raise RuntimeError("release-set image did not produce a container")
     try:
         with tempfile.TemporaryDirectory(prefix="standard-release-set-") as directory:
             path = Path(directory) / "release-set.json"
             run(["docker", "cp", f"{container}:/release-set.json", str(path)])
-            release = parse_release_set(path.read_text(encoding="utf-8"))
-            validate_release_set(release, "denkoushi/RaspberryPiSystem_002", sha, build_hash, ".github/workflows/ci.yml")
+            return parse_release_set(path.read_text(encoding="utf-8"))
     finally:
         run(["docker", "rm", "-f", container], check=False)
+
+
+def release_set_artifacts(
+    sha: str,
+    inventory: Path,
+    *,
+    require_torque: bool = False,
+) -> ReleaseArtifacts:
+    build_hash = config_hash(sha, inventory)
+    tag_suffix = "-torque-v2" if require_torque else ""
+    reference = (
+        f"ghcr.io/denkoushi/raspisys-release-set:"
+        f"{sha}-{build_hash}{tag_suffix}"
+    )
+    run(["docker", "image", "pull", reference])
+    exact_release_set = _exact_repo_digest(reference)
+    verify_component_attestation(exact_release_set, sha)
+    release = _read_release_set_from_image(exact_release_set)
+    validate_release_set(
+        release,
+        "denkoushi/RaspberryPiSystem_002",
+        sha,
+        build_hash,
+        ".github/workflows/ci.yml",
+    )
+    torque_agent = release.torque_agent
+    torque_compatibility = release.torque_compatibility
+    if require_torque and (torque_agent is None or torque_compatibility is None):
+        raise RuntimeError("torque cutover requires signed release-set schema v2")
+    if require_torque:
+        base_release_set = release.base_release_set
+        if base_release_set is None:
+            raise RuntimeError("torque cutover requires an exact base v1 release set")
+        base_reference = base_release_set.digest
+        run(["docker", "image", "pull", base_reference])
+        verify_component_attestation(base_reference, sha)
+        base_release = _read_release_set_from_image(base_reference)
+        validate_release_set(
+            base_release,
+            "denkoushi/RaspberryPiSystem_002",
+            sha,
+            build_hash,
+            ".github/workflows/ci.yml",
+        )
+        if (
+            base_release.schema_version != 1
+            or base_release.source_repository != release.source_repository
+            or base_release.source_sha != release.source_sha
+            or base_release.source_ref != release.source_ref
+            or base_release.config_hash != release.config_hash
+            or base_release.api != release.api
+            or base_release.web != release.web
+            or base_release.workflow != release.workflow
+        ):
+            raise RuntimeError(
+                "schema-v2 base release set does not match its v1 API/Web identity"
+            )
+    torque_reference = None
+    protocol_version = None
+    if torque_agent is not None and torque_compatibility is not None:
+        torque_reference = f"{torque_agent.repository}@{torque_agent.index_digest}"
+        protocol_version = torque_compatibility.protocol_version
+        if require_torque:
+            composition_workflow = release.composition_workflow
+            if composition_workflow is None:
+                raise RuntimeError(
+                    "torque cutover requires schema-v2 composition workflow identity"
+                )
+            verify_component_attestation(
+                torque_reference,
+                sha,
+                predicate_type=TORQUE_ADOPTION_PREDICATE_TYPE,
+                adoption_workflow=(
+                    composition_workflow.path,
+                    composition_workflow.run_id,
+                    composition_workflow.run_attempt,
+                ),
+            )
     suffix = build_hash[:16]
-    return (f"{release.api.repository}:{sha}-{suffix}@{release.api.digest}", f"{release.web.repository}:{sha}-{suffix}@{release.web.digest}")
+    return ReleaseArtifacts(
+        api=f"{release.api.repository}:{sha}-{suffix}@{release.api.digest}",
+        web=f"{release.web.repository}:{sha}-{suffix}@{release.web.digest}",
+        torque_agent=torque_reference,
+        torque_protocol_version=protocol_version,
+    )
+
+
+def release_set_images(sha: str, inventory: Path) -> tuple[str, str]:
+    artifacts = release_set_artifacts(sha, inventory)
+    return artifacts.api, artifacts.web
+
+
+def normalize_torque_cutover_plan(
+    sha: str,
+    run_id: str,
+    hosts: Sequence[str],
+    artifacts: ReleaseArtifacts,
+) -> TorqueCutoverPlan:
+    """Normalize already-verified v2 artifacts once before Ansible can mutate hosts."""
+    if (
+        not FULL_SHA.fullmatch(sha)
+        or not RUN_ID.fullmatch(run_id)
+        or not hosts
+        or len(set(hosts)) != len(hosts)
+        or any(not SAFE_INVENTORY_HOST.fullmatch(host) for host in hosts)
+        or artifacts.torque_agent is None
+        or artifacts.torque_protocol_version != TORQUE_PROTOCOL_VERSION
+    ):
+        raise RuntimeError("release-set torque component plan is incomplete or protocol-incompatible")
+    return TorqueCutoverPlan(
+        source_sha=sha,
+        run_id=run_id,
+        hosts=tuple(hosts),
+        api_image=artifacts.api,
+        web_image=artifacts.web,
+        torque_image=artifacts.torque_agent,
+        protocol_version=artifacts.torque_protocol_version,
+    )
 
 
 def signage_identity(sha: str) -> tuple[str, str]:
@@ -554,10 +829,24 @@ def execute_standard_route(args: argparse.Namespace) -> int:
         raise RuntimeError("all selected optional hosts are offline; no mutation was run")
     profiles = tuple(profile for profile, _hosts in reachable_selection)
     effective_limit = exact_host_limit(reachable_selection)
-    api, web = release_set_images(args.sha, inventory) if "pi5" in profiles else (f"unused:{args.sha}", f"unused-web:{args.sha}")
+    artifacts = (
+        release_set_artifacts(args.sha, inventory, require_torque=torque_cutover)
+        if "pi5" in profiles
+        else ReleaseArtifacts(f"unused:{args.sha}", f"unused-web:{args.sha}", None, None)
+    )
+    api, web = artifacts.api, artifacts.web
     signage, signage_sha = signage_identity(args.sha) if "pi3" in profiles else (f"unused-signage:{args.sha}", "0" * 64)
     pi4_hosts = list(dict(reachable_selection).get("pi4", ()))
     variables = {"release_sha": args.sha, "release_run_id": args.run_id, "release_pi5_api_image": api, "release_pi5_web_image": web, "release_signage_artifact_image": signage, "release_signage_artifact_sha256": signage_sha, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else []}
+    if torque_cutover:
+        cutover_plan = normalize_torque_cutover_plan(
+            args.sha, args.run_id, pi4_hosts, artifacts
+        )
+        variables.update(cutover_plan.ansible_variables())
+        print(
+            json.dumps(cutover_plan.journal_event(), ensure_ascii=False, sort_keys=True),
+            flush=True,
+        )
     command = ansible_argv(relative, effective_limit, profiles, variables, torque_cutover=torque_cutover)
     os.execvpe(command[0], command, ansible_environment())
     return 1

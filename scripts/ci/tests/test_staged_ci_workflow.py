@@ -5,9 +5,11 @@ import re
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[3]
 CI = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+TORQUE_RELEASE = (
+    ROOT / ".github/workflows/torque-release.yml"
+).read_text(encoding="utf-8")
 CODEQL = (ROOT / ".github/workflows/codeql.yml").read_text(encoding="utf-8")
 GITLEAKS = (ROOT / ".github/workflows/gitleaks.yml").read_text(encoding="utf-8")
 DEPLOY_CONTRACT_RUNNER = (
@@ -334,10 +336,131 @@ class StagedCiWorkflowTests(unittest.TestCase):
                 release_set,
             )
         self.assertEqual(release_set.count("uses: actions/attest@v4"), 3)
-        self.assertIn("attestations: write", release_set)
-        self.assertIn("id-token: write", release_set)
-        self.assertIn("push-to-registry: true", release_set)
-        self.assertNotIn("pull_request", release_set)
+
+    def test_torque_component_adoption_is_signed_scanned_and_not_rebuilt(self) -> None:
+        adoption = job_block(TORQUE_RELEASE, "torque-component-adoption")
+        compatibility = job_block(TORQUE_RELEASE, "torque-release-compatibility")
+        release_set = job_block(CI, "release-set")
+        torque_release_set = job_block(TORQUE_RELEASE, "torque-release-set")
+
+        self.assertIn("github.event_name == 'push'", adoption)
+        self.assertIn("github.event_name == 'push'", adoption)
+        self.assertEqual(adoption.count("Re-scan adopted torque-agent"), 2)
+        self.assertIn("TRIVY_PLATFORM: linux/arm64", adoption)
+        self.assertIn("TRIVY_PLATFORM: linux/arm/v7", adoption)
+        self.assertIn("torque_component_adoption.py", adoption)
+        self.assertIn("torque-agent-component-adoption/v1", adoption)
+        self.assertIn("predicate-path: torque-agent-adoption.json", adoption)
+        self.assertIn("--bundle-from-oci", adoption)
+        self.assertNotIn("docker/build-push-action", adoption)
+        self.assertNotIn("docker image tag", adoption)
+
+        self.assertIn("git diff --exit-code", compatibility)
+        self.assertIn("3464256da11ee77bebfceb4fafcff4524f5ac8ca", compatibility)
+        self.assertIn("test_global_ownership.py", compatibility)
+        self.assertIn("torqueWrenchConnectionTransport.test.ts", compatibility)
+        self.assertIn("torque-wrenches.integration.test.ts", compatibility)
+        self.assertIn("torque-training.integration.test.ts", compatibility)
+        self.assertIn("prisma migrate deploy", compatibility)
+        self.assertIn("sourceClosureUnchanged", compatibility)
+        self.assertIn("evidence_digest", compatibility)
+        self.assertIn("api-assembly-route-postgresql", compatibility)
+        self.assertIn("agent-global-ownership-recovery", compatibility)
+        self.assertIn("docker ps -aq --filter", compatibility)
+        self.assertIn("xargs -r docker rm --force", compatibility)
+        self.assertIn("xargs -r docker volume rm", compatibility)
+        self.assertIn("xargs -r docker network rm", compatibility)
+        self.assertNotIn("torque-component-adoption", release_set)
+        self.assertNotIn("--torque-index-digest", release_set)
+        self.assertIn("torque-component-adoption", torque_release_set)
+        self.assertIn("torque-release-compatibility", torque_release_set)
+        self.assertIn("--required release-set", torque_release_set)
+        self.assertIn("--torque-index-digest", torque_release_set)
+        self.assertIn(
+            "--torque-rehearsal-job torque-release-compatibility",
+            torque_release_set,
+        )
+        self.assertIn("--torque-rehearsal-evidence-digest", torque_release_set)
+        self.assertIn("--base-release-digest", torque_release_set)
+        self.assertIn("--composition-workflow", torque_release_set)
+        self.assertIn("verify-torque-reuse", torque_release_set)
+        self.assertIn("steps.existing.outputs.exists != 'true'", torque_release_set)
+        self.assertIn("-torque-v2", torque_release_set)
+        self.assertIn("attestations: write", torque_release_set)
+        self.assertIn("id-token: write", torque_release_set)
+        self.assertIn("push-to-registry: true", torque_release_set)
+        self.assertIn("github.event_name == 'push'", torque_release_set)
+        self.assertNotIn("Attest exact ARM64 API image", torque_release_set)
+        self.assertNotIn("Attest exact ARM64 Web image", torque_release_set)
+
+    def test_torque_v2_cannot_block_normal_release_or_required_pr_checks(self) -> None:
+        required = job_block(CI, "ci-required")
+        release_set = job_block(CI, "release-set")
+        adoption = job_block(TORQUE_RELEASE, "torque-component-adoption")
+        compatibility = job_block(TORQUE_RELEASE, "torque-release-compatibility")
+        torque_release_set = job_block(TORQUE_RELEASE, "torque-release-set")
+
+        for torque_job in (
+            "torque-component-adoption",
+            "torque-release-compatibility",
+            "torque-release-set",
+        ):
+            self.assertNotIn(f"      - {torque_job}\n", required)
+            self.assertNotIn(torque_job, release_set)
+        self.assertIn(
+            "needs.change-classification.outputs.release_pair == 'true'",
+            release_set,
+        )
+        self.assertNotIn("torque_composition", release_set)
+        for block in (adoption, compatibility, torque_release_set):
+            self.assertIn(
+                "needs.classify-torque-release.outputs.relevant == 'true'",
+                block,
+            )
+        for block in (adoption, torque_release_set):
+            self.assertIn(
+                "needs.classify-torque-release.outputs.publishable == 'true'",
+                block,
+            )
+        self.assertIn(
+            "raspisys-release-set:${{ github.sha }}-${{ needs.release-build-contract.outputs.config_hash }}",
+            release_set,
+        )
+        self.assertNotIn("-torque-v2", release_set)
+        self.assertIn("-torque-v2", torque_release_set)
+
+    def test_torque_release_required_is_an_all_pr_fixed_noop_aggregate(self) -> None:
+        pull_request = TORQUE_RELEASE.split("  pull_request:\n", 1)[1].split(
+            "  push:\n", 1
+        )[0]
+        self.assertNotIn("paths:", pull_request)
+        push = TORQUE_RELEASE.split("  push:\n", 1)[1].split("\njobs:\n", 1)[0]
+        self.assertNotIn("paths:", push)
+        aggregate = job_block(TORQUE_RELEASE, "torque-release-required")
+        self.assertIn("if: ${{ always() && github.event_name != 'push' }}", aggregate)
+        self.assertIn("  merge_group:\n", TORQUE_RELEASE)
+        self.assertIn("TORQUE_RELEVANT", aggregate)
+        self.assertIn("COMPATIBILITY_RESULT", aggregate)
+        self.assertIn('test "$COMPATIBILITY_RESULT" = skipped', aggregate)
+        self.assertIn('test "$COMPATIBILITY_RESULT" = success', aggregate)
+        self.assertNotIn("torque-release-compatibility", CI)
+        self.assertNotIn("torque-component-adoption", CI)
+        self.assertNotIn("torque-release-set", CI)
+        self.assertNotIn("nfc-agent", TORQUE_RELEASE)
+        self.assertNotIn("barcode-agent", TORQUE_RELEASE)
+
+    def test_torque_release_uses_pr_head_and_exact_main_identity(self) -> None:
+        self.assertIn(
+            "TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+            TORQUE_RELEASE,
+        )
+        compatibility = job_block(TORQUE_RELEASE, "torque-release-compatibility")
+        self.assertIn("ref: ${{ env.TARGET_SHA }}", compatibility)
+        self.assertIn('"releaseSha": os.environ["TARGET_SHA"]', compatibility)
+        for job in ("torque-component-adoption", "torque-release-set"):
+            block = job_block(TORQUE_RELEASE, job)
+            self.assertIn('git rev-parse origin/main', block)
+            self.assertIn('= "$GITHUB_SHA"', block)
 
     def test_security_workflows_separate_required_and_audit_names(self) -> None:
         self.assertIn("  codeql:\n    name: codeql", CODEQL)

@@ -274,7 +274,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             "b" * 64,
             torque_cutover=True,
         )
-        self.assertEqual(images["pi4"], [f"ghcr.io/denkoushi/raspisys-torque-agent:{SHA}"])
+        self.assertEqual(images["pi4"], [f"release-set-v2:{SHA}:torque-agent"])
         self.assertNotIn("nfc-agent", " ".join(images["pi4"]))
         self.assertNotIn("barcode-agent", " ".join(images["pi4"]))
 
@@ -428,8 +428,10 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             MODULE, "preflight_optional_hosts", return_value=(reachable, excluded)
         ), mock.patch.object(
             MODULE,
-            "release_set_images",
-            return_value=(f"api:{SHA}", f"web:{SHA}"),
+            "release_set_artifacts",
+            return_value=MODULE.ReleaseArtifacts(
+                f"api:{SHA}", f"web:{SHA}", None, None
+            ),
         ), mock.patch.object(
             MODULE, "signage_identity"
         ) as signage_identity, mock.patch.object(
@@ -476,6 +478,8 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
                 repository="ghcr.io/denkoushi/raspisys-web",
                 digest="sha256:" + "2" * 64,
             ),
+            torque_agent=None,
+            torque_compatibility=None,
         )
 
         def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
@@ -489,12 +493,260 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         with mock.patch.object(MODULE, "config_hash", return_value="b" * 64), mock.patch.object(
             MODULE, "parse_release_set", return_value=release
         ), mock.patch.object(MODULE, "validate_release_set"), mock.patch.object(
+            MODULE, "_exact_repo_digest", return_value="ghcr.io/denkoushi/raspisys-release-set@sha256:" + "9" * 64
+        ), mock.patch.object(
+            MODULE, "verify_component_attestation"
+        ), mock.patch.object(
             MODULE, "run", side_effect=fake_run
         ):
             MODULE.release_set_images(SHA, ROOT / MODULE.DEFAULT_INVENTORY)
 
         create = next(command for command in commands if command[1] == "create")
         self.assertEqual(create[-1], "/release-set.json")
+        pull = next(command for command in commands if command[1:3] == ["image", "pull"])
+        self.assertNotIn("-torque-v2", pull[-1])
+
+    def test_torque_plan_normalizes_one_verified_tuple_for_all_selected_hosts(self) -> None:
+        artifacts = MODULE.ReleaseArtifacts(
+            "api@sha256:" + "1" * 64,
+            "web@sha256:" + "2" * 64,
+            "torque@sha256:" + "3" * 64,
+            MODULE.TORQUE_PROTOCOL_VERSION,
+        )
+
+        plan = MODULE.normalize_torque_cutover_plan(
+            SHA, RUN_ID, ("stonebase", "assembly-01"), artifacts
+        )
+
+        self.assertEqual(plan.hosts, ("stonebase", "assembly-01"))
+        self.assertEqual(
+            plan.ansible_variables()["release_kiosk_service_allowlist"],
+            ["torque-agent"],
+        )
+        self.assertEqual(
+            plan.journal_event()["targets"],
+            [
+                {"host": "stonebase", "component": "torque-agent"},
+                {"host": "assembly-01", "component": "torque-agent"},
+            ],
+        )
+
+    def test_torque_plan_rejects_duplicate_hosts_before_ansible(self) -> None:
+        artifacts = MODULE.ReleaseArtifacts("api", "web", "torque", 1)
+        with self.assertRaisesRegex(RuntimeError, "plan is incomplete"):
+            MODULE.normalize_torque_cutover_plan(
+                SHA, RUN_ID, ("stonebase", "stonebase"), artifacts
+            )
+
+    def test_v2_release_set_returns_exact_torque_digest_and_verifies_adoption(self) -> None:
+        commands: list[list[str]] = []
+        torque = types.SimpleNamespace(
+            repository="ghcr.io/denkoushi/raspisys-torque-agent",
+            index_digest="sha256:" + "3" * 64,
+        )
+        compatibility = types.SimpleNamespace(protocol_version=1)
+        release = types.SimpleNamespace(
+            schema_version=2,
+            source_repository="denkoushi/RaspberryPiSystem_002",
+            source_sha=SHA,
+            source_ref="refs/heads/main",
+            config_hash="b" * 64,
+            api=types.SimpleNamespace(
+                repository="ghcr.io/denkoushi/raspisys-api",
+                digest="sha256:" + "1" * 64,
+            ),
+            web=types.SimpleNamespace(
+                repository="ghcr.io/denkoushi/raspisys-web",
+                digest="sha256:" + "2" * 64,
+            ),
+            torque_agent=torque,
+            torque_compatibility=compatibility,
+            workflow=types.SimpleNamespace(
+                path=".github/workflows/ci.yml",
+                run_id=123,
+                run_attempt=1,
+            ),
+            composition_workflow=types.SimpleNamespace(
+                path=".github/workflows/torque-release.yml",
+                run_id=456,
+                run_attempt=2,
+            ),
+            base_release_set=types.SimpleNamespace(
+                digest="ghcr.io/denkoushi/raspisys-release-set@sha256:" + "8" * 64,
+            ),
+        )
+        base_release = types.SimpleNamespace(
+            schema_version=1,
+            source_repository="denkoushi/RaspberryPiSystem_002",
+            source_sha=SHA,
+            source_ref="refs/heads/main",
+            config_hash="b" * 64,
+            api=release.api,
+            web=release.web,
+            workflow=release.workflow,
+        )
+
+        def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            commands.append(command)
+            if command[1] == "create":
+                return completed(command, "release-set-container\n")
+            if command[1] == "cp":
+                Path(command[-1]).write_text("{}", encoding="utf-8")
+            return completed(command)
+
+        with mock.patch.object(MODULE, "config_hash", return_value="b" * 64), mock.patch.object(
+            MODULE, "parse_release_set", side_effect=[release, base_release]
+        ), mock.patch.object(MODULE, "validate_release_set"), mock.patch.object(
+            MODULE, "_exact_repo_digest", return_value="ghcr.io/denkoushi/raspisys-release-set@sha256:" + "9" * 64
+        ), mock.patch.object(
+            MODULE, "verify_component_attestation"
+        ) as verify, mock.patch.object(MODULE, "run", side_effect=fake_run):
+            artifacts = MODULE.release_set_artifacts(
+                SHA, ROOT / MODULE.DEFAULT_INVENTORY, require_torque=True
+            )
+
+        self.assertEqual(
+            artifacts.torque_agent,
+            "ghcr.io/denkoushi/raspisys-torque-agent@sha256:" + "3" * 64,
+        )
+        self.assertEqual(artifacts.torque_protocol_version, 1)
+        self.assertEqual(verify.call_count, 3)
+        self.assertIn("-torque-v2", commands[0][-1])
+        self.assertEqual(
+            verify.call_args_list[2].kwargs["adoption_workflow"],
+            (".github/workflows/torque-release.yml", 456, 2),
+        )
+        created_references = [
+            command[2] for command in commands if command[1] == "create"
+        ]
+        self.assertEqual(
+            created_references,
+            [
+                "ghcr.io/denkoushi/raspisys-release-set@sha256:" + "9" * 64,
+                "ghcr.io/denkoushi/raspisys-release-set@sha256:" + "8" * 64,
+            ],
+        )
+
+        mismatches = {
+            "source": ("source_sha", "c" * 40),
+            "config": ("config_hash", "d" * 64),
+            "image": (
+                "api",
+                types.SimpleNamespace(
+                    repository="ghcr.io/denkoushi/raspisys-api",
+                    digest="sha256:" + "7" * 64,
+                ),
+            ),
+        }
+        for label, (field, value) in mismatches.items():
+            mismatched_base = types.SimpleNamespace(**vars(base_release))
+            setattr(mismatched_base, field, value)
+            with self.subTest(label=label), mock.patch.object(
+                MODULE, "config_hash", return_value="b" * 64
+            ), mock.patch.object(
+                MODULE, "parse_release_set", side_effect=[release, mismatched_base]
+            ), mock.patch.object(
+                MODULE, "validate_release_set"
+            ), mock.patch.object(
+                MODULE,
+                "_exact_repo_digest",
+                return_value="ghcr.io/denkoushi/raspisys-release-set@sha256:"
+                + "9" * 64,
+            ), mock.patch.object(
+                MODULE, "verify_component_attestation"
+            ), mock.patch.object(
+                MODULE, "run", side_effect=fake_run
+            ), self.assertRaisesRegex(RuntimeError, "does not match"):
+                MODULE.release_set_artifacts(
+                    SHA, ROOT / MODULE.DEFAULT_INVENTORY, require_torque=True
+                )
+
+    def test_adoption_verifier_selects_the_manifest_bound_run_attempt(self) -> None:
+        predicates = [{"attempt": 1}, {"attempt": 2}]
+
+        def fake_run(
+            command: list[str], **_: object
+        ) -> subprocess.CompletedProcess[str]:
+            if command[1:] == ["--version"]:
+                return completed(command, "gh version 2.96.0 (test)\n")
+            return completed(
+                command,
+                json.dumps(
+                    [
+                        {
+                            "verificationResult": {
+                                "statement": {"predicate": predicate}
+                            }
+                        }
+                        for predicate in predicates
+                    ]
+                ),
+            )
+
+        def validate(predicate: object, **kwargs: object) -> None:
+            if predicate != predicates[1] or kwargs["run_attempt"] != 2:
+                raise MODULE.AdoptionError("different signed adoption attempt")
+
+        with mock.patch.object(MODULE.shutil, "which", return_value="/usr/bin/gh"), mock.patch.object(
+            MODULE, "run", side_effect=fake_run
+        ), mock.patch.object(
+            MODULE, "validate_adoption_predicate", side_effect=validate
+        ) as validator:
+            MODULE.verify_component_attestation(
+                "ghcr.io/denkoushi/raspisys-torque-agent@sha256:" + "3" * 64,
+                SHA,
+                predicate_type=MODULE.TORQUE_ADOPTION_PREDICATE_TYPE,
+                adoption_workflow=(".github/workflows/ci.yml", 123, 2),
+            )
+
+        self.assertEqual(validator.call_count, 2)
+
+    def test_torque_route_passes_manifest_digest_and_protocol_to_ansible(self) -> None:
+        args = argparse.Namespace(
+            inventory=MODULE.DEFAULT_INVENTORY,
+            sha=SHA,
+            run_id=RUN_ID,
+            profiles="pi5,pi4",
+            limit="pi5:pi4-a",
+            full_fleet=False,
+            torque_cutover=True,
+        )
+        inventory = {
+            "server": {"hosts": ["pi5"]},
+            "kiosk": {"hosts": ["pi4-a"]},
+            "_meta": {
+                "hostvars": {
+                    "pi5": {},
+                    "pi4-a": torque_capable_host(),
+                }
+            },
+        }
+        selection = (("pi5", ("pi5",)), ("pi4", ("pi4-a",)))
+        torque_reference = "ghcr.io/denkoushi/raspisys-torque-agent@sha256:" + "3" * 64
+        artifacts = MODULE.ReleaseArtifacts(
+            f"api:{SHA}@sha256:{'1' * 64}",
+            f"web:{SHA}@sha256:{'2' * 64}",
+            torque_reference,
+            1,
+        )
+
+        with mock.patch.object(
+            MODULE, "inventory_path", return_value=(Path("inventory.yml"), MODULE.DEFAULT_INVENTORY)
+        ), mock.patch.object(
+            MODULE, "inventory_document", return_value=inventory
+        ), mock.patch.object(
+            MODULE, "run", return_value=completed(["git"], f"{SHA}\n")
+        ), mock.patch.object(
+            MODULE, "preflight_optional_hosts", return_value=(selection, ())
+        ), mock.patch.object(
+            MODULE, "release_set_artifacts", return_value=artifacts
+        ), mock.patch.object(MODULE.os, "execvpe") as execvpe, redirect_stdout(io.StringIO()):
+            self.assertEqual(MODULE.execute_standard_route(args), 1)
+
+        command = execvpe.call_args.args[1]
+        variables = json.loads(command[command.index("--extra-vars") + 1])
+        self.assertEqual(variables["release_kiosk_torque_image"], torque_reference)
+        self.assertEqual(variables["release_torque_protocol_version"], 1)
 
     def test_print_plan_only_lists_ansible_hosts_and_tasks(self) -> None:
         args = argparse.Namespace(
@@ -519,6 +771,55 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         self.assertEqual(len(commands), 2)
         self.assertEqual({command[-1] for command in commands}, {"--list-hosts", "--list-tasks"})
         self.assertTrue(all(command[0] == "ansible-playbook" for command in commands))
+
+    def test_torque_print_plan_exposes_manifest_resolution_and_phase_boundaries(
+        self,
+    ) -> None:
+        args = argparse.Namespace(
+            branch="main",
+            limit="pi5:pi4-a:pi4-b",
+            full_fleet=False,
+            torque_cutover=True,
+        )
+        selection = (
+            ("pi5", ("pi5",)),
+            ("pi4", ("pi4-a", "pi4-b")),
+        )
+
+        with mock.patch.object(
+            MODULE, "run", return_value=completed(["ansible-playbook"])
+        ), mock.patch.object(MODULE, "config_hash", return_value="4" * 64):
+            document = MODULE.plan(
+                args,
+                SHA,
+                ROOT / MODULE.DEFAULT_INVENTORY,
+                MODULE.DEFAULT_INVENTORY,
+                selection,
+            )
+
+        self.assertEqual(
+            document["artifactResolution"],
+            "signed-release-set-v2-before-service-quiesce",
+        )
+        self.assertEqual(
+            [phase["phase"] for phase in document["cutoverPhases"]],
+            [
+                "PREPARED",
+                "QUIESCED",
+                "CONTROL_PLANE",
+                "AGENTS_STAGED",
+                "AGENTS_HEALTHY_OFF",
+                "BROWSERS_RESUMED",
+            ],
+        )
+        self.assertEqual(
+            document["cutoverPhases"][0],
+            {
+                "phase": "PREPARED",
+                "hosts": ["pi5", "pi4-a", "pi4-b"],
+                "serviceImpact": "none",
+            },
+        )
 
     def test_detach_uses_existing_transient_systemd_primitive(self) -> None:
         args = argparse.Namespace(

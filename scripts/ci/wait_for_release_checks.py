@@ -46,15 +46,21 @@ def evaluate_check_runs(
         if not matches:
             observed[name] = "missing"
             continue
-        run = matches[0]
-        status = run.get("status")
-        conclusion = run.get("conclusion")
-        if status != "completed":
-            observed[name] = str(status or "pending")
-        elif conclusion == "success":
+        if any(
+            run.get("status") == "completed"
+            and run.get("conclusion") == "success"
+            for run in matches
+        ):
             observed[name] = "success"
+            continue
+        pending = next(
+            (run for run in matches if run.get("status") != "completed"),
+            None,
+        )
+        if pending is not None:
+            observed[name] = str(pending.get("status") or "pending")
         else:
-            observed[name] = str(conclusion or "failure")
+            observed[name] = str(matches[0].get("conclusion") or "failure")
     if any(value not in {"success", "missing", "queued", "in_progress", "pending"} for value in observed.values()):
         return "failed", observed
     if all(value == "success" for value in observed.values()):
@@ -89,7 +95,7 @@ def wait_for_checks(
     deadline = time.monotonic() + timeout_seconds
     url = (
         f"https://api.github.com/repos/{repository}/commits/{sha}/check-runs"
-        "?per_page=100&filter=latest"
+        "?per_page=100&filter=all"
     )
     last: dict[str, str] = {}
     while True:

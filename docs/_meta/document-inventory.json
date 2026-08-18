@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 624,
-    "totalLines": 172159,
-    "totalBytes": 12934153,
-    "withFrontmatter": 285,
-    "withStatus": 141,
-    "sourceOfTruthDeclared": 103,
+    "documentCount": 628,
+    "totalLines": 172662,
+    "totalBytes": 13008258,
+    "withFrontmatter": 287,
+    "withStatus": 143,
+    "sourceOfTruthDeclared": 104,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 26,
-    "localLinkCount": 5639,
+    "localLinkCount": 5643,
     "brokenLocalLinkCount": 88,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -5897,8 +5897,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2010,
-      "byteSize": 347631,
+      "lineCount": 2012,
+      "byteSize": 348584,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6877,6 +6877,16 @@
         {
           "href": "./decisions/ADR-20260810-risk-based-deploy-impact-contract.md",
           "targetPath": "docs/decisions/ADR-20260810-risk-based-deploy-impact-contract.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260818-release-set-v2-component-adoption.md",
+          "targetPath": "docs/decisions/ADR-20260818-release-set-v2-component-adoption.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260818-torque-wrench-global-ownership.md",
+          "targetPath": "docs/decisions/ADR-20260818-torque-wrench-global-ownership.md",
           "exists": true
         },
         {
@@ -10620,6 +10630,11 @@
           "exists": true
         },
         {
+          "href": "./plans/release-set-v2-torque-cutover-execplan.md",
+          "targetPath": "docs/plans/release-set-v2-torque-cutover-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/risk-based-four-stage-quality-gates-execplan.md",
           "targetPath": "docs/plans/risk-based-four-stage-quality-gates-execplan.md",
           "exists": true
@@ -10702,6 +10717,11 @@
         {
           "href": "./plans/tool-management-debug-execplan.md",
           "targetPath": "docs/plans/tool-management-debug-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/torque-wrench-global-ownership-execplan.md",
+          "targetPath": "docs/plans/torque-wrench-global-ownership-execplan.md",
           "exists": true
         },
         {
@@ -11230,95 +11250,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 290,
+          "line": 292,
           "length": 1132
         },
         {
-          "line": 306,
+          "line": 308,
           "length": 1242
         },
         {
-          "line": 310,
+          "line": 312,
           "length": 1022
         },
         {
-          "line": 324,
+          "line": 326,
           "length": 1065
         },
         {
-          "line": 372,
+          "line": 374,
           "length": 1165
         },
         {
-          "line": 378,
+          "line": 380,
           "length": 1458
         },
         {
-          "line": 390,
+          "line": 392,
           "length": 1083
         },
         {
-          "line": 404,
+          "line": 406,
           "length": 1398
         },
         {
-          "line": 406,
+          "line": 408,
           "length": 1133
         },
         {
-          "line": 410,
+          "line": 412,
           "length": 1399
         },
         {
-          "line": 412,
+          "line": 414,
           "length": 1008
         },
         {
-          "line": 418,
+          "line": 420,
           "length": 1059
         },
         {
-          "line": 426,
+          "line": 428,
           "length": 1129
         },
         {
-          "line": 430,
+          "line": 432,
           "length": 1135
         },
         {
-          "line": 434,
+          "line": 436,
           "length": 1117
         },
         {
-          "line": 549,
+          "line": 551,
           "length": 1013
         },
         {
-          "line": 735,
+          "line": 737,
           "length": 2038
         },
         {
-          "line": 751,
+          "line": 753,
           "length": 1496
         },
         {
-          "line": 757,
+          "line": 759,
           "length": 1177
         },
         {
-          "line": 1099,
+          "line": 1101,
           "length": 1449
         },
         {
-          "line": 1135,
+          "line": 1137,
           "length": 1136
         },
         {
-          "line": 1137,
+          "line": 1139,
           "length": 1239
         },
         {
-          "line": 1173,
+          "line": 1175,
           "length": 1004
         }
       ],
@@ -16746,8 +16766,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260724-assembly-torque-low-latency-refresh.md",
-      "lineCount": 93,
-      "byteSize": 4435,
+      "lineCount": 99,
+      "byteSize": 4887,
       "hasFrontmatter": true,
       "title": "ADR-20260724: Assembly Torque Low-Latency Refresh",
       "status": "accepted",
@@ -17130,6 +17150,36 @@
       "source_of_truth": "true",
       "localLinks": [],
       "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260818-release-set-v2-component-adoption.md",
+      "lineCount": 93,
+      "byteSize": 11770,
+      "hasFrontmatter": true,
+      "title": "Adopt independently built torque-agent components through signed release-set v2",
+      "status": "accepted",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260818-torque-wrench-global-ownership.md",
+      "lineCount": 48,
+      "byteSize": 5679,
+      "hasFrontmatter": true,
+      "title": "ADR-20260818: One torque-wrench owner across all terminals and workflows",
+      "status": "accepted",
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -18832,8 +18882,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 141,
-      "byteSize": 13806,
+      "lineCount": 157,
+      "byteSize": 17693,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -20599,8 +20649,8 @@
     },
     {
       "path": "docs/guides/quick-start-deployment.md",
-      "lineCount": 36,
-      "byteSize": 1783,
+      "lineCount": 45,
+      "byteSize": 3108,
       "hasFrontmatter": true,
       "title": "デプロイ・クイックスタート",
       "status": "active",
@@ -35437,6 +35487,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/release-set-v2-torque-cutover-execplan.md",
+      "lineCount": 176,
+      "byteSize": 28789,
+      "hasFrontmatter": false,
+      "title": "Extend the signed release set for an atomic torque cutover",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/risk-based-four-stage-quality-gates-execplan.md",
       "lineCount": 350,
       "byteSize": 21699,
@@ -36038,6 +36103,21 @@
       "referencesExecPlan": true
     },
     {
+      "path": "docs/plans/torque-wrench-global-ownership-execplan.md",
+      "lineCount": 141,
+      "byteSize": 18074,
+      "hasFrontmatter": false,
+      "title": "Unify torque-wrench ownership across assembly and training",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/ts100-integration-plan.md",
       "lineCount": 51,
       "byteSize": 4261,
@@ -36481,8 +36561,8 @@
     },
     {
       "path": "docs/runbooks/assembly-torque-agent.md",
-      "lineCount": 303,
-      "byteSize": 24532,
+      "lineCount": 313,
+      "byteSize": 27140,
       "hasFrontmatter": false,
       "title": "組立 torque-agent 運用Runbook",
       "status": null,
@@ -36557,8 +36637,8 @@
     },
     {
       "path": "docs/runbooks/deploy-status-recovery.md",
-      "lineCount": 52,
-      "byteSize": 2259,
+      "lineCount": 54,
+      "byteSize": 2827,
       "hasFrontmatter": true,
       "title": "デプロイ停止・復旧Runbook",
       "status": "active",

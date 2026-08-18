@@ -151,7 +151,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             class StatusHandler(BaseHTTPRequestHandler):
                 received = False
 
-                def do_POST(self) -> None:  # noqa: N802
+                def do_POST(self) -> None:
                     length = int(self.headers.get("Content-Length", "0"))
                     self.rfile.read(length)
                     type(self).received = True
@@ -564,21 +564,41 @@ esac
         )
         self.assertNotIn("terminal-profile-registry", PLAYBOOK)
         self.assertNotIn("rolling_release", PLAYBOOK)
-        self.assertEqual(plays[0]["hosts"], "kiosk")
-        self.assertIn("torque-cutover", plays[0]["tags"])
-        self.assertEqual(plays[1]["hosts"], "server")
-        self.assertEqual(plays[1]["connection"], "local")
-        self.assertEqual(plays[2]["hosts"], "kiosk")
-        self.assertEqual(plays[3]["hosts"], "kiosk")
-        self.assertIn("torque-cutover", plays[3]["tags"])
-        self.assertEqual(plays[4]["hosts"], "signage")
+        self.assertEqual(
+            [play["hosts"] for play in plays],
+            [
+                "server",
+                "kiosk",
+                "kiosk",
+                "server",
+                "kiosk",
+                "kiosk",
+                "server",
+                "server",
+                "kiosk",
+                "kiosk",
+                "signage",
+            ],
+        )
+        self.assertTrue(all("torque-cutover" in play["tags"] for play in plays[:7]))
+        self.assertEqual(plays[0]["connection"], "local")
+        self.assertEqual(plays[3]["connection"], "local")
+        self.assertEqual(plays[6]["connection"], "local")
+        self.assertEqual(plays[7]["connection"], "local")
+        self.assertIn("torque-cutover", plays[9]["tags"])
 
     def test_torque_cutover_is_quiesce_pi5_stage_then_resume(self) -> None:
         plays = yaml.safe_load(PLAYBOOK)
         self.assertEqual(
-            [play["name"] for play in plays[:4]],
+            [play["name"] for play in plays[:10]],
             [
+                "Stage Pi5 release images before torque ownership is quiesced",
+                "Stage every selected torque kiosk while current services remain unchanged",
+                "Aggregate PREPARED before any torque endpoint stops",
+                "Finalize PREPARED and clean Pi5 candidates on shared failure",
                 "Quiesce all selected torque ownership endpoints before the API changes",
+                "Aggregate QUIESCED and restore all reachable kiosks on shared failure",
+                "Finalize QUIESCED before changing the control plane",
                 "Prepare and switch the Pi5 control plane",
                 "Update Pi4 kiosks one target at a time",
                 "Aggregate all selected torque candidates before ownership resumes",
@@ -607,10 +627,72 @@ esac
         self.assertIn("release_torque_all_staged", quiesce)
         self.assertIn("release_torque_all_agents_ready", quiesce)
         self.assertIn("release_torque_all_browsers_ready", quiesce)
+        self.assertGreaterEqual(quiesce.count("default(false)"), 6)
+        self.assertTrue(plays[9]["ignore_unreachable"])
         self.assertIn("selfOwnedToken", quiesce)
         self.assertIn("torque-bluetooth-guard.service", quiesce)
         self.assertNotIn("nfc-agent", quiesce)
         self.assertNotIn("barcode-agent", quiesce)
+
+    def test_torque_prepared_pulls_and_verifies_everything_before_quiesce(self) -> None:
+        plays = yaml.safe_load(PLAYBOOK)
+        names = [play["name"] for play in plays]
+        self.assertLess(
+            names.index("Stage Pi5 release images before torque ownership is quiesced"),
+            names.index("Quiesce all selected torque ownership endpoints before the API changes"),
+        )
+        self.assertLess(
+            names.index("Aggregate PREPARED before any torque endpoint stops"),
+            names.index("Quiesce all selected torque ownership endpoints before the API changes"),
+        )
+
+        pi5_prefetch = (
+            ANSIBLE / "roles/release_pi5/tasks/prefetch.yml"
+        ).read_text(encoding="utf-8")
+        kiosk_prepare = (
+            ANSIBLE / "roles/release_kiosk/tasks/prepare.yml"
+        ).read_text(encoding="utf-8")
+        prepared_finalize = (
+            ANSIBLE / "roles/release_torque_cutover/tasks/prepared-finalize.yml"
+        ).read_text(encoding="utf-8")
+        kiosk_main = (
+            ANSIBLE / "roles/release_kiosk/tasks/main.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("Pull exact Pi5 candidates without starting containers", pi5_prefetch)
+        self.assertIn("Require exact ARM64 Pi5 candidates on this host", pi5_prefetch)
+        self.assertIn("Require recoverable running Pi5 API and Web images", pi5_prefetch)
+        self.assertNotIn("docker compose", pi5_prefetch)
+        self.assertNotIn("state: stopped", pi5_prefetch)
+        self.assertIn("Verify captured rollback image identities are locally recoverable", kiosk_prepare)
+        self.assertIn("Require the manifest-bound torque candidate and host architecture", kiosk_prepare)
+        self.assertIn("Read the selected Pi4 kernel architecture", kiosk_prepare)
+        self.assertIn("aarch64", kiosk_prepare)
+        self.assertIn("armv7", kiosk_prepare)
+        self.assertIn("Read Pi4 disk headroom before pulling candidates", kiosk_prepare)
+        self.assertIn("release_torque_all_prepared", prepared_finalize)
+        self.assertIn("delegate_facts: true", prepared_finalize)
+        self.assertIn("groups['server'] | first", prepared_finalize)
+        self.assertNotIn("release_torque_cutover_hosts | first", prepared_finalize)
+        prepared_control_plane = (
+            ANSIBLE
+            / "roles/release_torque_cutover/tasks/prepared-control-plane.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("running services were not stopped", prepared_control_plane)
+        self.assertIn("default(false)", prepared_finalize)
+        self.assertIn("default(false)", prepared_control_plane)
+        self.assertIn("release_kiosk_prepared_run_id == release_run_id", kiosk_main)
+
+        quiesce_finalize = (
+            ANSIBLE / "roles/release_torque_cutover/tasks/quiesce-finalize.yml"
+        ).read_text(encoding="utf-8")
+        final_cutover = (
+            ANSIBLE / "roles/release_torque_cutover/tasks/finalize.yml"
+        ).read_text(encoding="utf-8")
+        for aggregate in (quiesce_finalize, final_cutover):
+            self.assertIn("delegate_facts: true", aggregate)
+            self.assertNotIn("release_torque_cutover_hosts | first", aggregate)
+        self.assertIn("release_torque_host_result", final_cutover)
 
     def test_torque_allowlist_stages_stopped_candidate_and_preserves_other_agents(self) -> None:
         prepare = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
@@ -629,7 +711,7 @@ esac
         self.assertIn("create --force-recreate --no-build", rollback)
         self.assertIn("without restarting torque ownership", rollback)
 
-    def test_three_host_stage_failure_still_reaches_shared_no_browser_boundary(self) -> None:
+    def test_three_host_stage_missing_fact_still_reaches_shared_no_browser_boundary(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             inventory = root / "inventory.yml"
@@ -645,8 +727,6 @@ esac
   serial: 1
   max_fail_percentage: 100
   tasks:
-    - ansible.builtin.set_fact:
-        simulated_stage: false
     - block:
         - ansible.builtin.set_fact:
             simulated_stage: true
@@ -655,14 +735,17 @@ esac
             msg: simulated second-host stage failure
           when: inventory_hostname == 'kiosk-b'
       rescue:
-        - ansible.builtin.set_fact:
-            simulated_stage: false
+        - ansible.builtin.debug:
+            msg: simulated unreachable host has no stage fact
 - hosts: kiosk
   gather_facts: false
   tasks:
     - ansible.builtin.set_fact:
+        simulated_all_staged: true
+    - ansible.builtin.set_fact:
         simulated_all_staged: >-
-          {{ groups['kiosk'] | map('extract', hostvars, 'simulated_stage') | select('equalto', true) | list | length == groups['kiosk'] | length }}
+          {{ simulated_all_staged | bool and (hostvars[item].simulated_stage | default(false) | bool) }}
+      loop: "{{ groups['kiosk'] }}"
     - ansible.builtin.debug:
         msg: "AGGREGATE={{ simulated_all_staged }} host={{ inventory_hostname }}"
     - ansible.builtin.debug:
@@ -703,7 +786,9 @@ esac
                     "prepare.yml",
                 )
                 if role == "release_kiosk":
-                    switch_health = outer["block"][1]
+                    switch_health = next(
+                        task for task in outer["block"] if "block" in task
+                    )
                     self.assertEqual(
                         [
                             task["ansible.builtin.import_tasks"]
@@ -891,7 +976,11 @@ esac
                 encoding="utf-8"
             )
         )
-        tag_cleanup = cleanup_tasks[0]
+        tag_cleanup = next(
+            task
+            for task in cleanup_tasks
+            if task["name"] == "Remove Pi4 rollback image tags after a verified outcome"
+        )
         stage_cleanup = cleanup_tasks[-1]
         expected_pre_switch = "not (release_kiosk_switch_attempted | default(false) | bool)"
         self.assertIn("release_kiosk_healthy | default(false) | bool", tag_cleanup["when"])
@@ -1110,7 +1199,11 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
             encoding="utf-8"
         )
         wrapper = (ROOT / "scripts/update-all-clients.sh").read_text(encoding="utf-8")
-        play = yaml.safe_load(PLAYBOOK)[1]
+        play = next(
+            item
+            for item in yaml.safe_load(PLAYBOOK)
+            if item["name"] == "Prepare and switch the Pi5 control plane"
+        )
         self.assertIn('PLAYBOOK = ANSIBLE / "playbooks/deploy-release-standard.yml"', launcher)
         self.assertIn("standard-ansible-release.py", wrapper)
         self.assertEqual(play["roles"], [{"role": "release_pi5"}])

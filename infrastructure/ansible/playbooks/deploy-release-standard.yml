@@ -1,17 +1,107 @@
 ---
 # Canonical Ansible-first release route invoked by the standard launcher.
-- name: Quiesce all selected torque ownership endpoints before the API changes
-  hosts: kiosk
+- name: Stage Pi5 release images before torque ownership is quiesced
+  hosts: server
+  connection: local
   gather_facts: false
   become: true
   any_errors_fatal: true
   tags:
     - torque-cutover
   tasks:
-    - name: Stop the old torque runtime and prove Bluetooth is OFF
+    - name: Pull and verify Pi5 candidates without starting them
+      block:
+        - name: Enter the Pi5 PREPARED boundary
+          ansible.builtin.include_role:
+            name: release_pi5
+            tasks_from: prefetch
+      rescue:
+        - name: Clean unused Pi5 candidates after PREPARED failure
+          ansible.builtin.include_role:
+            name: release_pi5
+            tasks_from: prefetch-cleanup
+        - name: Stop before kiosk mutation after Pi5 PREPARED failure
+          ansible.builtin.fail:
+            msg: Pi5 PREPARED failed before any torque endpoint was stopped.
+
+- name: Stage every selected torque kiosk while current services remain unchanged
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  ignore_unreachable: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Prepare this kiosk without quiescing it
       ansible.builtin.include_role:
         name: release_torque_cutover
-        tasks_from: quiesce
+        tasks_from: prepared-kiosk
+
+- name: Aggregate PREPARED before any torque endpoint stops
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Cross the shared PREPARED boundary
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: prepared-finalize
+
+- name: Finalize PREPARED and clean Pi5 candidates on shared failure
+  hosts: server
+  connection: local
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Require every target before torque ownership is quiesced
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: prepared-control-plane
+
+- name: Quiesce all selected torque ownership endpoints before the API changes
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  ignore_unreachable: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Attempt the complete quiesce boundary on this kiosk
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: quiesce-kiosk
+
+- name: Aggregate QUIESCED and restore all reachable kiosks on shared failure
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  ignore_unreachable: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Cross the shared quiesce boundary
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: quiesce-finalize
+
+- name: Finalize QUIESCED before changing the control plane
+  hosts: server
+  connection: local
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Require every kiosk to be quiesced before Pi5 mutation
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: quiesce-control-plane
 
 - name: Prepare and switch the Pi5 control plane
   hosts: server
@@ -42,7 +132,7 @@
   hosts: kiosk
   gather_facts: false
   become: true
-  any_errors_fatal: true
+  ignore_unreachable: true
   tags:
     - torque-cutover
   tasks:

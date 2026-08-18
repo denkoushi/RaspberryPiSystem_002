@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict contract for one attested API/Web OCI release pair."""
+"""Strict contract for one attested API/Web release and optional components."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ import argparse
 import json
 import re
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
-
+from typing import Any
 
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -22,12 +22,49 @@ OCI_REPOSITORY_RE = re.compile(
     r"^ghcr\.io/[a-z0-9](?:[a-z0-9_.-]{0,99})/"
     r"[a-z0-9](?:[a-z0-9_.-]{0,199})$"
 )
+OCI_DIGEST_REFERENCE_RE = re.compile(
+    r"^ghcr\.io/[a-z0-9](?:[a-z0-9_.-]{0,99})/"
+    r"[a-z0-9](?:[a-z0-9_.-]{0,199})@sha256:[0-9a-f]{64}$"
+)
 WORKFLOW_RE = re.compile(r"^\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml$")
 MAX_JSON_BYTES = 64 * 1024
 EXPECTED_IMAGE_REPOSITORIES = {
     "api": "ghcr.io/denkoushi/raspisys-api",
     "web": "ghcr.io/denkoushi/raspisys-web",
 }
+TORQUE_AGENT_REPOSITORY = "ghcr.io/denkoushi/raspisys-torque-agent"
+RELEASE_SET_REPOSITORY = "ghcr.io/denkoushi/raspisys-release-set"
+TORQUE_PROTOCOL_NAME = "torque-ownership"
+TORQUE_PROTOCOL_VERSION = 1
+TORQUE_ADOPTED_SOURCE_SHA = "3464256da11ee77bebfceb4fafcff4524f5ac8ca"
+TORQUE_ORIGINAL_WORKFLOW = ".github/workflows/ci.yml"
+TORQUE_ORIGINAL_RUN_ID = 32093659078
+TORQUE_ORIGINAL_JOB_ID = 95581851495
+TORQUE_ADOPTION_PREDICATE_TYPE = (
+    "https://github.com/denkoushi/RaspberryPiSystem_002/"
+    "attestations/torque-agent-component-adoption/v1"
+)
+TORQUE_PROTOCOL_SOURCE_CLOSURE = (
+    "packages/shared-types/src/torque-wrenches",
+    "apps/api/src/routes/torque-wrenches",
+    "apps/api/src/routes/torque-training",
+    "apps/api/src/services/torque-wrenches",
+    "apps/api/src/services/torque-training",
+    "apps/web/src/features/torque-wrench-connection",
+    "clients/torque-agent/torque_agent/connection_lease.py",
+    "clients/torque-agent/torque_agent/main.py",
+    "clients/torque-agent/torque_agent/ingestor.py",
+    "clients/torque-agent/torque_agent/api_client.py",
+    "infrastructure/docker/Dockerfile.torque-agent",
+)
+TORQUE_REHEARSAL_CONTRACTS = (
+    "api-usage-lease-policy",
+    "api-confirmation-fencing-policy",
+    "api-assembly-route-postgresql",
+    "api-training-route-postgresql",
+    "web-transport-controller-presentation",
+    "agent-global-ownership-recovery",
+)
 
 
 class ReleaseArtifactError(ValueError):
@@ -63,6 +100,144 @@ class WorkflowIdentity:
 
 
 @dataclass(frozen=True)
+class OriginalWorkflowIdentity:
+    path: str
+    run_id: int
+    job_id: int
+
+
+@dataclass(frozen=True)
+class PlatformArtifact:
+    operating_system: str
+    architecture: str
+    variant: str | None
+    digest: str
+
+    def as_document(self) -> dict[str, str]:
+        result = {
+            "os": self.operating_system,
+            "architecture": self.architecture,
+            "digest": self.digest,
+        }
+        if self.variant is not None:
+            result["variant"] = self.variant
+        return result
+
+
+@dataclass(frozen=True)
+class ComponentAdoption:
+    predicate_type: str
+    original_workflow: OriginalWorkflowIdentity
+
+    def as_document(self) -> dict[str, object]:
+        return {
+            "predicateType": self.predicate_type,
+            "originalWorkflow": {
+                "path": self.original_workflow.path,
+                "runId": self.original_workflow.run_id,
+                "jobId": self.original_workflow.job_id,
+            },
+        }
+
+
+@dataclass(frozen=True)
+class BaseReleaseSetIdentity:
+    """Immutable v1 release identity embedded by a schema-v2 composition."""
+
+    digest: str
+    schema_version: int
+    source_sha: str
+    config_hash: str
+    workflow: WorkflowIdentity
+
+    def as_document(self) -> dict[str, object]:
+        return {
+            "digest": self.digest,
+            "schemaVersion": self.schema_version,
+            "sourceSha": self.source_sha,
+            "configHash": self.config_hash,
+            "workflow": {
+                "path": self.workflow.path,
+                "runId": self.workflow.run_id,
+                "runAttempt": self.workflow.run_attempt,
+            },
+        }
+
+
+@dataclass(frozen=True)
+class TorqueAgentComponent:
+    repository: str
+    index_digest: str
+    source_sha: str
+    platforms: tuple[PlatformArtifact, ...]
+    adoption: ComponentAdoption
+
+    def as_document(self) -> dict[str, object]:
+        return {
+            "repository": self.repository,
+            "indexDigest": self.index_digest,
+            "sourceSha": self.source_sha,
+            "platforms": [item.as_document() for item in self.platforms],
+            "adoption": self.adoption.as_document(),
+        }
+
+
+@dataclass(frozen=True)
+class CompatibilityRehearsal:
+    workflow: WorkflowIdentity
+    job: str
+    result: str
+    evidence_digest: str
+    contracts: tuple[str, ...]
+
+    def as_document(self) -> dict[str, object]:
+        return {
+            "workflow": {
+                "path": self.workflow.path,
+                "runId": self.workflow.run_id,
+                "runAttempt": self.workflow.run_attempt,
+            },
+            "job": self.job,
+            "result": self.result,
+            "evidenceDigest": self.evidence_digest,
+            "contracts": list(self.contracts),
+        }
+
+
+@dataclass(frozen=True)
+class TorqueCompatibility:
+    protocol_name: str
+    protocol_version: int
+    api_digest: str
+    web_digest: str
+    torque_agent_digest: str
+    baseline_sha: str
+    release_sha: str
+    source_closure: tuple[str, ...]
+    rehearsal: CompatibilityRehearsal
+
+    def as_document(self) -> dict[str, object]:
+        return {
+            "protocol": {
+                "name": self.protocol_name,
+                "version": self.protocol_version,
+            },
+            "components": {
+                "api": self.api_digest,
+                "web": self.web_digest,
+                "torqueAgent": self.torque_agent_digest,
+            },
+            "sourceClosure": {
+                "baselineSha": self.baseline_sha,
+                "releaseSha": self.release_sha,
+                "paths": list(self.source_closure),
+                "unchanged": True,
+            },
+            "rehearsal": self.rehearsal.as_document(),
+        }
+
+
+@dataclass(frozen=True)
 class ReleaseSet:
     schema_version: int
     source_repository: str
@@ -74,9 +249,18 @@ class ReleaseSet:
     api: ImageArtifact
     web: ImageArtifact
     workflow: WorkflowIdentity
+    # Schema-v2 keeps ``workflow`` as the source release (v1) identity and
+    # records the workflow that published/rehearsed the component composition
+    # separately.  Keeping the two identities distinct prevents a torque
+    # rehearsal from being made to look as though it came from the API/Web
+    # release workflow.
+    composition_workflow: WorkflowIdentity | None = None
+    base_release_set: BaseReleaseSetIdentity | None = None
+    torque_agent: TorqueAgentComponent | None = None
+    torque_compatibility: TorqueCompatibility | None = None
 
     def as_document(self) -> dict[str, object]:
-        return {
+        document: dict[str, object] = {
             "schemaVersion": self.schema_version,
             "source": {
                 "repository": self.source_repository,
@@ -104,6 +288,29 @@ class ReleaseSet:
                 "runAttempt": self.workflow.run_attempt,
             },
         }
+        if self.schema_version == 2:
+            if (
+                self.composition_workflow is None
+                or self.base_release_set is None
+                or self.torque_agent is None
+                or self.torque_compatibility is None
+            ):
+                raise ReleaseArtifactError(
+                    "release-set v2 is missing base/composition or torque component data"
+                )
+            document["compositionWorkflow"] = {
+                "path": self.composition_workflow.path,
+                "runId": self.composition_workflow.run_id,
+                "runAttempt": self.composition_workflow.run_attempt,
+            }
+            document["baseReleaseSet"] = self.base_release_set.as_document()
+            document["components"] = {
+                "torqueAgent": self.torque_agent.as_document(),
+            }
+            document["compatibility"] = {
+                "torqueOwnership": self.torque_compatibility.as_document(),
+            }
+        return document
 
 
 def _image(value: object, label: str) -> ImageArtifact:
@@ -120,6 +327,217 @@ def _image(value: object, label: str) -> ImageArtifact:
     return ImageArtifact(repository, digest)
 
 
+def _positive_int(value: object) -> bool:
+    return type(value) is int and value > 0
+
+
+def _workflow(value: object, label: str) -> WorkflowIdentity:
+    record = _exact_keys(value, {"path", "runId", "runAttempt"}, label)
+    path = record["path"]
+    run_id = record["runId"]
+    run_attempt = record["runAttempt"]
+    if (
+        not isinstance(path, str)
+        or WORKFLOW_RE.fullmatch(path) is None
+        or not _positive_int(run_id)
+        or not _positive_int(run_attempt)
+    ):
+        raise ReleaseArtifactError(f"{label} identity is malformed")
+    return WorkflowIdentity(path, run_id, run_attempt)
+
+
+def _base_release_set(
+    value: object,
+    *,
+    source_sha: str,
+    config_hash: str,
+    workflow: WorkflowIdentity,
+) -> BaseReleaseSetIdentity:
+    record = _exact_keys(
+        value,
+        {"digest", "schemaVersion", "sourceSha", "configHash", "workflow"},
+        "base release set",
+    )
+    digest = record["digest"]
+    schema_version = record["schemaVersion"]
+    base_source_sha = record["sourceSha"]
+    base_config_hash = record["configHash"]
+    base_workflow = _workflow(record["workflow"], "base release workflow")
+    if (
+        not isinstance(digest, str)
+        or OCI_DIGEST_REFERENCE_RE.fullmatch(digest) is None
+        or not digest.startswith(RELEASE_SET_REPOSITORY + "@")
+        or schema_version != 1
+        or base_source_sha != source_sha
+        or base_config_hash != config_hash
+        or base_workflow != workflow
+    ):
+        raise ReleaseArtifactError("base release set identity is malformed or mismatched")
+    return BaseReleaseSetIdentity(
+        digest=digest,
+        schema_version=1,
+        source_sha=base_source_sha,
+        config_hash=base_config_hash,
+        workflow=base_workflow,
+    )
+
+
+def _platform_component(value: object, label: str) -> PlatformArtifact:
+    if not isinstance(value, dict):
+        raise ReleaseArtifactError(f"{label} identity is malformed")
+    expected = {"os", "architecture", "digest"}
+    if "variant" in value:
+        expected.add("variant")
+    record = _exact_keys(value, expected, label)
+    operating_system = record["os"]
+    architecture = record["architecture"]
+    digest = record["digest"]
+    variant = record.get("variant")
+    if (
+        operating_system != "linux"
+        or architecture not in {"arm64", "arm"}
+        or (architecture == "arm64" and variant is not None)
+        or (architecture == "arm" and variant != "v7")
+        or not isinstance(digest, str)
+        or SHA256_RE.fullmatch(digest) is None
+    ):
+        raise ReleaseArtifactError(f"{label} identity is malformed")
+    return PlatformArtifact(operating_system, architecture, variant, digest)
+
+
+def _torque_component(value: object) -> TorqueAgentComponent:
+    record = _exact_keys(
+        value,
+        {"repository", "indexDigest", "sourceSha", "platforms", "adoption"},
+        "torque-agent component",
+    )
+    repository = record["repository"]
+    index_digest = record["indexDigest"]
+    source_sha = record["sourceSha"]
+    platforms_value = record["platforms"]
+    if (
+        repository != TORQUE_AGENT_REPOSITORY
+        or not isinstance(index_digest, str)
+        or SHA256_RE.fullmatch(index_digest) is None
+        or source_sha != TORQUE_ADOPTED_SOURCE_SHA
+        or not isinstance(platforms_value, list)
+        or len(platforms_value) != 2
+    ):
+        raise ReleaseArtifactError("torque-agent component identity is malformed")
+    platforms = tuple(
+        _platform_component(item, f"torque-agent platform {index}")
+        for index, item in enumerate(platforms_value)
+    )
+    platform_keys = {
+        (item.operating_system, item.architecture, item.variant) for item in platforms
+    }
+    if platform_keys != {("linux", "arm64", None), ("linux", "arm", "v7")}:
+        raise ReleaseArtifactError(
+            "torque-agent platforms are incomplete or duplicated"
+        )
+
+    adoption = _exact_keys(
+        record["adoption"], {"predicateType", "originalWorkflow"}, "torque adoption"
+    )
+    predicate_type = adoption["predicateType"]
+    original = _exact_keys(
+        adoption["originalWorkflow"], {"path", "runId", "jobId"}, "original workflow"
+    )
+    if predicate_type != TORQUE_ADOPTION_PREDICATE_TYPE or original != {
+        "path": TORQUE_ORIGINAL_WORKFLOW,
+        "runId": TORQUE_ORIGINAL_RUN_ID,
+        "jobId": TORQUE_ORIGINAL_JOB_ID,
+    }:
+        raise ReleaseArtifactError("torque adoption identity is malformed")
+    return TorqueAgentComponent(
+        repository=repository,
+        index_digest=index_digest,
+        source_sha=source_sha,
+        platforms=platforms,
+        adoption=ComponentAdoption(
+            predicate_type=predicate_type,
+            original_workflow=OriginalWorkflowIdentity(
+                path=original["path"],
+                run_id=original["runId"],
+                job_id=original["jobId"],
+            ),
+        ),
+    )
+
+
+def _torque_compatibility(
+    value: object,
+    *,
+    api_digest: str,
+    web_digest: str,
+    torque_digest: str,
+    torque_source_sha: str,
+    release_source_sha: str,
+    composition_workflow: WorkflowIdentity,
+) -> TorqueCompatibility:
+    record = _exact_keys(
+        value,
+        {"protocol", "components", "sourceClosure", "rehearsal"},
+        "torque compatibility",
+    )
+    protocol = _exact_keys(record["protocol"], {"name", "version"}, "torque protocol")
+    components = _exact_keys(
+        record["components"], {"api", "web", "torqueAgent"}, "compatible components"
+    )
+    source_closure = _exact_keys(
+        record["sourceClosure"],
+        {"baselineSha", "releaseSha", "paths", "unchanged"},
+        "protocol source closure",
+    )
+    rehearsal = _exact_keys(
+        record["rehearsal"],
+        {"workflow", "job", "result", "evidenceDigest", "contracts"},
+        "rehearsal",
+    )
+    workflow = _workflow(rehearsal["workflow"], "rehearsal workflow")
+    job = rehearsal["job"]
+    evidence_digest = rehearsal["evidenceDigest"]
+    if (
+        protocol != {"name": TORQUE_PROTOCOL_NAME, "version": TORQUE_PROTOCOL_VERSION}
+        or components
+        != {"api": api_digest, "web": web_digest, "torqueAgent": torque_digest}
+        or not isinstance(job, str)
+        or job != "torque-release-compatibility"
+        or rehearsal["result"] != "passed"
+        or not isinstance(evidence_digest, str)
+        or SHA256_RE.fullmatch(evidence_digest) is None
+        or rehearsal["contracts"] != list(TORQUE_REHEARSAL_CONTRACTS)
+        or workflow != composition_workflow
+        or source_closure
+        != {
+            "baselineSha": torque_source_sha,
+            "releaseSha": release_source_sha,
+            "paths": list(TORQUE_PROTOCOL_SOURCE_CLOSURE),
+            "unchanged": True,
+        }
+    ):
+        raise ReleaseArtifactError(
+            "torque compatibility tuple is malformed or mismatched"
+        )
+    return TorqueCompatibility(
+        protocol_name=TORQUE_PROTOCOL_NAME,
+        protocol_version=TORQUE_PROTOCOL_VERSION,
+        api_digest=api_digest,
+        web_digest=web_digest,
+        torque_agent_digest=torque_digest,
+        baseline_sha=torque_source_sha,
+        release_sha=release_source_sha,
+        source_closure=TORQUE_PROTOCOL_SOURCE_CLOSURE,
+        rehearsal=CompatibilityRehearsal(
+            workflow=workflow,
+            job=job,
+            result="passed",
+            evidence_digest=evidence_digest,
+            contracts=TORQUE_REHEARSAL_CONTRACTS,
+        ),
+    )
+
+
 def parse_release_set(raw: str) -> ReleaseSet:
     if len(raw.encode("utf-8")) > MAX_JSON_BYTES:
         raise ReleaseArtifactError("release set exceeds its size limit")
@@ -127,35 +545,34 @@ def parse_release_set(raw: str) -> ReleaseSet:
         document = json.loads(raw, object_pairs_hook=_strict_object)
     except (json.JSONDecodeError, UnicodeError) as error:
         raise ReleaseArtifactError("release set is not valid JSON") from error
-    root = _exact_keys(
-        document,
-        {
-            "schemaVersion",
-            "source",
-            "configHash",
-            "platform",
-            "images",
-            "workflow",
-        },
-        "release set",
-    )
-    if root["schemaVersion"] != 1 or type(root["schemaVersion"]) is not int:
+    if not isinstance(document, dict) or type(document.get("schemaVersion")) is not int:
         raise ReleaseArtifactError("unsupported release-set schema version")
+    schema_version = document["schemaVersion"]
+    if schema_version not in {1, 2}:
+        raise ReleaseArtifactError("unsupported release-set schema version")
+    root_keys = {
+        "schemaVersion",
+        "source",
+        "configHash",
+        "platform",
+        "images",
+        "workflow",
+    }
+    if schema_version == 2:
+        root_keys.update(
+            {"baseReleaseSet", "compositionWorkflow", "components", "compatibility"}
+        )
+    root = _exact_keys(document, root_keys, "release set")
 
     source = _exact_keys(root["source"], {"repository", "sha", "ref"}, "source")
     platform = _exact_keys(root["platform"], {"os", "architecture"}, "platform")
     images = _exact_keys(root["images"], {"api", "web"}, "images")
-    workflow = _exact_keys(
-        root["workflow"], {"path", "runId", "runAttempt"}, "workflow"
-    )
+    workflow_identity = _workflow(root["workflow"], "workflow")
 
     repository = source["repository"]
     sha = source["sha"]
     ref = source["ref"]
     config_hash = root["configHash"]
-    workflow_path = workflow["path"]
-    run_id = workflow["runId"]
-    run_attempt = workflow["runAttempt"]
     if (
         not isinstance(repository, str)
         or REPOSITORY_RE.fullmatch(repository) is None
@@ -165,26 +582,55 @@ def parse_release_set(raw: str) -> ReleaseSet:
         or not isinstance(config_hash, str)
         or CONFIG_HASH_RE.fullmatch(config_hash) is None
         or platform != {"os": "linux", "architecture": "arm64"}
-        or not isinstance(workflow_path, str)
-        or WORKFLOW_RE.fullmatch(workflow_path) is None
-        or type(run_id) is not int
-        or run_id <= 0
-        or type(run_attempt) is not int
-        or run_attempt <= 0
     ):
         raise ReleaseArtifactError("release-set identity is malformed")
 
+    api = _image(images["api"], "API image")
+    web = _image(images["web"], "Web image")
+    torque_agent = None
+    torque_compatibility = None
+    composition_workflow = None
+    base_release_set = None
+    if schema_version == 2:
+        base_release_set = _base_release_set(
+            root["baseReleaseSet"],
+            source_sha=sha,
+            config_hash=config_hash,
+            workflow=workflow_identity,
+        )
+        composition_workflow = _workflow(
+            root["compositionWorkflow"], "composition workflow"
+        )
+        components = _exact_keys(root["components"], {"torqueAgent"}, "components")
+        compatibility = _exact_keys(
+            root["compatibility"], {"torqueOwnership"}, "compatibility"
+        )
+        torque_agent = _torque_component(components["torqueAgent"])
+        torque_compatibility = _torque_compatibility(
+            compatibility["torqueOwnership"],
+            api_digest=api.digest,
+            web_digest=web.digest,
+            torque_digest=torque_agent.index_digest,
+            torque_source_sha=torque_agent.source_sha,
+            release_source_sha=sha,
+            composition_workflow=composition_workflow,
+        )
+
     return ReleaseSet(
-        schema_version=1,
+        schema_version=schema_version,
         source_repository=repository,
         source_sha=sha,
         source_ref=ref,
         config_hash=config_hash,
         operating_system="linux",
         architecture="arm64",
-        api=_image(images["api"], "API image"),
-        web=_image(images["web"], "Web image"),
-        workflow=WorkflowIdentity(workflow_path, run_id, run_attempt),
+        api=api,
+        web=web,
+        workflow=workflow_identity,
+        composition_workflow=composition_workflow,
+        base_release_set=base_release_set,
+        torque_agent=torque_agent,
+        torque_compatibility=torque_compatibility,
     )
 
 
@@ -228,6 +674,68 @@ def canonical_release_set_json(release_set: ReleaseSet) -> str:
     )
 
 
+def validate_torque_composition_reuse(
+    existing: ReleaseSet, candidate: ReleaseSet
+) -> None:
+    """Allow an idempotent v2 publication only for the same component tuple.
+
+    A retry may receive a new composition workflow run/attempt and a new
+    rehearsal evidence digest.  Every release identity and compatibility
+    input remains immutable, so a pre-existing tag can never silently point
+    at a different API/Web/agent combination.
+    """
+
+    if existing.schema_version != 2 or candidate.schema_version != 2:
+        raise ReleaseArtifactError("torque composition reuse requires schema v2")
+    if (
+        existing.base_release_set != candidate.base_release_set
+        or existing.source_repository != candidate.source_repository
+        or existing.source_sha != candidate.source_sha
+        or existing.source_ref != candidate.source_ref
+        or existing.config_hash != candidate.config_hash
+        or existing.operating_system != candidate.operating_system
+        or existing.architecture != candidate.architecture
+        or existing.api != candidate.api
+        or existing.web != candidate.web
+        or existing.workflow != candidate.workflow
+        or existing.torque_agent != candidate.torque_agent
+    ):
+        raise ReleaseArtifactError(
+            "torque composition reuse identity or component digest differs"
+        )
+
+    existing_compatibility = existing.torque_compatibility
+    candidate_compatibility = candidate.torque_compatibility
+    if existing_compatibility is None or candidate_compatibility is None:
+        raise ReleaseArtifactError("torque composition reuse is missing compatibility")
+    existing_rehearsal = existing_compatibility.rehearsal
+    candidate_rehearsal = candidate_compatibility.rehearsal
+    if (
+        existing_compatibility.protocol_name != candidate_compatibility.protocol_name
+        or existing_compatibility.protocol_version
+        != candidate_compatibility.protocol_version
+        or existing_compatibility.api_digest != candidate_compatibility.api_digest
+        or existing_compatibility.web_digest != candidate_compatibility.web_digest
+        or existing_compatibility.torque_agent_digest
+        != candidate_compatibility.torque_agent_digest
+        or existing_compatibility.baseline_sha != candidate_compatibility.baseline_sha
+        or existing_compatibility.release_sha != candidate_compatibility.release_sha
+        or existing_compatibility.source_closure
+        != candidate_compatibility.source_closure
+        or existing_rehearsal.workflow.path != candidate_rehearsal.workflow.path
+        or existing_rehearsal.job != candidate_rehearsal.job
+        or existing_rehearsal.result != candidate_rehearsal.result
+        or existing_rehearsal.contracts != candidate_rehearsal.contracts
+        or existing.composition_workflow is None
+        or candidate.composition_workflow is None
+        or existing.composition_workflow.path
+        != candidate.composition_workflow.path
+    ):
+        raise ReleaseArtifactError(
+            "torque composition reuse protocol or compatibility differs"
+        )
+
+
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -242,20 +750,88 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     create.add_argument("--workflow", required=True)
     create.add_argument("--run-id", type=int, required=True)
     create.add_argument("--run-attempt", type=int, required=True)
+    create.add_argument("--composition-workflow")
+    create.add_argument("--composition-run-id", type=int)
+    create.add_argument("--composition-run-attempt", type=int)
+    create.add_argument("--base-release-digest")
+    create.add_argument("--torque-repository")
+    create.add_argument("--torque-index-digest")
+    create.add_argument("--torque-source-sha")
+    create.add_argument("--torque-arm64-digest")
+    create.add_argument("--torque-armv7-digest")
+    create.add_argument("--torque-adoption-predicate-type")
+    create.add_argument("--torque-origin-workflow")
+    create.add_argument("--torque-origin-run-id", type=int)
+    create.add_argument("--torque-origin-job-id", type=int)
+    create.add_argument("--torque-rehearsal-job")
+    create.add_argument("--torque-rehearsal-evidence-digest")
 
     verify = subparsers.add_parser("verify")
     verify.add_argument("--repository", required=True)
     verify.add_argument("--sha", required=True)
     verify.add_argument("--config-hash", required=True)
     verify.add_argument("--workflow", required=True)
+
+    reuse = subparsers.add_parser("verify-torque-reuse")
+    reuse.add_argument("--existing", required=True)
+    reuse.add_argument("--candidate", required=True)
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     if args.command == "create":
+        torque_values = (
+            args.torque_repository,
+            args.torque_index_digest,
+            args.torque_source_sha,
+            args.torque_arm64_digest,
+            args.torque_armv7_digest,
+            args.torque_adoption_predicate_type,
+            args.torque_origin_workflow,
+            args.torque_origin_run_id,
+            args.torque_origin_job_id,
+            args.torque_rehearsal_job,
+            args.torque_rehearsal_evidence_digest,
+        )
+        composition_values = (
+            args.composition_workflow,
+            args.composition_run_id,
+            args.composition_run_attempt,
+        )
+        if any(value is not None for value in torque_values) and not all(
+            value is not None for value in torque_values
+        ):
+            raise ReleaseArtifactError("release-set v2 torque inputs are incomplete")
+        if any(value is not None for value in composition_values) and not all(
+            value is not None for value in composition_values
+        ):
+            raise ReleaseArtifactError(
+                "release-set v2 composition inputs are incomplete"
+            )
+        if all(value is not None for value in torque_values) and not all(
+            value is not None for value in composition_values
+        ):
+            raise ReleaseArtifactError(
+                "release-set v2 composition identity is required"
+            )
+        if all(value is not None for value in torque_values) and args.base_release_digest is None:
+            raise ReleaseArtifactError("release-set v2 base release identity is required")
+        if all(value is not None for value in composition_values) and not all(
+            value is not None for value in torque_values
+        ):
+            raise ReleaseArtifactError(
+                "release-set v2 torque inputs are required for composition identity"
+            )
+        if args.base_release_digest is not None and not all(
+            value is not None for value in torque_values
+        ):
+            raise ReleaseArtifactError(
+                "release-set v2 torque inputs are required for base release identity"
+            )
+        schema_version = 2 if all(value is not None for value in torque_values) else 1
         candidate = {
-            "schemaVersion": 1,
+            "schemaVersion": schema_version,
             "source": {
                 "repository": args.repository,
                 "sha": args.sha,
@@ -279,8 +855,83 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "runAttempt": args.run_attempt,
             },
         }
+        if schema_version == 2:
+            candidate["baseReleaseSet"] = {
+                "digest": args.base_release_digest,
+                "schemaVersion": 1,
+                "sourceSha": args.sha,
+                "configHash": args.config_hash,
+                "workflow": {
+                    "path": args.workflow,
+                    "runId": args.run_id,
+                    "runAttempt": args.run_attempt,
+                },
+            }
+            candidate["compositionWorkflow"] = {
+                "path": args.composition_workflow,
+                "runId": args.composition_run_id,
+                "runAttempt": args.composition_run_attempt,
+            }
+            candidate["components"] = {
+                "torqueAgent": {
+                    "repository": args.torque_repository,
+                    "indexDigest": args.torque_index_digest,
+                    "sourceSha": args.torque_source_sha,
+                    "platforms": [
+                        {
+                            "os": "linux",
+                            "architecture": "arm64",
+                            "digest": args.torque_arm64_digest,
+                        },
+                        {
+                            "os": "linux",
+                            "architecture": "arm",
+                            "variant": "v7",
+                            "digest": args.torque_armv7_digest,
+                        },
+                    ],
+                    "adoption": {
+                        "predicateType": args.torque_adoption_predicate_type,
+                        "originalWorkflow": {
+                            "path": args.torque_origin_workflow,
+                            "runId": args.torque_origin_run_id,
+                            "jobId": args.torque_origin_job_id,
+                        },
+                    },
+                }
+            }
+            candidate["compatibility"] = {
+                "torqueOwnership": {
+                    "protocol": {
+                        "name": TORQUE_PROTOCOL_NAME,
+                        "version": TORQUE_PROTOCOL_VERSION,
+                    },
+                    "components": {
+                        "api": args.api_digest,
+                        "web": args.web_digest,
+                        "torqueAgent": args.torque_index_digest,
+                    },
+                    "sourceClosure": {
+                        "baselineSha": args.torque_source_sha,
+                        "releaseSha": args.sha,
+                        "paths": list(TORQUE_PROTOCOL_SOURCE_CLOSURE),
+                        "unchanged": True,
+                    },
+                    "rehearsal": {
+                        "workflow": {
+                            "path": args.composition_workflow,
+                            "runId": args.composition_run_id,
+                            "runAttempt": args.composition_run_attempt,
+                        },
+                        "job": args.torque_rehearsal_job,
+                        "result": "passed",
+                        "evidenceDigest": args.torque_rehearsal_evidence_digest,
+                        "contracts": list(TORQUE_REHEARSAL_CONTRACTS),
+                    },
+                }
+            }
         release_set = parse_release_set(json.dumps(candidate))
-    else:
+    elif args.command == "verify":
         release_set = parse_release_set(sys.stdin.read())
         validate_release_set(
             release_set,
@@ -289,6 +940,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.config_hash,
             args.workflow,
         )
+    else:
+        with open(args.existing, encoding="utf-8") as existing_file:
+            existing = parse_release_set(existing_file.read())
+        with open(args.candidate, encoding="utf-8") as candidate_file:
+            candidate = parse_release_set(candidate_file.read())
+        validate_torque_composition_reuse(existing, candidate)
+        release_set = existing
     sys.stdout.write(canonical_release_set_json(release_set) + "\n")
     return 0
 

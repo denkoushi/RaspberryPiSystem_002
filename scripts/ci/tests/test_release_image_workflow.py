@@ -205,6 +205,37 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
             "failed",
         )
 
+    def test_duplicate_exact_sha_checks_accept_any_success(self) -> None:
+        def run(status: str, conclusion: str | None) -> dict[str, str | None]:
+            return {
+                "name": "release-set",
+                "head_sha": SHA,
+                "status": status,
+                "conclusion": conclusion,
+            }
+
+        state, observed = evaluate_check_runs(
+            {"check_runs": [run("completed", "failure"), run("completed", "success")]},
+            ("release-set",),
+            SHA,
+        )
+        self.assertEqual(state, "success")
+        self.assertEqual(observed, {"release-set": "success"})
+
+        state, _ = evaluate_check_runs(
+            {"check_runs": [run("queued", None), run("in_progress", None)]},
+            ("release-set",),
+            SHA,
+        )
+        self.assertEqual(state, "pending")
+
+        state, _ = evaluate_check_runs(
+            {"check_runs": [run("completed", "failure"), run("completed", "cancelled")]},
+            ("release-set",),
+            SHA,
+        )
+        self.assertEqual(state, "failed")
+
     def test_local_docker_validation_is_loopback_scoped_and_cleanup_owned(self) -> None:
         self.assertIn("--network host", DOCKER_VALIDATOR)
         self.assertIn(

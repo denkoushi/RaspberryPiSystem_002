@@ -3,6 +3,17 @@
   block:
     - name: Prepare the Pi4 candidate while the kiosk remains visible
       ansible.builtin.import_tasks: prepare.yml
+      when: >-
+        not (release_torque_cutover | default(false) | bool)
+        or not (release_kiosk_prepared | default(false) | bool)
+
+    - name: Require the pre-quiesce prepared identity for torque cutover
+      ansible.builtin.assert:
+        that:
+          - release_kiosk_prepared | default(false) | bool
+          - release_kiosk_prepared_run_id == release_run_id
+          - release_kiosk_prepared_torque_image == release_kiosk_torque_image
+      when: release_torque_cutover | default(false) | bool
 
     - name: Switch and verify one Pi4 kiosk
       block:
