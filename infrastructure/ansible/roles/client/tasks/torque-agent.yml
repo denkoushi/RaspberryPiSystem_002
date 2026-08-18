@@ -3,39 +3,9 @@
 # torque-agent-lifecycle.yml so release-only can select build/recreate/no-build
 # from the immutable Git diff without hiding Docker mutations in config tasks.
 
-- name: Validate torque-agent variable contract
-  ansible.builtin.assert:
-    that:
-      - torque_agent_client_key is defined
-      - torque_agent_client_key | length > 0
-      - torque_agent_api_base_url is defined
-      - torque_agent_api_base_url | length > 0
-      - torque_agent_hid_devices is defined
-      - torque_agent_hid_devices | length > 0
-      - torque_agent_hid_devices | map(attribute='path') | select('match', '^/dev/input/by-id/') | list | length == torque_agent_hid_devices | length
-      - torque_agent_hid_devices | map(attribute='parserProfile') | select('equalto', 'cem3-btla-hogp-v1') | list | length == torque_agent_hid_devices | length
-      - torque_agent_hid_devices | map(attribute='serialNumber') | select('match', '^[A-Za-z0-9._-]{1,120}$') | list | length == torque_agent_hid_devices | length
-      - torque_agent_tls_verify_mode | default('system') in ['system', 'insecure']
-      - torque_agent_bluetooth_adapter.usb_vendor_id | default('') is match('^[0-9a-f]{4}$')
-      - torque_agent_bluetooth_adapter.usb_product_id | default('') is match('^[0-9a-f]{4}$')
-      - torque_agent_hid_links is defined
-      - torque_agent_hid_links | length > 0
-      - torque_connection_lease_enabled | default(true) | bool
-    fail_msg: torque-agent requires an API URL, registered client key, an explicit TLS verification mode, exact external adapter identity, stable HID links, and verified CEM3-BTLA /dev/input/by-id profiles.
-
-- name: Validate torque-wrench HID identity contracts
-  ansible.builtin.assert:
-    that:
-      - item.link_name is match('^[A-Za-z0-9][A-Za-z0-9._-]{0,126}-event-kbd$')
-      - item.name is match('^[A-Za-z0-9][A-Za-z0-9._-]{0,126}$')
-      - item.uniq is match('^[0-9a-f]{2}(:[0-9a-f]{2}){5}$')
-      - item.vendor_id is match('^[0-9a-f]{4}$')
-      - item.product_id is match('^[0-9a-f]{4}$')
-      - ('/dev/input/by-id/' ~ item.link_name) in (torque_agent_hid_devices | map(attribute='path') | list)
-    fail_msg: torque-agent HID links require a safe by-id name and exact lowercase Bluetooth HID identity.
-  loop: "{{ torque_agent_hid_links }}"
-  loop_control:
-    label: "{{ item.link_name | default('invalid-link') }}"
+- name: Validate the shared torque-agent inventory contract
+  ansible.builtin.include_role:
+    name: torque_agent_contract
 
 - name: Ensure torque Bluetooth helper directory exists
   ansible.builtin.file:

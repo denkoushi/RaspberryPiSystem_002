@@ -1,6 +1,6 @@
 ---
 # Canonical Ansible-first release route invoked by the standard launcher.
-- name: Quiesce both torque ownership endpoints before the API changes
+- name: Quiesce all selected torque ownership endpoints before the API changes
   hosts: kiosk
   gather_facts: false
   become: true
@@ -38,7 +38,7 @@
   roles:
     - role: release_kiosk
 
-- name: Aggregate both torque candidates before ownership resumes
+- name: Aggregate all selected torque candidates before ownership resumes
   hosts: kiosk
   gather_facts: false
   become: true

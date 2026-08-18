@@ -33,7 +33,13 @@ SAFE_USER = re.compile(r"^[a-z_][a-z0-9_-]{0,30}$")
 PROFILES = ("pi5", "pi4", "pi3")
 PROFILE_GROUP = {"pi5": "server", "pi4": "kiosk", "pi3": "signage"}
 TORQUE_CUTOVER_SERVICE = "torque-agent"
-TORQUE_CUTOVER_HOSTS = frozenset({"raspi4-kensaku-stonebase01", "raspi4-assembly-01"})
+TORQUE_USB_ID = re.compile(r"^[0-9a-f]{4}$")
+TORQUE_SERIAL = re.compile(r"^[A-Za-z0-9._-]{1,120}$")
+TORQUE_LINK_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,126}-event-kbd$")
+TORQUE_DEVICE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,126}$")
+TORQUE_BLUETOOTH_UNIQ = re.compile(r"^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$")
+TORQUE_URL = re.compile(r"^https?://[^\s{}]+$")
+TORQUE_URL_VARIABLE = re.compile(r"^\{\{\s*[A-Za-z_][A-Za-z0-9_.]*\s*\}\}$")
 OPTIONAL_HOST_CONNECT_TIMEOUT_SECONDS = 3.0
 SAFE_INVENTORY_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,252}$")
 OPTIONAL_ADDRESS_ALIASES = {
@@ -193,11 +199,85 @@ def validate_torque_cutover_selection(
         raise UsageError("--torque-cutover requires exactly the Pi5 server and torque-enabled Pi4 kiosks")
     hostvars = document.get("_meta", {}).get("hostvars", {})
     pi4_hosts = selection[1][1]
-    if set(pi4_hosts) != TORQUE_CUTOVER_HOSTS or any(
-        hostvars.get(host, {}).get("torque_agent_enabled") is not True
-        for host in pi4_hosts
+    if not isinstance(hostvars, dict) or any(
+        not torque_cutover_capable(hostvars.get(host)) for host in pi4_hosts
     ):
-        raise UsageError("--torque-cutover requires exactly StoneBase and Assembly-01 with complete torque-agent inventory capability")
+        raise UsageError(
+            "--torque-cutover requires every explicitly selected Pi4 to have complete torque-agent inventory capability"
+        )
+
+
+def torque_cutover_capable(values: object) -> bool:
+    if not isinstance(values, dict):
+        return False
+    adapter = values.get("torque_agent_bluetooth_adapter")
+    devices = values.get("torque_agent_hid_devices")
+    links = values.get("torque_agent_hid_links")
+    browser_origins = values.get("torque_agent_browser_origins", [])
+    local_port = values.get("torque_agent_local_port", 7073)
+    heartbeat_ttl = values.get("torque_agent_heartbeat_ttl_seconds", 8)
+    if not isinstance(adapter, dict) or not isinstance(devices, list) or not devices:
+        return False
+    if not isinstance(links, list) or not links:
+        return False
+    device_paths = {
+        device.get("path")
+        for device in devices
+        if isinstance(device, dict)
+        and isinstance(device.get("path"), str)
+        and device["path"].startswith("/dev/input/by-id/")
+        and device.get("parserProfile") == "cem3-btla-hogp-v1"
+        and isinstance(device.get("serialNumber"), str)
+        and TORQUE_SERIAL.fullmatch(device["serialNumber"])
+    }
+    if len(device_paths) != len(devices):
+        return False
+    links_complete = all(
+        isinstance(link, dict)
+        and isinstance(link.get("link_name"), str)
+        and TORQUE_LINK_NAME.fullmatch(link["link_name"])
+        and isinstance(link.get("name"), str)
+        and TORQUE_DEVICE_NAME.fullmatch(link["name"])
+        and isinstance(link.get("uniq"), str)
+        and TORQUE_BLUETOOTH_UNIQ.fullmatch(link["uniq"])
+        and isinstance(link.get("vendor_id"), str)
+        and TORQUE_USB_ID.fullmatch(link["vendor_id"])
+        and isinstance(link.get("product_id"), str)
+        and TORQUE_USB_ID.fullmatch(link["product_id"])
+        and f"/dev/input/by-id/{link['link_name']}" in device_paths
+        for link in links
+    )
+    return bool(
+        values.get("torque_agent_enabled") is True
+        and values.get("torque_connection_lease_enabled") is True
+        and isinstance(values.get("torque_agent_api_base_url"), str)
+        and torque_inventory_url(values["torque_agent_api_base_url"])
+        and isinstance(values.get("torque_agent_client_key"), str)
+        and values["torque_agent_client_key"]
+        and values.get("torque_agent_tls_verify_mode", "system") in {"system", "insecure"}
+        and isinstance(local_port, int)
+        and not isinstance(local_port, bool)
+        and 0 < local_port < 65536
+        and isinstance(heartbeat_ttl, int)
+        and not isinstance(heartbeat_ttl, bool)
+        and heartbeat_ttl > 0
+        and isinstance(browser_origins, list)
+        and all(
+            isinstance(origin, str) and torque_inventory_url(origin)
+            for origin in browser_origins
+        )
+        and isinstance(adapter.get("usb_vendor_id"), str)
+        and TORQUE_USB_ID.fullmatch(adapter["usb_vendor_id"])
+        and isinstance(adapter.get("usb_product_id"), str)
+        and TORQUE_USB_ID.fullmatch(adapter["usb_product_id"])
+        and links_complete
+    )
+
+
+def torque_inventory_url(value: str) -> bool:
+    # ansible-inventory retains safe nested variable references; the shared
+    # runtime role validates the fully rendered URL before any kiosk is stopped.
+    return bool(TORQUE_URL.fullmatch(value) or TORQUE_URL_VARIABLE.fullmatch(value))
 
 
 def resolve_optional_host_address(values: dict[str, Any], address: str) -> str:

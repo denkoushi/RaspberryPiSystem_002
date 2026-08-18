@@ -3,12 +3,19 @@
   ansible.builtin.assert:
     that:
       - release_torque_cutover | default(false) | bool
+      - release_torque_cutover_hosts is sequence
+      - release_torque_cutover_hosts is not string
+      - release_torque_cutover_hosts | length > 0
+      - release_torque_cutover_hosts | unique | list | length == release_torque_cutover_hosts | length
+      - release_torque_cutover_hosts | difference(groups['kiosk']) | length == 0
       - inventory_hostname in release_torque_cutover_hosts
-      - torque_agent_enabled | default(false) | bool
-      - release_torque_cutover_hosts | sort == ['raspi4-assembly-01', 'raspi4-kensaku-stonebase01']
-    fail_msg: Torque cutover is limited to the two fully configured production torque kiosks.
+    fail_msg: Torque cutover requires a non-empty, unique, explicitly selected subset of kiosk hosts.
 
-- name: Initialize the shared stage boundary before either kiosk can disconnect
+- name: Validate every selected torque-agent contract before stopping any kiosk
+  ansible.builtin.include_role:
+    name: torque_agent_contract
+
+- name: Initialize the shared stage boundary before any kiosk can disconnect
   ansible.builtin.set_fact:
     release_kiosk_stage_succeeded: false
 

@@ -34,6 +34,37 @@ def completed(command: list[str], stdout: str = "", returncode: int = 0) -> subp
     return subprocess.CompletedProcess(command, returncode, stdout=stdout, stderr="")
 
 
+def torque_capable_host(serial: str = "702902S") -> dict[str, object]:
+    link_name = f"bluetooth-TOHNICHI_{serial}-event-kbd"
+    return {
+        "torque_agent_enabled": True,
+        "torque_connection_lease_enabled": True,
+        "torque_agent_api_base_url": "https://pi5.example.test",
+        "torque_agent_client_key": f"client-key-{serial}",
+        "torque_agent_tls_verify_mode": "system",
+        "torque_agent_bluetooth_adapter": {
+            "usb_vendor_id": "2357",
+            "usb_product_id": "0604",
+        },
+        "torque_agent_hid_devices": [
+            {
+                "path": f"/dev/input/by-id/{link_name}",
+                "parserProfile": "cem3-btla-hogp-v1",
+                "serialNumber": serial,
+            }
+        ],
+        "torque_agent_hid_links": [
+            {
+                "link_name": link_name,
+                "name": f"TOHNICHI_{serial}",
+                "uniq": "c4:90:43:98:7e:c3",
+                "vendor_id": "2f84",
+                "product_id": "0001",
+            }
+        ],
+    }
+
+
 class StandardAnsibleReleaseTests(unittest.TestCase):
     def test_server_connection_uses_concrete_deploy_executor_host(self) -> None:
         inventory = {
@@ -112,7 +143,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
                 ]
             )
 
-    def test_torque_cutover_requires_exact_limit_and_two_capable_kiosks(self) -> None:
+    def test_torque_cutover_requires_exact_limit_and_capable_kiosks(self) -> None:
         for scope in ([], ["--full-fleet"]):
             with self.subTest(scope=scope), self.assertRaisesRegex(
                 MODULE.UsageError, "exact --limit"
@@ -143,8 +174,8 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             "_meta": {
                 "hostvars": {
                     "raspberrypi5": {},
-                    "raspi4-kensaku-stonebase01": {"torque_agent_enabled": True},
-                    "raspi4-assembly-01": {"torque_agent_enabled": True},
+                    "raspi4-kensaku-stonebase01": torque_capable_host(),
+                    "raspi4-assembly-01": torque_capable_host("702903S"),
                 }
             },
         }
@@ -152,8 +183,89 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         MODULE.validate_torque_cutover_selection(document, selection)
 
         document["_meta"]["hostvars"]["raspi4-assembly-01"]["torque_agent_enabled"] = False
-        with self.assertRaisesRegex(MODULE.UsageError, "StoneBase and Assembly-01"):
+        with self.assertRaisesRegex(MODULE.UsageError, "every explicitly selected Pi4"):
             MODULE.validate_torque_cutover_selection(document, selection)
+
+    def test_torque_cutover_accepts_a_future_explicitly_configured_kiosk(self) -> None:
+        hosts = ["raspi4-kensaku-stonebase01", "raspi4-assembly-01", "future-kiosk"]
+        document = {
+            "server": {"hosts": ["raspberrypi5"]},
+            "kiosk": {"hosts": hosts},
+            "_meta": {
+                "hostvars": {
+                    "raspberrypi5": {},
+                    **{
+                        host: torque_capable_host(str(702902 + index) + "S")
+                        for index, host in enumerate(hosts)
+                    },
+                }
+            },
+        }
+
+        MODULE.validate_torque_cutover_selection(
+            document,
+            MODULE.selected_profiles(document),
+        )
+
+    def test_torque_cutover_rejects_incomplete_hid_identity(self) -> None:
+        incomplete = torque_capable_host()
+        incomplete["torque_agent_hid_links"] = []
+        document = {
+            "server": {"hosts": ["raspberrypi5"]},
+            "kiosk": {"hosts": ["future-kiosk"]},
+            "_meta": {
+                "hostvars": {
+                    "raspberrypi5": {},
+                    "future-kiosk": incomplete,
+                }
+            },
+        }
+
+        with self.assertRaisesRegex(MODULE.UsageError, "complete torque-agent"):
+            MODULE.validate_torque_cutover_selection(
+                document,
+                MODULE.selected_profiles(document),
+            )
+
+    def test_torque_cutover_capability_rejects_each_incomplete_setting(self) -> None:
+        cases: dict[str, dict[str, object]] = {}
+        for name in (
+            "lease",
+            "api",
+            "client-key",
+            "adapter",
+            "parser",
+            "link-match",
+            "local-port",
+            "browser-origin",
+        ):
+            cases[name] = torque_capable_host()
+        cases["lease"]["torque_connection_lease_enabled"] = False
+        cases["api"]["torque_agent_api_base_url"] = ""
+        cases["client-key"]["torque_agent_client_key"] = ""
+        cases["adapter"]["torque_agent_bluetooth_adapter"] = {
+            "usb_vendor_id": "guess",
+            "usb_product_id": "0604",
+        }
+        cases["parser"]["torque_agent_hid_devices"][0]["parserProfile"] = "unknown"
+        cases["link-match"]["torque_agent_hid_links"][0]["link_name"] = (
+            "bluetooth-TOHNICHI_OTHER-event-kbd"
+        )
+        cases["local-port"]["torque_agent_local_port"] = 70000
+        cases["browser-origin"]["torque_agent_browser_origins"] = ["*"]
+
+        for name, values in cases.items():
+            with self.subTest(name=name):
+                self.assertFalse(MODULE.torque_cutover_capable(values))
+
+    def test_torque_cutover_capability_allows_only_safe_nested_url_variables(self) -> None:
+        templated = torque_capable_host()
+        templated["torque_agent_api_base_url"] = "{{ server_base_url }}"
+        templated["torque_agent_browser_origins"] = ["{{ server_base_url }}"]
+        self.assertTrue(MODULE.torque_cutover_capable(templated))
+
+        templated["torque_agent_api_base_url"] = "{{ lookup('env', 'URL') }}"
+        self.assertFalse(MODULE.torque_cutover_capable(templated))
 
     def test_torque_cutover_image_plan_excludes_unverified_agents(self) -> None:
         images = MODULE.image_plan(

@@ -107,12 +107,19 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
 
     def test_configuration_task_validates_and_installs_both_identity_adapters(self) -> None:
         tasks = (CLIENT_ROLE / "tasks/torque-agent.yml").read_text()
+        contract = (
+            ROOT / "infrastructure/ansible/roles/torque_agent_contract/tasks/main.yml"
+        ).read_text()
+        self.assertIn("name: torque_agent_contract", tasks)
         for fragment in (
             "torque_agent_bluetooth_adapter.usb_vendor_id",
             "torque_agent_hid_links",
             "cem3-btla-hogp-v1",
             "serialNumber",
             "torque_agent_tls_verify_mode",
+        ):
+            self.assertIn(fragment, contract)
+        for fragment in (
             "90-torque-bluetooth-adapter.rules",
             "99-torque-wrench-hid.rules",
             "torque-bluetooth-adapter@.service",

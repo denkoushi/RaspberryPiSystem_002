@@ -30,6 +30,59 @@ def role_text(role: str) -> str:
 
 
 class StandardReleaseAnsibleTests(unittest.TestCase):
+    def test_shared_torque_inventory_contract_executes_with_complete_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            playbook = Path(directory) / "contract.yml"
+            playbook.write_text(
+                """---
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    torque_agent_enabled: true
+    torque_connection_lease_enabled: true
+    torque_agent_api_base_url: https://pi5.example.test
+    torque_agent_client_key: test-only-key
+    torque_agent_tls_verify_mode: system
+    torque_agent_local_port: 7073
+    torque_agent_heartbeat_ttl_seconds: 8
+    torque_agent_browser_origins: [https://pi5.example.test]
+    torque_agent_bluetooth_adapter:
+      usb_vendor_id: '2357'
+      usb_product_id: '0604'
+    torque_agent_hid_devices:
+      - path: /dev/input/by-id/bluetooth-TOHNICHI_702902S-event-kbd
+        parserProfile: cem3-btla-hogp-v1
+        serialNumber: 702902S
+    torque_agent_hid_links:
+      - link_name: bluetooth-TOHNICHI_702902S-event-kbd
+        name: TOHNICHI_702902S
+        uniq: c4:90:43:98:7e:c3
+        vendor_id: 2f84
+        product_id: '0001'
+  roles:
+    - torque_agent_contract
+""",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                ["ansible-playbook", str(playbook)],
+                cwd=ROOT,
+                env={
+                    **{
+                        key: value
+                        for key, value in os.environ.items()
+                        if key != "ANSIBLE_CONFIG"
+                    },
+                    "ANSIBLE_ROLES_PATH": str(ANSIBLE / "roles"),
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_candidate_status_agent_runtime_closure_executes(self) -> None:
         prepare_tasks = yaml.safe_load(
             (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
@@ -382,19 +435,26 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertEqual(
             [play["name"] for play in plays[:4]],
             [
-                "Quiesce both torque ownership endpoints before the API changes",
+                "Quiesce all selected torque ownership endpoints before the API changes",
                 "Prepare and switch the Pi5 control plane",
                 "Update Pi4 kiosks one target at a time",
-                "Aggregate both torque candidates before ownership resumes",
+                "Aggregate all selected torque candidates before ownership resumes",
             ],
         )
         quiesce = role_text("release_torque_cutover")
+        contract = role_text("torque_agent_contract")
         self.assertIn("state: stopped", quiesce)
         self.assertIn(
-            "Initialize the shared stage boundary before either kiosk can disconnect",
+            "Initialize the shared stage boundary before any kiosk can disconnect",
             quiesce,
         )
         self.assertIn("release_kiosk_stage_succeeded: false", quiesce)
+        self.assertIn("name: torque_agent_contract", quiesce)
+        self.assertIn("torque_connection_lease_enabled", contract)
+        self.assertIn("torque_agent_bluetooth_adapter", contract)
+        self.assertIn("torque_agent_hid_devices", contract)
+        self.assertNotIn("raspi4-assembly-01", quiesce)
+        self.assertNotIn("raspi4-kensaku-stonebase01", quiesce)
         self.assertIn("intent.json", quiesce)
         self.assertIn("release_torque_lease_ttl_seconds", quiesce)
         self.assertIn("release_torque_guard_grace_seconds", quiesce)
@@ -426,13 +486,13 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("create --force-recreate --no-build", rollback)
         self.assertIn("without restarting torque ownership", rollback)
 
-    def test_serial_stage_failure_still_reaches_shared_no_browser_boundary(self) -> None:
+    def test_three_host_stage_failure_still_reaches_shared_no_browser_boundary(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             inventory = root / "inventory.yml"
             playbook = root / "playbook.yml"
             inventory.write_text(
-                "all:\n  children:\n    kiosk:\n      hosts:\n        kiosk-a:\n          ansible_connection: local\n        kiosk-b:\n          ansible_connection: local\n",
+                "all:\n  children:\n    kiosk:\n      hosts:\n        kiosk-a:\n          ansible_connection: local\n        kiosk-b:\n          ansible_connection: local\n        kiosk-c:\n          ansible_connection: local\n",
                 encoding="utf-8",
             )
             playbook.write_text(
@@ -447,7 +507,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
     - block:
         - ansible.builtin.set_fact:
             simulated_stage: true
-          when: inventory_hostname == 'kiosk-a'
+          when: inventory_hostname != 'kiosk-b'
         - ansible.builtin.fail:
             msg: simulated second-host stage failure
           when: inventory_hostname == 'kiosk-b'
@@ -466,7 +526,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         msg: BROWSER_START_MUST_NOT_APPEAR
       when: simulated_all_staged | bool
     - ansible.builtin.fail:
-        msg: aggregate failure after both hosts observed the boundary
+        msg: aggregate failure after all hosts observed the boundary
       when: not (simulated_all_staged | bool)
 """,
                 encoding="utf-8",
@@ -482,6 +542,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("AGGREGATE=False host=kiosk-a", output)
         self.assertIn("AGGREGATE=False host=kiosk-b", output)
+        self.assertIn("AGGREGATE=False host=kiosk-c", output)
         self.assertNotIn('"msg": "BROWSER_START_MUST_NOT_APPEAR"', output)
 
     def test_pi4_and_pi3_use_prepare_block_rescue_always(self) -> None:

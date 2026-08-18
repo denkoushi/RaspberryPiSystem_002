@@ -16,7 +16,7 @@
 
 - name: Stop after both hosts completed failed-stage cleanup
   ansible.builtin.fail:
-    msg: Both torque kiosks remain OFF because the two-host stage boundary failed.
+    msg: All selected torque kiosks remain OFF because the shared stage boundary failed.
   when: not (release_torque_all_staged | bool)
 
 - name: Start the staged torque agent on both kiosks
@@ -95,7 +95,7 @@
 
 - name: Stop after both hosts completed failed-agent cleanup
   ansible.builtin.fail:
-    msg: Both torque kiosks remain OFF because the two-host agent-ready boundary failed.
+    msg: All selected torque kiosks remain OFF because the shared agent-ready boundary failed.
   when: not (release_torque_all_agents_ready | bool)
 
 - name: Start both kiosk browsers only after the shared agent-ready boundary
@@ -139,7 +139,7 @@
 
 - name: Stop after both hosts completed failed-browser cleanup
   ansible.builtin.fail:
-    msg: Both torque kiosks remain OFF because the two-host browser boundary failed.
+    msg: All selected torque kiosks remain OFF because the shared browser boundary failed.
   when: not (release_torque_all_browsers_ready | bool)
 
 - name: Remove successful aggregate torque cutover preparation data

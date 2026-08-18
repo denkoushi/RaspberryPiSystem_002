@@ -30,13 +30,15 @@ scripts/update-all-clients.sh <branch> <inventory> --print-plan [--limit PATTERN
 scripts/update-all-clients.sh --status RUN_ID [--inventory INVENTORY]
 ```
 
-トルクレンチ所有権契約をAPI/Webと2台の既設agentへ同時に切り替える場合だけ、次の限定モードを使う。
+トルクレンチ所有権契約をAPI/Webと既設agentへ同時に切り替える場合だけ、次の限定モードを使う。現在の本番対象は、torque設定が完成しているStoneBaseとAssembly-01の2台に限る。
 
 ```text
 scripts/update-all-clients.sh <branch> <inventory> --torque-cutover --limit raspberrypi5:raspi4-kensaku-stonebase01:raspi4-assembly-01 [--detach]
 ```
 
-`--torque-cutover`はこの2台とPi5の完全一致を要求し、全fleetや一部端末では実行できない。2台のbrowser、旧torque-agent、guard intentを停止して外付けBluetooth OFFを確認し、8秒leaseに対して9秒待ってからPi5を更新する。Pi4では明示allowlistの`torque-agent`だけをpull・停止状態で配置し、NFC/barcodeの稼働imageと環境を変更しない。両台の配置が成功した後だけagentを起動し、healthとBluetooth OFFを確認してからbrowserを再開する。Pi5またはPi4の途中失敗では再開せずOFFを維持し、切替を試みたPi4は既存rollback imageへ停止状態で戻す。
+`--torque-cutover`はPi5と1台以上のPi4を含む明示的な`--limit`を要求し、`--full-fleet`を許可しない。選択されたPi4はすべて、lease、client key、API/TLS、外付けBluetooth adapter、HID by-id identity、parser profileが完全な`torque_agent_enabled=true` inventoryでなければ、端末停止前に拒否される。したがって今回の実行limitは上記2台を厳守し、未設定の4台は推測・自動生成・有効化しない。将来は外部アンテナとinventoryを正式に整備した端末だけを明示limitへ追加でき、wrapper変更は不要である。
+
+選択された全Pi4のbrowser、旧torque-agent、guard intentを停止して外付けBluetooth OFFを確認し、8秒leaseに対して9秒待ってからPi5を更新する。Pi4では明示allowlistの`torque-agent`だけをpull・停止状態で配置し、NFC/barcodeの稼働imageと環境を変更しない。全選択端末の配置が成功した後だけagentを起動し、全台のhealthとBluetooth OFFを集約確認してからbrowserを再開する。Pi5またはPi4の途中失敗では再開せずOFFを維持し、切替を試みたPi4は既存rollback imageへ停止状態で戻す。
 
 - mutationにはexact `--limit`または明示的な`--full-fleet`が必須である。暗黙の全fleet更新は行わない。
 - 引数なしの通常実行はsystemd unitの終了まで待つ。`--detach`は`runId`を返し、`--status`はsystemd statusとjournalだけを読む。
