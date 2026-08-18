@@ -114,6 +114,19 @@ PI4_AGENT_DOCKERFILES = frozenset(
 )
 PI4_AGENT_SHARED_INPUTS = frozenset({".dockerignore", ".trivyignore"})
 POLICY_PATHS = frozenset({".gitleaksignore"})
+PI4_AGENT_NON_BUILD_GLOBAL_PATHS = frozenset(
+    {
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "scripts/ci/pnpm-exact.sh",
+        "scripts/ci/run-deploy-contracts-local.sh",
+        "scripts/ci/run-pnpm-bulk-audit.mjs",
+        "scripts/ci/wait_for_release_checks.py",
+        "scripts/ci/tests/test_release_image_workflow.py",
+        "scripts/ci/tests/test_staged_ci_workflow.py",
+    }
+)
 CI_CLASSIFIER_CONTRACT_PATHS = frozenset(
     {
         "scripts/ci/classify_changes.py",
@@ -142,7 +155,7 @@ DEPLOY_CONTRACT_ONLY_PATHS = frozenset(
 )
 TORQUE_COMPOSITION_PATHS = frozenset(
     {
-        ".github/workflows/ci.yml",
+        ".github/workflows/torque-release.yml",
         "scripts/deploy/release_artifact_contract.py",
         "scripts/deploy/torque_component_adoption.py",
         "scripts/deploy/standard-ansible-release.py",
@@ -182,6 +195,8 @@ def requires_complete_fleet_artifacts(path: str) -> bool:
 def pi4_agent_services_for_path(path: str) -> frozenset[str]:
     """Return Pi4 image contracts owning a repository path."""
     normalized = _normalize_path(path)
+    if normalized == ".github/workflows/torque-release.yml":
+        return frozenset({"torque-agent"})
     if normalized in PI4_AGENT_SHARED_INPUTS:
         return PI4_AGENT_SERVICE_NAMES
 
@@ -218,6 +233,10 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
     """Return categories for a known path, or ``None`` for an unknown path."""
     normalized = _normalize_path(path)
 
+    if normalized == ".github/workflows/torque-release.yml":
+        return frozenset({"repo_policy", "deploy_contract"})
+    if normalized == ".husky/pre-commit":
+        return frozenset({"repo_policy", "workspace_quality"})
     if normalized.startswith(".github/workflows/") or normalized.startswith(
         ".github/actions/"
     ):
@@ -365,6 +384,8 @@ def categories_for_path(path: str) -> frozenset[str] | None:
 def codeql_for_path(path: str) -> bool:
     """Return whether a known path can change JavaScript/TypeScript analysis."""
     normalized = _normalize_path(path)
+    if normalized == ".github/workflows/torque-release.yml":
+        return False
     return (
         _has_prefix(normalized, "apps/api")
         or _has_prefix(normalized, "apps/web")
@@ -387,6 +408,8 @@ def codeql_for_path(path: str) -> bool:
 def docker_images_for_path(path: str) -> frozenset[str]:
     """Return Docker images whose filesystem may change for a known path."""
     normalized = _normalize_path(path)
+    if normalized == ".github/workflows/torque-release.yml":
+        return frozenset()
     if normalized in PI4_AGENT_DOCKERFILES:
         return frozenset()
     if _signage_artifact_exclusive_path(normalized):
@@ -425,6 +448,8 @@ def release_pair_for_path(path: str) -> bool:
     """
 
     normalized = _normalize_path(path)
+    if normalized == ".github/workflows/torque-release.yml":
+        return False
     if normalized in DEPLOY_CONTRACT_ONLY_PATHS:
         return False
     if normalized == "infrastructure/docker/Dockerfile.torque-agent" or _has_prefix(
@@ -508,12 +533,17 @@ def classify_change(change: Change) -> ClassifiedChange:
             fail_closed_reason=f"unknown path {change.path!r}",
         )
     if categories == FULL_SUITE:
+        pi4_services = (
+            pi4_agent_services_for_path(change.path)
+            if _normalize_path(change.path) in PI4_AGENT_NON_BUILD_GLOBAL_PATHS
+            else PI4_AGENT_SERVICE_NAMES
+        )
         return ClassifiedChange(
             change=change,
             categories=categories,
             codeql=True,
             docker_images=frozenset({"api", "web"}),
-            pi4_agent_services=PI4_AGENT_SERVICE_NAMES,
+            pi4_agent_services=pi4_services,
             release_pair=True,
             runtime_rehearsal=True,
             torque_composition=torque_composition_for_path(change.path),

@@ -1,0 +1,625 @@
+name: Torque Release Composition
+
+permissions:
+  contents: read
+
+concurrency:
+  group: torque-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
+  push:
+    branches: [main]
+
+jobs:
+  classify-torque-release:
+    name: classify-torque-release
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.classify.outputs.torque_composition }}
+      publishable: ${{ steps.classify.outputs.release_pair }}
+    steps:
+      - name: Checkout code with history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Classify the exact event diff
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 scripts/ci/classify_event_changes.py \
+            --event-name "$EVENT_NAME" \
+            --base-sha "$BASE_SHA" \
+            --head-sha "$HEAD_SHA" \
+            --format none \
+            --github-output-file "$GITHUB_OUTPUT"
+
+  torque-release-compatibility:
+    name: torque-release-compatibility
+    needs: classify-torque-release
+    if: ${{ needs.classify-torque-release.outputs.relevant == 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      evidence_digest: ${{ steps.evidence.outputs.evidence_digest }}
+      source_sha: ${{ steps.evidence.outputs.source_sha }}
+      workflow: ${{ steps.evidence.outputs.workflow }}
+      run_id: ${{ steps.evidence.outputs.run_id }}
+      run_attempt: ${{ steps.evidence.outputs.run_attempt }}
+      job: ${{ steps.evidence.outputs.job }}
+      protocol_version: ${{ steps.evidence.outputs.protocol_version }}
+    steps:
+      - name: Checkout exact component sources with history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Require a push rehearsal to target the exact current main
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          git fetch origin main --quiet
+          test "$(git rev-parse origin/main)" = "$TARGET_SHA"
+
+      - name: Prove the adopted torque-agent source closure is unchanged
+        run: >-
+          git diff --exit-code
+          3464256da11ee77bebfceb4fafcff4524f5ac8ca
+          "$TARGET_SHA" --
+          packages/shared-types/src/torque-wrenches
+          apps/api/src/routes/torque-wrenches
+          apps/api/src/routes/torque-training
+          apps/api/src/services/torque-wrenches
+          apps/api/src/services/torque-training
+          apps/web/src/features/torque-wrench-connection
+          clients/torque-agent/torque_agent/connection_lease.py
+          clients/torque-agent/torque_agent/main.py
+          clients/torque-agent/torque_agent/ingestor.py
+          clients/torque-agent/torque_agent/api_client.py
+          infrastructure/docker/Dockerfile.torque-agent
+
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm-monorepo
+
+      - name: Build API workspace dependencies and generate Prisma Client
+        run: |
+          pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
+          pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/shelf-layout-core build
+          pnpm --filter @raspi-system/api exec prisma generate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
+      - name: Start isolated PostgreSQL for lease fencing rehearsal
+        run: |
+          set -euo pipefail
+          resource="torque-compatibility-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          network="${resource}-network"
+          volume="${resource}-data"
+          container="${resource}-postgres"
+          docker network create --label "com.raspi-system.temporary=${resource}" "$network"
+          docker volume create --label "com.raspi-system.temporary=${resource}" "$volume"
+          docker run -d \
+            --name "$container" \
+            --network "$network" \
+            --label "com.raspi-system.temporary=${resource}" \
+            -v "${volume}:/var/lib/postgresql/data" \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=borrow_return \
+            --health-cmd="pg_isready -U postgres" \
+            --health-interval=5s \
+            --health-timeout=5s \
+            --health-retries=12 \
+            -p 127.0.0.1::5432 \
+            pgvector/pgvector:pg15
+          published="$(docker port "$container" 5432/tcp)"
+          [[ "$published" =~ ^127\.0\.0\.1:([0-9]+)$ ]]
+          port="${BASH_REMATCH[1]}"
+          {
+            echo "TORQUE_COMPAT_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:${port}/borrow_return"
+          } >> "$GITHUB_ENV"
+          POSTGRES_PORT="$port" scripts/ci/wait-for-postgres.sh "$container" 60
+          DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${port}/borrow_return" \
+            pnpm --filter @raspi-system/api exec prisma migrate deploy
+
+      - name: Run API ownership routes and PostgreSQL fencing contracts
+        run: |
+          export DATABASE_URL="$TORQUE_COMPAT_DATABASE_URL"
+          pnpm --filter @raspi-system/api test -- \
+            src/services/torque-wrenches/__tests__/torque-wrench-usage-lease.policy.test.ts \
+            src/services/torque-wrenches/__tests__/torque-wrench-confirmation-use.policy.test.ts \
+            src/routes/__tests__/torque-wrenches.integration.test.ts \
+            src/routes/__tests__/torque-training.integration.test.ts \
+            --fileParallelism=false --maxWorkers=1
+        env:
+          JWT_ACCESS_SECRET: test-access-secret-1234567890
+          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+          CAMERA_TYPE: mock
+          FILE_STORAGE_ROOT: /tmp/test-file-storage
+          PDF_STORAGE_DIR: /tmp/test-file-storage
+          PHOTO_STORAGE_DIR: /tmp/test-file-storage
+          BACKUP_STORAGE_DIR: /tmp/test-backups
+          NODE_ENV: test
+
+      - name: Run Web ownership transport and controller contracts
+        run: |
+          pnpm --filter @raspi-system/web test -- \
+            src/features/torque-wrench-connection/torqueWrenchConnectionTransport.test.ts \
+            src/features/torque-wrench-connection/useTorqueWrenchConnection.test.ts \
+            src/features/torque-wrench-connection/torqueWrenchConnectionPresentation.test.ts
+
+      - name: Install the exact torque-agent test environment
+        run: |
+          python3 -m pip install --user poetry==1.8.5
+          cd clients/torque-agent
+          poetry install --with dev --no-interaction
+
+      - name: Run torque-agent ownership and recovery protocol contracts
+        run: |
+          cd clients/torque-agent
+          poetry run pytest tests/test_global_ownership.py tests/test_agent_core.py
+
+      - name: Seal the passed combination rehearsal evidence
+        id: evidence
+        env:
+          BASELINE_SHA: 3464256da11ee77bebfceb4fafcff4524f5ac8ca
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          evidence = {
+              "schemaVersion": 1,
+              "protocol": {"name": "torque-ownership", "version": 1},
+              "baselineSha": os.environ["BASELINE_SHA"],
+              "releaseSha": os.environ["TARGET_SHA"],
+              "sourceClosureUnchanged": True,
+              "tests": [
+                  "api-usage-lease-policy",
+                  "api-confirmation-fencing-policy",
+                  "api-assembly-route-postgresql",
+                  "api-training-route-postgresql",
+                  "web-transport-controller-presentation",
+                  "agent-global-ownership-recovery",
+              ],
+              "result": "passed",
+              "workflow": {
+                  "path": ".github/workflows/torque-release.yml",
+                  "runId": int(os.environ["GITHUB_RUN_ID"]),
+                  "runAttempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+                  "job": "torque-release-compatibility",
+              },
+          }
+          Path("torque-release-compatibility.json").write_text(
+              json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          digest="sha256:$(sha256sum torque-release-compatibility.json | cut -d' ' -f1)"
+          {
+            echo "evidence_digest=${digest}"
+            echo "source_sha=${TARGET_SHA}"
+            echo "workflow=.github/workflows/torque-release.yml"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "job=torque-release-compatibility"
+            echo "protocol_version=1"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Cleanup isolated compatibility PostgreSQL
+        if: always()
+        run: |
+          set +e
+          resource="torque-compatibility-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker ps -aq --filter "label=com.raspi-system.temporary=${resource}" | xargs -r docker rm --force
+          docker volume ls -q --filter "label=com.raspi-system.temporary=${resource}" | xargs -r docker volume rm
+          docker network ls -q --filter "label=com.raspi-system.temporary=${resource}" | xargs -r docker network rm
+          remaining="$({
+            docker ps -aq --filter "label=com.raspi-system.temporary=${resource}"
+            docker volume ls -q --filter "label=com.raspi-system.temporary=${resource}"
+            docker network ls -q --filter "label=com.raspi-system.temporary=${resource}"
+          } | sort -u | sed '/^$/d' | wc -l | tr -d ' ')"
+          [[ "$remaining" == 0 ]]
+
+  torque-component-adoption:
+    name: torque-component-adoption
+    if: >-
+      ${{ github.event_name == 'push' &&
+          needs.classify-torque-release.outputs.relevant == 'true' &&
+          needs.classify-torque-release.outputs.publishable == 'true' &&
+          needs.torque-release-compatibility.result == 'success' }}
+    needs:
+      - classify-torque-release
+      - torque-release-compatibility
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    outputs:
+      repository: ${{ steps.identity.outputs.repository }}
+      index_digest: ${{ steps.identity.outputs.index_digest }}
+      source_sha: ${{ steps.identity.outputs.source_sha }}
+      arm64_digest: ${{ steps.identity.outputs.arm64_digest }}
+      armv7_digest: ${{ steps.identity.outputs.armv7_digest }}
+      predicate_type: ${{ steps.identity.outputs.predicate_type }}
+      origin_workflow: ${{ steps.identity.outputs.origin_workflow }}
+      origin_run_id: ${{ steps.identity.outputs.origin_run_id }}
+      origin_job_id: ${{ steps.identity.outputs.origin_job_id }}
+    steps:
+      - name: Checkout exact adopting main source with history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Require this run to still target the exact current main
+        run: |
+          git fetch origin main --quiet
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+
+      - name: Require core CI and external security checks on the exact SHA
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/ci/wait_for_release_checks.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --sha "$GITHUB_SHA" \
+            --required ci-required \
+            --required codeql \
+            --required gitleaks \
+            --timeout 1800 \
+            --interval 10
+
+      - name: Log in to GHCR for exact component verification
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Resolve the immutable existing torque-agent index
+        env:
+          TORQUE_REFERENCE: ghcr.io/denkoushi/raspisys-torque-agent@sha256:810d4c17e581faa352c57ce6930f251d2f9ecb5f7839b1b29ae128f6d3c6c443
+        run: docker buildx imagetools inspect --raw "$TORQUE_REFERENCE" > torque-agent-index.json
+
+      - name: Re-scan adopted torque-agent ARM64 digest under the required policy
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          scan-type: image
+          image-ref: ghcr.io/denkoushi/raspisys-torque-agent@sha256:810d4c17e581faa352c57ce6930f251d2f9ecb5f7839b1b29ae128f6d3c6c443
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          scanners: vuln,secret
+          trivyignores: .trivyignore
+
+      - name: Re-scan adopted torque-agent ARMv7 digest under the required policy
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        env:
+          TRIVY_PLATFORM: linux/arm/v7
+        with:
+          scan-type: image
+          image-ref: ghcr.io/denkoushi/raspisys-torque-agent@sha256:810d4c17e581faa352c57ce6930f251d2f9ecb5f7839b1b29ae128f6d3c6c443
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          scanners: vuln,secret
+          trivyignores: .trivyignore
+
+      - name: Create the non-provenance component adoption predicate
+        id: identity
+        run: |
+          python3 scripts/deploy/torque_component_adoption.py \
+            --repository-root . \
+            --adoption-sha "$GITHUB_SHA" \
+            --workflow .github/workflows/torque-release.yml \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --index-json torque-agent-index.json \
+            > torque-agent-adoption.json
+          {
+            echo 'repository=ghcr.io/denkoushi/raspisys-torque-agent'
+            echo 'index_digest=sha256:810d4c17e581faa352c57ce6930f251d2f9ecb5f7839b1b29ae128f6d3c6c443'
+            echo 'source_sha=3464256da11ee77bebfceb4fafcff4524f5ac8ca'
+            echo 'arm64_digest=sha256:4a086be9b7a5b2f5b35b6418a708de36bc3465387dda944a2f62e9bf3c2ebc7c'
+            echo 'armv7_digest=sha256:5f63ea8ae48c446751279756b4b49572fe5b19150aa215a15bbc0a5fe6d24737'
+            echo 'predicate_type=https://github.com/denkoushi/RaspberryPiSystem_002/attestations/torque-agent-component-adoption/v1'
+            echo 'origin_workflow=.github/workflows/ci.yml'
+            echo 'origin_run_id=32093659078'
+            echo 'origin_job_id=95581851495'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Sign adoption of the existing immutable torque-agent digest
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/denkoushi/raspisys-torque-agent
+          subject-digest: ${{ steps.identity.outputs.index_digest }}
+          predicate-type: ${{ steps.identity.outputs.predicate_type }}
+          predicate-path: torque-agent-adoption.json
+          push-to-registry: true
+
+      - name: Verify the published component adoption signature
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXACT_REFERENCE: ghcr.io/denkoushi/raspisys-torque-agent@${{ steps.identity.outputs.index_digest }}
+          PREDICATE_TYPE: ${{ steps.identity.outputs.predicate_type }}
+        run: |
+          gh attestation verify "oci://${EXACT_REFERENCE}" \
+            --bundle-from-oci \
+            --repo "$GITHUB_REPOSITORY" \
+            --source-digest "$GITHUB_SHA" \
+            --source-ref refs/heads/main \
+            --deny-self-hosted-runners \
+            --predicate-type "$PREDICATE_TYPE"
+
+  torque-release-set:
+    name: torque-release-set
+    if: >-
+      ${{ github.event_name == 'push' &&
+          needs.classify-torque-release.outputs.relevant == 'true' &&
+          needs.classify-torque-release.outputs.publishable == 'true' &&
+          needs.torque-release-compatibility.result == 'success' &&
+          needs.torque-component-adoption.result == 'success' }}
+    needs:
+      - classify-torque-release
+      - torque-release-compatibility
+      - torque-component-adoption
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Require this run to still target the exact current main
+        run: |
+          git fetch origin main --quiet
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+
+      - name: Require the normal signed v1 release set on the exact SHA
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/ci/wait_for_release_checks.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --sha "$GITHUB_SHA" \
+            --required release-set \
+            --timeout 1800 \
+            --interval 10
+
+      - name: Install Ansible renderer
+        run: |
+          python3 -m pip install --user ansible-core
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve the sealed build identity
+        id: contract
+        run: |
+          contract="$RUNNER_TEMP/release-build-contract.json"
+          scripts/ci/render-release-build-contract.sh \
+            --inventory infrastructure/ansible/inventory.yml \
+            --sha "$GITHUB_SHA" \
+            --output "$contract"
+          config_hash="$(python3 scripts/deploy/release_build_contract.py hash --release-sha "$GITHUB_SHA" < "$contract")"
+          echo "config_hash=$config_hash" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR for signed release composition
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Pull and verify the exact signed v1 release set
+        id: v1
+        env:
+          CONFIG_HASH: ${{ steps.contract.outputs.config_hash }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          reference="ghcr.io/denkoushi/raspisys-release-set:${GITHUB_SHA}-${CONFIG_HASH}"
+          docker buildx imagetools inspect "$reference" \
+            --format '{{json .Manifest}}' > release-set-v1-descriptor.json
+          manifest_digest="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          print(json.loads(Path('release-set-v1-descriptor.json').read_text())['digest'])
+          PY
+          )"
+          exact_reference="ghcr.io/denkoushi/raspisys-release-set@${manifest_digest}"
+          gh attestation verify "oci://${exact_reference}" \
+            --bundle-from-oci \
+            --repo "$GITHUB_REPOSITORY" \
+            --source-digest "$GITHUB_SHA" \
+            --source-ref refs/heads/main \
+            --deny-self-hosted-runners
+          docker pull --platform linux/arm64 "$exact_reference"
+          container="$(docker create "$exact_reference" /release-set.json)"
+          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+          docker cp "${container}:/release-set.json" release-set-v1.json
+          python3 scripts/deploy/release_artifact_contract.py verify \
+            --repository "$GITHUB_REPOSITORY" \
+            --sha "$GITHUB_SHA" \
+            --config-hash "$CONFIG_HASH" \
+            --workflow .github/workflows/ci.yml \
+            < release-set-v1.json
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+
+          document = json.loads(Path("release-set-v1.json").read_text(encoding="utf-8"))
+          print(f"api_repository={document['images']['api']['repository']}")
+          print(f"api_digest={document['images']['api']['digest']}")
+          print(f"web_repository={document['images']['web']['repository']}")
+          print(f"web_digest={document['images']['web']['digest']}")
+          print(f"workflow={document['workflow']['path']}")
+          print(f"run_id={document['workflow']['runId']}")
+          print(f"run_attempt={document['workflow']['runAttempt']}")
+          PY
+          {
+            echo "manifest_digest=${manifest_digest}"
+            echo "exact_reference=${exact_reference}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify existing signed API and Web images without re-attesting
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          API_REFERENCE: ${{ steps.v1.outputs.api_repository }}@${{ steps.v1.outputs.api_digest }}
+          WEB_REFERENCE: ${{ steps.v1.outputs.web_repository }}@${{ steps.v1.outputs.web_digest }}
+        run: |
+          for exact_reference in "$API_REFERENCE" "$WEB_REFERENCE"; do
+            gh attestation verify "oci://${exact_reference}" \
+              --bundle-from-oci \
+              --repo "$GITHUB_REPOSITORY" \
+              --source-digest "$GITHUB_SHA" \
+              --source-ref refs/heads/main \
+              --deny-self-hosted-runners
+          done
+
+      - name: Create strict torque component-aware release set v2
+        env:
+          CONFIG_HASH: ${{ steps.contract.outputs.config_hash }}
+          API_REPOSITORY: ${{ steps.v1.outputs.api_repository }}
+          API_DIGEST: ${{ steps.v1.outputs.api_digest }}
+          WEB_REPOSITORY: ${{ steps.v1.outputs.web_repository }}
+          WEB_DIGEST: ${{ steps.v1.outputs.web_digest }}
+        run: |
+          python3 scripts/deploy/release_artifact_contract.py create \
+            --repository "$GITHUB_REPOSITORY" \
+            --sha "$GITHUB_SHA" \
+            --config-hash "$CONFIG_HASH" \
+            --api-repository "$API_REPOSITORY" \
+            --api-digest "$API_DIGEST" \
+            --web-repository "$WEB_REPOSITORY" \
+            --web-digest "$WEB_DIGEST" \
+            --workflow '${{ steps.v1.outputs.workflow }}' \
+            --run-id '${{ steps.v1.outputs.run_id }}' \
+            --run-attempt '${{ steps.v1.outputs.run_attempt }}' \
+            --composition-workflow '${{ needs.torque-release-compatibility.outputs.workflow }}' \
+            --composition-run-id '${{ needs.torque-release-compatibility.outputs.run_id }}' \
+            --composition-run-attempt '${{ needs.torque-release-compatibility.outputs.run_attempt }}' \
+            --base-release-digest '${{ steps.v1.outputs.exact_reference }}' \
+            --torque-repository '${{ needs.torque-component-adoption.outputs.repository }}' \
+            --torque-index-digest '${{ needs.torque-component-adoption.outputs.index_digest }}' \
+            --torque-source-sha '${{ needs.torque-component-adoption.outputs.source_sha }}' \
+            --torque-arm64-digest '${{ needs.torque-component-adoption.outputs.arm64_digest }}' \
+            --torque-armv7-digest '${{ needs.torque-component-adoption.outputs.armv7_digest }}' \
+            --torque-adoption-predicate-type '${{ needs.torque-component-adoption.outputs.predicate_type }}' \
+            --torque-origin-workflow '${{ needs.torque-component-adoption.outputs.origin_workflow }}' \
+            --torque-origin-run-id '${{ needs.torque-component-adoption.outputs.origin_run_id }}' \
+            --torque-origin-job-id '${{ needs.torque-component-adoption.outputs.origin_job_id }}' \
+            --torque-rehearsal-job torque-release-compatibility \
+            --torque-rehearsal-evidence-digest '${{ needs.torque-release-compatibility.outputs.evidence_digest }}' \
+            > release-set.json
+
+      - name: Check for an existing canonical torque release set
+        id: existing
+        env:
+          CONFIG_HASH: ${{ steps.contract.outputs.config_hash }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          reference="ghcr.io/denkoushi/raspisys-release-set:${GITHUB_SHA}-${CONFIG_HASH}-torque-v2"
+          if ! docker buildx imagetools inspect "$reference" \
+            --format '{{json .Manifest}}' > existing-descriptor.json 2>/dev/null; then
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          digest="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          print(json.loads(Path('existing-descriptor.json').read_text())['digest'])
+          PY
+          )"
+          exact_reference="ghcr.io/denkoushi/raspisys-release-set@${digest}"
+          gh attestation verify "oci://${exact_reference}" \
+            --bundle-from-oci \
+            --repo "$GITHUB_REPOSITORY" \
+            --source-digest "$GITHUB_SHA" \
+            --source-ref refs/heads/main \
+            --deny-self-hosted-runners
+          docker pull --platform linux/arm64 "$exact_reference"
+          container="$(docker create "$exact_reference" /release-set.json)"
+          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+          docker cp "${container}:/release-set.json" release-set-existing.json
+          python3 scripts/deploy/release_artifact_contract.py verify-torque-reuse \
+            --existing release-set-existing.json \
+            --candidate release-set.json \
+            > /dev/null
+          {
+            echo 'exists=true'
+            echo "digest=${digest}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish torque release set as an immutable OCI image
+        id: publish
+        if: ${{ steps.existing.outputs.exists != 'true' }}
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.release-set
+          platforms: linux/arm64
+          push: true
+          tags: ghcr.io/denkoushi/raspisys-release-set:${{ github.sha }}-${{ steps.contract.outputs.config_hash }}-torque-v2
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_CONFIG_HASH=${{ steps.contract.outputs.config_hash }}
+          provenance: mode=min
+          sbom: true
+
+      - name: Attest the torque release set after all fixed gates
+        if: ${{ steps.existing.outputs.exists != 'true' }}
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/denkoushi/raspisys-release-set
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+
+  torque-release-required:
+    name: torque-release-required
+    if: ${{ always() && github.event_name != 'push' }}
+    needs:
+      - classify-torque-release
+      - torque-release-compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require rehearsal only for an owned torque change
+        env:
+          CLASSIFICATION_RESULT: ${{ needs.classify-torque-release.result }}
+          TORQUE_RELEVANT: ${{ needs.classify-torque-release.outputs.relevant }}
+          COMPATIBILITY_RESULT: ${{ needs.torque-release-compatibility.result }}
+        run: |
+          test "$CLASSIFICATION_RESULT" = success
+          if [[ "$TORQUE_RELEVANT" == true ]]; then
+            test "$COMPATIBILITY_RESULT" = success
+          else
+            test "$COMPATIBILITY_RESULT" = skipped
+          fi

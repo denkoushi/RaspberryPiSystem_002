@@ -301,7 +301,6 @@ class ClassifyChangesTests(unittest.TestCase):
     def test_workflow_unknown_delete_and_rename_fail_closed(self) -> None:
         cases = (
             Change("M", ".github/workflows/ci.yml"),
-            Change("M", "scripts/ci/run-deploy-contracts-local.sh"),
             Change("M", "new-top-level/tool.py"),
             Change("D", "docs/obsolete.md"),
             Change("R100", "apps/api/src/old.ts", "apps/api/src/new.ts"),
@@ -317,6 +316,53 @@ class ClassifyChangesTests(unittest.TestCase):
                 self.assertTrue(result["releasePair"])
                 self.assertTrue(result["failClosedReasons"])
                 self.assertEqual(len(result["pi4AgentMatrix"]), 6)
+
+        local_contract = self.classify(
+            Change("M", "scripts/ci/run-deploy-contracts-local.sh")
+        )
+        self.assertTrue(local_contract["fullSuite"])
+        self.assertEqual(local_contract["pi4AgentMatrix"], [])
+
+        for path in (
+            "scripts/ci/wait_for_release_checks.py",
+            "scripts/ci/tests/test_release_image_workflow.py",
+        ):
+            with self.subTest(path=path):
+                non_build_contract = self.classify(Change("M", path))
+                self.assertTrue(non_build_contract["fullSuite"])
+                self.assertEqual(non_build_contract["pi4AgentMatrix"], [])
+
+    def test_torque_release_workflow_has_a_focused_owned_contract(self) -> None:
+        result = self.classify(
+            Change("M", ".github/workflows/torque-release.yml")
+        )
+
+        self.assertEqual(
+            self.selected(result), {"repo_policy", "deploy_contract"}
+        )
+        self.assertFalse(result["fullSuite"])
+        self.assertFalse(result["codeql"])
+        self.assertFalse(result["dockerApi"])
+        self.assertFalse(result["dockerWeb"])
+        self.assertFalse(result["releasePair"])
+        self.assertFalse(result["runtimeRehearsal"])
+        self.assertTrue(result["torqueComposition"])
+        self.assertEqual(self.pi4_services(result), {"torque-agent"})
+
+    def test_shared_ci_and_scan_policy_remain_all_agent_fail_closed(self) -> None:
+        for path in (
+            ".github/workflows/ci.yml",
+            ".github/actions/setup-pnpm-monorepo/action.yml",
+            ".trivyignore",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertTrue(result["fullSuite"])
+                self.assertEqual(
+                    self.pi4_services(result),
+                    {"nfc-agent", "barcode-agent", "torque-agent"},
+                )
+                self.assertTrue(result["releasePair"])
 
     def test_name_status_parser_preserves_rename_source_and_destination(self) -> None:
         parsed = parse_name_status_z(
@@ -425,7 +471,7 @@ class ClassifyChangesTests(unittest.TestCase):
 
     def test_torque_composition_is_bounded_to_cutover_contract_surfaces(self) -> None:
         for path in (
-            ".github/workflows/ci.yml",
+            ".github/workflows/torque-release.yml",
             "scripts/deploy/release_artifact_contract.py",
             "scripts/deploy/standard-ansible-release.py",
             "infrastructure/ansible/roles/release_torque_cutover/tasks/finalize.yml",

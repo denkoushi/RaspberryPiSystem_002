@@ -546,6 +546,11 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         )
         compatibility = types.SimpleNamespace(protocol_version=1)
         release = types.SimpleNamespace(
+            schema_version=2,
+            source_repository="denkoushi/RaspberryPiSystem_002",
+            source_sha=SHA,
+            source_ref="refs/heads/main",
+            config_hash="b" * 64,
             api=types.SimpleNamespace(
                 repository="ghcr.io/denkoushi/raspisys-api",
                 digest="sha256:" + "1" * 64,
@@ -561,6 +566,24 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
                 run_id=123,
                 run_attempt=1,
             ),
+            composition_workflow=types.SimpleNamespace(
+                path=".github/workflows/torque-release.yml",
+                run_id=456,
+                run_attempt=2,
+            ),
+            base_release_set=types.SimpleNamespace(
+                digest="ghcr.io/denkoushi/raspisys-release-set@sha256:" + "8" * 64,
+            ),
+        )
+        base_release = types.SimpleNamespace(
+            schema_version=1,
+            source_repository="denkoushi/RaspberryPiSystem_002",
+            source_sha=SHA,
+            source_ref="refs/heads/main",
+            config_hash="b" * 64,
+            api=release.api,
+            web=release.web,
+            workflow=release.workflow,
         )
 
         def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
@@ -572,7 +595,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             return completed(command)
 
         with mock.patch.object(MODULE, "config_hash", return_value="b" * 64), mock.patch.object(
-            MODULE, "parse_release_set", return_value=release
+            MODULE, "parse_release_set", side_effect=[release, base_release]
         ), mock.patch.object(MODULE, "validate_release_set"), mock.patch.object(
             MODULE, "_exact_repo_digest", return_value="ghcr.io/denkoushi/raspisys-release-set@sha256:" + "9" * 64
         ), mock.patch.object(
@@ -587,12 +610,56 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             "ghcr.io/denkoushi/raspisys-torque-agent@sha256:" + "3" * 64,
         )
         self.assertEqual(artifacts.torque_protocol_version, 1)
-        self.assertEqual(verify.call_count, 2)
+        self.assertEqual(verify.call_count, 3)
         self.assertIn("-torque-v2", commands[0][-1])
         self.assertEqual(
-            verify.call_args_list[1].kwargs["adoption_workflow"],
-            (".github/workflows/ci.yml", 123, 1),
+            verify.call_args_list[2].kwargs["adoption_workflow"],
+            (".github/workflows/torque-release.yml", 456, 2),
         )
+        created_references = [
+            command[2] for command in commands if command[1] == "create"
+        ]
+        self.assertEqual(
+            created_references,
+            [
+                "ghcr.io/denkoushi/raspisys-release-set@sha256:" + "9" * 64,
+                "ghcr.io/denkoushi/raspisys-release-set@sha256:" + "8" * 64,
+            ],
+        )
+
+        mismatches = {
+            "source": ("source_sha", "c" * 40),
+            "config": ("config_hash", "d" * 64),
+            "image": (
+                "api",
+                types.SimpleNamespace(
+                    repository="ghcr.io/denkoushi/raspisys-api",
+                    digest="sha256:" + "7" * 64,
+                ),
+            ),
+        }
+        for label, (field, value) in mismatches.items():
+            mismatched_base = types.SimpleNamespace(**vars(base_release))
+            setattr(mismatched_base, field, value)
+            with self.subTest(label=label), mock.patch.object(
+                MODULE, "config_hash", return_value="b" * 64
+            ), mock.patch.object(
+                MODULE, "parse_release_set", side_effect=[release, mismatched_base]
+            ), mock.patch.object(
+                MODULE, "validate_release_set"
+            ), mock.patch.object(
+                MODULE,
+                "_exact_repo_digest",
+                return_value="ghcr.io/denkoushi/raspisys-release-set@sha256:"
+                + "9" * 64,
+            ), mock.patch.object(
+                MODULE, "verify_component_attestation"
+            ), mock.patch.object(
+                MODULE, "run", side_effect=fake_run
+            ), self.assertRaisesRegex(RuntimeError, "does not match"):
+                MODULE.release_set_artifacts(
+                    SHA, ROOT / MODULE.DEFAULT_INVENTORY, require_torque=True
+                )
 
     def test_adoption_verifier_selects_the_manifest_bound_run_attempt(self) -> None:
         predicates = [{"attempt": 1}, {"attempt": 2}]

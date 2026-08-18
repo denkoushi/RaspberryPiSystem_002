@@ -21,7 +21,11 @@ The visible success is an atomic two-kiosk cutover. The Pi5 control plane is a n
 - [x] (2026-08-18 JST) Updated the deployment guide and recovery runbook; exact-toolchain local deploy contracts passed with all temporary Docker resources removed.
 - [x] (2026-08-18 JST) Fixed the local deploy-contract toolchain at repository-declared pnpm 9.15.9 and proved frozen install plus the full contract run leave both pnpm lock files byte-identical.
 - [x] (2026-08-18 JST) Corrected hosted-CI integration gaps exposed by the first exact-head run: the pnpm 11 bulk-advisory client now audits an immutable temporary lockfile copy, the torque rehearsal builds every API workspace dependency, and regenerated SOP manifests bind the exact package-manager declaration.
-- [ ] Commit, push, open a PR, pass exact-head CI, merge to main, and confirm signed main artifacts.
+- [x] (2026-08-18 JST) Opened draft PR 1264 and used its first exact-head run to prove the torque compatibility and both torque-agent architecture contracts; isolated the unrelated NFC/barcode CVE gate without weakening it.
+- [x] (2026-08-18 JST) Extracted torque composition to `.github/workflows/torque-release.yml`, kept `.github/workflows/ci.yml` byte-identical to base, added the fixed all-PR `torque-release-required` aggregate, and made unrelated PRs an explicit fast no-op.
+- [x] (2026-08-18 JST) Split schema-v2 base-release and composition identities, added exact v1 digest handoff and deploy-time base verification, and made same-tuple v2 publication retries reuse the existing signed manifest.
+- [x] (2026-08-18 JST) Re-ran 344 canonical Deploy tests, all 158 migrations, PostgreSQL integration/EXPLAIN, Docker runtime tests and every Ansible syntax check with temporary resources removed and both pnpm files byte-identical.
+- [ ] Commit and push the dedicated-workflow revision, pass exact-head PR CI, obtain separate approval for the required-check ruleset change, merge to main, and confirm signed main artifacts.
 - [ ] Run the approved production cutover only after the exact main release-set v2 passes PREPARED for Pi5, StoneBase and Assembly-01.
 
 ## Surprises & Discoveries
@@ -40,6 +44,10 @@ The visible success is an atomic two-kiosk cutover. The Pi5 control plane is a n
   Evidence: the route now folds every explicitly selected host with missing facts defaulting to false, cleans Pi5 candidates before quiesce failure, restores every reachable kiosk to its captured previous image after quiesce failure, and does not start browsers until the aggregate healthy/OFF fact is true.
 - Observation: the hosted workspace audit intentionally uses pnpm 11 only as a client for npm's bulk-advisory endpoint, but running that client in the repository became invalid once `engines.pnpm` correctly required 9.15.9. The same CI run also showed that the focused API route rehearsal needs all API-imported workspace packages built, and that changing the package-manager declaration invalidates the generated SOP source-closure hash.
   Evidence: the advisory client now receives a temporary copy of the resolved lockfile and a pnpm-11-compatible temporary manifest, leaving the repository untouched; the compatibility job builds `shared-types`, `kiosk-sop-core`, `part-search-core`, and `shelf-layout-core`; the canonical SOP generator changed only each manifest's `sourceSha256`.
+- Observation: placing torque composition inside the monolithic `ci.yml` made any workflow-only fix conservatively select all Pi4 agent images, so known NFC/barcode CVEs could block a torque-only release even when the torque jobs and artifacts passed.
+  Evidence: the dedicated workflow owns only torque composition and always emits `torque-release-required`; the classifier maps that one path to `repo_policy` plus `deploy_contract`, torque-agent only, and no API/Web release pair, while `ci.yml`, common actions and shared scan inputs remain all-agent fail-closed.
+- Observation: one schema-v2 `workflow` identity could not truthfully identify both the signed v1 API/Web release and the later torque composition rehearsal. A retry also cannot compare canonical bytes because GitHub run ID, attempt and evidence digest legitimately change.
+  Evidence: v2 now preserves the v1 `workflow`, adds `baseReleaseSet` with its exact OCI digest and `compositionWorkflow` for adoption/rehearsal, validates the referenced v1 payload at Deploy, and permits reuse only when the base, source/config, all component digests and protocol/contracts are unchanged.
 
 ## Decision Log
 
@@ -67,10 +75,16 @@ The visible success is an atomic two-kiosk cutover. The Pi5 control plane is a n
 - Decision: Represent cross-host cutover progress as explicit aggregate phase facts with absent host facts treated as failure.
   Rationale: the wrapper verifies the signed v2 tuple once and normalizes one immutable run-scoped `TorqueCutoverPlan` containing the exact components, protocol and selected inventory hosts. Each kiosk appends `prepared`, `quiesced`, `agentStaged`, `agentHealthyOff` and `browserResumed` to one structured host result. Each boundary folds all selected host results exactly once and delegates the aggregate fact to the existing Pi5 inventory host; Pi5 reads that fact instead of repeating the predicate. This avoids dependence on whichever kiosk happens to be first or reachable while preserving the normal success path. Shared failure performs cleanup or fail-closed restoration on every reachable selected kiosk and prevents later control-plane or browser phases. No kiosk host name is coded into the coordinator: adding a fully configured kiosk requires only inventory plus the explicit limit.
   Date/Author: 2026-08-18 / Codex.
+- Decision: Keep generic CI and shared agent policy fail-closed, but move torque composition into one ownership-addressable workflow with a fixed required aggregate.
+  Rationale: all PRs receive the same check name; unrelated changes complete as an explicit no-op; torque-owned changes run the compatibility rehearsal. The dedicated workflow path can require torque-only contracts without downgrading `ci.yml`, common actions or shared scan policy. Main adoption/publication additionally requires a real API/Web release pair, so a workflow-only maintenance commit cannot wait for a v1 artifact that is intentionally not produced.
+  Date/Author: 2026-08-18 / Codex.
+- Decision: Treat the signed v1 release set as an exact referenced base and the dedicated workflow as a distinct composition identity.
+  Rationale: schema-v2 retains the v1 workflow/run/attempt and exact OCI digest, while `compositionWorkflow` identifies adoption and rehearsal. Deploy pulls and verifies the base digest and compares source, config, API, Web and workflow before any host mutation. A retry may reuse an existing signed v2 only when the immutable tuple and contracts match; run/attempt and evidence-digest refresh alone do not create a new release identity.
+  Date/Author: 2026-08-18 / Codex.
 
 ## Outcomes & Retrospective
 
-Implementation and local validation are complete; PR, hosted CI, merge and production cutover remain. The current production control plane remains healthy and the two selected torque kiosks remain intentionally OFF after the previous fail-closed run. No new production mutation is permitted until an exact merged-main v2 manifest is signed, its declared component tuple is verified, and service-uninterrupted PREPARED staging succeeds on all three selected hosts.
+Implementation and local validation are complete and draft PR 1264 is open; the dedicated-workflow revision, required-check ruleset approval, hosted CI, merge and production cutover remain. The current production control plane remains healthy and the two selected torque kiosks remain intentionally OFF after the previous fail-closed run. No new production mutation is permitted until an exact merged-main v2 manifest is signed, its declared component tuple is verified, and service-uninterrupted PREPARED staging succeeds on all three selected hosts.
 
 ## Context and Orientation
 
@@ -134,7 +148,7 @@ Hosted main CI must publish and verify the exact adoption attestation and signed
 
 ## Idempotence and Recovery
 
-Schema v1 remains readable, so normal deployments can continue while torque cutover opts into v2. PREPARED is repeatable for the same run and digest. A failed pre-stage does not stop services and may delete only image/tag/run-directory state created by that run. A retry creates a new run ID and revalidates all exact identities.
+Schema v1 remains readable, so normal deployments can continue while torque cutover opts into v2. PREPARED is repeatable for the same run and digest. A failed pre-stage does not stop services and may delete only image/tag/run-directory state created by that run. A release-composition retry creates a new run ID, verifies the existing signed v2, and reuses it only when its exact base release, source/config, API/Web/torque digests and protocol contracts match; any tuple change fails rather than mutating the immutable tag.
 
 After quiesce, the existing aggregate fail-closed path owns recovery. It stops browsers and candidate agents, removes guard intent, proves Bluetooth OFF, restores every captured previous image without starting it, and removes run-scoped staging. It does not roll back a healthy already-matching Pi5 merely for symmetry. The first v2 migration uses the exact previous images captured before quiesce as its rollback authority; after a successful cutover, the signed v2 release set becomes the previous set for later runs.
 
@@ -159,4 +173,4 @@ The custom adoption predicate type is distinct from SLSA build provenance. It re
 
 The wrapper passes exact references through variables such as `release_pi5_api_image`, `release_pi5_web_image`, and `release_kiosk_torque_image`. Ansible consumes those references and never reconstructs component tags from `release_sha` in torque-cutover mode. Facts marking prepared Pi5 and kiosk candidates are run-scoped and are accepted only when their run ID and exact digest match the sealed v2 manifest.
 
-Revision note (2026-08-18): created after the user approved A-minimal and the monitoring review required schema-v2 reuse, combination compatibility, bounded evidence, signed Trivy adoption, and service-uninterrupted staging before quiesce. Updated after implementation to record the exact-pnpm root cause, aggregate host-boundary corrections, cleanup guarantees, and successful local validation.
+Revision note (2026-08-18): created after the user approved A-minimal and the monitoring review required schema-v2 reuse, combination compatibility, bounded evidence, signed Trivy adoption, and service-uninterrupted staging before quiesce. Updated after implementation to record the exact-pnpm root cause, aggregate host-boundary corrections, dedicated required workflow, base/composition identity split, idempotent v2 reuse, cleanup guarantees, and successful local validation.

@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 628,
-    "totalLines": 172643,
-    "totalBytes": 13002957,
+    "totalLines": 172662,
+    "totalBytes": 13008258,
     "withFrontmatter": 287,
     "withStatus": 143,
     "sourceOfTruthDeclared": 104,
@@ -17157,8 +17157,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260818-release-set-v2-component-adoption.md",
-      "lineCount": 88,
-      "byteSize": 10283,
+      "lineCount": 93,
+      "byteSize": 11770,
       "hasFrontmatter": true,
       "title": "Adopt independently built torque-agent components through signed release-set v2",
       "status": "accepted",
@@ -35488,8 +35488,8 @@
     },
     {
       "path": "docs/plans/release-set-v2-torque-cutover-execplan.md",
-      "lineCount": 162,
-      "byteSize": 24975,
+      "lineCount": 176,
+      "byteSize": 28789,
       "hasFrontmatter": false,
       "title": "Extend the signed release set for an atomic torque cutover",
       "status": null,

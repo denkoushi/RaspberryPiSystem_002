@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from release_artifact_contract import (
+    ReleaseSet,
     TORQUE_ADOPTION_PREDICATE_TYPE,
     TORQUE_PROTOCOL_VERSION,
     parse_release_set,
@@ -651,6 +652,20 @@ def verify_component_attestation(
         )
 
 
+def _read_release_set_from_image(reference: str) -> ReleaseSet:
+    """Read one signed release-set document from an exact OCI reference."""
+    container = run(["docker", "create", reference, "/release-set.json"]).stdout.strip()
+    if not container:
+        raise RuntimeError("release-set image did not produce a container")
+    try:
+        with tempfile.TemporaryDirectory(prefix="standard-release-set-") as directory:
+            path = Path(directory) / "release-set.json"
+            run(["docker", "cp", f"{container}:/release-set.json", str(path)])
+            return parse_release_set(path.read_text(encoding="utf-8"))
+    finally:
+        run(["docker", "rm", "-f", container], check=False)
+
+
 def release_set_artifacts(
     sha: str,
     inventory: Path,
@@ -666,33 +681,65 @@ def release_set_artifacts(
     run(["docker", "image", "pull", reference])
     exact_release_set = _exact_repo_digest(reference)
     verify_component_attestation(exact_release_set, sha)
-    container = run(["docker", "create", reference, "/release-set.json"]).stdout.strip()
-    try:
-        with tempfile.TemporaryDirectory(prefix="standard-release-set-") as directory:
-            path = Path(directory) / "release-set.json"
-            run(["docker", "cp", f"{container}:/release-set.json", str(path)])
-            release = parse_release_set(path.read_text(encoding="utf-8"))
-            validate_release_set(release, "denkoushi/RaspberryPiSystem_002", sha, build_hash, ".github/workflows/ci.yml")
-    finally:
-        run(["docker", "rm", "-f", container], check=False)
+    release = _read_release_set_from_image(exact_release_set)
+    validate_release_set(
+        release,
+        "denkoushi/RaspberryPiSystem_002",
+        sha,
+        build_hash,
+        ".github/workflows/ci.yml",
+    )
     torque_agent = release.torque_agent
     torque_compatibility = release.torque_compatibility
     if require_torque and (torque_agent is None or torque_compatibility is None):
         raise RuntimeError("torque cutover requires signed release-set schema v2")
+    if require_torque:
+        base_release_set = release.base_release_set
+        if base_release_set is None:
+            raise RuntimeError("torque cutover requires an exact base v1 release set")
+        base_reference = base_release_set.digest
+        run(["docker", "image", "pull", base_reference])
+        verify_component_attestation(base_reference, sha)
+        base_release = _read_release_set_from_image(base_reference)
+        validate_release_set(
+            base_release,
+            "denkoushi/RaspberryPiSystem_002",
+            sha,
+            build_hash,
+            ".github/workflows/ci.yml",
+        )
+        if (
+            base_release.schema_version != 1
+            or base_release.source_repository != release.source_repository
+            or base_release.source_sha != release.source_sha
+            or base_release.source_ref != release.source_ref
+            or base_release.config_hash != release.config_hash
+            or base_release.api != release.api
+            or base_release.web != release.web
+            or base_release.workflow != release.workflow
+        ):
+            raise RuntimeError(
+                "schema-v2 base release set does not match its v1 API/Web identity"
+            )
     torque_reference = None
     protocol_version = None
     if torque_agent is not None and torque_compatibility is not None:
         torque_reference = f"{torque_agent.repository}@{torque_agent.index_digest}"
         protocol_version = torque_compatibility.protocol_version
         if require_torque:
+            composition_workflow = release.composition_workflow
+            if composition_workflow is None:
+                raise RuntimeError(
+                    "torque cutover requires schema-v2 composition workflow identity"
+                )
             verify_component_attestation(
                 torque_reference,
                 sha,
                 predicate_type=TORQUE_ADOPTION_PREDICATE_TYPE,
                 adoption_workflow=(
-                    release.workflow.path,
-                    release.workflow.run_id,
-                    release.workflow.run_attempt,
+                    composition_workflow.path,
+                    composition_workflow.run_id,
+                    composition_workflow.run_attempt,
                 ),
             )
     suffix = build_hash[:16]

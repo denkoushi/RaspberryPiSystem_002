@@ -9,6 +9,7 @@ related_code:
   - scripts/deploy/release_artifact_contract.py
   - scripts/deploy/standard-ansible-release.py
   - .github/workflows/ci.yml
+  - .github/workflows/torque-release.yml
   - infrastructure/ansible/playbooks/deploy-release-standard.yml
   - infrastructure/ansible/roles/release_pi5
   - infrastructure/ansible/roles/release_kiosk
@@ -41,6 +42,10 @@ Individually safe artifacts are insufficient. The API, Web controller and localh
 
 The existing signed release set is extended through a backward-compatible schema version 2. Schema version 1 remains readable and keeps its current API/Web job, tag and semantics without depending on torque adoption. Version 2 adds optional component identity and compatibility sections and is published as an opt-in `-torque-v2` composition tag in the same OCI repository; it does not create an independent torque release source of truth. The same strict parser, OCI publication, signature identity and standard deploy wrapper remain authoritative.
 
+The base API/Web release identity and the later torque composition identity are explicit and separate. Root `workflow` remains the verified v1 workflow/run/attempt. `baseReleaseSet` binds its exact signed OCI digest, schema, source and configuration. `compositionWorkflow` identifies the dedicated adoption/rehearsal run. Before deployment, the wrapper pulls the exact base digest and proves that its source, configuration, API/Web digests and workflow equal the v2 declaration. The dedicated workflow verifies existing API/Web attestations but never re-attests them.
+
+Torque composition runs in `.github/workflows/torque-release.yml`, not as a responsibility hidden inside the generic monolithic CI workflow. It starts for every PR and merge-group check and returns the fixed `torque-release-required` name; unrelated changes explicitly skip the rehearsal and pass the aggregate. The ownership classifier maps the dedicated workflow only to torque release contracts. Generic `ci.yml`, common actions and shared build/scan inputs remain all-agent fail-closed. Main adoption and v2 publication require both torque relevance and a real API/Web release pair, so workflow-only maintenance does not wait for an intentionally absent v1 artifact.
+
 For the initial torque cutover, version 2 binds exactly three components: ARM64 API, ARM64 Web, and the ARM64/ARMv7 torque-agent index. Each component has its own immutable digest and source SHA. The release-set source SHA identifies orchestration and composition; it is not required to equal the torque-agent source SHA.
 
 The existing torque-agent digest is accepted with a custom signed component adoption predicate. The predicate is explicitly not build provenance. It records the original source SHA, workflow, run and job that built and scanned the image, the index and platform-child digests, the immutable source-closure paths, proof that their trees are unchanged at the adopting main commit, and a fresh scan under the same required HIGH/CRITICAL policy. The adoption workflow signs the existing digest only after both architecture scans pass. It does not rebuild or retag the image.
@@ -71,7 +76,7 @@ Registry existence checks immediately before a post-quiesce pull were rejected b
 
 The release contract becomes more expressive and its validation tests become larger. CI performs fresh scans when adopting an unchanged historical component, but it avoids rebuilding the image. The deployment downloads candidates before the maintenance window, which consumes disk and may require cleanup on staging failure, while materially reducing downtime and eliminating missing-artifact discovery after shutdown.
 
-Normal schema-v1 deployment remains compatible. Torque cutover opts into schema v2 and exact digest variables. Once the approach is proven, other components may use the same schema extension in separately approved work; this change does not generalize NFC, barcode, Signage or the entire fleet.
+Normal schema-v1 deployment remains compatible. Torque cutover opts into schema v2 and exact digest variables. Re-running the same composition verifies and reuses an existing signed v2 when the exact base, component tuple and protocol contracts match; a different tuple fails instead of replacing the immutable tag. Once the approach is proven, other components may use the same schema extension in separately approved work; this change does not generalize NFC, barcode, Signage or the entire fleet.
 
 The first v2 production run has no previous v2 manifest for the stopped kiosks. Its rollback authority is the exact existing image captured and verified during PREPARED. After success, the signed v2 set becomes the previous release set for subsequent runs.
 
