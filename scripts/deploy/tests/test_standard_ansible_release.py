@@ -663,10 +663,18 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
 
     def test_adoption_verifier_selects_the_manifest_bound_run_attempt(self) -> None:
         predicates = [{"attempt": 1}, {"attempt": 2}]
+        verifier_environments: list[dict[str, str]] = []
+        verifier_directories: list[Path] = []
 
         def fake_run(
-            command: list[str], **_: object
+            command: list[str], **kwargs: object
         ) -> subprocess.CompletedProcess[str]:
+            environment = kwargs.get("env")
+            self.assertIsInstance(environment, dict)
+            verifier_environments.append(environment)
+            verifier_directory = Path(environment["GH_CONFIG_DIR"])
+            self.assertTrue(verifier_directory.is_dir())
+            verifier_directories.append(verifier_directory)
             if command[1:] == ["--version"]:
                 return completed(command, "gh version 2.96.0 (test)\n")
             return completed(
@@ -687,7 +695,9 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             if predicate != predicates[1] or kwargs["run_attempt"] != 2:
                 raise MODULE.AdoptionError("different signed adoption attempt")
 
-        with mock.patch.object(MODULE.shutil, "which", return_value="/usr/bin/gh"), mock.patch.object(
+        with mock.patch.dict(MODULE.os.environ, {"GITHUB_TOKEN": "must-not-leak"}), mock.patch.object(
+            MODULE.shutil, "which", return_value="/usr/bin/gh"
+        ), mock.patch.object(
             MODULE, "run", side_effect=fake_run
         ), mock.patch.object(
             MODULE, "validate_adoption_predicate", side_effect=validate
@@ -700,6 +710,14 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             )
 
         self.assertEqual(validator.call_count, 2)
+        self.assertEqual(len(verifier_environments), 2)
+        for environment in verifier_environments:
+            self.assertEqual(
+                environment["GH_TOKEN"], MODULE.PUBLIC_ATTESTATION_TOKEN
+            )
+            self.assertNotIn("GITHUB_TOKEN", environment)
+            self.assertIn("GH_CONFIG_DIR", environment)
+        self.assertTrue(all(not directory.exists() for directory in verifier_directories))
 
     def test_torque_route_passes_manifest_digest_and_protocol_to_ansible(self) -> None:
         args = argparse.Namespace(

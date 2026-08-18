@@ -28,6 +28,11 @@ import urllib.request
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Protocol, Sequence
 
+try:
+    from .attestation_environment import isolated_attestation_environment
+except ImportError:  # Direct script execution from this directory.
+    from attestation_environment import isolated_attestation_environment
+
 
 SCHEMA_VERSION = 1
 OPERATION = "pi3-signage-acquire-and-stage"
@@ -1708,14 +1713,11 @@ class GhAttestor:
                 "attestation-verification", "attestation", "incomplete",
                 "GitHub attestation verifier is unavailable",
             )
-        with tempfile.TemporaryDirectory(prefix="signage-stage-gh-") as directory:
-            trusted_root = Path(directory) / "sigstore-public-good-trusted-root.json"
+        with isolated_attestation_environment(self.token) as isolated:
+            trusted_root = isolated.directory / "sigstore-public-good-trusted-root.json"
             trusted_root.write_bytes(TRUSTED_ROOT_BYTES)
             trusted_root.chmod(0o600)
-            environment = os.environ.copy()
-            environment["GH_CONFIG_DIR"] = directory
-            environment["GH_TOKEN"] = self.token or "public-oci-attestation-verification"
-            environment.pop("GITHUB_TOKEN", None)
+            environment = isolated.values
             try:
                 version_result = subprocess.run(
                     [self.gh, "--version"],
