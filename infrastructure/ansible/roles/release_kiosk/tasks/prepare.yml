@@ -95,7 +95,7 @@
 - name: Capture current Pi4 agent images as temporary rollback tags
   ansible.builtin.shell: |
     set -euo pipefail
-    container_ids="$(docker ps \
+    container_ids="$(docker ps --all \
       --filter "label=com.docker.compose.project={{ release_kiosk_compose_project }}" \
       --filter "label=com.docker.compose.service={{ item }}" \
       --quiet)"
@@ -118,6 +118,7 @@
     release_kiosk_captured_services: >-
       {{
         release_kiosk_rollback_capture.results
+        | selectattr('rc', 'defined')
         | selectattr('rc', 'equalto', 0)
         | map(attribute='item')
         | list
