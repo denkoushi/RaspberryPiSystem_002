@@ -134,4 +134,3 @@ describe('useTorqueWrenchConnection', () => {
     unmount();
   });
 });
-

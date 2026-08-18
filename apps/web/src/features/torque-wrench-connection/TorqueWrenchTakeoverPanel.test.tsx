@@ -35,4 +35,3 @@ describe('TorqueWrenchTakeoverPanel', () => {
     expect(onTakeover).toHaveBeenCalledTimes(1);
   });
 });
-
