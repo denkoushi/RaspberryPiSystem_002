@@ -18,10 +18,12 @@
     argv:
       - docker
       - compose
+      - --profile
+      - torque
       - --project-name
       - docker
       - -f
-      - /etc/raspi-release/client-compose.yml
+      - /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.client.yml
       - stop
       - torque-agent
   changed_when: true
@@ -41,10 +43,12 @@
     argv:
       - docker
       - compose
+      - --profile
+      - torque
       - --project-name
       - docker
       - -f
-      - /etc/raspi-release/client-compose.yml
+      - /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.client.yml
       - ps
       - --status
       - running
@@ -62,7 +66,7 @@
 
 - name: Wait for the previous eight-second server lease to expire
   ansible.builtin.pause:
-    seconds: 9
+    seconds: "{{ (release_torque_lease_ttl_seconds | int) + (release_torque_guard_grace_seconds | int) }}"
   run_once: true
 
 - name: Verify the external torque Bluetooth controller remains OFF after fencing wait

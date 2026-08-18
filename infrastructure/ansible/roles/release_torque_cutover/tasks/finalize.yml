@@ -54,14 +54,28 @@
   changed_when: false
   failed_when: false
 
+- name: Verify the fail-closed guard remains active before browser ownership
+  ansible.builtin.command:
+    argv: [systemctl, is-active, torque-bluetooth-guard.service]
+  register: release_torque_guard_health
+  changed_when: false
+  failed_when: false
+
 - name: Record this kiosk's agent-ready and Bluetooth-OFF result
   ansible.builtin.set_fact:
     release_torque_agent_ready: >-
       {{
         release_torque_agent_start.rc | default(1) == 0
         and release_torque_agent_health.status | default(0) == 200
+        and release_torque_agent_health.json.ok | default(false) | bool
+        and not (release_torque_agent_health.json.ready | default(true) | bool)
+        and not (release_torque_agent_health.json.leaseOwned | default(true) | bool)
+        and release_torque_agent_health.json.selfOwnedToken | default(none) is none
+        and not (release_torque_agent_health.json.bluetoothPowered | default(true) | bool)
         and release_torque_agent_bluetooth.rc | default(1) == 0
         and '"powered":false' in (release_torque_agent_bluetooth.stdout | default('') | regex_replace('\\s', ''))
+        and release_torque_guard_health.rc | default(1) == 0
+        and release_torque_guard_health.stdout | trim == 'active'
       }}
 
 - name: Confirm both agents are healthy and OFF before browsers start
