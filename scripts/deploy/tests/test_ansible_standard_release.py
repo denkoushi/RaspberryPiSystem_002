@@ -390,6 +390,11 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         )
         quiesce = role_text("release_torque_cutover")
         self.assertIn("state: stopped", quiesce)
+        self.assertIn(
+            "Initialize the shared stage boundary before either kiosk can disconnect",
+            quiesce,
+        )
+        self.assertIn("release_kiosk_stage_succeeded: false", quiesce)
         self.assertIn("intent.json", quiesce)
         self.assertIn("release_torque_lease_ttl_seconds", quiesce)
         self.assertIn("release_torque_guard_grace_seconds", quiesce)

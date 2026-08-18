@@ -8,6 +8,10 @@
       - release_torque_cutover_hosts | sort == ['raspi4-assembly-01', 'raspi4-kensaku-stonebase01']
     fail_msg: Torque cutover is limited to the two fully configured production torque kiosks.
 
+- name: Initialize the shared stage boundary before either kiosk can disconnect
+  ansible.builtin.set_fact:
+    release_kiosk_stage_succeeded: false
+
 - name: Stop the kiosk browser before revoking torque ownership
   ansible.builtin.systemd:
     name: kiosk-browser.service
