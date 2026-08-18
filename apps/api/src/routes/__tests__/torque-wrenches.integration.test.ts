@@ -960,8 +960,22 @@ describe('torque wrench traceability API', () => {
         reason: 'malicious non-owner release'
       }
     });
-    expect(nonOwnerRelease.statusCode).toBe(409);
-    expect(nonOwnerRelease.json().errorCode).toBe('TORQUE_WRENCH_LEASE_OWNER_MISMATCH');
+    expect(nonOwnerRelease.statusCode).toBe(200);
+    expect(nonOwnerRelease.json()).toMatchObject({
+      result: 'stale_noop',
+      lease: {
+        state: 'owned_by_other',
+        owner: { ownerKind: 'ASSEMBLY' }
+      }
+    });
+    expect(nonOwnerRelease.json().lease).not.toHaveProperty('leaseId');
+    expect(nonOwnerRelease.json().lease).not.toHaveProperty('generation');
+    const leaseAfterStaleRelease = await prisma.torqueWrenchUsageLease.findUniqueOrThrow({
+      where: { torqueWrenchProfileId: profile.id }
+    });
+    expect(leaseAfterStaleRelease.leaseId).toBe(firstLease.leaseId);
+    expect(leaseAfterStaleRelease.generation).toBe(firstLease.generation);
+    expect(leaseAfterStaleRelease.releasedAt).toBeNull();
 
     const freshLoserConfirmation = await traceability.confirm({
       sessionId: loser.session.id,

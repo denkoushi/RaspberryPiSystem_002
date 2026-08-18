@@ -7,6 +7,11 @@ const status = z.enum(['AVAILABLE', 'IN_USE', 'MAINTENANCE', 'RETIRED']);
 
 export const torqueWrenchIdParamsSchema = z.object({ id });
 
+/** Optional session context enables exact-owner token redaction on status reads. */
+export const torqueWrenchConnectionLeaseStatusQuerySchema = z.object({
+  sessionId: id.optional()
+});
+
 export const torqueWrenchListQuerySchema = z.object({
   includeInactive: z.coerce.boolean().optional().default(false)
 });

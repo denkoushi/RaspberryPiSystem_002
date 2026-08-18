@@ -651,6 +651,13 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
       return Promise.resolve(jsonResponse(agentStatus({
         state: 'owned_by_self',
         leaseOwned: true,
+        selfOwnedToken: {
+          targetKind: 'assembly',
+          sessionId: 'session-1',
+          torqueWrenchProfileId: 'profile-1',
+          leaseId: 'lease-1',
+          generation: 1
+        },
         ready: heartbeatCount > 1,
         bluetoothPowered: heartbeatCount > 1,
         hidExclusive: heartbeatCount > 1

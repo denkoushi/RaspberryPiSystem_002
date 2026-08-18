@@ -118,16 +118,48 @@ export async function confirmTorqueTrainingWrench(sessionId: string, payload: { 
   return data.confirmation;
 }
 
+export type TorqueTrainingLeaseApi = {
+  leaseId: string;
+  generation: number;
+  expiresAt: string;
+  connectAfter: string;
+  state?: 'available' | 'owned_by_self' | 'owned_by_other' | 'handoff_wait' | 'expired';
+  owner?: {
+    clientDeviceName: string;
+    clientDeviceLocation: string | null;
+    targetKind?: 'assembly' | 'training';
+    functionLabel?: string;
+  } | null;
+};
+
 export async function acquireTorqueTrainingLease(profileId: string, payload: { sessionId: string; confirmationId: string; requestId: string }) {
-  const { data } = await api.post<{ lease: { leaseId: string; generation: number; expiresAt: string; connectAfter: string } }>(
+  const { data } = await api.post<{ lease: TorqueTrainingLeaseApi }>(
     `/torque-wrenches/${profileId}/usage-lease/acquire`,
     payload
   );
   return data.lease;
 }
 
+export async function takeoverTorqueTrainingLease(profileId: string, payload: {
+  sessionId: string;
+  confirmationId: string;
+  requestId: string;
+  physicalWrenchPresent: true;
+  reason: string;
+}) {
+  const { data } = await api.post<{ lease: TorqueTrainingLeaseApi }>(
+    `/torque-wrenches/${profileId}/usage-lease/takeover`,
+    payload
+  );
+  return data.lease;
+}
+
 export async function releaseTorqueTrainingLease(profileId: string, payload: { sessionId: string; leaseId: string; generation: number; reason?: string | null }) {
-  await api.post(`/torque-wrenches/${profileId}/usage-lease/release`, payload);
+  const { data } = await api.post<{ lease: TorqueTrainingLeaseApi }>(
+    `/torque-wrenches/${profileId}/usage-lease/release`,
+    payload
+  );
+  return data.lease;
 }
 
 export type TorqueTrainingAdminResultApi = {

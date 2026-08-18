@@ -94,7 +94,8 @@ export async function registerTorqueTrainingRoutes(app: FastifyInstance): Promis
     const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
     const params = trainingProgramIdParamsSchema.parse(request.params);
     const body = trainingLeaseTokenSchema.parse(request.body);
-    return { lease: await service.releaseTrainingLease({ profileId: params.id, clientDeviceId: clientDevice.id, ...body }) };
+    const released = await service.releaseTrainingLease({ profileId: params.id, clientDeviceId: clientDevice.id, ...body });
+    return { lease: released.status, result: released.result, status: released.status };
   });
 
   app.post('/admin/torque-training/programs', { preHandler: canAdmin }, async (request, reply) => {
