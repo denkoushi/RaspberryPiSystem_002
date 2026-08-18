@@ -20,6 +20,7 @@ The visible success is an atomic two-kiosk cutover. The Pi5 control plane is a n
 - [x] (2026-08-18 JST) Added focused contract, workflow, historical-register fixture, missing-host-fact and Ansible phase-boundary tests.
 - [x] (2026-08-18 JST) Updated the deployment guide and recovery runbook; exact-toolchain local deploy contracts passed with all temporary Docker resources removed.
 - [x] (2026-08-18 JST) Fixed the local deploy-contract toolchain at repository-declared pnpm 9.15.9 and proved frozen install plus the full contract run leave both pnpm lock files byte-identical.
+- [x] (2026-08-18 JST) Corrected hosted-CI integration gaps exposed by the first exact-head run: the pnpm 11 bulk-advisory client now audits an immutable temporary lockfile copy, the torque rehearsal builds every API workspace dependency, and regenerated SOP manifests bind the exact package-manager declaration.
 - [ ] Commit, push, open a PR, pass exact-head CI, merge to main, and confirm signed main artifacts.
 - [ ] Run the approved production cutover only after the exact main release-set v2 passes PREPARED for Pi5, StoneBase and Assembly-01.
 
@@ -37,6 +38,8 @@ The visible success is an atomic two-kiosk cutover. The Pi5 control plane is a n
   Evidence: both canonical validation and `.husky/pre-commit` now call the same exact Corepack wrapper, which reports `pnpm=9.15.9 declaration=pnpm@9.15.9`; a fake PATH pnpm test, frozen workspace install and the complete local deploy-contract run preserved lock SHA-256 `7cef4aaf71ecef7d7a6929f2b4bcc6200aa58cc9b18cbcf9406e5629c7f5541c` and workspace SHA-256 `253208fa7c1b64372c219b9e19cef15ed70ca93b66a4d5c4c4d2297a5aff8880`.
 - Observation: host-local Ansible rescue alone was insufficient at PREPARED, QUIESCED and resume boundaries because one unreachable or rescued host can leave another host progressing with incomplete cross-host facts.
   Evidence: the route now folds every explicitly selected host with missing facts defaulting to false, cleans Pi5 candidates before quiesce failure, restores every reachable kiosk to its captured previous image after quiesce failure, and does not start browsers until the aggregate healthy/OFF fact is true.
+- Observation: the hosted workspace audit intentionally uses pnpm 11 only as a client for npm's bulk-advisory endpoint, but running that client in the repository became invalid once `engines.pnpm` correctly required 9.15.9. The same CI run also showed that the focused API route rehearsal needs all API-imported workspace packages built, and that changing the package-manager declaration invalidates the generated SOP source-closure hash.
+  Evidence: the advisory client now receives a temporary copy of the resolved lockfile and a pnpm-11-compatible temporary manifest, leaving the repository untouched; the compatibility job builds `shared-types`, `kiosk-sop-core`, `part-search-core`, and `shelf-layout-core`; the canonical SOP generator changed only each manifest's `sourceSha256`.
 
 ## Decision Log
 

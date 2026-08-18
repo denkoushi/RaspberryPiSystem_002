@@ -1520,6 +1520,9 @@ jobs:
       - name: Build shared torque types and generate Prisma Client
         run: |
           pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
+          pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/shelf-layout-core build
           pnpm --filter @raspi-system/api exec prisma generate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return

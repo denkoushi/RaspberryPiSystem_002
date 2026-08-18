@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 628,
-    "totalLines": 172640,
-    "totalBytes": 13001858,
+    "totalLines": 172643,
+    "totalBytes": 13002957,
     "withFrontmatter": 287,
     "withStatus": 143,
     "sourceOfTruthDeclared": 104,
@@ -35488,8 +35488,8 @@
     },
     {
       "path": "docs/plans/release-set-v2-torque-cutover-execplan.md",
-      "lineCount": 159,
-      "byteSize": 23876,
+      "lineCount": 162,
+      "byteSize": 24975,
       "hasFrontmatter": false,
       "title": "Extend the signed release set for an atomic torque cutover",
       "status": null,
