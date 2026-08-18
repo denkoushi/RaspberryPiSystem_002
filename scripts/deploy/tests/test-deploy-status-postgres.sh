@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+PNPM="${ROOT}/scripts/ci/pnpm-exact.sh"
 ID="rolling-deploy-status-$(uuidgen | tr '[:upper:]' '[:lower:]')"
 CONTAINER="${ID}-postgres"
 VOLUME="${ID}-data"
@@ -125,16 +126,16 @@ export JWT_ACCESS_SECRET='test-access-secret-1234567890'
 export JWT_REFRESH_SECRET='test-refresh-secret-1234567890'
 
 stage "build shared packages"
-pnpm --dir "$ROOT" --filter @raspi-system/shared-types build
-pnpm --dir "$ROOT" --filter @raspi-system/part-search-core build
-pnpm --dir "$ROOT" --filter @raspi-system/shelf-layout-core build
+"$PNPM" --dir "$ROOT" --filter @raspi-system/shared-types build
+"$PNPM" --dir "$ROOT" --filter @raspi-system/part-search-core build
+"$PNPM" --dir "$ROOT" --filter @raspi-system/shelf-layout-core build
 
 stage "generate Prisma client"
-pnpm --dir "$ROOT/apps/api" exec prisma generate
+"$PNPM" --dir "$ROOT/apps/api" exec prisma generate
 
 stage "apply and verify migrations"
-pnpm --dir "$ROOT/apps/api" exec prisma migrate deploy
-pnpm --dir "$ROOT/apps/api" exec prisma migrate status
+"$PNPM" --dir "$ROOT/apps/api" exec prisma migrate deploy
+"$PNPM" --dir "$ROOT/apps/api" exec prisma migrate status
 migration_anomalies="$(
   docker exec "$CONTAINER" psql -U postgres -d borrow_return -Atqc \
     'SELECT COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL;'
@@ -153,5 +154,5 @@ WHERE "apiKey" = 'client-key-raspberrypi4-kiosk1';
 SQL
 
 stage "run deploy-status API tests"
-pnpm --dir "$ROOT/apps/api" test -- src/routes/system/__tests__/deploy-status-normalize.test.ts src/routes/system/__tests__/deploy-status.test.ts
+"$PNPM" --dir "$ROOT/apps/api" test -- src/routes/system/__tests__/deploy-status-normalize.test.ts src/routes/system/__tests__/deploy-status.test.ts
 echo 'PASS: isolated deploy-status PostgreSQL integration'

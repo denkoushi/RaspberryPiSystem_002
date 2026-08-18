@@ -2,7 +2,7 @@
 id: deployment-guide
 title: 標準デプロイ手順
 status: active
-last_verified: 2026-08-13
+last_verified: 2026-08-18
 ---
 
 # デプロイメントガイド
@@ -38,20 +38,26 @@ scripts/update-all-clients.sh <branch> <inventory> --torque-cutover --limit rasp
 
 `--torque-cutover`はPi5と1台以上のPi4を含む明示的な`--limit`を要求し、`--full-fleet`を許可しない。選択されたPi4はすべて、lease、client key、API/TLS、外付けBluetooth adapter、HID by-id identity、parser profileが完全な`torque_agent_enabled=true` inventoryでなければ、端末停止前に拒否される。したがって今回の実行limitは上記2台を厳守し、未設定の4台は推測・自動生成・有効化しない。将来は外部アンテナとinventoryを正式に整備した端末だけを明示limitへ追加でき、wrapper変更は不要である。
 
-選択された全Pi4のbrowser、旧torque-agent、guard intentを停止して外付けBluetooth OFFを確認し、8秒leaseに対して9秒待ってからPi5を更新する。Pi4では明示allowlistの`torque-agent`だけをpull・停止状態で配置し、NFC/barcodeの稼働imageと環境を変更しない。全選択端末の配置が成功した後だけagentを起動し、全台のhealthとBluetooth OFFを集約確認してからbrowserを再開する。Pi5またはPi4の途中失敗では再開せずOFFを維持し、切替を試みたPi4は既存rollback imageへ停止状態で戻す。
+`--torque-cutover`は既存release-set repository・schema・署名経路が公開する`-torque-v2` compositionを要求する。署名済みv2はAPI/Webのexact digestに加え、別のmain commitでbuild済みのtorque-agent multi-arch digest、その元source/run/job、両architectureのTrivy採用証跡、protocol contract version、exact 3-component tupleの組合せrehearsalを一つに束ねる。torque-agentを現在のorchestration SHAから推測したtagへ置換したり、手動retagしたりしない。通常Deployの既存v1 tag/jobはtorque adoptionに依存せず、そのまま維持する。
+
+wrapperはこのv2と参照証跡を一度だけ検証し、exact image、protocol、明示limitのhostをrun-scoped planへ正規化して既存Ansible roleへ渡す。各Pi4は段階結果を一つの構造化resultとして返し、全台判定は各phaseで一度だけ集約する。設定済みPi4の追加にhost名分岐やwrapper改修は不要で、正式なinventory追加と明示limitだけを使う。
+
+停止前に`PREPARED`を完了する。Pi5と全選択Pi4へ候補imageを起動せず事前pullし、期待digest、architecture、空き容量、現在imageの復旧可能性を各hostで確認する。これはservice無停止の非破壊stagingであり、diskは変更するためread-onlyとは呼ばない。一台でも失敗すれば候補とrun-scoped stateだけを清掃し、serviceを止めずに終了する。
+
+`PREPARED`成功後に、選択された全Pi4のbrowser、旧torque-agent、guard intentを停止して外付けBluetooth OFFを確認し、8秒leaseに対して9秒待ってからPi5を更新する。Pi5がexact image IDsに一致する場合は既存settled経路でno-opになる。Pi4では明示allowlistの`torque-agent`だけを停止状態で配置し、NFC/barcodeの稼働imageと環境を変更しない。全選択端末の配置が成功した後だけagentを起動し、全台のhealthとBluetooth OFFを集約確認してからbrowserを再開する。Pi5またはPi4の途中失敗では再開せずOFFを維持し、切替を試みたPi4は`PREPARED`で捕捉した既存rollback imageへ停止状態で戻す。
 
 - mutationにはexact `--limit`または明示的な`--full-fleet`が必須である。暗黙の全fleet更新は行わない。
 - 引数なしの通常実行はsystemd unitの終了まで待つ。`--detach`は`runId`を返し、`--status`はsystemd statusとjournalだけを読む。
 - `--print-plan`は`ansible-inventory`と`ansible-playbook --list-hosts/--list-tasks`だけを実行し、選択host、profile、release SHA、GHCR tag、順序を表示する。remote hostやruntimeは変更しない。
 - CLIの未文書化されたmutation/control引数はfail-closedで拒否される。
-- Pi5で公開release-setからAPI/Web digestを解決し、Pi3は公開image labelから完成tarのSHA-256を一つだけ得る。Ansibleがprepare、switch、health、rescue rollbackを所有する。
+- Pi5で公開release-setからAPI/Web digestを解決する。torque cutoverでは署名済みschema v2からtorque-agent digestとprotocol versionも解決し、署名済みadoption predicateと組合せtupleを検証する。Pi3は公開image labelから完成tarのSHA-256を一つだけ得る。Ansibleがprepare、switch、health、rescue rollbackを所有する。
 - mutation開始時にPi5 executorが選択済みPi4/Pi3のSSH portを各1回だけ確認する。3秒以内に接続できない任意端末は再試行せず `optional-host-preflight` に記録して除外する。Pi5を含む選択ではPi5を必ず実行し、任意端末だけの選択が全台offlineならmutation前に失敗する。
 
 運用者はSSHのユーザー名・ホスト名・ポートを手入力しない。wrapperがinventoryのPi5 executor (`deploy_executor_host`、`ansible_user`、`ansible_port`) を解決し、Pi5上の標準Ansible/Vault設定を使用する。clean worktreeを開始する時点で、標準運用が指定するcredential pathの存在だけを内容非参照で確認する。解決できない、pathが存在しない、credentialが利用できない、またはinventoryが想定外なら実行せず停止し、CI再実行・依存導入・symlink発明へ進まない。credentialのコピー、権限変更、今回限りの一時symlinkは標準手順にしない。
 
 wrapperの出力は次の契約で扱う。
 
-- `--print-plan`のJSONで `releaseSha`、`inventory`、`limit`/`fullFleet`、`executionOrder[].profile`、`executionOrder[].hosts`、`executionOrder[].images` を希望scopeとして記録する。対象host・profile・image tagがCIの成功したrelease artifact manifestと一致しない場合は停止する。
+- `--print-plan`のJSONで `releaseSha`、`inventory`、`limit`/`fullFleet`、`executionOrder[].profile`、`executionOrder[].hosts`、`executionOrder[].images` を希望scopeとして記録する。torque cutoverでは`artifactResolution=signed-release-set-v2-before-service-quiesce`と、`PREPARED`から`BROWSERS_RESUMED`までの`cutoverPhases`も確認する。plan時点のtorque image表示は署名済みv2から実行時に解決するlocatorであり、digestの最終証拠はmutation開始後・Ansible開始前の`release-set-v2-prepared` journal eventである。
 - mutationのJSONで返された `runId` と `statusCommand` だけを後続操作へ渡す。別のrun IDを作らず、別のDeployを起動しない。
 - `--status RUN_ID`のJSONに含まれるsystemdのraw fields（`ActiveState`、`SubState`、`Result`、`ExecMainStatus`）とjournalを、preflight除外、実行状態、Ansible recap、health、rollbackの一次証拠として読む。systemd oneshotの正常完了は実績上 `ActiveState=active`、`SubState=exited`、`Result=success`、`ExecMainStatus=0` である。`active`/`inactive`だけでDeploy中・完了を判定しない。`SubState=running`等の非終端なら「実行中」、`SubState=exited`かつ上記Result/ExecMainStatusとrecapが合格なら「完了」、runを開始していなければ「未実行」と報告し、raw fieldsを併記する。手書きの監視shellや独自の終了判定を追加しない。
 

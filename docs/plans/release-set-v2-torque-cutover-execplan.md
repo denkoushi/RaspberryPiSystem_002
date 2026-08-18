@@ -15,10 +15,11 @@ The visible success is an atomic two-kiosk cutover. The Pi5 control plane is a n
 - [x] (2026-08-18 JST) Confirmed that torque-agent source and Dockerfile are unchanged from artifact source `3464256da11ee77bebfceb4fafcff4524f5ac8ca` to the base commit.
 - [x] (2026-08-18 JST) Confirmed the existing torque-agent multi-architecture index and child digests and the original ARM64/ARMv7 Trivy-success job.
 - [x] (2026-08-18 JST) Created this ExecPlan and `docs/decisions/ADR-20260818-release-set-v2-component-adoption.md` before source edits.
-- [ ] Implement backward-compatible release-set schema v2, the torque component adoption predicate, and combination compatibility evidence.
-- [ ] Implement service-uninterrupted PREPARED staging before quiesce by reusing the standard wrapper and Ansible roles.
-- [ ] Add focused contract, workflow, fixture and Ansible phase-boundary tests.
-- [ ] Update the deployment guide and recovery runbook, then run bounded local validation.
+- [x] (2026-08-18 JST) Implemented backward-compatible release-set schema v2, the non-provenance torque component adoption predicate, and signed tuple compatibility evidence.
+- [x] (2026-08-18 JST) Implemented service-uninterrupted PREPARED staging and explicit aggregate PREPARED/QUIESCED boundaries by reusing the standard wrapper and Ansible roles.
+- [x] (2026-08-18 JST) Added focused contract, workflow, historical-register fixture, missing-host-fact and Ansible phase-boundary tests.
+- [x] (2026-08-18 JST) Updated the deployment guide and recovery runbook; exact-toolchain local deploy contracts passed with all temporary Docker resources removed.
+- [x] (2026-08-18 JST) Fixed the local deploy-contract toolchain at repository-declared pnpm 9.15.9 and proved frozen install plus the full contract run leave both pnpm lock files byte-identical.
 - [ ] Commit, push, open a PR, pass exact-head CI, merge to main, and confirm signed main artifacts.
 - [ ] Run the approved production cutover only after the exact main release-set v2 passes PREPARED for Pi5, StoneBase and Assembly-01.
 
@@ -32,11 +33,18 @@ The visible success is an atomic two-kiosk cutover. The Pi5 control plane is a n
   Evidence: `release_kiosk/tasks/prepare.yml` performs rollback capture and `docker image pull`; `deploy-release-standard.yml` currently orders torque quiesce before Pi5 and kiosk roles.
 - Observation: Pi5 preparation already detects the desired API/Web image IDs and classifies a matching running release as settled, but its pull and capacity checks currently happen after kiosk quiesce.
   Evidence: `release_pi5/tasks/prepare.yml` sets `release_pi5_same_release` from exact image IDs and maps it to route `settled`.
+- Observation: the canonical local deploy contracts and the pre-commit hook were invoking PATH pnpm 11.19.0 even though `packageManager` declares pnpm 9.15.9. pnpm 11 ignored the repository's package-level overrides and rewrote `pnpm-lock.yaml` and `pnpm-workspace.yaml`; after the deploy scripts were fixed, the remaining hook correctly failed the new exact engine check and exposed the last bare entrypoint.
+  Evidence: both canonical validation and `.husky/pre-commit` now call the same exact Corepack wrapper, which reports `pnpm=9.15.9 declaration=pnpm@9.15.9`; a fake PATH pnpm test, frozen workspace install and the complete local deploy-contract run preserved lock SHA-256 `7cef4aaf71ecef7d7a6929f2b4bcc6200aa58cc9b18cbcf9406e5629c7f5541c` and workspace SHA-256 `253208fa7c1b64372c219b9e19cef15ed70ca93b66a4d5c4c4d2297a5aff8880`.
+- Observation: host-local Ansible rescue alone was insufficient at PREPARED, QUIESCED and resume boundaries because one unreachable or rescued host can leave another host progressing with incomplete cross-host facts.
+  Evidence: the route now folds every explicitly selected host with missing facts defaulting to false, cleans Pi5 candidates before quiesce failure, restores every reachable kiosk to its captured previous image after quiesce failure, and does not start browsers until the aggregate healthy/OFF fact is true.
 
 ## Decision Log
 
 - Decision: Extend the existing signed release-set to schema version 2 instead of creating a torque-specific release source of truth.
-  Rationale: v1 remains readable and the same OCI storage, signature identity, parser and verification boundary can be reused. A parallel release system would recreate identity drift.
+  Rationale: v1 remains readable and the same OCI repository, signature identity, parser and verification boundary are reused. The normal v1 job/tag remains independent; opt-in cutover resolves a `-torque-v2` composition tag in that same release-set system, so torque evidence cannot block an unrelated normal deployment. A parallel release system would recreate identity drift.
+  Date/Author: 2026-08-18 / Codex.
+- Decision: Trigger adoption, combination rehearsal and v2 composition only for bounded torque contract surfaces and torque inventory changes.
+  Rationale: unrelated feature changes retain the existing v1 checks and artifact resolution. Torque-agent source or Dockerfile changes deliberately select the API/Web pair because a new v2 must bind and rehearse one complete three-component tuple; NFC/barcode agent changes do not. Inventory changes select v2 because a newly eligible torque kiosk must not depend on a later wrapper branch or an absent exact-main composition.
   Date/Author: 2026-08-18 / Codex.
 - Decision: Model reuse of the `3464256d` artifact as signed component adoption, never as a new build provenance statement.
   Rationale: the bytes were built by the original workflow. The new statement proves later adoption using original source/run/job, an unchanged source closure, current scans, index/child digests and a fixed scan policy without misrepresenting who built them.
@@ -50,10 +58,16 @@ The visible success is an atomic two-kiosk cutover. The Pi5 control plane is a n
 - Decision: Treat PREPARED as service-uninterrupted, non-destructive staging rather than read-only verification.
   Rationale: `docker pull`, local digest materialization, rollback tags and run directories change disk state. They are safe before quiesce because running services are untouched and a failed candidate can be cleaned without stopping them.
   Date/Author: 2026-08-18 / Codex.
+- Decision: Use `packageManager` as the pnpm toolchain source of truth and make `engines.pnpm` the same exact version.
+  Rationale: an open-ended engine range allowed a locally installed pnpm 11 to mutate a pnpm 9 lockfile. Canonical deploy validation and the commit hook now resolve 9.15.9 through the shared Corepack wrapper, apply frozen lockfile semantics to installs, log actual versions before side effects, and ignore a PATH-level pnpm executable.
+  Date/Author: 2026-08-18 / Codex.
+- Decision: Represent cross-host cutover progress as explicit aggregate phase facts with absent host facts treated as failure.
+  Rationale: the wrapper verifies the signed v2 tuple once and normalizes one immutable run-scoped `TorqueCutoverPlan` containing the exact components, protocol and selected inventory hosts. Each kiosk appends `prepared`, `quiesced`, `agentStaged`, `agentHealthyOff` and `browserResumed` to one structured host result. Each boundary folds all selected host results exactly once and delegates the aggregate fact to the existing Pi5 inventory host; Pi5 reads that fact instead of repeating the predicate. This avoids dependence on whichever kiosk happens to be first or reachable while preserving the normal success path. Shared failure performs cleanup or fail-closed restoration on every reachable selected kiosk and prevents later control-plane or browser phases. No kiosk host name is coded into the coordinator: adding a fully configured kiosk requires only inventory plus the explicit limit.
+  Date/Author: 2026-08-18 / Codex.
 
 ## Outcomes & Retrospective
 
-Implementation is in progress. The current production control plane remains healthy and the two selected torque kiosks remain intentionally OFF after the previous fail-closed run. No new production mutation is permitted until an exact merged-main v2 manifest is signed, its declared component tuple is verified, and service-uninterrupted PREPARED staging succeeds on all three selected hosts.
+Implementation and local validation are complete; PR, hosted CI, merge and production cutover remain. The current production control plane remains healthy and the two selected torque kiosks remain intentionally OFF after the previous fail-closed run. No new production mutation is permitted until an exact merged-main v2 manifest is signed, its declared component tuple is verified, and service-uninterrupted PREPARED staging succeeds on all three selected hosts.
 
 ## Context and Orientation
 
@@ -142,4 +156,4 @@ The custom adoption predicate type is distinct from SLSA build provenance. It re
 
 The wrapper passes exact references through variables such as `release_pi5_api_image`, `release_pi5_web_image`, and `release_kiosk_torque_image`. Ansible consumes those references and never reconstructs component tags from `release_sha` in torque-cutover mode. Facts marking prepared Pi5 and kiosk candidates are run-scoped and are accepted only when their run ID and exact digest match the sealed v2 manifest.
 
-Revision note (2026-08-18): created after the user approved A-minimal and the monitoring review required schema-v2 reuse, combination compatibility, bounded evidence, signed Trivy adoption, and service-uninterrupted staging before quiesce.
+Revision note (2026-08-18): created after the user approved A-minimal and the monitoring review required schema-v2 reuse, combination compatibility, bounded evidence, signed Trivy adoption, and service-uninterrupted staging before quiesce. Updated after implementation to record the exact-pnpm root cause, aggregate host-boundary corrections, cleanup guarantees, and successful local validation.

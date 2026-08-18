@@ -39,7 +39,7 @@ Individually safe artifacts are insufficient. The API, Web controller and localh
 
 ## Decision
 
-The existing signed release set is extended through a backward-compatible schema version 2. Schema version 1 remains readable and keeps its current API/Web semantics. Version 2 adds optional component identity and compatibility sections; it does not create an independent torque release source of truth. The same strict parser, OCI publication, signature identity and standard deploy wrapper remain authoritative.
+The existing signed release set is extended through a backward-compatible schema version 2. Schema version 1 remains readable and keeps its current API/Web job, tag and semantics without depending on torque adoption. Version 2 adds optional component identity and compatibility sections and is published as an opt-in `-torque-v2` composition tag in the same OCI repository; it does not create an independent torque release source of truth. The same strict parser, OCI publication, signature identity and standard deploy wrapper remain authoritative.
 
 For the initial torque cutover, version 2 binds exactly three components: ARM64 API, ARM64 Web, and the ARM64/ARMv7 torque-agent index. Each component has its own immutable digest and source SHA. The release-set source SHA identifies orchestration and composition; it is not required to equal the torque-agent source SHA.
 
@@ -52,6 +52,8 @@ Evidence is limited to two systems. The signed release-set v2 is the durable art
 For torque cutover, PREPARED means service-uninterrupted, non-destructive staging. Before quiesce, Pi5 and every explicitly selected torque kiosk pull but do not start the exact candidate images. They verify expected digest, target architecture, disk headroom and recoverability of current image bytes. A staging failure cleans only candidate and run-scoped state created by that run and leaves all running services unchanged. Calling this phase read-only is prohibited because image pull and rollback tags change local disk state.
 
 After PREPARED, the existing route performs quiesce, control-plane reconciliation, stopped agent staging, aggregate agent health/OFF verification and browser resume. A Pi5 already running the exact API/Web image IDs follows the existing settled route and does not switch slots or rerun migrations. One selected kiosk failing stage or agent health causes every selected kiosk to restore its captured previous torque image and remain OFF. Browsers restart only after every selected agent is healthy, owns no lease or token, the guard is active and Bluetooth is OFF.
+
+The public wrapper verifies release-set v2 and its referenced adoption evidence once, then normalizes the exact tuple and selected inventory hosts into one typed run-scoped plan. Kiosk roles return their phase observations through one structured per-host result. Each aggregate boundary folds those results once on a deterministic inventory-selected coordinator; the Pi5 control-plane play consumes that aggregate rather than independently reimplementing the same predicate. The phases remain the bounded `PREPARED`, `QUIESCED`, `CONTROL_PLANE`, `AGENTS_STAGED`, `AGENTS_HEALTHY_OFF`, and `BROWSERS_RESUMED` sequence. This is an internal simplification of the existing wrapper and roles, not a new deployment framework.
 
 Only kiosks named by an explicit limit and carrying complete torque inventory are eligible. Missing inventory is neither guessed nor generated. NFC and barcode components, services, images and dependencies do not change in this cutover.
 

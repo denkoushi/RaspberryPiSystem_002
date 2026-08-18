@@ -2,7 +2,7 @@
 id: quick-start-deployment
 title: デプロイ・クイックスタート
 status: active
-last_verified: 2026-07-16
+last_verified: 2026-08-18
 ---
 
 # デプロイ・クイックスタート
@@ -38,7 +38,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --torque
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --torque-cutover --limit 'raspberrypi5:raspi4-kensaku-stonebase01:raspi4-assembly-01' --detach
 ```
 
-今回の実行ではこの明示limitの2台だけをOFFにしてからPi5を更新し、検証済みtorque-agentだけを停止状態で配置する。両台の成功後だけagentとbrowserを再開し、NFC/barcodeは現在の稼働versionを維持する。`--torque-cutover`自体はホスト名を固定せず、明示選択された全Pi4に完全なtorque inventoryを要求するため、未設定端末を推測・自動有効化しない。将来端末は外部アンテナとinventoryを正式に整備してから別展開でlimitへ追加する。
+今回の実行では、署名済みrelease-set v2が束ねたAPI/Web/torque-agentのexact digest、protocol version、adoption証跡、組合せrehearsalを最初に検証する。続いてPi5と明示limitの2台へ候補を起動せず事前pullし、全台のdigest・architecture・空き容量・rollback元が揃った`PREPARED`の後だけ2台をOFFにする。両agentのhealthy／所有権なし／Bluetooth OFFを集約確認した後だけbrowserを再開し、NFC/barcodeは現在の稼働versionを維持する。`--torque-cutover`自体はホスト名を固定せず、明示選択された全Pi4に完全なtorque inventoryを要求するため、未設定端末を推測・自動有効化しない。将来端末は外部アンテナとinventoryを正式に整備してから別展開でlimitへ追加する。
 
 TalkPlaza Pi5は実機が存在しないため、現時点はローカルのinventory解析、profile contract、playbook syntax-checkだけを行う。公開 `--print-plan`、SSH、実機デプロイは行わない。コマンドは [デプロイメントガイド](./deployment.md#実行前確認) に記載する。
 

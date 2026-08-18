@@ -4,6 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+PNPM="${ROOT}/scripts/ci/pnpm-exact.sh"
 CADDY_IMAGE="${WEB_STATIC_ROUTING_CADDY_IMAGE:-caddy:2}"
 DIST_DIR="${WEB_STATIC_ROUTING_DIST_DIR:-$ROOT/apps/web/dist}"
 RUN_ID="web-static-routing-$$"
@@ -22,7 +23,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-for command in docker curl grep sed node pnpm; do
+for command in docker curl grep sed node corepack; do
   command -v "$command" >/dev/null 2>&1 || fail "required command is missing: $command"
 done
 docker info >/dev/null 2>&1 || fail 'a running Docker daemon is required'
@@ -35,10 +36,10 @@ node -e '
 if [[ "${WEB_STATIC_ROUTING_SKIP_BUILD:-0}" != 1 ]]; then
   (
     cd "$ROOT"
-    pnpm --filter @raspi-system/shared-types build
-    pnpm --filter @raspi-system/part-search-core build
-    pnpm --filter @raspi-system/shelf-layout-core build
-    pnpm --filter @raspi-system/web build
+    "$PNPM" --filter @raspi-system/shared-types build
+    "$PNPM" --filter @raspi-system/part-search-core build
+    "$PNPM" --filter @raspi-system/shelf-layout-core build
+    "$PNPM" --filter @raspi-system/web build
   )
 fi
 [[ -f "$DIST_DIR/index.html" ]] || fail "Web build is missing: $DIST_DIR/index.html"

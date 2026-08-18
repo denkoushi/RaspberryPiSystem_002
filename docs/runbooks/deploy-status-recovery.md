@@ -2,7 +2,7 @@
 id: deploy-status-recovery
 title: デプロイ停止・復旧Runbook
 status: active
-last_verified: 2026-08-08
+last_verified: 2026-08-18
 ---
 
 # デプロイ停止・復旧Runbook
@@ -22,6 +22,8 @@ scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible
 - `deploy-release-standard.yml` のplay順序と実行role
 - `release_pi5`、`release_kiosk`、`release_signage` のhealth/rollback結果
 - Ansible recapのfailed/unreachable
+
+torque cutoverではjournalの最終到達境界を確認する。`PREPARED`失敗は全serviceが変更前のままなので、候補清掃結果を確認してから新しいcanonical runで再試行できる。`QUIESCED`以降の失敗は、選択Pi4すべてでbrowser、agent、BluetoothがOFFであり、切替を試みたimageが捕捉済みprevious imageへ戻ったことを確認する。片側だけを手動再開しない。Pi5がhealthyなら対称性だけを理由に戻さず、exact main release-setを用いる次のcanonical runで復旧する。
 
 実行中のrunへ別のmutationを重ねない。既存runの終了結果を確認してから次を判断する。
 

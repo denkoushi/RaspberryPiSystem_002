@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+PNPM="${ROOT}/scripts/ci/pnpm-exact.sh"
 RUN_ID="postgres-role-contract-$(uuidgen | tr '[:upper:]' '[:lower:]')"
 CONTAINER="${RUN_ID}-postgres"
 VOLUME="${RUN_ID}-data"
@@ -58,8 +59,8 @@ docker exec "$CONTAINER" pg_isready -U postgres -d borrow_return >/dev/null
 
 export PATH="${NODE20_BIN_DIR:-/opt/homebrew/Cellar/node@20/20.20.2/bin}:$PATH"
 export DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${PORT}/borrow_return"
-pnpm --dir "$ROOT/apps/api" exec prisma generate >/dev/null
-pnpm --dir "$ROOT/apps/api" exec prisma migrate deploy >/dev/null
+"$PNPM" --dir "$ROOT/apps/api" exec prisma generate >/dev/null
+"$PNPM" --dir "$ROOT/apps/api" exec prisma migrate deploy >/dev/null
 
 docker exec -i "$CONTAINER" psql -U postgres -d borrow_return \
   -v migration_password="$MIGRATION_PASSWORD" \
@@ -69,7 +70,7 @@ docker exec -i "$CONTAINER" psql -U postgres -d borrow_return \
 MIGRATION_DATABASE_URL="postgresql://raspi_migrator:${MIGRATION_PASSWORD}@127.0.0.1:${PORT}/borrow_return"
 APP_DATABASE_URL="postgresql://raspi_app:${APP_PASSWORD}@127.0.0.1:${PORT}/borrow_return"
 
-DATABASE_URL="$MIGRATION_DATABASE_URL" pnpm --dir "$ROOT/apps/api" exec prisma migrate status >/dev/null
+DATABASE_URL="$MIGRATION_DATABASE_URL" "$PNPM" --dir "$ROOT/apps/api" exec prisma migrate status >/dev/null
 
 psql "$APP_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 <<'SQL'
 BEGIN;

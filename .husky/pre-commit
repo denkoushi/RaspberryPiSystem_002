@@ -1,6 +1,7 @@
 # Lint check before commit
 echo "Running lint check..."
-pnpm lint --max-warnings=0
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+"${REPO_ROOT}/scripts/ci/pnpm-exact.sh" lint --max-warnings=0
 
 if [ $? -ne 0 ]; then
   echo "❌ Lint check failed. Please fix lint errors before committing."
@@ -8,4 +9,3 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "✅ Lint check passed."
-
