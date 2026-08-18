@@ -1,0 +1,3 @@
+---
+release_torque_lease_ttl_seconds: 8
+release_torque_guard_grace_seconds: 1

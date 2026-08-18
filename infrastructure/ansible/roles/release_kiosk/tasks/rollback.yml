@@ -43,18 +43,31 @@
   loop: "{{ release_kiosk_rollback_prerequisite_stats.results | default([]) }}"
   no_log: true
 
+- name: Restore Pi4 agents from the captured image tags without restarting torque ownership
+  ansible.builtin.command: >-
+    docker compose --project-name {{ release_kiosk_compose_project | quote }}
+    -f {{ release_kiosk_rollback_compose | quote }}
+    create --force-recreate --no-build {{ release_kiosk_services | join(' ') }}
+  when:
+    - release_kiosk_switch_attempted | default(false) | bool
+    - release_torque_cutover | default(false) | bool
+  changed_when: true
+
 - name: Restore Pi4 agents from the captured image tags
   ansible.builtin.command: >-
     docker compose --project-name {{ release_kiosk_compose_project | quote }}
     -f {{ release_kiosk_rollback_compose | quote }}
     up -d --no-build {{ release_kiosk_services | join(' ') }}
-  when: release_kiosk_switch_attempted | default(false) | bool
+  when:
+    - release_kiosk_switch_attempted | default(false) | bool
+    - not (release_torque_cutover | default(false) | bool)
   changed_when: true
 
 - name: Restart restored Pi4 display unit
   ansible.builtin.systemd:
     name: kiosk-browser.service
     state: restarted
+  when: not (release_torque_cutover | default(false) | bool)
 
 - name: Run the restored status-agent service once before its timer
   ansible.builtin.systemd:
@@ -68,6 +81,7 @@
 
 - name: Verify the complete restored Pi4 runtime
   ansible.builtin.import_tasks: health_checks.yml
+  when: not (release_torque_cutover | default(false) | bool)
 
 - name: Record completed Pi4 rollback
   ansible.builtin.set_fact:
@@ -78,3 +92,6 @@
     msg: >-
       Pi4 candidate failed health verification on {{ inventory_hostname }};
       previous files and agent images were restored.
+  when:
+    - release_kiosk_rollback_terminal_failure | default(true) | bool
+    - not (release_torque_cutover | default(false) | bool)

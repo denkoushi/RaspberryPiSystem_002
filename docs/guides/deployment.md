@@ -30,6 +30,16 @@ scripts/update-all-clients.sh <branch> <inventory> --print-plan [--limit PATTERN
 scripts/update-all-clients.sh --status RUN_ID [--inventory INVENTORY]
 ```
 
+トルクレンチ所有権契約をAPI/Webと既設agentへ同時に切り替える場合だけ、次の限定モードを使う。現在の本番対象は、torque設定が完成しているStoneBaseとAssembly-01の2台に限る。
+
+```text
+scripts/update-all-clients.sh <branch> <inventory> --torque-cutover --limit raspberrypi5:raspi4-kensaku-stonebase01:raspi4-assembly-01 [--detach]
+```
+
+`--torque-cutover`はPi5と1台以上のPi4を含む明示的な`--limit`を要求し、`--full-fleet`を許可しない。選択されたPi4はすべて、lease、client key、API/TLS、外付けBluetooth adapter、HID by-id identity、parser profileが完全な`torque_agent_enabled=true` inventoryでなければ、端末停止前に拒否される。したがって今回の実行limitは上記2台を厳守し、未設定の4台は推測・自動生成・有効化しない。将来は外部アンテナとinventoryを正式に整備した端末だけを明示limitへ追加でき、wrapper変更は不要である。
+
+選択された全Pi4のbrowser、旧torque-agent、guard intentを停止して外付けBluetooth OFFを確認し、8秒leaseに対して9秒待ってからPi5を更新する。Pi4では明示allowlistの`torque-agent`だけをpull・停止状態で配置し、NFC/barcodeの稼働imageと環境を変更しない。全選択端末の配置が成功した後だけagentを起動し、全台のhealthとBluetooth OFFを集約確認してからbrowserを再開する。Pi5またはPi4の途中失敗では再開せずOFFを維持し、切替を試みたPi4は既存rollback imageへ停止状態で戻す。
+
 - mutationにはexact `--limit`または明示的な`--full-fleet`が必須である。暗黙の全fleet更新は行わない。
 - 引数なしの通常実行はsystemd unitの終了まで待つ。`--detach`は`runId`を返し、`--status`はsystemd statusとjournalだけを読む。
 - `--print-plan`は`ansible-inventory`と`ansible-playbook --list-hosts/--list-tasks`だけを実行し、選択host、profile、release SHA、GHCR tag、順序を表示する。remote hostやruntimeは変更しない。
@@ -94,7 +104,7 @@ scripts/update-all-clients.sh
 
 1. 対象branchが指す40文字SHAをCIの成功結果と照合し、inventoryを確定する。公開CLIはbranchを受け取り、plan出力の`releaseSha`で実値を確認する。
 2. 対象SHAのrequired CI、CodeQL、gitleaksと、対象profileのrelease artifact manifest/digestが成功・存在することを確認する。
-3. Deploy専用のclean worktreeを使い、保護対象の未コミットWIPを含めない。開始時に標準credential pathの存在だけを内容非参照で確認し、無ければ即停止する。元repoのWIPをcheckout、stash、reset、clean、編集で動かさない。
+3. Deploy専用のclean worktreeを使い、保護対象の未コミットWIPを含めない。開始時に標準credential pathの存在だけを内容非参照で確認し、無ければ即停止する。credentialがprimary worktreeの既存標準pathにだけ存在する場合は、Ansible標準の`ANSIBLE_VAULT_PASSWORD_FILE`でその既存ファイルを読み取り参照する。秘密のコピー、symlink、新規保存は行わない。元repoのWIPをcheckout、stash、reset、clean、編集で動かさない。
 4. read-onlyの対象確認を実行する。
 
 ```bash

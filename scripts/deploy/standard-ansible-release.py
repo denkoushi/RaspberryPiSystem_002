@@ -32,6 +32,14 @@ SAFE_BRANCH = re.compile(r"^(?![-./])(?!.*(?:\.\.|//|@\{|\.lock(?:/|$)))[A-Za-z0
 SAFE_USER = re.compile(r"^[a-z_][a-z0-9_-]{0,30}$")
 PROFILES = ("pi5", "pi4", "pi3")
 PROFILE_GROUP = {"pi5": "server", "pi4": "kiosk", "pi3": "signage"}
+TORQUE_CUTOVER_SERVICE = "torque-agent"
+TORQUE_USB_ID = re.compile(r"^[0-9a-f]{4}$")
+TORQUE_SERIAL = re.compile(r"^[A-Za-z0-9._-]{1,120}$")
+TORQUE_LINK_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,126}-event-kbd$")
+TORQUE_DEVICE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,126}$")
+TORQUE_BLUETOOTH_UNIQ = re.compile(r"^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$")
+TORQUE_URL = re.compile(r"^https?://[^\s{}]+$")
+TORQUE_URL_VARIABLE = re.compile(r"^\{\{\s*[A-Za-z_][A-Za-z0-9_.]*\s*\}\}$")
 OPTIONAL_HOST_CONNECT_TIMEOUT_SECONDS = 3.0
 SAFE_INVENTORY_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,252}$")
 OPTIONAL_ADDRESS_ALIASES = {
@@ -77,6 +85,7 @@ def parser() -> Parser:
     value.add_argument("--full-fleet", action="store_true")
     value.add_argument("--print-plan", action="store_true")
     value.add_argument("--detach", action="store_true")
+    value.add_argument("--torque-cutover", action="store_true")
     value.add_argument("--status")
     value.add_argument("--execute-standard-route", action="store_true", help=argparse.SUPPRESS)
     value.add_argument("--sha", help=argparse.SUPPRESS)
@@ -102,7 +111,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     if args.print_plan and args.detach:
         raise UsageError("--print-plan cannot be combined with --detach")
     if args.status:
-        if any((args.branch, args.limit, args.full_fleet, args.print_plan, args.detach, args.execute_standard_route)):
+        if any((args.branch, args.limit, args.full_fleet, args.print_plan, args.detach, args.torque_cutover, args.execute_standard_route)):
             raise UsageError("--status accepts only RUN_ID and optional --inventory")
         if not RUN_ID.fullmatch(args.status):
             raise UsageError("run ID must use YYYYMMDD-HHMMSS-<6 lowercase hex>")
@@ -112,6 +121,8 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         raise UsageError("branch and inventory are required")
     if not SAFE_BRANCH.fullmatch(args.branch) or args.branch.endswith((".", "/")):
         raise UsageError("branch is not a safe Git branch name")
+    if args.torque_cutover and (args.full_fleet or not args.limit):
+        raise UsageError("--torque-cutover requires an exact --limit and cannot use --full-fleet")
     if not args.execute_standard_route and not args.print_plan and not (args.limit or args.full_fleet):
         raise UsageError("mutation requires explicit --limit PATTERN or --full-fleet")
     if args.execute_standard_route:
@@ -177,6 +188,96 @@ def selected_profiles(document: dict[str, Any]) -> tuple[tuple[str, tuple[str, .
     if selected - supported:
         raise UsageError("target selection includes hosts outside server/kiosk/signage")
     return tuple(result)
+
+
+def validate_torque_cutover_selection(
+    document: dict[str, Any],
+    selection: tuple[tuple[str, tuple[str, ...]], ...],
+) -> None:
+    profiles = tuple(profile for profile, _hosts in selection)
+    if profiles != ("pi5", "pi4"):
+        raise UsageError("--torque-cutover requires exactly the Pi5 server and torque-enabled Pi4 kiosks")
+    hostvars = document.get("_meta", {}).get("hostvars", {})
+    pi4_hosts = selection[1][1]
+    if not isinstance(hostvars, dict) or any(
+        not torque_cutover_capable(hostvars.get(host)) for host in pi4_hosts
+    ):
+        raise UsageError(
+            "--torque-cutover requires every explicitly selected Pi4 to have complete torque-agent inventory capability"
+        )
+
+
+def torque_cutover_capable(values: object) -> bool:
+    if not isinstance(values, dict):
+        return False
+    adapter = values.get("torque_agent_bluetooth_adapter")
+    devices = values.get("torque_agent_hid_devices")
+    links = values.get("torque_agent_hid_links")
+    browser_origins = values.get("torque_agent_browser_origins", [])
+    local_port = values.get("torque_agent_local_port", 7073)
+    heartbeat_ttl = values.get("torque_agent_heartbeat_ttl_seconds", 8)
+    if not isinstance(adapter, dict) or not isinstance(devices, list) or not devices:
+        return False
+    if not isinstance(links, list) or not links:
+        return False
+    device_paths = {
+        device.get("path")
+        for device in devices
+        if isinstance(device, dict)
+        and isinstance(device.get("path"), str)
+        and device["path"].startswith("/dev/input/by-id/")
+        and device.get("parserProfile") == "cem3-btla-hogp-v1"
+        and isinstance(device.get("serialNumber"), str)
+        and TORQUE_SERIAL.fullmatch(device["serialNumber"])
+    }
+    if len(device_paths) != len(devices):
+        return False
+    links_complete = all(
+        isinstance(link, dict)
+        and isinstance(link.get("link_name"), str)
+        and TORQUE_LINK_NAME.fullmatch(link["link_name"])
+        and isinstance(link.get("name"), str)
+        and TORQUE_DEVICE_NAME.fullmatch(link["name"])
+        and isinstance(link.get("uniq"), str)
+        and TORQUE_BLUETOOTH_UNIQ.fullmatch(link["uniq"])
+        and isinstance(link.get("vendor_id"), str)
+        and TORQUE_USB_ID.fullmatch(link["vendor_id"])
+        and isinstance(link.get("product_id"), str)
+        and TORQUE_USB_ID.fullmatch(link["product_id"])
+        and f"/dev/input/by-id/{link['link_name']}" in device_paths
+        for link in links
+    )
+    return bool(
+        values.get("torque_agent_enabled") is True
+        and values.get("torque_connection_lease_enabled") is True
+        and isinstance(values.get("torque_agent_api_base_url"), str)
+        and torque_inventory_url(values["torque_agent_api_base_url"])
+        and isinstance(values.get("torque_agent_client_key"), str)
+        and values["torque_agent_client_key"]
+        and values.get("torque_agent_tls_verify_mode", "system") in {"system", "insecure"}
+        and isinstance(local_port, int)
+        and not isinstance(local_port, bool)
+        and 0 < local_port < 65536
+        and isinstance(heartbeat_ttl, int)
+        and not isinstance(heartbeat_ttl, bool)
+        and heartbeat_ttl > 0
+        and isinstance(browser_origins, list)
+        and all(
+            isinstance(origin, str) and torque_inventory_url(origin)
+            for origin in browser_origins
+        )
+        and isinstance(adapter.get("usb_vendor_id"), str)
+        and TORQUE_USB_ID.fullmatch(adapter["usb_vendor_id"])
+        and isinstance(adapter.get("usb_product_id"), str)
+        and TORQUE_USB_ID.fullmatch(adapter["usb_product_id"])
+        and links_complete
+    )
+
+
+def torque_inventory_url(value: str) -> bool:
+    # ansible-inventory retains safe nested variable references; the shared
+    # runtime role validates the fully rendered URL before any kiosk is stopped.
+    return bool(TORQUE_URL.fullmatch(value) or TORQUE_URL_VARIABLE.fullmatch(value))
 
 
 def resolve_optional_host_address(values: dict[str, Any], address: str) -> str:
@@ -304,20 +405,36 @@ def config_hash(sha: str, inventory: Path) -> str:
         return build_config_hash(parse_contract_json(contract.read_text(encoding="utf-8"), sha))
 
 
-def image_plan(sha: str, profiles: tuple[str, ...], build_hash: str = "") -> dict[str, Any]:
+def image_plan(
+    sha: str,
+    profiles: tuple[str, ...],
+    build_hash: str = "",
+    *,
+    torque_cutover: bool = False,
+) -> dict[str, Any]:
     result: dict[str, Any] = {}
     if "pi5" in profiles:
         suffix = build_hash[:16]
         result["pi5"] = [f"ghcr.io/denkoushi/raspisys-api:{sha}-{suffix}", f"ghcr.io/denkoushi/raspisys-web:{sha}-{suffix}"]
     if "pi4" in profiles:
-        result["pi4"] = [f"ghcr.io/denkoushi/raspisys-{name}-agent:{sha}" for name in ("nfc", "barcode", "torque")]
+        names = ("torque",) if torque_cutover else ("nfc", "barcode", "torque")
+        result["pi4"] = [f"ghcr.io/denkoushi/raspisys-{name}-agent:{sha}" for name in names]
     if "pi3" in profiles:
         result["pi3"] = [f"ghcr.io/denkoushi/raspisys-pi3-signage:{sha}"]
     return result
 
 
-def ansible_argv(inventory: str, limit: str, profiles: tuple[str, ...], variables: dict[str, str], listing: str = "") -> list[str]:
-    command = ["ansible-playbook", "-i", inventory, str(PLAYBOOK), "--tags", ",".join(profiles), "--extra-vars", json.dumps(variables, sort_keys=True, separators=(",", ":"))]
+def ansible_argv(
+    inventory: str,
+    limit: str,
+    profiles: tuple[str, ...],
+    variables: dict[str, Any],
+    listing: str = "",
+    *,
+    torque_cutover: bool = False,
+) -> list[str]:
+    tags = (("torque-cutover",) + profiles) if torque_cutover else profiles
+    command = ["ansible-playbook", "-i", inventory, str(PLAYBOOK), "--tags", ",".join(tags), "--extra-vars", json.dumps(variables, sort_keys=True, separators=(",", ":"))]
     if limit:
         command.extend(["--limit", limit])
     if listing:
@@ -327,12 +444,22 @@ def ansible_argv(inventory: str, limit: str, profiles: tuple[str, ...], variable
 
 def plan(args: argparse.Namespace, sha: str, inventory: Path, relative: str, selection: tuple[tuple[str, tuple[str, ...]], ...]) -> dict[str, Any]:
     profiles = tuple(item[0] for item in selection)
+    torque_cutover = bool(getattr(args, "torque_cutover", False))
     build_hash = config_hash(sha, inventory) if "pi5" in profiles else ""
-    images = image_plan(sha, profiles, build_hash)
-    variables = {"release_sha": sha, "release_run_id": "plan-preview", "release_pi5_api_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[0], "release_pi5_web_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[1], "release_signage_artifact_sha256": "0" * 64}
+    images = image_plan(sha, profiles, build_hash, torque_cutover=torque_cutover)
+    pi4_hosts = list(dict(selection).get("pi4", ()))
+    variables = {"release_sha": sha, "release_run_id": "plan-preview", "release_pi5_api_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[0], "release_pi5_web_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[1], "release_signage_artifact_sha256": "0" * 64, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else []}
     for listing in ("--list-hosts", "--list-tasks"):
-        run(ansible_argv(str(inventory), args.limit, profiles, variables, listing), env=ansible_environment())
-    return {"schemaVersion": 1, "branch": args.branch, "releaseSha": sha, "inventory": relative, "limit": args.limit or None, "fullFleet": args.full_fleet, "executionOrder": [{"profile": profile, "hosts": list(hosts), "images": images[profile]} for profile, hosts in selection]}
+        run(ansible_argv(str(inventory), args.limit, profiles, variables, listing, torque_cutover=torque_cutover), env=ansible_environment())
+    result = {"schemaVersion": 1, "branch": args.branch, "releaseSha": sha, "inventory": relative, "limit": args.limit or None, "fullFleet": args.full_fleet, "executionOrder": [{"profile": profile, "hosts": list(hosts), "images": images[profile]} for profile, hosts in selection]}
+    if torque_cutover:
+        result["cutoverPhases"] = [
+            {"phase": "quiesce", "hosts": pi4_hosts},
+            {"phase": "pi5", "hosts": list(selection[0][1])},
+            {"phase": "stage-torque-agent", "hosts": pi4_hosts},
+            {"phase": "resume", "hosts": pi4_hosts},
+        ]
+    return result
 
 
 def new_run_id() -> str:
@@ -349,6 +476,8 @@ def ssh_argv(host: str, user: str, port: int, remote: Sequence[str]) -> list[str
 
 def remote_script(args: argparse.Namespace, sha: str, run_id: str, relative: str, profiles: tuple[str, ...]) -> str:
     internal = ["python3", "scripts/deploy/standard-ansible-release.py", "--execute-standard-route", "--branch", args.branch, "--inventory", relative, "--sha", sha, "--run-id", run_id, "--profiles", ",".join(profiles)]
+    if getattr(args, "torque_cutover", False):
+        internal.append("--torque-cutover")
     internal.extend(["--limit", args.limit] if args.limit else ["--full-fleet"])
     return "\n".join(("set -euo pipefail", f"cd {shlex.quote(str(REMOTE_ROOT))}", "mkdir -p logs/deploy", "exec 9>>logs/deploy/fleet-release-state.lock", "/usr/bin/flock -n 9 || { echo 'another fleet release is running' >&2; exit 75; }", "test -z \"$(git status --porcelain)\"", f"git fetch --no-tags origin {shlex.quote(args.branch)}", f"test \"$(git rev-parse FETCH_HEAD)\" = {shlex.quote(sha)}", f"git checkout --detach {shlex.quote(sha)}", f"test \"$(git rev-parse HEAD)\" = {shlex.quote(sha)}", "test -z \"$(git status --porcelain)\"", f"exec {shlex.join(internal)}"))
 
@@ -390,17 +519,22 @@ def signage_identity(sha: str) -> tuple[str, str]:
 
 
 def execute_standard_route(args: argparse.Namespace) -> int:
+    torque_cutover = bool(getattr(args, "torque_cutover", False))
     inventory, relative = inventory_path(args.inventory)
     if run(["git", "rev-parse", "HEAD"]).stdout.strip() != args.sha:
         raise RuntimeError("remote checkout does not match the release SHA")
     declared_profiles = tuple(args.profiles.split(","))
     selected = inventory_document(inventory, args.limit) if args.limit else inventory_document(inventory)
     requested_selection = selected_profiles(selected)
+    if torque_cutover:
+        validate_torque_cutover_selection(selected, requested_selection)
     if tuple(profile for profile, _hosts in requested_selection) != declared_profiles:
         raise RuntimeError("remote target profiles differ from the sealed launch request")
     reachable_selection, excluded = preflight_optional_hosts(
         selected, requested_selection
     )
+    if torque_cutover and excluded:
+        raise RuntimeError("torque cutover requires every selected torque kiosk to be reachable before quiesce")
     print(
         json.dumps(
             {
@@ -422,8 +556,9 @@ def execute_standard_route(args: argparse.Namespace) -> int:
     effective_limit = exact_host_limit(reachable_selection)
     api, web = release_set_images(args.sha, inventory) if "pi5" in profiles else (f"unused:{args.sha}", f"unused-web:{args.sha}")
     signage, signage_sha = signage_identity(args.sha) if "pi3" in profiles else (f"unused-signage:{args.sha}", "0" * 64)
-    variables = {"release_sha": args.sha, "release_run_id": args.run_id, "release_pi5_api_image": api, "release_pi5_web_image": web, "release_signage_artifact_image": signage, "release_signage_artifact_sha256": signage_sha}
-    command = ansible_argv(relative, effective_limit, profiles, variables)
+    pi4_hosts = list(dict(reachable_selection).get("pi4", ()))
+    variables = {"release_sha": args.sha, "release_run_id": args.run_id, "release_pi5_api_image": api, "release_pi5_web_image": web, "release_signage_artifact_image": signage, "release_signage_artifact_sha256": signage_sha, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else []}
+    command = ansible_argv(relative, effective_limit, profiles, variables, torque_cutover=torque_cutover)
     os.execvpe(command[0], command, ansible_environment())
     return 1
 
@@ -453,6 +588,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     complete = inventory_document(inventory)
     selected = complete if not args.limit else inventory_document(inventory, args.limit)
     selection = selected_profiles(selected)
+    if getattr(args, "torque_cutover", False):
+        validate_torque_cutover_selection(selected, selection)
     if args.print_plan:
         print(json.dumps(plan(args, sha, inventory, relative, selection), ensure_ascii=False, indent=2))
         return 0

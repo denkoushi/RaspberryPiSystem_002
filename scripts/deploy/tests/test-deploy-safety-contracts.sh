@@ -70,13 +70,18 @@ for path in (server_defaults_path, server_handlers_path, manage_app_path, common
     assert "backup_service_files" not in text, f"retired backup state remains: {path}"
 
 plays = yaml.safe_load(standard_path.read_text(encoding="utf-8")) or []
-assert [play.get("hosts") for play in plays] == ["server", "kiosk", "signage"]
-assert [play.get("serial") for play in plays] == [1, 1, 1]
-assert [play.get("roles", [{}])[0].get("role") for play in plays] == [
+assert [play.get("hosts") for play in plays] == [
+    "kiosk", "server", "kiosk", "kiosk", "signage"
+]
+assert [play.get("serial") for play in plays if "serial" in play] == [1, 1, 1]
+role_plays = [play for play in plays if play.get("roles")]
+assert [play.get("roles", [{}])[0].get("role") for play in role_plays] == [
     "release_pi5",
     "release_kiosk",
     "release_signage",
 ]
+cutover_plays = [play for play in plays if "torque-cutover" in play.get("tags", [])]
+assert [play.get("hosts") for play in cutover_plays] == ["kiosk", "kiosk"]
 PY
 
 echo "deploy safety contract tests passed"

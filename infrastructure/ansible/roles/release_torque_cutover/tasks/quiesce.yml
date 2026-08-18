@@ -1,0 +1,87 @@
+---
+- name: Validate the bounded torque cutover target
+  ansible.builtin.assert:
+    that:
+      - release_torque_cutover | default(false) | bool
+      - release_torque_cutover_hosts is sequence
+      - release_torque_cutover_hosts is not string
+      - release_torque_cutover_hosts | length > 0
+      - release_torque_cutover_hosts | unique | list | length == release_torque_cutover_hosts | length
+      - release_torque_cutover_hosts | difference(groups['kiosk']) | length == 0
+      - inventory_hostname in release_torque_cutover_hosts
+    fail_msg: Torque cutover requires a non-empty, unique, explicitly selected subset of kiosk hosts.
+
+- name: Validate every selected torque-agent contract before stopping any kiosk
+  ansible.builtin.include_role:
+    name: torque_agent_contract
+
+- name: Initialize the shared stage boundary before any kiosk can disconnect
+  ansible.builtin.set_fact:
+    release_kiosk_stage_succeeded: false
+
+- name: Stop the kiosk browser before revoking torque ownership
+  ansible.builtin.systemd:
+    name: kiosk-browser.service
+    state: stopped
+
+- name: Stop the existing torque agent without changing its image
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --profile
+      - torque
+      - --project-name
+      - docker
+      - -f
+      - /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.client.yml
+      - stop
+      - torque-agent
+  changed_when: true
+
+- name: Remove any remaining torque guard intent
+  ansible.builtin.file:
+    path: /run/torque-bluetooth-guard/intent.json
+    state: absent
+
+- name: Restart the fail-closed torque Bluetooth guard
+  ansible.builtin.systemd:
+    name: torque-bluetooth-guard.service
+    state: restarted
+
+- name: Verify the old torque agent is stopped
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --profile
+      - torque
+      - --project-name
+      - docker
+      - -f
+      - /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.client.yml
+      - ps
+      - --status
+      - running
+      - -q
+      - torque-agent
+  register: release_torque_old_agent_state
+  changed_when: false
+  failed_when: release_torque_old_agent_state.stdout | trim | length > 0
+
+- name: Verify the external torque Bluetooth controller is OFF
+  ansible.builtin.command: /usr/local/libexec/torque-bluetooth-adapter --status
+  register: release_torque_quiesced_bluetooth
+  changed_when: false
+  failed_when: (release_torque_quiesced_bluetooth.stdout | from_json).powered | bool
+
+- name: Wait for the previous eight-second server lease to expire
+  ansible.builtin.pause:
+    seconds: "{{ (release_torque_lease_ttl_seconds | int) + (release_torque_guard_grace_seconds | int) }}"
+  run_once: true
+
+- name: Verify the external torque Bluetooth controller remains OFF after fencing wait
+  ansible.builtin.command: /usr/local/libexec/torque-bluetooth-adapter --status
+  register: release_torque_quiesced_bluetooth_after_wait
+  changed_when: false
+  failed_when: (release_torque_quiesced_bluetooth_after_wait.stdout | from_json).powered | bool
