@@ -27,6 +27,10 @@ from release_artifact_contract import (
 )
 from release_build_contract import build_config_hash, parse_contract_json
 from torque_component_adoption import AdoptionError, validate_adoption_predicate
+from rolling_release.attestation_environment import (
+    PUBLIC_ATTESTATION_TOKEN,
+    isolated_attestation_environment,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 ANSIBLE = ROOT / "infrastructure/ansible"
@@ -596,30 +600,32 @@ def verify_component_attestation(
     gh = shutil.which("gh")
     if gh is None:
         raise RuntimeError("GitHub attestation verifier is unavailable")
-    version = run([gh, "--version"])
-    if not version.stdout.startswith("gh version 2.96.0 "):
-        raise RuntimeError("GitHub attestation verifier is not the pinned 2.96.0 release")
-    command = [
-        gh,
-        "attestation",
-        "verify",
-        f"oci://{exact_reference}",
-        "--bundle-from-oci",
-        "--repo",
-        "denkoushi/RaspberryPiSystem_002",
-        "--source-digest",
-        source_sha,
-        "--source-ref",
-        "refs/heads/main",
-        "--deny-self-hosted-runners",
-    ]
-    if predicate_type is not None:
-        command.extend(["--predicate-type", predicate_type])
-    if adoption_workflow is None:
-        run(command)
-        return
-    command.extend(["--format", "json"])
-    verified = run(command)
+    with isolated_attestation_environment() as isolated:
+        environment = isolated.values
+        version = run([gh, "--version"], env=environment)
+        if not version.stdout.startswith("gh version 2.96.0 "):
+            raise RuntimeError("GitHub attestation verifier is not the pinned 2.96.0 release")
+        command = [
+            gh,
+            "attestation",
+            "verify",
+            f"oci://{exact_reference}",
+            "--bundle-from-oci",
+            "--repo",
+            "denkoushi/RaspberryPiSystem_002",
+            "--source-digest",
+            source_sha,
+            "--source-ref",
+            "refs/heads/main",
+            "--deny-self-hosted-runners",
+        ]
+        if predicate_type is not None:
+            command.extend(["--predicate-type", predicate_type])
+        if adoption_workflow is None:
+            run(command, env=environment)
+            return
+        command.extend(["--format", "json"])
+        verified = run(command, env=environment)
     try:
         values = json.loads(verified.stdout)
         predicates = [
