@@ -204,6 +204,38 @@ class DeployImpactContractTests(unittest.TestCase):
         result = assess(declaration, classification(*changes))
         self.assertEqual(result.inferred_targets, frozenset({"pi3", "pi4", "pi5"}))
 
+    def test_google_drive_dr_is_pi5_deploy_risk(self) -> None:
+        paths = (
+            "scripts/google_drive_dr/runner.py",
+            "infrastructure/ansible/playbooks/deploy-google-drive-disaster-recovery.yml",
+            "infrastructure/ansible/templates/raspi-google-drive-dr.env.j2",
+            "infrastructure/ansible/templates/raspi-google-drive-dr.service.j2",
+            "infrastructure/ansible/templates/raspi-google-drive-dr.timer.j2",
+        )
+        changes = [
+            classify_changes([Change("M", path)])["changes"][0]
+            for path in paths
+        ]
+        declaration = parse_table(
+            table(
+                Risk="db-auth-systemd-deploy",
+                **{
+                    "Target machines": "pi5",
+                    "Changed surfaces": "config, deploy, systemd",
+                    "Required files/artifacts": "Google Drive DR package and Pi5 deployment units",
+                    "Success evidence": "focused classifier and deployment contract tests",
+                    "Rollback/cleanup": "revert the classifier and registry mappings",
+                    "Production verification": "N/A: production deploy is separately authorized",
+                },
+            )
+        )
+
+        result = assess(declaration, classification(*changes))
+
+        self.assertEqual(result.inferred_risk, "db-auth-systemd-deploy")
+        self.assertEqual(result.inferred_targets, frozenset({"pi5"}))
+        self.assertNotIn("unknown", result.inferred_surfaces)
+
     def test_database_no_is_rejected_and_yes_is_allowed(self) -> None:
         migration = {"status": "M", "path": "apps/api/prisma/migrations/001_init.sql"}
         with self.assertRaisesRegex(ImpactContractError, "Database must be yes"):

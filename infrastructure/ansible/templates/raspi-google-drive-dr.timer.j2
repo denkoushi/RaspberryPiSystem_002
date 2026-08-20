@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly Business Pi5 Google Drive disaster-recovery snapshot
+
+[Timer]
+Unit={{ google_drive_dr_service_name }}
+OnCalendar=*-*-* 21:30:00 Asia/Tokyo
+Persistent=false
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

@@ -133,10 +133,36 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertEqual(self.selected(e2e), {"repo_policy", "e2e"})
         self.assertTrue(e2e["codeql"])
 
+    def test_google_drive_dr_paths_select_pi5_deploy_contracts_only(self) -> None:
+        paths = (
+            "scripts/google_drive_dr/runner.py",
+            "scripts/google_drive_dr/tests/test_runner.py",
+            "infrastructure/ansible/playbooks/deploy-google-drive-disaster-recovery.yml",
+            "infrastructure/ansible/templates/raspi-google-drive-dr.env.j2",
+            "infrastructure/ansible/templates/raspi-google-drive-dr.service.j2",
+            "infrastructure/ansible/templates/raspi-google-drive-dr.timer.j2",
+        )
+
+        for path in paths:
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(
+                    self.selected(result),
+                    {"repo_policy", "db_infra", "deploy_contract"},
+                )
+                self.assertFalse(result["fullSuite"])
+                self.assertFalse(result["codeql"])
+                self.assertFalse(result["dockerApi"])
+                self.assertFalse(result["dockerWeb"])
+                self.assertEqual(result["pi4AgentMatrix"], [])
+                self.assertEqual(result["failClosedReasons"], [])
+
     def test_classifier_contract_uses_only_focused_policy_validation(self) -> None:
         result = self.classify(
             Change("M", "scripts/ci/classify_changes.py"),
+            Change("M", "scripts/ci/deploy_impact_contract.py"),
             Change("M", "scripts/ci/tests/test_classify_changes.py"),
+            Change("M", "scripts/ci/tests/test_deploy_impact_contract.py"),
         )
 
         self.assertEqual(self.selected(result), {"repo_policy"})

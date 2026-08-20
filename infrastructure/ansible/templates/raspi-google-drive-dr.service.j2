@@ -1,0 +1,21 @@
+[Unit]
+Description=Business Pi5 Google Drive encrypted disaster-recovery snapshot
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists={{ google_drive_dr_rclone_config }}
+ConditionPathExists={{ google_drive_dr_restic_password_file }}
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory={{ google_drive_dr_install_root }}
+EnvironmentFile={{ google_drive_dr_env_file }}
+Environment=PYTHONPATH={{ google_drive_dr_install_root }}
+ExecStart=/usr/bin/python3 -m google_drive_dr.runner backup
+TimeoutStartSec=9h30m
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal

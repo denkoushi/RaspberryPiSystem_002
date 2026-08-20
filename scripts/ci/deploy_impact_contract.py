@@ -170,6 +170,8 @@ def _path_surfaces(path: str) -> set[str]:
         surfaces.add("ci")
     if lower.startswith("scripts/ci/"):
         surfaces.add("ci")
+    if lower.startswith("scripts/google_drive_dr/"):
+        surfaces.add("deploy")
     if lower.startswith("apps/api/"):
         surfaces.add("api")
     if lower.startswith("apps/web/"):

@@ -71,15 +71,25 @@ class ExactPnpmToolchainTests(unittest.TestCase):
             canonical_root,
             *sorted((ROOT / "scripts/deploy/tests").glob("*.sh")),
         ]
-        pnpm_entrypoints = 0
+        pnpm_entrypoints: set[Path] = set()
         for path in paths:
             text = path.read_text(encoding="utf-8")
             with self.subTest(path=path.relative_to(ROOT)):
                 self.assertNotRegex(text, r"(?m)^\s*pnpm\b")
                 if "pnpm" in text:
-                    pnpm_entrypoints += 1
+                    pnpm_entrypoints.add(path.relative_to(ROOT))
                     self.assertIn("scripts/ci/pnpm-exact.sh", text)
-        self.assertEqual(pnpm_entrypoints, 5)
+        self.assertEqual(
+            pnpm_entrypoints,
+            {
+                Path(".husky/pre-commit"),
+                Path("scripts/ci/run-deploy-contracts-local.sh"),
+                Path("scripts/deploy/tests/test-deploy-status-postgres.sh"),
+                Path("scripts/deploy/tests/test-google-drive-dr-postgres-restic-integration.sh"),
+                Path("scripts/deploy/tests/test-postgres-role-boundaries.sh"),
+                Path("scripts/deploy/tests/test-web-static-routing.sh"),
+            },
+        )
 
 
 if __name__ == "__main__":
