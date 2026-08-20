@@ -134,7 +134,7 @@
 
     - name: Install the non-secret DR environment contract
       ansible.builtin.template:
-        src: raspi-google-drive-dr.env.j2
+        src: "{{ playbook_dir }}/../templates/raspi-google-drive-dr.env.j2"
         dest: "{{ google_drive_dr_env_file }}"
         owner: root
         group: root
@@ -143,7 +143,7 @@
 
     - name: Install the disabled-by-default DR service unit
       ansible.builtin.template:
-        src: raspi-google-drive-dr.service.j2
+        src: "{{ playbook_dir }}/../templates/raspi-google-drive-dr.service.j2"
         dest: "/etc/systemd/system/{{ google_drive_dr_service_name }}"
         owner: root
         group: root
@@ -152,7 +152,7 @@
 
     - name: Install the disabled-by-default DR timer unit
       ansible.builtin.template:
-        src: raspi-google-drive-dr.timer.j2
+        src: "{{ playbook_dir }}/../templates/raspi-google-drive-dr.timer.j2"
         dest: "/etc/systemd/system/{{ google_drive_dr_timer_name }}"
         owner: root
         group: root
