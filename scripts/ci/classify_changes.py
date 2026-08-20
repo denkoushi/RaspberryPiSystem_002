@@ -131,8 +131,18 @@ CI_CLASSIFIER_CONTRACT_PATHS = frozenset(
     {
         "scripts/ci/classify_changes.py",
         "scripts/ci/classify_event_changes.py",
+        "scripts/ci/deploy_impact_contract.py",
         "scripts/ci/tests/test_classify_changes.py",
         "scripts/ci/tests/test_classify_event_changes.py",
+        "scripts/ci/tests/test_deploy_impact_contract.py",
+    }
+)
+GOOGLE_DR_OWNED_PATHS = frozenset(
+    {
+        "infrastructure/ansible/playbooks/deploy-google-drive-disaster-recovery.yml",
+        "infrastructure/ansible/templates/raspi-google-drive-dr.env.j2",
+        "infrastructure/ansible/templates/raspi-google-drive-dr.service.j2",
+        "infrastructure/ansible/templates/raspi-google-drive-dr.timer.j2",
     }
 )
 COMPLETE_FLEET_ARTIFACT_PATHS = CI_CLASSIFIER_CONTRACT_PATHS | frozenset(
@@ -254,6 +264,12 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
 
     if normalized in POLICY_PATHS:
         return frozenset({"repo_policy"})
+
+    if (
+        _has_prefix(normalized, "scripts/google_drive_dr")
+        or normalized in GOOGLE_DR_OWNED_PATHS
+    ):
+        return frozenset({"repo_policy", "db_infra", "deploy_contract"})
 
     if _has_prefix(normalized, ".cursor/rules"):
         return frozenset({"repo_policy"})
