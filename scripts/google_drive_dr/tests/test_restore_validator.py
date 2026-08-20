@@ -154,9 +154,39 @@ class RestoreValidatorTests(unittest.TestCase):
                 ],
             )
             fallback_command, fallback_kwargs = commands.calls[-1]
-            self.assertEqual(fallback_command[-2:], ["--list", "-"])
+            self.assertEqual(
+                fallback_command,
+                [
+                    "docker",
+                    "compose",
+                    "-f",
+                    "/opt/business-pi/compose.yml",
+                    "exec",
+                    "-T",
+                    "db",
+                    "pg_restore",
+                    "--list",
+                ],
+            )
             self.assertEqual(Path(fallback_kwargs["input_file"]).resolve(), dump.resolve())
             self.assertIsNone(fallback_kwargs.get("input"))
+
+    def test_invalid_dump_header_fails_before_host_or_docker_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = make_restore_tree(root)
+            dump = target / (
+                "var/backups/raspi-google-drive-dr-staging/business-pi5-run/"
+                "database/borrow_return.dump"
+            )
+            dump.write_bytes(b"not-a-custom-format-dump")
+            commands = RecordingCommands(fail_host_pg_restore=True)
+
+            with self.assertRaisesRegex(RestoreValidationError, "custom format"):
+                self.validator(commands).validate(target)
+
+            self.assertEqual(len(commands.calls), 1)
+            self.assertEqual(commands.calls[0][0][0], "git")
 
     def test_manifest_artifact_traversal_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

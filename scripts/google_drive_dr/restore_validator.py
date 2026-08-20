@@ -233,7 +233,6 @@ class RestoreValidator:
                     self.database_service,
                     self.pg_restore_binary,
                     "--list",
-                    "-",
                 ],
                 input_file=database_dump,
             )
