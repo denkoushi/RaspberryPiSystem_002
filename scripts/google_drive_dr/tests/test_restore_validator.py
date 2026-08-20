@@ -135,8 +135,23 @@ class RestoreValidatorTests(unittest.TestCase):
             self.validator(commands).validate(target)
 
             self.assertEqual(
-                commands.calls[0][0][0:5],
-                ["git", "-C", "/opt/business-pi", "bundle", "verify"],
+                commands.calls[0][0],
+                [
+                    "git",
+                    "-c",
+                    "safe.directory=/opt/business-pi",
+                    "-C",
+                    "/opt/business-pi",
+                    "bundle",
+                    "verify",
+                    str(
+                        (
+                            target
+                            / "var/backups/raspi-google-drive-dr-staging/business-pi5-run"
+                            / "git/repository.bundle"
+                        ).resolve()
+                    ),
+                ],
             )
             fallback_command, fallback_kwargs = commands.calls[-1]
             self.assertEqual(fallback_command[-2:], ["--list", "-"])

@@ -196,6 +196,8 @@ class RestoreValidator:
             self.commands.run(
                 [
                     "git",
+                    "-c",
+                    f"safe.directory={self.project_root}",
                     "-C",
                     str(self.project_root),
                     "bundle",
