@@ -271,9 +271,7 @@ class SnapshotBuilder:
                 pass
 
     def _git_sha(self) -> str:
-        result = self.commands.run(
-            ["git", "-C", str(self.project_root), "rev-parse", "HEAD"]
-        )
+        result = self.commands.run(self._git_command("rev-parse", "HEAD"))
         value = _result_stdout(result).decode("utf-8", errors="replace").strip()
         if len(value) != 40 or any(character not in "0123456789abcdef" for character in value.lower()):
             raise SnapshotError("Git HEAD could not be identified")
@@ -281,31 +279,37 @@ class SnapshotBuilder:
 
     def _git_dirty(self) -> bool:
         result = self.commands.run(
-            [
-                "git",
-                "-C",
-                str(self.project_root),
+            self._git_command(
                 "status",
                 "--porcelain",
                 "--untracked-files=normal",
-            ]
+            )
         )
         return bool(_result_stdout(result).strip())
+
+    def _git_command(self, *arguments: str) -> list[str]:
+        """Build a Git command trusted only for the configured checkout."""
+
+        return [
+            "git",
+            "-c",
+            f"safe.directory={self.project_root}",
+            "-C",
+            str(self.project_root),
+            *arguments,
+        ]
 
     def _create_git_bundle(self, destination: Path) -> None:
         destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         partial = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.partial")
         try:
             self.commands.run(
-                [
-                    "git",
-                    "-C",
-                    str(self.project_root),
+                self._git_command(
                     "bundle",
                     "create",
                     str(partial),
                     "HEAD",
-                ]
+                )
             )
             if not partial.is_file() or partial.stat().st_size <= 0:
                 raise SnapshotError("Git bundle was empty")
@@ -314,14 +318,11 @@ class SnapshotBuilder:
             # directory, not necessarily this repository, so keep the
             # repository context explicit in argv.
             self.commands.run(
-                [
-                    "git",
-                    "-C",
-                    str(self.project_root),
+                self._git_command(
                     "bundle",
                     "verify",
                     str(partial),
-                ]
+                )
             )
             os.chmod(partial, 0o600)
             os.replace(partial, destination)

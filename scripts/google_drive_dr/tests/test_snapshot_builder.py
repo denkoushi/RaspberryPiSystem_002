@@ -25,9 +25,9 @@ class FakeCommands:
     def run(self, argv, *, check=True, stdout=None, input=None, env=None, cwd=None):
         command = [str(item) for item in argv]
         self.calls.append(command)
-        if command[:2] == ["git", "-C"] and command[-2:] == ["rev-parse", "HEAD"]:
+        if command[0] == "git" and command[-2:] == ["rev-parse", "HEAD"]:
             return CommandResult(0, f"{SHA}\n".encode())
-        if command[:2] == ["git", "-C"] and "status" in command:
+        if command[0] == "git" and "status" in command:
             return CommandResult(0, b" M apps/api/src/main.ts\n" if self.dirty else b"")
         if "pg_dump" in command:
             assert stdout is not None
@@ -77,7 +77,7 @@ class SnapshotBuilderTests(unittest.TestCase):
             verify_index = next(
                 index
                 for index, call in enumerate(commands.calls)
-                if call[0:2] == ["git", "-C"] and call[-3:-1] == ["bundle", "verify"]
+                if call[0] == "git" and call[-3:-1] == ["bundle", "verify"]
             )
             self.assertLess(dump_index, bundle_index)
             self.assertLess(bundle_index, verify_index)
@@ -85,9 +85,35 @@ class SnapshotBuilderTests(unittest.TestCase):
             self.assertIn("-Fc", dump_call)
             self.assertIn("--no-owner", dump_call)
             self.assertIn("--no-acl", dump_call)
+            git_prefix = [
+                "git",
+                "-c",
+                f"safe.directory={root.absolute()}",
+                "-C",
+                str(root.absolute()),
+            ]
+            sha_call = next(
+                call for call in commands.calls if call[-2:] == ["rev-parse", "HEAD"]
+            )
+            status_call = next(call for call in commands.calls if "status" in call)
+            self.assertEqual(sha_call, [*git_prefix, "rev-parse", "HEAD"])
+            self.assertEqual(
+                status_call,
+                [*git_prefix, "status", "--porcelain", "--untracked-files=normal"],
+            )
+            self.assertEqual(
+                commands.calls[bundle_index],
+                [
+                    *git_prefix,
+                    "bundle",
+                    "create",
+                    commands.calls[bundle_index][-2],
+                    "HEAD",
+                ],
+            )
             self.assertEqual(
                 commands.calls[verify_index],
-                ["git", "-C", str(root.absolute()), "bundle", "verify", commands.calls[verify_index][-1]],
+                [*git_prefix, "bundle", "verify", commands.calls[verify_index][-1]],
             )
 
             builder.discard_staging(artifact.staging_dir)
