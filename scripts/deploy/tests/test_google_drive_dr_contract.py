@@ -179,6 +179,22 @@ class GoogleDriveDisasterRecoveryContractTests(unittest.TestCase):
         self.assertIn("google_drive_dr_env_file", service)
         self.assertIn("google_drive_dr_credential_root", ENV_TEMPLATE.read_text(encoding="utf-8"))
 
+    def test_template_tasks_resolve_the_shared_ansible_template_directory(self) -> None:
+        template_sources = {
+            task["ansible.builtin.template"]["src"]
+            for task in self.tasks
+            if "ansible.builtin.template" in task
+        }
+        expected_sources = {
+            "{{ playbook_dir }}/../templates/raspi-google-drive-dr.env.j2",
+            "{{ playbook_dir }}/../templates/raspi-google-drive-dr.service.j2",
+            "{{ playbook_dir }}/../templates/raspi-google-drive-dr.timer.j2",
+        }
+        self.assertEqual(template_sources, expected_sources)
+        for template_path in (ENV_TEMPLATE, SERVICE_TEMPLATE, TIMER_TEMPLATE):
+            with self.subTest(template_path=template_path):
+                self.assertTrue(template_path.is_file())
+
     def test_isolated_postgres_restic_harness_has_cleanup_and_restore_boundaries(self) -> None:
         script = INTEGRATION_SCRIPT.read_text(encoding="utf-8")
         for required in (
