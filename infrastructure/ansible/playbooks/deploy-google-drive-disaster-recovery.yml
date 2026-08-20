@@ -1,0 +1,175 @@
+---
+# This playbook is intentionally separate from the standard fleet deployment.
+# It has one explicit inventory target so a recovery backup cannot be enabled on
+# a kiosk, signage device, or another server by accident.
+- name: Configure Business Pi5 Google Drive disaster-recovery backup
+  hosts: raspberrypi5
+  gather_facts: false
+  become: true
+  serial: 1
+  vars:
+    google_drive_dr_project_root: /opt/RaspberryPiSystem_002
+    google_drive_dr_install_root: /opt/raspi-google-drive-dr
+    google_drive_dr_credential_root: /etc/raspi-google-drive-dr
+    google_drive_dr_staging_root: /var/backups/raspi-google-drive-dr-staging
+    google_drive_dr_env_file: /etc/raspi-google-drive-dr/backup.env
+    google_drive_dr_rclone_config: /etc/raspi-google-drive-dr/rclone.conf
+    google_drive_dr_restic_password_file: /etc/raspi-google-drive-dr/restic-password
+    google_drive_dr_repository: rclone:google-drive:RaspberryPiSystem_002/business-pi5
+    google_drive_dr_timer_enabled: false
+    google_drive_dr_service_name: raspi-google-drive-dr.service
+    google_drive_dr_timer_name: raspi-google-drive-dr.timer
+
+  pre_tasks:
+    - name: Refuse any host other than the Business Pi5
+      ansible.builtin.assert:
+        that:
+          - inventory_hostname == 'raspberrypi5'
+        fail_msg: >-
+          This playbook is a dedicated Business Pi5 DR boundary. It must only
+          run against the exact inventory host raspberrypi5.
+        quiet: true
+
+    - name: Refuse a non-server inventory group
+      ansible.builtin.assert:
+        that:
+          - "'server' in group_names"
+        fail_msg: >-
+          raspberrypi5 must remain a member of the server inventory group before
+          the dedicated DR playbook can run.
+        quiet: true
+
+    - name: Check that the encrypted backup credentials were pre-provisioned
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ google_drive_dr_rclone_config }}"
+        - "{{ google_drive_dr_restic_password_file }}"
+      register: google_drive_dr_credential_stats
+
+    - name: Require regular root-owned 0600 credential files
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists | default(false)
+          - item.stat.isreg | default(false)
+          - item.stat.pw_name | default('') == 'root'
+          - item.stat.gr_name | default('') == 'root'
+          - item.stat.mode | default('') == '0600'
+        fail_msg: >-
+          Each DR credential must be pre-provisioned as a root-owned regular
+          file with mode 0600. Secret contents are never created or rendered by
+          this playbook.
+      loop: "{{ google_drive_dr_credential_stats.results }}"
+      no_log: true
+
+  tasks:
+    - name: Install host tools required by the dedicated DR runner
+      ansible.builtin.package:
+        name:
+          - python3
+          - restic
+          - rclone
+        state: present
+
+    - name: Create the dedicated DR install directory
+      ansible.builtin.file:
+        path: "{{ google_drive_dr_install_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Create the dedicated DR staging directory
+      ansible.builtin.file:
+        path: "{{ google_drive_dr_staging_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Create the dedicated credential directory without changing secrets
+      ansible.builtin.file:
+        path: "{{ google_drive_dr_credential_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Re-assert credential ownership and mode after directory creation
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: file
+        owner: root
+        group: root
+        mode: '0600'
+      loop:
+        - "{{ google_drive_dr_rclone_config }}"
+        - "{{ google_drive_dr_restic_password_file }}"
+      no_log: true
+
+    - name: Install the isolated DR Python package
+      ansible.builtin.file:
+        path: "{{ google_drive_dr_install_root }}/google_drive_dr"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copy only the isolated DR runtime Python files
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../scripts/google_drive_dr/{{ item }}"
+        dest: "{{ google_drive_dr_install_root }}/google_drive_dr/{{ item }}"
+        owner: root
+        group: root
+        mode: '0755'
+        directory_mode: '0755'
+      loop:
+        - __init__.py
+        - command_port.py
+        - source_policy.py
+        - snapshot_builder.py
+        - restic_repository.py
+        - restore_validator.py
+        - runner.py
+
+    - name: Install the non-secret DR environment contract
+      ansible.builtin.template:
+        src: raspi-google-drive-dr.env.j2
+        dest: "{{ google_drive_dr_env_file }}"
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Reload systemd units
+
+    - name: Install the disabled-by-default DR service unit
+      ansible.builtin.template:
+        src: raspi-google-drive-dr.service.j2
+        dest: "/etc/systemd/system/{{ google_drive_dr_service_name }}"
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Reload systemd units
+
+    - name: Install the disabled-by-default DR timer unit
+      ansible.builtin.template:
+        src: raspi-google-drive-dr.timer.j2
+        dest: "/etc/systemd/system/{{ google_drive_dr_timer_name }}"
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Reload systemd units
+
+    - name: Flush unit installation handlers before managing the timer
+      ansible.builtin.meta: flush_handlers
+
+    - name: Keep the DR timer disabled unless explicitly enabled
+      ansible.builtin.systemd:
+        name: "{{ google_drive_dr_timer_name }}"
+        enabled: "{{ google_drive_dr_timer_enabled | bool }}"
+        state: "{{ 'started' if (google_drive_dr_timer_enabled | bool) else 'stopped' }}"
+        daemon_reload: true
+
+  handlers:
+    - name: Reload systemd units
+      ansible.builtin.systemd:
+        daemon_reload: true

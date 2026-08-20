@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 業務Pi 5 Google Drive暗号化DR（2026-08-20・ローカル実装／検証中）
+
+- **全損復旧用の独立resticスナップショット**: Dropboxは個別復元、Google DriveはPi 5全損DR。**正本**: [ExecPlan](./plans/google-drive-disaster-recovery-execplan.md) · [ADR](./decisions/ADR-20260820-google-drive-disaster-recovery.md) · [Runbook](./runbooks/google-drive-disaster-recovery.md) · [バックアップ・リストアガイド](./guides/backup-and-restore.md)
+
 ### Deployワークフロー安全短縮 Phase 1–2（2026-07-29 · Phase 2実装済み）
 
 - **リスクベース4段階品質ゲート**: PR Deploy影響表と不足申告validatorを既存schemaVersion 6分類へ軽量接続。**正本**: [ExecPlan](./plans/risk-based-four-stage-quality-gates-execplan.md) · [ADR](./decisions/ADR-20260810-risk-based-deploy-impact-contract.md) · [CI Guide](./guides/ci-branch-protection.md#pr-deploy影響表4段階品質ゲート)

@@ -2,7 +2,7 @@
 title: バックアップ・リストア手順
 tags: [運用, バックアップ, PostgreSQL, ラズパイ5]
 audience: [運用者, 開発者]
-last-verified: 2026-07-12
+last-verified: 2026-08-20
 related: [monitoring.md, deployment.md]
 category: guides
 update-frequency: medium
@@ -10,19 +10,28 @@ update-frequency: medium
 
 # バックアップ・リストア手順
 
-最終更新: 2026-07-12（Dropbox容量対策、PDF除外、Pi4クライアント設定バックアップを反映）
+最終更新: 2026-08-20（DropboxとGoogle Driveの責務分担、Pi4資格情報の扱い、業務Pi5全損DRを反映）
 
 ## 概要
 
 本ドキュメントでは、Raspberry Pi 5上で動作するシステムのバックアップとリストア手順を説明します。
+
+## バックアップ責務の分担
+
+- **Dropbox**: 日常の個別ファイル・個別データの復元を担当します。既存のバックアップAPIと`backup.json`の契約は変更しません。
+- **Google Drive**: 業務Pi5の全損復旧（SSDまたはPi5交換）を担当します。暗号化resticスナップショットの準備、容量確認、隔離先への復元検証は [業務Pi5 Google Drive DR Runbook](../runbooks/google-drive-disaster-recovery.md) を正本とします。ライブ領域への自動復元は行いません。
+- **Pi4**: 今回のGoogle Driveスナップショットには含めません。Pi4の故障時は新品OSと標準Ansible再構成を基本とします。現行`main`にはPi4専用一括復旧コマンドはなく、旧コマンド・playbook・Runbookは2026-08-08の`f02c4be3`で削除されています。
+- **認証情報**: 新しいSDやPiへ古いSSH鍵・Tailscale identity/stateを自動復元しません。必要な認証は交換先で明示的に再発行・再設定します。
+
+Google Drive DRの実装は既存のTypeScriptバックアップAPI、UI、Prisma schema/migration、通常Dropbox設定とは独立した専用レーンです。完全な対象・除外・検証手順は上記Runbookを参照してください。
 
 ## バックアップ対象
 
 ### 必須バックアップ（失うと復旧困難）
 
 1. **PostgreSQLデータベース**: すべてのデータ（従業員、アイテム、貸出履歴、トランザクション等）
-   - **場所**: Dockerボリューム `db-data`
-   - **バックアップ方法**: `scripts/server/backup.sh`で自動バックアップ
+   - **場所**: Dockerボリューム `db-data`（ただし、Google Drive DRでは生volumeをコピーしない）
+   - **バックアップ方法**: 日常の個別復元は`scripts/server/backup.sh`、全損DRは`pg_dump -Fc --no-owner --no-acl`による専用スナップショット
    - **頻度**: 日次（推奨）
    - **保存先**: `/opt/backups/`
 
@@ -47,9 +56,9 @@ update-frequency: medium
    - **容量方針**: 小容量一次ファイルは`maxBackups: 4`。PDFは中核機能に必須ではないため、2GB Dropboxの対象外とする
 
 5. **写真ファイル**
-   - **場所**: `/opt/RaspberryPiSystem_002/storage/photos`, `/opt/RaspberryPiSystem_002/storage/thumbnails`
-   - **バックアップ方法**: Dropbox容量保護のため、Pi5本番では`image:photo-storage`を無効化し、必要時はローカルtarまたは別媒体で退避
-   - **注意**: 貸出写真履歴まで完全復旧する場合は別途バックアップ対象に戻す必要があります
+   - **場所**: `/opt/RaspberryPiSystem_002/storage/photos`（`thumbnails`は派生物としてGoogle Drive DRから除外）
+   - **バックアップ方法**: Dropbox容量保護のため、日常運用では`image:photo-storage`を無効化し得ます。Google Drive DRでは一次写真を暗号化スナップショットへ含めます
+   - **注意**: Dropboxで写真を個別復元する場合は既存設定に従い、Pi5全損時は [Google Drive DR Runbook](../runbooks/google-drive-disaster-recovery.md) の隔離復元を使用します
 
 ### 推奨バックアップ（失っても再設定可能だが時間がかかる）
 
@@ -70,15 +79,15 @@ update-frequency: medium
 | **IPアドレス設定** | `infrastructure/ansible/group_vars/all.yml` | ⚠️ **推奨** | Ansible変数で管理、リポジトリに含まれる（デバイスごとに異なる値） |
 | **データベース** | Dockerボリューム `db-data` | ✅ **必須** | バックアップスクリプトで自動バックアップ |
 | **復旧必須の永続ファイル** | `/opt/RaspberryPiSystem_002/storage/part-measurement-drawings`, `measuring-instrument-genres`, `pallet-machine-illustrations` | ✅ **必須** | `backup.json`の`directory`ターゲット + バックアップスクリプトで自動バックアップ |
-| **写真ファイル** | `/opt/RaspberryPiSystem_002/storage/photos`, `thumbnails` | ⚠️ **容量次第** | 2GB Dropbox運用では本番無効化。必要時は別媒体または保持数を絞って有効化 |
+| **写真ファイル** | `/opt/RaspberryPiSystem_002/storage/photos`（`thumbnails`は派生物） | ⚠️ **Dropboxは容量次第／Google Drive DRは一次写真を含む** | Dropboxでは本番無効化し得る。全損DRはGoogle Driveスナップショットを使用 |
 
 #### Pi4（キオスク）にのみ存在する情報
 
 | 情報の種類 | 場所 | バックアップ | 管理方法 |
 |-----------|------|------------|---------|
 | **NFCエージェント設定** | `clients/nfc-agent/.env` | ✅ **推奨** | Pi5の`backup.json`に`client-file`ターゲットを登録し、Ansible経由でDropboxへ保存 |
-| **運用ユーザーSSH設定** | `/home/<ユーザー>/.ssh` | ✅ **推奨** | Pi5の`backup.json`に`client-directory`ターゲットを登録 |
-| **Tailscale状態** | `/var/lib/tailscale` | ✅ **推奨** | Pi5の`backup.json`に`client-directory`ターゲットを登録 |
+| **運用ユーザーSSH設定** | `/home/<ユーザー>/.ssh` | ❌ **バックアップ禁止** | コードのSSH authority policyにより`client-file`/`client-directory`の対象にできない。交換先で新しい鍵を明示設定 |
+| **Tailscale状態** | `/var/lib/tailscale` | ⚠️ **調査・過去資料用のみ** | 保存され得ても、新SDや新Piへ自動復元しない。交換先で新しいidentityを明示的に発行・設定 |
 | **status-agent設定** | `/etc/raspi-status-agent.conf` | ✅ **推奨** | Pi5の`backup.json`に`client-file`ターゲットを登録 |
 | **NFCリーダー設定** | システム設定 | ❌ 不要 | ハードウェア設定、再設定可能 |
 
@@ -670,7 +679,9 @@ docker run --rm \
 docker compose -f infrastructure/docker/docker-compose.server.yml restart db
 ```
 
-## 完全リストア手順（災害復旧）
+## 旧式の完全リストア手順（ローカル／Dropbox互換情報）
+
+> この節は既存のローカル／Dropbox運用との互換情報です。業務Pi5の全損時にGoogle Driveの暗号化スナップショットを使う場合は、必ず [業務Pi5 Google Drive DR Runbook](../runbooks/google-drive-disaster-recovery.md) の「隔離復元」から開始してください。復元先にライブ領域を指定したり、検証前に既存のDBボリュームを削除したりしないでください。Google Drive DRのrunnerはライブ領域を自動上書きしません。
 
 システム全体をリストアする場合：
 
@@ -770,3 +781,4 @@ gunzip -c /opt/backups/db_backup_*.sql.gz | head -20
 - [バックアップスクリプトとの整合性確認結果](./backup-script-integration-verification.md): バックアップスクリプトとの整合性確認結果
 - [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md): エラーハンドリング改善の詳細
 - [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md): 管理コンソールからのバックアップ対象管理機能の実装計画
+- [業務Pi5 Google Drive DR Runbook](../runbooks/google-drive-disaster-recovery.md): Google Drive暗号化スナップショット、隔離復元、全損復旧の正本
