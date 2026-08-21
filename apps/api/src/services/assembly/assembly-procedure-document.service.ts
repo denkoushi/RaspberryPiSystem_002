@@ -227,7 +227,7 @@ export class AssemblyProcedureDocumentService {
       throw new ApiError(400, '元assetサイズが不正です');
     }
 
-    return prisma.$transaction(async (tx) => {
+    return runAssemblyTransaction(async (tx) => {
       const sourceAsset = params.sourceAsset
         ? await tx.assemblyProcedureAsset.create({
             data: {

@@ -107,6 +107,10 @@ describe('AssemblyProcedureDraftImportService', () => {
     );
     expect(storage.delete).toHaveBeenCalledWith(sourceAsset);
     const imageDir = path.join(TEST_STORAGE_DIR, 'assembly-procedure-images');
-    await expect(fs.readdir(imageDir)).resolves.toEqual([]);
+    const files = await fs.readdir(imageDir).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    });
+    expect(files).toEqual([]);
   });
 });
