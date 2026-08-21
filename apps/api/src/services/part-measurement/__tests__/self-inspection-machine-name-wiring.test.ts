@@ -68,6 +68,7 @@ vi.mock('../self-inspection-participant-names.query.js', () => ({
 
 import { listSelfInspectionSessions } from '../self-inspection/use-cases/session-query.js';
 import { resolveOrCreateSelfInspectionSession } from '../self-inspection/use-cases/session-start.js';
+import { SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL } from '../../production-schedule/constants.js';
 
 describe('self-inspection machine-name API wiring', () => {
   beforeEach(() => {
@@ -113,6 +114,29 @@ describe('self-inspection machine-name API wiring', () => {
     );
   });
 
+  it('does not persist the unresolved machine-name sentinel as a canonical name', async () => {
+    mocks.resolveMachineNames.mockResolvedValueOnce({
+      machineNames: { 'FS-1': SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL }
+    });
+
+    await resolveOrCreateSelfInspectionSession({
+      templateId: 'template-1',
+      productNo: 'PO-1',
+      processGroup: 'CUTTING',
+      resourceCd: 'R1',
+      scheduleRowId: 'row-1',
+      fseiban: 'FS-1',
+      fhincd: 'FH-1',
+      fhinmei: '品名'
+    });
+
+    expect(mocks.transaction.selfInspectionSession.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ machineName: null })
+      })
+    );
+  });
+
   it('fills a missing stored machine name in the session-list DTO from the canonical resolver', async () => {
     mocks.prisma.selfInspectionSession.findMany.mockResolvedValue([
       { id: 'session-missing', machineName: null, fseiban: 'FS-1' },
@@ -125,6 +149,30 @@ describe('self-inspection machine-name API wiring', () => {
     expect(result.sessions).toEqual([
       { id: 'session-missing', status: 'in_progress', machineName: '正本機種名' },
       { id: 'session-existing', status: 'in_progress', machineName: '保存済み機種' }
+    ]);
+  });
+
+  it('re-resolves a previously persisted unresolved sentinel after the source data is updated', async () => {
+    mocks.prisma.selfInspectionSession.findMany.mockResolvedValue([
+      {
+        id: 'session-sentinel',
+        machineName: SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL,
+        fseiban: 'FS-1'
+      }
+    ]);
+    mocks.resolveMachineNames.mockResolvedValueOnce({
+      machineNames: { 'FS-1': '後日解決した正本機種名' }
+    });
+
+    const result = await listSelfInspectionSessions({ status: 'in_progress' });
+
+    expect(mocks.resolveMachineNames).toHaveBeenCalledWith(['FS-1']);
+    expect(result.sessions).toEqual([
+      {
+        id: 'session-sentinel',
+        status: 'in_progress',
+        machineName: '後日解決した正本機種名'
+      }
     ]);
   });
 });

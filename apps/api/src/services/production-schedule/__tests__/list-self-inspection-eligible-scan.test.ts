@@ -8,6 +8,10 @@ const leaderboardMocks = vi.hoisted(() => ({
   fetchLeaderboardShellRowsContinuationChunk: vi.fn()
 }));
 
+const machineNameEnrichmentMocks = vi.hoisted(() => ({
+  enrichProductionScheduleRowsWithResolvedMachineName: vi.fn()
+}));
+
 vi.mock('../leaderboard/leaderboard-row-selection.service.js', () => leaderboardMocks);
 
 import {
@@ -29,12 +33,8 @@ vi.mock('../../../lib/prisma.js', () => ({
 }));
 
 vi.mock('../production-schedule-machine-name-enrichment.service.js', () => ({
-  enrichProductionScheduleRowsWithResolvedMachineName: vi.fn(async (rows: Array<{ rowData: unknown }>) =>
-    rows.map((row) => ({
-      ...row,
-      resolvedMachineName: '機種-FS'
-    }))
-  )
+  enrichProductionScheduleRowsWithResolvedMachineName:
+    machineNameEnrichmentMocks.enrichProductionScheduleRowsWithResolvedMachineName
 }));
 
 const selfInspectionMocks = vi.hoisted(() => ({
@@ -117,6 +117,13 @@ describe('listSelfInspectionEligibleProductionScheduleRows scan', () => {
     vi.mocked(prisma.productionScheduleResourceMaster.findMany).mockResolvedValue([]);
     vi.mocked(prisma.partMeasurementTemplate.findMany).mockResolvedValue([]);
     vi.mocked(prisma.selfInspectionSession.findMany).mockResolvedValue([]);
+    machineNameEnrichmentMocks.enrichProductionScheduleRowsWithResolvedMachineName.mockImplementation(
+      async (rows: Array<{ rowData: unknown }>) =>
+        rows.map((row) => ({
+          ...row,
+          resolvedMachineName: '機種-FS'
+        }))
+    );
   });
 
   it('does not scan the dashboard when search filters are empty', async () => {
@@ -161,6 +168,13 @@ describe('listSelfInspectionEligibleProductionScheduleRows scan', () => {
     expect(result.rows[0]?.id).toBe('row-eligible');
     expect(result.rows[0]?.resolvedMachineName).toBe('機種-FS');
     expect(result.rows[0]?.selfInspectionEntryPath).toContain('machineName=%E6%A9%9F%E7%A8%AE-FS');
+    expect(machineNameEnrichmentMocks.enrichProductionScheduleRowsWithResolvedMachineName).toHaveBeenCalledTimes(1);
+    expect(
+      machineNameEnrichmentMocks.enrichProductionScheduleRowsWithResolvedMachineName.mock.calls[0]?.[0]
+    ).toHaveLength(1);
+    expect(
+      machineNameEnrichmentMocks.enrichProductionScheduleRowsWithResolvedMachineName.mock.calls[0]?.[0][0]?.id
+    ).toBe('row-eligible');
   });
 
   it('routes selfInspectionEligibleOnly through the dashboard OFFSET scanner (ignores leaderboard profile)', async () => {

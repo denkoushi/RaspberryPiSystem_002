@@ -39,6 +39,7 @@ import {
 } from '../../self-inspection-config.js';
 import { assertSelfInspectionSessionActive } from '../../self-inspection-invalidation-errors.js';
 import { resolveSeibanMachineDisplayNamesBatched } from '../../../production-schedule/seiban-machine-display-names.service.js';
+import { isMissingSeibanMachineName } from '../../../production-schedule/seiban-machine-name-state.js';
 import { LIST_SESSIONS_MAX } from './constants.js';
 
 export async function listSelfInspectionSessions(query: {
@@ -82,14 +83,14 @@ export async function listSelfInspectionSessions(query: {
     loadPendingReviewCountsBySessionIds(prisma, sessionIds)
   ]);
   const missingMachineNameFseibans = boundedRows
-    .filter((row) => !normalizeText(row.machineName))
+    .filter((row) => isMissingSeibanMachineName(row.machineName))
     .map((row) => normalizeText(row.fseiban))
     .filter((fseiban) => fseiban.length > 0);
   const { machineNames } = await resolveSeibanMachineDisplayNamesBatched(missingMachineNameFseibans);
   const summaries = boundedRows.map((row) => {
     const participantSummary = participantSummariesBySessionId.get(row.id);
     const fseiban = normalizeText(row.fseiban);
-    const machineName = normalizeText(row.machineName)
+    const machineName = !isMissingSeibanMachineName(row.machineName)
       ? row.machineName
       : fseiban.length > 0
         ? machineNames[fseiban] ?? null
