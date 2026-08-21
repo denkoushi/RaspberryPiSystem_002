@@ -1,12 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { MultipartFile } from '@fastify/multipart';
 import { z } from 'zod';
-import { authorizeRoles } from '../../lib/auth.js';
-import { ApiError } from '../../lib/errors.js';
+import { registerAssemblyProcedureDocumentRevisionRoutes } from './procedure-document-revisions.js';
 import {
-  resolveAssemblyProcedureMultipartReadLimit
-} from '../../lib/assembly-procedure-document-import.js';
-import { convertDrawingUploadToPreviewBuffer } from '../../lib/part-measurement-drawing-preview.js';
+  registerAssemblyProcedureDocumentRoutes,
+  serializeProcedureDocument
+} from './procedure-documents.js';
+import { authorizeRoles } from '../../lib/auth.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
 import { AssemblyTorqueTraceabilityService } from '../../services/torque-wrenches/index.js';
@@ -34,7 +33,6 @@ import {
   resolveAssemblyTraceabilityMode,
   TORQUE_INPUT_PORT_SOURCES,
   toPrismaTorqueInputSource,
-  type AssemblyProcedureDocumentSummary,
   type AssemblyProcedureSequenceDocumentSummary,
   type AssemblyProcedureSequence,
   type AssemblySeibanCandidate,
@@ -269,43 +267,6 @@ function dateToIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
 
-function serializeProcedureDocument(
-  doc: {
-    id: string;
-    name: string;
-    imageRelativePath: string;
-    status: 'DRAFT' | 'PUBLISHED';
-    publishedAt: Date | null;
-    isActive: boolean;
-    createdAt: Date;
-    updatedAt: Date;
-    pages?: Array<{ pageIndex: number; imageRelativePath: string }>;
-  }
-) {
-  return {
-    id: doc.id,
-    name: doc.name,
-    imageRelativePath: doc.imageRelativePath,
-    status: AssemblyProcedureDocumentService.toStatusDto(doc.status),
-    publishedAt: dateToIso(doc.publishedAt),
-    isActive: doc.isActive,
-    pages: (doc.pages ?? []).map((page) => ({
-      pageIndex: page.pageIndex,
-      imageRelativePath: page.imageRelativePath
-    })),
-    createdAt: doc.createdAt.toISOString(),
-    updatedAt: doc.updatedAt.toISOString()
-  };
-}
-
-function serializeProcedureDocumentSummary(doc: AssemblyProcedureDocumentSummary) {
-  return {
-    ...serializeProcedureDocument(doc),
-    activeTemplateCount: doc.activeTemplateCount,
-    totalTemplateCount: doc.totalTemplateCount
-  };
-}
-
 function serializeTemplateSummary(template: AssemblyTemplateSummary) {
   return {
     id: template.id,
@@ -353,7 +314,7 @@ function serializeProcedureSequenceDocumentSummary(
   };
 }
 
-function serializeProcedureSequence(sequence: AssemblyProcedureSequence) {
+export function serializeProcedureSequence(sequence: AssemblyProcedureSequence) {
   return {
     mode: sequence.mode,
     source: sequence.source,
@@ -381,7 +342,9 @@ function serializeProcedureSequence(sequence: AssemblyProcedureSequence) {
       pageCount: document.pageCount,
       updatedAt: document.updatedAt.toISOString(),
       pageUrls: document.pageUrls,
-      pages: document.pages
+      pages: document.pages,
+      overlays: document.overlays,
+      assets: document.assets
     })),
     fallbackProcedureDocument: sequence.fallbackProcedureDocument
   };
@@ -699,20 +662,6 @@ function serializeSession(session: AssemblyWorkSessionDetail, sessionService: As
   };
 }
 
-async function readMultipartFile(file: MultipartFile, maxBytes: number, tooLargeMessage: string): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of file.file) {
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    total += buf.length;
-    if (total > maxBytes) {
-      throw new ApiError(400, tooLargeMessage);
-    }
-    chunks.push(buf);
-  }
-  return Buffer.concat(chunks);
-}
-
 async function tryGetClientDevice(headers: FastifyRequest['headers']): Promise<{
   id: string;
   name: string;
@@ -788,6 +737,11 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const procedureSequenceService = new AssemblyProcedureSequenceService();
   const excelService = new AssemblyExcelExportService(sessionService);
 
+  registerAssemblyProcedureDocumentRevisionRoutes(app, {
+    allowView,
+    allowWriteKiosk
+  });
+
   app.get('/assembly/machine-name-candidates', { preHandler: allowView }, async (request) => {
     const query = machineNameCandidatesQuerySchema.parse(request.query);
     return machineNameCandidatesService.list(query);
@@ -839,131 +793,12 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
     return { options };
   });
 
-  app.post('/assembly/procedure-documents/preview', { preHandler: allowWriteKiosk }, async (request, reply) => {
-    if (!request.isMultipart()) throw new ApiError(400, 'マルチパートフォームデータが必要です');
-    let fileBuffer: Buffer | null = null;
-    let mimetype = '';
-    let filename = '';
-    for await (const part of request.parts()) {
-      if (part.type === 'file' && part.fieldname === 'file') {
-        const mf = part as MultipartFile;
-        mimetype = mf.mimetype || '';
-        filename = mf.filename || 'procedure';
-        const { maxBytes, tooLargeMessage } = resolveAssemblyProcedureMultipartReadLimit(mimetype, filename);
-        fileBuffer = await readMultipartFile(mf, maxBytes, tooLargeMessage);
-      }
-    }
-    if (!fileBuffer) throw new ApiError(400, '手順書ファイルが必要です');
-    const { buffer, contentType } = await convertDrawingUploadToPreviewBuffer({ buffer: fileBuffer, mimetype, filename });
-    reply.header('Content-Type', contentType);
-    reply.header('Cache-Control', 'no-store');
-    reply.header('X-Content-Type-Options', 'nosniff');
-    return reply.send(buffer);
-  });
-
-  app.get('/assembly/procedure-documents', { preHandler: allowView }, async (request) => {
-    const q = z
-      .object({
-        includeInactive: optionalTrueOnlyBooleanSchema,
-        q: z.string().optional(),
-        limit: z.coerce.number().int().min(1).max(200).optional()
-      })
-      .parse(request.query);
-    const documents = await procedureService.list({ includeInactive: q.includeInactive, q: q.q, limit: q.limit });
-    return { documents: documents.map(serializeProcedureDocument) };
-  });
-
-  app.get('/assembly/procedure-documents/summary', { preHandler: allowView }, async (request) => {
-    const q = z
-      .object({
-        includeInactive: optionalTrueOnlyBooleanSchema,
-        q: z.string().optional(),
-        limit: z.coerce.number().int().min(1).max(200).optional()
-      })
-      .parse(request.query);
-    const documents = await procedureService.listSummary({ includeInactive: q.includeInactive, q: q.q, limit: q.limit });
-    return { documents: documents.map(serializeProcedureDocumentSummary) };
-  });
-
-  app.get('/assembly/procedure-documents/:id', { preHandler: allowView }, async (request, reply) => {
-    const params = idParamSchema.parse(request.params);
-    const doc = await procedureService.getById(params.id, { includeInactive: true });
-    if (!doc) return reply.status(404).send({ message: '手順書が見つかりません' });
-    return { document: serializeProcedureDocument(doc) };
-  });
-
-  app.post('/assembly/procedure-documents', { preHandler: allowWriteKiosk }, async (request) => {
-    if (!request.isMultipart()) throw new ApiError(400, 'マルチパートフォームデータが必要です');
-    let fileBuffer: Buffer | null = null;
-    let mimetype = '';
-    let filename = '';
-    let name = '';
-    for await (const part of request.parts()) {
-      if (part.type === 'file' && part.fieldname === 'file') {
-        const mf = part as MultipartFile;
-        mimetype = mf.mimetype || '';
-        filename = mf.filename || 'procedure';
-        const { maxBytes, tooLargeMessage } = resolveAssemblyProcedureMultipartReadLimit(mimetype, filename);
-        fileBuffer = await readMultipartFile(mf, maxBytes, tooLargeMessage);
-      } else if (part.type === 'field' && part.fieldname === 'name') {
-        name = String(part.value ?? '').trim();
-      }
-    }
-    if (!fileBuffer) throw new ApiError(400, '手順書ファイルが必要です');
-    const doc = await procedureDraftImportService.importDraft({
-      name: name || filename.replace(/\.[^.]+$/, '') || '組立手順書',
-      buffer: fileBuffer,
-      mimetype,
-      filename
-    });
-    return { document: serializeProcedureDocument(doc) };
-  });
-
-  app.post('/assembly/procedure-documents/ingest-gmail', { preHandler: allowWriteKiosk }, async () => {
-    const result = await procedureGmailImportService.ingest();
-    return {
-      result: {
-        ...result,
-        items: result.items.map((item) => ({
-          messageId: item.messageId,
-          filename: item.filename,
-          status: item.status,
-          document: item.document ? serializeProcedureDocument(item.document) : null,
-          error: item.error
-        }))
-      }
-    };
-  });
-
-  app.post('/assembly/procedure-documents/:id/publish', { preHandler: allowWriteKiosk }, async (request) => {
-    const params = idParamSchema.parse(request.params);
-    const doc = await procedureService.publish(params.id);
-    return { document: serializeProcedureDocument(doc) };
-  });
-
-  app.post('/assembly/procedure-documents/:id/unpublish', { preHandler: allowWriteKiosk }, async (request) => {
-    const params = idParamSchema.parse(request.params);
-    const doc = await procedureService.unpublish(params.id);
-    return { document: serializeProcedureDocument(doc) };
-  });
-
-  app.patch('/assembly/procedure-documents/:id', { preHandler: allowWriteKiosk }, async (request) => {
-    const params = idParamSchema.parse(request.params);
-    const body = z.object({ name: z.string().trim().min(1).max(200) }).parse(request.body);
-    const doc = await procedureService.rename(params.id, body.name);
-    return { document: serializeProcedureDocument(doc) };
-  });
-
-  app.delete('/assembly/procedure-documents/:id', { preHandler: allowWriteKiosk }, async (request, reply) => {
-    const params = idParamSchema.parse(request.params);
-    const usage = await procedureService.getReferenceUsage(params.id);
-    if (usage.inBoltPageRef || usage.inCheckPageRef) {
-      return reply.status(409).send({ message: 'マーカー参照で使用中の手順書は削除できません' });
-    }
-    const result = await procedureService.deleteIfUnused(params.id);
-    if (result === 'not_found') return reply.status(404).send({ message: '手順書が見つかりません' });
-    if (result === 'in_use') return reply.status(409).send({ message: 'テンプレートで使用中の手順書は削除できません' });
-    return reply.status(204).send();
+  registerAssemblyProcedureDocumentRoutes(app, {
+    allowView,
+    allowWriteKiosk,
+    procedureService,
+    procedureDraftImportService,
+    procedureGmailImportService
   });
 
   app.get('/assembly/templates', { preHandler: allowView }, async (request) => {

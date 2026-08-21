@@ -8,6 +8,7 @@ export * from './AssemblyLotPane';
 export * from './AssemblyStartPane';
 export * from './AssemblyProcedureCanvas';
 export * from './AssemblyProcedureCropView';
+export * from './AssemblyProcedureOverlayLayer';
 export * from './AssemblyProcedureStoryboard';
 export * from './AssemblyProcedureStepInspector';
 export * from './AssemblyTemplateDocumentLibraryDialog';

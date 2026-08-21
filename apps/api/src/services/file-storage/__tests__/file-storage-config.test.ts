@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { resolveFileStorageConfig } from '../file-storage-config.js';
+import { DURABLE_FILE_NAMESPACES, resolveFileStorageConfig } from '../file-storage-config.js';
 
 describe('resolveFileStorageConfig', () => {
+  it('keeps assembly procedure source and overlay assets on the durable path', () => {
+    expect(DURABLE_FILE_NAMESPACES).toContain('assembly-procedure-assets');
+  });
+
   it('accepts consistent canonical and legacy settings', () => {
     expect(
       resolveFileStorageConfig({

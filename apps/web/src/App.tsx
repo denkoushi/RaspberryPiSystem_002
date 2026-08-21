@@ -136,6 +136,11 @@ const KioskAssemblyTemplateEditorPage = lazy(() =>
     default: module.KioskAssemblyTemplateEditorPage
   }))
 );
+const KioskAssemblyProcedureDocumentEditorPage = lazy(() =>
+  import('./pages/kiosk/KioskAssemblyProcedureDocumentEditorPage').then((module) => ({
+    default: module.KioskAssemblyProcedureDocumentEditorPage
+  }))
+);
 const KioskAssemblyWorkSessionPage = lazy(() =>
   import('./pages/kiosk/KioskAssemblyWorkSessionPage').then((module) => ({
     default: module.KioskAssemblyWorkSessionPage
@@ -198,6 +203,10 @@ function App() {
           <Route path="/kiosk/assembly" element={<KioskAssemblyHomePage />} />
           <Route path="/kiosk/assembly/training" element={lazyRouteElement(<KioskAssemblyTrainingPage />)} />
           <Route path="/kiosk/assembly/library" element={<KioskAssemblyPage />} />
+          <Route
+            path="/kiosk/assembly/procedure-documents/:documentId/edit"
+            element={lazyRouteElement(<KioskAssemblyProcedureDocumentEditorPage />)}
+          />
           <Route
             path="/kiosk/assembly/procedure-order-settings"
             element={<AssemblyProcedureOrderRedirect />}

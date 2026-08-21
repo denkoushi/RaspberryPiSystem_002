@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -9,7 +9,8 @@ import { withPdfConvertSlot } from './pdf-convert-semaphore.js';
 import {
   classifyDrawingUpload,
   getDrawingInputMaxBytes,
-  getDrawingInputTooLargeMessage
+  getDrawingInputTooLargeMessage,
+  resolveDrawingMime
 } from './part-measurement-drawing-import-mime.js';
 import { convertDrawingUploadToPreviewBuffer } from './part-measurement-drawing-preview.js';
 import {
@@ -18,6 +19,14 @@ import {
   PART_MEASUREMENT_PDF_RENDER_DPI
 } from './part-measurement-drawing-import.constants.js';
 import { AssemblyProcedureImageStorage } from './assembly-procedure-image-storage.js';
+import type {
+  AssemblyProcedureAssetStoragePort,
+  StoredAssemblyProcedureAsset
+} from '../services/assembly-procedure-assets/assembly-procedure-asset-storage.port.js';
+import {
+  extensionForAssemblyProcedureAssetContentType,
+  getAssemblyProcedureAssetStorage
+} from '../services/assembly-procedure-assets/local-assembly-procedure-asset-storage.adapter.js';
 
 export const ASSEMBLY_PROCEDURE_DOCUMENT_MAX_PAGES = 40;
 
@@ -35,12 +44,16 @@ export type AssemblyProcedureDocumentImportResult = {
 export type AssemblyProcedureDocumentPageImportResult = {
   imageRelativePath: string;
   contentType: string;
+  sha256: string;
+  byteSize: number;
 };
 
 export type AssemblyProcedureDocumentMultiPageImportResult = {
   pages: AssemblyProcedureDocumentPageImportResult[];
   relativeUrl: string;
   contentType: string;
+  /** Immutable bytes of the uploaded source, never a derived preview page. */
+  sourceAsset: StoredAssemblyProcedureAsset;
 };
 
 function wrapStorageError(error: unknown): never {
@@ -64,7 +77,12 @@ async function removeDirQuietly(dir: string): Promise<void> {
 async function savePreviewPage(preview: { buffer: Buffer; contentType: string }): Promise<AssemblyProcedureDocumentPageImportResult> {
   try {
     const saved = await AssemblyProcedureImageStorage.saveImage(preview.buffer, preview.contentType);
-    return { imageRelativePath: saved.relativeUrl, contentType: saved.contentType };
+    return {
+      imageRelativePath: saved.relativeUrl,
+      contentType: saved.contentType,
+      sha256: createHash('sha256').update(preview.buffer).digest('hex'),
+      byteSize: preview.buffer.length
+    };
   } catch (error) {
     wrapStorageError(error);
   }
@@ -129,7 +147,8 @@ async function convertPdfBufferToPageBuffers(buffer: Buffer): Promise<Buffer[]> 
 }
 
 export async function importAssemblyProcedureDocumentPagesAndSave(
-  input: AssemblyProcedureDocumentImportInput
+  input: AssemblyProcedureDocumentImportInput,
+  options: { storage?: AssemblyProcedureAssetStoragePort } = {}
 ): Promise<AssemblyProcedureDocumentMultiPageImportResult> {
   if (!input.buffer || input.buffer.length === 0) {
     throw new ApiError(400, '手順書ファイルが必要です');
@@ -140,31 +159,45 @@ export async function importAssemblyProcedureDocumentPagesAndSave(
     throw new ApiError(400, '未対応の手順書形式です');
   }
 
-  if (kind === 'pdf') {
-    const pageBuffers = await convertPdfBufferToPageBuffers(input.buffer);
-    const pages: AssemblyProcedureDocumentPageImportResult[] = [];
-    try {
+  const resolvedMime = resolveDrawingMime(input.mimetype, input.filename);
+  if (!resolvedMime) {
+    throw new ApiError(400, '未対応の手順書形式です');
+  }
+  const storage = options.storage ?? getAssemblyProcedureAssetStorage();
+  let sourceAsset: StoredAssemblyProcedureAsset | null = null;
+  const pages: AssemblyProcedureDocumentPageImportResult[] = [];
+  try {
+    // Preserve the exact uploaded bytes before generating any preview. The
+    // returned storage key must never point at an assembly-procedure-images
+    // derivative.
+    sourceAsset = await storage.save({
+      data: input.buffer,
+      contentType: resolvedMime,
+      extension: extensionForAssemblyProcedureAssetContentType(resolvedMime)
+    });
+
+    if (kind === 'pdf') {
+      const pageBuffers = await convertPdfBufferToPageBuffers(input.buffer);
       for (const pageBuffer of pageBuffers) {
         pages.push(await savePreviewPage({ buffer: pageBuffer, contentType: 'image/jpeg' }));
       }
-    } catch (error) {
-      await deleteSavedPagesQuietly(pages);
-      throw error;
+    } else {
+      const preview = await convertDrawingUploadToPreviewBuffer(input);
+      pages.push(await savePreviewPage(preview));
     }
     return {
       pages,
       relativeUrl: pages[0]!.imageRelativePath,
-      contentType: pages[0]!.contentType
+      contentType: pages[0]!.contentType,
+      sourceAsset
     };
+  } catch (error) {
+    await deleteSavedPagesQuietly(pages);
+    if (sourceAsset) {
+      await storage.delete(sourceAsset).catch(() => undefined);
+    }
+    throw error;
   }
-
-  const preview = await convertDrawingUploadToPreviewBuffer(input);
-  const page = await savePreviewPage(preview);
-  return {
-    pages: [page],
-    relativeUrl: page.imageRelativePath,
-    contentType: page.contentType
-  };
 }
 
 /** @deprecated Use importAssemblyProcedureDocumentPagesAndSave */

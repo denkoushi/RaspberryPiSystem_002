@@ -120,6 +120,24 @@ if [ -d "${PHOTO_STORAGE_DIR}/photos" ] || [ -d "${PHOTO_STORAGE_DIR}/thumbnails
   fi
 fi
 
+# 組立手順書の原本・overlay asset は再生成できない永続資産として個別に保存する。
+ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE=""
+if [ -d "${PHOTO_STORAGE_DIR}/assembly-procedure-assets" ]; then
+  ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE="${BACKUP_DIR}/assembly-procedure-assets_backup_${DATE}.tar.gz"
+  tar -czf "${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}" -C "${PHOTO_STORAGE_DIR}" assembly-procedure-assets 2>/dev/null || {
+    echo "警告: 組立手順書assetのバックアップに失敗しました（スキップします）"
+    ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE=""
+  }
+  if [ -n "${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}" ] && [ -f "${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}" ]; then
+    if [ "${ENCRYPT_ENABLED}" = true ]; then
+      gpg --encrypt --recipient "${GPG_RECIPIENT}" --trust-model always --output "${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}.gpg" "${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}"
+      rm -f "${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}"
+      ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE="${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}.gpg"
+    fi
+    echo "組立手順書assetバックアップ完了: ${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}"
+  fi
+fi
+
 # オフライン保存用のUSBメモリ/外部HDDへのコピー
 if [ -d "${OFFLINE_MOUNT}" ] && mountpoint -q "${OFFLINE_MOUNT}"; then
   echo "オフライン保存先へのコピーを開始..."
@@ -137,6 +155,9 @@ if [ -d "${OFFLINE_MOUNT}" ] && mountpoint -q "${OFFLINE_MOUNT}"; then
   # 写真バックアップをコピー（存在する場合）
   if [ -n "${PHOTO_BACKUP_FILE}" ] && [ -f "${PHOTO_BACKUP_FILE}" ]; then
     cp "${PHOTO_BACKUP_FILE}" "${OFFLINE_BACKUP_DIR}/"
+  fi
+  if [ -n "${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}" ] && [ -f "${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}" ]; then
+    cp "${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}" "${OFFLINE_BACKUP_DIR}/"
   fi
   
   echo "オフライン保存完了: ${OFFLINE_BACKUP_DIR}"
@@ -169,4 +190,3 @@ if [ "${ENCRYPT_ENABLED}" = true ]; then
 else
   echo "暗号化: 無効"
 fi
-

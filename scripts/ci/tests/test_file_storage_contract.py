@@ -12,6 +12,9 @@ API_ENV = (ROOT / "infrastructure/ansible/templates/api.env.j2").read_text()
 SERVER_ROLE = (
     ROOT / "infrastructure/ansible/roles/server/tasks/main.yml"
 ).read_text()
+RUNTIME_PERMISSIONS = (
+    ROOT / "infrastructure/ansible/playbooks/prepare-pi5-runtime-permissions.yml"
+).read_text()
 
 
 class FileStorageContractTest(unittest.TestCase):
@@ -29,6 +32,10 @@ class FileStorageContractTest(unittest.TestCase):
             SERVER_COMPOSE,
         )
         self.assertIn(
+            "assembly-procedure-assets-storage:/app/storage/assembly-procedure-assets",
+            SERVER_COMPOSE,
+        )
+        self.assertIn(
             "device: /opt/RaspberryPiSystem_002/storage/csv-dashboards",
             SERVER_COMPOSE,
         )
@@ -41,6 +48,10 @@ class FileStorageContractTest(unittest.TestCase):
             "part-measurement-drawings-derivatives",
             SERVER_COMPOSE,
         )
+        self.assertIn(
+            "device: /opt/RaspberryPiSystem_002/storage/assembly-procedure-assets",
+            SERVER_COMPOSE,
+        )
 
     def test_blue_green_and_mac_overlays_keep_the_same_storage_boundaries(self):
         for value in (
@@ -48,6 +59,7 @@ class FileStorageContractTest(unittest.TestCase):
             "file-integrity-storage:/app/storage/.integrity",
             "part-measurement-drawings-derivatives-storage:"
             "/app/storage/part-measurement-drawings-derivatives",
+            "assembly-procedure-assets-storage:/app/storage/assembly-procedure-assets",
         ):
             self.assertIn(value, PHASE3_COMPOSE)
         self.assertIn(
@@ -68,11 +80,24 @@ class FileStorageContractTest(unittest.TestCase):
             "/app/storage/part-measurement-drawings-derivatives",
             MAC_OVERRIDE,
         )
+        self.assertIn(
+            "../../.docker/local/storage/assembly-procedure-assets:"
+            "/app/storage/assembly-procedure-assets",
+            MAC_OVERRIDE,
+        )
 
     def test_ansible_creates_the_derivative_cache_bind_source(self):
         self.assertIn(
             '"{{ repo_path }}/storage/part-measurement-drawings-derivatives"',
             SERVER_ROLE,
+        )
+        self.assertIn(
+            '"{{ repo_path }}/storage/assembly-procedure-assets"',
+            SERVER_ROLE,
+        )
+        self.assertIn(
+            '"{{ repo_path }}/storage/assembly-procedure-assets"',
+            RUNTIME_PERMISSIONS,
         )
 
     def test_ansible_environment_uses_one_canonical_root_and_consistent_aliases(self):

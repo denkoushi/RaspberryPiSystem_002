@@ -96,7 +96,8 @@ async function publishProcedureDocument(
   const publishRes = await app.inject({
     method: 'POST',
     url: `/api/assembly/procedure-documents/${documentId}/publish`,
-    headers: publishHeaders
+    headers: { ...publishHeaders, 'Content-Type': 'application/json' },
+    payload: { accessPassword: '2520' }
   });
   expect(publishRes.statusCode).toBe(200);
   expect(publishRes.json().document.status).toBe('published');

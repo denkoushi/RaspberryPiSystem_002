@@ -38,6 +38,8 @@ type Props = {
   onCreateCrop?: (crop: AssemblyProcedureCropRect) => void;
   cropRect?: AssemblyProcedureCropRect | null;
   onCropChange?: (crop: AssemblyProcedureCropRect) => void;
+  /** A domain-owned layer rendered in the same measured source-page frame. */
+  overlay?: ReactNode;
   placementMode?: 'bolt' | 'check';
   placementAction?: 'place' | 'callout' | 'crop';
   zoom?: number;
@@ -88,6 +90,7 @@ export function AssemblyProcedureCanvas({
   onCreateCrop,
   cropRect,
   onCropChange,
+  overlay,
   placementMode = 'bolt',
   placementAction = 'place',
   zoom = 1,
@@ -315,6 +318,7 @@ export function AssemblyProcedureCanvas({
                 className="pointer-events-none block h-full w-full select-none"
                 draggable={false}
               />
+              {overlay}
               <AssemblyProcedureMarkerLayer
                 bolts={bolts}
                 checkItems={checkItems}
@@ -396,6 +400,7 @@ export function AssemblyProcedureImageWithMarkers({
   onSelectCheckItem,
   onToggleCheckItem,
   onPlacementClick,
+  overlay,
   fitToParent = false,
   className
 }: {
@@ -409,6 +414,8 @@ export function AssemblyProcedureImageWithMarkers({
   onSelectCheckItem?: (id: string) => void;
   onToggleCheckItem?: (id: string) => void;
   onPlacementClick?: (xRatio: number, yRatio: number) => void;
+  /** A readonly/editor-owned layer rendered inside the same image frame as markers. */
+  overlay?: ReactNode;
   /** When true, scale the image to the largest size that fits the parent while preserving aspect ratio. */
   fitToParent?: boolean;
   className?: string;
@@ -460,6 +467,7 @@ export function AssemblyProcedureImageWithMarkers({
         onClick={handleClick}
       >
         {imageContent}
+        {overlay}
         {markerLayers}
       </div>
     );
@@ -478,6 +486,7 @@ export function AssemblyProcedureImageWithMarkers({
         onClick={handleClick}
       >
         {imageContent}
+        {overlay}
         {markerLayers}
       </div>
     </div>

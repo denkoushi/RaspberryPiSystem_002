@@ -101,4 +101,21 @@ describe('assembly library two-row layout', () => {
     expect(screen.getByRole('button', { name: '取込中…' })).toBeDisabled();
     expect(screen.getByText('Gmail取込: 新規1件')).toBeInTheDocument();
   });
+
+  it('does not offer legacy unpublish for immutable revision heads', () => {
+    render(
+      <MemoryRouter>
+        <AssemblyProcedureLibrarySection
+          onRegisterClick={vi.fn()}
+          previewDocuments={[{ ...document, id: 'published-revision', revisionRootId: 'revision-root-1' }]}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole('button', { name: '公開取消' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '改版編集' })).toHaveAttribute(
+      'href',
+      '/kiosk/assembly/procedure-documents/published-revision/edit'
+    );
+  });
 });

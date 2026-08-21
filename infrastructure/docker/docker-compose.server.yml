@@ -106,6 +106,8 @@ services:
       - part-measurement-drawings-derivatives-storage:/app/storage/part-measurement-drawings-derivatives
       # 組立手順書画像（未マウントだとコンテナ再作成でファイル消失）
       - assembly-procedure-images-storage:/app/storage/assembly-procedure-images
+      # 組立手順書の原本・overlay asset（不変blob。未マウントだと再作成で消失）
+      - assembly-procedure-assets-storage:/app/storage/assembly-procedure-assets
       # 計測機器ジャンル点検画像（未マウントだとコンテナ再作成でファイル消失）
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       # パレット可視化・加工機イラスト（未マウントだとデプロイでコンテナ再作成時にファイル消失）
@@ -284,6 +286,12 @@ volumes:
       type: none
       o: bind
       device: /opt/RaspberryPiSystem_002/storage/assembly-procedure-images
+  assembly-procedure-assets-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/RaspberryPiSystem_002/storage/assembly-procedure-assets
   measuring-instrument-genres-storage:
     driver: local
     driver_opts:

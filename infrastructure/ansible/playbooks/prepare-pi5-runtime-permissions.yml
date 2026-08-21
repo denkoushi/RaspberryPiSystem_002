@@ -40,6 +40,7 @@
         recurse: true
       loop:
         - "{{ repo_path }}/storage"
+        - "{{ repo_path }}/storage/assembly-procedure-assets"
         - "{{ repo_path }}/alerts"
         - "{{ repo_path }}/power-actions"
         - "{{ repo_path }}/config"
@@ -59,6 +60,7 @@
       changed_when: false
       loop:
         - "{{ repo_path }}/storage"
+        - "{{ repo_path }}/storage/assembly-procedure-assets"
         - "{{ repo_path }}/alerts"
         - "{{ repo_path }}/power-actions"
         - "{{ repo_path }}/config"

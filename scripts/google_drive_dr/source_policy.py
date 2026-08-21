@@ -48,6 +48,7 @@ PRIMARY_STORAGE_RELATIVE_SOURCES = (
     ("pdfs", Path("storage/pdfs")),
     ("part-measurement-drawings", Path("storage/part-measurement-drawings")),
     ("assembly-procedure-images", Path("storage/assembly-procedure-images")),
+    ("assembly-procedure-assets", Path("storage/assembly-procedure-assets")),
     ("measuring-instrument-genres", Path("storage/measuring-instrument-genres")),
     ("pallet-machine-illustrations", Path("storage/pallet-machine-illustrations")),
     ("csv-dashboards", Path("storage/csv-dashboards")),

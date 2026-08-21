@@ -266,6 +266,7 @@ if [ "${USE_API}" = true ]; then
   for directory_source in \
     "/app/storage/part-measurement-drawings" \
     "/app/storage/assembly-procedure-images" \
+    "/app/storage/assembly-procedure-assets" \
     "/app/storage/measuring-instrument-genres" \
     "/app/storage/pallet-machine-illustrations" \
     "/app/storage/pdfs" \

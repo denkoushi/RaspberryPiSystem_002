@@ -9,7 +9,7 @@ import { KioskFilterCombobox, type KioskFilterOption } from '../../components/ki
 import { Button, buttonClassName } from '../../components/ui/Button';
 
 import { AssemblyProcedureRenameModal } from './AssemblyProcedureRenameModal';
-import { kioskAssemblyTemplateNewPath } from './assemblyRoutes';
+import { kioskAssemblyProcedureDocumentEditPath, kioskAssemblyTemplateNewPath } from './assemblyRoutes';
 import {
   assemblyProcedureDocumentPageCount,
   resolveAssemblyDocumentStatus
@@ -256,6 +256,16 @@ export function AssemblyProcedureLibrarySection({
                           {isPublished ? '内容確認' : '内容確認・公開'}
                         </Button>
                         <Link
+                          to={kioskAssemblyProcedureDocumentEditPath(document.id)}
+                          data-kiosk-sop-target="assembly-procedure-edit"
+                          className={buttonClassName(
+                            'ghostOnDark',
+                            'inline-flex min-h-11 shrink-0 items-center rounded !px-2 !py-0 text-[0.75rem] leading-tight'
+                          )}
+                        >
+                          {isPublished ? '改版編集' : '編集'}
+                        </Link>
+                        <Link
                           to={kioskAssemblyTemplateNewPath({ procedureDocumentId: document.id })}
                           data-kiosk-sop-target="assembly-template-new"
                           className={buttonClassName(
@@ -270,7 +280,7 @@ export function AssemblyProcedureLibrarySection({
                         >
                           テンプレート新規作成
                         </Link>
-                        {!isPublished ? null : (
+                        {!isPublished || document.revisionRootId != null ? null : (
                           <Button
                             type="button"
                             variant="secondary"

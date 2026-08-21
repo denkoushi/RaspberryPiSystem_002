@@ -94,6 +94,7 @@
   loop:
     - "{{ repo_path }}/storage"
     - "{{ repo_path }}/storage/part-measurement-drawings-derivatives"
+    - "{{ repo_path }}/storage/assembly-procedure-assets"
     - "{{ repo_path }}/alerts"
     - "{{ repo_path }}/power-actions"
     - "{{ repo_path }}/config"
@@ -381,6 +382,14 @@
 - name: Ensure assembly procedure image storage directory exists
   ansible.builtin.file:
     path: "{{ repo_path }}/storage/assembly-procedure-images"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+
+- name: Ensure assembly procedure asset storage directory exists
+  ansible.builtin.file:
+    path: "{{ repo_path }}/storage/assembly-procedure-assets"
     state: directory
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
