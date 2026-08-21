@@ -118,7 +118,7 @@ describe('self-inspection workflow actions', () => {
         kind: 'link',
         href: KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
         label: '記録確認',
-        tone: 'secondary'
+        tone: 'primary'
       }
     ]);
   });

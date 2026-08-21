@@ -10,9 +10,16 @@ const rows: SelfInspectionTableRow[] = Array.from({ length: 5 }, (_, index) => (
   kind: 'candidate',
   id: `row-${index + 1}`,
   productNo: `100${index + 1}`,
+  fseiban: `A-${index + 1}`,
+  machineName: `機種-${index + 1}`,
+  fhinmei: `部品-${index + 1}`,
   resourceCd: '581',
+  resourceLabel: '資源名（581）',
+  updatedAt: '2026-07-14T01:02:03.000Z',
   statusLabel: '未開始',
-  statusTone: 'info',
+  statusTone: 'neutral',
+  intentLabel: '開始方法を選択してください',
+  metadataLine: `製造order 100${index + 1} / 資源 資源名（581） / 最終更新 2026/07/14 10:02 / 進捗 未開始 / 参加者 —`,
   detailLine: `製番 A-${index + 1}`,
   progressLine: '指示数 10',
   invalidationTarget: {
@@ -79,15 +86,21 @@ describe('SelfInspectionTable', () => {
       expect(action).toHaveClass('!h-[30.8px]', '!min-h-[30.8px]', '!px-1', '!py-0', 'text-sm');
       expect(action).not.toHaveClass('w-full');
     }
-    expect(screen.getByText('製番 A-1').closest('td')).toHaveClass('text-sm');
+    expect(screen.getByTestId('self-inspection-item-identity-fseiban')).toHaveClass('text-[21px]');
   });
 
   it('clips long labels within their cells while exposing the full values through titles', () => {
     const longRow: SelfInspectionTableRow = {
       ...rows[0]!,
       productNo: 'ORDER-VERY-LONG-1234567890',
+      fseiban: 'SEIBAN-VERY-LONG-1234567890',
+      machineName: 'MACHINE-VERY-LONG-1234567890',
+      fhinmei: 'NAME-VERY-LONG-1234567890',
       resourceCd: 'RESOURCE-VERY-LONG-1234567890',
+      resourceLabel: 'RESOURCE-NAME-VERY-LONG-1234567890（RESOURCE-VERY-LONG-1234567890）',
       statusLabel: '非常に長い状態ラベル',
+      intentLabel: '非常に長い次の操作の説明',
+      metadataLine: '製造order ORDER-VERY-LONG-1234567890 / 資源 RESOURCE-NAME-VERY-LONG-1234567890 / 最終更新 2026/07/14 10:02 / 進捗 未開始 / 参加者 —',
       detailLine: '製番・品番・品名を含む非常に長い詳細情報',
       progressLine: '非常に長い進捗情報'
     };
@@ -97,11 +110,11 @@ describe('SelfInspectionTable', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByTitle(longRow.productNo)).toHaveClass('truncate');
-    expect(screen.getByTitle(longRow.resourceCd)).toHaveClass('truncate');
-    expect(screen.getByTitle(longRow.statusLabel)).toHaveClass('truncate');
-    expect(screen.getByTitle(longRow.detailLine)).toHaveClass('line-clamp-1');
-    expect(screen.getByTitle(longRow.progressLine)).toHaveClass('line-clamp-1');
+    expect(screen.getByTitle(longRow.fseiban!)).toHaveClass('truncate');
+    expect(screen.getByTitle(longRow.machineName!)).toHaveClass('truncate');
+    expect(screen.getByTitle(longRow.fhinmei)).toHaveClass('truncate');
+    expect(screen.getByTitle(longRow.metadataLine)).toHaveClass('truncate');
+    expect(screen.getByTitle(`${longRow.statusLabel} / ${longRow.intentLabel}`)).toHaveClass('truncate');
     expect(screen.getByRole('table')).toHaveClass('w-full', 'table-fixed');
   });
 });

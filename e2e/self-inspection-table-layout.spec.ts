@@ -78,6 +78,12 @@ async function installApiMocks(page: Page): Promise<void> {
   const reviewPending = Array.from({ length: 4 }, (_, index) =>
     makeSession(index + 8, 'review_pending')
   );
+  Object.assign(inProgress[0]!, {
+    fseiban: 'SEIBAN-VERY-LONG-IDENTITY-0001',
+    machineName: '設備名称が非常に長い場合のトランケート確認用',
+    fhinmei: '品名が非常に長い場合でも1行に収まることの確認用部品',
+    participantEmployeeNames: ['担当者の表示名が長い場合の確認用']
+  });
 
   await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
     const url = new URL(route.request().url());
@@ -103,7 +109,17 @@ async function installApiMocks(page: Page): Promise<void> {
       return;
     }
     if (path === '/api/kiosk/production-schedule/resources') {
-      await route.fulfill({ json: { resources: ['R001'], resourceNameMap: {} } });
+      await route.fulfill({
+        json: {
+          resources: ['R-1', 'R-2', 'R-3', 'R-4'],
+          resourceNameMap: {
+            'R-1': ['第一資源の日本語表示名'],
+            'R-2': ['第二資源の日本語表示名'],
+            'R-3': ['第三資源の日本語表示名'],
+            'R-4': ['第四資源の日本語表示名']
+          }
+        }
+      });
       return;
     }
     if (path === '/api/part-measurement/inspection-drawing/templates') {
@@ -142,13 +158,16 @@ test.describe('自主検査一覧の表レイアウト', () => {
     { width: 1536, height: 864, panes: 2 },
     { width: 1920, height: 1080, panes: 2 }
   ]) {
-    test(`${viewport.width}x${viewport.height} で ${viewport.panes} ペインと1行ヘッダーを維持する`, async ({ page }) => {
+    test(`${viewport.width}x${viewport.height} で ${viewport.panes} ペインと2行アイテムを維持する`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await openSelfInspection(page);
 
       const panes = page.getByTestId('self-inspection-table-panes');
       await expect(panes).toHaveAttribute('data-pane-count', String(viewport.panes));
       await expect(panes.locator('table')).toHaveCount(viewport.panes);
+      await expect(panes.locator('caption')).toHaveCount(viewport.panes);
+      await expect(panes.locator('thead.sr-only')).toHaveCount(viewport.panes);
+      await expect(panes.locator('thead th')).toHaveCount(viewport.panes * 4);
 
       const header = page.getByRole('heading', { name: '自主検査', exact: true }).locator('..');
       const headerMetrics = await header.evaluate((element) => ({
@@ -172,10 +191,80 @@ test.describe('自主検査一覧の表レイアウト', () => {
         .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
       expect(controlHeights.every((height) => height >= 44)).toBe(true);
 
-      const productNos = await panes
-        .locator('tbody tr:nth-child(odd) td:first-child')
-        .allTextContents();
+      const productNos = (await panes.getByTestId('self-inspection-item-metadata').allTextContents())
+        .map((text) => text.match(/製造order\s+([^/]+)/)?.[1]?.trim());
       expect(productNos).toEqual(Array.from({ length: 12 }, (_, index) => `ORDER-${String(index + 1).padStart(2, '0')}`));
+
+      const firstMetadata = panes.getByTestId('self-inspection-item-metadata').first();
+      await expect(firstMetadata).toContainText('第一資源の日本語表示名（R-1）');
+      await expect(firstMetadata).toContainText('最終更新 2026/07/15(水) 08:00');
+      await expect(firstMetadata).not.toContainText(/08:00:\d{2}/);
+
+      const firstIdentity = panes.getByTestId('self-inspection-item-primary-row').first();
+      await expect(firstIdentity.getByTestId('self-inspection-item-identity-fseiban')).toHaveAttribute(
+        'title',
+        'SEIBAN-VERY-LONG-IDENTITY-0001'
+      );
+      await expect(firstIdentity.getByTestId('self-inspection-item-identity-machine-name')).toHaveAttribute(
+        'title',
+        '設備名称が非常に長い場合のトランケート確認用'
+      );
+      await expect(firstIdentity.getByTestId('self-inspection-item-identity-fhinmei')).toHaveAttribute(
+        'title',
+        '品名が非常に長い場合でも1行に収まることの確認用部品'
+      );
+
+      const itemMetrics = await firstIdentity.evaluate((element) => {
+        const secondary = element.nextElementSibling;
+        const identity = element.querySelector('[data-testid="self-inspection-item-identity"]');
+        const identityValues = Array.from(element.querySelectorAll('[data-testid^="self-inspection-item-identity-"]'));
+        const secondaryGrid = secondary?.querySelector('div.grid');
+        const secondaryCell = secondary?.querySelector('td');
+        const primaryRect = element.getBoundingClientRect();
+        const secondaryRect = secondary?.getBoundingClientRect();
+        const gridRect = secondaryGrid?.getBoundingClientRect();
+        return {
+          primaryHeight: primaryRect.height,
+          secondaryHeight: secondaryRect?.height ?? 0,
+          itemHeight: (secondaryRect?.bottom ?? primaryRect.bottom) - primaryRect.top,
+          primaryCellHeight: element.querySelector('td')?.getBoundingClientRect().height ?? 0,
+          secondaryCellHeight: secondaryCell?.getBoundingClientRect().height ?? 0,
+          identityGridTemplateColumns: identity ? getComputedStyle(identity).gridTemplateColumns : '',
+          identityFontSizes: identityValues.map((value) => getComputedStyle(value).fontSize),
+          identityColors: identityValues.map((value) => getComputedStyle(value).color),
+          identityWhiteSpaces: identityValues.map((value) => getComputedStyle(value).whiteSpace),
+          secondaryGridTemplateColumns: secondaryGrid ? getComputedStyle(secondaryGrid).gridTemplateColumns : '',
+          secondaryColumnWidths: gridRect && secondaryGrid
+            ? Array.from(secondaryGrid.children).map((child) => child.getBoundingClientRect().width / gridRect.width)
+            : [],
+          bodyRowCount: element.closest('table')?.querySelectorAll('tbody tr').length ?? 0
+        };
+      });
+      expect(Math.abs(itemMetrics.primaryHeight - 43.3)).toBeLessThanOrEqual(1);
+      expect(Math.abs(itemMetrics.secondaryHeight - 51)).toBeLessThanOrEqual(1);
+      expect(Math.abs(itemMetrics.itemHeight - 94.3)).toBeLessThanOrEqual(1);
+      expect(Math.abs(itemMetrics.primaryCellHeight - 43.3)).toBeLessThanOrEqual(1);
+      expect(Math.abs(itemMetrics.secondaryCellHeight - 51)).toBeLessThanOrEqual(1);
+      expect(itemMetrics.identityGridTemplateColumns.split(' ').length).toBe(3);
+      expect(itemMetrics.identityFontSizes.every((fontSize) => fontSize === '21px')).toBe(true);
+      expect(itemMetrics.identityColors.every((color) => color === 'rgb(255, 255, 255)')).toBe(true);
+      expect(itemMetrics.identityWhiteSpaces.every((whiteSpace) => whiteSpace === 'nowrap')).toBe(true);
+      expect(itemMetrics.secondaryGridTemplateColumns.split(' ').length).toBe(3);
+      expect(itemMetrics.secondaryColumnWidths[0]).toBeCloseTo(0.46, 1);
+      expect(itemMetrics.secondaryColumnWidths[1]).toBeCloseTo(0.16, 1);
+      expect(itemMetrics.secondaryColumnWidths[2]).toBeCloseTo(0.38, 1);
+      expect(itemMetrics.bodyRowCount % 2).toBe(0);
+
+      const actionPrimaryCounts = await panes.getByTestId('self-inspection-row-actions').evaluateAll((groups) =>
+        groups.map((group) => ({
+          primaryCount: Array.from(group.querySelectorAll('button, a')).filter((action) =>
+            action.className.includes('bg-emerald-500')
+          ).length,
+          dangerCount: group.querySelectorAll('button[title="削除"]').length
+        }))
+      );
+      expect(actionPrimaryCounts.every(({ primaryCount }) => primaryCount <= 1)).toBe(true);
+      expect(actionPrimaryCounts.every(({ dangerCount }) => dangerCount === 1)).toBe(true);
 
       const paneOverflow = await panes.evaluate((element) => ({
         clientWidth: element.clientWidth,

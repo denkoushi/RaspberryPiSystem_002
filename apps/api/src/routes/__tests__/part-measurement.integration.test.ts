@@ -4122,6 +4122,22 @@ describe('part-measurement templates API', () => {
       recordApprovalState: 'completed'
     });
 
+    const completedRecordsScopeRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?scope=completed_records',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(completedRecordsScopeRes.statusCode).toBe(200);
+    expect(
+      (completedRecordsScopeRes.json().sessions as Array<{
+        id: string;
+        recordApprovalState: string;
+      }>).find((row) => row.id === session.id)
+    ).toMatchObject({
+      id: session.id,
+      recordApprovalState: 'completed'
+    });
+
     const activeAfterCompletionRes = await app.inject({
       method: 'GET',
       url: '/api/part-measurement/self-inspection/record-approvals?state=active',

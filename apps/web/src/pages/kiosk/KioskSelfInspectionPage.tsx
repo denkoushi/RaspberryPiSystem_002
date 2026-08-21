@@ -9,6 +9,7 @@ import {
 import {
   useInvalidateSelfInspectionItem,
   useKioskProductionSchedule,
+  useKioskProductionScheduleResources,
   useSelfInspectionSessions
 } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
@@ -63,6 +64,7 @@ type SelfInspectionCandidateRow = SelfInspectionWorkflowTarget & {
   selfInspectionTemplateId: string;
   plannedQuantity: number | null;
   status: SelfInspectionStatus | null;
+  updatedAt: string | null;
 };
 
 function mapEligibleRow(row: ProductionScheduleRow): SelfInspectionCandidateRow {
@@ -82,6 +84,7 @@ function mapEligibleRow(row: ProductionScheduleRow): SelfInspectionCandidateRow 
     fhincd: String(rowData.FHINCD ?? '').trim(),
     fhinmei: String(rowData.FHINMEI ?? '').trim(),
     machineName: typeof row.resolvedMachineName === 'string' ? row.resolvedMachineName.trim() : null,
+    updatedAt: row.updatedAt ?? null,
     processGroup: row.partMeasurementProcessGroup === 'grinding' ? 'grinding' : 'cutting',
     plannedQuantity,
     selfInspectionTemplateId: templateId,
@@ -126,6 +129,11 @@ export function KioskSelfInspectionPage() {
   const lastNameNfcEventKeyRef = useRef<string | null>(null);
   const nfcEvent = useNfcStream(nameScanArmed);
   const invalidateItemMutation = useInvalidateSelfInspectionItem();
+  const resourcesQuery = useKioskProductionScheduleResources();
+  const resourceNameMap = useMemo(
+    () => resourcesQuery.data?.resourceNameMap ?? {},
+    [resourcesQuery.data?.resourceNameMap]
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -223,10 +231,13 @@ export function KioskSelfInspectionPage() {
     () => buildResourceFilterOptions(displayedFilterSources),
     [displayedFilterSources]
   );
-  const candidateTableRows = useMemo(() => rows.map(presentSelfInspectionCandidateRow), [rows]);
+  const candidateTableRows = useMemo(
+    () => rows.map((row) => presentSelfInspectionCandidateRow(row, resourceNameMap)),
+    [resourceNameMap, rows]
+  );
   const wipTableRows = useMemo(
-    () => filteredWipSessions.map(presentSelfInspectionSessionRow),
-    [filteredWipSessions]
+    () => filteredWipSessions.map((session) => presentSelfInspectionSessionRow(session, resourceNameMap)),
+    [filteredWipSessions, resourceNameMap]
   );
   const wipListTruncated =
     wipSessionsQuery.data?.truncated === true ||

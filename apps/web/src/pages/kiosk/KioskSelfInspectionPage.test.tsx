@@ -9,6 +9,7 @@ import type { SelfInspectionSessionSummaryDto } from '../../features/part-measur
 import type { NfcEvent } from '../../hooks/useNfcStream';
 
 const mockUseKioskProductionSchedule = vi.fn();
+const mockUseKioskProductionScheduleResources = vi.fn();
 const mockUseSelfInspectionSessions = vi.fn();
 const mockIssueSelfInspectionPaperReport = vi.fn();
 const mockResolveSelfInspectionNfcTagUid = vi.fn();
@@ -21,6 +22,7 @@ let reviewPendingSessions: SelfInspectionSessionSummaryDto[] = [];
 
 vi.mock('../../api/hooks', () => ({
   useKioskProductionSchedule: (...args: unknown[]) => mockUseKioskProductionSchedule(...args),
+  useKioskProductionScheduleResources: (...args: unknown[]) => mockUseKioskProductionScheduleResources(...args),
   useSelfInspectionSessions: (...args: unknown[]) => mockUseSelfInspectionSessions(...args),
   useInvalidateSelfInspectionItem: () => ({
     mutateAsync: mockInvalidateSelfInspectionItem,
@@ -44,6 +46,7 @@ function buildScheduleRow(overrides: Partial<ProductionScheduleRow> = {}): Produ
   return {
     id: 'schedule-row-1',
     occurredAt: '2026-06-26T00:00:00.000Z',
+    updatedAt: '2026-06-26T00:00:00.000Z',
     rowData: {
       ProductNo: '0002178005',
       FSEIBAN: 'BE1N9321',
@@ -128,6 +131,12 @@ function lastScheduleParams() {
   return call?.[0] as { q?: string; productNos?: string; resourceCds?: string } | undefined;
 }
 
+function metadataForProduct(productNo: string): HTMLElement | undefined {
+  return screen
+    .getAllByTestId('self-inspection-item-metadata')
+    .find((element) => element.textContent?.includes(productNo));
+}
+
 async function scanHidText(text: string) {
   fireEvent.click(screen.getByRole('button', { name: '移動票スキャン' }));
   await screen.findByText('移動票の製造order番号を読み取ってください。');
@@ -143,6 +152,7 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     wipSessions = [];
     reviewPendingSessions = [];
     mockUseKioskProductionSchedule.mockReset();
+    mockUseKioskProductionScheduleResources.mockReset();
     mockUseSelfInspectionSessions.mockReset();
     mockIssueSelfInspectionPaperReport.mockReset();
     mockResolveSelfInspectionNfcTagUid.mockReset();
@@ -154,6 +164,10 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
       data: { rows: scheduleRows, hasMore: false },
       isLoading: false,
       isFetching: false
+    }));
+    mockUseKioskProductionScheduleResources.mockImplementation(() => ({
+      data: { resourceNameMap: {} },
+      isLoading: false
     }));
     mockUseSelfInspectionSessions.mockImplementation((params: { status?: string }) => ({
       data: {
@@ -306,8 +320,8 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     expect(
       document.querySelectorAll('[data-testid="self-inspection-table-panes"] tbody tr:nth-child(odd)')
     ).toHaveLength(200);
-    expect(screen.getByText('ORDER-000')).toBeInTheDocument();
-    expect(screen.queryByText('ORDER-249')).not.toBeInTheDocument();
+    expect(metadataForProduct('ORDER-000')).toBeInTheDocument();
+    expect(metadataForProduct('ORDER-249')).toBeUndefined();
     expect(screen.getByText(/仕掛中は最新 200 件まで表示しています/)).toBeInTheDocument();
   });
 
@@ -349,8 +363,8 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
 
     await waitFor(() => expect(mockResolveSelfInspectionNfcTagUid).toHaveBeenCalledWith('uid-e2'));
     expect(await screen.findByRole('status')).toHaveTextContent('氏名: 山田');
-    expect(screen.getByText('ORDER-E2')).toBeInTheDocument();
-    expect(screen.queryByText('ORDER-E1')).not.toBeInTheDocument();
+    expect(metadataForProduct('ORDER-E2')).toBeInTheDocument();
+    expect(metadataForProduct('ORDER-E1')).toBeUndefined();
     expect(nfcStreamState.enabled).toBe(false);
   });
 
@@ -368,7 +382,7 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     view.rerender(pageTree());
 
     expect(await screen.findByText('氏名タグではありません。計測機器タグが読み取られました。')).toBeInTheDocument();
-    expect(screen.getByText('ORDER-KEEP')).toBeInTheDocument();
+    expect(metadataForProduct('ORDER-KEEP')).toBeInTheDocument();
   });
 
   it('requires a password and reason before invalidating a started row', async () => {
