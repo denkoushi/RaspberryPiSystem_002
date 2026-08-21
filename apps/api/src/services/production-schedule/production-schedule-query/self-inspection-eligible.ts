@@ -8,6 +8,7 @@ import {
 import {
   resolvePartMeasurementProcessGroupForApi,
 } from '../policies/resource-category-policy.service.js';
+import { enrichProductionScheduleRowsWithResolvedMachineName } from '../production-schedule-machine-name-enrichment.service.js';
 import {
   filterSelfInspectionEligibleProductionScheduleRows,
   hasSelfInspectionCandidateListFilters
@@ -45,19 +46,24 @@ export async function enrichProductionScheduleRowsForSelfInspectionCandidate(
     };
   });
 
+  const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(
+    rowsWithProcessGroup
+  );
+
   const selfInspectionService = new SelfInspectionService();
   const selfInspectionDecorations = await selfInspectionService.buildLeaderboardDecorations(
-    rowsWithProcessGroup.map((row) => ({
+    rowsWithResolvedMachineName.map((row) => ({
       id: row.id,
       rowData: row.rowData,
-      plannedQuantity: row.plannedQuantity
+      plannedQuantity: row.plannedQuantity,
+      machineName: row.resolvedMachineName
     })),
     { siteKey },
     decorationCache
   );
   const selfInspectionById = new Map(selfInspectionDecorations.map((row) => [row.id, row]));
 
-  return rowsWithProcessGroup.map((row) => {
+  return rowsWithResolvedMachineName.map((row) => {
     const decoration = selfInspectionById.get(row.id);
     return {
       ...row,

@@ -1,7 +1,8 @@
 import {
   formatSelfInspectionDateTime,
   formatSelfInspectionParticipantLabel,
-  formatSelfInspectionResourceLabel
+  formatSelfInspectionResourceLabel,
+  formatSelfInspectionResourceName
 } from './selfInspectionListFormatters';
 import {
   KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
@@ -59,7 +60,8 @@ type SelfInspectionTableRowBase = {
   statusLabel: string;
   statusTone: 'neutral' | 'attention' | 'danger';
   intentLabel: string;
-  metadataLine: string;
+  metadataPrimaryLine: string;
+  metadataSecondaryLine: string;
   detailLine: string;
   progressLine: string;
   invalidationTarget: SelfInspectionItemInvalidationTargetDto;
@@ -154,18 +156,24 @@ function presentSelfInspectionIntent(input: {
 
 function formatSelfInspectionMetadata(input: {
   productNo: string | null | undefined;
-  resourceLabel: string;
+  resourceCd: string | null | undefined;
+  resourceName: string;
   updatedAt: string | null | undefined;
   progressLabel: string;
   participantLabel: string;
-}): string {
-  return [
-    `製造order ${input.productNo?.trim() || '—'}`,
-    `資源 ${input.resourceLabel}`,
-    `最終更新 ${formatSelfInspectionDateTime(input.updatedAt)}`,
-    input.progressLabel,
-    `参加者 ${input.participantLabel}`
-  ].join(' / ');
+}): { primaryLine: string; secondaryLine: string } {
+  return {
+    primaryLine: [
+      `製造order ${input.productNo?.trim() || '—'}`,
+      `資源CD ${input.resourceCd?.trim() || '—'}`,
+      `資源名 ${input.resourceName}`
+    ].join(' / '),
+    secondaryLine: [
+      `最終更新 ${formatSelfInspectionDateTime(input.updatedAt)}`,
+      input.progressLabel,
+      `参加者 ${input.participantLabel}`
+    ].join(' / ')
+  };
 }
 
 export function presentSelfInspectionSessionRow(
@@ -253,10 +261,19 @@ export function presentSelfInspectionSessionRow(
     participantEmployeeNames: session.participantEmployeeNames ?? []
   });
   const resourceLabel = formatSelfInspectionResourceLabel(session.resourceCd, resourceNameMap);
+  const resourceName = formatSelfInspectionResourceName(session.resourceCd, resourceNameMap);
   const participantLabel = formatSelfInspectionParticipantLabel(session.participantEmployeeNames);
   const progressLabel = inspectorActive || inspectorComplete
     ? `進捗 作業者 ${session.completedEntryCount}/${session.requiredEntryCount}件・検査員 ${session.inspectorCompletedRequiredEntryCount}/${session.inspectorRequiredEntryCount}件`
     : `進捗 ${session.completedEntryCount}/${session.requiredEntryCount}件`;
+  const metadata = formatSelfInspectionMetadata({
+    productNo: session.productNo,
+    resourceCd: session.resourceCd,
+    resourceName,
+    updatedAt: session.updatedAt,
+    progressLabel,
+    participantLabel
+  });
 
   return {
     kind: 'session',
@@ -286,13 +303,8 @@ export function presentSelfInspectionSessionRow(
       recordApprovalRequiredAt: session.recordApprovalRequiredAt,
       completedAt: session.completedAt
     }),
-    metadataLine: formatSelfInspectionMetadata({
-      productNo: session.productNo,
-      resourceLabel,
-      updatedAt: session.updatedAt,
-      progressLabel,
-      participantLabel
-    }),
+    metadataPrimaryLine: metadata.primaryLine,
+    metadataSecondaryLine: metadata.secondaryLine,
     detailLine: `製番 ${session.fseiban || '—'} / 品番 ${session.fhincd || '—'} ${session.fhinmei || ''}`.trim(),
     progressLine:
       inspectorActive || inspectorComplete
@@ -308,9 +320,18 @@ export function presentSelfInspectionCandidateRow(
   resourceNameMap: Record<string, readonly string[] | undefined> = {}
 ): SelfInspectionTableRow {
   const resourceLabel = formatSelfInspectionResourceLabel(candidate.resourceCd, resourceNameMap);
+  const resourceName = formatSelfInspectionResourceName(candidate.resourceCd, resourceNameMap);
   const progressLabel = candidate.status === 'in_progress'
     ? `進捗 入力中 / 指示数 ${candidate.plannedQuantity ?? '—'}`
     : `進捗 未開始 / 指示数 ${candidate.plannedQuantity ?? '—'}`;
+  const metadata = formatSelfInspectionMetadata({
+    productNo: candidate.productNo,
+    resourceCd: candidate.resourceCd,
+    resourceName,
+    updatedAt: candidate.updatedAt,
+    progressLabel,
+    participantLabel: '—'
+  });
   return {
     kind: 'candidate',
     id: candidate.id,
@@ -324,13 +345,8 @@ export function presentSelfInspectionCandidateRow(
     statusLabel: selfInspectionStatusLabel(candidate.status),
     statusTone: candidate.status === 'in_progress' ? 'attention' : 'neutral',
     intentLabel: presentSelfInspectionIntent({ status: candidate.status }),
-    metadataLine: formatSelfInspectionMetadata({
-      productNo: candidate.productNo,
-      resourceLabel,
-      updatedAt: candidate.updatedAt,
-      progressLabel,
-      participantLabel: '—'
-    }),
+    metadataPrimaryLine: metadata.primaryLine,
+    metadataSecondaryLine: metadata.secondaryLine,
     detailLine: `製番 ${candidate.fseiban || '—'} / 品番 ${candidate.fhincd || '—'} ${candidate.fhinmei || ''}`.trim(),
     progressLine: `指示数 ${candidate.plannedQuantity ?? '—'}`,
     invalidationTarget: {

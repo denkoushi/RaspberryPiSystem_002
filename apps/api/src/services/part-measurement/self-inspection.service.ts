@@ -322,6 +322,7 @@ export class SelfInspectionService {
       id: string;
       rowData: Prisma.JsonValue;
       plannedQuantity?: number | null;
+      machineName?: string | null;
     }>,
     scope?: { siteKey?: string },
     cache?: SelfInspectionDecorationCache

@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { KIOSK_SELF_INSPECTION_LIST_PATH } from '../../features/part-measurement/selfInspectionRoutes';
+
 import { KioskSelfInspectionRecordApprovalPage } from './KioskSelfInspectionRecordApprovalPage';
 
 const mockUseSelfInspectionRegistrationPolicy = vi.fn();
@@ -114,6 +116,10 @@ function renderPage(
           path="/kiosk/part-measurement/self-inspection/record-approvals"
           element={<KioskSelfInspectionRecordApprovalPage />}
         />
+        <Route
+          path={KIOSK_SELF_INSPECTION_LIST_PATH}
+          element={<div>自主検査一覧</div>}
+        />
       </Routes>
     </MemoryRouter>
   );
@@ -206,6 +212,16 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
     expect(screen.getByRole('button', { name: '未完了' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '完了記録' })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('button', { name: '削除履歴' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('provides a canonical return link to the self-inspection list in the header', async () => {
+    renderPage();
+
+    const returnLink = screen.getByRole('link', { name: '自主検査画面へ戻る' });
+    expect(returnLink).toHaveAttribute('href', KIOSK_SELF_INSPECTION_LIST_PATH);
+
+    fireEvent.click(returnLink);
+    expect(await screen.findByText('自主検査一覧')).toBeInTheDocument();
   });
 
   it('maps completed_records to scope and resets selection/operation state on category changes', async () => {

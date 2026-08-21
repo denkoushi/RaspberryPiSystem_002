@@ -1,6 +1,8 @@
 import clsx from 'clsx';
+import { Link } from 'react-router-dom';
 
-import { Button } from '../../../components/ui/Button';
+import { Button, buttonClassName } from '../../../components/ui/Button';
+import { KIOSK_SELF_INSPECTION_LIST_PATH } from '../selfInspectionRoutes';
 
 import {
   SELF_INSPECTION_RECORD_APPROVAL_FILTERS,
@@ -51,6 +53,12 @@ export function SelfInspectionRecordApprovalToolbar({
         </div>
 
         <div className="flex min-w-0 flex-1 flex-wrap items-end justify-end gap-2">
+          <Link
+            to={KIOSK_SELF_INSPECTION_LIST_PATH}
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center justify-center whitespace-nowrap')}
+          >
+            自主検査画面へ戻る
+          </Link>
           <div className="grid gap-1 text-sm">
             <span className="text-white/65">表示</span>
             <div

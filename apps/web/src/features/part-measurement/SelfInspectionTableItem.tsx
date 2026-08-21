@@ -129,14 +129,28 @@ export function SelfInspectionTableItem({ row, onCandidateSelect, onInvalidate }
       >
         <td colSpan={4} className="h-[51px] px-2 py-1 align-middle">
           <div className="grid min-w-0 grid-cols-[46%_16%_38%] items-center">
-            <p
+            <div
               data-testid="self-inspection-item-metadata"
-              className="min-w-0 truncate whitespace-nowrap text-xs text-white/60"
-              title={row.metadataLine}
-              aria-label={row.metadataLine}
+              className="min-w-0 overflow-hidden"
+              aria-label={`${row.metadataPrimaryLine} / ${row.metadataSecondaryLine}`}
             >
-              {row.metadataLine}
-            </p>
+              <p
+                data-testid="self-inspection-item-metadata-primary"
+                className="min-w-0 truncate whitespace-nowrap text-xs leading-4 text-white/60"
+                title={row.metadataPrimaryLine}
+                aria-label={row.metadataPrimaryLine}
+              >
+                {row.metadataPrimaryLine}
+              </p>
+              <p
+                data-testid="self-inspection-item-metadata-secondary"
+                className="min-w-0 truncate whitespace-nowrap text-xs leading-4 text-white/60"
+                title={row.metadataSecondaryLine}
+                aria-label={row.metadataSecondaryLine}
+              >
+                {row.metadataSecondaryLine}
+              </p>
+            </div>
             <p
               data-testid="self-inspection-item-state"
               className="flex min-w-0 items-center gap-1 truncate whitespace-nowrap px-1 text-xs text-white/75"

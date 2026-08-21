@@ -28,6 +28,15 @@ vi.mock('../../../lib/prisma.js', () => ({
   }
 }));
 
+vi.mock('../production-schedule-machine-name-enrichment.service.js', () => ({
+  enrichProductionScheduleRowsWithResolvedMachineName: vi.fn(async (rows: Array<{ rowData: unknown }>) =>
+    rows.map((row) => ({
+      ...row,
+      resolvedMachineName: '機種-FS'
+    }))
+  )
+}));
+
 const selfInspectionMocks = vi.hoisted(() => ({
   createSelfInspectionDecorationCache: vi.fn(async () => ({
     policy: {
@@ -44,13 +53,16 @@ const selfInspectionMocks = vi.hoisted(() => ({
 vi.mock('../../part-measurement/self-inspection.service.js', () => ({
   ...selfInspectionMocks,
   SelfInspectionService: class {
-    async buildLeaderboardDecorations(rows: Array<{ id: string }>) {
+    async buildLeaderboardDecorations(rows: Array<{ id: string; machineName?: string | null }>) {
       return rows.map((row) => ({
         id: row.id,
         hasSelfInspectionDrawing: row.id === 'row-eligible',
         selfInspectionTemplateId: row.id === 'row-eligible' ? 'tpl-1' : null,
         selfInspectionStatus: null,
-        selfInspectionEntryPath: row.id === 'row-eligible' ? '/kiosk/part-measurement/self-inspection/sessions/s1' : null,
+        selfInspectionEntryPath:
+          row.id === 'row-eligible'
+            ? `/kiosk/part-measurement/self-inspection/start?machineName=${encodeURIComponent(row.machineName ?? '')}`
+            : null,
         resolvedPlannedQuantity: 5
       }));
     }
@@ -147,6 +159,8 @@ describe('listSelfInspectionEligibleProductionScheduleRows scan', () => {
     expect(leaderboardMocks.fetchLeaderboardScheduleRowsWithSeibanAwarePriority).not.toHaveBeenCalled();
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]?.id).toBe('row-eligible');
+    expect(result.rows[0]?.resolvedMachineName).toBe('機種-FS');
+    expect(result.rows[0]?.selfInspectionEntryPath).toContain('machineName=%E6%A9%9F%E7%A8%AE-FS');
   });
 
   it('routes selfInspectionEligibleOnly through the dashboard OFFSET scanner (ignores leaderboard profile)', async () => {

@@ -308,6 +308,7 @@ export async function buildLeaderboardDecorations(
     id: string;
     rowData: Prisma.JsonValue;
     plannedQuantity?: number | null;
+    machineName?: string | null;
   }>,
   scope?: { siteKey?: string },
   cache?: SelfInspectionDecorationCache
@@ -388,7 +389,7 @@ export async function buildLeaderboardDecorations(
         fseiban,
         fhincd,
         fhinmei,
-        machineName: null
+        machineName: row.machineName ?? null
       }),
       resolvedPlannedQuantity: plannedQuantity,
       resolvedRequiredEntryCount: expectedEntryCount,
