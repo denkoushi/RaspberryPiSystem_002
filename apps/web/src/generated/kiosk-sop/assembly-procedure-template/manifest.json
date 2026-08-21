@@ -1,9 +1,9 @@
 {
   "artifacts": {
-    "manual.html": "464fa073ce5a4566bec3116d6c109482362b5c0b06d6a1721688c3cde4e29589",
+    "manual.html": "b59d6e762f9d924d0f9d206b772eb3183c5cb47edda929f98700d5f60efcb1a8",
     "screens/assembly-document-editor-auth.png": "a53d101b22f452907863254268632c0c350624bfbca8cae83fd239d37c523dc9",
     "screens/assembly-document-editor-conflict.png": "669452fd5a15f4c93948ddef8717c56c1ad447726c8231bd82e563611c540b0c",
-    "screens/assembly-document-editor-image-properties.png": "26406eaa3bbf354b240585f290512a6a9f90743189d77b78744f4bfcd9472066",
+    "screens/assembly-document-editor-image-properties.png": "6f591f2d7801cc2df0e5e2265932f6bc78aecb8afbd956f8ec8489cb3e2c1c22",
     "screens/assembly-document-editor-publish.png": "693384445f1087e83c088a67d129baf9903adafe9e57bf3d99d78470a88c5d3b",
     "screens/assembly-document-editor-range.png": "3590542614de72075247bff601c4b5696bb00deb8a3970f433fcd40fa9a83097",
     "screens/assembly-document-editor-shape-properties.png": "9f0d88baef939b7885942933d8990a66bebb87fb1ede6fa367a3179d95f2d5a5",
@@ -20,7 +20,7 @@
     "screens/assembly-template-save.png": "760abfd9812fbbbff209f4b912bd0a04a39f8cc3a6eb17429b205070725a0848",
     "sheets/assembly-document-editor-auth.png": "bcf2552364912bb962ba9cc440e8f38f5e98312c2ae0d0f7c441fad56aef47d6",
     "sheets/assembly-document-editor-conflict.png": "aeccdaba978f056849213e946314db965276f8a8e5a16b30bc1291cbc90231b0",
-    "sheets/assembly-document-editor-image-properties.png": "63f09ac88b8ac601982a9070b87e2c0842e6b5d10d2248c3ab45638cbdee2f9b",
+    "sheets/assembly-document-editor-image-properties.png": "037c5da00a1b5759daa40071c8b652d8702007d00730ad20b2c312999e66808c",
     "sheets/assembly-document-editor-publish.png": "77edeb54c5f7d86b79c88b0ce0faafa9e2041d76de705a4d332d397f2ce34f11",
     "sheets/assembly-document-editor-range.png": "e5e3f075ad6d80a0926f1cace163af6864c69757f8f02368d4c976f10db2adf3",
     "sheets/assembly-document-editor-shape-properties.png": "8c4a5d49c4438b6a670a1403a969aa57956d81ee8edf7d3dee3338767ba4a30e",
@@ -495,7 +495,7 @@
       }
     ]
   },
-  "htmlSha256": "464fa073ce5a4566bec3116d6c109482362b5c0b06d6a1721688c3cde4e29589",
+  "htmlSha256": "b59d6e762f9d924d0f9d206b772eb3183c5cb47edda929f98700d5f60efcb1a8",
   "schemaVersion": 1,
-  "sourceSha256": "e67b68b0069285b81bf01ebbd5093487c34d56650b6ee296f926febfde631e8e"
+  "sourceSha256": "b659eb5b6c91b67792d71db7cc41bce34092591e193091d8c720dad524f9d611"
 }
