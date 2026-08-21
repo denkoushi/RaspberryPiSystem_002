@@ -6,6 +6,8 @@ export interface ProductionScheduleRow {
   /** `ProductionScheduleProgressOverviewSeibanItem.seibanJoinKey` と突合する専用キー。 */
   seibanJoinKey?: string | null;
   occurredAt: string;
+  /** CSV 行の最終更新日時。旧データでは null。 */
+  updatedAt: string | null;
   rowData: Record<string, unknown>;
   processingOrder?: number | null;
   globalRank?: number | null;

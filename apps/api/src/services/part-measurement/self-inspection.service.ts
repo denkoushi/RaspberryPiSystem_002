@@ -19,6 +19,7 @@ import type {
   SelfInspectionApproverResolveResult,
   SelfInspectionRecordApprovalState
 } from './self-inspection/serialization.js';
+import type { SelfInspectionRecordApprovalScope } from './self-inspection/record-approval-filter.js';
 import {
   authenticateMeasurementActor as authenticateMeasurementActorUseCase,
   createInspectorEntry as createInspectorEntryUseCase,
@@ -74,10 +75,18 @@ export {
   resolveLegacyFullSelfInspectionBlockedReason,
   resolveRequiredEntryCountForCompletion
 } from './self-inspection/shared.js';
+export {
+  buildSelfInspectionRecordApprovalWhere,
+  SELF_INSPECTION_RECORD_APPROVAL_SCOPE_COMPLETED_RECORDS
+} from './self-inspection/record-approval-filter.js';
 export type {
   SelfInspectionApproverResolveResult,
   SelfInspectionRecordApprovalState
 } from './self-inspection/serialization.js';
+export type {
+  SelfInspectionRecordApprovalFilterQuery,
+  SelfInspectionRecordApprovalScope
+} from './self-inspection/record-approval-filter.js';
 
 export class SelfInspectionService {
   private readonly loanEventService = new MeasuringInstrumentLoanEventService();
@@ -111,6 +120,7 @@ export class SelfInspectionService {
     resourceCd?: string;
     processGroup?: PartMeasurementProcessGroup;
     state?: 'active' | SelfInspectionRecordApprovalState;
+    scope?: SelfInspectionRecordApprovalScope;
   }) {
     return listSelfInspectionRecordApprovalSessions(query);
   }

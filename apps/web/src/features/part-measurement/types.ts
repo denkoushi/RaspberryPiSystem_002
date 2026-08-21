@@ -192,6 +192,8 @@ export type SelfInspectionRecordApprovalState =
   | 'approved'
   | 'completed';
 
+export type SelfInspectionRecordApprovalScope = 'completed_records';
+
 export type SelfInspectionRecordApprovalDto = {
   id: string;
   approvedAt: string;

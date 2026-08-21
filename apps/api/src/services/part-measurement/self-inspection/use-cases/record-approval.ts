@@ -9,7 +9,7 @@ import { getSelfInspectionRegistrationPolicy } from '../../self-inspection-regis
 import { listRequiredEntrySlots } from '../../self-inspection-config.js';
 import { confirmedEntriesCountSelect, confirmedWhere } from '../entry-persistence-status.js';
 import { assertAllEntriesReviewReady, assertSessionEntryCountWritable, lockSessionRow } from '../mutation-guards.js';
-import { normalizeText, templateConfigFromTemplate } from '../shared.js';
+import { templateConfigFromTemplate } from '../shared.js';
 import {
   buildRecordApprovalReadiness,
   loadPendingReviewCountsBySessionIds,
@@ -23,44 +23,25 @@ import {
 } from '../serialization.js';
 import { partMeasurementTemplateFullInclude } from '../../part-measurement-template-include.js';
 import { LIST_SESSIONS_MAX } from './constants.js';
+import {
+  buildSelfInspectionRecordApprovalWhere,
+  SELF_INSPECTION_RECORD_APPROVAL_SCOPE_COMPLETED_RECORDS,
+  type SelfInspectionRecordApprovalScope
+} from '../record-approval-filter.js';
 
 export async function listSelfInspectionRecordApprovalSessions(query: {
   productNo?: string;
   resourceCd?: string;
   processGroup?: PartMeasurementProcessGroup;
   state?: 'active' | SelfInspectionRecordApprovalState;
+  scope?: SelfInspectionRecordApprovalScope;
 }) {
-  const productNo = normalizeText(query.productNo);
-  const resourceCd = normalizeText(query.resourceCd);
+  if (query.scope && query.state) {
+    throw new ApiError(400, 'scope と state は同時に指定できません');
+  }
   const state = query.state ?? 'active';
-  const completionWhere =
-    state === 'approved'
-      ? { recordApproval: { isNot: null } }
-      : state === 'completed'
-        ? {
-            decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT' as const,
-            completedAt: { not: null }
-          }
-        : {
-            completedAt: null,
-            OR: [
-              { decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT' as const },
-              { decisionWorkflow: null, recordApproval: { is: null } },
-              {
-                decisionWorkflow: 'LEGACY_RECORD_APPROVAL' as const,
-                recordApproval: { is: null }
-              }
-            ]
-          };
   const rows = await prisma.selfInspectionSession.findMany({
-    where: {
-      invalidatedAt: null,
-      recordApprovalRequiredAt: { not: null },
-      ...(productNo ? { productNo: { contains: productNo, mode: 'insensitive' } } : {}),
-      ...(resourceCd ? { resourceCd: { equals: resourceCd, mode: 'insensitive' } } : {}),
-      ...(query.processGroup ? { processGroup: query.processGroup } : {}),
-      ...completionWhere
-    },
+    where: buildSelfInspectionRecordApprovalWhere(query),
     include: recordApprovalSessionInclude,
     orderBy: [{ updatedAt: 'desc' }],
     take: LIST_SESSIONS_MAX + 1
@@ -70,7 +51,12 @@ export async function listSelfInspectionRecordApprovalSessions(query: {
   const registrationPolicy = await getSelfInspectionRegistrationPolicy();
   const sessions = boundedRows
     .map((row) => serializeRecordApprovalSessionListItem(row, registrationPolicy))
-    .filter((row) => state === 'active' || row.recordApprovalState === state);
+    .filter(
+      (row) =>
+        query.scope === SELF_INSPECTION_RECORD_APPROVAL_SCOPE_COMPLETED_RECORDS ||
+        state === 'active' ||
+        row.recordApprovalState === state
+    );
   return { sessions, listLimit: LIST_SESSIONS_MAX, truncated };
 }
 

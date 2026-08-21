@@ -469,7 +469,16 @@ export const listSelfInspectionRecordApprovalsQuerySchema = z.object({
   productNo: z.string().max(120).optional(),
   resourceCd: z.string().max(120).optional(),
   processGroup: processGroupSchema.optional(),
-  state: selfInspectionRecordApprovalStateSchema.optional()
+  state: selfInspectionRecordApprovalStateSchema.optional(),
+  scope: z.literal('completed_records').optional()
+}).superRefine((value, ctx) => {
+  if (value.state !== undefined && value.scope !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['scope'],
+      message: 'scope と state は同時に指定できません'
+    });
+  }
 });
 
 const selfInspectionInvalidationScheduleRowTargetSchema = z.object({
@@ -516,7 +525,8 @@ export const approveSelfInspectionRecordApprovalBodySchema = z.object({
 });
 
 export const selfInspectionRegistrationPolicyBodySchema = z.object({
-  requireMeasuringInstrumentTag: z.boolean()
+  requireMeasuringInstrumentTag: z.boolean(),
+  accessPassword: z.string().max(128).optional()
 });
 
 export const issueSelfInspectionPaperReportBodySchema = z.object({
