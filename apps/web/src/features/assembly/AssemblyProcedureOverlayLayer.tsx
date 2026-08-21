@@ -95,7 +95,7 @@ function ShapeContent({ element }: { element: Extract<RenderElement, { kind: 'SH
   const end = pointToLocal(points.end, element);
   const stroke = element.strokeColor ?? '#0f172a';
   const fill = element.fillColor ?? 'transparent';
-  const strokeWidth = Math.max(0.002, Math.min(0.2, element.strokeWidthRatio ?? 0.01));
+  const strokeWidth = Math.max(1, Math.min(20, (element.strokeWidthRatio ?? 0.01) * 100));
   const common = {
     stroke,
     strokeWidth,
@@ -136,7 +136,7 @@ function ShapeContent({ element }: { element: Extract<RenderElement, { kind: 'SH
       </svg>
     );
   }
-  return <span aria-hidden="true" className="absolute inset-0 rounded-sm" style={{ border: `${Math.max(1, strokeWidth * 100)}px solid ${stroke}`, backgroundColor: fill }} />;
+  return <span aria-hidden="true" className="absolute inset-0 rounded-sm" style={{ border: `${strokeWidth}px solid ${stroke}`, backgroundColor: fill }} />;
 }
 
 function OverlayContent({

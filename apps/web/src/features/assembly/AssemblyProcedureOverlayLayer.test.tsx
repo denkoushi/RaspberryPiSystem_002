@@ -102,6 +102,49 @@ describe('AssemblyProcedureOverlayLayer', () => {
     expect(marker?.querySelector('path')).toHaveAttribute('d', 'M0 0 L0.08 0.04 L0 0.08 Z');
   });
 
+  it('keeps every vector shape stroke visible at the minimum pixel width', () => {
+    render(
+      <AssemblyProcedureOverlayLayer
+        elements={[
+          {
+            id: 'line-visible',
+            pageIndex: 0,
+            kind: 'SHAPE',
+            shape: 'LINE',
+            bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 },
+            strokeWidthRatio: 0.006,
+            zIndex: 0
+          },
+          {
+            id: 'arrow-visible',
+            pageIndex: 0,
+            kind: 'SHAPE',
+            shape: 'ARROW',
+            bbox: { xRatio: 0.3, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 },
+            strokeWidthRatio: 0.006,
+            zIndex: 1
+          },
+          {
+            id: 'ellipse-visible',
+            pageIndex: 0,
+            kind: 'SHAPE',
+            shape: 'ELLIPSE',
+            bbox: { xRatio: 0.6, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 },
+            strokeWidthRatio: 0.006,
+            zIndex: 2
+          }
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId('assembly-procedure-overlay-line-visible').querySelector('line'))
+      .toHaveAttribute('stroke-width', '1');
+    expect(screen.getByTestId('assembly-procedure-overlay-arrow-visible').querySelector('line'))
+      .toHaveAttribute('stroke-width', '1');
+    expect(screen.getByTestId('assembly-procedure-overlay-ellipse-visible').querySelector('ellipse'))
+      .toHaveAttribute('stroke-width', '1');
+  });
+
   it('keeps the same overlay identity in full and crop views and clips intersections', () => {
     const { container } = render(
       <>
