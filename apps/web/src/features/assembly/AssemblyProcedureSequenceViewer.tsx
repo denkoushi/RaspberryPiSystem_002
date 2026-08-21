@@ -5,7 +5,7 @@ import {
 } from '@raspi-system/shared-types';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '../../components/ui/Button';
 
@@ -231,27 +231,39 @@ export function AssemblyProcedureSequenceViewer({
   const [showFullPage, setShowFullPage] = useState(false);
   const currentStep = steps[Math.max(0, Math.min(steps.length - 1, stepIndex))] ?? null;
   const crop = currentStep ? stepCrop(currentStep) : null;
-  const findSequenceDocument = (step: AssemblyProcedureSequenceStepDto) =>
+  const findSequenceDocument = useCallback((step: AssemblyProcedureSequenceStepDto) =>
     sequence.documents.find((document) =>
       step.kioskDocumentId
         ? document.kioskDocumentId === step.kioskDocumentId
         : document.assemblyProcedureDocumentId === step.assemblyProcedureDocumentId
-    );
-  const getStepPage = (step: AssemblyProcedureSequenceStepDto) => {
+    ), [sequence.documents]);
+  const getStepPage = useCallback((step: AssemblyProcedureSequenceStepDto) => {
     const document = findSequenceDocument(step);
     return document
       ? getSequenceDocumentPages(document).find((page) => page.pageIndex === step.pageIndex) ?? null
       : null;
-  };
-  const getStepOverlays = (step: AssemblyProcedureSequenceStepDto): AssemblyProcedureOverlayElement[] => {
+  }, [findSequenceDocument]);
+  const getStepOverlays = useCallback((step: AssemblyProcedureSequenceStepDto): AssemblyProcedureOverlayElement[] => {
     const document = findSequenceDocument(step);
     const page = getStepPage(step);
     return page?.overlays ?? document?.overlays?.filter((element) => element.pageIndex === step.pageIndex) ?? [];
-  };
-  const getStepAssets = (step: AssemblyProcedureSequenceStepDto) => findSequenceDocument(step)?.assets;
-  const currentSequencePage = currentStep ? getStepPage(currentStep) : null;
-  const currentOverlays = currentStep ? getStepOverlays(currentStep) : [];
-  const currentAssets = currentStep ? getStepAssets(currentStep) : undefined;
+  }, [findSequenceDocument, getStepPage]);
+  const getStepAssets = useCallback(
+    (step: AssemblyProcedureSequenceStepDto) => findSequenceDocument(step)?.assets,
+    [findSequenceDocument]
+  );
+  const currentSequencePage = useMemo(
+    () => currentStep ? getStepPage(currentStep) : null,
+    [currentStep, getStepPage]
+  );
+  const currentOverlays = useMemo(
+    () => currentStep ? getStepOverlays(currentStep) : [],
+    [currentStep, getStepOverlays]
+  );
+  const currentAssets = useMemo(
+    () => currentStep ? getStepAssets(currentStep) : undefined,
+    [currentStep, getStepAssets]
+  );
   const currentPage = useMemo(
     () =>
       currentSequencePage ?? (currentStep
