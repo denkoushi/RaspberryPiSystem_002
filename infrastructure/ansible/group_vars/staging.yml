@@ -1,0 +1,61 @@
+# Dedicated staging boundary. Values are intentionally non-routable placeholders
+# until separate Pi5/Pi4 hardware and private variables are provisioned.
+staging_environment: true
+staging_inventory_only: true
+staging_deploy_enabled: false
+
+staging_pi5_host: staging-pi5.invalid
+staging_pi5_user: __SET_IN_PRIVATE_STAGING_VARS__
+staging_pi4_kiosk01_host: staging-pi4-kiosk01.invalid
+staging_pi4_kiosk01_user: __SET_IN_PRIVATE_STAGING_VARS__
+
+# Keep the shared variable within its supported enum; the explicit staging
+# endpoint values below remain authoritative and non-routable.
+network_mode: local
+server_ip: staging-pi5.invalid
+kiosk_ip: staging-pi4-kiosk01.invalid
+server_base_url: https://staging-pi5.invalid
+kiosk_full_url: "{{ server_base_url }}/kiosk"
+api_base_url: "{{ server_base_url }}/api"
+websocket_agent_url: "ws://staging-pi5.invalid:7071/stream"
+api_healthcheck_url: "{{ api_base_url }}/system/health"
+docker_server_ip: staging-pi5.invalid
+status_agent_api_base_url: "{{ api_base_url }}"
+nfc_agent_api_base_url: "{{ api_base_url }}"
+
+# Never share the production checkout, compose project, network, volumes, or
+# storage tree with staging.
+repo_path: /opt/RaspberryPiSystem_002-staging
+release_pi5_project_dir: /opt/RaspberryPiSystem_002-staging
+release_kiosk_project_dir: /opt/RaspberryPiSystem_002-staging
+pi5_project_dir: /opt/RaspberryPiSystem_002-staging
+release_pi5_compose_project: raspisys-staging-bluegreen
+pi5_base_compose_project: raspisys-staging
+release_kiosk_compose_project: raspisys-staging-client
+pi5_volume_prefix: raspisys-staging
+pi5_docker_network: raspisys-staging_default
+pi5_backup_dir: /opt/raspisys-staging-backups
+pi5_caddy_log_dir: /var/log/caddy-raspisys-staging
+pi5_certs_dir: /opt/RaspberryPiSystem_002-staging/certs
+pi5_blue_green_config_dir: /opt/RaspberryPiSystem_002-staging/logs/deploy/bluegreen
+backup_ssh_private_key_host_path: /opt/RaspberryPiSystem_002-staging/secrets/backup-ssh/id_ed25519
+backup_ssh_known_hosts_host_path: /opt/RaspberryPiSystem_002-staging/secrets/backup-ssh/known_hosts
+
+# The staging DB is a separate contract. The URL/password are supplied only by
+# an encrypted private host_vars/staging-pi5/vault.yml, never by this file.
+staging_database_name: borrow_return_staging
+app_database_name: "{{ staging_database_name }}"
+app_database_url: "{{ vault_staging_app_database_url }}"
+migration_database_url: "{{ vault_staging_migration_database_url }}"
+postgres_superuser_password: "{{ vault_staging_postgres_superuser_password }}"
+api_file_storage_dir: /app/storage
+api_photo_storage_dir: /app/storage
+api_pdf_storage_dir: /app/storage
+api_csv_dashboard_storage_dir: /app/storage
+
+# No production credentials or device keys are supplied by the committed
+# boundary. These names are contracts for the private encrypted host vars.
+api_jwt_access_secret: "{{ vault_staging_api_jwt_access_secret }}"
+api_jwt_refresh_secret: "{{ vault_staging_api_jwt_refresh_secret }}"
+status_agent_client_key: "{{ vault_staging_status_agent_client_key }}"
+nfc_agent_client_secret: "{{ vault_staging_nfc_agent_client_secret }}"

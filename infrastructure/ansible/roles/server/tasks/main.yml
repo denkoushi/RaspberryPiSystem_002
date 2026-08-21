@@ -13,9 +13,9 @@
       - postgres_superuser_password is defined
       - postgres_superuser_password | length >= 16
       - app_database_url is defined
-      - app_database_url is match('^postgresql://raspi_app:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+      - app_database_url is match('^postgresql://raspi_app:[^@]+@db:5432/' ~ (app_database_name | default('borrow_return')) ~ '(?:[?].*)?$')
       - migration_database_url is defined
-      - migration_database_url is match('^postgresql://raspi_migrator:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+      - migration_database_url is match('^postgresql://raspi_migrator:[^@]+@db:5432/' ~ (app_database_name | default('borrow_return')) ~ '(?:[?].*)?$')
     fail_msg: >-
       Dedicated PostgreSQL superuser, application, and migration inputs are
       required and must use the fixed production roles and Docker endpoint.

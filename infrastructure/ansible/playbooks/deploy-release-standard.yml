@@ -8,6 +8,18 @@
   any_errors_fatal: true
   tags:
     - torque-cutover
+  pre_tasks:
+    - name: Require explicit staging deployment enablement
+      tags:
+        - always
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (staging_environment | default(false) | bool) or
+            (staging_deploy_enabled | default(false) | bool)
+        fail_msg: >-
+          staging_deploy_enabled must be explicitly enabled in private staging
+          variables before this mutation playbook can run.
   tasks:
     - name: Pull and verify Pi5 candidates without starting them
       block:
@@ -31,6 +43,18 @@
   ignore_unreachable: true
   tags:
     - torque-cutover
+  pre_tasks:
+    - name: Require explicit staging deployment enablement
+      tags:
+        - always
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (staging_environment | default(false) | bool) or
+            (staging_deploy_enabled | default(false) | bool)
+        fail_msg: >-
+          staging_deploy_enabled must be explicitly enabled in private staging
+          variables before this mutation playbook can run.
   tasks:
     - name: Prepare this kiosk without quiescing it
       ansible.builtin.include_role:

@@ -1,3 +1,5 @@
+name: ${PI5_BASE_COMPOSE_PROJECT:-docker}
+
 services:
   db:
     image: pgvector/pgvector:pg15
@@ -7,13 +9,13 @@ services:
     shm_size: "512mb"
     restart: unless-stopped
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d borrow_return']
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d ${POSTGRES_DB:-borrow_return}']
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
     environment:
-      POSTGRES_DB: borrow_return
+      POSTGRES_DB: ${POSTGRES_DB:-borrow_return}
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres-superuser-password
     volumes:
@@ -114,18 +116,18 @@ services:
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
       - csv-dashboard-storage:/app/storage/csv-dashboards
       - file-integrity-storage:/app/storage/.integrity
-      - /opt/RaspberryPiSystem_002/alerts:/app/alerts
-      - /opt/RaspberryPiSystem_002/power-actions:/app/power-actions
-      - /opt/RaspberryPiSystem_002/config:/app/config
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/alerts:/app/alerts
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/power-actions:/app/power-actions
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/config:/app/config
       # バックアップ保存先（ローカルストレージプロバイダー用）
-      - /opt/backups:/opt/backups
+      - ${PI5_BACKUP_DIR:-/opt/backups}:/opt/backups
       # 環境変数ファイルのバックアップ用にマウント（読み取り専用）
-      - /opt/RaspberryPiSystem_002/apps/api:/app/host/apps/api:ro
-      - /opt/RaspberryPiSystem_002/apps/web:/app/host/apps/web:ro
-      - /opt/RaspberryPiSystem_002/infrastructure/docker:/app/host/infrastructure/docker:ro
-      - /opt/RaspberryPiSystem_002/clients/nfc-agent:/app/host/clients/nfc-agent:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/apps/api:/app/host/apps/api:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/apps/web:/app/host/apps/web:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker:/app/host/infrastructure/docker:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/clients/nfc-agent:/app/host/clients/nfc-agent:ro
       # 証明書ファイルのバックアップ用にマウント（読み取り専用）
-      - /opt/RaspberryPiSystem_002/certs:/app/host/certs:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/certs:/app/host/certs:ro
       # 資格情報を含まない端末バックアップ専用Ansible境界
       - type: bind
         source: /etc/raspi-backup-ansible
@@ -205,8 +207,8 @@ services:
     volumes:
       - thumbnail-storage:/srv/storage/thumbnails:ro # サムネイルを読み取り専用でマウント
       # 自己署名証明書を使用する場合（工場現場での運用に推奨）
-      - /opt/RaspberryPiSystem_002/certs:/srv/certs:ro
-      - /var/log/caddy:/var/log/caddy
+      - ${PI5_CERTS_DIR:-/opt/RaspberryPiSystem_002/certs}:/srv/certs:ro
+      - ${PI5_CADDY_LOG_DIR:-/var/log/caddy}:/var/log/caddy
     # HTTPS設定オプション:
     # 1. 自己署名証明書を使用（工場現場での運用に推奨）
     environment:
@@ -238,81 +240,95 @@ services:
 
 volumes:
   db-data:
+    name: ${PI5_VOLUME_PREFIX:-docker}_db-data
   photo-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_photo-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/photos
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/photos
   thumbnail-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_thumbnail-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/thumbnails
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/thumbnails
   pdf-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_pdf-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/pdfs
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/pdfs
   pdf-pages-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_pdf-pages-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/pdf-pages
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/pdf-pages
   signage-rendered-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_signage-rendered-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/signage-rendered
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/signage-rendered
   part-measurement-drawings-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_part-measurement-drawings-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/part-measurement-drawings
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/part-measurement-drawings
   part-measurement-drawings-derivatives-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_part-measurement-drawings-derivatives-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/part-measurement-drawings-derivatives
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/part-measurement-drawings-derivatives
   assembly-procedure-images-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_assembly-procedure-images-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/assembly-procedure-images
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/assembly-procedure-images
   assembly-procedure-assets-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_assembly-procedure-assets-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/assembly-procedure-assets
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/assembly-procedure-assets
   measuring-instrument-genres-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_measuring-instrument-genres-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/measuring-instrument-genres
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/measuring-instrument-genres
   pallet-machine-illustrations-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_pallet-machine-illustrations-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/pallet-machine-illustrations
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/pallet-machine-illustrations
   csv-dashboard-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_csv-dashboard-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/csv-dashboards
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/csv-dashboards
   file-integrity-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_file-integrity-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/.integrity
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/.integrity

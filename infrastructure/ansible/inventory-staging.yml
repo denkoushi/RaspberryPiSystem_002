@@ -1,0 +1,32 @@
+# Static staging topology only. Do not add production hosts here.
+# Host/IP/user values intentionally remain placeholders until dedicated devices
+# are provisioned and private staging variables are supplied.
+all:
+  children:
+    staging:
+      children:
+        server:
+          hosts:
+            staging-pi5:
+              ansible_host: "{{ staging_pi5_host }}"
+              ansible_user: "{{ staging_pi5_user }}"
+              deploy_executor_host: "{{ staging_pi5_host }}"
+              ansible_python_interpreter: /usr/bin/python3
+              server_release_mode: host-config-only
+        clients:
+          children:
+            kiosk:
+              hosts:
+                staging-pi4-kiosk01:
+                  ansible_host: "{{ staging_pi4_kiosk01_host }}"
+                  ansible_user: "{{ staging_pi4_kiosk01_user }}"
+                  kiosk_browser_engine: firefox
+                  kiosk_browser_mode: app-like
+                  manage_kiosk_browser: true
+                  status_agent_client_id: staging-pi4-kiosk01
+                  nfc_agent_client_id: staging-pi4-kiosk01
+      vars:
+        staging_environment: true
+        staging_inventory_only: true
+        staging_deploy_enabled: false
+        ansible_python_interpreter: /usr/bin/python3

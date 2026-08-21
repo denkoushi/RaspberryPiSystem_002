@@ -69,7 +69,7 @@ RELEASE_BUILD_CONTRACT_OUTPUT="$TEMP_OUTPUT" \
     -i "$REDACTED_INVENTORY" \
     "${REDACTED_ANSIBLE_DIR}/playbooks/render-release-build-contract.yml" \
     --extra-vars "@$VAULT_PLACEHOLDERS" \
-    --limit raspberrypi5 >/dev/null
+    --limit server >/dev/null
 
 python3 "${ROOT}/scripts/deploy/release_build_contract.py" validate \
   --release-sha "$SHA" <"$TEMP_OUTPUT" >"$CANONICAL_OUTPUT"

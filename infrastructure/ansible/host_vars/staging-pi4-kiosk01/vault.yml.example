@@ -1,0 +1,6 @@
+# Provision as ignored vault.yml through the approved private staging path,
+# replace placeholders, and encrypt with ansible-vault. Never commit plaintext.
+staging_pi4_kiosk01_host: "staging-pi4-kiosk01.example.invalid"
+staging_pi4_kiosk01_user: "__SET_STAGING_SSH_USER__"
+staging_deploy_enabled: false
+vault_staging_nfc_agent_client_secret: "REPLACE_WITH_STAGING_NFC_SECRET"

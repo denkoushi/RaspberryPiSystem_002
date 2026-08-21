@@ -1,0 +1,11 @@
+# Provision as ignored vault.yml through the approved private staging path,
+# replace placeholders, and encrypt with ansible-vault. Never commit plaintext.
+staging_pi5_host: "staging-pi5.example.invalid"
+staging_pi5_user: "__SET_STAGING_SSH_USER__"
+staging_deploy_enabled: false
+vault_staging_app_database_url: "REPLACE_WITH_STAGING_DATABASE_URL"
+vault_staging_migration_database_url: "REPLACE_WITH_STAGING_MIGRATION_DATABASE_URL"
+vault_staging_postgres_superuser_password: "REPLACE_WITH_STAGING_POSTGRES_PASSWORD"
+vault_staging_api_jwt_access_secret: "REPLACE_WITH_STAGING_ACCESS_SECRET"
+vault_staging_api_jwt_refresh_secret: "REPLACE_WITH_STAGING_REFRESH_SECRET"
+vault_staging_status_agent_client_key: "REPLACE_WITH_STAGING_STATUS_AGENT_KEY"

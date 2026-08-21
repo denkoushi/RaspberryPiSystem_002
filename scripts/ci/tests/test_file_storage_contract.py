@@ -36,20 +36,20 @@ class FileStorageContractTest(unittest.TestCase):
             SERVER_COMPOSE,
         )
         self.assertIn(
-            "device: /opt/RaspberryPiSystem_002/storage/csv-dashboards",
+            "device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/csv-dashboards",
             SERVER_COMPOSE,
         )
         self.assertIn(
-            "device: /opt/RaspberryPiSystem_002/storage/.integrity",
+            "device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/.integrity",
             SERVER_COMPOSE,
         )
         self.assertIn(
-            "device: /opt/RaspberryPiSystem_002/storage/"
+            "device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/"
             "part-measurement-drawings-derivatives",
             SERVER_COMPOSE,
         )
         self.assertIn(
-            "device: /opt/RaspberryPiSystem_002/storage/assembly-procedure-assets",
+            "device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/assembly-procedure-assets",
             SERVER_COMPOSE,
         )
 

@@ -39,6 +39,12 @@
   Evidence: sidecarを先に削除する順へ直し、再実行で1/1成功、`TEMP_RESOURCE_REMAINING=0`を確認した。製品の削除規則は緩めていない。
 - Observation: local Playwright設定はWeb serverの事前起動を要求する。
   Evidence: 停止状態では`ERR_CONNECTION_REFUSED`、feature worktreeのViteを明示起動すると同じspecが5/5成功し、その後Viteを停止した。
+- Observation: PR #1275のWeb jobは`KioskAssemblyWorkSessionPage.test.tsx`の4件目で停止し、約5時間後にV8 heap OOMとなった。
+  Evidence: overlay対応後の`currentSequencePage`がrenderごとに新しいobjectとなり、`onCurrentPageChange` effectと親state更新が循環していた。page/document resolverをmemoizeすると対象19/19が8.95秒で完走した。
+- Observation: standard release build contract rendererはPi5 host名を`raspberrypi5`へ固定しており、専用`staging-pi5` inventoryのread-only planを作れなかった。
+  Evidence: rendererのlimitを唯一の`server` groupへ一般化し、production/staging双方のcontractとstaging `--print-plan`が成功した。
+- Observation: staging用の停止gateは`hosts: localhost`の独立playではwrapperのexact `--limit`から除外された。
+  Evidence: mutation playの`pre_tasks`へ`tags: always`で置き、`--tags pi5 --limit staging-pi5`でもrole開始前、changed=0で停止することを確認した。
 
 ## Decision Log
 
@@ -63,6 +69,9 @@
 - Decision: 合成PDF、OCR job queue、DGX adapterを初回範囲に追加しない。
   Rationale: システム内表示と手動完遂で成功条件を満たすため、実測なしに防御機構を自己増殖させない。
   Date/Author: 2026-08-21 / Codex orchestration team.
+- Decision: 実機受入はproduction端末を代用せず、`staging-pi5`と`staging-pi4-kiosk01`を専用inventory、DB、Compose project/network/volume、storage/cert/backup/log、Vault境界へ分離する。
+  Rationale: 実機の正常フローを標準release routeで完遂できる一方、実値未設定時は`.invalid` hostと`staging_deploy_enabled: false`で接続前に止められる。
+  Date/Author: 2026-08-22 / Codex orchestration team.
 
 ## Outcomes & Retrospective
 
@@ -200,3 +209,5 @@ APIは既存URLを保ち、改版create/get/discard、`expectedEditVersion`付�
 I/O依存は既存Sharp、Poppler、座標付きOCR、durable storageである。PopplerがデジタルPDFのROI文字を返せなければOCRへfallbackし、低信頼・失敗は空候補として手入力へ戻す。Pi4 browserは選択・描画・投影だけを行い、readonly閲覧で画像処理APIを呼ばない。DGX推論は依存に追加していないが、将来実測不足時にOCR portの別adapterとして追加できる。
 
 Revision note (2026-08-21): 実装完了に合わせ、調査だけの短い計画を自己完結型の実行・引継ぎ文書へ更新した。sidecar設計、asset lease、責務分割、失敗から得た知見、全検証証跡、integrationPendingを記録した。
+
+Revision note (2026-08-22): 専用staging準備を追加した。production/TalkPlaza inventoryは変更せず、staging専用inventory/Vault example/runtime namespace、fail-closed enablement gate、read-only plan、実機rollback・Pi4/Pi5計測Runbookを整備した。PRのWeb OOM原因もfeature由来の参照安定性不具合として修正した。実機固有の接続先、SSH user/key、DB/storage方式、Vault受渡し経路は未提供のため、接続・deploy・性能計測は未実施である。
