@@ -26,6 +26,7 @@ function mapHydratedSqlRowToProductionScheduleRow(row: LeaderboardScheduleRowSql
     id: row.id,
     seibanJoinKey: row.seibanJoinKey,
     occurredAt: row.occurredAt,
+    updatedAt: row.updatedAt,
     rowData: row.rowData,
     processingOrder: row.processingOrder,
     globalRank: row.globalRank,

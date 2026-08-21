@@ -57,6 +57,7 @@ async function fetchLeaderboardScheduleHydratedRowsSingleBatch(params: {
       "CsvDashboardRow"."id",
       NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "seibanJoinKey",
       "CsvDashboardRow"."occurredAt",
+      "CsvDashboardRow"."updatedAt",
       jsonb_build_object(
         'ProductNo', "CsvDashboardRow"."rowData"->>'ProductNo',
         'FSEIBAN', "CsvDashboardRow"."rowData"->>'FSEIBAN',

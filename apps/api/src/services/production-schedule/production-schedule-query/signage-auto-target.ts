@@ -15,6 +15,7 @@ export type SignageAutoTargetSelectorScheduleRow = Pick<
   | 'id'
   | 'seibanJoinKey'
   | 'occurredAt'
+  | 'updatedAt'
   | 'rowData'
   | 'dueDate'
   | 'plannedQuantity'
@@ -33,6 +34,7 @@ function mapSignageAutoTargetSelectorScheduleRows(
     id: row.id,
     seibanJoinKey: row.seibanJoinKey,
     occurredAt: row.occurredAt,
+    updatedAt: row.updatedAt,
     rowData: row.rowData,
     dueDate: row.dueDate,
     plannedQuantity: row.plannedQuantity,

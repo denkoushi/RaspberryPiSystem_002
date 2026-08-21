@@ -1,4 +1,9 @@
 import {
+  formatSelfInspectionDateTime,
+  formatSelfInspectionParticipantLabel,
+  formatSelfInspectionResourceLabel
+} from './selfInspectionListFormatters';
+import {
   KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
   kioskSelfInspectionInspectorSessionPath,
   kioskSelfInspectionRecordConfirmationPath,
@@ -20,6 +25,8 @@ export type SelfInspectionCandidateDisplaySource = {
   resourceCd: string;
   fhincd: string;
   fhinmei: string;
+  machineName: string | null;
+  updatedAt: string | null;
   processGroup: PartMeasurementProcessGroup;
   selfInspectionTemplateId: string;
   plannedQuantity: number | null;
@@ -43,9 +50,16 @@ export type SelfInspectionFilterOption = {
 type SelfInspectionTableRowBase = {
   id: string;
   productNo: string;
+  fseiban: string | null;
+  machineName: string | null;
+  fhinmei: string;
   resourceCd: string;
+  resourceLabel: string;
+  updatedAt: string | null;
   statusLabel: string;
-  statusTone: 'danger' | 'info' | 'warning';
+  statusTone: 'neutral' | 'attention' | 'danger';
+  intentLabel: string;
+  metadataLine: string;
   detailLine: string;
   progressLine: string;
   invalidationTarget: SelfInspectionItemInvalidationTargetDto;
@@ -123,8 +137,40 @@ export function buildResourceFilterOptions(
   return options;
 }
 
+function presentSelfInspectionIntent(input: {
+  status: SelfInspectionStatus | null;
+  inspectorActive?: boolean;
+  inspectorComplete?: boolean;
+  recordApprovalRequiredAt?: string | null;
+  completedAt?: string | null;
+}): string {
+  if (input.inspectorActive && !input.inspectorComplete) return '検査員測定を進めてください';
+  if (input.inspectorComplete && input.recordApprovalRequiredAt) return '最終判定を確認してください';
+  if (input.status === 'review_pending') return '記録確認を進めてください';
+  if (input.status === 'completed' || input.completedAt) return '完了した記録です';
+  if (input.status === 'in_progress') return '作業者の入力を続けてください';
+  return '開始方法を選択してください';
+}
+
+function formatSelfInspectionMetadata(input: {
+  productNo: string | null | undefined;
+  resourceLabel: string;
+  updatedAt: string | null | undefined;
+  progressLabel: string;
+  participantLabel: string;
+}): string {
+  return [
+    `製造order ${input.productNo?.trim() || '—'}`,
+    `資源 ${input.resourceLabel}`,
+    `最終更新 ${formatSelfInspectionDateTime(input.updatedAt)}`,
+    input.progressLabel,
+    `参加者 ${input.participantLabel}`
+  ].join(' / ');
+}
+
 export function presentSelfInspectionSessionRow(
-  session: SelfInspectionSessionSummaryDto
+  session: SelfInspectionSessionSummaryDto,
+  resourceNameMap: Record<string, readonly string[] | undefined> = {}
 ): SelfInspectionTableRow {
   const inspectorState = session.inspectorMeasurementState;
   const inspectorActive =
@@ -189,6 +235,12 @@ export function presentSelfInspectionSessionRow(
       tone: 'secondary'
     });
   }
+  const normalizedActions: typeof actions = actions.map((action, index) => ({
+    ...action,
+    tone: index === Math.max(0, actions.findIndex((candidate) => candidate.tone === 'primary'))
+      ? 'primary'
+      : 'secondary'
+  }));
   const card = presentSelfInspectionWipCard({
     productNo: session.productNo,
     fhincd: session.fhincd,
@@ -200,39 +252,85 @@ export function presentSelfInspectionSessionRow(
     requiredEntryCount: session.requiredEntryCount,
     participantEmployeeNames: session.participantEmployeeNames ?? []
   });
+  const resourceLabel = formatSelfInspectionResourceLabel(session.resourceCd, resourceNameMap);
+  const participantLabel = formatSelfInspectionParticipantLabel(session.participantEmployeeNames);
+  const progressLabel = inspectorActive || inspectorComplete
+    ? `進捗 作業者 ${session.completedEntryCount}/${session.requiredEntryCount}件・検査員 ${session.inspectorCompletedRequiredEntryCount}/${session.inspectorRequiredEntryCount}件`
+    : `進捗 ${session.completedEntryCount}/${session.requiredEntryCount}件`;
 
   return {
     kind: 'session',
     id: session.id,
     productNo: session.productNo,
+    fseiban: session.fseiban,
+    machineName: session.machineName,
+    fhinmei: session.fhinmei,
     resourceCd: session.resourceCd,
+    resourceLabel,
+    updatedAt: session.updatedAt,
     statusLabel: inspectorActive
       ? inspectorComplete ? '最終判定待ち' : '検査員待ち'
       : inspectorComplete && session.recordApprovalRequiredAt
         ? '最終判定待ち'
         : selfInspectionStatusLabel(session.status),
     statusTone:
-      session.status === 'review_pending' || inspectorActive || inspectorComplete ? 'danger' : 'warning',
+      session.status === 'review_pending' || inspectorComplete
+        ? 'danger'
+        : session.status === 'in_progress' || inspectorActive
+          ? 'attention'
+          : 'neutral',
+    intentLabel: presentSelfInspectionIntent({
+      status: session.status,
+      inspectorActive,
+      inspectorComplete,
+      recordApprovalRequiredAt: session.recordApprovalRequiredAt,
+      completedAt: session.completedAt
+    }),
+    metadataLine: formatSelfInspectionMetadata({
+      productNo: session.productNo,
+      resourceLabel,
+      updatedAt: session.updatedAt,
+      progressLabel,
+      participantLabel
+    }),
     detailLine: `製番 ${session.fseiban || '—'} / 品番 ${session.fhincd || '—'} ${session.fhinmei || ''}`.trim(),
     progressLine:
       inspectorActive || inspectorComplete
         ? `氏名 ${card.participantNamesLine} / 指示数 ${session.plannedQuantity} / 作業者 ${session.completedEntryCount}/${session.requiredEntryCount}件 / 検査員 ${session.inspectorCompletedRequiredEntryCount}/${session.inspectorRequiredEntryCount}件`
         : `氏名 ${card.participantNamesLine} / 指示数 ${session.plannedQuantity} / 進捗 ${card.progressLine}`,
     invalidationTarget: { kind: 'session', sessionId: session.id },
-    actions
+    actions: normalizedActions
   };
 }
 
 export function presentSelfInspectionCandidateRow(
-  candidate: SelfInspectionCandidateDisplaySource
+  candidate: SelfInspectionCandidateDisplaySource,
+  resourceNameMap: Record<string, readonly string[] | undefined> = {}
 ): SelfInspectionTableRow {
+  const resourceLabel = formatSelfInspectionResourceLabel(candidate.resourceCd, resourceNameMap);
+  const progressLabel = candidate.status === 'in_progress'
+    ? `進捗 入力中 / 指示数 ${candidate.plannedQuantity ?? '—'}`
+    : `進捗 未開始 / 指示数 ${candidate.plannedQuantity ?? '—'}`;
   return {
     kind: 'candidate',
     id: candidate.id,
     productNo: candidate.productNo,
+    fseiban: candidate.fseiban,
+    machineName: candidate.machineName,
+    fhinmei: candidate.fhinmei,
     resourceCd: candidate.resourceCd,
+    resourceLabel,
+    updatedAt: candidate.updatedAt,
     statusLabel: selfInspectionStatusLabel(candidate.status),
-    statusTone: 'info',
+    statusTone: candidate.status === 'in_progress' ? 'attention' : 'neutral',
+    intentLabel: presentSelfInspectionIntent({ status: candidate.status }),
+    metadataLine: formatSelfInspectionMetadata({
+      productNo: candidate.productNo,
+      resourceLabel,
+      updatedAt: candidate.updatedAt,
+      progressLabel,
+      participantLabel: '—'
+    }),
     detailLine: `製番 ${candidate.fseiban || '—'} / 品番 ${candidate.fhincd || '—'} ${candidate.fhinmei || ''}`.trim(),
     progressLine: `指示数 ${candidate.plannedQuantity ?? '—'}`,
     invalidationTarget: {

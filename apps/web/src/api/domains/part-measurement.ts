@@ -20,6 +20,7 @@ import type {
   SelfInspectionPaperReportPrintDto,
   SelfInspectionRecordApprovalSessionDetailDto,
   SelfInspectionRecordApprovalsListDto,
+  SelfInspectionRecordApprovalScope,
   SelfInspectionRecordApprovalState,
   SelfInspectionRegistrationPolicyDto,
   SelfInspectionSessionDetailDto,
@@ -426,6 +427,7 @@ export async function getSelfInspectionRegistrationPolicy(): Promise<SelfInspect
 
 export async function updateSelfInspectionRegistrationPolicy(payload: {
   requireMeasuringInstrumentTag: boolean;
+  accessPassword?: string;
 }): Promise<SelfInspectionRegistrationPolicyDto> {
   const { data } = await api.put<{ policy: SelfInspectionRegistrationPolicyDto }>(
     '/part-measurement/self-inspection/registration-policy',
@@ -436,6 +438,7 @@ export async function updateSelfInspectionRegistrationPolicy(payload: {
 
 export async function listSelfInspectionRecordApprovals(params?: {
   state?: 'active' | SelfInspectionRecordApprovalState;
+  scope?: SelfInspectionRecordApprovalScope;
   productNo?: string;
   resourceCd?: string;
   processGroup?: PartMeasurementProcessGroup;

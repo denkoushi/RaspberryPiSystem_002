@@ -8,6 +8,7 @@ export type LeaderboardScheduleRowSql = {
   id: string;
   seibanJoinKey: string | null;
   occurredAt: Date;
+  updatedAt: Date | null;
   rowData: Prisma.JsonValue;
   processingOrder: number | null;
   globalRank: number | null;

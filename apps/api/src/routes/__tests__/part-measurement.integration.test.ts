@@ -2801,11 +2801,35 @@ describe('part-measurement templates API', () => {
     expect(defaultRegistrationPolicyRes.json().policy.requireMeasuringInstrumentTag).toBe(false);
     expect(defaultRegistrationPolicyRes.json().policy.updatedAt).toBeNull();
 
-    const requireInstrumentPolicyRes = await app.inject({
+    const missingRegistrationPolicyPasswordRes = await app.inject({
       method: 'PUT',
       url: '/api/part-measurement/self-inspection/registration-policy',
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: { requireMeasuringInstrumentTag: true }
+    });
+    expect(missingRegistrationPolicyPasswordRes.statusCode).toBe(403);
+
+    const wrongRegistrationPolicyPasswordRes = await app.inject({
+      method: 'PUT',
+      url: '/api/part-measurement/self-inspection/registration-policy',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { requireMeasuringInstrumentTag: true, accessPassword: 'wrong' }
+    });
+    expect(wrongRegistrationPolicyPasswordRes.statusCode).toBe(403);
+
+    const managerRegistrationPolicyRes = await app.inject({
+      method: 'PUT',
+      url: '/api/part-measurement/self-inspection/registration-policy',
+      headers: createAuthHeader(managerToken),
+      payload: { requireMeasuringInstrumentTag: true }
+    });
+    expect(managerRegistrationPolicyRes.statusCode).toBe(200);
+
+    const requireInstrumentPolicyRes = await app.inject({
+      method: 'PUT',
+      url: '/api/part-measurement/self-inspection/registration-policy',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { requireMeasuringInstrumentTag: true, accessPassword: '2520' }
     });
     expect(requireInstrumentPolicyRes.statusCode).toBe(200);
     expect(requireInstrumentPolicyRes.json().policy.requireMeasuringInstrumentTag).toBe(true);
@@ -2815,7 +2839,7 @@ describe('part-measurement templates API', () => {
       method: 'PUT',
       url: '/api/part-measurement/self-inspection/registration-policy',
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { requireMeasuringInstrumentTag: false }
+      payload: { requireMeasuringInstrumentTag: false, accessPassword: '2520' }
     });
     expect(optionalInstrumentPolicyRes.statusCode).toBe(200);
     expect(optionalInstrumentPolicyRes.json().policy.requireMeasuringInstrumentTag).toBe(false);
@@ -3127,7 +3151,7 @@ describe('part-measurement templates API', () => {
       method: 'PUT',
       url: '/api/part-measurement/self-inspection/registration-policy',
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { requireMeasuringInstrumentTag: true }
+      payload: { requireMeasuringInstrumentTag: true, accessPassword: '2520' }
     });
     expect(requireInstrumentPolicyBeforeSecondEntryRes.statusCode).toBe(200);
     expect(requireInstrumentPolicyBeforeSecondEntryRes.json().policy.requireMeasuringInstrumentTag).toBe(true);
@@ -3327,7 +3351,7 @@ describe('part-measurement templates API', () => {
       method: 'PUT',
       url: '/api/part-measurement/self-inspection/registration-policy',
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { requireMeasuringInstrumentTag: false }
+      payload: { requireMeasuringInstrumentTag: false, accessPassword: '2520' }
     });
     expect(disableInstrumentRequirementBeforeApprovalRes.statusCode).toBe(200);
     expect(disableInstrumentRequirementBeforeApprovalRes.json().policy.requireMeasuringInstrumentTag).toBe(false);
@@ -3623,6 +3647,25 @@ describe('part-measurement templates API', () => {
         (row) => row.id === sessionId
       )
     ).toBe(true);
+
+    const completedRecordsScopeRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?scope=completed_records',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(completedRecordsScopeRes.statusCode).toBe(200);
+    expect(
+      (completedRecordsScopeRes.json().sessions as Array<Record<string, unknown>>).some(
+        (row) => row.id === sessionId
+      )
+    ).toBe(true);
+
+    const conflictingRecordApprovalQueryRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?scope=completed_records&state=active',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(conflictingRecordApprovalQueryRes.statusCode).toBe(400);
 
     const completeAgainRes = await app.inject({
       method: 'POST',
@@ -3989,7 +4032,7 @@ describe('part-measurement templates API', () => {
       method: 'PUT',
       url: '/api/part-measurement/self-inspection/registration-policy',
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { requireMeasuringInstrumentTag: true }
+      payload: { requireMeasuringInstrumentTag: true, accessPassword: '2520' }
     });
     expect(requireInstrumentPolicyRes.statusCode).toBe(200);
 
@@ -4071,6 +4114,22 @@ describe('part-measurement templates API', () => {
     expect(completedRecordListRes.statusCode).toBe(200);
     expect(
       (completedRecordListRes.json().sessions as Array<{
+        id: string;
+        recordApprovalState: string;
+      }>).find((row) => row.id === session.id)
+    ).toMatchObject({
+      id: session.id,
+      recordApprovalState: 'completed'
+    });
+
+    const completedRecordsScopeRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?scope=completed_records',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(completedRecordsScopeRes.statusCode).toBe(200);
+    expect(
+      (completedRecordsScopeRes.json().sessions as Array<{
         id: string;
         recordApprovalState: string;
       }>).find((row) => row.id === session.id)

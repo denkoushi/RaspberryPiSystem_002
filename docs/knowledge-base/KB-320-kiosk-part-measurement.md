@@ -569,7 +569,7 @@ Runbook: [§NFC・手元カメラ](../runbooks/kiosk-part-measurement.md#自主�
 | **対象データ** | `SelfInspectionSession.recordApprovalWorkflowStartedAt` が入った新方式セッション。検査記録確認の一覧には、測定値保存後に `recordApprovalRequiredAt` が入った session のみ表示 |
 | **承認単位** | session 単位。公差内/公差外の保存済み検査記録をまとめて確認する |
 | **一覧状態** | `input_incomplete`（required slot 未入力/値不足）· `registration_incomplete`（測定者不足、または設定 ON 時の点検不足）· `approvable` · `approved` |
-| **入口ゲート** | 自主検査トップの「検査記録確認」。納期管理と同じ `2520` 初期パスワードを `x-client-key` 付きで検証し、通過状態は検査記録確認画面の表示中だけ保持。別画面へ移動すると再入力 |
+| **閲覧境界（2026-08-21改定）** | 自主検査トップの「検査記録確認」は共有パスワードなしで表示する。有効な`x-client-key`または従来のJWTは維持し、匿名APIにはしない。承認は操作開始後のACTIVE社員NFC、計測機器ポリシー変更はPUT時の共有パスワードで保護する。正本は [ADR-20260821](../decisions/ADR-20260821-self-inspection-record-view-uiux.md) |
 | **本人証跡** | 最終承認者は NFC。初期導入は `Employee.status=ACTIVE` かつ NFC 登録済みなら可。社員コード・表示名・NFC UID・端末 ID/端末名・承認日時を snapshot 保存 |
 | **コメント** | DB/API は任意コメントを持つが、初期 UI では入力不要 |
 | **旧 UI/API 境界** | 管理画面 `/admin/part-measurement/self-inspection-reviews` と旧承認 API は `recordApprovalWorkflowStartedAt=null` の legacy 用。新方式セッションの旧承認 API は 409 |
@@ -1905,15 +1905,16 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - `SelfInspectionMeasurementValue` と `SelfInspectionInspectorMeasurementValue` は更新対象外。トランザクション内で補正前後の値・確認日時・最終判定snapshotが同一であることを検証する。
 - 実行中断後も再実行可能で、適用済みの場合はpostconditionを確認してno-op成功する。Prismaスキーマ変更とデータmigrationは伴わない。
 
-## 自主検査 · 一覧／測定入力レイアウト契約（2026-07-31）
+## 自主検査 · 一覧／測定入力レイアウト契約（2026-07-31、2026-08-21改定）
 
 この節は自主検査一覧、測定セッション、および検査図面テンプレート一覧の現行UI契約である。Webの表示変更だけを対象とし、HTTP API、DTO、Prisma schema、migration、保存・完了・NFC・ガイド・無効化の業務契約は変更しない。
 
 ### 一覧とテンプレート
 
-- 自主検査一覧はHTML表を使い、画面幅1536px未満では1表、1536px以上では2表へ均等分割する。各アイテムの順序、遷移、callback、削除確認は変更しない。
-- 表本文は14px以上、製造orderは16pxとする。長い製造order、品番、品名、資源CD、状態はセル境界で省略し、`title`で全文を確認できるようにする。ページ横スクロールは許容しない。
-- 操作は横並びで必要時のみ折り返し、高さ30.8px、左右4px、上下0、14pxとする。この表操作の構造だけをキオスク共通密度トークンにし、画面固有の色と文字表現は共有しない。
+- 自主検査一覧はHTML表を使い、画面幅1536px未満では1表、1536px以上では2表へ均等分割する。ペイン、各アイテム、隣接表示領域の外枠、順序、遷移、callback、削除確認は変更しない。見える列見出しは置かず、caption・支援技術向け見出し・accessible nameで意味を保持する。
+- アイテム上段は製番30%・機種名30%・品名40%の一行identityとし、白色21pxで表示する。下段は製造order、資源、最終更新、進捗・参加者を灰色の一行metaとして、状態説明・操作と並べる。長文は折返さずセル境界で省略し、`title`と`aria-label`で全文を確認できるようにする。ページ横スクロールは許容しない。
+- 資源は日本語名を主、CDを補助とし、名称不明時だけCDへfallbackする。最終更新はsessionと生産日程行の`updatedAt`をAsia/Tokyoの分まで表示し、`occurredAt`を代用しない。
+- 状態は中立・注意・危険の限定した意味と文字説明を併用する。操作は推奨する次操作を最大1つだけprimary、他をsecondary、削除をdangerとする。操作は横並びで必要時のみ折り返し、高さ30.8px、左右4px、上下0、14pxを維持する。
 - 検査図面テンプレート表は、既存DTOの`selfInspectionMode`と`selfInspectionFixedCount`から **頻度: 全数／抜き取り1個／最初と最後／指定数 N 件** を表示する。頻度は縮小せず、資源CDチップ群と編集操作の間、編集の直前に置く。
 
 ### 54px固定ヘッダーと通知

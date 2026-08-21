@@ -1,15 +1,7 @@
-import clsx from 'clsx';
-import { Fragment, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-
-import { buttonClassName } from '../../components/ui/Button';
-import {
-  kioskDenseTableRowActionStructureClassName,
-  kioskDenseTableRowActionsClassName
-} from '../kiosk/kioskTableDensity';
-import { kioskButtonPrimaryClassName } from '../kiosk/kioskTheme';
+import { useEffect, useState } from 'react';
 
 import { splitIntoBalancedPanes, type SelfInspectionTableRow } from './selfInspectionTableModel';
+import { SelfInspectionTablePane } from './SelfInspectionTablePane';
 
 export function resolveSelfInspectionPaneCount(width: number): number {
   return width >= 1536 ? 2 : 1;
@@ -36,104 +28,6 @@ type Props = {
   onInvalidate: (row: SelfInspectionTableRow) => void;
 };
 
-const toneClassNames: Record<SelfInspectionTableRow['statusTone'], string> = {
-  danger: 'bg-red-400/20 text-red-100',
-  info: 'bg-cyan-500/20 text-cyan-100',
-  warning: 'bg-yellow-400/20 text-yellow-100'
-};
-
-function TablePane({ rows, onCandidateSelect, onInvalidate }: Props) {
-  return (
-    <div className="min-w-0 overflow-hidden rounded border border-white/15 bg-slate-950/55">
-      <table className="w-full table-fixed border-collapse text-left text-sm text-white">
-        <colgroup>
-          <col className="w-[29%]" />
-          <col className="w-[14%]" />
-          <col className="w-[19%]" />
-          <col className="w-[38%]" />
-        </colgroup>
-        <thead className="sticky top-0 z-10 bg-slate-900 text-white/70 shadow-sm">
-          <tr>
-            <th className="px-2 py-2 font-semibold">製造order</th>
-            <th className="px-1 py-2 font-semibold">資源CD</th>
-            <th className="px-1 py-2 font-semibold">状態</th>
-            <th className="px-2 py-2 text-center font-semibold">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <Fragment key={`${row.kind}:${row.id}`}>
-              <tr className="border-t border-white/15 bg-slate-900/45 align-middle">
-                <td className="truncate px-2 py-1.5 text-base font-bold" title={row.productNo}>
-                  {row.productNo || '—'}
-                </td>
-                <td className="truncate px-1 py-1.5" title={row.resourceCd}>
-                  {row.resourceCd || '—'}
-                </td>
-                <td className="truncate px-1 py-1.5" title={row.statusLabel}>
-                  <span className={clsx('inline-flex max-w-full truncate rounded px-1.5 py-1 font-semibold', toneClassNames[row.statusTone])}>
-                    {row.statusLabel}
-                  </span>
-                </td>
-                <td className="px-2 py-1.5">
-                  <div className={kioskDenseTableRowActionsClassName} data-testid="self-inspection-row-actions">
-                    {row.kind === 'session' ? row.actions.map((action) => (
-                      <Link
-                        key={`${action.href}:${action.label}`}
-                        to={action.href}
-                        className={buttonClassName(
-                          action.tone === 'primary' ? 'primary' : 'ghostOnDark',
-                          clsx(
-                            action.tone === 'primary' ? kioskButtonPrimaryClassName : undefined,
-                            kioskDenseTableRowActionStructureClassName,
-                            'text-sm'
-                          )
-                        )}
-                      >
-                        {action.label}
-                      </Link>
-                    )) : (
-                      <button
-                        type="button"
-                        className={clsx(
-                          row.statusLabel === '入力中' || row.statusLabel === '完了'
-                            ? kioskButtonPrimaryClassName
-                            : buttonClassName('ghostOnDark'),
-                          kioskDenseTableRowActionStructureClassName,
-                          'text-sm'
-                        )}
-                        onClick={() => onCandidateSelect(row.id)}
-                      >
-                        {row.action.label}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className={clsx(
-                        kioskDenseTableRowActionStructureClassName,
-                        'border border-rose-300/50 bg-rose-500/15 text-sm font-semibold text-rose-100 hover:bg-rose-500/25'
-                      )}
-                      onClick={() => onInvalidate(row)}
-                    >
-                      削除
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              <tr className="border-b border-white/15 bg-slate-950/25">
-                <td colSpan={4} className="px-2 pb-2 pt-1 text-sm leading-snug text-white/65">
-                  <p className="line-clamp-1" title={row.detailLine}>{row.detailLine}</p>
-                  <p className="line-clamp-1" title={row.progressLine}>{row.progressLine}</p>
-                </td>
-              </tr>
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export function SelfInspectionTable({ rows, onCandidateSelect, onInvalidate }: Props) {
   const paneCount = useResponsivePaneCount();
   const panes = splitIntoBalancedPanes(rows, paneCount);
@@ -146,7 +40,7 @@ export function SelfInspectionTable({ rows, onCandidateSelect, onInvalidate }: P
       style={{ gridTemplateColumns: `repeat(${paneCount}, minmax(0, 1fr))` }}
     >
       {panes.map((paneRows, index) => (
-        <TablePane
+        <SelfInspectionTablePane
           key={index}
           rows={paneRows}
           onCandidateSelect={onCandidateSelect}

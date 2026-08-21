@@ -22,6 +22,8 @@ export type ProductionScheduleRow = {
   /** 生産日程一覧と progress-overview を製番単位で突合するための専用キー。 */
   seibanJoinKey: string | null;
   occurredAt: Date;
+  /** CSV 行の最終更新日時。旧データでは null。 */
+  updatedAt: Date | null;
   rowData: Prisma.JsonValue;
   processingOrder: number | null;
   globalRank: number | null;

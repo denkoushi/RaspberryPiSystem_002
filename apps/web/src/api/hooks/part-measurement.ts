@@ -121,7 +121,7 @@ export function useSelfInspectionRegistrationPolicy(options?: {
 export function useUpdateSelfInspectionRegistrationPolicy() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { requireMeasuringInstrumentTag: boolean }) =>
+    mutationFn: (payload: Parameters<typeof updateSelfInspectionRegistrationPolicy>[0]) =>
       updateSelfInspectionRegistrationPolicy(payload),
     onSuccess: (policy) => {
       queryClient.setQueryData(['self-inspection-registration-policy'], policy);

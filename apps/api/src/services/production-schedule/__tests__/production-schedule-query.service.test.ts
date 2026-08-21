@@ -101,6 +101,50 @@ describe('production-schedule-query.service', () => {
     vi.mocked(enrichProductionScheduleRowsWithCustomerName).mockClear();
   });
 
+  it('propagates nullable CsvDashboardRow.updatedAt through the full row response', async () => {
+    const updatedAt = new Date('2026-03-23T01:02:03.000Z');
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ total: 1n }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'row-updated-at',
+          seibanJoinKey: 'S-1',
+          occurredAt: new Date('2026-03-23T00:00:00.000Z'),
+          updatedAt,
+          rowData: {
+            ProductNo: '0001',
+            FSEIBAN: 'S-1',
+            FHINCD: 'X',
+            FSIGENCD: 'R01',
+            FKOJUN: '10',
+            progress: ''
+          },
+          processingOrder: null,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 20,
+      queryText: '',
+      productNos: [],
+      resourceCds: [],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      locationKey: 'kiosk-1'
+    });
+
+    expect(result.rows[0]?.updatedAt).toEqual(updatedAt);
+  });
+
   it('資源CD単独指定時（assignedOnlyなし）は空結果を返しDBクエリしない', async () => {
     const result = await listProductionScheduleRows({
       page: 1,

@@ -14,6 +14,7 @@ import {
   getSelfInspectionRegistrationPolicy,
   updateSelfInspectionRegistrationPolicy
 } from '../../services/part-measurement/self-inspection-registration-policy.service.js';
+import { SelfInspectionRegistrationPolicyAccessService } from '../../services/part-measurement/self-inspection-registration-policy-access.service.js';
 
 
 
@@ -60,6 +61,7 @@ import {
 
 // NFC UID の総当たり・認証レコードの過剰作成を防ぎつつ、キオスクの再スキャンを許容する。
 const selfInspectionMeasurementActorAuthenticationRateLimit = { max: 20, timeWindow: '1 minute' };
+const selfInspectionRegistrationPolicyRateLimit = { max: 10, timeWindow: '1 minute' };
 
 export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMeasurementRouteDeps): void {
   const {
@@ -73,6 +75,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
     paperOcrReviewService,
     paperImportService
   } = deps;
+  const registrationPolicyAccessService = new SelfInspectionRegistrationPolicyAccessService();
 
     app.post(
       '/part-measurement/self-inspection/items/invalidate',
@@ -162,15 +165,22 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       return { policy: serializeSelfInspectionRegistrationPolicy(policy) };
     });
 
-    app.put('/part-measurement/self-inspection/registration-policy', { preHandler: allowWriteKiosk }, async (request) => {
+    app.put(
+      '/part-measurement/self-inspection/registration-policy',
+      { preHandler: allowWriteKiosk, config: { rateLimit: selfInspectionRegistrationPolicyRateLimit } },
+      async (request) => {
       const body = selfInspectionRegistrationPolicyBodySchema.parse(request.body);
       const clientDeviceId = request.user ? undefined : await tryGetClientDeviceId(request.headers);
+      if (!request.user) {
+        await registrationPolicyAccessService.requireAccessPassword(body.accessPassword);
+      }
       const policy = await updateSelfInspectionRegistrationPolicy({
         requireMeasuringInstrumentTag: body.requireMeasuringInstrumentTag,
         updatedBy: request.user?.username ?? clientDeviceId ?? 'kiosk'
       });
       return { policy: serializeSelfInspectionRegistrationPolicy(policy) };
-    });
+      }
+    );
 
     app.post('/part-measurement/self-inspection/sessions/resolve-or-create', { preHandler: allowWriteKiosk }, async (request) => {
       const body = selfInspectionSessionResolveBodySchema.parse(request.body);
@@ -206,7 +216,8 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
         productNo: query.productNo,
         resourceCd: query.resourceCd,
         processGroup: query.processGroup ? (query.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING') : undefined,
-        state: query.state
+        state: query.state,
+        scope: query.scope
       });
     });
 
