@@ -198,4 +198,26 @@ test.describe('検査記録確認のキオスクレイアウト', () => {
       }
     });
   }
+
+  test('設定ダイアログがフォーカスを管理してEscapeで起点へ戻す', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 760 });
+    await openRecordApprovalPage(page);
+
+    const opener = page.getByRole('button', { name: '計測機器の使用前点検必須 OFF' });
+    await opener.click();
+
+    const dialog = page.getByRole('dialog');
+    const password = page.getByLabel('操作時パスワード');
+    await expect(dialog).toBeVisible();
+    await expect(password).toBeFocused();
+    await expect(page.locator('body')).toHaveCSS('overflow', 'hidden');
+
+    await password.press('Shift+Tab');
+    await expect(page.getByRole('button', { name: '変更する' })).toBeFocused();
+
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(opener).toBeFocused();
+    await expect(page.locator('body')).not.toHaveCSS('overflow', 'hidden');
+  });
 });
