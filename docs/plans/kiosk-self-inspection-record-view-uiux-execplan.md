@@ -11,12 +11,13 @@ Operators must be able to scan self-inspection work without enlarging the existi
 - [x] (2026-08-21 JST) Read repository rules, canonical KB/runbook/ADRs, current API/Web implementation, tests, Prisma schema, and prior ExecPlans.
 - [x] (2026-08-21 JST) Audited task state and created `feat/kiosk-self-inspection-record-view-uiux` from exact `origin/main` `3a741c29e09d7c3bd14d687678d5f6b073a3d527` with the lifecycle CLI.
 - [x] (2026-08-21 JST) Ran the existing layout Playwright spec at 1280x760, 1536x864, and 1920x1080; all four baseline tests passed and screenshots were captured under `/tmp/rps002-self-inspection-baseline`.
-- [ ] Record exact baseline item and pane geometry before list markup changes.
-- [ ] Add production-schedule `updatedAt`, completed-record aggregation, and operation-time policy authentication with API tests.
-- [ ] Implement the constrained list presentation and layout with focused and browser tests.
-- [ ] Implement password-free record viewing, three category buttons, operation-time NFC/password flows, and tests.
-- [ ] Update ADR, KB, runbook, and indexes.
-- [ ] Validate on an isolated temporary PostgreSQL instance, run SQL and EXPLAIN, run all scoped quality gates, and record cleanup evidence.
+- [x] (2026-08-21 JST) Recorded the baseline and post-change geometry contract: 60px page header, 30.8px action control, 94.3px two-row item (43.3px identity plus 51px metadata/action), one pane at 1280px and two panes at 1536px/1920px, with no page-level horizontal overflow.
+- [x] (2026-08-21 JST) Added production-schedule `updatedAt`, completed-record aggregation, and operation-time policy authentication with API tests.
+- [x] (2026-08-21 JST) Implemented the constrained list presentation and layout with focused and browser tests.
+- [x] (2026-08-21 JST) Implemented password-free record viewing, three category buttons, operation-time NFC/password flows, and tests.
+- [x] (2026-08-21 JST) Updated ADR, KB-320, runbook, and documentation indexes.
+- [x] (2026-08-21 JST) Applied 158 migrations and ran integration tests and SQL/EXPLAIN in uniquely named tmpfs PostgreSQL containers; both temporary containers and networks were removed with zero residue.
+- [x] (2026-08-21 JST) Passed focused Web/API tests, Web lint/build, API build, and all seven scoped Chromium layout tests.
 
 ## Surprises & Discoveries
 
@@ -26,6 +27,10 @@ Operators must be able to scan self-inspection work without enlarging the existi
   Evidence: Prisma schema and `production-schedule-query/raw-page.ts`.
 - Observation: the shared password currently gates the entire React page but creates no server-side permission token; the policy PUT accepts kiosk client-key alone.
   Evidence: `KioskSelfInspectionRecordApprovalPage.tsx`, the verify-password route, and the registration-policy route.
+- Observation: on the 10,000-row isolated fixture, `completed_records` and `active` both used `SelfInspectionSession_idx_record_approval_required_at`; the completed query read 15 buffers in 0.160ms and active read 15 buffers in 0.064ms.
+  Evidence: `EXPLAIN (ANALYZE, BUFFERS)` in the task-specific PostgreSQL container. The proposed partial index was therefore not justified and no migration was added.
+- Observation: the production-schedule fixture intentionally put all 10,000 rows under one dashboard, so PostgreSQL selected a sequential scan plus top-N heapsort (134 buffers, 1.394ms). This does not meet the plan's selective-query trigger for a new index.
+  Evidence: isolated `EXPLAIN (ANALYZE, BUFFERS)` output; `updatedAt` was present in the projection and ordering result.
 
 ## Decision Log
 
@@ -41,10 +46,17 @@ Operators must be able to scan self-inspection work without enlarging the existi
 - Decision: never use `occurredAt` as a last-update substitute. Propagate nullable `updatedAt` and display an em dash when legacy data lacks it.
   Rationale: the labels must not misrepresent schedule occurrence time.
   Date/Author: 2026-08-21 / user and Codex.
+- Decision: retain the record-detail presentation as one prop-only component even though it is 583 lines.
+  Rationale: query, mutation, NFC lifecycle, filtering, and pure formatting were extracted; the remaining normal/invalidation detail branches share one read-only layout and labels. Splitting those DOM-only branches further would add cross-file prop plumbing without creating an independently changing business or I/O boundary. Page and component tests directly cover this boundary.
+  Date/Author: 2026-08-21 / Codex.
 
 ## Outcomes & Retrospective
 
-Implementation is in progress. Complete this section with user-visible results, module boundaries, test evidence, database plan evidence, and any remaining work.
+The requested normal paths are implemented. The list retains its outer grid and two-row item geometry while replacing visible column headings with accessible-only semantics, 21px one-line identity values, a one-line metadata/action row, Japanese resource-name priority, minute-only Tokyo timestamps, textual state intent, and one primary action. The record page now reads immediately under client-key authentication, exposes only the three requested categories, starts NFC only after explicit approval intent, and verifies the shared password atomically with a kiosk policy PUT.
+
+The dependency direction is API contracts to pure format/filter/presentation modules to prop-only React components to page/controller. `SelfInspectionTable` owns only pane selection; `SelfInspectionTablePane` owns the fixed table boundary; `SelfInspectionTableItem` owns item rendering; `selfInspectionTableModel` and `selfInspectionListFormatters` own deterministic presentation. The record page owns query/mutation/NFC lifecycle, while its toolbar, list, detail, dialog, and view-model modules own display or pure transformation. The API filter and policy-access service remain independent of route rendering and Web concerns.
+
+Validation passed: Web focused suite 35 tests, API focused suite 31 tests, isolated full part-measurement integration suite 72 tests, Web lint/build, API build, and seven Chromium tests across 1280x760, 1536x864, and 1920x1080. All 158 migrations applied cleanly; failed migration count was zero; schema inspection confirmed `CsvDashboardRow.updatedAt` and existing indexes. EXPLAIN evidence did not justify a new index. No production or pre-existing Docker resource was used or changed, and each task-specific container/network cleanup reported zero remaining matches.
 
 ## Context and Orientation
 
@@ -78,7 +90,11 @@ All database writes are limited to the uniquely named temporary database. No fix
 
 ## Artifacts and Notes
 
-Record baseline/post-change geometry, concise test summaries, migration status, SQL catalog output, EXPLAIN node/timing/buffer evidence, exact temporary Docker names, and cleanup proof here as work proceeds.
+Baseline/post-change geometry is 60px header, 30.8px action, and 94.3px per two-row item (43.3px plus 51px); pane counts are 1/2/2 at 1280/1536/1920 and horizontal overflow is absent. Browser assertions enforce the same geometry after the markup change.
+
+The first isolated resources were `rps002-self-inspection-20260821113200-70471` and `rps002-self-inspection-20260821113200-70471-net`, with PostgreSQL exposed only on loopback port 54118 and data on tmpfs. A second independently named tmpfs container/network was used only for reproducible EXPLAIN capture. Cleanup checks after both runs reported `REMAINING_CONTAINERS=0` and `REMAINING_NETWORKS=0`; no Docker volume was created.
+
+API compatibility evidence: omitting `scope` retains the legacy `state` behavior and response DTO; `scope=completed_records` is additive, `state` plus `scope` returns 400, the 200-record response limit/detail APIs are unchanged, and GET without client-key remains 401. Kiosk policy PUT now returns 403 for a missing/wrong password and 429 through the existing 10/minute limiter, while the ADMIN/MANAGER JWT path remains password-free.
 
 ## Interfaces and Dependencies
 
