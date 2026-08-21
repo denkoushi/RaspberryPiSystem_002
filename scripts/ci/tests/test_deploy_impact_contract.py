@@ -75,6 +75,7 @@ class DeployImpactContractTests(unittest.TestCase):
             "docs/guide.md",
             "README.md",
             ".cursor/rules/10-quality-ci-and-tests.mdc",
+            ".agent/PLANS.md",
         )
         for path in known_docs:
             with self.subTest(path=path):
@@ -86,10 +87,7 @@ class DeployImpactContractTests(unittest.TestCase):
                 self.assertEqual(result.inferred_surfaces, frozenset({"docs"}))
 
     def test_classifier_fail_closed_document_paths_have_unknown_risk(self) -> None:
-        for path in (
-            ".agent/PLANS.md",
-            ".github/pull_request_template.md",
-        ):
+        for path in (".github/pull_request_template.md",):
             with self.subTest(path=path):
                 result = assess(
                     parse_table(
@@ -107,6 +105,44 @@ class DeployImpactContractTests(unittest.TestCase):
                 self.assertEqual(
                     result.inferred_surfaces, frozenset({"docs", "unknown"})
                 )
+
+    def test_repo_policy_only_git_lifecycle_has_no_runtime_target(self) -> None:
+        result = assess(
+            parse_table(
+                table(
+                    Risk="db-auth-systemd-deploy",
+                    **{
+                        "Changed surfaces": "ci",
+                        "Required files/artifacts": "repository lifecycle policy tool",
+                    },
+                )
+            ),
+            actual_classification("scripts/git_lifecycle/cli.py"),
+        )
+        self.assertEqual(result.inferred_targets, frozenset())
+        self.assertEqual(result.deploy_components, tuple())
+
+    def test_classifier_and_lifecycle_changes_keep_runtime_targets_empty(self) -> None:
+        changes = classify_changes(
+            [
+                Change("M", "scripts/ci/classify_changes.py"),
+                Change("A", "scripts/git_lifecycle/cli.py"),
+            ]
+        )
+        result = assess(
+            parse_table(
+                table(
+                    Risk="db-auth-systemd-deploy",
+                    **{
+                        "Changed surfaces": "ci",
+                        "Required files/artifacts": "repository policy scripts and tests",
+                    },
+                )
+            ),
+            changes,
+        )
+        self.assertEqual(result.inferred_targets, frozenset())
+        self.assertEqual(result.deploy_components, tuple())
 
     def test_package_metadata_full_suite_is_unknown(self) -> None:
         for path in ("package.json", "pnpm-lock.yaml"):

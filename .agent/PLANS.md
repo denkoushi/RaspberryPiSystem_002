@@ -12,6 +12,20 @@ When discussing an executable specification (ExecPlan), record decisions in a lo
  
 When researching a design with challenging requirements or significant unknowns, use milestones to implement proof of concepts, "toy implementations", etc., that allow validating whether the user's proposal is feasible. Read the source code of libraries by finding or acquiring them, research deeply, and include prototypes to guide a fuller implementation.
  
+## Git task lifecycle contract
+
+Every implementation task that uses a feature branch must use the repository lifecycle CLI from the repository root:
+`python3 -m scripts.git_lifecycle.cli`.
+
+Before starting, run `audit --json` as a read-only inventory. Start a task with
+`start --branch <branch>`. It must fetch `origin` and anchor the new linked worktree to the exact fetched `origin/main`; it must not clean, reset, stash, or otherwise modify a dirty or diverged main worktree. Such main state is reported as `main_sync=skipped_dirty` or `main_sync=skipped_diverged`, while an independent task worktree may still be created.
+
+After the task PR is merged, run `finish --worktree <exact-path> --pr <number>`. Only a merged same-repository PR with matching head branch and SHA, an ordinary clean status, and no assume-unchanged/skip-worktree-style index flag is eligible. Ignored material is counted and warned but does not block disposable-worktree cleanup; credentials must remain outside task worktrees. Cleanup removes that worktree without force and compare-and-deletes only the expected local branch ref. Unsafe or ambiguous targets remain protected. The remote branch is deleted by GitHub's merge setting, not by a local remote-ref deletion command.
+
+`finish` performs target cleanup before independently attempting main synchronization. A clean fast-forwardable main may be updated (`updated`); an already-current main reports `already_current`; dirty or diverged main is retained and reports `skipped_dirty` or `skipped_diverged`. A skipped main synchronization does not invalidate successful target cleanup. Run `audit --json` again and record the PR, merge SHA, target cleanup result, `main_sync`, and protected items in the task's completion evidence.
+
+This CLI is an explicitly invoked development-workstation tool. Do not add it to deploy, Ansible, Docker build, fleet deployment, Git hooks, or shared CI preflight paths; full PR pagination runs only for an explicit lifecycle audit. `finish` reads only the PR number supplied by the operator.
+
 ## Requirements
  
 NON-NEGOTIABLE REQUIREMENTS:

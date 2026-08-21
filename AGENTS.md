@@ -23,6 +23,17 @@
 
 大きな文書を一括で読まず、依頼と変更対象に関係する箇所を検索して読む。編集前に `git status` / `git diff` を確認し、既存の未コミット変更をユーザーの WIP として保護する。
 
+## Git Task Lifecycle
+
+タスクごとに専用のfeature branchとlinked worktreeを1つ使う。標準入口は
+`python3 -m scripts.git_lifecycle.cli`であり、rawな`git worktree add`や手動の一括削除を標準手順にしない。
+
+- 開始前に`python3 -m scripts.git_lifecycle.cli audit --json`を実行して既存資産を観測し、開始は`start --branch <branch>`で行う。`start`は`git fetch --prune origin`に成功して正確な`origin/main`を取得できた場合だけ、そのSHAからworktreeを作る。mainがdirtyまたはdivergedでもmainをclean、reset、stash、checkoutせず、警告と`main_sync=skipped_dirty|skipped_diverged`を返す。
+- PRのmerge後は、対象worktreeの正確なパスとPR番号を指定して`finish --worktree <exact-path> --pr <number>`を実行する。merged、同一repositoryのhead branch、local tipとPR head SHA、対象worktreeの通常status・特殊index flagを照合し、合格した対象だけをforceなしで片付ける。ignored materialは件数を警告するが、使い捨てworktreeのcleanupを止めない。秘密資格情報はworktree外へ置く。dirty対象、open/closed-unmerged PR、SHA不一致、所有関係不明は保持する。
+- `finish`の対象cleanupはmain同期から独立する。対象cleanup後にcleanかつfast-forward可能なmainだけを更新し、既に同期済みは`already_current`、dirtyは`skipped_dirty`、divergedは`skipped_diverged`として報告する。main同期のskipは対象タスクのcleanup失敗ではない。
+- 各タスクの終了時に`audit --json`を再実行し、PR番号・merge SHA・対象cleanup・`main_sync`・保護した項目を完了報告へ記録する。remote branchの削除はGitHubの`deleteBranchOnMerge`に任せ、CLIからremote refを削除しない。
+- lifecycle CLIは開発端末で明示実行するGit運用ツールに限定する。Deploy、Ansible、Docker build、fleet deploy、Git hook、CI共通preflightから呼び出さない。
+
 ## Scope And Evidence
 
 - 依頼から変更対象、受入条件、成功を示す証拠を絞り、最小変更で満たす。近接する改善や失敗を見つけても、依頼との因果がなければ別スコープとする。
