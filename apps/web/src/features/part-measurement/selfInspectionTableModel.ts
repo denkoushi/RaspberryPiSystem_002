@@ -1,3 +1,5 @@
+import { normalizeMachineName } from '../kiosk/productionSchedule/machineName';
+
 import {
   formatSelfInspectionDateTime,
   formatSelfInspectionParticipantLabel,
@@ -66,6 +68,16 @@ type SelfInspectionTableRowBase = {
   progressLine: string;
   invalidationTarget: SelfInspectionItemInvalidationTargetDto;
 };
+
+export function normalizeSelfInspectionMachineName(
+  value: string | null | undefined
+): string | null {
+  const normalized = normalizeMachineName(value, {
+    // The card owns clipping so its title and accessible name retain the full value.
+    maxChars: value?.length ?? 0
+  });
+  return normalized || null;
+}
 
 export type SelfInspectionTableRow =
   | (SelfInspectionTableRowBase & {
@@ -162,16 +174,19 @@ function formatSelfInspectionMetadata(input: {
   progressLabel: string;
   participantLabel: string;
 }): { primaryLine: string; secondaryLine: string } {
+  const productNo = input.productNo?.trim() || '—';
+  const resourceCd = input.resourceCd?.trim() || '—';
+  const resourceName = input.resourceName.trim() || '—';
   return {
     primaryLine: [
-      `製造order ${input.productNo?.trim() || '—'}`,
-      `資源CD ${input.resourceCd?.trim() || '—'}`,
-      `資源名 ${input.resourceName}`
-    ].join(' / '),
+      `製造order ${productNo}`,
+      resourceCd,
+      resourceName === resourceCd ? null : resourceName
+    ].filter(Boolean).join(' / '),
     secondaryLine: [
-      `最終更新 ${formatSelfInspectionDateTime(input.updatedAt)}`,
+      `更新 ${formatSelfInspectionDateTime(input.updatedAt)}`,
       input.progressLabel,
-      `参加者 ${input.participantLabel}`
+      `作業者 ${input.participantLabel}`
     ].join(' / ')
   };
 }
@@ -280,7 +295,7 @@ export function presentSelfInspectionSessionRow(
     id: session.id,
     productNo: session.productNo,
     fseiban: session.fseiban,
-    machineName: session.machineName,
+    machineName: normalizeSelfInspectionMachineName(session.machineName),
     fhinmei: session.fhinmei,
     resourceCd: session.resourceCd,
     resourceLabel,
@@ -337,7 +352,7 @@ export function presentSelfInspectionCandidateRow(
     id: candidate.id,
     productNo: candidate.productNo,
     fseiban: candidate.fseiban,
-    machineName: candidate.machineName,
+    machineName: normalizeSelfInspectionMachineName(candidate.machineName),
     fhinmei: candidate.fhinmei,
     resourceCd: candidate.resourceCd,
     resourceLabel,

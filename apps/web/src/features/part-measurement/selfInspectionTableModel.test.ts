@@ -11,6 +11,7 @@ import {
 import {
   buildProductFilterOptions,
   buildResourceFilterOptions,
+  presentSelfInspectionCandidateRow,
   presentSelfInspectionSessionRow,
   splitIntoBalancedPanes
 } from './selfInspectionTableModel';
@@ -75,6 +76,32 @@ describe('self-inspection filter options', () => {
 });
 
 describe('self-inspection workflow actions', () => {
+  it('normalizes candidate and session machine names without pre-truncating long values', () => {
+    const session = makeSelfInspectionSessionDetailForTest({
+      items: [makeSelfInspectionTemplateItemForTest({ id: 'p1', sortOrder: 0 })]
+    });
+    session.machineName = ` Ｍｈ１２３${'設備'.repeat(30)} `;
+    const sessionRow = presentSelfInspectionSessionRow(session);
+    expect(sessionRow.machineName).toBe(`MH123${'設備'.repeat(30)}`);
+    expect(sessionRow.machineName).not.toContain('...');
+
+    const candidateRow = presentSelfInspectionCandidateRow({
+      id: 'candidate-1',
+      productNo: 'ORDER-1',
+      fseiban: 'S-1',
+      resourceCd: '581',
+      fhincd: 'P-1',
+      fhinmei: '部品',
+      machineName: ' Ａｂｃ１２３設備 ',
+      updatedAt: null,
+      processGroup: 'cutting',
+      selfInspectionTemplateId: 'template-1',
+      plannedQuantity: 1,
+      status: null
+    });
+    expect(candidateRow.machineName).toBe('ABC123設備');
+  });
+
   it('keeps a completed inspector measurement on the inspector screen for final judgement', () => {
     const session = makeSelfInspectionSessionDetailForTest({
       items: [makeSelfInspectionTemplateItemForTest({ id: 'p1', sortOrder: 0 })]
