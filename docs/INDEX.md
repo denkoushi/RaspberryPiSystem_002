@@ -50,6 +50,7 @@
 ### AIエージェント運用
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
+- **タスク用Git branch/worktreeライフサイクル（2026-08-21・実装中）**: mainの無関係なWIPやdivergenceで対象taskを止めず、merged taskだけを安全にcleanupする。**正本**: [ADR](./decisions/ADR-20260821-repository-task-lifecycle-automation.md) · [Operations Guide](./guides/git-task-lifecycle.md) · [ExecPlan](./plans/repository-task-lifecycle-automation-execplan.md)
 
 ### 最新アップデート（2026-07-17 · 組立トルクレンチ締付トレーサビリティ · ローカル実装済・実機parser待ち）
 

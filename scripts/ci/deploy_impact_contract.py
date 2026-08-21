@@ -170,6 +170,8 @@ def _path_surfaces(path: str) -> set[str]:
         surfaces.add("ci")
     if lower.startswith("scripts/ci/"):
         surfaces.add("ci")
+    if lower.startswith("scripts/git_lifecycle/"):
+        surfaces.add("ci")
     if lower.startswith("scripts/google_drive_dr/"):
         surfaces.add("deploy")
     if lower.startswith("apps/api/"):
@@ -322,11 +324,24 @@ def assess(
         raise ImpactContractError(
             "classification JSON must use classify_event_changes schemaVersion 6"
         )
-    deploy_classification = classify_change_records(
+    classified_changes = (
         classification.get("changes", [])
         if isinstance(classification.get("changes"), list)
         else []
     )
+    # The enforced CI classifier is the authority for repository-policy-only
+    # paths.  Do not turn a newly added development tool into a fleet target
+    # merely because the deploy registry has no runtime component for it.
+    deploy_changes = [
+        change
+        for change in classified_changes
+        if not (
+            isinstance(change, Mapping)
+            and isinstance(change.get("categories"), list)
+            and set(change["categories"]) == {"repo_policy"}
+        )
+    ]
+    deploy_classification = classify_change_records(deploy_changes)
     if set(declaration) != set(REQUIRED_FIELDS):
         missing = sorted(set(REQUIRED_FIELDS) - set(declaration))
         extra = sorted(set(declaration) - set(REQUIRED_FIELDS))

@@ -259,6 +259,8 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
         )
     if _has_prefix(normalized, "scripts/ci"):
         return FULL_SUITE
+    if _has_prefix(normalized, "scripts/git_lifecycle"):
+        return frozenset({"repo_policy"})
     if normalized in GLOBAL_PATHS:
         return FULL_SUITE
 
@@ -271,7 +273,7 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
     ):
         return frozenset({"repo_policy", "db_infra", "deploy_contract"})
 
-    if _has_prefix(normalized, ".cursor/rules"):
+    if _has_prefix(normalized, ".cursor/rules") or _has_prefix(normalized, ".agent"):
         return frozenset({"repo_policy"})
 
     if normalized.startswith("scripts/test/verify-signage"):
@@ -478,6 +480,8 @@ def release_pair_for_path(path: str) -> bool:
     if normalized in PI4_AGENT_DOCKERFILES:
         return False
     if _signage_artifact_exclusive_path(normalized):
+        return False
+    if _has_prefix(normalized, "scripts/git_lifecycle"):
         return False
     if normalized in GLOBAL_PATHS:
         return True

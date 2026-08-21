@@ -50,6 +50,7 @@ class ClassifyChangesTests(unittest.TestCase):
         result = self.classify(
             Change("M", ".cursor/rules/10-quality-ci-and-tests.mdc"),
             Change("M", ".cursor/rules/11-debugging-playbook.mdc"),
+            Change("M", ".agent/PLANS.md"),
         )
         self.assertEqual(self.selected(result), {"repo_policy"})
         self.assertFalse(result["fullSuite"])
@@ -171,6 +172,24 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertTrue(result["releasePair"])
         self.assertFalse(result["runtimeRehearsal"])
         self.assertEqual(result["pi4AgentMatrix"], [])
+
+    def test_git_lifecycle_paths_select_repo_policy_only(self) -> None:
+        for path in (
+            "scripts/git_lifecycle/__init__.py",
+            "scripts/git_lifecycle/cli.py",
+            "scripts/git_lifecycle/policy.py",
+            "scripts/git_lifecycle/tests/test_policy.py",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(self.selected(result), {"repo_policy"})
+                self.assertFalse(result["fullSuite"])
+                self.assertFalse(result["codeql"])
+                self.assertFalse(result["dockerApi"])
+                self.assertFalse(result["dockerWeb"])
+                self.assertFalse(result["releasePair"])
+                self.assertFalse(result["runtimeRehearsal"])
+                self.assertEqual(result["pi4AgentMatrix"], [])
 
     def test_pi4_agent_dockerfiles_select_client_image_contracts_only(self) -> None:
         expected = {
