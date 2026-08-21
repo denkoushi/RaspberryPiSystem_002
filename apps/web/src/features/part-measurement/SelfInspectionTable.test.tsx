@@ -19,7 +19,8 @@ const rows: SelfInspectionTableRow[] = Array.from({ length: 5 }, (_, index) => (
   statusLabel: '未開始',
   statusTone: 'neutral',
   intentLabel: '開始方法を選択してください',
-  metadataLine: `製造order 100${index + 1} / 資源 資源名（581） / 最終更新 2026/07/14 10:02 / 進捗 未開始 / 参加者 —`,
+  metadataPrimaryLine: `製造order 100${index + 1} / 資源CD 581 / 資源名 資源名`,
+  metadataSecondaryLine: '最終更新 2026/07/14 10:02 / 進捗 未開始 / 参加者 —',
   detailLine: `製番 A-${index + 1}`,
   progressLine: '指示数 10',
   invalidationTarget: {
@@ -100,7 +101,8 @@ describe('SelfInspectionTable', () => {
       resourceLabel: 'RESOURCE-NAME-VERY-LONG-1234567890（RESOURCE-VERY-LONG-1234567890）',
       statusLabel: '非常に長い状態ラベル',
       intentLabel: '非常に長い次の操作の説明',
-      metadataLine: '製造order ORDER-VERY-LONG-1234567890 / 資源 RESOURCE-NAME-VERY-LONG-1234567890 / 最終更新 2026/07/14 10:02 / 進捗 未開始 / 参加者 —',
+      metadataPrimaryLine: '製造order ORDER-VERY-LONG-1234567890 / 資源CD RESOURCE-VERY-LONG-1234567890 / 資源名 RESOURCE-NAME-VERY-LONG-1234567890',
+      metadataSecondaryLine: '最終更新 2026/07/14 10:02 / 進捗 未開始 / 参加者 —',
       detailLine: '製番・品番・品名を含む非常に長い詳細情報',
       progressLine: '非常に長い進捗情報'
     };
@@ -113,8 +115,37 @@ describe('SelfInspectionTable', () => {
     expect(screen.getByTitle(longRow.fseiban!)).toHaveClass('truncate');
     expect(screen.getByTitle(longRow.machineName!)).toHaveClass('truncate');
     expect(screen.getByTitle(longRow.fhinmei)).toHaveClass('truncate');
-    expect(screen.getByTitle(longRow.metadataLine)).toHaveClass('truncate');
+    const metadata = screen.getByTestId('self-inspection-item-metadata');
+    expect(metadata).toHaveAttribute(
+      'aria-label',
+      `${longRow.metadataPrimaryLine} / ${longRow.metadataSecondaryLine}`
+    );
+    for (const line of [
+      screen.getByTestId('self-inspection-item-metadata-primary'),
+      screen.getByTestId('self-inspection-item-metadata-secondary')
+    ]) {
+      expect(line).toHaveClass('truncate', 'whitespace-nowrap', 'leading-4');
+    }
+    expect(screen.getByTitle(longRow.metadataPrimaryLine)).toHaveClass('truncate');
+    expect(screen.getByTitle(longRow.metadataSecondaryLine)).toHaveClass('truncate');
     expect(screen.getByTitle(`${longRow.statusLabel} / ${longRow.intentLabel}`)).toHaveClass('truncate');
     expect(screen.getByRole('table')).toHaveClass('w-full', 'table-fixed');
+  });
+
+  it('keeps the metadata source split into the requested primary and secondary lines', () => {
+    render(
+      <MemoryRouter>
+        <SelfInspectionTable rows={[rows[0]!]} onCandidateSelect={() => undefined} onInvalidate={() => undefined} />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('self-inspection-item-metadata-primary')).toHaveTextContent(
+      '製造order 1001 / 資源CD 581 / 資源名 資源名'
+    );
+    expect(screen.getByTestId('self-inspection-item-metadata-secondary')).toHaveTextContent(
+      '最終更新 2026/07/14 10:02 / 進捗 未開始 / 参加者 —'
+    );
+    expect(screen.getAllByTestId('self-inspection-item-primary-row')).toHaveLength(1);
+    expect(screen.getAllByTestId('self-inspection-item-secondary-row')).toHaveLength(1);
   });
 });

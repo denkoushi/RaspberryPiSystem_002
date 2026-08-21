@@ -175,6 +175,9 @@ test.describe('検査記録確認のキオスクレイアウト', () => {
       await page.setViewportSize(viewport);
       await openRecordApprovalPage(page);
 
+      const returnLink = page.getByRole('link', { name: '自主検査画面へ戻る' });
+      await expect(returnLink).toHaveAttribute('href', '/kiosk/part-measurement/self-inspection');
+
       const shellMetrics = await page.locator('body').evaluate((element) => ({
         clientWidth: element.clientWidth,
         scrollWidth: element.scrollWidth
@@ -198,6 +201,14 @@ test.describe('検査記録確認のキオスクレイアウト', () => {
       }
     });
   }
+
+  test('自主検査画面へ戻るボタンは正規routeへ遷移する', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 760 });
+    await openRecordApprovalPage(page);
+
+    await page.getByRole('link', { name: '自主検査画面へ戻る' }).click();
+    await expect(page).toHaveURL(/\/kiosk\/part-measurement\/self-inspection$/);
+  });
 
   test('設定ダイアログがフォーカスを管理してEscapeで起点へ戻す', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 760 });

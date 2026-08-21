@@ -4,6 +4,8 @@ import { ApiError } from '../../../../lib/errors.js';
 import { prisma } from '../../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../../production-schedule/constants.js';
 import { resolveProductionSchedulePlannedQuantity } from '../../../production-schedule/self-inspection-schedule-eligibility.js';
+import { resolveSeibanMachineDisplayNamesBatched } from '../../../production-schedule/seiban-machine-display-names.service.js';
+import { normalizeSeibanMachineNameForPersistence } from '../../../production-schedule/seiban-machine-name-state.js';
 import { verifyProductionScheduleRowOrThrow } from '../../../production-schedule/verify-production-schedule-row.js';
 import { partMeasurementTemplateFullInclude } from '../../part-measurement-template-include.js';
 import {
@@ -81,6 +83,8 @@ export async function resolveOrCreateSelfInspectionSession(
     fhincd,
     resourceCd
   });
+  const { machineNames } = await resolveSeibanMachineDisplayNamesBatched([fseiban]);
+  const canonicalMachineName = normalizeSeibanMachineNameForPersistence(machineNames[fseiban]);
   const supplement = await prisma.productionScheduleOrderSupplement.findFirst({
     where: {
       csvDashboardRowId: scheduleRowId,
@@ -145,7 +149,7 @@ export async function resolveOrCreateSelfInspectionSession(
         fseiban,
         fhincd,
         fhinmei,
-        machineName: normalizeText(input.machineName) || null,
+        machineName: canonicalMachineName,
         plannedQuantity,
         expectedEntryCount,
         clientDeviceId: input.clientDeviceId ?? null,

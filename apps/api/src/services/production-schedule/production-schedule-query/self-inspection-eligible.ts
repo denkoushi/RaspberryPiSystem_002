@@ -8,6 +8,7 @@ import {
 import {
   resolvePartMeasurementProcessGroupForApi,
 } from '../policies/resource-category-policy.service.js';
+import { enrichProductionScheduleRowsWithResolvedMachineName } from '../production-schedule-machine-name-enrichment.service.js';
 import {
   filterSelfInspectionEligibleProductionScheduleRows,
   hasSelfInspectionCandidateListFilters
@@ -26,7 +27,10 @@ export async function enrichProductionScheduleRowsForSelfInspectionCandidate(
   rows: ProductionScheduleRow[],
   locationKey: string,
   siteKey: string | undefined,
-  decorationCache: SelfInspectionDecorationCache
+  decorationCache: SelfInspectionDecorationCache,
+  options: {
+    machineNameResolution?: 'all' | 'eligible-only';
+  } = {}
 ): Promise<ProductionScheduleRow[]> {
   if (rows.length === 0) {
     return rows;
@@ -46,28 +50,53 @@ export async function enrichProductionScheduleRowsForSelfInspectionCandidate(
   });
 
   const selfInspectionService = new SelfInspectionService();
-  const selfInspectionDecorations = await selfInspectionService.buildLeaderboardDecorations(
-    rowsWithProcessGroup.map((row) => ({
-      id: row.id,
-      rowData: row.rowData,
-      plannedQuantity: row.plannedQuantity
-    })),
-    { siteKey },
-    decorationCache
-  );
-  const selfInspectionById = new Map(selfInspectionDecorations.map((row) => [row.id, row]));
+  const decorateRows = async (rowsToDecorate: ProductionScheduleRow[]): Promise<ProductionScheduleRow[]> => {
+    const selfInspectionDecorations = await selfInspectionService.buildLeaderboardDecorations(
+      rowsToDecorate.map((row) => ({
+        id: row.id,
+        rowData: row.rowData,
+        plannedQuantity: row.plannedQuantity,
+        machineName: row.resolvedMachineName
+      })),
+      { siteKey },
+      decorationCache
+    );
+    const selfInspectionById = new Map(selfInspectionDecorations.map((row) => [row.id, row]));
 
-  return rowsWithProcessGroup.map((row) => {
-    const decoration = selfInspectionById.get(row.id);
-    return {
-      ...row,
-      plannedQuantity: decoration?.resolvedPlannedQuantity ?? row.plannedQuantity ?? null,
-      hasSelfInspectionDrawing: decoration?.hasSelfInspectionDrawing ?? false,
-      selfInspectionTemplateId: decoration?.selfInspectionTemplateId ?? null,
-      selfInspectionStatus: decoration?.selfInspectionStatus ?? null,
-      selfInspectionEntryPath: decoration?.selfInspectionEntryPath ?? null
-    };
-  });
+    return rowsToDecorate.map((row) => {
+      const decoration = selfInspectionById.get(row.id);
+      return {
+        ...row,
+        plannedQuantity: decoration?.resolvedPlannedQuantity ?? row.plannedQuantity ?? null,
+        hasSelfInspectionDrawing: decoration?.hasSelfInspectionDrawing ?? false,
+        selfInspectionTemplateId: decoration?.selfInspectionTemplateId ?? null,
+        selfInspectionStatus: decoration?.selfInspectionStatus ?? null,
+        selfInspectionEntryPath: decoration?.selfInspectionEntryPath ?? null
+      };
+    });
+  };
+
+  if (options.machineNameResolution !== 'eligible-only') {
+    const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(
+      rowsWithProcessGroup
+    );
+    return decorateRows(rowsWithResolvedMachineName);
+  }
+
+  // A wide candidate scan commonly has only a few eligible rows. Decorate first so that
+  // machine-name resolution is limited to rows that can actually be returned.
+  const preliminarilyDecoratedRows = await decorateRows(rowsWithProcessGroup);
+  const eligibleRows = filterSelfInspectionEligibleProductionScheduleRows(
+    preliminarilyDecoratedRows
+  );
+  if (eligibleRows.length === 0) {
+    return preliminarilyDecoratedRows;
+  }
+
+  const resolvedEligibleRows = await enrichProductionScheduleRowsWithResolvedMachineName(eligibleRows);
+  const resolvedDecoratedRows = await decorateRows(resolvedEligibleRows);
+  const resolvedById = new Map(resolvedDecoratedRows.map((row) => [row.id, row]));
+  return preliminarilyDecoratedRows.map((row) => resolvedById.get(row.id) ?? row);
 }
 
 /**
@@ -144,7 +173,8 @@ export async function listSelfInspectionEligibleProductionScheduleRows(
       rawRows,
       params.locationKey,
       params.siteKey,
-      decorationCache
+      decorationCache,
+      { machineNameResolution: 'eligible-only' }
     );
     for (const row of filterSelfInspectionEligibleProductionScheduleRows(enrichedRows)) {
       if (seenRowIds.has(row.id)) {

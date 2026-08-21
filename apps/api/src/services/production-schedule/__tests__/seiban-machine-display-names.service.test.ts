@@ -72,6 +72,24 @@ describe('resolveSeibanMachineDisplayNames', () => {
     expect(r.machineNames).toEqual({ 'C-3': '補完Z' });
   });
 
+  it('MH/SH の未登録ラベルも未解決として扱い、後日の補完値で上書きできる', async () => {
+    vi.mocked(fetchSeibanProgressRows).mockResolvedValue([
+      {
+        fseiban: 'D-4',
+        total: 1,
+        completed: 0,
+        incompleteProductNames: [],
+        machineName: SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
+      }
+    ]);
+    findByFseibans.mockResolvedValue(new Map([['D-4', '後日解決した正本機種名']]));
+
+    const r = await resolveSeibanMachineDisplayNames(['D-4']);
+
+    expect(findByFseibans).toHaveBeenCalledWith(['D-4']);
+    expect(r.machineNames).toEqual({ 'D-4': '後日解決した正本機種名' });
+  });
+
   it('入力は 100 件までは保持し、trim と重複除去だけ行う', async () => {
     const inputs = [' A-1 ', ...Array.from({ length: 60 }, (_, i) => `S-${i + 1}`), 'A-1'];
     vi.mocked(fetchSeibanProgressRows).mockResolvedValue([]);

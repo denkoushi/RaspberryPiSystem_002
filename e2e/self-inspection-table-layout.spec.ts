@@ -31,6 +31,25 @@ const drawingTemplate = {
   updatedAt: '2026-07-14T00:00:00.000Z'
 };
 
+const candidateRow = {
+  id: 'candidate-schedule-row-1',
+  occurredAt: '2026-07-14T00:00:00.000Z',
+  updatedAt: '2026-07-14T01:02:03.000Z',
+  rowData: {
+    ProductNo: 'ORDER-CANDIDATE-001',
+    FSEIBAN: 'SEIBAN-CANDIDATE-001',
+    FHINCD: 'PART-CANDIDATE-001',
+    FHINMEI: '候補行の長い品名を一行省略で確認する部品',
+    FSIGENCD: 'R-1'
+  },
+  plannedQuantity: 12,
+  resolvedMachineName: '候補API正本から解決した機種名',
+  partMeasurementProcessGroup: 'cutting',
+  selfInspectionTemplateId: 'candidate-template-1',
+  selfInspectionStatus: 'not_started',
+  selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/start?templateId=candidate-template-1'
+};
+
 function makeSession(index: number, status: 'in_progress' | 'review_pending') {
   const suffix = String(index + 1).padStart(2, '0');
   return {
@@ -122,6 +141,12 @@ async function installApiMocks(page: Page): Promise<void> {
       });
       return;
     }
+    if (path === '/api/kiosk/production-schedule') {
+      await route.fulfill({
+        json: { page: 1, pageSize: 50, rows: [candidateRow], hasMore: false }
+      });
+      return;
+    }
     if (path === '/api/part-measurement/inspection-drawing/templates') {
       await route.fulfill({ json: { templates: [drawingTemplate] } });
       return;
@@ -195,10 +220,13 @@ test.describe('自主検査一覧の表レイアウト', () => {
         .map((text) => text.match(/製造order\s+([^/]+)/)?.[1]?.trim());
       expect(productNos).toEqual(Array.from({ length: 12 }, (_, index) => `ORDER-${String(index + 1).padStart(2, '0')}`));
 
-      const firstMetadata = panes.getByTestId('self-inspection-item-metadata').first();
-      await expect(firstMetadata).toContainText('第一資源の日本語表示名（R-1）');
-      await expect(firstMetadata).toContainText('最終更新 2026/07/15(水) 08:00');
-      await expect(firstMetadata).not.toContainText(/08:00:\d{2}/);
+      const firstMetadataPrimary = panes.getByTestId('self-inspection-item-metadata-primary').first();
+      const firstMetadataSecondary = panes.getByTestId('self-inspection-item-metadata-secondary').first();
+      await expect(firstMetadataPrimary).toContainText(
+        '資源CD R-1 / 資源名 第一資源の日本語表示名'
+      );
+      await expect(firstMetadataSecondary).toContainText('最終更新 2026/07/15(水) 08:00');
+      await expect(firstMetadataSecondary).not.toContainText(/08:00:\d{2}/);
 
       const firstIdentity = panes.getByTestId('self-inspection-item-primary-row').first();
       await expect(firstIdentity.getByTestId('self-inspection-item-identity-fseiban')).toHaveAttribute(
@@ -292,7 +320,33 @@ test.describe('自主検査一覧の表レイアウト', () => {
       const screenshotDir = process.env.SELF_INSPECTION_E2E_SCREENSHOT_DIR?.replace(/\/$/, '');
       if (screenshotDir) {
         await page.screenshot({
-          path: `${screenshotDir}/self-inspection-${viewport.width}x${viewport.height}.png`,
+          path: `${screenshotDir}/self-inspection-session-${viewport.width}x${viewport.height}.png`,
+          fullPage: true
+        });
+      }
+
+      const productSearch = page.getByRole('combobox', { name: '製造order / 製番 / 品番' });
+      await productSearch.fill('ORDER-CANDIDATE-001');
+      const candidateMachineName = panes.getByTestId('self-inspection-item-identity-machine-name');
+      await expect(candidateMachineName).toHaveAttribute('title', '候補API正本から解決した機種名');
+      await productSearch.press('Escape');
+      await expect(panes.getByTestId('self-inspection-item-metadata-primary')).toContainText(
+        '製造order ORDER-CANDIDATE-001 / 資源CD R-1 / 資源名 第一資源の日本語表示名'
+      );
+      await expect(panes.getByTestId('self-inspection-item-metadata-secondary')).toContainText(
+        '最終更新 2026/07/14(火) 10:02'
+      );
+      const candidateItemHeight = await panes
+        .getByTestId('self-inspection-item-primary-row')
+        .evaluate((element) => {
+          const secondary = element.nextElementSibling;
+          return (secondary?.getBoundingClientRect().bottom ?? element.getBoundingClientRect().bottom)
+            - element.getBoundingClientRect().top;
+        });
+      expect(Math.abs(candidateItemHeight - 94.3)).toBeLessThanOrEqual(1);
+      if (screenshotDir) {
+        await page.screenshot({
+          path: `${screenshotDir}/self-inspection-candidate-${viewport.width}x${viewport.height}.png`,
           fullPage: true
         });
       }
