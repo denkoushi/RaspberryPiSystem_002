@@ -27,28 +27,45 @@ function identityValue(value: string | null | undefined): string {
 }
 
 function SelfInspectionIdentity({ row }: { row: SelfInspectionTableRow }) {
-  const identity = [
-    { key: 'fseiban', label: '製番', value: identityValue(row.fseiban) },
-    { key: 'machine-name', label: '機種名', value: identityValue(row.machineName) },
-    { key: 'fhinmei', label: '品名', value: identityValue(row.fhinmei) }
-  ] as const;
-
   return (
     <div
       data-testid="self-inspection-item-identity"
-      className="grid min-w-0 grid-cols-[30%_30%_40%] items-center"
+      className="grid min-w-0 grid-cols-[minmax(0,auto)_minmax(0,1.2fr)_minmax(0,1fr)_auto] items-center gap-x-[1ch]"
     >
-      {identity.map((item) => (
-        <span
-          key={item.key}
-          data-testid={`self-inspection-item-identity-${item.key}`}
-          className="block min-w-0 truncate whitespace-nowrap text-[21px] leading-[25px] text-white"
-          title={item.value}
-          aria-label={`${item.label} ${item.value}`}
-        >
-          {item.value}
+      <span
+        data-testid="self-inspection-item-identity-fseiban"
+        className="block min-w-0 truncate whitespace-nowrap text-[21px] leading-[25px] text-white"
+        title={identityValue(row.fseiban)}
+        aria-label={`製番 ${identityValue(row.fseiban)}`}
+      >
+        {identityValue(row.fseiban)}
+      </span>
+      <span
+        data-testid="self-inspection-item-identity-machine-name"
+        className="block min-w-0 truncate whitespace-nowrap text-[15.75px] leading-[25px] text-white"
+        title={identityValue(row.machineName)}
+        aria-label={`機種名 ${identityValue(row.machineName)}`}
+      >
+        {identityValue(row.machineName)}
+      </span>
+      <span
+        data-testid="self-inspection-item-identity-fhinmei"
+        className="block min-w-0 truncate whitespace-nowrap text-[21px] leading-[25px] text-white"
+        title={identityValue(row.fhinmei)}
+        aria-label={`品名 ${identityValue(row.fhinmei)}`}
+      >
+        {identityValue(row.fhinmei)}
+      </span>
+      <span
+        data-testid="self-inspection-item-state"
+        className="inline-flex min-w-0 shrink-0 items-center justify-self-end whitespace-nowrap text-xs text-white/75"
+        title={row.statusLabel}
+        aria-label={`状態 ${row.statusLabel}`}
+      >
+        <span className={clsx('inline-flex shrink-0 rounded px-1 py-0.5 font-semibold', toneClassNames[row.statusTone])}>
+          {row.statusLabel}
         </span>
-      ))}
+      </span>
     </div>
   );
 }
@@ -112,7 +129,6 @@ function SelfInspectionActions({
 }
 
 export function SelfInspectionTableItem({ row, onCandidateSelect, onInvalidate }: Props) {
-  const stateIntentLabel = `${row.statusLabel} / ${row.intentLabel}`;
   return (
     <>
       <tr
@@ -128,7 +144,7 @@ export function SelfInspectionTableItem({ row, onCandidateSelect, onInvalidate }
         className="h-[51px] border-b border-white/15 bg-slate-950/25"
       >
         <td colSpan={4} className="h-[51px] px-2 py-1 align-middle">
-          <div className="grid min-w-0 grid-cols-[46%_16%_38%] items-center">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_38%] items-center">
             <div
               data-testid="self-inspection-item-metadata"
               className="min-w-0 overflow-hidden"
@@ -136,7 +152,7 @@ export function SelfInspectionTableItem({ row, onCandidateSelect, onInvalidate }
             >
               <p
                 data-testid="self-inspection-item-metadata-primary"
-                className="min-w-0 truncate whitespace-nowrap text-xs leading-4 text-white/60"
+                className="min-w-0 truncate whitespace-nowrap text-xs leading-4 text-white"
                 title={row.metadataPrimaryLine}
                 aria-label={row.metadataPrimaryLine}
               >
@@ -144,24 +160,13 @@ export function SelfInspectionTableItem({ row, onCandidateSelect, onInvalidate }
               </p>
               <p
                 data-testid="self-inspection-item-metadata-secondary"
-                className="min-w-0 truncate whitespace-nowrap text-xs leading-4 text-white/60"
+                className="min-w-0 truncate whitespace-nowrap text-xs leading-4 text-white"
                 title={row.metadataSecondaryLine}
                 aria-label={row.metadataSecondaryLine}
               >
                 {row.metadataSecondaryLine}
               </p>
             </div>
-            <p
-              data-testid="self-inspection-item-state"
-              className="flex min-w-0 items-center gap-1 truncate whitespace-nowrap px-1 text-xs text-white/75"
-              title={stateIntentLabel}
-              aria-label={stateIntentLabel}
-            >
-              <span className={clsx('inline-flex max-w-full shrink-0 truncate rounded px-1 py-0.5 font-semibold', toneClassNames[row.statusTone])}>
-                {row.statusLabel}
-              </span>
-              <span className="min-w-0 truncate">{row.intentLabel}</span>
-            </p>
             <SelfInspectionActions
               row={row}
               onCandidateSelect={onCandidateSelect}

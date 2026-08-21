@@ -43,7 +43,7 @@ const candidateRow = {
     FSIGENCD: 'R-1'
   },
   plannedQuantity: 12,
-  resolvedMachineName: '候補API正本から解決した機種名',
+  resolvedMachineName: '候補ＡＰＩ正本から解決した機種名',
   partMeasurementProcessGroup: 'cutting',
   selfInspectionTemplateId: 'candidate-template-1',
   selfInspectionStatus: 'not_started',
@@ -99,9 +99,15 @@ async function installApiMocks(page: Page): Promise<void> {
   );
   Object.assign(inProgress[0]!, {
     fseiban: 'SEIBAN-VERY-LONG-IDENTITY-0001',
-    machineName: '設備名称が非常に長い場合のトランケート確認用',
+    machineName: '設備ＡＢＣ１２３名称が非常に長い場合のトランケート確認用',
     fhinmei: '品名が非常に長い場合でも1行に収まることの確認用部品',
     participantEmployeeNames: ['担当者の表示名が長い場合の確認用']
+  });
+  Object.assign(reviewPending[0]!, {
+    completedEntryCount: reviewPending[0]!.requiredEntryCount,
+    inspectorRemeasurementRequiredAt: '2026-07-14T01:00:00.000Z',
+    inspectorMeasurementState: 'complete',
+    decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT'
   });
 
   await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
@@ -223,10 +229,12 @@ test.describe('自主検査一覧の表レイアウト', () => {
       const firstMetadataPrimary = panes.getByTestId('self-inspection-item-metadata-primary').first();
       const firstMetadataSecondary = panes.getByTestId('self-inspection-item-metadata-secondary').first();
       await expect(firstMetadataPrimary).toContainText(
-        '資源CD R-1 / 資源名 第一資源の日本語表示名'
+        'R-1 / 第一資源の日本語表示名'
       );
-      await expect(firstMetadataSecondary).toContainText('最終更新 2026/07/15(水) 08:00');
+      await expect(firstMetadataSecondary).toContainText('更新 2026/07/15(水) 08:00');
       await expect(firstMetadataSecondary).not.toContainText(/08:00:\d{2}/);
+      await expect(panes.getByTestId('self-inspection-item-state').filter({ hasText: '入力中' })).toHaveCount(8);
+      await expect(panes.getByTestId('self-inspection-item-state').filter({ hasText: '最終判定待ち' })).toHaveCount(1);
 
       const firstIdentity = panes.getByTestId('self-inspection-item-primary-row').first();
       await expect(firstIdentity.getByTestId('self-inspection-item-identity-fseiban')).toHaveAttribute(
@@ -235,7 +243,7 @@ test.describe('自主検査一覧の表レイアウト', () => {
       );
       await expect(firstIdentity.getByTestId('self-inspection-item-identity-machine-name')).toHaveAttribute(
         'title',
-        '設備名称が非常に長い場合のトランケート確認用'
+        '設備ABC123名称が非常に長い場合のトランケート確認用'
       );
       await expect(firstIdentity.getByTestId('self-inspection-item-identity-fhinmei')).toHaveAttribute(
         'title',
@@ -246,11 +254,21 @@ test.describe('自主検査一覧の表レイアウト', () => {
         const secondary = element.nextElementSibling;
         const identity = element.querySelector('[data-testid="self-inspection-item-identity"]');
         const identityValues = Array.from(element.querySelectorAll('[data-testid^="self-inspection-item-identity-"]'));
+        const fseiban = element.querySelector('[data-testid="self-inspection-item-identity-fseiban"]');
+        const machineName = element.querySelector('[data-testid="self-inspection-item-identity-machine-name"]');
+        const productName = element.querySelector('[data-testid="self-inspection-item-identity-fhinmei"]');
+        const state = element.querySelector('[data-testid="self-inspection-item-state"]');
         const secondaryGrid = secondary?.querySelector('div.grid');
         const secondaryCell = secondary?.querySelector('td');
+        const metadataLines = Array.from(secondary?.querySelectorAll('[data-testid^="self-inspection-item-metadata-"]') ?? []);
         const primaryRect = element.getBoundingClientRect();
         const secondaryRect = secondary?.getBoundingClientRect();
         const gridRect = secondaryGrid?.getBoundingClientRect();
+        const identityRect = identity?.getBoundingClientRect();
+        const fseibanRect = fseiban?.getBoundingClientRect();
+        const machineNameRect = machineName?.getBoundingClientRect();
+        const productNameRect = productName?.getBoundingClientRect();
+        const stateRect = state?.getBoundingClientRect();
         return {
           primaryHeight: primaryRect.height,
           secondaryHeight: secondaryRect?.height ?? 0,
@@ -261,10 +279,15 @@ test.describe('自主検査一覧の表レイアウト', () => {
           identityFontSizes: identityValues.map((value) => getComputedStyle(value).fontSize),
           identityColors: identityValues.map((value) => getComputedStyle(value).color),
           identityWhiteSpaces: identityValues.map((value) => getComputedStyle(value).whiteSpace),
+          fseibanMachineGap: (machineNameRect?.left ?? 0) - (fseibanRect?.right ?? 0),
+          identityColumnGap: identity ? Number.parseFloat(getComputedStyle(identity).columnGap) : 0,
+          productStateOverlap: Math.max(0, (productNameRect?.right ?? 0) - (stateRect?.left ?? 0)),
+          stateRightGap: (identityRect?.right ?? 0) - (stateRect?.right ?? 0),
           secondaryGridTemplateColumns: secondaryGrid ? getComputedStyle(secondaryGrid).gridTemplateColumns : '',
           secondaryColumnWidths: gridRect && secondaryGrid
             ? Array.from(secondaryGrid.children).map((child) => child.getBoundingClientRect().width / gridRect.width)
             : [],
+          metadataColors: metadataLines.map((line) => getComputedStyle(line).color),
           bodyRowCount: element.closest('table')?.querySelectorAll('tbody tr').length ?? 0
         };
       });
@@ -273,14 +296,17 @@ test.describe('自主検査一覧の表レイアウト', () => {
       expect(Math.abs(itemMetrics.itemHeight - 94.3)).toBeLessThanOrEqual(1);
       expect(Math.abs(itemMetrics.primaryCellHeight - 43.3)).toBeLessThanOrEqual(1);
       expect(Math.abs(itemMetrics.secondaryCellHeight - 51)).toBeLessThanOrEqual(1);
-      expect(itemMetrics.identityGridTemplateColumns.split(' ').length).toBe(3);
-      expect(itemMetrics.identityFontSizes.every((fontSize) => fontSize === '21px')).toBe(true);
+      expect(itemMetrics.identityGridTemplateColumns.split(' ').length).toBe(4);
+      expect(itemMetrics.identityFontSizes).toEqual(['21px', '15.75px', '21px']);
       expect(itemMetrics.identityColors.every((color) => color === 'rgb(255, 255, 255)')).toBe(true);
       expect(itemMetrics.identityWhiteSpaces.every((whiteSpace) => whiteSpace === 'nowrap')).toBe(true);
-      expect(itemMetrics.secondaryGridTemplateColumns.split(' ').length).toBe(3);
-      expect(itemMetrics.secondaryColumnWidths[0]).toBeCloseTo(0.46, 1);
-      expect(itemMetrics.secondaryColumnWidths[1]).toBeCloseTo(0.16, 1);
-      expect(itemMetrics.secondaryColumnWidths[2]).toBeCloseTo(0.38, 1);
+      expect(itemMetrics.fseibanMachineGap).toBeCloseTo(itemMetrics.identityColumnGap, 1);
+      expect(itemMetrics.productStateOverlap).toBe(0);
+      expect(Math.abs(itemMetrics.stateRightGap)).toBeLessThanOrEqual(1);
+      expect(itemMetrics.secondaryGridTemplateColumns.split(' ').length).toBe(2);
+      expect(itemMetrics.secondaryColumnWidths[0]).toBeCloseTo(0.62, 1);
+      expect(itemMetrics.secondaryColumnWidths[1]).toBeCloseTo(0.38, 1);
+      expect(itemMetrics.metadataColors.every((color) => color === 'rgb(255, 255, 255)')).toBe(true);
       expect(itemMetrics.bodyRowCount % 2).toBe(0);
 
       const actionPrimaryCounts = await panes.getByTestId('self-inspection-row-actions').evaluateAll((groups) =>
@@ -331,10 +357,10 @@ test.describe('自主検査一覧の表レイアウト', () => {
       await expect(candidateMachineName).toHaveAttribute('title', '候補API正本から解決した機種名');
       await productSearch.press('Escape');
       await expect(panes.getByTestId('self-inspection-item-metadata-primary')).toContainText(
-        '製造order ORDER-CANDIDATE-001 / 資源CD R-1 / 資源名 第一資源の日本語表示名'
+        '製造order ORDER-CANDIDATE-001 / R-1 / 第一資源の日本語表示名'
       );
       await expect(panes.getByTestId('self-inspection-item-metadata-secondary')).toContainText(
-        '最終更新 2026/07/14(火) 10:02'
+        '更新 2026/07/14(火) 10:02'
       );
       const candidateItemHeight = await panes
         .getByTestId('self-inspection-item-primary-row')

@@ -19,8 +19,8 @@ const rows: SelfInspectionTableRow[] = Array.from({ length: 5 }, (_, index) => (
   statusLabel: '未開始',
   statusTone: 'neutral',
   intentLabel: '開始方法を選択してください',
-  metadataPrimaryLine: `製造order 100${index + 1} / 資源CD 581 / 資源名 資源名`,
-  metadataSecondaryLine: '最終更新 2026/07/14 10:02 / 進捗 未開始 / 参加者 —',
+  metadataPrimaryLine: `製造order 100${index + 1} / 581 / 資源名`,
+  metadataSecondaryLine: '更新 2026/07/14 10:02 / 進捗 未開始 / 作業者 —',
   detailLine: `製番 A-${index + 1}`,
   progressLine: '指示数 10',
   invalidationTarget: {
@@ -88,6 +88,8 @@ describe('SelfInspectionTable', () => {
       expect(action).not.toHaveClass('w-full');
     }
     expect(screen.getByTestId('self-inspection-item-identity-fseiban')).toHaveClass('text-[21px]');
+    expect(screen.getByTestId('self-inspection-item-identity-machine-name')).toHaveClass('text-[15.75px]');
+    expect(screen.getByTestId('self-inspection-item-identity-fhinmei')).toHaveClass('text-[21px]');
   });
 
   it('clips long labels within their cells while exposing the full values through titles', () => {
@@ -101,8 +103,8 @@ describe('SelfInspectionTable', () => {
       resourceLabel: 'RESOURCE-NAME-VERY-LONG-1234567890（RESOURCE-VERY-LONG-1234567890）',
       statusLabel: '非常に長い状態ラベル',
       intentLabel: '非常に長い次の操作の説明',
-      metadataPrimaryLine: '製造order ORDER-VERY-LONG-1234567890 / 資源CD RESOURCE-VERY-LONG-1234567890 / 資源名 RESOURCE-NAME-VERY-LONG-1234567890',
-      metadataSecondaryLine: '最終更新 2026/07/14 10:02 / 進捗 未開始 / 参加者 —',
+      metadataPrimaryLine: '製造order ORDER-VERY-LONG-1234567890 / RESOURCE-VERY-LONG-1234567890 / RESOURCE-NAME-VERY-LONG-1234567890',
+      metadataSecondaryLine: '更新 2026/07/14 10:02 / 進捗 未開始 / 作業者 —',
       detailLine: '製番・品番・品名を含む非常に長い詳細情報',
       progressLine: '非常に長い進捗情報'
     };
@@ -128,7 +130,8 @@ describe('SelfInspectionTable', () => {
     }
     expect(screen.getByTitle(longRow.metadataPrimaryLine)).toHaveClass('truncate');
     expect(screen.getByTitle(longRow.metadataSecondaryLine)).toHaveClass('truncate');
-    expect(screen.getByTitle(`${longRow.statusLabel} / ${longRow.intentLabel}`)).toHaveClass('truncate');
+    expect(screen.getByTitle(longRow.statusLabel)).toHaveClass('whitespace-nowrap');
+    expect(screen.queryByText(longRow.intentLabel)).not.toBeInTheDocument();
     expect(screen.getByRole('table')).toHaveClass('w-full', 'table-fixed');
   });
 
@@ -140,10 +143,10 @@ describe('SelfInspectionTable', () => {
     );
 
     expect(screen.getByTestId('self-inspection-item-metadata-primary')).toHaveTextContent(
-      '製造order 1001 / 資源CD 581 / 資源名 資源名'
+      '製造order 1001 / 581 / 資源名'
     );
     expect(screen.getByTestId('self-inspection-item-metadata-secondary')).toHaveTextContent(
-      '最終更新 2026/07/14 10:02 / 進捗 未開始 / 参加者 —'
+      '更新 2026/07/14 10:02 / 進捗 未開始 / 作業者 —'
     );
     expect(screen.getAllByTestId('self-inspection-item-primary-row')).toHaveLength(1);
     expect(screen.getAllByTestId('self-inspection-item-secondary-row')).toHaveLength(1);
