@@ -40,27 +40,8 @@
       PI5_GREEN_WEB_IMAGE: "{{ release_pi5_web_image }}"
       PI5_GATEWAY_IMAGE: "{{ release_pi5_prefetch_gateway.stdout.split('|')[0] }}"
 
-- name: Prepare the shared Pi5 durable storage directories before any Compose command
-  ansible.builtin.include_role:
-    name: pi5_storage
-  vars:
-    pi5_storage_root: "{{ release_pi5_project_dir }}/storage"
-    pi5_storage_manage_existing: false
-
-- name: Materialize and validate all phase3 external durable volumes before PREPARED
-  ansible.builtin.command:
-    argv:
-      - python3
-      - "{{ release_pi5_volume_materializer_script }}"
-      - --server-compose
-      - "{{ release_pi5_server_compose_file }}"
-      - --phase3-compose
-      - "{{ release_pi5_compose_file }}"
-      - --env-file
-      - "{{ release_pi5_env_file }}"
-  environment: "{{ release_pi5_compose_environment }}"
-  register: release_pi5_volume_materialization
-  changed_when: "'created volume ' in release_pi5_volume_materialization.stdout"
+- name: Prepare Pi5 storage before the torque PREPARED boundary
+  ansible.builtin.include_tasks: prepare-storage.yml
 
 - name: Read Pi5 disk headroom before pulling candidates
   ansible.builtin.shell: |

@@ -652,6 +652,9 @@ esac
         pi5_prepare = (
             ANSIBLE / "roles/release_pi5/tasks/prepare.yml"
         ).read_text(encoding="utf-8")
+        pi5_storage_prepare = (
+            ANSIBLE / "roles/release_pi5/tasks/prepare-storage.yml"
+        ).read_text(encoding="utf-8")
         kiosk_prepare = (
             ANSIBLE / "roles/release_kiosk/tasks/prepare.yml"
         ).read_text(encoding="utf-8")
@@ -665,15 +668,34 @@ esac
         self.assertIn("Pull exact Pi5 candidates without starting containers", pi5_prefetch)
         self.assertIn("Require exact ARM64 Pi5 candidates on this host", pi5_prefetch)
         self.assertIn("Require recoverable running Pi5 API and Web images", pi5_prefetch)
-        self.assertIn("Prepare the shared Pi5 durable storage directories before any Compose command", pi5_prefetch)
-        self.assertIn("Materialize and validate all phase3 external durable volumes before PREPARED", pi5_prefetch)
+        self.assertIn("include_tasks: prepare-storage.yml", pi5_prefetch)
+        self.assertIn("include_tasks: prepare-storage.yml", pi5_prepare)
+        self.assertIn("Prepare the shared Pi5 durable storage directories before any Compose command", pi5_storage_prepare)
+        self.assertIn("Materialize and validate all phase3 external durable volumes", pi5_storage_prepare)
+        self.assertIn("release_pi5_storage_prepared_run_id: \"{{ release_run_id }}\"", pi5_storage_prepare)
         self.assertIn("PI5_GATEWAY_IMAGE", pi5_prefetch)
+        self.assertIn("(release_pi5_storage_prepared_run_id | default('')) != release_run_id", pi5_prepare)
+        prepare_tasks = yaml.safe_load(pi5_prepare)
+        storage_fallback = next(
+            task
+            for task in prepare_tasks
+            if task.get("name") == "Prepare Pi5 storage before the first phase3 Compose command when needed"
+        )
+        self.assertEqual(
+            storage_fallback["when"],
+            "(release_pi5_storage_prepared_run_id | default('')) != release_run_id",
+        )
+        self.assertNotIn("release_torque_cutover", storage_fallback["when"])
         self.assertLess(
-            pi5_prefetch.index("Prepare the shared Pi5 durable storage directories before any Compose command"),
-            pi5_prefetch.index("Materialize and validate all phase3 external durable volumes before PREPARED"),
+            pi5_prefetch.index("Define complete Pi5 Compose interpolation before storage PREPARED"),
+            pi5_prefetch.index("include_tasks: prepare-storage.yml"),
         )
         self.assertLess(
-            pi5_prefetch.index("Materialize and validate all phase3 external durable volumes before PREPARED"),
+            pi5_prepare.index("include_tasks: prepare-storage.yml"),
+            pi5_prepare.index("Resolve active and opposite Pi5 Compose container IDs"),
+        )
+        self.assertLess(
+            pi5_prefetch.index("include_tasks: prepare-storage.yml"),
             pi5_prefetch.index("Record completed Pi5 PREPARED identity"),
         )
         self.assertNotIn("name: pi5_storage", pi5_prepare)

@@ -178,6 +178,10 @@
       PI5_GREEN_WEB_IMAGE: "{{ release_pi5_web_image }}"
       PI5_GATEWAY_IMAGE: "{{ release_pi5_gateway_discovery.stdout.split('|')[1] }}"
 
+- name: Prepare Pi5 storage before the first phase3 Compose command when needed
+  ansible.builtin.include_tasks: prepare-storage.yml
+  when: (release_pi5_storage_prepared_run_id | default('')) != release_run_id
+
 - name: Resolve active and opposite Pi5 Compose container IDs
   ansible.builtin.command:
     argv: "{{ release_pi5_compose_argv + ['ps', '-a', '-q', item.service] }}"

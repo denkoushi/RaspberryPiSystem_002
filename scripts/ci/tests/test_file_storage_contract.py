@@ -32,6 +32,9 @@ RELEASE_PREPARE = (
 RELEASE_PREFETCH = (
     ROOT / "infrastructure/ansible/roles/release_pi5/tasks/prefetch.yml"
 ).read_text()
+RELEASE_STORAGE_PREPARE = (
+    ROOT / "infrastructure/ansible/roles/release_pi5/tasks/prepare-storage.yml"
+).read_text()
 VOLUME_MATERIALIZER = (
     ROOT / "scripts/deploy/pi5_volume_materializer.py"
 ).read_text()
@@ -145,15 +148,18 @@ class FileStorageContractTest(unittest.TestCase):
                 PHASE3_COMPOSE,
             )
 
-    def test_prefetch_prepares_all_storage_dirs_before_materializing_volumes(self):
-        self.assertIn("name: pi5_storage", RELEASE_PREFETCH)
-        self.assertIn("pi5_storage_manage_existing: false", RELEASE_PREFETCH)
-        self.assertIn("Prepare the shared Pi5 durable storage directories before any Compose command", RELEASE_PREFETCH)
-        self.assertIn("Materialize and validate all phase3 external durable volumes before PREPARED", RELEASE_PREFETCH)
-        self.assertIn("PI5_GATEWAY_IMAGE", RELEASE_PREFETCH)
+    def test_storage_preparation_is_shared_with_torque_and_normal_routes(self):
+        self.assertIn("name: pi5_storage", RELEASE_STORAGE_PREPARE)
+        self.assertIn("pi5_storage_manage_existing: false", RELEASE_STORAGE_PREPARE)
+        self.assertIn("Materialize and validate all phase3 external durable volumes", RELEASE_STORAGE_PREPARE)
+        self.assertIn("release_pi5_storage_prepared_run_id: \"{{ release_run_id }}\"", RELEASE_STORAGE_PREPARE)
+        self.assertIn("include_tasks: prepare-storage.yml", RELEASE_PREFETCH)
+        self.assertIn("include_tasks: prepare-storage.yml", RELEASE_PREPARE)
+        self.assertIn("(release_pi5_storage_prepared_run_id | default('')) != release_run_id", RELEASE_PREPARE)
+        self.assertNotIn("name: pi5_storage", RELEASE_PREFETCH)
+        self.assertNotIn("release_pi5_volume_materialization", RELEASE_PREFETCH)
         self.assertNotIn("name: pi5_storage", RELEASE_PREPARE)
         self.assertNotIn("release_pi5_volume_materialization", RELEASE_PREPARE)
-        self.assertNotIn("prepare-storage.yml", RELEASE_PREPARE)
         self.assertIn("Validate the full set before creating any missing volume", VOLUME_MATERIALIZER)
 
     def test_overlay_storage_is_in_backup_and_integrity_boundaries(self):
