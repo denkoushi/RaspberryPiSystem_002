@@ -29,6 +29,9 @@ PHASE3_MODEL = yaml.safe_load(
 RELEASE_PREPARE = (
     ROOT / "infrastructure/ansible/roles/release_pi5/tasks/prepare.yml"
 ).read_text()
+RELEASE_PREFETCH = (
+    ROOT / "infrastructure/ansible/roles/release_pi5/tasks/prefetch.yml"
+).read_text()
 VOLUME_MATERIALIZER = (
     ROOT / "scripts/deploy/pi5_volume_materializer.py"
 ).read_text()
@@ -142,15 +145,15 @@ class FileStorageContractTest(unittest.TestCase):
                 PHASE3_COMPOSE,
             )
 
-    def test_release_prepares_all_storage_dirs_before_materializing_volumes(self):
-        self.assertIn("name: pi5_storage", RELEASE_PREPARE)
-        self.assertIn("pi5_storage_manage_existing: false", RELEASE_PREPARE)
-        self.assertIn("Prepare the shared Pi5 durable storage directories before any Compose command", RELEASE_PREPARE)
-        self.assertIn("Materialize and validate all phase3 external durable volumes", RELEASE_PREPARE)
-        self.assertLess(
-            RELEASE_PREPARE.index("Prepare the shared Pi5 durable storage directories before any Compose command"),
-            RELEASE_PREPARE.index("Materialize and validate all phase3 external durable volumes"),
-        )
+    def test_prefetch_prepares_all_storage_dirs_before_materializing_volumes(self):
+        self.assertIn("name: pi5_storage", RELEASE_PREFETCH)
+        self.assertIn("pi5_storage_manage_existing: false", RELEASE_PREFETCH)
+        self.assertIn("Prepare the shared Pi5 durable storage directories before any Compose command", RELEASE_PREFETCH)
+        self.assertIn("Materialize and validate all phase3 external durable volumes before PREPARED", RELEASE_PREFETCH)
+        self.assertIn("PI5_GATEWAY_IMAGE", RELEASE_PREFETCH)
+        self.assertNotIn("name: pi5_storage", RELEASE_PREPARE)
+        self.assertNotIn("release_pi5_volume_materialization", RELEASE_PREPARE)
+        self.assertNotIn("prepare-storage.yml", RELEASE_PREPARE)
         self.assertIn("Validate the full set before creating any missing volume", VOLUME_MATERIALIZER)
 
     def test_overlay_storage_is_in_backup_and_integrity_boundaries(self):

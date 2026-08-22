@@ -649,6 +649,9 @@ esac
         pi5_prefetch = (
             ANSIBLE / "roles/release_pi5/tasks/prefetch.yml"
         ).read_text(encoding="utf-8")
+        pi5_prepare = (
+            ANSIBLE / "roles/release_pi5/tasks/prepare.yml"
+        ).read_text(encoding="utf-8")
         kiosk_prepare = (
             ANSIBLE / "roles/release_kiosk/tasks/prepare.yml"
         ).read_text(encoding="utf-8")
@@ -662,7 +665,19 @@ esac
         self.assertIn("Pull exact Pi5 candidates without starting containers", pi5_prefetch)
         self.assertIn("Require exact ARM64 Pi5 candidates on this host", pi5_prefetch)
         self.assertIn("Require recoverable running Pi5 API and Web images", pi5_prefetch)
-        self.assertNotIn("docker compose", pi5_prefetch)
+        self.assertIn("Prepare the shared Pi5 durable storage directories before any Compose command", pi5_prefetch)
+        self.assertIn("Materialize and validate all phase3 external durable volumes before PREPARED", pi5_prefetch)
+        self.assertIn("PI5_GATEWAY_IMAGE", pi5_prefetch)
+        self.assertLess(
+            pi5_prefetch.index("Prepare the shared Pi5 durable storage directories before any Compose command"),
+            pi5_prefetch.index("Materialize and validate all phase3 external durable volumes before PREPARED"),
+        )
+        self.assertLess(
+            pi5_prefetch.index("Materialize and validate all phase3 external durable volumes before PREPARED"),
+            pi5_prefetch.index("Record completed Pi5 PREPARED identity"),
+        )
+        self.assertNotIn("name: pi5_storage", pi5_prepare)
+        self.assertNotIn("release_pi5_volume_materialization", pi5_prepare)
         self.assertNotIn("state: stopped", pi5_prefetch)
         self.assertIn("Verify captured rollback image identities are locally recoverable", kiosk_prepare)
         self.assertIn("Require the manifest-bound torque candidate and host architecture", kiosk_prepare)
