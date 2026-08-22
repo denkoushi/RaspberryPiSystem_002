@@ -249,6 +249,13 @@ async function prepareSheet(page, sheetId) {
     if (sheetId === 'assembly-document-editor-image-properties') {
       await choose('IMAGE');
       await page.locator('[data-kiosk-sop-target="assembly-document-editor-image-asset"]').waitFor({ state: 'visible' });
+      const overlayImages = page.locator('[data-testid="assembly-procedure-overlay-layer"] img[src^="blob:"]');
+      await overlayImages.first().waitFor({ state: 'visible' });
+      await overlayImages.last().waitFor({ state: 'visible' });
+      await page.waitForFunction(() => {
+        const images = [...document.querySelectorAll('[data-testid="assembly-procedure-overlay-layer"] img[src^="blob:"]')];
+        return images.length === 2 && images.every((image) => image.complete && image.naturalWidth > 0);
+      });
       return;
     }
     if (sheetId === 'assembly-document-editor-shape-properties') {
