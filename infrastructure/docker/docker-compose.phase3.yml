@@ -56,6 +56,7 @@ services:
       - part-measurement-drawings-storage:/app/storage/part-measurement-drawings
       - part-measurement-drawings-derivatives-storage:/app/storage/part-measurement-drawings-derivatives
       - assembly-procedure-images-storage:/app/storage/assembly-procedure-images
+      - assembly-procedure-assets-storage:/app/storage/assembly-procedure-assets
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
       - csv-dashboard-storage:/app/storage/csv-dashboards
@@ -226,6 +227,9 @@ volumes:
   assembly-procedure-images-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_assembly-procedure-images-storage
+  assembly-procedure-assets-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_assembly-procedure-assets-storage
   measuring-instrument-genres-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_measuring-instrument-genres-storage

@@ -1,10 +1,11 @@
 import {
   isAssemblyProcedurePointInCrop,
-  type AssemblyProcedureCropRect
+  type AssemblyProcedureCropRect,
+  type AssemblyProcedureOverlayElement
 } from '@raspi-system/shared-types';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '../../components/ui/Button';
 
@@ -15,11 +16,13 @@ import {
 } from './AssemblyProcedureCropView';
 import { AssemblyProcedureMarkerLayer } from './AssemblyProcedureMarkerLayer';
 import { projectAssemblyProcedureMarkerToCrop } from './assemblyProcedureMarkerProjection';
+import { AssemblyProcedureOverlayLayer } from './AssemblyProcedureOverlayLayer';
 import { getSequenceDocumentPages } from './assemblyTemplateDraft';
 import { KioskDocumentPageImage } from './KioskDocumentPageImage';
 
 import type { AssemblyCanvasBolt, AssemblyCanvasCheckItem } from './AssemblyProcedureCanvas';
 import type {
+  AssemblyProcedureOverlayAssetDto,
   AssemblyProcedureSequenceDto,
   AssemblyProcedureSequencePageDto,
   AssemblyProcedureSequenceStepDto
@@ -97,7 +100,9 @@ function AssemblyWorkStepStoryboard({
   boltMarkers,
   checkMarkers,
   inputTargetBoltId,
-  onSelect
+  onSelect,
+  getStepOverlays,
+  getStepAssets
 }: {
   steps: AssemblyProcedureSequenceStepDto[];
   currentIndex: number;
@@ -106,6 +111,8 @@ function AssemblyWorkStepStoryboard({
   checkMarkers: AssemblyCanvasCheckItem[];
   inputTargetBoltId?: string | null;
   onSelect: (index: number) => void;
+  getStepOverlays: (step: AssemblyProcedureSequenceStepDto) => AssemblyProcedureOverlayElement[];
+  getStepAssets: (step: AssemblyProcedureSequenceStepDto) => Record<string, AssemblyProcedureOverlayAssetDto> | undefined;
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -165,12 +172,19 @@ function AssemblyWorkStepStoryboard({
                     crop={crop}
                     className="h-full w-full"
                     overlay={
-                      <AssemblyProcedureMarkerLayer
-                        bolts={thumbnailBolts}
-                        checkItems={thumbnailChecks}
-                        inputTargetBoltId={inputTargetBoltId}
-                        density="compact"
-                      />
+                      <>
+                        <AssemblyProcedureOverlayLayer
+                          elements={getStepOverlays(step)}
+                          crop={crop}
+                          assets={getStepAssets(step)}
+                        />
+                        <AssemblyProcedureMarkerLayer
+                          bolts={thumbnailBolts}
+                          checkItems={thumbnailChecks}
+                          inputTargetBoltId={inputTargetBoltId}
+                          density="compact"
+                        />
+                      </>
                     }
                   />
                 </div>
@@ -217,9 +231,42 @@ export function AssemblyProcedureSequenceViewer({
   const [showFullPage, setShowFullPage] = useState(false);
   const currentStep = steps[Math.max(0, Math.min(steps.length - 1, stepIndex))] ?? null;
   const crop = currentStep ? stepCrop(currentStep) : null;
+  const findSequenceDocument = useCallback((step: AssemblyProcedureSequenceStepDto) =>
+    sequence.documents.find((document) =>
+      step.kioskDocumentId
+        ? document.kioskDocumentId === step.kioskDocumentId
+        : document.assemblyProcedureDocumentId === step.assemblyProcedureDocumentId
+    ), [sequence.documents]);
+  const getStepPage = useCallback((step: AssemblyProcedureSequenceStepDto) => {
+    const document = findSequenceDocument(step);
+    return document
+      ? getSequenceDocumentPages(document).find((page) => page.pageIndex === step.pageIndex) ?? null
+      : null;
+  }, [findSequenceDocument]);
+  const getStepOverlays = useCallback((step: AssemblyProcedureSequenceStepDto): AssemblyProcedureOverlayElement[] => {
+    const document = findSequenceDocument(step);
+    const page = getStepPage(step);
+    return page?.overlays ?? document?.overlays?.filter((element) => element.pageIndex === step.pageIndex) ?? [];
+  }, [findSequenceDocument, getStepPage]);
+  const getStepAssets = useCallback(
+    (step: AssemblyProcedureSequenceStepDto) => findSequenceDocument(step)?.assets,
+    [findSequenceDocument]
+  );
+  const currentSequencePage = useMemo(
+    () => currentStep ? getStepPage(currentStep) : null,
+    [currentStep, getStepPage]
+  );
+  const currentOverlays = useMemo(
+    () => currentStep ? getStepOverlays(currentStep) : [],
+    [currentStep, getStepOverlays]
+  );
+  const currentAssets = useMemo(
+    () => currentStep ? getStepAssets(currentStep) : undefined,
+    [currentStep, getStepAssets]
+  );
   const currentPage = useMemo(
     () =>
-      currentStep
+      currentSequencePage ?? (currentStep
         ? {
             source: currentStep.documentType,
             documentId:
@@ -227,8 +274,8 @@ export function AssemblyProcedureSequenceViewer({
             pageIndex: currentStep.pageIndex,
             pageUrl: currentStep.pageUrl
           }
-        : null,
-    [currentStep]
+        : null),
+    [currentSequencePage, currentStep]
   );
   const visibleBolts = useMemo(
     () => boltMarkers.flatMap((marker) => {
@@ -391,6 +438,8 @@ export function AssemblyProcedureSequenceViewer({
               checkMarkers={checkMarkers}
               inputTargetBoltId={inputTargetBoltId}
               onSelect={setStepIndex}
+              getStepOverlays={getStepOverlays}
+              getStepAssets={getStepAssets}
             />
           </aside>
         ) : null}
@@ -404,13 +453,20 @@ export function AssemblyProcedureSequenceViewer({
               crop={crop}
               className="h-full w-full"
               overlay={
-                <AssemblyProcedureMarkerLayer
-                  bolts={visibleBolts}
-                  checkItems={visibleChecks}
-                  selectedBoltId={selectedBoltId}
-                  inputTargetBoltId={inputTargetBoltId}
-                  onToggleCheckItem={onToggleCheckItem}
-                />
+                <>
+                  <AssemblyProcedureOverlayLayer
+                    elements={currentOverlays}
+                    crop={crop}
+                    assets={currentAssets}
+                  />
+                  <AssemblyProcedureMarkerLayer
+                    bolts={visibleBolts}
+                    checkItems={visibleChecks}
+                    selectedBoltId={selectedBoltId}
+                    inputTargetBoltId={inputTargetBoltId}
+                    onToggleCheckItem={onToggleCheckItem}
+                  />
+                </>
               }
             />
           ) : (
@@ -429,6 +485,12 @@ export function AssemblyProcedureSequenceViewer({
               selectedBoltId={selectedBoltId}
               inputTargetBoltId={inputTargetBoltId}
               onToggleCheckItem={onToggleCheckItem}
+              overlay={
+                <AssemblyProcedureOverlayLayer
+                  elements={currentOverlays}
+                  assets={currentAssets}
+                />
+              }
             />
           )}
           {crop ? (

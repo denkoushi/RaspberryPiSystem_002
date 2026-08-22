@@ -92,6 +92,18 @@ export function getRecommendedBackupTargetCatalog(): RecommendedBackupTargetSpec
       },
     },
     {
+      id: 'server-directory-assembly-procedure-assets',
+      message: '組立手順書の原本・overlay assetストレージ（ホスト永続ボリューム）',
+      target: {
+        kind: 'directory',
+        source: '/app/storage/assembly-procedure-assets',
+        schedule: DEFAULT_SCHEDULE,
+        enabled: true,
+        storage: DROPBOX,
+        retention: DEFAULT_RETENTION,
+      },
+    },
+    {
       id: 'server-directory-measuring-instrument-genres',
       message: '計測機器ジャンル画像ストレージ（ホスト永続ボリューム）',
       target: {

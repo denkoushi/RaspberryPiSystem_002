@@ -5,7 +5,9 @@
   become: true
   serial: 1
   vars:
-    repo_path: /opt/RaspberryPiSystem_002
+    repo_path: "{{ project_root | default('/opt/RaspberryPiSystem_002') }}"
+    pi5_runtime_backup_dir: "{{ pi5_backup_dir | default('/opt/backups') }}"
+    pi5_runtime_caddy_log_dir: "{{ pi5_caddy_log_dir | default('/var/log/caddy') }}"
     pi5_runtime_permission_migration_approved: false
 
   pre_tasks:
@@ -40,11 +42,12 @@
         recurse: true
       loop:
         - "{{ repo_path }}/storage"
+        - "{{ repo_path }}/storage/assembly-procedure-assets"
         - "{{ repo_path }}/alerts"
         - "{{ repo_path }}/power-actions"
         - "{{ repo_path }}/config"
-        - /opt/backups
-        - /var/log/caddy
+        - "{{ pi5_runtime_backup_dir }}"
+        - "{{ pi5_runtime_caddy_log_dir }}"
       no_log: true
 
     - name: Verify every runtime directory is usable by the target user
@@ -59,9 +62,10 @@
       changed_when: false
       loop:
         - "{{ repo_path }}/storage"
+        - "{{ repo_path }}/storage/assembly-procedure-assets"
         - "{{ repo_path }}/alerts"
         - "{{ repo_path }}/power-actions"
         - "{{ repo_path }}/config"
-        - /opt/backups
-        - /var/log/caddy
+        - "{{ pi5_runtime_backup_dir }}"
+        - "{{ pi5_runtime_caddy_log_dir }}"
       no_log: true

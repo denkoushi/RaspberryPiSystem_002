@@ -23,6 +23,40 @@ const fixtureImage = Buffer.from(
   '</svg>'
 );
 
+const overlayImageAsset = Object.freeze({
+  assetId: 'sop-overlay-image-1',
+  storageKey: 'assembly-procedure-assets/sop-overlay-image-1.png',
+  contentType: 'image/png',
+  byteSize: fixtureImage.length,
+  relativeUrl: '/api/storage/assembly-procedure-assets/sop-overlay-image-1.png',
+  kind: 'OVERLAY_IMAGE'
+});
+
+function revisionDocument({
+  elements = [],
+  editVersion = 1,
+  status = 'draft'
+} = {}) {
+  return {
+    ...procedureDocument,
+    id: 'sop-procedure-revision-1',
+    name: '組立手順書 SOP Fixture（改版）',
+    status,
+    publishedAt: status === 'published' ? '2026-08-21T00:00:00.000Z' : null,
+    isActive: status === 'published',
+    revisionRootId: procedureDocument.id,
+    revisionNumber: 2,
+    supersedesDocumentId: procedureDocument.id,
+    isRevisionHead: true,
+    editVersion,
+    updatedAt: '2026-08-21T00:00:00.000Z',
+    assets: elements.some((element) => element.kind === 'IMAGE')
+      ? { [overlayImageAsset.assetId]: overlayImageAsset }
+      : {},
+    pages: procedureDocument.pages.map((page) => ({ ...page, overlays: elements.filter((element) => element.pageIndex === page.pageIndex) }))
+  };
+}
+
 const procedureSummary = Object.freeze({
   ...procedureDocument,
   activeTemplateCount: 1,
@@ -51,18 +85,36 @@ const sheets = new Set([
   'assembly-file-register',
   'assembly-gmail-publish',
   'assembly-revision',
+  'assembly-procedure-edit',
   'assembly-template-auth-basics',
   'assembly-template-procedure',
   'assembly-template-markers',
-  'assembly-template-save'
+  'assembly-template-save',
+  'assembly-document-editor-auth',
+  'assembly-document-editor-range',
+  'assembly-document-editor-types',
+  'assembly-document-editor-text-properties',
+  'assembly-document-editor-image-properties',
+  'assembly-document-editor-shape-properties',
+  'assembly-document-editor-conflict',
+  'assembly-document-editor-publish'
 ]);
 
 function assertSupportedSheet(sheetId) {
   if (!sheets.has(sheetId)) throw new Error(`Unregistered assembly SOP sheet: ${sheetId}`);
 }
 
-function json(route, payload) {
-  return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
+function json(route, payload, status = 200) {
+  return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(payload) });
+}
+
+function requestElements(request) {
+  try {
+    const body = request.postDataJSON();
+    return Array.isArray(body?.elements) ? body.elements : [];
+  } catch {
+    return [];
+  }
 }
 
 async function installApiFixtures(page, sheetId, unexpectedRequests) {
@@ -91,10 +143,46 @@ async function installApiFixtures(page, sheetId, unexpectedRequests) {
       });
     }
     if (path === '/api/assembly/procedure-documents/summary') return json(route, { documents: [procedureSummary] });
+    if (path === '/api/assembly/procedure-documents/sop-procedure-1' && request.method() === 'GET') {
+      return json(route, { document: procedureDocument });
+    }
+    if (path === '/api/assembly/procedure-documents/sop-procedure-1/revisions' && request.method() === 'POST') {
+      return json(route, { document: revisionDocument() });
+    }
+    if (path === '/api/assembly/procedure-documents/sop-procedure-revision-1' && request.method() === 'GET') {
+      return json(route, { document: revisionDocument() });
+    }
+    if (path.endsWith('/regions/text') && request.method() === 'POST') {
+      return json(route, { candidates: [] });
+    }
+    if (path.endsWith('/regions/image') && request.method() === 'POST') {
+      return json(route, { asset: overlayImageAsset });
+    }
+    if (path.endsWith('/overlays') && request.method() === 'PUT') {
+      if (sheetId === 'assembly-document-editor-conflict') {
+        return json(route, {
+          message: '編集競合が発生しました。',
+          details: { currentEditVersion: 2 }
+        }, 409);
+      }
+      return json(route, { document: revisionDocument({ elements: requestElements(request), editVersion: 2 }) });
+    }
+    if (path.endsWith('/publish') && request.method() === 'POST') {
+      return json(route, { document: revisionDocument({ editVersion: 2, status: 'published' }) });
+    }
+    if (path.endsWith('/discard-revision') && request.method() === 'POST') {
+      return json(route, { document: procedureDocument });
+    }
     if (path === '/api/assembly/templates/summary') return json(route, { templates: [templateSummary] });
     if (path === '/api/assembly/library/filter-options') return json(route, { options: [] });
     if (path === '/api/torque-wrench-capability-groups') return json(route, { capabilityGroups: [] });
     if (path === '/api/kiosk/assembly/templates/verify-access-password') return json(route, { success: true });
+    if (path === '/api/storage/assembly-procedure-assets/sop-overlay-image-1.png') {
+      // Keep the existing deterministic SVG fixture bytes; the browser decodes
+      // the response for the screenshot while metadata follows the production
+      // immutable asset contract (extension-bearing PNG key/URL).
+      return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: fixtureImage });
+    }
     if (path.endsWith('/sop-procedure-1/page-1.jpg')) {
       return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: fixtureImage });
     }
@@ -121,6 +209,72 @@ async function prepareSheet(page, sheetId) {
     await page.locator('[data-kiosk-sop-target="assembly-gmail-confirm"]').waitFor({ state: 'visible' });
     return;
   }
+  if (sheetId === 'assembly-document-editor-auth') return;
+  if (sheetId.startsWith('assembly-document-editor-')) {
+    await page.locator('[data-kiosk-sop-target="assembly-document-editor-password"]').fill('0000');
+    await page.locator('[data-kiosk-sop-target="assembly-document-editor-authenticate"]').click();
+    await page.locator('[data-kiosk-sop-target="assembly-document-editor-range-add"]').waitFor({ state: 'visible' });
+
+    const selectRange = async () => {
+      await page.locator('[data-kiosk-sop-target="assembly-document-editor-range-add"]').click();
+      const surface = page.locator('[data-kiosk-sop-target="assembly-document-editor-range-surface"]');
+      await surface.waitFor({ state: 'visible' });
+      const box = await surface.boundingBox();
+      if (!box) throw new Error(`Editor range surface has no bounding box (sheet=${sheetId})`);
+      await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width * 0.62, box.y + box.height * 0.58);
+      await page.mouse.up();
+      await page.getByRole('dialog', { name: '追加する種類を選択' }).waitFor({ state: 'visible' });
+    };
+    const choose = async (kind) => {
+      await selectRange();
+      await page.locator(`[data-kiosk-sop-target="assembly-document-editor-type-${kind.toLowerCase()}"]`).click();
+    };
+
+    if (sheetId === 'assembly-document-editor-range') {
+      await page.locator('[data-kiosk-sop-target="assembly-document-editor-range-add"]').click();
+      await page.locator('[data-kiosk-sop-target="assembly-document-editor-range-surface"]').waitFor({ state: 'visible' });
+      return;
+    }
+    if (sheetId === 'assembly-document-editor-types') {
+      await selectRange();
+      return;
+    }
+    if (sheetId === 'assembly-document-editor-text-properties') {
+      await choose('TEXT');
+      await page.locator('[data-kiosk-sop-target="assembly-document-editor-text-value"]').waitFor({ state: 'visible' });
+      return;
+    }
+    if (sheetId === 'assembly-document-editor-image-properties') {
+      await choose('IMAGE');
+      await page.locator('[data-kiosk-sop-target="assembly-document-editor-image-asset"]').waitFor({ state: 'visible' });
+      const overlayImages = page.locator('[data-testid="assembly-procedure-overlay-layer"] img[src^="blob:"]');
+      await overlayImages.first().waitFor({ state: 'visible' });
+      await overlayImages.last().waitFor({ state: 'visible' });
+      await page.waitForFunction(() => {
+        const images = [...document.querySelectorAll('[data-testid="assembly-procedure-overlay-layer"] img[src^="blob:"]')];
+        return images.length === 2 && images.every((image) => image.complete && image.naturalWidth > 0);
+      });
+      return;
+    }
+    if (sheetId === 'assembly-document-editor-shape-properties') {
+      await choose('SHAPE');
+      await page.locator('[data-kiosk-sop-target="assembly-document-editor-shape-kind"]').waitFor({ state: 'visible' });
+      return;
+    }
+    if (sheetId === 'assembly-document-editor-conflict') {
+      await choose('SHAPE');
+      await page.locator('[data-kiosk-sop-target="assembly-document-editor-save"]').click();
+      await page.locator('[data-kiosk-sop-target="assembly-document-editor-conflict-retry"]').waitFor({ state: 'visible' });
+      return;
+    }
+    if (sheetId === 'assembly-document-editor-publish') {
+      await page.locator('[data-kiosk-sop-target="assembly-document-editor-publish"]').click();
+      await page.locator('[data-kiosk-sop-target="assembly-document-editor-publish-confirm"]').waitFor({ state: 'visible' });
+      return;
+    }
+  }
   if (sheetId.startsWith('assembly-template-')) {
     await page.locator('[data-kiosk-sop-target="assembly-editor-password"]').fill('0000');
     await page.locator('[data-kiosk-sop-target="assembly-editor-authenticate"]').click();
@@ -144,10 +298,14 @@ const adapter = Object.freeze({
   prepareSheet,
   async waitForPageReady(page, sheetId) {
     assertSupportedSheet(sheetId);
-    const target = sheetId.startsWith('assembly-template-')
+    const target = sheetId.startsWith('assembly-document-editor-')
+      ? 'assembly-document-editor-authenticate'
+      : sheetId.startsWith('assembly-template-')
       ? 'assembly-editor-authenticate'
       : sheetId === 'assembly-revision'
         ? 'assembly-template-revise'
+        : sheetId === 'assembly-procedure-edit'
+          ? 'assembly-procedure-edit'
         : sheetId === 'assembly-gmail-publish'
           ? 'assembly-gmail-import'
           : sheetId === 'assembly-file-register'
@@ -166,7 +324,7 @@ const adapter = Object.freeze({
 });
 
 export function resolveAssemblyCaptureAdapter(fixtureId) {
-  if (fixtureId !== 'assembly-library-v1' && fixtureId !== 'assembly-editor-v1') {
+  if (fixtureId !== 'assembly-library-v1' && fixtureId !== 'assembly-editor-v1' && fixtureId !== 'assembly-document-editor-v1') {
     throw new Error(`Unregistered assembly SOP fixture: ${fixtureId}`);
   }
   return adapter;

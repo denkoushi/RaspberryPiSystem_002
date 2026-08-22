@@ -9,38 +9,56 @@ from __future__ import annotations
 
 import os
 import pathlib
+import re
 import sys
 import urllib.parse
 
 
-def _password(raw_url: str, expected_role: str) -> str:
+def _database_authority(raw_url: str, expected_role: str) -> tuple[str, str]:
     parsed = urllib.parse.urlsplit(raw_url)
+    database_name = parsed.path.removeprefix("/")
     if (
         parsed.scheme != "postgresql"
         or parsed.username != expected_role
         or parsed.hostname != "db"
         or parsed.port != 5432
-        or parsed.path != "/borrow_return"
+        or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", database_name)
         or parsed.fragment
         or parsed.password is None
     ):
-        raise ValueError("database authority URL violates the fixed production endpoint")
+        raise ValueError("database authority URL violates the bounded database endpoint")
     password = urllib.parse.unquote(parsed.password)
     if len(password) < 16 or password.lower() in {"postgres", "password", "changeme"}:
         raise ValueError("database authority password is missing or weak")
-    return password
+    return password, database_name
 
 
 def _literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def _identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
+
+
 def render(source: str, app_url: str, migration_url: str) -> str:
-    app_password = _password(app_url, "raspi_app")
-    migration_password = _password(migration_url, "raspi_migrator")
+    app_password, app_database = _database_authority(app_url, "raspi_app")
+    migration_password, migration_database = _database_authority(
+        migration_url, "raspi_migrator"
+    )
+    if app_database != migration_database:
+        raise ValueError("application and migration URLs must target the same database")
     rendered = source.replace(":'app_password'", _literal(app_password))
     rendered = rendered.replace(":'migration_password'", _literal(migration_password))
-    if ":'app_password'" in rendered or ":'migration_password'" in rendered:
+    rendered = rendered.replace(':"database_name"', _identifier(app_database))
+    if any(
+        placeholder in rendered
+        for placeholder in (
+            ":'app_password'",
+            ":'migration_password'",
+            ':"database_name"',
+        )
+    ):
         raise ValueError("database role bootstrap placeholders were not fully resolved")
     return rendered
 

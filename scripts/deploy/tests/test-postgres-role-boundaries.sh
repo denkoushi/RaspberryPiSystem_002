@@ -62,10 +62,22 @@ export DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${PORT}/borrow_ret
 "$PNPM" --dir "$ROOT/apps/api" exec prisma generate >/dev/null
 "$PNPM" --dir "$ROOT/apps/api" exec prisma migrate deploy >/dev/null
 
-docker exec -i "$CONTAINER" psql -U postgres -d borrow_return \
+# Preserve the existing production/CI invocation, which supplies only the two
+# password variables and relies on the SQL's fixed borrow_return default.
+docker exec -i "$CONTAINER" psql -X -q -v ON_ERROR_STOP=1 \
+  -U postgres -d borrow_return \
   -v migration_password="$MIGRATION_PASSWORD" \
   -v app_password="$APP_PASSWORD" \
   -f - <"$ROOT/scripts/deploy/postgres-role-bootstrap.sql" >/dev/null
+
+# Staging and parameterized environments use the validated renderer so their
+# database identifier is explicit before psql receives any SQL.
+APP_DATABASE_URL="postgresql://raspi_app:${APP_PASSWORD}@db:5432/borrow_return" \
+MIGRATION_DATABASE_URL="postgresql://raspi_migrator:${MIGRATION_PASSWORD}@db:5432/borrow_return" \
+  python3 "$ROOT/scripts/deploy/render-postgres-role-bootstrap.py" \
+    "$ROOT/scripts/deploy/postgres-role-bootstrap.sql" \
+  | docker exec -i "$CONTAINER" psql -X -q -v ON_ERROR_STOP=1 \
+      -U postgres -d borrow_return >/dev/null
 
 MIGRATION_DATABASE_URL="postgresql://raspi_migrator:${MIGRATION_PASSWORD}@127.0.0.1:${PORT}/borrow_return"
 APP_DATABASE_URL="postgresql://raspi_app:${APP_PASSWORD}@127.0.0.1:${PORT}/borrow_return"

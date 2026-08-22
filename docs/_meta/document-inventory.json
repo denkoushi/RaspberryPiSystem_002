@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 628,
-    "totalLines": 172662,
-    "totalBytes": 13008258,
-    "withFrontmatter": 287,
-    "withStatus": 143,
-    "sourceOfTruthDeclared": 104,
+    "documentCount": 638,
+    "totalLines": 174447,
+    "totalBytes": 13190016,
+    "withFrontmatter": 293,
+    "withStatus": 148,
+    "sourceOfTruthDeclared": 107,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 26,
-    "localLinkCount": 5643,
+    "localLinkCount": 5659,
     "brokenLocalLinkCount": 88,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -475,8 +475,8 @@
   "documents": [
     {
       "path": ".agent/PLANS.md",
-      "lineCount": 154,
-      "byteSize": 15279,
+      "lineCount": 168,
+      "byteSize": 17336,
       "hasFrontmatter": false,
       "title": "Codex Execution Plans (ExecPlans):",
       "status": null,
@@ -565,8 +565,8 @@
     },
     {
       "path": ".cursor/rules/20-git-workflow.mdc",
-      "lineCount": 50,
-      "byteSize": 2182,
+      "lineCount": 58,
+      "byteSize": 4560,
       "hasFrontmatter": true,
       "title": "Gitワークフロー（Agent Requested）",
       "status": null,
@@ -610,8 +610,8 @@
     },
     {
       "path": "AGENTS.md",
-      "lineCount": 53,
-      "byteSize": 4572,
+      "lineCount": 64,
+      "byteSize": 6606,
       "hasFrontmatter": false,
       "title": "AI Agent Entry Point",
       "status": null,
@@ -5897,8 +5897,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2012,
-      "byteSize": 348584,
+      "lineCount": 2021,
+      "byteSize": 350157,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6890,6 +6890,21 @@
           "exists": true
         },
         {
+          "href": "./decisions/ADR-20260820-google-drive-disaster-recovery.md",
+          "targetPath": "docs/decisions/ADR-20260820-google-drive-disaster-recovery.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260821-repository-task-lifecycle-automation.md",
+          "targetPath": "docs/decisions/ADR-20260821-repository-task-lifecycle-automation.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260821-self-inspection-record-view-uiux.md",
+          "targetPath": "docs/decisions/ADR-20260821-self-inspection-record-view-uiux.md",
+          "exists": true
+        },
+        {
           "href": "./design-previews/kiosk-assembly-home-table-dense-3col-preview.html",
           "targetPath": "docs/design-previews/kiosk-assembly-home-table-dense-3col-preview.html",
           "exists": true
@@ -7267,6 +7282,11 @@
         {
           "href": "./guides/git-clean-safety.md",
           "targetPath": "docs/guides/git-clean-safety.md",
+          "exists": true
+        },
+        {
+          "href": "./guides/git-task-lifecycle.md",
+          "targetPath": "docs/guides/git-task-lifecycle.md",
           "exists": true
         },
         {
@@ -10355,6 +10375,11 @@
           "exists": true
         },
         {
+          "href": "./plans/google-drive-disaster-recovery-execplan.md",
+          "targetPath": "docs/plans/google-drive-disaster-recovery-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/inspection-drawing-create-layout-and-return-nav.md",
           "targetPath": "docs/plans/inspection-drawing-create-layout-and-return-nav.md",
           "exists": true
@@ -10457,6 +10482,11 @@
         {
           "href": "./plans/kiosk-leaderboard-labor-minutes-toggle.md",
           "targetPath": "docs/plans/kiosk-leaderboard-labor-minutes-toggle.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/kiosk-self-inspection-record-view-uiux-execplan.md",
+          "targetPath": "docs/plans/kiosk-self-inspection-record-view-uiux-execplan.md",
           "exists": true
         },
         {
@@ -10632,6 +10662,11 @@
         {
           "href": "./plans/release-set-v2-torque-cutover-execplan.md",
           "targetPath": "docs/plans/release-set-v2-torque-cutover-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/repository-task-lifecycle-automation-execplan.md",
+          "targetPath": "docs/plans/repository-task-lifecycle-automation-execplan.md",
           "exists": true
         },
         {
@@ -10832,6 +10867,11 @@
         {
           "href": "./runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由",
           "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
+          "exists": true
+        },
+        {
+          "href": "./runbooks/google-drive-disaster-recovery.md",
+          "targetPath": "docs/runbooks/google-drive-disaster-recovery.md",
           "exists": true
         },
         {
@@ -11250,95 +11290,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 292,
+          "line": 301,
           "length": 1132
         },
         {
-          "line": 308,
+          "line": 317,
           "length": 1242
         },
         {
-          "line": 312,
+          "line": 321,
           "length": 1022
         },
         {
-          "line": 326,
+          "line": 335,
           "length": 1065
         },
         {
-          "line": 374,
+          "line": 383,
           "length": 1165
         },
         {
-          "line": 380,
+          "line": 389,
           "length": 1458
         },
         {
-          "line": 392,
+          "line": 401,
           "length": 1083
         },
         {
-          "line": 406,
+          "line": 415,
           "length": 1398
         },
         {
-          "line": 408,
+          "line": 417,
           "length": 1133
         },
         {
-          "line": 412,
+          "line": 421,
           "length": 1399
         },
         {
-          "line": 414,
+          "line": 423,
           "length": 1008
         },
         {
-          "line": 420,
+          "line": 429,
           "length": 1059
         },
         {
-          "line": 428,
+          "line": 437,
           "length": 1129
         },
         {
-          "line": 432,
+          "line": 441,
           "length": 1135
         },
         {
-          "line": 436,
+          "line": 445,
           "length": 1117
         },
         {
-          "line": 551,
+          "line": 560,
           "length": 1013
         },
         {
-          "line": 737,
+          "line": 746,
           "length": 2038
         },
         {
-          "line": 753,
+          "line": 762,
           "length": 1496
         },
         {
-          "line": 759,
+          "line": 768,
           "length": 1177
         },
         {
-          "line": 1101,
+          "line": 1110,
           "length": 1449
         },
         {
-          "line": 1137,
+          "line": 1146,
           "length": 1136
         },
         {
-          "line": 1139,
+          "line": 1148,
           "length": 1239
         },
         {
-          "line": 1175,
+          "line": 1184,
           "length": 1004
         }
       ],
@@ -17186,6 +17226,72 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/decisions/ADR-20260820-google-drive-disaster-recovery.md",
+      "lineCount": 79,
+      "byteSize": 10773,
+      "hasFrontmatter": true,
+      "title": "ADR-20260820: Independent encrypted Google Drive DR repository for Business Pi 5",
+      "status": "accepted",
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../../apps/api/src/services/backup/backup-ssh-policy.ts",
+          "targetPath": "apps/api/src/services/backup/backup-ssh-policy.ts",
+          "exists": true
+        },
+        {
+          "href": "../guides/backup-and-restore.md",
+          "targetPath": "docs/guides/backup-and-restore.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/google-drive-disaster-recovery-execplan.md",
+          "targetPath": "docs/plans/google-drive-disaster-recovery-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "../runbooks/google-drive-disaster-recovery.md",
+          "targetPath": "docs/runbooks/google-drive-disaster-recovery.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260821-repository-task-lifecycle-automation.md",
+      "lineCount": 108,
+      "byteSize": 5014,
+      "hasFrontmatter": true,
+      "title": "Isolate task worktrees and make merged-task cleanup independent of main state",
+      "status": "accepted",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260821-self-inspection-record-view-uiux.md",
+      "lineCount": 46,
+      "byteSize": 5253,
+      "hasFrontmatter": true,
+      "title": "ADR-20260821: 自主検査の記録閲覧・操作認証・一覧情報階層",
+      "status": "accepted",
+      "source_of_truth": "this file",
+      "localLinks": [],
+      "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/design-previews/README.md",
       "lineCount": 102,
       "byteSize": 21263,
@@ -17919,8 +18025,8 @@
     },
     {
       "path": "docs/guides/backup-and-restore.md",
-      "lineCount": 772,
-      "byteSize": 36009,
+      "lineCount": 784,
+      "byteSize": 38577,
       "hasFrontmatter": true,
       "title": "バックアップ・リストア手順",
       "status": null,
@@ -17995,9 +18101,14 @@
           "href": "../requirements/backup-target-management-ui.md",
           "targetPath": "docs/requirements/backup-target-management-ui.md",
           "exists": true
+        },
+        {
+          "href": "../runbooks/google-drive-disaster-recovery.md",
+          "targetPath": "docs/runbooks/google-drive-disaster-recovery.md",
+          "exists": true
         }
       ],
-      "inboundCount": 23,
+      "inboundCount": 24,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -19349,6 +19460,21 @@
         }
       ],
       "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/guides/git-task-lifecycle.md",
+      "lineCount": 108,
+      "byteSize": 3906,
+      "hasFrontmatter": true,
+      "title": "Git task branch and worktree lifecycle",
+      "status": "accepted",
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -22695,8 +22821,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-320-kiosk-part-measurement.md",
-      "lineCount": 1937,
-      "byteSize": 213657,
+      "lineCount": 1949,
+      "byteSize": 215363,
       "hasFrontmatter": false,
       "title": "KB-320: キオスク部品測定（テンプレ不一致・候補・スキャン）",
       "status": null,
@@ -22870,6 +22996,11 @@
         {
           "href": "../decisions/ADR-20260731-self-inspection-item-invalidation.md",
           "targetPath": "docs/decisions/ADR-20260731-self-inspection-item-invalidation.md",
+          "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20260821-self-inspection-record-view-uiux.md",
+          "targetPath": "docs/decisions/ADR-20260821-self-inspection-record-view-uiux.md",
           "exists": true
         },
         {
@@ -27616,7 +27747,7 @@
     {
       "path": "docs/knowledge-base/index.md",
       "lineCount": 872,
-      "byteSize": 263303,
+      "byteSize": 263424,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -27750,6 +27881,11 @@
         {
           "href": "../decisions/ADR-20260527-load-balancing-outsourcing-limits.md",
           "targetPath": "docs/decisions/ADR-20260527-load-balancing-outsourcing-limits.md",
+          "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20260821-self-inspection-record-view-uiux.md",
+          "targetPath": "docs/decisions/ADR-20260821-self-inspection-record-view-uiux.md",
           "exists": true
         },
         {
@@ -32327,6 +32463,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/assembly-procedure-overlay-editing-execplan.md",
+      "lineCount": 250,
+      "byteSize": 31354,
+      "hasFrontmatter": false,
+      "title": "組立要領書を非破壊オーバーレイで編集・版管理する",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/assembly-procedure-step-storyboard-execplan.md",
       "lineCount": 116,
       "byteSize": 15617,
@@ -33098,6 +33249,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/google-drive-disaster-recovery-execplan.md",
+      "lineCount": 204,
+      "byteSize": 31625,
+      "hasFrontmatter": false,
+      "title": "Business Pi 5 Google Drive encrypted disaster-recovery backup",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/imports-ts-refactoring-plan.md",
       "lineCount": 293,
       "byteSize": 11475,
@@ -33857,6 +34023,21 @@
       "source_of_truth": "this file",
       "localLinks": [],
       "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-self-inspection-record-view-uiux-execplan.md",
+      "lineCount": 101,
+      "byteSize": 13275,
+      "hasFrontmatter": false,
+      "title": "Improve the kiosk self-inspection list and record-review experience",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -35502,6 +35683,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/repository-task-lifecycle-automation-execplan.md",
+      "lineCount": 82,
+      "byteSize": 8927,
+      "hasFrontmatter": false,
+      "title": "Repository task lifecycle automation",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/risk-based-four-stage-quality-gates-execplan.md",
       "lineCount": 350,
       "byteSize": 21699,
@@ -36560,6 +36756,27 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/runbooks/assembly-overlay-staging-hardware-acceptance.md",
+      "lineCount": 584,
+      "byteSize": 40960,
+      "hasFrontmatter": true,
+      "title": "組立手順書 Overlay staging 受入・性能計測 Runbook",
+      "status": "active",
+      "source_of_truth": "docs/runbooks/assembly-overlay-staging-hardware-acceptance.md",
+      "localLinks": [
+        {
+          "href": "./deploy-status-recovery.md",
+          "targetPath": "docs/runbooks/deploy-status-recovery.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/runbooks/assembly-torque-agent.md",
       "lineCount": 313,
       "byteSize": 27140,
@@ -36644,7 +36861,7 @@
       "status": "active",
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 27,
+      "inboundCount": 28,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -37112,6 +37329,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/runbooks/google-drive-disaster-recovery.md",
+      "lineCount": 131,
+      "byteSize": 15098,
+      "hasFrontmatter": true,
+      "title": "Business Pi 5 Google Drive disaster-recovery backup Runbook",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/runbooks/kiosk-device-initial-route.md",
       "lineCount": 259,
       "byteSize": 10563,
@@ -37301,8 +37533,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-part-measurement.md",
-      "lineCount": 1497,
-      "byteSize": 125488,
+      "lineCount": 1523,
+      "byteSize": 128624,
       "hasFrontmatter": false,
       "title": "キオスク: 部品測定記録（part-measurement）",
       "status": null,

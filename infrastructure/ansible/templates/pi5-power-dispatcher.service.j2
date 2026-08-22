@@ -4,8 +4,8 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-User=denkon5sd02
-WorkingDirectory=/opt/RaspberryPiSystem_002/infrastructure/ansible
-ExecStart=/usr/local/bin/pi5-power-dispatcher.sh /opt/RaspberryPiSystem_002/power-actions
+User={{ ansible_user | default('denkon5sd02') }}
+WorkingDirectory={{ repo_path | default('/opt/RaspberryPiSystem_002') }}/infrastructure/ansible
+ExecStart=/usr/local/bin/pi5-power-dispatcher.sh {{ pi5_power_actions_dir | default((repo_path | default('/opt/RaspberryPiSystem_002')) ~ '/power-actions') }}
 StandardOutput=journal
 StandardError=journal

@@ -5,6 +5,11 @@ export const KIOSK_ASSEMBLY_TRAINING_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/train
 export const KIOSK_ASSEMBLY_PROCEDURE_ORDER_SETTINGS_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/procedure-order-settings`;
 export const KIOSK_ASSEMBLY_RECORD_APPROVALS_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/record-approvals`;
 export const KIOSK_ASSEMBLY_TRACEABILITY_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/traceability`;
+export const KIOSK_ASSEMBLY_PROCEDURE_DOCUMENT_EDIT_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/procedure-documents`;
+
+export function kioskAssemblyProcedureDocumentEditPath(documentId: string): string {
+  return `${KIOSK_ASSEMBLY_PROCEDURE_DOCUMENT_EDIT_PATH}/${encodeURIComponent(documentId)}/edit`;
+}
 
 export function kioskAssemblyTraceabilityPath(params?: { workId?: string | null }): string {
   const workId = params?.workId?.trim();

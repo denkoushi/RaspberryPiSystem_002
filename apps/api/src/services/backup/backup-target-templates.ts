@@ -58,6 +58,19 @@ const templates: BackupTargetTemplate[] = [
       storage: { provider: 'dropbox' },
       retention: { days: 14, maxBackups: 4 }
     }
+  },
+  {
+    id: 'assembly-procedure-assets-dir',
+    label: '組立手順書assetストレージ',
+    description: '/app/storage/assembly-procedure-assets を日次バックアップ（原本・overlay）',
+    target: {
+      kind: 'directory',
+      source: '/app/storage/assembly-procedure-assets',
+      schedule: '0 2 * * *',
+      enabled: true,
+      storage: { provider: 'dropbox' },
+      retention: { days: 14, maxBackups: 4 }
+    }
   }
 ];
 

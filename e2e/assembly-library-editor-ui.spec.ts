@@ -710,6 +710,7 @@ test('guided assembly workflow moves from preview to publish, create, save, and 
   const previewDialog = page.getByRole('dialog', { name: /手順書の内容確認/ });
   await expect(previewDialog).toBeVisible();
   await expect(previewDialog.getByText('1ページ目')).toBeVisible();
+  await previewDialog.getByLabel('手順書公開の管理パスワード').fill('2520');
   await previewDialog.getByRole('button', { name: '確認して公開' }).click();
   await expect(previewDialog.getByRole('button', { name: 'この手順書でテンプレートを新規作成' })).toBeVisible();
   await previewDialog.getByRole('button', { name: 'この手順書でテンプレートを新規作成' }).click();

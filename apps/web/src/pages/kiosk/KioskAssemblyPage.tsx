@@ -136,8 +136,8 @@ export function KioskAssemblyPage() {
     setTemplateRefreshToken((token) => token + 1);
   }, []);
 
-  const handleProcedurePublish = useCallback(async (document: AssemblyProcedureDocumentDto) => {
-    const published = await publishAssemblyProcedureDocument(document.id);
+  const handleProcedurePublish = useCallback(async (document: AssemblyProcedureDocumentDto, accessPassword: string) => {
+    const published = await publishAssemblyProcedureDocument({ id: document.id, accessPassword });
     setProcedureMessage(`手順書「${published.name}」を公開しました。内容確認済みです。`);
     setLibraryRefreshToken((token) => token + 1);
     setTemplateRefreshToken((token) => token + 1);

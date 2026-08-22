@@ -8,6 +8,18 @@
   any_errors_fatal: true
   tags:
     - torque-cutover
+  pre_tasks:
+    - name: Require explicit staging deployment enablement
+      tags:
+        - always
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (staging_environment | default(false) | bool) or
+            (staging_deploy_enabled | default(false) | bool)
+        fail_msg: >-
+          staging_deploy_enabled must be explicitly enabled in private staging
+          variables before this mutation playbook can run.
   tasks:
     - name: Pull and verify Pi5 candidates without starting them
       block:
@@ -23,6 +35,7 @@
         - name: Stop before kiosk mutation after Pi5 PREPARED failure
           ansible.builtin.fail:
             msg: Pi5 PREPARED failed before any torque endpoint was stopped.
+      when: not (staging_environment | default(false) | bool)
 
 - name: Stage every selected torque kiosk while current services remain unchanged
   hosts: kiosk
@@ -31,11 +44,24 @@
   ignore_unreachable: true
   tags:
     - torque-cutover
+  pre_tasks:
+    - name: Require explicit staging deployment enablement
+      tags:
+        - always
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (staging_environment | default(false) | bool) or
+            (staging_deploy_enabled | default(false) | bool)
+        fail_msg: >-
+          staging_deploy_enabled must be explicitly enabled in private staging
+          variables before this mutation playbook can run.
   tasks:
     - name: Prepare this kiosk without quiescing it
       ansible.builtin.include_role:
         name: release_torque_cutover
         tasks_from: prepared-kiosk
+      when: not (staging_environment | default(false) | bool)
 
 - name: Aggregate PREPARED before any torque endpoint stops
   hosts: kiosk
@@ -48,6 +74,7 @@
       ansible.builtin.include_role:
         name: release_torque_cutover
         tasks_from: prepared-finalize
+      when: not (staging_environment | default(false) | bool)
 
 - name: Finalize PREPARED and clean Pi5 candidates on shared failure
   hosts: server
@@ -62,6 +89,7 @@
       ansible.builtin.include_role:
         name: release_torque_cutover
         tasks_from: prepared-control-plane
+      when: not (staging_environment | default(false) | bool)
 
 - name: Quiesce all selected torque ownership endpoints before the API changes
   hosts: kiosk
@@ -75,6 +103,7 @@
       ansible.builtin.include_role:
         name: release_torque_cutover
         tasks_from: quiesce-kiosk
+      when: not (staging_environment | default(false) | bool)
 
 - name: Aggregate QUIESCED and restore all reachable kiosks on shared failure
   hosts: kiosk
@@ -88,6 +117,7 @@
       ansible.builtin.include_role:
         name: release_torque_cutover
         tasks_from: quiesce-finalize
+      when: not (staging_environment | default(false) | bool)
 
 - name: Finalize QUIESCED before changing the control plane
   hosts: server
@@ -102,6 +132,7 @@
       ansible.builtin.include_role:
         name: release_torque_cutover
         tasks_from: quiesce-control-plane
+      when: not (staging_environment | default(false) | bool)
 
 - name: Prepare and switch the Pi5 control plane
   hosts: server
@@ -140,6 +171,7 @@
       ansible.builtin.include_role:
         name: release_torque_cutover
         tasks_from: finalize
+      when: not (staging_environment | default(false) | bool)
 
 - name: Switch the prepared Pi3 Signage artifact
   hosts: signage

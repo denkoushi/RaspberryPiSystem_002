@@ -1,0 +1,65 @@
+# Copy this file to the ignored vault.yml, replace every value, and encrypt it
+# with the repository's standard .vault-pass flow. SSH identity is direct here,
+# not an indirect group variable, so the launcher can validate the exact target.
+ansible_host: staging-pi4-kiosk01.example.invalid
+ansible_user: __SET_STAGING_SSH_USER__
+deploy_executor_host: staging-pi5.example.invalid
+staging_management_networks:
+  - REPLACE_WITH_STAGING_TAILSCALE_CIDR
+staging_deploy_enabled: false
+
+# Keep the kiosk's API/WebSocket origins direct and derived from the same
+# staging Pi5 MagicDNS name used by the server's private host vars.
+server_ip: staging-pi5.example.invalid
+kiosk_ip: staging-pi4-kiosk01.example.invalid
+server_base_url: https://staging-pi5.example.invalid
+kiosk_full_url: https://staging-pi5.example.invalid/kiosk
+api_base_url: https://staging-pi5.example.invalid/api
+haizen_agent_api_base_url: https://staging-pi5.example.invalid
+websocket_agent_url: ws://staging-pi5.example.invalid:7071/stream
+api_healthcheck_url: https://staging-pi5.example.invalid/api/system/health
+status_agent_api_base_url: https://staging-pi5.example.invalid/api
+nfc_agent_api_base_url: https://staging-pi5.example.invalid/api
+docker_server_ip: staging-pi5.example.invalid
+web_agent_ws_url: ws://staging-pi5.example.invalid:7071/stream
+web_barcode_agent_ws_url: ws://staging-pi5.example.invalid:7072/stream
+signage_ip: ''
+local_network:
+  raspberrypi5_ip: staging-pi5.example.invalid
+  raspberrypi4_ip: staging-pi4-kiosk01.example.invalid
+  raspberrypi3_ip: ''
+  raspi4_robodrill01_ip: ''
+  raspi4_fjv60_80_ip: ''
+  raspi4_kensaku_stonebase01_ip: ''
+  raspi4_sessaku_01_ip: ''
+  raspi4_assembly_01_ip: ''
+tailscale_network:
+  raspberrypi5_ip: staging-pi5.example.invalid
+  raspberrypi4_ip: staging-pi4-kiosk01.example.invalid
+  raspberrypi3_ip: ''
+  raspi4_robodrill01_ip: ''
+  raspi4_fjv60_80_ip: ''
+  raspi4_kensaku_stonebase01_ip: ''
+  raspi4_sessaku_01_ip: ''
+  raspi4_assembly_01_ip: ''
+current_network:
+  raspberrypi5_ip: staging-pi5.example.invalid
+  raspberrypi4_ip: staging-pi4-kiosk01.example.invalid
+  raspberrypi3_ip: ''
+  raspi4_robodrill01_ip: ''
+  raspi4_fjv60_80_ip: ''
+  raspi4_kensaku_stonebase01_ip: ''
+  raspi4_sessaku_01_ip: ''
+  raspi4_assembly_01_ip: ''
+ufw_ssh_allowed_networks:
+  - REPLACE_WITH_STAGING_TAILSCALE_CIDR
+admin_allow_nets:
+  - REPLACE_WITH_STAGING_TAILSCALE_CIDR
+  - 127.0.0.1/32
+ufw_vnc_allowed_networks:
+  - REPLACE_WITH_STAGING_TAILSCALE_CIDR
+
+# Replace with staging-only encrypted values. Never copy production secrets.
+tailscale_auth_key: REPLACE_WITH_STAGING_TAILSCALE_AUTH_KEY
+status_agent_client_key: REPLACE_WITH_STAGING_STATUS_AGENT_KEY
+nfc_agent_client_secret: REPLACE_WITH_STAGING_NFC_SECRET

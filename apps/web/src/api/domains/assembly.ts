@@ -5,6 +5,8 @@ import type {
   AssemblyCheckSummaryDto,
   AssemblyProcedureDocumentDto,
   AssemblyProcedureDocumentSummaryDto,
+  AssemblyProcedureOverlayAssetDto,
+  AssemblyProcedureTextCandidateDto,
   AssemblyProcedureGmailImportResultDto,
   AssemblyProcedureSequenceDto,
   AssemblyLotCreateInput,
@@ -24,6 +26,7 @@ import type {
   AssemblyWorkUnitInvalidationDto,
   AssemblyWorkUnitInvalidationInput,
 } from '../../features/assembly/types';
+import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
 export async function listAssemblySeibanCandidates(params: { prefix: string; limit?: number }) {
   const qs = new URLSearchParams({ prefix: params.prefix });
@@ -95,6 +98,103 @@ export async function listAssemblyProcedureDocuments(params?: { q?: string; incl
   return data.documents;
 }
 
+export async function getAssemblyProcedureDocument(id: string) {
+  const { data } = await api.get<{ document: AssemblyProcedureDocumentDto }>(
+    `/assembly/procedure-documents/${encodeURIComponent(id)}`
+  );
+  return data.document;
+}
+
+export async function createAssemblyProcedureDocumentRevision(id: string, accessPassword: string) {
+  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(
+    `/assembly/procedure-documents/${encodeURIComponent(id)}/revisions`,
+    { accessPassword }
+  );
+  return data.document;
+}
+
+export async function saveAssemblyProcedureDocumentOverlays(input: {
+  id: string;
+  accessPassword: string;
+  expectedEditVersion: number;
+  elements: AssemblyProcedureOverlayElement[];
+}) {
+  const { data } = await api.put<{ document: AssemblyProcedureDocumentDto }>(
+    `/assembly/procedure-documents/${encodeURIComponent(input.id)}/overlays`,
+    {
+      accessPassword: input.accessPassword,
+      expectedEditVersion: input.expectedEditVersion,
+      elements: input.elements
+    }
+  );
+  return data.document;
+}
+
+export async function uploadAssemblyProcedureOverlayImage(input: {
+  id: string;
+  accessPassword: string;
+  file: File;
+}) {
+  const formData = new FormData();
+  formData.append('accessPassword', input.accessPassword);
+  formData.append('file', input.file);
+  const { data } = await api.post<{ asset: AssemblyProcedureOverlayAssetDto }>(
+    `/assembly/procedure-documents/${encodeURIComponent(input.id)}/assets`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return data.asset;
+}
+
+export async function createAssemblyProcedureImageRegion(input: {
+  id: string;
+  accessPassword: string;
+  pageIndex: number;
+  bbox: AssemblyProcedureOverlayElement['bbox'];
+}) {
+  const { data } = await api.post<{ asset: AssemblyProcedureOverlayAssetDto }>(
+    `/assembly/procedure-documents/${encodeURIComponent(input.id)}/regions/image`,
+    {
+      accessPassword: input.accessPassword,
+      pageIndex: input.pageIndex,
+      bbox: input.bbox
+    }
+  );
+  return data.asset;
+}
+
+export async function findAssemblyProcedureTextCandidates(input: {
+  id: string;
+  accessPassword: string;
+  pageIndex: number;
+  bbox: AssemblyProcedureOverlayElement['bbox'];
+}) {
+  const { data } = await api.post<{ candidates: AssemblyProcedureTextCandidateDto[] }>(
+    `/assembly/procedure-documents/${encodeURIComponent(input.id)}/regions/text`,
+    {
+      accessPassword: input.accessPassword,
+      pageIndex: input.pageIndex,
+      bbox: input.bbox
+    }
+  );
+  return data.candidates;
+}
+
+export async function discardAssemblyProcedureDocumentRevision(input: {
+  id: string;
+  accessPassword: string;
+  expectedEditVersion?: number;
+}) {
+  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(
+    `/assembly/procedure-documents/${encodeURIComponent(input.id)}/discard-revision`,
+    {
+      accessPassword: input.accessPassword,
+      expectedEditVersion: input.expectedEditVersion
+    }
+  );
+  return data.document;
+}
+
 export async function listAssemblyProcedureDocumentSummaries(params?: {
   q?: string;
   includeInactive?: boolean;
@@ -149,9 +249,17 @@ export async function deleteAssemblyProcedureDocument(id: string) {
   await api.delete(`/assembly/procedure-documents/${id}`);
 }
 
-export async function publishAssemblyProcedureDocument(id: string) {
+export async function publishAssemblyProcedureDocument(input: {
+  id: string;
+  accessPassword: string;
+  expectedEditVersion?: number;
+}) {
   const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(
-    `/assembly/procedure-documents/${id}/publish`
+    `/assembly/procedure-documents/${encodeURIComponent(input.id)}/publish`,
+    {
+      accessPassword: input.accessPassword,
+      expectedEditVersion: input.expectedEditVersion
+    }
   );
   return data.document;
 }

@@ -1,5 +1,13 @@
 \set ON_ERROR_STOP on
 
+-- Existing production/CI callers historically supplied only password
+-- variables. Preserve their fixed database while staging renders an explicit,
+-- validated identifier before psql receives this file.
+\if :{?database_name}
+\else
+  \set database_name borrow_return
+\endif
+
 SELECT format(
   'CREATE ROLE raspi_migrator LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
   :'migration_password'
@@ -27,7 +35,7 @@ SELECT format(
 \gexec
 
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-ALTER DATABASE borrow_return OWNER TO raspi_migrator;
+ALTER DATABASE :"database_name" OWNER TO raspi_migrator;
 ALTER SCHEMA public OWNER TO raspi_migrator;
 
 DO $$
@@ -93,7 +101,7 @@ BEGIN
 END
 $$;
 
-GRANT CONNECT ON DATABASE borrow_return TO raspi_app;
+GRANT CONNECT ON DATABASE :"database_name" TO raspi_app;
 GRANT USAGE ON SCHEMA public TO raspi_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO raspi_app;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO raspi_app;

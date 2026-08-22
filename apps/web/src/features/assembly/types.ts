@@ -1,8 +1,36 @@
+import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
+
+export type AssemblyProcedureOverlayAssetDto = {
+  assetId: string;
+  storageKey: string;
+  contentType: string;
+  byteSize: number;
+  url?: string;
+  relativeUrl?: string;
+  sha256?: string;
+  kind?: 'OVERLAY_IMAGE';
+};
+
+export type AssemblyProcedureTextCandidateDto = {
+  text: string;
+  confidence: number | null;
+  bounds: {
+    xRatio: number;
+    yRatio: number;
+    widthRatio: number;
+    heightRatio: number;
+  } | null;
+  pageIndex: number | null;
+  source: 'coordinate-ocr' | 'poppler' | 'none' | string;
+};
+
 export type AssemblyProcedureDocumentStatusDto = 'draft' | 'published';
 
 export type AssemblyProcedureDocumentPageDto = {
   pageIndex: number;
   imageRelativePath: string;
+  assetId?: string | null;
+  overlays?: AssemblyProcedureOverlayElement[];
 };
 
 export type AssemblyProcedureDocumentDto = {
@@ -12,6 +40,13 @@ export type AssemblyProcedureDocumentDto = {
   status: AssemblyProcedureDocumentStatusDto;
   publishedAt: string | null;
   isActive: boolean;
+  revisionRootId?: string | null;
+  revisionNumber?: number;
+  supersedesDocumentId?: string | null;
+  isRevisionHead?: boolean;
+  editVersion?: number;
+  sourceAssetId?: string | null;
+  assets?: Record<string, AssemblyProcedureOverlayAssetDto>;
   pages: AssemblyProcedureDocumentPageDto[];
   createdAt: string;
   updatedAt: string;
@@ -381,6 +416,7 @@ export type AssemblyProcedureSequencePageDto = {
   documentId: string;
   pageIndex: number;
   pageUrl: string;
+  overlays?: AssemblyProcedureOverlayElement[];
 };
 
 export type AssemblyProcedureStepSourceDto = 'template_steps' | 'document_expansion';
@@ -425,6 +461,8 @@ export type AssemblyProcedureSequenceDocumentDto = {
   updatedAt: string;
   pageUrls: string[];
   pages: AssemblyProcedureSequencePageDto[];
+  overlays?: AssemblyProcedureOverlayElement[];
+  assets?: Record<string, AssemblyProcedureOverlayAssetDto>;
 };
 
 export type AssemblyProcedureSequenceDto = {

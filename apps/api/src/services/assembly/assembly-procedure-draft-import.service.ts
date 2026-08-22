@@ -4,6 +4,10 @@ import {
   AssemblyProcedureDocumentService,
   type AssemblyProcedureDocumentRecord
 } from './assembly-procedure-document.service.js';
+import type {
+  AssemblyProcedureAssetStoragePort
+} from '../assembly-procedure-assets/assembly-procedure-asset-storage.port.js';
+import { getAssemblyProcedureAssetStorage } from '../assembly-procedure-assets/local-assembly-procedure-asset-storage.adapter.js';
 
 export type AssemblyProcedureDraftSource =
   | {
@@ -17,7 +21,8 @@ export type AssemblyProcedureDraftSource =
 
 export class AssemblyProcedureDraftImportService {
   constructor(
-    private readonly procedureService = new AssemblyProcedureDocumentService()
+    private readonly procedureService = new AssemblyProcedureDocumentService(),
+    private readonly assetStorage: AssemblyProcedureAssetStoragePort = getAssemblyProcedureAssetStorage()
   ) {}
 
   async importDraft(params: {
@@ -27,16 +32,24 @@ export class AssemblyProcedureDraftImportService {
     filename: string;
     source?: AssemblyProcedureDraftSource;
   }): Promise<AssemblyProcedureDocumentRecord> {
-    const imported = await importAssemblyProcedureDocumentPagesAndSave({
-      buffer: params.buffer,
-      mimetype: params.mimetype,
-      filename: params.filename
-    });
+    const imported = await importAssemblyProcedureDocumentPagesAndSave(
+      {
+        buffer: params.buffer,
+        mimetype: params.mimetype,
+        filename: params.filename
+      },
+      { storage: this.assetStorage }
+    );
     try {
       return await this.procedureService.create({
         name: params.name,
         pages: imported.pages.map((page) => ({ imageRelativePath: page.imageRelativePath })),
-        source: params.source
+        source: params.source,
+        sourceAsset: {
+          ...imported.sourceAsset,
+          kind: 'SOURCE',
+          originalFileName: params.filename
+        }
       });
     } catch (error) {
       await Promise.all(
@@ -44,6 +57,7 @@ export class AssemblyProcedureDraftImportService {
           AssemblyProcedureImageStorage.deleteImage(page.imageRelativePath).catch(() => undefined)
         )
       );
+      await this.assetStorage.delete(imported.sourceAsset).catch(() => undefined);
       throw error;
     }
   }

@@ -13,9 +13,9 @@
       - postgres_superuser_password is defined
       - postgres_superuser_password | length >= 16
       - app_database_url is defined
-      - app_database_url is match('^postgresql://raspi_app:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+      - app_database_url is match('^postgresql://raspi_app:[^@]+@db:5432/' ~ (app_database_name | default('borrow_return')) ~ '(?:[?].*)?$')
       - migration_database_url is defined
-      - migration_database_url is match('^postgresql://raspi_migrator:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+      - migration_database_url is match('^postgresql://raspi_migrator:[^@]+@db:5432/' ~ (app_database_name | default('borrow_return')) ~ '(?:[?].*)?$')
     fail_msg: >-
       Dedicated PostgreSQL superuser, application, and migration inputs are
       required and must use the fixed production roles and Docker endpoint.
@@ -94,11 +94,12 @@
   loop:
     - "{{ repo_path }}/storage"
     - "{{ repo_path }}/storage/part-measurement-drawings-derivatives"
+    - "{{ repo_path }}/storage/assembly-procedure-assets"
     - "{{ repo_path }}/alerts"
     - "{{ repo_path }}/power-actions"
     - "{{ repo_path }}/config"
-    - /opt/backups
-    - /var/log/caddy
+    - "{{ pi5_backup_dir }}"
+    - "{{ pi5_caddy_log_dir }}"
 
 - name: Verify existing Pi5 writable trees are ready for the non-root runtime
   ansible.builtin.shell: |
@@ -108,8 +109,8 @@
       {{ repo_path | quote }}/alerts \
       {{ repo_path | quote }}/power-actions \
       {{ repo_path | quote }}/config \
-      /opt/backups \
-      /var/log/caddy; do
+      {{ pi5_backup_dir | quote }} \
+      {{ pi5_caddy_log_dir | quote }}; do
       test -d "${runtime_path}"
       test -r "${runtime_path}" && test -w "${runtime_path}" && test -x "${runtime_path}"
       blocked="$(find "${runtime_path}" -type d \( ! -readable -o ! -writable -o ! -executable \) -print -quit)"
@@ -381,6 +382,14 @@
 - name: Ensure assembly procedure image storage directory exists
   ansible.builtin.file:
     path: "{{ repo_path }}/storage/assembly-procedure-images"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+
+- name: Ensure assembly procedure asset storage directory exists
+  ansible.builtin.file:
+    path: "{{ repo_path }}/storage/assembly-procedure-assets"
     state: directory
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"

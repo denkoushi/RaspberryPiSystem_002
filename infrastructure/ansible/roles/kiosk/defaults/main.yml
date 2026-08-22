@@ -1,5 +1,5 @@
 ---
-repo_path: /opt/RaspberryPiSystem_002
+repo_path: "{{ project_root | default('/opt/RaspberryPiSystem_002') }}"
 
 # Browser launch defaults (host override via inventory)
 kiosk_browser_engine: "chromium"

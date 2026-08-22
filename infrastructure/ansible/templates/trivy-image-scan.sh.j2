@@ -11,12 +11,15 @@ WEBHOOK_TIMEOUT_SECONDS="${WEBHOOK_TIMEOUT_SECONDS:-{{ alert_webhook_timeout_sec
 TIMESTAMP="$(date +%Y-%m-%dT%H:%M:%S)"
 echo "[$TIMESTAMP] Starting Trivy image scan..." >> "${LOG_FILE}"
 
-PROJECT_DIR="/opt/RaspberryPiSystem_002"
+PROJECT_DIR="{{ pi5_project_dir | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}"
 COMPOSE_FILE="${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml"
+COMPOSE_PROJECT="{{ pi5_base_compose_project | default('docker') }}"
+COMPOSE_ENV_FILE="${PROJECT_DIR}/infrastructure/docker/.env"
+COMPOSE_ARGS=(--project-name "${COMPOSE_PROJECT}" --env-file "${COMPOSE_ENV_FILE}" -f "${COMPOSE_FILE}")
 
 # Dockerイメージを取得（docker compose imagesで確認）
-API_IMAGE=$(docker compose -f "${COMPOSE_FILE}" images api --format json 2>/dev/null | jq -r '.[0].Repository + ":" + .[0].Tag' || echo "")
-WEB_IMAGE=$(docker compose -f "${COMPOSE_FILE}" images web --format json 2>/dev/null | jq -r '.[0].Repository + ":" + .[0].Tag' || echo "")
+API_IMAGE=$(docker compose "${COMPOSE_ARGS[@]}" images api --format json 2>/dev/null | jq -r '.[0].Repository + ":" + .[0].Tag' || echo "")
+WEB_IMAGE=$(docker compose "${COMPOSE_ARGS[@]}" images web --format json 2>/dev/null | jq -r '.[0].Repository + ":" + .[0].Tag' || echo "")
 
 if [[ -z "${API_IMAGE}" ]] && [[ -z "${WEB_IMAGE}" ]]; then
   echo "[$TIMESTAMP] No Docker images found. Skipping image scan." >> "${LOG_FILE}"

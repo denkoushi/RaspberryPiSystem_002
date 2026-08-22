@@ -148,10 +148,11 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
   }, [procedureSteps, selectedStepId]);
 
   const selectedDocument = useMemo(
-    () =>
-      input.documents.find((document) => document.id === selectedDocumentId) ??
-      input.loadedTemplate?.procedureDocument ??
-      null,
+    () => {
+      const loadedProcedureDocument = input.loadedTemplate?.procedureDocument;
+      if (loadedProcedureDocument?.id === selectedDocumentId) return loadedProcedureDocument;
+      return input.documents.find((document) => document.id === selectedDocumentId) ?? loadedProcedureDocument ?? null;
+    },
     [
       input.documents,
       input.loadedTemplate?.procedureDocument,

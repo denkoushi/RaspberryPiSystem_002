@@ -42,6 +42,9 @@ FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 RUN_ID = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
 SAFE_BRANCH = re.compile(r"^(?![-./])(?!.*(?:\.\.|//|@\{|\.lock(?:/|$)))[A-Za-z0-9_./-]{1,255}$")
 SAFE_USER = re.compile(r"^[a-z_][a-z0-9_-]{0,30}$")
+SAFE_REMOTE_ROOT = re.compile(
+    r"^/opt/RaspberryPiSystem_002(?:-[A-Za-z0-9][A-Za-z0-9._-]*)?$"
+)
 PROFILES = ("pi5", "pi4", "pi3")
 PROFILE_GROUP = {"pi5": "server", "pi4": "kiosk", "pi3": "signage"}
 TORQUE_CUTOVER_SERVICE = "torque-agent"
@@ -444,6 +447,17 @@ def server_connection(document: dict[str, Any]) -> tuple[str, str, int]:
     return host, user, port
 
 
+def server_release_root(document: dict[str, Any]) -> Path:
+    hosts = document.get("server", {}).get("hosts", [])
+    if not isinstance(hosts, list) or len(hosts) != 1:
+        raise UsageError("inventory must contain exactly one Pi5 server executor")
+    values = document.get("_meta", {}).get("hostvars", {}).get(hosts[0], {})
+    value = values.get("release_remote_root", str(REMOTE_ROOT))
+    if not isinstance(value, str) or not SAFE_REMOTE_ROOT.fullmatch(value):
+        raise UsageError("Pi5 release remote root is unresolved or malformed")
+    return Path(value)
+
+
 def resolve_sha(branch: str) -> str:
     output = run(["git", "ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"]).stdout.splitlines()
     if len(output) != 1 or not FULL_SHA.fullmatch(output[0].split()[0]):
@@ -503,7 +517,14 @@ def ansible_argv(
     return command
 
 
-def plan(args: argparse.Namespace, sha: str, inventory: Path, relative: str, selection: tuple[tuple[str, tuple[str, ...]], ...]) -> dict[str, Any]:
+def plan(
+    args: argparse.Namespace,
+    sha: str,
+    inventory: Path,
+    relative: str,
+    selection: tuple[tuple[str, tuple[str, ...]], ...],
+    remote_root: Path = REMOTE_ROOT,
+) -> dict[str, Any]:
     profiles = tuple(item[0] for item in selection)
     torque_cutover = bool(getattr(args, "torque_cutover", False))
     build_hash = config_hash(sha, inventory) if "pi5" in profiles else ""
@@ -521,7 +542,7 @@ def plan(args: argparse.Namespace, sha: str, inventory: Path, relative: str, sel
         )
     for listing in ("--list-hosts", "--list-tasks"):
         run(ansible_argv(str(inventory), args.limit, profiles, variables, listing, torque_cutover=torque_cutover), env=ansible_environment())
-    result = {"schemaVersion": 1, "branch": args.branch, "releaseSha": sha, "inventory": relative, "limit": args.limit or None, "fullFleet": args.full_fleet, "executionOrder": [{"profile": profile, "hosts": list(hosts), "images": images[profile]} for profile, hosts in selection]}
+    result = {"schemaVersion": 1, "branch": args.branch, "releaseSha": sha, "inventory": relative, "limit": args.limit or None, "fullFleet": args.full_fleet, "remoteRoot": str(remote_root), "executionOrder": [{"profile": profile, "hosts": list(hosts), "images": images[profile]} for profile, hosts in selection]}
     if torque_cutover:
         result["artifactResolution"] = (
             "signed-release-set-v2-before-service-quiesce"
@@ -553,21 +574,28 @@ def ssh_argv(host: str, user: str, port: int, remote: Sequence[str]) -> list[str
     return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-p", str(port), f"{user}@{host}", shlex.join(remote)]
 
 
-def remote_script(args: argparse.Namespace, sha: str, run_id: str, relative: str, profiles: tuple[str, ...]) -> str:
+def remote_script(
+    args: argparse.Namespace,
+    sha: str,
+    run_id: str,
+    relative: str,
+    profiles: tuple[str, ...],
+    remote_root: Path = REMOTE_ROOT,
+) -> str:
     internal = ["python3", "scripts/deploy/standard-ansible-release.py", "--execute-standard-route", "--branch", args.branch, "--inventory", relative, "--sha", sha, "--run-id", run_id, "--profiles", ",".join(profiles)]
     if getattr(args, "torque_cutover", False):
         internal.append("--torque-cutover")
     internal.extend(["--limit", args.limit] if args.limit else ["--full-fleet"])
-    return "\n".join(("set -euo pipefail", f"cd {shlex.quote(str(REMOTE_ROOT))}", "mkdir -p logs/deploy", "exec 9>>logs/deploy/fleet-release-state.lock", "/usr/bin/flock -n 9 || { echo 'another fleet release is running' >&2; exit 75; }", "test -z \"$(git status --porcelain)\"", f"git fetch --no-tags origin {shlex.quote(args.branch)}", f"test \"$(git rev-parse FETCH_HEAD)\" = {shlex.quote(sha)}", f"git checkout --detach {shlex.quote(sha)}", f"test \"$(git rev-parse HEAD)\" = {shlex.quote(sha)}", "test -z \"$(git status --porcelain)\"", f"exec {shlex.join(internal)}"))
+    return "\n".join(("set -euo pipefail", f"cd {shlex.quote(str(remote_root))}", "mkdir -p logs/deploy", "exec 9>>logs/deploy/fleet-release-state.lock", "/usr/bin/flock -n 9 || { echo 'another fleet release is running' >&2; exit 75; }", "test -z \"$(git status --porcelain)\"", f"git fetch --no-tags origin {shlex.quote(args.branch)}", f"test \"$(git rev-parse FETCH_HEAD)\" = {shlex.quote(sha)}", f"git checkout --detach {shlex.quote(sha)}", f"test \"$(git rev-parse HEAD)\" = {shlex.quote(sha)}", "test -z \"$(git status --porcelain)\"", f"exec {shlex.join(internal)}"))
 
 
-def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str, profiles: tuple[str, ...], user: str) -> list[str]:
-    command = ["/usr/bin/sudo", "-n", "/usr/bin/systemd-run", "--quiet", f"--unit={unit_name(run_id)}", f"--uid={user}", f"--setenv=HOME=/home/{user}", f"--setenv=USER={user}", f"--setenv=LOGNAME={user}", "--setenv=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "--property=Type=exec", f"--property=WorkingDirectory={REMOTE_ROOT}", "--property=KillMode=control-group", "--property=Restart=no", "--property=UMask=0077", "--property=StandardOutput=journal", "--property=StandardError=journal"]
+def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str, profiles: tuple[str, ...], user: str, remote_root: Path = REMOTE_ROOT) -> list[str]:
+    command = ["/usr/bin/sudo", "-n", "/usr/bin/systemd-run", "--quiet", f"--unit={unit_name(run_id)}", f"--uid={user}", f"--setenv=HOME=/home/{user}", f"--setenv=USER={user}", f"--setenv=LOGNAME={user}", "--setenv=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "--property=Type=exec", f"--property=WorkingDirectory={remote_root}", "--property=KillMode=control-group", "--property=Restart=no", "--property=UMask=0077", "--property=StandardOutput=journal", "--property=StandardError=journal"]
     if args.detach:
         command.append("--property=RemainAfterExit=yes")
     else:
         command.append("--wait")
-    command.extend(["--", "/bin/bash", "-lc", remote_script(args, sha, run_id, relative, profiles)])
+    command.extend(["--", "/bin/bash", "-lc", remote_script(args, sha, run_id, relative, profiles, remote_root)])
     return command
 
 
@@ -883,15 +911,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     complete = inventory_document(inventory)
     selected = complete if not args.limit else inventory_document(inventory, args.limit)
     selection = selected_profiles(selected)
+    remote_root = server_release_root(complete)
     if getattr(args, "torque_cutover", False):
         validate_torque_cutover_selection(selected, selection)
     if args.print_plan:
-        print(json.dumps(plan(args, sha, inventory, relative, selection), ensure_ascii=False, indent=2))
+        print(json.dumps(plan(args, sha, inventory, relative, selection, remote_root), ensure_ascii=False, indent=2))
         return 0
     host, user, port = server_connection(complete)
     run_id = new_run_id()
     profiles = tuple(item[0] for item in selection)
-    result = run(ssh_argv(host, user, port, systemd_argv(args, sha, run_id, relative, profiles, user)), check=False)
+    result = run(ssh_argv(host, user, port, systemd_argv(args, sha, run_id, relative, profiles, user, remote_root)), check=False)
     status_command = shlex.join(["scripts/update-all-clients.sh", "--status", run_id, "--inventory", relative])
     print(json.dumps({"runId": run_id, "unit": unit_name(run_id), "detached": args.detach, "statusCommand": status_command}))
     if result.stdout:

@@ -76,9 +76,13 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
         self.assertIn("become_user: \"{{ ansible_user }}\"", SERVER_ROLE)
         self.assertIn("pi5_runtime_permission_migration_approved | bool", PERMISSION_MIGRATION)
         self.assertIn("recurse: true", PERMISSION_MIGRATION)
-        for path in ("storage", "alerts", "power-actions", "config", "/opt/backups", "/var/log/caddy"):
+        for path in ("storage", "alerts", "power-actions", "config"):
             self.assertIn(path, SERVER_ROLE)
             self.assertIn(path, PERMISSION_MIGRATION)
+        for path in ("{{ pi5_backup_dir }}", "{{ pi5_caddy_log_dir }}"):
+            self.assertIn(path, SERVER_ROLE)
+        for variable in ("pi5_runtime_backup_dir", "pi5_runtime_caddy_log_dir"):
+            self.assertIn(variable, PERMISSION_MIGRATION)
 
     def test_admin_routes_require_an_explicit_allowlist_in_every_runtime(self):
         for compose in (SERVER, PHASE3):

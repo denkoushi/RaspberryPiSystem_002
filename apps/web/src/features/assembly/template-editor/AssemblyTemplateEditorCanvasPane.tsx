@@ -1,6 +1,7 @@
 import { AssemblyProcedureCanvas } from '../AssemblyProcedureCanvas';
 import { AssemblyProcedureCropView } from '../AssemblyProcedureCropView';
 import { AssemblyProcedureMarkerLayer } from '../AssemblyProcedureMarkerLayer';
+import { AssemblyProcedureOverlayLayer } from '../AssemblyProcedureOverlayLayer';
 
 import { AssemblyTemplateEditorCanvasToolbar } from './AssemblyTemplateEditorCanvasToolbar';
 import { useAssemblyTemplateEditor } from './AssemblyTemplateEditorContext';
@@ -33,6 +34,12 @@ export function AssemblyTemplateEditorCanvasPane() {
     visibleBolts,
     visibleCheckItems
   } = useAssemblyTemplateEditor();
+  const selectedProcedurePage =
+    selectedPage?.source === 'assembly_procedure_document' &&
+    selectedPage.documentId === selectedDocument?.id
+      ? selectedDocument.pages.find((page) => page.pageIndex === selectedPage.pageIndex)
+      : null;
+  const procedureOverlay = selectedProcedurePage?.overlays ?? [];
   return (
   <section
     data-testid="assembly-unified-editor-canvas-pane"
@@ -47,14 +54,21 @@ export function AssemblyTemplateEditorCanvasPane() {
             crop={selectedStep.crop}
             className="h-full w-full"
             overlay={
-              <AssemblyProcedureMarkerLayer
-                bolts={cropVisibleBolts}
-                checkItems={cropVisibleCheckItems}
-                selectedBoltId={selectedBoltId}
-                selectedCheckItemId={selectedCheckItemId}
-              onSelectBolt={selectBolt}
-              onSelectCheckItem={selectCheckItem}
-              />
+              <>
+                <AssemblyProcedureOverlayLayer
+                  elements={procedureOverlay}
+                  crop={selectedStep.crop}
+                  assets={selectedDocument?.assets}
+                />
+                <AssemblyProcedureMarkerLayer
+                  bolts={cropVisibleBolts}
+                  checkItems={cropVisibleCheckItems}
+                  selectedBoltId={selectedBoltId}
+                  selectedCheckItemId={selectedCheckItemId}
+                  onSelectBolt={selectBolt}
+                  onSelectCheckItem={selectCheckItem}
+                />
+              </>
             }
             onPlacementClick={
               readOnly ||
@@ -97,6 +111,12 @@ export function AssemblyTemplateEditorCanvasPane() {
         }
         placementMode={markerMode}
         placementAction={placementAction}
+        overlay={
+          <AssemblyProcedureOverlayLayer
+            elements={procedureOverlay}
+            assets={selectedDocument?.assets}
+          />
+        }
         zoom={canvasZoom.zoom}
         fitGeneration={canvasZoom.fitGeneration}
         className="h-full"

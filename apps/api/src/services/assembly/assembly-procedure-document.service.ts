@@ -3,19 +3,41 @@ import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
+import {
+  getAssemblyProcedureAssetGcService,
+  type AssemblyProcedureAssetGcService
+} from '../assembly-procedure-assets/index.js';
+import { collectAssemblyProcedureAssetIds } from './assembly-procedure-document-asset-lifecycle.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
+import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
 
 const procedureDocumentInclude = {
   pages: {
     orderBy: { pageIndex: 'asc' as const }
-  }
+  },
+  overlayElements: {
+    orderBy: [
+      { pageIndex: 'asc' as const },
+      { zIndex: 'asc' as const },
+      { createdAt: 'asc' as const }
+    ],
+    include: { asset: true }
+  },
+  revisionMetadata: true
+} satisfies Prisma.AssemblyProcedureDocumentInclude;
+
+const procedureDocumentListInclude = {
+  pages: {
+    orderBy: { pageIndex: 'asc' as const }
+  },
+  revisionMetadata: true
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
 
 export type AssemblyProcedureDocumentRecord = Prisma.AssemblyProcedureDocumentGetPayload<{
   include: typeof procedureDocumentInclude;
 }>;
 
-export type AssemblyProcedureDocumentSummary = AssemblyProcedureDocumentRecord & {
+export type AssemblyProcedureDocumentSummary = Omit<AssemblyProcedureDocumentRecord, 'overlayElements'> & {
   activeTemplateCount: number;
   totalTemplateCount: number;
 };
@@ -30,15 +52,38 @@ export type AssemblyProcedureDocumentReferenceUsage = {
   inActiveTemplateProcedureStep: boolean;
   inBoltPageRef: boolean;
   inCheckPageRef: boolean;
+  inRevisionHistory: boolean;
+};
+
+export type AssemblyProcedureAssetMetadata = {
+  kind?: 'SOURCE' | 'OVERLAY_IMAGE';
+  storageKey: string;
+  sha256: string;
+  byteSize?: number;
+  /** Compatibility with the physical storage port's `size` field. */
+  size?: number;
+  contentType: string;
+  originalFileName?: string | null;
+  width?: number | null;
+  height?: number | null;
 };
 
 export class AssemblyProcedureDocumentService {
   private includePages = procedureDocumentInclude;
+  private readonly accessService = new AssemblyTemplateAccessService();
+
+  constructor(
+    private readonly assetGc: AssemblyProcedureAssetGcService = getAssemblyProcedureAssetGcService()
+  ) {}
 
   async list(params: { includeInactive?: boolean; q?: string; limit?: number }): Promise<AssemblyProcedureDocumentRecord[]> {
     const q = params.q?.trim();
     return prisma.assemblyProcedureDocument.findMany({
       where: {
+        OR: [
+          { revisionMetadata: { is: null } },
+          { revisionMetadata: { is: { isRevisionHead: true } } }
+        ],
         ...(params.includeInactive ? {} : { isActive: true }),
         ...(q
           ? {
@@ -60,7 +105,22 @@ export class AssemblyProcedureDocumentService {
     q?: string;
     limit?: number;
   }): Promise<AssemblyProcedureDocumentSummary[]> {
-    const documents = await this.list(params);
+    const q = params.q?.trim();
+    const documents = await prisma.assemblyProcedureDocument.findMany({
+      where: {
+        OR: [
+          { revisionMetadata: { is: null } },
+          { revisionMetadata: { is: { isRevisionHead: true } } }
+        ],
+        ...(params.includeInactive ? {} : { isActive: true }),
+        ...(q
+          ? { name: { contains: q, mode: 'insensitive' } }
+          : {})
+      },
+      include: procedureDocumentListInclude,
+      orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+      take: Math.min(Math.max(params.limit ?? 100, 1), 200)
+    });
     const documentIds = documents.map((document) => document.id);
     if (documentIds.length === 0) return [];
 
@@ -138,7 +198,8 @@ export class AssemblyProcedureDocumentService {
 
   async create(params: {
     name: string;
-    pages: Array<{ imageRelativePath: string }>;
+    pages: Array<{ imageRelativePath: string; asset?: Omit<AssemblyProcedureAssetMetadata, 'kind'> & { kind?: 'SOURCE' } }>;
+    sourceAsset?: AssemblyProcedureAssetMetadata;
     source?: {
       sourceType: 'GMAIL';
       gmailMessageId: string;
@@ -159,33 +220,70 @@ export class AssemblyProcedureDocumentService {
         throw new ApiError(400, '組立手順書画像の保存パスが不正です');
       }
     }
+    const sourceAssetByteSize = params.sourceAsset
+      ? params.sourceAsset.byteSize ?? params.sourceAsset.size
+      : undefined;
+    if (params.sourceAsset && (!sourceAssetByteSize || sourceAssetByteSize <= 0)) {
+      throw new ApiError(400, '元assetサイズが不正です');
+    }
 
-    return prisma.assemblyProcedureDocument.create({
-      data: {
-        name: name.slice(0, 200),
-        imageRelativePath: params.pages[0]!.imageRelativePath,
-        status: 'DRAFT',
-        ...(params.source
-          ? {
-              source: {
-                create: {
-                  sourceType: params.source.sourceType,
-                  gmailMessageId: params.source.gmailMessageId,
-                  sourceAttachmentName: params.source.sourceAttachmentName,
-                  gmailInternalDateMs: BigInt(params.source.gmailInternalDateMs),
-                  gmailDedupeKey: params.source.gmailDedupeKey
+    return runAssemblyTransaction(async (tx) => {
+      const sourceAsset = params.sourceAsset
+        ? await tx.assemblyProcedureAsset.create({
+            data: {
+              kind: params.sourceAsset.kind ?? 'SOURCE',
+              storageKey: params.sourceAsset.storageKey,
+              sha256: params.sourceAsset.sha256,
+              byteSize: sourceAssetByteSize!,
+              contentType: params.sourceAsset.contentType,
+              originalFileName: params.sourceAsset.originalFileName ?? null,
+              width: params.sourceAsset.width ?? null,
+              height: params.sourceAsset.height ?? null
+            }
+          })
+        : null;
+      const document = await tx.assemblyProcedureDocument.create({
+        data: {
+          name: name.slice(0, 200),
+          imageRelativePath: params.pages[0]!.imageRelativePath,
+          status: 'DRAFT',
+          ...(params.source
+            ? {
+                source: {
+                  create: {
+                    sourceType: params.source.sourceType,
+                    gmailMessageId: params.source.gmailMessageId,
+                    sourceAttachmentName: params.source.sourceAttachmentName,
+                    gmailInternalDateMs: BigInt(params.source.gmailInternalDateMs),
+                    gmailDedupeKey: params.source.gmailDedupeKey
+                  }
                 }
               }
-            }
-          : {}),
-        pages: {
-          create: params.pages.map((page, pageIndex) => ({
-            pageIndex,
-            imageRelativePath: page.imageRelativePath
-          }))
+            : {}),
+          pages: {
+            create: params.pages.map((page, pageIndex) => ({
+              pageIndex,
+              imageRelativePath: page.imageRelativePath
+            }))
+          }
         }
-      },
-      include: this.includePages
+      });
+      await tx.assemblyProcedureDocumentRevision.create({
+        data: {
+          documentId: document.id,
+          revisionRootId: document.id,
+          revisionNumber: 1,
+          isRevisionHead: true,
+          editVersion: 0,
+          sourceAssetId: sourceAsset?.id ?? null
+        }
+      });
+      const result = await tx.assemblyProcedureDocument.findUnique({
+        where: { id: document.id },
+        include: this.includePages
+      });
+      if (!result) throw new ApiError(500, '手順書を取得できませんでした');
+      return result;
     });
   }
 
@@ -217,9 +315,42 @@ export class AssemblyProcedureDocumentService {
     }
   }
 
-  async publish(id: string): Promise<AssemblyProcedureDocumentRecord> {
+  async publish(
+    id: string,
+    options: { accessPassword?: string; expectedEditVersion?: number } = {}
+  ): Promise<AssemblyProcedureDocumentRecord> {
+    await this.accessService.requireAccessPassword(options.accessPassword);
     const doc = await this.getById(id, { includeInactive: true });
     if (!doc) throw new ApiError(404, '手順書が見つかりません');
+    if (doc.revisionMetadata) {
+      if (!doc.revisionMetadata.isRevisionHead || !doc.isActive || doc.status !== 'DRAFT') {
+        if (doc.status === 'PUBLISHED') return doc;
+        throw new ApiError(409, '最新版の改版下書きだけ公開できます');
+      }
+      return runAssemblyTransaction(async (tx) => {
+        const locked = await tx.$queryRaw<Array<{ editVersion: number; isRevisionHead: boolean; isActive: boolean; status: 'DRAFT' | 'PUBLISHED' }>>`
+          SELECT r."editVersion", r."isRevisionHead", d."isActive", d."status"
+          FROM "AssemblyProcedureDocument" d
+          JOIN "AssemblyProcedureDocumentRevision" r ON r."documentId" = d."id"
+          WHERE d."id" = ${id}
+          FOR UPDATE
+        `;
+        const current = locked[0];
+        if (!current) throw new ApiError(404, '手順書が見つかりません');
+        if (options.expectedEditVersion != null && options.expectedEditVersion !== current.editVersion) {
+          throw new ApiError(409, '手順書overlayが他の編集で更新されています', { currentEditVersion: current.editVersion }, 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT');
+        }
+        if (!current.isRevisionHead || !current.isActive || current.status !== 'DRAFT') {
+          throw new ApiError(409, '最新版の改版下書きだけ公開できます');
+        }
+        const updated = await tx.assemblyProcedureDocument.update({
+          where: { id },
+          data: { status: 'PUBLISHED', publishedAt: new Date() },
+          include: this.includePages
+        });
+        return updated;
+      });
+    }
     if (doc.status === 'PUBLISHED') return doc;
     return prisma.assemblyProcedureDocument.update({
       where: { id },
@@ -235,6 +366,15 @@ export class AssemblyProcedureDocumentService {
     const doc = await this.getById(id, { includeInactive: true });
     if (!doc) throw new ApiError(404, '手順書が見つかりません');
     if (doc.status === 'DRAFT') return doc;
+
+    // Once a row has revision metadata it is part of the immutable version
+    // history. Turning it back into a DRAFT would let callers edit a
+    // published revision under the same document ID and bypass the revision
+    // flow. Create a new revision instead; legacy rows without metadata keep
+    // the pre-feature unpublish behaviour for compatibility.
+    if (doc.revisionMetadata) {
+      throw new ApiError(409, '版管理対象の公開済み手順書は公開取消できません。改版を作成してください');
+    }
 
     const usage = await this.getReferenceUsage(id);
     if (this.isReferenced(usage)) {
@@ -265,7 +405,8 @@ export class AssemblyProcedureDocumentService {
       templateStepCount,
       activeTemplateStepCount,
       boltRefCount,
-      checkRefCount
+      checkRefCount,
+      revisionChildCount
     ] = await Promise.all([
       db.assemblyProcedureOrderItem.count({ where: { assemblyProcedureDocumentId: id } }),
       db.assemblyTemplate.count({ where: { procedureDocumentId: id } }),
@@ -279,7 +420,8 @@ export class AssemblyProcedureDocumentService {
         where: { assemblyProcedureDocumentId: id, template: { isActive: true } }
       }),
       db.assemblyTemplateBolt.count({ where: { assemblyProcedureDocumentId: id } }),
-      db.assemblyTemplateCheckItem.count({ where: { assemblyProcedureDocumentId: id } })
+      db.assemblyTemplateCheckItem.count({ where: { assemblyProcedureDocumentId: id } }),
+      db.assemblyProcedureDocumentRevision.count({ where: { supersedesDocumentId: id } })
     ]);
     return {
       inProcedureOrder: orderCount > 0,
@@ -290,7 +432,8 @@ export class AssemblyProcedureDocumentService {
       inTemplateProcedureStep: templateStepCount > 0,
       inActiveTemplateProcedureStep: activeTemplateStepCount > 0,
       inBoltPageRef: boltRefCount > 0,
-      inCheckPageRef: checkRefCount > 0
+      inCheckPageRef: checkRefCount > 0,
+      inRevisionHistory: revisionChildCount > 0
     };
   }
 
@@ -304,7 +447,8 @@ export class AssemblyProcedureDocumentService {
       usage.inTemplateProcedureStep ||
       usage.inActiveTemplateProcedureStep ||
       usage.inBoltPageRef ||
-      usage.inCheckPageRef
+      usage.inCheckPageRef ||
+      usage.inRevisionHistory
     );
   }
 
@@ -327,11 +471,13 @@ export class AssemblyProcedureDocumentService {
     if (usage.inActiveTemplatePrimary) return '有効なテンプレートで使用中の手順書は公開取り消しできません';
     if (usage.inTemplatePrimary) return 'テンプレートで使用中の手順書は公開取り消しできません';
     if (usage.inBoltPageRef || usage.inCheckPageRef) return 'マーカー参照で使用中の手順書は公開取り消しできません';
+    if (usage.inRevisionHistory) return '版履歴で使用中の手順書は削除できません';
     return '使用中の手順書は公開取り消しできません';
   }
 
   async deleteIfUnused(id: string): Promise<'deleted' | 'not_found' | 'in_use'> {
     const imagePaths: string[] = [];
+    const assetIds: string[] = [];
     const outcome = await runAssemblyTransaction(async (tx) => {
       const locked = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM "AssemblyProcedureDocument"
@@ -344,7 +490,20 @@ export class AssemblyProcedureDocumentService {
         where: { id },
         select: {
           imageRelativePath: true,
-          pages: { select: { imageRelativePath: true } }
+          pages: { select: { imageRelativePath: true } },
+          status: true,
+          revisionMetadata: {
+            select: {
+              isRevisionHead: true,
+              supersedesDocumentId: true,
+              sourceAssetId: true
+            }
+          },
+          overlayElements: {
+            where: { kind: 'IMAGE' },
+            select: { assetId: true }
+          },
+          ownedAssets: { select: { id: true } }
         }
       });
       if (!doc) return 'not_found' as const;
@@ -352,15 +511,54 @@ export class AssemblyProcedureDocumentService {
       const usage = await this.getReferenceUsage(id, tx);
       if (this.isReferenced(usage)) return 'in_use' as const;
 
+      // A revision head is the stable editing/publishing target. The generic
+      // delete endpoint must not remove it and leave a series without a head;
+      // revision DRAFTs use the authenticated discard operation instead. A
+      // root DRAFT is the one intentional exception and remains deletable
+      // when it has no external references.
+      if (
+        doc.revisionMetadata?.isRevisionHead &&
+        (doc.revisionMetadata.supersedesDocumentId || doc.status === 'PUBLISHED')
+      ) {
+        return 'in_use' as const;
+      }
+
+      assetIds.push(...collectAssemblyProcedureAssetIds({
+        sourceAssetId: doc.revisionMetadata?.sourceAssetId,
+        overlayAssetIds: doc.overlayElements.map((element) => element.assetId),
+        ownedAssetIds: doc.ownedAssets.map((asset) => asset.id)
+      }));
+
+      // A self-referencing root revision row uses ON DELETE RESTRICT for the
+      // root pointer. Remove that sidecar first; the root document is allowed
+      // to be deleted only for the draft exception above.
+      if (doc.revisionMetadata && !doc.revisionMetadata.supersedesDocumentId) {
+        await tx.assemblyProcedureDocumentRevision.delete({ where: { documentId: id } });
+      }
+
       await tx.assemblyProcedureDocument.delete({ where: { id } });
-      imagePaths.push(...doc.pages.map((page) => page.imageRelativePath));
-      if (!imagePaths.includes(doc.imageRelativePath)) {
-        imagePaths.push(doc.imageRelativePath);
+      const candidates = [...doc.pages.map((page) => page.imageRelativePath), doc.imageRelativePath];
+      for (const path of candidates) {
+        if (imagePaths.includes(path)) continue;
+        const [pageRefs, documentRefs] = await Promise.all([
+          tx.assemblyProcedureDocumentPage.count({ where: { imageRelativePath: path } }),
+          tx.assemblyProcedureDocument.count({ where: { imageRelativePath: path } })
+        ]);
+        if (pageRefs === 0 && documentRefs === 0) imagePaths.push(path);
       }
       return 'deleted' as const;
     });
 
     if (outcome === 'deleted') {
+      try {
+        // These IDs were detached by the just-committed document deletion.
+        // The GC rechecks all DB references and active-DRAFT ownership, so
+        // exact candidates may be collected immediately; broad maintenance
+        // GC retains its normal age safeguard.
+        await this.assetGc.collect({ candidateAssetIds: assetIds, minAgeMs: 0 });
+      } catch (err) {
+        logger.warn({ err, id, assetIds }, 'assembly_procedure_asset_gc_after_document_delete_failed');
+      }
       for (const imageRelativePath of imagePaths) {
         try {
           await AssemblyProcedureImageStorage.deleteImage(imageRelativePath);

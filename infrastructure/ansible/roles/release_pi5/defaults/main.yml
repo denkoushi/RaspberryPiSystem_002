@@ -3,7 +3,7 @@ release_sha: ""
 release_run_id: ""
 release_pi5_api_image: ""
 release_pi5_web_image: ""
-release_pi5_project_dir: /opt/RaspberryPiSystem_002
+release_pi5_project_dir: "{{ pi5_project_dir | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}"
 release_pi5_run_root: /var/lib/raspi-release/standard
 release_pi5_compose_project: bluegreen
 release_pi5_env_file: "{{ release_pi5_project_dir }}/infrastructure/docker/.env"

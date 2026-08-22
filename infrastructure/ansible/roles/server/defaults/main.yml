@@ -1,5 +1,10 @@
 ---
-repo_path: /opt/RaspberryPiSystem_002
+repo_path: "{{ project_root | default('/opt/RaspberryPiSystem_002') }}"
+pi5_project_dir: "{{ repo_path }}"
+pi5_backup_dir: "{{ backup_root | default('/opt/backups') }}"
+pi5_caddy_log_dir: "{{ caddy_log_dir | default('/var/log/caddy') }}"
+pi5_power_actions_dir: "{{ pi5_project_dir }}/power-actions"
+pi5_ansible_inventory: "{{ pi5_project_dir }}/infrastructure/ansible/inventory.yml"
 # Both modes provision host and configuration state only. API/Web release,
 # migration, traffic switching, health, and rollback belong to release_pi5.
 server_release_mode: full

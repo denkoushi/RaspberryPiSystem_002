@@ -105,33 +105,33 @@ enum MachinePalletEventActionType {
 }
 
 model Employee {
-  id                                  String                              @id @default(uuid())
-  employeeCode                        String                              @unique
-  displayName                         String
-  lastName                            String? // 苗字（CSVインポート用）
-  firstName                           String? // 名前（CSVインポート用）
-  nfcTagUid                           String?                             @unique
-  department                          String? // 部署（例: 製造担当部門）
-  section                             String? // セクション（例: 加工担当部署）
-  contact                             String?
-  status                              EmployeeStatus                      @default(ACTIVE)
-  createdAt                           DateTime                            @default(now())
-  updatedAt                           DateTime                            @updatedAt
-  loans                               Loan[]
-  inspectionRecords                   InspectionRecord[]
-  riggingInspectionRecords            RiggingInspectionRecord[]
-  transactions                        Transaction[]                       @relation("EmployeeActor")
-  partMeasurementSheetsWorker         PartMeasurementSheet[]              @relation("PartMeasurementSheetWorker")
-  partMeasurementSheetsCreated        PartMeasurementSheet[]              @relation("PartMeasurementSheetCreatedBy")
-  partMeasurementSheetsFinalized      PartMeasurementSheet[]              @relation("PartMeasurementSheetFinalizedBy")
-  selfInspectionLotEntries            SelfInspectionLotEntry[]
-  selfInspectionInspectorEntries      SelfInspectionInspectorEntry[]      @relation("SelfInspectionInspectorEntryEmployee")
+  id                                            String                                         @id @default(uuid())
+  employeeCode                                  String                                         @unique
+  displayName                                   String
+  lastName                                      String? // 苗字（CSVインポート用）
+  firstName                                     String? // 名前（CSVインポート用）
+  nfcTagUid                                     String?                                        @unique
+  department                                    String? // 部署（例: 製造担当部門）
+  section                                       String? // セクション（例: 加工担当部署）
+  contact                                       String?
+  status                                        EmployeeStatus                                 @default(ACTIVE)
+  createdAt                                     DateTime                                       @default(now())
+  updatedAt                                     DateTime                                       @updatedAt
+  loans                                         Loan[]
+  inspectionRecords                             InspectionRecord[]
+  riggingInspectionRecords                      RiggingInspectionRecord[]
+  transactions                                  Transaction[]                                  @relation("EmployeeActor")
+  partMeasurementSheetsWorker                   PartMeasurementSheet[]                         @relation("PartMeasurementSheetWorker")
+  partMeasurementSheetsCreated                  PartMeasurementSheet[]                         @relation("PartMeasurementSheetCreatedBy")
+  partMeasurementSheetsFinalized                PartMeasurementSheet[]                         @relation("PartMeasurementSheetFinalizedBy")
+  selfInspectionLotEntries                      SelfInspectionLotEntry[]
+  selfInspectionInspectorEntries                SelfInspectionInspectorEntry[]                 @relation("SelfInspectionInspectorEntryEmployee")
   selfInspectionMeasurementActorAuthentications SelfInspectionMeasurementActorAuthentication[] @relation("SelfInspectionMeasurementActorAuthenticationEmployee")
-  selfInspectionRecordApprovals       SelfInspectionRecordApproval[]      @relation("SelfInspectionRecordApprover")
-  assemblyWorkSessionRecordApprovals  AssemblyWorkSessionApproval[]       @relation("AssemblyWorkSessionRecordApprover")
-  assemblyWorkSessionOperatorAccesses AssemblyWorkSessionOperatorAccess[]
-  torqueTrainingSessions              TorqueTrainingSession[]
-  torqueTrainingConfirmations         TorqueTrainingWrenchConfirmation[]
+  selfInspectionRecordApprovals                 SelfInspectionRecordApproval[]                 @relation("SelfInspectionRecordApprover")
+  assemblyWorkSessionRecordApprovals            AssemblyWorkSessionApproval[]                  @relation("AssemblyWorkSessionRecordApprover")
+  assemblyWorkSessionOperatorAccesses           AssemblyWorkSessionOperatorAccess[]
+  torqueTrainingSessions                        TorqueTrainingSession[]
+  torqueTrainingConfirmations                   TorqueTrainingWrenchConfirmation[]
 }
 
 model Item {
@@ -284,27 +284,27 @@ model TorqueWrenchProfile {
   confirmations                     AssemblyTorqueWrenchConfirmation[]
   connectionLease                   TorqueWrenchConnectionLease?
   connectionLeaseHistory            TorqueWrenchConnectionLeaseHistory[]
-  trainingProgramWrenches            TorqueTrainingProgramWrench[]
-  trainingWrenchConfirmations        TorqueTrainingWrenchConfirmation[]
-  trainingAttempts                   TorqueTrainingAttempt[]
-  usageLease                         TorqueWrenchUsageLease?
-  usageLeaseHistory                  TorqueWrenchUsageLeaseHistory[]
+  trainingProgramWrenches           TorqueTrainingProgramWrench[]
+  trainingWrenchConfirmations       TorqueTrainingWrenchConfirmation[]
+  trainingAttempts                  TorqueTrainingAttempt[]
+  usageLease                        TorqueWrenchUsageLease?
+  usageLeaseHistory                 TorqueWrenchUsageLeaseHistory[]
 
   @@index([modelId], map: "TorqueWrenchProfile_idx_model")
 }
 
 /// 呼び径・長さ・材質・強度区分に対して使用可能な型番群。
 model TorqueWrenchCapabilityGroup {
-  id              String                             @id @default(uuid())
-  name            String                             @unique
-  nominalDiameter String
-  boltLengthMm    Decimal                            @db.Decimal(10, 3)
-  material        String
-  strengthClass   String
-  isActive        Boolean                            @default(true)
-  createdAt       DateTime                           @default(now())
-  updatedAt       DateTime                           @updatedAt
-  models          TorqueWrenchCapabilityGroupModel[]
+  id                      String                             @id @default(uuid())
+  name                    String                             @unique
+  nominalDiameter         String
+  boltLengthMm            Decimal                            @db.Decimal(10, 3)
+  material                String
+  strengthClass           String
+  isActive                Boolean                            @default(true)
+  createdAt               DateTime                           @default(now())
+  updatedAt               DateTime                           @updatedAt
+  models                  TorqueWrenchCapabilityGroupModel[]
   trainingProgramVersions TorqueTrainingProgramVersion[]
 
   @@index([nominalDiameter, boltLengthMm, material, strengthClass, isActive], map: "TorqueWrenchCapabilityGroup_idx_fastener_active")
@@ -417,48 +417,48 @@ model Machine {
 }
 
 model ClientDevice {
-  id                                  String                              @id @default(uuid())
-  name                                String
-  location                            String?
-  apiKey                              String                              @unique
-  statusClientId                      String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
-  defaultMode                         String?                             @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
-  kioskInitialRoute                   String? // 端末ごとのキオスク起動先（borrow_tag | borrow_photo | leader_order_board | assembly。production_schedule は旧互換）
+  id                                            String                                         @id @default(uuid())
+  name                                          String
+  location                                      String?
+  apiKey                                        String                                         @unique
+  statusClientId                                String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
+  defaultMode                                   String?                                        @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
+  kioskInitialRoute                             String? // 端末ごとのキオスク起動先（borrow_tag | borrow_photo | leader_order_board | assembly。production_schedule は旧互換）
   /// キオスクのサイネージプレビューで参照する `ClientDevice.apiKey`（サイネージ用途端末のみ許可。未設定時は自端末キーでプレビュー）
-  signagePreviewTargetApiKey          String?
+  signagePreviewTargetApiKey                    String?
   /// Zero2W 棚番エッジ等: 端末に固定する棚番（`西-北-01` 形式・trim 保存）
-  haizenPresetShelfCodeRaw            String?
+  haizenPresetShelfCodeRaw                      String?
   /// Zero2W / haizen-agent からの配膳スキャン対象端末（キオスク設定・API 抽出の正）
-  haizenEdgeEnabled                   Boolean                             @default(false)
+  haizenEdgeEnabled                             Boolean                                        @default(false)
   /// キオスク棚レイアウト編集（区画フロアプラン・マス割当）を許可する端末
-  shelfLayoutEditEnabled              Boolean                             @default(false)
-  lastSeenAt                          DateTime?
-  createdAt                           DateTime                            @default(now())
-  updatedAt                           DateTime                            @updatedAt
-  loans                               Loan[]
-  transactions                        Transaction[]
-  partMeasurementSheets               PartMeasurementSheet[]              @relation("PartMeasurementSheetOwningDevice")
-  partMeasurementEditLocks            PartMeasurementSheet[]              @relation("PartMeasurementSheetEditLock")
-  selfInspectionSessions              SelfInspectionSession[]
-  selfInspectionPaperReports          SelfInspectionPaperReport[]
-  selfInspectionInspectorEntries      SelfInspectionInspectorEntry[]
+  shelfLayoutEditEnabled                        Boolean                                        @default(false)
+  lastSeenAt                                    DateTime?
+  createdAt                                     DateTime                                       @default(now())
+  updatedAt                                     DateTime                                       @updatedAt
+  loans                                         Loan[]
+  transactions                                  Transaction[]
+  partMeasurementSheets                         PartMeasurementSheet[]                         @relation("PartMeasurementSheetOwningDevice")
+  partMeasurementEditLocks                      PartMeasurementSheet[]                         @relation("PartMeasurementSheetEditLock")
+  selfInspectionSessions                        SelfInspectionSession[]
+  selfInspectionPaperReports                    SelfInspectionPaperReport[]
+  selfInspectionInspectorEntries                SelfInspectionInspectorEntry[]
   selfInspectionMeasurementActorAuthentications SelfInspectionMeasurementActorAuthentication[] @relation("SelfInspectionMeasurementActorAuthenticationClientDevice")
-  selfInspectionRecordApprovals       SelfInspectionRecordApproval[]
-  selfInspectionItemInvalidations     SelfInspectionItemInvalidation[]
-  assemblyWorkSessionRecordApprovals  AssemblyWorkSessionApproval[]
-  assemblyWorkSessionOperatorAccesses AssemblyWorkSessionOperatorAccess[]
-  assemblyWorkUnitInvalidations       AssemblyWorkUnitInvalidation[]
-  mobilePlacementEvents               MobilePlacementEvent[]
-  orderPlacementEvents                OrderPlacementEvent[]
-  mobilePlacementShelvesCreated       MobilePlacementShelf[]
-  machinePalletEvents                 MachinePalletEvent[]
-  haizenScanEvents                    HaizenScanEvent[]
-  haizenCurrentPlacements             HaizenCurrentPlacement[]            @relation("HaizenCurrentLastDevice")
-  torqueWrenchConnectionLeases        TorqueWrenchConnectionLease[]
-  torqueTrainingSessions              TorqueTrainingSession[]
-  torqueWrenchUsageLeases             TorqueWrenchUsageLease[]
-  torqueTrainingConfirmations         TorqueTrainingWrenchConfirmation[]
-  torqueTrainingAttempts              TorqueTrainingAttempt[]
+  selfInspectionRecordApprovals                 SelfInspectionRecordApproval[]
+  selfInspectionItemInvalidations               SelfInspectionItemInvalidation[]
+  assemblyWorkSessionRecordApprovals            AssemblyWorkSessionApproval[]
+  assemblyWorkSessionOperatorAccesses           AssemblyWorkSessionOperatorAccess[]
+  assemblyWorkUnitInvalidations                 AssemblyWorkUnitInvalidation[]
+  mobilePlacementEvents                         MobilePlacementEvent[]
+  orderPlacementEvents                          OrderPlacementEvent[]
+  mobilePlacementShelvesCreated                 MobilePlacementShelf[]
+  machinePalletEvents                           MachinePalletEvent[]
+  haizenScanEvents                              HaizenScanEvent[]
+  haizenCurrentPlacements                       HaizenCurrentPlacement[]                       @relation("HaizenCurrentLastDevice")
+  torqueWrenchConnectionLeases                  TorqueWrenchConnectionLease[]
+  torqueTrainingSessions                        TorqueTrainingSession[]
+  torqueWrenchUsageLeases                       TorqueWrenchUsageLease[]
+  torqueTrainingConfirmations                   TorqueTrainingWrenchConfirmation[]
+  torqueTrainingAttempts                        TorqueTrainingAttempt[]
 
   @@index([statusClientId])
 }
@@ -2266,6 +2266,24 @@ enum AssemblyProcedureDocumentSource {
   GMAIL
 }
 
+enum AssemblyProcedureOverlayElementKind {
+  TEXT
+  IMAGE
+  SHAPE
+}
+
+enum AssemblyProcedureOverlayShapeKind {
+  RECTANGLE
+  ELLIPSE
+  LINE
+  ARROW
+}
+
+enum AssemblyProcedureAssetKind {
+  SOURCE
+  OVERLAY_IMAGE
+}
+
 enum AssemblyProcedureStepViewMode {
   FULL_PAGE
   CROP
@@ -2523,7 +2541,12 @@ model AssemblyProcedureDocument {
   createdAt              DateTime                               @default(now())
   updatedAt              DateTime                               @updatedAt
   source                 AssemblyProcedureDocumentSourceRecord?
+  ownedAssets            AssemblyProcedureAsset[]              @relation("AssemblyProcedureAssetOwnerDocument")
   pages                  AssemblyProcedureDocumentPage[]
+  overlayElements        AssemblyProcedureOverlayElement[]
+  revisionMetadata       AssemblyProcedureDocumentRevision?
+  revisionRoots          AssemblyProcedureDocumentRevision[]    @relation("AssemblyProcedureDocumentRevisionRoot")
+  supersededRevisions    AssemblyProcedureDocumentRevision[]    @relation("AssemblyProcedureDocumentRevisionSupersedes")
   templates              AssemblyTemplate[]
   orderItems             AssemblyProcedureOrderItem[]
   templateProcedureItems AssemblyTemplateProcedureItem[]
@@ -2534,6 +2557,30 @@ model AssemblyProcedureDocument {
   @@index([isActive, name], map: "AssemblyProcedureDocument_idx_active_name")
   @@index([isActive, updatedAt], map: "AssemblyProcedureDocument_idx_active_updated")
   @@index([status, isActive], map: "AssemblyProcedureDocument_idx_status_active")
+}
+
+/// Revision metadata is kept in a sidecar so legacy AssemblyProcedureDocument
+/// rows and their existing references are never altered by this feature.
+model AssemblyProcedureDocumentRevision {
+  id                   String                     @id @default(uuid())
+  documentId           String                     @unique
+  revisionRootId       String
+  revisionNumber       Int                        @default(1)
+  supersedesDocumentId String?
+  isRevisionHead       Boolean                    @default(true)
+  editVersion          Int                        @default(0)
+  sourceAssetId        String?
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+  document             AssemblyProcedureDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  revisionRoot         AssemblyProcedureDocument  @relation("AssemblyProcedureDocumentRevisionRoot", fields: [revisionRootId], references: [id], onDelete: Restrict)
+  supersedesDocument   AssemblyProcedureDocument? @relation("AssemblyProcedureDocumentRevisionSupersedes", fields: [supersedesDocumentId], references: [id], onDelete: Restrict)
+  sourceAsset          AssemblyProcedureAsset?    @relation(fields: [sourceAssetId], references: [id], onDelete: Restrict)
+
+  @@unique([revisionRootId, revisionNumber], map: "AssemblyProcedureDocumentRevision_unique_revision_number")
+  @@index([revisionRootId, isRevisionHead], map: "AssemblyProcedureDocumentRevision_idx_revision_head")
+  @@index([supersedesDocumentId], map: "AssemblyProcedureDocumentRevision_idx_supersedes")
+  @@index([sourceAssetId], map: "AssemblyProcedureDocumentRevision_idx_source_asset")
 }
 
 /// 組立手順書の外部取込元。手動登録は行を持たず MANUAL と解釈する。
@@ -2553,15 +2600,77 @@ model AssemblyProcedureDocumentSourceRecord {
 
 /// 組立トルク管理: 手順書の各ページ画像。
 model AssemblyProcedureDocumentPage {
-  id                String                    @id @default(uuid())
+  id                String                            @id @default(uuid())
   documentId        String
   pageIndex         Int
   imageRelativePath String
-  createdAt         DateTime                  @default(now())
-  document          AssemblyProcedureDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdAt         DateTime                          @default(now())
+  document          AssemblyProcedureDocument         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  overlayElements   AssemblyProcedureOverlayElement[] @relation("AssemblyProcedureOverlayPage")
 
   @@unique([documentId, pageIndex], map: "AssemblyProcedureDocumentPage_unique_document_page")
   @@index([documentId], map: "AssemblyProcedureDocumentPage_idx_document")
+}
+
+/// Immutable bytes/metadata referenced by procedure pages and IMAGE overlays.
+/// Physical storage is owned by an adapter; this row is only its durable identity.
+model AssemblyProcedureAsset {
+  id               String                              @id @default(uuid())
+  kind             AssemblyProcedureAssetKind          @default(SOURCE)
+  storageKey       String                              @unique
+  sha256           String                              @db.Char(64)
+  byteSize         Int
+  contentType      String
+  originalFileName String?
+  width            Int?
+  height           Int?
+  /// Temporary ownership lease for uploads made while an active DRAFT is edited.
+  /// The lease is cleared when an IMAGE overlay references the asset.
+  ownerDocumentId String?
+  createdAt        DateTime                            @default(now())
+  overlayElements  AssemblyProcedureOverlayElement[]
+  sourceRevisions  AssemblyProcedureDocumentRevision[]
+  ownerDocument    AssemblyProcedureDocument?          @relation("AssemblyProcedureAssetOwnerDocument", fields: [ownerDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([sha256], map: "AssemblyProcedureAsset_idx_sha256")
+  @@index([ownerDocumentId, createdAt], map: "AssemblyProcedureAsset_idx_owner_created")
+}
+
+/// Editable elements owned by one document revision. Coordinates are source
+/// page normalized ratios; no crop-specific copies are persisted.
+model AssemblyProcedureOverlayElement {
+  id               String                              @id @default(uuid())
+  documentId       String
+  pageIndex        Int
+  kind             AssemblyProcedureOverlayElementKind
+  xRatio           Decimal                             @db.Decimal(10, 8)
+  yRatio           Decimal                             @db.Decimal(10, 8)
+  widthRatio       Decimal                             @db.Decimal(10, 8)
+  heightRatio      Decimal                             @db.Decimal(10, 8)
+  zIndex           Int                                 @default(0)
+  opacity          Decimal                             @default(1) @db.Decimal(5, 4)
+  maskEnabled      Boolean                             @default(false)
+  maskColor        String?
+  text             String?
+  textStyle        Json?
+  assetId          String?
+  objectFit        String?
+  shapeKind        AssemblyProcedureOverlayShapeKind?
+  strokeColor      String?
+  fillColor        String?
+  strokeWidthRatio Decimal?                            @db.Decimal(10, 8)
+  shapeStartXRatio Decimal?                            @db.Decimal(10, 8)
+  shapeStartYRatio Decimal?                            @db.Decimal(10, 8)
+  shapeEndXRatio   Decimal?                            @db.Decimal(10, 8)
+  shapeEndYRatio   Decimal?                            @db.Decimal(10, 8)
+  createdAt        DateTime                            @default(now())
+  updatedAt        DateTime                            @updatedAt
+  document         AssemblyProcedureDocument           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentPage     AssemblyProcedureDocumentPage       @relation("AssemblyProcedureOverlayPage", fields: [documentId, pageIndex], references: [documentId, pageIndex], onDelete: Restrict)
+  asset            AssemblyProcedureAsset?             @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@index([documentId, pageIndex, zIndex], map: "AssemblyProcedureOverlayElement_idx_document_page_z")
+  @@index([assetId], map: "AssemblyProcedureOverlayElement_idx_asset")
 }
 
 /// 組立キオスク: 機種名ごとのPDF要領書閲覧順設定。
@@ -2617,25 +2726,25 @@ model AssemblyTemplateProcedureItem {
 
 /// 組立テンプレート版が所有する、ページ全体または矩形フォーカスの表示ステップ。
 model AssemblyTemplateProcedureStep {
-  id                          String                         @id @default(uuid())
+  id                          String                        @id @default(uuid())
   templateId                  String
   kioskDocumentId             String?
   assemblyProcedureDocumentId String?
   sortOrder                   Int
   pageIndex                   Int
   viewMode                    AssemblyProcedureStepViewMode
-  cropXRatio                  Decimal?                       @db.Decimal(10, 8)
-  cropYRatio                  Decimal?                       @db.Decimal(10, 8)
-  cropWidthRatio              Decimal?                       @db.Decimal(10, 8)
-  cropHeightRatio             Decimal?                       @db.Decimal(10, 8)
+  cropXRatio                  Decimal?                      @db.Decimal(10, 8)
+  cropYRatio                  Decimal?                      @db.Decimal(10, 8)
+  cropWidthRatio              Decimal?                      @db.Decimal(10, 8)
+  cropHeightRatio             Decimal?                      @db.Decimal(10, 8)
   title                       String?
   instructionText             String?
-  emphasis                    AssemblyProcedureStepEmphasis  @default(NORMAL)
-  createdAt                   DateTime                       @default(now())
-  updatedAt                   DateTime                       @updatedAt
-  template                    AssemblyTemplate               @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  kioskDocument               KioskDocument?                 @relation(fields: [kioskDocumentId], references: [id], onDelete: Restrict)
-  assemblyProcedureDocument   AssemblyProcedureDocument?     @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
+  emphasis                    AssemblyProcedureStepEmphasis @default(NORMAL)
+  createdAt                   DateTime                      @default(now())
+  updatedAt                   DateTime                      @updatedAt
+  template                    AssemblyTemplate              @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  kioskDocument               KioskDocument?                @relation(fields: [kioskDocumentId], references: [id], onDelete: Restrict)
+  assemblyProcedureDocument   AssemblyProcedureDocument?    @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
 
   @@unique([templateId, sortOrder], map: "AssemblyTemplateProcedureStep_unique_template_sort")
   @@index([kioskDocumentId], map: "AssemblyTemplateProcedureStep_idx_kiosk_document")
@@ -2852,7 +2961,7 @@ model AssemblyWorkSession {
   operatorAccesses             AssemblyWorkSessionOperatorAccess[]
   torqueWrenchConfirmations    AssemblyTorqueWrenchConfirmation[]
   torqueWrenchConnectionLeases TorqueWrenchConnectionLease[]
-  torqueWrenchUsageLeases      TorqueWrenchUsageLease[] @relation("TorqueUsageLeaseAssemblySession")
+  torqueWrenchUsageLeases      TorqueWrenchUsageLease[]            @relation("TorqueUsageLeaseAssemblySession")
 
   @@index([status, updatedAt], map: "AssemblyWorkSession_idx_status_updated")
   @@index([productNo, status], map: "AssemblyWorkSession_idx_product_status")
@@ -3023,42 +3132,42 @@ model AssemblyTorqueRecord {
 
 /// 訓練メニューの安定ID。変更は版を増やし、この行は停止状態だけを持つ。
 model TorqueTrainingProgram {
-  id                String                         @id @default(uuid())
-  code              String                         @unique
-  currentVersion    Int                            @default(1)
-  isActive          Boolean                        @default(true)
-  deactivatedAt     DateTime?
+  id                 String                         @id @default(uuid())
+  code               String                         @unique
+  currentVersion     Int                            @default(1)
+  isActive           Boolean                        @default(true)
+  deactivatedAt      DateTime?
   deactivationReason String?
-  createdAt         DateTime                       @default(now())
-  updatedAt         DateTime                       @updatedAt
-  versions          TorqueTrainingProgramVersion[]
+  createdAt          DateTime                       @default(now())
+  updatedAt          DateTime                       @updatedAt
+  versions           TorqueTrainingProgramVersion[]
 
   @@index([isActive, updatedAt], map: "TorqueTrainingProgram_idx_active_updated")
 }
 
 /// 訓練条件の不変版。fingerprintが同じ版だけを成長集計で束ねる。
 model TorqueTrainingProgramVersion {
-  id                  String                         @id @default(uuid())
-  programId           String
-  version             Int
-  displayName         String
-  nominalDiameter     String
-  boltLengthMm        Decimal                        @db.Decimal(10, 3)
-  material            String
-  strengthClass       String
-  capabilityGroupId   String
-  nominalTorque       Decimal                        @db.Decimal(18, 6)
-  lowerLimit          Decimal                        @db.Decimal(18, 6)
-  upperLimit          Decimal                        @db.Decimal(18, 6)
-  unit                String
-  jigConditionCode    String
+  id                   String                        @id @default(uuid())
+  programId            String
+  version              Int
+  displayName          String
+  nominalDiameter      String
+  boltLengthMm         Decimal                       @db.Decimal(10, 3)
+  material             String
+  strengthClass        String
+  capabilityGroupId    String
+  nominalTorque        Decimal                       @db.Decimal(18, 6)
+  lowerLimit           Decimal                       @db.Decimal(18, 6)
+  upperLimit           Decimal                       @db.Decimal(18, 6)
+  unit                 String
+  jigConditionCode     String
   conditionFingerprint String
-  attemptCount        Int                            @default(5)
-  createdAt           DateTime                       @default(now())
-  program             TorqueTrainingProgram          @relation(fields: [programId], references: [id], onDelete: Restrict)
-  capabilityGroup     TorqueWrenchCapabilityGroup   @relation(fields: [capabilityGroupId], references: [id], onDelete: Restrict)
-  wrenches            TorqueTrainingProgramWrench[]
-  sessions            TorqueTrainingSession[]
+  attemptCount         Int                           @default(5)
+  createdAt            DateTime                      @default(now())
+  program              TorqueTrainingProgram         @relation(fields: [programId], references: [id], onDelete: Restrict)
+  capabilityGroup      TorqueWrenchCapabilityGroup   @relation(fields: [capabilityGroupId], references: [id], onDelete: Restrict)
+  wrenches             TorqueTrainingProgramWrench[]
+  sessions             TorqueTrainingSession[]
 
   @@unique([programId, version], map: "TorqueTrainingProgramVersion_unique_program_version")
   @@index([programId, conditionFingerprint, createdAt], map: "TorqueTrainingProgramVersion_idx_program_fingerprint")
@@ -3067,11 +3176,11 @@ model TorqueTrainingProgramVersion {
 
 /// 訓練版に割り当てる物理レンチ。
 model TorqueTrainingProgramWrench {
-  programVersionId    String
+  programVersionId      String
   torqueWrenchProfileId String
-  createdAt           DateTime                       @default(now())
-  programVersion      TorqueTrainingProgramVersion  @relation(fields: [programVersionId], references: [id], onDelete: Cascade)
-  torqueWrenchProfile TorqueWrenchProfile            @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  createdAt             DateTime                     @default(now())
+  programVersion        TorqueTrainingProgramVersion @relation(fields: [programVersionId], references: [id], onDelete: Cascade)
+  torqueWrenchProfile   TorqueWrenchProfile          @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
 
   @@id([programVersionId, torqueWrenchProfileId])
   @@index([torqueWrenchProfileId], map: "TorqueTrainingProgramWrench_idx_profile")
@@ -3079,8 +3188,8 @@ model TorqueTrainingProgramWrench {
 
 /// 訓練1回分。5回の入力と集計対象外理由を保持する。
 model TorqueTrainingSession {
-  id                       String                       @id @default(uuid())
-  requestId                String                       @unique
+  id                       String                             @id @default(uuid())
+  requestId                String                             @unique
   programVersionId         String
   employeeId               String
   employeeCodeSnapshot     String
@@ -3088,11 +3197,11 @@ model TorqueTrainingSession {
   clientDeviceId           String
   clientDeviceNameSnapshot String
   conditionFingerprint     String
-  status                   TorqueTrainingSessionStatus @default(IN_PROGRESS)
-  targetAttemptCount       Int                          @default(5)
+  status                   TorqueTrainingSessionStatus        @default(IN_PROGRESS)
+  targetAttemptCount       Int                                @default(5)
   activeEmployeeKey        String?
   activeClientKey          String?
-  startedAt                DateTime                     @default(now())
+  startedAt                DateTime                           @default(now())
   completedAt              DateTime?
   cancelledAt              DateTime?
   cancelReason             String?
@@ -3100,14 +3209,14 @@ model TorqueTrainingSession {
   exclusionReason          String?
   excludedByUserId         String?
   excludedByUsername       String?
-  createdAt                DateTime                     @default(now())
-  updatedAt                DateTime                     @updatedAt
-  programVersion           TorqueTrainingProgramVersion @relation(fields: [programVersionId], references: [id], onDelete: Restrict)
-  employee                 Employee                     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  clientDevice             ClientDevice                 @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+  createdAt                DateTime                           @default(now())
+  updatedAt                DateTime                           @updatedAt
+  programVersion           TorqueTrainingProgramVersion       @relation(fields: [programVersionId], references: [id], onDelete: Restrict)
+  employee                 Employee                           @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  clientDevice             ClientDevice                       @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
   confirmations            TorqueTrainingWrenchConfirmation[]
   attempts                 TorqueTrainingAttempt[]
-  usageLeases              TorqueWrenchUsageLease[]      @relation("TorqueUsageLeaseTrainingSession")
+  usageLeases              TorqueWrenchUsageLease[]           @relation("TorqueUsageLeaseTrainingSession")
 
   @@unique([employeeId, activeEmployeeKey], map: "TorqueTrainingSession_unique_employee_active_key")
   @@unique([clientDeviceId, activeClientKey], map: "TorqueTrainingSession_unique_client_active_key")
@@ -3118,7 +3227,7 @@ model TorqueTrainingSession {
 
 /// 訓練開始時の物理レンチ確認。
 model TorqueTrainingWrenchConfirmation {
-  id                       String                       @id @default(uuid())
+  id                       String                     @id @default(uuid())
   sessionId                String
   torqueWrenchProfileId    String
   settingHistoryId         String
@@ -3127,12 +3236,12 @@ model TorqueTrainingWrenchConfirmation {
   employeeNameSnapshot     String
   clientDeviceId           String
   clientDeviceNameSnapshot String
-  confirmedAt              DateTime                     @default(now())
-  session                  TorqueTrainingSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  torqueWrenchProfile      TorqueWrenchProfile           @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
-  settingHistory           TorqueWrenchSettingHistory    @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
-  employee                 Employee                     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  clientDevice             ClientDevice                 @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+  confirmedAt              DateTime                   @default(now())
+  session                  TorqueTrainingSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  torqueWrenchProfile      TorqueWrenchProfile        @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  settingHistory           TorqueWrenchSettingHistory @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
+  employee                 Employee                   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  clientDevice             ClientDevice               @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
 
   @@index([sessionId, confirmedAt(sort: Desc)], map: "TorqueTrainingWrenchConfirmation_idx_session_confirmed")
   @@index([torqueWrenchProfileId, confirmedAt(sort: Desc)], map: "TorqueTrainingWrenchConfirmation_idx_profile_confirmed")
@@ -3140,39 +3249,39 @@ model TorqueTrainingWrenchConfirmation {
 
 /// torque-agent入力の受信記録。source event冪等性も同じ表で保証する。
 model TorqueTrainingAttempt {
-  id                           String                          @id @default(uuid())
-  sessionId                   String
-  attemptNo                   Int?
-  value                       Decimal?                        @db.Decimal(18, 6)
-  inputUnit                   String?
-  valueNm                     Decimal?                        @db.Decimal(18, 6)
-  nominalTorqueSnapshot       Decimal?                        @db.Decimal(18, 6)
-  lowerLimitSnapshot          Decimal?                        @db.Decimal(18, 6)
-  upperLimitSnapshot          Decimal?                        @db.Decimal(18, 6)
-  deviationNm                 Decimal?                        @db.Decimal(18, 6)
-  deviationPercent            Decimal?                        @db.Decimal(18, 6)
-  absoluteDeviationPercent    Decimal?                        @db.Decimal(18, 6)
-  judgement                   TorqueTrainingAttemptJudgement
-  accepted                    Boolean                         @default(false)
-  ignoredReason               String?
-  torqueWrenchProfileId       String?
-  settingHistoryId            String?
-  serialNumberSnapshot        String?
-  manufacturerSnapshot        String?
-  modelNumberSnapshot         String?
-  sourceClientDeviceId        String
-  sourceEventKey              String
-  connectionLeaseId           String?
-  connectionLeaseGeneration   Int?
-  deviceRecordedAt            DateTime?
-  deviceMemoryCounter        String?
-  deviceJudgement             String?
-  recordedAt                  DateTime                        @default(now())
-  createdAt                   DateTime                        @default(now())
-  session                     TorqueTrainingSession           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  torqueWrenchProfile         TorqueWrenchProfile?             @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
-  settingHistory              TorqueWrenchSettingHistory?      @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
-  sourceClientDevice          ClientDevice                    @relation(fields: [sourceClientDeviceId], references: [id], onDelete: Restrict)
+  id                        String                         @id @default(uuid())
+  sessionId                 String
+  attemptNo                 Int?
+  value                     Decimal?                       @db.Decimal(18, 6)
+  inputUnit                 String?
+  valueNm                   Decimal?                       @db.Decimal(18, 6)
+  nominalTorqueSnapshot     Decimal?                       @db.Decimal(18, 6)
+  lowerLimitSnapshot        Decimal?                       @db.Decimal(18, 6)
+  upperLimitSnapshot        Decimal?                       @db.Decimal(18, 6)
+  deviationNm               Decimal?                       @db.Decimal(18, 6)
+  deviationPercent          Decimal?                       @db.Decimal(18, 6)
+  absoluteDeviationPercent  Decimal?                       @db.Decimal(18, 6)
+  judgement                 TorqueTrainingAttemptJudgement
+  accepted                  Boolean                        @default(false)
+  ignoredReason             String?
+  torqueWrenchProfileId     String?
+  settingHistoryId          String?
+  serialNumberSnapshot      String?
+  manufacturerSnapshot      String?
+  modelNumberSnapshot       String?
+  sourceClientDeviceId      String
+  sourceEventKey            String
+  connectionLeaseId         String?
+  connectionLeaseGeneration Int?
+  deviceRecordedAt          DateTime?
+  deviceMemoryCounter       String?
+  deviceJudgement           String?
+  recordedAt                DateTime                       @default(now())
+  createdAt                 DateTime                       @default(now())
+  session                   TorqueTrainingSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  torqueWrenchProfile       TorqueWrenchProfile?           @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  settingHistory            TorqueWrenchSettingHistory?    @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
+  sourceClientDevice        ClientDevice                   @relation(fields: [sourceClientDeviceId], references: [id], onDelete: Restrict)
 
   @@unique([sourceClientDeviceId, sourceEventKey], map: "TorqueTrainingAttempt_unique_source_event")
   @@unique([sessionId, attemptNo], map: "TorqueTrainingAttempt_unique_attempt")
@@ -3182,8 +3291,8 @@ model TorqueTrainingAttempt {
 
 /// assembly/training共通の物理レンチcurrent lease。切替後の唯一の正本。
 model TorqueWrenchUsageLease {
-  torqueWrenchProfileId  String              @id
-  leaseId                String              @unique
+  torqueWrenchProfileId  String                 @id
+  leaseId                String                 @unique
   generation             Int
   requestId              String
   ownerKind              TorqueUsageOwnerKind
@@ -3191,16 +3300,16 @@ model TorqueWrenchUsageLease {
   ownerTrainingSessionId String?
   adoptedConfirmationId  String?
   ownerClientDeviceId    String
-  acquiredAt             DateTime            @default(now())
-  renewedAt              DateTime            @default(now())
+  acquiredAt             DateTime               @default(now())
+  renewedAt              DateTime               @default(now())
   expiresAt              DateTime
   connectAfter           DateTime
   releasedAt             DateTime?
   releaseReason          String?
-  updatedAt              DateTime            @updatedAt
-  torqueWrenchProfile    TorqueWrenchProfile @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
-  ownerClientDevice      ClientDevice        @relation(fields: [ownerClientDeviceId], references: [id], onDelete: Cascade)
-  ownerAssemblySession   AssemblyWorkSession? @relation("TorqueUsageLeaseAssemblySession", fields: [ownerAssemblySessionId], references: [id], onDelete: Cascade)
+  updatedAt              DateTime               @updatedAt
+  torqueWrenchProfile    TorqueWrenchProfile    @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  ownerClientDevice      ClientDevice           @relation(fields: [ownerClientDeviceId], references: [id], onDelete: Cascade)
+  ownerAssemblySession   AssemblyWorkSession?   @relation("TorqueUsageLeaseAssemblySession", fields: [ownerAssemblySessionId], references: [id], onDelete: Cascade)
   ownerTrainingSession   TorqueTrainingSession? @relation("TorqueUsageLeaseTrainingSession", fields: [ownerTrainingSessionId], references: [id], onDelete: Cascade)
 
   @@index([ownerClientDeviceId, expiresAt], map: "TorqueWrenchUsageLease_idx_owner_expiry")
@@ -3209,7 +3318,7 @@ model TorqueWrenchUsageLease {
 
 /// usage leaseの最小監査履歴。将来汎用イベント化しない。
 model TorqueWrenchUsageLeaseHistory {
-  id                    String              @id @default(uuid())
+  id                    String               @id @default(uuid())
   torqueWrenchProfileId String
   leaseId               String
   generation            Int
@@ -3220,8 +3329,8 @@ model TorqueWrenchUsageLeaseHistory {
   action                String
   adoptedConfirmationId String?
   reason                String?
-  createdAt             DateTime            @default(now())
-  torqueWrenchProfile   TorqueWrenchProfile @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  createdAt             DateTime             @default(now())
+  torqueWrenchProfile   TorqueWrenchProfile  @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
 
   @@index([torqueWrenchProfileId, createdAt], map: "TorqueWrenchUsageLeaseHistory_idx_profile_time")
   @@index([leaseId], map: "TorqueWrenchUsageLeaseHistory_idx_lease")
@@ -3344,8 +3453,8 @@ model AssemblyWorkSessionApproval {
 }
 
 model SelfInspectionSession {
-  id                               String                         @id @default(uuid())
-  sessionBusinessKey               String                         @unique
+  id                               String                                         @id @default(uuid())
+  sessionBusinessKey               String                                         @unique
   templateId                       String
   productNo                        String
   processGroup                     PartMeasurementProcessGroup
@@ -3365,10 +3474,10 @@ model SelfInspectionSession {
   inspectorRemeasurementRequiredAt DateTime?
   decisionWorkflow                 String?
   invalidatedAt                    DateTime?
-  createdAt                        DateTime                       @default(now())
-  updatedAt                        DateTime                       @updatedAt
-  template                         PartMeasurementTemplate        @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  clientDevice                     ClientDevice?                  @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  createdAt                        DateTime                                       @default(now())
+  updatedAt                        DateTime                                       @updatedAt
+  template                         PartMeasurementTemplate                        @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  clientDevice                     ClientDevice?                                  @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
   entries                          SelfInspectionLotEntry[]
   inspectorEntries                 SelfInspectionInspectorEntry[]
   paperReports                     SelfInspectionPaperReport[]
@@ -3376,6 +3485,7 @@ model SelfInspectionSession {
   measurementActorAuthentications  SelfInspectionMeasurementActorAuthentication[]
   measurementOperations            SelfInspectionMeasurementOperation[]
   invalidation                     SelfInspectionItemInvalidation?
+  // migrationには通常一覧向けの partial index SelfInspectionSession_idx_active_updated も定義する。
 
   @@index([productNo, processGroup, resourceCd], map: "SelfInspectionSession_idx_business_lookup")
   @@index([scheduleRowId], map: "SelfInspectionSession_idx_schedule_row")
@@ -3386,7 +3496,6 @@ model SelfInspectionSession {
   @@index([recordApprovalWorkflowStartedAt], map: "SelfInspectionSession_idx_record_approval_workflow_started_at")
   @@index([inspectorRemeasurementRequiredAt], map: "SelfInspectionSession_idx_inspector_remeasurement_required_at")
   @@index([invalidatedAt, updatedAt], map: "SelfInspectionSession_idx_invalidation_updated")
-  // migrationには通常一覧向けの partial index SelfInspectionSession_idx_active_updated も定義する。
 }
 
 /// キオスク自主検査の不可逆な論理無効化。日程行が消えても監査を保持する。
@@ -3547,24 +3656,24 @@ model SelfInspectionInspectorEntryInstrumentUsage {
 }
 
 model SelfInspectionInspectorMeasurementValue {
-  id                         String                                            @id @default(uuid())
-  inspectorEntryId           String
-  templateItemId             String
-  operatorMeasurementValueId String?
-  operatorValueSnapshot      Decimal?                                          @db.Decimal(18, 6)
-  inspectorValue             Decimal?                                          @db.Decimal(18, 6)
+  id                              String                                            @id @default(uuid())
+  inspectorEntryId                String
+  templateItemId                  String
+  operatorMeasurementValueId      String?
+  operatorValueSnapshot           Decimal?                                          @db.Decimal(18, 6)
+  inspectorValue                  Decimal?                                          @db.Decimal(18, 6)
   operatorJudgementResultSnapshot InspectionResult?
-  inspectorJudgementResult   InspectionResult?
-  differenceValue            Decimal?                                          @db.Decimal(18, 6)
-  judgementStatus            SelfInspectionInspectorMeasurementJudgementStatus @default(NOT_EVALUATED)
-  finalJudgementStatus       String?
-  judgedAt                   DateTime?
-  judgementComment           String?
-  createdAt                  DateTime                                          @default(now())
-  updatedAt                  DateTime                                          @updatedAt
-  inspectorEntry             SelfInspectionInspectorEntry                      @relation(fields: [inspectorEntryId], references: [id], onDelete: Cascade)
-  templateItem               PartMeasurementTemplateItem                       @relation(fields: [templateItemId], references: [id], onDelete: Restrict)
-  operatorMeasurementValue   SelfInspectionMeasurementValue?                   @relation(fields: [operatorMeasurementValueId], references: [id], onDelete: SetNull)
+  inspectorJudgementResult        InspectionResult?
+  differenceValue                 Decimal?                                          @db.Decimal(18, 6)
+  judgementStatus                 SelfInspectionInspectorMeasurementJudgementStatus @default(NOT_EVALUATED)
+  finalJudgementStatus            String?
+  judgedAt                        DateTime?
+  judgementComment                String?
+  createdAt                       DateTime                                          @default(now())
+  updatedAt                       DateTime                                          @updatedAt
+  inspectorEntry                  SelfInspectionInspectorEntry                      @relation(fields: [inspectorEntryId], references: [id], onDelete: Cascade)
+  templateItem                    PartMeasurementTemplateItem                       @relation(fields: [templateItemId], references: [id], onDelete: Restrict)
+  operatorMeasurementValue        SelfInspectionMeasurementValue?                   @relation(fields: [operatorMeasurementValueId], references: [id], onDelete: SetNull)
 
   @@unique([inspectorEntryId, templateItemId], map: "SelfInspectionInspectorValue_unique_entry_item")
   @@index([inspectorEntryId], map: "SelfInspectionInspectorValue_idx_entry")
@@ -3575,7 +3684,7 @@ model SelfInspectionInspectorMeasurementValue {
 
 /// 画面を開くたびの測定者／検査員NFC認証。Reactの一時状態とは別に監査証跡を保持する。
 model SelfInspectionMeasurementActorAuthentication {
-  id                        String                              @id @default(uuid())
+  id                        String                               @id @default(uuid())
   sessionId                 String
   mode                      SelfInspectionMeasurementActorMode
   employeeId                String?
@@ -3584,11 +3693,11 @@ model SelfInspectionMeasurementActorAuthentication {
   employeeNfcTagUidSnapshot String
   clientDeviceId            String?
   clientDeviceNameSnapshot  String?
-  authenticatedAt           DateTime                            @default(now())
-  createdAt                 DateTime                            @default(now())
-  session                   SelfInspectionSession               @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  employee                  Employee?                           @relation("SelfInspectionMeasurementActorAuthenticationEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
-  clientDevice              ClientDevice?                       @relation("SelfInspectionMeasurementActorAuthenticationClientDevice", fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  authenticatedAt           DateTime                             @default(now())
+  createdAt                 DateTime                             @default(now())
+  session                   SelfInspectionSession                @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  employee                  Employee?                            @relation("SelfInspectionMeasurementActorAuthenticationEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  clientDevice              ClientDevice?                        @relation("SelfInspectionMeasurementActorAuthenticationClientDevice", fields: [clientDeviceId], references: [id], onDelete: SetNull)
   operations                SelfInspectionMeasurementOperation[]
 
   @@index([sessionId, mode, authenticatedAt], map: "SelfInspectionActorAuth_idx_session_mode_authenticated")
@@ -3598,15 +3707,15 @@ model SelfInspectionMeasurementActorAuthentication {
 
 /// 自主検査の自動保存・確定・機器使用前点検を、実行時のNFC認証へ追記する監査履歴。
 model SelfInspectionMeasurementOperation {
-  id               String                                  @id @default(uuid())
+  id               String                                       @id @default(uuid())
   sessionId        String
   authenticationId String
   mode             SelfInspectionMeasurementActorMode
   entryIndex       Int?
   operationKind    SelfInspectionMeasurementOperationKind
-  occurredAt       DateTime                                @default(now())
-  createdAt        DateTime                                @default(now())
-  session          SelfInspectionSession                   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  occurredAt       DateTime                                     @default(now())
+  createdAt        DateTime                                     @default(now())
+  session          SelfInspectionSession                        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   authentication   SelfInspectionMeasurementActorAuthentication @relation(fields: [authenticationId], references: [id], onDelete: Restrict)
 
   @@index([sessionId, mode, entryIndex, occurredAt], map: "SelfInspectionOperation_idx_session_mode_entry_occurred")

@@ -33,6 +33,14 @@ import { runAssemblyTransaction } from './assembly-transaction.js';
 const procedureDocumentInclude = {
   pages: {
     orderBy: { pageIndex: 'asc' as const }
+  },
+  overlayElements: {
+    orderBy: [
+      { pageIndex: 'asc' as const },
+      { zIndex: 'asc' as const },
+      { createdAt: 'asc' as const }
+    ],
+    include: { asset: true }
   }
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
 

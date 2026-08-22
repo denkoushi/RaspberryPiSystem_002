@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
+import { Input } from '../../components/ui/Input';
 
+import { AssemblyProcedureOverlayLayer } from './AssemblyProcedureOverlayLayer';
 import { assemblyProcedureDocumentPages } from './assemblyTemplateDraft';
 import { assemblyProcedureStatusLabel } from './assemblyUiHelpers';
 import { KioskDocumentPageImage } from './KioskDocumentPageImage';
@@ -13,7 +15,7 @@ type Props = {
   document: AssemblyProcedureDocumentDto | null;
   isOpen: boolean;
   onClose: () => void;
-  onPublish?: (document: AssemblyProcedureDocumentDto) => Promise<AssemblyProcedureDocumentDto>;
+  onPublish?: (document: AssemblyProcedureDocumentDto, accessPassword: string) => Promise<AssemblyProcedureDocumentDto>;
   onCreateTemplate?: (document: AssemblyProcedureDocumentDto) => void;
 };
 
@@ -27,11 +29,13 @@ export function AssemblyProcedurePreviewDialog({
   const [currentDocument, setCurrentDocument] = useState<AssemblyProcedureDocumentDto | null>(document);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accessPassword, setAccessPassword] = useState('');
 
   useEffect(() => {
     if (!isOpen) return;
     setCurrentDocument(document);
     setError(null);
+    setAccessPassword('');
   }, [document, isOpen]);
 
   if (!currentDocument) return null;
@@ -43,7 +47,7 @@ export function AssemblyProcedurePreviewDialog({
     setBusy(true);
     setError(null);
     try {
-      setCurrentDocument(await onPublish(currentDocument));
+      setCurrentDocument(await onPublish(currentDocument, accessPassword));
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : '手順書の公開に失敗しました。');
     } finally {
@@ -67,13 +71,19 @@ export function AssemblyProcedurePreviewDialog({
             {pages.map((page) => (
               <figure key={page.pageIndex} className="rounded border border-slate-300 bg-white p-2 shadow-sm">
                 <figcaption className="mb-2 text-sm font-bold text-slate-700">{page.pageIndex + 1}ページ目</figcaption>
-                <KioskDocumentPageImage
-                  pageUrl={page.imageRelativePath}
-                  alt={`${currentDocument.name} ${page.pageIndex + 1}ページ目`}
-                  className="max-h-[62vh] w-full object-contain"
-                  loadingFallback={<p className="p-6 text-center text-sm text-slate-500">画像を読み込み中…</p>}
-                  errorFallback={<p className="p-6 text-center text-sm text-red-600">画像を読み込めません。</p>}
-                />
+                <div className="relative">
+                  <KioskDocumentPageImage
+                    pageUrl={page.imageRelativePath}
+                    alt={`${currentDocument.name} ${page.pageIndex + 1}ページ目`}
+                    className="max-h-[62vh] w-full object-contain"
+                    loadingFallback={<p className="p-6 text-center text-sm text-slate-500">画像を読み込み中…</p>}
+                    errorFallback={<p className="p-6 text-center text-sm text-red-600">画像を読み込めません。</p>}
+                  />
+                  <AssemblyProcedureOverlayLayer
+                    elements={currentDocument.pages.find((candidate) => candidate.pageIndex === page.pageIndex)?.overlays}
+                    assets={currentDocument.assets}
+                  />
+                </div>
               </figure>
             ))}
           </div>
@@ -81,9 +91,21 @@ export function AssemblyProcedurePreviewDialog({
         {error ? <p className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
         <div className="flex flex-wrap justify-end gap-2">
           {isDraft && onPublish ? (
-            <Button data-kiosk-sop-target="assembly-procedure-publish" type="button" variant="primary" className="min-h-11" disabled={busy} onClick={() => void handlePublish()}>
-              {busy ? '公開中…' : '確認して公開'}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                type="password"
+                inputMode="numeric"
+                value={accessPassword}
+                onChange={(event) => setAccessPassword(event.target.value)}
+                placeholder="管理パスワード"
+                aria-label="手順書公開の管理パスワード"
+                className="min-h-11 w-44"
+                disabled={busy}
+              />
+              <Button data-kiosk-sop-target="assembly-procedure-publish" type="button" variant="primary" className="min-h-11" disabled={busy || !accessPassword} onClick={() => void handlePublish()}>
+                {busy ? '公開中…' : '確認して公開'}
+              </Button>
+            </div>
           ) : null}
           {!isDraft && onCreateTemplate ? (
             <Button data-kiosk-sop-target="assembly-template-create-from-procedure" type="button" variant="primary" className="min-h-11" onClick={() => onCreateTemplate(currentDocument)}>
