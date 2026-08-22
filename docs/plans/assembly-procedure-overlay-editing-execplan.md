@@ -21,7 +21,8 @@
 - [x] 2026-08-21 21:55+09:00: 責務、依存方向、test境界、判断、検証結果を本書へ反映した。
 - [x] 2026-08-22 09:30+09:00: feature branchをpushしてPR #1275を作成し、実文書3件、実PostgreSQL、Playwright、SOPを含むfeature由来CIを確認した。未変更base imageのTrivy CVEは別件として分離した。
 - [x] 2026-08-22 15:30+09:00: staging effective inventory、remote root/path、production専用torque処理、fresh PostgreSQL role bootstrapを専用化し、focused 97 testsとcanonical deploy contracts 358 testsを完了した。一時Docker資源残存は0だった。
-- [ ] integrationPending: 専用Pi5/Pi4の特定と一回限りのbootstrap管理経路を受領後、staging限定Deployと実機受入を行う。merge、本番Deploy、production/TalkPlaza接続は未承認のため行わない。
+- [x] 2026-08-22: Mac/Docker、実文書、実PostgreSQL、Playwright、SOPを正式な一次受入とした。専用Pi5/Pi4の新規調達は要求せず、実機固有の性能測定だけを通常導入時のread-only-first canaryへ繰り越した。
+- [ ] integrationPending: 通常の導入・更新機会に、既存運用の承認済みcanaryでPi4/Pi5固有の性能を確認する。これは新端末の準備や本PRの実装完了を阻害する条件ではない。merge、本番Deploy、production/TalkPlaza接続は未承認のため行わない。
 
 ## Surprises & Discoveries
 
@@ -92,8 +93,8 @@
 - Decision: staging DBは「既存・確認済み」と「fresh・未確認」を分岐し、前者はread-only SQL precondition、後者は既存PostgreSQL role bootstrapの最小parameterizationを使う。
   Rationale: 不要な汎用provisionerを増やさず、新規volumeでも標準release前に必要role、DB、権限を確実に作れる正常完遂経路を保つ。
   Date/Author: 2026-08-22 / Codex orchestration team.
-- Decision: ユーザーの初期入力は専用物理Pi5/Pi4の特定と、OS/Tailscale/staging専用SSH userを初回設定する既存管理経路の2点に限定する。
-  Rationale: SSH key、MagicDNS名、staging secret/Vault payload、DB/storageは、その2点が確定した後に既存標準ツールと専用namespaceで本流側が作成・検証できる。
+- Decision: 専用Pi5/Pi4の新規調達を受入条件にせず、Mac/Dockerを正式な一次受入とし、実機固有の性能確認は通常導入時のread-only-first canaryへ繰り越す。
+  Rationale: 専用空き端末は現実の運用前提ではなく、未確認なのはPi固有のCPU、memory、温度、ROI/OCR処理時間だけである。機能、互換性、DB、API、Web、実文書フローの検証完了と分離して扱う。
   Date/Author: 2026-08-22 / Codex orchestration team.
 
 ## Outcomes & Retrospective
@@ -119,7 +120,7 @@ feature worktree上では目的を達成した。ライブラリから公開文�
 
 既存`AssemblyProcedureCanvas`は背景と描画slotの責務が明確なため分割せず、overlay slotだけを追加した。asset serviceはstorage、ページ画像参照、OCR adapterを合成する約300行のapplication serviceとして残したが、I/O portは分離済みで単体差替え可能である。Inspectorは約310行だが一つの選択要素property編集に閉じ、3種の分岐が同じform状態を共有するため、今回さらに分ける利益より変更riskが大きいと判断した。
 
-repository上の実装はPR #1275へpush済みである。残る受入は専用staging Pi5/Pi4だけであり、物理端末と初回bootstrap管理経路が確定したら、暗号化private host varsを作成してpreflight、DB既存/fresh分岐、限定Deploy、計測、rollbackの順に進める。merge、本番Deploy、production/TalkPlaza接続は明示承認まで行わない。
+repository上の実装はPR #1275へpush済みで、Mac/Docker、実文書、実PostgreSQL、Playwright、SOPによる一次受入は完了した。未確認なのはPi4/Pi5固有の性能値だけであり、専用端末の新規調達や本PRの実装完了条件にはしない。通常の導入・更新機会に、既存運用の承認済みcanaryでreadonly表示から開始し、問題時に旧版へ戻せる状態でROI/OCRを段階確認する。merge、本番Deploy、production/TalkPlaza接続は明示承認まで行わない。
 
 ## Context and Orientation
 

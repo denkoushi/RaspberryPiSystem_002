@@ -11,17 +11,17 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 628 |
-| Total lines | 172662 |
-| Total bytes | 13008258 |
-| With frontmatter | 287 |
-| With status | 143 |
-| source_of_truth declared | 104 |
+| Documents | 638 |
+| Total lines | 174447 |
+| Total bytes | 13190016 |
+| With frontmatter | 293 |
+| With status | 148 |
+| source_of_truth declared | 107 |
 | References to EXEC_PLAN.md | 64 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
 | Long-line documents | 26 |
-| Local links | 5643 |
+| Local links | 5659 |
 | Broken local links | 88 |
 | Documents over 1,000 lines | 29 |
 | Documents over 3,000 lines | 6 |
@@ -40,11 +40,11 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188373 |
-| `docs/INDEX.md` | 2012 | 348584 |
-| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1937 | 213657 |
+| `docs/INDEX.md` | 2021 | 350157 |
+| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1949 | 215363 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
 | `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108031 |
-| `docs/runbooks/kiosk-part-measurement.md` | 1497 | 125488 |
+| `docs/runbooks/kiosk-part-measurement.md` | 1523 | 128624 |
 
 ## EXEC_PLAN References
 
@@ -72,7 +72,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 ## Long-Line Documents
 
 - `EXEC_PLAN.md` (23:1093, 31:1026, 44:1017)
-- `docs/INDEX.md` (292:1132, 308:1242, 312:1022)
+- `docs/INDEX.md` (301:1132, 317:1242, 321:1022)
 - `docs/archive/deployments/2026-04.md` (83:1066)
 - `docs/archive/deployments/2026-05.md` (815:25090, 1642:1257, 2471:1119)
 - `docs/decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md` (47:1010)

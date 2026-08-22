@@ -14,11 +14,15 @@ related_docs:
 
 # 組立手順書 Overlay staging 受入・性能計測 Runbook
 
-このRunbookは、組立手順書（`AssemblyProcedureDocument`）の編集・公開と、公開済み手順書のキオスク表示を、**専用stagingだけ**で受け入れるための正本である。対象はMacからstaging URLを操作する確認、Pi4/Pi5の観測、および許可されたstaging fixtureの後片付けに限る。
+このRunbookは、組立手順書（`AssemblyProcedureDocument`）の編集・公開と、公開済み手順書のキオスク表示について、Pi4/Pi5固有の性能を任意の実機受入で確認するための正本である。Mac/Docker、実文書、実PostgreSQL、Playwright、SOPによる一次受入は完了済みであり、専用端末の新規調達は要求しない。実機受入を行える場合だけ、専用stagingまたは通常導入時の承認済みcanaryで本書を使う。
 
 > **今回の作業では実行禁止:** deploy、rollback、SSH、Docker操作、DB操作、実機への接続、production/TalkPlazaへの接続は行わない。今回実施できるのは、ローカルのinventory境界・構文・契約検証と、この手順書の整備だけである。
 
 ## 0. 境界と前提
+
+- 実機未実施で残る未確認事項は、Pi4/Pi5固有のCPU、memory、温度、描画体感、ROI/Poppler/OCR処理時間である。機能・互換性・DB/API/Web・実文書フローの一次受入とは分離して記録する。
+- 専用staging端末が存在しないことを停止条件や端末調達要求にしない。通常導入時にcanaryが承認された場合は、DBや文書を変更しないreadonly表示から開始し、rollback可能性を確認してからtest fixtureに限定したROI/OCRへ進む。
+- 専用stagingを利用できる場合は、以下の隔離inventoryとnamespaceをそのまま使う。利用できない場合もproduction/TalkPlaza値をstagingへ流用しない。
 
 - 対象SHAはCI成功済みの40文字SHAを一つだけ指定する。ローカルのfeature worktreeのHEADや未コミット差分をデプロイ証拠にしない。
 - stagingのinventoryは `infrastructure/ansible/inventory-staging.yml`、変数は `infrastructure/ansible/group_vars/staging.yml` と専用private host varsを使う。productionの `inventory.yml`、TalkPlazaの `inventory-talkplaza.yml`、本番DB/asset path/credentialは使わない。
@@ -43,14 +47,14 @@ export EVIDENCE_DIR="<approved-local-evidence-dir>/<run-id>"
 
 `STAGING_ACCESS_PASSWORD` は環境変数へ長時間残さず、承認済みのsecret injectionまたは対話入力で一時利用する。
 
-### 初回bootstrapに必要な最小2入力
+### 専用stagingを利用できる場合の初回bootstrap情報
 
 | # | ユーザーが指定する情報 | 記録する値 | 未確定のままの扱い |
 |---:|---|---|---|
 | 1 | 専用stagingにする物理端末 | Pi5/Pi4それぞれの資産識別子・機種・初期状態 | 推測で既存端末へ接続しない |
 | 2 | その2台への既存管理経路 | 初回だけ使うlocal IPまたは既存alias、管理user、秘密情報の既存保管場所（秘密本文は記録しない） | bootstrap接続をしない |
 
-2入力が揃った後、既存Pi Imager/console/初期設定ガイドで一度だけOS、staging専用SSH user/public key、Tailscale参加、`staging-pi5` / `staging-pi4-kiosk01` hostnameを設定する。汎用provisionerは新設しない。以後はMagicDNSとstaging専用鍵だけを使用する。専用Postgres volume、`/opt/RaspberryPiSystem_002-staging/storage`、staging DB/JWT/agent secrets、暗号化private host varsは本Runbookの既存Compose/Ansible/Vault経路で作成し、追加のユーザー入力にはしない。
+専用stagingが既に利用可能な場合だけ、2入力が揃った後に既存Pi Imager/console/初期設定ガイドで一度だけOS、staging専用SSH user/public key、Tailscale参加、`staging-pi5` / `staging-pi4-kiosk01` hostnameを設定する。汎用provisionerは新設しない。以後はMagicDNSとstaging専用鍵だけを使用する。専用Postgres volume、`/opt/RaspberryPiSystem_002-staging/storage`、staging DB/JWT/agent secrets、暗号化private host varsは本Runbookの既存Compose/Ansible/Vault経路で作成し、追加のユーザー入力にはしない。空き端末がない場合はこの節を実行せず、通常導入時canaryへ繰り越す。
 
 release SHA/CI artifact、test fixture ID、approver/window/evidence dir、CPU/memory/temp/RSS閾値は、この4項目とは別の受入前提として全て埋める。
 
@@ -577,4 +581,4 @@ PERF_CLIENT_KEY="$STAGING_CLIENT_KEY" \
 node scripts/perf/measure-kiosk-documents-api.mjs "$EVIDENCE_DIR/kiosk-documents-api.json"
 ```
 
-今回の作業ではstaging URLがなく、上記fixture/seed/実機計測は未実行である。実行時のtemporary Docker、DB、asset directoryは専用namespaceで作成し、終了時に同じrun IDのcleanup receiptを残す。
+今回の作業ではstaging URLがなく、上記fixture/seed/実機計測は未実行である。これは専用端末の調達要求や一次受入の失敗ではなく、実機固有性能だけの繰越項目である。通常導入時の承認済みcanaryまたは既存の専用stagingで実行する際は、readonly表示から開始し、temporary Docker、DB、asset directoryを専用namespaceで作成して、終了時に同じrun IDのcleanup receiptを残す。
