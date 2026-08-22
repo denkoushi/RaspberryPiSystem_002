@@ -1,0 +1,80 @@
+---
+- name: Load the shared Pi5 durable storage contract
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/../../vars/pi5-storage-contract.yml"
+
+- name: Inspect Pi5 durable storage source directories
+  ansible.builtin.stat:
+    path: "{{ pi5_storage_root }}/{{ item.suffix }}"
+  loop: "{{ pi5_phase3_storage_contract }}"
+  loop_control:
+    label: "{{ item.suffix }}"
+  register: pi5_storage_directory_stats
+  changed_when: false
+
+- name: Ensure Pi5 durable storage source directories exist
+  ansible.builtin.file:
+    path: "{{ pi5_storage_root }}/{{ item.item.suffix }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "{{ item.item.mode }}"
+  loop: "{{ pi5_storage_directory_stats.results }}"
+  loop_control:
+    label: "{{ item.item.suffix }}"
+  when: >-
+    not (item.stat.exists | default(false) | bool)
+    or (pi5_storage_manage_existing | bool)
+
+- name: Verify Pi5 durable storage owners are non-root
+  ansible.builtin.command:
+    argv:
+      - stat
+      - -c
+      - "%U|%G"
+      - "{{ pi5_storage_root }}/{{ item.suffix }}"
+  loop: "{{ pi5_phase3_storage_contract }}"
+  loop_control:
+    label: "{{ item.suffix }}"
+  register: pi5_storage_owner_probe
+  changed_when: false
+
+- name: Require non-root Pi5 durable storage owners
+  ansible.builtin.assert:
+    that:
+      - item.stdout.split('|')[0] != 'root'
+    fail_msg: >-
+      Pi5 durable storage directory {{ item.item.suffix }} is root-owned;
+      refusing to change an existing directory during release.
+  loop: "{{ pi5_storage_owner_probe.results }}"
+  loop_control:
+    label: "{{ item.item.suffix }}"
+
+- name: Probe Pi5 durable storage access as the runtime user
+  ansible.builtin.shell: |
+    set -euo pipefail
+    test -d {{ (pi5_storage_root ~ '/' ~ item.suffix) | quote }}
+    test -r {{ (pi5_storage_root ~ '/' ~ item.suffix) | quote }}
+    test -w {{ (pi5_storage_root ~ '/' ~ item.suffix) | quote }}
+    test -x {{ (pi5_storage_root ~ '/' ~ item.suffix) | quote }}
+  args:
+    executable: /bin/bash
+  become: true
+  become_user: "{{ ansible_user }}"
+  loop: "{{ pi5_phase3_storage_contract }}"
+  loop_control:
+    label: "{{ item.suffix }}"
+  register: pi5_storage_access_probe
+  changed_when: false
+  failed_when: false
+
+- name: Require Pi5 durable storage access for the runtime user
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+    fail_msg: >-
+      Pi5 durable storage directory {{ item.item.suffix }} is not readable,
+      writable, and executable by the runtime user.
+  loop: "{{ pi5_storage_access_probe.results }}"
+  loop_control:
+    label: "{{ item.item.suffix }}"

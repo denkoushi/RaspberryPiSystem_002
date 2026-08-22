@@ -8,6 +8,41 @@
       - release_pi5_web_image is match('^ghcr\\.io/denkoushi/raspisys-web:[0-9a-f]{40}-[0-9a-f]{16}@sha256:[0-9a-f]{64}$')
     fail_msg: Pi5 PREPARED requires exact release-set v2 API/Web digests and torque protocol v1.
 
+- name: Capture running Pi5 gateway image before storage PREPARED
+  ansible.builtin.command:
+    argv:
+      - docker
+      - ps
+      - --filter
+      - "label=com.docker.compose.project={{ release_pi5_compose_project }}"
+      - --filter
+      - label=com.docker.compose.service=gateway
+      - --format
+      - "{{ '{{.Image}}|{{.ID}}' }}"
+  register: release_pi5_prefetch_gateway
+  changed_when: false
+
+- name: Require one running gateway before storage PREPARED
+  ansible.builtin.assert:
+    that:
+      - release_pi5_prefetch_gateway.stdout is match('^.+\\|[0-9a-f]{12,64}$')
+    fail_msg: Pi5 PREPARED requires one recoverable running gateway image.
+
+- name: Define complete Pi5 Compose interpolation before storage PREPARED
+  ansible.builtin.set_fact:
+    release_pi5_compose_environment:
+      PI5_PROJECT_DIR: "{{ release_pi5_project_dir }}"
+      PI5_ENV_FILE: "{{ release_pi5_env_file }}"
+      PI5_BLUE_GREEN_CONFIG_DIR: "{{ release_pi5_gateway_config_dir }}"
+      PI5_BLUE_API_IMAGE: "{{ release_pi5_api_image }}"
+      PI5_GREEN_API_IMAGE: "{{ release_pi5_api_image }}"
+      PI5_BLUE_WEB_IMAGE: "{{ release_pi5_web_image }}"
+      PI5_GREEN_WEB_IMAGE: "{{ release_pi5_web_image }}"
+      PI5_GATEWAY_IMAGE: "{{ release_pi5_prefetch_gateway.stdout.split('|')[0] }}"
+
+- name: Prepare Pi5 storage before the torque PREPARED boundary
+  ansible.builtin.include_tasks: prepare-storage.yml
+
 - name: Read Pi5 disk headroom before pulling candidates
   ansible.builtin.shell: |
     set -euo pipefail
