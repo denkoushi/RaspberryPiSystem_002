@@ -14,6 +14,13 @@ SPEC.loader.exec_module(MODULE)
 
 
 class RenderPostgresRoleBootstrapTests(unittest.TestCase):
+    def test_sql_preserves_the_existing_production_database_default(self) -> None:
+        source = (ROOT / "scripts/deploy/postgres-role-bootstrap.sql").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("\\if :{?database_name}", source)
+        self.assertIn("\\set database_name borrow_return", source)
+
     def test_renders_fixed_roles_with_sql_escaped_passwords(self) -> None:
         source = (
             "SELECT :'app_password'; SELECT :'migration_password'; "

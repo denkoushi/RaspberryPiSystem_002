@@ -1,5 +1,13 @@
 \set ON_ERROR_STOP on
 
+-- Existing production/CI callers historically supplied only password
+-- variables. Preserve their fixed database while staging renders an explicit,
+-- validated identifier before psql receives this file.
+\if :{?database_name}
+\else
+  \set database_name borrow_return
+\endif
+
 SELECT format(
   'CREATE ROLE raspi_migrator LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
   :'migration_password'

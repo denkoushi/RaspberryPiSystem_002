@@ -57,6 +57,8 @@
   Evidence: 最終read-only差分reviewでP1として検出した。既存server roleでstaging `.env`とauthority file/directoryを収束し、明示`--env-file`付き専用ComposeでDBだけを起動、初回`pg_dump | gzip`を同じstaging backup rootへ保存・hash記録してからexact-limit role bootstrapへ渡す手順と契約testを追加した。
 - Observation: systemd templateの変数境界変更により、PR Deploy impactの推論surfaceへ`systemd`が追加された。
   Evidence: 最新CIのchange-classificationが宣言不足を検出したためPR本文を実差分へ一致させた。同じrunのrerunは旧event payloadを再利用するため、本記録commitのsynchronize eventで現行PR本文を再検証する。
+- Observation: GitHub `db-infra` jobだけがrole bootstrap SQLをrendererなしで直接`psql`へ渡しており、新しいDB identifier placeholderを解決できなかった。
+  Evidence: 最新CIで`ALTER DATABASE :"database_name"`のsyntax errorを確認した。既存production/CI callerには`borrow_return`を後方互換defaultとし、staging/Ansibleは引き続きsecret-safe rendererで検証済みDB identifierを完全renderする二経路へ整理した。
 
 ## Decision Log
 
