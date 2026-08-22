@@ -15,7 +15,10 @@ SPEC.loader.exec_module(MODULE)
 
 class RenderPostgresRoleBootstrapTests(unittest.TestCase):
     def test_renders_fixed_roles_with_sql_escaped_passwords(self) -> None:
-        source = "SELECT :'app_password'; SELECT :'migration_password';"
+        source = (
+            "SELECT :'app_password'; SELECT :'migration_password'; "
+            'ALTER DATABASE :"database_name" OWNER TO raspi_migrator;'
+        )
         rendered = MODULE.render(
             source,
             "postgresql://raspi_app:application-pass%27word@db:5432/borrow_return",
@@ -23,7 +26,19 @@ class RenderPostgresRoleBootstrapTests(unittest.TestCase):
         )
         self.assertEqual(
             rendered,
-            "SELECT 'application-pass''word'; SELECT 'migration-password';",
+            "SELECT 'application-pass''word'; SELECT 'migration-password'; "
+            'ALTER DATABASE "borrow_return" OWNER TO raspi_migrator;',
+        )
+
+    def test_renders_staging_database_name_from_matching_urls(self) -> None:
+        rendered = MODULE.render(
+            'GRANT CONNECT ON DATABASE :"database_name" TO raspi_app;',
+            "postgresql://raspi_app:application-password@db:5432/borrow_return_staging",
+            "postgresql://raspi_migrator:migration-password@db:5432/borrow_return_staging",
+        )
+        self.assertEqual(
+            rendered,
+            'GRANT CONNECT ON DATABASE "borrow_return_staging" TO raspi_app;',
         )
 
     def test_rejects_wrong_role_or_endpoint(self) -> None:
@@ -44,6 +59,14 @@ class RenderPostgresRoleBootstrapTests(unittest.TestCase):
             MODULE.render(
                 "SELECT :'app_password'; SELECT :'migration_password';",
                 "postgresql://raspi_app:short@db:5432/borrow_return",
+                "postgresql://raspi_migrator:migration-password@db:5432/borrow_return",
+            )
+
+    def test_rejects_mismatched_database_names(self) -> None:
+        with self.assertRaises(ValueError):
+            MODULE.render(
+                'ALTER DATABASE :"database_name" OWNER TO raspi_migrator;',
+                "postgresql://raspi_app:application-password@db:5432/borrow_return_staging",
                 "postgresql://raspi_migrator:migration-password@db:5432/borrow_return",
             )
 

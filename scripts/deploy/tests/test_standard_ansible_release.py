@@ -114,6 +114,34 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
                     }
                 )
 
+    def test_release_remote_root_defaults_to_production_and_accepts_staging(self) -> None:
+        production = {
+            "server": {"hosts": ["pi5"]},
+            "_meta": {"hostvars": {"pi5": {}}},
+        }
+        staging = {
+            "server": {"hosts": ["staging-pi5"]},
+            "_meta": {
+                "hostvars": {
+                    "staging-pi5": {
+                        "release_remote_root": "/opt/RaspberryPiSystem_002-staging"
+                    }
+                }
+            },
+        }
+
+        self.assertEqual(MODULE.server_release_root(production), MODULE.REMOTE_ROOT)
+        self.assertEqual(
+            MODULE.server_release_root(staging),
+            Path("/opt/RaspberryPiSystem_002-staging"),
+        )
+
+        staging["_meta"]["hostvars"]["staging-pi5"]["release_remote_root"] = (
+            "{{ repo_path }}"
+        )
+        with self.assertRaisesRegex(MODULE.UsageError, "unresolved or malformed"):
+            MODULE.server_release_root(staging)
+
     def test_production_inventory_has_concrete_deploy_executor_host(self) -> None:
         inventory = yaml.safe_load(
             (ROOT / MODULE.DEFAULT_INVENTORY).read_text(encoding="utf-8")
@@ -863,6 +891,34 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         )
         self.assertIn("--wait", foreground_command)
         self.assertNotIn("--property=RemainAfterExit=yes", foreground_command)
+
+    def test_staging_systemd_and_remote_script_use_the_inventory_remote_root(self) -> None:
+        args = argparse.Namespace(
+            branch="feat/assembly-procedure-overlay-editing",
+            inventory="infrastructure/ansible/inventory-staging.yml",
+            limit="staging-pi5:staging-pi4-kiosk01",
+            full_fleet=False,
+            detach=True,
+        )
+        remote_root = Path("/opt/RaspberryPiSystem_002-staging")
+
+        command = MODULE.systemd_argv(
+            args,
+            SHA,
+            RUN_ID,
+            args.inventory,
+            ("pi5", "pi4"),
+            "stageadmin",
+            remote_root,
+        )
+        script = command[-1]
+
+        self.assertIn(
+            "--property=WorkingDirectory=/opt/RaspberryPiSystem_002-staging",
+            command,
+        )
+        self.assertIn("cd /opt/RaspberryPiSystem_002-staging", script)
+        self.assertNotIn("cd /opt/RaspberryPiSystem_002\n", script)
 
     def test_standard_route_contends_with_legacy_global_lock_before_git(self) -> None:
         args = argparse.Namespace(

@@ -54,7 +54,7 @@
       - docker
       - compose
       - --project-name
-      - docker
+      - "{{ release_kiosk_compose_project | default('docker') }}"
       - -f
       - "{{ release_kiosk_candidate_compose }}"
       - up

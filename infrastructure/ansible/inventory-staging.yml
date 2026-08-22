@@ -8,18 +8,30 @@ all:
         server:
           hosts:
             staging-pi5:
-              ansible_host: "{{ staging_pi5_host }}"
-              ansible_user: "{{ staging_pi5_user }}"
-              deploy_executor_host: "{{ staging_pi5_host }}"
+              # ansible_host, ansible_user, and deploy_executor_host are
+              # intentionally absent here. They must be direct values in the
+              # ignored encrypted host_vars/staging-pi5/vault.yml so the
+              # launcher never receives an unresolved Jinja expression.
               ansible_python_interpreter: /usr/bin/python3
               server_release_mode: host-config-only
+              # server/release-artifacts.yml is production-scoped and has
+              # higher sibling-group precedence on some Ansible versions.
+              # Pin staging's artifact credentials and WebSocket values at the
+              # host boundary; private vault vars replace these placeholders.
+              pi5_artifact_promotion_enabled: false
+              pi5_artifact_ghcr_username: ''
+              pi5_artifact_ghcr_token: ''
+              trivy_package_file: trivy_0.54.1_Linux-ARM64.deb
+              trivy_download_url: https://github.com/aquasecurity/trivy/releases/download/v0.54.1/trivy_0.54.1_Linux-ARM64.deb
+              web_agent_ws_url: ws://staging-pi5.invalid:7071/stream
+              web_barcode_agent_ws_url: ws://staging-pi5.invalid:7072/stream
         clients:
           children:
             kiosk:
               hosts:
                 staging-pi4-kiosk01:
-                  ansible_host: "{{ staging_pi4_kiosk01_host }}"
-                  ansible_user: "{{ staging_pi4_kiosk01_user }}"
+                  # The SSH identity is supplied directly by the ignored
+                  # encrypted host_vars/staging-pi4-kiosk01/vault.yml.
                   kiosk_browser_engine: firefox
                   kiosk_browser_mode: app-like
                   manage_kiosk_browser: true

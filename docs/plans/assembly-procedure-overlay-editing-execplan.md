@@ -19,7 +19,9 @@
 - [x] 2026-08-21 21:46+09:00: 一意label付き一時PostgreSQLで全159 migrationと実DB版ライフサイクルtestを完了し、container、volume、networkの残存0を確認した。
 - [x] 2026-08-21 21:50+09:00: shared/API/Web build・lint・focused tests、Playwright 5件、17シートのSOP checkを完了した。
 - [x] 2026-08-21 21:55+09:00: 責務、依存方向、test境界、判断、検証結果を本書へ反映した。
-- [ ] integrationPending: push、PR、merge、deployは別途指示がないため未実施。feature worktree上の実装・検証完了状態を維持する。
+- [x] 2026-08-22 09:30+09:00: feature branchをpushしてPR #1275を作成し、実文書3件、実PostgreSQL、Playwright、SOPを含むfeature由来CIを確認した。未変更base imageのTrivy CVEは別件として分離した。
+- [x] 2026-08-22 15:30+09:00: staging effective inventory、remote root/path、production専用torque処理、fresh PostgreSQL role bootstrapを専用化し、focused 97 testsとcanonical deploy contracts 358 testsを完了した。一時Docker資源残存は0だった。
+- [ ] integrationPending: 専用Pi5/Pi4の特定と一回限りのbootstrap管理経路を受領後、staging限定Deployと実機受入を行う。merge、本番Deploy、production/TalkPlaza接続は未承認のため行わない。
 
 ## Surprises & Discoveries
 
@@ -45,6 +47,14 @@
   Evidence: rendererのlimitを唯一の`server` groupへ一般化し、production/staging双方のcontractとstaging `--print-plan`が成功した。
 - Observation: staging用の停止gateは`hosts: localhost`の独立playではwrapperのexact `--limit`から除外された。
   Evidence: mutation playの`pre_tasks`へ`tags: always`で置き、`--tags pi5 --limit staging-pi5`でもrole開始前、changed=0で停止することを確認した。
+- Observation: `group_vars/all.yml`のproduction network、scan、path既定値がeffective staging hostvarsへ残り、間接変数経由の`ansible_host`、`ansible_user`、`deploy_executor_host`は実値を与えても未解決Jinjaのまま残った。
+  Evidence: dummy実値fixtureの`ansible-inventory --host`とstandard launcher `--print-plan`で再現した。staging側の明示overrideと暗号化private host_varsへの直接値契約へ変更後、`.invalid`、未解決Jinja、placeholder、production/TalkPlaza endpoint/path/credentialが0件になった。
+- Observation: standard launcherと一部role/templateにproductionの`/opt/RaspberryPiSystem_002`、`/opt/backups`、`/var/log/caddy`が直書きされ、stagingの専用remote rootを設定してもrelease scriptとsystemd working directoryがproduction pathを使った。
+  Evidence: Luna Maxの境界差分reviewで検出し、production既定を保つ変数へ集約した。fixture planの`remoteRoot`、remote script、systemd argvが`/opt/RaspberryPiSystem_002-staging`へ一致することを単体・canonical contractで確認した。
+- Observation: fresh staging PostgreSQL volumeでは`raspi_app`、`raspi_migrator`と対象DBが存在せず、標準release前のmigration接続が成立しない。
+  Evidence: 既存role bootstrapはSQL中のproduction DB名が固定だった。DB名、Compose project/file/env file、repo/backup pathを最小parameterizationし、安全なSQL identifier renderer経由で`borrow_return_staging`へ適用できるようにした。既存DBの場合はread-only SQLでrole、owner、DB/schema権限を確認してbootstrapを省略する条件分岐をRunbookへ記録した。
+- Observation: DB role parameterizationだけでは、fresh Pi5にhealthyなDB containerと24時間以内のbackupがなく、role bootstrapの前提へ到達できなかった。
+  Evidence: 最終read-only差分reviewでP1として検出した。既存server roleでstaging `.env`とauthority file/directoryを収束し、明示`--env-file`付き専用ComposeでDBだけを起動、初回`pg_dump | gzip`を同じstaging backup rootへ保存・hash記録してからexact-limit role bootstrapへ渡す手順と契約testを追加した。
 
 ## Decision Log
 
@@ -72,6 +82,15 @@
 - Decision: 実機受入はproduction端末を代用せず、`staging-pi5`と`staging-pi4-kiosk01`を専用inventory、DB、Compose project/network/volume、storage/cert/backup/log、Vault境界へ分離する。
   Rationale: 実機の正常フローを標準release routeで完遂できる一方、実値未設定時は`.invalid` hostと`staging_deploy_enabled: false`で接続前に止められる。
   Date/Author: 2026-08-22 / Codex orchestration team.
+- Decision: staging接続実値は暗号化private host_varsで`ansible_host`、`ansible_user`、`deploy_executor_host`へ直接定義し、standard launcherの未解決値拒否は弱めない。
+  Rationale: 間接Jinjaを解決する特例を増やさず、inventory、launcher、Runbook、fixtureが同じ正本を使ってexact staging targetを証明できる。
+  Date/Author: 2026-08-22 / Codex orchestration team.
+- Decision: staging DBは「既存・確認済み」と「fresh・未確認」を分岐し、前者はread-only SQL precondition、後者は既存PostgreSQL role bootstrapの最小parameterizationを使う。
+  Rationale: 不要な汎用provisionerを増やさず、新規volumeでも標準release前に必要role、DB、権限を確実に作れる正常完遂経路を保つ。
+  Date/Author: 2026-08-22 / Codex orchestration team.
+- Decision: ユーザーの初期入力は専用物理Pi5/Pi4の特定と、OS/Tailscale/staging専用SSH userを初回設定する既存管理経路の2点に限定する。
+  Rationale: SSH key、MagicDNS名、staging secret/Vault payload、DB/storageは、その2点が確定した後に既存標準ツールと専用namespaceで本流側が作成・検証できる。
+  Date/Author: 2026-08-22 / Codex orchestration team.
 
 ## Outcomes & Retrospective
 
@@ -96,7 +115,7 @@ feature worktree上では目的を達成した。ライブラリから公開文�
 
 既存`AssemblyProcedureCanvas`は背景と描画slotの責務が明確なため分割せず、overlay slotだけを追加した。asset serviceはstorage、ページ画像参照、OCR adapterを合成する約300行のapplication serviceとして残したが、I/O portは分離済みで単体差替え可能である。Inspectorは約310行だが一つの選択要素property編集に閉じ、3種の分岐が同じform状態を共有するため、今回さらに分ける利益より変更riskが大きいと判断した。
 
-残る作業はrepository統合だけである。push、PR、merge、deployは許可されていないため行っていない。許可後はfeature branchをreviewし、CI成功、`origin/main`へのmerge、merged-main検証、lifecycle `finish`を別の運用工程として記録する。
+repository上の実装はPR #1275へpush済みである。残る受入は専用staging Pi5/Pi4だけであり、物理端末と初回bootstrap管理経路が確定したら、暗号化private host varsを作成してpreflight、DB既存/fresh分岐、限定Deploy、計測、rollbackの順に進める。merge、本番Deploy、production/TalkPlaza接続は明示承認まで行わない。
 
 ## Context and Orientation
 
@@ -171,6 +190,15 @@ Playwrightはlocal設定上Webを先に起動する。API応答はspecがroute m
 - SOP checkが成功し、編集導線を含む17 sheetsとHTML previewを生成・目視確認した。
 - 一時DB各実行後に`TEMP_RESOURCE_REMAINING=0`、Vite/Playwright停止後にfeature worktree由来の常駐test processなしを確認した。
 
+2026-08-22のstaging境界統合では次を確認した。
+
+- staging effective hostvars fixtureで`.invalid`、未解決Jinja、placeholder、production/TalkPlaza endpoint/path/credentialが0件だった。
+- `ansible-inventory --graph/--host`は`staging-pi5`と`staging-pi4-kiosk01`だけを解決し、standard launcher `--print-plan`はexact limitと`/opt/RaspberryPiSystem_002-staging`を示した。
+- focused Python 98 testsが成功した。inventory境界、production既定、remote root、torque除外、fresh DB完遂手順、DB名検証、SQL identifier rendererを含む。
+- canonical `scripts/ci/run-deploy-contracts-local.sh`が成功した。114 template parse、実Compose再作成、Web build、358 tests（1 skipped）、全159 migration、API/EXPLAIN、PostgreSQL role boundary、production DB wiring、rollback safety、全Ansible syntaxを含む。
+- fresh DB用bootstrapは`borrow_return_staging`を安全にrenderしてrole/DB/権限を準備できる。既存DB用にはread-only SQLで必要role、DB owner、database/schema privilegeを確認するpreconditionをRunbookへ記載した。
+- canonical実PostgreSQL検証後の一時container、volume、network残存は0だった。production/TalkPlaza inventory、DB、storage、端末へ接続・変更していない。
+
 人が確認する場合は、libraryで公開文書の「編集／改版」を開き、認証後に範囲を選ぶ。TEXTなら候補を修正し、IMAGEなら切出しまたはuploadを選び、SHAPEなら矢印等を置く。保存・公開後、新版を採用したtemplateのfull/cropに同じ変更が見え、旧templateと開始済み作業には変更が見えないことが成功条件である。
 
 ## Idempotence and Recovery
@@ -210,4 +238,8 @@ I/O依存は既存Sharp、Poppler、座標付きOCR、durable storageである�
 
 Revision note (2026-08-21): 実装完了に合わせ、調査だけの短い計画を自己完結型の実行・引継ぎ文書へ更新した。sidecar設計、asset lease、責務分割、失敗から得た知見、全検証証跡、integrationPendingを記録した。
 
-Revision note (2026-08-22): 専用staging準備を追加した。production/TalkPlaza inventoryは変更せず、staging専用inventory/Vault example/runtime namespace、fail-closed enablement gate、read-only plan、実機rollback・Pi4/Pi5計測Runbookを整備した。PRのWeb OOM原因もfeature由来の参照安定性不具合として修正した。実機固有の接続先、SSH user/key、DB/storage方式、Vault受渡し経路は未提供のため、接続・deploy・性能計測は未実施である。
+Revision note (2026-08-22): 専用staging準備を追加した。production/TalkPlaza inventoryは変更せず、staging専用inventory/Vault example/runtime namespace、fail-closed enablement gate、read-only plan、実機rollback・Pi4/Pi5計測Runbookを整備した。PRのWeb OOM原因もfeature由来の参照安定性不具合として修正した。
+
+Revision note (2026-08-22): preflightのgo/no-go defectを修正した。effective staging hostvarsをproduction既定から明示分離し、private direct host vars、staging remote root/path、production torque除外、既存/fresh DB分岐と最小bootstrap parameterizationを統合した。実機接続に必要な未充足入力は、専用物理Pi5/Pi4の特定と一回限りのbootstrap管理経路だけである。SSH key、MagicDNS、staging secrets/Vault payload、専用DB/storageはその後の限定手順で本流側が用意する。
+
+Revision note (2026-08-22): fresh DB branchの到達不能P1を解消した。staging専用host-config、Compose `.env`、DB起動、初回backup、role bootstrap、read-only再確認、standard releaseを一本の具体的な手順へ接続し、production既定とstandard launcherの拒否契約は維持した。

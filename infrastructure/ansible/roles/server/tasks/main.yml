@@ -98,8 +98,8 @@
     - "{{ repo_path }}/alerts"
     - "{{ repo_path }}/power-actions"
     - "{{ repo_path }}/config"
-    - /opt/backups
-    - /var/log/caddy
+    - "{{ pi5_backup_dir }}"
+    - "{{ pi5_caddy_log_dir }}"
 
 - name: Verify existing Pi5 writable trees are ready for the non-root runtime
   ansible.builtin.shell: |
@@ -109,8 +109,8 @@
       {{ repo_path | quote }}/alerts \
       {{ repo_path | quote }}/power-actions \
       {{ repo_path | quote }}/config \
-      /opt/backups \
-      /var/log/caddy; do
+      {{ pi5_backup_dir | quote }} \
+      {{ pi5_caddy_log_dir | quote }}; do
       test -d "${runtime_path}"
       test -r "${runtime_path}" && test -w "${runtime_path}" && test -x "${runtime_path}"
       blocked="$(find "${runtime_path}" -type d \( ! -readable -o ! -writable -o ! -executable \) -print -quit)"

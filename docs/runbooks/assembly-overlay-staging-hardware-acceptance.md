@@ -43,14 +43,14 @@ export EVIDENCE_DIR="<approved-local-evidence-dir>/<run-id>"
 
 `STAGING_ACCESS_PASSWORD` は環境変数へ長時間残さず、承認済みのsecret injectionまたは対話入力で一時利用する。
 
-### 未確定4情報（接続前に必ず埋める）
+### 初回bootstrapに必要な最小2入力
 
-| # | 未確定情報 | 記録する値 | 未確定のままの扱い |
+| # | ユーザーが指定する情報 | 記録する値 | 未確定のままの扱い |
 |---:|---|---|---|
-| 1 | 端末到達先 | 各Pi4/Pi5のTailscale/DNS名または固定IP、inventoryのhost名との対応 | 接続・plan・deployをしない |
-| 2 | SSH identity | staging専用SSH user、鍵の保管/受渡し経路、標準Ansible executorからの到達可否 | SSH/接続確認をしない |
-| 3 | DB / storage | staging専用DBの新設場所・方式、asset/storage root、productionとの分離 | fixture投入・ROI/OCR POSTをしない |
-| 4 | secret経路 | Vault値の受渡し方法、既存標準password file経路の利用可否、client/access key注入元 | secretをコピーせず停止 |
+| 1 | 専用stagingにする物理端末 | Pi5/Pi4それぞれの資産識別子・機種・初期状態 | 推測で既存端末へ接続しない |
+| 2 | その2台への既存管理経路 | 初回だけ使うlocal IPまたは既存alias、管理user、秘密情報の既存保管場所（秘密本文は記録しない） | bootstrap接続をしない |
+
+2入力が揃った後、既存Pi Imager/console/初期設定ガイドで一度だけOS、staging専用SSH user/public key、Tailscale参加、`staging-pi5` / `staging-pi4-kiosk01` hostnameを設定する。汎用provisionerは新設しない。以後はMagicDNSとstaging専用鍵だけを使用する。専用Postgres volume、`/opt/RaspberryPiSystem_002-staging/storage`、staging DB/JWT/agent secrets、暗号化private host varsは本Runbookの既存Compose/Ansible/Vault経路で作成し、追加のユーザー入力にはしない。
 
 release SHA/CI artifact、test fixture ID、approver/window/evidence dir、CPU/memory/temp/RSS閾値は、この4項目とは別の受入前提として全て埋める。
 
@@ -126,6 +126,112 @@ scripts/update-all-clients.sh --status <run-id> --inventory "$STAGING_INVENTORY"
 ```
 
 `--detach` は一度だけ起動し、返却されたrun IDをそのまま `--status` に渡す。手入力SSH、個別compose、直接Ansible、別monitor loopを追加しない。終了判定はsystemd raw fields（`ActiveState=active`, `SubState=exited`, `Result=success`, `ExecMainStatus=0`）、Ansible `failed=0` / `unreachable=0`、role health、対象SHA/artifact digestの一致をすべて満たした時だけとする。
+
+## 1.3 staging DB / Vault bootstrap boundary
+
+staging Pi5のPostgresが既に専用Compose project/volumeで存在する場合は、release前に**read-only**で次だけを確認する。DB名は `borrow_return_staging`、Compose projectは `raspisys-staging`、接続先はstagingの `db` serviceであることを記録し、productionの `borrow_return`、project `docker`、共有volumeを使わない。
+
+```bash
+# staging Pi5上の承認済みread-only観測。production hostでは実行しない。
+docker compose --project-name raspisys-staging \
+  --env-file /opt/RaspberryPiSystem_002-staging/infrastructure/docker/.env \
+  -f /opt/RaspberryPiSystem_002-staging/infrastructure/docker/docker-compose.server.yml \
+  exec -T db psql -X -q -v ON_ERROR_STOP=1 -U postgres -d borrow_return_staging \
+  -c "SELECT datname FROM pg_database WHERE datname='borrow_return_staging';"
+docker compose --project-name raspisys-staging \
+  --env-file /opt/RaspberryPiSystem_002-staging/infrastructure/docker/.env \
+  -f /opt/RaspberryPiSystem_002-staging/infrastructure/docker/docker-compose.server.yml \
+  exec -T db psql -X -q -v ON_ERROR_STOP=1 -U postgres -d borrow_return_staging \
+  -c "SELECT rolname, rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname IN ('raspi_app','raspi_migrator') ORDER BY rolname;"
+docker compose --project-name raspisys-staging \
+  --env-file /opt/RaspberryPiSystem_002-staging/infrastructure/docker/.env \
+  -f /opt/RaspberryPiSystem_002-staging/infrastructure/docker/docker-compose.server.yml \
+  exec -T db psql -X -q -v ON_ERROR_STOP=1 -U postgres -d borrow_return_staging \
+  -c "SELECT pg_get_userbyid(datdba) AS database_owner FROM pg_database WHERE datname='borrow_return_staging'; SELECT has_database_privilege('raspi_app','borrow_return_staging','CONNECT') AS app_connect, has_schema_privilege('raspi_app','public','USAGE') AS app_schema_usage;"
+```
+
+結果はDB owner=`raspi_migrator`、2 roleが非superuser・非createdb・非createrole、`app_connect=t`、`app_schema_usage=t`を必須とする。業務テーブルが既にある場合は、代表テーブルに対する `has_table_privilege('raspi_app', ..., 'SELECT,INSERT,UPDATE,DELETE')` もread-onlyで確認する。
+
+新規または未検証のDBの場合は、次の一回限りのfresh branchを使う。前提は、bootstrapでstaging Pi5へ承認済みSHAのclean checkoutを`/opt/RaspberryPiSystem_002-staging`として配置し、暗号化private host varsを作成済みであること。汎用provisionerは追加せず、既存server roleでstaging `.env`、DB authority file、専用directoryだけを収束させる。
+
+```bash
+# 管理Mac。SHA、inventory、Vault、exact limitを記録してからhost configだけを適用する。
+export STAGING_RELEASE_SHA='<approved-40-hex-sha>'
+export ANSIBLE_VAULT_PASSWORD_FILE='/Users/tsudatakashi/RaspberryPiSystem_002/infrastructure/ansible/.vault-pass'
+ANSIBLE_REPO_VERSION="$STAGING_RELEASE_SHA" ansible-playbook \
+  -i infrastructure/ansible/inventory-staging.yml \
+  infrastructure/ansible/playbooks/server-config-release.yml \
+  --limit staging-pi5 \
+  -e release_orchestrated=true
+```
+
+次はstaging Pi5上で実行する。`--project-name`、`--env-file`、Compose file、DB名、backup rootをすべて専用値へ固定する。`config --quiet`が通る前に起動せず、`db` serviceだけを起動する。初回backupは空DBでもrole/owner変更前の復旧点として作り、pathとSHA-256を受入証跡へ記録する。
+
+```bash
+set -euo pipefail
+umask 077
+STAGING_ROOT=/opt/RaspberryPiSystem_002-staging
+STAGING_BACKUP_ROOT=/opt/raspisys-staging-backups
+STAGING_DB_BACKUP="$STAGING_BACKUP_ROOT/pre-role-bootstrap-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+COMPOSE=(docker compose --project-name raspisys-staging \
+  --env-file "$STAGING_ROOT/infrastructure/docker/.env" \
+  -f "$STAGING_ROOT/infrastructure/docker/docker-compose.server.yml")
+
+test -d "$STAGING_ROOT/.git"
+test -f "$STAGING_ROOT/infrastructure/docker/.env"
+test -d "$STAGING_BACKUP_ROOT"
+"${COMPOSE[@]}" config --quiet
+"${COMPOSE[@]}" up -d db
+for attempt in $(seq 1 30); do
+  [ "$("${COMPOSE[@]}" ps --format json db | jq -r 'select(.Health == "healthy") | .Health')" = healthy ] && break
+  [ "$attempt" -lt 30 ] || exit 1
+  sleep 2
+done
+"${COMPOSE[@]}" exec -T db pg_dump -U postgres -d borrow_return_staging | gzip -c >"$STAGING_DB_BACKUP"
+test -s "$STAGING_DB_BACKUP"
+sha256sum "$STAGING_DB_BACKUP"
+printf 'STAGING_DB_BACKUP=%s\n' "$STAGING_DB_BACKUP"
+```
+
+表示された`STAGING_DB_BACKUP`を管理Macへ記録し、既存のrole bootstrapをexact staging limitで実行する。playbookはbackupが通常file、同じstaging root配下、24時間以内であることを確認する。
+
+```bash
+export STAGING_DB_BACKUP='/opt/raspisys-staging-backups/pre-role-bootstrap-<timestamp>.sql.gz'
+ansible-playbook \
+  -i infrastructure/ansible/inventory-staging.yml \
+  infrastructure/ansible/playbooks/prepare-pi5-database-roles.yml \
+  --limit staging-pi5 \
+  -e pi5_database_role_migration_approved=true \
+  -e "pi5_database_role_migration_backup_path=$STAGING_DB_BACKUP"
+unset STAGING_DB_BACKUP
+```
+
+この後、上記read-only SQLを再実行してowner、2 role、権限を確認してからstandard releaseへ進む。playbookとSQL rendererはproduction既定値を維持しつつ、DB名・Compose project/file/env file・repo/backup pathを変数で受け、app/migration URLのDB名が一致しない場合は停止する。
+
+Vault値は秘密本文を記録せず、既存標準 `.vault-pass` 経路でstaging専用 `host_vars/staging-pi5/vault.yml` / `host_vars/staging-pi4-kiosk01/vault.yml` を作る。新しいsecret managerやgeneratorは導入しない。
+
+```bash
+set +x
+umask 077
+export STANDARD_VAULT_PASS='/Users/tsudatakashi/RaspberryPiSystem_002/infrastructure/ansible/.vault-pass'
+test -f "$STANDARD_VAULT_PASS"
+
+# exampleを参照し、ansible-vault管理のeditorへ直接入力する。
+# 秘密値は既存password managerまたは `openssl rand -base64 48` で個別生成し、
+# command引数、shell history、tee、スクリーンショットへ残さない。
+ANSIBLE_VAULT_PASSWORD_FILE="$STANDARD_VAULT_PASS" \
+  ansible-vault create infrastructure/ansible/host_vars/staging-pi5/vault.yml
+ANSIBLE_VAULT_PASSWORD_FILE="$STANDARD_VAULT_PASS" \
+  ansible-vault create infrastructure/ansible/host_vars/staging-pi4-kiosk01/vault.yml
+
+ANSIBLE_VAULT_PASSWORD_FILE="$STANDARD_VAULT_PASS" \
+  ansible-vault view infrastructure/ansible/host_vars/staging-pi5/vault.yml >/dev/null
+ANSIBLE_VAULT_PASSWORD_FILE="$STANDARD_VAULT_PASS" \
+  ansible-vault view infrastructure/ansible/host_vars/staging-pi4-kiosk01/vault.yml >/dev/null
+unset STANDARD_VAULT_PASS
+```
+
+`ansible_host`、`ansible_user`、`deploy_executor_host`、endpoint、DB URL、JWT、agent keyは暗号化host varsへ直接値として置く。`staging_deploy_enabled`はbootstrap/preflight中は`false`を維持し、実値fixtureによるeffective-inventory契約、exact-limit plan、別承認を通過した時だけ両hostで`true`へ変更して再暗号化する。group varsの`.invalid`やJinja間接参照を実行時のSSH identityに使わない。`vault.yml`はignore対象であり、`git status --ignored`で追跡対象外を確認する。
 
 ## 2. 失敗時のrescue rollback
 

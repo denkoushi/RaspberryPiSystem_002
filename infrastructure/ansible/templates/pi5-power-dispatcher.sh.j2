@@ -3,9 +3,9 @@ set -euo pipefail
 
 TRIGGER_PATH="${1:-}"
 
-REPO_ROOT="/opt/RaspberryPiSystem_002"
+REPO_ROOT="{{ repo_path | default('/opt/RaspberryPiSystem_002') }}"
 ANSIBLE_DIR="${REPO_ROOT}/infrastructure/ansible"
-INVENTORY="${ANSIBLE_DIR}/inventory.yml"
+INVENTORY="{{ pi5_ansible_inventory | default((repo_path | default('/opt/RaspberryPiSystem_002')) ~ '/infrastructure/ansible/inventory.yml') }}"
 PLAYBOOK="${ANSIBLE_DIR}/playbooks/power-control.yml"
 LOG_DIR="${REPO_ROOT}/logs/power-actions"
 QUEUE_DIR="${REPO_ROOT}/power-actions"

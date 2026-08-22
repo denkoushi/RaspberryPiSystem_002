@@ -1,61 +1,255 @@
-# Dedicated staging boundary. Values are intentionally non-routable placeholders
-# until separate Pi5/Pi4 hardware and private variables are provisioned.
+# Dedicated staging boundary.
+#
+# This file deliberately contains concrete staging defaults rather than
+# inheriting production network, endpoint, credential, or host-path values
+# from group_vars/all.yml. The two ignored host_vars/*/vault.yml files replace
+# the .invalid/REPLACE_WITH_STAGING_* inputs during private bootstrap. Keep
+# the committed defaults non-routable and deployment-disabled.
 staging_environment: true
 staging_inventory_only: true
 staging_deploy_enabled: false
+release_torque_cutover: false
+release_torque_cutover_hosts: []
 
-staging_pi5_host: staging-pi5.invalid
-staging_pi5_user: __SET_IN_PRIVATE_STAGING_VARS__
-staging_pi4_kiosk01_host: staging-pi4-kiosk01.invalid
-staging_pi4_kiosk01_user: __SET_IN_PRIVATE_STAGING_VARS__
+staging_management_networks: []
 
-# Keep the shared variable within its supported enum; the explicit staging
-# endpoint values below remain authoritative and non-routable.
-network_mode: local
+# Use a staging-only network map. The values are replaced in both private
+# host_vars files after the physical devices and their MagicDNS names are
+# known; no other environment address can fall through from all.yml.
+network_mode: tailscale
+local_network:
+  raspberrypi5_ip: staging-pi5.invalid
+  raspberrypi4_ip: staging-pi4-kiosk01.invalid
+  raspberrypi3_ip: ''
+  raspi4_robodrill01_ip: ''
+  raspi4_fjv60_80_ip: ''
+  raspi4_kensaku_stonebase01_ip: ''
+  raspi4_sessaku_01_ip: ''
+  raspi4_assembly_01_ip: ''
+tailscale_network:
+  raspberrypi5_ip: staging-pi5.invalid
+  raspberrypi4_ip: staging-pi4-kiosk01.invalid
+  raspberrypi3_ip: ''
+  raspi4_robodrill01_ip: ''
+  raspi4_fjv60_80_ip: ''
+  raspi4_kensaku_stonebase01_ip: ''
+  raspi4_sessaku_01_ip: ''
+  raspi4_assembly_01_ip: ''
+current_network:
+  raspberrypi5_ip: staging-pi5.invalid
+  raspberrypi4_ip: staging-pi4-kiosk01.invalid
+  raspberrypi3_ip: ''
+  raspi4_robodrill01_ip: ''
+  raspi4_fjv60_80_ip: ''
+  raspi4_kensaku_stonebase01_ip: ''
+  raspi4_sessaku_01_ip: ''
+  raspi4_assembly_01_ip: ''
 server_ip: staging-pi5.invalid
 kiosk_ip: staging-pi4-kiosk01.invalid
+signage_ip: ''
 server_base_url: https://staging-pi5.invalid
-kiosk_full_url: "{{ server_base_url }}/kiosk"
-api_base_url: "{{ server_base_url }}/api"
-websocket_agent_url: "ws://staging-pi5.invalid:7071/stream"
-api_healthcheck_url: "{{ api_base_url }}/system/health"
+kiosk_full_url: https://staging-pi5.invalid/kiosk
+api_base_url: https://staging-pi5.invalid/api
+haizen_agent_api_base_url: https://staging-pi5.invalid
+websocket_agent_url: ws://staging-pi5.invalid:7071/stream
+api_healthcheck_url: https://staging-pi5.invalid/api/system/health
+status_agent_api_base_url: https://staging-pi5.invalid/api
+nfc_agent_api_base_url: https://staging-pi5.invalid/api
 docker_server_ip: staging-pi5.invalid
-status_agent_api_base_url: "{{ api_base_url }}"
-nfc_agent_api_base_url: "{{ api_base_url }}"
 
-# Never share the production checkout, compose project, network, volumes, or
-# storage tree with staging.
+# Staging does not depend on the private DGX/Ubuntu endpoint for the normal
+# kiosk flow. A future staging adapter must provide its own host explicitly.
+ubuntu_local_llm_host: ''
+ubuntu_local_llm_inference_nginx_port: '0'
+
+# Network policy values are intentionally empty until bootstrap records the
+# staging tailnet/management CIDR. The localhost entry keeps local admin
+# checks valid; private host vars add only the staging management networks.
+tailscale_enabled: true
+tailscale_auth_key: ''
+tailscale_extra_args: --ssh=false
+tailscale_install_script: https://tailscale.com/install.sh
+ufw_enabled: true
+ufw_default_incoming_policy: deny
+ufw_default_outgoing_policy: allow
+ufw_allowed_tcp_ports:
+  - '80'
+  - '443'
+ufw_ssh_allowed_networks: []
+admin_allow_nets:
+  - 127.0.0.1/32
+ufw_vnc_allowed_networks: []
+ufw_logging_level: medium
+
+# Keep certificate/log/alert paths on the staging host namespace.
+wayvnc_use_relative_paths: true
+wayvnc_address: 0.0.0.0
+wayvnc_enable_auth: true
+wayvnc_enable_pam: true
+wayvnc_private_key_file: tls_key.pem
+wayvnc_certificate_file: tls_cert.pem
+wayvnc_rsa_private_key_file: rsa_key.pem
+caddy_log_dir: /var/log/caddy-raspisys-staging
+alert_script_path: /opt/RaspberryPiSystem_002-staging/scripts/generate-alert.sh
+alert_webhook_url: ''
+alert_webhook_timeout_seconds: 5
+
+# Never share production checkout, compose project, network, volume, backup,
+# certificate, or storage trees with staging.
 repo_path: /opt/RaspberryPiSystem_002-staging
+project_root: /opt/RaspberryPiSystem_002-staging
+release_remote_root: /opt/RaspberryPiSystem_002-staging
 release_pi5_project_dir: /opt/RaspberryPiSystem_002-staging
 release_kiosk_project_dir: /opt/RaspberryPiSystem_002-staging
 pi5_project_dir: /opt/RaspberryPiSystem_002-staging
+release_pi5_run_root: /var/lib/raspi-release/assembly-staging
+release_kiosk_run_root: /var/lib/raspi-release/assembly-staging
 release_pi5_compose_project: raspisys-staging-bluegreen
-pi5_base_compose_project: raspisys-staging
 release_kiosk_compose_project: raspisys-staging-client
+release_pi5_env_file: /opt/RaspberryPiSystem_002-staging/infrastructure/docker/.env
+release_pi5_compose_file: /opt/RaspberryPiSystem_002-staging/infrastructure/docker/docker-compose.phase3.yml
+release_pi5_migration_compose_file: /opt/RaspberryPiSystem_002-staging/infrastructure/docker/docker-compose.phase3.migration.yml
+release_pi5_gateway_config_dir: /opt/RaspberryPiSystem_002-staging/logs/deploy/bluegreen
+release_pi5_gateway_template: /opt/RaspberryPiSystem_002-staging/infrastructure/docker/Caddyfile.gateway.template
+release_pi5_api_health_url: https://127.0.0.1/api/system/health
+release_pi5_web_health_url: https://127.0.0.1/
+release_kiosk_existing_compose: /opt/RaspberryPiSystem_002-staging/infrastructure/docker/docker-compose.client.yml
+release_kiosk_service_allowlist: []
+release_pi5_compose_namespace: raspisys-staging-bluegreen
+pi5_base_compose_project: raspisys-staging
+pi5_database_name: borrow_return_staging
+pi5_database_compose_project: raspisys-staging
+pi5_database_compose_file: /opt/RaspberryPiSystem_002-staging/infrastructure/docker/docker-compose.server.yml
+pi5_database_compose_env_file: /opt/RaspberryPiSystem_002-staging/infrastructure/docker/.env
+pi5_database_role_migration_backup_root: /opt/raspisys-staging-backups
+pi5_database_role_migration_backup_path: ''
 pi5_volume_prefix: raspisys-staging
 pi5_docker_network: raspisys-staging_default
 pi5_backup_dir: /opt/raspisys-staging-backups
+backup_dir: /opt/raspisys-staging-backups/configs
 pi5_caddy_log_dir: /var/log/caddy-raspisys-staging
 pi5_certs_dir: /opt/RaspberryPiSystem_002-staging/certs
 pi5_blue_green_config_dir: /opt/RaspberryPiSystem_002-staging/logs/deploy/bluegreen
+pi5_power_actions_dir: /opt/RaspberryPiSystem_002-staging/power-actions
+pi5_ansible_inventory: /opt/RaspberryPiSystem_002-staging/infrastructure/ansible/inventory-staging.yml
 backup_ssh_private_key_host_path: /opt/RaspberryPiSystem_002-staging/secrets/backup-ssh/id_ed25519
 backup_ssh_known_hosts_host_path: /opt/RaspberryPiSystem_002-staging/secrets/backup-ssh/known_hosts
 
-# The staging DB is a separate contract. The URL/password are supplied only by
-# an encrypted private host_vars/staging-pi5/vault.yml, never by this file.
+# Security scans and logs must point at the staging namespace. These explicit
+# values override every corresponding production value in group_vars/all.yml.
+fail2ban_enabled: true
+clamav_server_enabled: true
+clamav_server_scan_paths:
+  - /opt/RaspberryPiSystem_002-staging
+  - /opt/raspisys-staging-backups
+clamav_server_scan_cron: '0 3 * * *'
+clamav_server_log_dir: /var/log/clamav-raspisys-staging
+clamav_server_log_file: clamav-scan.log
+clamav_kiosk_enabled: true
+clamav_kiosk_scan_paths:
+  - /opt/RaspberryPiSystem_002-staging/storage
+clamav_kiosk_scan_cron: '0 2 * * 0'
+clamav_kiosk_log_dir: /var/log/clamav-raspisys-staging
+clamav_kiosk_log_file: clamav-kiosk-scan.log
+trivy_enabled: true
+trivy_scan_target: /opt/RaspberryPiSystem_002-staging
+trivy_scan_cron: '30 3 * * *'
+trivy_image_scan_cron: '0 4 * * *'
+trivy_log_dir: /var/log/trivy-raspisys-staging
+trivy_log_file: trivy-scan.log
+trivy_skip_dirs:
+  - /opt/RaspberryPiSystem_002-staging/certs
+trivy_alert_ignore_patterns:
+  - /certs/
+  - /raspisys-staging-backups/
+rkhunter_server_enabled: true
+rkhunter_server_cron: '0 4 * * *'
+rkhunter_log_dir: /var/log/rkhunter-raspisys-staging
+rkhunter_log_file: rkhunter-scan.log
+rkhunter_kiosk_enabled: true
+rkhunter_kiosk_cron: '30 2 * * 0'
+rkhunter_kiosk_log_dir: /var/log/rkhunter-raspisys-staging
+rkhunter_kiosk_log_file: rkhunter-kiosk.log
+clamav:
+  enabled: true
+  log_dir: /var/log/clamav-raspisys-staging
+  scan_paths:
+    - /opt/RaspberryPiSystem_002-staging/apps/api
+    - /opt/RaspberryPiSystem_002-staging/apps/web
+    - /opt/RaspberryPiSystem_002-staging/storage
+  cron:
+    minute: '0'
+    hour: '3'
+    weekday: '0'
+trivy:
+  enabled: true
+  log_dir: /var/log/trivy-raspisys-staging
+  target_paths:
+    - /opt/RaspberryPiSystem_002-staging
+  cron:
+    minute: '0'
+    hour: '4'
+    weekday: '0'
+rkhunter:
+  enabled: true
+  log_dir: /var/log/rkhunter-raspisys-staging
+  cron:
+    minute: '30'
+    hour: '4'
+
+security_monitor_enabled: true
+security_monitor_state_dir: /var/lib/security-monitor-raspisys-staging
+security_monitor_fail2ban_log: /var/log/fail2ban-raspisys-staging.log
+security_monitor_timer_oncalendar: '*:0/15'
+security_monitor_allowed_listen_ports: '22 80 443'
+security_monitor_ignore_processes: tailscaled
+security_monitor_ignore_addr_prefixes: '127.0.0.1 ::1 fd7a: fe80:'
+
+# Explicitly clear production-only promotion and repository credentials.
+pi5_artifact_promotion_enabled: false
+pi5_artifact_ghcr_username: ''
+pi5_artifact_ghcr_token: ''
+repo_remote: https://github.com/denkoushi/RaspberryPiSystem_002.git
+repo_version: main
+git_deploy_key: ''
+git_environment: {}
+
+# Staging DB/assets/credentials are private values. These non-secret
+# placeholders make the disabled profile inspectable and fail closed until the
+# bootstrap process writes the encrypted host_vars files.
 staging_database_name: borrow_return_staging
-app_database_name: "{{ staging_database_name }}"
-app_database_url: "{{ vault_staging_app_database_url }}"
-migration_database_url: "{{ vault_staging_migration_database_url }}"
-postgres_superuser_password: "{{ vault_staging_postgres_superuser_password }}"
+app_database_name: borrow_return_staging
+app_database_url: ''
+migration_database_url: ''
+postgres_superuser_password: ''
 api_file_storage_dir: /app/storage
 api_photo_storage_dir: /app/storage
 api_pdf_storage_dir: /app/storage
 api_csv_dashboard_storage_dir: /app/storage
+api_jwt_access_secret: ''
+api_jwt_refresh_secret: ''
+status_agent_client_key: ''
+nfc_agent_client_secret: ''
 
-# No production credentials or device keys are supplied by the committed
-# boundary. These names are contracts for the private encrypted host vars.
-api_jwt_access_secret: "{{ vault_staging_api_jwt_access_secret }}"
-api_jwt_refresh_secret: "{{ vault_staging_api_jwt_refresh_secret }}"
-status_agent_client_key: "{{ vault_staging_status_agent_client_key }}"
-nfc_agent_client_secret: "{{ vault_staging_nfc_agent_client_secret }}"
+# Pi4 staging has no production torque ownership capability.
+server_release_mode: host-config-only
+terminal_release_mode: release-only
+client_default_services_to_restart:
+  - status-agent.service
+  - status-agent.timer
+haizen_agent_enabled: false
+torque_agent_enabled: false
+torque_connection_lease_enabled: false
+torque_agent_browser_origins: []
+torque_agent_bluetooth_adapter: {}
+torque_agent_hid_links: []
+torque_agent_hid_devices: []
+
+# Keep the existing web feature flags, but make all websocket origins staging
+# local/remote explicitly instead of inheriting production server values.
+web_api_base_url: /api
+web_api_timeout_ms: '120000'
+web_ws_base_url: /ws
+web_agent_ws_url: ws://staging-pi5.invalid:7071/stream
+web_agent_ws_mode: local
+web_barcode_agent_ws_url: ws://staging-pi5.invalid:7072/stream

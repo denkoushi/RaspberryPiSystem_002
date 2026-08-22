@@ -5,7 +5,12 @@
   become: true
   serial: 1
   vars:
-    repo_path: /opt/RaspberryPiSystem_002
+    repo_path: "{{ pi5_project_dir | default('/opt/RaspberryPiSystem_002') }}"
+    pi5_database_name: "{{ app_database_name | default('borrow_return') }}"
+    pi5_database_compose_project: "{{ pi5_base_compose_project | default('docker') }}"
+    pi5_database_compose_file: "{{ repo_path }}/infrastructure/docker/docker-compose.server.yml"
+    pi5_database_compose_env_file: "{{ repo_path }}/infrastructure/docker/.env"
+    pi5_database_role_migration_backup_root: "{{ pi5_backup_dir | default('/opt/backups') }}"
     pi5_database_role_migration_approved: false
     pi5_database_role_migration_backup_path: ""
 
@@ -18,24 +23,25 @@
           This playbook changes PostgreSQL role ownership. Re-run only after
           separate approval with pi5_database_role_migration_approved=true.
 
-    - name: Require dedicated production database inputs
+    - name: Require dedicated environment database inputs
       ansible.builtin.assert:
         that:
           - app_database_url is defined
-          - app_database_url is match('^postgresql://raspi_app:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+          - app_database_url is match('^postgresql://raspi_app:[^@]+@db:5432/' ~ (pi5_database_name | regex_escape) ~ '(?:[?].*)?$')
           - migration_database_url is defined
-          - migration_database_url is match('^postgresql://raspi_migrator:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+          - migration_database_url is match('^postgresql://raspi_migrator:[^@]+@db:5432/' ~ (pi5_database_name | regex_escape) ~ '(?:[?].*)?$')
         fail_msg: Dedicated raspi_app and raspi_migrator URLs are required.
       no_log: true
 
-    - name: Require an explicit backup path beneath the production backup root
+    - name: Require an explicit backup path beneath the environment backup root
       ansible.builtin.assert:
         that:
-          - pi5_database_role_migration_backup_path is match('^/opt/backups/.+[.]sql[.]gz$')
+          - pi5_database_role_migration_backup_path is match('^' ~ (pi5_database_role_migration_backup_root | regex_escape) ~ '/.+[.]sql[.]gz$')
           - "'..' not in pi5_database_role_migration_backup_path.split('/')"
         fail_msg: >-
-          Supply the exact verified /opt/backups/*.sql.gz artifact selected for
-          this approved migration; the playbook never creates a backup.
+          Supply the exact verified environment backup-root/*.sql.gz artifact
+          selected for this approved migration; the playbook never creates a
+          backup.
 
     - name: Inspect the approved database backup without following links
       ansible.builtin.stat:
@@ -62,7 +68,7 @@
       ansible.builtin.shell: |
         set -euo pipefail
         cd {{ repo_path | quote }}
-        cid="$(docker compose -f infrastructure/docker/docker-compose.server.yml ps -q db)"
+        cid="$(docker compose --project-name {{ pi5_database_compose_project | quote }} --env-file {{ pi5_database_compose_env_file | quote }} -f {{ pi5_database_compose_file | quote }} ps -q db)"
         test -n "${cid}"
         test "$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' "${cid}")" = healthy
       args:
@@ -99,8 +105,9 @@
         MIGRATION_DATABASE_URL="$MIGRATION_DATABASE_URL" \
         /usr/bin/python3 /run/render-raspi-postgres-role-bootstrap.py \
           /run/raspi-postgres-role-bootstrap.sql \
-          | docker compose -f infrastructure/docker/docker-compose.server.yml \
-              exec -T db psql -X -q -v ON_ERROR_STOP=1 -U postgres -d borrow_return
+            | docker compose --project-name {{ pi5_database_compose_project | quote }} \
+              --env-file {{ pi5_database_compose_env_file | quote }} \
+              -f {{ pi5_database_compose_file | quote }} exec -T db psql -X -q -v ON_ERROR_STOP=1 -U postgres -d {{ pi5_database_name | quote }}
       args:
         executable: /bin/bash
       environment:
@@ -112,13 +119,15 @@
       ansible.builtin.shell: |
         set -euo pipefail
         cd {{ repo_path | quote }}
-        result="$(docker compose -f infrastructure/docker/docker-compose.server.yml \
-          exec -T db psql -X -q -v ON_ERROR_STOP=1 -U postgres -d borrow_return -Atc \
+        result="$(docker compose --project-name {{ pi5_database_compose_project | quote }} \
+          --env-file {{ pi5_database_compose_env_file | quote }} \
+          -f {{ pi5_database_compose_file | quote }} exec -T db psql -X -q -v ON_ERROR_STOP=1 -U postgres -d {{ pi5_database_name | quote }} -Atc \
           "SELECT count(*) FROM pg_roles WHERE rolname IN ('raspi_app','raspi_migrator') AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole")"
         test "${result}" = 2
-        owner="$(docker compose -f infrastructure/docker/docker-compose.server.yml \
-          exec -T db psql -X -q -v ON_ERROR_STOP=1 -U postgres -d borrow_return -Atc \
-          "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname='borrow_return'")"
+        owner="$(docker compose --project-name {{ pi5_database_compose_project | quote }} \
+          --env-file {{ pi5_database_compose_env_file | quote }} \
+          -f {{ pi5_database_compose_file | quote }} exec -T db psql -X -q -v ON_ERROR_STOP=1 -U postgres -d {{ pi5_database_name | quote }} -Atc \
+          "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname='{{ pi5_database_name }}'")"
         test "${owner}" = raspi_migrator
       args:
         executable: /bin/bash

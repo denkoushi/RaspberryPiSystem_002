@@ -37,7 +37,7 @@
     notifempty
 }
 
-/opt/RaspberryPiSystem_002/alerts/*.json {
+{{ repo_path | default('/opt/RaspberryPiSystem_002') }}/alerts/*.json {
     weekly
     rotate 26
     missingok

@@ -32,9 +32,9 @@
       - --profile
       - torque
       - --project-name
-      - docker
+      - "{{ release_kiosk_compose_project | default('docker') }}"
       - -f
-      - /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.client.yml
+      - "{{ release_kiosk_existing_compose | default('/opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.client.yml') }}"
       - stop
       - torque-agent
   changed_when: true
@@ -57,9 +57,9 @@
       - --profile
       - torque
       - --project-name
-      - docker
+      - "{{ release_kiosk_compose_project | default('docker') }}"
       - -f
-      - /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.client.yml
+      - "{{ release_kiosk_existing_compose | default('/opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.client.yml') }}"
       - ps
       - --status
       - running
