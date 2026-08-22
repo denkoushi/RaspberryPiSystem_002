@@ -6,6 +6,8 @@ import {
 } from '@raspi-system/shared-types';
 import clsx from 'clsx';
 
+import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
+
 import type { AssemblyProcedureOverlayAssetDto } from './types';
 import type { CSSProperties, ReactNode } from 'react';
 
@@ -157,23 +159,46 @@ function OverlayContent({
     return <span className="block h-full w-full whitespace-pre-wrap break-words" style={style}>{element.text}</span>;
   }
   if (element.kind === 'IMAGE') {
-    return element.assetId ? (
-      <img
-        src={imageSource(element.assetId, assets)}
-        alt=""
-        className="h-full w-full"
-        draggable={false}
-        style={{ objectFit: element.objectFit ?? 'contain' }}
-        onError={(event) => {
-          event.currentTarget.style.display = 'none';
-          event.currentTarget.parentElement?.setAttribute('data-image-error', 'true');
-        }}
-      />
-    ) : (
-      <span className="flex h-full w-full items-center justify-center bg-slate-200/80 text-center text-[0.65rem] font-semibold text-slate-700">画像assetを指定</span>
-    );
+    return <ImageOverlayContent element={element} assets={assets} />;
   }
   return <ShapeContent element={element} />;
+}
+
+/**
+ * Overlay assets are served from authenticated storage routes. Keep image
+ * loading on the shared protected-image path so the browser never requests a
+ * protected URL as a native <img src>, which would omit the API auth headers.
+ */
+function ImageOverlayContent({
+  element,
+  assets
+}: {
+  element: Extract<RenderElement, { kind: 'IMAGE' }>;
+  assets?: Record<string, AssemblyProcedureOverlayAssetDto>;
+}) {
+  const source = element.assetId ? imageSource(element.assetId, assets) : null;
+  const { blobUrl, error } = useProtectedImageBlobUrl(source);
+  if (!element.assetId) {
+    return <span className="flex h-full w-full items-center justify-center bg-slate-200/80 text-center text-[0.65rem] font-semibold text-slate-700">画像assetを指定</span>;
+  }
+
+  if (error || !blobUrl) {
+    return <span className="flex h-full w-full items-center justify-center bg-slate-200/80 text-center text-[0.65rem] font-semibold text-slate-700" data-image-error={error ? 'true' : undefined}>{error ? '画像の読み込みに失敗しました' : '画像を読み込み中…'}</span>;
+  }
+
+  return (
+    <img
+      src={blobUrl}
+      alt=""
+      className="h-full w-full"
+      draggable={false}
+      style={{ objectFit: element.objectFit ?? 'contain' }}
+      onError={(event) => {
+        event.currentTarget.style.display = 'none';
+        event.currentTarget.parentElement?.setAttribute('data-image-error', 'true');
+      }}
+    />
+  );
 }
 
 export function AssemblyProcedureOverlayLayer({

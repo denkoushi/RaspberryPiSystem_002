@@ -1,9 +1,20 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureOverlayLayer } from './AssemblyProcedureOverlayLayer';
 
+const mockUseProtectedImageBlobUrl = vi.fn();
+
+vi.mock('../../hooks/useProtectedImageBlobUrl', () => ({
+  useProtectedImageBlobUrl: (...args: unknown[]) => mockUseProtectedImageBlobUrl(...args)
+}));
+
 describe('AssemblyProcedureOverlayLayer', () => {
+  beforeEach(() => {
+    mockUseProtectedImageBlobUrl.mockReset();
+    mockUseProtectedImageBlobUrl.mockReturnValue({ blobUrl: 'blob:assembly-overlay-image', error: null });
+  });
+
   it('renders asset-map URLs, proportional text sizing, and crop clipping', () => {
     render(
       <div className="relative h-[200px] w-[400px]">
@@ -43,8 +54,38 @@ describe('AssemblyProcedureOverlayLayer', () => {
     expect(screen.getByTestId('assembly-procedure-overlay-layer')).toHaveClass('overflow-hidden');
     expect(screen.getByTestId('assembly-procedure-overlay-text-1')).toBeInTheDocument();
     expect(screen.getByTestId('assembly-procedure-overlay-image-1')).toBeInTheDocument();
-    expect(screen.getByRole('img')).toHaveAttribute('src', '/api/storage/assembly-procedure-assets/asset-png');
+    expect(mockUseProtectedImageBlobUrl).toHaveBeenCalledWith('/api/storage/assembly-procedure-assets/asset-png');
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:assembly-overlay-image');
     expect(screen.getByTestId('assembly-procedure-overlay-text-1').firstElementChild).toHaveStyle({ fontSize: '2.5cqw' });
+  });
+
+  it('does not expose a protected asset URL to the native image element while loading', () => {
+    mockUseProtectedImageBlobUrl.mockReturnValue({ blobUrl: null, error: null });
+    render(
+      <AssemblyProcedureOverlayLayer
+        elements={[{
+          id: 'image-loading',
+          pageIndex: 0,
+          kind: 'IMAGE',
+          assetId: 'asset-png',
+          bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 },
+          zIndex: 0
+        }]}
+        assets={{
+          'asset-png': {
+            assetId: 'asset-png',
+            storageKey: 'assembly/asset-png',
+            contentType: 'image/png',
+            byteSize: 10,
+            url: '/api/storage/assembly-procedure-assets/asset-png'
+          }
+        }}
+      />
+    );
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.getByTestId('assembly-procedure-overlay-image-loading')).toHaveTextContent('画像を読み込み中');
+    expect(mockUseProtectedImageBlobUrl).toHaveBeenCalledWith('/api/storage/assembly-procedure-assets/asset-png');
   });
 
   it('supports keyboard selection and ratio nudging with a11y labels', () => {
