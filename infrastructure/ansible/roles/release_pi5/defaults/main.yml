@@ -7,6 +7,8 @@ release_pi5_project_dir: "{{ pi5_project_dir | default(repo_path | default('/opt
 release_pi5_run_root: /var/lib/raspi-release/standard
 release_pi5_compose_project: bluegreen
 release_pi5_env_file: "{{ release_pi5_project_dir }}/infrastructure/docker/.env"
+release_pi5_server_compose_file: "{{ release_pi5_project_dir }}/infrastructure/docker/docker-compose.server.yml"
+release_pi5_volume_materializer_script: "{{ release_pi5_project_dir }}/scripts/deploy/pi5_volume_materializer.py"
 release_pi5_compose_file: "{{ release_pi5_project_dir }}/infrastructure/docker/docker-compose.phase3.yml"
 release_pi5_migration_compose_file: "{{ release_pi5_project_dir }}/infrastructure/docker/docker-compose.phase3.migration.yml"
 release_pi5_compose_argv:

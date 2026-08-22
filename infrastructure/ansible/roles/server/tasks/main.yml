@@ -84,6 +84,13 @@
     pi5_runtime_uid: "{{ pi5_runtime_uid_probe.stdout }}"
     pi5_runtime_gid: "{{ pi5_runtime_gid_probe.stdout }}"
 
+- name: Prepare the shared Pi5 durable storage directories
+  ansible.builtin.include_role:
+    name: pi5_storage
+  vars:
+    pi5_storage_root: "{{ repo_path }}/storage"
+    pi5_storage_manage_existing: true
+
 - name: Ensure enumerated Pi5 writable roots exist for the runtime user
   ansible.builtin.file:
     path: "{{ item }}"
@@ -370,62 +377,6 @@
     mode: '0755'
   register: power_actions_dir_result
   when: server_release_mode == 'full'
-
-- name: Ensure part measurement drawing storage directory exists
-  ansible.builtin.file:
-    path: "{{ repo_path }}/storage/part-measurement-drawings"
-    state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0755'
-
-- name: Ensure assembly procedure image storage directory exists
-  ansible.builtin.file:
-    path: "{{ repo_path }}/storage/assembly-procedure-images"
-    state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0755'
-
-- name: Ensure assembly procedure asset storage directory exists
-  ansible.builtin.file:
-    path: "{{ repo_path }}/storage/assembly-procedure-assets"
-    state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0755'
-
-- name: Ensure measuring instrument genre image storage directory exists
-  ansible.builtin.file:
-    path: "{{ repo_path }}/storage/measuring-instrument-genres"
-    state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0755'
-
-- name: Ensure pallet machine illustration storage directory exists
-  ansible.builtin.file:
-    path: "{{ repo_path }}/storage/pallet-machine-illustrations"
-    state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0755'
-
-- name: Ensure CSV dashboard source storage directory exists
-  ansible.builtin.file:
-    path: "{{ repo_path }}/storage/csv-dashboards"
-    state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0755'
-
-- name: Ensure file integrity catalog directory exists
-  ansible.builtin.file:
-    path: "{{ repo_path }}/storage/.integrity"
-    state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0750'
 
 - name: Stat existing Docker Compose .env
   ansible.builtin.stat:

@@ -1,0 +1,58 @@
+---
+# One logical storage contract shared by the server preparation role, the
+# explicit runtime-permission migration, and the Pi5 release role.  Compose
+# remains the source of truth for the resolved volume name and bind device;
+# these entries bind each logical key to its host suffix and API mount.
+pi5_phase3_storage_contract:
+  - logical_key: photo-storage
+    suffix: photos
+    runtime_path: /app/storage/photos
+    mode: '0755'
+  - logical_key: thumbnail-storage
+    suffix: thumbnails
+    runtime_path: /app/storage/thumbnails
+    mode: '0755'
+  - logical_key: pdf-storage
+    suffix: pdfs
+    runtime_path: /app/storage/pdfs
+    mode: '0755'
+  - logical_key: pdf-pages-storage
+    suffix: pdf-pages
+    runtime_path: /app/storage/pdf-pages
+    mode: '0755'
+  - logical_key: signage-rendered-storage
+    suffix: signage-rendered
+    runtime_path: /app/storage/signage-rendered
+    mode: '0755'
+  - logical_key: part-measurement-drawings-storage
+    suffix: part-measurement-drawings
+    runtime_path: /app/storage/part-measurement-drawings
+    mode: '0755'
+  - logical_key: part-measurement-drawings-derivatives-storage
+    suffix: part-measurement-drawings-derivatives
+    runtime_path: /app/storage/part-measurement-drawings-derivatives
+    mode: '0755'
+  - logical_key: assembly-procedure-images-storage
+    suffix: assembly-procedure-images
+    runtime_path: /app/storage/assembly-procedure-images
+    mode: '0755'
+  - logical_key: assembly-procedure-assets-storage
+    suffix: assembly-procedure-assets
+    runtime_path: /app/storage/assembly-procedure-assets
+    mode: '0755'
+  - logical_key: measuring-instrument-genres-storage
+    suffix: measuring-instrument-genres
+    runtime_path: /app/storage/measuring-instrument-genres
+    mode: '0755'
+  - logical_key: pallet-machine-illustrations-storage
+    suffix: pallet-machine-illustrations
+    runtime_path: /app/storage/pallet-machine-illustrations
+    mode: '0755'
+  - logical_key: csv-dashboard-storage
+    suffix: csv-dashboards
+    runtime_path: /app/storage/csv-dashboards
+    mode: '0755'
+  - logical_key: file-integrity-storage
+    suffix: .integrity
+    runtime_path: /app/storage/.integrity
+    mode: '0750'
