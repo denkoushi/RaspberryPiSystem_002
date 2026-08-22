@@ -55,6 +55,8 @@
   Evidence: 既存role bootstrapはSQL中のproduction DB名が固定だった。DB名、Compose project/file/env file、repo/backup pathを最小parameterizationし、安全なSQL identifier renderer経由で`borrow_return_staging`へ適用できるようにした。既存DBの場合はread-only SQLでrole、owner、DB/schema権限を確認してbootstrapを省略する条件分岐をRunbookへ記録した。
 - Observation: DB role parameterizationだけでは、fresh Pi5にhealthyなDB containerと24時間以内のbackupがなく、role bootstrapの前提へ到達できなかった。
   Evidence: 最終read-only差分reviewでP1として検出した。既存server roleでstaging `.env`とauthority file/directoryを収束し、明示`--env-file`付き専用ComposeでDBだけを起動、初回`pg_dump | gzip`を同じstaging backup rootへ保存・hash記録してからexact-limit role bootstrapへ渡す手順と契約testを追加した。
+- Observation: systemd templateの変数境界変更により、PR Deploy impactの推論surfaceへ`systemd`が追加された。
+  Evidence: 最新CIのchange-classificationが宣言不足を検出したためPR本文を実差分へ一致させた。同じrunのrerunは旧event payloadを再利用するため、本記録commitのsynchronize eventで現行PR本文を再検証する。
 
 ## Decision Log
 
