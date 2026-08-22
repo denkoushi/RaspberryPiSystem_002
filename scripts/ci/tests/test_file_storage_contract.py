@@ -1,6 +1,8 @@
 from pathlib import Path
 import unittest
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[3]
 SERVER_COMPOSE = (ROOT / "infrastructure/docker/docker-compose.server.yml").read_text()
@@ -12,6 +14,25 @@ API_ENV = (ROOT / "infrastructure/ansible/templates/api.env.j2").read_text()
 SERVER_ROLE = (
     ROOT / "infrastructure/ansible/roles/server/tasks/main.yml"
 ).read_text()
+STORAGE_ROLE = (
+    ROOT / "infrastructure/ansible/roles/pi5_storage/tasks/main.yml"
+).read_text()
+STORAGE_CONTRACT = yaml.safe_load(
+    (ROOT / "infrastructure/ansible/vars/pi5-storage-contract.yml").read_text()
+)["pi5_phase3_storage_contract"]
+SERVER_MODEL = yaml.safe_load(
+    (ROOT / "infrastructure/docker/docker-compose.server.yml").read_text()
+)
+PHASE3_MODEL = yaml.safe_load(
+    (ROOT / "infrastructure/docker/docker-compose.phase3.yml").read_text()
+)
+RELEASE_PREPARE = (
+    ROOT / "infrastructure/ansible/roles/release_pi5/tasks/prepare.yml"
+).read_text()
+VOLUME_MATERIALIZER = (
+    ROOT / "scripts/deploy/pi5_volume_materializer.py"
+).read_text()
+BACKUP_SCRIPT = (ROOT / "scripts/server/backup.sh").read_text()
 RUNTIME_PERMISSIONS = (
     ROOT / "infrastructure/ansible/playbooks/prepare-pi5-runtime-permissions.yml"
 ).read_text()
@@ -87,18 +108,58 @@ class FileStorageContractTest(unittest.TestCase):
         )
 
     def test_ansible_creates_the_derivative_cache_bind_source(self):
-        self.assertIn(
-            '"{{ repo_path }}/storage/part-measurement-drawings-derivatives"',
-            SERVER_ROLE,
+        self.assertIn("name: pi5_storage", SERVER_ROLE)
+        self.assertIn("pi5_phase3_storage_contract", STORAGE_ROLE)
+        self.assertIn("{{ pi5_storage_root }}/{{ item.suffix }}", STORAGE_ROLE)
+        self.assertIn("pi5_phase3_storage_contract", RUNTIME_PERMISSIONS)
+
+    def test_phase3_server_and_ansible_share_the_complete_storage_contract(self):
+        expected_keys = {entry["logical_key"] for entry in STORAGE_CONTRACT}
+        phase3_external = {
+            key
+            for key, value in PHASE3_MODEL["volumes"].items()
+            if value.get("external") is True
+        }
+        self.assertEqual(phase3_external, expected_keys)
+        self.assertEqual(
+            {entry["logical_key"] for entry in STORAGE_CONTRACT},
+            {key for key in SERVER_MODEL["volumes"] if key in expected_keys},
         )
-        self.assertIn(
-            '"{{ repo_path }}/storage/assembly-procedure-assets"',
-            SERVER_ROLE,
+        self.assertEqual(len(STORAGE_CONTRACT), 13)
+        for entry in STORAGE_CONTRACT:
+            key = entry["logical_key"]
+            server_volume = SERVER_MODEL["volumes"][key]
+            self.assertEqual(server_volume["driver"], "local")
+            self.assertEqual(server_volume["driver_opts"]["type"], "none")
+            self.assertEqual(server_volume["driver_opts"]["o"], "bind")
+            self.assertTrue(
+                server_volume["driver_opts"]["device"].endswith(
+                    f"/storage/{entry['suffix']}"
+                )
+            )
+            self.assertIn(
+                f"{key}:/app/storage/{entry['suffix']}",
+                PHASE3_COMPOSE,
+            )
+
+    def test_release_prepares_all_storage_dirs_before_materializing_volumes(self):
+        self.assertIn("name: pi5_storage", RELEASE_PREPARE)
+        self.assertIn("pi5_storage_manage_existing: false", RELEASE_PREPARE)
+        self.assertIn("Prepare the shared Pi5 durable storage directories before any Compose command", RELEASE_PREPARE)
+        self.assertIn("Materialize and validate all phase3 external durable volumes", RELEASE_PREPARE)
+        self.assertLess(
+            RELEASE_PREPARE.index("Prepare the shared Pi5 durable storage directories before any Compose command"),
+            RELEASE_PREPARE.index("Materialize and validate all phase3 external durable volumes"),
         )
-        self.assertIn(
-            '"{{ repo_path }}/storage/assembly-procedure-assets"',
-            RUNTIME_PERMISSIONS,
-        )
+        self.assertIn("Validate the full set before creating any missing volume", VOLUME_MATERIALIZER)
+
+    def test_overlay_storage_is_in_backup_and_integrity_boundaries(self):
+        for source in (
+            "/app/storage/assembly-procedure-images",
+            "/app/storage/assembly-procedure-assets",
+            "/app/storage/.integrity",
+        ):
+            self.assertIn(source, BACKUP_SCRIPT)
 
     def test_ansible_environment_uses_one_canonical_root_and_consistent_aliases(self):
         for value in (
