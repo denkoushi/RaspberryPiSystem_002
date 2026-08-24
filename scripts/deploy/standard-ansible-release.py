@@ -918,10 +918,16 @@ def execute_standard_route(args: argparse.Namespace) -> int:
         raise RuntimeError("all selected optional hosts are offline; no mutation was run")
     profiles = tuple(profile for profile, _hosts in reachable_selection)
     effective_limit = exact_host_limit(reachable_selection)
+    requested_profiles = tuple(profile for profile, _hosts in requested_selection)
+    needs_signed_release = bool(
+        set(requested_profiles).intersection({"pi5", "pi4"})
+    )
     artifacts = (
         release_set_artifacts(args.sha, inventory, require_torque=torque_cutover)
-        if "pi5" in profiles
-        else ReleaseArtifacts(f"unused:{args.sha}", f"unused-web:{args.sha}", None, None)
+        if needs_signed_release
+        else ReleaseArtifacts(
+            f"unused:{args.sha}", f"unused-web:{args.sha}", None, None, ()
+        )
     )
     if not artifacts.agent_services and any(
         item.get("profile") == "pi4" for item in excluded
@@ -978,10 +984,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if getattr(args, "torque_cutover", False):
         validate_torque_cutover_selection(selected, selection)
     if args.print_plan:
-        plan_agent_services = PI4_AGENT_SERVICES
-        if "pi5" in profiles:
+        plan_agent_services: Sequence[str] = ()
+        if set(profiles).intersection({"pi5", "pi4"}):
             plan_agent_services = release_set_artifacts(
-                sha, inventory, require_torque=getattr(args, "torque_cutover", False)
+                sha,
+                inventory,
+                require_torque=getattr(args, "torque_cutover", False),
             ).agent_services
         args.agent_services = plan_agent_services
         print(json.dumps(plan(args, sha, inventory, relative, selection, remote_root), ensure_ascii=False, indent=2))

@@ -351,6 +351,91 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         self.assertEqual(document["executionOrder"][0]["images"], [])
         self.assertEqual(document["activationTargets"][0]["strategy"], "kiosk-web-activation-v1")
 
+    def test_pi4_only_print_plan_uses_signed_agent_services_authority(self) -> None:
+        args = [
+            "--branch", "main",
+            "--inventory", MODULE.DEFAULT_INVENTORY,
+            "--limit", "pi4-a",
+            "--print-plan",
+        ]
+        document = {
+            "server": {"hosts": ["pi5"]},
+            "kiosk": {"hosts": ["pi4-a"]},
+            "_meta": {"hostvars": {"pi5": {}, "pi4-a": {}}},
+        }
+        signed = MODULE.ReleaseArtifacts(
+            f"api:{SHA}", f"web:{SHA}", None, None, ()
+        )
+        captured: dict[str, object] = {}
+
+        def fake_plan(plan_args: argparse.Namespace, *plan_args_: object) -> dict[str, object]:
+            captured["agent_services"] = plan_args.agent_services
+            return {"mode": "web-only", "agentServices": list(plan_args.agent_services)}
+
+        with mock.patch.object(
+            MODULE, "resolve_sha", return_value=SHA
+        ), mock.patch.object(
+            MODULE,
+            "inventory_path",
+            return_value=(Path("inventory.yml"), MODULE.DEFAULT_INVENTORY),
+        ), mock.patch.object(
+            MODULE, "inventory_document", side_effect=[document, document]
+        ), mock.patch.object(
+            MODULE, "server_release_root", return_value=MODULE.REMOTE_ROOT
+        ), mock.patch.object(
+            MODULE, "release_set_artifacts", return_value=signed
+        ) as resolve_release_set, mock.patch.object(
+            MODULE, "plan", side_effect=fake_plan
+        ), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(MODULE.main(args), 0)
+
+        resolve_release_set.assert_called_once_with(
+            SHA, Path("inventory.yml"), require_torque=False
+        )
+        self.assertEqual(captured["agent_services"], ())
+        self.assertEqual(json.loads(output.getvalue())["agentServices"], [])
+
+    def test_pi4_only_execute_resolves_signed_authority_without_default_agents(self) -> None:
+        args = argparse.Namespace(
+            inventory=MODULE.DEFAULT_INVENTORY,
+            sha=SHA,
+            run_id=RUN_ID,
+            profiles="pi4",
+            limit="pi4-a",
+            full_fleet=False,
+        )
+        inventory = {
+            "kiosk": {"hosts": ["pi4-a"]},
+            "_meta": {"hostvars": {"pi4-a": {}}},
+        }
+        signed = MODULE.ReleaseArtifacts(
+            f"api:{SHA}", f"web:{SHA}", None, None, ()
+        )
+        with mock.patch.object(
+            MODULE,
+            "inventory_path",
+            return_value=(Path("inventory.yml"), MODULE.DEFAULT_INVENTORY),
+        ), mock.patch.object(
+            MODULE, "inventory_document", return_value=inventory
+        ), mock.patch.object(
+            MODULE, "run", return_value=completed(["git"], f"{SHA}\n")
+        ), mock.patch.object(
+            MODULE, "preflight_optional_hosts",
+            return_value=((("pi4", ("pi4-a",)),), ()),
+        ), mock.patch.object(
+            MODULE, "release_set_artifacts", return_value=signed
+        ) as resolve_release_set, mock.patch.object(
+            MODULE.os, "execvpe"
+        ) as execvpe, redirect_stdout(io.StringIO()):
+            self.assertEqual(MODULE.execute_standard_route(args), 1)
+
+        resolve_release_set.assert_called_once_with(
+            SHA, Path("inventory.yml"), require_torque=False
+        )
+        command = execvpe.call_args.args[1]
+        variables = json.loads(command[command.index("--extra-vars") + 1])
+        self.assertEqual(variables["release_kiosk_agent_services"], [])
+
     def test_web_only_role_uses_activation_helper_without_agent_lifecycle(self) -> None:
         role_root = ROOT / "infrastructure/ansible/roles/release_kiosk"
         role = "\n".join(

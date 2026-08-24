@@ -44,7 +44,6 @@
     that:
       - release_kiosk_service_allowlist | default([]) | difference(['nfc-agent', 'barcode-agent', 'torque-agent']) | length == 0
       - release_kiosk_service_allowlist | default([]) | difference(release_kiosk_enabled_services) | length == 0
-      - release_kiosk_requested_services | difference(release_kiosk_enabled_services) | length == 0
     fail_msg: The Pi4 service allowlist must contain only agents enabled on the selected kiosk.
 
 - name: Select only enabled agents requested by this release

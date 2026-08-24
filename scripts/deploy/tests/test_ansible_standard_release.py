@@ -374,6 +374,60 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         )
         self.assertIn("release_kiosk_enabled_services", barcode_health["when"])
 
+    def test_missing_optional_requested_agent_is_filtered_without_prepare_failure(self) -> None:
+        prepare = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        allowlist = next(
+            task for task in prepare
+            if task["name"] == "Validate an optional bounded Pi4 service allowlist"
+        )
+        self.assertNotIn(
+            "release_kiosk_requested_services | difference(release_kiosk_enabled_services) | length == 0",
+            allowlist["ansible.builtin.assert"]["that"],
+        )
+        selection = next(
+            task for task in prepare
+            if task["name"] == "Select only enabled agents requested by this release"
+        )
+        expression = selection["ansible.builtin.set_fact"]["release_kiosk_services"]
+        self.assertIn("release_kiosk_enabled_services | intersect(release_kiosk_requested_services)", expression)
+        self.assertIn("| intersect(release_kiosk_service_allowlist)", expression)
+
+    def test_pre_switch_normal_agent_failure_has_no_runtime_mutation_in_rollback(self) -> None:
+        rollback = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/rollback.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        names = {
+            "Restore backed-up Pi4 release files",
+            "Remove newly introduced Pi4 files without a backup",
+            "Reload restored Pi4 systemd units",
+            "Verify rollback prerequisites before agent compose restore",
+            "Fail closed when rollback prerequisites are missing",
+            "Restart restored Pi4 display unit",
+            "Run the restored status-agent service once before its timer",
+            "Restart restored Pi4 status-agent timer",
+            "Verify the complete restored Pi4 runtime",
+        }
+        switch_gate = "release_kiosk_switch_attempted | default(false) | bool"
+        for task in rollback:
+            if task["name"] not in names:
+                continue
+            with self.subTest(task=task["name"]):
+                when = task["when"]
+                when = when if isinstance(when, list) else [when]
+                self.assertIn(switch_gate, when)
+
+        completed = next(
+            task for task in rollback if task["name"] == "Record completed Pi4 rollback"
+        )
+        self.assertIn("release_kiosk_web_manifest_sha256 is defined", completed["ansible.builtin.set_fact"]["release_kiosk_rolled_back"])
+        self.assertIn(switch_gate, completed["ansible.builtin.set_fact"]["release_kiosk_rolled_back"])
+
     def test_pi4_rollback_image_capture_uses_unique_compose_labels(self) -> None:
         prepare_tasks = yaml.safe_load(
             (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
