@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Sequence
 
 from classify_changes import (
-    PI4_AGENT_ARTIFACTS,
     PI4_AGENT_SERVICE_NAMES,
     classify_changes,
     parse_name_status_z,
@@ -57,9 +56,6 @@ def classify_event(
         result["pi4AgentMatrix"] = pi4_agent_matrix_for_services(
             PI4_AGENT_SERVICE_NAMES
         )
-        result["pi4AgentServices"] = [
-            artifact.service for artifact in PI4_AGENT_ARTIFACTS
-        ]
     return result
 
 

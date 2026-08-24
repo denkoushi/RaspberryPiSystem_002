@@ -16,7 +16,7 @@ last_verified: 2026-08-18
 このfoundationで固定した境界は次のとおりである。
 
 - Pi5: 稼働中にCI image、資源、migrationをAnsibleが直接確認し、`release_pi5` roleのslot lifecycleと5回の連続health sampleを利用する。
-- Pi4: exact `--limit`と`serial: 1`で一台ずつ、署名済みrelease-setの`agentServices`に含まれる変更serviceだけをimage pull・`--no-build`で切り替える。他hostは停止しない。`agentServices=[]`（Webだけの変更）の場合はagent image/env/Compose/status-agentを変更せず、既存の`kiosk-web-activation-v1`とcompiled SHAのready ACKだけを検証する。
+- Pi4: exact `--limit`と`serial: 1`で一台ずつ、image pull完了後に`--no-build`で変更serviceだけを切り替える。他hostは停止しない。
 - Pi3: controllerから完成tarを転送し、端末で代表SHA-256を一度確認する。固定allowlistを検証してrun-scoped tempへ展開・read-only化後、digest名へatomic renameする。端末固有値はimmutable release外のenv/drop-inに置き、Pi3からGit、GHCR、外部HTTPへ接続しない。
 
 ### 標準更新入口
@@ -48,7 +48,7 @@ wrapperはこのv2と参照証跡を一度だけ検証し、exact image、protoc
 
 - mutationにはexact `--limit`または明示的な`--full-fleet`が必須である。暗黙の全fleet更新は行わない。
 - 引数なしの通常実行はsystemd unitの終了まで待つ。`--detach`は`runId`を返し、`--status`はsystemd statusとjournalだけを読む。
-- `--print-plan`は`ansible-inventory`と`ansible-playbook --list-hosts/--list-tasks`に加えて、Pi5対象時は署名済みrelease-setのcomponent selectionを確認し、選択host、profile、release SHA、`agentServices`、Web-onlyのactivation/verification target、GHCR tag、順序を表示する。remote hostやruntimeは変更しない。Web-onlyは手入力flagではなく、署名済み`agentServices=[]`から導出される。
+- `--print-plan`は`ansible-inventory`と`ansible-playbook --list-hosts/--list-tasks`だけを実行し、選択host、profile、release SHA、GHCR tag、順序を表示する。remote hostやruntimeは変更しない。
 - CLIの未文書化されたmutation/control引数はfail-closedで拒否される。
 - Pi5で公開release-setからAPI/Web digestを解決する。torque cutoverでは署名済みschema v2からtorque-agent digestとprotocol versionも解決し、署名済みadoption predicateと組合せtupleを検証する。Pi3は公開image labelから完成tarのSHA-256を一つだけ得る。Ansibleがprepare、switch、health、rescue rollbackを所有する。
 - mutation開始時にPi5 executorが選択済みPi4/Pi3のSSH portを各1回だけ確認する。3秒以内に接続できない任意端末は再試行せず `optional-host-preflight` に記録して除外する。Pi5を含む選択ではPi5を必ず実行し、任意端末だけの選択が全台offlineならmutation前に失敗する。
@@ -57,7 +57,7 @@ wrapperはこのv2と参照証跡を一度だけ検証し、exact image、protoc
 
 wrapperの出力は次の契約で扱う。
 
-- `--print-plan`のJSONで `releaseSha`、`inventory`、`limit`/`fullFleet`、`mode`、`agentServices`、`mutationTargets`、`activationTargets`、`verificationTargets`、`executionOrder[].profile`、`executionOrder[].hosts`、`executionOrder[].images` を希望scopeとして記録する。`agentServices=[]`ではPi4の`activationTargets`が`kiosk-web-activation-v1`になり、agent操作が0件であることを確認する。torque cutoverでは`artifactResolution=signed-release-set-v2-before-service-quiesce`と、`PREPARED`から`BROWSERS_RESUMED`までの`cutoverPhases`も確認する。plan時点のtorque image表示は署名済みv2から実行時に解決するlocatorであり、digestの最終証拠はmutation開始後・Ansible開始前の`release-set-v2-prepared` journal eventである。
+- `--print-plan`のJSONで `releaseSha`、`inventory`、`limit`/`fullFleet`、`executionOrder[].profile`、`executionOrder[].hosts`、`executionOrder[].images` を希望scopeとして記録する。torque cutoverでは`artifactResolution=signed-release-set-v2-before-service-quiesce`と、`PREPARED`から`BROWSERS_RESUMED`までの`cutoverPhases`も確認する。plan時点のtorque image表示は署名済みv2から実行時に解決するlocatorであり、digestの最終証拠はmutation開始後・Ansible開始前の`release-set-v2-prepared` journal eventである。
 - mutationのJSONで返された `runId` と `statusCommand` だけを後続操作へ渡す。別のrun IDを作らず、別のDeployを起動しない。
 - `--status RUN_ID`のJSONに含まれるsystemdのraw fields（`ActiveState`、`SubState`、`Result`、`ExecMainStatus`）とjournalを、preflight除外、実行状態、Ansible recap、health、rollbackの一次証拠として読む。systemd oneshotの正常完了は実績上 `ActiveState=active`、`SubState=exited`、`Result=success`、`ExecMainStatus=0` である。`active`/`inactive`だけでDeploy中・完了を判定しない。`SubState=running`等の非終端なら「実行中」、`SubState=exited`かつ上記Result/ExecMainStatusとrecapが合格なら「完了」、runを開始していなければ「未実行」と報告し、raw fieldsを併記する。手書きの監視shellや独自の終了判定を追加しない。
 
@@ -101,7 +101,7 @@ scripts/update-all-clients.sh
 - `standard-ansible-release.py` は対象SHA、inventory、対象host、systemd実行単位を解決する。
 - `deploy-release-standard.yml` は server、kiosk、signage の順序と `serial: 1` を宣言する。
 - `release_pi5` はPi5のimage、migration、health、slot切替、失敗時rollbackをAnsible role内で確認する。
-- `release_kiosk` は署名済みcomponent selectionに従ってPi4のimage/configと有効agentのhealthを一台ずつ確認する。選択集合が空なら、既存agentのidentity/config snapshotを前後で一致確認し、既存runtime manifest helperによるbrowser activationとPi5 deploy-statusのcompiled SHA ready ACKだけを確認する。失敗時はPi5側をfailed→rollback verifyingへ記録し、既存`preflight-restore`/`restore`でbrowser/runtime manifestだけを復元する。agentのrestore/deleteやDB down migrationは行わず、manifest cleanup receipt確認後にrun-scoped dataを整理する。
+- `release_kiosk` はPi4のimage/configと有効agentのhealthを一台ずつ確認する。
 - `release_signage` はPi3の検証済み配布artifactをatomicにstageし、端末側のGitや外部HTTP取得を行わない。
 
 旧control planeや削除済みentrypointを標準手順の入力や操作として使用しない。
