@@ -297,8 +297,17 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             environment["ANSIBLE_VAULT_PASSWORD_FILE"] = str(
                 ANSIBLE / ".vault-pass.example"
             )
+            signed_release_set = launcher.ReleaseArtifacts(
+                f"ghcr.io/denkoushi/raspisys-api:{STANDARD_SHA}",
+                f"ghcr.io/denkoushi/raspisys-web:{STANDARD_SHA}",
+                None,
+                None,
+                launcher.PI4_AGENT_SERVICES,
+            )
             with mock.patch.object(launcher, "resolve_sha", return_value=STANDARD_SHA), mock.patch.object(
                 launcher, "config_hash", return_value="b" * 64
+            ), mock.patch.object(
+                launcher, "release_set_artifacts", return_value=signed_release_set
             ), mock.patch.object(launcher, "ansible_environment", return_value=environment), mock.patch.object(
                 launcher, "run", side_effect=fake_run
             ):
