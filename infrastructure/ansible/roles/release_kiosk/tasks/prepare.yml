@@ -4,10 +4,12 @@
     that:
       - release_sha is match('^[0-9a-f]{40}$')
       - release_run_id is match('^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$')
-      - release_sha in release_kiosk_nfc_image
-      - release_sha in release_kiosk_barcode_image
+      - release_kiosk_agent_services | difference(['nfc-agent', 'barcode-agent', 'torque-agent']) | length == 0
+      - "'nfc-agent' not in release_kiosk_agent_services or release_sha in release_kiosk_nfc_image"
+      - "'barcode-agent' not in release_kiosk_agent_services or release_sha in release_kiosk_barcode_image"
       - >-
-        (release_torque_cutover | default(false) | bool
+        ('torque-agent' not in release_kiosk_agent_services)
+        or (release_torque_cutover | default(false) | bool
           and release_kiosk_torque_image is match('^ghcr\\.io/denkoushi/raspisys-torque-agent@sha256:[0-9a-f]{64}$'))
         or (not (release_torque_cutover | default(false) | bool)
           and release_sha in release_kiosk_torque_image)
@@ -27,6 +29,7 @@
         + (['barcode-agent'] if (barcode_agent_enabled | default(false) | bool) else [])
         + (['torque-agent'] if (torque_agent_enabled | default(false) | bool) else [])
       }}
+    release_kiosk_requested_services: "{{ release_kiosk_agent_services | list }}"
     release_kiosk_switch_attempted: false
     release_kiosk_healthy: false
     release_kiosk_rolled_back: false
@@ -43,16 +46,10 @@
   ansible.builtin.set_fact:
     release_kiosk_services: >-
       {{
-        release_kiosk_enabled_services
+        release_kiosk_enabled_services | intersect(release_kiosk_requested_services)
         if (release_kiosk_service_allowlist | default([]) | length == 0)
-        else release_kiosk_enabled_services | intersect(release_kiosk_service_allowlist)
+        else release_kiosk_enabled_services | intersect(release_kiosk_requested_services) | intersect(release_kiosk_service_allowlist)
       }}
-
-- name: Require at least one enabled Pi4 agent
-  ansible.builtin.assert:
-    that:
-      - release_kiosk_services | length > 0
-    fail_msg: The selected kiosk has no CI-built agent service enabled.
 
 - name: Reuse kiosk role browser executable resolution for release staging
   ansible.builtin.include_role:
@@ -64,7 +61,7 @@
   ansible.builtin.set_fact:
     release_kiosk_rollback_prerequisites: >-
       {{
-        ['/etc/raspi-status-agent.conf']
+        (['/etc/raspi-status-agent.conf'] if release_kiosk_services | length > 0 else [])
         + ([release_kiosk_project_dir ~ '/clients/nfc-agent/.env'] if 'nfc-agent' in release_kiosk_services else [])
         + ([release_kiosk_project_dir ~ '/clients/barcode-agent/.env'] if 'barcode-agent' in release_kiosk_services else [])
         + ([release_kiosk_project_dir ~ '/clients/torque-agent/.env'] if 'torque-agent' in release_kiosk_services else [])
@@ -215,6 +212,7 @@
     mode: '0600'
   vars:
     release_kiosk_compose_images: "{{ release_kiosk_candidate_images }}"
+  when: release_kiosk_services | length > 0
 
 - name: Render the rollback Pi4 Compose file
   ansible.builtin.template:
@@ -225,6 +223,7 @@
     mode: '0600'
   vars:
     release_kiosk_compose_images: "{{ release_kiosk_rollback_images }}"
+  when: release_kiosk_services | length > 0
 
 - name: Render staged status-agent configuration
   ansible.builtin.template:
@@ -234,6 +233,7 @@
     group: root
     mode: '0600'
   no_log: true
+  when: release_kiosk_services | length > 0
 
 - name: Stage the exact status-agent program
   ansible.builtin.copy:
@@ -242,6 +242,7 @@
     owner: root
     group: root
     mode: '0755'
+  when: release_kiosk_services | length > 0
 
 - name: Stage the status-agent storage health module
   ansible.builtin.copy:
@@ -250,6 +251,7 @@
     owner: root
     group: root
     mode: '0644'
+  when: release_kiosk_services | length > 0
 
 - name: Stage the status-agent terminal health module
   ansible.builtin.copy:
@@ -258,6 +260,7 @@
     owner: root
     group: root
     mode: '0644'
+  when: release_kiosk_services | length > 0
 
 - name: Stage the status-agent terminal maintenance module
   ansible.builtin.copy:
@@ -266,6 +269,7 @@
     owner: root
     group: root
     mode: '0644'
+  when: release_kiosk_services | length > 0
 
 - name: Stage the standard status-agent service
   ansible.builtin.template:
@@ -274,6 +278,7 @@
     owner: root
     group: root
     mode: '0644'
+  when: release_kiosk_services | length > 0
 
 - name: Stage the status-agent timer
   ansible.builtin.copy:
@@ -282,6 +287,7 @@
     owner: root
     group: root
     mode: '0644'
+  when: release_kiosk_services | length > 0
 
 - name: Stage the SHA-bound kiosk launcher
   ansible.builtin.template:
@@ -292,6 +298,7 @@
     mode: '0755'
   vars:
     kiosk_release_sha: "{{ release_sha }}"
+  when: release_kiosk_services | length > 0
 
 - name: Stage the kiosk browser unit
   ansible.builtin.template:
@@ -300,6 +307,7 @@
     owner: root
     group: root
     mode: '0644'
+  when: release_kiosk_services | length > 0
 
 - name: Stage NFC agent environment
   ansible.builtin.template:
@@ -335,18 +343,22 @@
   ansible.builtin.set_fact:
     release_kiosk_files: >-
       {{
-        [
-          {'src': release_kiosk_stage_dir ~ '/status-agent.conf', 'dest': '/etc/raspi-status-agent.conf', 'mode': '0600'},
-          {'src': release_kiosk_stage_dir ~ '/status-agent.py', 'dest': '/usr/local/lib/raspi-status-agent/status-agent.py', 'mode': '0755'},
-          {'src': release_kiosk_stage_dir ~ '/storage_health.py', 'dest': '/usr/local/lib/raspi-status-agent/storage_health.py', 'mode': '0644'},
-          {'src': release_kiosk_stage_dir ~ '/terminal_agent_health.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_agent_health.py', 'mode': '0644'},
-          {'src': release_kiosk_stage_dir ~ '/terminal_device_maintenance.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_device_maintenance.py', 'mode': '0644'},
-          {'src': release_kiosk_stage_dir ~ '/status-agent.service', 'dest': '/etc/systemd/system/status-agent.service', 'mode': '0644'},
-          {'src': release_kiosk_stage_dir ~ '/status-agent.timer', 'dest': '/etc/systemd/system/status-agent.timer', 'mode': '0644'},
+        (
+          [
+            {'src': release_kiosk_stage_dir ~ '/status-agent.conf', 'dest': '/etc/raspi-status-agent.conf', 'mode': '0600'},
+            {'src': release_kiosk_stage_dir ~ '/status-agent.py', 'dest': '/usr/local/lib/raspi-status-agent/status-agent.py', 'mode': '0755'},
+            {'src': release_kiosk_stage_dir ~ '/storage_health.py', 'dest': '/usr/local/lib/raspi-status-agent/storage_health.py', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/terminal_agent_health.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_agent_health.py', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/terminal_device_maintenance.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_device_maintenance.py', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/status-agent.service', 'dest': '/etc/systemd/system/status-agent.service', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/status-agent.timer', 'dest': '/etc/systemd/system/status-agent.timer', 'mode': '0644'},
+          ] if release_kiosk_services | length > 0 else []
+        )
+        + ([
           {'src': release_kiosk_stage_dir ~ '/kiosk-launch.sh', 'dest': '/usr/local/bin/kiosk-launch.sh', 'mode': '0755'},
           {'src': release_kiosk_stage_dir ~ '/kiosk-browser.service', 'dest': '/etc/systemd/system/kiosk-browser.service', 'mode': '0644'},
-          ]
-        + ([{'src': release_kiosk_candidate_compose, 'dest': '/etc/raspi-release/client-compose.yml', 'mode': '0600'}] if not (release_torque_cutover | default(false) | bool) else [])
+        ] if release_kiosk_services | length > 0 else [])
+        + ([{'src': release_kiosk_candidate_compose, 'dest': '/etc/raspi-release/client-compose.yml', 'mode': '0600'}] if release_kiosk_services | length > 0 and not (release_torque_cutover | default(false) | bool) else [])
         + ([{'src': release_kiosk_stage_dir ~ '/nfc-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/nfc-agent/.env', 'mode': '0600'}] if 'nfc-agent' in release_kiosk_services else [])
         + ([{'src': release_kiosk_stage_dir ~ '/barcode-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/barcode-agent/.env', 'mode': '0600'}] if 'barcode-agent' in release_kiosk_services else [])
         + ([{'src': release_kiosk_stage_dir ~ '/torque-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/torque-agent/.env', 'mode': '0600'}] if 'torque-agent' in release_kiosk_services else [])

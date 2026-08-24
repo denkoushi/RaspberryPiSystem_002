@@ -48,12 +48,14 @@ def valid_release_set() -> dict[str, object]:
             },
         },
         "workflow": {"path": WORKFLOW, "runId": 1234, "runAttempt": 1},
+        "agentServices": ["nfc-agent", "barcode-agent", "torque-agent"],
     }
 
 
 def valid_release_set_v2() -> dict[str, object]:
     document = valid_release_set()
     document["schemaVersion"] = 2
+    document["agentServices"] = ["torque-agent"]
     images = document["images"]
     assert isinstance(images, dict)
     api = images["api"]
@@ -139,6 +141,35 @@ class ReleaseArtifactContractTests(unittest.TestCase):
         self.assertEqual(
             parse_release_set(canonical_release_set_json(release_set)), release_set
         )
+
+    def test_agent_services_round_trip_supports_web_only_empty_set(self) -> None:
+        document = valid_release_set()
+        document["agentServices"] = []
+        release_set = parse_release_set(json.dumps(document))
+        self.assertEqual(release_set.agent_services, ())
+        canonical = json.loads(canonical_release_set_json(release_set))
+        self.assertEqual(canonical["agentServices"], [])
+
+    def test_legacy_release_sets_default_to_their_schema_agent_services(self) -> None:
+        legacy_v1 = valid_release_set()
+        legacy_v1.pop("agentServices")
+        self.assertEqual(
+            parse_release_set(json.dumps(legacy_v1)).agent_services,
+            ("nfc-agent", "barcode-agent", "torque-agent"),
+        )
+
+        legacy_v2 = valid_release_set_v2()
+        legacy_v2.pop("agentServices")
+        self.assertEqual(
+            parse_release_set(json.dumps(legacy_v2)).agent_services,
+            ("torque-agent",),
+        )
+
+    def test_schema_v2_agent_services_is_torque_only(self) -> None:
+        invalid = valid_release_set_v2()
+        invalid["agentServices"] = []
+        with self.assertRaisesRegex(ReleaseArtifactError, "schema-v2"):
+            parse_release_set(json.dumps(invalid))
 
     def test_rejects_duplicate_unknown_and_partial_image_fields(self) -> None:
         duplicate = json.dumps(valid_release_set()).replace(
@@ -274,8 +305,10 @@ class ReleaseArtifactContractTests(unittest.TestCase):
         ]
         output = io.StringIO()
         with redirect_stdout(output):
-            main(common)
-        self.assertEqual(json.loads(output.getvalue())["schemaVersion"], 1)
+            main(common + ["--agent-services-json", "[]"])
+        document = json.loads(output.getvalue())
+        self.assertEqual(document["schemaVersion"], 1)
+        self.assertEqual(document["agentServices"], [])
 
         torque_args = common + [
             "--composition-workflow",
@@ -320,6 +353,7 @@ class ReleaseArtifactContractTests(unittest.TestCase):
         self.assertEqual(
             document["compositionWorkflow"]["path"], COMPOSITION_WORKFLOW
         )
+        self.assertEqual(document["agentServices"], ["torque-agent"])
 
         torque_without_composition = [
             item

@@ -9,6 +9,7 @@
   when:
     - item.changed | default(false) | bool
     - not (release_kiosk_switch_attempted | default(false) | bool)
+    - release_kiosk_services | length > 0
 
 - name: Require every removable Pi4 candidate cleanup to succeed
   ansible.builtin.assert:
@@ -16,7 +17,9 @@
       - item.rc == 0
     fail_msg: "Unused Pi4 candidate cleanup failed: {{ item.item.item }}"
   loop: "{{ release_kiosk_candidate_cleanup.results | default([]) }}"
-  when: not (item.skipped | default(false) | bool)
+  when:
+    - not (item.skipped | default(false) | bool)
+    - release_kiosk_services | length > 0
 
 - name: Remove Pi4 rollback image tags after a verified outcome
   ansible.builtin.command:
@@ -30,9 +33,11 @@
   changed_when: release_kiosk_rollback_tag_cleanup.rc == 0
   failed_when: false
   when: >-
-    release_kiosk_healthy | default(false) | bool
-    or release_kiosk_rolled_back | default(false) | bool
-    or not (release_kiosk_switch_attempted | default(false) | bool)
+    (
+      release_kiosk_healthy | default(false) | bool
+      or release_kiosk_rolled_back | default(false) | bool
+      or not (release_kiosk_switch_attempted | default(false) | bool)
+    ) and release_kiosk_services | length > 0
 
 - name: Remove this run's Pi4 file backups after a verified outcome
   ansible.builtin.file:

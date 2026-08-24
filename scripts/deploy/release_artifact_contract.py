@@ -32,6 +32,8 @@ EXPECTED_IMAGE_REPOSITORIES = {
     "api": "ghcr.io/denkoushi/raspisys-api",
     "web": "ghcr.io/denkoushi/raspisys-web",
 }
+PI4_AGENT_SERVICES = ("nfc-agent", "barcode-agent", "torque-agent")
+PI4_AGENT_SERVICE_SET = frozenset(PI4_AGENT_SERVICES)
 TORQUE_AGENT_REPOSITORY = "ghcr.io/denkoushi/raspisys-torque-agent"
 RELEASE_SET_REPOSITORY = "ghcr.io/denkoushi/raspisys-release-set"
 TORQUE_PROTOCOL_NAME = "torque-ownership"
@@ -249,6 +251,7 @@ class ReleaseSet:
     api: ImageArtifact
     web: ImageArtifact
     workflow: WorkflowIdentity
+    agent_services: tuple[str, ...] = PI4_AGENT_SERVICES
     # Schema-v2 keeps ``workflow`` as the source release (v1) identity and
     # records the workflow that published/rehearsed the component composition
     # separately.  Keeping the two identities distinct prevents a torque
@@ -287,6 +290,7 @@ class ReleaseSet:
                 "runId": self.workflow.run_id,
                 "runAttempt": self.workflow.run_attempt,
             },
+            "agentServices": list(self.agent_services),
         }
         if self.schema_version == 2:
             if (
@@ -329,6 +333,29 @@ def _image(value: object, label: str) -> ImageArtifact:
 
 def _positive_int(value: object) -> bool:
     return type(value) is int and value > 0
+
+
+def _agent_services(
+    value: object,
+    *,
+    schema_version: int,
+    default: tuple[str, ...],
+) -> tuple[str, ...]:
+    selected = list(default) if value is None else value
+    if not isinstance(selected, list) or any(
+        not isinstance(item, str) for item in selected
+    ):
+        raise ReleaseArtifactError("agentServices must be a list of service names")
+    if len(set(selected)) != len(selected) or any(
+        item not in PI4_AGENT_SERVICE_SET for item in selected
+    ):
+        raise ReleaseArtifactError("agentServices contains an unknown or duplicate service")
+    canonical = tuple(item for item in PI4_AGENT_SERVICES if item in selected)
+    if schema_version == 2 and canonical != ("torque-agent",):
+        raise ReleaseArtifactError(
+            "schema-v2 release sets require agentServices=['torque-agent']"
+        )
+    return canonical
 
 
 def _workflow(value: object, label: str) -> WorkflowIdentity:
@@ -562,7 +589,10 @@ def parse_release_set(raw: str) -> ReleaseSet:
         root_keys.update(
             {"baseReleaseSet", "compositionWorkflow", "components", "compatibility"}
         )
-    root = _exact_keys(document, root_keys, "release set")
+    allowed_root_keys = root_keys | {"agentServices"}
+    if set(document) - allowed_root_keys or root_keys - set(document):
+        raise ReleaseArtifactError("release set has unknown or missing fields")
+    root = document
 
     source = _exact_keys(root["source"], {"repository", "sha", "ref"}, "source")
     platform = _exact_keys(root["platform"], {"os", "architecture"}, "platform")
@@ -587,6 +617,11 @@ def parse_release_set(raw: str) -> ReleaseSet:
 
     api = _image(images["api"], "API image")
     web = _image(images["web"], "Web image")
+    agent_services = _agent_services(
+        root.get("agentServices"),
+        schema_version=schema_version,
+        default=("torque-agent",) if schema_version == 2 else PI4_AGENT_SERVICES,
+    )
     torque_agent = None
     torque_compatibility = None
     composition_workflow = None
@@ -627,6 +662,7 @@ def parse_release_set(raw: str) -> ReleaseSet:
         api=api,
         web=web,
         workflow=workflow_identity,
+        agent_services=agent_services,
         composition_workflow=composition_workflow,
         base_release_set=base_release_set,
         torque_agent=torque_agent,
@@ -697,6 +733,7 @@ def validate_torque_composition_reuse(
         or existing.architecture != candidate.architecture
         or existing.api != candidate.api
         or existing.web != candidate.web
+        or existing.agent_services != candidate.agent_services
         or existing.workflow != candidate.workflow
         or existing.torque_agent != candidate.torque_agent
     ):
@@ -747,6 +784,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     create.add_argument("--api-digest", required=True)
     create.add_argument("--web-repository", required=True)
     create.add_argument("--web-digest", required=True)
+    create.add_argument("--agent-services-json")
     create.add_argument("--workflow", required=True)
     create.add_argument("--run-id", type=int, required=True)
     create.add_argument("--run-attempt", type=int, required=True)
@@ -830,6 +868,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "release-set v2 torque inputs are required for base release identity"
             )
         schema_version = 2 if all(value is not None for value in torque_values) else 1
+        if args.agent_services_json is None:
+            agent_services = ("torque-agent",) if schema_version == 2 else PI4_AGENT_SERVICES
+        else:
+            try:
+                requested_services = json.loads(args.agent_services_json)
+            except (json.JSONDecodeError, TypeError) as error:
+                raise ReleaseArtifactError(
+                    "agent-services-json must be a JSON array"
+                ) from error
+            agent_services = _agent_services(
+                requested_services,
+                schema_version=schema_version,
+                default=("torque-agent",) if schema_version == 2 else PI4_AGENT_SERVICES,
+            )
         candidate = {
             "schemaVersion": schema_version,
             "source": {
@@ -854,6 +906,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "runId": args.run_id,
                 "runAttempt": args.run_attempt,
             },
+            "agentServices": list(agent_services),
         }
         if schema_version == 2:
             candidate["baseReleaseSet"] = {

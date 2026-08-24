@@ -43,6 +43,7 @@ jobs:
       runtime_rehearsal: ${{ steps.classify.outputs.runtime_rehearsal }}
       docker_matrix: ${{ steps.classify.outputs.docker_matrix }}
       pi4_agent_matrix: ${{ steps.classify.outputs.pi4_agent_matrix }}
+      pi4_agent_services: ${{ steps.classify.outputs.pi4_agent_services }}
       full_suite: ${{ steps.classify.outputs.full_suite }}
     steps:
       - name: Checkout code with history
@@ -1601,6 +1602,7 @@ jobs:
           API_DIGEST: ${{ needs.release-api-image.outputs.digest }}
           WEB_REPOSITORY: ${{ needs.release-web-image.outputs.repository }}
           WEB_DIGEST: ${{ needs.release-web-image.outputs.digest }}
+          AGENT_SERVICES_JSON: ${{ needs.change-classification.outputs.pi4_agent_services }}
         run: |
           python3 scripts/deploy/release_artifact_contract.py create \
             --repository "$GITHUB_REPOSITORY" \
@@ -1610,6 +1612,7 @@ jobs:
             --api-digest "$API_DIGEST" \
             --web-repository "$WEB_REPOSITORY" \
             --web-digest "$WEB_DIGEST" \
+            --agent-services-json "$AGENT_SERVICES_JSON" \
             --workflow .github/workflows/ci.yml \
             --run-id "$GITHUB_RUN_ID" \
             --run-attempt "$GITHUB_RUN_ATTEMPT" \

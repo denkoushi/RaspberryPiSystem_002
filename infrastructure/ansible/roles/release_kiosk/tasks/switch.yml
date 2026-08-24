@@ -9,6 +9,7 @@
   loop:
     - /etc/raspi-release
     - /usr/local/lib/raspi-status-agent
+  when: release_kiosk_services | length > 0
 
 - name: Mark the Pi4 switch boundary
   ansible.builtin.set_fact:
@@ -30,6 +31,7 @@
 - name: Reload Pi4 systemd units after the staged file switch
   ansible.builtin.systemd:
     daemon_reload: true
+  when: release_kiosk_services | length > 0
 
 - name: Stage the torque candidate without starting ownership
   ansible.builtin.command: >-
@@ -47,7 +49,9 @@
     up -d --no-build {{ release_kiosk_services | join(' ') }}
   register: release_kiosk_compose_switch
   changed_when: true
-  when: not (release_torque_cutover | default(false) | bool)
+  when:
+    - not (release_torque_cutover | default(false) | bool)
+    - release_kiosk_services | length > 0
 
 - name: Restart the kiosk browser to apply the exact release SHA
   ansible.builtin.systemd:
@@ -60,9 +64,11 @@
   ansible.builtin.systemd:
     name: status-agent.service
     state: started
+  when: release_kiosk_services | length > 0
 
 - name: Ensure the status-agent timer uses the staged implementation
   ansible.builtin.systemd:
     name: status-agent.timer
     state: restarted
     enabled: true
+  when: release_kiosk_services | length > 0
