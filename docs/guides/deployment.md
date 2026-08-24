@@ -48,7 +48,7 @@ wrapperはこのv2と参照証跡を一度だけ検証し、exact image、protoc
 
 - mutationにはexact `--limit`または明示的な`--full-fleet`が必須である。暗黙の全fleet更新は行わない。
 - 引数なしの通常実行はsystemd unitの終了まで待つ。`--detach`は`runId`を返し、`--status`はsystemd statusとjournalだけを読む。
-- `--print-plan`は`ansible-inventory`と`ansible-playbook --list-hosts/--list-tasks`だけを実行し、選択host、profile、release SHA、GHCR tag、順序を表示する。remote hostやruntimeは変更しない。
+- `--print-plan`は`ansible-inventory`と`ansible-playbook --list-hosts/--list-tasks`を実行し、必要な場合は公開署名済みrelease-setをローカルで検証して、選択host、profile、release SHA、GHCR tag、順序を表示する。remote host、runtime、database、inventoryは変更しない。
 - CLIの未文書化されたmutation/control引数はfail-closedで拒否される。
 - Pi5で公開release-setからAPI/Web digestを解決する。torque cutoverでは署名済みschema v2からtorque-agent digestとprotocol versionも解決し、署名済みadoption predicateと組合せtupleを検証する。Pi3は公開image labelから完成tarのSHA-256を一つだけ得る。Ansibleがprepare、switch、health、rescue rollbackを所有する。
 - mutation開始時にPi5 executorが選択済みPi4/Pi3のSSH portを各1回だけ確認する。3秒以内に接続できない任意端末は再試行せず `optional-host-preflight` に記録して除外する。Pi5を含む選択ではPi5を必ず実行し、任意端末だけの選択が全台offlineならmutation前に失敗する。
@@ -117,7 +117,7 @@ scripts/update-all-clients.sh
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
 ```
 
-`--print-plan` はinventoryとAnsibleのlist-hosts/list-tasksを確認するだけで、remote host、service、database、stateを変更しない。対象を限定する場合は `--limit PATTERN`、全fleetを明示する場合だけ `--full-fleet` を使う。
+`--print-plan` はinventoryとAnsibleのlist-hosts/list-tasksを確認し、必要な場合は公開署名済みrelease-setをローカル検証するだけで、remote host、service、database、inventory、stateを変更しない。対象を限定する場合は `--limit PATTERN`、全fleetを明示する場合だけ `--full-fleet` を使う。
 
 ## 標準実行
 
