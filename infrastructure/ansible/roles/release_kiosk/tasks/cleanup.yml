@@ -1,4 +1,74 @@
 ---
+- name: Remove the Web-only transient activation unit after a terminal outcome
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_stage_dir }}/terminal-runtime-manifest.py"
+      - cleanup-kiosk-web-activation
+      - --root
+      - "{{ release_kiosk_runtime_manifest_root }}"
+      - --run-id
+      - "{{ release_run_id }}"
+      - --host
+      - "{{ inventory_hostname }}"
+      - --expected-manifest-sha256
+      - "{{ release_kiosk_web_manifest_sha256 }}"
+  register: release_kiosk_web_activation_cleanup_final
+  changed_when: true
+  when:
+    - release_kiosk_services | length == 0
+    - release_kiosk_web_manifest_sha256 is defined
+    - >-
+      release_kiosk_healthy | default(false) | bool
+      or release_kiosk_rolled_back | default(false) | bool
+
+- name: Finalize the Web-only runtime manifest without touching agent images
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_stage_dir }}/terminal-runtime-manifest.py"
+      - cleanup
+      - --root
+      - "{{ release_kiosk_runtime_manifest_root }}"
+      - --run-id
+      - "{{ release_run_id }}"
+      - --host
+      - "{{ inventory_hostname }}"
+      - --expected-manifest-sha256
+      - "{{ release_kiosk_web_manifest_sha256 }}"
+      - --outcome
+      - "{{ 'restored' if (release_kiosk_rolled_back | default(false) | bool) else 'committed' }}"
+  register: release_kiosk_web_manifest_cleanup
+  changed_when: true
+  when:
+    - release_kiosk_services | length == 0
+    - release_kiosk_web_manifest_sha256 is defined
+    - >-
+      release_kiosk_healthy | default(false) | bool
+      or release_kiosk_rolled_back | default(false) | bool
+
+- name: Close the successful Web-only Pi5 deploy-status client entry
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_pi5_status_state_helper }}"
+      - --file
+      - "{{ release_kiosk_pi5_status_file }}"
+      - remove-client
+      - --run-id
+      - "{{ release_run_id }}"
+      - --client
+      - "{{ status_agent_client_id }}"
+  delegate_to: "{{ groups['server'][0] }}"
+  become: true
+  register: release_kiosk_web_status_success_cleanup
+  changed_when: true
+  no_log: true
+  when:
+    - release_kiosk_services | length == 0
+    - release_kiosk_healthy | default(false) | bool
+    - not (release_kiosk_rolled_back | default(false) | bool)
+
 - name: Remove only newly pulled unused Pi4 candidates before any switch
   ansible.builtin.command:
     argv: [docker, image, rm, "{{ item.item }}"]
@@ -55,6 +125,6 @@
   when:
     - release_kiosk_run_dir is defined
     - >-
-      release_kiosk_healthy | default(false) | bool
+      release_kiosk_web_manifest_sha256 is not defined
+      or release_kiosk_healthy | default(false) | bool
       or release_kiosk_rolled_back | default(false) | bool
-      or not (release_kiosk_switch_attempted | default(false) | bool)

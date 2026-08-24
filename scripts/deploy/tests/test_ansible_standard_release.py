@@ -117,6 +117,16 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         for source_path, destination_name in runtime_declarations:
             self.assertTrue(source_path.is_file(), source_path)
+            if destination_name.name == "terminal-runtime-manifest.py":
+                self.assertIn(
+                    f'{{{{ release_kiosk_stage_dir }}}}/{destination_name}',
+                    prepare_text,
+                )
+                self.assertNotIn(
+                    f"/usr/local/lib/raspi-status-agent/{destination_name}",
+                    prepare_text,
+                )
+                continue
             self.assertIn(
                 f"/usr/local/lib/raspi-status-agent/{destination_name}",
                 prepare_text,
@@ -363,6 +373,60 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             task for task in health if task["name"] == "Verify the Pi4 barcode agent"
         )
         self.assertIn("release_kiosk_enabled_services", barcode_health["when"])
+
+    def test_missing_optional_requested_agent_is_filtered_without_prepare_failure(self) -> None:
+        prepare = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        allowlist = next(
+            task for task in prepare
+            if task["name"] == "Validate an optional bounded Pi4 service allowlist"
+        )
+        self.assertNotIn(
+            "release_kiosk_requested_services | difference(release_kiosk_enabled_services) | length == 0",
+            allowlist["ansible.builtin.assert"]["that"],
+        )
+        selection = next(
+            task for task in prepare
+            if task["name"] == "Select only enabled agents requested by this release"
+        )
+        expression = selection["ansible.builtin.set_fact"]["release_kiosk_services"]
+        self.assertIn("release_kiosk_enabled_services | intersect(release_kiosk_requested_services)", expression)
+        self.assertIn("| intersect(release_kiosk_service_allowlist)", expression)
+
+    def test_pre_switch_normal_agent_failure_has_no_runtime_mutation_in_rollback(self) -> None:
+        rollback = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/rollback.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        names = {
+            "Restore backed-up Pi4 release files",
+            "Remove newly introduced Pi4 files without a backup",
+            "Reload restored Pi4 systemd units",
+            "Verify rollback prerequisites before agent compose restore",
+            "Fail closed when rollback prerequisites are missing",
+            "Restart restored Pi4 display unit",
+            "Run the restored status-agent service once before its timer",
+            "Restart restored Pi4 status-agent timer",
+            "Verify the complete restored Pi4 runtime",
+        }
+        switch_gate = "release_kiosk_switch_attempted | default(false) | bool"
+        for task in rollback:
+            if task["name"] not in names:
+                continue
+            with self.subTest(task=task["name"]):
+                when = task["when"]
+                when = when if isinstance(when, list) else [when]
+                self.assertIn(switch_gate, when)
+
+        completed = next(
+            task for task in rollback if task["name"] == "Record completed Pi4 rollback"
+        )
+        self.assertIn("release_kiosk_web_manifest_sha256 is defined", completed["ansible.builtin.set_fact"]["release_kiosk_rolled_back"])
+        self.assertIn(switch_gate, completed["ansible.builtin.set_fact"]["release_kiosk_rolled_back"])
 
     def test_pi4_rollback_image_capture_uses_unique_compose_labels(self) -> None:
         prepare_tasks = yaml.safe_load(
@@ -823,18 +887,15 @@ esac
                     "prepare.yml",
                 )
                 if role == "release_kiosk":
-                    switch_health = next(
-                        task for task in outer["block"] if "block" in task
-                    )
                     self.assertEqual(
                         [
                             task["ansible.builtin.import_tasks"]
-                            for task in switch_health["block"]
+                            for task in outer["block"]
                             if "ansible.builtin.import_tasks" in task
                         ],
-                        ["switch.yml", "health.yml"],
+                        ["prepare.yml", "switch.yml", "health.yml"],
                     )
-                    rescue = switch_health["rescue"]
+                    rescue = outer["rescue"]
                 else:
                     self.assertEqual(
                         [
@@ -1023,7 +1084,8 @@ esac
         self.assertIn("release_kiosk_healthy | default(false) | bool", tag_cleanup["when"])
         self.assertIn("release_kiosk_rolled_back | default(false) | bool", tag_cleanup["when"])
         self.assertIn(expected_pre_switch, tag_cleanup["when"])
-        self.assertIn(expected_pre_switch, " ".join(stage_cleanup["when"]))
+        self.assertIn("release_kiosk_web_manifest_sha256 is not defined", " ".join(stage_cleanup["when"]))
+        self.assertNotIn(expected_pre_switch, " ".join(stage_cleanup["when"]))
         self.assertEqual(tag_cleanup["loop"], "{{ release_kiosk_captured_services | default([]) }}")
 
         rollback = yaml.safe_load(
@@ -1141,10 +1203,11 @@ esac
             "releaseclaims",
             "fleet-release-state",
             "route_preflight",
-            "manifestsha256",
             "payloaddigest",
         ):
             self.assertNotIn(forbidden, route)
+        self.assertIn("terminal-runtime-manifest.py", route)
+        self.assertIn("activate-kiosk-web", route)
 
     def test_pi5_standard_route_has_no_custom_subsystem_or_sealed_evidence(self) -> None:
         pi5 = role_text("release_pi5")

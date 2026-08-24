@@ -4,12 +4,18 @@
     that:
       - release_sha is match('^[0-9a-f]{40}$')
       - release_run_id is match('^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$')
-      - release_sha in release_kiosk_nfc_image
-      - release_sha in release_kiosk_barcode_image
+      - release_kiosk_agent_services | difference(['nfc-agent', 'barcode-agent', 'torque-agent']) | length == 0
       - >-
-        (release_torque_cutover | default(false) | bool
+        'nfc-agent' not in release_kiosk_agent_services
+        or release_sha in release_kiosk_nfc_image
+      - >-
+        'barcode-agent' not in release_kiosk_agent_services
+        or release_sha in release_kiosk_barcode_image
+      - >-
+        ('torque-agent' not in release_kiosk_agent_services)
+        or (release_torque_cutover | default(false) | bool
           and release_kiosk_torque_image is match('^ghcr\\.io/denkoushi/raspisys-torque-agent@sha256:[0-9a-f]{64}$'))
-        or (not (release_torque_cutover | default(false) | bool)
+        or ((not (release_torque_cutover | default(false) | bool))
           and release_sha in release_kiosk_torque_image)
       - >-
         not (release_torque_cutover | default(false) | bool)
@@ -27,6 +33,7 @@
         + (['barcode-agent'] if (barcode_agent_enabled | default(false) | bool) else [])
         + (['torque-agent'] if (torque_agent_enabled | default(false) | bool) else [])
       }}
+    release_kiosk_requested_services: "{{ release_kiosk_agent_services | list }}"
     release_kiosk_switch_attempted: false
     release_kiosk_healthy: false
     release_kiosk_rolled_back: false
@@ -43,16 +50,10 @@
   ansible.builtin.set_fact:
     release_kiosk_services: >-
       {{
-        release_kiosk_enabled_services
+        release_kiosk_enabled_services | intersect(release_kiosk_requested_services)
         if (release_kiosk_service_allowlist | default([]) | length == 0)
-        else release_kiosk_enabled_services | intersect(release_kiosk_service_allowlist)
+        else release_kiosk_enabled_services | intersect(release_kiosk_requested_services) | intersect(release_kiosk_service_allowlist)
       }}
-
-- name: Require at least one enabled Pi4 agent
-  ansible.builtin.assert:
-    that:
-      - release_kiosk_services | length > 0
-    fail_msg: The selected kiosk has no CI-built agent service enabled.
 
 - name: Reuse kiosk role browser executable resolution for release staging
   ansible.builtin.include_role:
@@ -215,6 +216,7 @@
     mode: '0600'
   vars:
     release_kiosk_compose_images: "{{ release_kiosk_candidate_images }}"
+  when: release_kiosk_services | length > 0
 
 - name: Render the rollback Pi4 Compose file
   ansible.builtin.template:
@@ -225,6 +227,7 @@
     mode: '0600'
   vars:
     release_kiosk_compose_images: "{{ release_kiosk_rollback_images }}"
+  when: release_kiosk_services | length > 0
 
 - name: Render staged status-agent configuration
   ansible.builtin.template:
@@ -346,7 +349,7 @@
           {'src': release_kiosk_stage_dir ~ '/kiosk-launch.sh', 'dest': '/usr/local/bin/kiosk-launch.sh', 'mode': '0755'},
           {'src': release_kiosk_stage_dir ~ '/kiosk-browser.service', 'dest': '/etc/systemd/system/kiosk-browser.service', 'mode': '0644'},
           ]
-        + ([{'src': release_kiosk_candidate_compose, 'dest': '/etc/raspi-release/client-compose.yml', 'mode': '0600'}] if not (release_torque_cutover | default(false) | bool) else [])
+        + ([{'src': release_kiosk_candidate_compose, 'dest': '/etc/raspi-release/client-compose.yml', 'mode': '0600'}] if release_kiosk_services | length > 0 and not (release_torque_cutover | default(false) | bool) else [])
         + ([{'src': release_kiosk_stage_dir ~ '/nfc-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/nfc-agent/.env', 'mode': '0600'}] if 'nfc-agent' in release_kiosk_services else [])
         + ([{'src': release_kiosk_stage_dir ~ '/barcode-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/barcode-agent/.env', 'mode': '0600'}] if 'barcode-agent' in release_kiosk_services else [])
         + ([{'src': release_kiosk_stage_dir ~ '/torque-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/torque-agent/.env', 'mode': '0600'}] if 'torque-agent' in release_kiosk_services else [])
@@ -357,3 +360,151 @@
     release_kiosk_prepared: true
     release_kiosk_prepared_run_id: "{{ release_run_id }}"
     release_kiosk_prepared_torque_image: "{{ release_kiosk_torque_image }}"
+
+- name: Keep Web-only Pi4 preparation free of agent and runtime file mutations
+  ansible.builtin.set_fact:
+    release_kiosk_files: []
+  when: release_kiosk_services | length == 0
+
+- name: Stage the exact kiosk runtime manifest helper for Web-only activation
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../scripts/deploy/terminal-runtime-manifest.py"
+    dest: "{{ release_kiosk_stage_dir }}/terminal-runtime-manifest.py"
+    owner: root
+    group: root
+    mode: '0700'
+  when: release_kiosk_services | length == 0
+
+- name: Probe the existing kiosk browser runtime before sealing Web activation
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_stage_dir }}/terminal-runtime-manifest.py"
+      - probe-capture
+      - --run-id
+      - "{{ release_run_id }}"
+      - --host
+      - "{{ inventory_hostname }}"
+      - --unit
+      - kiosk-browser.service
+      - --restart-on-restore-unit
+      - kiosk-browser.service
+  register: release_kiosk_web_manifest_probe
+  changed_when: false
+  when: release_kiosk_services | length == 0
+
+- name: Capture the existing kiosk browser runtime for manifest-bound Web activation
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_stage_dir }}/terminal-runtime-manifest.py"
+      - capture
+      - --root
+      - "{{ release_kiosk_runtime_manifest_root }}"
+      - --run-id
+      - "{{ release_run_id }}"
+      - --host
+      - "{{ inventory_hostname }}"
+      - --unit
+      - kiosk-browser.service
+      - --restart-on-restore-unit
+      - kiosk-browser.service
+  register: release_kiosk_web_manifest_capture
+  changed_when: true
+  when: release_kiosk_services | length == 0
+
+- name: Record the sealed Web activation manifest identity
+  ansible.builtin.set_fact:
+    release_kiosk_web_manifest_sha256: >-
+      {{ (release_kiosk_web_manifest_capture.stdout | from_json).manifestSha256 }}
+  when: release_kiosk_services | length == 0
+
+- name: Snapshot existing Pi4 agent identities before Web-only activation
+  ansible.builtin.shell: |
+    set -euo pipefail
+    snapshot_lines=()
+    id_format=$'\173\173.ID\175\175'
+    inspect_format=$'\173\173json .Id\175\175|\173\173json .Image\175\175|\173\173json .Config\175\175|\173\173json .HostConfig.NetworkMode\175\175|\173\173json .HostConfig.Binds\175\175|\173\173json .HostConfig.RestartPolicy\175\175|\173\173json .Mounts\175\175'
+    for service in nfc-agent barcode-agent torque-agent; do
+      ids="$(docker ps --all \
+        --filter "label=com.docker.compose.project={{ release_kiosk_compose_project }}" \
+        --filter "label=com.docker.compose.service=${service}" \
+        --format "${id_format}" | sort)"
+      if [[ -z "${ids}" ]]; then
+        snapshot_lines+=("${service}|absent")
+        continue
+      fi
+      while IFS= read -r container_id; do
+        raw_inspect="$(docker inspect --format "${inspect_format}" "${container_id}")"
+        inspect_fingerprint="$(printf '%s' "${raw_inspect}" | sha256sum | awk '{print $1}')"
+        [[ "${inspect_fingerprint}" =~ ^[0-9a-f]{64}$ ]]
+        snapshot_lines+=("${service}|${container_id}|${inspect_fingerprint}")
+      done <<< "${ids}"
+    done
+    for env_file in \
+      "{{ release_kiosk_project_dir }}/clients/nfc-agent/.env" \
+      "{{ release_kiosk_project_dir }}/clients/barcode-agent/.env" \
+      "{{ release_kiosk_project_dir }}/clients/torque-agent/.env"; do
+      if [[ -f "${env_file}" ]]; then
+        env_fingerprint="$(sha256sum "${env_file}" | awk '{print $1}')"
+      else
+        env_fingerprint=missing
+      fi
+      snapshot_lines+=("env|${env_file}|${env_fingerprint}")
+    done
+    status_unit="$(systemctl show status-agent.service --no-pager \
+      --property=LoadState,ActiveState,SubState,Result,ExecMainStatus,UnitFileState,FragmentPath,MainPID \
+      2>/dev/null | LC_ALL=C sort || printf '%s' status-agent-unavailable)"
+    status_unit_fingerprint="$(printf '%s' "${status_unit}" | sha256sum | awk '{print $1}')"
+    status_config=/etc/raspi-status-agent.conf
+    if [[ -f "${status_config}" ]]; then
+      status_config_fingerprint="$(sha256sum "${status_config}" | awk '{print $1}')"
+    else
+      status_config_fingerprint=missing
+    fi
+    status_unit_file=/etc/systemd/system/status-agent.service
+    if [[ -f "${status_unit_file}" ]]; then
+      status_unit_file_fingerprint="$(sha256sum "${status_unit_file}" | awk '{print $1}')"
+    else
+      status_unit_file_fingerprint=missing
+    fi
+    snapshot_lines+=("status-agent|${status_unit_fingerprint}|${status_config_fingerprint}|${status_unit_file_fingerprint}")
+    printf '%s\n' "${snapshot_lines[@]}" \
+      | LC_ALL=C sort \
+      | sha256sum \
+      | awk '{print "pi4-agent-runtime|" $1}'
+  args:
+    executable: /bin/bash
+  register: release_kiosk_agent_snapshot_before_result
+  changed_when: false
+  no_log: true
+  when: release_kiosk_services | length == 0
+
+- name: Seal the Pi4 agent nonmutation snapshot for Web-only verification
+  ansible.builtin.set_fact:
+    release_kiosk_agent_snapshot_before: "{{ release_kiosk_agent_snapshot_before_result.stdout }}"
+  no_log: true
+  when: release_kiosk_services | length == 0
+
+- name: Register the Web-only terminal with the Pi5 deploy-status authority
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_pi5_status_state_helper }}"
+      - --file
+      - "{{ release_kiosk_pi5_status_file }}"
+      - put
+      - --run-id
+      - "{{ release_run_id }}"
+      - --clients
+      - "{{ status_agent_client_id }}"
+      - --terminal-type
+      - kiosk
+      - --phase
+      - deploying
+  delegate_to: "{{ groups['server'][0] }}"
+  become: true
+  register: release_kiosk_web_status_registration
+  changed_when: true
+  no_log: true
+  when: release_kiosk_services | length == 0

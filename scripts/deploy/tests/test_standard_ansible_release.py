@@ -306,6 +306,187 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         self.assertNotIn("nfc-agent", " ".join(images["pi4"]))
         self.assertNotIn("barcode-agent", " ".join(images["pi4"]))
 
+    def test_torque_image_plan_rejects_an_empty_or_non_torque_agent_set(self) -> None:
+        for services in ((), ("nfc-agent",), ("torque-agent", "nfc-agent")):
+            with self.subTest(services=services), self.assertRaisesRegex(
+                MODULE.UsageError, "exactly .*torque-agent"
+            ):
+                MODULE.image_plan(
+                    SHA,
+                    ("pi5", "pi4"),
+                    "b" * 64,
+                    torque_cutover=True,
+                    agent_services=services,
+                )
+
+    def test_web_only_image_plan_and_exact_targets_preserve_pi4_agents(self) -> None:
+        images = MODULE.image_plan(
+            SHA,
+            ("pi5", "pi4"),
+            "b" * 64,
+            agent_services=(),
+        )
+        self.assertEqual(
+            images,
+            {
+                "pi5": [
+                    f"ghcr.io/denkoushi/raspisys-api:{SHA}-{'b' * 16}",
+                    f"ghcr.io/denkoushi/raspisys-web:{SHA}-{'b' * 16}",
+                ],
+                "pi4": [],
+            },
+        )
+        args = argparse.Namespace(branch="main", limit="pi4-a", full_fleet=False)
+        with mock.patch.object(MODULE, "run", return_value=completed(["ansible-playbook"])):
+            document = MODULE.plan(
+                args,
+                SHA,
+                ROOT / MODULE.DEFAULT_INVENTORY,
+                MODULE.DEFAULT_INVENTORY,
+                (("pi4", ("pi4-a",)),),
+                agent_services=(),
+            )
+        self.assertEqual(document["mode"], "web-only")
+        self.assertEqual(document["agentServices"], [])
+        self.assertEqual(document["executionOrder"][0]["images"], [])
+        self.assertEqual(document["activationTargets"][0]["strategy"], "kiosk-web-activation-v1")
+
+    def test_pi4_only_print_plan_uses_signed_agent_services_authority(self) -> None:
+        args = [
+            "--branch", "main",
+            "--inventory", MODULE.DEFAULT_INVENTORY,
+            "--limit", "pi4-a",
+            "--print-plan",
+        ]
+        document = {
+            "server": {"hosts": ["pi5"]},
+            "kiosk": {"hosts": ["pi4-a"]},
+            "_meta": {"hostvars": {"pi5": {}, "pi4-a": {}}},
+        }
+        signed = MODULE.ReleaseArtifacts(
+            f"api:{SHA}", f"web:{SHA}", None, None, ()
+        )
+        captured: dict[str, object] = {}
+
+        def fake_plan(plan_args: argparse.Namespace, *plan_args_: object) -> dict[str, object]:
+            captured["agent_services"] = plan_args.agent_services
+            return {"mode": "web-only", "agentServices": list(plan_args.agent_services)}
+
+        with mock.patch.object(
+            MODULE, "resolve_sha", return_value=SHA
+        ), mock.patch.object(
+            MODULE,
+            "inventory_path",
+            return_value=(Path("inventory.yml"), MODULE.DEFAULT_INVENTORY),
+        ), mock.patch.object(
+            MODULE, "inventory_document", side_effect=[document, document]
+        ), mock.patch.object(
+            MODULE, "server_release_root", return_value=MODULE.REMOTE_ROOT
+        ), mock.patch.object(
+            MODULE, "release_set_artifacts", return_value=signed
+        ) as resolve_release_set, mock.patch.object(
+            MODULE, "plan", side_effect=fake_plan
+        ), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(MODULE.main(args), 0)
+
+        resolve_release_set.assert_called_once_with(
+            SHA, Path("inventory.yml"), require_torque=False
+        )
+        self.assertEqual(captured["agent_services"], ())
+        self.assertEqual(json.loads(output.getvalue())["agentServices"], [])
+
+    def test_pi4_only_execute_resolves_signed_authority_without_default_agents(self) -> None:
+        args = argparse.Namespace(
+            inventory=MODULE.DEFAULT_INVENTORY,
+            sha=SHA,
+            run_id=RUN_ID,
+            profiles="pi4",
+            limit="pi4-a",
+            full_fleet=False,
+        )
+        inventory = {
+            "kiosk": {"hosts": ["pi4-a"]},
+            "_meta": {"hostvars": {"pi4-a": {}}},
+        }
+        signed = MODULE.ReleaseArtifacts(
+            f"api:{SHA}", f"web:{SHA}", None, None, ()
+        )
+        with mock.patch.object(
+            MODULE,
+            "inventory_path",
+            return_value=(Path("inventory.yml"), MODULE.DEFAULT_INVENTORY),
+        ), mock.patch.object(
+            MODULE, "inventory_document", return_value=inventory
+        ), mock.patch.object(
+            MODULE, "run", return_value=completed(["git"], f"{SHA}\n")
+        ), mock.patch.object(
+            MODULE, "preflight_optional_hosts",
+            return_value=((("pi4", ("pi4-a",)),), ()),
+        ), mock.patch.object(
+            MODULE, "release_set_artifacts", return_value=signed
+        ) as resolve_release_set, mock.patch.object(
+            MODULE.os, "execvpe"
+        ) as execvpe, redirect_stdout(io.StringIO()):
+            self.assertEqual(MODULE.execute_standard_route(args), 1)
+
+        resolve_release_set.assert_called_once_with(
+            SHA, Path("inventory.yml"), require_torque=False
+        )
+        command = execvpe.call_args.args[1]
+        variables = json.loads(command[command.index("--extra-vars") + 1])
+        self.assertEqual(variables["release_kiosk_agent_services"], [])
+
+    def test_web_only_role_uses_activation_helper_without_agent_lifecycle(self) -> None:
+        role_root = ROOT / "infrastructure/ansible/roles/release_kiosk"
+        role = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted(role_root.rglob("*.yml"))
+        )
+        self.assertIn("release_kiosk_agent_services", role)
+        self.assertIn("activate-kiosk-web", role)
+        self.assertIn("reconcile-kiosk-web-activation", role)
+        self.assertIn("cleanup-kiosk-web-activation", role)
+        self.assertIn("release_kiosk_services | length > 0", role)
+
+    def test_web_only_route_binds_pi5_authority_and_secret_safe_runtime_fingerprint(self) -> None:
+        role_root = ROOT / "infrastructure/ansible/roles/release_kiosk"
+        prepare = (role_root / "tasks/prepare.yml").read_text(encoding="utf-8")
+        switch = (role_root / "tasks/switch.yml").read_text(encoding="utf-8")
+        health = (role_root / "tasks/health_checks.yml").read_text(encoding="utf-8")
+        rollback = (role_root / "tasks/rollback.yml").read_text(encoding="utf-8")
+        cleanup = (role_root / "tasks/cleanup.yml").read_text(encoding="utf-8")
+
+        self.assertIn("release_kiosk_pi5_status_state_helper", prepare)
+        self.assertIn("- put", prepare)
+        self.assertIn("- set-phase", switch)
+        self.assertIn("- verifying", switch)
+        self.assertIn("--desired-release-sha", switch)
+        self.assertIn("preflight-restore", rollback)
+        self.assertIn("- restore", rollback)
+        self.assertIn("--rollback", rollback)
+        self.assertIn("remove-client", cleanup)
+        self.assertIn("sha256sum", prepare)
+        self.assertIn("sha256sum", health)
+        self.assertIn("pi4-agent-runtime|", prepare)
+        self.assertIn("pi4-agent-runtime|", health)
+        self.assertNotIn("json .Config.Env", prepare)
+        self.assertNotIn("json .Config.Env", health)
+        self.assertNotIn("printf '%s|%s|%s", prepare)
+        self.assertNotIn("printf '%s|%s|%s", health)
+
+        prepare_tasks = yaml.safe_load(prepare)
+        snapshot = next(
+            task for task in prepare_tasks
+            if task["name"] == "Snapshot existing Pi4 agent identities before Web-only activation"
+        )
+        self.assertTrue(snapshot["no_log"])
+        self.assertTrue(
+            next(
+                task for task in prepare_tasks
+                if task["name"] == "Register the Web-only terminal with the Pi5 deploy-status authority"
+            )["no_log"]
+        )
+
     def test_target_selection_rejects_empty_and_unsupported_hosts(self) -> None:
         with self.assertRaisesRegex(MODULE.UsageError, "matched no hosts"):
             MODULE.selected_profiles({"_meta": {"hostvars": {}}})

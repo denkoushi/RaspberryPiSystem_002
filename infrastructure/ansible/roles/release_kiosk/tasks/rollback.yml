@@ -1,4 +1,179 @@
 ---
+- name: Record the Web-only forward failure in the Pi5 deploy-status authority
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_pi5_status_state_helper }}"
+      - --file
+      - "{{ release_kiosk_pi5_status_file }}"
+      - set-phase
+      - --run-id
+      - "{{ release_run_id }}"
+      - --client
+      - "{{ status_agent_client_id }}"
+      - --phase
+      - failed
+  delegate_to: "{{ groups['server'][0] }}"
+  become: true
+  register: release_kiosk_web_status_failure
+  changed_when: true
+  failed_when: false
+  no_log: true
+  when: release_kiosk_services | length == 0
+
+- name: Rebind the Web-only challenge to the manifest-bound rollback phase
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_pi5_status_state_helper }}"
+      - --file
+      - "{{ release_kiosk_pi5_status_file }}"
+      - set-phase
+      - --run-id
+      - "{{ release_run_id }}"
+      - --client
+      - "{{ status_agent_client_id }}"
+      - --phase
+      - verifying
+      - --rollback
+      - --desired-release-sha
+      - "{{ release_sha }}"
+  delegate_to: "{{ groups['server'][0] }}"
+  become: true
+  register: release_kiosk_web_status_rollback_rebind
+  changed_when: true
+  failed_when: false
+  no_log: true
+  when: release_kiosk_services | length == 0
+
+- name: Reconcile the Web activation before manifest-bound rollback
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_stage_dir }}/terminal-runtime-manifest.py"
+      - reconcile-kiosk-web-activation
+      - --root
+      - "{{ release_kiosk_runtime_manifest_root }}"
+      - --run-id
+      - "{{ release_run_id }}"
+      - --host
+      - "{{ inventory_hostname }}"
+      - --expected-manifest-sha256
+      - "{{ release_kiosk_web_manifest_sha256 }}"
+  register: release_kiosk_web_activation_reconcile_before_restore
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when:
+    - release_kiosk_services | length == 0
+    - release_kiosk_web_manifest_sha256 is defined
+
+- name: Preflight the manifest-bound Web runtime restore
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_stage_dir }}/terminal-runtime-manifest.py"
+      - preflight-restore
+      - --root
+      - "{{ release_kiosk_runtime_manifest_root }}"
+      - --run-id
+      - "{{ release_run_id }}"
+      - --host
+      - "{{ inventory_hostname }}"
+      - --expected-manifest-sha256
+      - "{{ release_kiosk_web_manifest_sha256 }}"
+  register: release_kiosk_web_restore_preflight
+  changed_when: false
+  no_log: true
+  when:
+    - release_kiosk_services | length == 0
+    - release_kiosk_web_manifest_sha256 is defined
+
+- name: Seal the Web-only rollback phase before runtime restore
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_pi5_status_state_helper }}"
+      - --file
+      - "{{ release_kiosk_pi5_status_file }}"
+      - set-phase
+      - --run-id
+      - "{{ release_run_id }}"
+      - --client
+      - "{{ status_agent_client_id }}"
+      - --phase
+      - failed
+  delegate_to: "{{ groups['server'][0] }}"
+  become: true
+  register: release_kiosk_web_status_rollback_terminal_pre_restore
+  changed_when: true
+  failed_when: false
+  no_log: true
+  when: release_kiosk_services | length == 0
+
+- name: Restore the manifest-bound Web runtime without touching Pi4 agents
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_stage_dir }}/terminal-runtime-manifest.py"
+      - restore
+      - --root
+      - "{{ release_kiosk_runtime_manifest_root }}"
+      - --run-id
+      - "{{ release_run_id }}"
+      - --host
+      - "{{ inventory_hostname }}"
+      - --expected-manifest-sha256
+      - "{{ release_kiosk_web_manifest_sha256 }}"
+  register: release_kiosk_web_restore
+  changed_when: true
+  no_log: true
+  when:
+    - release_kiosk_services | length == 0
+    - release_kiosk_web_manifest_sha256 is defined
+
+- name: Record the terminal Web-only rollback outcome in deploy-status
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_pi5_status_state_helper }}"
+      - --file
+      - "{{ release_kiosk_pi5_status_file }}"
+      - set-phase
+      - --run-id
+      - "{{ release_run_id }}"
+      - --client
+      - "{{ status_agent_client_id }}"
+      - --phase
+      - failed
+  delegate_to: "{{ groups['server'][0] }}"
+  become: true
+  register: release_kiosk_web_status_rollback_terminal
+  changed_when: true
+  failed_when: false
+  no_log: true
+  when: release_kiosk_services | length == 0
+
+- name: Clean up only the transient Web activation unit on Web-only rollback
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_stage_dir }}/terminal-runtime-manifest.py"
+      - cleanup-kiosk-web-activation
+      - --root
+      - "{{ release_kiosk_runtime_manifest_root }}"
+      - --run-id
+      - "{{ release_run_id }}"
+      - --host
+      - "{{ inventory_hostname }}"
+      - --expected-manifest-sha256
+      - "{{ release_kiosk_web_manifest_sha256 }}"
+  register: release_kiosk_web_activation_cleanup
+  changed_when: true
+  when:
+    - release_kiosk_services | length == 0
+    - release_kiosk_web_manifest_sha256 is defined
+
 - name: Restore backed-up Pi4 release files
   ansible.builtin.copy:
     src: "{{ item.backup_file }}"
@@ -11,6 +186,7 @@
   when:
     - item.changed | default(false) | bool
     - item.backup_file is defined
+    - release_kiosk_switch_attempted | default(false) | bool
   no_log: true
 
 - name: Remove newly introduced Pi4 files without a backup
@@ -22,11 +198,15 @@
     - item.changed | default(false) | bool
     - item.backup_file is not defined
     - item.item.dest not in (release_kiosk_rollback_prerequisites | default([]))
+    - release_kiosk_switch_attempted | default(false) | bool
   no_log: true
 
 - name: Reload restored Pi4 systemd units
   ansible.builtin.systemd:
     daemon_reload: true
+  when:
+    - release_kiosk_switch_attempted | default(false) | bool
+    - release_kiosk_services | length > 0
 
 - name: Verify rollback prerequisites before agent compose restore
   ansible.builtin.stat:
@@ -35,6 +215,9 @@
   register: release_kiosk_rollback_prerequisite_stats
   failed_when: false
   changed_when: false
+  when:
+    - release_kiosk_switch_attempted | default(false) | bool
+    - release_kiosk_services | length > 0
 
 - name: Fail closed when rollback prerequisites are missing
   ansible.builtin.assert:
@@ -42,6 +225,9 @@
     fail_msg: "Rollback prerequisite is missing: {{ item.item }}"
   loop: "{{ release_kiosk_rollback_prerequisite_stats.results | default([]) }}"
   no_log: true
+  when:
+    - release_kiosk_switch_attempted | default(false) | bool
+    - release_kiosk_services | length > 0
 
 - name: Restore Pi4 agents from the captured image tags without restarting torque ownership
   ansible.builtin.command: >-
@@ -51,6 +237,7 @@
   when:
     - release_kiosk_switch_attempted | default(false) | bool
     - release_torque_cutover | default(false) | bool
+    - release_kiosk_services | length > 0
   changed_when: true
 
 - name: Restore Pi4 agents from the captured image tags
@@ -61,31 +248,48 @@
   when:
     - release_kiosk_switch_attempted | default(false) | bool
     - not (release_torque_cutover | default(false) | bool)
+    - release_kiosk_services | length > 0
   changed_when: true
 
 - name: Restart restored Pi4 display unit
   ansible.builtin.systemd:
     name: kiosk-browser.service
     state: restarted
-  when: not (release_torque_cutover | default(false) | bool)
+  when:
+    - not (release_torque_cutover | default(false) | bool)
+    - release_kiosk_switch_attempted | default(false) | bool
+    - release_kiosk_services | length > 0
 
 - name: Run the restored status-agent service once before its timer
   ansible.builtin.systemd:
     name: status-agent.service
     state: started
+  when:
+    - release_kiosk_switch_attempted | default(false) | bool
+    - release_kiosk_services | length > 0
 
 - name: Restart restored Pi4 status-agent timer
   ansible.builtin.systemd:
     name: status-agent.timer
     state: restarted
+  when:
+    - release_kiosk_switch_attempted | default(false) | bool
+    - release_kiosk_services | length > 0
 
 - name: Verify the complete restored Pi4 runtime
   ansible.builtin.import_tasks: health_checks.yml
-  when: not (release_torque_cutover | default(false) | bool)
+  when:
+    - not (release_torque_cutover | default(false) | bool)
+    - release_kiosk_switch_attempted | default(false) | bool
+    - release_kiosk_services | length > 0
 
 - name: Record completed Pi4 rollback
   ansible.builtin.set_fact:
-    release_kiosk_rolled_back: true
+    release_kiosk_rolled_back: >-
+      {{
+        (release_kiosk_services | length == 0 and release_kiosk_web_manifest_sha256 is defined)
+        or (release_kiosk_switch_attempted | default(false) | bool)
+      }}
 
 - name: Fail the release after verified Pi4 rollback
   ansible.builtin.fail:
