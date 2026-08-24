@@ -630,6 +630,7 @@ def classify_changes(
         "releasePair": release_pair,
         "runtimeRehearsal": runtime_rehearsal,
         "torqueComposition": torque_composition,
+        "pi4AgentServices": sorted(pi4_agent_services),
         "pi4AgentMatrix": pi4_agent_matrix_for_services(pi4_agent_services),
         "dockerMatrix": [DOCKER_MATRIX_ITEMS[image] for image in matrix_images],
         "categories": {category: category in selected for category in CATEGORIES},
@@ -749,6 +750,10 @@ def render_github_output(result: dict[str, object]) -> str:
         + json.dumps(
             result["pi4AgentMatrix"], separators=(",", ":"), sort_keys=True
         )
+    )
+    lines.append(
+        "pi4_agent_services="
+        + json.dumps(result["pi4AgentServices"], separators=(",", ":"))
     )
     return "\n".join(lines) + "\n"
 

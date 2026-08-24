@@ -8,4 +8,8 @@ release_kiosk_existing_compose: "{{ release_kiosk_project_dir }}/infrastructure/
 release_kiosk_nfc_image: "ghcr.io/denkoushi/raspisys-nfc-agent:{{ release_sha }}"
 release_kiosk_barcode_image: "ghcr.io/denkoushi/raspisys-barcode-agent:{{ release_sha }}"
 release_kiosk_torque_image: "ghcr.io/denkoushi/raspisys-torque-agent:{{ release_sha }}"
+release_kiosk_agent_services:
+  - nfc-agent
+  - barcode-agent
+  - torque-agent
 release_kiosk_min_disk_gb: 1

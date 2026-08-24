@@ -7,8 +7,9 @@
       - "{{ item }}"
   loop: >-
     {{
-      ['lightdm.service', 'status-agent.timer']
+      ['lightdm.service']
       + ([] if (release_torque_cutover | default(false) | bool) else ['kiosk-browser.service'])
+      + (['status-agent.timer'] if release_kiosk_services | length > 0 else [])
     }}
   register: release_kiosk_display_health
   retries: 10
@@ -27,6 +28,7 @@
   delay: 3
   until: release_kiosk_status_agent_config_health.rc == 0
   changed_when: false
+  when: release_kiosk_services | length > 0
 
 - name: Verify the Pi4 status-agent service is loaded and healthy
   ansible.builtin.command:
@@ -44,6 +46,7 @@
     - "'Result=success' in release_kiosk_status_agent_service_health.stdout_lines"
     - "'ExecMainStatus=0' in release_kiosk_status_agent_service_health.stdout_lines"
   changed_when: false
+  when: release_kiosk_services | length > 0
 
 - name: Verify the Pi4 NFC agent
   ansible.builtin.uri:
@@ -55,7 +58,7 @@
   retries: 5
   delay: 3
   until: release_kiosk_nfc_health.status == 200
-  when: "'nfc-agent' in (release_kiosk_enabled_services | default(release_kiosk_services))"
+  when: "'nfc-agent' in release_kiosk_services"
 
 - name: Verify the Pi4 barcode agent
   ansible.builtin.uri:
@@ -67,7 +70,7 @@
   retries: 5
   delay: 3
   until: release_kiosk_barcode_health.status == 200
-  when: "'barcode-agent' in (release_kiosk_enabled_services | default(release_kiosk_services))"
+  when: "'barcode-agent' in release_kiosk_services"
 
 - name: Verify the Pi4 torque agent
   ansible.builtin.uri:

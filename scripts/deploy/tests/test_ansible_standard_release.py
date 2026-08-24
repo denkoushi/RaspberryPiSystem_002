@@ -362,7 +362,124 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         barcode_health = next(
             task for task in health if task["name"] == "Verify the Pi4 barcode agent"
         )
-        self.assertIn("release_kiosk_enabled_services", barcode_health["when"])
+        self.assertIn("release_kiosk_services", barcode_health["when"])
+
+    def test_empty_agent_selection_only_restarts_browser_and_checks_web(self) -> None:
+        prepare = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        switch = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/switch.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        health = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/health_checks.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        rollback = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/rollback.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        cleanup = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/cleanup.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        prepare_names = {task["name"]: task for task in prepare}
+        for name in (
+            "Capture current Pi4 agent images as temporary rollback tags",
+            "Verify captured rollback image identities are locally recoverable",
+            "Pull enabled Pi4 images while the normal kiosk remains active",
+            "Inspect exact local Pi4 candidate identities",
+            "Render the candidate Pi4 Compose file without build directives",
+            "Render the rollback Pi4 Compose file",
+            "Render staged status-agent configuration",
+        ):
+            task = prepare_names[name]
+            expression = str(task.get("loop", "")) + " " + str(task.get("when", ""))
+            self.assertIn("release_kiosk_services", expression, name)
+
+        for name in (
+            "Stage the SHA-bound kiosk launcher",
+            "Stage the kiosk browser unit",
+        ):
+            self.assertIn("release_kiosk_services", str(prepare_names[name]["when"]), name)
+        files_expression = prepare_names["Define the Pi4 staged file transaction"]["ansible.builtin.set_fact"]["release_kiosk_files"]
+        self.assertIn("kiosk-launch.sh", files_expression)
+        self.assertIn("if release_kiosk_services | length > 0 else []", files_expression)
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        self.assertEqual(
+            environment.from_string(files_expression).render(
+                release_kiosk_services=[],
+                release_kiosk_stage_dir="/stage",
+                release_kiosk_project_dir="/project",
+                release_kiosk_candidate_compose="/candidate-compose.yml",
+                release_torque_cutover=False,
+            ).strip(),
+            "[]",
+        )
+
+        switch_names = {task["name"]: task for task in switch}
+        self.assertIn(
+            "release_kiosk_services",
+            str(switch_names["Create stable Pi4 release directories"]["when"]),
+        )
+        self.assertIn(
+            "release_kiosk_services",
+            str(switch_names["Recreate only enabled Pi4 agents from pre-pulled images"]["when"]),
+        )
+        self.assertIn(
+            "release_kiosk_services",
+            str(switch_names["Reload Pi4 systemd units after the staged file switch"]["when"]),
+        )
+        self.assertEqual(
+            switch_names["Restart the kiosk browser to apply the exact release SHA"]["ansible.builtin.systemd"],
+            {"name": "kiosk-browser.service", "state": "restarted", "enabled": True},
+        )
+        self.assertNotIn(
+            "release_kiosk_services",
+            str(switch_names["Restart the kiosk browser to apply the exact release SHA"].get("when", "")),
+        )
+
+        health_names = {task["name"]: task for task in health}
+        for name in (
+            "Verify the Pi4 status-agent configuration is present",
+            "Verify the Pi4 status-agent service is loaded and healthy",
+        ):
+            self.assertIn("release_kiosk_services", str(health_names[name]["when"]))
+        self.assertNotIn("release_kiosk_services", str(health_names["Verify the kiosk Web endpoint"].get("when", "")))
+        self.assertIn("ansible.builtin.uri", health_names["Verify the kiosk Web endpoint"])
+
+        rollback_names = {task["name"]: task for task in rollback}
+        self.assertIn(
+            "release_kiosk_services",
+            str(rollback_names["Restore Pi4 agents from the captured image tags"]["when"]),
+        )
+        self.assertIn(
+            "release_kiosk_services",
+            str(rollback_names["Reload restored Pi4 systemd units"]["when"]),
+        )
+        self.assertNotIn(
+            "release_kiosk_services",
+            str(rollback_names["Restart restored Pi4 display unit"].get("when", "")),
+        )
+        cleanup_names = {task["name"]: task for task in cleanup}
+        self.assertIn(
+            "release_kiosk_services",
+            str(cleanup_names["Remove Pi4 rollback image tags after a verified outcome"]["when"]),
+        )
 
     def test_pi4_rollback_image_capture_uses_unique_compose_labels(self) -> None:
         prepare_tasks = yaml.safe_load(

@@ -27,6 +27,7 @@
 - name: Reload restored Pi4 systemd units
   ansible.builtin.systemd:
     daemon_reload: true
+  when: release_kiosk_services | length > 0
 
 - name: Verify rollback prerequisites before agent compose restore
   ansible.builtin.stat:
@@ -51,6 +52,7 @@
   when:
     - release_kiosk_switch_attempted | default(false) | bool
     - release_torque_cutover | default(false) | bool
+    - release_kiosk_services | length > 0
   changed_when: true
 
 - name: Restore Pi4 agents from the captured image tags
@@ -61,6 +63,7 @@
   when:
     - release_kiosk_switch_attempted | default(false) | bool
     - not (release_torque_cutover | default(false) | bool)
+    - release_kiosk_services | length > 0
   changed_when: true
 
 - name: Restart restored Pi4 display unit
@@ -73,11 +76,13 @@
   ansible.builtin.systemd:
     name: status-agent.service
     state: started
+  when: release_kiosk_services | length > 0
 
 - name: Restart restored Pi4 status-agent timer
   ansible.builtin.systemd:
     name: status-agent.timer
     state: restarted
+  when: release_kiosk_services | length > 0
 
 - name: Verify the complete restored Pi4 runtime
   ansible.builtin.import_tasks: health_checks.yml

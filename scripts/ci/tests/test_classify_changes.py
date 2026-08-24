@@ -88,6 +88,7 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertEqual(self.selected(web), {"repo_policy", "workspace_quality", "web", "kiosk_sop"})
         self.assertTrue(web["codeql"])
         self.assertTrue(web["releasePair"])
+        self.assertEqual(web["pi4AgentServices"], [])
 
         shared = self.classify(Change("M", "packages/shared-types/src/index.ts"))
         self.assertEqual(
@@ -208,6 +209,7 @@ class ClassifyChangesTests(unittest.TestCase):
                 self.assertFalse(result["dockerWeb"])
                 self.assertEqual(result["releasePair"], service == "torque-agent")
                 self.assertEqual(self.pi4_services(result), {service})
+                self.assertEqual(result["pi4AgentServices"], [service])
                 self.assertEqual(len(result["pi4AgentMatrix"]), 2)
 
     def test_pi4_agent_source_and_non_image_client_paths_select_affected_services(self) -> None:
@@ -220,6 +222,7 @@ class ClassifyChangesTests(unittest.TestCase):
             with self.subTest(path=path):
                 result = self.classify(Change("M", path))
                 self.assertEqual(self.pi4_services(result), {service})
+                self.assertEqual(result["pi4AgentServices"], [service])
                 self.assertEqual(
                     {item["platform"] for item in result["pi4AgentMatrix"]},
                     {"linux/arm64", "linux/arm/v7"},
@@ -452,6 +455,7 @@ class ClassifyChangesTests(unittest.TestCase):
                 "torque_composition=false",
                 'docker_matrix=[{"dockerfile":"./infrastructure/docker/Dockerfile.api","image":"api","tag":"raspisys-api:ci"},{"dockerfile":"./infrastructure/docker/Dockerfile.web","image":"web","tag":"raspisys-web:ci"}]',
                 "pi4_agent_matrix=[]",
+                "pi4_agent_services=[]",
             ],
         )
         markdown = render_markdown(result)

@@ -818,6 +818,85 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         self.assertEqual({command[-1] for command in commands}, {"--list-hosts", "--list-tasks"})
         self.assertTrue(all(command[0] == "ansible-playbook" for command in commands))
 
+    def test_web_only_image_plan_has_no_pi4_agent_references(self) -> None:
+        images = MODULE.image_plan(
+            SHA,
+            ("pi4",),
+            agent_services=(),
+        )
+
+        self.assertEqual(images, {"pi4": []})
+
+    def test_subset_image_plan_updates_only_the_signed_agent_services(self) -> None:
+        images = MODULE.image_plan(
+            SHA,
+            ("pi4",),
+            agent_services=("barcode-agent",),
+        )
+
+        self.assertEqual(
+            images,
+            {"pi4": [f"ghcr.io/denkoushi/raspisys-barcode-agent:{SHA}"]},
+        )
+
+    def test_pi4_only_print_plan_uses_signed_empty_agent_services_authority(self) -> None:
+        inventory = {
+            "server": {"hosts": ["pi5"]},
+            "kiosk": {"hosts": ["pi4-a"]},
+            "_meta": {"hostvars": {"pi5": {}, "pi4-a": {}}},
+        }
+        selected_inventory = {
+            "kiosk": {"hosts": ["pi4-a"]},
+            "_meta": {"hostvars": {"pi4-a": {}}},
+        }
+        artifacts = MODULE.ReleaseArtifacts("api", "web", None, None, ())
+        commands: list[list[str]] = []
+
+        def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            commands.append(command)
+            return completed(command)
+
+        with mock.patch.object(
+            MODULE, "resolve_sha", return_value=SHA
+        ), mock.patch.object(
+            MODULE,
+            "inventory_path",
+            return_value=(Path("infrastructure/ansible/inventory.yml"), MODULE.DEFAULT_INVENTORY),
+        ), mock.patch.object(
+            MODULE, "inventory_document", side_effect=[inventory, selected_inventory]
+        ), mock.patch.object(
+            MODULE, "release_set_artifacts", return_value=artifacts
+        ) as release_set, mock.patch.object(
+            MODULE, "run", side_effect=fake_run
+        ), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(
+                MODULE.main(
+                    [
+                        "--branch",
+                        "main",
+                        "--inventory",
+                        MODULE.DEFAULT_INVENTORY,
+                        "--limit",
+                        "pi4-a",
+                        "--print-plan",
+                    ]
+                ),
+                0,
+            )
+
+        release_set.assert_called_once_with(
+            SHA,
+            Path("infrastructure/ansible/inventory.yml"),
+            require_torque=False,
+        )
+        document = json.loads(output.getvalue())
+        self.assertEqual(document["agentServices"], [])
+        self.assertEqual(
+            document["executionOrder"],
+            [{"profile": "pi4", "hosts": ["pi4-a"], "images": []}],
+        )
+        self.assertEqual(len(commands), 2)
+
     def test_torque_print_plan_exposes_manifest_resolution_and_phase_boundaries(
         self,
     ) -> None:
