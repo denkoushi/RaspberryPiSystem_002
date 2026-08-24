@@ -15,19 +15,21 @@
           - release_kiosk_prepared_torque_image == release_kiosk_torque_image
       when: release_torque_cutover | default(false) | bool
 
-    - name: Switch the selected Pi4 kiosk to prepared artifacts
-      ansible.builtin.import_tasks: switch.yml
+    - name: Switch and verify one Pi4 kiosk
+      block:
+        - name: Switch the selected Pi4 kiosk to prepared artifacts
+          ansible.builtin.import_tasks: switch.yml
 
-    - name: Verify the selected Pi4 kiosk
-      ansible.builtin.import_tasks: health.yml
+        - name: Verify the selected Pi4 kiosk
+          ansible.builtin.import_tasks: health.yml
 
-    - name: Record a fully staged torque candidate
-      ansible.builtin.set_fact:
-        release_kiosk_stage_succeeded: true
-      when: release_torque_cutover | default(false) | bool
-  rescue:
-    - name: Restore the selected Pi4 kiosk
-      ansible.builtin.import_tasks: rollback.yml
+        - name: Record a fully staged torque candidate
+          ansible.builtin.set_fact:
+            release_kiosk_stage_succeeded: true
+          when: release_torque_cutover | default(false) | bool
+      rescue:
+        - name: Restore the selected Pi4 kiosk
+          ansible.builtin.import_tasks: rollback.yml
   always:
     - name: Remove run-scoped Pi4 preparation data
       ansible.builtin.import_tasks: cleanup.yml

@@ -301,16 +301,6 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
                 launcher, "config_hash", return_value="b" * 64
             ), mock.patch.object(launcher, "ansible_environment", return_value=environment), mock.patch.object(
                 launcher, "run", side_effect=fake_run
-            ), mock.patch.object(
-                launcher,
-                "release_set_artifacts",
-                return_value=launcher.ReleaseArtifacts(
-                    "ghcr.io/denkoushi/raspisys-api@sha256:" + "1" * 64,
-                    "ghcr.io/denkoushi/raspisys-web@sha256:" + "2" * 64,
-                    None,
-                    None,
-                    ("nfc-agent", "barcode-agent", "torque-agent"),
-                ),
             ):
                 with mock.patch("sys.stdout") as stdout:
                     result = launcher.main(
