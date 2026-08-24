@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from release_artifact_contract import (
+    PI4_AGENT_SERVICES,
     ReleaseSet,
     TORQUE_ADOPTION_PREDICATE_TYPE,
     TORQUE_PROTOCOL_VERSION,
@@ -83,6 +84,7 @@ class ReleaseArtifacts(NamedTuple):
     web: str
     torque_agent: str | None
     torque_protocol_version: int | None
+    agent_services: tuple[str, ...] = PI4_AGENT_SERVICES
 
 
 class TorqueCutoverPlan(NamedTuple):
@@ -95,6 +97,7 @@ class TorqueCutoverPlan(NamedTuple):
     web_image: str
     torque_image: str
     protocol_version: int
+    agent_services: tuple[str, ...] = (TORQUE_CUTOVER_SERVICE,)
 
     def ansible_variables(self) -> dict[str, Any]:
         return {
@@ -102,6 +105,7 @@ class TorqueCutoverPlan(NamedTuple):
             "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE],
             "release_kiosk_torque_image": self.torque_image,
             "release_torque_protocol_version": self.protocol_version,
+            "release_kiosk_agent_services": list(self.agent_services),
         }
 
     def journal_event(self) -> dict[str, Any]:
@@ -481,18 +485,28 @@ def image_plan(
     build_hash: str = "",
     *,
     torque_cutover: bool = False,
+    agent_services: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
     if "pi5" in profiles:
         suffix = build_hash[:16]
         result["pi5"] = [f"ghcr.io/denkoushi/raspisys-api:{sha}-{suffix}", f"ghcr.io/denkoushi/raspisys-web:{sha}-{suffix}"]
     if "pi4" in profiles:
+        selected_agents = (
+            tuple(agent_services)
+            if agent_services is not None
+            else ((TORQUE_CUTOVER_SERVICE,) if torque_cutover else PI4_AGENT_SERVICES)
+        )
+        if any(service not in PI4_AGENT_SERVICES for service in selected_agents) or len(set(selected_agents)) != len(selected_agents):
+            raise UsageError("Pi4 agent service selection is malformed")
         if torque_cutover:
+            if selected_agents != (TORQUE_CUTOVER_SERVICE,):
+                raise UsageError("torque cutover requires exactly ['torque-agent']")
             result["pi4"] = [f"release-set-v2:{sha}:torque-agent"]
         else:
             result["pi4"] = [
-                f"ghcr.io/denkoushi/raspisys-{name}-agent:{sha}"
-                for name in ("nfc", "barcode", "torque")
+                f"ghcr.io/denkoushi/raspisys-{service.removesuffix('-agent')}-agent:{sha}"
+                for service in selected_agents
             ]
     if "pi3" in profiles:
         result["pi3"] = [f"ghcr.io/denkoushi/raspisys-pi3-signage:{sha}"]
@@ -524,13 +538,29 @@ def plan(
     relative: str,
     selection: tuple[tuple[str, tuple[str, ...]], ...],
     remote_root: Path = REMOTE_ROOT,
+    agent_services: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     profiles = tuple(item[0] for item in selection)
     torque_cutover = bool(getattr(args, "torque_cutover", False))
+    raw_agent_services = (
+        agent_services
+        if agent_services is not None
+        else getattr(args, "agent_services", None)
+    )
+    agent_services = tuple(
+        raw_agent_services
+        if raw_agent_services is not None
+        else ((TORQUE_CUTOVER_SERVICE,) if torque_cutover else PI4_AGENT_SERVICES)
+    )
+    if torque_cutover and agent_services != (TORQUE_CUTOVER_SERVICE,):
+        raise UsageError("torque cutover requires exactly ['torque-agent']")
     build_hash = config_hash(sha, inventory) if "pi5" in profiles else ""
-    images = image_plan(sha, profiles, build_hash, torque_cutover=torque_cutover)
+    images = image_plan(
+        sha, profiles, build_hash, torque_cutover=torque_cutover,
+        agent_services=agent_services,
+    )
     pi4_hosts = list(dict(selection).get("pi4", ()))
-    variables = {"release_sha": sha, "release_run_id": "plan-preview", "release_pi5_api_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[0], "release_pi5_web_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[1], "release_signage_artifact_sha256": "0" * 64, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else []}
+    variables = {"release_sha": sha, "release_run_id": "plan-preview", "release_pi5_api_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[0], "release_pi5_web_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[1], "release_signage_artifact_sha256": "0" * 64, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [], "release_kiosk_agent_services": list(agent_services)}
     if torque_cutover:
         variables.update(
             {
@@ -542,7 +572,31 @@ def plan(
         )
     for listing in ("--list-hosts", "--list-tasks"):
         run(ansible_argv(str(inventory), args.limit, profiles, variables, listing, torque_cutover=torque_cutover), env=ansible_environment())
-    result = {"schemaVersion": 1, "branch": args.branch, "releaseSha": sha, "inventory": relative, "limit": args.limit or None, "fullFleet": args.full_fleet, "remoteRoot": str(remote_root), "executionOrder": [{"profile": profile, "hosts": list(hosts), "images": images[profile]} for profile, hosts in selection]}
+    web_only = "pi4" in profiles and not agent_services
+    pi4_hosts_for_plan = list(dict(selection).get("pi4", ()))
+    result = {
+        "schemaVersion": 1,
+        "branch": args.branch,
+        "releaseSha": sha,
+        "inventory": relative,
+        "limit": args.limit or None,
+        "fullFleet": args.full_fleet,
+        "remoteRoot": str(remote_root),
+        "mode": "web-only" if web_only else "standard",
+        "agentServices": list(agent_services),
+        "mutationTargets": [
+            {"profile": "pi5", "hosts": list(dict(selection).get("pi5", ())), "components": ["api", "web"]}
+        ] if "pi5" in profiles else [],
+        "activationTargets": [
+            {"profile": "pi4", "host": host, "strategy": "kiosk-web-activation-v1"}
+            for host in pi4_hosts_for_plan
+        ] if web_only else [],
+        "verificationTargets": [
+            {"profile": profile, "hosts": list(hosts)}
+            for profile, hosts in selection
+        ],
+        "executionOrder": [{"profile": profile, "hosts": list(hosts), "images": images[profile]} for profile, hosts in selection],
+    }
     if torque_cutover:
         result["artifactResolution"] = (
             "signed-release-set-v2-before-service-quiesce"
@@ -782,6 +836,7 @@ def release_set_artifacts(
         web=f"{release.web.repository}:{sha}-{suffix}@{release.web.digest}",
         torque_agent=torque_reference,
         torque_protocol_version=protocol_version,
+        agent_services=getattr(release, "agent_services", PI4_AGENT_SERVICES),
     )
 
 
@@ -868,10 +923,17 @@ def execute_standard_route(args: argparse.Namespace) -> int:
         if "pi5" in profiles
         else ReleaseArtifacts(f"unused:{args.sha}", f"unused-web:{args.sha}", None, None)
     )
+    if not artifacts.agent_services and any(
+        item.get("profile") == "pi4" for item in excluded
+    ):
+        raise RuntimeError(
+            "requested Web-only Pi4 target was excluded during preflight; "
+            "the release must not continue Pi5-only"
+        )
     api, web = artifacts.api, artifacts.web
     signage, signage_sha = signage_identity(args.sha) if "pi3" in profiles else (f"unused-signage:{args.sha}", "0" * 64)
     pi4_hosts = list(dict(reachable_selection).get("pi4", ()))
-    variables = {"release_sha": args.sha, "release_run_id": args.run_id, "release_pi5_api_image": api, "release_pi5_web_image": web, "release_signage_artifact_image": signage, "release_signage_artifact_sha256": signage_sha, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else []}
+    variables = {"release_sha": args.sha, "release_run_id": args.run_id, "release_pi5_api_image": api, "release_pi5_web_image": web, "release_signage_artifact_image": signage, "release_signage_artifact_sha256": signage_sha, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [], "release_kiosk_agent_services": list(artifacts.agent_services)}
     if torque_cutover:
         cutover_plan = normalize_torque_cutover_plan(
             args.sha, args.run_id, pi4_hosts, artifacts
@@ -911,15 +973,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     complete = inventory_document(inventory)
     selected = complete if not args.limit else inventory_document(inventory, args.limit)
     selection = selected_profiles(selected)
+    profiles = tuple(item[0] for item in selection)
     remote_root = server_release_root(complete)
     if getattr(args, "torque_cutover", False):
         validate_torque_cutover_selection(selected, selection)
     if args.print_plan:
+        plan_agent_services = PI4_AGENT_SERVICES
+        if "pi5" in profiles:
+            plan_agent_services = release_set_artifacts(
+                sha, inventory, require_torque=getattr(args, "torque_cutover", False)
+            ).agent_services
+        args.agent_services = plan_agent_services
         print(json.dumps(plan(args, sha, inventory, relative, selection, remote_root), ensure_ascii=False, indent=2))
         return 0
     host, user, port = server_connection(complete)
     run_id = new_run_id()
-    profiles = tuple(item[0] for item in selection)
     result = run(ssh_argv(host, user, port, systemd_argv(args, sha, run_id, relative, profiles, user, remote_root)), check=False)
     status_command = shlex.join(["scripts/update-all-clients.sh", "--status", run_id, "--inventory", relative])
     print(json.dumps({"runId": run_id, "unit": unit_name(run_id), "detached": args.detach, "statusCommand": status_command}))

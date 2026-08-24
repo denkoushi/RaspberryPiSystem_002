@@ -30,6 +30,7 @@
 - name: Reload Pi4 systemd units after the staged file switch
   ansible.builtin.systemd:
     daemon_reload: true
+  when: release_kiosk_services | length > 0
 
 - name: Stage the torque candidate without starting ownership
   ansible.builtin.command: >-
@@ -38,7 +39,9 @@
     create --force-recreate --no-build torque-agent
   register: release_kiosk_compose_switch
   changed_when: true
-  when: release_torque_cutover | default(false) | bool
+  when:
+    - release_torque_cutover | default(false) | bool
+    - release_kiosk_services | length > 0
 
 - name: Recreate only enabled Pi4 agents from pre-pulled images
   ansible.builtin.command: >-
@@ -47,22 +50,118 @@
     up -d --no-build {{ release_kiosk_services | join(' ') }}
   register: release_kiosk_compose_switch
   changed_when: true
-  when: not (release_torque_cutover | default(false) | bool)
+  when:
+    - not (release_torque_cutover | default(false) | bool)
+    - release_kiosk_services | length > 0
+
+- name: Verify the signed Web activation challenge before browser reload
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_pi5_status_state_helper }}"
+      - --file
+      - "{{ release_kiosk_pi5_status_file }}"
+      - set-phase
+      - --run-id
+      - "{{ release_run_id }}"
+      - --client
+      - "{{ status_agent_client_id }}"
+      - --phase
+      - verifying
+      - --desired-release-sha
+      - "{{ release_sha }}"
+  delegate_to: "{{ groups['server'][0] }}"
+  become: true
+  register: release_kiosk_web_status_verifying
+  changed_when: true
+  no_log: true
+  when: release_kiosk_services | length == 0
+
+- name: Verify the signed Web activation challenge before browser reload
+  ansible.builtin.uri:
+    url: "{{ release_kiosk_deploy_status_url }}"
+    method: GET
+    headers:
+      x-client-key: "{{ status_agent_client_key }}"
+    return_content: true
+    validate_certs: false
+    status_code: 200
+    timeout: 10
+  register: release_kiosk_web_activation_challenge
+  no_log: true
+  when: release_kiosk_services | length == 0
+
+- name: Require a manifest-bound verifying Web challenge
+  ansible.builtin.assert:
+    that:
+      - release_kiosk_web_activation_challenge.json.isMaintenance | default(false) | bool
+      - release_kiosk_web_activation_challenge.json.phase | default('') == 'verifying'
+      - release_kiosk_web_activation_challenge.json.runId | default('') == release_run_id
+      - release_kiosk_web_activation_challenge.json.desiredReleaseSha | default('') == release_sha
+      - release_kiosk_web_activation_challenge.json.verificationId is match('^[0-9a-f]{32}$')
+    fail_msg: Web-only activation requires the exact release verifying challenge and compiled-SHA proof.
+  no_log: true
+  when: release_kiosk_services | length == 0
+
+- name: Activate the kiosk browser through the existing manifest helper
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_stage_dir }}/terminal-runtime-manifest.py"
+      - activate-kiosk-web
+      - --root
+      - "{{ release_kiosk_runtime_manifest_root }}"
+      - --run-id
+      - "{{ release_run_id }}"
+      - --host
+      - "{{ inventory_hostname }}"
+      - --expected-manifest-sha256
+      - "{{ release_kiosk_web_manifest_sha256 }}"
+  register: release_kiosk_web_activation
+  changed_when: true
+  when: release_kiosk_services | length == 0
+
+- name: Reconcile the manifest-bound kiosk Web activation
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_kiosk_stage_dir }}/terminal-runtime-manifest.py"
+      - reconcile-kiosk-web-activation
+      - --root
+      - "{{ release_kiosk_runtime_manifest_root }}"
+      - --run-id
+      - "{{ release_run_id }}"
+      - --host
+      - "{{ inventory_hostname }}"
+      - --expected-manifest-sha256
+      - "{{ release_kiosk_web_manifest_sha256 }}"
+  register: release_kiosk_web_activation_reconcile
+  changed_when: false
+  retries: 65
+  delay: 1
+  until: >-
+    release_kiosk_web_activation_reconcile.rc == 0
+    and (release_kiosk_web_activation_reconcile.stdout | from_json).state == 'succeeded'
+  when: release_kiosk_services | length == 0
 
 - name: Restart the kiosk browser to apply the exact release SHA
   ansible.builtin.systemd:
     name: kiosk-browser.service
     state: restarted
     enabled: true
-  when: not (release_torque_cutover | default(false) | bool)
+  when:
+    - not (release_torque_cutover | default(false) | bool)
+    - release_kiosk_services | length > 0
 
 - name: Run the staged status-agent service once before its timer
   ansible.builtin.systemd:
     name: status-agent.service
     state: started
+  when: release_kiosk_services | length > 0
 
 - name: Ensure the status-agent timer uses the staged implementation
   ansible.builtin.systemd:
     name: status-agent.timer
     state: restarted
     enabled: true
+  when: release_kiosk_services | length > 0

@@ -140,6 +140,19 @@ class ReleaseArtifactContractTests(unittest.TestCase):
             parse_release_set(canonical_release_set_json(release_set)), release_set
         )
 
+    def test_explicit_empty_agent_selection_is_signed_and_round_trips(self) -> None:
+        document = valid_release_set()
+        document["agentServices"] = []
+        release_set = parse_release_set(json.dumps(document))
+        self.assertEqual(release_set.agent_services, ())
+        canonical = canonical_release_set_json(release_set)
+        self.assertEqual(parse_release_set(canonical).agent_services, ())
+
+        malformed = valid_release_set()
+        malformed["agentServices"] = ["nfc-agent", "nfc-agent"]
+        with self.assertRaisesRegex(ReleaseArtifactError, "agentServices"):
+            parse_release_set(json.dumps(malformed))
+
     def test_rejects_duplicate_unknown_and_partial_image_fields(self) -> None:
         duplicate = json.dumps(valid_release_set()).replace(
             '"schemaVersion": 1', '"schemaVersion": 1, "schemaVersion": 1'
@@ -212,6 +225,15 @@ class ReleaseArtifactContractTests(unittest.TestCase):
             parse_release_set(canonical_release_set_json(release_set)), release_set
         )
         validate_release_set(release_set, REPOSITORY, SHA, CONFIG_HASH, WORKFLOW)
+
+    def test_v2_rejects_empty_or_non_torque_agent_selection(self) -> None:
+        for services in ([], ["nfc-agent"], ["torque-agent", "nfc-agent"]):
+            document = valid_release_set_v2()
+            document["agentServices"] = services
+            with self.subTest(services=services), self.assertRaisesRegex(
+                ReleaseArtifactError, "agentServices"
+            ):
+                parse_release_set(json.dumps(document))
 
     def test_v2_separates_base_release_and_composition_workflow_identities(self) -> None:
         release_set = parse_release_set(json.dumps(valid_release_set_v2()))

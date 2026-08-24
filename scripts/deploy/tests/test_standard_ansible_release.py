@@ -306,6 +306,102 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         self.assertNotIn("nfc-agent", " ".join(images["pi4"]))
         self.assertNotIn("barcode-agent", " ".join(images["pi4"]))
 
+    def test_torque_image_plan_rejects_an_empty_or_non_torque_agent_set(self) -> None:
+        for services in ((), ("nfc-agent",), ("torque-agent", "nfc-agent")):
+            with self.subTest(services=services), self.assertRaisesRegex(
+                MODULE.UsageError, "exactly .*torque-agent"
+            ):
+                MODULE.image_plan(
+                    SHA,
+                    ("pi5", "pi4"),
+                    "b" * 64,
+                    torque_cutover=True,
+                    agent_services=services,
+                )
+
+    def test_web_only_image_plan_and_exact_targets_preserve_pi4_agents(self) -> None:
+        images = MODULE.image_plan(
+            SHA,
+            ("pi5", "pi4"),
+            "b" * 64,
+            agent_services=(),
+        )
+        self.assertEqual(
+            images,
+            {
+                "pi5": [
+                    f"ghcr.io/denkoushi/raspisys-api:{SHA}-{'b' * 16}",
+                    f"ghcr.io/denkoushi/raspisys-web:{SHA}-{'b' * 16}",
+                ],
+                "pi4": [],
+            },
+        )
+        args = argparse.Namespace(branch="main", limit="pi4-a", full_fleet=False)
+        with mock.patch.object(MODULE, "run", return_value=completed(["ansible-playbook"])):
+            document = MODULE.plan(
+                args,
+                SHA,
+                ROOT / MODULE.DEFAULT_INVENTORY,
+                MODULE.DEFAULT_INVENTORY,
+                (("pi4", ("pi4-a",)),),
+                agent_services=(),
+            )
+        self.assertEqual(document["mode"], "web-only")
+        self.assertEqual(document["agentServices"], [])
+        self.assertEqual(document["executionOrder"][0]["images"], [])
+        self.assertEqual(document["activationTargets"][0]["strategy"], "kiosk-web-activation-v1")
+
+    def test_web_only_role_uses_activation_helper_without_agent_lifecycle(self) -> None:
+        role_root = ROOT / "infrastructure/ansible/roles/release_kiosk"
+        role = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted(role_root.rglob("*.yml"))
+        )
+        self.assertIn("release_kiosk_agent_services", role)
+        self.assertIn("activate-kiosk-web", role)
+        self.assertIn("reconcile-kiosk-web-activation", role)
+        self.assertIn("cleanup-kiosk-web-activation", role)
+        self.assertIn("release_kiosk_services | length > 0", role)
+
+    def test_web_only_route_binds_pi5_authority_and_secret_safe_runtime_fingerprint(self) -> None:
+        role_root = ROOT / "infrastructure/ansible/roles/release_kiosk"
+        prepare = (role_root / "tasks/prepare.yml").read_text(encoding="utf-8")
+        switch = (role_root / "tasks/switch.yml").read_text(encoding="utf-8")
+        health = (role_root / "tasks/health_checks.yml").read_text(encoding="utf-8")
+        rollback = (role_root / "tasks/rollback.yml").read_text(encoding="utf-8")
+        cleanup = (role_root / "tasks/cleanup.yml").read_text(encoding="utf-8")
+
+        self.assertIn("release_kiosk_pi5_status_state_helper", prepare)
+        self.assertIn("- put", prepare)
+        self.assertIn("- set-phase", switch)
+        self.assertIn("- verifying", switch)
+        self.assertIn("--desired-release-sha", switch)
+        self.assertIn("preflight-restore", rollback)
+        self.assertIn("- restore", rollback)
+        self.assertIn("--rollback", rollback)
+        self.assertIn("remove-client", cleanup)
+        self.assertIn("sha256sum", prepare)
+        self.assertIn("sha256sum", health)
+        self.assertIn("pi4-agent-runtime|", prepare)
+        self.assertIn("pi4-agent-runtime|", health)
+        self.assertNotIn("json .Config.Env", prepare)
+        self.assertNotIn("json .Config.Env", health)
+        self.assertNotIn("printf '%s|%s|%s", prepare)
+        self.assertNotIn("printf '%s|%s|%s", health)
+
+        prepare_tasks = yaml.safe_load(prepare)
+        snapshot = next(
+            task for task in prepare_tasks
+            if task["name"] == "Snapshot existing Pi4 agent identities before Web-only activation"
+        )
+        self.assertTrue(snapshot["no_log"])
+        self.assertTrue(
+            next(
+                task for task in prepare_tasks
+                if task["name"] == "Register the Web-only terminal with the Pi5 deploy-status authority"
+            )["no_log"]
+        )
+
     def test_target_selection_rejects_empty_and_unsupported_hosts(self) -> None:
         with self.assertRaisesRegex(MODULE.UsageError, "matched no hosts"):
             MODULE.selected_profiles({"_meta": {"hostvars": {}}})

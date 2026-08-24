@@ -452,6 +452,7 @@ class ClassifyChangesTests(unittest.TestCase):
                 "torque_composition=false",
                 'docker_matrix=[{"dockerfile":"./infrastructure/docker/Dockerfile.api","image":"api","tag":"raspisys-api:ci"},{"dockerfile":"./infrastructure/docker/Dockerfile.web","image":"web","tag":"raspisys-web:ci"}]',
                 "pi4_agent_matrix=[]",
+                "pi4_agent_services=[]",
             ],
         )
         markdown = render_markdown(result)

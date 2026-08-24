@@ -117,6 +117,16 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         for source_path, destination_name in runtime_declarations:
             self.assertTrue(source_path.is_file(), source_path)
+            if destination_name.name == "terminal-runtime-manifest.py":
+                self.assertIn(
+                    f'{{{{ release_kiosk_stage_dir }}}}/{destination_name}',
+                    prepare_text,
+                )
+                self.assertNotIn(
+                    f"/usr/local/lib/raspi-status-agent/{destination_name}",
+                    prepare_text,
+                )
+                continue
             self.assertIn(
                 f"/usr/local/lib/raspi-status-agent/{destination_name}",
                 prepare_text,
@@ -823,18 +833,15 @@ esac
                     "prepare.yml",
                 )
                 if role == "release_kiosk":
-                    switch_health = next(
-                        task for task in outer["block"] if "block" in task
-                    )
                     self.assertEqual(
                         [
                             task["ansible.builtin.import_tasks"]
-                            for task in switch_health["block"]
+                            for task in outer["block"]
                             if "ansible.builtin.import_tasks" in task
                         ],
-                        ["switch.yml", "health.yml"],
+                        ["prepare.yml", "switch.yml", "health.yml"],
                     )
-                    rescue = switch_health["rescue"]
+                    rescue = outer["rescue"]
                 else:
                     self.assertEqual(
                         [
@@ -1023,7 +1030,8 @@ esac
         self.assertIn("release_kiosk_healthy | default(false) | bool", tag_cleanup["when"])
         self.assertIn("release_kiosk_rolled_back | default(false) | bool", tag_cleanup["when"])
         self.assertIn(expected_pre_switch, tag_cleanup["when"])
-        self.assertIn(expected_pre_switch, " ".join(stage_cleanup["when"]))
+        self.assertIn("release_kiosk_web_manifest_sha256 is not defined", " ".join(stage_cleanup["when"]))
+        self.assertNotIn(expected_pre_switch, " ".join(stage_cleanup["when"]))
         self.assertEqual(tag_cleanup["loop"], "{{ release_kiosk_captured_services | default([]) }}")
 
         rollback = yaml.safe_load(
@@ -1141,10 +1149,11 @@ esac
             "releaseclaims",
             "fleet-release-state",
             "route_preflight",
-            "manifestsha256",
             "payloaddigest",
         ):
             self.assertNotIn(forbidden, route)
+        self.assertIn("terminal-runtime-manifest.py", route)
+        self.assertIn("activate-kiosk-web", route)
 
     def test_pi5_standard_route_has_no_custom_subsystem_or_sealed_evidence(self) -> None:
         pi5 = role_text("release_pi5")

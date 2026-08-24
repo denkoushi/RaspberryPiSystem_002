@@ -630,6 +630,13 @@ def classify_changes(
         "releasePair": release_pair,
         "runtimeRehearsal": runtime_rehearsal,
         "torqueComposition": torque_composition,
+        # This ordered service set is the release authority.  The matrix is
+        # retained for the image-publish job, while deploy consumes the
+        # component selection even when it is empty for a Web-only change.
+        "pi4AgentServices": [
+            artifact.service for artifact in PI4_AGENT_ARTIFACTS
+            if artifact.service in pi4_agent_services
+        ],
         "pi4AgentMatrix": pi4_agent_matrix_for_services(pi4_agent_services),
         "dockerMatrix": [DOCKER_MATRIX_ITEMS[image] for image in matrix_images],
         "categories": {category: category in selected for category in CATEGORIES},
@@ -748,6 +755,12 @@ def render_github_output(result: dict[str, object]) -> str:
         "pi4_agent_matrix="
         + json.dumps(
             result["pi4AgentMatrix"], separators=(",", ":"), sort_keys=True
+        )
+    )
+    lines.append(
+        "pi4_agent_services="
+        + json.dumps(
+            result["pi4AgentServices"], separators=(",", ":"), sort_keys=False
         )
     )
     return "\n".join(lines) + "\n"

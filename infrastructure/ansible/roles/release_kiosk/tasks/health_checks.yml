@@ -15,6 +15,7 @@
   delay: 2
   until: release_kiosk_display_health is succeeded
   changed_when: false
+  when: release_kiosk_services | length > 0
 
 - name: Verify the Pi4 status-agent configuration is present
   ansible.builtin.command:
@@ -27,6 +28,7 @@
   delay: 3
   until: release_kiosk_status_agent_config_health.rc == 0
   changed_when: false
+  when: release_kiosk_services | length > 0
 
 - name: Verify the Pi4 status-agent service is loaded and healthy
   ansible.builtin.command:
@@ -44,6 +46,7 @@
     - "'Result=success' in release_kiosk_status_agent_service_health.stdout_lines"
     - "'ExecMainStatus=0' in release_kiosk_status_agent_service_health.stdout_lines"
   changed_when: false
+  when: release_kiosk_services | length > 0
 
 - name: Verify the Pi4 NFC agent
   ansible.builtin.uri:
@@ -55,7 +58,9 @@
   retries: 5
   delay: 3
   until: release_kiosk_nfc_health.status == 200
-  when: "'nfc-agent' in (release_kiosk_enabled_services | default(release_kiosk_services))"
+  when: >-
+    'nfc-agent' in release_kiosk_services
+    and 'nfc-agent' in release_kiosk_enabled_services
 
 - name: Verify the Pi4 barcode agent
   ansible.builtin.uri:
@@ -67,7 +72,9 @@
   retries: 5
   delay: 3
   until: release_kiosk_barcode_health.status == 200
-  when: "'barcode-agent' in (release_kiosk_enabled_services | default(release_kiosk_services))"
+  when: >-
+    'barcode-agent' in release_kiosk_services
+    and 'barcode-agent' in release_kiosk_enabled_services
 
 - name: Verify the Pi4 torque agent
   ansible.builtin.uri:
@@ -94,3 +101,148 @@
   retries: 5
   delay: 3
   until: release_kiosk_web_health.status == 200
+
+- name: Wait for the manifest-bound compiled Web ready acknowledgement
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json
+        import sys
+        from pathlib import Path
+
+        status = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+        client = status.get("kioskByClient", {}).get(sys.argv[2], {})
+        ready = (
+            status.get("acknowledgements", {})
+            .get(sys.argv[3], {})
+            .get(sys.argv[2], {})
+            .get("ready", {})
+        )
+        verification_id = client.get("verificationId")
+        if (
+            client.get("runId") != sys.argv[3]
+            or client.get("phase") != "verifying"
+            or client.get("desiredReleaseSha") != sys.argv[4]
+            or ready.get("releaseSha") != sys.argv[4]
+            or not isinstance(verification_id, str)
+            or len(verification_id) != 32
+            or ready.get("verificationId") != verification_id
+        ):
+            raise SystemExit(1)
+      - "{{ release_kiosk_pi5_project_dir }}/config/deploy-status.json"
+      - "{{ status_agent_client_id }}"
+      - "{{ release_run_id }}"
+      - "{{ release_sha }}"
+  delegate_to: "{{ groups['server'][0] }}"
+  become: true
+  register: release_kiosk_web_ready_ack
+  changed_when: false
+  retries: 65
+  delay: 1
+  until: release_kiosk_web_ready_ack.rc == 0
+  when: release_kiosk_services | length == 0
+
+- name: Read the Pi5 deploy-status ledger for the Web ready acknowledgement
+  ansible.builtin.slurp:
+    src: "{{ release_kiosk_pi5_project_dir }}/config/deploy-status.json"
+  delegate_to: "{{ groups['server'][0] }}"
+  become: true
+  register: release_kiosk_web_status_ledger
+  no_log: true
+  retries: 65
+  delay: 1
+  until: release_kiosk_web_status_ledger is succeeded
+  when: release_kiosk_services | length == 0
+
+- name: Require the exact compiled Web SHA and verification acknowledgement
+  ansible.builtin.assert:
+    that:
+      - >-
+        (release_kiosk_web_status_ledger.content | b64decode | from_json).kioskByClient[status_agent_client_id].runId
+        == release_run_id
+      - >-
+        (release_kiosk_web_status_ledger.content | b64decode | from_json).kioskByClient[status_agent_client_id].phase
+        == 'verifying'
+      - >-
+        (release_kiosk_web_status_ledger.content | b64decode | from_json).kioskByClient[status_agent_client_id].desiredReleaseSha
+        == release_sha
+      - >-
+        (release_kiosk_web_status_ledger.content | b64decode | from_json).acknowledgements[release_run_id][status_agent_client_id].ready.releaseSha
+        == release_sha
+      - >-
+        (release_kiosk_web_status_ledger.content | b64decode | from_json).acknowledgements[release_run_id][status_agent_client_id].ready.verificationId
+        == (release_kiosk_web_status_ledger.content | b64decode | from_json).kioskByClient[status_agent_client_id].verificationId
+    fail_msg: Web-only activation requires a manifest-bound ready acknowledgement for the compiled release SHA.
+  no_log: true
+  when: release_kiosk_services | length == 0
+
+- name: Re-read Pi4 agent identities after Web-only activation
+  ansible.builtin.shell: |
+    set -euo pipefail
+    snapshot_lines=()
+    id_format=$'\173\173.ID\175\175'
+    inspect_format=$'\173\173json .Id\175\175|\173\173json .Image\175\175|\173\173json .Config\175\175|\173\173json .HostConfig.NetworkMode\175\175|\173\173json .HostConfig.Binds\175\175|\173\173json .HostConfig.RestartPolicy\175\175|\173\173json .Mounts\175\175'
+    for service in nfc-agent barcode-agent torque-agent; do
+      ids="$(docker ps --all \
+        --filter "label=com.docker.compose.project={{ release_kiosk_compose_project }}" \
+        --filter "label=com.docker.compose.service=${service}" \
+        --format "${id_format}" | sort)"
+      if [[ -z "${ids}" ]]; then
+        snapshot_lines+=("${service}|absent")
+        continue
+      fi
+      while IFS= read -r container_id; do
+        raw_inspect="$(docker inspect --format "${inspect_format}" "${container_id}")"
+        inspect_fingerprint="$(printf '%s' "${raw_inspect}" | sha256sum | awk '{print $1}')"
+        [[ "${inspect_fingerprint}" =~ ^[0-9a-f]{64}$ ]]
+        snapshot_lines+=("${service}|${container_id}|${inspect_fingerprint}")
+      done <<< "${ids}"
+    done
+    for env_file in \
+      "{{ release_kiosk_project_dir }}/clients/nfc-agent/.env" \
+      "{{ release_kiosk_project_dir }}/clients/barcode-agent/.env" \
+      "{{ release_kiosk_project_dir }}/clients/torque-agent/.env"; do
+      if [[ -f "${env_file}" ]]; then
+        env_fingerprint="$(sha256sum "${env_file}" | awk '{print $1}')"
+      else
+        env_fingerprint=missing
+      fi
+      snapshot_lines+=("env|${env_file}|${env_fingerprint}")
+    done
+    status_unit="$(systemctl show status-agent.service --no-pager \
+      --property=LoadState,ActiveState,SubState,Result,ExecMainStatus,UnitFileState,FragmentPath,MainPID \
+      2>/dev/null | LC_ALL=C sort || printf '%s' status-agent-unavailable)"
+    status_unit_fingerprint="$(printf '%s' "${status_unit}" | sha256sum | awk '{print $1}')"
+    status_config=/etc/raspi-status-agent.conf
+    if [[ -f "${status_config}" ]]; then
+      status_config_fingerprint="$(sha256sum "${status_config}" | awk '{print $1}')"
+    else
+      status_config_fingerprint=missing
+    fi
+    status_unit_file=/etc/systemd/system/status-agent.service
+    if [[ -f "${status_unit_file}" ]]; then
+      status_unit_file_fingerprint="$(sha256sum "${status_unit_file}" | awk '{print $1}')"
+    else
+      status_unit_file_fingerprint=missing
+    fi
+    snapshot_lines+=("status-agent|${status_unit_fingerprint}|${status_config_fingerprint}|${status_unit_file_fingerprint}")
+    printf '%s\n' "${snapshot_lines[@]}" \
+      | LC_ALL=C sort \
+      | sha256sum \
+      | awk '{print "pi4-agent-runtime|" $1}'
+  args:
+    executable: /bin/bash
+  register: release_kiosk_agent_snapshot_after_result
+  changed_when: false
+  no_log: true
+  when: release_kiosk_services | length == 0
+
+- name: Require unchanged Pi4 agent identity and configuration
+  ansible.builtin.assert:
+    that:
+      - release_kiosk_agent_snapshot_after_result.stdout == release_kiosk_agent_snapshot_before
+    fail_msg: Web-only activation changed a Pi4 agent identity or configuration.
+  no_log: true
+  when: release_kiosk_services | length == 0
