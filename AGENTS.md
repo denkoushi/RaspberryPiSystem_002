@@ -4,20 +4,17 @@
 
 ## Start Rule
 
-このファイルを読んだ後、次の順で必要な範囲だけを読む。
-
-1. `docs/AI_START_HERE.md`
-2. `.cursor/rules/00-core-safety.mdc`
-3. `.cursor/rules/01-core-docs-and-knowledge.mdc`
-4. `.cursor/rules/02-core-architecture.mdc`
-5. 今回の作業に該当するルールと、関連する KB / Runbook / ADR / Plan
+このファイルを読んだ後、まず `.cursor/rules/00-core-safety.mdc` を読む。
+その他のルールや文書は、今回の作業に必要なものだけを読む。
+正本の場所が不明な場合だけ `docs/AI_START_HERE.md` を案内として使う。
 
 作業別の必須ルールは次のとおり。
 
 - コード、テスト、CI: `.cursor/rules/10-quality-ci-and-tests.mdc`
 - 不具合調査: `.cursor/rules/11-debugging-playbook.mdc`
-- commit、push、PR、merge: `.cursor/rules/20-git-workflow.mdc`（ユーザーが依頼した段階だけ）
-- ドキュメント: `.cursor/rules/30-docs-maintenance.mdc`
+- 変更を伴う作業、commit、push、PR、merge: `.cursor/rules/20-git-workflow.mdc`（ユーザーが依頼した段階だけ）
+- ドキュメント: `.cursor/rules/01-core-docs-and-knowledge.mdc` と `.cursor/rules/30-docs-maintenance.mdc`
+- 公開契約、モジュール境界、大規模リファクタ: `.cursor/rules/02-core-architecture.mdc`
 - フロントエンド/UI: `.cursor/rules/33-frontend-ui-quality.mdc`
 - Codex/Cursor agmsg連携: `docs/guides/agmsg-codex-cursor-collaboration.md`
 
@@ -25,20 +22,15 @@
 
 ## Git Task Lifecycle
 
-タスクごとに専用のfeature branchとlinked worktreeを1つ使う。標準入口は
-`python3 -m scripts.git_lifecycle.cli`であり、rawな`git worktree add`や手動の一括削除を標準手順にしない。
+変更を伴う新規タスクで既存のタスクbranchまたはworktreeがない場合は、専用のfeature branchとlinked worktreeを1つ使う。既存タスクの継続作業ではそのbranchまたはworktreeを引き継ぎ、ユーザーのWIPをclean、reset、stash、checkoutしない。
 
-- 開始前に`python3 -m scripts.git_lifecycle.cli audit --json`を実行して既存資産を観測し、開始は`start --branch <branch>`で行う。`start`は`git fetch --prune origin`に成功して正確な`origin/main`を取得できた場合だけ、そのSHAからworktreeを作る。mainがdirtyまたはdivergedでもmainをclean、reset、stash、checkoutせず、警告と`main_sync=skipped_dirty|skipped_diverged`を返す。
-- PRのmerge後は、対象worktreeの正確なパスとPR番号を指定して`finish --worktree <exact-path> --pr <number>`を実行する。merged、同一repositoryのhead branch、local tipとPR head SHA、対象worktreeの通常status・特殊index flagを照合し、合格した対象だけをforceなしで片付ける。ignored materialは件数を警告するが、使い捨てworktreeのcleanupを止めない。秘密資格情報はworktree外へ置く。dirty対象、open/closed-unmerged PR、SHA不一致、所有関係不明は保持する。
-- `finish`の対象cleanupはmain同期から独立する。対象cleanup後にcleanかつfast-forward可能なmainだけを更新し、既に同期済みは`already_current`、dirtyは`skipped_dirty`、divergedは`skipped_diverged`として報告する。main同期のskipは対象タスクのcleanup失敗ではない。
-- 各タスクの終了時に`audit --json`を再実行し、PR番号・merge SHA・対象cleanup・`main_sync`・保護した項目を完了報告へ記録する。remote branchの削除はGitHubの`deleteBranchOnMerge`に任せ、CLIからremote refを削除しない。
-- lifecycle CLIは開発端末で明示実行するGit運用ツールに限定する。Deploy、Ansible、Docker build、fleet deploy、Git hook、CI共通preflightから呼び出さない。
+開始、監査、終了には`python3 -m scripts.git_lifecycle.cli`を使い、詳細は`.cursor/rules/20-git-workflow.mdc`に従う。rawな`git worktree add`や手動の一括削除を標準手順にしない。このCLIは開発端末で明示実行するGit運用ツールに限定し、Deploy、Ansible、Docker build、fleet deploy、Git hook、CI共通preflightから呼び出さない。
 
 ## Scope And Evidence
 
 - 依頼から変更対象、受入条件、成功を示す証拠を絞り、最小変更で満たす。近接する改善や失敗を見つけても、依頼との因果がなければ別スコープとする。
 - 実装依頼は commit、push、PR、merge、release、deploy の許可を含まない。依頼された段階を越える前に明示承認を得る。
-- コード、テスト、CIの変更では、`10-quality-ci-and-tests.mdc` の検証予算、再実行上限、停止条件を必ず守る。無関係な失敗の修正はスコープ拡大として扱う。
+- コード、テスト、CIの変更では、`10-quality-ci-and-tests.mdc` の検証予算、再実行上限、停止条件を守る。無関係な失敗は修正せず、別件として報告する。
 - 複雑な機能追加や大きなリファクタだけ、`.agent/PLANS.md` に従って `docs/plans/` に ExecPlan を作る。小変更へ形式的な計画文書を追加しない。
 - ルートの `EXEC_PLAN.md` は legacy historical log であり、詳細正本にせず、新しい進捗ログを追記しない。
 
