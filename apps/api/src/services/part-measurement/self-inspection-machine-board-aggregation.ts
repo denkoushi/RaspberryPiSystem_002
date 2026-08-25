@@ -20,6 +20,7 @@ export type SelfInspectionMachineBoardAggregationRow = {
   machineName?: string | null;
   normalizedMachineName?: string | null;
   resourceCd: string;
+  resourceDisplayName?: string | null;
   dueDate: Date | null;
   isScheduled: boolean;
   confirmedEntryCount?: number | null;
@@ -34,6 +35,9 @@ export type SelfInspectionMachineBoardAggregationRow = {
   reviewStatuses?: Array<string | null | undefined>;
   finalReviewStatuses?: Array<string | null | undefined>;
   measurementOutcomes?: SelfInspectionMachineBoardMeasurementOutcome[];
+  /** active session board の順序保持用。カード表示契約へは露出しない。 */
+  updatedAt?: Date;
+  sessionId?: string;
 };
 
 export type { SelfInspectionMachineBoardCard } from './self-inspection-machine-board.types.js';
@@ -177,6 +181,7 @@ export function aggregateSelfInspectionMachineBoardResources(
     confirmedEntryCount: number;
     requiredEntryCount: number;
     scheduleRowIds: string[];
+    resourceDisplayNames: string[];
   };
 
   const buckets = new Map<string, ResourceBucket>();
@@ -196,12 +201,20 @@ export function aggregateSelfInspectionMachineBoardResources(
       confirmedEntryCount: 0,
       requiredEntryCount: 0,
       scheduleRowIds: [],
+      resourceDisplayNames: [],
     };
     bucket.rows.push(row);
     bucket.confirmedEntryCount += confirmedEntryCount;
     bucket.requiredEntryCount += requiredEntryCount;
     if (!bucket.scheduleRowIds.includes(row.scheduleRowId)) {
       bucket.scheduleRowIds.push(row.scheduleRowId);
+    }
+    const resourceDisplayName = normalizeText(row.resourceDisplayName);
+    if (
+      resourceDisplayName.length > 0 &&
+      !bucket.resourceDisplayNames.includes(resourceDisplayName)
+    ) {
+      bucket.resourceDisplayNames.push(resourceDisplayName);
     }
     buckets.set(resourceCd, bucket);
   }
@@ -210,8 +223,10 @@ export function aggregateSelfInspectionMachineBoardResources(
     .sort((a, b) => a.resourceCd.localeCompare(b.resourceCd))
     .map((bucket) => {
       const status = resolveResourceOutcome(bucket.rows);
+      const resourceDisplayName = bucket.resourceDisplayNames.join(' / ');
       return {
         resourceCd: bucket.resourceCd,
+        ...(resourceDisplayName ? { resourceDisplayName } : {}),
         confirmedEntryCount: bucket.confirmedEntryCount,
         requiredEntryCount: bucket.requiredEntryCount,
         completedEntryCount: bucket.confirmedEntryCount,

@@ -327,9 +327,11 @@ export function SignageDisplayPage() {
           }
         }
         const altLabel =
-          targetMode === 'auto_from_leaderboard_status'
-            ? '自主検査 自動選定'
-            : `自主検査 ${boardCfg.machineName}`;
+          targetMode === 'kiosk_active_sessions'
+            ? '自主検査 表示中のアイテム'
+            : targetMode === 'auto_from_leaderboard_status'
+              ? '自主検査 自動選定'
+              : `自主検査 ${boardCfg.machineName}`;
         return (
           <div className={`${screenClass} flex items-center justify-center bg-slate-950 p-0`}>
             <img
@@ -678,4 +680,3 @@ export function SignageDisplayPage() {
 
   return null;
 }
-

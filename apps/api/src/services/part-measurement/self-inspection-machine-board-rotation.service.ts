@@ -10,6 +10,7 @@ import {
   setAutoRotationVmCache,
 } from './self-inspection-machine-board-auto-rotation.cache.js';
 import { buildSelfInspectionMachineBoardViewModel } from './self-inspection-machine-board.service.js';
+import { buildKioskActiveSelfInspectionMachineBoardViewModel } from './self-inspection-machine-board-active.service.js';
 import type {
   SelfInspectionMachineBoardPage,
   SelfInspectionMachineBoardPartItem,
@@ -48,7 +49,7 @@ function buildAutoRotationVmCacheKey(options: {
 }
 
 export type SelfInspectionMachineBoardRotationViewModel = {
-  targetMode: 'manual_machine_name' | 'auto_from_leaderboard_status';
+  targetMode: 'manual_machine_name' | 'auto_from_leaderboard_status' | 'kiosk_active_sessions';
   machineName: string;
   normalizedMachineName: string;
   updatedAt: Date;
@@ -62,6 +63,9 @@ export type SelfInspectionMachineBoardRotationViewModel = {
   autoTargetHitScanCap: boolean;
   autoTargetScanRowCap: number;
   autoTargetScannedRowCount: number;
+  activeSessionLimit?: number;
+  activeSessionHasMore?: boolean;
+  activeSessionCount?: number;
 };
 
 function reindexMachineBoardPages(pages: SelfInspectionMachineBoardPage[]): SelfInspectionMachineBoardPage[] {
@@ -213,6 +217,38 @@ export async function buildManualSelfInspectionMachineBoardRotationViewModel(opt
     autoTargetScannedRowCount: 0,
   };
 }
+
+/** キオスク自主検査画面の active session 集合をそのまま rotation VM へ包む。 */
+export async function buildKioskActiveSelfInspectionMachineBoardRotationViewModel(options: {
+  partsPerPage?: number;
+  detailTopN?: number;
+}): Promise<SelfInspectionMachineBoardRotationViewModel> {
+  // Deliberately no render-crossing cache: this mode reflects the kiosk's
+  // active sessions and must observe the next render's current snapshot.
+  const vm = await buildKioskActiveSelfInspectionMachineBoardViewModel(options);
+  return {
+    targetMode: 'kiosk_active_sessions',
+    machineName: vm.machineName,
+    normalizedMachineName: vm.normalizedMachineName,
+    updatedAt: vm.updatedAt,
+    pages: vm.pages,
+    totalPages: vm.totalPages,
+    scheduleRowCap: vm.scheduleRowCap,
+    scheduleRowHasMore: vm.scheduleRowHasMore,
+    loadedScheduleRowCount: vm.loadedScheduleRowCount,
+    autoTargetCount: 0,
+    autoTargetTruncated: false,
+    autoTargetHitScanCap: false,
+    autoTargetScanRowCap: 0,
+    autoTargetScannedRowCount: 0,
+    activeSessionLimit: vm.activeSessionLimit,
+    activeSessionHasMore: vm.activeSessionHasMore,
+    activeSessionCount: vm.activeSessionCount,
+  };
+}
+
+export const buildActiveSelfInspectionMachineBoardRotationViewModel =
+  buildKioskActiveSelfInspectionMachineBoardRotationViewModel;
 
 function logAutoTargetSelectionWarnings(
   options: {

@@ -245,6 +245,43 @@ describe('signage scheduleSchema layoutConfig', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts kiosk_active_sessions with legacy selection fields for resolver compatibility', () => {
+    const legacyFields = {
+      machineName: 'L300KP',
+      deviceScopeKey: 'scope-kiosk',
+      resourceCds: ['RD01'],
+      maxAutoMachines: 5,
+    };
+    const result = scheduleSchema.safeParse({
+      name: 'valid kiosk self inspection',
+      contentType: 'TOOLS',
+      layoutConfig: {
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'self_inspection_machine_board',
+            config: {
+              targetMode: 'kiosk_active_sessions',
+              ...legacyFields,
+              partsPerPage: 6,
+              detailTopN: 5,
+            },
+          },
+        ],
+      },
+      dayOfWeek: [0],
+      startTime: '00:00',
+      endTime: '23:59',
+      priority: 1,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.layoutConfig?.slots[0]?.config).toMatchObject(legacyFields);
+    }
+  });
+
   it('rejects manual self_inspection_machine_board when maxAutoMachines is set', () => {
     const result = scheduleSchema.safeParse({
       name: 'invalid manual self inspection maxAutoMachines',

@@ -1,13 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
+import type { SelfInspectionMachineBoardResourceProgress } from '../../part-measurement/self-inspection-machine-board.types.js';
 import {
   buildFlatMachineBoardPages,
   groupPartsBySeiban,
+  paginateSelfInspectionMachineBoardParts,
   sanitizeSelfInspectionMachineBoardDetailTopN,
   sanitizeSelfInspectionMachineBoardPartsPerPage,
   summaryPartsPageCount,
 } from './pagination.js';
 import { buildSelfInspectionMachineBoardSummarySvg } from './self-inspection-machine-board-svg.js';
+import { maxSelfInspectionMachineBoardResourcesPerCard } from './self-inspection-machine-board-layout.js';
+
+type DisplayResource = SelfInspectionMachineBoardResourceProgress & {
+  resourceDisplayName?: string;
+};
 
 describe('self-inspection-machine-board pagination', () => {
   it('sanitizes partsPerPage and detailTopN', () => {
@@ -64,8 +71,9 @@ describe('self-inspection-machine-board pagination', () => {
   });
 
   it('uses the larger card in each row and keeps oversized resources in continuation cards', () => {
-    const resources = Array.from({ length: 40 }, (_, index) => ({
+    const resources: DisplayResource[] = Array.from({ length: 40 }, (_, index) => ({
       resourceCd: `R${index + 1}`,
+      resourceDisplayName: `資源${index + 1}`,
       confirmedEntryCount: 1,
       completedEntryCount: 1,
       requiredEntryCount: 2,
@@ -136,7 +144,64 @@ describe('self-inspection-machine-board pagination', () => {
       1080
     );
     expect(continuationSvg).toContain('続き 2/2');
+    expect(continuationSvg).toContain('資源36');
+    expect(continuationSvg).not.toContain('R36');
     expect(pageParts.some((part) => part.fseiban === 'S-SHORT')).toBe(true);
+  });
+
+  it('splits exactly after 35 resource rows at the minimum readable height', () => {
+    expect(maxSelfInspectionMachineBoardResourcesPerCard()).toBe(35);
+
+    const makePart = (fseiban: string, resourceCount: number) => {
+      const resources: DisplayResource[] = Array.from({ length: resourceCount }, (_, index) => ({
+        resourceCd: `${fseiban}-R${index + 1}`,
+        resourceDisplayName: `${fseiban}資源${index + 1}`,
+        confirmedEntryCount: 1,
+        completedEntryCount: 1,
+        requiredEntryCount: 1,
+        progressLabel: '1/1',
+        status: 'in_progress',
+        outcome: 'in_progress',
+        scheduleRowIds: [`${fseiban}-row`],
+      }));
+      return {
+        scheduleRowId: `${fseiban}-row`,
+        fseiban,
+        productNo: `${fseiban}-product`,
+        fhincd: `${fseiban}-part`,
+        fhinmei: fseiban,
+        status: 'in_progress' as const,
+        completedEntryCount: resourceCount,
+        requiredEntryCount: resourceCount,
+        progressLabel: `${resourceCount}/${resourceCount}`,
+        dueDate: null,
+        isScheduled: false,
+        resources,
+        resourceCds: resources.map((resource) => resource.resourceCd),
+      };
+    };
+
+    const pages = paginateSelfInspectionMachineBoardParts({
+      orderedParts: [makePart('S-35', 35), makePart('S-36', 36)],
+      partsPerPage: 6,
+    });
+    const fragments = pages.flat();
+
+    expect(fragments.filter((part) => part.fseiban === 'S-35')).toHaveLength(1);
+    expect(fragments.filter((part) => part.fseiban === 'S-36')).toHaveLength(2);
+    expect(
+      fragments
+        .filter((part) => part.fseiban === 'S-36')
+        .map((part) => part.resources?.length)
+    ).toEqual([35, 1]);
+    expect(
+      fragments
+        .filter((part) => part.fseiban === 'S-36')
+        .map((part) => [part.continuationIndex, part.continuationCount, part.isContinuation])
+    ).toEqual([
+      [1, 2, false],
+      [2, 2, true],
+    ]);
   });
 
   it('groups page parts by seiban and scheduled flag', () => {

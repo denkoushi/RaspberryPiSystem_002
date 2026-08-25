@@ -22,7 +22,7 @@ import {
   type SignageSelfInspectionTargetMode,
   type SignageSplitSlotKind,
 } from './signageLayoutConfigModel';
-import { DEFAULT_SCHEDULE_FORM_DATA, parseResourceCdListInput } from './signageScheduleDisplay';
+import { DEFAULT_SCHEDULE_FORM_DATA } from './signageScheduleDisplay';
 
 import type { SignageSchedule } from '../../../api/client';
 
@@ -59,6 +59,7 @@ function applyEditorStatePatch(
     setFullSelfInspectionMaxAutoMachinesStr: (value: string) => void;
     setFullSelfInspectionSlideIntervalStr: (value: string) => void;
     setFullSelfInspectionPartsPerPageStr: (value: string) => void;
+    setFullSelfInspectionLegacyAutoMigrationNotice: (value: boolean) => void;
     setFullSelfInspectionDetailTopNStr: (value: string) => void;
   }
 ) {
@@ -128,6 +129,9 @@ function applyEditorStatePatch(
   if (patch.fullSelfInspectionPartsPerPageStr !== undefined) {
     setters.setFullSelfInspectionPartsPerPageStr(patch.fullSelfInspectionPartsPerPageStr);
   }
+  if (patch.fullSelfInspectionLegacyAutoMigrationNotice !== undefined) {
+    setters.setFullSelfInspectionLegacyAutoMigrationNotice(patch.fullSelfInspectionLegacyAutoMigrationNotice);
+  }
   if (patch.fullSelfInspectionDetailTopNStr !== undefined) {
     setters.setFullSelfInspectionDetailTopNStr(patch.fullSelfInspectionDetailTopNStr);
   }
@@ -178,14 +182,16 @@ export function useSignageScheduleEditor() {
   const [fullLeaderOrderCardsPerPageStr, setFullLeaderOrderCardsPerPageStr] = useState('');
   const [fullPartsShelfMaxItemsStr, setFullPartsShelfMaxItemsStr] = useState('');
   const [fullSelfInspectionTargetMode, setFullSelfInspectionTargetMode] = useState<
-    'manual_machine_name' | 'auto_from_leaderboard_status'
-  >('manual_machine_name');
+    'kiosk_active_sessions' | 'manual_machine_name'
+  >('kiosk_active_sessions');
   const [fullSelfInspectionMachineName, setFullSelfInspectionMachineName] = useState('');
   const [fullSelfInspectionDeviceScopeKey, setFullSelfInspectionDeviceScopeKey] = useState('');
   const [fullSelfInspectionResourceCdsText, setFullSelfInspectionResourceCdsText] = useState('');
   const [fullSelfInspectionMaxAutoMachinesStr, setFullSelfInspectionMaxAutoMachinesStr] = useState('');
   const [fullSelfInspectionSlideIntervalStr, setFullSelfInspectionSlideIntervalStr] = useState('');
   const [fullSelfInspectionPartsPerPageStr, setFullSelfInspectionPartsPerPageStr] = useState('');
+  const [fullSelfInspectionLegacyAutoMigrationNotice, setFullSelfInspectionLegacyAutoMigrationNotice] =
+    useState(false);
   const [fullSelfInspectionDetailTopNStr, setFullSelfInspectionDetailTopNStr] = useState('');
 
   const editorSetters = {
@@ -219,6 +225,7 @@ export function useSignageScheduleEditor() {
     setFullSelfInspectionMaxAutoMachinesStr,
     setFullSelfInspectionSlideIntervalStr,
     setFullSelfInspectionPartsPerPageStr,
+    setFullSelfInspectionLegacyAutoMigrationNotice,
     setFullSelfInspectionDetailTopNStr,
   };
 
@@ -261,6 +268,7 @@ export function useSignageScheduleEditor() {
     fullSelfInspectionMaxAutoMachinesStr,
     fullSelfInspectionSlideIntervalStr,
     fullSelfInspectionPartsPerPageStr,
+    fullSelfInspectionLegacyAutoMigrationNotice,
     fullSelfInspectionDetailTopNStr,
   });
 
@@ -284,16 +292,6 @@ export function useSignageScheduleEditor() {
       ) {
         alert('手入力モードでは機種名（machineName）が必須です。');
         return;
-      }
-      if (fullSelfInspectionTargetMode === 'auto_from_leaderboard_status') {
-        if (fullSelfInspectionDeviceScopeKey.trim() === '') {
-          alert('自動選定モードでは deviceScopeKey が必須です。');
-          return;
-        }
-        if (parseResourceCdListInput(fullSelfInspectionResourceCdsText).length === 0) {
-          alert('自動選定モードでは resourceCds が必須です。');
-          return;
-        }
       }
     }
 
@@ -465,6 +463,8 @@ export function useSignageScheduleEditor() {
     setFullSelfInspectionSlideIntervalStr,
     fullSelfInspectionPartsPerPageStr,
     setFullSelfInspectionPartsPerPageStr,
+    fullSelfInspectionLegacyAutoMigrationNotice,
+    setFullSelfInspectionLegacyAutoMigrationNotice,
     fullSelfInspectionDetailTopNStr,
     setFullSelfInspectionDetailTopNStr,
     resetFullSlotSpecificFields,

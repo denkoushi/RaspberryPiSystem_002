@@ -47,6 +47,7 @@ import {
 import { resolveSelfInspectionMachineBoardConfig } from '../part-measurement/self-inspection-machine-board-config.js';
 import {
   buildAutoSelfInspectionMachineBoardRotationViewModel,
+  buildKioskActiveSelfInspectionMachineBoardRotationViewModel,
   buildManualSelfInspectionMachineBoardRotationViewModel,
   type SelfInspectionMachineBoardRotationViewModel,
 } from '../part-measurement/self-inspection-machine-board-rotation.service.js';
@@ -868,6 +869,12 @@ export class SignageRenderer {
   ): Promise<SelfInspectionMachineBoardRotationViewModel> {
     const resolved = resolveSelfInspectionMachineBoardConfig(config);
     const build = async (): Promise<SelfInspectionMachineBoardRotationViewModel> => {
+      if (resolved.targetMode === 'kiosk_active_sessions') {
+        return buildKioskActiveSelfInspectionMachineBoardRotationViewModel({
+          partsPerPage,
+          detailTopN,
+        });
+      }
       if (resolved.targetMode === 'auto_from_leaderboard_status') {
         return buildAutoSelfInspectionMachineBoardRotationViewModel({
           deviceScopeKey: resolved.deviceScopeKey ?? '',
@@ -921,6 +928,14 @@ export class SignageRenderer {
     );
 
     if (vm.totalPages < 1) {
+      if (resolved.targetMode === 'kiosk_active_sessions') {
+        const activeNote = vm.activeSessionHasMore
+          ? `（最新${vm.activeSessionLimit ?? 200}件を表示・続きあり）`
+          : '';
+        return await this.renderMessage(
+          `自主検査ボード: 検査中・判定待ちの自主検査はありません${activeNote}`
+        );
+      }
       const capNote = buildScheduleRowCapNote({
         scheduleRowCap: vm.scheduleRowCap,
         scheduleRowHasMore: vm.scheduleRowHasMore,

@@ -18,6 +18,8 @@ export type SelfInspectionMachineBoardOutcomeStatus =
 /** 資源CD単位の自主検査進捗。カード内の同一CD行はここへ合算する。 */
 export type SelfInspectionMachineBoardResourceProgress = {
   resourceCd: string;
+  /** resource master 名。未登録時は「名称未登録」とする。 */
+  resourceDisplayName?: string;
   confirmedEntryCount: number;
   requiredEntryCount: number;
   /** confirmedEntryCount の表示互換別名。 */
@@ -107,6 +109,9 @@ export type SelfInspectionMachineBoardSummaryPage = {
   pageCount: number;
   scheduleRowCap?: number;
   scheduleRowHasMore?: boolean;
+  /** kiosk_active_sessions: 最新 active session の表示上限と続き有無。 */
+  activeSessionLimit?: number;
+  activeSessionHasMore?: boolean;
 } & SelfInspectionMachineBoardAutoTargetPageMeta;
 
 export type SelfInspectionMachineBoardDetailPage = {
@@ -138,4 +143,8 @@ export type SelfInspectionMachineBoardViewModel = {
   scheduleRowCap: number;
   scheduleRowHasMore: boolean;
   loadedScheduleRowCount: number;
+  /** kiosk_active_sessions VM の取得上限・追加有無。既存 mode では未設定。 */
+  activeSessionLimit?: number;
+  activeSessionHasMore?: boolean;
+  activeSessionCount?: number;
 };

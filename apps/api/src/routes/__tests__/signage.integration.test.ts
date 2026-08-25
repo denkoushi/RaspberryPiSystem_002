@@ -879,7 +879,9 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
     ]);
     const summarySvg = buildSelfInspectionMachineBoardSvg(summaryPages[0], 1920, 1080);
     expect(summarySvg).toContain('自主検査 部品別進捗');
-    expect(summarySvg).toContain('資源CD RES-SIMB-INT');
+    expect(summarySvg).toContain('名称未登録');
+    expect(summarySvg).not.toContain('資源CD');
+    expect(summarySvg).not.toContain('RES-SIMB-INT');
     expect(summarySvg).toContain('検査中');
     expect(summarySvg).not.toContain('寸法1');
 

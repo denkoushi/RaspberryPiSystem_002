@@ -56,14 +56,12 @@ export function SignageScheduleEditorForm({ editor }: SignageScheduleEditorFormP
     setFullSelfInspectionMachineName,
     fullSelfInspectionDeviceScopeKey,
     setFullSelfInspectionDeviceScopeKey,
-    fullSelfInspectionResourceCdsText,
-    setFullSelfInspectionResourceCdsText,
-    fullSelfInspectionMaxAutoMachinesStr,
-    setFullSelfInspectionMaxAutoMachinesStr,
     fullSelfInspectionSlideIntervalStr,
     setFullSelfInspectionSlideIntervalStr,
     fullSelfInspectionPartsPerPageStr,
     setFullSelfInspectionPartsPerPageStr,
+    fullSelfInspectionLegacyAutoMigrationNotice,
+    setFullSelfInspectionLegacyAutoMigrationNotice,
     leftSlotKind,
     setLeftSlotKind,
     leftPdfId,
@@ -342,14 +340,12 @@ export function SignageScheduleEditorForm({ editor }: SignageScheduleEditorFormP
                   setMachineName={setFullSelfInspectionMachineName}
                   deviceScopeKey={fullSelfInspectionDeviceScopeKey}
                   setDeviceScopeKey={setFullSelfInspectionDeviceScopeKey}
-                  resourceCdsText={fullSelfInspectionResourceCdsText}
-                  setResourceCdsText={setFullSelfInspectionResourceCdsText}
-                  maxAutoMachinesStr={fullSelfInspectionMaxAutoMachinesStr}
-                  setMaxAutoMachinesStr={setFullSelfInspectionMaxAutoMachinesStr}
                   slideIntervalStr={fullSelfInspectionSlideIntervalStr}
                   setSlideIntervalStr={setFullSelfInspectionSlideIntervalStr}
                   partsPerPageStr={fullSelfInspectionPartsPerPageStr}
                   setPartsPerPageStr={setFullSelfInspectionPartsPerPageStr}
+                  legacyAutoMigrationNotice={fullSelfInspectionLegacyAutoMigrationNotice}
+                  setLegacyAutoMigrationNotice={setFullSelfInspectionLegacyAutoMigrationNotice}
                 />
               )}
             </>

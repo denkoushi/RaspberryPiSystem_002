@@ -49,6 +49,7 @@ const mobilePlacementPartsShelfGridSlotConfigSchema = z
 
 const selfInspectionMachineBoardTargetModeSchema = z.enum([
   'manual_machine_name',
+  'kiosk_active_sessions',
   'auto_from_leaderboard_status',
 ]);
 
@@ -68,6 +69,13 @@ const selfInspectionMachineBoardSlotConfigSchema = z
   .strict()
   .superRefine((value, ctx) => {
     const targetMode = value.targetMode ?? 'manual_machine_name';
+    if (targetMode === 'kiosk_active_sessions') {
+      // kiosk_active_sessions supersedes the legacy auto fields. Keep accepting
+      // them on the wire so old clients/settings can be read; the runtime
+      // resolver deliberately ignores these fields for the kiosk mode.
+      return;
+    }
+
     if (targetMode === 'manual_machine_name') {
       if (!value.machineName?.trim()) {
         ctx.addIssue({

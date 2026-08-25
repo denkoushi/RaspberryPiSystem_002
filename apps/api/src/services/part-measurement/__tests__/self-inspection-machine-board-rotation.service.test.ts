@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const buildSelfInspectionMachineBoardViewModel = vi.hoisted(() => vi.fn());
+const buildKioskActiveSelfInspectionMachineBoardViewModel = vi.hoisted(() => vi.fn());
 const selectSelfInspectionMachineTargets = vi.hoisted(() => vi.fn());
 
 vi.mock('../self-inspection-machine-board.service.js', () => ({
   buildSelfInspectionMachineBoardViewModel,
+}));
+
+vi.mock('../self-inspection-machine-board-active.service.js', () => ({
+  buildKioskActiveSelfInspectionMachineBoardViewModel,
 }));
 
 vi.mock('../self-inspection-machine-target-selector.service.js', () => ({
@@ -13,6 +18,7 @@ vi.mock('../self-inspection-machine-target-selector.service.js', () => ({
 
 import {
   buildAutoSelfInspectionMachineBoardRotationViewModel,
+  buildKioskActiveSelfInspectionMachineBoardRotationViewModel,
   buildManualSelfInspectionMachineBoardRotationViewModel,
   clearAutoSelfInspectionMachineBoardRotationViewModelCacheForTests,
 } from '../self-inspection-machine-board-rotation.service.js';
@@ -79,6 +85,35 @@ describe('self-inspection-machine-board-rotation.service', () => {
     expect(vm.targetMode).toBe('manual_machine_name');
     expect(vm.totalPages).toBe(1);
     expect(vm.autoTargetCount).toBe(0);
+  });
+
+  it('builds kiosk_active_sessions on every call without using the rotation cache', async () => {
+    buildKioskActiveSelfInspectionMachineBoardViewModel.mockResolvedValue({
+      machineName: 'キオスク自主検査',
+      normalizedMachineName: '',
+      updatedAt: new Date('2026-06-09T00:00:00.000Z'),
+      pages: [],
+      totalPages: 0,
+      scheduleRowCap: 200,
+      scheduleRowHasMore: true,
+      loadedScheduleRowCount: 200,
+      activeSessionLimit: 200,
+      activeSessionHasMore: true,
+      activeSessionCount: 200,
+    });
+
+    const first = await buildKioskActiveSelfInspectionMachineBoardRotationViewModel({
+      partsPerPage: 6,
+      detailTopN: 5,
+    });
+    const second = await buildKioskActiveSelfInspectionMachineBoardRotationViewModel({
+      partsPerPage: 6,
+      detailTopN: 5,
+    });
+
+    expect(first.targetMode).toBe('kiosk_active_sessions');
+    expect(second.activeSessionHasMore).toBe(true);
+    expect(buildKioskActiveSelfInspectionMachineBoardViewModel).toHaveBeenCalledTimes(2);
   });
 
   it('reindexes pages across multiple auto-selected machines', async () => {
