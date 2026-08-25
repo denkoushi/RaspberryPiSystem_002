@@ -863,16 +863,25 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
     const summaryPages = viewModel.pages.filter((page) => page.kind === 'summary');
     const detailPages = viewModel.pages.filter((page) => page.kind === 'detail');
     expect(summaryPages.length).toBeGreaterThan(0);
+    expect(detailPages).toHaveLength(0);
     const summaryParts = [...summaryPages[0].scheduled, ...summaryPages[0].unscheduled].flatMap(
       (group) => group.parts
     );
     const seededPart = summaryParts.find((part) => part.fhincd === seeded.fhincd);
     expect(seededPart).toBeTruthy();
     expect(seededPart?.progressLabel).toBe('1/2');
-    expect(detailPages.length).toBeGreaterThan(0);
-    expect(detailPages[0]?.measurementPoints.length).toBeGreaterThan(0);
-    expect(buildSelfInspectionMachineBoardSvg(summaryPages[0], 1920, 1080)).toContain('自主検査');
-    expect(buildSelfInspectionMachineBoardSvg(detailPages[0], 1920, 1080)).toContain('寸法1');
+    expect(seededPart?.resources).toEqual([
+      expect.objectContaining({
+        resourceCd: 'RES-SIMB-INT',
+        progressLabel: '1/2',
+        outcome: 'in_progress',
+      }),
+    ]);
+    const summarySvg = buildSelfInspectionMachineBoardSvg(summaryPages[0], 1920, 1080);
+    expect(summarySvg).toContain('自主検査 部品別進捗');
+    expect(summarySvg).toContain('資源CD RES-SIMB-INT');
+    expect(summarySvg).toContain('検査中');
+    expect(summarySvg).not.toContain('寸法1');
 
     const scheduleResponse = await app.inject({
       method: 'POST',

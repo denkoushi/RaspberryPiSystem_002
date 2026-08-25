@@ -54,6 +54,56 @@ describe('signage scheduleSchema layoutConfig', () => {
     expect(result.success).toBe(true);
   });
 
+  it('keeps accepting legacy wire values up to partsPerPage 12', () => {
+    const result = scheduleSchema.safeParse({
+      name: 'legacy self inspection parts page size',
+      contentType: 'TOOLS',
+      layoutConfig: {
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'self_inspection_machine_board',
+            config: {
+              machineName: 'L300KP',
+              partsPerPage: 12,
+              detailTopN: 5,
+            },
+          },
+        ],
+      },
+      dayOfWeek: [0],
+      startTime: '00:00',
+      endTime: '23:59',
+      priority: 1,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects self_inspection_machine_board partsPerPage above the wire limit', () => {
+    const result = scheduleSchema.safeParse({
+      name: 'invalid self inspection parts page size',
+      contentType: 'TOOLS',
+      layoutConfig: {
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'self_inspection_machine_board',
+            config: { machineName: 'L300KP', partsPerPage: 13 },
+          },
+        ],
+      },
+      dayOfWeek: [0],
+      startTime: '00:00',
+      endTime: '23:59',
+      priority: 1,
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('rejects self_inspection_machine_board with FULL position on SPLIT layout', () => {
     const result = scheduleSchema.safeParse({
       name: 'invalid split full position self inspection',

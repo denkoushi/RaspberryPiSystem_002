@@ -1,8 +1,32 @@
 export type SelfInspectionMachineBoardPartStatus =
   | 'not_started'
   | 'in_progress'
+  | 'pending'
+  | 'rejected'
+  | 'pass'
+  /** 旧 renderer / stored fixture 互換。新 VM は pending/pass を返す。 */
   | 'review_pending'
   | 'completed';
+
+export type SelfInspectionMachineBoardOutcomeStatus =
+  | 'rejected'
+  | 'pending'
+  | 'in_progress'
+  | 'pass'
+  | 'not_started';
+
+/** 資源CD単位の自主検査進捗。カード内の同一CD行はここへ合算する。 */
+export type SelfInspectionMachineBoardResourceProgress = {
+  resourceCd: string;
+  confirmedEntryCount: number;
+  requiredEntryCount: number;
+  /** confirmedEntryCount の表示互換別名。 */
+  completedEntryCount: number;
+  progressLabel: string;
+  status: SelfInspectionMachineBoardOutcomeStatus;
+  outcome: SelfInspectionMachineBoardOutcomeStatus;
+  scheduleRowIds: string[];
+};
 
 export type SelfInspectionMachineBoardPartItem = {
   scheduleRowId: string;
@@ -12,10 +36,36 @@ export type SelfInspectionMachineBoardPartItem = {
   fhinmei: string;
   status: SelfInspectionMachineBoardPartStatus;
   completedEntryCount: number;
+  /** 資源集約後の confirmed 件数。旧単一行では completedEntryCount と同値。 */
+  confirmedEntryCount?: number;
   requiredEntryCount: number;
   progressLabel: string;
   dueDate: Date | null;
   isScheduled: boolean;
+  /** 新 VM の内部カードキー（旧 summary fixture では省略可）。 */
+  cardKey?: string;
+  machineName?: string;
+  normalizedMachineName?: string;
+  resources?: SelfInspectionMachineBoardResourceProgress[];
+  resourceCds?: string[];
+  scheduleRowIds?: string[];
+  outcome?: SelfInspectionMachineBoardOutcomeStatus;
+  /** 資源行が複数ページへ分割されたときの 1-based 断片番号。 */
+  continuationIndex?: number;
+  /** 資源行が複数ページへ分割されたときの断片総数。 */
+  continuationCount?: number;
+  /** continuationIndex > 1 の続きカードであることを明示する。 */
+  isContinuation?: boolean;
+};
+
+export type SelfInspectionMachineBoardCard = SelfInspectionMachineBoardPartItem & {
+  cardKey: string;
+  machineName: string;
+  normalizedMachineName: string;
+  resources: SelfInspectionMachineBoardResourceProgress[];
+  resourceCds: string[];
+  scheduleRowIds: string[];
+  outcome: SelfInspectionMachineBoardOutcomeStatus;
 };
 
 export type SelfInspectionMachineBoardSeibanGroup = {

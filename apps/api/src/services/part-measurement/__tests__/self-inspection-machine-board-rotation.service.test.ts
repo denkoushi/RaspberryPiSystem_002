@@ -18,6 +18,30 @@ import {
 } from '../self-inspection-machine-board-rotation.service.js';
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from '../self-inspection-machine-board-cache-invalidation.js';
 
+function makeBoardCard(machineName: string, index: number) {
+  return {
+    scheduleRowId: `${machineName}-row-${index}`,
+    cardKey: `${machineName}::card-${index}`,
+    fseiban: `${machineName}-S-${index}`,
+    productNo: `${machineName}-P-${index}`,
+    fhincd: `${machineName}-H-${index}`,
+    fhinmei: `${machineName}-Name-${index}`,
+    machineName,
+    normalizedMachineName: machineName.toLowerCase(),
+    status: 'in_progress' as const,
+    outcome: 'in_progress' as const,
+    completedEntryCount: 1,
+    confirmedEntryCount: 1,
+    requiredEntryCount: 2,
+    progressLabel: '1/2',
+    dueDate: null,
+    isScheduled: false,
+    resources: [],
+    resourceCds: [],
+    scheduleRowIds: [`${machineName}-row-${index}`],
+  };
+}
+
 describe('self-inspection-machine-board-rotation.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -91,20 +115,16 @@ describe('self-inspection-machine-board-rotation.service', () => {
             machineName: 'A',
             updatedAt: new Date('2026-06-09T00:00:00.000Z'),
             scheduled: [],
-            unscheduled: [],
+            unscheduled: [{ fseiban: 'A-S-0', dueDate: null, parts: [makeBoardCard('A', 0)] }],
             pageIndex: 0,
             pageCount: 2,
           },
           {
-            kind: 'detail',
+            kind: 'summary',
             machineName: 'A',
             updatedAt: new Date('2026-06-09T00:00:00.000Z'),
-            fseiban: 'S1',
-            fhincd: 'H1',
-            fhinmei: '品名',
-            status: 'in_progress',
-            progressLabel: '1/2',
-            measurementPoints: [],
+            scheduled: [],
+            unscheduled: [{ fseiban: 'A-S-1', dueDate: null, parts: [makeBoardCard('A', 1)] }],
             pageIndex: 1,
             pageCount: 2,
           },
@@ -124,7 +144,7 @@ describe('self-inspection-machine-board-rotation.service', () => {
             machineName: 'B',
             updatedAt: new Date('2026-06-09T00:00:00.000Z'),
             scheduled: [],
-            unscheduled: [],
+            unscheduled: [{ fseiban: 'B-S-0', dueDate: null, parts: [makeBoardCard('B', 0)] }],
             pageIndex: 0,
             pageCount: 1,
           },
@@ -139,14 +159,14 @@ describe('self-inspection-machine-board-rotation.service', () => {
       deviceScopeKey: '第2工場 - kensakuMain',
       resourceCds: ['RD01'],
       maxAutoMachines: 5,
-      partsPerPage: 12,
+      partsPerPage: 2,
       detailTopN: 5,
     });
 
     expect(vm.targetMode).toBe('auto_from_leaderboard_status');
-    expect(vm.totalPages).toBe(3);
-    expect(vm.pages.map((page) => page.pageIndex)).toEqual([0, 1, 2]);
-    expect(vm.pages.every((page) => page.pageCount === 3)).toBe(true);
+    expect(vm.totalPages).toBe(2);
+    expect(vm.pages.map((page) => page.pageIndex)).toEqual([0, 1]);
+    expect(vm.pages.every((page) => page.pageCount === 2)).toBe(true);
     expect(vm.autoTargetCount).toBe(2);
     expect(vm.scheduleRowHasMore).toBe(false);
     expect(vm.pages[0]).toMatchObject({
@@ -182,7 +202,7 @@ describe('self-inspection-machine-board-rotation.service', () => {
           machineName: 'A',
           updatedAt: new Date('2026-06-09T00:00:00.000Z'),
           scheduled: [],
-          unscheduled: [],
+          unscheduled: [{ fseiban: 'A-S-0', dueDate: null, parts: [makeBoardCard('A', 0)] }],
           pageIndex: 0,
           pageCount: 1,
           scheduleRowCap: 2000,

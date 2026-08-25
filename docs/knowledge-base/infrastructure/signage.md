@@ -30,23 +30,26 @@ update-frequency: medium
 
 <a id="self-inspection-machine-board"></a>
 
-**自主検査 機種別進捗ボード（2026-06-08・ブランチ `feat/signage-self-inspection-machine-board`）**:
+**自主検査 部品別進捗（2026-06-08・ブランチ `feat/signage-self-inspection-machine-board`）**:
 FULL スロット **`self_inspection_machine_board`**。
-`machineName` をキーに生産日程を正本として仕掛中の全製番・全部品の自主検査進捗一覧（summary）と、
-注目部品の測定点別ヒートストリップ（detail）を **flat page list** でローテーション
-（`getRotatingSlideIndex` 共有）。
+`machineName` をキーに生産日程を正本として仕掛中の部品を資源CD別に集約した
+部品カード（進捗バー＋状態バッジ）だけを **flat page list** でローテーション
+（`getRotatingSlideIndex` 共有）。旧 summary と detail/ヒートストリップの別ページは生成しない。
 設定: `targetMode`（`manual_machine_name` / `auto_from_leaderboard_status`・未指定は manual）・
 `machineName`（manual 必須）・`resourceCds`（auto 必須・順位ボード相当の資源CD）・
 `deviceScopeKey`（manual 推奨 / auto 必須・拠点別 policy）・`maxAutoMachines`（auto のみ保存可・任意・既定5・最大20）・
-`slideIntervalSeconds`・`partsPerPage`（既定12・最大12）・`detailTopN`（既定5）。
+`slideIntervalSeconds`・`partsPerPage`（管理UIの新規保存は既定6・最大6。API wire は既存設定互換のため1〜12を受理）。
+`detailTopN` は旧設定を読み込むための legacy 項目で、管理UIには表示せず、新規保存にも書き出さない。
 auto は `deviceScopeKey + resourceCds` 母集団を raw page 走査（500件/chunk・最大 2000 行）し、
 自主検査 rowDecorations のみ解決して黄（`in_progress`）機種を選定する（full 一覧・顧客名・フッタチップは省略。
 走査上限到達は 1 件プローブで後続有無を判定し、続きがある場合のみ warn ログ＋表示注記。
 候補同点時の納期は手動 `dueDate` 優先・無ければ `plannedEndDate`（順位ボードと同じ `displayDue`）。
 auto ローテーション ViewModel は **60 秒 TTL** で render 跨ぎ再利用（`SELF_INSPECTION_MACHINE_BOARD_AUTO_ROTATION_VM_CACHE_TTL_MS`））。
-選定後の各機種ボードは既存どおり機種内 eligible 部品全体（未開始/入力中/完了）を表示する。
-auto 複数機種は pages を連結後に全体通番へ再採番する。
-詳細取得は **detailTopN 件のみ** full session（entries/values）。ヒートストリップ横セル上限 32。
+選定後は各機種の eligible 部品を資源CD単位で集約し、合格・不合格・判定待ち・検査中・未検査の状態を
+カードの状態バッジへ反映する。進捗バーは資源CDごとの neutral 表現とし、色は状態バッジだけに付ける。
+auto 複数機種は機種ごとの pages を先に連結せず、全機種のカードを混在させた列へ一括でページングする。
+カードの高さは資源行数に応じて動的に調整し、1ページは最大6枚（2列×3段）。高さに収まらない資源行は続きカードへ分割する。
+`detailTopN` は旧設定を受理するだけの legacy 項目で、現行 VM では使用せず、詳細取得・ヒートストリップ生成も行わない。
 **SPLIT 未対応**（pane-resolver は空 loans ペイン）。折れ線グラフは初版未実装。
 機種名→FSEIBAN 解決は `machine-name-fseiban-match.service.ts` の短 TTL インデックスキャッシュ
 （`PRODUCTION_SCHEDULE_MACHINE_NAME_FSEIBAN_CACHE_TTL_MS` 既定60秒）。

@@ -1,23 +1,16 @@
-import type { Prisma } from '@prisma/client';
-
 import {
   normalizeMachineNameForCompare,
   scanProductionScheduleRowsForSignageMachineBoard,
   type SignageMachineBoardScheduleRow,
 } from '../production-schedule/production-schedule-query.service.js';
 import { resolveSignageLeaderOrderQueryKeys } from '../signage/leader-order-cards/resolve-signage-leader-order-location.js';
-import { resolveHeatstripCellTone } from './self-inspection-machine-board-heatstrip.js';
 import {
-  fetchSelfInspectionSessionDetailsByScheduleRowIds,
-  type SelfInspectionMachineBoardSessionDetail,
-} from './self-inspection-machine-board.repository.js';
-import type {
-  HeatstripMeasurementPoint,
-  SelfInspectionMachineBoardDetailPage,
-  SelfInspectionMachineBoardPartItem,
-  SelfInspectionMachineBoardPartStatus,
-  SelfInspectionMachineBoardViewModel,
-} from './self-inspection-machine-board.types.js';
+  aggregateSelfInspectionMachineBoardCards,
+  type SelfInspectionMachineBoardAggregationRow,
+} from './self-inspection-machine-board-aggregation.js';
+import { fetchSelfInspectionMachineBoardOutcomeRecordsByScheduleRowIds } from './self-inspection-machine-board.repository.js';
+import type { SelfInspectionMachineBoardOutcomeInput } from './self-inspection-machine-board-outcome.js';
+import type { SelfInspectionMachineBoardViewModel } from './self-inspection-machine-board.types.js';
 import {
   createSelfInspectionDecorationCache,
   ensureSelfInspectionSessionsInCache,
@@ -26,11 +19,9 @@ import {
 } from './self-inspection.service.js';
 import {
   buildFlatMachineBoardPages,
-  sanitizeSelfInspectionMachineBoardDetailTopN,
   sanitizeSelfInspectionMachineBoardPartsPerPage,
 } from '../signage/self-inspection-machine-board/pagination.js';
 import {
-  MAX_DETAIL_MEASUREMENT_POINTS,
   MAX_SELF_INSPECTION_MACHINE_BOARD_SCHEDULE_ROWS,
   SELF_INSPECTION_MACHINE_BOARD_SCHEDULE_FETCH_PAGE_SIZE,
 } from '../signage/self-inspection-machine-board/layout-contracts.js';
@@ -39,40 +30,59 @@ function normalizeText(value: string | null | undefined): string {
   return (value ?? '').trim();
 }
 
-function rowDataField(rowData: Prisma.JsonValue, key: string): string {
+function rowDataField(rowData: unknown, key: string): string {
   const data = (rowData ?? {}) as Record<string, unknown>;
   return normalizeText(String(data[key] ?? ''));
 }
 
-function resolvePartStatus(
-  decorationStatus: SelfInspectionMachineBoardPartStatus | null,
-  hasDrawing: boolean
-): SelfInspectionMachineBoardPartStatus | null {
-  if (!hasDrawing) {
-    return null;
+type LeaderboardSelfInspectionDecoration = {
+  id: string;
+  hasSelfInspectionDrawing: boolean;
+  selfInspectionStatus: string | null;
+  completedEntryCount?: number | null;
+  resolvedRequiredEntryCount?: number | null;
+  resolvedPlannedQuantity?: number | null;
+  pendingReviewCount?: number | null;
+};
+
+function finiteNonNegative(value: number | null | undefined, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
   }
-  return decorationStatus ?? 'not_started';
+  return Math.max(0, Math.floor(value as number));
 }
 
-function statusSortWeight(status: SelfInspectionMachineBoardPartStatus): number {
-  switch (status) {
-    case 'review_pending':
-      return 0;
-    case 'in_progress':
-      return 1;
-    case 'not_started':
-      return 2;
-    case 'completed':
-      return 3;
-    default:
-      return 4;
-  }
+function rowOutcomeInput(
+  decoration: LeaderboardSelfInspectionDecoration,
+  requiredEntryCount: number,
+  completedEntryCount: number
+): SelfInspectionMachineBoardOutcomeInput {
+  return {
+    confirmedEntryCount: completedEntryCount,
+    completedEntryCount,
+    requiredEntryCount,
+    pendingReviewCount: decoration.pendingReviewCount,
+    legacyStatus: decoration.selfInspectionStatus,
+  };
 }
 
-function comparePartsForDisplay(a: SelfInspectionMachineBoardPartItem, b: SelfInspectionMachineBoardPartItem): number {
-  const statusDiff = statusSortWeight(a.status) - statusSortWeight(b.status);
-  if (statusDiff !== 0) {
-    return statusDiff;
+type MachineBoardSortableCard = {
+  dueDate: Date | null;
+  fseiban: string;
+  productNo: string;
+  normalizedMachineName?: string | null;
+  machineName?: string | null;
+  fhincd: string;
+};
+
+function compareMachineBoardCards(
+  a: MachineBoardSortableCard,
+  b: MachineBoardSortableCard
+): number {
+  const aHasDueDate = a.dueDate != null;
+  const bHasDueDate = b.dueDate != null;
+  if (aHasDueDate !== bHasDueDate) {
+    return aHasDueDate ? -1 : 1;
   }
   const aTime = a.dueDate?.getTime() ?? Number.POSITIVE_INFINITY;
   const bTime = b.dueDate?.getTime() ?? Number.POSITIVE_INFINITY;
@@ -85,41 +95,24 @@ function comparePartsForDisplay(a: SelfInspectionMachineBoardPartItem, b: SelfIn
   if (a.productNo !== b.productNo) {
     return a.productNo.localeCompare(b.productNo);
   }
+  const aMachineName =
+    normalizeText(a.normalizedMachineName) || normalizeMachineNameForCompare(a.machineName);
+  const bMachineName =
+    normalizeText(b.normalizedMachineName) || normalizeMachineNameForCompare(b.machineName);
+  if (aMachineName !== bMachineName) {
+    return aMachineName.localeCompare(bMachineName);
+  }
   return a.fhincd.localeCompare(b.fhincd);
 }
 
-function entrySlotLabel(kind: string, entryIndex: number): string {
-  switch (kind) {
-    case 'FIRST':
-      return '最初';
-    case 'LAST':
-      return '最後';
-    case 'SINGLE':
-      return '1件';
-    default:
-      return `#${entryIndex + 1}`;
-  }
-}
-
-function buildProgressLabel(completed: number, required: number): string {
-  return `${completed}/${required}`;
-}
-
-type LeaderboardSelfInspectionDecoration = {
-  id: string;
-  hasSelfInspectionDrawing: boolean;
-  selfInspectionStatus: SelfInspectionMachineBoardPartStatus | null;
-  completedEntryCount?: number | null;
-  resolvedRequiredEntryCount?: number | null;
-  resolvedPlannedQuantity?: number | null;
-};
-
-function buildEligiblePartsFromScheduleRows(
+function buildEligibleRowsFromScheduleRows(
+  machineName: string,
+  normalizedMachineName: string,
   rows: SignageMachineBoardScheduleRow[],
   decorations: LeaderboardSelfInspectionDecoration[]
-): SelfInspectionMachineBoardPartItem[] {
+): SelfInspectionMachineBoardAggregationRow[] {
   const decorationByRowId = new Map(decorations.map((item) => [item.id, item]));
-  const parts: SelfInspectionMachineBoardPartItem[] = [];
+  const eligibleRows: SelfInspectionMachineBoardAggregationRow[] = [];
 
   for (const row of rows) {
     const decoration = decorationByRowId.get(row.id);
@@ -127,120 +120,84 @@ function buildEligiblePartsFromScheduleRows(
       continue;
     }
 
-    const status = resolvePartStatus(decoration.selfInspectionStatus, decoration.hasSelfInspectionDrawing);
-    if (!status) {
-      continue;
-    }
-
     const fseiban = rowDataField(row.rowData, 'FSEIBAN');
     const productNo = rowDataField(row.rowData, 'ProductNo');
     const fhincd = rowDataField(row.rowData, 'FHINCD');
     const fhinmei = rowDataField(row.rowData, 'FHINMEI');
+    // 旧日程 fixture / 既存データには資源CDが無い行もある。カード自体は
+    // 失わず、表示上の未設定資源へ集約する（実資源CDは通常ここへ入る）。
+    const resourceCd = rowDataField(row.rowData, 'FSIGENCD') || '__UNSPECIFIED__';
     if (!fseiban || !productNo || !fhincd) {
       continue;
     }
 
-    const completedEntryCount = decoration.completedEntryCount ?? 0;
-    const requiredEntryCount =
-      decoration.resolvedRequiredEntryCount ??
-      decoration.resolvedPlannedQuantity ??
-      1;
-
-    parts.push({
+    const completedEntryCount = finiteNonNegative(decoration.completedEntryCount, 0);
+    const requiredEntryCount = Math.max(
+      1,
+      finiteNonNegative(
+        decoration.resolvedRequiredEntryCount ?? decoration.resolvedPlannedQuantity,
+        1
+      )
+    );
+    eligibleRows.push({
       scheduleRowId: row.id,
       fseiban,
       productNo,
       fhincd,
       fhinmei: fhinmei || fhincd,
-      status,
-      completedEntryCount,
-      requiredEntryCount,
-      progressLabel: buildProgressLabel(completedEntryCount, requiredEntryCount),
+      machineName,
+      normalizedMachineName,
+      resourceCd,
       dueDate: row.dueDate,
       isScheduled: row.dueDate != null,
+      confirmedEntryCount: completedEntryCount,
+      completedEntryCount,
+      requiredEntryCount,
+      outcome: rowOutcomeInput(decoration, requiredEntryCount, completedEntryCount),
     });
   }
 
-  return parts;
+  return eligibleRows;
 }
 
-function buildDetailPageFromSession(args: {
-  machineName: string;
-  updatedAt: Date;
-  part: SelfInspectionMachineBoardPartItem;
-  session: SelfInspectionMachineBoardSessionDetail;
-}): SelfInspectionMachineBoardDetailPage | null {
-  const { session, part } = args;
-  if (session.entries.length === 0 || session.template.items.length === 0) {
-    return null;
-  }
-
-  const hiddenEntryCount = Math.max(0, session.totalEntryCount - session.entries.length);
-  const hiddenPointCount = Math.max(0, session.totalTemplateItemCount - session.template.items.length);
-  const maxItemRows =
-    hiddenPointCount > 0 ? MAX_DETAIL_MEASUREMENT_POINTS - 1 : MAX_DETAIL_MEASUREMENT_POINTS;
-  const visibleItems = session.template.items.slice(0, maxItemRows);
-  const truncatedPointCount = Math.max(0, session.totalTemplateItemCount - visibleItems.length);
-
-  const measurementPoints: HeatstripMeasurementPoint[] = visibleItems.map((item) => ({
-    templateItemId: item.id,
-    label: item.measurementLabel,
-    cells: [
-      ...session.entries.map((entry) => {
-        const rawValue = entry.values.find((value) => value.templateItemId === item.id)?.value ?? null;
-        const resolved = resolveHeatstripCellTone(rawValue, item);
-        return {
-          entryIndex: entry.entryIndex,
-          entryLabel: entrySlotLabel(entry.entrySlotKind, entry.entryIndex),
-          tone: resolved.tone,
-          displayValue: resolved.displayValue,
-        };
-      }),
-      ...(hiddenEntryCount > 0
-        ? [
-            {
-              entryIndex: -1,
-              entryLabel: `+${hiddenEntryCount}`,
-              tone: 'neutral' as const,
-              displayValue: null,
-            },
-          ]
-        : []),
-    ],
-  }));
-
-  if (truncatedPointCount > 0) {
-    measurementPoints.push({
-      templateItemId: '__truncated__',
-      label: `他 ${truncatedPointCount} 測定点`,
-      cells: session.entries.map((entry) => ({
-        entryIndex: entry.entryIndex,
-        entryLabel: entrySlotLabel(entry.entrySlotKind, entry.entryIndex),
-        tone: 'neutral' as const,
-        displayValue: null,
-      })),
-    });
-  }
-
-  return {
-    kind: 'detail',
-    machineName: args.machineName,
-    updatedAt: args.updatedAt,
-    fseiban: part.fseiban,
-    fhincd: part.fhincd,
-    fhinmei: part.fhinmei,
-    status: part.status,
-    progressLabel: part.progressLabel,
-    measurementPoints,
-    pageIndex: 0,
-    pageCount: 0,
-  };
+function mergeRepositoryOutcomes(
+  rows: SelfInspectionMachineBoardAggregationRow[],
+  outcomes: Map<string, SelfInspectionMachineBoardOutcomeInput>
+): SelfInspectionMachineBoardAggregationRow[] {
+  return rows.map((row) => {
+    const outcome = outcomes.get(row.scheduleRowId);
+    if (!outcome) {
+      return row;
+    }
+    const requiredEntryCount = row.requiredEntryCount;
+    const confirmedEntryCount = finiteNonNegative(
+      outcome.confirmedEntryCount ?? outcome.completedEntryCount,
+      row.confirmedEntryCount ?? row.completedEntryCount ?? 0
+    );
+    return {
+      ...row,
+      confirmedEntryCount,
+      completedEntryCount: confirmedEntryCount,
+      requiredEntryCount,
+      outcome: {
+        ...outcome,
+        confirmedEntryCount,
+        completedEntryCount: confirmedEntryCount,
+        requiredEntryCount,
+      },
+    };
+  });
 }
 
+/**
+ * 自主検査機種別ボード VM のオーケストレーター。
+ * scan/DB decoration/repository 判定列取得と、DB 非依存のカード集約を接続する。
+ */
 export async function buildSelfInspectionMachineBoardViewModel(options: {
   machineName: string;
   deviceScopeKey?: string;
   partsPerPage?: number;
+  /** 旧 detailTopN 設定は受け付けるが、新 VM では詳細ページを生成しない。 */
   detailTopN?: number;
 }): Promise<SelfInspectionMachineBoardViewModel> {
   const machineName = normalizeText(options.machineName);
@@ -248,7 +205,6 @@ export async function buildSelfInspectionMachineBoardViewModel(options: {
   const partsPerPage = sanitizeSelfInspectionMachineBoardPartsPerPage(
     options.partsPerPage ?? Number.NaN
   );
-  const detailTopN = sanitizeSelfInspectionMachineBoardDetailTopN(options.detailTopN ?? Number.NaN);
   const updatedAt = new Date();
 
   if (normalizedMachineName.length === 0) {
@@ -271,7 +227,7 @@ export async function buildSelfInspectionMachineBoardViewModel(options: {
 
   const selfInspectionService = new SelfInspectionService();
   const decorationCache = await createSelfInspectionDecorationCache({ siteKey });
-  const parts: SelfInspectionMachineBoardPartItem[] = [];
+  const eligibleRows: SelfInspectionMachineBoardAggregationRow[] = [];
   let scannedAnyRows = false;
 
   const scanMeta = await scanProductionScheduleRowsForSignageMachineBoard(
@@ -301,7 +257,14 @@ export async function buildSelfInspectionMachineBoardViewModel(options: {
         { siteKey },
         decorationCache
       );
-      parts.push(...buildEligiblePartsFromScheduleRows(pageRows, decorations));
+      eligibleRows.push(
+        ...buildEligibleRowsFromScheduleRows(
+          machineName,
+          normalizedMachineName,
+          pageRows,
+          decorations
+        )
+      );
     }
   );
 
@@ -318,46 +281,24 @@ export async function buildSelfInspectionMachineBoardViewModel(options: {
     };
   }
 
-  parts.sort(comparePartsForDisplay);
-
+  eligibleRows.sort(compareMachineBoardCards);
   const displayCap = MAX_SELF_INSPECTION_MACHINE_BOARD_SCHEDULE_ROWS;
-  const totalEligibleParts = parts.length;
-  const displayParts = parts.slice(0, displayCap);
+  const displayRows = eligibleRows.slice(0, displayCap);
   const scheduleRowHasMore =
-    totalEligibleParts > displayCap ||
-    !scanMeta.scheduleExhausted ||
-    scanMeta.hitScanCap;
+    eligibleRows.length > displayCap || !scanMeta.scheduleExhausted || scanMeta.hitScanCap;
 
-  const detailCandidateIds = displayParts
-    .filter((part) => part.completedEntryCount > 0)
-    .slice(0, detailTopN)
-    .map((part) => part.scheduleRowId);
-
-  const sessionDetails = await fetchSelfInspectionSessionDetailsByScheduleRowIds(detailCandidateIds);
-
-  const detailPages: SelfInspectionMachineBoardDetailPage[] = [];
-  for (const scheduleRowId of detailCandidateIds) {
-    const part = displayParts.find((item) => item.scheduleRowId === scheduleRowId);
-    const session = sessionDetails.get(scheduleRowId);
-    if (!part || !session) {
-      continue;
-    }
-    const page = buildDetailPageFromSession({
-      machineName,
-      updatedAt,
-      part,
-      session,
-    });
-    if (page) {
-      detailPages.push(page);
-    }
-  }
+  const outcomeRecords = await fetchSelfInspectionMachineBoardOutcomeRecordsByScheduleRowIds(
+    displayRows.map((row) => row.scheduleRowId)
+  );
+  const displayRowsWithOutcomes = mergeRepositoryOutcomes(displayRows, outcomeRecords);
+  const cards = aggregateSelfInspectionMachineBoardCards(displayRowsWithOutcomes);
+  cards.sort(compareMachineBoardCards);
 
   const pages = buildFlatMachineBoardPages({
     machineName,
     updatedAt,
-    orderedParts: displayParts,
-    detailPages,
+    orderedParts: cards,
+    detailPages: [],
     partsPerPage,
     scheduleRowCap: displayCap,
     scheduleRowHasMore,
@@ -371,6 +312,6 @@ export async function buildSelfInspectionMachineBoardViewModel(options: {
     totalPages: pages.length,
     scheduleRowCap: displayCap,
     scheduleRowHasMore,
-    loadedScheduleRowCount: displayParts.length,
+    loadedScheduleRowCount: displayRows.length,
   };
 }

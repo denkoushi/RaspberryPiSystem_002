@@ -1,3 +1,8 @@
+import {
+  buildSelfInspectionMachineBoardConfig,
+  createResetSelfInspectionMachineBoardEditorFields,
+  parseSelfInspectionMachineBoardConfig,
+} from './selfInspectionMachineBoardConfig';
 import { DEFAULT_SCHEDULE_FORM_DATA, parseResourceCdListInput } from './signageScheduleDisplay';
 
 import type {
@@ -53,6 +58,7 @@ export interface SignageScheduleEditorState {
   fullSelfInspectionMaxAutoMachinesStr: string;
   fullSelfInspectionSlideIntervalStr: string;
   fullSelfInspectionPartsPerPageStr: string;
+  /** legacy detailTopN の読込保持用。UI と新規 build では使用しない。 */
   fullSelfInspectionDetailTopNStr: string;
 }
 
@@ -75,14 +81,7 @@ export function createResetFullSlotSpecificFieldsPatch(): SignageScheduleEditorS
     fullLeaderOrderSlideIntervalStr: '',
     fullLeaderOrderCardsPerPageStr: '',
     fullPartsShelfMaxItemsStr: '',
-    fullSelfInspectionTargetMode: 'manual_machine_name',
-    fullSelfInspectionMachineName: '',
-    fullSelfInspectionDeviceScopeKey: '',
-    fullSelfInspectionResourceCdsText: '',
-    fullSelfInspectionMaxAutoMachinesStr: '',
-    fullSelfInspectionSlideIntervalStr: '',
-    fullSelfInspectionPartsPerPageStr: '',
-    fullSelfInspectionDetailTopNStr: '',
+    ...createResetSelfInspectionMachineBoardEditorFields(),
   };
 }
 
@@ -183,37 +182,7 @@ export function parseScheduleToEditorStatePatch(schedule: SignageSchedule): Sign
               : '';
         } else if (slot.kind === 'self_inspection_machine_board') {
           patch.fullSlotKind = 'self_inspection_machine_board';
-          patch.fullSelfInspectionTargetMode =
-            'targetMode' in slot.config &&
-            slot.config.targetMode === 'auto_from_leaderboard_status'
-              ? 'auto_from_leaderboard_status'
-              : 'manual_machine_name';
-          patch.fullSelfInspectionMachineName =
-            'machineName' in slot.config ? String(slot.config.machineName ?? '').trim() : '';
-          patch.fullSelfInspectionDeviceScopeKey =
-            'deviceScopeKey' in slot.config ? String(slot.config.deviceScopeKey ?? '').trim() : '';
-          const resourceCds =
-            'resourceCds' in slot.config && Array.isArray(slot.config.resourceCds)
-              ? (slot.config.resourceCds as string[])
-              : [];
-          patch.fullSelfInspectionResourceCdsText =
-            resourceCds.map((cd) => String(cd).trim()).filter(Boolean).join('\n');
-          patch.fullSelfInspectionMaxAutoMachinesStr =
-            'maxAutoMachines' in slot.config && slot.config.maxAutoMachines != null
-              ? String(slot.config.maxAutoMachines)
-              : '';
-          patch.fullSelfInspectionSlideIntervalStr =
-            'slideIntervalSeconds' in slot.config && slot.config.slideIntervalSeconds != null
-              ? String(slot.config.slideIntervalSeconds)
-              : '';
-          patch.fullSelfInspectionPartsPerPageStr =
-            'partsPerPage' in slot.config && slot.config.partsPerPage != null
-              ? String(slot.config.partsPerPage)
-              : '';
-          patch.fullSelfInspectionDetailTopNStr =
-            'detailTopN' in slot.config && slot.config.detailTopN != null
-              ? String(slot.config.detailTopN)
-              : '';
+          Object.assign(patch, parseSelfInspectionMachineBoardConfig(slot.config));
         } else {
           patch.fullSlotKind = 'loans';
         }
@@ -332,7 +301,6 @@ export function buildLayoutConfigFromEditorState(
     fullSelfInspectionMaxAutoMachinesStr,
     fullSelfInspectionSlideIntervalStr,
     fullSelfInspectionPartsPerPageStr,
-    fullSelfInspectionDetailTopNStr,
     leftSlotKind,
     rightSlotKind,
     leftPdfId,
@@ -466,55 +434,17 @@ export function buildLayoutConfigFromEditorState(
         ],
       };
     } else if (fullSlotKind === 'self_inspection_machine_board') {
-      const boardConfig: SignageSlotConfig = {
-        targetMode: fullSelfInspectionTargetMode,
-      };
-      if (fullSelfInspectionTargetMode === 'manual_machine_name') {
-        const machineName = fullSelfInspectionMachineName.trim();
-        if (!machineName) {
-          return null;
-        }
-        boardConfig.machineName = machineName;
-      } else {
-        const deviceScopeKey = fullSelfInspectionDeviceScopeKey.trim();
-        const resourceCds = parseResourceCdListInput(fullSelfInspectionResourceCdsText);
-        if (!deviceScopeKey || resourceCds.length === 0) {
-          return null;
-        }
-        boardConfig.deviceScopeKey = deviceScopeKey;
-        boardConfig.resourceCds = resourceCds;
-      }
-      if (
-        fullSelfInspectionTargetMode === 'manual_machine_name' &&
-        fullSelfInspectionDeviceScopeKey.trim() !== ''
-      ) {
-        boardConfig.deviceScopeKey = fullSelfInspectionDeviceScopeKey.trim();
-      }
-      if (fullSelfInspectionTargetMode === 'auto_from_leaderboard_status') {
-        if (fullSelfInspectionMaxAutoMachinesStr.trim() !== '') {
-          const n = Number(fullSelfInspectionMaxAutoMachinesStr);
-          if (Number.isFinite(n) && n >= 1) {
-            boardConfig.maxAutoMachines = Math.min(20, Math.floor(n));
-          }
-        }
-      }
-      if (fullSelfInspectionSlideIntervalStr.trim() !== '') {
-        const n = Number(fullSelfInspectionSlideIntervalStr);
-        if (Number.isFinite(n) && n > 0) {
-          boardConfig.slideIntervalSeconds = n;
-        }
-      }
-      if (fullSelfInspectionPartsPerPageStr.trim() !== '') {
-        const n = Number(fullSelfInspectionPartsPerPageStr);
-        if (Number.isFinite(n) && n >= 1) {
-          boardConfig.partsPerPage = Math.min(12, Math.floor(n));
-        }
-      }
-      if (fullSelfInspectionDetailTopNStr.trim() !== '') {
-        const n = Number(fullSelfInspectionDetailTopNStr);
-        if (Number.isFinite(n) && n >= 0) {
-          boardConfig.detailTopN = Math.min(20, Math.floor(n));
-        }
+      const boardConfig = buildSelfInspectionMachineBoardConfig({
+        fullSelfInspectionTargetMode,
+        fullSelfInspectionMachineName,
+        fullSelfInspectionDeviceScopeKey,
+        fullSelfInspectionResourceCdsText,
+        fullSelfInspectionMaxAutoMachinesStr,
+        fullSelfInspectionSlideIntervalStr,
+        fullSelfInspectionPartsPerPageStr,
+      });
+      if (!boardConfig) {
+        return null;
       }
       return {
         layout: 'FULL',

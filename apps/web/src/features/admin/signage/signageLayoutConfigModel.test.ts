@@ -205,7 +205,55 @@ describe('signageLayoutConfigModel', () => {
           },
         ],
       };
-      expect(roundTripLayoutConfig(original)).toEqual(original);
+      expect(roundTripLayoutConfig(original)).toEqual({
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'self_inspection_machine_board',
+            config: {
+              targetMode: 'manual_machine_name',
+              machineName: 'L300KP',
+              deviceScopeKey: 'scope-si',
+              slideIntervalSeconds: 30,
+              partsPerPage: 6,
+            },
+          },
+        ],
+      });
+    });
+
+    it('reads legacy detailTopN without writing it to a new configuration', () => {
+      const original: SignageLayoutConfig = {
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'self_inspection_machine_board',
+            config: {
+              machineName: 'L300KP',
+              detailTopN: 7,
+            },
+          },
+        ],
+      };
+      const state = editorStateFromSchedule(baseSchedule({ layoutConfig: original }));
+
+      expect(state.fullSelfInspectionDetailTopNStr).toBe('7');
+      expect(roundTripLayoutConfig(original)).toEqual({
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'self_inspection_machine_board',
+            config: {
+              targetMode: 'manual_machine_name',
+              machineName: 'L300KP',
+              partsPerPage: 6,
+            },
+          },
+        ],
+      });
     });
 
     it('self_inspection_machine_board auto mode', () => {
@@ -227,7 +275,23 @@ describe('signageLayoutConfigModel', () => {
           },
         ],
       };
-      expect(roundTripLayoutConfig(original)).toEqual(original);
+      expect(roundTripLayoutConfig(original)).toEqual({
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'self_inspection_machine_board',
+            config: {
+              targetMode: 'auto_from_leaderboard_status',
+              deviceScopeKey: 'scope-auto',
+              resourceCds: ['RD01', 'RD02'],
+              maxAutoMachines: 8,
+              slideIntervalSeconds: 20,
+              partsPerPage: 6,
+            },
+          },
+        ],
+      });
     });
   });
 

@@ -4,6 +4,9 @@ const scanProductionScheduleRowsForSignageMachineBoard = vi.hoisted(() => vi.fn(
 const buildLeaderboardDecorations = vi.hoisted(() => vi.fn());
 const ensureSelfInspectionTemplatesForRows = vi.hoisted(() => vi.fn());
 const ensureSelfInspectionSessionsInCache = vi.hoisted(() => vi.fn());
+const fetchSelfInspectionMachineBoardOutcomeRecordsByScheduleRowIds = vi.hoisted(() =>
+  vi.fn(async () => new Map())
+);
 
 vi.mock('../../production-schedule/production-schedule-query.service.js', () => ({
   scanProductionScheduleRowsForSignageMachineBoard,
@@ -12,6 +15,7 @@ vi.mock('../../production-schedule/production-schedule-query.service.js', () => 
 
 vi.mock('../self-inspection-machine-board.repository.js', () => ({
   fetchSelfInspectionSessionDetailsByScheduleRowIds: vi.fn(async () => new Map()),
+  fetchSelfInspectionMachineBoardOutcomeRecordsByScheduleRowIds,
 }));
 
 vi.mock('../../signage/leader-order-cards/resolve-signage-leader-order-location.js', () => ({
@@ -36,7 +40,11 @@ vi.mock('../self-inspection.service.js', () => ({
 
 import { buildSelfInspectionMachineBoardViewModel } from '../self-inspection-machine-board.service.js';
 
-function makeRow(id: string, dueDate: Date | null) {
+function makeRow(
+  id: string,
+  dueDate: Date | null,
+  rowData: Record<string, string> = {}
+) {
   return {
     id,
     rowData: {
@@ -44,6 +52,7 @@ function makeRow(id: string, dueDate: Date | null) {
       ProductNo: id.replace('row-', '').padStart(4, '0'),
       FHINCD: `H-${id}`,
       FHINMEI: '品名',
+      ...rowData,
     },
     dueDate,
     plannedQuantity: 1,
@@ -101,5 +110,53 @@ describe('buildSelfInspectionMachineBoardViewModel', () => {
     expect(vm.loadedScheduleRowCount).toBe(2000);
     expect(vm.scheduleRowHasMore).toBe(true);
     expect(vm.scheduleRowCap).toBe(2000);
+  });
+
+  it('sorts cards by scheduled due date before outcome status', async () => {
+    const early = makeRow('row-early', new Date('2026-06-01T00:00:00.000Z'), {
+      ProductNo: 'P1',
+      FHINCD: 'H1',
+    });
+    const late = makeRow('row-late', new Date('2026-06-02T00:00:00.000Z'), {
+      ProductNo: 'P2',
+      FHINCD: 'H2',
+    });
+
+    scanProductionScheduleRowsForSignageMachineBoard.mockImplementation(async (_params, onPage) => {
+      await onPage([late, early]);
+      return { scheduleExhausted: true, hitScanCap: false, maxRows: 2000 };
+    });
+    buildLeaderboardDecorations.mockImplementation(async (inputRows: Array<{ id: string }>) =>
+      inputRows.map((row) =>
+        row.id === 'row-late'
+          ? {
+              id: row.id,
+              hasSelfInspectionDrawing: true,
+              selfInspectionStatus: 'in_progress',
+              completedEntryCount: 0,
+              resolvedRequiredEntryCount: 1,
+              pendingReviewCount: 1,
+            }
+          : {
+              id: row.id,
+              hasSelfInspectionDrawing: true,
+              selfInspectionStatus: 'completed',
+              completedEntryCount: 1,
+              resolvedRequiredEntryCount: 1,
+            }
+      )
+    );
+
+    const vm = await buildSelfInspectionMachineBoardViewModel({
+      machineName: '機種A',
+      partsPerPage: 10,
+    });
+    const summaryPage = vm.pages.find((page) => page.kind === 'summary');
+    const scheduledParts =
+      summaryPage && summaryPage.kind === 'summary'
+        ? summaryPage.scheduled[0]?.parts.map((part) => part.scheduleRowId)
+        : [];
+
+    expect(scheduledParts).toEqual(['row-early', 'row-late']);
   });
 });
