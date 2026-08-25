@@ -72,6 +72,7 @@ export type SelfInspectionMachineBoardOutcomeRecord = SelfInspectionMachineBoard
   plannedQuantity: number;
   expectedEntryCount: number;
   confirmedEntryCount: number;
+  updatedAt: Date;
 };
 
 export async function fetchSelfInspectionSessionDetailsByScheduleRowIds(
@@ -328,6 +329,7 @@ export async function fetchSelfInspectionMachineBoardOutcomeRecordsByScheduleRow
       expectedEntryCount: session.expectedEntryCount,
       confirmedEntryCount: confirmedEntries.length,
       completedAt: session.completedAt,
+      updatedAt: session.updatedAt,
       hasAnyLotEntry,
       pendingReviewCount,
       directFailCount,

@@ -194,4 +194,45 @@ describe('buildSelfInspectionMachineBoardViewModel', () => {
     expect(getResourceNameMapByResourceCds).toHaveBeenCalledWith(['R01']);
     expect(resource?.resourceDisplayName).toBe('研削一号機');
   });
+
+  it('propagates the selected manual session updatedAt to the card', async () => {
+    const row = makeRow('row-updated-at', null, { FSIGENCD: 'R01' });
+    const updatedAt = new Date('2026-08-25T02:00:00.000Z');
+    scanProductionScheduleRowsForSignageMachineBoard.mockImplementation(async (_params, onPage) => {
+      await onPage([row]);
+      return { scheduleExhausted: true, hitScanCap: false, maxRows: 2000 };
+    });
+    buildLeaderboardDecorations.mockResolvedValue([
+      {
+        id: row.id,
+        hasSelfInspectionDrawing: true,
+        selfInspectionStatus: 'in_progress',
+        completedEntryCount: 1,
+        resolvedRequiredEntryCount: 2,
+      },
+    ]);
+    fetchSelfInspectionMachineBoardOutcomeRecordsByScheduleRowIds.mockResolvedValue(
+      new Map([
+        [
+          row.id,
+          {
+            scheduleRowId: row.id,
+            sessionId: 'session-1',
+            plannedQuantity: 1,
+            expectedEntryCount: 2,
+            confirmedEntryCount: 1,
+            updatedAt,
+          },
+        ],
+      ])
+    );
+
+    const vm = await buildSelfInspectionMachineBoardViewModel({ machineName: '機種A' });
+    const summary = vm.pages.find((page) => page.kind === 'summary');
+    const card = summary?.kind === 'summary'
+      ? [...summary.scheduled, ...summary.unscheduled][0]?.parts[0]
+      : undefined;
+
+    expect(card?.updatedAt).toBe(updatedAt);
+  });
 });

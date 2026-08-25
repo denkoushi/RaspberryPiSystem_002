@@ -115,7 +115,8 @@ describe('self-inspection-machine-board SVG', () => {
     );
 
     expect(svg).toContain('自主検査 部品別進捗');
-    expect(svg).toContain('更新 2026/06/09 10:02');
+    expect(svg).toContain('>2026/06/09 10:02</text>');
+    expect(svg).not.toContain('更新 2026/06/09 10:02');
     expect(svg).toContain('1 / 2');
     expect(svg).toContain('S-1');
     expect(svg).toContain('品名A');
@@ -132,10 +133,43 @@ describe('self-inspection-machine-board SVG', () => {
     expect(svg).not.toContain('ヒートストリップ');
     expect(svg).not.toContain('凡例');
     expect(svg).toContain('fill="#a855f7"');
-    expect(svg).toContain('fill="#64748b"');
-    expect(svg).toContain('font-size="24"');
-    expect(svg).toContain('font-size="20"');
+    expect(svg).toContain('fill="#ffffff"');
+    expect(svg).toContain('font-size="36"');
+    expect(svg).toContain('font-size="31"');
+    expect(svg).toContain('font-size="27"');
     expect(svg).toContain('font-size="16"');
+
+    const fseibanX = Number(
+      svg.match(/<text x="([\d.]+)" y="150" fill="#ffffff" font-size="36"[^>]*>S-1/)?.[1]
+    );
+    const machineX = Number(
+      svg.match(/<text x="([\d.]+)" y="150" fill="#ffffff" font-size="16"[^>]*>L300KP/)?.[1]
+    );
+    const dateX = Number(
+      svg.match(/<text x="([\d.]+)" y="150" fill="#ffffff" font-size="27"[^>]*>2026\/06\/09 10:02/)?.[1]
+    );
+    const badgeX = Number(svg.match(/<rect x="([\d.]+)" y="112" width="112" height="32"/)?.[1]);
+    const progressBar = svg.match(
+      /<rect x="([\d.]+)" y="[\d.]+" width="([\d.]+)" height="[\d.]+" rx="[\d.]+" fill="#1e293b" \/>/
+    );
+    expect(machineX - fseibanX).toBeCloseTo(96.8, 5);
+    expect(dateX).toBeLessThan(badgeX);
+    expect(Number(progressBar?.[1])).toBeGreaterThan(425);
+    expect(Number(progressBar?.[2])).toBeCloseTo(432 * 0.7, 0);
+  });
+
+  it('uses a card update timestamp when one is available', () => {
+    const page = makeSummaryPage([makeResource('R01', '立型')]);
+    const card = page.scheduled[0]?.parts[0];
+    expect(card).toBeDefined();
+    Object.assign(card!, {
+      updatedAt: new Date(2026, 5, 10, 11, 3, 4),
+    });
+
+    const svg = buildSelfInspectionMachineBoardSummarySvg(page, 1920, 1080);
+
+    expect(svg).toContain('>2026/06/10 11:03</text>');
+    expect(svg).not.toContain('>2026/06/09 10:02</text>');
   });
 
   it('renders fallback, joined display names, and width-based ellipsis without resource CDs', () => {
@@ -156,6 +190,13 @@ describe('self-inspection-machine-board SVG', () => {
     expect(svg).not.toContain('R-MULTI');
     expect(svg).not.toContain('R-MISSING');
     expect(svg).not.toContain('R-LONG');
+
+    const resourceYs = [...svg.matchAll(/<text x="44" y="([\d.]+)" fill="#ffffff" font-size="31"/g)].map(
+      (match) => Number(match[1])
+    );
+    expect(resourceYs).toHaveLength(3);
+    expect(resourceYs[1]! - resourceYs[0]!).toBeGreaterThanOrEqual(36);
+    expect(resourceYs[2]! - resourceYs[1]!).toBeGreaterThanOrEqual(36);
   });
 
   it('uses the fixed Japanese status labels', () => {

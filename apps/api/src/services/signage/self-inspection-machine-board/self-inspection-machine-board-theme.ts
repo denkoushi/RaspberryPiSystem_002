@@ -7,7 +7,7 @@ export const SIMB_SIGNAGE_CARD_BG = '#0f172a';
 export const SIMB_SIGNAGE_CARD_BORDER = '#1e293b';
 export const SIMB_SIGNAGE_ROW_BORDER = '#1e293b';
 export const SIMB_SIGNAGE_PROGRESS_TRACK = '#1e293b';
-export const SIMB_SIGNAGE_PROGRESS_NEUTRAL = '#64748b';
+export const SIMB_SIGNAGE_PROGRESS_NEUTRAL = '#ffffff';
 
 export const SIMB_STATUS_NOT_STARTED = '#64748b';
 export const SIMB_STATUS_IN_PROGRESS = '#f59e0b';
