@@ -80,21 +80,23 @@ export interface MobilePlacementPartsShelfGridSlotConfig {
 
 export type SelfInspectionMachineBoardTargetMode =
   | 'manual_machine_name'
-  | 'auto_from_leaderboard_status';
+  | 'auto_from_leaderboard_status'
+  | 'kiosk_active_sessions';
 
 /**
  * 自主検査 部品別進捗（サイネージ JPEG）
  * manual: machineName は生産日程の機種名（正規化比較）と一致させる。
  * auto: deviceScopeKey + resourceCds で順位ボード相当の母集団から黄（in_progress）機種を選定。
+ * kiosk_active_sessions: 自主検査画面の検査中・判定待ちセッションを表示する。
  */
 export interface SelfInspectionMachineBoardSlotConfig {
   /** 未指定時は manual_machine_name（既存互換） */
   targetMode?: SelfInspectionMachineBoardTargetMode;
-  /** manual 時必須。auto 時は保存不可 */
+  /** manual 時必須。auto/kiosk_active_sessions 時は新規保存しない */
   machineName?: string;
-  /** manual 推奨 / auto 必須。キオスク端末と同じ deviceScopeKey */
+  /** manual 推奨 / auto 必須。kiosk_active_sessions では無視する */
   deviceScopeKey?: string;
-  /** auto 時必須。manual 時は保存不可 */
+  /** auto 時必須。manual/kiosk_active_sessions 時は新規保存しない */
   resourceCds?: string[];
   slideIntervalSeconds?: number;
   partsPerPage?: number;

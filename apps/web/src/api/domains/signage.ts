@@ -20,8 +20,11 @@ export interface SignageSlotConfig {
   cardsPerPage?: number;
   /** mobile_placement_parts_shelf_grid: ゾーンあたりの最大表示行数（省略時はサーバ既定） */
   maxItemsPerZone?: number;
-  /** self_inspection_machine_board: manual / auto 選定モード */
-  targetMode?: 'manual_machine_name' | 'auto_from_leaderboard_status';
+  /**
+   * self_inspection_machine_board の選定モード。
+   * kiosk_active_sessions は現行管理 UI の標準値、auto_from_leaderboard_status は legacy wire 値。
+   */
+  targetMode?: 'manual_machine_name' | 'kiosk_active_sessions' | 'auto_from_leaderboard_status';
   /** self_inspection_machine_board manual: 機種名（生産日程 machineName と正規化比較） */
   machineName?: string;
   /** self_inspection_machine_board auto: 連結する機種数上限 */

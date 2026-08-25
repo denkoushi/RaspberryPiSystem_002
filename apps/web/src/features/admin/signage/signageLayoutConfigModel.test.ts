@@ -256,7 +256,7 @@ describe('signageLayoutConfigModel', () => {
       });
     });
 
-    it('self_inspection_machine_board auto mode', () => {
+    it('migrates legacy auto mode to kiosk mode and omits legacy scope fields on save', () => {
       const original: SignageLayoutConfig = {
         layout: 'FULL',
         slots: [
@@ -275,6 +275,9 @@ describe('signageLayoutConfigModel', () => {
           },
         ],
       };
+      const state = editorStateFromSchedule(baseSchedule({ layoutConfig: original }));
+      expect(state.fullSelfInspectionTargetMode).toBe('kiosk_active_sessions');
+      expect(state.fullSelfInspectionLegacyAutoMigrationNotice).toBe(true);
       expect(roundTripLayoutConfig(original)).toEqual({
         layout: 'FULL',
         slots: [
@@ -282,10 +285,7 @@ describe('signageLayoutConfigModel', () => {
             position: 'FULL',
             kind: 'self_inspection_machine_board',
             config: {
-              targetMode: 'auto_from_leaderboard_status',
-              deviceScopeKey: 'scope-auto',
-              resourceCds: ['RD01', 'RD02'],
-              maxAutoMachines: 8,
+              targetMode: 'kiosk_active_sessions',
               slideIntervalSeconds: 20,
               partsPerPage: 6,
             },
@@ -413,30 +413,27 @@ describe('signageLayoutConfigModel', () => {
       expect(buildLayoutConfigFromEditorState(state, SAMPLE_PDFS)).toBeNull();
     });
 
-    it('self_inspection auto without deviceScopeKey returns null', () => {
+    it('self_inspection kiosk mode does not require legacy scope fields', () => {
       const state: SignageScheduleEditorState = {
         ...createDefaultEditorState(),
         useNewLayout: true,
         layoutType: 'FULL',
         fullSlotKind: 'self_inspection_machine_board',
-        fullSelfInspectionTargetMode: 'auto_from_leaderboard_status',
-        fullSelfInspectionDeviceScopeKey: '',
-        fullSelfInspectionResourceCdsText: 'RD01',
+        fullSelfInspectionTargetMode: 'kiosk_active_sessions',
       };
-      expect(buildLayoutConfigFromEditorState(state, SAMPLE_PDFS)).toBeNull();
-    });
-
-    it('self_inspection auto without resourceCds returns null', () => {
-      const state: SignageScheduleEditorState = {
-        ...createDefaultEditorState(),
-        useNewLayout: true,
-        layoutType: 'FULL',
-        fullSlotKind: 'self_inspection_machine_board',
-        fullSelfInspectionTargetMode: 'auto_from_leaderboard_status',
-        fullSelfInspectionDeviceScopeKey: 'scope-auto',
-        fullSelfInspectionResourceCdsText: '',
-      };
-      expect(buildLayoutConfigFromEditorState(state, SAMPLE_PDFS)).toBeNull();
+      expect(buildLayoutConfigFromEditorState(state, SAMPLE_PDFS)).toEqual({
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'self_inspection_machine_board',
+            config: {
+              targetMode: 'kiosk_active_sessions',
+              partsPerPage: 6,
+            },
+          },
+        ],
+      });
     });
 
     it('kiosk_progress_overview without deviceScopeKey falls back to loans', () => {

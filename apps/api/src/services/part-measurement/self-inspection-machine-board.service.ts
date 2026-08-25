@@ -3,12 +3,14 @@ import {
   scanProductionScheduleRowsForSignageMachineBoard,
   type SignageMachineBoardScheduleRow,
 } from '../production-schedule/production-schedule-query.service.js';
+import { getResourceNameMapByResourceCds } from '../production-schedule/resource-master.service.js';
 import { resolveSignageLeaderOrderQueryKeys } from '../signage/leader-order-cards/resolve-signage-leader-order-location.js';
 import {
   aggregateSelfInspectionMachineBoardCards,
   type SelfInspectionMachineBoardAggregationRow,
 } from './self-inspection-machine-board-aggregation.js';
 import { fetchSelfInspectionMachineBoardOutcomeRecordsByScheduleRowIds } from './self-inspection-machine-board.repository.js';
+import { resolveSelfInspectionMachineBoardResourceDisplayName } from './self-inspection-machine-board-resource-name.js';
 import type { SelfInspectionMachineBoardOutcomeInput } from './self-inspection-machine-board-outcome.js';
 import type { SelfInspectionMachineBoardViewModel } from './self-inspection-machine-board.types.js';
 import {
@@ -291,7 +293,17 @@ export async function buildSelfInspectionMachineBoardViewModel(options: {
     displayRows.map((row) => row.scheduleRowId)
   );
   const displayRowsWithOutcomes = mergeRepositoryOutcomes(displayRows, outcomeRecords);
-  const cards = aggregateSelfInspectionMachineBoardCards(displayRowsWithOutcomes);
+  const resourceNameMap = await getResourceNameMapByResourceCds(
+    displayRowsWithOutcomes.map((row) => row.resourceCd)
+  );
+  const displayRowsWithResourceNames = displayRowsWithOutcomes.map((row) => ({
+    ...row,
+    resourceDisplayName: resolveSelfInspectionMachineBoardResourceDisplayName(
+      row.resourceCd,
+      resourceNameMap
+    ),
+  }));
+  const cards = aggregateSelfInspectionMachineBoardCards(displayRowsWithResourceNames);
   cards.sort(compareMachineBoardCards);
 
   const pages = buildFlatMachineBoardPages({

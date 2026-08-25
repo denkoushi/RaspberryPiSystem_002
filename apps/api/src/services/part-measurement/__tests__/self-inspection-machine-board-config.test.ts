@@ -38,6 +38,24 @@ describe('self-inspection-machine-board-config', () => {
     });
   });
 
+  it('resolves kiosk_active_sessions without carrying legacy targeting fields', () => {
+    const resolved = resolveSelfInspectionMachineBoardConfig({
+      targetMode: 'kiosk_active_sessions',
+      machineName: 'ignored-machine',
+      deviceScopeKey: 'ignored-scope',
+      resourceCds: ['R1'],
+      maxAutoMachines: 20,
+    });
+
+    expect(resolved).toEqual({ targetMode: 'kiosk_active_sessions' });
+  });
+
+  it('does not silently treat an unknown target mode as manual', () => {
+    expect(() =>
+      resolveSelfInspectionMachineBoardTargetMode({ targetMode: 'unknown-mode' })
+    ).toThrow('Unsupported self-inspection machine board targetMode');
+  });
+
   it('caps maxAutoMachines to configured maximum', () => {
     expect(sanitizeSelfInspectionMachineBoardMaxAutoMachines(0)).toBe(1);
     expect(sanitizeSelfInspectionMachineBoardMaxAutoMachines(3)).toBe(3);

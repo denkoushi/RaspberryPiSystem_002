@@ -35,8 +35,8 @@ export function statusColor(
     case 'completed':
       return '#22c55e';
     case 'rejected':
-    case 'review_pending':
       return '#ef4444';
+    case 'review_pending':
     case 'pending':
       return '#a855f7';
     case 'in_progress':
@@ -97,6 +97,16 @@ export function buildAutoTargetScanCapNote(args: {
   return notes.join('');
 }
 
+export function buildActiveSessionCapNote(args: {
+  activeSessionLimit?: number;
+  activeSessionHasMore?: boolean;
+}): string {
+  if (!args.activeSessionHasMore || args.activeSessionLimit == null) {
+    return '';
+  }
+  return ` · 最新${args.activeSessionLimit}件を表示・続きあり`;
+}
+
 export function buildSelfInspectionMachineBoardPageCapNotes(
   page: {
     scheduleRowCap?: number;
@@ -104,14 +114,17 @@ export function buildSelfInspectionMachineBoardPageCapNotes(
     autoTargetTruncated?: boolean;
     autoTargetHitScanCap?: boolean;
     autoTargetScanRowCap?: number;
+    activeSessionLimit?: number;
+    activeSessionHasMore?: boolean;
   }
 ): string {
+  const activeSessionNote = buildActiveSessionCapNote(page);
   return (
     buildAutoTargetScanCapNote({
       truncated: page.autoTargetTruncated,
       hitScanCap: page.autoTargetHitScanCap,
       scanRowCap: page.autoTargetScanRowCap,
-    }) + buildScheduleRowCapNote(page)
+    }) + (activeSessionNote || buildScheduleRowCapNote(page))
   );
 }
 
@@ -122,6 +135,45 @@ export function escapeXml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/** SVG の sans-serif 表示幅を、ASCII と日本語の字幅差を考慮して概算する。 */
+export function estimateTextWidth(value: string, fontSize: number): number {
+  const size = Math.max(1, fontSize);
+  return [...value].reduce(
+    (width, character) =>
+      width + ((character.codePointAt(0) ?? Number.POSITIVE_INFINITY) <= 0xff ? size * 0.6 : size),
+    0
+  );
+}
+
+/** 最大幅を超える文字列を、表示幅基準で省略記号付きにする。 */
+export function truncateTextToWidth(
+  value: string,
+  maxWidth: number,
+  fontSize: number
+): string {
+  if (value.length === 0 || maxWidth <= 0) {
+    return '';
+  }
+  if (estimateTextWidth(value, fontSize) <= maxWidth) {
+    return value;
+  }
+
+  const ellipsis = '…';
+  if (estimateTextWidth(ellipsis, fontSize) > maxWidth) {
+    return '';
+  }
+
+  let result = '';
+  for (const character of value) {
+    const candidate = `${result}${character}${ellipsis}`;
+    if (estimateTextWidth(candidate, fontSize) > maxWidth) {
+      break;
+    }
+    result += character;
+  }
+  return `${result}${ellipsis}`;
 }
 
 export function truncateChars(value: string, maxChars: number): string {

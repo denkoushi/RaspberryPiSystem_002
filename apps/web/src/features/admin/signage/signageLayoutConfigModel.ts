@@ -25,7 +25,8 @@ export type SignageFullSlotKind =
 
 export type SignageSplitSlotKind = 'loans' | 'pdf' | 'csv_dashboard' | 'visualization';
 
-export type SignageSelfInspectionTargetMode = 'manual_machine_name' | 'auto_from_leaderboard_status';
+/** 管理 UI の選択肢。auto_from_leaderboard_status は legacy wire 値としてのみ受理する。 */
+export type SignageSelfInspectionTargetMode = 'kiosk_active_sessions' | 'manual_machine_name';
 
 export interface SignageScheduleEditorState {
   formData: Partial<SignageSchedule>;
@@ -58,6 +59,7 @@ export interface SignageScheduleEditorState {
   fullSelfInspectionMaxAutoMachinesStr: string;
   fullSelfInspectionSlideIntervalStr: string;
   fullSelfInspectionPartsPerPageStr: string;
+  fullSelfInspectionLegacyAutoMigrationNotice: boolean;
   /** legacy detailTopN の読込保持用。UI と新規 build では使用しない。 */
   fullSelfInspectionDetailTopNStr: string;
 }

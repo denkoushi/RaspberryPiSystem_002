@@ -7,11 +7,13 @@ import type {
 } from '../../part-measurement/self-inspection-machine-board.types.js';
 import type { SelfInspectionMachineBoardOutcomeStatus } from '../../part-measurement/self-inspection-machine-board-outcome.js';
 import {
+  buildSelfInspectionMachineBoardPageCapNotes,
   escapeXml,
+  estimateTextWidth,
   formatUpdatedAt,
   statusColor,
   statusLabel,
-  truncateChars,
+  truncateTextToWidth,
 } from './self-inspection-machine-board-format.js';
 import {
   SIMB_SIGNAGE_BG,
@@ -39,6 +41,11 @@ import {
 
 type BoardStatus = SelfInspectionMachineBoardPartStatus | SelfInspectionMachineBoardOutcomeStatus;
 
+/** 第1波の型へ後続で追加される表示名を、型所有範囲外でも先行参照する。 */
+type ResourceWithDisplayName = SelfInspectionMachineBoardResourceProgress & {
+  resourceDisplayName?: string;
+};
+
 function normalizeStatus(status: BoardStatus | undefined): BoardStatus {
   return status ?? 'not_started';
 }
@@ -61,12 +68,18 @@ function cardResources(card: SelfInspectionMachineBoardPartItem): SelfInspection
   }));
 }
 
+function resourceDisplayName(resource: SelfInspectionMachineBoardResourceProgress): string {
+  const displayName = (resource as ResourceWithDisplayName).resourceDisplayName?.trim();
+  return displayName || '名称未登録';
+}
+
 function buildHeader(args: {
   updatedAt: Date;
   pageIndex: number;
   pageCount: number;
   width: number;
   scale: number;
+  capNote?: string;
 }): string {
   const pad = Math.round(28 * args.scale);
   const headerH = Math.round(78 * args.scale);
@@ -77,7 +90,7 @@ function buildHeader(args: {
     <rect x="0" y="0" width="${args.width}" height="${headerH}" fill="${SIMB_SIGNAGE_BG}" />
     <line x1="${pad}" y1="${headerH - 1}" x2="${args.width - pad}" y2="${headerH - 1}" stroke="${SIMB_SIGNAGE_HEADER_BORDER}" />
     <text x="${pad}" y="${Math.round(40 * args.scale)}" fill="${SIMB_SIGNAGE_TEXT_PRIMARY}" font-size="${titleFs}" font-family="sans-serif" font-weight="700">自主検査 部品別進捗</text>
-    <text x="${args.width - pad}" y="${Math.round(40 * args.scale)}" fill="${SIMB_SIGNAGE_TEXT_MUTED}" font-size="${metaFs}" font-family="sans-serif" text-anchor="end">更新 ${escapeXml(formatUpdatedAt(args.updatedAt))} · ${escapeXml(pageLabel)}</text>
+    <text x="${args.width - pad}" y="${Math.round(40 * args.scale)}" fill="${SIMB_SIGNAGE_TEXT_MUTED}" font-size="${metaFs}" font-family="sans-serif" text-anchor="end">更新 ${escapeXml(formatUpdatedAt(args.updatedAt))} · ${escapeXml(pageLabel)}${escapeXml(args.capNote ?? '')}</text>
   `;
 }
 
@@ -117,19 +130,25 @@ function buildCardSvg(args: {
   const headerHeight = Math.round(SELF_INSPECTION_MACHINE_BOARD_CARD_HEADER_HEIGHT * scale);
   const rowAreaHeight = Math.max(0, args.height - innerPad * 2 - headerHeight);
   const preferredRowHeight = Math.round(SELF_INSPECTION_MACHINE_BOARD_RESOURCE_ROW_HEIGHT * scale);
-  const minRowHeight = Math.max(14, Math.round(SELF_INSPECTION_MACHINE_BOARD_MIN_RESOURCE_ROW_HEIGHT * scale));
+  const minRowHeight = Math.max(
+    Math.round(14 * scale),
+    Math.round(SELF_INSPECTION_MACHINE_BOARD_MIN_RESOURCE_ROW_HEIGHT * scale)
+  );
   const rowHeight = Math.max(
     minRowHeight,
     Math.min(preferredRowHeight, Math.floor(rowAreaHeight / Math.max(1, resources.length)))
   );
-  const textFs = Math.max(11, Math.round(14 * scale));
-  const smallFs = Math.max(10, Math.round(12 * scale));
-  const badgeW = Math.round(92 * scale);
-  const badgeH = Math.round(28 * scale);
+  const fseibanFs = Math.max(16, Math.round(24 * scale));
+  const fhinmeiFs = Math.max(14, Math.round(20 * scale));
+  const machineFs = Math.max(12, Math.round(16 * scale));
+  const resourceFs = Math.max(12, Math.round(16 * scale));
+  const badgeFs = Math.max(12, Math.round(16 * scale));
+  const badgeW = Math.round(112 * scale);
+  const badgeH = Math.round(32 * scale);
   const badgeX = args.x + args.width - innerPad - badgeW;
-  const titleY = args.y + innerPad + Math.round(22 * scale);
-  const nameY = args.y + innerPad + Math.round(48 * scale);
-  const machineY = args.y + innerPad + Math.round(72 * scale);
+  const titleY = args.y + innerPad + Math.round(24 * scale);
+  const nameY = args.y + innerPad + Math.round(54 * scale);
+  const machineY = args.y + innerPad + Math.round(80 * scale);
   const resourceX = args.x + innerPad;
   const barX = args.x + Math.round(args.width * 0.43);
   const barW = Math.max(
@@ -137,14 +156,34 @@ function buildCardSvg(args: {
     args.x + args.width - innerPad - barX - Math.round(78 * scale)
   );
   const labelX = args.x + args.width - innerPad;
+  const fseibanWidth = Math.max(
+    fseibanFs,
+    badgeX - resourceX - Math.round(12 * scale)
+  );
+  const continuationWidth = estimateTextWidth(continuationLabel, fseibanFs);
+  const fseibanText = truncateTextToWidth(
+    card.fseiban,
+    Math.max(fseibanFs, fseibanWidth - continuationWidth),
+    fseibanFs
+  );
+  const nameWidth = Math.max(fhinmeiFs, labelX - resourceX);
+  const machineName = card.normalizedMachineName ?? card.machineName ?? args.machineName;
+  const machineWidth = Math.max(machineFs, labelX - resourceX);
+  const resourceNameWidth = Math.max(
+    resourceFs,
+    barX - resourceX - Math.round(12 * scale)
+  );
 
   const resourceRows = resources
     .map((resource, index) => {
       const rowTop = args.y + innerPad + headerHeight + index * rowHeight;
-      const rowTextY = rowTop + Math.max(Math.round(rowHeight * 0.68), smallFs);
-      const barH = Math.max(7, Math.min(14, Math.round(rowHeight * 0.32)));
+      const rowTextY = rowTop + Math.max(Math.round(rowHeight * 0.68), resourceFs);
+      const barH = Math.max(
+        Math.round(7 * scale),
+        Math.min(Math.round(14 * scale), Math.round(rowHeight * 0.32))
+      );
       return `
-        <text x="${resourceX}" y="${rowTextY}" fill="${SIMB_SIGNAGE_TEXT_MUTED}" font-size="${smallFs}" font-family="sans-serif">資源CD ${escapeXml(truncateChars(resource.resourceCd, 14))}</text>
+        <text x="${resourceX}" y="${rowTextY}" fill="${SIMB_SIGNAGE_TEXT_MUTED}" font-size="${resourceFs}" font-family="sans-serif">${escapeXml(truncateTextToWidth(resourceDisplayName(resource), resourceNameWidth, resourceFs))}</text>
         ${buildNeutralProgressBar({
           x: barX,
           y: rowTop + Math.max(2, Math.round((rowHeight - barH) / 2)),
@@ -153,7 +192,7 @@ function buildCardSvg(args: {
           completed: resource.confirmedEntryCount,
           required: resource.requiredEntryCount,
         })}
-        <text x="${labelX}" y="${rowTextY}" fill="${SIMB_SIGNAGE_TEXT_MUTED}" font-size="${smallFs}" font-family="sans-serif" text-anchor="end">${escapeXml(resource.progressLabel)}</text>
+        <text x="${labelX}" y="${rowTextY}" fill="${SIMB_SIGNAGE_TEXT_MUTED}" font-size="${resourceFs}" font-family="sans-serif" text-anchor="end">${escapeXml(resource.progressLabel)}</text>
       `;
     })
     .join('');
@@ -161,11 +200,11 @@ function buildCardSvg(args: {
   return `
     <g data-simb-card="true">
       <rect x="${args.x}" y="${args.y}" width="${args.width}" height="${args.height}" rx="8" fill="${SIMB_SIGNAGE_CARD_BG}" stroke="${SIMB_SIGNAGE_CARD_BORDER}" />
-      <text x="${resourceX}" y="${titleY}" fill="${SIMB_SIGNAGE_TEXT_PRIMARY}" font-size="${textFs}" font-family="sans-serif" font-weight="700">製番 ${escapeXml(truncateChars(card.fseiban, 18))}${escapeXml(continuationLabel)}</text>
+      <text x="${resourceX}" y="${titleY}" fill="${SIMB_SIGNAGE_TEXT_PRIMARY}" font-size="${fseibanFs}" font-family="sans-serif" font-weight="700">${escapeXml(fseibanText)}${escapeXml(continuationLabel)}</text>
       <rect x="${badgeX}" y="${args.y + innerPad}" width="${badgeW}" height="${badgeH}" rx="${Math.round(badgeH / 2)}" fill="${statusColor(cardStatus)}" />
-      <text x="${badgeX + badgeW / 2}" y="${args.y + innerPad + Math.round(badgeH * 0.68)}" fill="#ffffff" font-size="${smallFs}" font-family="sans-serif" font-weight="700" text-anchor="middle">${escapeXml(statusLabel(cardStatus))}</text>
-      <text x="${resourceX}" y="${nameY}" fill="${SIMB_SIGNAGE_TEXT_PRIMARY}" font-size="${textFs}" font-family="sans-serif">品名 ${escapeXml(truncateChars(card.fhinmei, 26))}</text>
-      <text x="${resourceX}" y="${machineY}" fill="${SIMB_SIGNAGE_TEXT_MUTED}" font-size="${smallFs}" font-family="sans-serif">機種名 ${escapeXml(truncateChars(card.normalizedMachineName ?? card.machineName ?? args.machineName, 24))}</text>
+      <text x="${badgeX + badgeW / 2}" y="${args.y + innerPad + Math.round(badgeH * 0.68)}" fill="#ffffff" font-size="${badgeFs}" font-family="sans-serif" font-weight="700" text-anchor="middle">${escapeXml(statusLabel(cardStatus))}</text>
+      <text x="${resourceX}" y="${nameY}" fill="${SIMB_SIGNAGE_TEXT_PRIMARY}" font-size="${fhinmeiFs}" font-family="sans-serif">${escapeXml(truncateTextToWidth(card.fhinmei, nameWidth, fhinmeiFs))}</text>
+      <text x="${resourceX}" y="${machineY}" fill="${SIMB_SIGNAGE_TEXT_MUTED}" font-size="${machineFs}" font-family="sans-serif">${escapeXml(truncateTextToWidth(machineName, machineWidth, machineFs))}</text>
       <line x1="${resourceX}" y1="${args.y + innerPad + headerHeight - Math.round(8 * scale)}" x2="${args.x + args.width - innerPad}" y2="${args.y + innerPad + headerHeight - Math.round(8 * scale)}" stroke="${SIMB_SIGNAGE_ROW_BORDER}" />
       ${resourceRows}
     </g>
@@ -204,6 +243,7 @@ function buildPageSvg(args: {
   pageIndex: number;
   pageCount: number;
   cards: SelfInspectionMachineBoardPartItem[];
+  capNote?: string;
   width: number;
   height: number;
 }): string {
@@ -219,6 +259,10 @@ function buildPageSvg(args: {
   for (let index = 0; index < args.cards.length; index += SELF_INSPECTION_MACHINE_BOARD_COLUMNS) {
     rows.push(args.cards.slice(index, index + SELF_INSPECTION_MACHINE_BOARD_COLUMNS));
   }
+  const minimumCardHeight = computeSelfInspectionMachineBoardCardHeight({
+    resourceCount: 1,
+    scale,
+  });
   const desiredRowHeights = rows.map((row) =>
     Math.max(
       ...row.map((card) =>
@@ -227,7 +271,7 @@ function buildPageSvg(args: {
           scale,
         })
       ),
-      Math.round(160 * scale)
+      minimumCardHeight
     )
   );
   const desiredTotal =
@@ -238,8 +282,8 @@ function buildPageSvg(args: {
   const cardsSvg = rows
     .map((row, rowIndex) => {
       const rowHeight = Math.max(
-        Math.round(140 * scale),
-        Math.floor((desiredRowHeights[rowIndex] ?? 160 * scale) * heightRatio)
+        minimumCardHeight,
+        Math.floor((desiredRowHeights[rowIndex] ?? minimumCardHeight) * heightRatio)
       );
       const rowSvg = row
         .map((card, columnIndex) =>
@@ -268,6 +312,7 @@ function buildPageSvg(args: {
         pageCount: args.pageCount,
         width: args.width,
         scale,
+        capNote: args.capNote,
       })}
       ${cardsSvg || `<text x="${pad}" y="${bodyTop + Math.round(32 * scale)}" fill="${SIMB_SIGNAGE_TEXT_MUTED}" font-size="${Math.max(14, Math.round(16 * scale))}" font-family="sans-serif">対象部品がありません</text>`}
     </svg>
@@ -285,6 +330,7 @@ export function buildSelfInspectionMachineBoardSummarySvg(
     pageIndex: page.pageIndex,
     pageCount: page.pageCount,
     cards: flattenSummaryPageParts(page),
+    capNote: buildSelfInspectionMachineBoardPageCapNotes(page),
     width,
     height,
   });
@@ -302,6 +348,7 @@ export function buildSelfInspectionMachineBoardDetailSvg(
     pageIndex: page.pageIndex,
     pageCount: page.pageCount,
     cards: [buildDetailCard(page)],
+    capNote: buildSelfInspectionMachineBoardPageCapNotes(page),
     width,
     height,
   });

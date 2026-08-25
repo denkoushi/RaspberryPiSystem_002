@@ -7,6 +7,9 @@ const ensureSelfInspectionSessionsInCache = vi.hoisted(() => vi.fn());
 const fetchSelfInspectionMachineBoardOutcomeRecordsByScheduleRowIds = vi.hoisted(() =>
   vi.fn(async () => new Map())
 );
+const getResourceNameMapByResourceCds = vi.hoisted(() =>
+  vi.fn(async () => ({ R01: ['研削一号機'] }))
+);
 
 vi.mock('../../production-schedule/production-schedule-query.service.js', () => ({
   scanProductionScheduleRowsForSignageMachineBoard,
@@ -16,6 +19,10 @@ vi.mock('../../production-schedule/production-schedule-query.service.js', () => 
 vi.mock('../self-inspection-machine-board.repository.js', () => ({
   fetchSelfInspectionSessionDetailsByScheduleRowIds: vi.fn(async () => new Map()),
   fetchSelfInspectionMachineBoardOutcomeRecordsByScheduleRowIds,
+}));
+
+vi.mock('../../production-schedule/resource-master.service.js', () => ({
+  getResourceNameMapByResourceCds,
 }));
 
 vi.mock('../../signage/leader-order-cards/resolve-signage-leader-order-location.js', () => ({
@@ -62,6 +69,7 @@ function makeRow(
 describe('buildSelfInspectionMachineBoardViewModel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getResourceNameMapByResourceCds.mockResolvedValue({ R01: ['研削一号機'] });
   });
 
   it('decorates schedule rows in scan pages instead of one bulk call', async () => {
@@ -158,5 +166,32 @@ describe('buildSelfInspectionMachineBoardViewModel', () => {
         : [];
 
     expect(scheduledParts).toEqual(['row-early', 'row-late']);
+  });
+
+  it('adds Japanese resource names to manual-mode cards in one batch', async () => {
+    const row = makeRow('row-resource', null, { FSIGENCD: 'R01' });
+    scanProductionScheduleRowsForSignageMachineBoard.mockImplementation(async (_params, onPage) => {
+      await onPage([row]);
+      return { scheduleExhausted: true, hitScanCap: false, maxRows: 2000 };
+    });
+    buildLeaderboardDecorations.mockResolvedValue([
+      {
+        id: row.id,
+        hasSelfInspectionDrawing: true,
+        selfInspectionStatus: 'in_progress',
+        completedEntryCount: 1,
+        resolvedRequiredEntryCount: 2,
+      },
+    ]);
+
+    const vm = await buildSelfInspectionMachineBoardViewModel({ machineName: '機種A' });
+    const summary = vm.pages.find((page) => page.kind === 'summary');
+    const resource = summary?.kind === 'summary'
+      ? [...summary.scheduled, ...summary.unscheduled][0]?.parts[0]?.resources?.[0]
+      : undefined;
+
+    expect(getResourceNameMapByResourceCds).toHaveBeenCalledTimes(1);
+    expect(getResourceNameMapByResourceCds).toHaveBeenCalledWith(['R01']);
+    expect(resource?.resourceDisplayName).toBe('研削一号機');
   });
 });

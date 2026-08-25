@@ -1,5 +1,3 @@
-import { parseResourceCdListInput } from './signageScheduleDisplay';
-
 import type { SignageSlotConfig } from '../../../api/client';
 
 /**
@@ -7,13 +5,15 @@ import type { SignageSlotConfig } from '../../../api/client';
  * detailTopN は既存設定を読み込むためだけに残し、新規保存には使わない。
  */
 export interface SelfInspectionMachineBoardEditorFields {
-  fullSelfInspectionTargetMode: 'manual_machine_name' | 'auto_from_leaderboard_status';
+  fullSelfInspectionTargetMode: 'manual_machine_name' | 'kiosk_active_sessions';
   fullSelfInspectionMachineName: string;
   fullSelfInspectionDeviceScopeKey: string;
   fullSelfInspectionResourceCdsText: string;
   fullSelfInspectionMaxAutoMachinesStr: string;
   fullSelfInspectionSlideIntervalStr: string;
   fullSelfInspectionPartsPerPageStr: string;
+  /** legacy auto 設定を読んだときだけ表示する移行案内。保存データには含めない。 */
+  fullSelfInspectionLegacyAutoMigrationNotice: boolean;
   /** legacy detailTopN の読込保持用。UI には表示しない。 */
   fullSelfInspectionDetailTopNStr: string;
 }
@@ -21,7 +21,7 @@ export interface SelfInspectionMachineBoardEditorFields {
 export type SelfInspectionMachineBoardEditorFieldsPatch = Partial<SelfInspectionMachineBoardEditorFields>;
 export type SelfInspectionMachineBoardBuildFields = Omit<
   SelfInspectionMachineBoardEditorFields,
-  'fullSelfInspectionDetailTopNStr'
+  'fullSelfInspectionDetailTopNStr' | 'fullSelfInspectionLegacyAutoMigrationNotice'
 >;
 
 export const DEFAULT_SELF_INSPECTION_PARTS_PER_PAGE = 6;
@@ -29,13 +29,14 @@ export const MAX_SELF_INSPECTION_PARTS_PER_PAGE = 6;
 
 export function createResetSelfInspectionMachineBoardEditorFields(): SelfInspectionMachineBoardEditorFields {
   return {
-    fullSelfInspectionTargetMode: 'manual_machine_name',
+    fullSelfInspectionTargetMode: 'kiosk_active_sessions',
     fullSelfInspectionMachineName: '',
     fullSelfInspectionDeviceScopeKey: '',
     fullSelfInspectionResourceCdsText: '',
     fullSelfInspectionMaxAutoMachinesStr: '',
     fullSelfInspectionSlideIntervalStr: '',
     fullSelfInspectionPartsPerPageStr: '',
+    fullSelfInspectionLegacyAutoMigrationNotice: false,
     fullSelfInspectionDetailTopNStr: '',
   };
 }
@@ -48,11 +49,12 @@ export function parseSelfInspectionMachineBoardConfig(
   config: SignageSlotConfig
 ): SelfInspectionMachineBoardEditorFieldsPatch {
   const resourceCds = Array.isArray(config.resourceCds) ? config.resourceCds : [];
+  const isLegacyAuto = config.targetMode === 'auto_from_leaderboard_status';
 
   return {
     fullSelfInspectionTargetMode:
-      config.targetMode === 'auto_from_leaderboard_status'
-        ? 'auto_from_leaderboard_status'
+      config.targetMode === 'kiosk_active_sessions' || isLegacyAuto
+        ? 'kiosk_active_sessions'
         : 'manual_machine_name',
     fullSelfInspectionMachineName: String(config.machineName ?? '').trim(),
     fullSelfInspectionDeviceScopeKey: String(config.deviceScopeKey ?? '').trim(),
@@ -66,6 +68,7 @@ export function parseSelfInspectionMachineBoardConfig(
       config.slideIntervalSeconds != null ? String(config.slideIntervalSeconds) : '',
     fullSelfInspectionPartsPerPageStr:
       config.partsPerPage != null ? String(config.partsPerPage) : '',
+    fullSelfInspectionLegacyAutoMigrationNotice: isLegacyAuto,
     fullSelfInspectionDetailTopNStr: config.detailTopN != null ? String(config.detailTopN) : '',
   };
 }
@@ -78,7 +81,10 @@ export function buildSelfInspectionMachineBoardConfig(
   fields: SelfInspectionMachineBoardBuildFields
 ): SignageSlotConfig | null {
   const boardConfig: SignageSlotConfig = {
-    targetMode: fields.fullSelfInspectionTargetMode,
+    targetMode:
+      fields.fullSelfInspectionTargetMode === 'manual_machine_name'
+        ? 'manual_machine_name'
+        : 'kiosk_active_sessions',
   };
 
   if (fields.fullSelfInspectionTargetMode === 'manual_machine_name') {
@@ -89,20 +95,6 @@ export function buildSelfInspectionMachineBoardConfig(
     boardConfig.machineName = machineName;
     if (fields.fullSelfInspectionDeviceScopeKey.trim() !== '') {
       boardConfig.deviceScopeKey = fields.fullSelfInspectionDeviceScopeKey.trim();
-    }
-  } else {
-    const deviceScopeKey = fields.fullSelfInspectionDeviceScopeKey.trim();
-    const resourceCds = parseResourceCdListInput(fields.fullSelfInspectionResourceCdsText);
-    if (!deviceScopeKey || resourceCds.length === 0) {
-      return null;
-    }
-    boardConfig.deviceScopeKey = deviceScopeKey;
-    boardConfig.resourceCds = resourceCds;
-    if (fields.fullSelfInspectionMaxAutoMachinesStr.trim() !== '') {
-      const n = Number(fields.fullSelfInspectionMaxAutoMachinesStr);
-      if (Number.isFinite(n) && n >= 1) {
-        boardConfig.maxAutoMachines = Math.min(20, Math.floor(n));
-      }
     }
   }
 
