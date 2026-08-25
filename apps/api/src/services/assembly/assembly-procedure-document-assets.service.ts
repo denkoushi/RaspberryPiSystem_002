@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import sharp from 'sharp';
 
 import {
   cropAssemblyProcedureAssetRoi,
@@ -10,6 +11,7 @@ import {
   normalizeAssemblyProcedureAssetRoi,
   getAssemblyProcedureAssetStorage,
   CoordinateOcrTextCandidateAdapter,
+  groupAssemblyProcedureTextCandidates,
   PopplerBboxLayoutTextCandidateAdapter,
 } from '../assembly-procedure-assets/index.js';
 import type {
@@ -275,7 +277,25 @@ export class AssemblyProcedureDocumentAssetsService {
               roi,
             }),
         );
-        if (candidates.length > 0) return mapSourceBounds(candidates, roi);
+        if (candidates.length > 0) {
+          let roiAspectRatio = 1;
+          try {
+            const source = await this.pageImage(params.documentId, params.pageIndex);
+            const metadata = await sharp(source.buffer, { failOn: 'none' }).metadata();
+            const pageWidth = metadata.width ?? 0;
+            const pageHeight = metadata.height ?? 0;
+            if (pageWidth > 0 && pageHeight > 0) {
+              roiAspectRatio =
+                (pageWidth * roi.widthRatio) / (pageHeight * roi.heightRatio);
+            }
+          } catch {
+            // Keep valid Poppler candidates when the preview image is unavailable.
+          }
+          return mapSourceBounds(
+            groupAssemblyProcedureTextCandidates(candidates, roiAspectRatio),
+            roi,
+          );
+        }
       } catch {
         // A missing/invalid source PDF is recoverable through image OCR below.
       }
@@ -290,7 +310,13 @@ export class AssemblyProcedureDocumentAssetsService {
         pageIndex: params.pageIndex,
         roi,
       });
-      return mapSourceBounds(candidates, roi);
+      return mapSourceBounds(
+        groupAssemblyProcedureTextCandidates(
+          candidates,
+          cropped.width / cropped.height,
+        ),
+        roi,
+      );
     } catch {
       return [];
     }

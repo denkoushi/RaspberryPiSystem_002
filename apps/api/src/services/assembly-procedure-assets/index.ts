@@ -7,3 +7,4 @@ export * from './composite-text-candidate.adapter.js';
 export * from './coordinate-ocr-text-candidate.adapter.js';
 export * from './local-assembly-procedure-asset-storage.adapter.js';
 export * from './poppler-text-candidate.adapter.js';
+export * from './text-candidate-line-grouping.js';
