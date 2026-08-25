@@ -58,6 +58,8 @@ export type SelfInspectionMachineBoardPartItem = {
   continuationCount?: number;
   /** continuationIndex > 1 の続きカードであることを明示する。 */
   isContinuation?: boolean;
+  /** カード内セッションの最終更新時刻。旧 fixture では省略可。 */
+  updatedAt?: Date;
 };
 
 export type SelfInspectionMachineBoardCard = SelfInspectionMachineBoardPartItem & {

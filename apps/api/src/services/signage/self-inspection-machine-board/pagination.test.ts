@@ -149,8 +149,8 @@ describe('self-inspection-machine-board pagination', () => {
     expect(pageParts.some((part) => part.fseiban === 'S-SHORT')).toBe(true);
   });
 
-  it('splits exactly after 35 resource rows at the minimum readable height', () => {
-    expect(maxSelfInspectionMachineBoardResourcesPerCard()).toBe(35);
+  it('splits exactly after the readable resource-row capacity', () => {
+    expect(maxSelfInspectionMachineBoardResourcesPerCard()).toBe(21);
 
     const makePart = (fseiban: string, resourceCount: number) => {
       const resources: DisplayResource[] = Array.from({ length: resourceCount }, (_, index) => ({
@@ -182,21 +182,21 @@ describe('self-inspection-machine-board pagination', () => {
     };
 
     const pages = paginateSelfInspectionMachineBoardParts({
-      orderedParts: [makePart('S-35', 35), makePart('S-36', 36)],
+      orderedParts: [makePart('S-21', 21), makePart('S-22', 22)],
       partsPerPage: 6,
     });
     const fragments = pages.flat();
 
-    expect(fragments.filter((part) => part.fseiban === 'S-35')).toHaveLength(1);
-    expect(fragments.filter((part) => part.fseiban === 'S-36')).toHaveLength(2);
+    expect(fragments.filter((part) => part.fseiban === 'S-21')).toHaveLength(1);
+    expect(fragments.filter((part) => part.fseiban === 'S-22')).toHaveLength(2);
     expect(
       fragments
-        .filter((part) => part.fseiban === 'S-36')
+        .filter((part) => part.fseiban === 'S-22')
         .map((part) => part.resources?.length)
-    ).toEqual([35, 1]);
+    ).toEqual([21, 1]);
     expect(
       fragments
-        .filter((part) => part.fseiban === 'S-36')
+        .filter((part) => part.fseiban === 'S-22')
         .map((part) => [part.continuationIndex, part.continuationCount, part.isContinuation])
     ).toEqual([
       [1, 2, false],

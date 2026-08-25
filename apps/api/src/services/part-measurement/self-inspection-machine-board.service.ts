@@ -9,7 +9,10 @@ import {
   aggregateSelfInspectionMachineBoardCards,
   type SelfInspectionMachineBoardAggregationRow,
 } from './self-inspection-machine-board-aggregation.js';
-import { fetchSelfInspectionMachineBoardOutcomeRecordsByScheduleRowIds } from './self-inspection-machine-board.repository.js';
+import {
+  fetchSelfInspectionMachineBoardOutcomeRecordsByScheduleRowIds,
+  type SelfInspectionMachineBoardOutcomeRecord,
+} from './self-inspection-machine-board.repository.js';
 import { resolveSelfInspectionMachineBoardResourceDisplayName } from './self-inspection-machine-board-resource-name.js';
 import type { SelfInspectionMachineBoardOutcomeInput } from './self-inspection-machine-board-outcome.js';
 import type { SelfInspectionMachineBoardViewModel } from './self-inspection-machine-board.types.js';
@@ -164,7 +167,7 @@ function buildEligibleRowsFromScheduleRows(
 
 function mergeRepositoryOutcomes(
   rows: SelfInspectionMachineBoardAggregationRow[],
-  outcomes: Map<string, SelfInspectionMachineBoardOutcomeInput>
+  outcomes: Map<string, SelfInspectionMachineBoardOutcomeRecord>
 ): SelfInspectionMachineBoardAggregationRow[] {
   return rows.map((row) => {
     const outcome = outcomes.get(row.scheduleRowId);
@@ -181,6 +184,7 @@ function mergeRepositoryOutcomes(
       confirmedEntryCount,
       completedEntryCount: confirmedEntryCount,
       requiredEntryCount,
+      ...(outcome.updatedAt ? { updatedAt: outcome.updatedAt } : {}),
       outcome: {
         ...outcome,
         confirmedEntryCount,

@@ -87,4 +87,16 @@ describe('self-inspection machine board aggregation', () => {
     });
     expect(cards[0]?.resources.map((resource) => resource.status)).toEqual(['pass', 'rejected']);
   });
+
+  it('uses the newest row timestamp for a card spanning resources', () => {
+    const older = new Date('2026-08-25T00:00:00.000Z');
+    const newest = new Date('2026-08-25T01:00:00.000Z');
+    const cards = aggregateSelfInspectionMachineBoardCards([
+      row({ resourceCd: 'R1', updatedAt: newest }),
+      row({ resourceCd: 'R2', updatedAt: older }),
+      row({ resourceCd: 'R3' }),
+    ]);
+
+    expect(cards[0]?.updatedAt).toBe(newest);
+  });
 });

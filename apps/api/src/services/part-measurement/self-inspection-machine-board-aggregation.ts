@@ -35,7 +35,7 @@ export type SelfInspectionMachineBoardAggregationRow = {
   reviewStatuses?: Array<string | null | undefined>;
   finalReviewStatuses?: Array<string | null | undefined>;
   measurementOutcomes?: SelfInspectionMachineBoardMeasurementOutcome[];
-  /** active session board の順序保持用。カード表示契約へは露出しない。 */
+  /** カード表示用。active session は session.updatedAt、manual は repository から渡す。 */
   updatedAt?: Date;
   sessionId?: string;
 };
@@ -145,6 +145,22 @@ function resolveResourceOutcome(
 
 function buildProgressLabel(completed: number, required: number): string {
   return `${completed}/${required}`;
+}
+
+function newestUpdatedAt(
+  rows: SelfInspectionMachineBoardAggregationRow[]
+): Date | undefined {
+  let newest: Date | undefined;
+  for (const row of rows) {
+    const updatedAt = row.updatedAt;
+    if (!updatedAt || !Number.isFinite(updatedAt.getTime())) {
+      continue;
+    }
+    if (!newest || updatedAt.getTime() > newest.getTime()) {
+      newest = updatedAt;
+    }
+  }
+  return newest;
 }
 
 /**
@@ -275,6 +291,7 @@ export function aggregateSelfInspectionMachineBoardCards(
     const machineName = normalizeText(first.machineName);
     const normalizedMachineName =
       normalizeText(first.normalizedMachineName) || normalizeMachineNameForCompare(machineName);
+    const updatedAt = newestUpdatedAt(group);
     const dueDates = group
       .map((row) => row.dueDate)
       .filter((value): value is Date => value != null)
@@ -291,6 +308,7 @@ export function aggregateSelfInspectionMachineBoardCards(
       fhinmei: first.fhinmei || first.fhincd,
       machineName,
       normalizedMachineName,
+      ...(updatedAt ? { updatedAt } : {}),
       status,
       outcome: status,
       completedEntryCount: confirmedEntryCount,
