@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureOverlayLayer } from './AssemblyProcedureOverlayLayer';
 
@@ -11,9 +11,29 @@ vi.mock('../../hooks/useProtectedImageBlobUrl', () => ({
 
 describe('AssemblyProcedureOverlayLayer', () => {
   beforeEach(() => {
+    vi.stubGlobal('PointerEvent', MouseEvent);
     mockUseProtectedImageBlobUrl.mockReset();
     mockUseProtectedImageBlobUrl.mockReturnValue({ blobUrl: 'blob:assembly-overlay-image', error: null });
   });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function mockLayerRect(width = 400, height = 200): void {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: width,
+      bottom: height,
+      width,
+      height,
+      toJSON: () => ({})
+    }));
+  }
 
   it('renders asset-map URLs, proportional text sizing, and crop clipping', () => {
     render(
@@ -116,6 +136,198 @@ describe('AssemblyProcedureOverlayLayer', () => {
     expect(onNudge).toHaveBeenNthCalledWith(1, 'shape-1', 0.005, 0);
     expect(onNudge).toHaveBeenNthCalledWith(2, 'shape-1', 0, -0.02);
     expect(onSelect).toHaveBeenCalledWith('shape-1');
+  });
+
+  it('moves interactive overlays and clamps their source bbox to the page', () => {
+    mockLayerRect();
+    const onUpdateBBox = vi.fn();
+    render(
+      <AssemblyProcedureOverlayLayer
+        interactive
+        selectedOverlayId="text-1"
+        elements={[{
+          id: 'text-1',
+          pageIndex: 0,
+          kind: 'TEXT',
+          text: '移動',
+          bbox: { xRatio: 0.2, yRatio: 0.2, widthRatio: 0.2, heightRatio: 0.2 },
+          zIndex: 0
+        }]}
+        onUpdateBBox={onUpdateBBox}
+      />
+    );
+
+    const item = screen.getByTestId('assembly-procedure-overlay-text-1');
+    fireEvent.pointerDown(item, { button: 0, pointerId: 1, clientX: 120, clientY: 80 });
+    fireEvent.pointerMove(item, { pointerId: 1, clientX: 160, clientY: 100 });
+    fireEvent.pointerUp(item, { pointerId: 1, clientX: 160, clientY: 100 });
+    expect(onUpdateBBox.mock.calls.at(-1)?.[0]).toBe('text-1');
+    expect(onUpdateBBox.mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({
+      xRatio: expect.closeTo(0.3),
+      yRatio: expect.closeTo(0.3),
+      widthRatio: expect.closeTo(0.2),
+      heightRatio: expect.closeTo(0.2)
+    }));
+
+    fireEvent.pointerDown(item, { button: 0, pointerId: 2, clientX: 120, clientY: 80 });
+    fireEvent.pointerMove(item, { pointerId: 2, clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(item, { pointerId: 2, clientX: 0, clientY: 0 });
+    expect(onUpdateBBox).toHaveBeenLastCalledWith('text-1', {
+      xRatio: 0,
+      yRatio: 0,
+      widthRatio: 0.2,
+      heightRatio: 0.2
+    });
+  });
+
+  it('resizes only the selected overlay with four corner handles and enforces the minimum size', () => {
+    mockLayerRect();
+    const onUpdateBBox = vi.fn();
+    render(
+      <AssemblyProcedureOverlayLayer
+        interactive
+        selectedOverlayId="shape-1"
+        elements={[{
+          id: 'shape-1',
+          pageIndex: 0,
+          kind: 'SHAPE',
+          shape: 'RECTANGLE',
+          bbox: { xRatio: 0.2, yRatio: 0.2, widthRatio: 0.2, heightRatio: 0.2 },
+          zIndex: 0
+        }, {
+          id: 'shape-2',
+          pageIndex: 0,
+          kind: 'SHAPE',
+          shape: 'RECTANGLE',
+          bbox: { xRatio: 0.6, yRatio: 0.2, widthRatio: 0.2, heightRatio: 0.2 },
+          zIndex: 1
+        }]}
+        onUpdateBBox={onUpdateBBox}
+      />
+    );
+
+    expect(screen.getAllByRole('button', { name: /リサイズハンドル/ })).toHaveLength(4);
+    expect(screen.queryByTestId('assembly-procedure-overlay-shape-2-resize-nw')).not.toBeInTheDocument();
+
+    const northWest = screen.getByTestId('assembly-procedure-overlay-shape-1-resize-nw');
+    fireEvent.pointerDown(northWest, { button: 0, pointerId: 3, clientX: 80, clientY: 40 });
+    fireEvent.pointerMove(northWest, { pointerId: 3, clientX: 40, clientY: 20 });
+    fireEvent.pointerUp(northWest, { pointerId: 3, clientX: 40, clientY: 20 });
+    expect(onUpdateBBox.mock.calls.at(-1)?.[0]).toBe('shape-1');
+    expect(onUpdateBBox.mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({
+      xRatio: expect.closeTo(0.1),
+      yRatio: expect.closeTo(0.1),
+      widthRatio: expect.closeTo(0.3),
+      heightRatio: expect.closeTo(0.3)
+    }));
+
+    const southEast = screen.getByTestId('assembly-procedure-overlay-shape-1-resize-se');
+    fireEvent.pointerDown(southEast, { button: 0, pointerId: 4, clientX: 160, clientY: 80 });
+    fireEvent.pointerMove(southEast, { pointerId: 4, clientX: 81, clientY: 41 });
+    fireEvent.pointerUp(southEast, { pointerId: 4, clientX: 81, clientY: 41 });
+    expect(onUpdateBBox).toHaveBeenLastCalledWith('shape-1', {
+      xRatio: 0.2,
+      yRatio: 0.2,
+      widthRatio: 0.005,
+      heightRatio: 0.005
+    });
+
+    fireEvent.keyDown(southEast, { key: 'ArrowRight' });
+    expect(onUpdateBBox).toHaveBeenLastCalledWith('shape-1', {
+      xRatio: 0.2,
+      yRatio: 0.2,
+      widthRatio: 0.20500000000000002,
+      heightRatio: 0.2
+    });
+  });
+
+  it('preserves the full source bbox when moving an overlay clipped by a crop', () => {
+    mockLayerRect();
+    const onUpdateBBox = vi.fn();
+    render(
+      <AssemblyProcedureOverlayLayer
+        interactive
+        crop={{ xRatio: 0.25, yRatio: 0.1, widthRatio: 0.5, heightRatio: 0.5 }}
+        selectedOverlayId="text-crop"
+        elements={[{
+          id: 'text-crop',
+          pageIndex: 0,
+          kind: 'TEXT',
+          text: 'crop',
+          bbox: { xRatio: 0.15, yRatio: 0.2, widthRatio: 0.2, heightRatio: 0.2 },
+          zIndex: 0
+        }]}
+        onUpdateBBox={onUpdateBBox}
+      />
+    );
+
+    const item = screen.getByTestId('assembly-procedure-overlay-text-crop');
+    fireEvent.pointerDown(item, { button: 0, pointerId: 5, clientX: 20, clientY: 40 });
+    fireEvent.pointerUp(item, { pointerId: 5, clientX: 20, clientY: 40 });
+    expect(onUpdateBBox).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(item, { button: 0, pointerId: 7, clientX: 20, clientY: 40 });
+    fireEvent.pointerMove(item, { pointerId: 7, clientX: 60, clientY: 60 });
+    fireEvent.pointerUp(item, { pointerId: 7, clientX: 60, clientY: 60 });
+    expect(onUpdateBBox.mock.calls.at(-1)?.[0]).toBe('text-crop');
+    expect(onUpdateBBox.mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({
+      xRatio: expect.closeTo(0.2),
+      yRatio: expect.closeTo(0.25),
+      widthRatio: expect.closeTo(0.2),
+      heightRatio: expect.closeTo(0.2)
+    }));
+  });
+
+  it('preserves a crop-hidden source edge while resizing the visible opposite corner', () => {
+    mockLayerRect();
+    const onUpdateBBox = vi.fn();
+    render(
+      <AssemblyProcedureOverlayLayer
+        interactive
+        crop={{ xRatio: 0.25, yRatio: 0.1, widthRatio: 0.5, heightRatio: 0.5 }}
+        selectedOverlayId="text-crop-resize"
+        elements={[{
+          id: 'text-crop-resize',
+          pageIndex: 0,
+          kind: 'TEXT',
+          text: 'crop resize',
+          bbox: { xRatio: 0.15, yRatio: 0.2, widthRatio: 0.2, heightRatio: 0.2 },
+          zIndex: 0
+        }]}
+        onUpdateBBox={onUpdateBBox}
+      />
+    );
+
+    const southEast = screen.getByTestId('assembly-procedure-overlay-text-crop-resize-resize-se');
+    fireEvent.pointerDown(southEast, { button: 0, pointerId: 8, clientX: 80, clientY: 120 });
+    fireEvent.pointerMove(southEast, { pointerId: 8, clientX: 160, clientY: 140 });
+    fireEvent.pointerUp(southEast, { pointerId: 8, clientX: 160, clientY: 140 });
+    expect(onUpdateBBox.mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({
+      xRatio: expect.closeTo(0.15),
+      widthRatio: expect.closeTo(0.3)
+    }));
+  });
+
+  it('keeps selectable read-only overlays scrollable when bbox updates are unavailable', () => {
+    mockLayerRect();
+    render(
+      <AssemblyProcedureOverlayLayer
+        interactive
+        selectedOverlayId="text-readonly"
+        elements={[{
+          id: 'text-readonly',
+          pageIndex: 0,
+          kind: 'TEXT',
+          text: '閲覧',
+          bbox: { xRatio: 0.2, yRatio: 0.2, widthRatio: 0.2, heightRatio: 0.2 },
+          zIndex: 0
+        }]}
+      />
+    );
+
+    const item = screen.getByTestId('assembly-procedure-overlay-text-readonly');
+    expect(item).not.toHaveClass('touch-none');
+    expect(screen.queryByTestId('assembly-procedure-overlay-text-readonly-resize-nw')).not.toBeInTheDocument();
   });
 
   it('renders an arrowhead marker that follows the line direction', () => {

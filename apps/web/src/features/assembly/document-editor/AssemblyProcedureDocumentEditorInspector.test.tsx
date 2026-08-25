@@ -19,7 +19,9 @@ function commonProps(onUpdate: (element: AssemblyProcedureOverlayElement) => voi
     onDelete: vi.fn(),
     onBringForward: vi.fn(),
     onSendBackward: vi.fn(),
-    onUploadImage: vi.fn()
+    onUploadImage: vi.fn(),
+    onRefetchTextCandidates: vi.fn(),
+    busy: false
   };
 }
 
@@ -49,6 +51,32 @@ describe('AssemblyProcedureDocumentEditorInspector', () => {
     expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ style: expect.objectContaining({ align: 'center' }) }));
     fireEvent.change(screen.getByLabelText('マスク色'), { target: { value: '#eeeeee' } });
     expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ mask: { enabled: true, color: '#eeeeee' } }));
+  });
+
+  it('offers explicit OCR candidate re-fetch for selected text and disables it while busy', () => {
+    const onRefetchTextCandidates = vi.fn();
+    const { rerender } = render(
+      <AssemblyProcedureDocumentEditorInspector
+        {...commonProps(vi.fn())}
+        onRefetchTextCandidates={onRefetchTextCandidates}
+        element={{ ...base, kind: 'TEXT', text: '既存文章' }}
+      />
+    );
+
+    const refetchButton = screen.getByRole('button', { name: 'この範囲で候補を再取得' });
+    expect(refetchButton).toBeEnabled();
+    fireEvent.click(refetchButton);
+    expect(onRefetchTextCandidates).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <AssemblyProcedureDocumentEditorInspector
+        {...commonProps(vi.fn())}
+        onRefetchTextCandidates={onRefetchTextCandidates}
+        busy
+        element={{ ...base, kind: 'TEXT', text: '既存文章' }}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'この範囲で候補を再取得' })).toBeDisabled();
   });
 
   it('updates image fit and uploads a selected file', () => {
@@ -128,5 +156,6 @@ describe('AssemblyProcedureDocumentEditorInspector', () => {
     expect(screen.getByRole('textbox')).toBeDisabled();
     expect(screen.getByRole('button', { name: '削除' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '前面へ' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'この範囲で候補を再取得' })).toBeDisabled();
   });
 });

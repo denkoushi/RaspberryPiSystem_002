@@ -3,7 +3,12 @@ import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { useUnsavedChangesGuard } from '../../navigation/useUnsavedChangesGuard';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
-import { isOverlayDraftSaveable, overlayDraftReducer, overlayDraftSnapshot } from './assemblyDocumentEditorDraft';
+import {
+  isOverlayDraftSaveable,
+  overlayDraftReducer,
+  overlayDraftSnapshot,
+  updateOverlayBBox
+} from './assemblyDocumentEditorDraft';
 import {
   selectDocumentElement,
   selectDocumentPage,
@@ -41,6 +46,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const [textCandidateRange, setTextCandidateRange] = useState<{
     pageIndex: number;
     bbox: AssemblyProcedureOverlayBBox;
+    overlayId?: string;
   } | null>(null);
   const [conflict, setConflict] = useState(false);
   const [conflictEditVersion, setConflictEditVersion] = useState<number | null>(null);
@@ -200,6 +206,11 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const nudgeElement = useCallback((id: string, dxRatio: number, dyRatio: number) => {
     if (!readOnly) dispatch({ type: 'nudge', id, dxRatio, dyRatio });
   }, [readOnly]);
+  const updateElementBBox = useCallback((id: string, bbox: AssemblyProcedureOverlayBBox) => {
+    if (readOnly) return;
+    const element = elements.find((candidate) => candidate.id === id);
+    if (element) dispatch({ type: 'update', element: updateOverlayBBox(element, bbox) });
+  }, [elements, readOnly]);
   const deleteSelectedOverlay = useCallback(() => {
     if (!selectedOverlayId || readOnly) return;
     dispatch({ type: 'remove', id: selectedOverlayId });
@@ -248,10 +259,12 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     textCandidates,
     chooseTextCandidate: overlayCommands.chooseTextCandidate,
     cancelTextCandidates: overlayCommands.cancelTextCandidates,
+    refetchTextCandidates: overlayCommands.refetchTextCandidates,
     uploadImage: overlayCommands.uploadImage,
     bringForward,
     sendBackward,
     nudgeElement,
+    updateElementBBox,
     confirmNavigation,
     recoveryPending: recovery.pending,
     restoreRecovery,

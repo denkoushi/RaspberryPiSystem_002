@@ -77,9 +77,11 @@ export function AssemblyProcedureDocumentEditorScreen() {
             pageIndex={selectedPage.pageIndex}
             elements={controller.selectedPageElements}
             selectionMode={controller.selectionMode}
+            editable={!controller.readOnly}
             selectedOverlayId={controller.selectedOverlayId}
             onSelectOverlay={controller.setSelectedOverlayId}
             onNudgeOverlay={controller.nudgeElement}
+            onUpdateOverlayBBox={controller.updateElementBBox}
             onRangeSelected={controller.handleRangeSelected}
             assets={controller.document?.assets}
             className="h-full w-full"
@@ -107,7 +109,9 @@ export function AssemblyProcedureDocumentEditorScreen() {
           onBringForward={controller.bringForward}
           onSendBackward={controller.sendBackward}
           onUploadImage={controller.uploadImage}
+          onRefetchTextCandidates={() => void controller.refetchTextCandidates()}
           readOnly={controller.readOnly}
+          busy={controller.busy}
         />
       </div>
 

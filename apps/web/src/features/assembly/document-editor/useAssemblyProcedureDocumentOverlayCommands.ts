@@ -21,6 +21,12 @@ import type { Dispatch, SetStateAction } from 'react';
 
 type StateSetter<T> = Dispatch<SetStateAction<T>>;
 
+type TextCandidateRange = {
+  pageIndex: number;
+  bbox: AssemblyProcedureOverlayBBox;
+  overlayId?: string;
+};
+
 export type AssemblyProcedureDocumentOverlayCommandSession = {
   document: AssemblyProcedureDocumentDto | null;
   passwordInput: string;
@@ -36,15 +42,9 @@ export type AssemblyProcedureDocumentOverlayCommandSession = {
   setSelectionMode: StateSetter<boolean>;
   setSelectedOverlayId: StateSetter<string | null>;
   setTextCandidates: StateSetter<AssemblyProcedureTextCandidateDto[]>;
-  setTextCandidateRange: StateSetter<{
-    pageIndex: number;
-    bbox: AssemblyProcedureOverlayBBox;
-  } | null>;
+  setTextCandidateRange: StateSetter<TextCandidateRange | null>;
   dispatch: Dispatch<OverlayDraftAction>;
-  textCandidateRange: {
-    pageIndex: number;
-    bbox: AssemblyProcedureOverlayBBox;
-  } | null;
+  textCandidateRange: TextCandidateRange | null;
 };
 
 export function useAssemblyProcedureDocumentOverlayCommands(
@@ -140,8 +140,35 @@ export function useAssemblyProcedureDocumentOverlayCommands(
   }, [addCreatedOverlay, session]);
 
   const chooseTextCandidate = useCallback((candidate: AssemblyProcedureTextCandidateDto | null) => {
-    const { readOnly, textCandidateRange, setMessage, setTextCandidateRange, setTextCandidates } = session;
+    const {
+      readOnly,
+      selectedElement,
+      textCandidateRange,
+      setMessage,
+      setTextCandidateRange,
+      setTextCandidates
+    } = session;
     if (!textCandidateRange || readOnly) return;
+
+    if (textCandidateRange.overlayId) {
+      if (selectedElement?.id === textCandidateRange.overlayId && selectedElement.kind === 'TEXT') {
+        if (candidate) {
+          session.dispatch({
+            type: 'update',
+            element: { ...selectedElement, text: candidate.text }
+          });
+          setMessage('文章オーバーレイを更新しました。内容を編集して保存してください。');
+        } else {
+          setMessage('文章候補の選択をキャンセルしました。');
+        }
+      } else {
+        setMessage('対象の文章オーバーレイが見つからないため、候補を適用しませんでした。');
+      }
+      setTextCandidates([]);
+      setTextCandidateRange(null);
+      return;
+    }
+
     const bbox = candidate?.bounds ?? textCandidateRange.bbox;
     addCreatedOverlay('TEXT', bbox, { text: candidate?.text ?? 'ここに文章を入力' }, textCandidateRange.pageIndex);
     setTextCandidates([]);
@@ -153,6 +180,54 @@ export function useAssemblyProcedureDocumentOverlayCommands(
     session.setTextCandidates([]);
     session.setTextCandidateRange(null);
     session.setMessage('文章候補の選択をキャンセルしました。');
+  }, [session]);
+
+  const refetchTextCandidates = useCallback(async () => {
+    const {
+      busy,
+      document,
+      passwordInput,
+      readOnly,
+      selectedElement,
+      selectedPage,
+      setBusy,
+      setMessage,
+      setTextCandidateRange,
+      setTextCandidates
+    } = session;
+    if (
+      busy ||
+      !document ||
+      readOnly ||
+      !selectedPage ||
+      !selectedElement ||
+      selectedElement.kind !== 'TEXT'
+    ) return;
+
+    const { bbox, id: overlayId, pageIndex } = selectedElement;
+    setTextCandidates([]);
+    setTextCandidateRange(null);
+    setBusy(true);
+    setMessage('選択範囲から文章候補を再取得しています…');
+    try {
+      const candidates = await findAssemblyProcedureTextCandidates({
+        id: document.id,
+        accessPassword: passwordInput,
+        pageIndex,
+        bbox
+      });
+      if (candidates.length > 0) {
+        setTextCandidates(candidates);
+        setTextCandidateRange({ pageIndex, bbox, overlayId });
+        setMessage('文章候補を選択してください。');
+      } else {
+        setMessage('文章候補が見つかりません。既存文章を保持しています。');
+      }
+    } catch (error: unknown) {
+      setMessage(readAssemblyApiErrorMessage(error, '文章候補の再取得に失敗しました。'));
+    } finally {
+      setBusy(false);
+    }
   }, [session]);
 
   const uploadImage = useCallback(async (file: File) => {
@@ -189,5 +264,11 @@ export function useAssemblyProcedureDocumentOverlayCommands(
     }
   }, [session]);
 
-  return { createOverlay, chooseTextCandidate, cancelTextCandidates, uploadImage };
+  return {
+    createOverlay,
+    chooseTextCandidate,
+    cancelTextCandidates,
+    refetchTextCandidates,
+    uploadImage
+  };
 }
