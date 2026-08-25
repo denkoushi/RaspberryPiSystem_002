@@ -59,7 +59,9 @@ const selfInspectionMachineBoardSlotConfigSchema = z
     deviceScopeKey: z.string().min(1).max(200).optional(),
     resourceCds: z.array(z.string().trim().min(1).max(100)).min(1).max(32).optional(),
     slideIntervalSeconds: z.number().int().positive().optional(),
+    /** wire contract remains 1–12; the admin UI caps newly saved values at 6 */
     partsPerPage: z.number().int().min(1).max(12).optional(),
+    /** legacy settings remain readable; the admin UI no longer writes this field */
     detailTopN: z.number().int().min(0).max(20).optional(),
     maxAutoMachines: z.number().int().min(1).max(20).optional(),
   })
@@ -232,4 +234,3 @@ export const emergencySchema = z.object({
   enabled: z.boolean().optional(),
   expiresAt: z.coerce.date().optional().nullable(),
 });
-

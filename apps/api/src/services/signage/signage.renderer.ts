@@ -908,7 +908,17 @@ export class SignageRenderer {
     detailTopN: number
   ): Promise<Buffer> {
     const resolved = resolveSelfInspectionMachineBoardConfig(config);
-    const vm = await this.getSelfInspectionMachineBoardRotationViewModel(config, partsPerPage, detailTopN);
+    // The wire value is intentionally bounded at render time as well as at
+    // config parsing: a stale caller must not produce an overfull signage page.
+    const cappedPartsPerPage = Math.min(
+      sanitizeSelfInspectionMachineBoardPartsPerPage(partsPerPage),
+      MAX_SELF_INSPECTION_MACHINE_BOARD_PARTS_PER_PAGE
+    );
+    const vm = await this.getSelfInspectionMachineBoardRotationViewModel(
+      config,
+      cappedPartsPerPage,
+      detailTopN
+    );
 
     if (vm.totalPages < 1) {
       const capNote = buildScheduleRowCapNote({
@@ -944,7 +954,7 @@ export class SignageRenderer {
         String(resolved.maxAutoMachines ?? DEFAULT_SELF_INSPECTION_MACHINE_BOARD_MAX_AUTO_MACHINES)
       );
     }
-    stateKeyParts.push(String(partsPerPage), String(detailTopN));
+    stateKeyParts.push(String(cappedPartsPerPage), String(detailTopN));
     const stateKey = stateKeyParts.join(':');
     const pageIndex = getRotatingSlideIndex(this.selfInspectionMachineBoardSlideState, {
       stateKey,

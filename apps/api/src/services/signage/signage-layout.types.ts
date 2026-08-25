@@ -15,7 +15,7 @@ export type SignageSlotKind =
   | 'kiosk_leader_order_cards'
   /** 配膳 Android 部品棚 9枠（JPEG・OrderPlacementBranchState 集約） */
   | 'mobile_placement_parts_shelf_grid'
-  /** 自主検査 機種別進捗ボード（JPEG・machineName 集約） */
+  /** 自主検査 部品別進捗（JPEG・machineName 集約） */
   | 'self_inspection_machine_board';
 
 /**
@@ -83,7 +83,7 @@ export type SelfInspectionMachineBoardTargetMode =
   | 'auto_from_leaderboard_status';
 
 /**
- * 自主検査 機種別進捗ボード（サイネージ JPEG）
+ * 自主検査 部品別進捗（サイネージ JPEG）
  * manual: machineName は生産日程の機種名（正規化比較）と一致させる。
  * auto: deviceScopeKey + resourceCds で順位ボード相当の母集団から黄（in_progress）機種を選定。
  */
@@ -98,6 +98,7 @@ export interface SelfInspectionMachineBoardSlotConfig {
   resourceCds?: string[];
   slideIntervalSeconds?: number;
   partsPerPage?: number;
+  /** 旧設定互換の読込項目。管理UIの新規保存では使用しない。 */
   detailTopN?: number;
   /** auto 時のみ。連結する機種数上限 */
   maxAutoMachines?: number;
@@ -132,4 +133,3 @@ export interface SignageLayoutConfig {
  * layoutConfigのJSON型（PrismaのJson型として使用）
  */
 export type SignageLayoutConfigJson = SignageLayoutConfig | null;
-

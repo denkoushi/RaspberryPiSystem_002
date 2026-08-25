@@ -2,6 +2,7 @@ import type {
   HeatstripCellTone,
   SelfInspectionMachineBoardPartStatus
 } from '../../part-measurement/self-inspection-machine-board.types.js';
+import type { SelfInspectionMachineBoardOutcomeStatus } from '../../part-measurement/self-inspection-machine-board-outcome.js';
 import {
   SIMB_HEAT_CENTER,
   SIMB_HEAT_EDGE,
@@ -26,12 +27,18 @@ export function heatstripToneColor(tone: HeatstripCellTone): string {
   }
 }
 
-export function statusColor(status: SelfInspectionMachineBoardPartStatus): string {
+export function statusColor(
+  status: SelfInspectionMachineBoardPartStatus | SelfInspectionMachineBoardOutcomeStatus
+): string {
   switch (status) {
+    case 'pass':
     case 'completed':
       return '#22c55e';
+    case 'rejected':
     case 'review_pending':
       return '#ef4444';
+    case 'pending':
+      return '#a855f7';
     case 'in_progress':
       return '#f59e0b';
     case 'not_started':
@@ -40,17 +47,23 @@ export function statusColor(status: SelfInspectionMachineBoardPartStatus): strin
   }
 }
 
-export function statusLabel(status: SelfInspectionMachineBoardPartStatus): string {
+export function statusLabel(
+  status: SelfInspectionMachineBoardPartStatus | SelfInspectionMachineBoardOutcomeStatus
+): string {
   switch (status) {
+    case 'pass':
     case 'completed':
-      return '完了';
+      return '合格';
+    case 'rejected':
+      return '不合格';
     case 'review_pending':
-      return '承認待ち';
+    case 'pending':
+      return '判定待ち';
     case 'in_progress':
-      return '入力中';
+      return '検査中';
     case 'not_started':
     default:
-      return '未開始';
+      return '未検査';
   }
 }
 

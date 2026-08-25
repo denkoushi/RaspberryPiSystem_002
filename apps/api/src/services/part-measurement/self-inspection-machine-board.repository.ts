@@ -1,15 +1,23 @@
-import type { Prisma, SelfInspectionEntrySlotKind, SelfInspectionMode } from '@prisma/client';
+import type {
+  InspectionResult,
+  Prisma,
+  SelfInspectionEntrySlotKind,
+  SelfInspectionMeasurementReviewStatus,
+  SelfInspectionMode,
+} from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { pickSessionForScheduleRow } from './self-inspection.service.js';
 import {
   confirmedEntriesCountSelect,
-  confirmedWhere
+  confirmedWhere,
+  isConfirmed
 } from './self-inspection/entry-persistence-status.js';
 import {
   MAX_DETAIL_MEASUREMENT_POINTS,
   MAX_HEATSTRIP_ENTRY_COLUMNS,
 } from '../signage/self-inspection-machine-board/layout-contracts.js';
+import type { SelfInspectionMachineBoardOutcomeInput } from './self-inspection-machine-board-outcome.js';
 
 export type { SignageMachineBoardScheduleRow, SignageMachineBoardScheduleFetchResult } from '../production-schedule/production-schedule-query.service.js';
 
@@ -51,8 +59,19 @@ export type SelfInspectionMachineBoardSessionDetail = SelfInspectionMachineBoard
     values: Array<{
       templateItemId: string;
       value: Prisma.Decimal | null;
+      judgementResult: InspectionResult | null;
+      reviewStatus: SelfInspectionMeasurementReviewStatus;
+      finalReviewStatus: string | null;
     }>;
   }>;
+};
+
+export type SelfInspectionMachineBoardOutcomeRecord = SelfInspectionMachineBoardOutcomeInput & {
+  scheduleRowId: string;
+  sessionId: string;
+  plannedQuantity: number;
+  expectedEntryCount: number;
+  confirmedEntryCount: number;
 };
 
 export async function fetchSelfInspectionSessionDetailsByScheduleRowIds(
@@ -144,23 +163,41 @@ export async function fetchSelfInspectionSessionDetailsByScheduleRowIds(
             entryId: true,
             templateItemId: true,
             value: true,
+            judgementResult: true,
+            reviewStatus: true,
+            finalReviewStatus: true,
           },
         })
       : [];
 
-  const valuesByEntryId = new Map<string, Array<{ templateItemId: string; value: Prisma.Decimal | null }>>();
+  const valuesByEntryId = new Map<
+    string,
+    Array<{
+      templateItemId: string;
+      value: Prisma.Decimal | null;
+      judgementResult: InspectionResult | null;
+      reviewStatus: SelfInspectionMeasurementReviewStatus;
+      finalReviewStatus: string | null;
+    }>
+  >();
   for (const measurementValue of values) {
     const list = valuesByEntryId.get(measurementValue.entryId);
     if (list) {
       list.push({
         templateItemId: measurementValue.templateItemId,
         value: measurementValue.value,
+        judgementResult: measurementValue.judgementResult,
+        reviewStatus: measurementValue.reviewStatus,
+        finalReviewStatus: measurementValue.finalReviewStatus,
       });
     } else {
       valuesByEntryId.set(measurementValue.entryId, [
         {
           templateItemId: measurementValue.templateItemId,
           value: measurementValue.value,
+          judgementResult: measurementValue.judgementResult,
+          reviewStatus: measurementValue.reviewStatus,
+          finalReviewStatus: measurementValue.finalReviewStatus,
         },
       ]);
     }
@@ -202,3 +239,112 @@ export async function fetchSelfInspectionSessionDetailsByScheduleRowIds(
 
   return byScheduleRowId;
 }
+
+function normalizeOutcomeColumn(value: string | null | undefined): string {
+  return (value ?? '').trim().toUpperCase();
+}
+
+function isPendingOutcomeValue(value: {
+  reviewStatus: SelfInspectionMeasurementReviewStatus;
+  finalReviewStatus: string | null;
+}): boolean {
+  const finalStatus = normalizeOutcomeColumn(value.finalReviewStatus);
+  return finalStatus.length > 0 ? finalStatus === 'PENDING' : value.reviewStatus === 'PENDING';
+}
+
+function isRejectedOutcomeValue(value: {
+  finalReviewStatus: string | null;
+}): boolean {
+  return ['REJECTED', 'FAIL', 'NG'].includes(normalizeOutcomeColumn(value.finalReviewStatus));
+}
+
+/**
+ * ボードのカード判定に必要な列だけを取得する軽量 repository。
+ *
+ * セッションの候補が複数ある場合は、通常の詳細取得と同じ
+ * `pickSessionForScheduleRow` を通す。全 entry の存在は仕掛中判定へ使う一方、
+ * 進捗・判定列は CONFIRMED entry だけを集計する。
+ */
+export async function fetchSelfInspectionMachineBoardOutcomeRecordsByScheduleRowIds(
+  scheduleRowIds: string[]
+): Promise<Map<string, SelfInspectionMachineBoardOutcomeRecord>> {
+  const uniqueIds = [...new Set(scheduleRowIds.filter((id) => id.length > 0))];
+  if (uniqueIds.length === 0) {
+    return new Map();
+  }
+
+  const sessions = await prisma.selfInspectionSession.findMany({
+    where: { scheduleRowId: { in: uniqueIds }, invalidatedAt: null },
+    select: {
+      id: true,
+      scheduleRowId: true,
+      plannedQuantity: true,
+      expectedEntryCount: true,
+      completedAt: true,
+      updatedAt: true,
+      entries: {
+        select: {
+          persistenceStatus: true,
+          values: {
+            select: {
+              judgementResult: true,
+              reviewStatus: true,
+              finalReviewStatus: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const sessionsByScheduleRowId = new Map<string, typeof sessions>();
+  for (const session of sessions) {
+    if (!session.scheduleRowId) {
+      continue;
+    }
+    const group = sessionsByScheduleRowId.get(session.scheduleRowId) ?? [];
+    group.push(session);
+    sessionsByScheduleRowId.set(session.scheduleRowId, group);
+  }
+
+  const result = new Map<string, SelfInspectionMachineBoardOutcomeRecord>();
+  for (const [scheduleRowId, candidates] of sessionsByScheduleRowId) {
+    const session = pickSessionForScheduleRow(candidates, scheduleRowId);
+    if (!session) {
+      continue;
+    }
+    const hasAnyLotEntry = session.entries.length > 0;
+    const confirmedEntries = session.entries.filter((entry) =>
+      isConfirmed(entry.persistenceStatus)
+    );
+    const values = confirmedEntries.flatMap((entry) => entry.values);
+    const pendingReviewCount = values.filter(isPendingOutcomeValue).length;
+    const directFailCount = values.filter((value) => value.judgementResult === 'FAIL').length;
+    const rejectedCount = values.filter(isRejectedOutcomeValue).length;
+    result.set(scheduleRowId, {
+      scheduleRowId,
+      sessionId: session.id,
+      plannedQuantity: session.plannedQuantity,
+      expectedEntryCount: session.expectedEntryCount,
+      confirmedEntryCount: confirmedEntries.length,
+      completedAt: session.completedAt,
+      hasAnyLotEntry,
+      pendingReviewCount,
+      directFailCount,
+      rejectedCount,
+      judgementResults: values.map((value) => value.judgementResult),
+      reviewStatuses: values.map((value) => value.reviewStatus),
+      finalReviewStatuses: values.map((value) => value.finalReviewStatus),
+      measurementOutcomes: values.map((value) => ({
+        judgementResult: value.judgementResult,
+        reviewStatus: value.reviewStatus,
+        finalReviewStatus: value.finalReviewStatus,
+      })),
+    });
+  }
+
+  return result;
+}
+
+export const fetchSelfInspectionMachineBoardOutcomeInputsByScheduleRowIds =
+  fetchSelfInspectionMachineBoardOutcomeRecordsByScheduleRowIds;

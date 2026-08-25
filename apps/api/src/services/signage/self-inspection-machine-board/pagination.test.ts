@@ -7,18 +7,19 @@ import {
   sanitizeSelfInspectionMachineBoardPartsPerPage,
   summaryPartsPageCount,
 } from './pagination.js';
+import { buildSelfInspectionMachineBoardSummarySvg } from './self-inspection-machine-board-svg.js';
 
 describe('self-inspection-machine-board pagination', () => {
   it('sanitizes partsPerPage and detailTopN', () => {
-    expect(sanitizeSelfInspectionMachineBoardPartsPerPage(Number.NaN)).toBe(12);
+    expect(sanitizeSelfInspectionMachineBoardPartsPerPage(Number.NaN)).toBe(6);
     expect(sanitizeSelfInspectionMachineBoardPartsPerPage(0)).toBe(1);
-    expect(sanitizeSelfInspectionMachineBoardPartsPerPage(999)).toBe(12);
+    expect(sanitizeSelfInspectionMachineBoardPartsPerPage(999)).toBe(6);
     expect(sanitizeSelfInspectionMachineBoardDetailTopN(Number.NaN)).toBe(5);
     expect(sanitizeSelfInspectionMachineBoardDetailTopN(-1)).toBe(0);
     expect(sanitizeSelfInspectionMachineBoardDetailTopN(99)).toBe(20);
   });
 
-  it('builds flat summary + detail pages', () => {
+  it('builds flat card pages without detail heatstrip pages', () => {
     const parts = Array.from({ length: 5 }, (_, index) => ({
       scheduleRowId: `row-${index}`,
       fseiban: `S-${index % 2}`,
@@ -56,10 +57,86 @@ describe('self-inspection-machine-board pagination', () => {
     });
 
     expect(summaryPartsPageCount(parts.length, 2)).toBe(3);
-    expect(pages).toHaveLength(4);
+    expect(pages).toHaveLength(3);
     expect(pages[0]?.kind).toBe('summary');
-    expect(pages[3]?.kind).toBe('detail');
-    expect(pages[3]?.pageCount).toBe(4);
+    expect(pages.every((page) => page.kind === 'summary')).toBe(true);
+    expect(pages[2]?.pageCount).toBe(3);
+  });
+
+  it('uses the larger card in each row and keeps oversized resources in continuation cards', () => {
+    const resources = Array.from({ length: 40 }, (_, index) => ({
+      resourceCd: `R${index + 1}`,
+      confirmedEntryCount: 1,
+      completedEntryCount: 1,
+      requiredEntryCount: 2,
+      progressLabel: '1/2',
+      status: 'in_progress' as const,
+      outcome: 'in_progress' as const,
+      scheduleRowIds: ['row-tall'],
+    }));
+    const tall = {
+      scheduleRowId: 'row-tall',
+      fseiban: 'S-TALL',
+      productNo: 'P-TALL',
+      fhincd: 'H-TALL',
+      fhinmei: 'Tall',
+      status: 'in_progress' as const,
+      completedEntryCount: 40,
+      requiredEntryCount: 80,
+      progressLabel: '40/80',
+      dueDate: null,
+      isScheduled: false,
+      resources,
+      resourceCds: resources.map((resource) => resource.resourceCd),
+    };
+    const short = {
+      ...tall,
+      scheduleRowId: 'row-short',
+      fseiban: 'S-SHORT',
+      productNo: 'P-SHORT',
+      fhincd: 'H-SHORT',
+      fhinmei: 'Short',
+      completedEntryCount: 1,
+      requiredEntryCount: 1,
+      progressLabel: '1/1',
+      resources: resources.slice(0, 1),
+      resourceCds: ['R1'],
+    };
+
+    const pages = buildFlatMachineBoardPages({
+      machineName: 'L300KP',
+      updatedAt: new Date('2026-06-08T00:00:00Z'),
+      orderedParts: [tall, short],
+      detailPages: [],
+      partsPerPage: 6,
+    });
+    const pageParts = pages.flatMap((page) =>
+      page.kind === 'summary'
+        ? [...page.scheduled, ...page.unscheduled].flatMap((group) => group.parts)
+        : []
+    );
+    expect(pages.length).toBeGreaterThan(1);
+    const tallParts = pageParts.filter((part) => part.fseiban === 'S-TALL');
+    expect(tallParts.flatMap((part) => part.resources ?? [])).toHaveLength(40);
+    expect(tallParts.map((part) => [part.continuationIndex, part.continuationCount, part.isContinuation])).toEqual([
+      [1, 2, false],
+      [2, 2, true],
+    ]);
+    const continuationPage = pages.find(
+      (page) =>
+        page.kind === 'summary' &&
+        [...page.scheduled, ...page.unscheduled].some((group) =>
+          group.parts.some((part) => part.isContinuation)
+        )
+    );
+    expect(continuationPage).toBeDefined();
+    const continuationSvg = buildSelfInspectionMachineBoardSummarySvg(
+      continuationPage!,
+      1920,
+      1080
+    );
+    expect(continuationSvg).toContain('続き 2/2');
+    expect(pageParts.some((part) => part.fseiban === 'S-SHORT')).toBe(true);
   });
 
   it('groups page parts by seiban and scheduled flag', () => {

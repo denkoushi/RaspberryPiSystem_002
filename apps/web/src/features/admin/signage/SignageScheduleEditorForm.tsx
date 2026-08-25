@@ -1,6 +1,7 @@
 import { SignageTargetClientsField } from '../../../components/signage/SignageTargetClientsField';
 import { Button } from '../../../components/ui/Button';
 
+import { SelfInspectionMachineBoardFields } from './SelfInspectionMachineBoardFields';
 import { DAYS_OF_WEEK, parseResourceCdListInput } from './signageScheduleDisplay';
 import {
   VisualizationDashboardGroupedSelect,
@@ -63,8 +64,6 @@ export function SignageScheduleEditorForm({ editor }: SignageScheduleEditorFormP
     setFullSelfInspectionSlideIntervalStr,
     fullSelfInspectionPartsPerPageStr,
     setFullSelfInspectionPartsPerPageStr,
-    fullSelfInspectionDetailTopNStr,
-    setFullSelfInspectionDetailTopNStr,
     leftSlotKind,
     setLeftSlotKind,
     leftPdfId,
@@ -160,7 +159,7 @@ export function SignageScheduleEditorForm({ editor }: SignageScheduleEditorFormP
                   <option value="kiosk_progress_overview">キオスク進捗一覧（JPEG）</option>
                   <option value="kiosk_leader_order_cards">キオスク順位ボード・資源CDカード（JPEG）</option>
                   <option value="mobile_placement_parts_shelf_grid">配膳 Android 部品棚 9枠（JPEG）</option>
-                  <option value="self_inspection_machine_board">自主検査 機種別進捗ボード（JPEG）</option>
+                  <option value="self_inspection_machine_board">自主検査 部品別進捗（JPEG）</option>
                 </select>
               </div>
               {fullSlotKind === 'pdf' && (
@@ -336,138 +335,22 @@ export function SignageScheduleEditorForm({ editor }: SignageScheduleEditorFormP
                 </div>
               )}
               {fullSlotKind === 'self_inspection_machine_board' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700">
-                      対象選定モード targetMode
-                    </label>
-                    <select
-                      value={fullSelfInspectionTargetMode}
-                      onChange={(e) =>
-                        setFullSelfInspectionTargetMode(
-                          e.target.value as
-                            | 'manual_machine_name'
-                            | 'auto_from_leaderboard_status'
-                        )
-                      }
-                      className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-                    >
-                      <option value="manual_machine_name">機種名を手入力</option>
-                      <option value="auto_from_leaderboard_status">
-                        順位ボードの入力中機種を自動選定
-                      </option>
-                    </select>
-                  </div>
-                  {fullSelfInspectionTargetMode === 'manual_machine_name' ? (
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700">
-                        機種名 machineName（必須・生産日程と正規化比較）
-                      </label>
-                      <input
-                        type="text"
-                        value={fullSelfInspectionMachineName}
-                        onChange={(e) => setFullSelfInspectionMachineName(e.target.value)}
-                        placeholder="例: L300KP"
-                        className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-                      />
-                      <p className="mt-1 text-xs text-slate-600">
-                        未入力では保存できません（必須）。
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700">
-                          resourceCds（必須・順位ボードと同じ資源CD）
-                        </label>
-                        <textarea
-                          value={fullSelfInspectionResourceCdsText}
-                          onChange={(e) => setFullSelfInspectionResourceCdsText(e.target.value)}
-                          placeholder={'例:\nRD01\nRD02'}
-                          rows={4}
-                          className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 font-mono text-sm font-semibold text-slate-900"
-                        />
-                        <p className="mt-1 text-xs text-slate-600">
-                          現在の入力: {parseResourceCdListInput(fullSelfInspectionResourceCdsText).length}{' '}
-                          件。黄（入力中）を持つ機種だけを自動表示します。
-                        </p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700">
-                          自動選定機種数上限 maxAutoMachines（任意・既定5・最大20）
-                        </label>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={fullSelfInspectionMaxAutoMachinesStr}
-                          onChange={(e) => setFullSelfInspectionMaxAutoMachinesStr(e.target.value)}
-                          placeholder="5"
-                          className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-                        />
-                      </div>
-                    </>
-                  )}
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700">
-                      deviceScopeKey（キオスク端末と同じスコープ文字列・
-                      {fullSelfInspectionTargetMode === 'auto_from_leaderboard_status'
-                        ? '必須'
-                        : '推奨'}
-                      ）
-                    </label>
-                    <input
-                      type="text"
-                      value={fullSelfInspectionDeviceScopeKey}
-                      onChange={(e) => setFullSelfInspectionDeviceScopeKey(e.target.value)}
-                      placeholder="例: 端末設定のスコープキー"
-                      className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-                    />
-                    <p className="mt-1 text-xs text-slate-600">
-                      {fullSelfInspectionTargetMode === 'auto_from_leaderboard_status'
-                        ? '自動選定の母集団（拠点・資源 policy）解決に必須です。'
-                        : '拠点別の自主検査テンプレート/資源 policy 解決に使用します。未設定時はグローバル fallback です。'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700">
-                      ページ表示秒（任意・既定30）
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={fullSelfInspectionSlideIntervalStr}
-                      onChange={(e) => setFullSelfInspectionSlideIntervalStr(e.target.value)}
-                      placeholder="30"
-                      className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700">
-                      1ページの部品数（任意・既定12・最大12・1920x1080 1画面分）
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={fullSelfInspectionPartsPerPageStr}
-                      onChange={(e) => setFullSelfInspectionPartsPerPageStr(e.target.value)}
-                      placeholder="12"
-                      className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700">
-                      詳細ヒートストリップ部品数（任意・既定5・最大20）
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={fullSelfInspectionDetailTopNStr}
-                      onChange={(e) => setFullSelfInspectionDetailTopNStr(e.target.value)}
-                      placeholder="5"
-                      className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-                    />
-                  </div>
-                </div>
+                <SelfInspectionMachineBoardFields
+                  targetMode={fullSelfInspectionTargetMode}
+                  setTargetMode={setFullSelfInspectionTargetMode}
+                  machineName={fullSelfInspectionMachineName}
+                  setMachineName={setFullSelfInspectionMachineName}
+                  deviceScopeKey={fullSelfInspectionDeviceScopeKey}
+                  setDeviceScopeKey={setFullSelfInspectionDeviceScopeKey}
+                  resourceCdsText={fullSelfInspectionResourceCdsText}
+                  setResourceCdsText={setFullSelfInspectionResourceCdsText}
+                  maxAutoMachinesStr={fullSelfInspectionMaxAutoMachinesStr}
+                  setMaxAutoMachinesStr={setFullSelfInspectionMaxAutoMachinesStr}
+                  slideIntervalStr={fullSelfInspectionSlideIntervalStr}
+                  setSlideIntervalStr={setFullSelfInspectionSlideIntervalStr}
+                  partsPerPageStr={fullSelfInspectionPartsPerPageStr}
+                  setPartsPerPageStr={setFullSelfInspectionPartsPerPageStr}
+                />
               )}
             </>
           ) : (
