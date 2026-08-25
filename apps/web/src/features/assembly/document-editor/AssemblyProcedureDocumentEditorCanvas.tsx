@@ -115,9 +115,11 @@ export function AssemblyProcedureDocumentEditorCanvas({
   crop,
   elements,
   selectionMode,
+  editable,
   selectedOverlayId,
   onSelectOverlay,
   onNudgeOverlay,
+  onUpdateOverlayBBox,
   onRangeSelected,
   assets,
   className
@@ -127,9 +129,11 @@ export function AssemblyProcedureDocumentEditorCanvas({
   crop?: AssemblyProcedureCropRect | null;
   elements: AssemblyProcedureOverlayElement[];
   selectionMode: boolean;
+  editable: boolean;
   selectedOverlayId: string | null;
   onSelectOverlay: (id: string) => void;
   onNudgeOverlay: (id: string, dxRatio: number, dyRatio: number) => void;
+  onUpdateOverlayBBox: (id: string, bbox: AssemblyProcedureOverlayBBox) => void;
   onRangeSelected: (bbox: AssemblyProcedureOverlayBBox) => void;
   assets?: Record<string, AssemblyProcedureOverlayAssetDto>;
   className?: string;
@@ -143,6 +147,7 @@ export function AssemblyProcedureDocumentEditorCanvas({
         interactive={!selectionMode}
         onSelect={onSelectOverlay}
         onNudge={onNudgeOverlay}
+        onUpdateBBox={editable ? onUpdateOverlayBBox : undefined}
         assets={assets}
       />
       <OverlayRangeSelectionSurface

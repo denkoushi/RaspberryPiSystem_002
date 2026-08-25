@@ -5,6 +5,7 @@ import { AssemblyProcedureDocumentEditorProvider } from './AssemblyProcedureDocu
 import { AssemblyProcedureDocumentEditorScreen } from './AssemblyProcedureDocumentEditorScreen';
 
 import type { AssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
+import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
 vi.mock('./AssemblyProcedureDocumentEditorCanvas', () => ({
   AssemblyProcedureDocumentEditorCanvas: () => <div aria-label="手順書キャンバス" data-testid="editor-canvas" />
@@ -13,7 +14,19 @@ vi.mock('./AssemblyProcedureDocumentEditorPageList', () => ({
   AssemblyProcedureDocumentEditorPageList: () => <aside aria-label="手順書ページ一覧" data-testid="editor-page-list" />
 }));
 vi.mock('./AssemblyProcedureDocumentEditorInspector', () => ({
-  AssemblyProcedureDocumentEditorInspector: () => <aside aria-label="オーバーレイ編集" data-testid="editor-inspector" />
+  AssemblyProcedureDocumentEditorInspector: ({
+    element,
+    onRefetchTextCandidates
+  }: {
+    element: AssemblyProcedureOverlayElement | null;
+    onRefetchTextCandidates: () => void;
+  }) => (
+    <aside aria-label="オーバーレイ編集" data-testid="editor-inspector">
+      {element?.kind === 'TEXT' ? (
+        <button type="button" onClick={onRefetchTextCandidates}>この範囲で候補を再取得</button>
+      ) : null}
+    </aside>
+  )
 }));
 
 const editorDocument = {
@@ -76,10 +89,12 @@ function makeController(
     textCandidates: [],
     chooseTextCandidate: vi.fn(),
     cancelTextCandidates: vi.fn(),
+    refetchTextCandidates: vi.fn(async () => undefined),
     uploadImage: vi.fn(async () => undefined),
     bringForward: vi.fn(),
     sendBackward: vi.fn(),
     nudgeElement: vi.fn(),
+    updateElementBBox: vi.fn(),
     confirmNavigation: vi.fn(() => true),
     recoveryPending: null,
     restoreRecovery: vi.fn(),
@@ -134,5 +149,23 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '公開' })).toBeDisabled();
     expect(screen.getByRole('region', { name: '手順書キャンバス' })).toBeInTheDocument();
+  });
+
+  it('routes explicit OCR candidate re-fetch from the selected text inspector', () => {
+    const refetchTextCandidates = vi.fn(async () => undefined);
+    renderScreen(makeController({
+      selectedElement: {
+        id: 'text-1',
+        pageIndex: 0,
+        bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 },
+        zIndex: 0,
+        kind: 'TEXT',
+        text: '既存文章'
+      },
+      refetchTextCandidates
+    }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'この範囲で候補を再取得' }));
+    expect(refetchTextCandidates).toHaveBeenCalledTimes(1);
   });
 });

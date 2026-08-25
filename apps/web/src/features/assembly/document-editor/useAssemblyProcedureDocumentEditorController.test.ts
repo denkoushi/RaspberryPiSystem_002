@@ -102,6 +102,84 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.elements.every((element) => element.kind !== 'TEXT' || element.mask?.color === '#ffffff')).toBe(true);
   });
 
+  it('re-fetches candidates for the selected text without changing its edited bounds or duplicating it', async () => {
+    const source = makeDocument();
+    const hook = renderEditor(source);
+    await authenticate(hook.result);
+
+    const createdCandidate = {
+      text: '初回候補',
+      confidence: 0.98,
+      bounds: { ...range, xRatio: 0.2 },
+      pageIndex: 0,
+      source: 'coordinate-ocr' as const
+    };
+    apiMocks.findTextCandidates.mockResolvedValueOnce([createdCandidate]);
+    act(() => hook.result.current.handleRangeSelected(range));
+    await act(async () => {
+      await hook.result.current.createOverlay('TEXT');
+    });
+    act(() => hook.result.current.chooseTextCandidate(createdCandidate));
+
+    const selected = hook.result.current.selectedElement;
+    expect(selected).toMatchObject({ kind: 'TEXT', text: '初回候補' });
+    const editedBBox = { xRatio: 0.28, yRatio: 0.31, widthRatio: 0.42, heightRatio: 0.16 };
+    act(() => hook.result.current.updateElementBBox(selected!.id, editedBBox));
+    act(() => hook.result.current.updateElement({
+      ...hook.result.current.selectedElement!,
+      kind: 'TEXT',
+      text: '手修正済み'
+    }));
+    expect(apiMocks.findTextCandidates).toHaveBeenCalledTimes(1);
+
+    const refetchedCandidate = {
+      text: '再取得候補',
+      confidence: 0.91,
+      bounds: { ...editedBBox, xRatio: 0.05, widthRatio: 0.2 },
+      pageIndex: 0,
+      source: 'coordinate-ocr' as const
+    };
+    apiMocks.findTextCandidates.mockResolvedValueOnce([refetchedCandidate]);
+    await act(async () => {
+      await hook.result.current.refetchTextCandidates();
+    });
+    expect(apiMocks.findTextCandidates).toHaveBeenCalledTimes(2);
+    expect(apiMocks.findTextCandidates).toHaveBeenLastCalledWith({
+      id: 'source-draft',
+      accessPassword: '1234',
+      pageIndex: 0,
+      bbox: editedBBox
+    });
+    expect(hook.result.current.textCandidates).toHaveLength(1);
+
+    act(() => hook.result.current.chooseTextCandidate(refetchedCandidate));
+    expect(hook.result.current.elements).toHaveLength(1);
+    expect(hook.result.current.selectedElement).toMatchObject({
+      id: selected!.id,
+      kind: 'TEXT',
+      text: '再取得候補',
+      bbox: editedBBox
+    });
+
+    const manualText = hook.result.current.selectedElement!.kind === 'TEXT'
+      ? hook.result.current.selectedElement.text
+      : '';
+    apiMocks.findTextCandidates.mockResolvedValueOnce([refetchedCandidate]);
+    await act(async () => {
+      await hook.result.current.refetchTextCandidates();
+    });
+    act(() => hook.result.current.chooseTextCandidate(null));
+    expect(hook.result.current.selectedElement).toMatchObject({ text: manualText, bbox: editedBBox });
+
+    apiMocks.findTextCandidates.mockResolvedValueOnce([refetchedCandidate]);
+    await act(async () => {
+      await hook.result.current.refetchTextCandidates();
+    });
+    act(() => hook.result.current.cancelTextCandidates());
+    expect(hook.result.current.selectedElement).toMatchObject({ text: manualText, bbox: editedBBox });
+    expect(hook.result.current.elements).toHaveLength(1);
+  });
+
   it('creates an image from an ROI and replaces its asset through upload', async () => {
     const source = makeDocument();
     const hook = renderEditor(source);

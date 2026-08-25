@@ -24,7 +24,9 @@ export function AssemblyProcedureDocumentEditorInspector({
   onBringForward,
   onSendBackward,
   onUploadImage,
-  readOnly = false
+  onRefetchTextCandidates,
+  readOnly = false,
+  busy = false
 }: {
   element: AssemblyProcedureOverlayElement | null;
   onUpdate: (element: AssemblyProcedureOverlayElement) => void;
@@ -32,7 +34,9 @@ export function AssemblyProcedureDocumentEditorInspector({
   onBringForward: (id: string) => void;
   onSendBackward: (id: string) => void;
   onUploadImage: (file: File) => void;
+  onRefetchTextCandidates: () => void;
   readOnly?: boolean;
+  busy?: boolean;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   if (!element) {
@@ -70,6 +74,15 @@ export function AssemblyProcedureDocumentEditorInspector({
             onChange={(event) => patch({ text: event.target.value })}
             className="min-h-24 rounded border border-white/20 bg-slate-950 px-2 py-2 text-sm text-white"
           />
+          <Button
+            type="button"
+            variant="ghostOnDark"
+            className="min-h-11 !px-2 text-xs"
+            disabled={busy}
+            onClick={onRefetchTextCandidates}
+          >
+            この範囲で候補を再取得
+          </Button>
           <div className="grid grid-cols-2 gap-1.5">
             <label className="grid gap-0.5 text-xs font-semibold">
               文字サイズ比率
