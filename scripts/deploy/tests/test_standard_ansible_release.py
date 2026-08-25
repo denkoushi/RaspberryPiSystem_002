@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[3]
 DEPLOY = ROOT / "scripts/deploy"
 SCRIPT = DEPLOY / "standard-ansible-release.py"
 sys.path.insert(0, str(DEPLOY))
+import controller_gh_verifier
 SPEC = importlib.util.spec_from_file_location("standard_ansible_release", SCRIPT)
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
@@ -705,6 +706,11 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             verifier_directories.append(verifier_directory)
             if command[1:] == ["--version"]:
                 return completed(command, "gh version 2.96.0 (test)\n")
+            if command[1:] == ["attestation", "verify", "--help"]:
+                return completed(
+                    command,
+                    "\n".join(controller_gh_verifier.REQUIRED_ATTESTATION_OPTIONS),
+                )
             return completed(
                 command,
                 json.dumps(
@@ -726,6 +732,10 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         with mock.patch.dict(MODULE.os.environ, {"GITHUB_TOKEN": "must-not-leak"}), mock.patch.object(
             MODULE.shutil, "which", return_value="/usr/bin/gh"
         ), mock.patch.object(
+            controller_gh_verifier.platform, "system", return_value="Darwin"
+        ), mock.patch.object(
+            controller_gh_verifier.platform, "machine", return_value="arm64"
+        ), mock.patch.object(
             MODULE, "run", side_effect=fake_run
         ), mock.patch.object(
             MODULE, "validate_adoption_predicate", side_effect=validate
@@ -738,7 +748,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             )
 
         self.assertEqual(validator.call_count, 2)
-        self.assertEqual(len(verifier_environments), 2)
+        self.assertEqual(len(verifier_environments), 3)
         for environment in verifier_environments:
             self.assertEqual(
                 environment["GH_TOKEN"], MODULE.PUBLIC_ATTESTATION_TOKEN

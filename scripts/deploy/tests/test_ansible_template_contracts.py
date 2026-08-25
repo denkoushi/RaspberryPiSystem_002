@@ -216,6 +216,11 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             artifact_defaults,
         )
         self.assertIn(
+            'pi5_artifact_gh_macos_arm64_sha256: '
+            '"f23a0c37d963aacc3bed703ccbd59b41c5ca22101fab7f00eb2b7cad23aba463"',
+            artifact_defaults,
+        )
+        self.assertIn(
             "pi5_artifact_promotion_enabled: true",
             PRIMARY_ARTIFACT_PROMOTION.read_text(encoding="utf-8"),
         )
