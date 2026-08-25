@@ -32,12 +32,14 @@ from rolling_release.attestation_environment import (
     PUBLIC_ATTESTATION_TOKEN,
     isolated_attestation_environment,
 )
+from controller_gh_verifier import resolve_attestation_verifier
 
 ROOT = Path(__file__).resolve().parents[2]
 ANSIBLE = ROOT / "infrastructure/ansible"
 PLAYBOOK = ANSIBLE / "playbooks/deploy-release-standard.yml"
 REMOTE_ROOT = Path("/opt/RaspberryPiSystem_002")
 DEFAULT_INVENTORY = "infrastructure/ansible/inventory.yml"
+RELEASE_ARTIFACTS_CONFIG = ANSIBLE / "group_vars/server/release-artifacts.yml"
 UNIT_PREFIX = "raspi-standard-release-"
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 RUN_ID = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
@@ -649,35 +651,53 @@ def verify_component_attestation(
     predicate_type: str | None = None,
     adoption_workflow: tuple[str, int, int] | None = None,
 ) -> None:
-    gh = shutil.which("gh")
-    if gh is None:
-        raise RuntimeError("GitHub attestation verifier is unavailable")
     with isolated_attestation_environment() as isolated:
         environment = isolated.values
-        version = run([gh, "--version"], env=environment)
-        if not version.stdout.startswith("gh version 2.96.0 "):
-            raise RuntimeError("GitHub attestation verifier is not the pinned 2.96.0 release")
-        command = [
-            gh,
-            "attestation",
-            "verify",
-            f"oci://{exact_reference}",
-            "--bundle-from-oci",
-            "--repo",
-            "denkoushi/RaspberryPiSystem_002",
-            "--source-digest",
-            source_sha,
-            "--source-ref",
-            "refs/heads/main",
-            "--deny-self-hosted-runners",
-        ]
-        if predicate_type is not None:
-            command.extend(["--predicate-type", predicate_type])
-        if adoption_workflow is None:
-            run(command, env=environment)
-            return
-        command.extend(["--format", "json"])
-        verified = run(command, env=environment)
+        with resolve_attestation_verifier(
+            environment,
+            RELEASE_ARTIFACTS_CONFIG,
+            runner=run,
+            which=shutil.which,
+        ) as gh:
+            _verify_component_attestation_command(
+                gh,
+                exact_reference,
+                source_sha,
+                predicate_type,
+                adoption_workflow,
+                environment,
+            )
+
+
+def _verify_component_attestation_command(
+    gh: str,
+    exact_reference: str,
+    source_sha: str,
+    predicate_type: str | None,
+    adoption_workflow: tuple[str, int, int] | None,
+    environment: dict[str, str],
+) -> None:
+    command = [
+        gh,
+        "attestation",
+        "verify",
+        f"oci://{exact_reference}",
+        "--bundle-from-oci",
+        "--repo",
+        "denkoushi/RaspberryPiSystem_002",
+        "--source-digest",
+        source_sha,
+        "--source-ref",
+        "refs/heads/main",
+        "--deny-self-hosted-runners",
+    ]
+    if predicate_type is not None:
+        command.extend(["--predicate-type", predicate_type])
+    if adoption_workflow is None:
+        run(command, env=environment)
+        return
+    command.extend(["--format", "json"])
+    verified = run(command, env=environment)
     try:
         values = json.loads(verified.stdout)
         predicates = [

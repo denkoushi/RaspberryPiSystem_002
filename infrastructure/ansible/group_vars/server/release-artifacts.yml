@@ -8,6 +8,7 @@ pi5_artifact_ghcr_username: "denkoushi"
 # production verifier contract does not depend on the distro package version.
 pi5_artifact_gh_version: "2.96.0"
 pi5_artifact_gh_arm64_sha256: "334dd9c6704fc1656a48e475c5a3a9aa32bbadb87fa1777513bc626af4a99e89"
+pi5_artifact_gh_macos_arm64_sha256: "f23a0c37d963aacc3bed703ccbd59b41c5ca22101fab7f00eb2b7cad23aba463"
 # Optional for a private package. Public OCI pulls and bundle verification do
 # not require a real GitHub credential.
 pi5_artifact_ghcr_token: "{{ vault_pi5_artifact_ghcr_token | default('') }}"
