@@ -9,7 +9,7 @@ describe('self-inspection-machine-board SVG', () => {
       {
         kind: 'summary',
         machineName: 'L300KP',
-        updatedAt: new Date('2026-06-09T01:02:00.000Z'),
+        updatedAt: new Date(2026, 5, 9, 10, 2, 0),
         scheduled: [
           {
             fseiban: 'S-1',
