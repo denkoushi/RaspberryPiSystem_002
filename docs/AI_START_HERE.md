@@ -14,20 +14,16 @@ This is a stable routing map for AI agents. It does not duplicate active-task st
 
 ## Read Only What The Task Needs
 
-After `AGENTS.md`, read the three core rules:
-
-1. `.cursor/rules/00-core-safety.mdc`
-2. `.cursor/rules/01-core-docs-and-knowledge.mdc`
-3. `.cursor/rules/02-core-architecture.mdc`
-
-Then select only the relevant route:
+After `AGENTS.md`, read `.cursor/rules/00-core-safety.mdc`. Read other rules
+only when the task matches their route:
 
 | Task | Rule and current source |
 | --- | --- |
 | Code, tests, or CI | `.cursor/rules/10-quality-ci-and-tests.mdc`; affected workspace documentation |
 | Debugging | `.cursor/rules/11-debugging-playbook.mdc`; related KB and logs |
 | Commit, push, PR, or merge | `.cursor/rules/20-git-workflow.mdc`; only the stage the user requested |
-| Documentation | `.cursor/rules/30-docs-maintenance.mdc`; `docs/INDEX.md` |
+| Documentation | `.cursor/rules/01-core-docs-and-knowledge.mdc`; `.cursor/rules/30-docs-maintenance.mdc`; `docs/INDEX.md` |
+| Public contract, module boundary, or large refactor | `.cursor/rules/02-core-architecture.mdc` |
 | Frontend or UI | `.cursor/rules/33-frontend-ui-quality.mdc` |
 | Production deploy or recovery | `docs/guides/deployment.md`; `docs/runbooks/deploy-status-recovery.md` |
 | Codex/Cursor agmsg | `docs/guides/agmsg-codex-cursor-collaboration.md` |
