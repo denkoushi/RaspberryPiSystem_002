@@ -357,6 +357,13 @@ class StagedCiWorkflowTests(unittest.TestCase):
 
         self.assertIn("git diff --exit-code", compatibility)
         self.assertIn("3464256da11ee77bebfceb4fafcff4524f5ac8ca", compatibility)
+        source_proof = compatibility.split(
+            "Prove the adopted torque-agent source closure is unchanged", 1
+        )[1].split("Setup pnpm workspace", 1)[0]
+        self.assertIn("clients/torque-agent", source_proof)
+        self.assertIn("infrastructure/docker/Dockerfile.torque-agent", source_proof)
+        self.assertNotIn("apps/api/src/routes/torque-training", source_proof)
+        self.assertNotIn("apps/api/src/services/torque-training", source_proof)
         self.assertIn("test_global_ownership.py", compatibility)
         self.assertIn("torqueWrenchConnectionTransport.test.ts", compatibility)
         self.assertIn("torque-wrenches.integration.test.ts", compatibility)
