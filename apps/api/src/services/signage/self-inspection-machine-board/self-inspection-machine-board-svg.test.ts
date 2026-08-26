@@ -36,7 +36,7 @@ function makeSummaryPage(resources: DisplayResource[]): SelfInspectionMachineBoa
   return {
     kind: 'summary',
     machineName: 'L300KP',
-    updatedAt: new Date(2026, 5, 9, 10, 2, 0),
+    updatedAt: new Date('2026-06-09T01:02:00.000Z'),
     scheduled: [
       {
         fseiban: 'S-1',
@@ -77,7 +77,7 @@ describe('self-inspection-machine-board SVG', () => {
       {
         kind: 'summary',
         machineName: 'L300KP',
-        updatedAt: new Date(2026, 5, 9, 10, 2, 0),
+        updatedAt: new Date('2026-06-09T01:02:00.000Z'),
         scheduled: [
           {
             fseiban: 'S-1',
@@ -140,15 +140,15 @@ describe('self-inspection-machine-board SVG', () => {
     expect(svg).toContain('font-size="16"');
 
     const fseibanX = Number(
-      svg.match(/<text x="([\d.]+)" y="150" fill="#ffffff" font-size="36"[^>]*>S-1/)?.[1]
+      svg.match(/<text x="([\d.]+)" y="136" fill="#ffffff" font-size="36"[^>]*>S-1/)?.[1]
     );
     const machineX = Number(
-      svg.match(/<text x="([\d.]+)" y="150" fill="#ffffff" font-size="16"[^>]*>L300KP/)?.[1]
+      svg.match(/<text x="([\d.]+)" y="136" fill="#ffffff" font-size="16"[^>]*>L300KP/)?.[1]
     );
     const dateX = Number(
-      svg.match(/<text x="([\d.]+)" y="150" fill="#ffffff" font-size="27"[^>]*>2026\/06\/09 10:02/)?.[1]
+      svg.match(/<text x="([\d.]+)" y="136" fill="#ffffff" font-size="27"[^>]*>2026\/06\/09 10:02/)?.[1]
     );
-    const badgeX = Number(svg.match(/<rect x="([\d.]+)" y="112" width="112" height="32"/)?.[1]);
+    const badgeX = Number(svg.match(/<rect x="([\d.]+)" y="120" width="112" height="32"/)?.[1]);
     const progressBar = svg.match(
       /<rect x="([\d.]+)" y="[\d.]+" width="([\d.]+)" height="[\d.]+" rx="[\d.]+" fill="#1e293b" \/>/
     );
@@ -156,6 +156,103 @@ describe('self-inspection-machine-board SVG', () => {
     expect(dateX).toBeLessThan(badgeX);
     expect(Number(progressBar?.[1])).toBeGreaterThan(425);
     expect(Number(progressBar?.[2])).toBeCloseTo(432 * 0.7, 0);
+
+    expect(svg).toContain(
+      'font-size="36" font-family="sans-serif" font-weight="700" dominant-baseline="middle">S-1'
+    );
+    expect(svg).toContain(
+      'font-size="16" font-family="sans-serif" dominant-baseline="middle">L300KP'
+    );
+    expect(svg).toContain(
+      'font-size="27" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">2026/06/09 10:02'
+    );
+    expect(svg).toContain(
+      'font-size="16" font-family="sans-serif" font-weight="700" text-anchor="middle" dominant-baseline="middle">判定待ち'
+    );
+  });
+
+  it('renders standard 40px resource rows with centered text, bar, and count', () => {
+    const svg = buildSelfInspectionMachineBoardSummarySvg(
+      makeSummaryPage([makeResource('R01', '立型')]),
+      1920,
+      1080
+    );
+    const resourceY = Number(
+      svg.match(/<text x="44" y="([\d.]+)" fill="#ffffff" font-size="31"/)?.[1]
+    );
+    const progressY = Number(
+      svg.match(/<text x="935" y="([\d.]+)" fill="#ffffff" font-size="36"/)?.[1]
+    );
+    const barY = Number(
+      svg.match(/<rect x="536" y="([\d.]+)" width="[\d.]+" height="13"/)?.[1]
+    );
+
+    expect(resourceY).toBe(228);
+    expect(progressY).toBe(resourceY);
+    expect(barY).toBe(221);
+  });
+
+  it('renders minimum 36px resource rows without clipping', () => {
+    const resources = Array.from({ length: 21 }, (_, index) =>
+      makeResource(`R${index + 1}`, `立型${index + 1}`)
+    );
+    const svg = buildSelfInspectionMachineBoardSummarySvg(makeSummaryPage(resources), 1920, 1008);
+    const resourceYs = [
+      ...svg.matchAll(/<text x="44" y="([\d.]+)" fill="#ffffff" font-size="31"/g),
+    ].map((match) => Number(match[1]));
+    const barYs = [
+      ...svg.matchAll(
+        /<rect x="536" y="([\d.]+)" width="[\d.]+" height="12" rx="[\d.]+" fill="#1e293b" \/>/g
+      ),
+    ].map((match) => Number(match[1]));
+
+    expect(resourceYs).toHaveLength(21);
+    expect(barYs).toHaveLength(21);
+    expect(resourceYs[0]).toBe(226);
+    expect(resourceYs[20]).toBe(946);
+    expect(barYs[0]).toBe(220);
+    expect(barYs[20]).toBe(940);
+    expect(barYs[20]! + 12).toBeLessThanOrEqual(952);
+  });
+
+  it('centers the smaller resource block inside equalized left/right SVG cards', () => {
+    const page = makeSummaryPage([makeResource('LEFT-R01', '左資源')]);
+    const leftPart = page.scheduled[0]!.parts[0]!;
+    const rightResources = [
+      makeResource('RIGHT-R01', '右資源1'),
+      makeResource('RIGHT-R02', '右資源2'),
+      makeResource('RIGHT-R03', '右資源3'),
+    ];
+    page.scheduled[0]!.parts = [
+      leftPart,
+      {
+        ...leftPart,
+        scheduleRowId: 'row-2',
+        cardKey: 'L300KP::S-2::P-2::H-2::L300KP',
+        fseiban: 'S-2',
+        fhinmei: '品名B',
+        resources: rightResources,
+        resourceCds: rightResources.map((resource) => resource.resourceCd),
+      },
+    ];
+
+    const svg = buildSelfInspectionMachineBoardSummarySvg(page, 1920, 1080);
+    const cardGroups = [...svg.matchAll(/<g data-simb-card="true">([\s\S]*?)<\/g>/g)].map(
+      (match) => match[1] ?? ''
+    );
+    const leftResourceY = Number(
+      cardGroups[0]?.match(/<text x="44" y="([\d.]+)" fill="#ffffff" font-size="31"/)?.[1]
+    );
+    const rightResourceYs = [
+      ...(cardGroups[1]?.matchAll(
+        /<text x="985" y="([\d.]+)" fill="#ffffff" font-size="31"/g
+      ) ?? []),
+    ].map((match) => Number(match[1]));
+
+    expect(cardGroups).toHaveLength(2);
+    expect(leftResourceY).toBe(268);
+    expect(rightResourceYs).toEqual([228, 268, 308]);
+    expect(leftResourceY - rightResourceYs[0]!).toBe(40);
   });
 
   it('uses a card update timestamp when one is available', () => {
@@ -163,7 +260,7 @@ describe('self-inspection-machine-board SVG', () => {
     const card = page.scheduled[0]?.parts[0];
     expect(card).toBeDefined();
     Object.assign(card!, {
-      updatedAt: new Date(2026, 5, 10, 11, 3, 4),
+      updatedAt: new Date('2026-06-10T02:03:04.000Z'),
     });
 
     const svg = buildSelfInspectionMachineBoardSummarySvg(page, 1920, 1080);

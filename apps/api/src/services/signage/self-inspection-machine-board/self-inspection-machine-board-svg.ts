@@ -35,6 +35,9 @@ import {
 } from './layout-contracts.js';
 import {
   computeSelfInspectionMachineBoardCardHeight,
+  computeSelfInspectionMachineBoardCenteredRectY,
+  computeSelfInspectionMachineBoardCenteredY,
+  computeSelfInspectionMachineBoardResourceRowsTop,
   countSelfInspectionMachineBoardCardResources,
   flattenSummaryPageParts,
 } from './self-inspection-machine-board-layout.js';
@@ -148,8 +151,21 @@ function buildCardSvg(args: {
   const badgeW = Math.round(112 * scale);
   const badgeH = Math.round(32 * scale);
   const badgeX = args.x + args.width - innerPad - badgeW;
-  const topRowY = args.y + innerPad + Math.round(38 * scale);
-  const nameY = args.y + innerPad + Math.round(80 * scale);
+  const cardHeaderTop = args.y + innerPad;
+  const headerTextBandHeight = Math.floor(headerHeight / 2);
+  const headerTextY = computeSelfInspectionMachineBoardCenteredY({
+    top: cardHeaderTop,
+    height: headerTextBandHeight,
+  });
+  const nameY = computeSelfInspectionMachineBoardCenteredY({
+    top: cardHeaderTop + headerTextBandHeight,
+    height: headerHeight - headerTextBandHeight,
+  });
+  const badgeY = computeSelfInspectionMachineBoardCenteredRectY({
+    top: cardHeaderTop,
+    height: headerTextBandHeight,
+    itemHeight: badgeH,
+  });
   const machineGap = Math.round(2 * machineFs);
   const resourceX = args.x + innerPad;
   const labelX = args.x + args.width - innerPad;
@@ -195,26 +211,40 @@ function buildCardSvg(args: {
     resourceFs,
     barX - resourceX - Math.round(12 * scale)
   );
+  const resourceRowsTop = computeSelfInspectionMachineBoardResourceRowsTop({
+    top: cardHeaderTop + headerHeight,
+    height: rowAreaHeight,
+    rowHeight,
+    rowCount: resources.length,
+  });
 
   const resourceRows = resources
     .map((resource, index) => {
-      const rowTop = args.y + innerPad + headerHeight + index * rowHeight;
-      const rowTextY = rowTop + Math.max(Math.round(rowHeight * 0.68), resourceFs, progressFs);
+      const rowTop = resourceRowsTop + index * rowHeight;
+      const rowTextY = computeSelfInspectionMachineBoardCenteredY({
+        top: rowTop,
+        height: rowHeight,
+      });
       const barH = Math.max(
         Math.round(7 * scale),
         Math.min(Math.round(14 * scale), Math.round(rowHeight * 0.32))
       );
+      const barY = computeSelfInspectionMachineBoardCenteredRectY({
+        top: rowTop,
+        height: rowHeight,
+        itemHeight: barH,
+      });
       return `
-        <text x="${resourceX}" y="${rowTextY}" fill="#ffffff" font-size="${resourceFs}" font-family="sans-serif">${escapeXml(truncateTextToWidth(resourceDisplayName(resource), resourceNameWidth, resourceFs))}</text>
+        <text x="${resourceX}" y="${rowTextY}" fill="#ffffff" font-size="${resourceFs}" font-family="sans-serif" dominant-baseline="middle">${escapeXml(truncateTextToWidth(resourceDisplayName(resource), resourceNameWidth, resourceFs))}</text>
         ${buildNeutralProgressBar({
           x: barX,
-          y: rowTop + Math.max(2, Math.round((rowHeight - barH) / 2)),
+          y: barY,
           width: barW,
           height: barH,
           completed: resource.confirmedEntryCount,
           required: resource.requiredEntryCount,
         })}
-        <text x="${labelX}" y="${rowTextY}" fill="#ffffff" font-size="${progressFs}" font-family="sans-serif" text-anchor="end">${escapeXml(resource.progressLabel)}</text>
+        <text x="${labelX}" y="${rowTextY}" fill="#ffffff" font-size="${progressFs}" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${escapeXml(resource.progressLabel)}</text>
       `;
     })
     .join('');
@@ -222,12 +252,12 @@ function buildCardSvg(args: {
   return `
     <g data-simb-card="true">
       <rect x="${args.x}" y="${args.y}" width="${args.width}" height="${args.height}" rx="8" fill="${SIMB_SIGNAGE_CARD_BG}" stroke="${SIMB_SIGNAGE_CARD_BORDER}" />
-      <text x="${resourceX}" y="${topRowY}" fill="#ffffff" font-size="${fseibanFs}" font-family="sans-serif" font-weight="700">${escapeXml(fseibanText)}${escapeXml(continuationLabel)}</text>
-      <text x="${machineX}" y="${topRowY}" fill="#ffffff" font-size="${machineFs}" font-family="sans-serif">${escapeXml(truncateTextToWidth(machineName, machineWidth, machineFs))}</text>
-      <text x="${dateX}" y="${topRowY}" fill="#ffffff" font-size="${dateFs}" font-family="sans-serif" text-anchor="end">${escapeXml(cardDateText)}</text>
-      <rect x="${badgeX}" y="${args.y + innerPad}" width="${badgeW}" height="${badgeH}" rx="${Math.round(badgeH / 2)}" fill="${statusColor(cardStatus)}" />
-      <text x="${badgeX + badgeW / 2}" y="${args.y + innerPad + Math.round(badgeH * 0.68)}" fill="#ffffff" font-size="${badgeFs}" font-family="sans-serif" font-weight="700" text-anchor="middle">${escapeXml(statusLabel(cardStatus))}</text>
-      <text x="${resourceX}" y="${nameY}" fill="#ffffff" font-size="${fhinmeiFs}" font-family="sans-serif">${escapeXml(truncateTextToWidth(card.fhinmei, nameWidth, fhinmeiFs))}</text>
+      <text x="${resourceX}" y="${headerTextY}" fill="#ffffff" font-size="${fseibanFs}" font-family="sans-serif" font-weight="700" dominant-baseline="middle">${escapeXml(fseibanText)}${escapeXml(continuationLabel)}</text>
+      <text x="${machineX}" y="${headerTextY}" fill="#ffffff" font-size="${machineFs}" font-family="sans-serif" dominant-baseline="middle">${escapeXml(truncateTextToWidth(machineName, machineWidth, machineFs))}</text>
+      <text x="${dateX}" y="${headerTextY}" fill="#ffffff" font-size="${dateFs}" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${escapeXml(cardDateText)}</text>
+      <rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" rx="${Math.round(badgeH / 2)}" fill="${statusColor(cardStatus)}" />
+      <text x="${badgeX + badgeW / 2}" y="${computeSelfInspectionMachineBoardCenteredY({ top: badgeY, height: badgeH })}" fill="#ffffff" font-size="${badgeFs}" font-family="sans-serif" font-weight="700" text-anchor="middle" dominant-baseline="middle">${escapeXml(statusLabel(cardStatus))}</text>
+      <text x="${resourceX}" y="${nameY}" fill="#ffffff" font-size="${fhinmeiFs}" font-family="sans-serif" dominant-baseline="middle">${escapeXml(truncateTextToWidth(card.fhinmei, nameWidth, fhinmeiFs))}</text>
       <line x1="${resourceX}" y1="${args.y + innerPad + headerHeight - Math.round(8 * scale)}" x2="${args.x + args.width - innerPad}" y2="${args.y + innerPad + headerHeight - Math.round(8 * scale)}" stroke="${SIMB_SIGNAGE_ROW_BORDER}" />
       ${resourceRows}
     </g>
