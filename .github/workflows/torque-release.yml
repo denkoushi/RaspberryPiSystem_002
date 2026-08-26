@@ -79,16 +79,7 @@ jobs:
           git diff --exit-code
           3464256da11ee77bebfceb4fafcff4524f5ac8ca
           "$TARGET_SHA" --
-          packages/shared-types/src/torque-wrenches
-          apps/api/src/routes/torque-wrenches
-          apps/api/src/routes/torque-training
-          apps/api/src/services/torque-wrenches
-          apps/api/src/services/torque-training
-          apps/web/src/features/torque-wrench-connection
-          clients/torque-agent/torque_agent/connection_lease.py
-          clients/torque-agent/torque_agent/main.py
-          clients/torque-agent/torque_agent/ingestor.py
-          clients/torque-agent/torque_agent/api_client.py
+          clients/torque-agent
           infrastructure/docker/Dockerfile.torque-agent
 
       - name: Setup pnpm workspace

@@ -15,9 +15,9 @@
     ]
   },
   "summary": {
-    "documentCount": 638,
-    "totalLines": 174447,
-    "totalBytes": 13190016,
+    "documentCount": 639,
+    "totalLines": 174498,
+    "totalBytes": 13199875,
     "withFrontmatter": 293,
     "withStatus": 148,
     "sourceOfTruthDeclared": 107,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 26,
-    "localLinkCount": 5659,
+    "localLinkCount": 5665,
     "brokenLocalLinkCount": 88,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -610,8 +610,8 @@
     },
     {
       "path": "AGENTS.md",
-      "lineCount": 64,
-      "byteSize": 6606,
+      "lineCount": 56,
+      "byteSize": 5414,
       "hasFrontmatter": false,
       "title": "AI Agent Entry Point",
       "status": null,
@@ -5882,8 +5882,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 57,
-      "byteSize": 2881,
+      "lineCount": 53,
+      "byteSize": 2928,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -5897,8 +5897,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2021,
-      "byteSize": 350157,
+      "lineCount": 2022,
+      "byteSize": 350666,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6902,6 +6902,11 @@
         {
           "href": "./decisions/ADR-20260821-self-inspection-record-view-uiux.md",
           "targetPath": "docs/decisions/ADR-20260821-self-inspection-record-view-uiux.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
+          "targetPath": "docs/decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
           "exists": true
         },
         {
@@ -10175,12 +10180,22 @@
           "exists": true
         },
         {
+          "href": "./modules/measuring-instruments/api.md#組立トルク訓練",
+          "targetPath": "docs/modules/measuring-instruments/api.md",
+          "exists": true
+        },
+        {
           "href": "./modules/measuring-instruments/README.md",
           "targetPath": "docs/modules/measuring-instruments/README.md",
           "exists": true
         },
         {
           "href": "./modules/measuring-instruments/ui.md",
+          "targetPath": "docs/modules/measuring-instruments/ui.md",
+          "exists": true
+        },
+        {
+          "href": "./modules/measuring-instruments/ui.md#組立トルク訓練ui",
           "targetPath": "docs/modules/measuring-instruments/ui.md",
           "exists": true
         },
@@ -11290,95 +11305,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 301,
+          "line": 302,
           "length": 1132
         },
         {
-          "line": 317,
+          "line": 318,
           "length": 1242
         },
         {
-          "line": 321,
+          "line": 322,
           "length": 1022
         },
         {
-          "line": 335,
+          "line": 336,
           "length": 1065
         },
         {
-          "line": 383,
+          "line": 384,
           "length": 1165
         },
         {
-          "line": 389,
+          "line": 390,
           "length": 1458
         },
         {
-          "line": 401,
+          "line": 402,
           "length": 1083
         },
         {
-          "line": 415,
+          "line": 416,
           "length": 1398
         },
         {
-          "line": 417,
+          "line": 418,
           "length": 1133
         },
         {
-          "line": 421,
+          "line": 422,
           "length": 1399
         },
         {
-          "line": 423,
+          "line": 424,
           "length": 1008
         },
         {
-          "line": 429,
+          "line": 430,
           "length": 1059
         },
         {
-          "line": 437,
+          "line": 438,
           "length": 1129
         },
         {
-          "line": 441,
+          "line": 442,
           "length": 1135
         },
         {
-          "line": 445,
+          "line": 446,
           "length": 1117
         },
         {
-          "line": 560,
+          "line": 561,
           "length": 1013
         },
         {
-          "line": 746,
+          "line": 747,
           "length": 2038
         },
         {
-          "line": 762,
+          "line": 763,
           "length": 1496
         },
         {
-          "line": 768,
+          "line": 769,
           "length": 1177
         },
         {
-          "line": 1110,
+          "line": 1111,
           "length": 1449
         },
         {
-          "line": 1146,
+          "line": 1147,
           "length": 1136
         },
         {
-          "line": 1148,
+          "line": 1149,
           "length": 1239
         },
         {
-          "line": 1184,
+          "line": 1185,
           "length": 1004
         }
       ],
@@ -17278,8 +17293,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260821-self-inspection-record-view-uiux.md",
-      "lineCount": 46,
-      "byteSize": 5253,
+      "lineCount": 47,
+      "byteSize": 5968,
       "hasFrontmatter": true,
       "title": "ADR-20260821: 自主検査の記録閲覧・操作認証・一覧情報階層",
       "status": "accepted",
@@ -17292,9 +17307,24 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
+      "lineCount": 32,
+      "byteSize": 5743,
+      "hasFrontmatter": false,
+      "title": "ADR-20260826 Torque training one-touch wrench preparation",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/design-previews/README.md",
-      "lineCount": 102,
-      "byteSize": 21263,
+      "lineCount": 103,
+      "byteSize": 21696,
       "hasFrontmatter": false,
       "title": "デザインプレビュー（静的 HTML）",
       "status": null,
@@ -17418,6 +17448,11 @@
         {
           "href": "./kiosk-self-inspection-autosave-callout-preview.html",
           "targetPath": "docs/design-previews/kiosk-self-inspection-autosave-callout-preview.html",
+          "exists": true
+        },
+        {
+          "href": "./kiosk-self-inspection-record-approval-dense-preview.html",
+          "targetPath": "docs/design-previews/kiosk-self-inspection-record-approval-dense-preview.html",
           "exists": true
         },
         {
@@ -18994,7 +19029,7 @@
     {
       "path": "docs/guides/deployment.md",
       "lineCount": 157,
-      "byteSize": 17693,
+      "byteSize": 17876,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -31306,8 +31341,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/signage.md",
-      "lineCount": 2196,
-      "byteSize": 188373,
+      "lineCount": 2208,
+      "byteSize": 190029,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - サイネージ関連",
       "status": null,
@@ -31507,11 +31542,11 @@
           "length": 1221
         },
         {
-          "line": 349,
+          "line": 361,
           "length": 1060
         },
         {
-          "line": 351,
+          "line": 363,
           "length": 1211
         }
       ],
@@ -31846,14 +31881,20 @@
     },
     {
       "path": "docs/modules/measuring-instruments/api.md",
-      "lineCount": 167,
-      "byteSize": 7051,
+      "lineCount": 175,
+      "byteSize": 7944,
       "hasFrontmatter": false,
       "title": "計測機器管理モジュール API仕様書",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 2,
+      "localLinks": [
+        {
+          "href": "../../decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
+          "targetPath": "docs/decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -31861,13 +31902,18 @@
     },
     {
       "path": "docs/modules/measuring-instruments/ui.md",
-      "lineCount": 159,
-      "byteSize": 16184,
+      "lineCount": 167,
+      "byteSize": 17056,
       "hasFrontmatter": false,
       "title": "計測機器管理 UI設計メモ",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
+        {
+          "href": "../../decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
+          "targetPath": "docs/decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
+          "exists": true
+        },
         {
           "href": "../../guides/deployment.md",
           "targetPath": "docs/guides/deployment.md",
@@ -31919,7 +31965,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 9,
+      "inboundCount": 10,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],

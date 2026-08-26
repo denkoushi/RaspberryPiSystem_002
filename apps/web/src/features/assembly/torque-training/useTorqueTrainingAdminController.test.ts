@@ -51,6 +51,8 @@ const version = (
   jigConditionCode: 'JIG-A',
   conditionFingerprint: 'fingerprint-v1',
   torqueWrenchProfiles: [{ id: 'wrench-1', serialNumber: 'TW-001' }],
+  setupState: 'READY',
+  setupStateReason: null,
   ...overrides
 });
 

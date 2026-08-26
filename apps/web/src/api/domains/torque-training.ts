@@ -34,6 +34,9 @@ export type TorqueTrainingProgramVersionApi = {
   jigConditionCode: string;
   conditionFingerprint: string;
   torqueWrenchProfiles: Array<{ id: string; serialNumber: string }>;
+  /** Readiness after the server evaluates capability, status and calibration. */
+  setupState: 'READY' | 'UNASSIGNED' | 'UNAVAILABLE';
+  setupStateReason: string | null;
 };
 
 export type TorqueTrainingProgramApi = {
@@ -44,6 +47,16 @@ export type TorqueTrainingProgramApi = {
   versions: TorqueTrainingProgramVersionApi[];
 };
 
+/**
+ * A started session carries the immutable target snapshot, not the current
+ * catalog readiness evaluation. Keeping this boundary narrower prevents the
+ * session API from pretending to return list-only setup fields.
+ */
+export type TorqueTrainingSessionProgramApi = Omit<
+  TorqueTrainingProgramVersionApi,
+  'setupState' | 'setupStateReason'
+> & { code: string };
+
 export type TorqueTrainingSessionApi = {
   id: string;
   requestId: string;
@@ -53,7 +66,7 @@ export type TorqueTrainingSessionApi = {
   clientDeviceName: string;
   conditionFingerprint: string;
   targetAttemptCount: number;
-  program: TorqueTrainingProgramVersionApi & { code: string };
+  program: TorqueTrainingSessionProgramApi;
   attempts: TorqueTrainingAttemptApi[];
   hasWrenchConfirmation: boolean;
   startedAt: string;
@@ -116,6 +129,46 @@ export async function confirmTorqueTrainingWrench(sessionId: string, payload: { 
     payload
   );
   return data.confirmation;
+}
+
+export type TorqueTrainingWrenchPreparationResultApi = {
+  requestId: string;
+  confirmationId: string;
+  torqueWrenchProfileId: string;
+  serialNumber: string;
+  settingHistoryId: string;
+  target: {
+    lowerLimit: string;
+    nominalTorque: string;
+    upperLimit: string;
+    unit: string;
+  };
+  confirmedAt: string;
+  duplicate: boolean;
+};
+
+type TorqueTrainingWrenchPreparationResponse = {
+  preparation: TorqueTrainingWrenchPreparationResultApi;
+};
+
+/**
+ * Register the server-derived wrench setting and the physical confirmation
+ * as one idempotent training operation.
+ */
+export async function prepareTorqueTrainingWrench(
+  sessionId: string,
+  payload: {
+    uid: string;
+    torqueWrenchProfileId: string;
+    requestId: string;
+    physicalSettingConfirmed: true;
+  }
+): Promise<TorqueTrainingWrenchPreparationResultApi> {
+  const { data } = await api.post<TorqueTrainingWrenchPreparationResponse>(
+    `/torque-training/sessions/${sessionId}/wrench-preparations`,
+    payload
+  );
+  return data.preparation;
 }
 
 export type TorqueTrainingLeaseApi = {

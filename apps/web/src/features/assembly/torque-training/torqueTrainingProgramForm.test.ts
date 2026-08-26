@@ -27,7 +27,9 @@ describe('torqueTrainingProgramForm', () => {
       torqueWrenchProfiles: [
         { id: 'wrench-2', serialNumber: 'TW-002' },
         { id: 'wrench-3', serialNumber: 'TW-003' }
-      ]
+      ],
+      setupState: 'READY',
+      setupStateReason: null
     };
 
     const form = torqueTrainingProgramVersionToForm('M8-001', version);

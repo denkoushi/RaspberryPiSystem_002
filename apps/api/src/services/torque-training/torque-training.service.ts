@@ -14,7 +14,7 @@ import {
   capabilityGroupEligibilityInclude,
   profileEligibilityInclude
 } from '../torque-wrenches/torque-wrench-use-context.js';
-import { TorqueWrenchEligibilityPolicy, type TorqueCondition } from '../torque-wrenches/torque-wrench-eligibility.policy.js';
+import { TorqueWrenchEligibilityPolicy } from '../torque-wrenches/torque-wrench-eligibility.policy.js';
 import { TorqueUnitConverter } from '../torque-wrenches/torque-unit-converter.js';
 import {
   decideTrainingAttempt,
@@ -22,6 +22,11 @@ import {
   trainingConditionFingerprint,
   type TrainingConditionInput
 } from './torque-training.policy.js';
+import {
+  conditionFromTrainingVersion,
+  evaluateTrainingVersionSetup,
+  trainingSetupVersionInclude
+} from './torque-training-setup.service.js';
 
 type Client = { id: string; name: string; location?: string | null };
 
@@ -74,32 +79,6 @@ function decimal(value: Prisma.Decimal.Value): Prisma.Decimal {
   return new Prisma.Decimal(value);
 }
 
-function versionCondition(version: {
-  id: string;
-  nominalDiameter: string;
-  boltLengthMm: Prisma.Decimal;
-  material: string;
-  strengthClass: string;
-  capabilityGroupId: string;
-  lowerLimit: Prisma.Decimal;
-  nominalTorque: Prisma.Decimal;
-  upperLimit: Prisma.Decimal;
-  unit: string;
-}): TorqueCondition {
-  return {
-    templateBoltId: version.id,
-    nominalDiameter: version.nominalDiameter,
-    boltLengthMm: version.boltLengthMm,
-    material: version.material,
-    strengthClass: version.strengthClass,
-    capabilityGroupId: version.capabilityGroupId,
-    lowerLimit: version.lowerLimit,
-    nominalTorque: version.nominalTorque,
-    upperLimit: version.upperLimit,
-    unit: version.unit
-  };
-}
-
 function toDecimalString(value: Prisma.Decimal | null | undefined): string | null {
   return value == null ? null : value.toString();
 }
@@ -150,6 +129,9 @@ function serializeSession(session: Prisma.TorqueTrainingSessionGetPayload<{
       material: session.programVersion.material,
       strengthClass: session.programVersion.strengthClass,
       capabilityGroupId: session.programVersion.capabilityGroupId,
+      nominalTorque: session.programVersion.nominalTorque.toString(),
+      lowerLimit: session.programVersion.lowerLimit.toString(),
+      upperLimit: session.programVersion.upperLimit.toString(),
       unit: session.programVersion.unit,
       jigConditionCode: session.programVersion.jigConditionCode,
       conditionFingerprint: session.programVersion.conditionFingerprint,
@@ -213,7 +195,7 @@ export class TorqueTrainingService {
         versions: {
           orderBy: { version: 'desc' },
           take: includeInactive ? undefined : 1,
-          include: { wrenches: { include: { torqueWrenchProfile: { select: { id: true, serialNumber: true } } } } }
+          include: trainingSetupVersionInclude
         }
       }
     });
@@ -237,7 +219,11 @@ export class TorqueTrainingService {
         unit: version.unit,
         jigConditionCode: version.jigConditionCode,
         conditionFingerprint: version.conditionFingerprint,
-        torqueWrenchProfiles: version.wrenches.map((wrench) => wrench.torqueWrenchProfile)
+        torqueWrenchProfiles: version.wrenches.map((wrench) => ({
+          id: wrench.torqueWrenchProfile.id,
+          serialNumber: wrench.torqueWrenchProfile.serialNumber
+        })),
+        ...evaluateTrainingVersionSetup(version)
       }))
     }));
   }
@@ -248,7 +234,7 @@ export class TorqueTrainingService {
       const group = await tx.torqueWrenchCapabilityGroup.findUnique({ where: { id: normalized.capabilityGroupId } });
       if (!group || !group.isActive) throw new ApiError(400, '有効な適合グループを指定してください', undefined, 'CAPABILITY_GROUP_INVALID');
       const profiles = await tx.torqueWrenchProfile.findMany({ where: { id: { in: normalized.torqueWrenchProfileIds } }, select: { id: true } });
-      if (profiles.length !== normalized.torqueWrenchProfileIds.length || profiles.length === 0) throw new ApiError(400, '利用レンチを1台以上指定してください');
+      if (profiles.length !== normalized.torqueWrenchProfileIds.length) throw new ApiError(400, '指定された利用レンチが見つかりません');
       const program = await tx.torqueTrainingProgram.create({
         data: {
           code: normalized.code,
@@ -293,7 +279,7 @@ export class TorqueTrainingService {
       const group = await tx.torqueWrenchCapabilityGroup.findUnique({ where: { id: normalized.capabilityGroupId } });
       if (!group || !group.isActive) throw new ApiError(400, '有効な適合グループを指定してください', undefined, 'CAPABILITY_GROUP_INVALID');
       const profiles = await tx.torqueWrenchProfile.findMany({ where: { id: { in: normalized.torqueWrenchProfileIds } }, select: { id: true } });
-      if (profiles.length !== normalized.torqueWrenchProfileIds.length || profiles.length === 0) throw new ApiError(400, '利用レンチを1台以上指定してください');
+      if (profiles.length !== normalized.torqueWrenchProfileIds.length) throw new ApiError(400, '指定された利用レンチが見つかりません');
       const version = program.currentVersion + 1;
       const created = await tx.torqueTrainingProgramVersion.create({
         data: {
@@ -410,9 +396,18 @@ export class TorqueTrainingService {
     }
     const version = await prisma.torqueTrainingProgramVersion.findUnique({
       where: { id: programVersionId },
-      include: { program: true }
+      include: trainingSetupVersionInclude
     });
     if (!version || !version.program.isActive || version.version !== version.program.currentVersion) throw new ApiError(409, '現行版ではない訓練メニューは開始できません', undefined, 'TRAINING_PROGRAM_INACTIVE');
+    const setup = evaluateTrainingVersionSetup(version);
+    if (setup.setupState !== 'READY') {
+      throw new ApiError(
+        409,
+        setup.setupState === 'UNASSIGNED' ? '訓練メニューに利用レンチが割り当てられていません' : '訓練メニューに利用可能なレンチがありません',
+        { setupState: setup.setupState, setupStateReason: setup.setupStateReason },
+        setup.setupState === 'UNASSIGNED' ? 'TRAINING_SETUP_UNASSIGNED' : 'TRAINING_SETUP_UNAVAILABLE'
+      );
+    }
     try {
       const session = await prisma.torqueTrainingSession.create({
         data: {
@@ -472,7 +467,7 @@ export class TorqueTrainingService {
       const profile = await tx.torqueWrenchProfile.findUnique({ where: { id: profileId }, include: profileEligibilityInclude });
       const group = await tx.torqueWrenchCapabilityGroup.findUnique({ where: { id: session.programVersion.capabilityGroupId }, include: capabilityGroupEligibilityInclude });
       if (!profile || !group) throw new ApiError(404, 'レンチまたは適合グループが見つかりません');
-      const eligibility = new TorqueWrenchEligibilityPolicy().evaluate(versionCondition(session.programVersion), candidateFromProfile(profile, group));
+      const eligibility = new TorqueWrenchEligibilityPolicy().evaluate(conditionFromTrainingVersion(session.programVersion), candidateFromProfile(profile, group));
       if (!eligibility.eligible) throw new ApiError(409, 'レンチが訓練条件に適合しません', { reason: eligibility.reason }, eligibility.reason);
       const setting = profile.settingHistories[0];
       if (!setting) throw new ApiError(409, 'レンチ設定履歴がありません');
@@ -542,7 +537,7 @@ export class TorqueTrainingService {
       if (!profile || profile.serialNumber !== input.serialNumber) return { attempt: serializeAttempt(await ignored('SERIAL_NUMBER_MISMATCH')), duplicate: false };
       const setting = profile.settingHistories[0];
       if (!setting) return { attempt: serializeAttempt(await ignored('SETTING_HISTORY_MISSING')), duplicate: false };
-      const condition = versionCondition(session.programVersion);
+      const condition = conditionFromTrainingVersion(session.programVersion);
       const expectedLower = TorqueUnitConverter.toNewtonMetres(condition.lowerLimit, condition.unit);
       const expectedNominal = TorqueUnitConverter.toNewtonMetres(condition.nominalTorque, condition.unit);
       const expectedUpper = TorqueUnitConverter.toNewtonMetres(condition.upperLimit, condition.unit);
