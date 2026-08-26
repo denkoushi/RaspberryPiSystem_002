@@ -33,6 +33,39 @@ export function countSelfInspectionMachineBoardCardResources(
   return 1;
 }
 
+/** SVG の dominant-baseline="middle" 用に、帯の中心座標を返す。 */
+export function computeSelfInspectionMachineBoardCenteredY(args: {
+  top: number;
+  height: number;
+}): number {
+  return args.top + Math.floor(Math.max(0, args.height) / 2);
+}
+
+/** 帯の中で矩形を上下均等に配置した Y 座標を返す。 */
+export function computeSelfInspectionMachineBoardCenteredRectY(args: {
+  top: number;
+  height: number;
+  itemHeight: number;
+}): number {
+  const height = Math.max(0, args.height);
+  const itemHeight = Math.max(0, args.itemHeight);
+  return args.top + Math.max(0, Math.floor((height - itemHeight) / 2));
+}
+
+/** カード内の資源行ブロックを、利用可能な行領域の中央へ配置した先頭 Y 座標を返す。 */
+export function computeSelfInspectionMachineBoardResourceRowsTop(args: {
+  top: number;
+  height: number;
+  rowHeight: number;
+  rowCount: number;
+}): number {
+  const height = Math.max(0, args.height);
+  const rowHeight = Math.max(0, args.rowHeight);
+  const rowCount = Math.max(1, Math.floor(args.rowCount));
+  const rowsHeight = rowHeight * rowCount;
+  return args.top + Math.max(0, Math.floor((height - rowsHeight) / 2));
+}
+
 /** カードの実表示高さ。resourceCount は未設定でも最低 1 行を確保する。 */
 export function computeSelfInspectionMachineBoardCardHeight(args: {
   resourceCount: number;

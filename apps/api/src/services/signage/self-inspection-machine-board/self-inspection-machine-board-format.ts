@@ -11,6 +11,18 @@ import {
   SIMB_HEAT_OUT,
 } from './self-inspection-machine-board-theme.js';
 
+const TOKYO_UPDATED_AT_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Tokyo',
+  calendar: 'gregory',
+  numberingSystem: 'latn',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
 export function heatstripToneColor(tone: HeatstripCellTone): string {
   switch (tone) {
     case 'center':
@@ -68,8 +80,14 @@ export function statusLabel(
 }
 
 export function formatUpdatedAt(value: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${value.getFullYear()}/${pad(value.getMonth() + 1)}/${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}`;
+  const parts = TOKYO_UPDATED_AT_FORMATTER.formatToParts(value).reduce<Record<string, string>>(
+    (result, part) => {
+      result[part.type] = part.value;
+      return result;
+    },
+    {}
+  );
+  return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 export function buildScheduleRowCapNote(args: {
