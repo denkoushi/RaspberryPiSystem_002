@@ -34,15 +34,15 @@ function makeSession(overrides: Record<string, unknown> = {}) {
     completedAt: null,
     recordApprovalRequiredAt: '2026-08-21T00:00:00.000Z',
     recordApprovalWorkflowStartedAt: '2026-08-21T00:00:00.000Z',
-    decisionWorkflow: 'LEGACY_RECORD_APPROVAL',
-    inspectorRemeasurementRequiredAt: null,
-    inspectorMeasurementState: 'not_required',
-    inspectorRequiredEntryCount: 0,
-    inspectorCompletedRequiredEntryCount: 0,
+    decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT',
+    inspectorRemeasurementRequiredAt: '2026-08-21T00:30:00.000Z',
+    inspectorMeasurementState: 'in_progress',
+    inspectorRequiredEntryCount: 1,
+    inspectorCompletedRequiredEntryCount: 1,
     inspectorMissingRequiredEntryCount: 0,
     inspectorIncompleteValueEntryCount: 0,
     updatedAt: '2026-08-21T01:02:03.000Z',
-    recordApprovalState: 'approvable',
+    recordApprovalState: 'inspector_measurement_pending',
     recordApproval: null,
     completedRequiredEntryCount: 1,
     missingRequiredEntryCount: 0,
@@ -50,6 +50,103 @@ function makeSession(overrides: Record<string, unknown> = {}) {
     incompleteRegistrationEntryCount: 0,
     inspectorIncompleteRegistrationEntryCount: 0
   };
+}
+
+function makeRequiredEntries() {
+  const baseValue = {
+    id: 'value-layout-1',
+    templateItemId: 'template-item-layout-1',
+    displayMarker: '①',
+    datumSurface: 'A',
+    measurementPoint: '基準面A',
+    measurementLabel: '外径',
+    unit: 'mm',
+    valueKind: 'numeric',
+    judgementResult: null,
+    lowerLimit: '24.95',
+    upperLimit: '25.05',
+    reviewStatus: null,
+    outOfToleranceAcknowledgedAt: null,
+    approvedAt: null,
+    updatedAt: '2026-08-21T01:00:00.000Z',
+    inspectorValueId: 'inspector-value-layout-1',
+    inspectorJudgementResult: null,
+    operatorValueSnapshot: '24.98',
+    inspectorJudgementStatus: 'MATCH',
+    inspectorJudgedAt: null,
+    inspectorJudgementComment: null,
+    inspectorUpdatedAt: '2026-08-21T01:01:00.000Z'
+  };
+
+  return [
+    {
+      entryIndex: 0,
+      entrySlotKind: 'single',
+      entrySlotLabel: '先頭',
+      state: 'ready',
+      entry: {
+        id: 'entry-layout-1',
+        entryIndex: 0,
+        persistenceStatus: 'confirmed',
+        createdByEmployeeId: 'employee-layout-1',
+        createdByEmployeeNameSnapshot: '作業者A',
+        inspectorEmployeeId: null,
+        inspectorEmployeeCodeSnapshot: null,
+        inspectorEmployeeNameSnapshot: null,
+        inspectorEmployeeNfcTagUidSnapshot: null,
+        measuringInstrumentId: 'instrument-layout-1',
+        measuringInstrumentManagementNumberSnapshot: 'M-102',
+        measuringInstrumentNameSnapshot: 'マイクロメータ',
+        measuringInstrumentTagUidSnapshot: null,
+        instrumentUsages: [],
+        createdAt: '2026-08-21T00:50:00.000Z',
+        updatedAt: '2026-08-21T01:00:00.000Z'
+      },
+      inspectorEntry: {
+        id: 'inspector-entry-layout-1',
+        entryIndex: 0,
+        persistenceStatus: 'confirmed',
+        inspectorEmployeeId: 'inspector-layout-1',
+        inspectorEmployeeCodeSnapshot: 'I001',
+        inspectorEmployeeNameSnapshot: '検査員A',
+        inspectorEmployeeNfcTagUidSnapshot: null,
+        measuringInstrumentId: 'instrument-layout-2',
+        measuringInstrumentManagementNumberSnapshot: 'M-106',
+        measuringInstrumentNameSnapshot: 'マイクロメータ',
+        measuringInstrumentTagUidSnapshot: null,
+        instrumentUsages: [],
+        clientDeviceId: 'device-layout-1',
+        clientDeviceNameSnapshot: 'E2E kiosk',
+        createdAt: '2026-08-21T00:55:00.000Z',
+        updatedAt: '2026-08-21T01:01:00.000Z'
+      },
+      values: [
+        {
+          ...baseValue,
+          value: '24.98',
+          isWithinTolerance: true,
+          inspectorValue: '24.99',
+          differenceValue: '+0.01'
+        },
+        {
+          ...baseValue,
+          id: 'value-layout-2',
+          templateItemId: 'template-item-layout-2',
+          displayMarker: '②',
+          measurementPoint: '中央部',
+          measurementLabel: '溝幅',
+          value: '10.14',
+          isWithinTolerance: false,
+          inspectorValueId: 'inspector-value-layout-2',
+          inspectorValue: '10.12',
+          differenceValue: '-0.02',
+          lowerLimit: '9.95',
+          upperLimit: '10.05',
+          inspectorJudgementStatus: 'MISMATCH'
+        }
+      ]
+    }
+  ];
 }
 
 const invalidation = {
@@ -129,7 +226,7 @@ async function installApiMocks(page: Page) {
       return;
     }
     if (path === `${RECORD_APPROVALS_PATH}/sessions/${sessionId}`) {
-      await route.fulfill({ json: { session: { ...makeSession(), requiredEntries: [] } } });
+      await route.fulfill({ json: { session: { ...makeSession(), requiredEntries: makeRequiredEntries() } } });
       return;
     }
     if (path === INVALIDATIONS_PATH) {
@@ -177,6 +274,44 @@ test.describe('検査記録確認のキオスクレイアウト', () => {
 
       const returnLink = page.getByRole('link', { name: '自主検査画面へ戻る' });
       await expect(returnLink).toHaveAttribute('href', '/kiosk/part-measurement/self-inspection');
+      await expect(
+        page.getByText('作業者・検査員の入力値と、承認・最終判定の進捗を確認します。')
+      ).toHaveCount(0);
+
+      const selectedRecord = page.getByRole('region', { name: '選択中の検査記録' });
+      const operatorLink = selectedRecord.getByRole('link', { name: '作業者入力へ' });
+      const inspectorLink = selectedRecord.getByRole('link', { name: '検査員測定へ' });
+      await expect(operatorLink).toBeVisible();
+      await expect(inspectorLink).toBeVisible();
+      await expect(selectedRecord.getByRole('link', { name: '検査員画面' })).toHaveCount(0);
+      const actionMetrics = await selectedRecord.locator('a').evaluateAll((links) =>
+        links.map((link) => {
+          const rect = link.getBoundingClientRect();
+          return { width: rect.width, height: rect.height, top: rect.top };
+        })
+      );
+      expect(actionMetrics).toHaveLength(2);
+      expect(actionMetrics[0]?.width).toBe(actionMetrics[1]?.width);
+      expect(actionMetrics[0]?.height).toBe(actionMetrics[1]?.height);
+      expect(actionMetrics[0]?.top).toBe(actionMetrics[1]?.top);
+
+      const measurementTable = page.getByRole('table', { name: '測定値一覧' });
+      await expect(measurementTable.getByText('作業点検', { exact: true })).toBeVisible();
+      await expect(measurementTable.getByText('検査点検', { exact: true })).toBeVisible();
+      const measurementMetrics = await measurementTable.evaluate((table) => {
+        const scroller = table.parentElement;
+        const operatorValue = table.querySelector('tbody tr td:nth-last-child(5) span');
+        const firstRow = table.querySelector('tbody tr');
+        return {
+          clientWidth: scroller?.clientWidth ?? 0,
+          scrollWidth: scroller?.scrollWidth ?? 0,
+          operatorFontSize: operatorValue ? Number.parseFloat(getComputedStyle(operatorValue).fontSize) : 0,
+          firstRowHeight: firstRow?.getBoundingClientRect().height ?? 0
+        };
+      });
+      expect(measurementMetrics.scrollWidth).toBeLessThanOrEqual(measurementMetrics.clientWidth + 1);
+      expect(measurementMetrics.operatorFontSize).toBeGreaterThanOrEqual(24);
+      expect(measurementMetrics.firstRowHeight).toBeLessThanOrEqual(64);
 
       const shellMetrics = await page.locator('body').evaluate((element) => ({
         clientWidth: element.clientWidth,

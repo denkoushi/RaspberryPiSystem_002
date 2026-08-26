@@ -47,9 +47,6 @@ export function SelfInspectionRecordApprovalToolbar({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-52">
           <h1 className="text-2xl font-bold">検査記録確認</h1>
-          <p className="mt-1 text-sm text-white/65">
-            作業者・検査員の入力値と、承認・最終判定の進捗を確認します。
-          </p>
         </div>
 
         <div className="flex min-w-0 flex-1 flex-wrap items-end justify-end gap-2">

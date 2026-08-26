@@ -1,5 +1,7 @@
 import clsx from 'clsx';
 
+import { toHalfWidthAscii } from '../../kiosk/productionSchedule/machineName';
+
 import {
   formatDateTime,
   formatParticipantNames,
@@ -37,6 +39,7 @@ function SessionListItem({
   onSelect: () => void;
 }) {
   const intent = stateIntentLabel(session.recordApprovalState);
+  const machineName = toHalfWidthAscii(session.machineName?.trim() ?? '');
 
   return (
     <button
@@ -52,11 +55,14 @@ function SessionListItem({
     >
       <div className="flex min-w-0 items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-base font-bold">{session.productNo}</p>
-          <p className="line-clamp-2 text-xs text-white/65">
-            {session.fhincd} / {session.fhinmei} / 資源 {session.resourceCd}
+          <p className="truncate text-base font-bold">
+            {session.fseiban || '製番未登録'}
+            {machineName ? <span className="text-white/75"> {machineName}</span> : null}
           </p>
-          {session.fseiban ? <p className="text-xs text-white/50">製番 {session.fseiban}</p> : null}
+          <p className="truncate text-xs text-white/65">
+            {session.productNo} / {session.resourceCd} / {session.fhincd}
+          </p>
+          <p className="line-clamp-2 text-xs text-white/50">{session.fhinmei}</p>
         </div>
         <span
           className={clsx(

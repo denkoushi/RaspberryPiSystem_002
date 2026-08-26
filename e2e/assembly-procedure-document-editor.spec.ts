@@ -477,15 +477,15 @@ test('published source authenticates into a draft, edits TEXT/ROI IMAGE/ARROW, s
   await addOverlay(page, '文章', { x: 0.08, y: 0.1 }, { x: 0.36, y: 0.25 });
   await expect(page.getByRole('dialog', { name: '文章候補を選択' })).toBeVisible();
   await page.getByRole('option', { name: /抽出された手順文章/ }).click();
-  const textOverlay = page.getByRole('button', { name: '文章オーバーレイ: 抽出された手順文章' });
+  const textOverlay = page.getByRole('button', { name: '文章オーバーレイ: 抽出された手順文章', exact: true });
   await expect(textOverlay).toBeVisible();
   const inspector = page.getByRole('complementary', { name: 'オーバーレイ編集' });
   await inspector.locator('textarea').fill('編集済みの組立手順');
-  await expect(page.getByRole('button', { name: '文章オーバーレイ: 編集済みの組立手順' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '文章オーバーレイ: 編集済みの組立手順', exact: true })).toBeVisible();
 
   await addOverlay(page, '画像', { x: 0.42, y: 0.16 }, { x: 0.68, y: 0.38 });
   await expect.poll(() => evidence.imageRegionBodies.length).toBe(1);
-  await expect(page.getByRole('button', { name: '画像オーバーレイ: roi-asset-1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '画像オーバーレイ: roi-asset-1', exact: true })).toBeVisible();
   await page
     .getByRole('complementary', { name: 'オーバーレイ編集' })
     .locator('select')
@@ -495,7 +495,7 @@ test('published source authenticates into a draft, edits TEXT/ROI IMAGE/ARROW, s
   await addOverlay(page, '図形・記号', { x: 0.28, y: 0.48 }, { x: 0.68, y: 0.74 });
   const shapeInspector = page.getByRole('complementary', { name: 'オーバーレイ編集' });
   await shapeInspector.locator('select').first().selectOption('ARROW');
-  await expect(page.getByRole('button', { name: '図形オーバーレイ: ARROW' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '図形オーバーレイ: ARROW', exact: true })).toBeVisible();
   await expect(
     page.getByRole('region', { name: '手順書キャンバス' })
       .getByTestId('assembly-procedure-overlay-layer')
@@ -521,13 +521,13 @@ test('published source authenticates into a draft, edits TEXT/ROI IMAGE/ARROW, s
   // A second local change intentionally collides. Both recovery choices must
   // be explicit while the local overlay remains mounted.
   await shapeInspector.locator('select').first().selectOption('ELLIPSE');
-  await expect(page.getByRole('button', { name: '図形オーバーレイ: ELLIPSE' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '図形オーバーレイ: ELLIPSE', exact: true })).toBeVisible();
   await saveButton.click();
   await expect.poll(() => evidence.saveBodies.length).toBe(2);
   await expect(page.getByRole('alert')).toContainText('他の編集で更新されています');
   await expect(page.getByRole('button', { name: '最新を再読込（保持内容を破棄）' })).toBeVisible();
   await expect(page.getByRole('button', { name: '保持内容を再保存' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '図形オーバーレイ: ELLIPSE' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '図形オーバーレイ: ELLIPSE', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '保持内容を再保存' }).click();
   await expect.poll(() => evidence.saveBodies.length).toBe(3);
@@ -537,7 +537,7 @@ test('published source authenticates into a draft, edits TEXT/ROI IMAGE/ARROW, s
   // Exercise the other explicit conflict choice and verify that only the
   // server's latest saved set survives the confirmed reload.
   await shapeInspector.locator('select').first().selectOption('LINE');
-  await expect(page.getByRole('button', { name: '図形オーバーレイ: LINE' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '図形オーバーレイ: LINE', exact: true })).toBeVisible();
   await saveButton.click();
   await expect.poll(() => evidence.saveBodies.length).toBe(4);
   await page.getByRole('button', { name: '最新を再読込（保持内容を破棄）' }).click();
@@ -545,8 +545,8 @@ test('published source authenticates into a draft, edits TEXT/ROI IMAGE/ARROW, s
   await expect(reloadDialog).toBeVisible();
   await reloadDialog.getByRole('button', { name: '最新内容へ置換' }).click();
   await expect(page.getByText('最新内容へ置き換えました。')).toBeVisible();
-  await expect(page.getByRole('button', { name: '図形オーバーレイ: LINE' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '図形オーバーレイ: ELLIPSE' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '図形オーバーレイ: LINE', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '図形オーバーレイ: ELLIPSE', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '公開', exact: true }).click();
   const publishDialog = page.getByRole('dialog', { name: '手順書を公開' });
