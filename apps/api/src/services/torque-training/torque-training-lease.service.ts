@@ -108,15 +108,27 @@ export class TorqueTrainingLeaseService {
     this.coordinator = new TorqueWrenchUsageLeaseCoordinator(repository);
   }
 
-  async acquire(input: TrainingLeaseAcquireInput) {
+  private validateAcquireInput(input: TrainingLeaseAcquireInput): void {
     if (input.takeover && input.physicalWrenchPresent !== true) {
       throw new ApiError(400, '現物のトルクレンチが手元にあることを確認してください');
     }
     if (input.takeover && !input.reason?.trim()) {
       throw new ApiError(400, '引継ぎ理由が必要です');
     }
+  }
+
+  /**
+   * Acquire a training lease without opening a nested transaction.
+   * Preparation uses this boundary so setting history, confirmation, request
+   * claim and the physical-wrench owner row commit or roll back together.
+   */
+  async acquireInTransaction(
+    tx: Prisma.TransactionClient,
+    input: TrainingLeaseAcquireInput
+  ) {
+    this.validateAcquireInput(input);
     const adapter = new TrainingTorqueWrenchLeaseAdapter(input.sessionId, input.clientDeviceId);
-    return runTrainingTransaction((tx) => this.coordinator.acquire(
+    return this.coordinator.acquire(
       tx,
       {
         torqueWrenchProfileId: input.profileId,
@@ -127,7 +139,11 @@ export class TorqueTrainingLeaseService {
         reason: input.reason
       },
       adapter
-    ));
+    );
+  }
+
+  async acquire(input: TrainingLeaseAcquireInput) {
+    return runTrainingTransaction((tx) => this.acquireInTransaction(tx, input));
   }
 
   async renew(input: TrainingLeaseTokenInput) {

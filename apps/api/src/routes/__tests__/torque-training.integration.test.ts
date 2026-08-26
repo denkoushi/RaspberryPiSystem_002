@@ -37,6 +37,7 @@ describe('torque training API concurrency boundary', () => {
     await prisma.torqueTrainingAttempt.deleteMany({});
     await prisma.torqueWrenchUsageLeaseHistory.deleteMany({});
     await prisma.torqueWrenchUsageLease.deleteMany({});
+    await prisma.torqueTrainingWrenchPreparationRequest.deleteMany({});
     await prisma.torqueTrainingWrenchConfirmation.deleteMany({});
     await prisma.torqueTrainingSession.deleteMany({});
     await prisma.torqueTrainingProgramWrench.deleteMany({});
@@ -153,6 +154,9 @@ describe('torque training API concurrency boundary', () => {
     const session = first.json().session;
     expect(session.program).toMatchObject({
       conditionFingerprint: version.conditionFingerprint,
+      lowerLimit: '9',
+      nominalTorque: '10',
+      upperLimit: '11',
       torqueWrenchProfiles: [{ id: profile.id, serialNumber: profile.serialNumber }]
     });
     const retry = await start('training-request-1');
@@ -650,5 +654,211 @@ describe('torque training API concurrency boundary', () => {
     expect(responses.map((response) => response.statusCode).sort()).toEqual([201, 201]);
     expect(await prisma.torqueTrainingProgram.findUniqueOrThrow({ where: { id: program.id }, select: { currentVersion: true } })).toMatchObject({ currentVersion: 3 });
     expect((await prisma.torqueTrainingProgramVersion.findMany({ where: { programId: program.id }, orderBy: { version: 'asc' }, select: { version: true, capabilityGroupId: true } })).map((row) => row.version)).toEqual([1, 2, 3]);
+  });
+
+  it('registers the server-derived wrench setting once and replays the same preparation', async () => {
+    const { employee, client, profile, version } = await fixture();
+    const headers = { 'x-client-key': client.apiKey, 'content-type': 'application/json' };
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/torque-training/sessions',
+      headers,
+      payload: { uid: employee.nfcTagUid, programVersionId: version.id, requestId: `training-session-${randomUUID()}` }
+    });
+    expect(started.statusCode).toBe(201);
+    const sessionId = started.json().session.id as string;
+    const requestId = `training-preparation-${randomUUID()}`;
+    const payload = {
+      uid: employee.nfcTagUid,
+      torqueWrenchProfileId: profile.id,
+      requestId,
+      physicalSettingConfirmed: true,
+      // Unknown values must not be accepted as the source of truth.
+      lowerLimit: 999,
+      nominalTorque: 999,
+      upperLimit: 999
+    };
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/torque-training/sessions/${sessionId}/wrench-preparations`,
+      headers,
+      payload
+    });
+    expect(first.statusCode).toBe(201);
+    expect(first.json().preparation).toMatchObject({
+      requestId,
+      confirmationId: expect.any(String),
+      torqueWrenchProfileId: profile.id,
+      target: { lowerLimit: '9', nominalTorque: '10', upperLimit: '11', unit: 'N·m' },
+      duplicate: false
+    });
+    expect(first.json().preparation).not.toHaveProperty('id');
+
+    const replay = await app.inject({
+      method: 'POST',
+      url: `/api/torque-training/sessions/${sessionId}/wrench-preparations`,
+      headers,
+      payload
+    });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().preparation).toMatchObject({
+      requestId,
+      confirmationId: first.json().preparation.confirmationId,
+      settingHistoryId: first.json().preparation.settingHistoryId,
+      duplicate: true
+    });
+    expect(await prisma.torqueWrenchSettingHistory.count({ where: { torqueWrenchProfileId: profile.id } })).toBe(2);
+    expect(await prisma.torqueTrainingWrenchConfirmation.count({ where: { sessionId } })).toBe(1);
+    expect(await prisma.torqueTrainingWrenchPreparationRequest.count({ where: { requestId } })).toBe(1);
+    await expect(prisma.torqueWrenchUsageLease.findUniqueOrThrow({ where: { torqueWrenchProfileId: profile.id } })).resolves.toMatchObject({
+      ownerKind: 'TRAINING',
+      ownerTrainingSessionId: sessionId,
+      ownerClientDeviceId: client.id,
+      adoptedConfirmationId: first.json().preparation.confirmationId,
+      releasedAt: null
+    });
+  });
+
+  it('rejects an unavailable wrench without leaving preparation writes behind', async () => {
+    const { employee, client, profile, version } = await fixture();
+    const headers = { 'x-client-key': client.apiKey, 'content-type': 'application/json' };
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/torque-training/sessions',
+      headers,
+      payload: { uid: employee.nfcTagUid, programVersionId: version.id, requestId: `training-session-${randomUUID()}` }
+    });
+    expect(started.statusCode).toBe(201);
+    const sessionId = started.json().session.id as string;
+
+    await prisma.measuringInstrument.update({
+      where: { id: profile.measuringInstrumentId },
+      data: { status: 'MAINTENANCE' }
+    });
+    const requestId = `training-preparation-unavailable-${randomUUID()}`;
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/torque-training/sessions/${sessionId}/wrench-preparations`,
+      headers,
+      payload: {
+        uid: employee.nfcTagUid,
+        torqueWrenchProfileId: profile.id,
+        requestId,
+        physicalSettingConfirmed: true
+      }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json().errorCode).toBe('INSTRUMENT_STATUS_NOT_ELIGIBLE');
+    expect(await prisma.torqueWrenchSettingHistory.count({ where: { torqueWrenchProfileId: profile.id } })).toBe(1);
+    expect(await prisma.torqueTrainingWrenchConfirmation.count({ where: { sessionId } })).toBe(0);
+    expect(await prisma.torqueTrainingWrenchPreparationRequest.count({ where: { requestId } })).toBe(0);
+  });
+
+  it('rolls back preparation when another active owner holds the wrench lease', async () => {
+    const { employee, client, profile, version } = await fixture();
+    const otherEmployee = await createTestEmployee({ nfcTagUid: `TRAINING_OWNER_TAG_${randomUUID()}` });
+    const otherClient = await createTestClientDevice(`training-owner-client-${randomUUID()}`);
+    const startSession = (uid: string, clientApiKey: string, requestId: string) => app.inject({
+      method: 'POST',
+      url: '/api/torque-training/sessions',
+      headers: { 'x-client-key': clientApiKey, 'content-type': 'application/json' },
+      payload: { uid, programVersionId: version.id, requestId }
+    });
+
+    const started = await startSession(employee.nfcTagUid, client.apiKey, `training-session-${randomUUID()}`);
+    const ownerStarted = await startSession(otherEmployee.nfcTagUid, otherClient.apiKey, `training-owner-session-${randomUUID()}`);
+    expect(started.statusCode).toBe(201);
+    expect(ownerStarted.statusCode).toBe(201);
+    const sessionId = started.json().session.id as string;
+    const ownerSessionId = ownerStarted.json().session.id as string;
+    const ownerHeaders = { 'x-client-key': otherClient.apiKey, 'content-type': 'application/json' };
+    const ownerConfirmation = await app.inject({
+      method: 'POST',
+      url: `/api/torque-training/sessions/${ownerSessionId}/wrench-confirmations`,
+      headers: ownerHeaders,
+      payload: { uid: otherEmployee.nfcTagUid, torqueWrenchProfileId: profile.id }
+    });
+    expect(ownerConfirmation.statusCode).toBe(201);
+    const ownerConfirmationId = ownerConfirmation.json().confirmation.id as string;
+    const ownerLease = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/usage-lease/acquire`,
+      headers: ownerHeaders,
+      payload: { sessionId: ownerSessionId, confirmationId: ownerConfirmationId, requestId: `training-owner-lease-${randomUUID()}` }
+    });
+    expect(ownerLease.statusCode).toBe(200);
+
+    const requestId = `training-preparation-held-${randomUUID()}`;
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/torque-training/sessions/${sessionId}/wrench-preparations`,
+      headers: { 'x-client-key': client.apiKey, 'content-type': 'application/json' },
+      payload: {
+        uid: employee.nfcTagUid,
+        torqueWrenchProfileId: profile.id,
+        requestId,
+        physicalSettingConfirmed: true
+      }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json().errorCode).toBe('TORQUE_WRENCH_LEASE_HELD');
+    expect(await prisma.torqueWrenchSettingHistory.count({ where: { torqueWrenchProfileId: profile.id } })).toBe(1);
+    expect(await prisma.torqueTrainingWrenchConfirmation.count({})).toBe(1);
+    expect(await prisma.torqueTrainingWrenchPreparationRequest.count({})).toBe(0);
+    await expect(prisma.torqueWrenchUsageLease.findUniqueOrThrow({ where: { torqueWrenchProfileId: profile.id } })).resolves.toMatchObject({
+      ownerKind: 'TRAINING',
+      ownerTrainingSessionId: ownerSessionId,
+      ownerClientDeviceId: otherClient.id,
+      adoptedConfirmationId: ownerConfirmationId,
+      releasedAt: null
+    });
+  });
+
+  it('rejects a mismatched employee or client before writing preparation records', async () => {
+    const { employee, client, profile, version } = await fixture();
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/torque-training/sessions',
+      headers: { 'x-client-key': client.apiKey, 'content-type': 'application/json' },
+      payload: { uid: employee.nfcTagUid, programVersionId: version.id, requestId: `training-session-${randomUUID()}` }
+    });
+    expect(started.statusCode).toBe(201);
+    const sessionId = started.json().session.id as string;
+    const alternateEmployee = await createTestEmployee({ nfcTagUid: `TRAINING_OTHER_TAG_${randomUUID()}` });
+    const alternateClient = await createTestClientDevice(`training-other-client-${randomUUID()}`);
+
+    const employeeMismatch = await app.inject({
+      method: 'POST',
+      url: `/api/torque-training/sessions/${sessionId}/wrench-preparations`,
+      headers: { 'x-client-key': client.apiKey, 'content-type': 'application/json' },
+      payload: {
+        uid: alternateEmployee.nfcTagUid,
+        torqueWrenchProfileId: profile.id,
+        requestId: `training-preparation-other-employee-${randomUUID()}`,
+        physicalSettingConfirmed: true
+      }
+    });
+    expect(employeeMismatch.statusCode).toBe(403);
+
+    const clientMismatchRequestId = `training-preparation-other-client-${randomUUID()}`;
+    const clientMismatch = await app.inject({
+      method: 'POST',
+      url: `/api/torque-training/sessions/${sessionId}/wrench-preparations`,
+      headers: { 'x-client-key': alternateClient.apiKey, 'content-type': 'application/json' },
+      payload: {
+        uid: employee.nfcTagUid,
+        torqueWrenchProfileId: profile.id,
+        requestId: clientMismatchRequestId,
+        physicalSettingConfirmed: true
+      }
+    });
+    expect(clientMismatch.statusCode).toBe(404);
+
+    expect(await prisma.torqueWrenchSettingHistory.count({ where: { torqueWrenchProfileId: profile.id } })).toBe(1);
+    expect(await prisma.torqueTrainingWrenchConfirmation.count({ where: { sessionId } })).toBe(0);
+    expect(await prisma.torqueTrainingWrenchPreparationRequest.count({})).toBe(0);
   });
 });

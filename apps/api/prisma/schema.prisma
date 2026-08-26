@@ -3242,9 +3242,20 @@ model TorqueTrainingWrenchConfirmation {
   settingHistory           TorqueWrenchSettingHistory @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
   employee                 Employee                   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
   clientDevice             ClientDevice               @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+  preparationRequest       TorqueTrainingWrenchPreparationRequest?
 
   @@index([sessionId, confirmedAt(sort: Desc)], map: "TorqueTrainingWrenchConfirmation_idx_session_confirmed")
   @@index([torqueWrenchProfileId, confirmedAt(sort: Desc)], map: "TorqueTrainingWrenchConfirmation_idx_profile_confirmed")
+}
+
+/// Idempotency ledger for the training one-touch preparation request.
+/// It deliberately stores only the request-to-confirmation identity; the
+/// confirmation remains the single audit source for operator/device snapshots.
+model TorqueTrainingWrenchPreparationRequest {
+  requestId      String                           @id
+  confirmationId String                           @unique
+  createdAt      DateTime                         @default(now())
+  confirmation   TorqueTrainingWrenchConfirmation @relation(fields: [confirmationId], references: [id], onDelete: Restrict)
 }
 
 /// torque-agent入力の受信記録。source event冪等性も同じ表で保証する。

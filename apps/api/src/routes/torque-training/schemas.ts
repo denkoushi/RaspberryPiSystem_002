@@ -26,7 +26,7 @@ export const trainingProgramInputSchema = z.object({
   upperLimit: decimal,
   unit: z.string().trim().min(1).max(40),
   jigConditionCode: z.string().trim().min(1).max(80),
-  torqueWrenchProfileIds: z.array(id).min(1).max(20)
+  torqueWrenchProfileIds: z.array(id).max(20)
 });
 
 export const trainingProgramIdParamsSchema = z.object({ id });
@@ -38,6 +38,13 @@ export const trainingDeactivateSchema = z.object({ reason: z.string().trim().min
 export const trainingWrenchConfirmationSchema = z.object({
   uid: z.string().trim().min(1).max(200),
   torqueWrenchProfileId: id
+});
+
+export const trainingWrenchPreparationSchema = z.object({
+  uid: z.string().trim().min(1).max(200),
+  torqueWrenchProfileId: id,
+  requestId: z.string().trim().min(1).max(160),
+  physicalSettingConfirmed: z.literal(true)
 });
 
 export const trainingCancelSchema = z.object({ reason: z.string().trim().min(1).max(500) });

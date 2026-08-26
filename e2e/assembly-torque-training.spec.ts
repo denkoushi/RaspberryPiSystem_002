@@ -35,6 +35,17 @@ const program = {
   versions: [version]
 };
 
+const menuProgram = {
+  ...program,
+  versions: Array.from({ length: 14 }, (_, index) => ({
+    ...version,
+    id: index === 0 ? versionId : `standard-version-${index + 1}`,
+    displayName: index === 0 ? version.displayName : `標準メニュー ${index + 1}`,
+    setupState: index === 0 ? 'READY' : 'UNASSIGNED',
+    setupStateReason: index === 0 ? null : '対応レンチ未登録'
+  }))
+};
+
 type MockAdminResult = {
   id: string;
   employeeCode: string;
@@ -202,6 +213,8 @@ test.use({ userAgent: LINUX_KIOSK_USER_AGENT });
 
 test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認する', async ({ page }) => {
   let agentAcquired = false;
+  let leaseAcquireCalls = 0;
+  const preparationPayloads: Array<Record<string, unknown>> = [];
   let trainingHeartbeats = 0;
   let trainingSessionGets = 0;
   let committedAttemptCount = 0;
@@ -222,7 +235,7 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
     if (path.startsWith('/src/api/')) return route.continue();
     if (path === '/api/kiosk/config') return route.fulfill({ json: { kioskInitialRoute: 'assembly', navTabOrder: [] } });
     if (path === '/api/system/deploy-status') return route.fulfill({ json: { isMaintenance: false } });
-    if (path === '/api/torque-training/programs' && request.method() === 'GET') return route.fulfill({ json: { programs: [program] } });
+    if (path === '/api/torque-training/programs' && request.method() === 'GET') return route.fulfill({ json: { programs: [menuProgram] } });
     if (path === '/api/torque-training/operator-context') return route.fulfill({ json: { employee: { id: employeeId, employeeCode: 'E2E001', displayName: 'E2E 作業者' }, currentSession: null, metrics: [] } });
     if (path === '/api/torque-training/sessions' && request.method() === 'POST') return route.fulfill({ status: 201, json: { session: session() } });
     if (path.endsWith(`/sessions/${session().id}`) && request.method() === 'GET') {
@@ -230,8 +243,11 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
       const status = committedAttemptCount >= 5 ? 'COMPLETED' : 'IN_PROGRESS';
       return route.fulfill({ json: { session: session(status, committedAttemptCount) } });
     }
-    if (path.endsWith('/wrench-confirmations') && request.method() === 'POST') return route.fulfill({ status: 201, json: { confirmation: { id: '88888888-8888-4888-8888-888888888888', torqueWrenchProfileId: profileId, serialNumber: '702902S', settingHistoryId: '99999999-9999-4999-8999-999999999999' } } });
-    if (path.includes('/admin/torque-training/programs') && request.method() === 'GET') return route.fulfill({ json: { programs: [program] } });
+    if (path.endsWith('/wrench-preparations') && request.method() === 'POST') {
+      preparationPayloads.push(request.postDataJSON() as Record<string, unknown>);
+      return route.fulfill({ status: 201, json: { preparation: { confirmationId: '88888888-8888-4888-8888-888888888888', requestId: preparationPayloads[0].requestId, torqueWrenchProfileId: profileId, serialNumber: '702902S', settingHistoryId: '99999999-9999-4999-8999-999999999999', target: { lowerLimit: '9', nominalTorque: '10', upperLimit: '11', unit: 'N-m' }, confirmedAt: '2026-08-09T00:00:00.000Z', duplicate: false } } });
+    }
+    if (path.includes('/admin/torque-training/programs') && request.method() === 'GET') return route.fulfill({ json: { programs: [menuProgram] } });
     if (path.includes('/admin/torque-training/results') && request.method() === 'GET') return route.fulfill({ json: { results: adminResults } });
     if (path.includes('/admin/torque-training/sessions/') && path.endsWith('/exclude') && request.method() === 'POST') {
       const sessionId = path.split('/').at(-2);
@@ -251,6 +267,8 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
     const headers = { 'access-control-allow-origin': '*' };
     if (path === '/health') return route.fulfill({ headers, json: { ok: true, ready: true, wrenchSerialNumbers: ['702902S'] } });
     if (path === '/lease/acquire') {
+      leaseAcquireCalls += 1;
+      if (leaseAcquireCalls === 1) return route.fulfill({ headers, json: { ok: true, ready: false, leaseOwned: false, state: 'available', lastError: 'agent warming up' } });
       agentAcquired = true;
       return route.fulfill({ headers, json: { ok: true, ready: true, leaseOwned: true, state: 'owned_by_self', lastError: null } });
     }
@@ -294,6 +312,9 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
   await expectMaxWidth(page.getByTestId('torque-training-operator-card'), 384);
   const trainingMenu = page.getByLabel('対象ボルト・訓練メニュー');
   await expectMaxWidth(trainingMenu, 576);
+  await expect(trainingMenu.locator('option')).toHaveCount(15);
+  await expect(trainingMenu.locator('option:disabled')).toHaveCount(13);
+  await expect(trainingMenu).toContainText('対応レンチ未登録');
   await expect(page.getByTestId('assembly-work-session-status')).toHaveAttribute('role', 'status');
   await expectNoHorizontalOverflow(page);
   await trainingMenu.selectOption(versionId);
@@ -302,9 +323,25 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
   await expectMaxWidth(page.getByTestId('torque-training-target-summary'), 448);
   await expect(page.getByText(/目標 10 Nm/)).toHaveCount(0);
   await expect(page.getByText('torque-agent自動検出: 702902S')).toBeVisible();
+  await expect(page.getByTestId('torque-training-wrench-target-values')).toContainText('M6');
+  await expect(page.getByTestId('torque-training-wrench-target-values')).toContainText('10 N·m');
+  await expect(page.getByTestId('torque-training-wrench-target-values')).toContainText('9 N·m');
+  await expect(page.getByTestId('torque-training-wrench-target-values')).toContainText('11 N·m');
   await expectMaxWidth(page.getByTestId('torque-training-wrench-detection'), 448);
-  await page.getByRole('button', { name: '検出レンチを確認して接続' }).click();
+  await page.getByRole('button', { name: 'レンチ本体を表示値に設定して接続' }).click();
+  await expect(page.getByTestId('torque-training-setting-registered')).toBeVisible();
+  await expect(page.getByTestId('torque-training-wrench-target-values')).toBeVisible();
+  expect(preparationPayloads).toHaveLength(1);
+  expect(preparationPayloads[0]).toEqual(expect.objectContaining({
+    uid: 'NFC-E2E-TRAINING',
+    torqueWrenchProfileId: profileId,
+    requestId: expect.any(String),
+    physicalSettingConfirmed: true
+  }));
+  expect(preparationPayloads[0]).not.toHaveProperty('lowerLimit');
+  await page.getByRole('button', { name: 'レンチ本体を表示値に設定して接続' }).click();
   await expectMaxWidth(page.getByTestId('torque-training-wrench-connection'), 512);
+  await expect(page.getByTestId('torque-training-wrench-target-values')).toHaveCount(0);
   const attemptHistory = page.getByRole('region', { name: '訓練試行履歴' });
   await expectMaxWidth(attemptHistory, 512);
   await expect.poll(() => trainingHeartbeats, { timeout: 15_000 }).toBeGreaterThanOrEqual(5);
@@ -329,13 +366,13 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
   await expect(page.getByText('訓練が完了しました。次の作業者はNFCタグを読み取ってください。')).toBeVisible();
   await expect(page.getByText('E2E 作業者', { exact: true })).toHaveCount(0);
 
-  await page.getByRole('button', { name: '設定' }).click();
+  await page.getByRole('button', { name: '設定', exact: true }).click();
   await expect(page).toHaveURL(/\/login/);
   await page.getByLabel('ユーザー名').fill('admin');
   await page.getByLabel('パスワード').fill('password');
   await page.getByRole('button', { name: 'ログイン' }).click();
   await expect(page).toHaveURL(/\/kiosk\/assembly\/training/);
-  const settingsButton = page.getByRole('button', { name: '設定' });
+  const settingsButton = page.getByRole('button', { name: '設定', exact: true });
   await settingsButton.click();
 
   const settingsDialog = page.getByRole('dialog').last();

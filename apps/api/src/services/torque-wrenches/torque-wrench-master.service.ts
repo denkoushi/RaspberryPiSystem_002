@@ -3,9 +3,14 @@ import { TORQUE_WRENCH_STORAGE_LOCATIONS, type TorqueWrenchStorageLocation } fro
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { runAssemblyTransaction } from '../assembly/assembly-transaction.js';
-import { TorqueUnitConverter } from './torque-unit-converter.js';
 import { lockTorqueWrenchProfile } from './torque-wrench-lock.repository.js';
 import { normalizeFastenerText, normalizeTorqueWrenchKey } from './torque-wrench-normalization.js';
+import {
+  appendTorqueWrenchSetting,
+  type TorqueWrenchSettingInput
+} from './torque-wrench-setting-writer.js';
+
+export type { TorqueWrenchSettingInput } from './torque-wrench-setting-writer.js';
 
 const profileInclude = {
   measuringInstrument: true,
@@ -53,27 +58,10 @@ export type TorqueWrenchCapabilityGroupInput = {
   isActive?: boolean;
 };
 
-export type TorqueWrenchSettingInput = {
-  lowerLimit: Prisma.Decimal.Value;
-  nominalTorque: Prisma.Decimal.Value;
-  upperLimit: Prisma.Decimal.Value;
-  unit: string;
-  effectiveAt?: Date;
-  reason?: string | null;
-  actorUserId?: string | null;
-  actorUsername?: string | null;
-};
-
 function required(value: string, label: string, max: number): string {
   const normalized = value.normalize('NFKC').trim();
   if (!normalized) throw new ApiError(400, `${label}が必要です`);
   return normalized.slice(0, max);
-}
-
-function assertRange(lower: Prisma.Decimal, nominal: Prisma.Decimal, upper: Prisma.Decimal): void {
-  if (lower.gt(nominal) || nominal.gt(upper)) {
-    throw new ApiError(400, '下限値 ≤ 規定値 ≤ 上限値となるよう設定してください');
-  }
 }
 
 function assertStorageLocation(value: string): asserts value is TorqueWrenchStorageLocation {
@@ -230,44 +218,7 @@ export class TorqueWrenchMasterService {
   }
 
   async addSetting(profileId: string, input: TorqueWrenchSettingInput) {
-    const lowerLimit = new Prisma.Decimal(input.lowerLimit);
-    const nominalTorque = new Prisma.Decimal(input.nominalTorque);
-    const upperLimit = new Prisma.Decimal(input.upperLimit);
-    assertRange(lowerLimit, nominalTorque, upperLimit);
-    const lowerLimitNm = TorqueUnitConverter.toNewtonMetres(lowerLimit, input.unit);
-    const nominalTorqueNm = TorqueUnitConverter.toNewtonMetres(nominalTorque, input.unit);
-    const upperLimitNm = TorqueUnitConverter.toNewtonMetres(upperLimit, input.unit);
-    const effectiveAt = input.effectiveAt ?? new Date();
-    if (effectiveAt.getTime() > Date.now()) {
-      throw new ApiError(400, '適用日時に未来の日時は指定できません');
-    }
-    return runAssemblyTransaction(async (tx) => {
-      await lockTorqueWrenchProfile(tx, profileId);
-      const profile = await tx.torqueWrenchProfile.findUnique({
-        where: { id: profileId },
-        include: { model: true }
-      });
-      if (!profile) throw new ApiError(404, '物理トルクレンチが見つかりません');
-      if (profile.model.torqueMinNm.gt(lowerLimitNm) || profile.model.torqueMaxNm.lt(upperLimitNm)) {
-        throw new ApiError(400, '設定値が型番の測定可能範囲外です');
-      }
-      return tx.torqueWrenchSettingHistory.create({
-        data: {
-          torqueWrenchProfileId: profileId,
-          lowerLimit,
-          nominalTorque,
-          upperLimit,
-          unit: TorqueUnitConverter.canonicalUnit(input.unit),
-          lowerLimitNm,
-          nominalTorqueNm,
-          upperLimitNm,
-          effectiveAt,
-          actorUserId: input.actorUserId ?? null,
-          actorUsername: input.actorUsername?.slice(0, 120) ?? null,
-          reason: input.reason?.trim().slice(0, 500) || null
-        }
-      });
-    });
+    return runAssemblyTransaction((tx) => appendTorqueWrenchSetting(tx, profileId, input));
   }
 
   listCapabilityGroups(includeInactive = false) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   TorqueWrenchEligibilityPolicy,
+  evaluateTorqueWrenchSetupReadiness,
   torqueConditionFingerprint,
   type TorqueCondition,
   type TorqueWrenchCandidate
@@ -67,5 +68,13 @@ describe('TorqueWrenchEligibilityPolicy', () => {
     [{ ...candidate, capabilityGroupIsActive: false }, 'WRONG_CAPABILITY_GROUP']
   ] as const)('rejects each independent safety failure', (input, reason) => {
     expect(policy.evaluate(condition, input, new Date('2026-07-17T12:00:00+09:00'))).toEqual({ eligible: false, reason });
+  });
+
+  it('reports a wrench as setup-ready even when its current setting needs to change', () => {
+    expect(evaluateTorqueWrenchSetupReadiness(
+      condition,
+      { ...candidate, setting: { ...candidate.setting!, lowerLimitNm: '1', nominalTorqueNm: '2', upperLimitNm: '3' } },
+      new Date('2026-07-17T12:00:00+09:00')
+    )).toEqual({ ready: true });
   });
 });

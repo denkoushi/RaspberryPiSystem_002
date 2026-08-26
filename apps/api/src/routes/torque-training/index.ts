@@ -2,7 +2,10 @@ import type { FastifyInstance } from 'fastify';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
-import { TorqueTrainingService } from '../../services/torque-training/index.js';
+import {
+  TorqueTrainingService,
+  TorqueTrainingWrenchPreparationService
+} from '../../services/torque-training/index.js';
 import {
   operatorContextSchema,
   startTrainingSessionSchema,
@@ -17,11 +20,13 @@ import {
   trainingProgramInputSchema,
   trainingRevisionSchema,
   trainingSessionParamsSchema,
-  trainingWrenchConfirmationSchema
+  trainingWrenchConfirmationSchema,
+  trainingWrenchPreparationSchema
 } from './schemas.js';
 
 export async function registerTorqueTrainingRoutes(app: FastifyInstance): Promise<void> {
   const service = new TorqueTrainingService();
+  const preparationService = new TorqueTrainingWrenchPreparationService();
   const canAdmin = authorizeRoles('ADMIN');
 
   app.get('/torque-training/programs', async (request) => {
@@ -60,6 +65,14 @@ export async function registerTorqueTrainingRoutes(app: FastifyInstance): Promis
     const params = trainingSessionParamsSchema.parse(request.params);
     const body = trainingWrenchConfirmationSchema.parse(request.body);
     return reply.code(201).send({ confirmation: await service.confirmWrench(params.id, body.uid, body.torqueWrenchProfileId, clientDevice) });
+  });
+
+  app.post('/torque-training/sessions/:id/wrench-preparations', async (request, reply) => {
+    const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+    const params = trainingSessionParamsSchema.parse(request.params);
+    const body = trainingWrenchPreparationSchema.parse(request.body);
+    const preparation = await preparationService.prepare(params.id, body, clientDevice);
+    return reply.code(preparation.duplicate ? 200 : 201).send({ preparation });
   });
 
   app.post('/torque-training/sessions/:id/attempts/from-agent', async (request) => {

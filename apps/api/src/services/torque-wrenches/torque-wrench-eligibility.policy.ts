@@ -45,6 +45,10 @@ export type EligibilityDecision =
   | { eligible: true; conditionFingerprint: string }
   | { eligible: false; reason: TorqueWrenchRejectionReason };
 
+export type TorqueWrenchSetupReadinessDecision =
+  | { ready: true }
+  | { ready: false; reason: TorqueWrenchRejectionReason };
+
 function tokyoDateKey(value: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Tokyo',
@@ -85,20 +89,52 @@ export function torqueConditionFingerprint(condition: TorqueCondition): string {
   return createHash('sha256').update(values.join('|')).digest('hex');
 }
 
+function evaluateSetupRequirements(
+  condition: TorqueCondition,
+  candidate: TorqueWrenchCandidate,
+  now: Date
+): TorqueWrenchSetupReadinessDecision {
+  if (!requiredConditionMatchesGroup(condition, candidate)) {
+    return { ready: false, reason: 'WRONG_CAPABILITY_GROUP' };
+  }
+  if (!['AVAILABLE', 'IN_USE'].includes(candidate.status)) {
+    return { ready: false, reason: 'INSTRUMENT_STATUS_NOT_ELIGIBLE' };
+  }
+  if (!candidate.calibrationExpiryDate) {
+    return { ready: false, reason: 'CALIBRATION_MISSING' };
+  }
+  if (tokyoDateKey(candidate.calibrationExpiryDate) < tokyoDateKey(now)) {
+    return { ready: false, reason: 'CALIBRATION_EXPIRED' };
+  }
+
+  const lowerNm = TorqueUnitConverter.toNewtonMetres(condition.lowerLimit, condition.unit);
+  const nominalNm = TorqueUnitConverter.toNewtonMetres(condition.nominalTorque, condition.unit);
+  const upperNm = TorqueUnitConverter.toNewtonMetres(condition.upperLimit, condition.unit);
+  const modelMin = new Prisma.Decimal(candidate.modelTorqueMinNm);
+  const modelMax = new Prisma.Decimal(candidate.modelTorqueMaxNm);
+  if (modelMin.gt(lowerNm) || modelMax.lt(upperNm) || modelMin.gt(nominalNm) || modelMax.lt(nominalNm)) {
+    return { ready: false, reason: 'MODEL_RANGE_NOT_COVERED' };
+  }
+  return { ready: true };
+}
+
+/**
+ * Decide whether a wrench can be prepared for a training condition.
+ * The current setting is intentionally not read here: this policy answers
+ * whether the wrench can accept the server-derived setting after setup.
+ */
+export function evaluateTorqueWrenchSetupReadiness(
+  condition: TorqueCondition,
+  candidate: TorqueWrenchCandidate,
+  now = new Date()
+): TorqueWrenchSetupReadinessDecision {
+  return evaluateSetupRequirements(condition, candidate, now);
+}
+
 export class TorqueWrenchEligibilityPolicy {
   evaluate(condition: TorqueCondition, candidate: TorqueWrenchCandidate, now = new Date()): EligibilityDecision {
-    if (!requiredConditionMatchesGroup(condition, candidate)) {
-      return { eligible: false, reason: 'WRONG_CAPABILITY_GROUP' };
-    }
-    if (!['AVAILABLE', 'IN_USE'].includes(candidate.status)) {
-      return { eligible: false, reason: 'INSTRUMENT_STATUS_NOT_ELIGIBLE' };
-    }
-    if (!candidate.calibrationExpiryDate) {
-      return { eligible: false, reason: 'CALIBRATION_MISSING' };
-    }
-    if (tokyoDateKey(candidate.calibrationExpiryDate) < tokyoDateKey(now)) {
-      return { eligible: false, reason: 'CALIBRATION_EXPIRED' };
-    }
+    const setup = evaluateSetupRequirements(condition, candidate, now);
+    if (!setup.ready) return { eligible: false, reason: setup.reason };
     if (!candidate.setting) {
       return { eligible: false, reason: 'SETTING_HISTORY_MISSING' };
     }
@@ -106,11 +142,6 @@ export class TorqueWrenchEligibilityPolicy {
     const lowerNm = TorqueUnitConverter.toNewtonMetres(condition.lowerLimit, condition.unit);
     const nominalNm = TorqueUnitConverter.toNewtonMetres(condition.nominalTorque, condition.unit);
     const upperNm = TorqueUnitConverter.toNewtonMetres(condition.upperLimit, condition.unit);
-    const modelMin = new Prisma.Decimal(candidate.modelTorqueMinNm);
-    const modelMax = new Prisma.Decimal(candidate.modelTorqueMaxNm);
-    if (modelMin.gt(lowerNm) || modelMax.lt(upperNm) || modelMin.gt(nominalNm) || modelMax.lt(nominalNm)) {
-      return { eligible: false, reason: 'MODEL_RANGE_NOT_COVERED' };
-    }
     if (
       !new Prisma.Decimal(candidate.setting.lowerLimitNm).equals(lowerNm) ||
       !new Prisma.Decimal(candidate.setting.nominalTorqueNm).equals(nominalNm) ||
