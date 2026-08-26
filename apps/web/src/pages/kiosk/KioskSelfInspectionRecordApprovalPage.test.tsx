@@ -67,7 +67,7 @@ function makeSession(
     processGroup: 'cutting',
     resourceCd: '581',
     scheduleRowId: 'schedule-1',
-    machineName: '設備A',
+    machineName: 'Ｌ３００ＫＰ－１０',
     plannedQuantity: 1,
     expectedEntryCount: 1,
     requiredEntryCount: 1,
@@ -207,7 +207,9 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
       null,
       expect.objectContaining({ enabled: false, clientKey: 'client-key-test' })
     );
-    expect(screen.getByText('作業者・検査員の入力値と、承認・最終判定の進捗を確認します。')).toBeInTheDocument();
+    expect(
+      screen.queryByText('作業者・検査員の入力値と、承認・最終判定の進捗を確認します。')
+    ).not.toBeInTheDocument();
     expect(window.prompt).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: '未完了' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '完了記録' })).toHaveAttribute('aria-pressed', 'false');
@@ -403,7 +405,18 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
     });
 
     renderPage();
-    expect(await screen.findByText('検査員最終判定フロー（閲覧専用）')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '作業者入力へ' })).toHaveAttribute(
+      'href',
+      '/kiosk/part-measurement/self-inspection/sessions/inspector-final'
+    );
+    expect(screen.getByRole('link', { name: '検査員測定へ' })).toHaveAttribute(
+      'href',
+      '/kiosk/part-measurement/self-inspection/sessions/inspector-final/inspector'
+    );
+    expect(screen.queryByRole('link', { name: '検査員画面' })).not.toBeInTheDocument();
+    expect(screen.queryByText('検査員最終判定フロー（閲覧専用）')).not.toBeInTheDocument();
+    expect(screen.getAllByText('L300KP-10')).toHaveLength(2);
+    expect(screen.getByRole('region', { name: '選択中の検査記録' })).not.toHaveTextContent('機種名');
     expect(screen.queryByRole('button', { name: '承認を開始' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '削除履歴' }));
     expect(await screen.findByText('削除済み・閲覧専用')).toBeInTheDocument();

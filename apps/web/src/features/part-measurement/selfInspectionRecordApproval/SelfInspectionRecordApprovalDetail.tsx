@@ -2,8 +2,8 @@ import clsx from 'clsx';
 import { Link } from 'react-router-dom';
 
 import { buttonClassName, Button } from '../../../components/ui/Button';
+import { toHalfWidthAscii } from '../../kiosk/productionSchedule/machineName';
 import {
-  kioskSelfInspectionInspectorSessionPath,
   kioskSelfInspectionSessionPath
 } from '../selfInspectionRoutes';
 
@@ -63,19 +63,32 @@ function DetailTable({
   requireMeasuringInstrumentTag: boolean;
 }) {
   return (
-    <div className="min-h-0 overflow-auto rounded border border-white/10">
-      <table className="min-w-full text-left text-sm">
+    <div className="min-h-0 overflow-y-auto overflow-x-hidden rounded border border-white/10">
+      <table className="w-full table-fixed text-left text-sm" aria-label="測定値一覧">
+        <colgroup>
+          <col className="w-[6%]" />
+          <col className="w-[10%]" />
+          <col className="w-[10%]" />
+          <col className="w-[4%]" />
+          <col className="w-[14%]" />
+          <col className="w-[13%]" />
+          <col className="w-[13%]" />
+          <col className="w-[7%]" />
+          <col className="w-[9%]" />
+          <col className="w-[14%]" />
+        </colgroup>
         <thead className="sticky top-0 bg-slate-950 text-xs text-white/55">
           <tr>
-            <th className="px-3 py-2">入力件</th>
-            <th className="px-3 py-2">点検</th>
-            <th className="px-3 py-2">丸数字</th>
-            <th className="px-3 py-2">測定</th>
-            <th className="px-3 py-2">オペレータ値</th>
-            <th className="px-3 py-2">検査員値</th>
-            <th className="px-3 py-2">差分</th>
-            <th className="px-3 py-2">差異判定</th>
-            <th className="px-3 py-2">合格範囲</th>
+            <th className="px-2 py-2">入力件</th>
+            <th className="px-2 py-2">作業点検</th>
+            <th className="px-2 py-2">検査点検</th>
+            <th className="px-2 py-2">丸数字</th>
+            <th className="px-2 py-2">測定</th>
+            <th className="px-2 py-2">オペレータ値</th>
+            <th className="px-2 py-2">検査員値</th>
+            <th className="px-2 py-2">差分</th>
+            <th className="px-2 py-2">差異判定</th>
+            <th className="px-2 py-2">合格範囲</th>
           </tr>
         </thead>
         <tbody>
@@ -110,142 +123,99 @@ function DetailTable({
                 entry.inspectorEntry?.measuringInstrumentNameSnapshot
                   ? `${entry.inspectorEntry.measuringInstrumentManagementNumberSnapshot} ${entry.inspectorEntry.measuringInstrumentNameSnapshot}`
                   : entry.inspectorEntry?.measuringInstrumentNameSnapshot;
+              const operatorInstrumentLabel =
+                instrumentUsages.length > 0
+                  ? instrumentUsages.map(formatInstrumentUsageLabel).join(' / ')
+                  : legacyInstrumentLabel ?? (requireMeasuringInstrumentTag ? '未点検' : '任意');
+              const inspectorInstrumentLabel =
+                inspectorInstrumentUsages.length > 0
+                  ? inspectorInstrumentUsages.map(formatInstrumentUsageLabel).join(' / ')
+                  : inspectorLegacyInstrumentLabel ??
+                    (requireMeasuringInstrumentTag ? '未点検' : '任意');
               return (
                 <tr
                   key={`${entry.entryIndex}:${value.templateItemId}`}
                   className={clsx(
-                    'border-t border-white/10',
-                    outOfTolerance && 'bg-red-500/10',
-                    missing && 'bg-slate-600/15'
+                    'h-14 border-t border-white/10',
+                    outOfTolerance ? 'bg-red-500/30 shadow-[inset_4px_0_0_#fb7185]' : missing && 'bg-slate-600/15'
                   )}
                 >
                   {valueIndex === 0 ? (
-                    <td className="whitespace-nowrap px-3 py-2 align-top" rowSpan={entry.values.length}>
+                    <td className="whitespace-nowrap px-2 py-1 align-top" rowSpan={entry.values.length}>
                       <div className="font-semibold">{entry.entrySlotLabel}</div>
-                      <div className="text-xs text-white/45">#{entry.entryIndex + 1}</div>
+                      <div className="text-[10px] text-white/45">#{entry.entryIndex + 1}</div>
                     </td>
                   ) : null}
                   {valueIndex === 0 ? (
-                    <td className="min-w-36 px-3 py-2 align-top" rowSpan={entry.values.length}>
-                      <div
-                        className={
-                          entry.entry?.createdByEmployeeNameSnapshot
-                            ? 'text-emerald-100'
-                            : 'text-amber-100'
-                        }
-                      >
-                        測定者 {entry.entry?.createdByEmployeeNameSnapshot ?? '未登録'}
+                    <td
+                      className="px-2 py-1 align-top"
+                      rowSpan={entry.values.length}
+                      title={`${entry.entry?.createdByEmployeeNameSnapshot ?? '未登録'} / 保存 ${entry.entry?.updatedAt ? formatDateTime(entry.entry.updatedAt) : '未保存'} / ${operatorInstrumentLabel}`}
+                    >
+                      <div className={clsx('truncate font-semibold', entry.entry?.createdByEmployeeNameSnapshot ? 'text-emerald-100' : 'text-amber-100')}>
+                        {entry.entry?.createdByEmployeeNameSnapshot ?? '未登録'}
                       </div>
-                      <div
-                        className={
-                          entry.entry?.updatedAt ? 'text-xs text-white/55' : 'text-xs text-amber-100'
-                        }
-                      >
+                      <div className="truncate text-[10px] text-white/55">
                         保存 {entry.entry?.updatedAt ? formatDateTime(entry.entry.updatedAt) : '未保存'}
                       </div>
-                      {instrumentUsages.length > 0 ? (
-                        <div className="mt-1 grid gap-0.5 text-emerald-100">
-                          <div>オペレータ使用前点検済</div>
-                          {instrumentUsages.map((usage) => (
-                            <div key={usage.id} className="max-w-52 truncate text-xs text-emerald-100/85">
-                              {formatInstrumentUsageLabel(usage)}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div
-                          className={
-                            legacyInstrumentLabel
-                              ? 'text-emerald-100'
-                              : requireMeasuringInstrumentTag
-                                ? 'text-amber-100'
-                                : 'text-white/55'
-                          }
-                        >
-                          使用前点検 {legacyInstrumentLabel ?? (requireMeasuringInstrumentTag ? '未点検' : '任意')}
-                        </div>
-                      )}
-                      <div className="mt-2 border-t border-white/10 pt-2">
-                        <div
-                          className={
-                            entry.inspectorEntry?.inspectorEmployeeNameSnapshot
-                              ? 'text-sky-100'
-                              : 'text-amber-100'
-                          }
-                        >
-                          検査員 {entry.inspectorEntry?.inspectorEmployeeNameSnapshot ?? '未登録'}
-                        </div>
-                        <div
-                          className={
-                            entry.inspectorEntry?.updatedAt
-                              ? 'text-xs text-white/55'
-                              : 'text-xs text-amber-100'
-                          }
-                        >
-                          保存{' '}
-                          {entry.inspectorEntry?.updatedAt
-                            ? formatDateTime(entry.inspectorEntry.updatedAt)
-                            : '未保存'}
-                        </div>
-                        {inspectorInstrumentUsages.length > 0 ? (
-                          <div className="mt-1 grid gap-0.5 text-sky-100">
-                            <div>検査員使用前点検済</div>
-                            {inspectorInstrumentUsages.map((usage) => (
-                              <div key={usage.id} className="max-w-52 truncate text-xs text-sky-100/85">
-                                {formatInstrumentUsageLabel(usage)}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div
-                            className={
-                              inspectorLegacyInstrumentLabel
-                                ? 'text-sky-100'
-                                : requireMeasuringInstrumentTag
-                                  ? 'text-amber-100'
-                                  : 'text-white/55'
-                            }
-                          >
-                            検査員使用前点検{' '}
-                            {inspectorLegacyInstrumentLabel ??
-                              (requireMeasuringInstrumentTag ? '未点検' : '任意')}
-                          </div>
-                        )}
+                      <div className={clsx('truncate text-[10px]', operatorInstrumentLabel === '未点検' ? 'text-amber-100' : 'text-emerald-100/85')}>
+                        {operatorInstrumentLabel}
                       </div>
                     </td>
                   ) : null}
-                  <td className="px-3 py-2">{value.displayMarker ?? '-'}</td>
-                  <td className="px-3 py-2">
+                  {valueIndex === 0 ? (
+                    <td
+                      className="px-2 py-1 align-top"
+                      rowSpan={entry.values.length}
+                      title={`${entry.inspectorEntry?.inspectorEmployeeNameSnapshot ?? '未登録'} / 保存 ${entry.inspectorEntry?.updatedAt ? formatDateTime(entry.inspectorEntry.updatedAt) : '未保存'} / ${inspectorInstrumentLabel}`}
+                    >
+                      <div className={clsx('truncate font-semibold', entry.inspectorEntry?.inspectorEmployeeNameSnapshot ? 'text-sky-100' : 'text-amber-100')}>
+                        {entry.inspectorEntry?.inspectorEmployeeNameSnapshot ?? '未登録'}
+                      </div>
+                      <div className="truncate text-[10px] text-white/55">
+                        保存 {entry.inspectorEntry?.updatedAt ? formatDateTime(entry.inspectorEntry.updatedAt) : '未保存'}
+                      </div>
+                      <div className={clsx('truncate text-[10px]', inspectorInstrumentLabel === '未点検' ? 'text-amber-100' : 'text-sky-100/85')}>
+                        {inspectorInstrumentLabel}
+                      </div>
+                    </td>
+                  ) : null}
+                  <td className="px-2 py-1 text-center text-base font-semibold">{value.displayMarker ?? '-'}</td>
+                  <td className="px-2 py-1">
                     <div className="font-semibold">{value.measurementLabel}</div>
-                    <div className="text-xs text-white/50">{value.measurementPoint}</div>
+                    <div className="truncate text-[10px] text-white/50">{value.measurementPoint}</div>
                   </td>
                   <td
                     className={clsx(
-                      'px-3 py-2 font-mono',
+                      'whitespace-nowrap px-2 py-1 font-mono',
                       outOfTolerance ? 'text-red-100' : missing ? 'text-amber-100' : 'text-white'
                     )}
                   >
-                    {operatorDisplay}
-                    {!isJudgement && value.value && value.unit ? ` ${value.unit}` : ''}
+                    <span className="text-[1.75rem] font-bold leading-none">{operatorDisplay}</span>
+                    {!isJudgement && value.value && value.unit ? (
+                      <span className="ml-1 text-xs text-current/75">{value.unit}</span>
+                    ) : null}
                   </td>
                   <td
                     className={clsx(
-                      'px-3 py-2 font-mono',
+                      'whitespace-nowrap px-2 py-1 font-mono',
                       (isJudgement ? value.inspectorJudgementResult : value.inspectorValue) == null
                         ? 'text-amber-100'
                         : 'text-sky-100'
                     )}
                   >
-                    {inspectorDisplay}
-                    {!isJudgement && value.inspectorValue && value.unit ? ` ${value.unit}` : ''}
+                    <span className="text-[1.75rem] font-bold leading-none">{inspectorDisplay}</span>
+                    {!isJudgement && value.inspectorValue && value.unit ? (
+                      <span className="ml-1 text-xs text-current/75">{value.unit}</span>
+                    ) : null}
                   </td>
-                  <td className="px-3 py-2 font-mono text-white/75">
+                  <td className="truncate px-2 py-1 font-mono text-white/75">
                     {isJudgement ? '—' : value.differenceValue ?? '-'}
                   </td>
-                  <td className="px-3 py-2 text-white/75">
+                  <td className="truncate px-2 py-1 text-white/75">
                     {inspectorJudgementLabel(value.inspectorJudgementStatus)}
                   </td>
-                  <td className="px-3 py-2 font-mono text-white/75">
+                  <td className="truncate px-2 py-1 font-mono text-white/75">
                     {isJudgement ? 'OK/NG判定' : `${value.lowerLimit ?? '-'} - ${value.upperLimit ?? '-'}`}
                   </td>
                 </tr>
@@ -497,27 +467,55 @@ export function SelfInspectionRecordApprovalDetail({
         <div className="py-16 text-center text-white/55">検査記録を表示できません。</div>
       ) : (
         <>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-bold">{selectedSession.productNo}</h2>
+          <div
+            className="rounded border border-white/10 bg-slate-950/40 px-3"
+            role="region"
+            aria-label="選択中の検査記録"
+          >
+            <div className="flex min-h-11 min-w-0 items-center gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2 text-lg font-bold">
                 <span
                   className={clsx(
-                    'rounded px-2 py-1 text-xs font-semibold',
+                    'shrink-0 rounded px-2 py-1 text-xs font-semibold',
                     stateClassName(selectedSession.recordApprovalState)
                   )}
                 >
                   {stateLabel(selectedSession.recordApprovalState)}
                 </span>
+                <span className="truncate text-xs font-semibold text-amber-100">
+                  {stateIntentLabel(selectedSession.recordApprovalState)}
+                </span>
+                <span className="truncate">{selectedSession.fseiban || '製番未登録'}</span>
+                <span className="shrink-0">{selectedSession.resourceCd}</span>
+                <span className="truncate">{selectedSession.fhinmei}</span>
               </div>
-              <p className="text-sm text-white/65">
-                {selectedSession.fhincd} / {selectedSession.fhinmei} / 資源 {selectedSession.resourceCd}
-                {selectedSession.fseiban ? ` / 製番 ${selectedSession.fseiban}` : ''}
-              </p>
-              <p className="text-sm font-semibold text-white/75">
-                {stateIntentLabel(selectedSession.recordApprovalState)}
-              </p>
-              <p className="text-xs text-white/50">
+              <div className="flex shrink-0 gap-2">
+                <Link
+                  to={kioskSelfInspectionSessionPath(selectedSession.id)}
+                  className={buttonClassName(
+                    'ghostOnDark',
+                    'inline-flex min-w-32 items-center justify-center border-0 bg-violet-500/20 text-violet-100'
+                  )}
+                >
+                  作業者入力へ
+                </Link>
+                {getInspectorWorkflowAction(selectedSession) ? (
+                  <Link
+                    to={getInspectorWorkflowAction(selectedSession)!.href}
+                    className={buttonClassName(
+                      'secondary',
+                      'inline-flex min-w-32 items-center justify-center'
+                    )}
+                  >
+                    {getInspectorWorkflowAction(selectedSession)!.label}
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex min-h-9 min-w-0 items-center gap-3 border-t border-white/10 text-xs text-white/55">
+              <span className="shrink-0 text-lg font-bold text-white">{selectedSession.productNo}</span>
+              <span className="shrink-0">{selectedSession.fhincd}</span>
+              <span className="truncate">
                 入力 {selectedSession.completedRequiredEntryCount}/{selectedSession.requiredEntryCount}件
                 {selectedSession.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT'
                   ? ` / 最終判定待ち ${selectedSession.pendingReviewCount}点`
@@ -525,52 +523,20 @@ export function SelfInspectionRecordApprovalDetail({
                 {selectedSession.recordApproval
                   ? ` / 承認 ${formatDateTime(selectedSession.recordApproval.approvedAt)} ${selectedSession.recordApproval.approverEmployeeNameSnapshot}`
                   : ''}
-              </p>
-              <p className="text-xs text-white/50">
+              </span>
+              <span className="truncate">
                 更新 {formatDateTime(selectedSession.updatedAt)} / 入力者{' '}
                 {formatParticipantNames(selectedSession.participantEmployeeNames)}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Link
-                to={kioskSelfInspectionSessionPath(selectedSession.id)}
-                className={buttonClassName('ghostOnDark', 'inline-flex items-center justify-center')}
-              >
-                入力画面
-              </Link>
-              <Link
-                to={kioskSelfInspectionInspectorSessionPath(selectedSession.id)}
-                className={buttonClassName('secondary', 'inline-flex items-center justify-center')}
-              >
-                検査員画面
-              </Link>
+              </span>
+              <span className="ml-auto shrink-0 text-base font-bold text-white">
+                {toHalfWidthAscii(selectedSession.machineName?.trim() ?? '') || '—'}
+              </span>
             </div>
           </div>
 
-          {selectedSession.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT' ? (
-            <div className="grid gap-2 rounded border border-cyan-300/20 bg-cyan-500/10 p-3 md:grid-cols-[1fr_auto]">
-              <div>
-                <p className="text-sm font-semibold text-cyan-100">検査員最終判定フロー（閲覧専用）</p>
-                <p className="mt-1 text-xs text-white/65">
-                  この画面では作業者・検査員の入力結果を変更しません。必要な測定・最終判定・確定は検査員画面で行います。
-                </p>
-              </div>
-              {getInspectorWorkflowAction(selectedSession) ? (
-                <Link
-                  to={getInspectorWorkflowAction(selectedSession)!.href}
-                  className={buttonClassName('secondary', 'inline-flex min-w-44 items-center justify-center self-end')}
-                >
-                  {getInspectorWorkflowAction(selectedSession)!.label}
-                </Link>
-              ) : (
-                <span className="self-end rounded bg-emerald-400/20 px-3 py-2 text-sm font-semibold text-emerald-100">
-                  最終確定済み
-                </span>
-              )}
-            </div>
-          ) : (
+          {selectedSession.decisionWorkflow !== 'INSPECTOR_FINAL_JUDGEMENT' ? (
             <ApprovalPanel operation={approval} />
-          )}
+          ) : null}
 
           <DetailTable
             session={selectedSession}
