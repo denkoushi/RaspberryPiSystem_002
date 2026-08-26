@@ -103,6 +103,8 @@ function resolveResourceOutcome(
   let directFailCount = 0;
   let rejectedCount = 0;
   let pendingReviewCount = 0;
+  let finalizationPending = false;
+  let inspectorMeasurementInProgress = false;
   const judgementResults: Array<string | null | undefined> = [];
   const reviewStatuses: Array<string | null | undefined> = [];
   const finalReviewStatuses: Array<string | null | undefined> = [];
@@ -118,6 +120,8 @@ function resolveResourceOutcome(
     directFailCount += finiteNonNegative(rowInput.directFailCount, 0);
     rejectedCount += finiteNonNegative(rowInput.rejectedCount, 0);
     pendingReviewCount += finiteNonNegative(rowInput.pendingReviewCount, 0);
+    finalizationPending ||= rowInput.finalizationPending === true;
+    inspectorMeasurementInProgress ||= rowInput.inspectorMeasurementInProgress === true;
     judgementResults.push(...(rowInput.judgementResults ?? []));
     reviewStatuses.push(...(rowInput.reviewStatuses ?? []));
     finalReviewStatuses.push(...(rowInput.finalReviewStatuses ?? []));
@@ -140,6 +144,8 @@ function resolveResourceOutcome(
     reviewStatuses,
     finalReviewStatuses,
     measurementOutcomes,
+    finalizationPending,
+    inspectorMeasurementInProgress,
   });
 }
 

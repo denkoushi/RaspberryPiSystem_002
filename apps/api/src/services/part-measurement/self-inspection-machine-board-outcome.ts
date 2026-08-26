@@ -43,6 +43,10 @@ export type SelfInspectionMachineBoardOutcomeInput = {
   measurementOutcomes?: SelfInspectionMachineBoardMeasurementOutcome[];
   /** decoration の旧 status を repository 未取得時の fallback に使う。 */
   legacyStatus?: string | null;
+  /** 必要な測定入力は完了したが、セッションの最終確定が残っている。 */
+  finalizationPending?: boolean | null;
+  /** 作業者入力後の検査員測定が未完了。 */
+  inspectorMeasurementInProgress?: boolean | null;
 };
 
 function normalizeStatus(value: string | null | undefined): string {
@@ -142,6 +146,14 @@ export function resolveSelfInspectionMachineBoardOutcome(
 
   if (pending) {
     return 'pending';
+  }
+
+  if (input.finalizationPending === true) {
+    return 'pending';
+  }
+
+  if (input.inspectorMeasurementInProgress === true) {
+    return 'in_progress';
   }
 
   const legacy = normalizeStatus(input.legacyStatus);

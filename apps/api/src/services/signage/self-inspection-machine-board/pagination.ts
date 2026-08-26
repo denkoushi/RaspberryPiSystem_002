@@ -63,10 +63,36 @@ export function sliceFlatPartsPage<T>(parts: T[], pageIndex: number, partsPerPag
   return parts.slice(start, start + partsPerPage);
 }
 
-export function groupPartsBySeiban(parts: SelfInspectionMachineBoardPartItem[]): {
+export function groupPartsBySeiban(
+  parts: SelfInspectionMachineBoardPartItem[],
+  order: 'due_date' | 'input' = 'due_date'
+): {
   scheduled: SelfInspectionMachineBoardSummaryPage['scheduled'];
   unscheduled: SelfInspectionMachineBoardSummaryPage['unscheduled'];
 } {
+  if (order === 'input') {
+    const contiguousGroups = (isScheduled: boolean) => {
+      const groups: SelfInspectionMachineBoardSummaryPage['scheduled'] = [];
+      for (const part of parts.filter((candidate) => candidate.isScheduled === isScheduled)) {
+        const previous = groups[groups.length - 1];
+        if (previous?.fseiban === part.fseiban) {
+          previous.parts.push(part);
+        } else {
+          groups.push({
+            fseiban: part.fseiban,
+            dueDate: part.dueDate,
+            parts: [part],
+          });
+        }
+      }
+      return groups;
+    };
+    return {
+      scheduled: contiguousGroups(true),
+      unscheduled: contiguousGroups(false),
+    };
+  }
+
   const scheduledMap = new Map<string, SelfInspectionMachineBoardPartItem[]>();
   const unscheduledMap = new Map<string, SelfInspectionMachineBoardPartItem[]>();
 
@@ -80,21 +106,21 @@ export function groupPartsBySeiban(parts: SelfInspectionMachineBoardPartItem[]):
     }
   }
 
-  const toGroups = (map: Map<string, SelfInspectionMachineBoardPartItem[]>) =>
-    [...map.entries()]
-      .map(([fseiban, groupParts]) => ({
-        fseiban,
-        dueDate: groupParts[0]?.dueDate ?? null,
-        parts: groupParts,
-      }))
-      .sort((a, b) => {
-        const aTime = a.dueDate?.getTime() ?? Number.POSITIVE_INFINITY;
-        const bTime = b.dueDate?.getTime() ?? Number.POSITIVE_INFINITY;
-        if (aTime !== bTime) {
-          return aTime - bTime;
-        }
-        return a.fseiban.localeCompare(b.fseiban);
-      });
+  const toGroups = (map: Map<string, SelfInspectionMachineBoardPartItem[]>) => {
+    const groups = [...map.entries()].map(([fseiban, groupParts]) => ({
+      fseiban,
+      dueDate: groupParts[0]?.dueDate ?? null,
+      parts: groupParts,
+    }));
+    return groups.sort((a, b) => {
+      const aTime = a.dueDate?.getTime() ?? Number.POSITIVE_INFINITY;
+      const bTime = b.dueDate?.getTime() ?? Number.POSITIVE_INFINITY;
+      if (aTime !== bTime) {
+        return aTime - bTime;
+      }
+      return a.fseiban.localeCompare(b.fseiban);
+    });
+  };
 
   return {
     scheduled: toGroups(scheduledMap),
@@ -259,6 +285,7 @@ export function buildFlatMachineBoardPages(args: {
   scheduleRowCap?: number;
   scheduleRowHasMore?: boolean;
   bodyHeight?: number;
+  groupOrder?: 'due_date' | 'input';
 }): SelfInspectionMachineBoardPage[] {
   const pageParts = paginateSelfInspectionMachineBoardParts({
     orderedParts: args.orderedParts,
@@ -269,7 +296,7 @@ export function buildFlatMachineBoardPages(args: {
   const summaryPages: SelfInspectionMachineBoardSummaryPage[] = [];
 
   for (let pageIndex = 0; pageIndex < summaryPageCount; pageIndex += 1) {
-    const grouped = groupPartsBySeiban(pageParts[pageIndex] ?? []);
+    const grouped = groupPartsBySeiban(pageParts[pageIndex] ?? [], args.groupOrder);
     summaryPages.push({
       kind: 'summary',
       machineName: args.machineName,

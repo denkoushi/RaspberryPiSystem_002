@@ -237,4 +237,36 @@ describe('self-inspection-machine-board pagination', () => {
     expect(grouped.scheduled).toHaveLength(1);
     expect(grouped.unscheduled).toHaveLength(1);
   });
+
+  it('preserves active-card input order when requested', () => {
+    const parts = ['S9', 'S1', 'S9'].map((fseiban, index) => ({
+      scheduleRowId: `row-${index}`,
+      fseiban,
+      productNo: `P${index}`,
+      fhincd: `H${index}`,
+      fhinmei: `N${index}`,
+      status: 'in_progress' as const,
+      completedEntryCount: 0,
+      requiredEntryCount: 1,
+      progressLabel: '0/1',
+      dueDate: null,
+      isScheduled: false,
+    }));
+
+    const pages = buildFlatMachineBoardPages({
+      machineName: 'キオスク自主検査',
+      updatedAt: new Date('2026-08-26T00:00:00Z'),
+      orderedParts: parts,
+      detailPages: [],
+      partsPerPage: 6,
+      groupOrder: 'input',
+    });
+    const firstPage = pages[0];
+
+    expect(
+      firstPage?.kind === 'summary'
+        ? firstPage.unscheduled.flatMap((group) => group.parts.map((part) => part.scheduleRowId))
+        : []
+    ).toEqual(['row-0', 'row-1', 'row-2']);
+  });
 });
