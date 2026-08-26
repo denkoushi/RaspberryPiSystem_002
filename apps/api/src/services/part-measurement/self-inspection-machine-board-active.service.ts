@@ -11,6 +11,7 @@ import {
   fetchSelfInspectionMachineBoardActiveSessions,
 } from './self-inspection-machine-board-active.repository.js';
 import {
+  compareSelfInspectionMachineBoardActiveCardsByUpdatedAt,
   mapSelfInspectionMachineBoardActiveSessionsToAggregationRows,
 } from './self-inspection-machine-board-active.js';
 import type { SelfInspectionMachineBoardViewModel } from './self-inspection-machine-board.types.js';
@@ -76,6 +77,7 @@ export async function buildKioskActiveSelfInspectionMachineBoardViewModel(option
     }
   );
   const cards = aggregateSelfInspectionMachineBoardCards(rows);
+  cards.sort(compareSelfInspectionMachineBoardActiveCardsByUpdatedAt);
   const pages = buildFlatMachineBoardPages({
     machineName: KIOSK_ACTIVE_SESSIONS_BOARD_LABEL,
     updatedAt,
@@ -84,6 +86,7 @@ export async function buildKioskActiveSelfInspectionMachineBoardViewModel(option
     partsPerPage,
     scheduleRowCap: activeSessions.limit,
     scheduleRowHasMore: activeSessions.hasMore,
+    groupOrder: 'input',
   }).map((page) =>
     page.kind === 'summary'
       ? {

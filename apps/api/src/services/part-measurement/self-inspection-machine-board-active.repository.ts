@@ -31,7 +31,10 @@ export type SelfInspectionMachineBoardActiveSession = {
     selfInspectionMode: SelfInspectionMode;
     selfInspectionFixedCount: number | null;
     selfInspectionSampleSize: number | null;
+    items: Array<{ id: string }>;
   };
+  inspectorRemeasurementRequiredAt: Date | null;
+  recordApproval: { id: string } | null;
   /** DRAFT も含む。存在判定は全 entry、進捗・判定は CONFIRMED entry のみを使う。 */
   entries: Array<{
     entryIndex: number;
@@ -40,6 +43,14 @@ export type SelfInspectionMachineBoardActiveSession = {
       judgementResult: InspectionResult | null;
       reviewStatus: SelfInspectionMeasurementReviewStatus;
       finalReviewStatus: string | null;
+    }>;
+  }>;
+  inspectorEntries: Array<{
+    entryIndex: number;
+    values: Array<{
+      templateItemId: string;
+      inspectorValue: unknown | null;
+      inspectorJudgementResult: string | null;
     }>;
   }>;
 };
@@ -92,12 +103,15 @@ export async function fetchSelfInspectionMachineBoardActiveSessions(input: {
       plannedQuantity: true,
       expectedEntryCount: true,
       completedAt: true,
+      inspectorRemeasurementRequiredAt: true,
       updatedAt: true,
+      recordApproval: { select: { id: true } },
       template: {
         select: {
           selfInspectionMode: true,
           selfInspectionFixedCount: true,
           selfInspectionSampleSize: true,
+          items: { select: { id: true } },
         },
       },
       entries: {
@@ -110,6 +124,19 @@ export async function fetchSelfInspectionMachineBoardActiveSessions(input: {
               judgementResult: true,
               reviewStatus: true,
               finalReviewStatus: true,
+            },
+          },
+        },
+      },
+      inspectorEntries: {
+        orderBy: { entryIndex: 'asc' },
+        select: {
+          entryIndex: true,
+          values: {
+            select: {
+              templateItemId: true,
+              inspectorValue: true,
+              inspectorJudgementResult: true,
             },
           },
         },

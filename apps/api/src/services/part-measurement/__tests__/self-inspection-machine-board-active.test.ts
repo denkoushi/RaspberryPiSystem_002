@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  compareSelfInspectionMachineBoardActiveCardsByUpdatedAt,
   mapSelfInspectionMachineBoardActiveSessionsToAggregationRows,
   resolveSelfInspectionMachineBoardResourceDisplayName,
 } from '../self-inspection-machine-board-active.js';
@@ -29,7 +30,10 @@ function session(
       selfInspectionMode: 'FULL',
       selfInspectionFixedCount: null,
       selfInspectionSampleSize: null,
+      items: [{ id: 'item-1' }],
     },
+    inspectorRemeasurementRequiredAt: null,
+    recordApproval: null,
     entries: [
       {
         entryIndex: 0,
@@ -43,6 +47,7 @@ function session(
         ],
       },
     ],
+    inspectorEntries: [],
     ...overrides,
   };
 }
@@ -126,5 +131,56 @@ describe('self-inspection-machine-board-active', () => {
       resourceCd: 'R1',
       resourceDisplayName: '旋盤',
     });
+  });
+
+  it('keeps a fully measured active session pending until final confirmation', () => {
+    const rows = mapSelfInspectionMachineBoardActiveSessionsToAggregationRows([
+      session({
+        plannedQuantity: 1,
+        expectedEntryCount: 1,
+        inspectorRemeasurementRequiredAt: new Date('2026-07-28T11:50:00.000Z'),
+        entries: [
+          {
+            entryIndex: 0,
+            persistenceStatus: 'CONFIRMED',
+            values: [
+              {
+                judgementResult: 'PASS',
+                reviewStatus: 'PENDING',
+                finalReviewStatus: 'APPROVED',
+              },
+            ],
+          },
+        ],
+        inspectorEntries: [
+          {
+            entryIndex: 0,
+            values: [
+              {
+                templateItemId: 'item-1',
+                inspectorValue: 130.18,
+                inspectorJudgementResult: null,
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+
+    expect(aggregateSelfInspectionMachineBoardCards(rows)[0]?.outcome).toBe('pending');
+  });
+
+  it('sorts active cards by newest updatedAt with a stable card-key tie-break', () => {
+    const cards = aggregateSelfInspectionMachineBoardCards(
+      mapSelfInspectionMachineBoardActiveSessionsToAggregationRows([
+        session({ id: 'old', fseiban: 'S2', updatedAt: new Date('2026-08-24T00:00:00Z') }),
+        session({ id: 'new-b', fseiban: 'S3', updatedAt: new Date('2026-08-25T00:00:00Z') }),
+        session({ id: 'new-a', fseiban: 'S1', updatedAt: new Date('2026-08-25T00:00:00Z') }),
+      ])
+    );
+
+    cards.sort(compareSelfInspectionMachineBoardActiveCardsByUpdatedAt);
+
+    expect(cards.map((card) => card.fseiban)).toEqual(['S1', 'S3', 'S2']);
   });
 });

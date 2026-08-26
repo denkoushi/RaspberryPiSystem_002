@@ -33,7 +33,10 @@ function row(index: number) {
       selfInspectionMode: 'SINGLE' as const,
       selfInspectionFixedCount: null,
       selfInspectionSampleSize: null,
+      items: [{ id: 'item-1' }],
     },
+    inspectorRemeasurementRequiredAt: null,
+    recordApproval: null,
     entries: [
       {
         entryIndex: 0,
@@ -41,6 +44,7 @@ function row(index: number) {
         values: [],
       },
     ],
+    inspectorEntries: [],
   };
 }
 

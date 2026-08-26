@@ -1,8 +1,13 @@
 import { isConfirmed } from './self-inspection/entry-persistence-status.js';
-import { resolveRequiredEntryCountForCompletion } from './self-inspection/shared.js';
+import {
+  buildInspectorMeasurementCompletion,
+  resolveRequiredEntryCountForCompletion,
+  templateConfigFromTemplate,
+} from './self-inspection/shared.js';
 import type { ProductionScheduleResourceNameMap } from '../production-schedule/resource-master.service.js';
 import type { SelfInspectionMachineBoardMeasurementOutcome } from './self-inspection-machine-board-outcome.js';
 import type { SelfInspectionMachineBoardAggregationRow } from './self-inspection-machine-board-aggregation.js';
+import type { SelfInspectionMachineBoardCard } from './self-inspection-machine-board.types.js';
 import type { SelfInspectionMachineBoardActiveSession } from './self-inspection-machine-board-active.repository.js';
 import { resolveSelfInspectionMachineBoardResourceDisplayName } from './self-inspection-machine-board-resource-name.js';
 
@@ -65,6 +70,19 @@ function toOutcomeInput(
       finalReviewStatus: value.finalReviewStatus,
     })
   );
+  const inspectorMeasurement = buildInspectorMeasurementCompletion({
+    inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt,
+    recordApproval: session.recordApproval,
+    completedAt: session.completedAt,
+    template: {
+      ...templateConfigFromTemplate(session.template),
+      itemIds: session.template.items.map((item) => item.id),
+    },
+    plannedQuantity: session.plannedQuantity,
+    operatorEntries: session.entries,
+    inspectorEntries: session.inspectorEntries,
+  });
+  const entryCountComplete = confirmedEntries.length >= requiredEntryCount;
   return {
     confirmedEntryCount: confirmedEntries.length,
     completedEntryCount: confirmedEntries.length,
@@ -78,6 +96,12 @@ function toOutcomeInput(
     reviewStatuses: values.map((value) => value.reviewStatus),
     finalReviewStatuses: values.map((value) => value.finalReviewStatus),
     measurementOutcomes,
+    finalizationPending:
+      session.completedAt == null &&
+      (inspectorMeasurement.state === 'complete' ||
+        (inspectorMeasurement.state === 'not_required' && entryCountComplete)),
+    inspectorMeasurementInProgress:
+      inspectorMeasurement.state === 'pending' || inspectorMeasurement.state === 'in_progress',
   };
 }
 
@@ -140,3 +164,12 @@ export function mapSelfInspectionMachineBoardActiveSessionsToAggregationRows(
 
 export const buildSelfInspectionMachineBoardActiveAggregationRows =
   mapSelfInspectionMachineBoardActiveSessionsToAggregationRows;
+
+/** active-session カードを最新更新順へ並べる。同時刻は内部キーで決定的にする。 */
+export function compareSelfInspectionMachineBoardActiveCardsByUpdatedAt(
+  a: SelfInspectionMachineBoardCard,
+  b: SelfInspectionMachineBoardCard
+): number {
+  const updatedAtDiff = (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0);
+  return updatedAtDiff || a.cardKey.localeCompare(b.cardKey);
+}
