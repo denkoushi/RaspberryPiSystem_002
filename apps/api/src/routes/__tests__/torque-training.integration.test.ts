@@ -13,6 +13,39 @@ process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borr
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 
+async function resetTorqueTrainingTestData(): Promise<void> {
+  await prisma.assemblyTorqueRecord.deleteMany({});
+  await prisma.assemblyTorqueWrenchConfirmation.deleteMany({});
+  await prisma.assemblyWorkSessionOperatorAccess.deleteMany({});
+  await prisma.assemblyWorkSession.deleteMany({});
+  await prisma.assemblyLotSerial.deleteMany({});
+  await prisma.assemblyLot.deleteMany({});
+  await prisma.assemblyWorkUnitComposition.deleteMany({});
+  await prisma.assemblyWorkUnit.deleteMany({});
+  await prisma.assemblyTemplateBolt.deleteMany({});
+  await prisma.assemblyTemplateArea.deleteMany({});
+  await prisma.assemblyTemplate.deleteMany({});
+  await prisma.assemblyProcedureDocumentPage.deleteMany({});
+  await prisma.assemblyProcedureDocument.deleteMany({});
+  await prisma.torqueTrainingAttempt.deleteMany({});
+  await prisma.torqueWrenchUsageLeaseHistory.deleteMany({});
+  await prisma.torqueWrenchUsageLease.deleteMany({});
+  await prisma.torqueTrainingWrenchPreparationRequest.deleteMany({});
+  await prisma.torqueTrainingWrenchConfirmation.deleteMany({});
+  await prisma.torqueTrainingSession.deleteMany({});
+  await prisma.torqueTrainingProgramWrench.deleteMany({});
+  await prisma.torqueTrainingProgramVersion.deleteMany({});
+  await prisma.torqueTrainingProgram.deleteMany({});
+  await prisma.torqueWrenchSettingHistory.deleteMany({});
+  await prisma.torqueWrenchCapabilityGroupModel.deleteMany({});
+  await prisma.torqueWrenchProfile.deleteMany({});
+  await prisma.measuringInstrument.deleteMany({});
+  await prisma.torqueWrenchCapabilityGroup.deleteMany({});
+  await prisma.torqueWrenchModel.deleteMany({});
+  await prisma.clientDevice.deleteMany({});
+  await prisma.employee.deleteMany({});
+}
+
 describe('torque training API concurrency boundary', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
 
@@ -21,40 +54,15 @@ describe('torque training API concurrency boundary', () => {
   });
 
   beforeEach(async () => {
-    await prisma.assemblyTorqueRecord.deleteMany({});
-    await prisma.assemblyTorqueWrenchConfirmation.deleteMany({});
-    await prisma.assemblyWorkSessionOperatorAccess.deleteMany({});
-    await prisma.assemblyWorkSession.deleteMany({});
-    await prisma.assemblyLotSerial.deleteMany({});
-    await prisma.assemblyLot.deleteMany({});
-    await prisma.assemblyWorkUnitComposition.deleteMany({});
-    await prisma.assemblyWorkUnit.deleteMany({});
-    await prisma.assemblyTemplateBolt.deleteMany({});
-    await prisma.assemblyTemplateArea.deleteMany({});
-    await prisma.assemblyTemplate.deleteMany({});
-    await prisma.assemblyProcedureDocumentPage.deleteMany({});
-    await prisma.assemblyProcedureDocument.deleteMany({});
-    await prisma.torqueTrainingAttempt.deleteMany({});
-    await prisma.torqueWrenchUsageLeaseHistory.deleteMany({});
-    await prisma.torqueWrenchUsageLease.deleteMany({});
-    await prisma.torqueTrainingWrenchPreparationRequest.deleteMany({});
-    await prisma.torqueTrainingWrenchConfirmation.deleteMany({});
-    await prisma.torqueTrainingSession.deleteMany({});
-    await prisma.torqueTrainingProgramWrench.deleteMany({});
-    await prisma.torqueTrainingProgramVersion.deleteMany({});
-    await prisma.torqueTrainingProgram.deleteMany({});
-    await prisma.torqueWrenchSettingHistory.deleteMany({});
-    await prisma.torqueWrenchCapabilityGroupModel.deleteMany({});
-    await prisma.torqueWrenchProfile.deleteMany({});
-    await prisma.measuringInstrument.deleteMany({});
-    await prisma.torqueWrenchCapabilityGroup.deleteMany({});
-    await prisma.torqueWrenchModel.deleteMany({});
-    await prisma.clientDevice.deleteMany({});
-    await prisma.employee.deleteMany({});
+    await resetTorqueTrainingTestData();
   });
 
   afterAll(async () => {
-    await app.close();
+    try {
+      await resetTorqueTrainingTestData();
+    } finally {
+      await app.close();
+    }
   });
 
   async function fixture() {
