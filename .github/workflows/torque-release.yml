@@ -55,6 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       evidence_digest: ${{ steps.evidence.outputs.evidence_digest }}
+      source_closure_unchanged: ${{ steps.source_closure.outputs.source_closure_unchanged }}
       source_sha: ${{ steps.evidence.outputs.source_sha }}
       workflow: ${{ steps.evidence.outputs.workflow }}
       run_id: ${{ steps.evidence.outputs.run_id }}
@@ -74,13 +75,65 @@ jobs:
           git fetch origin main --quiet
           test "$(git rev-parse origin/main)" = "$TARGET_SHA"
 
-      - name: Prove the adopted torque-agent source closure is unchanged
-        run: >-
-          git diff --exit-code
-          3464256da11ee77bebfceb4fafcff4524f5ac8ca
-          "$TARGET_SHA" --
-          clients/torque-agent
-          infrastructure/docker/Dockerfile.torque-agent
+      - name: Prove the adopted torque-agent source closure is unchanged or changed
+        id: source_closure
+        run: |
+          set +e
+          git diff --exit-code \
+            3464256da11ee77bebfceb4fafcff4524f5ac8ca \
+            "$TARGET_SHA" -- \
+            clients/torque-agent \
+            infrastructure/docker/Dockerfile.torque-agent \
+            >/dev/null
+          source_closure_status=$?
+          set -e
+          case "$source_closure_status" in
+            0)
+              echo 'source_closure_unchanged=true' >> "$GITHUB_OUTPUT"
+              ;;
+            1)
+              echo 'source_closure_unchanged=false' >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "source closure git diff failed with status $source_closure_status" >&2
+              exit "$source_closure_status"
+              ;;
+          esac
+
+      - name: Reject mixed torque source and adoption identity changes
+        env:
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          SOURCE_CLOSURE_UNCHANGED: ${{ steps.source_closure.outputs.source_closure_unchanged }}
+        run: |
+          set +e
+          git diff --quiet "$EVENT_BASE_SHA" "$TARGET_SHA" -- \
+            clients/torque-agent \
+            infrastructure/docker/Dockerfile.torque-agent
+          source_change_status=$?
+          git diff --quiet "$EVENT_BASE_SHA" "$TARGET_SHA" -- \
+            scripts/deploy/release_artifact_contract.py \
+            scripts/deploy/torque_component_adoption.py
+          adoption_manifest_status=$?
+          set -e
+
+          if (( source_change_status > 1 )); then
+            echo "source closure event diff failed with status $source_change_status" >&2
+            exit "$source_change_status"
+          fi
+          if (( adoption_manifest_status > 1 )); then
+            echo "adoption manifest event diff failed with status $adoption_manifest_status" >&2
+            exit "$adoption_manifest_status"
+          fi
+
+          if (( source_change_status == 1 && adoption_manifest_status == 1 )); then
+            echo 'source and adoption identity changes must be published and adopted in separate stages' >&2
+            exit 1
+          fi
+          if [[ "$SOURCE_CLOSURE_UNCHANGED" == false ]] &&
+            (( source_change_status != 1 || adoption_manifest_status != 0 )); then
+            echo 'an unchanged adoption manifest is required for the source-publication stage' >&2
+            exit 1
+          fi
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -168,6 +221,7 @@ jobs:
         id: evidence
         env:
           BASELINE_SHA: 3464256da11ee77bebfceb4fafcff4524f5ac8ca
+          SOURCE_CLOSURE_UNCHANGED: ${{ steps.source_closure.outputs.source_closure_unchanged }}
         run: |
           python3 - <<'PY'
           import json
@@ -179,7 +233,7 @@ jobs:
               "protocol": {"name": "torque-ownership", "version": 1},
               "baselineSha": os.environ["BASELINE_SHA"],
               "releaseSha": os.environ["TARGET_SHA"],
-              "sourceClosureUnchanged": True,
+              "sourceClosureUnchanged": os.environ["SOURCE_CLOSURE_UNCHANGED"] == "true",
               "tests": [
                   "api-usage-lease-policy",
                   "api-confirmation-fencing-policy",
@@ -233,6 +287,7 @@ jobs:
       ${{ github.event_name == 'push' &&
           needs.classify-torque-release.outputs.relevant == 'true' &&
           needs.classify-torque-release.outputs.publishable == 'true' &&
+          needs.torque-release-compatibility.outputs.source_closure_unchanged == 'true' &&
           needs.torque-release-compatibility.result == 'success' }}
     needs:
       - classify-torque-release
