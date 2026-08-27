@@ -84,3 +84,33 @@ export const trainingAgentAttemptSchema = z.object({
 });
 
 export const trainingExcludeSchema = z.object({ reason: z.string().trim().min(1).max(500) });
+
+/** キオスク設定経路は画面ゲートではなく、各リクエストで共有PINを再検証する。 */
+const torqueTrainingSettingsAccessPassword = z
+  .string()
+  .trim()
+  .regex(/^\d{4}$/, '操作パスワードは4桁の数字で入力してください');
+
+export const torqueTrainingSettingsSnapshotSchema = z.object({
+  accessPassword: torqueTrainingSettingsAccessPassword
+});
+
+export const torqueTrainingSettingsProgramCreateSchema = z.object({
+  accessPassword: torqueTrainingSettingsAccessPassword,
+  program: trainingProgramInputSchema
+});
+
+export const torqueTrainingSettingsProgramRevisionSchema = z.object({
+  accessPassword: torqueTrainingSettingsAccessPassword,
+  revision: trainingRevisionSchema
+});
+
+export const torqueTrainingSettingsDeactivateSchema = z.object({
+  accessPassword: torqueTrainingSettingsAccessPassword,
+  reason: z.string().trim().min(1).max(500)
+});
+
+export const torqueTrainingSettingsExcludeSchema = z.object({
+  accessPassword: torqueTrainingSettingsAccessPassword,
+  reason: z.string().trim().min(1).max(500)
+});

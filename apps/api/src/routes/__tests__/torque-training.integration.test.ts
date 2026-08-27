@@ -7,6 +7,8 @@ import { prisma } from '../../lib/prisma.js';
 import { AssemblyTemplateService } from '../../services/assembly/assembly-template.service.js';
 import { AssemblyWorkSessionService } from '../../services/assembly/assembly-work-session.service.js';
 import { AssemblyTorqueTraceabilityService } from '../../services/torque-wrenches/assembly-torque-traceability.service.js';
+import { TorqueTrainingService } from '../../services/torque-training/torque-training.service.js';
+import { configureTestDueManagementAccessPassword } from '../../test/due-management-access-password.js';
 import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -31,6 +33,7 @@ async function resetTorqueTrainingTestData(): Promise<void> {
   await prisma.torqueWrenchUsageLeaseHistory.deleteMany({});
   await prisma.torqueWrenchUsageLease.deleteMany({});
   await prisma.torqueTrainingWrenchPreparationRequest.deleteMany({});
+  await prisma.torqueTrainingSettingsAuditLog.deleteMany({});
   await prisma.torqueTrainingWrenchConfirmation.deleteMany({});
   await prisma.torqueTrainingSession.deleteMany({});
   await prisma.torqueTrainingProgramWrench.deleteMany({});
@@ -662,6 +665,171 @@ describe('torque training API concurrency boundary', () => {
     expect(responses.map((response) => response.statusCode).sort()).toEqual([201, 201]);
     expect(await prisma.torqueTrainingProgram.findUniqueOrThrow({ where: { id: program.id }, select: { currentVersion: true } })).toMatchObject({ currentVersion: 3 });
     expect((await prisma.torqueTrainingProgramVersion.findMany({ where: { programId: program.id }, orderBy: { version: 'asc' }, select: { version: true, capabilityGroupId: true } })).map((row) => row.version)).toEqual([1, 2, 3]);
+  });
+
+  it('protects kiosk settings with the shared PIN and records a successful change on the terminal', async () => {
+    await configureTestDueManagementAccessPassword('2520');
+    const { client, profile, version } = await fixture();
+    const headers = { 'x-client-key': client.apiKey, 'content-type': 'application/json' };
+    const kioskProgram = {
+      code: `KIOSK-SETTINGS-${randomUUID()}`,
+      displayName: 'キオスク設定テスト',
+      nominalDiameter: version.nominalDiameter,
+      boltLengthMm: Number(version.boltLengthMm),
+      material: version.material,
+      strengthClass: version.strengthClass,
+      capabilityGroupId: version.capabilityGroupId,
+      nominalTorque: Number(version.nominalTorque),
+      lowerLimit: Number(version.lowerLimit),
+      upperLimit: Number(version.upperLimit),
+      unit: version.unit,
+      jigConditionCode: version.jigConditionCode,
+      torqueWrenchProfileIds: [profile.id]
+    };
+
+    const missingClient = await app.inject({
+      method: 'POST',
+      url: '/api/torque-training/settings/snapshot',
+      payload: { accessPassword: '2520' }
+    });
+    expect(missingClient.statusCode).toBe(401);
+
+    const invalidPinFormat = await app.inject({
+      method: 'POST',
+      url: '/api/torque-training/settings/snapshot',
+      headers,
+      payload: { accessPassword: '252' }
+    });
+    expect(invalidPinFormat.statusCode).toBe(400);
+
+    const wrongSnapshot = await app.inject({
+      method: 'POST',
+      url: '/api/torque-training/settings/snapshot',
+      headers,
+      payload: { accessPassword: '0000' }
+    });
+    expect(wrongSnapshot.statusCode).toBe(403);
+    expect(wrongSnapshot.json().errorCode).toBe('TORQUE_TRAINING_SETTINGS_ACCESS_DENIED');
+
+    const programCountBefore = await prisma.torqueTrainingProgram.count();
+    const wrongMutation = await app.inject({
+      method: 'POST',
+      url: '/api/torque-training/settings/programs',
+      headers,
+      payload: { accessPassword: '0000', program: kioskProgram }
+    });
+    expect(wrongMutation.statusCode).toBe(403);
+    expect(await prisma.torqueTrainingProgram.count()).toBe(programCountBefore);
+    expect(await prisma.torqueTrainingSettingsAuditLog.count({ where: { clientDeviceId: client.id } })).toBe(0);
+
+    const snapshot = await app.inject({
+      method: 'POST',
+      url: '/api/torque-training/settings/snapshot',
+      headers,
+      payload: { accessPassword: '2520' }
+    });
+    expect(snapshot.statusCode).toBe(200);
+    expect(snapshot.json().snapshot).toEqual(expect.objectContaining({
+      programs: expect.any(Array),
+      results: expect.any(Array),
+      capabilityGroups: expect.any(Array),
+      wrenchProfiles: expect.any(Array)
+    }));
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/torque-training/settings/programs',
+      headers,
+      payload: { accessPassword: '2520', program: kioskProgram }
+    });
+    expect(created.statusCode).toBe(201);
+    const createdProgram = created.json().program as { id: string };
+    expect(await prisma.torqueTrainingSettingsAuditLog.findMany({
+      where: { clientDeviceId: client.id },
+      select: { action: true, targetType: true, targetId: true, clientDeviceNameSnapshot: true }
+    })).toEqual([{
+      action: 'PROGRAM_CREATED',
+      targetType: 'PROGRAM',
+      targetId: createdProgram.id,
+      clientDeviceNameSnapshot: client.name
+    }]);
+
+    const failedProgram = { ...kioskProgram, code: `KIOSK-ROLLBACK-${randomUUID()}`, capabilityGroupId: randomUUID() };
+    const failed = await app.inject({
+      method: 'POST',
+      url: '/api/torque-training/settings/programs',
+      headers,
+      payload: { accessPassword: '2520', program: failedProgram }
+    });
+    expect(failed.statusCode).toBe(400);
+    expect(await prisma.torqueTrainingProgram.findUnique({ where: { code: failedProgram.code } })).toBeNull();
+    expect(await prisma.torqueTrainingSettingsAuditLog.count({ where: { clientDeviceId: client.id } })).toBe(1);
+
+    // Force the audit insert itself to fail after the program write. The
+    // mutation and terminal audit must share one transaction, so neither row
+    // may survive a foreign-key failure in the audit append.
+    const auditFailureCode = `KIOSK-AUDIT-ROLLBACK-${randomUUID()}`;
+    const auditFailureInput = { ...kioskProgram, code: auditFailureCode };
+    await expect(new TorqueTrainingService().createProgram(auditFailureInput, {
+      clientDeviceId: randomUUID(),
+      clientDeviceName: 'audit-failure-fixture'
+    })).rejects.toThrow();
+    expect(await prisma.torqueTrainingProgram.findUnique({ where: { code: auditFailureCode } })).toBeNull();
+
+    // The legacy management-console contract remains available and still uses
+    // ADMIN JWT independently of the kiosk PIN.
+    const admin = await createTestUser('ADMIN');
+    const adminRead = await app.inject({
+      method: 'GET',
+      url: '/api/admin/torque-training/programs',
+      headers: createAuthHeader(admin.token)
+    });
+    expect(adminRead.statusCode).toBe(200);
+  });
+
+  it('preserves an existing ADMIN attribution when the kiosk excludes a session again', async () => {
+    await configureTestDueManagementAccessPassword('2520');
+    const { employee, client, version } = await fixture();
+    const kioskHeaders = { 'x-client-key': client.apiKey, 'content-type': 'application/json' };
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/torque-training/sessions',
+      headers: kioskHeaders,
+      payload: { uid: employee.nfcTagUid, programVersionId: version.id, requestId: `exclude-${randomUUID()}` }
+    });
+    expect(started.statusCode).toBe(201);
+    const sessionId = started.json().session.id as string;
+    const admin = await createTestUser('ADMIN');
+
+    const adminExcluded = await app.inject({
+      method: 'POST',
+      url: `/api/admin/torque-training/sessions/${sessionId}/exclude`,
+      headers: { ...createAuthHeader(admin.token), 'content-type': 'application/json' },
+      payload: { reason: '管理者による除外' }
+    });
+    expect(adminExcluded.statusCode).toBe(200);
+    const afterAdmin = await prisma.torqueTrainingSession.findUniqueOrThrow({
+      where: { id: sessionId },
+      select: { excludedByUserId: true, excludedByUsername: true }
+    });
+    expect(afterAdmin).toEqual({ excludedByUserId: admin.user.id, excludedByUsername: admin.user.username });
+
+    const kioskExcluded = await app.inject({
+      method: 'POST',
+      url: `/api/torque-training/settings/sessions/${sessionId}/exclude`,
+      headers: kioskHeaders,
+      payload: { accessPassword: '2520', reason: 'キオスクから再除外' }
+    });
+    expect(kioskExcluded.statusCode).toBe(200);
+    const afterKiosk = await prisma.torqueTrainingSession.findUniqueOrThrow({
+      where: { id: sessionId },
+      select: { excludedByUserId: true, excludedByUsername: true, exclusionReason: true }
+    });
+    expect(afterKiosk).toEqual({
+      excludedByUserId: admin.user.id,
+      excludedByUsername: admin.user.username,
+      exclusionReason: 'キオスクから再除外'
+    });
   });
 
   it('registers the server-derived wrench setting once and replays the same preparation', async () => {

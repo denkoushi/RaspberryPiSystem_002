@@ -27,6 +27,11 @@ import {
   evaluateTrainingVersionSetup,
   trainingSetupVersionInclude
 } from './torque-training-setup.service.js';
+import {
+  appendTorqueTrainingSettingsAudit,
+  TORQUE_TRAINING_SETTINGS_AUDIT_ACTIONS,
+  type TorqueTrainingSettingsAuditContext
+} from './torque-training-settings-audit.js';
 
 type Client = { id: string; name: string; location?: string | null };
 
@@ -228,7 +233,7 @@ export class TorqueTrainingService {
     }));
   }
 
-  async createProgram(input: TrainingProgramInput) {
+  async createProgram(input: TrainingProgramInput, audit?: TorqueTrainingSettingsAuditContext) {
     const normalized = normalizeProgramInput(input);
     return runTrainingTransaction(async (tx) => {
       const group = await tx.torqueWrenchCapabilityGroup.findUnique({ where: { id: normalized.capabilityGroupId } });
@@ -261,11 +266,23 @@ export class TorqueTrainingService {
         },
         include: { versions: true }
       });
+      if (audit) {
+        await appendTorqueTrainingSettingsAudit(tx, {
+          ...audit,
+          action: TORQUE_TRAINING_SETTINGS_AUDIT_ACTIONS.PROGRAM_CREATED,
+          targetType: 'PROGRAM',
+          targetId: program.id
+        });
+      }
       return program;
     });
   }
 
-  async reviseProgram(programId: string, input: Omit<TrainingProgramInput, 'code'>) {
+  async reviseProgram(
+    programId: string,
+    input: Omit<TrainingProgramInput, 'code'>,
+    audit?: TorqueTrainingSettingsAuditContext
+  ) {
     const normalized = normalizeProgramInput({ ...input, code: `revision-${programId}` });
     return runTrainingTransaction(async (tx) => {
       await tx.$queryRaw(Prisma.sql`
@@ -302,16 +319,38 @@ export class TorqueTrainingService {
         }
       });
       await tx.torqueTrainingProgram.update({ where: { id: programId }, data: { currentVersion: version } });
+      if (audit) {
+        await appendTorqueTrainingSettingsAudit(tx, {
+          ...audit,
+          action: TORQUE_TRAINING_SETTINGS_AUDIT_ACTIONS.PROGRAM_REVISED,
+          targetType: 'PROGRAM',
+          targetId: programId
+        });
+      }
       return created;
     });
   }
 
-  async deactivateProgram(programId: string, reason: string) {
-    const program = await prisma.torqueTrainingProgram.update({
-      where: { id: programId },
-      data: { isActive: false, deactivatedAt: new Date(), deactivationReason: reason.trim() }
+  async deactivateProgram(programId: string, reason: string, audit?: TorqueTrainingSettingsAuditContext) {
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) throw new ApiError(400, '停止理由が必要です');
+    return runTrainingTransaction(async (tx) => {
+      const program = await tx.torqueTrainingProgram.findUnique({ where: { id: programId } });
+      if (!program) throw new ApiError(404, '訓練メニューが見つかりません');
+      const updated = await tx.torqueTrainingProgram.update({
+        where: { id: programId },
+        data: { isActive: false, deactivatedAt: new Date(), deactivationReason: normalizedReason }
+      });
+      if (audit) {
+        await appendTorqueTrainingSettingsAudit(tx, {
+          ...audit,
+          action: TORQUE_TRAINING_SETTINGS_AUDIT_ACTIONS.PROGRAM_DEACTIVATED,
+          targetType: 'PROGRAM',
+          targetId: updated.id
+        });
+      }
+      return { id: updated.id, isActive: updated.isActive };
     });
-    return { id: program.id, isActive: program.isActive };
   }
 
   async operatorContext(rawUid: string, clientDeviceId: string) {
@@ -595,9 +634,42 @@ export class TorqueTrainingService {
     }));
   }
 
-  async excludeSession(sessionId: string, reason: string, actor: { id: string; username: string }) {
-    if (!reason.trim()) throw new ApiError(400, '集計対象外理由が必要です');
-    const session = await prisma.torqueTrainingSession.update({ where: { id: sessionId }, data: { excludedAt: new Date(), exclusionReason: reason.trim(), excludedByUserId: actor.id, excludedByUsername: actor.username } });
-    return { id: session.id, excludedAt: session.excludedAt?.toISOString() ?? null, exclusionReason: session.exclusionReason };
+  async excludeSession(
+    sessionId: string,
+    reason: string,
+    actor: { id: string; username: string } | null,
+    audit?: TorqueTrainingSettingsAuditContext
+  ) {
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) throw new ApiError(400, '集計対象外理由が必要です');
+    return runTrainingTransaction(async (tx) => {
+      const session = await tx.torqueTrainingSession.findUnique({ where: { id: sessionId } });
+      if (!session) throw new ApiError(404, '訓練セッションが見つかりません');
+      const updated = await tx.torqueTrainingSession.update({
+        where: { id: sessionId },
+        data: {
+          excludedAt: new Date(),
+          exclusionReason: normalizedReason,
+          // Kiosk PIN actions have no individual actor. Preserve an existing
+          // ADMIN actor attribution when a session is excluded again from a
+          // kiosk; the legacy ADMIN route still updates both fields below.
+          ...(actor
+            ? {
+                excludedByUserId: actor.id,
+                excludedByUsername: actor.username
+              }
+            : {})
+        }
+      });
+      if (audit) {
+        await appendTorqueTrainingSettingsAudit(tx, {
+          ...audit,
+          action: TORQUE_TRAINING_SETTINGS_AUDIT_ACTIONS.SESSION_EXCLUDED,
+          targetType: 'SESSION',
+          targetId: updated.id
+        });
+      }
+      return { id: updated.id, excludedAt: updated.excludedAt?.toISOString() ?? null, exclusionReason: updated.exclusionReason };
+    });
   }
 }

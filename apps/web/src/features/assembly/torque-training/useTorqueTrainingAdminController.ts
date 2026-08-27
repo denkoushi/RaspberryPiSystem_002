@@ -1,16 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 
 import {
+  createTorqueTrainingSettingsProgram,
   createTorqueTrainingProgram,
+  deactivateTorqueTrainingSettingsProgram,
   deactivateTorqueTrainingProgram,
+  excludeTorqueTrainingSettingsResult,
   excludeTorqueTrainingResult,
+  getTorqueTrainingSettingsSnapshot,
   listTorqueTrainingAdminPrograms,
   listTorqueTrainingAdminResults,
   listTorqueWrenchCapabilityGroups,
   listTorqueWrenches,
+  reviseTorqueTrainingSettingsProgram,
   reviseTorqueTrainingProgram,
   type TorqueTrainingAdminResultApi,
   type TorqueTrainingProgramApi,
+  type TorqueTrainingSettingsSnapshotApi,
   type TorqueWrenchCapabilityGroupApi,
   type TorqueWrenchProfileApi
 } from '../../../api/client';
@@ -29,6 +35,12 @@ export type TorqueTrainingAdminTab = 'programs' | 'results';
 export type TorqueTrainingAdminControllerInput = {
   /** The admin dialog being open is the only time admin data is fetched. */
   isOpen: boolean;
+  /**
+   * Kiosk settings use the shared operation password instead of an ADMIN
+   * bearer token. The default keeps the controller compatible with the
+   * existing admin-console dialog tests and callers.
+   */
+  accessMode?: 'admin' | 'kiosk';
   /** Refreshes the normal training-menu list after a program mutation. */
   onProgramsChanged?: () => void | Promise<void>;
 };
@@ -50,6 +62,12 @@ export type TorqueTrainingAdminController = {
   exclusionReasons: Record<string, string>;
   setExclusionReason: (sessionId: string, reason: string) => void;
   adminBusy: boolean;
+  /** True after the kiosk operation password has successfully loaded a snapshot. */
+  settingsAuthenticated: boolean;
+  /** Authenticates and loads the kiosk settings snapshot. */
+  authenticateSettingsAccessPassword: (accessPassword: string) => Promise<boolean>;
+  /** Clears the in-memory kiosk password and all settings data. */
+  clearSettingsAccess: () => void;
   /** Notice and error are rendered by the admin dialog, not the page shell. */
   message: string | null;
   error: string | null;
@@ -69,6 +87,7 @@ const RESULT_EXCLUDE_ERROR = '実績を集計対象外にできませんでし�
  */
 export function useTorqueTrainingAdminController({
   isOpen,
+  accessMode = 'admin',
   onProgramsChanged
 }: TorqueTrainingAdminControllerInput): TorqueTrainingAdminController {
   const [adminPrograms, setAdminPrograms] = useState<TorqueTrainingProgramApi[]>([]);
@@ -83,6 +102,9 @@ export function useTorqueTrainingAdminController({
   const [resultQuery, setResultQuery] = useState('');
   const [exclusionReasons, setExclusionReasons] = useState<Record<string, string>>({});
   const [adminBusy, setAdminBusy] = useState(false);
+  const [settingsAccessPassword, setSettingsAccessPassword] = useState<string | null>(null);
+  const [settingsAuthenticated, setSettingsAuthenticated] = useState(false);
+  const [settingsSnapshotLoaded, setSettingsSnapshotLoaded] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,10 +117,25 @@ export function useTorqueTrainingAdminController({
     await onProgramsChangedRef.current?.();
   }, []);
 
-  const loadAdminData = useCallback(async () => {
+  const applySettingsSnapshot = useCallback((snapshot: TorqueTrainingSettingsSnapshotApi) => {
+    setAdminPrograms(snapshot.programs);
+    setAdminResults(snapshot.results);
+    setCapabilityGroups(snapshot.capabilityGroups);
+    setWrenchProfiles(snapshot.wrenchProfiles);
+    setSettingsSnapshotLoaded(true);
+  }, []);
+
+  const loadAdminData = useCallback(async (accessPassword?: string): Promise<boolean> => {
     setAdminBusy(true);
     setError(null);
     try {
+      if (accessMode === 'kiosk') {
+        if (!accessPassword) {
+          throw new Error('訓練設定の認証が必要です。');
+        }
+        applySettingsSnapshot(await getTorqueTrainingSettingsSnapshot(accessPassword));
+        return true;
+      }
       const [nextPrograms, nextResults, groups, profiles] = await Promise.all([
         listTorqueTrainingAdminPrograms(),
         listTorqueTrainingAdminResults(),
@@ -109,17 +146,68 @@ export function useTorqueTrainingAdminController({
       setAdminResults(nextResults);
       setCapabilityGroups(groups);
       setWrenchProfiles(profiles);
+      return true;
     } catch (cause) {
       setError(getApiErrorMessage(cause, ADMIN_LOAD_ERROR));
+      return false;
     } finally {
       setAdminBusy(false);
     }
-  }, []);
+  }, [accessMode, applySettingsSnapshot]);
 
   useEffect(() => {
     if (!isOpen) return;
+    if (accessMode === 'kiosk') {
+      // Authentication loads the first snapshot before the dialog is opened.
+      // This guard also protects against a stale dialog render accidentally
+      // issuing a password-less request.
+      if (!settingsAuthenticated || !settingsAccessPassword || settingsSnapshotLoaded) return;
+      void loadAdminData(settingsAccessPassword);
+      return;
+    }
     void loadAdminData();
-  }, [isOpen, loadAdminData]);
+  }, [accessMode, isOpen, loadAdminData, settingsAccessPassword, settingsAuthenticated, settingsSnapshotLoaded]);
+
+  const authenticateSettingsAccessPassword = useCallback(async (accessPassword: string): Promise<boolean> => {
+    if (accessMode !== 'kiosk') return false;
+    const normalizedPassword = accessPassword.trim();
+    if (!normalizedPassword) {
+      setError('操作時パスワードを入力してください。');
+      return false;
+    }
+    const loaded = await loadAdminData(normalizedPassword);
+    if (!loaded) return false;
+    // The password is intentionally held only in this hook's React state for
+    // subsequent server-side revalidation. It is never written to storage.
+    setSettingsAccessPassword(normalizedPassword);
+    setSettingsAuthenticated(true);
+    return true;
+  }, [accessMode, loadAdminData]);
+
+  const clearSettingsAccess = useCallback(() => {
+    setSettingsAccessPassword(null);
+    setSettingsAuthenticated(false);
+    setSettingsSnapshotLoaded(false);
+    setAdminPrograms([]);
+    setAdminResults([]);
+    setCapabilityGroups([]);
+    setWrenchProfiles([]);
+    setProgramForm(EMPTY_TORQUE_TRAINING_PROGRAM_FORM);
+    setRevisionProgramId('');
+    setResultQuery('');
+    setExclusionReasons({});
+    setMessage(null);
+    setError(null);
+  }, []);
+
+  const refreshAdminDataAfterMutation = useCallback(async () => {
+    if (accessMode === 'kiosk') {
+      if (!settingsAccessPassword) throw new Error('訓練設定の認証が必要です。');
+      applySettingsSnapshot(await getTorqueTrainingSettingsSnapshot(settingsAccessPassword));
+      return;
+    }
+    setAdminPrograms(await listTorqueTrainingAdminPrograms());
+  }, [accessMode, applySettingsSnapshot, settingsAccessPassword]);
 
   const updateProgramForm = useCallback(
     (key: keyof TorqueTrainingProgramForm, value: string | string[]) => {
@@ -194,18 +282,27 @@ export function useTorqueTrainingAdminController({
           // revisionProgramId is checked above; keeping this guard also makes
           // the API call safe if the function is invoked from a stale view.
           if (!revisionProgramId) throw new Error('版を追加するメニューを選択してください。');
-          await reviseTorqueTrainingProgram(
-            revisionProgramId,
-            torqueTrainingProgramFormToRevisionPayload(programForm)
-          );
+          const revisionPayload = torqueTrainingProgramFormToRevisionPayload(programForm);
+          if (accessMode === 'kiosk') {
+            if (!settingsAccessPassword) throw new Error('訓練設定の認証が必要です。');
+            await reviseTorqueTrainingSettingsProgram(revisionProgramId, settingsAccessPassword, revisionPayload);
+          } else {
+            await reviseTorqueTrainingProgram(revisionProgramId, revisionPayload);
+          }
         } else {
-          await createTorqueTrainingProgram(torqueTrainingProgramFormToPayload(programForm));
+          const programPayload = torqueTrainingProgramFormToPayload(programForm);
+          if (accessMode === 'kiosk') {
+            if (!settingsAccessPassword) throw new Error('訓練設定の認証が必要です。');
+            await createTorqueTrainingSettingsProgram(settingsAccessPassword, programPayload);
+          } else {
+            await createTorqueTrainingProgram(programPayload);
+          }
         }
 
         // Refresh the normal training selector immediately after the write so
         // a newly created/revised active version is usable without reload.
         await notifyProgramsChanged();
-        setAdminPrograms(await listTorqueTrainingAdminPrograms());
+        await refreshAdminDataAfterMutation();
         setProgramForm(EMPTY_TORQUE_TRAINING_PROGRAM_FORM);
         setRevisionProgramId('');
         setMessage(revision ? '新しい訓練メニュー版を追加しました。' : '訓練メニューを追加しました。');
@@ -215,7 +312,7 @@ export function useTorqueTrainingAdminController({
         setAdminBusy(false);
       }
     },
-    [adminBusy, notifyProgramsChanged, programForm, revisionProgramId]
+    [accessMode, adminBusy, notifyProgramsChanged, programForm, refreshAdminDataAfterMutation, revisionProgramId, settingsAccessPassword]
   );
 
   const deactivate = useCallback(
@@ -231,9 +328,14 @@ export function useTorqueTrainingAdminController({
       setError(null);
       setMessage(null);
       try {
-        await deactivateTorqueTrainingProgram(programId, normalizedReason);
+        if (accessMode === 'kiosk') {
+          if (!settingsAccessPassword) throw new Error('訓練設定の認証が必要です。');
+          await deactivateTorqueTrainingSettingsProgram(programId, settingsAccessPassword, normalizedReason);
+        } else {
+          await deactivateTorqueTrainingProgram(programId, normalizedReason);
+        }
         await notifyProgramsChanged();
-        setAdminPrograms(await listTorqueTrainingAdminPrograms());
+        await refreshAdminDataAfterMutation();
         setMessage('訓練メニューを停止しました。');
       } catch (cause) {
         setError(getApiErrorMessage(cause, PROGRAM_DEACTIVATE_ERROR));
@@ -241,7 +343,7 @@ export function useTorqueTrainingAdminController({
         setAdminBusy(false);
       }
     },
-    [adminBusy, notifyProgramsChanged]
+    [accessMode, adminBusy, notifyProgramsChanged, refreshAdminDataAfterMutation, settingsAccessPassword]
   );
 
   const excludeResult = useCallback(
@@ -257,8 +359,17 @@ export function useTorqueTrainingAdminController({
       setError(null);
       setMessage(null);
       try {
-        await excludeTorqueTrainingResult(sessionId, reason);
-        setAdminResults(await listTorqueTrainingAdminResults());
+        if (accessMode === 'kiosk') {
+          if (!settingsAccessPassword) throw new Error('訓練設定の認証が必要です。');
+          await excludeTorqueTrainingSettingsResult(sessionId, settingsAccessPassword, reason);
+        } else {
+          await excludeTorqueTrainingResult(sessionId, reason);
+        }
+        if (accessMode === 'kiosk') {
+          await refreshAdminDataAfterMutation();
+        } else {
+          setAdminResults(await listTorqueTrainingAdminResults());
+        }
         setExclusionReasons((current) => ({ ...current, [sessionId]: '' }));
         setMessage('訓練実績を集計対象外にしました。');
       } catch (cause) {
@@ -267,7 +378,7 @@ export function useTorqueTrainingAdminController({
         setAdminBusy(false);
       }
     },
-    [adminBusy, exclusionReasons]
+    [accessMode, adminBusy, exclusionReasons, refreshAdminDataAfterMutation, settingsAccessPassword]
   );
 
   return {
@@ -287,6 +398,9 @@ export function useTorqueTrainingAdminController({
     exclusionReasons,
     setExclusionReason,
     adminBusy,
+    settingsAuthenticated,
+    authenticateSettingsAccessPassword,
+    clearSettingsAccess,
     message,
     error,
     submitProgram,
