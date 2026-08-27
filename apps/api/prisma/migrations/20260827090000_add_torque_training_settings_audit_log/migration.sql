@@ -9,7 +9,9 @@ CREATE TABLE "TorqueTrainingSettingsAuditLog" (
     "targetId" VARCHAR(120) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "TorqueTrainingSettingsAuditLog_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "TorqueTrainingSettingsAuditLog_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "TorqueTrainingSettingsAuditLog_clientDeviceId_fkey"
+        FOREIGN KEY ("clientDeviceId") REFERENCES "ClientDevice"("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 CREATE INDEX "TorqueTrainingSettingsAuditLog_idx_device_time"
@@ -17,7 +19,3 @@ ON "TorqueTrainingSettingsAuditLog"("clientDeviceId", "createdAt");
 
 CREATE INDEX "TorqueTrainingSettingsAuditLog_idx_target_time"
 ON "TorqueTrainingSettingsAuditLog"("targetType", "targetId", "createdAt");
-
-ALTER TABLE "TorqueTrainingSettingsAuditLog"
-ADD CONSTRAINT "TorqueTrainingSettingsAuditLog_clientDeviceId_fkey"
-FOREIGN KEY ("clientDeviceId") REFERENCES "ClientDevice"("id") ON DELETE SET NULL ON UPDATE CASCADE;

@@ -171,11 +171,13 @@ describe('useTorqueTrainingAdminController', () => {
     expect(apiMocks.listTorqueTrainingAdminPrograms).not.toHaveBeenCalled();
 
     rerender({ isOpen: true });
-    await waitFor(() => expect(apiMocks.listTorqueTrainingAdminPrograms).toHaveBeenCalledTimes(1));
-    expect(hook.current.adminPrograms).toEqual([program()]);
-    expect(hook.current.adminResults).toEqual([result()]);
-    expect(hook.current.capabilityGroups).toEqual([capabilityGroup]);
-    expect(hook.current.wrenchProfiles).toEqual([wrenchProfile]);
+    await waitFor(() => {
+      expect(apiMocks.listTorqueTrainingAdminPrograms).toHaveBeenCalledTimes(1);
+      expect(hook.current.adminPrograms).toEqual([program()]);
+      expect(hook.current.adminResults).toEqual([result()]);
+      expect(hook.current.capabilityGroups).toEqual([capabilityGroup]);
+      expect(hook.current.wrenchProfiles).toEqual([wrenchProfile]);
+    });
   });
 
   it('filters results through the controller query state', async () => {
