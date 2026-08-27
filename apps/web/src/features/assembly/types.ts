@@ -1,4 +1,7 @@
-import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
+import type {
+  AssemblyProcedureOverlayElement,
+  TorqueWrenchSettingVerificationMode
+} from '@raspi-system/shared-types';
 
 export type AssemblyProcedureOverlayAssetDto = {
   assetId: string;
@@ -192,6 +195,8 @@ export type AssemblyTorqueRecordDto = {
   torqueWrenchProfileId?: string | null;
   confirmationId?: string | null;
   settingHistoryId?: string | null;
+  /** Null distinguishes legacy records from the explicit BOLT mode. */
+  settingVerificationMode?: TorqueWrenchSettingVerificationMode | null;
   serialNumberSnapshot?: string | null;
   manufacturerSnapshot?: string | null;
   modelNumberSnapshot?: string | null;

@@ -55,7 +55,7 @@ const version = (
   unit: 'N-m',
   jigConditionCode: 'JIG-A',
   conditionFingerprint: 'fingerprint-v1',
-  torqueWrenchProfiles: [{ id: 'wrench-1', serialNumber: 'TW-001' }],
+  torqueWrenchProfiles: [{ id: 'wrench-1', serialNumber: 'TW-001', settingVerificationMode: 'REGISTERED_SETTING' }],
   setupState: 'READY',
   setupStateReason: null,
   ...overrides
@@ -234,7 +234,7 @@ describe('useTorqueTrainingAdminController', () => {
           boltLengthMm: '30',
           capabilityGroupId: 'group-2',
           nominalTorque: '20',
-          torqueWrenchProfiles: [{ id: 'wrench-2', serialNumber: 'TW-002' }]
+          torqueWrenchProfiles: [{ id: 'wrench-2', serialNumber: 'TW-002', settingVerificationMode: 'REGISTERED_SETTING' }]
         })
       ]
     });

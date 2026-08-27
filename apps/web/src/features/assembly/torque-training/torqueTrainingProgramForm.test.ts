@@ -25,8 +25,8 @@ describe('torqueTrainingProgramForm', () => {
       jigConditionCode: 'JIG-B',
       conditionFingerprint: 'fingerprint-v2',
       torqueWrenchProfiles: [
-        { id: 'wrench-2', serialNumber: 'TW-002' },
-        { id: 'wrench-3', serialNumber: 'TW-003' }
+        { id: 'wrench-2', serialNumber: 'TW-002', settingVerificationMode: 'REGISTERED_SETTING' },
+        { id: 'wrench-3', serialNumber: 'TW-003', settingVerificationMode: 'REGISTERED_SETTING' }
       ],
       setupState: 'READY',
       setupStateReason: null

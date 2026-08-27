@@ -8,7 +8,10 @@ import {
 import { authorizeRoles } from '../../lib/auth.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
-import { AssemblyTorqueTraceabilityService } from '../../services/torque-wrenches/index.js';
+import {
+  AssemblyTorqueTraceabilityService,
+  normalizeTorqueWrenchSettingVerificationMode
+} from '../../services/torque-wrenches/index.js';
 import { agentTorqueRecordSchema } from '../torque-wrenches/schemas.js';
 import {
   AssemblyExcelExportService,
@@ -610,6 +613,7 @@ function serializeSession(session: AssemblyWorkSessionDetail, sessionService: As
       torqueWrenchProfileId: record.torqueWrenchProfileId,
       confirmationId: record.confirmationId,
       settingHistoryId: record.settingHistoryId,
+      settingVerificationMode: normalizeTorqueWrenchSettingVerificationMode(record.settingVerificationMode),
       serialNumberSnapshot: record.serialNumberSnapshot,
       manufacturerSnapshot: record.manufacturerSnapshot,
       modelNumberSnapshot: record.modelNumberSnapshot,

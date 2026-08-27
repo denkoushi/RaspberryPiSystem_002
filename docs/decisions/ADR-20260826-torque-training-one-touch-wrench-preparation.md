@@ -2,6 +2,8 @@
 
 Status: Accepted
 
+Setting-history and lease-reservation requirements below apply to `REGISTERED_SETTING`. [ADR-20260827](ADR-20260827-torque-wrench-optional-settings.md) adds `BOLT_CONDITION_ONLY`, which confirms without writing settings or reserving the lease before agent connection; authentication and idempotency boundaries remain unchanged.
+
 ## Context
 
 Assembly torque training uses versioned server-side conditions and one currently available digital torque wrench. The wrench's lower, nominal, and upper values must be changed for each selected program before training. [The manufacturer's CEM3-BTLA specification](https://www.tohnichi.co.jp/products/download/attachment/48326) defines one-way communication from the wrench, so this system cannot read or change those physical settings.

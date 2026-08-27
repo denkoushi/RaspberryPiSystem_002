@@ -21,6 +21,10 @@ import {
   profileEligibilityInclude
 } from './torque-wrench-use-context.js';
 import {
+  normalizeTorqueWrenchSettingVerificationMode,
+  usesRegisteredTorqueWrenchSetting
+} from './torque-wrench-setting-mode.policy.js';
+import {
   serializeUsageLeaseStatus,
   type UsageLeaseOwnerIdentity,
   TORQUE_USAGE_LEASE_HANDOFF_GRACE_MS,
@@ -164,15 +168,18 @@ async function validateConfirmation(
       eligibility.reason
     );
   }
+  const mode = normalizeTorqueWrenchSettingVerificationMode(profile.model.settingVerificationMode);
   const latestSetting = profile.settingHistories[0] ?? null;
-  if (!latestSetting) {
+  if (usesRegisteredTorqueWrenchSetting(mode) && !latestSetting) {
     throw new ApiError(409, '現在設定が登録されていません', undefined, 'SETTING_HISTORY_MISSING');
   }
   const expected: TorqueWrenchConfirmationExpectation = {
     sessionId: input.sessionId,
     clientDeviceId: input.clientDeviceId,
     torqueWrenchProfileId: input.torqueWrenchProfileId,
-    settingHistoryId: latestSetting.id,
+    settingHistoryId: usesRegisteredTorqueWrenchSetting(mode) ? latestSetting?.id ?? null : null,
+    settingVerificationMode: mode,
+    ownerKind: 'ASSEMBLY',
     conditionFingerprint: eligibility.conditionFingerprint
   };
   const decision = confirmationPolicy.evaluateLeaseAdoption({

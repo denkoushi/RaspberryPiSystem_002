@@ -3,6 +3,9 @@ import type { TorqueWrenchRejectionReason } from '@raspi-system/shared-types';
 import { Prisma } from '@prisma/client';
 import { TorqueUnitConverter } from './torque-unit-converter.js';
 import { normalizeFastenerText } from './torque-wrench-normalization.js';
+import {
+  normalizeTorqueWrenchSettingVerificationMode
+} from './torque-wrench-setting-mode.policy.js';
 
 export type TorqueCondition = {
   templateBoltId: string;
@@ -20,6 +23,8 @@ export type TorqueCondition = {
 export type TorqueWrenchCandidate = {
   profileId: string;
   modelId: string;
+  /** Nullable in the database for the expand-phase legacy default. */
+  settingVerificationMode?: string | null;
   status: string;
   calibrationExpiryDate: Date | null;
   modelTorqueMinNm: Prisma.Decimal.Value;
@@ -135,6 +140,9 @@ export class TorqueWrenchEligibilityPolicy {
   evaluate(condition: TorqueCondition, candidate: TorqueWrenchCandidate, now = new Date()): EligibilityDecision {
     const setup = evaluateSetupRequirements(condition, candidate, now);
     if (!setup.ready) return { eligible: false, reason: setup.reason };
+    if (normalizeTorqueWrenchSettingVerificationMode(candidate.settingVerificationMode) === 'BOLT_CONDITION_ONLY') {
+      return { eligible: true, conditionFingerprint: torqueConditionFingerprint(condition) };
+    }
     if (!candidate.setting) {
       return { eligible: false, reason: 'SETTING_HISTORY_MISSING' };
     }

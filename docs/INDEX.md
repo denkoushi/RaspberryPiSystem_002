@@ -58,6 +58,7 @@
 
 ### 最新アップデート（2026-07-17 · 組立トルクレンチ締付トレーサビリティ · ローカル実装済・実機parser待ち）
 
+- **型番別の登録設定照合・接続1操作（2026-08-27）**: 設定履歴を保持し、照合不要の型番はボルト条件を正本として毎接続の現物確認で使用する。**正本**: [ADR](./decisions/ADR-20260827-torque-wrench-optional-settings.md) · [ExecPlan](./plans/torque-wrench-optional-settings-execplan.md)
 - **トルク訓練の標準14メニューとワンタッチレンチ準備（2026-08-26・ローカル実装済）**: 対応レンチ未登録を含む標準メニューを表示し、サーバー確定値の設定履歴・現物確認・agent接続を1操作で進める。**正本**: [ADR](./decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md) · [API](./modules/measuring-instruments/api.md#組立トルク訓練) · [UI](./modules/measuring-instruments/ui.md#組立トルク訓練ui)
 - **共用トルクレンチの複数端末排他接続（2026-07-22）**: Pi5/PostgreSQLリース、世代fence、外付けBluetoothガード、明示的な使用開始・終了・現物引継ぎをRelease AとしてPi5・StoneBase・Assembly-01へ配備済み。通常移動と非重複の現物引継ぎは実機確認済みで、二段階確認の連続入力インターロック是正と逆方向受入を継続中。enforcementは未有効。**正本**: [ExecPlan](./plans/assembly-torque-wrench-connection-lease-execplan.md) · [Runbook](./runbooks/assembly-torque-agent.md) · [ADR](./decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md)
 - **組立・訓練を横断するトルクレンチ所有権共通化（2026-08-18・実装中）**: 1台のレンチを全端末・全機能で0または1所有者に限定し、訓練からの二段階引継ぎ、旧画面releaseの安全なno-op、同一token通信復旧を共通化する。**正本**: [ExecPlan](./plans/torque-wrench-global-ownership-execplan.md) · [ADR](./decisions/ADR-20260818-torque-wrench-global-ownership.md) · [Runbook](./runbooks/assembly-torque-agent.md)

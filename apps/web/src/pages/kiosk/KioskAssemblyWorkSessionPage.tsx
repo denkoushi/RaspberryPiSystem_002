@@ -1,13 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import {
   advanceAssemblyArea,
   completeAssemblyWorkSession,
   getAssemblyWorkSession,
-  listCurrentTorqueWrenchConfirmations,
-  listCompatibleTorqueWrenchesForSession,
-  confirmAssemblyTorqueWrench,
   recordAssemblyOperatorAccess,
   recordAssemblyCheck,
   recordAssemblyTorque,
@@ -16,6 +13,7 @@ import {
 import { Button, buttonClassName } from '../../components/ui/Button';
 import {
   AssemblyProcedureSequenceViewer,
+  AssemblyBoltConditionPreparationCard,
   AssemblyOperatorNfcDialog,
   AssemblyWorkSessionHeader,
   currentAssemblyArea,
@@ -29,6 +27,7 @@ import {
   sessionCheckItemsToCanvas,
   templateToCanvasBolts,
   TorqueResultHistoryRow,
+  useAssemblyWrenchPreparation,
   useAssemblyWorkProcedureSequence,
   useTorqueRecordLiveRefresh
 } from '../../features/assembly';
@@ -39,11 +38,9 @@ import {
   useTorqueWrenchConnection
 } from '../../features/torque-wrench-connection';
 
-import type { TorqueWrenchProfileApi } from '../../api/domains/torque-wrenches';
-import type {
-  TorqueConfirmationLookupState
-} from '../../features/assembly';
 import type { AssemblyProcedureSequencePageDto, AssemblyWorkSessionDto } from '../../features/assembly/types';
+import type { UseTorqueWrenchConnectionResult } from '../../features/torque-wrench-connection/useTorqueWrenchConnection';
+
 
 export function KioskAssemblyWorkSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -64,16 +61,44 @@ export function KioskAssemblyWorkSessionPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [compatibleWrenches, setCompatibleWrenches] = useState<Array<{ profile: TorqueWrenchProfileApi; conditionFingerprint: string }>>([]);
-  const [selectedProfileId, setSelectedProfileId] = useState('');
-  const [confirmation, setConfirmation] = useState<{ id: string; torqueWrenchProfileId: string; settingHistoryId: string } | null>(null);
-  const [confirmationReused, setConfirmationReused] = useState(false);
-  const [confirmationLookupState, setConfirmationLookupState] = useState<TorqueConfirmationLookupState>('idle');
+  const assemblyConnectionRef = useRef<Pick<UseTorqueWrenchConnectionResult, 'acquire' | 'clearError'> | null>(null);
   const operatorAuthorized = Boolean(
     session && (session.status !== 'in_progress' || authorizedSessionId === session.id)
   );
   const sessionActive = Boolean(operatorAuthorized && session?.status === 'in_progress');
   const traceabilityRequired = session?.template.traceabilityMode === 'REQUIRED';
+  const refreshAssemblySession = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      setSession(await getAssemblyWorkSession(sessionId));
+    } catch (error: unknown) {
+      setMessage(readAssemblyApiErrorMessage(error, '作業データの更新に失敗しました。'));
+    }
+  }, [sessionId]);
+  const {
+    compatibleWrenches,
+    selectedProfileId,
+    setSelectedProfileId,
+    selectedCompatibleWrench,
+    confirmation,
+    confirmationReused,
+    confirmationLookupState,
+    connectionRetryRequired,
+    preparationBusy,
+    boltConditionOnly,
+    confirmPhysicalWrench,
+    connectBoltConditionWrench,
+    resetAfterRelease,
+    resetAfterExpiry
+  } = useAssemblyWrenchPreparation({
+    sessionId: session?.id ?? null,
+    currentTemplateBoltId: session?.currentBoltId ?? null,
+    sessionActive,
+    traceabilityRequired,
+    connectionRef: assemblyConnectionRef,
+    onConditionStale: () => { void refreshAssemblySession(); },
+    onMessage: setMessage
+  });
   const torqueConnection = useTorqueWrenchConnection({
     enabled: Boolean(sessionActive && traceabilityRequired),
     targetKind: 'assembly',
@@ -82,6 +107,7 @@ export function KioskAssemblyWorkSessionPage() {
     confirmationId: confirmation?.id ?? null,
     torqueWrenchProfileId: confirmation?.torqueWrenchProfileId ?? null
   });
+  assemblyConnectionRef.current = torqueConnection;
   const {
     state: procedureSequenceState,
     retry: retryProcedureSequence
@@ -147,50 +173,8 @@ export function KioskAssemblyWorkSessionPage() {
   });
 
   useEffect(() => {
-    if (!sessionActive || !session?.id || !session.currentBoltId || !traceabilityRequired) {
-      setCompatibleWrenches([]);
-      setSelectedProfileId('');
-      setConfirmation(null);
-      setConfirmationReused(false);
-      setConfirmationLookupState('idle');
-      return;
-    }
-    let cancelled = false;
-    setConfirmationLookupState('loading');
-    setConfirmation(null);
-    setConfirmationReused(false);
-    void Promise.all([
-      listCompatibleTorqueWrenchesForSession(session.id),
-      listCurrentTorqueWrenchConfirmations(session.id)
-    ])
-      .then(([items, confirmations]) => {
-        if (cancelled) return;
-        setCompatibleWrenches(items);
-        const reusable = confirmations.find((candidate) =>
-          items.some(({ profile }) => profile.id === candidate.torqueWrenchProfileId)
-        );
-        setSelectedProfileId(reusable?.torqueWrenchProfileId ?? items[0]?.profile.id ?? '');
-        setConfirmation(
-          reusable
-            ? {
-                id: reusable.id,
-                torqueWrenchProfileId: reusable.torqueWrenchProfileId,
-                settingHistoryId: reusable.settingHistoryId
-              }
-            : null
-        );
-        setConfirmationReused(Boolean(reusable));
-      })
-      .catch((error) => {
-        if (!cancelled) setMessage(readAssemblyApiErrorMessage(error, '適合トルクレンチを取得できませんでした。'));
-      })
-      .finally(() => {
-        if (!cancelled) setConfirmationLookupState('resolved');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.currentBoltId, session?.id, sessionActive, traceabilityRequired]);
+    if (torqueConnection.status?.state === 'expired') resetAfterExpiry();
+  }, [resetAfterExpiry, torqueConnection.status?.state]);
 
   const activePageRef = useMemo(() => {
     if (!currentSequencePage) return null;
@@ -258,19 +242,6 @@ export function KioskAssemblyWorkSessionPage() {
       }
     });
 
-  const confirmPhysicalWrench = () =>
-    runBusy(async () => {
-      if (!session?.currentBoltId || !selectedProfileId) throw new Error('確認する物理トルクレンチを選択してください。');
-      const next = await confirmAssemblyTorqueWrench(session.id, {
-        expectedTemplateBoltId: session.currentBoltId,
-        torqueWrenchProfileId: selectedProfileId,
-        physicalDisplayConfirmed: true
-      });
-      setConfirmation(next);
-      setConfirmationReused(false);
-      setMessage('現物の製造番号と設定値を確認済みにしました。「このレンチを使用開始」を押してください。');
-    });
-
   const startUsingWrench = () =>
     runBusy(async () => {
       if (!session?.currentBoltId || !confirmation) throw new Error('先に現物確認を完了してください。');
@@ -284,7 +255,8 @@ export function KioskAssemblyWorkSessionPage() {
     });
 
   const stopUsingWrench = async (reason = 'OPERATOR_RELEASE') => {
-    await torqueConnection.release(reason);
+    const released = await torqueConnection.release(reason);
+    if (released) resetAfterRelease();
   };
 
   const toggleCheckItem = (checkItemId: string) =>
@@ -395,11 +367,13 @@ export function KioskAssemblyWorkSessionPage() {
     status: torqueConnection.status,
     error: torqueConnection.error
   });
-  const visibleMessage = torqueConnectionPresentation.connectionMessage ?? message;
+  const visibleMessage = boltConditionOnly && connectionRetryRequired
+    ? '確認済み・接続を再試行'
+    : torqueConnectionPresentation.connectionMessage ?? message;
   const torqueValueValid = torqueValue.trim().length > 0 && Number.isFinite(Number(torqueValue));
   const actionPresentation = resolveAssemblyWorkActionPresentation({
     sessionActive,
-    busy,
+    busy: busy || preparationBusy,
     hasCurrentBolt: Boolean(session.currentBoltId),
     hasCurrentArea: Boolean(session.currentAreaId),
     allBoltsComplete,
@@ -410,6 +384,16 @@ export function KioskAssemblyWorkSessionPage() {
     leaseOwned: torqueConnection.leaseOwned,
     ownedByOther: torqueConnection.state === 'owned_by_other'
   });
+  const boltConnectDisabled = Boolean(
+    !sessionActive
+    || busy
+    || preparationBusy
+    || torqueConnection.busy
+    || torqueConnection.leaseOwned
+    || torqueConnection.state === 'owned_by_other'
+    || !session.currentBoltId
+    || !selectedProfileId
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
@@ -488,7 +472,7 @@ export function KioskAssemblyWorkSessionPage() {
           </div>
         </section>
 
-        <section className="flex min-h-0 flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 p-2">
+        <section className="flex min-h-0 flex-col overflow-x-hidden overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-2">
           <h2 className="text-[1.02rem] font-bold">締付</h2>
           <div className="mt-2 rounded border border-white/10 bg-slate-950 p-2">
             <div className="text-sm text-white/60">現在</div>
@@ -518,59 +502,95 @@ export function KioskAssemblyWorkSessionPage() {
               </div>
               <label className="col-span-2 grid gap-1 text-xs font-semibold text-white/70">
                 使用する物理トルクレンチ
-                <select className="min-h-11 rounded bg-slate-950 px-2 text-sm" value={selectedProfileId} disabled={!sessionActive || busy || Boolean(confirmation)} onChange={(e) => setSelectedProfileId(e.target.value)}>
+                <select className="min-h-11 w-full min-w-0 max-w-full rounded bg-slate-950 px-2 text-sm" value={selectedProfileId} disabled={!sessionActive || busy || preparationBusy || Boolean(confirmation)} onChange={(e) => setSelectedProfileId(e.target.value)}>
                   {compatibleWrenches.length === 0 ? <option value="">適合レンチなし</option> : null}
                   {compatibleWrenches.map(({ profile }) => {
+                    const mode = profile.model.settingVerificationMode;
                     const setting = profile.settingHistories[0];
-                    return <option key={profile.id} value={profile.id}>{profile.serialNumber} / {profile.model.modelNumber}{setting ? ` / ${setting.nominalTorque} ${setting.unit}` : ''}</option>;
+                    return <option key={profile.id} value={profile.id}>{profile.serialNumber} / {profile.model.modelNumber}{mode === 'BOLT_CONDITION_ONLY' ? ' / 設定照合対象外' : setting ? ` / ${setting.nominalTorque} ${setting.unit}` : ''}</option>;
                   })}
                 </select>
               </label>
-              <button
-                type="button"
-                className={kioskFlowButtonClass(actionPresentation.confirmPhysicalWrench)}
-                disabled={actionPresentation.confirmPhysicalWrench.disabled}
-                onClick={confirmPhysicalWrench}
-              >
-                {confirmation ? '現物確認済み' : '製造番号と現物設定を確認'}
-              </button>
-              {confirmation && !torqueConnection.leaseOwned && torqueConnection.state !== 'owned_by_other' ? (
-                <button
-                  type="button"
-                  className={kioskFlowButtonClass(actionPresentation.startUsingWrench)}
-                  disabled={actionPresentation.startUsingWrench.disabled}
-                  onClick={startUsingWrench}
-                >
-                  このレンチを使用開始
-                </button>
-              ) : null}
-              {torqueConnection.leaseOwned ? (
-                <button
-                  type="button"
-                  className={kioskFlowButtonClass(actionPresentation.stopUsingWrench)}
-                  disabled={actionPresentation.stopUsingWrench.disabled}
-                  onClick={() => void stopUsingWrench()}
-                >
-                  使用終了
-                </button>
-              ) : null}
-              {torqueConnection.state === 'owned_by_other' ? (
-                <TorqueWrenchTakeoverPanel
-                  owner={torqueConnection.status?.owner ?? null}
-                  targetKind="assembly"
-                  busy={busy || torqueConnection.busy}
-                  onTakeover={takeoverWrench}
-                />
-              ) : null}
-              <div className="col-span-2 rounded bg-slate-950/70 px-3 py-2 text-center text-sm font-semibold">
-                {!confirmation
-                  ? '現物確認後に使用開始してください'
-                  : torqueConnection.ready
-                    ? '入力待機中'
-                    : confirmationReused
-                      ? '同じ締付条件の現物確認を引継ぎ済み・使用開始が必要です'
-                      : '現物確認済み・使用開始が必要です'}
-              </div>
+              {boltConditionOnly ? (
+                <>
+                  <AssemblyBoltConditionPreparationCard
+                    bolt={currentBolt}
+                    programLabel={`${session.template.modelCode} / ${session.template.procedurePattern}`}
+                    serialNumber={selectedCompatibleWrench?.profile.serialNumber ?? null}
+                    busy={preparationBusy || torqueConnection.busy}
+                    ready={torqueConnection.ready}
+                    retryRequired={connectionRetryRequired}
+                    disabled={boltConnectDisabled || confirmationLookupState !== 'resolved'}
+                    onConnect={() => void connectBoltConditionWrench()}
+                  />
+                  {torqueConnection.leaseOwned ? (
+                    <button
+                      type="button"
+                      className={kioskFlowButtonClass(actionPresentation.stopUsingWrench)}
+                      disabled={actionPresentation.stopUsingWrench.disabled}
+                      onClick={() => void stopUsingWrench()}
+                    >
+                      使用終了
+                    </button>
+                  ) : null}
+                  {torqueConnection.state === 'owned_by_other' ? (
+                    <TorqueWrenchTakeoverPanel
+                      owner={torqueConnection.status?.owner ?? null}
+                      targetKind="assembly"
+                      busy={busy || torqueConnection.busy}
+                      onTakeover={takeoverWrench}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={kioskFlowButtonClass(actionPresentation.confirmPhysicalWrench)}
+                    disabled={actionPresentation.confirmPhysicalWrench.disabled}
+                    onClick={confirmPhysicalWrench}
+                  >
+                    {confirmation ? '現物確認済み' : '製造番号と現物設定を確認'}
+                  </button>
+                  {confirmation && !torqueConnection.leaseOwned && torqueConnection.state !== 'owned_by_other' ? (
+                    <button
+                      type="button"
+                      className={kioskFlowButtonClass(actionPresentation.startUsingWrench)}
+                      disabled={actionPresentation.startUsingWrench.disabled}
+                      onClick={startUsingWrench}
+                    >
+                      このレンチを使用開始
+                    </button>
+                  ) : null}
+                  {torqueConnection.leaseOwned ? (
+                    <button
+                      type="button"
+                      className={kioskFlowButtonClass(actionPresentation.stopUsingWrench)}
+                      disabled={actionPresentation.stopUsingWrench.disabled}
+                      onClick={() => void stopUsingWrench()}
+                    >
+                      使用終了
+                    </button>
+                  ) : null}
+                  {torqueConnection.state === 'owned_by_other' ? (
+                    <TorqueWrenchTakeoverPanel
+                      owner={torqueConnection.status?.owner ?? null}
+                      targetKind="assembly"
+                      busy={busy || torqueConnection.busy}
+                      onTakeover={takeoverWrench}
+                    />
+                  ) : null}
+                  <div className="col-span-2 rounded bg-slate-950/70 px-3 py-2 text-center text-sm font-semibold">
+                    {!confirmation
+                      ? '現物確認後に使用開始してください'
+                      : torqueConnection.ready
+                        ? '入力待機中'
+                        : confirmationReused
+                          ? '同じ締付条件の現物確認を引継ぎ済み・使用開始が必要です'
+                          : '現物確認済み・使用開始が必要です'}
+                  </div>
+                </>
+              )}
             </div>
           ) : (
           <>
@@ -642,6 +662,7 @@ export function KioskAssemblyWorkSessionPage() {
                 valueLabel={record.value ?? '-'}
                 resultLabel={record.judgement.toUpperCase()}
                 resultTone={record.judgement === 'ignored' ? 'neutral' : record.judgement === 'ok' ? 'success' : 'failure'}
+                details={record.settingVerificationMode === 'BOLT_CONDITION_ONLY' ? '設定照合対象外' : null}
               />
             ))}
           </div>

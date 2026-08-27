@@ -14,6 +14,9 @@ export type TorqueWrenchStorageLocation = (typeof TORQUE_WRENCH_STORAGE_LOCATION
 
 export type AssemblyTorqueTraceabilityMode = 'LEGACY' | 'REQUIRED';
 
+/** 登録設定の照合方式。本体との通信・同期能力を表すものではない。 */
+export type TorqueWrenchSettingVerificationMode = 'REGISTERED_SETTING' | 'BOLT_CONDITION_ONLY';
+
 /**
  * 締結条件の照合に使う文字列をAPI/Webで同じ規則へ正規化する。
  */
@@ -54,6 +57,7 @@ export interface TorqueWrenchModelDto {
   resolutionNm: string | null;
   communicationType: string;
   outputProfile: string | null;
+  settingVerificationMode: TorqueWrenchSettingVerificationMode;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -132,7 +136,9 @@ export interface AssemblyTorqueWrenchConfirmationDto {
   sessionId: string;
   templateBoltId: string;
   torqueWrenchProfileId: string;
-  settingHistoryId: string;
+  settingHistoryId: string | null;
+  settingVerificationMode: TorqueWrenchSettingVerificationMode;
+  target: Pick<AssemblyTorqueConditionDto, 'lowerLimit' | 'nominalTorque' | 'upperLimit' | 'unit'>;
   conditionFingerprint: string;
   operatorEmployeeId: string | null;
   operatorNameSnapshot: string;

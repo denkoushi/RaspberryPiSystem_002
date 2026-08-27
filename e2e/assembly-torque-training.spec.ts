@@ -8,6 +8,10 @@ const programId = '33333333-3333-4333-8333-333333333333';
 const versionId = '44444444-4444-4444-8444-444444444444';
 const profileId = '55555555-5555-4555-8555-555555555555';
 const fingerprint = 'training-e2e-fingerprint';
+const boltProgramId = '33333333-3333-4333-8333-333333333334';
+const boltVersionId = '44444444-4444-4444-8444-444444444445';
+const boltProfileId = '55555555-5555-4555-8555-555555555556';
+const boltFingerprint = 'training-e2e-bolt-fingerprint';
 
 const version = {
   id: versionId,
@@ -24,7 +28,7 @@ const version = {
   unit: 'N-m',
   jigConditionCode: 'JIG-E2E',
   conditionFingerprint: fingerprint,
-  torqueWrenchProfiles: [{ id: profileId, serialNumber: '702902S' }]
+  torqueWrenchProfiles: [{ id: profileId, serialNumber: '702902S', settingVerificationMode: 'REGISTERED_SETTING' }]
 };
 
 const program = {
@@ -33,6 +37,25 @@ const program = {
   isActive: true,
   currentVersion: 1,
   versions: [version]
+};
+
+const boltVersion = {
+  ...version,
+  id: boltVersionId,
+  displayName: 'M6 BOLT条件訓練',
+  conditionFingerprint: boltFingerprint,
+  torqueWrenchProfiles: [{
+    id: boltProfileId,
+    serialNumber: '702903S',
+    settingVerificationMode: 'BOLT_CONDITION_ONLY'
+  }]
+};
+
+const boltProgram = {
+  ...program,
+  id: boltProgramId,
+  code: 'TRAINING-BOLT-E2E',
+  versions: [{ ...boltVersion, setupState: 'READY', setupStateReason: null }]
 };
 
 const menuProgram = {
@@ -86,8 +109,11 @@ const adminResult: MockAdminResult = {
 
 function session(
   status: 'IN_PROGRESS' | 'COMPLETED' = 'IN_PROGRESS',
-  attemptCount = status === 'COMPLETED' ? 5 : 0
+  attemptCount = status === 'COMPLETED' ? 5 : 0,
+  programVersion = version,
+  programCode = program.code
 ) {
+  const settingVerificationMode = programVersion.torqueWrenchProfiles[0]?.settingVerificationMode ?? 'REGISTERED_SETTING';
   const attempts = Array.from({ length: attemptCount }, (_, index) => ({
     id: `attempt-${index + 1}`,
     attemptNo: index + 1,
@@ -100,6 +126,7 @@ function session(
     deviationNm: '0',
     deviationPercent: '0',
     absoluteDeviationPercent: '0',
+    settingVerificationMode,
     judgement: 'OK',
     accepted: true,
     ignoredReason: null,
@@ -112,9 +139,9 @@ function session(
     employeeCode: 'E2E001',
     employeeName: 'E2E 作業者',
     clientDeviceName: 'E2E kiosk',
-    conditionFingerprint: fingerprint,
+    conditionFingerprint: programVersion.conditionFingerprint,
     targetAttemptCount: 5,
-    program: { ...version, code: program.code },
+    program: { ...programVersion, code: programCode },
     attempts,
     hasWrenchConfirmation: attemptCount > 0 || status !== 'IN_PROGRESS',
     startedAt: '2026-08-09T00:00:00.000Z',
@@ -247,7 +274,7 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
     }
     if (path.endsWith('/wrench-preparations') && request.method() === 'POST') {
       preparationPayloads.push(request.postDataJSON() as Record<string, unknown>);
-      return route.fulfill({ status: 201, json: { preparation: { confirmationId: '88888888-8888-4888-8888-888888888888', requestId: preparationPayloads[0].requestId, torqueWrenchProfileId: profileId, serialNumber: '702902S', settingHistoryId: '99999999-9999-4999-8999-999999999999', target: { lowerLimit: '9', nominalTorque: '10', upperLimit: '11', unit: 'N-m' }, confirmedAt: '2026-08-09T00:00:00.000Z', duplicate: false } } });
+      return route.fulfill({ status: 201, json: { preparation: { confirmationId: '88888888-8888-4888-8888-888888888888', requestId: preparationPayloads[0].requestId, torqueWrenchProfileId: profileId, serialNumber: '702902S', settingHistoryId: '99999999-9999-4999-8999-999999999999', settingVerificationMode: 'REGISTERED_SETTING', target: { lowerLimit: '9', nominalTorque: '10', upperLimit: '11', unit: 'N-m' }, confirmedAt: '2026-08-09T00:00:00.000Z', duplicate: false } } });
     }
     if (path === '/api/torque-training/settings/snapshot' && request.method() === 'POST') {
       settingsSnapshotCalls += 1;
@@ -447,3 +474,192 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
   await page.keyboard.press('Escape');
   await expect(compactSettingsDialog).toBeHidden();
 });
+
+for (const viewport of [
+  { width: 1366, height: 768 },
+  { width: 1920, height: 1080 }
+]) {
+  test(`BOLT条件のみは設定照合なしで再試行と期限切れ再確認を行う ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
+    let preparationCalls = 0;
+    let acquireCalls = 0;
+    let agentAcquired = false;
+    const preparationPayloads: Array<Record<string, unknown>> = [];
+    await installMockNfc(page);
+    await page.setViewportSize(viewport);
+    await page.addInitScript(() => {
+      window.localStorage.setItem('factory-auth', JSON.stringify({
+        token: 'bolt-viewer-token',
+        user: { id: 'bolt-viewer-e2e', username: 'viewer', role: 'VIEWER', mfaEnabled: false },
+        expiresAt: new Date(Date.now() + 60_000).toISOString()
+      }));
+    });
+    await page.route('**/api/**', async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (path.startsWith('/src/api/')) return route.continue();
+      if (path === '/api/kiosk/config') return route.fulfill({ json: { kioskInitialRoute: 'assembly', navTabOrder: [] } });
+      if (path === '/api/system/deploy-status') return route.fulfill({ json: { isMaintenance: false } });
+      if (path === '/api/torque-training/programs' && request.method() === 'GET') {
+        return route.fulfill({ json: { programs: [boltProgram] } });
+      }
+      if (path === '/api/torque-training/operator-context') {
+        return route.fulfill({ json: {
+          employee: { id: employeeId, employeeCode: 'E2E-BOLT', displayName: 'BOLT 作業者' },
+          currentSession: null,
+          metrics: []
+        } });
+      }
+      if (path === '/api/torque-training/sessions' && request.method() === 'POST') {
+        return route.fulfill({ status: 201, json: { session: session('IN_PROGRESS', 0, boltVersion, boltProgram.code) } });
+      }
+      if (path.endsWith(`/sessions/${session().id}`) && request.method() === 'GET') {
+        return route.fulfill({ json: { session: session('IN_PROGRESS', 0, boltVersion, boltProgram.code) } });
+      }
+      if (path.endsWith('/wrench-preparations') && request.method() === 'POST') {
+        preparationCalls += 1;
+        preparationPayloads.push(request.postDataJSON() as Record<string, unknown>);
+        const body = preparationPayloads.at(-1) ?? {};
+        return route.fulfill({ status: 201, json: { preparation: {
+          confirmationId: `bolt-confirmation-${preparationCalls}`,
+          requestId: body.requestId,
+          torqueWrenchProfileId: boltProfileId,
+          serialNumber: '702903S',
+          settingHistoryId: null,
+          settingVerificationMode: 'BOLT_CONDITION_ONLY',
+          target: { lowerLimit: '9', nominalTorque: '10', upperLimit: '11', unit: 'N-m' },
+          confirmedAt: '2026-08-27T00:00:00.000Z',
+          duplicate: false
+        } } });
+      }
+      return route.fulfill({ json: {} });
+    });
+    await page.route('http://127.0.0.1:7073/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const headers = { 'access-control-allow-origin': '*' };
+      const ownedStatus = {
+        ok: true,
+        ready: false,
+        state: 'owned_by_self',
+        owner: null,
+        bound: true,
+        leaseOwned: true,
+        bluetoothPowered: true,
+        hidExclusive: true,
+        lastError: null,
+        selfOwnedToken: {
+          targetKind: 'training',
+          sessionId: session().id,
+          torqueWrenchProfileId: boltProfileId,
+          leaseId: 'bolt-lease-1',
+          generation: 1
+        }
+      };
+      if (path === '/health') {
+        return route.fulfill({ headers, json: {
+          ok: true,
+          ready: true,
+          state: 'available',
+          owner: null,
+          bound: false,
+          leaseOwned: false,
+          bluetoothPowered: false,
+          hidExclusive: false,
+          lastError: null,
+          wrenchSerialNumbers: ['702903S']
+        } });
+      }
+      if (path === '/lease/acquire') {
+        acquireCalls += 1;
+        if (acquireCalls === 1) {
+          return route.fulfill({ headers, json: {
+            ok: true,
+            ready: false,
+            state: 'available',
+            owner: null,
+            bound: false,
+            leaseOwned: false,
+            bluetoothPowered: false,
+            hidExclusive: false,
+            lastError: 'AGENT_WARMING_UP',
+            wrenchSerialNumbers: ['702903S']
+          } });
+        }
+        if (acquireCalls === 2) {
+          return route.fulfill({ headers, json: {
+            ok: true,
+            ready: false,
+            state: 'expired',
+            owner: null,
+            bound: false,
+            leaseOwned: false,
+            bluetoothPowered: false,
+            hidExclusive: false,
+            lastError: 'TORQUE_WRENCH_LEASE_EXPIRED',
+            wrenchSerialNumbers: ['702903S']
+          } });
+        }
+        agentAcquired = true;
+        return route.fulfill({ headers, json: ownedStatus });
+      }
+      if (path === '/heartbeat') {
+        return route.fulfill({ headers, json: agentAcquired ? ownedStatus : {
+          ok: true,
+          ready: false,
+          state: 'available',
+          owner: null,
+          bound: false,
+          leaseOwned: false,
+          bluetoothPowered: false,
+          hidExclusive: false,
+          lastError: null,
+          wrenchSerialNumbers: ['702903S']
+        } });
+      }
+      return route.fulfill({ headers, json: { ok: true, ready: false, state: 'available', leaseOwned: false, lastError: null } });
+    });
+
+    await page.goto('/kiosk/assembly/training', { waitUntil: 'networkidle' });
+    await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __trainingNfcReady?: boolean }).__trainingNfcReady))).toBe(true);
+    await emitNfc(page, 'NFC-E2E-BOLT');
+    await expect(page.getByText('BOLT 作業者', { exact: true })).toBeVisible();
+    await page.getByLabel('対象ボルト・訓練メニュー').selectOption(boltVersionId);
+    await page.getByRole('button', { name: '訓練を開始' }).click();
+    await expect(page.getByTestId('torque-training-wrench-target-values')).toBeVisible();
+    await expect(page.getByText('設定照合対象外')).toBeVisible();
+    await expect(page.getByTestId('torque-training-wrench-target-values')).toContainText('702903S');
+    await expect(page.getByTestId('torque-training-wrench-target-values')).toContainText('9 N·m');
+    await expect(page.getByTestId('torque-training-wrench-target-values')).toContainText('10 N·m');
+    await expect(page.getByTestId('torque-training-wrench-target-values')).toContainText('11 N·m');
+    await expect(page.getByRole('checkbox')).toHaveCount(0);
+    await expect(page.locator('input[type="number"]')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`bolt-target-${viewport.width}x${viewport.height}.png`), fullPage: true });
+
+    const connect = page.getByRole('button', { name: 'レンチ本体を表示値に設定して接続' });
+    await expect(connect).toBeEnabled();
+    await connect.dblclick();
+    await expect(page.getByTestId('torque-training-setting-registered')).toBeVisible();
+    expect(preparationCalls).toBe(1);
+    expect(preparationPayloads[0]).toEqual(expect.objectContaining({
+      uid: 'NFC-E2E-BOLT',
+      torqueWrenchProfileId: boltProfileId,
+      physicalSettingConfirmed: true,
+      requestId: expect.any(String)
+    }));
+    expect(preparationPayloads[0]).not.toHaveProperty('lowerLimit');
+    expect(preparationPayloads[0]).not.toHaveProperty('nominalTorque');
+    expect(preparationPayloads[0]).not.toHaveProperty('upperLimit');
+
+    await connect.click();
+    await expect(page.getByText('確認状態が古くなりました。訓練対象とレンチを確認して接続し直してください。')).toBeVisible();
+    await expect.poll(() => preparationCalls).toBe(1);
+    await expect(connect).toBeEnabled();
+
+    await connect.click();
+    await expect(page.getByTestId('torque-training-wrench-connection')).toBeVisible();
+    await expect(page.getByTestId('torque-training-wrench-target-values')).toHaveCount(0);
+    expect(preparationCalls).toBe(2);
+    expect(acquireCalls).toBe(3);
+    expect(preparationPayloads[1]?.requestId).not.toBe(preparationPayloads[0]?.requestId);
+  });
+}

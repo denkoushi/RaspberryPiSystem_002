@@ -126,6 +126,43 @@ class SqlAllowListTests(unittest.TestCase):
             with self.subTest(statement=statement):
                 self.assert_allowed(statement)
 
+    def test_only_torque_confirmation_setting_history_nullability_drops_are_allowed(self) -> None:
+        statements = [
+            'ALTER TABLE "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL;',
+            'ALTER TABLE "TorqueTrainingWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL;',
+        ]
+        for statement in statements:
+            with self.subTest(statement=statement):
+                self.assert_allowed(statement)
+
+    def test_near_miss_nullability_drops_remain_rejected(self) -> None:
+        statements = [
+            'ALTER TABLE "OtherTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL;',
+            'ALTER TABLE "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "otherId" DROP NOT NULL;',
+            'ALTER TABLE "TorqueTrainingWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryID" DROP NOT NULL;',
+            'ALTER TABLE "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" SET NOT NULL;',
+            'ALTER TABLE "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP DEFAULT;',
+            'ALTER TABLE ONLY "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL;',
+            'ALTER TABLE IF EXISTS "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL;',
+            'ALTER TABLE "public"."AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL;',
+            'ALTER TABLE "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL, '
+            'ALTER COLUMN "otherId" DROP NOT NULL;',
+        ]
+        for statement in statements:
+            with self.subTest(statement=statement):
+                self.assert_disallowed(statement)
+
     def test_comments_and_quoted_constructs_do_not_change_statement_boundaries(self) -> None:
         self.assert_allowed(
             '/* outer /* nested */ comment */ CREATE TABLE "dash--board" ("id" INTEGER);\n'

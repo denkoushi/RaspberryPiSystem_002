@@ -6,6 +6,14 @@ import { runAssemblyTransaction } from '../assembly/assembly-transaction.js';
 import { lockTorqueWrenchProfile } from './torque-wrench-lock.repository.js';
 import { normalizeFastenerText, normalizeTorqueWrenchKey } from './torque-wrench-normalization.js';
 import {
+  normalizeTorqueWrenchSettingVerificationMode,
+  type TorqueWrenchSettingVerificationMode
+} from './torque-wrench-setting-mode.policy.js';
+import {
+  serializeTorqueWrenchModel,
+  serializeTorqueWrenchProfile
+} from './torque-wrench-serialization.js';
+import {
   appendTorqueWrenchSetting,
   type TorqueWrenchSettingInput
 } from './torque-wrench-setting-writer.js';
@@ -35,6 +43,7 @@ export type TorqueWrenchModelInput = {
   resolutionNm?: Prisma.Decimal.Value | null;
   communicationType?: string;
   outputProfile?: string | null;
+  settingVerificationMode?: TorqueWrenchSettingVerificationMode | null;
   isActive?: boolean;
 };
 
@@ -75,11 +84,13 @@ export class TorqueWrenchMasterService {
     return prisma.torqueWrenchModel.findMany({
       where: includeInactive ? undefined : { isActive: true },
       orderBy: [{ manufacturer: 'asc' }, { modelNumber: 'asc' }]
-    });
+    }).then((models) => models.map((model) => serializeTorqueWrenchModel(model)));
   }
 
   getModel(id: string) {
-    return prisma.torqueWrenchModel.findUnique({ where: { id } });
+    return prisma.torqueWrenchModel.findUnique({ where: { id } }).then((model) =>
+      model ? serializeTorqueWrenchModel(model) : null
+    );
   }
 
   async createModel(input: TorqueWrenchModelInput) {
@@ -90,8 +101,7 @@ export class TorqueWrenchMasterService {
     if (torqueMinNm.isNegative() || torqueMaxNm.lte(torqueMinNm)) {
       throw new ApiError(400, '測定可能最大トルクは最小トルクより大きい値にしてください');
     }
-    return prisma.torqueWrenchModel.create({
-      data: {
+    const data = {
         manufacturer,
         manufacturerKey: normalizeTorqueWrenchKey(manufacturer),
         modelNumber,
@@ -101,9 +111,12 @@ export class TorqueWrenchMasterService {
         resolutionNm: input.resolutionNm == null ? null : new Prisma.Decimal(input.resolutionNm),
         communicationType: required(input.communicationType ?? 'BLUETOOTH_HOGP', '通信方式', 80),
         outputProfile: input.outputProfile?.trim().slice(0, 120) || null,
+        settingVerificationMode: normalizeTorqueWrenchSettingVerificationMode(input.settingVerificationMode),
         isActive: input.isActive ?? true
-      }
-    });
+    };
+    return prisma.torqueWrenchModel.create({ data }).then((model) =>
+      serializeTorqueWrenchModel(model)
+    );
   }
 
   async updateModel(id: string, input: Partial<TorqueWrenchModelInput>) {
@@ -132,9 +145,14 @@ export class TorqueWrenchMasterService {
           ? { communicationType: required(input.communicationType, '通信方式', 80) }
           : {}),
         ...(input.outputProfile !== undefined ? { outputProfile: input.outputProfile?.trim().slice(0, 120) || null } : {}),
+        ...(input.settingVerificationMode !== undefined
+          ? { settingVerificationMode: normalizeTorqueWrenchSettingVerificationMode(input.settingVerificationMode) }
+          : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {})
       }
-    });
+    }).then((model) =>
+      serializeTorqueWrenchModel(model)
+    );
   }
 
   listProfiles(includeRetired = false) {
@@ -142,11 +160,13 @@ export class TorqueWrenchMasterService {
       where: includeRetired ? undefined : { measuringInstrument: { status: { not: 'RETIRED' } } },
       include: profileInclude,
       orderBy: [{ serialNumberKey: 'asc' }]
-    });
+    }).then((profiles) => profiles.map((profile) => serializeTorqueWrenchProfile(profile)));
   }
 
   getProfile(id: string) {
-    return prisma.torqueWrenchProfile.findUnique({ where: { id }, include: profileInclude });
+    return prisma.torqueWrenchProfile.findUnique({ where: { id }, include: profileInclude }).then((profile) =>
+      profile ? serializeTorqueWrenchProfile(profile) : null
+    );
   }
 
   async createProfile(input: TorqueWrenchProfileInput) {
@@ -173,7 +193,7 @@ export class TorqueWrenchMasterService {
           serialNumberKey: normalizeTorqueWrenchKey(serialNumber)
         },
         include: profileInclude
-      });
+      }).then((profile) => serializeTorqueWrenchProfile(profile));
     });
   }
 
@@ -213,7 +233,7 @@ export class TorqueWrenchMasterService {
           serialNumberKey: normalizeTorqueWrenchKey(serialNumber)
         },
         include: profileInclude
-      });
+      }).then((profile) => serializeTorqueWrenchProfile(profile));
     });
   }
 
@@ -226,7 +246,13 @@ export class TorqueWrenchMasterService {
       where: includeInactive ? undefined : { isActive: true },
       include: capabilityGroupInclude,
       orderBy: [{ nominalDiameter: 'asc' }, { boltLengthMm: 'asc' }, { name: 'asc' }]
-    });
+    }).then((groups) => groups.map((group) => ({
+      ...group,
+      models: group.models.map((link) => ({
+        ...link,
+        model: serializeTorqueWrenchModel(link.model)
+      }))
+    })));
   }
 
   findCompatibleCapabilityGroups(input: {
@@ -245,7 +271,13 @@ export class TorqueWrenchMasterService {
       },
       include: capabilityGroupInclude,
       orderBy: { name: 'asc' }
-    });
+    }).then((groups) => groups.map((group) => ({
+      ...group,
+      models: group.models.map((link) => ({
+        ...link,
+        model: serializeTorqueWrenchModel(link.model)
+      }))
+    })));
   }
 
   async createCapabilityGroup(input: TorqueWrenchCapabilityGroupInput) {
@@ -264,7 +296,13 @@ export class TorqueWrenchMasterService {
         models: { create: modelIds.map((modelId) => ({ modelId })) }
       },
       include: capabilityGroupInclude
-    });
+    }).then((group) => ({
+      ...group,
+      models: group.models.map((link) => ({
+        ...link,
+        model: serializeTorqueWrenchModel(link.model)
+      }))
+    }));
   }
 
   async updateCapabilityGroup(id: string, input: Partial<TorqueWrenchCapabilityGroupInput>) {
@@ -296,7 +334,13 @@ export class TorqueWrenchMasterService {
           ...(modelIds ? { models: { create: modelIds.map((modelId) => ({ modelId })) } } : {})
         },
         include: capabilityGroupInclude
-      });
+      }).then((group) => ({
+        ...group,
+        models: group.models.map((link) => ({
+          ...link,
+          model: serializeTorqueWrenchModel(link.model)
+        }))
+      }));
     });
   }
 }

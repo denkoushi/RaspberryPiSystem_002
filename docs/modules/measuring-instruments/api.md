@@ -126,6 +126,8 @@
 - `GET/PUT /api/torque-wrenches/:id`
 - `POST /api/torque-wrenches/:id/settings`（追記専用）
 
+型番の `settingVerificationMode` は `REGISTERED_SETTING`（従来の登録設定照合）または `BOLT_CONDITION_ONLY`（対象ボルト条件のみ）。未指定・旧nullは従来方式として扱う。本体との同期能力を表す項目ではない。照合不要でも設定登録APIと過去履歴は残る。
+
 ### REQUIRED組立作業
 
 - `GET /api/assembly/work-sessions/:id/compatible-torque-wrenches`
@@ -136,17 +138,21 @@
 
 エージェント入力は、端末IDをクライアントキーから確定し、`sourceEventKey`、現在のテンプレートBolt ID、確認ID、製造番号、値、単位、原文を必須とする。同じ端末・同じイベントIDは元の結果を返し、別の対象セッションへのイベント再送は409で拒否する。
 
+確認／準備の `settingHistoryId` はnullable。`BOLT_CONDITION_ONLY` の確認・測定は設定履歴を作らずnullを保存する。使用可否は登録設定の欠落・不一致に依存せず、合否は対象ボルト条件で判定する。型番範囲、校正、状態、割当、個体・端末・NFC、接続排他は従来どおり検査する。
+
 ### 組立トルク訓練
 
 - `GET /api/torque-training/programs` は現行版を全件返し、`setupState`（`READY` / `UNASSIGNED` / `UNAVAILABLE`）と理由を含む。現在のレンチ設定値は準備可否の判定に含めない
 - `POST /api/torque-training/sessions/:id/wrench-preparations` は登録済み `x-client-key` を使用する
 - ボディは `uid`, `torqueWrenchProfileId`, `requestId`, `physicalSettingConfirmed: true` のみ。トルク値はセッションの訓練版からサーバーが確定する
-- 設定履歴、現物確認、同一セッション・端末の使用リースを同一transactionで作成し、同じ `requestId` の再送は元の結果を返す。別ownerが使用中なら全書込みをrollbackする
+- 従来方式は設定履歴、現物確認、同一セッション・端末の使用リースを同一transactionで作成する。照合不要方式は現物確認と既存の再送管理だけを同一transactionで保存し、使用リースはagent経由で取得する。同じ `requestId` の再送は元の確認を返すが、古い確認での接続再取得を許可するものではない。表示用targetは両方式とも訓練版から返す
 - `POST /api/torque-training/settings/snapshot` と同階層の設定変更APIは、登録済み`x-client-key`と共有4桁操作パスワードを毎回検証する。変更と`TorqueTrainingSettingsAuditLog`への端末監査は同一transactionで作成する
 - 管理コンソール向け`/api/admin/torque-training/*`のADMIN JWT契約は後方互換のため維持する
 - 詳細な認可境界と責務は [ADR-20260826](../../decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md) を参照
 
-キオスク認証の`GET .../torque-wrench-confirmations/current`は、対象セッションで現在端末が作成した確認に加え、現在端末が保持する接続リースの`adoptedConfirmationId`を返す。物理レンチ、最新設定、締付条件fingerprint、状態、校正が一致すれば、確認元とは別の作業ID・ロットでも使用できる。レスポンス形式は従来と同じで、自動的なリース取得は行わない。管理者JWTでの取得と`record-torque-override`は対象セッション内の確認だけを扱う。
+従来方式では、キオスク認証の`GET .../torque-wrench-confirmations/current`は対象セッションの確認に加え、現在端末の接続リースが採用した確認を返す。物理レンチ、最新設定、締付条件fingerprint、状態、校正が一致すれば別の作業ID・ロットでも使用できる。照合不要方式は新規接続ごとに確認し、過去の確認を自動選択しない。同一の有効接続中の同条件箇所への進行と、接続だけ失敗した再試行は同じ確認を使う。管理者JWTでの取得と`record-torque-override`は対象セッション内の確認だけを扱う。
+
+方式変更、使用終了・失効、別作業の使用を挟んだ確認は接続取得時に再確認を要求する。詳細な方式・鮮度・段階移行の契約は [ADR-20260827](../../decisions/ADR-20260827-torque-wrench-optional-settings.md) を参照。
 
 有効な接続リースID・世代を伴うagent入力は、owner端末、対象セッション、採用確認IDがすべて一致する場合に限り、別作業IDで作成された確認を使用できる。enforcementがOFFのtokenなし経路は、従来どおり同一セッション・作業開始元端末だけに限定する。業務拒否はHTTP 200の機械可読な`rejectionReason`として監査行を保存し、工程位置を進めない。
 

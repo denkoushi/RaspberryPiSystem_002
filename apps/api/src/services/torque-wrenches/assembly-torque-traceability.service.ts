@@ -3,8 +3,7 @@ import { Prisma, type AssemblyTemplateBolt } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import {
-  runAssemblyTransaction,
-  runLockedAssemblyWorkSessionTransaction
+  runAssemblyTransaction
 } from '../assembly/assembly-transaction.js';
 import { lockAssemblyWorkSession } from '../assembly/assembly-work-session-lock.repository.js';
 import { resolveAssemblyTraceabilityMode } from '../assembly/assembly-template.service.js';
@@ -18,6 +17,18 @@ import {
   torqueConditionFingerprint
 } from './torque-wrench-eligibility.policy.js';
 import { normalizeTorqueWrenchKey } from './torque-wrench-normalization.js';
+import {
+  normalizeTorqueWrenchSettingVerificationMode,
+  nullableSettingHistoryId,
+  usesRegisteredTorqueWrenchSetting,
+  type TorqueWrenchSettingVerificationMode
+} from './torque-wrench-setting-mode.policy.js';
+import { torqueWrenchSettingEvidenceSnapshot } from './torque-wrench-setting-evidence.policy.js';
+import {
+  serializeTorqueWrenchConditionTarget as boltTarget,
+  serializeTorqueWrenchConfirmation,
+  serializeTorqueWrenchProfile
+} from './torque-wrench-serialization.js';
 import { TorqueWrenchConfirmationStateRepository } from './torque-wrench-confirmation-state.repository.js';
 import {
   TorqueWrenchConfirmationUsePolicy,
@@ -61,6 +72,10 @@ export type AgentTorqueRecordInput = {
   connectionLeaseId?: string | null;
   connectionLeaseGeneration?: number | null;
 };
+
+function settingVerificationMode(profile: { model: { settingVerificationMode?: string | null } }): TorqueWrenchSettingVerificationMode {
+  return normalizeTorqueWrenchSettingVerificationMode(profile.model.settingVerificationMode);
+}
 
 function findCurrentBolt(session: AssemblyWorkSessionDetail): AssemblyTemplateBolt {
   if (resolveAssemblyTraceabilityMode(session.template.traceabilityMode) !== 'REQUIRED') {
@@ -141,11 +156,16 @@ export class AssemblyTorqueTraceabilityService {
         condition,
         candidateFromProfile(profile, capabilityGroup)
       );
+      const mode = settingVerificationMode(profile);
       return decision.eligible
         ? [
             {
-              profile,
-              currentSetting: profile.settingHistories[0],
+              profile: serializeTorqueWrenchProfile(profile),
+              currentSetting: usesRegisteredTorqueWrenchSetting(mode)
+                ? profile.settingHistories[0] ?? null
+                : null,
+              settingVerificationMode: mode,
+              target: boltTarget(bolt),
               conditionFingerprint: decision.conditionFingerprint
             }
           ]
@@ -191,21 +211,32 @@ export class AssemblyTorqueTraceabilityService {
       if (!decision.eligible) {
         throw new ApiError(409, 'このトルクレンチは現在の締付条件に適合しません', { reason: decision.reason }, decision.reason);
       }
-      const setting = profile.settingHistories[0];
-      if (!setting) throw new ApiError(409, '現在設定が登録されていません', undefined, 'SETTING_HISTORY_MISSING');
-      return tx.assemblyTorqueWrenchConfirmation.create({
-        data: {
+      const mode = settingVerificationMode(profile);
+      const setting = profile.settingHistories[0] ?? null;
+      if (usesRegisteredTorqueWrenchSetting(mode) && !setting) {
+        throw new ApiError(409, '現在設定が登録されていません', undefined, 'SETTING_HISTORY_MISSING');
+      }
+      const lease = await this.confirmationRepository.findLease(tx, profile.id);
+      const confirmationData = {
           sessionId: session.id,
           templateBoltId: bolt.id,
           torqueWrenchProfileId: profile.id,
-          settingHistoryId: setting.id,
+          settingHistoryId: nullableSettingHistoryId(mode, setting?.id),
+          settingVerificationMode: mode,
+          observedLeaseGeneration: lease?.generation ?? 0,
+          observedAdoptedConfirmationId: lease?.adoptedConfirmationId ?? null,
           conditionFingerprint: decision.conditionFingerprint,
           operatorEmployeeId: session.operatorEmployeeId,
           operatorNameSnapshot: session.operatorNameSnapshot,
           clientDeviceId: input.clientDeviceId,
           clientDeviceNameSnapshot: input.clientDeviceName
-        }
-      });
+      };
+      const confirmation = await tx.assemblyTorqueWrenchConfirmation.create({ data: confirmationData });
+      return serializeTorqueWrenchConfirmation(
+        confirmation,
+        mode,
+        boltTarget(bolt)
+      );
     });
   }
 
@@ -233,12 +264,10 @@ export class AssemblyTorqueTraceabilityService {
         conditionFingerprint: fingerprint
       }
     );
-    const leaseRows = clientDeviceId
-      ? await this.confirmationRepository.listLeases(
-          prisma,
-          profiles.map((profile) => profile.id)
-        )
-      : [];
+    const leaseRows = await this.confirmationRepository.listLeases(
+      prisma,
+      profiles.map((profile) => profile.id)
+    );
     const leaseByProfileId = new Map(
       leaseRows.map(({ torqueWrenchProfileId, lease }) => [torqueWrenchProfileId, lease])
     );
@@ -269,9 +298,10 @@ export class AssemblyTorqueTraceabilityService {
     return candidates.flatMap(({ confirmation, lease, source }) => {
       const profile = profileById.get(confirmation.torqueWrenchProfileId);
       if (!profile) return [];
+      const mode = settingVerificationMode(profile);
       const latestSetting = profile.settingHistories[0] ?? null;
       if (seenProfiles.has(profile.id)) return [];
-      if (!latestSetting) return [];
+      if (usesRegisteredTorqueWrenchSetting(mode) && !latestSetting) return [];
       const eligibility = this.eligibilityPolicy.evaluate(
         conditionFromBolt(bolt),
         candidateFromProfile(profile, capabilityGroup)
@@ -282,7 +312,9 @@ export class AssemblyTorqueTraceabilityService {
           sessionId,
           clientDeviceId,
           torqueWrenchProfileId: profile.id,
-          settingHistoryId: latestSetting.id,
+          settingHistoryId: nullableSettingHistoryId(mode, latestSetting?.id),
+          settingVerificationMode: mode,
+          ownerKind: 'ASSEMBLY' as const,
           conditionFingerprint: eligibility.conditionFingerprint
         };
         const useDecision = source === 'session'
@@ -292,11 +324,31 @@ export class AssemblyTorqueTraceabilityService {
               expected,
               now
             })
-          : this.confirmationPolicy.evaluateAdoptedReuse(confirmation, lease, expected);
+          : usesRegisteredTorqueWrenchSetting(mode)
+            ? this.confirmationPolicy.evaluateAdoptedReuse(confirmation, lease, expected)
+            : this.confirmationPolicy.evaluateLeaseAdoption({ confirmation, lease, expected, now });
+        if (!useDecision.allowed) return [];
+      } else if (mode === 'BOLT_CONDITION_ONLY') {
+        if (!confirmation.clientDeviceId) return [];
+        const useDecision = this.confirmationPolicy.evaluateLeaseAdoption({
+          confirmation,
+          lease: leaseByProfileId.get(profile.id) ?? null,
+          expected: {
+            sessionId,
+            clientDeviceId: confirmation.clientDeviceId,
+            torqueWrenchProfileId: profile.id,
+            settingHistoryId: null,
+            settingVerificationMode: mode,
+            ownerKind: 'ASSEMBLY',
+            conditionFingerprint: eligibility.conditionFingerprint
+          },
+          now
+        });
         if (!useDecision.allowed) return [];
       } else if (
         confirmation.sessionId !== sessionId ||
-        confirmation.settingHistoryId !== latestSetting.id ||
+        normalizeTorqueWrenchSettingVerificationMode(confirmation.settingVerificationMode) !== mode ||
+        confirmation.settingHistoryId !== latestSetting?.id ||
         confirmation.conditionFingerprint !== eligibility.conditionFingerprint
       ) {
         return [];
@@ -308,16 +360,21 @@ export class AssemblyTorqueTraceabilityService {
         templateBoltId: bolt.id,
         markerNo: bolt.markerNo,
         torqueWrenchProfileId: profile.id,
-        settingHistoryId: latestSetting.id,
+        settingHistoryId: nullableSettingHistoryId(mode, confirmation.settingHistoryId),
+        settingVerificationMode: mode,
         serialNumber: profile.serialNumber,
         manufacturer: profile.model.manufacturer,
         modelNumber: profile.model.modelNumber,
-        setting: {
-          lowerLimit: latestSetting.lowerLimit,
-          nominalTorque: latestSetting.nominalTorque,
-          upperLimit: latestSetting.upperLimit,
-          unit: latestSetting.unit
-        }
+        setting: usesRegisteredTorqueWrenchSetting(mode) && latestSetting
+          ? {
+              lowerLimit: latestSetting.lowerLimit,
+              nominalTorque: latestSetting.nominalTorque,
+              upperLimit: latestSetting.upperLimit,
+              unit: latestSetting.unit
+            }
+          : null,
+        currentSetting: usesRegisteredTorqueWrenchSetting(mode) ? latestSetting : null,
+        target: boltTarget(bolt)
       }];
     });
   }
@@ -345,6 +402,7 @@ export class AssemblyTorqueTraceabilityService {
         accepted: false,
         ignoredReason: reason,
         torqueWrenchProfileId: profile?.id ?? null,
+        settingVerificationMode: profile ? settingVerificationMode(profile) : null,
         serialNumberSnapshot: input.serialNumber.slice(0, 120),
         manufacturerSnapshot: profile?.model.manufacturer ?? null,
         modelNumberSnapshot: profile?.model.modelNumber ?? null,
@@ -453,12 +511,14 @@ export class AssemblyTorqueTraceabilityService {
         if (confirmation.torqueWrenchProfileId !== profile.id) {
           return this.ignored(tx, session, bolt, input, 'WRONG_PHYSICAL_WRENCH', profile, valueNm);
         }
+        const mode = settingVerificationMode(profile);
         const latestSetting = profile.settingHistories[0] ?? null;
         const fingerprint = torqueConditionFingerprint(conditionFromBolt(bolt));
         if (
           confirmation.conditionFingerprint !== fingerprint ||
-          !latestSetting ||
-          confirmation.settingHistoryId !== latestSetting.id
+          normalizeTorqueWrenchSettingVerificationMode(confirmation.settingVerificationMode) !== mode ||
+          (usesRegisteredTorqueWrenchSetting(mode) &&
+            (!latestSetting || confirmation.settingHistoryId !== latestSetting.id))
         ) {
           return this.ignored(tx, session, bolt, input, 'CONFIRMATION_STALE', profile, valueNm);
         }
@@ -477,6 +537,8 @@ export class AssemblyTorqueTraceabilityService {
         const lowerNm = TorqueUnitConverter.toNewtonMetres(bolt.lowerLimit, bolt.unit);
         const upperNm = TorqueUnitConverter.toNewtonMetres(bolt.upperLimit, bolt.unit);
         const accepted = valueNm.gte(lowerNm) && valueNm.lte(upperNm);
+        const settingHistoryId = nullableSettingHistoryId(mode, latestSetting?.id);
+        const snapshot = torqueWrenchSettingEvidenceSnapshot(mode, latestSetting);
         const deviceMemoryCounter = input.deviceMemoryCounter?.trim().slice(0, 120) || null;
         const memoryReplay = deviceMemoryCounter
           ? await tx.assemblyTorqueRecord.findFirst({
@@ -502,14 +564,15 @@ export class AssemblyTorqueTraceabilityService {
             ignoredReason: memoryReplay ? 'DEVICE_MEMORY_REPLAY' : null,
             torqueWrenchProfileId: profile.id,
             confirmationId: confirmation.id,
-            settingHistoryId: latestSetting.id,
+            settingHistoryId,
+            settingVerificationMode: mode,
             serialNumberSnapshot: profile.serialNumber,
             manufacturerSnapshot: profile.model.manufacturer,
             modelNumberSnapshot: profile.model.modelNumber,
-            settingLowerLimitSnapshot: latestSetting.lowerLimit,
-            settingNominalTorqueSnapshot: latestSetting.nominalTorque,
-            settingUpperLimitSnapshot: latestSetting.upperLimit,
-            settingUnitSnapshot: latestSetting.unit,
+            settingLowerLimitSnapshot: snapshot.lowerLimit,
+            settingNominalTorqueSnapshot: snapshot.nominalTorque,
+            settingUpperLimitSnapshot: snapshot.upperLimit,
+            settingUnitSnapshot: snapshot.unit,
             sourceClientDeviceId: input.clientDeviceId,
             sourceEventKey: input.sourceEventKey,
             expectedTemplateBoltId: input.expectedTemplateBoltId,
@@ -585,7 +648,27 @@ export class AssemblyTorqueTraceabilityService {
   }): Promise<{ session: AssemblyWorkSessionDetail; outcome: TraceabilityOutcome }> {
     const reason = input.reason.trim();
     if (!reason) throw new ApiError(400, '管理者例外入力の理由が必要です');
-    const outcome = await runLockedAssemblyWorkSessionTransaction(input.sessionId, async (tx, session) => {
+    const outcome = await runAssemblyTransaction(async (tx) => {
+      // Resolve the confirmation's profile before taking either row lock, then
+      // use the same profile→session order as connection acquisition. This
+      // keeps the BOLT freshness read atomic without introducing a
+      // session→profile deadlock against the lease coordinator.
+      const confirmationIdentity = await tx.assemblyTorqueWrenchConfirmation.findUnique({
+        where: { id: input.confirmationId },
+        select: { torqueWrenchProfileId: true }
+      });
+      if (confirmationIdentity) {
+        await lockTorqueWrenchProfile(tx, confirmationIdentity.torqueWrenchProfileId);
+      }
+      const session = await lockAssemblyWorkSession(tx, input.sessionId);
+      if (session.workUnit?.invalidatedAt) {
+        throw new ApiError(
+          409,
+          '削除済みの作業用IDは変更できません',
+          undefined,
+          'ASSEMBLY_WORK_UNIT_INVALIDATED'
+        );
+      }
       if (session.status !== 'IN_PROGRESS') throw new ApiError(409, 'この作業は入力できない状態です');
       const bolt = findCurrentBolt(session);
       const confirmation = await tx.assemblyTorqueWrenchConfirmation.findUnique({
@@ -599,13 +682,49 @@ export class AssemblyTorqueTraceabilityService {
         throw new ApiError(409, '現在の丸数字に有効なレンチ確認がありません', undefined, 'CONFIRMATION_REQUIRED');
       }
       const profile = confirmation.torqueWrenchProfile;
+      const mode = settingVerificationMode(profile);
       const latestSetting = profile.settingHistories[0] ?? null;
       if (
-        !latestSetting ||
-        confirmation.settingHistoryId !== latestSetting.id ||
+        normalizeTorqueWrenchSettingVerificationMode(confirmation.settingVerificationMode) !== mode ||
+        (usesRegisteredTorqueWrenchSetting(mode) &&
+          (!latestSetting || confirmation.settingHistoryId !== latestSetting.id)) ||
         confirmation.conditionFingerprint !== torqueConditionFingerprint(conditionFromBolt(bolt))
       ) {
         throw new ApiError(409, 'レンチ確認後に条件または設定が変更されています', undefined, 'CONFIRMATION_STALE');
+      }
+      if (mode === 'BOLT_CONDITION_ONLY') {
+        if (!confirmation.clientDeviceId) {
+          throw new ApiError(409, '現物確認の端末情報がありません', undefined, 'CONFIRMATION_STALE');
+        }
+        const lease = await this.confirmationRepository.findLease(tx, profile.id);
+        const decision = this.confirmationPolicy.evaluateLeaseAdoption({
+          confirmation: {
+            id: confirmation.id,
+            sessionId: confirmation.sessionId,
+            torqueWrenchProfileId: confirmation.torqueWrenchProfileId,
+            settingHistoryId: confirmation.settingHistoryId,
+            settingVerificationMode: confirmation.settingVerificationMode,
+            observedLeaseGeneration: confirmation.observedLeaseGeneration,
+            observedAdoptedConfirmationId: confirmation.observedAdoptedConfirmationId,
+            conditionFingerprint: confirmation.conditionFingerprint,
+            clientDeviceId: confirmation.clientDeviceId,
+            confirmedAt: confirmation.confirmedAt
+          },
+          lease,
+          expected: {
+            sessionId: session.id,
+            clientDeviceId: confirmation.clientDeviceId,
+            torqueWrenchProfileId: profile.id,
+            settingHistoryId: null,
+            settingVerificationMode: mode,
+            ownerKind: 'ASSEMBLY',
+            conditionFingerprint: torqueConditionFingerprint(conditionFromBolt(bolt))
+          },
+          now: new Date()
+        });
+        if (!decision.allowed) {
+          throw new ApiError(409, '現物確認の有効期限または接続所有権が変わりました', undefined, 'CONFIRMATION_STALE');
+        }
       }
       if (!bolt.capabilityGroupId) {
         throw new ApiError(409, '適合グループがありません', undefined, 'WRONG_CAPABILITY_GROUP');
@@ -628,6 +747,8 @@ export class AssemblyTorqueTraceabilityService {
       const lowerNm = TorqueUnitConverter.toNewtonMetres(bolt.lowerLimit, bolt.unit);
       const upperNm = TorqueUnitConverter.toNewtonMetres(bolt.upperLimit, bolt.unit);
       const accepted = valueNm.gte(lowerNm) && valueNm.lte(upperNm);
+      const settingHistoryId = nullableSettingHistoryId(mode, latestSetting?.id);
+      const settingSnapshot = torqueWrenchSettingEvidenceSnapshot(mode, latestSetting);
       const record = await tx.assemblyTorqueRecord.create({
         data: {
           sessionId: session.id,
@@ -642,14 +763,15 @@ export class AssemblyTorqueTraceabilityService {
           accepted,
           torqueWrenchProfileId: profile.id,
           confirmationId: confirmation.id,
-          settingHistoryId: latestSetting.id,
+          settingHistoryId,
+          settingVerificationMode: mode,
           serialNumberSnapshot: profile.serialNumber,
           manufacturerSnapshot: profile.model.manufacturer,
           modelNumberSnapshot: profile.model.modelNumber,
-          settingLowerLimitSnapshot: latestSetting.lowerLimit,
-          settingNominalTorqueSnapshot: latestSetting.nominalTorque,
-          settingUpperLimitSnapshot: latestSetting.upperLimit,
-          settingUnitSnapshot: latestSetting.unit,
+          settingLowerLimitSnapshot: settingSnapshot.lowerLimit,
+          settingNominalTorqueSnapshot: settingSnapshot.nominalTorque,
+          settingUpperLimitSnapshot: settingSnapshot.upperLimit,
+          settingUnitSnapshot: settingSnapshot.unit,
           overrideActorUserId: input.actorUserId,
           overrideActorUsername: input.actorUsername,
           overrideReason: reason.slice(0, 500)

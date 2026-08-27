@@ -147,16 +147,28 @@ const compatibleTorqueWrenches = [{
   profile: {
     id: 'profile-1',
     serialNumber: 'TW-A103',
-    model: { modelNumber: 'CEM20N3X10D-BTLA' },
+    model: { modelNumber: 'CEM20N3X10D-BTLA', settingVerificationMode: 'REGISTERED_SETTING' },
     settingHistories: [{ nominalTorque: '10', unit: 'N·m' }]
   },
   conditionFingerprint: 'condition-1'
 }];
 
+const boltConditionTorqueWrenches = [{
+  profile: {
+    id: 'profile-bolt-1',
+    serialNumber: 'TW-BOLT-01',
+    model: { modelNumber: 'CEM20N3X10D-BTLA', settingVerificationMode: 'BOLT_CONDITION_ONLY' },
+    settingHistories: []
+  },
+  conditionFingerprint: 'condition-bolt-1'
+}];
+
 const reusableTorqueConfirmation = [{
   id: 'confirmation-1',
   torqueWrenchProfileId: 'profile-1',
-  settingHistoryId: 'setting-1'
+  settingHistoryId: 'setting-1',
+  settingVerificationMode: 'REGISTERED_SETTING',
+  target: { lowerLimit: '9', nominalTorque: '10', upperLimit: '11', unit: 'N-m' }
 }];
 
 function agentStatus(overrides: Record<string, unknown> = {}) {
@@ -476,6 +488,10 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     renderPage();
 
     expect(await screen.findByText('同じ締付条件の現物確認を引継ぎ済み・使用開始が必要です')).toBeInTheDocument();
+    const tighteningPane = screen.getByRole('heading', { name: '締付' }).closest('section');
+    expect(tighteningPane).not.toBeNull();
+    expect(tighteningPane).toHaveClass('overflow-x-hidden', 'overflow-y-auto');
+    expect(screen.getByLabelText('使用する物理トルクレンチ')).toHaveClass('w-full', 'min-w-0', 'max-w-full');
     expect(screen.getByText('使用開始待ち')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '現物確認済み' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'このレンチを使用開始' })).toBeEnabled();
@@ -746,5 +762,156 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
 
     await waitFor(() => expect(agentFetch).toHaveBeenCalled());
     expect(screen.getByText('通信断')).toBeInTheDocument();
+  });
+
+  it('shows the BOLT target before connection and performs one idempotent confirm/acquire action', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(boltConditionTorqueWrenches);
+    const agentFetch = vi.fn().mockImplementation((url: string) => String(url).endsWith('/lease/acquire')
+      ? jsonResponse(agentStatus({
+          state: 'owned_by_self',
+          leaseOwned: true,
+          selfOwnedToken: {
+            targetKind: 'assembly',
+            sessionId: 'session-1',
+            torqueWrenchProfileId: 'profile-bolt-1',
+            leaseId: 'lease-bolt-1',
+            generation: 1
+          }
+        }))
+      : jsonResponse(agentStatus()));
+    mockConfirmAssemblyTorqueWrench.mockResolvedValue({
+      id: 'confirmation-bolt-1',
+      torqueWrenchProfileId: 'profile-bolt-1',
+      settingHistoryId: null,
+      settingVerificationMode: 'BOLT_CONDITION_ONLY'
+    });
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+
+    const target = await screen.findByTestId('assembly-bolt-condition-target');
+    expect(target).toHaveTextContent('設定照合対象外');
+    expect(target).toHaveTextContent('TW-BOLT-01');
+    expect(target).toHaveTextContent('MH-AX / 標準');
+    expect(target).toHaveTextContent('9 N-m');
+    expect(target).toHaveTextContent('10 N-m');
+    expect(target).toHaveTextContent('11 N-m');
+    expect(mockListCurrentTorqueWrenchConfirmations).not.toHaveBeenCalled();
+
+    const connect = screen.getByRole('button', { name: 'レンチ本体を表示値に設定して接続' });
+    await waitFor(() => expect(connect).toBeEnabled());
+    fireEvent.click(connect);
+    fireEvent.click(connect);
+
+    await waitFor(() => {
+      expect(mockConfirmAssemblyTorqueWrench).toHaveBeenCalledTimes(1);
+      expect(agentFetch.mock.calls.filter(([url]) => String(url).endsWith('/lease/acquire'))).toHaveLength(1);
+    });
+  });
+
+  it('keeps the BOLT confirmation/requestId for an ordinary connection retry', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(boltConditionTorqueWrenches);
+    let acquireAttempts = 0;
+    const agentFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/lease/acquire')) {
+        acquireAttempts += 1;
+        if (acquireAttempts === 1) return Promise.reject(new TypeError('connection refused'));
+        return Promise.resolve(jsonResponse(agentStatus({
+          state: 'owned_by_self',
+          leaseOwned: true,
+          selfOwnedToken: {
+            targetKind: 'assembly',
+            sessionId: 'session-1',
+            torqueWrenchProfileId: 'profile-bolt-1',
+            leaseId: 'lease-bolt-1',
+            generation: 1
+          }
+        })));
+      }
+      return Promise.resolve(jsonResponse(agentStatus()));
+    });
+    mockConfirmAssemblyTorqueWrench.mockResolvedValue({
+      id: 'confirmation-bolt-1',
+      torqueWrenchProfileId: 'profile-bolt-1',
+      settingHistoryId: null,
+      settingVerificationMode: 'BOLT_CONDITION_ONLY'
+    });
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+    const connect = await screen.findByRole('button', { name: 'レンチ本体を表示値に設定して接続' });
+    await waitFor(() => expect(connect).toBeEnabled());
+    fireEvent.click(connect);
+    expect(await screen.findAllByText('確認済み・接続を再試行')).not.toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'レンチ本体を表示値に設定して接続' }));
+    await waitFor(() => {
+      expect(mockConfirmAssemblyTorqueWrench).toHaveBeenCalledTimes(1);
+      expect(agentFetch.mock.calls.filter(([url]) => String(url).endsWith('/lease/acquire'))).toHaveLength(2);
+    });
+    const acquireBodies = agentFetch.mock.calls
+      .filter(([url]) => String(url).endsWith('/lease/acquire'))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as { requestId: string });
+    expect(acquireBodies[0]?.requestId).toBe(acquireBodies[1]?.requestId);
+  });
+
+  it('clears the BOLT confirmation after release so the next connection confirms afresh', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(boltConditionTorqueWrenches);
+    let acquired = false;
+    const agentFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/lease/release')) {
+        acquired = false;
+        return Promise.resolve(jsonResponse(agentStatus()));
+      }
+      if (String(url).endsWith('/lease/acquire')) {
+        acquired = true;
+        return Promise.resolve(jsonResponse(agentStatus({
+          state: 'owned_by_self',
+          leaseOwned: true,
+          selfOwnedToken: {
+            targetKind: 'assembly',
+            sessionId: 'session-1',
+            torqueWrenchProfileId: 'profile-bolt-1',
+            leaseId: 'lease-bolt-1',
+            generation: 1
+          }
+        })));
+      }
+      return Promise.resolve(jsonResponse(agentStatus(acquired ? {
+        state: 'owned_by_self',
+        leaseOwned: true,
+        selfOwnedToken: {
+          targetKind: 'assembly',
+          sessionId: 'session-1',
+          torqueWrenchProfileId: 'profile-bolt-1',
+          leaseId: 'lease-bolt-1',
+          generation: 1
+        }
+      } : {})));
+    });
+    mockConfirmAssemblyTorqueWrench.mockImplementation(async () => ({
+      id: `confirmation-bolt-${mockConfirmAssemblyTorqueWrench.mock.calls.length + 1}`,
+      torqueWrenchProfileId: 'profile-bolt-1',
+      settingHistoryId: null,
+      settingVerificationMode: 'BOLT_CONDITION_ONLY'
+    }));
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+    const connect = await screen.findByRole('button', { name: 'レンチ本体を表示値に設定して接続' });
+    await waitFor(() => expect(connect).toBeEnabled());
+    fireEvent.click(connect);
+    await waitFor(() => expect(mockConfirmAssemblyTorqueWrench).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole('button', { name: '使用終了' }));
+    await waitFor(() => {
+      expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/release'))).toBe(true);
+      expect(screen.getByRole('button', { name: 'レンチ本体を表示値に設定して接続' })).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'レンチ本体を表示値に設定して接続' }));
+    await waitFor(() => expect(mockConfirmAssemblyTorqueWrench).toHaveBeenCalledTimes(2));
   });
 });
