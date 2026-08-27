@@ -38,10 +38,10 @@ TORQUE_AGENT_REPOSITORY = "ghcr.io/denkoushi/raspisys-torque-agent"
 RELEASE_SET_REPOSITORY = "ghcr.io/denkoushi/raspisys-release-set"
 TORQUE_PROTOCOL_NAME = "torque-ownership"
 TORQUE_PROTOCOL_VERSION = 1
-TORQUE_ADOPTED_SOURCE_SHA = "3464256da11ee77bebfceb4fafcff4524f5ac8ca"
+TORQUE_ADOPTED_SOURCE_SHA = "e09f67799facae450ec1c7e8eb39ba9c288443b4"
 TORQUE_ORIGINAL_WORKFLOW = ".github/workflows/ci.yml"
-TORQUE_ORIGINAL_RUN_ID = 32093659078
-TORQUE_ORIGINAL_JOB_ID = 95581851495
+TORQUE_ORIGINAL_RUN_ID = 33034821939
+TORQUE_ORIGINAL_JOB_ID = 98396089328
 TORQUE_ADOPTION_PREDICATE_TYPE = (
     "https://github.com/denkoushi/RaspberryPiSystem_002/"
     "attestations/torque-agent-component-adoption/v1"
