@@ -233,12 +233,17 @@ describe('torque training API concurrency boundary', () => {
     expect(await prisma.torqueTrainingAttempt.count({ where: { sessionId: session.id, accepted: true } })).toBe(5);
     expect(await prisma.torqueTrainingAttempt.count({ where: { sessionId: session.id, attemptNo: { not: null } } })).toBe(5);
     expect((await prisma.torqueTrainingSession.findUniqueOrThrow({ where: { id: session.id } })).status).toBe('COMPLETED');
+    const acceptedAttemptIndex = attempts.findIndex((response) => {
+      const body = response.json();
+      return response.statusCode === 200 && body.duplicate === false && body.attempt.accepted === true;
+    });
+    expect(acceptedAttemptIndex).toBeGreaterThanOrEqual(0);
     const replay = await app.inject({
       method: 'POST',
       url: `/api/torque-training/sessions/${session.id}/attempts/from-agent`,
       headers,
       payload: {
-        sourceEventKey: 'training-event-0',
+        sourceEventKey: `training-event-${acceptedAttemptIndex}`,
         confirmationId,
         torqueWrenchProfileId: profile.id,
         serialNumber: profile.serialNumber,
