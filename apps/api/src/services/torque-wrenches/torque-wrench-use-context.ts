@@ -4,6 +4,7 @@ import type {
   TorqueCondition,
   TorqueWrenchCandidate
 } from './torque-wrench-eligibility.policy.js';
+import { normalizeTorqueWrenchSettingVerificationMode } from './torque-wrench-setting-mode.policy.js';
 
 export const profileEligibilityInclude = {
   measuringInstrument: true,
@@ -49,6 +50,7 @@ export function candidateFromProfile(
   return {
     profileId: profile.id,
     modelId: profile.modelId,
+    settingVerificationMode: normalizeTorqueWrenchSettingVerificationMode(profile.model.settingVerificationMode),
     status: profile.measuringInstrument.status,
     calibrationExpiryDate: profile.measuringInstrument.calibrationExpiryDate,
     modelTorqueMinNm: profile.model.torqueMinNm,

@@ -44,6 +44,8 @@ export const trainingWrenchPreparationSchema = z.object({
   uid: z.string().trim().min(1).max(200),
   torqueWrenchProfileId: id,
   requestId: z.string().trim().min(1).max(160),
+  // The operator still confirms the physical display for both modes.  Only
+  // the server-side setting-history registration is mode-dependent.
   physicalSettingConfirmed: z.literal(true)
 });
 

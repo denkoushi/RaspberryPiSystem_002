@@ -1218,4 +1218,192 @@ describe('torque wrench traceability API', () => {
       { action: 'RELEASED', generation: 3 }
     ]);
   });
+
+  it('allows BOLT admin override after history changes and fences it after lease release', async () => {
+    const master = new TorqueWrenchMasterService();
+    const admin = await createTestUser('ADMIN');
+    const client = await createTestClientDevice(`bolt-admin-${randomUUID()}`);
+    const adminHeaders = { ...createAuthHeader(admin.token), 'content-type': 'application/json' };
+    const kioskHeaders = { 'x-client-key': client.apiKey, 'content-type': 'application/json' };
+    const model = await master.createModel({
+      manufacturer: 'TOHNICHI',
+      modelNumber: `BOLT-ADMIN-${randomUUID()}`,
+      torqueMinNm: 1,
+      torqueMaxNm: 100,
+      settingVerificationMode: 'BOLT_CONDITION_ONLY'
+    });
+    const group = await master.createCapabilityGroup({
+      name: `BOLT-ADMIN-GROUP-${randomUUID()}`,
+      nominalDiameter: 'M10',
+      boltLengthMm: 35,
+      material: 'SCM435',
+      strengthClass: '10.9',
+      modelIds: [model.id]
+    });
+    const profile = await master.createProfile({
+      name: 'BOLT admin fixture',
+      managementNumber: `BOLT-ADMIN-${randomUUID()}`,
+      modelId: model.id,
+      serialNumber: `BOLT-ADMIN-SERIAL-${randomUUID()}`,
+      storageLocation: 'TalkPlazaF1',
+      calibrationExpiryDate: new Date('2099-01-01T00:00:00.000Z')
+    });
+    await master.addSetting(profile.id, {
+      lowerLimit: 28,
+      nominalTorque: 30,
+      upperLimit: 32,
+      unit: 'N-m',
+      reason: 'history before BOLT confirmation'
+    });
+    const document = await prisma.assemblyProcedureDocument.create({
+      data: {
+        name: `bolt-admin-${randomUUID()}`,
+        imageRelativePath: '/test/bolt-admin.png',
+        status: 'PUBLISHED',
+        publishedAt: new Date(),
+        isActive: true
+      }
+    });
+    const template = await new AssemblyTemplateService().create({
+      modelCode: `BOLT-ADMIN-${randomUUID()}`,
+      procedurePattern: 'standard',
+      name: 'BOLT admin fixture',
+      procedureDocumentId: document.id,
+      traceabilityMode: 'REQUIRED',
+      areas: [{
+        sortOrder: 0,
+        processNo: '1',
+        areaCode: 'A',
+        areaName: 'tightening',
+        unitCode: 'U1',
+        bolts: [{
+          sortOrder: 0,
+          markerNo: 1,
+          xRatio: 0.2,
+          yRatio: 0.2,
+          boltSpec: 'M10x35 SCM435 10.9',
+          nominalDiameter: 'M10',
+          boltLengthMm: 35,
+          material: 'SCM435',
+          strengthClass: '10.9',
+          capabilityGroupId: group.id,
+          lowerLimit: 28,
+          nominalTorque: 30,
+          upperLimit: 32,
+          unit: 'N-m'
+        }]
+      }]
+    });
+    const employee = await createTestEmployee({ displayName: 'BOLT admin operator' });
+    const startSession = (suffix: string) => new AssemblyWorkSessionService().start({
+      templateId: template.id,
+      productNo: `BOLT-ADMIN-${suffix}`,
+      serialNo: `BOLT-ADMIN-${suffix}-${randomUUID()}`,
+      operatorNfcTagUid: employee.nfcTagUid,
+      requestId: randomUUID(),
+      targetUnit: 'BOLT-ADMIN',
+      clientDeviceId: client.id
+    });
+    const confirm = async (sessionId: string) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-sessions/${sessionId}/torque-wrench-confirmations`,
+        headers: kioskHeaders,
+        payload: {
+          expectedTemplateBoltId: template.areas[0]!.bolts[0]!.id,
+          torqueWrenchProfileId: profile.id,
+          physicalDisplayConfirmed: true
+        }
+      });
+      expect(response.statusCode).toBe(201);
+      expect(response.json().confirmation).toMatchObject({
+        settingVerificationMode: 'BOLT_CONDITION_ONLY',
+        settingHistoryId: null,
+        target: { lowerLimit: '28', nominalTorque: '30', upperLimit: '32', unit: 'N·m' }
+      });
+      return response.json().confirmation.id as string;
+    };
+
+    const firstSession = await startSession('success');
+    const firstConfirmationId = await confirm(firstSession.id);
+    await master.addSetting(profile.id, {
+      lowerLimit: 40,
+      nominalTorque: 45,
+      upperLimit: 50,
+      unit: 'N-m',
+      reason: 'history must not stale BOLT confirmation'
+    });
+    const profileRead = await app.inject({
+      method: 'GET',
+      url: `/api/torque-wrenches/${profile.id}`,
+      headers: adminHeaders
+    });
+    expect(profileRead.statusCode).toBe(200);
+    expect(profileRead.json().torqueWrench.settingHistories).toHaveLength(2);
+    const acceptedOverride = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${firstSession.id}/record-torque-override`,
+      headers: adminHeaders,
+      payload: {
+        confirmationId: firstConfirmationId,
+        value: 30,
+        unit: 'N-m',
+        reason: 'BOLT mode does not compare registered settings'
+      }
+    });
+    expect(acceptedOverride.statusCode).toBe(200);
+    expect(acceptedOverride.json().outcome.kind).toBe('accepted_ok');
+    const acceptedRecord = await prisma.assemblyTorqueRecord.findUniqueOrThrow({
+      where: { id: acceptedOverride.json().outcome.torqueRecordId as string }
+    });
+    expect(acceptedRecord).toMatchObject({
+      settingVerificationMode: 'BOLT_CONDITION_ONLY',
+      settingHistoryId: null,
+      settingLowerLimitSnapshot: null,
+      settingNominalTorqueSnapshot: null,
+      settingUpperLimitSnapshot: null,
+      settingUnitSnapshot: null,
+      overrideActorUserId: admin.user.id
+    });
+
+    const staleSession = await startSession('stale');
+    const staleConfirmationId = await confirm(staleSession.id);
+    const leaseResponse = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/connection-lease/acquire`,
+      headers: kioskHeaders,
+      payload: {
+        sessionId: staleSession.id,
+        confirmationId: staleConfirmationId,
+        requestId: `bolt-admin-lease-${randomUUID()}`
+      }
+    });
+    expect(leaseResponse.statusCode).toBe(200);
+    const lease = leaseResponse.json().lease as { leaseId: string; generation: number };
+    const released = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/connection-lease/release`,
+      headers: kioskHeaders,
+      payload: {
+        sessionId: staleSession.id,
+        leaseId: lease.leaseId,
+        generation: lease.generation,
+        reason: 'physical connection ended'
+      }
+    });
+    expect(released.statusCode).toBe(200);
+    const staleOverride = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${staleSession.id}/record-torque-override`,
+      headers: adminHeaders,
+      payload: {
+        confirmationId: staleConfirmationId,
+        value: 30,
+        unit: 'N-m',
+        reason: 'released confirmation must not rearm'
+      }
+    });
+    expect(staleOverride.statusCode).toBe(409);
+    expect(staleOverride.json().errorCode).toBe('CONFIRMATION_STALE');
+  });
 });

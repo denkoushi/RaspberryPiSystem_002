@@ -107,7 +107,6 @@ function bindingKey(binding: TorqueWrenchConnectionContext | null): string {
   return [
     binding.targetKind,
     binding.sessionId,
-    binding.currentTemplateBoltId ?? '',
     binding.confirmationId,
     binding.torqueWrenchProfileId
   ].join(':');
@@ -338,6 +337,14 @@ export function useTorqueWrenchConnection({
   ): Promise<TorqueAgentLeaseStatus | null> => {
     const currentBinding = bindingOverride ?? bindingRef.current;
     if (!currentBinding || busyRef.current) return null;
+    if (bindingOverride) {
+      // A page may need to confirm a binding and acquire it in the same
+      // event-loop turn. Publish the explicit binding before React commits the
+      // confirmation state so the identity effect does not release the token
+      // that this acquire just obtained.
+      bindingRef.current = currentBinding;
+      lastBindingKeyRef.current = bindingKey(currentBinding);
+    }
     busyRef.current = true;
     setBusy(true);
     setError(null);
@@ -386,6 +393,8 @@ export function useTorqueWrenchConnection({
     lastBindingKeyRef.current = nextKey;
     const oldToken = tokenRef.current;
     // A target/session/confirmation change is a page-level disarm boundary.
+    // The current marker is deliberately excluded: one live connection may
+    // record the next marker under the same physical condition/confirmation.
     // Release only the token that belonged to the previous binding.
     if (oldToken) {
       void releaseRef.current?.('BINDING_CHANGED', { expectedToken: oldToken, keepalive: true });

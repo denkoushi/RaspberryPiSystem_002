@@ -17,6 +17,7 @@ const result = {
   torqueWrenchProfileId: 'profile-1',
   serialNumber: 'TW-001',
   settingHistoryId: 'setting-1',
+  settingVerificationMode: 'REGISTERED_SETTING',
   target: { lowerLimit: '9', nominalTorque: '10', upperLimit: '11', unit: 'N-m' },
   confirmedAt: '2026-08-09T00:00:00.000Z',
   duplicate: false

@@ -4,7 +4,22 @@ import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { resolveActiveAssemblyOperatorNfcUid } from '../assembly/assembly-operator-nfc-resolve.service.js';
 import { appendTorqueWrenchSetting } from '../torque-wrenches/torque-wrench-setting-writer.js';
-import type { EligibilityProfile } from '../torque-wrenches/torque-wrench-use-context.js';
+import {
+  normalizeTorqueWrenchSettingVerificationMode,
+  nullableSettingHistoryId,
+  usesRegisteredTorqueWrenchSetting,
+  type TorqueWrenchSettingVerificationMode
+} from '../torque-wrenches/torque-wrench-setting-mode.policy.js';
+import { TorqueWrenchConfirmationStateRepository } from '../torque-wrenches/torque-wrench-confirmation-state.repository.js';
+import { lockTorqueWrenchProfile } from '../torque-wrenches/torque-wrench-lock.repository.js';
+import {
+  serializeTorqueWrenchConditionTarget,
+  type TorqueWrenchConditionTarget
+} from '../torque-wrenches/torque-wrench-serialization.js';
+import {
+  profileEligibilityInclude,
+  type EligibilityProfile
+} from '../torque-wrenches/torque-wrench-use-context.js';
 import { TorqueTrainingLeaseService } from './torque-training-lease.service.js';
 import {
   conditionFromTrainingVersion,
@@ -23,11 +38,24 @@ export type TorqueTrainingWrenchPreparationInput = {
   physicalSettingConfirmed: true;
 };
 
+const preparationConfirmationInclude = {
+  torqueWrenchProfile: {
+    select: {
+      id: true,
+      serialNumber: true
+    }
+  },
+  session: {
+    select: {
+      programVersion: {
+        select: { lowerLimit: true, nominalTorque: true, upperLimit: true, unit: true }
+      }
+    }
+  }
+} as const;
+
 type PreparationConfirmation = Prisma.TorqueTrainingWrenchConfirmationGetPayload<{
-  include: {
-    torqueWrenchProfile: { select: { id: true; serialNumber: true } };
-    settingHistory: true;
-  };
+  include: typeof preparationConfirmationInclude;
 }>;
 
 export type TorqueTrainingWrenchPreparationResult = {
@@ -35,13 +63,9 @@ export type TorqueTrainingWrenchPreparationResult = {
   requestId: string;
   torqueWrenchProfileId: string;
   serialNumber: string;
-  settingHistoryId: string;
-  target: {
-    lowerLimit: string;
-    nominalTorque: string;
-    upperLimit: string;
-    unit: string;
-  };
+  settingHistoryId: string | null;
+  settingVerificationMode: TorqueWrenchSettingVerificationMode;
+  target: TorqueWrenchConditionTarget;
   confirmedAt: string;
   duplicate: boolean;
 };
@@ -51,18 +75,17 @@ function serializePreparation(
   requestId: string,
   duplicate: boolean
 ): TorqueTrainingWrenchPreparationResult {
+  const mode = normalizeTorqueWrenchSettingVerificationMode(
+    confirmation.settingVerificationMode
+  );
   return {
     confirmationId: confirmation.id,
     requestId,
     torqueWrenchProfileId: confirmation.torqueWrenchProfileId,
     serialNumber: confirmation.torqueWrenchProfile.serialNumber,
-    settingHistoryId: confirmation.settingHistoryId,
-    target: {
-      lowerLimit: confirmation.settingHistory.lowerLimit.toString(),
-      nominalTorque: confirmation.settingHistory.nominalTorque.toString(),
-      upperLimit: confirmation.settingHistory.upperLimit.toString(),
-      unit: confirmation.settingHistory.unit
-    },
+    settingHistoryId: nullableSettingHistoryId(mode, confirmation.settingHistoryId),
+    settingVerificationMode: mode,
+    target: serializeTorqueWrenchConditionTarget(confirmation.session.programVersion),
     confirmedAt: confirmation.confirmedAt.toISOString(),
     duplicate
   };
@@ -116,25 +139,21 @@ async function findPreparationByRequestId(requestId: string) {
   return prisma.torqueTrainingWrenchPreparationRequest.findUnique({
     where: { requestId },
     include: {
-      confirmation: {
-        include: {
-          torqueWrenchProfile: { select: { id: true, serialNumber: true } },
-          settingHistory: true
-        }
-      }
+      confirmation: { include: preparationConfirmationInclude }
     }
   });
 }
 
 /**
- * Registers the server-derived setting and the physical confirmation as one
- * training transaction. The request key is guarded by a unique primary key in
- * the separate idempotency ledger, which is safe to add under the expand-only
- * migration contract without duplicating confirmation audit data.
+ * Registers the physical confirmation and request idempotency record in one
+ * transaction. Registered-setting models additionally append the server-derived
+ * setting and acquire the connection lease atomically; bolt-condition-only
+ * models write no setting history and leave lease acquisition to the agent.
  */
 export class TorqueTrainingWrenchPreparationService {
   constructor(
-    private readonly leaseService = new TorqueTrainingLeaseService()
+    private readonly leaseService = new TorqueTrainingLeaseService(),
+    private readonly confirmationRepository = new TorqueWrenchConfirmationStateRepository()
   ) {}
 
   async prepare(
@@ -166,14 +185,7 @@ export class TorqueTrainingWrenchPreparationService {
 
         const existingRequest = await tx.torqueTrainingWrenchPreparationRequest.findUnique({
           where: { requestId },
-          include: {
-            confirmation: {
-              include: {
-                torqueWrenchProfile: { select: { id: true, serialNumber: true } },
-                settingHistory: true
-              }
-            }
-          }
+          include: { confirmation: { include: preparationConfirmationInclude } }
         });
         if (existingRequest) {
           const existing = existingRequest.confirmation;
@@ -192,7 +204,18 @@ export class TorqueTrainingWrenchPreparationService {
           throw new ApiError(409, '訓練セッションは進行中ではありません', undefined, 'TRAINING_SESSION_STATE_CONFLICT');
         }
 
-        const profile = preparationProfile(session.programVersion, input.torqueWrenchProfileId);
+        preparationProfile(session.programVersion, input.torqueWrenchProfileId);
+        // Training writes already lock the session before the profile. Keep
+        // that order here while the profile lock protects the lease snapshot.
+        await lockTorqueWrenchProfile(tx, input.torqueWrenchProfileId);
+        const profile = await tx.torqueWrenchProfile.findUnique({
+          where: { id: input.torqueWrenchProfileId },
+          include: profileEligibilityInclude
+        });
+        if (!profile) throw new ApiError(404, '物理トルクレンチが見つかりません');
+        const mode = normalizeTorqueWrenchSettingVerificationMode(
+          profile.model.settingVerificationMode
+        );
         const condition = setupVersionCondition(session.programVersion);
         const readiness = evaluateTrainingProfileSetup(
           condition,
@@ -208,36 +231,41 @@ export class TorqueTrainingWrenchPreparationService {
           );
         }
 
-        const setting = await appendTorqueWrenchSetting(tx, input.torqueWrenchProfileId, {
-          lowerLimit: session.programVersion.lowerLimit,
-          nominalTorque: session.programVersion.nominalTorque,
-          upperLimit: session.programVersion.upperLimit,
-          unit: session.programVersion.unit,
-          reason: 'TORQUE_TRAINING_WRENCH_PREPARATION'
-        });
+        const setting = usesRegisteredTorqueWrenchSetting(mode)
+          ? await appendTorqueWrenchSetting(tx, input.torqueWrenchProfileId, {
+              lowerLimit: session.programVersion.lowerLimit,
+              nominalTorque: session.programVersion.nominalTorque,
+              upperLimit: session.programVersion.upperLimit,
+              unit: session.programVersion.unit,
+              reason: 'TORQUE_TRAINING_WRENCH_PREPARATION'
+            })
+          : null;
+        const lease = await this.confirmationRepository.findLease(tx, input.torqueWrenchProfileId);
         const confirmation = await tx.torqueTrainingWrenchConfirmation.create({
           data: {
             sessionId,
             torqueWrenchProfileId: input.torqueWrenchProfileId,
-            settingHistoryId: setting.id,
+            settingHistoryId: nullableSettingHistoryId(mode, setting?.id),
+            settingVerificationMode: mode,
+            observedLeaseGeneration: lease?.generation ?? 0,
+            observedAdoptedConfirmationId: lease?.adoptedConfirmationId ?? null,
             conditionFingerprint: session.conditionFingerprint,
             employeeId: employee.id,
             employeeNameSnapshot: employee.displayName,
             clientDeviceId: client.id,
             clientDeviceNameSnapshot: client.name
           },
-          include: {
-            torqueWrenchProfile: { select: { id: true, serialNumber: true } },
-            settingHistory: true
-          }
+          include: preparationConfirmationInclude
         });
-        await this.leaseService.acquireInTransaction(tx, {
-          sessionId,
-          profileId: input.torqueWrenchProfileId,
-          confirmationId: confirmation.id,
-          clientDeviceId: client.id,
-          requestId: preparationLeaseRequestId(requestId)
-        });
+        if (usesRegisteredTorqueWrenchSetting(mode)) {
+          await this.leaseService.acquireInTransaction(tx, {
+            sessionId,
+            profileId: input.torqueWrenchProfileId,
+            confirmationId: confirmation.id,
+            clientDeviceId: client.id,
+            requestId: preparationLeaseRequestId(requestId)
+          });
+        }
         await tx.torqueTrainingWrenchPreparationRequest.create({
           data: { requestId, confirmationId: confirmation.id }
         });

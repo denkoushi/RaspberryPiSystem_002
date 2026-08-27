@@ -1,6 +1,7 @@
 import { api } from '../http';
 
 import type { TorqueWrenchCapabilityGroupApi, TorqueWrenchProfileApi } from './torque-wrenches';
+import type { TorqueWrenchSettingVerificationMode } from '@raspi-system/shared-types';
 
 export type TorqueTrainingAttemptApi = {
   id: string;
@@ -14,6 +15,8 @@ export type TorqueTrainingAttemptApi = {
   deviationNm: string | null;
   deviationPercent: string | null;
   absoluteDeviationPercent: string | null;
+  /** Null is retained for pre-mode records; BOLT records carry the mode. */
+  settingVerificationMode: TorqueWrenchSettingVerificationMode | null;
   judgement: 'OK' | 'UNDER' | 'OVER' | 'IGNORED';
   accepted: boolean;
   ignoredReason: string | null;
@@ -35,7 +38,11 @@ export type TorqueTrainingProgramVersionApi = {
   unit: string;
   jigConditionCode: string;
   conditionFingerprint: string;
-  torqueWrenchProfiles: Array<{ id: string; serialNumber: string }>;
+  torqueWrenchProfiles: Array<{
+    id: string;
+    serialNumber: string;
+    settingVerificationMode: TorqueWrenchSettingVerificationMode;
+  }>;
   /** Readiness after the server evaluates capability, status and calibration. */
   setupState: 'READY' | 'UNASSIGNED' | 'UNAVAILABLE';
   setupStateReason: string | null;
@@ -126,7 +133,13 @@ export async function cancelTorqueTrainingSession(sessionId: string, reason: str
 }
 
 export async function confirmTorqueTrainingWrench(sessionId: string, payload: { uid: string; torqueWrenchProfileId: string }) {
-  const { data } = await api.post<{ confirmation: { id: string; torqueWrenchProfileId: string; serialNumber: string; settingHistoryId: string } }>(
+  const { data } = await api.post<{ confirmation: {
+    id: string;
+    torqueWrenchProfileId: string;
+    serialNumber: string;
+    settingHistoryId: string | null;
+    settingVerificationMode: TorqueWrenchSettingVerificationMode;
+  } }>(
     `/torque-training/sessions/${sessionId}/wrench-confirmations`,
     payload
   );
@@ -138,7 +151,8 @@ export type TorqueTrainingWrenchPreparationResultApi = {
   confirmationId: string;
   torqueWrenchProfileId: string;
   serialNumber: string;
-  settingHistoryId: string;
+  settingHistoryId: string | null;
+  settingVerificationMode: TorqueWrenchSettingVerificationMode;
   target: {
     lowerLimit: string;
     nominalTorque: string;

@@ -7,7 +7,7 @@ import type {
 
 type ConfirmationStateDb = Pick<
   Prisma.TransactionClient,
-  'assemblyTorqueWrenchConfirmation' | 'torqueWrenchUsageLease'
+  'assemblyTorqueWrenchConfirmation' | 'torqueTrainingWrenchConfirmation' | 'torqueWrenchUsageLease'
 >;
 
 const confirmationEvidenceSelect = {
@@ -15,15 +15,32 @@ const confirmationEvidenceSelect = {
   sessionId: true,
   torqueWrenchProfileId: true,
   settingHistoryId: true,
+  settingVerificationMode: true,
+  observedLeaseGeneration: true,
+  observedAdoptedConfirmationId: true,
   conditionFingerprint: true,
   clientDeviceId: true,
   confirmedAt: true
 } satisfies Prisma.AssemblyTorqueWrenchConfirmationSelect;
 
+const trainingConfirmationEvidenceSelect = {
+  id: true,
+  sessionId: true,
+  torqueWrenchProfileId: true,
+  settingHistoryId: true,
+  settingVerificationMode: true,
+  observedLeaseGeneration: true,
+  observedAdoptedConfirmationId: true,
+  conditionFingerprint: true,
+  clientDeviceId: true,
+  confirmedAt: true
+} satisfies Prisma.TorqueTrainingWrenchConfirmationSelect;
+
 const leaseEvidenceSelect = {
   leaseId: true,
   generation: true,
   adoptedConfirmationId: true,
+  ownerKind: true,
   ownerClientDeviceId: true,
   ownerAssemblySessionId: true,
   ownerTrainingSessionId: true,
@@ -36,6 +53,7 @@ function leaseEvidence(row: {
   leaseId: string;
   generation: number;
   adoptedConfirmationId: string | null;
+  ownerKind: 'ASSEMBLY' | 'TRAINING';
   ownerClientDeviceId: string;
   ownerAssemblySessionId: string | null;
   ownerTrainingSessionId: string | null;
@@ -47,6 +65,7 @@ function leaseEvidence(row: {
     leaseId: row.leaseId,
     generation: row.generation,
     adoptedConfirmationId: row.adoptedConfirmationId,
+    ownerKind: row.ownerKind,
     ownerClientDeviceId: row.ownerClientDeviceId,
     ownerSessionId: row.ownerAssemblySessionId ?? row.ownerTrainingSessionId ?? '',
     acquiredAt: row.acquiredAt,
@@ -63,6 +82,16 @@ export class TorqueWrenchConfirmationStateRepository {
     return db.assemblyTorqueWrenchConfirmation.findUnique({
       where: { id: confirmationId },
       select: confirmationEvidenceSelect
+    });
+  }
+
+  async findTrainingConfirmation(
+    db: ConfirmationStateDb,
+    confirmationId: string
+  ): Promise<TorqueWrenchConfirmationEvidence | null> {
+    return db.torqueTrainingWrenchConfirmation.findUnique({
+      where: { id: confirmationId },
+      select: trainingConfirmationEvidenceSelect
     });
   }
 

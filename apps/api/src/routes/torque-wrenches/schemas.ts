@@ -24,6 +24,7 @@ export const torqueWrenchModelCreateSchema = z.object({
   resolutionNm: decimal.nullable().optional(),
   communicationType: z.string().trim().min(1).max(80).optional(),
   outputProfile: z.string().trim().max(120).nullable().optional(),
+  settingVerificationMode: z.enum(['REGISTERED_SETTING', 'BOLT_CONDITION_ONLY']).optional(),
   isActive: z.boolean().optional()
 });
 

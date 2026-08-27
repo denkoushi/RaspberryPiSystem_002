@@ -19,6 +19,7 @@ import {
   AssemblySessionStatusNotice,
   TorqueTrainingAttemptHistory,
   type TorqueTrainingAttemptHistoryItem,
+  requiresFreshAssemblyWrenchConfirmation,
   useTorqueRecordLiveRefresh
 } from '../../features/assembly';
 import { TorqueTrainingAdminDialog } from '../../features/assembly/torque-training/TorqueTrainingAdminDialog';
@@ -55,8 +56,8 @@ function toTrainingAttemptHistoryItem(attempt: TorqueTrainingAttemptApi, attempt
     valueLabel: attempt.valueNm ? `${attempt.valueNm} Nm` : '-',
     ...trainingAttemptPresentation(attempt.judgement),
     details: attempt.nominalTorque
-      ? `目標 ${attempt.nominalTorque} Nm / 差 ${attempt.deviationPercent ?? '-'}%`
-      : null
+      ? `目標 ${attempt.nominalTorque} Nm / 差 ${attempt.deviationPercent ?? '-'}%${attempt.settingVerificationMode === 'BOLT_CONDITION_ONLY' ? ' / 設定照合対象外' : ''}`
+      : attempt.settingVerificationMode === 'BOLT_CONDITION_ONLY' ? '設定照合対象外' : null
   };
 }
 
@@ -73,6 +74,7 @@ export function KioskAssemblyTrainingPage() {
   const [trainingWrenchConfirmation, setTrainingWrenchConfirmation] = useState<{
     id: string;
     profileId: string;
+    settingVerificationMode: 'REGISTERED_SETTING' | 'BOLT_CONDITION_ONLY';
   } | null>(null);
   const [connectionRetryRequired, setConnectionRetryRequired] = useState(false);
   const [settingsGateOpen, setSettingsGateOpen] = useState(false);
@@ -82,6 +84,8 @@ export function KioskAssemblyTrainingPage() {
   const [error, setError] = useState<string | null>(null);
   const sessionRef = useRef<TorqueTrainingSessionApi | null>(null);
   const operatorRef = useRef<TorqueTrainingOperatorContextApi | null>(null);
+  const agentRequestIdRef = useRef<string | null>(null);
+  const operationInFlightRef = useRef(false);
 
   useEffect(() => { sessionRef.current = session; }, [session]);
   useEffect(() => { operatorRef.current = operator; }, [operator]);
@@ -163,6 +167,16 @@ export function KioskAssemblyTrainingPage() {
   const selectedVersionReady = selectedVersion?.setupState === 'READY';
   const setupReason = presentTorqueTrainingSetupReason(selectedVersion?.setupStateReason);
 
+  const selectedTrainingProfile = useMemo(
+    () => session?.program.torqueWrenchProfiles.find((profile) => profile.id === selectedProfileId) ?? null,
+    [selectedProfileId, session?.program.torqueWrenchProfiles]
+  );
+  const settingVerificationMode =
+    preparationResult?.settingVerificationMode
+    ?? trainingWrenchConfirmation?.settingVerificationMode
+    ?? selectedTrainingProfile?.settingVerificationMode
+    ?? 'REGISTERED_SETTING';
+
   useTorqueRecordLiveRefresh({
     enabled: Boolean(session?.id && session.status === 'IN_PROGRESS'),
     sessionId: session?.id ?? null,
@@ -181,6 +195,8 @@ export function KioskAssemblyTrainingPage() {
     setWrenchDetectionReason(null);
     setTrainingWrenchConfirmation(null);
     setConnectionRetryRequired(false);
+    agentRequestIdRef.current = null;
+    operationInFlightRef.current = false;
     resetPreparation();
     setMessage('訓練が完了しました。次の作業者はNFCタグを読み取ってください。');
   }, [resetPreparation]);
@@ -228,11 +244,25 @@ export function KioskAssemblyTrainingPage() {
     }
   }, [connectionRetryRequired, preparationResult, preparationStatus, session, torqueConnection.leaseOwned, torqueConnection.reachability, torqueConnection.status, trainingWrenchConfirmation]);
 
+  useEffect(() => {
+    if (
+      torqueConnection.status?.state !== 'expired'
+      || trainingWrenchConfirmation?.settingVerificationMode !== 'BOLT_CONDITION_ONLY'
+    ) return;
+    // The one-touch BOLT path starts with a fresh confirmation after expiry.
+    // Registered-setting sessions retain their existing two-step behavior.
+    setTrainingWrenchConfirmation(null);
+    setConnectionRetryRequired(false);
+    agentRequestIdRef.current = null;
+    resetPreparation();
+  }, [resetPreparation, torqueConnection.status?.state, trainingWrenchConfirmation?.settingVerificationMode]);
+
   const start = async () => {
     if (!nfcEvent?.uid || !selectedVersionId) return;
     setBusy(true);
     setError(null);
     setConnectionRetryRequired(false);
+    agentRequestIdRef.current = null;
     setWrenchDetectionReason(null);
     resetPreparation();
     try {
@@ -248,6 +278,8 @@ export function KioskAssemblyTrainingPage() {
 
   const confirmAndAcquire = async () => {
     if (!session || !nfcEvent?.uid || !selectedProfileId) return;
+    if (operationInFlightRef.current) return;
+    operationInFlightRef.current = true;
     setBusy(true);
     setError(null);
     setConnectionRetryRequired(false);
@@ -255,39 +287,63 @@ export function KioskAssemblyTrainingPage() {
     try {
       const prepared = preparationResult ?? await prepareWrench({ uid: nfcEvent.uid });
       preparationCompleted = true;
-      const agentStatus = await torqueConnection.acquire(requestId('training-agent-lease'), {
+      const preparedMode = prepared.settingVerificationMode;
+      // Set confirmation before acquire and pass the same binding explicitly;
+      // this avoids acquiring against the previous React render's binding.
+      setTrainingWrenchConfirmation({
+        id: prepared.confirmationId,
+        profileId: prepared.torqueWrenchProfileId,
+        settingVerificationMode: preparedMode
+      });
+      const connectionRequestId = agentRequestIdRef.current ?? requestId('training-agent-lease');
+      agentRequestIdRef.current = connectionRequestId;
+      const agentStatus = await torqueConnection.acquire(connectionRequestId, {
         targetKind: 'training',
         sessionId: session.id,
         currentTemplateBoltId: null,
         confirmationId: prepared.confirmationId,
         torqueWrenchProfileId: prepared.torqueWrenchProfileId
       });
+      if (requiresFreshAssemblyWrenchConfirmation(agentStatus)) throw agentStatus;
       if (agentStatus && !agentStatus.leaseOwned && agentStatus.state !== 'owned_by_other') {
         throw new Error(agentStatus.lastError ?? 'Pi3 torque-agentへ接続できませんでした。');
       }
       // Keep target values visible until the local lease is actually
       // acquired. A recoverable agent failure must retry only the local
       // connection and must not switch to the takeover view prematurely.
-      if (agentStatus?.leaseOwned || agentStatus?.state === 'owned_by_other') {
-        setTrainingWrenchConfirmation({ id: prepared.confirmationId, profileId: prepared.torqueWrenchProfileId });
-      }
       setSession(await getTorqueTrainingSession(session.id));
       setMessage(agentStatus?.state === 'owned_by_other'
         ? '別端末が使用中です。現物が手元にある場合だけ引継ぎ操作を行ってください。'
         : 'レンチ接続を確認しました。画面の接続準備状態を確認してください。');
     } catch (cause) {
-      if (preparationCompleted) {
+      if (requiresFreshAssemblyWrenchConfirmation(cause)) {
+        // The server/agent fenced this confirmation or detected a changed
+        // binding. Drop both snapshots so the next click creates a fresh one.
+        setTrainingWrenchConfirmation(null);
+        setConnectionRetryRequired(false);
+        agentRequestIdRef.current = null;
+        resetPreparation();
+        try {
+          setSession(await getTorqueTrainingSession(session.id));
+        } catch (refreshCause) {
+          setError(getApiErrorMessage(refreshCause, '訓練状態を更新できませんでした。'));
+        }
+        setMessage('確認状態が古くなりました。訓練対象とレンチを確認して接続し直してください。');
+      } else if (preparationCompleted) {
         // The server transaction already registered the setting.  A local
         // agent failure is recoverable by this same button and must not cause
         // another setting history/confirmation request.
         torqueConnection.clearError();
         setConnectionRetryRequired(true);
-        setMessage('設定登録済みです。torque-agent接続のみ再試行してください。');
+        setMessage(settingVerificationMode === 'BOLT_CONDITION_ONLY'
+          ? '確認済み・接続を再試行'
+          : '設定登録済みです。torque-agent接続のみ再試行してください。');
       } else {
         setError(getApiErrorMessage(cause, 'レンチを接続できませんでした。'));
       }
     } finally {
       setBusy(false);
+      operationInFlightRef.current = false;
     }
   };
 
@@ -324,6 +380,8 @@ export function KioskAssemblyTrainingPage() {
     setWrenchDetectionReason(null);
     setTrainingWrenchConfirmation(null);
     setConnectionRetryRequired(false);
+    agentRequestIdRef.current = null;
+    operationInFlightRef.current = false;
     resetPreparation();
     setMessage('NFCタグを読み取って訓練者を確認してください。');
   };
@@ -338,7 +396,20 @@ export function KioskAssemblyTrainingPage() {
       setSession(await getTorqueTrainingSession(session.id));
       setMessage('レンチの接続権を引き継ぎました。Bluetooth接続待ちの間は締付けないでください。');
     } catch (cause) {
-      setError(getApiErrorMessage(cause, 'レンチ接続権を引き継げませんでした。'));
+      if (requiresFreshAssemblyWrenchConfirmation(cause)) {
+        setTrainingWrenchConfirmation(null);
+        setConnectionRetryRequired(false);
+        agentRequestIdRef.current = null;
+        resetPreparation();
+        try {
+          setSession(await getTorqueTrainingSession(session.id));
+        } catch (refreshCause) {
+          setError(getApiErrorMessage(refreshCause, '訓練状態を更新できませんでした。'));
+        }
+        setMessage('確認状態が古くなりました。訓練対象とレンチを確認して接続し直してください。');
+      } else {
+        setError(getApiErrorMessage(cause, 'レンチ接続権を引き継げませんでした。'));
+      }
       throw cause;
     } finally {
       setBusy(false);
@@ -439,8 +510,9 @@ export function KioskAssemblyTrainingPage() {
                         wrenchSerialNumber={agentWrenchSerial}
                         disabledReason={preparationResult ? null : wrenchDetectionReason}
                         busy={busy || torqueConnection.busy || preparationStatus === 'registering'}
-                        settingRegistered={preparationStatus === 'registered'}
+                        settingRegistered={preparationStatus === 'registered' && settingVerificationMode === 'REGISTERED_SETTING'}
                         connectionRetryRequired={connectionRetryRequired}
+                        settingVerificationMode={settingVerificationMode}
                         onPrepareAndConnect={() => void confirmAndAcquire()}
                       />
                     </div>

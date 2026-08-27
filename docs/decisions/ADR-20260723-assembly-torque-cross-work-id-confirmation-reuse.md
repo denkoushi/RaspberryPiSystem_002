@@ -46,7 +46,7 @@ Validate with pure policy tests, isolated-PostgreSQL migration and API integrati
 ## Supersedes / Superseded By
 
 - Supersedes: the session-only confirmation-reuse boundary in `ADR-20260717-assembly-torque-wrench-traceability.md` and the start-origin-client authorization statement in `ADR-20260722-assembly-torque-wrench-connection-lease.md`.
-- Superseded by: none.
+- Superseded in part by: [ADR-20260827](ADR-20260827-torque-wrench-optional-settings.md). Cross-work confirmation reuse remains for `REGISTERED_SETTING`; `BOLT_CONDITION_ONLY` requires fresh confirmation for each new connection.
 
 ## Local Notes JA
 

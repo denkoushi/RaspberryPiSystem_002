@@ -76,6 +76,12 @@ ALTER_ADD_COLUMN = re.compile(
     rf"(?:IF\s+NOT\s+EXISTS\s+)?{IDENTIFIER}\s+(?P<definition>[\s\S]+)$",
     re.IGNORECASE,
 )
+ALLOW_SETTING_HISTORY_DROP_NOT_NULL = re.compile(
+    r'^(?i:ALTER)\s+(?i:TABLE)\s+'
+    r'"(?:AssemblyTorqueWrenchConfirmation|TorqueTrainingWrenchConfirmation)"\s+'
+    r'(?i:ALTER)\s+(?i:COLUMN)\s+"settingHistoryId"\s+'
+    r'(?i:DROP)\s+(?i:NOT)\s+(?i:NULL)$'
+)
 DISALLOWED_COLUMN_CLAUSE = re.compile(
     r"\b(DEFAULT|NULL|CONSTRAINT|UNIQUE|PRIMARY|REFERENCES|CHECK|GENERATED|"
     r"IDENTITY|SERIAL|BIGSERIAL|SMALLSERIAL|DROP|ALTER|RENAME|SET|ADD)\b",
@@ -333,6 +339,9 @@ def validate_statement(
     code = statement.code.strip()
     if not _balanced_parentheses(code):
         raise ValueError(f"unbalanced parentheses in {label}: {statement.text[:120]}")
+
+    if ALLOW_SETTING_HISTORY_DROP_NOT_NULL.fullmatch(statement.text.strip()) is not None:
+        return
 
     create_table = CREATE_TABLE.match(code)
     if create_table is not None and _parenthesized_body_ends_statement(

@@ -3,6 +3,26 @@ import { Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { runTrainingTransaction } from './torque-training.transaction.js';
 import {
+  TorqueWrenchConfirmationStateRepository
+} from '../torque-wrenches/torque-wrench-confirmation-state.repository.js';
+import {
+  TorqueWrenchConfirmationUsePolicy,
+  type TorqueWrenchConfirmationExpectation
+} from '../torque-wrenches/torque-wrench-confirmation-use.policy.js';
+import { TorqueWrenchEligibilityPolicy } from '../torque-wrenches/torque-wrench-eligibility.policy.js';
+import {
+  candidateFromProfile,
+  profileEligibilityInclude
+} from '../torque-wrenches/torque-wrench-use-context.js';
+import {
+  conditionFromTrainingVersion,
+  trainingSetupVersionInclude
+} from './torque-training-setup.service.js';
+import {
+  normalizeTorqueWrenchSettingVerificationMode,
+  usesRegisteredTorqueWrenchSetting
+} from '../torque-wrenches/torque-wrench-setting-mode.policy.js';
+import {
   isSameUsageLeaseOwner,
   isSameUsageLeaseToken,
   isUsageLeaseActive,
@@ -40,6 +60,7 @@ export type TrainingLeaseTokenInput = {
 type TrainingLeaseEventInput = {
   sessionId: string;
   profileId: string;
+  confirmationId: string;
   clientDeviceId: string;
   leaseId?: string | null;
   generation?: number | null;
@@ -52,7 +73,10 @@ class TrainingTorqueWrenchLeaseAdapter implements UsageLeaseOwnerAdapter {
 
   constructor(
     sessionId: string,
-    clientDeviceId: string
+    clientDeviceId: string,
+    private readonly confirmationPolicy: TorqueWrenchConfirmationUsePolicy,
+    private readonly confirmationRepository: TorqueWrenchConfirmationStateRepository,
+    private readonly eligibilityPolicy: TorqueWrenchEligibilityPolicy
   ) {
     this.owner = {
       ownerKind: 'TRAINING',
@@ -63,10 +87,12 @@ class TrainingTorqueWrenchLeaseAdapter implements UsageLeaseOwnerAdapter {
 
   async validateAcquire(
     tx: Prisma.TransactionClient,
-    input: UsageLeaseAcquireInput
+    input: UsageLeaseAcquireInput,
+    now: Date
   ): Promise<void> {
     const session = await tx.torqueTrainingSession.findUnique({
-      where: { id: this.owner.sessionId }
+      where: { id: this.owner.sessionId },
+      include: { programVersion: { include: trainingSetupVersionInclude } }
     });
     if (
       !session
@@ -75,16 +101,56 @@ class TrainingTorqueWrenchLeaseAdapter implements UsageLeaseOwnerAdapter {
     ) {
       throw new ApiError(409, '訓練セッションが接続可能な状態ではありません');
     }
-    const confirmation = await tx.torqueTrainingWrenchConfirmation.findFirst({
-      where: {
-        id: input.confirmationId,
-        sessionId: this.owner.sessionId,
-        torqueWrenchProfileId: input.torqueWrenchProfileId
-      }
-    });
-    if (!confirmation) {
+    const [confirmation, profile, lease] = await Promise.all([
+      this.confirmationRepository.findTrainingConfirmation(tx, input.confirmationId),
+      tx.torqueWrenchProfile.findUnique({
+        where: { id: input.torqueWrenchProfileId },
+        include: profileEligibilityInclude
+      }),
+      this.confirmationRepository.findLease(tx, input.torqueWrenchProfileId)
+    ]);
+    if (!confirmation || confirmation.sessionId !== this.owner.sessionId || confirmation.clientDeviceId !== this.owner.clientDeviceId) {
       throw new ApiError(409, 'レンチ確認が必要です', undefined, 'CONFIRMATION_REQUIRED');
     }
+    if (!profile) {
+      throw new ApiError(404, '物理トルクレンチが見つかりません');
+    }
+    const condition = conditionFromTrainingVersion(session.programVersion);
+    const eligibility = this.eligibilityPolicy.evaluate(
+      condition,
+      candidateFromProfile(profile, session.programVersion.capabilityGroup)
+    );
+    if (!eligibility.eligible) {
+      throw new ApiError(409, 'レンチが訓練条件に適合しません', { reason: eligibility.reason }, eligibility.reason);
+    }
+    const mode = normalizeTorqueWrenchSettingVerificationMode(profile.model.settingVerificationMode);
+    const latestSetting = profile.settingHistories[0] ?? null;
+    if (usesRegisteredTorqueWrenchSetting(mode) && !latestSetting) {
+      throw new ApiError(409, 'レンチ設定履歴がありません', undefined, 'SETTING_HISTORY_MISSING');
+    }
+    const expected: TorqueWrenchConfirmationExpectation = {
+      sessionId: this.owner.sessionId,
+      clientDeviceId: this.owner.clientDeviceId,
+      torqueWrenchProfileId: input.torqueWrenchProfileId,
+      settingHistoryId: usesRegisteredTorqueWrenchSetting(mode) ? latestSetting?.id ?? null : null,
+      settingVerificationMode: mode,
+      ownerKind: 'TRAINING',
+      conditionFingerprint: session.conditionFingerprint
+    };
+    const decision = this.confirmationPolicy.evaluateLeaseAdoption({
+      confirmation,
+      lease,
+      expected,
+      now
+    });
+    if (decision.allowed) return;
+    if (decision.reason === 'WRONG_PHYSICAL_WRENCH') {
+      throw new ApiError(409, '確認したレンチと接続要求が一致しません', undefined, decision.reason);
+    }
+    if (decision.reason === 'CONFIRMATION_STALE') {
+      throw new ApiError(409, '訓練条件またはレンチ設定が変更されています。レンチを再確認してください', undefined, 'CONFIRMATION_REQUIRED');
+    }
+    throw new ApiError(409, 'この端末でトルクレンチを再確認してください', undefined, 'CONFIRMATION_REQUIRED');
   }
 
   acquireAction(context: UsageLeaseAcquireActionContext): string | null {
@@ -103,7 +169,10 @@ export class TorqueTrainingLeaseService {
   private readonly coordinator: TorqueWrenchUsageLeaseCoordinator;
 
   constructor(
-    repository = new TorqueWrenchUsageLeaseRepository()
+    repository = new TorqueWrenchUsageLeaseRepository(),
+    private readonly confirmationPolicy = new TorqueWrenchConfirmationUsePolicy(),
+    private readonly confirmationRepository = new TorqueWrenchConfirmationStateRepository(),
+    private readonly eligibilityPolicy = new TorqueWrenchEligibilityPolicy()
   ) {
     this.coordinator = new TorqueWrenchUsageLeaseCoordinator(repository);
   }
@@ -127,7 +196,19 @@ export class TorqueTrainingLeaseService {
     input: TrainingLeaseAcquireInput
   ) {
     this.validateAcquireInput(input);
-    const adapter = new TrainingTorqueWrenchLeaseAdapter(input.sessionId, input.clientDeviceId);
+    // Training writes lock the session before the profile. Take the same
+    // session lock here before the coordinator acquires the profile lock so
+    // the usage-lease FK write cannot deadlock with prepare/confirm/cancel.
+    await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id" FROM "TorqueTrainingSession" WHERE "id" = ${input.sessionId} FOR UPDATE
+    `);
+    const adapter = new TrainingTorqueWrenchLeaseAdapter(
+      input.sessionId,
+      input.clientDeviceId,
+      this.confirmationPolicy,
+      this.confirmationRepository,
+      this.eligibilityPolicy
+    );
     return this.coordinator.acquire(
       tx,
       {
@@ -239,6 +320,6 @@ export class TorqueTrainingLeaseService {
     }) && isSameUsageLeaseToken(current, {
       leaseId: input.leaseId,
       generation
-    });
+    }) && current.adoptedConfirmationId === input.confirmationId;
   }
 }

@@ -15,7 +15,6 @@ import {
   profileEligibilityInclude
 } from '../torque-wrenches/torque-wrench-use-context.js';
 import { TorqueWrenchEligibilityPolicy } from '../torque-wrenches/torque-wrench-eligibility.policy.js';
-import { TorqueUnitConverter } from '../torque-wrenches/torque-unit-converter.js';
 import {
   decideTrainingAttempt,
   summarizeTrainingAttempts,
@@ -27,6 +26,17 @@ import {
   evaluateTrainingVersionSetup,
   trainingSetupVersionInclude
 } from './torque-training-setup.service.js';
+import {
+  normalizeTorqueWrenchSettingVerificationMode,
+  nullableSettingHistoryId,
+  usesRegisteredTorqueWrenchSetting
+} from '../torque-wrenches/torque-wrench-setting-mode.policy.js';
+import { TorqueWrenchConfirmationStateRepository } from '../torque-wrenches/torque-wrench-confirmation-state.repository.js';
+import { lockTorqueWrenchProfile } from '../torque-wrenches/torque-wrench-lock.repository.js';
+import {
+  serializeTorqueWrenchConditionTarget,
+  type TorqueWrenchConditionTarget
+} from '../torque-wrenches/torque-wrench-serialization.js';
 import {
   appendTorqueTrainingSettingsAudit,
   TORQUE_TRAINING_SETTINGS_AUDIT_ACTIONS,
@@ -70,7 +80,15 @@ export type AgentTrainingAttemptInput = {
 const trainingProgramVersionInclude = {
   program: true,
   wrenches: {
-    include: { torqueWrenchProfile: { select: { id: true, serialNumber: true } } }
+    include: {
+      torqueWrenchProfile: {
+        select: {
+          id: true,
+          serialNumber: true,
+          model: { select: { settingVerificationMode: true } }
+        }
+      }
+    }
   }
 } as const;
 
@@ -104,7 +122,33 @@ function serializeAttempt(attempt: Prisma.TorqueTrainingAttemptGetPayload<object
     judgement: attempt.judgement,
     accepted: attempt.accepted,
     ignoredReason: attempt.ignoredReason,
+    settingVerificationMode: normalizeTorqueWrenchSettingVerificationMode(
+      attempt.settingVerificationMode
+    ),
     recordedAt: attempt.recordedAt.toISOString()
+  };
+}
+
+function serializeTrainingConfirmation(
+  confirmation: Prisma.TorqueTrainingWrenchConfirmationGetPayload<object>,
+  target: TorqueWrenchConditionTarget
+) {
+  const mode = normalizeTorqueWrenchSettingVerificationMode(
+    confirmation.settingVerificationMode
+  );
+  return {
+    id: confirmation.id,
+    sessionId: confirmation.sessionId,
+    torqueWrenchProfileId: confirmation.torqueWrenchProfileId,
+    settingHistoryId: nullableSettingHistoryId(mode, confirmation.settingHistoryId),
+    settingVerificationMode: mode,
+    conditionFingerprint: confirmation.conditionFingerprint,
+    employeeId: confirmation.employeeId,
+    employeeNameSnapshot: confirmation.employeeNameSnapshot,
+    clientDeviceId: confirmation.clientDeviceId,
+    clientDeviceNameSnapshot: confirmation.clientDeviceNameSnapshot,
+    confirmedAt: confirmation.confirmedAt.toISOString(),
+    target
   };
 }
 
@@ -140,9 +184,19 @@ function serializeSession(session: Prisma.TorqueTrainingSessionGetPayload<{
       unit: session.programVersion.unit,
       jigConditionCode: session.programVersion.jigConditionCode,
       conditionFingerprint: session.programVersion.conditionFingerprint,
-      torqueWrenchProfiles: session.programVersion.wrenches.map((wrench) => wrench.torqueWrenchProfile)
+      torqueWrenchProfiles: session.programVersion.wrenches.map((wrench) => ({
+        id: wrench.torqueWrenchProfile.id,
+        serialNumber: wrench.torqueWrenchProfile.serialNumber,
+        settingVerificationMode: normalizeTorqueWrenchSettingVerificationMode(
+          wrench.torqueWrenchProfile.model.settingVerificationMode
+        )
+      }))
     },
     attempts: session.attempts.map(serializeAttempt),
+    confirmations: session.confirmations.map((confirmation) => serializeTrainingConfirmation(
+      confirmation,
+      serializeTorqueWrenchConditionTarget(session.programVersion)
+    )),
     hasWrenchConfirmation: session.confirmations.length > 0,
     startedAt: session.startedAt.toISOString(),
     completedAt: session.completedAt?.toISOString() ?? null,
@@ -189,7 +243,8 @@ function normalizeProgramInput(input: TrainingProgramInput) {
 
 export class TorqueTrainingService {
   constructor(
-    private readonly leaseService = new TorqueTrainingLeaseService()
+    private readonly leaseService = new TorqueTrainingLeaseService(),
+    private readonly confirmationRepository = new TorqueWrenchConfirmationStateRepository()
   ) {}
 
   async listPrograms(includeInactive = false) {
@@ -226,7 +281,10 @@ export class TorqueTrainingService {
         conditionFingerprint: version.conditionFingerprint,
         torqueWrenchProfiles: version.wrenches.map((wrench) => ({
           id: wrench.torqueWrenchProfile.id,
-          serialNumber: wrench.torqueWrenchProfile.serialNumber
+          serialNumber: wrench.torqueWrenchProfile.serialNumber,
+          settingVerificationMode: normalizeTorqueWrenchSettingVerificationMode(
+            wrench.torqueWrenchProfile.model.settingVerificationMode
+          )
         })),
         ...evaluateTrainingVersionSetup(version)
       }))
@@ -497,10 +555,17 @@ export class TorqueTrainingService {
   async confirmWrench(sessionId: string, rawUid: string, profileId: string, client: Client) {
     const employee = await resolveTrainingEmployee(rawUid);
     return runTrainingTransaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id" FROM "TorqueTrainingSession" WHERE "id" = ${sessionId} FOR UPDATE
+      `);
+      if (locked.length === 0) throw new ApiError(404, '訓練セッションが見つかりません');
       const session = await tx.torqueTrainingSession.findUnique({ where: { id: sessionId }, include: { programVersion: true } });
       if (!session || session.clientDeviceId !== client.id) throw new ApiError(404, '訓練セッションが見つかりません');
       if (session.employeeId !== employee.id) throw new ApiError(403, '訓練者が一致しません');
       if (session.status !== 'IN_PROGRESS') throw new ApiError(409, '訓練セッションは進行中ではありません');
+      // Match the existing training session→profile write order while the
+      // profile lock protects the lease epoch captured below.
+      await lockTorqueWrenchProfile(tx, profileId);
       const assigned = await tx.torqueTrainingProgramWrench.findUnique({ where: { programVersionId_torqueWrenchProfileId: { programVersionId: session.programVersionId, torqueWrenchProfileId: profileId } } });
       if (!assigned) throw new ApiError(409, 'この訓練版に割り当てられたレンチではありません', undefined, 'TRAINING_WRENCH_NOT_ALLOWED');
       const profile = await tx.torqueWrenchProfile.findUnique({ where: { id: profileId }, include: profileEligibilityInclude });
@@ -508,13 +573,20 @@ export class TorqueTrainingService {
       if (!profile || !group) throw new ApiError(404, 'レンチまたは適合グループが見つかりません');
       const eligibility = new TorqueWrenchEligibilityPolicy().evaluate(conditionFromTrainingVersion(session.programVersion), candidateFromProfile(profile, group));
       if (!eligibility.eligible) throw new ApiError(409, 'レンチが訓練条件に適合しません', { reason: eligibility.reason }, eligibility.reason);
-      const setting = profile.settingHistories[0];
-      if (!setting) throw new ApiError(409, 'レンチ設定履歴がありません');
+      const mode = normalizeTorqueWrenchSettingVerificationMode(profile.model.settingVerificationMode);
+      const setting = profile.settingHistories[0] ?? null;
+      if (usesRegisteredTorqueWrenchSetting(mode) && !setting) {
+        throw new ApiError(409, 'レンチ設定履歴がありません', undefined, 'SETTING_HISTORY_MISSING');
+      }
+      const lease = await this.confirmationRepository.findLease(tx, profileId);
       const confirmation = await tx.torqueTrainingWrenchConfirmation.create({
         data: {
           sessionId,
           torqueWrenchProfileId: profileId,
-          settingHistoryId: setting.id,
+          settingHistoryId: nullableSettingHistoryId(mode, setting?.id),
+          settingVerificationMode: mode,
+          observedLeaseGeneration: lease?.generation ?? 0,
+          observedAdoptedConfirmationId: lease?.adoptedConfirmationId ?? null,
           conditionFingerprint: session.conditionFingerprint,
           employeeId: employee.id,
           employeeNameSnapshot: employee.displayName,
@@ -522,7 +594,14 @@ export class TorqueTrainingService {
           clientDeviceNameSnapshot: client.name
         }
       });
-      return { id: confirmation.id, torqueWrenchProfileId: profileId, serialNumber: profile.serialNumber, settingHistoryId: setting.id };
+      return {
+        id: confirmation.id,
+        torqueWrenchProfileId: profileId,
+        serialNumber: profile.serialNumber,
+        settingHistoryId: nullableSettingHistoryId(mode, confirmation.settingHistoryId),
+        settingVerificationMode: mode,
+        target: serializeTorqueWrenchConditionTarget(session.programVersion)
+      };
     });
   }
 
@@ -553,7 +632,16 @@ export class TorqueTrainingService {
       if (session.status !== 'IN_PROGRESS') throw new ApiError(409, '訓練セッションは完了済みです', undefined, 'TRAINING_SESSION_STATE_CONFLICT');
       const confirmationIdentity = await tx.torqueTrainingWrenchConfirmation.findFirst({
         where: { id: input.confirmationId, sessionId: input.sessionId, clientDeviceId: input.clientDeviceId },
-        select: { torqueWrenchProfileId: true }
+        select: {
+          id: true,
+          sessionId: true,
+          torqueWrenchProfileId: true,
+          settingHistoryId: true,
+          settingVerificationMode: true,
+          conditionFingerprint: true,
+          clientDeviceId: true,
+          confirmedAt: true
+        }
       });
       const resolvedProfileId = input.torqueWrenchProfileId ?? confirmationIdentity?.torqueWrenchProfileId;
       if (!resolvedProfileId) throw new ApiError(400, 'torqueWrenchProfileIdまたは有効なレンチ確認が必要です', undefined, 'TRAINING_PROFILE_REQUIRED');
@@ -561,12 +649,27 @@ export class TorqueTrainingService {
       // session/device confirmation; an explicit mismatching ID is never
       // replaced and therefore remains a confirmation-required event.
       const confirmation = confirmationIdentity?.torqueWrenchProfileId === resolvedProfileId ? confirmationIdentity : null;
-      const base = { sessionId: input.sessionId, sourceClientDeviceId: input.clientDeviceId, sourceEventKey: input.sourceEventKey, torqueWrenchProfileId: resolvedProfileId, connectionLeaseId: input.connectionLeaseId ?? null, connectionLeaseGeneration: input.connectionLeaseGeneration ?? null, deviceRecordedAt: input.deviceRecordedAt ?? null, deviceMemoryCounter: input.deviceMemoryCounter ?? null, deviceJudgement: input.deviceJudgement ?? null };
+      const base = {
+        sessionId: input.sessionId,
+        sourceClientDeviceId: input.clientDeviceId,
+        sourceEventKey: input.sourceEventKey,
+        torqueWrenchProfileId: resolvedProfileId,
+        settingHistoryId: null,
+        settingVerificationMode: confirmationIdentity
+          ? normalizeTorqueWrenchSettingVerificationMode(confirmationIdentity.settingVerificationMode)
+          : null,
+        connectionLeaseId: input.connectionLeaseId ?? null,
+        connectionLeaseGeneration: input.connectionLeaseGeneration ?? null,
+        deviceRecordedAt: input.deviceRecordedAt ?? null,
+        deviceMemoryCounter: input.deviceMemoryCounter ?? null,
+        deviceJudgement: input.deviceJudgement ?? null
+      };
       const ignored = async (reason: string) => tx.torqueTrainingAttempt.create({ data: { ...base, judgement: 'IGNORED', accepted: false, ignoredReason: reason } });
       if (!confirmation) return { attempt: serializeAttempt(await ignored('CONFIRMATION_REQUIRED')), duplicate: false };
       const leaseValid = await this.leaseService.isCurrentForAttempt(tx, {
         sessionId: input.sessionId,
         profileId: resolvedProfileId,
+        confirmationId: input.confirmationId,
         clientDeviceId: input.clientDeviceId,
         leaseId: input.connectionLeaseId,
         generation: input.connectionLeaseGeneration
@@ -574,17 +677,56 @@ export class TorqueTrainingService {
       if (!leaseValid) return { attempt: serializeAttempt(await ignored('LEASE_TOKEN_INVALID')), duplicate: false };
       const profile = await tx.torqueWrenchProfile.findUnique({ where: { id: resolvedProfileId }, include: profileEligibilityInclude });
       if (!profile || profile.serialNumber !== input.serialNumber) return { attempt: serializeAttempt(await ignored('SERIAL_NUMBER_MISMATCH')), duplicate: false };
-      const setting = profile.settingHistories[0];
-      if (!setting) return { attempt: serializeAttempt(await ignored('SETTING_HISTORY_MISSING')), duplicate: false };
       const condition = conditionFromTrainingVersion(session.programVersion);
-      const expectedLower = TorqueUnitConverter.toNewtonMetres(condition.lowerLimit, condition.unit);
-      const expectedNominal = TorqueUnitConverter.toNewtonMetres(condition.nominalTorque, condition.unit);
-      const expectedUpper = TorqueUnitConverter.toNewtonMetres(condition.upperLimit, condition.unit);
-      if (!setting.lowerLimitNm.equals(expectedLower) || !setting.nominalTorqueNm.equals(expectedNominal) || !setting.upperLimitNm.equals(expectedUpper)) return { attempt: serializeAttempt(await ignored('SETTING_MISMATCH')), duplicate: false };
+      const group = await tx.torqueWrenchCapabilityGroup.findUnique({
+        where: { id: session.programVersion.capabilityGroupId },
+        include: capabilityGroupEligibilityInclude
+      });
+      if (!group) return { attempt: serializeAttempt(await ignored('WRONG_CAPABILITY_GROUP')), duplicate: false };
+      const eligibility = new TorqueWrenchEligibilityPolicy().evaluate(
+        condition,
+        candidateFromProfile(profile, group)
+      );
+      if (!eligibility.eligible) return { attempt: serializeAttempt(await ignored(eligibility.reason)), duplicate: false };
+      const mode = normalizeTorqueWrenchSettingVerificationMode(profile.model.settingVerificationMode);
+      if (
+        normalizeTorqueWrenchSettingVerificationMode(confirmation.settingVerificationMode) !== mode
+        || confirmation.conditionFingerprint !== session.conditionFingerprint
+      ) {
+        return { attempt: serializeAttempt(await ignored('CONFIRMATION_STALE')), duplicate: false };
+      }
+      const setting = profile.settingHistories[0] ?? null;
+      if (usesRegisteredTorqueWrenchSetting(mode) && !setting) {
+        return { attempt: serializeAttempt(await ignored('SETTING_HISTORY_MISSING')), duplicate: false };
+      }
+      if (
+        usesRegisteredTorqueWrenchSetting(mode)
+        && setting
+        && confirmation.settingHistoryId !== setting.id
+      ) return { attempt: serializeAttempt(await ignored('SETTING_MISMATCH')), duplicate: false };
       const decision = decideTrainingAttempt(input.value, input.unit, condition);
       const acceptedCount = await tx.torqueTrainingAttempt.count({ where: { sessionId: input.sessionId, accepted: true } });
       if (acceptedCount >= 5) throw new ApiError(409, '訓練試行は5回完了しています');
-      const attempt = await tx.torqueTrainingAttempt.create({ data: { ...base, settingHistoryId: setting.id, attemptNo: acceptedCount + 1, value: decimal(input.value), inputUnit: input.unit, valueNm: decision.valueNm, nominalTorqueSnapshot: decision.nominalNm, lowerLimitSnapshot: decision.lowerNm, upperLimitSnapshot: decision.upperNm, deviationNm: decision.deviationNm, deviationPercent: decision.deviationPercent, absoluteDeviationPercent: decision.absoluteDeviationPercent, judgement: decision.judgement as TorqueTrainingAttemptJudgement, accepted: true, serialNumberSnapshot: profile.serialNumber, manufacturerSnapshot: profile.model.manufacturer, modelNumberSnapshot: profile.model.modelNumber } });
+      const attempt = await tx.torqueTrainingAttempt.create({ data: {
+        ...base,
+        settingHistoryId: nullableSettingHistoryId(mode, setting?.id),
+        settingVerificationMode: mode,
+        attemptNo: acceptedCount + 1,
+        value: decimal(input.value),
+        inputUnit: input.unit,
+        valueNm: decision.valueNm,
+        nominalTorqueSnapshot: decision.nominalNm,
+        lowerLimitSnapshot: decision.lowerNm,
+        upperLimitSnapshot: decision.upperNm,
+        deviationNm: decision.deviationNm,
+        deviationPercent: decision.deviationPercent,
+        absoluteDeviationPercent: decision.absoluteDeviationPercent,
+        judgement: decision.judgement as TorqueTrainingAttemptJudgement,
+        accepted: true,
+        serialNumberSnapshot: profile.serialNumber,
+        manufacturerSnapshot: profile.model.manufacturer,
+        modelNumberSnapshot: profile.model.modelNumber
+      } });
       if (acceptedCount + 1 === 5) {
         await tx.torqueTrainingSession.update({ where: { id: input.sessionId }, data: { status: 'COMPLETED', completedAt: new Date(), activeEmployeeKey: null, activeClientKey: null } });
         // Completion is authoritative even if the browser disappears. The
