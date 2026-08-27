@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import os
 import re
+import subprocess
+import textwrap
 import unittest
 from pathlib import Path
+
+from scripts.deploy import release_artifact_contract as release_contract
+from scripts.deploy import torque_component_adoption as adoption_contract
 
 ROOT = Path(__file__).resolve().parents[3]
 CI = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -399,6 +405,121 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("github.event_name == 'push'", torque_release_set)
         self.assertNotIn("Attest exact ARM64 API image", torque_release_set)
         self.assertNotIn("Attest exact ARM64 Web image", torque_release_set)
+
+    def test_torque_source_closure_status_is_classified_fail_closed(self) -> None:
+        compatibility = job_block(TORQUE_RELEASE, "torque-release-compatibility")
+        source_proof = compatibility.split(
+            "Prove the adopted torque-agent source closure is unchanged", 1
+        )[1].split("Setup pnpm workspace", 1)[0]
+
+        self.assertIn("id: source_closure", source_proof)
+        self.assertIn("source_closure_status=$?", source_proof)
+        self.assertIn(
+            "echo 'source_closure_unchanged=true' >> \"$GITHUB_OUTPUT\"",
+            source_proof,
+        )
+        self.assertIn(
+            "echo 'source_closure_unchanged=false' >> \"$GITHUB_OUTPUT\"",
+            source_proof,
+        )
+        self.assertIn("source closure git diff failed with status", source_proof)
+        self.assertIn(
+            "source_closure_unchanged: ${{ steps.source_closure.outputs.source_closure_unchanged }}",
+            compatibility,
+        )
+        self.assertIn(
+            'SOURCE_CLOSURE_UNCHANGED: ${{ steps.source_closure.outputs.source_closure_unchanged }}',
+            compatibility,
+        )
+        self.assertIn(
+            '"sourceClosureUnchanged": os.environ["SOURCE_CLOSURE_UNCHANGED"] == "true"',
+            compatibility,
+        )
+
+        adoption = job_block(TORQUE_RELEASE, "torque-component-adoption")
+        self.assertIn(
+            "needs.torque-release-compatibility.outputs.source_closure_unchanged == 'true'",
+            adoption,
+        )
+
+    def test_torque_source_publication_rejects_mixed_or_invalid_event_diffs(self) -> None:
+        compatibility = job_block(TORQUE_RELEASE, "torque-release-compatibility")
+        step_start = compatibility.index(
+            "      - name: Reject mixed torque source and adoption identity changes"
+        )
+        body_start = compatibility.index("        run: |\n", step_start) + len(
+            "        run: |\n"
+        )
+        body_end = compatibility.index(
+            "\n\n      - name: Setup pnpm workspace", body_start
+        )
+        guard = textwrap.dedent(compatibility[body_start:body_end])
+        git_stub = textwrap.dedent(
+            """
+            git() {
+              if [[ "$1" != diff || "$2" != --quiet ]]; then
+                return 99
+              fi
+              if [[ "$*" == *clients/torque-agent* ]]; then
+                return "$STUB_SOURCE_RC"
+              fi
+              return "$STUB_MANIFEST_RC"
+            }
+            """
+        )
+        cases = (
+            ("public", "false", "1", "0", 0),
+            ("adoption", "true", "0", "1", 0),
+            ("mixed", "true", "1", "1", 1),
+            ("stale", "false", "0", "0", 1),
+            ("git-error", "false", "2", "0", 2),
+        )
+        for name, closure, source_rc, manifest_rc, expected_rc in cases:
+            with self.subTest(case=name):
+                result = subprocess.run(
+                    ["bash", "-c", git_stub + "\n" + guard],
+                    env={
+                        **os.environ,
+                        "EVENT_BASE_SHA": "base",
+                        "TARGET_SHA": "head",
+                        "SOURCE_CLOSURE_UNCHANGED": closure,
+                        "STUB_SOURCE_RC": source_rc,
+                        "STUB_MANIFEST_RC": manifest_rc,
+                    },
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, expected_rc, result.stderr)
+
+        required = job_block(TORQUE_RELEASE, "torque-release-required")
+        self.assertIn('test "$COMPATIBILITY_RESULT" = success', required)
+        self.assertNotIn("SOURCE_CLOSURE_UNCHANGED", required)
+
+    def test_torque_workflow_identity_matches_adoption_contract_constants(self) -> None:
+        expected_lines = (
+            f"            {release_contract.TORQUE_ADOPTED_SOURCE_SHA} \\",
+            f"          BASELINE_SHA: {release_contract.TORQUE_ADOPTED_SOURCE_SHA}",
+            f"          TORQUE_REFERENCE: {release_contract.TORQUE_AGENT_REPOSITORY}@{adoption_contract.INDEX_DIGEST}",
+            f"            echo 'repository={release_contract.TORQUE_AGENT_REPOSITORY}'",
+            f"            echo 'index_digest={adoption_contract.INDEX_DIGEST}'",
+            f"            echo 'source_sha={release_contract.TORQUE_ADOPTED_SOURCE_SHA}'",
+            f"            echo 'arm64_digest={adoption_contract.ARM64_DIGEST}'",
+            f"            echo 'armv7_digest={adoption_contract.ARMV7_DIGEST}'",
+            f"            echo 'predicate_type={release_contract.TORQUE_ADOPTION_PREDICATE_TYPE}'",
+            f"            echo 'origin_workflow={release_contract.TORQUE_ORIGINAL_WORKFLOW}'",
+            f"            echo 'origin_run_id={release_contract.TORQUE_ORIGINAL_RUN_ID}'",
+            f"            echo 'origin_job_id={release_contract.TORQUE_ORIGINAL_JOB_ID}'",
+        )
+        for line in expected_lines:
+            with self.subTest(line=line):
+                self.assertIn(line, TORQUE_RELEASE)
+        image_reference = (
+            f"          image-ref: {release_contract.TORQUE_AGENT_REPOSITORY}@"
+            f"{adoption_contract.INDEX_DIGEST}"
+        )
+        self.assertEqual(TORQUE_RELEASE.count(image_reference), 2)
 
     def test_torque_v2_cannot_block_normal_release_or_required_pr_checks(self) -> None:
         required = job_block(CI, "ci-required")
