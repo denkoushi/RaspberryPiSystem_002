@@ -13,12 +13,17 @@ import type {
 
 const apiMocks = vi.hoisted(() => ({
   createTorqueTrainingProgram: vi.fn(),
+  createTorqueTrainingSettingsProgram: vi.fn(),
   deactivateTorqueTrainingProgram: vi.fn(),
+  deactivateTorqueTrainingSettingsProgram: vi.fn(),
   excludeTorqueTrainingResult: vi.fn(),
+  excludeTorqueTrainingSettingsResult: vi.fn(),
+  getTorqueTrainingSettingsSnapshot: vi.fn(),
   listTorqueTrainingAdminPrograms: vi.fn(),
   listTorqueTrainingAdminResults: vi.fn(),
   listTorqueWrenchCapabilityGroups: vi.fn(),
   listTorqueWrenches: vi.fn(),
+  reviseTorqueTrainingSettingsProgram: vi.fn(),
   reviseTorqueTrainingProgram: vi.fn()
 }));
 
@@ -79,6 +84,13 @@ const result = (overrides: Partial<TorqueTrainingAdminResultApi> = {}) => ({
 const capabilityGroup = { id: 'group-1', name: 'M8', nominalDiameter: 'M8', boltLengthMm: '25', material: 'SUS', strengthClass: 'A2-70', isActive: true, models: [] } as TorqueWrenchCapabilityGroupApi;
 const wrenchProfile = { id: 'wrench-1', serialNumber: 'TW-001' } as TorqueWrenchProfileApi;
 
+const settingsSnapshot = {
+  programs: [program()],
+  results: [result()],
+  capabilityGroups: [capabilityGroup],
+  wrenchProfiles: [wrenchProfile]
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   apiMocks.listTorqueTrainingAdminPrograms.mockResolvedValue([program()]);
@@ -86,12 +98,70 @@ beforeEach(() => {
   apiMocks.listTorqueWrenchCapabilityGroups.mockResolvedValue([capabilityGroup]);
   apiMocks.listTorqueWrenches.mockResolvedValue([wrenchProfile]);
   apiMocks.createTorqueTrainingProgram.mockResolvedValue(program());
+  apiMocks.createTorqueTrainingSettingsProgram.mockResolvedValue(program());
   apiMocks.reviseTorqueTrainingProgram.mockResolvedValue({});
+  apiMocks.reviseTorqueTrainingSettingsProgram.mockResolvedValue({});
   apiMocks.deactivateTorqueTrainingProgram.mockResolvedValue(undefined);
+  apiMocks.deactivateTorqueTrainingSettingsProgram.mockResolvedValue(undefined);
   apiMocks.excludeTorqueTrainingResult.mockResolvedValue(undefined);
+  apiMocks.excludeTorqueTrainingSettingsResult.mockResolvedValue(undefined);
+  apiMocks.getTorqueTrainingSettingsSnapshot.mockResolvedValue(settingsSnapshot);
 });
 
 describe('useTorqueTrainingAdminController', () => {
+  it('authenticates kiosk settings with a snapshot and uses the same in-memory PIN for writes', async () => {
+    const onProgramsChanged = vi.fn(async () => undefined);
+    const { result: hook } = renderHook(() => useTorqueTrainingAdminController({
+      isOpen: false,
+      accessMode: 'kiosk',
+      onProgramsChanged
+    }));
+
+    let authenticated = false;
+    await act(async () => {
+      authenticated = await hook.current.authenticateSettingsAccessPassword('2520');
+    });
+
+    expect(authenticated).toBe(true);
+    expect(apiMocks.getTorqueTrainingSettingsSnapshot).toHaveBeenCalledWith('2520');
+    expect(hook.current.settingsAuthenticated).toBe(true);
+    expect(hook.current.adminPrograms).toEqual(settingsSnapshot.programs);
+
+    act(() => hook.current.setExclusionReason('session-1', '  計測不備  '));
+    await act(async () => {
+      await hook.current.excludeResult('session-1');
+    });
+
+    expect(apiMocks.excludeTorqueTrainingSettingsResult).toHaveBeenCalledWith(
+      'session-1',
+      '2520',
+      '計測不備'
+    );
+    expect(apiMocks.excludeTorqueTrainingResult).not.toHaveBeenCalled();
+    expect(onProgramsChanged).not.toHaveBeenCalled();
+
+    act(() => hook.current.clearSettingsAccess());
+    expect(hook.current.settingsAuthenticated).toBe(false);
+    expect(hook.current.adminPrograms).toEqual([]);
+  });
+
+  it('keeps a failed kiosk PIN out of the controller authorization state', async () => {
+    apiMocks.getTorqueTrainingSettingsSnapshot.mockRejectedValueOnce(new Error('操作時パスワードが違います。'));
+    const { result: hook } = renderHook(() => useTorqueTrainingAdminController({
+      isOpen: false,
+      accessMode: 'kiosk'
+    }));
+
+    let authenticated = true;
+    await act(async () => {
+      authenticated = await hook.current.authenticateSettingsAccessPassword('0000');
+    });
+
+    expect(authenticated).toBe(false);
+    expect(hook.current.settingsAuthenticated).toBe(false);
+    expect(hook.current.error).toBe('操作時パスワードが違います。');
+  });
+
   it('does not load admin data until the dialog is opened', async () => {
     const { result: hook, rerender } = renderHook(
       ({ isOpen }) => useTorqueTrainingAdminController({ isOpen }),
@@ -101,11 +171,13 @@ describe('useTorqueTrainingAdminController', () => {
     expect(apiMocks.listTorqueTrainingAdminPrograms).not.toHaveBeenCalled();
 
     rerender({ isOpen: true });
-    await waitFor(() => expect(apiMocks.listTorqueTrainingAdminPrograms).toHaveBeenCalledTimes(1));
-    expect(hook.current.adminPrograms).toEqual([program()]);
-    expect(hook.current.adminResults).toEqual([result()]);
-    expect(hook.current.capabilityGroups).toEqual([capabilityGroup]);
-    expect(hook.current.wrenchProfiles).toEqual([wrenchProfile]);
+    await waitFor(() => {
+      expect(apiMocks.listTorqueTrainingAdminPrograms).toHaveBeenCalledTimes(1);
+      expect(hook.current.adminPrograms).toEqual([program()]);
+      expect(hook.current.adminResults).toEqual([result()]);
+      expect(hook.current.capabilityGroups).toEqual([capabilityGroup]);
+      expect(hook.current.wrenchProfiles).toEqual([wrenchProfile]);
+    });
   });
 
   it('filters results through the controller query state', async () => {

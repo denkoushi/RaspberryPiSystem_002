@@ -4,6 +4,7 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
 import {
   TorqueTrainingService,
+  TorqueTrainingKioskSettingsService,
   TorqueTrainingWrenchPreparationService
 } from '../../services/torque-training/index.js';
 import {
@@ -20,14 +21,21 @@ import {
   trainingProgramInputSchema,
   trainingRevisionSchema,
   trainingSessionParamsSchema,
+  torqueTrainingSettingsDeactivateSchema,
+  torqueTrainingSettingsExcludeSchema,
+  torqueTrainingSettingsProgramCreateSchema,
+  torqueTrainingSettingsProgramRevisionSchema,
+  torqueTrainingSettingsSnapshotSchema,
   trainingWrenchConfirmationSchema,
   trainingWrenchPreparationSchema
 } from './schemas.js';
 
 export async function registerTorqueTrainingRoutes(app: FastifyInstance): Promise<void> {
   const service = new TorqueTrainingService();
+  const kioskSettingsService = new TorqueTrainingKioskSettingsService();
   const preparationService = new TorqueTrainingWrenchPreparationService();
   const canAdmin = authorizeRoles('ADMIN');
+  const kioskSettingsRateLimit = { max: 10, timeWindow: '1 minute' };
 
   app.get('/torque-training/programs', async (request) => {
     const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
@@ -80,6 +88,45 @@ export async function registerTorqueTrainingRoutes(app: FastifyInstance): Promis
     const params = trainingSessionParamsSchema.parse(request.params);
     const body = trainingAgentAttemptSchema.parse(request.body);
     return service.recordAgentAttempt({ sessionId: params.id, clientDeviceId: clientDevice.id, ...body });
+  });
+
+  // The kiosk settings panel uses the shared operation password. The
+  // existing ADMIN JWT routes below remain unchanged for the management
+  // console. Each request rechecks the password on the server, even when the
+  // browser keeps the PIN in memory after the initial snapshot.
+  app.post('/torque-training/settings/snapshot', { config: { rateLimit: kioskSettingsRateLimit } }, async (request) => {
+    await requireKioskClientDevice(request.headers['x-client-key']);
+    const body = torqueTrainingSettingsSnapshotSchema.parse(request.body);
+    return { snapshot: await kioskSettingsService.snapshot(body.accessPassword) };
+  });
+
+  app.post('/torque-training/settings/programs', { config: { rateLimit: kioskSettingsRateLimit } }, async (request, reply) => {
+    const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+    const body = torqueTrainingSettingsProgramCreateSchema.parse(request.body);
+    const program = await kioskSettingsService.createProgram(body.accessPassword, clientDevice, body.program);
+    return reply.code(201).send({ program });
+  });
+
+  app.post('/torque-training/settings/programs/:id/revisions', { config: { rateLimit: kioskSettingsRateLimit } }, async (request, reply) => {
+    const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+    const params = trainingProgramIdParamsSchema.parse(request.params);
+    const body = torqueTrainingSettingsProgramRevisionSchema.parse(request.body);
+    const version = await kioskSettingsService.reviseProgram(body.accessPassword, clientDevice, params.id, body.revision);
+    return reply.code(201).send({ version });
+  });
+
+  app.post('/torque-training/settings/programs/:id/deactivate', { config: { rateLimit: kioskSettingsRateLimit } }, async (request) => {
+    const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+    const params = trainingProgramIdParamsSchema.parse(request.params);
+    const body = torqueTrainingSettingsDeactivateSchema.parse(request.body);
+    return { program: await kioskSettingsService.deactivateProgram(body.accessPassword, clientDevice, params.id, body.reason) };
+  });
+
+  app.post('/torque-training/settings/sessions/:id/exclude', { config: { rateLimit: kioskSettingsRateLimit } }, async (request) => {
+    const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+    const params = trainingSessionParamsSchema.parse(request.params);
+    const body = torqueTrainingSettingsExcludeSchema.parse(request.body);
+    return { session: await kioskSettingsService.excludeSession(body.accessPassword, clientDevice, params.id, body.reason) };
   });
 
   app.post('/torque-wrenches/:id/usage-lease/acquire', async (request) => {

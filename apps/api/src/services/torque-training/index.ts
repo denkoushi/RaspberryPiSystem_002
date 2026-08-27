@@ -6,3 +6,5 @@ export * from './torque-training-catalog-registration.service.js';
 export * from './torque-training-catalog-cli.js';
 export * from './torque-training-setup.service.js';
 export * from './torque-training-wrench-preparation.service.js';
+export * from './torque-training-kiosk-settings.service.js';
+export * from './torque-training-settings-audit.js';

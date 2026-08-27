@@ -211,13 +211,15 @@ async function expectMaxWidth(locator: ReturnType<Page['locator']>, maxWidth: nu
 
 test.use({ userAgent: LINUX_KIOSK_USER_AGENT });
 
-test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認する', async ({ page }) => {
+test('NFCから5回完了、本人情報消去、操作パスワード設定復帰を確認する', async ({ page }) => {
   let agentAcquired = false;
   let leaseAcquireCalls = 0;
   const preparationPayloads: Array<Record<string, unknown>> = [];
   let trainingHeartbeats = 0;
   let trainingSessionGets = 0;
   let committedAttemptCount = 0;
+  let settingsSnapshotCalls = 0;
+  let adminLoginCalls = 0;
   const trainingHeartbeatPayloads: Array<Record<string, unknown>> = [];
   let adminResults = [adminResult];
   await installMockNfc(page);
@@ -247,8 +249,19 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
       preparationPayloads.push(request.postDataJSON() as Record<string, unknown>);
       return route.fulfill({ status: 201, json: { preparation: { confirmationId: '88888888-8888-4888-8888-888888888888', requestId: preparationPayloads[0].requestId, torqueWrenchProfileId: profileId, serialNumber: '702902S', settingHistoryId: '99999999-9999-4999-8999-999999999999', target: { lowerLimit: '9', nominalTorque: '10', upperLimit: '11', unit: 'N-m' }, confirmedAt: '2026-08-09T00:00:00.000Z', duplicate: false } } });
     }
-    if (path.includes('/admin/torque-training/programs') && request.method() === 'GET') return route.fulfill({ json: { programs: [menuProgram] } });
-    if (path.includes('/admin/torque-training/results') && request.method() === 'GET') return route.fulfill({ json: { results: adminResults } });
+    if (path === '/api/torque-training/settings/snapshot' && request.method() === 'POST') {
+      settingsSnapshotCalls += 1;
+      const body = request.postDataJSON() as { accessPassword?: string };
+      if (body.accessPassword !== '2520') {
+        return route.fulfill({ status: 403, json: { message: '操作時パスワードが違います。' } });
+      }
+      return route.fulfill({ json: { snapshot: {
+        programs: [menuProgram],
+        results: adminResults,
+        capabilityGroups: [],
+        wrenchProfiles: []
+      } } });
+    }
     if (path.includes('/admin/torque-training/sessions/') && path.endsWith('/exclude') && request.method() === 'POST') {
       const sessionId = path.split('/').at(-2);
       const body = request.postDataJSON() as { reason?: string };
@@ -259,7 +272,10 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
     }
     if (path === '/api/torque-wrench-capability-groups') return route.fulfill({ json: { capabilityGroups: [] } });
     if (path === '/api/torque-wrenches') return route.fulfill({ json: { torqueWrenches: [] } });
-    if (path === '/api/auth/login' && request.method() === 'POST') return route.fulfill({ json: { accessToken: 'e2e-admin-token', refreshToken: 'e2e-refresh-token', user: { id: 'admin-e2e', username: 'admin', role: 'ADMIN', status: 'ACTIVE' } } });
+    if (path === '/api/auth/login' && request.method() === 'POST') {
+      adminLoginCalls += 1;
+      return route.fulfill({ json: { accessToken: 'e2e-admin-token', refreshToken: 'e2e-refresh-token', user: { id: 'admin-e2e', username: 'admin', role: 'ADMIN', status: 'ACTIVE' } } });
+    }
     return route.fulfill({ json: {} });
   });
   await page.route('http://127.0.0.1:7073/**', async (route) => {
@@ -367,13 +383,17 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
   await expect(page.getByText('E2E 作業者', { exact: true })).toHaveCount(0);
 
   await page.getByRole('button', { name: '設定', exact: true }).click();
-  await expect(page).toHaveURL(/\/login/);
-  await page.getByLabel('ユーザー名').fill('admin');
-  await page.getByLabel('パスワード').fill('password');
-  await page.getByRole('button', { name: 'ログイン' }).click();
-  await expect(page).toHaveURL(/\/kiosk\/assembly\/training/);
+  const accessDialog = page.getByRole('dialog', { name: '訓練設定の認証' });
+  await expect(accessDialog).toBeVisible();
+  await accessDialog.getByLabel('操作時パスワード').fill('0000');
+  await accessDialog.getByRole('button', { name: '認証する' }).click();
+  await expect(accessDialog.getByRole('alert')).toHaveText('操作時パスワードが違います。');
+  await accessDialog.getByLabel('操作時パスワード').fill('2520');
+  await accessDialog.getByRole('button', { name: '認証する' }).click();
+  await expect(accessDialog).toBeHidden();
+  expect(adminLoginCalls).toBe(0);
+  expect(settingsSnapshotCalls).toBe(2);
   const settingsButton = page.getByRole('button', { name: '設定', exact: true });
-  await settingsButton.click();
 
   const settingsDialog = page.getByRole('dialog').last();
   await expect(settingsDialog).toBeVisible();
@@ -414,6 +434,9 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
   await page.setViewportSize({ width: 1366, height: 768 });
   await expectMaxWidth(page.getByLabel('対象ボルト・訓練メニュー'), 576);
   await settingsButton.click();
+  const compactAccessDialog = page.getByRole('dialog', { name: '訓練設定の認証' });
+  await compactAccessDialog.getByLabel('操作時パスワード').fill('2520');
+  await compactAccessDialog.getByRole('button', { name: '認証する' }).click();
   const compactSettingsDialog = page.getByRole('dialog').last();
   await expect(compactSettingsDialog).toBeVisible();
   await expect(compactSettingsDialog).toHaveCSS('z-index', '80');

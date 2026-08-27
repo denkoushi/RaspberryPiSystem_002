@@ -142,6 +142,8 @@
 - `POST /api/torque-training/sessions/:id/wrench-preparations` は登録済み `x-client-key` を使用する
 - ボディは `uid`, `torqueWrenchProfileId`, `requestId`, `physicalSettingConfirmed: true` のみ。トルク値はセッションの訓練版からサーバーが確定する
 - 設定履歴、現物確認、同一セッション・端末の使用リースを同一transactionで作成し、同じ `requestId` の再送は元の結果を返す。別ownerが使用中なら全書込みをrollbackする
+- `POST /api/torque-training/settings/snapshot` と同階層の設定変更APIは、登録済み`x-client-key`と共有4桁操作パスワードを毎回検証する。変更と`TorqueTrainingSettingsAuditLog`への端末監査は同一transactionで作成する
+- 管理コンソール向け`/api/admin/torque-training/*`のADMIN JWT契約は後方互換のため維持する
 - 詳細な認可境界と責務は [ADR-20260826](../../decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md) を参照
 
 キオスク認証の`GET .../torque-wrench-confirmations/current`は、対象セッションで現在端末が作成した確認に加え、現在端末が保持する接続リースの`adoptedConfirmationId`を返す。物理レンチ、最新設定、締付条件fingerprint、状態、校正が一致すれば、確認元とは別の作業ID・ロットでも使用できる。レスポンス形式は従来と同じで、自動的なリース取得は行わない。管理者JWTでの取得と`record-torque-override`は対象セッション内の確認だけを扱う。

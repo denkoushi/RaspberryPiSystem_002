@@ -1,5 +1,7 @@
 import { api } from '../http';
 
+import type { TorqueWrenchCapabilityGroupApi, TorqueWrenchProfileApi } from './torque-wrenches';
+
 export type TorqueTrainingAttemptApi = {
   id: string;
   attemptNo: number | null;
@@ -239,6 +241,26 @@ export async function listTorqueTrainingAdminResults() {
   return data.results;
 }
 
+/**
+ * Kiosk-only settings snapshot.  The server validates the operation password
+ * on every request; the web client deliberately keeps that password out of
+ * the normal admin API functions above.
+ */
+export type TorqueTrainingSettingsSnapshotApi = {
+  programs: TorqueTrainingProgramApi[];
+  results: TorqueTrainingAdminResultApi[];
+  capabilityGroups: TorqueWrenchCapabilityGroupApi[];
+  wrenchProfiles: TorqueWrenchProfileApi[];
+};
+
+export async function getTorqueTrainingSettingsSnapshot(accessPassword: string) {
+  const { data } = await api.post<{ snapshot: TorqueTrainingSettingsSnapshotApi }>(
+    '/torque-training/settings/snapshot',
+    { accessPassword }
+  );
+  return data.snapshot;
+}
+
 export type TorqueTrainingProgramWritePayload = {
   code: string;
   displayName: string;
@@ -260,8 +282,31 @@ export async function createTorqueTrainingProgram(payload: TorqueTrainingProgram
   return data.program;
 }
 
+export async function createTorqueTrainingSettingsProgram(
+  accessPassword: string,
+  program: TorqueTrainingProgramWritePayload
+) {
+  const { data } = await api.post<{ program: TorqueTrainingProgramApi }>(
+    '/torque-training/settings/programs',
+    { accessPassword, program }
+  );
+  return data.program;
+}
+
 export async function reviseTorqueTrainingProgram(programId: string, payload: Omit<TorqueTrainingProgramWritePayload, 'code'>) {
   const { data } = await api.post<{ version: TorqueTrainingProgramVersionApi }>(`/admin/torque-training/programs/${programId}/revisions`, payload);
+  return data.version;
+}
+
+export async function reviseTorqueTrainingSettingsProgram(
+  programId: string,
+  accessPassword: string,
+  revision: Omit<TorqueTrainingProgramWritePayload, 'code'>
+) {
+  const { data } = await api.post<{ version: TorqueTrainingProgramVersionApi }>(
+    `/torque-training/settings/programs/${encodeURIComponent(programId)}/revisions`,
+    { accessPassword, revision }
+  );
   return data.version;
 }
 
@@ -269,6 +314,28 @@ export async function deactivateTorqueTrainingProgram(programId: string, reason:
   await api.post(`/admin/torque-training/programs/${programId}/deactivate`, { reason });
 }
 
+export async function deactivateTorqueTrainingSettingsProgram(
+  programId: string,
+  accessPassword: string,
+  reason: string
+) {
+  await api.post(
+    `/torque-training/settings/programs/${encodeURIComponent(programId)}/deactivate`,
+    { accessPassword, reason }
+  );
+}
+
 export async function excludeTorqueTrainingResult(sessionId: string, reason: string) {
   await api.post(`/admin/torque-training/sessions/${sessionId}/exclude`, { reason });
+}
+
+export async function excludeTorqueTrainingSettingsResult(
+  sessionId: string,
+  accessPassword: string,
+  reason: string
+) {
+  await api.post(
+    `/torque-training/settings/sessions/${encodeURIComponent(sessionId)}/exclude`,
+    { accessPassword, reason }
+  );
 }

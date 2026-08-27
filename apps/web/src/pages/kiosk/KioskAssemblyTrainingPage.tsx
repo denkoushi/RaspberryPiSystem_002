@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import {
@@ -15,7 +15,6 @@ import {
 } from '../../api/client';
 import { getApiErrorMessage } from '../../api/errors';
 import { Button } from '../../components/ui/Button';
-import { useAuth } from '../../contexts/AuthContext';
 import {
   AssemblySessionStatusNotice,
   TorqueTrainingAttemptHistory,
@@ -23,6 +22,7 @@ import {
   useTorqueRecordLiveRefresh
 } from '../../features/assembly';
 import { TorqueTrainingAdminDialog } from '../../features/assembly/torque-training/TorqueTrainingAdminDialog';
+import { TorqueTrainingSettingsAccessDialog } from '../../features/assembly/torque-training/TorqueTrainingSettingsAccessDialog';
 import { presentTorqueTrainingSetupReason } from '../../features/assembly/torque-training/torqueTrainingWrenchPreparation';
 import { TorqueTrainingWrenchPreparationPanel } from '../../features/assembly/torque-training/TorqueTrainingWrenchPreparationPanel';
 import { useTorqueTrainingAdminController } from '../../features/assembly/torque-training/useTorqueTrainingAdminController';
@@ -62,8 +62,6 @@ function toTrainingAttemptHistoryItem(attempt: TorqueTrainingAttemptApi, attempt
 
 export function KioskAssemblyTrainingPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const { user } = useAuth();
   const nfcEvent = useNfcStream(true);
   const [operator, setOperator] = useState<TorqueTrainingOperatorContextApi | null>(null);
   const [programs, setPrograms] = useState<TorqueTrainingProgramApi[]>([]);
@@ -77,6 +75,7 @@ export function KioskAssemblyTrainingPage() {
     profileId: string;
   } | null>(null);
   const [connectionRetryRequired, setConnectionRetryRequired] = useState(false);
+  const [settingsGateOpen, setSettingsGateOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('NFCタグを読み取って訓練者を確認してください。');
@@ -122,8 +121,16 @@ export function KioskAssemblyTrainingPage() {
 
   const adminController = useTorqueTrainingAdminController({
     isOpen: settingsOpen,
+    accessMode: 'kiosk',
     onProgramsChanged: loadPrograms
   });
+  const { authenticateSettingsAccessPassword, clearSettingsAccess } = adminController;
+
+  useEffect(() => () => {
+    // The operation password is owned only by the controller's React state.
+    // Clear it when the kiosk route is left, even if the dialog is still open.
+    clearSettingsAccess();
+  }, [clearSettingsAccess]);
 
   useEffect(() => {
     void loadPrograms();
@@ -167,6 +174,7 @@ export function KioskAssemblyTrainingPage() {
 
   const handleTrainingCompleted = useCallback(() => {
     setOperator(null);
+    setSession(null);
     setSelectedVersionId('');
     setSelectedProfileId('');
     setAgentWrenchSerial(null);
@@ -283,13 +291,20 @@ export function KioskAssemblyTrainingPage() {
     }
   };
 
-  const openSettings = () => {
-    if (user?.role !== 'ADMIN') {
-      navigate('/login', { state: { from: { pathname: location.pathname, search: location.search, hash: location.hash }, forceLogin: true } });
-      return;
-    }
+  const openSettings = () => setSettingsGateOpen(true);
+
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    setSettingsGateOpen(false);
+    clearSettingsAccess();
+  }, [clearSettingsAccess]);
+
+  const authenticateSettings = useCallback(async (accessPassword: string) => {
+    const authenticated = await authenticateSettingsAccessPassword(accessPassword);
+    if (!authenticated) return;
+    setSettingsGateOpen(false);
     setSettingsOpen(true);
-  };
+  }, [authenticateSettingsAccessPassword]);
 
   const resetOperator = async () => {
     if (session?.status === 'IN_PROGRESS') {
@@ -457,8 +472,15 @@ export function KioskAssemblyTrainingPage() {
 
       <TorqueTrainingAdminDialog
         isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={closeSettings}
         controller={adminController}
+      />
+      <TorqueTrainingSettingsAccessDialog
+        open={settingsGateOpen}
+        busy={adminController.adminBusy}
+        error={adminController.error}
+        onSubmit={authenticateSettings}
+        onCancel={closeSettings}
       />
     </div>
   );

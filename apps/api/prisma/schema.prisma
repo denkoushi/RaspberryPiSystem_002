@@ -459,6 +459,7 @@ model ClientDevice {
   torqueWrenchUsageLeases                       TorqueWrenchUsageLease[]
   torqueTrainingConfirmations                   TorqueTrainingWrenchConfirmation[]
   torqueTrainingAttempts                        TorqueTrainingAttempt[]
+  torqueTrainingSettingsAuditLogs               TorqueTrainingSettingsAuditLog[]
 
   @@index([statusClientId])
 }
@@ -3256,6 +3257,22 @@ model TorqueTrainingWrenchPreparationRequest {
   confirmationId String                           @unique
   createdAt      DateTime                         @default(now())
   confirmation   TorqueTrainingWrenchConfirmation @relation(fields: [confirmationId], references: [id], onDelete: Restrict)
+}
+
+/// キオスクの共有操作パスワードで実行した訓練設定変更の追記専用監査。
+/// 共通PINは個人を識別しないため、認証済み端末のID・名称スナップショットを保持する。
+model TorqueTrainingSettingsAuditLog {
+  id                       String        @id @default(uuid())
+  clientDeviceId           String?
+  clientDeviceNameSnapshot String
+  action                   String        @db.VarChar(80)
+  targetType               String        @db.VarChar(80)
+  targetId                 String        @db.VarChar(120)
+  createdAt                DateTime      @default(now())
+  clientDevice             ClientDevice? @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+
+  @@index([clientDeviceId, createdAt], map: "TorqueTrainingSettingsAuditLog_idx_device_time")
+  @@index([targetType, targetId, createdAt], map: "TorqueTrainingSettingsAuditLog_idx_target_time")
 }
 
 /// torque-agent入力の受信記録。source event冪等性も同じ表で保証する。

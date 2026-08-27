@@ -25,7 +25,7 @@ export function TorqueTrainingAdminDialog({
     <Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title="訓練設定（ADMIN）"
+      title="訓練設定"
       titleClassName="sr-only"
       closeOnEsc
       closeOnBackdrop={false}
@@ -36,7 +36,7 @@ export function TorqueTrainingAdminDialog({
     >
       <header className="flex shrink-0 items-center gap-3 border-b border-white/15 px-4 py-3">
         <div className="min-w-0">
-          <h2 className="truncate text-lg font-semibold text-white">訓練設定（ADMIN）</h2>
+          <h2 className="truncate text-lg font-semibold text-white">訓練設定</h2>
           <p className="text-xs text-white/60">訓練メニューと完了実績を管理します。</p>
         </div>
         <Button
