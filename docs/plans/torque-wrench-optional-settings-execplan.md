@@ -37,6 +37,9 @@
 - [x] (2026-08-27 11:55Z 確認) 最終SQL確認後、EXIT trapで専用Postgres container・volume・networkを削除。対象ラベルの残存は各0件。Viteは画面検証終了後に清掃する。
 - [x] (2026-08-27 12:03Z) commit・push・PR・merge・実機deploy・現在型番の切替を利用者が追加承認。Luna MaxへGit確認、標準deploy／切替経路、既設agent互換性を分担。
 - [x] (2026-08-27 12:10Z) 既設agentのpayload互換性を確認。型番方式の書込入力だけをenum／省略へ限定し、旧DB nullの解釈は保持。追加schema単体10件（414ms）と対象eslint成功。
+- [x] (2026-08-27 12:27Z 確認) 実装をcommit・pushしPR #1300を作成（初回SHA `d0d3360d362613d4a4c0c872730ccf05ce4ffcba`）。API全体、Web、DB、コンテナ、E2E、CodeQL、gitleaksは成功。SOPだけassembly生成物のsourceSha256が古く失敗したため、標準Docker生成で関連5ファイルを更新した。
+- [ ] SOP更新後のPR CIを確認する。ローカル再検査はcapture-contract10件成功後、候補画面取得の30秒timeoutで停止したため、全体成功とは扱わない。検査条件やtimeoutは変更せず、生成物の個別検査と更新SHAのCIで確認する。
+- [x] SOP2種のartifact tree、再計算source hash、preview／manualのbyte一致を個別確認。timeoutは既存inspection画面へのnetworkidle待機で発生。正規生成の5ファイルを採用し、該当Docker container2件の削除を確認した。
 - [ ] PRを作成し、対象SHAのrequired CIを確認してmerge、lifecycle finish／auditを完了する。
 - [ ] merged mainのCI／artifact成功後、明示limitの標準planを確認し、nullable対応版を従来方式のまま実機へ反映する。
 - [ ] 標準runの終端状態・recap・healthとnullable対応済み復旧先を確認し、現在レンチの実在する型番だけ照合不要へ変更する。
