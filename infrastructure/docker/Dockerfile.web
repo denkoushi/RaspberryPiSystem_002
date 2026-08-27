@@ -124,6 +124,15 @@ WORKDIR /srv
 # envsubst を導入し、CI の Trivy が検出した Alpine の修正版パッケージへ追従する
 RUN apk add --no-cache ca-certificates gettext \
   && apk upgrade --no-cache musl musl-utils openssl libcrypto3 libssl3 zlib libxml2 \
+  && for package in libcrypto3 libssl3; do \
+    installed_package="$(apk info -e -v "$package")" \
+      || { echo "$package is not installed" >&2; exit 1; }; \
+    installed_version="${installed_package#"$package"-}"; \
+    case "$(apk version -t "$installed_version" '3.5.8-r0')" in \
+      '='|'>') ;; \
+      *) echo "$package remains below the CVE-2026-14456 fixed version: $installed_version" >&2; exit 1 ;; \
+    esac; \
+  done \
   && addgroup -g 1000 -S caddy \
   && adduser -u 1000 -S -D -H -G caddy caddy \
   && mkdir -p /srv/phase2-maintenance /data /config /var/log/caddy \
