@@ -4,6 +4,7 @@ import {
   ASSEMBLY_PROCEDURE_GMAIL_SUBJECT,
   assertCsvGmailSubjectPatternAllowed,
   canCsvSubjectPatternMatchReservedSubject,
+  isWorkInstructionGmailSubject,
 } from '../gmail-subject-reservation.policy.js';
 
 describe('gmail-subject-reservation.policy', () => {
@@ -36,5 +37,23 @@ describe('gmail-subject-reservation.policy', () => {
   ])('allows the currently deployed CSV subject: %s', (pattern) => {
     expect(canCsvSubjectPatternMatchReservedSubject(pattern)).toBe(false);
     expect(() => assertCsvGmailSubjectPatternAllowed(pattern)).not.toThrow();
+  });
+
+  it.each([
+    '[WORK-INSTRUCTION]',
+    '[WORK-INSTRUCTION] 640 snapshot',
+    '[WORK-INSTRUCTION-TEST] 640 snapshot',
+    '  [WORK-INSTRUCTION-TEST]\t640 snapshot',
+  ])('claims a complete leading work-instruction token: %s', (subject) => {
+    expect(isWorkInstructionGmailSubject(subject)).toBe(true);
+  });
+
+  it.each([
+    '[WORK-INSTRUCTION-TESTING] 640 snapshot',
+    '[WORK-INSTRUCTION]-TEST 640 snapshot',
+    'Re: [WORK-INSTRUCTION] 640 snapshot',
+    'prefix [WORK-INSTRUCTION] 640 snapshot',
+  ])('does not claim a colliding or non-leading subject: %s', (subject) => {
+    expect(isWorkInstructionGmailSubject(subject)).toBe(false);
   });
 });

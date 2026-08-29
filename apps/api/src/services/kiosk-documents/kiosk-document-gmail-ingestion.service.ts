@@ -1,12 +1,14 @@
 import { logger } from '../../lib/logger.js';
 import { ApiError } from '../../lib/errors.js';
 import type { BackupConfig } from '../backup/backup-config.js';
+import type { GmailMessage } from '../backup/gmail-api-client.js';
 import { KioskDocumentService } from './kiosk-document.service.js';
 import { PrismaKioskDocumentRepository } from './adapters/prisma-kiosk-document.repository.js';
 import { PdfStorageFileStoreAdapter } from './adapters/pdf-storage-file-store.adapter.js';
 import { PdfStorageRenderAdapter } from './adapters/pdf-storage-render.adapter.js';
 import { PlaywrightHtmlToPdfAdapter } from './adapters/playwright-html-to-pdf.adapter.js';
 import { resolveGmailApiClientFromBackupConfig } from '../gmail/gmail-api-client.factory.js';
+import { isWorkInstructionGmailSubject } from '../gmail/gmail-subject-reservation.policy.js';
 
 /** @internal 単体テスト用に公開 */
 export function buildKioskDocumentGmailSearchQuery(subjectPattern: string, fromEmail?: string): string {
@@ -39,6 +41,53 @@ export type KioskDocumentGmailIngestSummary = {
 };
 
 const MAX_MESSAGES_PER_RUN = 25;
+
+/**
+ * Keep the existing limited search fast path while preventing dedicated
+ * work-instruction messages from consuming the kiosk batch. A full search is
+ * performed only when an owned message was found before the batch was filled.
+ */
+/** @internal Exposed for the mailbox-isolation regression test. */
+export async function findEligibleKioskMessages(
+  gmailClient: Pick<
+    import('../backup/gmail-api-client.js').GmailApiClient,
+    'getMessage' | 'searchMessagesAll'
+  >,
+  query: string,
+  initialIds: ReadonlyArray<string>
+): Promise<{ ids: string[]; messages: Map<string, GmailMessage>; scanned: number }> {
+  const ids: string[] = [];
+  const messages = new Map<string, GmailMessage>();
+  const seen = new Set<string>();
+  let ownedSeen = false;
+  let scanned = 0;
+
+  const scan = async (candidateIds: ReadonlyArray<string>): Promise<void> => {
+    for (const messageId of candidateIds) {
+      if (seen.has(messageId) || ids.length >= MAX_MESSAGES_PER_RUN) continue;
+      seen.add(messageId);
+      const message = await gmailClient.getMessage(messageId);
+      scanned += 1;
+      const subject = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject')?.value ?? '';
+      if (isWorkInstructionGmailSubject(subject)) {
+        ownedSeen = true;
+        logger?.info(
+          { messageId, messageSubject: subject },
+          '[KioskDocumentGmailIngestion] Work-instruction message is owned by dedicated importer, skipping'
+        );
+        continue;
+      }
+      messages.set(messageId, message);
+      ids.push(messageId);
+    }
+  };
+
+  await scan(initialIds);
+  if (ids.length < MAX_MESSAGES_PER_RUN && ownedSeen) {
+    await scan(await gmailClient.searchMessagesAll(query));
+  }
+  return { ids, messages, scanned };
+}
 
 /**
  * Gmailから要領書PDFを取り込む（バックアップ設定の kioskDocumentGmailIngest エントリ単位）
@@ -93,10 +142,27 @@ export class KioskDocumentGmailIngestionService {
       return summary;
     }
 
-    summary.messagesScanned = messageIds.length;
+    let eligibleMessages: Map<string, GmailMessage>;
+    try {
+      const selected = await findEligibleKioskMessages(gmailClient, query, messageIds);
+      messageIds = selected.ids;
+      eligibleMessages = selected.messages;
+      summary.messagesScanned = selected.scanned;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      summary.errors.push(`message selection failed: ${msg}`);
+      logger?.error({ err: e, scheduleId: schedule.id, query }, '[KioskDocumentGmailIngestion] message selection failed');
+      return summary;
+    }
 
     for (const messageId of messageIds) {
       try {
+        // A broad kiosk subject pattern must not consume the dedicated
+        // work-instruction mailbox owner. Skip before attachment parsing and
+        // before mark/read/archive operations.
+        const message = eligibleMessages.get(messageId);
+        if (!message) continue;
+
         let gmailInternalDateMs = Date.now();
         try {
           gmailInternalDateMs = await gmailClient.getMessageInternalDateMs(messageId);

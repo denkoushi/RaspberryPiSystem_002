@@ -102,6 +102,7 @@
     - "{{ repo_path }}/storage"
     - "{{ repo_path }}/storage/part-measurement-drawings-derivatives"
     - "{{ repo_path }}/storage/assembly-procedure-assets"
+    - "{{ repo_path }}/storage/work-instruction-assets"
     - "{{ repo_path }}/alerts"
     - "{{ repo_path }}/power-actions"
     - "{{ repo_path }}/config"

@@ -131,7 +131,7 @@ class FileStorageContractTest(unittest.TestCase):
             {entry["logical_key"] for entry in STORAGE_CONTRACT},
             {key for key in SERVER_MODEL["volumes"] if key in expected_keys},
         )
-        self.assertEqual(len(STORAGE_CONTRACT), 13)
+        self.assertEqual(len(STORAGE_CONTRACT), 14)
         for entry in STORAGE_CONTRACT:
             key = entry["logical_key"]
             server_volume = SERVER_MODEL["volumes"][key]
@@ -169,6 +169,28 @@ class FileStorageContractTest(unittest.TestCase):
             "/app/storage/.integrity",
         ):
             self.assertIn(source, BACKUP_SCRIPT)
+
+    def test_work_instruction_originals_are_durable_and_recoverable(self):
+        suffix = "work-instruction-assets"
+        runtime_path = f"/app/storage/{suffix}"
+        for compose in (SERVER_COMPOSE, PHASE3_COMPOSE):
+            self.assertIn(f"{suffix}-storage:{runtime_path}", compose)
+        self.assertIn(f"../../.docker/local/storage/{suffix}:{runtime_path}", MAC_OVERRIDE)
+        self.assertIn(runtime_path, BACKUP_SCRIPT)
+        for relative_path in (
+            "infrastructure/docker/Dockerfile.api",
+            "scripts/ci/rehearse-release-runtime.sh",
+            "apps/api/src/services/backup/backup-recommended-targets.catalog.ts",
+            "apps/api/src/services/backup/backup-target-templates.ts",
+        ):
+            self.assertIn(runtime_path, (ROOT / relative_path).read_text())
+        for relative_path in (
+            "scripts/server/backup-encrypted.sh",
+            "scripts/google_drive_dr/source_policy.py",
+            "apps/api/src/services/file-storage/file-storage-config.ts",
+            "infrastructure/ansible/roles/server/tasks/main.yml",
+        ):
+            self.assertIn(suffix, (ROOT / relative_path).read_text())
 
     def test_ansible_environment_uses_one_canonical_root_and_consistent_aliases(self):
         for value in (

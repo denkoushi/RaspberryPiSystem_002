@@ -26,7 +26,10 @@ type GmailStorageFactoryResult = {
 /**
  * backup.json の Gmail 設定から GmailApiClient を解決する（トークン更新を永続化）
  */
-export async function resolveGmailApiClientFromBackupConfig(config: BackupConfig): Promise<
+export async function resolveGmailApiClientFromBackupConfig(
+  config: BackupConfig,
+  options?: { allowWait?: boolean }
+): Promise<
   ReturnType<GmailStorageProvider['getGmailApiClient']>
 > {
   const created = (await StorageProviderFactory.createFromConfig(
@@ -34,7 +37,13 @@ export async function resolveGmailApiClientFromBackupConfig(config: BackupConfig
     'http',
     'localhost',
     persistGmailAccessToken,
-    { returnProvider: true, allowFallbackToLocal: false, gmailAllowWait: true }
+    {
+      returnProvider: true,
+      allowFallbackToLocal: false,
+      // Existing callers are interactive/manual flows and retain their wait
+      // behavior. Scheduled consumers explicitly opt into defer semantics.
+      gmailAllowWait: options?.allowWait ?? true,
+    }
   )) as unknown as GmailStorageFactoryResult;
   if (!created || typeof created !== 'object' || !('storageProvider' in created)) {
     throw new ApiError(500, 'Gmailストレージの初期化に失敗しました', undefined, 'GMAIL_CLIENT_INIT');

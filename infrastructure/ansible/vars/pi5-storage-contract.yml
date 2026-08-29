@@ -40,6 +40,10 @@ pi5_phase3_storage_contract:
     suffix: assembly-procedure-assets
     runtime_path: /app/storage/assembly-procedure-assets
     mode: '0755'
+  - logical_key: work-instruction-assets-storage
+    suffix: work-instruction-assets
+    runtime_path: /app/storage/work-instruction-assets
+    mode: '0755'
   - logical_key: measuring-instrument-genres-storage
     suffix: measuring-instrument-genres
     runtime_path: /app/storage/measuring-instrument-genres

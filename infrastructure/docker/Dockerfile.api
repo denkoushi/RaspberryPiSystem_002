@@ -121,6 +121,7 @@ RUN mkdir -p /app/storage/photos \
   /app/storage/signage-rendered \
   /app/storage/assembly-procedure-images \
   /app/storage/assembly-procedure-assets \
+  /app/storage/work-instruction-assets \
   /app/storage/measuring-instrument-genres \
   /app/storage/part-measurement-drawings \
   /app/storage/pallet-machine-illustrations \

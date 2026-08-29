@@ -3894,3 +3894,91 @@ model SelfInspectionSessionResetAuditLog {
   @@index([createdAt], map: "SelfInspectionSessionResetAuditLog_idx_created_at")
   @@index([actionType], map: "SelfInspectionSessionResetAuditLog_idx_action_type")
 }
+
+/// SharePoint作業要領の原本行。常に同一source tupleの最新スナップショットだけを保持する。
+model WorkInstructionRow {
+  id             String                 @id @default(uuid())
+  sourceSystem   String                 @db.VarChar(120)
+  sourceList     String                 @db.VarChar(255)
+  sourceItemId   BigInt
+  sourceModified DateTime
+  partNumber     String?                @db.VarChar(200)
+  shootingTarget String?                @db.VarChar(200)
+  rawManifest    Json
+  contentHash    String                 @db.VarChar(64)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  steps          WorkInstructionStep[]
+
+  @@unique([sourceSystem, sourceList, sourceItemId], map: "WorkInstructionRow_unique_source")
+  @@index([partNumber, shootingTarget, sourceItemId, sourceList, sourceSystem], map: "WorkInstructionRow_idx_group")
+  @@index([sourceModified], map: "WorkInstructionRow_idx_modified")
+}
+
+/// SharePoint行の完全スナップショットに含まれる手順。行更新時に全置換する。
+model WorkInstructionStep {
+  id          String                 @id @default(uuid())
+  rowId       String
+  step        BigInt
+  text        String
+  imageName   String?
+  assetId     String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  row         WorkInstructionRow     @relation(fields: [rowId], references: [id], onDelete: Cascade)
+  asset       WorkInstructionAsset?  @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@unique([rowId, step], map: "WorkInstructionStep_unique_row_step")
+  @@index([assetId], map: "WorkInstructionStep_idx_asset")
+}
+
+enum WorkInstructionAssetStatus {
+  STAGED
+  ACTIVE
+  DELETE_PENDING
+}
+
+/// Gmail単位の処理結果。行のsource identityとは別の再送・メール掃除台帳。
+enum WorkInstructionImportOutcome {
+  PENDING
+  PROCESSING
+  APPLIED
+  DUPLICATE
+  STALE
+  CONFLICT
+  INVALID
+  RETRYABLE
+}
+
+/// 作業要領画像のimmutableファイルとDB上の公開状態。
+model WorkInstructionAsset {
+  id             String                    @id @default(uuid())
+  storageKey     String                    @unique @db.VarChar(1024)
+  mimeType       String                    @db.VarChar(64)
+  sizeBytes      Int
+  sha256         String                    @db.VarChar(64)
+  status         WorkInstructionAssetStatus @default(STAGED)
+  createdAt      DateTime                  @default(now())
+  activatedAt    DateTime?
+  deletePendingAt DateTime?
+  updatedAt      DateTime                  @updatedAt
+  steps          WorkInstructionStep[]
+
+  @@index([status, createdAt], map: "WorkInstructionAsset_idx_status_created")
+  @@index([status, deletePendingAt], map: "WorkInstructionAsset_idx_status_delete_pending")
+}
+
+/// Gmail message単位の重複排除・再試行・処理済みメール掃除状態。
+model WorkInstructionImportMessage {
+  id                 String                        @id @default(uuid())
+  gmailMessageId     String                        @unique @db.VarChar(255)
+  outcome            WorkInstructionImportOutcome
+  error              String?
+  nextRetryAt        DateTime?
+  mailCleanupPending Boolean                       @default(false)
+  createdAt          DateTime                      @default(now())
+  updatedAt          DateTime                      @updatedAt
+
+  @@index([outcome, nextRetryAt], map: "WorkInstructionImportMessage_idx_retry")
+  @@index([mailCleanupPending, updatedAt], map: "WorkInstructionImportMessage_idx_cleanup")
+}

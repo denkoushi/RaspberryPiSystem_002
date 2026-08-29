@@ -104,6 +104,18 @@ export function getRecommendedBackupTargetCatalog(): RecommendedBackupTargetSpec
       },
     },
     {
+      id: 'server-directory-work-instruction-assets',
+      message: 'SharePoint作業要領の原本画像ストレージ（ホスト永続ボリューム）',
+      target: {
+        kind: 'directory',
+        source: '/app/storage/work-instruction-assets',
+        schedule: DEFAULT_SCHEDULE,
+        enabled: true,
+        storage: DROPBOX,
+        retention: DEFAULT_RETENTION,
+      },
+    },
+    {
       id: 'server-directory-measuring-instrument-genres',
       message: '計測機器ジャンル画像ストレージ（ホスト永続ボリューム）',
       target: {

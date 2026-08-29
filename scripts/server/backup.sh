@@ -267,6 +267,7 @@ if [ "${USE_API}" = true ]; then
     "/app/storage/part-measurement-drawings" \
     "/app/storage/assembly-procedure-images" \
     "/app/storage/assembly-procedure-assets" \
+    "/app/storage/work-instruction-assets" \
     "/app/storage/measuring-instrument-genres" \
     "/app/storage/pallet-machine-illustrations" \
     "/app/storage/pdfs" \

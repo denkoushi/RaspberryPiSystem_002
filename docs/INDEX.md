@@ -8,6 +8,8 @@
 
 ## 🎯 目的別インデックス
 
+- SharePoint作業要領の受信・ラズパイ側統合・参照API: [ExecPlan](./plans/sharepoint-work-instructions-execplan.md)
+
 ### 自主検査一覧・記録確認UI/UX（2026-08-21・実装中）
 
 - **固定ペイン内の情報優先度と、閲覧／操作認証の分離**: 製番・機種名・品名、資源日本語名、分までの最終更新を優先し、記録確認を未完了／完了記録／削除履歴へ整理する。閲覧はclient-key、承認はNFC、設定変更は操作時共有パスワードとする。**正本**: [ExecPlan](./plans/kiosk-self-inspection-record-view-uiux-execplan.md) · [ADR](./decisions/ADR-20260821-self-inspection-record-view-uiux.md) · [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md) · [Runbook](./runbooks/kiosk-part-measurement.md)

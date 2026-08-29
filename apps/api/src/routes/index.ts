@@ -26,6 +26,7 @@ import { registerMobilePlacementRoutes } from './mobile-placement/index.js';
 import { registerLoanReportRoutes } from './reports/loan-report.js';
 import { registerTorqueWrenchRoutes } from './torque-wrenches/index.js';
 import { registerTorqueTrainingRoutes } from './torque-training/index.js';
+import { registerWorkInstructionRoutes } from './work-instructions/index.js';
 
 /**
  * すべてのルートを登録
@@ -78,6 +79,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       registerKioskSettingsRoutes(subApp);
       // 管理コンソール向けレポート
       registerLoanReportRoutes(subApp);
+      // SharePoint作業要領の取り込み・参照
+      registerWorkInstructionRoutes(subApp);
     },
     { prefix: '/api' },
   );

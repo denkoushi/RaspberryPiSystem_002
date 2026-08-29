@@ -53,6 +53,7 @@ services:
       - ../../.docker/local/storage/part-measurement-drawings-derivatives:/app/storage/part-measurement-drawings-derivatives
       - ../../.docker/local/storage/assembly-procedure-images:/app/storage/assembly-procedure-images
       - ../../.docker/local/storage/assembly-procedure-assets:/app/storage/assembly-procedure-assets
+      - ../../.docker/local/storage/work-instruction-assets:/app/storage/work-instruction-assets
       - ../../.docker/local/storage/measuring-instrument-genres:/app/storage/measuring-instrument-genres
       - ../../.docker/local/storage/pallet-machine-illustrations:/app/storage/pallet-machine-illustrations
       - ../../.docker/local/storage/csv-dashboards:/app/storage/csv-dashboards

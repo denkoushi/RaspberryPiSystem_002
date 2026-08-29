@@ -20,7 +20,15 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/opt/venv/bin:$PATH"
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pcscd pcsc-tools libpcsclite1 && rm -rf /var/lib/apt/lists/* \
+    pcscd pcsc-tools libpcsclite1 \
+    && apt-get install -y --only-upgrade --no-install-recommends \
+      libssl3t64 openssl openssl-provider-legacy \
+    && for package in libssl3t64 openssl openssl-provider-legacy; do \
+      version="$(dpkg-query -W -f='${Version}' "$package")"; \
+      dpkg --compare-versions "$version" ge '3.5.7-1~deb13u2' \
+        || { echo "$package remains below the CVE-2026-14456 fixed version: $version" >&2; exit 1; }; \
+    done \
+    && rm -rf /var/lib/apt/lists/* \
     && python -m pip uninstall --yes pip setuptools wheel
 COPY --from=builder /opt/venv /opt/venv
 COPY clients/nfc-agent ./nfc-agent

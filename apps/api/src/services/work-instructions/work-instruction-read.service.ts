@@ -1,0 +1,50 @@
+import type {
+  WorkInstructionAssetView,
+  WorkInstructionGroupView,
+  WorkInstructionGroupSummaryView,
+  WorkInstructionImportMessageView,
+  WorkInstructionRowView,
+} from './domain/types.js';
+import type {
+  WorkInstructionGroupsQuery,
+  WorkInstructionImportMessagesQuery,
+  WorkInstructionRepository,
+  WorkInstructionRowsQuery,
+} from './repositories/work-instruction-repository.port.js';
+import type { WorkInstructionFileStorePort } from './work-instruction-file-store.adapter.js';
+
+export type WorkInstructionAssetResponse = {
+  asset: WorkInstructionAssetView;
+  bytes: Buffer;
+};
+
+/** Read-only application facade shared by HTTP routes and future API clients. */
+export class WorkInstructionReadService {
+  constructor(
+    private readonly repository: WorkInstructionRepository,
+    private readonly files: WorkInstructionFileStorePort
+  ) {}
+
+  readGroup(input: { partNumber: string; shootingTarget: string }): Promise<WorkInstructionGroupView | null> {
+    return this.repository.readGroup(input);
+  }
+
+  readGroups(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>> {
+    return this.repository.readGroups(input);
+  }
+
+  readRows(input: WorkInstructionRowsQuery): Promise<ReadonlyArray<WorkInstructionRowView>> {
+    return this.repository.readRows(input);
+  }
+
+  readMessages(input: WorkInstructionImportMessagesQuery): Promise<ReadonlyArray<WorkInstructionImportMessageView>> {
+    return this.repository.readImportMessages(input);
+  }
+
+  async readAsset(assetId: string): Promise<WorkInstructionAssetResponse | null> {
+    const asset = await this.repository.readAsset(assetId);
+    if (!asset || asset.status !== 'ACTIVE') return null;
+    const bytes = await this.files.read(asset);
+    return { asset, bytes };
+  }
+}

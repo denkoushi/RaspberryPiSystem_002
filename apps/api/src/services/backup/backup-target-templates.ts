@@ -60,6 +60,19 @@ const templates: BackupTargetTemplate[] = [
     }
   },
   {
+    id: 'work-instruction-assets-dir',
+    label: 'SharePoint作業要領の原本画像',
+    description: '/app/storage/work-instruction-assets を日次バックアップ（原本画像）',
+    target: {
+      kind: 'directory',
+      source: '/app/storage/work-instruction-assets',
+      schedule: '0 2 * * *',
+      enabled: true,
+      storage: { provider: 'dropbox' },
+      retention: { days: 14, maxBackups: 4 }
+    }
+  },
+  {
     id: 'assembly-procedure-assets-dir',
     label: '組立手順書assetストレージ',
     description: '/app/storage/assembly-procedure-assets を日次バックアップ（原本・overlay）',

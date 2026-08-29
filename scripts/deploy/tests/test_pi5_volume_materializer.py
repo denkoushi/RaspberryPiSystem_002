@@ -89,6 +89,7 @@ class Pi5VolumeMaterializerTest(unittest.TestCase):
             "part-measurement-drawings-derivatives",
             "assembly-procedure-images",
             "assembly-procedure-assets",
+            "work-instruction-assets",
             "measuring-instrument-genres",
             "pallet-machine-illustrations",
             "csv-dashboards",
@@ -100,7 +101,7 @@ class Pi5VolumeMaterializerTest(unittest.TestCase):
         ):
             phase3, server = rendered_models(root, prefix)
             specs = MODULE.required_volume_specs(phase3, server)
-            self.assertEqual(len(specs), 13)
+            self.assertEqual(len(specs), 14)
             self.assertEqual(
                 {spec.name for spec in specs},
                 {
@@ -128,7 +129,7 @@ class Pi5VolumeMaterializerTest(unittest.TestCase):
                 for mount in api_mounts
                 if mount.split(":", 1)[0] in durable_keys
             }
-            self.assertEqual(len(durable_mounts), 13)
+            self.assertEqual(len(durable_mounts), 14)
             self.assertEqual(
                 {
                     mount.split(":", 1)[1]

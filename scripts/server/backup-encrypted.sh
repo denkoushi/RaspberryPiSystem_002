@@ -138,6 +138,24 @@ if [ -d "${PHOTO_STORAGE_DIR}/assembly-procedure-assets" ]; then
   fi
 fi
 
+# SharePoint作業要領の画像は再生成できない原本として保存する。
+WORK_INSTRUCTION_ASSET_BACKUP_FILE=""
+if [ -d "${PHOTO_STORAGE_DIR}/work-instruction-assets" ]; then
+  WORK_INSTRUCTION_ASSET_BACKUP_FILE="${BACKUP_DIR}/work-instruction-assets_backup_${DATE}.tar.gz"
+  tar -czf "${WORK_INSTRUCTION_ASSET_BACKUP_FILE}" -C "${PHOTO_STORAGE_DIR}" work-instruction-assets 2>/dev/null || {
+    echo "警告: 作業要領画像のバックアップに失敗しました（スキップします）"
+    WORK_INSTRUCTION_ASSET_BACKUP_FILE=""
+  }
+  if [ -n "${WORK_INSTRUCTION_ASSET_BACKUP_FILE}" ] && [ -f "${WORK_INSTRUCTION_ASSET_BACKUP_FILE}" ]; then
+    if [ "${ENCRYPT_ENABLED}" = true ]; then
+      gpg --encrypt --recipient "${GPG_RECIPIENT}" --trust-model always --output "${WORK_INSTRUCTION_ASSET_BACKUP_FILE}.gpg" "${WORK_INSTRUCTION_ASSET_BACKUP_FILE}"
+      rm -f "${WORK_INSTRUCTION_ASSET_BACKUP_FILE}"
+      WORK_INSTRUCTION_ASSET_BACKUP_FILE="${WORK_INSTRUCTION_ASSET_BACKUP_FILE}.gpg"
+    fi
+    echo "作業要領画像バックアップ完了: ${WORK_INSTRUCTION_ASSET_BACKUP_FILE}"
+  fi
+fi
+
 # オフライン保存用のUSBメモリ/外部HDDへのコピー
 if [ -d "${OFFLINE_MOUNT}" ] && mountpoint -q "${OFFLINE_MOUNT}"; then
   echo "オフライン保存先へのコピーを開始..."
@@ -158,6 +176,9 @@ if [ -d "${OFFLINE_MOUNT}" ] && mountpoint -q "${OFFLINE_MOUNT}"; then
   fi
   if [ -n "${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}" ] && [ -f "${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}" ]; then
     cp "${ASSEMBLY_PROCEDURE_ASSET_BACKUP_FILE}" "${OFFLINE_BACKUP_DIR}/"
+  fi
+  if [ -n "${WORK_INSTRUCTION_ASSET_BACKUP_FILE}" ] && [ -f "${WORK_INSTRUCTION_ASSET_BACKUP_FILE}" ]; then
+    cp "${WORK_INSTRUCTION_ASSET_BACKUP_FILE}" "${OFFLINE_BACKUP_DIR}/"
   fi
   
   echo "オフライン保存完了: ${OFFLINE_BACKUP_DIR}"

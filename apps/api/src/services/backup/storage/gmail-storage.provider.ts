@@ -7,7 +7,10 @@ import { GmailOAuthService, GmailReauthRequiredError, isInvalidGrantMessage } fr
 import { OAuth2Client } from 'google-auth-library';
 import { GmailRequestGateService, GmailRateLimitedDeferredError } from '../gmail-request-gate.service.js';
 import { AdaptiveRateController } from '../adaptive-rate-controller.js';
-import { assertCsvGmailSubjectPatternAllowed } from '../../gmail/gmail-subject-reservation.policy.js';
+import {
+  assertCsvGmailSubjectPatternAllowed,
+  isWorkInstructionGmailSubject,
+} from '../../gmail/gmail-subject-reservation.policy.js';
 
 export class NoMatchingMessageError extends Error {
   constructor(query: string) {
@@ -215,6 +218,51 @@ export class GmailStorageProvider implements StorageProvider {
   }
 
   /**
+   * Filter dedicated work-instruction messages without letting them consume
+   * the legacy CSV batch. The normal limited search remains the fast path;
+   * only an owned message in that result triggers a paginated fallback.
+   */
+  private async findEligibleCsvMessages(
+    query: string,
+    initialIds: ReadonlyArray<string>,
+    targetCount: number
+  ): Promise<Array<{
+    messageId: string;
+    subject: string;
+  }>> {
+    const results: Array<{
+      messageId: string;
+      subject: string;
+    }> = [];
+    const seen = new Set<string>();
+    let ownedSeen = false;
+
+    const scan = async (messageIds: ReadonlyArray<string>): Promise<void> => {
+      for (const messageId of messageIds) {
+        if (seen.has(messageId) || results.length >= targetCount) continue;
+        seen.add(messageId);
+        const message = await this.gmailClient.getMessage(messageId);
+        const subject = message?.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject')?.value ?? '';
+        if (isWorkInstructionGmailSubject(subject)) {
+          ownedSeen = true;
+          logger?.info(
+            { messageId, messageSubject: subject },
+            '[GmailStorageProvider] Work-instruction message is owned by dedicated importer, skipping CSV path'
+          );
+          continue;
+        }
+        results.push({ messageId, subject: subject || 'No Subject' });
+      }
+    };
+
+    await scan(initialIds);
+    if (results.length < targetCount && ownedSeen) {
+      await scan(await this.gmailClient.searchMessagesAll(query));
+    }
+    return results;
+  }
+
+  /**
    * ファイル名にタイムスタンププレフィックスを追加
    * @param filename 元のファイル名
    * @returns タイムスタンプ付きファイル名
@@ -254,35 +302,35 @@ export class GmailStorageProvider implements StorageProvider {
         throw new NoMatchingMessageError(query);
       }
 
-      // 最初のメールから添付ファイルを取得
-      const firstMessageId = messageIds[0];
+      const [firstMessage] = await this.findEligibleCsvMessages(query, messageIds, 1);
+      if (!firstMessage) throw new NoMatchingMessageError(query);
       logger?.info(
-        { messageId: firstMessageId, query },
+        { messageId: firstMessage.messageId, query },
         '[GmailStorageProvider] Found message, getting attachment'
       );
 
-      const attachment = await this.gmailClient.getFirstAttachment(firstMessageId);
+      const attachment = await this.gmailClient.getFirstAttachment(firstMessage.messageId);
 
       if (!attachment) {
-        throw new Error(`No attachment found in message: ${firstMessageId}`);
+        throw new Error(`No attachment found in message: ${firstMessage.messageId}`);
       }
 
       logger?.info(
-        { messageId: firstMessageId, filename: attachment.filename, size: attachment.buffer.length },
+        { messageId: firstMessage.messageId, filename: attachment.filename, size: attachment.buffer.length },
         '[GmailStorageProvider] Attachment downloaded successfully'
       );
 
       // メールをアーカイブ（処理済みとしてマーク）
       try {
-        await this.gmailClient.archiveMessage(firstMessageId);
+        await this.gmailClient.archiveMessage(firstMessage.messageId);
         logger?.info(
-          { messageId: firstMessageId },
+          { messageId: firstMessage.messageId },
           '[GmailStorageProvider] Message archived'
         );
       } catch (archiveError) {
         // アーカイブ失敗はログに記録するが、ダウンロード成功は維持
         logger?.warn(
-          { err: archiveError, messageId: firstMessageId },
+          { err: archiveError, messageId: firstMessage.messageId },
           '[GmailStorageProvider] Failed to archive message'
         );
       }
@@ -383,27 +431,24 @@ export class GmailStorageProvider implements StorageProvider {
         throw new NoMatchingMessageError(query);
       }
 
-      // 最初のメールから添付ファイルとメタデータを取得
-      const firstMessageId = messageIds[0];
+      const [firstMessage] = await this.findEligibleCsvMessages(query, messageIds, 1);
+      if (!firstMessage) throw new NoMatchingMessageError(query);
       logger?.info(
-        { messageId: firstMessageId, query },
+        { messageId: firstMessage.messageId, query },
         '[GmailStorageProvider] Found message, getting attachment and metadata'
       );
 
-      // メッセージ情報を取得（件名を取得するため）
-      const message = await this.gmailClient.getMessage(firstMessageId);
-      const subjectHeader = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject');
-      const messageSubject = subjectHeader?.value || 'No Subject';
+      const messageSubject = firstMessage.subject;
 
-      const attachment = await this.gmailClient.getFirstAttachment(firstMessageId);
+      const attachment = await this.gmailClient.getFirstAttachment(firstMessage.messageId);
 
       if (!attachment) {
-        throw new Error(`No attachment found in message: ${firstMessageId}`);
+        throw new Error(`No attachment found in message: ${firstMessage.messageId}`);
       }
 
       logger?.info(
         {
-          messageId: firstMessageId,
+          messageId: firstMessage.messageId,
           messageSubject,
           filename: attachment.filename,
           size: attachment.buffer.length,
@@ -413,22 +458,22 @@ export class GmailStorageProvider implements StorageProvider {
 
       // メールをアーカイブ（処理済みとしてマーク）
       try {
-        await this.gmailClient.archiveMessage(firstMessageId);
+        await this.gmailClient.archiveMessage(firstMessage.messageId);
         logger?.info(
-          { messageId: firstMessageId },
+          { messageId: firstMessage.messageId },
           '[GmailStorageProvider] Message archived'
         );
       } catch (archiveError) {
         // アーカイブ失敗はログに記録するが、ダウンロード成功は維持
         logger?.warn(
-          { err: archiveError, messageId: firstMessageId },
+          { err: archiveError, messageId: firstMessage.messageId },
           '[GmailStorageProvider] Failed to archive message'
         );
       }
 
       return {
         buffer: attachment.buffer,
-        messageId: firstMessageId,
+        messageId: firstMessage.messageId,
         messageSubject,
       };
     });
@@ -467,19 +512,20 @@ export class GmailStorageProvider implements StorageProvider {
       }
 
       const results: Array<{ buffer: Buffer; messageId: string; messageSubject: string }> = [];
+      const eligibleMessages = await this.findEligibleCsvMessages(
+        query,
+        messageIds,
+        effectiveBatchSize
+      );
 
       // バッチ処理でリクエスト間に遅延を追加
-      for (let i = 0; i < messageIds.length; i++) {
-        const messageId = messageIds[i];
+      for (let i = 0; i < eligibleMessages.length; i++) {
+        const { messageId, subject: messageSubject } = eligibleMessages[i]!;
 
         // リクエスト間に遅延を追加（最初のリクエスト以外）
         if (i > 0 && effectiveDelayMs > 0) {
           await this.sleep(effectiveDelayMs);
         }
-
-        const message = await this.gmailClient.getMessage(messageId);
-        const subjectHeader = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject');
-        const messageSubject = subjectHeader?.value || 'No Subject';
 
         const attachment = await this.gmailClient.getFirstAttachment(messageId);
         if (!attachment) {
@@ -496,7 +542,7 @@ export class GmailStorageProvider implements StorageProvider {
             messageSubject,
             filename: attachment.filename,
             size: attachment.buffer.length,
-            progress: `${i + 1}/${messageIds.length}`,
+            progress: `${i + 1}/${eligibleMessages.length}`,
           },
           '[GmailStorageProvider] Attachment downloaded successfully (all with metadata)'
         );
@@ -540,14 +586,16 @@ export class GmailStorageProvider implements StorageProvider {
         throw new NoMatchingMessageError(query);
       }
 
-      for (let i = 0; i < messageIds.length; i++) {
-        const messageId = messageIds[i];
+      const eligibleMessages = await this.findEligibleCsvMessages(
+        query,
+        messageIds,
+        effectiveBatchSize
+      );
+      for (let i = 0; i < eligibleMessages.length; i++) {
+        const { messageId, subject: messageSubject } = eligibleMessages[i]!;
         if (i > 0 && effectiveDelayMs > 0) {
           await this.sleep(effectiveDelayMs);
         }
-        const message = await this.gmailClient.getMessage(messageId);
-        const subjectHeader = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject');
-        const messageSubject = subjectHeader?.value || 'No Subject';
         const normalizedSubject = messageSubject.toLowerCase();
         const matchedPattern = uniquePatterns.find((pattern) =>
           normalizedSubject.includes(pattern.toLowerCase())
