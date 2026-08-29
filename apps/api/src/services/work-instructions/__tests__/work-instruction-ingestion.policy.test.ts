@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   allocateWorkInstructionBatch,
   buildWorkInstructionGmailSearchQuery,
+  escapeGmailQuotedSearchValue,
 } from '../work-instruction-ingestion.policy.js';
 
 describe('work-instruction ingestion allocation policy', () => {
@@ -30,6 +31,12 @@ describe('work-instruction ingestion allocation policy', () => {
 });
 
 describe('buildWorkInstructionGmailSearchQuery', () => {
+  it('escapes backslashes before quotes in quoted Gmail search values', () => {
+    expect(escapeGmailQuotedSearchValue(String.raw`prefix\"suffix`)).toBe(
+      String.raw`prefix\\\"suffix`,
+    );
+  });
+
   it('limits fresh intake to unread inbox messages and both accepted tokens', () => {
     expect(buildWorkInstructionGmailSearchQuery({
       subjectTokens: ['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]'],

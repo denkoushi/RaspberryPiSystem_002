@@ -10,6 +10,10 @@ export const WORK_INSTRUCTION_RETRY_DELAY_MS = 5 * 60 * 1000;
 
 export type WorkInstructionGmailIngestConfig = NonNullable<BackupConfig['workInstructionGmailIngest']>;
 
+export function escapeGmailQuotedSearchValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 /**
  * Reserve ten new and ten due-retry slots, then reuse unused slots from the
  * other queue. IDs are de-duplicated before allocation.
@@ -50,7 +54,7 @@ export function buildWorkInstructionGmailSearchQuery(
   const tokens = config.subjectTokens.filter((token) => allowedTokens.has(token));
   const effectiveTokens = tokens.length > 0 ? tokens : [...WORK_INSTRUCTION_GMAIL_SUBJECT_TOKENS];
   const subjectQuery = effectiveTokens
-    .map((token) => `subject:"${token.replace(/"/g, '\\"')}"`)
+    .map((token) => `subject:"${escapeGmailQuotedSearchValue(token)}"`)
     .join(' OR ');
   const clauses = [`(${subjectQuery})`];
   if (config.fromEmail?.trim()) clauses.push(`from:${config.fromEmail.trim()}`);
