@@ -57,7 +57,11 @@ CREATE TABLE "WorkInstructionStep" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "WorkInstructionStep_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "WorkInstructionStep_step_check" CHECK ("step" > 0)
+    CONSTRAINT "WorkInstructionStep_step_check" CHECK ("step" > 0),
+    CONSTRAINT "WorkInstructionStep_rowId_fkey"
+      FOREIGN KEY ("rowId") REFERENCES "WorkInstructionRow"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "WorkInstructionStep_assetId_fkey"
+      FOREIGN KEY ("assetId") REFERENCES "WorkInstructionAsset"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 CREATE TABLE "WorkInstructionImportMessage" (
@@ -98,11 +102,3 @@ CREATE INDEX "WorkInstructionImportMessage_idx_retry"
   ON "WorkInstructionImportMessage"("outcome", "nextRetryAt");
 CREATE INDEX "WorkInstructionImportMessage_idx_cleanup"
   ON "WorkInstructionImportMessage"("mailCleanupPending", "updatedAt");
-
-ALTER TABLE "WorkInstructionStep"
-  ADD CONSTRAINT "WorkInstructionStep_rowId_fkey"
-  FOREIGN KEY ("rowId") REFERENCES "WorkInstructionRow"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
-ALTER TABLE "WorkInstructionStep"
-  ADD CONSTRAINT "WorkInstructionStep_assetId_fkey"
-  FOREIGN KEY ("assetId") REFERENCES "WorkInstructionAsset"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
