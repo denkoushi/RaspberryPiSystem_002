@@ -27,6 +27,7 @@ describe('GmailStorageProvider', () => {
     mockGmailApiClient = {
       searchMessages: vi.fn(),
       searchMessagesLimited: vi.fn(),
+      searchMessagesAll: vi.fn(),
       getMessage: vi.fn(),
       getFirstAttachment: vi.fn(),
       archiveMessage: vi.fn()
@@ -46,6 +47,43 @@ describe('GmailStorageProvider', () => {
   });
 
   describe('download', () => {
+    it('continues beyond reserved work-instruction messages before downloading CSV', async () => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        subjectPattern: 'CSV Import',
+        oauthService: mockOAuthService,
+        onTokenUpdate,
+      });
+      const ownedIds = Array.from({ length: 10 }, (_, index) => `owned-${index}`);
+      const validId = 'csv-valid';
+      mockGmailApiClient.searchMessages.mockResolvedValueOnce(ownedIds);
+      mockGmailApiClient.searchMessagesAll.mockResolvedValueOnce([...ownedIds, validId]);
+      mockGmailApiClient.getMessage.mockImplementation((messageId: string) => Promise.resolve({
+        id: messageId,
+        threadId: messageId,
+        labelIds: ['UNREAD'],
+        snippet: '',
+        payload: {
+          headers: [{
+            name: 'Subject',
+            value: messageId === validId ? 'CSV Import' : '[WORK-INSTRUCTION] current row',
+          }],
+          parts: [],
+        },
+      }));
+      mockGmailApiClient.getFirstAttachment.mockResolvedValueOnce({
+        buffer: Buffer.from('csv'),
+        filename: 'work.csv',
+      });
+      mockGmailApiClient.archiveMessage.mockResolvedValueOnce(undefined);
+
+      await expect(provider.download('CSV Import')).resolves.toEqual(Buffer.from('csv'));
+      expect(mockGmailApiClient.searchMessagesAll).toHaveBeenCalledTimes(1);
+      expect(mockGmailApiClient.getFirstAttachment).toHaveBeenCalledWith(validId);
+      expect(mockGmailApiClient.archiveMessage).toHaveBeenCalledWith(validId);
+    });
+
     it('rejects a reserved CSV subject before searching Gmail', async () => {
       const provider = new GmailStorageProvider({
         oauth2Client,

@@ -202,6 +202,7 @@ required = {
     '/app/storage/part-measurement-drawings-derivatives',
     '/app/storage/assembly-procedure-images',
     '/app/storage/assembly-procedure-assets',
+    '/app/storage/work-instruction-assets',
     '/app/storage/measuring-instrument-genres',
     '/app/storage/pallet-machine-illustrations',
     '/app/storage/csv-dashboards',

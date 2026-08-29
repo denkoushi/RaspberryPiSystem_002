@@ -7,6 +7,7 @@ export const DURABLE_FILE_NAMESPACES = [
   'part-measurement-drawings',
   'assembly-procedure-images',
   'assembly-procedure-assets',
+  'work-instruction-assets',
   'measuring-instrument-genres',
   'pallet-machine-illustrations',
   'csv-dashboards',

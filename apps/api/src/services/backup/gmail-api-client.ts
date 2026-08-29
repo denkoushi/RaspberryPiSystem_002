@@ -14,6 +14,8 @@ export interface GmailMessagePart {
   body?: {
     attachmentId?: string;
     size?: number;
+    /** Gmail may inline small MIME bodies instead of returning attachmentId. */
+    data?: string;
   };
   parts?: GmailMessagePart[];
 }
@@ -37,6 +39,21 @@ export interface GmailAttachmentDescriptor {
 
 function findPartHeader(part: GmailMessagePart, name: string): string | undefined {
   return part.headers?.find((header) => header.name.toLowerCase() === name.toLowerCase())?.value;
+}
+
+function wrapGmailOperationError(prefix: string, error: unknown): Error {
+  const wrapped = new Error(`${prefix}: ${error instanceof Error ? error.message : String(error)}`, {
+    cause: error,
+  });
+  const source = error as { status?: unknown; code?: unknown } | null;
+  if (source && typeof source === 'object') {
+    if (source.status !== undefined) (wrapped as Error & { status?: unknown }).status = source.status;
+    if (source.code !== undefined) (wrapped as Error & { code?: unknown }).code = source.code;
+    const response = (source as { response?: { status?: unknown; statusCode?: unknown } }).response;
+    if (response?.status !== undefined) (wrapped as Error & { status?: unknown }).status = response.status;
+    if (response?.statusCode !== undefined) (wrapped as Error & { code?: unknown }).code = response.statusCode;
+  }
+  return wrapped;
 }
 
 /**
@@ -452,7 +469,7 @@ export class GmailApiClient {
         { err: error, messageId },
         '[GmailApiClient] Failed to mark message as read'
       );
-      throw new Error(`Failed to mark message as read: ${error instanceof Error ? error.message : String(error)}`);
+      throw wrapGmailOperationError('Failed to mark message as read', error);
     }
   }
 
@@ -492,7 +509,7 @@ export class GmailApiClient {
         { err: error, messageId },
         '[GmailApiClient] Failed to trash message'
       );
-      throw new Error(`Failed to trash message: ${error instanceof Error ? error.message : String(error)}`);
+      throw wrapGmailOperationError('Failed to trash message', error);
     }
   }
 

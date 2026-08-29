@@ -180,6 +180,20 @@ export const BackupConfigSchema = z.object({
     )
     .optional()
     .default([]),
+  /** SharePoint作業要領のGmail受信（専用件名トークン、5分固定ポーリング） */
+  workInstructionGmailIngest: z
+    .object({
+      enabled: z.boolean().default(false),
+      subjectTokens: z
+        .array(z.enum(['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]']))
+        .default(['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]']),
+      fromEmail: z.string().optional(),
+    })
+    .optional()
+    .default({
+      enabled: false,
+      subjectTokens: ['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]'],
+    }),
 });
 
 export type BackupConfig = z.infer<typeof BackupConfigSchema>;
@@ -358,5 +372,9 @@ export const defaultBackupConfig: BackupConfig = {
     enabled: false,
     verifyIntegrity: true
   },
-  kioskDocumentGmailIngest: []
+  kioskDocumentGmailIngest: [],
+  workInstructionGmailIngest: {
+    enabled: false,
+    subjectTokens: ['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]'],
+  }
 };

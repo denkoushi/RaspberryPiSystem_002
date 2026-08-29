@@ -18,6 +18,20 @@ from google_drive_dr.source_policy import (
 
 
 class SourcePolicyTests(unittest.TestCase):
+    def test_work_instruction_originals_are_selected_without_derived_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "config").mkdir()
+            (root / "config/backup.json").write_text("{}\n")
+            asset_root = root / "storage/work-instruction-assets"
+            asset_root.mkdir(parents=True)
+            (asset_root / "original.jpeg").write_bytes(b"original")
+            policy = default_policy(root, root / "credentials")
+            selection = resolve(policy)
+            self.assertIn("work-instruction-assets", selection.categories)
+            self.assertIn(asset_root, selection.paths)
+            self.assertFalse(is_excluded(asset_root, policy=policy))
+
     def test_required_config_and_optional_volumes_are_separated(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

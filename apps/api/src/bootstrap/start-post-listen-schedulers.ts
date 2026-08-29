@@ -5,6 +5,7 @@ import { getBackupScheduler } from '../services/backup/backup-scheduler.js';
 import { getCsvImportScheduler } from '../services/imports/csv-import-scheduler.js';
 import { getKioskDocumentGmailScheduler } from '../services/kiosk-documents/kiosk-document-gmail.scheduler.js';
 import { getKioskDocumentOcrScheduler } from '../services/kiosk-documents/kiosk-document-ocr.scheduler.js';
+import { getWorkInstructionGmailScheduler } from '../services/work-instructions/work-instruction-gmail.scheduler.js';
 import { getGmailTrashCleanupScheduler } from '../services/gmail/gmail-trash-cleanup.scheduler.js';
 import { getDueManagementTuningOrchestrator } from '../services/production-schedule/auto-tuning/tuning-orchestrator.service.js';
 import { getAlertsDispatcher } from '../services/alerts/alerts-dispatcher.js';
@@ -171,6 +172,16 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       },
     },
     {
+      name: 'work-instruction-gmail',
+      start: async () => {
+        await getWorkInstructionGmailScheduler().start();
+        logger.info('Work-instruction Gmail scheduler started');
+      },
+      stop: () => {
+        getWorkInstructionGmailScheduler().stop();
+      },
+    },
+    {
       name: 'gmail-trash-cleanup',
       start: async () => {
         await getGmailTrashCleanupScheduler().start();
@@ -246,6 +257,7 @@ export function listPostListenSchedulerNames(): string[] {
     'csv-import',
     'kiosk-document-gmail',
     'kiosk-document-ocr',
+    'work-instruction-gmail',
     'gmail-trash-cleanup',
     'due-management-tuning',
     'alerts-dispatcher',
