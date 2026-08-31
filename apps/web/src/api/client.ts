@@ -22,6 +22,7 @@ export * from './domains/clients';
 export * from './domains/system';
 export * from './domains/signage';
 export * from './domains/kiosk-documents';
+export * from './domains/work-instructions';
 export * from './domains/csv-visualization';
 export * from './domains/assembly';
 export * from './domains/torque-wrenches';

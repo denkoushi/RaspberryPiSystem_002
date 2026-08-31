@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>自主検査 — 作業要領書閲覧プレビュー</title>
+  <style>
+    :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif; background:#0f172a; color:#fff; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:1180px; min-height:100vh; background:#1e293b; }
+    button { font:inherit; }
+    .preview-controls { position:fixed; z-index:50; left:14px; bottom:14px; display:flex; gap:8px; padding:8px; border:1px solid rgba(255,255,255,.18); border-radius:10px; background:rgba(2,6,23,.94); box-shadow:0 12px 35px rgba(0,0,0,.45); }
+    .preview-controls button { min-height:40px; border:1px solid rgba(255,255,255,.2); border-radius:7px; background:#172033; color:#fff; padding:0 12px; font-weight:750; cursor:pointer; }
+    .preview-controls button[aria-pressed="true"] { border-color:#34d399; background:#047857; }
+    .screen { min-height:100vh; display:flex; flex-direction:column; gap:8px; padding:8px; background:#1e293b; }
+    .toolbar { height:60px; flex:none; display:flex; flex-wrap:nowrap; align-items:center; gap:8px; padding:0 8px; overflow:hidden; border:1px solid rgba(255,255,255,.15); border-radius:8px; background:rgba(15,23,42,.78); }
+    .page-title { flex:none; margin:0; font-size:20px; font-weight:800; white-space:nowrap; }
+    .control { min-height:44px; flex:none; display:inline-flex; align-items:center; justify-content:center; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:rgba(255,255,255,.05); color:#fff; padding:0 13px; font-weight:700; white-space:nowrap; }
+    .control.active { border-color:#34d399; background:#10b981; }
+    .field { min-height:44px; flex:none; display:flex; align-items:center; border:1px solid rgba(255,255,255,.2); border-radius:6px; background:rgba(2,6,23,.62); color:rgba(255,255,255,.45); padding:0 11px; white-space:nowrap; }
+    .field.product { width:190px; }
+    .field.resource { width:84px; }
+    .clear { background:transparent; border-color:transparent; }
+    .flex-status { min-width:40px; flex:1; overflow:hidden; color:rgba(255,255,255,.55); font-size:12px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+    .chip-strip { min-width:0; flex:1; display:none; gap:6px; overflow-x:auto; scrollbar-width:thin; }
+    .chips-visible .chip-strip { display:flex; }
+    .chips-visible .flex-status { display:none; }
+    .target-chip { min-height:44px; flex:none; border:1px solid rgba(103,232,249,.58); border-radius:999px; background:rgba(8,145,178,.2); color:#cffafe; padding:0 14px; font-weight:850; cursor:pointer; }
+    .part-scan { margin-left:0; }
+    .waiting .part-scan { border-color:#34d399; background:#10b981; }
+    .content { min-height:0; flex:1; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .pane { min-height:0; overflow:hidden; border:1px solid rgba(255,255,255,.15); border-radius:8px; background:rgba(15,23,42,.62); }
+    .pane h2 { margin:0; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.12); font-size:15px; }
+    .rows { padding:8px; display:grid; gap:7px; }
+    .row { display:grid; grid-template-columns:110px 145px 1fr 84px; gap:10px; align-items:center; min-height:60px; padding:8px 10px; border:1px solid rgba(255,255,255,.1); border-radius:6px; background:#111c31; }
+    .row strong { font-size:15px; }
+    .muted { color:rgba(255,255,255,.55); font-size:12px; }
+    .empty-note { padding:28px; color:rgba(255,255,255,.5); text-align:center; }
+    .overlay { position:fixed; z-index:30; inset:0; display:none; background:#0f172a; }
+    .overlay.open { display:flex; flex-direction:column; }
+    .viewer-head { min-height:64px; flex:none; display:flex; align-items:center; gap:14px; padding:8px 14px; border-bottom:1px solid rgba(255,255,255,.15); background:#111c31; }
+    .back { min-height:44px; border:1px solid rgba(255,255,255,.24); border-radius:7px; background:rgba(255,255,255,.06); color:#fff; padding:0 16px; font-weight:800; cursor:pointer; }
+    .viewer-title { min-width:0; flex:1; }
+    .viewer-title h2 { margin:0; font-size:22px; }
+    .viewer-title p { margin:3px 0 0; color:#94a3b8; font-size:13px; }
+    .viewport-mark { border-radius:999px; background:#083344; color:#a5f3fc; padding:6px 10px; font-size:12px; font-weight:800; }
+    .cards { min-height:0; flex:1; overflow:auto; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-content:start; gap:12px; padding:12px; }
+    .sim-1920 .cards { grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .step-card { min-width:0; overflow:hidden; border:1px solid rgba(255,255,255,.16); border-radius:9px; background:#111c31; box-shadow:0 8px 20px rgba(0,0,0,.2); }
+    .step-number { display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.1); font-weight:850; }
+    .number { display:inline-flex; width:30px; height:30px; align-items:center; justify-content:center; border-radius:50%; background:#059669; }
+    .photo { position:relative; display:flex; width:100%; min-height:170px; align-items:center; justify-content:center; overflow:hidden; border:0; border-bottom:1px solid rgba(255,255,255,.1); background:linear-gradient(145deg,#475569,#1e293b 55%,#0f172a); color:#e2e8f0; cursor:pointer; }
+    .photo::before { content:""; width:58%; height:58%; border:3px solid #cbd5e1; border-radius:22px 8px 18px 6px; transform:rotate(-7deg); opacity:.68; box-shadow:inset 0 0 0 12px rgba(15,23,42,.5); }
+    .photo::after { content:"画像を拡大"; position:absolute; right:8px; bottom:8px; border-radius:5px; background:rgba(2,6,23,.82); padding:5px 7px; font-size:11px; font-weight:750; }
+    .photo.grinding { background:radial-gradient(circle at 62% 44%,#fbbf24 0 2%,transparent 3%),linear-gradient(145deg,#64748b,#334155 48%,#0f172a); }
+    .photo.failed { cursor:default; background:#24151b; color:#fecdd3; }
+    .photo.failed::before { content:"画像を読み込めません"; width:auto; height:auto; border:0; box-shadow:none; transform:none; font-weight:800; opacity:1; }
+    .photo.failed::after { content:"再読込は本番画面で実行"; }
+    .memo { max-height:122px; overflow:auto; padding:11px 12px 13px; color:#f1f5f9; font-size:15px; line-height:1.55; white-space:pre-wrap; }
+    .text-only { min-height:205px; display:flex; align-items:center; }
+    .image-overlay { z-index:40; padding:10px; background:rgba(2,6,23,.98); }
+    .close-image { position:absolute; z-index:2; right:16px; top:14px; display:flex; min-width:48px; min-height:48px; align-items:center; justify-content:center; border:1px solid rgba(255,255,255,.28); border-radius:50%; background:rgba(15,23,42,.9); color:#fff; font-size:28px; cursor:pointer; }
+    .image-stage { min-height:0; flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid rgba(255,255,255,.12); border-radius:8px 8px 0 0; background:#020617; }
+    .large-machine { width:min(72vw,1100px); height:min(60vh,620px); border:5px solid #cbd5e1; border-radius:80px 22px 70px 18px; transform:rotate(-3deg); background:linear-gradient(145deg,#64748b,#1e293b); box-shadow:inset 0 0 0 32px #0f172a,0 25px 70px #000; }
+    .image-memo { flex:none; max-height:23vh; overflow:auto; border:1px solid rgba(255,255,255,.12); border-top:0; border-radius:0 0 8px 8px; background:#111c31; padding:14px 18px 18px; font-size:17px; line-height:1.6; }
+    .image-memo strong { display:block; margin-bottom:5px; color:#6ee7b7; font-size:13px; }
+    @media (max-width:1350px) { .toolbar { gap:6px; } .control { padding:0 9px; font-size:13px; } .field.product { width:168px; } .field.resource { width:72px; } }
+  </style>
+</head>
+<body>
+  <main id="preview" class="screen">
+    <section id="toolbar" class="toolbar" aria-label="自主検査上辺メニュー">
+      <h1 class="page-title">自主検査</h1>
+      <button class="control" type="button">移動票スキャン</button>
+      <button class="control" type="button">氏名スキャン</button>
+      <button class="control" type="button">記録確認・承認</button>
+      <div class="field product">製造order・製番・品番</div>
+      <div class="field resource">581</div>
+      <button class="control clear" type="button">クリア</button>
+      <div id="status" class="flex-status" role="status"></div>
+      <div class="chip-strip" aria-label="撮影対象">
+        <button class="target-chip" type="button" data-target="研削">研削</button>
+        <button class="target-chip" type="button" data-target="切削">切削</button>
+        <button class="target-chip" type="button" data-target="581">581</button>
+        <button class="target-chip" type="button" data-target="582">582</button>
+      </div>
+      <button id="part-scan" class="control part-scan" type="button">部品番号スキャン</button>
+    </section>
+    <section class="content" aria-label="既存の自主検査一覧">
+      <article class="pane"><h2>検索結果</h2><div class="rows"><div class="row"><strong>AB-2104</strong><span>FH-24A-018</span><span>主軸スペーサ</span><span class="muted">581</span></div><div class="row"><strong>AB-2105</strong><span>FH-24A-021</span><span>カラー</span><span class="muted">582</span></div></div></article>
+      <article class="pane"><h2>仕掛中の自主検査</h2><div class="empty-note">一覧・検索条件は要領書を閉じても維持されます</div></article>
+    </section>
+  </main>
+
+  <section id="viewer" class="overlay" role="dialog" aria-modal="true" aria-label="作業要領書">
+    <header class="viewer-head">
+      <button id="back" class="back" type="button">自主検査画面に戻る</button>
+      <div class="viewer-title"><h2 id="viewer-heading">作業要領書 — 研削</h2><p>FHINCD: FH-24A-018 ・ チップを押した後に表示</p></div>
+      <span id="viewport-mark" class="viewport-mark">1280px相当・3列</span>
+    </header>
+    <div class="cards">
+      <article class="step-card"><div class="step-number"><span class="number">1</span>加工前確認</div><button class="photo grinding" type="button" data-memo="ワーク外周と端面に打痕・錆・異物がないことを確認します。チャック爪との接触面を清掃してから取り付けてください。" aria-label="手順1の画像を拡大"></button><div class="memo">ワーク外周と端面に打痕・錆・異物がないことを確認します。チャック爪との接触面を清掃してから取り付けてください。</div></article>
+      <article class="step-card"><div class="step-number"><span class="number">2</span>基準面を合わせる</div><button class="photo" type="button" data-memo="基準面をストッパーへ密着させます。隙間がないことを目視し、低速で一回転させて振れを確認します。" aria-label="手順2の画像を拡大"></button><div class="memo">基準面をストッパーへ密着させます。隙間がないことを目視し、低速で一回転させて振れを確認します。</div></article>
+      <article class="step-card"><div class="step-number"><span class="number">3</span>本文のみの手順</div><div class="memo text-only">画像の登録がない手順は、memo本文をカード全体で読みやすく表示します。画像ポップアップ操作は付きません。</div></article>
+      <article class="step-card"><div class="step-number"><span class="number">4</span>長いmemo</div><button class="photo grinding" type="button" data-memo="砥石をワークへ近づける前に、保護カバー、クーラント、回転方向を確認します。初回接触は送り量を抑え、異音や過大な火花がないことを確認してください。途中で異常を感じた場合は直ちに停止し、責任者へ連絡します。カード本文は縦スクロールでき、隣のカード高さを不必要に引き延ばしません。" aria-label="手順4の画像を拡大"></button><div class="memo">砥石をワークへ近づける前に、保護カバー、クーラント、回転方向を確認します。初回接触は送り量を抑え、異音や過大な火花がないことを確認してください。途中で異常を感じた場合は直ちに停止し、責任者へ連絡します。カード本文は縦スクロールできます。</div></article>
+      <article class="step-card"><div class="step-number"><span class="number">5</span>画像読込失敗</div><div class="photo failed" role="img" aria-label="画像読込失敗"></div><div class="memo">画像取得に失敗しても、対応するmemoは読めます。</div></article>
+      <article class="step-card"><div class="step-number"><span class="number">6</span>仕上がり確認</div><button class="photo" type="button" data-memo="加工面の焼け、びびり、傷を確認し、指定箇所を測定して自主検査記録へ戻ります。" aria-label="手順6の画像を拡大"></button><div class="memo">加工面の焼け、びびり、傷を確認し、指定箇所を測定して自主検査記録へ戻ります。</div></article>
+      <article class="step-card"><div class="step-number"><span class="number">7</span>清掃</div><button class="photo grinding" type="button" data-memo="ワークと治具を清掃し、次工程へ渡せる状態にします。" aria-label="手順7の画像を拡大"></button><div class="memo">ワークと治具を清掃し、次工程へ渡せる状態にします。</div></article>
+      <article class="step-card"><div class="step-number"><span class="number">8</span>記録</div><div class="memo text-only">検査結果と必要な備考を自主検査画面へ入力します。</div></article>
+    </div>
+  </section>
+
+  <section id="image-viewer" class="overlay image-overlay" role="dialog" aria-modal="true" aria-label="作業要領画像">
+    <button id="close-image" class="close-image" type="button" aria-label="画像を閉じる">×</button>
+    <div class="image-stage"><div class="large-machine" role="img" aria-label="作業要領の拡大画像"></div></div>
+    <div class="image-memo"><strong>MEMO</strong><span id="image-memo-text"></span></div>
+  </section>
+
+  <nav class="preview-controls" aria-label="プレビュー状態">
+    <button type="button" data-state="idle" aria-pressed="true">未スキャン</button>
+    <button type="button" data-state="waiting" aria-pressed="false">FHINCD待機</button>
+    <button type="button" data-state="chips" aria-pressed="false">チップ表示</button>
+    <button id="size-toggle" type="button" aria-pressed="false">1920px・4列</button>
+  </nav>
+  <script>
+    const toolbar = document.getElementById('toolbar');
+    const status = document.getElementById('status');
+    const partScan = document.getElementById('part-scan');
+    const viewer = document.getElementById('viewer');
+    const imageViewer = document.getElementById('image-viewer');
+    const imageMemo = document.getElementById('image-memo-text');
+    const sizeToggle = document.getElementById('size-toggle');
+    function setState(state) {
+      toolbar.classList.toggle('waiting', state === 'waiting');
+      toolbar.classList.toggle('chips-visible', state === 'chips');
+      status.textContent = state === 'waiting' ? 'FHINCDバーコードを読み取ってください' : '';
+      partScan.textContent = state === 'waiting' ? 'スキャン中止' : '部品番号スキャン';
+      document.querySelectorAll('[data-state]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.state === state)));
+    }
+    document.querySelectorAll('[data-state]').forEach((button) => button.addEventListener('click', () => setState(button.dataset.state)));
+    partScan.addEventListener('click', () => setState(toolbar.classList.contains('waiting') ? 'idle' : 'waiting'));
+    document.querySelectorAll('.target-chip').forEach((chip) => chip.addEventListener('click', () => {
+      document.getElementById('viewer-heading').textContent = `作業要領書 — ${chip.dataset.target}`;
+      viewer.classList.add('open');
+    }));
+    document.getElementById('back').addEventListener('click', () => viewer.classList.remove('open'));
+    document.querySelectorAll('button.photo').forEach((photo) => photo.addEventListener('click', () => {
+      imageMemo.textContent = photo.dataset.memo;
+      imageViewer.classList.add('open');
+    }));
+    document.getElementById('close-image').addEventListener('click', () => imageViewer.classList.remove('open'));
+    sizeToggle.addEventListener('click', () => {
+      const wide = viewer.classList.toggle('sim-1920');
+      sizeToggle.setAttribute('aria-pressed', String(wide));
+      sizeToggle.textContent = wide ? '1280px・3列' : '1920px・4列';
+      document.getElementById('viewport-mark').textContent = wide ? '1920px相当・4列' : '1280px相当・3列';
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      if (imageViewer.classList.contains('open')) imageViewer.classList.remove('open');
+      else if (viewer.classList.contains('open')) viewer.classList.remove('open');
+    });
+  </script>
+</body>
+</html>

@@ -10,6 +10,7 @@ export * from './hooks/clients';
 export * from './hooks/system';
 export * from './hooks/signage';
 export * from './hooks/kiosk-documents';
+export * from './hooks/work-instructions';
 export * from './hooks/csv-visualization';
 export * from './hooks/rigging';
 export * from './hooks/backup';
