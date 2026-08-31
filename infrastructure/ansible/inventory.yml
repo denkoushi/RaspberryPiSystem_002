@@ -400,6 +400,40 @@ all:
                 - path: "/dev/input/by-id/bluetooth-TOHNICHI_702902S-event-kbd"
                   parserProfile: "cem3-btla-hogp-v1"
                   serialNumber: "702902S"
+            raspi4-kensaku-02:
+              # Kensaku-02 キオスク（Pi4 7台目）
+              ansible_host: "{{ current_network.raspi4_kensaku_02_ip | default(local_network.raspi4_kensaku_02_ip) }}"
+              ansible_user: raspi4-kensaku-02
+              kiosk_browser_engine: "firefox"
+              kiosk_browser_mode: "app-like"
+              ibus_owner_mode: "single-owner"
+              ibus_disable_competing_autostart: true
+              tailscale_enabled: true
+              ansible_command_timeout: 600
+              status_agent_client_id: raspi4-kensaku-02-kiosk1
+              status_agent_client_key: "{{ vault_raspi4_kensaku_02_status_agent_client_key }}"
+              status_agent_location: "第2工場 - Kensaku-02"
+              kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
+              manage_kiosk_browser: true
+              services_to_restart:
+                - kiosk-browser.service
+                - status-agent.service
+                - status-agent.timer
+              sudo_nopasswd_commands:
+                - /usr/bin/systemctl start kiosk-browser.service
+                - /usr/bin/systemctl stop kiosk-browser.service
+                - /usr/bin/systemctl restart kiosk-browser.service
+                - /usr/bin/systemctl reboot
+                - /usr/bin/systemctl poweroff
+                - /usr/bin/systemctl start status-agent.service
+                - /usr/bin/systemctl stop status-agent.service
+                - /usr/bin/systemctl restart status-agent.service
+                - /usr/bin/systemctl start status-agent.timer
+                - /usr/bin/systemctl stop status-agent.timer
+                - /usr/bin/systemctl restart status-agent.timer
+              nfc_agent_api_base_url: "{{ api_base_url }}"
+              nfc_agent_client_id: "raspi4-kensaku-02-kiosk1"
+              nfc_agent_client_secret: "{{ vault_raspi4_kensaku_02_nfc_agent_client_secret }}"
         signage:
           hosts:
             raspberrypi3:

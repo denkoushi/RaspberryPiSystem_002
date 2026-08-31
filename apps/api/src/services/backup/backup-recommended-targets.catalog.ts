@@ -29,6 +29,7 @@ const PI4_KIOSK_CLIENTS: Array<{ inventoryHost: string }> = [
   { inventoryHost: 'raspi4-kensaku-stonebase01' },
   { inventoryHost: 'raspi4-sessaku-01' },
   { inventoryHost: 'raspi4-assembly-01' },
+  { inventoryHost: 'raspi4-kensaku-02' },
 ];
 
 function kioskClientSpecs(host: string): RecommendedBackupTargetSpec[] {
