@@ -237,6 +237,16 @@ async function composeSheets(html, definition, targetRoot) {
       await page.waitForFunction((sheetId) =>
         document.querySelector(`.sheet[data-sheet="${sheetId}"]`)?.getAttribute('data-kiosk-sop-layout-ready') === 'true',
       sheet.id);
+      await page.waitForFunction((sheetId) => {
+        const sheetElement = document.querySelector(`.sheet[data-sheet="${sheetId}"]`);
+        if (!sheetElement) return false;
+        return [...sheetElement.querySelectorAll('img')]
+          .every((image) => image.complete && image.naturalWidth > 0);
+      }, sheet.id);
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        await new Promise((resolveFrame) => requestAnimationFrame(() => requestAnimationFrame(resolveFrame)));
+      });
       await sheetLocator.screenshot({ path: join(targetRoot, 'sheets', `${sheet.id}.png`), animations: 'disabled' });
     }
   } finally { await browser.close(); }

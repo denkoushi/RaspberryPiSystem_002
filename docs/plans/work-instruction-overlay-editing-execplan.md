@@ -28,6 +28,8 @@ TEXT/IMAGE/SHAPE注記を重ねて編集・下書き保存・公開できるよ�
   競合回復、比較、未割当先選択、ADMIN削除UIを実装した。
 - [x] 2026-08-31: focused test、1280/1800px E2E、disposable Postgresでの
   migration二重適用・SQL制約・ANALYZE/EXPLAIN・integrationを完了した。
+- [x] 2026-08-31: PR #1307のkiosk-sop契約で検出されたsheet画像のdecode前撮影を修正し、
+  canonical check、artifact semantic/integrity/geometry/visual contract、18件E2Eを完了した。
 
 ## Surprises & Discoveries
 
@@ -47,6 +49,8 @@ TEXT/IMAGE/SHAPE注記を重ねて編集・下書き保存・公開できるよ�
   step、bboxをedit assetへ保持し、新版copy後に同じbboxから再切り出す設計へ拡張した。
 - SQL検証fixtureと同じDBで既存integrationを併走すると、全DB行数を仮定したテストが
   影響を受けた。source identityでfixtureを限定し、独立して並走可能なtestへ修正した。
+- SOPの元screen PNGが同一でも、sheet合成時に埋込画像のdecode完了を待たないと、画像領域が
+  空白のPNGを生成し得た。全imgの`complete`/`naturalWidth`、font、2 RAFを待つことで決定化した。
 
 ## Decision Log
 
@@ -117,4 +121,6 @@ WorkInstruction回帰39件、disposable PostgreSQL integration 25件、Playwrigh
 migrationはfresh deploy、2回目No pending migrations、status、expand-only candidate preflightを通過した。
 SQLでCHECK/FK/UNIQUE/partial head、pointer整合、GC anti-join、削除tombstone/監査を検証し、主要queryの
 `EXPLAIN (ANALYZE, BUFFERS)`を取得した。全検証の一時container・volume・storageはtrapで削除され、
-`TEMP_RESOURCE_REMAINING=0`を確認した。push、PR、merge、deployは実施していない。
+`TEMP_RESOURCE_REMAINING=0`を確認した。実装commitをpushしPR #1307を作成した。CIで検出した
+kiosk-sop生成の待機不足は追補修正し、同一Docker契約と18件E2Eを再検証した。merge、deployは
+別途承認まで実施しない。
