@@ -29,8 +29,20 @@ export class WorkInstructionReadService {
     return this.repository.readGroup(input);
   }
 
+  readPublishedGroup(input: { partNumber: string; shootingTarget: string }): Promise<WorkInstructionGroupView | null> {
+    return this.repository.readPublishedGroup
+      ? this.repository.readPublishedGroup(input)
+      : this.repository.readGroup(input);
+  }
+
   readGroups(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>> {
     return this.repository.readGroups(input);
+  }
+
+  readPublishedGroups(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>> {
+    return this.repository.readPublishedGroups
+      ? this.repository.readPublishedGroups(input)
+      : this.repository.readGroups(input);
   }
 
   readRows(input: WorkInstructionRowsQuery): Promise<ReadonlyArray<WorkInstructionRowView>> {

@@ -31,6 +31,12 @@ if (integrationEnabled) {
 const fixtureToken = `WIG-${process.pid}-${Date.now()}`;
 const sourceSystem = `SharePoint-${fixtureToken}`;
 const messagePrefix = `gmail-${fixtureToken}-`;
+// Group reads span all source systems; use unique keys so this suite remains
+// isolated when integration files share one disposable database.
+const fixturePartNumber = `WI-${fixtureToken}`;
+const fixtureShootingTarget = `TARGET-${fixtureToken}`;
+const movedPartNumber = `WI-MOVED-${fixtureToken}`;
+const movedShootingTarget = `MOVED-${fixtureToken}`;
 const fixtureAssetIds = new Set<string>();
 const baseModified = new Date('2026-08-29T00:00:00.000Z');
 const config: BackupConfig = {
@@ -75,8 +81,8 @@ function packetManifest(input: {
       item_id: input.itemId,
       modified: input.modified.toISOString(),
     },
-    part_number: input.partNumber === undefined ? 'md004121632' : input.partNumber,
-    shooting_target: input.shootingTarget === undefined ? '研削工程' : input.shootingTarget,
+    part_number: input.partNumber === undefined ? fixturePartNumber : input.partNumber,
+    shooting_target: input.shootingTarget === undefined ? fixtureShootingTarget : input.shootingTarget,
     steps: input.imageNames.map((image, index) => ({
       step: index + 1,
       text: `${input.itemId}-step-${index + 1}`,
@@ -232,24 +238,65 @@ function makeService(gmail: WorkInstructionGmailPort, files: WorkInstructionFile
 }
 
 async function cleanupFixtures(): Promise<void> {
-  const rows = await prisma.workInstructionRow.findMany({
-    where: { sourceSystem },
-    select: { id: true, steps: { select: { assetId: true } } },
-  });
-  const assetIds = new Set(fixtureAssetIds);
-  rows.forEach((row) => row.steps.forEach((step) => {
-    if (step.assetId) assetIds.add(step.assetId);
-  }));
-  if (rows.length > 0) {
-    await prisma.workInstructionRow.deleteMany({ where: { sourceSystem } });
-  }
-  if (assetIds.size > 0) {
-    await prisma.workInstructionAsset.deleteMany({
-      where: { id: { in: [...assetIds] }, steps: { none: {} } },
+  await prisma.$transaction(async (tx) => {
+    const rows = await tx.workInstructionRow.findMany({
+      where: { sourceSystem },
+      select: { id: true, steps: { select: { assetId: true } } },
     });
-  }
-  await prisma.workInstructionImportMessage.deleteMany({
-    where: { gmailMessageId: { startsWith: messagePrefix } },
+    const assetIds = new Set(fixtureAssetIds);
+    rows.forEach((row) => row.steps.forEach((step) => {
+      if (step.assetId) assetIds.add(step.assetId);
+    }));
+    const rowIds = rows.map((row) => row.id);
+    if (rowIds.length > 0) {
+      const versions = await tx.workInstructionSourceVersion.findMany({
+        where: { rowId: { in: rowIds } },
+        select: { id: true },
+      });
+      const versionIds = versions.map((version) => version.id);
+      const revisions = versionIds.length > 0
+        ? await tx.workInstructionEditRevision.findMany({
+          where: { sourceVersionId: { in: versionIds } },
+          select: { id: true },
+        })
+        : [];
+      const revisionIds = revisions.map((revision) => revision.id);
+      const ownedEditAssets = revisionIds.length > 0
+        ? await tx.workInstructionEditAsset.findMany({
+          where: { ownerRevisionId: { in: revisionIds } },
+          select: { id: true },
+        })
+        : [];
+
+      await tx.workInstructionSourcePublication.deleteMany({ where: { rowId: { in: rowIds } } });
+      if (revisionIds.length > 0) {
+        await tx.workInstructionEditOverlay.deleteMany({ where: { revisionId: { in: revisionIds } } });
+        await tx.workInstructionEditRevision.deleteMany({ where: { id: { in: revisionIds } } });
+      }
+      if (ownedEditAssets.length > 0) {
+        await tx.workInstructionEditAsset.deleteMany({
+          where: { id: { in: ownedEditAssets.map((asset) => asset.id) }, overlays: { none: {} } },
+        });
+      }
+      if (versionIds.length > 0) {
+        await tx.workInstructionSourceAssetDeletionAudit.deleteMany({ where: { sourceVersionId: { in: versionIds } } });
+        await tx.workInstructionSourceVersionStep.deleteMany({ where: { sourceVersionId: { in: versionIds } } });
+        await tx.workInstructionSourceVersion.deleteMany({ where: { id: { in: versionIds } } });
+      }
+      await tx.workInstructionRow.deleteMany({ where: { id: { in: rowIds } } });
+    }
+    if (assetIds.size > 0) {
+      await tx.workInstructionAsset.deleteMany({
+        where: {
+          id: { in: [...assetIds] },
+          steps: { none: {} },
+          sourceVersionSteps: { none: {} },
+        },
+      });
+    }
+    await tx.workInstructionImportMessage.deleteMany({
+      where: { gmailMessageId: { startsWith: messagePrefix } },
+    });
   });
   fixtureAssetIds.clear();
 }
@@ -309,8 +356,8 @@ describeIntegration('work-instruction Gmail → Prisma → durable filesystem in
     expect(mail.trashMessage).toHaveBeenCalledTimes(2);
 
     const rows = await repository.readRows({
-      partNumber: ' md004121632 ',
-      shootingTarget: '研削工程',
+      partNumber: fixturePartNumber,
+      shootingTarget: fixtureShootingTarget,
       includeUnclassified: false,
       limit: 20,
       offset: 0,
@@ -325,8 +372,8 @@ describeIntegration('work-instruction Gmail → Prisma → durable filesystem in
         await expect(files.read({ storageKey: step.imageStorageKey! })).resolves.toEqual(imageBytes);
       }
     }
-    expect(await repository.readGroups({ partNumber: 'MD004121632', shootingTarget: '研削', limit: 10, offset: 0 })).toContainEqual(
-      expect.objectContaining({ partNumber: 'MD004121632', shootingTarget: '研削', rowCount: 2, stepCount: 10 }),
+    expect(await repository.readGroups({ partNumber: fixturePartNumber, shootingTarget: fixtureShootingTarget, limit: 10, offset: 0 })).toContainEqual(
+      expect.objectContaining({ partNumber: fixturePartNumber, shootingTarget: fixtureShootingTarget, rowCount: 2, stepCount: 10 }),
     );
 
     const oldStorageKeys = rows.find((row) => row.source.itemId === 640)!.steps
@@ -339,20 +386,22 @@ describeIntegration('work-instruction Gmail → Prisma → durable filesystem in
       modified: new Date(baseModified.getTime() + 60_000),
       imageNames: [],
       imageBytes,
-      partNumber: 'md009999',
-      shootingTarget: '切削',
+      partNumber: movedPartNumber,
+      shootingTarget: movedShootingTarget,
     });
     const movedMail = mailbox([moved]);
     const movedService = makeService(movedMail.client, files);
     const movedSummary = await movedService.ingestMessage({ config: configForSubject(), allowWait: false, messageId: moved.message.id });
     expect(movedSummary).toMatchObject({ applied: 1, acknowledged: 1 });
-    expect(await repository.readGroup({ partNumber: 'MD004121632', shootingTarget: '研削' })).not.toBeNull();
-    expect((await repository.readGroup({ partNumber: 'MD004121632', shootingTarget: '研削' }))!.rows).toHaveLength(1);
-    expect((await repository.readGroup({ partNumber: 'MD009999', shootingTarget: '切削' }))!.rows).toHaveLength(1);
+    expect(await repository.readGroup({ partNumber: fixturePartNumber, shootingTarget: fixtureShootingTarget })).not.toBeNull();
+    expect((await repository.readGroup({ partNumber: fixturePartNumber, shootingTarget: fixtureShootingTarget }))!.rows).toHaveLength(1);
+    expect((await repository.readGroup({ partNumber: movedPartNumber, shootingTarget: movedShootingTarget }))!.rows).toHaveLength(1);
     const cleanup = await movedService.cleanupAssets(new Date(Date.now() + 60 * 60 * 1000));
-    expect(cleanup.deleted).toBeGreaterThanOrEqual(oldStorageKeys.length);
+    // v1 is retained as an immutable source snapshot, so its images are still
+    // referenced and must not be collected by the latest-row GC.
+    expect(cleanup.deleted).toBe(0);
     for (const storageKey of oldStorageKeys) {
-      await expect(localStore.stat(storageKey)).rejects.toThrow();
+      await expect(localStore.stat(storageKey)).resolves.toBeTruthy();
     }
   });
 
@@ -377,7 +426,7 @@ describeIntegration('work-instruction Gmail → Prisma → durable filesystem in
       outcome: 'APPLIED',
       mailCleanupPending: true,
     });
-    expect(await repository.readRows({ limit: 10, offset: 0, partNumber: 'MD004121632', shootingTarget: '研削' })).toHaveLength(1);
+    expect(await repository.readRows({ limit: 10, offset: 0, partNumber: fixturePartNumber, shootingTarget: fixtureShootingTarget })).toHaveLength(1);
 
     const second = await service.ingestMessage({ config: configForSubject(), allowWait: false, messageId: fixture.message.id });
     expect(second).toMatchObject({ applied: 1, acknowledged: 1, acknowledgementPending: 0 });
@@ -390,7 +439,7 @@ describeIntegration('work-instruction Gmail → Prisma → durable filesystem in
       mailCleanupPending: false,
       nextRetryAt: null,
     });
-    expect(await repository.readRows({ limit: 10, offset: 0, partNumber: 'MD004121632', shootingTarget: '研削' })).toHaveLength(1);
+    expect(await repository.readRows({ limit: 10, offset: 0, partNumber: fixturePartNumber, shootingTarget: fixtureShootingTarget })).toHaveLength(1);
   });
 
   it('records and trashes an invalid packet, continues the cycle, and does not let old history hide due retries', async () => {
@@ -421,7 +470,7 @@ describeIntegration('work-instruction Gmail → Prisma → durable filesystem in
       mailCleanupPending: false,
     });
     expect(await repository.readImportMessage(valid.message.id)).toMatchObject({ outcome: 'APPLIED' });
-    expect(await repository.readRows({ limit: 20, offset: 0, partNumber: 'MD004121632', shootingTarget: '研削' })).toHaveLength(1);
+    expect(await repository.readRows({ limit: 20, offset: 0, partNumber: fixturePartNumber, shootingTarget: fixtureShootingTarget })).toHaveLength(1);
     expect(cycleMail.trashMessage).toHaveBeenCalledWith(valid.message.id);
     expect(cycleMail.trashMessage).toHaveBeenCalledWith(invalid.message.id);
 
@@ -488,8 +537,14 @@ describeIntegration('work-instruction Gmail → Prisma → durable filesystem in
     const mail = mailbox([fixture]);
     const service = makeService(mail.client, files);
     await expect(service.ingestMessage({ config: configForSubject(), allowWait: false, messageId: fixture.message.id })).resolves.toMatchObject({ applied: 1 });
-    expect(await repository.readRows({ limit: 10, offset: 0 })).toHaveLength(1);
-    expect(await repository.readRows({ includeUnclassified: false, limit: 10, offset: 0 })).toHaveLength(0);
-    expect(await repository.readGroups({ limit: 10, offset: 0 })).toHaveLength(0);
+    const fixtureRows = (await repository.readRows({ limit: 100, offset: 0 }))
+      .filter((row) => row.source.system === sourceSystem);
+    const classifiedFixtureRows = (await repository.readRows({ includeUnclassified: false, limit: 100, offset: 0 }))
+      .filter((row) => row.source.system === sourceSystem);
+    const fixtureGroups = (await repository.readGroups({ limit: 100, offset: 0 }))
+      .filter((group) => group.partNumber === fixturePartNumber || group.shootingTarget === fixtureShootingTarget);
+    expect(fixtureRows).toHaveLength(1);
+    expect(classifiedFixtureRows).toHaveLength(0);
+    expect(fixtureGroups).toHaveLength(0);
   });
 });

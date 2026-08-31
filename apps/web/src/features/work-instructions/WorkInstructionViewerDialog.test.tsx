@@ -148,6 +148,31 @@ describe('WorkInstructionViewerDialog', () => {
     expect(screen.getAllByRole('alert')[0]).toHaveTextContent('画像の読み込みに失敗しました');
   });
 
+  it('renders published annotations in the neutral image frame and exposes the editor update entry', () => {
+    const onEdit = vi.fn();
+    const overlayStep: WorkInstructionStep = {
+      ...makeStep('annotated-step', '公開注記付きの手順', '/api/work-instructions/assets/asset-annotated', 1),
+      overlays: [{
+        id: 'public-note',
+        pageIndex: 0,
+        bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.1 },
+        zIndex: 1,
+        kind: 'TEXT',
+        text: '公開注記'
+      }]
+    };
+    renderViewer({
+      onEdit,
+      group: { ...group, updateAvailable: true, steps: [overlayStep] }
+    });
+
+    expect(screen.getByText('新しい原本があります')).toBeInTheDocument();
+    expect(screen.getByTestId('image-overlay-frame')).toBeInTheDocument();
+    expect(screen.getByTestId('overlay-public-note')).toHaveTextContent('公開注記');
+    fireEvent.click(screen.getByRole('button', { name: '編集' }));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+  });
+
   it('opens a full image dialog and Escape closes only the image dialog', () => {
     renderViewer();
 

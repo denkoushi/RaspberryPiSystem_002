@@ -1,3 +1,5 @@
+import type { WorkInstructionOverlayElement } from './editing.js';
+
 /** JSON values accepted by the SharePoint manifest boundary. */
 export type WorkInstructionJsonValue =
   | string
@@ -66,6 +68,8 @@ export type WorkInstructionApplyOutcome = 'APPLIED' | 'DUPLICATE' | 'STALE' | 'C
 export type WorkInstructionApplyResult = {
   outcome: WorkInstructionApplyOutcome;
   rowId: string | null;
+  sourceVersionId?: string;
+  publishedVersionId?: string;
   displacedAssetIds: ReadonlyArray<string>;
 };
 
@@ -86,6 +90,17 @@ export type WorkInstructionStepView = {
   imageStorageKey: string | null;
   imageMimeType: WorkInstructionImageMimeType | null;
   imageSha256: string | null;
+  overlays?: ReadonlyArray<WorkInstructionOverlayElement>;
+  overlayAssets?: Readonly<Record<string, WorkInstructionOverlayAssetView>>;
+};
+
+/** Public metadata for editor-created IMAGE overlays; storage keys stay private. */
+export type WorkInstructionOverlayAssetView = {
+  assetId: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  url: string;
 };
 
 export type WorkInstructionRowView = {
@@ -110,6 +125,8 @@ export type WorkInstructionGroupView = {
   shootingTarget: string;
   rows: ReadonlyArray<WorkInstructionRowView>;
   steps: ReadonlyArray<WorkInstructionGroupedStepView>;
+  /** True when at least one row has a newer imported version than its public pointer. */
+  updateAvailable?: boolean;
 };
 
 export type WorkInstructionGroupSummaryView = {

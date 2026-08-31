@@ -21,6 +21,8 @@
     "backfill:order-supplement-planned-end-date:prod": "node dist/scripts/backfill-order-supplement-planned-end-date.js",
     "backfill:rigging-inspection-gmail-projection": "tsx src/scripts/backfill-rigging-inspection-gmail-projection.ts",
     "backfill:rigging-inspection-gmail-projection:prod": "node dist/scripts/backfill-rigging-inspection-gmail-projection.js",
+    "backfill:work-instruction-source-versions": "tsx src/scripts/backfill-work-instruction-source-versions.ts",
+    "backfill:work-instruction-source-versions:prod": "node dist/scripts/backfill-work-instruction-source-versions.js",
     "register:rigging-inspection-missing-id-num-gears": "tsx src/scripts/register-rigging-inspection-missing-id-num-gears.ts",
     "register:rigging-inspection-missing-id-num-gears:prod": "node dist/scripts/register-rigging-inspection-missing-id-num-gears.js",
     "register:torque-training-catalog": "tsx src/scripts/register-torque-training-catalog.ts",

@@ -146,6 +146,7 @@ export function KioskSelfInspectionPage() {
     closeViewer: closeInstructionViewer,
     clear: clearWorkInstructions
   } = useSelfInspectionWorkInstructions();
+  const restoredWorkInstructionSearchRef = useRef<string | null>(null);
   const movementScanArmed = hidScanTarget === 'movement';
   const partScanArmed = hidScanTarget === 'part';
   const invalidateItemMutation = useInvalidateSelfInspectionItem();
@@ -154,6 +155,20 @@ export function KioskSelfInspectionPage() {
     () => resourcesQuery.data?.resourceNameMap ?? {},
     [resourcesQuery.data?.resourceNameMap]
   );
+
+  // The editor returns to this page with the source query so the viewer can
+  // be reopened after a save/discard/back navigation. Keep this integration
+  // here; the editor itself does not mutate the large self-inspection page.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const restoredPartNumber = params.get('partNumber')?.trim() ?? '';
+    const restoredTarget = params.get('shootingTarget')?.trim() ?? '';
+    const restoreKey = `${restoredPartNumber}\0${restoredTarget}`;
+    if (!restoredPartNumber || !restoredTarget || restoredWorkInstructionSearchRef.current === restoreKey) return;
+    restoredWorkInstructionSearchRef.current = restoreKey;
+    const result = acceptPartScan(restoredPartNumber);
+    if (result.ok) openInstructionTarget(restoredTarget.normalize('NFKC').trim().toUpperCase());
+  }, [acceptPartScan, location.search, openInstructionTarget]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -785,6 +800,13 @@ export function KioskSelfInspectionPage() {
         errorMessage={
           instructionGroupQuery.isError ? '作業要領書の読み込みに失敗しました。' : undefined
         }
+        onEdit={() => {
+          const params = new URLSearchParams({
+            partNumber: instructionPartNumber,
+            shootingTarget: instructionTarget ?? ''
+          });
+          navigate(`/kiosk/part-measurement/self-inspection/work-instructions/edit?${params.toString()}`);
+        }}
         onClose={closeInstructionViewer}
       />
       <SelfInspectionWorkflowModal

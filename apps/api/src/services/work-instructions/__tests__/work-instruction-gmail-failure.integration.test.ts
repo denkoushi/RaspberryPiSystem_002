@@ -31,6 +31,10 @@ if (integrationEnabled) {
 const fixtureToken = `WIF-${process.pid}-${Date.now()}`;
 const sourceSystem = `SharePoint-${fixtureToken}`;
 const messagePrefix = `gmail-${fixtureToken}-`;
+// readRows is intentionally a cross-source query, so keep this integration
+// fixture's group key unique even when another suite uses the same database.
+const fixturePartNumber = `WI-${fixtureToken}`;
+const fixtureShootingTarget = `target-${fixtureToken}`;
 const assetIds = new Set<string>();
 const baseModified = new Date('2026-08-29T00:00:00.000Z');
 const config: BackupConfig = {
@@ -115,8 +119,8 @@ function fixtureMessage(input: { id: string; itemId: number; bytes: Buffer }): F
       item_id: input.itemId,
       modified: baseModified.toISOString(),
     },
-    part_number: 'MD004121632',
-    shooting_target: '研削',
+    part_number: fixturePartNumber,
+    shooting_target: fixtureShootingTarget,
     steps: [{ step: 1, text: 'failure fixture', image: 'photo.jpeg' }],
   };
   const attachments = new Map<string, Buffer>([
@@ -161,19 +165,64 @@ function mailbox(fixture: Fixture): WorkInstructionGmailPort {
 }
 
 async function cleanupFixtures(): Promise<void> {
-  const rows = await prisma.workInstructionRow.findMany({
-    where: { sourceSystem },
-    select: { steps: { select: { assetId: true } } },
+  await prisma.$transaction(async (tx) => {
+    const rows = await tx.workInstructionRow.findMany({
+      where: { sourceSystem },
+      select: { id: true, steps: { select: { assetId: true } } },
+    });
+    const ids = new Set(assetIds);
+    rows.forEach((row) => row.steps.forEach((step) => {
+      if (step.assetId) ids.add(step.assetId);
+    }));
+    const rowIds = rows.map((row) => row.id);
+    if (rowIds.length > 0) {
+      const versions = await tx.workInstructionSourceVersion.findMany({
+        where: { rowId: { in: rowIds } },
+        select: { id: true },
+      });
+      const versionIds = versions.map((version) => version.id);
+      const revisions = versionIds.length > 0
+        ? await tx.workInstructionEditRevision.findMany({
+          where: { sourceVersionId: { in: versionIds } },
+          select: { id: true },
+        })
+        : [];
+      const revisionIds = revisions.map((revision) => revision.id);
+      const ownedEditAssets = revisionIds.length > 0
+        ? await tx.workInstructionEditAsset.findMany({
+          where: { ownerRevisionId: { in: revisionIds } },
+          select: { id: true },
+        })
+        : [];
+
+      await tx.workInstructionSourcePublication.deleteMany({ where: { rowId: { in: rowIds } } });
+      if (revisionIds.length > 0) {
+        await tx.workInstructionEditOverlay.deleteMany({ where: { revisionId: { in: revisionIds } } });
+        await tx.workInstructionEditRevision.deleteMany({ where: { id: { in: revisionIds } } });
+      }
+      if (ownedEditAssets.length > 0) {
+        await tx.workInstructionEditAsset.deleteMany({
+          where: { id: { in: ownedEditAssets.map((asset) => asset.id) }, overlays: { none: {} } },
+        });
+      }
+      if (versionIds.length > 0) {
+        await tx.workInstructionSourceAssetDeletionAudit.deleteMany({ where: { sourceVersionId: { in: versionIds } } });
+        await tx.workInstructionSourceVersionStep.deleteMany({ where: { sourceVersionId: { in: versionIds } } });
+        await tx.workInstructionSourceVersion.deleteMany({ where: { id: { in: versionIds } } });
+      }
+      await tx.workInstructionRow.deleteMany({ where: { id: { in: rowIds } } });
+    }
+    if (ids.size > 0) {
+      await tx.workInstructionAsset.deleteMany({
+        where: {
+          id: { in: [...ids] },
+          steps: { none: {} },
+          sourceVersionSteps: { none: {} },
+        },
+      });
+    }
+    await tx.workInstructionImportMessage.deleteMany({ where: { gmailMessageId: { startsWith: messagePrefix } } });
   });
-  const ids = new Set(assetIds);
-  rows.forEach((row) => row.steps.forEach((step) => {
-    if (step.assetId) ids.add(step.assetId);
-  }));
-  await prisma.workInstructionRow.deleteMany({ where: { sourceSystem } });
-  if (ids.size > 0) {
-    await prisma.workInstructionAsset.deleteMany({ where: { id: { in: [...ids] }, steps: { none: {} } } });
-  }
-  await prisma.workInstructionImportMessage.deleteMany({ where: { gmailMessageId: { startsWith: messagePrefix } } });
   assetIds.clear();
 }
 
@@ -214,7 +263,7 @@ describeIntegration('work-instruction ingest failure boundaries (isolated integr
     const service = makeService(gmail, failingFiles, repository);
     const result = await service.ingestMessage({ config, allowWait: false, messageId: fixture.message.id });
     expect(result).toMatchObject({ retryable: 1, applied: 0, acknowledged: 0 });
-    expect(await repository.readRows({ limit: 10, offset: 0, partNumber: 'MD004121632', shootingTarget: '研削' })).toHaveLength(0);
+    expect(await repository.readRows({ limit: 10, offset: 0, partNumber: fixturePartNumber, shootingTarget: fixtureShootingTarget })).toHaveLength(0);
     const stagedId = [...assetIds][0]!;
     expect(await prisma.workInstructionAsset.findUnique({ where: { id: stagedId } })).toMatchObject({ status: 'STAGED' });
     const cleanup = await service.cleanupAssets(new Date(Date.now() + 2 * 60 * 60 * 1000));
@@ -236,7 +285,7 @@ describeIntegration('work-instruction ingest failure boundaries (isolated integr
     const service = makeService(gmail, files, failingRepository);
     const result = await service.ingestMessage({ config, allowWait: false, messageId: fixture.message.id });
     expect(result).toMatchObject({ retryable: 1, applied: 0, acknowledged: 0 });
-    expect(await repository.readRows({ limit: 10, offset: 0, partNumber: 'MD004121632', shootingTarget: '研削' })).toHaveLength(0);
+    expect(await repository.readRows({ limit: 10, offset: 0, partNumber: fixturePartNumber, shootingTarget: fixtureShootingTarget })).toHaveLength(0);
     const stagedId = [...assetIds][0]!;
     const staged = await prisma.workInstructionAsset.findUnique({ where: { id: stagedId } });
     expect(staged).toMatchObject({ status: 'STAGED' });

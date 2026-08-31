@@ -4,6 +4,7 @@ import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
 import { WorkInstructionGmailIngestionService } from './work-instruction-gmail-ingestion.service.js';
 import { getWorkInstructionServices } from './work-instruction-service.factory.js';
+import type { WorkInstructionEditAssetCleanupService } from './work-instruction-edit-asset-cleanup.service.js';
 
 export const WORK_INSTRUCTION_GMAIL_CRON = '*/5 * * * *';
 
@@ -16,7 +17,8 @@ export class WorkInstructionGmailScheduler {
   private tickRunning = false;
 
   constructor(
-    private readonly ingestion: WorkInstructionGmailIngestionService = getWorkInstructionServices().ingestion
+    private readonly ingestion: WorkInstructionGmailIngestionService = getWorkInstructionServices().ingestion,
+    private readonly editAssetCleanup: WorkInstructionEditAssetCleanupService = getWorkInstructionServices().editAssetCleanup
   ) {}
 
   async start(): Promise<void> {
@@ -48,6 +50,7 @@ export class WorkInstructionGmailScheduler {
         logger.debug('[WorkInstructionGmailScheduler] Work-instruction Gmail ingest disabled');
       }
       await this.ingestion.cleanupAssets();
+      await this.editAssetCleanup.cleanup();
     } catch (error) {
       logger.error({ err: error }, '[WorkInstructionGmailScheduler] Scheduled tick failed');
     } finally {

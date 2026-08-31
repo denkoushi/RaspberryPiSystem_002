@@ -391,6 +391,18 @@ export class WorkInstructionGmailIngestionService {
         deleted += 1;
       } catch (error) {
         failed += 1;
+        const recordFailure = this.repository.recordAssetDeletionFailure;
+        if (recordFailure) {
+          await recordFailure.call(this.repository, {
+            assetIds: [candidate.assetId],
+            error: errorMessage(error)
+          }).catch((recordError) => {
+            logger.warn(
+              { err: recordError, assetId: candidate.assetId },
+              '[WorkInstructionGmailIngestion] failed to record asset cleanup failure'
+            );
+          });
+        }
         logger.error({ err: error, assetId: candidate.assetId }, '[WorkInstructionGmailIngestion] asset cleanup failed');
       }
     }

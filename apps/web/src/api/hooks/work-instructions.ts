@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { normalizeWorkInstructionPartNumber } from '../../lib/workInstructionRules';
 import {
+  getWorkInstructionEditorGroup,
   getWorkInstructionGroup,
   getWorkInstructionGroupsByPartNumber
 } from '../client';
@@ -32,6 +33,24 @@ export function useWorkInstructionGroup(
   return useQuery({
     queryKey: ['work-instructions', 'group', normalizedPartNumber, normalizedShootingTarget],
     queryFn: () => getWorkInstructionGroup(normalizedPartNumber, normalizedShootingTarget),
+    enabled
+  });
+}
+
+export function useWorkInstructionEditorGroup(
+  partNumber: string | null | undefined,
+  shootingTarget: string | null | undefined
+) {
+  const normalizedPartNumber = normalizeWorkInstructionPartNumber(partNumber);
+  const normalizedShootingTarget = normalizeWorkInstructionTarget(shootingTarget);
+  const enabled = Boolean(normalizedPartNumber && normalizedShootingTarget);
+
+  return useQuery({
+    queryKey: ['work-instructions', 'editor-group', normalizedPartNumber, normalizedShootingTarget],
+    queryFn: () => getWorkInstructionEditorGroup({
+      partNumber: normalizedPartNumber,
+      shootingTarget: normalizedShootingTarget
+    }),
     enabled
   });
 }

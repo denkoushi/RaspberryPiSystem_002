@@ -1,103 +1,74 @@
-import sharp from 'sharp';
+import {
+  cropImageRegionRoi,
+  imageRegionRoiToPixels,
+  normalizeImageRegionRoi
+} from '../image-region/image-region-roi.js';
 
-export type AssemblyProcedureAssetRoi = {
-  xRatio: number;
-  yRatio: number;
-  widthRatio: number;
-  heightRatio: number;
-};
+import type {
+  ImageRegionPixelRoi,
+  ImageRegionRoi,
+  ImageRegionRoiImage
+} from '../image-region/image-region-roi.js';
 
-export type AssemblyProcedureAssetPixelRoi = {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-};
+/** @deprecated Use ImageRegionRoi from the domain-neutral image-region module. */
+export type AssemblyProcedureAssetRoi = ImageRegionRoi;
 
-export type AssemblyProcedureAssetRoiImage = {
-  buffer: Buffer;
-  contentType: 'image/jpeg';
-  width: number;
-  height: number;
-  pixelRoi: AssemblyProcedureAssetPixelRoi;
-};
+/** @deprecated Use ImageRegionPixelRoi from the domain-neutral image-region module. */
+export type AssemblyProcedureAssetPixelRoi = ImageRegionPixelRoi;
 
-function assertRatio(name: string, value: number): void {
-  if (!Number.isFinite(value) || value < 0 || value > 1) {
-    throw new Error(`Invalid assembly procedure ROI ${name}`);
+/** @deprecated Use ImageRegionRoiImage from the domain-neutral image-region module. */
+export type AssemblyProcedureAssetRoiImage = ImageRegionRoiImage;
+
+function rethrowAssemblyRoiError(error: unknown): never {
+  if (error instanceof Error) {
+    const message = error.message
+      .replace('Invalid image-region ROI ', 'Invalid assembly procedure ROI ')
+      .replace(
+        'Image-region ROI must have positive dimensions',
+        'Assembly procedure ROI must have positive dimensions'
+      )
+      .replace(
+        'Image-region ROI is outside the source page',
+        'Assembly procedure ROI is outside the source page'
+      );
+    throw new Error(message);
   }
+  throw error;
 }
+
+/** @deprecated Use normalizeImageRegionRoi. */
 export function normalizeAssemblyProcedureAssetRoi(
-  roi: AssemblyProcedureAssetRoi,
+  roi: AssemblyProcedureAssetRoi
 ): AssemblyProcedureAssetRoi {
-  assertRatio('xRatio', roi.xRatio);
-  assertRatio('yRatio', roi.yRatio);
-  assertRatio('widthRatio', roi.widthRatio);
-  assertRatio('heightRatio', roi.heightRatio);
-  if (roi.widthRatio <= 0 || roi.heightRatio <= 0) {
-    throw new Error('Assembly procedure ROI must have positive dimensions');
+  try {
+    return normalizeImageRegionRoi(roi);
+  } catch (error) {
+    return rethrowAssemblyRoiError(error);
   }
-  if (roi.xRatio + roi.widthRatio > 1 || roi.yRatio + roi.heightRatio > 1) {
-    throw new Error('Assembly procedure ROI is outside the source page');
-  }
-  return { ...roi };
 }
 
+/** @deprecated Use imageRegionRoiToPixels. */
 export function assemblyProcedureAssetRoiToPixels(
   roi: AssemblyProcedureAssetRoi,
   imageWidth: number,
-  imageHeight: number,
+  imageHeight: number
 ): AssemblyProcedureAssetPixelRoi {
-  const normalized = normalizeAssemblyProcedureAssetRoi(roi);
-  if (!Number.isSafeInteger(imageWidth) || imageWidth <= 0) {
-    throw new Error('Invalid source page width');
+  try {
+    return imageRegionRoiToPixels(roi, imageWidth, imageHeight);
+  } catch (error) {
+    return rethrowAssemblyRoiError(error);
   }
-  if (!Number.isSafeInteger(imageHeight) || imageHeight <= 0) {
-    throw new Error('Invalid source page height');
-  }
-  const left = Math.min(imageWidth - 1, Math.max(0, Math.floor(normalized.xRatio * imageWidth)));
-  const top = Math.min(imageHeight - 1, Math.max(0, Math.floor(normalized.yRatio * imageHeight)));
-  const right = Math.min(
-    imageWidth,
-    Math.max(left + 1, Math.ceil((normalized.xRatio + normalized.widthRatio) * imageWidth)),
-  );
-  const bottom = Math.min(
-    imageHeight,
-    Math.max(top + 1, Math.ceil((normalized.yRatio + normalized.heightRatio) * imageHeight)),
-  );
-  return {
-    left,
-    top,
-    width: right - left,
-    height: bottom - top,
-  };
 }
 
-/**
- * Cut a source-page ROI using Sharp. Coordinates remain normalized in the
- * database; this function translates them only for the physical crop and
- * emits a bounded JPEG suitable for an immutable overlay asset.
- */
+/** @deprecated Use cropImageRegionRoi. */
 export async function cropAssemblyProcedureAssetRoi(
   sourcePage: Buffer,
   roi: AssemblyProcedureAssetRoi,
-  options: { quality?: number } = {},
+  options: { quality?: number } = {}
 ): Promise<AssemblyProcedureAssetRoiImage> {
-  if (!sourcePage.length) throw new Error('Source page image is empty');
-  const source = sharp(sourcePage, { failOn: 'none' });
-  const metadata = await source.metadata();
-  const imageWidth = metadata.width ?? 0;
-  const imageHeight = metadata.height ?? 0;
-  const pixelRoi = assemblyProcedureAssetRoiToPixels(roi, imageWidth, imageHeight);
-  const quality = Math.min(100, Math.max(1, Math.trunc(options.quality ?? 90)));
-  const rendered = await source.extract(pixelRoi).jpeg({ quality }).toBuffer({
-    resolveWithObject: true,
-  });
-  return {
-    buffer: rendered.data,
-    contentType: 'image/jpeg',
-    width: rendered.info.width,
-    height: rendered.info.height,
-    pixelRoi,
-  };
+  try {
+    return await cropImageRegionRoi(sourcePage, roi, options);
+  } catch (error) {
+    return rethrowAssemblyRoiError(error);
+  }
 }
