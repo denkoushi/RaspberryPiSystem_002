@@ -30,6 +30,8 @@ TEXT/IMAGE/SHAPE注記を重ねて編集・下書き保存・公開できるよ�
   migration二重適用・SQL制約・ANALYZE/EXPLAIN・integrationを完了した。
 - [x] 2026-08-31: PR #1307のkiosk-sop契約で検出されたsheet画像のdecode前撮影を修正し、
   canonical check、artifact semantic/integrity/geometry/visual contract、18件E2Eを完了した。
+- [x] 2026-08-31: API全suiteで既存scheduler配線testのFastify stub不足を検出し、
+  Editor route登録に必要な`put`/`delete` stubを補ってfocused testを再通過した。
 
 ## Surprises & Discoveries
 

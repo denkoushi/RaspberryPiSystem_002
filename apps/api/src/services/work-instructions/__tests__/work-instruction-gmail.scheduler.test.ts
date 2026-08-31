@@ -17,6 +17,8 @@ describe('work-instruction Gmail scheduler wiring', () => {
     const app = {
       post: vi.fn(),
       get: vi.fn(),
+      put: vi.fn(),
+      delete: vi.fn(),
     };
     registerWorkInstructionRoutes(app as never);
 
