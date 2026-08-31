@@ -37,7 +37,7 @@ const config: BackupConfig = {
   ...defaultBackupConfig,
   workInstructionGmailIngest: {
     enabled: true,
-    subjectTokens: ['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]'],
+    subjectTokens: ['[Kakou-Dandori-photo]'],
     fromEmail: 'sharepoint@example.com',
   },
 };
@@ -134,7 +134,7 @@ function fixtureMessage(input: {
       payload: {
         mimeType: 'multipart/mixed',
         headers: [
-          { name: 'Subject', value: `[WORK-INSTRUCTION] ${input.id}` },
+          { name: 'Subject', value: `[Kakou-Dandori-photo] ${input.id}` },
           { name: 'From', value: 'SharePoint <sharepoint@example.com>' },
         ],
         parts,
@@ -393,7 +393,7 @@ describeIntegration('work-instruction Gmail → Prisma → durable filesystem in
     expect(await repository.readRows({ limit: 10, offset: 0, partNumber: 'MD004121632', shootingTarget: '研削' })).toHaveLength(1);
   });
 
-  it('continues a cycle after an invalid packet and does not let old history hide due retries', async () => {
+  it('records and trashes an invalid packet, continues the cycle, and does not let old history hide due retries', async () => {
     const imageBytes = await validImageBytes();
     const invalid = fixtureMessage({
       id: `${messagePrefix}invalid`,
@@ -415,12 +415,15 @@ describeIntegration('work-instruction Gmail → Prisma → durable filesystem in
     const cycleMail = mailbox([invalid, valid]);
     const service = makeService(cycleMail.client, files);
     const cycle = await service.ingestCycle({ config: configForSubject(), allowWait: false });
-    expect(cycle).toMatchObject({ scanned: 2, selected: 2, invalid: 1, applied: 1, acknowledged: 1 });
-    expect(await repository.readImportMessage(invalid.message.id)).toMatchObject({ outcome: 'INVALID' });
+    expect(cycle).toMatchObject({ scanned: 2, selected: 2, invalid: 1, applied: 1, acknowledged: 2 });
+    expect(await repository.readImportMessage(invalid.message.id)).toMatchObject({
+      outcome: 'INVALID',
+      mailCleanupPending: false,
+    });
     expect(await repository.readImportMessage(valid.message.id)).toMatchObject({ outcome: 'APPLIED' });
     expect(await repository.readRows({ limit: 20, offset: 0, partNumber: 'MD004121632', shootingTarget: '研削' })).toHaveLength(1);
     expect(cycleMail.trashMessage).toHaveBeenCalledWith(valid.message.id);
-    expect(cycleMail.trashMessage).not.toHaveBeenCalledWith(invalid.message.id);
+    expect(cycleMail.trashMessage).toHaveBeenCalledWith(invalid.message.id);
 
     const oldIds = Array.from({ length: 1001 }, (_, index) => `${messagePrefix}old-invalid-${index}`);
     await prisma.workInstructionImportMessage.createMany({

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { BackupConfigSchema, defaultBackupConfig } from '../../backup/backup-config.js';
 import {
   ASSEMBLY_PROCEDURE_GMAIL_SUBJECT,
   assertCsvGmailSubjectPatternAllowed,
@@ -40,20 +41,40 @@ describe('gmail-subject-reservation.policy', () => {
   });
 
   it.each([
-    '[WORK-INSTRUCTION]',
-    '[WORK-INSTRUCTION] 640 snapshot',
-    '[WORK-INSTRUCTION-TEST] 640 snapshot',
-    '  [WORK-INSTRUCTION-TEST]\t640 snapshot',
-  ])('claims a complete leading work-instruction token: %s', (subject) => {
+    '[Kakou-Dandori-photo]',
+    '[Kakou-Dandori-photo] ID645',
+    '[Kakou-Dandori-photo] ID700',
+    '  [Kakou-Dandori-photo]\titem-645 snapshot',
+  ])('claims the canonical leading work-instruction token: %s', (subject) => {
     expect(isWorkInstructionGmailSubject(subject)).toBe(true);
   });
 
   it.each([
-    '[WORK-INSTRUCTION-TESTING] 640 snapshot',
-    '[WORK-INSTRUCTION]-TEST 640 snapshot',
-    'Re: [WORK-INSTRUCTION] 640 snapshot',
-    'prefix [WORK-INSTRUCTION] 640 snapshot',
+    '[WORK-INSTRUCTION] 640 snapshot',
+    '[WORK-INSTRUCTION-TEST] 640 snapshot',
+    '[Kakou-Dandori-photo]-TEST 640 snapshot',
+    'Re: [Kakou-Dandori-photo] ID645 snapshot',
+    'prefix [Kakou-Dandori-photo] ID645 snapshot',
   ])('does not claim a colliding or non-leading subject: %s', (subject) => {
     expect(isWorkInstructionGmailSubject(subject)).toBe(false);
+  });
+
+  it('uses only the canonical token in work-instruction configuration defaults', () => {
+    expect(defaultBackupConfig.workInstructionGmailIngest?.subjectTokens).toEqual([
+      '[Kakou-Dandori-photo]',
+    ]);
+    expect(BackupConfigSchema.parse({
+      storage: { provider: 'local' },
+      targets: [],
+    }).workInstructionGmailIngest?.subjectTokens).toEqual([
+      '[Kakou-Dandori-photo]',
+    ]);
+    expect(() => BackupConfigSchema.parse({
+      storage: { provider: 'local' },
+      targets: [],
+      workInstructionGmailIngest: {
+        subjectTokens: ['[WORK-INSTRUCTION]'],
+      },
+    })).toThrow();
   });
 });

@@ -185,14 +185,14 @@ export const BackupConfigSchema = z.object({
     .object({
       enabled: z.boolean().default(false),
       subjectTokens: z
-        .array(z.enum(['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]']))
-        .default(['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]']),
+        .array(z.literal('[Kakou-Dandori-photo]'))
+        .default(['[Kakou-Dandori-photo]']),
       fromEmail: z.string().optional(),
     })
     .optional()
     .default({
       enabled: false,
-      subjectTokens: ['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]'],
+      subjectTokens: ['[Kakou-Dandori-photo]'],
     }),
 });
 
@@ -375,6 +375,6 @@ export const defaultBackupConfig: BackupConfig = {
   kioskDocumentGmailIngest: [],
   workInstructionGmailIngest: {
     enabled: false,
-    subjectTokens: ['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]'],
+    subjectTokens: ['[Kakou-Dandori-photo]'],
   }
 };

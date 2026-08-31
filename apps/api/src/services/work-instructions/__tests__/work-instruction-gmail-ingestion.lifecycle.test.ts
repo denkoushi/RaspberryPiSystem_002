@@ -12,7 +12,7 @@ const disabledConfig = {
   ...defaultBackupConfig,
   workInstructionGmailIngest: {
     enabled: false,
-    subjectTokens: ['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]'],
+    subjectTokens: ['[Kakou-Dandori-photo]'],
   },
 };
 

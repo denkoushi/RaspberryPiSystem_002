@@ -44,8 +44,6 @@ export type WorkInstructionAttachmentPart = {
 const MIME_BY_SHARP_FORMAT: Record<string, WorkInstructionImageMimeType | undefined> = {
   jpeg: 'image/jpeg',
   jpg: 'image/jpeg',
-  png: 'image/png',
-  webp: 'image/webp',
 };
 
 function headerValue(part: GmailMessagePart, name: string): string | undefined {
@@ -117,9 +115,9 @@ async function decodeAndValidateImage(
     );
   }
   const mimeType = MIME_BY_SHARP_FORMAT[metadata.format?.toLowerCase() ?? ''];
-  if (!mimeType) {
+  if (mimeType !== 'image/jpeg') {
     throw new WorkInstructionManifestError(
-      `Referenced image ${imageName} is not a supported JPEG, PNG, or WebP image`
+      `Referenced image ${imageName} must be a JPEG image`
     );
   }
   return { mimeType, sha256: sha256(attachment.buffer) };
@@ -140,16 +138,8 @@ function parseJsonCandidate(attachment: WorkInstructionGmailAttachment): unknown
   }
 }
 
-function looksLikeWorkInstructionManifest(value: unknown): boolean {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  return record.schema_version !== undefined &&
-    record.source !== undefined &&
-    record.steps !== undefined;
-}
-
 /**
- * Resolve exactly one schema-versioned manifest and its referenced images.
+ * Resolve exactly one JSON-looking manifest and its referenced images.
  * Unreferenced attachments are retained only as warnings; no bytes are
  * transformed before the repository stages them.
  */
@@ -167,31 +157,26 @@ export async function resolveWorkInstructionGmailPacket(params: {
     isInline: part.isInline,
   });
 
-  // Read only JSON-looking parts first. Unrelated attachments are warnings;
-  // fetching them can otherwise turn an otherwise valid packet into a retry.
-  const manifestCandidates: Array<{
-    part: WorkInstructionAttachmentPart;
-    attachment: WorkInstructionGmailAttachment;
-    value: unknown;
-  }> = [];
-  for (const part of parts.filter(isJsonCandidate)) {
-    const attachment = await materialize(part);
-    const value = parseJsonCandidate(attachment);
-    if (value !== undefined && looksLikeWorkInstructionManifest(value)) {
-      manifestCandidates.push({ part, attachment, value });
-    }
+  // Count JSON-looking parts before downloading or parsing any of them. This
+  // prevents an invalid second JSON attachment from being silently ignored
+  // and makes the one-manifest mail contract deterministic.
+  const jsonParts = parts.filter(isJsonCandidate);
+  if (jsonParts.length !== 1) {
+    throw new WorkInstructionManifestError(
+      `Exactly one JSON manifest attachment is required; found ${jsonParts.length}`
+    );
   }
 
-  if (manifestCandidates.length === 0) {
-    throw new WorkInstructionManifestError('Exactly one schema-versioned work-instruction manifest is required');
+  const manifestPart = jsonParts[0]!;
+  const manifestAttachment = await materialize(manifestPart);
+  const manifestValue = parseJsonCandidate(manifestAttachment);
+  if (manifestValue === undefined) {
+    throw new WorkInstructionManifestError(
+      `Manifest attachment ${manifestAttachment.filename || '(unnamed)'} is not valid JSON`
+    );
   }
-  if (manifestCandidates.length > 1) {
-    throw new WorkInstructionManifestError('Multiple schema-versioned work-instruction manifests were attached');
-  }
-
-  const manifestCandidate = manifestCandidates[0]!;
-  const parsed = parseWorkInstructionManifest(manifestCandidate.value);
-  const imageParts = parts.filter((part) => part !== manifestCandidate.part);
+  const parsed = parseWorkInstructionManifest(manifestValue);
+  const imageParts = parts.filter((part) => part !== manifestPart);
   const imageByExactName = new Map<string, WorkInstructionAttachmentPart[]>();
   for (const part of imageParts) {
     const name = normalizeWorkInstructionImageName(part.filename);
@@ -259,7 +244,7 @@ export async function resolveWorkInstructionGmailPacket(params: {
     assets,
     assetBytes,
     warnings,
-    manifestFilename: manifestCandidate.attachment.filename || 'unnamed.json',
+    manifestFilename: manifestAttachment.filename || 'unnamed.json',
   };
 }
 

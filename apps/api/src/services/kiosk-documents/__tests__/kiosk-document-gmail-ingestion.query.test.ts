@@ -35,7 +35,7 @@ describe('findEligibleKioskMessages', () => {
       payload: {
         headers: [{
           name: 'Subject',
-          value: messageId === validId ? 'DocumentASM' : '[WORK-INSTRUCTION] row',
+          value: messageId === validId ? 'DocumentASM' : '[Kakou-Dandori-photo] row',
         }],
       },
     }));

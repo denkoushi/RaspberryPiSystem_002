@@ -37,7 +37,7 @@ const config: BackupConfig = {
   ...defaultBackupConfig,
   workInstructionGmailIngest: {
     enabled: true,
-    subjectTokens: ['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]'],
+    subjectTokens: ['[Kakou-Dandori-photo]'],
     fromEmail: 'sharepoint@example.com',
   },
 };
@@ -129,7 +129,7 @@ function fixtureMessage(input: { id: string; itemId: number; bytes: Buffer }): F
       payload: {
         mimeType: 'multipart/mixed',
         headers: [
-          { name: 'Subject', value: `[WORK-INSTRUCTION] ${input.id}` },
+          { name: 'Subject', value: `[Kakou-Dandori-photo] ${input.id}` },
           { name: 'From', value: 'SharePoint <sharepoint@example.com>' },
         ],
         parts: [
