@@ -3909,6 +3909,8 @@ model WorkInstructionRow {
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
   steps          WorkInstructionStep[]
+  sourceVersions WorkInstructionSourceVersion[]
+  publication    WorkInstructionSourcePublication?
 
   @@unique([sourceSystem, sourceList, sourceItemId], map: "WorkInstructionRow_unique_source")
   @@index([partNumber, shootingTarget, sourceItemId, sourceList, sourceSystem], map: "WorkInstructionRow_idx_group")
@@ -3938,6 +3940,56 @@ enum WorkInstructionAssetStatus {
   DELETE_PENDING
 }
 
+/// 作業要領の編集改版状態。原本取込の結果状態とは分離する。
+enum WorkInstructionEditRevisionStatus {
+  DRAFT
+  PUBLISHED
+  DISCARDED
+}
+
+/// 作業要領overlayの表示要素。
+enum WorkInstructionEditOverlayKind {
+  TEXT
+  IMAGE
+  SHAPE
+}
+
+/// 作業要領overlayの図形種別。
+enum WorkInstructionEditOverlayShapeKind {
+  RECTANGLE
+  ELLIPSE
+  LINE
+  ARROW
+}
+
+/// 原本再取込後のoverlay移植状態。
+enum WorkInstructionEditOverlayMigrationState {
+  MIGRATED
+  NEEDS_REVIEW
+  UNASSIGNED
+  SKIPPED
+}
+
+/// 作業要領の編集用immutable asset状態。
+enum WorkInstructionEditAssetStatus {
+  STAGED
+  ACTIVE
+  DELETE_PENDING
+}
+
+/// 編集画像の作成経路。ROI画像は原本版・手順・bboxを保持して再取込時に再生成する。
+enum WorkInstructionEditAssetOrigin {
+  UPLOAD
+  ROI
+}
+
+/// 管理者による旧原本画像削除の監査状態。
+enum WorkInstructionSourceAssetDeletionStatus {
+  REQUESTED
+  DELETED
+  FAILED
+}
+
 /// Gmail単位の処理結果。行のsource identityとは別の再送・メール掃除台帳。
 enum WorkInstructionImportOutcome {
   PENDING
@@ -3963,6 +4015,7 @@ model WorkInstructionAsset {
   deletePendingAt DateTime?
   updatedAt      DateTime                  @updatedAt
   steps          WorkInstructionStep[]
+  sourceVersionSteps WorkInstructionSourceVersionStep[]
 
   @@index([status, createdAt], map: "WorkInstructionAsset_idx_status_created")
   @@index([status, deletePendingAt], map: "WorkInstructionAsset_idx_status_delete_pending")
@@ -3981,4 +4034,185 @@ model WorkInstructionImportMessage {
 
   @@index([outcome, nextRetryAt], map: "WorkInstructionImportMessage_idx_retry")
   @@index([mailCleanupPending, updatedAt], map: "WorkInstructionImportMessage_idx_cleanup")
+}
+
+/// SharePoint行の受信済みimmutable source snapshot。Rowはlatest cacheとして残し、
+/// 公開表示はWorkInstructionSourcePublicationのpointerで選択する。
+model WorkInstructionSourceVersion {
+  id             String                         @id @default(uuid())
+  rowId          String
+  sourceModified DateTime
+  partNumber     String?                        @db.VarChar(200)
+  shootingTarget String?                        @db.VarChar(200)
+  rawManifest    Json
+  contentHash    String                         @db.VarChar(64)
+  createdAt      DateTime                       @default(now())
+  row            WorkInstructionRow             @relation(fields: [rowId], references: [id], onDelete: Restrict)
+  steps          WorkInstructionSourceVersionStep[]
+  latestPointers WorkInstructionSourcePublication[] @relation("WorkInstructionLatestSourceVersion")
+  publicPointers WorkInstructionSourcePublication[] @relation("WorkInstructionPublishedSourceVersion")
+  revisions      WorkInstructionEditRevision[]
+  deletionAudits WorkInstructionSourceAssetDeletionAudit[]
+  originEditAssets WorkInstructionEditAsset[] @relation("WorkInstructionEditAssetOriginSourceVersion")
+
+  @@unique([rowId, sourceModified, contentHash], map: "WorkInstructionSourceVersion_unique_snapshot")
+  @@index([rowId, sourceModified], map: "WorkInstructionSourceVersion_idx_row_modified")
+  @@index([partNumber, shootingTarget, sourceModified], map: "WorkInstructionSourceVersion_idx_group")
+}
+
+/// Immutable source snapshot内の手順。元assetを参照し、削除時も本文・hashは監査用に残す。
+model WorkInstructionSourceVersionStep {
+  id              String                     @id @default(uuid())
+  sourceVersionId String
+  step            BigInt
+  text            String
+  imageName       String?
+  imageAssetId    String?
+  imageSha256     String?                    @db.VarChar(64)
+  imageDeletedAt  DateTime?
+  imageDeletedBy  String?                    @db.VarChar(200)
+  createdAt       DateTime                   @default(now())
+  sourceVersion   WorkInstructionSourceVersion @relation(fields: [sourceVersionId], references: [id], onDelete: Cascade)
+  imageAsset      WorkInstructionAsset?      @relation(fields: [imageAssetId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceVersionId, step], map: "WorkInstructionSourceVersionStep_unique_step")
+  @@index([imageAssetId], map: "WorkInstructionSourceVersionStep_idx_asset")
+}
+
+/// source tupleごとのlatest/public pointer。latest取込はpublicを自動変更しない。
+model WorkInstructionSourcePublication {
+  id                   String                         @id @default(uuid())
+  rowId                String                         @unique(map: "WorkInstructionSourcePublication_row_key")
+  latestVersionId      String
+  publishedVersionId   String
+  publishedRevisionId  String?
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+  row                  WorkInstructionRow             @relation(fields: [rowId], references: [id], onDelete: Cascade)
+  latestVersion        WorkInstructionSourceVersion   @relation("WorkInstructionLatestSourceVersion", fields: [latestVersionId], references: [id], onDelete: Restrict)
+  publishedVersion     WorkInstructionSourceVersion   @relation("WorkInstructionPublishedSourceVersion", fields: [publishedVersionId], references: [id], onDelete: Restrict)
+  publishedRevision    WorkInstructionEditRevision?  @relation(fields: [publishedRevisionId], references: [id], onDelete: Restrict)
+
+  @@index([latestVersionId], map: "WorkInstructionSourcePublication_idx_latest")
+  @@index([publishedVersionId], map: "WorkInstructionSourcePublication_idx_published")
+  @@index([publishedRevisionId], map: "WorkInstructionSourcePublication_idx_revision")
+}
+
+/// source versionに対する編集改版。公開済みrevisionは不変で、新版copyは別revisionになる。
+model WorkInstructionEditRevision {
+  id                 String                            @id @default(uuid())
+  sourceVersionId    String
+  revisionNumber     Int                               @default(1)
+  supersedesRevisionId String?
+  copiedFromRevisionId String?
+  isRevisionHead     Boolean                           @default(true)
+  status             WorkInstructionEditRevisionStatus @default(DRAFT)
+  editVersion        Int                               @default(0)
+  baseContentHash    String                            @db.VarChar(64)
+  createdAt          DateTime                          @default(now())
+  updatedAt          DateTime                          @updatedAt
+  sourceVersion      WorkInstructionSourceVersion     @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict)
+  supersedesRevision WorkInstructionEditRevision?     @relation("WorkInstructionEditRevisionSupersedes", fields: [supersedesRevisionId], references: [id], onDelete: Restrict)
+  successorRevisions WorkInstructionEditRevision[]    @relation("WorkInstructionEditRevisionSupersedes")
+  copiedFromRevision WorkInstructionEditRevision?     @relation("WorkInstructionEditRevisionCopiedFrom", fields: [copiedFromRevisionId], references: [id], onDelete: SetNull)
+  copiedRevisions    WorkInstructionEditRevision[]    @relation("WorkInstructionEditRevisionCopiedFrom")
+  overlays           WorkInstructionEditOverlay[]
+  ownedAssets        WorkInstructionEditAsset[]
+  publishedPointers  WorkInstructionSourcePublication[]
+
+  @@unique([sourceVersionId, revisionNumber], map: "WorkInstructionEditRevision_unique_number")
+  @@index([sourceVersionId, isRevisionHead], map: "WorkInstructionEditRevision_idx_head")
+  @@index([status, updatedAt], map: "WorkInstructionEditRevision_idx_status_updated")
+  @@index([supersedesRevisionId], map: "WorkInstructionEditRevision_idx_supersedes")
+  @@index([copiedFromRevisionId], map: "WorkInstructionEditRevision_idx_copied_from")
+}
+
+/// 編集改版に属するTEXT/IMAGE/SHAPE overlay。座標はsource画像の正規化値。
+model WorkInstructionEditOverlay {
+  id               String                           @id @default(uuid())
+  revisionId       String
+  sourceStep       BigInt?
+  migratedFromStep BigInt
+  baseStepFingerprint String                        @db.VarChar(128)
+  targetStepFingerprint String?                     @db.VarChar(128)
+  migrationState   WorkInstructionEditOverlayMigrationState @default(MIGRATED)
+  kind             WorkInstructionEditOverlayKind
+  xRatio           Decimal                          @db.Decimal(10, 8)
+  yRatio           Decimal                          @db.Decimal(10, 8)
+  widthRatio       Decimal                          @db.Decimal(10, 8)
+  heightRatio      Decimal                          @db.Decimal(10, 8)
+  zIndex           Int                              @default(0)
+  opacity          Decimal                          @default(1) @db.Decimal(5, 4)
+  maskEnabled      Boolean                          @default(false)
+  maskColor        String?
+  text             String?
+  textStyle        Json?
+  editAssetId      String?
+  objectFit        String?
+  shapeKind        WorkInstructionEditOverlayShapeKind?
+  strokeColor      String?
+  fillColor        String?
+  strokeWidthRatio Decimal?                         @db.Decimal(10, 8)
+  shapeStartXRatio Decimal?                         @db.Decimal(10, 8)
+  shapeStartYRatio Decimal?                         @db.Decimal(10, 8)
+  shapeEndXRatio   Decimal?                         @db.Decimal(10, 8)
+  shapeEndYRatio   Decimal?                         @db.Decimal(10, 8)
+  createdAt        DateTime                         @default(now())
+  updatedAt        DateTime                         @updatedAt
+  revision         WorkInstructionEditRevision      @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  editAsset        WorkInstructionEditAsset?       @relation(fields: [editAssetId], references: [id], onDelete: Restrict)
+
+  @@index([revisionId, sourceStep, zIndex], map: "WorkInstructionEditOverlay_idx_revision_step_z")
+  @@index([editAssetId], map: "WorkInstructionEditOverlay_idx_asset")
+  @@index([revisionId, migrationState], map: "WorkInstructionEditOverlay_idx_migration_state")
+}
+
+/// 編集で作成した画像asset。取込元WorkInstructionAssetとはnamespace・GC責務を分離する。
+model WorkInstructionEditAsset {
+  id              String                         @id @default(uuid())
+  storageKey      String                         @unique @db.VarChar(1024)
+  mimeType        String                         @db.VarChar(64)
+  sizeBytes       Int
+  sha256          String                         @db.VarChar(64)
+  status          WorkInstructionEditAssetStatus @default(STAGED)
+  origin           WorkInstructionEditAssetOrigin @default(UPLOAD)
+  originSourceVersionId String?
+  originSourceStep BigInt?
+  originXRatio     Decimal?                       @db.Decimal(10, 8)
+  originYRatio     Decimal?                       @db.Decimal(10, 8)
+  originWidthRatio Decimal?                       @db.Decimal(10, 8)
+  originHeightRatio Decimal?                      @db.Decimal(10, 8)
+  ownerRevisionId String?
+  createdAt       DateTime                       @default(now())
+  activatedAt     DateTime?
+  deletePendingAt DateTime?
+  lastDeleteError String?
+  updatedAt       DateTime                       @updatedAt
+  ownerRevision   WorkInstructionEditRevision?  @relation(fields: [ownerRevisionId], references: [id], onDelete: SetNull)
+  originSourceVersion WorkInstructionSourceVersion? @relation("WorkInstructionEditAssetOriginSourceVersion", fields: [originSourceVersionId], references: [id], onDelete: Restrict)
+  overlays        WorkInstructionEditOverlay[]
+
+  @@index([status, createdAt], map: "WorkInstructionEditAsset_idx_status_created")
+  @@index([status, deletePendingAt], map: "WorkInstructionEditAsset_idx_status_delete_pending")
+  @@index([ownerRevisionId, createdAt], map: "WorkInstructionEditAsset_idx_owner_created")
+  @@index([originSourceVersionId, originSourceStep], map: "WorkInstructionEditAsset_idx_origin_source")
+}
+
+/// 旧source画像の管理者削除をasset row削除後も残す監査台帳。
+model WorkInstructionSourceAssetDeletionAudit {
+  id              String                                 @id @default(uuid())
+  assetId         String
+  sourceVersionId String
+  storageKey      String                                 @db.VarChar(1024)
+  sha256          String                                 @db.VarChar(64)
+  requestedBy     String                                 @db.VarChar(200)
+  status          WorkInstructionSourceAssetDeletionStatus @default(REQUESTED)
+  error           String?
+  requestedAt     DateTime                               @default(now())
+  completedAt     DateTime?
+  sourceVersion   WorkInstructionSourceVersion          @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict)
+
+  @@index([assetId, requestedAt], map: "WorkInstructionSourceAssetDeletionAudit_idx_asset")
+  @@index([status, requestedAt], map: "WorkInstructionSourceAssetDeletionAudit_idx_status")
+  @@index([sourceVersionId, requestedAt], map: "WorkInstructionSourceAssetDeletionAudit_idx_version")
 }

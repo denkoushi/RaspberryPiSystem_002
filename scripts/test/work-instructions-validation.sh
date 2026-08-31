@@ -85,6 +85,9 @@ cleanup() {
   if [[ "${cleanup_failed}" -ne 0 ]] && [[ "${status}" -eq 0 ]]; then
     status=1
   fi
+  if [[ "${cleanup_failed}" -eq 0 ]]; then
+    echo "TEMP_RESOURCE_REMAINING=0"
+  fi
   exit "${status}"
 }
 if grep -Fxq "${CONTAINER_NAME}" <(docker ps -a --format '{{.Names}}'); then

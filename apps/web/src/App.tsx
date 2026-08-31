@@ -156,6 +156,11 @@ const KioskSelfInspectionSessionPage = lazy(() =>
     default: module.KioskSelfInspectionSessionPage
   }))
 );
+const KioskWorkInstructionEditorPage = lazy(() =>
+  import('./pages/kiosk/KioskWorkInstructionEditorPage').then((module) => ({
+    default: module.KioskWorkInstructionEditorPage
+  }))
+);
 
 function lazyRouteElement(element: ReactNode) {
   return <Suspense fallback={<RouteLoadingScreen />}>{element}</Suspense>;
@@ -227,6 +232,10 @@ function App() {
           />
           <Route path="/kiosk/part-measurement" element={<KioskPartMeasurementPage />} />
           <Route path="/kiosk/part-measurement/self-inspection" element={<KioskSelfInspectionPage />} />
+          <Route
+            path="/kiosk/part-measurement/self-inspection/work-instructions/edit"
+            element={lazyRouteElement(<KioskWorkInstructionEditorPage />)}
+          />
           <Route
             path="/kiosk/part-measurement/self-inspection/record-approvals"
             element={<KioskSelfInspectionRecordApprovalPage />}

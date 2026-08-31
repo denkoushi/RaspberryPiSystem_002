@@ -1,0 +1,370 @@
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const apiMocks = vi.hoisted(() => ({
+  copy: vi.fn(),
+  createImageRegion: vi.fn(),
+  deleteSourceImages: vi.fn(),
+  discard: vi.fn(),
+  findTextCandidates: vi.fn(),
+  history: vi.fn(),
+  publish: vi.fn(),
+  save: vi.fn(),
+  uploadImage: vi.fn(),
+  useEditorGroup: vi.fn()
+}));
+
+vi.mock('../../api/client', () => ({
+  copyWorkInstructionOverlayDraft: apiMocks.copy,
+  createWorkInstructionImageRegion: apiMocks.createImageRegion,
+  deleteWorkInstructionSourceVersionImages: apiMocks.deleteSourceImages,
+  discardWorkInstructionOverlayDraft: apiMocks.discard,
+  findWorkInstructionTextCandidates: apiMocks.findTextCandidates,
+  listWorkInstructionRevisionHistory: apiMocks.history,
+  publishWorkInstructionOverlayDraft: apiMocks.publish,
+  saveWorkInstructionOverlayDraft: apiMocks.save,
+  uploadWorkInstructionOverlayImage: apiMocks.uploadImage
+}));
+
+vi.mock('../../api/hooks/work-instructions', () => ({
+  useWorkInstructionEditorGroup: apiMocks.useEditorGroup
+}));
+
+import { useWorkInstructionEditorController } from './useWorkInstructionEditorController';
+
+import type {
+  WorkInstructionEditorGroupDto,
+  WorkInstructionEditorStepDto,
+  WorkInstructionEditRevisionDto,
+  WorkInstructionRevisionHistoryItemDto,
+  WorkInstructionSourceVersionDto
+} from '../../api/domains/work-instruction-overlays';
+import type { WorkInstructionOverlayElement } from '../../api/domains/work-instructions';
+
+const range = { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 };
+
+function makeStep(overlays: WorkInstructionOverlayElement[] = []): WorkInstructionEditorStepDto {
+  return {
+    stepKey: 'sharepoint:work-instructions:1:1',
+    sourceVersionId: 'latest-1',
+    sourceSystem: 'sharepoint',
+    sourceList: 'work-instructions',
+    sourceItemId: 1,
+    step: 1,
+    text: '加工面を確認します。',
+    imageName: 'source.png',
+    imageAssetId: 'source-asset-1',
+    imageUrl: '/api/work-instructions/assets/source-asset-1',
+    imageMimeType: 'image/png',
+    imageSha256: 'source-sha',
+    sourceModified: '2026-08-31T00:00:00.000Z',
+    contentHash: 'latest-hash',
+    overlays
+  };
+}
+
+function makeVersion(id: string, status: WorkInstructionSourceVersionDto['status']): WorkInstructionSourceVersionDto {
+  return {
+    id,
+    revisionNumber: 2,
+    sourceModified: '2026-08-31T00:00:00.000Z',
+    contentHash: 'latest-hash',
+    status,
+    steps: [makeStep()]
+  };
+}
+
+function makeDraft(overlays: WorkInstructionOverlayElement[] = [], editVersion = 0): WorkInstructionEditRevisionDto {
+  const stepOverlays = overlays.filter((element) => element.sourceStep !== null && element.migrationState !== 'UNASSIGNED');
+  return {
+    id: 'draft-1',
+    sourceVersionId: 'latest-1',
+    status: 'draft',
+    revisionNumber: 1,
+    editVersion,
+    sourceModified: '2026-08-31T00:00:00.000Z',
+    contentHash: 'latest-hash',
+    baseContentHash: 'latest-hash',
+    steps: [makeStep(stepOverlays)],
+    overlays,
+    assets: {}
+  };
+}
+
+function makeHistory(
+  sourceVersionId: string,
+  canDeleteImage: boolean,
+  imageDeletedAt: string | null = null
+): WorkInstructionRevisionHistoryItemDto {
+  return {
+    id: `history-${sourceVersionId}`,
+    rowId: 'row-1',
+    sourceVersionId,
+    revisionNumber: 1,
+    sourceModified: '2026-08-31T00:00:00.000Z',
+    contentHash: 'archived-hash',
+    status: 'archived',
+    isLatest: false,
+    isPublished: false,
+    publishedRevisionId: null,
+    annotationRevisionId: null,
+    imageCount: 2,
+    deletedImageCount: imageDeletedAt ? 2 : 0,
+    eligibleImageCount: canDeleteImage ? 2 : 0,
+    canDeleteImage,
+    imageDeletedAt,
+    imageDeletedBy: imageDeletedAt ? 'admin' : null,
+    images: []
+  };
+}
+
+function makeGroup(
+  draft: WorkInstructionEditRevisionDto | null = null,
+  history: WorkInstructionRevisionHistoryItemDto[] = []
+): WorkInstructionEditorGroupDto {
+  return {
+    partNumber: 'PART-1',
+    shootingTarget: '加工',
+    rows: [{
+      rowId: 'row-1',
+      source: { system: 'sharepoint', list: 'work-instructions', itemId: 1 },
+      published: makeVersion('published-1', 'published'),
+      latest: makeVersion('latest-1', 'latest'),
+      draft,
+      updateAvailable: true
+    }],
+    migration: { total: 0, migrated: 0, needsReview: 0, unassigned: 0, skipped: 0 },
+    history
+  };
+}
+
+function renderEditor() {
+  return renderHook(() => useWorkInstructionEditorController({
+    partNumber: 'PART-1',
+    shootingTarget: '加工'
+  }));
+}
+
+async function authenticate(hook: ReturnType<typeof renderEditor>) {
+  await waitFor(() => expect(hook.result.current.loading).toBe(false));
+  act(() => hook.result.current.setAccessPassword('2520'));
+  await act(async () => {
+    await hook.result.current.authenticate();
+  });
+  await waitFor(() => expect(hook.result.current.accessGranted).toBe(true));
+}
+
+describe('useWorkInstructionEditorController', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+    apiMocks.useEditorGroup.mockReturnValue({
+      data: makeGroup(),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn().mockResolvedValue({ data: makeGroup() })
+    });
+    apiMocks.copy.mockResolvedValue({ group: makeGroup(makeDraft()), revisions: [makeDraft()] });
+    apiMocks.findTextCandidates.mockResolvedValue([]);
+    apiMocks.history.mockResolvedValue([]);
+    apiMocks.createImageRegion.mockRejectedValue(new Error('ROI unavailable'));
+    apiMocks.uploadImage.mockResolvedValue({
+      assetId: 'uploaded-1',
+      storageKey: 'edit/uploaded-1.png',
+      contentType: 'image/png',
+      byteSize: 12,
+      url: '/api/work-instructions/edit-assets/uploaded-1'
+    });
+  });
+
+  it('keeps manual OCR fallback and image upload fallback usable when ROI services fail', async () => {
+    const hook = renderEditor();
+    await authenticate(hook);
+
+    act(() => hook.result.current.setPendingRange(range));
+    await act(async () => {
+      await hook.result.current.createOverlay('TEXT');
+    });
+    expect(apiMocks.findTextCandidates).toHaveBeenCalledWith({
+      revisionId: 'draft-1',
+      stepKey: 'sharepoint:work-instructions:1:1',
+      accessPassword: '2520',
+      bbox: range
+    });
+    expect(hook.result.current.selectedElement).toMatchObject({ kind: 'TEXT', text: 'ここに文章を入力' });
+
+    act(() => hook.result.current.setPendingRange({ ...range, xRatio: 0.5 }));
+    await act(async () => {
+      await hook.result.current.createOverlay('IMAGE');
+    });
+    expect(apiMocks.createImageRegion).toHaveBeenCalledWith({
+      revisionId: 'draft-1',
+      stepKey: 'sharepoint:work-instructions:1:1',
+      accessPassword: '2520',
+      bbox: { ...range, xRatio: 0.5 }
+    });
+    expect(hook.result.current.selectedElement).toMatchObject({ kind: 'IMAGE', assetId: '' });
+
+    const file = new File(['image'], 'replacement.png', { type: 'image/png' });
+    await act(async () => {
+      await hook.result.current.uploadImage(file);
+    });
+    expect(apiMocks.uploadImage).toHaveBeenCalledWith({
+      revisionId: 'draft-1',
+      stepKey: 'sharepoint:work-instructions:1:1',
+      accessPassword: '2520',
+      file
+    });
+    expect(hook.result.current.selectedElement).toMatchObject({ kind: 'IMAGE', assetId: 'uploaded-1' });
+    expect(hook.result.current.activeAssets['uploaded-1']).toMatchObject({
+      url: '/api/work-instructions/edit-assets/uploaded-1'
+    });
+  });
+
+  it('retains local elements on 409, persists recovery, and supports explicit re-save', async () => {
+    const hook = renderEditor();
+    await authenticate(hook);
+    act(() => hook.result.current.setPendingRange(range));
+    await act(async () => {
+      await hook.result.current.createOverlay('SHAPE');
+    });
+    const localElements = hook.result.current.activeElements;
+    apiMocks.save.mockRejectedValueOnce({
+      response: { status: 409, data: { details: { currentEditVersion: 5 } } }
+    });
+
+    await act(async () => {
+      await hook.result.current.save();
+    });
+    expect(hook.result.current.conflict).toEqual({ revisionId: 'draft-1', currentEditVersion: 5 });
+    expect(hook.result.current.activeElements).toEqual(localElements);
+    await waitFor(() => expect(window.localStorage.getItem('kiosk-work-instruction-editor:PART-1:加工:draft-1')).toContain('draft-1'), { timeout: 2_000 });
+
+    apiMocks.save.mockResolvedValueOnce(makeDraft(localElements, 6));
+    await act(async () => {
+      await hook.result.current.retryConflictSave();
+    });
+    expect(apiMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
+      revisionId: 'draft-1',
+      expectedEditVersion: 5,
+      elements: expect.arrayContaining([expect.objectContaining({ migrationState: 'MIGRATED' })])
+    }));
+    expect(hook.result.current.conflict).toBeNull();
+    expect(hook.result.current.activeElements).toEqual(localElements);
+    expect(window.localStorage.getItem('kiosk-work-instruction-editor:PART-1:加工:draft-1')).toBeNull();
+  });
+
+  it('re-composes source-step buckets when a save response omits derived revision steps', async () => {
+    const hook = renderEditor();
+    await authenticate(hook);
+    act(() => hook.result.current.setPendingRange(range));
+    await act(async () => {
+      await hook.result.current.createOverlay('SHAPE');
+    });
+    const localElements = hook.result.current.activeElements;
+    apiMocks.save.mockResolvedValueOnce({
+      ...makeDraft(localElements, 1),
+      steps: [],
+      overlays: localElements
+    });
+
+    await act(async () => {
+      await hook.result.current.save();
+    });
+
+    expect(hook.result.current.activeRevision?.steps[0]?.overlays).toEqual(localElements);
+    expect(hook.result.current.activeElements).toEqual(localElements);
+  });
+
+  it('assigns an unassigned migrated note to an explicit destination step and keeps it reviewable', async () => {
+    const unassigned: WorkInstructionOverlayElement = {
+      id: 'unassigned-note',
+      pageIndex: 0,
+      bbox: range,
+      zIndex: 1,
+      kind: 'TEXT',
+      text: '旧版注記',
+      sourceStep: null,
+      migratedFromStep: 3,
+      baseStepFingerprint: 'published-hash',
+      targetStepFingerprint: null,
+      migrationState: 'UNASSIGNED'
+    };
+    apiMocks.copy.mockResolvedValueOnce({
+      group: makeGroup(makeDraft([unassigned])),
+      revisions: [makeDraft([unassigned])]
+    });
+    const hook = renderEditor();
+    await authenticate(hook);
+
+    act(() => hook.result.current.setSelectedOverlayId('unassigned-note'));
+    expect(hook.result.current.selectedElement).toMatchObject({
+      sourceStep: null,
+      stepKey: undefined,
+      migrationState: 'UNASSIGNED'
+    });
+    act(() => hook.result.current.assignOverlayStep('unassigned-note', 'sharepoint:work-instructions:1:1'));
+
+    expect(hook.result.current.selectedElement).toMatchObject({
+      stepKey: 'sharepoint:work-instructions:1:1',
+      sourceStep: 1,
+      targetStepFingerprint: 'latest-hash',
+      migrationState: 'NEEDS_REVIEW',
+      migratedFromStep: 3
+    });
+  });
+
+  it('keeps a partially deleted source version retryable and marks it deleted only after every asset succeeds', async () => {
+    const sourceVersionId = 'archived-source-version';
+    const partialHistory = makeHistory(sourceVersionId, true);
+    const deletedHistory = makeHistory(sourceVersionId, false, '2026-08-31T01:00:00.000Z');
+    const refetch = vi.fn()
+      .mockResolvedValueOnce({ data: makeGroup(makeDraft(), [partialHistory]) })
+      .mockResolvedValueOnce({ data: makeGroup(makeDraft(), [deletedHistory]) });
+    apiMocks.useEditorGroup.mockReturnValue({
+      data: makeGroup(),
+      isLoading: false,
+      isError: false,
+      refetch
+    });
+    apiMocks.copy.mockResolvedValueOnce({ group: makeGroup(makeDraft(), [partialHistory]), revisions: [makeDraft()] });
+    apiMocks.history
+      .mockResolvedValueOnce([partialHistory])
+      .mockResolvedValueOnce([deletedHistory]);
+    apiMocks.deleteSourceImages
+      .mockResolvedValueOnce({
+        results: [
+          { assetId: 'source-asset-1', auditId: 'audit-1', status: 'DELETED' },
+          { assetId: 'source-asset-2', auditId: null, status: 'FAILED', error: 'storage unavailable' },
+          { assetId: 'source-asset-3', auditId: null, status: 'SKIPPED', error: 'asset missing' }
+        ],
+        deletedCount: 1
+      })
+      .mockResolvedValueOnce({
+        results: [
+          { assetId: 'source-asset-2', auditId: 'audit-2', status: 'DELETED' }
+        ],
+        deletedCount: 1
+      });
+
+    const hook = renderEditor();
+    await authenticate(hook);
+
+    await act(async () => {
+      await hook.result.current.deleteSourceImage(sourceVersionId);
+    });
+    expect(apiMocks.deleteSourceImages).toHaveBeenNthCalledWith(1, { sourceVersionId, accessPassword: '2520' });
+    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(apiMocks.history).toHaveBeenCalledWith({ partNumber: 'PART-1', shootingTarget: '加工' });
+    expect(hook.result.current.message).toContain('1件削除しました。2件は削除できなかったため');
+    expect(hook.result.current.group?.history?.[0]).toMatchObject({ canDeleteImage: true, imageDeletedAt: null });
+
+    await act(async () => {
+      await hook.result.current.deleteSourceImage(sourceVersionId);
+    });
+    expect(apiMocks.deleteSourceImages).toHaveBeenNthCalledWith(2, { sourceVersionId, accessPassword: '2520' });
+    expect(refetch).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.message).toContain('旧画像を1件削除しました。版履歴と監査情報は保持されています。');
+    expect(hook.result.current.group?.history?.[0]).toMatchObject({ canDeleteImage: false, imageDeletedAt: '2026-08-31T01:00:00.000Z' });
+  });
+});

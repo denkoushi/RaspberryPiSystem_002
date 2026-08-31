@@ -76,18 +76,60 @@ function imageStep(step: number, imageName: string, imageHash: string) {
 }
 
 async function cleanupFixtures(): Promise<void> {
-  const rows = await prisma.workInstructionRow.findMany({
-    where: { sourceSystem },
-    select: { id: true },
-  });
-  if (rows.length > 0) {
-    await prisma.workInstructionRow.deleteMany({ where: { sourceSystem } });
-  }
-  await prisma.workInstructionImportMessage.deleteMany({
-    where: { gmailMessageId: { startsWith: messagePrefix } },
-  });
-  await prisma.workInstructionAsset.deleteMany({
-    where: { storageKey: { startsWith: assetPrefix }, steps: { none: {} } },
+  await prisma.$transaction(async (tx) => {
+    const rows = await tx.workInstructionRow.findMany({
+      where: { sourceSystem },
+      select: { id: true },
+    });
+    const rowIds = rows.map((row) => row.id);
+    if (rowIds.length > 0) {
+      const versions = await tx.workInstructionSourceVersion.findMany({
+        where: { rowId: { in: rowIds } },
+        select: { id: true },
+      });
+      const versionIds = versions.map((version) => version.id);
+      const revisions = versionIds.length > 0
+        ? await tx.workInstructionEditRevision.findMany({
+          where: { sourceVersionId: { in: versionIds } },
+          select: { id: true },
+        })
+        : [];
+      const revisionIds = revisions.map((revision) => revision.id);
+      const ownedEditAssets = revisionIds.length > 0
+        ? await tx.workInstructionEditAsset.findMany({
+          where: { ownerRevisionId: { in: revisionIds } },
+          select: { id: true },
+        })
+        : [];
+
+      // Release publication/revision pointers before deleting their targets.
+      await tx.workInstructionSourcePublication.deleteMany({ where: { rowId: { in: rowIds } } });
+      if (revisionIds.length > 0) {
+        await tx.workInstructionEditOverlay.deleteMany({ where: { revisionId: { in: revisionIds } } });
+        await tx.workInstructionEditRevision.deleteMany({ where: { id: { in: revisionIds } } });
+      }
+      if (ownedEditAssets.length > 0) {
+        await tx.workInstructionEditAsset.deleteMany({
+          where: { id: { in: ownedEditAssets.map((asset) => asset.id) }, overlays: { none: {} } },
+        });
+      }
+      if (versionIds.length > 0) {
+        await tx.workInstructionSourceAssetDeletionAudit.deleteMany({ where: { sourceVersionId: { in: versionIds } } });
+        await tx.workInstructionSourceVersionStep.deleteMany({ where: { sourceVersionId: { in: versionIds } } });
+        await tx.workInstructionSourceVersion.deleteMany({ where: { id: { in: versionIds } } });
+      }
+      await tx.workInstructionRow.deleteMany({ where: { id: { in: rowIds } } });
+    }
+    await tx.workInstructionImportMessage.deleteMany({
+      where: { gmailMessageId: { startsWith: messagePrefix } },
+    });
+    await tx.workInstructionAsset.deleteMany({
+      where: {
+        storageKey: { startsWith: assetPrefix },
+        steps: { none: {} },
+        sourceVersionSteps: { none: {} },
+      },
+    });
   });
 }
 
@@ -139,8 +181,7 @@ describeIntegration('Prisma work-instruction repository (isolated integration)',
       steps: [imageStep(1, second.imageName, second.sha256)],
     });
     const updated = await repository.applyPacket({ packet: secondPacket, stagedAssets: stagedSecond, now: secondModified });
-    expect(updated).toMatchObject({ outcome: 'APPLIED', rowId: firstRowId });
-    expect(updated.displacedAssetIds).toContain(first.assetId);
+    expect(updated).toMatchObject({ outcome: 'APPLIED', rowId: firstRowId, displacedAssetIds: [] });
 
     const stale = await repository.applyPacket({ packet: firstPacket, stagedAssets: stagedFirst, now: secondModified });
     expect(stale).toMatchObject({ outcome: 'STALE', rowId: firstRowId, displacedAssetIds: [] });
@@ -182,7 +223,9 @@ describeIntegration('Prisma work-instruction repository (isolated integration)',
       imageMimeType: 'image/jpeg',
       imageSha256: second.sha256,
     });
-    expect(await repository.readAsset(first.assetId)).toBeNull();
+    // The immutable v1 source snapshot still references this image.  The
+    // latest-row replacement must not make it eligible for automatic GC.
+    expect(await repository.readAsset(first.assetId)).toMatchObject({ status: 'ACTIVE' });
     expect(await repository.readAsset(second.assetId)).toMatchObject({ status: 'ACTIVE' });
 
     for (let itemId = 700; itemId < 709; itemId += 1) {
@@ -267,7 +310,7 @@ describeIntegration('Prisma work-instruction repository (isolated integration)',
     }));
   });
 
-  it('fully replaces an image step with text-only steps and releases the removed image', async () => {
+  it('fully replaces an image step with text-only steps while retaining immutable source history', async () => {
     const original = asset({ name: 'text-update-original.jpeg', suffix: 'asset-text-update', digest: '7' });
     const staged = await repository.stageAssets({ assets: [original], now: baseModified });
     await repository.applyPacket({
@@ -294,7 +337,7 @@ describeIntegration('Prisma work-instruction repository (isolated integration)',
     });
 
     expect(updated).toMatchObject({ outcome: 'APPLIED' });
-    expect(updated.displacedAssetIds).toContain(original.assetId);
+    expect(updated.displacedAssetIds).toEqual([]);
     const rows = await repository.readRows({
       partNumber: groupPart,
       shootingTarget: groupTarget,
@@ -305,7 +348,7 @@ describeIntegration('Prisma work-instruction repository (isolated integration)',
       expect.objectContaining({ step: 1, text: 'text only one', imageAssetId: null }),
       expect.objectContaining({ step: 2, text: 'text only two', imageAssetId: null }),
     ]);
-    expect(await repository.readAsset(original.assetId)).toBeNull();
+    expect(await repository.readAsset(original.assetId)).toMatchObject({ status: 'ACTIVE' });
   });
 
   it('executes representative source-identity and grouped sorted plans with buffer accounting', async () => {

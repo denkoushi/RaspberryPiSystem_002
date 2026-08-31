@@ -35,3 +35,6 @@ export * from './torque-wrenches/index.js';
 
 // 組立作業用ID
 export * from './assembly/index.js';
+
+// ドメイン非依存の正規化overlay/画像領域型
+export * from './overlay/index.js';

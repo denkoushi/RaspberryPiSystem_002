@@ -27,13 +27,19 @@ import {
   readWorkInstructionAsset,
   readWorkInstructionGroup,
   readWorkInstructionGroups,
-  readWorkInstructionRows
+  readWorkInstructionRows,
+  readPublishedWorkInstructionGroup,
+  readPublishedWorkInstructionGroups
 } from './prisma-work-instruction-read-queries.js';
 import {
   readWorkInstructionImportMessage,
   readWorkInstructionImportMessages,
   recordWorkInstructionImportMessage
 } from './prisma-work-instruction-import-messages.js';
+import {
+  createSourceVersionFromPacket,
+  ensureWorkInstructionPublicationForRow
+} from './prisma-work-instruction-version.persistence.js';
 import type {
   WorkInstructionDbClient,
   WorkInstructionLockedAsset
@@ -140,6 +146,12 @@ export class PrismaWorkInstructionRepository implements WorkInstructionRepositor
             sourceList: packet.source.list,
             sourceItemId: BigInt(packet.source.itemId)
           }
+        },
+        include: {
+          steps: {
+            orderBy: { step: 'asc' },
+            include: { asset: true }
+          }
         }
       });
       const decision = decideWorkInstructionRevision(
@@ -154,10 +166,14 @@ export class PrismaWorkInstructionRepository implements WorkInstructionRepositor
         };
       }
 
+      if (current) {
+        await ensureWorkInstructionPublicationForRow(tx, current, now);
+      }
+
       const lockedAssets = await this.lockStagedAssets(tx, stagedIds);
       this.assertStagedAssets(stagedAssets, lockedAssets);
       const oldAssetIds = current
-        ? [...new Set((await tx.workInstructionStep.findMany({ where: { rowId: current.id }, select: { assetId: true } }))
+        ? [...new Set(current.steps
           .map((step) => step.assetId)
           .filter((assetId): assetId is string => Boolean(assetId)))]
         : [];
@@ -190,6 +206,28 @@ export class PrismaWorkInstructionRepository implements WorkInstructionRepositor
           }
         });
 
+      const sourceVersion = await createSourceVersionFromPacket(tx, {
+        rowId: row.id,
+        packet,
+        stagedAssets,
+        now
+      });
+
+      const publication = current
+        ? await tx.workInstructionSourcePublication.update({
+          where: { rowId: row.id },
+          data: { latestVersionId: sourceVersion.id, updatedAt: now }
+        })
+        : await tx.workInstructionSourcePublication.create({
+          data: {
+            rowId: row.id,
+            latestVersionId: sourceVersion.id,
+            publishedVersionId: sourceVersion.id,
+            createdAt: now,
+            updatedAt: now
+          }
+        });
+
       if (stagedIds.length > 0) {
         await tx.$executeRaw(Prisma.sql`
           UPDATE "WorkInstructionAsset"
@@ -208,11 +246,17 @@ export class PrismaWorkInstructionRepository implements WorkInstructionRepositor
               SELECT 1 FROM "WorkInstructionStep" AS step
               WHERE step."assetId" = asset."id"
             )
+            AND NOT EXISTS (
+              SELECT 1 FROM "WorkInstructionSourceVersionStep" AS version_step
+              WHERE version_step."imageAssetId" = asset."id"
+            )
           RETURNING asset."id"
         `);
       return {
         outcome: 'APPLIED',
         rowId: row.id,
+        sourceVersionId: sourceVersion.id,
+        publishedVersionId: publication.publishedVersionId,
         displacedAssetIds: displacedAssetRows.map((asset) => asset.id)
       };
     }, { timeout: 30000 });
@@ -240,6 +284,10 @@ export class PrismaWorkInstructionRepository implements WorkInstructionRepositor
           SELECT 1 FROM "WorkInstructionStep" AS step
           WHERE step."assetId" = asset."id"
         )
+        AND NOT EXISTS (
+          SELECT 1 FROM "WorkInstructionSourceVersionStep" AS version_step
+          WHERE version_step."imageAssetId" = asset."id"
+        )
         ${activeFilter}
         ORDER BY asset."createdAt" ASC, asset."id" ASC
         LIMIT ${input.limit}
@@ -262,22 +310,48 @@ export class PrismaWorkInstructionRepository implements WorkInstructionRepositor
   async deleteAssetRecords(input: { assetIds: ReadonlyArray<string> }): Promise<number> {
     const ids = [...new Set(input.assetIds.filter(Boolean))];
     if (ids.length === 0) return 0;
-    const result = await this.db.workInstructionAsset.deleteMany({
-      where: {
-        id: { in: ids },
-        status: 'DELETE_PENDING',
-        steps: { none: {} }
+    return this.db.$transaction(async (tx) => {
+      const result = await tx.workInstructionAsset.deleteMany({
+        where: {
+          id: { in: ids },
+          status: 'DELETE_PENDING',
+          steps: { none: {} },
+          sourceVersionSteps: { none: {} }
+        }
+      });
+      if (result.count > 0) {
+        await tx.workInstructionSourceAssetDeletionAudit.updateMany({
+          where: { assetId: { in: ids }, status: { in: ['REQUESTED', 'FAILED'] } },
+          data: { status: 'DELETED', completedAt: new Date(), error: null }
+        });
       }
+      return result.count;
     });
-    return result.count;
+  }
+
+  async recordAssetDeletionFailure(input: { assetIds: ReadonlyArray<string>; error: string }): Promise<void> {
+    const ids = [...new Set(input.assetIds.filter(Boolean))];
+    if (ids.length === 0) return;
+    await this.db.workInstructionSourceAssetDeletionAudit.updateMany({
+      where: { assetId: { in: ids }, status: { in: ['REQUESTED', 'FAILED'] } },
+      data: { status: 'FAILED', error: input.error.slice(0, 2000) }
+    });
   }
 
   async readGroup(input: { partNumber: string; shootingTarget: string }): Promise<WorkInstructionGroupView | null> {
     return readWorkInstructionGroup(this.db, input);
   }
 
+  async readPublishedGroup(input: { partNumber: string; shootingTarget: string }): Promise<WorkInstructionGroupView | null> {
+    return readPublishedWorkInstructionGroup(this.db, input);
+  }
+
   async readGroups(input: WorkInstructionGroupsQuery) {
     return readWorkInstructionGroups(this.db, input);
+  }
+
+  async readPublishedGroups(input: WorkInstructionGroupsQuery) {
+    return readPublishedWorkInstructionGroups(this.db, input);
   }
 
   async readRows(input: WorkInstructionRowsQuery) {

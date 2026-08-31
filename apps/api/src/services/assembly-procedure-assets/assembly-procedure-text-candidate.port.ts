@@ -1,64 +1,38 @@
-import type { DocumentTextExtractorPort } from '../kiosk-documents/ports/document-text-extractor.port.js';
-import type { ImageOcrLayoutPort } from '../ocr/ports/image-ocr-layout.port.js';
+import type {
+  CoordinateOcrPort,
+  PdfTextCandidateInput as GenericPdfTextCandidateInput,
+  PdfTextCandidatePort as GenericPdfTextCandidatePort,
+  PdfTextPort,
+  TextCandidate,
+  TextCandidateBounds,
+  TextCandidateInput,
+  TextCandidatePort
+} from '../image-region/text-candidate.port.js';
 
-export type AssemblyProcedureTextCandidateBounds = {
-  xRatio: number;
-  yRatio: number;
-  widthRatio: number;
-  heightRatio: number;
-};
+/** @deprecated Use TextCandidateBounds from the domain-neutral module. */
+export type AssemblyProcedureTextCandidateBounds = TextCandidateBounds;
 
-export type AssemblyProcedureTextCandidate = {
-  text: string;
-  confidence: number | null;
-  bounds: AssemblyProcedureTextCandidateBounds | null;
-  pageIndex: number | null;
-  source: 'coordinate-ocr' | 'poppler' | 'none';
-};
+/** @deprecated Use TextCandidate from the domain-neutral module. */
+export type AssemblyProcedureTextCandidate = TextCandidate;
 
-export type AssemblyProcedureTextCandidateInput = {
-  imageBytes?: Buffer;
-  imageMimeType?: 'image/jpeg' | 'image/png' | 'image/webp';
-  /** Immutable PDF path supplied by the service for Poppler-first extraction. */
-  pdfPath?: string;
-  pageIndex?: number;
-  /** Bounds of the selected source-page ROI. Candidate bounds are ROI-local. */
-  roi?: AssemblyProcedureTextCandidateBounds;
-  /** Compatibility spelling for callers that model the selection as a bbox. */
-  bbox?: AssemblyProcedureTextCandidateBounds;
-};
+/** @deprecated Use TextCandidateInput from the domain-neutral module. */
+export type AssemblyProcedureTextCandidateInput = TextCandidateInput;
 
-export type AssemblyProcedurePdfTextCandidateInput = Pick<
-  AssemblyProcedureTextCandidateInput,
-  'pdfPath' | 'pageIndex' | 'roi' | 'bbox'
-> & {
-  pdfPath: string;
-  pageIndex: number;
-};
+/** @deprecated Use PdfTextCandidateInput from the domain-neutral module. */
+export type AssemblyProcedurePdfTextCandidateInput = GenericPdfTextCandidateInput;
 
 /**
- * Candidate extraction is best-effort. An empty list means the editor should
- * offer manual text entry; it is not an import failure.
+ * Compatibility port for existing assembly services. New document domains
+ * should depend on TextCandidatePort instead.
  */
-export interface AssemblyProcedureTextCandidatePort {
-  extractCandidates(
-    input: AssemblyProcedureTextCandidateInput,
-  ): Promise<AssemblyProcedureTextCandidate[]>;
-}
+export interface AssemblyProcedureTextCandidatePort extends TextCandidatePort {}
 
-/**
- * Dedicated PDF boundary for adapters that can expose coordinate candidates.
- * The generic text-candidate port remains the composition boundary used by
- * the editor service, so existing OCR adapters do not need to know about PDF.
- */
-export interface AssemblyProcedurePdfTextCandidatePort {
-  extractPdfCandidates(
-    input: AssemblyProcedurePdfTextCandidateInput,
-  ): Promise<AssemblyProcedureTextCandidate[]>;
-}
+/** Compatibility PDF boundary retained for existing composition roots. */
+export interface AssemblyProcedurePdfTextCandidatePort
+  extends GenericPdfTextCandidatePort {}
 
-/** Stable dependency aliases for composition roots that already own these ports. */
-export type AssemblyProcedureCoordinateOcrPort = ImageOcrLayoutPort;
-export type AssemblyProcedurePdfTextPort = DocumentTextExtractorPort;
+/** Stable dependency aliases for existing assembly composition roots. */
+export type AssemblyProcedureCoordinateOcrPort = CoordinateOcrPort;
+export type AssemblyProcedurePdfTextPort = PdfTextPort;
 export type PdfTextCandidatePort = AssemblyProcedurePdfTextCandidatePort;
 export type PopplerTextCandidatePort = AssemblyProcedurePdfTextCandidatePort;

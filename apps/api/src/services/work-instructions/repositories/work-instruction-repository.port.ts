@@ -89,9 +89,15 @@ export interface WorkInstructionRepository {
    */
   claimCleanupCandidates(input: CleanupWorkInstructionAssetsInput): Promise<ReadonlyArray<WorkInstructionCleanupCandidate>>;
   deleteAssetRecords(input: DeleteWorkInstructionAssetsInput): Promise<number>;
+  /** Records a durable-file deletion failure so the pending asset is retried. */
+  recordAssetDeletionFailure?(input: { assetIds: ReadonlyArray<string>; error: string }): Promise<void>;
 
   readGroup(input: { partNumber: string; shootingTarget: string }): Promise<WorkInstructionGroupView | null>;
+  /** Public kiosk projection; falls back to readGroup before version backfill. */
+  readPublishedGroup?(input: { partNumber: string; shootingTarget: string }): Promise<WorkInstructionGroupView | null>;
   readGroups(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>>;
+  /** Public kiosk group summaries; falls back to latest summaries before backfill. */
+  readPublishedGroups?(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>>;
   readRows(input: WorkInstructionRowsQuery): Promise<ReadonlyArray<WorkInstructionRowView>>;
   readAsset(assetId: string): Promise<WorkInstructionAssetView | null>;
 

@@ -6,6 +6,11 @@ import {
   normalizeWorkInstructionPartNumber,
   normalizeWorkInstructionShootingTarget
 } from '../domain/normalization.js';
+import type { WorkInstructionOverlayElement } from '../domain/editing.js';
+import { toEditRevisionView, workInstructionEditRevisionInclude } from './prisma-work-instruction-edit.persistence.js';
+import {
+  workInstructionSourceVersionInclude
+} from './prisma-work-instruction-version.persistence.js';
 import type {
   WorkInstructionAssetStatus,
   WorkInstructionAssetView,
@@ -15,7 +20,8 @@ import type {
   WorkInstructionJsonValue,
   WorkInstructionRowView,
   WorkInstructionSource,
-  WorkInstructionStepView
+  WorkInstructionStepView,
+  WorkInstructionOverlayAssetView
 } from '../domain/types.js';
 import type {
   WorkInstructionDbClient,
@@ -85,6 +91,100 @@ function toStepView(step: WorkInstructionStepRecord): WorkInstructionStepView {
     imageSha256: asset?.sha256 ?? null
   };
 }
+
+type PublishedPublicationRecord = Prisma.WorkInstructionSourcePublicationGetPayload<{
+  include: {
+    row: { select: {
+      id: true;
+      sourceSystem: true;
+      sourceList: true;
+      sourceItemId: true;
+      updatedAt: true;
+    } };
+    publishedVersion: { include: typeof workInstructionSourceVersionInclude };
+    publishedRevision: { include: typeof workInstructionEditRevisionInclude };
+  };
+}>;
+
+function toPublishedStepView(
+  step: PublishedPublicationRecord['publishedVersion']['steps'][number],
+  overlaysByStep: ReadonlyMap<number, ReadonlyArray<WorkInstructionOverlayElement>>,
+  overlayAssets: Readonly<Record<string, WorkInstructionOverlayAssetView>>
+): WorkInstructionStepView {
+  const image = step.imageAsset?.status === 'ACTIVE' ? step.imageAsset : null;
+  const sourceStep = toSafePositiveNumber(step.step, 'step');
+  return {
+    id: step.id,
+    step: sourceStep,
+    text: step.text,
+    imageName: step.imageName,
+    imageAssetId: image?.id ?? null,
+    imageStorageKey: image?.storageKey ?? null,
+    imageMimeType: image?.mimeType && ['image/jpeg', 'image/png', 'image/webp'].includes(image.mimeType)
+      ? image.mimeType as WorkInstructionStepView['imageMimeType']
+      : null,
+    imageSha256: step.imageSha256 ?? image?.sha256 ?? null,
+    overlays: overlaysByStep.get(sourceStep) ?? [],
+    overlayAssets
+  };
+}
+
+function publishedOverlaysByStep(
+  publication: PublishedPublicationRecord
+): ReadonlyMap<number, ReadonlyArray<WorkInstructionOverlayElement>> {
+  if (!publication.publishedRevision) return new Map();
+  const groups = new Map<number, WorkInstructionOverlayElement[]>();
+  for (const overlay of toEditRevisionView(publication.publishedRevision).overlays) {
+    if (overlay.sourceStep == null || overlay.migrationState === 'SKIPPED' || overlay.migrationState === 'UNASSIGNED') continue;
+    const values = groups.get(overlay.sourceStep) ?? [];
+    values.push(overlay);
+    groups.set(overlay.sourceStep, values);
+  }
+  return groups;
+}
+
+function publishedOverlayAssets(
+  publication: PublishedPublicationRecord
+): Readonly<Record<string, WorkInstructionOverlayAssetView>> {
+  const assets = publication.publishedRevision?.overlays
+    .map((overlay) => overlay.editAsset)
+    .filter((asset): asset is NonNullable<typeof asset> => Boolean(asset && asset.status === 'ACTIVE')) ?? [];
+  return Object.fromEntries(assets.map((asset) => [asset.id, {
+      assetId: asset.id,
+      mimeType: asset.mimeType,
+      sizeBytes: asset.sizeBytes,
+      sha256: asset.sha256,
+      url: `/api/work-instructions/edit-assets/${asset.id}`
+    } satisfies WorkInstructionOverlayAssetView]));
+}
+
+function toPublishedRowView(publication: PublishedPublicationRecord): WorkInstructionRowView {
+  const version = publication.publishedVersion;
+  const overlaysByStep = publishedOverlaysByStep(publication);
+  const overlayAssets = publishedOverlayAssets(publication);
+  return {
+    id: publication.row.id,
+    source: {
+      system: publication.row.sourceSystem,
+      list: publication.row.sourceList,
+      itemId: toSafePositiveNumber(publication.row.sourceItemId, 'sourceItemId'),
+      modified: version.sourceModified
+    },
+    partNumber: version.partNumber,
+    shootingTarget: version.shootingTarget,
+    contentHash: version.contentHash,
+    rawManifest: asJsonValue(version.rawManifest),
+    steps: version.steps.map((step) => toPublishedStepView(step, overlaysByStep, overlayAssets)),
+    createdAt: version.createdAt,
+    updatedAt: publication.row.updatedAt
+  };
+}
+
+const publishedPublicationInclude = {
+  row: { select: { id: true, sourceSystem: true, sourceList: true, sourceItemId: true, updatedAt: true } },
+  publishedVersion: { include: workInstructionSourceVersionInclude },
+  publishedRevision: { include: workInstructionEditRevisionInclude }
+} as const;
 
 export function toWorkInstructionRowView(row: WorkInstructionRowRecord): WorkInstructionRowView {
   const source: WorkInstructionSource = {
@@ -178,7 +278,8 @@ export async function readWorkInstructionGroup(
       partNumber: groupKey.partNumber,
       shootingTarget: groupKey.shootingTarget,
       rows: rowViews,
-      steps
+      steps,
+      updateAvailable: false
     };
   }, { isolationLevel: 'RepeatableRead', timeout: 30000 });
 }
@@ -192,7 +293,7 @@ export async function readWorkInstructionGroups(
   const shootingTarget = input.shootingTarget === undefined ? undefined : normalizeWorkInstructionShootingTarget(input.shootingTarget);
   if (input.partNumber !== undefined && !partNumber) return [];
   if (input.shootingTarget !== undefined && !shootingTarget) return [];
-  return db.$transaction(async (tx) => {
+  const published = await db.$transaction(async (tx) => {
     const filters = [Prisma.sql`row."partNumber" IS NOT NULL`, Prisma.sql`row."shootingTarget" IS NOT NULL`];
     if (partNumber) filters.push(Prisma.sql`row."partNumber" = ${partNumber}`);
     if (shootingTarget) filters.push(Prisma.sql`row."shootingTarget" = ${shootingTarget}`);
@@ -210,6 +311,7 @@ export async function readWorkInstructionGroups(
       LIMIT ${input.limit} OFFSET ${input.offset}
     `);
   }, { isolationLevel: 'RepeatableRead', timeout: 30000 });
+  return published;
 }
 
 export async function readWorkInstructionRows(
@@ -238,4 +340,129 @@ export async function readWorkInstructionAsset(
   if (!assetId.trim()) return null;
   const asset = await db.workInstructionAsset.findFirst({ where: { id: assetId, status: 'ACTIVE' } });
   return asset ? toAssetView(asset) : null;
+}
+
+/**
+ * Public kiosk projection. Source ingestion continues to update WorkInstructionRow,
+ * while this query follows the explicit publication pointer and overlays.
+ */
+export async function readPublishedWorkInstructionGroup(
+  db: PrismaClient,
+  input: { partNumber: string; shootingTarget: string }
+): Promise<WorkInstructionGroupView | null> {
+  const groupKey = normalizeWorkInstructionGroupKey(input.partNumber, input.shootingTarget);
+  if (!groupKey) return null;
+  const published = await db.$transaction(async (tx) => {
+    const publications = await tx.workInstructionSourcePublication.findMany({
+      where: {
+        publishedVersion: {
+          partNumber: groupKey.partNumber,
+          shootingTarget: groupKey.shootingTarget
+        }
+      },
+      include: publishedPublicationInclude
+    });
+    const publishedRows = publications.map(toPublishedRowView);
+    const publishedIds = new Set(publishedRows.map((row) => row.id));
+    const updateAvailable = publications.some((publication) => publication.latestVersionId !== publication.publishedVersionId);
+    // During rollout some rows may still be legacy latest-only records. The
+    // fallback is deliberately NOT EXISTS publication, rather than merely
+    // "not in the selected published ids": a row with a publication whose
+    // mutable latest projection moved to another group must not leak into the
+    // published group being read.
+    const legacyRows = (await tx.workInstructionRow.findMany({
+      where: {
+        partNumber: groupKey.partNumber,
+        shootingTarget: groupKey.shootingTarget,
+        publication: { is: null }
+      },
+      include: { steps: { orderBy: { step: 'asc' }, include: { asset: true } } }
+    }))
+      .filter((row) => !publishedIds.has(row.id))
+      .map(toWorkInstructionRowView);
+    const rows = [...publishedRows, ...legacyRows]
+      .sort((left, right) => compareSourceOrder(left.source, right.source));
+    if (rows.length === 0) return null;
+    const steps: WorkInstructionGroupedStepView[] = [];
+    for (const row of rows) {
+      for (const step of row.steps) steps.push({ ...step, rowId: row.id, source: row.source });
+    }
+    return {
+      partNumber: groupKey.partNumber,
+      shootingTarget: groupKey.shootingTarget,
+      rows,
+      steps,
+      updateAvailable
+    };
+  }, { isolationLevel: 'RepeatableRead', timeout: 30000 });
+  if (published) return published;
+  // Before the sidecar migration has started the whole table is legacy. Once
+  // any publication exists, a row with no publication is already covered by
+  // the NOT EXISTS fallback above; returning the mutable projection here
+  // would leak a published row that moved groups after re-import.
+  const publicationCount = await db.workInstructionSourcePublication.count();
+  return publicationCount === 0 ? readWorkInstructionGroup(db, input) : null;
+}
+
+/** Public group summaries follow published source metadata, not pending latest imports. */
+export async function readPublishedWorkInstructionGroups(
+  db: PrismaClient,
+  input: WorkInstructionGroupsQuery
+): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>> {
+  assertPage(input);
+  const partNumber = input.partNumber === undefined ? undefined : normalizeWorkInstructionPartNumber(input.partNumber);
+  const shootingTarget = input.shootingTarget === undefined ? undefined : normalizeWorkInstructionShootingTarget(input.shootingTarget);
+  if (input.partNumber !== undefined && !partNumber) return [];
+  if (input.shootingTarget !== undefined && !shootingTarget) return [];
+  const rows = await db.$transaction(async (tx) => {
+    const filters = [Prisma.sql`version."partNumber" IS NOT NULL`, Prisma.sql`version."shootingTarget" IS NOT NULL`];
+    if (partNumber) filters.push(Prisma.sql`version."partNumber" = ${partNumber}`);
+    if (shootingTarget) filters.push(Prisma.sql`version."shootingTarget" = ${shootingTarget}`);
+    const published = await tx.$queryRaw<GroupSummaryRecord[]>(Prisma.sql`
+      SELECT version."partNumber" AS "partNumber",
+             version."shootingTarget" AS "shootingTarget",
+             COUNT(DISTINCT publication."rowId")::int AS "rowCount",
+             COUNT(step."id")::int AS "stepCount",
+             MAX(version."sourceModified") AS "latestModified"
+      FROM "WorkInstructionSourcePublication" AS publication
+      JOIN "WorkInstructionSourceVersion" AS version
+        ON version."id" = publication."publishedVersionId"
+      LEFT JOIN "WorkInstructionSourceVersionStep" AS step
+        ON step."sourceVersionId" = version."id"
+      WHERE ${Prisma.join(filters, ' AND ')}
+      GROUP BY version."partNumber", version."shootingTarget"
+    `);
+    const legacyFilters = [Prisma.sql`row."partNumber" IS NOT NULL`, Prisma.sql`row."shootingTarget" IS NOT NULL`];
+    if (partNumber) legacyFilters.push(Prisma.sql`row."partNumber" = ${partNumber}`);
+    if (shootingTarget) legacyFilters.push(Prisma.sql`row."shootingTarget" = ${shootingTarget}`);
+    const legacy = await tx.$queryRaw<GroupSummaryRecord[]>(Prisma.sql`
+      SELECT row."partNumber" AS "partNumber",
+             row."shootingTarget" AS "shootingTarget",
+             COUNT(DISTINCT row."id")::int AS "rowCount",
+             COUNT(step."id")::int AS "stepCount",
+             MAX(row."sourceModified") AS "latestModified"
+      FROM "WorkInstructionRow" AS row
+      LEFT JOIN "WorkInstructionStep" AS step ON step."rowId" = row."id"
+      LEFT JOIN "WorkInstructionSourcePublication" AS publication ON publication."rowId" = row."id"
+      WHERE ${Prisma.join(legacyFilters, ' AND ')}
+        AND publication."rowId" IS NULL
+      GROUP BY row."partNumber", row."shootingTarget"
+    `);
+    const grouped = new Map<string, GroupSummaryRecord>();
+    for (const summary of [...published, ...legacy]) {
+      const key = `${summary.partNumber}\u0000${summary.shootingTarget}`;
+      const current = grouped.get(key);
+      if (!current) {
+        grouped.set(key, { ...summary });
+        continue;
+      }
+      current.rowCount += summary.rowCount;
+      current.stepCount += summary.stepCount;
+      if (summary.latestModified > current.latestModified) current.latestModified = summary.latestModified;
+    }
+    return [...grouped.values()].sort((left, right) =>
+      binaryCompare(left.partNumber, right.partNumber) || binaryCompare(left.shootingTarget, right.shootingTarget)
+    );
+  }, { isolationLevel: 'RepeatableRead', timeout: 30000 });
+  return rows.slice(input.offset, input.offset + input.limit);
 }

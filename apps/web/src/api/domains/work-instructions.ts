@@ -4,7 +4,33 @@ import {
 } from '../../lib/workInstructionRules';
 import { api } from '../http';
 
+import type { OverlayElement } from '@raspi-system/shared-types';
+
 export type WorkInstructionImageMimeType = 'image/jpeg' | 'image/png' | 'image/webp';
+
+/**
+ * WorkInstruction keeps the source image immutable and renders these elements
+ * on top of the published image. The renderer consumes only the neutral
+ * overlay contract; source/migration fields are optional editor metadata.
+ */
+export type WorkInstructionOverlayElement = OverlayElement & {
+  stepKey?: string;
+  sourceStep?: number | null;
+  migratedFromStep?: number;
+  baseStepFingerprint?: string;
+  targetStepFingerprint?: string | null;
+  migrationState?: 'MIGRATED' | 'NEEDS_REVIEW' | 'UNASSIGNED' | 'SKIPPED' | 'migrated' | 'needs_review' | 'unassigned' | 'skipped';
+};
+
+export type WorkInstructionOverlayAsset = {
+  assetId: string;
+  storageKey?: string;
+  contentType?: string;
+  byteSize?: number;
+  sha256?: string;
+  url?: string;
+  relativeUrl?: string;
+};
 
 export interface WorkInstructionGroupSummary {
   partNumber: string;
@@ -23,6 +49,8 @@ interface WorkInstructionStepFields {
   imageUrl: string | null;
   imageMimeType: WorkInstructionImageMimeType | null;
   imageSha256: string | null;
+  overlays?: WorkInstructionOverlayElement[];
+  overlayAssets?: Record<string, WorkInstructionOverlayAsset>;
 }
 
 export interface WorkInstructionStep extends WorkInstructionStepFields {
@@ -64,6 +92,11 @@ export interface WorkInstructionGroup {
   shootingTarget: string;
   rows: WorkInstructionRow[];
   steps: WorkInstructionStep[];
+  /** True when an imported source version is waiting for manager migration. */
+  updateAvailable?: boolean;
+  latestModified?: string | null;
+  publishedRevisionNumber?: number | null;
+  overlayAssets?: Record<string, WorkInstructionOverlayAsset>;
 }
 
 interface WorkInstructionGroupListResponse {

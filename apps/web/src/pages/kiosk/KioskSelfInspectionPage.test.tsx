@@ -68,9 +68,9 @@ function buildScheduleRow(overrides: Partial<ProductionScheduleRow> = {}): Produ
   };
 }
 
-function pageTree() {
+function pageTree(initialEntry = '/kiosk/part-measurement/self-inspection') {
   return (
-    <MemoryRouter initialEntries={['/kiosk/part-measurement/self-inspection']}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route path="/kiosk/part-measurement/self-inspection" element={<KioskSelfInspectionPage />} />
         <Route path="/kiosk/part-measurement/self-inspection/start" element={<div>digital input opened</div>} />
@@ -83,8 +83,8 @@ function pageTree() {
   );
 }
 
-function renderPage() {
-  return render(pageTree());
+function renderPage(initialEntry?: string) {
+  return render(pageTree(initialEntry));
 }
 
 function buildWipSession(
@@ -328,6 +328,15 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     expect(screen.queryByRole('dialog', { name: '作業要領書' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '581' })).toBeInTheDocument();
+  });
+
+  it('restores the instruction viewer when returning from the editor with source query parameters', async () => {
+    renderPage('/kiosk/part-measurement/self-inspection?partNumber=mh001&shootingTarget=%E7%A0%94%E5%89%8A');
+
+    expect(await screen.findByRole('dialog', { name: '作業要領書' })).toBeInTheDocument();
+    expect(mockUseWorkInstructionGroups).toHaveBeenLastCalledWith('MH001');
+    expect(mockUseWorkInstructionGroup).toHaveBeenLastCalledWith('MH001', '研削');
+    expect(screen.getByText('加工面を確認します。')).toBeInTheDocument();
   });
 
   it('keeps existing order scanning independent from part scanning', async () => {

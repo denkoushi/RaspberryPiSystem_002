@@ -3,8 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 
 import { Dialog } from '../../components/ui/Dialog';
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
+import { ImageOverlayFrame } from '../overlays/ImageOverlayFrame';
 
-import type { WorkInstructionGroup, WorkInstructionStep } from '../../api/domains/work-instructions';
+import type {
+  WorkInstructionGroup,
+  WorkInstructionOverlayAsset,
+  WorkInstructionStep
+} from '../../api/domains/work-instructions';
 
 export type WorkInstructionViewerDialogProps = {
   isOpen: boolean;
@@ -14,12 +19,15 @@ export type WorkInstructionViewerDialogProps = {
   isLoading: boolean;
   errorMessage?: string;
   onClose: () => void;
+  /** Manager-only entry point. The API remains the authority for write access. */
+  onEdit?: () => void;
 };
 
 type WorkInstructionStepCardProps = {
   step: WorkInstructionStep;
   displayNumber: number;
   onImageClick: (step: WorkInstructionStep) => void;
+  overlayAssets?: Record<string, WorkInstructionOverlayAsset>;
 };
 
 type WorkInstructionImageProps = {
@@ -56,7 +64,64 @@ function WorkInstructionImage({ imagePath, alt, className }: WorkInstructionImag
   return <img src={blobUrl} alt={alt} className={className} draggable={false} />;
 }
 
-function WorkInstructionThumbnail({ imagePath, alt, className }: WorkInstructionImageProps) {
+function rendererAssets(
+  assets?: Record<string, WorkInstructionOverlayAsset>
+) {
+  if (!assets) return undefined;
+  return Object.fromEntries(
+    Object.entries(assets).map(([assetId, asset]) => [assetId, {
+      assetId: asset.assetId || assetId,
+      storageKey: asset.storageKey ?? assetId,
+      contentType: asset.contentType ?? 'image/png',
+      byteSize: asset.byteSize ?? 0,
+      sha256: asset.sha256,
+      url: asset.url,
+      relativeUrl: asset.relativeUrl
+    }])
+  );
+}
+
+function WorkInstructionOverlayImage({
+  imagePath,
+  alt,
+  overlays,
+  assets,
+  className
+}: {
+  imagePath: string;
+  alt: string;
+  overlays: WorkInstructionStep['overlays'];
+  assets?: Record<string, WorkInstructionOverlayAsset>;
+  className?: string;
+}) {
+  const { blobUrl, error } = useProtectedImageBlobUrl(imagePath);
+  if (error) {
+    return (
+      <span className="flex min-h-44 items-center justify-center bg-rose-950/40 px-3 text-center text-sm font-semibold text-rose-100" role="alert">
+        画像の読み込みに失敗しました
+      </span>
+    );
+  }
+  if (!blobUrl) {
+    return (
+      <span className="flex min-h-44 items-center justify-center bg-slate-950/60 px-3 text-sm font-semibold text-white/60" role="status">
+        画像を読み込み中…
+      </span>
+    );
+  }
+  return <ImageOverlayFrame imageUrl={blobUrl} protectedImage={false} alt={alt} overlays={overlays ?? []} assets={rendererAssets(assets)} className={clsx('h-full w-full', className)} />;
+}
+
+function WorkInstructionThumbnail({
+  imagePath,
+  alt,
+  className,
+  overlays,
+  assets
+}: WorkInstructionImageProps & {
+  overlays?: WorkInstructionStep['overlays'];
+  assets?: Record<string, WorkInstructionOverlayAsset>;
+}) {
   const containerRef = useRef<HTMLSpanElement>(null);
   const [shouldLoad, setShouldLoad] = useState(() => typeof IntersectionObserver === 'undefined');
 
@@ -80,7 +145,17 @@ function WorkInstructionThumbnail({ imagePath, alt, className }: WorkInstruction
   return (
     <span ref={containerRef} className="block min-h-44">
       {shouldLoad ? (
-        <WorkInstructionImage imagePath={imagePath} alt={alt} className={className} />
+        overlays && overlays.length > 0 ? (
+          <WorkInstructionOverlayImage
+            imagePath={imagePath ?? ''}
+            alt={alt}
+            overlays={overlays}
+            assets={assets}
+            className={className}
+          />
+        ) : (
+          <WorkInstructionImage imagePath={imagePath} alt={alt} className={className} />
+        )
       ) : (
         <span className="flex min-h-44 items-center justify-center bg-slate-950/60 px-3 text-sm font-semibold text-white/60">
           画像を準備中…
@@ -90,7 +165,12 @@ function WorkInstructionThumbnail({ imagePath, alt, className }: WorkInstruction
   );
 }
 
-function WorkInstructionStepCard({ step, displayNumber, onImageClick }: WorkInstructionStepCardProps) {
+function WorkInstructionStepCard({
+  step,
+  displayNumber,
+  onImageClick,
+  overlayAssets
+}: WorkInstructionStepCardProps) {
   const hasImage = Boolean(step.imageUrl?.trim());
 
   return (
@@ -116,6 +196,8 @@ function WorkInstructionStepCard({ step, displayNumber, onImageClick }: WorkInst
             imagePath={step.imageUrl}
             alt={`手順${displayNumber}の作業要領画像`}
             className="block h-56 w-full object-contain"
+            overlays={step.overlays}
+            assets={overlayAssets ?? step.overlayAssets}
           />
         </button>
       ) : null}
@@ -129,10 +211,11 @@ function WorkInstructionStepCard({ step, displayNumber, onImageClick }: WorkInst
 
 type WorkInstructionImageDialogProps = {
   step: WorkInstructionStep | null;
+  overlayAssets?: Record<string, WorkInstructionOverlayAsset>;
   onClose: () => void;
 };
 
-function WorkInstructionImageDialog({ step, onClose }: WorkInstructionImageDialogProps) {
+function WorkInstructionImageDialog({ step, overlayAssets, onClose }: WorkInstructionImageDialogProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const { blobUrl, error } = useProtectedImageBlobUrl(step?.imageUrl);
 
@@ -165,12 +248,23 @@ function WorkInstructionImageDialog({ step, onClose }: WorkInstructionImageDialo
               画像の読み込みに失敗しました
             </p>
           ) : blobUrl ? (
-            <img
-              src={blobUrl}
-              alt="作業要領の拡大画像"
-              className="max-h-full max-w-full object-contain"
-              draggable={false}
-            />
+            step?.overlays && step.overlays.length > 0 ? (
+              <ImageOverlayFrame
+                imageUrl={blobUrl}
+                protectedImage={false}
+                alt="作業要領の拡大画像"
+                overlays={step.overlays}
+                assets={rendererAssets(overlayAssets)}
+                className="h-full w-full"
+              />
+            ) : (
+              <img
+                src={blobUrl}
+                alt="作業要領の拡大画像"
+                className="max-h-full max-w-full object-contain"
+                draggable={false}
+              />
+            )
           ) : (
             <p className="text-sm font-semibold text-white/60" role="status">
               画像を読み込み中…
@@ -194,7 +288,8 @@ export function WorkInstructionViewerDialog({
   group,
   isLoading,
   errorMessage,
-  onClose
+  onClose,
+  onEdit
 }: WorkInstructionViewerDialogProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [selectedImageStep, setSelectedImageStep] = useState<WorkInstructionStep | null>(null);
@@ -226,6 +321,23 @@ export function WorkInstructionViewerDialog({
               {partNumber} ・ {shootingTarget}
             </p>
           </div>
+          {group?.updateAvailable ? (
+            <span
+              className="shrink-0 rounded border border-amber-300/50 bg-amber-300/15 px-2 py-1 text-xs font-bold text-amber-100"
+              role="status"
+            >
+              新しい原本があります
+            </span>
+          ) : null}
+          {onEdit ? (
+            <button
+              type="button"
+              className="min-h-11 shrink-0 rounded-md border border-cyan-300/50 px-3 text-sm font-bold text-cyan-100 hover:bg-cyan-300/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+              onClick={onEdit}
+            >
+              編集
+            </button>
+          ) : null}
           <button
             ref={closeButtonRef}
             type="button"
@@ -260,6 +372,7 @@ export function WorkInstructionViewerDialog({
                 step={step}
                 displayNumber={index + 1}
                 onImageClick={setSelectedImageStep}
+                overlayAssets={group?.overlayAssets}
               />
             ))}
           </div>
@@ -268,6 +381,10 @@ export function WorkInstructionViewerDialog({
 
       <WorkInstructionImageDialog
         step={isOpen ? selectedImageStep : null}
+        // The public API exposes overlay assets on each step (the group-level
+        // map is optional for backwards compatibility). Keep the same asset
+        // resolver when the thumbnail is promoted to the full-screen dialog.
+        overlayAssets={group?.overlayAssets ?? selectedImageStep?.overlayAssets}
         onClose={() => setSelectedImageStep(null)}
       />
     </>
