@@ -37,14 +37,16 @@ const manifest = {
   },
   part_number: 'abc-1',
   shooting_target: '研削工程',
-  steps: [{ step: 1, text: 'Inspect', image: 'photo.webp' }],
+  process: '切削',
+  machine: '切削盤',
+  steps: [{ step: 1, text: 'Inspect', image: 'photo.jpeg' }],
 };
 
 describe('work-instruction Gmail packet resolver', () => {
   it('resolves arbitrary manifest filenames and preserves image bytes', async () => {
     const image = await sharp({
       create: { width: 3, height: 2, channels: 3, background: { r: 1, g: 2, b: 3 } },
-    }).webp().toBuffer();
+    }).jpeg().toBuffer();
     const manifestBuffer = Buffer.from(JSON.stringify(manifest), 'utf8');
     const getAttachment = vi.fn(async (_messageId: string, attachmentId: string) =>
       attachmentId === 'manifest' ? manifestBuffer : image
@@ -52,7 +54,7 @@ describe('work-instruction Gmail packet resolver', () => {
     const result = await resolveWorkInstructionGmailPacket({
       message: message([
         attachmentPart('640_manifest.json', 'manifest', 'application/json'),
-        attachmentPart('photo.webp', 'image', 'application/octet-stream'),
+        attachmentPart('photo.jpeg', 'image', 'application/octet-stream'),
         attachmentPart('unrelated.txt', 'unused', 'text/plain'),
       ]),
       client: { getAttachment },
@@ -70,7 +72,7 @@ describe('work-instruction Gmail packet resolver', () => {
   it('supports inline body.data and does not fetch unrelated extras', async () => {
     const image = await sharp({
       create: { width: 1, height: 1, channels: 3, background: 'red' },
-    }).png().toBuffer();
+    }).jpeg().toBuffer();
     const inline = (buffer: Buffer, filename: string, mimeType: string) => ({
       filename,
       mimeType,
@@ -83,7 +85,7 @@ describe('work-instruction Gmail packet resolver', () => {
     const result = await resolveWorkInstructionGmailPacket({
       message: message([
         inline(Buffer.from(JSON.stringify(manifest)), 'snapshot.json', 'application/json'),
-        inline(image, 'photo.webp', 'image/png'),
+        inline(image, 'photo.jpeg', 'image/jpeg'),
         attachmentPart('unrelated.bin', 'unused'),
       ]),
       client: { getAttachment },
@@ -103,8 +105,8 @@ describe('work-instruction Gmail packet resolver', () => {
     await expect(resolveWorkInstructionGmailPacket({
       message: message([
         attachmentPart('snapshot.json', 'manifest', 'application/json'),
-        attachmentPart('photo.webp', 'image-a', 'image/webp'),
-        attachmentPart('photo.webp', 'image-b', 'image/webp'),
+        attachmentPart('photo.jpeg', 'image-a', 'image/jpeg'),
+        attachmentPart('photo.jpeg', 'image-b', 'image/jpeg'),
       ]),
       client: { getAttachment },
     })).rejects.toThrow('not unique');
@@ -113,8 +115,8 @@ describe('work-instruction Gmail packet resolver', () => {
 
   it('keeps work-instruction attachment tree duplicates visible to the validator', () => {
     const parts = collectWorkInstructionAttachmentParts(message([
-      attachmentPart('photo.webp', 'same', 'image/webp'),
-      attachmentPart('photo.webp', 'same', 'image/webp'),
+      attachmentPart('photo.jpeg', 'same', 'image/jpeg'),
+      attachmentPart('photo.jpeg', 'same', 'image/jpeg'),
     ]));
     expect(parts).toHaveLength(2);
   });

@@ -35,6 +35,37 @@ describe('work instruction packet acceptance boundaries', () => {
     })).rejects.toBeInstanceOf(WorkInstructionManifestError);
   });
 
+  it('requires exactly one JSON-looking attachment before parsing it', async () => {
+    const client = noDownload();
+
+    await expect(resolveWorkInstructionGmailPacket({
+      message: packet([]),
+      client,
+    })).rejects.toThrow('found 0');
+
+    await expect(resolveWorkInstructionGmailPacket({
+      message: packet([jsonPart(), part('copy.json', Buffer.from('{'), 'application/json')]),
+      client,
+    })).rejects.toThrow('found 2');
+
+    // Candidate counting happens before any JSON download, so neither
+    // malformed packet can trigger an attachment request.
+    expect(client.getAttachment).not.toHaveBeenCalled();
+  });
+
+  it('parses the sole JSON candidate as a manifest and rejects malformed or nonmanifest JSON', async () => {
+    const malformed = part('640_manifest.json', Buffer.from('{"schema_version":', 'utf8'), 'application/json');
+    await expect(resolveWorkInstructionGmailPacket({
+      message: packet([malformed]),
+      client: noDownload(),
+    })).rejects.toThrow('not valid JSON');
+
+    await expect(resolveWorkInstructionGmailPacket({
+      message: packet([jsonPart({ not_a_manifest: true })]),
+      client: noDownload(),
+    })).rejects.toThrow(WorkInstructionManifestError);
+  });
+
   it('rejects a missing required image without accepting an unrelated signature', async () => {
     const client = noDownload();
     await expect(resolveWorkInstructionGmailPacket({
@@ -44,11 +75,11 @@ describe('work instruction packet acceptance boundaries', () => {
     expect(client.getAttachment).not.toHaveBeenCalled();
   });
 
-  it('requires exactly one manifest and never guesses identity from attachment names', async () => {
-    for (const parts of [[], [jsonPart(), jsonPart(manifest, 'copy.json')], [jsonPart({ ...manifest, source: undefined })]]) {
-      await expect(resolveWorkInstructionGmailPacket({ message: packet(parts), client: noDownload() }))
-        .rejects.toBeInstanceOf(WorkInstructionManifestError);
-    }
+  it('never guesses identity from attachment names', async () => {
+    await expect(resolveWorkInstructionGmailPacket({
+      message: packet([jsonPart({ ...manifest, source: undefined })]),
+      client: noDownload(),
+    })).rejects.toBeInstanceOf(WorkInstructionManifestError);
   });
 
   it('uses one byte-identical asset when several steps explicitly reference the same image', async () => {
@@ -66,6 +97,20 @@ describe('work instruction packet acceptance boundaries', () => {
     expect(result.packet.steps[0]?.imageHash).toBe(result.packet.steps[1]?.imageHash);
     expect(result.packet.steps[0]?.text).toBe('締結\n確認');
     expect(result.packet.source.list).toBe('工程Ａ');
+  });
+
+  it('rejects PNG and WebP bytes even when the attachment is named .jpeg', async () => {
+    const encoded = await Promise.all([
+      sharp({ create: { width: 2, height: 2, channels: 3, background: 'red' } }).png().toBuffer(),
+      sharp({ create: { width: 2, height: 2, channels: 3, background: 'blue' } }).webp().toBuffer(),
+    ]);
+
+    for (const bytes of encoded) {
+      await expect(resolveWorkInstructionGmailPacket({
+        message: packet([jsonPart(), part('640_photo_1.jpeg', bytes, 'image/jpeg')]),
+        client: noDownload(),
+      })).rejects.toThrow('must be a JPEG image');
+    }
   });
 
   it('accepts complete empty and text-only snapshots with no image request', async () => {

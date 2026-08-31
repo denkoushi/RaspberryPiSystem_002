@@ -7,7 +7,7 @@ import { selectWorkInstructionMessages } from '../work-instruction-message-selec
 const now = new Date('2026-08-29T01:00:00Z');
 const config = {
   enabled: true,
-  subjectTokens: ['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]'],
+  subjectTokens: ['[Kakou-Dandori-photo]'],
 };
 
 function record(input: {

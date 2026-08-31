@@ -100,7 +100,7 @@ describe('WorkInstructionGmailIngestionService mailbox selection', () => {
       ...defaultBackupConfig,
       workInstructionGmailIngest: {
         enabled: true,
-        subjectTokens: ['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]'] as const,
+        subjectTokens: ['[Kakou-Dandori-photo]'] as const,
       },
     };
 

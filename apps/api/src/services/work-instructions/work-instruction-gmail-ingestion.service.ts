@@ -198,7 +198,7 @@ export class WorkInstructionGmailIngestionService {
 
       const ingestConfig = options.config.workInstructionGmailIngest ?? {
         enabled: false,
-        subjectTokens: ['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]'] as const,
+        subjectTokens: ['[Kakou-Dandori-photo]'] as const,
         fromEmail: undefined,
       };
       const selected = await selectWorkInstructionMessages({
@@ -329,13 +329,37 @@ export class WorkInstructionGmailIngestionService {
       }
     } catch (error) {
       const invalid = isInvalidInputError(error);
-      const outcome: WorkInstructionImportOutcome = invalid ? 'INVALID' : 'RETRYABLE';
-      const nextRetryAt = invalid ? null : new Date(Date.now() + WORK_INSTRUCTION_RETRY_DELAY_MS);
+      const reason = errorMessage(error);
+      if (invalid) {
+        try {
+          return await acknowledgeWorkInstructionMessage({
+            repository: this.repository,
+            gmail,
+            messageId,
+            outcome: 'INVALID',
+            error: reason,
+          });
+        } catch (recordError) {
+          // Never mutate Gmail unless the terminal INVALID result is durable.
+          // A later cycle can parse the message again once persistence recovers.
+          logger.error(
+            { err: recordError, messageId },
+            '[WorkInstructionGmailIngestion] failed to record invalid message before cleanup'
+          );
+          return {
+            outcome: 'RETRYABLE',
+            error: `${reason}; failed to persist invalid result: ${errorMessage(recordError)}`,
+          };
+        }
+      }
+
+      const outcome: WorkInstructionImportOutcome = 'RETRYABLE';
+      const nextRetryAt = new Date(Date.now() + WORK_INSTRUCTION_RETRY_DELAY_MS);
       try {
         await this.repository.recordImportMessage({
           gmailMessageId: messageId,
           outcome,
-          error: errorMessage(error),
+          error: reason,
           nextRetryAt,
           mailCleanupPending: false,
           expectedOutcome: processingRecorded ? 'PROCESSING' : (existing?.outcome ?? null),
@@ -346,7 +370,7 @@ export class WorkInstructionGmailIngestionService {
           '[WorkInstructionGmailIngestion] failed to record message outcome'
         );
       }
-      return { outcome, error: errorMessage(error) };
+      return { outcome, error: reason };
     }
   }
 

@@ -37,9 +37,9 @@ describe('buildWorkInstructionGmailSearchQuery', () => {
     );
   });
 
-  it('limits fresh intake to unread inbox messages and both accepted tokens', () => {
+  it('limits fresh intake to unread inbox messages and the canonical token', () => {
     expect(buildWorkInstructionGmailSearchQuery({
-      subjectTokens: ['[WORK-INSTRUCTION]', '[WORK-INSTRUCTION-TEST]'],
-    })).toBe('(subject:"[WORK-INSTRUCTION]" OR subject:"[WORK-INSTRUCTION-TEST]") in:inbox is:unread');
+      subjectTokens: ['[Kakou-Dandori-photo]'],
+    })).toBe('(subject:"[Kakou-Dandori-photo]") in:inbox is:unread');
   });
 });

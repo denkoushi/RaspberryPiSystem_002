@@ -13,6 +13,29 @@ function repository(events: string[]) {
 }
 
 describe('acknowledgeWorkInstructionMessage', () => {
+  it('does not mutate Gmail when the terminal outcome cannot be recorded first', async () => {
+    const repo = {
+      recordImportMessage: vi.fn(async () => {
+        throw new Error('database unavailable');
+      }),
+    } as unknown as WorkInstructionRepository;
+    const gmail = {
+      markAsRead: vi.fn(),
+      trashMessage: vi.fn(),
+    };
+
+    await expect(acknowledgeWorkInstructionMessage({
+      repository: repo,
+      gmail,
+      messageId: 'mail-record-failure',
+      outcome: 'INVALID',
+      error: 'invalid manifest',
+    })).rejects.toThrow('database unavailable');
+
+    expect(gmail.markAsRead).not.toHaveBeenCalled();
+    expect(gmail.trashMessage).not.toHaveBeenCalled();
+  });
+
   it('records the terminal outcome before Gmail mutation and clears pending afterward', async () => {
     const events: string[] = [];
     const repo = repository(events);

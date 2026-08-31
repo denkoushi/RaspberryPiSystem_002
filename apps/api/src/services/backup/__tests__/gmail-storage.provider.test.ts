@@ -67,7 +67,7 @@ describe('GmailStorageProvider', () => {
         payload: {
           headers: [{
             name: 'Subject',
-            value: messageId === validId ? 'CSV Import' : '[WORK-INSTRUCTION] current row',
+            value: messageId === validId ? 'CSV Import' : '[Kakou-Dandori-photo] current row',
           }],
           parts: [],
         },

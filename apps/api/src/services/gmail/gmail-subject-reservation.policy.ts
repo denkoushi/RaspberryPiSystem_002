@@ -4,13 +4,13 @@ export const ASSEMBLY_PROCEDURE_GMAIL_SUBJECT = 'DocumentASM';
 export const GMAIL_SUBJECT_PATTERN_RESERVED_CODE = 'GMAIL_SUBJECT_PATTERN_RESERVED';
 
 /**
- * SharePoint work-instruction mail is a separate mailbox owner. Keep these
- * complete bracketed tokens here so every Gmail consumer applies the same
- * boundary rule before parsing or disposing a message.
+ * SharePoint work-instruction mail is a separate mailbox owner. Keep the
+ * canonical bracketed token here so every Gmail consumer applies the same
+ * boundary rule before parsing or disposing a message. The subject suffix
+ * (for example, an item ID) is deliberately outside this ownership token.
  */
 export const WORK_INSTRUCTION_GMAIL_SUBJECT_TOKENS = [
-  '[WORK-INSTRUCTION]',
-  '[WORK-INSTRUCTION-TEST]',
+  '[Kakou-Dandori-photo]',
 ] as const;
 
 const RESERVED_PATTERN_MESSAGE =
@@ -50,10 +50,9 @@ export function assertCsvGmailSubjectPatternAllowed(pattern: string): void {
 }
 
 /**
- * Return true only when a complete work-instruction token leads the subject.
- * In particular, `[WORK-INSTRUCTION]` must not claim
- * `[WORK-INSTRUCTION-TEST]`; the closing bracket and following boundary are
- * part of the ownership contract.
+ * Return true only when the complete work-instruction token leads the subject.
+ * The closing bracket and following boundary are part of the ownership
+ * contract, while the suffix after the token remains dynamic and ignored.
  */
 export function isWorkInstructionGmailSubject(subject: string): boolean {
   const normalized = subject.normalize('NFC').trim();
