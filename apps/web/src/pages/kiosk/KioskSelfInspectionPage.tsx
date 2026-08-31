@@ -36,6 +36,9 @@ import {
   SelfInspectionWorkflowModal,
   type SelfInspectionWorkflowTarget
 } from '../../features/part-measurement/SelfInspectionWorkflowModal';
+import { useSelfInspectionWorkInstructions } from '../../features/work-instructions/useSelfInspectionWorkInstructions';
+import { WorkInstructionTargetChips } from '../../features/work-instructions/WorkInstructionTargetChips';
+import { WorkInstructionViewerDialog } from '../../features/work-instructions/WorkInstructionViewerDialog';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { ProductionScheduleRow } from '../../api/client';
@@ -57,6 +60,8 @@ type EmployeeFilter = {
   employeeId: string;
   displayName: string;
 };
+
+type HidScanTarget = 'movement' | 'part' | null;
 
 type SelfInspectionCandidateRow = SelfInspectionWorkflowTarget & {
   id: string;
@@ -115,7 +120,7 @@ export function KioskSelfInspectionPage() {
   const [debouncedProductNo, setDebouncedProductNo] = useState('');
   const [debouncedResourceCd, setDebouncedResourceCd] = useState('');
   const [scannedProductNo, setScannedProductNo] = useState('');
-  const [movementScanArmed, setMovementScanArmed] = useState(false);
+  const [hidScanTarget, setHidScanTarget] = useState<HidScanTarget>(null);
   const [nameScanArmed, setNameScanArmed] = useState(false);
   const [employeeFilter, setEmployeeFilter] = useState<EmployeeFilter | null>(null);
   const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
@@ -127,7 +132,22 @@ export function KioskSelfInspectionPage() {
   const scanFocusRef = useRef<HTMLDivElement | null>(null);
   const autoOpenedScanKeyRef = useRef<string | null>(null);
   const lastNameNfcEventKeyRef = useRef<string | null>(null);
+  const nameNfcRequestGenerationRef = useRef(0);
   const nfcEvent = useNfcStream(nameScanArmed);
+  const {
+    partNumber: instructionPartNumber,
+    selectedTarget: instructionTarget,
+    targets: instructionTargets,
+    groupsQuery: instructionGroupsQuery,
+    groupQuery: instructionGroupQuery,
+    beginPartScan,
+    acceptPartScan,
+    openTarget: openInstructionTarget,
+    closeViewer: closeInstructionViewer,
+    clear: clearWorkInstructions
+  } = useSelfInspectionWorkInstructions();
+  const movementScanArmed = hidScanTarget === 'movement';
+  const partScanArmed = hidScanTarget === 'part';
   const invalidateItemMutation = useInvalidateSelfInspectionItem();
   const resourcesQuery = useKioskProductionScheduleResources();
   const resourceNameMap = useMemo(
@@ -246,6 +266,7 @@ export function KioskSelfInspectionPage() {
   const hasMore = scheduleQuery.data?.hasMore === true;
 
   const clearEmployeeFilter = useCallback(() => {
+    nameNfcRequestGenerationRef.current += 1;
     setEmployeeFilter(null);
     setNameScanArmed(false);
     lastNameNfcEventKeyRef.current = null;
@@ -256,7 +277,7 @@ export function KioskSelfInspectionPage() {
       clearEmployeeFilter();
       setProductNo(value);
       setScannedProductNo('');
-      setMovementScanArmed(false);
+      setHidScanTarget(null);
       setScanStatus(null);
       autoOpenedScanKeyRef.current = null;
       setPage(1);
@@ -268,7 +289,7 @@ export function KioskSelfInspectionPage() {
     (value: string) => {
       clearEmployeeFilter();
       setResourceCd(value);
-      setMovementScanArmed(false);
+      setHidScanTarget(null);
       setScanStatus(null);
       autoOpenedScanKeyRef.current = null;
       setPage(1);
@@ -282,7 +303,7 @@ export function KioskSelfInspectionPage() {
 
   const handleStartMovementScan = useCallback(() => {
     clearEmployeeFilter();
-    setMovementScanArmed(true);
+    setHidScanTarget('movement');
     setScanStatus({
       kind: 'waiting',
       message: '移動票の製造order番号を読み取ってください。'
@@ -294,7 +315,7 @@ export function KioskSelfInspectionPage() {
 
   const handleMovementScan = useCallback((rawText: string) => {
     const normalized = normalizeManufacturingOrderScanText(rawText);
-    setMovementScanArmed(false);
+    setHidScanTarget(null);
     autoOpenedScanKeyRef.current = null;
 
     if (!normalized) {
@@ -308,14 +329,51 @@ export function KioskSelfInspectionPage() {
     setPage(1);
   }, []);
 
+  const handleStartPartScan = useCallback(() => {
+    nameNfcRequestGenerationRef.current += 1;
+    setNameScanArmed(false);
+    lastNameNfcEventKeyRef.current = null;
+    setHidScanTarget('part');
+    beginPartScan();
+    setScanStatus({
+      kind: 'waiting',
+      message: '移動票の部品番号（FHINCD）を読み取ってください。'
+    });
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) activeElement.blur();
+    focusScanReceiver();
+  }, [beginPartScan, focusScanReceiver]);
+
+  const handlePartScan = useCallback(
+    (rawText: string) => {
+      setHidScanTarget(null);
+      const result = acceptPartScan(rawText);
+      if (!result.ok) {
+        setScanStatus({ kind: 'error', message: 'スキャン値が空です。部品番号を読み取り直してください。' });
+        return;
+      }
+      setScanStatus({ kind: 'success', message: `部品番号: ${result.partNumber}` });
+    },
+    [acceptPartScan]
+  );
+
+  const handleHidScan = useCallback(
+    (rawText: string) => {
+      if (hidScanTarget === 'movement') handleMovementScan(rawText);
+      if (hidScanTarget === 'part') handlePartScan(rawText);
+    },
+    [handleMovementScan, handlePartScan, hidScanTarget]
+  );
+
   useKeyboardWedgeScan({
-    active: movementScanArmed,
-    onScan: handleMovementScan,
+    active: hidScanTarget !== null && instructionTarget === null,
+    onScan: handleHidScan,
     minChars: 4
   });
 
   const handleStartNameScan = useCallback(() => {
-    setMovementScanArmed(false);
+    nameNfcRequestGenerationRef.current += 1;
+    setHidScanTarget(null);
     setProductNo('');
     setResourceCd('');
     setDebouncedProductNo('');
@@ -330,14 +388,48 @@ export function KioskSelfInspectionPage() {
   }, []);
 
   useEffect(() => {
+    if (
+      !instructionPartNumber ||
+      hidScanTarget !== null ||
+      nameScanArmed ||
+      instructionGroupsQuery.isFetching
+    ) {
+      return;
+    }
+    if (instructionGroupsQuery.isError) {
+      setScanStatus({ kind: 'error', message: '作業要領書の検索に失敗しました。' });
+      return;
+    }
+    if (!instructionGroupsQuery.isSuccess) return;
+    setScanStatus(
+      instructionTargets.length > 0
+        ? { kind: 'success', message: `部品番号: ${instructionPartNumber}` }
+        : {
+            kind: 'error',
+            message: `部品番号「${instructionPartNumber}」の作業要領書がありません。`
+          }
+    );
+  }, [
+    hidScanTarget,
+    nameScanArmed,
+    instructionGroupsQuery.isError,
+    instructionGroupsQuery.isFetching,
+    instructionGroupsQuery.isSuccess,
+    instructionPartNumber,
+    instructionTargets.length
+  ]);
+
+  useEffect(() => {
     if (!nameScanArmed || !nfcEvent?.uid) return;
     const eventKey = nfcEvent.eventKey ?? `${nfcEvent.eventId ?? ''}:${nfcEvent.uid}:${nfcEvent.timestamp}`;
     if (lastNameNfcEventKeyRef.current === eventKey) return;
     lastNameNfcEventKeyRef.current = eventKey;
     setNameScanArmed(false);
+    const requestGeneration = ++nameNfcRequestGenerationRef.current;
 
     void resolveSelfInspectionNfcTagUid(nfcEvent.uid)
       .then((result) => {
+        if (requestGeneration !== nameNfcRequestGenerationRef.current) return;
         if (result.kind === 'employee') {
           setEmployeeFilter({ employeeId: result.employee.id, displayName: result.employee.displayName });
           setScanStatus({ kind: 'success', message: `氏名: ${result.employee.displayName}` });
@@ -346,6 +438,7 @@ export function KioskSelfInspectionPage() {
         setScanStatus({ kind: 'error', message: nfcResolveErrorMessage(result.kind) });
       })
       .catch(() => {
+        if (requestGeneration !== nameNfcRequestGenerationRef.current) return;
         setScanStatus({ kind: 'error', message: '氏名タグの照合に失敗しました。' });
       });
   }, [nameScanArmed, nfcEvent]);
@@ -409,14 +502,16 @@ export function KioskSelfInspectionPage() {
     setDebouncedProductNo('');
     setDebouncedResourceCd('');
     setScannedProductNo('');
-    setMovementScanArmed(false);
+    setHidScanTarget(null);
     setNameScanArmed(false);
     setEmployeeFilter(null);
     setScanStatus(null);
     autoOpenedScanKeyRef.current = null;
     lastNameNfcEventKeyRef.current = null;
+    nameNfcRequestGenerationRef.current += 1;
+    clearWorkInstructions();
     setPage(1);
-  }, []);
+  }, [clearWorkInstructions]);
 
   const handleOpenInvalidation = useCallback((row: SelfInspectionTableRow) => {
     setInspectionWorkflowTarget(null);
@@ -474,14 +569,22 @@ export function KioskSelfInspectionPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
-      <div className={clsx(kioskPanelClassName, 'flex h-[60px] shrink-0 flex-nowrap items-center gap-2 px-2')}>
+      <div
+        className={clsx(
+          kioskPanelClassName,
+          'flex h-[60px] shrink-0 flex-nowrap items-center gap-1.5 px-2 min-[1536px]:gap-2'
+        )}
+      >
         <h1 className={clsx(kioskPageTitleClassName, 'shrink-0 whitespace-nowrap')}>自主検査</h1>
         <button
           type="button"
-          className={movementScanArmed ? kioskButtonPrimaryClassName : kioskButtonSecondaryClassName}
+          className={clsx(
+            movementScanArmed ? kioskButtonPrimaryClassName : kioskButtonSecondaryClassName,
+            'shrink-0 whitespace-nowrap !px-2 text-sm min-[1536px]:!px-4 min-[1536px]:text-base'
+          )}
           onClick={() => {
             if (movementScanArmed) {
-              setMovementScanArmed(false);
+              setHidScanTarget(null);
               setScanStatus(null);
             } else {
               handleStartMovementScan();
@@ -492,7 +595,10 @@ export function KioskSelfInspectionPage() {
         </button>
         <button
           type="button"
-          className={nameScanArmed ? kioskButtonPrimaryClassName : kioskButtonSecondaryClassName}
+          className={clsx(
+            nameScanArmed ? kioskButtonPrimaryClassName : kioskButtonSecondaryClassName,
+            'shrink-0 whitespace-nowrap !px-2 text-sm min-[1536px]:!px-4 min-[1536px]:text-base'
+          )}
           onClick={() => {
             if (nameScanArmed) {
               setNameScanArmed(false);
@@ -506,7 +612,10 @@ export function KioskSelfInspectionPage() {
         </button>
         <button
           type="button"
-          className={kioskButtonSecondaryClassName}
+          className={clsx(
+            kioskButtonSecondaryClassName,
+            'shrink-0 whitespace-nowrap !px-2 text-sm min-[1536px]:!px-4 min-[1536px]:text-base'
+          )}
           onClick={() => navigate(KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH)}
         >
           記録確認・承認
@@ -516,7 +625,7 @@ export function KioskSelfInspectionPage() {
           value={productNo}
           placeholder="製造order・製番・品番"
           options={productOptions}
-          className="w-[15rem]"
+          className="w-[12rem] min-[1536px]:w-[15rem]"
           dropdownClassName="w-[28rem]"
           onChange={handleProductFilterChange}
           onSelect={handleProductFilterChange}
@@ -526,12 +635,17 @@ export function KioskSelfInspectionPage() {
           value={resourceCd}
           placeholder="581"
           options={resourceOptions}
-          className="w-[7.5rem]"
+          className="w-[5.5rem] min-[1536px]:w-[7.5rem]"
           dropdownClassName="w-[10rem]"
           onChange={handleResourceFilterChange}
           onSelect={handleResourceFilterChange}
         />
-        <Button type="button" variant="ghostOnDark" className="min-h-11 shrink-0 px-3" onClick={handleClear}>
+        <Button
+          type="button"
+          variant="ghostOnDark"
+          className="min-h-11 shrink-0 !px-2 text-sm min-[1536px]:!px-3 min-[1536px]:text-base"
+          onClick={handleClear}
+        >
           クリア
         </Button>
         <div
@@ -541,12 +655,38 @@ export function KioskSelfInspectionPage() {
           aria-live="polite"
           title={scanStatus?.message}
           className={clsx(
-            'min-w-[7rem] flex-1 truncate rounded border px-2 py-1 text-xs font-semibold outline-none',
+            'truncate rounded border px-2 py-1 text-xs font-semibold outline-none',
+            instructionTargets.length > 0 ? 'sr-only' : 'min-w-[7rem] flex-1',
             scanStatusClassName
           )}
         >
           {scanStatus?.message ?? ''}
         </div>
+        <WorkInstructionTargetChips
+          targets={instructionTargets}
+          onSelect={(target) => {
+            setHidScanTarget(null);
+            setNameScanArmed(false);
+            openInstructionTarget(target);
+          }}
+        />
+        <button
+          type="button"
+          className={clsx(
+            partScanArmed ? kioskButtonPrimaryClassName : kioskButtonSecondaryClassName,
+            'shrink-0 whitespace-nowrap !px-2 text-sm min-[1536px]:!px-4 min-[1536px]:text-base'
+          )}
+          onClick={() => {
+            if (partScanArmed) {
+              setHidScanTarget(null);
+              setScanStatus(null);
+            } else {
+              handleStartPartScan();
+            }
+          }}
+        >
+          {partScanArmed ? 'スキャン中止' : '部品番号スキャン'}
+        </button>
       </div>
 
       <main className="min-h-0 flex-1 overflow-auto rounded border border-white/15 bg-slate-950/45 p-2">
@@ -636,6 +776,17 @@ export function KioskSelfInspectionPage() {
           </>
         )}
       </main>
+      <WorkInstructionViewerDialog
+        isOpen={instructionTarget !== null}
+        partNumber={instructionPartNumber}
+        shootingTarget={instructionTarget ?? ''}
+        group={instructionGroupQuery.data}
+        isLoading={instructionGroupQuery.isLoading}
+        errorMessage={
+          instructionGroupQuery.isError ? '作業要領書の読み込みに失敗しました。' : undefined
+        }
+        onClose={closeInstructionViewer}
+      />
       <SelfInspectionWorkflowModal
         target={inspectionWorkflowTarget}
         onClose={() => setInspectionWorkflowTarget(null)}

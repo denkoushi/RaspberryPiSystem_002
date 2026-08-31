@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,6 +11,8 @@ import type { NfcEvent } from '../../hooks/useNfcStream';
 const mockUseKioskProductionSchedule = vi.fn();
 const mockUseKioskProductionScheduleResources = vi.fn();
 const mockUseSelfInspectionSessions = vi.fn();
+const mockUseWorkInstructionGroups = vi.fn();
+const mockUseWorkInstructionGroup = vi.fn();
 const mockIssueSelfInspectionPaperReport = vi.fn();
 const mockResolveSelfInspectionNfcTagUid = vi.fn();
 const mockInvalidateSelfInspectionItem = vi.fn();
@@ -24,6 +26,8 @@ vi.mock('../../api/hooks', () => ({
   useKioskProductionSchedule: (...args: unknown[]) => mockUseKioskProductionSchedule(...args),
   useKioskProductionScheduleResources: (...args: unknown[]) => mockUseKioskProductionScheduleResources(...args),
   useSelfInspectionSessions: (...args: unknown[]) => mockUseSelfInspectionSessions(...args),
+  useWorkInstructionGroups: (...args: unknown[]) => mockUseWorkInstructionGroups(...args),
+  useWorkInstructionGroup: (...args: unknown[]) => mockUseWorkInstructionGroup(...args),
   useInvalidateSelfInspectionItem: () => ({
     mutateAsync: mockInvalidateSelfInspectionItem,
     isPending: false
@@ -146,6 +150,15 @@ async function scanHidText(text: string) {
   fireEvent.keyDown(window, { key: 'Enter' });
 }
 
+async function scanPartHidText(text: string) {
+  fireEvent.click(screen.getByRole('button', { name: '部品番号スキャン' }));
+  await screen.findByText('移動票の部品番号（FHINCD）を読み取ってください。');
+  for (const char of text) {
+    fireEvent.keyDown(window, { key: char });
+  }
+  fireEvent.keyDown(window, { key: 'Enter' });
+}
+
 describe('KioskSelfInspectionPage HID scan workflow', () => {
   beforeEach(() => {
     scheduleRows = [];
@@ -154,6 +167,8 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     mockUseKioskProductionSchedule.mockReset();
     mockUseKioskProductionScheduleResources.mockReset();
     mockUseSelfInspectionSessions.mockReset();
+    mockUseWorkInstructionGroups.mockReset();
+    mockUseWorkInstructionGroup.mockReset();
     mockIssueSelfInspectionPaperReport.mockReset();
     mockResolveSelfInspectionNfcTagUid.mockReset();
     mockInvalidateSelfInspectionItem.mockReset();
@@ -181,6 +196,69 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
         listLimit: 200
       },
       isLoading: false
+    }));
+    mockUseWorkInstructionGroups.mockImplementation((partNumber: string) => ({
+      data:
+        partNumber === 'MH002'
+          ? [
+              {
+                partNumber: 'MH002',
+                shootingTarget: '切削',
+                rowCount: 1,
+                stepCount: 1,
+                latestModified: '2026-08-31T00:00:00.000Z'
+              }
+            ]
+          : partNumber === 'MH001'
+          ? [
+              {
+                partNumber: 'MH001',
+                shootingTarget: '581',
+                rowCount: 1,
+                stepCount: 1,
+                latestModified: '2026-08-31T00:00:00.000Z'
+              },
+              {
+                partNumber: 'MH001',
+                shootingTarget: '研削',
+                rowCount: 1,
+                stepCount: 1,
+                latestModified: '2026-08-31T00:00:00.000Z'
+              }
+            ]
+          : [],
+      isLoading: false,
+      isFetching: false,
+      isSuccess: Boolean(partNumber),
+      isError: false
+    }));
+    mockUseWorkInstructionGroup.mockImplementation((partNumber: string, shootingTarget: string) => ({
+      data:
+        partNumber === 'MH001' && shootingTarget
+          ? {
+              partNumber,
+              shootingTarget,
+              rows: [],
+              steps: [
+                {
+                  id: 'step-1',
+                  step: 7,
+                  text: '加工面を確認します。',
+                  imageName: null,
+                  imageAssetId: null,
+                  imageUrl: null,
+                  imageMimeType: null,
+                  imageSha256: null,
+                  rowId: 'row-1',
+                  source: { system: 'sharepoint', list: '研削', itemId: 1 }
+                }
+              ]
+            }
+          : undefined,
+      isLoading: false,
+      isFetching: false,
+      isSuccess: Boolean(partNumber && shootingTarget),
+      isError: false
     }));
     mockIssueSelfInspectionPaperReport.mockResolvedValue({
       report: { id: 'paper-report-1' }
@@ -227,6 +305,82 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
         })
       );
     });
+  });
+
+  it('scans FHINCD independently, shows titleless target chips, and opens instructions only after chip selection', async () => {
+    renderPage();
+
+    await scanPartHidText('mh001');
+
+    await waitFor(() => expect(mockUseWorkInstructionGroups).toHaveBeenLastCalledWith('MH001'));
+    expect(screen.queryByRole('dialog', { name: '作業要領書' })).not.toBeInTheDocument();
+    expect(screen.queryByText('撮影対象')).not.toBeInTheDocument();
+    expect(screen.queryByText(/資源581/)).not.toBeInTheDocument();
+    const grindingChip = screen.getByRole('button', { name: '研削' });
+    const resourceChip = screen.getByRole('button', { name: '581' });
+    expect(grindingChip.compareDocumentPosition(resourceChip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(grindingChip);
+    expect(await screen.findByRole('dialog', { name: '作業要領書' })).toBeInTheDocument();
+    expect(screen.getByText('加工面を確認します。')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '自主検査画面に戻る' }));
+
+    expect(screen.queryByRole('dialog', { name: '作業要領書' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '581' })).toBeInTheDocument();
+  });
+
+  it('keeps existing order scanning independent from part scanning', async () => {
+    scheduleRows = [buildScheduleRow()];
+    renderPage();
+
+    await scanHidText('0002178005');
+
+    await waitFor(() => expect(lastScheduleParams()?.productNos).toBe('0002178005'));
+    expect(mockUseWorkInstructionGroups).toHaveBeenLastCalledWith('');
+    expect(screen.queryByRole('button', { name: '研削' })).not.toBeInTheDocument();
+  });
+
+  it('keeps HID part scanning and name NFC scanning mutually exclusive', async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: '部品番号スキャン' }));
+    fireEvent.click(screen.getByRole('button', { name: '氏名スキャン' }));
+    expect(nfcStreamState.enabled).toBe(true);
+    for (const char of 'MH001') fireEvent.keyDown(window, { key: char });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(mockUseWorkInstructionGroups).toHaveBeenLastCalledWith('');
+
+    await scanPartHidText('MH001');
+    expect(nfcStreamState.enabled).toBe(false);
+    await waitFor(() => expect(mockUseWorkInstructionGroups).toHaveBeenLastCalledWith('MH001'));
+  });
+
+  it('clears scanned instruction chips with the existing clear action', async () => {
+    renderPage();
+    await scanPartHidText('MH001');
+    expect(await screen.findByRole('button', { name: '研削' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'クリア' }));
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: '研削' })).not.toBeInTheDocument());
+    expect(mockUseWorkInstructionGroups).toHaveBeenLastCalledWith('');
+  });
+
+  it('removes old target chips as soon as a new part scan starts and replaces them with the new result', async () => {
+    renderPage();
+    await scanPartHidText('MH001');
+    expect(await screen.findByRole('button', { name: '研削' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '部品番号スキャン' }));
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: '研削' })).not.toBeInTheDocument());
+    expect(mockUseWorkInstructionGroups).toHaveBeenLastCalledWith('');
+
+    for (const char of 'MH002') fireEvent.keyDown(window, { key: char });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(await screen.findByRole('button', { name: '切削' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '研削' })).not.toBeInTheDocument();
   });
 
   it('shows candidate selection first when scanned product has no resource filter, then opens digital input from the modal', async () => {
@@ -383,6 +537,42 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
 
     expect(await screen.findByText('氏名タグではありません。計測機器タグが読み取られました。')).toBeInTheDocument();
     expect(metadataForProduct('ORDER-KEEP')).toBeInTheDocument();
+  });
+
+  it('ignores a delayed NFC lookup after part scanning takes control', async () => {
+    let resolveNfc!: (value: {
+      kind: 'employee';
+      employee: { id: string; displayName: string; nfcTagUid: string };
+    }) => void;
+    mockResolveSelfInspectionNfcTagUid.mockReturnValue(
+      new Promise((resolve) => {
+        resolveNfc = resolve;
+      })
+    );
+    const view = renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: '氏名スキャン' }));
+    nfcStreamState.event = {
+      uid: 'delayed-employee-uid',
+      timestamp: '2026-07-14T01:00:00.000Z',
+      eventId: 12
+    };
+    view.rerender(pageTree());
+    await waitFor(() =>
+      expect(mockResolveSelfInspectionNfcTagUid).toHaveBeenCalledWith('delayed-employee-uid')
+    );
+
+    await scanPartHidText('MH001');
+    expect(await screen.findByRole('button', { name: '研削' })).toBeInTheDocument();
+    await act(async () => {
+      resolveNfc({
+        kind: 'employee',
+        employee: { id: 'employee-delayed', displayName: '遅延氏名', nfcTagUid: 'delayed-employee-uid' }
+      });
+    });
+
+    expect(screen.queryByText('氏名: 遅延氏名')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
   });
 
   it('requires a password and reason before invalidating a started row', async () => {
