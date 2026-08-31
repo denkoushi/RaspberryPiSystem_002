@@ -32,6 +32,8 @@ TEXT/IMAGE/SHAPE注記を重ねて編集・下書き保存・公開できるよ�
   canonical check、artifact semantic/integrity/geometry/visual contract、18件E2Eを完了した。
 - [x] 2026-08-31: API全suiteで既存scheduler配線testのFastify stub不足を検出し、
   Editor route登録に必要な`put`/`delete` stubを補ってfocused testを再通過した。
+- [x] 2026-08-31: API全2,867 test合格後のcoverage不足を、閾値・除外設定を変更せず、
+  edit/read/access/file-store/job/backfill/cleanup/persistence変換の45 test追加で解消した。
 
 ## Surprises & Discoveries
 
@@ -125,4 +127,5 @@ SQLでCHECK/FK/UNIQUE/partial head、pointer整合、GC anti-join、削除tombst
 `EXPLAIN (ANALYZE, BUFFERS)`を取得した。全検証の一時container・volume・storageはtrapで削除され、
 `TEMP_RESOURCE_REMAINING=0`を確認した。実装commitをpushしPR #1307を作成した。CIで検出した
 kiosk-sop生成の待機不足は追補修正し、同一Docker契約と18件E2Eを再検証した。merge、deployは
-別途承認まで実施しない。
+別途承認まで実施しない。API coverageは直前CI artifactとの関数単位unionで
+`6185 / 8135 = 76.0295%`（基準76%）を確認し、WorkInstruction focused 89件を通過した。

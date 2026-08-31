@@ -93,6 +93,17 @@ function makeService(gmailFactory: ReturnType<typeof vi.fn>) {
 }
 
 describe('WorkInstructionGmailIngestionService lifecycle', () => {
+  it('exposes the persisted job lifecycle without starting ingestion', async () => {
+    const service = makeService(vi.fn());
+
+    expect(service.isRunning()).toBe(false);
+    const created = await service.createJob('queued-message');
+
+    expect(created.status).toBe('PENDING');
+    await expect(service.getJob(created.id)).resolves.toEqual(created);
+    expect(service.isRunning()).toBe(false);
+  });
+
   it('does not initialize Gmail when automatic polling is disabled', async () => {
     const gmailFactory = vi.fn();
     const service = makeService(gmailFactory);
