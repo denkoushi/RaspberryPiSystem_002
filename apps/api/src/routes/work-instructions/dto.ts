@@ -279,10 +279,14 @@ export function toEditorGroupDto(input: {
 }) {
   const rows = input.rows.map(({ source, editing, sourceVersions, latestRevisionNumber, publishedRevisionNumber }) => {
     const publishedVersion = toEditorVersionDto(editing.publishedVersion, source, 'published', publishedRevisionNumber);
-    const published = editing.publishedRevision
+    const publishedRevision = editing.publishedRevision
+      ? toEditorRevisionDto(editing.publishedRevision, publishedVersion, source)
+      : null;
+    const published = publishedRevision
       ? {
           ...publishedVersion,
-          steps: toEditorRevisionDto(editing.publishedRevision, publishedVersion, source).steps
+          steps: publishedRevision.steps,
+          assets: publishedRevision.assets
         }
       : publishedVersion;
     const latest = toEditorVersionDto(editing.latestVersion, source, 'latest', latestRevisionNumber);

@@ -146,6 +146,8 @@ export type WorkInstructionSourceVersionDto = {
   steps: WorkInstructionEditorStepDto[];
   /** All image assets owned by this source version; a version delete is bulk. */
   images?: WorkInstructionSourceImageDto[];
+  /** Revision-owned overlay assets projected for version comparison. */
+  assets?: Record<string, WorkInstructionEditAssetDto>;
 };
 
 export type WorkInstructionSourceImageDto = {

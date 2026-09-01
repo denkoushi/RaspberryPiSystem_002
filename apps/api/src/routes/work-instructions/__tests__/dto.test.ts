@@ -222,6 +222,37 @@ describe('work-instruction response DTOs', () => {
     });
     expect(group.rows[0]?.published.steps[0]).not.toHaveProperty('memoOverride');
 
+    const publishedOverlay = {
+      id: 'published-overlay-1',
+      kind: 'IMAGE' as const,
+      assetId: 'published-asset-1',
+      objectFit: 'contain' as const,
+      sourceStep: 1,
+      migratedFromStep: 1,
+      baseStepFingerprint: 'published-overlay-base',
+      targetStepFingerprint: 'published-overlay-target',
+      migrationState: 'MIGRATED' as const,
+      bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.4 },
+      zIndex: 2,
+      opacity: 1
+    };
+    const publishedAsset = {
+      id: 'published-asset-1',
+      storageKey: 'work-instruction-assets/editing/published-asset-1.png',
+      mimeType: 'image/png',
+      sizeBytes: 42,
+      sha256: 'b'.repeat(64),
+      status: 'ACTIVE' as const,
+      origin: 'ROI' as const,
+      originSourceVersionId: 'version-0',
+      originSourceStep: 1,
+      originBbox: publishedOverlay.bbox,
+      ownerRevisionId: 'revision-1',
+      createdAt: now,
+      activatedAt: now,
+      deletePendingAt: null
+    };
+
     const publishedGroup = toEditorGroupDto({
       partNumber: 'PART-1',
       shootingTarget: '研削',
@@ -230,7 +261,12 @@ describe('work-instruction response DTOs', () => {
         editing: {
           ...editing,
           draftRevision: null,
-          publishedRevision: { ...revision, status: 'PUBLISHED' as const }
+          publishedRevision: {
+            ...revision,
+            status: 'PUBLISHED' as const,
+            overlays: [overlay, publishedOverlay],
+            assets: { 'published-asset-1': publishedAsset }
+          }
         },
         sourceVersions: [archivedVersion, sourceVersion],
         latestRevisionNumber: 1,
@@ -240,8 +276,23 @@ describe('work-instruction response DTOs', () => {
 
     expect(publishedGroup.rows[0]?.published.steps[0]).toMatchObject({
       memoOverride: '現場memo',
-      memoMigrationState: 'MIGRATED',
-      overlays: [expect.objectContaining({ id: 'overlay-1', stepKey: 'SharePoint:WorkInstructions:640:1' })]
+      memoMigrationState: 'MIGRATED'
     });
+    expect(publishedGroup.rows[0]?.published.steps[0]?.overlays).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'overlay-1', stepKey: 'SharePoint:WorkInstructions:640:1' })
+    ]));
+    expect(publishedGroup.rows[0]?.published).toMatchObject({
+      assets: {
+        'published-asset-1': {
+          assetId: 'published-asset-1',
+          contentType: 'image/png',
+          byteSize: 42,
+          url: '/api/work-instructions/edit-assets/published-asset-1'
+        }
+      }
+    });
+    expect(publishedGroup.rows[0]?.published.steps[0]?.overlays).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'published-overlay-1', assetId: 'published-asset-1' })
+    ]));
   });
 });

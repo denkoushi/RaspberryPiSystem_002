@@ -60,7 +60,7 @@ export function WorkInstructionVersionComparison({ row, selectedStepKey, assets 
   const latest = row.latest.steps.find((step) => stepKey(step) === selectedStepKey) ?? row.latest.steps.find((step) => step.step === published?.step);
   return (
     <div className="grid h-full min-h-0 min-w-0 grid-cols-2 gap-2" data-testid="work-instruction-version-comparison">
-      <VersionPane label="公開版（使用側）" version={String(row.published.revisionNumber)} step={published} assets={assets} />
+      <VersionPane label="公開版（使用側）" version={String(row.published.revisionNumber)} step={published} assets={row.published.assets} />
       <VersionPane label="最新原本（移植先）" version={String(row.latest.revisionNumber)} step={latest} assets={assets} />
     </div>
   );
