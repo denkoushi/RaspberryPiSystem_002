@@ -1,0 +1,267 @@
+---
+- name: Ensure the Pi5 image retention state directory exists
+  ansible.builtin.file:
+    path: "{{ release_pi5_retention_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Capture healthy Pi5 current image identities
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{.Config.Image}}|{{.Image}}|{{.State.Running}}' }}"
+      - "{{ item }}"
+  loop:
+    - "{{ release_pi5_api_id }}"
+    - "{{ release_pi5_web_id }}"
+  register: release_pi5_retention_current_identity
+  changed_when: false
+
+- name: Require healthy Pi5 current image identities
+  ansible.builtin.assert:
+    that:
+      - release_pi5_retention_current_identity.results[0].stdout is match('^.+\\|sha256:[0-9a-f]{64}\\|true$')
+      - release_pi5_retention_current_identity.results[1].stdout is match('^.+\\|sha256:[0-9a-f]{64}\\|true$')
+      - release_pi5_retention_current_identity.results[0].stdout.split('|')[0] == release_pi5_api_image
+      - release_pi5_retention_current_identity.results[1].stdout.split('|')[0] == release_pi5_web_image
+      - release_pi5_retention_current_identity.results[0].stdout.split('|')[1] == release_pi5_desired_ids.results[0].stdout
+      - release_pi5_retention_current_identity.results[1].stdout.split('|')[1] == release_pi5_desired_ids.results[1].stdout
+    fail_msg: Healthy Pi5 containers do not match the requested immutable API/Web images.
+
+- name: Inspect the existing Pi5 image retention state
+  ansible.builtin.stat:
+    path: "{{ release_pi5_retention_state_path }}"
+    follow: false
+  register: release_pi5_retention_state_stat
+  changed_when: false
+
+- name: Require a regular Pi5 image retention state file when present
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (release_pi5_retention_state_stat.stat.exists | default(false) | bool)
+        or (
+          release_pi5_retention_state_stat.stat.isreg | default(false) | bool
+          and not (release_pi5_retention_state_stat.stat.islnk | default(false) | bool)
+        )
+    fail_msg: Pi5 image retention state must be a regular non-symlink file.
+
+- name: Read the existing Pi5 image retention state
+  ansible.builtin.slurp:
+    src: "{{ release_pi5_retention_state_path }}"
+  register: release_pi5_retention_state_slurp
+  when: release_pi5_retention_state_stat.stat.exists | default(false) | bool
+
+- name: Parse the existing Pi5 image retention state
+  ansible.builtin.set_fact:
+    release_pi5_retention_existing_state: "{{ release_pi5_retention_state_slurp.content | b64decode | from_json }}"
+  when: release_pi5_retention_state_stat.stat.exists | default(false) | bool
+
+- name: Require the exact Pi5 image retention state envelope
+  ansible.builtin.assert:
+    that:
+      - release_pi5_retention_existing_state is mapping
+      - (release_pi5_retention_existing_state.keys() | list | sort) == ['current', 'previous', 'schemaVersion']
+      - release_pi5_retention_existing_state.schemaVersion is integer
+      - release_pi5_retention_existing_state.schemaVersion == 1
+    fail_msg: Existing Pi5 image retention state has an unsupported schema.
+  when: release_pi5_retention_state_stat.stat.exists | default(false) | bool
+
+- name: Require exact current and previous Pi5 retention sections
+  ansible.builtin.assert:
+    that:
+      - release_pi5_retention_existing_state.current is mapping
+      - release_pi5_retention_existing_state.previous is mapping
+      - (release_pi5_retention_existing_state.current.keys() | list | sort) == ['api', 'web']
+      - (release_pi5_retention_existing_state.previous.keys() | list | sort) == ['api', 'web']
+    fail_msg: Existing Pi5 image retention state must contain only current and previous API/Web entries.
+  when: release_pi5_retention_state_stat.stat.exists | default(false) | bool
+
+- name: Require exact fields in every existing Pi5 retention entry
+  ansible.builtin.assert:
+    that:
+      - release_pi5_retention_existing_state.current.api is mapping
+      - release_pi5_retention_existing_state.current.web is mapping
+      - release_pi5_retention_existing_state.previous.api is mapping
+      - release_pi5_retention_existing_state.previous.web is mapping
+      - (release_pi5_retention_existing_state.current.api.keys() | list | sort) == ['imageId', 'reference', 'releaseSha']
+      - (release_pi5_retention_existing_state.current.web.keys() | list | sort) == ['imageId', 'reference', 'releaseSha']
+      - (release_pi5_retention_existing_state.previous.api.keys() | list | sort) == ['imageId', 'reference', 'releaseSha']
+      - (release_pi5_retention_existing_state.previous.web.keys() | list | sort) == ['imageId', 'reference', 'releaseSha']
+    fail_msg: Existing Pi5 image retention entries contain unsupported fields.
+  when: release_pi5_retention_state_stat.stat.exists | default(false) | bool
+
+- name: Validate every existing Pi5 retention entry
+  ansible.builtin.assert:
+    that:
+      - release_pi5_retention_existing_state.current.api.reference is match('^(?:ghcr\\.io/denkoushi/raspisys-api|raspi-system-api|docker-api):[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
+      - release_pi5_retention_existing_state.current.web.reference is match('^(?:ghcr\\.io/denkoushi/raspisys-web|raspi-system-web|docker-web):[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
+      - release_pi5_retention_existing_state.previous.api.reference is match('^(?:ghcr\\.io/denkoushi/raspisys-api|raspi-system-api|docker-api):[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
+      - release_pi5_retention_existing_state.previous.web.reference is match('^(?:ghcr\\.io/denkoushi/raspisys-web|raspi-system-web|docker-web):[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
+      - release_pi5_retention_existing_state.current.api.imageId is match('^sha256:[0-9a-f]{64}$')
+      - release_pi5_retention_existing_state.current.web.imageId is match('^sha256:[0-9a-f]{64}$')
+      - release_pi5_retention_existing_state.previous.api.imageId is match('^sha256:[0-9a-f]{64}$')
+      - release_pi5_retention_existing_state.previous.web.imageId is match('^sha256:[0-9a-f]{64}$')
+      - release_pi5_retention_existing_state.current.api.releaseSha is match('^[0-9a-f]{40}$')
+      - release_pi5_retention_existing_state.current.web.releaseSha is match('^[0-9a-f]{40}$')
+      - release_pi5_retention_existing_state.previous.api.releaseSha is match('^[0-9a-f]{40}$')
+      - release_pi5_retention_existing_state.previous.web.releaseSha is match('^[0-9a-f]{40}$')
+      - release_pi5_retention_existing_state.current.api.releaseSha == release_pi5_retention_existing_state.current.web.releaseSha
+      - release_pi5_retention_existing_state.previous.api.releaseSha == release_pi5_retention_existing_state.previous.web.releaseSha
+    fail_msg: Existing Pi5 image retention state contains malformed or mismatched identities.
+  when: release_pi5_retention_state_stat.stat.exists | default(false) | bool
+
+- name: Parse previous release SHAs from an existing Pi5 state
+  ansible.builtin.set_fact:
+    release_pi5_retention_existing_previous_api_sha: >-
+      {{ release_pi5_retention_existing_state.previous.api.reference
+         | regex_replace('^.+:([0-9a-f]{40})(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$', '\1') }}
+    release_pi5_retention_existing_previous_web_sha: >-
+      {{ release_pi5_retention_existing_state.previous.web.reference
+         | regex_replace('^.+:([0-9a-f]{40})(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$', '\1') }}
+  when: release_pi5_retention_state_stat.stat.exists | default(false) | bool
+
+- name: Require existing previous release SHAs to match immutable references
+  ansible.builtin.assert:
+    that:
+      - release_pi5_retention_existing_previous_api_sha is match('^[0-9a-f]{40}$')
+      - release_pi5_retention_existing_previous_web_sha is match('^[0-9a-f]{40}$')
+      - release_pi5_retention_existing_previous_api_sha == release_pi5_retention_existing_state.previous.api.releaseSha
+      - release_pi5_retention_existing_previous_web_sha == release_pi5_retention_existing_state.previous.web.releaseSha
+      - release_pi5_retention_existing_previous_api_sha == release_pi5_retention_existing_previous_web_sha
+    fail_msg: Existing Pi5 previous release SHAs must match both immutable references.
+  when: release_pi5_retention_state_stat.stat.exists | default(false) | bool
+
+- name: Start Pi5 retention with a fresh previous-generation selection
+  ansible.builtin.set_fact:
+    release_pi5_retention_preserve_previous: false
+
+- name: Detect a same-release Pi5 state eligible to preserve its previous generation
+  ansible.builtin.set_fact:
+    release_pi5_retention_preserve_previous: >-
+      {{
+        release_pi5_retention_existing_state.current.api.releaseSha == release_sha
+        and release_pi5_retention_existing_state.current.web.releaseSha == release_sha
+      }}
+  when: release_pi5_retention_state_stat.stat.exists | default(false) | bool
+
+- name: Require existing same-release current identity to match canonical pre-switch Pi5 containers
+  ansible.builtin.assert:
+    that:
+      - release_pi5_retention_existing_state.current.api.reference == release_pi5_active_api_identity.split('|')[0]
+      - release_pi5_retention_existing_state.current.api.imageId == release_pi5_active_api_identity.split('|')[1]
+      - release_pi5_retention_existing_state.current.api.releaseSha == release_sha
+      - release_pi5_retention_existing_state.current.web.reference == release_pi5_active_web_identity.split('|')[0]
+      - release_pi5_retention_existing_state.current.web.imageId == release_pi5_active_web_identity.split('|')[1]
+      - release_pi5_retention_existing_state.current.web.releaseSha == release_sha
+    fail_msg: Existing same-release Pi5 retention state does not match the canonical pre-switch API/Web identities.
+  when: release_pi5_retention_preserve_previous | bool
+
+- name: Select the Pi5 pre-switch image identities for retention
+  ansible.builtin.set_fact:
+    release_pi5_retention_previous_api_identity: "{{ release_pi5_active_api_identity if release_pi5_route == 'fresh' else release_pi5_opposite_api_identity }}"
+    release_pi5_retention_previous_web_identity: "{{ release_pi5_active_web_identity if release_pi5_route == 'fresh' else release_pi5_opposite_web_identity }}"
+
+- name: Resolve exact Pi5 pre-switch image references for retention
+  ansible.builtin.set_fact:
+    release_pi5_retention_pre_switch_api_reference: "{{ release_pi5_retention_previous_api_identity.split('|')[0] }}"
+    release_pi5_retention_pre_switch_web_reference: "{{ release_pi5_retention_previous_web_identity.split('|')[0] }}"
+
+- name: Require immutable Pi5 pre-switch image references for retention
+  ansible.builtin.assert:
+    that:
+      - release_pi5_retention_previous_api_identity is match('^.+\\|sha256:[0-9a-f]{64}\\|(true|false)$')
+      - release_pi5_retention_previous_web_identity is match('^.+\\|sha256:[0-9a-f]{64}\\|(true|false)$')
+      - release_pi5_retention_pre_switch_api_reference is match('^.+:[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
+      - release_pi5_retention_pre_switch_web_reference is match('^.+:[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
+    fail_msg: Pi5 pre-switch API/Web images must have immutable release references.
+  when: not (release_pi5_retention_preserve_previous | bool)
+
+- name: Parse Pi5 pre-switch release SHA prefixes from immutable references
+  ansible.builtin.set_fact:
+    release_pi5_retention_pre_switch_api_sha: >-
+      {{ release_pi5_retention_pre_switch_api_reference
+         | regex_replace('^.+:([0-9a-f]{40})(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$', '\1') }}
+    release_pi5_retention_pre_switch_web_sha: >-
+      {{ release_pi5_retention_pre_switch_web_reference
+         | regex_replace('^.+:([0-9a-f]{40})(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$', '\1') }}
+  when: not (release_pi5_retention_preserve_previous | bool)
+
+- name: Select the Pi5 previous generation from state or the pre-switch containers
+  ansible.builtin.set_fact:
+    release_pi5_retention_previous_api_reference: >-
+      {{ release_pi5_retention_existing_state.previous.api.reference
+         if release_pi5_retention_preserve_previous | bool
+         else release_pi5_retention_pre_switch_api_reference }}
+    release_pi5_retention_previous_api_image_id: >-
+      {{ release_pi5_retention_existing_state.previous.api.imageId
+         if release_pi5_retention_preserve_previous | bool
+         else release_pi5_retention_previous_api_identity.split('|')[1] }}
+    release_pi5_retention_previous_api_sha: >-
+      {{ release_pi5_retention_existing_previous_api_sha
+         if release_pi5_retention_preserve_previous | bool
+         else release_pi5_retention_pre_switch_api_sha }}
+    release_pi5_retention_previous_web_reference: >-
+      {{ release_pi5_retention_existing_state.previous.web.reference
+         if release_pi5_retention_preserve_previous | bool
+         else release_pi5_retention_pre_switch_web_reference }}
+    release_pi5_retention_previous_web_image_id: >-
+      {{ release_pi5_retention_existing_state.previous.web.imageId
+         if release_pi5_retention_preserve_previous | bool
+         else release_pi5_retention_previous_web_identity.split('|')[1] }}
+    release_pi5_retention_previous_web_sha: >-
+      {{ release_pi5_retention_existing_previous_web_sha
+         if release_pi5_retention_preserve_previous | bool
+         else release_pi5_retention_pre_switch_web_sha }}
+
+- name: Require matching Pi5 previous-generation release SHA prefixes
+  ansible.builtin.assert:
+    that:
+      - release_pi5_retention_previous_api_sha is match('^[0-9a-f]{40}$')
+      - release_pi5_retention_previous_web_sha is match('^[0-9a-f]{40}$')
+      - release_pi5_retention_previous_api_sha == release_pi5_retention_previous_web_sha
+    fail_msg: Pi5 previous API/Web release SHA prefixes do not match.
+
+- name: Build the Pi5 image retention state document
+  ansible.builtin.set_fact:
+    release_pi5_retention_state:
+      schemaVersion: 1
+      current:
+        api:
+          reference: "{{ release_pi5_retention_current_identity.results[0].stdout.split('|')[0] }}"
+          imageId: "{{ release_pi5_retention_current_identity.results[0].stdout.split('|')[1] }}"
+          releaseSha: "{{ release_sha }}"
+        web:
+          reference: "{{ release_pi5_retention_current_identity.results[1].stdout.split('|')[0] }}"
+          imageId: "{{ release_pi5_retention_current_identity.results[1].stdout.split('|')[1] }}"
+          releaseSha: "{{ release_sha }}"
+      previous:
+        api:
+          reference: "{{ release_pi5_retention_previous_api_reference }}"
+          imageId: "{{ release_pi5_retention_previous_api_image_id }}"
+          releaseSha: "{{ release_pi5_retention_previous_api_sha }}"
+        web:
+          reference: "{{ release_pi5_retention_previous_web_reference }}"
+          imageId: "{{ release_pi5_retention_previous_web_image_id }}"
+          releaseSha: "{{ release_pi5_retention_previous_web_sha }}"
+
+- name: Write the Pi5 image retention state to a root-only temporary file
+  ansible.builtin.copy:
+    content: "{{ release_pi5_retention_state | to_nice_json }}\n"
+    dest: "{{ release_pi5_retention_state_tmp }}"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Atomically publish the Pi5 image retention state
+  ansible.builtin.command:
+    argv:
+      - mv
+      - -Tf
+      - "{{ release_pi5_retention_state_tmp }}"
+      - "{{ release_pi5_retention_state_path }}"
+  changed_when: true

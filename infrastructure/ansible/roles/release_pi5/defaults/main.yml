@@ -5,6 +5,9 @@ release_pi5_api_image: ""
 release_pi5_web_image: ""
 release_pi5_project_dir: "{{ pi5_project_dir | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}"
 release_pi5_run_root: /var/lib/raspi-release/standard
+release_pi5_retention_state_dir: /var/lib/raspi-release
+release_pi5_retention_state_path: "{{ release_pi5_retention_state_dir }}/image-retention.json"
+release_pi5_retention_state_tmp: "{{ release_pi5_retention_state_path }}.{{ release_run_id }}.tmp"
 release_pi5_compose_project: bluegreen
 release_pi5_env_file: "{{ release_pi5_project_dir }}/infrastructure/docker/.env"
 release_pi5_server_compose_file: "{{ release_pi5_project_dir }}/infrastructure/docker/docker-compose.server.yml"
