@@ -5,6 +5,7 @@ import type {
   WorkInstructionEditAssetOriginInput,
   WorkInstructionEditRevisionContext,
   WorkInstructionEditingView,
+  WorkInstructionMemoOverrideInput,
   WorkInstructionOverlayElementInput,
   WorkInstructionSourceVersionView
 } from '../domain/editing.js';
@@ -23,6 +24,11 @@ export type WorkInstructionPublishRevisionResult = {
     needsReviewCount: number;
     unassignedCount: number;
     skippedCount: number;
+    memo?: {
+      needsReviewCount: number;
+      unassignedCount: number;
+      skippedCount: number;
+    };
   };
 };
 
@@ -64,6 +70,15 @@ export type WorkInstructionEditRepository = {
     expectedSourceVersionId: string;
     expectedContentHash: string;
     elements: ReadonlyArray<WorkInstructionOverlayElementInput>;
+  }): Promise<WorkInstructionEditRevisionView>;
+  /** Canonical atomic draft write. Omitted memoOverrides means preserve memos. */
+  saveDraft(input: {
+    revisionId: string;
+    expectedEditVersion: number;
+    expectedSourceVersionId: string;
+    expectedContentHash: string;
+    elements: ReadonlyArray<WorkInstructionOverlayElementInput>;
+    memoOverrides: ReadonlyArray<WorkInstructionMemoOverrideInput>;
   }): Promise<WorkInstructionEditRevisionView>;
   /** Applies best-effort ROI rebase results as one optimistic revision update. */
   applyRoiRebase(input: {

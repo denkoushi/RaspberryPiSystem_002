@@ -363,6 +363,7 @@ REGISTER_CLIENT_HOST=raspi4-assembly-01 SERVER_IP=100.106.158.2 ./scripts/regist
 - **端末別のキオスク起動先について**:
   - inventoryに`kiosk_initial_route`がある場合、登録時に`ClientDevice.kioskInitialRoute`へ反映する
   - 組立専用端末は`kiosk_initial_route: assembly`とし、`/kiosk/assembly`を起動先にする
+  - 自主検査専用端末は`kiosk_initial_route: self_inspection`とし、`/kiosk/part-measurement/self-inspection`を起動先にする
 - **vault管理のキーを直接登録する必要が出た場合**:
   - 将来的にAnsible経由での変数解決方式へ移行することを検討（詳細は [KB-278](../knowledge-base/infrastructure/security.md#kb-278-クライアント端末管理の重複登録inventory未解決テンプレキー混入) の「次のフェーズの検討タイミング」を参照）
 

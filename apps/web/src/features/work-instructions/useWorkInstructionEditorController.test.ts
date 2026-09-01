@@ -36,6 +36,7 @@ import type {
   WorkInstructionEditorGroupDto,
   WorkInstructionEditorStepDto,
   WorkInstructionEditRevisionDto,
+  WorkInstructionMemoOverrideDto,
   WorkInstructionRevisionHistoryItemDto,
   WorkInstructionSourceVersionDto
 } from '../../api/domains/work-instruction-overlays';
@@ -59,6 +60,7 @@ function makeStep(overlays: WorkInstructionOverlayElement[] = []): WorkInstructi
     imageSha256: 'source-sha',
     sourceModified: '2026-08-31T00:00:00.000Z',
     contentHash: 'latest-hash',
+    memoFingerprint: 'target-memo-fingerprint',
     overlays
   };
 }
@@ -74,7 +76,11 @@ function makeVersion(id: string, status: WorkInstructionSourceVersionDto['status
   };
 }
 
-function makeDraft(overlays: WorkInstructionOverlayElement[] = [], editVersion = 0): WorkInstructionEditRevisionDto {
+function makeDraft(
+  overlays: WorkInstructionOverlayElement[] = [],
+  editVersion = 0,
+  memoOverrides: WorkInstructionMemoOverrideDto[] = []
+): WorkInstructionEditRevisionDto {
   const stepOverlays = overlays.filter((element) => element.sourceStep !== null && element.migrationState !== 'UNASSIGNED');
   return {
     id: 'draft-1',
@@ -87,6 +93,7 @@ function makeDraft(overlays: WorkInstructionOverlayElement[] = [], editVersion =
     baseContentHash: 'latest-hash',
     steps: [makeStep(stepOverlays)],
     overlays,
+    memoOverrides,
     assets: {}
   };
 }
@@ -274,6 +281,159 @@ describe('useWorkInstructionEditorController', () => {
 
     expect(hook.result.current.activeRevision?.steps[0]?.overlays).toEqual(localElements);
     expect(hook.result.current.activeElements).toEqual(localElements);
+  });
+
+  it('keeps an empty memo override dirty, saves it atomically, and deletes it on reset', async () => {
+    const hook = renderEditor();
+    await authenticate(hook);
+    const stepKey = hook.result.current.selectedStepKey;
+    expect(stepKey).toBe('sharepoint:work-instructions:1:1');
+
+    act(() => hook.result.current.updateMemo(stepKey!, ''));
+    await waitFor(() => {
+      expect(hook.result.current.activeMemo).toBe('');
+      expect(hook.result.current.activeMemoOverride).toMatchObject({ stepKey, text: '' });
+      expect(hook.result.current.isDirty).toBe(true);
+    });
+
+    apiMocks.save.mockResolvedValueOnce(makeDraft([], 1, [{ stepKey: stepKey!, text: '', action: 'AUTO' }]));
+    await act(async () => {
+      await hook.result.current.save();
+    });
+    expect(apiMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
+      memoOverrides: [expect.objectContaining({ stepKey, text: '', action: 'AUTO' })]
+    }));
+    await waitFor(() => expect(hook.result.current.isDirty).toBe(false));
+
+    act(() => hook.result.current.resetMemo(stepKey!));
+    await waitFor(() => {
+      expect(hook.result.current.activeMemo).toBe('加工面を確認します。');
+      expect(hook.result.current.activeMemoOverride).toBeNull();
+      expect(hook.result.current.isDirty).toBe(true);
+    });
+
+    apiMocks.save.mockResolvedValueOnce(makeDraft([], 2));
+    await act(async () => {
+      await hook.result.current.save();
+    });
+    expect(apiMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
+      memoOverrides: [expect.objectContaining({
+        stepKey,
+        sourceStep: 1,
+        action: 'USE_SOURCE',
+        text: ''
+      })]
+    }));
+  });
+
+  it('keeps a NEEDS_REVIEW memo only after recording the current target fingerprint', async () => {
+    const reviewMemo: WorkInstructionMemoOverrideDto = {
+      stepKey: 'sharepoint:work-instructions:1:1',
+      text: '旧原本に合わせたメモ',
+      migrationState: 'NEEDS_REVIEW',
+      targetStepFingerprint: 'old-hash'
+    };
+    const draft = makeDraft([], 0, [reviewMemo]);
+    apiMocks.copy.mockResolvedValueOnce({ group: makeGroup(draft), revisions: [draft] });
+    const hook = renderEditor();
+    await authenticate(hook);
+
+    expect(hook.result.current.activeMemo).toBe('旧原本に合わせたメモ');
+    expect(hook.result.current.activeMemoOverride).toMatchObject({ migrationState: 'NEEDS_REVIEW' });
+    act(() => hook.result.current.keepMemo(hook.result.current.selectedStepKey!));
+
+    await waitFor(() => expect(hook.result.current.activeMemoOverride).toMatchObject({
+      migrationState: 'MIGRATED',
+      targetStepFingerprint: 'old-hash',
+      expectedTargetStepFingerprint: 'old-hash',
+      action: 'KEEP'
+    }));
+
+    apiMocks.save.mockResolvedValueOnce(makeDraft([], 1, [{
+      ...reviewMemo,
+      migrationState: 'MIGRATED',
+      action: 'KEEP',
+      expectedTargetStepFingerprint: 'old-hash'
+    }]));
+    await act(async () => {
+      await hook.result.current.save();
+    });
+    expect(apiMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
+      memoOverrides: [expect.objectContaining({
+        text: '旧原本に合わせたメモ',
+        action: 'KEEP',
+        expectedTargetStepFingerprint: 'old-hash'
+      })]
+    }));
+  });
+
+  it('reassigns an unassigned memo with KEEP and sends USE_SOURCE for discard', async () => {
+    const unassigned: WorkInstructionMemoOverrideDto = {
+      stepKey: null,
+      migratedFromStepKey: 'sharepoint:work-instructions:1:3',
+      migratedFromStep: 3,
+      sourceStep: null,
+      text: '未割当メモ',
+      migrationState: 'UNASSIGNED'
+    };
+    const draft = makeDraft([], 0, [unassigned]);
+    apiMocks.copy.mockResolvedValueOnce({ group: makeGroup(draft), revisions: [draft] });
+    const hook = renderEditor();
+    await authenticate(hook);
+
+    const orphanKey = 'sharepoint:work-instructions:1:3';
+    expect(hook.result.current.activeMemoOverridesArray).toEqual([expect.objectContaining({
+      stepKey: null,
+      migratedFromStepKey: orphanKey,
+      text: '未割当メモ'
+    })]);
+    act(() => hook.result.current.assignMemoAndKeep(orphanKey, 'sharepoint:work-instructions:1:1'));
+    await waitFor(() => expect(hook.result.current.activeMemoOverridesArray).toEqual([expect.objectContaining({
+      stepKey: 'sharepoint:work-instructions:1:1',
+      sourceStep: 1,
+      migratedFromStep: 3,
+      action: 'KEEP',
+      text: '未割当メモ'
+    })]));
+
+    apiMocks.save.mockResolvedValueOnce(makeDraft([], 1, []));
+    await act(async () => {
+      await hook.result.current.save();
+    });
+    expect(apiMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
+      memoOverrides: [expect.objectContaining({
+        stepKey: 'sharepoint:work-instructions:1:1',
+        migratedFromStep: 3,
+        action: 'KEEP',
+        expectedTargetStepFingerprint: 'target-memo-fingerprint',
+        text: '未割当メモ'
+      })]
+    }));
+
+    const discardDraft = makeDraft([], 0, [unassigned]);
+    apiMocks.copy.mockResolvedValueOnce({ group: makeGroup(discardDraft), revisions: [discardDraft] });
+    const discardHook = renderEditor();
+    await authenticate(discardHook);
+    act(() => discardHook.result.current.useSourceMemo(orphanKey));
+    await waitFor(() => expect(discardHook.result.current.activeMemoOverridesArray).toEqual([expect.objectContaining({
+      stepKey: null,
+      migratedFromStepKey: orphanKey,
+      action: 'USE_SOURCE',
+      text: ''
+    })]));
+    apiMocks.save.mockResolvedValueOnce(makeDraft([], 1, []));
+    await act(async () => {
+      await discardHook.result.current.save();
+    });
+    expect(apiMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
+      memoOverrides: [expect.objectContaining({
+        stepKey: null,
+        migratedFromStepKey: orphanKey,
+        sourceStep: null,
+        action: 'USE_SOURCE',
+        text: ''
+      })]
+    }));
   });
 
   it('assigns an unassigned migrated note to an explicit destination step and keeps it reviewable', async () => {

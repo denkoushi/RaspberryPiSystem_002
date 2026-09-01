@@ -8,6 +8,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useWorkInstructionEditorController } from '../../features/work-instructions/useWorkInstructionEditorController';
 import { WorkInstructionEditorCanvas } from '../../features/work-instructions/WorkInstructionEditorCanvas';
 import { WorkInstructionEditorInspector } from '../../features/work-instructions/WorkInstructionEditorInspector';
+import { effectiveWorkInstructionMemo } from '../../features/work-instructions/workInstructionEditorMemo';
+import { WorkInstructionEditorToolbarStatus } from '../../features/work-instructions/WorkInstructionEditorToolbarStatus';
 import { WorkInstructionOverlayTypeDialog } from '../../features/work-instructions/WorkInstructionOverlayTypeDialog';
 import { WorkInstructionTextCandidateDialog } from '../../features/work-instructions/WorkInstructionTextCandidateDialog';
 import { WorkInstructionVersionComparison } from '../../features/work-instructions/WorkInstructionVersionComparison';
@@ -88,6 +90,8 @@ function EditorToolbar({
   shootingTarget,
   showComparison,
   onToggleComparison,
+  showHistory,
+  onToggleHistory,
   onOpenPublish,
   onOpenDiscard
 }: {
@@ -96,6 +100,8 @@ function EditorToolbar({
   shootingTarget: string;
   showComparison: boolean;
   onToggleComparison: () => void;
+  showHistory: boolean;
+  onToggleHistory: () => void;
   onOpenPublish: () => void;
   onOpenDiscard: () => void;
 }) {
@@ -115,6 +121,7 @@ function EditorToolbar({
           新しい原本を移植中
         </span>
       ) : null}
+      <WorkInstructionEditorToolbarStatus controller={controller} />
       <Button
         type="button"
         variant="ghostOnDark"
@@ -123,6 +130,15 @@ function EditorToolbar({
         onClick={onToggleComparison}
       >
         {showComparison ? '比較を隠す' : '公開版と比較'}
+      </Button>
+      <Button
+        type="button"
+        variant="ghostOnDark"
+        className="min-h-11"
+        aria-pressed={showHistory}
+        onClick={onToggleHistory}
+      >
+        {showHistory ? '履歴を隠す' : '履歴を表示'}
       </Button>
       <Button
         type="button"
@@ -229,7 +245,7 @@ function EditorStepsPane({ controller }: { controller: WorkInstructionEditorCont
               onClick={() => controller.selectStep(key)}
             >
               <span className="font-bold">手順 {step.step || index + 1}</span>
-              <span className="mt-1 block truncate text-white/60">{step.text}</span>
+              <span className="mt-1 block truncate text-white/60">{effectiveWorkInstructionMemo(step, controller.activeMemoOverrides)}</span>
               <span className="mt-1 block text-white/50">
                 注記 {controller.activeElements.filter((element) => element.stepKey === key).length}
               </span>
@@ -238,6 +254,66 @@ function EditorStepsPane({ controller }: { controller: WorkInstructionEditorCont
         })}
       </div>
     </aside>
+  );
+}
+
+function EditorWorkSurface({
+  controller,
+  onOpenConflict
+}: {
+  controller: WorkInstructionEditorController;
+  onOpenConflict: () => void;
+}) {
+  return (
+    <div className="relative min-h-0 min-w-0 flex-1">
+      <WorkInstructionEditorCanvas
+        step={controller.activeStep}
+        elements={controller.activeStepElements}
+        selectedOverlayId={controller.selectedOverlayId}
+        selectionMode={controller.selectionMode}
+        editable={!controller.busy}
+        onSelectOverlay={controller.setSelectedOverlayId}
+        onNudgeOverlay={controller.nudgeElement}
+        onUpdateOverlayBBox={controller.updateElementBBox}
+        onRangeSelected={(bbox) => controller.setPendingRange(bbox)}
+        assets={controller.activeAssets}
+        className="h-full w-full"
+      />
+      {controller.selectionMode ? (
+        <p className="pointer-events-none absolute left-4 top-4 z-50 rounded bg-amber-300 px-2 py-1 text-xs font-bold text-slate-900">
+          画像上で範囲をドラッグしてください
+        </p>
+      ) : null}
+      {controller.conflict && controller.message ? (
+        <div
+          className="absolute bottom-3 left-3 right-3 z-50 rounded border border-white/20 bg-slate-950/90 px-3 py-2 text-sm font-semibold text-amber-100"
+          role="alert"
+        >
+          <p>{controller.message}</p>
+          {controller.conflict ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="ghostOnDark"
+                className="min-h-11 !px-2 text-xs"
+                onClick={onOpenConflict}
+              >
+                最新を再読込
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                className="min-h-11 !px-2 text-xs"
+                disabled={controller.conflict.currentEditVersion == null}
+                onClick={() => void controller.retryConflictSave()}
+              >
+                保持内容を再保存
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -251,68 +327,23 @@ function EditorCanvasPane({
   onOpenConflict: () => void;
 }) {
   return (
-    <section
-      className="relative flex min-h-0 min-w-0 flex-col gap-2 overflow-hidden bg-slate-950 p-2"
-      aria-label="加工要領書編集キャンバス"
-    >
+    <section className="relative flex min-h-0 min-w-0 flex-col gap-2 overflow-hidden bg-slate-950 p-2" aria-label="加工要領書編集キャンバス">
       {showComparison ? (
-        <div className="shrink-0">
-          <WorkInstructionVersionComparison
-            row={controller.activeRow}
-            selectedStepKey={controller.selectedStepKey}
-            assets={controller.activeAssets}
-          />
-        </div>
-      ) : null}
-      <div className="relative min-h-0 min-w-0 flex-1">
-        <WorkInstructionEditorCanvas
-          step={controller.activeStep}
-          elements={controller.activeStepElements}
-          selectedOverlayId={controller.selectedOverlayId}
-          selectionMode={controller.selectionMode}
-          editable={!controller.busy}
-          onSelectOverlay={controller.setSelectedOverlayId}
-          onNudgeOverlay={controller.nudgeElement}
-          onUpdateOverlayBBox={controller.updateElementBBox}
-          onRangeSelected={(bbox) => controller.setPendingRange(bbox)}
-          assets={controller.activeAssets}
-          className="h-full w-full"
-        />
-        {controller.selectionMode ? (
-          <p className="pointer-events-none absolute left-4 top-4 z-50 rounded bg-amber-300 px-2 py-1 text-xs font-bold text-slate-900">
-            画像上で範囲をドラッグしてください
-          </p>
-        ) : null}
-        {controller.message ? (
-          <div
-            className="absolute bottom-3 left-3 right-3 z-50 rounded border border-white/20 bg-slate-950/90 px-3 py-2 text-sm font-semibold text-amber-100"
-            role={controller.conflict ? 'alert' : 'status'}
-          >
-            <p>{controller.message}</p>
-            {controller.conflict ? (
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="ghostOnDark"
-                  className="min-h-11 !px-2 text-xs"
-                  onClick={onOpenConflict}
-                >
-                  最新を再読込
-                </Button>
-                <Button
-                  type="button"
-                  variant="primary"
-                  className="min-h-11 !px-2 text-xs"
-                  disabled={controller.conflict.currentEditVersion == null}
-                  onClick={() => void controller.retryConflictSave()}
-                >
-                  保持内容を再保存
-                </Button>
-              </div>
-            ) : null}
+        <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,3fr)_minmax(0,2fr)] gap-2" data-testid="work-instruction-editor-comparison-layout">
+          <div className="relative min-h-0 min-w-0 overflow-hidden rounded border border-white/10" data-testid="work-instruction-editor-target-pane">
+            <EditorWorkSurface controller={controller} onOpenConflict={onOpenConflict} />
           </div>
-        ) : null}
-      </div>
+          <div className="min-h-0 min-w-0 overflow-hidden rounded border border-white/10 p-1" data-testid="work-instruction-editor-comparison-pane">
+            <WorkInstructionVersionComparison
+              row={controller.activeRow}
+              selectedStepKey={controller.selectedStepKey}
+              assets={controller.activeAssets}
+            />
+          </div>
+        </div>
+      ) : (
+        <EditorWorkSurface controller={controller} onOpenConflict={onOpenConflict} />
+      )}
     </section>
   );
 }
@@ -510,6 +541,7 @@ export function KioskWorkInstructionEditorPage() {
   const [conflictOpen, setConflictOpen] = useState(false);
   const [deleteSourceVersionId, setDeleteSourceVersionId] = useState<string | null>(null);
   const [showComparison, setShowComparison] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
 
   if (!partNumber || !shootingTarget) {
     return (
@@ -555,6 +587,8 @@ export function KioskWorkInstructionEditorPage() {
           shootingTarget={shootingTarget}
           showComparison={showComparison}
           onToggleComparison={() => setShowComparison((current) => !current)}
+          showHistory={showHistory}
+          onToggleHistory={() => setShowHistory((current) => !current)}
           onOpenPublish={() => setPublishOpen(true)}
           onOpenDiscard={() => setDiscardOpen(true)}
         />
@@ -568,6 +602,15 @@ export function KioskWorkInstructionEditorPage() {
           />
           <WorkInstructionEditorInspector
             element={controller.selectedElement}
+            step={controller.activeStep}
+            memo={controller.activeMemo}
+            memoOverride={controller.activeMemoOverride}
+            memoOverrides={controller.activeMemoOverridesArray}
+            onMemoChange={controller.selectedStepKey ? (value) => controller.updateMemo(controller.selectedStepKey!, value) : undefined}
+            onMemoReset={controller.selectedStepKey ? () => controller.resetMemo(controller.selectedStepKey!) : undefined}
+            onMemoKeep={controller.selectedStepKey ? () => controller.keepMemo(controller.selectedStepKey!) : undefined}
+            onMemoAssignAndKeep={controller.assignMemoAndKeep}
+            onMemoUseSource={controller.useSourceMemo}
             steps={controller.activeSteps}
             onAssignStep={controller.assignOverlayStep}
             onUpdate={controller.updateElement}
@@ -580,12 +623,16 @@ export function KioskWorkInstructionEditorPage() {
             busy={controller.busy}
           />
         </div>
-        <EditorHistorySection
-          history={history}
-          canDeleteOldImages={canDeleteOldImages}
-          busy={controller.busy}
-          onRequestDelete={setDeleteSourceVersionId}
-        />
+        {showHistory ? (
+          <div className="shrink-0 self-start border-t border-white/10 xl:w-[28rem]" data-testid="work-instruction-editor-history-pane">
+            <EditorHistorySection
+              history={history}
+              canDeleteOldImages={canDeleteOldImages}
+              busy={controller.busy}
+              onRequestDelete={setDeleteSourceVersionId}
+            />
+          </div>
+        ) : null}
       </main>
 
       <EditorDialogs

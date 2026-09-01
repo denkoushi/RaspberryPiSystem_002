@@ -104,7 +104,7 @@ register_client() {
   echo "[INFO] Registering client: ${name}"
 
   case "${kiosk_initial_route}" in
-    ""|borrow_tag|borrow_photo|leader_order_board|assembly|production_schedule) ;;
+    ""|borrow_tag|borrow_photo|leader_order_board|assembly|self_inspection|production_schedule) ;;
     *)
       echo "[ERROR] Invalid kiosk_initial_route for ${name}: ${kiosk_initial_route}" >&2
       return 1

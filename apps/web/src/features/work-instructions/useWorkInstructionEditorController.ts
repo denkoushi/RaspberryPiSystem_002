@@ -30,6 +30,18 @@ import {
   workInstructionOverlayDraftReducer,
   workInstructionOverlayDraftSnapshot
 } from './workInstructionEditorDraft';
+import {
+  effectiveWorkInstructionMemo,
+  keepWorkInstructionMemo,
+  memoOverrideForStep,
+  memoOverridesToArray,
+  memoOverridesToMap,
+  resetWorkInstructionMemo,
+  updateWorkInstructionMemo,
+  workInstructionMemoOverridesSnapshot,
+  workInstructionStepKey,
+  type WorkInstructionMemoOverrideMap
+} from './workInstructionEditorMemo';
 
 import type { WorkInstructionEditorRecoveryRecord } from './workInstructionEditorRecovery';
 import type { WorkInstructionOverlayAsset, WorkInstructionOverlayElement } from '../../api/domains/work-instructions';
@@ -89,7 +101,7 @@ function currentEditVersionFromError(error: unknown): number | null {
 }
 
 function stepKeyFor(step: WorkInstructionEditorStepDto): string {
-  return step.stepKey || `${step.sourceSystem}:${step.sourceList}:${step.sourceItemId}:${step.step}`;
+  return workInstructionStepKey(step);
 }
 
 function revisionElements(revision: WorkInstructionEditRevisionDto | null): WorkInstructionOverlayElement[] {
@@ -182,6 +194,24 @@ function savePayloadElements(
   });
 }
 
+function savePayloadMemoOverrides(
+  revision: WorkInstructionEditRevisionDto,
+  overrides: WorkInstructionMemoOverrideMap
+) {
+  const steps = revision.steps ?? [];
+  return memoOverridesToArray(overrides).map((override) => {
+    const step = override.stepKey ? steps.find((candidate) => stepKeyFor(candidate) === override.stepKey) : undefined;
+    const sourceStep = override.sourceStep ?? step?.step ?? null;
+    return {
+      ...override,
+      sourceStep,
+      migratedFromStep: override.migratedFromStep ?? sourceStep,
+      action: override.action ?? 'AUTO',
+      migrationState: override.migrationState ?? (sourceStep == null ? 'UNASSIGNED' : 'MIGRATED')
+    };
+  });
+}
+
 export function useWorkInstructionEditorController({
   partNumber,
   shootingTarget,
@@ -196,8 +226,10 @@ export function useWorkInstructionEditorController({
   const [accessPassword, setAccessPassword] = useState('');
   const [accessGranted, setAccessGranted] = useState(false);
   const [elementsByRevision, setElementsByRevision] = useState<Record<string, WorkInstructionOverlayElement[]>>({});
+  const [memoOverridesByRevision, setMemoOverridesByRevision] = useState<Record<string, WorkInstructionMemoOverrideMap>>({});
   const [assetsByRevision, setAssetsByRevision] = useState<Record<string, Record<string, WorkInstructionEditAssetDto>>>({});
   const [baselineByRevision, setBaselineByRevision] = useState<Record<string, string>>({});
+  const [memoBaselineByRevision, setMemoBaselineByRevision] = useState<Record<string, string>>({});
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [selectedStepKey, setSelectedStepKey] = useState<string | null>(null);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
@@ -211,9 +243,11 @@ export function useWorkInstructionEditorController({
   const [loadingEditor, setLoadingEditor] = useState(false);
   const groupRef = useRef(group);
   const elementsRef = useRef(elementsByRevision);
+  const memoOverridesRef = useRef(memoOverridesByRevision);
   const baselineRef = useRef(baselineByRevision);
   groupRef.current = group;
   elementsRef.current = elementsByRevision;
+  memoOverridesRef.current = memoOverridesByRevision;
   baselineRef.current = baselineByRevision;
 
   useEffect(() => {
@@ -227,18 +261,25 @@ export function useWorkInstructionEditorController({
   useEffect(() => {
     if (!group) return;
     const nextElements: Record<string, WorkInstructionOverlayElement[]> = {};
+    const nextMemoOverrides: Record<string, WorkInstructionMemoOverrideMap> = {};
     const nextAssets: Record<string, Record<string, WorkInstructionEditAssetDto>> = {};
     const nextBaseline: Record<string, string> = {};
+    const nextMemoBaseline: Record<string, string> = {};
     for (const row of group.rows) {
       if (!row.draft) continue;
       const elements = rowRevisionElements(row);
+      const memoOverrides = memoOverridesToMap(row.draft.memoOverrides);
       nextElements[row.draft.id] = elements;
+      nextMemoOverrides[row.draft.id] = memoOverrides;
       nextAssets[row.draft.id] = row.draft.assets ?? {};
       nextBaseline[row.draft.id] = workInstructionOverlayDraftSnapshot(elements);
+      nextMemoBaseline[row.draft.id] = workInstructionMemoOverridesSnapshot(memoOverrides);
     }
     setElementsByRevision(nextElements);
+    setMemoOverridesByRevision(nextMemoOverrides);
     setAssetsByRevision(nextAssets);
     setBaselineByRevision(nextBaseline);
+    setMemoBaselineByRevision(nextMemoBaseline);
     setSelectedRowId((current) => current && group.rows.some((row) => row.rowId === current) ? current : group.rows[0]?.rowId ?? null);
     setSelectedStepKey((current) => {
       const row = group.rows.find((candidate) => candidate.rowId === selectedRowId) ?? group.rows[0];
@@ -256,9 +297,18 @@ export function useWorkInstructionEditorController({
   const activeSteps = useMemo(() => activeRow ? baseSteps(activeRow) : [], [activeRow]);
   const activeStep = useMemo(() => activeSteps.find((step) => stepKeyFor(step) === selectedStepKey) ?? activeSteps[0] ?? null, [activeSteps, selectedStepKey]);
   const activeElements = useMemo(() => activeRevisionId ? (elementsByRevision[activeRevisionId] ?? []) : [], [activeRevisionId, elementsByRevision]);
+  const activeMemoOverrides = useMemo(() => activeRevisionId ? (memoOverridesByRevision[activeRevisionId] ?? {}) : {}, [activeRevisionId, memoOverridesByRevision]);
+  const activeMemoOverridesArray = useMemo(() => memoOverridesToArray(activeMemoOverrides), [activeMemoOverrides]);
+  const activeMemo = useMemo(() => activeStep ? effectiveWorkInstructionMemo(activeStep, activeMemoOverrides) : '', [activeMemoOverrides, activeStep]);
+  const activeMemoOverride = useMemo(() => activeStep ? memoOverrideForStep(activeStep, activeMemoOverrides) : null, [activeMemoOverrides, activeStep]);
   const activeStepElements = useMemo(() => activeStep ? overlayElementsForStep(activeElements, stepKeyFor(activeStep), activeSteps.indexOf(activeStep)) : [], [activeElements, activeStep, activeSteps]);
   const selectedElement = useMemo(() => activeElements.find((element) => element.id === selectedOverlayId) ?? null, [activeElements, selectedOverlayId]);
-  const dirtyRevisionIds = useMemo(() => rows.filter((row) => row.draft && workInstructionOverlayDraftSnapshot(elementsByRevision[row.draft.id] ?? []) !== baselineByRevision[row.draft.id]).map((row) => row.draft!.id), [baselineByRevision, elementsByRevision, rows]);
+  const dirtyRevisionIds = useMemo(() => rows.filter((row) => {
+    if (!row.draft) return false;
+    const revisionId = row.draft.id;
+    return workInstructionOverlayDraftSnapshot(elementsByRevision[revisionId] ?? []) !== baselineByRevision[revisionId]
+      || workInstructionMemoOverridesSnapshot(memoOverridesByRevision[revisionId] ?? {}) !== memoBaselineByRevision[revisionId];
+  }).map((row) => row.draft!.id), [baselineByRevision, elementsByRevision, memoBaselineByRevision, memoOverridesByRevision, rows]);
   const isDirty = dirtyRevisionIds.length > 0;
   const hasUpdate = rows.some((row) => row.updateAvailable);
   const recovery = useWorkInstructionEditorRecovery({
@@ -268,6 +318,7 @@ export function useWorkInstructionEditorController({
     sourceContentHash: activeRevision?.contentHash ?? activeRevision?.baseContentHash ?? null,
     editVersion: activeRevision?.editVersion ?? 0,
     elements: activeElements,
+    memoOverrides: activeMemoOverridesArray,
     enabled: accessGranted,
     dirty: isDirty,
     onStorageError: () => setMessage('端末の下書き領域へ保存できませんでした。明示保存を行ってください。')
@@ -286,11 +337,97 @@ export function useWorkInstructionEditorController({
     updateElements(activeRevisionId, { type: 'update', element });
   }, [activeRevisionId, updateElements]);
 
+  const updateMemo = useCallback((stepKey: string, memo: string) => {
+    if (!activeRevisionId) return;
+    const step = activeSteps.find((candidate) => stepKeyFor(candidate) === stepKey);
+    if (!step) return;
+    setMemoOverridesByRevision((current) => ({
+      ...current,
+      [activeRevisionId]: updateWorkInstructionMemo(current[activeRevisionId] ?? {}, step, memo)
+    }));
+  }, [activeRevisionId, activeSteps]);
+
+  const resetMemo = useCallback((stepKey: string) => {
+    if (!activeRevisionId) return;
+    const step = activeSteps.find((candidate) => stepKeyFor(candidate) === stepKey);
+    if (!step) return;
+    setMemoOverridesByRevision((current) => ({
+      ...current,
+      [activeRevisionId]: resetWorkInstructionMemo(current[activeRevisionId] ?? {}, step)
+    }));
+  }, [activeRevisionId, activeSteps]);
+
+  const keepMemo = useCallback((stepKey: string) => {
+    if (!activeRevisionId) return;
+    const step = activeSteps.find((candidate) => stepKeyFor(candidate) === stepKey);
+    if (!step) return;
+    setMemoOverridesByRevision((current) => ({
+      ...current,
+      [activeRevisionId]: keepWorkInstructionMemo(current[activeRevisionId] ?? {}, step)
+    }));
+  }, [activeRevisionId, activeSteps]);
+
+  const assignMemoAndKeep = useCallback((overrideKey: string, targetStepKey: string) => {
+    if (!activeRevisionId) return;
+    const targetStep = activeSteps.find((candidate) => stepKeyFor(candidate) === targetStepKey);
+    if (!targetStep?.memoFingerprint) return;
+    setMemoOverridesByRevision((current) => {
+      const currentOverrides = current[activeRevisionId] ?? {};
+      const override = currentOverrides[overrideKey];
+      if (!override) return current;
+      const existingTarget = currentOverrides[targetStepKey];
+      if (existingTarget && existingTarget !== override
+        && existingTarget.sourceStep !== null
+        && existingTarget.action !== 'USE_SOURCE'
+        && existingTarget.action !== 'use-source'
+        && String(existingTarget.migrationState ?? '').toUpperCase() !== 'UNASSIGNED') return current;
+      const nextOverrides = { ...currentOverrides };
+      delete nextOverrides[overrideKey];
+      nextOverrides[targetStepKey] = {
+        ...override,
+        stepKey: targetStepKey,
+        sourceStep: targetStep.step,
+        migratedFromStep: override.migratedFromStep ?? targetStep.step,
+        action: 'KEEP',
+        migrationState: 'MIGRATED',
+        expectedTargetStepFingerprint: targetStep.memoFingerprint,
+      };
+      return { ...current, [activeRevisionId]: nextOverrides };
+    });
+    setSelectedStepKey(targetStepKey);
+  }, [activeRevisionId, activeSteps]);
+
+  const useSourceMemo = useCallback((overrideKey: string) => {
+    if (!activeRevisionId) return;
+    setMemoOverridesByRevision((current) => {
+      const currentOverrides = current[activeRevisionId] ?? {};
+      const override = currentOverrides[overrideKey];
+      if (!override) return current;
+      return {
+        ...current,
+        [activeRevisionId]: {
+          ...currentOverrides,
+          [overrideKey]: {
+            ...override,
+            stepKey: null,
+            sourceStep: null,
+            text: '',
+            action: 'USE_SOURCE',
+            migrationState: 'UNASSIGNED'
+          }
+        }
+      };
+    });
+  }, [activeRevisionId]);
+
   const hydrateFromRevision = useCallback((revision: WorkInstructionEditRevisionDto) => {
     const elements = revisionElements(revision);
+    const memoOverrides = memoOverridesToMap(revision.memoOverrides);
     setElementsByRevision((current) => ({ ...current, [revision.id]: elements }));
+    setMemoOverridesByRevision((current) => ({ ...current, [revision.id]: memoOverrides }));
     setAssetsByRevision((current) => ({ ...current, [revision.id]: revision.assets ?? {} }));
     setBaselineByRevision((current) => ({ ...current, [revision.id]: workInstructionOverlayDraftSnapshot(elements) }));
+    setMemoBaselineByRevision((current) => ({ ...current, [revision.id]: workInstructionMemoOverridesSnapshot(memoOverrides) }));
   }, []);
 
   // Region extraction and file upload return an asset before the revision is
@@ -340,7 +477,9 @@ export function useWorkInstructionEditorController({
     const revision = row.draft;
     if (!revision) return revision;
     const elements = elementsRef.current[revision.id] ?? [];
+    const memoOverrides = memoOverridesRef.current[revision.id] ?? {};
     const payloadElements = savePayloadElements(revision, elements);
+    const payloadMemoOverrides = savePayloadMemoOverrides(revision, memoOverrides);
     if (!isWorkInstructionOverlayDraftSaveable(elements)) throw new Error('画像注記にはasset IDを指定し、文章を空にしないでください。');
     const savedRevision = await saveWorkInstructionOverlayDraft({
       revisionId: revision.id,
@@ -348,9 +487,11 @@ export function useWorkInstructionEditorController({
       expectedEditVersion: editVersionOverride ?? revision.editVersion,
       expectedSourceVersionId: revision.sourceVersionId,
       expectedContentHash: revision.contentHash || revision.baseContentHash || '',
-      elements: payloadElements
+      elements: payloadElements,
+      memoOverrides: payloadMemoOverrides
     });
     const saved = revisionWithFallbackSteps(savedRevision, baseSteps(row));
+    if (saved.memoOverrides === undefined) saved.memoOverrides = payloadMemoOverrides;
     hydrateFromRevision(saved);
     recovery.clear();
     return saved;
@@ -622,7 +763,13 @@ export function useWorkInstructionEditorController({
   const restoreRecovery = useCallback(() => {
     const recovered = recovery.restore();
     if (!recovered || !activeRevisionId) return;
-    setElementsByRevision((current) => ({ ...current, [activeRevisionId]: recovered }));
+    setElementsByRevision((current) => ({ ...current, [activeRevisionId]: recovered.elements }));
+    if (recovered.memoOverrides !== null) {
+      setMemoOverridesByRevision((current) => ({
+        ...current,
+        [activeRevisionId]: memoOverridesToMap(recovered.memoOverrides)
+      }));
+    }
     setMessage('端末に残っていた下書きを復元しました。保存して確定してください。');
   }, [activeRevisionId, recovery]);
 
@@ -703,12 +850,21 @@ export function useWorkInstructionEditorController({
     activeElements,
     activeStepElements,
     activeAssets,
+    activeMemo,
+    activeMemoOverride,
+    activeMemoOverrides,
+    activeMemoOverridesArray,
     selectedRowId,
     selectedStepKey,
     selectedOverlayId,
     selectedElement,
     selectRow,
     selectStep,
+    updateMemo,
+    resetMemo,
+    keepMemo,
+    assignMemoAndKeep,
+    useSourceMemo,
     setSelectedOverlayId,
     selectionMode,
     setSelectionMode,

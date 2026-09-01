@@ -70,6 +70,41 @@ export type WorkInstructionTextCandidateDto = {
 
 export type WorkInstructionMigrationState = 'migrated' | 'needs_review' | 'unassigned' | 'skipped';
 
+export type WorkInstructionMemoMigrationState =
+  | 'MIGRATED'
+  | 'NEEDS_REVIEW'
+  | 'UNASSIGNED'
+  | 'SKIPPED'
+  | 'migrated'
+  | 'needs_review'
+  | 'unassigned'
+  | 'skipped';
+
+export type WorkInstructionMemoOverrideAction =
+  | 'AUTO'
+  | 'KEEP'
+  | 'USE_SOURCE'
+  | 'auto'
+  | 'keep'
+  | 'use-source';
+
+/** Revision-owned memo override. An empty memo is a valid override value. */
+export type WorkInstructionMemoOverrideDto = {
+  stepKey: string | null;
+  /** Canonical API/DB text field; an empty string is still an active override. */
+  text: string;
+  /** Accepted only when reading older client-shaped responses. Requests use text. */
+  memo?: string;
+  sourceStep?: number | null;
+  migratedFromStep?: number | null;
+  migratedFromStepKey?: string | null;
+  baseStepFingerprint?: string | null;
+  targetStepFingerprint?: string | null;
+  expectedTargetStepFingerprint?: string | null;
+  migrationState?: WorkInstructionMemoMigrationState;
+  action?: WorkInstructionMemoOverrideAction;
+};
+
 export type WorkInstructionEditorStepDto = {
   /** Stable source tuple + step key. Never use the transient import UUID for migration. */
   stepKey: string;
@@ -79,6 +114,13 @@ export type WorkInstructionEditorStepDto = {
   sourceItemId: number;
   step: number;
   text: string;
+  /** Original source text remains available while effective memo is derived. */
+  memo?: string | null;
+  effectiveMemo?: string | null;
+  memoOverride?: string | null;
+  memoMigrationState?: WorkInstructionMemoMigrationState;
+  /** Optional server-computed memo fingerprint used when resolving an orphan. */
+  memoFingerprint?: string | null;
   imageName: string | null;
   imageAssetId: string | null;
   imageUrl: string | null;
@@ -127,6 +169,7 @@ export type WorkInstructionEditRevisionDto = {
   overlays?: WorkInstructionOverlayElement[];
   baseContentHash?: string;
   assets?: Record<string, WorkInstructionEditAssetDto>;
+  memoOverrides?: WorkInstructionMemoOverrideDto[];
   migration?: WorkInstructionMigrationSummaryDto;
   createdAt?: string;
   updatedAt?: string;
@@ -136,12 +179,37 @@ export type WorkInstructionEditRevisionDto = {
 type WorkInstructionEditRevisionResponseDto = Omit<WorkInstructionEditRevisionDto, 'steps' | 'assets'> & {
   steps?: WorkInstructionEditorStepDto[];
   assets?: Record<string, WorkInstructionEditAssetResponseDto>;
+  memoOverrides?: WorkInstructionMemoOverrideResponseDto[] | Record<string, Omit<WorkInstructionMemoOverrideResponseDto, 'stepKey'>>;
 };
+
+type WorkInstructionMemoOverrideResponseDto = Omit<WorkInstructionMemoOverrideDto, 'stepKey' | 'text' | 'memo'> & {
+  stepKey?: string | null;
+  text?: string;
+  memo?: string;
+};
+
+function normalizeMemoOverrides(
+  overrides: WorkInstructionEditRevisionResponseDto['memoOverrides']
+): WorkInstructionMemoOverrideDto[] {
+  const normalize = (override: WorkInstructionMemoOverrideResponseDto, fallbackStepKey = '') => {
+    const { stepKey, text, memo, ...metadata } = override;
+    return {
+      ...metadata,
+      stepKey: stepKey ?? (fallbackStepKey || null),
+      text: typeof text === 'string' ? text : typeof memo === 'string' ? memo : ''
+    };
+  };
+  if (Array.isArray(overrides)) return overrides.map((override) => normalize(override));
+  if (!overrides || typeof overrides !== 'object') return [];
+  const record = overrides as Record<string, WorkInstructionMemoOverrideResponseDto>;
+  return Object.entries(record).map(([stepKey, override]) => normalize(override, stepKey));
+}
 
 function normalizeEditRevision(revision: WorkInstructionEditRevisionResponseDto): WorkInstructionEditRevisionDto {
   return {
     ...revision,
     steps: revision.steps ?? [],
+    ...(revision.memoOverrides === undefined ? {} : { memoOverrides: normalizeMemoOverrides(revision.memoOverrides) }),
     assets: Object.fromEntries(Object.entries(revision.assets ?? {}).map(([assetId, asset]) => [
       assetId,
       normalizeEditAsset({ ...asset, assetId: asset.assetId ?? asset.id ?? assetId })
@@ -277,15 +345,17 @@ export async function saveWorkInstructionOverlayDraft(input: {
   expectedSourceVersionId: string;
   expectedContentHash: string;
   elements: WorkInstructionOverlayElement[];
+  memoOverrides?: WorkInstructionMemoOverrideDto[];
 }) {
   const { data } = await api.put<{ revision?: WorkInstructionEditRevisionResponseDto } & Partial<WorkInstructionEditRevisionResponseDto>>(
-    `${WORK_INSTRUCTION_BASE}/editor-revisions/${encoded(input.revisionId)}/overlays`,
+    `${WORK_INSTRUCTION_BASE}/editor-revisions/${encoded(input.revisionId)}/draft`,
     {
       accessPassword: input.accessPassword,
       expectedEditVersion: input.expectedEditVersion,
       expectedSourceVersionId: input.expectedSourceVersionId,
       expectedContentHash: input.expectedContentHash,
-      elements: input.elements
+      elements: input.elements,
+      memoOverrides: input.memoOverrides ?? []
     }
   );
   return normalizeEditRevision((data.revision ?? data) as WorkInstructionEditRevisionResponseDto);

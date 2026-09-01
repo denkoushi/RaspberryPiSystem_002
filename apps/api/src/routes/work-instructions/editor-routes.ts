@@ -2,7 +2,11 @@ import type { FastifyInstance, FastifyRequest, preHandlerHookHandler } from 'fas
 import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
-import { WorkInstructionEditingError, type WorkInstructionOverlayElementInput } from '../../services/work-instructions/domain/editing.js';
+import {
+  WorkInstructionEditingError,
+  type WorkInstructionMemoOverrideInput,
+  type WorkInstructionOverlayElementInput
+} from '../../services/work-instructions/domain/editing.js';
 import type { WorkInstructionEditService } from '../../services/work-instructions/work-instruction-edit.service.js';
 import type { WorkInstructionReadService } from '../../services/work-instructions/work-instruction-read.service.js';
 import {
@@ -59,6 +63,27 @@ const saveOverlaysBodySchema = z.object({
   expectedContentHash: z.string().min(1).max(128),
   elements: z.array(overlayElementSchema).max(10_000)
 });
+const memoOverrideSchema = z.object({
+  id: z.string().max(120).optional(),
+  sourceStep: z.number().int().positive().nullable().optional(),
+  stepKey: z.string().trim().min(1).max(500).optional(),
+  migratedFromStep: z.number().int().positive().optional(),
+  migratedFromStepKey: z.string().trim().min(1).max(500).optional(),
+  baseStepFingerprint: z.string().max(128).optional(),
+  targetStepFingerprint: z.string().max(128).nullable().optional(),
+  expectedTargetStepFingerprint: z.string().max(128).nullable().optional(),
+  migrationState: z.enum(['MIGRATED', 'NEEDS_REVIEW', 'UNASSIGNED', 'SKIPPED']).optional(),
+  action: z.enum(['AUTO', 'KEEP', 'USE_SOURCE', 'auto', 'keep', 'use-source']).optional(),
+  text: z.string().max(10_000).optional()
+});
+const saveDraftBodySchema = z.object({
+  accessPassword: accessPasswordSchema,
+  expectedEditVersion: z.coerce.number().int().min(0),
+  expectedSourceVersionId: z.string().uuid(),
+  expectedContentHash: z.string().min(1).max(128),
+  elements: z.array(overlayElementSchema).max(10_000),
+  memoOverrides: z.array(memoOverrideSchema).max(10_000)
+});
 const createDraftBodySchema = z.object({
   accessPassword: accessPasswordSchema,
   sourceVersionId: z.string().uuid().optional(),
@@ -96,6 +121,47 @@ async function mapEditing<T>(operation: () => Promise<T>): Promise<T> {
   } catch (error) {
     return mapEditingError(error);
   }
+}
+
+function stepFromAlias(stepKey: string | undefined, label: string): number | undefined {
+  if (!stepKey) return undefined;
+  const sourceStep = Number(stepKey.split(':').at(-1));
+  if (!Number.isSafeInteger(sourceStep) || sourceStep <= 0) {
+    throw new ApiError(400, `${label}の手順識別子が不正です`, undefined, 'WORK_INSTRUCTION_STEP_KEY_INVALID');
+  }
+  return sourceStep;
+}
+
+function mapOverlayElementInput(element: z.infer<typeof overlayElementSchema>): WorkInstructionOverlayElementInput {
+  if (element.sourceStep !== undefined) return element as unknown as WorkInstructionOverlayElementInput;
+  const sourceStep = stepFromAlias(element.stepKey, 'overlay');
+  if (sourceStep === undefined) {
+    throw new ApiError(400, 'overlayの手順識別子が必要です', undefined, 'WORK_INSTRUCTION_STEP_KEY_REQUIRED');
+  }
+  return { ...element, sourceStep, migratedFromStep: element.migratedFromStep ?? sourceStep } as unknown as WorkInstructionOverlayElementInput;
+}
+
+function mapMemoOverrideInput(input: z.infer<typeof memoOverrideSchema>): WorkInstructionMemoOverrideInput {
+  const sourceStep = input.sourceStep !== undefined ? input.sourceStep : stepFromAlias(input.stepKey, 'memo');
+  const migratedFromStep = input.migratedFromStep ?? stepFromAlias(input.migratedFromStepKey, 'memo original') ?? sourceStep ?? undefined;
+  const rawAction = input.action ?? 'AUTO';
+  const action = rawAction === 'auto' ? 'AUTO' : rawAction === 'keep' ? 'KEEP' : rawAction === 'use-source' ? 'USE_SOURCE' : rawAction;
+  if (action !== 'USE_SOURCE' && input.text === undefined) {
+    throw new ApiError(400, 'memoの本文が必要です', undefined, 'WORK_INSTRUCTION_MEMO_TEXT_REQUIRED');
+  }
+  return {
+    id: input.id,
+    sourceStep: sourceStep ?? null,
+    migratedFromStep,
+    baseStepFingerprint: input.baseStepFingerprint,
+    targetStepFingerprint: input.targetStepFingerprint,
+    expectedTargetStepFingerprint: input.expectedTargetStepFingerprint,
+    migrationState: input.migrationState,
+    action: action as WorkInstructionMemoOverrideInput['action'],
+    // use-source never persists this value; empty string remains a valid value
+    // for all other actions.
+    text: input.text ?? ''
+  };
 }
 
 async function canonicalRevisionDto(
@@ -228,20 +294,32 @@ export function registerWorkInstructionEditorRoutes(
       expectedEditVersion: body.expectedEditVersion,
       expectedSourceVersionId: body.expectedSourceVersionId,
       expectedContentHash: body.expectedContentHash,
-      elements: body.elements.map((element) => {
-        if (element.sourceStep !== undefined) return element;
-        const stepKey = 'stepKey' in element ? element.stepKey : undefined;
-        const sourceStep = stepKey ? Number(stepKey.split(':').at(-1)) : undefined;
-        if (typeof sourceStep !== 'number' || !Number.isSafeInteger(sourceStep) || sourceStep <= 0) {
-          throw new ApiError(400, 'overlayの手順識別子が必要です', undefined, 'WORK_INSTRUCTION_STEP_KEY_REQUIRED');
-        }
-        return { ...element, sourceStep, migratedFromStep: element.migratedFromStep ?? sourceStep };
-      }) as unknown as ReadonlyArray<WorkInstructionOverlayElementInput>
+      elements: body.elements.map(mapOverlayElementInput)
     });
   };
   for (const path of ['/work-instructions/revisions/:revisionId/overlays', '/work-instructions/editor-revisions/:revisionId/overlays']) {
     app.put(path, { preHandler: [allowWrite] }, async (request) => {
       const revision = await mapEditing(() => saveRevision(request));
+      return { revision: await canonicalRevisionDto(editing, revision) };
+    });
+  }
+
+  const saveDraftRevision = async (request: FastifyRequest) => {
+    const { revisionId } = revisionIdParamsSchema.parse(request.params);
+    const body = saveDraftBodySchema.parse(request.body ?? {});
+    return editing.saveDraft({
+      revisionId,
+      accessPassword: body.accessPassword,
+      expectedEditVersion: body.expectedEditVersion,
+      expectedSourceVersionId: body.expectedSourceVersionId,
+      expectedContentHash: body.expectedContentHash,
+      elements: body.elements.map(mapOverlayElementInput),
+      memoOverrides: body.memoOverrides.map(mapMemoOverrideInput)
+    });
+  };
+  for (const path of ['/work-instructions/revisions/:revisionId/draft', '/work-instructions/editor-revisions/:revisionId/draft']) {
+    app.put(path, { preHandler: [allowWrite] }, async (request) => {
+      const revision = await mapEditing(() => saveDraftRevision(request));
       return { revision: await canonicalRevisionDto(editing, revision) };
     });
   }
@@ -259,7 +337,11 @@ export function registerWorkInstructionEditorRoutes(
       accessPassword: body.accessPassword,
       partNumber: body.partNumber,
       shootingTarget: body.shootingTarget,
-      revisions: body.revisionIds.map((revisionId) => ({ revisionId, expectedEditVersion: body.expectedEditVersions[revisionId] ?? -1, confirmUnassigned: body.confirmUnassigned }))
+      revisions: body.revisionIds.map((revisionId) => ({
+        revisionId,
+        expectedEditVersion: body.expectedEditVersions[revisionId] ?? -1,
+        confirmUnassigned: body.confirmUnassigned
+      }))
     }));
     const group = await mapEditing(() => buildEditorGroup(read, editing, { partNumber: body.partNumber, shootingTarget: body.shootingTarget }));
     const revisions = await Promise.all(results.map(async (result) => ({

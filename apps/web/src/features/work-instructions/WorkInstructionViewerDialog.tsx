@@ -1,15 +1,16 @@
-import clsx from 'clsx';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Dialog } from '../../components/ui/Dialog';
-import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
-import { ImageOverlayFrame } from '../overlays/ImageOverlayFrame';
 
-import type {
-  WorkInstructionGroup,
-  WorkInstructionOverlayAsset,
-  WorkInstructionStep
-} from '../../api/domains/work-instructions';
+import { WorkInstructionImageDialog } from './WorkInstructionImageDialog';
+import { WorkInstructionStepCard } from './WorkInstructionStepCard';
+import {
+  findWorkInstructionImageIndex,
+  getWorkInstructionImageSteps,
+  moveWorkInstructionImageIndex
+} from './workInstructionViewerNavigation';
+
+import type { WorkInstructionGroup } from '../../api/domains/work-instructions';
 
 export type WorkInstructionViewerDialogProps = {
   isOpen: boolean;
@@ -23,264 +24,6 @@ export type WorkInstructionViewerDialogProps = {
   onEdit?: () => void;
 };
 
-type WorkInstructionStepCardProps = {
-  step: WorkInstructionStep;
-  displayNumber: number;
-  onImageClick: (step: WorkInstructionStep) => void;
-  overlayAssets?: Record<string, WorkInstructionOverlayAsset>;
-};
-
-type WorkInstructionImageProps = {
-  imagePath: string | null | undefined;
-  alt: string;
-  className?: string;
-};
-
-function WorkInstructionImage({ imagePath, alt, className }: WorkInstructionImageProps) {
-  const { blobUrl, error } = useProtectedImageBlobUrl(imagePath);
-
-  if (error) {
-    return (
-      <span
-        className="flex min-h-44 items-center justify-center bg-rose-950/40 px-3 text-center text-sm font-semibold text-rose-100"
-        role="alert"
-      >
-        画像の読み込みに失敗しました
-      </span>
-    );
-  }
-
-  if (!blobUrl) {
-    return (
-      <span
-        className="flex min-h-44 items-center justify-center bg-slate-950/60 px-3 text-sm font-semibold text-white/60"
-        role="status"
-      >
-        画像を読み込み中…
-      </span>
-    );
-  }
-
-  return <img src={blobUrl} alt={alt} className={className} draggable={false} />;
-}
-
-function rendererAssets(
-  assets?: Record<string, WorkInstructionOverlayAsset>
-) {
-  if (!assets) return undefined;
-  return Object.fromEntries(
-    Object.entries(assets).map(([assetId, asset]) => [assetId, {
-      assetId: asset.assetId || assetId,
-      storageKey: asset.storageKey ?? assetId,
-      contentType: asset.contentType ?? 'image/png',
-      byteSize: asset.byteSize ?? 0,
-      sha256: asset.sha256,
-      url: asset.url,
-      relativeUrl: asset.relativeUrl
-    }])
-  );
-}
-
-function WorkInstructionOverlayImage({
-  imagePath,
-  alt,
-  overlays,
-  assets,
-  className
-}: {
-  imagePath: string;
-  alt: string;
-  overlays: WorkInstructionStep['overlays'];
-  assets?: Record<string, WorkInstructionOverlayAsset>;
-  className?: string;
-}) {
-  const { blobUrl, error } = useProtectedImageBlobUrl(imagePath);
-  if (error) {
-    return (
-      <span className="flex min-h-44 items-center justify-center bg-rose-950/40 px-3 text-center text-sm font-semibold text-rose-100" role="alert">
-        画像の読み込みに失敗しました
-      </span>
-    );
-  }
-  if (!blobUrl) {
-    return (
-      <span className="flex min-h-44 items-center justify-center bg-slate-950/60 px-3 text-sm font-semibold text-white/60" role="status">
-        画像を読み込み中…
-      </span>
-    );
-  }
-  return <ImageOverlayFrame imageUrl={blobUrl} protectedImage={false} alt={alt} overlays={overlays ?? []} assets={rendererAssets(assets)} className={clsx('h-full w-full', className)} />;
-}
-
-function WorkInstructionThumbnail({
-  imagePath,
-  alt,
-  className,
-  overlays,
-  assets
-}: WorkInstructionImageProps & {
-  overlays?: WorkInstructionStep['overlays'];
-  assets?: Record<string, WorkInstructionOverlayAsset>;
-}) {
-  const containerRef = useRef<HTMLSpanElement>(null);
-  const [shouldLoad, setShouldLoad] = useState(() => typeof IntersectionObserver === 'undefined');
-
-  useEffect(() => {
-    if (shouldLoad) return undefined;
-    const node = containerRef.current;
-    if (!node) return undefined;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        setShouldLoad(true);
-        observer.disconnect();
-      },
-      { rootMargin: '320px 0px' }
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [shouldLoad]);
-
-  return (
-    <span ref={containerRef} className="block min-h-44">
-      {shouldLoad ? (
-        overlays && overlays.length > 0 ? (
-          <WorkInstructionOverlayImage
-            imagePath={imagePath ?? ''}
-            alt={alt}
-            overlays={overlays}
-            assets={assets}
-            className={className}
-          />
-        ) : (
-          <WorkInstructionImage imagePath={imagePath} alt={alt} className={className} />
-        )
-      ) : (
-        <span className="flex min-h-44 items-center justify-center bg-slate-950/60 px-3 text-sm font-semibold text-white/60">
-          画像を準備中…
-        </span>
-      )}
-    </span>
-  );
-}
-
-function WorkInstructionStepCard({
-  step,
-  displayNumber,
-  onImageClick,
-  overlayAssets
-}: WorkInstructionStepCardProps) {
-  const hasImage = Boolean(step.imageUrl?.trim());
-
-  return (
-    <article className="min-w-0 overflow-hidden rounded-lg border border-white/15 bg-slate-900/80 shadow-lg">
-      <header className="flex min-h-12 items-center gap-2 border-b border-white/10 px-3 py-2">
-        <span
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-sm font-extrabold text-white"
-          aria-hidden="true"
-        >
-          {displayNumber}
-        </span>
-        <span className="min-w-0 text-sm font-bold text-white">手順 {displayNumber}</span>
-      </header>
-
-      {hasImage ? (
-        <button
-          type="button"
-          className="block min-h-44 w-full overflow-hidden border-b border-white/10 bg-slate-950/60 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
-          onClick={() => onImageClick(step)}
-          aria-label={`手順${displayNumber}の画像を拡大`}
-        >
-          <WorkInstructionThumbnail
-            imagePath={step.imageUrl}
-            alt={`手順${displayNumber}の作業要領画像`}
-            className="block h-56 w-full object-contain"
-            overlays={step.overlays}
-            assets={overlayAssets ?? step.overlayAssets}
-          />
-        </button>
-      ) : null}
-
-      <div className={clsx('max-h-44 overflow-y-auto px-3 py-3 text-sm leading-6 text-white/90', !hasImage && 'min-h-44')}>
-        <p className="whitespace-pre-wrap">{step.text}</p>
-      </div>
-    </article>
-  );
-}
-
-type WorkInstructionImageDialogProps = {
-  step: WorkInstructionStep | null;
-  overlayAssets?: Record<string, WorkInstructionOverlayAsset>;
-  onClose: () => void;
-};
-
-function WorkInstructionImageDialog({ step, overlayAssets, onClose }: WorkInstructionImageDialogProps) {
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const { blobUrl, error } = useProtectedImageBlobUrl(step?.imageUrl);
-
-  return (
-    <Dialog
-      isOpen={step != null}
-      onClose={onClose}
-      ariaLabel="作業要領画像"
-      closeOnBackdrop={false}
-      initialFocusRef={closeButtonRef}
-      size="full"
-      overlayZIndex={90}
-      className="!my-0 flex h-[calc(100dvh-2rem)] !max-h-[calc(100dvh-2rem)] flex-col overflow-hidden !rounded-lg !border !border-white/20 !bg-slate-950 !p-0 !text-white !shadow-none"
-    >
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-950 p-2">
-        <button
-          ref={closeButtonRef}
-          type="button"
-          className="absolute right-4 top-4 z-10 flex min-h-12 min-w-12 items-center justify-center rounded-full border border-white/30 bg-slate-900/90 text-3xl leading-none text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
-          onClick={onClose}
-          aria-label="画像を閉じる"
-          title="画像を閉じる"
-        >
-          ×
-        </button>
-
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-t-lg border border-white/10 bg-black p-3">
-          {error ? (
-            <p className="text-sm font-semibold text-rose-100" role="alert">
-              画像の読み込みに失敗しました
-            </p>
-          ) : blobUrl ? (
-            step?.overlays && step.overlays.length > 0 ? (
-              <ImageOverlayFrame
-                imageUrl={blobUrl}
-                protectedImage={false}
-                alt="作業要領の拡大画像"
-                overlays={step.overlays}
-                assets={rendererAssets(overlayAssets)}
-                className="h-full w-full"
-              />
-            ) : (
-              <img
-                src={blobUrl}
-                alt="作業要領の拡大画像"
-                className="max-h-full max-w-full object-contain"
-                draggable={false}
-              />
-            )
-          ) : (
-            <p className="text-sm font-semibold text-white/60" role="status">
-              画像を読み込み中…
-            </p>
-          )}
-        </div>
-
-        <div className="max-h-[28vh] shrink-0 overflow-y-auto rounded-b-lg border border-t-0 border-white/10 bg-slate-900 px-4 py-3 text-sm leading-6 text-white/90">
-          <p className="mb-1 text-xs font-bold tracking-wide text-emerald-200">MEMO</p>
-          <p className="whitespace-pre-wrap">{step?.text ?? ''}</p>
-        </div>
-      </div>
-    </Dialog>
-  );
-}
-
 export function WorkInstructionViewerDialog({
   isOpen,
   partNumber,
@@ -292,13 +35,26 @@ export function WorkInstructionViewerDialog({
   onEdit
 }: WorkInstructionViewerDialogProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const [selectedImageStep, setSelectedImageStep] = useState<WorkInstructionStep | null>(null);
+  const [selectedImageStepId, setSelectedImageStepId] = useState<string | null>(null);
+  const steps = useMemo(() => group?.steps ?? [], [group?.steps]);
+  const imageSteps = useMemo(() => getWorkInstructionImageSteps(steps), [steps]);
+  const selectedImageIndex = findWorkInstructionImageIndex(imageSteps, selectedImageStepId);
+  const selectedImageStep = selectedImageIndex >= 0 ? imageSteps[selectedImageIndex] ?? null : null;
 
   useEffect(() => {
-    if (!isOpen) setSelectedImageStep(null);
+    if (!isOpen) setSelectedImageStepId(null);
   }, [isOpen]);
 
-  const steps = group?.steps ?? [];
+  useEffect(() => {
+    if (selectedImageStepId && selectedImageIndex < 0) setSelectedImageStepId(null);
+  }, [selectedImageStepId, selectedImageIndex]);
+
+  const selectImageStep = (step: { id: string }) => setSelectedImageStepId(step.id);
+  const moveImage = (delta: -1 | 1) => {
+    const nextIndex = moveWorkInstructionImageIndex(imageSteps, selectedImageIndex, delta);
+    const nextStep = nextIndex >= 0 ? imageSteps[nextIndex] : undefined;
+    if (nextStep) setSelectedImageStepId(nextStep.id);
+  };
 
   return (
     <>
@@ -371,7 +127,7 @@ export function WorkInstructionViewerDialog({
                 key={step.id}
                 step={step}
                 displayNumber={index + 1}
-                onImageClick={setSelectedImageStep}
+                onImageClick={selectImageStep}
                 overlayAssets={group?.overlayAssets}
               />
             ))}
@@ -381,11 +137,12 @@ export function WorkInstructionViewerDialog({
 
       <WorkInstructionImageDialog
         step={isOpen ? selectedImageStep : null}
-        // The public API exposes overlay assets on each step (the group-level
-        // map is optional for backwards compatibility). Keep the same asset
-        // resolver when the thumbnail is promoted to the full-screen dialog.
+        photoIndex={selectedImageIndex}
+        photoCount={imageSteps.length}
         overlayAssets={group?.overlayAssets ?? selectedImageStep?.overlayAssets}
-        onClose={() => setSelectedImageStep(null)}
+        onClose={() => setSelectedImageStepId(null)}
+        onPrevious={() => moveImage(-1)}
+        onNext={() => moveImage(1)}
       />
     </>
   );

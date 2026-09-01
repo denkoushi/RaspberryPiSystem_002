@@ -8,7 +8,8 @@ export const KIOSK_INITIAL_ROUTE_IDS = [
   'borrow_photo',
   'production_schedule',
   'leader_order_board',
-  'assembly'
+  'assembly',
+  'self_inspection'
 ] as const;
 
 export type KioskInitialRouteId = (typeof KIOSK_INITIAL_ROUTE_IDS)[number];
@@ -17,7 +18,8 @@ export const KIOSK_SELECTABLE_INITIAL_ROUTE_IDS = [
   'borrow_tag',
   'borrow_photo',
   'leader_order_board',
-  'assembly'
+  'assembly',
+  'self_inspection'
 ] as const satisfies readonly KioskInitialRouteId[];
 
 export type KioskSelectableInitialRouteId = (typeof KIOSK_SELECTABLE_INITIAL_ROUTE_IDS)[number];
@@ -29,7 +31,8 @@ export const KIOSK_INITIAL_ROUTE_LABELS: Record<KioskInitialRouteId, string> = {
   borrow_photo: '写真撮影持出',
   production_schedule: '生産スケジュール',
   leader_order_board: '順位ボード',
-  assembly: '組立'
+  assembly: '組立',
+  self_inspection: '自主検査'
 };
 
 export const KIOSK_INITIAL_ROUTE_PATHS: Record<KioskInitialRouteId, string> = {
@@ -37,7 +40,8 @@ export const KIOSK_INITIAL_ROUTE_PATHS: Record<KioskInitialRouteId, string> = {
   borrow_photo: '/kiosk/photo',
   production_schedule: '/kiosk/production-schedule',
   leader_order_board: '/kiosk/production-schedule/leader-order-board',
-  assembly: '/kiosk/assembly'
+  assembly: '/kiosk/assembly',
+  self_inspection: '/kiosk/part-measurement/self-inspection'
 };
 
 const KNOWN_KIOSK_INITIAL_ROUTE_ID_SET = new Set<string>(KIOSK_INITIAL_ROUTE_IDS);

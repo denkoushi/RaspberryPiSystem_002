@@ -3970,6 +3970,14 @@ enum WorkInstructionEditOverlayMigrationState {
   SKIPPED
 }
 
+/// 原本memo再取込後のoverride移植状態。overlayの画像差分とは独立して判定する。
+enum WorkInstructionEditMemoMigrationState {
+  MIGRATED
+  NEEDS_REVIEW
+  UNASSIGNED
+  SKIPPED
+}
+
 /// 作業要領の編集用immutable asset状態。
 enum WorkInstructionEditAssetStatus {
   STAGED
@@ -4117,6 +4125,7 @@ model WorkInstructionEditRevision {
   copiedFromRevision WorkInstructionEditRevision?     @relation("WorkInstructionEditRevisionCopiedFrom", fields: [copiedFromRevisionId], references: [id], onDelete: SetNull)
   copiedRevisions    WorkInstructionEditRevision[]    @relation("WorkInstructionEditRevisionCopiedFrom")
   overlays           WorkInstructionEditOverlay[]
+  memoOverrides      WorkInstructionEditMemoOverride[]
   ownedAssets        WorkInstructionEditAsset[]
   publishedPointers  WorkInstructionSourcePublication[]
 
@@ -4165,6 +4174,26 @@ model WorkInstructionEditOverlay {
   @@index([revisionId, sourceStep, zIndex], map: "WorkInstructionEditOverlay_idx_revision_step_z")
   @@index([editAssetId], map: "WorkInstructionEditOverlay_idx_asset")
   @@index([revisionId, migrationState], map: "WorkInstructionEditOverlay_idx_migration_state")
+}
+
+/// 編集改版に属する原本memoのoverride。原本step.textは更新せず、空文字も有効値として保持する。
+model WorkInstructionEditMemoOverride {
+  id                    String                              @id @default(uuid())
+  revisionId            String
+  sourceStep            BigInt?
+  migratedFromStep      BigInt
+  baseStepFingerprint   String                              @db.VarChar(128)
+  targetStepFingerprint String?                             @db.VarChar(128)
+  migrationState        WorkInstructionEditMemoMigrationState @default(MIGRATED)
+  text                  String
+  createdAt             DateTime                            @default(now())
+  updatedAt             DateTime                            @updatedAt
+  revision              WorkInstructionEditRevision        @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@unique([revisionId, migratedFromStep], map: "WorkInstructionEditMemoOverride_unique_revision_source_step")
+  @@unique([revisionId, sourceStep], map: "WorkInstructionEditMemoOverride_unique_revision_target_step")
+  @@index([revisionId, sourceStep], map: "WorkInstructionEditMemoOverride_idx_revision_step")
+  @@index([revisionId, migrationState], map: "WorkInstructionEditMemoOverride_idx_migration_state")
 }
 
 /// 編集で作成した画像asset。取込元WorkInstructionAssetとはnamespace・GC責務を分離する。

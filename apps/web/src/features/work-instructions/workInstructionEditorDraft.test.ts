@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { createOverlayForRange as createSharedOverlayForRange } from '../overlays/overlayDraft';
+
 import {
   createWorkInstructionOverlayForRange,
   overlayElementsForStep,
@@ -8,6 +10,19 @@ import {
 } from './workInstructionEditorDraft';
 
 describe('work instruction overlay draft', () => {
+  it('uses WI-only creation defaults while preserving shared overlay defaults', () => {
+    const bbox = { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.2, heightRatio: 0.2 };
+    const workInstructionText = createWorkInstructionOverlayForRange('TEXT', 0, 'step-1', bbox);
+    const workInstructionShape = createWorkInstructionOverlayForRange('SHAPE', 0, 'step-1', bbox);
+    const sharedText = createSharedOverlayForRange('TEXT', 0, bbox);
+    const sharedShape = createSharedOverlayForRange('SHAPE', 0, bbox);
+
+    expect(workInstructionText.style?.fontSizeRatio).toBe(0.0125);
+    expect(workInstructionShape.strokeWidthRatio).toBe(0.016);
+    expect(sharedText.style?.fontSizeRatio).toBe(0.025);
+    expect(sharedShape.strokeWidthRatio).toBe(0.008);
+  });
+
   it('keeps step ownership while applying neutral nudge and z-order operations', () => {
     const first = createWorkInstructionOverlayForRange('TEXT', 0, 'sp:list:10:1', {
       xRatio: 0.8,

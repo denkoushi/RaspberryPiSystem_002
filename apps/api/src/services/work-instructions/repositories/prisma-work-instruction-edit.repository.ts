@@ -4,8 +4,11 @@ import { Prisma, PrismaClient } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
 import {
+  computeWorkInstructionMemoFingerprint,
   computeWorkInstructionStepFingerprint,
+  copyWorkInstructionMemoOverrides,
   copyWorkInstructionOverlays,
+  normalizeWorkInstructionMemoOverride,
   normalizeWorkInstructionOverlayElement,
   stepNumber,
   type WorkInstructionEditRevisionView,
@@ -13,6 +16,9 @@ import {
   type WorkInstructionEditingView,
   type WorkInstructionOverlayElement,
   type WorkInstructionOverlayElementInput,
+  type WorkInstructionMemoOverride,
+  type WorkInstructionMemoOverrideInput,
+  type WorkInstructionMemoCopyResult,
   type WorkInstructionSourceVersionStepLike,
   type WorkInstructionSourceVersionView,
   type WorkInstructionCopyResult,
@@ -29,6 +35,7 @@ import {
   type WorkInstructionSourceVersionRecord
 } from './prisma-work-instruction-version.persistence.js';
 import {
+  memoOverrideToCreateData,
   overlayToCreateData,
   toEditAssetView,
   toEditRevisionView,
@@ -133,11 +140,23 @@ function sourceVersionAsLike(record: WorkInstructionSourceVersionRecord): WorkIn
   return record.steps.map(sourceVersionStepLike);
 }
 
-function migrationSummary(overlays: ReadonlyArray<WorkInstructionOverlayElement>) {
+function memoMigrationSummary(memoOverrides: ReadonlyArray<WorkInstructionMemoOverride>) {
+  return {
+    needsReviewCount: memoOverrides.filter((memo) => memo.migrationState === 'NEEDS_REVIEW').length,
+    unassignedCount: memoOverrides.filter((memo) => memo.migrationState === 'UNASSIGNED').length,
+    skippedCount: memoOverrides.filter((memo) => memo.migrationState === 'SKIPPED').length
+  };
+}
+
+function migrationSummary(
+  overlays: ReadonlyArray<WorkInstructionOverlayElement>,
+  memoOverrides: ReadonlyArray<WorkInstructionMemoOverride> = []
+) {
   return {
     needsReviewCount: overlays.filter((overlay) => overlay.migrationState === 'NEEDS_REVIEW').length,
     unassignedCount: overlays.filter((overlay) => overlay.migrationState === 'UNASSIGNED').length,
-    skippedCount: overlays.filter((overlay) => overlay.migrationState === 'SKIPPED').length
+    skippedCount: overlays.filter((overlay) => overlay.migrationState === 'SKIPPED').length,
+    memo: memoMigrationSummary(memoOverrides)
   };
 }
 
@@ -214,6 +233,122 @@ function normalizeElementsForVersion(
     }
     return normalized;
   });
+}
+
+function normalizeMemoOverridesForVersion(
+  version: WorkInstructionSourceVersionRecord,
+  inputs: ReadonlyArray<WorkInstructionMemoOverrideInput>,
+  existingOverrides: ReadonlyArray<WorkInstructionMemoOverride>
+): WorkInstructionMemoOverride[] {
+  const byStep = new Map(version.steps.map((step) => [stepNumber(step.step), step]));
+  const existingByStep = new Map(existingOverrides.map((memo) => [memo.migratedFromStep, memo]));
+  const seen = new Set<number>();
+  const seenTargetSteps = new Set<number>();
+  const normalized: WorkInstructionMemoOverride[] = [];
+  for (const [index, input] of inputs.entries()) {
+    const action = String(input.action ?? 'AUTO').toUpperCase().replace(/-/g, '_');
+    const migratedFromStep = input.migratedFromStep ?? input.sourceStep;
+    if (migratedFromStep == null || !Number.isSafeInteger(migratedFromStep) || migratedFromStep <= 0) {
+      throw new WorkInstructionEditingError(400, `memo ${index + 1} original source step is invalid`, 'WORK_INSTRUCTION_MEMO_STEP_INVALID');
+    }
+    if (input.sourceStep !== null) {
+      if (seenTargetSteps.has(input.sourceStep)) {
+        throw new WorkInstructionEditingError(400, `memo ${index + 1} target step is duplicated`, 'WORK_INSTRUCTION_DUPLICATE_MEMO_TARGET');
+      }
+      seenTargetSteps.add(input.sourceStep);
+    }
+    if (seen.has(migratedFromStep)) {
+      throw new WorkInstructionEditingError(400, `memo ${index + 1} original source step is duplicated`, 'WORK_INSTRUCTION_DUPLICATE_MEMO');
+    }
+    seen.add(migratedFromStep);
+    if (action === 'USE_SOURCE') continue;
+    const existing = existingByStep.get(migratedFromStep);
+    const targetStep = input.sourceStep == null ? null : byStep.get(input.sourceStep);
+    if (input.sourceStep != null && !targetStep) {
+      throw new WorkInstructionEditingError(400, `memo ${index + 1} source step does not exist`, 'WORK_INSTRUCTION_MEMO_STEP_NOT_FOUND');
+    }
+    const targetFingerprint = targetStep
+      ? computeWorkInstructionMemoFingerprint(sourceVersionStepLike(targetStep))
+      : null;
+    if (!existing && input.sourceStep == null) {
+      throw new WorkInstructionEditingError(409, '新規memoは既存の手順に割り当ててください', 'WORK_INSTRUCTION_MEMO_ASSIGNMENT_REQUIRED');
+    }
+    if (existing && action === 'AUTO') {
+      if (existing.migrationState === 'NEEDS_REVIEW' || existing.migrationState === 'UNASSIGNED') {
+        conflict('memoの移植状態をKEEPまたはUSE_SOURCEで解決してください', 'WORK_INSTRUCTION_MEMO_MIGRATION_RESOLUTION_REQUIRED', {
+          migratedFromStep: existing.migratedFromStep,
+          migrationState: existing.migrationState
+        });
+      }
+      if (input.sourceStep !== existing.sourceStep) {
+        conflict('memoの手順割当変更にはKEEPを明示してください', 'WORK_INSTRUCTION_MEMO_MIGRATION_RESOLUTION_REQUIRED', {
+          migratedFromStep: existing.migratedFromStep,
+          sourceStep: existing.sourceStep
+        });
+      }
+    }
+    if (action === 'KEEP') {
+      const expected = input.expectedTargetStepFingerprint ?? input.targetStepFingerprint;
+      if (!targetFingerprint || !expected) {
+        throw new WorkInstructionEditingError(400, 'memo keepにはtarget fingerprintが必要です', 'WORK_INSTRUCTION_MEMO_KEEP_FINGERPRINT_REQUIRED');
+      }
+      if (expected !== targetFingerprint) {
+        conflict('memoの原本が保存中に変更されました', 'WORK_INSTRUCTION_MEMO_FINGERPRINT_CONFLICT', {
+          sourceStep: input.sourceStep,
+          expectedTargetStepFingerprint: expected,
+          currentTargetStepFingerprint: targetFingerprint
+        });
+      }
+    }
+    const fallbackFingerprint = existing?.baseStepFingerprint
+      ?? targetFingerprint
+      ?? '';
+    const trustedMigrationState = existing?.migrationState
+      ?? (targetStep ? 'MIGRATED' : 'UNASSIGNED');
+    let memo: WorkInstructionMemoOverride;
+    try {
+      memo = normalizeWorkInstructionMemoOverride({
+        ...input,
+        id: existing?.id,
+        migratedFromStep,
+        baseStepFingerprint: fallbackFingerprint,
+        targetStepFingerprint: targetFingerprint,
+        migrationState: action === 'KEEP'
+          ? 'MIGRATED'
+          : trustedMigrationState
+      }, fallbackFingerprint, index);
+    } catch (error) {
+      throw new WorkInstructionEditingError(400, error instanceof Error ? error.message : String(error), 'WORK_INSTRUCTION_MEMO_INVALID');
+    }
+    normalized.push(memo);
+  }
+  for (const existing of existingOverrides) {
+    if (!seen.has(existing.migratedFromStep)) {
+      throw new WorkInstructionEditingError(409, '既存memoにはKEEPまたはUSE_SOURCEを明示してください', 'WORK_INSTRUCTION_MEMO_ACTION_REQUIRED', {
+        migratedFromStep: existing.migratedFromStep
+      });
+    }
+  }
+  return normalized;
+}
+
+function copySummary(
+  overlays: ReadonlyArray<WorkInstructionOverlayElement>,
+  memo: WorkInstructionMemoCopyResult
+): WorkInstructionCopyResult {
+  return {
+    elements: overlays,
+    copiedCount: overlays.length,
+    needsReviewCount: overlays.filter((overlay) => overlay.migrationState === 'NEEDS_REVIEW').length,
+    unassignedCount: overlays.filter((overlay) => overlay.migrationState === 'UNASSIGNED').length,
+    skippedCount: overlays.filter((overlay) => overlay.migrationState === 'SKIPPED').length,
+    unassignedIds: overlays.filter((overlay) => overlay.migrationState === 'UNASSIGNED').map((overlay) => overlay.id),
+    memo
+  };
+}
+
+function emptyMemoCopy(): WorkInstructionMemoCopyResult {
+  return { overrides: [], copiedCount: 0, needsReviewCount: 0, unassignedCount: 0, skippedCount: 0, unassignedIds: [] };
 }
 
 export class PrismaWorkInstructionEditRepository implements WorkInstructionEditRepository {
@@ -392,18 +527,18 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       if (existing) {
         const existingView = toEditRevisionView(existing);
         const overlays = existingView.overlays;
+        const memoOverrides = existingView.memoOverrides ?? [];
+        const memo = {
+          overrides: memoOverrides,
+          copiedCount: memoOverrides.length,
+          needsReviewCount: memoOverrides.filter((item) => item.migrationState === 'NEEDS_REVIEW').length,
+          unassignedCount: memoOverrides.filter((item) => item.migrationState === 'UNASSIGNED').length,
+          skippedCount: memoOverrides.filter((item) => item.migrationState === 'SKIPPED').length,
+          unassignedIds: memoOverrides.filter((item) => item.migrationState === 'UNASSIGNED').map((item) => item.id)
+        } satisfies WorkInstructionMemoCopyResult;
         return {
           revision: existingView,
-          copy: {
-            elements: overlays,
-            copiedCount: overlays.length,
-            needsReviewCount: overlays.filter((overlay) => overlay.migrationState === 'NEEDS_REVIEW').length,
-            unassignedCount: overlays.filter((overlay) => overlay.migrationState === 'UNASSIGNED').length,
-            skippedCount: overlays.filter((overlay) => overlay.migrationState === 'SKIPPED').length,
-            unassignedIds: overlays
-              .filter((overlay) => overlay.migrationState === 'UNASSIGNED')
-              .map((overlay) => overlay.id)
-          }
+          copy: copySummary(overlays, memo)
         };
       }
       const copySourceId = input.copyFromRevisionId ?? publication.publishedRevisionId ?? undefined;
@@ -412,13 +547,21 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       if (copySource && copySource.sourceVersion.rowId !== targetVersion.rowId) {
         conflict('別の原本行の改版はコピーできません', 'WORK_INSTRUCTION_CROSS_ROW_COPY_NOT_ALLOWED');
       }
-      const copy = copySource
+      const overlayCopy = copySource
         ? copyWorkInstructionOverlays({
           sourceSteps: sourceVersionAsLike(copySource.sourceVersion),
           targetSteps: sourceVersionAsLike(targetVersion),
           overlays: toEditRevisionView(copySource).overlays
         })
         : { elements: [], copiedCount: 0, needsReviewCount: 0, unassignedCount: 0, skippedCount: 0, unassignedIds: [] };
+      const memoCopy = copySource
+        ? copyWorkInstructionMemoOverrides({
+          sourceSteps: sourceVersionAsLike(copySource.sourceVersion),
+          targetSteps: sourceVersionAsLike(targetVersion),
+          overrides: toEditRevisionView(copySource).memoOverrides ?? []
+        })
+        : emptyMemoCopy();
+      const copy = copySummary(overlayCopy.elements, memoCopy);
       const previousHead = await tx.workInstructionEditRevision.findFirst({
         where: { sourceVersionId: targetVersion.id, isRevisionHead: true },
         orderBy: { revisionNumber: 'desc' }
@@ -443,6 +586,9 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       });
       if (copy.elements.length > 0) {
         await tx.workInstructionEditOverlay.createMany({ data: copy.elements.map((element) => overlayToCreateData(revision.id, element)) });
+      }
+      if (memoCopy.overrides.length > 0) {
+        await tx.workInstructionEditMemoOverride.createMany({ data: memoCopy.overrides.map((memo) => memoOverrideToCreateData(revision.id, memo)) });
       }
       const withOverlays = await tx.workInstructionEditRevision.findUnique({ where: { id: revision.id }, include: workInstructionEditRevisionInclude });
       if (!withOverlays) throw new Error('draft revision disappeared after creation');
@@ -486,6 +632,31 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
     expectedContentHash: string;
     elements: ReadonlyArray<WorkInstructionOverlayElementInput>;
   }): Promise<WorkInstructionEditRevisionView> {
+    // Compatibility adapter: an old overlay-only write must never clear the
+    // revision's memo rows.  `undefined` is intentionally distinct from [] in
+    // saveDraft, where [] means the caller supplied the complete empty set.
+    return this.saveDraftInternal(input);
+  }
+
+  async saveDraft(input: {
+    revisionId: string;
+    expectedEditVersion: number;
+    expectedSourceVersionId: string;
+    expectedContentHash: string;
+    elements: ReadonlyArray<WorkInstructionOverlayElementInput>;
+    memoOverrides: ReadonlyArray<WorkInstructionMemoOverrideInput>;
+  }): Promise<WorkInstructionEditRevisionView> {
+    return this.saveDraftInternal(input);
+  }
+
+  private async saveDraftInternal(input: {
+    revisionId: string;
+    expectedEditVersion: number;
+    expectedSourceVersionId: string;
+    expectedContentHash: string;
+    elements: ReadonlyArray<WorkInstructionOverlayElementInput>;
+    memoOverrides?: ReadonlyArray<WorkInstructionMemoOverrideInput>;
+  }): Promise<WorkInstructionEditRevisionView> {
     return this.db.$transaction(async (tx) => {
       const observed = await findRevisionWithSource(tx, input.revisionId);
       if (!observed) notFound('作業要領改版が見つかりません', 'WORK_INSTRUCTION_REVISION_NOT_FOUND');
@@ -505,6 +676,9 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       if (revision.status !== 'DRAFT' || !revision.isRevisionHead) conflict('最新版の下書きだけ保存できます', 'WORK_INSTRUCTION_REVISION_NOT_EDITABLE');
       if (revision.editVersion !== input.expectedEditVersion) conflict('注記が他の編集で更新されています', 'WORK_INSTRUCTION_EDIT_CONFLICT', { currentEditVersion: revision.editVersion });
       const normalized = normalizeElementsForVersion(revision.sourceVersion, input.elements);
+      const normalizedMemos = input.memoOverrides === undefined
+        ? undefined
+        : normalizeMemoOverridesForVersion(revision.sourceVersion, input.memoOverrides, toEditRevisionView(revision).memoOverrides ?? []);
       const imageAssetIds = [...new Set(normalized.filter((element): element is Extract<WorkInstructionOverlayElement, { kind: 'IMAGE' }> => element.kind === 'IMAGE').map((element) => element.assetId))];
       if (imageAssetIds.length > 0) {
         const assets = await tx.workInstructionEditAsset.findMany({ where: { id: { in: imageAssetIds }, status: { in: ['STAGED', 'ACTIVE'] } } });
@@ -518,6 +692,12 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       if (imageAssetIds.length > 0) await tx.workInstructionEditAsset.updateMany({ where: { id: { in: imageAssetIds } }, data: { status: 'ACTIVE', ownerRevisionId: null, activatedAt: new Date() } });
       const replaced = oldImageAssetIds.filter((id) => !imageAssetIds.includes(id));
       if (replaced.length > 0) await tx.workInstructionEditAsset.updateMany({ where: { id: { in: replaced }, overlays: { none: {} } }, data: { status: 'DELETE_PENDING', deletePendingAt: new Date(), ownerRevisionId: null } });
+      if (normalizedMemos !== undefined) {
+        await tx.workInstructionEditMemoOverride.deleteMany({ where: { revisionId: revision.id } });
+        if (normalizedMemos.length > 0) {
+          await tx.workInstructionEditMemoOverride.createMany({ data: normalizedMemos.map((memo) => memoOverrideToCreateData(revision.id, memo)) });
+        }
+      }
       await tx.workInstructionEditRevision.update({ where: { id: revision.id }, data: { editVersion: { increment: 1 } } });
       const saved = await tx.workInstructionEditRevision.findUnique({ where: { id: revision.id }, include: workInstructionEditRevisionInclude });
       if (!saved) throw new Error('saved work-instruction revision disappeared');
@@ -670,9 +850,13 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
         }
         if (revision.status !== 'DRAFT' || !revision.isRevisionHead) conflict('最新版の下書きだけ公開できます', 'WORK_INSTRUCTION_REVISION_NOT_EDITABLE');
         if (revision.editVersion !== input.expectedEditVersion) conflict('注記が他の編集で更新されています', 'WORK_INSTRUCTION_EDIT_CONFLICT', { currentEditVersion: revision.editVersion });
-        const migration = migrationSummary(toEditRevisionView(revision).overlays);
+        const revisionView = toEditRevisionView(revision);
+        const migration = migrationSummary(revisionView.overlays, revisionView.memoOverrides ?? []);
         if (migration.unassignedCount > 0 && !input.confirmUnassigned) {
           conflict('未割当の注記があります。確認して公開してください', 'WORK_INSTRUCTION_UNASSIGNED_OVERLAY_CONFIRMATION_REQUIRED', migration);
+        }
+        if (migration.memo.needsReviewCount > 0 || migration.memo.unassignedCount > 0) {
+          conflict('memoの移植状態をKEEPまたはUSE_SOURCEで解決してから公開してください', 'WORK_INSTRUCTION_MEMO_MIGRATION_RESOLUTION_REQUIRED', migration);
         }
         await tx.workInstructionEditRevision.update({ where: { id: revision.id }, data: { status: 'PUBLISHED' } });
         await tx.workInstructionSourcePublication.update({ where: { rowId: revision.sourceVersion.rowId }, data: { publishedVersionId: revision.sourceVersionId, publishedRevisionId: revision.id } });
@@ -705,6 +889,7 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       const assetIds = revision.overlays.filter((overlay) => overlay.kind === 'IMAGE').map((overlay) => overlay.editAssetId).filter((id): id is string => Boolean(id));
       await tx.workInstructionEditRevision.update({ where: { id: revision.id }, data: { isRevisionHead: false, status: 'DISCARDED' } });
       await tx.workInstructionEditOverlay.deleteMany({ where: { revisionId: revision.id } });
+      await tx.workInstructionEditMemoOverride.deleteMany({ where: { revisionId: revision.id } });
       if (assetIds.length > 0) await tx.workInstructionEditAsset.updateMany({ where: { id: { in: [...new Set(assetIds)] }, overlays: { none: {} } }, data: { status: 'DELETE_PENDING', deletePendingAt: new Date(), ownerRevisionId: null } });
       const discarded = await tx.workInstructionEditRevision.findUnique({ where: { id: revision.id }, include: workInstructionEditRevisionInclude });
       if (!discarded) throw new Error('discarded work-instruction revision disappeared');

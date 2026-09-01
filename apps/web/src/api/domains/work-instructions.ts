@@ -44,6 +44,10 @@ interface WorkInstructionStepFields {
   id: string;
   step: number;
   text: string;
+  /** Imported source text is immutable; these fields are revision-owned projections. */
+  memo?: string | null;
+  effectiveMemo?: string | null;
+  memoOverride?: string | null;
   imageName: string | null;
   imageAssetId: string | null;
   imageUrl: string | null;

@@ -115,6 +115,7 @@ function makeRepository() {
     createDraftRevision: vi.fn(async () => ({ revision, copy })),
     createDraftRevisionGroup: vi.fn(async () => [{ revision, copy }]),
     saveOverlays: vi.fn(async () => revision),
+    saveDraft: vi.fn(async () => revision),
     applyRoiRebase: vi.fn(async () => revision),
     publishRevision: vi.fn(async () => ({ revision, migration: { needsReviewCount: 0, unassignedCount: 0, skippedCount: 0 } })),
     publishRevisionGroup: vi.fn(async () => []),
@@ -294,6 +295,11 @@ describe('WorkInstructionEditService', () => {
       fixture.repository.publishRevisionGroup.mockResolvedValue([published]);
 
       await expect(fixture.service.saveOverlays(saveInput)).resolves.toBe(revision);
+      const draftSaveInput = {
+        ...saveInput,
+        memoOverrides: [{ sourceStep: 1, text: '' }]
+      };
+      await expect(fixture.service.saveDraft(draftSaveInput)).resolves.toBe(revision);
       await expect(fixture.service.publishRevision(publishInput)).resolves.toBe(published);
       await expect(fixture.service.publishRevisionGroup(publishGroupInput)).resolves.toEqual([published]);
       await expect(fixture.service.discardRevision(discardInput)).resolves.toBe(revision);
@@ -303,6 +309,7 @@ describe('WorkInstructionEditService', () => {
       expect(fixture.access.requireAccessPassword).toHaveBeenNthCalledWith(3, 'secret');
       expect(fixture.access.requireAccessPassword).toHaveBeenNthCalledWith(4, 'secret');
       expect(fixture.repository.saveOverlays).toHaveBeenCalledWith(saveInput);
+      expect(fixture.repository.saveDraft).toHaveBeenCalledWith(draftSaveInput);
       expect(fixture.repository.publishRevision).toHaveBeenCalledWith(publishInput);
       expect(fixture.repository.publishRevisionGroup).toHaveBeenCalledWith(
         publishGroupInput.revisions,

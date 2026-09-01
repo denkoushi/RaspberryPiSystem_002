@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../../lib/errors.js';
+import { computeWorkInstructionMemoFingerprint } from '../../../services/work-instructions/domain/editing.js';
 import type { WorkInstructionEditService } from '../../../services/work-instructions/work-instruction-edit.service.js';
 import type { WorkInstructionReadService } from '../../../services/work-instructions/work-instruction-read.service.js';
 import { registerWorkInstructionEditorRoutes } from '../editor-routes.js';
@@ -46,7 +47,8 @@ const revision = {
   baseContentHash: 'a'.repeat(64),
   createdAt: now,
   updatedAt: now,
-  overlays: []
+  overlays: [],
+  memoOverrides: []
 };
 
 const editingView = {
@@ -87,6 +89,7 @@ function makeApp(overrides: { allowWrite?: () => Promise<void>; allowAdmin?: () 
     })),
     listSourceVersions: vi.fn(async () => [sourceVersion]),
     saveOverlays: vi.fn(async () => revision),
+    saveDraft: vi.fn(async () => revision),
     createImageRegion: vi.fn(async () => ({
       id: '00000000-0000-0000-0000-000000000105',
       storageKey: 'private/edit-region.png',
@@ -171,6 +174,30 @@ describe('work-instruction editor route contract', () => {
     await fixture.app.close();
   });
 
+  it('uses the canonical draft endpoint for memo overrides and accepts an empty override', async () => {
+    const fixture = makeApp();
+    await fixture.app.ready();
+    const response = await fixture.app.inject({
+      method: 'PUT',
+      url: `/work-instructions/editor-revisions/${revisionId}/draft`,
+      payload: {
+        accessPassword: '',
+        expectedEditVersion: 0,
+        expectedSourceVersionId: versionId,
+        expectedContentHash: 'a'.repeat(64),
+        elements: [],
+        memoOverrides: [{ stepKey: 'SharePoint:List:101:1', text: '' }]
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fixture.editing.saveDraft).toHaveBeenCalledWith(expect.objectContaining({
+      memoOverrides: [expect.objectContaining({ sourceStep: 1, migratedFromStep: 1, text: '' })]
+    }));
+    expect(fixture.editing.saveOverlays).not.toHaveBeenCalled();
+    await fixture.app.close();
+  });
+
   it('exposes the history projection through the compatibility history endpoint', async () => {
     const fixture = makeApp();
     await fixture.app.ready();
@@ -203,7 +230,11 @@ describe('work-instruction editor route contract', () => {
       id: revisionId,
       sourceVersionId: versionId,
       contentHash: 'a'.repeat(64),
-      steps: [expect.objectContaining({ stepKey: 'SharePoint:List:101:1', sourceVersionId: versionId })],
+      steps: [expect.objectContaining({
+        stepKey: 'SharePoint:List:101:1',
+        sourceVersionId: versionId,
+        memoFingerprint: computeWorkInstructionMemoFingerprint(sourceVersion.steps[0]!)
+      })],
       assets: {}
     });
 
