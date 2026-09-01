@@ -272,6 +272,112 @@ describe('WorkInstructionEditService', () => {
       expect(fixture.repository.createDraftRevisionGroup).toHaveBeenLastCalledWith([], undefined);
     });
 
+    it('preserves memo copy counts and overrides while rebasing a copied ROI asset', async () => {
+      const fixture = makeService();
+      const roiOverlay = {
+        id: 'roi-overlay-1',
+        kind: 'IMAGE' as const,
+        assetId: 'roi-asset-old',
+        objectFit: 'contain' as const,
+        sourceStep: 1,
+        migratedFromStep: 1,
+        baseStepFingerprint: 'overlay-base',
+        targetStepFingerprint: 'overlay-target',
+        migrationState: 'MIGRATED' as const,
+        bbox: { xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1 },
+        zIndex: 1,
+        opacity: 1
+      };
+      const copiedMemo = {
+        id: 'memo-1',
+        sourceStep: 1,
+        migratedFromStep: 1,
+        baseStepFingerprint: 'memo-base',
+        targetStepFingerprint: 'memo-target',
+        migrationState: 'MIGRATED' as const,
+        text: '引継ぎmemo'
+      };
+      const roiRevision: WorkInstructionEditRevisionView = {
+        ...revision,
+        overlays: [roiOverlay],
+        assets: {
+          'roi-asset-old': editAsset({
+            id: 'roi-asset-old',
+            origin: 'ROI',
+            originSourceVersionId: 'source-version-old',
+            originSourceStep: 1,
+            originBbox: roiOverlay.bbox
+          })
+        }
+      };
+      const roiCopy: WorkInstructionCopyResult = {
+        elements: [roiOverlay],
+        copiedCount: 1,
+        needsReviewCount: 0,
+        unassignedCount: 0,
+        skippedCount: 0,
+        unassignedIds: [],
+        memo: {
+          overrides: [copiedMemo],
+          copiedCount: 1,
+          needsReviewCount: 0,
+          unassignedCount: 0,
+          skippedCount: 0,
+          unassignedIds: []
+        }
+      };
+      fixture.repository.createDraftRevision.mockResolvedValue({ revision: roiRevision, copy: roiCopy });
+      fixture.repository.readRevisionSourceImage.mockResolvedValue({
+        assetId: 'source-asset-1',
+        storageKey: 'work-instruction-assets/source-asset-1.png',
+        mimeType: 'image/png',
+        sourceVersionId: 'source-version-old',
+        sourceStep: 1
+      });
+      fixture.sourceFiles.read.mockResolvedValue(Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'base64'
+      ));
+      fixture.repository.activateEditAsset.mockResolvedValue(editAsset({
+        id: 'rebased-roi-asset',
+        storageKey: 'work-instruction-assets/editing/rebased-roi-asset.jpg',
+        mimeType: 'image/jpeg',
+        origin: 'ROI',
+        originSourceVersionId: 'source-version-old',
+        originSourceStep: 1,
+        originBbox: roiOverlay.bbox
+      }));
+      fixture.repository.applyRoiRebase.mockResolvedValue(roiRevision);
+
+      const result = await fixture.service.createDraftRevision({ rowId, sourceVersionId });
+
+      expect(result.copy).toMatchObject({
+        copiedCount: 1,
+        needsReviewCount: 0,
+        unassignedCount: 0,
+        skippedCount: 0,
+        memo: {
+          copiedCount: 1,
+          needsReviewCount: 0,
+          unassignedCount: 0,
+          skippedCount: 0,
+          overrides: [copiedMemo]
+        }
+      });
+      expect(result.copy.elements[0]).toMatchObject({ assetId: 'rebased-roi-asset' });
+      expect(fixture.repository.applyRoiRebase).toHaveBeenCalledWith({
+        revisionId,
+        expectedEditVersion: 0,
+        updates: [{
+          overlayId: 'roi-overlay-1',
+          editAssetId: 'rebased-roi-asset',
+          sourceStep: 1,
+          migrationState: 'MIGRATED',
+          targetStepFingerprint: 'overlay-target'
+        }]
+      });
+    });
+
     it('forwards save, publish, group publish, and discard only after access succeeds', async () => {
       const fixture = makeService();
       const saveInput = {

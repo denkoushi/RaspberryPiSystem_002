@@ -220,5 +220,28 @@ describe('work-instruction response DTOs', () => {
         canDeleteImage: true
       }]
     });
+    expect(group.rows[0]?.published.steps[0]).not.toHaveProperty('memoOverride');
+
+    const publishedGroup = toEditorGroupDto({
+      partNumber: 'PART-1',
+      shootingTarget: '研削',
+      rows: [{
+        source,
+        editing: {
+          ...editing,
+          draftRevision: null,
+          publishedRevision: { ...revision, status: 'PUBLISHED' as const }
+        },
+        sourceVersions: [archivedVersion, sourceVersion],
+        latestRevisionNumber: 1,
+        publishedRevisionNumber: 1
+      }]
+    });
+
+    expect(publishedGroup.rows[0]?.published.steps[0]).toMatchObject({
+      memoOverride: '現場memo',
+      memoMigrationState: 'MIGRATED',
+      overlays: [expect.objectContaining({ id: 'overlay-1', stepKey: 'SharePoint:WorkInstructions:640:1' })]
+    });
   });
 });

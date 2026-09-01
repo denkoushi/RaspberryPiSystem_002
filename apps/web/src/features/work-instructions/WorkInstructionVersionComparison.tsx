@@ -1,5 +1,7 @@
 import { ImageOverlayFrame } from '../overlays/ImageOverlayFrame';
 
+import { effectiveWorkInstructionMemo } from './workInstructionEditorMemo';
+
 import type { WorkInstructionEditorRowDto, WorkInstructionEditorStepDto } from '../../api/domains/work-instruction-overlays';
 import type { WorkInstructionOverlayAsset } from '../../api/domains/work-instructions';
 
@@ -42,7 +44,7 @@ function VersionPane({
           <div className="flex h-full min-h-0 items-center justify-center text-xs text-white/50">対応する手順がありません</div>
         )}
       </div>
-      <p className="max-h-16 shrink-0 overflow-y-auto break-words px-2 py-1 text-xs leading-5 text-white/70">{step?.text ?? ''}</p>
+      <p className="max-h-16 shrink-0 overflow-y-auto break-words px-2 py-1 text-xs leading-5 text-white/70">{step ? effectiveWorkInstructionMemo(step) : ''}</p>
     </section>
   );
 }

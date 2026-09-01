@@ -190,6 +190,7 @@ export class WorkInstructionEditService {
     return {
       revision,
       copy: {
+        ...result.copy,
         elements,
         copiedCount: elements.length,
         needsReviewCount: elements.filter((element) => element.migrationState === 'NEEDS_REVIEW').length,

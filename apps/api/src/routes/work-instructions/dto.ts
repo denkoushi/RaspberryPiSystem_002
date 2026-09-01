@@ -278,7 +278,13 @@ export function toEditorGroupDto(input: {
   }>;
 }) {
   const rows = input.rows.map(({ source, editing, sourceVersions, latestRevisionNumber, publishedRevisionNumber }) => {
-    const published = toEditorVersionDto(editing.publishedVersion, source, 'published', publishedRevisionNumber);
+    const publishedVersion = toEditorVersionDto(editing.publishedVersion, source, 'published', publishedRevisionNumber);
+    const published = editing.publishedRevision
+      ? {
+          ...publishedVersion,
+          steps: toEditorRevisionDto(editing.publishedRevision, publishedVersion, source).steps
+        }
+      : publishedVersion;
     const latest = toEditorVersionDto(editing.latestVersion, source, 'latest', latestRevisionNumber);
     const draft = editing.draftRevision ? toEditorRevisionDto(editing.draftRevision, latest, source) : null;
     const historyVersions = sourceVersions ?? [editing.latestVersion, editing.publishedVersion];
