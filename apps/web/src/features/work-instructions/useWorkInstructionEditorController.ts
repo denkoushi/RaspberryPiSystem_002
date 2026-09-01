@@ -93,6 +93,12 @@ function errorStatus(error: unknown): number | null {
   return typeof status === 'number' ? status : null;
 }
 
+function errorCode(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('response' in error)) return null;
+  const data = (error as { response?: { data?: { errorCode?: unknown } } }).response?.data;
+  return typeof data?.errorCode === 'string' ? data.errorCode : null;
+}
+
 function currentEditVersionFromError(error: unknown): number | null {
   if (typeof error !== 'object' || error === null || !('response' in error)) return null;
   const data = (error as { response?: { data?: { currentEditVersion?: unknown; details?: { currentEditVersion?: unknown } } } }).response?.data;
@@ -589,8 +595,11 @@ export function useWorkInstructionEditorController({
       setConflict(null);
       setMessage('加工要領書を公開しました。使用側の表示を更新できます。');
     } catch (error: unknown) {
-      if (errorStatus(error) === 409) setMessage('公開前に原本または下書きが更新されました。最新内容を確認して再度保存・公開してください。');
-      else setMessage(readApiErrorMessage(error, '加工要領書の公開に失敗しました。'));
+      if (errorCode(error) === 'WORK_INSTRUCTION_MEMO_MIGRATION_RESOLUTION_REQUIRED') {
+        setMessage(readApiErrorMessage(error, '公開前にmemoの移植状態をKEEPまたはUSE_SOURCE、または割当で解決してください。'));
+      } else if (errorStatus(error) === 409) {
+        setMessage('公開前に原本または下書きが更新されました。最新内容を確認して再度保存・公開してください。');
+      } else setMessage(readApiErrorMessage(error, '加工要領書の公開に失敗しました。'));
     } finally {
       setBusy(false);
     }

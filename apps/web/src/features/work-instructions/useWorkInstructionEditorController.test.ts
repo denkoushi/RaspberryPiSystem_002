@@ -374,6 +374,41 @@ describe('useWorkInstructionEditorController', () => {
     }));
   });
 
+  it('preserves the memo migration resolution message for a publish 409', async () => {
+    const hook = renderEditor();
+    await authenticate(hook);
+    apiMocks.publish.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: {
+          errorCode: 'WORK_INSTRUCTION_MEMO_MIGRATION_RESOLUTION_REQUIRED',
+          message: 'memoの移植状態をKEEPまたはUSE_SOURCEで解決してから公開してください'
+        }
+      }
+    });
+
+    await act(async () => {
+      await hook.result.current.publish();
+    });
+
+    expect(hook.result.current.message).toBe('memoの移植状態をKEEPまたはUSE_SOURCEで解決してから公開してください');
+    expect(hook.result.current.conflict).toBeNull();
+  });
+
+  it('keeps the generic publish conflict message for an ordinary 409', async () => {
+    const hook = renderEditor();
+    await authenticate(hook);
+    apiMocks.publish.mockRejectedValueOnce({
+      response: { status: 409, data: { message: '競合の内部メッセージ' } }
+    });
+
+    await act(async () => {
+      await hook.result.current.publish();
+    });
+
+    expect(hook.result.current.message).toBe('公開前に原本または下書きが更新されました。最新内容を確認して再度保存・公開してください。');
+  });
+
   it('reassigns an unassigned memo with KEEP and sends USE_SOURCE for discard', async () => {
     const unassigned: WorkInstructionMemoOverrideDto = {
       id: 'memo-unassigned',

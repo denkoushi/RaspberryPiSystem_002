@@ -8,7 +8,8 @@ export function WorkInstructionEditorToolbarStatus({ controller }: { controller:
       ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
       : 'border-emerald-300/40 bg-emerald-300/10 text-emerald-100';
   const reviewCount = (controller.group?.migration.needsReview ?? 0)
-    + (controller.group?.migration.memo?.needsReview ?? 0);
+    + (controller.group?.migration.memo?.needsReview ?? 0)
+    + (controller.group?.migration.memo?.unassigned ?? 0);
 
   return (
     <div className="flex min-w-0 shrink-0 items-center gap-2 text-xs" role="status" aria-live="polite" data-testid="work-instruction-editor-toolbar-status">

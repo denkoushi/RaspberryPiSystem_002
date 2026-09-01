@@ -44,4 +44,16 @@ describe('WorkInstructionEditorToolbarStatus', () => {
 
     expect(screen.getByText('要確認 1')).toBeInTheDocument();
   });
+
+  it('includes memo-only unassigned items in the overall warning count', () => {
+    render(
+      <WorkInstructionEditorToolbarStatus
+        controller={controller({
+          group: { migration: { total: 0, migrated: 0, needsReview: 0, unassigned: 0, skipped: 0, memo: { total: 1, migrated: 0, needsReview: 0, unassigned: 1, skipped: 0 } } }
+        })}
+      />
+    );
+
+    expect(screen.getByText('要確認 1')).toBeInTheDocument();
+  });
 });
