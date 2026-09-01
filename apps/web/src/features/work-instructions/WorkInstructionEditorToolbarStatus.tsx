@@ -1,3 +1,5 @@
+import { memoOverridesToArray } from './workInstructionEditorMemo';
+
 import type { WorkInstructionEditorController } from './useWorkInstructionEditorController';
 
 function overlayReviewCount(controller: WorkInstructionEditorController): number {
@@ -28,20 +30,29 @@ function overlayReviewCount(controller: WorkInstructionEditorController): number
   }, 0);
 }
 
+function unresolvedMemoOverride(override: { migrationState?: string; action?: string }): boolean {
+  if (override.action === 'USE_SOURCE' || override.action === 'use-source') return false;
+  const state = String(override.migrationState ?? '').toUpperCase();
+  return state === 'NEEDS_REVIEW' || state === 'UNASSIGNED';
+}
+
 function memoReviewCount(controller: WorkInstructionEditorController): number {
   const rows = controller.rows ?? [];
-  const hasRowMemoProjection = rows.some((row) => row.draft?.memoOverrides !== undefined || row.draft?.migration?.memo !== undefined || row.migration?.memo !== undefined);
+  const currentOverridesByRevision = controller.memoOverridesByRevision ?? {};
+  const hasCurrentMemoProjection = rows.some((row) => row.draft && Object.prototype.hasOwnProperty.call(currentOverridesByRevision, row.draft.id));
+  const hasRowMemoProjection = hasCurrentMemoProjection || rows.some((row) => row.draft?.memoOverrides !== undefined || row.draft?.migration?.memo !== undefined || row.migration?.memo !== undefined);
   if (!hasRowMemoProjection) {
     return (controller.group?.migration.memo?.needsReview ?? 0) + (controller.group?.migration.memo?.unassigned ?? 0);
   }
 
   return rows.reduce((count, row) => {
+    const currentOverrides = row.draft ? currentOverridesByRevision[row.draft.id] : undefined;
+    if (currentOverrides !== undefined) {
+      return count + memoOverridesToArray(currentOverrides).filter(unresolvedMemoOverride).length;
+    }
     const overrides = row.draft?.memoOverrides;
     if (overrides !== undefined) {
-      return count + overrides.filter((override) => {
-        const state = String(override.migrationState ?? '').toUpperCase();
-        return state === 'NEEDS_REVIEW' || state === 'UNASSIGNED';
-      }).length;
+      return count + overrides.filter(unresolvedMemoOverride).length;
     }
     const summary = row.draft?.migration?.memo ?? row.migration?.memo;
     return count + (summary?.needsReview ?? 0) + (summary?.unassigned ?? 0);

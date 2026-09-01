@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { memoOverridesToMap } from './workInstructionEditorMemo';
 import { WorkInstructionEditorToolbarStatus } from './WorkInstructionEditorToolbarStatus';
 
 import type { WorkInstructionEditorController } from './useWorkInstructionEditorController';
@@ -84,6 +85,42 @@ describe('WorkInstructionEditorToolbarStatus', () => {
     );
 
     expect(screen.getByText('要確認 1')).toBeInTheDocument();
+  });
+
+  it('uses current unsaved memo overrides instead of stale row drafts', () => {
+    render(
+      <WorkInstructionEditorToolbarStatus
+        controller={controller({
+          group: { migration: { total: 2, migrated: 2, needsReview: 0, unassigned: 0, skipped: 0, memo: { total: 2, migrated: 0, needsReview: 2, unassigned: 0, skipped: 0 } } },
+          rows: [
+            { draft: { id: 'draft-1', memoOverrides: [{ stepKey: 'step-1', text: '古い要確認', migrationState: 'NEEDS_REVIEW' }] } },
+            { draft: { id: 'draft-2', memoOverrides: [{ stepKey: 'step-2', text: '古い要確認', migrationState: 'NEEDS_REVIEW' }] } }
+          ] as unknown as WorkInstructionEditorController['rows'],
+          memoOverridesByRevision: {
+            'draft-1': memoOverridesToMap([{ stepKey: 'step-1', text: 'KEEP済み', migrationState: 'MIGRATED' }]),
+            'draft-2': memoOverridesToMap([{ stepKey: 'step-2', text: '未解決', migrationState: 'NEEDS_REVIEW' }])
+          }
+        })}
+      />
+    );
+
+    expect(screen.getByText('要確認 1')).toBeInTheDocument();
+  });
+
+  it('removes a current USE_SOURCE tombstone from the warning count', () => {
+    render(
+      <WorkInstructionEditorToolbarStatus
+        controller={controller({
+          group: { migration: { total: 1, migrated: 0, needsReview: 0, unassigned: 0, skipped: 0, memo: { total: 1, migrated: 0, needsReview: 0, unassigned: 1, skipped: 0 } } },
+          rows: [{ draft: { id: 'draft-1', memoOverrides: [{ stepKey: null, text: '未割当', migrationState: 'UNASSIGNED' }] } }] as unknown as WorkInstructionEditorController['rows'],
+          memoOverridesByRevision: {
+            'draft-1': memoOverridesToMap([{ stepKey: null, text: '', migrationState: 'UNASSIGNED', action: 'USE_SOURCE' }])
+          }
+        })}
+      />
+    );
+
+    expect(screen.queryByText(/要確認/)).not.toBeInTheDocument();
   });
 
   it('clears the overlay warning immediately when the saved draft resolves it', () => {

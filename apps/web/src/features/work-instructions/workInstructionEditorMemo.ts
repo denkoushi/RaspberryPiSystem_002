@@ -197,6 +197,42 @@ export function memoOverrideNeedsReview(override: WorkInstructionMemoOverrideDto
   return normalizeMemoMigrationState(override?.migrationState) === 'NEEDS_REVIEW';
 }
 
+/**
+ * Returns only assigned memo overrides that still need operator review.
+ * Unassigned/tombstoned memos are handled by WorkInstructionMemoReviewList.
+ */
+export function workInstructionMemoReviewOverride(override: WorkInstructionMemoOverrideDto | null | undefined): boolean {
+  return memoOverrideNeedsReview(override)
+    && Boolean(override?.stepKey?.trim())
+    && override?.sourceStep != null
+    && override.action !== 'USE_SOURCE'
+    && override.action !== 'use-source';
+}
+
+export function workInstructionMemoNeedsReview(
+  overrides: ReadonlyArray<WorkInstructionMemoOverrideDto> | null | undefined
+): boolean {
+  return overrides?.some(workInstructionMemoReviewOverride) ?? false;
+}
+
+/** Memo migration states that block publication for a row. */
+export function workInstructionMemoNeedsAttention(
+  overrides: ReadonlyArray<WorkInstructionMemoOverrideDto> | null | undefined
+): boolean {
+  return overrides?.some((override) => {
+    if (override.action === 'USE_SOURCE' || override.action === 'use-source') return false;
+    const state = normalizeMemoMigrationState(override.migrationState);
+    return state === 'NEEDS_REVIEW' || state === 'UNASSIGNED';
+  }) ?? false;
+}
+
+export function workInstructionMemoNeedsReviewForStep(
+  stepKey: string,
+  overrides: ReadonlyArray<WorkInstructionMemoOverrideDto> | null | undefined
+): boolean {
+  return overrides?.some((override) => workInstructionMemoReviewOverride(override) && override.stepKey === stepKey) ?? false;
+}
+
 export function revisionMemoOverrides(revision: WorkInstructionEditRevisionDto | null | undefined): WorkInstructionMemoOverrideMap {
   return memoOverridesToMap(revision?.memoOverrides);
 }

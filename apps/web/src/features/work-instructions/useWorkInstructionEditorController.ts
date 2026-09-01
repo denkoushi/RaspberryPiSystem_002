@@ -885,6 +885,7 @@ export function useWorkInstructionEditorController({
     activeMemoOverride,
     activeMemoOverrides,
     activeMemoOverridesArray,
+    memoOverridesByRevision,
     selectedRowId,
     selectedStepKey,
     selectedOverlayId,

@@ -8,7 +8,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useWorkInstructionEditorController } from '../../features/work-instructions/useWorkInstructionEditorController';
 import { WorkInstructionEditorCanvas } from '../../features/work-instructions/WorkInstructionEditorCanvas';
 import { WorkInstructionEditorInspector } from '../../features/work-instructions/WorkInstructionEditorInspector';
-import { effectiveWorkInstructionMemo } from '../../features/work-instructions/workInstructionEditorMemo';
+import {
+  WorkInstructionEditorRowsPane,
+  WorkInstructionEditorStepsPane
+} from '../../features/work-instructions/WorkInstructionEditorNavigation';
 import { WorkInstructionEditorToolbarStatus } from '../../features/work-instructions/WorkInstructionEditorToolbarStatus';
 import { WorkInstructionOverlayTypeDialog } from '../../features/work-instructions/WorkInstructionOverlayTypeDialog';
 import { WorkInstructionTextCandidateDialog } from '../../features/work-instructions/WorkInstructionTextCandidateDialog';
@@ -181,79 +184,6 @@ function EditorToolbar({
         下書きを破棄
       </Button>
     </header>
-  );
-}
-
-function EditorRowsPane({ controller }: { controller: WorkInstructionEditorController }) {
-  return (
-    <aside
-      className="min-h-0 overflow-auto border-b border-white/10 bg-slate-900/70 p-2 xl:border-b-0 xl:border-r"
-      aria-label="要領書の原本行"
-    >
-      <h2 className="mb-2 text-xs font-bold text-white/70">原本行</h2>
-      <div className="grid gap-1">
-        {controller.rows.map((row) => (
-          <button
-            key={row.rowId}
-            type="button"
-            className={`rounded border px-2 py-2 text-left text-xs ${
-              row.rowId === controller.selectedRowId
-                ? 'border-cyan-300 bg-cyan-300/15 text-white'
-                : 'border-white/10 text-white/75 hover:bg-white/10'
-            }`}
-            onClick={() => controller.selectRow(row.rowId)}
-          >
-            <span className="block font-bold">
-              {row.source.system} / {row.source.list}
-            </span>
-            <span className="block text-white/60">item {row.source.itemId}</span>
-            {row.updateAvailable ? <span className="mt-1 block text-amber-200">新原本あり</span> : null}
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-3 rounded border border-white/10 p-2 text-xs text-white/75">
-        <p className="font-bold text-white">移植集計</p>
-        <p>総数 {controller.group?.migration.total ?? 0}</p>
-        <p>移植済み {controller.group?.migration.migrated ?? 0}</p>
-        <p className="text-amber-100">要確認 {controller.group?.migration.needsReview ?? 0}</p>
-        <p>未割当 {controller.group?.migration.unassigned ?? 0}</p>
-      </div>
-    </aside>
-  );
-}
-
-function EditorStepsPane({ controller }: { controller: WorkInstructionEditorController }) {
-  return (
-    <aside
-      className="min-h-0 overflow-auto border-b border-white/10 bg-slate-900/50 p-2 xl:border-b-0 xl:border-r"
-      aria-label="手順一覧"
-    >
-      <h2 className="mb-2 text-xs font-bold text-white/70">手順</h2>
-      <div className="grid gap-1">
-        {controller.activeSteps.map((step, index) => {
-          const key = step.stepKey || `${step.sourceSystem}:${step.sourceList}:${step.sourceItemId}:${step.step}`;
-          return (
-            <button
-              key={key}
-              type="button"
-              className={`rounded border px-2 py-2 text-left text-xs ${
-                key === controller.selectedStepKey
-                  ? 'border-emerald-300 bg-emerald-300/15 text-white'
-                  : 'border-white/10 text-white/75 hover:bg-white/10'
-              }`}
-              onClick={() => controller.selectStep(key)}
-            >
-              <span className="font-bold">手順 {step.step || index + 1}</span>
-              <span className="mt-1 block truncate text-white/60">{effectiveWorkInstructionMemo(step, controller.activeMemoOverrides)}</span>
-              <span className="mt-1 block text-white/50">
-                注記 {controller.activeElements.filter((element) => element.stepKey === key).length}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </aside>
   );
 }
 
@@ -593,8 +523,8 @@ export function KioskWorkInstructionEditorPage() {
           onOpenDiscard={() => setDiscardOpen(true)}
         />
         <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_auto_minmax(16rem,1fr)_minmax(12rem,18rem)] overflow-hidden xl:grid-cols-[14rem_14rem_minmax(0,1fr)_20rem] xl:grid-rows-1">
-          <EditorRowsPane controller={controller} />
-          <EditorStepsPane controller={controller} />
+          <WorkInstructionEditorRowsPane controller={controller} />
+          <WorkInstructionEditorStepsPane controller={controller} />
           <EditorCanvasPane
             controller={controller}
             showComparison={showComparison}
