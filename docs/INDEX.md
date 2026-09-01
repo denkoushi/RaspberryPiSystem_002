@@ -9,6 +9,7 @@
 ## 🎯 目的別インデックス
 
 - SharePoint作業要領の受信・ラズパイ側統合・参照API: [ExecPlan](./plans/sharepoint-work-instructions-execplan.md)
+- 自主検査 作業要領UI/UX: [ExecPlan](./plans/self-inspection-work-instruction-uiux.md)
 
 ### 自主検査一覧・記録確認UI/UX（2026-08-21・実装中）
 

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import type {
   WorkInstructionEditAssetView,
   WorkInstructionEditRevisionView,
+  WorkInstructionMemoOverride,
   WorkInstructionOverlayElement,
 } from '../domain/editing.js';
 import { stepNumber } from '../domain/editing.js';
@@ -13,11 +14,18 @@ const workInstructionOverlayOrderBy: Prisma.WorkInstructionEditOverlayOrderByWit
   { createdAt: 'asc' }
 ];
 
+const workInstructionMemoOrderBy: Prisma.WorkInstructionEditMemoOverrideOrderByWithRelationInput[] = [
+  { sourceStep: 'asc' },
+  { migratedFromStep: 'asc' },
+  { createdAt: 'asc' }
+];
+
 export const workInstructionEditRevisionInclude = {
   overlays: {
     orderBy: workInstructionOverlayOrderBy,
     include: { editAsset: true }
-  }
+  },
+  memoOverrides: { orderBy: workInstructionMemoOrderBy }
 } as const;
 
 export type WorkInstructionEditRevisionRecord = Prisma.WorkInstructionEditRevisionGetPayload<{
@@ -53,6 +61,19 @@ export function toEditAssetView(asset: WorkInstructionEditAssetRecord): WorkInst
 }
 
 type OverlayRecord = WorkInstructionEditRevisionRecord['overlays'][number];
+type MemoOverrideRecord = WorkInstructionEditRevisionRecord['memoOverrides'][number];
+
+export function toMemoOverrideView(memo: MemoOverrideRecord): WorkInstructionMemoOverride {
+  return {
+    id: memo.id,
+    sourceStep: memo.sourceStep == null ? null : stepNumber(memo.sourceStep),
+    migratedFromStep: stepNumber(memo.migratedFromStep),
+    baseStepFingerprint: memo.baseStepFingerprint,
+    targetStepFingerprint: memo.targetStepFingerprint,
+    migrationState: memo.migrationState,
+    text: memo.text
+  };
+}
 
 export function toOverlayView(overlay: OverlayRecord): WorkInstructionOverlayElement {
   const base = {
@@ -124,6 +145,7 @@ export function toEditRevisionView(record: WorkInstructionEditRevisionRecord): W
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     overlays: record.overlays.map(toOverlayView),
+    memoOverrides: (record.memoOverrides ?? []).map(toMemoOverrideView),
     ...(Object.keys(assets).length > 0 ? { assets } : {})
   };
 }
@@ -178,5 +200,21 @@ export function overlayToCreateData(
     shapeStartYRatio: element.start?.yRatio ?? null,
     shapeEndXRatio: element.end?.xRatio ?? null,
     shapeEndYRatio: element.end?.yRatio ?? null
+  };
+}
+
+export function memoOverrideToCreateData(
+  revisionId: string,
+  memo: WorkInstructionMemoOverride
+): Prisma.WorkInstructionEditMemoOverrideCreateManyInput {
+  return {
+    id: memo.id,
+    revisionId,
+    sourceStep: memo.sourceStep == null ? null : BigInt(memo.sourceStep),
+    migratedFromStep: BigInt(memo.migratedFromStep),
+    baseStepFingerprint: memo.baseStepFingerprint,
+    targetStepFingerprint: memo.targetStepFingerprint,
+    migrationState: memo.migrationState,
+    text: memo.text
   };
 }

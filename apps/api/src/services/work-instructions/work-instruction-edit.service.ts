@@ -8,6 +8,7 @@ import type {
   WorkInstructionEditRevisionContext,
   WorkInstructionEditAssetOriginInput,
   WorkInstructionEditingView,
+  WorkInstructionMemoOverrideInput,
   WorkInstructionOverlayElementInput,
   WorkInstructionSourceVersionView
 } from './domain/editing.js';
@@ -189,6 +190,7 @@ export class WorkInstructionEditService {
     return {
       revision,
       copy: {
+        ...result.copy,
         elements,
         copiedCount: elements.length,
         needsReviewCount: elements.filter((element) => element.migrationState === 'NEEDS_REVIEW').length,
@@ -209,6 +211,19 @@ export class WorkInstructionEditService {
   }): Promise<WorkInstructionEditRevisionView> {
     await this.accessService.requireAccessPassword(input.accessPassword);
     return this.repository.saveOverlays(input);
+  }
+
+  async saveDraft(input: {
+    accessPassword?: string;
+    revisionId: string;
+    expectedEditVersion: number;
+    expectedSourceVersionId: string;
+    expectedContentHash: string;
+    elements: ReadonlyArray<WorkInstructionOverlayElementInput>;
+    memoOverrides: ReadonlyArray<WorkInstructionMemoOverrideInput>;
+  }): Promise<WorkInstructionEditRevisionView> {
+    await this.accessService.requireAccessPassword(input.accessPassword);
+    return this.repository.saveDraft(input);
   }
 
   async publishRevision(input: WorkInstructionPublishRevisionInput & { accessPassword?: string }): Promise<WorkInstructionPublishRevisionResult> {

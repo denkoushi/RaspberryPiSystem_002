@@ -44,6 +44,7 @@ version_v1_id="wi-db-validation-${run_id}-version-v1"
 version_v2_id="wi-db-validation-${run_id}-version-v2"
 revision_id="wi-db-validation-${run_id}-revision"
 overlay_id="wi-db-validation-${run_id}-overlay"
+memo_id="wi-db-validation-${run_id}-memo"
 publication_id="wi-db-validation-${run_id}-publication"
 source_step_v0_id="wi-db-validation-${run_id}-source-step-v0"
 source_step_v1_id="wi-db-validation-${run_id}-source-step-v1"
@@ -65,6 +66,7 @@ echo "[2/5] Schema constraints, fixture invariants and deletion tombstone checks
   -v version_v2_id="${version_v2_id}" \
   -v revision_id="${revision_id}" \
   -v overlay_id="${overlay_id}" \
+  -v memo_id="${memo_id}" \
   -v publication_id="${publication_id}" \
   -v source_step_v0_id="${source_step_v0_id}" \
   -v source_step_v1_id="${source_step_v1_id}" \
@@ -132,6 +134,13 @@ INSERT INTO "WorkInstructionEditOverlay" (
   0.10, 0.20, 0.30, 0.40, 5, 0.9, false, NULL, :'edit_asset_id', 'contain', now(), now()
 );
 
+INSERT INTO "WorkInstructionEditMemoOverride" (
+  "id", "revisionId", "sourceStep", "migratedFromStep", "baseStepFingerprint",
+  "targetStepFingerprint", "migrationState", "text", "createdAt", "updatedAt"
+) VALUES (
+  :'memo_id', :'revision_id', 1, 1, repeat('m', 64), repeat('m', 64), 'MIGRATED', '', now(), now()
+);
+
 INSERT INTO "WorkInstructionSourcePublication" (
   "id", "rowId", "latestVersionId", "publishedVersionId", "publishedRevisionId", "createdAt", "updatedAt"
 ) VALUES (
@@ -152,6 +161,7 @@ INSERT INTO "_wi_validation_ids" ("key", "value") VALUES
   ('version_v1_id', :'version_v1_id'),
   ('version_v2_id', :'version_v2_id'),
   ('revision_id', :'revision_id'),
+  ('memo_id', :'memo_id'),
   ('overlay_id', :'overlay_id'),
   ('source_step_v0_id', :'source_step_v0_id'),
   ('audit_id', :'audit_id');
@@ -175,6 +185,8 @@ DECLARE
     'WorkInstructionEditOverlay_objectFit_check',
     'WorkInstructionEditOverlay_strokeWidth_check',
     'WorkInstructionEditOverlay_shapePoints_check'
+    ,'WorkInstructionEditMemoOverride_migratedFromStep_check'
+    ,'WorkInstructionEditMemoOverride_sourceStep_check'
   ];
   expected_foreign_keys text[] := ARRAY[
     'WorkInstructionSourceVersion_rowId_fkey',
@@ -187,6 +199,7 @@ DECLARE
     'WorkInstructionEditAsset_originSourceVersionId_fkey',
     'WorkInstructionEditOverlay_revisionId_fkey',
     'WorkInstructionEditOverlay_editAssetId_fkey',
+    'WorkInstructionEditMemoOverride_revisionId_fkey',
     'WorkInstructionSourcePublication_rowId_fkey',
     'WorkInstructionSourcePublication_latestVersionId_fkey',
     'WorkInstructionSourcePublication_publishedVersionId_fkey',
@@ -200,6 +213,8 @@ DECLARE
     'WorkInstructionEditRevision_unique_head',
     'WorkInstructionEditAsset_storageKey_key',
     'WorkInstructionSourcePublication_row_key'
+    ,'WorkInstructionEditMemoOverride_idx_revision_migrated_from_step'
+    ,'WorkInstructionEditMemoOverride_unique_revision_target_step'
   ];
 BEGIN
   FOREACH constraint_name IN ARRAY expected_checks || expected_foreign_keys LOOP
@@ -332,6 +347,15 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'edit overlay reference was damaged by source asset deletion';
   END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM "WorkInstructionEditMemoOverride"
+    WHERE "id" = (SELECT "value" FROM "_wi_validation_ids" WHERE "key" = 'memo_id')
+      AND "revisionId" = (SELECT "value" FROM "_wi_validation_ids" WHERE "key" = 'revision_id')
+      AND "text" = ''
+      AND "migrationState" = 'MIGRATED'
+  ) THEN
+    RAISE EXCEPTION 'empty memo override was not retained as a valid value';
+  END IF;
 END $$;
 SQL
 
@@ -343,6 +367,7 @@ ANALYZE "WorkInstructionSourceVersionStep";
 ANALYZE "WorkInstructionSourcePublication";
 ANALYZE "WorkInstructionEditRevision";
 ANALYZE "WorkInstructionEditOverlay";
+ANALYZE "WorkInstructionEditMemoOverride";
 ANALYZE "WorkInstructionAsset";
 ANALYZE "WorkInstructionEditAsset";
 ANALYZE "WorkInstructionSourceAssetDeletionAudit";
@@ -373,6 +398,15 @@ FROM \"WorkInstructionEditRevision\" r
 JOIN \"WorkInstructionEditOverlay\" o ON o.\"revisionId\" = r.\"id\"
 WHERE r.\"id\" = '${revision_id}'
 ORDER BY o.\"sourceStep\", o.\"zIndex\";
+"
+
+explain_query "revision -> memo overrides" "
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT r.\"id\", m.\"id\", m.\"sourceStep\", m.\"migrationState\"
+FROM \"WorkInstructionEditRevision\" r
+JOIN \"WorkInstructionEditMemoOverride\" m ON m.\"revisionId\" = r.\"id\"
+WHERE r.\"id\" = '${revision_id}'
+ORDER BY m.\"sourceStep\", m.\"migratedFromStep\";
 "
 
 explain_query "source and edit asset references" "

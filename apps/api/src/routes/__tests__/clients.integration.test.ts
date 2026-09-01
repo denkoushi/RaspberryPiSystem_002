@@ -94,6 +94,21 @@ describe('PUT /api/clients/:id', () => {
     expect(body.client.kioskInitialRoute).toBe('leader_order_board');
   });
 
+  it('should update kioskInitialRoute to self-inspection', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/clients/${clientId}`,
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        kioskInitialRoute: 'self_inspection'
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.client.kioskInitialRoute).toBe('self_inspection');
+  });
+
   it('should clear kioskInitialRoute with null', async () => {
     await prisma.clientDevice.update({
       where: { id: clientId },

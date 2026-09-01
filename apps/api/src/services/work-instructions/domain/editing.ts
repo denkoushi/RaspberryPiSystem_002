@@ -50,6 +50,11 @@ export type WorkInstructionOverlayPoint = {
 
 export type WorkInstructionOverlayMigrationState = 'MIGRATED' | 'NEEDS_REVIEW' | 'UNASSIGNED' | 'SKIPPED';
 
+/** Memo migration is deliberately independent from image/overlay migration. */
+export type WorkInstructionMemoMigrationState = 'MIGRATED' | 'NEEDS_REVIEW' | 'UNASSIGNED' | 'SKIPPED';
+
+export type WorkInstructionMemoOverrideAction = 'AUTO' | 'KEEP' | 'USE_SOURCE';
+
 type WorkInstructionOverlayBase = {
   id: string;
   sourceStep: number | null;
@@ -89,6 +94,30 @@ export type WorkInstructionOverlayElement =
   | WorkInstructionTextOverlay
   | WorkInstructionImageOverlay
   | WorkInstructionShapeOverlay;
+
+export type WorkInstructionMemoOverride = {
+  id: string;
+  sourceStep: number | null;
+  migratedFromStep: number;
+  baseStepFingerprint: string;
+  targetStepFingerprint: string | null;
+  migrationState: WorkInstructionMemoMigrationState;
+  /** Empty string is an explicit override and must not be treated as absent. */
+  text: string;
+};
+
+export type WorkInstructionMemoOverrideInput = {
+  id?: string;
+  sourceStep: number | null;
+  migratedFromStep?: number;
+  baseStepFingerprint?: string;
+  targetStepFingerprint?: string | null;
+  /** Used by the API to detect a source change between read and write. */
+  expectedTargetStepFingerprint?: string | null;
+  migrationState?: WorkInstructionMemoMigrationState;
+  action?: WorkInstructionMemoOverrideAction;
+  text: string;
+};
 
 export type WorkInstructionOverlayElementInput =
   | (Omit<WorkInstructionTextOverlay, 'id' | 'migratedFromStep' | 'baseStepFingerprint' | 'targetStepFingerprint' | 'migrationState'> & {
@@ -175,6 +204,7 @@ export type WorkInstructionEditRevisionView = {
   createdAt: Date;
   updatedAt: Date;
   overlays: ReadonlyArray<WorkInstructionOverlayElement>;
+  memoOverrides?: ReadonlyArray<WorkInstructionMemoOverride>;
   assets?: Readonly<Record<string, WorkInstructionEditAssetView>>;
 };
 
@@ -201,6 +231,16 @@ export type WorkInstructionCopyResult = {
   unassignedCount: number;
   skippedCount: number;
   unassignedIds: ReadonlyArray<string>;
+  memo?: WorkInstructionMemoCopyResult;
+};
+
+export type WorkInstructionMemoCopyResult = {
+  overrides: ReadonlyArray<WorkInstructionMemoOverride>;
+  copiedCount: number;
+  needsReviewCount: number;
+  unassignedCount: number;
+  skippedCount: number;
+  unassignedIds: ReadonlyArray<string>;
 };
 
 export function stepNumber(value: number | bigint): number {
@@ -215,6 +255,22 @@ export function computeWorkInstructionStepFingerprint(step: WorkInstructionSourc
     text: step.text,
     imageName: step.imageName,
     imageSha256: step.imageSha256
+  });
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}
+
+/**
+ * Canonical memo input for migration.  The imported source body is part of the
+ * fingerprint; override text is intentionally never passed to this function.
+ */
+export function normalizeWorkInstructionMemoBody(text: string): string {
+  return text.normalize('NFKC').replace(/\r\n?/g, '\n').trim();
+}
+
+export function computeWorkInstructionMemoFingerprint(step: WorkInstructionSourceVersionStepLike): string {
+  const canonical = JSON.stringify({
+    step: stepNumber(step.step),
+    text: normalizeWorkInstructionMemoBody(step.text)
   });
   return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
@@ -328,6 +384,46 @@ export function normalizeWorkInstructionOverlayElement(
   }
 }
 
+function normalizeMemoFingerprint(value: string | undefined, fallback: string): string {
+  const fingerprint = value?.trim() || fallback;
+  if (!fingerprint || fingerprint.length > 128) throw new Error('memo base step fingerprint is invalid');
+  return fingerprint;
+}
+
+export function normalizeWorkInstructionMemoOverride(
+  input: WorkInstructionMemoOverrideInput,
+  fallbackFingerprint: string,
+  index = 0
+): WorkInstructionMemoOverride {
+  const sourceStep = input.sourceStep;
+  if (sourceStep !== null && (!Number.isSafeInteger(sourceStep) || sourceStep <= 0)) {
+    throw new Error(`memo ${index + 1} source step is invalid`);
+  }
+  const migratedFromStep = input.migratedFromStep ?? sourceStep;
+  if (migratedFromStep == null || !Number.isSafeInteger(migratedFromStep) || migratedFromStep <= 0) {
+    throw new Error(`memo ${index + 1} original source step is invalid`);
+  }
+  const id = input.id?.trim() || randomUUID();
+  if (id.length > 120) throw new Error(`memo ${index + 1} id is too long`);
+  if (typeof input.text !== 'string' || input.text.length > 10_000) throw new Error(`memo ${index + 1} text is invalid`);
+  const migrationState = input.migrationState ?? (sourceStep === null ? 'UNASSIGNED' : 'MIGRATED');
+  if (sourceStep === null && migrationState !== 'UNASSIGNED' && migrationState !== 'SKIPPED') {
+    throw new Error(`memo ${index + 1} without a target step must be UNASSIGNED or SKIPPED`);
+  }
+  if (sourceStep !== null && migrationState === 'UNASSIGNED') {
+    throw new Error(`memo ${index + 1} with a target step cannot be ${migrationState}`);
+  }
+  return {
+    id,
+    sourceStep,
+    migratedFromStep,
+    baseStepFingerprint: normalizeMemoFingerprint(input.baseStepFingerprint, sourceStep === null ? '' : fallbackFingerprint),
+    targetStepFingerprint: input.targetStepFingerprint ?? (sourceStep === null ? null : fallbackFingerprint),
+    migrationState,
+    text: input.text
+  };
+}
+
 export function copyWorkInstructionOverlays(input: {
   sourceSteps: ReadonlyArray<WorkInstructionSourceVersionStepLike>;
   targetSteps: ReadonlyArray<WorkInstructionSourceVersionStepLike>;
@@ -368,4 +464,57 @@ export function copyWorkInstructionOverlays(input: {
     if (migrationState === 'SKIPPED') skippedCount += 1;
   }
   return { elements, copiedCount: elements.length, needsReviewCount, unassignedCount, skippedCount, unassignedIds };
+}
+
+/** Copy revision-owned memo overrides while comparing only source memo text. */
+export function copyWorkInstructionMemoOverrides(input: {
+  sourceSteps: ReadonlyArray<WorkInstructionSourceVersionStepLike>;
+  targetSteps: ReadonlyArray<WorkInstructionSourceVersionStepLike>;
+  overrides: ReadonlyArray<WorkInstructionMemoOverride>;
+}): WorkInstructionMemoCopyResult {
+  const sourceByStep = new Map(input.sourceSteps.map((step) => [stepNumber(step.step), step]));
+  const targetByStep = new Map(input.targetSteps.map((step) => [stepNumber(step.step), step]));
+  const overrides: WorkInstructionMemoOverride[] = [];
+  const unassignedIds: string[] = [];
+  let needsReviewCount = 0;
+  let unassignedCount = 0;
+  let skippedCount = 0;
+  for (const override of input.overrides) {
+    const assignmentStep = override.sourceStep ?? override.migratedFromStep;
+    const originalStep = sourceByStep.get(assignmentStep);
+    const target = targetByStep.get(assignmentStep);
+    const baseStepFingerprint = originalStep
+      ? computeWorkInstructionMemoFingerprint(originalStep)
+      : override.baseStepFingerprint;
+    if (!target) {
+      const unassigned: WorkInstructionMemoOverride = {
+        ...override,
+        id: randomUUID(),
+        sourceStep: null,
+        targetStepFingerprint: null,
+        baseStepFingerprint,
+        migrationState: override.migrationState === 'SKIPPED' ? 'SKIPPED' : 'UNASSIGNED'
+      };
+      overrides.push(unassigned);
+      unassignedIds.push(unassigned.id);
+      if (unassigned.migrationState === 'SKIPPED') skippedCount += 1;
+      else unassignedCount += 1;
+      continue;
+    }
+    const targetStepFingerprint = computeWorkInstructionMemoFingerprint(target);
+    const migrationState = override.migrationState === 'SKIPPED'
+      ? 'SKIPPED'
+      : baseStepFingerprint === targetStepFingerprint ? 'MIGRATED' : 'NEEDS_REVIEW';
+    overrides.push({
+      ...override,
+      id: randomUUID(),
+      sourceStep: stepNumber(target.step),
+      baseStepFingerprint,
+      targetStepFingerprint,
+      migrationState
+    });
+    if (migrationState === 'NEEDS_REVIEW') needsReviewCount += 1;
+    if (migrationState === 'SKIPPED') skippedCount += 1;
+  }
+  return { overrides, copiedCount: overrides.length, needsReviewCount, unassignedCount, skippedCount, unassignedIds };
 }

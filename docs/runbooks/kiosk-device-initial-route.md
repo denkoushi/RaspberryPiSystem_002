@@ -51,7 +51,7 @@ known operational notes needed by the next AI agent.
 
 ## Route IDs
 
-Selectable startup routes as of 2026-07-06:
+Selectable startup routes:
 
 | ID | Label | Path |
 | --- | --- | --- |
@@ -59,6 +59,7 @@ Selectable startup routes as of 2026-07-06:
 | `borrow_photo` | `写真撮影持出` | `/kiosk/photo` |
 | `leader_order_board` | `順位ボード` | `/kiosk/production-schedule/leader-order-board` |
 | `assembly` | `組立` | `/kiosk/assembly` |
+| `self_inspection` | `自主検査` | `/kiosk/part-measurement/self-inspection` |
 
 Legacy-compatible but no longer selectable in the admin dropdown:
 

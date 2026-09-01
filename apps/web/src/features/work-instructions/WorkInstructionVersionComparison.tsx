@@ -1,5 +1,7 @@
 import { ImageOverlayFrame } from '../overlays/ImageOverlayFrame';
 
+import { effectiveWorkInstructionMemo } from './workInstructionEditorMemo';
+
 import type { WorkInstructionEditorRowDto, WorkInstructionEditorStepDto } from '../../api/domains/work-instruction-overlays';
 import type { WorkInstructionOverlayAsset } from '../../api/domains/work-instructions';
 
@@ -23,7 +25,28 @@ function VersionPane({
   step: WorkInstructionEditorStepDto | undefined;
   assets?: Record<string, WorkInstructionOverlayAsset>;
 }) {
-  return <section className="min-w-0 rounded border border-white/15 bg-slate-950/80 p-1"><header className="flex items-center justify-between gap-2 px-2 py-1 text-xs"><span className="font-bold">{label}</span><span className="text-white/55">版 {version}</span></header>{step ? <ImageOverlayFrame imageUrl={imageUrl(step)} alt={`${label} 手順${step.step}`} overlays={step.overlays ?? []} assets={assets} className="h-36 w-full" /> : <div className="flex h-36 items-center justify-center text-xs text-white/50">対応する手順がありません</div>}<p className="truncate px-2 py-1 text-xs text-white/70">{step?.text ?? ''}</p></section>;
+  return (
+    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded border border-white/15 bg-slate-950/80 p-1" aria-label={label}>
+      <header className="flex min-h-9 shrink-0 items-center justify-between gap-2 px-2 py-1 text-xs">
+        <span className="truncate font-bold">{label}</span>
+        <span className="shrink-0 text-white/55">版 {version}</span>
+      </header>
+      <div className="min-h-0 min-w-0 flex-1">
+        {step ? (
+          <ImageOverlayFrame
+            imageUrl={imageUrl(step)}
+            alt={`${label} 手順${step.step}`}
+            overlays={step.overlays ?? []}
+            assets={assets}
+            className="h-full min-h-0 w-full"
+          />
+        ) : (
+          <div className="flex h-full min-h-0 items-center justify-center text-xs text-white/50">対応する手順がありません</div>
+        )}
+      </div>
+      <p className="max-h-16 shrink-0 overflow-y-auto break-words px-2 py-1 text-xs leading-5 text-white/70">{step ? effectiveWorkInstructionMemo(step) : ''}</p>
+    </section>
+  );
 }
 
 /** Shows the public source and the latest imported source in one stable frame. */
@@ -35,5 +58,10 @@ export function WorkInstructionVersionComparison({ row, selectedStepKey, assets 
   if (!row || !selectedStepKey) return null;
   const published = row.published.steps.find((step) => stepKey(step) === selectedStepKey) ?? row.published.steps.find((step) => step.step === row.latest.steps.find((candidate) => stepKey(candidate) === selectedStepKey)?.step);
   const latest = row.latest.steps.find((step) => stepKey(step) === selectedStepKey) ?? row.latest.steps.find((step) => step.step === published?.step);
-  return <div className="grid min-h-0 grid-cols-2 gap-1" data-testid="work-instruction-version-comparison"><VersionPane label="公開版（使用側）" version={String(row.published.revisionNumber)} step={published} assets={assets} /><VersionPane label="最新原本（移植先）" version={String(row.latest.revisionNumber)} step={latest} assets={assets} /></div>;
+  return (
+    <div className="grid h-full min-h-0 min-w-0 grid-cols-2 gap-2" data-testid="work-instruction-version-comparison">
+      <VersionPane label="公開版（使用側）" version={String(row.published.revisionNumber)} step={published} assets={row.published.assets} />
+      <VersionPane label="最新原本（移植先）" version={String(row.latest.revisionNumber)} step={latest} assets={assets} />
+    </div>
+  );
 }

@@ -1,7 +1,8 @@
+import type { WorkInstructionMemoOverrideDto } from '../../api/domains/work-instruction-overlays';
 import type { WorkInstructionOverlayElement } from '../../api/domains/work-instructions';
 
 export type WorkInstructionEditorRecoveryRecord = {
-  version: 1;
+  version: 1 | 2;
   groupKey: string;
   revisionId: string;
   sourceVersionId: string;
@@ -9,6 +10,8 @@ export type WorkInstructionEditorRecoveryRecord = {
   editVersion: number;
   savedAt: string;
   elements: WorkInstructionOverlayElement[];
+  /** v1 records omit memoOverrides so server-projected memos are preserved. */
+  memoOverrides?: WorkInstructionMemoOverrideDto[];
 };
 
 export function workInstructionEditorRecoveryKey(groupKey: string, revisionId: string): string {
@@ -26,13 +29,14 @@ export function readWorkInstructionEditorRecovery(
   try {
     const value = JSON.parse(raw) as Partial<WorkInstructionEditorRecoveryRecord>;
     if (
-      value.version !== 1 ||
+      value.version !== 1 && value.version !== 2 ||
       value.groupKey !== groupKey ||
       value.revisionId !== revisionId ||
       value.sourceVersionId !== expected.sourceVersionId ||
       value.sourceContentHash !== expected.sourceContentHash ||
       value.editVersion !== expected.editVersion ||
-      !Array.isArray(value.elements)
+      !Array.isArray(value.elements) ||
+      (value.version === 2 && value.memoOverrides !== undefined && !Array.isArray(value.memoOverrides))
     ) return null;
     return value as WorkInstructionEditorRecoveryRecord;
   } catch {

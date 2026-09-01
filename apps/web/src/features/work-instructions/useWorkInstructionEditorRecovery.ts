@@ -8,6 +8,7 @@ import {
   type WorkInstructionEditorRecoveryRecord
 } from './workInstructionEditorRecovery';
 
+import type { WorkInstructionMemoOverrideDto } from '../../api/domains/work-instruction-overlays';
 import type { WorkInstructionOverlayElement } from '../../api/domains/work-instructions';
 
 export function useWorkInstructionEditorRecovery(input: {
@@ -17,6 +18,7 @@ export function useWorkInstructionEditorRecovery(input: {
   sourceContentHash: string | null;
   editVersion: number;
   elements: WorkInstructionOverlayElement[];
+  memoOverrides: WorkInstructionMemoOverrideDto[];
   enabled: boolean;
   dirty: boolean;
   onStorageError?: () => void;
@@ -28,15 +30,25 @@ export function useWorkInstructionEditorRecovery(input: {
     sourceContentHash,
     editVersion,
     elements,
+    memoOverrides,
     enabled,
     dirty,
     onStorageError
   } = input;
   const [pending, setPending] = useState<WorkInstructionEditorRecoveryRecord | null>(null);
   const storageErrorShown = useRef(false);
+  const onStorageErrorRef = useRef(onStorageError);
+  const readIdentityRef = useRef<string | null>(null);
+  const consumedIdentityRef = useRef<string | null>(null);
+  onStorageErrorRef.current = onStorageError;
+  const identity = revisionId && sourceVersionId && sourceContentHash
+    ? `${groupKey}:${revisionId}:${sourceVersionId}:${sourceContentHash}:${editVersion}`
+    : null;
 
   useEffect(() => {
-    if (!enabled || !revisionId || !sourceVersionId || !sourceContentHash || typeof window === 'undefined') return;
+    if (!enabled || !identity || !revisionId || !sourceVersionId || !sourceContentHash || typeof window === 'undefined') return;
+    if (readIdentityRef.current === identity || consumedIdentityRef.current === identity) return;
+    readIdentityRef.current = identity;
     try {
       setPending(readWorkInstructionEditorRecovery(window.localStorage, groupKey, revisionId, {
         sourceVersionId,
@@ -46,44 +58,46 @@ export function useWorkInstructionEditorRecovery(input: {
     } catch {
       if (!storageErrorShown.current) {
         storageErrorShown.current = true;
-        onStorageError?.();
+        onStorageErrorRef.current?.();
       }
     }
-  }, [editVersion, enabled, groupKey, onStorageError, revisionId, sourceContentHash, sourceVersionId]);
+  }, [editVersion, enabled, groupKey, identity, revisionId, sourceContentHash, sourceVersionId]);
 
   useEffect(() => {
     if (!enabled || !dirty || !revisionId || !sourceVersionId || !sourceContentHash || typeof window === 'undefined') return;
     const timer = window.setTimeout(() => {
       try {
         writeWorkInstructionEditorRecovery(window.localStorage, {
-          version: 1,
+          version: 2,
           groupKey,
           revisionId,
           sourceVersionId,
           sourceContentHash,
           editVersion,
           savedAt: new Date().toISOString(),
-          elements
+          elements,
+          memoOverrides
         });
       } catch {
         if (!storageErrorShown.current) {
           storageErrorShown.current = true;
-          onStorageError?.();
+          onStorageErrorRef.current?.();
         }
       }
     }, 750);
     return () => window.clearTimeout(timer);
-  }, [dirty, editVersion, elements, enabled, groupKey, onStorageError, revisionId, sourceContentHash, sourceVersionId]);
+  }, [dirty, editVersion, elements, enabled, groupKey, memoOverrides, revisionId, sourceContentHash, sourceVersionId]);
 
   const clear = () => {
     if (!revisionId || typeof window === 'undefined') return;
     try {
       clearWorkInstructionEditorRecovery(window.localStorage, groupKey, revisionId);
       setPending(null);
+      if (identity) consumedIdentityRef.current = identity;
     } catch {
       if (!storageErrorShown.current) {
         storageErrorShown.current = true;
-        onStorageError?.();
+        onStorageErrorRef.current?.();
       }
     }
   };
@@ -93,7 +107,12 @@ export function useWorkInstructionEditorRecovery(input: {
     restore: () => {
       if (!pending) return null;
       setPending(null);
-      return pending.elements;
+      if (identity) consumedIdentityRef.current = identity;
+      return {
+        elements: pending.elements,
+        // v1 has no memo snapshot: callers must retain server memo state.
+        memoOverrides: pending.version === 2 ? pending.memoOverrides ?? [] : null
+      };
     },
     discard: clear,
     clear,

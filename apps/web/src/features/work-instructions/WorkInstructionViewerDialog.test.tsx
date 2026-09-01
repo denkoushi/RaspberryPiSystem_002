@@ -83,9 +83,12 @@ describe('WorkInstructionViewerDialog', () => {
     expect(dialog).toBeInTheDocument();
     expect(grid).toHaveClass('min-[1280px]:grid-cols-3', 'min-[1800px]:grid-cols-4');
     expect(within(grid).getAllByRole('article')).toHaveLength(3);
-    expect(within(grid).getByText('手順 1')).toBeInTheDocument();
-    expect(within(grid).getByText('手順 2')).toBeInTheDocument();
-    expect(within(grid).getByText('手順 3')).toBeInTheDocument();
+    expect(within(grid).getByRole('article', { name: '手順 1' })).toBeInTheDocument();
+    expect(within(grid).getByRole('article', { name: '手順 2' })).toBeInTheDocument();
+    expect(within(grid).getByRole('article', { name: '手順 3' })).toBeInTheDocument();
+    expect(within(grid).queryByText('手順 1')).not.toBeInTheDocument();
+    expect(within(grid).queryByText('手順 2')).not.toBeInTheDocument();
+    expect(within(grid).queryByText('手順 3')).not.toBeInTheDocument();
     expect(within(grid).getByText('最初のメモ')).toBeInTheDocument();
     expect(within(grid).getByText('画像なしのメモ')).toBeInTheDocument();
     expect(within(grid).getByText('最後のメモ')).toBeInTheDocument();
@@ -180,18 +183,61 @@ describe('WorkInstructionViewerDialog', () => {
 
     const imageDialog = screen.getByRole('dialog', { name: '作業要領画像' });
     expect(imageDialog).toBeInTheDocument();
-    expect(within(imageDialog).getByRole('img', { name: '作業要領の拡大画像' })).toHaveAttribute(
+    expect(within(imageDialog).getByRole('img', { name: '作業要領の拡大画像（写真1/2）' })).toHaveAttribute(
       'src',
       'blob:work-instruction'
     );
     expect(within(imageDialog).getByText('最初のメモ')).toBeInTheDocument();
     expect(within(imageDialog).getByRole('button', { name: '画像を閉じる' })).toBeInTheDocument();
+    expect(within(imageDialog).getByRole('button', { name: '前の写真' })).toBeDisabled();
+    expect(within(imageDialog).getByRole('button', { name: '次の写真' })).not.toBeDisabled();
+    expect(screen.getByTestId('work-instruction-image-position')).toHaveTextContent('写真 1 / 2');
+    expect(screen.getByTestId('work-instruction-image-memo')).toHaveClass('text-[21px]');
+    expect(within(imageDialog).queryByText('MEMO')).not.toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: 'Escape' });
 
     expect(screen.queryByRole('dialog', { name: '作業要領画像' })).not.toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: '作業要領書' })).toBeInTheDocument();
     expect(screen.getByTestId('work-instruction-card-grid')).toBeInTheDocument();
+  });
+
+  it('navigates between image steps while skipping memo-only steps', () => {
+    renderViewer();
+
+    fireEvent.click(screen.getByRole('button', { name: '手順1の画像を拡大' }));
+    const imageDialog = screen.getByRole('dialog', { name: '作業要領画像' });
+
+    fireEvent.click(within(imageDialog).getByRole('button', { name: '次の写真' }));
+
+    expect(within(imageDialog).getByText('最後のメモ')).toBeInTheDocument();
+    expect(screen.getByTestId('work-instruction-image-position')).toHaveTextContent('写真 2 / 2');
+    expect(within(imageDialog).getByRole('button', { name: '前の写真' })).not.toBeDisabled();
+    expect(within(imageDialog).getByRole('button', { name: '次の写真' })).toBeDisabled();
+
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+
+    expect(within(imageDialog).getByText('最初のメモ')).toBeInTheDocument();
+    expect(screen.getByTestId('work-instruction-image-position')).toHaveTextContent('写真 1 / 2');
+  });
+
+  it('renders the memo override instead of the immutable source text', () => {
+    const step = {
+      ...makeStep('overridden-step', '原本のメモ', '/api/work-instructions/assets/asset-overridden', 1),
+      memoOverride: '編集者が変更したメモ',
+      effectiveMemo: 'サーバーが返した旧メモ'
+    };
+    renderViewer({ group: { ...group, steps: [step] } });
+
+    const cardGrid = screen.getByTestId('work-instruction-card-grid');
+    expect(within(cardGrid).getByText('編集者が変更したメモ')).toBeInTheDocument();
+    expect(within(cardGrid).queryByText('原本のメモ')).not.toBeInTheDocument();
+
+    fireEvent.click(within(cardGrid).getByRole('button', { name: '手順1の画像を拡大' }));
+
+    const imageDialog = screen.getByRole('dialog', { name: '作業要領画像' });
+    expect(within(imageDialog).getByText('編集者が変更したメモ')).toBeInTheDocument();
+    expect(within(imageDialog).queryByText('原本のメモ')).not.toBeInTheDocument();
   });
 
   it('returns to self-inspection through the outer close callback', () => {

@@ -6,7 +6,7 @@ import {
   normalizeWorkInstructionPartNumber,
   normalizeWorkInstructionShootingTarget
 } from '../domain/normalization.js';
-import type { WorkInstructionOverlayElement } from '../domain/editing.js';
+import type { WorkInstructionMemoOverride, WorkInstructionOverlayElement } from '../domain/editing.js';
 import { toEditRevisionView, workInstructionEditRevisionInclude } from './prisma-work-instruction-edit.persistence.js';
 import {
   workInstructionSourceVersionInclude
@@ -109,10 +109,12 @@ type PublishedPublicationRecord = Prisma.WorkInstructionSourcePublicationGetPayl
 function toPublishedStepView(
   step: PublishedPublicationRecord['publishedVersion']['steps'][number],
   overlaysByStep: ReadonlyMap<number, ReadonlyArray<WorkInstructionOverlayElement>>,
-  overlayAssets: Readonly<Record<string, WorkInstructionOverlayAssetView>>
+  overlayAssets: Readonly<Record<string, WorkInstructionOverlayAssetView>>,
+  memosByStep: ReadonlyMap<number, WorkInstructionMemoOverride>
 ): WorkInstructionStepView {
   const image = step.imageAsset?.status === 'ACTIVE' ? step.imageAsset : null;
   const sourceStep = toSafePositiveNumber(step.step, 'step');
+  const memo = memosByStep.get(sourceStep);
   return {
     id: step.id,
     step: sourceStep,
@@ -124,9 +126,22 @@ function toPublishedStepView(
       ? image.mimeType as WorkInstructionStepView['imageMimeType']
       : null,
     imageSha256: step.imageSha256 ?? image?.sha256 ?? null,
+    ...(memo ? { memoOverride: memo.text, memoMigrationState: memo.migrationState } : {}),
     overlays: overlaysByStep.get(sourceStep) ?? [],
     overlayAssets
   };
+}
+
+function publishedMemoOverridesByStep(
+  publication: PublishedPublicationRecord
+): ReadonlyMap<number, WorkInstructionMemoOverride> {
+  if (!publication.publishedRevision) return new Map();
+  const result = new Map<number, WorkInstructionMemoOverride>();
+  for (const memo of toEditRevisionView(publication.publishedRevision).memoOverrides ?? []) {
+    if (memo.sourceStep == null || memo.migrationState !== 'MIGRATED') continue;
+    result.set(memo.sourceStep, memo);
+  }
+  return result;
 }
 
 function publishedOverlaysByStep(
@@ -162,6 +177,7 @@ function toPublishedRowView(publication: PublishedPublicationRecord): WorkInstru
   const version = publication.publishedVersion;
   const overlaysByStep = publishedOverlaysByStep(publication);
   const overlayAssets = publishedOverlayAssets(publication);
+  const memosByStep = publishedMemoOverridesByStep(publication);
   return {
     id: publication.row.id,
     source: {
@@ -174,7 +190,7 @@ function toPublishedRowView(publication: PublishedPublicationRecord): WorkInstru
     shootingTarget: version.shootingTarget,
     contentHash: version.contentHash,
     rawManifest: asJsonValue(version.rawManifest),
-    steps: version.steps.map((step) => toPublishedStepView(step, overlaysByStep, overlayAssets)),
+    steps: version.steps.map((step) => toPublishedStepView(step, overlaysByStep, overlayAssets, memosByStep)),
     createdAt: version.createdAt,
     updatedAt: publication.row.updatedAt
   };

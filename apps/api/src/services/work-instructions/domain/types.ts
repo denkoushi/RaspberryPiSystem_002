@@ -1,4 +1,4 @@
-import type { WorkInstructionOverlayElement } from './editing.js';
+import type { WorkInstructionMemoMigrationState, WorkInstructionOverlayElement } from './editing.js';
 
 /** JSON values accepted by the SharePoint manifest boundary. */
 export type WorkInstructionJsonValue =
@@ -90,6 +90,9 @@ export type WorkInstructionStepView = {
   imageStorageKey: string | null;
   imageMimeType: WorkInstructionImageMimeType | null;
   imageSha256: string | null;
+  /** Revision-owned memo override; undefined means use immutable source text. */
+  memoOverride?: string;
+  memoMigrationState?: WorkInstructionMemoMigrationState;
   overlays?: ReadonlyArray<WorkInstructionOverlayElement>;
   overlayAssets?: Readonly<Record<string, WorkInstructionOverlayAssetView>>;
 };

@@ -1,3 +1,13 @@
+import {
+  computeWorkInstructionMemoFingerprint,
+  type WorkInstructionEditAssetView,
+  type WorkInstructionEditRevisionContext,
+  type WorkInstructionEditRevisionView,
+  type WorkInstructionMemoOverride,
+  type WorkInstructionEditingView,
+  type WorkInstructionOverlayElement,
+  type WorkInstructionSourceVersionView
+} from '../../services/work-instructions/domain/editing.js';
 import type {
   WorkInstructionGroupSummaryView,
   WorkInstructionGroupView,
@@ -6,14 +16,6 @@ import type {
   WorkInstructionSource,
   WorkInstructionStepView,
 } from '../../services/work-instructions/domain/types.js';
-import type {
-  WorkInstructionEditAssetView,
-  WorkInstructionEditRevisionContext,
-  WorkInstructionEditRevisionView,
-  WorkInstructionEditingView,
-  WorkInstructionOverlayElement,
-  WorkInstructionSourceVersionView
-} from '../../services/work-instructions/domain/editing.js';
 function iso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
@@ -30,6 +32,8 @@ export function toStepDto(step: WorkInstructionStepView) {
       : null,
     imageMimeType: step.imageMimeType,
     imageSha256: step.imageSha256,
+    ...(step.memoOverride !== undefined ? { memoOverride: step.memoOverride } : {}),
+    ...(step.memoMigrationState !== undefined ? { memoMigrationState: step.memoMigrationState } : {}),
     overlays: step.overlays?.map(toOverlayDto) ?? [],
     overlayAssets: step.overlayAssets ?? {},
   };
@@ -96,12 +100,28 @@ function editorStepKey(source: WorkInstructionSource, step: number): string {
 
 function migrationSummary(revision: WorkInstructionEditRevisionView | null) {
   const overlays = revision?.overlays ?? [];
+  const memoOverrides = revision?.memoOverrides ?? [];
   return {
     total: overlays.length,
     migrated: overlays.filter((overlay) => overlay.migrationState === 'MIGRATED').length,
     needsReview: overlays.filter((overlay) => overlay.migrationState === 'NEEDS_REVIEW').length,
     unassigned: overlays.filter((overlay) => overlay.migrationState === 'UNASSIGNED').length,
-    skipped: overlays.filter((overlay) => overlay.migrationState === 'SKIPPED').length
+    skipped: overlays.filter((overlay) => overlay.migrationState === 'SKIPPED').length,
+    memo: {
+      total: memoOverrides.length,
+      migrated: memoOverrides.filter((memo) => memo.migrationState === 'MIGRATED').length,
+      needsReview: memoOverrides.filter((memo) => memo.migrationState === 'NEEDS_REVIEW').length,
+      unassigned: memoOverrides.filter((memo) => memo.migrationState === 'UNASSIGNED').length,
+      skipped: memoOverrides.filter((memo) => memo.migrationState === 'SKIPPED').length
+    }
+  };
+}
+
+function toMemoOverrideDto(memo: WorkInstructionMemoOverride, source: WorkInstructionSource) {
+  return {
+    ...memo,
+    stepKey: memo.sourceStep == null ? null : editorStepKey(source, memo.sourceStep),
+    migratedFromStepKey: editorStepKey(source, memo.migratedFromStep)
   };
 }
 
@@ -199,11 +219,16 @@ function toEditorRevisionDto(
   source: WorkInstructionSource
 ) {
   const overlaysByStep = new Map<number, WorkInstructionOverlayElement[]>();
+  const memosByStep = new Map<number, WorkInstructionMemoOverride>();
   for (const overlay of revision.overlays) {
     if (overlay.sourceStep == null) continue;
     const values = overlaysByStep.get(overlay.sourceStep) ?? [];
     values.push({ ...overlay, stepKey: editorStepKey(source, overlay.sourceStep) } as unknown as WorkInstructionOverlayElement);
     overlaysByStep.set(overlay.sourceStep, values);
+  }
+  for (const memo of revision.memoOverrides ?? []) {
+    if (memo.sourceStep == null) continue;
+    memosByStep.set(memo.sourceStep, memo);
   }
   return {
     id: revision.id,
@@ -216,8 +241,17 @@ function toEditorRevisionDto(
     baseContentHash: revision.baseContentHash,
     createdAt: revision.createdAt.toISOString(),
     updatedAt: revision.updatedAt.toISOString(),
-    steps: target.steps.map((step) => ({ ...step, overlays: overlaysByStep.get(step.step) ?? [] })),
+    steps: target.steps.map((step) => {
+      const memo = memosByStep.get(step.step);
+      return {
+        ...step,
+        memoFingerprint: computeWorkInstructionMemoFingerprint(step),
+        ...(memo ? { memoOverride: memo.text, memoMigrationState: memo.migrationState } : {}),
+        overlays: overlaysByStep.get(step.step) ?? []
+      };
+    }),
     overlays: revision.overlays,
+    memoOverrides: (revision.memoOverrides ?? []).map((memo) => toMemoOverrideDto(memo, source)),
     assets: Object.fromEntries(Object.entries(revision.assets ?? {}).map(([assetId, asset]) => [assetId, toEditAssetDto(asset)])),
     migration: migrationSummary(revision)
   };
@@ -244,7 +278,17 @@ export function toEditorGroupDto(input: {
   }>;
 }) {
   const rows = input.rows.map(({ source, editing, sourceVersions, latestRevisionNumber, publishedRevisionNumber }) => {
-    const published = toEditorVersionDto(editing.publishedVersion, source, 'published', publishedRevisionNumber);
+    const publishedVersion = toEditorVersionDto(editing.publishedVersion, source, 'published', publishedRevisionNumber);
+    const publishedRevision = editing.publishedRevision
+      ? toEditorRevisionDto(editing.publishedRevision, publishedVersion, source)
+      : null;
+    const published = publishedRevision
+      ? {
+          ...publishedVersion,
+          steps: publishedRevision.steps,
+          assets: publishedRevision.assets
+        }
+      : publishedVersion;
     const latest = toEditorVersionDto(editing.latestVersion, source, 'latest', latestRevisionNumber);
     const draft = editing.draftRevision ? toEditorRevisionDto(editing.draftRevision, latest, source) : null;
     const historyVersions = sourceVersions ?? [editing.latestVersion, editing.publishedVersion];
@@ -263,7 +307,7 @@ export function toEditorGroupDto(input: {
       draft,
       history,
       updateAvailable: editing.latestVersion.id !== editing.publishedVersion.id,
-      migration: migrationSummary(draft ? editing.draftRevision : editing.publishedRevision)
+    migration: migrationSummary(draft ? editing.draftRevision : editing.publishedRevision)
     };
   });
   const migration = rows.reduce((total, row) => {
@@ -272,8 +316,20 @@ export function toEditorGroupDto(input: {
     total.needsReview += row.migration.needsReview;
     total.unassigned += row.migration.unassigned;
     total.skipped += row.migration.skipped;
+    total.memo.total += row.migration.memo.total;
+    total.memo.migrated += row.migration.memo.migrated;
+    total.memo.needsReview += row.migration.memo.needsReview;
+    total.memo.unassigned += row.migration.memo.unassigned;
+    total.memo.skipped += row.migration.memo.skipped;
     return total;
-  }, { total: 0, migrated: 0, needsReview: 0, unassigned: 0, skipped: 0 });
+  }, {
+    total: 0,
+    migrated: 0,
+    needsReview: 0,
+    unassigned: 0,
+    skipped: 0,
+    memo: { total: 0, migrated: 0, needsReview: 0, unassigned: 0, skipped: 0 }
+  });
   const history = rows.flatMap((row) => row.history.map((item) => ({ ...item, rowId: row.rowId })));
   return { partNumber: input.partNumber, shootingTarget: input.shootingTarget, rows, migration, history };
 }

@@ -338,15 +338,23 @@ async function openViewerAndAssertCards(page: Page, trace: ApiTrace, columns: nu
   expect(trace.assetClientKeys).toContain(CLIENT_KEY);
 
   const enlargedImage = imageDialog.getByRole('img').first();
-  const imageMemoLabel = imageDialog.getByText('MEMO', { exact: true });
-  await expect(imageMemoLabel).toBeVisible();
+  const imageMemo = imageDialog.getByTestId('work-instruction-image-memo');
+  await expect(imageMemo).toBeVisible();
+  await expect(imageMemo).toHaveClass(/text-\[21px\]/);
+  await expect(imageDialog.getByText('MEMO', { exact: true })).toHaveCount(0);
   await expect(imageDialog).toContainText('ワーク外周と端面');
-  const imageAndMemo = await Promise.all([enlargedImage.boundingBox(), imageMemoLabel.boundingBox()]);
+  const imageAndMemo = await Promise.all([enlargedImage.boundingBox(), imageMemo.boundingBox()]);
   expect(imageAndMemo[0]).not.toBeNull();
   expect(imageAndMemo[1]).not.toBeNull();
   if (imageAndMemo[0] && imageAndMemo[1]) {
     expect(imageAndMemo[1].y).toBeGreaterThanOrEqual(imageAndMemo[0].y + imageAndMemo[0].height - 1);
   }
+
+  const nextPhoto = imageDialog.getByRole('button', { name: '次の写真', exact: true });
+  await expect(nextPhoto).toBeEnabled();
+  await nextPhoto.click();
+  await expect(imageDialog.getByTestId('work-instruction-image-position')).toHaveText('写真 2 / 5');
+  await expect(imageDialog).toContainText('基準面を合わせる');
 
   const closeImage = imageDialog.getByRole('button', { name: '画像を閉じる', exact: true });
   await expect(closeImage).toBeVisible();
@@ -364,6 +372,7 @@ async function openViewerAndAssertCards(page: Page, trace: ApiTrace, columns: nu
 
 for (const viewport of [
   { width: 1280, height: 800, columns: 3 },
+  { width: 1440, height: 900, columns: 3 },
   { width: 1920, height: 1080, columns: 4 }
 ] as const) {
   test(`${viewport.width}px: FHINCDから作業要領を選択し、画像popupと一覧復帰を維持する`, async ({ page }) => {

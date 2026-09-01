@@ -30,6 +30,7 @@ function sourceStep(sourceVersionId: string, overlays: Array<Record<string, unkn
     imageSha256: 'a'.repeat(64),
     sourceModified: '2026-08-31T00:00:00.000Z',
     contentHash: sourceVersionId === LATEST_VERSION_ID ? 'latest-hash' : 'published-hash',
+    memoFingerprint: sourceVersionId === LATEST_VERSION_ID ? 'latest-memo-fingerprint' : 'published-memo-fingerprint',
     overlays
   };
 }
@@ -122,7 +123,11 @@ function editorGroup(draft: Record<string, unknown> | null, oldImageDeleted: boo
   };
 }
 
-function editorDraft(overlays: Array<Record<string, unknown>> = [migratedNote], editVersion = 0) {
+function editorDraft(
+  overlays: Array<Record<string, unknown>> = [migratedNote],
+  editVersion = 0,
+  memoOverrides: Array<Record<string, unknown>> = []
+) {
   return {
     id: REVISION_ID,
     sourceVersionId: LATEST_VERSION_ID,
@@ -134,6 +139,7 @@ function editorDraft(overlays: Array<Record<string, unknown>> = [migratedNote], 
     baseContentHash: 'published-hash',
     steps: [sourceStep(LATEST_VERSION_ID, overlays)],
     overlays,
+    memoOverrides,
     assets: {}
   };
 }
@@ -224,13 +230,17 @@ async function installApiMocks(page: Page) {
       await route.fulfill({ json: { group: editorGroup(draft, oldImageDeleted), revisions: [draft] } });
       return;
     }
-    if (path.startsWith('/api/work-instructions/editor-revisions/') && path.endsWith('/overlays') && request.method() === 'PUT') {
+    if (path.startsWith('/api/work-instructions/editor-revisions/') && path.endsWith('/draft') && request.method() === 'PUT') {
       trace.save += 1;
-      const body = request.postDataJSON() as { elements?: Array<Record<string, unknown>> };
+      const body = request.postDataJSON() as {
+        elements?: Array<Record<string, unknown>>;
+        memoOverrides?: Array<Record<string, unknown>>;
+      };
       const elements = body.elements ?? [];
+      const memoOverrides = body.memoOverrides ?? [];
       // Match the canonical save response: derived steps are supplied by the
       // group projection, so the controller must re-compose them locally.
-      draft = { ...editorDraft(elements, 1), steps: [], overlays: elements };
+      draft = { ...editorDraft(elements, 1, memoOverrides), steps: [], overlays: elements };
       await route.fulfill({ json: { revision: draft } });
       return;
     }
@@ -294,8 +304,36 @@ for (const viewport of [
     await page.getByTestId('work-instruction-editor-password').fill('2520');
     await page.getByTestId('work-instruction-editor-authenticate').click();
     await expect(page.getByRole('heading', { name: '加工要領書を編集', exact: true })).toBeVisible();
+    const comparisonLayout = page.getByTestId('work-instruction-editor-comparison-layout');
+    await expect(comparisonLayout).toBeVisible();
     await expect(page.getByTestId('work-instruction-version-comparison')).toContainText('公開版（使用側）');
     await expect(page.getByTestId('work-instruction-version-comparison')).toContainText('最新原本（移植先）');
+    const [targetPaneBox, comparisonPaneBox] = await Promise.all([
+      page.getByTestId('work-instruction-editor-target-pane').boundingBox(),
+      page.getByTestId('work-instruction-editor-comparison-pane').boundingBox()
+    ]);
+    expect(targetPaneBox).not.toBeNull();
+    expect(comparisonPaneBox).not.toBeNull();
+    if (targetPaneBox && comparisonPaneBox) {
+      const targetHeightShare = targetPaneBox.height / (targetPaneBox.height + comparisonPaneBox.height);
+      expect(targetHeightShare).toBeGreaterThan(0.56);
+      expect(targetHeightShare).toBeLessThan(0.64);
+    }
+    const [publishedPaneBox, latestPaneBox] = await Promise.all([
+      page.getByRole('region', { name: '公開版（使用側）' }).boundingBox(),
+      page.getByRole('region', { name: '最新原本（移植先）' }).boundingBox()
+    ]);
+    expect(publishedPaneBox).not.toBeNull();
+    expect(latestPaneBox).not.toBeNull();
+    if (publishedPaneBox && latestPaneBox) {
+      expect(Math.abs(publishedPaneBox.height - latestPaneBox.height)).toBeLessThanOrEqual(2);
+    }
+    await expect(page.getByTestId('work-instruction-editor-history-pane')).toHaveCount(0);
+    await page.getByRole('button', { name: '履歴を表示', exact: true }).click();
+    await expect(page.getByTestId('work-instruction-editor-history-pane')).toBeVisible();
+    await page.getByRole('button', { name: '履歴を隠す', exact: true }).click();
+    await expect(page.getByTestId('work-instruction-editor-history-pane')).toHaveCount(0);
+    await expect(page.getByTestId('work-instruction-memo-editor')).toBeVisible();
 
     const migratedOverlay = page.getByRole('button', { name: '文章オーバーレイ: 旧版注記', exact: true });
     await expect(migratedOverlay).toBeVisible();
@@ -305,13 +343,16 @@ for (const viewport of [
     await expect(page.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect.poll(() => trace.save).toBe(1);
-    await expect(page.getByText('オーバーレイを保存しました。', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('work-instruction-editor-toolbar-message')).toHaveText('オーバーレイを保存しました。');
+    await expect(comparisonLayout.getByText('オーバーレイを保存しました。', { exact: true })).toHaveCount(0);
 
     await page.getByRole('button', { name: '一括公開', exact: true }).click();
     await page.getByRole('button', { name: '公開する', exact: true }).click();
     await expect.poll(() => trace.publish).toBe(1);
     await expect(page.getByText('加工要領書を公開しました。使用側の表示を更新できます。', { exact: true })).toBeVisible();
 
+    await page.getByRole('button', { name: '履歴を表示', exact: true }).click();
+    await expect(page.getByTestId('work-instruction-editor-history-pane')).toBeVisible();
     const deleteButton = page.getByRole('button', { name: '旧画像を一括削除', exact: true });
     await expect(deleteButton).toBeVisible();
     await deleteButton.click();

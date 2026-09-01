@@ -36,16 +36,36 @@ export function workInstructionOverlayDraftReducer(
 
 export type WorkInstructionOverlayCreationKind = 'TEXT' | 'IMAGE' | 'SHAPE';
 
+/** Defaults tuned for dense work-instruction source images only. */
+export const WORK_INSTRUCTION_TEXT_FONT_SIZE_RATIO = 0.0125;
+export const WORK_INSTRUCTION_SHAPE_STROKE_WIDTH_RATIO = 0.016;
+
 export function createWorkInstructionOverlayForRange(
   kind: WorkInstructionOverlayCreationKind,
   pageIndex: number,
   stepKey: string,
   bbox: OverlayBBox
 ): WorkInstructionOverlayElement {
-  return {
+  const element = {
     ...createOverlayForRange(kind, pageIndex, bbox),
     stepKey
   } as WorkInstructionOverlayElement;
+  if (element.kind === 'TEXT') {
+    return {
+      ...element,
+      style: {
+        ...(element.style ?? {}),
+        fontSizeRatio: WORK_INSTRUCTION_TEXT_FONT_SIZE_RATIO
+      }
+    };
+  }
+  if (element.kind === 'SHAPE') {
+    return {
+      ...element,
+      strokeWidthRatio: WORK_INSTRUCTION_SHAPE_STROKE_WIDTH_RATIO
+    };
+  }
+  return element;
 }
 
 export function updateWorkInstructionOverlayBBox(
