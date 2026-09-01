@@ -244,7 +244,7 @@ describe('useWorkInstructionEditorController', () => {
     });
     const localElements = hook.result.current.activeElements;
     apiMocks.save.mockRejectedValueOnce({
-      response: { status: 409, data: { details: { currentEditVersion: 5 } } }
+      response: { status: 409, data: { errorCode: 'WORK_INSTRUCTION_EDIT_CONFLICT', details: { currentEditVersion: 5 } } }
     });
 
     await act(async () => {
@@ -266,6 +266,90 @@ describe('useWorkInstructionEditorController', () => {
     expect(hook.result.current.conflict).toBeNull();
     expect(hook.result.current.activeElements).toEqual(localElements);
     expect(window.localStorage.getItem('kiosk-work-instruction-editor:PART-1:加工:draft-1')).toBeNull();
+  });
+
+  it('keeps a successful earlier row editVersion when a later row fails with a non-edit 409', async () => {
+    const group = makeGroup(makeDraft());
+    const secondDraft = { ...makeDraft(), id: 'draft-2', sourceVersionId: 'latest-2' };
+    group.rows = [
+      ...group.rows,
+      { ...group.rows[0]!, rowId: 'row-2', latest: makeVersion('latest-2', 'latest'), published: makeVersion('published-2', 'published'), draft: secondDraft }
+    ];
+    group.migration = {
+      total: 0,
+      migrated: 0,
+      needsReview: 0,
+      unassigned: 0,
+      skipped: 0,
+      memo: { total: 0, migrated: 0, needsReview: 0, unassigned: 0, skipped: 0 }
+    };
+    apiMocks.useEditorGroup.mockReturnValue({
+      data: group,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn().mockResolvedValue({ data: group })
+    });
+    apiMocks.copy.mockResolvedValueOnce({ group, revisions: group.rows.flatMap((row) => row.draft ? [row.draft] : []) });
+    const hook = renderEditor();
+    await authenticate(hook);
+    await waitFor(() => expect(hook.result.current.selectedStepKey).toBeTruthy());
+    act(() => hook.result.current.updateMemo(hook.result.current.selectedStepKey!, 'row-1変更'));
+    act(() => hook.result.current.selectRow('row-2'));
+    act(() => hook.result.current.updateMemo(hook.result.current.selectedStepKey!, 'row-2変更'));
+    await waitFor(() => expect(hook.result.current.isDirty).toBe(true));
+
+    apiMocks.save
+      .mockResolvedValueOnce(makeDraft([], 1))
+      .mockRejectedValueOnce({
+        response: {
+          status: 409,
+          data: {
+            errorCode: 'WORK_INSTRUCTION_MEMO_MIGRATION_RESOLUTION_REQUIRED',
+            message: 'memoの移植状態をKEEPまたはUSE_SOURCEで解決してください'
+          }
+        }
+      });
+
+    await act(async () => {
+      await hook.result.current.save();
+    });
+
+    expect(hook.result.current.group?.rows.find((row) => row.rowId === 'row-1')?.draft?.editVersion).toBe(1);
+    expect(hook.result.current.group?.rows.find((row) => row.rowId === 'row-2')?.draft?.editVersion).toBe(0);
+    expect(hook.result.current.conflict).toBeNull();
+    expect(hook.result.current.message).toBe('memoの移植状態をKEEPまたはUSE_SOURCEで解決してください');
+  });
+
+  it('clears conflict recovery when retry receives a non-edit 409', async () => {
+    const hook = renderEditor();
+    await authenticate(hook);
+    act(() => hook.result.current.setPendingRange(range));
+    await act(async () => {
+      await hook.result.current.createOverlay('SHAPE');
+    });
+    apiMocks.save.mockRejectedValueOnce({
+      response: { status: 409, data: { errorCode: 'WORK_INSTRUCTION_EDIT_CONFLICT', details: { currentEditVersion: 5 } } }
+    });
+    await act(async () => {
+      await hook.result.current.save();
+    });
+    expect(hook.result.current.conflict).toEqual({ revisionId: 'draft-1', currentEditVersion: 5 });
+
+    apiMocks.save.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: {
+          errorCode: 'WORK_INSTRUCTION_MEMO_FINGERPRINT_CONFLICT',
+          message: 'memoの原本が保存中に変更されました'
+        }
+      }
+    });
+    await act(async () => {
+      await hook.result.current.retryConflictSave();
+    });
+
+    expect(hook.result.current.conflict).toBeNull();
+    expect(hook.result.current.message).toBe('memoの原本が保存中に変更されました');
   });
 
   it('preserves a memo migration resolution message on a save 409 without entering conflict recovery', async () => {

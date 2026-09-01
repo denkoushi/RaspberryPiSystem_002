@@ -103,7 +103,12 @@ function currentEditVersionFromError(error: unknown): number | null {
   if (typeof error !== 'object' || error === null || !('response' in error)) return null;
   const data = (error as { response?: { data?: { currentEditVersion?: unknown; details?: { currentEditVersion?: unknown } } } }).response?.data;
   const value = data?.currentEditVersion ?? data?.details?.currentEditVersion;
-  return typeof value === 'number' && Number.isInteger(value) ? value : null;
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function editConflictVersion(error: unknown): number | null {
+  if (errorCode(error) !== 'WORK_INSTRUCTION_EDIT_CONFLICT') return null;
+  return currentEditVersionFromError(error);
 }
 
 function stepKeyFor(step: WorkInstructionEditorStepDto): string {
@@ -510,29 +515,33 @@ export function useWorkInstructionEditorController({
     setConflict(null);
     setMessage(null);
     let savingRevisionId = activeRevisionId ?? '';
+    const savedRows: WorkInstructionEditorRowDto[] = [...currentGroup.rows];
+    let hasSavedRows = false;
     try {
-      let nextGroup = currentGroup;
-      const savedRows: WorkInstructionEditorRowDto[] = [];
-      for (const row of currentGroup.rows) {
+      for (let index = 0; index < currentGroup.rows.length; index += 1) {
+        const row = currentGroup.rows[index];
         if (!row.draft || !dirtyRevisionIds.includes(row.draft.id)) {
-          savedRows.push(row);
           continue;
         }
         savingRevisionId = row.draft.id;
         const saved = await writeRevision(row);
-        if (!saved) { savedRows.push(row); continue; }
-        savedRows.push({ ...row, draft: saved });
+        if (!saved) continue;
+        savedRows[index] = { ...row, draft: saved };
+        hasSavedRows = true;
       }
-      nextGroup = { ...currentGroup, rows: savedRows };
+      const nextGroup = { ...currentGroup, rows: savedRows };
       setGroup(nextGroup);
       setMessage('オーバーレイを保存しました。');
     } catch (error: unknown) {
-      if (errorCode(error) === 'WORK_INSTRUCTION_MEMO_MIGRATION_RESOLUTION_REQUIRED') {
-        setMessage(readApiErrorMessage(error, '保存前にmemoの移植状態をKEEPまたはUSE_SOURCE、または割当で解決してください。'));
-      } else if (errorStatus(error) === 409) {
-        setConflict({ revisionId: savingRevisionId, currentEditVersion: currentEditVersionFromError(error) });
+      if (hasSavedRows) setGroup({ ...currentGroup, rows: savedRows });
+      const currentEditVersion = editConflictVersion(error);
+      if (currentEditVersion !== null) {
+        setConflict({ revisionId: savingRevisionId, currentEditVersion });
         setMessage('他の管理者が先に更新しました。保持中の内容を再保存するか、最新内容を読み込んでください。');
-      } else setMessage(readApiErrorMessage(error, 'オーバーレイの保存に失敗しました。'));
+      } else {
+        setConflict(null);
+        setMessage(readApiErrorMessage(error, 'オーバーレイの保存に失敗しました。'));
+      }
     } finally {
       setBusy(false);
     }
@@ -549,8 +558,14 @@ export function useWorkInstructionEditorController({
       setConflict(null);
       setMessage('保持していた内容を最新editVersionへ再保存しました。');
     } catch (error: unknown) {
-      setConflict({ revisionId: conflict.revisionId, currentEditVersion: currentEditVersionFromError(error) });
-      setMessage(errorStatus(error) === 409 ? '再保存中にも更新競合が発生しました。もう一度再保存できます。' : readApiErrorMessage(error, '保持内容の再保存に失敗しました。'));
+      const currentEditVersion = editConflictVersion(error);
+      if (currentEditVersion !== null) {
+        setConflict({ revisionId: conflict.revisionId, currentEditVersion });
+        setMessage('再保存中にも更新競合が発生しました。もう一度再保存できます。');
+      } else {
+        setConflict(null);
+        setMessage(readApiErrorMessage(error, '保持内容の再保存に失敗しました。'));
+      }
     } finally {
       setBusy(false);
     }
@@ -579,14 +594,18 @@ export function useWorkInstructionEditorController({
     if (!currentGroup || busy || !accessGranted) return;
     setBusy(true);
     setMessage(null);
+    const savedRows = [...currentGroup.rows];
+    let hasSavedRows = false;
     try {
-      const savedRows = [...currentGroup.rows];
       for (let index = 0; index < savedRows.length; index += 1) {
         const row = savedRows[index];
         if (!row.draft) continue;
         if (dirtyRevisionIds.includes(row.draft.id)) {
           const saved = await writeRevision(row);
-          if (saved) savedRows[index] = { ...row, draft: saved };
+          if (saved) {
+            savedRows[index] = { ...row, draft: saved };
+            hasSavedRows = true;
+          }
         }
       }
       const revisionIds = savedRows.map((row) => row.draft?.id).filter((id): id is string => Boolean(id));
@@ -597,6 +616,7 @@ export function useWorkInstructionEditorController({
       setConflict(null);
       setMessage('加工要領書を公開しました。使用側の表示を更新できます。');
     } catch (error: unknown) {
+      if (hasSavedRows) setGroup({ ...currentGroup, rows: savedRows });
       if (errorCode(error) === 'WORK_INSTRUCTION_MEMO_MIGRATION_RESOLUTION_REQUIRED') {
         setMessage(readApiErrorMessage(error, '公開前にmemoの移植状態をKEEPまたはUSE_SOURCE、または割当で解決してください。'));
       } else if (errorStatus(error) === 409) {
