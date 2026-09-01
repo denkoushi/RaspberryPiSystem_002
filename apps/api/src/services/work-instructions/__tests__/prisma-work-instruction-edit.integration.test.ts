@@ -39,6 +39,13 @@ function packet(input: {
   imageName?: string | null;
   imageHash?: string;
   imageAssetId?: string;
+  steps?: ReadonlyArray<{
+    step: number;
+    text: string;
+    imageName: string | null;
+    imageHash?: string;
+    imageAssetId?: string;
+  }>;
 }): WorkInstructionPacket {
   const imageName = input.imageName ?? null;
   return {
@@ -47,7 +54,7 @@ function packet(input: {
     shootingTarget: input.shootingTarget ?? '研削',
     rawManifest: { schema_version: 1, fixture: fixtureSystem, itemId: input.itemId },
     contentHash: input.contentHash,
-    steps: [{ step: 1, text: input.text ?? `text-${input.contentHash.slice(0, 4)}`, imageName, imageHash: input.imageHash, imageAssetId: input.imageAssetId }]
+    steps: input.steps ?? [{ step: 1, text: input.text ?? `text-${input.contentHash.slice(0, 4)}`, imageName, imageHash: input.imageHash, imageAssetId: input.imageAssetId }]
   };
 }
 
@@ -286,6 +293,81 @@ describeIntegration('work-instruction immutable versions and editing persistence
       memoOverrides: [{ sourceStep: 1, migratedFromStep: 1, action: 'USE_SOURCE', text: '' }]
     })).resolves.toMatchObject({ editVersion: kept.editVersion + 1, memoOverrides: [] });
     await expect(editing.publishRevision({ revisionId: secondDraft.revision.id, expectedEditVersion: kept.editVersion + 1 })).resolves.toMatchObject({ migration: { memo: { needsReviewCount: 0, unassignedCount: 0 } } });
+  });
+
+  it('allows an unassigned memo to replace a USE_SOURCE memo on the same target step', async () => {
+    const first = await apply({
+      list: 'List-memo-reassignment',
+      itemId: 18,
+      modified: baseModified,
+      contentHash: 'c'.repeat(64),
+      steps: [
+        { step: 1, text: '旧memo', imageName: null },
+        { step: 2, text: '旧手順2', imageName: null }
+      ]
+    });
+    const firstDraft = await editing.createDraftRevision({ rowId: first.rowId, sourceVersionId: first.sourceVersionId });
+    revisionIds.push(firstDraft.revision.id);
+    const firstSaved = await editing.saveDraft({
+      revisionId: firstDraft.revision.id,
+      expectedEditVersion: firstDraft.revision.editVersion,
+      expectedSourceVersionId: first.sourceVersionId,
+      expectedContentHash: 'c'.repeat(64),
+      elements: [],
+      memoOverrides: [
+        { sourceStep: 1, migratedFromStep: 1, text: '編集memo' },
+        { sourceStep: 2, migratedFromStep: 2, text: '手順2memo' }
+      ]
+    });
+    await editing.publishRevision({ revisionId: firstDraft.revision.id, expectedEditVersion: firstSaved.editVersion });
+
+    const second = await apply({
+      list: 'List-memo-reassignment',
+      itemId: 18,
+      modified: new Date(baseModified.getTime() + 60_000),
+      contentHash: 'd'.repeat(64),
+      text: '新memo'
+    });
+    const secondDraft = await editing.createDraftRevision({ rowId: second.rowId, sourceVersionId: second.sourceVersionId });
+    revisionIds.push(secondDraft.revision.id);
+    expect(secondDraft.revision.memoOverrides).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceStep: 1, migratedFromStep: 1, migrationState: 'NEEDS_REVIEW' }),
+      expect.objectContaining({ sourceStep: null, migratedFromStep: 2, migrationState: 'UNASSIGNED' })
+    ]));
+    const currentFingerprint = computeWorkInstructionMemoFingerprint((await editing.listSourceVersions(second.rowId)).find((version) => version.id === second.sourceVersionId)!.steps[0]!);
+
+    const saved = await editing.saveDraft({
+      revisionId: secondDraft.revision.id,
+      expectedEditVersion: secondDraft.revision.editVersion,
+      expectedSourceVersionId: second.sourceVersionId,
+      expectedContentHash: 'd'.repeat(64),
+      elements: [],
+      memoOverrides: [
+        { sourceStep: 1, migratedFromStep: 1, action: 'USE_SOURCE', text: '' },
+        { sourceStep: 1, migratedFromStep: 2, action: 'KEEP', expectedTargetStepFingerprint: currentFingerprint, text: '置換memo' }
+      ]
+    });
+    expect(saved.memoOverrides).toEqual([
+      expect.objectContaining({ sourceStep: 1, migratedFromStep: 2, text: '置換memo', migrationState: 'MIGRATED' })
+    ]);
+    expect(await prisma.workInstructionEditMemoOverride.findMany({
+      where: { revisionId: secondDraft.revision.id },
+      orderBy: { migratedFromStep: 'asc' },
+      select: { sourceStep: true, migratedFromStep: true, text: true, migrationState: true }
+    })).toEqual([{ sourceStep: 1n, migratedFromStep: 2n, text: '置換memo', migrationState: 'MIGRATED' }]);
+
+    await expect(editing.saveDraft({
+      revisionId: secondDraft.revision.id,
+      expectedEditVersion: saved.editVersion,
+      expectedSourceVersionId: second.sourceVersionId,
+      expectedContentHash: 'd'.repeat(64),
+      elements: [],
+      memoOverrides: [
+        { sourceStep: 1, migratedFromStep: 2, action: 'KEEP', expectedTargetStepFingerprint: currentFingerprint, text: '置換memo' },
+        { sourceStep: 1, migratedFromStep: 3, action: 'KEEP', expectedTargetStepFingerprint: currentFingerprint, text: '重複memo' }
+      ]
+    })).rejects.toMatchObject({ statusCode: 400, code: 'WORK_INSTRUCTION_DUPLICATE_MEMO_TARGET' });
+    expect(await prisma.workInstructionEditMemoOverride.count({ where: { revisionId: secondDraft.revision.id } })).toBe(1);
   });
 
   it('rejects cross-row overlay copies and an editor group that does not contain the target', async () => {

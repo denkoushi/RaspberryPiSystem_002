@@ -251,17 +251,17 @@ function normalizeMemoOverridesForVersion(
     if (migratedFromStep == null || !Number.isSafeInteger(migratedFromStep) || migratedFromStep <= 0) {
       throw new WorkInstructionEditingError(400, `memo ${index + 1} original source step is invalid`, 'WORK_INSTRUCTION_MEMO_STEP_INVALID');
     }
+    if (seen.has(migratedFromStep)) {
+      throw new WorkInstructionEditingError(400, `memo ${index + 1} original source step is duplicated`, 'WORK_INSTRUCTION_DUPLICATE_MEMO');
+    }
+    seen.add(migratedFromStep);
+    if (action === 'USE_SOURCE') continue;
     if (input.sourceStep !== null) {
       if (seenTargetSteps.has(input.sourceStep)) {
         throw new WorkInstructionEditingError(400, `memo ${index + 1} target step is duplicated`, 'WORK_INSTRUCTION_DUPLICATE_MEMO_TARGET');
       }
       seenTargetSteps.add(input.sourceStep);
     }
-    if (seen.has(migratedFromStep)) {
-      throw new WorkInstructionEditingError(400, `memo ${index + 1} original source step is duplicated`, 'WORK_INSTRUCTION_DUPLICATE_MEMO');
-    }
-    seen.add(migratedFromStep);
-    if (action === 'USE_SOURCE') continue;
     const existing = existingByStep.get(migratedFromStep);
     const targetStep = input.sourceStep == null ? null : byStep.get(input.sourceStep);
     if (input.sourceStep != null && !targetStep) {
