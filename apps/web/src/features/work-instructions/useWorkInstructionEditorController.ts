@@ -527,7 +527,9 @@ export function useWorkInstructionEditorController({
       setGroup(nextGroup);
       setMessage('オーバーレイを保存しました。');
     } catch (error: unknown) {
-      if (errorStatus(error) === 409) {
+      if (errorCode(error) === 'WORK_INSTRUCTION_MEMO_MIGRATION_RESOLUTION_REQUIRED') {
+        setMessage(readApiErrorMessage(error, '保存前にmemoの移植状態をKEEPまたはUSE_SOURCE、または割当で解決してください。'));
+      } else if (errorStatus(error) === 409) {
         setConflict({ revisionId: savingRevisionId, currentEditVersion: currentEditVersionFromError(error) });
         setMessage('他の管理者が先に更新しました。保持中の内容を再保存するか、最新内容を読み込んでください。');
       } else setMessage(readApiErrorMessage(error, 'オーバーレイの保存に失敗しました。'));

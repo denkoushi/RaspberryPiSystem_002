@@ -268,6 +268,29 @@ describe('useWorkInstructionEditorController', () => {
     expect(window.localStorage.getItem('kiosk-work-instruction-editor:PART-1:加工:draft-1')).toBeNull();
   });
 
+  it('preserves a memo migration resolution message on a save 409 without entering conflict recovery', async () => {
+    const hook = renderEditor();
+    await authenticate(hook);
+    act(() => hook.result.current.updateMemo(hook.result.current.selectedStepKey!, '変更したmemo'));
+    await waitFor(() => expect(hook.result.current.isDirty).toBe(true));
+    apiMocks.save.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: {
+          errorCode: 'WORK_INSTRUCTION_MEMO_MIGRATION_RESOLUTION_REQUIRED',
+          message: '保存前にmemoの移植状態をKEEPまたはUSE_SOURCEで解決してください'
+        }
+      }
+    });
+
+    await act(async () => {
+      await hook.result.current.save();
+    });
+
+    expect(hook.result.current.message).toBe('保存前にmemoの移植状態をKEEPまたはUSE_SOURCEで解決してください');
+    expect(hook.result.current.conflict).toBeNull();
+  });
+
   it('re-composes source-step buckets when a save response omits derived revision steps', async () => {
     const hook = renderEditor();
     await authenticate(hook);
