@@ -90,6 +90,8 @@ export type WorkInstructionMemoOverrideAction =
 
 /** Revision-owned memo override. An empty memo is a valid override value. */
 export type WorkInstructionMemoOverrideDto = {
+  /** Stable persisted identity used to keep assigned and unassigned lineages distinct. */
+  id?: string;
   stepKey: string | null;
   /** Canonical API/DB text field; an empty string is still an active override. */
   text: string;

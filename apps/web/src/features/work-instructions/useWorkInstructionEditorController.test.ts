@@ -376,6 +376,7 @@ describe('useWorkInstructionEditorController', () => {
 
   it('reassigns an unassigned memo with KEEP and sends USE_SOURCE for discard', async () => {
     const unassigned: WorkInstructionMemoOverrideDto = {
+      id: 'memo-unassigned',
       stepKey: null,
       migratedFromStepKey: 'sharepoint:work-instructions:1:3',
       migratedFromStep: 3,
@@ -388,13 +389,14 @@ describe('useWorkInstructionEditorController', () => {
     const hook = renderEditor();
     await authenticate(hook);
 
-    const orphanKey = 'sharepoint:work-instructions:1:3';
+    const orphanId = unassigned.id!;
+    const orphanLineage = 'sharepoint:work-instructions:1:3';
     expect(hook.result.current.activeMemoOverridesArray).toEqual([expect.objectContaining({
       stepKey: null,
-      migratedFromStepKey: orphanKey,
+      migratedFromStepKey: orphanLineage,
       text: '未割当メモ'
     })]);
-    act(() => hook.result.current.assignMemoAndKeep(orphanKey, 'sharepoint:work-instructions:1:1'));
+    act(() => hook.result.current.assignMemoAndKeep(orphanId, 'sharepoint:work-instructions:1:1'));
     await waitFor(() => expect(hook.result.current.activeMemoOverridesArray).toEqual([expect.objectContaining({
       stepKey: 'sharepoint:work-instructions:1:1',
       sourceStep: 1,
@@ -409,6 +411,7 @@ describe('useWorkInstructionEditorController', () => {
     });
     expect(apiMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
       memoOverrides: [expect.objectContaining({
+        id: orphanId,
         stepKey: 'sharepoint:work-instructions:1:1',
         migratedFromStep: 3,
         action: 'KEEP',
@@ -421,10 +424,10 @@ describe('useWorkInstructionEditorController', () => {
     apiMocks.copy.mockResolvedValueOnce({ group: makeGroup(discardDraft), revisions: [discardDraft] });
     const discardHook = renderEditor();
     await authenticate(discardHook);
-    act(() => discardHook.result.current.useSourceMemo(orphanKey));
+    act(() => discardHook.result.current.useSourceMemo(orphanId));
     await waitFor(() => expect(discardHook.result.current.activeMemoOverridesArray).toEqual([expect.objectContaining({
       stepKey: null,
-      migratedFromStepKey: orphanKey,
+      migratedFromStepKey: orphanLineage,
       action: 'USE_SOURCE',
       text: ''
     })]));
@@ -434,13 +437,45 @@ describe('useWorkInstructionEditorController', () => {
     });
     expect(apiMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
       memoOverrides: [expect.objectContaining({
+        id: orphanId,
         stepKey: null,
-        migratedFromStepKey: orphanKey,
+        migratedFromStepKey: orphanLineage,
         sourceStep: null,
         action: 'USE_SOURCE',
         text: ''
       })]
     }));
+  });
+
+  it('keeps an ID-backed unassigned memo when its target already has an active override', async () => {
+    const targetStepKey = 'sharepoint:work-instructions:1:1';
+    const assigned: WorkInstructionMemoOverrideDto = {
+      id: 'memo-assigned',
+      stepKey: targetStepKey,
+      sourceStep: 1,
+      migratedFromStep: 1,
+      text: '既存の割当済みメモ',
+      migrationState: 'MIGRATED'
+    };
+    const unassigned: WorkInstructionMemoOverrideDto = {
+      id: 'memo-unassigned',
+      stepKey: null,
+      migratedFromStepKey: targetStepKey,
+      migratedFromStep: 1,
+      sourceStep: null,
+      text: '同lineageの未割当メモ',
+      migrationState: 'UNASSIGNED'
+    };
+    const draft = makeDraft([], 0, [assigned, unassigned]);
+    apiMocks.copy.mockResolvedValueOnce({ group: makeGroup(draft), revisions: [draft] });
+    const hook = renderEditor();
+    await authenticate(hook);
+
+    act(() => hook.result.current.assignMemoAndKeep(unassigned.id!, targetStepKey));
+    await waitFor(() => expect(hook.result.current.activeMemoOverridesArray).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: assigned.id, stepKey: targetStepKey, text: assigned.text }),
+      expect.objectContaining({ id: unassigned.id, stepKey: null, text: unassigned.text, migrationState: 'UNASSIGNED' })
+    ])));
   });
 
   it('assigns an unassigned migrated note to an explicit destination step and keeps it reviewable', async () => {

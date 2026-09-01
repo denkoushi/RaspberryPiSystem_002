@@ -72,6 +72,21 @@ describe('work instruction editor memo state', () => {
     expect(map[step.stepKey]).toMatchObject({ stepKey: step.stepKey, text: '', migrationState: 'MIGRATED' });
   });
 
+  it('keeps a legacy record step key when its stable ID is the map identity', () => {
+    const map = memoOverridesToMap({
+      [step.stepKey]: { id: 'memo-id', text: 'legacy memo', migrationState: 'migrated' }
+    });
+
+    expect(map).toEqual({
+      'memo-id': expect.objectContaining({ id: 'memo-id', stepKey: step.stepKey, text: 'legacy memo' })
+    });
+    expect(memoOverridesToArray(map)).toEqual([expect.objectContaining({
+      id: 'memo-id',
+      stepKey: step.stepKey,
+      text: 'legacy memo'
+    })]);
+  });
+
   it('keeps an unassigned override keyed by its original-step alias', () => {
     const unassigned = memoOverridesToMap([{
       stepKey: null,
@@ -91,5 +106,32 @@ describe('work instruction editor memo state', () => {
       migratedFromStepKey: 'sharepoint:work-instructions:1:4',
       text: '未割当メモ'
     })]);
+  });
+
+  it('keeps assigned and unassigned overrides with the same lineage in the full memo set', () => {
+    const lineage = step.stepKey;
+    const map = memoOverridesToMap([
+      {
+        id: 'memo-assigned',
+        stepKey: lineage,
+        text: '割当済みメモ',
+        migrationState: 'MIGRATED'
+      },
+      {
+        id: 'memo-unassigned',
+        stepKey: null,
+        migratedFromStepKey: lineage,
+        migratedFromStep: step.step,
+        text: '未割当メモ',
+        migrationState: 'UNASSIGNED'
+      }
+    ]);
+
+    expect(Object.keys(map)).toEqual(['memo-assigned', 'memo-unassigned']);
+    expect(effectiveWorkInstructionMemo(step, map)).toBe('割当済みメモ');
+    expect(memoOverridesToArray(map)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'memo-assigned', stepKey: lineage, text: '割当済みメモ' }),
+      expect.objectContaining({ id: 'memo-unassigned', stepKey: null, migratedFromStepKey: lineage, text: '未割当メモ' })
+    ]));
   });
 });

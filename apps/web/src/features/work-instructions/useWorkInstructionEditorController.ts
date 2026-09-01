@@ -375,15 +375,15 @@ export function useWorkInstructionEditorController({
       const currentOverrides = current[activeRevisionId] ?? {};
       const override = currentOverrides[overrideKey];
       if (!override) return current;
-      const existingTarget = currentOverrides[targetStepKey];
-      if (existingTarget && existingTarget !== override
+      const existingTarget = Object.entries(currentOverrides).find(([key, candidate]) => key !== overrideKey && candidate.stepKey === targetStepKey)?.[1];
+      if (existingTarget
         && existingTarget.sourceStep !== null
         && existingTarget.action !== 'USE_SOURCE'
         && existingTarget.action !== 'use-source'
         && String(existingTarget.migrationState ?? '').toUpperCase() !== 'UNASSIGNED') return current;
       const nextOverrides = { ...currentOverrides };
       delete nextOverrides[overrideKey];
-      nextOverrides[targetStepKey] = {
+      nextOverrides[overrideKey] = {
         ...override,
         stepKey: targetStepKey,
         sourceStep: targetStep.step,
