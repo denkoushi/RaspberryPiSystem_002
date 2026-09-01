@@ -213,7 +213,7 @@ DECLARE
     'WorkInstructionEditRevision_unique_head',
     'WorkInstructionEditAsset_storageKey_key',
     'WorkInstructionSourcePublication_row_key'
-    ,'WorkInstructionEditMemoOverride_unique_revision_source_step'
+    ,'WorkInstructionEditMemoOverride_idx_revision_migrated_from_step'
     ,'WorkInstructionEditMemoOverride_unique_revision_target_step'
   ];
 BEGIN
