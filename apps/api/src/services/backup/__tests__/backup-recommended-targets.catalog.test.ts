@@ -29,6 +29,7 @@ describe('backup-recommended-targets.catalog', () => {
     expect(catalog.some((c) => c.target.source.includes('/.ssh'))).toBe(false);
     expect(catalog.some((c) => c.target.source.includes('raspi4-sessaku-01:'))).toBe(true);
     expect(catalog.some((c) => c.target.source.includes('raspi4-assembly-01:'))).toBe(true);
+    expect(catalog.some((c) => c.target.source.includes('raspi4-kensaku-02:'))).toBe(true);
   });
 
   it('findMissing reports all catalog items when targets empty', () => {
