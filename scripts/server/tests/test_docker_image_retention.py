@@ -33,6 +33,7 @@ def save():
 if args[:5] == ["image", "ls", "--all", "--no-trunc", "--format"]:
     print("\n".join(sorted(state["images"])))
 elif args[:3] == ["image", "inspect", "--format"]:
+    inspect_template = args[-2]
     image_id = args[-1]
     image = state["images"].get(image_id)
     if image is None and "@sha256:" in image_id:
@@ -44,6 +45,9 @@ elif args[:3] == ["image", "inspect", "--format"]:
         if image is not None:
             image_id = digest_id
     if image is None:
+        raise SystemExit(1)
+    if "labels" not in image and 'index .Config "Labels"' not in inspect_template:
+        # Match Docker's template behavior when Config has no Labels key.
         raise SystemExit(1)
     print(json.dumps({
         "id": image_id,
@@ -315,6 +319,20 @@ class DockerImageRetentionCliTests(unittest.TestCase):
 
         second_plan = self._run("plan")
         self.assertNotEqual(second_plan.returncode, 0)
+        self.assertEqual(self.fake.read().get("rm", []), [])
+
+    def test_plan_accepts_image_without_config_labels(self) -> None:
+        state = self._base_docker_state()
+        database_id, database = self._image("5", "pgvector/pgvector")
+        database.pop("labels")
+        state["images"][database_id] = database
+        self.fake.write(state)
+
+        result = self._run("plan")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = json.loads(self.plan_path.read_text(encoding="utf-8"))
+        self.assertNotIn(database_id, plan["candidateIds"])
         self.assertEqual(self.fake.read().get("rm", []), [])
 
     def test_invalid_state_blocks_apply_before_docker_mutation(self) -> None:

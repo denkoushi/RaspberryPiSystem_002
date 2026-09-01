@@ -107,7 +107,7 @@ class DockerClient:
     IMAGE_INSPECT_TEMPLATE = (
         '{"id":{{json .Id}},"created":{{json .Created}},"size":{{json .Size}},'
         '"repoTags":{{json .RepoTags}},"repoDigests":{{json .RepoDigests}},'
-        '"labels":{{json .Config.Labels}}}'
+        '"labels":{{json (index .Config "Labels")}}}'
     )
 
     def __init__(self, executable: str = "docker") -> None:
