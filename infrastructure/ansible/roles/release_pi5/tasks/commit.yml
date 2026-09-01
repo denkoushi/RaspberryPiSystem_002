@@ -39,6 +39,10 @@
   changed_when: false
   when: release_pi5_route in ['fresh', 'interrupted']
 
+- name: Persist Pi5 image retention state before retiring previous slot
+  ansible.builtin.include_tasks: retention-state.yml
+  when: release_pi5_route in ['fresh', 'interrupted']
+
 - name: Record healthy Pi5 candidate outcome
   ansible.builtin.set_fact:
     release_pi5_healthy: true

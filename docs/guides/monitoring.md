@@ -237,5 +237,4 @@ check_http -H raspberry-pi-5 -p 8080 -u /api/system/health -e "200"
 3. **アラート閾値の調整**: 環境に応じてディスク使用量やメモリ使用量の閾値を調整
 4. **外部監視ツールの活用**: PrometheusやGrafanaを使用して可視化
 5. **バックアップとの連携**: 監視スクリプトとバックアップスクリプトを連携させて、異常検知時に自動バックアップを実行
-6. **ストレージメンテナンスの自動化**: `storage-maintenance.service`（systemd timer）で毎日自動実行され、不要ファイルを削除
-
+6. **ストレージメンテナンスの自動化**: `storage-maintenance.service`（systemd timer）で毎日自動実行され、signage履歴を削除する。月次未完了時は、対象を限定したPi5旧リリースイメージ整理も実行する（詳細は [Pi5標準Ansible診断Runbook](../runbooks/pi5-blue-green-deploy.md#pi5-docker旧リリースイメージ整理)）。月初のBuild Cache整理は従来どおり維持する
