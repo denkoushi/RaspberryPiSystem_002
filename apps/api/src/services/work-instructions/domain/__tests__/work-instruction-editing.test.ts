@@ -107,6 +107,31 @@ describe('work-instruction overlay copy migration', () => {
     expect(result.overrides[0]).toMatchObject({ sourceStep: 1, migrationState: 'MIGRATED', text: '' });
   });
 
+  it('preserves a manually reassigned memo target on the next source migration', () => {
+    const originalFingerprint = computeWorkInstructionMemoFingerprint(sourceSteps[0]!);
+    const reassigned = normalizeWorkInstructionMemoOverride({
+      sourceStep: 2,
+      migratedFromStep: 1,
+      baseStepFingerprint: originalFingerprint,
+      targetStepFingerprint: computeWorkInstructionMemoFingerprint(sourceSteps[1]!),
+      text: '手動再割当'
+    }, originalFingerprint);
+
+    const result = copyWorkInstructionMemoOverrides({
+      sourceSteps,
+      targetSteps: sourceSteps,
+      overrides: [reassigned]
+    });
+
+    expect(result).toMatchObject({ copiedCount: 1, needsReviewCount: 0, unassignedCount: 0 });
+    expect(result.overrides[0]).toMatchObject({
+      sourceStep: 2,
+      migratedFromStep: 1,
+      migrationState: 'MIGRATED',
+      text: '手動再割当'
+    });
+  });
+
   it('marks memo overrides NEEDS_REVIEW when only the source text changes', () => {
     const result = copyWorkInstructionMemoOverrides({
       sourceSteps,

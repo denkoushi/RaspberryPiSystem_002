@@ -11,7 +11,7 @@ function controller(overrides: Partial<WorkInstructionEditorController> = {}): W
     isDirty: false,
     conflict: null,
     message: null,
-    group: { migration: { needsReview: 0 } },
+    group: { migration: { needsReview: 0, memo: { needsReview: 0 } } },
     ...overrides
   } as WorkInstructionEditorController;
 }
@@ -31,5 +31,17 @@ describe('WorkInstructionEditorToolbarStatus', () => {
     );
 
     expect(screen.queryByTestId('work-instruction-editor-toolbar-message')).not.toBeInTheDocument();
+  });
+
+  it('includes memo-only NEEDS_REVIEW items in the overall warning count', () => {
+    render(
+      <WorkInstructionEditorToolbarStatus
+        controller={controller({
+          group: { migration: { total: 0, migrated: 0, needsReview: 0, unassigned: 0, skipped: 0, memo: { total: 1, migrated: 0, needsReview: 1, unassigned: 0, skipped: 0 } } }
+        })}
+      />
+    );
+
+    expect(screen.getByText('要確認 1')).toBeInTheDocument();
   });
 });

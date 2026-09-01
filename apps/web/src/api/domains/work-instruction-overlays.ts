@@ -217,12 +217,17 @@ function normalizeEditRevision(revision: WorkInstructionEditRevisionResponseDto)
   };
 }
 
-export type WorkInstructionMigrationSummaryDto = {
+export type WorkInstructionMemoMigrationSummaryDto = {
   total: number;
   migrated: number;
   needsReview: number;
   unassigned: number;
   skipped: number;
+};
+
+export type WorkInstructionMigrationSummaryDto = WorkInstructionMemoMigrationSummaryDto & {
+  /** Memo migration is reported separately from overlay migration by the API. */
+  memo: WorkInstructionMemoMigrationSummaryDto;
 };
 
 export type WorkInstructionEditorGroupDto = {
@@ -328,7 +333,14 @@ export async function copyWorkInstructionOverlayDraft(input: {
         partNumber: data.partNumber,
         shootingTarget: data.shootingTarget,
         rows: data.rows,
-        migration: data.migration ?? { total: 0, migrated: 0, needsReview: 0, unassigned: 0, skipped: 0 },
+        migration: data.migration ?? {
+          total: 0,
+          migrated: 0,
+          needsReview: 0,
+          unassigned: 0,
+          skipped: 0,
+          memo: { total: 0, migrated: 0, needsReview: 0, unassigned: 0, skipped: 0 }
+        },
         history: data.history
       }
     : undefined;

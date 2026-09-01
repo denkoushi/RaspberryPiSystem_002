@@ -28,7 +28,14 @@ const emptyMigration = {
   migrated: 0,
   needsReview: 0,
   unassigned: 0,
-  skipped: 0
+  skipped: 0,
+  memo: {
+    total: 0,
+    migrated: 0,
+    needsReview: 0,
+    unassigned: 0,
+    skipped: 0
+  }
 };
 
 describe('work-instruction overlay API client', () => {

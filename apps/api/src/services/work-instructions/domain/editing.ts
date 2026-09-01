@@ -480,8 +480,9 @@ export function copyWorkInstructionMemoOverrides(input: {
   let unassignedCount = 0;
   let skippedCount = 0;
   for (const override of input.overrides) {
-    const originalStep = sourceByStep.get(override.migratedFromStep);
-    const target = targetByStep.get(override.migratedFromStep);
+    const assignmentStep = override.sourceStep ?? override.migratedFromStep;
+    const originalStep = sourceByStep.get(assignmentStep);
+    const target = targetByStep.get(assignmentStep);
     const baseStepFingerprint = originalStep
       ? computeWorkInstructionMemoFingerprint(originalStep)
       : override.baseStepFingerprint;

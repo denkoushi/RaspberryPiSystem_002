@@ -140,7 +140,14 @@ function makeGroup(
       draft,
       updateAvailable: true
     }],
-    migration: { total: 0, migrated: 0, needsReview: 0, unassigned: 0, skipped: 0 },
+    migration: {
+      total: 0,
+      migrated: 0,
+      needsReview: 0,
+      unassigned: 0,
+      skipped: 0,
+      memo: { total: 0, migrated: 0, needsReview: 0, unassigned: 0, skipped: 0 }
+    },
     history
   };
 }
