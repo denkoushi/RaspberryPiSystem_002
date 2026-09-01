@@ -21,7 +21,7 @@ CREATE TABLE "WorkInstructionEditMemoOverride" (
     FOREIGN KEY ("revisionId") REFERENCES "WorkInstructionEditRevision"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE UNIQUE INDEX "WorkInstructionEditMemoOverride_unique_revision_source_step"
+CREATE INDEX "WorkInstructionEditMemoOverride_idx_revision_migrated_from_step"
   ON "WorkInstructionEditMemoOverride"("revisionId", "migratedFromStep");
 CREATE UNIQUE INDEX "WorkInstructionEditMemoOverride_unique_revision_target_step"
   ON "WorkInstructionEditMemoOverride"("revisionId", "sourceStep");

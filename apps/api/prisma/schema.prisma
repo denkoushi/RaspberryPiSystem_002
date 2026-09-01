@@ -4190,8 +4190,8 @@ model WorkInstructionEditMemoOverride {
   updatedAt             DateTime                            @updatedAt
   revision              WorkInstructionEditRevision        @relation(fields: [revisionId], references: [id], onDelete: Cascade)
 
-  @@unique([revisionId, migratedFromStep], map: "WorkInstructionEditMemoOverride_unique_revision_source_step")
   @@unique([revisionId, sourceStep], map: "WorkInstructionEditMemoOverride_unique_revision_target_step")
+  @@index([revisionId, migratedFromStep], map: "WorkInstructionEditMemoOverride_idx_revision_migrated_from_step")
   @@index([revisionId, sourceStep], map: "WorkInstructionEditMemoOverride_idx_revision_step")
   @@index([revisionId, migrationState], map: "WorkInstructionEditMemoOverride_idx_migration_state")
 }

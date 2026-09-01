@@ -1,5 +1,33 @@
 import type { WorkInstructionEditorController } from './useWorkInstructionEditorController';
 
+function overlayReviewCount(controller: WorkInstructionEditorController): number {
+  const rows = controller.rows ?? [];
+  const hasRowOverlayProjection = rows.some((row) => row.draft?.overlays !== undefined
+    || (row.draft?.steps?.some((step) => (step.overlays?.length ?? 0) > 0) ?? false)
+    || row.draft?.migration?.needsReview !== undefined
+    || row.migration?.needsReview !== undefined);
+  if (!hasRowOverlayProjection) return (controller.group?.migration.needsReview ?? 0) + (controller.group?.migration.unassigned ?? 0);
+
+  return rows.reduce((count, row) => {
+    const overlays = row.draft?.overlays;
+    if (overlays !== undefined) {
+      return count + overlays.filter((overlay) => {
+        const state = String(overlay.migrationState ?? '').toUpperCase();
+        return state === 'NEEDS_REVIEW' || state === 'UNASSIGNED';
+      }).length;
+    }
+    const nestedOverlays = row.draft?.steps?.flatMap((step) => step.overlays ?? []);
+    if (nestedOverlays && nestedOverlays.length > 0) {
+      return count + nestedOverlays.filter((overlay) => {
+        const state = String(overlay.migrationState ?? '').toUpperCase();
+        return state === 'NEEDS_REVIEW' || state === 'UNASSIGNED';
+      }).length;
+    }
+    const summary = row.draft?.migration ?? row.migration;
+    return count + (summary?.needsReview ?? 0) + (summary?.unassigned ?? 0);
+  }, 0);
+}
+
 function memoReviewCount(controller: WorkInstructionEditorController): number {
   const rows = controller.rows ?? [];
   const hasRowMemoProjection = rows.some((row) => row.draft?.memoOverrides !== undefined || row.draft?.migration?.memo !== undefined || row.migration?.memo !== undefined);
@@ -27,7 +55,7 @@ export function WorkInstructionEditorToolbarStatus({ controller }: { controller:
     : controller.isDirty
       ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
       : 'border-emerald-300/40 bg-emerald-300/10 text-emerald-100';
-  const reviewCount = (controller.group?.migration.needsReview ?? 0)
+  const reviewCount = overlayReviewCount(controller)
     + memoReviewCount(controller);
 
   return (

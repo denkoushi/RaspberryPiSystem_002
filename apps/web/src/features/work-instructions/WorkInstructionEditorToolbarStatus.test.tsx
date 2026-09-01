@@ -85,4 +85,33 @@ describe('WorkInstructionEditorToolbarStatus', () => {
 
     expect(screen.getByText('要確認 1')).toBeInTheDocument();
   });
+
+  it('clears the overlay warning immediately when the saved draft resolves it', () => {
+    render(
+      <WorkInstructionEditorToolbarStatus
+        controller={controller({
+          group: { migration: { total: 1, migrated: 0, needsReview: 1, unassigned: 0, skipped: 0, memo: { total: 0, migrated: 0, needsReview: 0, unassigned: 0, skipped: 0 } } },
+          rows: [{ draft: { overlays: [{ migrationState: 'MIGRATED' }] } }] as unknown as WorkInstructionEditorController['rows']
+        })}
+      />
+    );
+
+    expect(screen.queryByText(/要確認/)).not.toBeInTheDocument();
+  });
+
+  it('retains an overlay warning when another saved draft row is unresolved', () => {
+    render(
+      <WorkInstructionEditorToolbarStatus
+        controller={controller({
+          group: { migration: { total: 2, migrated: 2, needsReview: 0, unassigned: 0, skipped: 0, memo: { total: 0, migrated: 0, needsReview: 0, unassigned: 0, skipped: 0 } } },
+          rows: [
+            { draft: { overlays: [{ migrationState: 'MIGRATED' }] } },
+            { draft: { overlays: [{ migrationState: 'NEEDS_REVIEW' }] } }
+          ] as unknown as WorkInstructionEditorController['rows']
+        })}
+      />
+    );
+
+    expect(screen.getByText('要確認 1')).toBeInTheDocument();
+  });
 });

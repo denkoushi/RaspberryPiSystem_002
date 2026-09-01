@@ -370,6 +370,79 @@ describeIntegration('work-instruction immutable versions and editing persistence
     expect(await prisma.workInstructionEditMemoOverride.count({ where: { revisionId: secondDraft.revision.id } })).toBe(1);
   });
 
+  it('allows a new memo to reuse a vacated lineage step after reassignment', async () => {
+    const source = await apply({
+      list: 'List-memo-lineage',
+      itemId: 19,
+      modified: baseModified,
+      contentHash: 'f'.repeat(64),
+      steps: [
+        { step: 1, text: '手順1', imageName: null },
+        { step: 2, text: '手順2', imageName: null }
+      ]
+    });
+    const draft = await editing.createDraftRevision({ rowId: source.rowId, sourceVersionId: source.sourceVersionId });
+    revisionIds.push(draft.revision.id);
+    const sourceVersion = (await editing.listSourceVersions(source.rowId)).find((version) => version.id === source.sourceVersionId);
+    if (!sourceVersion) throw new Error('source version fixture was not created');
+    const step2Fingerprint = computeWorkInstructionMemoFingerprint(sourceVersion.steps.find((step) => step.step === 2)!);
+
+    const firstSaved = await editing.saveDraft({
+      revisionId: draft.revision.id,
+      expectedEditVersion: draft.revision.editVersion,
+      expectedSourceVersionId: source.sourceVersionId,
+      expectedContentHash: 'f'.repeat(64),
+      elements: [],
+      memoOverrides: [{ id: 'memo-original-lineage', sourceStep: 1, migratedFromStep: 1, text: '元memo' }]
+    });
+    const reassigned = await editing.saveDraft({
+      revisionId: draft.revision.id,
+      expectedEditVersion: firstSaved.editVersion,
+      expectedSourceVersionId: source.sourceVersionId,
+      expectedContentHash: 'f'.repeat(64),
+      elements: [],
+      memoOverrides: [{
+        id: 'memo-original-lineage',
+        sourceStep: 2,
+        migratedFromStep: 1,
+        action: 'KEEP',
+        expectedTargetStepFingerprint: step2Fingerprint,
+        text: '再割当memo'
+      }]
+    });
+
+    const saved = await editing.saveDraft({
+      revisionId: draft.revision.id,
+      expectedEditVersion: reassigned.editVersion,
+      expectedSourceVersionId: source.sourceVersionId,
+      expectedContentHash: 'f'.repeat(64),
+      elements: [],
+      memoOverrides: [
+        {
+          id: 'memo-original-lineage',
+          sourceStep: 2,
+          migratedFromStep: 1,
+          action: 'KEEP',
+          expectedTargetStepFingerprint: step2Fingerprint,
+          text: '再割当memo'
+        },
+        { id: 'memo-new-lineage', sourceStep: 1, migratedFromStep: 1, text: '新規memo' }
+      ]
+    });
+    expect(saved.memoOverrides).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'memo-original-lineage', sourceStep: 2, migratedFromStep: 1, text: '再割当memo' }),
+      expect.objectContaining({ id: 'memo-new-lineage', sourceStep: 1, migratedFromStep: 1, text: '新規memo' })
+    ]));
+    expect(await prisma.workInstructionEditMemoOverride.findMany({
+      where: { revisionId: draft.revision.id },
+      orderBy: { sourceStep: 'asc' },
+      select: { id: true, sourceStep: true, migratedFromStep: true, text: true }
+    })).toEqual([
+      { id: 'memo-new-lineage', sourceStep: 1n, migratedFromStep: 1n, text: '新規memo' },
+      { id: 'memo-original-lineage', sourceStep: 2n, migratedFromStep: 1n, text: '再割当memo' }
+    ]);
+  });
+
   it('rejects cross-row overlay copies and an editor group that does not contain the target', async () => {
     const source = await apply({ list: 'List-copy-source', itemId: 13, modified: baseModified, contentHash: '1'.repeat(64) });
     const target = await apply({ list: 'List-copy-target', itemId: 14, modified: baseModified, contentHash: '2'.repeat(64) });

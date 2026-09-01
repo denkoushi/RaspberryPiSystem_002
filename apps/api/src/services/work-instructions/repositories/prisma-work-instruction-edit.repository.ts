@@ -241,20 +241,25 @@ function normalizeMemoOverridesForVersion(
   existingOverrides: ReadonlyArray<WorkInstructionMemoOverride>
 ): WorkInstructionMemoOverride[] {
   const byStep = new Map(version.steps.map((step) => [stepNumber(step.step), step]));
-  const existingByStep = new Map(existingOverrides.map((memo) => [memo.migratedFromStep, memo]));
-  const seen = new Set<number>();
+  const existingById = new Map(existingOverrides.map((memo) => [memo.id, memo]));
+  const seenExistingIds = new Set<string>();
   const seenTargetSteps = new Set<number>();
   const normalized: WorkInstructionMemoOverride[] = [];
   for (const [index, input] of inputs.entries()) {
     const action = String(input.action ?? 'AUTO').toUpperCase().replace(/-/g, '_');
-    const migratedFromStep = input.migratedFromStep ?? input.sourceStep;
+    const existing = input.id
+      ? existingById.get(input.id)
+      : existingOverrides.find((memo) => memo.migratedFromStep === (input.migratedFromStep ?? input.sourceStep) && !seenExistingIds.has(memo.id));
+    const migratedFromStep = input.migratedFromStep ?? existing?.migratedFromStep ?? input.sourceStep;
     if (migratedFromStep == null || !Number.isSafeInteger(migratedFromStep) || migratedFromStep <= 0) {
       throw new WorkInstructionEditingError(400, `memo ${index + 1} original source step is invalid`, 'WORK_INSTRUCTION_MEMO_STEP_INVALID');
     }
-    if (seen.has(migratedFromStep)) {
-      throw new WorkInstructionEditingError(400, `memo ${index + 1} original source step is duplicated`, 'WORK_INSTRUCTION_DUPLICATE_MEMO');
+    if (existing) {
+      if (seenExistingIds.has(existing.id)) {
+        throw new WorkInstructionEditingError(400, `memo ${index + 1} is duplicated`, 'WORK_INSTRUCTION_DUPLICATE_MEMO');
+      }
+      seenExistingIds.add(existing.id);
     }
-    seen.add(migratedFromStep);
     if (action === 'USE_SOURCE') continue;
     if (input.sourceStep !== null) {
       if (seenTargetSteps.has(input.sourceStep)) {
@@ -262,7 +267,6 @@ function normalizeMemoOverridesForVersion(
       }
       seenTargetSteps.add(input.sourceStep);
     }
-    const existing = existingByStep.get(migratedFromStep);
     const targetStep = input.sourceStep == null ? null : byStep.get(input.sourceStep);
     if (input.sourceStep != null && !targetStep) {
       throw new WorkInstructionEditingError(400, `memo ${index + 1} source step does not exist`, 'WORK_INSTRUCTION_MEMO_STEP_NOT_FOUND');
@@ -309,7 +313,7 @@ function normalizeMemoOverridesForVersion(
     try {
       memo = normalizeWorkInstructionMemoOverride({
         ...input,
-        id: existing?.id,
+        id: existing?.id ?? input.id,
         migratedFromStep,
         baseStepFingerprint: fallbackFingerprint,
         targetStepFingerprint: targetFingerprint,
@@ -323,7 +327,7 @@ function normalizeMemoOverridesForVersion(
     normalized.push(memo);
   }
   for (const existing of existingOverrides) {
-    if (!seen.has(existing.migratedFromStep)) {
+    if (!seenExistingIds.has(existing.id)) {
       throw new WorkInstructionEditingError(409, '既存memoにはKEEPまたはUSE_SOURCEを明示してください', 'WORK_INSTRUCTION_MEMO_ACTION_REQUIRED', {
         migratedFromStep: existing.migratedFromStep
       });
