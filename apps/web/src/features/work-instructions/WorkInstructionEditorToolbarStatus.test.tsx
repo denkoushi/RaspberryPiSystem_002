@@ -56,4 +56,33 @@ describe('WorkInstructionEditorToolbarStatus', () => {
 
     expect(screen.getByText('要確認 1')).toBeInTheDocument();
   });
+
+  it('clears the warning immediately when the saved draft resolves its memo review', () => {
+    render(
+      <WorkInstructionEditorToolbarStatus
+        controller={controller({
+          group: { migration: { total: 1, migrated: 1, needsReview: 0, unassigned: 0, skipped: 0, memo: { total: 1, migrated: 0, needsReview: 1, unassigned: 0, skipped: 0 } } },
+          rows: [{ draft: { memoOverrides: [{ stepKey: 'step-1', text: '保持', migrationState: 'MIGRATED' }] } }] as unknown as WorkInstructionEditorController['rows']
+        })}
+      />
+    );
+
+    expect(screen.queryByText(/要確認/)).not.toBeInTheDocument();
+  });
+
+  it('retains a warning when another saved draft row still has an unresolved memo', () => {
+    render(
+      <WorkInstructionEditorToolbarStatus
+        controller={controller({
+          group: { migration: { total: 2, migrated: 2, needsReview: 0, unassigned: 0, skipped: 0, memo: { total: 2, migrated: 1, needsReview: 1, unassigned: 0, skipped: 0 } } },
+          rows: [
+            { draft: { memoOverrides: [{ stepKey: 'step-1', text: '保持', migrationState: 'MIGRATED' }] } },
+            { draft: { memoOverrides: [{ stepKey: 'step-2', text: '未割当', migrationState: 'UNASSIGNED' }] } }
+          ] as unknown as WorkInstructionEditorController['rows']
+        })}
+      />
+    );
+
+    expect(screen.getByText('要確認 1')).toBeInTheDocument();
+  });
 });

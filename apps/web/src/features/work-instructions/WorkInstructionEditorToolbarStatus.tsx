@@ -1,5 +1,25 @@
 import type { WorkInstructionEditorController } from './useWorkInstructionEditorController';
 
+function memoReviewCount(controller: WorkInstructionEditorController): number {
+  const rows = controller.rows ?? [];
+  const hasRowMemoProjection = rows.some((row) => row.draft?.memoOverrides !== undefined || row.draft?.migration?.memo !== undefined || row.migration?.memo !== undefined);
+  if (!hasRowMemoProjection) {
+    return (controller.group?.migration.memo?.needsReview ?? 0) + (controller.group?.migration.memo?.unassigned ?? 0);
+  }
+
+  return rows.reduce((count, row) => {
+    const overrides = row.draft?.memoOverrides;
+    if (overrides !== undefined) {
+      return count + overrides.filter((override) => {
+        const state = String(override.migrationState ?? '').toUpperCase();
+        return state === 'NEEDS_REVIEW' || state === 'UNASSIGNED';
+      }).length;
+    }
+    const summary = row.draft?.migration?.memo ?? row.migration?.memo;
+    return count + (summary?.needsReview ?? 0) + (summary?.unassigned ?? 0);
+  }, 0);
+}
+
 export function WorkInstructionEditorToolbarStatus({ controller }: { controller: WorkInstructionEditorController }) {
   const statusLabel = controller.busy ? '処理中…' : controller.isDirty ? '未保存' : '保存済み';
   const statusClass = controller.busy
@@ -8,8 +28,7 @@ export function WorkInstructionEditorToolbarStatus({ controller }: { controller:
       ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
       : 'border-emerald-300/40 bg-emerald-300/10 text-emerald-100';
   const reviewCount = (controller.group?.migration.needsReview ?? 0)
-    + (controller.group?.migration.memo?.needsReview ?? 0)
-    + (controller.group?.migration.memo?.unassigned ?? 0);
+    + memoReviewCount(controller);
 
   return (
     <div className="flex min-w-0 shrink-0 items-center gap-2 text-xs" role="status" aria-live="polite" data-testid="work-instruction-editor-toolbar-status">
