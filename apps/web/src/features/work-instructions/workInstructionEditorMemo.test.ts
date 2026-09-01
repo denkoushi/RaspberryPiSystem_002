@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   effectiveWorkInstructionMemo,
@@ -32,6 +32,10 @@ const step: WorkInstructionEditorStepDto = {
 };
 
 describe('work instruction editor memo state', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('represents an empty string as an active override and reset as row deletion', () => {
     const overrides = updateWorkInstructionMemo({}, step, '');
     const key = workInstructionStepKey(step);
@@ -87,6 +91,16 @@ describe('work instruction editor memo state', () => {
     })]);
   });
 
+  it('does not rewrite a persisted ID when a map identity needs a collision suffix', () => {
+    const map = memoOverridesToMap([
+      { id: 'memo-id', stepKey: step.stepKey, text: '割当済み', migrationState: 'MIGRATED' },
+      { id: 'memo-id', stepKey: null, migratedFromStepKey: step.stepKey, migratedFromStep: step.step, text: '未割当', migrationState: 'UNASSIGNED' }
+    ]);
+
+    expect(map['memo-id#2']).toMatchObject({ id: 'memo-id', stepKey: null, text: '未割当' });
+    expect(memoOverridesToArray(map).filter((override) => override.id === 'memo-id')).toHaveLength(2);
+  });
+
   it('keeps an unassigned override keyed by its original-step alias', () => {
     const unassigned = memoOverridesToMap([{
       stepKey: null,
@@ -133,5 +147,34 @@ describe('work instruction editor memo state', () => {
       expect.objectContaining({ id: 'memo-assigned', stepKey: lineage, text: '割当済みメモ' }),
       expect.objectContaining({ id: 'memo-unassigned', stepKey: null, migratedFromStepKey: lineage, text: '未割当メモ' })
     ]));
+  });
+
+  it('creates distinct UUID-backed IDs for new memos after a reset and keeps them in the payload', () => {
+    const randomUUID = vi.fn()
+      .mockReturnValueOnce('memo-new-1')
+      .mockReturnValueOnce('memo-new-2');
+    vi.stubGlobal('crypto', { randomUUID });
+
+    const previous = memoOverridesToMap([{
+      id: 'memo-old',
+      stepKey: step.stepKey,
+      text: '以前のメモ',
+      migrationState: 'MIGRATED'
+    }]);
+    const reset = resetWorkInstructionMemo(previous, step);
+    expect(memoOverridesToArray(reset)).toEqual([expect.objectContaining({ id: 'memo-old', action: 'USE_SOURCE' })]);
+
+    // A persisted reset returns an empty override set; the next edit is new.
+    const first = updateWorkInstructionMemo(memoOverridesToMap([]), step, '新規メモ1');
+    const second = updateWorkInstructionMemo(memoOverridesToMap([]), step, '新規メモ2');
+    const firstId = Object.values(first)[0]?.id;
+    const secondId = Object.values(second)[0]?.id;
+
+    expect(firstId).toBe('memo-new-1');
+    expect(secondId).toBe('memo-new-2');
+    expect(firstId).not.toBe(step.stepKey);
+    expect(firstId).not.toBe(secondId);
+    expect(memoOverridesToArray(first)).toEqual([expect.objectContaining({ id: firstId, text: '新規メモ1' })]);
+    expect(memoOverridesToArray(second)).toEqual([expect.objectContaining({ id: secondId, text: '新規メモ2' })]);
   });
 });

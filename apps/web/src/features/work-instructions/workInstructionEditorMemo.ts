@@ -13,6 +13,10 @@ function memoText(override: Pick<WorkInstructionMemoOverrideDto, 'text' | 'memo'
   return typeof override.text === 'string' ? override.text : override.memo ?? '';
 }
 
+function createMemoOverrideId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `memo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function workInstructionMemoOverrideMapKey(
   override: Pick<WorkInstructionMemoOverrideDto, 'id' | 'stepKey' | 'migratedFromStepKey' | 'migratedFromStep'>,
   fallback = ''
@@ -65,18 +69,18 @@ export function memoOverridesToMap(
   const entries = isArray
     ? overrides.map((override, index) => {
         const mapKey = uniqueMemoOverrideMapKey(workInstructionMemoOverrideMapKey(override, `memo:${index}`), used, `memo:${index}`);
-        return [mapKey, { ...override, id: mapKey } ] as const;
+        return [mapKey, override] as const;
       })
     : Object.entries(overrides).map(([legacyKey, override], index) => {
         const preferredKey = typeof override.id === 'string' && override.id.trim() ? override.id : legacyKey;
         const mapKey = uniqueMemoOverrideMapKey(preferredKey, used, `memo:${index}`);
-        return [mapKey, { ...override, id: mapKey, stepKey: legacyKey }] as const;
+        return [mapKey, { ...override, stepKey: legacyKey }] as const;
       });
   return Object.fromEntries(entries.map(([mapKey, override]) => {
     const { memo, text, ...metadata } = override;
     return [mapKey, {
       ...metadata,
-      id: mapKey,
+      id: override.id ?? mapKey,
       stepKey: override.stepKey ?? null,
       text: typeof text === 'string' ? text : memo ?? '',
       migrationState: normalizeMemoMigrationState(override.migrationState)
@@ -138,7 +142,7 @@ export function updateWorkInstructionMemo(
     ...overrides,
     [mapKey]: {
       stepKey,
-      id: current?.id ?? mapKey,
+      id: current?.id ?? createMemoOverrideId(),
       text: memo,
       sourceStep: current?.sourceStep ?? step.step,
       migratedFromStep: current?.migratedFromStep ?? step.step,
