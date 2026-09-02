@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { computeWorkInstructionMemoFingerprint } from '../../../services/work-instructions/domain/editing.js';
-import { toEditorGroupDto, toEditingViewDto, toRowDto } from '../dto.js';
+import { toEditorGroupDto, toEditingViewDto, toGroupDto, toRowDto } from '../dto.js';
 
 describe('work-instruction response DTOs', () => {
   it('exposes an asset API URL without leaking the internal storage key', () => {
@@ -16,7 +16,7 @@ describe('work-instruction response DTOs', () => {
       partNumber: 'PART-1',
       shootingTarget: '研削',
       contentHash: 'hash',
-      rawManifest: { schema_version: 1 },
+      rawManifest: { schema_version: 1, order: '  OP-01  ' },
       steps: [{
         id: 'step-1',
         step: 1,
@@ -32,10 +32,63 @@ describe('work-instruction response DTOs', () => {
     });
 
     expect(dto.steps[0]).toMatchObject({
+      operation: 'OP-01',
       imageAssetId: 'asset-1',
       imageUrl: '/api/work-instructions/assets/asset-1',
     });
     expect(dto.steps[0]).not.toHaveProperty('imageStorageKey');
+  });
+
+  it('preserves grouped step order while mapping each row operation label', () => {
+    const now = new Date('2026-08-29T00:00:00Z');
+    const makeStep = (id: string, step: number) => ({
+      id,
+      step,
+      text: id,
+      imageName: null,
+      imageAssetId: null,
+      imageStorageKey: null,
+      imageMimeType: null,
+      imageSha256: null
+    });
+    const makeRow = (id: string, itemId: number, order?: string) => ({
+      id,
+      source: { system: 'SharePoint', list: 'WorkInstructions', itemId, modified: now },
+      partNumber: 'PART-1',
+      shootingTarget: '研削',
+      contentHash: `hash-${id}`,
+      rawManifest: order === undefined ? { schema_version: 1 } : { schema_version: 1, order },
+      steps: [makeStep(`${id}-step-1`, 1), ...(id === 'row-op-1' ? [makeStep(`${id}-step-2`, 2)] : [])],
+      createdAt: now,
+      updatedAt: now
+    });
+    const rowOp1 = makeRow('row-op-1', 640, 'OP-01');
+    const rowOp2 = makeRow('row-op-2', 641, 'OP-02');
+    const rowWithoutOperation = makeRow('row-no-operation', 642);
+    const groupedStep = (row: typeof rowOp1, step: ReturnType<typeof makeStep>) => ({
+      ...step,
+      rowId: row.id,
+      source: { system: row.source.system, list: row.source.list, itemId: row.source.itemId }
+    });
+
+    const dto = toGroupDto({
+      partNumber: 'PART-1',
+      shootingTarget: '研削',
+      rows: [rowOp1, rowOp2, rowWithoutOperation],
+      steps: [
+        groupedStep(rowOp1, rowOp1.steps[0]!),
+        groupedStep(rowOp2, rowOp2.steps[0]!),
+        groupedStep(rowOp1, rowOp1.steps[1]!),
+        groupedStep(rowWithoutOperation, rowWithoutOperation.steps[0]!)
+      ]
+    });
+
+    expect(dto.steps.map((step) => ({ id: step.id, rowId: step.rowId, operation: step.operation }))).toEqual([
+      { id: 'row-op-1-step-1', rowId: 'row-op-1', operation: 'OP-01' },
+      { id: 'row-op-2-step-1', rowId: 'row-op-2', operation: 'OP-02' },
+      { id: 'row-op-1-step-2', rowId: 'row-op-1', operation: 'OP-01' },
+      { id: 'row-no-operation-step-1', rowId: 'row-no-operation', operation: null }
+    ]);
   });
 
   it('exposes the server-computed memo fingerprint on editor target steps', () => {
@@ -46,7 +99,7 @@ describe('work-instruction response DTOs', () => {
       sourceModified: now,
       partNumber: 'PART-1',
       shootingTarget: '研削',
-      rawManifest: { schema_version: 1 },
+      rawManifest: { schema_version: 1, order: 'OP-02' },
       contentHash: 'hash',
       createdAt: now,
       steps: [{
@@ -87,8 +140,39 @@ describe('work-instruction response DTOs', () => {
     });
 
     expect(dto.draftRevision?.steps[0]).toMatchObject({
+      operation: 'OP-02',
       memoFingerprint: computeWorkInstructionMemoFingerprint(sourceVersion.steps[0]!)
     });
+  });
+
+  it.each([
+    { schema_version: 1 },
+    { schema_version: 1, order: '   ' },
+    { schema_version: 1, order: 2 }
+  ])('omits the operation label for a missing or invalid manifest order', (rawManifest) => {
+    const now = new Date('2026-08-29T00:00:00Z');
+    const dto = toRowDto({
+      id: 'row-operation-fallback',
+      source: { system: 'SharePoint', list: 'WorkInstructions', itemId: 641, modified: now },
+      partNumber: 'PART-1',
+      shootingTarget: '研削',
+      contentHash: 'hash',
+      rawManifest,
+      steps: [{
+        id: 'step-operation-fallback',
+        step: 1,
+        text: '確認',
+        imageName: null,
+        imageAssetId: null,
+        imageStorageKey: null,
+        imageMimeType: null,
+        imageSha256: null
+      }],
+      createdAt: now,
+      updatedAt: now
+    });
+
+    expect(dto.steps[0]?.operation).toBeNull();
   });
 
   it('summarizes migrated overlays and memo overrides on editor revisions', () => {

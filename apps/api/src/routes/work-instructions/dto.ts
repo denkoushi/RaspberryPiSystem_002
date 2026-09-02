@@ -13,10 +13,18 @@ import type {
   WorkInstructionGroupSummaryView,
   WorkInstructionGroupView,
   WorkInstructionImportMessageView,
+  WorkInstructionJsonValue,
   WorkInstructionRowView,
   WorkInstructionSource,
   WorkInstructionStepView,
 } from '../../services/work-instructions/domain/types.js';
+
+function workInstructionOperation(rawManifest: WorkInstructionJsonValue): string | null {
+  if (rawManifest === null || Array.isArray(rawManifest) || typeof rawManifest !== 'object') return null;
+  const order = rawManifest.order;
+  return typeof order === 'string' && order.trim() ? order.trim() : null;
+}
+
 function iso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
@@ -44,10 +52,11 @@ export function toEditAuditLogDto(log: WorkInstructionEditAuditLogView) {
   };
 }
 
-export function toStepDto(step: WorkInstructionStepView) {
+export function toStepDto(step: WorkInstructionStepView, operation: string | null = null) {
   return {
     id: step.id,
     step: step.step,
+    operation,
     text: step.text,
     imageName: step.imageName,
     imageAssetId: step.imageAssetId,
@@ -72,6 +81,7 @@ export function toOverlayDto(overlay: WorkInstructionOverlayElement) {
 }
 
 export function toSourceVersionDto(version: WorkInstructionSourceVersionView) {
+  const operation = workInstructionOperation(version.rawManifest);
   return {
     id: version.id,
     rowId: version.rowId,
@@ -83,6 +93,7 @@ export function toSourceVersionDto(version: WorkInstructionSourceVersionView) {
     createdAt: version.createdAt.toISOString(),
     steps: version.steps.map((step) => ({
       ...step,
+      operation,
       imageDeletedAt: iso(step.imageDeletedAt),
       imageUrl: step.imageAssetId ? `/api/work-instructions/assets/${step.imageAssetId}` : null,
     })),
@@ -155,6 +166,7 @@ function toEditorVersionDto(
   status: 'latest' | 'published' | 'archived',
   revisionNumber: number
 ) {
+  const operation = workInstructionOperation(version.rawManifest);
   return {
     id: version.id,
     revisionNumber,
@@ -168,6 +180,7 @@ function toEditorVersionDto(
       sourceList: source.list,
       sourceItemId: source.itemId,
       step: step.step,
+      operation,
       text: step.text,
       imageName: step.imageName,
       imageAssetId: step.imageAssetId,
@@ -359,6 +372,7 @@ export function toEditorGroupDto(input: {
 }
 
 export function toRowDto(row: WorkInstructionRowView) {
+  const operation = workInstructionOperation(row.rawManifest);
   return {
     id: row.id,
     source: {
@@ -371,20 +385,23 @@ export function toRowDto(row: WorkInstructionRowView) {
     shootingTarget: row.shootingTarget,
     contentHash: row.contentHash,
     rawManifest: row.rawManifest,
-    steps: row.steps.map(toStepDto),
+    steps: row.steps.map((step) => toStepDto(step, operation)),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
 export function toGroupDto(group: WorkInstructionGroupView) {
+  const operationByRowId = new Map(
+    group.rows.map((row) => [row.id, workInstructionOperation(row.rawManifest)])
+  );
   return {
     partNumber: group.partNumber,
     shootingTarget: group.shootingTarget,
     rows: group.rows.map(toRowDto),
     updateAvailable: group.updateAvailable ?? false,
     steps: group.steps.map((step) => ({
-      ...toStepDto(step),
+      ...toStepDto(step, operationByRowId.get(step.rowId) ?? null),
       rowId: step.rowId,
       source: {
         system: step.source.system,

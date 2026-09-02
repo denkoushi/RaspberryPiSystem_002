@@ -20,6 +20,7 @@ const step: WorkInstructionEditorStepDto = {
   sourceList: 'work-instructions',
   sourceItemId: 1,
   step: 2,
+  operation: null,
   text: '原本のメモ',
   effectiveMemo: 'サーバー側のメモ',
   imageName: null,

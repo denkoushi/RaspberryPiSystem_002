@@ -53,6 +53,7 @@ export function WorkInstructionImageDialog({
   const position = photoIndex >= 0 ? photoIndex + 1 : 0;
   const hasPrevious = photoIndex > 0;
   const hasNext = photoIndex >= 0 && photoIndex < photoCount - 1;
+  const accessibleOperation = step?.operation ? `${step.operation} ` : '';
 
   useEffect(() => {
     if (!step) return undefined;
@@ -73,7 +74,7 @@ export function WorkInstructionImageDialog({
     <Dialog
       isOpen={step != null}
       onClose={onClose}
-      ariaLabel="作業要領画像"
+      ariaLabel={`${accessibleOperation}作業要領画像`}
       closeOnBackdrop={false}
       initialFocusRef={closeButtonRef}
       size="full"
@@ -114,7 +115,7 @@ export function WorkInstructionImageDialog({
                 <ImageOverlayFrame
                   imageUrl={blobUrl}
                   protectedImage={false}
-                  alt={`作業要領の拡大画像（写真${position}/${photoCount}）`}
+                  alt={`${accessibleOperation}作業要領の拡大画像（写真${position}/${photoCount}）`}
                   overlays={step.overlays}
                   assets={rendererAssets(overlayAssets)}
                   className="h-full w-full"
@@ -122,7 +123,7 @@ export function WorkInstructionImageDialog({
               ) : (
                 <img
                   src={blobUrl}
-                  alt={`作業要領の拡大画像（写真${position}/${photoCount}）`}
+                  alt={`${accessibleOperation}作業要領の拡大画像（写真${position}/${photoCount}）`}
                   className="max-h-full max-w-full object-contain"
                   draggable={false}
                 />

@@ -22,6 +22,7 @@ function makeStep(
   return {
     id,
     step,
+    operation: null,
     text,
     imageName: imageUrl ? `${id}.png` : null,
     imageAssetId: imageUrl ? `asset-${id}` : null,
@@ -96,6 +97,21 @@ describe('WorkInstructionViewerDialog', () => {
     expect(within(grid).queryByRole('button', { name: '手順2の画像を拡大' })).not.toBeInTheDocument();
     expect(useProtectedImageBlobUrlMock).toHaveBeenCalledWith('/api/work-instructions/assets/asset-step-1');
     expect(useProtectedImageBlobUrlMock).toHaveBeenCalledWith('/api/work-instructions/assets/asset-step-3');
+  });
+
+  it('shows the operation below the display number without changing the responsive grid contract', () => {
+    const operationStep = { ...group.steps[0]!, operation: 'OP-01' };
+    renderViewer({ group: { ...group, steps: [operationStep] } });
+
+    const grid = screen.getByTestId('work-instruction-card-grid');
+    expect(grid).toHaveClass('min-[1280px]:grid-cols-3', 'min-[1800px]:grid-cols-4');
+    expect(within(grid).getByText('OP-01')).toHaveClass('text-sm');
+    expect(within(grid).getByRole('article', { name: 'OP-01 手順 1' })).toBeInTheDocument();
+    expect(within(grid).getByRole('button', { name: 'OP-01 手順1の画像を拡大' })).toBeInTheDocument();
+
+    fireEvent.click(within(grid).getByRole('button', { name: 'OP-01 手順1の画像を拡大' }));
+    const imageDialog = screen.getByRole('dialog', { name: 'OP-01 作業要領画像' });
+    expect(within(imageDialog).getByRole('img', { name: 'OP-01 作業要領の拡大画像（写真1/1）' })).toBeInTheDocument();
   });
 
   it('shows protected image loading state', () => {

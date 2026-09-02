@@ -163,22 +163,25 @@ export function WorkInstructionStepCard({
   overlayAssets
 }: WorkInstructionStepCardProps) {
   const hasImage = hasWorkInstructionImage(step);
+  const accessibleOperation = step.operation ? `${step.operation} ` : '';
 
   return (
-    <article className="min-w-0 overflow-hidden rounded-lg border border-white/15 bg-slate-900/80 shadow-lg" aria-label={`手順 ${displayNumber}`}>
+    <article className="min-w-0 overflow-hidden rounded-lg border border-white/15 bg-slate-900/80 shadow-lg" aria-label={`${accessibleOperation}手順 ${displayNumber}`}>
 
       {hasImage ? (
         <button
           type="button"
           className={clsx('relative block w-full overflow-hidden border-b border-white/10 bg-slate-950/60 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300', WORK_INSTRUCTION_CARD_IMAGE_MIN_HEIGHT)}
           onClick={() => onImageClick(step)}
-          aria-label={`手順${displayNumber}の画像を拡大`}
+          aria-label={`${accessibleOperation}手順${displayNumber}の画像を拡大`}
         >
-          <span
-            className="absolute left-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-sm font-extrabold text-white shadow"
-            aria-hidden="true"
-          >
-            {displayNumber}
+          <span className="absolute left-3 top-3 z-10 flex flex-col items-center gap-1" aria-hidden="true">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-sm font-extrabold text-white shadow">
+              {displayNumber}
+            </span>
+            {step.operation ? (
+              <span className="text-sm font-semibold leading-none text-white drop-shadow-md">{step.operation}</span>
+            ) : null}
           </span>
           <WorkInstructionThumbnail
             imagePath={step.imageUrl}
@@ -195,11 +198,13 @@ export function WorkInstructionStepCard({
           <p className="whitespace-pre-wrap">{workInstructionStepMemo(step)}</p>
         ) : (
           <div className="flex items-start gap-2">
-            <span
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-sm font-extrabold leading-none text-white"
-              aria-hidden="true"
-            >
-              {displayNumber}
+            <span className="flex shrink-0 flex-col items-center gap-1" aria-hidden="true">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-sm font-extrabold leading-none text-white">
+                {displayNumber}
+              </span>
+              {step.operation ? (
+                <span className="text-sm font-semibold leading-none text-white">{step.operation}</span>
+              ) : null}
             </span>
             <p className="whitespace-pre-wrap">{workInstructionStepMemo(step)}</p>
           </div>
