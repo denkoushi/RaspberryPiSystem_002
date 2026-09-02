@@ -16,6 +16,8 @@ const mockUseWorkInstructionGroup = vi.fn();
 const mockIssueSelfInspectionPaperReport = vi.fn();
 const mockResolveSelfInspectionNfcTagUid = vi.fn();
 const mockGetWorkInstructionPartCandidates = vi.fn();
+const mockGetWorkInstructionPartAlias = vi.fn();
+const mockPutWorkInstructionPartAlias = vi.fn();
 const mockInvalidateSelfInspectionItem = vi.fn();
 const nfcStreamState = vi.hoisted(() => ({ event: null as NfcEvent | null, enabled: false }));
 
@@ -38,7 +40,9 @@ vi.mock('../../api/hooks', () => ({
 vi.mock('../../api/client', () => ({
   issueSelfInspectionPaperReport: (...args: unknown[]) => mockIssueSelfInspectionPaperReport(...args),
   resolveSelfInspectionNfcTagUid: (...args: unknown[]) => mockResolveSelfInspectionNfcTagUid(...args),
-  getWorkInstructionPartCandidates: (...args: unknown[]) => mockGetWorkInstructionPartCandidates(...args)
+  getWorkInstructionPartCandidates: (...args: unknown[]) => mockGetWorkInstructionPartCandidates(...args),
+  getWorkInstructionPartAlias: (...args: unknown[]) => mockGetWorkInstructionPartAlias(...args),
+  putWorkInstructionPartAlias: (...args: unknown[]) => mockPutWorkInstructionPartAlias(...args)
 }));
 
 vi.mock('../../hooks/useNfcStream', () => ({
@@ -174,6 +178,8 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     mockIssueSelfInspectionPaperReport.mockReset();
     mockResolveSelfInspectionNfcTagUid.mockReset();
     mockGetWorkInstructionPartCandidates.mockReset();
+    mockGetWorkInstructionPartAlias.mockReset();
+    mockPutWorkInstructionPartAlias.mockReset();
     mockInvalidateSelfInspectionItem.mockReset();
     nfcStreamState.event = null;
     nfcStreamState.enabled = false;
@@ -279,6 +285,8 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
       offset: 0,
       hasMore: false
     });
+    mockGetWorkInstructionPartAlias.mockResolvedValue(null);
+    mockPutWorkInstructionPartAlias.mockResolvedValue(undefined);
   });
 
   it('uses exact productNos search for HID scans and auto-opens the workflow when resource narrows to one row', async () => {
@@ -338,6 +346,33 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     expect(screen.queryByRole('dialog', { name: '作業要領書' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '581' })).toBeInTheDocument();
+    expect(mockGetWorkInstructionPartAlias).not.toHaveBeenCalled();
+  });
+
+  it('uses a learned alias after an exact miss and shows all targets as similar chips', async () => {
+    mockGetWorkInstructionPartAlias.mockResolvedValueOnce({
+      scannedPartNumber: 'MH009X',
+      canonicalPartNumber: 'MH001',
+      partName: '部品A',
+      shootingTargets: ['581', '研削'],
+      selectionCount: 2,
+      createdAt: '2026-09-01T00:00:00.000Z',
+      lastSelectedAt: '2026-09-02T00:00:00.000Z'
+    });
+    renderPage();
+
+    await scanPartHidText('MH009X');
+
+    const similarGrinding = await screen.findByRole('button', {
+      name: '類似・研削（読取品番 MH009X から正式品番 MH001）'
+    });
+    expect(screen.getByRole('button', {
+      name: '類似・581（読取品番 MH009X から正式品番 MH001）'
+    })).toBeInTheDocument();
+    expect(mockGetWorkInstructionPartCandidates).not.toHaveBeenCalled();
+    fireEvent.click(similarGrinding);
+    expect(await screen.findByRole('dialog', { name: '作業要領書' })).toBeInTheDocument();
+    expect(mockUseWorkInstructionGroup).toHaveBeenLastCalledWith('MH001', '研削');
   });
 
   it('opens the longest-prefix candidate dialog and uses the selected exact part', async () => {
@@ -365,7 +400,44 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
 
     await waitFor(() => expect(mockUseWorkInstructionGroups).toHaveBeenLastCalledWith('MH001'));
     expect(screen.queryByRole('dialog', { name: '部品番号候補を選択' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /類似・研削/ })).toBeInTheDocument();
+    expect(mockPutWorkInstructionPartAlias).toHaveBeenCalledWith({
+      scannedPartNumber: 'MH009X',
+      canonicalPartNumber: 'MH001'
+    });
+  });
+
+  it('keeps the selected candidate usable when learning the alias fails', async () => {
+    mockGetWorkInstructionPartCandidates.mockResolvedValueOnce({
+      matchedPrefix: 'MH00',
+      candidates: [
+        { partNumber: 'MH001', partName: '部品A', shootingTargets: ['581', '研削'] }
+      ],
+      limit: 20,
+      offset: 0,
+      hasMore: false
+    });
+    mockPutWorkInstructionPartAlias.mockRejectedValueOnce(new Error('alias save failed'));
+    renderPage();
+
+    await scanPartHidText('MH009X');
+    await screen.findByRole('dialog', { name: '部品番号候補を選択' });
+    fireEvent.click(screen.getByRole('button', { name: 'MH001 部品Aを選択' }));
+
+    const similarGrinding = await screen.findByRole('button', {
+      name: '類似・研削（読取品番 MH009X から正式品番 MH001）'
+    });
+    await waitFor(() => expect(mockPutWorkInstructionPartAlias).toHaveBeenCalledWith({
+      scannedPartNumber: 'MH009X',
+      canonicalPartNumber: 'MH001'
+    }));
+    expect(screen.getByRole('status')).toHaveTextContent(
+      '類似品番の保存に失敗しました。今回選択した作業要領書は閲覧できます。'
+    );
+
+    fireEvent.click(similarGrinding);
+    expect(await screen.findByRole('dialog', { name: '作業要領書' })).toBeInTheDocument();
+    expect(mockUseWorkInstructionGroup).toHaveBeenLastCalledWith('MH001', '研削');
   });
 
   it('shortens and restores the scanned part one character at a time', async () => {
@@ -488,6 +560,46 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
   });
 
+  it('ignores a delayed alias response after clear', async () => {
+    let resolveAlias!: (value: {
+      scannedPartNumber: string;
+      canonicalPartNumber: string;
+      partName: string | null;
+      shootingTargets: string[];
+      selectionCount: number;
+      createdAt: string;
+      lastSelectedAt: string;
+    }) => void;
+    mockGetWorkInstructionPartAlias.mockReturnValueOnce(new Promise((resolve) => {
+      resolveAlias = resolve;
+    }));
+    renderPage();
+
+    await scanPartHidText('MH009X');
+    await waitFor(() => expect(mockGetWorkInstructionPartAlias).toHaveBeenCalledWith(
+      'MH009X',
+      expect.any(AbortSignal)
+    ));
+
+    fireEvent.click(screen.getByRole('button', { name: 'クリア' }));
+    await act(async () => {
+      resolveAlias({
+        scannedPartNumber: 'MH009X',
+        canonicalPartNumber: 'MH001',
+        partName: '遅延部品',
+        shootingTargets: ['研削'],
+        selectionCount: 1,
+        createdAt: '2026-09-02T00:00:00.000Z',
+        lastSelectedAt: '2026-09-02T00:00:00.000Z'
+      });
+    });
+
+    expect(screen.queryByRole('button', { name: /類似・研削/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '部品番号候補を選択' })).not.toBeInTheDocument();
+    expect(screen.queryByText('遅延部品')).not.toBeInTheDocument();
+    expect(mockUseWorkInstructionGroups).toHaveBeenLastCalledWith('');
+  });
+
   it('shows candidate API failures inside the dialog', async () => {
     mockGetWorkInstructionPartCandidates.mockRejectedValueOnce(new Error('candidate API failed'));
     renderPage();
@@ -506,6 +618,7 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     expect(mockUseWorkInstructionGroups).toHaveBeenLastCalledWith('MH001');
     expect(mockUseWorkInstructionGroup).toHaveBeenLastCalledWith('MH001', '研削');
     expect(screen.getByText('加工面を確認します。')).toBeInTheDocument();
+    expect(mockGetWorkInstructionPartAlias).not.toHaveBeenCalled();
   });
 
   it('keeps existing order scanning independent from part scanning', async () => {

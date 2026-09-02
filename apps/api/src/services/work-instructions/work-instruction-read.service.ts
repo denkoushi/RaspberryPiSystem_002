@@ -4,12 +4,14 @@ import type {
   WorkInstructionGroupSummaryView,
   WorkInstructionImportMessageView,
   WorkInstructionPartCandidatePageView,
+  WorkInstructionPartAliasView,
   WorkInstructionRowView,
 } from './domain/types.js';
 import type {
   WorkInstructionGroupsQuery,
   WorkInstructionImportMessagesQuery,
   WorkInstructionPartCandidatesQuery,
+  UpsertWorkInstructionPartAliasInput,
   WorkInstructionRepository,
   WorkInstructionRowsQuery,
 } from './repositories/work-instruction-repository.port.js';
@@ -49,6 +51,14 @@ export class WorkInstructionReadService {
 
   readPublishedPartCandidates(input: WorkInstructionPartCandidatesQuery): Promise<WorkInstructionPartCandidatePageView> {
     return this.repository.readPublishedPartCandidates(input);
+  }
+
+  readPublishedPartAlias(scannedPartNumber: string): Promise<WorkInstructionPartAliasView | null> {
+    return this.repository.readPublishedPartAlias(scannedPartNumber);
+  }
+
+  upsertPartAlias(input: UpsertWorkInstructionPartAliasInput): Promise<WorkInstructionPartAliasView> {
+    return this.repository.upsertPartAlias(input);
   }
 
   readRows(input: WorkInstructionRowsQuery): Promise<ReadonlyArray<WorkInstructionRowView>> {

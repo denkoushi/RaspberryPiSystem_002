@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 const CLIENT_KEY = 'client-key-kiosk-self-inspection-work-instruction-viewer';
+const SECOND_CLIENT_KEY = 'client-key-kiosk-self-inspection-work-instruction-viewer-2';
 const PART_NUMBER = 'FH-24A-018';
 const LONG_MEMO =
   '砥石をワークへ近づける前に、保護カバー、クーラント、回転方向を確認します。初回接触は送り量を抑え、異音や過大な火花がないことを確認してください。途中で異常を感じた場合は直ちに停止し、責任者へ連絡します。カード本文は縦スクロールできます。\n' +
@@ -138,6 +139,10 @@ type ApiTrace = {
   detailRequests: string[];
   assetRequests: string[];
   assetClientKeys: string[];
+  aliasGetPartNumbers: string[];
+  aliasGetClientKeys: string[];
+  aliasPutMappings: Array<{ scannedPartNumber: string; canonicalPartNumber: string }>;
+  aliasPutClientKeys: string[];
 };
 
 async function installApiMocks(page: Page): Promise<ApiTrace> {
@@ -146,8 +151,13 @@ async function installApiMocks(page: Page): Promise<ApiTrace> {
     candidateRequests: [],
     detailRequests: [],
     assetRequests: [],
-    assetClientKeys: []
+    assetClientKeys: [],
+    aliasGetPartNumbers: [],
+    aliasGetClientKeys: [],
+    aliasPutMappings: [],
+    aliasPutClientKeys: []
   };
+  let learnedAlias: { scannedPartNumber: string; canonicalPartNumber: string } | null = null;
 
   await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
     const url = new URL(route.request().url());
@@ -206,6 +216,54 @@ async function installApiMocks(page: Page): Promise<ApiTrace> {
       });
       return;
     }
+    if (path === '/api/work-instructions/part-alias') {
+      const clientKey = route.request().headers()['x-client-key'] ?? '';
+      if (route.request().method() === 'GET') {
+        const partNumber = url.searchParams.get('partNumber') ?? '';
+        trace.aliasGetPartNumbers.push(partNumber);
+        trace.aliasGetClientKeys.push(clientKey);
+        await route.fulfill({
+          json: {
+            alias: learnedAlias && learnedAlias.scannedPartNumber === partNumber
+              ? {
+                  ...learnedAlias,
+                  partName: '作業要領 viewer E2E 部品',
+                  shootingTargets: [...workInstructionTargets],
+                  selectionCount: 1,
+                  createdAt: '2026-09-02T00:00:00.000Z',
+                  lastSelectedAt: '2026-09-02T00:00:00.000Z'
+                }
+              : null
+          }
+        });
+        return;
+      }
+      if (route.request().method() === 'PUT') {
+        const body = route.request().postDataJSON() as {
+          scannedPartNumber: string;
+          canonicalPartNumber: string;
+        };
+        learnedAlias = {
+          scannedPartNumber: body.scannedPartNumber,
+          canonicalPartNumber: body.canonicalPartNumber
+        };
+        trace.aliasPutMappings.push(learnedAlias);
+        trace.aliasPutClientKeys.push(clientKey);
+        await route.fulfill({
+          json: {
+            alias: {
+              ...learnedAlias,
+              partName: '作業要領 viewer E2E 部品',
+              shootingTargets: [...workInstructionTargets],
+              selectionCount: trace.aliasPutMappings.length,
+              createdAt: '2026-09-02T00:00:00.000Z',
+              lastSelectedAt: '2026-09-02T00:00:00.000Z'
+            }
+          }
+        });
+        return;
+      }
+    }
     if (path === '/api/work-instructions/part-candidates') {
       trace.candidateRequests.push(url.toString());
       const offset = Number(url.searchParams.get('offset') ?? '0');
@@ -255,7 +313,9 @@ async function installApiMocks(page: Page): Promise<ApiTrace> {
   });
 
   await page.addInitScript((clientKey) => {
-    window.localStorage.setItem('kiosk-client-key', JSON.stringify(clientKey));
+    if (!window.localStorage.getItem('kiosk-client-key')) {
+      window.localStorage.setItem('kiosk-client-key', JSON.stringify(clientKey));
+    }
   }, CLIENT_KEY);
 
   return trace;
@@ -438,6 +498,76 @@ for (const viewport of [
     await expect(candidateDialog).toHaveCount(0);
     await expect(page.getByLabel('撮影対象')).toBeVisible();
     await expectToolbarLayout(page);
+  });
+}
+
+for (const viewport of [
+  { width: 1280, height: 800 },
+  { width: 1920, height: 1080 }
+] as const) {
+  test(`${viewport.width}px: 候補選択を学習し、別キオスクキーから類似チップで再利用する`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const trace = await installApiMocks(page);
+    await openSelfInspection(page);
+
+    await scanPartNumber(page, `${PART_NUMBER}X`);
+    const candidateDialog = page.getByRole('dialog', { name: '部品番号候補を選択', exact: true });
+    await expect(candidateDialog).toBeVisible();
+    await candidateDialog.getByRole('button', {
+      name: `${PART_NUMBER} 作業要領 viewer E2E 部品を選択`,
+      exact: true
+    }).click();
+    await expect(candidateDialog).toHaveCount(0);
+    await expect(page.getByLabel('撮影対象')).toBeVisible();
+    const initialLearnedChip = page.getByRole('button', {
+      name: `類似・研削（読取品番 ${PART_NUMBER}X から正式品番 ${PART_NUMBER}）`,
+      exact: true
+    });
+    await expect(initialLearnedChip).toBeVisible();
+    await expect.poll(() => trace.aliasPutMappings).toEqual([{
+      scannedPartNumber: `${PART_NUMBER}X`,
+      canonicalPartNumber: PART_NUMBER
+    }]);
+
+    await initialLearnedChip.click();
+    const firstViewer = page.getByRole('dialog', { name: '作業要領書', exact: true });
+    await expect(firstViewer).toBeVisible();
+    await expect.poll(() => trace.detailRequests.length).toBe(1);
+    await firstViewer.getByRole('button', { name: '自主検査画面に戻る', exact: true }).click();
+    await expect(firstViewer).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'クリア', exact: true }).click();
+    await expect(page.getByLabel('撮影対象')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '部品番号を1文字削除', exact: true })).toBeDisabled();
+
+    // Simulate a second kiosk using the same server-side alias table.
+    await page.evaluate((clientKey) => {
+      window.localStorage.setItem('kiosk-client-key', JSON.stringify(clientKey));
+    }, SECOND_CLIENT_KEY);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await openSelfInspection(page);
+
+    await scanPartNumber(page, `${PART_NUMBER}X`);
+    await expect.poll(() => trace.aliasGetPartNumbers.length).toBe(2);
+    expect(trace.aliasGetClientKeys).toEqual([CLIENT_KEY, SECOND_CLIENT_KEY]);
+    expect(trace.candidateRequests).toHaveLength(1);
+
+    const learnedChip = page.getByRole('button', {
+      name: `類似・研削（読取品番 ${PART_NUMBER}X から正式品番 ${PART_NUMBER}）`,
+      exact: true
+    });
+    await expect(learnedChip).toBeVisible();
+    await expect(page.getByRole('button', {
+      name: `類似・切削（読取品番 ${PART_NUMBER}X から正式品番 ${PART_NUMBER}）`,
+      exact: true
+    })).toBeVisible();
+    await expectToolbarLayout(page);
+
+    await learnedChip.click();
+    const learnedViewer = page.getByRole('dialog', { name: '作業要領書', exact: true });
+    await expect(learnedViewer).toBeVisible();
+    await expect.poll(() => trace.detailRequests.length).toBe(2);
+    await expect(learnedViewer).toContainText('ワーク外周と端面');
   });
 }
 

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma, PrismaClient } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
+import { normalizeWorkInstructionPartNumber } from '../domain/normalization.js';
 import { decideWorkInstructionRevision } from '../domain/update-policy.js';
 import type {
   WorkInstructionApplyResult,
@@ -13,6 +14,7 @@ import type {
   WorkInstructionSource,
   WorkInstructionStagedAsset
 } from '../domain/types.js';
+import { WorkInstructionPartAliasValidationError } from '../domain/types.js';
 import type {
   ApplyWorkInstructionPacketInput,
   CleanupWorkInstructionAssetsInput,
@@ -21,6 +23,7 @@ import type {
   WorkInstructionGroupsQuery,
   WorkInstructionImportMessagesQuery,
   WorkInstructionPartCandidatesQuery,
+  UpsertWorkInstructionPartAliasInput,
   WorkInstructionRepository,
   WorkInstructionRowsQuery
 } from './work-instruction-repository.port.js';
@@ -31,7 +34,9 @@ import {
   readWorkInstructionRows,
   readPublishedWorkInstructionGroup,
   readPublishedWorkInstructionGroups,
-  readPublishedWorkInstructionPartCandidates
+  readPublishedWorkInstructionPartCandidates,
+  readPublishedWorkInstructionPartAlias,
+  hasPublishedWorkInstructionPart
 } from './prisma-work-instruction-read-queries.js';
 import {
   readWorkInstructionImportMessage,
@@ -358,6 +363,49 @@ export class PrismaWorkInstructionRepository implements WorkInstructionRepositor
 
   async readPublishedPartCandidates(input: WorkInstructionPartCandidatesQuery) {
     return readPublishedWorkInstructionPartCandidates(this.db, input);
+  }
+
+  async readPublishedPartAlias(scannedPartNumber: string) {
+    return readPublishedWorkInstructionPartAlias(this.db, scannedPartNumber);
+  }
+
+  async upsertPartAlias(input: UpsertWorkInstructionPartAliasInput) {
+    const scannedPartNumber = normalizeWorkInstructionPartNumber(input.scannedPartNumber);
+    const canonicalPartNumber = normalizeWorkInstructionPartNumber(input.canonicalPartNumber);
+    if (!scannedPartNumber || !canonicalPartNumber) throw new Error('part numbers are required');
+    const now = input.now ?? new Date();
+    return this.db.$transaction(async (tx) => {
+      // Repeat the visibility checks inside the write transaction.  The route
+      // performs the same checks for friendly HTTP errors, but keeping them at
+      // the persistence boundary prevents stale/unpublished mappings when a
+      // publication changes between validation and upsert.
+      if (await hasPublishedWorkInstructionPart(tx, scannedPartNumber)) {
+        throw new WorkInstructionPartAliasValidationError('EXACT_EXISTS');
+      }
+      if (!(await hasPublishedWorkInstructionPart(tx, canonicalPartNumber))) {
+        throw new WorkInstructionPartAliasValidationError('TARGET_NOT_FOUND');
+      }
+      await tx.workInstructionPartAlias.upsert({
+        where: { scannedPartNumber },
+        create: {
+          scannedPartNumber,
+          canonicalPartNumber,
+          selectionCount: 1,
+          createdAt: now,
+          lastSelectedAt: now,
+          lastSelectedClientDeviceId: input.lastSelectedClientDeviceId ?? null
+        },
+        update: {
+          canonicalPartNumber,
+          selectionCount: { increment: 1 },
+          lastSelectedAt: now,
+          lastSelectedClientDeviceId: input.lastSelectedClientDeviceId ?? null
+        }
+      });
+      const alias = await readPublishedWorkInstructionPartAlias(tx, scannedPartNumber);
+      if (!alias) throw new WorkInstructionPartAliasValidationError('TARGET_NOT_FOUND');
+      return alias;
+    });
   }
 
   async readRows(input: WorkInstructionRowsQuery) {

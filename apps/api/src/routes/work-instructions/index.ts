@@ -6,9 +6,11 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { authorizeKioskClientKeyOrJwtRoles } from '../../lib/kiosk-document-auth.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { getWorkInstructionServices } from '../../services/work-instructions/work-instruction-service.factory.js';
+import { normalizeWorkInstructionPartNumber } from '../../services/work-instructions/domain/normalization.js';
 import type { WorkInstructionGmailIngestionService } from '../../services/work-instructions/work-instruction-gmail-ingestion.service.js';
 import type { WorkInstructionReadService } from '../../services/work-instructions/work-instruction-read.service.js';
 import type { WorkInstructionEditService } from '../../services/work-instructions/work-instruction-edit.service.js';
+import { WorkInstructionPartAliasValidationError } from '../../services/work-instructions/domain/types.js';
 import { registerWorkInstructionEditorRoutes } from './editor-routes.js';
 import { toGroupDto, toGroupSummaryDto, toMessageDto, toRowDto } from './dto.js';
 
@@ -36,6 +38,11 @@ const partCandidatesQuerySchema = pageQuerySchema.extend({
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['offset'], message: 'fallback requires offset 0' });
   }
 });
+const partAliasQuerySchema = z.object({ partNumber: z.string().trim().min(1).max(200) });
+const partAliasBodySchema = z.object({
+  scannedPartNumber: z.string().trim().min(1).max(200),
+  canonicalPartNumber: z.string().trim().min(1).max(200)
+});
 const rowsQuerySchema = pageQuerySchema.extend({
   partNumber: z.string().trim().min(1).optional(),
   shootingTarget: z.string().trim().min(1).optional(),
@@ -60,6 +67,13 @@ function isAuthOnlyError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const value = error as { statusCode?: number; errorCode?: string };
   return value.statusCode === 401 && (value.errorCode == null || authOnlyErrorCodes.has(value.errorCode));
+}
+
+function isInsufficientPermissionsError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const value = error as { statusCode?: number; errorCode?: string; code?: string };
+  return value.statusCode === 403
+    && (value.errorCode ?? value.code) === 'AUTH_INSUFFICIENT_PERMISSIONS';
 }
 
 async function authorizeContentRead(request: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -94,7 +108,12 @@ export function registerWorkInstructionRoutes(
         await canWriteJwt(request, reply);
         return;
       } catch (error) {
-        if (!isAuthOnlyError(error)) throw error;
+        // A kiosk request can carry a stale VIEWER JWT from a previous
+        // session.  Preserve the endpoint's documented OR authorization
+        // semantics by trying the client key when that JWT is valid but lacks
+        // the write role.  Without a key, keep the original 403 response.
+        const hasClientKey = Boolean(request.headers['x-client-key']);
+        if (!isAuthOnlyError(error) && !(hasClientKey && isInsufficientPermissionsError(error))) throw error;
       }
     }
     await requireClientDevice(request.headers['x-client-key']);
@@ -142,6 +161,73 @@ export function registerWorkInstructionRoutes(
     const query = partCandidatesQuerySchema.parse(request.query ?? {});
     const page = await services.read.readPublishedPartCandidates(query);
     return { ...page, limit: query.limit, offset: query.offset };
+  });
+
+  app.get('/work-instructions/part-alias', { preHandler: [canRead] }, async (request) => {
+    const query = partAliasQuerySchema.parse(request.query ?? {});
+    const alias = await services.read.readPublishedPartAlias(query.partNumber);
+    return {
+      alias: alias ? {
+        ...alias,
+        createdAt: alias.createdAt.toISOString(),
+        lastSelectedAt: alias.lastSelectedAt.toISOString()
+      } : null
+    };
+  });
+
+  app.put('/work-instructions/part-alias', { preHandler: [canWrite] }, async (request) => {
+    const body = partAliasBodySchema.parse(request.body ?? {});
+    const scannedPartNumber = normalizeWorkInstructionPartNumber(body.scannedPartNumber);
+    const canonicalPartNumber = normalizeWorkInstructionPartNumber(body.canonicalPartNumber);
+    if (!scannedPartNumber || !canonicalPartNumber) {
+      throw new ApiError(400, '読取品番と正式品番を指定してください', undefined, 'WORK_INSTRUCTION_PART_ALIAS_INVALID');
+    }
+    const clientKey = request.headers['x-client-key'];
+    let device: Awaited<ReturnType<typeof requireClientDevice>> | null = null;
+    if (clientKey) {
+      try {
+        device = await requireClientDevice(clientKey);
+      } catch (error) {
+        // A valid ADMIN/MANAGER JWT is sufficient even when an unrelated or
+        // stale client key is also present.  If the request was authorized by
+        // the client key, canWrite has already validated it and this re-check
+        // should still surface the same failure.
+        if (!request.headers.authorization) throw error;
+      }
+    }
+    let alias;
+    try {
+      alias = await services.read.upsertPartAlias({
+        scannedPartNumber,
+        canonicalPartNumber,
+        lastSelectedClientDeviceId: device?.clientDevice.id ?? null
+      });
+    } catch (error) {
+      if (error instanceof WorkInstructionPartAliasValidationError) {
+        if (error.reason === 'EXACT_EXISTS') {
+          throw new ApiError(
+            409,
+            '読取品番には公開中の作業要領書があるため類似登録できません',
+            undefined,
+            'WORK_INSTRUCTION_PART_ALIAS_EXACT_EXISTS'
+          );
+        }
+        throw new ApiError(
+          404,
+          '選択した正式品番の公開作業要領書が見つかりません',
+          undefined,
+          'WORK_INSTRUCTION_PART_ALIAS_TARGET_NOT_FOUND'
+        );
+      }
+      throw error;
+    }
+    return {
+      alias: {
+        ...alias,
+        createdAt: alias.createdAt.toISOString(),
+        lastSelectedAt: alias.lastSelectedAt.toISOString()
+      }
+    };
   });
 
   app.get('/work-instructions/group', { preHandler: [canRead] }, async (request) => {

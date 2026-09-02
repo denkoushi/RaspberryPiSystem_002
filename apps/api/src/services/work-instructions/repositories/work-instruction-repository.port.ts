@@ -8,6 +8,7 @@ import type {
   WorkInstructionImportMessageView,
   WorkInstructionImportOutcome,
   WorkInstructionPartCandidatePageView,
+  WorkInstructionPartAliasView,
   WorkInstructionPacket,
   WorkInstructionRowView,
   WorkInstructionStagedAsset
@@ -51,6 +52,13 @@ export type WorkInstructionPartCandidatesQuery = {
   fallback: boolean;
   limit: number;
   offset: number;
+};
+
+export type UpsertWorkInstructionPartAliasInput = {
+  scannedPartNumber: string;
+  canonicalPartNumber: string;
+  lastSelectedClientDeviceId?: string | null;
+  now?: Date;
 };
 
 export type WorkInstructionImportMessagesQuery = {
@@ -107,6 +115,8 @@ export interface WorkInstructionRepository {
   /** Public kiosk group summaries; falls back to latest summaries before backfill. */
   readPublishedGroups?(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>>;
   readPublishedPartCandidates(input: WorkInstructionPartCandidatesQuery): Promise<WorkInstructionPartCandidatePageView>;
+  readPublishedPartAlias(scannedPartNumber: string): Promise<WorkInstructionPartAliasView | null>;
+  upsertPartAlias(input: UpsertWorkInstructionPartAliasInput): Promise<WorkInstructionPartAliasView>;
   readRows(input: WorkInstructionRowsQuery): Promise<ReadonlyArray<WorkInstructionRowView>>;
   readAsset(assetId: string): Promise<WorkInstructionAssetView | null>;
 

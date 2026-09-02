@@ -2,6 +2,7 @@ export type WorkInstructionTargetChipsProps = {
   targets: readonly string[];
   onSelect: (target: string) => void;
   disabled?: boolean;
+  similarMatch?: { scannedPartNumber: string; canonicalPartNumber: string } | null;
 };
 
 /**
@@ -11,7 +12,8 @@ export type WorkInstructionTargetChipsProps = {
 export function WorkInstructionTargetChips({
   targets,
   onSelect,
-  disabled = false
+  disabled = false,
+  similarMatch = null
 }: WorkInstructionTargetChipsProps) {
   if (targets.length === 0) return null;
 
@@ -25,11 +27,19 @@ export function WorkInstructionTargetChips({
         <button
           key={`${target}-${index}`}
           type="button"
-          className="min-h-11 shrink-0 rounded-full border border-cyan-200/50 bg-cyan-950/60 px-2.5 text-sm font-bold text-cyan-50 hover:bg-cyan-900/80 disabled:cursor-not-allowed disabled:opacity-60"
+          className={similarMatch
+            ? 'min-h-11 shrink-0 rounded-full border border-amber-200/60 bg-amber-950/70 px-2.5 text-sm font-bold text-amber-50 hover:bg-amber-900/80 disabled:cursor-not-allowed disabled:opacity-60'
+            : 'min-h-11 shrink-0 rounded-full border border-cyan-200/50 bg-cyan-950/60 px-2.5 text-sm font-bold text-cyan-50 hover:bg-cyan-900/80 disabled:cursor-not-allowed disabled:opacity-60'}
           onClick={() => onSelect(target)}
           disabled={disabled}
+          aria-label={similarMatch
+            ? `類似・${target}（読取品番 ${similarMatch.scannedPartNumber} から正式品番 ${similarMatch.canonicalPartNumber}）`
+            : target}
+          title={similarMatch
+            ? `読取品番 ${similarMatch.scannedPartNumber} → 正式品番 ${similarMatch.canonicalPartNumber}`
+            : undefined}
         >
-          {target}
+          {similarMatch ? `類似・${target}` : target}
         </button>
       ))}
     </div>

@@ -152,6 +152,28 @@ export type WorkInstructionPartCandidatePageView = {
   hasMore: boolean;
 };
 
+export type WorkInstructionPartAliasView = {
+  scannedPartNumber: string;
+  canonicalPartNumber: string;
+  partName: string | null;
+  shootingTargets: ReadonlyArray<string>;
+  selectionCount: number;
+  createdAt: Date;
+  lastSelectedAt: Date;
+};
+
+export type WorkInstructionPartAliasValidationReason = 'EXACT_EXISTS' | 'TARGET_NOT_FOUND';
+
+/** Validation failure raised when a learned part alias cannot be persisted safely. */
+export class WorkInstructionPartAliasValidationError extends Error {
+  constructor(public readonly reason: WorkInstructionPartAliasValidationReason) {
+    super(reason === 'EXACT_EXISTS'
+      ? 'the scanned part number already has a public work instruction'
+      : 'the canonical part number has no public work instruction');
+    this.name = 'WorkInstructionPartAliasValidationError';
+  }
+}
+
 export type WorkInstructionAssetView = {
   assetId: string;
   storageKey: string;

@@ -148,6 +148,8 @@ export function KioskSelfInspectionPage() {
     clear: clearWorkInstructions,
     candidateDialog: instructionCandidateDialog,
     autoFallbackPending: instructionAutoFallbackPending,
+    similarMatch: instructionSimilarMatch,
+    learningErrorMessage: instructionLearningErrorMessage,
     canShortenPartNumber,
     canRestorePartNumber,
     shortenPartNumber,
@@ -414,6 +416,10 @@ export function KioskSelfInspectionPage() {
   }, []);
 
   useEffect(() => {
+    if (instructionLearningErrorMessage) {
+      setScanStatus({ kind: 'error', message: instructionLearningErrorMessage });
+      return;
+    }
     if (
       !instructionPartNumber ||
       hidScanTarget !== null ||
@@ -443,6 +449,7 @@ export function KioskSelfInspectionPage() {
     instructionGroupsQuery.isFetching,
     instructionGroupsQuery.isSuccess,
     instructionAutoFallbackPending,
+    instructionLearningErrorMessage,
     instructionPartNumber,
     instructionTargets.length
   ]);
@@ -684,7 +691,7 @@ export function KioskSelfInspectionPage() {
           title={scanStatus?.message}
           className={clsx(
             'truncate rounded border px-2 py-1 text-xs font-semibold outline-none',
-            instructionTargets.length > 0 ? 'sr-only' : 'min-w-[7rem] flex-1',
+            instructionTargets.length > 0 && scanStatus?.kind !== 'error' ? 'sr-only' : 'min-w-[7rem] flex-1',
             scanStatusClassName
           )}
         >
@@ -692,6 +699,7 @@ export function KioskSelfInspectionPage() {
         </div>
         <WorkInstructionTargetChips
           targets={instructionTargets}
+          similarMatch={instructionSimilarMatch}
           onSelect={(target) => {
             setHidScanTarget(null);
             setNameScanArmed(false);
