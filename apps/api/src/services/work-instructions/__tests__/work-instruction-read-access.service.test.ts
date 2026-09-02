@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PrismaClient } from '@prisma/client';
 
 import type {
   WorkInstructionAssetView,
@@ -10,9 +11,9 @@ import type {
 import type { WorkInstructionRepository } from '../repositories/work-instruction-repository.port.js';
 import type { WorkInstructionDbClient } from '../repositories/prisma-work-instruction.persistence.types.js';
 import {
-  hasPublishedWorkInstructionPart,
-  readPublishedWorkInstructionPartAlias
+  hasPublishedWorkInstructionPart
 } from '../repositories/prisma-work-instruction-read-queries.js';
+import { PrismaWorkInstructionRepository } from '../repositories/prisma-work-instruction.repository.js';
 
 const verifyDueManagementAccessPassword = vi.hoisted(() => vi.fn());
 
@@ -251,7 +252,8 @@ describe('work-instruction part alias read queries', () => {
     } as unknown as WorkInstructionDbClient;
 
     await expect(hasPublishedWorkInstructionPart(db, '  md004x ')).resolves.toBe(true);
-    await expect(readPublishedWorkInstructionPartAlias(db, ' md004x ')).resolves.toEqual({
+    const repository = new PrismaWorkInstructionRepository({ db: db as unknown as PrismaClient });
+    await expect(repository.readPublishedPartAlias(' md004x ')).resolves.toEqual({
       scannedPartNumber: 'MD004X',
       canonicalPartNumber: 'MD0041',
       partName: '部品A',
