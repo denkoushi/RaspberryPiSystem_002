@@ -28,6 +28,11 @@ import {
 import { RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID } from '../rigging/constants.js';
 import { ensureRiggingSlingsInspectionPowerappsDashboard } from '../rigging/slings-inspection-powerapps-dashboard.definition.js';
 import { isWorkInstructionGmailSubject } from '../gmail/gmail-subject-reservation.policy.js';
+import { ensureScawStfutekigoDashboard } from '../scaw-stfutekigo/dashboard.definition.js';
+import {
+  SCAW_STFUTEKIGO_DASHBOARD_ID,
+  SCAW_STFUTEKIGO_SUBJECT_PATTERN,
+} from '../scaw-stfutekigo/constants.js';
 
 export type CsvDashboardIngestResult = {
   rowsProcessed: number;
@@ -64,7 +69,9 @@ export class CsvDashboardImportService {
   ): storageProvider is StorageProvider & {
     downloadAllBySubjectPatterns: (
       subjectPatterns: string[]
-    ) => Promise<Record<string, Array<{ buffer: Buffer; messageId: string; messageSubject: string }>>>;
+    ) => Promise<
+      Record<string, Array<{ buffer: Buffer; messageId: string; messageSubject: string; receivedAt?: Date | null }>>
+    >;
   } {
     return typeof (storageProvider as { downloadAllBySubjectPatterns?: unknown }).downloadAllBySubjectPatterns === 'function';
   }
@@ -148,6 +155,11 @@ export class CsvDashboardImportService {
 
     if (dashboardId === RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID) {
       await ensureRiggingSlingsInspectionPowerappsDashboard(prisma);
+      return;
+    }
+
+    if (dashboardId === SCAW_STFUTEKIGO_DASHBOARD_ID) {
+      await ensureScawStfutekigoDashboard(prisma);
     }
   }
 
@@ -197,7 +209,7 @@ export class CsvDashboardImportService {
 
     const unifiedResultsByPattern: Record<
       string,
-      Array<{ buffer: Buffer; messageId: string; messageSubject: string }>
+      Array<{ buffer: Buffer; messageId: string; messageSubject: string; receivedAt?: Date | null }>
     > = {};
     if (
       provider === 'gmail' &&
@@ -243,7 +255,12 @@ export class CsvDashboardImportService {
         '[CsvDashboardImportService] Processing CSV dashboard ingestion'
       );
 
-      const bufferResults: Array<{ buffer: Buffer; messageId?: string; messageSubject?: string }> = [];
+      const bufferResults: Array<{
+        buffer: Buffer;
+        messageId?: string;
+        messageSubject?: string;
+        receivedAt?: Date | null;
+      }> = [];
       if (provider === 'gmail' && Object.keys(unifiedResultsByPattern).length > 0) {
         for (const pattern of subjectPatterns) {
           const unifiedResults = unifiedResultsByPattern[pattern] ?? [];
@@ -269,6 +286,14 @@ export class CsvDashboardImportService {
             throw error;
           }
         }
+      }
+
+      if (dashboardId === SCAW_STFUTEKIGO_DASHBOARD_ID) {
+        const exactSubject = SCAW_STFUTEKIGO_SUBJECT_PATTERN.toLocaleLowerCase();
+        const exactMatches = bufferResults.filter(
+          ({ messageSubject }) => messageSubject?.trim().toLocaleLowerCase() === exactSubject
+        );
+        bufferResults.splice(0, bufferResults.length, ...exactMatches);
       }
 
       if (bufferResults.length === 0) {
@@ -299,7 +324,7 @@ export class CsvDashboardImportService {
       const canPostProcessGmail = provider === 'gmail' && CsvDashboardImportService.canPostProcessGmail(storageProvider);
 
       for (const bufferResult of bufferResults) {
-        const { buffer, messageId, messageSubject } = bufferResult;
+        const { buffer, messageId, messageSubject, receivedAt } = bufferResult;
         // Work-instruction mail belongs to its dedicated importer. The
         // unified CSV mailbox can still return it for a broad legacy pattern,
         // so ownership must be checked before parsing or post-processing.
@@ -325,7 +350,8 @@ export class CsvDashboardImportService {
               csvContent,
               messageId,
               messageSubject,
-              csvFilePath
+              csvFilePath,
+              receivedAt
             );
 
             await this.postIngestService.runAfterSuccessfulIngest({

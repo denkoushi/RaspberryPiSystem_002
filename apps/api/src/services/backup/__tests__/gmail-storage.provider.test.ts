@@ -721,5 +721,33 @@ describe('GmailStorageProvider', () => {
       expect(result.Pattern1).toHaveLength(1);
       expect(result.Pattern1[0].messageId).toBe('msg1');
     });
+
+    it('orders unified subject batches by Gmail received time and carries metadata', async () => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        oauthService: mockOAuthService,
+        onTokenUpdate,
+      });
+      const message = (id: string, internalDateMs: number) => ({
+        id,
+        threadId: `thread-${id}`,
+        labelIds: ['UNREAD'],
+        snippet: '',
+        internalDateMs,
+        payload: { headers: [{ name: 'Subject', value: 'scawSTFUTEKIGO' }], parts: [] },
+      });
+      mockGmailApiClient.searchMessagesLimited.mockResolvedValueOnce(['new', 'old']);
+      mockGmailApiClient.getMessage
+        .mockResolvedValueOnce(message('new', 2_000))
+        .mockResolvedValueOnce(message('old', 1_000));
+      mockGmailApiClient.getFirstAttachment
+        .mockResolvedValueOnce({ buffer: Buffer.from('old'), filename: 'old.csv' })
+        .mockResolvedValueOnce({ buffer: Buffer.from('new'), filename: 'new.csv' });
+
+      const result = await provider.downloadAllBySubjectPatterns(['scawSTFUTEKIGO']);
+      expect(result.scawSTFUTEKIGO.map((item) => item.messageId)).toEqual(['old', 'new']);
+      expect(result.scawSTFUTEKIGO.map((item) => item.receivedAt?.getTime())).toEqual([1_000, 2_000]);
+    });
   });
 });

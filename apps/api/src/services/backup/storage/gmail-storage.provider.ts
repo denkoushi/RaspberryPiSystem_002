@@ -226,13 +226,17 @@ export class GmailStorageProvider implements StorageProvider {
     query: string,
     initialIds: ReadonlyArray<string>,
     targetCount: number
-  ): Promise<Array<{
-    messageId: string;
-    subject: string;
-  }>> {
+  ): Promise<
+    Array<{
+      messageId: string;
+      subject: string;
+      internalDateMs: number;
+    }>
+  > {
     const results: Array<{
       messageId: string;
       subject: string;
+      internalDateMs: number;
     }> = [];
     const seen = new Set<string>();
     let ownedSeen = false;
@@ -251,7 +255,7 @@ export class GmailStorageProvider implements StorageProvider {
           );
           continue;
         }
-        results.push({ messageId, subject: subject || 'No Subject' });
+        results.push({ messageId, subject: subject || 'No Subject', internalDateMs: message?.internalDateMs ?? 0 });
       }
     };
 
@@ -562,12 +566,15 @@ export class GmailStorageProvider implements StorageProvider {
 
   async downloadAllBySubjectPatterns(
     subjectPatterns: string[]
-  ): Promise<Record<string, Array<{ buffer: Buffer; messageId: string; messageSubject: string }>>> {
+  ): Promise<Record<string, Array<{ buffer: Buffer; messageId: string; messageSubject: string; receivedAt: Date | null }>>> {
     return await this.handleAuthError(async () => {
       const uniquePatterns = Array.from(
         new Set(subjectPatterns.map((v) => v.trim()).filter((v) => v.length > 0))
       );
-      const grouped: Record<string, Array<{ buffer: Buffer; messageId: string; messageSubject: string }>> = {};
+      const grouped: Record<
+        string,
+        Array<{ buffer: Buffer; messageId: string; messageSubject: string; receivedAt: Date | null }>
+      > = {};
       for (const pattern of uniquePatterns) {
         grouped[pattern] = [];
       }
@@ -591,8 +598,12 @@ export class GmailStorageProvider implements StorageProvider {
         messageIds,
         effectiveBatchSize
       );
-      for (let i = 0; i < eligibleMessages.length; i++) {
-        const { messageId, subject: messageSubject } = eligibleMessages[i]!;
+      const orderedEligibleMessages = [...eligibleMessages].sort((a, b) => {
+        if (a.internalDateMs !== b.internalDateMs) return a.internalDateMs - b.internalDateMs;
+        return a.messageId.localeCompare(b.messageId);
+      });
+      for (let i = 0; i < orderedEligibleMessages.length; i++) {
+        const { messageId, subject: messageSubject, internalDateMs } = orderedEligibleMessages[i]!;
         if (i > 0 && effectiveDelayMs > 0) {
           await this.sleep(effectiveDelayMs);
         }
@@ -607,7 +618,20 @@ export class GmailStorageProvider implements StorageProvider {
         if (!attachment) {
           continue;
         }
-        grouped[matchedPattern].push({ buffer: attachment.buffer, messageId, messageSubject });
+        grouped[matchedPattern].push({
+          buffer: attachment.buffer,
+          messageId,
+          messageSubject,
+          receivedAt: internalDateMs > 0 ? new Date(internalDateMs) : null,
+        });
+      }
+
+      for (const messages of Object.values(grouped)) {
+        messages.sort((a, b) => {
+          const aTime = a.receivedAt?.getTime() ?? Number.MAX_SAFE_INTEGER;
+          const bTime = b.receivedAt?.getTime() ?? Number.MAX_SAFE_INTEGER;
+          return aTime - bTime || a.messageId.localeCompare(b.messageId);
+        });
       }
 
       this.rateController.recordSuccess();

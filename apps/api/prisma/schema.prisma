@@ -75,6 +75,18 @@ enum ImportStatus {
   FAILED
 }
 
+/// SCAW 不適合の source payload が current にどう追加されたか。
+enum ScawStfutekigoRevisionType {
+  CREATED
+  UPDATED
+}
+
+enum ScawStfutekigoEnrichmentStatus {
+  RESOLVED
+  NOT_FOUND
+  AMBIGUOUS
+}
+
 enum SignageContentType {
   TOOLS
   PDF
@@ -1071,8 +1083,12 @@ model CsvDashboardIngestRun {
   rowsSkipped    Int               @default(0) // スキップ行数（重複など）
   errorMessage   String? // エラーメッセージ
   startedAt      DateTime          @default(now())
+  sourceReceivedAt DateTime?
   completedAt    DateTime?
   sourceRows     CsvDashboardRow[] @relation("CsvDashboardRowSourceIngestRun")
+  scawCurrentRows          ScawStfutekigoCurrent[]  @relation("ScawStfutekigoCurrentSourceIngestRun")
+  scawEvaluatedCurrentRows ScawStfutekigoCurrent[]  @relation("ScawStfutekigoCurrentEvaluatedIngestRun")
+  scawRevisions            ScawStfutekigoRevision[] @relation("ScawStfutekigoRevisionSourceIngestRun")
 
   @@index([csvDashboardId])
   @@index([status])
@@ -1109,6 +1125,92 @@ model CsvDashboardRow {
   @@index([csvDashboardId, updatedAt]) // 世代トークン用
   @@index([csvDashboardId, sourceIngestRunId, sourceRowOrdinal], map: "CsvDashRow_srcRun_rowOrd_idx") // FKOJUNST_Status DEDUP更新後のCSV run+行順固定用
   @@index([csvDashboardId, sourceIngestRunStartedAt, sourceRowOrdinal], map: "CsvDashRow_srcRunStart_rowOrd_idx") // sourceIngestRunId 欠損旧行の fallback 用
+}
+
+/// Gmail 件名 scawSTFUTEKIGO の正規化済み現在値。
+/// `nonconformityNo` は業務上の一意キーで、消えたキーも行を残したまま inactive にする。
+model ScawStfutekigoCurrent {
+  id                       String                         @id @default(uuid())
+  nonconformityNo          String                         @unique @db.VarChar(120)
+  originDepartmentCode     String?
+  originDepartmentName     String?
+  quantity                 Decimal?                       @db.Decimal(18, 6)
+  remarks                  String?
+  nonconformityContent     String?
+  correctiveContent1       String?
+  correctiveContent2       String?
+  dispositionContent       String?
+  discoveredOn             DateTime?                      @db.Date
+  sourceUpdatedOn          DateTime?                      @db.Date
+  manufacturingOrderNo     String?                        @db.VarChar(64)
+  sourceSeiban             String?                        @db.VarChar(64)
+  resolvedSeiban           String?                        @db.VarChar(64)
+  qaIssueCode              String?                        @db.VarChar(120)
+  dispositionOn            DateTime?                      @db.Date
+  drawingNumber            String?
+  partNumber               String?                        @db.VarChar(120)
+  partName                 String?
+  machineName              String?
+  rawPayload               Json
+  contentHash              String                         @db.VarChar(64)
+  enrichmentStatus         ScawStfutekigoEnrichmentStatus @default(NOT_FOUND)
+  enrichedAt               DateTime?
+  isPresentInLatestSnapshot Boolean                       @default(true)
+  firstSeenAt              DateTime                       @default(now())
+  lastSeenIngestRunId      String?
+  lastEvaluatedIngestRunId String?
+  lastSeenAt               DateTime?
+  lastSnapshotReceivedAt   DateTime?
+  lastAbsentAt             DateTime?
+  sourceRowOrdinal         Int?
+  sourceIngestRun          CsvDashboardIngestRun?         @relation("ScawStfutekigoCurrentSourceIngestRun", fields: [lastSeenIngestRunId], references: [id], onDelete: SetNull)
+  lastEvaluatedIngestRun   CsvDashboardIngestRun?         @relation("ScawStfutekigoCurrentEvaluatedIngestRun", fields: [lastEvaluatedIngestRunId], references: [id], onDelete: SetNull)
+  revisions                ScawStfutekigoRevision[]
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
+
+  @@index([partNumber, isPresentInLatestSnapshot, discoveredOn(sort: Desc), nonconformityNo(sort: Desc)], map: "ScawStfutekigoCurrent_part_active_discovered_idx")
+}
+
+/// SCAW 不適合の source payload の不変履歴。
+/// 消失は current の inactive 化だけであり、消失専用 revision は作らない。
+model ScawStfutekigoRevision {
+  id                   String                         @id @default(uuid())
+  currentId            String
+  current              ScawStfutekigoCurrent          @relation(fields: [currentId], references: [id], onDelete: Restrict)
+  revisionType         ScawStfutekigoRevisionType
+  nonconformityNo      String                         @db.VarChar(120)
+  originDepartmentCode String?
+  originDepartmentName String?
+  quantity             Decimal?                       @db.Decimal(18, 6)
+  remarks              String?
+  nonconformityContent String?
+  correctiveContent1   String?
+  correctiveContent2   String?
+  dispositionContent   String?
+  discoveredOn         DateTime?                      @db.Date
+  sourceUpdatedOn      DateTime?                      @db.Date
+  manufacturingOrderNo String?                        @db.VarChar(64)
+  sourceSeiban         String?                        @db.VarChar(64)
+  resolvedSeiban       String?                        @db.VarChar(64)
+  qaIssueCode          String?                        @db.VarChar(120)
+  dispositionOn        DateTime?                      @db.Date
+  drawingNumber        String?
+  partNumber           String?                        @db.VarChar(120)
+  partName             String?
+  machineName          String?
+  rawPayload           Json
+  contentHash          String                         @db.VarChar(64)
+  enrichmentStatus     ScawStfutekigoEnrichmentStatus
+  enrichedAt           DateTime?
+  sourceIngestRunId    String?
+  sourceIngestRun      CsvDashboardIngestRun?         @relation("ScawStfutekigoRevisionSourceIngestRun", fields: [sourceIngestRunId], references: [id], onDelete: SetNull)
+  sourceRowOrdinal     Int?
+  observedAt           DateTime                       @default(now())
+
+  @@unique([sourceIngestRunId, nonconformityNo], map: "ScawStfutekigoRevision_source_run_no_key")
+  @@index([nonconformityNo, observedAt(sort: Desc)], map: "ScawStfutekigoRevision_no_changed_idx")
+  @@index([partNumber, observedAt(sort: Desc)], map: "ScawStfutekigoRevision_part_changed_idx")
 }
 
 model ProductionScheduleOrderSupplement {
