@@ -20,12 +20,15 @@ import {
   type WorkInstructionEditFileStorePort
 } from './work-instruction-edit-file-store.adapter.js';
 import type {
+  WorkInstructionEditorAuthorization,
+  WorkInstructionEditorAuthenticationView,
+  WorkInstructionEditAuditLogView,
   WorkInstructionEditRepository,
   WorkInstructionGroupIdentity,
   WorkInstructionPublishRevisionInput,
-  WorkInstructionPublishRevisionResult
+  WorkInstructionPublishRevisionResult,
+  RequiredWorkInstructionEditorAuthorization
 } from './repositories/work-instruction-edit-repository.port.js';
-import { WorkInstructionAccessService } from './work-instruction-access.service.js';
 import { cropImageRegionRoi, groupTextCandidates, type ImageRegionRoi, type TextCandidate, type TextCandidatePort } from '../image-region/index.js';
 import { CoordinateOcrTextCandidateAdapter } from '../image-region/coordinate-ocr-text-candidate.adapter.js';
 import { getImageOcrLayoutPort } from '../ocr/image-ocr-runtime.js';
@@ -39,6 +42,12 @@ export type WorkInstructionSourceAssetDeletionResult = {
 
 export type WorkInstructionTextCandidate = TextCandidate & { stepKey?: string | null };
 
+type WorkInstructionEditorMutationAuthorization = {
+  editorAuthenticationId: string;
+  clientDeviceId: string;
+  requestId?: string | null;
+};
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -49,9 +58,43 @@ export class WorkInstructionEditService {
     private readonly repository: WorkInstructionEditRepository,
     private readonly editFiles: WorkInstructionEditFileStorePort,
     private readonly sourceFiles: WorkInstructionFileStorePort,
-    private readonly accessService: WorkInstructionAccessService = new WorkInstructionAccessService(),
     private readonly textCandidates: TextCandidatePort = new CoordinateOcrTextCandidateAdapter(getImageOcrLayoutPort())
   ) {}
+
+  private requireEditorAuthorization(input: {
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
+  }): WorkInstructionEditorMutationAuthorization {
+    const editorAuthenticationId = input.editorAuthenticationId?.trim();
+    if (!editorAuthenticationId) {
+      throw new WorkInstructionEditingError(401, 'この画面で社員NFCタグをスキャンしてください', 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_REQUIRED');
+    }
+    const clientDeviceId = input.clientDeviceId?.trim();
+    if (!clientDeviceId) {
+      throw new WorkInstructionEditingError(401, 'キオスク端末の識別が必要です', 'CLIENT_KEY_REQUIRED');
+    }
+    const requestId = input.requestId?.trim() || undefined;
+    return { editorAuthenticationId, clientDeviceId, requestId };
+  }
+
+  private repositoryAuthorization(input: WorkInstructionEditorMutationAuthorization): RequiredWorkInstructionEditorAuthorization {
+    return {
+      authenticationId: input.editorAuthenticationId,
+      clientDeviceId: input.clientDeviceId,
+      requestId: input.requestId
+    };
+  }
+
+  private async validateEditorAuthenticationForRevision(input: WorkInstructionEditorMutationAuthorization & {
+    revisionId: string;
+  }): Promise<void> {
+    await this.repository.validateEditorAuthentication({
+      authenticationId: input.editorAuthenticationId,
+      clientDeviceId: input.clientDeviceId,
+      revisionId: input.revisionId
+    });
+  }
 
   readEditingView(rowId: string): Promise<WorkInstructionEditingView | null> {
     return this.repository.readEditingView(rowId);
@@ -59,6 +102,33 @@ export class WorkInstructionEditService {
 
   readRevisionContext(revisionId: string): Promise<WorkInstructionEditRevisionContext | null> {
     return this.repository.readRevisionContext(revisionId);
+  }
+
+  createEditorAuthentication(input: {
+    partNumber: string;
+    shootingTarget: string;
+    employeeTagUid: string;
+    clientDeviceId: string;
+    now?: Date;
+  }): Promise<WorkInstructionEditorAuthenticationView> {
+    return this.repository.createEditorAuthentication(input);
+  }
+
+  validateEditorAuthentication(input: WorkInstructionEditorAuthorization & {
+    expectedGroup?: WorkInstructionGroupIdentity;
+    revisionId?: string;
+    sourceVersionId?: string;
+  }): Promise<WorkInstructionEditorAuthenticationView> {
+    return this.repository.validateEditorAuthentication(input);
+  }
+
+  listEditAuditLogs(input: {
+    partNumber: string;
+    shootingTarget: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ReadonlyArray<WorkInstructionEditAuditLogView>> {
+    return this.repository.listEditAuditLogs(input);
   }
 
   listSourceVersions(rowId: string): Promise<ReadonlyArray<WorkInstructionSourceVersionView>> {
@@ -71,17 +141,21 @@ export class WorkInstructionEditService {
     copyFromRevisionId?: string;
     expectedPublishedVersionId?: string;
     expectedLatestVersionId?: string;
-    accessPassword?: string;
-  }): Promise<{ revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }> {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+  } & WorkInstructionEditorMutationAuthorization): Promise<{ revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }> {
+    const authorization = this.requireEditorAuthorization(input);
+    if (input.sourceVersionId) {
+      await this.repository.validateEditorAuthentication({
+        ...this.repositoryAuthorization(authorization),
+        sourceVersionId: input.sourceVersionId
+      });
+    }
     const result = await this.repository.createDraftRevision(input);
-    return this.rebaseCopiedRoiAssets(result);
+    return this.rebaseCopiedRoiAssets(result, authorization);
   }
 
   async createDraftRevisionGroup(input: {
-    accessPassword?: string;
-    partNumber?: string;
-    shootingTarget?: string;
+    partNumber: string;
+    shootingTarget: string;
     rows: ReadonlyArray<{
       rowId: string;
       sourceVersionId?: string;
@@ -89,23 +163,36 @@ export class WorkInstructionEditService {
       expectedPublishedVersionId?: string;
       expectedLatestVersionId?: string;
     }>;
-  }): Promise<ReadonlyArray<{ revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }>> {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+  } & WorkInstructionEditorMutationAuthorization): Promise<ReadonlyArray<{ revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }>> {
+    const authorization = this.requireEditorAuthorization(input);
     const results: Array<{ revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }> = [];
-    const expectedGroup: WorkInstructionGroupIdentity | undefined = input.partNumber && input.shootingTarget
-      ? { partNumber: input.partNumber, shootingTarget: input.shootingTarget }
-      : undefined;
-    for (const row of await this.repository.createDraftRevisionGroup(input.rows, expectedGroup)) {
+    const expectedGroup: WorkInstructionGroupIdentity = { partNumber: input.partNumber, shootingTarget: input.shootingTarget };
+    await this.repository.validateEditorAuthentication({
+      ...this.repositoryAuthorization(authorization),
+      expectedGroup
+    });
+    for (const row of input.rows) {
+      if (!row.sourceVersionId) continue;
+      // A source-version check here gives callers a fail-fast response; the
+      // repository repeats it while holding the row transaction lock.
+      // eslint-disable-next-line no-await-in-loop
+      await this.repository.validateEditorAuthentication({
+        ...this.repositoryAuthorization(authorization),
+        sourceVersionId: row.sourceVersionId
+      });
+    }
+    for (const row of await this.repository.createDraftRevisionGroup(input.rows, expectedGroup, this.repositoryAuthorization(authorization))) {
       // A failed ROI crop is represented on that overlay as NEEDS_REVIEW or
       // UNASSIGNED, so one bad source image never aborts the group copy.
       // eslint-disable-next-line no-await-in-loop
-      results.push(await this.rebaseCopiedRoiAssets(row));
+      results.push(await this.rebaseCopiedRoiAssets(row, authorization));
     }
     return results;
   }
 
   private async rebaseCopiedRoiAssets(
-    result: { revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }
+    result: { revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult },
+    authorization?: { editorAuthenticationId?: string | null; clientDeviceId?: string | null; requestId?: string | null }
   ): Promise<{ revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }> {
     const updates: Array<{
       overlayId: string;
@@ -161,7 +248,8 @@ export class WorkInstructionEditService {
       revision = await this.repository.applyRoiRebase({
         revisionId: result.revision.id,
         expectedEditVersion: result.revision.editVersion,
-        updates
+        updates,
+        ...authorization
       });
     } catch (error) {
       // New physical bytes must not outlive a failed metadata update. The
@@ -202,60 +290,103 @@ export class WorkInstructionEditService {
   }
 
   async saveOverlays(input: {
-    accessPassword?: string;
     revisionId: string;
     expectedEditVersion: number;
     expectedSourceVersionId: string;
     expectedContentHash: string;
     elements: ReadonlyArray<WorkInstructionOverlayElementInput>;
-  }): Promise<WorkInstructionEditRevisionView> {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+  } & WorkInstructionEditorMutationAuthorization): Promise<WorkInstructionEditRevisionView> {
+    const authorization = this.requireEditorAuthorization(input);
+    await this.validateEditorAuthenticationForRevision({ ...input, ...authorization });
     return this.repository.saveOverlays(input);
   }
 
   async saveDraft(input: {
-    accessPassword?: string;
     revisionId: string;
     expectedEditVersion: number;
     expectedSourceVersionId: string;
     expectedContentHash: string;
     elements: ReadonlyArray<WorkInstructionOverlayElementInput>;
     memoOverrides: ReadonlyArray<WorkInstructionMemoOverrideInput>;
-  }): Promise<WorkInstructionEditRevisionView> {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+  } & WorkInstructionEditorMutationAuthorization): Promise<WorkInstructionEditRevisionView> {
+    const authorization = this.requireEditorAuthorization(input);
+    await this.validateEditorAuthenticationForRevision({ ...input, ...authorization });
     return this.repository.saveDraft(input);
   }
 
-  async publishRevision(input: WorkInstructionPublishRevisionInput & { accessPassword?: string }): Promise<WorkInstructionPublishRevisionResult> {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+  async publishRevision(input: WorkInstructionPublishRevisionInput & WorkInstructionEditorMutationAuthorization): Promise<WorkInstructionPublishRevisionResult> {
+    const authorization = this.requireEditorAuthorization(input);
+    await this.validateEditorAuthenticationForRevision({ ...input, ...authorization });
     return this.repository.publishRevision(input);
   }
 
   async publishRevisionGroup(input: {
-    accessPassword?: string;
-    partNumber?: string;
-    shootingTarget?: string;
+    partNumber: string;
+    shootingTarget: string;
     revisions: ReadonlyArray<WorkInstructionPublishRevisionInput>;
-  }): Promise<ReadonlyArray<WorkInstructionPublishRevisionResult>> {
-    await this.accessService.requireAccessPassword(input.accessPassword);
-    const expectedGroup: WorkInstructionGroupIdentity | undefined = input.partNumber && input.shootingTarget
-      ? { partNumber: input.partNumber, shootingTarget: input.shootingTarget }
-      : undefined;
-    return this.repository.publishRevisionGroup(input.revisions, expectedGroup);
+  } & WorkInstructionEditorMutationAuthorization): Promise<ReadonlyArray<WorkInstructionPublishRevisionResult>> {
+    const authorization = this.requireEditorAuthorization(input);
+    const expectedGroup: WorkInstructionGroupIdentity = { partNumber: input.partNumber, shootingTarget: input.shootingTarget };
+    await this.repository.validateEditorAuthentication({
+      ...this.repositoryAuthorization(authorization),
+      expectedGroup
+    });
+    const revisions = input.revisions.map((revision) => {
+      const merged = { ...revision };
+      if (merged.editorAuthenticationId == null && input.editorAuthenticationId) {
+        merged.editorAuthenticationId = input.editorAuthenticationId;
+      }
+      if (merged.clientDeviceId == null && input.clientDeviceId) {
+        merged.clientDeviceId = input.clientDeviceId;
+      }
+      if (merged.requestId == null && input.requestId) {
+        merged.requestId = input.requestId;
+      }
+      return merged;
+    });
+    for (const revision of revisions) {
+      // Validate each revision before entering the publication transaction;
+      // the repository repeats this check inside its transaction to close the
+      // race between this preflight and the mutation.
+      // eslint-disable-next-line no-await-in-loop
+      await this.repository.validateEditorAuthentication({
+        ...this.repositoryAuthorization(authorization),
+        revisionId: revision.revisionId
+      });
+    }
+    return this.repository.publishRevisionGroup(revisions, expectedGroup, this.repositoryAuthorization(authorization));
   }
 
-  async discardRevision(input: { accessPassword?: string; revisionId: string; expectedEditVersion?: number }): Promise<WorkInstructionEditRevisionView> {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+  async discardRevision(input: {
+    revisionId: string;
+    expectedEditVersion?: number;
+  } & WorkInstructionEditorMutationAuthorization): Promise<WorkInstructionEditRevisionView> {
+    const authorization = this.requireEditorAuthorization(input);
+    await this.validateEditorAuthenticationForRevision({ ...input, ...authorization });
     return this.repository.discardRevision(input);
   }
 
-  async uploadEditAsset(input: { accessPassword?: string; revisionId: string; bytes: Buffer; mimeType: string; origin?: WorkInstructionEditAssetOriginInput }): Promise<WorkInstructionEditAssetView> {
-    await this.accessService.requireAccessPassword(input.accessPassword);
-    return this.persistEditAsset(input);
+  async uploadEditAsset(input: {
+    revisionId: string;
+    bytes: Buffer;
+    mimeType: string;
+    origin?: WorkInstructionEditAssetOriginInput;
+  } & WorkInstructionEditorMutationAuthorization): Promise<WorkInstructionEditAssetView> {
+    const authorization = this.requireEditorAuthorization(input);
+    await this.validateEditorAuthenticationForRevision({ ...input, ...authorization });
+    return this.persistEditAsset(input, 'ASSET_UPLOADED');
   }
 
   /** Shared physical/DB asset lifecycle used by authenticated uploads and ROI rebase. */
-  private async persistEditAsset(input: { revisionId: string; bytes: Buffer; mimeType: string; origin?: WorkInstructionEditAssetOriginInput }): Promise<WorkInstructionEditAssetView> {
+  private async persistEditAsset(input: {
+    revisionId: string;
+    bytes: Buffer;
+    mimeType: string;
+    origin?: WorkInstructionEditAssetOriginInput;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
+  }, action: 'ASSET_UPLOADED' | 'REGION_CREATED' = 'ASSET_UPLOADED'): Promise<WorkInstructionEditAssetView> {
     if (!Buffer.isBuffer(input.bytes) || input.bytes.length === 0) {
       throw new WorkInstructionEditingError(400, 'overlay画像が空です', 'WORK_INSTRUCTION_EDIT_ASSET_EMPTY');
     }
@@ -271,13 +402,17 @@ export class WorkInstructionEditService {
     const assetId = randomUUID();
     const storageKey = workInstructionEditStorageKey(assetId, mimeType);
     const sha256 = createHash('sha256').update(input.bytes).digest('hex');
+    const editorAuthorization = input.editorAuthenticationId && input.clientDeviceId
+      ? { editorAuthenticationId: input.editorAuthenticationId, clientDeviceId: input.clientDeviceId }
+      : {};
     const staged = await this.repository.stageEditAsset({
       revisionId: input.revisionId,
       storageKey,
       mimeType,
       sizeBytes: input.bytes.length,
       sha256,
-      origin: input.origin
+      origin: input.origin,
+      ...editorAuthorization
     });
     let written = false;
     try {
@@ -286,7 +421,24 @@ export class WorkInstructionEditService {
       if (stored.storageKey !== storageKey || stored.sha256 !== sha256 || stored.sizeBytes !== input.bytes.length) {
         throw new WorkInstructionEditingError(500, 'overlay画像の保存結果が一致しません', 'WORK_INSTRUCTION_EDIT_ASSET_INTEGRITY_ERROR');
       }
-      return await this.repository.activateEditAsset({ assetId: staged.id, revisionId: input.revisionId });
+      const activation: {
+        assetId: string;
+        revisionId: string;
+        action?: 'ASSET_UPLOADED' | 'REGION_CREATED';
+        authorization?: WorkInstructionEditorAuthorization;
+      } = {
+        assetId: staged.id,
+        revisionId: input.revisionId
+      };
+      if (action !== 'ASSET_UPLOADED') activation.action = action;
+      if (input.editorAuthenticationId && input.clientDeviceId) {
+        activation.authorization = {
+          authenticationId: input.editorAuthenticationId,
+          clientDeviceId: input.clientDeviceId,
+          requestId: input.requestId ?? undefined
+        };
+      }
+      return await this.repository.activateEditAsset(activation);
     } catch (error) {
       // A staged DB row is intentionally retained when physical deletion
       // fails; the cleanup candidate can be retried without losing metadata.
@@ -339,12 +491,12 @@ export class WorkInstructionEditService {
   }
 
   async createImageRegion(input: {
-    accessPassword?: string;
     revisionId: string;
     stepKey: string;
     bbox: ImageRegionRoi;
-  }): Promise<WorkInstructionEditAssetView> {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+  } & WorkInstructionEditorMutationAuthorization): Promise<WorkInstructionEditAssetView> {
+    const authorization = this.requireEditorAuthorization(input);
+    await this.validateEditorAuthenticationForRevision({ ...input, ...authorization });
     const source = await this.sourceImageForStep(input.revisionId, input.stepKey);
     let cropped;
     try {
@@ -353,27 +505,29 @@ export class WorkInstructionEditService {
     } catch (error) {
       throw new WorkInstructionEditingError(400, `画像範囲の切り出しに失敗しました: ${errorMessage(error)}`, 'WORK_INSTRUCTION_IMAGE_REGION_FAILED');
     }
-    return this.uploadEditAsset({
-      accessPassword: input.accessPassword,
+    return this.persistEditAsset({
       revisionId: input.revisionId,
       bytes: cropped.buffer,
       mimeType: cropped.contentType,
+      editorAuthenticationId: input.editorAuthenticationId,
+      clientDeviceId: input.clientDeviceId,
+      requestId: input.requestId,
       origin: {
         origin: 'ROI',
         sourceVersionId: source.sourceVersionId,
         sourceStep: source.sourceStep,
         bbox: input.bbox
       }
-    });
+    }, 'REGION_CREATED');
   }
 
   async findTextCandidates(input: {
-    accessPassword?: string;
     revisionId: string;
     stepKey: string;
     bbox: ImageRegionRoi;
-  }): Promise<ReadonlyArray<WorkInstructionTextCandidate>> {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+  } & WorkInstructionEditorMutationAuthorization): Promise<ReadonlyArray<WorkInstructionTextCandidate>> {
+    const authorization = this.requireEditorAuthorization(input);
+    await this.validateEditorAuthenticationForRevision({ ...input, ...authorization });
     const source = await this.sourceImageForStep(input.revisionId, input.stepKey);
     let candidates: TextCandidate[];
     try {
@@ -390,14 +544,30 @@ export class WorkInstructionEditService {
     return groupTextCandidates(candidates).map((candidate) => ({ ...candidate, stepKey: input.stepKey }));
   }
 
-  async deleteSourceAsset(input: { sourceVersionId: string; assetId: string; requestedBy: string }): Promise<WorkInstructionSourceAssetDeletionResult> {
-    const request = await this.repository.requestSourceAssetDeletion(input);
+  async deleteSourceAsset(input: {
+    sourceVersionId: string;
+    assetId: string;
+    requestedBy?: string;
+  } & WorkInstructionEditorMutationAuthorization): Promise<WorkInstructionSourceAssetDeletionResult> {
+    const authorization = this.requireEditorAuthorization(input);
+    await this.repository.validateEditorAuthentication({
+      ...this.repositoryAuthorization(authorization),
+      sourceVersionId: input.sourceVersionId
+    });
+    const request = await this.repository.requestSourceAssetDeletion({
+      ...input,
+      requestedBy: input.requestedBy ?? 'employee'
+    });
     if (request.status === 'DELETED') {
       return { assetId: request.assetId, auditId: request.auditId, status: 'DELETED' };
     }
     try {
       await this.sourceFiles.delete({ storageKey: request.storageKey });
-      await this.repository.completeSourceAssetDeletion({ auditId: request.auditId, assetId: request.assetId });
+      await this.repository.completeSourceAssetDeletion({
+        auditId: request.auditId,
+        assetId: request.assetId,
+        authorization: this.repositoryAuthorization(authorization)
+      });
       return { assetId: request.assetId, auditId: request.auditId, status: 'DELETED' };
     } catch (error) {
       const reason = errorMessage(error);
@@ -409,7 +579,15 @@ export class WorkInstructionEditService {
   }
 
   /** Deletes every currently referenced image in one source version independently. */
-  async deleteSourceVersionImages(input: { sourceVersionId: string; requestedBy: string }): Promise<ReadonlyArray<WorkInstructionSourceAssetDeletionResult>> {
+  async deleteSourceVersionImages(input: {
+    sourceVersionId: string;
+    requestedBy?: string;
+  } & WorkInstructionEditorMutationAuthorization): Promise<ReadonlyArray<WorkInstructionSourceAssetDeletionResult>> {
+    const authorization = this.requireEditorAuthorization(input);
+    await this.repository.validateEditorAuthentication({
+      ...this.repositoryAuthorization(authorization),
+      sourceVersionId: input.sourceVersionId
+    });
     const version = await this.repository.findSourceVersionForDeletion(input.sourceVersionId);
     if (!version) {
       throw new WorkInstructionEditingError(404, '原本版が見つかりません', 'WORK_INSTRUCTION_SOURCE_VERSION_NOT_FOUND');

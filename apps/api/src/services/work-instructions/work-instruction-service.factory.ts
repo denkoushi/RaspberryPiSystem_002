@@ -8,7 +8,6 @@ import { WorkInstructionReadService } from './work-instruction-read.service.js';
 import { PrismaWorkInstructionEditRepository } from './repositories/prisma-work-instruction-edit.repository.js';
 import { WorkInstructionEditFileStoreAdapter } from './work-instruction-edit-file-store.adapter.js';
 import { WorkInstructionEditService } from './work-instruction-edit.service.js';
-import { WorkInstructionAccessService } from './work-instruction-access.service.js';
 import { WorkInstructionEditAssetCleanupService } from './work-instruction-edit-asset-cleanup.service.js';
 
 export type WorkInstructionServices = {
@@ -30,7 +29,7 @@ export function getWorkInstructionServices(): WorkInstructionServices {
   const files = new WorkInstructionFileStoreAdapter(runtime.store);
   const editFiles = new WorkInstructionEditFileStoreAdapter(runtime.store);
   const editingRepository = new PrismaWorkInstructionEditRepository();
-  const editing = new WorkInstructionEditService(editingRepository, editFiles, files, new WorkInstructionAccessService());
+  const editing = new WorkInstructionEditService(editingRepository, editFiles, files);
   const editAssetCleanup = new WorkInstructionEditAssetCleanupService(editingRepository, editFiles);
   const ingestion = new WorkInstructionGmailIngestionService({
     repository,

@@ -65,7 +65,6 @@ type WorkInstructionRouteOptions = {
   managePreHandler?: ReturnType<typeof authorizeRoles>;
   readPreHandler?: typeof authorizeContentRead;
   writePreHandler?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-  adminPreHandler?: ReturnType<typeof authorizeRoles>;
 };
 
 export function registerWorkInstructionRoutes(
@@ -89,7 +88,6 @@ export function registerWorkInstructionRoutes(
     await requireClientDevice(request.headers['x-client-key']);
     if (reply.statusCode === 401) reply.code(200);
   });
-  const canDeleteSource = options.adminPreHandler ?? authorizeRoles('ADMIN');
 
   app.post('/work-instructions/ingest', { preHandler: [canManage] }, async (request, reply) => {
     const body = ingestBodySchema.parse(request.body ?? {});
@@ -155,7 +153,6 @@ export function registerWorkInstructionRoutes(
     read: services.read,
     editing: services.editing ?? defaultServices.editing,
     allowView: canRead,
-    allowWrite: canWrite,
-    allowAdmin: canDeleteSource
+    allowWrite: canWrite
   });
 }

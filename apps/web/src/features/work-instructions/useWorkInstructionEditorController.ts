@@ -2,15 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   copyWorkInstructionOverlayDraft,
+  createWorkInstructionEditorAuthentication,
   createWorkInstructionImageRegion,
   deleteWorkInstructionSourceVersionImages,
   discardWorkInstructionOverlayDraft,
   findWorkInstructionTextCandidates,
+  listWorkInstructionEditorAudit,
   listWorkInstructionRevisionHistory,
   publishWorkInstructionOverlayDraft,
   saveWorkInstructionOverlayDraft,
   uploadWorkInstructionOverlayImage,
   type WorkInstructionEditorGroupDto,
+  type WorkInstructionEditorAuditItemDto,
+  type WorkInstructionEditorAuthenticationDto,
   type WorkInstructionEditorRowDto,
   type WorkInstructionEditorStepDto,
   type WorkInstructionEditAssetDto,
@@ -234,8 +238,8 @@ export function useWorkInstructionEditorController({
 }) {
   const groupQuery = useWorkInstructionEditorGroup(partNumber, shootingTarget);
   const [group, setGroup] = useState<WorkInstructionEditorGroupDto | null>(null);
-  const [accessPassword, setAccessPassword] = useState('');
-  const [accessGranted, setAccessGranted] = useState(false);
+  const [editorAuthentication, setEditorAuthentication] = useState<WorkInstructionEditorAuthenticationDto | null>(null);
+  const [auditItems, setAuditItems] = useState<WorkInstructionEditorAuditItemDto[]>([]);
   const [elementsByRevision, setElementsByRevision] = useState<Record<string, WorkInstructionOverlayElement[]>>({});
   const [memoOverridesByRevision, setMemoOverridesByRevision] = useState<Record<string, WorkInstructionMemoOverrideMap>>({});
   const [assetsByRevision, setAssetsByRevision] = useState<Record<string, Record<string, WorkInstructionEditAssetDto>>>({});
@@ -260,6 +264,34 @@ export function useWorkInstructionEditorController({
   elementsRef.current = elementsByRevision;
   memoOverridesRef.current = memoOverridesByRevision;
   baselineRef.current = baselineByRevision;
+
+  const authenticationId = editorAuthentication?.id ?? null;
+  const accessGranted = editorAuthentication !== null;
+
+  useEffect(() => {
+    if (!editorAuthentication) return undefined;
+    const expiresAt = Date.parse(editorAuthentication.expiresAt);
+    const remainingMs = expiresAt - Date.now();
+    if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+      setEditorAuthentication(null);
+      setAuditItems([]);
+      setMessage('編集認証の有効期限が切れました。社員NFCタグを再度スキャンしてください。');
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      setEditorAuthentication(null);
+      setAuditItems([]);
+      setMessage('編集認証の有効期限が切れました。社員NFCタグを再度スキャンしてください。');
+    }, remainingMs);
+    return () => window.clearTimeout(timer);
+  }, [editorAuthentication]);
+
+  useEffect(() => {
+    // Query-string navigation can keep the same route component mounted. Do
+    // not carry an employee-bound authentication into another work group.
+    setEditorAuthentication(null);
+    setAuditItems([]);
+  }, [partNumber, shootingTarget]);
 
   useEffect(() => {
     if (!groupQuery.data) return;
@@ -455,17 +487,39 @@ export function useWorkInstructionEditorController({
     }));
   }, []);
 
-  const authenticate = useCallback(async () => {
+  const refreshAudit = useCallback(async (authId = authenticationId) => {
+    if (!authId) {
+      setAuditItems([]);
+      return;
+    }
+    try {
+      setAuditItems(await listWorkInstructionEditorAudit({
+        partNumber,
+        shootingTarget,
+        authenticationId: authId
+      }));
+    } catch (error: unknown) {
+      setMessage(readApiErrorMessage(error, '編集履歴の取得に失敗しました。'));
+    }
+  }, [authenticationId, partNumber, shootingTarget]);
+
+  const authenticate = useCallback(async (employeeTagUid: string) => {
     const currentGroup = groupRef.current;
-    if (!accessPassword.trim() || busy || !currentGroup || currentGroup.rows.length === 0) return;
+    const normalizedEmployeeTagUid = employeeTagUid.trim();
+    if (!normalizedEmployeeTagUid || busy || !currentGroup || currentGroup.rows.length === 0) return;
     setBusy(true);
     setLoadingEditor(true);
-    setMessage(null);
+    setMessage('社員NFCタグを確認中です。');
     try {
+      const authentication = await createWorkInstructionEditorAuthentication({
+        partNumber,
+        shootingTarget,
+        employeeTagUid: normalizedEmployeeTagUid
+      });
       const result = await copyWorkInstructionOverlayDraft({
         partNumber,
         shootingTarget,
-        accessPassword,
+        authenticationId: authentication.id,
         rows: currentGroup.rows.map((row) => ({
           rowId: row.rowId,
           publishedSourceVersionId: row.published.id,
@@ -474,19 +528,23 @@ export function useWorkInstructionEditorController({
       });
       const nextGroup = result.group ?? mergeCopyResult(currentGroup, result.revisions);
       setGroup(nextGroup);
-      setAccessGranted(true);
-      setMessage('編集用下書きを準備しました。新しい原本の注記を確認して公開できます。');
+      setEditorAuthentication(authentication);
+      setMessage(`${authentication.employee.displayName} さんの編集認証が完了しました。新しい原本の注記を確認して公開できます。`);
+      await refreshAudit(authentication.id);
     } catch (error: unknown) {
-      setMessage(readApiErrorMessage(error, '認証または下書きの作成に失敗しました。'));
+      setEditorAuthentication(null);
+      setAuditItems([]);
+      setMessage(readApiErrorMessage(error, '社員NFC認証または下書きの作成に失敗しました。'));
     } finally {
       setBusy(false);
       setLoadingEditor(false);
     }
-  }, [accessPassword, busy, partNumber, shootingTarget]);
+  }, [busy, partNumber, refreshAudit, shootingTarget]);
 
   const writeRevision = useCallback(async (row: WorkInstructionEditorRowDto, editVersionOverride?: number) => {
     const revision = row.draft;
     if (!revision) return revision;
+    if (!authenticationId) throw new Error('編集認証がありません。社員NFCタグを再度スキャンしてください。');
     const elements = elementsRef.current[revision.id] ?? [];
     const memoOverrides = memoOverridesRef.current[revision.id] ?? {};
     const payloadElements = savePayloadElements(revision, elements);
@@ -494,7 +552,7 @@ export function useWorkInstructionEditorController({
     if (!isWorkInstructionOverlayDraftSaveable(elements)) throw new Error('画像注記にはasset IDを指定し、文章を空にしないでください。');
     const savedRevision = await saveWorkInstructionOverlayDraft({
       revisionId: revision.id,
-      accessPassword,
+      authenticationId,
       expectedEditVersion: editVersionOverride ?? revision.editVersion,
       expectedSourceVersionId: revision.sourceVersionId,
       expectedContentHash: revision.contentHash || revision.baseContentHash || '',
@@ -506,7 +564,7 @@ export function useWorkInstructionEditorController({
     hydrateFromRevision(saved);
     recovery.clear();
     return saved;
-  }, [accessPassword, hydrateFromRevision, recovery]);
+  }, [authenticationId, hydrateFromRevision, recovery]);
 
   const save = useCallback(async () => {
     const currentGroup = groupRef.current;
@@ -531,6 +589,7 @@ export function useWorkInstructionEditorController({
       }
       const nextGroup = { ...currentGroup, rows: savedRows };
       setGroup(nextGroup);
+      await refreshAudit();
       setMessage('オーバーレイを保存しました。');
     } catch (error: unknown) {
       if (hasSavedRows) setGroup({ ...currentGroup, rows: savedRows });
@@ -545,7 +604,7 @@ export function useWorkInstructionEditorController({
     } finally {
       setBusy(false);
     }
-  }, [accessGranted, activeRevisionId, busy, dirtyRevisionIds, writeRevision]);
+  }, [accessGranted, activeRevisionId, busy, dirtyRevisionIds, refreshAudit, writeRevision]);
 
   const retryConflictSave = useCallback(async () => {
     if (!conflict || busy) return;
@@ -555,6 +614,7 @@ export function useWorkInstructionEditorController({
     try {
       const saved = await writeRevision(row, conflict.currentEditVersion);
       if (saved && groupRef.current) setGroup({ ...groupRef.current, rows: groupRef.current.rows.map((candidate) => candidate.draft?.id === saved.id ? { ...candidate, draft: saved } : candidate) });
+      await refreshAudit();
       setConflict(null);
       setMessage('保持していた内容を最新editVersionへ再保存しました。');
     } catch (error: unknown) {
@@ -569,7 +629,7 @@ export function useWorkInstructionEditorController({
     } finally {
       setBusy(false);
     }
-  }, [busy, conflict, writeRevision]);
+  }, [busy, conflict, refreshAudit, writeRevision]);
 
   const reloadConflict = useCallback(async () => {
     if (busy) return;
@@ -611,8 +671,9 @@ export function useWorkInstructionEditorController({
       const revisionIds = savedRows.map((row) => row.draft?.id).filter((id): id is string => Boolean(id));
       if (revisionIds.length === 0) throw new Error('公開できる下書きがありません。');
       const expectedEditVersions = Object.fromEntries(savedRows.flatMap((row) => row.draft ? [[row.draft.id, row.draft.editVersion]] : []));
-      const published = await publishWorkInstructionOverlayDraft({ partNumber, shootingTarget, revisionIds, accessPassword, expectedEditVersions, confirmUnassigned });
+      const published = await publishWorkInstructionOverlayDraft({ partNumber, shootingTarget, revisionIds, authenticationId: authenticationId!, expectedEditVersions, confirmUnassigned });
       setGroup(published);
+      await refreshAudit();
       setConflict(null);
       setMessage('加工要領書を公開しました。使用側の表示を更新できます。');
     } catch (error: unknown) {
@@ -625,7 +686,7 @@ export function useWorkInstructionEditorController({
     } finally {
       setBusy(false);
     }
-  }, [accessGranted, busy, dirtyRevisionIds, partNumber, shootingTarget, accessPassword, writeRevision]);
+  }, [accessGranted, authenticationId, busy, dirtyRevisionIds, partNumber, refreshAudit, shootingTarget, writeRevision]);
 
   const discard = useCallback(async () => {
     const currentGroup = groupRef.current;
@@ -635,17 +696,19 @@ export function useWorkInstructionEditorController({
       const nextRows: WorkInstructionEditorRowDto[] = [];
       for (const row of currentGroup.rows) {
         if (!row.draft) { nextRows.push(row); continue; }
-        await discardWorkInstructionOverlayDraft({ revisionId: row.draft.id, accessPassword, expectedEditVersion: row.draft.editVersion });
+        if (!authenticationId) throw new Error('編集認証がありません。社員NFCタグを再度スキャンしてください。');
+        await discardWorkInstructionOverlayDraft({ revisionId: row.draft.id, authenticationId, expectedEditVersion: row.draft.editVersion });
         nextRows.push({ ...row, draft: null });
       }
       setGroup({ ...currentGroup, rows: nextRows });
+      await refreshAudit();
       setMessage('下書きを破棄しました。公開中の注記は変更されていません。');
     } catch (error: unknown) {
       setMessage(readApiErrorMessage(error, '下書きの破棄に失敗しました。'));
     } finally {
       setBusy(false);
     }
-  }, [accessGranted, accessPassword, busy]);
+  }, [accessGranted, authenticationId, busy, refreshAudit]);
 
   const addElement = useCallback((element: WorkInstructionOverlayElement) => {
     if (!activeRevisionId) return;
@@ -656,7 +719,7 @@ export function useWorkInstructionEditorController({
   const createOverlay = useCallback(async (kind: 'TEXT' | 'IMAGE' | 'SHAPE') => {
     const revisionId = activeRevisionId;
     const stepKey = activeStep ? stepKeyFor(activeStep) : null;
-    if (!revisionId || !stepKey || !pendingRange || busy || !accessGranted) return;
+    if (!revisionId || !stepKey || !pendingRange || busy || !accessGranted || !authenticationId) return;
     const range = pendingRange;
     setPendingRange(null);
     setSelectionMode(false);
@@ -668,7 +731,7 @@ export function useWorkInstructionEditorController({
     setBusy(true);
     try {
       if (kind === 'TEXT') {
-        const candidates = await findWorkInstructionTextCandidates({ revisionId, stepKey, accessPassword, bbox: range });
+        const candidates = await findWorkInstructionTextCandidates({ revisionId, stepKey, authenticationId, bbox: range });
         if (candidates.length > 0) {
           setTextCandidates(candidates);
           setTextCandidateRange({ stepKey, bbox: range });
@@ -678,10 +741,11 @@ export function useWorkInstructionEditorController({
           setMessage('文章候補が見つからないため、手入力の文章注記を追加しました。');
         }
       } else {
-        const asset = await createWorkInstructionImageRegion({ revisionId, stepKey, accessPassword, bbox: range });
+        const asset = await createWorkInstructionImageRegion({ revisionId, stepKey, authenticationId, bbox: range });
         registerAsset(revisionId, asset);
         addElement({ ...createWorkInstructionOverlayForRange(kind, activeSteps.indexOf(activeStep), stepKey, range), assetId: asset.assetId } as WorkInstructionOverlayElement);
         setMessage('選択範囲を画像assetとして追加しました。');
+        await refreshAudit();
       }
     } catch (error: unknown) {
       if (kind === 'TEXT') {
@@ -694,7 +758,7 @@ export function useWorkInstructionEditorController({
     } finally {
       setBusy(false);
     }
-  }, [accessGranted, accessPassword, activeRevisionId, activeStep, activeSteps, addElement, busy, pendingRange, registerAsset]);
+  }, [accessGranted, activeRevisionId, activeStep, activeSteps, addElement, authenticationId, busy, pendingRange, refreshAudit, registerAsset]);
 
   const chooseTextCandidate = useCallback((candidate: WorkInstructionTextCandidateDto | null) => {
     if (!textCandidateRange || !activeRevisionId || !activeStep) return;
@@ -710,12 +774,12 @@ export function useWorkInstructionEditorController({
   }, [activeElements, activeRevisionId, activeStep, activeSteps, addElement, setActiveElement, textCandidateRange]);
 
   const refetchTextCandidates = useCallback(async () => {
-    if (!selectedElement || selectedElement.kind !== 'TEXT' || !activeRevisionId || !activeStep || busy) return;
+    if (!selectedElement || selectedElement.kind !== 'TEXT' || !activeRevisionId || !activeStep || busy || !accessGranted || !authenticationId) return;
     setBusy(true);
     try {
       const bbox = selectedElement.bbox;
       const stepKey = selectedElement.stepKey ?? stepKeyFor(activeStep);
-      const candidates = await findWorkInstructionTextCandidates({ revisionId: activeRevisionId, stepKey, accessPassword, bbox });
+      const candidates = await findWorkInstructionTextCandidates({ revisionId: activeRevisionId, stepKey, authenticationId, bbox });
       if (candidates.length > 0) {
         setTextCandidates(candidates);
         setTextCandidateRange({ stepKey, bbox, overlayId: selectedElement.id });
@@ -726,22 +790,23 @@ export function useWorkInstructionEditorController({
     } finally {
       setBusy(false);
     }
-  }, [accessPassword, activeRevisionId, activeStep, busy, selectedElement]);
+  }, [accessGranted, activeRevisionId, activeStep, authenticationId, busy, selectedElement]);
 
   const uploadImage = useCallback(async (file: File) => {
-    if (!selectedElement || selectedElement.kind !== 'IMAGE' || !activeRevisionId || !activeStep || busy) return;
+    if (!selectedElement || selectedElement.kind !== 'IMAGE' || !activeRevisionId || !activeStep || busy || !accessGranted || !authenticationId) return;
     setBusy(true);
     try {
-      const asset = await uploadWorkInstructionOverlayImage({ revisionId: activeRevisionId, stepKey: selectedElement.stepKey ?? stepKeyFor(activeStep), accessPassword, file });
+      const asset = await uploadWorkInstructionOverlayImage({ revisionId: activeRevisionId, stepKey: selectedElement.stepKey ?? stepKeyFor(activeStep), authenticationId, file });
       registerAsset(activeRevisionId, asset);
       setActiveElement({ ...selectedElement, assetId: asset.assetId });
+      await refreshAudit();
       setMessage('画像assetを登録しました。保存してください。');
     } catch (error: unknown) {
       setMessage(readApiErrorMessage(error, '画像assetの登録に失敗しました。別の画像を選択してください。'));
     } finally {
       setBusy(false);
     }
-  }, [accessPassword, activeRevisionId, activeStep, busy, registerAsset, selectedElement, setActiveElement]);
+  }, [accessGranted, activeRevisionId, activeStep, authenticationId, busy, refreshAudit, registerAsset, selectedElement, setActiveElement]);
 
   const updateElementBBox = useCallback((id: string, bbox: OverlayBBox) => {
     const current = activeElements.find((element) => element.id === id);
@@ -805,10 +870,10 @@ export function useWorkInstructionEditorController({
   }, [activeRevisionId, recovery]);
 
   const deleteSourceImage = useCallback(async (sourceVersionId: string) => {
-    if (busy) return;
+    if (busy || !accessGranted || !authenticationId) return;
     setBusy(true);
     try {
-      const result = await deleteWorkInstructionSourceVersionImages({ sourceVersionId, accessPassword });
+      const result = await deleteWorkInstructionSourceVersionImages({ sourceVersionId, authenticationId });
       const results = result.results ?? [];
       const deletedCount = results.filter((item) => isSourceImageDeleted(item.status)).length;
       const unresolvedCount = results.length - deletedCount;
@@ -823,7 +888,7 @@ export function useWorkInstructionEditorController({
       // completed per-asset delete into a false failure.
       const [groupResult, historyResult] = await Promise.allSettled([
         groupQuery.refetch(),
-        listWorkInstructionRevisionHistory({ partNumber, shootingTarget })
+        listWorkInstructionRevisionHistory({ partNumber, shootingTarget, authenticationId })
       ]);
       if (groupResult.status === 'fulfilled') refreshedGroup = groupResult.value.data ?? null;
       else refreshFailed = true;
@@ -847,12 +912,13 @@ export function useWorkInstructionEditorController({
       } else {
         setMessage(`削除対象の旧画像はありません。版履歴と監査情報は保持されています。${refreshSuffix}`);
       }
+      await refreshAudit();
     } catch (error: unknown) {
       setMessage(readApiErrorMessage(error, '旧画像の削除に失敗しました。公開版を確認してから再試行してください。'));
     } finally {
       setBusy(false);
     }
-  }, [accessPassword, busy, groupQuery, partNumber, shootingTarget]);
+  }, [accessGranted, authenticationId, busy, groupQuery, partNumber, refreshAudit, shootingTarget]);
 
   const activeAssets = useMemo(() => {
     const assets = {
@@ -868,9 +934,9 @@ export function useWorkInstructionEditorController({
     loading: groupQuery.isLoading || loadingEditor,
     errorMessage: groupQuery.isError ? '加工要領書を読み込めませんでした。' : null,
     accessGranted,
+    editorAuthentication,
+    auditItems,
     busy,
-    accessPassword,
-    setAccessPassword,
     authenticate,
     message,
     hasUpdate,
@@ -922,7 +988,7 @@ export function useWorkInstructionEditorController({
     discard,
     conflict,
     isDirty,
-    canSave: isDirty && dirtyRevisionIds.every((revisionId) => isWorkInstructionOverlayDraftSaveable(elementsByRevision[revisionId] ?? [])),
+    canSave: accessGranted && isDirty && dirtyRevisionIds.every((revisionId) => isWorkInstructionOverlayDraftSaveable(elementsByRevision[revisionId] ?? [])),
     canPublish: accessGranted && rows.some((row) => row.draft != null) && !busy,
     canDiscard: accessGranted && rows.some((row) => row.draft != null) && !busy,
     navigateBack,

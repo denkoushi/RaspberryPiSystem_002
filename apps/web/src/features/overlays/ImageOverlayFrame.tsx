@@ -75,6 +75,12 @@ export function ImageOverlayFrame({
 }: ImageOverlayFrameProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [natural, setNatural] = useState<Size>({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    // A frame can stay mounted while the selected step/image changes. Clear
+    // the previous image dimensions so a new aspect ratio is measured before
+    // contain sizing is calculated.
+    setNatural({ width: 0, height: 0 });
+  }, [imageUrl]);
   const protectedResult = useProtectedImageBlobUrl(protectedImage ? imageUrl : null);
   const resolvedUrl = protectedImage ? protectedResult.blobUrl : imageUrl?.trim() || null;
   const error = protectedImage ? protectedResult.error : null;

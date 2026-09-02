@@ -285,7 +285,43 @@ export type WorkInstructionEditorGroupQuery = {
   shootingTarget: string;
 };
 
+export type WorkInstructionEditorAuthenticationDto = {
+  id: string;
+  employee: {
+    id: string;
+    employeeCode: string;
+    displayName: string;
+  };
+  authenticatedAt: string;
+  expiresAt: string;
+};
+
+/** Append-only editor audit item returned by the NFC-bound audit endpoint. */
+export type WorkInstructionEditorAuditItemDto = {
+  id: string;
+  action: string;
+  employeeIdSnapshot?: string | null;
+  employeeCodeSnapshot?: string | null;
+  employeeNameSnapshot?: string | null;
+  clientDeviceIdSnapshot?: string | null;
+  clientDeviceNameSnapshot?: string | null;
+  partNumber?: string;
+  shootingTarget?: string;
+  rowId?: string | null;
+  sourceVersionId?: string | null;
+  revisionId?: string | null;
+  editVersionBefore?: number | null;
+  editVersionAfter?: number | null;
+  requestId?: string | null;
+  changeSet?: unknown;
+  createdAt: string;
+};
+
 const WORK_INSTRUCTION_BASE = '/work-instructions';
+
+const editorAuthenticationHeaders = (authenticationId: string) => ({
+  'x-work-instruction-editor-authentication-id': authenticationId
+});
 
 function encoded(value: string): string {
   return encodeURIComponent(value);
@@ -308,6 +344,18 @@ export async function getWorkInstructionEditorGroup(
   return data;
 }
 
+export async function createWorkInstructionEditorAuthentication(input: {
+  partNumber: string;
+  shootingTarget: string;
+  employeeTagUid: string;
+}): Promise<WorkInstructionEditorAuthenticationDto> {
+  const { data } = await api.post<{ authentication: WorkInstructionEditorAuthenticationDto }>(
+    `${WORK_INSTRUCTION_BASE}/editor-authentications`,
+    input
+  );
+  return data.authentication;
+}
+
 /** Creates or returns the idempotent DRAFT and applies the initial bulk migration. */
 export async function copyWorkInstructionOverlayDraft(input: {
   partNumber: string;
@@ -317,8 +365,9 @@ export async function copyWorkInstructionOverlayDraft(input: {
     publishedSourceVersionId: string;
     latestSourceVersionId: string;
   }>;
-  accessPassword: string;
+  authenticationId: string;
 }) {
+  const { authenticationId, ...body } = input;
   const { data } = await api.post<{
     group?: WorkInstructionEditorGroupDto;
     rows?: WorkInstructionEditorRowDto[];
@@ -330,7 +379,8 @@ export async function copyWorkInstructionOverlayDraft(input: {
     revision?: WorkInstructionEditRevisionDto;
   }>(
     `${WORK_INSTRUCTION_BASE}/editor-revisions/copy`,
-    input
+    body,
+    { headers: editorAuthenticationHeaders(authenticationId) }
   );
   const inlineGroup = Array.isArray(data.rows) && typeof data.partNumber === 'string' && typeof data.shootingTarget === 'string'
     ? {
@@ -356,7 +406,7 @@ export async function copyWorkInstructionOverlayDraft(input: {
 
 export async function saveWorkInstructionOverlayDraft(input: {
   revisionId: string;
-  accessPassword: string;
+  authenticationId: string;
   expectedEditVersion: number;
   expectedSourceVersionId: string;
   expectedContentHash: string;
@@ -366,25 +416,27 @@ export async function saveWorkInstructionOverlayDraft(input: {
   const { data } = await api.put<{ revision?: WorkInstructionEditRevisionResponseDto } & Partial<WorkInstructionEditRevisionResponseDto>>(
     `${WORK_INSTRUCTION_BASE}/editor-revisions/${encoded(input.revisionId)}/draft`,
     {
-      accessPassword: input.accessPassword,
       expectedEditVersion: input.expectedEditVersion,
       expectedSourceVersionId: input.expectedSourceVersionId,
       expectedContentHash: input.expectedContentHash,
       elements: input.elements,
       memoOverrides: input.memoOverrides ?? []
-    }
+    },
+    { headers: editorAuthenticationHeaders(input.authenticationId) }
   );
   return normalizeEditRevision((data.revision ?? data) as WorkInstructionEditRevisionResponseDto);
 }
 
 export async function discardWorkInstructionOverlayDraft(input: {
   revisionId: string;
-  accessPassword: string;
+  authenticationId: string;
   expectedEditVersion?: number;
 }) {
+  const { authenticationId, revisionId, expectedEditVersion } = input;
   const { data } = await api.post<{ revision?: WorkInstructionEditRevisionDto | null } & Partial<WorkInstructionEditRevisionDto>>(
-    `${WORK_INSTRUCTION_BASE}/editor-revisions/${encoded(input.revisionId)}/discard`,
-    input
+    `${WORK_INSTRUCTION_BASE}/editor-revisions/${encoded(revisionId)}/discard`,
+    expectedEditVersion === undefined ? {} : { expectedEditVersion },
+    { headers: editorAuthenticationHeaders(authenticationId) }
   );
   return (data.revision ?? ('id' in data ? data : null)) as WorkInstructionEditRevisionDto | null;
 }
@@ -394,13 +446,15 @@ export async function publishWorkInstructionOverlayDraft(input: {
   partNumber: string;
   shootingTarget: string;
   revisionIds: string[];
-  accessPassword: string;
+  authenticationId: string;
   expectedEditVersions: Record<string, number>;
   confirmUnassigned?: boolean;
 }) {
+  const { authenticationId, ...body } = input;
   const { data } = await api.post<{ group?: WorkInstructionEditorGroupDto } & Partial<WorkInstructionEditorGroupDto>>(
     `${WORK_INSTRUCTION_BASE}/editor-revisions/publish`,
-    input
+    body,
+    { headers: editorAuthenticationHeaders(authenticationId) }
   );
   return data.group ?? data as WorkInstructionEditorGroupDto;
 }
@@ -408,16 +462,16 @@ export async function publishWorkInstructionOverlayDraft(input: {
 export async function createWorkInstructionImageRegion(input: {
   revisionId: string;
   stepKey: string;
-  accessPassword: string;
+  authenticationId: string;
   bbox: OverlayBBox;
 }) {
   const { data } = await api.post<{ asset?: WorkInstructionEditAssetResponseDto } & WorkInstructionEditAssetResponseDto>(
     `${WORK_INSTRUCTION_BASE}/editor-revisions/${encoded(input.revisionId)}/regions/image`,
     {
       stepKey: input.stepKey,
-      accessPassword: input.accessPassword,
       bbox: input.bbox
-    }
+    },
+    { headers: editorAuthenticationHeaders(input.authenticationId) }
   );
   return normalizeEditAsset(data.asset ?? data);
 }
@@ -425,16 +479,16 @@ export async function createWorkInstructionImageRegion(input: {
 export async function findWorkInstructionTextCandidates(input: {
   revisionId: string;
   stepKey: string;
-  accessPassword: string;
+  authenticationId: string;
   bbox: OverlayBBox;
 }) {
   const { data } = await api.post<{ candidates?: WorkInstructionTextCandidateDto[] } & Partial<WorkInstructionTextCandidateDto[]>>(
     `${WORK_INSTRUCTION_BASE}/editor-revisions/${encoded(input.revisionId)}/regions/text`,
     {
       stepKey: input.stepKey,
-      accessPassword: input.accessPassword,
       bbox: input.bbox
-    }
+    },
+    { headers: editorAuthenticationHeaders(input.authenticationId) }
   );
   return data.candidates ?? (Array.isArray(data) ? data as unknown as WorkInstructionTextCandidateDto[] : []);
 }
@@ -442,29 +496,48 @@ export async function findWorkInstructionTextCandidates(input: {
 export async function uploadWorkInstructionOverlayImage(input: {
   revisionId: string;
   stepKey: string;
-  accessPassword: string;
+  authenticationId: string;
   file: File;
 }) {
   const formData = new FormData();
   formData.append('stepKey', input.stepKey);
-  formData.append('accessPassword', input.accessPassword);
   formData.append('file', input.file);
   const { data } = await api.post<{ asset?: WorkInstructionEditAssetResponseDto } & WorkInstructionEditAssetResponseDto>(
     `${WORK_INSTRUCTION_BASE}/editor-revisions/${encoded(input.revisionId)}/assets`,
     formData,
-    { headers: { 'Content-Type': 'multipart/form-data' } }
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        ...editorAuthenticationHeaders(input.authenticationId)
+      }
+    }
   );
   return normalizeEditAsset(data.asset ?? data);
 }
 
 export async function listWorkInstructionRevisionHistory(
-  input: WorkInstructionEditorGroupQuery
+  input: WorkInstructionEditorGroupQuery & { authenticationId: string }
 ): Promise<WorkInstructionRevisionHistoryItemDto[]> {
   const { data } = await api.get<{ history?: WorkInstructionRevisionHistoryItemDto[] } & Partial<WorkInstructionRevisionHistoryItemDto[]>>(
     `${WORK_INSTRUCTION_BASE}/editor-revisions/history`,
-    { params: groupParams(input) }
+    { params: groupParams(input), headers: editorAuthenticationHeaders(input.authenticationId) }
   );
   return data.history ?? (Array.isArray(data) ? data as unknown as WorkInstructionRevisionHistoryItemDto[] : []);
+}
+
+export async function listWorkInstructionEditorAudit(input: WorkInstructionEditorGroupQuery & {
+  authenticationId: string;
+}): Promise<WorkInstructionEditorAuditItemDto[]> {
+  const { data } = await api.get<{
+    items?: WorkInstructionEditorAuditItemDto[];
+  } & Partial<WorkInstructionEditorAuditItemDto[]>>(
+    `${WORK_INSTRUCTION_BASE}/editor-audit`,
+    {
+      params: groupParams(input),
+      headers: editorAuthenticationHeaders(input.authenticationId)
+    }
+  );
+  return data.items ?? (Array.isArray(data) ? data as unknown as WorkInstructionEditorAuditItemDto[] : []);
 }
 
 export type WorkInstructionSourceAssetDeletionStatus = 'DELETED' | 'FAILED' | 'REQUESTED' | 'SKIPPED' | string;
@@ -487,11 +560,11 @@ export type WorkInstructionSourceVersionImageDeleteResponseDto = {
 /** Requests one version-scoped bulk deletion; all images in the version are handled by the API. */
 export async function deleteWorkInstructionSourceVersionImages(input: {
   sourceVersionId: string;
-  accessPassword: string;
+  authenticationId: string;
 }): Promise<WorkInstructionSourceVersionImageDeleteResponseDto> {
   const { data } = await api.delete<WorkInstructionSourceVersionImageDeleteResponseDto>(
     `${WORK_INSTRUCTION_BASE}/source-versions/${encoded(input.sourceVersionId)}/image`,
-    { data: { accessPassword: input.accessPassword } }
+    { headers: editorAuthenticationHeaders(input.authenticationId) }
   );
   return data;
 }

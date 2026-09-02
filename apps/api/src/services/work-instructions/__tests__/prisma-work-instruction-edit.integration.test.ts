@@ -10,6 +10,12 @@ import { PrismaWorkInstructionRepository } from '../repositories/prisma-work-ins
 import { WorkInstructionEditService } from '../work-instruction-edit.service.js';
 import type { WorkInstructionEditFileStorePort } from '../work-instruction-edit-file-store.adapter.js';
 import type { WorkInstructionFileStorePort } from '../work-instruction-file-store.adapter.js';
+import {
+  createTestClientDevice,
+  createTestEmployee,
+  createTestItem,
+  createTestMeasuringInstrumentWithTag
+} from '../../../routes/__tests__/helpers.js';
 
 /** Opt-in only: this suite mutates an explicitly disposable loopback database. */
 const integrationEnabled = process.env.WORK_INSTRUCTION_INTEGRATION === 'true';
@@ -27,6 +33,35 @@ const versionIds: string[] = [];
 const revisionIds: string[] = [];
 const assetIds: string[] = [];
 const editAssetIds: string[] = [];
+const editorAuthenticationIds: string[] = [];
+const editorEmployeeIds: string[] = [];
+const editorClientDeviceIds: string[] = [];
+const editorItemIds: string[] = [];
+const editorInstrumentIds: string[] = [];
+const editorInstrumentGenreIds: string[] = [];
+
+async function createEditorAuthFixture(input: {
+  partNumber?: string;
+  shootingTarget?: string;
+  now?: Date;
+} = {}) {
+  const employee = await createTestEmployee({
+    displayName: '監査テスト社員',
+    nfcTagUid: `WI_EDITOR_EMP_${randomUUID()}`
+  });
+  const client = await createTestClientDevice();
+  editorEmployeeIds.push(employee.id);
+  editorClientDeviceIds.push(client.id);
+  const authentication = await editing.createEditorAuthentication({
+    partNumber: input.partNumber ?? 'MD004',
+    shootingTarget: input.shootingTarget ?? '研削',
+    employeeTagUid: employee.nfcTagUid!,
+    clientDeviceId: client.id,
+    now: input.now
+  });
+  editorAuthenticationIds.push(authentication.id);
+  return { employee, client, authentication };
+}
 
 function packet(input: {
   list: string;
@@ -90,11 +125,29 @@ async function cleanFixtures(): Promise<void> {
   }
   if (ids.length > 0) await prisma.workInstructionRow.deleteMany({ where: { id: { in: ids } } });
   if (assetIds.length > 0) await prisma.workInstructionAsset.deleteMany({ where: { id: { in: assetIds }, steps: { none: {} }, sourceVersionSteps: { none: {} } } });
+  if (editorAuthenticationIds.length > 0) {
+    await prisma.workInstructionEditAuditLog.deleteMany({ where: { authenticationId: { in: editorAuthenticationIds } } });
+    await prisma.workInstructionEditorAuthentication.deleteMany({ where: { id: { in: editorAuthenticationIds } } });
+  }
+  if (editorItemIds.length > 0) await prisma.item.deleteMany({ where: { id: { in: editorItemIds } } });
+  if (editorInstrumentIds.length > 0) {
+    await prisma.measuringInstrumentTag.deleteMany({ where: { measuringInstrumentId: { in: editorInstrumentIds } } });
+    await prisma.measuringInstrument.deleteMany({ where: { id: { in: editorInstrumentIds } } });
+  }
+  if (editorInstrumentGenreIds.length > 0) await prisma.measuringInstrumentGenre.deleteMany({ where: { id: { in: editorInstrumentGenreIds } } });
+  if (editorEmployeeIds.length > 0) await prisma.employee.deleteMany({ where: { id: { in: editorEmployeeIds } } });
+  if (editorClientDeviceIds.length > 0) await prisma.clientDevice.deleteMany({ where: { id: { in: editorClientDeviceIds } } });
   rowIds.length = 0;
   versionIds.length = 0;
   revisionIds.length = 0;
   assetIds.length = 0;
   editAssetIds.length = 0;
+  editorAuthenticationIds.length = 0;
+  editorEmployeeIds.length = 0;
+  editorClientDeviceIds.length = 0;
+  editorItemIds.length = 0;
+  editorInstrumentIds.length = 0;
+  editorInstrumentGenreIds.length = 0;
 }
 
 async function apply(input: Parameters<typeof packet>[0]): Promise<{ rowId: string; sourceVersionId: string }> {
@@ -110,6 +163,195 @@ describeIntegration('work-instruction immutable versions and editing persistence
   beforeAll(async () => cleanFixtures());
   afterEach(async () => cleanFixtures());
   afterAll(async () => prisma.$disconnect());
+
+  it('accepts only an active employee NFC authentication on the same device, group, and four-hour window', async () => {
+    const { employee, client, authentication } = await createEditorAuthFixture();
+    await expect(editing.validateEditorAuthentication({
+      authenticationId: authentication.id,
+      clientDeviceId: client.id,
+      expectedGroup: { partNumber: 'MD004', shootingTarget: '研削' }
+    })).resolves.toMatchObject({
+      id: authentication.id,
+      employeeId: employee.id,
+      employeeCodeSnapshot: employee.employeeCode,
+      employeeNameSnapshot: employee.displayName,
+      clientDeviceId: client.id
+    });
+
+    const otherClient = await createTestClientDevice();
+    editorClientDeviceIds.push(otherClient.id);
+    await expect(editing.validateEditorAuthentication({
+      authenticationId: authentication.id,
+      clientDeviceId: otherClient.id
+    })).rejects.toMatchObject({ statusCode: 403, code: 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_DEVICE_MISMATCH' });
+    await expect(editing.validateEditorAuthentication({
+      authenticationId: authentication.id,
+      clientDeviceId: client.id,
+      expectedGroup: { partNumber: 'OTHER-PART', shootingTarget: '研削' }
+    })).rejects.toMatchObject({ statusCode: 403, code: 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_GROUP_MISMATCH' });
+    await expect(editing.validateEditorAuthentication({
+      authenticationId: randomUUID(),
+      clientDeviceId: client.id
+    })).rejects.toMatchObject({ statusCode: 403, code: 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_INVALID' });
+
+    const expired = await createEditorAuthFixture({ now: new Date(Date.now() - 5 * 60 * 60 * 1000) });
+    await expect(editing.validateEditorAuthentication({
+      authenticationId: expired.authentication.id,
+      clientDeviceId: expired.client.id
+    })).rejects.toMatchObject({ statusCode: 403, code: 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_EXPIRED' });
+
+    const inactive = await createTestEmployee({ nfcTagUid: `WI_EDITOR_INACTIVE_${randomUUID()}` });
+    editorEmployeeIds.push(inactive.id);
+    await prisma.employee.update({ where: { id: inactive.id }, data: { status: 'INACTIVE' } });
+    await expect(editing.createEditorAuthentication({
+      partNumber: 'MD004',
+      shootingTarget: '研削',
+      employeeTagUid: inactive.nfcTagUid!,
+      clientDeviceId: client.id
+    })).rejects.toMatchObject({ statusCode: 403, code: 'WORK_INSTRUCTION_EDITOR_EMPLOYEE_INACTIVE' });
+
+    await expect(editing.createEditorAuthentication({
+      partNumber: 'MD004',
+      shootingTarget: '研削',
+      employeeTagUid: `WI_EDITOR_UNKNOWN_${randomUUID()}`,
+      clientDeviceId: client.id
+    })).rejects.toMatchObject({ statusCode: 404, code: 'WORK_INSTRUCTION_EMPLOYEE_TAG_NOT_FOUND' });
+
+    const instrument = await createTestMeasuringInstrumentWithTag({ rfidTagUid: `WI_EDITOR_INSTRUMENT_${randomUUID()}` });
+    editorInstrumentIds.push(instrument.instrument.id);
+    if (instrument.instrument.genreId) editorInstrumentGenreIds.push(instrument.instrument.genreId);
+    await expect(editing.createEditorAuthentication({
+      partNumber: 'MD004',
+      shootingTarget: '研削',
+      employeeTagUid: instrument.rfidTagUid,
+      clientDeviceId: client.id
+    })).rejects.toMatchObject({ statusCode: 409, code: 'WORK_INSTRUCTION_EMPLOYEE_TAG_IS_MEASURING_INSTRUMENT' });
+
+    const duplicateItem = await createTestItem({ nfcTagUid: employee.nfcTagUid! });
+    editorItemIds.push(duplicateItem.id);
+    await expect(editing.createEditorAuthentication({
+      partNumber: 'MD004',
+      shootingTarget: '研削',
+      employeeTagUid: employee.nfcTagUid!,
+      clientDeviceId: client.id
+    })).rejects.toMatchObject({ statusCode: 409, code: 'WORK_INSTRUCTION_EMPLOYEE_TAG_DUPLICATE' });
+  });
+
+  it('records server-side overlay and memo additions, updates, and deletions per save', async () => {
+    const source = await apply({ list: 'List-audit-diff', itemId: 30, modified: baseModified, contentHash: 'a'.repeat(64), text: '監査対象' });
+    const { employee, client, authentication } = await createEditorAuthFixture();
+    const draft = await editing.createDraftRevision({
+      rowId: source.rowId,
+      sourceVersionId: source.sourceVersionId,
+      editorAuthenticationId: authentication.id,
+      clientDeviceId: client.id,
+      requestId: 'request-draft'
+    });
+    revisionIds.push(draft.revision.id);
+
+    const overlayId = randomUUID();
+    const overlay = {
+      id: overlayId,
+      pageIndex: 0,
+      kind: 'TEXT' as const,
+      sourceStep: 1,
+      bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.3, heightRatio: 0.1 },
+      zIndex: 1,
+      text: '注記 before'
+    };
+    const saved = await editing.saveDraft({
+      revisionId: draft.revision.id,
+      expectedEditVersion: draft.revision.editVersion,
+      expectedSourceVersionId: source.sourceVersionId,
+      expectedContentHash: 'a'.repeat(64),
+      elements: [overlay],
+      memoOverrides: [{ sourceStep: 1, text: 'メモ before' }],
+      editorAuthenticationId: authentication.id,
+      clientDeviceId: client.id,
+      requestId: 'request-save-1'
+    });
+    const changed = await editing.saveDraft({
+      revisionId: draft.revision.id,
+      expectedEditVersion: saved.editVersion,
+      expectedSourceVersionId: source.sourceVersionId,
+      expectedContentHash: 'a'.repeat(64),
+      elements: [{ ...overlay, text: '注記 after' }],
+      memoOverrides: [{
+        id: saved.memoOverrides![0]!.id,
+        sourceStep: 1,
+        action: 'USE_SOURCE',
+        text: ''
+      }],
+      editorAuthenticationId: authentication.id,
+      clientDeviceId: client.id,
+      requestId: 'request-save-2'
+    });
+
+    expect(changed.editVersion).toBe(saved.editVersion + 1);
+    const logs = await editing.listEditAuditLogs({ partNumber: 'MD004', shootingTarget: '研削' });
+    expect(logs.filter((log) => log.authenticationId === authentication.id).map((log) => log.action)).toEqual([
+      'SAVED', 'SAVED', 'DRAFT_CREATED'
+    ]);
+    const firstSave = logs.find((log) => log.requestId === 'request-save-1');
+    const secondSave = logs.find((log) => log.requestId === 'request-save-2');
+    expect(firstSave).toMatchObject({
+      employeeCodeSnapshot: authentication.employeeCodeSnapshot,
+      employeeNameSnapshot: authentication.employeeNameSnapshot,
+      clientDeviceIdSnapshot: client.id,
+      editVersionBefore: 0,
+      editVersionAfter: 1
+    });
+    expect(firstSave?.changeSet).toMatchObject({
+      overlays: { added: [expect.objectContaining({ id: overlayId, text: '注記 before' })] },
+      memoOverrides: { added: [expect.objectContaining({ text: 'メモ before' })] }
+    });
+    expect(secondSave?.changeSet).toMatchObject({
+      overlays: { updated: [{ before: expect.objectContaining({ text: '注記 before' }), after: expect.objectContaining({ text: '注記 after' }) }] },
+      memoOverrides: { deleted: [expect.objectContaining({ text: 'メモ before' })] }
+    });
+
+    await prisma.employee.update({ where: { id: employee.id }, data: { displayName: '変更後の氏名' } });
+    await prisma.employee.delete({ where: { id: employee.id } });
+    const persistedSnapshots = await editing.listEditAuditLogs({ partNumber: 'MD004', shootingTarget: '研削' });
+    expect(persistedSnapshots.filter((log) => log.authenticationId === authentication.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          employeeCodeSnapshot: authentication.employeeCodeSnapshot,
+          employeeNameSnapshot: authentication.employeeNameSnapshot
+        })
+      ])
+    );
+  });
+
+  it('does not append a successful audit row when a save fails validation', async () => {
+    const source = await apply({ list: 'List-audit-failure', itemId: 31, modified: baseModified, contentHash: 'b'.repeat(64) });
+    const { employee, client, authentication } = await createEditorAuthFixture();
+    const draft = await editing.createDraftRevision({
+      rowId: source.rowId,
+      sourceVersionId: source.sourceVersionId,
+      editorAuthenticationId: authentication.id,
+      clientDeviceId: client.id,
+      requestId: 'request-failure-draft'
+    });
+    revisionIds.push(draft.revision.id);
+    const before = await editing.listEditAuditLogs({ partNumber: 'MD004', shootingTarget: '研削' });
+    await expect(editing.saveDraft({
+      revisionId: draft.revision.id,
+      expectedEditVersion: draft.revision.editVersion,
+      expectedSourceVersionId: source.sourceVersionId,
+      expectedContentHash: 'not-the-source-hash',
+      elements: [],
+      memoOverrides: [],
+      editorAuthenticationId: authentication.id,
+      clientDeviceId: client.id,
+      requestId: 'request-failure-save'
+    })).rejects.toMatchObject({ statusCode: 409, code: 'WORK_INSTRUCTION_SOURCE_CONFLICT' });
+    const after = await editing.listEditAuditLogs({ partNumber: 'MD004', shootingTarget: '研削' });
+    expect(after.filter((log) => log.authenticationId === authentication.id && log.requestId === 'request-failure-save')).toHaveLength(0);
+    expect(after.filter((log) => log.authenticationId === authentication.id)).toHaveLength(
+      before.filter((log) => log.authenticationId === authentication.id).length
+    );
+  });
 
   it('keeps the old published image/text visible after a newer import', async () => {
     const first = await apply({ list: 'List-public', itemId: 1, modified: baseModified, contentHash: '1'.repeat(64), text: '公開版本文' });
@@ -519,18 +761,32 @@ describeIntegration('work-instruction immutable versions and editing persistence
     const service = new WorkInstructionEditService(
       editing,
       editFiles,
-      sourceFiles,
-      { requireAccessPassword: async () => undefined }
+      sourceFiles
     );
 
-    const requested = await service.deleteSourceAsset({ sourceVersionId: first.sourceVersionId!, assetId, requestedBy: 'admin-user' });
-    const repeated = await service.deleteSourceAsset({ sourceVersionId: first.sourceVersionId!, assetId, requestedBy: 'admin-user' });
+    const { employee, client, authentication } = await createEditorAuthFixture();
+    const requested = await service.deleteSourceAsset({
+      sourceVersionId: first.sourceVersionId!,
+      assetId,
+      requestedBy: 'admin-user',
+      editorAuthenticationId: authentication.id,
+      clientDeviceId: client.id,
+      requestId: 'request-source-delete'
+    });
+    const repeated = await service.deleteSourceAsset({
+      sourceVersionId: first.sourceVersionId!,
+      assetId,
+      requestedBy: 'admin-user',
+      editorAuthenticationId: authentication.id,
+      clientDeviceId: client.id,
+      requestId: 'request-source-delete-retry'
+    });
     expect(requested.status).toBe('DELETED');
     expect(repeated.status).toBe('DELETED');
     expect(sourceDeleteCalls).toBe(1);
     const step = await prisma.workInstructionSourceVersionStep.findFirstOrThrow({ where: { sourceVersionId: first.sourceVersionId! } });
     const audit = await prisma.workInstructionSourceAssetDeletionAudit.findUniqueOrThrow({ where: { id: requested.auditId } });
-    expect(step).toMatchObject({ imageAssetId: null, imageDeletedBy: 'admin-user' });
+    expect(step).toMatchObject({ imageAssetId: null, imageDeletedBy: employee.displayName });
     expect(audit.status).toBe('DELETED');
     expect(await prisma.workInstructionAsset.findUnique({ where: { id: assetId } })).toBeNull();
   });
@@ -556,11 +812,13 @@ describeIntegration('work-instruction immutable versions and editing persistence
     revisionIds.push(draft.revision.id);
     await editing.publishRevision({ revisionId: draft.revision.id, expectedEditVersion: 0 });
 
+    let sourceDeleteCalls = 0;
     let failPhysicalDelete = true;
     const sourceFiles: WorkInstructionFileStorePort = {
       writeStagedAssets: async () => [],
       read: async () => Buffer.from('source-image'),
       delete: async () => {
+        sourceDeleteCalls += 1;
         if (failPhysicalDelete) throw new Error('temporary source storage outage');
       }
     };
@@ -572,20 +830,77 @@ describeIntegration('work-instruction immutable versions and editing persistence
     const service = new WorkInstructionEditService(
       editing,
       editFiles,
-      sourceFiles,
-      { requireAccessPassword: async () => undefined }
+      sourceFiles
     );
 
-    const failed = await service.deleteSourceAsset({ sourceVersionId: first.sourceVersionId!, assetId, requestedBy: 'admin-user' });
+    const { employee, client, authentication } = await createEditorAuthFixture();
+    const authorization = {
+      editorAuthenticationId: authentication.id,
+      clientDeviceId: client.id,
+      requestId: 'request-source-delete-failure'
+    };
+    const failed = await service.deleteSourceAsset({
+      sourceVersionId: first.sourceVersionId!,
+      assetId,
+      requestedBy: 'admin-user',
+      ...authorization
+    });
     expect(failed.status).toBe('FAILED');
     const failedAudit = await prisma.workInstructionSourceAssetDeletionAudit.findFirstOrThrow({ where: { sourceVersionId: first.sourceVersionId!, assetId } });
     expect(failedAudit.status).toBe('FAILED');
     expect(await prisma.workInstructionAsset.findUnique({ where: { id: assetId }, select: { status: true } })).toEqual({ status: 'DELETE_PENDING' });
+    expect(await prisma.workInstructionEditAuditLog.findMany({
+      where: {
+        action: 'SOURCE_IMAGE_DELETED',
+        sourceVersionId: first.sourceVersionId!
+      }
+    })).toHaveLength(0);
 
     failPhysicalDelete = false;
-    const retried = await service.deleteSourceAsset({ sourceVersionId: first.sourceVersionId!, assetId, requestedBy: 'admin-user' });
+    const retried = await service.deleteSourceAsset({
+      sourceVersionId: first.sourceVersionId!,
+      assetId,
+      requestedBy: 'admin-user',
+      ...authorization,
+      requestId: 'request-source-delete-retry'
+    });
     expect(retried.status).toBe('DELETED');
     expect(await prisma.workInstructionSourceAssetDeletionAudit.findUniqueOrThrow({ where: { id: failed.auditId! }, select: { status: true } })).toEqual({ status: 'DELETED' });
+    const successfulAudits = await prisma.workInstructionEditAuditLog.findMany({
+      where: {
+        action: 'SOURCE_IMAGE_DELETED',
+        sourceVersionId: first.sourceVersionId!
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+    expect(successfulAudits).toHaveLength(1);
+    expect(successfulAudits[0]).toMatchObject({
+      action: 'SOURCE_IMAGE_DELETED',
+      authenticationId: authentication.id,
+      employeeIdSnapshot: employee.id,
+      employeeCodeSnapshot: authentication.employeeCodeSnapshot,
+      employeeNameSnapshot: authentication.employeeNameSnapshot,
+      clientDeviceIdSnapshot: client.id,
+      clientDeviceNameSnapshot: authentication.clientDeviceNameSnapshot,
+      sourceVersionId: first.sourceVersionId!,
+      requestId: 'request-source-delete-retry'
+    });
+
+    const repeated = await service.deleteSourceAsset({
+      sourceVersionId: first.sourceVersionId!,
+      assetId,
+      requestedBy: 'admin-user',
+      ...authorization,
+      requestId: 'request-source-delete-retry-again'
+    });
+    expect(repeated.status).toBe('DELETED');
+    expect(await prisma.workInstructionEditAuditLog.count({
+      where: {
+        action: 'SOURCE_IMAGE_DELETED',
+        sourceVersionId: first.sourceVersionId!
+      }
+    })).toBe(1);
+    expect(sourceDeleteCalls).toBe(2);
     expect(await prisma.workInstructionAsset.findUnique({ where: { id: assetId } })).toBeNull();
   });
 });

@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, preHandlerHookHandler } from 'fas
 import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
+import { requireClientDevice } from '../kiosk/shared.js';
 import {
   WorkInstructionEditingError,
   type WorkInstructionMemoOverrideInput,
@@ -11,13 +12,13 @@ import type { WorkInstructionEditService } from '../../services/work-instruction
 import type { WorkInstructionReadService } from '../../services/work-instructions/work-instruction-read.service.js';
 import {
   toEditAssetDto,
+  toEditAuditLogDto,
   toEditRevisionDto,
   toEditingViewDto,
   toEditorGroupDto,
   toSourceVersionDto
 } from './dto.js';
 
-const accessPasswordSchema = z.string().max(128).default('');
 const revisionIdParamsSchema = z.object({ revisionId: z.string().uuid() });
 const rowIdParamsSchema = z.object({ rowId: z.string().uuid() });
 const sourceVersionParamsSchema = z.object({ versionId: z.string().uuid() });
@@ -57,12 +58,11 @@ const overlayElementSchema = z.discriminatedUnion('kind', [
   })
 ]);
 const saveOverlaysBodySchema = z.object({
-  accessPassword: accessPasswordSchema,
   expectedEditVersion: z.coerce.number().int().min(0),
   expectedSourceVersionId: z.string().uuid(),
   expectedContentHash: z.string().min(1).max(128),
   elements: z.array(overlayElementSchema).max(10_000)
-});
+}).strict();
 const memoOverrideSchema = z.object({
   id: z.string().max(120).optional(),
   sourceStep: z.number().int().positive().nullable().optional(),
@@ -77,36 +77,37 @@ const memoOverrideSchema = z.object({
   text: z.string().max(10_000).optional()
 });
 const saveDraftBodySchema = z.object({
-  accessPassword: accessPasswordSchema,
   expectedEditVersion: z.coerce.number().int().min(0),
   expectedSourceVersionId: z.string().uuid(),
   expectedContentHash: z.string().min(1).max(128),
   elements: z.array(overlayElementSchema).max(10_000),
   memoOverrides: z.array(memoOverrideSchema).max(10_000)
-});
+}).strict();
 const createDraftBodySchema = z.object({
-  accessPassword: accessPasswordSchema,
   sourceVersionId: z.string().uuid().optional(),
   copyFromRevisionId: z.string().uuid().optional()
-});
-const discardBodySchema = z.object({ accessPassword: accessPasswordSchema, expectedEditVersion: z.coerce.number().int().min(0).optional() });
+}).strict();
+const discardBodySchema = z.object({ expectedEditVersion: z.coerce.number().int().min(0).optional() }).strict();
 const publishBodySchema = z.object({
-  accessPassword: accessPasswordSchema,
   expectedEditVersion: z.coerce.number().int().min(0),
   expectedSourceVersionId: z.string().uuid(),
   expectedContentHash: z.string().min(1).max(128),
   confirmUnassigned: z.boolean().optional()
-});
+}).strict();
 const groupPublishBodySchema = z.object({
   partNumber: z.string().trim().min(1),
   shootingTarget: z.string().trim().min(1),
-  accessPassword: accessPasswordSchema,
   revisionIds: z.array(z.string().uuid()).min(1).max(500),
   expectedEditVersions: z.record(z.coerce.number().int().min(0)),
   confirmUnassigned: z.boolean().optional()
-});
-const regionBodySchema = z.object({ accessPassword: accessPasswordSchema, stepKey: z.string().trim().min(1).max(500), bbox: bboxSchema });
-const bulkDeleteBodySchema = z.object({ requestedBy: z.string().trim().min(1).max(200).optional() }).default({});
+}).strict();
+const regionBodySchema = z.object({ stepKey: z.string().trim().min(1).max(500), bbox: bboxSchema }).strict();
+const bulkDeleteBodySchema = z.object({}).strict().default({});
+const editorAuthenticationBodySchema = z.object({
+  partNumber: z.string().trim().min(1).max(200),
+  shootingTarget: z.string().trim().min(1).max(200),
+  employeeTagUid: z.string().trim().min(1).max(200)
+}).strict();
 
 function mapEditingError(error: unknown): never {
   if (error instanceof WorkInstructionEditingError) {
@@ -121,6 +122,49 @@ async function mapEditing<T>(operation: () => Promise<T>): Promise<T> {
   } catch (error) {
     return mapEditingError(error);
   }
+}
+
+function editorAuthenticationHeader(request: FastifyRequest): string {
+  const raw = request.headers['x-work-instruction-editor-authentication-id'];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new ApiError(401, 'この画面で社員NFCタグをスキャンしてください', undefined, 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_REQUIRED');
+  }
+  return value.trim();
+}
+
+async function editorMutationAuthorization(request: FastifyRequest): Promise<{
+  editorAuthenticationId: string;
+  clientDeviceId: string;
+  requestId: string;
+}> {
+  const editorAuthenticationId = editorAuthenticationHeader(request);
+  const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+  return {
+    editorAuthenticationId,
+    clientDeviceId: clientDevice.id,
+    requestId: request.id
+  };
+}
+
+async function editorReadAuthorization(
+  request: FastifyRequest,
+  editing: WorkInstructionEditService,
+  expectedGroup: { partNumber: string; shootingTarget: string }
+): Promise<void> {
+  const editorAuthenticationId = editorAuthenticationHeader(request);
+  const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+  await mapEditing(() => editing.validateEditorAuthentication({
+    authenticationId: editorAuthenticationId,
+    clientDeviceId: clientDevice.id,
+    expectedGroup,
+    requestId: request.id
+  }));
+}
+
+async function editorClientDevice(request: FastifyRequest): Promise<{ id: string; name: string }> {
+  const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+  return { id: clientDevice.id, name: clientDevice.name };
 }
 
 function stepFromAlias(stepKey: string | undefined, label: string): number | undefined {
@@ -173,11 +217,10 @@ async function canonicalRevisionDto(
   return toEditRevisionDto(context);
 }
 
-async function readMultipartFile(request: FastifyRequest): Promise<{ bytes: Buffer; contentType: string; accessPassword: string }> {
+async function readMultipartFile(request: FastifyRequest): Promise<{ bytes: Buffer; contentType: string }> {
   if (!request.isMultipart()) throw new ApiError(400, 'マルチパートフォームデータが必要です');
   let bytes: Buffer | null = null;
   let contentType = '';
-  let accessPassword = '';
   for await (const part of request.parts()) {
     if (part.type === 'file' && part.fieldname === 'file') {
       const chunks: Buffer[] = [];
@@ -185,11 +228,11 @@ async function readMultipartFile(request: FastifyRequest): Promise<{ bytes: Buff
       bytes = Buffer.concat(chunks);
       contentType = part.mimetype;
     } else if (part.type === 'field' && part.fieldname === 'accessPassword') {
-      accessPassword = String(part.value ?? '');
+      throw new ApiError(400, '管理パスワードは使用できません', undefined, 'WORK_INSTRUCTION_ACCESS_PASSWORD_DEPRECATED');
     }
   }
   if (!bytes) throw new ApiError(400, 'overlay画像fileが必要です');
-  return { bytes, contentType, accessPassword };
+  return { bytes, contentType };
 }
 
 async function buildEditorGroup(
@@ -222,14 +265,42 @@ export type WorkInstructionEditorRouteOptions = {
   editing: WorkInstructionEditService;
   allowView: preHandlerHookHandler;
   allowWrite: preHandlerHookHandler;
-  allowAdmin: preHandlerHookHandler;
 };
 
 export function registerWorkInstructionEditorRoutes(
   app: FastifyInstance,
   options: WorkInstructionEditorRouteOptions
 ): void {
-  const { read, editing, allowView, allowWrite, allowAdmin } = options;
+  const { read, editing, allowView, allowWrite } = options;
+
+  app.post('/work-instructions/editor-authentications', { preHandler: [allowWrite] }, async (request) => {
+    const body = editorAuthenticationBodySchema.parse(request.body ?? {});
+    const clientDevice = await editorClientDevice(request);
+    const authentication = await mapEditing(() => editing.createEditorAuthentication({
+      partNumber: body.partNumber,
+      shootingTarget: body.shootingTarget,
+      employeeTagUid: body.employeeTagUid,
+      clientDeviceId: clientDevice.id
+    }));
+    return {
+      authentication: {
+        id: authentication.id,
+        employee: {
+          id: authentication.employeeId,
+          employeeCode: authentication.employeeCodeSnapshot,
+          displayName: authentication.employeeNameSnapshot
+        },
+        clientDevice: {
+          id: authentication.clientDeviceId,
+          name: authentication.clientDeviceNameSnapshot
+        },
+        partNumber: authentication.partNumber,
+        shootingTarget: authentication.shootingTarget,
+        authenticatedAt: authentication.authenticatedAt.toISOString(),
+        expiresAt: authentication.expiresAt.toISOString()
+      }
+    };
+  });
 
   app.get('/work-instructions/rows/:rowId/editing', { preHandler: [allowView] }, async (request) => {
     const { rowId } = rowIdParamsSchema.parse(request.params);
@@ -251,14 +322,33 @@ export function registerWorkInstructionEditorRoutes(
 
   app.get('/work-instructions/editor-revisions/history', { preHandler: [allowView] }, async (request) => {
     const query = z.object({ partNumber: z.string().trim().min(1), resource: z.string().trim().min(1) }).parse(request.query ?? {});
+    await editorReadAuthorization(request, editing, { partNumber: query.partNumber, shootingTarget: query.resource });
     const group = await mapEditing(() => buildEditorGroup(read, editing, { partNumber: query.partNumber, shootingTarget: query.resource }));
     return { history: group.history };
+  });
+
+  app.get('/work-instructions/editor-audit', { preHandler: [allowView] }, async (request) => {
+    const query = z.object({
+      partNumber: z.string().trim().min(1),
+      resource: z.string().trim().min(1),
+      limit: z.coerce.number().int().min(1).max(500).default(200),
+      offset: z.coerce.number().int().min(0).default(0)
+    }).parse(request.query ?? {});
+    await editorReadAuthorization(request, editing, { partNumber: query.partNumber, shootingTarget: query.resource });
+    const auditLogs = await mapEditing(() => editing.listEditAuditLogs({
+      partNumber: query.partNumber,
+      shootingTarget: query.resource,
+      limit: query.limit,
+      offset: query.offset
+    }));
+    return { items: auditLogs.map(toEditAuditLogDto), limit: query.limit, offset: query.offset };
   });
 
   app.post('/work-instructions/rows/:rowId/revisions', { preHandler: [allowWrite] }, async (request) => {
     const { rowId } = rowIdParamsSchema.parse(request.params);
     const body = createDraftBodySchema.parse(request.body ?? {});
-    const result = await mapEditing(() => editing.createDraftRevision({ rowId, ...body }));
+    const authorization = await editorMutationAuthorization(request);
+    const result = await mapEditing(() => editing.createDraftRevision({ rowId, ...body, ...authorization }));
     return { revision: await canonicalRevisionDto(editing, result.revision), copy: result.copy };
   });
 
@@ -267,12 +357,12 @@ export function registerWorkInstructionEditorRoutes(
       partNumber: z.string().trim().min(1),
       shootingTarget: z.string().trim().min(1),
       rows: z.array(z.object({ rowId: z.string().uuid(), publishedSourceVersionId: z.string().uuid(), latestSourceVersionId: z.string().uuid() })).min(1).max(500),
-      accessPassword: accessPasswordSchema
-    }).parse(request.body ?? {});
+    }).strict().parse(request.body ?? {});
+    const authorization = await editorMutationAuthorization(request);
     const copied = await mapEditing(() => editing.createDraftRevisionGroup({
-      accessPassword: body.accessPassword,
       partNumber: body.partNumber,
       shootingTarget: body.shootingTarget,
+      ...authorization,
       rows: body.rows.map((row) => ({
         rowId: row.rowId,
         sourceVersionId: row.latestSourceVersionId,
@@ -288,13 +378,14 @@ export function registerWorkInstructionEditorRoutes(
   const saveRevision = async (request: FastifyRequest) => {
     const { revisionId } = revisionIdParamsSchema.parse(request.params);
     const body = saveOverlaysBodySchema.parse(request.body ?? {});
+    const authorization = await editorMutationAuthorization(request);
     return editing.saveOverlays({
       revisionId,
-      accessPassword: body.accessPassword,
       expectedEditVersion: body.expectedEditVersion,
       expectedSourceVersionId: body.expectedSourceVersionId,
       expectedContentHash: body.expectedContentHash,
-      elements: body.elements.map(mapOverlayElementInput)
+      elements: body.elements.map(mapOverlayElementInput),
+      ...authorization
     });
   };
   for (const path of ['/work-instructions/revisions/:revisionId/overlays', '/work-instructions/editor-revisions/:revisionId/overlays']) {
@@ -307,14 +398,15 @@ export function registerWorkInstructionEditorRoutes(
   const saveDraftRevision = async (request: FastifyRequest) => {
     const { revisionId } = revisionIdParamsSchema.parse(request.params);
     const body = saveDraftBodySchema.parse(request.body ?? {});
+    const authorization = await editorMutationAuthorization(request);
     return editing.saveDraft({
       revisionId,
-      accessPassword: body.accessPassword,
       expectedEditVersion: body.expectedEditVersion,
       expectedSourceVersionId: body.expectedSourceVersionId,
       expectedContentHash: body.expectedContentHash,
       elements: body.elements.map(mapOverlayElementInput),
-      memoOverrides: body.memoOverrides.map(mapMemoOverrideInput)
+      memoOverrides: body.memoOverrides.map(mapMemoOverrideInput),
+      ...authorization
     });
   };
   for (const path of ['/work-instructions/revisions/:revisionId/draft', '/work-instructions/editor-revisions/:revisionId/draft']) {
@@ -327,16 +419,18 @@ export function registerWorkInstructionEditorRoutes(
   app.post('/work-instructions/revisions/:revisionId/publish', { preHandler: [allowWrite] }, async (request) => {
     const { revisionId } = revisionIdParamsSchema.parse(request.params);
     const body = publishBodySchema.parse(request.body ?? {});
-    const result = await mapEditing(() => editing.publishRevision({ revisionId, ...body }));
+    const authorization = await editorMutationAuthorization(request);
+    const result = await mapEditing(() => editing.publishRevision({ revisionId, ...body, ...authorization }));
     return { revision: await canonicalRevisionDto(editing, result.revision), migration: result.migration };
   });
 
   app.post('/work-instructions/editor-revisions/publish', { preHandler: [allowWrite] }, async (request) => {
     const body = groupPublishBodySchema.parse(request.body ?? {});
+    const authorization = await editorMutationAuthorization(request);
     const results = await mapEditing(() => editing.publishRevisionGroup({
-      accessPassword: body.accessPassword,
       partNumber: body.partNumber,
       shootingTarget: body.shootingTarget,
+      ...authorization,
       revisions: body.revisionIds.map((revisionId) => ({
         revisionId,
         expectedEditVersion: body.expectedEditVersions[revisionId] ?? -1,
@@ -354,7 +448,8 @@ export function registerWorkInstructionEditorRoutes(
   const discardRevision = async (request: FastifyRequest) => {
     const { revisionId } = revisionIdParamsSchema.parse(request.params);
     const body = discardBodySchema.parse(request.body ?? {});
-    return editing.discardRevision({ revisionId, accessPassword: body.accessPassword, expectedEditVersion: body.expectedEditVersion });
+    const authorization = await editorMutationAuthorization(request);
+    return editing.discardRevision({ revisionId, expectedEditVersion: body.expectedEditVersion, ...authorization });
   };
   for (const path of ['/work-instructions/revisions/:revisionId/discard', '/work-instructions/editor-revisions/:revisionId/discard']) {
     app.post(path, { preHandler: [allowWrite] }, async (request) => {
@@ -367,7 +462,8 @@ export function registerWorkInstructionEditorRoutes(
     app.post(path, { preHandler: [allowWrite] }, async (request) => {
       const { revisionId } = revisionIdParamsSchema.parse(request.params);
       const body = regionBodySchema.parse(request.body ?? {});
-      const asset = await mapEditing(() => editing.createImageRegion({ revisionId, ...body }));
+      const authorization = await editorMutationAuthorization(request);
+      const asset = await mapEditing(() => editing.createImageRegion({ revisionId, ...body, ...authorization }));
       return { asset: toEditAssetDto(asset) };
     });
   }
@@ -375,14 +471,16 @@ export function registerWorkInstructionEditorRoutes(
     app.post(path, { preHandler: [allowWrite] }, async (request) => {
       const { revisionId } = revisionIdParamsSchema.parse(request.params);
       const body = regionBodySchema.parse(request.body ?? {});
-      return { candidates: await mapEditing(() => editing.findTextCandidates({ revisionId, ...body })) };
+      const authorization = await editorMutationAuthorization(request);
+      return { candidates: await mapEditing(() => editing.findTextCandidates({ revisionId, ...body, ...authorization })) };
     });
   }
 
   const uploadAsset = async (request: FastifyRequest) => {
     const { revisionId } = revisionIdParamsSchema.parse(request.params);
     const multipart = await readMultipartFile(request);
-    return editing.uploadEditAsset({ revisionId, bytes: multipart.bytes, mimeType: multipart.contentType, accessPassword: multipart.accessPassword });
+    const authorization = await editorMutationAuthorization(request);
+    return editing.uploadEditAsset({ revisionId, bytes: multipart.bytes, mimeType: multipart.contentType, ...authorization });
   };
   for (const path of ['/work-instructions/revisions/:revisionId/assets', '/work-instructions/editor-revisions/:revisionId/assets']) {
     app.post(path, { preHandler: [allowWrite] }, async (request) => ({ asset: toEditAssetDto(await mapEditing(() => uploadAsset(request))) }));
@@ -398,17 +496,19 @@ export function registerWorkInstructionEditorRoutes(
     return reply.send(result.bytes);
   });
 
-  app.delete('/work-instructions/source-versions/:versionId/image', { preHandler: [allowAdmin] }, async (request) => {
+  app.delete('/work-instructions/source-versions/:versionId/image', { preHandler: [allowWrite] }, async (request) => {
     const { versionId } = sourceVersionParamsSchema.parse(request.params);
-    const body = bulkDeleteBodySchema.parse(request.body ?? {});
-    const results = await mapEditing(() => editing.deleteSourceVersionImages({ sourceVersionId: versionId, requestedBy: request.user?.username ?? body.requestedBy ?? 'admin' }));
+    bulkDeleteBodySchema.parse(request.body ?? {});
+    const authorization = await editorMutationAuthorization(request);
+    const results = await mapEditing(() => editing.deleteSourceVersionImages({ sourceVersionId: versionId, ...authorization }));
     const deletedCount = results.filter((result) => result.status === 'DELETED').length;
     return { results, deletedCount, deletedImageCount: deletedCount, failedCount: results.filter((result) => result.status === 'FAILED').length };
   });
 
-  app.delete('/work-instructions/source-versions/:versionId/assets/:assetId', { preHandler: [allowAdmin] }, async (request) => {
+  app.delete('/work-instructions/source-versions/:versionId/assets/:assetId', { preHandler: [allowWrite] }, async (request) => {
     const params = sourceAssetParamsSchema.parse(request.params);
-    const body = bulkDeleteBodySchema.parse(request.body ?? {});
-    return mapEditing(() => editing.deleteSourceAsset({ sourceVersionId: params.versionId, assetId: params.assetId, requestedBy: request.user?.username ?? body.requestedBy ?? 'admin' }));
+    bulkDeleteBodySchema.parse(request.body ?? {});
+    const authorization = await editorMutationAuthorization(request);
+    return mapEditing(() => editing.deleteSourceAsset({ sourceVersionId: params.versionId, assetId: params.assetId, ...authorization }));
   });
 }

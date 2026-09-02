@@ -1,6 +1,7 @@
 import { Button } from '../../components/ui/Button';
 
 import { memoOverrideNeedsReview } from './workInstructionEditorMemo';
+import { WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME } from './workInstructionEditorSelectStyles';
 
 import type {
   WorkInstructionEditorStepDto,
@@ -48,7 +49,7 @@ export function WorkInstructionMemoEditor({
               value={value}
               disabled={disabled}
               onChange={(event) => onChange(event.target.value)}
-              className="min-h-28 w-full min-w-0 resize-y rounded border border-white/20 bg-slate-950 px-2 py-2 text-sm leading-6 text-white focus:border-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+              className={`min-h-28 w-full min-w-0 resize-y rounded border border-white/20 px-2 py-2 text-sm leading-6 focus:border-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}`}
             />
           </label>
           {needsReview ? (
