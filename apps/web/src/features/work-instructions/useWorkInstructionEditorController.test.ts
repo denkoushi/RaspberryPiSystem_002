@@ -176,6 +176,7 @@ describe('useWorkInstructionEditorController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    const authenticationNow = Date.now();
     apiMocks.useEditorGroup.mockReturnValue({
       data: makeGroup(),
       isLoading: false,
@@ -186,8 +187,8 @@ describe('useWorkInstructionEditorController', () => {
     apiMocks.createAuthentication.mockResolvedValue({
       id: 'editor-authentication-1',
       employee: { id: 'employee-1', employeeCode: '0001', displayName: '山田 太郎' },
-      authenticatedAt: '2026-09-02T00:00:00.000Z',
-      expiresAt: '2026-09-02T04:00:00.000Z'
+      authenticatedAt: new Date(authenticationNow).toISOString(),
+      expiresAt: new Date(authenticationNow + 4 * 60 * 60 * 1000).toISOString()
     });
     apiMocks.findTextCandidates.mockResolvedValue([]);
     apiMocks.history.mockResolvedValue([]);
