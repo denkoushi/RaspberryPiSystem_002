@@ -27,6 +27,8 @@ function repositoryMock() {
     readGroups: vi.fn(),
     readPublishedGroups: vi.fn(),
     readPublishedPartCandidates: vi.fn(),
+    readPublishedPartAlias: vi.fn(),
+    upsertPartAlias: vi.fn(),
     readRows: vi.fn(),
     readImportMessages: vi.fn(),
     readAsset: vi.fn(),
@@ -123,16 +125,37 @@ describe('WorkInstructionReadService', () => {
       candidates: [{ partNumber: 'MD004', partName: '部品A', shootingTargets: ['研削'] }],
       hasMore: false
     });
+    const alias = {
+      scannedPartNumber: 'MD004X',
+      canonicalPartNumber: 'MD004',
+      partName: '部品A',
+      shootingTargets: ['研削'],
+      selectionCount: 1,
+      createdAt: new Date('2026-08-31T00:00:00.000Z'),
+      lastSelectedAt: new Date('2026-08-31T00:00:00.000Z')
+    };
+    repository.readPublishedPartAlias = vi.fn().mockResolvedValue(alias);
+    repository.upsertPartAlias = vi.fn().mockResolvedValue(alias);
 
     await expect(service.readPublishedGroup(groupQuery)).resolves.toBe(group);
     await expect(service.readPublishedGroups(groupQuery)).resolves.toEqual([summary]);
     await expect(service.readPublishedPartCandidates({ prefix: 'MD004', fallback: false, limit: 20, offset: 0 }))
       .resolves.toMatchObject({ matchedPrefix: 'MD004', hasMore: false });
+    await expect(service.readPublishedPartAlias('MD004X')).resolves.toBe(alias);
+    await expect(service.upsertPartAlias({
+      scannedPartNumber: 'MD004X',
+      canonicalPartNumber: 'MD004'
+    })).resolves.toBe(alias);
 
     expect(repository.readPublishedGroup).toHaveBeenCalledWith(groupQuery);
     expect(repository.readPublishedGroups).toHaveBeenCalledWith(groupQuery);
     expect(repository.readPublishedPartCandidates).toHaveBeenCalledWith({
       prefix: 'MD004', fallback: false, limit: 20, offset: 0
+    });
+    expect(repository.readPublishedPartAlias).toHaveBeenCalledWith('MD004X');
+    expect(repository.upsertPartAlias).toHaveBeenCalledWith({
+      scannedPartNumber: 'MD004X',
+      canonicalPartNumber: 'MD004'
     });
     expect(repository.readGroup).not.toHaveBeenCalled();
     expect(repository.readGroups).not.toHaveBeenCalled();
