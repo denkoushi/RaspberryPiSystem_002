@@ -27,6 +27,7 @@ import {
   type WorkInstructionSourceVersionStepView,
   WorkInstructionEditingError
 } from '../domain/editing.js';
+import { normalizeWorkInstructionGroupKey } from '../domain/normalization.js';
 import {
   ensureWorkInstructionPublicationForRow,
   sourceVersionStepLike,
@@ -202,16 +203,15 @@ function conflict(message: string, code: string, details?: unknown): never {
   throw new WorkInstructionEditingError(409, message, code, details);
 }
 
-function normalizeGroupValue(value: string | null | undefined): string | null {
-  return value == null ? null : value.normalize('NFKC').trim().toUpperCase();
-}
-
 function groupMatches(
   version: { partNumber: string | null; shootingTarget: string | null },
   expectedGroup: WorkInstructionGroupIdentity
 ): boolean {
-  return normalizeGroupValue(version.partNumber) === normalizeGroupValue(expectedGroup.partNumber)
-    && normalizeGroupValue(version.shootingTarget) === normalizeGroupValue(expectedGroup.shootingTarget);
+  const versionGroup = normalizeWorkInstructionGroupKey(version.partNumber, version.shootingTarget);
+  const expected = normalizeWorkInstructionGroupKey(expectedGroup.partNumber, expectedGroup.shootingTarget);
+  return versionGroup != null && expected != null
+    && versionGroup.partNumber === expected.partNumber
+    && versionGroup.shootingTarget === expected.shootingTarget;
 }
 
 function assertGroupMembership(
@@ -509,11 +509,10 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
     clientDeviceId: string;
     now?: Date;
   }): Promise<WorkInstructionEditorAuthenticationView> {
-    const partNumber = input.partNumber.trim();
-    const shootingTarget = input.shootingTarget.trim();
+    const group = normalizeWorkInstructionGroupKey(input.partNumber, input.shootingTarget);
     const employeeTagUid = input.employeeTagUid.trim();
     const clientDeviceId = input.clientDeviceId.trim();
-    if (!partNumber || !shootingTarget) {
+    if (!group) {
       throw new WorkInstructionEditingError(400, '作業要領グループが必要です', 'WORK_INSTRUCTION_EDITOR_GROUP_REQUIRED');
     }
     if (!employeeTagUid) {
@@ -563,8 +562,8 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
           employeeNameSnapshot: employee.displayName,
           clientDeviceId: clientDevice.id,
           clientDeviceNameSnapshot: clientDevice.name,
-          partNumber,
-          shootingTarget,
+          partNumber: group.partNumber,
+          shootingTarget: group.shootingTarget,
           authenticatedAt: now,
           expiresAt: new Date(now.getTime() + WORK_INSTRUCTION_EDITOR_AUTH_TTL_MS)
         }
@@ -585,18 +584,18 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       if (input.revisionId) {
         const revision = await tx.workInstructionEditRevision.findUnique({
           where: { id: input.revisionId },
-          select: { sourceVersion: { select: { partNumber: true, shootingTarget: true } } }
+          select: { sourceVersion: { select: { row: { select: { partNumber: true, shootingTarget: true } } } } }
         });
         if (!revision) notFound('作業要領改版が見つかりません', 'WORK_INSTRUCTION_REVISION_NOT_FOUND');
-        this.assertEditorGroup(auth, revision.sourceVersion);
+        this.assertEditorGroup(auth, revision.sourceVersion.row);
       }
       if (input.sourceVersionId) {
         const version = await tx.workInstructionSourceVersion.findUnique({
           where: { id: input.sourceVersionId },
-          select: { partNumber: true, shootingTarget: true }
+          select: { row: { select: { partNumber: true, shootingTarget: true } } }
         });
         if (!version) notFound('原本版が見つかりません', 'WORK_INSTRUCTION_SOURCE_VERSION_NOT_FOUND');
-        this.assertEditorGroup(auth, version);
+        this.assertEditorGroup(auth, version.row);
       }
       return authView(auth);
     });
@@ -610,8 +609,10 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
   }): Promise<ReadonlyArray<WorkInstructionEditAuditLogView>> {
     const limit = Math.min(500, Math.max(1, input.limit ?? 200));
     const offset = Math.max(0, input.offset ?? 0);
+    const group = normalizeWorkInstructionGroupKey(input.partNumber, input.shootingTarget);
+    if (!group) return [];
     const logs = await this.db.workInstructionEditAuditLog.findMany({
-      where: { partNumber: input.partNumber.trim(), shootingTarget: input.shootingTarget.trim() },
+      where: { partNumber: group.partNumber, shootingTarget: group.shootingTarget },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       skip: offset,
       take: limit
@@ -662,11 +663,19 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
     auth: { partNumber: string; shootingTarget: string },
     group: { partNumber: string | null; shootingTarget: string | null }
   ): void {
-    if (!group.partNumber || !group.shootingTarget
-      || normalizeGroupValue(auth.partNumber) !== normalizeGroupValue(group.partNumber)
-      || normalizeGroupValue(auth.shootingTarget) !== normalizeGroupValue(group.shootingTarget)) {
-      authGroupMismatch();
-    }
+    if (!groupMatches(group, auth)) authGroupMismatch();
+  }
+
+  private async currentGroupForRow(
+    tx: WorkInstructionDbClient,
+    rowId: string
+  ): Promise<{ partNumber: string | null; shootingTarget: string | null }> {
+    const row = await tx.workInstructionRow.findUnique({
+      where: { id: rowId },
+      select: { partNumber: true, shootingTarget: true }
+    });
+    if (!row) notFound('作業要領書が見つかりません', 'WORK_INSTRUCTION_ROW_NOT_FOUND');
+    return row;
   }
 
   private async auditContextForRevision(
@@ -677,7 +686,7 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
     const request = normalizeAuditRequest(authorization);
     if (!request) return null;
     const auth = await this.findAndValidateEditorAuthentication(tx, request);
-    this.assertEditorGroup(auth, revision.sourceVersion);
+    this.assertEditorGroup(auth, await this.currentGroupForRow(tx, revision.sourceVersion.rowId));
     return { context: auditContextView(auth), requestId: request.requestId };
   }
 
@@ -689,7 +698,7 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
     const request = normalizeAuditRequest(authorization);
     if (!request) return null;
     const auth = await this.findAndValidateEditorAuthentication(tx, request);
-    this.assertEditorGroup(auth, version);
+    this.assertEditorGroup(auth, await this.currentGroupForRow(tx, version.rowId));
     return { context: auditContextView(auth), requestId: request.requestId };
   }
 
@@ -708,6 +717,8 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
   ): Promise<void> {
     if (!input.audit) return;
     const { context, requestId } = input.audit;
+    const group = normalizeWorkInstructionGroupKey(context.partNumber, context.shootingTarget);
+    if (!group) authGroupMismatch();
     await tx.workInstructionEditAuditLog.create({
       data: {
         id: randomUUID(),
@@ -718,8 +729,8 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
         employeeNameSnapshot: context.employeeNameSnapshot,
         clientDeviceIdSnapshot: context.clientDeviceId,
         clientDeviceNameSnapshot: context.clientDeviceNameSnapshot,
-        partNumber: context.partNumber,
-        shootingTarget: context.shootingTarget,
+        partNumber: group.partNumber,
+        shootingTarget: group.shootingTarget,
         rowId: input.rowId ?? null,
         sourceVersionId: input.sourceVersionId ?? null,
         revisionId: input.revisionId ?? null,

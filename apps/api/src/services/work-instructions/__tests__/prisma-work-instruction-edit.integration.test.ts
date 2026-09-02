@@ -353,6 +353,29 @@ describeIntegration('work-instruction immutable versions and editing persistence
     );
   });
 
+  it('stores and lists audit history with the canonical work-instruction group key', async () => {
+    const source = await apply({ list: 'List-audit-normalized', itemId: 32, modified: baseModified, contentHash: 'c'.repeat(64) });
+    const { client, authentication } = await createEditorAuthFixture({
+      partNumber: 'ｍｄ００４',
+      shootingTarget: '研削工程'
+    });
+    expect(authentication).toMatchObject({ partNumber: 'MD004', shootingTarget: '研削' });
+
+    const draft = await editing.createDraftRevision({
+      rowId: source.rowId,
+      sourceVersionId: source.sourceVersionId,
+      editorAuthenticationId: authentication.id,
+      clientDeviceId: client.id,
+      requestId: 'request-normalized-audit'
+    });
+    revisionIds.push(draft.revision.id);
+
+    const logs = await editing.listEditAuditLogs({ partNumber: 'ｍｄ００４', shootingTarget: '研削工程' });
+    expect(logs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ authenticationId: authentication.id, action: 'DRAFT_CREATED' })
+    ]));
+  });
+
   it('keeps the old published image/text visible after a newer import', async () => {
     const first = await apply({ list: 'List-public', itemId: 1, modified: baseModified, contentHash: '1'.repeat(64), text: '公開版本文' });
     await apply({ list: 'List-public', itemId: 1, modified: new Date(baseModified.getTime() + 60_000), contentHash: '2'.repeat(64), text: '再取込本文', partNumber: 'MD004', shootingTarget: '研削' });
@@ -739,7 +762,15 @@ describeIntegration('work-instruction immutable versions and editing persistence
     expect(first.rowId && first.sourceVersionId).toBeTruthy();
     rowIds.push(first.rowId!);
     versionIds.push(first.sourceVersionId!);
-    await repository.applyPacket({ packet: packet({ list: 'List-delete', itemId: 20, modified: new Date(baseModified.getTime() + 60_000), contentHash: 'e'.repeat(64), imageName: null }), stagedAssets: [] });
+    await repository.applyPacket({ packet: packet({
+      list: 'List-delete',
+      itemId: 20,
+      modified: new Date(baseModified.getTime() + 60_000),
+      contentHash: 'e'.repeat(64),
+      imageName: null,
+      partNumber: 'MD005',
+      shootingTarget: '切削'
+    }), stagedAssets: [] });
     const versions = await editing.listSourceVersions(first.rowId!);
     const newest = versions.find((version) => version.contentHash === 'e'.repeat(64));
     expect(newest).toBeTruthy();
@@ -764,7 +795,7 @@ describeIntegration('work-instruction immutable versions and editing persistence
       sourceFiles
     );
 
-    const { employee, client, authentication } = await createEditorAuthFixture();
+    const { employee, client, authentication } = await createEditorAuthFixture({ partNumber: 'MD005', shootingTarget: '切削工程' });
     const requested = await service.deleteSourceAsset({
       sourceVersionId: first.sourceVersionId!,
       assetId,
