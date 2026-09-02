@@ -71,6 +71,23 @@ describe('SelfInspectionNonconformityPanel', () => {
     expect(screen.getByText('別の不適合')).toBeInTheDocument();
   });
 
+  it('shows rows with identical displayed fields once', () => {
+    render(
+      <SelfInspectionNonconformityPanel
+        items={[
+          item,
+          { ...item, id: 'nonconformity-2' },
+          { ...item, id: 'nonconformity-3' }
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '不適合情報（1件）' }));
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByText('2026-09-02')).toBeInTheDocument();
+  });
+
   it('shows unregistered fallback only for part and machine names', () => {
     render(
       <SelfInspectionNonconformityPanel
