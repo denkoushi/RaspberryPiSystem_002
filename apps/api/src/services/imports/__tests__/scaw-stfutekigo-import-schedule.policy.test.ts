@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { ensureScawStfutekigoCsvImportSchedule } from '../scaw-stfutekigo-import-schedule.policy.js';
+import {
+  applyScawStfutekigoImportScheduleInvariants,
+  ensureScawStfutekigoCsvImportSchedule,
+} from '../scaw-stfutekigo-import-schedule.policy.js';
 import {
   SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_CRON,
   SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_ID,
@@ -16,6 +19,11 @@ describe('scawSTFUTEKIGO fixed import schedule', () => {
     expect(row.enabled).toBe(true);
     expect(row.targets).toEqual([{ type: 'csvDashboards', source: SCAW_STFUTEKIGO_DASHBOARD_ID }]);
     expect(row.provider).toBe('gmail');
+  });
+
+  it('applies the shared persistence invariants to the fixed schedule', () => {
+    const row = buildDefaultScawStfutekigoCsvImportSchedule();
+    expect(applyScawStfutekigoImportScheduleInvariants(row)).toEqual(row);
   });
 
   it('repairs a missing fixed schedule without adding a duplicate', () => {

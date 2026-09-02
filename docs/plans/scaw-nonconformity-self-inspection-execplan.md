@@ -22,6 +22,8 @@ Import the daily full `scawSTFUTEKIGO` Gmail CSV through the existing CSV-dashbo
 
 ## Surprises & Discoveries
 
+- Observation: PR #1318's first API coverage run passed the tests but failed the global function threshold by 0.03 points (`75.97%` versus `76%`).
+  Evidence: CI run `33682063509` failed only `api (all)`; DB, Web, kiosk-SOP, container rehearsal, CodeQL, gitleaks, and repository checks passed. Added direct tests for the fixed-schedule invariant, advisory lock, bounded staging deletion, and zero-progress cleanup without lowering the threshold or changing production code.
 - Observation: The source contains decimal quantities, including `0.1` and `0.2`, so quantity must use `Decimal`, not an integer.
   Evidence: PostgreSQL validation retained `0.200000` in `DECIMAL(18,6)`.
 - Observation: Most historical manufacturing orders are not in the current production schedule; unmatched source rows must remain durable and retryable.
