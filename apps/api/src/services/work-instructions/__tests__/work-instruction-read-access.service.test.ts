@@ -8,6 +8,11 @@ import type {
   WorkInstructionRowView,
 } from '../domain/types.js';
 import type { WorkInstructionRepository } from '../repositories/work-instruction-repository.port.js';
+import type { WorkInstructionDbClient } from '../repositories/prisma-work-instruction.persistence.types.js';
+import {
+  hasPublishedWorkInstructionPart,
+  readPublishedWorkInstructionPartAlias
+} from '../repositories/prisma-work-instruction-read-queries.js';
 
 const verifyDueManagementAccessPassword = vi.hoisted(() => vi.fn());
 
@@ -224,5 +229,87 @@ describe('WorkInstructionAccessService', () => {
       location: 'shared',
       password: '',
     });
+  });
+});
+
+describe('work-instruction part alias read queries', () => {
+  it('normalizes the part number and handles public-part existence results', async () => {
+    const db = {
+      $queryRaw: vi.fn()
+        .mockResolvedValueOnce([{ exists: true }])
+        .mockResolvedValueOnce([{ exists: false }])
+        .mockResolvedValueOnce([])
+    } as unknown as WorkInstructionDbClient;
+
+    await expect(hasPublishedWorkInstructionPart(db, '  md004x ')).resolves.toBe(true);
+    await expect(hasPublishedWorkInstructionPart(db, 'MD004Y')).resolves.toBe(false);
+    await expect(hasPublishedWorkInstructionPart(db, '   ')).resolves.toBe(false);
+    expect(db.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('aggregates public alias targets, trims names, and returns null for empty or blank input', async () => {
+    const createdAt = new Date('2026-08-31T00:00:00.000Z');
+    const lastSelectedAt = new Date('2026-09-01T00:00:00.000Z');
+    const db = {
+      $queryRaw: vi.fn()
+        .mockResolvedValueOnce([
+          {
+            scannedPartNumber: 'MD004X',
+            canonicalPartNumber: 'MD0041',
+            partName: '  部品A  ',
+            shootingTarget: '切削',
+            selectionCount: 2,
+            createdAt,
+            lastSelectedAt
+          },
+          {
+            scannedPartNumber: 'MD004X',
+            canonicalPartNumber: 'MD0041',
+            partName: '  部品A  ',
+            shootingTarget: '切削',
+            selectionCount: 2,
+            createdAt,
+            lastSelectedAt
+          },
+          {
+            scannedPartNumber: 'MD004X',
+            canonicalPartNumber: 'MD0041',
+            partName: '  部品A  ',
+            shootingTarget: '研削',
+            selectionCount: 2,
+            createdAt,
+            lastSelectedAt
+          }
+        ])
+        .mockResolvedValueOnce([{
+          scannedPartNumber: 'MD004Y',
+          canonicalPartNumber: 'MD0042',
+          partName: null,
+          shootingTarget: '資源CD',
+          selectionCount: 1,
+          createdAt,
+          lastSelectedAt
+        }])
+        .mockResolvedValueOnce([])
+    } as unknown as WorkInstructionDbClient;
+
+    await expect(readPublishedWorkInstructionPartAlias(db, ' md004x ')).resolves.toEqual({
+      scannedPartNumber: 'MD004X',
+      canonicalPartNumber: 'MD0041',
+      partName: '部品A',
+      shootingTargets: ['切削', '研削'],
+      selectionCount: 2,
+      createdAt,
+      lastSelectedAt
+    });
+    await expect(readPublishedWorkInstructionPartAlias(db, 'md004y')).resolves.toMatchObject({
+      scannedPartNumber: 'MD004Y',
+      canonicalPartNumber: 'MD0042',
+      partName: null,
+      shootingTargets: ['資源CD']
+    });
+    await expect(readPublishedWorkInstructionPartAlias(db, 'md004z')).resolves.toBeNull();
+    await expect(readPublishedWorkInstructionPartAlias(db, '   ')).resolves.toBeNull();
+    expect(db.$queryRaw).toHaveBeenCalledTimes(3);
   });
 });
