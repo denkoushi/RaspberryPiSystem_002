@@ -130,8 +130,16 @@ function makeApp(overrides: { allowWrite?: () => Promise<void>; withRateLimit?: 
       sourceVersion
     })),
     listSourceVersions: vi.fn(async () => [sourceVersion]),
+    createDraftRevision: vi.fn(async () => ({
+      revision,
+      copy: { elements: [], copiedCount: 0, needsReviewCount: 0, unassignedCount: 0, skippedCount: 0, unassignedIds: [] }
+    })),
     saveOverlays: vi.fn(async () => revision),
     saveDraft: vi.fn(async () => revision),
+    publishRevision: vi.fn(async () => ({
+      revision: { ...revision, status: 'PUBLISHED' as const },
+      migration: { needsReviewCount: 0, unassignedCount: 0 }
+    })),
     discardRevision: vi.fn(async () => revision),
     createImageRegion: vi.fn(async () => ({
       id: '00000000-0000-0000-0000-000000000105',
@@ -149,9 +157,17 @@ function makeApp(overrides: { allowWrite?: () => Promise<void>; withRateLimit?: 
       activatedAt: now,
       deletePendingAt: null
     })),
+    findTextCandidates: vi.fn(async () => [{
+      text: '候補テキスト',
+      confidence: 0.96,
+      bounds: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.3, heightRatio: 0.1 },
+      pageIndex: 0,
+      source: 'ocr'
+    }]),
     createDraftRevisionGroup: vi.fn(async () => [{ revision, copy: { elements: [], copiedCount: 0, needsReviewCount: 0, unassignedCount: 0, skippedCount: 0, unassignedIds: [] } }]),
     publishRevisionGroup: vi.fn(async () => [{ revision: { ...revision, status: 'PUBLISHED' as const }, migration: { needsReviewCount: 0, unassignedCount: 0, skippedCount: 0 } }]),
-    deleteSourceVersionImages: vi.fn(async () => [{ assetId: 'asset-1', auditId: 'audit-1', status: 'DELETED' as const }])
+    deleteSourceVersionImages: vi.fn(async () => [{ assetId: 'asset-1', auditId: 'audit-1', status: 'DELETED' as const }]),
+    deleteSourceAsset: vi.fn(async () => ({ assetId: 'asset-1', auditId: 'audit-1', status: 'DELETED' as const }))
   } as unknown as WorkInstructionEditService;
   const routeOptions = {
     read,
@@ -323,6 +339,101 @@ describe('work-instruction editor route contract', () => {
     await fixture.app.close();
   });
 
+  it('creates a single draft revision with the NFC authorization context', async () => {
+    const fixture = makeApp();
+    await fixture.app.ready();
+    const response = await fixture.app.inject({
+      method: 'POST',
+      url: `/work-instructions/rows/${rowId}/revisions`,
+      headers: {
+        'x-work-instruction-editor-authentication-id': '00000000-0000-0000-0000-000000000198',
+        'x-client-key': 'test-client-key'
+      },
+      payload: { sourceVersionId: versionId }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fixture.editing.createDraftRevision).toHaveBeenCalledWith({
+      rowId,
+      sourceVersionId: versionId,
+      editorAuthenticationId: '00000000-0000-0000-0000-000000000198',
+      clientDeviceId: '00000000-0000-0000-0000-000000000199',
+      requestId: expect.any(String)
+    });
+    expect(response.json()).toMatchObject({
+      revision: { id: revisionId, sourceVersionId: versionId },
+      copy: { copiedCount: 0, needsReviewCount: 0 }
+    });
+    await fixture.app.close();
+  });
+
+  it('publishes a single revision with the NFC authorization context', async () => {
+    const fixture = makeApp();
+    await fixture.app.ready();
+    const response = await fixture.app.inject({
+      method: 'POST',
+      url: `/work-instructions/revisions/${revisionId}/publish`,
+      headers: {
+        'x-work-instruction-editor-authentication-id': '00000000-0000-0000-0000-000000000198',
+        'x-client-key': 'test-client-key'
+      },
+      payload: {
+        expectedEditVersion: 0,
+        expectedSourceVersionId: versionId,
+        expectedContentHash: 'a'.repeat(64)
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fixture.editing.publishRevision).toHaveBeenCalledWith(expect.objectContaining({
+      revisionId,
+      expectedEditVersion: 0,
+      expectedSourceVersionId: versionId,
+      expectedContentHash: 'a'.repeat(64),
+      editorAuthenticationId: '00000000-0000-0000-0000-000000000198',
+      clientDeviceId: '00000000-0000-0000-0000-000000000199',
+      requestId: expect.any(String)
+    }));
+    expect(response.json()).toMatchObject({
+      revision: { id: revisionId },
+      migration: { needsReviewCount: 0, unassignedCount: 0 }
+    });
+    await fixture.app.close();
+  });
+
+  it('returns text-region candidates with the NFC authorization context', async () => {
+    const fixture = makeApp();
+    await fixture.app.ready();
+    const bbox = { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 };
+    const response = await fixture.app.inject({
+      method: 'POST',
+      url: `/work-instructions/revisions/${revisionId}/regions/text`,
+      headers: {
+        'x-work-instruction-editor-authentication-id': '00000000-0000-0000-0000-000000000198',
+        'x-client-key': 'test-client-key'
+      },
+      payload: { stepKey: 'SharePoint:List:101:1', bbox }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fixture.editing.findTextCandidates).toHaveBeenCalledWith({
+      revisionId,
+      stepKey: 'SharePoint:List:101:1',
+      bbox,
+      editorAuthenticationId: '00000000-0000-0000-0000-000000000198',
+      clientDeviceId: '00000000-0000-0000-0000-000000000199',
+      requestId: expect.any(String)
+    });
+    expect(response.json()).toEqual({ candidates: [{
+      text: '候補テキスト',
+      confidence: 0.96,
+      bounds: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.3, heightRatio: 0.1 },
+      pageIndex: 0,
+      source: 'ocr'
+    }] });
+    await fixture.app.close();
+  });
+
   it('publishes a group using the expected edit versions and returns the group DTO', async () => {
     const fixture = makeApp();
     await fixture.app.ready();
@@ -473,6 +584,32 @@ describe('work-instruction editor route contract', () => {
       deletedImageCount: 1,
       failedCount: 0
     });
+    await fixture.app.close();
+  });
+
+  it('allows an authenticated employee to delete one source image', async () => {
+    const fixture = makeApp();
+    const assetId = '00000000-0000-0000-0000-000000000106';
+    await fixture.app.ready();
+    const response = await fixture.app.inject({
+      method: 'DELETE',
+      url: `/work-instructions/source-versions/${versionId}/assets/${assetId}`,
+      headers: {
+        'x-work-instruction-editor-authentication-id': '00000000-0000-0000-0000-000000000198',
+        'x-client-key': 'test-client-key'
+      },
+      payload: {}
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fixture.editing.deleteSourceAsset).toHaveBeenCalledWith({
+      sourceVersionId: versionId,
+      assetId,
+      editorAuthenticationId: '00000000-0000-0000-0000-000000000198',
+      clientDeviceId: '00000000-0000-0000-0000-000000000199',
+      requestId: expect.any(String)
+    });
+    expect(response.json()).toEqual({ assetId: 'asset-1', auditId: 'audit-1', status: 'DELETED' });
     await fixture.app.close();
   });
 
