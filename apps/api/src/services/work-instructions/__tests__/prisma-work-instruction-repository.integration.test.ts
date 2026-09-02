@@ -2,6 +2,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import type {
   WorkInstructionAssetInput,
   WorkInstructionPacket,
@@ -76,6 +77,7 @@ function imageStep(step: number, imageName: string, imageHash: string) {
 }
 
 async function cleanupFixtures(): Promise<void> {
+  await prisma.csvDashboardRow.deleteMany({ where: { dataHash: { startsWith: fixtureToken } } });
   await prisma.$transaction(async (tx) => {
     const rows = await tx.workInstructionRow.findMany({
       where: { sourceSystem },
@@ -283,6 +285,127 @@ describeIntegration('Prisma work-instruction repository (isolated integration)',
     expect(await prisma.workInstructionStep.count({
       where: { row: { sourceSystem, sourceList: 'List-A', sourceItemId: 901 } },
     })).toBe(0);
+  });
+
+  it('lists published part candidates by literal prefix with longest fallback, names, targets, and paging', async () => {
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      update: {},
+      create: {
+        id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        name: `ProductionSchedule-${fixtureToken}`,
+        columnDefinitions: [],
+        templateType: 'CARD_GRID',
+        templateConfig: {},
+        ingestMode: 'DEDUP',
+        dedupKeyColumns: ['ProductNo'],
+        dateColumnName: 'registeredAt',
+        enabled: true
+      }
+    });
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: baseModified,
+        dataHash: `${fixtureToken}-candidate-name`,
+        rowData: { FHINCD: 'MD004121632', FHINMEI: '候補部品A' }
+      }
+    });
+    const candidates = [
+      { itemId: 1001, partNumber: 'MD004121632', shootingTarget: '研削' },
+      { itemId: 1002, partNumber: 'MD004121632', shootingTarget: '581' },
+      { itemId: 1003, partNumber: 'MD004121699', shootingTarget: '切削' },
+      { itemId: 1004, partNumber: 'AB%_01', shootingTarget: '582' },
+      { itemId: 1005, partNumber: 'ZA001', shootingTarget: '資源CD' }
+    ];
+    for (const candidate of candidates) {
+      // eslint-disable-next-line no-await-in-loop
+      await repository.applyPacket({
+        packet: packet({
+          ...candidate,
+          modified: new Date(baseModified.getTime() + candidate.itemId),
+          contentHash: String(candidate.itemId).padStart(64, '0')
+        }),
+        stagedAssets: []
+      });
+    }
+
+    await expect(repository.readPublishedPartCandidates({
+      prefix: 'MD00412163', fallback: false, limit: 20, offset: 0
+    })).resolves.toEqual({
+      matchedPrefix: 'MD00412163',
+      candidates: [{
+        partNumber: 'MD004121632',
+        partName: '候補部品A',
+        shootingTargets: ['581', '研削']
+      }],
+      hasMore: false
+    });
+    const fallback = await repository.readPublishedPartCandidates({
+      prefix: 'MD004121688', fallback: true, limit: 1, offset: 0
+    });
+    expect(fallback).toMatchObject({ matchedPrefix: 'MD0041216', hasMore: true });
+    expect(fallback.candidates).toHaveLength(1);
+    await expect(repository.readPublishedPartCandidates({
+      prefix: 'MD0041216', fallback: false, limit: 1, offset: 1
+    })).resolves.toMatchObject({
+      matchedPrefix: 'MD0041216',
+      candidates: [{ partNumber: 'MD004121699', partName: null, shootingTargets: ['切削'] }],
+      hasMore: false
+    });
+    await expect(repository.readPublishedPartCandidates({
+      prefix: 'ZX9', fallback: true, limit: 20, offset: 0
+    })).resolves.toEqual({ matchedPrefix: null, candidates: [], hasMore: false });
+    await expect(repository.readPublishedPartCandidates({
+      prefix: 'AB%_', fallback: false, limit: 20, offset: 0
+    })).resolves.toMatchObject({
+      matchedPrefix: 'AB%_',
+      candidates: [{ partNumber: 'AB%_01', shootingTargets: ['582'] }]
+    });
+
+    await repository.applyPacket({
+      packet: packet({
+        itemId: 1006,
+        modified: new Date(baseModified.getTime() + 1006),
+        contentHash: '6'.repeat(64),
+        partNumber: 'PUB-OLD',
+        shootingTarget: '研削'
+      }),
+      stagedAssets: []
+    });
+    await repository.applyPacket({
+      packet: packet({
+        itemId: 1006,
+        modified: new Date(baseModified.getTime() + 2006),
+        contentHash: '7'.repeat(64),
+        partNumber: 'PUB-NEW',
+        shootingTarget: '切削'
+      }),
+      stagedAssets: []
+    });
+    await prisma.workInstructionRow.create({
+      data: {
+        sourceSystem,
+        sourceList: 'Legacy',
+        sourceItemId: BigInt(1007),
+        sourceModified: baseModified,
+        partNumber: 'LEGACY-01',
+        shootingTarget: '資源CD',
+        rawManifest: { fixture: fixtureToken },
+        contentHash: '8'.repeat(64)
+      }
+    });
+
+    await expect(repository.readPublishedPartCandidates({
+      prefix: 'PUB-', fallback: false, limit: 20, offset: 0
+    })).resolves.toMatchObject({
+      candidates: [{ partNumber: 'PUB-OLD', shootingTargets: ['研削'] }]
+    });
+    await expect(repository.readPublishedPartCandidates({
+      prefix: 'LEGACY-', fallback: false, limit: 20, offset: 0
+    })).resolves.toMatchObject({
+      candidates: [{ partNumber: 'LEGACY-01', shootingTargets: ['資源CD'] }]
+    });
   });
 
   it('round-trips safe-integer source and step values through BIGINT columns', async () => {
