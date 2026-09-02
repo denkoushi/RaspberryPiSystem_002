@@ -10,6 +10,7 @@ import {
   useInvalidateSelfInspectionItem,
   useKioskProductionSchedule,
   useKioskProductionScheduleResources,
+  useSelfInspectionNonconformities,
   useSelfInspectionSessions
 } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
@@ -164,6 +165,9 @@ export function KioskSelfInspectionPage() {
   const partScanArmed = hidScanTarget === 'part';
   const invalidateItemMutation = useInvalidateSelfInspectionItem();
   const resourcesQuery = useKioskProductionScheduleResources();
+  const nonconformitiesQuery = useSelfInspectionNonconformities(instructionPartNumber, {
+    enabled: instructionTarget !== null
+  });
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
     [resourcesQuery.data?.resourceNameMap]
@@ -841,6 +845,12 @@ export function KioskSelfInspectionPage() {
         errorMessage={
           instructionGroupQuery.isError ? '作業要領書の読み込みに失敗しました。' : undefined
         }
+        nonconformityItems={nonconformitiesQuery.data}
+        nonconformityIsLoading={nonconformitiesQuery.isLoading}
+        nonconformityErrorMessage={
+          nonconformitiesQuery.isError ? '不適合情報を取得できませんでした。' : undefined
+        }
+        onRetryNonconformities={() => void nonconformitiesQuery.refetch()}
         onEdit={() => {
           const params = new URLSearchParams({
             partNumber: instructionPartNumber,

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Dialog } from '../../components/ui/Dialog';
 
+import { SelfInspectionNonconformityPanel } from './SelfInspectionNonconformityPanel';
 import { WorkInstructionImageDialog } from './WorkInstructionImageDialog';
 import { WorkInstructionStepCard } from './WorkInstructionStepCard';
 import {
@@ -10,6 +11,7 @@ import {
   moveWorkInstructionImageIndex
 } from './workInstructionViewerNavigation';
 
+import type { SelfInspectionNonconformity } from '../../api/domains/self-inspection-nonconformities';
 import type { WorkInstructionGroup } from '../../api/domains/work-instructions';
 
 export type WorkInstructionViewerDialogProps = {
@@ -20,6 +22,10 @@ export type WorkInstructionViewerDialogProps = {
   isLoading: boolean;
   errorMessage?: string;
   onClose: () => void;
+  nonconformityItems?: ReadonlyArray<SelfInspectionNonconformity>;
+  nonconformityIsLoading?: boolean;
+  nonconformityErrorMessage?: string;
+  onRetryNonconformities?: () => void;
   /** Manager-only entry point. The API remains the authority for write access. */
   onEdit?: () => void;
 };
@@ -32,6 +38,10 @@ export function WorkInstructionViewerDialog({
   isLoading,
   errorMessage,
   onClose,
+  nonconformityItems,
+  nonconformityIsLoading,
+  nonconformityErrorMessage,
+  onRetryNonconformities,
   onEdit
 }: WorkInstructionViewerDialogProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -85,6 +95,12 @@ export function WorkInstructionViewerDialog({
               新しい原本があります
             </span>
           ) : null}
+          <SelfInspectionNonconformityPanel
+            items={nonconformityItems}
+            isLoading={nonconformityIsLoading}
+            errorMessage={nonconformityErrorMessage}
+            onRetry={onRetryNonconformities}
+          />
           {onEdit ? (
             <button
               type="button"

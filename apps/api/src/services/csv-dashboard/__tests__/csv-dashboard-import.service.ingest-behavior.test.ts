@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NoMatchingMessageError } from '../../backup/storage/gmail-storage.provider.js';
 import { ApiError } from '../../../lib/errors.js';
 import { CsvDashboardImportService } from '../csv-dashboard-import.service.js';
+import {
+  SCAW_STFUTEKIGO_DASHBOARD_ID,
+  SCAW_STFUTEKIGO_SUBJECT_PATTERN,
+} from '../../scaw-stfutekigo/constants.js';
 
 const { findUniqueMock, upsertMock, findFirstMock, updateMock } = vi.hoisted(() => ({
   findUniqueMock: vi.fn(),
@@ -161,5 +165,65 @@ describe('CsvDashboardImportService ingest behavior', () => {
 
     expect(trashMessage).toHaveBeenCalledTimes(2);
     expect(markAsRead).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts only the exact fixed subject and forwards the Gmail received time', async () => {
+    const receivedAt = new Date('2026-09-02T01:23:45.000Z');
+    findUniqueMock.mockResolvedValue({
+      id: SCAW_STFUTEKIGO_DASHBOARD_ID,
+      enabled: true,
+      gmailSubjectPattern: SCAW_STFUTEKIGO_SUBJECT_PATTERN,
+    });
+    const service = new CsvDashboardImportService() as any;
+    service.subjectPatternProvider = {
+      listEnabledPatterns: vi.fn().mockResolvedValue([SCAW_STFUTEKIGO_SUBJECT_PATTERN]),
+    };
+    service.unifiedMailboxFetcher = {
+      fetchBySubjectPatterns: vi.fn().mockResolvedValue({
+        [SCAW_STFUTEKIGO_SUBJECT_PATTERN]: [
+          {
+            buffer: Buffer.from('exact'),
+            messageId: 'message-exact',
+            messageSubject: ` ${SCAW_STFUTEKIGO_SUBJECT_PATTERN.toUpperCase()} `,
+            receivedAt,
+          },
+          {
+            buffer: Buffer.from('near'),
+            messageId: 'message-near',
+            messageSubject: `${SCAW_STFUTEKIGO_SUBJECT_PATTERN}_backup`,
+            receivedAt: new Date('2026-09-02T01:24:45.000Z'),
+          },
+        ],
+      }),
+    };
+    service.ingestor = {
+      ingestFromGmail: vi.fn().mockResolvedValue({
+        ingestRunId: 'ingest-run-1',
+        rowsProcessed: 1,
+        rowsAdded: 1,
+        rowsSkipped: 0,
+      }),
+    };
+    service.postIngestService = { runAfterSuccessfulIngest: vi.fn().mockResolvedValue({}) };
+
+    await service.ingestTargets({
+      provider: 'gmail',
+      storageProvider: {
+        downloadAllBySubjectPatterns: vi.fn(),
+        markAsRead: vi.fn().mockResolvedValue(undefined),
+        trashMessage: vi.fn().mockResolvedValue(undefined),
+      },
+      dashboardIds: [SCAW_STFUTEKIGO_DASHBOARD_ID],
+    });
+
+    expect(service.ingestor.ingestFromGmail).toHaveBeenCalledTimes(1);
+    expect(service.ingestor.ingestFromGmail).toHaveBeenCalledWith(
+      SCAW_STFUTEKIGO_DASHBOARD_ID,
+      'exact',
+      'message-exact',
+      expect.any(String),
+      expect.any(String),
+      receivedAt
+    );
   });
 });

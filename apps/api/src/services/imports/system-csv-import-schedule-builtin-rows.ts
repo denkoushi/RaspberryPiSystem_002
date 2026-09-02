@@ -11,6 +11,11 @@ import {
   RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID,
   RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID,
 } from '../rigging/constants.js';
+import {
+  SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_CRON,
+  SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_ID,
+  SCAW_STFUTEKIGO_DASHBOARD_ID,
+} from '../scaw-stfutekigo/constants.js';
 
 export {
   RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_CRON,
@@ -50,6 +55,9 @@ export const CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID = 'csv-import-productionschedu
 
 /** 日曜 5:31 JST（仕様固定） */
 export const CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_CRON = '31 5 * * 0';
+
+/** Gmail 経由で scawSTFUTEKIGO CsvDashboard を定期取り込みする固定スケジュールID */
+export { SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_CRON, SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_ID };
 
 export function buildDefaultFkojunstCsvImportSchedule(): CsvImportScheduleRow {
   return {
@@ -116,6 +124,19 @@ export function buildDefaultCustomerScawCsvImportSchedule(): CsvImportScheduleRo
   };
 }
 
+export function buildDefaultScawStfutekigoCsvImportSchedule(): CsvImportScheduleRow {
+  return {
+    id: SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_ID,
+    name: 'ScawStFutekigo (Gmail, full snapshot)',
+    provider: 'gmail',
+    targets: [{ type: 'csvDashboards', source: SCAW_STFUTEKIGO_DASHBOARD_ID }],
+    schedule: SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_CRON,
+    enabled: true,
+    replaceExisting: false,
+    autoBackupAfterImport: { enabled: false, targets: ['csv'] },
+  };
+}
+
 export function buildDefaultRiggingSlingsInspectionCsvImportSchedule(): CsvImportScheduleRow {
   return {
     id: RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID,
@@ -136,6 +157,7 @@ export const SYSTEM_CSV_IMPORT_SCHEDULE_DEFAULT_BUILDERS: Record<string, () => C
   [FKOBAINO_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkobainoCsvImportSchedule,
   [SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID]: buildDefaultSeibanMachineNameSupplementCsvImportSchedule,
   [CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID]: buildDefaultCustomerScawCsvImportSchedule,
+  [SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_ID]: buildDefaultScawStfutekigoCsvImportSchedule,
   [RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID]: buildDefaultRiggingSlingsInspectionCsvImportSchedule,
 };
 

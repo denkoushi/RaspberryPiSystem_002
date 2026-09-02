@@ -11,6 +11,7 @@ import type { NfcEvent } from '../../hooks/useNfcStream';
 const mockUseKioskProductionSchedule = vi.fn();
 const mockUseKioskProductionScheduleResources = vi.fn();
 const mockUseSelfInspectionSessions = vi.fn();
+const mockUseSelfInspectionNonconformities = vi.fn();
 const mockUseWorkInstructionGroups = vi.fn();
 const mockUseWorkInstructionGroup = vi.fn();
 const mockIssueSelfInspectionPaperReport = vi.fn();
@@ -29,6 +30,7 @@ vi.mock('../../api/hooks', () => ({
   useKioskProductionSchedule: (...args: unknown[]) => mockUseKioskProductionSchedule(...args),
   useKioskProductionScheduleResources: (...args: unknown[]) => mockUseKioskProductionScheduleResources(...args),
   useSelfInspectionSessions: (...args: unknown[]) => mockUseSelfInspectionSessions(...args),
+  useSelfInspectionNonconformities: (...args: unknown[]) => mockUseSelfInspectionNonconformities(...args),
   useWorkInstructionGroups: (...args: unknown[]) => mockUseWorkInstructionGroups(...args),
   useWorkInstructionGroup: (...args: unknown[]) => mockUseWorkInstructionGroup(...args),
   useInvalidateSelfInspectionItem: () => ({
@@ -173,6 +175,7 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     mockUseKioskProductionSchedule.mockReset();
     mockUseKioskProductionScheduleResources.mockReset();
     mockUseSelfInspectionSessions.mockReset();
+    mockUseSelfInspectionNonconformities.mockReset();
     mockUseWorkInstructionGroups.mockReset();
     mockUseWorkInstructionGroup.mockReset();
     mockIssueSelfInspectionPaperReport.mockReset();
@@ -205,6 +208,12 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
         listLimit: 200
       },
       isLoading: false
+    }));
+    mockUseSelfInspectionNonconformities.mockImplementation(() => ({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn()
     }));
     mockUseWorkInstructionGroups.mockImplementation((partNumber: string) => ({
       data:
@@ -340,6 +349,7 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
 
     fireEvent.click(grindingChip);
     expect(await screen.findByRole('dialog', { name: '作業要領書' })).toBeInTheDocument();
+    expect(mockUseSelfInspectionNonconformities).toHaveBeenLastCalledWith('MH001', { enabled: true });
     expect(screen.getByText('加工面を確認します。')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '自主検査画面に戻る' }));
 

@@ -25,7 +25,12 @@ export class CsvErrorDispositionPolicy {
       }
     }
 
+    // A malformed full snapshot cannot become valid by retrying the same mail;
+    // the domain keeps the previous Current membership and the caller disposes it.
+    if ((error as { code?: unknown } | null)?.code === 'SCAW_STFUTEKIGO_INVALID_ROW') {
+      return 'NON_RETRIABLE';
+    }
+
     return 'RETRIABLE';
   }
 }
-

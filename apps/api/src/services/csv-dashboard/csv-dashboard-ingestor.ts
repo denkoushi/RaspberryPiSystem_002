@@ -28,6 +28,7 @@ import {
   FKOJUNST_STATUS_MAIL_COMPLETION_TX_TIMEOUT_MS,
   type FkojunstDeferredRowUpdate,
 } from './fkojunst-status-mail-ingest-publication.js';
+import { SCAW_STFUTEKIGO_DASHBOARD_ID } from '../scaw-stfutekigo/constants.js';
 
 /**
  * CSVダッシュボード取り込みサービス
@@ -49,7 +50,8 @@ export class CsvDashboardIngestor {
     csvContent: string,
     messageId?: string,
     messageSubject?: string,
-    csvFilePath?: string
+    csvFilePath?: string,
+    sourceReceivedAt?: Date | null
   ): Promise<{
     ingestRunId: string;
     rowsProcessed: number;
@@ -76,6 +78,7 @@ export class CsvDashboardIngestor {
         messageId: messageId ?? null,
         messageSubject: messageSubject ?? null,
         csvFilePath: csvFilePath ?? null,
+        sourceReceivedAt: sourceReceivedAt ?? null,
       },
     });
 
@@ -108,7 +111,11 @@ export class CsvDashboardIngestor {
 
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
-        const normalized = this.normalizeRow(row, columnMapping);
+        const normalized = this.normalizeRow(
+          row,
+          columnMapping,
+          dashboardId === SCAW_STFUTEKIGO_DASHBOARD_ID
+        );
         const occurredAt = this.extractOccurredAt(row, dateColumnIndex, {
           dashboardId,
           dateColumnName: dashboard.dateColumnName ?? null,
@@ -519,12 +526,14 @@ export class CsvDashboardIngestor {
    */
   private normalizeRow(
     row: string[],
-    columnMapping: Array<{ csvIndex: number; internalName: string; columnDef: ColumnDefinition }>
+    columnMapping: Array<{ csvIndex: number; internalName: string; columnDef: ColumnDefinition }>,
+    preserveSourceStrings = false
   ): NormalizedRowData {
     const normalized: NormalizedRowData = {};
 
     for (const mapping of columnMapping) {
-      const csvValue = row[mapping.csvIndex]?.trim() || '';
+      const sourceValue = row[mapping.csvIndex] ?? '';
+      const csvValue = preserveSourceStrings ? sourceValue : sourceValue.trim();
       const colDef = mapping.columnDef;
 
       // データ型に応じて変換

@@ -14,6 +14,7 @@ import {
 import { registerKioskAssemblyRecordApprovalAuthRoute } from './kiosk/assembly-record-approval-auth.js';
 import { registerKioskAssemblyTemplateAuthRoute } from './kiosk/assembly-template-auth.js';
 import { registerKioskAssemblyTraceabilityAuthRoute } from './kiosk/assembly-traceability-auth.js';
+import { registerSelfInspectionNonconformityRoutes } from './kiosk/self-inspection-nonconformities.js';
 import {
   checkPowerRateLimit,
   checkRateLimit,
@@ -44,6 +45,8 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   await registerKioskEmployeesRoute(app, {
     requireClientDevice
   });
+
+  await registerSelfInspectionNonconformityRoutes(app);
 
   await registerProductionScheduleRoutes(app, {
     requireClientDevice,
