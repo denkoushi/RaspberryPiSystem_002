@@ -115,6 +115,7 @@ export type WorkInstructionEditorStepDto = {
   sourceList: string;
   sourceItemId: number;
   step: number;
+  operation: string | null;
   text: string;
   /** Original source text remains available while effective memo is derived. */
   memo?: string | null;

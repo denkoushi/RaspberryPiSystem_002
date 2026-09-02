@@ -13,6 +13,7 @@ function makeStep(id: string, imageUrl: string | null, text = id): WorkInstructi
   return {
     id,
     step: Number(id.replace(/\D/g, '')) || 1,
+    operation: null,
     text,
     imageName: imageUrl ? `${id}.png` : null,
     imageAssetId: imageUrl ? `asset-${id}` : null,

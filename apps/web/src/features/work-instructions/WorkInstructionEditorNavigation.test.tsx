@@ -18,6 +18,7 @@ function makeStep(step: number): WorkInstructionEditorStepDto {
     sourceList: 'work-instructions',
     sourceItemId: 1,
     step,
+    operation: null,
     text: `手順${step}を確認します。`,
     imageName: null,
     imageAssetId: null,
@@ -130,5 +131,25 @@ describe('WorkInstructionEditorNavigation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /手順 1/ }));
     expect(current.selectStep).toHaveBeenCalledWith('sharepoint:work-instructions:1:1');
+  });
+
+  it('keeps the original labels when no operation is available', () => {
+    const current = controller();
+    render(<WorkInstructionEditorStepsPane controller={current} />);
+
+    expect(screen.getByRole('heading', { name: '手順' })).toBeInTheDocument();
+    expect(screen.queryByText(/^OP-/)).not.toBeInTheDocument();
+  });
+
+  it('shows the active operation in the heading and every labeled step while keeping selection clickable', () => {
+    const step1 = { ...makeStep(1), operation: 'OP-01' };
+    const step2 = { ...makeStep(2), operation: 'OP-01' };
+    const current = controller({ activeSteps: [step1, step2], selectedStepKey: step1.stepKey });
+    render(<WorkInstructionEditorStepsPane controller={current} />);
+
+    expect(screen.getByRole('heading', { name: '手順（OP-01）' })).toBeInTheDocument();
+    expect(screen.getAllByText('OP-01')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: /手順 2/ }));
+    expect(current.selectStep).toHaveBeenCalledWith(step2.stepKey);
   });
 });

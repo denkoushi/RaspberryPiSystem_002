@@ -15,6 +15,7 @@ const steps: WorkInstructionEditorStepDto[] = [{
   sourceList: 'WorkInstructions',
   sourceItemId: 101,
   step: 1,
+  operation: null,
   text: '加工面を確認します。',
   imageName: null,
   imageAssetId: null,

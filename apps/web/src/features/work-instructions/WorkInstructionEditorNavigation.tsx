@@ -62,12 +62,15 @@ export function WorkInstructionEditorRowsPane({ controller }: { controller: Work
 
 export function WorkInstructionEditorStepsPane({ controller }: { controller: WorkInstructionEditorController }) {
   const memoOverrides = controller.activeMemoOverridesArray;
+  const activeOperation = controller.activeSteps.find((step) => step.operation)?.operation ?? null;
   return (
     <aside
       className="min-h-0 overflow-auto border-b border-white/10 bg-slate-900/50 p-2 xl:border-b-0 xl:border-r"
       aria-label="手順一覧"
     >
-      <h2 className="mb-2 text-xs font-bold text-white/70">手順</h2>
+      <h2 className="mb-2 text-xs font-bold text-white/70">
+        {activeOperation ? `手順（${activeOperation}）` : '手順'}
+      </h2>
       <div className="grid gap-1">
         {controller.activeSteps.map((step, index) => {
           const key = step.stepKey || `${step.sourceSystem}:${step.sourceList}:${step.sourceItemId}:${step.step}`;
@@ -92,6 +95,9 @@ export function WorkInstructionEditorStepsPane({ controller }: { controller: Wor
                   />
                 ) : null}
               </span>
+              {step.operation ? (
+                <span className="mt-1 block font-semibold text-white/75">{step.operation}</span>
+              ) : null}
               <span className="mt-1 block truncate text-white/60">{effectiveWorkInstructionMemo(step, controller.activeMemoOverrides)}</span>
               <span className="mt-1 block text-white/50">
                 注記 {controller.activeElements.filter((element) => element.stepKey === key).length}

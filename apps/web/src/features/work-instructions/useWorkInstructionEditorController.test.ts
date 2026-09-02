@@ -56,6 +56,7 @@ function makeStep(overlays: WorkInstructionOverlayElement[] = []): WorkInstructi
     sourceList: 'work-instructions',
     sourceItemId: 1,
     step: 1,
+    operation: null,
     text: '加工面を確認します。',
     imageName: 'source.png',
     imageAssetId: 'source-asset-1',

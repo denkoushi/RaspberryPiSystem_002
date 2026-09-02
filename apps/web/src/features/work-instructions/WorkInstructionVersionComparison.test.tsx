@@ -27,6 +27,7 @@ function makeStep(overrides: Partial<WorkInstructionEditorStepDto> = {}): WorkIn
     sourceList: 'work-instructions',
     sourceItemId: 1,
     step: 1,
+    operation: null,
     text: '公開版の原本メモ',
     imageName: null,
     imageAssetId: null,

@@ -43,6 +43,7 @@ export interface WorkInstructionGroupSummary {
 interface WorkInstructionStepFields {
   id: string;
   step: number;
+  operation: string | null;
   text: string;
   /** Imported source text is immutable; these fields are revision-owned projections. */
   memo?: string | null;
