@@ -26,6 +26,47 @@ if (integrationEnabled) {
   }
 }
 
+describe('work-instruction part candidate route', () => {
+  it('parses the candidate query and returns its page metadata', async () => {
+    const app = Fastify();
+    const readPublishedPartCandidates = vi.fn().mockResolvedValue({
+      matchedPrefix: 'MD004',
+      candidates: [{ partNumber: 'MD0041', partName: '部品A', shootingTargets: ['研削'] }],
+      hasMore: true
+    });
+    registerWorkInstructionRoutes(app, {
+      services: {
+        ingestion: { startJob: vi.fn(), getJob: vi.fn() },
+        read: { readPublishedPartCandidates } as never
+      },
+      managePreHandler: async () => undefined,
+      readPreHandler: async () => undefined,
+      writePreHandler: async () => undefined
+    });
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/work-instructions/part-candidates?prefix=MD004&fallback=true&limit=5&offset=0'
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(readPublishedPartCandidates).toHaveBeenCalledWith({
+        prefix: 'MD004', fallback: true, limit: 5, offset: 0
+      });
+      expect(response.json()).toEqual({
+        matchedPrefix: 'MD004',
+        candidates: [{ partNumber: 'MD0041', partName: '部品A', shootingTargets: ['研削'] }],
+        limit: 5,
+        offset: 0,
+        hasMore: true
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describeIntegration('work-instruction Fastify API with Prisma and durable files', () => {
   const fixtureSystem = `SharePoint-API-${process.pid}-${Date.now()}`;
   const assetId = randomUUID();
