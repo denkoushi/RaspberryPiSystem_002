@@ -37,6 +37,7 @@ import {
   type SelfInspectionWorkflowTarget
 } from '../../features/part-measurement/SelfInspectionWorkflowModal';
 import { useSelfInspectionWorkInstructions } from '../../features/work-instructions/useSelfInspectionWorkInstructions';
+import { WorkInstructionPartCandidateDialog } from '../../features/work-instructions/WorkInstructionPartCandidateDialog';
 import { WorkInstructionTargetChips } from '../../features/work-instructions/WorkInstructionTargetChips';
 import { WorkInstructionViewerDialog } from '../../features/work-instructions/WorkInstructionViewerDialog';
 import { useNfcStream } from '../../hooks/useNfcStream';
@@ -144,7 +145,17 @@ export function KioskSelfInspectionPage() {
     acceptPartScan,
     openTarget: openInstructionTarget,
     closeViewer: closeInstructionViewer,
-    clear: clearWorkInstructions
+    clear: clearWorkInstructions,
+    candidateDialog: instructionCandidateDialog,
+    autoFallbackPending: instructionAutoFallbackPending,
+    canShortenPartNumber,
+    canRestorePartNumber,
+    shortenPartNumber,
+    restorePartNumber,
+    selectCandidate: selectInstructionCandidate,
+    changeCandidatePage: changeInstructionCandidatePage,
+    closeCandidateDialog: closeInstructionCandidateDialog,
+    candidatePageSize: instructionCandidatePageSize
   } = useSelfInspectionWorkInstructions();
   const restoredWorkInstructionSearchRef = useRef<string | null>(null);
   const movementScanArmed = hidScanTarget === 'movement';
@@ -166,7 +177,7 @@ export function KioskSelfInspectionPage() {
     const restoreKey = `${restoredPartNumber}\0${restoredTarget}`;
     if (!restoredPartNumber || !restoredTarget || restoredWorkInstructionSearchRef.current === restoreKey) return;
     restoredWorkInstructionSearchRef.current = restoreKey;
-    const result = acceptPartScan(restoredPartNumber);
+    const result = acceptPartScan(restoredPartNumber, { autoFallback: false });
     if (result.ok) openInstructionTarget(restoredTarget.normalize('NFKC').trim().toUpperCase());
   }, [acceptPartScan, location.search, openInstructionTarget]);
 
@@ -407,7 +418,8 @@ export function KioskSelfInspectionPage() {
       !instructionPartNumber ||
       hidScanTarget !== null ||
       nameScanArmed ||
-      instructionGroupsQuery.isFetching
+      instructionGroupsQuery.isFetching ||
+      instructionAutoFallbackPending
     ) {
       return;
     }
@@ -430,6 +442,7 @@ export function KioskSelfInspectionPage() {
     instructionGroupsQuery.isError,
     instructionGroupsQuery.isFetching,
     instructionGroupsQuery.isSuccess,
+    instructionAutoFallbackPending,
     instructionPartNumber,
     instructionTargets.length
   ]);
@@ -687,6 +700,26 @@ export function KioskSelfInspectionPage() {
         />
         <button
           type="button"
+          aria-label="部品番号を1文字削除"
+          title="部品番号を1文字削除"
+          className={clsx(kioskButtonSecondaryClassName, 'min-h-11 min-w-11 shrink-0 !px-2 text-xl')}
+          disabled={!canShortenPartNumber}
+          onClick={shortenPartNumber}
+        >
+          ←
+        </button>
+        <button
+          type="button"
+          aria-label="部品番号を1文字復活"
+          title="部品番号を1文字復活"
+          className={clsx(kioskButtonSecondaryClassName, 'min-h-11 min-w-11 shrink-0 !px-2 text-xl')}
+          disabled={!canRestorePartNumber}
+          onClick={restorePartNumber}
+        >
+          →
+        </button>
+        <button
+          type="button"
           className={clsx(
             partScanArmed ? kioskButtonPrimaryClassName : kioskButtonSecondaryClassName,
             'shrink-0 whitespace-nowrap !px-2 text-sm min-[1536px]:!px-4 min-[1536px]:text-base'
@@ -808,6 +841,19 @@ export function KioskSelfInspectionPage() {
           navigate(`/kiosk/part-measurement/self-inspection/work-instructions/edit?${params.toString()}`);
         }}
         onClose={closeInstructionViewer}
+      />
+      <WorkInstructionPartCandidateDialog
+        isOpen={instructionCandidateDialog.isOpen}
+        matchedPrefix={instructionCandidateDialog.matchedPrefix}
+        candidates={instructionCandidateDialog.candidates}
+        offset={instructionCandidateDialog.offset}
+        pageSize={instructionCandidatePageSize}
+        hasMore={instructionCandidateDialog.hasMore}
+        isLoading={instructionCandidateDialog.isLoading}
+        errorMessage={instructionCandidateDialog.errorMessage}
+        onSelect={selectInstructionCandidate}
+        onPageChange={changeInstructionCandidatePage}
+        onClose={closeInstructionCandidateDialog}
       />
       <SelfInspectionWorkflowModal
         target={inspectionWorkflowTarget}

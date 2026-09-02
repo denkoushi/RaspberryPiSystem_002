@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
+
 import {
   normalizeWorkInstructionGroupKey,
   normalizeWorkInstructionPartNumber,
@@ -31,6 +33,7 @@ import type {
 } from './prisma-work-instruction.persistence.types.js';
 import type {
   WorkInstructionGroupsQuery,
+  WorkInstructionPartCandidatesQuery,
   WorkInstructionRowsQuery
 } from './work-instruction-repository.port.js';
 
@@ -481,4 +484,92 @@ export async function readPublishedWorkInstructionGroups(
     );
   }, { isolationLevel: 'RepeatableRead', timeout: 30000 });
   return rows.slice(input.offset, input.offset + input.limit);
+}
+
+type PartCandidateRecord = {
+  partNumber: string;
+  shootingTarget: string;
+  partName: string | null;
+};
+
+function escapeLikePrefix(value: string): string {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+async function readPublishedPartCandidatesAtPrefix(
+  db: PrismaClient,
+  prefix: string,
+  limit: number,
+  offset: number
+): Promise<{ candidates: Array<{ partNumber: string; partName: string | null; shootingTargets: string[] }>; hasMore: boolean }> {
+  const pattern = `${escapeLikePrefix(prefix)}%`;
+  const records = await db.$queryRaw<PartCandidateRecord[]>(Prisma.sql`
+    WITH public_groups AS (
+      SELECT version."partNumber" AS "partNumber", version."shootingTarget" AS "shootingTarget"
+      FROM "WorkInstructionSourcePublication" AS publication
+      JOIN "WorkInstructionSourceVersion" AS version
+        ON version."id" = publication."publishedVersionId"
+      WHERE version."partNumber" IS NOT NULL
+        AND version."shootingTarget" IS NOT NULL
+      UNION
+      SELECT row."partNumber" AS "partNumber", row."shootingTarget" AS "shootingTarget"
+      FROM "WorkInstructionRow" AS row
+      LEFT JOIN "WorkInstructionSourcePublication" AS publication ON publication."rowId" = row."id"
+      WHERE row."partNumber" IS NOT NULL
+        AND row."shootingTarget" IS NOT NULL
+        AND publication."rowId" IS NULL
+    ), candidate_parts AS (
+      SELECT "partNumber"
+      FROM public_groups
+      WHERE "partNumber" LIKE ${pattern} ESCAPE '\\'
+      GROUP BY "partNumber"
+      ORDER BY "partNumber" COLLATE "C" ASC
+      LIMIT ${limit + 1} OFFSET ${offset}
+    )
+    SELECT candidates."partNumber" AS "partNumber",
+           groups."shootingTarget" AS "shootingTarget",
+           (
+             SELECT MIN(NULLIF(TRIM(schedule."rowData"->>'FHINMEI'), ''))
+             FROM "CsvDashboardRow" AS schedule
+             WHERE schedule."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+               AND UPPER(TRIM(schedule."rowData"->>'FHINCD')) = candidates."partNumber"
+           ) AS "partName"
+    FROM candidate_parts AS candidates
+    JOIN public_groups AS groups ON groups."partNumber" = candidates."partNumber"
+    ORDER BY candidates."partNumber" COLLATE "C" ASC, groups."shootingTarget" COLLATE "C" ASC
+  `);
+
+  const byPartNumber = new Map<string, { partNumber: string; partName: string | null; shootingTargets: string[] }>();
+  for (const record of records) {
+    const current = byPartNumber.get(record.partNumber);
+    if (current) {
+      current.shootingTargets.push(record.shootingTarget);
+    } else {
+      byPartNumber.set(record.partNumber, {
+        partNumber: record.partNumber,
+        partName: record.partName?.trim() || null,
+        shootingTargets: [record.shootingTarget]
+      });
+    }
+  }
+  const allCandidates = [...byPartNumber.values()];
+  return { candidates: allCandidates.slice(0, limit), hasMore: allCandidates.length > limit };
+}
+
+export async function readPublishedWorkInstructionPartCandidates(
+  db: PrismaClient,
+  input: WorkInstructionPartCandidatesQuery
+) {
+  assertPage(input);
+  const normalized = normalizeWorkInstructionPartNumber(input.prefix) ?? '';
+  const characters = Array.from(normalized);
+  if (characters.length < 2) return { matchedPrefix: null, candidates: [], hasMore: false };
+
+  const minimumLength = input.fallback ? 2 : characters.length;
+  for (let length = characters.length; length >= minimumLength; length -= 1) {
+    const matchedPrefix = characters.slice(0, length).join('');
+    const page = await readPublishedPartCandidatesAtPrefix(db, matchedPrefix, input.limit, input.offset);
+    if (page.candidates.length > 0) return { matchedPrefix, ...page };
+  }
+  return { matchedPrefix: null, candidates: [], hasMore: false };
 }

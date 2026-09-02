@@ -40,6 +40,20 @@ export interface WorkInstructionGroupSummary {
   latestModified: string;
 }
 
+export type WorkInstructionPartCandidate = {
+  partNumber: string;
+  partName: string | null;
+  shootingTargets: string[];
+};
+
+export type WorkInstructionPartCandidatePage = {
+  matchedPrefix: string | null;
+  candidates: WorkInstructionPartCandidate[];
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+};
+
 interface WorkInstructionStepFields {
   id: string;
   step: number;
@@ -152,6 +166,26 @@ export async function getWorkInstructionGroupsByPartNumber(
   return dedupeAndSortWorkInstructionTargets([...summariesByTarget.keys()])
     .map((target) => summariesByTarget.get(target))
     .filter((summary): summary is WorkInstructionGroupSummary => summary !== undefined);
+}
+
+export async function getWorkInstructionPartCandidates(
+  params: { prefix: string; fallback?: boolean; limit?: number; offset?: number },
+  signal?: AbortSignal
+): Promise<WorkInstructionPartCandidatePage> {
+  const normalizedPrefix = normalizeWorkInstructionPartNumber(params.prefix);
+  if (!normalizedPrefix || Array.from(normalizedPrefix).length < 2) {
+    return { matchedPrefix: null, candidates: [], limit: params.limit ?? 20, offset: params.offset ?? 0, hasMore: false };
+  }
+  const { data } = await api.get<WorkInstructionPartCandidatePage>('/work-instructions/part-candidates', {
+    params: {
+      prefix: normalizedPrefix,
+      fallback: params.fallback ?? false,
+      limit: params.limit ?? 20,
+      offset: params.offset ?? 0
+    },
+    signal
+  });
+  return data;
 }
 
 /** Reads one selected group; the backend calls the shooting-target query `resource`. */

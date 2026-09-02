@@ -20,6 +20,7 @@ import type {
   StageWorkInstructionAssetsInput,
   WorkInstructionGroupsQuery,
   WorkInstructionImportMessagesQuery,
+  WorkInstructionPartCandidatesQuery,
   WorkInstructionRepository,
   WorkInstructionRowsQuery
 } from './work-instruction-repository.port.js';
@@ -29,7 +30,8 @@ import {
   readWorkInstructionGroups,
   readWorkInstructionRows,
   readPublishedWorkInstructionGroup,
-  readPublishedWorkInstructionGroups
+  readPublishedWorkInstructionGroups,
+  readPublishedWorkInstructionPartCandidates
 } from './prisma-work-instruction-read-queries.js';
 import {
   readWorkInstructionImportMessage,
@@ -352,6 +354,10 @@ export class PrismaWorkInstructionRepository implements WorkInstructionRepositor
 
   async readPublishedGroups(input: WorkInstructionGroupsQuery) {
     return readPublishedWorkInstructionGroups(this.db, input);
+  }
+
+  async readPublishedPartCandidates(input: WorkInstructionPartCandidatesQuery) {
+    return readPublishedWorkInstructionPartCandidates(this.db, input);
   }
 
   async readRows(input: WorkInstructionRowsQuery) {

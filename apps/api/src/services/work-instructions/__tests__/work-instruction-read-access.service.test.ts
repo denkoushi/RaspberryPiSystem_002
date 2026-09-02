@@ -26,6 +26,7 @@ function repositoryMock() {
     readPublishedGroup: vi.fn(),
     readGroups: vi.fn(),
     readPublishedGroups: vi.fn(),
+    readPublishedPartCandidates: vi.fn(),
     readRows: vi.fn(),
     readImportMessages: vi.fn(),
     readAsset: vi.fn(),
@@ -117,12 +118,22 @@ describe('WorkInstructionReadService', () => {
     const groupQuery = { partNumber: 'MD004', shootingTarget: '研削', limit: 10, offset: 0 };
     repository.readPublishedGroup = vi.fn().mockResolvedValue(group);
     repository.readPublishedGroups = vi.fn().mockResolvedValue([summary]);
+    repository.readPublishedPartCandidates = vi.fn().mockResolvedValue({
+      matchedPrefix: 'MD004',
+      candidates: [{ partNumber: 'MD004', partName: '部品A', shootingTargets: ['研削'] }],
+      hasMore: false
+    });
 
     await expect(service.readPublishedGroup(groupQuery)).resolves.toBe(group);
     await expect(service.readPublishedGroups(groupQuery)).resolves.toEqual([summary]);
+    await expect(service.readPublishedPartCandidates({ prefix: 'MD004', fallback: false, limit: 20, offset: 0 }))
+      .resolves.toMatchObject({ matchedPrefix: 'MD004', hasMore: false });
 
     expect(repository.readPublishedGroup).toHaveBeenCalledWith(groupQuery);
     expect(repository.readPublishedGroups).toHaveBeenCalledWith(groupQuery);
+    expect(repository.readPublishedPartCandidates).toHaveBeenCalledWith({
+      prefix: 'MD004', fallback: false, limit: 20, offset: 0
+    });
     expect(repository.readGroup).not.toHaveBeenCalled();
     expect(repository.readGroups).not.toHaveBeenCalled();
   });

@@ -140,6 +140,18 @@ export type WorkInstructionGroupSummaryView = {
   latestModified: Date;
 };
 
+export type WorkInstructionPartCandidateView = {
+  partNumber: string;
+  partName: string | null;
+  shootingTargets: ReadonlyArray<string>;
+};
+
+export type WorkInstructionPartCandidatePageView = {
+  matchedPrefix: string | null;
+  candidates: ReadonlyArray<WorkInstructionPartCandidateView>;
+  hasMore: boolean;
+};
+
 export type WorkInstructionAssetView = {
   assetId: string;
   storageKey: string;

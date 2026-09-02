@@ -24,6 +24,18 @@ const groupQuerySchema = z.object({
   partNumber: z.string().trim().min(1),
   resource: z.string().trim().min(1)
 });
+const partCandidatesQuerySchema = pageQuerySchema.extend({
+  prefix: z.string().trim().min(2).max(200),
+  fallback: z
+    .union([z.boolean(), z.literal('true'), z.literal('false')])
+    .default(false)
+    .transform((value) => value === true || value === 'true'),
+  limit: z.coerce.number().int().min(1).max(20).default(20)
+}).superRefine((value, context) => {
+  if (value.fallback && value.offset !== 0) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['offset'], message: 'fallback requires offset 0' });
+  }
+});
 const rowsQuerySchema = pageQuerySchema.extend({
   partNumber: z.string().trim().min(1).optional(),
   shootingTarget: z.string().trim().min(1).optional(),
@@ -124,6 +136,12 @@ export function registerWorkInstructionRoutes(
     const query = groupListQuerySchema.parse(request.query ?? {});
     const groups = await services.read.readPublishedGroups(query);
     return { groups: groups.map(toGroupSummaryDto), limit: query.limit, offset: query.offset };
+  });
+
+  app.get('/work-instructions/part-candidates', { preHandler: [canRead] }, async (request) => {
+    const query = partCandidatesQuerySchema.parse(request.query ?? {});
+    const page = await services.read.readPublishedPartCandidates(query);
+    return { ...page, limit: query.limit, offset: query.offset };
   });
 
   app.get('/work-instructions/group', { preHandler: [canRead] }, async (request) => {

@@ -15,6 +15,7 @@ const mockUseWorkInstructionGroups = vi.fn();
 const mockUseWorkInstructionGroup = vi.fn();
 const mockIssueSelfInspectionPaperReport = vi.fn();
 const mockResolveSelfInspectionNfcTagUid = vi.fn();
+const mockGetWorkInstructionPartCandidates = vi.fn();
 const mockInvalidateSelfInspectionItem = vi.fn();
 const nfcStreamState = vi.hoisted(() => ({ event: null as NfcEvent | null, enabled: false }));
 
@@ -36,7 +37,8 @@ vi.mock('../../api/hooks', () => ({
 
 vi.mock('../../api/client', () => ({
   issueSelfInspectionPaperReport: (...args: unknown[]) => mockIssueSelfInspectionPaperReport(...args),
-  resolveSelfInspectionNfcTagUid: (...args: unknown[]) => mockResolveSelfInspectionNfcTagUid(...args)
+  resolveSelfInspectionNfcTagUid: (...args: unknown[]) => mockResolveSelfInspectionNfcTagUid(...args),
+  getWorkInstructionPartCandidates: (...args: unknown[]) => mockGetWorkInstructionPartCandidates(...args)
 }));
 
 vi.mock('../../hooks/useNfcStream', () => ({
@@ -171,6 +173,7 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     mockUseWorkInstructionGroup.mockReset();
     mockIssueSelfInspectionPaperReport.mockReset();
     mockResolveSelfInspectionNfcTagUid.mockReset();
+    mockGetWorkInstructionPartCandidates.mockReset();
     mockInvalidateSelfInspectionItem.mockReset();
     nfcStreamState.event = null;
     nfcStreamState.enabled = false;
@@ -269,6 +272,13 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
       sessionId: null,
       productNoSnapshot: '0002178005'
     });
+    mockGetWorkInstructionPartCandidates.mockResolvedValue({
+      matchedPrefix: null,
+      candidates: [],
+      limit: 20,
+      offset: 0,
+      hasMore: false
+    });
   });
 
   it('uses exact productNos search for HID scans and auto-opens the workflow when resource narrows to one row', async () => {
@@ -328,6 +338,165 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     expect(screen.queryByRole('dialog', { name: '作業要領書' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '581' })).toBeInTheDocument();
+  });
+
+  it('opens the longest-prefix candidate dialog and uses the selected exact part', async () => {
+    mockGetWorkInstructionPartCandidates.mockResolvedValueOnce({
+      matchedPrefix: 'MH00',
+      candidates: [
+        { partNumber: 'MH001', partName: '部品A', shootingTargets: ['581', '研削'] }
+      ],
+      limit: 20,
+      offset: 0,
+      hasMore: false
+    });
+    renderPage();
+
+    await scanPartHidText('MH009X');
+
+    expect(await screen.findByRole('dialog', { name: '部品番号候補を選択' })).toBeInTheDocument();
+    expect(mockGetWorkInstructionPartCandidates).toHaveBeenCalledWith(
+      { prefix: 'MH009', fallback: true, limit: 20, offset: 0 },
+      expect.any(AbortSignal)
+    );
+    expect(screen.getByText('部品A')).toBeInTheDocument();
+    expect(screen.getByText('581')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'MH001 部品Aを選択' }));
+
+    await waitFor(() => expect(mockUseWorkInstructionGroups).toHaveBeenLastCalledWith('MH001'));
+    expect(screen.queryByRole('dialog', { name: '部品番号候補を選択' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
+  });
+
+  it('shortens and restores the scanned part one character at a time', async () => {
+    renderPage();
+    await scanPartHidText('MH001');
+    expect(await screen.findByRole('button', { name: '研削' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '部品番号を1文字削除' }));
+    await waitFor(() => expect(mockGetWorkInstructionPartCandidates).toHaveBeenLastCalledWith(
+      { prefix: 'MH00', fallback: false, limit: 20, offset: 0 },
+      expect.any(AbortSignal)
+    ));
+    expect(screen.getByRole('button', { name: '部品番号を1文字復活' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '581' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '部品番号を1文字復活' }));
+    await waitFor(() => expect(mockGetWorkInstructionPartCandidates).toHaveBeenLastCalledWith(
+      { prefix: 'MH001', fallback: false, limit: 20, offset: 0 },
+      expect.any(AbortSignal)
+    ));
+    expect(screen.getByRole('button', { name: '部品番号を1文字復活' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'クリア' }));
+    await scanPartHidText('ABCD');
+    expect(await screen.findByRole('dialog', { name: '部品番号候補を選択' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '部品番号を1文字削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '部品番号を1文字削除' }));
+    expect(screen.getByRole('button', { name: '部品番号を1文字削除' })).toBeDisabled();
+  });
+
+  it('pages candidate results by the matched prefix', async () => {
+    mockGetWorkInstructionPartCandidates
+      .mockResolvedValueOnce({
+        matchedPrefix: 'MH00',
+        candidates: [{ partNumber: 'MH001', partName: null, shootingTargets: ['581'] }],
+        limit: 20,
+        offset: 0,
+        hasMore: true
+      })
+      .mockResolvedValueOnce({
+        matchedPrefix: 'MH00',
+        candidates: [{ partNumber: 'MH002', partName: '部品B', shootingTargets: ['切削'] }],
+        limit: 20,
+        offset: 20,
+        hasMore: false
+      });
+    renderPage();
+    await scanPartHidText('MH009X');
+
+    expect(await screen.findByText('部品名未登録')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '次のページ' }));
+
+    await waitFor(() => expect(mockGetWorkInstructionPartCandidates).toHaveBeenLastCalledWith(
+      { prefix: 'MH00', fallback: false, limit: 20, offset: 20 },
+      expect.any(AbortSignal)
+    ));
+    expect(await screen.findByText('部品B')).toBeInTheDocument();
+  });
+
+  it('ignores a delayed candidate response after clear', async () => {
+    let resolveCandidates!: (value: {
+      matchedPrefix: string;
+      candidates: Array<{ partNumber: string; partName: string; shootingTargets: string[] }>;
+      limit: number;
+      offset: number;
+      hasMore: boolean;
+    }) => void;
+    mockGetWorkInstructionPartCandidates.mockReturnValueOnce(new Promise((resolve) => {
+      resolveCandidates = resolve;
+    }));
+    renderPage();
+    await scanPartHidText('MH009X');
+    expect(await screen.findByRole('dialog', { name: '部品番号候補を選択' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'クリア' }));
+    await act(async () => {
+      resolveCandidates({
+        matchedPrefix: 'MH00',
+        candidates: [{ partNumber: 'MH001', partName: '遅延部品', shootingTargets: ['研削'] }],
+        limit: 20,
+        offset: 0,
+        hasMore: false
+      });
+    });
+
+    expect(screen.queryByRole('dialog', { name: '部品番号候補を選択' })).not.toBeInTheDocument();
+    expect(screen.queryByText('遅延部品')).not.toBeInTheDocument();
+  });
+
+  it('ignores a delayed candidate response after a new scan', async () => {
+    let resolveCandidates!: (value: {
+      matchedPrefix: string;
+      candidates: Array<{ partNumber: string; partName: string; shootingTargets: string[] }>;
+      limit: number;
+      offset: number;
+      hasMore: boolean;
+    }) => void;
+    mockGetWorkInstructionPartCandidates.mockReturnValueOnce(new Promise((resolve) => {
+      resolveCandidates = resolve;
+    }));
+    renderPage();
+    await scanPartHidText('MH009X');
+    expect(await screen.findByRole('dialog', { name: '部品番号候補を選択' })).toBeInTheDocument();
+
+    await scanPartHidText('MH001');
+    expect(await screen.findByRole('button', { name: '研削' })).toBeInTheDocument();
+    await act(async () => {
+      resolveCandidates({
+        matchedPrefix: 'MH00',
+        candidates: [{ partNumber: 'MH009', partName: '遅延部品', shootingTargets: ['切削'] }],
+        limit: 20,
+        offset: 0,
+        hasMore: false
+      });
+    });
+
+    expect(screen.queryByRole('dialog', { name: '部品番号候補を選択' })).not.toBeInTheDocument();
+    expect(screen.queryByText('遅延部品')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
+  });
+
+  it('shows candidate API failures inside the dialog', async () => {
+    mockGetWorkInstructionPartCandidates.mockRejectedValueOnce(new Error('candidate API failed'));
+    renderPage();
+
+    await scanPartHidText('MH009X');
+
+    expect(await screen.findByRole('dialog', { name: '部品番号候補を選択' })).toHaveTextContent(
+      '部品番号候補の検索に失敗しました。'
+    );
   });
 
   it('restores the instruction viewer when returning from the editor with source query parameters', async () => {

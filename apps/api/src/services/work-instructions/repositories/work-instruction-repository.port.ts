@@ -7,6 +7,7 @@ import type {
   WorkInstructionGroupView,
   WorkInstructionImportMessageView,
   WorkInstructionImportOutcome,
+  WorkInstructionPartCandidatePageView,
   WorkInstructionPacket,
   WorkInstructionRowView,
   WorkInstructionStagedAsset
@@ -41,6 +42,13 @@ export type WorkInstructionRowsQuery = {
 export type WorkInstructionGroupsQuery = {
   partNumber?: string;
   shootingTarget?: string;
+  limit: number;
+  offset: number;
+};
+
+export type WorkInstructionPartCandidatesQuery = {
+  prefix: string;
+  fallback: boolean;
   limit: number;
   offset: number;
 };
@@ -98,6 +106,7 @@ export interface WorkInstructionRepository {
   readGroups(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>>;
   /** Public kiosk group summaries; falls back to latest summaries before backfill. */
   readPublishedGroups?(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>>;
+  readPublishedPartCandidates(input: WorkInstructionPartCandidatesQuery): Promise<WorkInstructionPartCandidatePageView>;
   readRows(input: WorkInstructionRowsQuery): Promise<ReadonlyArray<WorkInstructionRowView>>;
   readAsset(assetId: string): Promise<WorkInstructionAssetView | null>;
 

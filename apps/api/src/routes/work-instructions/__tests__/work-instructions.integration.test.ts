@@ -121,7 +121,26 @@ describeIntegration('work-instruction Fastify API with Prisma and durable files'
   afterAll(async () => {
     await app.close();
     await securedApp.close();
-    await prisma.workInstructionRow.deleteMany({ where: { sourceSystem: fixtureSystem } });
+    const fixtureRows = await prisma.workInstructionRow.findMany({
+      where: { sourceSystem: fixtureSystem },
+      select: { id: true }
+    });
+    const fixtureRowIds = fixtureRows.map((row) => row.id);
+    if (fixtureRowIds.length > 0) {
+      const fixtureVersions = await prisma.workInstructionSourceVersion.findMany({
+        where: { rowId: { in: fixtureRowIds } },
+        select: { id: true }
+      });
+      const fixtureVersionIds = fixtureVersions.map((version) => version.id);
+      await prisma.workInstructionSourcePublication.deleteMany({ where: { rowId: { in: fixtureRowIds } } });
+      if (fixtureVersionIds.length > 0) {
+        await prisma.workInstructionSourceVersionStep.deleteMany({
+          where: { sourceVersionId: { in: fixtureVersionIds } }
+        });
+        await prisma.workInstructionSourceVersion.deleteMany({ where: { id: { in: fixtureVersionIds } } });
+      }
+      await prisma.workInstructionRow.deleteMany({ where: { id: { in: fixtureRowIds } } });
+    }
     await prisma.workInstructionAsset.deleteMany({ where: { id: assetId, steps: { none: {} } } });
     await prisma.clientDevice.deleteMany({ where: { id: clientDeviceId } });
     await prisma.user.deleteMany({ where: { id: { in: [viewerUserId, adminUserId] } } });
@@ -130,6 +149,18 @@ describeIntegration('work-instruction Fastify API with Prisma and durable files'
   });
 
   it('returns grouped rows and original asset bytes and starts an asynchronous job', async () => {
+    const candidates = await app.inject({
+      method: 'GET',
+      url: '/work-instructions/part-candidates?prefix=MD00412&fallback=false&limit=20&offset=0'
+    });
+    expect(candidates.statusCode).toBe(200);
+    expect(candidates.json()).toMatchObject({
+      matchedPrefix: 'MD00412',
+      candidates: [{ partNumber: 'MD004121632', partName: null, shootingTargets: ['研削'] }],
+      limit: 20,
+      offset: 0,
+      hasMore: false
+    });
     const group = await app.inject({
       method: 'GET',
       url: '/work-instructions/group?partNumber=md004121632&resource=%E7%A0%94%E5%89%8A%E5%B7%A5%E7%A8%8B',
@@ -180,6 +211,21 @@ describeIntegration('work-instruction Fastify API with Prisma and durable files'
       partNumber: 'MD004121632',
       shootingTarget: '研削',
     }));
+    expect((await securedApp.inject({
+      method: 'GET',
+      url: '/api/work-instructions/part-candidates?prefix=MD&fallback=false',
+      headers: { 'x-client-key': clientApiKey }
+    })).statusCode).toBe(200);
+    expect((await securedApp.inject({
+      method: 'GET',
+      url: '/api/work-instructions/part-candidates?prefix=M&fallback=false',
+      headers: { 'x-client-key': clientApiKey }
+    })).statusCode).toBe(400);
+    expect((await securedApp.inject({
+      method: 'GET',
+      url: '/api/work-instructions/part-candidates?prefix=MD&fallback=true&offset=20',
+      headers: { 'x-client-key': clientApiKey }
+    })).statusCode).toBe(400);
 
     expect((await securedApp.inject({
       method: 'GET',

@@ -134,6 +134,7 @@ const filteredScheduleRow = {
 
 type ApiTrace = {
   groupRequests: string[];
+  candidateRequests: string[];
   detailRequests: string[];
   assetRequests: string[];
   assetClientKeys: string[];
@@ -142,6 +143,7 @@ type ApiTrace = {
 async function installApiMocks(page: Page): Promise<ApiTrace> {
   const trace: ApiTrace = {
     groupRequests: [],
+    candidateRequests: [],
     detailRequests: [],
     assetRequests: [],
     assetClientKeys: []
@@ -204,6 +206,30 @@ async function installApiMocks(page: Page): Promise<ApiTrace> {
       });
       return;
     }
+    if (path === '/api/work-instructions/part-candidates') {
+      trace.candidateRequests.push(url.toString());
+      const offset = Number(url.searchParams.get('offset') ?? '0');
+      await route.fulfill({
+        json: {
+          matchedPrefix: 'FH-24A-01',
+          candidates: offset === 0
+            ? [{
+                partNumber: PART_NUMBER,
+                partName: '作業要領 viewer E2E 部品',
+                shootingTargets: [...workInstructionTargets]
+              }]
+            : [{
+                partNumber: 'FH-24A-019',
+                partName: '作業要領 viewer E2E 次候補',
+                shootingTargets: ['切削']
+              }],
+          limit: 20,
+          offset,
+          hasMore: offset === 0
+        }
+      });
+      return;
+    }
     if (path === '/api/work-instructions/group') {
       trace.detailRequests.push(url.toString());
       const partNumber = url.searchParams.get('partNumber');
@@ -241,11 +267,11 @@ async function openSelfInspection(page: Page): Promise<void> {
   await expect(page.getByTestId('self-inspection-table-panes')).toBeVisible();
 }
 
-async function scanPartNumber(page: Page): Promise<void> {
+async function scanPartNumber(page: Page, value = PART_NUMBER): Promise<void> {
   const scanButton = page.getByRole('button', { name: '部品番号スキャン', exact: true });
   await scanButton.click();
   await expect(page.getByRole('status').filter({ hasText: 'FHINCD' })).toBeVisible();
-  await page.keyboard.type(PART_NUMBER);
+  await page.keyboard.type(value);
   await page.keyboard.press('Enter');
 }
 
@@ -260,16 +286,28 @@ async function expectToolbarLayout(page: Page): Promise<void> {
   expect(toolbarMetrics.scrollWidth).toBeLessThanOrEqual(toolbarMetrics.clientWidth + 1);
 
   const partButton = page.getByRole('button', { name: '部品番号スキャン', exact: true });
+  const shortenButton = page.getByRole('button', { name: '部品番号を1文字削除', exact: true });
+  const restoreButton = page.getByRole('button', { name: '部品番号を1文字復活', exact: true });
   const chipStrip = page.getByLabel('撮影対象');
   const toolbarBox = await toolbar.boundingBox();
   const partButtonBox = await partButton.boundingBox();
+  const shortenButtonBox = await shortenButton.boundingBox();
+  const restoreButtonBox = await restoreButton.boundingBox();
   const chipStripBox = await chipStrip.boundingBox();
   expect(toolbarBox).not.toBeNull();
   expect(partButtonBox).not.toBeNull();
+  expect(shortenButtonBox).not.toBeNull();
+  expect(restoreButtonBox).not.toBeNull();
   expect(chipStripBox).not.toBeNull();
-  if (toolbarBox && partButtonBox && chipStripBox) {
+  if (toolbarBox && partButtonBox && shortenButtonBox && chipStripBox) {
     expect(toolbarBox.x + toolbarBox.width - partButtonBox.x - partButtonBox.width).toBeLessThanOrEqual(12);
-    expect(chipStripBox.x + chipStripBox.width).toBeLessThanOrEqual(partButtonBox.x + 1);
+    expect(chipStripBox.x + chipStripBox.width).toBeLessThanOrEqual(shortenButtonBox.x + 1);
+  }
+  if (partButtonBox && shortenButtonBox && restoreButtonBox) {
+    expect(shortenButtonBox.width).toBeGreaterThanOrEqual(44);
+    expect(restoreButtonBox.width).toBeGreaterThanOrEqual(44);
+    expect(shortenButtonBox.x).toBeLessThan(restoreButtonBox.x);
+    expect(restoreButtonBox.x).toBeLessThan(partButtonBox.x);
   }
 
   const controlHeights = await toolbar
@@ -368,6 +406,39 @@ async function openViewerAndAssertCards(page: Page, trace: ApiTrace, columns: nu
   expect(await backButton.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
   await backButton.click();
   await expect(viewer).toHaveCount(0);
+}
+
+for (const viewport of [
+  { width: 1280, height: 800 },
+  { width: 1920, height: 1080 }
+] as const) {
+  test(`${viewport.width}px: 不一致FHINCDを自動短縮し候補選択後に既存チップへ戻す`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const trace = await installApiMocks(page);
+    await openSelfInspection(page);
+
+    await scanPartNumber(page, `${PART_NUMBER}X`);
+    const candidateDialog = page.getByRole('dialog', { name: '部品番号候補を選択', exact: true });
+    await expect(candidateDialog).toBeVisible();
+    await expect(candidateDialog).toContainText(PART_NUMBER);
+    await expect(candidateDialog).toContainText('作業要領 viewer E2E 部品');
+    await expect.poll(() => trace.candidateRequests.length, { timeout: 10_000 }).toBe(1);
+
+    await candidateDialog.getByRole('button', { name: '次のページ', exact: true }).click();
+    await expect(candidateDialog).toContainText('FH-24A-019');
+    await expect(candidateDialog).toContainText('作業要領 viewer E2E 次候補');
+    await candidateDialog.getByRole('button', { name: '前のページ', exact: true }).click();
+    await expect(candidateDialog).toContainText(PART_NUMBER);
+    await expect.poll(() => trace.candidateRequests.length, { timeout: 10_000 }).toBe(3);
+
+    await candidateDialog.getByRole('button', {
+      name: `${PART_NUMBER} 作業要領 viewer E2E 部品を選択`,
+      exact: true
+    }).click();
+    await expect(candidateDialog).toHaveCount(0);
+    await expect(page.getByLabel('撮影対象')).toBeVisible();
+    await expectToolbarLayout(page);
+  });
 }
 
 for (const viewport of [

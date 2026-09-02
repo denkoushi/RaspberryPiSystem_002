@@ -5,6 +5,7 @@ import { api } from '../http';
 import {
   getWorkInstructionGroup,
   getWorkInstructionGroupsByPartNumber,
+  getWorkInstructionPartCandidates,
   type WorkInstructionGroup,
   type WorkInstructionGroupSummary
 } from './work-instructions';
@@ -78,5 +79,38 @@ describe('work-instructions API client', () => {
     expect(apiGet).toHaveBeenCalledWith('/work-instructions/group', {
       params: { partNumber: 'PART-1', resource: '581' }
     });
+  });
+
+  it('normalizes and requests a bounded part-candidate page', async () => {
+    const page = {
+      matchedPrefix: 'PART-',
+      candidates: [{ partNumber: 'PART-1', partName: '部品A', shootingTargets: ['研削'] }],
+      limit: 20,
+      offset: 0,
+      hasMore: false
+    };
+    apiGet.mockResolvedValueOnce({ data: page } as never);
+    const controller = new AbortController();
+
+    await expect(getWorkInstructionPartCandidates(
+      { prefix: ' ｐａｒｔ－ ', fallback: true },
+      controller.signal
+    )).resolves.toEqual(page);
+
+    expect(apiGet).toHaveBeenCalledWith('/work-instructions/part-candidates', {
+      params: { prefix: 'PART-', fallback: true, limit: 20, offset: 0 },
+      signal: controller.signal
+    });
+  });
+
+  it('does not request candidates for a prefix shorter than two characters', async () => {
+    await expect(getWorkInstructionPartCandidates({ prefix: 'A' })).resolves.toEqual({
+      matchedPrefix: null,
+      candidates: [],
+      limit: 20,
+      offset: 0,
+      hasMore: false
+    });
+    expect(apiGet).not.toHaveBeenCalled();
   });
 });
