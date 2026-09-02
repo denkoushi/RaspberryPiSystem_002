@@ -573,3 +573,108 @@ export async function readPublishedWorkInstructionPartCandidates(
   }
   return { matchedPrefix: null, candidates: [], hasMore: false };
 }
+
+type PartAliasRecord = {
+  scannedPartNumber: string;
+  canonicalPartNumber: string;
+  partName: string | null;
+  shootingTarget: string;
+  selectionCount: number;
+  createdAt: Date;
+  lastSelectedAt: Date;
+};
+
+/**
+ * Public work-instruction groups are the published pointer projection plus
+ * rows that still use the pre-publication legacy projection.  Keep this
+ * predicate in one place so alias writes and reads use the same visibility
+ * rule.
+ */
+export async function hasPublishedWorkInstructionPart(
+  db: WorkInstructionDbClient,
+  partNumber: string
+): Promise<boolean> {
+  const normalized = normalizeWorkInstructionPartNumber(partNumber);
+  if (!normalized) return false;
+  const records = await db.$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
+    WITH public_groups AS (
+      SELECT version."partNumber" AS "partNumber"
+      FROM "WorkInstructionSourcePublication" AS publication
+      JOIN "WorkInstructionSourceVersion" AS version
+        ON version."id" = publication."publishedVersionId"
+      WHERE version."partNumber" IS NOT NULL
+        AND version."shootingTarget" IS NOT NULL
+      UNION
+      SELECT row."partNumber" AS "partNumber"
+      FROM "WorkInstructionRow" AS row
+      LEFT JOIN "WorkInstructionSourcePublication" AS publication ON publication."rowId" = row."id"
+      WHERE row."partNumber" IS NOT NULL
+        AND row."shootingTarget" IS NOT NULL
+        AND publication."rowId" IS NULL
+    )
+    SELECT EXISTS(
+      SELECT 1
+      FROM public_groups
+      WHERE "partNumber" = ${normalized}
+    ) AS "exists"
+  `);
+  return records[0]?.exists === true;
+}
+
+export async function readPublishedWorkInstructionPartAlias(
+  db: WorkInstructionDbClient,
+  scannedPartNumber: string
+) {
+  const normalized = normalizeWorkInstructionPartNumber(scannedPartNumber);
+  if (!normalized) return null;
+  const records = await db.$queryRaw<PartAliasRecord[]>(Prisma.sql`
+    WITH public_groups AS (
+      SELECT version."partNumber" AS "partNumber", version."shootingTarget" AS "shootingTarget"
+      FROM "WorkInstructionSourcePublication" AS publication
+      JOIN "WorkInstructionSourceVersion" AS version
+        ON version."id" = publication."publishedVersionId"
+      WHERE version."partNumber" IS NOT NULL
+        AND version."shootingTarget" IS NOT NULL
+      UNION
+      SELECT row."partNumber" AS "partNumber", row."shootingTarget" AS "shootingTarget"
+      FROM "WorkInstructionRow" AS row
+      LEFT JOIN "WorkInstructionSourcePublication" AS publication ON publication."rowId" = row."id"
+      WHERE row."partNumber" IS NOT NULL
+        AND row."shootingTarget" IS NOT NULL
+        AND publication."rowId" IS NULL
+    )
+    SELECT alias."scannedPartNumber" AS "scannedPartNumber",
+           alias."canonicalPartNumber" AS "canonicalPartNumber",
+           alias."selectionCount" AS "selectionCount",
+           alias."createdAt" AS "createdAt",
+           alias."lastSelectedAt" AS "lastSelectedAt",
+           groups."shootingTarget" AS "shootingTarget",
+           (
+             SELECT MIN(NULLIF(TRIM(schedule."rowData"->>'FHINMEI'), ''))
+             FROM "CsvDashboardRow" AS schedule
+             WHERE schedule."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+               AND UPPER(TRIM(schedule."rowData"->>'FHINCD')) = alias."canonicalPartNumber"
+           ) AS "partName"
+    FROM "WorkInstructionPartAlias" AS alias
+    JOIN public_groups AS groups ON groups."partNumber" = alias."canonicalPartNumber"
+    WHERE alias."scannedPartNumber" = ${normalized}
+      -- Exact matches always win, even if a previously learned alias remains.
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public_groups AS scanned_groups
+        WHERE scanned_groups."partNumber" = alias."scannedPartNumber"
+      )
+    ORDER BY groups."shootingTarget" COLLATE "C" ASC
+  `);
+  const first = records[0];
+  if (!first) return null;
+  return {
+    scannedPartNumber: first.scannedPartNumber,
+    canonicalPartNumber: first.canonicalPartNumber,
+    partName: first.partName?.trim() || null,
+    shootingTargets: [...new Set(records.map((record) => record.shootingTarget))],
+    selectionCount: first.selectionCount,
+    createdAt: first.createdAt,
+    lastSelectedAt: first.lastSelectedAt
+  };
+}

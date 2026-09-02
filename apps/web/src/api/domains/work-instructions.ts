@@ -54,6 +54,16 @@ export type WorkInstructionPartCandidatePage = {
   hasMore: boolean;
 };
 
+export type WorkInstructionPartAlias = {
+  scannedPartNumber: string;
+  canonicalPartNumber: string;
+  partName: string | null;
+  shootingTargets: string[];
+  selectionCount: number;
+  createdAt: string;
+  lastSelectedAt: string;
+};
+
 interface WorkInstructionStepFields {
   id: string;
   step: number;
@@ -186,6 +196,30 @@ export async function getWorkInstructionPartCandidates(
     signal
   });
   return data;
+}
+
+export async function getWorkInstructionPartAlias(
+  partNumber: string,
+  signal?: AbortSignal
+): Promise<WorkInstructionPartAlias | null> {
+  const normalized = normalizeWorkInstructionPartNumber(partNumber);
+  if (!normalized) return null;
+  const { data } = await api.get<{ alias: WorkInstructionPartAlias | null }>('/work-instructions/part-alias', {
+    params: { partNumber: normalized },
+    signal
+  });
+  return data.alias;
+}
+
+export async function putWorkInstructionPartAlias(input: {
+  scannedPartNumber: string;
+  canonicalPartNumber: string;
+}): Promise<WorkInstructionPartAlias> {
+  const { data } = await api.put<{ alias: WorkInstructionPartAlias }>('/work-instructions/part-alias', {
+    scannedPartNumber: normalizeWorkInstructionPartNumber(input.scannedPartNumber),
+    canonicalPartNumber: normalizeWorkInstructionPartNumber(input.canonicalPartNumber)
+  });
+  return data.alias;
 }
 
 /** Reads one selected group; the backend calls the shooting-target query `resource`. */

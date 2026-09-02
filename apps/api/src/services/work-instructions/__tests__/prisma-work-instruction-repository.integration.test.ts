@@ -79,6 +79,13 @@ function imageStep(step: number, imageName: string, imageHash: string) {
 async function cleanupFixtures(): Promise<void> {
   await prisma.csvDashboardRow.deleteMany({ where: { dataHash: { startsWith: fixtureToken } } });
   await prisma.$transaction(async (tx) => {
+    // Aliases intentionally do not reference a canonical work-instruction
+    // row, so remove them before the source fixtures to keep each opt-in test
+    // isolated.  The scanned prefix is fixture-owned; the canonical side may
+    // point at a shared test part.
+    await tx.workInstructionPartAlias.deleteMany({
+      where: { scannedPartNumber: { startsWith: fixtureToken } }
+    });
     const rows = await tx.workInstructionRow.findMany({
       where: { sourceSystem },
       select: { id: true },
@@ -406,6 +413,121 @@ describeIntegration('Prisma work-instruction repository (isolated integration)',
     })).resolves.toMatchObject({
       candidates: [{ partNumber: 'LEGACY-01', shootingTargets: ['資源CD'] }]
     });
+  });
+
+  it('learns normalized aliases, increments and remaps selections, and hides stale targets', async () => {
+    const scannedPartNumber = `${fixtureToken}-SCAN`;
+    const remappedCanonical = `${fixtureToken}-CANONICAL`;
+    const staleCanonical = `${fixtureToken}-STALE`;
+    const exactPartNumber = `${fixtureToken}-EXACT`;
+    const firstSelectedAt = new Date(baseModified.getTime() + 1_000);
+    const secondSelectedAt = new Date(baseModified.getTime() + 2_000);
+
+    await repository.applyPacket({
+      packet: packet({
+        itemId: 1100,
+        modified: baseModified,
+        contentHash: '0'.repeat(64),
+      }),
+      stagedAssets: []
+    });
+    await repository.applyPacket({
+      packet: packet({
+        itemId: 1101,
+        modified: baseModified,
+        contentHash: 'a'.repeat(64),
+        partNumber: remappedCanonical,
+        shootingTarget: '切削'
+      }),
+      stagedAssets: []
+    });
+    await repository.applyPacket({
+      packet: packet({
+        itemId: 1102,
+        modified: baseModified,
+        contentHash: 'b'.repeat(64),
+        partNumber: exactPartNumber,
+        shootingTarget: '研削'
+      }),
+      stagedAssets: []
+    });
+    // A row without a publication is the legacy public projection.
+    await prisma.workInstructionRow.create({
+      data: {
+        sourceSystem,
+        sourceList: 'Legacy-Alias',
+        sourceItemId: BigInt(1103),
+        sourceModified: baseModified,
+        partNumber: staleCanonical,
+        shootingTarget: '資源CD',
+        rawManifest: { fixture: fixtureToken, alias: true },
+        contentHash: 'c'.repeat(64)
+      }
+    });
+
+    await expect(repository.readPublishedPartAlias(scannedPartNumber)).resolves.toBeNull();
+    const first = await repository.upsertPartAlias({
+      scannedPartNumber: `  ${scannedPartNumber.toLowerCase()} `,
+      canonicalPartNumber: ` ${groupPart.toLowerCase()} `,
+      now: firstSelectedAt
+    });
+    expect(first).toMatchObject({
+      scannedPartNumber,
+      canonicalPartNumber: groupPart,
+      selectionCount: 1,
+      shootingTargets: [groupTarget]
+    });
+    expect(first.createdAt).toEqual(firstSelectedAt);
+    expect(first.lastSelectedAt).toEqual(firstSelectedAt);
+
+    const second = await repository.upsertPartAlias({
+      scannedPartNumber,
+      canonicalPartNumber: remappedCanonical,
+      now: secondSelectedAt
+    });
+    expect(second).toMatchObject({
+      scannedPartNumber,
+      canonicalPartNumber: remappedCanonical,
+      selectionCount: 2,
+      shootingTargets: ['切削']
+    });
+    expect(second.createdAt).toEqual(firstSelectedAt);
+    expect(second.lastSelectedAt).toEqual(secondSelectedAt);
+    expect(await prisma.workInstructionPartAlias.findUnique({ where: { scannedPartNumber } })).toMatchObject({
+      scannedPartNumber,
+      canonicalPartNumber: remappedCanonical,
+      selectionCount: 2
+    });
+
+    await expect(repository.upsertPartAlias({
+      scannedPartNumber: `${fixtureToken}-unknown`,
+      canonicalPartNumber: `${fixtureToken}-not-public`
+    })).rejects.toMatchObject({ name: 'WorkInstructionPartAliasValidationError', reason: 'TARGET_NOT_FOUND' });
+    await expect(repository.upsertPartAlias({
+      scannedPartNumber: exactPartNumber,
+      canonicalPartNumber: remappedCanonical
+    })).rejects.toMatchObject({ name: 'WorkInstructionPartAliasValidationError', reason: 'EXACT_EXISTS' });
+
+    const legacyAlias = await repository.upsertPartAlias({
+      scannedPartNumber: `${fixtureToken}-legacy-scan`,
+      canonicalPartNumber: staleCanonical
+    });
+    expect(legacyAlias).toMatchObject({ canonicalPartNumber: staleCanonical, shootingTargets: ['資源CD'] });
+    await prisma.workInstructionRow.deleteMany({
+      where: { sourceSystem, sourceList: 'Legacy-Alias', sourceItemId: BigInt(1103) }
+    });
+    await expect(repository.readPublishedPartAlias(`${fixtureToken}-legacy-scan`)).resolves.toBeNull();
+
+    // A mapping must not bypass a newly published exact match for the scanned
+    // value.  This protects exact-match priority even when an old alias row is
+    // still present in the database.
+    await prisma.workInstructionPartAlias.create({
+      data: {
+        scannedPartNumber: exactPartNumber,
+        canonicalPartNumber: remappedCanonical
+      }
+    });
+    await expect(repository.readPublishedPartAlias(exactPartNumber)).resolves.toBeNull();
   });
 
   it('round-trips safe-integer source and step values through BIGINT columns', async () => {

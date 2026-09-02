@@ -463,6 +463,7 @@ model ClientDevice {
   torqueTrainingAttempts                        TorqueTrainingAttempt[]
   torqueTrainingSettingsAuditLogs               TorqueTrainingSettingsAuditLog[]
   workInstructionEditorAuthentications          WorkInstructionEditorAuthentication[]
+  workInstructionPartAliases                    WorkInstructionPartAlias[]                     @relation("WorkInstructionPartAliasLastSelectedClientDevice")
 
   @@index([statusClientId])
 }
@@ -3918,6 +3919,20 @@ model WorkInstructionRow {
   @@unique([sourceSystem, sourceList, sourceItemId], map: "WorkInstructionRow_unique_source")
   @@index([partNumber, shootingTarget, sourceItemId, sourceList, sourceSystem], map: "WorkInstructionRow_idx_group")
   @@index([sourceModified], map: "WorkInstructionRow_idx_modified")
+}
+
+/// 自主検査で作業者が選択した読取品番から公開作業要領品番への共有対応。
+model WorkInstructionPartAlias {
+  id                         String        @id @default(uuid())
+  scannedPartNumber          String        @unique(map: "WorkInstructionPartAlias_unique_scanned") @db.VarChar(200)
+  canonicalPartNumber        String        @db.VarChar(200)
+  selectionCount             Int           @default(1)
+  createdAt                  DateTime      @default(now())
+  lastSelectedAt             DateTime      @default(now())
+  lastSelectedClientDeviceId String?
+  lastSelectedClientDevice   ClientDevice? @relation("WorkInstructionPartAliasLastSelectedClientDevice", fields: [lastSelectedClientDeviceId], references: [id], onDelete: SetNull)
+
+  @@index([lastSelectedClientDeviceId], map: "WorkInstructionPartAlias_idx_client_device")
 }
 
 /// SharePoint行の完全スナップショットに含まれる手順。行更新時に全置換する。

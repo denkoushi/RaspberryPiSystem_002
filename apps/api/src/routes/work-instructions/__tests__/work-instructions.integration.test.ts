@@ -13,6 +13,7 @@ import { LocalDurableFileStore } from '../../../services/file-storage/local-dura
 import { WorkInstructionFileStoreAdapter } from '../../../services/work-instructions/work-instruction-file-store.adapter.js';
 import { WorkInstructionReadService } from '../../../services/work-instructions/work-instruction-read.service.js';
 import { PrismaWorkInstructionRepository } from '../../../services/work-instructions/repositories/prisma-work-instruction.repository.js';
+import { WorkInstructionPartAliasValidationError } from '../../../services/work-instructions/domain/types.js';
 import { createAuthHeader, createTestClientDevice, createTestUser } from '../../__tests__/helpers.js';
 import { registerWorkInstructionRoutes } from '../index.js';
 
@@ -60,6 +61,117 @@ describe('work-instruction part candidate route', () => {
         limit: 5,
         offset: 0,
         hasMore: true
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('work-instruction part alias routes', () => {
+  it('returns a valid alias and upserts a learned selection', async () => {
+    const app = Fastify();
+    const alias = {
+      scannedPartNumber: 'MD004X',
+      canonicalPartNumber: 'MD0041',
+      partName: '部品A',
+      shootingTargets: ['研削'],
+      selectionCount: 2,
+      createdAt: new Date('2026-09-01T00:00:00.000Z'),
+      lastSelectedAt: new Date('2026-09-02T00:00:00.000Z')
+    };
+    const readPublishedPartAlias = vi.fn().mockResolvedValue(alias);
+    const upsertPartAlias = vi.fn().mockResolvedValue(alias);
+    registerWorkInstructionRoutes(app, {
+      services: {
+        ingestion: { startJob: vi.fn(), getJob: vi.fn() },
+        read: { readPublishedPartAlias, upsertPartAlias } as never
+      },
+      managePreHandler: async () => undefined,
+      readPreHandler: async () => undefined,
+      writePreHandler: async () => undefined
+    });
+
+    try {
+      const getResponse = await app.inject({
+        method: 'GET',
+        url: '/work-instructions/part-alias?partNumber=md004x'
+      });
+      expect(getResponse.statusCode).toBe(200);
+      expect(getResponse.json()).toMatchObject({ alias: { canonicalPartNumber: 'MD0041', selectionCount: 2 } });
+
+      const putResponse = await app.inject({
+        method: 'PUT',
+        url: '/work-instructions/part-alias',
+        payload: { scannedPartNumber: 'md004x', canonicalPartNumber: 'md0041' }
+      });
+      expect(putResponse.statusCode).toBe(200);
+      expect(upsertPartAlias).toHaveBeenCalledWith({
+        scannedPartNumber: 'MD004X',
+        canonicalPartNumber: 'MD0041',
+        lastSelectedClientDeviceId: null
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects learning over an exact public part number', async () => {
+    const app = Fastify();
+    const upsertPartAlias = vi.fn().mockRejectedValue(new WorkInstructionPartAliasValidationError('EXACT_EXISTS'));
+    registerWorkInstructionRoutes(app, {
+      services: {
+        ingestion: { startJob: vi.fn(), getJob: vi.fn() },
+        read: { upsertPartAlias } as never
+      },
+      managePreHandler: async () => undefined,
+      readPreHandler: async () => undefined,
+      writePreHandler: async () => undefined
+    });
+
+    try {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/work-instructions/part-alias',
+        payload: { scannedPartNumber: 'MD0041', canonicalPartNumber: 'MD0042' }
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ code: 'WORK_INSTRUCTION_PART_ALIAS_EXACT_EXISTS' });
+      expect(upsertPartAlias).toHaveBeenCalledWith({
+        scannedPartNumber: 'MD0041',
+        canonicalPartNumber: 'MD0042',
+        lastSelectedClientDeviceId: null
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('maps an unpublished canonical target to a not-found response', async () => {
+    const app = Fastify();
+    const upsertPartAlias = vi.fn().mockRejectedValue(new WorkInstructionPartAliasValidationError('TARGET_NOT_FOUND'));
+    registerWorkInstructionRoutes(app, {
+      services: {
+        ingestion: { startJob: vi.fn(), getJob: vi.fn() },
+        read: { upsertPartAlias } as never
+      },
+      managePreHandler: async () => undefined,
+      readPreHandler: async () => undefined,
+      writePreHandler: async () => undefined
+    });
+
+    try {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/work-instructions/part-alias',
+        payload: { scannedPartNumber: 'MD004X', canonicalPartNumber: 'MD0042' }
+      });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({ code: 'WORK_INSTRUCTION_PART_ALIAS_TARGET_NOT_FOUND' });
+      expect(upsertPartAlias).toHaveBeenCalledWith({
+        scannedPartNumber: 'MD004X',
+        canonicalPartNumber: 'MD0042',
+        lastSelectedClientDeviceId: null
       });
     } finally {
       await app.close();
@@ -183,6 +295,9 @@ describeIntegration('work-instruction Fastify API with Prisma and durable files'
       await prisma.workInstructionRow.deleteMany({ where: { id: { in: fixtureRowIds } } });
     }
     await prisma.workInstructionAsset.deleteMany({ where: { id: assetId, steps: { none: {} } } });
+    await prisma.workInstructionPartAlias.deleteMany({
+      where: { OR: [{ scannedPartNumber: { startsWith: 'MD004121632' } }, { canonicalPartNumber: 'MD004121632' }] }
+    });
     await prisma.clientDevice.deleteMany({ where: { id: clientDeviceId } });
     await prisma.user.deleteMany({ where: { id: { in: [viewerUserId, adminUserId] } } });
     await prisma.$disconnect();
@@ -267,6 +382,55 @@ describeIntegration('work-instruction Fastify API with Prisma and durable files'
       url: '/api/work-instructions/part-candidates?prefix=MD&fallback=true&offset=20',
       headers: { 'x-client-key': clientApiKey }
     })).statusCode).toBe(400);
+
+    expect((await securedApp.inject({
+      method: 'GET',
+      url: '/api/work-instructions/part-alias?partNumber=MD004121632X',
+    })).statusCode).toBe(401);
+    const learned = await securedApp.inject({
+      method: 'PUT',
+      url: '/api/work-instructions/part-alias',
+      headers: { 'x-client-key': clientApiKey },
+      payload: { scannedPartNumber: ' md004121632x ', canonicalPartNumber: ' md004121632 ' }
+    });
+    expect(learned.statusCode).toBe(200);
+    expect(learned.json()).toMatchObject({
+      alias: {
+        scannedPartNumber: 'MD004121632X',
+        canonicalPartNumber: 'MD004121632',
+        shootingTargets: ['研削']
+      }
+    });
+    const learnedForViewer = await securedApp.inject({
+      method: 'GET',
+      url: '/api/work-instructions/part-alias?partNumber=md004121632x',
+      headers: createAuthHeader(viewerToken),
+    });
+    expect(learnedForViewer.statusCode).toBe(200);
+    expect(learnedForViewer.json()).toMatchObject({
+      alias: { canonicalPartNumber: 'MD004121632', shootingTargets: ['研削'] }
+    });
+    expect(await prisma.workInstructionPartAlias.findUnique({
+      where: { scannedPartNumber: 'MD004121632X' }
+    })).toMatchObject({ lastSelectedClientDeviceId: clientDeviceId });
+
+    const viewerWithClientKey = await securedApp.inject({
+      method: 'PUT',
+      url: '/api/work-instructions/part-alias',
+      headers: { ...createAuthHeader(viewerToken), 'x-client-key': clientApiKey },
+      payload: { scannedPartNumber: 'MD004121632Y', canonicalPartNumber: 'MD004121632' }
+    });
+    expect(viewerWithClientKey.statusCode).toBe(200);
+    expect(viewerWithClientKey.json()).toMatchObject({
+      alias: { scannedPartNumber: 'MD004121632Y', canonicalPartNumber: 'MD004121632' }
+    });
+    const viewerWithoutClientKey = await securedApp.inject({
+      method: 'PUT',
+      url: '/api/work-instructions/part-alias',
+      headers: createAuthHeader(viewerToken),
+      payload: { scannedPartNumber: 'MD004121632Z', canonicalPartNumber: 'MD004121632' }
+    });
+    expect(viewerWithoutClientKey.statusCode).toBe(403);
 
     expect((await securedApp.inject({
       method: 'GET',

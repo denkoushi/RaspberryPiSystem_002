@@ -38,4 +38,21 @@ describe('WorkInstructionTargetChips', () => {
 
     expect(screen.queryByRole('group', { name: '撮影対象' })).not.toBeInTheDocument();
   });
+
+  it('labels learned targets with the scanned-to-canonical mapping', () => {
+    render(
+      <WorkInstructionTargetChips
+        targets={['研削']}
+        onSelect={vi.fn()}
+        similarMatch={{ scannedPartNumber: 'MH009X', canonicalPartNumber: 'MH001' }}
+      />
+    );
+
+    const chip = screen.getByRole('button', {
+      name: '類似・研削（読取品番 MH009X から正式品番 MH001）'
+    });
+    expect(chip).toHaveTextContent('類似・研削');
+    expect(chip).toHaveAttribute('title', '読取品番 MH009X → 正式品番 MH001');
+    expect(chip.className).toContain('amber');
+  });
 });
