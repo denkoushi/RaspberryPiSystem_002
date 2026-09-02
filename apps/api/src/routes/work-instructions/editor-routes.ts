@@ -109,6 +109,11 @@ const editorAuthenticationBodySchema = z.object({
   employeeTagUid: z.string().trim().min(1).max(200)
 }).strict();
 
+// NFC UID verification is exposed before an editor session exists, so keep
+// its brute-force budget lower than the authenticated editor endpoints.
+const editorAuthenticationRateLimit = { max: 10, timeWindow: '1 minute' };
+const editorRateLimit = { max: 60, timeWindow: '1 minute' };
+
 function mapEditingError(error: unknown): never {
   if (error instanceof WorkInstructionEditingError) {
     throw new ApiError(error.statusCode, error.message, error.details, error.code);
@@ -273,7 +278,10 @@ export function registerWorkInstructionEditorRoutes(
 ): void {
   const { read, editing, allowView, allowWrite } = options;
 
-  app.post('/work-instructions/editor-authentications', { preHandler: [allowWrite] }, async (request) => {
+  app.post('/work-instructions/editor-authentications', {
+    preHandler: [allowWrite],
+    config: { rateLimit: editorAuthenticationRateLimit }
+  }, async (request) => {
     const body = editorAuthenticationBodySchema.parse(request.body ?? {});
     const clientDevice = await editorClientDevice(request);
     const authentication = await mapEditing(() => editing.createEditorAuthentication({
@@ -320,14 +328,20 @@ export function registerWorkInstructionEditorRoutes(
     return mapEditing(() => buildEditorGroup(read, editing, { partNumber: query.partNumber, shootingTarget: query.resource }));
   });
 
-  app.get('/work-instructions/editor-revisions/history', { preHandler: [allowView] }, async (request) => {
+  app.get('/work-instructions/editor-revisions/history', {
+    preHandler: [allowView],
+    config: { rateLimit: editorRateLimit }
+  }, async (request) => {
     const query = z.object({ partNumber: z.string().trim().min(1), resource: z.string().trim().min(1) }).parse(request.query ?? {});
     await editorReadAuthorization(request, editing, { partNumber: query.partNumber, shootingTarget: query.resource });
     const group = await mapEditing(() => buildEditorGroup(read, editing, { partNumber: query.partNumber, shootingTarget: query.resource }));
     return { history: group.history };
   });
 
-  app.get('/work-instructions/editor-audit', { preHandler: [allowView] }, async (request) => {
+  app.get('/work-instructions/editor-audit', {
+    preHandler: [allowView],
+    config: { rateLimit: editorRateLimit }
+  }, async (request) => {
     const query = z.object({
       partNumber: z.string().trim().min(1),
       resource: z.string().trim().min(1),
@@ -344,7 +358,10 @@ export function registerWorkInstructionEditorRoutes(
     return { items: auditLogs.map(toEditAuditLogDto), limit: query.limit, offset: query.offset };
   });
 
-  app.post('/work-instructions/rows/:rowId/revisions', { preHandler: [allowWrite] }, async (request) => {
+  app.post('/work-instructions/rows/:rowId/revisions', {
+    preHandler: [allowWrite],
+    config: { rateLimit: editorRateLimit }
+  }, async (request) => {
     const { rowId } = rowIdParamsSchema.parse(request.params);
     const body = createDraftBodySchema.parse(request.body ?? {});
     const authorization = await editorMutationAuthorization(request);
@@ -352,7 +369,10 @@ export function registerWorkInstructionEditorRoutes(
     return { revision: await canonicalRevisionDto(editing, result.revision), copy: result.copy };
   });
 
-  app.post('/work-instructions/editor-revisions/copy', { preHandler: [allowWrite] }, async (request) => {
+  app.post('/work-instructions/editor-revisions/copy', {
+    preHandler: [allowWrite],
+    config: { rateLimit: editorRateLimit }
+  }, async (request) => {
     const body = z.object({
       partNumber: z.string().trim().min(1),
       shootingTarget: z.string().trim().min(1),
@@ -389,7 +409,10 @@ export function registerWorkInstructionEditorRoutes(
     });
   };
   for (const path of ['/work-instructions/revisions/:revisionId/overlays', '/work-instructions/editor-revisions/:revisionId/overlays']) {
-    app.put(path, { preHandler: [allowWrite] }, async (request) => {
+    app.put(path, {
+      preHandler: [allowWrite],
+      config: { rateLimit: editorRateLimit }
+    }, async (request) => {
       const revision = await mapEditing(() => saveRevision(request));
       return { revision: await canonicalRevisionDto(editing, revision) };
     });
@@ -410,13 +433,19 @@ export function registerWorkInstructionEditorRoutes(
     });
   };
   for (const path of ['/work-instructions/revisions/:revisionId/draft', '/work-instructions/editor-revisions/:revisionId/draft']) {
-    app.put(path, { preHandler: [allowWrite] }, async (request) => {
+    app.put(path, {
+      preHandler: [allowWrite],
+      config: { rateLimit: editorRateLimit }
+    }, async (request) => {
       const revision = await mapEditing(() => saveDraftRevision(request));
       return { revision: await canonicalRevisionDto(editing, revision) };
     });
   }
 
-  app.post('/work-instructions/revisions/:revisionId/publish', { preHandler: [allowWrite] }, async (request) => {
+  app.post('/work-instructions/revisions/:revisionId/publish', {
+    preHandler: [allowWrite],
+    config: { rateLimit: editorRateLimit }
+  }, async (request) => {
     const { revisionId } = revisionIdParamsSchema.parse(request.params);
     const body = publishBodySchema.parse(request.body ?? {});
     const authorization = await editorMutationAuthorization(request);
@@ -424,7 +453,10 @@ export function registerWorkInstructionEditorRoutes(
     return { revision: await canonicalRevisionDto(editing, result.revision), migration: result.migration };
   });
 
-  app.post('/work-instructions/editor-revisions/publish', { preHandler: [allowWrite] }, async (request) => {
+  app.post('/work-instructions/editor-revisions/publish', {
+    preHandler: [allowWrite],
+    config: { rateLimit: editorRateLimit }
+  }, async (request) => {
     const body = groupPublishBodySchema.parse(request.body ?? {});
     const authorization = await editorMutationAuthorization(request);
     const results = await mapEditing(() => editing.publishRevisionGroup({
@@ -452,14 +484,20 @@ export function registerWorkInstructionEditorRoutes(
     return editing.discardRevision({ revisionId, expectedEditVersion: body.expectedEditVersion, ...authorization });
   };
   for (const path of ['/work-instructions/revisions/:revisionId/discard', '/work-instructions/editor-revisions/:revisionId/discard']) {
-    app.post(path, { preHandler: [allowWrite] }, async (request) => {
+    app.post(path, {
+      preHandler: [allowWrite],
+      config: { rateLimit: editorRateLimit }
+    }, async (request) => {
       const revision = await mapEditing(() => discardRevision(request));
       return { revision: await canonicalRevisionDto(editing, revision) };
     });
   }
 
   for (const path of ['/work-instructions/revisions/:revisionId/regions/image', '/work-instructions/editor-revisions/:revisionId/regions/image']) {
-    app.post(path, { preHandler: [allowWrite] }, async (request) => {
+    app.post(path, {
+      preHandler: [allowWrite],
+      config: { rateLimit: editorRateLimit }
+    }, async (request) => {
       const { revisionId } = revisionIdParamsSchema.parse(request.params);
       const body = regionBodySchema.parse(request.body ?? {});
       const authorization = await editorMutationAuthorization(request);
@@ -468,7 +506,10 @@ export function registerWorkInstructionEditorRoutes(
     });
   }
   for (const path of ['/work-instructions/revisions/:revisionId/regions/text', '/work-instructions/editor-revisions/:revisionId/regions/text']) {
-    app.post(path, { preHandler: [allowWrite] }, async (request) => {
+    app.post(path, {
+      preHandler: [allowWrite],
+      config: { rateLimit: editorRateLimit }
+    }, async (request) => {
       const { revisionId } = revisionIdParamsSchema.parse(request.params);
       const body = regionBodySchema.parse(request.body ?? {});
       const authorization = await editorMutationAuthorization(request);
@@ -483,7 +524,10 @@ export function registerWorkInstructionEditorRoutes(
     return editing.uploadEditAsset({ revisionId, bytes: multipart.bytes, mimeType: multipart.contentType, ...authorization });
   };
   for (const path of ['/work-instructions/revisions/:revisionId/assets', '/work-instructions/editor-revisions/:revisionId/assets']) {
-    app.post(path, { preHandler: [allowWrite] }, async (request) => ({ asset: toEditAssetDto(await mapEditing(() => uploadAsset(request))) }));
+    app.post(path, {
+      preHandler: [allowWrite],
+      config: { rateLimit: editorRateLimit }
+    }, async (request) => ({ asset: toEditAssetDto(await mapEditing(() => uploadAsset(request))) }));
   }
 
   app.get('/work-instructions/edit-assets/:id', { preHandler: [allowView] }, async (request, reply) => {
@@ -496,7 +540,10 @@ export function registerWorkInstructionEditorRoutes(
     return reply.send(result.bytes);
   });
 
-  app.delete('/work-instructions/source-versions/:versionId/image', { preHandler: [allowWrite] }, async (request) => {
+  app.delete('/work-instructions/source-versions/:versionId/image', {
+    preHandler: [allowWrite],
+    config: { rateLimit: editorRateLimit }
+  }, async (request) => {
     const { versionId } = sourceVersionParamsSchema.parse(request.params);
     bulkDeleteBodySchema.parse(request.body ?? {});
     const authorization = await editorMutationAuthorization(request);
@@ -505,7 +552,10 @@ export function registerWorkInstructionEditorRoutes(
     return { results, deletedCount, deletedImageCount: deletedCount, failedCount: results.filter((result) => result.status === 'FAILED').length };
   });
 
-  app.delete('/work-instructions/source-versions/:versionId/assets/:assetId', { preHandler: [allowWrite] }, async (request) => {
+  app.delete('/work-instructions/source-versions/:versionId/assets/:assetId', {
+    preHandler: [allowWrite],
+    config: { rateLimit: editorRateLimit }
+  }, async (request) => {
     const params = sourceAssetParamsSchema.parse(request.params);
     bulkDeleteBodySchema.parse(request.body ?? {});
     const authorization = await editorMutationAuthorization(request);

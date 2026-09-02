@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../../lib/errors.js';
+import { registerRateLimit } from '../../../plugins/rate-limit.js';
 import { computeWorkInstructionMemoFingerprint } from '../../../services/work-instructions/domain/editing.js';
 import type { WorkInstructionEditService } from '../../../services/work-instructions/work-instruction-edit.service.js';
 import type { WorkInstructionReadService } from '../../../services/work-instructions/work-instruction-read.service.js';
@@ -73,12 +74,15 @@ const editingView = {
   publishedRevision: null
 };
 
-function makeApp(overrides: { allowWrite?: () => Promise<void> } = {}) {
+function makeApp(overrides: { allowWrite?: () => Promise<void>; withRateLimit?: boolean } = {}) {
   const app = Fastify();
   app.setErrorHandler((error, _request, reply) => {
     const apiError = error as ApiError;
     reply.code(apiError.statusCode ?? 500).send({ code: apiError.code ?? 'UNEXPECTED' });
   });
+  if (overrides.withRateLimit) {
+    app.register(registerRateLimit);
+  }
   const read = {
     readRows: vi.fn(async () => [{
       id: rowId,
@@ -149,12 +153,19 @@ function makeApp(overrides: { allowWrite?: () => Promise<void> } = {}) {
     publishRevisionGroup: vi.fn(async () => [{ revision: { ...revision, status: 'PUBLISHED' as const }, migration: { needsReviewCount: 0, unassignedCount: 0, skippedCount: 0 } }]),
     deleteSourceVersionImages: vi.fn(async () => [{ assetId: 'asset-1', auditId: 'audit-1', status: 'DELETED' as const }])
   } as unknown as WorkInstructionEditService;
-  registerWorkInstructionEditorRoutes(app, {
+  const routeOptions = {
     read,
     editing,
     allowView: async () => undefined,
     allowWrite: overrides.allowWrite ?? (async () => undefined)
-  });
+  };
+  if (overrides.withRateLimit) {
+    app.register(async (instance) => {
+      registerWorkInstructionEditorRoutes(instance, routeOptions);
+    });
+  } else {
+    registerWorkInstructionEditorRoutes(app, routeOptions);
+  }
   return { app, read, editing };
 }
 
@@ -183,6 +194,25 @@ describe('work-instruction editor route contract', () => {
         clientDevice: { id: '00000000-0000-0000-0000-000000000199', name: 'Test Kiosk' }
       }
     });
+    await fixture.app.close();
+  });
+
+  it('rate-limits repeated editor authentication attempts', async () => {
+    const fixture = makeApp({ withRateLimit: true });
+    await fixture.app.ready();
+
+    const request = {
+      method: 'POST' as const,
+      url: '/work-instructions/editor-authentications',
+      headers: { 'x-client-key': 'test-client-key' },
+      payload: { partNumber: 'MD004', shootingTarget: '研削', employeeTagUid: 'employee-tag-1' }
+    };
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await expect(fixture.app.inject(request)).resolves.toMatchObject({ statusCode: 200 });
+    }
+    await expect(fixture.app.inject(request)).resolves.toMatchObject({ statusCode: 429 });
+
     await fixture.app.close();
   });
 
