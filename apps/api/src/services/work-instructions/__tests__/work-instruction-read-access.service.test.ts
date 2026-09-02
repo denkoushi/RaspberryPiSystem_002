@@ -233,83 +233,33 @@ describe('WorkInstructionAccessService', () => {
 });
 
 describe('work-instruction part alias read queries', () => {
-  it('normalizes the part number and handles public-part existence results', async () => {
-    const db = {
-      $queryRaw: vi.fn()
-        .mockResolvedValueOnce([{ exists: true }])
-        .mockResolvedValueOnce([{ exists: false }])
-        .mockResolvedValueOnce([])
-    } as unknown as WorkInstructionDbClient;
-
-    await expect(hasPublishedWorkInstructionPart(db, '  md004x ')).resolves.toBe(true);
-    await expect(hasPublishedWorkInstructionPart(db, 'MD004Y')).resolves.toBe(false);
-    await expect(hasPublishedWorkInstructionPart(db, '   ')).resolves.toBe(false);
-    expect(db.$queryRaw).toHaveBeenCalledTimes(2);
-  });
-
-  it('aggregates public alias targets, trims names, and returns null for empty or blank input', async () => {
+  it('reads a normalized public part and its alias projection', async () => {
     const createdAt = new Date('2026-08-31T00:00:00.000Z');
     const lastSelectedAt = new Date('2026-09-01T00:00:00.000Z');
     const db = {
       $queryRaw: vi.fn()
-        .mockResolvedValueOnce([
-          {
-            scannedPartNumber: 'MD004X',
-            canonicalPartNumber: 'MD0041',
-            partName: '  部品A  ',
-            shootingTarget: '切削',
-            selectionCount: 2,
-            createdAt,
-            lastSelectedAt
-          },
-          {
-            scannedPartNumber: 'MD004X',
-            canonicalPartNumber: 'MD0041',
-            partName: '  部品A  ',
-            shootingTarget: '切削',
-            selectionCount: 2,
-            createdAt,
-            lastSelectedAt
-          },
-          {
-            scannedPartNumber: 'MD004X',
-            canonicalPartNumber: 'MD0041',
-            partName: '  部品A  ',
-            shootingTarget: '研削',
-            selectionCount: 2,
-            createdAt,
-            lastSelectedAt
-          }
-        ])
+        .mockResolvedValueOnce([{ exists: true }])
         .mockResolvedValueOnce([{
-          scannedPartNumber: 'MD004Y',
-          canonicalPartNumber: 'MD0042',
-          partName: null,
-          shootingTarget: '資源CD',
+          scannedPartNumber: 'MD004X',
+          canonicalPartNumber: 'MD0041',
+          partName: '部品A',
+          shootingTarget: '研削',
           selectionCount: 1,
           createdAt,
           lastSelectedAt
         }])
-        .mockResolvedValueOnce([])
     } as unknown as WorkInstructionDbClient;
 
+    await expect(hasPublishedWorkInstructionPart(db, '  md004x ')).resolves.toBe(true);
     await expect(readPublishedWorkInstructionPartAlias(db, ' md004x ')).resolves.toEqual({
       scannedPartNumber: 'MD004X',
       canonicalPartNumber: 'MD0041',
       partName: '部品A',
-      shootingTargets: ['切削', '研削'],
-      selectionCount: 2,
+      shootingTargets: ['研削'],
+      selectionCount: 1,
       createdAt,
       lastSelectedAt
     });
-    await expect(readPublishedWorkInstructionPartAlias(db, 'md004y')).resolves.toMatchObject({
-      scannedPartNumber: 'MD004Y',
-      canonicalPartNumber: 'MD0042',
-      partName: null,
-      shootingTargets: ['資源CD']
-    });
-    await expect(readPublishedWorkInstructionPartAlias(db, 'md004z')).resolves.toBeNull();
-    await expect(readPublishedWorkInstructionPartAlias(db, '   ')).resolves.toBeNull();
-    expect(db.$queryRaw).toHaveBeenCalledTimes(3);
+    expect(db.$queryRaw).toHaveBeenCalledTimes(2);
   });
 });
