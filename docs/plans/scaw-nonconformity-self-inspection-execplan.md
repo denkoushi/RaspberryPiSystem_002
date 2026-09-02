@@ -14,7 +14,7 @@ Import the daily full `scawSTFUTEKIGO` Gmail CSV through the existing CSV-dashbo
 - [x] (2026-09-02) Added the authenticated read API and an initially collapsed, independently scrolling kiosk panel.
 - [x] (2026-09-02) Passed focused API/Web tests, lint, typecheck, builds, all migrations, two real-PostgreSQL synchronization scenarios, 8,188-row projection, SQL invariants, and three query plans.
 - [x] (2026-09-02) Updated `docs/runbooks/scaw-nonconformity-self-inspection.md` and `docs/INDEX.md`.
-- [ ] Commit the completed implementation; do not push, open a PR, merge, or deploy without separate approval.
+- [x] (2026-09-02) Created local implementation commit `f7ae0419`; did not push, open a PR, merge, migrate production, consume Gmail, or deploy.
 
 ## Surprises & Discoveries
 
@@ -52,7 +52,7 @@ Import the daily full `scawSTFUTEKIGO` Gmail CSV through the existing CSV-dashbo
 
 ## Outcomes & Retrospective
 
-The implementation now covers the approved local scope. A synthetic 8,188-row full snapshot produced exactly 8,188 unique Current rows and revisions in 4.084 seconds, then removed only that run's staging rows. Functional PostgreSQL tests proved last-row-wins duplicates, unchanged re-imports without revisions, changed revisions, disappearance, same-content reappearance, and delayed older-snapshot rejection. The kiosk query and panel are separated from image rendering, so loading or failure of nonconformity data does not hide the work-instruction photos. The remaining repository action is the requested local commit. Push, PR, merge, production migration, Gmail consumption, schedule activation, and deployment remain explicitly outside this plan execution.
+The implementation now covers the approved local scope. A synthetic 8,188-row full snapshot produced exactly 8,188 unique Current rows and revisions in 4.084 seconds, then removed only that run's staging rows. Functional PostgreSQL tests proved last-row-wins duplicates, unchanged re-imports without revisions, changed revisions, disappearance, same-content reappearance, and delayed older-snapshot rejection. The kiosk query and panel are separated from image rendering, so loading or failure of nonconformity data does not hide the work-instruction photos. The implementation is committed locally. Push, PR, merge, production migration, Gmail consumption, schedule activation, and deployment remain explicitly outside this plan execution and require separate approval.
 
 ## Context and Orientation
 
@@ -95,10 +95,11 @@ Evidence produced on 2026-09-02:
 - SQL fixture: 8,190 Current rows, 8,190 distinct nonconformity numbers, 8,190 revisions, decimal `0.200000`, and date-only maximum `2026-09-02`.
 - Query plans: Current lookup used `ScawStfutekigoCurrent_part_active_discovered_idx` and completed in 0.641 ms; revision lookup used `ScawStfutekigoRevision_no_changed_idx` in 0.035 ms; rollback-only inactive update scanned 8,190 rows and completed in 70.664 ms.
 - Both disposable runs ended with `TEMP_RESOURCE_REMAINING=0`; pre-existing container, volume, and network inventories were not modified.
-- Focused API and Web tests, API and Web lint, Prisma generation, TypeScript builds, and production Vite build passed before final review. Re-run them after the last diff and record the final totals before commit.
+- Focused API tests passed across 68 distinct cases, and focused Web tests passed across 45 cases. API and Web lint, Prisma generation, API TypeScript build, and production Web Vite build also passed; the commit hook repeated the full workspace lint successfully.
+- `scripts/deploy/validate-candidate-migrations.sh origin/main HEAD` passed against implementation commit `f7ae0419`, including checksums for every already-applied migration and the new expand-only candidate migration.
 
 ## Interfaces and Dependencies
 
 The new public interface is `GET /api/kiosk/self-inspection/nonconformities?partNumber=<canonical FHINCD>`, authenticated like work-instruction reads. Domain code depends inward on repository and enrichment ports; Prisma, production-schedule lookup, Gmail scheduling, HTTP routing, and React Query remain outer adapters.
 
-Revision note (2026-09-02): Expanded the original implementation outline into a self-contained execution record, recorded the completed milestones and database evidence, documented the exact-subject and timestamp-ordering review corrections, and left only the local commit open.
+Revision note (2026-09-02): Expanded the original implementation outline into a self-contained execution record; recorded the completed milestones, database evidence, exact-subject and timestamp-ordering review corrections, local implementation commit, and migration-candidate preflight result.
