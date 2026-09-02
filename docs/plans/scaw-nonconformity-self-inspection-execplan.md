@@ -15,10 +15,10 @@ Import the daily full `scawSTFUTEKIGO` Gmail CSV through the existing CSV-dashbo
 - [x] (2026-09-02) Passed focused API/Web tests, lint, typecheck, builds, all migrations, two real-PostgreSQL synchronization scenarios, 8,188-row projection, SQL invariants, and three query plans.
 - [x] (2026-09-02) Updated `docs/runbooks/scaw-nonconformity-self-inspection.md` and `docs/INDEX.md`.
 - [x] (2026-09-02) Created local implementation commit `f7ae0419`; did not push, open a PR, merge, migrate production, consume Gmail, or deploy.
-- [ ] (2026-09-03) Push the feature branch, open a PR, and confirm required CI, CodeQL, and gitleaks for the exact head SHA.
-- [ ] Merge the approved PR into `main`, confirm the merge SHA and release artifacts, then finish the feature worktree through the lifecycle CLI.
-- [ ] Confirm the canonical deployment plan for the exact `main` SHA, run the standard rolling release, and record run status, migration, health, and rollback evidence.
-- [ ] Verify the fixed schedule, import the existing unread Gmail snapshot through the normal route, and reconcile imported/current/unmatched counts without exposing raw payloads.
+- [x] (2026-09-03) Merged PR #1318 as `d5ee18c9a3f0df3106dfa800d7f8beea7e3cf309` after required CI, CodeQL, and gitleaks succeeded; completed lifecycle cleanup.
+- [x] (2026-09-03) Deployed the exact merge SHA to Pi5 with standard release run `20260902-214302-c18c36`; migration/status, five health samples, route switch, scheduler handoff, and rollback readiness succeeded.
+- [x] (2026-09-03) Imported the unread Gmail snapshot through the fixed schedule: 8,188 processed/added, zero skipped, 8,188 Current, 8,188 Revision, zero duplicate business keys, 83 resolved and 8,105 retained unmatched rows.
+- [x] (2026-09-03) Approved a follow-up kiosk presentation rule: repeated operator-facing content is shown once while all source cases remain available in the API and database.
 
 ## Surprises & Discoveries
 
@@ -55,6 +55,9 @@ Import the daily full `scawSTFUTEKIGO` Gmail CSV through the existing CSV-dashbo
 - Decision: Match the fixed Gmail subject by trimmed, case-insensitive equality while retaining existing partial matching for all other dashboards.
   Rationale: Similar subjects such as `scawSTFUTEKIGO_backup` must not replace the authoritative full snapshot.
   Date/Author: 2026-09-02 / Codex review.
+- Decision: Collapse kiosk cards only when all displayed fields, including discovery date, are equal.
+  Rationale: Repeated text tied to separate manufacturing orders is valid source data but repeating it in the operator panel adds workload without improving recurrence prevention. API and database rows remain individual for audit and analysis.
+  Date/Author: 2026-09-03 / user-approved follow-up.
 
 ## Outcomes & Retrospective
 
@@ -86,7 +89,7 @@ For database proof, run `scripts/test/work-instructions-validation.sh` with a ch
 
 ## Validation and Acceptance
 
-Acceptance requires idempotent daily snapshots, revision creation only for source-content changes, inactive retention for disappeared cases, safe preservation of the last valid snapshot after malformed input, persisted order-to-part enrichment, an all-period active-case API, and a non-blocking accessible kiosk panel. The API must never return `rawPayload`. The panel must initially be closed, show every case and each text field separately, leave the photo grid unchanged while closed, and keep image enlargement above it. API and UI failures must not prevent work-instruction photos from rendering.
+Acceptance requires idempotent daily snapshots, revision creation only for source-content changes, inactive retention for disappeared cases, safe preservation of the last valid snapshot after malformed input, persisted order-to-part enrichment, an all-period active-case API, and a non-blocking accessible kiosk panel. The API must never return `rawPayload`. The panel must initially be closed, show each distinct operator-facing content set once with its fields kept separate, leave the photo grid unchanged while closed, and keep image enlargement above it. API and UI failures must not prevent work-instruction photos from rendering.
 
 ## Idempotence and Recovery
 

@@ -1,4 +1,6 @@
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
+
+import { collapseNonconformitiesForDisplay } from './selfInspectionNonconformityDisplay';
 
 import type { SelfInspectionNonconformity } from '../../api/domains/self-inspection-nonconformities';
 
@@ -43,11 +45,12 @@ export function SelfInspectionNonconformityPanel({
 }: SelfInspectionNonconformityPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
-  const countLabel = items.length > 0 ? `（${items.length}件）` : '';
+  const displayItems = useMemo(() => collapseNonconformitiesForDisplay(items), [items]);
+  const countLabel = displayItems.length > 0 ? `（${displayItems.length}件）` : '';
 
   // A successful empty response is intentionally silent.  The viewer should
   // not reserve a header control for parts with no active cases.
-  if (items.length === 0 && !isLoading && !errorMessage) return null;
+  if (displayItems.length === 0 && !isLoading && !errorMessage) return null;
 
   return (
     <div className="relative shrink-0">
@@ -100,13 +103,13 @@ export function SelfInspectionNonconformityPanel({
                   </button>
                 ) : null}
               </div>
-            ) : items.length === 0 ? (
+            ) : displayItems.length === 0 ? (
               <p className="text-sm font-semibold text-white/65">
                 この部品の不適合情報はありません
               </p>
             ) : (
               <div className="space-y-3" role="list" aria-label="不適合情報一覧">
-                {items.map((item, index) => (
+                {displayItems.map((item, index) => (
                   <article
                     key={item.id}
                     className="rounded-md border border-white/15 bg-slate-900/70 p-3"

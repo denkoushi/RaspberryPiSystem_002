@@ -1,6 +1,6 @@
 # SCAW Nonconformity Self-Inspection Operations Runbook
 
-Status: active (implementation complete; production rollout still requires release approval)
+Status: active (implementation and production rollout complete)
 
 Scope: local validation and production rollout boundaries for the daily `scawSTFUTEKIGO` full-CSV import.
 
@@ -13,6 +13,8 @@ The import receives one complete daily CSV from Gmail. `FFUTEKIGONO` is the glob
 `FSEZONO` is stored as `manufacturingOrderNo`. The import-time enrichment resolves the production schedule's `FHINCD` to the nullable persisted `partNumber`. The normal read API queries current by the saved `partNumber`; it must not join production raw rows at read time. All 16 source columns are typed in current and revision tables, using semantic names such as `nonconformityNo` and `discoveredOn`, with `rawPayload` JSON retained for forward reuse. Quantity is PostgreSQL `NUMERIC`/Prisma `Decimal`; business dates are date-only.
 
 The existing `CsvDashboardIngestRun` is the snapshot audit record. Do not add a second SnapshotRun table. Record source rows in the existing APPEND dashboard, record duplicate last-row-wins count in `rowsSkipped`, and keep the typed revision table without a retention deletion job.
+
+The kiosk keeps every source case in the API and database but collapses repeated operator-facing content in the panel. Equality uses all currently displayed fields: discovery date, originating department, remarks, nonconformity content, disposition, both corrective-content fields, part name, and machine name after the same trim/line-ending treatment used for display. Source identity and other non-displayed fields are not equality fields. Any difference in a displayed field produces a separate card.
 
 After a successful domain commit, delete that run's APPEND staging rows in bounded chunks as a best-effort cleanup. Keep the `CsvDashboardIngestRun`, raw CSV, duplicate/error audit, and typed revisions indefinitely; a cleanup failure must be logged and must not roll back the committed projection. Any broader raw-row retention cleanup remains a separately reviewed change and must not remove evidence needed for projection retry or snapshot audit.
 
@@ -123,6 +125,7 @@ The focused API/domain tests must cover the following observable behavior:
 8. Retrying the same completed run is idempotent. Concurrent projection is serialized and an older run cannot overwrite a newer successful run.
 9. Decimal quantity preserves exact numeric value, and timestamp-bearing date input hashes/stores as the same date-only value when the calendar date is unchanged.
 10. The read API finds only active rows matching the requested saved `partNumber`, without a runtime production-schedule join.
+11. The kiosk panel collapses rows with the same displayed fields and counts the collapsed cards without changing API or database cardinality; a different discovery date remains a separate card.
 
 The integration evidence must include counts before and after each snapshot, `rowsProcessed`, `rowsSkipped`, current active/inactive counts, revision count, matched/unmatched `partNumber` count, and the three SQL plans above. Do not use a count-only assertion for the duplicate, revision, or inactive behavior.
 
