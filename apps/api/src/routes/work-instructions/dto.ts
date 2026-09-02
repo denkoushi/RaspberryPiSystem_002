@@ -8,6 +8,7 @@ import {
   type WorkInstructionOverlayElement,
   type WorkInstructionSourceVersionView
 } from '../../services/work-instructions/domain/editing.js';
+import type { WorkInstructionEditAuditLogView } from '../../services/work-instructions/repositories/work-instruction-edit-repository.port.js';
 import type {
   WorkInstructionGroupSummaryView,
   WorkInstructionGroupView,
@@ -18,6 +19,29 @@ import type {
 } from '../../services/work-instructions/domain/types.js';
 function iso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
+}
+
+export function toEditAuditLogDto(log: WorkInstructionEditAuditLogView) {
+  return {
+    id: log.id,
+    authenticationId: log.authenticationId,
+    action: log.action,
+    employeeIdSnapshot: log.employeeIdSnapshot,
+    employeeCodeSnapshot: log.employeeCodeSnapshot,
+    employeeNameSnapshot: log.employeeNameSnapshot,
+    clientDeviceIdSnapshot: log.clientDeviceIdSnapshot,
+    clientDeviceNameSnapshot: log.clientDeviceNameSnapshot,
+    partNumber: log.partNumber,
+    shootingTarget: log.shootingTarget,
+    rowId: log.rowId,
+    sourceVersionId: log.sourceVersionId,
+    revisionId: log.revisionId,
+    editVersionBefore: log.editVersionBefore,
+    editVersionAfter: log.editVersionAfter,
+    requestId: log.requestId,
+    changeSet: log.changeSet,
+    createdAt: log.createdAt.toISOString()
+  };
 }
 
 export function toStepDto(step: WorkInstructionStepView) {

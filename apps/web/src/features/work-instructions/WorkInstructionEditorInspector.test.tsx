@@ -56,4 +56,31 @@ describe('WorkInstructionEditorInspector select styling', () => {
       }
     }
   });
+
+  it.each(['TEXT', 'IMAGE', 'SHAPE'] as const)('keeps every %s value control on the dark editor palette', (kind) => {
+    render(
+      <WorkInstructionEditorInspector
+        element={createWorkInstructionOverlayForRange(kind, 0, step.stepKey, bbox)}
+        onUpdate={vi.fn()}
+        onDelete={vi.fn()}
+        onBringForward={vi.fn()}
+        onSendBackward={vi.fn()}
+        onUploadImage={vi.fn()}
+        onRefetchTextCandidates={vi.fn()}
+        steps={[step]}
+        onAssignStep={vi.fn()}
+      />
+    );
+
+    const inspector = screen.getByRole('complementary', { name: '加工要領書オーバーレイ編集' });
+    const controls = Array.from(inspector.querySelectorAll('input, textarea, select'));
+    expect(controls.length).toBeGreaterThan(0);
+
+    for (const control of controls) {
+      expect(control).toHaveClass('bg-slate-950', '!bg-slate-950');
+      if (control instanceof HTMLInputElement && control.type === 'checkbox') continue;
+      if (control instanceof HTMLInputElement && control.type === 'color') continue;
+      expect(control).toHaveClass('text-white', '!text-white');
+    }
+  });
 });

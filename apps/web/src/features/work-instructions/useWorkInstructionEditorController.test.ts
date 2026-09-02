@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const apiMocks = vi.hoisted(() => ({
   copy: vi.fn(),
+  createAuthentication: vi.fn(),
   createImageRegion: vi.fn(),
   deleteSourceImages: vi.fn(),
   discard: vi.fn(),
   findTextCandidates: vi.fn(),
   history: vi.fn(),
+  audit: vi.fn(),
   publish: vi.fn(),
   save: vi.fn(),
   uploadImage: vi.fn(),
@@ -16,11 +18,13 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock('../../api/client', () => ({
   copyWorkInstructionOverlayDraft: apiMocks.copy,
+  createWorkInstructionEditorAuthentication: apiMocks.createAuthentication,
   createWorkInstructionImageRegion: apiMocks.createImageRegion,
   deleteWorkInstructionSourceVersionImages: apiMocks.deleteSourceImages,
   discardWorkInstructionOverlayDraft: apiMocks.discard,
   findWorkInstructionTextCandidates: apiMocks.findTextCandidates,
   listWorkInstructionRevisionHistory: apiMocks.history,
+  listWorkInstructionEditorAudit: apiMocks.audit,
   publishWorkInstructionOverlayDraft: apiMocks.publish,
   saveWorkInstructionOverlayDraft: apiMocks.save,
   uploadWorkInstructionOverlayImage: apiMocks.uploadImage
@@ -161,9 +165,8 @@ function renderEditor() {
 
 async function authenticate(hook: ReturnType<typeof renderEditor>) {
   await waitFor(() => expect(hook.result.current.loading).toBe(false));
-  act(() => hook.result.current.setAccessPassword('2520'));
   await act(async () => {
-    await hook.result.current.authenticate();
+    await hook.result.current.authenticate('employee-tag-1');
   });
   await waitFor(() => expect(hook.result.current.accessGranted).toBe(true));
 }
@@ -179,8 +182,15 @@ describe('useWorkInstructionEditorController', () => {
       refetch: vi.fn().mockResolvedValue({ data: makeGroup() })
     });
     apiMocks.copy.mockResolvedValue({ group: makeGroup(makeDraft()), revisions: [makeDraft()] });
+    apiMocks.createAuthentication.mockResolvedValue({
+      id: 'editor-authentication-1',
+      employee: { id: 'employee-1', employeeCode: '0001', displayName: '山田 太郎' },
+      authenticatedAt: '2026-09-02T00:00:00.000Z',
+      expiresAt: '2026-09-02T04:00:00.000Z'
+    });
     apiMocks.findTextCandidates.mockResolvedValue([]);
     apiMocks.history.mockResolvedValue([]);
+    apiMocks.audit.mockResolvedValue([]);
     apiMocks.createImageRegion.mockRejectedValue(new Error('ROI unavailable'));
     apiMocks.uploadImage.mockResolvedValue({
       assetId: 'uploaded-1',
@@ -202,7 +212,7 @@ describe('useWorkInstructionEditorController', () => {
     expect(apiMocks.findTextCandidates).toHaveBeenCalledWith({
       revisionId: 'draft-1',
       stepKey: 'sharepoint:work-instructions:1:1',
-      accessPassword: '2520',
+      authenticationId: 'editor-authentication-1',
       bbox: range
     });
     expect(hook.result.current.selectedElement).toMatchObject({ kind: 'TEXT', text: 'ここに文章を入力' });
@@ -214,7 +224,7 @@ describe('useWorkInstructionEditorController', () => {
     expect(apiMocks.createImageRegion).toHaveBeenCalledWith({
       revisionId: 'draft-1',
       stepKey: 'sharepoint:work-instructions:1:1',
-      accessPassword: '2520',
+      authenticationId: 'editor-authentication-1',
       bbox: { ...range, xRatio: 0.5 }
     });
     expect(hook.result.current.selectedElement).toMatchObject({ kind: 'IMAGE', assetId: '' });
@@ -226,7 +236,7 @@ describe('useWorkInstructionEditorController', () => {
     expect(apiMocks.uploadImage).toHaveBeenCalledWith({
       revisionId: 'draft-1',
       stepKey: 'sharepoint:work-instructions:1:1',
-      accessPassword: '2520',
+      authenticationId: 'editor-authentication-1',
       file
     });
     expect(hook.result.current.selectedElement).toMatchObject({ kind: 'IMAGE', assetId: 'uploaded-1' });
@@ -697,16 +707,16 @@ describe('useWorkInstructionEditorController', () => {
     await act(async () => {
       await hook.result.current.deleteSourceImage(sourceVersionId);
     });
-    expect(apiMocks.deleteSourceImages).toHaveBeenNthCalledWith(1, { sourceVersionId, accessPassword: '2520' });
+    expect(apiMocks.deleteSourceImages).toHaveBeenNthCalledWith(1, { sourceVersionId, authenticationId: 'editor-authentication-1' });
     expect(refetch).toHaveBeenCalledTimes(1);
-    expect(apiMocks.history).toHaveBeenCalledWith({ partNumber: 'PART-1', shootingTarget: '加工' });
+    expect(apiMocks.history).toHaveBeenCalledWith({ partNumber: 'PART-1', shootingTarget: '加工', authenticationId: 'editor-authentication-1' });
     expect(hook.result.current.message).toContain('1件削除しました。2件は削除できなかったため');
     expect(hook.result.current.group?.history?.[0]).toMatchObject({ canDeleteImage: true, imageDeletedAt: null });
 
     await act(async () => {
       await hook.result.current.deleteSourceImage(sourceVersionId);
     });
-    expect(apiMocks.deleteSourceImages).toHaveBeenNthCalledWith(2, { sourceVersionId, accessPassword: '2520' });
+    expect(apiMocks.deleteSourceImages).toHaveBeenNthCalledWith(2, { sourceVersionId, authenticationId: 'editor-authentication-1' });
     expect(refetch).toHaveBeenCalledTimes(2);
     expect(hook.result.current.message).toContain('旧画像を1件削除しました。版履歴と監査情報は保持されています。');
     expect(hook.result.current.group?.history?.[0]).toMatchObject({ canDeleteImage: false, imageDeletedAt: '2026-08-31T01:00:00.000Z' });

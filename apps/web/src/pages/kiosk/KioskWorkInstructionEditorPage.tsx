@@ -1,10 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { Button } from '../../components/ui/Button';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
-import { Input } from '../../components/ui/Input';
-import { useAuth } from '../../contexts/AuthContext';
 import { useWorkInstructionEditorController } from '../../features/work-instructions/useWorkInstructionEditorController';
 import { WorkInstructionEditorCanvas } from '../../features/work-instructions/WorkInstructionEditorCanvas';
 import { WorkInstructionEditorInspector } from '../../features/work-instructions/WorkInstructionEditorInspector';
@@ -16,6 +14,7 @@ import { WorkInstructionEditorToolbarStatus } from '../../features/work-instruct
 import { WorkInstructionOverlayTypeDialog } from '../../features/work-instructions/WorkInstructionOverlayTypeDialog';
 import { WorkInstructionTextCandidateDialog } from '../../features/work-instructions/WorkInstructionTextCandidateDialog';
 import { WorkInstructionVersionComparison } from '../../features/work-instructions/WorkInstructionVersionComparison';
+import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { WorkInstructionRevisionHistoryItemDto } from '../../api/domains/work-instruction-overlays';
 import type { WorkInstructionEditorController } from '../../features/work-instructions/useWorkInstructionEditorController';
@@ -27,10 +26,12 @@ function backPath(partNumber: string, shootingTarget: string): string {
 
 function EditorAuthGate({
   controller,
-  onBack
+  onBack,
+  employeeTagUid
 }: {
   controller: WorkInstructionEditorController;
   onBack: () => void;
+  employeeTagUid?: string | null;
 }) {
   return (
     <main className="flex min-h-0 flex-1 flex-col bg-slate-800 p-3 text-white">
@@ -39,7 +40,7 @@ function EditorAuthGate({
           <div>
             <h1 className="text-xl font-bold">加工要領書オーバーレイ編集</h1>
             <p className="mt-1 text-sm font-semibold text-white/65">
-              編集する前に管理パスワードを入力してください。公開中の原本はこの画面から変更されません。
+              編集する社員のNFCタグをリーダーにかざしてください。公開中の原本はこの画面から変更されません。
             </p>
           </div>
           <Button type="button" variant="ghostOnDark" className="min-h-11" onClick={onBack}>
@@ -47,31 +48,11 @@ function EditorAuthGate({
           </Button>
         </div>
 
-        <div className="mt-4 grid max-w-md grid-cols-[1fr_auto] gap-2">
-          <Input
-            data-testid="work-instruction-editor-password"
-            value={controller.accessPassword}
-            type="password"
-            inputMode="numeric"
-            autoFocus
-            placeholder="パスワード"
-            className="min-h-12 text-lg"
-            disabled={controller.busy}
-            onChange={(event) => controller.setAccessPassword(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') void controller.authenticate();
-            }}
-          />
-          <Button
-            type="button"
-            data-testid="work-instruction-editor-authenticate"
-            variant="primary"
-            className="min-h-12"
-            disabled={!controller.accessPassword || controller.busy}
-            onClick={() => void controller.authenticate()}
-          >
-            {controller.busy ? '準備中…' : '認証して編集'}
-          </Button>
+        <div className="mt-4 rounded border border-cyan-300/30 bg-cyan-500/10 px-4 py-8 text-center" data-testid="work-instruction-editor-nfc-gate">
+          <p className="text-lg font-bold text-cyan-100">
+            {controller.busy ? '社員NFCタグを確認中…' : employeeTagUid ? '社員NFCタグを確認中…' : '社員NFCタグをスキャンしてください'}
+          </p>
+          <p className="mt-2 text-xs font-semibold text-white/60">登録済みの有効社員タグのみ編集できます</p>
         </div>
 
         {controller.message ? (
@@ -195,7 +176,7 @@ function EditorWorkSurface({
   onOpenConflict: () => void;
 }) {
   return (
-    <div className="relative min-h-0 min-w-0 flex-1">
+    <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col">
       <WorkInstructionEditorCanvas
         step={controller.activeStep}
         elements={controller.activeStepElements}
@@ -260,7 +241,7 @@ function EditorCanvasPane({
     <section className="relative flex min-h-0 min-w-0 flex-col gap-2 overflow-hidden bg-slate-950 p-2" aria-label="加工要領書編集キャンバス">
       {showComparison ? (
         <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,3fr)_minmax(0,2fr)] gap-2" data-testid="work-instruction-editor-comparison-layout">
-          <div className="relative min-h-0 min-w-0 overflow-hidden rounded border border-white/10" data-testid="work-instruction-editor-target-pane">
+          <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded border border-white/10" data-testid="work-instruction-editor-target-pane">
             <EditorWorkSurface controller={controller} onOpenConflict={onOpenConflict} />
           </div>
           <div className="min-h-0 min-w-0 overflow-hidden rounded border border-white/10 p-1" data-testid="work-instruction-editor-comparison-pane">
@@ -280,15 +261,44 @@ function EditorCanvasPane({
 
 function EditorHistorySection({
   history,
+  auditItems,
   canDeleteOldImages,
   busy,
   onRequestDelete
 }: {
   history: WorkInstructionRevisionHistoryItemDto[];
+  auditItems: WorkInstructionEditorController['auditItems'];
   canDeleteOldImages: boolean;
   busy: boolean;
   onRequestDelete: (sourceVersionId: string) => void;
 }) {
+  const actionLabel: Record<string, string> = {
+    DRAFT_CREATED: '下書き作成',
+    SAVED: '保存',
+    PUBLISHED: '公開',
+    DISCARDED: '破棄',
+    ASSET_UPLOADED: '画像追加',
+    REGION_CREATED: '範囲画像作成',
+    SOURCE_IMAGE_DELETED: '旧画像削除'
+  };
+  const formatChangeSet = (changeSet: unknown): string => {
+    if (changeSet === undefined || changeSet === null) return '差分なし';
+    if (typeof changeSet === 'string') return changeSet;
+    try {
+      return JSON.stringify(changeSet, null, 2);
+    } catch {
+      return String(changeSet);
+    }
+  };
+  const orderedAuditItems = [...auditItems].sort((left, right) => {
+    const leftTime = Date.parse(left.createdAt);
+    const rightTime = Date.parse(right.createdAt);
+    if (!Number.isFinite(leftTime) && !Number.isFinite(rightTime)) return 0;
+    if (!Number.isFinite(leftTime)) return 1;
+    if (!Number.isFinite(rightTime)) return -1;
+    return rightTime - leftTime;
+  });
+
   return (
     <section
       className="max-h-44 shrink-0 overflow-auto border-t border-white/10 bg-slate-900/80 px-3 py-2"
@@ -298,47 +308,71 @@ function EditorHistorySection({
         <h2 className="text-sm font-bold">版履歴と旧画像</h2>
         <span className="text-xs text-white/60">
           新版公開後も旧画像は手動削除するまで保持されます。
-          {canDeleteOldImages ? '' : '旧画像の削除はADMINのみ実行できます。'}
         </span>
       </div>
-      {history.length === 0 ? (
-        <p className="mt-1 text-xs text-white/50">履歴はありません。</p>
-      ) : (
-        <div className="mt-2 grid gap-1">
-          {history.map((item) => (
-            <div
-              key={`${item.rowId ?? ''}:${item.sourceVersionId}:${item.revisionNumber}`}
-              className="flex flex-wrap items-center gap-2 rounded border border-white/10 px-2 py-1 text-xs"
-            >
-              <span className="font-semibold">版 {item.revisionNumber}</span>
-              <span className="text-white/60">{item.status}</span>
-              <span className="text-white/50">
-                {new Date(item.sourceModified).toLocaleString('ja-JP')}
-              </span>
-              <span className="text-white/50">
-                画像 {item.eligibleImageCount ?? item.imageCount}件
-              </span>
-              <span className="ml-auto">
-                {item.imageDeletedAt && !item.canDeleteImage ? (
-                  '画像削除済み'
-                ) : item.canDeleteImage && canDeleteOldImages ? (
-                  <Button
-                    type="button"
-                    variant="danger"
-                    className="min-h-9 !px-2 text-xs"
-                    disabled={busy}
-                    onClick={() => onRequestDelete(item.sourceVersionId)}
-                  >
-                    旧画像を一括削除
-                  </Button>
-                ) : item.canDeleteImage ? (
-                  'ADMINのみ削除可'
-                ) : (
-                  '削除不可'
-                )}
-              </span>
+      {orderedAuditItems.length > 0 ? (
+        <div className="mt-2 grid gap-1" data-testid="work-instruction-editor-audit-list">
+          <h3 className="text-xs font-bold text-cyan-100">編集操作履歴</h3>
+          {orderedAuditItems.map((item) => (
+            <div key={item.id} className="rounded border border-cyan-300/20 bg-cyan-500/5 px-2 py-1 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-cyan-100">{actionLabel[item.action] ?? item.action}</span>
+                <span>{item.employeeNameSnapshot ?? '記録済み社員'}</span>
+                {item.employeeCodeSnapshot ? <span className="text-white/60">社員コード {item.employeeCodeSnapshot}</span> : null}
+                <span className="text-white/60">端末: {item.clientDeviceNameSnapshot ?? item.clientDeviceIdSnapshot ?? '不明'}</span>
+                <time className="text-white/50" dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString('ja-JP')}</time>
+              </div>
+              <details className="mt-1">
+                <summary className="cursor-pointer text-white/70">詳細差分</summary>
+                <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-950/80 p-1 text-[10px] text-white/80">{formatChangeSet(item.changeSet)}</pre>
+              </details>
             </div>
           ))}
+        </div>
+      ) : null}
+      {history.length === 0 ? (
+        <p className="mt-1 text-xs text-white/50">版履歴はありません。</p>
+      ) : (
+        <div className="mt-2 grid gap-1">
+          <h3 className="text-xs font-bold text-white/75">原本版履歴</h3>
+          {history.map((item) => {
+            const hasEditorAudit = auditItems.some((audit) => audit.sourceVersionId === item.sourceVersionId);
+            return (
+              <div
+                key={`${item.rowId ?? ''}:${item.sourceVersionId}:${item.revisionNumber}`}
+                className="flex flex-wrap items-center gap-2 rounded border border-white/10 px-2 py-1 text-xs"
+              >
+                <span className="font-semibold">版 {item.revisionNumber}</span>
+                <span className="text-white/60">{item.status}</span>
+                <span className="text-white/50">
+                  {new Date(item.sourceModified).toLocaleString('ja-JP')}
+                </span>
+                <span className="text-white/50">
+                  画像 {item.eligibleImageCount ?? item.imageCount}件
+                </span>
+                {!hasEditorAudit ? <span className="text-white/45">編集者記録なし（履歴機能導入前）</span> : null}
+                <span className="ml-auto">
+                  {item.imageDeletedAt && !item.canDeleteImage ? (
+                    '画像削除済み'
+                  ) : item.canDeleteImage && canDeleteOldImages ? (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      className="min-h-9 !px-2 text-xs"
+                      disabled={busy}
+                      onClick={() => onRequestDelete(item.sourceVersionId)}
+                    >
+                      旧画像を一括削除
+                    </Button>
+                  ) : item.canDeleteImage ? (
+                    '削除可'
+                  ) : (
+                    '削除不可'
+                  )}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
@@ -463,8 +497,9 @@ export function KioskWorkInstructionEditorPage() {
     shootingTarget,
     onNavigateBack: () => navigate(backPath(partNumber, shootingTarget))
   });
-  const { user } = useAuth();
-  const canDeleteOldImages = user?.role === 'ADMIN';
+  const { accessGranted, authenticate, busy } = controller;
+  const nfcEvent = useNfcStream(Boolean(partNumber && shootingTarget && !accessGranted && !busy));
+  const lastNfcKeyRef = useRef<string | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
@@ -472,6 +507,14 @@ export function KioskWorkInstructionEditorPage() {
   const [deleteSourceVersionId, setDeleteSourceVersionId] = useState<string | null>(null);
   const [showComparison, setShowComparison] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => {
+    if (!nfcEvent || accessGranted || busy) return;
+    const eventKey = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
+    if (lastNfcKeyRef.current === eventKey) return;
+    lastNfcKeyRef.current = eventKey;
+    void authenticate(nfcEvent.uid);
+  }, [accessGranted, authenticate, busy, nfcEvent]);
 
   if (!partNumber || !shootingTarget) {
     return (
@@ -502,7 +545,7 @@ export function KioskWorkInstructionEditorPage() {
   }
 
   if (!controller.accessGranted) {
-    return <EditorAuthGate controller={controller} onBack={controller.navigateBack} />;
+    return <EditorAuthGate controller={controller} onBack={controller.navigateBack} employeeTagUid={nfcEvent?.uid} />;
   }
 
   const activeRow = controller.activeRow;
@@ -557,7 +600,8 @@ export function KioskWorkInstructionEditorPage() {
           <div className="shrink-0 self-start border-t border-white/10 xl:w-[28rem]" data-testid="work-instruction-editor-history-pane">
             <EditorHistorySection
               history={history}
-              canDeleteOldImages={canDeleteOldImages}
+              auditItems={controller.auditItems}
+              canDeleteOldImages
               busy={controller.busy}
               onRequestDelete={setDeleteSourceVersionId}
             />

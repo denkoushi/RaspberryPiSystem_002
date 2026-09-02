@@ -30,8 +30,15 @@ export type ImageOverlayFrameProps = {
   testId?: string;
 };
 
-function useContainSize(viewportRef: React.RefObject<HTMLElement | null>, natural: Size): Size {
+function useContainSize(
+  viewportRef: React.RefObject<HTMLElement | null>,
+  natural: Size,
+  measurementKey: string | null
+): Size {
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 });
+  // The viewport is conditionally rendered only after a protected image URL
+  // resolves. Re-run when that URL becomes available so the first DOM node is
+  // measured instead of leaving the viewport at 0x0 forever.
   useLayoutEffect(() => {
     const node = viewportRef.current;
     if (!node) return undefined;
@@ -44,7 +51,7 @@ function useContainSize(viewportRef: React.RefObject<HTMLElement | null>, natura
       observer?.disconnect();
       window.removeEventListener('resize', update);
     };
-  }, [viewportRef]);
+  }, [measurementKey, viewportRef]);
   if (natural.width <= 0 || natural.height <= 0 || viewport.width <= 0 || viewport.height <= 0) return { width: 0, height: 0 };
   const scale = Math.min(viewport.width / natural.width, viewport.height / natural.height);
   return { width: natural.width * scale, height: natural.height * scale };
@@ -75,10 +82,16 @@ export function ImageOverlayFrame({
 }: ImageOverlayFrameProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [natural, setNatural] = useState<Size>({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    // A frame can stay mounted while the selected step/image changes. Clear
+    // the previous image dimensions so a new aspect ratio is measured before
+    // contain sizing is calculated.
+    setNatural({ width: 0, height: 0 });
+  }, [imageUrl]);
   const protectedResult = useProtectedImageBlobUrl(protectedImage ? imageUrl : null);
   const resolvedUrl = protectedImage ? protectedResult.blobUrl : imageUrl?.trim() || null;
   const error = protectedImage ? protectedResult.error : null;
-  const contain = useContainSize(viewportRef, natural);
+  const contain = useContainSize(viewportRef, natural, resolvedUrl);
 
   if (!imageUrl?.trim()) {
     return <div className={clsx('flex min-h-44 items-center justify-center bg-slate-950 text-sm text-white/60', className)} role="status">画像を選択してください</div>;

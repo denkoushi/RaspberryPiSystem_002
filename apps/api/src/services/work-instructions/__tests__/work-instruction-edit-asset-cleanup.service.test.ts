@@ -46,6 +46,7 @@ describe('work-instruction edit asset lifecycle', () => {
 
   it('treats an idempotent source-file delete as success and completes the tombstone', async () => {
     const repository = {
+      validateEditorAuthentication: vi.fn(async () => ({ id: 'auth-1' })),
       requestSourceAssetDeletion: vi.fn(async () => ({
         auditId: 'audit-1', assetId: 'source-asset-1', storageKey: 'work-instruction-assets/source-1.jpg', sha256: 'a'.repeat(64), status: 'REQUESTED' as const
       })),
@@ -56,14 +57,28 @@ describe('work-instruction edit asset lifecycle', () => {
     const service = new WorkInstructionEditService(
       repository as unknown as WorkInstructionEditRepository,
       {} as never,
-      sourceFiles as never,
-      { requireAccessPassword: vi.fn(async () => undefined) } as never
+      sourceFiles as never
     );
 
-    await expect(service.deleteSourceAsset({ sourceVersionId: 'version-1', assetId: 'source-asset-1', requestedBy: 'admin' })).resolves.toEqual({
+    await expect(service.deleteSourceAsset({
+      sourceVersionId: 'version-1',
+      assetId: 'source-asset-1',
+      requestedBy: 'admin',
+      editorAuthenticationId: 'auth-1',
+      clientDeviceId: 'device-1',
+      requestId: 'request-1'
+    })).resolves.toEqual({
       assetId: 'source-asset-1', auditId: 'audit-1', status: 'DELETED'
     });
-    expect(repository.completeSourceAssetDeletion).toHaveBeenCalledWith({ auditId: 'audit-1', assetId: 'source-asset-1' });
+    expect(repository.completeSourceAssetDeletion).toHaveBeenCalledWith({
+      auditId: 'audit-1',
+      assetId: 'source-asset-1',
+      authorization: {
+        authenticationId: 'auth-1',
+        clientDeviceId: 'device-1',
+        requestId: 'request-1'
+      }
+    });
     expect(repository.failSourceAssetDeletion).not.toHaveBeenCalled();
   });
 });

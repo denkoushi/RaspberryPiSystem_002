@@ -10,12 +10,74 @@ import type {
   WorkInstructionSourceVersionView
 } from '../domain/editing.js';
 
+export type WorkInstructionEditorAuthorization = {
+  /** Authentication id issued by POST /work-instructions/editor-authentications. */
+  authenticationId?: string | null;
+  /** Registered ClientDevice.id resolved from x-client-key. */
+  clientDeviceId?: string | null;
+  /** Fastify request id used to correlate one HTTP operation. */
+  requestId?: string | null;
+};
+
+/** Authorization required when completing a source-image deletion. */
+export type RequiredWorkInstructionEditorAuthorization = {
+  authenticationId: string;
+  clientDeviceId: string;
+  requestId?: string | null;
+};
+
+export type WorkInstructionEditorAuthenticationView = {
+  id: string;
+  employeeId: string;
+  employeeCodeSnapshot: string;
+  employeeNameSnapshot: string;
+  clientDeviceId: string;
+  clientDeviceNameSnapshot: string;
+  partNumber: string;
+  shootingTarget: string;
+  authenticatedAt: Date;
+  expiresAt: Date;
+};
+
+export type WorkInstructionEditAuditAction =
+  | 'DRAFT_CREATED'
+  | 'SAVED'
+  | 'PUBLISHED'
+  | 'DISCARDED'
+  | 'ASSET_UPLOADED'
+  | 'REGION_CREATED'
+  | 'SOURCE_IMAGE_DELETED';
+
+export type WorkInstructionEditAuditLogView = {
+  id: string;
+  authenticationId: string;
+  action: WorkInstructionEditAuditAction;
+  employeeIdSnapshot: string;
+  employeeCodeSnapshot: string;
+  employeeNameSnapshot: string;
+  clientDeviceIdSnapshot: string;
+  clientDeviceNameSnapshot: string;
+  partNumber: string;
+  shootingTarget: string;
+  rowId: string | null;
+  sourceVersionId: string | null;
+  revisionId: string | null;
+  editVersionBefore: number | null;
+  editVersionAfter: number | null;
+  requestId: string;
+  changeSet: unknown;
+  createdAt: Date;
+};
+
 export type WorkInstructionPublishRevisionInput = {
   revisionId: string;
   expectedEditVersion: number;
   expectedSourceVersionId?: string;
   expectedContentHash?: string;
   confirmUnassigned?: boolean;
+  editorAuthenticationId?: string | null;
+  clientDeviceId?: string | null;
+  requestId?: string | null;
 };
 
 export type WorkInstructionPublishRevisionResult = {
@@ -45,6 +107,24 @@ export type WorkInstructionGroupIdentity = {
 };
 
 export type WorkInstructionEditRepository = {
+  createEditorAuthentication(input: {
+    partNumber: string;
+    shootingTarget: string;
+    employeeTagUid: string;
+    clientDeviceId: string;
+    now?: Date;
+  }): Promise<WorkInstructionEditorAuthenticationView>;
+  validateEditorAuthentication(input: WorkInstructionEditorAuthorization & {
+    expectedGroup?: WorkInstructionGroupIdentity;
+    revisionId?: string;
+    sourceVersionId?: string;
+  }): Promise<WorkInstructionEditorAuthenticationView>;
+  listEditAuditLogs(input: {
+    partNumber: string;
+    shootingTarget: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ReadonlyArray<WorkInstructionEditAuditLogView>>;
   readEditingView(rowId: string): Promise<WorkInstructionEditingView | null>;
   readRevisionContext(revisionId: string): Promise<WorkInstructionEditRevisionContext | null>;
   listSourceVersions(rowId: string): Promise<ReadonlyArray<WorkInstructionSourceVersionView>>;
@@ -56,6 +136,9 @@ export type WorkInstructionEditRepository = {
     copyFromRevisionId?: string;
     expectedPublishedVersionId?: string;
     expectedLatestVersionId?: string;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
   }): Promise<{ revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }>;
   createDraftRevisionGroup(inputs: ReadonlyArray<{
     rowId: string;
@@ -63,13 +146,19 @@ export type WorkInstructionEditRepository = {
     copyFromRevisionId?: string;
     expectedPublishedVersionId?: string;
     expectedLatestVersionId?: string;
-  }>, expectedGroup?: WorkInstructionGroupIdentity): Promise<ReadonlyArray<{ revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }>>;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
+  }>, expectedGroup?: WorkInstructionGroupIdentity, authorization?: WorkInstructionEditorAuthorization): Promise<ReadonlyArray<{ revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }>>;
   saveOverlays(input: {
     revisionId: string;
     expectedEditVersion: number;
     expectedSourceVersionId: string;
     expectedContentHash: string;
     elements: ReadonlyArray<WorkInstructionOverlayElementInput>;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
   }): Promise<WorkInstructionEditRevisionView>;
   /** Canonical atomic draft write. Omitted memoOverrides means preserve memos. */
   saveDraft(input: {
@@ -79,6 +168,9 @@ export type WorkInstructionEditRepository = {
     expectedContentHash: string;
     elements: ReadonlyArray<WorkInstructionOverlayElementInput>;
     memoOverrides: ReadonlyArray<WorkInstructionMemoOverrideInput>;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
   }): Promise<WorkInstructionEditRevisionView>;
   /** Applies best-effort ROI rebase results as one optimistic revision update. */
   applyRoiRebase(input: {
@@ -91,13 +183,19 @@ export type WorkInstructionEditRepository = {
       migrationState: 'MIGRATED' | 'NEEDS_REVIEW' | 'UNASSIGNED' | 'SKIPPED';
       targetStepFingerprint?: string | null;
     }>;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
   }): Promise<WorkInstructionEditRevisionView>;
   publishRevision(input: WorkInstructionPublishRevisionInput): Promise<WorkInstructionPublishRevisionResult>;
   /** Publishes all supplied row revisions atomically, locking rows in a stable order. */
-  publishRevisionGroup(inputs: ReadonlyArray<WorkInstructionPublishRevisionInput>, expectedGroup?: WorkInstructionGroupIdentity): Promise<ReadonlyArray<WorkInstructionPublishRevisionResult>>;
+  publishRevisionGroup(inputs: ReadonlyArray<WorkInstructionPublishRevisionInput>, expectedGroup?: WorkInstructionGroupIdentity, authorization?: WorkInstructionEditorAuthorization): Promise<ReadonlyArray<WorkInstructionPublishRevisionResult>>;
   discardRevision(input: {
     revisionId: string;
     expectedEditVersion?: number;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
   }): Promise<WorkInstructionEditRevisionView>;
   stageEditAsset(input: {
     revisionId: string;
@@ -106,8 +204,10 @@ export type WorkInstructionEditRepository = {
     sizeBytes: number;
     sha256: string;
     origin?: WorkInstructionEditAssetOriginInput;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
   }): Promise<WorkInstructionEditAssetView>;
-  activateEditAsset(input: { assetId: string; revisionId: string }): Promise<WorkInstructionEditAssetView>;
+  activateEditAsset(input: { assetId: string; revisionId: string; action?: WorkInstructionEditAuditAction; authorization?: WorkInstructionEditorAuthorization }): Promise<WorkInstructionEditAssetView>;
   /** Releases an uploaded asset that could not be attached to an overlay. */
   releaseEditAsset(input: { assetId: string; revisionId: string }): Promise<WorkInstructionEditAssetView | null>;
   markEditAssetDeletePending(input: { assetId: string; revisionId: string }): Promise<void>;
@@ -119,6 +219,9 @@ export type WorkInstructionEditRepository = {
     sourceVersionId: string;
     assetId: string;
     requestedBy: string;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
   }): Promise<{
     auditId: string;
     assetId: string;
@@ -126,6 +229,10 @@ export type WorkInstructionEditRepository = {
     sha256: string;
     status: 'REQUESTED' | 'DELETED' | 'FAILED';
   }>;
-  completeSourceAssetDeletion(input: { auditId: string; assetId: string }): Promise<void>;
+  completeSourceAssetDeletion(input: {
+    auditId: string;
+    assetId: string;
+    authorization: RequiredWorkInstructionEditorAuthorization;
+  }): Promise<void>;
   failSourceAssetDeletion(input: { auditId: string; error: string }): Promise<void>;
 };

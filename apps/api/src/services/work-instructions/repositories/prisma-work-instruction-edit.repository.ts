@@ -27,6 +27,7 @@ import {
   type WorkInstructionSourceVersionStepView,
   WorkInstructionEditingError
 } from '../domain/editing.js';
+import { normalizeWorkInstructionGroupKey } from '../domain/normalization.js';
 import {
   ensureWorkInstructionPublicationForRow,
   sourceVersionStepLike,
@@ -45,10 +46,15 @@ import {
 import type { WorkInstructionDbClient } from './prisma-work-instruction.persistence.types.js';
 import type {
   WorkInstructionEditAssetCleanupCandidate,
+  WorkInstructionEditorAuthorization,
+  WorkInstructionEditorAuthenticationView,
+  WorkInstructionEditAuditAction,
+  WorkInstructionEditAuditLogView,
   WorkInstructionEditRepository,
   WorkInstructionGroupIdentity,
   WorkInstructionPublishRevisionInput,
-  WorkInstructionPublishRevisionResult
+  WorkInstructionPublishRevisionResult,
+  RequiredWorkInstructionEditorAuthorization
 } from './work-instruction-edit-repository.port.js';
 
 type SourceRowForEditing = {
@@ -84,6 +90,110 @@ const sourcePublicationInclude = {
 } as const;
 
 const EDIT_ASSET_MAX_AGE_MS = 60 * 60 * 1000;
+const WORK_INSTRUCTION_EDITOR_AUTH_TTL_MS = 4 * 60 * 60 * 1000;
+
+type EditorAuthRecord = {
+  id: string;
+  employeeId: string | null;
+  employeeCodeSnapshot: string;
+  employeeNameSnapshot: string;
+  clientDeviceId: string | null;
+  clientDeviceNameSnapshot: string;
+  partNumber: string;
+  shootingTarget: string;
+  authenticatedAt: Date;
+  expiresAt: Date;
+  employee?: { status: string } | null;
+  clientDevice?: { id: string; name: string } | null;
+};
+
+type AuditContext = {
+  authenticationId: string;
+  employeeId: string;
+  employeeCodeSnapshot: string;
+  employeeNameSnapshot: string;
+  clientDeviceId: string;
+  clientDeviceNameSnapshot: string;
+  partNumber: string;
+  shootingTarget: string;
+};
+
+type AuditRequest = WorkInstructionEditorAuthorization;
+type NormalizedAuditRequest = {
+  authenticationId: string;
+  clientDeviceId: string;
+  requestId: string;
+};
+
+function authRequired(): never {
+  throw new WorkInstructionEditingError(401, 'この画面で社員NFCタグをスキャンしてください', 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_REQUIRED');
+}
+
+function authInvalid(): never {
+  throw new WorkInstructionEditingError(403, 'この作業要領画面の社員NFC認証が必要です', 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_INVALID');
+}
+
+function authExpired(): never {
+  throw new WorkInstructionEditingError(403, '作業要領編集の社員NFC認証の有効期限が切れています', 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_EXPIRED');
+}
+
+function authDeviceMismatch(): never {
+  throw new WorkInstructionEditingError(403, '別の端末で認証された社員NFCは使用できません', 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_DEVICE_MISMATCH');
+}
+
+function authGroupMismatch(): never {
+  throw new WorkInstructionEditingError(403, '別の作業要領グループで認証された社員NFCは使用できません', 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_GROUP_MISMATCH');
+}
+
+function authEmployeeInactive(): never {
+  throw new WorkInstructionEditingError(403, '有効な社員のNFC認証が必要です', 'WORK_INSTRUCTION_EDITOR_EMPLOYEE_INACTIVE');
+}
+
+function normalizeAuditRequest(input: AuditRequest | undefined): NormalizedAuditRequest | null {
+  if (!input?.authenticationId) return null;
+  const authenticationId = input.authenticationId.trim();
+  const clientDeviceId = input.clientDeviceId?.trim() ?? '';
+  const requestId = input.requestId?.trim() ?? '';
+  if (!authenticationId) authRequired();
+  if (!clientDeviceId) {
+    throw new WorkInstructionEditingError(401, 'キオスク端末の識別が必要です', 'CLIENT_KEY_REQUIRED');
+  }
+  return { authenticationId, clientDeviceId, requestId: requestId || randomUUID() };
+}
+
+function authView(record: EditorAuthRecord): WorkInstructionEditorAuthenticationView {
+  if (!record.employeeId || !record.clientDeviceId) authInvalid();
+  return {
+    id: record.id,
+    employeeId: record.employeeId,
+    employeeCodeSnapshot: record.employeeCodeSnapshot,
+    employeeNameSnapshot: record.employeeNameSnapshot,
+    clientDeviceId: record.clientDeviceId,
+    clientDeviceNameSnapshot: record.clientDeviceNameSnapshot,
+    partNumber: record.partNumber,
+    shootingTarget: record.shootingTarget,
+    authenticatedAt: record.authenticatedAt,
+    expiresAt: record.expiresAt
+  };
+}
+
+function auditContextView(record: EditorAuthRecord): AuditContext {
+  const view = authView(record);
+  return {
+    authenticationId: view.id,
+    employeeId: view.employeeId,
+    employeeCodeSnapshot: view.employeeCodeSnapshot,
+    employeeNameSnapshot: view.employeeNameSnapshot,
+    clientDeviceId: view.clientDeviceId,
+    clientDeviceNameSnapshot: view.clientDeviceNameSnapshot,
+    partNumber: view.partNumber,
+    shootingTarget: view.shootingTarget
+  };
+}
+
+function auditJson(value: unknown): Prisma.InputJsonValue {
+  return value as Prisma.InputJsonValue;
+}
 
 function notFound(message: string, code: string): never {
   throw new WorkInstructionEditingError(404, message, code);
@@ -93,16 +203,15 @@ function conflict(message: string, code: string, details?: unknown): never {
   throw new WorkInstructionEditingError(409, message, code, details);
 }
 
-function normalizeGroupValue(value: string | null | undefined): string | null {
-  return value == null ? null : value.normalize('NFKC').trim().toUpperCase();
-}
-
 function groupMatches(
   version: { partNumber: string | null; shootingTarget: string | null },
   expectedGroup: WorkInstructionGroupIdentity
 ): boolean {
-  return normalizeGroupValue(version.partNumber) === normalizeGroupValue(expectedGroup.partNumber)
-    && normalizeGroupValue(version.shootingTarget) === normalizeGroupValue(expectedGroup.shootingTarget);
+  const versionGroup = normalizeWorkInstructionGroupKey(version.partNumber, version.shootingTarget);
+  const expected = normalizeWorkInstructionGroupKey(expectedGroup.partNumber, expectedGroup.shootingTarget);
+  return versionGroup != null && expected != null
+    && versionGroup.partNumber === expected.partNumber
+    && versionGroup.shootingTarget === expected.shootingTarget;
 }
 
 function assertGroupMembership(
@@ -157,6 +266,37 @@ function migrationSummary(
     unassignedCount: overlays.filter((overlay) => overlay.migrationState === 'UNASSIGNED').length,
     skippedCount: overlays.filter((overlay) => overlay.migrationState === 'SKIPPED').length,
     memo: memoMigrationSummary(memoOverrides)
+  };
+}
+
+function diffById<T extends { id: string }>(
+  before: ReadonlyArray<T>,
+  after: ReadonlyArray<T>
+): { added: T[]; updated: Array<{ before: T; after: T }>; deleted: T[] } {
+  const beforeById = new Map(before.map((item) => [item.id, item]));
+  const afterById = new Map(after.map((item) => [item.id, item]));
+  const added: T[] = [];
+  const updated: Array<{ before: T; after: T }> = [];
+  const deleted: T[] = [];
+  for (const item of after) {
+    const previous = beforeById.get(item.id);
+    if (!previous) {
+      added.push(item);
+    } else if (JSON.stringify(previous) !== JSON.stringify(item)) {
+      updated.push({ before: previous, after: item });
+    }
+  }
+  for (const item of before) if (!afterById.has(item.id)) deleted.push(item);
+  return { added, updated, deleted };
+}
+
+function revisionChangeSet(
+  before: WorkInstructionEditRevisionView,
+  after: { overlays: ReadonlyArray<WorkInstructionOverlayElement>; memoOverrides: ReadonlyArray<WorkInstructionMemoOverride> }
+) {
+  return {
+    overlays: diffById(before.overlays, after.overlays),
+    memoOverrides: diffById(before.memoOverrides ?? [], after.memoOverrides)
   };
 }
 
@@ -362,6 +502,246 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
     this.db = options.db ?? prisma;
   }
 
+  async createEditorAuthentication(input: {
+    partNumber: string;
+    shootingTarget: string;
+    employeeTagUid: string;
+    clientDeviceId: string;
+    now?: Date;
+  }): Promise<WorkInstructionEditorAuthenticationView> {
+    const group = normalizeWorkInstructionGroupKey(input.partNumber, input.shootingTarget);
+    const employeeTagUid = input.employeeTagUid.trim();
+    const clientDeviceId = input.clientDeviceId.trim();
+    if (!group) {
+      throw new WorkInstructionEditingError(400, '作業要領グループが必要です', 'WORK_INSTRUCTION_EDITOR_GROUP_REQUIRED');
+    }
+    if (!employeeTagUid) {
+      throw new WorkInstructionEditingError(400, '社員NFCタグが必要です', 'WORK_INSTRUCTION_EMPLOYEE_TAG_REQUIRED');
+    }
+    if (!clientDeviceId) {
+      throw new WorkInstructionEditingError(401, 'キオスク端末の識別が必要です', 'CLIENT_KEY_REQUIRED');
+    }
+    const now = input.now ?? new Date();
+    return this.db.$transaction(async (tx) => {
+      const [employees, instrumentTag, item] = await Promise.all([
+        tx.employee.findMany({
+          where: { nfcTagUid: employeeTagUid },
+          select: { id: true, employeeCode: true, displayName: true, nfcTagUid: true, status: true }
+        }),
+        tx.measuringInstrumentTag.findUnique({ where: { rfidTagUid: employeeTagUid }, select: { id: true } }),
+        tx.item.findUnique({ where: { nfcTagUid: employeeTagUid }, select: { id: true } })
+      ]);
+      if (employees.length === 0) {
+        if (instrumentTag) {
+          throw new WorkInstructionEditingError(409, '計測器のNFCタグは社員認証に使用できません', 'WORK_INSTRUCTION_EMPLOYEE_TAG_IS_MEASURING_INSTRUMENT');
+        }
+        if (item) {
+          throw new WorkInstructionEditingError(409, '社員以外のNFCタグは社員認証に使用できません', 'WORK_INSTRUCTION_EMPLOYEE_TAG_IS_NOT_EMPLOYEE');
+        }
+        throw new WorkInstructionEditingError(404, '社員NFCタグが登録されていません', 'WORK_INSTRUCTION_EMPLOYEE_TAG_NOT_FOUND');
+      }
+      if (employees.length > 1 || instrumentTag || item) {
+        throw new WorkInstructionEditingError(409, 'NFCタグが複数の対象に登録されています', 'WORK_INSTRUCTION_EMPLOYEE_TAG_DUPLICATE');
+      }
+      const employee = employees[0]!;
+      if (employee.status !== 'ACTIVE') {
+        throw new WorkInstructionEditingError(403, '有効な社員のみ作業要領を編集できます', 'WORK_INSTRUCTION_EDITOR_EMPLOYEE_INACTIVE');
+      }
+      const clientDevice = await tx.clientDevice.findUnique({
+        where: { id: clientDeviceId },
+        select: { id: true, name: true }
+      });
+      if (!clientDevice) {
+        throw new WorkInstructionEditingError(401, 'キオスク端末を確認できません', 'CLIENT_DEVICE_NOT_FOUND');
+      }
+      const authentication = await tx.workInstructionEditorAuthentication.create({
+        data: {
+          id: randomUUID(),
+          employeeId: employee.id,
+          employeeCodeSnapshot: employee.employeeCode,
+          employeeNameSnapshot: employee.displayName,
+          clientDeviceId: clientDevice.id,
+          clientDeviceNameSnapshot: clientDevice.name,
+          partNumber: group.partNumber,
+          shootingTarget: group.shootingTarget,
+          authenticatedAt: now,
+          expiresAt: new Date(now.getTime() + WORK_INSTRUCTION_EDITOR_AUTH_TTL_MS)
+        }
+      });
+      return authView(authentication as EditorAuthRecord);
+    }, { timeout: 30000 });
+  }
+
+  async validateEditorAuthentication(input: WorkInstructionEditorAuthorization & {
+    expectedGroup?: WorkInstructionGroupIdentity;
+    revisionId?: string;
+    sourceVersionId?: string;
+  }): Promise<WorkInstructionEditorAuthenticationView> {
+    const request = normalizeAuditRequest(input);
+    if (!request) authRequired();
+    return this.db.$transaction(async (tx) => {
+      const auth = await this.findAndValidateEditorAuthentication(tx, request, input.expectedGroup);
+      if (input.revisionId) {
+        const revision = await tx.workInstructionEditRevision.findUnique({
+          where: { id: input.revisionId },
+          select: { sourceVersion: { select: { row: { select: { partNumber: true, shootingTarget: true } } } } }
+        });
+        if (!revision) notFound('作業要領改版が見つかりません', 'WORK_INSTRUCTION_REVISION_NOT_FOUND');
+        this.assertEditorGroup(auth, revision.sourceVersion.row);
+      }
+      if (input.sourceVersionId) {
+        const version = await tx.workInstructionSourceVersion.findUnique({
+          where: { id: input.sourceVersionId },
+          select: { row: { select: { partNumber: true, shootingTarget: true } } }
+        });
+        if (!version) notFound('原本版が見つかりません', 'WORK_INSTRUCTION_SOURCE_VERSION_NOT_FOUND');
+        this.assertEditorGroup(auth, version.row);
+      }
+      return authView(auth);
+    });
+  }
+
+  async listEditAuditLogs(input: {
+    partNumber: string;
+    shootingTarget: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ReadonlyArray<WorkInstructionEditAuditLogView>> {
+    const limit = Math.min(500, Math.max(1, input.limit ?? 200));
+    const offset = Math.max(0, input.offset ?? 0);
+    const group = normalizeWorkInstructionGroupKey(input.partNumber, input.shootingTarget);
+    if (!group) return [];
+    const logs = await this.db.workInstructionEditAuditLog.findMany({
+      where: { partNumber: group.partNumber, shootingTarget: group.shootingTarget },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: offset,
+      take: limit
+    });
+    return logs.map((log) => ({
+      id: log.id,
+      authenticationId: log.authenticationId,
+      action: log.action,
+      employeeIdSnapshot: log.employeeIdSnapshot,
+      employeeCodeSnapshot: log.employeeCodeSnapshot,
+      employeeNameSnapshot: log.employeeNameSnapshot,
+      clientDeviceIdSnapshot: log.clientDeviceIdSnapshot,
+      clientDeviceNameSnapshot: log.clientDeviceNameSnapshot,
+      partNumber: log.partNumber,
+      shootingTarget: log.shootingTarget,
+      rowId: log.rowId,
+      sourceVersionId: log.sourceVersionId,
+      revisionId: log.revisionId,
+      editVersionBefore: log.editVersionBefore,
+      editVersionAfter: log.editVersionAfter,
+      requestId: log.requestId,
+      changeSet: log.changeSet,
+      createdAt: log.createdAt
+    }));
+  }
+
+  private async findAndValidateEditorAuthentication(
+    db: WorkInstructionDbClient,
+    request: { authenticationId: string; clientDeviceId: string },
+    expectedGroup?: WorkInstructionGroupIdentity
+  ): Promise<EditorAuthRecord> {
+    const authentication = await db.workInstructionEditorAuthentication.findUnique({
+      where: { id: request.authenticationId },
+      include: {
+        employee: { select: { status: true } },
+        clientDevice: { select: { id: true, name: true } }
+      }
+    }) as EditorAuthRecord | null;
+    if (!authentication || !authentication.employeeId || !authentication.clientDeviceId) authInvalid();
+    if (authentication.clientDeviceId !== request.clientDeviceId) authDeviceMismatch();
+    if (new Date() >= authentication.expiresAt) authExpired();
+    if (authentication.employee?.status !== 'ACTIVE') authEmployeeInactive();
+    if (expectedGroup) this.assertEditorGroup(authentication, expectedGroup);
+    return authentication;
+  }
+
+  private assertEditorGroup(
+    auth: { partNumber: string; shootingTarget: string },
+    group: { partNumber: string | null; shootingTarget: string | null }
+  ): void {
+    if (!groupMatches(group, auth)) authGroupMismatch();
+  }
+
+  private async currentGroupForRow(
+    tx: WorkInstructionDbClient,
+    rowId: string
+  ): Promise<{ partNumber: string | null; shootingTarget: string | null }> {
+    const row = await tx.workInstructionRow.findUnique({
+      where: { id: rowId },
+      select: { partNumber: true, shootingTarget: true }
+    });
+    if (!row) notFound('作業要領書が見つかりません', 'WORK_INSTRUCTION_ROW_NOT_FOUND');
+    return row;
+  }
+
+  private async auditContextForRevision(
+    tx: WorkInstructionDbClient,
+    authorization: AuditRequest | undefined,
+    revision: { sourceVersion: { rowId: string; partNumber: string | null; shootingTarget: string | null } }
+  ): Promise<{ context: AuditContext; requestId: string } | null> {
+    const request = normalizeAuditRequest(authorization);
+    if (!request) return null;
+    const auth = await this.findAndValidateEditorAuthentication(tx, request);
+    this.assertEditorGroup(auth, await this.currentGroupForRow(tx, revision.sourceVersion.rowId));
+    return { context: auditContextView(auth), requestId: request.requestId };
+  }
+
+  private async auditContextForSourceVersion(
+    tx: WorkInstructionDbClient,
+    authorization: AuditRequest | undefined,
+    version: { rowId: string; partNumber: string | null; shootingTarget: string | null }
+  ): Promise<{ context: AuditContext; requestId: string } | null> {
+    const request = normalizeAuditRequest(authorization);
+    if (!request) return null;
+    const auth = await this.findAndValidateEditorAuthentication(tx, request);
+    this.assertEditorGroup(auth, await this.currentGroupForRow(tx, version.rowId));
+    return { context: auditContextView(auth), requestId: request.requestId };
+  }
+
+  private async appendAudit(
+    tx: WorkInstructionDbClient,
+    input: {
+      audit: { context: AuditContext; requestId: string } | null;
+      action: WorkInstructionEditAuditAction;
+      rowId?: string | null;
+      sourceVersionId?: string | null;
+      revisionId?: string | null;
+      editVersionBefore?: number | null;
+      editVersionAfter?: number | null;
+      changeSet?: unknown;
+    }
+  ): Promise<void> {
+    if (!input.audit) return;
+    const { context, requestId } = input.audit;
+    const group = normalizeWorkInstructionGroupKey(context.partNumber, context.shootingTarget);
+    if (!group) authGroupMismatch();
+    await tx.workInstructionEditAuditLog.create({
+      data: {
+        id: randomUUID(),
+        authenticationId: context.authenticationId,
+        action: input.action,
+        employeeIdSnapshot: context.employeeId,
+        employeeCodeSnapshot: context.employeeCodeSnapshot,
+        employeeNameSnapshot: context.employeeNameSnapshot,
+        clientDeviceIdSnapshot: context.clientDeviceId,
+        clientDeviceNameSnapshot: context.clientDeviceNameSnapshot,
+        partNumber: group.partNumber,
+        shootingTarget: group.shootingTarget,
+        rowId: input.rowId ?? null,
+        sourceVersionId: input.sourceVersionId ?? null,
+        revisionId: input.revisionId ?? null,
+        editVersionBefore: input.editVersionBefore ?? null,
+        editVersionAfter: input.editVersionAfter ?? null,
+        requestId,
+        changeSet: input.changeSet === undefined ? undefined : auditJson(input.changeSet)
+      }
+    });
+  }
+
   async readEditingView(rowId: string): Promise<WorkInstructionEditingView | null> {
     return this.db.$transaction(async (tx) => {
       const lock = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
@@ -480,6 +860,9 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
     copyFromRevisionId?: string;
     expectedPublishedVersionId?: string;
     expectedLatestVersionId?: string;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
   }): Promise<{ revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }> {
     return this.db.$transaction((tx) => this.createDraftRevisionInTransaction(tx, input));
   }
@@ -492,6 +875,9 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       copyFromRevisionId?: string;
       expectedPublishedVersionId?: string;
       expectedLatestVersionId?: string;
+      editorAuthenticationId?: string | null;
+      clientDeviceId?: string | null;
+      requestId?: string | null;
     },
     expectedGroup?: WorkInstructionGroupIdentity
   ): Promise<{ revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }> {
@@ -524,6 +910,12 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
           select: { partNumber: true, shootingTarget: true }
         });
       assertGroupMembership(targetVersion, publishedVersion, expectedGroup);
+      const audit = await this.auditContextForSourceVersion(tx, {
+        authenticationId: input.editorAuthenticationId,
+        clientDeviceId: input.clientDeviceId,
+        requestId: input.requestId
+      }, targetVersion);
+      if (audit && expectedGroup) this.assertEditorGroup(audit.context, expectedGroup);
       const existing = await tx.workInstructionEditRevision.findFirst({
         where: { sourceVersionId: targetVersion.id, isRevisionHead: true, status: 'DRAFT' },
         include: workInstructionEditRevisionInclude
@@ -596,6 +988,20 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       }
       const withOverlays = await tx.workInstructionEditRevision.findUnique({ where: { id: revision.id }, include: workInstructionEditRevisionInclude });
       if (!withOverlays) throw new Error('draft revision disappeared after creation');
+      await this.appendAudit(tx, {
+        audit,
+        action: 'DRAFT_CREATED',
+        rowId: targetVersion.rowId,
+        sourceVersionId: targetVersion.id,
+        revisionId: withOverlays.id,
+        editVersionBefore: null,
+        editVersionAfter: withOverlays.editVersion,
+        changeSet: {
+          copiedFromRevisionId: copySource?.id ?? null,
+          overlayCount: copy.elements.length,
+          memoCount: memoCopy.overrides.length
+        }
+      });
       return { revision: toEditRevisionView(withOverlays), copy };
   }
 
@@ -605,7 +1011,10 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
     copyFromRevisionId?: string;
     expectedPublishedVersionId?: string;
     expectedLatestVersionId?: string;
-  }>, expectedGroup?: WorkInstructionGroupIdentity): Promise<ReadonlyArray<{ revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }>> {
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
+  }>, expectedGroup?: WorkInstructionGroupIdentity, authorization?: WorkInstructionEditorAuthorization): Promise<ReadonlyArray<{ revision: WorkInstructionEditRevisionView; copy: WorkInstructionCopyResult }>> {
     if (inputs.length === 0) return [];
     if (new Set(inputs.map((input) => input.rowId)).size !== inputs.length) {
       throw new WorkInstructionEditingError(400, '同じ作業要領を複数回指定できません', 'WORK_INSTRUCTION_DUPLICATE_ROW');
@@ -623,7 +1032,12 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
         // The outer transaction owns every row lock before any revision is
         // changed, so a stale item rolls back the complete group.
         // eslint-disable-next-line no-await-in-loop
-        results.push(await this.createDraftRevisionInTransaction(tx, input, expectedGroup));
+        results.push(await this.createDraftRevisionInTransaction(tx, {
+          ...input,
+          editorAuthenticationId: input.editorAuthenticationId ?? authorization?.authenticationId,
+          clientDeviceId: input.clientDeviceId ?? authorization?.clientDeviceId,
+          requestId: input.requestId ?? authorization?.requestId
+        }, expectedGroup));
       }
       return results;
     }, { timeout: 30000 });
@@ -635,6 +1049,9 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
     expectedSourceVersionId: string;
     expectedContentHash: string;
     elements: ReadonlyArray<WorkInstructionOverlayElementInput>;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
   }): Promise<WorkInstructionEditRevisionView> {
     // Compatibility adapter: an old overlay-only write must never clear the
     // revision's memo rows.  `undefined` is intentionally distinct from [] in
@@ -649,6 +1066,9 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
     expectedContentHash: string;
     elements: ReadonlyArray<WorkInstructionOverlayElementInput>;
     memoOverrides: ReadonlyArray<WorkInstructionMemoOverrideInput>;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
   }): Promise<WorkInstructionEditRevisionView> {
     return this.saveDraftInternal(input);
   }
@@ -660,6 +1080,9 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
     expectedContentHash: string;
     elements: ReadonlyArray<WorkInstructionOverlayElementInput>;
     memoOverrides?: ReadonlyArray<WorkInstructionMemoOverrideInput>;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
   }): Promise<WorkInstructionEditRevisionView> {
     return this.db.$transaction(async (tx) => {
       const observed = await findRevisionWithSource(tx, input.revisionId);
@@ -673,6 +1096,12 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       await lockRevision(tx, input.revisionId);
       const revision = await findRevisionWithSource(tx, input.revisionId);
       if (!revision) notFound('作業要領改版が見つかりません', 'WORK_INSTRUCTION_REVISION_NOT_FOUND');
+      const beforeView = toEditRevisionView(revision);
+      const audit = await this.auditContextForRevision(tx, {
+        authenticationId: input.editorAuthenticationId,
+        clientDeviceId: input.clientDeviceId,
+        requestId: input.requestId
+      }, revision);
       const publication = await tx.workInstructionSourcePublication.findFirst({ where: { rowId: revision.sourceVersion.rowId } });
       if (!publication || publication.latestVersionId !== revision.sourceVersionId || input.expectedSourceVersionId !== publication.latestVersionId || input.expectedContentHash !== revision.sourceVersion.contentHash) {
         conflict('原本が再取込されています。最新版を再読込して注記を再適用してください', 'WORK_INSTRUCTION_SOURCE_CONFLICT', { latestVersionId: publication?.latestVersionId ?? null, currentContentHash: revision.sourceVersion.contentHash });
@@ -705,7 +1134,21 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       await tx.workInstructionEditRevision.update({ where: { id: revision.id }, data: { editVersion: { increment: 1 } } });
       const saved = await tx.workInstructionEditRevision.findUnique({ where: { id: revision.id }, include: workInstructionEditRevisionInclude });
       if (!saved) throw new Error('saved work-instruction revision disappeared');
-      return toEditRevisionView(saved);
+      const savedView = toEditRevisionView(saved);
+      await this.appendAudit(tx, {
+        audit,
+        action: 'SAVED',
+        rowId: revision.sourceVersion.rowId,
+        sourceVersionId: revision.sourceVersionId,
+        revisionId: revision.id,
+        editVersionBefore: revision.editVersion,
+        editVersionAfter: savedView.editVersion,
+        changeSet: revisionChangeSet(beforeView, {
+          overlays: savedView.overlays,
+          memoOverrides: savedView.memoOverrides ?? []
+        })
+      });
+      return savedView;
     });
   }
 
@@ -719,6 +1162,9 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       migrationState: 'MIGRATED' | 'NEEDS_REVIEW' | 'UNASSIGNED' | 'SKIPPED';
       targetStepFingerprint?: string | null;
     }>;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
   }): Promise<WorkInstructionEditRevisionView> {
     return this.db.$transaction(async (tx) => {
       const observed = await tx.workInstructionEditRevision.findUnique({
@@ -731,9 +1177,18 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       await lockRevision(tx, input.revisionId);
       const revision = await tx.workInstructionEditRevision.findUnique({
         where: { id: input.revisionId },
-        include: workInstructionEditRevisionInclude
+        include: {
+          ...workInstructionEditRevisionInclude,
+          sourceVersion: { include: workInstructionSourceVersionInclude }
+        }
       });
       if (!revision) notFound('作業要領改版が見つかりません', 'WORK_INSTRUCTION_REVISION_NOT_FOUND');
+      const beforeView = toEditRevisionView(revision);
+      const audit = await this.auditContextForRevision(tx, {
+        authenticationId: input.editorAuthenticationId,
+        clientDeviceId: input.clientDeviceId,
+        requestId: input.requestId
+      }, revision);
       if (revision.status !== 'DRAFT' || !revision.isRevisionHead) conflict('最新版の下書きだけ更新できます', 'WORK_INSTRUCTION_REVISION_NOT_EDITABLE');
       if (revision.editVersion !== input.expectedEditVersion) conflict('注記が他の編集で更新されています', 'WORK_INSTRUCTION_EDIT_CONFLICT', { currentEditVersion: revision.editVersion });
       const byId = new Map(revision.overlays.map((overlay) => [overlay.id, overlay]));
@@ -775,7 +1230,25 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       }
       const saved = await tx.workInstructionEditRevision.findUnique({ where: { id: revision.id }, include: workInstructionEditRevisionInclude });
       if (!saved) throw new Error('ROI rebase revision disappeared');
-      return toEditRevisionView(saved);
+      const savedView = toEditRevisionView(saved);
+      await this.appendAudit(tx, {
+        audit,
+        action: 'SAVED',
+        rowId: revision.sourceVersion.rowId,
+        sourceVersionId: revision.sourceVersionId,
+        revisionId: revision.id,
+        editVersionBefore: revision.editVersion,
+        editVersionAfter: savedView.editVersion,
+        changeSet: {
+          reason: 'ROI_REBASE',
+          updatedOverlayIds: input.updates.map((update) => update.overlayId),
+          ...revisionChangeSet(beforeView, {
+            overlays: savedView.overlays,
+            memoOverrides: savedView.memoOverrides ?? []
+          })
+        }
+      });
+      return savedView;
     });
   }
 
@@ -787,7 +1260,8 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
 
   async publishRevisionGroup(
     inputs: ReadonlyArray<WorkInstructionPublishRevisionInput>,
-    expectedGroup?: WorkInstructionGroupIdentity
+    expectedGroup?: WorkInstructionGroupIdentity,
+    authorization?: WorkInstructionEditorAuthorization
   ): Promise<ReadonlyArray<WorkInstructionPublishRevisionResult>> {
     if (inputs.length === 0) return [];
     const revisionIds = inputs.map((input) => input.revisionId);
@@ -847,6 +1321,11 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
             })
             : null;
         assertGroupMembership(revision.sourceVersion, publishedVersion, expectedGroup);
+        const audit = await this.auditContextForRevision(tx, {
+          authenticationId: input.editorAuthenticationId ?? authorization?.authenticationId,
+          clientDeviceId: input.clientDeviceId ?? authorization?.clientDeviceId,
+          requestId: input.requestId ?? authorization?.requestId
+        }, revision);
         if (!publication || publication.latestVersionId !== revision.sourceVersionId
           || (input.expectedSourceVersionId !== undefined && input.expectedSourceVersionId !== publication.latestVersionId)
           || (input.expectedContentHash !== undefined && input.expectedContentHash !== revision.sourceVersion.contentHash)) {
@@ -866,7 +1345,18 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
         await tx.workInstructionSourcePublication.update({ where: { rowId: revision.sourceVersion.rowId }, data: { publishedVersionId: revision.sourceVersionId, publishedRevisionId: revision.id } });
         const published = await tx.workInstructionEditRevision.findUnique({ where: { id: revision.id }, include: workInstructionEditRevisionInclude });
         if (!published) throw new Error('published work-instruction revision disappeared');
-        results.set(input.revisionId, { revision: toEditRevisionView(published), migration });
+        const publishedView = toEditRevisionView(published);
+        await this.appendAudit(tx, {
+          audit,
+          action: 'PUBLISHED',
+          rowId: revision.sourceVersion.rowId,
+          sourceVersionId: revision.sourceVersionId,
+          revisionId: revision.id,
+          editVersionBefore: revision.editVersion,
+          editVersionAfter: publishedView.editVersion,
+          changeSet: { statusBefore: 'DRAFT', statusAfter: 'PUBLISHED' }
+        });
+        results.set(input.revisionId, { revision: publishedView, migration });
       }
       return inputs.map((input) => {
         const result = results.get(input.revisionId);
@@ -876,7 +1366,13 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
     }, { timeout: 30000 });
   }
 
-  async discardRevision(input: { revisionId: string; expectedEditVersion?: number }): Promise<WorkInstructionEditRevisionView> {
+  async discardRevision(input: {
+    revisionId: string;
+    expectedEditVersion?: number;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
+  }): Promise<WorkInstructionEditRevisionView> {
     return this.db.$transaction(async (tx) => {
       const observed = await tx.workInstructionEditRevision.findUnique({
         where: { id: input.revisionId },
@@ -886,8 +1382,20 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       await lockPublicationForVersion(tx, observed.sourceVersionId);
       await lockSourceVersion(tx, observed.sourceVersionId);
       await lockRevision(tx, input.revisionId);
-      const revision = await tx.workInstructionEditRevision.findUnique({ where: { id: input.revisionId }, include: workInstructionEditRevisionInclude });
+      const revision = await tx.workInstructionEditRevision.findUnique({
+        where: { id: input.revisionId },
+        include: {
+          ...workInstructionEditRevisionInclude,
+          sourceVersion: { include: workInstructionSourceVersionInclude }
+        }
+      });
       if (!revision) notFound('作業要領改版が見つかりません', 'WORK_INSTRUCTION_REVISION_NOT_FOUND');
+      const beforeView = toEditRevisionView(revision);
+      const audit = await this.auditContextForRevision(tx, {
+        authenticationId: input.editorAuthenticationId,
+        clientDeviceId: input.clientDeviceId,
+        requestId: input.requestId
+      }, revision);
       if (revision.status !== 'DRAFT' || !revision.isRevisionHead) conflict('最新版の下書きだけ破棄できます', 'WORK_INSTRUCTION_REVISION_NOT_EDITABLE');
       if (input.expectedEditVersion != null && input.expectedEditVersion !== revision.editVersion) conflict('注記が他の編集で更新されています', 'WORK_INSTRUCTION_EDIT_CONFLICT', { currentEditVersion: revision.editVersion });
       const assetIds = revision.overlays.filter((overlay) => overlay.kind === 'IMAGE').map((overlay) => overlay.editAssetId).filter((id): id is string => Boolean(id));
@@ -897,45 +1405,99 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       if (assetIds.length > 0) await tx.workInstructionEditAsset.updateMany({ where: { id: { in: [...new Set(assetIds)] }, overlays: { none: {} } }, data: { status: 'DELETE_PENDING', deletePendingAt: new Date(), ownerRevisionId: null } });
       const discarded = await tx.workInstructionEditRevision.findUnique({ where: { id: revision.id }, include: workInstructionEditRevisionInclude });
       if (!discarded) throw new Error('discarded work-instruction revision disappeared');
-      return toEditRevisionView(discarded);
+      const discardedView = toEditRevisionView(discarded);
+      await this.appendAudit(tx, {
+        audit,
+        action: 'DISCARDED',
+        rowId: revision.sourceVersion.rowId,
+        sourceVersionId: revision.sourceVersionId,
+        revisionId: revision.id,
+        editVersionBefore: revision.editVersion,
+        editVersionAfter: discardedView.editVersion,
+        changeSet: {
+          statusBefore: 'DRAFT',
+          statusAfter: 'DISCARDED',
+          ...revisionChangeSet(beforeView, { overlays: [], memoOverrides: [] })
+        }
+      });
+      return discardedView;
     });
   }
 
-  async stageEditAsset(input: { revisionId: string; storageKey: string; mimeType: string; sizeBytes: number; sha256: string; origin?: WorkInstructionEditAssetOriginInput }): Promise<WorkInstructionEditAssetView> {
-    const revision = await this.db.workInstructionEditRevision.findUnique({ where: { id: input.revisionId } });
-    if (!revision) notFound('作業要領改版が見つかりません', 'WORK_INSTRUCTION_REVISION_NOT_FOUND');
-    if (revision.status !== 'DRAFT' || !revision.isRevisionHead) conflict('最新版の下書きだけassetを追加できます', 'WORK_INSTRUCTION_REVISION_NOT_EDITABLE');
-    const origin = input.origin?.origin ?? 'UPLOAD';
-    const isRoi = origin === 'ROI';
-    if (isRoi && (!input.origin?.sourceVersionId || input.origin.sourceStep == null || !input.origin.bbox)) {
-      throw new WorkInstructionEditingError(400, 'ROI assetの原本provenanceが不足しています', 'WORK_INSTRUCTION_EDIT_ASSET_PROVENANCE_REQUIRED');
-    }
-    const bbox = input.origin?.bbox;
-    const asset = await this.db.workInstructionEditAsset.create({ data: {
-      id: randomUUID(),
-      storageKey: input.storageKey,
-      mimeType: input.mimeType,
-      sizeBytes: input.sizeBytes,
-      sha256: input.sha256,
-      status: 'STAGED',
-      origin,
-      originSourceVersionId: isRoi ? input.origin?.sourceVersionId ?? null : null,
-      originSourceStep: isRoi ? BigInt(input.origin?.sourceStep ?? 0) : null,
-      originXRatio: isRoi ? bbox?.xRatio ?? null : null,
-      originYRatio: isRoi ? bbox?.yRatio ?? null : null,
-      originWidthRatio: isRoi ? bbox?.widthRatio ?? null : null,
-      originHeightRatio: isRoi ? bbox?.heightRatio ?? null : null,
-      ownerRevisionId: input.revisionId
-    } });
-    return toEditAssetView(asset);
+  async stageEditAsset(input: {
+    revisionId: string;
+    storageKey: string;
+    mimeType: string;
+    sizeBytes: number;
+    sha256: string;
+    origin?: WorkInstructionEditAssetOriginInput;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+  }): Promise<WorkInstructionEditAssetView> {
+    return this.db.$transaction(async (tx) => {
+      const revision = await findRevisionWithSource(tx, input.revisionId);
+      if (!revision) notFound('作業要領改版が見つかりません', 'WORK_INSTRUCTION_REVISION_NOT_FOUND');
+      await this.auditContextForRevision(tx, {
+        authenticationId: input.editorAuthenticationId,
+        clientDeviceId: input.clientDeviceId
+      }, revision);
+      if (revision.status !== 'DRAFT' || !revision.isRevisionHead) conflict('最新版の下書きだけassetを追加できます', 'WORK_INSTRUCTION_REVISION_NOT_EDITABLE');
+      const origin = input.origin?.origin ?? 'UPLOAD';
+      const isRoi = origin === 'ROI';
+      if (isRoi && (!input.origin?.sourceVersionId || input.origin.sourceStep == null || !input.origin.bbox)) {
+        throw new WorkInstructionEditingError(400, 'ROI assetの原本provenanceが不足しています', 'WORK_INSTRUCTION_EDIT_ASSET_PROVENANCE_REQUIRED');
+      }
+      const bbox = input.origin?.bbox;
+      const asset = await tx.workInstructionEditAsset.create({ data: {
+        id: randomUUID(),
+        storageKey: input.storageKey,
+        mimeType: input.mimeType,
+        sizeBytes: input.sizeBytes,
+        sha256: input.sha256,
+        status: 'STAGED',
+        origin,
+        originSourceVersionId: isRoi ? input.origin?.sourceVersionId ?? null : null,
+        originSourceStep: isRoi ? BigInt(input.origin?.sourceStep ?? 0) : null,
+        originXRatio: isRoi ? bbox?.xRatio ?? null : null,
+        originYRatio: isRoi ? bbox?.yRatio ?? null : null,
+        originWidthRatio: isRoi ? bbox?.widthRatio ?? null : null,
+        originHeightRatio: isRoi ? bbox?.heightRatio ?? null : null,
+        ownerRevisionId: input.revisionId
+      } });
+      return toEditAssetView(asset);
+    });
   }
 
-  async activateEditAsset(input: { assetId: string; revisionId: string }): Promise<WorkInstructionEditAssetView> {
-    const result = await this.db.workInstructionEditAsset.updateMany({ where: { id: input.assetId, ownerRevisionId: input.revisionId, status: 'STAGED' }, data: { status: 'ACTIVE', activatedAt: new Date() } });
-    if (result.count !== 1) notFound('編集assetが見つかりません', 'WORK_INSTRUCTION_EDIT_ASSET_NOT_FOUND');
-    const asset = await this.db.workInstructionEditAsset.findUnique({ where: { id: input.assetId } });
-    if (!asset) notFound('編集assetが見つかりません', 'WORK_INSTRUCTION_EDIT_ASSET_NOT_FOUND');
-    return toEditAssetView(asset);
+  async activateEditAsset(input: {
+    assetId: string;
+    revisionId: string;
+    action?: WorkInstructionEditAuditAction;
+    authorization?: WorkInstructionEditorAuthorization;
+  }): Promise<WorkInstructionEditAssetView> {
+    return this.db.$transaction(async (tx) => {
+      const revision = await findRevisionWithSource(tx, input.revisionId);
+      if (!revision) notFound('作業要領改版が見つかりません', 'WORK_INSTRUCTION_REVISION_NOT_FOUND');
+      const audit = await this.auditContextForRevision(tx, input.authorization, revision);
+      const result = await tx.workInstructionEditAsset.updateMany({ where: { id: input.assetId, ownerRevisionId: input.revisionId, status: 'STAGED' }, data: { status: 'ACTIVE', activatedAt: new Date() } });
+      if (result.count !== 1) notFound('編集assetが見つかりません', 'WORK_INSTRUCTION_EDIT_ASSET_NOT_FOUND');
+      const asset = await tx.workInstructionEditAsset.findUnique({ where: { id: input.assetId } });
+      if (!asset) notFound('編集assetが見つかりません', 'WORK_INSTRUCTION_EDIT_ASSET_NOT_FOUND');
+      await this.appendAudit(tx, {
+        audit,
+        action: input.action ?? 'ASSET_UPLOADED',
+        rowId: revision.sourceVersion.rowId,
+        sourceVersionId: revision.sourceVersionId,
+        revisionId: revision.id,
+        changeSet: {
+          assetId: asset.id,
+          origin: asset.origin,
+          mimeType: asset.mimeType,
+          sizeBytes: asset.sizeBytes,
+          sha256: asset.sha256
+        }
+      });
+      return toEditAssetView(asset);
+    });
   }
 
   async releaseEditAsset(input: { assetId: string; revisionId: string }): Promise<WorkInstructionEditAssetView | null> {
@@ -1032,7 +1594,14 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
     });
   }
 
-  async requestSourceAssetDeletion(input: { sourceVersionId: string; assetId: string; requestedBy: string }): Promise<{ auditId: string; assetId: string; storageKey: string; sha256: string; status: 'REQUESTED' | 'DELETED' | 'FAILED' }> {
+  async requestSourceAssetDeletion(input: {
+    sourceVersionId: string;
+    assetId: string;
+    requestedBy: string;
+    editorAuthenticationId?: string | null;
+    clientDeviceId?: string | null;
+    requestId?: string | null;
+  }): Promise<{ auditId: string; assetId: string; storageKey: string; sha256: string; status: 'REQUESTED' | 'DELETED' | 'FAILED' }> {
     return this.db.$transaction(async (tx) => {
       // Lock in the same order as group publication: publication, source
       // version, then asset. A repeated request observes the existing audit
@@ -1044,6 +1613,11 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       `);
       const version = await tx.workInstructionSourceVersion.findUnique({ where: { id: input.sourceVersionId }, include: { steps: true } });
       if (!version) notFound('原本版が見つかりません', 'WORK_INSTRUCTION_SOURCE_VERSION_NOT_FOUND');
+      const auditContext = await this.auditContextForSourceVersion(tx, {
+        authenticationId: input.editorAuthenticationId,
+        clientDeviceId: input.clientDeviceId,
+        requestId: input.requestId
+      }, version);
       const prior = await tx.workInstructionSourceAssetDeletionAudit.findFirst({
         where: { sourceVersionId: input.sourceVersionId, assetId: input.assetId },
         orderBy: { requestedAt: 'desc' }
@@ -1069,27 +1643,55 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       if (currentRefs > 0) conflict('最新原本から参照されている画像です', 'WORK_INSTRUCTION_SOURCE_ASSET_IN_USE');
       const asset = await tx.workInstructionAsset.findUnique({ where: { id: input.assetId } });
       if (!asset) notFound('原本画像assetが見つかりません', 'WORK_INSTRUCTION_SOURCE_ASSET_NOT_FOUND');
-      const audit = await tx.workInstructionSourceAssetDeletionAudit.create({ data: { id: randomUUID(), assetId: asset.id, sourceVersionId: version.id, storageKey: asset.storageKey, sha256: asset.sha256, requestedBy: input.requestedBy, status: 'REQUESTED' } });
-      await tx.workInstructionSourceVersionStep.updateMany({ where: { sourceVersionId: version.id, imageAssetId: asset.id }, data: { imageAssetId: null, imageDeletedAt: new Date(), imageDeletedBy: input.requestedBy } });
+      const requestedBy = auditContext?.context.employeeNameSnapshot ?? input.requestedBy;
+      const audit = await tx.workInstructionSourceAssetDeletionAudit.create({ data: { id: randomUUID(), assetId: asset.id, sourceVersionId: version.id, storageKey: asset.storageKey, sha256: asset.sha256, requestedBy, status: 'REQUESTED' } });
+      await tx.workInstructionSourceVersionStep.updateMany({ where: { sourceVersionId: version.id, imageAssetId: asset.id }, data: { imageAssetId: null, imageDeletedAt: new Date(), imageDeletedBy: requestedBy } });
       await tx.workInstructionAsset.update({ where: { id: asset.id }, data: { status: 'DELETE_PENDING', deletePendingAt: new Date() } });
       return { auditId: audit.id, assetId: asset.id, storageKey: asset.storageKey, sha256: asset.sha256, status: audit.status };
     });
   }
 
-  async completeSourceAssetDeletion(input: { auditId: string; assetId: string }): Promise<void> {
+  async completeSourceAssetDeletion(input: {
+    auditId: string;
+    assetId: string;
+    authorization: RequiredWorkInstructionEditorAuthorization;
+  }): Promise<void> {
     await this.db.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "WorkInstructionSourceAssetDeletionAudit" WHERE "id" = ${input.auditId} FOR UPDATE
+      `);
       const audit = await tx.workInstructionSourceAssetDeletionAudit.findUnique({ where: { id: input.auditId } });
       if (!audit) notFound('原本画像削除監査が見つかりません', 'WORK_INSTRUCTION_SOURCE_ASSET_DELETION_NOT_FOUND');
       if (audit.assetId !== input.assetId) conflict('原本画像削除監査とassetが一致しません', 'WORK_INSTRUCTION_SOURCE_ASSET_DELETION_MISMATCH');
       if (audit.status === 'DELETED') return;
       await lockPublicationForVersion(tx, audit.sourceVersionId);
       await lockSourceVersion(tx, audit.sourceVersionId);
+      const version = await tx.workInstructionSourceVersion.findUnique({
+        where: { id: audit.sourceVersionId },
+        select: { id: true, rowId: true, partNumber: true, shootingTarget: true }
+      });
+      if (!version) notFound('原本版が見つかりません', 'WORK_INSTRUCTION_SOURCE_VERSION_NOT_FOUND');
+      const auditContext = await this.auditContextForSourceVersion(tx, input.authorization, version);
+      if (!auditContext) authRequired();
       await tx.$queryRaw(Prisma.sql`
         SELECT "id" FROM "WorkInstructionAsset" WHERE "id" = ${input.assetId} FOR UPDATE
       `);
       const asset = await tx.workInstructionAsset.findUnique({ where: { id: input.assetId } });
       if (!asset) {
         await tx.workInstructionSourceAssetDeletionAudit.update({ where: { id: audit.id }, data: { status: 'DELETED', completedAt: new Date(), error: null } });
+        await this.appendAudit(tx, {
+          audit: auditContext,
+          action: 'SOURCE_IMAGE_DELETED',
+          rowId: version.rowId,
+          sourceVersionId: version.id,
+          changeSet: {
+            assetId: audit.assetId,
+            storageKey: audit.storageKey,
+            sha256: audit.sha256,
+            status: 'DELETED',
+            deletionAuditId: audit.id
+          }
+        });
         return;
       }
       if (asset.status !== 'DELETE_PENDING') conflict('原本画像が削除待ちではありません', 'WORK_INSTRUCTION_SOURCE_ASSET_IN_USE');
@@ -1098,6 +1700,19 @@ export class PrismaWorkInstructionEditRepository implements WorkInstructionEditR
       if (refs > 0 || currentRefs > 0) conflict('原本画像がまだ参照されています', 'WORK_INSTRUCTION_SOURCE_ASSET_IN_USE');
       await tx.workInstructionAsset.delete({ where: { id: input.assetId } });
       await tx.workInstructionSourceAssetDeletionAudit.update({ where: { id: audit.id }, data: { status: 'DELETED', completedAt: new Date(), error: null } });
+      await this.appendAudit(tx, {
+        audit: auditContext,
+        action: 'SOURCE_IMAGE_DELETED',
+        rowId: version.rowId,
+        sourceVersionId: version.id,
+        changeSet: {
+          assetId: audit.assetId,
+          storageKey: audit.storageKey,
+          sha256: audit.sha256,
+          status: 'DELETED',
+          deletionAuditId: audit.id
+        }
+      });
     });
   }
 

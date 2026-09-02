@@ -132,6 +132,7 @@ model Employee {
   assemblyWorkSessionOperatorAccesses           AssemblyWorkSessionOperatorAccess[]
   torqueTrainingSessions                        TorqueTrainingSession[]
   torqueTrainingConfirmations                   TorqueTrainingWrenchConfirmation[]
+  workInstructionEditorAuthentications         WorkInstructionEditorAuthentication[]
 }
 
 model Item {
@@ -461,6 +462,7 @@ model ClientDevice {
   torqueTrainingConfirmations                   TorqueTrainingWrenchConfirmation[]
   torqueTrainingAttempts                        TorqueTrainingAttempt[]
   torqueTrainingSettingsAuditLogs               TorqueTrainingSettingsAuditLog[]
+  workInstructionEditorAuthentications          WorkInstructionEditorAuthentication[]
 
   @@index([statusClientId])
 }
@@ -3911,6 +3913,7 @@ model WorkInstructionRow {
   steps          WorkInstructionStep[]
   sourceVersions WorkInstructionSourceVersion[]
   publication    WorkInstructionSourcePublication?
+  editAuditLogs  WorkInstructionEditAuditLog[]
 
   @@unique([sourceSystem, sourceList, sourceItemId], map: "WorkInstructionRow_unique_source")
   @@index([partNumber, shootingTarget, sourceItemId, sourceList, sourceSystem], map: "WorkInstructionRow_idx_group")
@@ -3998,6 +4001,16 @@ enum WorkInstructionSourceAssetDeletionStatus {
   FAILED
 }
 
+enum WorkInstructionEditAuditAction {
+  DRAFT_CREATED
+  SAVED
+  PUBLISHED
+  DISCARDED
+  ASSET_UPLOADED
+  REGION_CREATED
+  SOURCE_IMAGE_DELETED
+}
+
 /// Gmail単位の処理結果。行のsource identityとは別の再送・メール掃除台帳。
 enum WorkInstructionImportOutcome {
   PENDING
@@ -4062,6 +4075,7 @@ model WorkInstructionSourceVersion {
   revisions      WorkInstructionEditRevision[]
   deletionAudits WorkInstructionSourceAssetDeletionAudit[]
   originEditAssets WorkInstructionEditAsset[] @relation("WorkInstructionEditAssetOriginSourceVersion")
+  editAuditLogs  WorkInstructionEditAuditLog[]
 
   @@unique([rowId, sourceModified, contentHash], map: "WorkInstructionSourceVersion_unique_snapshot")
   @@index([rowId, sourceModified], map: "WorkInstructionSourceVersion_idx_row_modified")
@@ -4128,12 +4142,65 @@ model WorkInstructionEditRevision {
   memoOverrides      WorkInstructionEditMemoOverride[]
   ownedAssets        WorkInstructionEditAsset[]
   publishedPointers  WorkInstructionSourcePublication[]
+  auditLogs           WorkInstructionEditAuditLog[]
 
   @@unique([sourceVersionId, revisionNumber], map: "WorkInstructionEditRevision_unique_number")
   @@index([sourceVersionId, isRevisionHead], map: "WorkInstructionEditRevision_idx_head")
   @@index([status, updatedAt], map: "WorkInstructionEditRevision_idx_status_updated")
   @@index([supersedesRevisionId], map: "WorkInstructionEditRevision_idx_supersedes")
   @@index([copiedFromRevisionId], map: "WorkInstructionEditRevision_idx_copied_from")
+}
+
+/// 社員NFCで開始した作業要領編集セッション。社員・端末・対象グループを固定する。
+model WorkInstructionEditorAuthentication {
+  id                       String   @id @default(uuid())
+  employeeId               String?
+  employeeCodeSnapshot     String   @db.VarChar(120)
+  employeeNameSnapshot     String   @db.VarChar(200)
+  clientDeviceId           String?
+  clientDeviceNameSnapshot String   @db.VarChar(200)
+  partNumber               String   @db.VarChar(200)
+  shootingTarget           String   @db.VarChar(200)
+  authenticatedAt          DateTime @default(now())
+  expiresAt                DateTime
+  employee                 Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  clientDevice             ClientDevice? @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  auditLogs                WorkInstructionEditAuditLog[]
+
+  @@index([employeeId, authenticatedAt], map: "WorkInstructionEditorAuth_idx_employee_time")
+  @@index([clientDeviceId, expiresAt], map: "WorkInstructionEditorAuth_idx_device_expiry")
+  @@index([partNumber, shootingTarget, authenticatedAt], map: "WorkInstructionEditorAuth_idx_group_time")
+}
+
+/// 保存・公開等と同じDB transactionで追記する作業要領編集監査。
+model WorkInstructionEditAuditLog {
+  id                       String                         @id @default(uuid())
+  authenticationId         String
+  action                   WorkInstructionEditAuditAction
+  employeeIdSnapshot       String                         @db.VarChar(120)
+  employeeCodeSnapshot     String                         @db.VarChar(120)
+  employeeNameSnapshot     String                         @db.VarChar(200)
+  clientDeviceIdSnapshot   String                         @db.VarChar(120)
+  clientDeviceNameSnapshot String                         @db.VarChar(200)
+  partNumber               String                         @db.VarChar(200)
+  shootingTarget           String                         @db.VarChar(200)
+  rowId                    String?
+  sourceVersionId          String?
+  revisionId               String?
+  editVersionBefore        Int?
+  editVersionAfter         Int?
+  requestId                String                         @db.VarChar(120)
+  changeSet                Json?
+  createdAt                DateTime                       @default(now())
+  authentication           WorkInstructionEditorAuthentication @relation(fields: [authenticationId], references: [id], onDelete: Restrict)
+  row                      WorkInstructionRow?            @relation(fields: [rowId], references: [id], onDelete: SetNull)
+  sourceVersion            WorkInstructionSourceVersion?  @relation(fields: [sourceVersionId], references: [id], onDelete: SetNull)
+  revision                 WorkInstructionEditRevision?   @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+
+  @@index([partNumber, shootingTarget, createdAt], map: "WorkInstructionEditAudit_idx_group_time")
+  @@index([revisionId, createdAt], map: "WorkInstructionEditAudit_idx_revision_time")
+  @@index([authenticationId, createdAt], map: "WorkInstructionEditAudit_idx_auth_time")
+  @@index([requestId], map: "WorkInstructionEditAudit_idx_request")
 }
 
 /// 編集改版に属するTEXT/IMAGE/SHAPE overlay。座標はsource画像の正規化値。

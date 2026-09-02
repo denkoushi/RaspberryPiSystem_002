@@ -15,13 +15,25 @@ import type { WorkInstructionEditRepository } from '../repositories/work-instruc
 import { workInstructionEditStorageKey } from '../work-instruction-edit-file-store.adapter.js';
 import type { WorkInstructionEditFileStorePort } from '../work-instruction-edit-file-store.adapter.js';
 import { WorkInstructionEditService } from '../work-instruction-edit.service.js';
-import type { WorkInstructionAccessService } from '../work-instruction-access.service.js';
 import type { WorkInstructionFileStorePort } from '../work-instruction-file-store.adapter.js';
 
 const now = new Date('2026-08-31T00:00:00.000Z');
 const rowId = 'row-1';
 const revisionId = 'revision-1';
 const sourceVersionId = 'source-version-1';
+const editorAuthenticationId = 'editor-authentication-1';
+const clientDeviceId = 'client-device-1';
+const requestId = 'request-1';
+const editorAuthorization = {
+  editorAuthenticationId,
+  clientDeviceId,
+  requestId
+} as const;
+const repositoryAuthorization = {
+  authenticationId: editorAuthenticationId,
+  clientDeviceId,
+  requestId
+} as const;
 
 const sourceVersion: WorkInstructionSourceVersionView = {
   id: sourceVersionId,
@@ -110,6 +122,18 @@ function makeRepository() {
     readEditingView: vi.fn(async () => null),
     readRevisionContext: vi.fn(async () => null),
     listSourceVersions: vi.fn(async () => []),
+    validateEditorAuthentication: vi.fn(async () => ({
+      id: editorAuthenticationId,
+      employeeId: 'employee-1',
+      employeeCodeSnapshot: '0001',
+      employeeNameSnapshot: '山田 太郎',
+      clientDeviceId,
+      clientDeviceNameSnapshot: 'Test Kiosk',
+      partNumber: sourceVersion.partNumber!,
+      shootingTarget: sourceVersion.shootingTarget!,
+      authenticatedAt: now,
+      expiresAt: new Date(now.getTime() + 4 * 60 * 60 * 1000)
+    })),
     findSourceVersionForDeletion: vi.fn(async () => null),
     readRevisionSourceImage: vi.fn(async () => null),
     createDraftRevision: vi.fn(async () => ({ revision, copy })),
@@ -162,12 +186,6 @@ function makeSourceFiles() {
   };
 }
 
-function makeAccess() {
-  return {
-    requireAccessPassword: vi.fn(async (_password: string | undefined) => undefined)
-  };
-}
-
 function makeTextCandidates() {
   return {
     extractCandidates: vi.fn(async () => [])
@@ -178,36 +196,35 @@ function makeService(input: {
   repository?: ReturnType<typeof makeRepository>;
   editFiles?: ReturnType<typeof makeEditFiles>;
   sourceFiles?: ReturnType<typeof makeSourceFiles>;
-  access?: ReturnType<typeof makeAccess>;
   textCandidates?: ReturnType<typeof makeTextCandidates>;
 } = {}) {
   const repository = input.repository ?? makeRepository();
   const editFiles = input.editFiles ?? makeEditFiles();
   const sourceFiles = input.sourceFiles ?? makeSourceFiles();
-  const access = input.access ?? makeAccess();
   const textCandidates = input.textCandidates ?? makeTextCandidates();
   const service = new WorkInstructionEditService(
     repository as unknown as WorkInstructionEditRepository,
     editFiles as unknown as WorkInstructionEditFileStorePort,
     sourceFiles as unknown as WorkInstructionFileStorePort,
-    access as unknown as WorkInstructionAccessService,
     textCandidates as unknown as TextCandidatePort
   );
-  return { service, repository, editFiles, sourceFiles, access, textCandidates };
+  return { service, repository, editFiles, sourceFiles, textCandidates };
 }
 
 function uploadInput(overrides: Partial<{
-  accessPassword: string;
   revisionId: string;
   bytes: Buffer;
   mimeType: string;
   origin: { origin: 'UPLOAD' | 'ROI'; sourceVersionId?: string; sourceStep?: number; bbox?: { xRatio: number; yRatio: number; widthRatio: number; heightRatio: number } };
+  editorAuthenticationId: string;
+  clientDeviceId: string;
+  requestId: string;
 }> = {}) {
   return {
-    accessPassword: 'secret',
     revisionId,
     bytes: Buffer.from('abc'),
     mimeType: 'image/png',
+    ...editorAuthorization,
     ...overrides
   };
 }
@@ -230,8 +247,8 @@ function sourceDeletionRequest(overrides: Partial<{
 }
 
 describe('WorkInstructionEditService', () => {
-  describe('repository forwarding and access control', () => {
-    it('forwards read APIs and authenticated draft creation, including group identity', async () => {
+  describe('repository forwarding and NFC authorization', () => {
+    it('forwards read APIs and NFC-authenticated draft creation, including group identity', async () => {
       const fixture = makeService();
       fixture.repository.readEditingView.mockResolvedValue(editingView);
       fixture.repository.readRevisionContext.mockResolvedValue(revisionContext);
@@ -250,26 +267,22 @@ describe('WorkInstructionEditService', () => {
         copyFromRevisionId: 'old-revision',
         expectedPublishedVersionId: 'published-version',
         expectedLatestVersionId: 'latest-version',
-        accessPassword: 'secret'
+        ...editorAuthorization
       };
       await expect(fixture.service.createDraftRevision(draftInput)).resolves.toEqual({ revision, copy });
-      expect(fixture.access.requireAccessPassword).toHaveBeenCalledWith('secret');
       expect(fixture.repository.createDraftRevision).toHaveBeenCalledWith(draftInput);
 
       const rows = [{ rowId, sourceVersionId }];
       await expect(fixture.service.createDraftRevisionGroup({
-        accessPassword: 'secret',
         partNumber: 'MD004',
         shootingTarget: '研削',
+        ...editorAuthorization,
         rows
       })).resolves.toEqual([{ revision, copy }]);
       expect(fixture.repository.createDraftRevisionGroup).toHaveBeenCalledWith(rows, {
         partNumber: 'MD004',
         shootingTarget: '研削'
-      });
-
-      await fixture.service.createDraftRevisionGroup({ accessPassword: 'secret', rows: [] });
-      expect(fixture.repository.createDraftRevisionGroup).toHaveBeenLastCalledWith([], undefined);
+      }, repositoryAuthorization);
     });
 
     it('preserves memo copy counts and overrides while rebasing a copied ROI asset', async () => {
@@ -349,7 +362,7 @@ describe('WorkInstructionEditService', () => {
       }));
       fixture.repository.applyRoiRebase.mockResolvedValue(roiRevision);
 
-      const result = await fixture.service.createDraftRevision({ rowId, sourceVersionId });
+      const result = await fixture.service.createDraftRevision({ rowId, sourceVersionId, ...editorAuthorization });
 
       expect(result.copy).toMatchObject({
         copiedCount: 1,
@@ -365,7 +378,7 @@ describe('WorkInstructionEditService', () => {
         }
       });
       expect(result.copy.elements[0]).toMatchObject({ assetId: 'rebased-roi-asset' });
-      expect(fixture.repository.applyRoiRebase).toHaveBeenCalledWith({
+      expect(fixture.repository.applyRoiRebase).toHaveBeenCalledWith(expect.objectContaining({
         revisionId,
         expectedEditVersion: 0,
         updates: [{
@@ -374,28 +387,29 @@ describe('WorkInstructionEditService', () => {
           sourceStep: 1,
           migrationState: 'MIGRATED',
           targetStepFingerprint: 'overlay-target'
-        }]
-      });
+        }],
+        ...editorAuthorization
+      }));
     });
 
-    it('forwards save, publish, group publish, and discard only after access succeeds', async () => {
+    it('forwards save, publish, group publish, and discard with NFC authorization', async () => {
       const fixture = makeService();
       const saveInput = {
-        accessPassword: 'secret',
         revisionId,
         expectedEditVersion: 0,
         expectedSourceVersionId: sourceVersionId,
         expectedContentHash: sourceVersion.contentHash,
-        elements: []
+        elements: [],
+        ...editorAuthorization
       };
-      const publishInput = { accessPassword: 'secret', revisionId, expectedEditVersion: 0 };
+      const publishInput = { revisionId, expectedEditVersion: 0, ...editorAuthorization };
       const publishGroupInput = {
-        accessPassword: 'secret',
         partNumber: 'MD004',
         shootingTarget: '研削',
+        ...editorAuthorization,
         revisions: [{ revisionId, expectedEditVersion: 0 }]
       };
-      const discardInput = { accessPassword: 'secret', revisionId, expectedEditVersion: 0 };
+      const discardInput = { revisionId, expectedEditVersion: 0, ...editorAuthorization };
       const published = { revision: { ...revision, status: 'PUBLISHED' as const }, migration: { needsReviewCount: 0, unassignedCount: 0, skippedCount: 0 } };
       fixture.repository.publishRevision.mockResolvedValue(published);
       fixture.repository.publishRevisionGroup.mockResolvedValue([published]);
@@ -410,38 +424,146 @@ describe('WorkInstructionEditService', () => {
       await expect(fixture.service.publishRevisionGroup(publishGroupInput)).resolves.toEqual([published]);
       await expect(fixture.service.discardRevision(discardInput)).resolves.toBe(revision);
 
-      expect(fixture.access.requireAccessPassword).toHaveBeenNthCalledWith(1, 'secret');
-      expect(fixture.access.requireAccessPassword).toHaveBeenNthCalledWith(2, 'secret');
-      expect(fixture.access.requireAccessPassword).toHaveBeenNthCalledWith(3, 'secret');
-      expect(fixture.access.requireAccessPassword).toHaveBeenNthCalledWith(4, 'secret');
       expect(fixture.repository.saveOverlays).toHaveBeenCalledWith(saveInput);
       expect(fixture.repository.saveDraft).toHaveBeenCalledWith(draftSaveInput);
       expect(fixture.repository.publishRevision).toHaveBeenCalledWith(publishInput);
       expect(fixture.repository.publishRevisionGroup).toHaveBeenCalledWith(
-        publishGroupInput.revisions,
-        { partNumber: 'MD004', shootingTarget: '研削' }
+        [{ ...publishGroupInput.revisions[0], ...editorAuthorization }],
+        { partNumber: 'MD004', shootingTarget: '研削' },
+        repositoryAuthorization
       );
       expect(fixture.repository.discardRevision).toHaveBeenCalledWith(discardInput);
     });
 
-    it('does not call write repositories when the access password is rejected', async () => {
-      const fixture = makeService();
-      fixture.access.requireAccessPassword.mockRejectedValue(new Error('wrong password'));
+    it('does not call any write repository when NFC authentication is missing or replaced by the legacy password', async () => {
+      const mutationCases = [
+        {
+          name: 'createDraftRevision',
+          invoke: (service: WorkInstructionEditService, input: Record<string, unknown>) => service.createDraftRevision({
+            rowId,
+            sourceVersionId,
+            ...input
+          } as never)
+        },
+        {
+          name: 'createDraftRevisionGroup',
+          invoke: (service: WorkInstructionEditService, input: Record<string, unknown>) => service.createDraftRevisionGroup({
+            rows: [{ rowId, sourceVersionId }],
+            ...input
+          } as never)
+        },
+        {
+          name: 'saveOverlays',
+          invoke: (service: WorkInstructionEditService, input: Record<string, unknown>) => service.saveOverlays({
+            revisionId,
+            expectedEditVersion: 0,
+            expectedSourceVersionId: sourceVersionId,
+            expectedContentHash: sourceVersion.contentHash,
+            elements: [],
+            ...input
+          } as never)
+        },
+        {
+          name: 'saveDraft',
+          invoke: (service: WorkInstructionEditService, input: Record<string, unknown>) => service.saveDraft({
+            revisionId,
+            expectedEditVersion: 0,
+            expectedSourceVersionId: sourceVersionId,
+            expectedContentHash: sourceVersion.contentHash,
+            elements: [],
+            memoOverrides: [],
+            ...input
+          } as never)
+        },
+        {
+          name: 'publishRevision',
+          invoke: (service: WorkInstructionEditService, input: Record<string, unknown>) => service.publishRevision({
+            revisionId,
+            expectedEditVersion: 0,
+            ...input
+          } as never)
+        },
+        {
+          name: 'publishRevisionGroup',
+          invoke: (service: WorkInstructionEditService, input: Record<string, unknown>) => service.publishRevisionGroup({
+            partNumber: 'MD004',
+            shootingTarget: '研削',
+            revisions: [{ revisionId, expectedEditVersion: 0 }],
+            ...input
+          } as never)
+        },
+        {
+          name: 'discardRevision',
+          invoke: (service: WorkInstructionEditService, input: Record<string, unknown>) => service.discardRevision({
+            revisionId,
+            expectedEditVersion: 0,
+            ...input
+          } as never)
+        },
+        {
+          name: 'uploadEditAsset',
+          invoke: (service: WorkInstructionEditService, input: Record<string, unknown>) => service.uploadEditAsset({
+            revisionId,
+            bytes: Buffer.from('abc'),
+            mimeType: 'image/png',
+            ...input
+          } as never)
+        },
+        {
+          name: 'createImageRegion',
+          invoke: (service: WorkInstructionEditService, input: Record<string, unknown>) => service.createImageRegion({
+            revisionId,
+            stepKey: 'SharePoint:List:101:1',
+            bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.5, heightRatio: 0.5 },
+            ...input
+          } as never)
+        },
+        {
+          name: 'findTextCandidates',
+          invoke: (service: WorkInstructionEditService, input: Record<string, unknown>) => service.findTextCandidates({
+            revisionId,
+            stepKey: 'SharePoint:List:101:1',
+            bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.5, heightRatio: 0.5 },
+            ...input
+          } as never)
+        },
+        {
+          name: 'deleteSourceAsset',
+          invoke: (service: WorkInstructionEditService, input: Record<string, unknown>) => service.deleteSourceAsset({
+            sourceVersionId,
+            assetId: 'source-asset-1',
+            ...input
+          } as never)
+        },
+        {
+          name: 'deleteSourceVersionImages',
+          invoke: (service: WorkInstructionEditService, input: Record<string, unknown>) => service.deleteSourceVersionImages({
+            sourceVersionId,
+            ...input
+          } as never)
+        }
+      ] as const;
 
-      await expect(fixture.service.saveOverlays({
-        accessPassword: 'wrong',
-        revisionId,
-        expectedEditVersion: 0,
-        expectedSourceVersionId: sourceVersionId,
-        expectedContentHash: sourceVersion.contentHash,
-        elements: []
-      })).rejects.toThrow('wrong password');
-      await expect(fixture.service.publishRevision({ accessPassword: 'wrong', revisionId, expectedEditVersion: 0 })).rejects.toThrow('wrong password');
-      await expect(fixture.service.discardRevision({ accessPassword: 'wrong', revisionId })).rejects.toThrow('wrong password');
-
-      expect(fixture.repository.saveOverlays).not.toHaveBeenCalled();
-      expect(fixture.repository.publishRevision).not.toHaveBeenCalled();
-      expect(fixture.repository.discardRevision).not.toHaveBeenCalled();
+      for (const testCase of mutationCases) {
+        for (const input of [{}, { accessPassword: 'legacy-secret' }]) {
+          const fixture = makeService();
+          await expect(testCase.invoke(fixture.service, input)).rejects.toMatchObject({
+            code: 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_REQUIRED'
+          });
+          expect(fixture.repository.createDraftRevision).not.toHaveBeenCalled();
+          expect(fixture.repository.createDraftRevisionGroup).not.toHaveBeenCalled();
+          expect(fixture.repository.validateEditorAuthentication).not.toHaveBeenCalled();
+          expect(fixture.repository.saveOverlays).not.toHaveBeenCalled();
+          expect(fixture.repository.saveDraft).not.toHaveBeenCalled();
+          expect(fixture.repository.publishRevision).not.toHaveBeenCalled();
+          expect(fixture.repository.publishRevisionGroup).not.toHaveBeenCalled();
+          expect(fixture.repository.discardRevision).not.toHaveBeenCalled();
+          expect(fixture.repository.stageEditAsset).not.toHaveBeenCalled();
+          expect(fixture.repository.findSourceVersionForDeletion).not.toHaveBeenCalled();
+          expect(fixture.repository.requestSourceAssetDeletion).not.toHaveBeenCalled();
+          expect(fixture.sourceFiles.read).not.toHaveBeenCalled();
+        }
+      }
     });
   });
 
@@ -461,14 +583,24 @@ describe('WorkInstructionEditService', () => {
         revisionId,
         mimeType: 'image/jpeg',
         sizeBytes: input.bytes.length,
-        origin: input.origin
+        origin: input.origin,
+        editorAuthenticationId,
+        clientDeviceId
       });
       expect(stagedInput?.sha256).toBe(createHash('sha256').update(input.bytes).digest('hex'));
       const writeInput = fixture.editFiles.write.mock.calls[0]?.[0];
       expect(writeInput).toMatchObject({ assetId: expect.any(String), bytes: input.bytes, mimeType: 'image/jpeg' });
       expect(writeInput?.assetId).toBe(stagedInput?.storageKey.split('/').at(-1)?.replace('.jpg', ''));
-      expect(fixture.repository.activateEditAsset).toHaveBeenCalledWith({ assetId: staged.id, revisionId });
-      expect(fixture.access.requireAccessPassword).toHaveBeenCalledWith('secret');
+      expect(fixture.repository.activateEditAsset).toHaveBeenCalledWith({
+        assetId: staged.id,
+        revisionId,
+        authorization: repositoryAuthorization
+      });
+      expect(fixture.repository.validateEditorAuthentication).toHaveBeenCalledWith({
+        authenticationId: editorAuthenticationId,
+        clientDeviceId,
+        revisionId
+      });
     });
 
     it('rejects empty, oversized, and unsupported uploads before staging', async () => {
@@ -574,10 +706,11 @@ describe('WorkInstructionEditService', () => {
       ]);
 
       await expect(fixture.service.findTextCandidates({
-        accessPassword: 'secret',
         revisionId,
         stepKey: 'SharePoint:List:101:1',
-        bbox
+        bbox,
+        editorAuthenticationId,
+        clientDeviceId
       })).resolves.toEqual([expect.objectContaining({
         text: 'M8×20',
         confidence: 0.8,
@@ -585,6 +718,11 @@ describe('WorkInstructionEditService', () => {
         stepKey: 'SharePoint:List:101:1'
       })]);
       expect(fixture.repository.readRevisionSourceImage).toHaveBeenCalledWith(revisionId, 1);
+      expect(fixture.repository.validateEditorAuthentication).toHaveBeenCalledWith({
+        authenticationId: editorAuthenticationId,
+        clientDeviceId,
+        revisionId
+      });
       expect(fixture.textCandidates.extractCandidates).toHaveBeenCalledWith({
         imageBytes: Buffer.from('source-image'),
         imageMimeType: 'image/jpeg',
@@ -605,10 +743,11 @@ describe('WorkInstructionEditService', () => {
       fixture.sourceFiles.read.mockRejectedValue(new Error('source unavailable'));
 
       await expect(fixture.service.findTextCandidates({
-        accessPassword: 'secret',
         revisionId,
         stepKey: 'SharePoint:List:101:1',
-        bbox: { xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1 }
+        bbox: { xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1 },
+        editorAuthenticationId,
+        clientDeviceId
       })).rejects.toMatchObject({
         statusCode: 503,
         code: 'WORK_INSTRUCTION_TEXT_CANDIDATES_FAILED',
@@ -617,10 +756,11 @@ describe('WorkInstructionEditService', () => {
 
       fixture.repository.readRevisionSourceImage.mockResolvedValue(null);
       await expect(fixture.service.findTextCandidates({
-        accessPassword: 'secret',
         revisionId,
         stepKey: 'SharePoint:List:101:1',
-        bbox: { xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1 }
+        bbox: { xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1 },
+        editorAuthenticationId,
+        clientDeviceId
       })).rejects.toMatchObject({ statusCode: 404, code: 'WORK_INSTRUCTION_SOURCE_IMAGE_NOT_FOUND' });
     });
   });
@@ -636,17 +776,17 @@ describe('WorkInstructionEditService', () => {
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(new Error('source disk unavailable'));
 
-      await expect(fixture.service.deleteSourceAsset({ sourceVersionId, assetId: 'source-asset-1', requestedBy: 'admin' })).resolves.toEqual({
+      await expect(fixture.service.deleteSourceAsset({ sourceVersionId, assetId: 'source-asset-1', ...editorAuthorization })).resolves.toEqual({
         assetId: 'source-asset-1',
         auditId: 'audit-requested',
         status: 'DELETED'
       });
-      await expect(fixture.service.deleteSourceAsset({ sourceVersionId, assetId: 'source-asset-1', requestedBy: 'admin' })).resolves.toEqual({
+      await expect(fixture.service.deleteSourceAsset({ sourceVersionId, assetId: 'source-asset-1', ...editorAuthorization })).resolves.toEqual({
         assetId: 'source-asset-1',
         auditId: 'audit-already-deleted',
         status: 'DELETED'
       });
-      await expect(fixture.service.deleteSourceAsset({ sourceVersionId, assetId: 'source-asset-1', requestedBy: 'admin' })).resolves.toEqual({
+      await expect(fixture.service.deleteSourceAsset({ sourceVersionId, assetId: 'source-asset-1', ...editorAuthorization })).resolves.toEqual({
         assetId: 'source-asset-1',
         auditId: 'audit-failed',
         status: 'FAILED',
@@ -654,7 +794,19 @@ describe('WorkInstructionEditService', () => {
       });
 
       expect(fixture.sourceFiles.delete).toHaveBeenCalledTimes(2);
-      expect(fixture.repository.completeSourceAssetDeletion).toHaveBeenCalledWith({ auditId: 'audit-requested', assetId: 'source-asset-1' });
+      expect(fixture.repository.requestSourceAssetDeletion).toHaveBeenCalledWith(expect.objectContaining({
+        sourceVersionId,
+        assetId: 'source-asset-1',
+        requestedBy: 'employee',
+        editorAuthenticationId,
+        clientDeviceId,
+        requestId
+      }));
+      expect(fixture.repository.completeSourceAssetDeletion).toHaveBeenCalledWith({
+        auditId: 'audit-requested',
+        assetId: 'source-asset-1',
+        authorization: repositoryAuthorization
+      });
       expect(fixture.repository.completeSourceAssetDeletion).not.toHaveBeenCalledWith({ auditId: 'audit-already-deleted', assetId: 'source-asset-1' });
       expect(fixture.repository.failSourceAssetDeletion).toHaveBeenCalledWith({ auditId: 'audit-failed', error: 'source disk unavailable' });
     });
@@ -676,16 +828,22 @@ describe('WorkInstructionEditService', () => {
         return sourceDeletionRequest({ assetId, auditId: `audit-${assetId}` });
       });
 
-      await expect(fixture.service.deleteSourceVersionImages({ sourceVersionId, requestedBy: 'admin' })).resolves.toEqual([
+      await expect(fixture.service.deleteSourceVersionImages({ sourceVersionId, ...editorAuthorization })).resolves.toEqual([
         { assetId: 'source-asset-1', auditId: 'audit-source-asset-1', status: 'DELETED' },
         { assetId: 'source-asset-2', auditId: null, status: 'SKIPPED', error: 'already being deleted' }
       ]);
       expect(fixture.repository.findSourceVersionForDeletion).toHaveBeenCalledWith(sourceVersionId);
+      expect(fixture.repository.validateEditorAuthentication).toHaveBeenCalledWith({
+        authenticationId: editorAuthenticationId,
+        clientDeviceId,
+        requestId,
+        sourceVersionId
+      });
       expect(fixture.repository.requestSourceAssetDeletion).toHaveBeenCalledTimes(2);
       expect(fixture.sourceFiles.delete).toHaveBeenCalledTimes(1);
 
       fixture.repository.findSourceVersionForDeletion.mockResolvedValue(null);
-      await expect(fixture.service.deleteSourceVersionImages({ sourceVersionId, requestedBy: 'admin' })).rejects.toMatchObject({
+      await expect(fixture.service.deleteSourceVersionImages({ sourceVersionId, ...editorAuthorization })).rejects.toMatchObject({
         statusCode: 404,
         code: 'WORK_INSTRUCTION_SOURCE_VERSION_NOT_FOUND'
       });

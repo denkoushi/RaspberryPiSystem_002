@@ -4,8 +4,13 @@ import { api } from '../http';
 
 import {
   copyWorkInstructionOverlayDraft,
+  createWorkInstructionEditorAuthentication,
   createWorkInstructionImageRegion,
   deleteWorkInstructionSourceVersionImages,
+  discardWorkInstructionOverlayDraft,
+  findWorkInstructionTextCandidates,
+  listWorkInstructionEditorAudit,
+  listWorkInstructionRevisionHistory,
   publishWorkInstructionOverlayDraft,
   saveWorkInstructionOverlayDraft,
   uploadWorkInstructionOverlayImage
@@ -14,6 +19,7 @@ import {
 vi.mock('../http', () => ({
   api: {
     delete: vi.fn(),
+    get: vi.fn(),
     post: vi.fn(),
     put: vi.fn()
   }
@@ -21,7 +27,13 @@ vi.mock('../http', () => ({
 
 const apiPost = vi.mocked(api.post);
 const apiDelete = vi.mocked(api.delete);
+const apiGet = vi.mocked(api.get);
 const apiPut = vi.mocked(api.put);
+
+const authenticationId = 'editor-authentication-1';
+const editorAuthenticationHeaders = {
+  'x-work-instruction-editor-authentication-id': authenticationId
+};
 
 const emptyMigration = {
   total: 0,
@@ -42,7 +54,31 @@ describe('work-instruction overlay API client', () => {
   beforeEach(() => {
     apiPost.mockReset();
     apiDelete.mockReset();
+    apiGet.mockReset();
     apiPut.mockReset();
+  });
+
+  it('creates an employee NFC-bound editor authentication without accepting a password', async () => {
+    const authentication = {
+      id: authenticationId,
+      employee: { id: 'employee-1', employeeCode: '0001', displayName: '山田 太郎' },
+      authenticatedAt: '2026-09-02T00:00:00.000Z',
+      expiresAt: '2026-09-02T04:00:00.000Z'
+    };
+    apiPost.mockResolvedValueOnce({ data: { authentication } } as never);
+
+    await expect(createWorkInstructionEditorAuthentication({
+      partNumber: 'PART-1',
+      shootingTarget: '加工',
+      employeeTagUid: 'employee-tag-1'
+    })).resolves.toEqual(authentication);
+
+    expect(apiPost).toHaveBeenCalledWith('/work-instructions/editor-authentications', {
+      partNumber: 'PART-1',
+      shootingTarget: '加工',
+      employeeTagUid: 'employee-tag-1'
+    });
+    expect(JSON.stringify(apiPost.mock.calls[0]?.[1])).not.toContain('password');
   });
 
   it('keeps every source row in the draft-copy request and adapts the group response', async () => {
@@ -58,7 +94,7 @@ describe('work-instruction overlay API client', () => {
     const result = await copyWorkInstructionOverlayDraft({
       partNumber: 'PART-1',
       shootingTarget: '加工',
-      accessPassword: '2520',
+      authenticationId,
       rows: [
         { rowId: 'row-1', publishedSourceVersionId: 'published-1', latestSourceVersionId: 'latest-1' },
         { rowId: 'row-2', publishedSourceVersionId: 'published-2', latestSourceVersionId: 'latest-2' }
@@ -68,12 +104,12 @@ describe('work-instruction overlay API client', () => {
     expect(apiPost).toHaveBeenCalledWith('/work-instructions/editor-revisions/copy', {
       partNumber: 'PART-1',
       shootingTarget: '加工',
-      accessPassword: '2520',
       rows: [
         { rowId: 'row-1', publishedSourceVersionId: 'published-1', latestSourceVersionId: 'latest-1' },
         { rowId: 'row-2', publishedSourceVersionId: 'published-2', latestSourceVersionId: 'latest-2' }
       ]
-    });
+    }, { headers: editorAuthenticationHeaders });
+    expect(JSON.stringify(apiPost.mock.calls[0]?.[1])).not.toContain('accessPassword');
     expect(result).toEqual({ group, revisions: [revision] });
   });
 
@@ -87,21 +123,20 @@ describe('work-instruction overlay API client', () => {
       shootingTarget: '加工',
       revisionIds: ['revision-1', 'revision-2'],
       expectedEditVersions: { 'revision-1': 3, 'revision-2': 7 },
-      accessPassword: '2520',
+      authenticationId,
       confirmUnassigned: true
     });
-    const deletion = await deleteWorkInstructionSourceVersionImages({ sourceVersionId: 'version-2', accessPassword: '2520' });
+    const deletion = await deleteWorkInstructionSourceVersionImages({ sourceVersionId: 'version-2', authenticationId });
 
     expect(apiPost).toHaveBeenCalledWith('/work-instructions/editor-revisions/publish', {
       partNumber: 'PART-1',
       shootingTarget: '加工',
       revisionIds: ['revision-1', 'revision-2'],
       expectedEditVersions: { 'revision-1': 3, 'revision-2': 7 },
-      accessPassword: '2520',
       confirmUnassigned: true
-    });
+    }, { headers: editorAuthenticationHeaders });
     expect(apiDelete).toHaveBeenCalledWith('/work-instructions/source-versions/version-2/image', {
-      data: { accessPassword: '2520' }
+      headers: editorAuthenticationHeaders
     });
     expect(deletion).toEqual({ results: [], deletedCount: 0 });
   });
@@ -128,7 +163,7 @@ describe('work-instruction overlay API client', () => {
     const result = await createWorkInstructionImageRegion({
       revisionId: 'revision-1',
       stepKey: 'sharepoint:work-instructions:1:2',
-      accessPassword: '2520',
+      authenticationId,
       bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 }
     });
 
@@ -178,7 +213,7 @@ describe('work-instruction overlay API client', () => {
 
     const result = await saveWorkInstructionOverlayDraft({
       revisionId: 'revision-1',
-      accessPassword: '2520',
+      authenticationId,
       expectedEditVersion: 7,
       expectedSourceVersionId: 'source-version-1',
       expectedContentHash: 'source-hash',
@@ -187,13 +222,13 @@ describe('work-instruction overlay API client', () => {
     });
 
     expect(apiPut).toHaveBeenCalledWith('/work-instructions/editor-revisions/revision-1/draft', {
-      accessPassword: '2520',
       expectedEditVersion: 7,
       expectedSourceVersionId: 'source-version-1',
       expectedContentHash: 'source-hash',
       elements,
       memoOverrides
-    });
+    }, { headers: editorAuthenticationHeaders });
+    expect(JSON.stringify(apiPut.mock.calls[0]?.[1])).not.toContain('accessPassword');
     expect(result.memoOverrides).toEqual([{
       stepKey: 'sharepoint:work-instructions:1:2',
       text: ''
@@ -223,7 +258,7 @@ describe('work-instruction overlay API client', () => {
 
     const result = await saveWorkInstructionOverlayDraft({
       revisionId: 'revision-1',
-      accessPassword: '2520',
+      authenticationId,
       expectedEditVersion: 8,
       expectedSourceVersionId: 'source-version-1',
       expectedContentHash: 'source-hash',
@@ -245,7 +280,7 @@ describe('work-instruction overlay API client', () => {
         action: 'USE_SOURCE',
         text: ''
       })]
-    }));
+    }), { headers: editorAuthenticationHeaders });
     expect(result.memoOverrides).toEqual([expect.objectContaining({
       stepKey: null,
       migratedFromStepKey: 'SharePoint:List:101:4',
@@ -277,7 +312,7 @@ describe('work-instruction overlay API client', () => {
     const result = await uploadWorkInstructionOverlayImage({
       revisionId: 'revision-1',
       stepKey: 'sharepoint:work-instructions:1:2',
-      accessPassword: '2520',
+      authenticationId,
       file
     });
 
@@ -288,5 +323,54 @@ describe('work-instruction overlay API client', () => {
       url: '/api/work-instructions/edit-assets/asset-upload-1',
       origin: 'UPLOAD'
     });
+
+    const [url, body, config] = apiPost.mock.calls[0] ?? [];
+    expect(url).toBe('/work-instructions/editor-revisions/revision-1/assets');
+    expect(body).toBeInstanceOf(FormData);
+    expect((body as FormData).get('accessPassword')).toBeNull();
+    expect(config).toEqual({
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        ...editorAuthenticationHeaders
+      }
+    });
+  });
+
+  it('sends the editor authentication header for discard, text candidates, history, and audit reads', async () => {
+    apiPost
+      .mockResolvedValueOnce({ data: { revision: null } } as never)
+      .mockResolvedValueOnce({ data: { candidates: [] } } as never);
+    apiGet
+      .mockResolvedValueOnce({ data: { history: [] } } as never)
+      .mockResolvedValueOnce({ data: { items: [] } } as never);
+
+    await discardWorkInstructionOverlayDraft({ revisionId: 'revision-1', authenticationId, expectedEditVersion: 4 });
+    await findWorkInstructionTextCandidates({
+      revisionId: 'revision-1',
+      stepKey: 'sharepoint:work-instructions:1:2',
+      authenticationId,
+      bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 }
+    });
+    await listWorkInstructionRevisionHistory({ partNumber: 'PART-1', shootingTarget: '加工', authenticationId });
+    await listWorkInstructionEditorAudit({ partNumber: 'PART-1', shootingTarget: '加工', authenticationId });
+
+    expect(apiPost).toHaveBeenNthCalledWith(1, '/work-instructions/editor-revisions/revision-1/discard', {
+      expectedEditVersion: 4
+    }, { headers: editorAuthenticationHeaders });
+    expect(apiPost).toHaveBeenNthCalledWith(2, '/work-instructions/editor-revisions/revision-1/regions/text', {
+      stepKey: 'sharepoint:work-instructions:1:2',
+      bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 }
+    }, { headers: editorAuthenticationHeaders });
+    expect(apiGet).toHaveBeenNthCalledWith(1, '/work-instructions/editor-revisions/history', {
+      params: { partNumber: 'PART-1', resource: '加工' },
+      headers: editorAuthenticationHeaders
+    });
+    expect(apiGet).toHaveBeenNthCalledWith(2, '/work-instructions/editor-audit', {
+      params: { partNumber: 'PART-1', resource: '加工' },
+      headers: editorAuthenticationHeaders
+    });
+    for (const call of [...apiPost.mock.calls, ...apiGet.mock.calls, ...apiDelete.mock.calls, ...apiPut.mock.calls]) {
+      expect(JSON.stringify(call)).not.toContain('accessPassword');
+    }
   });
 });
