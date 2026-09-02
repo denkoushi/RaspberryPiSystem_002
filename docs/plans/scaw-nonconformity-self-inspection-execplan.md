@@ -15,6 +15,10 @@ Import the daily full `scawSTFUTEKIGO` Gmail CSV through the existing CSV-dashbo
 - [x] (2026-09-02) Passed focused API/Web tests, lint, typecheck, builds, all migrations, two real-PostgreSQL synchronization scenarios, 8,188-row projection, SQL invariants, and three query plans.
 - [x] (2026-09-02) Updated `docs/runbooks/scaw-nonconformity-self-inspection.md` and `docs/INDEX.md`.
 - [x] (2026-09-02) Created local implementation commit `f7ae0419`; did not push, open a PR, merge, migrate production, consume Gmail, or deploy.
+- [ ] (2026-09-03) Push the feature branch, open a PR, and confirm required CI, CodeQL, and gitleaks for the exact head SHA.
+- [ ] Merge the approved PR into `main`, confirm the merge SHA and release artifacts, then finish the feature worktree through the lifecycle CLI.
+- [ ] Confirm the canonical deployment plan for the exact `main` SHA, run the standard rolling release, and record run status, migration, health, and rollback evidence.
+- [ ] Verify the fixed schedule, import the existing unread Gmail snapshot through the normal route, and reconcile imported/current/unmatched counts without exposing raw payloads.
 
 ## Surprises & Discoveries
 
@@ -52,7 +56,7 @@ Import the daily full `scawSTFUTEKIGO` Gmail CSV through the existing CSV-dashbo
 
 ## Outcomes & Retrospective
 
-The implementation now covers the approved local scope. A synthetic 8,188-row full snapshot produced exactly 8,188 unique Current rows and revisions in 4.084 seconds, then removed only that run's staging rows. Functional PostgreSQL tests proved last-row-wins duplicates, unchanged re-imports without revisions, changed revisions, disappearance, same-content reappearance, and delayed older-snapshot rejection. The kiosk query and panel are separated from image rendering, so loading or failure of nonconformity data does not hide the work-instruction photos. The implementation is committed locally. Push, PR, merge, production migration, Gmail consumption, schedule activation, and deployment remain explicitly outside this plan execution and require separate approval.
+The local implementation scope is complete. A synthetic 8,188-row full snapshot produced exactly 8,188 unique Current rows and revisions in 4.084 seconds, then removed only that run's staging rows. Functional PostgreSQL tests proved last-row-wins duplicates, unchanged re-imports without revisions, changed revisions, disappearance, same-content reappearance, and delayed older-snapshot rejection. The kiosk query and panel are separated from image rendering, so loading or failure of nonconformity data does not hide the work-instruction photos. On 2026-09-03 the user authorized continuation through production deployment; repository integration, the canonical rolling release, and production verification are therefore now active milestones and must be evidenced before this plan is complete.
 
 ## Context and Orientation
 
