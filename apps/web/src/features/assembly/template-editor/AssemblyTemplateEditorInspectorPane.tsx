@@ -50,7 +50,7 @@ export function AssemblyTemplateEditorInspectorPane() {
     data-testid="assembly-editor-settings-pane"
     className="min-h-[32rem] min-w-0 overflow-x-hidden overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3 xl:min-h-0"
   >
-    <div className="mb-3 grid grid-cols-[1fr_1fr_auto] gap-1 border-b border-white/10 pb-2">
+    <div className="mb-3 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1 border-b border-white/10 pb-2">
       <Button
         type="button"
         variant={inspectorMode === 'step' ? 'primary' : 'ghostOnDark'}

@@ -6,6 +6,7 @@ import {
 } from '../../components/kiosk/KioskFilterCombobox';
 import { Button } from '../../components/ui/Button';
 
+import { formatAssemblyEditorName } from './assemblyTemplateGuidePresentation';
 import { doesCapabilityGroupMatchAssemblyBoltCondition } from './assemblyTemplateInputAssistance';
 
 import type { TorqueWrenchCapabilityGroupApi } from '../../api/domains/torque-wrenches';
@@ -71,16 +72,16 @@ export function AssemblyCapabilityGroupSelector({
     <section
       id={`assembly-bolt-${boltId}-capabilityGroupId`}
       tabIndex={-1}
-      className="rounded border border-cyan-300/20 bg-cyan-950/20 p-2"
+      className="min-w-0 rounded border border-cyan-300/20 bg-cyan-950/20 p-2"
       aria-label="適合トルクレンチグループ"
     >
       <div className="text-[0.68rem] font-semibold text-white/70">
         適合トルクレンチグループ
       </div>
       {currentGroup ? (
-        <div className="mt-1 rounded border border-emerald-300/20 bg-emerald-950/25 p-2">
-          <div className="truncate text-xs font-bold text-emerald-100">
-            {currentGroup.name}
+        <div className="mt-1 min-w-0 rounded border border-emerald-300/20 bg-emerald-950/25 p-2">
+          <div className="truncate text-xs font-bold text-emerald-100" title={currentGroup.name}>
+            {formatAssemblyEditorName(currentGroup.name)}
           </div>
           <div className="mt-0.5 break-words text-[0.68rem] text-white/70">
             {conditionLabel(currentGroup)}
@@ -121,6 +122,7 @@ export function AssemblyCapabilityGroupSelector({
           emptyMessage="一致する有効グループがありません"
           className={disabled ? 'mt-2 opacity-60' : 'mt-2'}
           inputClassName="h-10 text-sm"
+          dropdownClassName="w-full [&_[role=option]]:min-w-0 [&_[role=option]>span]:min-w-0 [&_[role=option]>span]:flex-1 [&_[role=option]>span]:!block [&_[role=option]>span]:truncate"
           onChange={setQuery}
           onSelect={(groupId) => {
             const group = activeGroups.find((candidate) => candidate.id === groupId);

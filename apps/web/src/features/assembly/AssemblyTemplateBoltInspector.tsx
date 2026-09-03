@@ -97,7 +97,7 @@ export function AssemblyTemplateBoltInspector({
         </Button>
       </div>
 
-      <div className="mt-2 grid min-w-0 gap-2">
+      <div className="mt-2 grid min-w-0 grid-cols-1 gap-2">
         <div className="flex min-h-10 min-w-0 items-center gap-1 rounded border border-white/10 bg-slate-950/60 px-1.5 py-1">
           <span className="shrink-0 text-[0.68rem] font-semibold text-white/70">
             {imageMarkerHasCalloutTip(bolt) ? '矢視 あり' : '矢視 なし'}
@@ -175,7 +175,7 @@ export function AssemblyTemplateBoltInspector({
 
         <div
           data-testid="assembly-editor-bolt-fields"
-          className="grid min-w-0 gap-1.5"
+          className="grid min-w-0 grid-cols-1 gap-1.5"
         >
           <AssemblyCapabilityGroupSelector
             boltId={bolt.id}
@@ -190,7 +190,7 @@ export function AssemblyTemplateBoltInspector({
             onRetry={onRetryCapabilityCatalog}
           />
 
-          <div className="grid min-w-0 grid-cols-4 gap-1.5">
+          <div className="grid min-w-0 grid-cols-3 gap-1.5">
             {([
               ['lowerLimit', '下限'],
               ['nominalTorque', '規定'],
@@ -213,32 +213,34 @@ export function AssemblyTemplateBoltInspector({
                 />
               </label>
             ))}
-            <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-              単位
-              <select
-                id={`assembly-bolt-${bolt.id}-unit`}
-                className="h-10 min-w-0 w-full rounded border border-white/10 bg-slate-950 px-1.5 text-xs text-white"
-                value={bolt.unit}
-                disabled={busy || readOnly}
-                onChange={(event) => onPatch(bolt.id, { unit: event.target.value })}
-              >
-                <option value="">選択</option>
-                <option value="N·m">N·m</option>
-                <option value="kgf·cm">kgf·cm</option>
-              </select>
-            </label>
           </div>
+          <label className="flex min-w-0 items-center gap-2 text-[0.68rem] font-semibold text-white/70">
+            単位
+            <select
+              id={`assembly-bolt-${bolt.id}-unit`}
+              className="h-10 min-w-0 w-28 rounded border border-white/10 bg-slate-950 px-1.5 text-xs text-white"
+              value={bolt.unit}
+              disabled={busy || readOnly}
+              onChange={(event) => onPatch(bolt.id, { unit: event.target.value })}
+            >
+              <option value="">選択</option>
+              <option value="N·m">N·m</option>
+              <option value="kgf·cm">kgf·cm</option>
+            </select>
+          </label>
 
-          <div className="rounded border border-white/10 bg-slate-950/55 p-2 text-[0.68rem]">
+          <div className="min-w-0 rounded border border-white/10 bg-slate-950/55 p-2 text-[0.68rem]">
             <div className="font-semibold text-white/70">Excel出力用ボルト仕様</div>
-            <div className="mt-1 break-words font-bold text-white">
-              {effectiveSpec || '締結条件の入力後に自動生成されます'}
-              <span className="ml-1 text-white/45">
+            <div className="mt-1 flex min-w-0 items-center gap-1 font-bold text-white">
+              <span className="min-w-0 truncate" title={effectiveSpec || '締結条件の入力後に自動生成されます'}>
+                {effectiveSpec || '締結条件の入力後に自動生成されます'}
+              </span>
+              <span className="shrink-0 text-white/45">
                 （{bolt.boltSpecMode === 'custom' ? '個別指定' : '自動'}）
               </span>
             </div>
             {bolt.boltSpecMode === 'custom' ? (
-              <div className="mt-2 grid gap-1">
+              <div className="mt-2 grid min-w-0 grid-cols-1 gap-1">
                 <Input
                   id={`assembly-bolt-${bolt.id}-boltSpecCustom`}
                   className="h-10 min-w-0 !px-2 !py-1 text-sm"

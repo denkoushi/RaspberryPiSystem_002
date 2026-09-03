@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildAssemblyTemplateGuidePresentation } from './assemblyTemplateGuidePresentation';
+import {
+  assemblyEditorPageName,
+  buildAssemblyTemplateGuidePresentation,
+  formatAssemblyEditorName
+} from './assemblyTemplateGuidePresentation';
 import {
   buildAssemblyTemplateSuggestedName,
   capabilityGroupToAssemblyBoltCondition,
@@ -56,6 +60,17 @@ describe('assembly template input assistance', () => {
 });
 
 describe('assembly template guide presentation', () => {
+  it('compacts only full-width alphanumerics and spaces in display names', () => {
+    const original = 'ＡＢＣａｂｃ０１２　組立 カタカナ ＋／－ N·m kgf·cm ㎜';
+    expect(formatAssemblyEditorName(original)).toBe('ABCabc012 組立 カタカナ ＋／－ N·m kgf·cm ㎜');
+    expect(original).toBe('ＡＢＣａｂｃ０１２　組立 カタカナ ＋／－ N·m kgf·cm ㎜');
+  });
+
+  it('removes only the generated page suffix, not numbers inside document names', () => {
+    expect(assemblyEditorPageName('1. ＡＢＣ 1ページ確認 / 12ページ', 11)).toBe('1. ABC 1ページ確認');
+    expect(assemblyEditorPageName('ＡＢＣ / 12ページ', 0)).toBe('ABC / 12ページ');
+  });
+
   it('derives compact stages and a single issue summary from readiness', () => {
     const presentation = buildAssemblyTemplateGuidePresentation({
       isReady: false,
