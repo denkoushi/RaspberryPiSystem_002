@@ -8,21 +8,26 @@ import {
   imageMarkerHasCalloutTip
 } from '../kiosk/image-canvas';
 
-import { AssemblyCapabilityGroupSelector } from './AssemblyCapabilityGroupSelector';
 import {
   buildAutomaticAssemblyBoltSpec,
   resolveAssemblyBoltSpec
 } from './assemblyTemplateDraft';
-import { capabilityGroupToAssemblyBoltCondition } from './assemblyTemplateInputAssistance';
+import { AssemblyTorqueWrenchSettingAssistant } from './AssemblyTorqueWrenchSettingAssistant';
 
 import type { AssemblyDraftBolt } from './assemblyTemplateDraft';
-import type { TorqueWrenchCapabilityGroupApi } from '../../api/domains/torque-wrenches';
+import type { AssemblyTorqueWrenchProfileCatalogStatus } from './assemblyTemplateInputAssistance';
+import type {
+  TorqueWrenchCapabilityGroupApi,
+  TorqueWrenchProfileApi
+} from '../../api/domains/torque-wrenches';
 
 type Props = {
   bolt: AssemblyDraftBolt | null;
   pageLabel: string;
   capabilityGroups: TorqueWrenchCapabilityGroupApi[];
   capabilityCatalogStatus: 'loading' | 'ready' | 'error';
+  torqueWrenchProfiles?: TorqueWrenchProfileApi[];
+  torqueWrenchProfilesStatus?: AssemblyTorqueWrenchProfileCatalogStatus;
   busy: boolean;
   readOnly: boolean;
   inheritCondition: boolean;
@@ -35,6 +40,7 @@ type Props = {
   onRangeEndChange: (value: number) => void;
   onApplyRange: () => void;
   onRetryCapabilityCatalog: () => void;
+  onRetryTorqueWrenchProfiles?: () => void;
 };
 
 function nullableNumber(raw: string): number | null {
@@ -48,6 +54,8 @@ export function AssemblyTemplateBoltInspector({
   pageLabel,
   capabilityGroups,
   capabilityCatalogStatus,
+  torqueWrenchProfiles = [],
+  torqueWrenchProfilesStatus = 'loading',
   busy,
   readOnly,
   inheritCondition,
@@ -59,7 +67,8 @@ export function AssemblyTemplateBoltInspector({
   onRangeStartChange,
   onRangeEndChange,
   onApplyRange,
-  onRetryCapabilityCatalog
+  onRetryCapabilityCatalog,
+  onRetryTorqueWrenchProfiles = () => undefined
 }: Props) {
   const [rangeExpanded, setRangeExpanded] = useState(false);
   if (!bolt) {
@@ -177,17 +186,16 @@ export function AssemblyTemplateBoltInspector({
           data-testid="assembly-editor-bolt-fields"
           className="grid min-w-0 grid-cols-1 gap-1.5"
         >
-          <AssemblyCapabilityGroupSelector
-            boltId={bolt.id}
-            selectedGroupId={bolt.capabilityGroupId ?? null}
-            storedCondition={bolt}
-            groups={capabilityGroups}
-            catalogStatus={capabilityCatalogStatus}
+          <AssemblyTorqueWrenchSettingAssistant
+            bolt={bolt}
+            capabilityGroups={capabilityGroups}
+            capabilityCatalogStatus={capabilityCatalogStatus}
+            torqueWrenchProfiles={torqueWrenchProfiles}
+            torqueWrenchProfilesStatus={torqueWrenchProfilesStatus}
             disabled={busy || readOnly}
-            onSelect={(group) =>
-              onPatch(bolt.id, capabilityGroupToAssemblyBoltCondition(group))
-            }
-            onRetry={onRetryCapabilityCatalog}
+            onPatch={onPatch}
+            onRetryCapabilityCatalog={onRetryCapabilityCatalog}
+            onRetryTorqueWrenchProfiles={onRetryTorqueWrenchProfiles}
           />
 
           <div className="grid min-w-0 grid-cols-3 gap-1.5">

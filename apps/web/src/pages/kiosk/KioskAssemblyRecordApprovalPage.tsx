@@ -149,8 +149,8 @@ function DetailPane({
             <tbody>
               {session.areaTorqueSummaries.map((area) => (
                 <tr key={area.areaId} className="border-t border-white/10">
-                  <td className="px-2.5 py-1.5">{area.processNo}</td>
-                  <td className="px-2.5 py-1.5">{area.areaName}</td>
+                  <td className="px-2.5 py-1.5">{area.processNo.trim() || '—'}</td>
+                  <td className="px-2.5 py-1.5">{area.areaName.trim() || '—'}</td>
                   <td className="px-2.5 py-1.5 font-mono">{area.acceptedOkCount}/{area.totalBoltCount}</td>
                   <td className="px-2.5 py-1.5 font-mono">{area.ngCount}</td>
                   <td className="px-2.5 py-1.5 font-mono">{area.ignoredCount}</td>

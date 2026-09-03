@@ -3,7 +3,10 @@ import { useMemo } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 
-import { resolveAssemblyDocumentStatus } from './assemblyTemplateDraft';
+import {
+  assemblyProcedureDocumentPageCount,
+  resolveAssemblyDocumentStatus
+} from './assemblyTemplateDraft';
 import { hasAssemblyProcedureDocument } from './assemblyTemplateProcedureDraft';
 
 import type { AssemblyTemplateProcedureDraftItem } from './assemblyTemplateProcedureDraft';
@@ -13,6 +16,7 @@ type Props = {
   open: boolean;
   documents: AssemblyProcedureDocumentSummaryDto[];
   procedureItems: AssemblyTemplateProcedureDraftItem[];
+  addingDocumentId?: string | null;
   search: string;
   readOnly: boolean;
   onSearchChange: (value: string) => void;
@@ -27,6 +31,7 @@ export function AssemblyTemplateDocumentLibraryDialog({
   open,
   documents,
   procedureItems,
+  addingDocumentId = null,
   search,
   readOnly,
   onSearchChange,
@@ -50,6 +55,7 @@ export function AssemblyTemplateDocumentLibraryDialog({
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4"
       role="dialog"
       aria-modal="true"
+      aria-busy={addingDocumentId != null}
       aria-labelledby="assembly-document-library-title"
     >
       <section className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-white/20 bg-slate-900 shadow-2xl">
@@ -60,6 +66,9 @@ export function AssemblyTemplateDocumentLibraryDialog({
             </h2>
             <p className="text-xs font-semibold text-white/55">
               公開済みの組立手順書を文書順へ追加します。
+            </p>
+            <p className="mt-1 max-w-xl text-xs font-semibold text-white/55">
+              文書だけ追加は表示手順を作りません。未使用文書は保存前に手順化が必要です。
             </p>
           </div>
           <Button
@@ -90,6 +99,9 @@ export function AssemblyTemplateDocumentLibraryDialog({
             <ul className="grid gap-2">
               {filteredDocuments.map((document) => {
                 const alreadyAdded = hasAssemblyProcedureDocument(procedureItems, document.id);
+                const pageCount = assemblyProcedureDocumentPageCount(document);
+                const addDisabled =
+                  alreadyAdded || readOnly || addingDocumentId != null || pageCount === 0;
                 return (
                   <li
                     key={document.id}
@@ -97,7 +109,9 @@ export function AssemblyTemplateDocumentLibraryDialog({
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold">{document.name}</p>
-                      <p className="text-xs text-white/50">{document.pages.length || 1}ページ</p>
+                      <p className="text-xs text-white/50">
+                        {pageCount}ページ{pageCount === 0 ? '（ページ未取得）' : ''}
+                      </p>
                     </div>
                     <div className="flex shrink-0 gap-1">
                       <Button
@@ -105,7 +119,7 @@ export function AssemblyTemplateDocumentLibraryDialog({
                         aria-label={alreadyAdded ? '追加済み' : '追加'}
                         variant={alreadyAdded ? 'ghostOnDark' : 'primary'}
                         className="min-h-11"
-                        disabled={alreadyAdded || readOnly}
+                        disabled={addDisabled}
                         onClick={() => onAdd(document, 'all_pages')}
                       >
                         {alreadyAdded ? '追加済み' : '全ページを手順へ追加'}
@@ -114,7 +128,7 @@ export function AssemblyTemplateDocumentLibraryDialog({
                         type="button"
                         variant="ghostOnDark"
                         className="min-h-11"
-                        disabled={alreadyAdded || readOnly}
+                        disabled={addDisabled}
                         onClick={() => onAdd(document, 'document_only')}
                       >
                         文書だけ追加

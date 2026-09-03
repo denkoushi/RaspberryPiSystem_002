@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { ASSEMBLY_PROCEDURE_STEP_MAX_COUNT } from '@raspi-system/shared-types';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 import {
   canRemoveProcedureStep,
@@ -9,8 +10,9 @@ import {
   getPrimaryAssemblyDocumentIdFromSteps,
   isMarkerVisibleInProcedureStep,
   orderProcedureItemsForDisplay,
-  templateToProcedureStepDrafts
-, assemblyProcedureStepDraftReducer } from '../assemblyProcedureStepDraft';
+  templateToProcedureStepDrafts,
+  assemblyProcedureStepDraftReducer
+} from '../assemblyProcedureStepDraft';
 import {
   appendAssemblyProcedureDocument,
   assemblyTemplateProcedureDraftReducer,
@@ -47,6 +49,23 @@ type ProcedureDraftInput = {
   templateId?: string;
 };
 
+type DocumentAddMode = 'all_pages' | 'document_only';
+
+type PendingDocumentAdd = {
+  documentId: string;
+  mode: DocumentAddMode;
+};
+
+function procedureDocumentKey(source: 'kiosk_document' | 'assembly_procedure_document', documentId: string) {
+  return `${source}:${documentId}`;
+}
+
+function procedureItemDocumentKey(item: AssemblyTemplateProcedureDraftItem) {
+  return item.kioskDocumentId
+    ? procedureDocumentKey('kiosk_document', item.kioskDocumentId)
+    : procedureDocumentKey('assembly_procedure_document', item.assemblyProcedureDocumentId ?? '');
+}
+
 export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
   const [selectedDocumentId, setSelectedDocumentId] = useState(input.initialDocumentId ?? '');
   const [procedureItems, dispatchProcedureItems] = useReducer(
@@ -65,6 +84,11 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
   const [documentSearch, setDocumentSearch] = useState('');
   const [showFullPage, setShowFullPage] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [addingDocumentId, setAddingDocumentId] = useState<string | null>(null);
+  const [procedureSearchResetToken, setProcedureSearchResetToken] = useState(0);
+  const autoHydrateDocumentKeysRef = useRef<Set<string> | null>(null);
+  const addingDocumentRef = useRef<string | null>(null);
+  const pendingDocumentAddRef = useRef<PendingDocumentAdd | null>(null);
   const pageOptions = useAssemblyTemplateEditorPageOptions({
     documents: input.documents,
     procedureItems
@@ -72,12 +96,20 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
 
   useEffect(() => {
     if (input.loading) {
+      autoHydrateDocumentKeysRef.current = null;
+      pendingDocumentAddRef.current = null;
+      addingDocumentRef.current = null;
+      setAddingDocumentId(null);
       setInitialized(false);
       return;
     }
     if (input.loadedTemplate) {
       const nextItems = templateToProcedureDraftItems(input.loadedTemplate);
       const nextSteps = templateToProcedureStepDrafts(input.loadedTemplate);
+      autoHydrateDocumentKeysRef.current =
+        nextSteps.length === 0 && nextItems.length > 0
+          ? new Set(nextItems.map(procedureItemDocumentKey))
+          : null;
       dispatchProcedureItems({ type: 'replace', items: nextItems });
       dispatchProcedureSteps({ type: 'replace', steps: nextSteps });
       setSelectedStepId(nextSteps[0]?.localId ?? null);
@@ -95,11 +127,15 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
     const initialDocument = input.documents.find(
       (document) => document.id === (input.initialDocumentId ?? '')
     );
+    const initialItem = initialDocument
+      ? appendAssemblyProcedureDocument([], initialDocument)[0]!
+      : null;
+    autoHydrateDocumentKeysRef.current = initialItem
+      ? new Set([procedureItemDocumentKey(initialItem)])
+      : null;
     dispatchProcedureItems({
       type: 'replace',
-      items: initialDocument
-        ? [appendAssemblyProcedureDocument([], initialDocument)[0]!]
-        : []
+      items: initialItem ? [initialItem] : []
     });
     dispatchProcedureSteps({ type: 'replace', steps: [] });
     setSelectedStepId(null);
@@ -131,8 +167,18 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
   }, [pageOptions]);
 
   useEffect(() => {
-    if (pageOptions.length === 0 || procedureSteps.length > 0) return;
-    const initialSteps = pageOptions.map(createFullPageStepDraft);
+    const autoHydrateDocumentKeys = autoHydrateDocumentKeysRef.current;
+    if (!autoHydrateDocumentKeys || pageOptions.length === 0) return;
+    if (procedureSteps.length > 0) {
+      autoHydrateDocumentKeysRef.current = null;
+      return;
+    }
+    const initialPages = pageOptions.filter((page) =>
+      autoHydrateDocumentKeys.has(procedureDocumentKey(page.source, page.documentId))
+    );
+    autoHydrateDocumentKeysRef.current = null;
+    if (initialPages.length === 0) return;
+    const initialSteps = initialPages.map(createFullPageStepDraft);
     dispatchProcedureSteps({ type: 'replace', steps: initialSteps });
     setSelectedStepId(initialSteps[0]?.localId ?? null);
   }, [pageOptions, procedureSteps.length]);
@@ -183,8 +229,16 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
 
   const addDocument = (
     document: AssemblyProcedureDocumentSummaryDto,
-    mode: 'all_pages' | 'document_only'
+    mode: DocumentAddMode
   ) => {
+    if (input.loading) {
+      input.onMessage('文書を読み込み中です。');
+      return;
+    }
+    if (addingDocumentRef.current) {
+      input.onMessage('文書追加を処理中です。');
+      return;
+    }
     if (hasAssemblyProcedureDocument(procedureItems, document.id)) {
       input.onMessage('同じ組立手順書は新たに重複追加できません。');
       return;
@@ -193,19 +247,87 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
       input.onMessage('文書順は50件までです。');
       return;
     }
+    const draftItem = appendAssemblyProcedureDocument([], document)[0];
+    if (!draftItem) {
+      input.onMessage('この手順書は追加できません。');
+      return;
+    }
+    const pages = buildProcedureDraftPageOptions({
+      items: [draftItem],
+      assemblyDocuments: [document],
+      kioskPagesByDocumentId: new Map()
+    });
+    if (pages.length === 0) {
+      input.onMessage('ページを読み込めない手順書は追加できません。');
+      return;
+    }
+    if (
+      mode === 'all_pages' &&
+      procedureSteps.length + pages.length > ASSEMBLY_PROCEDURE_STEP_MAX_COUNT
+    ) {
+      input.onMessage('全ページ追加後の表示手順が300件を超えるため追加できません。');
+      return;
+    }
+    addingDocumentRef.current = document.id;
+    pendingDocumentAddRef.current = { documentId: document.id, mode };
+    setAddingDocumentId(document.id);
     dispatchProcedureItems({ type: 'append_assembly_document', document });
+    setProcedurePaneOpen(true);
     if (mode === 'all_pages') {
-      const draftItem = appendAssemblyProcedureDocument([], document)[0]!;
-      const pages = buildProcedureDraftPageOptions({
-        items: [draftItem],
-        assemblyDocuments: [document],
-        kioskPagesByDocumentId: new Map()
-      });
       dispatchProcedureSteps({ type: 'append_pages', pages });
+      setLeftPaneTab('steps');
+      setProcedureSearchResetToken((current) => current + 1);
+    } else {
+      setLeftPaneTab('documents');
     }
     setDocumentLibraryOpen(false);
-    input.onMessage(null);
   };
+
+  useEffect(() => {
+    const pending = pendingDocumentAddRef.current;
+    if (!pending) return;
+    const item = procedureItems.find(
+      (candidate) => candidate.assemblyProcedureDocumentId === pending.documentId
+    );
+    if (!item) return;
+
+    if (pending.mode === 'document_only') {
+      const firstPage = pageOptions.find(
+        (page) =>
+          page.source === 'assembly_procedure_document' &&
+          page.documentId === pending.documentId
+      );
+      if (!firstPage) return;
+      pendingDocumentAddRef.current = null;
+      addingDocumentRef.current = null;
+      setAddingDocumentId(null);
+      setLeftPaneTab('documents');
+      setSelectedPageKey(firstPage.key);
+      input.onMessage(
+        '文書を追加しました。未使用文書は保存できません。中央の「全体追加」または「矩形追加」で手順化してください。'
+      );
+      return;
+    }
+
+    const firstStep = procedureSteps.find(
+      (step) =>
+        step.kioskDocumentId == null &&
+        step.assemblyProcedureDocumentId === pending.documentId
+    );
+    const firstStepPage = firstStep
+      ? findPageForProcedureStep(firstStep, pageOptions)
+      : null;
+    if (!firstStep || !firstStepPage) return;
+    pendingDocumentAddRef.current = null;
+    addingDocumentRef.current = null;
+    setAddingDocumentId(null);
+    setLeftPaneTab('steps');
+    setSelectedStepId(firstStep.localId);
+    setShowFullPage(false);
+    setSelectedPageKey(firstStepPage.key);
+    input.onStepFocused();
+    input.onMessage('全ページを手順へ追加しました。追加文書の先頭手順を選択しています。');
+  }, [input, pageOptions, procedureItems, procedureSteps]);
 
   const removeDocument = (
     localId: string,
@@ -238,6 +360,7 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
       input.onMessage(result.message);
       return;
     }
+    autoHydrateDocumentKeysRef.current = null;
     dispatchProcedureItems({ type: 'remove', index });
     input.onMessage(null);
   };
@@ -286,12 +409,22 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
       input.onMessage(result.message);
       return;
     }
+    autoHydrateDocumentKeysRef.current = null;
     dispatchProcedureSteps({ type: 'remove', localId });
     input.onMessage(null);
   };
 
-  const dispatchSteps = (action: AssemblyProcedureStepDraftAction) =>
+  const dispatchProcedureItemsForDraft = (
+    action: Parameters<typeof dispatchProcedureItems>[0]
+  ) => {
+    autoHydrateDocumentKeysRef.current = null;
+    dispatchProcedureItems(action);
+  };
+
+  const dispatchSteps = (action: AssemblyProcedureStepDraftAction) => {
+    autoHydrateDocumentKeysRef.current = null;
     dispatchProcedureSteps(action);
+  };
 
   return {
     addCurrentCropStep: (crop: NonNullable<AssemblyProcedureStepDraft['crop']>) => {
@@ -307,7 +440,8 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
       focusStep(step);
     },
     addDocument,
-    dispatchProcedureItems,
+    addingDocumentId,
+    dispatchProcedureItems: dispatchProcedureItemsForDraft,
     dispatchSteps,
     displayProcedureItems,
     documentLibraryOpen,
@@ -324,6 +458,7 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
     procedureItems,
     procedurePaneOpen,
     procedureSteps,
+    procedureSearchResetToken,
     removeDocument,
     removeStep,
     selectedDocument,

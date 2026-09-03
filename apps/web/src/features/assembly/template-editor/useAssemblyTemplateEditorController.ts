@@ -8,13 +8,9 @@ import {
 import { useImageCanvasZoom } from '../../kiosk/image-canvas';
 import { useUnsavedChangesGuard } from '../../navigation/useUnsavedChangesGuard';
 import { procedureStepDraftToInput } from '../assemblyProcedureStepDraft';
-import {
-  draftCheckItemsToInput
-} from '../assemblyTemplateDraft';
+import { draftCheckItemsToInput } from '../assemblyTemplateDraft';
 import { buildAssemblyTemplateSuggestedName } from '../assemblyTemplateInputAssistance';
-import {
-  assemblyTemplateProcedureDraftToInput
-} from '../assemblyTemplateProcedureDraft';
+import { assemblyTemplateProcedureDraftToInput } from '../assemblyTemplateProcedureDraft';
 import { evaluateAssemblyTemplateReadiness } from '../assemblyTemplateReadiness';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
@@ -25,9 +21,7 @@ import { useAssemblyTemplateEditorRecovery } from './useAssemblyTemplateEditorRe
 import { useAssemblyTemplateMarkerDraft } from './useAssemblyTemplateMarkerDraft';
 import { useAssemblyTemplateProcedureDraft } from './useAssemblyTemplateProcedureDraft';
 
-import type {
-  AssemblyProcedureStepDraft
-} from '../assemblyProcedureStepDraft';
+import type { AssemblyProcedureStepDraft } from '../assemblyProcedureStepDraft';
 import type { AssemblyTemplateEditorRecoveryDraft } from '../assemblyTemplateEditorRecovery';
 import type {
   AssemblyTemplateReadinessIssue,
@@ -55,9 +49,9 @@ export function useAssemblyTemplateEditorController(input: {
   const [modelCode, setModelCode] = useState('');
   const [procedurePattern, setProcedurePattern] = useState('');
   const [metadataInitialized, setMetadataInitialized] = useState(false);
-  const [inspectorMode, setInspectorMode] =
-    useState<'closed' | 'step' | 'markers'>('closed');
+  const [inspectorMode, setInspectorMode] = useState<'closed' | 'step' | 'markers'>('closed');
   const [machineNamePickerOpen, setMachineNamePickerOpen] = useState(false);
+  const [expandedAreaDetails, setExpandedAreaDetails] = useState<Set<string>>(() => new Set());
   const data = useAssemblyTemplateEditorData({
     sourceTemplateId: input.query.sourceTemplateId,
     templateId: input.templateId
@@ -98,6 +92,7 @@ export function useAssemblyTemplateEditorController(input: {
       setPasswordInput('');
       setInspectorMode('closed');
       setMetadataInitialized(false);
+      setExpandedAreaDetails(new Set());
       return;
     }
     if (data.loadedTemplate) {
@@ -310,6 +305,8 @@ export function useAssemblyTemplateEditorController(input: {
       procedure.setLeftPaneTab('documents');
       if (issue.target.id) {
         marker.selectArea(issue.target.id);
+        const areaId = issue.target.id;
+        setExpandedAreaDetails((current) => new Set(current).add(areaId));
         focusElementById(
           issue.target.field
             ? `assembly-area-${issue.target.id}-${issue.target.field}`
@@ -462,6 +459,15 @@ export function useAssemblyTemplateEditorController(input: {
     },
     focusProcedureStep,
     focusReadinessIssue,
+    expandedAreaDetails,
+    toggleAreaDetails: (areaId: string) => {
+      setExpandedAreaDetails((current) => {
+        const next = new Set(current);
+        if (next.has(areaId)) next.delete(areaId);
+        else next.add(areaId);
+        return next;
+      });
+    },
     handleGuideStageClick,
     incompleteAreaIds,
     inspectorMode,

@@ -307,34 +307,28 @@ export function evaluateAssemblyTemplateReadiness(
     });
   }
 
-  for (const area of input.areas) {
-    const missingAreaFieldEntries = [
-      !area.processNo.trim() ? { field: 'processNo', label: '工程No.' } : null,
-      !area.areaCode.trim() ? { field: 'areaCode', label: 'エリアコード' } : null,
-      !area.unitCode.trim() ? { field: 'unitCode', label: 'ユニットコード' } : null,
-      !area.areaName.trim() ? { field: 'areaName', label: 'エリア名' } : null
-    ].filter(
-      (value): value is { field: string; label: string } => value != null
-    );
-    const missingAreaFields = missingAreaFieldEntries.map((entry) => entry.label);
-    const areaTooLong =
-      area.processNo.trim().length > 80 ||
-      area.areaCode.trim().length > 80 ||
-      area.unitCode.trim().length > 80 ||
-      area.areaName.trim().length > 200;
-    if (missingAreaFields.length > 0 || areaTooLong) {
+  for (const [areaIndex, area] of input.areas.entries()) {
+    const areaTooLongField =
+      area.processNo.trim().length > 80
+        ? 'processNo'
+        : area.areaCode.trim().length > 80
+          ? 'areaCode'
+          : area.unitCode.trim().length > 80
+            ? 'unitCode'
+            : area.areaName.trim().length > 200
+              ? 'areaName'
+              : undefined;
+    if (areaTooLongField) {
       issues.push({
-        code: areaTooLong ? 'area.fields_too_long' : 'area.fields_required',
+        code: 'area.fields_too_long',
         stage: 'areas',
-        message: areaTooLong
-          ? '工程の入力値が最大文字数を超えています。'
-          : `工程の${missingAreaFields.join('、')}を入力してください。`,
+        message: '工程の入力値が最大文字数を超えています。',
         target: {
           kind: 'area',
           id: area.id,
-          field: missingAreaFieldEntries[0]?.field
+          field: areaTooLongField
         },
-        missingFields: missingAreaFields
+        missingFields: []
       });
     }
 
@@ -342,7 +336,7 @@ export function evaluateAssemblyTemplateReadiness(
       issues.push({
         code: 'area.bolts.required',
         stage: 'areas',
-        message: `${area.areaName.trim() || '未入力の工程'}に締付点を1件以上配置してください。`,
+        message: `${area.areaName.trim() || `工程${areaIndex + 1}`}に締付点を1件以上配置してください。`,
         target: { kind: 'area', id: area.id }
       });
     }

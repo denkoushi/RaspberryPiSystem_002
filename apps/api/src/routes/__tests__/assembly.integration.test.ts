@@ -419,6 +419,110 @@ describe('assembly torque management API', () => {
     ).toEqual({ isActive: true, version: 1 });
   });
 
+  it('allows blank area labels and keeps tightening IDs scoped to their area', async () => {
+    const client = await createTestClientDevice();
+    const headers = {
+      'x-client-key': client.apiKey,
+      'Content-Type': 'application/json'
+    };
+    const document = await uploadPublishedProcedureDocument(
+      app,
+      headers,
+      '空欄工程契約'
+    );
+    const payload = buildTemplatePayload(document.id, {
+      modelCode: 'EMPTY-AREA-LABELS',
+      procedurePattern: '標準',
+      name: '空欄工程ラベル'
+    });
+    payload.areas[0] = {
+      ...payload.areas[0]!,
+      processNo: '  ',
+      areaCode: '',
+      areaName: '',
+      unitCode: ''
+    };
+    payload.areas.push({
+      ...payload.areas[0]!,
+      sortOrder: 1,
+      bolts: payload.areas[0]!.bolts.map((bolt) => ({
+        ...bolt,
+        markerNo: 2
+      }))
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload
+    });
+
+    expect(response.statusCode).toBe(200);
+    const savedAreas = response.json().template.areas as Array<{
+      processNo: string;
+      areaCode: string;
+      areaName: string;
+      unitCode: string;
+      bolts: Array<{ tighteningId: string }>;
+    }>;
+    expect(savedAreas).toHaveLength(2);
+    expect(
+      savedAreas.every(
+        (area) =>
+          area.processNo === '' &&
+          area.areaCode === '' &&
+          area.areaName === '' &&
+          area.unitCode === ''
+      )
+    ).toBe(true);
+    expect(savedAreas.map((area) => area.processNo)).toEqual(['', '']);
+    expect(savedAreas.map((area) => area.areaCode)).toEqual(['', '']);
+    expect(savedAreas.map((area) => area.areaName)).toEqual(['', '']);
+    expect(savedAreas.map((area) => area.unitCode)).toEqual(['', '']);
+    expect(savedAreas.map((area) => area.bolts[0]!.tighteningId)).toEqual([
+      'P7-A13-U1-B1',
+      'P7-A13-U1-B1'
+    ]);
+
+    const setAreaField = (
+      field: 'processNo' | 'areaCode' | 'areaName' | 'unitCode',
+      value: unknown
+    ) => {
+      const next = structuredClone(payload);
+      const area = next.areas[0] as unknown as Record<string, unknown>;
+      area[field] = value;
+      return next;
+    };
+    const omitAreaField = (
+      field: 'processNo' | 'areaCode' | 'areaName' | 'unitCode'
+    ) => {
+      const next = structuredClone(payload);
+      const area = next.areas[0] as unknown as Record<string, unknown>;
+      delete area[field];
+      return next;
+    };
+    const invalidPayloads = [
+      ...(['processNo', 'areaCode', 'areaName', 'unitCode'] as const).map(
+        (field) => [`${field} key omitted`, omitAreaField(field)] as const
+      ),
+      ...(['processNo', 'areaCode', 'areaName', 'unitCode'] as const).map(
+        (field) => [`${field} null`, setAreaField(field, null)] as const
+      ),
+      ['processNo over max', setAreaField('processNo', 'x'.repeat(81))] as const,
+      ['areaName over max', setAreaField('areaName', 'x'.repeat(201))] as const
+    ];
+    for (const [label, invalidPayload] of invalidPayloads) {
+      const invalidResponse = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/templates',
+        headers,
+        payload: invalidPayload
+      });
+      expect(invalidResponse.statusCode, label).toBe(400);
+    }
+  });
+
   it('同一作業セッションの同時取消は1件だけ成功する', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey };

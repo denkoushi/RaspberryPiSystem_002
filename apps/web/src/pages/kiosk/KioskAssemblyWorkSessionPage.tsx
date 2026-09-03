@@ -477,7 +477,11 @@ export function KioskAssemblyWorkSessionPage() {
           <div className="mt-2 rounded border border-white/10 bg-slate-950 p-2">
             <div className="text-sm text-white/60">現在</div>
             <div className="mt-1 text-lg font-bold">{currentBolt ? `丸数字 ${currentBolt.markerNo}` : (allBoltsComplete ? '全締付完了' : '次工程待ち')}</div>
-            <div className="mt-1 text-sm text-white/70">{currentArea?.areaName ?? ''}</div>
+            <div className="mt-1 text-sm text-white/70">
+              {currentArea
+                ? currentArea.areaName.trim() || `工程${currentArea.sortOrder + 1}`
+                : ''}
+            </div>
             {currentBolt ? (
               <div className="mt-1 text-sm text-white/80">
                 規定 {currentBolt.nominalTorque} / 下限 {currentBolt.lowerLimit} / 上限 {currentBolt.upperLimit} {currentBolt.unit}

@@ -146,6 +146,24 @@ describe('KioskAssemblyRecordApprovalPage', () => {
     expect(screen.getByRole('button', { name: '承認して完了' })).toBeDisabled();
   });
 
+  it('shows a placeholder for blank process and area labels', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      ...detail,
+      areaTorqueSummaries: detail.areaTorqueSummaries.map((area) => ({
+        ...area,
+        processNo: '',
+        areaName: ''
+      }))
+    });
+
+    renderPage();
+
+    const table = await screen.findByRole('table');
+    const cells = table.querySelectorAll('tbody tr td');
+    expect(cells[0]).toHaveTextContent('—');
+    expect(cells[1]).toHaveTextContent('—');
+  });
+
   it('selects initial session from query parameter', async () => {
     renderPage('/kiosk/assembly/record-approvals?sessionId=session-1');
 

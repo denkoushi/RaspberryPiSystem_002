@@ -118,10 +118,10 @@ const checkItemInputSchema = z.object({
 
 const areaInputSchema = z.object({
   sortOrder: z.coerce.number().int().min(0),
-  processNo: z.string().trim().min(1).max(80),
-  areaCode: z.string().trim().min(1).max(80),
-  areaName: z.string().trim().min(1).max(200),
-  unitCode: z.string().trim().min(1).max(80),
+  processNo: z.string().trim().max(80),
+  areaCode: z.string().trim().max(80),
+  areaName: z.string().trim().max(200),
+  unitCode: z.string().trim().max(80),
   requireManualAdvance: z.boolean().optional(),
   bolts: z.array(boltInputSchema).min(1)
 });

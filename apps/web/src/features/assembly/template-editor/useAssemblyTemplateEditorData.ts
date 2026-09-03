@@ -2,13 +2,15 @@ import { useEffect, useState } from 'react';
 
 import {
   getKioskDocumentDetail,
-  listTorqueWrenchCapabilityGroups
+  listTorqueWrenchCapabilityGroups,
+  listTorqueWrenches
 } from '../../../api/client';
 import { buildProcedureDraftPageOptions } from '../assemblyTemplateProcedureDraft';
 import { loadAssemblyTemplateEditorData } from '../loadAssemblyTemplateEditorData';
 
-import type { TorqueWrenchCapabilityGroupApi } from '../../../api/domains/torque-wrenches';
+import type { TorqueWrenchCapabilityGroupApi, TorqueWrenchProfileApi } from '../../../api/domains/torque-wrenches';
 import type { AssemblyEditorPageOption } from '../assemblyTemplateDraft';
+import type { AssemblyTorqueWrenchProfileCatalogStatus } from '../assemblyTemplateInputAssistance';
 import type { AssemblyTemplateProcedureDraftItem } from '../assemblyTemplateProcedureDraft';
 import type {
   AssemblyProcedureDocumentSummaryDto,
@@ -31,6 +33,10 @@ export function useAssemblyTemplateEditorData(input: {
   const [capabilityCatalogStatus, setCapabilityCatalogStatus] =
     useState<CapabilityCatalogStatus>('loading');
   const [capabilityCatalogGeneration, setCapabilityCatalogGeneration] = useState(0);
+  const [torqueWrenchProfiles, setTorqueWrenchProfiles] = useState<TorqueWrenchProfileApi[]>([]);
+  const [torqueWrenchProfilesStatus, setTorqueWrenchProfilesStatus] =
+    useState<AssemblyTorqueWrenchProfileCatalogStatus>('loading');
+  const [torqueWrenchProfilesGeneration, setTorqueWrenchProfilesGeneration] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,6 +78,25 @@ export function useAssemblyTemplateEditorData(input: {
     };
   }, [capabilityCatalogGeneration]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setTorqueWrenchProfilesStatus('loading');
+    void listTorqueWrenches(false)
+      .then((profiles) => {
+        if (cancelled) return;
+        setTorqueWrenchProfiles(profiles);
+        setTorqueWrenchProfilesStatus('ready');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTorqueWrenchProfiles([]);
+        setTorqueWrenchProfilesStatus('error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [torqueWrenchProfilesGeneration]);
+
   return {
     capabilityCatalog: {
       groups: capabilityGroups,
@@ -83,7 +108,11 @@ export function useAssemblyTemplateEditorData(input: {
     loading,
     reload: () => setLoadGeneration((current) => current + 1),
     reloadCapabilityCatalog: () =>
-      setCapabilityCatalogGeneration((current) => current + 1)
+      setCapabilityCatalogGeneration((current) => current + 1),
+    reloadTorqueWrenchProfiles: () =>
+      setTorqueWrenchProfilesGeneration((current) => current + 1),
+    torqueWrenchProfiles,
+    torqueWrenchProfilesStatus
   };
 }
 

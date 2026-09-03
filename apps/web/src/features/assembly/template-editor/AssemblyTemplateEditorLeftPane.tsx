@@ -15,6 +15,7 @@ export function AssemblyTemplateEditorLeftPane() {
     dispatchProcedureItems,
     dispatchSteps: dispatchProcedureSteps,
     displayProcedureItems,
+    expandedAreaDetails,
     focusItem: focusProcedureItem,
     focusProcedureStep,
     incompleteAreaIds,
@@ -27,6 +28,7 @@ export function AssemblyTemplateEditorLeftPane() {
     procedurePaneOpen,
     procedurePattern,
     procedureSteps,
+    procedureSearchResetToken,
     readOnly,
     removeProcedureItem,
     removeProcedureStep,
@@ -44,7 +46,8 @@ export function AssemblyTemplateEditorLeftPane() {
     setMachineNamePickerOpen,
     templateName,
     templateNameAutomatic,
-    templateId
+    templateId,
+    toggleAreaDetails
   } = useAssemblyTemplateEditor();
   return procedurePaneOpen ? (
     <aside className="flex min-h-[32rem] min-w-0 flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
@@ -71,6 +74,7 @@ export function AssemblyTemplateEditorLeftPane() {
           steps={procedureSteps}
           pages={pageOptions}
           selectedLocalId={selectedStep?.localId ?? null}
+          searchResetToken={procedureSearchResetToken}
           readOnly={readOnly}
           onSelect={(localId) => {
             const step = procedureSteps.find((item) => item.localId === localId);
@@ -98,6 +102,8 @@ export function AssemblyTemplateEditorLeftPane() {
             incompleteAreaIds={incompleteAreaIds}
             selectedArea={selectedArea}
             selectedAreaId={selectedAreaId}
+            expandedAreaDetails={expandedAreaDetails}
+            onToggleAreaDetails={toggleAreaDetails}
             templateName={templateName}
             modelCode={modelCode}
             machineNameSelectionRequired={machineNameSelectionRequired}
