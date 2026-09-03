@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 
+import { formatAssemblyEditorName } from './assemblyTemplateGuidePresentation';
+
 import type { AssemblyDraftArea } from './assemblyTemplateDraft';
 import type { AssemblyTemplateProcedureDraftItem } from './assemblyTemplateProcedureDraft';
 
@@ -98,7 +100,7 @@ export function AssemblyTemplateProcedurePane({
   return (
     <section
       id="assembly-procedure-pane"
-      className="min-h-0 overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-2"
+      className="min-h-0 min-w-0 overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-2"
     >
       <div className="flex items-center justify-between gap-2">
         <div>
@@ -118,13 +120,13 @@ export function AssemblyTemplateProcedurePane({
           文書追加
         </Button>
       </div>
-      <div className="mt-2 grid gap-1.5">
+      <div className="mt-2 grid min-w-0 grid-cols-1 gap-1.5">
         {items.map(({ item, used }, index) => (
           <div
             key={item.localId}
             id={`assembly-document-${item.localId}`}
             className={clsx(
-              'rounded border bg-slate-950/55 p-1.5',
+              'min-w-0 rounded border bg-slate-950/55 p-1.5',
               selectedPageKey.startsWith(`${item.localId}:`)
                 ? 'border-cyan-300/70'
                 : 'border-white/10'
@@ -132,15 +134,18 @@ export function AssemblyTemplateProcedurePane({
           >
             <button
               type="button"
-              className="flex min-h-11 w-full items-start gap-2 text-left"
+              className="flex min-h-11 w-full min-w-0 items-start gap-2 text-left"
               onClick={() => onFocusItem(item)}
             >
               <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded bg-white/10 text-xs font-bold">
                 {used ? index + 1 : '—'}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-bold">
-                  {item.label.trim() || item.document.displayTitle?.trim() || item.document.title}
+                <span
+                  className="block truncate text-xs font-bold"
+                  title={item.label.trim() || item.document.displayTitle?.trim() || item.document.title}
+                >
+                  {formatAssemblyEditorName(item.label.trim() || item.document.displayTitle?.trim() || item.document.title)}
                 </span>
                 <span className="block truncate text-[0.65rem] text-white/50">
                   {item.documentType === 'assembly_procedure_document' ? '組立手順書' : 'PDF要領書'}
@@ -150,8 +155,8 @@ export function AssemblyTemplateProcedurePane({
               </span>
             </button>
             {item.label.trim() ? (
-              <p className="mt-1 truncate text-[0.65rem] text-white/60">
-                表示名: {item.label.trim()}
+              <p className="mt-1 truncate text-[0.65rem] text-white/60" title={item.label.trim()}>
+                表示名: {formatAssemblyEditorName(item.label.trim())}
               </p>
             ) : null}
             <div className="mt-1 grid grid-cols-2 gap-1">
@@ -178,10 +183,10 @@ export function AssemblyTemplateProcedurePane({
               </Button>
             </div>
             {expandedDocumentLabels.has(item.localId) ? (
-            <label className="mt-1 grid gap-0.5 text-[0.65rem] font-semibold text-white/55">
+            <label className="mt-1 grid min-w-0 grid-cols-1 gap-0.5 text-[0.65rem] font-semibold text-white/55">
               表示ラベル
               <Input
-                className="min-h-11 !px-2 !py-1 text-xs"
+                className="min-h-11 min-w-0 !px-2 !py-1 text-xs"
                 value={item.label}
                 maxLength={120}
                 disabled={busy || readOnly}
@@ -304,15 +309,22 @@ export function AssemblyTemplateProcedurePane({
           >
             <button
               type="button"
-              className="min-h-10 min-w-0 flex-1 truncate px-2 text-left text-xs font-bold"
+              className="flex min-h-10 min-w-0 flex-1 items-center gap-2 px-2 text-left text-xs font-bold"
               onClick={() => onSelectArea(area.id)}
             >
-              {area.processNo.trim() || area.areaCode.trim()
-                ? `${area.processNo || '未入力'}-${area.areaCode || '未入力'}`
-                : `工程 ${index + 1}`}
+              <span
+                className="min-w-0 flex-1 truncate"
+                title={area.processNo.trim() || area.areaCode.trim()
+                  ? `${area.processNo || '未入力'}-${area.areaCode || '未入力'}`
+                  : `工程 ${index + 1}`}
+              >
+                {formatAssemblyEditorName(area.processNo.trim() || area.areaCode.trim()
+                  ? `${area.processNo || '未入力'}-${area.areaCode || '未入力'}`
+                  : `工程 ${index + 1}`)}
+              </span>
               <span
                 className={clsx(
-                  'ml-2 text-[0.65rem]',
+                  'shrink-0 text-[0.65rem]',
                   incompleteAreaIds.has(area.id) ? 'text-amber-200' : 'text-emerald-200'
                 )}
               >

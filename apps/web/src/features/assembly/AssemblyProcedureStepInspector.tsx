@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 
 import { AssemblyProcedureCropMinimap } from './AssemblyProcedureCropView';
+import { assemblyEditorPageName } from './assemblyTemplateGuidePresentation';
 
 import type { AssemblyProcedureStepDraft } from './assemblyProcedureStepDraft';
 import type { AssemblyEditorPageOption } from './assemblyTemplateDraft';
@@ -45,27 +46,34 @@ export function AssemblyProcedureStepInspector({
   };
 
   return (
-    <div className="grid min-w-0 gap-3">
-      <div>
+    <div className="grid min-w-0 grid-cols-1 gap-3">
+      <div className="min-w-0">
         <h2 className="text-base font-bold">手順指示</h2>
-        <p className="mt-0.5 truncate text-xs text-white/55">
-          {page?.label ?? `ページ ${step.pageIndex + 1}`} ·{' '}
-          {step.viewMode === 'crop' ? '矩形フォーカス' : 'ページ全体'}
+        <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-white/55">
+          {page ? (
+            <span className="min-w-0 flex-1 truncate" title={page.label}>
+              {assemblyEditorPageName(page.label, page.pageIndex)}
+            </span>
+          ) : null}
+          <span className="shrink-0">
+            P{step.pageIndex + 1} · {step.viewMode === 'crop' ? '矩形' : '全体'}
+          </span>
         </p>
       </div>
-      <label className="grid gap-1 text-xs font-semibold text-white/70">
+      <label className="grid min-w-0 grid-cols-1 gap-1 text-xs font-semibold text-white/70">
         タイトル
         <Input
+          className="min-w-0"
           value={step.title}
           maxLength={120}
           disabled={readOnly}
           onChange={(event) => onPatch({ title: event.target.value.slice(0, 120) })}
         />
       </label>
-      <label className="grid gap-1 text-xs font-semibold text-white/70">
+      <label className="grid min-w-0 grid-cols-1 gap-1 text-xs font-semibold text-white/70">
         指示文
         <textarea
-          className="min-h-28 resize-y rounded border border-white/10 bg-slate-950 p-2 text-sm text-white"
+          className="min-h-28 w-full min-w-0 resize-y rounded border border-white/10 bg-slate-950 p-2 text-sm text-white"
           value={step.instructionText}
           maxLength={1000}
           disabled={readOnly}
@@ -77,7 +85,7 @@ export function AssemblyProcedureStepInspector({
           {step.instructionText.length}/1000
         </span>
       </label>
-      <fieldset className="grid grid-cols-3 gap-1">
+      <fieldset className="grid min-w-0 grid-cols-3 gap-1">
         <legend className="mb-1 text-xs font-semibold text-white/70">重要度</legend>
         {([
           ['normal', '○ 標準'],
@@ -98,13 +106,13 @@ export function AssemblyProcedureStepInspector({
         ))}
       </fieldset>
       {step.crop && page ? (
-        <div className="grid gap-2 rounded border border-cyan-300/20 bg-cyan-950/20 p-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-bold">元ページ内の位置</span>
+        <div className="grid min-w-0 grid-cols-1 gap-2 rounded border border-cyan-300/20 bg-cyan-950/20 p-2">
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-xs font-bold" title="元ページ内の位置">元ページ内の位置</span>
             <Button
               type="button"
               variant="ghostOnDark"
-              className="min-h-10 !px-2 text-xs"
+              className="min-h-10 shrink-0 !px-2 text-xs"
               aria-pressed={showFullPage}
               onClick={() => onShowFullPageChange(!showFullPage)}
             >

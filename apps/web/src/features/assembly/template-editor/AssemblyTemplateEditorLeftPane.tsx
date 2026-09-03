@@ -47,7 +47,7 @@ export function AssemblyTemplateEditorLeftPane() {
     templateId
   } = useAssemblyTemplateEditor();
   return procedurePaneOpen ? (
-    <aside className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
+    <aside className="flex min-h-[32rem] min-w-0 flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
       <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-white/10 p-1">
         <Button
           type="button"
@@ -89,7 +89,7 @@ export function AssemblyTemplateEditorLeftPane() {
           markerProjectionByStepId={markerProjectionByStepId}
         />
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto">
           <AssemblyTemplateProcedurePane
             items={displayProcedureItems}
             selectedPageKey={selectedPageKey}

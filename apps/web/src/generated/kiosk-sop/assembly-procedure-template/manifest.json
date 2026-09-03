@@ -1,6 +1,6 @@
 {
   "artifacts": {
-    "manual.html": "2035f6e6d2ef51977680d1da9a40ea6dc448d903ccab358cdef5d8b7a68116f1",
+    "manual.html": "de6382ebba25f8bdb9e6810f4a301e34b7ac44876152e84a0f7e61ea6f9c9ce4",
     "screens/assembly-document-editor-auth.png": "a53d101b22f452907863254268632c0c350624bfbca8cae83fd239d37c523dc9",
     "screens/assembly-document-editor-conflict.png": "83499b618a172b641eb5451feeed38b37357a1f7e8c0baa2768bf3d608f79f3f",
     "screens/assembly-document-editor-image-properties.png": "6d96cd0427515239de0b5b91bccd3d5a3420c958afe4e3d8999886b5a2fcb367",
@@ -15,7 +15,7 @@
     "screens/assembly-procedure-edit.png": "c57689f626c3e807cc6a29811e97552a00de666ccf80446e558cd30f8fc9bfdd",
     "screens/assembly-revision.png": "c57689f626c3e807cc6a29811e97552a00de666ccf80446e558cd30f8fc9bfdd",
     "screens/assembly-template-auth-basics.png": "760abfd9812fbbbff209f4b912bd0a04a39f8cc3a6eb17429b205070725a0848",
-    "screens/assembly-template-markers.png": "2e7a879592a3d52cc86910f9d6ada98bb428f74e5d064ea784056a1f45d5c9c1",
+    "screens/assembly-template-markers.png": "856b122f3dd740ad1bd7d7f944bf75e80da913b75802f1c6fd16036327b4e944",
     "screens/assembly-template-procedure.png": "760abfd9812fbbbff209f4b912bd0a04a39f8cc3a6eb17429b205070725a0848",
     "screens/assembly-template-save.png": "760abfd9812fbbbff209f4b912bd0a04a39f8cc3a6eb17429b205070725a0848",
     "sheets/assembly-document-editor-auth.png": "bcf2552364912bb962ba9cc440e8f38f5e98312c2ae0d0f7c441fad56aef47d6",
@@ -32,7 +32,7 @@
     "sheets/assembly-procedure-edit.png": "3123e965590d478995b8a12df134e213de341609977211f9f958da692d8fd98a",
     "sheets/assembly-revision.png": "caff940a8ec35a3a6a70eb012b637385a0e736a66c2c148557144b4c3100657d",
     "sheets/assembly-template-auth-basics.png": "3e36c627aa0899cdc0bfe5caaaacbec978d06e248ec327fe7a5f1f574fe839cd",
-    "sheets/assembly-template-markers.png": "b5864bc353e55dedbe99245167b33614d81df8a2fffbec4cc1fc119766d45b27",
+    "sheets/assembly-template-markers.png": "d5bab64a567772d0382c78c27e274cbefa38125b133668fb9ea5dbb387459a48",
     "sheets/assembly-template-procedure.png": "bb9ccccb757632a8013be4c2c6f01e08837091f7abd24b2004c3b7ea09aa2807",
     "sheets/assembly-template-save.png": "cd49ad1ce15b1d20a2d55dc1fc4185574d938e36bcf028cfef5e5afaad889f55"
   },
@@ -495,7 +495,7 @@
       }
     ]
   },
-  "htmlSha256": "2035f6e6d2ef51977680d1da9a40ea6dc448d903ccab358cdef5d8b7a68116f1",
+  "htmlSha256": "de6382ebba25f8bdb9e6810f4a301e34b7ac44876152e84a0f7e61ea6f9c9ce4",
   "schemaVersion": 1,
-  "sourceSha256": "f4aa68c081293aa5af805a57b31dc4066b3a2c4e40875dd839a4c9b4b6313c6f"
+  "sourceSha256": "14e7b1e4e448185bc78377a9304d4b388876ce2951d0cf8e0f5d56c80388fe4d"
 }

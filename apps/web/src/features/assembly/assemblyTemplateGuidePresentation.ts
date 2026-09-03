@@ -4,6 +4,18 @@ import type {
   AssemblyTemplateReadinessStatus
 } from './assemblyTemplateReadiness';
 
+// Display only: do not use this for stored values or search keys.
+export function formatAssemblyEditorName(value: string): string {
+  return value.replace(/[Ａ-Ｚａ-ｚ０-９\u3000]/g, (character) =>
+    character === '　' ? ' ' : String.fromCharCode(character.charCodeAt(0) - 0xfee0)
+  );
+}
+
+export function assemblyEditorPageName(label: string, pageIndex: number): string {
+  const suffix = ` / ${pageIndex + 1}ページ`;
+  return formatAssemblyEditorName(label.endsWith(suffix) ? label.slice(0, -suffix.length) : label);
+}
+
 export type AssemblyTemplateGuideStagePresentation = {
   id: AssemblyTemplateReadinessStage;
   step: number;

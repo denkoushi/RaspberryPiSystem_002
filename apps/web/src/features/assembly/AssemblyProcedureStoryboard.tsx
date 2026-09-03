@@ -15,6 +15,7 @@ import {
   assemblyProcedureStepDocumentKey,
   findPageForProcedureStep
 } from './assemblyProcedureStepDraft';
+import { assemblyEditorPageName, formatAssemblyEditorName } from './assemblyTemplateGuidePresentation';
 
 import type { AssemblyProcedureStepDraft } from './assemblyProcedureStepDraft';
 import type { AssemblyEditorPageOption } from './assemblyTemplateDraft';
@@ -181,8 +182,13 @@ export function AssemblyProcedureStoryboard({
                     </span>
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-xs font-bold">
-                      {step.title.trim() || page?.label || `手順 ${sourceIndex + 1}`}
+                    <p
+                      className="truncate text-xs font-bold"
+                      title={step.title.trim() || page?.label || `手順 ${sourceIndex + 1}`}
+                    >
+                      {step.title.trim()
+                        ? formatAssemblyEditorName(step.title.trim())
+                        : page ? assemblyEditorPageName(page.label, page.pageIndex) : `手順 ${sourceIndex + 1}`}
                     </p>
                     <p className="mt-1 truncate text-[0.65rem] text-white/55">
                       P{step.pageIndex + 1} · {step.viewMode === 'crop' ? '矩形' : '全体'} ·{' '}
