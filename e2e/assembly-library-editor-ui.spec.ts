@@ -310,7 +310,7 @@ async function selectAssemblyMachineName(page: Page, machineName = 'L300KP'): Pr
   if (await page.getByRole('button', { name: '機種名を選ぶ' }).count() === 0) {
     const tab = page.getByRole('button', { name: '文書・工程', exact: true });
     if (await tab.count() > 0) await tab.click();
-    const basics = page.getByText('基本設定', { exact: true });
+    const basics = page.getByRole('button', { name: /^基本設定(?: |$)/ });
     if (await basics.count() > 0) await basics.click();
   }
   await page.getByRole('button', { name: '機種名を選ぶ' }).click();
@@ -1229,6 +1229,8 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   await page.getByRole('button', { name: '手順', exact: true }).click();
   await expect(storyboard.locator('article')).toHaveCount(2);
 
+  // 全ページ追加は新文書へ移動する。元文書の矩形・共有マーカーを検証するため戻す。
+  await storyboard.locator('article').first().getByRole('button').first().press('Enter');
   const canvas = page.getByTestId('assembly-procedure-canvas');
   const sourceImage = canvas.locator('img').last();
   await expect(sourceImage).toBeVisible();
