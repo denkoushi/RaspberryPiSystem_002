@@ -17,6 +17,8 @@ type Props = {
   incompleteAreaIds: ReadonlySet<string>;
   selectedArea: AssemblyDraftArea | null;
   selectedAreaId: string;
+  expandedAreaDetails: ReadonlySet<string>;
+  onToggleAreaDetails: (areaId: string) => void;
   templateName: string;
   modelCode: string;
   machineNameSelectionRequired: boolean;
@@ -49,6 +51,8 @@ export function AssemblyTemplateProcedurePane({
   incompleteAreaIds,
   selectedArea,
   selectedAreaId,
+  expandedAreaDetails,
+  onToggleAreaDetails,
   templateName,
   modelCode,
   machineNameSelectionRequired,
@@ -102,8 +106,8 @@ export function AssemblyTemplateProcedurePane({
       id="assembly-procedure-pane"
       className="min-h-0 min-w-0 overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-2"
     >
-      <div className="flex items-center justify-between gap-2">
-        <div>
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="min-w-0">
           <h2 className="text-[1rem] font-bold">使用文書</h2>
           <p className="text-[0.68rem] font-semibold text-white/55">
             文書順は表示手順で最初に現れる順です。
@@ -112,7 +116,7 @@ export function AssemblyTemplateProcedurePane({
         <Button
           type="button"
           variant="ghostOnDark"
-          className="min-h-11 !px-2 !py-1 text-xs"
+          className="min-h-11 shrink-0 !px-2 !py-1 text-xs"
           data-kiosk-sop-target="assembly-editor-document-add"
           disabled={busy || readOnly || items.length >= 50}
           onClick={onOpenDocumentLibrary}
@@ -120,6 +124,11 @@ export function AssemblyTemplateProcedurePane({
           文書追加
         </Button>
       </div>
+      {items.some(({ used }) => !used) ? (
+        <p className="mt-2 text-xs text-amber-200">
+          未使用の文書を選び、中央の「全体追加」「矩形追加」で手順を追加してください。保存前に各文書を1手順以上で使用します。
+        </p>
+      ) : null}
       <div className="mt-2 grid min-w-0 grid-cols-1 gap-1.5">
         {items.map(({ item, used }, index) => (
           <div
@@ -203,6 +212,7 @@ export function AssemblyTemplateProcedurePane({
         className="mt-3 rounded border border-white/10 bg-slate-950/35 p-2"
       >
         <h2 className="text-sm font-bold">基本設定</h2>
+        <p className="mt-1 text-xs text-white/60">基本設定は、このテンプレートのすべての文書に共通です。</p>
         <div className="mt-2 grid gap-2">
           {machineNameSelectionRequired ? (
             <div className="grid gap-1 text-xs font-semibold text-white/70">
@@ -314,13 +324,13 @@ export function AssemblyTemplateProcedurePane({
             >
               <span
                 className="min-w-0 flex-1 truncate"
-                title={area.processNo.trim() || area.areaCode.trim()
-                  ? `${area.processNo || '未入力'}-${area.areaCode || '未入力'}`
-                  : `工程 ${index + 1}`}
+                title={[area.processNo.trim(), area.areaCode.trim()].filter(Boolean).join('-')
+                  || area.areaName.trim() || `工程 ${index + 1}`}
               >
-                {formatAssemblyEditorName(area.processNo.trim() || area.areaCode.trim()
-                  ? `${area.processNo || '未入力'}-${area.areaCode || '未入力'}`
-                  : `工程 ${index + 1}`)}
+                {formatAssemblyEditorName(
+                  [area.processNo.trim(), area.areaCode.trim()].filter(Boolean).join('-')
+                  || area.areaName.trim() || `工程 ${index + 1}`
+                )}
               </span>
               <span
                 className={clsx(
@@ -377,8 +387,24 @@ export function AssemblyTemplateProcedurePane({
       {selectedArea ? (
         <div
           id={`assembly-area-${selectedArea.id}`}
-          className="mt-3 grid grid-cols-2 gap-2"
+          tabIndex={-1}
+          className="mt-3 min-w-0"
         >
+          <Button
+            type="button"
+            variant="ghostOnDark"
+            className="min-h-11 w-full !px-2 text-xs"
+            aria-expanded={expandedAreaDetails.has(selectedArea.id)}
+            aria-controls={`assembly-area-details-${selectedArea.id}`}
+            onClick={() => onToggleAreaDetails(selectedArea.id)}
+          >
+            詳細（任意）
+          </Button>
+          {expandedAreaDetails.has(selectedArea.id) ? (
+          <div
+            id={`assembly-area-details-${selectedArea.id}`}
+            className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2"
+          >
           {([
             ['processNo', '工程No.'],
             ['areaCode', 'エリアコード'],
@@ -387,12 +413,12 @@ export function AssemblyTemplateProcedurePane({
           ] as const).map(([key, label]) => (
             <label
               key={key}
-              className="grid gap-1 text-xs font-semibold text-white/70"
+              className="grid min-w-0 gap-1 text-xs font-semibold text-white/70"
             >
               {label}
               <Input
                 id={`assembly-area-${selectedArea.id}-${key}`}
-                className="min-h-11"
+                className="min-h-11 min-w-0"
                 value={selectedArea[key]}
                 maxLength={key === 'areaName' ? 200 : 80}
                 disabled={busy || readOnly}
@@ -402,6 +428,8 @@ export function AssemblyTemplateProcedurePane({
               />
             </label>
           ))}
+          </div>
+          ) : null}
         </div>
       ) : null}
     </section>

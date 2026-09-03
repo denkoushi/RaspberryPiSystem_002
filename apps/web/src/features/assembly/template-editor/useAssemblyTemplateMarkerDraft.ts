@@ -427,7 +427,7 @@ export function useAssemblyTemplateMarkerDraft(input: MarkerDraftInput) {
         label:
           area.areaName.trim() ||
           [area.processNo.trim(), area.areaCode.trim()].filter(Boolean).join('-') ||
-          '未入力の工程',
+          `工程${areas.findIndex((candidate) => candidate.id === area.id) + 1}`,
         boltCount: area.bolts.length
       });
     },

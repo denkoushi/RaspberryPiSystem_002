@@ -8,6 +8,7 @@ import { AssemblyTemplateRecoveryDialog } from './AssemblyTemplateRecoveryDialog
 export function AssemblyTemplateEditorDialogs() {
   const {
     addDocument: addProcedureDocument,
+    addingDocumentId,
     busy,
     changeModelCode,
     confirmDeleteArea,
@@ -41,8 +42,9 @@ export function AssemblyTemplateEditorDialogs() {
         open={documentLibraryOpen}
         documents={documents}
         procedureItems={procedureItems}
+        addingDocumentId={addingDocumentId}
         search={documentSearch}
-        readOnly={readOnly}
+        readOnly={readOnly || busy}
         onSearchChange={setDocumentSearch}
         onAdd={addProcedureDocument}
         onClose={() => setDocumentLibraryOpen(false)}

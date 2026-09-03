@@ -48,6 +48,40 @@ const guidedCreateCapabilityGroup = {
   models: []
 } as const;
 
+const registeredWrenchModel = {
+  id: 'registered-model',
+  manufacturer: 'Test',
+  modelNumber: 'TW-100',
+  torqueMinNm: '1',
+  torqueMaxNm: '100',
+  resolutionNm: '0.01',
+  communicationType: 'manual',
+  outputProfile: null,
+  settingVerificationMode: 'REGISTERED_SETTING',
+  isActive: true
+};
+
+const registeredWrench = {
+  id: 'wrench-1',
+  modelId: registeredWrenchModel.id,
+  serialNumber: 'SERIAL-ＡＢＣ１２３',
+  model: registeredWrenchModel,
+  measuringInstrument: {
+    id: 'instrument-1', name: '登録レンチ', managementNumber: 'TW-1',
+    storageLocation: null, calibrationExpiryDate: null, status: 'AVAILABLE'
+  },
+  settingHistories: [{
+    id: 'setting-1', lowerLimit: '81.25', nominalTorque: '90.25', upperLimit: '99.25',
+    unit: 'N·m', lowerLimitNm: '81.25', nominalTorqueNm: '90.25', upperLimitNm: '99.25',
+    effectiveAt: '2026-09-01T00:00:00.000Z', reason: null
+  }]
+};
+
+const registeredSettingGroup = {
+  ...guidedCreateCapabilityGroup,
+  models: [{ modelId: registeredWrenchModel.id, model: registeredWrenchModel }]
+};
+
 type AssemblyEditorEvidence = {
   templateBodies: Array<Record<string, unknown>>;
 };
@@ -57,7 +91,8 @@ async function mockKioskApis(
   deployNotice = false,
   editorEvidence?: AssemblyEditorEvidence,
   procedureDocuments: ReadonlyArray<Record<string, unknown>> = unifiedEditorDocuments,
-  capabilityGroups: ReadonlyArray<Record<string, unknown>> = [guidedCreateCapabilityGroup]
+  capabilityGroups: ReadonlyArray<Record<string, unknown>> = [guidedCreateCapabilityGroup],
+  torqueWrenches: ReadonlyArray<Record<string, unknown>> = []
 ): Promise<void> {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -138,6 +173,10 @@ async function mockKioskApis(
       await route.fulfill({
         json: { capabilityGroups }
       });
+      return;
+    }
+    if (path === '/api/torque-wrenches') {
+      await route.fulfill({ json: { torqueWrenches } });
       return;
     }
     await route.fulfill({ json: {} });
@@ -245,6 +284,10 @@ async function mockGuidedWorkflowApis(page: Page): Promise<void> {
       await route.fulfill({ json: { capabilityGroups: [guidedCreateCapabilityGroup] } });
       return;
     }
+    if (path === '/api/torque-wrenches') {
+      await route.fulfill({ json: { torqueWrenches: [] } });
+      return;
+    }
     await route.fulfill({ json: {} });
   });
 }
@@ -286,10 +329,103 @@ async function fillAssemblyTemplateStructure(page: Page): Promise<void> {
   const pane = page.locator('#assembly-procedure-pane');
   await pane.locator('#assembly-template-procedure-pattern').fill('標準');
   await expect(pane.locator('#assembly-template-name')).toHaveValue('L300KP 標準 組立');
+  await pane.getByRole('button', { name: '詳細（任意）' }).click();
   await pane.locator('input[id$="-processNo"]').fill('10');
   await pane.locator('input[id$="-areaCode"]').fill('A1');
   await pane.locator('input[id$="-unitCode"]').fill('U1');
   await pane.locator('input[id$="-areaName"]').fill('本体組立');
+}
+
+async function unlockAssemblyEditor(page: Page) {
+  await page.getByPlaceholder('パスワード').fill('2520');
+  await page.getByRole('button', { name: '認証', exact: true }).click();
+  await expect(page.getByTestId('assembly-unified-editor-workspace')).toBeVisible();
+}
+
+for (const viewport of [...viewports, { width: 900, height: 900 }]) {
+  test(`assembly input guidance saves optional fields and distinguishes document additions at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    const evidence: AssemblyEditorEvidence = { templateBodies: [] };
+    await page.setViewportSize(viewport);
+    await mockKioskApis(page, false, evidence, unifiedEditorDocuments, [registeredSettingGroup], [registeredWrench]);
+    await page.goto('/kiosk/assembly/templates/new', { waitUntil: 'networkidle' });
+    await unlockAssemblyEditor(page);
+    await page.getByRole('button', { name: '文書・工程', exact: true }).click();
+    const header = page.getByTestId('assembly-template-editor-header');
+    await expect(header.getByText('保存済み', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '詳細（任意）' }).click();
+    await page.getByRole('button', { name: '詳細（任意）' }).click();
+    await expect(header.getByText('保存済み', { exact: true })).toBeVisible();
+    await selectAssemblyMachineName(page);
+    const left = page.locator('#assembly-procedure-pane');
+    await left.locator('#assembly-template-procedure-pattern').fill('標準');
+    await expect(left.getByRole('button', { name: '詳細（任意）' })).toHaveAttribute('aria-expanded', 'false');
+    await expect(left.locator('input[id$="-processNo"]')).toHaveCount(0);
+    await expect(left).toContainText('すべての文書に共通');
+
+    await left.getByRole('button', { name: '文書追加', exact: true }).click();
+    let library = page.getByRole('dialog');
+    await library.locator('li').filter({ hasText: unifiedEditorDocuments[0].name })
+      .getByRole('button', { name: '文書だけ追加', exact: true }).click();
+    await expect(left).toBeVisible();
+    await expect(left).toContainText('未使用');
+    await expect(page.getByRole('combobox', { name: 'ページ', exact: true }).locator('option:checked'))
+      .toContainText(unifiedEditorDocuments[0].name);
+    await page.getByRole('button', { name: '手順', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '手順 0/300' })).toBeVisible();
+    await page.getByRole('textbox', { name: '手順検索' }).fill('存在しない手順');
+
+    // Adding all pages must reveal only the newly added document, not auto-use the first one.
+    await page.getByRole('button', { name: '文書・工程', exact: true }).click();
+    await page.getByRole('button', { name: '文書追加', exact: true }).first().click();
+    library = page.getByRole('dialog');
+    await library.locator('li').filter({ hasText: unifiedEditorDocuments[1].name })
+      .getByRole('button', { name: /^(追加|全ページを手順へ追加)$/ }).click();
+    await expect(page.getByRole('heading', { name: '手順 1/300' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: '手順検索' })).toHaveValue('');
+    await expect(page.getByRole('combobox', { name: 'ページ', exact: true }).locator('option:checked'))
+      .toContainText(unifiedEditorDocuments[1].name);
+
+    await page.getByRole('button', { name: '文書・工程', exact: true }).click();
+    await left.locator('[id^="assembly-document-"]').filter({ hasText: unifiedEditorDocuments[0].name })
+      .locator('button').first().click();
+    await page.getByRole('button', { name: '全体追加', exact: true }).click();
+    const image = page.getByTestId('assembly-procedure-canvas').locator('img').last();
+    await image.scrollIntoViewIfNeeded();
+    const box = (await image.boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    const right = page.getByTestId('assembly-editor-settings-pane');
+    await right.getByRole('combobox', { name: '適合トルクレンチグループを検索' }).fill('M6 30mm');
+    await right.getByRole('option', { name: /M6 30mm 標準/ }).click();
+    await expect(right.locator('input[id$="-lowerLimit"]')).toHaveValue('81.25');
+    await expect(right.locator('input[id$="-nominalTorque"]')).toHaveValue('90.25');
+    await expect(right.locator('input[id$="-upperLimit"]')).toHaveValue('99.25');
+    await expect(right.locator('select[id$="-unit"]')).toHaveValue('N·m');
+    await expectEditorControlsFitHorizontally(right);
+
+    await page.getByRole('button', { name: '文書・工程', exact: true }).click();
+    await left.getByRole('button', { name: '詳細（任意）' }).click();
+    await left.locator('input[id$="-areaName"]').fill('一時入力');
+    await left.getByRole('button', { name: '詳細（任意）' }).click();
+    await left.getByRole('button', { name: '詳細（任意）' }).click();
+    await expect(left.locator('input[id$="-areaName"]')).toHaveValue('一時入力');
+    await left.locator('input[id$="-areaName"]').fill('');
+    await expectEditorControlsFitHorizontally(left);
+    await left.getByRole('button', { name: '詳細（任意）' }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect.poll(() => evidence.templateBodies.length).toBe(1);
+    const payload = evidence.templateBodies[0] as {
+      areas: Array<Record<string, unknown> & { bolts: Array<Record<string, unknown>> }>;
+      procedureItems: Array<{ assemblyProcedureDocumentId: string }>;
+      procedureSteps: unknown[];
+    };
+    expect(payload.areas[0]).toMatchObject({ processNo: '', areaCode: '', unitCode: '', areaName: '' });
+    expect(payload.areas[0].bolts[0]).toMatchObject({
+      lowerLimit: 81.25, nominalTorque: 90.25, upperLimit: 99.25, unit: 'N·m'
+    });
+    expect(payload.procedureSteps).toHaveLength(2);
+    expect(payload.procedureItems.map((item) => item.assemblyProcedureDocumentId))
+      .toEqual(['procedure-secondary', 'procedure-primary']);
+  });
 }
 
 async function fillSelectedAssemblyBolt(page: Page): Promise<void> {
@@ -306,6 +442,55 @@ async function fillSelectedAssemblyBolt(page: Page): Promise<void> {
   await settings.locator('input[id$="-upperLimit"]').fill('11');
   await settings.locator('select[id$="-unit"]').selectOption('N·m');
   await expect(settings).toContainText('M6 / 30mm / SCM435 / 10.9');
+}
+
+for (const viewport of [...viewports, { width: 900, height: 900 }]) {
+  test(`assembly registered setting confirmation preserves partial inputs at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const profiles = [registeredWrench, {
+      ...registeredWrench, id: 'unregistered-wrench', serialNumber: '未登録レンチ', settingHistories: []
+    }];
+    await mockKioskApis(page, false, undefined, unifiedEditorDocuments, [registeredSettingGroup], profiles);
+    await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', { waitUntil: 'networkidle' });
+    await unlockAssemblyEditor(page);
+    const image = page.getByTestId('assembly-procedure-canvas').locator('img').last();
+    await image.scrollIntoViewIfNeeded();
+    const box = (await image.boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    const right = page.getByTestId('assembly-editor-settings-pane');
+    await right.getByRole('combobox', { name: '適合トルクレンチグループを検索' }).fill('M6 30mm');
+    await right.getByRole('option', { name: /M6 30mm 標準/ }).click();
+    await expect(right.locator('input[id$="-lowerLimit"]')).toHaveValue('');
+    await expect(right.locator('input[id$="-nominalTorque"]')).toHaveValue('');
+    await expect(right.locator('input[id$="-upperLimit"]')).toHaveValue('');
+    const review = right.getByRole('button', { name: '登録設定を確認', exact: true });
+    if (await review.count()) await review.click();
+    await expect(right).toContainText('未登録');
+    await expectEditorControlsFitHorizontally(right);
+    const candidate = right.getByRole('button').filter({ hasText: '81.25' }).first();
+    await expect(candidate).toContainText('TW-100');
+    for (const value of ['81.25', '90.25', '99.25']) {
+      const number = candidate.getByText(value, { exact: true });
+      await expect(number).toBeVisible();
+      expect(await number.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    }
+    await expect(candidate).toContainText('N·m');
+    await candidate.click();
+    await expect(right.locator('input[id$="-nominalTorque"]')).toHaveValue('90.25');
+    await right.locator('input[id$="-lowerLimit"]').fill('8');
+    await candidate.click();
+    let confirm = page.getByRole('dialog', { name: '登録設定で締付値を置き換えますか？' });
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole('button', { name: 'キャンセル', exact: true }).click();
+    await expect(right.locator('input[id$="-lowerLimit"]')).toHaveValue('8');
+    await expect(right.locator('input[id$="-nominalTorque"]')).toHaveValue('90.25');
+    await candidate.click();
+    confirm = page.getByRole('dialog', { name: '登録設定で締付値を置き換えますか？' });
+    await confirm.getByRole('button', { name: '登録設定を取り込む', exact: true }).click();
+    await expect(right.locator('input[id$="-lowerLimit"]')).toHaveValue('81.25');
+    await expect(right.locator('input[id$="-upperLimit"]')).toHaveValue('99.25');
+    await expect(right.locator('select[id$="-unit"]')).toHaveValue('N·m');
+  });
 }
 
 async function expectCssPixelCalloutLayout(page: Page) {
@@ -638,6 +823,8 @@ for (const viewport of viewports) {
       .filter({ hasText: '統合エディター 補助手順書' })
       .getByLabel('追加', { exact: true })
       .click();
+    await expect(page.getByRole('heading', { name: '手順 2/300' })).toBeVisible();
+    await page.getByRole('button', { name: '文書・工程', exact: true }).click();
     await expect(page.locator('#assembly-procedure-pane')).toContainText('統合エディター 補助手順書');
 
     const canvas = page.getByTestId('assembly-procedure-canvas');

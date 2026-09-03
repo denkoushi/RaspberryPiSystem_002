@@ -112,7 +112,7 @@ describe('evaluateAssemblyTemplateReadiness', () => {
     });
   });
 
-  it('groups blank area and bolt fields instead of emitting one issue per field', () => {
+  it('allows blank area fields while still grouping blank bolt fields', () => {
     const input = readyInput();
     input.areas[0] = emptyAssemblyArea();
     input.areas[0]!.id = 'area-blank';
@@ -126,7 +126,7 @@ describe('evaluateAssemblyTemplateReadiness', () => {
 
     const readiness = evaluateAssemblyTemplateReadiness(input);
 
-    expect(readiness.issues.filter((issue) => issue.code === 'area.fields_required')).toHaveLength(1);
+    expect(readiness.issues.filter((issue) => issue.code === 'area.fields_required')).toHaveLength(0);
     expect(readiness.issues.filter((issue) => issue.code === 'bolt.fields_required')).toHaveLength(1);
     expect(
       readiness.issues.find((issue) => issue.code === 'bolt.fields_required')
@@ -142,6 +142,56 @@ describe('evaluateAssemblyTemplateReadiness', () => {
       '単位',
       '適合グループ'
     ]);
+  });
+
+  it('accepts an area with all optional fields blank when its bolt is complete', () => {
+    const input = readyInput();
+    const area = input.areas[0]!;
+    area.processNo = '';
+    area.areaCode = '';
+    area.areaName = '';
+    area.unitCode = '';
+
+    const readiness = evaluateAssemblyTemplateReadiness(input);
+
+    expect(readiness).toEqual({
+      isReady: true,
+      issues: [],
+      stages: {
+        basic: 'complete',
+        procedure: 'complete',
+        areas: 'complete',
+        review: 'complete'
+      }
+    });
+  });
+
+  it('uses the process position when a blank area has no tightening points', () => {
+    const input = readyInput();
+    input.areas[0]!.areaName = '';
+    input.areas[0]!.bolts = [];
+
+    const issue = evaluateAssemblyTemplateReadiness(input).issues.find(
+      (candidate) => candidate.code === 'area.bolts.required'
+    );
+
+    expect(issue?.message).toBe('工程1に締付点を1件以上配置してください。');
+  });
+
+  it('targets the first overlong area field', () => {
+    const input = readyInput();
+    input.areas[0]!.processNo = 'x'.repeat(81);
+    input.areas[0]!.areaName = 'x'.repeat(201);
+
+    const issue = evaluateAssemblyTemplateReadiness(input).issues.find(
+      (candidate) => candidate.code === 'area.fields_too_long'
+    );
+
+    expect(issue?.target).toEqual({
+      kind: 'area',
+      id: 'area-1',
+      field: 'processNo'
+    });
   });
 
   it.each([

@@ -28,7 +28,7 @@ const secondaryPage: AssemblyEditorPageOption = {
 };
 
 describe('assemblyProcedureStepDraftReducer', () => {
-  it('adds, duplicates, moves by number, and caps the storyboard at 300', () => {
+  it('adds, duplicates, moves by number, and rejects an overflowing append atomically', () => {
     const first = createFullPageStepDraft(primaryPage);
     const second = createCropStepDraft(secondaryPage, {
       xRatio: 0.2,
@@ -61,7 +61,20 @@ describe('assemblyProcedureStepDraftReducer', () => {
       type: 'append_pages',
       pages: manyPages
     });
+    expect(steps).toHaveLength(3);
+
+    const availablePages = manyPages.slice(0, 297);
+    steps = assemblyProcedureStepDraftReducer(steps, {
+      type: 'append_pages',
+      pages: availablePages
+    });
     expect(steps).toHaveLength(300);
+    const cappedSteps = steps;
+    steps = assemblyProcedureStepDraftReducer(steps, {
+      type: 'append_pages',
+      pages: [primaryPage]
+    });
+    expect(steps).toBe(cappedSteps);
   });
 
   it('shares markers by source page, maps crop coordinates, and protects the last visible step', () => {

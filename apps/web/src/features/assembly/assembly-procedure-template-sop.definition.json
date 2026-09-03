@@ -180,7 +180,7 @@
           "title": "文書・表示ステップ・切抜き",
           "summary": "画面へ戻り、パスワードを入力して認証→基本情報を済ませてから、文書追加・全体追加・矩形追加を行います。",
           "steps": [
-            { "id": "document-add", "targetId": "assembly-editor-document-add", "necessity": "required", "title": "文書を追加", "description": "公開済み手順書を文書順へ追加します。" },
+            { "id": "document-add", "targetId": "assembly-editor-document-add", "necessity": "required", "title": "文書を追加", "description": "全ページを手順へ追加すると手順側へ移動します。文書だけ追加した場合は、中央の全体追加・矩形追加で手順化してください。保存前に各文書を1手順以上で使います。" },
             { "id": "step-add-full", "targetId": "assembly-editor-step-add-full", "necessity": "required", "title": "全体を追加", "description": "選択ページ全体を表示ステップに追加します。" },
             { "id": "step-add-crop", "targetId": "assembly-editor-step-add-crop", "necessity": "required", "title": "矩形を追加", "description": "ページの範囲を切り抜く表示ステップを追加します。" }
           ]
@@ -190,8 +190,8 @@
           "title": "工程・締結／チェックマーカー・条件設定",
           "summary": "画面へ戻り、パスワードを入力して認証→基本情報を済ませてから、工程・締結・チェックを操作します。",
           "steps": [
-            { "id": "area-add", "targetId": "assembly-editor-area-add", "necessity": "required", "title": "工程を追加", "description": "工程を追加し、工程情報を入力します。" },
-            { "id": "marker-bolt", "targetId": "assembly-editor-marker-bolt", "necessity": "required", "title": "締結を選ぶ", "description": "締結マーカーを選び、図面上へ配置します。" },
+            { "id": "area-add", "targetId": "assembly-editor-area-add", "necessity": "required", "title": "工程を追加", "description": "必要な工程を追加します。工程No.・エリアコード・ユニットコード・エリア名は詳細（任意）から開き、不要なら空欄のまま保存できます。" },
+            { "id": "marker-bolt", "targetId": "assembly-editor-marker-bolt", "necessity": "required", "title": "締結を選ぶ", "description": "締結マーカーを図面上へ配置します。適合グループ選択時、登録設定が1種類で未登録の混在がなければ空のトルク3欄へ入力します。複数設定は選択し、入力済み値の置換は確認します。" },
             { "id": "marker-check", "targetId": "assembly-editor-marker-check", "necessity": "required", "title": "チェックを選ぶ", "description": "チェックマーカーを選び、図面上へ配置します。" }
           ]
         },

@@ -361,6 +361,24 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     expect(screen.getAllByText('丸数字 1').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('falls back to the process position when the current area name is blank', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValueOnce({
+      ...session,
+      template: {
+        ...session.template,
+        areas: session.template.areas.map((area) => ({
+          ...area,
+          sortOrder: 1,
+          areaName: ''
+        }))
+      }
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('工程2')).toBeInTheDocument();
+  });
+
   it('renders configured PDF procedure sequence with flat step navigation', async () => {
     renderPage();
 

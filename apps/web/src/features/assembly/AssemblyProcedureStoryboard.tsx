@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -30,6 +30,7 @@ type Props = {
   onMoveTo: (localId: string, targetIndex: number) => void;
   onDuplicate: (localId: string) => void;
   onRemove: (localId: string) => void;
+  searchResetToken?: number;
   markerProjectionByStepId?: ReadonlyMap<
     string,
     { bolts: AssemblyCanvasBolt[]; checkItems: AssemblyCanvasCheckItem[] }
@@ -52,6 +53,7 @@ export function AssemblyProcedureStoryboard({
   onMoveTo,
   onDuplicate,
   onRemove,
+  searchResetToken,
   markerProjectionByStepId
 }: Props) {
   const [search, setSearch] = useState('');
@@ -80,6 +82,15 @@ export function AssemblyProcedureStoryboard({
     estimateSize: () => 118,
     overscan: 5
   });
+  useEffect(() => {
+    if (searchResetToken == null) return;
+    setSearch('');
+  }, [searchResetToken]);
+  useEffect(() => {
+    if (!selectedLocalId) return;
+    const visibleIndex = visible.findIndex(({ step }) => step.localId === selectedLocalId);
+    if (visibleIndex >= 0) virtualizer.scrollToIndex(visibleIndex);
+  }, [selectedLocalId, visible, virtualizer]);
   const segments = useMemo(() => {
     const result: Array<{ key: string; start: number; count: number }> = [];
     for (const step of steps) {

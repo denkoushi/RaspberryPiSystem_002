@@ -27,6 +27,7 @@ export function AssemblyTemplateEditorInspectorPane() {
     rangeStart,
     readOnly,
     reloadCapabilityCatalog,
+    reloadTorqueWrenchProfiles,
     requestDeleteSelectedBolt,
     requestDeleteSelectedCheckItem,
     selectedBolt,
@@ -42,7 +43,9 @@ export function AssemblyTemplateEditorInspectorPane() {
     setRangeStart,
     setShowFullPage,
     settingsPaneOpen,
-    showFullPage
+    showFullPage,
+    torqueWrenchProfiles,
+    torqueWrenchProfilesStatus
   } = useAssemblyTemplateEditor();
   return settingsPaneOpen ? (
   <section
@@ -96,6 +99,8 @@ export function AssemblyTemplateEditorInspectorPane() {
         }
         capabilityGroups={capabilityGroups}
         capabilityCatalogStatus={capabilityCatalogStatus}
+        torqueWrenchProfiles={torqueWrenchProfiles}
+        torqueWrenchProfilesStatus={torqueWrenchProfilesStatus}
         busy={busy}
         readOnly={readOnly}
         inheritCondition={inheritCondition}
@@ -108,6 +113,7 @@ export function AssemblyTemplateEditorInspectorPane() {
         onRangeEndChange={setRangeEnd}
         onApplyRange={applySelectedConditionToRange}
         onRetryCapabilityCatalog={reloadCapabilityCatalog}
+        onRetryTorqueWrenchProfiles={reloadTorqueWrenchProfiles}
       />
     ) : (
       <>

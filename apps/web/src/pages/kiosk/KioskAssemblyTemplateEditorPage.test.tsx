@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   getKioskDocumentDetail: vi.fn(),
   getTemplate: vi.fn(),
   listCapabilityGroups: vi.fn(),
+  listTorqueWrenches: vi.fn(),
   listMachineNameCandidates: vi.fn(),
   listDocuments: vi.fn(),
   reviseTemplate: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock('../../api/client', () => ({
   listAssemblyMachineNameCandidates: mocks.listMachineNameCandidates,
   listAssemblyProcedureDocumentSummaries: mocks.listDocuments,
   listTorqueWrenchCapabilityGroups: mocks.listCapabilityGroups,
+  listTorqueWrenches: mocks.listTorqueWrenches,
   reviseAssemblyTemplate: mocks.reviseTemplate,
   verifyAssemblyTemplateAccessPassword: mocks.verifyPassword
 }));
@@ -263,6 +265,7 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     vi.clearAllMocks();
     mocks.listDocuments.mockResolvedValue(documents);
     mocks.listCapabilityGroups.mockResolvedValue([capabilityGroupFixture()]);
+    mocks.listTorqueWrenches.mockResolvedValue([]);
     mocks.listMachineNameCandidates.mockResolvedValue({
       candidates: ['L300KP'],
       hasMore: false
@@ -340,6 +343,56 @@ describe('KioskAssemblyTemplateEditorPage', () => {
         document.getElementById('assembly-template-procedure-pattern')
       ).toHaveFocus()
     );
+  });
+
+  it('keeps optional details closed without clearing stored values or dirtying the draft', async () => {
+    const source = templateFixture();
+    mocks.getTemplate.mockResolvedValue(source);
+    renderRoute(`/kiosk/assembly/templates/${source.id}/edit`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート編集' });
+    fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '文書・工程', exact: true }));
+    const header = screen.getByTestId('assembly-template-editor-header');
+    await waitFor(() => expect(within(header).getByText('保存済み')).toBeInTheDocument());
+    expect(screen.queryByLabelText('工程No.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '詳細（任意）' }));
+    expect(screen.getByLabelText('工程No.')).toHaveValue(source.areas[0]!.processNo);
+    fireEvent.click(screen.getByRole('button', { name: '詳細（任意）' }));
+    fireEvent.click(screen.getByRole('button', { name: '手順', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '文書・工程', exact: true }));
+    expect(screen.queryByLabelText('工程No.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '詳細（任意）' }));
+    expect(screen.getByLabelText('工程No.')).toHaveValue(source.areas[0]!.processNo);
+    expect(within(header).getByText('保存済み')).toBeInTheDocument();
+  });
+
+  it('opens optional details and focuses a field with an overlength value', async () => {
+    const source = templateFixture();
+    source.areas[0]!.processNo = 'X'.repeat(81);
+    mocks.getTemplate.mockResolvedValue(source);
+    renderRoute(`/kiosk/assembly/templates/${source.id}/edit`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート編集' });
+    fireEvent.click(screen.getByRole('button', { name: /未完了 \d+件/ }));
+    fireEvent.click(screen.getByRole('button', { name: '工程の入力値が最大文字数を超えています。' }));
+    await waitFor(() => expect(screen.getByLabelText('工程No.')).toHaveFocus());
+    expect(screen.getByRole('button', { name: '詳細（任意）' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('remembers details disclosure independently for each area', async () => {
+    const source = templateFixture({ areas: [areaFixture(), areaFixture('area-second', 2)] });
+    mocks.getTemplate.mockResolvedValue(source);
+    renderRoute(`/kiosk/assembly/templates/${source.id}/edit`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート編集' });
+    fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '文書・工程', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '詳細（任意）' }));
+    fireEvent.click(screen.getByRole('button', { name: /^20-A2/ }));
+    expect(screen.queryByLabelText('工程No.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^10-A1/ }));
+    expect(screen.getByLabelText('工程No.')).toHaveValue('10');
   });
 
   it('keeps the right inspector closed until the operator requests step settings', async () => {

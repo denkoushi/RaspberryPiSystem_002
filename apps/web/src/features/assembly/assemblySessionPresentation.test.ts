@@ -20,6 +20,9 @@ describe('assemblySessionPresentation', () => {
       areaStatusText({ currentAreaName: 'エリアB', currentBoltMarkerNo: 4 })
     ).toBe('エリアB ・ 締付位置 #4');
     expect(
+      areaStatusText({ currentAreaName: '', currentBoltMarkerNo: 4 })
+    ).toBe('工程名なし ・ 締付位置 #4');
+    expect(
       areaStatusText({ currentAreaName: null, currentBoltMarkerNo: null })
     ).toBe('エリア完了 ・ 次工程待ち');
   });

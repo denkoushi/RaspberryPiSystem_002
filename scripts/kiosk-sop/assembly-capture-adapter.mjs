@@ -176,6 +176,7 @@ async function installApiFixtures(page, sheetId, unexpectedRequests) {
     if (path === '/api/assembly/templates/summary') return json(route, { templates: [templateSummary] });
     if (path === '/api/assembly/library/filter-options') return json(route, { options: [] });
     if (path === '/api/torque-wrench-capability-groups') return json(route, { capabilityGroups: [] });
+    if (path === '/api/torque-wrenches') return json(route, { torqueWrenches: [] });
     if (path === '/api/kiosk/assembly/templates/verify-access-password') return json(route, { success: true });
     if (path === '/api/storage/assembly-procedure-assets/sop-overlay-image-1.png') {
       // Keep the existing deterministic SVG fixture bytes; the browser decodes

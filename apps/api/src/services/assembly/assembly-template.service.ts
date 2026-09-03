@@ -181,6 +181,10 @@ function normalizeKey(value: string, fieldName: string): string {
   return trimmed;
 }
 
+function normalizeOptionalAreaText(value: string, maxLength: number): string {
+  return value.trim().slice(0, maxLength);
+}
+
 function clampRatio(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
@@ -259,10 +263,10 @@ function normalizeAreas(
       return {
         ...area,
         sortOrder: areaIndex,
-        processNo: normalizeKey(area.processNo, '工程No.').slice(0, 80),
-        areaCode: normalizeKey(area.areaCode, 'エリアコード').slice(0, 80),
-        areaName: normalizeKey(area.areaName, 'エリア名').slice(0, 200),
-        unitCode: normalizeKey(area.unitCode, 'ユニットコード').slice(0, 80),
+        processNo: normalizeOptionalAreaText(area.processNo, 80),
+        areaCode: normalizeOptionalAreaText(area.areaCode, 80),
+        areaName: normalizeOptionalAreaText(area.areaName, 200),
+        unitCode: normalizeOptionalAreaText(area.unitCode, 80),
         bolts: [...area.bolts]
           .sort((a, b) => a.sortOrder - b.sortOrder)
           .map((bolt, boltIndex) => {
