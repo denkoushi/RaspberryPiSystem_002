@@ -33,6 +33,19 @@ def service(compose: str, name: str) -> str:
 
 
 class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
+    def test_api_runtime_requires_fixed_expat_package(self):
+        runtime = API_DOCKERFILE.split(" AS api-runtime\n", 1)[1]
+        self.assertRegex(runtime, r"apt-get install -y --only-upgrade[^\n]* libexpat1")
+        self.assertIn("dpkg-query -W -f='${Version}' libexpat1", runtime)
+        self.assertIn(
+            'dpkg --compare-versions "${expat_version}" ge \'2.5.0-1+deb12u3\'',
+            runtime,
+        )
+        self.assertIn(
+            'echo "libexpat1 is below the required fixed version: ${expat_version}" >&2; exit 1;',
+            runtime,
+        )
+
     def assert_hardened(self, body: str, runtime: str) -> None:
         self.assertIn(f'user: "${{{runtime}_RUNTIME_UID:-1000}}:${{{runtime}_RUNTIME_GID:-1000}}"', body)
         self.assertIn("read_only: true", body)
