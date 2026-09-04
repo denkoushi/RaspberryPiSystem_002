@@ -32,6 +32,7 @@ type Props = {
   selectedCheckItemId?: string | null;
   onSelectBolt?: (id: string) => void;
   onMoveBolt?: AssemblyProcedureBoltMoveHandler;
+  onMoveCheckItem?: AssemblyProcedureBoltMoveHandler;
   onSelectCheckItem?: (id: string) => void;
   onToggleCheckItem?: (id: string) => void;
   onAddBolt?: (xRatio: number, yRatio: number) => void;
@@ -85,6 +86,7 @@ export function AssemblyProcedureCanvas({
   selectedCheckItemId,
   onSelectBolt,
   onMoveBolt,
+  onMoveCheckItem,
   onSelectCheckItem,
   onToggleCheckItem,
   onAddBolt,
@@ -331,6 +333,7 @@ export function AssemblyProcedureCanvas({
                 selectedCheckItemId={selectedCheckItemId}
                 onSelectBolt={onSelectBolt}
                 onMoveBolt={onMoveBolt}
+                onMoveCheckItem={onMoveCheckItem}
                 onSelectCheckItem={onSelectCheckItem}
                 onToggleCheckItem={onToggleCheckItem}
               />
@@ -401,6 +404,7 @@ export function AssemblyProcedureImageWithMarkers({
   inputTargetBoltId,
   selectedCheckItemId,
   onSelectBolt,
+  onMoveCheckItem,
   onSelectCheckItem,
   onToggleCheckItem,
   onPlacementClick,
@@ -415,6 +419,7 @@ export function AssemblyProcedureImageWithMarkers({
   inputTargetBoltId?: string | null;
   selectedCheckItemId?: string | null;
   onSelectBolt?: (id: string) => void;
+  onMoveCheckItem?: AssemblyProcedureBoltMoveHandler;
   onSelectCheckItem?: (id: string) => void;
   onToggleCheckItem?: (id: string) => void;
   onPlacementClick?: (xRatio: number, yRatio: number) => void;
@@ -446,6 +451,7 @@ export function AssemblyProcedureImageWithMarkers({
       inputTargetBoltId={inputTargetBoltId}
       selectedCheckItemId={selectedCheckItemId}
       onSelectBolt={onSelectBolt}
+      onMoveCheckItem={onMoveCheckItem}
       onSelectCheckItem={onSelectCheckItem}
       onToggleCheckItem={onToggleCheckItem}
     />

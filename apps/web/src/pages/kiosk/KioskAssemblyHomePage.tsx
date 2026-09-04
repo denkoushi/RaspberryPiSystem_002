@@ -106,12 +106,13 @@ export function KioskAssemblyHomePage() {
     }
   }, [expectedLotQuantity, selectedCandidate]);
   const registrationWorkIds = workIdMode === 'auto' ? autoWorkIds : lotSerialNos;
+  const legacyTorqueWrenchRequired = selectedCandidate?.activeTemplate?.traceabilityMode !== 'REQUIRED';
   const serialDraftDuplicate = normalizedSerialDraft.length > 0 && registrationWorkIds.includes(normalizedSerialDraft);
   const canRegisterLot =
     !!selectedCandidate?.activeTemplate &&
     expectedLotQuantity != null &&
     registrationWorkIds.length === expectedLotQuantity &&
-    torqueWrenchId.trim().length > 0;
+    (!legacyTorqueWrenchRequired || torqueWrenchId.trim().length > 0);
 
   const productNosForLotQty = useMemo(() => {
     const productNos = new Set<string>();
@@ -331,7 +332,7 @@ export function KioskAssemblyHomePage() {
         workIdMode,
         ...(workIdMode === 'manual' ? { workIds: registrationWorkIds } : {}),
         targetUnit: selectedCandidate.machineName,
-        torqueWrenchId: torqueWrenchId.trim()
+        ...(legacyTorqueWrenchRequired ? { torqueWrenchId: torqueWrenchId.trim() } : {})
       });
       setLotSerialNos([]);
       setWorkIdMode('auto');
@@ -503,6 +504,7 @@ export function KioskAssemblyHomePage() {
           manualLotQtyDraft={manualLotQtyDraft}
           onManualLotQtyDraftChange={changeManualLotQtyDraft}
           lotQtyLoading={lotQtyLoading}
+          legacyTorqueWrenchRequired={legacyTorqueWrenchRequired}
           torqueWrenchId={torqueWrenchId}
           onTorqueWrenchIdChange={setTorqueWrenchId}
           canRegisterLot={canRegisterLot}

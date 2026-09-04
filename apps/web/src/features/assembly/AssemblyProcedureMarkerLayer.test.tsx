@@ -255,8 +255,9 @@ describe('AssemblyProcedureMarkerLayer bolt dragging', () => {
     expect(onMoveBolt).not.toHaveBeenCalled();
   });
 
-  it('stops marker pointer propagation without making check markers draggable', () => {
+  it('supports the same drag interaction for check markers', () => {
     const onMoveBolt = vi.fn();
+    const onMoveCheckItem = vi.fn();
     const onParentPointerDown = vi.fn();
     render(
       <div onPointerDown={onParentPointerDown}>
@@ -264,6 +265,7 @@ describe('AssemblyProcedureMarkerLayer bolt dragging', () => {
           bolts={[bolt]}
           checkItems={[checkItem]}
           onMoveBolt={onMoveBolt}
+          onMoveCheckItem={onMoveCheckItem}
         />
       </div>
     );
@@ -278,7 +280,9 @@ describe('AssemblyProcedureMarkerLayer bolt dragging', () => {
     fireEvent.pointerUp(checkMarker, { pointerId: 6, clientX: 300, clientY: 150 });
 
     expect(onParentPointerDown).not.toHaveBeenCalled();
-    expect(checkMarker).not.toHaveClass('touch-none', 'cursor-move');
+    expect(checkMarker).toHaveClass('touch-none', 'cursor-move');
     expect(onMoveBolt).toHaveBeenCalledTimes(1);
+    expect(onMoveCheckItem).toHaveBeenCalledTimes(1);
+    expect(onMoveCheckItem).toHaveBeenCalledWith('check-1', { xRatio: 0.725, yRatio: 0.65 });
   });
 });

@@ -1337,7 +1337,11 @@ describe('assembly torque management API', () => {
       fseiban: 'ASMTEST-A1',
       machineName: 'MH-AX',
       machineNameSource: 'production_schedule',
-      activeTemplate: { id: activeTemplateId, name: 'MH-AX 標準' }
+      activeTemplate: {
+        id: activeTemplateId,
+        name: 'MH-AX 標準',
+        traceabilityMode: 'LEGACY'
+      }
     });
     expect(candidates[1]).toMatchObject({
       fseiban: 'ASMTEST-B2',

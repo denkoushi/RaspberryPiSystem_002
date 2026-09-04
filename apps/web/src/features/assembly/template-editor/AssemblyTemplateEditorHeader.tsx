@@ -26,6 +26,7 @@ export function AssemblyTemplateEditorHeader() {
     saveTemplate,
     selectedStep,
     setInspectorMode,
+    setStepSupplementOpen,
     setLeftPaneTab,
     setProcedurePaneOpen,
     settingsPaneOpen,
@@ -98,11 +99,12 @@ export function AssemblyTemplateEditorHeader() {
         disabled={!selectedStep}
         aria-expanded={settingsPaneOpen}
         aria-controls="assembly-editor-settings-pane"
-        onClick={() =>
-          setInspectorMode((current) => (current === 'step' ? 'closed' : 'step'))
-        }
+        onClick={() => {
+          setStepSupplementOpen(true);
+          setInspectorMode('step');
+        }}
       >
-        手順設定
+        注意・補足
       </Button>
       {renderLink({
         to: KIOSK_ASSEMBLY_LIBRARY_PATH,

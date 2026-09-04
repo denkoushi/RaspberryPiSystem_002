@@ -49,6 +49,8 @@ export type AssemblyProcedureBoltMoveHandler = (
   point: AssemblyProcedureMarkerPoint
 ) => void;
 
+export type AssemblyProcedureCheckMoveHandler = AssemblyProcedureBoltMoveHandler;
+
 export type AssemblyProcedureMarkerLayerProps = {
   bolts: AssemblyCanvasBolt[];
   checkItems?: AssemblyCanvasCheckItem[];
@@ -58,6 +60,7 @@ export type AssemblyProcedureMarkerLayerProps = {
   onSelectBolt?: (id: string) => void;
   onMoveBolt?: AssemblyProcedureBoltMoveHandler;
   onSelectCheckItem?: (id: string) => void;
+  onMoveCheckItem?: AssemblyProcedureCheckMoveHandler;
   onToggleCheckItem?: (id: string) => void;
   density?: 'default' | 'compact';
   layoutSize?: { width: number; height: number };
@@ -96,8 +99,9 @@ function zeroOffsetLayout(width: number, height: number): ZoomedImageCanvasLayou
   };
 }
 
-type BoltPointerInteraction = {
-  boltId: string;
+type MarkerPointerInteraction = {
+  markerId: string;
+  onMove?: AssemblyProcedureBoltMoveHandler;
   pointerId: number;
   startClientX: number;
   startClientY: number;
@@ -132,7 +136,7 @@ function setMarkerPosition(
   target.style.top = `${point.yRatio * 100}%`;
 }
 
-function releasePointerCapture(interaction: BoltPointerInteraction): void {
+function releasePointerCapture(interaction: MarkerPointerInteraction): void {
   if (!interaction.captureTarget.releasePointerCapture) return;
   try {
     interaction.captureTarget.releasePointerCapture(interaction.pointerId);
@@ -141,7 +145,7 @@ function releasePointerCapture(interaction: BoltPointerInteraction): void {
   }
 }
 
-function cancelMarkerAnimationFrame(interaction: BoltPointerInteraction): void {
+function cancelMarkerAnimationFrame(interaction: MarkerPointerInteraction): void {
   if (interaction.animationFrameId == null) return;
   cancelAnimationFrame(interaction.animationFrameId);
   interaction.animationFrameId = null;
@@ -155,31 +159,34 @@ export function AssemblyMarkerOverlay({
   selectedCheckItemId,
   onSelectBolt,
   onMoveBolt,
+  onMoveCheckItem,
   onSelectCheckItem,
   onToggleCheckItem,
   density = 'default'
 }: AssemblyProcedureMarkerLayerProps) {
-  const boltPointerRef = useRef<BoltPointerInteraction | null>(null);
+  const markerPointerRef = useRef<MarkerPointerInteraction | null>(null);
 
   useLayoutEffect(() => {
     return () => {
-      const interaction = boltPointerRef.current;
+      const interaction = markerPointerRef.current;
       if (!interaction) return;
       cancelMarkerAnimationFrame(interaction);
       releasePointerCapture(interaction);
-      boltPointerRef.current = null;
+      markerPointerRef.current = null;
     };
   }, []);
 
-  const handleBoltPointerDown = (
+  const handleMarkerPointerDown = (
     event: ReactPointerEvent<HTMLButtonElement>,
-    boltId: string
+    markerId: string,
+    onMove?: AssemblyProcedureBoltMoveHandler
   ) => {
     event.stopPropagation();
-    if (!onMoveBolt || (event.button != null && event.button !== 0)) return;
+    if (event.button != null && event.button !== 0) return;
     const target = event.currentTarget;
-    boltPointerRef.current = {
-      boltId,
+    markerPointerRef.current = {
+      markerId,
+      onMove,
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
@@ -196,8 +203,8 @@ export function AssemblyMarkerOverlay({
     target.setPointerCapture?.(event.pointerId);
   };
 
-  const handleBoltPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const interaction = boltPointerRef.current;
+  const handleMarkerPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const interaction = markerPointerRef.current;
     if (!interaction || interaction.pointerId !== event.pointerId) return;
     event.stopPropagation();
     interaction.maxMovementPx = Math.max(
@@ -216,7 +223,7 @@ export function AssemblyMarkerOverlay({
     event.preventDefault();
     if (interaction.animationFrameId != null) return;
     interaction.animationFrameId = requestAnimationFrame(() => {
-      const current = boltPointerRef.current;
+      const current = markerPointerRef.current;
       if (current !== interaction) return;
       current.animationFrameId = null;
       if (current.dragging && current.pendingPoint) {
@@ -225,11 +232,11 @@ export function AssemblyMarkerOverlay({
     });
   };
 
-  const endBoltPointerInteraction = (
+  const endMarkerPointerInteraction = (
     event: ReactPointerEvent<HTMLButtonElement>,
     cancelled: boolean
   ) => {
-    const interaction = boltPointerRef.current;
+    const interaction = markerPointerRef.current;
     if (!interaction || interaction.pointerId !== event.pointerId) return;
     event.stopPropagation();
     interaction.maxMovementPx = Math.max(
@@ -250,9 +257,9 @@ export function AssemblyMarkerOverlay({
     } else if (!cancelled && interaction.dragging && point) {
       event.preventDefault();
       setMarkerPosition(interaction.captureTarget, point);
-      onMoveBolt?.(interaction.boltId, point);
+      interaction.onMove?.(interaction.markerId, point);
     }
-    boltPointerRef.current = null;
+    markerPointerRef.current = null;
     releasePointerCapture(interaction);
   };
 
@@ -304,10 +311,10 @@ export function AssemblyMarkerOverlay({
             event.stopPropagation();
             onSelectBolt?.(bolt.id);
           }}
-          onPointerDown={(event) => handleBoltPointerDown(event, bolt.id)}
-          onPointerMove={handleBoltPointerMove}
-          onPointerUp={(event) => endBoltPointerInteraction(event, false)}
-          onPointerCancel={(event) => endBoltPointerInteraction(event, true)}
+          onPointerDown={onMoveBolt ? (event) => handleMarkerPointerDown(event, bolt.id, onMoveBolt) : undefined}
+          onPointerMove={onMoveBolt ? handleMarkerPointerMove : undefined}
+          onPointerUp={onMoveBolt ? (event) => endMarkerPointerInteraction(event, false) : undefined}
+          onPointerCancel={onMoveBolt ? (event) => endMarkerPointerInteraction(event, true) : undefined}
           className={clsx(
             'absolute z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-sm font-bold shadow-lg',
             boltMarkerClass(bolt.status, selectedBoltId === bolt.id),
@@ -334,10 +341,14 @@ export function AssemblyMarkerOverlay({
             }
             onSelectCheckItem?.(item.id);
           }}
-          onPointerDown={(event) => event.stopPropagation()}
+          onPointerDown={onMoveCheckItem ? (event) => handleMarkerPointerDown(event, item.id, onMoveCheckItem) : (event) => event.stopPropagation()}
+          onPointerMove={onMoveCheckItem ? handleMarkerPointerMove : undefined}
+          onPointerUp={onMoveCheckItem ? (event) => endMarkerPointerInteraction(event, false) : undefined}
+          onPointerCancel={onMoveCheckItem ? (event) => endMarkerPointerInteraction(event, true) : undefined}
           className={clsx(
             'absolute z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-bold shadow-lg',
-            checkMarkerClass(item, selectedCheckItemId === item.id)
+            checkMarkerClass(item, selectedCheckItemId === item.id),
+            onMoveCheckItem && 'touch-none cursor-move'
           )}
           style={{ left: `${item.xRatio * 100}%`, top: `${item.yRatio * 100}%` }}
         >
@@ -356,6 +367,7 @@ export function AssemblyProcedureMarkerLayer({
   selectedCheckItemId,
   onSelectBolt,
   onMoveBolt,
+  onMoveCheckItem,
   onSelectCheckItem,
   onToggleCheckItem,
   density = 'default',
@@ -413,6 +425,7 @@ export function AssemblyProcedureMarkerLayer({
         selectedCheckItemId={selectedCheckItemId}
         onSelectBolt={onSelectBolt}
         onMoveBolt={onMoveBolt}
+        onMoveCheckItem={onMoveCheckItem}
         onSelectCheckItem={onSelectCheckItem}
         onToggleCheckItem={onToggleCheckItem}
         density={density}

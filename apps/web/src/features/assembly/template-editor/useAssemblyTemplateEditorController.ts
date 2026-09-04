@@ -14,7 +14,6 @@ import { assemblyTemplateProcedureDraftToInput } from '../assemblyTemplateProced
 import { evaluateAssemblyTemplateReadiness } from '../assemblyTemplateReadiness';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
-
 import { buildAssemblyTemplateSaveInput } from './buildAssemblyTemplateSaveInput';
 import { useAssemblyTemplateEditorData } from './useAssemblyTemplateEditorData';
 import { useAssemblyTemplateEditorRecovery } from './useAssemblyTemplateEditorRecovery';
@@ -49,7 +48,7 @@ export function useAssemblyTemplateEditorController(input: {
   const [modelCode, setModelCode] = useState('');
   const [procedurePattern, setProcedurePattern] = useState('');
   const [metadataInitialized, setMetadataInitialized] = useState(false);
-  const [inspectorMode, setInspectorMode] = useState<'closed' | 'step' | 'markers'>('closed');
+  const [inspectorMode, setInspectorMode] = useState<'closed' | 'step' | 'markers'>('closed'), [stepSupplementOpen, setStepSupplementOpen] = useState(false);
   const [machineNamePickerOpen, setMachineNamePickerOpen] = useState(false);
   const [expandedAreaDetails, setExpandedAreaDetails] = useState<Set<string>>(() => new Set());
   const data = useAssemblyTemplateEditorData({
@@ -63,7 +62,7 @@ export function useAssemblyTemplateEditorController(input: {
     loadedTemplate: data.loadedTemplate,
     loading: data.loading,
     onMessage: setMessage,
-    onStepFocused: () => setInspectorMode('step'),
+    onStepFocused: () => { setInspectorMode('step'); setStepSupplementOpen(true); },
     templateId: input.templateId
   });
   const marker = useAssemblyTemplateMarkerDraft({
@@ -81,7 +80,6 @@ export function useAssemblyTemplateEditorController(input: {
   });
   const canvasZoom = useImageCanvasZoom();
   const fitCanvasToView = canvasZoom.fitToView;
-
   useEffect(() => {
     if (data.loading) {
       setMessage(null);
@@ -89,6 +87,7 @@ export function useAssemblyTemplateEditorController(input: {
       setAccessPassword(null);
       setPasswordInput('');
       setInspectorMode('closed');
+      setStepSupplementOpen(false);
       setMetadataInitialized(false);
       setExpandedAreaDetails(new Set());
       return;
@@ -113,7 +112,6 @@ export function useAssemblyTemplateEditorController(input: {
     }
     setMetadataInitialized(true);
   }, [data.loadedTemplate, data.loading, input.templateId]);
-
   useEffect(() => {
     if (data.loadError) {
       setMessage(
@@ -208,9 +206,9 @@ export function useAssemblyTemplateEditorController(input: {
   const markerSettingsOpen = Boolean(marker.selectedBolt || marker.selectedCheckItem);
   useEffect(() => {
     if (inspectorMode === 'markers' && !markerSettingsOpen) {
-      setInspectorMode('closed');
+      setInspectorMode(procedure.selectedStep ? 'step' : 'closed');
     }
-  }, [inspectorMode, markerSettingsOpen]);
+  }, [inspectorMode, markerSettingsOpen, procedure.selectedStep]);
 
   const capabilityCatalog = data.capabilityCatalog;
   const readiness = useMemo(
@@ -499,10 +497,9 @@ export function useAssemblyTemplateEditorController(input: {
     selectedPageIndex: procedure.selectedPage
       ? procedure.pageOptions.findIndex((option) => option.key === procedure.selectedPage?.key)
       : -1,
-    setInspectorMode,
+    setInspectorMode, setStepSupplementOpen, stepSupplementOpen,
     setMachineNamePickerOpen,
-    setMessage,
-    setPasswordInput,
+    setMessage, setPasswordInput,
     settingsPaneOpen: inspectorMode !== 'closed',
     showSelectedCrop:
       procedure.selectedStep?.viewMode === 'crop' &&
