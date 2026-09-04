@@ -330,7 +330,8 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     expect(
       await screen.findByRole('heading', { name: '組立テンプレート新規' })
     ).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '使用文書' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '使用文書' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '基本設定' })).not.toBeInTheDocument();
     expect(screen.queryByText('主手順書')).not.toBeInTheDocument();
     expect(screen.queryByText('旧形式を取込')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /文書を上へ/ })).not.toBeInTheDocument();

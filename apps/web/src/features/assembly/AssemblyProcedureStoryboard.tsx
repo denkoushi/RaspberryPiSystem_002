@@ -31,6 +31,8 @@ type Props = {
   onDuplicate: (localId: string) => void;
   onRemove: (localId: string) => void;
   searchResetToken?: number;
+  /** 文書・工程パネル表示時はサムネイルを隠して手順カード領域を広げる。 */
+  showThumbnails?: boolean;
   markerProjectionByStepId?: ReadonlyMap<
     string,
     { bolts: AssemblyCanvasBolt[]; checkItems: AssemblyCanvasCheckItem[] }
@@ -54,6 +56,7 @@ export function AssemblyProcedureStoryboard({
   onDuplicate,
   onRemove,
   searchResetToken,
+  showThumbnails = true,
   markerProjectionByStepId
 }: Props) {
   const [search, setSearch] = useState('');
@@ -158,7 +161,10 @@ export function AssemblyProcedureStoryboard({
                   role="button"
                   tabIndex={0}
                   className={clsx(
-                    'grid min-h-[106px] min-w-0 w-full grid-cols-[4.25rem_minmax(0,1fr)] gap-2 rounded border p-2 text-left',
+                    'grid min-h-[106px] min-w-0 w-full gap-2 rounded border p-2 text-left',
+                    showThumbnails
+                      ? 'grid-cols-[4.25rem_minmax(0,1fr)]'
+                      : 'grid-cols-1',
                     selectedLocalId === step.localId
                       ? 'border-cyan-300 bg-cyan-950/55'
                       : 'border-white/10 bg-slate-950/65'
@@ -171,27 +177,32 @@ export function AssemblyProcedureStoryboard({
                     }
                   }}
                 >
-                  <div className="relative h-16 overflow-hidden rounded bg-white">
-                    {page ? (
-                      <AssemblyProcedureCropView
-                        pageUrl={page.imageRelativePath}
-                        crop={step.crop}
-                        className="h-full w-full"
-                        overlay={
-                          markerProjection ? (
-                            <AssemblyProcedureMarkerLayer
-                              bolts={markerProjection.bolts}
-                              checkItems={markerProjection.checkItems}
-                              density="compact"
-                            />
-                          ) : null
-                        }
-                      />
-                    ) : null}
-                    <span className="absolute left-1 top-1 rounded bg-slate-950/85 px-1 text-xs font-bold text-white">
-                      {sourceIndex + 1}
-                    </span>
-                  </div>
+                  {showThumbnails ? (
+                    <div
+                      className="relative h-16 overflow-hidden rounded bg-white"
+                      data-testid="assembly-step-thumbnail"
+                    >
+                      {page ? (
+                        <AssemblyProcedureCropView
+                          pageUrl={page.imageRelativePath}
+                          crop={step.crop}
+                          className="h-full w-full"
+                          overlay={
+                            markerProjection ? (
+                              <AssemblyProcedureMarkerLayer
+                                bolts={markerProjection.bolts}
+                                checkItems={markerProjection.checkItems}
+                                density="compact"
+                              />
+                            ) : null
+                          }
+                        />
+                      ) : null}
+                      <span className="absolute left-1 top-1 rounded bg-slate-950/85 px-1 text-xs font-bold text-white">
+                        {sourceIndex + 1}
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="min-w-0">
                     <p
                       className="truncate text-xs font-bold"
