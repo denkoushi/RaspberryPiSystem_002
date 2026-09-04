@@ -95,9 +95,7 @@ export function AssemblyCapabilityGroupSelector({
           保存値: {storedLabel}
         </div>
       ) : (
-        <p className="mt-1 text-[0.68rem] text-amber-100">
-          グループを選ぶと径・長さ・材質・強度区分を一括設定します。
-        </p>
+        <div className="mt-1 text-[0.68rem] text-white/55">未選択</div>
       )}
 
       {catalogStatus === 'error' ? (

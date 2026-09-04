@@ -1,5 +1,4 @@
 import clsx from 'clsx';
-import { useEffect, useState } from 'react';
 
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -76,30 +75,14 @@ export function AssemblyTemplateProcedurePane({
   onDeleteArea,
   onAreaPatch
 }: Props) {
-  const [expandedDocumentLabels, setExpandedDocumentLabels] = useState<Set<string>>(
-    () => new Set()
-  );
-
-  const toggleDocumentLabel = (localId: string) => {
-    setExpandedDocumentLabels((current) => {
-      const next = new Set(current);
-      if (next.has(localId)) next.delete(localId);
-      else next.add(localId);
-      return next;
-    });
-  };
-
-  useEffect(() => {
-    const invalidLabelIds = items
-      .filter(({ item }) => item.label.length > 120)
-      .map(({ item }) => item.localId);
-    if (invalidLabelIds.length === 0) return;
-    setExpandedDocumentLabels((current) => {
-      const next = new Set(current);
-      invalidLabelIds.forEach((id) => next.add(id));
-      return next;
-    });
-  }, [items]);
+  const selectedDocumentItem =
+    items.find(({ item }) => selectedPageKey.startsWith(`${item.localId}:`))?.item ??
+    items.find(
+      ({ item }) =>
+        item.assemblyProcedureDocumentId === selectedDocumentId ||
+        item.kioskDocumentId === selectedDocumentId
+    )?.item ??
+    null;
 
   return (
     <section
@@ -109,9 +92,6 @@ export function AssemblyTemplateProcedurePane({
       <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0">
           <h2 className="text-[1rem] font-bold">使用文書</h2>
-          <p className="text-[0.68rem] font-semibold text-white/55">
-            文書順は表示手順で最初に現れる順です。
-          </p>
         </div>
         <Button
           type="button"
@@ -125,9 +105,7 @@ export function AssemblyTemplateProcedurePane({
         </Button>
       </div>
       {items.some(({ used }) => !used) ? (
-        <p className="mt-2 text-xs text-amber-200">
-          未使用の文書を選び、中央の「全体追加」「矩形追加」で手順を追加してください。保存前に各文書を1手順以上で使用します。
-        </p>
+        <p className="mt-2 text-xs text-amber-200">未使用文書あり</p>
       ) : null}
       <div className="mt-2 grid min-w-0 grid-cols-1 gap-1.5">
         {items.map(({ item, used }, index) => (
@@ -135,7 +113,7 @@ export function AssemblyTemplateProcedurePane({
             key={item.localId}
             id={`assembly-document-${item.localId}`}
             className={clsx(
-              'min-w-0 rounded border bg-slate-950/55 p-1.5',
+              'grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded border bg-slate-950/55 p-1.5',
               selectedPageKey.startsWith(`${item.localId}:`)
                 ? 'border-cyan-300/70'
                 : 'border-white/10'
@@ -143,64 +121,29 @@ export function AssemblyTemplateProcedurePane({
           >
             <button
               type="button"
-              className="flex min-h-11 w-full min-w-0 items-start gap-2 text-left"
+              className="flex min-h-11 min-w-0 items-center gap-2 text-left"
               onClick={() => onFocusItem(item)}
             >
               <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded bg-white/10 text-xs font-bold">
                 {used ? index + 1 : '—'}
               </span>
-              <span className="min-w-0 flex-1">
-                <span
-                  className="block truncate text-xs font-bold"
-                  title={item.label.trim() || item.document.displayTitle?.trim() || item.document.title}
-                >
-                  {formatAssemblyEditorName(item.label.trim() || item.document.displayTitle?.trim() || item.document.title)}
-                </span>
-                <span className="block truncate text-[0.65rem] text-white/50">
-                  {item.documentType === 'assembly_procedure_document' ? '組立手順書' : 'PDF要領書'}
-                  {item.assemblyProcedureDocumentId === selectedDocumentId ? '・主手順書' : ''}
-                  {!used ? '・未使用' : ''}
-                </span>
+              <span
+                className="min-w-0 flex-1 truncate text-xs font-bold"
+                title={item.label.trim() || item.document.displayTitle?.trim() || item.document.title}
+              >
+                {formatAssemblyEditorName(item.label.trim() || item.document.displayTitle?.trim() || item.document.title)}
               </span>
             </button>
-            {item.label.trim() ? (
-              <p className="mt-1 truncate text-[0.65rem] text-white/60" title={item.label.trim()}>
-                表示名: {formatAssemblyEditorName(item.label.trim())}
-              </p>
-            ) : null}
-            <div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-1">
-              <Button
-                type="button"
-                variant="ghostOnDark"
-                className="min-h-10 min-w-0 !px-1 !py-1 text-xs"
-                aria-expanded={expandedDocumentLabels.has(item.localId)}
-                onClick={() => toggleDocumentLabel(item.localId)}
-              >
-                {expandedDocumentLabels.has(item.localId) ? '詳細を閉じる' : '詳細'}
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                aria-label={`${item.label.trim() || item.document.title}を削除`}
-                className="min-h-10 min-w-0 !px-1 !py-1 text-xs"
-                disabled={busy || readOnly}
-                onClick={() => onRemoveItem(item.localId)}
-              >
-                削除
-              </Button>
-            </div>
-            {expandedDocumentLabels.has(item.localId) ? (
-            <label className="mt-1 grid min-w-0 grid-cols-1 gap-0.5 text-[0.65rem] font-semibold text-white/55">
-              表示ラベル
-              <Input
-                className="min-h-11 min-w-0 !px-2 !py-1 text-xs"
-                value={item.label}
-                maxLength={120}
-                disabled={busy || readOnly}
-                onChange={(event) => onLabelChange(item.localId, event.target.value)}
-              />
-            </label>
-            ) : null}
+            <Button
+              type="button"
+              variant="danger"
+              aria-label={`${item.label.trim() || item.document.title}を削除`}
+              className="min-h-10 shrink-0 !px-2 !py-1 text-xs"
+              disabled={busy || readOnly}
+              onClick={() => onRemoveItem(item.localId)}
+            >
+              削除
+            </Button>
           </div>
         ))}
       </div>
@@ -209,8 +152,14 @@ export function AssemblyTemplateProcedurePane({
         id="assembly-template-basic-settings"
         className="mt-3 min-w-0 rounded border border-white/10 bg-slate-950/35 p-2"
       >
-        <h2 className="text-sm font-bold">基本設定</h2>
-        <p className="mt-1 text-xs text-white/60">基本設定は、このテンプレートのすべての文書に共通です。</p>
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <h2 className="text-sm font-bold">基本設定</h2>
+          {identityLocked ? (
+            <span className="shrink-0 text-[0.65rem] font-normal text-amber-200">
+              改版では固定
+            </span>
+          ) : null}
+        </div>
         <div className="mt-2 grid min-w-0 gap-2">
           {machineNameSelectionRequired ? (
             <div className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
@@ -253,40 +202,29 @@ export function AssemblyTemplateProcedurePane({
                 disabled={busy || readOnly || identityLocked}
                 onChange={(event) => onModelCodeChange(event.target.value)}
               />
-              {identityLocked ? (
-                <span className="text-[0.65rem] font-normal text-amber-200">
-                  改版では機種名を固定しています。別系統は「複製して新規」を使ってください。
-                </span>
-              ) : null}
             </label>
           )}
           <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
             手順パターン
-            <span className="text-[0.65rem] font-normal text-white/50">
-              機種名と組み合わせて改版系列を識別します。
-            </span>
-            <Input
+            <textarea
               id="assembly-template-procedure-pattern"
               data-kiosk-sop-target="assembly-editor-procedure-pattern"
-              className="min-h-11 min-w-0"
+              className="h-[3.75rem] min-h-[3.75rem] min-w-0 w-full resize-none break-all overflow-y-auto rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm leading-5 text-slate-900 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+              rows={2}
               value={procedurePattern}
               title={procedurePattern}
               maxLength={120}
               disabled={busy || readOnly || identityLocked}
               onChange={(event) => onProcedurePatternChange(event.target.value)}
             />
-            {identityLocked ? (
-              <span className="text-[0.65rem] font-normal text-amber-200">
-                改版では手順パターンを固定しています。別系統は「複製して新規」を使ってください。
-              </span>
-            ) : null}
           </label>
           <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
             テンプレート名
-            <Input
+            <textarea
               id="assembly-template-name"
               data-kiosk-sop-target="assembly-editor-template-name"
-              className="min-h-11 min-w-0"
+              className="h-[3.75rem] min-h-[3.75rem] min-w-0 w-full resize-none break-all overflow-y-auto rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm leading-5 text-slate-900 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+              rows={2}
               value={templateName}
               title={templateName}
               maxLength={200}
@@ -295,9 +233,7 @@ export function AssemblyTemplateProcedurePane({
             />
             <span className="grid min-h-6 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 text-[0.65rem] font-normal text-white/50">
               <span className="min-w-0">
-                {templateNameAutomatic
-                  ? '機種名と手順パターンから自動提案中'
-                  : '個別の名称を使用中'}
+                {templateNameAutomatic ? '自動' : '個別'}
               </span>
               {!templateNameAutomatic ? (
                 <button
@@ -413,6 +349,22 @@ export function AssemblyTemplateProcedurePane({
             id={`assembly-area-details-${selectedArea.id}`}
             className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2"
           >
+          {selectedDocumentItem ? (
+            <label className="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-white/70">
+              表示ラベル
+              <Input
+                id={`assembly-document-label-${selectedDocumentItem.localId}`}
+                className="min-h-11 min-w-0"
+                value={selectedDocumentItem.label}
+                title={selectedDocumentItem.label}
+                maxLength={120}
+                disabled={busy || readOnly}
+                onChange={(event) =>
+                  onLabelChange(selectedDocumentItem.localId, event.target.value)
+                }
+              />
+            </label>
+          ) : null}
           {([
             ['processNo', '工程No.'],
             ['areaCode', 'エリアコード'],

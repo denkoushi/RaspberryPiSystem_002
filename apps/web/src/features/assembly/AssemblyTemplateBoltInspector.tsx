@@ -76,7 +76,7 @@ export function AssemblyTemplateBoltInspector({
       <>
         <h2 className="text-[1.02rem] font-bold">締付条件</h2>
         <div className="mt-3 rounded border border-dashed border-white/20 p-3 text-sm text-white/60">
-          手順書上の締付マーカーを選択
+          未選択
         </div>
       </>
     );
@@ -240,8 +240,8 @@ export function AssemblyTemplateBoltInspector({
           <div className="min-w-0 rounded border border-white/10 bg-slate-950/55 p-2 text-[0.68rem]">
             <div className="font-semibold text-white/70">Excel出力用ボルト仕様</div>
             <div className="mt-1 flex min-w-0 items-center gap-1 font-bold text-white">
-              <span className="min-w-0 truncate" title={effectiveSpec || '締結条件の入力後に自動生成されます'}>
-                {effectiveSpec || '締結条件の入力後に自動生成されます'}
+              <span className="min-w-0 truncate" title={effectiveSpec || '未設定'}>
+                {effectiveSpec || '未設定'}
               </span>
               <span className="shrink-0 text-white/45">
                 （{bolt.boltSpecMode === 'custom' ? '個別指定' : '自動'}）

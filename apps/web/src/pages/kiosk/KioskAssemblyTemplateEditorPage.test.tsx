@@ -335,12 +335,12 @@ describe('KioskAssemblyTemplateEditorPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /未完了 \d+件/ }));
     fireEvent.click(
-      screen.getByRole('button', { name: '手順パターンを入力してください。' })
+      screen.getByRole('button', { name: 'テンプレート名を入力してください。' })
     );
 
     await waitFor(() =>
       expect(
-        document.getElementById('assembly-template-procedure-pattern')
+        document.getElementById('assembly-template-name')
       ).toHaveFocus()
     );
   });
@@ -378,6 +378,29 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '工程の入力値が最大文字数を超えています。' }));
     await waitFor(() => expect(screen.getByLabelText('工程No.')).toHaveFocus());
     expect(screen.getByRole('button', { name: '詳細（任意）' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('selects and expands the document details when its display label is invalid', async () => {
+    const source = templateFixture();
+    source.procedureSequence!.items[0]!.label = 'X'.repeat(121);
+    mocks.getTemplate.mockResolvedValue(source);
+    renderRoute(`/kiosk/assembly/templates/${source.id}/edit`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート編集' });
+    fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '文書・工程', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /未完了 \d+件/ }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: '文書の表示ラベルは120文字以内にしてください。'
+      })
+    );
+
+    await waitFor(() => expect(screen.getByLabelText('表示ラベル')).toHaveFocus());
+    expect(screen.getByRole('button', { name: '詳細（任意）' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
   });
 
   it('scrolls newly expanded optional details into view without scrolling on collapse', async () => {
@@ -471,14 +494,23 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     renderRoute('/kiosk/assembly/templates/new');
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート新規' });
+    const initialPattern = document.getElementById(
+      'assembly-template-procedure-pattern'
+    ) as HTMLTextAreaElement;
+    expect(initialPattern).toBeInstanceOf(HTMLTextAreaElement);
+    expect(initialPattern).toHaveValue('標準');
     await selectMachineName();
 
     const pattern = document.getElementById(
       'assembly-template-procedure-pattern'
-    ) as HTMLInputElement;
-    const name = document.getElementById('assembly-template-name') as HTMLInputElement;
-    expect(pattern).toBeInstanceOf(HTMLInputElement);
-    expect(name).toBeInstanceOf(HTMLInputElement);
+    ) as HTMLTextAreaElement;
+    const name = document.getElementById('assembly-template-name') as HTMLTextAreaElement;
+    expect(pattern).toBeInstanceOf(HTMLTextAreaElement);
+    expect(name).toBeInstanceOf(HTMLTextAreaElement);
+    expect(pattern).toHaveAttribute('rows', '2');
+    expect(name).toHaveAttribute('rows', '2');
+    expect(pattern).toHaveClass('break-all');
+    expect(name).toHaveClass('break-all');
     fireEvent.change(pattern, { target: { value: '標準' } });
     expect(name).toHaveValue('L300KP 標準 組立');
 
@@ -526,8 +558,12 @@ describe('KioskAssemblyTemplateEditorPage', () => {
 
     const pattern = document.getElementById(
       'assembly-template-procedure-pattern'
-    ) as HTMLInputElement;
-    const name = document.getElementById('assembly-template-name') as HTMLInputElement;
+    ) as HTMLTextAreaElement;
+    const name = document.getElementById('assembly-template-name') as HTMLTextAreaElement;
+    expect(pattern).toBeInstanceOf(HTMLTextAreaElement);
+    expect(name).toBeInstanceOf(HTMLTextAreaElement);
+    expect(pattern).toHaveAttribute('rows', '2');
+    expect(name).toHaveAttribute('rows', '2');
     expect(pattern).toHaveValue(rawProcedurePattern);
     expect(pattern).toHaveAttribute('title', rawProcedurePattern);
     expect(name).toHaveValue(`${rawTemplateName} 複製`);
@@ -555,7 +591,7 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     );
   });
 
-  it('opens document details for an existing label without dirtying or changing the raw label', async () => {
+  it('moves document label editing into optional area details without dirtying or changing the raw label', async () => {
     const rawLabel = '表示ラベル ＡＢＣ１２３';
     const source = templateFixture();
     source.procedureSequence!.items[0]!.label = rawLabel;
@@ -574,27 +610,28 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     const documentCard = document.querySelector(
       '[id^="assembly-document-"]'
     ) as HTMLElement;
-    const detailsButton = within(documentCard).getByRole('button', {
-      name: '詳細',
+    const detailsButton = screen.getByRole('button', {
+      name: '詳細（任意）',
       exact: true
     });
 
-    expect(detailsButton).toHaveAttribute('aria-expanded', 'false');
-    expect(within(documentCard).queryByLabelText('表示ラベル')).not.toBeInTheDocument();
+    expect(within(documentCard).queryByRole('button', { name: '詳細' })).not.toBeInTheDocument();
+    expect(within(documentCard).getByRole('button', { name: /を削除$/ })).toBeInTheDocument();
+    expect(screen.queryByLabelText('表示ラベル')).not.toBeInTheDocument();
     fireEvent.click(detailsButton);
     expect(detailsButton).toHaveAttribute('aria-expanded', 'true');
-    expect(within(documentCard).getByLabelText('表示ラベル')).toHaveValue(rawLabel);
+    expect(screen.getByLabelText('表示ラベル')).toHaveValue(rawLabel);
     const labelDisplay = documentCard.querySelector('span[title]');
     expect(labelDisplay).toHaveAttribute('title', rawLabel);
     expect(labelDisplay).toHaveTextContent('表示ラベル ABC123');
 
     fireEvent.click(detailsButton);
     expect(detailsButton).toHaveAttribute('aria-expanded', 'false');
-    expect(within(documentCard).queryByLabelText('表示ラベル')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('表示ラベル')).not.toBeInTheDocument();
     expect(within(header).getByText('保存済み')).toBeInTheDocument();
 
     fireEvent.click(detailsButton);
-    expect(within(documentCard).getByLabelText('表示ラベル')).toHaveValue(rawLabel);
+    expect(screen.getByLabelText('表示ラベル')).toHaveValue(rawLabel);
     expect(within(header).getByText('保存済み')).toBeInTheDocument();
   });
 
@@ -689,6 +726,7 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     const legacy = templateFixture({
       modelCode: 'LEGACY-IMPORT',
       name: '旧形式テンプレート',
+      procedurePattern: '改版 ＡＢＣ１２３',
       procedureSequence: {
         source: 'legacy_machine_order',
         stepSource: 'document_expansion',
@@ -744,6 +782,7 @@ describe('KioskAssemblyTemplateEditorPage', () => {
       expect(mocks.reviseTemplate).toHaveBeenCalledWith(
         legacy.id,
         expect.objectContaining({
+          procedurePattern: '改版 ＡＢＣ１２３',
           procedureItems: expect.arrayContaining([
             expect.objectContaining({ assemblyProcedureDocumentId: DOCUMENT_ID }),
             expect.objectContaining({ kioskDocumentId: KIOSK_DOCUMENT_ID })

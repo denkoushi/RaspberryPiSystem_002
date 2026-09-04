@@ -1,7 +1,11 @@
 import clsx from 'clsx';
 import { useLayoutEffect, useRef, useState } from 'react';
 
-import { ImageMarkerCalloutOverlay } from '../kiosk/image-canvas';
+import {
+  clampImageMarkerRatio,
+  ImageMarkerCalloutOverlay,
+  shouldConfirmImageCanvasTap
+} from '../kiosk/image-canvas';
 import {
   KIOSK_MARKER_STATUS_CLASS,
   kioskMarkerInputTargetOutlineClass,
@@ -9,6 +13,7 @@ import {
 } from '../kiosk/kioskMarkerTheme';
 
 import type { ZoomedImageCanvasLayout } from '../kiosk/image-canvas';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 
 type AssemblyCanvasCallout = {
   calloutTipXRatio?: number | null;
@@ -34,6 +39,16 @@ export type AssemblyCanvasCheckItem = AssemblyCanvasCallout & {
   checked: boolean;
 };
 
+export type AssemblyProcedureMarkerPoint = {
+  xRatio: number;
+  yRatio: number;
+};
+
+export type AssemblyProcedureBoltMoveHandler = (
+  id: string,
+  point: AssemblyProcedureMarkerPoint
+) => void;
+
 export type AssemblyProcedureMarkerLayerProps = {
   bolts: AssemblyCanvasBolt[];
   checkItems?: AssemblyCanvasCheckItem[];
@@ -41,6 +56,7 @@ export type AssemblyProcedureMarkerLayerProps = {
   inputTargetBoltId?: string | null;
   selectedCheckItemId?: string | null;
   onSelectBolt?: (id: string) => void;
+  onMoveBolt?: AssemblyProcedureBoltMoveHandler;
   onSelectCheckItem?: (id: string) => void;
   onToggleCheckItem?: (id: string) => void;
   density?: 'default' | 'compact';
@@ -80,6 +96,57 @@ function zeroOffsetLayout(width: number, height: number): ZoomedImageCanvasLayou
   };
 }
 
+type BoltPointerInteraction = {
+  boltId: string;
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  maxMovementPx: number;
+  dragging: boolean;
+  captureTarget: HTMLButtonElement;
+  originalStyle: {
+    left: string;
+    top: string;
+  };
+  pendingPoint: AssemblyProcedureMarkerPoint | null;
+  animationFrameId: number | null;
+};
+
+function markerPointFromPointer(
+  event: Pick<ReactPointerEvent<HTMLButtonElement>, 'clientX' | 'clientY'>,
+  target: HTMLElement | null
+): AssemblyProcedureMarkerPoint | null {
+  const rect = target?.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+  return {
+    xRatio: clampImageMarkerRatio((event.clientX - rect.left) / rect.width),
+    yRatio: clampImageMarkerRatio((event.clientY - rect.top) / rect.height)
+  };
+}
+
+function setMarkerPosition(
+  target: HTMLElement,
+  point: AssemblyProcedureMarkerPoint
+): void {
+  target.style.left = `${point.xRatio * 100}%`;
+  target.style.top = `${point.yRatio * 100}%`;
+}
+
+function releasePointerCapture(interaction: BoltPointerInteraction): void {
+  if (!interaction.captureTarget.releasePointerCapture) return;
+  try {
+    interaction.captureTarget.releasePointerCapture(interaction.pointerId);
+  } catch {
+    // Pointer capture may already have been released by the browser.
+  }
+}
+
+function cancelMarkerAnimationFrame(interaction: BoltPointerInteraction): void {
+  if (interaction.animationFrameId == null) return;
+  cancelAnimationFrame(interaction.animationFrameId);
+  interaction.animationFrameId = null;
+}
+
 export function AssemblyMarkerOverlay({
   bolts,
   checkItems = [],
@@ -87,10 +154,108 @@ export function AssemblyMarkerOverlay({
   inputTargetBoltId,
   selectedCheckItemId,
   onSelectBolt,
+  onMoveBolt,
   onSelectCheckItem,
   onToggleCheckItem,
   density = 'default'
 }: AssemblyProcedureMarkerLayerProps) {
+  const boltPointerRef = useRef<BoltPointerInteraction | null>(null);
+
+  useLayoutEffect(() => {
+    return () => {
+      const interaction = boltPointerRef.current;
+      if (!interaction) return;
+      cancelMarkerAnimationFrame(interaction);
+      releasePointerCapture(interaction);
+      boltPointerRef.current = null;
+    };
+  }, []);
+
+  const handleBoltPointerDown = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    boltId: string
+  ) => {
+    event.stopPropagation();
+    if (!onMoveBolt || (event.button != null && event.button !== 0)) return;
+    const target = event.currentTarget;
+    boltPointerRef.current = {
+      boltId,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      maxMovementPx: 0,
+      dragging: false,
+      captureTarget: target,
+      originalStyle: {
+        left: target.style.left,
+        top: target.style.top
+      },
+      pendingPoint: null,
+      animationFrameId: null
+    };
+    target.setPointerCapture?.(event.pointerId);
+  };
+
+  const handleBoltPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const interaction = boltPointerRef.current;
+    if (!interaction || interaction.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    interaction.maxMovementPx = Math.max(
+      interaction.maxMovementPx,
+      Math.hypot(
+        event.clientX - interaction.startClientX,
+        event.clientY - interaction.startClientY
+      )
+    );
+    if (shouldConfirmImageCanvasTap(interaction.maxMovementPx)) return;
+
+    interaction.dragging = true;
+    const point = markerPointFromPointer(event, event.currentTarget.parentElement);
+    if (!point) return;
+    interaction.pendingPoint = point;
+    event.preventDefault();
+    if (interaction.animationFrameId != null) return;
+    interaction.animationFrameId = requestAnimationFrame(() => {
+      const current = boltPointerRef.current;
+      if (current !== interaction) return;
+      current.animationFrameId = null;
+      if (current.dragging && current.pendingPoint) {
+        setMarkerPosition(current.captureTarget, current.pendingPoint);
+      }
+    });
+  };
+
+  const endBoltPointerInteraction = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    cancelled: boolean
+  ) => {
+    const interaction = boltPointerRef.current;
+    if (!interaction || interaction.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    interaction.maxMovementPx = Math.max(
+      interaction.maxMovementPx,
+      Math.hypot(
+        event.clientX - interaction.startClientX,
+        event.clientY - interaction.startClientY
+      )
+    );
+    if (!cancelled) {
+      interaction.dragging = !shouldConfirmImageCanvasTap(interaction.maxMovementPx);
+    }
+    const point = markerPointFromPointer(event, event.currentTarget.parentElement);
+    cancelMarkerAnimationFrame(interaction);
+    if (cancelled) {
+      interaction.captureTarget.style.left = interaction.originalStyle.left;
+      interaction.captureTarget.style.top = interaction.originalStyle.top;
+    } else if (!cancelled && interaction.dragging && point) {
+      event.preventDefault();
+      setMarkerPosition(interaction.captureTarget, point);
+      onMoveBolt?.(interaction.boltId, point);
+    }
+    boltPointerRef.current = null;
+    releasePointerCapture(interaction);
+  };
+
   if (density === 'compact') {
     return (
       <div className="pointer-events-none absolute inset-0 z-10" aria-hidden="true">
@@ -139,11 +304,15 @@ export function AssemblyMarkerOverlay({
             event.stopPropagation();
             onSelectBolt?.(bolt.id);
           }}
-          onPointerDown={(event) => event.stopPropagation()}
+          onPointerDown={(event) => handleBoltPointerDown(event, bolt.id)}
+          onPointerMove={handleBoltPointerMove}
+          onPointerUp={(event) => endBoltPointerInteraction(event, false)}
+          onPointerCancel={(event) => endBoltPointerInteraction(event, true)}
           className={clsx(
             'absolute z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-sm font-bold shadow-lg',
             boltMarkerClass(bolt.status, selectedBoltId === bolt.id),
-            kioskMarkerInputTargetOutlineClass(inputTargetBoltId === bolt.id)
+            kioskMarkerInputTargetOutlineClass(inputTargetBoltId === bolt.id),
+            onMoveBolt && 'touch-none cursor-move'
           )}
           style={{ left: `${bolt.xRatio * 100}%`, top: `${bolt.yRatio * 100}%` }}
         >
@@ -186,6 +355,7 @@ export function AssemblyProcedureMarkerLayer({
   inputTargetBoltId,
   selectedCheckItemId,
   onSelectBolt,
+  onMoveBolt,
   onSelectCheckItem,
   onToggleCheckItem,
   density = 'default',
@@ -242,6 +412,7 @@ export function AssemblyProcedureMarkerLayer({
         inputTargetBoltId={inputTargetBoltId}
         selectedCheckItemId={selectedCheckItemId}
         onSelectBolt={onSelectBolt}
+        onMoveBolt={onMoveBolt}
         onSelectCheckItem={onSelectCheckItem}
         onToggleCheckItem={onToggleCheckItem}
         density={density}
