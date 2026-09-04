@@ -38,7 +38,6 @@ export function AssemblyTemplateEditorLeftPane() {
     procedurePaneOpen,
     procedurePattern,
     procedureSteps,
-    procedureSearchResetToken,
     readOnly,
     removeProcedureItem,
     removeProcedureStep,
@@ -103,8 +102,6 @@ export function AssemblyTemplateEditorLeftPane() {
       steps={procedureSteps}
       pages={pageOptions}
       selectedLocalId={selectedStep?.localId ?? null}
-      searchResetToken={procedureSearchResetToken}
-      showThumbnails={leftPaneTab !== 'documents'}
       readOnly={readOnly}
       onSelect={(localId) => {
         const step = procedureSteps.find((item) => item.localId === localId);
