@@ -1,4 +1,4 @@
-import { normalizeFastenerText } from '@raspi-system/shared-types';
+import { normalizeFastenerText, toHalfWidthAscii } from '@raspi-system/shared-types';
 
 import type { AssemblyDraftBolt } from './assemblyTemplateDraft';
 import type {
@@ -14,7 +14,7 @@ export function buildAssemblyTemplateSuggestedName(
   modelCode: string,
   procedurePattern: string
 ): string {
-  const model = normalizeNamePart(modelCode);
+  const model = normalizeNamePart(toHalfWidthAscii(modelCode));
   const pattern = normalizeNamePart(procedurePattern);
   return model && pattern ? `${model} ${pattern} 組立` : '';
 }

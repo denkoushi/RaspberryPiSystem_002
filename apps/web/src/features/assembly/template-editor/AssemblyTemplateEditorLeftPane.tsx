@@ -104,6 +104,7 @@ export function AssemblyTemplateEditorLeftPane() {
       pages={pageOptions}
       selectedLocalId={selectedStep?.localId ?? null}
       searchResetToken={procedureSearchResetToken}
+      showThumbnails={leftPaneTab !== 'documents'}
       readOnly={readOnly}
       onSelect={(localId) => {
         const step = procedureSteps.find((item) => item.localId === localId);

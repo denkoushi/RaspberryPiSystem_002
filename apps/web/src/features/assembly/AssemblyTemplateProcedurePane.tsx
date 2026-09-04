@@ -89,10 +89,7 @@ export function AssemblyTemplateProcedurePane({
       id="assembly-procedure-pane"
       className="min-h-0 min-w-0 overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-2"
     >
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h2 className="text-[1rem] font-bold">使用文書</h2>
-        </div>
+      <div className="flex min-w-0 items-center justify-end gap-2">
         <Button
           type="button"
           variant="ghostOnDark"
@@ -152,14 +149,13 @@ export function AssemblyTemplateProcedurePane({
         id="assembly-template-basic-settings"
         className="mt-3 min-w-0 rounded border border-white/10 bg-slate-950/35 p-2"
       >
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <h2 className="text-sm font-bold">基本設定</h2>
-          {identityLocked ? (
+        {identityLocked ? (
+          <div className="flex min-w-0 justify-end">
             <span className="shrink-0 text-[0.65rem] font-normal text-amber-200">
               改版では固定
             </span>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
         <div className="mt-2 grid min-w-0 gap-2">
           {machineNameSelectionRequired ? (
             <div className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">

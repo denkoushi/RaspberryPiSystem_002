@@ -48,13 +48,18 @@ const steps = [
   { ...createFullPageStepDraft(pages[1]!), title: '別の対象' }
 ];
 
-function renderStoryboard(selectedLocalId = steps[0]!.localId, searchResetToken = 0) {
+function renderStoryboard(
+  selectedLocalId = steps[0]!.localId,
+  searchResetToken = 0,
+  showThumbnails = true
+) {
   return render(
     <AssemblyProcedureStoryboard
       steps={steps}
       pages={pages}
       selectedLocalId={selectedLocalId}
       searchResetToken={searchResetToken}
+      showThumbnails={showThumbnails}
       onSelect={vi.fn()}
       onMove={vi.fn()}
       onMoveTo={vi.fn()}
@@ -87,5 +92,18 @@ describe('AssemblyProcedureStoryboard focus behavior', () => {
 
     await waitFor(() => expect(search).toHaveValue(''));
     await waitFor(() => expect(virtualizerMocks.scrollToIndex).toHaveBeenCalledWith(1));
+  });
+
+  it('keeps thumbnails in the dedicated steps view', () => {
+    renderStoryboard();
+
+    expect(screen.getAllByTestId('assembly-step-thumbnail')).toHaveLength(2);
+  });
+
+  it('hides thumbnails when the document panel shares the left pane', () => {
+    renderStoryboard(steps[0]!.localId, 0, false);
+
+    expect(screen.queryByTestId('assembly-step-thumbnail')).not.toBeInTheDocument();
+    expect(screen.getByText('対象')).toBeInTheDocument();
   });
 });

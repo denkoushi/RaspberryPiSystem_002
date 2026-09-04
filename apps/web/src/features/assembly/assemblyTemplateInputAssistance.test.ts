@@ -94,6 +94,12 @@ describe('assembly template input assistance', () => {
     expect(buildAssemblyTemplateSuggestedName('L300KP', '  ')).toBe('');
   });
 
+  it('converts full-width machine-name characters in the suggested template name', () => {
+    expect(buildAssemblyTemplateSuggestedName('Ｌ３００ＫＰ', '標準')).toBe(
+      'L300KP 標準 組立'
+    );
+  });
+
   it('maps a capability group to the complete stored fastener snapshot', () => {
     const group: TorqueWrenchCapabilityGroupApi = {
       id: 'group-1',

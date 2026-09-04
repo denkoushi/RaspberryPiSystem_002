@@ -690,7 +690,9 @@ for (const viewport of paneFitViewports) {
     await openAssemblyDocuments(page);
     await expect(page.getByRole('button', { name: '機種名を選ぶ', exact: true })).toBeVisible();
     await selectAssemblyMachineName(page, paneFitLongMachineName);
-    const expectedLongMachineTemplateName = `${paneFitLongMachineName.trim().replace(/\s+/g, ' ')} 標準 組立`;
+    const expectedLongMachineTemplateName = `${formatAssemblyEditorDisplayName(
+      paneFitLongMachineName
+    ).trim().replace(/\s+/g, ' ')} 標準 組立`;
     await fillAssemblyTemplateStructure(page, expectedLongMachineTemplateName);
 
     const left = page.locator('#assembly-procedure-pane');
@@ -1236,7 +1238,8 @@ test('direct new assembly-template URL does not select a document implicitly', a
   await page.getByPlaceholder('パスワード').fill('2520');
   await page.getByRole('button', { name: '認証' }).click();
 
-  await expect(page.getByRole('heading', { name: '使用文書' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '使用文書' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '基本設定', exact: true })).toHaveCount(0);
   await expect(page.getByText('統合エディター 主手順書')).toHaveCount(0);
   await expect(page.getByTestId('assembly-procedure-canvas')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
@@ -1380,16 +1383,16 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   await page.getByPlaceholder('パスワード').fill('2520');
   await page.getByRole('button', { name: '認証' }).click();
   await openAssemblyDocuments(page);
-  await expect(
-    page.getByRole('heading', { name: '基本設定', exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: '基本設定', exact: true })).toHaveCount(0);
   await selectAssemblyMachineName(page);
   await fillAssemblyTemplateStructure(page);
   await clickAssemblySteps(page);
 
   const storyboard = page.getByTestId('assembly-step-storyboard');
   await expect(storyboard.locator('article')).toHaveCount(1);
+  await expect(storyboard.getByTestId('assembly-step-thumbnail')).toHaveCount(1);
   await page.getByRole('button', { name: '文書・工程', exact: true }).click();
+  await expect(storyboard.getByTestId('assembly-step-thumbnail')).toHaveCount(0);
   await page.getByRole('button', { name: '文書追加' }).click();
   await page
     .getByRole('dialog', { name: '文書ライブラリ' })
@@ -1399,6 +1402,7 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
     .click();
   await clickAssemblySteps(page);
   await expect(storyboard.locator('article')).toHaveCount(2);
+  await expect(storyboard.getByTestId('assembly-step-thumbnail')).toHaveCount(2);
 
   // 全ページ追加は新文書へ移動する。元文書の矩形・共有マーカーを検証するため戻す。
   await storyboard.locator('article').first().getByRole('button').first().press('Enter');
