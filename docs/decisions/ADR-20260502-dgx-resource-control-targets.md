@@ -47,8 +47,29 @@ NVIDIA 標準基盤（Docker / NGC / DGX OS）を GUI で「束ねる」方向�
 - API 応答に `targets[]` が増え、クライアントはフィールドをパースする必要がある（`services[]` は当面残す）。  
 - `metrics-kpi` は厳密にはワークロードではなく KPI ソースであり、過度に「サービス」と同一視しない運用説明が必要。
 
+## 2026-09-04 Cross-repository workload boundary
+
+`denkoushi/DGXSparkControlPlane` may advertise the opt-in private workload identifier
+`private-character-video`. It is a Control Plane-owned aggregate that keeps the private
+reply runtime and private ComfyUI runtime under one lease for Character Video sessions.
+
+- This repository does not add `private-character-video` to its control-target union,
+  scenario planner, gateway routes, or business Raspberry Pi inventory. It must not
+  acquire, start, stop, or translate that private-only lease.
+- Business-first preemption and aggregate child shutdown remain the Control Plane
+  arbiter's responsibility. This repository continues to control only its existing
+  `private-comfyui` compatibility target where explicitly configured.
+- The Control Plane feature must remain disabled by default. With the feature disabled,
+  the existing `private-comfyui` and private prompt model paths are unchanged.
+- If a future business UI needs to display this identifier, that is a separate contract
+  change requiring typed API and authorization tests; it is not inferred from this note.
+
+This explicit non-consumer decision is the corresponding compatibility review required
+before the new identifier is enabled in the private environment.
+
 ## References
 
 - Runbook: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)  
 - 実装: `apps/api/src/services/system/dgx-resource/`、`apps/web/src/features/admin/dgx-resource/`  
+- Control Plane responsibility boundary: [repository-boundary.md](https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/repository-boundary.md)
 - [EXEC_PLAN.md](../../EXEC_PLAN.md)
