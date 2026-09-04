@@ -249,11 +249,11 @@ async function authenticate() {
   );
 }
 
-async function selectMachineName() {
+async function selectMachineName(candidate = 'L300KP') {
   fireEvent.click(screen.getByRole('button', { name: '機種名を選ぶ' }));
   const dialog = await screen.findByRole('dialog', { name: '機種名を選択' });
   fireEvent.click(
-    await within(dialog).findByRole('button', { name: 'L300KP' })
+    await within(dialog).findByRole('button', { name: candidate, exact: true })
   );
   fireEvent.click(
     within(dialog).getByRole('button', { name: 'この機種名を使用' })
@@ -487,6 +487,115 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     expect(name).toHaveValue('現場向け名称');
     fireEvent.click(screen.getByRole('button', { name: '自動提案に戻す' }));
     expect(name).toHaveValue('L300KP 夜勤 組立');
+  });
+
+  it('renders a selected full-width machine name in half-width while preserving raw titles and save values', async () => {
+    const rawMachineName = 'Ｌ３００ＫＰ';
+    const rawProcedurePattern = '標準 ＡＢＣ１２３';
+    const rawTemplateName = '組立テンプレート ＡＢＣ１２３';
+    const rawDocumentTitle = '主手順書 ＡＢＣ１２３';
+    const source = templateFixture({
+      procedurePattern: rawProcedurePattern,
+      name: rawTemplateName,
+      procedureSequence: {
+        source: 'template_version',
+        stepSource: 'template_steps',
+        items: [procedureItem('item-primary', DOCUMENT_ID, rawDocumentTitle)],
+        steps: [procedureStep('step-primary')]
+      }
+    });
+    mocks.getTemplate.mockResolvedValue(source);
+    mocks.listMachineNameCandidates.mockResolvedValue({
+      candidates: [rawMachineName],
+      hasMore: false
+    });
+
+    renderRoute(`/kiosk/assembly/templates/new?sourceTemplateId=${source.id}`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート新規' });
+    await selectMachineName(rawMachineName);
+
+    const machineDisplay = screen.getByTitle(rawMachineName);
+    expect(machineDisplay).toHaveTextContent('L300KP');
+    expect(
+      screen.getByRole('button', { name: '変更', exact: true })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '機種名を変更', exact: true })
+    ).not.toBeInTheDocument();
+
+    const pattern = document.getElementById(
+      'assembly-template-procedure-pattern'
+    ) as HTMLInputElement;
+    const name = document.getElementById('assembly-template-name') as HTMLInputElement;
+    expect(pattern).toHaveValue(rawProcedurePattern);
+    expect(pattern).toHaveAttribute('title', rawProcedurePattern);
+    expect(name).toHaveValue(`${rawTemplateName} 複製`);
+    expect(name).toHaveAttribute('title', `${rawTemplateName} 複製`);
+
+    const documentCard = document.querySelector(
+      '[id^="assembly-document-"]'
+    ) as HTMLElement;
+    const documentTitle = documentCard.querySelector('span[title]');
+    expect(documentTitle).not.toBeNull();
+    expect(documentTitle).toHaveAttribute('title', rawDocumentTitle);
+    expect(documentTitle).toHaveTextContent('主手順書 ABC123');
+
+    const saveButton = screen.getByRole('button', { name: '保存', exact: true });
+    await waitFor(() => expect(saveButton).toBeEnabled());
+    fireEvent.click(saveButton);
+    await waitFor(() =>
+      expect(mocks.createTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          modelCode: rawMachineName,
+          procedurePattern: rawProcedurePattern,
+          name: `${rawTemplateName} 複製`
+        })
+      )
+    );
+  });
+
+  it('opens document details for an existing label without dirtying or changing the raw label', async () => {
+    const rawLabel = '表示ラベル ＡＢＣ１２３';
+    const source = templateFixture();
+    source.procedureSequence!.items[0]!.label = rawLabel;
+    mocks.getTemplate.mockResolvedValue(source);
+
+    renderRoute(`/kiosk/assembly/templates/${source.id}/edit`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート編集' });
+    fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '文書・工程', exact: true }));
+
+    const header = screen.getByTestId('assembly-template-editor-header');
+    await waitFor(() =>
+      expect(within(header).getByText('保存済み')).toBeInTheDocument()
+    );
+    const documentCard = document.querySelector(
+      '[id^="assembly-document-"]'
+    ) as HTMLElement;
+    const detailsButton = within(documentCard).getByRole('button', {
+      name: '詳細',
+      exact: true
+    });
+
+    expect(detailsButton).toHaveAttribute('aria-expanded', 'false');
+    expect(within(documentCard).queryByLabelText('表示ラベル')).not.toBeInTheDocument();
+    fireEvent.click(detailsButton);
+    expect(detailsButton).toHaveAttribute('aria-expanded', 'true');
+    expect(within(documentCard).getByLabelText('表示ラベル')).toHaveValue(rawLabel);
+    const labelDisplay = documentCard.querySelector('span[title]');
+    expect(labelDisplay).toHaveAttribute('title', rawLabel);
+    expect(labelDisplay).toHaveTextContent('表示ラベル ABC123');
+
+    fireEvent.click(detailsButton);
+    expect(detailsButton).toHaveAttribute('aria-expanded', 'false');
+    expect(within(documentCard).queryByLabelText('表示ラベル')).not.toBeInTheDocument();
+    expect(within(header).getByText('保存済み')).toBeInTheDocument();
+
+    fireEvent.click(detailsButton);
+    expect(within(documentCard).getByLabelText('表示ラベル')).toHaveValue(rawLabel);
+    expect(within(header).getByText('保存済み')).toBeInTheDocument();
   });
 
   it('posts only after a complete clone is given a machine name and preserves its custom bolt display name', async () => {

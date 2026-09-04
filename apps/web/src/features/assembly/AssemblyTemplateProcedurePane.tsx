@@ -176,9 +176,7 @@ export function AssemblyTemplateProcedurePane({
                 aria-expanded={expandedDocumentLabels.has(item.localId)}
                 onClick={() => toggleDocumentLabel(item.localId)}
               >
-                {expandedDocumentLabels.has(item.localId)
-                  ? '表示名を閉じる'
-                  : '表示名を変更'}
+                {expandedDocumentLabels.has(item.localId) ? '詳細を閉じる' : '詳細'}
               </Button>
               <Button
                 type="button"
@@ -216,25 +214,31 @@ export function AssemblyTemplateProcedurePane({
         <div className="mt-2 grid min-w-0 gap-2">
           {machineNameSelectionRequired ? (
             <div className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
-              機種名
-              <div className="min-w-0 rounded border border-white/10 bg-slate-950 p-2">
-                <div
-                  className="min-h-6 truncate text-sm font-bold text-white"
-                  title={modelCode || undefined}
-                >
-                  {modelCode || <span className="text-amber-200">未選択</span>}
-                </div>
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <span>機種名</span>
                 <Button
                   id="assembly-template-model-code"
                   data-kiosk-sop-target="assembly-editor-model-code"
                   type="button"
                   variant={modelCode ? 'secondary' : 'primary'}
-                  className="mt-2 min-h-11 w-full"
+                  className="min-h-11 shrink-0 !px-2 !py-1 text-xs"
                   disabled={busy || readOnly}
                   onClick={onOpenMachineNamePicker}
                 >
-                  {modelCode ? '機種名を変更' : '機種名を選ぶ'}
+                  {modelCode ? '変更' : '機種名を選ぶ'}
                 </Button>
+              </div>
+              <div className="min-w-0 rounded border border-white/10 bg-slate-950 p-2">
+                <div
+                  className="min-h-6 break-all line-clamp-2 text-sm font-bold text-white"
+                  title={modelCode || undefined}
+                >
+                  {modelCode ? (
+                    formatAssemblyEditorName(modelCode)
+                  ) : (
+                    <span className="text-amber-200">未選択</span>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
@@ -266,6 +270,7 @@ export function AssemblyTemplateProcedurePane({
               data-kiosk-sop-target="assembly-editor-procedure-pattern"
               className="min-h-11 min-w-0"
               value={procedurePattern}
+              title={procedurePattern}
               maxLength={120}
               disabled={busy || readOnly || identityLocked}
               onChange={(event) => onProcedurePatternChange(event.target.value)}
@@ -283,6 +288,7 @@ export function AssemblyTemplateProcedurePane({
               data-kiosk-sop-target="assembly-editor-template-name"
               className="min-h-11 min-w-0"
               value={templateName}
+              title={templateName}
               maxLength={200}
               disabled={busy || readOnly}
               onChange={(event) => onTemplateNameChange(event.target.value)}
