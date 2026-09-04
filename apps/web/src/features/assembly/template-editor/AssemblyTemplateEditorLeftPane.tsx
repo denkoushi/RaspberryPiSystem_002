@@ -131,9 +131,19 @@ export function AssemblyTemplateEditorLeftPane() {
           className="min-h-10 flex-1 !px-1 text-xs"
           aria-expanded={leftPaneTab === 'documents'}
           aria-controls="assembly-procedure-pane"
+          aria-label="文書・工程"
           onClick={() => setLeftPaneTab(leftPaneTab === 'documents' ? 'steps' : 'documents')}
         >
           文書・工程 {leftPaneTab === 'documents' ? 'を閉じる' : 'を開く'}
+        </Button>
+        <Button
+          type="button"
+          variant={leftPaneTab === 'steps' ? 'primary' : 'ghostOnDark'}
+          className="min-h-10 flex-1 !px-1 text-xs"
+          aria-controls="assembly-step-storyboard"
+          onClick={() => setLeftPaneTab('steps')}
+        >
+          手順
         </Button>
       </div>
       {!isDesktop ? <div className="flex min-h-0 flex-1 flex-col">
