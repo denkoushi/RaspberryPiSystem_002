@@ -8,6 +8,14 @@ const viewports = [
 const procedureImage =
   'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800"%3E%3Crect width="1200" height="800" fill="%23f8fafc"/%3E%3Cpath d="M100 400h1000M600 100v600" stroke="%2364758b" stroke-width="8"/%3E%3C/svg%3E';
 
+const paneFitLongMachineName = 'Ｌ３００ＫＰ　長い機種名全角英数字ＡＢＣ１２３'.repeat(4);
+
+function formatAssemblyEditorDisplayName(value: string): string {
+  return value.replace(/[Ａ-Ｚａ-ｚ０-９\u3000]/g, (character) =>
+    character === '　' ? ' ' : String.fromCharCode(character.charCodeAt(0) - 0xfee0)
+  );
+}
+
 const unifiedEditorDocuments = [
   {
     id: 'procedure-primary',
@@ -138,10 +146,14 @@ async function mockKioskApis(
       const query = new URL(request.url()).searchParams;
       const digitQuery = query.get('digitQuery') ?? '';
       const textQuery = (query.get('q') ?? '').toUpperCase();
-      const candidates = ['L300KP', 'L300KP-2', 'SH500ZX'].filter(
-        (candidate) =>
-          (!digitQuery || candidate.replace(/\D/g, '').includes(digitQuery)) &&
-          (!textQuery || candidate.toUpperCase().includes(textQuery))
+      const candidates = ['L300KP', 'L300KP-2', 'SH500ZX', paneFitLongMachineName].filter(
+        (candidate) => {
+          const displayCandidate = formatAssemblyEditorDisplayName(candidate);
+          return (
+            (!digitQuery || displayCandidate.replace(/\D/g, '').includes(digitQuery)) &&
+            (!textQuery || displayCandidate.toUpperCase().includes(textQuery))
+          );
+        }
       );
       await route.fulfill({ json: { candidates, hasMore: false } });
       return;
@@ -325,10 +337,13 @@ async function selectAssemblyMachineName(page: Page, machineName = 'L300KP'): Pr
   await dialog.getByRole('button', { name: 'この機種名を使用' }).click();
 }
 
-async function fillAssemblyTemplateStructure(page: Page): Promise<void> {
+async function fillAssemblyTemplateStructure(
+  page: Page,
+  expectedTemplateName = 'L300KP 標準 組立'
+): Promise<void> {
   const pane = page.locator('#assembly-procedure-pane');
   await pane.locator('#assembly-template-procedure-pattern').fill('標準');
-  await expect(pane.locator('#assembly-template-name')).toHaveValue('L300KP 標準 組立');
+  await expect(pane.locator('#assembly-template-name')).toHaveValue(expectedTemplateName);
   await pane.getByRole('button', { name: '詳細（任意）' }).click();
   await pane.locator('input[id$="-processNo"]').fill('10');
   await pane.locator('input[id$="-areaCode"]').fill('A1');
@@ -655,10 +670,31 @@ for (const viewport of paneFitViewports) {
     await expect(page.getByTestId('assembly-unified-editor-workspace')).toBeVisible();
     await page.getByRole('button', { name: '文書・工程', exact: true }).click();
     await expect(page.getByRole('button', { name: '機種名を選ぶ', exact: true })).toBeVisible();
-    await selectAssemblyMachineName(page);
-    await fillAssemblyTemplateStructure(page);
+    await selectAssemblyMachineName(page, paneFitLongMachineName);
+    const expectedLongMachineTemplateName = `${paneFitLongMachineName.trim().replace(/\s+/g, ' ')} 標準 組立`;
+    await fillAssemblyTemplateStructure(page, expectedLongMachineTemplateName);
 
     const left = page.locator('#assembly-procedure-pane');
+    const selectedMachineName = left.locator('#assembly-template-basic-settings div[title]').first();
+    await expect(selectedMachineName).toHaveAttribute('title', paneFitLongMachineName);
+    expect(await selectedMachineName.textContent()).toBe(
+      formatAssemblyEditorDisplayName(paneFitLongMachineName)
+    );
+    const machineDisplayMetrics = await selectedMachineName.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const elementRect = element.getBoundingClientRect();
+      const lineTops = Array.from(range.getClientRects())
+        .filter((rect) => rect.top >= elementRect.top - 1 && rect.bottom <= elementRect.bottom + 1)
+        .map((rect) => Math.round(rect.top));
+      return {
+        lineCount: new Set(lineTops).size,
+        clientHeight: element.clientHeight
+      };
+    });
+    expect(machineDisplayMetrics.lineCount).toBeLessThanOrEqual(2);
+    await expect(left.getByRole('button', { name: '変更', exact: true })).toBeVisible();
+    await expectEditorControlsFitHorizontally(left);
     const longProcessNo = '1234567890'.repeat(8);
     const longAreaCode = 'AREA-CODE-'.repeat(8);
     const longUnitCode = 'UNIT-CODE-'.repeat(8);
@@ -673,6 +709,7 @@ for (const viewport of paneFitViewports) {
       const input = left.locator(selector);
       await input.fill(value);
       await expect(input).toHaveValue(value);
+      await expect(input).toHaveAttribute('title', value);
       await expectEditorControlReachable(input);
     }
     const areaFields = [
@@ -692,8 +729,6 @@ for (const viewport of paneFitViewports) {
     await expect(areaSummary.locator('span[title]').first()).toHaveAttribute('title', `${longProcessNo}-${longAreaCode}`);
     await expectEditorControlsFitHorizontally(left);
 
-    if (viewport.width === 1279) return;
-
     for (const [field, value] of [
       ['processNo', '10'],
       ['areaCode', 'A1'],
@@ -704,8 +739,14 @@ for (const viewport of paneFitViewports) {
     }
 
     const documentCard = left.locator('[id^="assembly-document-"]').first();
-    await documentCard.getByRole('button', { name: '表示名を変更' }).click();
+    const documentDetailsButton = documentCard.locator('button[aria-expanded]');
+    await expect(documentDetailsButton).toHaveText('詳細');
+    await expect(documentDetailsButton).toHaveAttribute('aria-expanded', 'false');
+    await documentDetailsButton.click();
+    await expect(documentDetailsButton).toHaveText('詳細を閉じる');
+    await expect(documentDetailsButton).toHaveAttribute('aria-expanded', 'true');
     const labelInput = documentCard.getByLabel('表示ラベル');
+    await expect(documentCard.getByRole('button', { name: /を削除$/ })).toBeVisible();
     let shortCardHeight = 0;
     for (const [index, name] of names.entries()) {
       await labelInput.fill(name);
@@ -715,6 +756,13 @@ for (const viewport of paneFitViewports) {
       const height = (await documentCard.boundingBox())!.height;
       if (index === 0) shortCardHeight = height;
       else expect(height).toBeCloseTo(shortCardHeight, 0);
+      await documentDetailsButton.click();
+      await expect(documentDetailsButton).toHaveAttribute('aria-expanded', 'false');
+      await expect(documentCard.locator('span[title]').first()).toHaveAttribute('title', name);
+      await expectEditorControlsFitHorizontally(left);
+      await documentDetailsButton.click();
+      await expect(documentDetailsButton).toHaveAttribute('aria-expanded', 'true');
+      await expect(labelInput).toHaveValue(name);
     }
     await expect(documentCard.locator('span[title]').first()).toContainText('M6 ABC123');
     await left.locator('input[id$="-processNo"]').fill('12345678901234567890');
@@ -812,6 +860,9 @@ for (const viewport of paneFitViewports) {
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect.poll(() => evidence.templateBodies.length).toBe(1);
     expect(evidence.templateBodies[0]).toMatchObject({
+      modelCode: paneFitLongMachineName,
+      procedurePattern: longProcedurePattern,
+      name: longTemplateName,
       procedureItems: [{ label: names[3] }],
       areas: [{ bolts: [{ lowerLimit: 81.25, nominalTorque: 90.25, upperLimit: 99.25, unit: 'N·m', capabilityGroupId: groups[3].id }] }],
       procedureSteps: [{ title: names[3], instructionText: 'ＡＢＣ１２３は保存時に変換しない。', emphasis: 'caution' }, {}],
