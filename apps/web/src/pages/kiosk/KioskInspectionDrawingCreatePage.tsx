@@ -939,6 +939,27 @@ export function KioskInspectionDrawingCreatePage() {
     [clientKey, visualOcrStatus?.status, visualTemplateIdForOcr]
   );
 
+  const handlePointChange = (
+    pointId: string,
+    patch: Pick<InspectionDrawingPoint, 'xRatio' | 'yRatio'> | Partial<InspectionDrawingPoint>
+  ) => {
+    if (contentReadOnly) return;
+    const currentPoint = points.find((point) => point.id === pointId);
+    if (!currentPoint) return;
+    const nextPoint = mergeInspectionDrawingPointPatch(currentPoint, patch);
+    updatePoint(pointId, patch);
+    const labelChanged =
+      Object.prototype.hasOwnProperty.call(patch, 'name') ||
+      Object.prototype.hasOwnProperty.call(patch, 'depthMode');
+    const positionChanged =
+      (typeof patch.xRatio === 'number' && Math.abs(patch.xRatio - currentPoint.xRatio) >= 0.002) ||
+      (typeof patch.yRatio === 'number' && Math.abs(patch.yRatio - currentPoint.yRatio) >= 0.002);
+    if (labelChanged || positionChanged) {
+      invalidateOcrCandidatesForPoint(pointId);
+      requestOcrCandidatesForPoint(nextPoint);
+    }
+  };
+
   useEffect(() => {
     if (visualOcrStatus?.status !== 'completed') return;
     if (!selectedPoint) return;
@@ -1492,6 +1513,7 @@ export function KioskInspectionDrawingCreatePage() {
                       requestOcrCandidatesForPoint(pt);
                     }
               }
+              onPointChange={contentReadOnly ? undefined : handlePointChange}
               onSetCalloutTip={
                 contentReadOnly || mode !== 'callout' || !selectedPointId
                   ? undefined
@@ -1528,20 +1550,7 @@ export function KioskInspectionDrawingCreatePage() {
             onSelectPoint={handleSelectPointFromList}
             onPointChange={(patch) => {
               if (!selectedPoint) return;
-              const nextPoint = mergeInspectionDrawingPointPatch(selectedPoint, patch);
-              updatePoint(selectedPoint.id, patch);
-              const labelChanged =
-                Object.prototype.hasOwnProperty.call(patch, 'name') ||
-                Object.prototype.hasOwnProperty.call(patch, 'depthMode');
-              const positionChanged =
-                (typeof patch.xRatio === 'number' &&
-                  Math.abs(patch.xRatio - selectedPoint.xRatio) >= 0.002) ||
-                (typeof patch.yRatio === 'number' &&
-                  Math.abs(patch.yRatio - selectedPoint.yRatio) >= 0.002);
-              if (labelChanged || positionChanged) {
-                invalidateOcrCandidatesForPoint(selectedPoint.id);
-                requestOcrCandidatesForPoint(nextPoint);
-              }
+              handlePointChange(selectedPoint.id, patch);
             }}
             onRemovePoint={contentReadOnly ? undefined : removeSelected}
             onRemoveAllPoints={contentReadOnly ? undefined : removeAllPoints}

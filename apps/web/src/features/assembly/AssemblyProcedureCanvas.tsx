@@ -12,7 +12,8 @@ import {
 import {
   AssemblyProcedureMarkerLayer,
   type AssemblyCanvasBolt,
-  type AssemblyCanvasCheckItem
+  type AssemblyCanvasCheckItem,
+  type AssemblyProcedureBoltMoveHandler
 } from './AssemblyProcedureMarkerLayer';
 import { useAssemblyProcedureContainBox } from './useAssemblyProcedureContainBox';
 
@@ -30,6 +31,7 @@ type Props = {
   inputTargetBoltId?: string | null;
   selectedCheckItemId?: string | null;
   onSelectBolt?: (id: string) => void;
+  onMoveBolt?: AssemblyProcedureBoltMoveHandler;
   onSelectCheckItem?: (id: string) => void;
   onToggleCheckItem?: (id: string) => void;
   onAddBolt?: (xRatio: number, yRatio: number) => void;
@@ -82,6 +84,7 @@ export function AssemblyProcedureCanvas({
   inputTargetBoltId,
   selectedCheckItemId,
   onSelectBolt,
+  onMoveBolt,
   onSelectCheckItem,
   onToggleCheckItem,
   onAddBolt,
@@ -327,6 +330,7 @@ export function AssemblyProcedureCanvas({
                 inputTargetBoltId={inputTargetBoltId}
                 selectedCheckItemId={selectedCheckItemId}
                 onSelectBolt={onSelectBolt}
+                onMoveBolt={onMoveBolt}
                 onSelectCheckItem={onSelectCheckItem}
                 onToggleCheckItem={onToggleCheckItem}
               />

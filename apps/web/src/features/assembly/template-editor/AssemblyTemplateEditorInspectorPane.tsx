@@ -172,7 +172,7 @@ export function AssemblyTemplateEditorInspectorPane() {
           </div>
         ) : (
           <div className="mt-3 rounded border border-dashed border-white/20 p-3 text-sm text-white/60">
-            手順書上のチェックマーカーを選択
+            未選択
           </div>
         )}
       </>

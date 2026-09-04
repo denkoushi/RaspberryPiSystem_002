@@ -109,7 +109,7 @@ export function useAssemblyTemplateEditorController(input: {
       setTemplateName('');
       setTemplateNameMode('auto');
       setModelCode('');
-      setProcedurePattern('');
+      setProcedurePattern('標準');
     }
     setMetadataInitialized(true);
   }, [data.loadedTemplate, data.loading, input.templateId]);
@@ -282,11 +282,11 @@ export function useAssemblyTemplateEditorController(input: {
     if (issue.target.kind === 'document') {
       procedure.setProcedurePaneOpen(true);
       procedure.setLeftPaneTab('documents');
-      const item = procedure.procedureItems.find(
-        (candidate) => candidate.localId === issue.target.id
-      );
+      const item = procedure.procedureItems.find((candidate) => candidate.localId === issue.target.id);
       if (item) procedure.focusItem(item);
-      if (issue.target.id) focusElementById(`assembly-document-${issue.target.id}`);
+      const selectedAreaId = marker.selectedArea?.id ?? marker.areas[0]?.id;
+      if (selectedAreaId) setExpandedAreaDetails((current) => new Set(current).add(selectedAreaId));
+      if (issue.target.id) focusElementById(issue.target.field === 'label' ? `assembly-document-label-${issue.target.id}` : `assembly-document-${issue.target.id}`);
       return;
     }
     if (issue.target.kind === 'step') {

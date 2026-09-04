@@ -317,7 +317,7 @@ export function AssemblyTorqueWrenchSettingAssistant({
             <div className="grid gap-1.5" aria-label="登録設定候補">
               <div className="font-semibold text-white/70">登録設定候補</div>
               {resolution.candidates.length === 0 ? (
-                <p className="text-white/60">利用できる登録設定がありません。</p>
+                <p className="text-white/60">候補なし</p>
               ) : (
                 resolution.candidates.map((candidate) => (
                   <Button
@@ -368,9 +368,7 @@ export function AssemblyTorqueWrenchSettingAssistant({
               )}
             </div>
           ) : (
-            <p className="text-white/60">
-              このグループに適合する登録済みレンチ設定がないため、自動入力できません。
-            </p>
+            <p className="text-white/60">候補なし</p>
           )}
         </section>
       ) : null}

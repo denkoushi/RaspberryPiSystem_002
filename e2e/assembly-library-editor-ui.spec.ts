@@ -375,7 +375,7 @@ for (const viewport of [...viewports, { width: 900, height: 900 }]) {
     await left.locator('#assembly-template-procedure-pattern').fill('標準');
     await expect(left.getByRole('button', { name: '詳細（任意）' })).toHaveAttribute('aria-expanded', 'false');
     await expect(left.locator('input[id$="-processNo"]')).toHaveCount(0);
-    await expect(left).toContainText('すべての文書に共通');
+    await expect(left).not.toContainText('すべての文書に共通');
 
     await left.getByRole('button', { name: '文書追加', exact: true }).click();
     let library = page.getByRole('dialog');
@@ -620,7 +620,7 @@ async function expectEditorControlsFitHorizontally(pane: Locator) {
 }
 
 async function expectEditorControlReachable(control: Locator) {
-  await control.scrollIntoViewIfNeeded();
+  await control.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest' }));
   await expect(control).toBeInViewport();
   const fits = await control.evaluate((element) => {
     const rect = element.getBoundingClientRect();
@@ -628,7 +628,9 @@ async function expectEditorControlReachable(control: Locator) {
       if (!['hidden', 'auto', 'scroll', 'clip'].includes(getComputedStyle(parent).overflowY)) continue;
       const parentRect = parent.getBoundingClientRect();
       const top = parentRect.top + parent.clientTop;
-      if (rect.top < top - 1 || rect.bottom > top + parent.clientHeight + 1) return false;
+      if (rect.top < top - 1 || rect.bottom > top + parent.clientHeight + 1) {
+        return false;
+      }
     }
     return true;
   });
@@ -699,8 +701,8 @@ for (const viewport of paneFitViewports) {
     const longAreaCode = 'AREA-CODE-'.repeat(8);
     const longUnitCode = 'UNIT-CODE-'.repeat(8);
     const longAreaName = '本体組立エリア名称'.repeat(20);
-    const longProcedurePattern = '標準パターン識別子'.repeat(10);
-    const longTemplateName = '組立テンプレート基本設定の長い名称'.repeat(10);
+    const longProcedurePattern = 'STANDARD-PATTERN-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.repeat(4).slice(0, 120);
+    const longTemplateName = 'TemplateName-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.repeat(4).slice(0, 200);
     const basicSettings = [
       ['#assembly-template-procedure-pattern', longProcedurePattern],
       ['#assembly-template-name', longTemplateName]
@@ -710,6 +712,26 @@ for (const viewport of paneFitViewports) {
       await input.fill(value);
       await expect(input).toHaveValue(value);
       await expect(input).toHaveAttribute('title', value);
+      await expect(input).toHaveAttribute('rows', '2');
+      await expect(input).toHaveClass(/break-all/);
+      const textareaMetrics = await input.evaluate((element) => ({
+        clientWidth: element.clientWidth,
+        clientHeight: element.clientHeight,
+        scrollWidth: element.scrollWidth,
+        scrollHeight: element.scrollHeight,
+        lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+        verticalPadding:
+          Number.parseFloat(getComputedStyle(element).paddingTop) +
+          Number.parseFloat(getComputedStyle(element).paddingBottom),
+        wordBreak: getComputedStyle(element).wordBreak
+      }));
+      expect(textareaMetrics.wordBreak).toBe('break-all');
+      expect(textareaMetrics.scrollWidth).toBeLessThanOrEqual(textareaMetrics.clientWidth + 1);
+      expect(
+        (textareaMetrics.clientHeight - textareaMetrics.verticalPadding) /
+          textareaMetrics.lineHeight
+      ).toBeCloseTo(2, 1);
+      expect(textareaMetrics.scrollHeight).toBeGreaterThanOrEqual(textareaMetrics.clientHeight);
       await expectEditorControlReachable(input);
     }
     const areaFields = [
@@ -739,13 +761,12 @@ for (const viewport of paneFitViewports) {
     }
 
     const documentCard = left.locator('[id^="assembly-document-"]').first();
-    const documentDetailsButton = documentCard.locator('button[aria-expanded]');
-    await expect(documentDetailsButton).toHaveText('詳細');
-    await expect(documentDetailsButton).toHaveAttribute('aria-expanded', 'false');
-    await documentDetailsButton.click();
-    await expect(documentDetailsButton).toHaveText('詳細を閉じる');
-    await expect(documentDetailsButton).toHaveAttribute('aria-expanded', 'true');
-    const labelInput = documentCard.getByLabel('表示ラベル');
+    const areaDetailsButton = left.getByRole('button', { name: '詳細（任意）', exact: true });
+    await expect(areaDetailsButton).toHaveAttribute('aria-expanded', 'true');
+    await expect(documentCard.locator('button[aria-expanded]')).toHaveCount(0);
+    await expect(documentCard.getByLabel('表示ラベル')).toHaveCount(0);
+    const labelInput = left.getByLabel('表示ラベル');
+    await expect(labelInput).toBeVisible();
     await expect(documentCard.getByRole('button', { name: /を削除$/ })).toBeVisible();
     let shortCardHeight = 0;
     for (const [index, name] of names.entries()) {
@@ -756,15 +777,15 @@ for (const viewport of paneFitViewports) {
       const height = (await documentCard.boundingBox())!.height;
       if (index === 0) shortCardHeight = height;
       else expect(height).toBeCloseTo(shortCardHeight, 0);
-      await documentDetailsButton.click();
-      await expect(documentDetailsButton).toHaveAttribute('aria-expanded', 'false');
-      await expect(documentCard.locator('span[title]').first()).toHaveAttribute('title', name);
-      await expectEditorControlsFitHorizontally(left);
-      await documentDetailsButton.click();
-      await expect(documentDetailsButton).toHaveAttribute('aria-expanded', 'true');
-      await expect(labelInput).toHaveValue(name);
     }
     await expect(documentCard.locator('span[title]').first()).toContainText('M6 ABC123');
+    await areaDetailsButton.click();
+    await expect(areaDetailsButton).toHaveAttribute('aria-expanded', 'false');
+    await expect(left.getByLabel('表示ラベル')).toHaveCount(0);
+    await expectEditorControlsFitHorizontally(left);
+    await areaDetailsButton.click();
+    await expect(areaDetailsButton).toHaveAttribute('aria-expanded', 'true');
+    await expect(left.getByLabel('表示ラベル')).toHaveValue(names[3]);
     await left.locator('input[id$="-processNo"]').fill('12345678901234567890');
     const areaButton = left.getByRole('button').filter({ hasText: '12345678901234567890-A1' });
     await expect(areaButton.getByText('未完了', { exact: true })).toBeVisible();
@@ -1588,4 +1609,97 @@ test('legacy procedure-order URL redirects to the filtered template library', as
   await mockKioskApis(page);
   await page.goto('/kiosk/assembly/procedure-order-settings?machineName=MH-AX');
   await expect(page).toHaveURL(/\/kiosk\/assembly\/library\?focus=templates&modelCode=MH-AX$/);
+});
+
+test('assembly editor drags a crop bolt marker and saves its source-page position once', async ({
+  page
+}) => {
+  const evidence: AssemblyEditorEvidence = { templateBodies: [] };
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await mockKioskApis(page, false, evidence);
+  await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', {
+    waitUntil: 'networkidle'
+  });
+  await unlockAssemblyEditor(page);
+  await selectAssemblyMachineName(page);
+  await fillAssemblyTemplateStructure(page);
+
+  const canvas = page.getByTestId('assembly-procedure-canvas');
+  const image = canvas.locator('img').last();
+  await expect(image).toBeVisible();
+  const imageBox = await image.boundingBox();
+  expect(imageBox).not.toBeNull();
+
+  await page.getByRole('button', { name: '矩形追加', exact: true }).click();
+  await page.mouse.move(
+    imageBox!.x + imageBox!.width * 0.2,
+    imageBox!.y + imageBox!.height * 0.25
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    imageBox!.x + imageBox!.width * 0.8,
+    imageBox!.y + imageBox!.height * 0.75
+  );
+  await page.mouse.up();
+
+  const cropView = page
+    .getByTestId('assembly-unified-editor-canvas-pane')
+    .getByTestId('assembly-procedure-crop-view');
+  await expect(cropView).toBeVisible();
+  await page.getByLabel('タイトル', { exact: true }).fill('ドラッグ確認');
+  await page.getByRole('textbox', { name: /^指示文/ }).fill('丸数字位置を確認');
+  await page.getByRole('button', { name: '締結マーカー', exact: true }).click();
+  await page.getByRole('button', { name: '丸数字', exact: true }).click();
+  const cropBox = await cropView.boundingBox();
+  expect(cropBox).not.toBeNull();
+  const initialLocalPoint = { x: 0.25, y: 0.25 };
+  await page.mouse.click(
+    cropBox!.x + cropBox!.width * initialLocalPoint.x,
+    cropBox!.y + cropBox!.height * initialLocalPoint.y
+  );
+  const marker = cropView.getByRole('button', { name: '丸数字1' });
+  await expect(marker).toBeVisible();
+  await fillSelectedAssemblyBolt(page);
+
+  const targetLocalPoint = { x: 0.75, y: 0.5 };
+  await marker.hover();
+  await page.mouse.move(
+    cropBox!.x + cropBox!.width * initialLocalPoint.x,
+    cropBox!.y + cropBox!.height * initialLocalPoint.y
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    cropBox!.x + cropBox!.width * targetLocalPoint.x,
+    cropBox!.y + cropBox!.height * targetLocalPoint.y
+  );
+  await page.mouse.up();
+
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect.poll(() => evidence.templateBodies.length).toBe(1);
+  const payload = evidence.templateBodies[0] as {
+    areas: Array<{ bolts: Array<{ xRatio: number; yRatio: number }> }>;
+    procedureSteps: Array<{
+      viewMode: string;
+      cropXRatio: number | null;
+      cropYRatio: number | null;
+      cropWidthRatio: number | null;
+      cropHeightRatio: number | null;
+    }>;
+  };
+  const cropStep = payload.procedureSteps.find((step) => step.viewMode === 'crop');
+  expect(cropStep).toMatchObject({
+    cropXRatio: expect.any(Number),
+    cropYRatio: expect.any(Number),
+    cropWidthRatio: expect.any(Number),
+    cropHeightRatio: expect.any(Number)
+  });
+  const savedBolt = payload.areas[0]!.bolts[0]!;
+  expect(savedBolt.xRatio).toBeCloseTo(
+    cropStep!.cropXRatio! + targetLocalPoint.x * cropStep!.cropWidthRatio!,
+    2
+  );
+  expect(savedBolt.yRatio).toBeCloseTo(
+    cropStep!.cropYRatio! + targetLocalPoint.y * cropStep!.cropHeightRatio!,
+    2
+  );
 });
