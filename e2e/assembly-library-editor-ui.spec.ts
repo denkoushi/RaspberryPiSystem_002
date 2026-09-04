@@ -993,7 +993,7 @@ for (const viewport of viewports) {
       .filter({ hasText: '統合エディター 補助手順書' })
       .getByLabel('追加', { exact: true })
       .click();
-    await expect(page.getByRole('heading', { name: '手順 2/300' })).toBeVisible();
+    await expect(page.getByTestId('assembly-step-storyboard').locator('article')).toHaveCount(2);
     await page.getByRole('button', { name: '文書・工程', exact: true }).click();
     await expect(page.locator('#assembly-procedure-pane')).toContainText('統合エディター 補助手順書');
 
