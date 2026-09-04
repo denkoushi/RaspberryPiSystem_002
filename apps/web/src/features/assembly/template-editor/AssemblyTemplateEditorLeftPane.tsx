@@ -123,7 +123,10 @@ export function AssemblyTemplateEditorLeftPane() {
     />
   );
   return procedurePaneOpen ? (
-    <aside className="flex min-h-[32rem] min-w-0 flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
+    <aside
+      data-testid="assembly-template-editor-left-pane"
+      className="flex min-h-[32rem] min-w-0 flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0"
+    >
       <div className="hidden shrink-0 items-center gap-1 border-b border-white/10 p-1 xl:flex">
         <Button
           type="button"

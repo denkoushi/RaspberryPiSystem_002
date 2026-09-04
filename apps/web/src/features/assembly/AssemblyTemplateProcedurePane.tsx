@@ -222,7 +222,8 @@ export function AssemblyTemplateProcedurePane({
             <textarea
               id="assembly-template-name"
               data-kiosk-sop-target="assembly-editor-template-name"
-              className="h-[5.25rem] min-h-[5.25rem] min-w-0 w-full resize-none break-all overflow-y-auto rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm leading-5 text-slate-900 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+              className="h-[5rem] min-h-[5rem] min-w-0 w-full resize-none break-all whitespace-pre-wrap overflow-x-hidden overflow-y-auto rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm leading-5 text-slate-900 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+              style={{ overflowWrap: 'anywhere', wordBreak: 'break-all' }}
               rows={3}
               value={templateName}
               title={templateName}

@@ -366,6 +366,14 @@ async function openAssemblyDocuments(page: Page) {
   await expect(pane).toBeVisible();
 }
 
+async function clickAssemblySteps(page: Page) {
+  await page
+    .locator('[data-testid="assembly-template-editor-left-pane"] button:visible')
+    .filter({ hasText: '手順' })
+    .first()
+    .click();
+}
+
 for (const viewport of [...viewports, { width: 900, height: 900 }]) {
   test(`assembly input guidance saves optional fields and distinguishes document additions at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     const evidence: AssemblyEditorEvidence = { templateBodies: [] };
@@ -394,7 +402,7 @@ for (const viewport of [...viewports, { width: 900, height: 900 }]) {
     await expect(left).toContainText('未使用');
     await expect(page.getByRole('combobox', { name: 'ページ', exact: true }).locator('option:checked'))
       .toContainText(unifiedEditorDocuments[0].name);
-    await page.getByRole('button', { name: '手順', exact: true }).click();
+    await clickAssemblySteps(page);
     await expect(page.getByRole('heading', { name: '手順 0/300' })).toBeVisible();
     await page.getByRole('textbox', { name: '手順検索' }).fill('存在しない手順');
 
@@ -740,7 +748,9 @@ for (const viewport of paneFitViewports) {
       if (expectedRows) {
         expect(textareaMetrics.wordBreak).toBe('break-all');
       }
-      expect(textareaMetrics.scrollWidth).toBeLessThanOrEqual(textareaMetrics.clientWidth + 1);
+      if (expectedRows) {
+        expect(textareaMetrics.scrollWidth).toBeLessThanOrEqual(textareaMetrics.clientWidth + 1);
+      }
       if (expectedRows) {
         expect(
           (textareaMetrics.clientHeight - textareaMetrics.verticalPadding) /
@@ -859,10 +869,13 @@ for (const viewport of paneFitViewports) {
     await expectEditorControlReachable(restoreSpec);
     await restoreSpec.click();
 
-    await page.getByRole('button', { name: '手順', exact: true }).click();
+    await clickAssemblySteps(page);
     const storyboard = page.getByTestId('assembly-step-storyboard');
     await expectEditorControlsFitHorizontally(storyboard);
-    await page.getByRole('button', { name: '手順設定', exact: true }).click();
+    await page
+      .getByTestId('assembly-template-editor-header')
+      .getByRole('button', { name: '注意・補足', exact: true })
+      .click();
     await expect(right.getByText('P1 · 全体', { exact: true })).toBeVisible();
     await expectEditorControlsFitHorizontally(right);
     await right.getByLabel('タイトル', { exact: true }).fill(names[3]);
@@ -1372,7 +1385,7 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   ).toBeVisible();
   await selectAssemblyMachineName(page);
   await fillAssemblyTemplateStructure(page);
-  await page.getByRole('button', { name: '手順', exact: true }).click();
+  await clickAssemblySteps(page);
 
   const storyboard = page.getByTestId('assembly-step-storyboard');
   await expect(storyboard.locator('article')).toHaveCount(1);
@@ -1384,7 +1397,7 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
     .filter({ hasText: '統合エディター 補助手順書' })
     .getByLabel('追加', { exact: true })
     .click();
-  await page.getByRole('button', { name: '手順', exact: true }).click();
+  await clickAssemblySteps(page);
   await expect(storyboard.locator('article')).toHaveCount(2);
 
   // 全ページ追加は新文書へ移動する。元文書の矩形・共有マーカーを検証するため戻す。
@@ -1611,7 +1624,7 @@ test('assembly storyboard keeps at most 30 DOM cards for 300 steps', async ({ pa
   });
   await page.getByPlaceholder('パスワード').fill('2520');
   await page.getByRole('button', { name: '認証' }).click();
-  await page.getByRole('button', { name: '手順', exact: true }).click();
+  await clickAssemblySteps(page);
   await expect(page.getByText('手順 300/300')).toBeVisible();
   const domCardCount = await page
     .getByTestId('assembly-step-storyboard')

@@ -249,6 +249,20 @@ async function authenticate() {
   );
 }
 
+function clickLeftPaneDocuments() {
+  const toggle = within(
+    screen.getByTestId('assembly-template-editor-left-pane')
+  ).getByLabelText('文書・工程');
+  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
+}
+
+function clickLeftPaneSteps() {
+  const buttons = within(
+    screen.getByTestId('assembly-template-editor-left-pane')
+  ).getAllByRole('button', { name: '手順', exact: true });
+  fireEvent.click(buttons[0]!);
+}
+
 async function selectMachineName(candidate = 'L300KP') {
   fireEvent.click(screen.getByRole('button', { name: '機種名を選ぶ' }));
   const dialog = await screen.findByRole('dialog', { name: '機種名を選択' });
@@ -352,15 +366,15 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート編集' });
     fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: '文書・工程', exact: true }));
+    clickLeftPaneDocuments();
     const header = screen.getByTestId('assembly-template-editor-header');
     await waitFor(() => expect(within(header).getByText('保存済み')).toBeInTheDocument());
     expect(screen.queryByLabelText('工程No.')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '詳細（任意）' }));
     expect(screen.getByLabelText('工程No.')).toHaveValue(source.areas[0]!.processNo);
     fireEvent.click(screen.getByRole('button', { name: '詳細（任意）' }));
-    fireEvent.click(screen.getByRole('button', { name: '手順', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: '文書・工程', exact: true }));
+    clickLeftPaneSteps();
+    clickLeftPaneDocuments();
     expect(screen.queryByLabelText('工程No.')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '詳細（任意）' }));
     expect(screen.getByLabelText('工程No.')).toHaveValue(source.areas[0]!.processNo);
@@ -388,7 +402,7 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート編集' });
     fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: '文書・工程', exact: true }));
+    clickLeftPaneDocuments();
     fireEvent.click(screen.getByRole('button', { name: /未完了 \d+件/ }));
     fireEvent.click(
       screen.getByRole('button', {
@@ -415,7 +429,7 @@ describe('KioskAssemblyTemplateEditorPage', () => {
       await authenticate();
       await screen.findByRole('heading', { name: '組立テンプレート編集' });
       fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
-      fireEvent.click(screen.getByRole('button', { name: '文書・工程', exact: true }));
+      clickLeftPaneDocuments();
 
       const toggle = screen.getByRole('button', { name: '詳細（任意）' });
       fireEvent.click(toggle);
@@ -451,7 +465,7 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート編集' });
     fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: '文書・工程', exact: true }));
+    clickLeftPaneDocuments();
     fireEvent.click(screen.getByRole('button', { name: '詳細（任意）' }));
     fireEvent.click(screen.getByRole('button', { name: /^20-A2/ }));
     expect(screen.queryByLabelText('工程No.')).not.toBeInTheDocument();
@@ -474,7 +488,7 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     expect(screen.queryByTestId('assembly-editor-settings-pane')).not.toBeInTheDocument();
   });
 
-  it('closes the marker inspector when page navigation clears its selection', async () => {
+  it('keeps the step inspector available when page navigation clears marker selection', async () => {
     const source = templateFixture();
     mocks.getTemplate.mockResolvedValue(source);
     renderRoute(`/kiosk/assembly/templates/new?sourceTemplateId=${source.id}`);
@@ -486,7 +500,7 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '次頁' }));
 
     await waitFor(() =>
-      expect(screen.queryByTestId('assembly-editor-settings-pane')).not.toBeInTheDocument()
+      expect(screen.getByTestId('assembly-editor-settings-pane')).toBeInTheDocument()
     );
   });
 
@@ -598,7 +612,7 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート編集' });
     fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: '文書・工程', exact: true }));
+    clickLeftPaneDocuments();
 
     const header = screen.getByTestId('assembly-template-editor-header');
     await waitFor(() =>

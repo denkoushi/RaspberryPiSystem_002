@@ -101,7 +101,7 @@ export function AssemblyTemplateEditorHeader() {
         aria-controls="assembly-editor-settings-pane"
         onClick={() => {
           setStepSupplementOpen(true);
-          setInspectorMode((current) => (current === 'step' ? 'closed' : 'step'));
+          setInspectorMode('step');
         }}
       >
         注意・補足

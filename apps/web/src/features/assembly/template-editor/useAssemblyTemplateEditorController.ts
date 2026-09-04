@@ -206,9 +206,9 @@ export function useAssemblyTemplateEditorController(input: {
   const markerSettingsOpen = Boolean(marker.selectedBolt || marker.selectedCheckItem);
   useEffect(() => {
     if (inspectorMode === 'markers' && !markerSettingsOpen) {
-      setInspectorMode('closed');
+      setInspectorMode(procedure.selectedStep ? 'step' : 'closed');
     }
-  }, [inspectorMode, markerSettingsOpen]);
+  }, [inspectorMode, markerSettingsOpen, procedure.selectedStep]);
 
   const capabilityCatalog = data.capabilityCatalog;
   const readiness = useMemo(
