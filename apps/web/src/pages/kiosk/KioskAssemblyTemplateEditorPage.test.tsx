@@ -380,6 +380,47 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     expect(screen.getByRole('button', { name: '詳細（任意）' })).toHaveAttribute('aria-expanded', 'true');
   });
 
+  it('scrolls newly expanded optional details into view without scrolling on collapse', async () => {
+    const source = templateFixture();
+    mocks.getTemplate.mockResolvedValue(source);
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    try {
+      renderRoute(`/kiosk/assembly/templates/${source.id}/edit`);
+      await authenticate();
+      await screen.findByRole('heading', { name: '組立テンプレート編集' });
+      fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
+      fireEvent.click(screen.getByRole('button', { name: '文書・工程', exact: true }));
+
+      const toggle = screen.getByRole('button', { name: '詳細（任意）' });
+      fireEvent.click(toggle);
+      const details = document.getElementById(
+        `assembly-area-details-${source.areas[0]!.id}`
+      );
+      expect(details).not.toBeNull();
+      await waitFor(() => {
+        expect(scrollIntoView).toHaveBeenCalledWith({
+          block: 'nearest',
+          behavior: 'auto'
+        });
+        expect(scrollIntoView.mock.contexts).toContain(details);
+      });
+      const callsAfterExpand = scrollIntoView.mock.calls.length;
+
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(scrollIntoView).toHaveBeenCalledTimes(callsAfterExpand);
+    } finally {
+      if (originalScrollIntoView) {
+        HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+      }
+    }
+  });
+
   it('remembers details disclosure independently for each area', async () => {
     const source = templateFixture({ areas: [areaFixture(), areaFixture('area-second', 2)] });
     mocks.getTemplate.mockResolvedValue(source);

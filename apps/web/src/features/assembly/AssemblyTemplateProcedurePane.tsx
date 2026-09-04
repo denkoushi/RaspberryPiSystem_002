@@ -168,11 +168,11 @@ export function AssemblyTemplateProcedurePane({
                 表示名: {formatAssemblyEditorName(item.label.trim())}
               </p>
             ) : null}
-            <div className="mt-1 grid grid-cols-2 gap-1">
+            <div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-1">
               <Button
                 type="button"
                 variant="ghostOnDark"
-                className="min-h-10 !px-1 !py-1 text-xs"
+                className="min-h-10 min-w-0 !px-1 !py-1 text-xs"
                 aria-expanded={expandedDocumentLabels.has(item.localId)}
                 onClick={() => toggleDocumentLabel(item.localId)}
               >
@@ -184,7 +184,7 @@ export function AssemblyTemplateProcedurePane({
                 type="button"
                 variant="danger"
                 aria-label={`${item.label.trim() || item.document.title}を削除`}
-                className="min-h-10 !px-1 !py-1 text-xs"
+                className="min-h-10 min-w-0 !px-1 !py-1 text-xs"
                 disabled={busy || readOnly}
                 onClick={() => onRemoveItem(item.localId)}
               >
@@ -209,15 +209,15 @@ export function AssemblyTemplateProcedurePane({
 
       <section
         id="assembly-template-basic-settings"
-        className="mt-3 rounded border border-white/10 bg-slate-950/35 p-2"
+        className="mt-3 min-w-0 rounded border border-white/10 bg-slate-950/35 p-2"
       >
         <h2 className="text-sm font-bold">基本設定</h2>
         <p className="mt-1 text-xs text-white/60">基本設定は、このテンプレートのすべての文書に共通です。</p>
-        <div className="mt-2 grid gap-2">
+        <div className="mt-2 grid min-w-0 gap-2">
           {machineNameSelectionRequired ? (
-            <div className="grid gap-1 text-xs font-semibold text-white/70">
+            <div className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
               機種名
-              <div className="rounded border border-white/10 bg-slate-950 p-2">
+              <div className="min-w-0 rounded border border-white/10 bg-slate-950 p-2">
                 <div
                   className="min-h-6 truncate text-sm font-bold text-white"
                   title={modelCode || undefined}
@@ -238,12 +238,12 @@ export function AssemblyTemplateProcedurePane({
               </div>
             </div>
           ) : (
-            <label className="grid gap-1 text-xs font-semibold text-white/70">
+            <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
               機種名
               <Input
                 id="assembly-template-model-code"
                 data-kiosk-sop-target="assembly-editor-model-code"
-                className="min-h-11"
+                className="min-h-11 min-w-0"
                 value={modelCode}
                 maxLength={120}
                 disabled={busy || readOnly || identityLocked}
@@ -256,7 +256,7 @@ export function AssemblyTemplateProcedurePane({
               ) : null}
             </label>
           )}
-          <label className="grid gap-1 text-xs font-semibold text-white/70">
+          <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
             手順パターン
             <span className="text-[0.65rem] font-normal text-white/50">
               機種名と組み合わせて改版系列を識別します。
@@ -264,7 +264,7 @@ export function AssemblyTemplateProcedurePane({
             <Input
               id="assembly-template-procedure-pattern"
               data-kiosk-sop-target="assembly-editor-procedure-pattern"
-              className="min-h-11"
+              className="min-h-11 min-w-0"
               value={procedurePattern}
               maxLength={120}
               disabled={busy || readOnly || identityLocked}
@@ -276,25 +276,27 @@ export function AssemblyTemplateProcedurePane({
               </span>
             ) : null}
           </label>
-          <label className="grid gap-1 text-xs font-semibold text-white/70">
+          <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
             テンプレート名
             <Input
               id="assembly-template-name"
               data-kiosk-sop-target="assembly-editor-template-name"
-              className="min-h-11"
+              className="min-h-11 min-w-0"
               value={templateName}
               maxLength={200}
               disabled={busy || readOnly}
               onChange={(event) => onTemplateNameChange(event.target.value)}
             />
-            <span className="flex min-h-6 items-center justify-between gap-1 text-[0.65rem] font-normal text-white/50">
-              {templateNameAutomatic
-                ? '機種名と手順パターンから自動提案中'
-                : '個別の名称を使用中'}
+            <span className="grid min-h-6 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 text-[0.65rem] font-normal text-white/50">
+              <span className="min-w-0">
+                {templateNameAutomatic
+                  ? '機種名と手順パターンから自動提案中'
+                  : '個別の名称を使用中'}
+              </span>
               {!templateNameAutomatic ? (
                 <button
                   type="button"
-                  className="rounded px-1.5 py-1 font-semibold text-cyan-200 hover:bg-white/10 disabled:opacity-60"
+                  className="shrink-0 whitespace-nowrap rounded px-1.5 py-1 font-semibold text-cyan-200 hover:bg-white/10 disabled:opacity-60"
                   disabled={busy || readOnly}
                   onClick={onRestoreSuggestedTemplateName}
                 >
@@ -306,12 +308,12 @@ export function AssemblyTemplateProcedurePane({
         </div>
       </section>
       <h2 className="mt-3 text-[1rem] font-bold">工程</h2>
-      <div className="mt-2 grid gap-1.5">
+      <div className="mt-2 grid min-w-0 gap-1.5">
         {areas.map((area, index) => (
           <div
             key={area.id}
             className={clsx(
-              'flex min-w-0 items-center gap-1 rounded border p-1',
+              'grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-1 rounded border p-1',
               area.id === selectedAreaId
                 ? 'border-cyan-300/60 bg-cyan-950/25'
                 : 'border-white/10 bg-slate-950/35'
@@ -319,7 +321,7 @@ export function AssemblyTemplateProcedurePane({
           >
             <button
               type="button"
-              className="flex min-h-10 min-w-0 flex-1 items-center gap-2 px-2 text-left text-xs font-bold"
+              className="flex min-h-10 min-w-0 items-center gap-2 px-2 text-left text-xs font-bold"
               onClick={() => onSelectArea(area.id)}
             >
               <span
@@ -345,7 +347,7 @@ export function AssemblyTemplateProcedurePane({
               type="button"
               variant="ghostOnDark"
               aria-label={`工程${index + 1}を上へ`}
-              className="min-h-10 !px-2 !py-1 text-xs"
+              className="min-h-10 shrink-0 whitespace-nowrap !px-2 !py-1 text-xs"
               disabled={busy || readOnly || index === 0}
               onClick={() => onMoveArea(area.id, -1)}
             >
@@ -355,7 +357,7 @@ export function AssemblyTemplateProcedurePane({
               type="button"
               variant="ghostOnDark"
               aria-label={`工程${index + 1}を下へ`}
-              className="min-h-10 !px-2 !py-1 text-xs"
+              className="min-h-10 shrink-0 whitespace-nowrap !px-2 !py-1 text-xs"
               disabled={busy || readOnly || index === areas.length - 1}
               onClick={() => onMoveArea(area.id, 1)}
             >
@@ -365,7 +367,7 @@ export function AssemblyTemplateProcedurePane({
               type="button"
               variant="danger"
               aria-label={`工程${index + 1}を削除`}
-              className="min-h-10 !px-2 !py-1 text-xs"
+              className="min-h-10 shrink-0 whitespace-nowrap !px-2 !py-1 text-xs"
               disabled={busy || readOnly || areas.length <= 1}
               onClick={() => onDeleteArea(area.id)}
             >
@@ -393,7 +395,7 @@ export function AssemblyTemplateProcedurePane({
           <Button
             type="button"
             variant="ghostOnDark"
-            className="min-h-11 w-full !px-2 text-xs"
+            className="min-h-11 min-w-0 w-full !px-2 text-xs"
             aria-expanded={expandedAreaDetails.has(selectedArea.id)}
             aria-controls={`assembly-area-details-${selectedArea.id}`}
             onClick={() => onToggleAreaDetails(selectedArea.id)}
