@@ -78,7 +78,9 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
   );
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [selectedPageKey, setSelectedPageKey] = useState('');
-  const [leftPaneTab, setLeftPaneTab] = useState<'steps' | 'documents'>('steps');
+  const [leftPaneTab, setLeftPaneTab] = useState<'steps' | 'documents'>(
+    input.templateId ? 'steps' : 'documents'
+  );
   const [procedurePaneOpen, setProcedurePaneOpen] = useState(true);
   const [documentLibraryOpen, setDocumentLibraryOpen] = useState(false);
   const [documentSearch, setDocumentSearch] = useState('');
@@ -117,7 +119,7 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
       setLeftPaneTab(
         !input.templateId
           ? 'documents'
-          : typeof window !== 'undefined' && window.innerWidth >= 1366
+          : typeof window !== 'undefined' && window.innerWidth >= 1280
             ? 'steps'
             : 'documents'
       );
@@ -221,6 +223,7 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
 
   const focusStep = (step: AssemblyProcedureStepDraft) => {
     setSelectedStepId(step.localId);
+    setLeftPaneTab('steps');
     setShowFullPage(false);
     const page = findPageForProcedureStep(step, pageOptions);
     if (page) setSelectedPageKey(page.key);

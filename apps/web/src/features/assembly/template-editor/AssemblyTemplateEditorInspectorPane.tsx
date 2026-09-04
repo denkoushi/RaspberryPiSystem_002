@@ -5,7 +5,10 @@ import {
   ImageMarkerPositionNudge,
   imageMarkerHasCalloutTip
 } from '../../kiosk/image-canvas';
-import { AssemblyProcedureStepInspector } from '../AssemblyProcedureStepInspector';
+import {
+  AssemblyProcedureStepCropInspector,
+  AssemblyProcedureStepInspector
+} from '../AssemblyProcedureStepInspector';
 import { AssemblyTemplateBoltInspector } from '../AssemblyTemplateBoltInspector';
 import { pageRefKey } from '../assemblyTemplateDraft';
 
@@ -19,7 +22,6 @@ export function AssemblyTemplateEditorInspectorPane() {
     capabilityGroups,
     currentPageRef,
     inheritCondition,
-    inspectorMode,
     markerMode,
     markerSettingsOpen,
     patchProcedureStep,
@@ -37,6 +39,8 @@ export function AssemblyTemplateEditorInspectorPane() {
     selectedStepPage,
     setBoltPatch,
     setCheckItemPatch,
+    setStepSupplementOpen,
+    stepSupplementOpen,
     setInheritCondition,
     setInspectorMode,
     setRangeEnd,
@@ -53,25 +57,8 @@ export function AssemblyTemplateEditorInspectorPane() {
     data-testid="assembly-editor-settings-pane"
     className="min-h-[32rem] min-w-0 overflow-x-hidden overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3 xl:min-h-0"
   >
-    <div className="mb-3 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1 border-b border-white/10 pb-2">
-      <Button
-        type="button"
-        variant={inspectorMode === 'step' ? 'primary' : 'ghostOnDark'}
-        className="min-h-10 !px-1 text-xs"
-        disabled={!selectedStep}
-        onClick={() => setInspectorMode('step')}
-      >
-        手順指示
-      </Button>
-      <Button
-        type="button"
-        variant={inspectorMode === 'markers' ? 'primary' : 'ghostOnDark'}
-        className="min-h-10 !px-1 text-xs"
-        disabled={!markerSettingsOpen}
-        onClick={() => setInspectorMode('markers')}
-      >
-        丸数字／チェック設定
-      </Button>
+    <div className="mb-3 flex min-w-0 items-center justify-between gap-2 border-b border-white/10 pb-2">
+      <h2 className="min-w-0 truncate text-sm font-bold">選択内容</h2>
       <Button
         type="button"
         variant="ghostOnDark"
@@ -82,40 +69,32 @@ export function AssemblyTemplateEditorInspectorPane() {
         ×
       </Button>
     </div>
-    {inspectorMode === 'step' && selectedStep ? (
-      <AssemblyProcedureStepInspector
-        step={selectedStep}
-        page={selectedStepPage}
-        readOnly={readOnly || busy}
-        showFullPage={showFullPage}
-        onShowFullPageChange={setShowFullPage}
-        onPatch={(patch) => patchProcedureStep(selectedStep.localId, patch)}
-      />
-    ) : markerMode === 'bolt' ? (
-      <AssemblyTemplateBoltInspector
-        bolt={selectedBolt}
-        pageLabel={
-          selectedPage && currentPageRef ? pageRefKey(currentPageRef) : '未設定'
-        }
-        capabilityGroups={capabilityGroups}
-        capabilityCatalogStatus={capabilityCatalogStatus}
-        torqueWrenchProfiles={torqueWrenchProfiles}
-        torqueWrenchProfilesStatus={torqueWrenchProfilesStatus}
-        busy={busy}
-        readOnly={readOnly}
-        inheritCondition={inheritCondition}
-        rangeStart={rangeStart}
-        rangeEnd={rangeEnd}
-        onPatch={setBoltPatch}
-        onDelete={requestDeleteSelectedBolt}
-        onInheritConditionChange={setInheritCondition}
-        onRangeStartChange={setRangeStart}
-        onRangeEndChange={setRangeEnd}
-        onApplyRange={applySelectedConditionToRange}
-        onRetryCapabilityCatalog={reloadCapabilityCatalog}
-        onRetryTorqueWrenchProfiles={reloadTorqueWrenchProfiles}
-      />
-    ) : (
+    {markerSettingsOpen ? (
+      markerMode === 'bolt' ? (
+        <AssemblyTemplateBoltInspector
+          bolt={selectedBolt}
+          pageLabel={
+            selectedPage && currentPageRef ? pageRefKey(currentPageRef) : '未設定'
+          }
+          capabilityGroups={capabilityGroups}
+          capabilityCatalogStatus={capabilityCatalogStatus}
+          torqueWrenchProfiles={torqueWrenchProfiles}
+          torqueWrenchProfilesStatus={torqueWrenchProfilesStatus}
+          busy={busy}
+          readOnly={readOnly}
+          inheritCondition={inheritCondition}
+          rangeStart={rangeStart}
+          rangeEnd={rangeEnd}
+          onPatch={setBoltPatch}
+          onDelete={requestDeleteSelectedBolt}
+          onInheritConditionChange={setInheritCondition}
+          onRangeStartChange={setRangeStart}
+          onRangeEndChange={setRangeEnd}
+          onApplyRange={applySelectedConditionToRange}
+          onRetryCapabilityCatalog={reloadCapabilityCatalog}
+          onRetryTorqueWrenchProfiles={reloadTorqueWrenchProfiles}
+        />
+      ) : (
       <>
         <div className="flex min-w-0 items-start justify-between gap-2">
           <div className="min-w-0">
@@ -176,7 +155,56 @@ export function AssemblyTemplateEditorInspectorPane() {
           </div>
         )}
       </>
+      )
+    ) : (
+      <div className="rounded border border-dashed border-white/20 p-3 text-sm text-white/60">
+        丸数字／丸チェックを選択してください
+      </div>
     )}
+    {selectedStep?.crop && selectedStepPage ? (
+      <div className="mt-3">
+        <AssemblyProcedureStepCropInspector
+          step={selectedStep}
+          page={selectedStepPage}
+          readOnly={readOnly || busy}
+          showFullPage={showFullPage}
+          onShowFullPageChange={setShowFullPage}
+          onPatch={(patch) => patchProcedureStep(selectedStep.localId, patch)}
+        />
+      </div>
+    ) : null}
+    <section className="mt-4 border-t border-white/10 pt-3">
+      <button
+        type="button"
+        className="flex min-w-0 w-full items-start justify-between gap-2 text-left"
+        aria-expanded={stepSupplementOpen}
+        disabled={!selectedStep}
+        onClick={() => setStepSupplementOpen(!stepSupplementOpen)}
+      >
+        <span className="min-w-0">
+          <span className="block text-sm font-bold">この手順の注意・補足</span>
+          <span className="mt-1 block min-w-0 truncate text-xs text-white/55">
+            {selectedStep
+              ? `${selectedStep.title.trim() || 'タイトル未入力'} · ${selectedStep.emphasis === 'caution' ? '注意' : selectedStep.emphasis === 'important' ? '重要' : '標準'}${selectedStep.instructionText.trim() ? ' · 指示文あり' : ''}`
+              : '手順未選択'}
+          </span>
+        </span>
+        <span className="shrink-0 text-sm text-white/60">{stepSupplementOpen ? '▲' : '▼'}</span>
+      </button>
+      {stepSupplementOpen && selectedStep ? (
+        <div className="mt-3">
+          <AssemblyProcedureStepInspector
+            step={selectedStep}
+            page={selectedStepPage}
+            readOnly={readOnly || busy}
+            showFullPage={showFullPage}
+            onShowFullPageChange={setShowFullPage}
+            onPatch={(patch) => patchProcedureStep(selectedStep.localId, patch)}
+            includeCropControls={false}
+          />
+        </div>
+      ) : null}
+    </section>
   </section>
   ) : null;
 }

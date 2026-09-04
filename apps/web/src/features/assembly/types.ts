@@ -308,6 +308,7 @@ export type AssemblySeibanCandidateDto = {
     procedurePattern: string;
     name: string;
     version: number;
+    traceabilityMode?: 'LEGACY' | 'REQUIRED';
   } | null;
 };
 

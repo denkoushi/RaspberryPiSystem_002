@@ -206,11 +206,10 @@ export function AssemblyTemplateProcedurePane({
           )}
           <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
             手順パターン
-            <textarea
+            <Input
               id="assembly-template-procedure-pattern"
               data-kiosk-sop-target="assembly-editor-procedure-pattern"
-              className="h-[3.75rem] min-h-[3.75rem] min-w-0 w-full resize-none break-all overflow-y-auto rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm leading-5 text-slate-900 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-              rows={2}
+              className="min-h-11 min-w-0"
               value={procedurePattern}
               title={procedurePattern}
               maxLength={120}
@@ -223,8 +222,8 @@ export function AssemblyTemplateProcedurePane({
             <textarea
               id="assembly-template-name"
               data-kiosk-sop-target="assembly-editor-template-name"
-              className="h-[3.75rem] min-h-[3.75rem] min-w-0 w-full resize-none break-all overflow-y-auto rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm leading-5 text-slate-900 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-              rows={2}
+              className="h-[5.25rem] min-h-[5.25rem] min-w-0 w-full resize-none break-all overflow-y-auto rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm leading-5 text-slate-900 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+              rows={3}
               value={templateName}
               title={templateName}
               maxLength={200}

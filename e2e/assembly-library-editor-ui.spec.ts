@@ -1703,3 +1703,69 @@ test('assembly editor drags a crop bolt marker and saves its source-page positio
     2
   );
 });
+
+test('assembly editor drags check markers in full and crop views and saves one final source position', async ({
+  page
+}) => {
+  const evidence: AssemblyEditorEvidence = { templateBodies: [] };
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await mockKioskApis(page, false, evidence);
+  await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', {
+    waitUntil: 'networkidle'
+  });
+  await unlockAssemblyEditor(page);
+  await selectAssemblyMachineName(page);
+  await fillAssemblyTemplateStructure(page);
+  await page.getByRole('button', { name: '全体追加', exact: true }).click();
+
+  const canvas = page.getByTestId('assembly-procedure-canvas');
+  const image = canvas.locator('img').last();
+  await expect(image).toBeVisible();
+  const imageBox = (await image.boundingBox())!;
+  await page.mouse.click(imageBox.x + imageBox.width * 0.2, imageBox.y + imageBox.height * 0.2);
+  await fillSelectedAssemblyBolt(page);
+
+  await page.getByRole('button', { name: 'チェックマーカー', exact: true }).click();
+  await page.getByRole('button', { name: '丸数字', exact: true }).click();
+  await page.mouse.click(imageBox.x + imageBox.width * 0.35, imageBox.y + imageBox.height * 0.35);
+  const fullMarker = canvas.getByRole('button', { name: 'チェック1' });
+  await expect(fullMarker).toBeVisible();
+  const fullBox = (await fullMarker.boundingBox())!;
+  await page.mouse.move(fullBox.x + fullBox.width / 2, fullBox.y + fullBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(imageBox.x + imageBox.width * 0.4, imageBox.y + imageBox.height * 0.45);
+  await page.mouse.up();
+
+  await page.getByRole('button', { name: '矩形追加', exact: true }).click();
+  await page.mouse.move(imageBox.x + imageBox.width * 0.1, imageBox.y + imageBox.height * 0.1);
+  await page.mouse.down();
+  await page.mouse.move(imageBox.x + imageBox.width * 0.8, imageBox.y + imageBox.height * 0.8);
+  await page.mouse.up();
+  const cropView = page.getByTestId('assembly-unified-editor-canvas-pane').getByTestId('assembly-procedure-crop-view');
+  await expect(cropView.getByRole('button', { name: 'チェック1' })).toBeVisible();
+  const cropBox = (await cropView.boundingBox())!;
+  const cropMarker = cropView.getByRole('button', { name: 'チェック1' });
+  const cropMarkerBox = (await cropMarker.boundingBox())!;
+  await page.mouse.move(cropMarkerBox.x + cropMarkerBox.width / 2, cropMarkerBox.y + cropMarkerBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(cropBox.x + cropBox.width * 0.75, cropBox.y + cropBox.height * 0.5);
+  await page.mouse.up();
+
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect.poll(() => evidence.templateBodies.length).toBe(1);
+  const payload = evidence.templateBodies[0] as {
+    checkItems: Array<{ xRatio: number; yRatio: number }>;
+    procedureSteps: Array<{ viewMode: string; cropXRatio: number | null; cropYRatio: number | null; cropWidthRatio: number | null; cropHeightRatio: number | null }>;
+  };
+  expect(payload.checkItems).toHaveLength(1);
+  const cropStep = payload.procedureSteps.find((step) => step.viewMode === 'crop');
+  expect(cropStep).toBeDefined();
+  expect(payload.checkItems[0]!.xRatio).toBeCloseTo(
+    cropStep!.cropXRatio! + 0.75 * cropStep!.cropWidthRatio!,
+    2
+  );
+  expect(payload.checkItems[0]!.yRatio).toBeCloseTo(
+    cropStep!.cropYRatio! + 0.5 * cropStep!.cropHeightRatio!,
+    2
+  );
+});

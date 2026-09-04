@@ -459,16 +459,16 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     expect(screen.getByLabelText('工程No.')).toHaveValue('10');
   });
 
-  it('keeps the right inspector closed until the operator requests step settings', async () => {
+  it('opens the right inspector when the operator requests step notes', async () => {
     renderRoute(`/kiosk/assembly/templates/new?procedureDocumentId=${DOCUMENT_ID}`);
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート新規' });
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: '手順設定' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: '注意・補足' })).toBeEnabled()
     );
     expect(screen.queryByTestId('assembly-editor-settings-pane')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '手順設定' }));
+    fireEvent.click(screen.getByRole('button', { name: '注意・補足' }));
     expect(await screen.findByTestId('assembly-editor-settings-pane')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '設定を閉じる' }));
     expect(screen.queryByTestId('assembly-editor-settings-pane')).not.toBeInTheDocument();
@@ -496,20 +496,18 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     await screen.findByRole('heading', { name: '組立テンプレート新規' });
     const initialPattern = document.getElementById(
       'assembly-template-procedure-pattern'
-    ) as HTMLTextAreaElement;
-    expect(initialPattern).toBeInstanceOf(HTMLTextAreaElement);
+    ) as HTMLInputElement;
+    expect(initialPattern).toBeInstanceOf(HTMLInputElement);
     expect(initialPattern).toHaveValue('標準');
     await selectMachineName();
 
     const pattern = document.getElementById(
       'assembly-template-procedure-pattern'
-    ) as HTMLTextAreaElement;
+    ) as HTMLInputElement;
     const name = document.getElementById('assembly-template-name') as HTMLTextAreaElement;
-    expect(pattern).toBeInstanceOf(HTMLTextAreaElement);
+    expect(pattern).toBeInstanceOf(HTMLInputElement);
     expect(name).toBeInstanceOf(HTMLTextAreaElement);
-    expect(pattern).toHaveAttribute('rows', '2');
-    expect(name).toHaveAttribute('rows', '2');
-    expect(pattern).toHaveClass('break-all');
+    expect(name).toHaveAttribute('rows', '3');
     expect(name).toHaveClass('break-all');
     fireEvent.change(pattern, { target: { value: '標準' } });
     expect(name).toHaveValue('L300KP 標準 組立');
@@ -558,12 +556,11 @@ describe('KioskAssemblyTemplateEditorPage', () => {
 
     const pattern = document.getElementById(
       'assembly-template-procedure-pattern'
-    ) as HTMLTextAreaElement;
+    ) as HTMLInputElement;
     const name = document.getElementById('assembly-template-name') as HTMLTextAreaElement;
-    expect(pattern).toBeInstanceOf(HTMLTextAreaElement);
+    expect(pattern).toBeInstanceOf(HTMLInputElement);
     expect(name).toBeInstanceOf(HTMLTextAreaElement);
-    expect(pattern).toHaveAttribute('rows', '2');
-    expect(name).toHaveAttribute('rows', '2');
+    expect(name).toHaveAttribute('rows', '3');
     expect(pattern).toHaveValue(rawProcedurePattern);
     expect(pattern).toHaveAttribute('title', rawProcedurePattern);
     expect(name).toHaveValue(`${rawTemplateName} 複製`);

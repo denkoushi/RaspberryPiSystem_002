@@ -19,16 +19,23 @@ type Props = {
   showFullPage: boolean;
   onShowFullPageChange: (show: boolean) => void;
   onPatch: (patch: Partial<AssemblyProcedureStepDraft>) => void;
+  includeCropControls?: boolean;
 };
 
-export function AssemblyProcedureStepInspector({
+type CropProps = Pick<
+  Props,
+  'step' | 'page' | 'readOnly' | 'showFullPage' | 'onShowFullPageChange' | 'onPatch'
+>;
+
+export function AssemblyProcedureStepCropInspector({
   step,
   page,
   readOnly = false,
   showFullPage,
   onShowFullPageChange,
   onPatch
-}: Props) {
+}: CropProps) {
+  if (!step.crop || !page) return null;
   const nudgeCrop = (xDelta: number, yDelta: number) => {
     if (!step.crop) return;
     onPatch({
@@ -44,7 +51,48 @@ export function AssemblyProcedureStepInspector({
       )
     });
   };
+  return (
+    <div className="grid min-w-0 grid-cols-1 gap-2 rounded border border-cyan-300/20 bg-cyan-950/20 p-2">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-xs font-bold" title="元ページ内の位置">元ページ内の位置</span>
+        <Button
+          type="button"
+          variant="ghostOnDark"
+          className="min-h-10 shrink-0 !px-2 text-xs"
+          aria-pressed={showFullPage}
+          onClick={() => onShowFullPageChange(!showFullPage)}
+        >
+          {showFullPage ? '矩形へ戻る' : '全体を一時表示'}
+        </Button>
+      </div>
+      <AssemblyProcedureCropMinimap
+        pageUrl={page.imageRelativePath}
+        crop={step.crop}
+        className="h-28 w-full"
+      />
+      <div className="grid grid-cols-3 gap-1" role="group" aria-label="矩形位置の微調整">
+        <span />
+        <Button type="button" variant="ghostOnDark" className="min-h-10" disabled={readOnly} onClick={() => nudgeCrop(0, -ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO)}>↑</Button>
+        <span />
+        <Button type="button" variant="ghostOnDark" className="min-h-10" disabled={readOnly} onClick={() => nudgeCrop(-ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO, 0)}>←</Button>
+        <span className="grid place-items-center text-[0.65rem] text-white/50">0.25%</span>
+        <Button type="button" variant="ghostOnDark" className="min-h-10" disabled={readOnly} onClick={() => nudgeCrop(ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO, 0)}>→</Button>
+        <span />
+        <Button type="button" variant="ghostOnDark" className="min-h-10" disabled={readOnly} onClick={() => nudgeCrop(0, ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO)}>↓</Button>
+      </div>
+    </div>
+  );
+}
 
+export function AssemblyProcedureStepInspector({
+  step,
+  page,
+  readOnly = false,
+  showFullPage,
+  onShowFullPageChange,
+  onPatch,
+  includeCropControls = true
+}: Props) {
   return (
     <div className="grid min-w-0 grid-cols-1 gap-3">
       <div className="min-w-0">
@@ -105,68 +153,15 @@ export function AssemblyProcedureStepInspector({
           </Button>
         ))}
       </fieldset>
-      {step.crop && page ? (
-        <div className="grid min-w-0 grid-cols-1 gap-2 rounded border border-cyan-300/20 bg-cyan-950/20 p-2">
-          <div className="flex min-w-0 items-center justify-between gap-2">
-            <span className="min-w-0 truncate text-xs font-bold" title="元ページ内の位置">元ページ内の位置</span>
-            <Button
-              type="button"
-              variant="ghostOnDark"
-              className="min-h-10 shrink-0 !px-2 text-xs"
-              aria-pressed={showFullPage}
-              onClick={() => onShowFullPageChange(!showFullPage)}
-            >
-              {showFullPage ? '矩形へ戻る' : '全体を一時表示'}
-            </Button>
-          </div>
-          <AssemblyProcedureCropMinimap
-            pageUrl={page.imageRelativePath}
-            crop={step.crop}
-            className="h-28 w-full"
-          />
-          <div className="grid grid-cols-3 gap-1" role="group" aria-label="矩形位置の微調整">
-            <span />
-            <Button
-              type="button"
-              variant="ghostOnDark"
-              className="min-h-10"
-              disabled={readOnly}
-              onClick={() => nudgeCrop(0, -ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO)}
-            >
-              ↑
-            </Button>
-            <span />
-            <Button
-              type="button"
-              variant="ghostOnDark"
-              className="min-h-10"
-              disabled={readOnly}
-              onClick={() => nudgeCrop(-ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO, 0)}
-            >
-              ←
-            </Button>
-            <span className="grid place-items-center text-[0.65rem] text-white/50">0.25%</span>
-            <Button
-              type="button"
-              variant="ghostOnDark"
-              className="min-h-10"
-              disabled={readOnly}
-              onClick={() => nudgeCrop(ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO, 0)}
-            >
-              →
-            </Button>
-            <span />
-            <Button
-              type="button"
-              variant="ghostOnDark"
-              className="min-h-10"
-              disabled={readOnly}
-              onClick={() => nudgeCrop(0, ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO)}
-            >
-              ↓
-            </Button>
-          </div>
-        </div>
+      {includeCropControls ? (
+        <AssemblyProcedureStepCropInspector
+          step={step}
+          page={page}
+          readOnly={readOnly}
+          showFullPage={showFullPage}
+          onShowFullPageChange={onShowFullPageChange}
+          onPatch={onPatch}
+        />
       ) : null}
     </div>
   );

@@ -33,6 +33,7 @@ export function AssemblyTemplateEditorCanvasPane() {
     selectedPage,
     selectedStep,
     selectedStepPage,
+    setCheckItemPatch,
     setBoltPatch,
     selectBolt,
     selectCheckItem,
@@ -56,6 +57,20 @@ export function AssemblyTemplateEditorCanvasPane() {
     : (id: string, point: AssemblyProcedureMarkerPoint) => {
         const sourcePoint = assemblyProcedureViewPointToSourcePoint(point, selectedStep.crop);
         setBoltPatch(id, {
+          xRatio: clampImageMarkerRatio(sourcePoint.xRatio),
+          yRatio: clampImageMarkerRatio(sourcePoint.yRatio)
+        });
+      };
+  const moveCheckItemOnFullPage = readOnly
+    ? undefined
+    : (id: string, point: AssemblyProcedureMarkerPoint) => {
+        setCheckItemPatch(id, point);
+      };
+  const moveCheckItemInCrop = readOnly || !selectedStep?.crop
+    ? undefined
+    : (id: string, point: AssemblyProcedureMarkerPoint) => {
+        const sourcePoint = assemblyProcedureViewPointToSourcePoint(point, selectedStep.crop);
+        setCheckItemPatch(id, {
           xRatio: clampImageMarkerRatio(sourcePoint.xRatio),
           yRatio: clampImageMarkerRatio(sourcePoint.yRatio)
         });
@@ -87,6 +102,7 @@ export function AssemblyTemplateEditorCanvasPane() {
                   selectedCheckItemId={selectedCheckItemId}
                   onSelectBolt={selectBolt}
                   onMoveBolt={moveBoltInCrop}
+                  onMoveCheckItem={moveCheckItemInCrop}
                   onSelectCheckItem={selectCheckItem}
                 />
               </>
@@ -110,6 +126,7 @@ export function AssemblyTemplateEditorCanvasPane() {
         onSelectBolt={selectBolt}
         onSelectCheckItem={selectCheckItem}
         onMoveBolt={moveBoltOnFullPage}
+        onMoveCheckItem={moveCheckItemOnFullPage}
         onAddBolt={readOnly || markerMode !== 'bolt' || placementAction !== 'place' ? undefined : addBoltAt}
         onAddCheckItem={readOnly || markerMode !== 'check' || placementAction !== 'place' ? undefined : addCheckItemAt}
         onPlaceCallout={

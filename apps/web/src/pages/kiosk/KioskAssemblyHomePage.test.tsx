@@ -234,6 +234,32 @@ describe('KioskAssemblyHomePage', () => {
     expect(await screen.findByText('ロットを登録しました。登録済みロットから作業用IDごとに開始してください。')).toBeInTheDocument();
   });
 
+  it('omits legacy torque-wrench input and payload for REQUIRED templates', async () => {
+    mockListAssemblySeibanCandidates.mockResolvedValue([
+      {
+        ...candidate,
+        activeTemplate: { ...candidate.activeTemplate!, traceabilityMode: 'REQUIRED' }
+      }
+    ]);
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
+    fireEvent.click(await screen.findByText('ASMTEST-A1'));
+    await waitFor(() => expect(screen.getByText('発行予定 2/2')).toBeInTheDocument());
+
+    expect(screen.queryByLabelText('トルクレンチ')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'ロット登録' }));
+    await waitFor(() =>
+      expect(mockCreateAssemblyLot).toHaveBeenCalledWith({
+        templateId: 'template-1',
+        productNo: 'ASMTEST-A1',
+        expectedQuantity: 2,
+        workIdMode: 'auto',
+        targetUnit: 'MH-AX'
+      })
+    );
+  });
+
   it('starts a not-started serial from a registered lot', async () => {
     mockNfcEvent = { uid: 'NFC-001', timestamp: '2099-01-01T00:00:00.000Z' };
     mockListAssemblyLotSummaries.mockResolvedValue([registeredLot]);

@@ -21,6 +21,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
     selectedStep,
     selectedStepPage,
     setInspectorMode,
+    setStepSupplementOpen,
     setMarkerMode,
     setPlacementAction,
     setSelectedBoltId,
@@ -104,6 +105,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
           if (!selectedStep || !selectedStepPage) return;
           setSelectedPageKey(selectedStepPage.key);
           setShowFullPage(true);
+          setStepSupplementOpen(true);
           setInspectorMode('step');
         }}
       >
