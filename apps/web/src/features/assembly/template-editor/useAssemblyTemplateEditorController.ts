@@ -56,9 +56,7 @@ export function useAssemblyTemplateEditorController(input: {
     sourceTemplateId: input.query.sourceTemplateId,
     templateId: input.templateId
   });
-  const readOnly = Boolean(
-    input.templateId && data.loadedTemplate && !data.loadedTemplate.isActive
-  );
+  const readOnly = Boolean(input.templateId && data.loadedTemplate && !data.loadedTemplate.isActive);
   const procedure = useAssemblyTemplateProcedureDraft({
     documents: data.documents,
     initialDocumentId: input.query.procedureDocumentId,
@@ -256,11 +254,11 @@ export function useAssemblyTemplateEditorController(input: {
     return ids;
   }, [marker.areas, readiness.issues]);
 
-  const focusElementById = (id: string) => {
+  const focusElementById = (id: string, behavior: ScrollBehavior = 'smooth', focus = true) => {
     window.setTimeout(() => {
       const element = document.getElementById(id);
-      element?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
-      if (element instanceof HTMLElement) element.focus();
+      element?.scrollIntoView?.({ block: 'nearest', behavior });
+      if (focus && element instanceof HTMLElement) element.focus();
     }, 0);
   };
 
@@ -461,12 +459,14 @@ export function useAssemblyTemplateEditorController(input: {
     focusReadinessIssue,
     expandedAreaDetails,
     toggleAreaDetails: (areaId: string) => {
+      const expanding = !expandedAreaDetails.has(areaId);
       setExpandedAreaDetails((current) => {
         const next = new Set(current);
         if (next.has(areaId)) next.delete(areaId);
         else next.add(areaId);
         return next;
       });
+      if (expanding) focusElementById(`assembly-area-details-${areaId}`, 'auto', false);
     },
     handleGuideStageClick,
     incompleteAreaIds,

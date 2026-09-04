@@ -103,20 +103,20 @@ export function AssemblyProcedureStoryboard({
   }, [steps]);
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col" aria-label="手順ストーリーボード">
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="手順ストーリーボード">
       <div className="shrink-0 border-b border-white/10 p-2">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-bold">手順 {steps.length}/300</h2>
-          <span className="text-[0.65rem] text-white/50">表示カード30件以下</span>
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <h2 className="shrink-0 text-sm font-bold">手順 {steps.length}/300</h2>
+          <span className="min-w-0 truncate text-[0.65rem] text-white/50">表示カード30件以下</span>
         </div>
         <Input
           aria-label="手順検索"
-          className="mt-2 min-h-10 text-sm"
+          className="mt-2 min-h-10 min-w-0 text-sm"
           placeholder="文書名・タイトル・指示・重要度"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
-        <div className="mt-2 flex h-5 overflow-hidden rounded bg-slate-950" aria-label="文書区間の全体マップ">
+        <div className="mt-2 flex h-5 min-w-0 overflow-hidden rounded bg-slate-950" aria-label="文書区間の全体マップ">
           {segments.map((segment, index) => (
             <button
               key={`${segment.key}:${segment.start}`}
@@ -140,8 +140,8 @@ export function AssemblyProcedureStoryboard({
           ))}
         </div>
       </div>
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto" data-testid="assembly-step-storyboard">
-        <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+      <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-auto" data-testid="assembly-step-storyboard">
+        <div className="relative min-w-0 w-full" style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const item = visible[virtualRow.index]!;
             const { step, sourceIndex, page } = item;
@@ -151,14 +151,14 @@ export function AssemblyProcedureStoryboard({
                 key={step.localId}
                 data-index={virtualRow.index}
                 ref={virtualizer.measureElement}
-                className="absolute left-0 top-0 w-full p-1.5"
+                className="absolute left-0 top-0 min-w-0 w-full p-1.5"
                 style={{ transform: `translateY(${virtualRow.start}px)` }}
               >
                 <div
                   role="button"
                   tabIndex={0}
                   className={clsx(
-                    'grid min-h-[106px] w-full grid-cols-[4.25rem_minmax(0,1fr)] gap-2 rounded border p-2 text-left',
+                    'grid min-h-[106px] min-w-0 w-full grid-cols-[4.25rem_minmax(0,1fr)] gap-2 rounded border p-2 text-left',
                     selectedLocalId === step.localId
                       ? 'border-cyan-300 bg-cyan-950/55'
                       : 'border-white/10 bg-slate-950/65'
@@ -205,11 +205,11 @@ export function AssemblyProcedureStoryboard({
                       P{step.pageIndex + 1} · {step.viewMode === 'crop' ? '矩形' : '全体'} ·{' '}
                       {emphasisLabel[step.emphasis]}
                     </p>
-                    <div className="mt-1 flex gap-1">
+                    <div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_3rem] gap-1">
                       <Button
                         type="button"
                         variant="ghostOnDark"
-                        className="min-h-8 !px-1.5 !py-0.5 text-[0.65rem]"
+                        className="min-h-8 min-w-0 !px-1.5 !py-0.5 text-[0.65rem]"
                         disabled={readOnly || sourceIndex === 0}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -221,7 +221,7 @@ export function AssemblyProcedureStoryboard({
                       <Button
                         type="button"
                         variant="ghostOnDark"
-                        className="min-h-8 !px-1.5 !py-0.5 text-[0.65rem]"
+                        className="min-h-8 min-w-0 !px-1.5 !py-0.5 text-[0.65rem]"
                         disabled={readOnly || sourceIndex === steps.length - 1}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -232,7 +232,7 @@ export function AssemblyProcedureStoryboard({
                       </Button>
                       <Input
                         aria-label={`手順${sourceIndex + 1}の移動先`}
-                        className="h-8 w-12 !px-1 text-center text-xs"
+                        className="h-8 min-w-0 w-full !px-1 text-center text-xs"
                         type="number"
                         min={1}
                         max={steps.length}
@@ -246,10 +246,10 @@ export function AssemblyProcedureStoryboard({
                     </div>
                   </div>
                 </div>
-                <div className="mt-1 flex justify-end gap-1">
+                <div className="mt-1 flex min-w-0 justify-end gap-1">
                   <button
                     type="button"
-                    className="min-h-8 rounded px-2 text-[0.65rem] font-semibold text-white/60 hover:bg-white/10"
+                    className="min-h-8 shrink-0 whitespace-nowrap rounded px-2 text-[0.65rem] font-semibold text-white/60 hover:bg-white/10"
                     disabled={readOnly}
                     onClick={() => onDuplicate(step.localId)}
                   >
@@ -257,7 +257,7 @@ export function AssemblyProcedureStoryboard({
                   </button>
                   <button
                     type="button"
-                    className="min-h-8 rounded px-2 text-[0.65rem] font-semibold text-rose-200 hover:bg-rose-500/15"
+                    className="min-h-8 shrink-0 whitespace-nowrap rounded px-2 text-[0.65rem] font-semibold text-rose-200 hover:bg-rose-500/15"
                     disabled={readOnly}
                     onClick={() => onRemove(step.localId)}
                   >

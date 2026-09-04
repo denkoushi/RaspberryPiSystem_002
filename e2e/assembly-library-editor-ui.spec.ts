@@ -560,24 +560,43 @@ async function expectDirectChildrenOnOneRow(locator: Locator) {
 async function expectEditorControlsFitHorizontally(pane: Locator) {
   const clipped = await pane.evaluate((element) => {
     const problems: string[] = [];
-    if (element.scrollWidth > element.clientWidth + 1) problems.push('pane scroll width');
-    for (const control of element.querySelectorAll<HTMLElement>('button, input, select, textarea')) {
+    const tolerance = 1;
+    const paneRect = element.getBoundingClientRect();
+    const workspace = element.closest<HTMLElement>('[data-testid="assembly-unified-editor-workspace"]');
+    const workspaceRect = workspace?.getBoundingClientRect();
+    if (paneRect.left < -tolerance || paneRect.right > window.innerWidth + tolerance) {
+      problems.push('pane viewport bounds');
+    }
+    if (workspaceRect && (paneRect.left < workspaceRect.left - tolerance
+      || paneRect.right > workspaceRect.right + tolerance)) {
+      problems.push('pane workspace bounds');
+    }
+    if (element.scrollWidth > element.clientWidth + tolerance) problems.push('pane scroll width');
+    if (workspace && workspace.scrollWidth > workspace.clientWidth + tolerance) {
+      problems.push('workspace scroll width');
+    }
+
+    const selector = 'button, input, select, textarea, label, p, span, [role="button"], [role="option"]';
+    for (const control of element.querySelectorAll<HTMLElement>(selector)) {
+      const style = getComputedStyle(control);
       const rect = control.getBoundingClientRect();
-      if (!rect.width || !rect.height) continue;
-      const name = control.getAttribute('aria-label') || control.id || control.textContent?.trim() || control.tagName;
-      const paneRect = element.getBoundingClientRect();
-      if (rect.left < paneRect.left - 1 || rect.right > paneRect.right + 1) problems.push(name);
+      if (style.display === 'none' || style.visibility === 'hidden' || !control.getClientRects().length
+        || !rect.width || !rect.height) continue;
+      const name = control.getAttribute('aria-label') || control.id || control.getAttribute('title')
+        || control.textContent?.trim() || control.tagName;
+      if (rect.left < -tolerance || rect.right > window.innerWidth + tolerance) {
+        problems.push(name + ' (viewport)');
+      }
       // Check intermediate clipping ancestors too, not just the outer pane.
       for (let parent = control.parentElement; parent; parent = parent.parentElement) {
         const style = getComputedStyle(parent);
         if (['hidden', 'auto', 'scroll', 'clip'].includes(style.overflowX)) {
           const parentRect = parent.getBoundingClientRect();
           const left = parentRect.left + parent.clientLeft;
-          if (rect.left < left - 1 || rect.right > left + parent.clientWidth + 1) {
+          if (rect.left < left - tolerance || rect.right > left + parent.clientWidth + tolerance) {
             problems.push(name + ' (ancestor)');
           }
         }
-        if (parent === element) break;
       }
     }
     return problems;
@@ -601,7 +620,14 @@ async function expectEditorControlReachable(control: Locator) {
   expect(fits).toBe(true);
 }
 
-for (const viewport of [...viewports, { width: 900, height: 900 }]) {
+const paneFitViewports = [
+  ...viewports,
+  { width: 900, height: 900 },
+  { width: 1279, height: 768 },
+  { width: 1280, height: 768 }
+] as const;
+
+for (const viewport of paneFitViewports) {
   test(`assembly editor pane fit preserves controls and stored names at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     test.setTimeout(90_000);
     page.setDefaultTimeout(10_000);
@@ -633,6 +659,50 @@ for (const viewport of [...viewports, { width: 900, height: 900 }]) {
     await fillAssemblyTemplateStructure(page);
 
     const left = page.locator('#assembly-procedure-pane');
+    const longProcessNo = '1234567890'.repeat(8);
+    const longAreaCode = 'AREA-CODE-'.repeat(8);
+    const longUnitCode = 'UNIT-CODE-'.repeat(8);
+    const longAreaName = '本体組立エリア名称'.repeat(20);
+    const longProcedurePattern = '標準パターン識別子'.repeat(10);
+    const longTemplateName = '組立テンプレート基本設定の長い名称'.repeat(10);
+    const basicSettings = [
+      ['#assembly-template-procedure-pattern', longProcedurePattern],
+      ['#assembly-template-name', longTemplateName]
+    ] as const;
+    for (const [selector, value] of basicSettings) {
+      const input = left.locator(selector);
+      await input.fill(value);
+      await expect(input).toHaveValue(value);
+      await expectEditorControlReachable(input);
+    }
+    const areaFields = [
+      ['processNo', longProcessNo],
+      ['areaCode', longAreaCode],
+      ['unitCode', longUnitCode],
+      ['areaName', longAreaName]
+    ] as const;
+    await expect(left.getByRole('button', { name: '詳細（任意）', exact: true })).toHaveAttribute('aria-expanded', 'true');
+    for (const [field, value] of areaFields) {
+      const input = left.locator(`input[id$="-${field}"]`);
+      await input.fill(value);
+      await expect(input).toHaveValue(value);
+      await expectEditorControlReachable(input);
+    }
+    const areaSummary = left.getByRole('button').filter({ hasText: `${longProcessNo}-${longAreaCode}` }).first();
+    await expect(areaSummary.locator('span[title]').first()).toHaveAttribute('title', `${longProcessNo}-${longAreaCode}`);
+    await expectEditorControlsFitHorizontally(left);
+
+    if (viewport.width === 1279) return;
+
+    for (const [field, value] of [
+      ['processNo', '10'],
+      ['areaCode', 'A1'],
+      ['unitCode', 'U1'],
+      ['areaName', '本体組立']
+    ] as const) {
+      await left.locator(`input[id$="-${field}"]`).fill(value);
+    }
+
     const documentCard = left.locator('[id^="assembly-document-"]').first();
     await documentCard.getByRole('button', { name: '表示名を変更' }).click();
     const labelInput = documentCard.getByLabel('表示ラベル');
