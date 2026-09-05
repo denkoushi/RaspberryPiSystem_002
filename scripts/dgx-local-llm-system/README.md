@@ -195,6 +195,8 @@ python3 ./probe-photo-label-vlm.py ./sample-tool.jpg --start-runtime --stop-runt
 
 - `business_qwen36_27b_nvfp4`
   - blue / vLLM / `sakamakismile/Qwen3.6-27B-NVFP4` / alias `system-prod-primary` / text only
+- `business_qwen38_flash_next_nvfp4`
+  - blue / pinned MiaAI-Lab Qwen3.8 Flash Next NVFP4 adapter / alias `system-prod-primary` / text + vision
 - `business_ornith_35b_nvfp4`
   - blue / vLLM / `sakamakismile/Ornith-1.0-35B-NVFP4` / alias `system-prod-primary` / text + vision（VLM smoke 後に有効化）
 - `business_qwen35_35b_gguf`
@@ -232,6 +234,21 @@ curl -sS -X POST http://127.0.0.1:38081/start \
 - model alias: `system-prod-primary`
 
 したがって、Pi5 側は alias を変えずに、DGX 側だけで green / blue の backend を切り替えられる。
+
+### Business Qwen3.8 Flash の段階導入
+
+`business_qwen38_flash_next_nvfp4` は既存 `business_qwen36_27b_nvfp4` を上書きせず、別 profile として追加する。DGX の live checkout は git 管理されていないため、通常の DGX 反映手順（この runbook の profile 反映節にある `scp` と、実機の control/gateway 管理方式に応じた再読込）で、次の runtime ファイルを `/srv/dgx/system-prod/bin/` へ配置する。
+
+- `profile_launcher.py`
+- `start-trtllm-server.sh`
+- `qwen38-flash-next-adapter.sh`
+- `prepare-qwen38-flash-next-cache.sh`
+
+manifest は `/srv/dgx/shared-models/registry/business_qwen38_flash_next_nvfp4/manifest.json` に配置する。upstream recipe は [`MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark`](https://github.com/MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark) を `/srv/dgx/system-prod/third-party/qwen38-flash-next` に固定 revision `09d4424be2b777818471b9bba8c7775ddd538833` で checkout し、`.env` は同じ実行ユーザーの管理下で `.env.sample` から作成する。`HF_TOKEN` はその remote `.env` にだけ置く。image は manifest の arm64 digest、model cache は Hub commit `925d7be6c14c6c9442ef83e8f05b5a3c39304f69` に固定する。
+
+Hermes の受入完了後、同じ実行ユーザーで `prepare-qwen38-flash-next-cache.sh plan` → `fetch` → `prepare-ple` → `verify` を順に実行する。`fetch` は固定 model revision を取得し、`prepare-ple` は upstream `start.sh --no-launch` による生成を行うため、いずれも明示的な変更操作である。verify が model shard、PLE artifact、upstream preparation marker、revision/image identity を確認してから、標準 DGX control route の `/start` に `modelProfileId=business_qwen38_flash_next_nvfp4` を渡して blue を切り替える。Pi5 は alias `system-prod-primary` を維持する。
+
+切替に失敗した場合は新しい cache/PLE を削除せず、標準 control route で `business_qwen36_27b_nvfp4` を再選択する。Private Pi5 の playbook、Private keep-warm default、手動 Docker 操作はこの導入手順に含めない。
 
 **blue ランタイムの温存（検証用）**: `ACTIVE_LLM_BACKEND=blue` のとき、`BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`（または互換 `BLUE_LLM_RUNTIME_KEEP_WARM=true`）にすると `POST /stop` が**実 stop を実行せず** no-op になり、**vLLM の cold start を繰り返さない**。本番の常時占有方針は [docs/runbooks/dgx-system-prod-local-llm.md](../../docs/runbooks/dgx-system-prod-local-llm.md) および [ADR-20260427](../../docs/decisions/ADR-20260427-blue-llm-runtime-stop-policy.md) と併せて判断する。
 

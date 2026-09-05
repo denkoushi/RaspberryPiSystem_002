@@ -9,6 +9,12 @@ _LAUNCHER_HINT_ENV_MAP: dict[str, str] = {
     "llamaServerAlias": "LLAMA_SERVER_ALIAS",
     "blueModelDir": "BLUE_MODEL_DIR",
     "blueServerImage": "BLUE_SERVER_IMAGE",
+    # Fixed, profile-selected adapter.  This is an enum-like selector rather
+    # than a command so a registry manifest cannot inject shell code.
+    "blueServerAdapter": "BLUE_SERVER_ADAPTER",
+    "blueUpstreamRecipeDir": "BLUE_QWEN38_RECIPE_DIR",
+    "blueUpstreamRecipeRevision": "BLUE_QWEN38_RECIPE_REVISION",
+    "blueModelRevision": "BLUE_QWEN38_MODEL_REVISION",
 }
 
 _VLLM_RUNTIME_ENV_MAP: dict[str, str] = {

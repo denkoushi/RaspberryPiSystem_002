@@ -26,6 +26,29 @@ if [[ "${MODE}" != "container" && "${MODE}" != "host" ]]; then
   exit 1
 fi
 
+# Some blue profiles require the upstream model author's patched launcher
+# (PLE preparation, memory budget, watchdog, and local-cache checks).  Keep
+# this dispatch closed over a fixed adapter name; profile manifests never pass
+# an arbitrary shell command here.
+if [[ -n "${BLUE_SERVER_ADAPTER:-}" ]]; then
+  case "${BLUE_SERVER_ADAPTER}" in
+    qwen38_flash_next)
+      if [[ "${MODE}" == "container" ]]; then
+        RUNNING_NAME="$(docker ps --filter "name=^/${CONTAINER_NAME}$" --format '{{.Names}}' | tr -d '\r')"
+        if [[ "${RUNNING_NAME}" == "${CONTAINER_NAME}" ]]; then
+          echo "trtllm-server already running container=${CONTAINER_NAME}"
+          exit 0
+        fi
+      fi
+      exec "${SCRIPT_DIR}/qwen38-flash-next-adapter.sh"
+      ;;
+    *)
+      echo "unsupported BLUE_SERVER_ADAPTER: ${BLUE_SERVER_ADAPTER}" >&2
+      exit 1
+      ;;
+  esac
+fi
+
 if [[ -z "${SERVER_COMMAND}" && -n "${MODEL_DIR}" ]]; then
   VLLM_COMMAND_BUILDER="${BLUE_VLLM_COMMAND_BUILDER_PATH:-${SCRIPT_DIR}/vllm_command_builder.py}"
   if [[ ! -f "${VLLM_COMMAND_BUILDER}" ]]; then
