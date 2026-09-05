@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { InferenceProviderDefinition } from '../../config/inference-provider.types.js';
 import { InferenceRouter, type InferenceRouteTarget } from '../../routing/inference-router.js';
 import type { InferenceUseCase } from '../../types/inference-usecase.js';
+import { shouldSuppressLocalLlmRuntimeStop } from '../local-llm-runtime-schedule.policy.js';
 import { ProviderLocalLlmRuntimeController } from '../provider-local-llm-runtime.controller.js';
 
 function createProviders(): InferenceProviderDefinition[] {
@@ -43,6 +44,7 @@ function inferenceRoutes(
 ): Record<InferenceUseCase, InferenceRouteTarget> {
   return {
     photo_label: { providerId: 'dgx_text' },
+    business_hermes: { providerId: 'dgx_text' },
     document_summary: { providerId: 'dgx_text' },
     admin_console_chat: { providerId: 'dgx_text' },
     stackchan_chat: { providerId: 'dgx_text' },
@@ -101,6 +103,55 @@ describe('ProviderLocalLlmRuntimeController', () => {
     expect(calledUrls.filter((url) => url === 'http://dgx:38081/stop')).toHaveLength(1);
     expect(calledUrls.filter((url) => url === 'http://ubuntu:38081/start')).toHaveLength(1);
     expect(calledUrls.filter((url) => url === 'http://ubuntu:38081/stop')).toHaveLength(1);
+  });
+
+  it('shares the photo_label provider lease with business_hermes without an extra start/stop', async () => {
+    const providers = createProviders();
+    const router = new InferenceRouter({ providers, routes: inferenceRoutes() });
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/start') && init?.method === 'POST') return new Response('', { status: 200 });
+      if (url.includes('/v1/chat/completions') && init?.method === 'POST') return new Response('ready', { status: 200 });
+      if (url.endsWith('/stop') && init?.method === 'POST') return new Response('', { status: 200 });
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+    const controller = new ProviderLocalLlmRuntimeController({
+      fetchImpl,
+      globalMode: 'on_demand',
+      router,
+      providers,
+      resolveAdminProvider: () => providers[0],
+      resolveAdminModel: () => 'system-prod-primary',
+      readyTimeoutMs: 30_000,
+      startRequestTimeoutMs: 10_000,
+      stopRequestTimeoutMs: 10_000,
+      healthPollIntervalMs: 1,
+      shouldSuppressStop: (useCase) =>
+        shouldSuppressLocalLlmRuntimeStop({
+          useCase,
+          now: new Date('2026-09-05T00:00:00.000Z'),
+          warmWindow: {
+            enabled: false,
+            timeZone: 'Asia/Tokyo',
+            startHourInclusive: 7,
+            endHourExclusive: 23,
+          },
+        }),
+      runtimeIntentEnv: defaultRuntimeIntentEnv,
+    });
+
+    await controller.ensureReady('photo_label');
+    await controller.ensureReady('business_hermes');
+    await controller.release('photo_label');
+    expect(fetchImpl.mock.calls.filter(([url]) => String(url) === 'http://dgx:38081/stop')).toHaveLength(0);
+    await controller.ensureReady('photo_label');
+    await controller.release('business_hermes');
+    expect(fetchImpl.mock.calls.filter(([url]) => String(url) === 'http://dgx:38081/stop')).toHaveLength(0);
+    await controller.release('photo_label');
+
+    const calledUrls = fetchImpl.mock.calls.map(([url]) => String(url));
+    expect(calledUrls.filter((url) => url === 'http://dgx:38081/start')).toHaveLength(1);
+    expect(calledUrls.filter((url) => url === 'http://dgx:38081/stop')).toHaveLength(0);
   });
 
   it('falls back to legacy primary runtime control for admin console chat', async () => {

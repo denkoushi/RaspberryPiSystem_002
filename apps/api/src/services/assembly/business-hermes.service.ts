@@ -5,6 +5,8 @@ import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { AssemblyWorkSessionService } from './assembly-work-session.service.js';
+import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
+import type { LocalLlmRuntimeControllerPort } from '../inference/runtime/local-llm-runtime-control.port.js';
 
 export const BUSINESS_HERMES_EVENT_CODES = ['USER_REQUEST', 'TORQUE_NG', 'PROCEDURE_LOAD_ERROR', 'CHECK_REQUIRED'] as const;
 export type BusinessHermesEventCode = (typeof BUSINESS_HERMES_EVENT_CODES)[number];
@@ -32,6 +34,7 @@ type GuideResult = {
 };
 
 type BusinessHermesConfig = {
+  provider: 'dgx' | 'openai';
   baseUrl?: string;
   apiKey?: string;
   model?: string;
@@ -61,6 +64,7 @@ const MAX_PROACTIVE_IN_FLIGHT = 2;
 let proactiveInFlight = 0;
 
 const safeConfig = (): BusinessHermesConfig => ({
+  provider: env.BUSINESS_HERMES_PROVIDER,
   baseUrl: env.BUSINESS_HERMES_BASE_URL,
   apiKey: env.BUSINESS_HERMES_API_KEY,
   model: env.BUSINESS_HERMES_MODEL,
@@ -180,6 +184,7 @@ export class BusinessHermesService {
       fetchImpl?: FetchLike;
       config?: BusinessHermesConfig;
       sessionService?: AssemblyWorkSessionService;
+      localLlmRuntime?: LocalLlmRuntimeControllerPort | null;
     } = {}
   ) {}
 
@@ -189,6 +194,10 @@ export class BusinessHermesService {
 
   private get sessionService(): AssemblyWorkSessionService {
     return this.deps.sessionService ?? new AssemblyWorkSessionService();
+  }
+
+  private get localLlmRuntime(): LocalLlmRuntimeControllerPort | null {
+    return this.deps.localLlmRuntime === undefined ? getLocalLlmRuntimeController() : this.deps.localLlmRuntime;
   }
 
   private async persistProactiveSuggestion(data: {
@@ -300,9 +309,19 @@ export class BusinessHermesService {
 
     const tokenBeforeCall = stateToken(context.session);
     const fetchImpl = this.deps.fetchImpl ?? fetch;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+    const runtime = config.provider === 'dgx' ? this.localLlmRuntime : null;
+    let runtimeHeld = false;
+    let requestController: AbortController | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
+      if (runtime) {
+        await runtime.ensureReady('business_hermes');
+        runtimeHeld = true;
+      }
+      // DGX cold-start/readiness is bounded by the shared runtime controller. Start the
+      // Hermes response timeout only after readiness so a cold start does not consume it.
+      requestController = new AbortController();
+      timeout = setTimeout(() => requestController?.abort(), config.timeoutMs);
       const response = await fetchImpl(new URL('/v1/chat/completions', config.baseUrl), {
         method: 'POST',
         headers: {
@@ -322,7 +341,7 @@ export class BusinessHermesService {
             { role: 'user', content: buildPrompt({ eventCode: input.eventCode, session: context.session, bolt: context.bolt, evidence: context.evidence, procedureBody: context.procedureBody }) }
           ]
         }),
-        signal: controller.signal
+        signal: requestController.signal
       });
       if (!response.ok) return this.unavailable(input, evidence, 'HERMES_UPSTREAM_UNAVAILABLE');
       const parsed = parseAssistantOutput(readAssistantContent(await response.json()));
@@ -340,7 +359,12 @@ export class BusinessHermesService {
       }
       return this.unavailable(input, evidence, error instanceof Error && error.name === 'AbortError' ? 'HERMES_TIMEOUT' : 'HERMES_UPSTREAM_UNAVAILABLE');
     } finally {
-      clearTimeout(timeout);
+      if (runtimeHeld && runtime) {
+        await runtime.release('business_hermes').catch(() => {
+          logger.warn({ reasonCode: 'BUSINESS_HERMES_RUNTIME_RELEASE_FAILED' }, 'Business Hermes runtime release failed');
+        });
+      }
+      if (timeout) clearTimeout(timeout);
     }
   }
 

@@ -213,6 +213,11 @@ services:
     cpus: "0.25"
     pids_limit: 32
     command: [node, /opt/business-hermes-egress/proxy.mjs]
+    environment:
+      DGX_GATEWAY_HOST: ${BUSINESS_HERMES_DGX_GATEWAY_HOST:-100.118.82.72}
+      DGX_GATEWAY_PORT: ${BUSINESS_HERMES_DGX_GATEWAY_PORT:-38081}
+      BUSINESS_HERMES_PROVIDER: ${BUSINESS_HERMES_PROVIDER:-dgx}
+      BUSINESS_HERMES_TIMEOUT_MS: ${BUSINESS_HERMES_TIMEOUT_MS:-8000}
     volumes:
       - type: bind
         source: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker/business-hermes-egress/proxy.mjs

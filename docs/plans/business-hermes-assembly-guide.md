@@ -17,6 +17,7 @@
 - [x] (2026-09-05 JST) 業務Pi5用の公式Hermes固定image、専用egress proxy、非root直接CLI起動、resource limit、標準release連携を追加した。
 - [x] (2026-09-05 JST) 新規専用volumeでCompose profileを起動し、health、未認証401、正常停止、cleanupをテスト用資格情報で確認した。
 - [x] (2026-09-05 JST) 業務profileのmemory、user profile、skills、session searchを無効化し、Private Hermesの記憶・skills・過去会話検索を共有しない設定を追加した。
+- [x] (2026-09-05 JST) OpenAI API契約なしの初期経路をDGX `system-prod-primary`へ明示選択できるようにし、既存`photo_label` provider/runtime leaseを`business_hermes`用途として共有した。公式custom providerの`key_env`/`extra_headers`、DGX HTTP egress allowlist、将来の専用OpenAI選択を追加した。
 
 ## Surprises & Discoveries
 
@@ -24,6 +25,7 @@
 - 既存の推論ランタイムは `INFERENCE_PROVIDERS_JSON` から既定providerを合成し、`LOCAL_LLM_*` にフォールバックする。業務HermesはPrivate Pi5との完全分離が条件なので、この経路を再利用しない。
 - `BUSINESS_HERMES_BASE_URL` は `/v1` などのパスを含めるとURL組み立て時に意図しないため、originだけを受け付け、業務APIが `/v1/chat/completions` を付加する契約にした。
 - 既存 `ClientLog` は管理者以外にも閲覧できる一覧があるため、提案本文を混ぜず、専用の `BusinessHermesProactiveSuggestion` テーブルをADMIN専用APIから読む構成にした。
+- DGX側にはLease対応中央keep-warmが既にあり、API起動時の追加warmupはPrivate Leaseとの競合を作るため採用しない。中央runnerの実機有効状態と既定profile IDから`system-prod-primary`へのalias対応は、DGX実機受入で確認する。
 
 ## Decision Log
 
@@ -32,10 +34,13 @@
 - Decision: キオスクguideは実際の `x-client-key` とDBセッションの `clientDeviceId`、サーバー記録の `operatorEmployeeId` を照合する。クライアントが送る端末・利用者IDは契約に含めない。 Rationale: 自己申告で別端末・別利用者を混ぜない。 Date/Author: 2026-09-05 / Luna xhigh。
 - Decision: 自発提案は既存の締付NGイベントを起点にバックグラウンド生成し、専用の `BusinessHermesProactiveSuggestion` へ秘密を含まない根拠メタデータと短文を保存し、ADMIN限定APIと管理画面で確認する。 Rationale: 既存一般ログの権限範囲を広げず、利用者通知を抑える。 Date/Author: 2026-09-05 / Luna xhigh。
 - Decision: モデルが指定できる表示対象は実装済みの現在ボルトだけに限定し、UIで実際にリング表示する。 Rationale: 表示対象を許可したのにUIが示せない状態を作らない。 Date/Author: 2026-09-05 / Luna xhigh。
+- Decision: Business Hermesの初期推論先は既存業務`photo_label`と同じDGX provider/model/leaseを使う。Rationale: `/start`・ready・lease・stopを再実装せず、画像認識と同じ`system-prod-primary` residentを共有できる。Hermes本体にはruntime control tokenを渡さない。Date/Author: 2026-09-05 / Luna xhigh。
+- Decision: `business-dgx` と `business-openai` は公式Hermes `providers` の明示選択とし、選択先をproxyのegress allowlistにも反映する。Rationale: DGX初期運用を開始しつつ、将来OpenAIへ切り替える場合も暗黙fallbackとPrivate設定共有を防ぐ。Date/Author: 2026-09-05 / Luna xhigh。
+- Decision: API起動時の独自DGX予熱は追加せず、既存DGX Control Planeの中央Lease対応keep-warmを予熱の正本とする。Rationale: API再起動を契機に業務優先度の`ensureReady`を実行すると、DGX Arbiterのmaintenance Lease契約を迂回し、Private Leaseと競合する可能性がある。通常の`photo_label`↔`business_hermes`は同じresident/cache/refCountと既存stop抑止を共有し、初回・解放後の予熱は中央runnerに任せる。Date/Author: 2026-09-05 / Luna xhigh。
 
 ## Outcomes & Retrospective
 
-ローカル実装と接続契約の検証は完了した。固定digestの公式Hermes本体を専用volume、非root直接CLI、cap_drop ALL、read-onlyで起動し、healthと未認証401、停止cleanupを確認した。memory、user profile、skills、session searchの無効化は公式イメージ内の既存設定契約と既存Private profileの設定形を確認して反映した。実APIキー、Vault、Pi5/Pi4への配備・実OpenAI推論・実機操作は未検証である。
+ローカル実装と接続契約の検証は完了した。固定digestの公式Hermes本体を専用volume、非root直接CLI、cap_drop ALL、read-onlyで起動し、healthと未認証401、停止cleanupを確認した。memory、user profile、skills、session searchの無効化は公式イメージ内の既存設定契約と既存Private profileの設定形を確認して反映した。実APIキー、Vault、Pi5/Pi4への配備・実OpenAI推論・DGX中央keep-warmの実機有効状態とprofile/alias対応・実機操作は未検証である。
 
 ## Context and Orientation
 

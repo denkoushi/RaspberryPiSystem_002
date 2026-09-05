@@ -75,7 +75,7 @@ describe('BusinessHermesService', () => {
     const service = new BusinessHermesService({
       sessionService: { getDetail } as unknown as AssemblyWorkSessionService,
       fetchImpl,
-      config: { baseUrl: 'https://business-hermes.test', apiKey: 'secret-test-key', model: 'business-model', timeoutMs: 1000 }
+      config: { provider: 'dgx', baseUrl: 'https://business-hermes.test', apiKey: 'secret-test-key', model: 'business-model', timeoutMs: 1000 }
     });
 
     const result = await service.guide({ sessionId: 'session-1', clientDeviceId: 'device-a', uiRevision: 'r1', eventCode: 'USER_REQUEST' });
@@ -97,7 +97,7 @@ describe('BusinessHermesService', () => {
     const service = new BusinessHermesService({
       sessionService,
       fetchImpl,
-      config: { baseUrl: undefined, apiKey: undefined, model: undefined, timeoutMs: 1000 }
+      config: { provider: 'dgx', baseUrl: undefined, apiKey: undefined, model: undefined, timeoutMs: 1000 }
     });
 
     const result = await service.guide({ sessionId: 'session-1', clientDeviceId: 'device-a', uiRevision: 'r1', eventCode: 'USER_REQUEST' });
@@ -110,7 +110,7 @@ describe('BusinessHermesService', () => {
     const service = new BusinessHermesService({
       sessionService: { getDetail: vi.fn().mockResolvedValue(createSession()) } as unknown as AssemblyWorkSessionService,
       fetchImpl: vi.fn(),
-      config: { baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
+      config: { provider: 'dgx', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
     });
 
     await expect(service.guide({ sessionId: 'session-1', clientDeviceId: 'device-b', uiRevision: 'r1', eventCode: 'USER_REQUEST' }))
@@ -124,7 +124,7 @@ describe('BusinessHermesService', () => {
     const service = new BusinessHermesService({
       sessionService: { getDetail } as unknown as AssemblyWorkSessionService,
       fetchImpl: vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ known: true, message: '案内', targetKey: 'current-bolt' }) } }] }), { status: 200 })),
-      config: { baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
+      config: { provider: 'dgx', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
     });
 
     const result = await service.guide({ sessionId: 'session-1', clientDeviceId: 'device-a', uiRevision: 'r1', eventCode: 'USER_REQUEST' });
@@ -136,7 +136,7 @@ describe('BusinessHermesService', () => {
     const service = new BusinessHermesService({
       sessionService: { getDetail: vi.fn().mockResolvedValue(createSession()) } as unknown as AssemblyWorkSessionService,
       fetchImpl: vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ known: false, message: '根拠不足', targetKey: null }) } }] }), { status: 200 })),
-      config: { baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
+      config: { provider: 'dgx', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
     });
 
     const result = await service.guide({ sessionId: 'session-1', clientDeviceId: 'device-a', uiRevision: 'r1', eventCode: 'USER_REQUEST' });
@@ -150,12 +150,52 @@ describe('BusinessHermesService', () => {
       fetchImpl: vi.fn((_input, init) => new Promise((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
       })),
-      config: { baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 5 }
+      config: { provider: 'dgx', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 5 }
     });
 
     const result = await service.guide({ sessionId: 'session-1', clientDeviceId: 'device-a', uiRevision: 'r1', eventCode: 'USER_REQUEST' });
 
     expect(result).toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_TIMEOUT' });
+  });
+
+  it('starts the Hermes timeout after the shared DGX readiness lease', async () => {
+    const runtime = {
+      ensureReady: vi.fn(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); }),
+      release: vi.fn(async () => {}),
+      getMode: vi.fn(() => 'on_demand' as const)
+    };
+    const service = new BusinessHermesService({
+      sessionService: { getDetail: vi.fn().mockResolvedValue(createSession()) } as unknown as AssemblyWorkSessionService,
+      localLlmRuntime: runtime,
+      fetchImpl: vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ known: true, message: '案内', targetKey: 'current-bolt' }) } }] }), { status: 200 })),
+      config: { provider: 'dgx', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 5 }
+    });
+
+    const result = await service.guide({ sessionId: 'session-1', clientDeviceId: 'device-a', uiRevision: 'r1', eventCode: 'USER_REQUEST' });
+
+    expect(result.status).toBe('ready');
+    expect(runtime.ensureReady).toHaveBeenCalledWith('business_hermes');
+    expect(runtime.release).toHaveBeenCalledWith('business_hermes');
+  });
+
+  it('does not touch the DGX lease when OpenAI is selected', async () => {
+    const runtime = {
+      ensureReady: vi.fn(),
+      release: vi.fn(),
+      getMode: vi.fn(() => 'on_demand' as const)
+    };
+    const service = new BusinessHermesService({
+      sessionService: { getDetail: vi.fn().mockResolvedValue(createSession()) } as unknown as AssemblyWorkSessionService,
+      localLlmRuntime: runtime,
+      fetchImpl: vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ known: true, message: '案内', targetKey: 'current-bolt' }) } }] }), { status: 200 })),
+      config: { provider: 'openai', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
+    });
+
+    const result = await service.guide({ sessionId: 'session-1', clientDeviceId: 'device-a', uiRevision: 'r1', eventCode: 'USER_REQUEST' });
+
+    expect(result.status).toBe('ready');
+    expect(runtime.ensureReady).not.toHaveBeenCalled();
+    expect(runtime.release).not.toHaveBeenCalled();
   });
 
   it('does not use an instruction from a different procedure document', async () => {
@@ -164,7 +204,7 @@ describe('BusinessHermesService', () => {
     const service = new BusinessHermesService({
       sessionService: { getDetail: vi.fn().mockResolvedValue(session) } as unknown as AssemblyWorkSessionService,
       fetchImpl: vi.fn(),
-      config: { baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
+      config: { provider: 'dgx', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
     });
 
     const result = await service.guide({ sessionId: 'session-1', clientDeviceId: 'device-a', uiRevision: 'r1', eventCode: 'USER_REQUEST' });
@@ -178,7 +218,7 @@ describe('BusinessHermesService', () => {
     const service = new BusinessHermesService({
       sessionService: { getDetail: vi.fn().mockResolvedValue(session) } as unknown as AssemblyWorkSessionService,
       fetchImpl: vi.fn(),
-      config: { baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
+      config: { provider: 'dgx', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
     });
 
     const result = await service.guide({ sessionId: 'session-1', clientDeviceId: 'device-a', uiRevision: 'r1', eventCode: 'USER_REQUEST' });
@@ -193,7 +233,7 @@ describe('BusinessHermesService', () => {
     const service = new BusinessHermesService({
       sessionService,
       fetchImpl: vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ known: true, message: 'NG箇所を再確認してください。', targetKey: 'current-bolt' }) } }] }), { status: 200 })),
-      config: { baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
+      config: { provider: 'dgx', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
     });
 
     await service.recordProactiveSuggestion({ sessionId: 'session-1', clientDeviceId: 'device-a', eventCode: 'TORQUE_NG', eventId: 'torque-event-1' });

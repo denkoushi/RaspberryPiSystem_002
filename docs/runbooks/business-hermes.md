@@ -6,9 +6,13 @@
 
 `business-hermes` は公式 `nousresearch/hermes-agent` ARM64イメージをdigest固定で起動し、専用volume `/opt/data` に設定と業務セッションを保持します。設定で `memory_enabled`、`user_profile_enabled` を無効化し、`skills`、`memory`、`session_search` toolsetも無効化するため、Private Pi5の記憶・skills・過去会話検索を共有しません。Docker socket、ホストの作業ディレクトリ、Private Pi5のパスはマウントしません。ルートファイルシステムはread-only、capabilityは全drop、CPU 1 core、メモリ1 GiB、PID 128に制限します。
 
-Hermes本体と業務APIは内部Docker networkだけで接続し、Hermesにhost portを公開しません。Hermesは公式CLIをentrypointにして `gateway run --no-supervise` をUID 10000でforeground実行します。新規専用volumeは公式imageの `/opt/data` 所有権をcopy-upしてそのまま使うため、initコンテナや追加capabilityを必要としません。外向き通信は専用CONNECT proxyを経由し、`api.openai.com:443` だけを許可します。Hermesの設定は `terminal.backend: local` とし、Docker実行ソケットを要求しません。proxy自体は別networkから外へ接続し、OpenAI以外のCONNECTを拒否します。
+Hermes本体と業務APIは内部Docker networkだけで接続し、Hermesにhost portを公開しません。Hermesは公式CLIをentrypointにして `gateway run --no-supervise` をUID 10000でforeground実行します。新規専用volumeは公式imageの `/opt/data` 所有権をcopy-upしてそのまま使うため、initコンテナや追加capabilityを必要としません。外向き通信は専用egress proxyを経由します。DGX選択時は `100.118.82.72:38081` の `POST /v1/chat/completions` だけをHTTP absolute-formで許可し、`/start`・`/stop`・別host・redirectは拒否します。OpenAI選択時は `api.openai.com:443` のCONNECTだけを許可し、DGX HTTP経路は拒否します。Hermesの設定は `terminal.backend: local` とし、Docker実行ソケットを要求しません。
 
-モデル設定は `infrastructure/docker/business-hermes/config.yaml` に固定し、`gpt-5.6-luna` と `reasoning_effort: xhigh` を指定しています。資格情報はAnsible Vault変数から、業務Pi5上のroot専用 `/etc/raspi-business-hermes/runtime.env` へ `0600` で生成します。リポジトリや共通API環境にはOpenAIキーを出しません。
+モデルは公式Hermesの `providers` 設定と `HERMES_INFERENCE_PROVIDER` で明示選択します。初期値は `business-dgx`、`system-prod-primary` です。DGXの推論トークンは既存業務LocalLLMの `vault_api_local_llm_shared_token` を再利用し、Hermesには推論用トークンだけを渡します。OpenAIを選ぶ場合だけ専用 `business_hermes_openai_api_key` を要求します。どちらも選択先が失敗した時にもう一方へfallbackしません。資格情報はAnsible Vault変数から業務Pi5上のroot専用 `/etc/raspi-business-hermes/runtime.env` へ `0600` で生成します。
+
+DGXの起動・ready待ち・leaseは既存APIの`photo_label` provider runtimeを`business_hermes`用途で共有します。業務用途のreleaseでは既存stop抑止ポリシーを使うため、通常の案内ごとにDGXを停止しません。初回cold startや他用途の解放直後の待ち時間をゼロにはせず、専用prewarm loopやPrivate Pi5のkeep-warm timerは業務サービスへ持ち込みません。
+
+初回cold startや他用途の解放後の予熱は、DGX Control PlaneのLease対応中央keep-warm (`dgx-control-keep-warm.timer`) の責務です。中央runnerはDGX側Arbiterのmaintenance LeaseでPrivate Leaseや業務要求を確認し、競合時は延期、状態不明時はfail-closedにします。中央設定・有効状態は `/Users/tsudatakashi/DGXSparkControlPlane` の管理範囲であり、このリポジトリのAPI起動時処理から直接開始しません。中央の既定profile IDと業務APIのmodel alias (`system-prod-primary`) の対応、および実機timerの有効状態は実機受入時に確認します。
 
 ## 有効化
 
@@ -17,14 +21,20 @@ Ansibleのserver inventoryで次のVault変数を設定します。秘密値は�
 ```yaml
 vault_business_hermes_enabled: true
 vault_business_hermes_api_key: <専用Hermes API server bearer key>
-vault_business_hermes_openai_api_key: <業務Hermes専用OpenAI API key>
+vault_api_local_llm_shared_token: <既存業務DGX推論トークン>
+# 初期値はdgx。OpenAIへ切り替える場合だけopenaiを明示する。
+# vault_business_hermes_provider: openai
+# OpenAIを明示選択する場合だけ必要
+# vault_business_hermes_openai_api_key: <業務Hermes専用OpenAI API key>
+# OpenAIを明示選択する場合はモデルIDも必須（既定値なし）
+# vault_business_hermes_model: <OpenAI APIで利用するモデルID>
 ```
 
 通常の業務API向け変数はinventoryで内部値へ解決されます。
 
 ```yaml
 api_business_hermes_base_url: http://business-hermes:8642
-api_business_hermes_model: gpt-5.6-luna
+api_business_hermes_model: system-prod-primary # DGX選択時は既存photo_labelモデル。OpenAI選択時はVaultで明示したモデルID。
 ```
 
 イメージは `nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a`、egress proxyは `node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293` を使用します。更新時は公式multi-arch indexとPi5上のARM64 manifestを確認し、digestを差し替えてCIを通します。
@@ -59,4 +69,4 @@ fresh releaseの開始時には既存の業務Hermesコンテナ状態を取得�
 
 実機確認では、管理者がテスト専用作業セッションで締付NGイベントを1件作り、キオスクに提案本文が表示されないこと、管理画面のADMINだけが根拠文書・ページ・対象・短文を確認できることを確認します。業務操作を止めた状態でAIコンテナを停止し、案内が利用不可になって締付操作が成功することも確認します。別端末キー、別作業者、画面revision変更の応答が混ざらないことを確認します。実データのNG履歴を品質記録へ作る手順は使用せず、テスト用データだけを使います。
 
-現時点ではVaultパスワード、Luna/OpenAIキー、Pi5へのdeploy、実OpenAI推論、実端末の複数利用者検証は未実施です。ローカル固定imageの本体healthと未認証拒否は検証済みです。
+現時点ではVaultパスワード、Luna/OpenAIキー、Pi5へのdeploy、実OpenAI推論、実端末の複数利用者検証、DGX中央timerの実機有効状態、中央keep-warmのprofile IDと`system-prod-primary`の対応確認は未実施です。ローカル固定imageの本体healthと未認証拒否は検証済みです。

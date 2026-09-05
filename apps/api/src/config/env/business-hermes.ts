@@ -18,6 +18,7 @@ const optionalHermesBaseUrl = z.preprocess(
 
 export const businessHermesEnvShape = {
   /** 業務用途専用HermesのOpenAI互換API。Private Pi5/LocalLLM設定とは別管理。 */
+  BUSINESS_HERMES_PROVIDER: z.enum(['dgx', 'openai']).default('dgx'),
   BUSINESS_HERMES_BASE_URL: optionalHermesBaseUrl,
   BUSINESS_HERMES_API_KEY: optionalTrimmed,
   BUSINESS_HERMES_MODEL: optionalTrimmed,

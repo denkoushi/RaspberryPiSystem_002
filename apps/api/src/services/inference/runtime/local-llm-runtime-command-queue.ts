@@ -83,6 +83,7 @@ export function resolveMainLocalLlmRuntimeControlPriorityForUseCase(
 ): MainLocalLlmRuntimeControlPriority {
   switch (useCase) {
     case 'photo_label':
+    case 'business_hermes':
     case 'document_summary':
       return MAIN_LOCAL_LLM_RUNTIME_CONTROL_PRIORITIES.business;
     case 'admin_console_chat':

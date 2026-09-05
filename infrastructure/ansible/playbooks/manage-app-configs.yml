@@ -166,18 +166,20 @@
       ansible.builtin.assert:
         that:
           - business_hermes_enabled | default(false) | bool
+          - business_hermes_provider | default('dgx') in ['dgx', 'openai']
           - business_hermes_api_key is defined
           - business_hermes_api_key | length >= 8
-          - business_hermes_openai_api_key is defined
-          - business_hermes_openai_api_key | length >= 8
+          - business_hermes_provider | default('dgx') != 'dgx' or (business_hermes_dgx_token is defined and business_hermes_dgx_token | length >= 8)
+          - business_hermes_provider | default('dgx') != 'openai' or (business_hermes_openai_api_key is defined and business_hermes_openai_api_key | length >= 8)
           - api_business_hermes_base_url == 'http://business-hermes:8642'
-          - api_business_hermes_model == 'gpt-5.6-luna'
+          - api_business_hermes_model | length >= 1
           - business_hermes_image is match('^nousresearch/hermes-agent:[^@]+@sha256:[0-9a-f]{64}$')
           - business_hermes_egress_image is match('^node:[^@]+@sha256:[0-9a-f]{64}$')
         fail_msg: >-
-          Enabled business Hermes requires independent API/OpenAI credentials,
-          the internal service URL, the approved Luna model, and digest-pinned
-          ARM64 images. Values must come from Ansible Vault.
+          Enabled business Hermes requires the selected provider credential,
+          the internal service URL, a model, and digest-pinned ARM64 images.
+          DGX mode reuses the existing business LocalLLM token; OpenAI mode
+          requires the dedicated Business Hermes key. Values must come from Ansible Vault.
       when:
         - '"server" in group_names'
         - business_hermes_enabled | default(false) | bool
@@ -198,7 +200,11 @@
       ansible.builtin.copy:
         content: |
           API_SERVER_KEY={{ business_hermes_api_key }}
-          OPENAI_API_KEY={{ business_hermes_openai_api_key }}
+          BUSINESS_HERMES_PROVIDER={{ business_hermes_provider | default('dgx') }}
+          HERMES_INFERENCE_PROVIDER={{ 'business-dgx' if (business_hermes_provider | default('dgx')) == 'dgx' else 'business-openai' }}
+          BUSINESS_HERMES_MODEL={{ business_hermes_model | default('') }}
+          BUSINESS_HERMES_DGX_TOKEN={{ business_hermes_dgx_token | default('') if (business_hermes_provider | default('dgx')) == 'dgx' else '' }}
+          BUSINESS_HERMES_OPENAI_API_KEY={{ business_hermes_openai_api_key | default('') if (business_hermes_provider | default('dgx')) == 'openai' else '' }}
         dest: "{{ business_hermes_runtime_env_file }}"
         owner: root
         group: root
@@ -229,6 +235,38 @@
       when:
         - '"server" in group_names'
         - _parsed_inference_providers is defined
+      no_log: true
+
+    - name: Resolve photo label inference provider for Business Hermes alignment (server)
+      ansible.builtin.set_fact:
+        _llm_photo_inference_provider: >-
+          {{
+            (_parsed_inference_providers | selectattr('id', 'equalto', inference_photo_label_provider_id) | list | first)
+          }}
+      when:
+        - '"server" in group_names'
+        - _parsed_inference_providers is defined
+        - business_hermes_enabled | default(false) | bool
+        - (business_hermes_provider | default('dgx')) == 'dgx'
+      no_log: true
+
+    - name: Assert DGX Business Hermes follows photo label inference settings (server)
+      ansible.builtin.assert:
+        that:
+          - _llm_photo_inference_provider is defined
+          - api_local_llm_base_url == 'http://100.118.82.72:38081'
+          - _llm_photo_inference_provider.baseUrl == 'http://100.118.82.72:38081'
+          - _llm_photo_inference_provider.baseUrl == api_local_llm_base_url
+          - _llm_photo_inference_provider.sharedToken == business_hermes_dgx_token
+          - (_llm_photo_inference_provider.defaultModel | default('')) == inference_photo_label_model
+          - business_hermes_model == inference_photo_label_model
+        fail_msg: >-
+          DGX Business Hermes must use the photo_label provider URL, token, and model.
+          Keep the existing image route and Business Hermes settings aligned.
+      when:
+        - '"server" in group_names'
+        - business_hermes_enabled | default(false) | bool
+        - (business_hermes_provider | default('dgx')) == 'dgx'
       no_log: true
 
     - name: Assert inference route provider ids exist in INFERENCE_PROVIDERS_JSON (server)
