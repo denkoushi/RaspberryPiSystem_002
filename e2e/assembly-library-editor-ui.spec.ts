@@ -423,8 +423,7 @@ for (const viewport of [...viewports, { width: 900, height: 900 }]) {
     const box = (await image.boundingBox())!;
     await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
     const right = page.getByTestId('assembly-editor-settings-pane');
-    await right.getByRole('combobox', { name: '適合トルクレンチグループを検索' }).fill('M6 30mm');
-    await right.getByRole('option', { name: /M6 30mm 標準/ }).click();
+    await selectTorqueWrenchGroup(right, page, 'M6 30mm', /M6 30mm 標準/);
     await expect(right.locator('input[id$="-lowerLimit"]')).toHaveValue('81.25');
     await expect(right.locator('input[id$="-nominalTorque"]')).toHaveValue('90.25');
     await expect(right.locator('input[id$="-upperLimit"]')).toHaveValue('99.25');
@@ -457,15 +456,24 @@ for (const viewport of [...viewports, { width: 900, height: 900 }]) {
   });
 }
 
+async function selectTorqueWrenchGroup(
+  settings: Locator,
+  page: Page,
+  query: string,
+  groupName: string | RegExp
+): Promise<void> {
+  await settings.getByRole('button', { name: /適合グループを選択|別のグループを選択/ }).click();
+  const dialog = page.getByRole('dialog', { name: '適合トルクレンチグループを選択' });
+  await dialog.getByRole('textbox', { name: '適合トルクレンチグループを検索' }).fill(query);
+  const candidate = dialog.getByRole('button', { name: groupName }).first();
+  await expect(candidate).toBeVisible();
+  await expectEditorControlReachable(candidate);
+  await candidate.click();
+}
+
 async function fillSelectedAssemblyBolt(page: Page): Promise<void> {
   const settings = page.getByTestId('assembly-editor-settings-pane');
-  const groupSearch = settings.getByRole('combobox', {
-    name: '適合トルクレンチグループを検索'
-  });
-  await groupSearch.fill('M6 30mm');
-  await settings
-    .getByRole('option', { name: /M6 30mm 標準/ })
-    .click();
+  await selectTorqueWrenchGroup(settings, page, 'M6 30mm', /M6 30mm 標準/);
   await settings.locator('input[id$="-lowerLimit"]').fill('9');
   await settings.locator('input[id$="-nominalTorque"]').fill('10');
   await settings.locator('input[id$="-upperLimit"]').fill('11');
@@ -487,8 +495,7 @@ for (const viewport of [...viewports, { width: 900, height: 900 }]) {
     const box = (await image.boundingBox())!;
     await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
     const right = page.getByTestId('assembly-editor-settings-pane');
-    await right.getByRole('combobox', { name: '適合トルクレンチグループを検索' }).fill('M6 30mm');
-    await right.getByRole('option', { name: /M6 30mm 標準/ }).click();
+    await selectTorqueWrenchGroup(right, page, 'M6 30mm', /M6 30mm 標準/);
     await expect(right.locator('input[id$="-lowerLimit"]')).toHaveValue('');
     await expect(right.locator('input[id$="-nominalTorque"]')).toHaveValue('');
     await expect(right.locator('input[id$="-upperLimit"]')).toHaveValue('');
@@ -829,17 +836,12 @@ for (const viewport of paneFitViewports) {
       expect((await right.boundingBox())!.width).toBe(320);
     }
     const centralWidth = (await page.getByTestId('assembly-unified-editor-canvas-pane').boundingBox())!.width;
-    const groupSearch = right.getByRole('combobox', { name: '適合トルクレンチグループを検索' });
     let shortGroupHeight = 0;
     for (const [index, group] of groups.entries()) {
-      await groupSearch.fill('');
-      if (await groupSearch.getAttribute('aria-expanded') !== 'true') {
-        await right.getByRole('button', { name: '適合トルクレンチグループを検索の候補を表示', exact: true }).click();
-      }
-      const option = right.getByRole('option').filter({ hasText: group.name });
+      await selectTorqueWrenchGroup(right, page, '', group.name);
+      const selectedOption = right.locator('div[title]').filter({ hasText: group.name }).first();
       await expectEditorControlsFitHorizontally(right);
-      await expectEditorControlReachable(option);
-      await option.click();
+      await expectEditorControlReachable(selectedOption);
       const selectedName = right.locator('div[title]').filter({ hasText: index === 3 ? 'M6 ABC123' : group.name });
       await expect(selectedName).toHaveAttribute('title', group.name);
       const height = (await selectedName.locator('..').boundingBox())!.height;
