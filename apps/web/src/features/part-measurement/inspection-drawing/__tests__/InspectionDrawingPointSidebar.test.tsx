@@ -34,7 +34,7 @@ describe('InspectionDrawingPointSidebar', () => {
   it('shows settings panel and mode row in place mode with a selected point', () => {
     render(<InspectionDrawingPointSidebar {...baseProps} mode="place" />);
 
-    expect(screen.getByRole('group', { name: '測定点の位置調整' })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '測定点の位置調整' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '丸数字' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '矢視' })).toBeInTheDocument();
     expect(screen.getByText('矢視 なし')).toBeInTheDocument();

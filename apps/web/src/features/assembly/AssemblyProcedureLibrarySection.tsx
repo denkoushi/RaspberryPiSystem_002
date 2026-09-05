@@ -241,7 +241,7 @@ export function AssemblyProcedureLibrarySection({
                     <tr className="border-b border-white/10 last:border-b-0">
                       <td colSpan={4} className="px-2 pb-1.5 pt-0.5">
                         <div className="flex min-w-0 items-center gap-2">
-                          <span className="min-w-0 flex-1 truncate font-bold text-white" title={document.name}>
+                          <span className="min-w-0 flex-1 line-clamp-2 break-all font-bold text-white" title={document.name}>
                             {document.name}
                           </span>
                           <div className="ml-auto flex min-w-0 shrink-0 flex-wrap justify-end gap-1">

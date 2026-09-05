@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Button, buttonClassName } from '../../components/ui/Button';
 
 import { kioskAssemblyTemplateEditPath, kioskAssemblyTemplateNewPath } from './assemblyRoutes';
+import { formatAssemblyMachineName } from './assemblyTemplateGuidePresentation';
 import { formatAssemblyTimestamp } from './assemblyUiHelpers';
 
 import type { AssemblyTemplateSummaryDto } from './types';
@@ -65,8 +66,8 @@ function TemplateTablePane({
                   className={`border-t border-white/10 first:border-t-0 ${highlightedTemplateId === template.id ? 'bg-emerald-500/15' : ''}`}
                   data-template-id={template.id}
                 >
-                  <td className="truncate px-2 pb-0.5 pt-1.5 font-bold text-white" title={template.modelCode}>
-                    {template.modelCode}
+                  <td className="px-2 pb-0.5 pt-1.5 font-bold text-white" title={template.modelCode}>
+                    <span className="block line-clamp-2 break-all">{formatAssemblyMachineName(template.modelCode)}</span>
                   </td>
                   <td className="truncate px-2 pb-0.5 pt-1.5 text-white/85" title={template.procedurePattern}>
                     {template.procedurePattern}

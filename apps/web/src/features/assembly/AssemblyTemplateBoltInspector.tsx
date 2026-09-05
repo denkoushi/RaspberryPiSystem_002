@@ -4,7 +4,6 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import {
   clearImageMarkerCalloutTip,
-  ImageMarkerPositionNudge,
   imageMarkerHasCalloutTip
 } from '../kiosk/image-canvas';
 
@@ -89,8 +88,10 @@ export function AssemblyTemplateBoltInspector({
     <>
       <div className="flex min-w-0 items-start justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-[1.02rem] font-bold">締付条件</h2>
-          <div className="mt-0.5 truncate text-sm font-bold">丸数字 {bolt.markerNo}</div>
+          <div className="flex min-w-0 items-baseline gap-2">
+            <h2 className="text-sm font-bold">締付条件</h2>
+            <div className="truncate text-[1.02rem] font-extrabold">丸数字 {bolt.markerNo}</div>
+          </div>
           <div className="mt-0.5 truncate text-[0.68rem] text-white/55">
             ページ: {pageLabel}
           </div>
@@ -120,13 +121,6 @@ export function AssemblyTemplateBoltInspector({
           >
             矢視削除
           </Button>
-          <ImageMarkerPositionNudge
-            position={bolt}
-            disabled={busy || readOnly}
-            groupLabel="締付マーカーの位置調整"
-            className="min-w-0 flex-1 [&>button]:min-h-10 [&>button]:min-w-0 [&>button]:flex-1 [&>button]:px-1"
-            onChange={(patch) => onPatch(bolt.id, patch)}
-          />
         </div>
 
         <label className="flex min-h-10 min-w-0 items-center gap-2 rounded border border-white/10 bg-slate-950/60 px-2 py-1 text-[0.7rem] font-semibold text-white/80">

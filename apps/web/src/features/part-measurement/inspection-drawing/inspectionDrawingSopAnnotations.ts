@@ -24,7 +24,6 @@ const INSPECTION_DRAWING_SOP_TARGET_IDS = [
   'nominal-value',
   'upper-tolerance',
   'lower-tolerance',
-  'nudge-point',
   'depth-mode',
   'face-thread',
   'direct-label',

@@ -137,8 +137,8 @@ function AssistantHarness({
 }
 
 function selectGroupByName(name: string) {
-  fireEvent.click(screen.getByRole('button', { name: '適合トルクレンチグループを検索の候補を表示' }));
-  fireEvent.click(screen.getByRole('option', { name: new RegExp(name) }));
+  fireEvent.click(screen.getByRole('button', { name: /グループを選択/ }));
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(name) }));
 }
 
 function selectGroup() {

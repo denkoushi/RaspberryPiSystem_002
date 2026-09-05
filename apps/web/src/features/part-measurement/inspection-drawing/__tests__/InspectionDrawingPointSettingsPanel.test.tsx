@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO } from '../inspectionDrawingPointPosition';
 import { InspectionDrawingPointSettingsPanel } from '../InspectionDrawingPointSettingsPanel';
 
 import type { InspectionDrawingPoint } from '../types';
@@ -31,27 +30,14 @@ function visibleToleranceCandidateButtons(): string[] {
 }
 
 describe('InspectionDrawingPointSettingsPanel', () => {
-  it('renders nudge controls above the settings title and omits tolerance helper text', () => {
+  it('omits nudge controls and tolerance helper text', () => {
     render(<InspectionDrawingPointSettingsPanel point={point} onChange={vi.fn()} />);
 
-    expect(screen.getByRole('group', { name: '測定点の位置調整' })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '測定点の位置調整' })).not.toBeInTheDocument();
     expect(screen.getByText('測定点の設定（No.1）')).toBeInTheDocument();
     expect(
       screen.queryByText(/合格範囲は「基準値＋下限公差」/)
     ).not.toBeInTheDocument();
-  });
-
-  it('forwards nudge patch through onChange', () => {
-    const onChange = vi.fn();
-
-    render(<InspectionDrawingPointSettingsPanel point={point} onChange={onChange} />);
-
-    fireEvent.click(screen.getByRole('button', { name: '上へ移動' }));
-
-    expect(onChange).toHaveBeenCalledWith({
-      xRatio: 0.4,
-      yRatio: 0.6 - INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO
-    });
   });
 
   it('renders selected-point delete and all delete actions', () => {
