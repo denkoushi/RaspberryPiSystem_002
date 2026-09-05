@@ -1,0 +1,422 @@
+---
+- name: Validate enabled business Hermes credentials and image
+  ansible.builtin.assert:
+    that:
+      - business_hermes_enabled | default(false) | bool
+      - business_hermes_provider | default('dgx') in ['dgx', 'openai']
+      - business_hermes_api_key is defined
+      - business_hermes_api_key | length >= 16
+      - business_hermes_provider | default('dgx') != 'dgx' or (business_hermes_dgx_token is defined and business_hermes_dgx_token | length >= 16)
+      - business_hermes_provider | default('dgx') != 'openai' or (business_hermes_openai_api_key is defined and business_hermes_openai_api_key | length >= 16)
+      - api_business_hermes_base_url == 'http://business-hermes:8642'
+      - api_business_hermes_api_key == business_hermes_api_key
+      - api_business_hermes_model | length >= 1
+      - business_hermes_model | length >= 1
+      - business_hermes_image is match('^nousresearch/hermes-agent:[^@]+@sha256:[0-9a-f]{64}$')
+      - business_hermes_egress_image is match('^node:[^@]+@sha256:[0-9a-f]{64}$')
+    fail_msg: >-
+      Enabled business Hermes requires the selected provider credential,
+      the internal service URL, a model, and digest-pinned ARM64 images.
+      DGX mode reuses the existing business LocalLLM token; OpenAI mode
+      requires the dedicated Business Hermes key. Values must come from Ansible Vault.
+  no_log: true
+
+- name: Define the Business Hermes configuration paths
+  ansible.builtin.set_fact:
+    business_hermes_config_target_file: >-
+      {{ business_hermes_config_file | default('/etc/raspi-business-hermes/config.yaml') }}
+    business_hermes_config_stage_file: >-
+      {{ (business_hermes_backup_dir + '/business-hermes-config.desired')
+         if (business_hermes_backup_env_files | default(false) | bool)
+         else (business_hermes_config_file | default('/etc/raspi-business-hermes/config.yaml')) }}
+  no_log: true
+
+- name: Inspect existing Business Hermes runtime environment before update
+  ansible.builtin.stat:
+    path: "{{ business_hermes_runtime_env_file }}"
+  register: business_hermes_runtime_env_before
+  no_log: true
+  when: business_hermes_backup_env_files | default(false) | bool
+
+- name: Inspect existing Business Hermes candidate environment before update
+  ansible.builtin.stat:
+    path: "{{ business_hermes_candidate_env_file }}"
+  register: business_hermes_candidate_env_before
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_candidate_env_file is defined
+
+- name: Inspect existing Business Hermes configuration before update
+  ansible.builtin.stat:
+    path: "{{ business_hermes_config_target_file }}"
+  register: business_hermes_config_before
+  no_log: true
+  when: business_hermes_backup_env_files | default(false) | bool
+
+- name: Define the expected Business Hermes runtime environment
+  ansible.builtin.set_fact:
+    business_hermes_runtime_env_expected_content: |
+      API_SERVER_KEY={{ business_hermes_api_key }}
+      BUSINESS_HERMES_PROVIDER={{ business_hermes_provider | default('dgx') }}
+      HERMES_INFERENCE_PROVIDER={{ 'business-dgx' if (business_hermes_provider | default('dgx')) == 'dgx' else 'business-openai' }}
+      BUSINESS_HERMES_MODEL={{ business_hermes_model | default('') }}
+      BUSINESS_HERMES_DGX_TOKEN={{ business_hermes_dgx_token | default('') if (business_hermes_provider | default('dgx')) == 'dgx' else '' }}
+      BUSINESS_HERMES_OPENAI_API_KEY={{ business_hermes_openai_api_key | default('') if (business_hermes_provider | default('dgx')) == 'openai' else '' }}
+    business_hermes_candidate_env_expected_service_lines:
+      - "BUSINESS_HERMES_PROVIDER={{ business_hermes_provider | default('dgx') }}"
+      - "BUSINESS_HERMES_TIMEOUT_MS={{ api_business_hermes_timeout_ms | default(8000) }}"
+      - "BUSINESS_HERMES_RUNTIME_ENV_FILE={{ business_hermes_runtime_env_file }}"
+      - "BUSINESS_HERMES_CONFIG_FILE={{ business_hermes_config_target_file }}"
+  no_log: true
+
+- name: Record Business Hermes environment rollback state
+  ansible.builtin.set_fact:
+    business_hermes_runtime_env_preexisting: >-
+      {{ business_hermes_runtime_env_before.stat.exists | default(false) | bool }}
+    business_hermes_candidate_env_preexisting: >-
+      {{ business_hermes_candidate_env_before.stat.exists | default(false) | bool }}
+    business_hermes_config_preexisting: >-
+      {{ business_hermes_config_before.stat.exists | default(false) | bool }}
+    business_hermes_runtime_env_backup_file: >-
+      {{ business_hermes_backup_dir }}/business-hermes-runtime.env.before
+    business_hermes_candidate_env_backup_file: >-
+      {{ business_hermes_backup_dir }}/business-hermes-compose.env.before
+    business_hermes_config_backup_file: >-
+      {{ business_hermes_backup_dir }}/business-hermes-config.yaml.before
+    business_hermes_runtime_env_original_mode: >-
+      {{ business_hermes_runtime_env_before.stat.mode | default('0600') }}
+    business_hermes_candidate_env_original_mode: >-
+      {{ business_hermes_candidate_env_before.stat.mode | default('0600') }}
+    business_hermes_config_original_mode: >-
+      {{ business_hermes_config_before.stat.mode | default('0644') }}
+    business_hermes_runtime_env_backup_ready: false
+    business_hermes_candidate_env_backup_ready: false
+    business_hermes_config_backup_ready: false
+    business_hermes_runtime_env_materialized: false
+    business_hermes_candidate_env_materialized: false
+    business_hermes_config_materialized: false
+  when: business_hermes_backup_env_files | default(false) | bool
+
+- name: Inspect existing Business Hermes rollback backups
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+  register: business_hermes_backup_stats
+  loop:
+    - { name: runtime, path: "{{ business_hermes_runtime_env_backup_file }}" }
+    - { name: candidate, path: "{{ business_hermes_candidate_env_backup_file }}" }
+    - { name: config, path: "{{ business_hermes_config_backup_file }}" }
+  no_log: true
+  when: business_hermes_backup_env_files | default(false) | bool
+
+- name: Record existing Business Hermes rollback backup state
+  ansible.builtin.set_fact:
+    business_hermes_runtime_env_backup_preexisting: >-
+      {{ (business_hermes_backup_stats.results | selectattr('item.name', 'equalto', 'runtime') | first).stat.exists | default(false) | bool }}
+    business_hermes_candidate_env_backup_preexisting: >-
+      {{ (business_hermes_backup_stats.results | selectattr('item.name', 'equalto', 'candidate') | first).stat.exists | default(false) | bool }}
+    business_hermes_config_backup_preexisting: >-
+      {{ (business_hermes_backup_stats.results | selectattr('item.name', 'equalto', 'config') | first).stat.exists | default(false) | bool }}
+  no_log: true
+  when: business_hermes_backup_env_files | default(false) | bool
+
+- name: Ensure the business Hermes secret directory exists
+  ansible.builtin.file:
+    path: "{{ business_hermes_runtime_env_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Render the Business Hermes single-purpose configuration
+  ansible.builtin.template:
+    src: "{{ business_hermes_config_template | default(playbook_dir + '/../templates/business-hermes-config.yaml.j2') }}"
+    dest: "{{ business_hermes_config_stage_file }}"
+    owner: root
+    group: root
+    mode: "{{ '0600' if (business_hermes_backup_env_files | default(false) | bool) else '0644' }}"
+  no_log: true
+
+- name: Read the rendered Business Hermes configuration for the running guard
+  ansible.builtin.slurp:
+    src: "{{ business_hermes_config_stage_file }}"
+  register: business_hermes_config_stage_content
+  no_log: true
+  when: business_hermes_backup_env_files | default(false) | bool
+
+- name: Read the running Business Hermes configuration before update
+  ansible.builtin.slurp:
+    src: "{{ business_hermes_config_target_file }}"
+  register: business_hermes_config_before_content
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - release_pi5_business_hermes_existing_running | default(false) | bool
+    - business_hermes_config_preexisting | bool
+
+- name: Read the running Business Hermes runtime environment before update
+  ansible.builtin.slurp:
+    src: "{{ business_hermes_runtime_env_file }}"
+  register: business_hermes_runtime_env_before_content
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - release_pi5_business_hermes_existing_running | default(false) | bool
+    - business_hermes_runtime_env_preexisting | bool
+
+- name: Read the running Business Hermes candidate environment before update
+  ansible.builtin.slurp:
+    src: "{{ business_hermes_candidate_env_file }}"
+  register: business_hermes_candidate_env_before_content
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - release_pi5_business_hermes_existing_running | default(false) | bool
+    - business_hermes_candidate_env_preexisting | bool
+
+- name: Record current Business Hermes environment for the rollback guard
+  ansible.builtin.set_fact:
+    business_hermes_runtime_env_current_content: >-
+      {{ business_hermes_runtime_env_before_content.content | default('') | b64decode }}
+    business_hermes_candidate_env_current_lines: >-
+      {{ (business_hermes_candidate_env_before_content.content | default('') | b64decode).splitlines() }}
+    business_hermes_config_current_content: >-
+      {{ business_hermes_config_before_content.content | default('') | b64decode }}
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - release_pi5_business_hermes_existing_running | default(false) | bool
+
+- name: Refuse configuration changes for a running Business Hermes container
+  ansible.builtin.assert:
+    that:
+      - business_hermes_config_preexisting | bool
+      - business_hermes_config_current_content
+        == (business_hermes_config_stage_content.content | b64decode)
+    fail_msg: A running Business Hermes container requires an unchanged rendered configuration during rollback-safe release.
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - release_pi5_business_hermes_existing_running | default(false) | bool
+
+- name: Refuse runtime credential changes for a running Business Hermes container
+  ansible.builtin.assert:
+    that:
+      - business_hermes_runtime_env_preexisting | bool
+      - business_hermes_runtime_env_current_content == business_hermes_runtime_env_expected_content
+    fail_msg: A running Business Hermes container requires an unchanged runtime credential file during rollback-safe release.
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - release_pi5_business_hermes_existing_running | default(false) | bool
+
+- name: Refuse Compose runtime changes for a running Business Hermes container
+  ansible.builtin.assert:
+    that:
+      - business_hermes_candidate_env_preexisting | bool
+      - item in business_hermes_candidate_env_current_lines
+    fail_msg: A running Business Hermes container requires unchanged Compose runtime settings during rollback-safe release.
+  loop: "{{ business_hermes_candidate_env_expected_service_lines }}"
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - release_pi5_business_hermes_existing_running | default(false) | bool
+
+- name: Require regular Business Hermes environment files before backup
+  ansible.builtin.assert:
+    that:
+      - not (business_hermes_runtime_env_before.stat.exists | default(false) | bool)
+        or business_hermes_runtime_env_before.stat.isreg | default(false) | bool
+      - not (business_hermes_candidate_env_before.stat.exists | default(false) | bool)
+        or business_hermes_candidate_env_before.stat.isreg | default(false) | bool
+      - not (business_hermes_config_before.stat.exists | default(false) | bool)
+        or business_hermes_config_before.stat.isreg | default(false) | bool
+    fail_msg: Existing Business Hermes environment paths must be regular files before replacement.
+  no_log: true
+  when: business_hermes_backup_env_files | default(false) | bool
+
+- name: Back up the existing Business Hermes runtime environment
+  ansible.builtin.copy:
+    src: "{{ business_hermes_runtime_env_file }}"
+    dest: "{{ business_hermes_runtime_env_backup_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_runtime_env_preexisting | bool
+    - not (business_hermes_runtime_env_backup_preexisting | bool)
+
+- name: Mark the Business Hermes runtime environment backup ready
+  ansible.builtin.set_fact:
+    business_hermes_runtime_env_backup_ready: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_runtime_env_preexisting | bool
+
+- name: Back up the existing Business Hermes candidate environment
+  ansible.builtin.copy:
+    src: "{{ business_hermes_candidate_env_file }}"
+    dest: "{{ business_hermes_candidate_env_backup_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_candidate_env_file is defined
+    - business_hermes_candidate_env_preexisting | bool
+    - not (business_hermes_candidate_env_backup_preexisting | bool)
+
+- name: Back up the existing Business Hermes configuration
+  ansible.builtin.copy:
+    src: "{{ business_hermes_config_target_file }}"
+    dest: "{{ business_hermes_config_backup_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_config_preexisting | bool
+    - not (business_hermes_config_backup_preexisting | bool)
+
+- name: Mark the Business Hermes configuration backup ready
+  ansible.builtin.set_fact:
+    business_hermes_config_backup_ready: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_config_preexisting | bool
+
+- name: Mark the Business Hermes candidate environment backup ready
+  ansible.builtin.set_fact:
+    business_hermes_candidate_env_backup_ready: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_candidate_env_file is defined
+    - business_hermes_candidate_env_preexisting | bool
+
+- name: Deploy the independent business Hermes runtime credentials
+  ansible.builtin.copy:
+    content: "{{ business_hermes_runtime_env_expected_content }}"
+    dest: "{{ business_hermes_runtime_env_file }}"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+
+- name: Mark the Business Hermes runtime environment materialized
+  ansible.builtin.set_fact:
+    business_hermes_runtime_env_materialized: true
+  when: business_hermes_backup_env_files | default(false) | bool
+
+- name: Install the rendered Business Hermes configuration
+  ansible.builtin.copy:
+    src: "{{ business_hermes_config_stage_file }}"
+    dest: "{{ business_hermes_config_target_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0644'
+  no_log: true
+  when: business_hermes_backup_env_files | default(false) | bool
+
+- name: Mark the Business Hermes configuration materialized
+  ansible.builtin.set_fact:
+    business_hermes_config_materialized: true
+  when: business_hermes_backup_env_files | default(false) | bool
+
+- name: Inspect the managed Compose environment before candidate Hermes sync
+  ansible.builtin.stat:
+    path: "{{ business_hermes_config_repo_path }}/infrastructure/docker/.env"
+  register: business_hermes_managed_compose_env_stat
+  no_log: true
+  when: business_hermes_sync_candidate_env | default(false) | bool
+
+- name: Require the managed Compose environment before candidate Hermes sync
+  ansible.builtin.assert:
+    that:
+      - business_hermes_managed_compose_env_stat.stat.exists | default(false) | bool
+      - business_hermes_managed_compose_env_stat.stat.isreg | default(false) | bool
+    fail_msg: Business Hermes candidate environment files must already be managed by Ansible.
+  no_log: true
+  when: business_hermes_sync_candidate_env | default(false) | bool
+
+- name: Read the managed Compose environment for candidate comparison
+  ansible.builtin.slurp:
+    src: "{{ business_hermes_config_repo_path }}/infrastructure/docker/.env"
+  register: business_hermes_managed_compose_env_content
+  no_log: true
+  when: business_hermes_sync_candidate_env | default(false) | bool
+
+- name: Read the existing candidate Compose environment for candidate comparison
+  ansible.builtin.slurp:
+    src: "{{ business_hermes_candidate_env_file }}"
+  register: business_hermes_candidate_env_content
+  no_log: true
+  when:
+    - business_hermes_sync_candidate_env | default(false) | bool
+    - business_hermes_candidate_env_before.stat.exists | default(false) | bool
+
+- name: Decide whether the managed candidate environment needs copying
+  ansible.builtin.set_fact:
+    business_hermes_candidate_env_needs_copy: >-
+      {{ not (business_hermes_candidate_env_before.stat.exists | default(false) | bool)
+         or ((business_hermes_managed_compose_env_content.content | b64decode).splitlines()
+             | reject('match', '^BUSINESS_HERMES_') | list)
+            != ((business_hermes_candidate_env_content.content | default('') | b64decode).splitlines()
+                | reject('match', '^BUSINESS_HERMES_') | list) }}
+  no_log: true
+  when: business_hermes_sync_candidate_env | default(false) | bool
+
+- name: Copy the managed Compose environment into the private candidate scope
+  ansible.builtin.copy:
+    src: "{{ business_hermes_config_repo_path }}/infrastructure/docker/.env"
+    dest: "{{ business_hermes_candidate_env_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  when:
+    - business_hermes_sync_candidate_env | default(false) | bool
+    - business_hermes_candidate_env_needs_copy | bool
+
+- name: Mark the Business Hermes candidate environment materialized
+  ansible.builtin.set_fact:
+    business_hermes_candidate_env_materialized: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_candidate_env_file is defined
+    - business_hermes_sync_candidate_env | default(false) | bool
+
+- name: Sync Business Hermes settings into the candidate Compose environment
+  ansible.builtin.lineinfile:
+    path: "{{ business_hermes_candidate_env_file }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    insertafter: EOF
+    create: false
+    mode: '0600'
+  loop:
+    - { key: BUSINESS_HERMES_PROVIDER, value: "{{ business_hermes_provider | default('dgx') }}" }
+    - { key: BUSINESS_HERMES_BASE_URL, value: "{{ api_business_hermes_base_url }}" }
+    - { key: BUSINESS_HERMES_API_KEY, value: "{{ api_business_hermes_api_key }}" }
+    - { key: BUSINESS_HERMES_MODEL, value: "{{ api_business_hermes_model }}" }
+    - { key: BUSINESS_HERMES_TIMEOUT_MS, value: "{{ api_business_hermes_timeout_ms | default(8000) }}" }
+    - { key: BUSINESS_HERMES_ENABLED, value: 'true' }
+    - { key: BUSINESS_HERMES_RUNTIME_ENV_FILE, value: "{{ business_hermes_runtime_env_file }}" }
+    - { key: BUSINESS_HERMES_CONFIG_FILE, value: "{{ business_hermes_config_target_file }}" }
+  no_log: true
+  when: business_hermes_sync_candidate_env | default(false) | bool
+
+- name: Record the private candidate Compose environment path
+  ansible.builtin.set_fact:
+    release_pi5_candidate_env_file: "{{ business_hermes_candidate_env_file }}"
+  when:
+    - business_hermes_sync_candidate_env | default(false) | bool
+    - business_hermes_candidate_env_file is defined

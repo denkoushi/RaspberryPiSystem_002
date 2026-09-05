@@ -201,11 +201,39 @@
     that:
       - release_pi5_gateway_discovery.stdout is match('^[0-9a-f]{12,64}\|[^|]+\|running$')
 
+- name: Inspect the persistent Business Hermes Compose environment source before the first Compose command
+  ansible.builtin.stat:
+    path: "{{ release_pi5_business_hermes_candidate_env_file | default('/etc/raspi-business-hermes/compose.env') }}"
+    follow: false
+  register: release_pi5_business_hermes_candidate_env_source
+  changed_when: false
+
+- name: Require a regular persistent Business Hermes Compose environment source
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (release_pi5_business_hermes_candidate_env_source.stat.exists | default(false) | bool)
+        or (
+          (release_pi5_business_hermes_candidate_env_source.stat.isreg | default(false) | bool)
+          and not (release_pi5_business_hermes_candidate_env_source.stat.islnk | default(false) | bool)
+          and (release_pi5_business_hermes_candidate_env_source.stat.pw_name | default('')) == 'root'
+          and (release_pi5_business_hermes_candidate_env_source.stat.gr_name | default('')) == 'root'
+          and (release_pi5_business_hermes_candidate_env_source.stat.mode | default('')) == '0600'
+        )
+    fail_msg: The persistent Business Hermes Compose environment source must be a root-owned regular file with mode 0600.
+
+- name: Resolve the existing Pi5 Compose environment source
+  ansible.builtin.set_fact:
+    release_pi5_compose_env_source: >-
+      {{ release_pi5_business_hermes_candidate_env_file | default('/etc/raspi-business-hermes/compose.env')
+         if (release_pi5_business_hermes_candidate_env_source.stat.exists | default(false) | bool)
+         else release_pi5_env_file }}
+
 - name: Define complete Pi5 Compose interpolation before the first Compose command
   ansible.builtin.set_fact:
     release_pi5_compose_environment:
       PI5_PROJECT_DIR: "{{ release_pi5_project_dir }}"
-      PI5_ENV_FILE: "{{ release_pi5_env_file }}"
+      PI5_ENV_FILE: "{{ release_pi5_compose_env_source }}"
       PI5_BLUE_GREEN_CONFIG_DIR: "{{ release_pi5_gateway_config_dir }}"
       PI5_BLUE_API_IMAGE: "{{ release_pi5_api_image }}"
       PI5_GREEN_API_IMAGE: "{{ release_pi5_api_image }}"
@@ -356,13 +384,17 @@
   ansible.builtin.set_fact:
     release_pi5_compose_environment:
       PI5_PROJECT_DIR: "{{ release_pi5_project_dir }}"
-      PI5_ENV_FILE: "{{ release_pi5_env_file }}"
+      PI5_ENV_FILE: "{{ release_pi5_compose_env_source }}"
       PI5_BLUE_GREEN_CONFIG_DIR: "{{ release_pi5_gateway_config_dir }}"
       PI5_BLUE_API_IMAGE: "{{ release_pi5_active_api_identity.split('|')[0] if release_pi5_active_slot == 'blue' else (release_pi5_opposite_api_identity.split('|')[0] if release_pi5_same_release | bool else release_pi5_api_image) }}"
       PI5_GREEN_API_IMAGE: "{{ release_pi5_active_api_identity.split('|')[0] if release_pi5_active_slot == 'green' else (release_pi5_opposite_api_identity.split('|')[0] if release_pi5_same_release | bool else release_pi5_api_image) }}"
       PI5_BLUE_WEB_IMAGE: "{{ release_pi5_active_web_identity.split('|')[0] if release_pi5_active_slot == 'blue' else (release_pi5_opposite_web_identity.split('|')[0] if release_pi5_same_release | bool else release_pi5_web_image) }}"
       PI5_GREEN_WEB_IMAGE: "{{ release_pi5_active_web_identity.split('|')[0] if release_pi5_active_slot == 'green' else (release_pi5_opposite_web_identity.split('|')[0] if release_pi5_same_release | bool else release_pi5_web_image) }}"
       PI5_GATEWAY_IMAGE: "{{ release_pi5_gateway_identity.split('|')[0] }}"
+
+- name: Capture the original Pi5 Compose environment for rollback
+  ansible.builtin.set_fact:
+    release_pi5_rollback_compose_environment: "{{ release_pi5_compose_environment }}"
 
 - name: Capture an existing independent business Hermes container before fresh rollout
   ansible.builtin.command:
@@ -400,6 +432,51 @@
     release_pi5_business_hermes_existing_image: "{{ (release_pi5_business_hermes_existing_identity.stdout | default('')).split('|')[0] if (release_pi5_business_hermes_existing_identity.stdout | default('') | length > 0) else '' }}"
     release_pi5_business_hermes_existing_running: "{{ ((release_pi5_business_hermes_existing_identity.stdout | default('')).split('|')[1] | bool) if ('|' in (release_pi5_business_hermes_existing_identity.stdout | default(''))) else false }}"
   when: release_pi5_route == 'fresh'
+
+- name: Inspect the existing Business Hermes container environment
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{json .Config.Env}}' }}"
+      - "{{ release_pi5_business_hermes_existing.stdout | trim }}"
+  register: release_pi5_business_hermes_existing_env
+  changed_when: false
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_existing.stdout | trim | length > 0
+
+- name: Record the expected existing Business Hermes container environment
+  ansible.builtin.set_fact:
+    release_pi5_business_hermes_existing_env_lines: >-
+      {{ release_pi5_business_hermes_existing_env.stdout | from_json }}
+    release_pi5_business_hermes_expected_env_lines:
+      - "API_SERVER_KEY={{ business_hermes_api_key | default('') }}"
+      - "BUSINESS_HERMES_PROVIDER={{ business_hermes_provider | default('dgx') }}"
+      - "HERMES_INFERENCE_PROVIDER={{ 'business-dgx' if (business_hermes_provider | default('dgx')) == 'dgx' else 'business-openai' }}"
+      - "BUSINESS_HERMES_MODEL={{ business_hermes_model | default('') }}"
+      - "BUSINESS_HERMES_DGX_TOKEN={{ business_hermes_dgx_token | default('') if (business_hermes_provider | default('dgx')) == 'dgx' else '' }}"
+      - "BUSINESS_HERMES_OPENAI_API_KEY={{ business_hermes_openai_api_key | default('') if (business_hermes_provider | default('dgx')) == 'openai' else '' }}"
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_existing.stdout | trim | length > 0
+
+- name: Refuse a running Business Hermes container with mismatched credentials
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (release_pi5_business_hermes_existing_running | default(false) | bool)
+        or (release_pi5_business_hermes_expected_env_lines
+            | difference(release_pi5_business_hermes_existing_env_lines)
+            | length == 0)
+    fail_msg: A running Business Hermes container has runtime credentials different from the requested release; stop it through the dedicated procedure before changing them.
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_existing.stdout | trim | length > 0
 
 - name: Refuse to replace an independent business Hermes image during API/Web rollback window
   ansible.builtin.assert:
@@ -463,6 +540,41 @@
   ansible.builtin.assert:
     that: [release_pi5_ledger_after.stdout | trim == '0']
   when: release_pi5_route == 'fresh'
+
+- name: Define Business Hermes rollback environment targets
+  ansible.builtin.set_fact:
+    business_hermes_backup_env_files: true
+    business_hermes_backup_dir: "{{ release_pi5_run_dir }}"
+    business_hermes_candidate_env_file: "/etc/raspi-business-hermes/compose.env"
+    business_hermes_config_file: "/etc/raspi-business-hermes/config.yaml"
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Materialize Business Hermes credentials and candidate environment before startup
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/business-hermes-runtime.yml"
+  vars:
+    business_hermes_config_repo_path: "{{ release_pi5_project_dir }}"
+    business_hermes_sync_candidate_env: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Bind Business Hermes candidate settings to candidate Compose services
+  ansible.builtin.set_fact:
+    release_pi5_compose_environment: >-
+      {{
+        release_pi5_rollback_compose_environment | combine({
+          'PI5_ENV_FILE': release_pi5_candidate_env_file,
+          'BUSINESS_HERMES_PROVIDER': business_hermes_provider | default('dgx'),
+          'BUSINESS_HERMES_TIMEOUT_MS': api_business_hermes_timeout_ms | default(8000),
+          'BUSINESS_HERMES_RUNTIME_ENV_FILE': business_hermes_runtime_env_file,
+          'BUSINESS_HERMES_CONFIG_FILE': business_hermes_config_file
+        })
+      }}
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
 
 - name: Mark the inactive Pi5 candidate startup boundary
   ansible.builtin.set_fact:

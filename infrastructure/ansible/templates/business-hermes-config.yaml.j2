@@ -1,12 +1,9 @@
-# Business Hermes is a single-purpose profile for the assembly guide.
-# This checked-in file is a safe local example. Production deploys render the
-# same shape to /etc/raspi-business-hermes/config.yaml with the selected model.
-# Credentials are injected through the Ansible-managed runtime env file.
+{# Business Hermes single-purpose assembly-guide configuration. #}
+{# Keep credentials in the runtime env; this file only references their names. #}
 model:
-  # The gateway reads model.default before the normal env expansion path. Keep
-  # this concrete in the generated config so the first request uses the
-  # selected model; HERMES_INFERENCE_PROVIDER still selects the route.
-  default: "system-prod-primary"
+  # Gateway startup reads model.default directly, before its env expansion
+  # helper. Render the selected model as a concrete YAML scalar.
+  default: {{ business_hermes_model | to_json }}
   max_tokens: 512
   api_mode: chat_completions
 

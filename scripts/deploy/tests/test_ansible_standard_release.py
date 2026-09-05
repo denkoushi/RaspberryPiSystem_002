@@ -1363,6 +1363,255 @@ esac
         self.assertIn(".load | float", load_wait["until"])
         self.assertIn(".maxLoad | float", load_wait["until"])
 
+    def test_pi5_fresh_enabled_hermes_materializes_private_env_before_start(self) -> None:
+        prepare_path = ANSIBLE / "roles/release_pi5/tasks/prepare.yml"
+        prepare_tasks = yaml.safe_load(prepare_path.read_text(encoding="utf-8"))
+        config_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Materialize Business Hermes credentials and candidate environment before startup"
+        )
+        hermes_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Start the independent business Hermes runtime before candidate traffic"
+        )
+        config_task = prepare_tasks[config_index]
+        self.assertLess(config_index, hermes_index)
+        source_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Inspect the persistent Business Hermes Compose environment source before the first Compose command"
+        )
+        source_assert_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Require a regular persistent Business Hermes Compose environment source"
+        )
+        source_resolve_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Resolve the existing Pi5 Compose environment source"
+        )
+        initial_compose_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Define complete Pi5 Compose interpolation before the first Compose command"
+        )
+        self.assertLess(source_index, source_assert_index)
+        self.assertLess(source_assert_index, source_resolve_index)
+        self.assertLess(source_resolve_index, initial_compose_index)
+        source_stat = prepare_tasks[source_index]["ansible.builtin.stat"]
+        self.assertIn("/etc/raspi-business-hermes/compose.env", source_stat["path"])
+        self.assertFalse(source_stat["follow"])
+        source_assert = prepare_tasks[source_assert_index]
+        source_assert_text = str(source_assert["ansible.builtin.assert"])
+        self.assertIn("isreg", source_assert_text)
+        self.assertIn("islnk", source_assert_text)
+        self.assertIn("pw_name", source_assert_text)
+        self.assertIn("mode", source_assert_text)
+        source_fact = prepare_tasks[source_resolve_index]["ansible.builtin.set_fact"]
+        self.assertIn("release_pi5_business_hermes_candidate_env_file", source_fact["release_pi5_compose_env_source"])
+        self.assertIn("release_pi5_env_file", source_fact["release_pi5_compose_env_source"])
+        initial_compose = prepare_tasks[initial_compose_index]["ansible.builtin.set_fact"][
+            "release_pi5_compose_environment"
+        ]
+        self.assertEqual(initial_compose["PI5_ENV_FILE"], "{{ release_pi5_compose_env_source }}")
+        exact_images_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Define exact slot-specific Compose images"
+        )
+        rollback_capture_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Capture the original Pi5 Compose environment for rollback"
+        )
+        self.assertLess(exact_images_index, rollback_capture_index)
+        self.assertLess(rollback_capture_index, config_index)
+        exact_environment = prepare_tasks[exact_images_index]["ansible.builtin.set_fact"][
+            "release_pi5_compose_environment"
+        ]
+        self.assertEqual(exact_environment["PI5_ENV_FILE"], "{{ release_pi5_compose_env_source }}")
+        rollback_capture = prepare_tasks[rollback_capture_index]["ansible.builtin.set_fact"]
+        self.assertEqual(
+            rollback_capture["release_pi5_rollback_compose_environment"],
+            "{{ release_pi5_compose_environment }}",
+        )
+        existing_env_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Inspect the existing Business Hermes container environment"
+        )
+        existing_env_guard_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Refuse a running Business Hermes container with mismatched credentials"
+        )
+        pre_rollout_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Record the independent business Hermes pre-rollout state"
+        )
+        self.assertLess(existing_env_index, config_index)
+        self.assertLess(existing_env_guard_index, config_index)
+        self.assertLess(pre_rollout_index, existing_env_index)
+        self.assertTrue(prepare_tasks[existing_env_index]["no_log"])
+        self.assertTrue(prepare_tasks[existing_env_guard_index]["no_log"])
+        self.assertIn("difference", prepare_tasks[existing_env_guard_index]["ansible.builtin.assert"]["that"][0])
+        self.assertEqual(
+            config_task["ansible.builtin.include_tasks"],
+            "{{ playbook_dir }}/../tasks/business-hermes-runtime.yml",
+        )
+        self.assertEqual(
+            config_task["when"],
+            [
+                "release_pi5_route == 'fresh'",
+                "release_pi5_business_hermes_enabled | bool",
+            ],
+        )
+        self.assertEqual(
+            next(
+                task
+                for task in prepare_tasks
+                if task.get("name") == "Define Business Hermes rollback environment targets"
+            )["ansible.builtin.set_fact"]["business_hermes_candidate_env_file"],
+            "/etc/raspi-business-hermes/compose.env",
+        )
+        target_fact = next(
+            task
+            for task in prepare_tasks
+            if task.get("name") == "Define Business Hermes rollback environment targets"
+        )["ansible.builtin.set_fact"]
+        self.assertEqual(target_fact["business_hermes_backup_dir"], "{{ release_pi5_run_dir }}")
+        self.assertTrue(target_fact["business_hermes_backup_env_files"])
+        self.assertEqual(target_fact["business_hermes_config_file"], "/etc/raspi-business-hermes/config.yaml")
+        self.assertIn("PI5_ENV_FILE", prepare_path.read_text(encoding="utf-8"))
+        self.assertIn("release_pi5_compose_environment", prepare_path.read_text(encoding="utf-8"))
+        self.assertIn("release_pi5_rollback_compose_environment", prepare_path.read_text(encoding="utf-8"))
+        self.assertIn("BUSINESS_HERMES_CONFIG_FILE", prepare_path.read_text(encoding="utf-8"))
+        rollback_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_pi5/tasks/rollback.yml").read_text(encoding="utf-8")
+        )
+        rollback_names = [task["name"] for task in rollback_tasks]
+        self.assertEqual(rollback_names[0], "Restore the previous Business Hermes runtime environment")
+        self.assertEqual(rollback_names[1], "Remove a newly created Business Hermes runtime environment after rollback")
+        self.assertIn("Restore the previous Business Hermes candidate environment", rollback_names)
+        self.assertIn("Remove a newly created Business Hermes candidate environment after rollback", rollback_names)
+        self.assertIn("Restore the previous Business Hermes configuration", rollback_names)
+        self.assertIn("Remove a newly created Business Hermes configuration after rollback", rollback_names)
+        self.assertLess(
+            rollback_names.index("Restore the previous Business Hermes candidate environment"),
+            rollback_names.index("Restore the original Pi5 Compose environment before rollback"),
+        )
+        self.assertIn(
+            "release_pi5_rollback_compose_environment",
+            rollback_tasks[rollback_names.index("Restore the original Pi5 Compose environment before rollback")][
+                "ansible.builtin.set_fact"
+            ]["release_pi5_compose_environment"],
+        )
+
+        runtime_tasks = yaml.safe_load(
+            (ANSIBLE / "tasks/business-hermes-runtime.yml").read_text(encoding="utf-8")
+        )
+        validation_text = (ANSIBLE / "tasks/business-hermes-runtime.yml").read_text(encoding="utf-8")
+        self.assertIn("business_hermes_api_key | length >= 16", validation_text)
+        self.assertIn("business_hermes_dgx_token is defined and business_hermes_dgx_token | length >= 16", validation_text)
+        runtime_copy = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Deploy the independent business Hermes runtime credentials"
+        )
+        candidate_copy = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Copy the managed Compose environment into the private candidate scope"
+        )
+        candidate_sync = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Sync Business Hermes settings into the candidate Compose environment"
+        )
+        runtime_backup = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Back up the existing Business Hermes runtime environment"
+        )
+        candidate_backup = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Back up the existing Business Hermes candidate environment"
+        )
+        config_render = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Render the Business Hermes single-purpose configuration"
+        )
+        config_copy = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Install the rendered Business Hermes configuration"
+        )
+        self.assertEqual(runtime_copy["ansible.builtin.copy"]["mode"], "0600")
+        self.assertTrue(runtime_copy["no_log"])
+        self.assertIn("Back up the existing Business Hermes runtime environment", runtime_names := [task.get("name") for task in runtime_tasks])
+        self.assertIn("Back up the existing Business Hermes candidate environment", runtime_names)
+        self.assertEqual(runtime_backup["ansible.builtin.copy"]["mode"], "0600")
+        self.assertEqual(candidate_backup["ansible.builtin.copy"]["mode"], "0600")
+        self.assertTrue(runtime_backup["no_log"])
+        self.assertTrue(candidate_backup["no_log"])
+        self.assertEqual(config_render["ansible.builtin.template"]["mode"], "{{ '0600' if (business_hermes_backup_env_files | default(false) | bool) else '0644' }}")
+        self.assertEqual(config_copy["ansible.builtin.copy"]["mode"], "0644")
+        self.assertTrue(config_render["no_log"])
+        self.assertTrue(config_copy["no_log"])
+        self.assertIn(
+            "business_hermes_runtime_env_materialized",
+            next(
+                task["ansible.builtin.set_fact"]
+                for task in runtime_tasks
+                if task.get("name") == "Mark the Business Hermes runtime environment materialized"
+            ),
+        )
+        self.assertIn(
+            "business_hermes_candidate_env_materialized",
+            next(
+                task["ansible.builtin.set_fact"]
+                for task in runtime_tasks
+                if task.get("name") == "Mark the Business Hermes candidate environment materialized"
+            ),
+        )
+        self.assertEqual(candidate_copy["ansible.builtin.copy"]["mode"], "0600")
+        self.assertTrue(candidate_copy["no_log"])
+        self.assertIn("business_hermes_candidate_env_needs_copy", str(candidate_copy["when"]))
+        self.assertTrue(candidate_sync["no_log"])
+        self.assertEqual(candidate_sync["ansible.builtin.lineinfile"]["create"], False)
+        self.assertIn("BUSINESS_HERMES_API_KEY", str(candidate_sync["loop"]))
+        self.assertNotIn("apps/api/.env", candidate_copy["ansible.builtin.copy"]["dest"])
+        config_template = (ANSIBLE / "templates/business-hermes-config.yaml.j2").read_text(encoding="utf-8")
+        self.assertIn("default: {{ business_hermes_model | to_json }}", config_template)
+        self.assertIn("max_tokens: 512", config_template)
+        for toolset in [
+            "browser",
+            "code_execution",
+            "cronjob",
+            "delegation",
+            "file",
+            "image_gen",
+            "terminal",
+            "todo",
+            "vision",
+            "web",
+        ]:
+            self.assertIn(f"    - {toolset}", config_template)
+        self.assertNotIn('default: "${env:BUSINESS_HERMES_MODEL}"', config_template)
+        compose_text = (ANSIBLE.parent / "docker/docker-compose.phase3.yml").read_text(encoding="utf-8")
+        self.assertIn("source: ${BUSINESS_HERMES_CONFIG_FILE:-/etc/raspi-business-hermes/config.yaml}", compose_text)
+
 
 class Pi5CanonicalStandardRouteTests(unittest.TestCase):
     ROLE = "release_pi5"
@@ -1732,6 +1981,24 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
             ),
             [],
         )
+        hermes_remove = next(
+            task
+            for task in cleanup
+            if task["name"] == "Remove a business Hermes runtime created by a failed fresh release"
+        )
+        self.assertEqual(
+            hermes_remove["ansible.builtin.command"]["argv"],
+            ["docker", "rm", "--force", "{{ release_pi5_business_hermes_after_failure.stdout | trim }}"],
+        )
+        hermes_remove_when = hermes_remove["when"]
+        for required_condition in (
+            "release_pi5_business_hermes_start_attempted | default(false) | bool",
+            "not (release_pi5_healthy | default(false) | bool)",
+            "release_pi5_route | default('') == 'fresh'",
+            "release_pi5_business_hermes_existing_id | default('') | trim | length == 0",
+            "release_pi5_business_hermes_after_failure.stdout | trim | length > 0",
+        ):
+            self.assertIn(required_condition, hermes_remove_when)
 
     def test_cleanup_command_guard_rejects_unscoped_stop(self) -> None:
         self.assertEqual(
