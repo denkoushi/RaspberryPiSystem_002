@@ -839,10 +839,9 @@ for (const viewport of paneFitViewports) {
     let shortGroupHeight = 0;
     for (const [index, group] of groups.entries()) {
       await selectTorqueWrenchGroup(right, page, '', group.name);
-      const selectedOption = right.locator('div[title]').filter({ hasText: group.name }).first();
-      await expectEditorControlsFitHorizontally(right);
-      await expectEditorControlReachable(selectedOption);
       const selectedName = right.locator('div[title]').filter({ hasText: index === 3 ? 'M6 ABC123' : group.name });
+      await expectEditorControlsFitHorizontally(right);
+      await expectEditorControlReachable(selectedName);
       await expect(selectedName).toHaveAttribute('title', group.name);
       const height = (await selectedName.locator('..').boundingBox())!.height;
       if (index === 0) shortGroupHeight = height;
