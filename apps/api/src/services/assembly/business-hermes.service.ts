@@ -333,6 +333,9 @@ export class BusinessHermesService {
           temperature: 0.1,
           max_tokens: 512,
           response_format: { type: 'json_object' },
+          ...(config.provider === 'dgx'
+            ? { model_options: { reasoning: { enabled: true, effort: 'high' } } }
+            : {}),
           messages: [
             {
               role: 'system',

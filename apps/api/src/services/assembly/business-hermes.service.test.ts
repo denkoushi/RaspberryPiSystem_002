@@ -85,6 +85,7 @@ describe('BusinessHermesService', () => {
     expect(result.evidence[0]?.bodyScope).toBe('page');
     expect(JSON.stringify(requestBody)).toContain('ボルトを対角順に10 N-mで締め付けます。');
     expect(JSON.stringify(requestBody)).toContain('PRODUCT-1');
+    expect(requestBody?.model_options).toEqual({ reasoning: { enabled: true, effort: 'high' } });
     expect(fetchImpl).toHaveBeenCalledWith(
       new URL('https://business-hermes.test/v1/chat/completions'),
       expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer secret-test-key' }) })
@@ -184,10 +185,14 @@ describe('BusinessHermesService', () => {
       release: vi.fn(),
       getMode: vi.fn(() => 'on_demand' as const)
     };
+    let requestBody: Record<string, unknown> | null = null;
     const service = new BusinessHermesService({
       sessionService: { getDetail: vi.fn().mockResolvedValue(createSession()) } as unknown as AssemblyWorkSessionService,
       localLlmRuntime: runtime,
-      fetchImpl: vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ known: true, message: '案内', targetKey: 'current-bolt' }) } }] }), { status: 200 })),
+      fetchImpl: vi.fn(async (_input: URL, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ known: true, message: '案内', targetKey: 'current-bolt' }) } }] }), { status: 200 });
+      }),
       config: { provider: 'openai', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
     });
 
@@ -196,6 +201,7 @@ describe('BusinessHermesService', () => {
     expect(result.status).toBe('ready');
     expect(runtime.ensureReady).not.toHaveBeenCalled();
     expect(runtime.release).not.toHaveBeenCalled();
+    expect(requestBody).not.toHaveProperty('model_options');
   });
 
   it('does not use an instruction from a different procedure document', async () => {
