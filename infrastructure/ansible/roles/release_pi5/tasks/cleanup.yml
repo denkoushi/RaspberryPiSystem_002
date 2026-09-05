@@ -47,45 +47,9 @@
     - release_pi5_route | default('') == 'fresh'
     - release_pi5_business_hermes_after_failure.stdout | trim | length > 0
 
-- name: Preserve the prior inactive business Hermes runtime state
+- name: Stop only the prior inactive business Hermes runtime after failed fresh release
   ansible.builtin.command:
-    argv: [docker, update, --restart=no, "{{ release_pi5_business_hermes_after_failure.stdout | trim }}"]
-  changed_when: true
-  when:
-    - release_pi5_business_hermes_start_attempted | default(false) | bool
-    - not (release_pi5_healthy | default(false) | bool)
-    - release_pi5_route | default('') == 'fresh'
-    - release_pi5_business_hermes_existing_id | default('') | trim | length > 0
-    - not (release_pi5_business_hermes_existing_running | default(false) | bool)
-    - release_pi5_business_hermes_after_failure_state.stdout | default('false') | trim == 'true'
-
-- name: Terminate the failed business Hermes runtime after preserving state
-  ansible.builtin.command:
-    argv: [docker, kill, --signal=TERM, "{{ release_pi5_business_hermes_after_failure.stdout | trim }}"]
-  changed_when: true
-  when:
-    - release_pi5_business_hermes_start_attempted | default(false) | bool
-    - not (release_pi5_healthy | default(false) | bool)
-    - release_pi5_route | default('') == 'fresh'
-    - release_pi5_business_hermes_existing_id | default('') | trim | length > 0
-    - not (release_pi5_business_hermes_existing_running | default(false) | bool)
-    - release_pi5_business_hermes_after_failure_state.stdout | default('false') | trim == 'true'
-
-- name: Wait for the failed business Hermes runtime to exit
-  ansible.builtin.command:
-    argv: [docker, wait, "{{ release_pi5_business_hermes_after_failure.stdout | trim }}"]
-  changed_when: false
-  when:
-    - release_pi5_business_hermes_start_attempted | default(false) | bool
-    - not (release_pi5_healthy | default(false) | bool)
-    - release_pi5_route | default('') == 'fresh'
-    - release_pi5_business_hermes_existing_id | default('') | trim | length > 0
-    - not (release_pi5_business_hermes_existing_running | default(false) | bool)
-    - release_pi5_business_hermes_after_failure_state.stdout | default('false') | trim == 'true'
-
-- name: Restore the prior inactive business Hermes restart policy
-  ansible.builtin.command:
-    argv: [docker, update, --restart=unless-stopped, "{{ release_pi5_business_hermes_after_failure.stdout | trim }}"]
+    argv: [docker, stop, --time, '10', "{{ release_pi5_business_hermes_after_failure.stdout | trim }}"]
   changed_when: true
   when:
     - release_pi5_business_hermes_start_attempted | default(false) | bool

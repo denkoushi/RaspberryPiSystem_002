@@ -1664,7 +1664,7 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         )
         health = self.task_text("health")
         sample = self.task_text("health-sample")
-        cleanup = self.task_text("cleanup")
+        cleanup = yaml.safe_load(self.task_text("cleanup"))
         self.assertEqual(defaults["release_pi5_health_sample_count"], 5)
         self.assertEqual(defaults["release_pi5_health_interval_seconds"], 10)
         self.assertIn("range(0", health)
@@ -1675,8 +1675,42 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         )
         self.assertIn("standby", sample)
         self.assertIn("leader", sample)
-        self.assertNotIn(" stop", cleanup)
-        self.assertNotIn("caddy, reload", cleanup)
+        hermes_stop = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Stop only the prior inactive business Hermes runtime after failed fresh release"
+        )
+        self.assertEqual(
+            hermes_stop["ansible.builtin.command"]["argv"],
+            [
+                "docker",
+                "stop",
+                "--time",
+                "10",
+                "{{ release_pi5_business_hermes_after_failure.stdout | trim }}",
+            ],
+        )
+        hermes_when = hermes_stop["when"]
+        for required_condition in (
+            "release_pi5_business_hermes_start_attempted | default(false) | bool",
+            "not (release_pi5_healthy | default(false) | bool)",
+            "release_pi5_route | default('') == 'fresh'",
+            "release_pi5_business_hermes_existing_id | default('') | trim | length > 0",
+            "not (release_pi5_business_hermes_existing_running | default(false) | bool)",
+            "release_pi5_business_hermes_after_failure_state.stdout | default('false') | trim == 'true'",
+        ):
+            self.assertIn(required_condition, hermes_when)
+        for task in cleanup:
+            if task is hermes_stop:
+                continue
+            command = task.get("ansible.builtin.command")
+            if isinstance(command, dict):
+                self.assertNotIn(" stop", repr(command).lower())
+                self.assertNotIn(" kill", repr(command).lower())
+                self.assertNotIn(" wait", repr(command).lower())
+                self.assertNotIn(" restart", repr(command).lower())
+        self.assertNotIn("caddy, reload", repr(cleanup).lower())
 
 
 if __name__ == "__main__":
