@@ -24,10 +24,17 @@ _FORBIDDEN_CLEANUP_COMMANDS = frozenset({"stop", "kill", "wait", "restart"})
 _COMMAND_WORD_RE = re.compile(r"(?<![A-Za-z0-9_-])(stop|kill|wait|restart)(?![A-Za-z0-9_-])")
 
 
-def cleanup_command_violations(tasks: list[dict[str, object]], allowed_task_name: str) -> list[str]:
+def cleanup_command_violations(
+    tasks: list[dict[str, object]], allowed_task_name: str | tuple[str, ...]
+) -> list[str]:
+    allowed_task_names = (
+        {allowed_task_name}
+        if isinstance(allowed_task_name, str)
+        else set(allowed_task_name)
+    )
     violations: list[str] = []
     for task in tasks:
-        if task.get("name") == allowed_task_name:
+        if task.get("name") in allowed_task_names:
             continue
         command = task.get("ansible.builtin.command")
         if not isinstance(command, dict):
@@ -1464,6 +1471,65 @@ esac
         self.assertTrue(prepare_tasks[existing_env_index]["no_log"])
         self.assertTrue(prepare_tasks[existing_env_guard_index]["no_log"])
         self.assertIn("difference", prepare_tasks[existing_env_guard_index]["ansible.builtin.assert"]["that"][0])
+
+        egress_existing_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Capture an existing independent business Hermes egress container before fresh rollout"
+        )
+        egress_identity_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Inspect the existing independent business Hermes egress container"
+        )
+        egress_state_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Record the independent business Hermes egress pre-rollout state"
+        )
+        egress_image_guard_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Refuse to replace an independent business Hermes egress image during API/Web rollback window"
+        )
+        self.assertLess(egress_existing_index, egress_identity_index)
+        self.assertLess(egress_identity_index, egress_state_index)
+        self.assertLess(egress_state_index, config_index)
+        self.assertIn("business-hermes-egress", str(prepare_tasks[egress_existing_index]))
+        self.assertIn("release_pi5_business_hermes_egress_existing_running", str(prepare_tasks[egress_state_index]))
+        self.assertIn("release_pi5_business_hermes_egress_image", str(prepare_tasks[egress_image_guard_index]))
+
+        proxy_stat_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Inspect the Business Hermes egress proxy before candidate startup"
+        )
+        proxy_assert_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Require a regular Business Hermes egress proxy before candidate startup"
+        )
+        proxy_mode_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Ensure the Business Hermes egress proxy is readable before candidate startup"
+        )
+        self.assertLess(config_index, proxy_stat_index)
+        self.assertLess(proxy_stat_index, proxy_assert_index)
+        self.assertLess(proxy_assert_index, proxy_mode_index)
+        self.assertLess(proxy_mode_index, hermes_index)
+        self.assertFalse(prepare_tasks[proxy_stat_index]["ansible.builtin.stat"]["follow"])
+        self.assertIn("isreg", str(prepare_tasks[proxy_assert_index]["ansible.builtin.assert"]))
+        self.assertIn("islnk", str(prepare_tasks[proxy_assert_index]["ansible.builtin.assert"]))
+        self.assertEqual(prepare_tasks[proxy_mode_index]["ansible.builtin.file"]["mode"], "0644")
+        self.assertEqual(prepare_tasks[proxy_mode_index]["ansible.builtin.file"]["state"], "file")
         self.assertEqual(
             config_task["ansible.builtin.include_tasks"],
             "{{ playbook_dir }}/../tasks/business-hermes-runtime.yml",
@@ -1977,7 +2043,10 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         self.assertEqual(
             cleanup_command_violations(
                 cleanup,
-                "Stop only the prior inactive business Hermes runtime after failed fresh release",
+                (
+                    "Stop only the prior inactive business Hermes runtime after failed fresh release",
+                    "Stop only the prior inactive business Hermes egress after failed fresh release",
+                ),
             ),
             [],
         )
@@ -1999,6 +2068,69 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
             "release_pi5_business_hermes_after_failure.stdout | trim | length > 0",
         ):
             self.assertIn(required_condition, hermes_remove_when)
+
+        egress_find = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Find the business Hermes egress container after a failed fresh release"
+        )
+        egress_state = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Inspect the business Hermes egress running state after a failed fresh release"
+        )
+        egress_stop = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Stop only the prior inactive business Hermes egress after failed fresh release"
+        )
+        self.assertIn("business-hermes-egress", str(egress_find))
+        self.assertIn("release_pi5_business_hermes_egress_after_failure", str(egress_state))
+        self.assertEqual(
+            egress_stop["ansible.builtin.command"]["argv"],
+            [
+                "docker",
+                "stop",
+                "--time",
+                "10",
+                "{{ release_pi5_business_hermes_egress_after_failure.stdout | trim }}",
+            ],
+        )
+        for required_condition in (
+            "release_pi5_business_hermes_start_attempted | default(false) | bool",
+            "not (release_pi5_healthy | default(false) | bool)",
+            "release_pi5_route | default('') == 'fresh'",
+            "release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0",
+            "not (release_pi5_business_hermes_egress_existing_running | default(false) | bool)",
+            "release_pi5_business_hermes_egress_after_failure_state.stdout | default('false') | trim == 'true'",
+        ):
+            self.assertIn(required_condition, egress_stop["when"])
+
+        egress_remove = next(
+            task
+            for task in cleanup
+            if task["name"] == "Remove a business Hermes egress created by a failed fresh release"
+        )
+        self.assertEqual(
+            egress_remove["ansible.builtin.command"]["argv"],
+            [
+                "docker",
+                "rm",
+                "--force",
+                "{{ release_pi5_business_hermes_egress_after_failure.stdout | trim }}",
+            ],
+        )
+        for required_condition in (
+            "release_pi5_business_hermes_start_attempted | default(false) | bool",
+            "not (release_pi5_healthy | default(false) | bool)",
+            "release_pi5_route | default('') == 'fresh'",
+            "release_pi5_business_hermes_egress_existing_id | default('') | trim | length == 0",
+            "release_pi5_business_hermes_egress_after_failure.stdout | trim | length > 0",
+        ):
+            self.assertIn(required_condition, egress_remove["when"])
 
     def test_cleanup_command_guard_rejects_unscoped_stop(self) -> None:
         self.assertEqual(

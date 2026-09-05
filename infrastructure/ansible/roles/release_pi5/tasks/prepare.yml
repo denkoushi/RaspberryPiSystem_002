@@ -433,6 +433,59 @@
     release_pi5_business_hermes_existing_running: "{{ ((release_pi5_business_hermes_existing_identity.stdout | default('')).split('|')[1] | bool) if ('|' in (release_pi5_business_hermes_existing_identity.stdout | default(''))) else false }}"
   when: release_pi5_route == 'fresh'
 
+- name: Capture an existing independent business Hermes egress container before fresh rollout
+  ansible.builtin.command:
+    argv:
+      - docker
+      - ps
+      - --all
+      - --filter
+      - "label=com.docker.compose.project={{ release_pi5_compose_project }}"
+      - --filter
+      - label=com.docker.compose.service=business-hermes-egress
+      - --format
+      - "{{ '{{.ID}}' }}"
+  register: release_pi5_business_hermes_egress_existing
+  changed_when: false
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Inspect the existing independent business Hermes egress container
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{.Config.Image}}|{{.State.Running}}' }}"
+      - "{{ release_pi5_business_hermes_egress_existing.stdout | trim }}"
+  register: release_pi5_business_hermes_egress_existing_identity
+  changed_when: false
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+    - release_pi5_business_hermes_egress_existing.stdout | trim | length > 0
+
+- name: Record the independent business Hermes egress pre-rollout state
+  ansible.builtin.set_fact:
+    release_pi5_business_hermes_egress_existing_id: "{{ release_pi5_business_hermes_egress_existing.stdout | trim }}"
+    release_pi5_business_hermes_egress_existing_image: "{{ (release_pi5_business_hermes_egress_existing_identity.stdout | default('')).split('|')[0] if (release_pi5_business_hermes_egress_existing_identity.stdout | default('') | length > 0) else '' }}"
+    release_pi5_business_hermes_egress_existing_running: "{{ ((release_pi5_business_hermes_egress_existing_identity.stdout | default('')).split('|')[1] | bool) if ('|' in (release_pi5_business_hermes_egress_existing_identity.stdout | default(''))) else false }}"
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Refuse to replace an independent business Hermes egress image during API/Web rollback window
+  ansible.builtin.assert:
+    that:
+      - >-
+        (release_pi5_business_hermes_egress_existing_id | default('') | length == 0)
+        or release_pi5_business_hermes_egress_existing_image == release_pi5_business_hermes_egress_image
+    fail_msg: Existing business Hermes egress image differs from this release; preserve it and roll the Hermes runtime separately.
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
 - name: Inspect the existing Business Hermes container environment
   ansible.builtin.command:
     argv:
@@ -556,6 +609,36 @@
   vars:
     business_hermes_config_repo_path: "{{ release_pi5_project_dir }}"
     business_hermes_sync_candidate_env: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Inspect the Business Hermes egress proxy before candidate startup
+  ansible.builtin.stat:
+    path: "{{ release_pi5_project_dir }}/infrastructure/docker/business-hermes-egress/proxy.mjs"
+    follow: false
+  register: release_pi5_business_hermes_egress_proxy
+  changed_when: false
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Require a regular Business Hermes egress proxy before candidate startup
+  ansible.builtin.assert:
+    that:
+      - release_pi5_business_hermes_egress_proxy.stat.exists | default(false) | bool
+      - release_pi5_business_hermes_egress_proxy.stat.isreg | default(false) | bool
+      - not (release_pi5_business_hermes_egress_proxy.stat.islnk | default(false) | bool)
+    fail_msg: The Business Hermes egress proxy must be a regular checked-out file before startup.
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Ensure the Business Hermes egress proxy is readable before candidate startup
+  ansible.builtin.file:
+    path: "{{ release_pi5_project_dir }}/infrastructure/docker/business-hermes-egress/proxy.mjs"
+    state: file
+    mode: '0644'
   when:
     - release_pi5_route == 'fresh'
     - release_pi5_business_hermes_enabled | bool
