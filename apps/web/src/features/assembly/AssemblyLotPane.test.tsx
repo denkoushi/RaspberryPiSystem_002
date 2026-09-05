@@ -107,10 +107,10 @@ describe('AssemblyLotPane', () => {
 
     expect(screen.getByRole('heading', { name: '着手前' })).toBeInTheDocument();
     expect(screen.getByRole('list', { name: '着手前' })).toBeInTheDocument();
-    expect(screen.getByText('作業ID S-003')).toBeInTheDocument();
-    expect(screen.getByText('作業ID S-004')).toBeInTheDocument();
-    expect(screen.queryByText('作業ID S-001')).not.toBeInTheDocument();
-    expect(screen.queryByText('作業ID S-002')).not.toBeInTheDocument();
+    expect(screen.getByText('S-003')).toBeInTheDocument();
+    expect(screen.getByText('S-004')).toBeInTheDocument();
+    expect(screen.queryByText('S-001')).not.toBeInTheDocument();
+    expect(screen.queryByText('S-002')).not.toBeInTheDocument();
     expect(screen.queryByText('未着手')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '開始' })).not.toBeInTheDocument();
 
@@ -122,7 +122,7 @@ describe('AssemblyLotPane', () => {
     expect(screen.getByText('ロット数量')).toBeInTheDocument();
     expect(screen.getByText('4個')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '開始' })).toHaveClass('min-h-11');
-    expect(screen.getAllByText('機種 MH-2200')[0]).toHaveClass('break-words');
+    expect(screen.getAllByText('MH-2200')[0]).toHaveClass('break-words');
 
     fireEvent.click(screen.getByRole('button', { name: '開始' }));
     expect(onStartSerial).toHaveBeenCalledWith('lot-1', 'serial-new-1');
