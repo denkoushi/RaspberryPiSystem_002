@@ -85,7 +85,7 @@ describe('BusinessHermesService', () => {
     expect(result.evidence[0]?.bodyScope).toBe('page');
     expect(JSON.stringify(requestBody)).toContain('ボルトを対角順に10 N-mで締め付けます。');
     expect(JSON.stringify(requestBody)).toContain('PRODUCT-1');
-    expect(requestBody).toMatchObject({ model_options: { reasoning: { enabled: true, effort: 'high' } } });
+    expect(requestBody?.model_options).toEqual({ reasoning: { enabled: true, effort: 'high' } });
     expect(fetchImpl).toHaveBeenCalledWith(
       new URL('https://business-hermes.test/v1/chat/completions'),
       expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer secret-test-key' }) })
