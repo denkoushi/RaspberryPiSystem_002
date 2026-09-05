@@ -17,6 +17,7 @@ const baseRouter = () =>
     providers: [provider],
     routes: {
       photo_label: { providerId: 'default' },
+      business_hermes: { providerId: 'default' },
       document_summary: { providerId: 'default' },
       admin_console_chat: { providerId: 'default' },
       stackchan_chat: { providerId: 'default' },

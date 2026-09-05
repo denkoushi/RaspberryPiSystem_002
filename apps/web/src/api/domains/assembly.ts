@@ -573,3 +573,53 @@ export async function approveAssemblyWorkSessionRecordApproval(
   );
   return data.session;
 }
+
+export type BusinessHermesGuideResponse = {
+  status: 'ready' | 'unavailable' | 'unknown';
+  uiRevision: string;
+  message: string | null;
+  targetKey: 'current-bolt' | null;
+  evidence: Array<{
+    sourceKind: 'kiosk_document' | 'assembly_procedure_step';
+    documentId: string;
+    documentTitle: string;
+    pageIndex: number;
+    bodyAvailable: boolean;
+    documentUpdatedAt: string;
+    bodyScope: 'document' | 'page';
+  }>;
+  reasonCode?: string;
+};
+
+export async function getBusinessHermesAssemblyGuide(
+  sessionId: string,
+  payload: { uiRevision: string; eventCode: 'USER_REQUEST' | 'TORQUE_NG' | 'PROCEDURE_LOAD_ERROR' | 'CHECK_REQUIRED' },
+  signal?: AbortSignal
+): Promise<BusinessHermesGuideResponse> {
+  const { data } = await api.post<BusinessHermesGuideResponse>(
+    `/assembly/work-sessions/${encodeURIComponent(sessionId)}/hermes-guide`,
+    payload,
+    { signal }
+  );
+  return data;
+}
+
+export type BusinessHermesProactiveSuggestion = {
+  id: string;
+  sessionId: string;
+  clientDeviceId: string;
+  eventCode: string;
+  status: 'ready' | 'unavailable' | 'unknown' | string;
+  reasonCode: string | null;
+  message: string | null;
+  targetKey: string | null;
+  evidence: BusinessHermesGuideResponse['evidence'];
+  createdAt: string;
+};
+
+export async function listBusinessHermesProactiveSuggestions(limit = 50) {
+  const { data } = await api.get<{ suggestions: BusinessHermesProactiveSuggestion[] }>(
+    `/assembly/business-hermes/proactive-suggestions?limit=${Math.min(Math.max(limit, 1), 100)}`
+  );
+  return data.suggestions;
+}

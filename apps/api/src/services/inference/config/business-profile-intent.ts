@@ -17,6 +17,7 @@ export type ResolvedBusinessProfileIntent = {
 
 const BUSINESS_RUNTIME_USE_CASES: ReadonlySet<LocalLlmRuntimeUseCase> = new Set([
   'photo_label',
+  'business_hermes',
   'document_summary',
   'admin_console_chat',
   'stackchan_chat',

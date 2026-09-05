@@ -6,6 +6,8 @@ import {
   serializeProcedureDocument
 } from './procedure-documents.js';
 import { authorizeRoles } from '../../lib/auth.js';
+import { registerBusinessHermesRoutes } from './business-hermes.js';
+import { BusinessHermesService } from '../../services/assembly/business-hermes.service.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
 import {
@@ -740,6 +742,12 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const seibanLotQuantityService = new AssemblySeibanLotQuantityService();
   const procedureSequenceService = new AssemblyProcedureSequenceService();
   const excelService = new AssemblyExcelExportService(sessionService);
+  const businessHermesService = new BusinessHermesService();
+
+  await registerBusinessHermesRoutes(app, {
+    requireClientDevice,
+    service: businessHermesService
+  });
 
   registerAssemblyProcedureDocumentRevisionRoutes(app, {
     allowView,
@@ -1079,11 +1087,24 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
     const agentBody = agentTorqueRecordSchema.safeParse(request.body);
     if (agentBody.success && 'sourceEventKey' in agentBody.data) {
       const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
-      return traceabilityService.recordAgent({
+      const result = await traceabilityService.recordAgent({
         sessionId: params.id,
         clientDeviceId: clientDevice.id,
         ...agentBody.data
       });
+      if (result.outcome.kind === 'recorded_ng') {
+        void businessHermesService
+          .recordProactiveSuggestion({
+            sessionId: params.id,
+            clientDeviceId: clientDevice.id,
+            eventCode: 'TORQUE_NG',
+            eventId: result.session.torqueRecords.at(-1)?.id
+          })
+          .catch(() => {
+            app.log.warn({ sessionId: params.id }, 'Business Hermes proactive suggestion could not be recorded');
+          });
+      }
+      return result;
     }
     const body = recordTorqueBodySchema.parse(request.body);
     const result = await sessionService.recordTorque({
@@ -1092,6 +1113,21 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       inputSource: toPrismaTorqueInputSource(body.source),
       rawPayload: body.rawPayload ?? { source: body.source, value: body.value }
     });
+    if (result.outcome.kind === 'recorded_ng') {
+      const clientDevice = await tryGetClientDevice(request.headers);
+      if (clientDevice) {
+        void businessHermesService
+          .recordProactiveSuggestion({
+            sessionId: params.id,
+            clientDeviceId: clientDevice.id,
+            eventCode: 'TORQUE_NG',
+            eventId: result.session.torqueRecords.at(-1)?.id
+          })
+          .catch(() => {
+            app.log.warn({ sessionId: params.id }, 'Business Hermes proactive suggestion could not be recorded');
+          });
+      }
+    }
     return { session: serializeSession(result.session, sessionService), outcome: result.outcome };
   });
 

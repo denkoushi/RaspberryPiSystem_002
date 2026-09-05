@@ -10,7 +10,7 @@ import { HttpOnDemandLocalLlmRuntimeController } from './http-on-demand-local-ll
 import type { LocalLlmRuntimeControllerPort, LocalLlmRuntimeUseCase } from './local-llm-runtime-control.port.js';
 import { NoopLocalLlmRuntimeController } from './noop-local-llm-runtime.controller.js';
 
-const ROUTED_RUNTIME_USE_CASES: readonly InferenceUseCase[] = ['photo_label', 'document_summary'];
+const ROUTED_RUNTIME_USE_CASES: readonly InferenceUseCase[] = ['photo_label', 'business_hermes', 'document_summary'];
 
 type ProviderLocalLlmRuntimeControllerDeps = {
   fetchImpl: typeof fetch;

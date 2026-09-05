@@ -62,6 +62,7 @@ export function isWithinLocalLlmWarmWindow(now: Date, config: LocalLlmWarmWindow
  */
 export const LOCAL_LLM_ALWAYS_KEEP_WARM_USE_CASES: readonly LocalLlmRuntimeUseCase[] = [
   'photo_label',
+  'business_hermes',
   'document_summary',
   'admin_console_chat',
   'stackchan_chat',

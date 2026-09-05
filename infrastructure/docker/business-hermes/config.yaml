@@ -1,0 +1,49 @@
+# Business Hermes is a single-purpose profile for the assembly guide.
+# Credentials are injected through the Ansible-managed runtime env file.
+model:
+  # Provider is selected explicitly by HERMES_INFERENCE_PROVIDER in the
+  # Ansible-managed runtime env. Leaving it out here lets the same official
+  # custom-provider mechanism switch between the two allowlisted routes.
+  default: "${env:BUSINESS_HERMES_MODEL}"
+  api_mode: chat_completions
+
+providers:
+  business-dgx:
+    name: business-dgx
+    base_url: http://100.118.82.72:38081/v1
+    key_env: BUSINESS_HERMES_DGX_TOKEN
+    extra_headers:
+      X-LLM-Token: "${env:BUSINESS_HERMES_DGX_TOKEN}"
+    api_mode: chat_completions
+    discover_models: false
+  business-openai:
+    name: business-openai
+    base_url: https://api.openai.com/v1
+    key_env: BUSINESS_HERMES_OPENAI_API_KEY
+    api_mode: chat_completions
+    discover_models: false
+
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+
+agent:
+  reasoning_effort: xhigh
+  disabled_toolsets:
+    - skills
+    - memory
+    - session_search
+
+terminal:
+  backend: local
+  cwd: /opt/data/home
+  home_mode: profile
+  env_passthrough: []
+
+gateway:
+  api_server:
+    enabled: true
+    host: 0.0.0.0
+    port: 8642
+    model_name: business-hermes
+    max_concurrent_runs: 2

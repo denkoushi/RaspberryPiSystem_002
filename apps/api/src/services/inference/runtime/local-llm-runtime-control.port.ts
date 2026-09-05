@@ -4,6 +4,8 @@
  */
 export type LocalLlmRuntimeUseCase =
   | 'photo_label'
+  /** 業務Hermesの推論。photo_label と同じ DGX provider/lease を共有する。 */
+  | 'business_hermes'
   | 'document_summary'
   | 'admin_console_chat'
   /** StackChan 等の対話クライアント（admin と同一 upstream / runtimeControl を参照） */

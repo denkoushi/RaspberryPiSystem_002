@@ -20,6 +20,30 @@ ANSIBLE = ROOT / "infrastructure/ansible"
 PLAYBOOK = (ANSIBLE / "playbooks/deploy-release-standard.yml").read_text(
     encoding="utf-8"
 )
+_FORBIDDEN_CLEANUP_COMMANDS = frozenset({"stop", "kill", "wait", "restart"})
+_COMMAND_WORD_RE = re.compile(r"(?<![A-Za-z0-9_-])(stop|kill|wait|restart)(?![A-Za-z0-9_-])")
+
+
+def cleanup_command_violations(tasks: list[dict[str, object]], allowed_task_name: str) -> list[str]:
+    violations: list[str] = []
+    for task in tasks:
+        if task.get("name") == allowed_task_name:
+            continue
+        command = task.get("ansible.builtin.command")
+        if not isinstance(command, dict):
+            continue
+        argv = command.get("argv")
+        if isinstance(argv, list):
+            tokens = {str(token).strip("'\"").lower() for token in argv}
+            violations.extend(sorted(tokens & _FORBIDDEN_CLEANUP_COMMANDS))
+            if "caddy" in tokens and "reload" in tokens:
+                violations.append("caddy reload")
+            continue
+        text = str(argv)
+        violations.extend(match.group(1).lower() for match in _COMMAND_WORD_RE.finditer(text))
+        if re.search(r"(?<![A-Za-z0-9_-])caddy(?![A-Za-z0-9_-]).*?(?<![A-Za-z0-9_-])reload(?![A-Za-z0-9_-])", text):
+            violations.append("caddy reload")
+    return violations
 
 
 def role_text(role: str) -> str:
@@ -1664,7 +1688,7 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         )
         health = self.task_text("health")
         sample = self.task_text("health-sample")
-        cleanup = self.task_text("cleanup")
+        cleanup = yaml.safe_load(self.task_text("cleanup"))
         self.assertEqual(defaults["release_pi5_health_sample_count"], 5)
         self.assertEqual(defaults["release_pi5_health_interval_seconds"], 10)
         self.assertIn("range(0", health)
@@ -1675,8 +1699,55 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         )
         self.assertIn("standby", sample)
         self.assertIn("leader", sample)
-        self.assertNotIn(" stop", cleanup)
-        self.assertNotIn("caddy, reload", cleanup)
+        hermes_stop = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Stop only the prior inactive business Hermes runtime after failed fresh release"
+        )
+        self.assertEqual(
+            hermes_stop["ansible.builtin.command"]["argv"],
+            [
+                "docker",
+                "stop",
+                "--time",
+                "10",
+                "{{ release_pi5_business_hermes_after_failure.stdout | trim }}",
+            ],
+        )
+        hermes_when = hermes_stop["when"]
+        for required_condition in (
+            "release_pi5_business_hermes_start_attempted | default(false) | bool",
+            "not (release_pi5_healthy | default(false) | bool)",
+            "release_pi5_route | default('') == 'fresh'",
+            "release_pi5_business_hermes_existing_id | default('') | trim | length > 0",
+            "not (release_pi5_business_hermes_existing_running | default(false) | bool)",
+            "release_pi5_business_hermes_after_failure_state.stdout | default('false') | trim == 'true'",
+        ):
+            self.assertIn(required_condition, hermes_when)
+        self.assertEqual(
+            cleanup_command_violations(
+                cleanup,
+                "Stop only the prior inactive business Hermes runtime after failed fresh release",
+            ),
+            [],
+        )
+
+    def test_cleanup_command_guard_rejects_unscoped_stop(self) -> None:
+        self.assertEqual(
+            cleanup_command_violations(
+                [
+                    {
+                        "name": "Unexpected API cleanup",
+                        "ansible.builtin.command": {
+                            "argv": ["docker", "stop", "api-blue"]
+                        },
+                    }
+                ],
+                "Stop only the prior inactive business Hermes runtime after failed fresh release",
+            ),
+            ["stop"],
+        )
 
 
 if __name__ == "__main__":

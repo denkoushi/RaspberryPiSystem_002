@@ -12,6 +12,64 @@
     - release_pi5_route | default('') == 'fresh'
     - release_pi5_slot | default('') in ['blue', 'green']
 
+- name: Find the business Hermes container after a failed fresh release
+  ansible.builtin.command:
+    argv:
+      - docker
+      - ps
+      - --all
+      - --filter
+      - "label=com.docker.compose.project={{ release_pi5_compose_project }}"
+      - --filter
+      - label=com.docker.compose.service=business-hermes
+      - --format
+      - "{{ '{{.ID}}' }}"
+  register: release_pi5_business_hermes_after_failure
+  changed_when: false
+  when:
+    - release_pi5_business_hermes_start_attempted | default(false) | bool
+    - not (release_pi5_healthy | default(false) | bool)
+    - release_pi5_route | default('') == 'fresh'
+
+- name: Inspect business Hermes running state after a failed fresh release
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{.State.Running}}' }}"
+      - "{{ release_pi5_business_hermes_after_failure.stdout | trim }}"
+  register: release_pi5_business_hermes_after_failure_state
+  changed_when: false
+  when:
+    - release_pi5_business_hermes_start_attempted | default(false) | bool
+    - not (release_pi5_healthy | default(false) | bool)
+    - release_pi5_route | default('') == 'fresh'
+    - release_pi5_business_hermes_after_failure.stdout | trim | length > 0
+
+- name: Stop only the prior inactive business Hermes runtime after failed fresh release
+  ansible.builtin.command:
+    argv: [docker, stop, --time, '10', "{{ release_pi5_business_hermes_after_failure.stdout | trim }}"]
+  changed_when: true
+  when:
+    - release_pi5_business_hermes_start_attempted | default(false) | bool
+    - not (release_pi5_healthy | default(false) | bool)
+    - release_pi5_route | default('') == 'fresh'
+    - release_pi5_business_hermes_existing_id | default('') | trim | length > 0
+    - not (release_pi5_business_hermes_existing_running | default(false) | bool)
+    - release_pi5_business_hermes_after_failure_state.stdout | default('false') | trim == 'true'
+
+- name: Remove a business Hermes runtime created by a failed fresh release
+  ansible.builtin.command:
+    argv: [docker, rm, --force, "{{ release_pi5_business_hermes_after_failure.stdout | trim }}"]
+  changed_when: true
+  when:
+    - release_pi5_business_hermes_start_attempted | default(false) | bool
+    - not (release_pi5_healthy | default(false) | bool)
+    - release_pi5_route | default('') == 'fresh'
+    - release_pi5_business_hermes_existing_id | default('') | trim | length == 0
+    - release_pi5_business_hermes_after_failure.stdout | trim | length > 0
+
 - name: Remove previous Pi5 slot only after committed healthy handoff
   ansible.builtin.command:
     argv: "{{ (release_pi5_compose_argv | default([])) + ['rm', '-f', '-s', 'api-' + (release_pi5_previous_slot | default('')), 'web-' + (release_pi5_previous_slot | default(''))] }}"
