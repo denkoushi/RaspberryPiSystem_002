@@ -80,7 +80,6 @@ describe('useAssemblyTemplateProcedureDraft document additions', () => {
     expect(hook.result.current.procedureSteps).toHaveLength(2);
     expect(hook.result.current.selectedStep?.pageIndex).toBe(0);
     expect(hook.result.current.leftPaneTab).toBe('steps');
-    expect(hook.result.current.procedureSearchResetToken).toBe(1);
   });
 
   it('rejects a duplicate all-pages click before it can append duplicate steps', async () => {

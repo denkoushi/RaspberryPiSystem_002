@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 const virtualizerMocks = vi.hoisted(() => ({
@@ -49,17 +49,13 @@ const steps = [
 ];
 
 function renderStoryboard(
-  selectedLocalId = steps[0]!.localId,
-  searchResetToken = 0,
-  showThumbnails = true
+  selectedLocalId = steps[0]!.localId
 ) {
   return render(
     <AssemblyProcedureStoryboard
       steps={steps}
       pages={pages}
       selectedLocalId={selectedLocalId}
-      searchResetToken={searchResetToken}
-      showThumbnails={showThumbnails}
       onSelect={vi.fn()}
       onMove={vi.fn()}
       onMoveTo={vi.fn()}
@@ -70,18 +66,15 @@ function renderStoryboard(
 }
 
 describe('AssemblyProcedureStoryboard focus behavior', () => {
-  it('clears search and scrolls the selected newly added step into view', async () => {
+  it('scrolls the selected newly added step into view', async () => {
     virtualizerMocks.scrollToIndex.mockClear();
     const view = renderStoryboard();
-    const search = screen.getByRole('textbox', { name: '手順検索' });
-    fireEvent.change(search, { target: { value: '対象' } });
 
     view.rerender(
       <AssemblyProcedureStoryboard
         steps={steps}
         pages={pages}
         selectedLocalId={steps[1]!.localId}
-        searchResetToken={1}
         onSelect={vi.fn()}
         onMove={vi.fn()}
         onMoveTo={vi.fn()}
@@ -90,7 +83,6 @@ describe('AssemblyProcedureStoryboard focus behavior', () => {
       />
     );
 
-    await waitFor(() => expect(search).toHaveValue(''));
     await waitFor(() => expect(virtualizerMocks.scrollToIndex).toHaveBeenCalledWith(1));
   });
 
@@ -100,10 +92,4 @@ describe('AssemblyProcedureStoryboard focus behavior', () => {
     expect(screen.getAllByTestId('assembly-step-thumbnail')).toHaveLength(2);
   });
 
-  it('hides thumbnails when the document panel shares the left pane', () => {
-    renderStoryboard(steps[0]!.localId, 0, false);
-
-    expect(screen.queryByTestId('assembly-step-thumbnail')).not.toBeInTheDocument();
-    expect(screen.getByText('対象')).toBeInTheDocument();
-  });
 });

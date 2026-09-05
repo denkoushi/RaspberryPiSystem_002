@@ -87,7 +87,6 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
   const [showFullPage, setShowFullPage] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [addingDocumentId, setAddingDocumentId] = useState<string | null>(null);
-  const [procedureSearchResetToken, setProcedureSearchResetToken] = useState(0);
   const autoHydrateDocumentKeysRef = useRef<Set<string> | null>(null);
   const addingDocumentRef = useRef<string | null>(null);
   const pendingDocumentAddRef = useRef<PendingDocumentAdd | null>(null);
@@ -279,7 +278,6 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
     if (mode === 'all_pages') {
       dispatchProcedureSteps({ type: 'append_pages', pages });
       setLeftPaneTab('steps');
-      setProcedureSearchResetToken((current) => current + 1);
     } else {
       setLeftPaneTab('documents');
     }
@@ -461,7 +459,6 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
     procedureItems,
     procedurePaneOpen,
     procedureSteps,
-    procedureSearchResetToken,
     removeDocument,
     removeStep,
     selectedDocument,

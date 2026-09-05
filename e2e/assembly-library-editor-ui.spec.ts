@@ -403,8 +403,7 @@ for (const viewport of [...viewports, { width: 900, height: 900 }]) {
     await expect(page.getByRole('combobox', { name: 'ページ', exact: true }).locator('option:checked'))
       .toContainText(unifiedEditorDocuments[0].name);
     await clickAssemblySteps(page);
-    await expect(page.getByRole('heading', { name: '手順 0/300' })).toBeVisible();
-    await page.getByRole('textbox', { name: '手順検索' }).fill('存在しない手順');
+    await expect(page.getByTestId('assembly-step-storyboard').locator('article')).toHaveCount(0);
 
     // Adding all pages must reveal only the newly added document, not auto-use the first one.
     await openAssemblyDocuments(page);
@@ -412,8 +411,6 @@ for (const viewport of [...viewports, { width: 900, height: 900 }]) {
     library = page.getByRole('dialog');
     await library.locator('li').filter({ hasText: unifiedEditorDocuments[1].name })
       .getByRole('button', { name: /^(追加|全ページを手順へ追加)$/ }).click();
-    await expect(page.getByRole('heading', { name: '手順 1/300' })).toBeVisible();
-    await expect(page.getByRole('textbox', { name: '手順検索' })).toHaveValue('');
     await expect(page.getByRole('combobox', { name: 'ページ', exact: true }).locator('option:checked'))
       .toContainText(unifiedEditorDocuments[1].name);
 
@@ -996,7 +993,7 @@ for (const viewport of viewports) {
       .filter({ hasText: '統合エディター 補助手順書' })
       .getByLabel('追加', { exact: true })
       .click();
-    await expect(page.getByRole('heading', { name: '手順 2/300' })).toBeVisible();
+    await expect(page.getByTestId('assembly-step-storyboard').locator('article')).toHaveCount(2);
     await page.getByRole('button', { name: '文書・工程', exact: true }).click();
     await expect(page.locator('#assembly-procedure-pane')).toContainText('統合エディター 補助手順書');
 
@@ -1392,7 +1389,7 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   await expect(storyboard.locator('article')).toHaveCount(1);
   await expect(storyboard.getByTestId('assembly-step-thumbnail')).toHaveCount(1);
   await page.getByRole('button', { name: '文書・工程', exact: true }).click();
-  await expect(storyboard.getByTestId('assembly-step-thumbnail')).toHaveCount(0);
+  await expect(storyboard.getByTestId('assembly-step-thumbnail')).toHaveCount(1);
   await page.getByRole('button', { name: '文書追加' }).click();
   await page
     .getByRole('dialog', { name: '文書ライブラリ' })
@@ -1454,9 +1451,9 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   await page.getByRole('button', { name: '⚠ 注意' }).click();
   await expect(storyboard.locator('article')).toHaveCount(3);
 
-  const selectedCropCard = storyboard
-    .locator('article')
-    .filter({ hasText: '重点締付' });
+  const selectedCropCard = storyboard.locator('article').filter({
+    has: page.getByRole('button', { name: /重点締付/ })
+  });
   await expect(selectedCropCard.locator('[data-marker-id]')).toHaveCount(1);
   await expect(selectedCropCard.locator('svg line')).toHaveCount(1);
 
@@ -1527,10 +1524,6 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   const moveTarget = page.getByLabel('手順4の移動先');
   await moveTarget.fill('2');
   await moveTarget.press('Tab');
-
-  await page.getByLabel('手順検索').fill('重点締付');
-  await expect(storyboard.locator('article')).toHaveCount(2);
-  await page.getByLabel('手順検索').fill('');
 
   const workspace = page.getByTestId('assembly-unified-editor-workspace');
   const centralRatio = await workspace.evaluate((element) => {
@@ -1629,7 +1622,6 @@ test('assembly storyboard keeps at most 30 DOM cards for 300 steps', async ({ pa
   await page.getByPlaceholder('パスワード').fill('2520');
   await page.getByRole('button', { name: '認証' }).click();
   await clickAssemblySteps(page);
-  await expect(page.getByText('手順 300/300')).toBeVisible();
   const domCardCount = await page
     .getByTestId('assembly-step-storyboard')
     .locator('article')
