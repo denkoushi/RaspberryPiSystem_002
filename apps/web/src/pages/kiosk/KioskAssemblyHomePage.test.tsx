@@ -337,7 +337,7 @@ describe('KioskAssemblyHomePage', () => {
 
     const toggle = await screen.findByRole('button', { name: 'ASM-START-001・S002 の詳細を開く' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByText('進捗 0/1 (0%)')).toBeInTheDocument();
+    expect(screen.getByText('0/1 (0%)')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '再開' })).not.toBeInTheDocument();
 
     fireEvent.click(toggle);

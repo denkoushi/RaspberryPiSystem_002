@@ -59,7 +59,7 @@ describe('AssemblyCompletedPane', () => {
     );
 
     expect(screen.getByRole('heading', { name: '完了・承認' })).toBeInTheDocument();
-    expect(screen.getAllByText('進捗 1/1 (100%)')).toHaveLength(2);
+    expect(screen.getAllByText('1/1 (100%)')).toHaveLength(2);
     expect(screen.queryByText('未承認')).not.toBeInTheDocument();
     expect(screen.queryByText('承認済み')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '記録確認' })).not.toBeInTheDocument();

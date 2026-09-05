@@ -53,16 +53,16 @@ export function AssemblyItemCard({
   const actionLabel = expanded ? '閉じる' : '開く';
 
   return (
-    <article role="listitem" className="overflow-hidden rounded border border-white/15 bg-slate-950/45">
+    <article role="listitem" className="overflow-hidden rounded border border-slate-400/70 bg-slate-700">
       <div className="flex min-h-11 items-center gap-1.5 px-2">
         <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-xs font-bold tabular-nums">
           <span className="min-w-0 truncate text-white" title={productNo}>
-            製番 {productNo}
+            {productNo}
           </span>
           <span className="shrink-0 text-white/80" title={serialNo}>
-            作業ID {serialNo}
+            {serialNo}
           </span>
-          <span className={`shrink-0 ${toneClassName.accent}`}>進捗 {progressText}</span>
+          <span className={`shrink-0 ${toneClassName.accent}`}>{progressText}</span>
         </div>
         <button
           type="button"
@@ -76,8 +76,8 @@ export function AssemblyItemCard({
         </button>
       </div>
 
-      <p className="border-t border-white/10 px-2 py-0.5 text-[11px] font-semibold leading-4 text-slate-200 break-words" title={machineName}>
-        機種 {machineName}
+      <p className="border-t border-slate-400/30 px-2 py-0.5 text-[11px] font-semibold leading-4 text-slate-100 break-words" title={machineName}>
+        {machineName}
       </p>
 
       {expanded ? (

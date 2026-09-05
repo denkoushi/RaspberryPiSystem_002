@@ -64,7 +64,6 @@ export function KioskAssemblyHomePage() {
   const [serialDraft, setSerialDraft] = useState('');
   const [lotSerialNos, setLotSerialNos] = useState<string[]>([]);
   const [workIdMode, setWorkIdMode] = useState<'auto' | 'manual'>('auto');
-  const [torqueWrenchId, setTorqueWrenchId] = useState(DEFAULT_TORQUE_WRENCH_ID);
   const [lots, setLots] = useState<AssemblyLotSummaryDto[]>([]);
   const [sessions, setSessions] = useState<AssemblyWorkSessionSummaryDto[]>([]);
   const [completedSessions, setCompletedSessions] = useState<AssemblyWorkSessionSummaryDto[]>([]);
@@ -106,13 +105,11 @@ export function KioskAssemblyHomePage() {
     }
   }, [expectedLotQuantity, selectedCandidate]);
   const registrationWorkIds = workIdMode === 'auto' ? autoWorkIds : lotSerialNos;
-  const legacyTorqueWrenchRequired = selectedCandidate?.activeTemplate?.traceabilityMode !== 'REQUIRED';
   const serialDraftDuplicate = normalizedSerialDraft.length > 0 && registrationWorkIds.includes(normalizedSerialDraft);
   const canRegisterLot =
     !!selectedCandidate?.activeTemplate &&
     expectedLotQuantity != null &&
-    registrationWorkIds.length === expectedLotQuantity &&
-    (!legacyTorqueWrenchRequired || torqueWrenchId.trim().length > 0);
+    registrationWorkIds.length === expectedLotQuantity;
 
   const productNosForLotQty = useMemo(() => {
     const productNos = new Set<string>();
@@ -332,7 +329,9 @@ export function KioskAssemblyHomePage() {
         workIdMode,
         ...(workIdMode === 'manual' ? { workIds: registrationWorkIds } : {}),
         targetUnit: selectedCandidate.machineName,
-        ...(legacyTorqueWrenchRequired ? { torqueWrenchId: torqueWrenchId.trim() } : {})
+        ...(selectedCandidate.activeTemplate.traceabilityMode !== 'REQUIRED'
+          ? { torqueWrenchId: DEFAULT_TORQUE_WRENCH_ID }
+          : {})
       });
       setLotSerialNos([]);
       setWorkIdMode('auto');
@@ -504,9 +503,6 @@ export function KioskAssemblyHomePage() {
           manualLotQtyDraft={manualLotQtyDraft}
           onManualLotQtyDraftChange={changeManualLotQtyDraft}
           lotQtyLoading={lotQtyLoading}
-          legacyTorqueWrenchRequired={legacyTorqueWrenchRequired}
-          torqueWrenchId={torqueWrenchId}
-          onTorqueWrenchIdChange={setTorqueWrenchId}
           canRegisterLot={canRegisterLot}
           busy={busy}
           onRegisterLot={() => void registerLot()}

@@ -222,7 +222,6 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
 
   const focusStep = (step: AssemblyProcedureStepDraft) => {
     setSelectedStepId(step.localId);
-    setLeftPaneTab('steps');
     setShowFullPage(false);
     const page = findPageForProcedureStep(step, pageOptions);
     if (page) setSelectedPageKey(page.key);

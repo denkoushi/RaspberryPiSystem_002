@@ -82,6 +82,26 @@ describe('useAssemblyTemplateProcedureDraft document additions', () => {
     expect(hook.result.current.leftPaneTab).toBe('steps');
   });
 
+  it('keeps the current pane tab while selecting or adding a step', async () => {
+    const document = documentFixture('selection', '選択');
+    const hook = renderProcedureDraft([document], document.id);
+
+    await waitFor(() => expect(hook.result.current.procedureSteps).toHaveLength(2));
+    expect(hook.result.current.leftPaneTab).toBe('documents');
+    const step = hook.result.current.procedureSteps[1]!;
+    act(() => hook.result.current.focusStep(step));
+    expect(hook.result.current.leftPaneTab).toBe('documents');
+    expect(hook.result.current.selectedPage?.pageIndex).toBe(1);
+    act(() => hook.result.current.addCurrentCropStep({
+      xRatio: 0.1,
+      yRatio: 0.1,
+      widthRatio: 0.5,
+      heightRatio: 0.5
+    }));
+    await waitFor(() => expect(hook.result.current.selectedStep?.viewMode).toBe('crop'));
+    expect(hook.result.current.leftPaneTab).toBe('documents');
+  });
+
   it('rejects a duplicate all-pages click before it can append duplicate steps', async () => {
     const document = documentFixture('double-click', '二重クリック');
     const hook = renderProcedureDraft([document]);

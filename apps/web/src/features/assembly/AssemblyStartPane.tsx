@@ -36,9 +36,6 @@ type Props = {
   manualLotQtyDraft: string;
   onManualLotQtyDraftChange: (value: string) => void;
   lotQtyLoading: boolean;
-  legacyTorqueWrenchRequired: boolean;
-  torqueWrenchId: string;
-  onTorqueWrenchIdChange: (value: string) => void;
   canRegisterLot: boolean;
   busy: boolean;
   onRegisterLot: () => void;
@@ -78,9 +75,6 @@ export function AssemblyStartPane({
   manualLotQtyDraft,
   onManualLotQtyDraftChange,
   lotQtyLoading,
-  legacyTorqueWrenchRequired,
-  torqueWrenchId,
-  onTorqueWrenchIdChange,
   canRegisterLot,
   busy,
   onRegisterLot
@@ -291,17 +285,6 @@ export function AssemblyStartPane({
           </div>
         </section>
 
-        {legacyTorqueWrenchRequired ? (
-          <label className="grid gap-1 text-xs font-semibold text-white/70">
-            トルクレンチ
-            <Input
-              value={torqueWrenchId}
-              onChange={(event) => onTorqueWrenchIdChange(event.target.value)}
-              className="min-h-10 text-[0.98rem] font-bold"
-              disabled={busy}
-            />
-          </label>
-        ) : null}
       </div>
 
       <div className="grid shrink-0 gap-2">
