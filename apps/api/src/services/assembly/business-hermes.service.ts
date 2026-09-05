@@ -4,9 +4,12 @@ import { env } from '../../config/env.js';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
+import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
 import { AssemblyWorkSessionService } from './assembly-work-session.service.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
 import type { LocalLlmRuntimeControllerPort } from '../inference/runtime/local-llm-runtime-control.port.js';
+import { getImageOcrLayoutPort } from '../ocr/image-ocr-runtime.js';
+import type { ImageOcrLayoutResult } from '../ocr/ports/image-ocr-layout.port.js';
 
 export const BUSINESS_HERMES_EVENT_CODES = ['USER_REQUEST', 'TORQUE_NG', 'PROCEDURE_LOAD_ERROR', 'CHECK_REQUIRED'] as const;
 export type BusinessHermesEventCode = (typeof BUSINESS_HERMES_EVENT_CODES)[number];
@@ -15,7 +18,7 @@ export type BusinessHermesTargetKey = 'current-bolt';
 type GuideStatus = 'ready' | 'unavailable' | 'unknown';
 
 type ProcedureEvidence = {
-  sourceKind: 'kiosk_document' | 'assembly_procedure_step';
+  sourceKind: 'kiosk_document' | 'assembly_procedure_step' | 'assembly_procedure_page_ocr';
   documentId: string;
   documentTitle: string;
   pageIndex: number;
@@ -58,10 +61,30 @@ type AssistantOutput = {
   targetKey: BusinessHermesTargetKey | null;
 };
 
+type ProcedurePageOcrInput = {
+  documentId: string;
+  pageIndex: number;
+  documentUpdatedAt: string;
+  imageRelativePath: string;
+};
+
+type ProcedurePageOcr = (input: ProcedurePageOcrInput) => Promise<string>;
+
 const MAX_PROCEDURE_BODY_CHARS = 12_000;
 const MAX_ASSISTANT_MESSAGE_CHARS = 360;
 const MAX_PROACTIVE_IN_FLIGHT = 2;
+const PROCEDURE_PAGE_OCR_TIMEOUT_MS = 12_000;
+const PROCEDURE_PAGE_OCR_CACHE_LIMIT = 8;
+const MIN_PROCEDURE_PAGE_OCR_AVERAGE_CONFIDENCE = 80;
 let proactiveInFlight = 0;
+
+type ProcedurePageOcrInFlight = {
+  key: string;
+  promise: Promise<string>;
+};
+
+const procedurePageOcrCache = new Map<string, string>();
+let procedurePageOcrInFlight: ProcedurePageOcrInFlight | null = null;
 
 const safeConfig = (): BusinessHermesConfig => ({
   provider: env.BUSINESS_HERMES_PROVIDER,
@@ -77,6 +100,86 @@ function isConfigured(config: BusinessHermesConfig): config is Required<Business
 
 function normalizeBody(raw: string | null | undefined): string {
   return (raw ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_PROCEDURE_BODY_CHARS);
+}
+
+function procedurePageOcrCacheKey(input: ProcedurePageOcrInput): string {
+  return [input.documentId, input.pageIndex, input.documentUpdatedAt, input.imageRelativePath].join('|');
+}
+
+function acceptedProcedurePageOcrText(result: ImageOcrLayoutResult): string {
+  const text = normalizeBody(result.text);
+  if (!text || !Array.isArray(result.words) || result.words.length === 0) return '';
+  const words = result.words.filter((word) => normalizeBody(word.text) && word.confidence !== null && Number.isFinite(word.confidence));
+  if (words.length === 0) return '';
+  const averageConfidence = words.reduce((sum, word) => sum + (word.confidence ?? 0), 0) / words.length;
+  return averageConfidence >= MIN_PROCEDURE_PAGE_OCR_AVERAGE_CONFIDENCE ? text : '';
+}
+
+function waitForProcedurePageOcr(promise: Promise<string>, timeoutMs: number): Promise<string> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(''), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timeout);
+        resolve('');
+      }
+    );
+  });
+}
+
+async function defaultProcedurePageOcr(input: ProcedurePageOcrInput): Promise<string> {
+  const image = await AssemblyProcedureImageStorage.readImage(input.imageRelativePath);
+  if (image.contentType !== 'image/jpeg' && image.contentType !== 'image/png' && image.contentType !== 'image/webp') {
+    return '';
+  }
+  const result = await getImageOcrLayoutPort().runLayoutOcrOnImage({
+    imageBytes: image.buffer,
+    mimeType: image.contentType
+  });
+  return acceptedProcedurePageOcrText(result);
+}
+
+async function readProcedurePageOcr(input: ProcedurePageOcrInput): Promise<string> {
+  const key = procedurePageOcrCacheKey(input);
+  const cached = procedurePageOcrCache.get(key);
+  if (cached) return cached;
+
+  if (procedurePageOcrInFlight && procedurePageOcrInFlight.key !== key) {
+    return '';
+  }
+
+  const inFlight = procedurePageOcrInFlight?.promise ?? (() => {
+    const promise = defaultProcedurePageOcr(input)
+      .catch(() => '')
+      .then((text) => {
+        if (text) {
+          procedurePageOcrCache.delete(key);
+          procedurePageOcrCache.set(key, text);
+          while (procedurePageOcrCache.size > PROCEDURE_PAGE_OCR_CACHE_LIMIT) {
+            const oldest = procedurePageOcrCache.keys().next().value;
+            if (oldest === undefined) break;
+            procedurePageOcrCache.delete(oldest);
+          }
+        }
+        return text;
+      })
+      .finally(() => {
+        if (procedurePageOcrInFlight?.promise === promise) procedurePageOcrInFlight = null;
+      });
+    procedurePageOcrInFlight = { key, promise };
+    return promise;
+  })();
+
+  return waitForProcedurePageOcr(inFlight, PROCEDURE_PAGE_OCR_TIMEOUT_MS);
+}
+
+/** テスト用。常駐worker自体は終了させず、本文結果だけを破棄する。 */
+export function resetBusinessHermesProcedurePageOcrCacheForTests(): void {
+  procedurePageOcrCache.clear();
 }
 
 function stateToken(session: {
@@ -185,6 +288,7 @@ export class BusinessHermesService {
       config?: BusinessHermesConfig;
       sessionService?: AssemblyWorkSessionService;
       localLlmRuntime?: LocalLlmRuntimeControllerPort | null;
+      procedurePageOcr?: ProcedurePageOcr;
     } = {}
   ) {}
 
@@ -198,6 +302,10 @@ export class BusinessHermesService {
 
   private get localLlmRuntime(): LocalLlmRuntimeControllerPort | null {
     return this.deps.localLlmRuntime === undefined ? getLocalLlmRuntimeController() : this.deps.localLlmRuntime;
+  }
+
+  private get procedurePageOcr(): ProcedurePageOcr {
+    return this.deps.procedurePageOcr ?? readProcedurePageOcr;
   }
 
   private async persistProactiveSuggestion(data: {
@@ -286,9 +394,18 @@ export class BusinessHermesService {
     const document = session.template.procedureDocument;
     if (bolt.assemblyProcedureDocumentId !== document.id) return this.unavailable(input, [], 'PROCEDURE_DOCUMENT_UNAVAILABLE');
     if (!document.isActive || document.status !== 'PUBLISHED') return this.unavailable(input, [], 'PROCEDURE_DOCUMENT_UNAVAILABLE');
-    const procedureBody = normalizeBody(matchingStep?.instructionText);
+    const instructionBody = normalizeBody(matchingStep?.instructionText);
+    const page = document.pages.find((candidate) => candidate.pageIndex === pageIndex);
+    const procedureBody = instructionBody || (page
+      ? await this.procedurePageOcr({
+          documentId: document.id,
+          pageIndex,
+          documentUpdatedAt: document.updatedAt.toISOString(),
+          imageRelativePath: page.imageRelativePath
+        })
+      : '');
     const evidence: ProcedureEvidence = {
-      sourceKind: 'assembly_procedure_step',
+      sourceKind: instructionBody || !page ? 'assembly_procedure_step' : 'assembly_procedure_page_ocr',
       documentId: bolt.assemblyProcedureDocumentId ?? document.id,
       documentTitle: matchingStep?.title?.trim() || document.name,
       pageIndex,
@@ -339,7 +456,7 @@ export class BusinessHermesService {
           messages: [
             {
               role: 'system',
-              content: 'あなたは業務手順の案内役です。与えられた手順本文と現在状態だけを根拠に、日本語で短く説明してください。根拠が足りなければ known=false とし、推測や断定をしないでください。JSONのみを返してください。形式は {"known":boolean,"message":string,"targetKey":"current-bolt"|null} です。'
+              content: 'あなたは業務手順の案内役です。与えられた手順本文と現在状態だけを根拠に、日本語で短く説明してください。手順本文がOCR由来の場合、その読み取り値を正式値として扱わず、数値はcurrentStatusの正式値を使い、OCR本文との矛盾がある場合はknown=falseとしてください。根拠が足りなければknown=falseとし、推測や断定をしないでください。JSONのみを返してください。形式は {"known":boolean,"message":string,"targetKey":"current-bolt"|null} です。'
             },
             { role: 'user', content: buildPrompt({ eventCode: input.eventCode, session: context.session, bolt: context.bolt, evidence: context.evidence, procedureBody: context.procedureBody }) }
           ]

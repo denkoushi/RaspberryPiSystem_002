@@ -580,7 +580,7 @@ export type BusinessHermesGuideResponse = {
   message: string | null;
   targetKey: 'current-bolt' | null;
   evidence: Array<{
-    sourceKind: 'kiosk_document' | 'assembly_procedure_step';
+    sourceKind: 'kiosk_document' | 'assembly_procedure_step' | 'assembly_procedure_page_ocr';
     documentId: string;
     documentTitle: string;
     pageIndex: number;
