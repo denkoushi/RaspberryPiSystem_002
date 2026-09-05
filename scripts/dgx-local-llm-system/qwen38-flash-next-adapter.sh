@@ -88,11 +88,45 @@ fi
 PLE_CACHE_DIR="${HOME}/.cache/vllm/ple_cache/Mia-AiLab--Qwen3.8-Flash-Next-NVFP4"
 echo "Qwen3.8 Flash adapter: local model cache=${MODEL_DIR} persistent PLE cache=${PLE_CACHE_DIR}" >&2
 
-# The upstream launcher resolves the model and PLE table from local caches and
-# refuses an absent snapshot.  These overrides keep that behaviour while
-# retaining the existing Business alias/port and the shipped safe profile.
+# The pinned upstream launcher uses host networking and binds 0.0.0.0. Keep
+# its model/PLE/container/watchdog behavior while adapting only that fixed bind
+# line to the existing localhost-only blue endpoint; readiness returns through
+# the existing control path. The source is copied into the recipe directory so
+# its SCRIPT_DIR-relative paths still resolve correctly.
+BOUNDARY_START=""
+cleanup_boundary_start() {
+  if [[ -n "${BOUNDARY_START}" ]]; then
+    rm -f -- "${BOUNDARY_START}"
+  fi
+}
+trap cleanup_boundary_start EXIT
+
+BOUNDARY_START="$(mktemp "${RECIPE_DIR}/.business-qwen38-boundary-start.XXXXXX")"
+python3 - "${UPSTREAM_START}" "${BOUNDARY_START}" <<'PY'
+from pathlib import Path
+import sys
+
+source_path = Path(sys.argv[1])
+generated_path = Path(sys.argv[2])
+source = source_path.read_text(encoding='utf-8')
+backslash = chr(92)
+old_host = f'    --host 0.0.0.0 {backslash}{backslash}\n'
+new_host = f'    --host 127.0.0.1 {backslash}{backslash}\n'
+readiness_marker = 'info "Loading weights (~3-4 min). Following logs until ready..."\n'
+if source.count(old_host) != 1:
+    raise SystemExit(f'expected exactly one pinned host bind line, found {source.count(old_host)}')
+if source.count(readiness_marker) != 1:
+    raise SystemExit(f'expected exactly one pinned readiness marker, found {source.count(readiness_marker)}')
+source = source.replace(old_host, new_host, 1)
+source = source.replace(readiness_marker, f'exit 0\n{readiness_marker}', 1)
+generated_path.write_text(source, encoding='utf-8')
+PY
+chmod 0750 "${BOUNDARY_START}"
+
+# These overrides retain the upstream model/PLE cache behavior, Business alias,
+# port, and the shipped safe profile.
 cd "${RECIPE_DIR}"
-exec env \
+if env \
   TP1_MODEL_ID="${MODEL_ID}" \
   TP1_CONTAINER_NAME="${CONTAINER_NAME}" \
   IMAGE="${IMAGE}" \
@@ -114,4 +148,9 @@ exec env \
   CUDAGRAPH_MODE="FULL_DECODE_ONLY" \
   REQUIRE_IDLE_GPU="true" \
   EXTRA_DOCKER_ARGS="${BLUE_EXTRA_DOCKER_ARGS:-${TRTLLM_EXTRA_DOCKER_ARGS:-}}" \
-  ./start.sh
+  "${BOUNDARY_START}"; then
+  exit_code=0
+else
+  exit_code=$?
+fi
+exit "${exit_code}"
