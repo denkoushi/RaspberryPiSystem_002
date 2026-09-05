@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   advanceAssemblyArea,
   completeAssemblyWorkSession,
+  getBusinessHermesAssemblyGuide,
   getAssemblyWorkSession,
   recordAssemblyOperatorAccess,
   recordAssemblyCheck,
@@ -38,9 +39,9 @@ import {
   useTorqueWrenchConnection
 } from '../../features/torque-wrench-connection';
 
+import type { BusinessHermesGuideResponse } from '../../api/domains/assembly';
 import type { AssemblyProcedureSequencePageDto, AssemblyWorkSessionDto } from '../../features/assembly/types';
 import type { UseTorqueWrenchConnectionResult } from '../../features/torque-wrench-connection/useTorqueWrenchConnection';
-
 
 export function KioskAssemblyWorkSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -61,6 +62,10 @@ export function KioskAssemblyWorkSessionPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [hermesGuide, setHermesGuide] = useState<BusinessHermesGuideResponse | null>(null);
+  const [hermesGuideBusy, setHermesGuideBusy] = useState(false);
+  const hermesGuideControllerRef = useRef<AbortController | null>(null);
+  const activeHermesRevisionRef = useRef<string | null>(null);
   const assemblyConnectionRef = useRef<Pick<UseTorqueWrenchConnectionResult, 'acquire' | 'clearError'> | null>(null);
   const operatorAuthorized = Boolean(
     session && (session.status !== 'in_progress' || authorizedSessionId === session.id)
@@ -190,6 +195,81 @@ export function KioskAssemblyWorkSessionPage() {
       setCurrentSequencePage(null);
     }
   }, [procedureSequenceState.status, session?.id]);
+
+  const hermesStateKey = useMemo(
+    () => [
+      `session=${session?.id ?? 'none'}`,
+      `updatedAt=${session?.updatedAt ?? 'none'}`,
+      `status=${session?.status ?? 'none'}`,
+      `area=${session?.currentAreaId ?? 'none'}`,
+      `bolt=${session?.currentBoltId ?? 'none'}`,
+      `procedureSource=${currentSequencePage?.source ?? 'none'}`,
+      `procedureDocument=${currentSequencePage?.documentId ?? 'none'}`,
+      `procedurePage=${currentSequencePage?.pageIndex ?? 'none'}`,
+      `operator=${session?.operatorEmployeeId ?? 'none'}`,
+      `device=${session?.clientDeviceId ?? 'none'}`,
+      `authorized=${authorizedSessionId === session?.id ? 'yes' : 'no'}`,
+      `active=${sessionActive ? 'yes' : 'no'}`
+    ].join('|'),
+    [authorizedSessionId, currentSequencePage?.documentId, currentSequencePage?.pageIndex, currentSequencePage?.source, session?.clientDeviceId, session?.currentAreaId, session?.currentBoltId, session?.id, session?.operatorEmployeeId, session?.status, session?.updatedAt, sessionActive]
+  );
+  const hermesRevisionCounterRef = useRef({ stateKey: '', value: 0 });
+  if (hermesRevisionCounterRef.current.stateKey !== hermesStateKey) {
+    hermesRevisionCounterRef.current = {
+      stateKey: hermesStateKey,
+      value: hermesRevisionCounterRef.current.value + 1
+    };
+  }
+  const hermesUiRevision = `${hermesRevisionCounterRef.current.value}:${hermesStateKey}`;
+  const displayedHermesGuide = hermesGuide?.uiRevision === hermesUiRevision ? hermesGuide : null;
+
+  useEffect(() => {
+    activeHermesRevisionRef.current = hermesUiRevision;
+    hermesGuideControllerRef.current?.abort();
+    hermesGuideControllerRef.current = null;
+    setHermesGuide(null);
+    setHermesGuideBusy(false);
+    return () => {
+      hermesGuideControllerRef.current?.abort();
+    };
+  }, [hermesUiRevision]);
+
+  const requestHermesGuide = useCallback(async () => {
+    if (!session || !sessionActive || hermesGuideBusy || activeHermesRevisionRef.current !== hermesUiRevision) return;
+    const revision = hermesUiRevision;
+    const controller = new AbortController();
+    hermesGuideControllerRef.current = controller;
+    setHermesGuideBusy(true);
+    try {
+      const response = await getBusinessHermesAssemblyGuide(
+        session.id,
+        { uiRevision: revision, eventCode: 'USER_REQUEST' },
+        controller.signal
+      );
+      if (
+        !controller.signal.aborted &&
+        activeHermesRevisionRef.current === revision &&
+        response.uiRevision === revision
+      ) {
+        setHermesGuide(response);
+      }
+    } catch {
+      if (!controller.signal.aborted && activeHermesRevisionRef.current === revision) {
+        setHermesGuide({
+          status: 'unavailable',
+          uiRevision: revision,
+          message: null,
+          targetKey: null,
+          evidence: []
+        });
+      }
+    } finally {
+      if (hermesGuideControllerRef.current === controller) {
+        hermesGuideControllerRef.current = null;
+        setHermesGuideBusy(false);
+      }
+    }
+  }, [hermesGuideBusy, hermesUiRevision, session, sessionActive]);
 
   const visibleBoltMarkers = useMemo(() => {
     if (!session || !activePageRef) return [];
@@ -474,7 +554,10 @@ export function KioskAssemblyWorkSessionPage() {
 
         <section className="flex min-h-0 flex-col overflow-x-hidden overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-2">
           <h2 className="text-[1.02rem] font-bold">締付</h2>
-          <div className="mt-2 rounded border border-white/10 bg-slate-950 p-2">
+          <div
+            className={`mt-2 rounded border border-white/10 bg-slate-950 p-2 ${displayedHermesGuide?.targetKey === 'current-bolt' ? 'ring-2 ring-cyan-300' : ''}`}
+            data-hermes-target="current-bolt"
+          >
             <div className="text-sm text-white/60">現在</div>
             <div className="mt-1 text-lg font-bold">{currentBolt ? `丸数字 ${currentBolt.markerNo}` : (allBoltsComplete ? '全締付完了' : '次工程待ち')}</div>
             <div className="mt-1 text-sm text-white/70">
@@ -486,6 +569,34 @@ export function KioskAssemblyWorkSessionPage() {
               <div className="mt-1 text-sm text-white/80">
                 規定 {currentBolt.nominalTorque} / 下限 {currentBolt.lowerLimit} / 上限 {currentBolt.upperLimit} {currentBolt.unit}
               </div>
+            ) : null}
+          </div>
+          <div className="mt-2 rounded border border-cyan-300/20 bg-cyan-950/20 p-2" aria-live="polite">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-cyan-100">作業案内</span>
+              <Button
+                type="button"
+                variant="ghostOnDark"
+                className="min-h-10 !px-3 text-sm"
+                disabled={hermesGuideBusy || !sessionActive}
+                onClick={() => void requestHermesGuide()}
+              >
+                {hermesGuideBusy ? '確認中…' : 'Hermesに確認'}
+              </Button>
+            </div>
+            {displayedHermesGuide?.status === 'ready' && displayedHermesGuide.message ? (
+              <p className="mt-2 text-sm text-cyan-50">{displayedHermesGuide.message}</p>
+            ) : null}
+            {displayedHermesGuide?.status === 'unknown' ? (
+              <p className="mt-2 text-xs text-amber-100">根拠を確認できないため案内を表示できません。画面の手順を確認してください。</p>
+            ) : null}
+            {displayedHermesGuide?.status === 'unavailable' ? (
+              <p className="mt-2 text-xs text-white/60">案内は現在利用できません。作業画面はそのまま使用できます。</p>
+            ) : null}
+            {displayedHermesGuide?.status === 'ready' && displayedHermesGuide.evidence[0] ? (
+              <p className="mt-1 text-[0.7rem] text-white/55">
+                根拠: {displayedHermesGuide.evidence[0].documentTitle} / {displayedHermesGuide.evidence[0].pageIndex + 1}ページ
+              </p>
             ) : null}
           </div>
           {checkSummary && checkSummary.requiredTotal > 0 ? (

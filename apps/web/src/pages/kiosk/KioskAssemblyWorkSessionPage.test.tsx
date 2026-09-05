@@ -7,6 +7,7 @@ import { KioskAssemblyWorkSessionPage } from './KioskAssemblyWorkSessionPage';
 import type { AssemblyProcedureSequenceDto, AssemblyWorkSessionDto } from '../../features/assembly/types';
 
 const mockGetAssemblyWorkSession = vi.fn();
+const mockGetHermesGuide = vi.fn();
 const mockGetProcedureSequence = vi.fn();
 const mockRecordAssemblyTorque = vi.fn();
 const mockAdvanceAssemblyArea = vi.fn();
@@ -20,6 +21,7 @@ let mockNfcEvent: { uid: string; timestamp: string } | null = null;
 
 vi.mock('../../api/client', () => ({
   getAssemblyWorkSession: (...args: unknown[]) => mockGetAssemblyWorkSession(...args),
+  getBusinessHermesAssemblyGuide: (...args: unknown[]) => mockGetHermesGuide(...args),
   getAssemblyWorkSessionProcedureSequence: (...args: unknown[]) => mockGetProcedureSequence(...args),
   recordAssemblyTorque: (...args: unknown[]) => mockRecordAssemblyTorque(...args),
   recordAssemblyCheck: vi.fn(),
@@ -305,6 +307,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
 
   beforeEach(() => {
     mockGetAssemblyWorkSession.mockReset();
+    mockGetHermesGuide.mockReset();
     mockGetProcedureSequence.mockReset();
     mockRecordAssemblyTorque.mockReset();
     mockAdvanceAssemblyArea.mockReset();
@@ -426,6 +429,49 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
 
     resolveSequence(expandedFallbackSequence);
     expect(await screen.findByText(/手順 1\/1/)).toBeInTheDocument();
+  });
+
+  it('keeps torque recording available when Hermes is unavailable', async () => {
+    mockGetHermesGuide.mockImplementation((_sessionId: string, payload: { uiRevision: string }) => Promise.resolve({ status: 'unavailable', uiRevision: payload.uiRevision, message: null, targetKey: null, evidence: [] }));
+    mockRecordAssemblyTorque.mockResolvedValue({
+      session,
+      outcome: { kind: 'accepted_ok' }
+    });
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: 'Hermesに確認' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Hermesに確認' }));
+    await screen.findByText('案内は現在利用できません。作業画面はそのまま使用できます。');
+    fireEvent.change(screen.getByPlaceholderText('トルク値'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'トルク記録' }));
+    await waitFor(() => expect(mockRecordAssemblyTorque).toHaveBeenCalledWith('session-1', expect.objectContaining({ value: 10 })));
+  });
+
+  it('does not render an Hermes response after the work target changes', async () => {
+    let resolveGuide: ((value: unknown) => void) | null = null;
+    mockGetHermesGuide.mockReturnValue(new Promise((resolve) => { resolveGuide = resolve; }));
+    const updatedSession = {
+      ...session,
+      currentBoltId: null,
+      updatedAt: '2026-07-06T00:00:01.000Z'
+    };
+    mockRecordAssemblyTorque.mockResolvedValue({ session: updatedSession, outcome: { kind: 'accepted_ok' } });
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Hermesに確認' });
+    fireEvent.click(screen.getByRole('button', { name: 'Hermesに確認' }));
+    fireEvent.change(screen.getByPlaceholderText('トルク値'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'トルク記録' }));
+    await waitFor(() => expect(mockRecordAssemblyTorque).toHaveBeenCalled());
+    resolveGuide?.({
+      status: 'ready',
+      uiRevision: 'old-revision',
+      message: '古い対象への案内',
+      targetKey: 'current-bolt',
+      evidence: []
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByText('古い対象への案内')).not.toBeInTheDocument();
   });
 
   it('retries a failed sequence request without showing the legacy procedure canvas', async () => {

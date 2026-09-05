@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { parseInferenceProvidersJsonQuiet } from '../services/inference/config/inference-providers-json.schema.js';
 import { collectLocalLlmProviderAlignmentIssues } from '../services/inference/config/local-llm-env-alignment.js';
 import { alertsEnvShape } from './env/alerts.js';
+import { businessHermesEnvShape } from './env/business-hermes.js';
 import {
   coreEnvShape,
   isUnsafeProductionDatabaseUrl,
@@ -23,6 +24,7 @@ import { signageEnvShape } from './env/signage.js';
 const envSchema = z
   .object({
     ...coreEnvShape,
+    ...businessHermesEnvShape,
     ...signageEnvShape,
     ...networkEnvShape,
     ...alertsEnvShape,
@@ -34,6 +36,19 @@ const envSchema = z
     ...photoToolEnvShape,
   })
   .superRefine((value, ctx) => {
+    const businessHermesFields = [
+      value.BUSINESS_HERMES_BASE_URL,
+      value.BUSINESS_HERMES_API_KEY,
+      value.BUSINESS_HERMES_MODEL
+    ];
+    const configuredBusinessHermesFields = businessHermesFields.filter(Boolean).length;
+    if (configuredBusinessHermesFields > 0 && configuredBusinessHermesFields < businessHermesFields.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['BUSINESS_HERMES_BASE_URL'],
+        message: 'BUSINESS_HERMES_BASE_URL/API_KEY/MODEL must be configured together'
+      });
+    }
     if (value.LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED) {
       if (value.LOCAL_LLM_RUNTIME_WARM_WINDOW_START_HOUR >= value.LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR) {
         ctx.addIssue({

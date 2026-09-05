@@ -705,6 +705,25 @@ model ClientStatus {
   @@index([lastSeen])
 }
 
+/// 業務Hermesの自発提案。一般クライアントログや通知へ混在させずADMINだけが参照する。
+model BusinessHermesProactiveSuggestion {
+  id             String   @id @default(uuid())
+  sessionId      String
+  clientDeviceId String
+  eventCode      String
+  eventId        String?  @unique
+  status         String
+  reasonCode     String?
+  message        String?
+  targetKey      String?
+  evidence       Json
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([sessionId, createdAt])
+  @@index([clientDeviceId, createdAt])
+}
+
 model ClientLog {
   id        String   @id @default(uuid())
   clientId  String

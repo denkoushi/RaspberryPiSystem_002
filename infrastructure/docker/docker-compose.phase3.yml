@@ -90,7 +90,7 @@ services:
         bind:
           create_host_path: false
       - /sys/class/thermal:/sys/class/thermal:ro
-    networks: [pi5]
+    networks: [pi5, business-hermes]
 
   api-green:
     image: ${PI5_GREEN_API_IMAGE:?PI5_GREEN_API_IMAGE is required}
@@ -121,7 +121,7 @@ services:
       - ${PI5_ENV_FILE:-.env}
     environment: *api-environment
     volumes: *api-volumes
-    networks: [pi5]
+    networks: [pi5, business-hermes]
 
   web-blue:
     image: ${PI5_BLUE_WEB_IMAGE:?PI5_BLUE_WEB_IMAGE is required}
@@ -198,10 +198,92 @@ services:
       - "443:443"
     networks: [pi5]
 
+  business-hermes-egress:
+    profiles: [business-hermes]
+    image: ${BUSINESS_HERMES_EGRESS_IMAGE:-node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=16m
+    init: true
+    mem_limit: 64m
+    cpus: "0.25"
+    pids_limit: 32
+    command: [node, /opt/business-hermes-egress/proxy.mjs]
+    volumes:
+      - type: bind
+        source: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker/business-hermes-egress/proxy.mjs
+        target: /opt/business-hermes-egress/proxy.mjs
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3128/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 2s
+    networks: [business-hermes, business-hermes-egress]
+
+  business-hermes:
+    profiles: [business-hermes]
+    image: ${BUSINESS_HERMES_IMAGE:-nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a}
+    restart: unless-stopped
+    user: "10000:10000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=128m
+    init: true
+    mem_limit: 1g
+    cpus: "1.0"
+    pids_limit: 128
+    env_file:
+      - ${BUSINESS_HERMES_RUNTIME_ENV_FILE:-/etc/raspi-business-hermes/runtime.env}
+    environment:
+      HERMES_HOME: /opt/data
+      HOME: /opt/data/home
+      HERMES_DOCKER_BINARY: ""
+      HTTPS_PROXY: http://business-hermes-egress:3128
+      HTTP_PROXY: http://business-hermes-egress:3128
+      ALL_PROXY: http://business-hermes-egress:3128
+      NO_PROXY: 127.0.0.1,localhost,business-hermes,business-hermes-egress
+    entrypoint: [/opt/hermes/.venv/bin/hermes]
+    command: [gateway, run, --no-supervise]
+    volumes:
+      - business-hermes-data:/opt/data
+      - type: bind
+        source: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker/business-hermes/config.yaml
+        target: /opt/data/config.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      business-hermes-egress:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8642/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    networks: [business-hermes]
+
 networks:
   pi5:
     external: true
     name: ${PI5_DOCKER_NETWORK:-docker_default}
+  # The business agent has no route to the normal Pi5 network. Only the API
+  # and the allowlisted egress sidecar join this private bridge.
+  business-hermes:
+    internal: true
+  business-hermes-egress:
+    name: ${PI5_BUSINESS_HERMES_EGRESS_NETWORK:-business-hermes-egress}
 
 volumes:
   photo-storage:
@@ -246,3 +328,5 @@ volumes:
   file-integrity-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_file-integrity-storage
+  business-hermes-data:
+    name: ${PI5_VOLUME_PREFIX:-docker}_business-hermes-data

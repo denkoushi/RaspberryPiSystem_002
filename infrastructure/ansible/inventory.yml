@@ -34,6 +34,20 @@ all:
           migration_database_url: "{{ vault_migration_database_url }}"
           api_jwt_access_secret: "{{ vault_api_jwt_access_secret }}"
           api_jwt_refresh_secret: "{{ vault_api_jwt_refresh_secret }}"
+          # Business Hermes runs as an independent container on this Pi5. Keep
+          # both credentials in Vault; they are never shared with Private Pi5
+          # Hermes or the ordinary API .env beyond the API-side bearer key.
+          business_hermes_enabled: "{{ vault_business_hermes_enabled | default(false) }}"
+          business_hermes_api_key: "{{ vault_business_hermes_api_key | default('') }}"
+          business_hermes_openai_api_key: "{{ vault_business_hermes_openai_api_key | default('') }}"
+          business_hermes_image: "nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a"
+          business_hermes_egress_image: "node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293"
+          business_hermes_runtime_env_file: "/etc/raspi-business-hermes/runtime.env"
+          business_hermes_model: "gpt-5.6-luna"
+          api_business_hermes_base_url: "{{ 'http://business-hermes:8642' if (business_hermes_enabled | bool) else '' }}"
+          api_business_hermes_api_key: "{{ business_hermes_api_key }}"
+          api_business_hermes_model: "{{ business_hermes_model }}"
+          api_business_hermes_timeout_ms: "8000"
           api_local_llm_base_url: "http://100.118.82.72:38081"
           api_local_llm_shared_token: "{{ vault_api_local_llm_shared_token | default('') }}"
           api_local_llm_model: "system-prod-primary"

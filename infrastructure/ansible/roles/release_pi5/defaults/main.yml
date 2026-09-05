@@ -48,3 +48,6 @@ release_pi5_health_interval_seconds: 10
 release_pi5_compose_wait_seconds: 180
 release_pi5_load_retries: 30
 release_pi5_load_delay: 10
+release_pi5_business_hermes_enabled: "{{ business_hermes_enabled | default(false) }}"
+release_pi5_business_hermes_image: "{{ business_hermes_image | default('nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a') }}"
+release_pi5_business_hermes_egress_image: "{{ business_hermes_egress_image | default('node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293') }}"

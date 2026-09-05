@@ -22,6 +22,8 @@
     release_pi5_switch_attempted: false
     release_pi5_handoff_attempted: false
     release_pi5_start_attempted: false
+    release_pi5_business_hermes_start_attempted: false
+    release_pi5_business_hermes_started_by_run: false
     release_pi5_healthy: false
     release_pi5_rolled_back: false
 
@@ -48,6 +50,39 @@
   when: >-
     not (release_torque_cutover | default(false) | bool)
     or not (release_pi5_prefetched | default(false) | bool)
+
+- name: Pull the digest-pinned independent business Hermes images
+  ansible.builtin.command:
+    argv: [docker, image, pull, "{{ item }}"]
+  loop:
+    - "{{ release_pi5_business_hermes_image }}"
+    - "{{ release_pi5_business_hermes_egress_image }}"
+  register: release_pi5_business_hermes_pull
+  retries: 3
+  delay: 10
+  until: release_pi5_business_hermes_pull is succeeded
+  changed_when: >-
+    'Downloaded newer image' in release_pi5_business_hermes_pull.stdout
+    or 'Pull complete' in release_pi5_business_hermes_pull.stdout
+  when: release_pi5_business_hermes_enabled | bool
+
+- name: Verify ARM64 business Hermes images before candidate startup
+  ansible.builtin.command:
+    argv: [docker, image, inspect, --format, "{{ '{{.Id}}|{{.Os}}|{{.Architecture}}|{{json .RepoDigests}}' }}", "{{ item }}"]
+  loop:
+    - "{{ release_pi5_business_hermes_image }}"
+    - "{{ release_pi5_business_hermes_egress_image }}"
+  register: release_pi5_business_hermes_identity
+  changed_when: false
+  when: release_pi5_business_hermes_enabled | bool
+
+- name: Require pinned ARM64 business Hermes images before candidate startup
+  ansible.builtin.assert:
+    that:
+      - item.stdout is match('^sha256:[0-9a-f]{64}\\|linux\\|arm64\\|\\[.+@sha256:[0-9a-f]{64}.*\\]$')
+      - item.item.split('@')[1] in item.stdout
+  loop: "{{ release_pi5_business_hermes_identity.results | default([]) }}"
+  when: release_pi5_business_hermes_enabled | bool
 
 - name: Require the pre-quiesce Pi5 candidate identity for torque cutover
   ansible.builtin.assert:
@@ -177,6 +212,8 @@
       PI5_BLUE_WEB_IMAGE: "{{ release_pi5_web_image }}"
       PI5_GREEN_WEB_IMAGE: "{{ release_pi5_web_image }}"
       PI5_GATEWAY_IMAGE: "{{ release_pi5_gateway_discovery.stdout.split('|')[1] }}"
+      BUSINESS_HERMES_IMAGE: "{{ release_pi5_business_hermes_image }}"
+      BUSINESS_HERMES_EGRESS_IMAGE: "{{ release_pi5_business_hermes_egress_image }}"
 
 - name: Prepare Pi5 storage before the first phase3 Compose command when needed
   ansible.builtin.include_tasks: prepare-storage.yml
@@ -327,6 +364,54 @@
       PI5_GREEN_WEB_IMAGE: "{{ release_pi5_active_web_identity.split('|')[0] if release_pi5_active_slot == 'green' else (release_pi5_opposite_web_identity.split('|')[0] if release_pi5_same_release | bool else release_pi5_web_image) }}"
       PI5_GATEWAY_IMAGE: "{{ release_pi5_gateway_identity.split('|')[0] }}"
 
+- name: Capture an existing independent business Hermes container before fresh rollout
+  ansible.builtin.command:
+    argv:
+      - docker
+      - ps
+      - --all
+      - --filter
+      - "label=com.docker.compose.project={{ release_pi5_compose_project }}"
+      - --filter
+      - label=com.docker.compose.service=business-hermes
+      - --format
+      - "{{ '{{.ID}}' }}"
+  register: release_pi5_business_hermes_existing
+  changed_when: false
+  when: release_pi5_route == 'fresh'
+
+- name: Inspect the existing independent business Hermes container
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{.Config.Image}}|{{.State.Running}}' }}"
+      - "{{ release_pi5_business_hermes_existing.stdout | trim }}"
+  register: release_pi5_business_hermes_existing_identity
+  changed_when: false
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_existing.stdout | trim | length > 0
+
+- name: Record the independent business Hermes pre-rollout state
+  ansible.builtin.set_fact:
+    release_pi5_business_hermes_existing_id: "{{ release_pi5_business_hermes_existing.stdout | trim }}"
+    release_pi5_business_hermes_existing_image: "{{ (release_pi5_business_hermes_existing_identity.stdout | default('')).split('|')[0] if (release_pi5_business_hermes_existing_identity.stdout | default('') | length > 0) else '' }}"
+    release_pi5_business_hermes_existing_running: "{{ ((release_pi5_business_hermes_existing_identity.stdout | default('')).split('|')[1] | bool) if ('|' in (release_pi5_business_hermes_existing_identity.stdout | default(''))) else false }}"
+  when: release_pi5_route == 'fresh'
+
+- name: Refuse to replace an independent business Hermes image during API/Web rollback window
+  ansible.builtin.assert:
+    that:
+      - >-
+        (release_pi5_business_hermes_existing_id | default('') | length == 0)
+        or release_pi5_business_hermes_existing_image == release_pi5_business_hermes_image
+    fail_msg: Existing business Hermes image differs from this release; preserve it and roll the Hermes runtime separately.
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
 - name: Reject unfinished or rolled-back Prisma ledger before deploy
   ansible.builtin.command:
     argv: "{{ release_pi5_migration_argv + ['run', '--rm', '--no-deps', 'api-' + release_pi5_slot, 'sh', '-lc', release_pi5_ledger_command] }}"
@@ -383,6 +468,30 @@
   ansible.builtin.set_fact:
     release_pi5_start_attempted: true
   when: release_pi5_route == 'fresh'
+
+- name: Mark the independent business Hermes startup boundary
+  ansible.builtin.set_fact:
+    release_pi5_business_hermes_start_attempted: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Start the independent business Hermes runtime before candidate traffic
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'business-hermes'] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  changed_when: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Record that this release started the independent business Hermes runtime
+  ansible.builtin.set_fact:
+    release_pi5_business_hermes_started_by_run: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+    - not (release_pi5_business_hermes_existing_running | default(false) | bool)
 
 - name: Start only inactive Pi5 API and Web services
   ansible.builtin.command:

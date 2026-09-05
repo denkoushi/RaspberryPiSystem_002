@@ -162,6 +162,52 @@
       when: '"server" in group_names'
       no_log: true
 
+    - name: Validate enabled business Hermes credentials and image
+      ansible.builtin.assert:
+        that:
+          - business_hermes_enabled | default(false) | bool
+          - business_hermes_api_key is defined
+          - business_hermes_api_key | length >= 8
+          - business_hermes_openai_api_key is defined
+          - business_hermes_openai_api_key | length >= 8
+          - api_business_hermes_base_url == 'http://business-hermes:8642'
+          - api_business_hermes_model == 'gpt-5.6-luna'
+          - business_hermes_image is match('^nousresearch/hermes-agent:[^@]+@sha256:[0-9a-f]{64}$')
+          - business_hermes_egress_image is match('^node:[^@]+@sha256:[0-9a-f]{64}$')
+        fail_msg: >-
+          Enabled business Hermes requires independent API/OpenAI credentials,
+          the internal service URL, the approved Luna model, and digest-pinned
+          ARM64 images. Values must come from Ansible Vault.
+      when:
+        - '"server" in group_names'
+        - business_hermes_enabled | default(false) | bool
+      no_log: true
+
+    - name: Ensure the business Hermes secret directory exists
+      ansible.builtin.file:
+        path: "{{ business_hermes_runtime_env_file | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+      when:
+        - '"server" in group_names'
+        - business_hermes_enabled | default(false) | bool
+
+    - name: Deploy the independent business Hermes runtime credentials
+      ansible.builtin.copy:
+        content: |
+          API_SERVER_KEY={{ business_hermes_api_key }}
+          OPENAI_API_KEY={{ business_hermes_openai_api_key }}
+        dest: "{{ business_hermes_runtime_env_file }}"
+        owner: root
+        group: root
+        mode: '0600'
+      when:
+        - '"server" in group_names'
+        - business_hermes_enabled | default(false) | bool
+      no_log: true
+
     # INFERENCE_PROVIDERS_JSON と LOCAL_LLM_* の整合（DGX / Pi5 の token ドリフト防止）
     - name: Parse INFERENCE_PROVIDERS_JSON for LocalLLM alignment (server)
       ansible.builtin.set_fact:
