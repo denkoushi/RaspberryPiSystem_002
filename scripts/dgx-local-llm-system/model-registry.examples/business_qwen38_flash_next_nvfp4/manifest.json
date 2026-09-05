@@ -1,0 +1,47 @@
+{
+  "modelProfileId": "business_qwen38_flash_next_nvfp4",
+  "displayNameJa": "業務 Qwen3.8 Flash Next NVFP4",
+  "descriptionJa": "業務復帰時の推奨モデル。MiaAI-Lab の単一 DGX Spark 向け PLE offload launcher を blue backend で使用し、system-prod-primary として提供する。",
+  "backend": "blue",
+  "servedAlias": "system-prod-primary",
+  "enabled": true,
+  "recommended": true,
+  "declaredCapabilities": ["text", "vision"],
+  "visionRequiresMmproj": false,
+  "launcherHints": {
+    "blueModelDir": "/srv/dgx/system-prod/data/hf-cache/hub/models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4",
+    "blueServerImage": "vllm/vllm-openai:qwen38-flash-next@sha256:3b0e188ffceb3d07e09c3cb5215433a0020eacf02d7f882ed3a8bfd15454477e",
+    "blueServerAdapter": "qwen38_flash_next",
+    "blueUpstreamRecipeDir": "/srv/dgx/system-prod/third-party/qwen38-flash-next",
+    "blueUpstreamRecipeRevision": "09d4424be2b777818471b9bba8c7775ddd538833",
+    "blueModelRevision": "925d7be6c14c6c9442ef83e8f05b5a3c39304f69"
+  },
+  "runtimeProfile": {
+    "engine": "vllm",
+    "memoryPolicy": "qwen38_flash_next_single_spark_ple_offload",
+    "coexistencePolicy": "single_active_not_comfy",
+    "guaranteeLevel": "strict_ready_when_orchestrated",
+    "vllm": {
+      "maxModelLen": 262144,
+      "maxNumSeqs": 4,
+      "maxNumBatchedTokens": 2048,
+      "kvCacheDtype": "fp8",
+      "languageModelOnly": false,
+      "tensorParallelSize": 1,
+      "enableChunkedPrefill": true,
+      "enablePrefixCaching": true
+    }
+  },
+  "sourceKind": "huggingface",
+  "sourceModelRef": "Mia-AiLab/Qwen3.8-Flash-Next-NVFP4",
+  "modelFamily": "Qwen3.8-Flash-Next",
+  "format": "safetensors",
+  "quantization": "NVFP4",
+  "storageLocation": "/srv/dgx/shared-models/hf/Mia-AiLab/Qwen3.8-Flash-Next-NVFP4",
+  "currentStorageLocation": "/srv/dgx/system-prod/data/hf-cache/hub/models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4",
+  "storageStatus": "planned_local_cache_with_ple_cache",
+  "expectedSizeGb": 99.0,
+  "expectedColdStartSec": 651,
+  "canonicalNames": ["Qwen3.8-Flash-Next-NVFP4"],
+  "legacyNames": []
+}
