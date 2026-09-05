@@ -447,6 +447,32 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     await waitFor(() => expect(mockRecordAssemblyTorque).toHaveBeenCalledWith('session-1', expect.objectContaining({ value: 10 })));
   });
 
+  it('renders a ready Hermes guide with its evidence and current-bolt target', async () => {
+    mockGetHermesGuide.mockImplementation((_sessionId: string, payload: { uiRevision: string }) => Promise.resolve({
+      status: 'ready',
+      uiRevision: payload.uiRevision,
+      message: '締結部を対角順に10 N-mで締め付けます。',
+      targetKey: 'current-bolt',
+      evidence: [{
+        sourceKind: 'assembly_procedure_step',
+        documentId: 'procedure-1',
+        documentTitle: '公開手順書',
+        pageIndex: 2,
+        bodyAvailable: true,
+        documentUpdatedAt: '2026-07-06T00:00:00.000Z',
+        bodyScope: 'page'
+      }]
+    }));
+    renderPage();
+
+    const button = await screen.findByRole('button', { name: 'Hermesに確認' });
+    fireEvent.click(button);
+
+    expect(await screen.findByText('締結部を対角順に10 N-mで締め付けます。')).toBeInTheDocument();
+    expect(screen.getByText('根拠: 公開手順書 / 3ページ')).toBeInTheDocument();
+    expect(document.querySelector('[data-hermes-target="current-bolt"]')).toHaveClass('ring-2', 'ring-cyan-300');
+  });
+
   it('does not render an Hermes response after the work target changes', async () => {
     let resolveGuide: ((value: unknown) => void) | null = null;
     mockGetHermesGuide.mockReturnValue(new Promise((resolve) => { resolveGuide = resolve; }));
