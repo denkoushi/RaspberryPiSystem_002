@@ -1,46 +1,32 @@
 {
   "artifacts": {
-    "manual.html": "f1297a6c2222680a5dedab12bab0e9a173043198889147c04a14fef6d81e26b1",
-    "screens/edit-advanced-point.png": "f7e938b2918b2418524352f620a001831d99c5211b9272c7293250d03f13caae",
-    "screens/edit-basics.png": "93b446d878d9cb60cce6fff96998cdde800f67bd4741de38bcbd48ff4efaeee4",
-    "screens/edit-group-history.png": "1a943c2a3b8540aed946a55c5fb6036e054bda6ebd1e94245c3eeb5d745636cb",
-    "screens/edit-point-management.png": "93b446d878d9cb60cce6fff96998cdde800f67bd4741de38bcbd48ff4efaeee4",
-    "screens/edit-required-point.png": "93b446d878d9cb60cce6fff96998cdde800f67bd4741de38bcbd48ff4efaeee4",
-    "screens/edit-trial-report.png": "93b446d878d9cb60cce6fff96998cdde800f67bd4741de38bcbd48ff4efaeee4",
-    "screens/edit-visual-source.png": "f7c43b438c8680d8ab893c61320cad2e503cf7540daef594e07de9e39bf37dca",
+    "manual.html": "6462e053c998b00eb7762d10e74027c1ddb8c392a0022c111eedf591d4f97803",
+    "screens/edit-advanced-point.png": "ad8131211fb52c5f10d81f313f91a1980921c61a704c6c2397c1a6081290f8e1",
+    "screens/edit-basics.png": "5d9c95c27fbc73f1cdd3168be780bbd6256e3628c867581bd128e112d084b14b",
+    "screens/edit-group-history.png": "80dad0c05cc965287239d5a5bd44a065a668808536401bfbb7873044faeb0a88",
+    "screens/edit-point-management.png": "5d9c95c27fbc73f1cdd3168be780bbd6256e3628c867581bd128e112d084b14b",
+    "screens/edit-required-point.png": "5d9c95c27fbc73f1cdd3168be780bbd6256e3628c867581bd128e112d084b14b",
+    "screens/edit-trial-report.png": "5d9c95c27fbc73f1cdd3168be780bbd6256e3628c867581bd128e112d084b14b",
+    "screens/edit-visual-source.png": "8f983379761cd11bb08a0f323c92c911952c70e49adef5fc05c9c469a89af35e",
     "screens/library-entry-search.png": "6352e734edbfb441c1fb47895811da76c15bbf34880f3c01b360496237ecce0a",
     "screens/library-template-management.png": "6352e734edbfb441c1fb47895811da76c15bbf34880f3c01b360496237ecce0a",
     "screens/library-visual-management.png": "62926d4b8659139e2166c1406661e91804d880bc6be376008fbe1d01d4ea5589",
-    "sheets/edit-advanced-point.png": "a6481f4e2dbad47b967e416c6a1c950a794e8896209ece8dad734ba7491f7afa",
-    "sheets/edit-basics.png": "0efdba7d761e311b61cdb92b62e445af23575ff04d907d3b363d94fb62c9b142",
-    "sheets/edit-group-history.png": "295fbfb5bd3a1d739a67e99447712b93b127f15c0c9d59c1d7c2475c73edd687",
-    "sheets/edit-point-management.png": "fb75680568e7acb8b609cb722f81ae279cae3e8ae4b8ee0efbe7c765f10f26ec",
-    "sheets/edit-required-point.png": "4907e9ea2688615d7a4fb0f3d570ff4c82d2791e20834919c57589536fb7ec60",
-    "sheets/edit-trial-report.png": "3990eb5cf92e9953ae0a4679948a9f1bff7073c8a2621ce59f3557c52d6bde2b",
-    "sheets/edit-visual-source.png": "bd18fd862db6b28533d378a5c834a5fefead6ce53beab1b411088bfe457778cf",
+    "sheets/edit-advanced-point.png": "758387d739134c70995ce9fb82aae380c1ded2541a99d3d1587b1615f3a800d8",
+    "sheets/edit-basics.png": "b05fdf903173e55c33252b44ae81753a10a5637bbeeda888811600b9f3b7b567",
+    "sheets/edit-group-history.png": "826c59268b4baf7df5cb4bcafcab4042b3f9b08c3978495631b10e9844d1953e",
+    "sheets/edit-point-management.png": "81b9b0001528675e88acfdf76d8fcec0713446843c32d32cfb75e7f7239bb3be",
+    "sheets/edit-required-point.png": "6b6ecc309c39fa91dd7a549459b37c99c6bd9bd0f36d1696c0d2f4ce1bf181d3",
+    "sheets/edit-trial-report.png": "8ecdeff0cae5db3534c67256fc2569f78e5f6a727143d7e45dc4bd4a62a46523",
+    "sheets/edit-visual-source.png": "e78fcccec9b52989088bfcdd397ffc816a9e1f56bda382f0b3e60c6a10dfe30e",
     "sheets/library-entry-search.png": "4e1952aeba29dce5cca795c1d55232ad24f0af763307490cc1d6039b06f8dd20",
     "sheets/library-template-management.png": "2934ec0cf940b0a22ac167132b8087f670240c9fe6281a6bfe4bf180ca45ce63",
     "sheets/library-visual-management.png": "d1ecb646fa6044ae9807b0ccb7b7c2ad6e9c836a48df179c5c0f4d0a272835ae"
   },
   "browserVersion": "141.0.7390.37",
-  "definitionSha256": "9b3db0b5176434acc1f0767f0257df5405c2883b7f7edc37a6bac02dbedef919",
+  "definitionSha256": "b07cc7dbe4f1b9d7f004d8c708baf828731fac3bd12419d402eddae24127ee5e",
   "generatorVersion": "1.3.0",
   "geometry": {
     "edit-advanced-point": [
-      {
-        "id": "nudge-point",
-        "semantics": {
-          "ariaLabel": null,
-          "role": null,
-          "tagName": "div",
-          "text": "↑ ↓ ← →"
-        },
-        "target": {
-          "x": 0.9765625,
-          "y": 0.2569444444444444
-        },
-        "targetId": "nudge-point"
-      },
       {
         "id": "set-depth-mode",
         "semantics": {
@@ -51,7 +37,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.44730179398148145
+          "y": 0.41257957175925924
         },
         "targetId": "depth-mode"
       },
@@ -65,7 +51,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.5356083622685185
+          "y": 0.5008861400462963
         },
         "targetId": "face-thread"
       },
@@ -79,7 +65,7 @@
         },
         "target": {
           "x": 0.9765523274739584,
-          "y": 0.5356083622685185
+          "y": 0.5008861400462963
         },
         "targetId": "direct-label"
       },
@@ -93,7 +79,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.6335358796296297
+          "y": 0.5988136574074074
         },
         "targetId": "ocr-candidate"
       }
@@ -239,7 +225,7 @@
         },
         "target": {
           "x": 0.8551737467447916,
-          "y": 0.3373480902777778
+          "y": 0.3026258680555556
         },
         "targetId": "add-point"
       },
@@ -253,7 +239,7 @@
         },
         "target": {
           "x": 0.880584716796875,
-          "y": 0.3373480902777778
+          "y": 0.3026258680555556
         },
         "targetId": "place-callout"
       },
@@ -281,7 +267,7 @@
         },
         "target": {
           "x": 0.896484375,
-          "y": 0.7152596932870371
+          "y": 0.6805374710648148
         },
         "targetId": "delete-one-point"
       },
@@ -295,7 +281,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.7152596932870371
+          "y": 0.6805374710648148
         },
         "targetId": "delete-all-points"
       }
@@ -311,7 +297,7 @@
         },
         "target": {
           "x": 0.97265625,
-          "y": 0.8159541377314815
+          "y": 0.7812319155092593
         },
         "targetId": "select-point"
       },
@@ -325,7 +311,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.4010054976851852
+          "y": 0.36628327546296297
         },
         "targetId": "measurement-name"
       },
@@ -339,7 +325,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.5455729166666666
+          "y": 0.5108506944444444
         },
         "targetId": "nominal-value"
       },
@@ -353,7 +339,7 @@
         },
         "target": {
           "x": 0.896484375,
-          "y": 0.6805374710648148
+          "y": 0.6458152488425926
         },
         "targetId": "upper-tolerance"
       },
@@ -367,7 +353,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.6805374710648148
+          "y": 0.6458152488425926
         },
         "targetId": "lower-tolerance"
       }
@@ -677,7 +663,7 @@
       }
     ]
   },
-  "htmlSha256": "f1297a6c2222680a5dedab12bab0e9a173043198889147c04a14fef6d81e26b1",
+  "htmlSha256": "6462e053c998b00eb7762d10e74027c1ddb8c392a0022c111eedf591d4f97803",
   "schemaVersion": 1,
-  "sourceSha256": "354d8b4f5357006ecf2c7edb2ecba21817b86538724465f427c152162bc6942f"
+  "sourceSha256": "702f99106caa90e169cb2cf861c9069c6fcb68643945f92176fc62fc7c57ad80"
 }

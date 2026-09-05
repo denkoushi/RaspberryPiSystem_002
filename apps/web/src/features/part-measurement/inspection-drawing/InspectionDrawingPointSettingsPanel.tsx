@@ -31,7 +31,6 @@ import {
   buildMeasurementLabelSelectOptions,
   INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS
 } from './inspectionDrawingMeasurementLabelOptions';
-import { InspectionDrawingPointPositionNudge } from './InspectionDrawingPointPositionNudge';
 import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 import { buildGeometricTolerancePointPatch } from './markerNumbering';
 import {
@@ -257,11 +256,6 @@ export function InspectionDrawingPointSettingsPanel({
 
   return (
     <div className={inspectionDrawingPointSettingPanelClassName}>
-      <InspectionDrawingPointPositionNudge
-        point={point}
-        disabled={disabled}
-        onChange={onChange}
-      />
       <p className="text-[1.02rem] font-bold">測定点の設定（No.{point.markerNo}）</p>
       {modeChrome}
       <label className={inspectionDrawingPointNameInlineClassName} title={point.name || '名称'}>

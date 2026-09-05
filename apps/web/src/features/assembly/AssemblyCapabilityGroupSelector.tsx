@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import {
-  KioskFilterCombobox,
-  type KioskFilterOption
-} from '../../components/kiosk/KioskFilterCombobox';
 import { Button } from '../../components/ui/Button';
+import { Dialog } from '../../components/ui/Dialog';
+import { Input } from '../../components/ui/Input';
 
 import { formatAssemblyEditorName } from './assemblyTemplateGuidePresentation';
 import { doesCapabilityGroupMatchAssemblyBoltCondition } from './assemblyTemplateInputAssistance';
@@ -41,6 +39,7 @@ export function AssemblyCapabilityGroupSelector({
   onRetry
 }: Props) {
   const [query, setQuery] = useState('');
+  const [dialogOpen, setDialogOpen] = useState(false);
   const activeGroups = useMemo(() => groups.filter((group) => group.isActive), [groups]);
   const selectedCatalogGroup =
     activeGroups.find((group) => group.id === selectedGroupId) ?? null;
@@ -49,15 +48,15 @@ export function AssemblyCapabilityGroupSelector({
     doesCapabilityGroupMatchAssemblyBoltCondition(selectedCatalogGroup, storedCondition)
       ? selectedCatalogGroup
       : null;
-  const options = useMemo<KioskFilterOption[]>(
-    () =>
-      activeGroups.map((group) => ({
-        value: group.id,
-        label: `${group.name} — ${conditionLabel(group)}（${group.models.length}型番）`,
-        searchText: `${group.name} ${group.nominalDiameter} ${group.boltLengthMm} ${group.material} ${group.strengthClass}`.toLocaleLowerCase()
-      })),
-    [activeGroups]
-  );
+  const filteredGroups = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase();
+    if (!normalized) return activeGroups;
+    return activeGroups.filter((group) =>
+      `${group.name} ${group.nominalDiameter} ${group.boltLengthMm} ${group.material} ${group.strengthClass}`
+        .toLocaleLowerCase()
+        .includes(normalized)
+    );
+  }, [activeGroups, query]);
 
   useEffect(() => setQuery(''), [boltId]);
 
@@ -109,26 +108,59 @@ export function AssemblyCapabilityGroupSelector({
           適合グループを再読込
         </Button>
       ) : (
-        <KioskFilterCombobox
-          ariaLabel="適合トルクレンチグループを検索"
-          value={query}
-          placeholder={currentGroup ? '別のグループを検索' : 'グループ名・締結条件で検索'}
-          options={options}
-          loading={catalogStatus === 'loading'}
-          disabled={disabled}
-          optionUpdateMode="live"
-          emptyMessage="一致する有効グループがありません"
-          className={disabled ? 'mt-2 opacity-60' : 'mt-2'}
-          inputClassName="h-10 text-sm"
-          dropdownClassName="w-full [&_[role=option]]:min-w-0 [&_[role=option]>span]:min-w-0 [&_[role=option]>span]:flex-1 [&_[role=option]>span]:!block [&_[role=option]>span]:truncate"
-          onChange={setQuery}
-          onSelect={(groupId) => {
-            const group = activeGroups.find((candidate) => candidate.id === groupId);
-            if (!group || disabled) return;
-            onSelect(group);
-            setQuery('');
-          }}
-        />
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            className="mt-2 min-h-11 w-full min-w-0 !px-2 text-left text-xs"
+            disabled={disabled || catalogStatus === 'loading'}
+            aria-haspopup="dialog"
+            aria-expanded={dialogOpen}
+            onClick={() => setDialogOpen(true)}
+          >
+            {currentGroup ? '別のグループを選択' : '適合グループを選択'}
+          </Button>
+          <Dialog
+            isOpen={dialogOpen}
+            onClose={() => setDialogOpen(false)}
+            title="適合トルクレンチグループを選択"
+            description="締結条件に合う有効グループを検索して選択してください。"
+            size="lg"
+          >
+            <div className="mt-3 grid min-w-0 gap-3">
+              <Input
+                aria-label="適合トルクレンチグループを検索"
+                value={query}
+                placeholder="グループ名・締結条件で検索"
+                className="min-h-11 text-sm"
+                onChange={(event) => setQuery(event.target.value)}
+                autoFocus
+              />
+              <div className="grid max-h-[55vh] min-w-0 gap-1 overflow-y-auto rounded border border-slate-200 bg-slate-50 p-2">
+                {filteredGroups.map((group) => (
+                    <button
+                      key={group.id}
+                      type="button"
+                      className="min-w-0 rounded border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-900 hover:border-cyan-500 hover:bg-cyan-50"
+                      onClick={() => {
+                        if (disabled) return;
+                        onSelect(group);
+                        setQuery('');
+                        setDialogOpen(false);
+                      }}
+                    >
+                      <span className="block break-words font-bold">{group.name}</span>
+                      <span className="mt-1 block break-words text-xs text-slate-600">{conditionLabel(group)}（{group.models.length}型番）</span>
+                    </button>
+                  ))}
+                {filteredGroups.length === 0 ? <p className="p-2 text-sm text-slate-600">一致する有効グループがありません</p> : null}
+              </div>
+              <div className="flex justify-end">
+                <Button type="button" variant="secondary" className="min-h-11" onClick={() => setDialogOpen(false)}>閉じる</Button>
+              </div>
+            </div>
+          </Dialog>
+        </>
       )}
     </section>
   );

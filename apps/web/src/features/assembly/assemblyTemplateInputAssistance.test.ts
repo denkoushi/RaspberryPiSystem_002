@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   assemblyEditorPageName,
   buildAssemblyTemplateGuidePresentation,
-  formatAssemblyEditorName
+  formatAssemblyEditorName,
+  formatAssemblyMachineName
 } from './assemblyTemplateGuidePresentation';
 import {
   buildAssemblyTemplateSuggestedName,
@@ -237,6 +238,10 @@ describe('assembly template guide presentation', () => {
     const original = 'ＡＢＣａｂｃ０１２　組立 カタカナ ＋／－ N·m kgf·cm ㎜';
     expect(formatAssemblyEditorName(original)).toBe('ABCabc012 組立 カタカナ ＋／－ N·m kgf·cm ㎜');
     expect(original).toBe('ＡＢＣａｂｃ０１２　組立 カタカナ ＋／－ N·m kgf·cm ㎜');
+  });
+
+  it('formats machine names with half-width ASCII symbols and katakana for display only', () => {
+    expect(formatAssemblyMachineName('ＡＢＣ－１２３　カタカナ・Ａ＋Ｂ')).toBe('ABC-123 ｶﾀｶﾅ･A+B');
   });
 
   it('removes only the generated page suffix, not numbers inside document names', () => {

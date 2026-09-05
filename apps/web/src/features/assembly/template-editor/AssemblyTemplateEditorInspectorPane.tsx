@@ -2,7 +2,6 @@ import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import {
   clearImageMarkerCalloutTip,
-  ImageMarkerPositionNudge,
   imageMarkerHasCalloutTip
 } from '../../kiosk/image-canvas';
 import {
@@ -98,8 +97,10 @@ export function AssemblyTemplateEditorInspectorPane() {
       <>
         <div className="flex min-w-0 items-start justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="text-[1.02rem] font-bold">チェック項目</h2>
-            {selectedCheckItem ? <div className="mt-1 truncate text-sm font-bold">チェック {selectedCheckItem.markerNo}</div> : null}
+            <div className="flex min-w-0 items-baseline gap-2">
+              <h2 className="text-sm font-bold">チェック項目</h2>
+              {selectedCheckItem ? <div className="truncate text-[1.02rem] font-extrabold">チェック {selectedCheckItem.markerNo}</div> : null}
+            </div>
           </div>
           {selectedCheckItem ? (
             <Button type="button" variant="danger" className="min-h-8 shrink-0 !px-2 !py-1 text-xs" disabled={busy || readOnly} onClick={requestDeleteSelectedCheckItem}>
@@ -123,13 +124,6 @@ export function AssemblyTemplateEditorInspectorPane() {
                 矢視削除
               </Button>
             </div>
-            <ImageMarkerPositionNudge
-              position={selectedCheckItem}
-              disabled={busy || readOnly}
-              groupLabel="チェックマーカーの位置調整"
-              className="min-w-0 [&>button]:min-w-0 [&>button]:flex-1"
-              onChange={(patch) => setCheckItemPatch(selectedCheckItem.id, patch)}
-            />
             <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
               ラベル
               <Input

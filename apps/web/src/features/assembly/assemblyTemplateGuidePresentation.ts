@@ -11,6 +11,23 @@ export function formatAssemblyEditorName(value: string): string {
   );
 }
 
+const HALF_WIDTH_KATAKANA: Record<string, string> = {
+  ア: 'ｱ', イ: 'ｲ', ウ: 'ｳ', エ: 'ｴ', オ: 'ｵ', カ: 'ｶ', キ: 'ｷ', ク: 'ｸ', ケ: 'ｹ', コ: 'ｺ',
+  サ: 'ｻ', シ: 'ｼ', ス: 'ｽ', セ: 'ｾ', ソ: 'ｿ', タ: 'ﾀ', チ: 'ﾁ', ツ: 'ﾂ', テ: 'ﾃ', ト: 'ﾄ',
+  ナ: 'ﾅ', ニ: 'ﾆ', ヌ: 'ﾇ', ネ: 'ﾈ', ノ: 'ﾉ', ハ: 'ﾊ', ヒ: 'ﾋ', フ: 'ﾌ', ヘ: 'ﾍ', ホ: 'ﾎ',
+  マ: 'ﾏ', ミ: 'ﾐ', ム: 'ﾑ', メ: 'ﾒ', モ: 'ﾓ', ヤ: 'ﾔ', ユ: 'ﾕ', ヨ: 'ﾖ', ラ: 'ﾗ', リ: 'ﾘ',
+  ル: 'ﾙ', レ: 'ﾚ', ロ: 'ﾛ', ワ: 'ﾜ', ヲ: 'ｦ', ン: 'ﾝ', ヴ: 'ｳﾞ', ァ: 'ｧ', ィ: 'ｨ', ゥ: 'ｩ',
+  ェ: 'ｪ', ォ: 'ｫ', ッ: 'ｯ', ャ: 'ｬ', ュ: 'ｭ', ョ: 'ｮ', ガ: 'ｶﾞ', ギ: 'ｷﾞ', グ: 'ｸﾞ', ゲ: 'ｹﾞ', ゴ: 'ｺﾞ',
+  ザ: 'ｻﾞ', ジ: 'ｼﾞ', ズ: 'ｽﾞ', ゼ: 'ｾﾞ', ゾ: 'ｿﾞ', ダ: 'ﾀﾞ', ヂ: 'ﾁﾞ', ヅ: 'ﾂﾞ', デ: 'ﾃﾞ', ド: 'ﾄﾞ',
+  バ: 'ﾊﾞ', ビ: 'ﾋﾞ', ブ: 'ﾌﾞ', ベ: 'ﾍﾞ', ボ: 'ﾎﾞ', パ: 'ﾊﾟ', ピ: 'ﾋﾟ', プ: 'ﾌﾟ', ペ: 'ﾍﾟ', ポ: 'ﾎﾟ'
+};
+
+/** Machine names are display-only; stored/API values remain unchanged. */
+export function formatAssemblyMachineName(value: string): string {
+  const ascii = value.replace(/[！-～]/g, (character) => String.fromCharCode(character.charCodeAt(0) - 0xfee0)).replace(/\u3000/g, ' ');
+  return ascii.replace(/[ァ-ヺ]/g, (character) => HALF_WIDTH_KATAKANA[character] ?? character).replace(/ー/g, 'ｰ').replace(/・/g, '･');
+}
+
 export function assemblyEditorPageName(label: string, pageIndex: number): string {
   const suffix = ` / ${pageIndex + 1}ページ`;
   return formatAssemblyEditorName(label.endsWith(suffix) ? label.slice(0, -suffix.length) : label);

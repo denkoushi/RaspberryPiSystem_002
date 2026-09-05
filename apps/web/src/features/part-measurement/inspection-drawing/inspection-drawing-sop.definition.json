@@ -276,13 +276,6 @@
           "summary": "必要な点だけ、面・ねじ・幾何公差・OCR候補を設定します。",
           "steps": [
             {
-              "id": "nudge-point",
-              "targetId": "nudge-point",
-              "necessity": "optional",
-              "title": "点を微調整",
-              "description": "矢印操作で番号位置を少しずつ移動します。"
-            },
-            {
               "id": "set-depth-mode",
               "targetId": "depth-mode",
               "necessity": "optional",
