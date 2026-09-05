@@ -263,7 +263,7 @@ services:
     volumes:
       - business-hermes-data:/opt/data
       - type: bind
-        source: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker/business-hermes/config.yaml
+        source: ${BUSINESS_HERMES_CONFIG_FILE:-/etc/raspi-business-hermes/config.yaml}
         target: /opt/data/config.yaml
         read_only: true
         bind:

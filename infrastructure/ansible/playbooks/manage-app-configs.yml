@@ -162,57 +162,14 @@
       when: '"server" in group_names'
       no_log: true
 
-    - name: Validate enabled business Hermes credentials and image
-      ansible.builtin.assert:
-        that:
-          - business_hermes_enabled | default(false) | bool
-          - business_hermes_provider | default('dgx') in ['dgx', 'openai']
-          - business_hermes_api_key is defined
-          - business_hermes_api_key | length >= 8
-          - business_hermes_provider | default('dgx') != 'dgx' or (business_hermes_dgx_token is defined and business_hermes_dgx_token | length >= 8)
-          - business_hermes_provider | default('dgx') != 'openai' or (business_hermes_openai_api_key is defined and business_hermes_openai_api_key | length >= 8)
-          - api_business_hermes_base_url == 'http://business-hermes:8642'
-          - api_business_hermes_model | length >= 1
-          - business_hermes_image is match('^nousresearch/hermes-agent:[^@]+@sha256:[0-9a-f]{64}$')
-          - business_hermes_egress_image is match('^node:[^@]+@sha256:[0-9a-f]{64}$')
-        fail_msg: >-
-          Enabled business Hermes requires the selected provider credential,
-          the internal service URL, a model, and digest-pinned ARM64 images.
-          DGX mode reuses the existing business LocalLLM token; OpenAI mode
-          requires the dedicated Business Hermes key. Values must come from Ansible Vault.
+    - name: Converge Business Hermes runtime configuration
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/business-hermes-runtime.yml"
+      vars:
+        business_hermes_config_repo_path: "{{ repo_path }}"
+        business_hermes_sync_candidate_env: false
       when:
         - '"server" in group_names'
         - business_hermes_enabled | default(false) | bool
-      no_log: true
-
-    - name: Ensure the business Hermes secret directory exists
-      ansible.builtin.file:
-        path: "{{ business_hermes_runtime_env_file | dirname }}"
-        state: directory
-        owner: root
-        group: root
-        mode: '0700'
-      when:
-        - '"server" in group_names'
-        - business_hermes_enabled | default(false) | bool
-
-    - name: Deploy the independent business Hermes runtime credentials
-      ansible.builtin.copy:
-        content: |
-          API_SERVER_KEY={{ business_hermes_api_key }}
-          BUSINESS_HERMES_PROVIDER={{ business_hermes_provider | default('dgx') }}
-          HERMES_INFERENCE_PROVIDER={{ 'business-dgx' if (business_hermes_provider | default('dgx')) == 'dgx' else 'business-openai' }}
-          BUSINESS_HERMES_MODEL={{ business_hermes_model | default('') }}
-          BUSINESS_HERMES_DGX_TOKEN={{ business_hermes_dgx_token | default('') if (business_hermes_provider | default('dgx')) == 'dgx' else '' }}
-          BUSINESS_HERMES_OPENAI_API_KEY={{ business_hermes_openai_api_key | default('') if (business_hermes_provider | default('dgx')) == 'openai' else '' }}
-        dest: "{{ business_hermes_runtime_env_file }}"
-        owner: root
-        group: root
-        mode: '0600'
-      when:
-        - '"server" in group_names'
-        - business_hermes_enabled | default(false) | bool
-      no_log: true
 
     # INFERENCE_PROVIDERS_JSON と LOCAL_LLM_* の整合（DGX / Pi5 の token ドリフト防止）
     - name: Parse INFERENCE_PROVIDERS_JSON for LocalLLM alignment (server)

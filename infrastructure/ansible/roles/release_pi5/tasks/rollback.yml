@@ -1,4 +1,78 @@
 ---
+- name: Restore the previous Business Hermes runtime environment
+  ansible.builtin.copy:
+    src: "{{ business_hermes_runtime_env_backup_file }}"
+    dest: "{{ business_hermes_runtime_env_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "{{ business_hermes_runtime_env_original_mode }}"
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_runtime_env_backup_ready | default(false) | bool
+
+- name: Remove a newly created Business Hermes runtime environment after rollback
+  ansible.builtin.file:
+    path: "{{ business_hermes_runtime_env_file }}"
+    state: absent
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - not (business_hermes_runtime_env_preexisting | default(false) | bool)
+    - business_hermes_runtime_env_materialized | default(false) | bool
+
+- name: Restore the previous Business Hermes candidate environment
+  ansible.builtin.copy:
+    src: "{{ business_hermes_candidate_env_backup_file }}"
+    dest: "{{ business_hermes_candidate_env_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "{{ business_hermes_candidate_env_original_mode }}"
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_candidate_env_backup_ready | default(false) | bool
+
+- name: Remove a newly created Business Hermes candidate environment after rollback
+  ansible.builtin.file:
+    path: "{{ business_hermes_candidate_env_file }}"
+    state: absent
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_candidate_env_file is defined
+    - not (business_hermes_candidate_env_preexisting | default(false) | bool)
+    - business_hermes_candidate_env_materialized | default(false) | bool
+
+- name: Restore the previous Business Hermes configuration
+  ansible.builtin.copy:
+    src: "{{ business_hermes_config_backup_file }}"
+    dest: "{{ business_hermes_config_target_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "{{ business_hermes_config_original_mode }}"
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_config_backup_ready | default(false) | bool
+
+- name: Remove a newly created Business Hermes configuration after rollback
+  ansible.builtin.file:
+    path: "{{ business_hermes_config_target_file }}"
+    state: absent
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - not (business_hermes_config_preexisting | default(false) | bool)
+    - business_hermes_config_materialized | default(false) | bool
+
+- name: Restore the original Pi5 Compose environment before rollback
+  ansible.builtin.set_fact:
+    release_pi5_compose_environment: "{{ release_pi5_rollback_compose_environment | default(release_pi5_compose_environment) }}"
+
 - name: Restore the previous Pi5 scheduler and route
   block:
     - name: Restart previous Pi5 API with its captured image
