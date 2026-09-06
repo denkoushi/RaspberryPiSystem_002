@@ -456,7 +456,7 @@ export class BusinessHermesService {
           messages: [
             {
               role: 'system',
-              content: 'あなたは業務手順の案内役です。与えられた手順本文と現在状態だけを根拠に、日本語で短く説明してください。手順本文がOCR由来の場合、その読み取り値を正式値として扱わず、数値はcurrentStatusの正式値を使い、OCR本文との矛盾がある場合はknown=falseとしてください。根拠が足りなければknown=falseとし、推測や断定をしないでください。JSONのみを返してください。形式は {"known":boolean,"message":string,"targetKey":"current-bolt"|null} です。'
+              content: 'あなたは業務手順の案内役です。与えられた手順本文と現在状態だけを根拠に、日本語で短く説明してください。手順本文がOCR由来の場合、その読み取り値を正式値として扱わず、数値はcurrentStatusの正式値を使い、OCR本文との矛盾がある場合はknown=falseとしてください。現在の対象を確認できる場合はknown=true、messageは空でない案内、targetKeyは必ず"current-bolt"にしてください。根拠が足りない、または現在の対象を確認できない場合はknown=false、messageは空文字列、targetKeyはnullにしてください。推測や断定をしないでください。JSONのみを返してください。有効な回答例は {"known":true,"message":"現在の対象を正式値で案内します。","targetKey":"current-bolt"} です。形式は {"known":boolean,"message":string,"targetKey":"current-bolt"|null} です。'
             },
             { role: 'user', content: buildPrompt({ eventCode: input.eventCode, session: context.session, bolt: context.bolt, evidence: context.evidence, procedureBody: context.procedureBody }) }
           ]

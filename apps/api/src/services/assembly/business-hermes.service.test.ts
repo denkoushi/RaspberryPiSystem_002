@@ -157,10 +157,13 @@ describe('BusinessHermesService', () => {
     expect(result).toMatchObject({ status: 'unknown', reasonCode: 'SESSION_CHANGED', message: null, targetKey: null });
   });
 
-  it('returns unknown for malformed or unsupported upstream output', async () => {
+  it.each([
+    { known: false, message: '根拠不足', targetKey: null },
+    { known: true, message: '現在の対象を案内します。', targetKey: null }
+  ])('returns unknown for unsupported upstream output ($known, target=$targetKey)', async (upstream) => {
     const service = new BusinessHermesService({
       sessionService: { getDetail: vi.fn().mockResolvedValue(createSession()) } as unknown as AssemblyWorkSessionService,
-      fetchImpl: vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ known: false, message: '根拠不足', targetKey: null }) } }] }), { status: 200 })),
+      fetchImpl: vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(upstream) } }] }), { status: 200 })),
       config: { provider: 'dgx', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'model', timeoutMs: 1000 }
     });
 
