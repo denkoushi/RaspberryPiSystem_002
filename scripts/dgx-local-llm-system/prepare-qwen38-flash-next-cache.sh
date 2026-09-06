@@ -119,7 +119,7 @@ print(path)'
     exit 1
   fi
   install -d "${MODEL_DIR}/refs"
-  printf '%s\n' "${EXPECTED_MODEL_REVISION}" >"${MODEL_DIR}/refs/main.tmp"
+  printf '%s' "${EXPECTED_MODEL_REVISION}" >"${MODEL_DIR}/refs/main.tmp"
   mv -f "${MODEL_DIR}/refs/main.tmp" "${MODEL_DIR}/refs/main"
   echo "pinned_model_fetch_complete=true revision=${EXPECTED_MODEL_REVISION}"
   exit 0
@@ -176,11 +176,11 @@ if [[ ! -s "${MODEL_REF_FILE}" ]]; then
   echo "model cache refs/main is unavailable: ${MODEL_REF_FILE}" >&2
   exit 1
 fi
-MODEL_SNAPSHOT="$(tr -d '[:space:]' < "${MODEL_REF_FILE}")"
-if [[ "${MODEL_SNAPSHOT}" != "${EXPECTED_MODEL_REVISION}" ]]; then
-  echo "model cache revision mismatch (expected ${EXPECTED_MODEL_REVISION})" >&2
+if ! cmp -s <(printf '%s' "${EXPECTED_MODEL_REVISION}") "${MODEL_REF_FILE}"; then
+  echo "model cache refs/main is not the exact pinned revision (expected ${EXPECTED_MODEL_REVISION})" >&2
   exit 1
 fi
+MODEL_SNAPSHOT="${EXPECTED_MODEL_REVISION}"
 SNAPSHOT_DIR="${MODEL_DIR}/snapshots/${MODEL_SNAPSHOT}"
 if [[ ! -d "${SNAPSHOT_DIR}" ]]; then
   echo "model cache snapshot is unavailable: ${SNAPSHOT_DIR}" >&2

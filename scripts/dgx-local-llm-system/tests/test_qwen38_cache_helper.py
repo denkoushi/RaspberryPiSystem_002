@@ -35,7 +35,7 @@ class Qwen38CacheHelperTests(unittest.TestCase):
         snapshot = model_dir / "snapshots" / MODEL_REVISION
         (model_dir / "refs").mkdir(parents=True)
         snapshot.mkdir(parents=True)
-        (model_dir / "refs" / "main").write_text(f"{MODEL_REVISION}\n", encoding="utf-8")
+        (model_dir / "refs" / "main").write_text(MODEL_REVISION, encoding="utf-8")
         (snapshot / "model.safetensors.index.json").write_text(
             json.dumps({"weight_map": {"model.safetensors": "model.safetensors"}}),
             encoding="utf-8",
@@ -85,6 +85,40 @@ class Qwen38CacheHelperTests(unittest.TestCase):
             )
             self.assertEqual(verified.returncode, 0, verified.stderr)
             self.assertIn("ple_cache_ready=true upstream_prepare_recorded=true", verified.stdout)
+
+    def test_verify_rejects_noncanonical_refs_main_bytes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {**os.environ, **self._fixture(root)}
+            marker = (
+                root
+                / "home"
+                / ".cache"
+                / "vllm"
+                / "ple_cache"
+                / "Mia-AiLab--Qwen3.8-Flash-Next-NVFP4"
+                / ".qwen38-flash-next-ple-ready"
+            )
+            marker.write_text(
+                "recipe_revision=" + env["BLUE_QWEN38_RECIPE_REVISION"] + "\n"
+                + f"model_revision={MODEL_REVISION}\n"
+                + f"image={IMAGE}\n",
+                encoding="utf-8",
+            )
+            refs = (
+                root
+                / "hf-cache"
+                / "hub"
+                / "models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4"
+                / "refs"
+                / "main"
+            )
+            refs.write_text(f"{MODEL_REVISION}\n", encoding="utf-8")
+            rejected = subprocess.run(
+                [str(HELPER), "verify"], env=env, text=True, capture_output=True
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("exact pinned revision", rejected.stderr)
 
     def test_plan_reports_pinned_model_and_digest(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -156,7 +190,7 @@ class Qwen38CacheHelperTests(unittest.TestCase):
             )
             self.assertEqual(fetched.returncode, 0, fetched.stderr)
             self.assertEqual(
-                (refs / "main").read_text(encoding="utf-8"), f"{MODEL_REVISION}\n"
+                (refs / "main").read_bytes(), MODEL_REVISION.encode("utf-8")
             )
             docker_argv = docker_args.read_text(encoding="utf-8").splitlines()
             self.assertIn("--user", docker_argv)
