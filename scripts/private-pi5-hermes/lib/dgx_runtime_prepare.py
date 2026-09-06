@@ -7,6 +7,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+try:
+    from .tools_profile_constants import DEFAULT_TOOLS_BUSINESS_MODEL_PROFILE_ID
+except ImportError:
+    from tools_profile_constants import DEFAULT_TOOLS_BUSINESS_MODEL_PROFILE_ID
+
 
 def load_dgx_runtime_client(keep_warm_dir: str | Path | None = None):
     """Load dgx_runtime_client from host keep-warm dir (Ansible) or dev fallbacks."""
@@ -59,6 +64,11 @@ def dgx_config_from_env_file(
     values = parse_env_file(env_path)
     auto = values.get("DGX_RUNTIME_AUTO_START", "true").lower() in {"1", "true", "yes", "on"}
     model_profile_id = values.get("DGX_MODEL_PROFILE_ID", default_model_profile_id).strip()
+    ready_timeout_default = (
+        "1200"
+        if model_profile_id == DEFAULT_TOOLS_BUSINESS_MODEL_PROFILE_ID
+        else "600"
+    )
     return config_cls(
         base_url=values.get("DGX_BASE_URL", "http://100.118.82.72:38081").rstrip("/"),
         llm_shared_token=values.get("DGX_LLM_SHARED_TOKEN", values.get("OPENAI_API_KEY", "")),
@@ -66,7 +76,9 @@ def dgx_config_from_env_file(
         runtime_start_path=values.get("DGX_RUNTIME_START_PATH", "/start"),
         runtime_ready_path=values.get("DGX_RUNTIME_READY_PATH", "/v1/models"),
         upstream_timeout_sec=float(values.get("UPSTREAM_TIMEOUT_SEC", "45")),
-        ready_timeout_sec=float(values.get("DGX_RUNTIME_READY_TIMEOUT_SEC", "600")),
+        ready_timeout_sec=float(
+            values.get("DGX_RUNTIME_READY_TIMEOUT_SEC", ready_timeout_default)
+        ),
         ready_poll_sec=float(values.get("DGX_RUNTIME_READY_POLL_SEC", "1")),
         auto_start=auto,
         model_profile_id=model_profile_id,

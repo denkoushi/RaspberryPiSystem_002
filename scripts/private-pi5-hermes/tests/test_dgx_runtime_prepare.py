@@ -46,6 +46,25 @@ class DgxRuntimePrepareTests(unittest.TestCase):
                 default_model_profile_id=TOOLS_BUSINESS_MODEL_PROFILE_ID,
             )
             self.assertEqual(config.model_profile_id, TOOLS_BUSINESS_MODEL_PROFILE_ID)
+            self.assertEqual(config.ready_timeout_sec, 1200)
+
+    def test_dgx_config_from_env_file_keeps_legacy_timeout_for_other_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            keep_warm = Path(tmp) / "dgx-keep-warm"
+            keep_warm.mkdir()
+            client_src = _BRIDGE_ROOT / "dgx_runtime_client.py"
+            (keep_warm / "dgx_runtime_client.py").write_text(
+                client_src.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            env_path = Path(tmp) / ".env"
+            env_path.write_text("OPENAI_API_KEY=token\n", encoding="utf-8")
+            config = dgx_config_from_env_file(
+                env_path,
+                keep_warm_dir=keep_warm,
+                default_model_profile_id="qwen36_35b_uncensored",
+            )
+            self.assertEqual(config.ready_timeout_sec, 600)
 
     def test_dgx_config_from_env_file_prefers_env_profile_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
