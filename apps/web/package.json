@@ -12,6 +12,8 @@
     "test:coverage": "vitest run --coverage --coverage.provider=v8"
   },
   "dependencies": {
+    "@chatscope/chat-ui-kit-react": "^2.0.3",
+    "@chatscope/chat-ui-kit-styles": "^1.4.0",
     "@digital-go-jp/design-tokens": "1.1.9",
     "@raspi-system/kiosk-sop-core": "workspace:*",
     "@raspi-system/part-search-core": "workspace:*",

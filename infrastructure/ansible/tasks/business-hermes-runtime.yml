@@ -66,6 +66,8 @@
     business_hermes_candidate_env_expected_service_lines:
       - "BUSINESS_HERMES_PROVIDER={{ business_hermes_provider | default('dgx') }}"
       - "BUSINESS_HERMES_TIMEOUT_MS={{ api_business_hermes_timeout_ms | default(8000) }}"
+      - "BUSINESS_HERMES_CHAT_TIMEOUT_MS={{ api_business_hermes_chat_timeout_ms | default(60000) }}"
+      - "BUSINESS_HERMES_EGRESS_TIMEOUT_MS={{ business_hermes_egress_timeout_ms | default(60000) }}"
       - "BUSINESS_HERMES_RUNTIME_ENV_FILE={{ business_hermes_runtime_env_file }}"
       - "BUSINESS_HERMES_CONFIG_FILE={{ business_hermes_config_target_file }}"
   no_log: true
@@ -408,6 +410,8 @@
     - { key: BUSINESS_HERMES_API_KEY, value: "{{ api_business_hermes_api_key }}" }
     - { key: BUSINESS_HERMES_MODEL, value: "{{ api_business_hermes_model }}" }
     - { key: BUSINESS_HERMES_TIMEOUT_MS, value: "{{ api_business_hermes_timeout_ms | default(8000) }}" }
+    - { key: BUSINESS_HERMES_CHAT_TIMEOUT_MS, value: "{{ api_business_hermes_chat_timeout_ms | default(60000) }}" }
+    - { key: BUSINESS_HERMES_EGRESS_TIMEOUT_MS, value: "{{ business_hermes_egress_timeout_ms | default(60000) }}" }
     - { key: BUSINESS_HERMES_ENABLED, value: 'true' }
     - { key: BUSINESS_HERMES_RUNTIME_ENV_FILE, value: "{{ business_hermes_runtime_env_file }}" }
     - { key: BUSINESS_HERMES_CONFIG_FILE, value: "{{ business_hermes_config_target_file }}" }

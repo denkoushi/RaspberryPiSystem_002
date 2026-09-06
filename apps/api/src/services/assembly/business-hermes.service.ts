@@ -42,6 +42,7 @@ type BusinessHermesConfig = {
   apiKey?: string;
   model?: string;
   timeoutMs: number;
+  chatTimeoutMs?: number;
 };
 
 type FetchLike = typeof fetch;
@@ -61,6 +62,30 @@ type AssistantOutput = {
   targetKey: BusinessHermesTargetKey | null;
 };
 
+export type BusinessHermesChatMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+};
+
+export type BusinessHermesChatResult = {
+  status: 'ready' | 'unavailable';
+  message: string | null;
+  reasonCode?: string;
+};
+
+export type BusinessHermesChatIntent = {
+  scope: 'nonconformity' | 'work_instruction' | 'both' | 'unknown';
+  partNumber: string | null;
+  shootingTarget: string | null;
+  clarificationQuestion: string | null;
+};
+
+export type BusinessHermesChatIntentResult = {
+  status: 'ready' | 'unavailable';
+  intent: BusinessHermesChatIntent | null;
+  reasonCode?: string;
+};
+
 type ProcedurePageOcrInput = {
   documentId: string;
   pageIndex: number;
@@ -72,6 +97,9 @@ type ProcedurePageOcr = (input: ProcedurePageOcrInput) => Promise<string>;
 
 const MAX_PROCEDURE_BODY_CHARS = 12_000;
 const MAX_ASSISTANT_MESSAGE_CHARS = 360;
+const MAX_CHAT_USER_MESSAGE_CHARS = 2_000;
+const MAX_CHAT_RESPONSE_CHARS = 2_000;
+const MAX_CHAT_SYSTEM_MESSAGE_CHARS = 32_000;
 const MAX_PROACTIVE_IN_FLIGHT = 2;
 const PROCEDURE_PAGE_OCR_TIMEOUT_MS = 12_000;
 const PROCEDURE_PAGE_OCR_CACHE_LIMIT = 8;
@@ -91,7 +119,8 @@ const safeConfig = (): BusinessHermesConfig => ({
   baseUrl: env.BUSINESS_HERMES_BASE_URL,
   apiKey: env.BUSINESS_HERMES_API_KEY,
   model: env.BUSINESS_HERMES_MODEL,
-  timeoutMs: env.BUSINESS_HERMES_TIMEOUT_MS
+  timeoutMs: env.BUSINESS_HERMES_TIMEOUT_MS,
+  chatTimeoutMs: env.BUSINESS_HERMES_CHAT_TIMEOUT_MS
 });
 
 function isConfigured(config: BusinessHermesConfig): config is Required<BusinessHermesConfig> {
@@ -239,6 +268,40 @@ function readAssistantContent(payload: unknown): unknown {
   return (message as { content?: unknown }).content;
 }
 
+function safeChatMessage(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.replace(/\s+/g, ' ').trim().slice(0, MAX_CHAT_RESPONSE_CHARS);
+  if (!normalized) return null;
+  if (/bearer\s|x-llm-token|api[-_ ]?key|secret|password|token\s*[:=]/i.test(normalized)) {
+    return null;
+  }
+  if (/[A-Za-z0-9+/]{32,}={0,2}/.test(normalized)) return null;
+  return normalized;
+}
+
+function safeIntentText(value: unknown, maxChars: number): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.replace(/\s+/g, ' ').trim().slice(0, maxChars);
+  if (!normalized || /bearer\s|x-llm-token|api[-_ ]?key|secret|password|token\s*[:=]/i.test(normalized)) return null;
+  return normalized;
+}
+
+function parseChatIntent(raw: unknown): BusinessHermesChatIntent | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const parsed = raw as Record<string, unknown>;
+  const scope = parsed.scope;
+  if (scope !== 'nonconformity' && scope !== 'work_instruction' && scope !== 'both' && scope !== 'unknown') return null;
+  const partNumber = parsed.partNumber === null || parsed.partNumber === undefined ? null : safeIntentText(parsed.partNumber, 200);
+  const shootingTarget = parsed.shootingTarget === null || parsed.shootingTarget === undefined ? null : safeIntentText(parsed.shootingTarget, 200);
+  const clarificationQuestion = parsed.clarificationQuestion === null || parsed.clarificationQuestion === undefined
+    ? null
+    : safeIntentText(parsed.clarificationQuestion, 240);
+  if (parsed.partNumber !== null && parsed.partNumber !== undefined && partNumber === null) return null;
+  if (parsed.shootingTarget !== null && parsed.shootingTarget !== undefined && shootingTarget === null) return null;
+  if (parsed.clarificationQuestion !== null && parsed.clarificationQuestion !== undefined && clarificationQuestion === null) return null;
+  return { scope, partNumber, shootingTarget, clarificationQuestion };
+}
+
 function buildPrompt(input: {
   eventCode: BusinessHermesEventCode;
   session: {
@@ -294,6 +357,11 @@ export class BusinessHermesService {
 
   private get config(): BusinessHermesConfig {
     return this.deps.config ?? safeConfig();
+  }
+
+  private get chatConfig(): BusinessHermesConfig {
+    const config = this.config;
+    return { ...config, timeoutMs: config.chatTimeoutMs ?? config.timeoutMs };
   }
 
   private get sessionService(): AssemblyWorkSessionService {
@@ -478,6 +546,164 @@ export class BusinessHermesService {
         logger.warn({ reasonCode: 'HERMES_UPSTREAM_UNAVAILABLE', sessionId: input.sessionId }, 'Business Hermes request unavailable');
       }
       return this.unavailable(input, evidence, error instanceof Error && error.name === 'AbortError' ? 'HERMES_TIMEOUT' : 'HERMES_UPSTREAM_UNAVAILABLE');
+    } finally {
+      if (runtimeHeld && runtime) {
+        await runtime.release('business_hermes').catch(() => {
+          logger.warn({ reasonCode: 'BUSINESS_HERMES_RUNTIME_RELEASE_FAILED' }, 'Business Hermes runtime release failed');
+        });
+      }
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+
+  /**
+   * Shared chat entry point for the operator overlay. The caller supplies a
+   * server-built system message and bounded conversation; this method only
+   * talks to the configured Business Hermes instance and never persists chat.
+   */
+  async chat(input: { messages: BusinessHermesChatMessage[] }): Promise<BusinessHermesChatResult> {
+    const config = this.chatConfig;
+    if (!isConfigured(config)) return { status: 'unavailable', message: null, reasonCode: 'HERMES_NOT_CONFIGURED' };
+
+    const messages = input.messages
+      .map((message) => ({
+        role: message.role,
+        content: message.role === 'system'
+          ? message.content.trim().slice(0, MAX_CHAT_SYSTEM_MESSAGE_CHARS)
+          : message.content.trim().slice(0, MAX_CHAT_USER_MESSAGE_CHARS)
+      }))
+      .filter((message) => message.content.length > 0);
+    if (messages.length === 0) return { status: 'unavailable', message: null, reasonCode: 'HERMES_EMPTY_REQUEST' };
+
+    const fetchImpl = this.deps.fetchImpl ?? fetch;
+    const runtime = config.provider === 'dgx' ? this.localLlmRuntime : null;
+    let runtimeHeld = false;
+    let requestController: AbortController | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (runtime) {
+        await runtime.ensureReady('business_hermes');
+        runtimeHeld = true;
+      }
+      requestController = new AbortController();
+      timeout = setTimeout(() => requestController?.abort(), config.timeoutMs);
+      const response = await fetchImpl(new URL('/v1/chat/completions', config.baseUrl), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.apiKey}`
+        },
+        body: JSON.stringify({
+          model: config.model,
+          temperature: 0.2,
+          max_tokens: 700,
+          ...(config.provider === 'dgx'
+            ? { model_options: { reasoning: { enabled: true, effort: 'medium' } } }
+            : {}),
+          messages
+        }),
+        signal: requestController.signal
+      });
+      if (!response.ok) return { status: 'unavailable', message: null, reasonCode: 'HERMES_UPSTREAM_UNAVAILABLE' };
+      const message = safeChatMessage(readAssistantContent(await response.json()));
+      if (!message) return { status: 'unavailable', message: null, reasonCode: 'HERMES_RESPONSE_INVALID' };
+      return { status: 'ready', message };
+    } catch (error) {
+      if (!(error instanceof Error && error.name === 'AbortError')) {
+        logger.warn({ reasonCode: 'HERMES_UPSTREAM_UNAVAILABLE' }, 'Business Hermes chat request unavailable');
+      }
+      return {
+        status: 'unavailable',
+        message: null,
+        reasonCode: error instanceof Error && error.name === 'AbortError' ? 'HERMES_TIMEOUT' : 'HERMES_UPSTREAM_UNAVAILABLE'
+      };
+    } finally {
+      if (runtimeHeld && runtime) {
+        await runtime.release('business_hermes').catch(() => {
+          logger.warn({ reasonCode: 'BUSINESS_HERMES_RUNTIME_RELEASE_FAILED' }, 'Business Hermes runtime release failed');
+        });
+      }
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+
+  /**
+   * Extracts the current operator request as strict JSON. Only caller-supplied
+   * user turns should be passed here; the caller validates identifiers before
+   * using them for any business-data lookup.
+   */
+  async classifyChat(input: { messages: BusinessHermesChatMessage[] }): Promise<BusinessHermesChatIntentResult> {
+    const config = this.chatConfig;
+    if (!isConfigured(config)) return { status: 'unavailable', intent: null, reasonCode: 'HERMES_NOT_CONFIGURED' };
+    const messages = input.messages
+      .filter((message) => message.role === 'user')
+      .slice(-12)
+      .map((message, index, all) => ({
+        role: 'user' as const,
+        content: `${index === all.length - 1 ? '[LATEST_USER_TURN]\n' : ''}${message.content.trim().slice(0, 4_000)}`
+      }))
+      .filter((message) => message.content.length > 0);
+    if (messages.length === 0) return { status: 'unavailable', intent: null, reasonCode: 'HERMES_EMPTY_REQUEST' };
+
+    const fetchImpl = this.deps.fetchImpl ?? fetch;
+    const runtime = config.provider === 'dgx' ? this.localLlmRuntime : null;
+    let runtimeHeld = false;
+    let requestController: AbortController | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (runtime) {
+        await runtime.ensureReady('business_hermes');
+        runtimeHeld = true;
+      }
+      requestController = new AbortController();
+      timeout = setTimeout(() => requestController?.abort(), config.timeoutMs);
+      const response = await fetchImpl(new URL('/v1/chat/completions', config.baseUrl), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.apiKey}`
+        },
+        body: JSON.stringify({
+          model: config.model,
+          temperature: 0,
+          max_tokens: 256,
+          response_format: { type: 'json_object' },
+          ...(config.provider === 'dgx'
+            ? { model_options: { reasoning: { enabled: true, effort: 'medium' } } }
+            : {}),
+          messages: [
+            {
+              role: 'system',
+              content: 'ユーザーの最新発言を優先して、業務検索意図をJSONだけで抽出してください。assistant発言は入力されません。scopeは不適合ならnonconformity、作業要領や写真ならwork_instruction、両方ならboth、判定不能ならunknown。partNumberとshootingTargetはユーザーが文字列として明示した場合だけ返し、推測・補完・過去の別品番からの引継ぎは禁止です。最新発言で新しい品番が示された場合、対象は最新発言に明示された場合だけ返してください。聞き返しへの回答で不足項目だけが示された場合は、直前までの同一会話の明示値を補完してよいですが、別品番の対象を引き継がないでください。値がない場合はnull。clarificationQuestionは不足・曖昧な場合の日本語の短い聞き返し、十分ならnull。形式は {"scope":"nonconformity|work_instruction|both|unknown","partNumber":string|null,"shootingTarget":string|null,"clarificationQuestion":string|null}。'
+            },
+            ...messages
+          ]
+        }),
+        signal: requestController.signal
+      });
+      if (!response.ok) return { status: 'unavailable', intent: null, reasonCode: 'HERMES_UPSTREAM_UNAVAILABLE' };
+      const content = readAssistantContent(await response.json());
+      if (typeof content !== 'string') return { status: 'unavailable', intent: null, reasonCode: 'HERMES_RESPONSE_INVALID' };
+      const candidate = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(candidate);
+      } catch {
+        return { status: 'unavailable', intent: null, reasonCode: 'HERMES_RESPONSE_INVALID' };
+      }
+      const intent = parseChatIntent(parsed);
+      return intent
+        ? { status: 'ready', intent }
+        : { status: 'unavailable', intent: null, reasonCode: 'HERMES_RESPONSE_INVALID' };
+    } catch (error) {
+      if (!(error instanceof Error && error.name === 'AbortError')) {
+        logger.warn({ reasonCode: 'HERMES_UPSTREAM_UNAVAILABLE' }, 'Business Hermes intent request unavailable');
+      }
+      return {
+        status: 'unavailable',
+        intent: null,
+        reasonCode: error instanceof Error && error.name === 'AbortError' ? 'HERMES_TIMEOUT' : 'HERMES_UPSTREAM_UNAVAILABLE'
+      };
     } finally {
       if (runtimeHeld && runtime) {
         await runtime.release('business_hermes').catch(() => {

@@ -604,6 +604,60 @@ export async function getBusinessHermesAssemblyGuide(
   return data;
 }
 
+export type BusinessHermesChatScope = 'nonconformity' | 'work_instruction' | 'both';
+
+export type BusinessHermesChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+export type BusinessHermesChatEvidence = {
+  kind: 'nonconformity' | 'work_instruction';
+  id: string;
+  title: string;
+  partNumber: string;
+  shootingTarget?: string;
+  step?: number;
+  text: string;
+  imageUrl?: string;
+  imageMimeType?: string;
+};
+
+export type BusinessHermesChatRequest = {
+  scope?: BusinessHermesChatScope;
+  partNumber?: string;
+  shootingTarget?: string;
+  messages: BusinessHermesChatMessage[];
+};
+
+export type BusinessHermesChatResponse = {
+  status: 'ready' | 'unavailable';
+  message: string | null;
+  reasonCode?: string;
+  evidence: BusinessHermesChatEvidence[];
+  partNumber: string | null;
+  shootingTarget: string | null;
+  needsClarification: boolean;
+  clarificationMessage: string | null;
+};
+
+// The common web client timeout is 120s, but one chat request can perform
+// intent extraction and answer generation sequentially. Keep this UI wait
+// bound separate; cancellation through the caller's signal remains effective.
+const BUSINESS_HERMES_CHAT_HTTP_TIMEOUT_MS = 600_000;
+
+export async function sendBusinessHermesChat(
+  payload: BusinessHermesChatRequest,
+  signal?: AbortSignal
+): Promise<BusinessHermesChatResponse> {
+  const { data } = await api.post<BusinessHermesChatResponse>(
+    '/assembly/business-hermes/chat',
+    payload,
+    { signal, timeout: BUSINESS_HERMES_CHAT_HTTP_TIMEOUT_MS }
+  );
+  return data;
+}
+
 export type BusinessHermesProactiveSuggestion = {
   id: string;
   sessionId: string;
