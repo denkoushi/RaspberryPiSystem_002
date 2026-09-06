@@ -3,6 +3,7 @@ import json
 import sys
 import threading
 import unittest
+import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -292,6 +293,158 @@ class ControlServerTests(unittest.TestCase):
             resource_saved = json.loads(resource_state_path.read_text(encoding="utf-8"))
             self.assertEqual(resource_saved["owner"], "business")
 
+    def test_business_restore_validates_active_business_profile_before_stopping(self):
+        module = load_module()
+        cases = (
+            {
+                "name": "business",
+                "profile": {
+                    "modelProfileId": "business_qwen38_flash_next_nvfp4",
+                    "displayNameJa": "Business",
+                    "backend": "blue",
+                    "currentStorageLocation": "storage",
+                    "businessOrchestrationEligible": True,
+                    "enabled": True,
+                },
+                "state": {"modelProfileId": "business_qwen38_flash_next_nvfp4", "backend": "blue"},
+                "expected_status": 200,
+                "expected_calls": ["green-stop", "blue-start"],
+            },
+            {
+                "name": "private",
+                "profile": {
+                    "modelProfileId": "private_profile",
+                    "displayNameJa": "Private",
+                    "backend": "green",
+                    "currentStorageLocation": "storage",
+                    "businessOrchestrationEligible": False,
+                    "enabled": True,
+                },
+                "state": {"modelProfileId": "private_profile", "backend": "green"},
+                "expected_status": 503,
+                "expected_calls": [],
+            },
+            {
+                "name": "backend-mismatch",
+                "profile": {
+                    "modelProfileId": "business_profile",
+                    "displayNameJa": "Business",
+                    "backend": "blue",
+                    "currentStorageLocation": "storage",
+                    "businessOrchestrationEligible": True,
+                    "enabled": True,
+                },
+                "state": {"modelProfileId": "business_profile", "backend": "green"},
+                "expected_status": 503,
+                "expected_calls": [],
+            },
+            {
+                "name": "disabled",
+                "profile": {
+                    "modelProfileId": "disabled_profile",
+                    "displayNameJa": "Disabled",
+                    "backend": "blue",
+                    "currentStorageLocation": "storage",
+                    "businessOrchestrationEligible": True,
+                    "enabled": False,
+                },
+                "state": {"modelProfileId": "disabled_profile", "backend": "blue"},
+                "expected_status": 503,
+                "expected_calls": [],
+            },
+            {
+                "name": "missing-state",
+                "profile": None,
+                "state": None,
+                "expected_status": 503,
+                "expected_calls": [],
+            },
+            {
+                "name": "corrupt-state",
+                "profile": None,
+                "state": "{not-json",
+                "expected_status": 503,
+                "expected_calls": [],
+            },
+        )
+        for case in cases:
+            with self.subTest(case=case["name"]), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "registry"
+                storage = Path(tmp) / "storage"
+                storage.mkdir(parents=True)
+                profile = case["profile"]
+                if profile is not None:
+                    profile = dict(profile)
+                    profile["currentStorageLocation"] = str(storage)
+                    manifest_dir = root / profile["modelProfileId"]
+                    manifest_dir.mkdir(parents=True)
+                    (manifest_dir / "manifest.json").write_text(json.dumps(profile), encoding="utf-8")
+                else:
+                    root.mkdir(parents=True)
+                state_path = Path(tmp) / "state" / "active-model-profile.json"
+                state_path.parent.mkdir(parents=True)
+                if case["state"] is not None:
+                    state = case["state"]
+                    state_path.write_text(
+                        state if isinstance(state, str) else json.dumps(
+                            {
+                                "activeProfileId": state["modelProfileId"],
+                                "modelProfileId": state["modelProfileId"],
+                                "displayNameJa": "State",
+                                "backend": state["backend"],
+                                "servedAlias": "system-prod-primary",
+                                "stateUpdatedAt": "2026-09-06T00:00:00Z",
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                config = module.ControlConfig(
+                    token="runtime-token",
+                    active_backend="green",
+                    start_cmd="legacy-start",
+                    stop_cmd="legacy-stop",
+                    green_start_cmd="green-start",
+                    green_stop_cmd="green-stop",
+                    blue_start_cmd="blue-start",
+                    blue_stop_cmd="blue-stop",
+                    blue_stop_mode="on_demand",
+                    host="127.0.0.1",
+                    port=39090,
+                    model_registry_root=str(root),
+                    active_model_state_path=str(state_path),
+                    resource_state_path=str(Path(tmp) / "state" / "resource.json"),
+                )
+                calls: list[str] = []
+                handler = module.make_handler(config, command_runner=lambda cmd, extra_env=None: append_command(calls, cmd, extra_env))
+                httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+                thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+                thread.start()
+                request = urllib.request.Request(
+                    f"http://127.0.0.1:{httpd.server_port}/start",
+                    data=json.dumps({"reason": "business-restore"}).encode(),
+                    method="POST",
+                    headers={"X-Runtime-Control-Token": "runtime-token", "Content-Type": "application/json"},
+                )
+                try:
+                    if case["expected_status"] == 200:
+                        with urllib.request.urlopen(request, timeout=5) as response:
+                            payload = json.loads(response.read().decode("utf-8"))
+                        self.assertEqual(payload["modelProfile"]["activeProfileId"], profile["modelProfileId"])
+                        self.assertEqual(payload["resourceState"]["owner"], "business")
+                    else:
+                        with self.assertRaises(urllib.error.HTTPError) as raised:
+                            urllib.request.urlopen(request, timeout=5)
+                        self.assertEqual(case["expected_status"], raised.exception.code)
+                        self.assertEqual(
+                            "BUSINESS_RESTORE_UNAVAILABLE",
+                            json.loads(raised.exception.read().decode("utf-8"))["code"],
+                        )
+                finally:
+                    httpd.shutdown()
+                    httpd.server_close()
+                    thread.join(timeout=5)
+                self.assertEqual(calls, case["expected_calls"])
+
     def test_http_handler_private_model_profile_writes_private_owner(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -341,7 +494,12 @@ class ControlServerTests(unittest.TestCase):
             try:
                 start_req = urllib.request.Request(
                     f"{base_url}/start",
-                    data=json.dumps({"modelProfileId": "qwen36_35b_uncensored"}).encode(),
+                    data=json.dumps(
+                        {
+                            "modelProfileId": "qwen36_35b_uncensored",
+                            "reason": "business-restore",
+                        }
+                    ).encode(),
                     method="POST",
                     headers={"X-Runtime-Control-Token": "runtime-token", "Content-Type": "application/json"},
                 )

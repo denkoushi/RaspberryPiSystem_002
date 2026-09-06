@@ -48,7 +48,12 @@ from dgx_llm_single_active_guard import (  # noqa: E402
     validate_both_backend_stops_configured,
 )
 from active_model_state import active_model_state_to_api, read_active_model_state, write_active_model_state  # noqa: E402
-from model_profiles import ModelProfileError, validate_startable_profile  # noqa: E402
+from model_profiles import (  # noqa: E402
+    BusinessRestoreUnavailableError,
+    ModelProfileError,
+    ModelProfile,
+    validate_startable_profile,
+)
 from profile_launcher import launcher_env_for_profile  # noqa: E402
 from resource_state import infer_owner_from_profile, state_to_api, write_resource_state  # noqa: E402
 from vision_readiness import assess_runtime_readiness  # noqa: E402
@@ -200,6 +205,36 @@ def _string_body_value(body: dict[str, object], key: str) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
+def resolve_start_profile(
+    config: ControlConfig,
+    model_profile_id: object,
+    reason: str | None,
+) -> ModelProfile | None:
+    """Resolve an explicit profile or a validated business restore profile.
+
+    Legacy profile-less starts keep their environment fallback.  The restore
+    marker is the only path allowed to consult the last profile state, and it
+    fails closed unless that state still names an available business profile.
+    """
+    if isinstance(model_profile_id, str) and model_profile_id.strip():
+        return validate_startable_profile(config.model_registry_root, model_profile_id.strip())
+    if reason != "business-restore":
+        return None
+
+    try:
+        state = read_active_model_state(config.active_model_state_path)
+        if state is None:
+            raise BusinessRestoreUnavailableError("business restore profile state is unavailable")
+        profile = validate_startable_profile(config.model_registry_root, state.model_profile_id)
+    except BusinessRestoreUnavailableError:
+        raise
+    except (ModelProfileError, OSError, ValueError) as error:
+        raise BusinessRestoreUnavailableError("business restore profile is unavailable") from error
+    if not profile.business_orchestration_eligible or profile.backend != state.backend:
+        raise BusinessRestoreUnavailableError("business restore profile is not eligible")
+    return profile
+
+
 def write_resource_state_best_effort(
     config: ControlConfig,
     *,
@@ -268,10 +303,9 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     body = read_json_body(self)
                     model_profile_id = body.get("modelProfileId")
                     reason = _string_body_value(body, "reason")
-                    profile = None
+                    profile = resolve_start_profile(config, model_profile_id, reason)
                     start_backend = config.active_backend
-                    if isinstance(model_profile_id, str) and model_profile_id.strip():
-                        profile = validate_startable_profile(config.model_registry_root, model_profile_id.strip())
+                    if profile is not None:
                         start_backend = profile.backend
                     if single_active_guard_enabled():
                         hard_stop = resolve_hard_stop_for_backend(

@@ -506,7 +506,7 @@ class GatewayServerTests(unittest.TestCase):
 
             start_req = urllib.request.Request(
                 f"{base_url}/start",
-                data=b"",
+                data=json.dumps({"reason": "business-restore"}).encode("utf-8"),
                 method="POST",
                 headers={"X-Runtime-Control-Token": "runtime-token"},
             )
@@ -586,6 +586,7 @@ class GatewayServerTests(unittest.TestCase):
         self.assertIn("http://127.0.0.1:5555/agent-health", urls)
         start_call = next(c for c in calls if c[1] == "http://control:39090/start")
         self.assertEqual(start_call[3]["X-Runtime-Control-Token"], "runtime-token")
+        self.assertEqual(json.loads(start_call[2].decode("utf-8")), {"reason": "business-restore"})
 
 
 if __name__ == "__main__":
