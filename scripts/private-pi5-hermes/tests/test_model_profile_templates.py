@@ -91,6 +91,18 @@ class ModelProfileTemplateTests(unittest.TestCase):
     def test_keep_warm_systemd_timeout_covers_readiness_default(self) -> None:
         default = _render(KEEP_WARM_SERVICE_TEMPLATE)
         self.assertIn("TimeoutStartSec=1350", default)
+        common = _render(
+            KEEP_WARM_SERVICE_TEMPLATE,
+            private_pi5_dgx_runtime_ready_timeout_sec=1800,
+            private_pi5_upstream_timeout_sec=90,
+        )
+        self.assertIn("TimeoutStartSec=2040", common)
+        dedicated = _render(
+            KEEP_WARM_SERVICE_TEMPLATE,
+            private_pi5_hermes_dgx_keep_warm_runtime_ready_timeout_sec=2000,
+            private_pi5_upstream_timeout_sec=90,
+        )
+        self.assertIn("TimeoutStartSec=2240", dedicated)
         overridden = _render(
             KEEP_WARM_SERVICE_TEMPLATE,
             private_pi5_hermes_dgx_keep_warm_timeout_start_sec=1500,

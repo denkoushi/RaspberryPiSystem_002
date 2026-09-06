@@ -49,12 +49,12 @@ all:
       private_pi5_dgx_runtime_ready_timeout_sec: 600
       private_pi5_dgx_runtime_ready_poll_sec: 1
       # Hermes Business Qwen3.8 cold start: keep the shared StackChan default above at 600.
-      # Override these only when an operator needs a different Hermes readiness window.
-      # private_pi5_hermes_tools_runtime_ready_timeout_sec: 1200
-      # private_pi5_hermes_research_runtime_ready_timeout_sec: 1200
-      # private_pi5_hermes_dgx_keep_warm_runtime_ready_timeout_sec: 1200
-      # keep-warm unit margin: 1200s readiness + 2*45s HTTP + 60s slack.
-      # private_pi5_hermes_dgx_keep_warm_timeout_start_sec: 1350
+      private_pi5_hermes_tools_runtime_ready_timeout_sec: 1200
+      private_pi5_hermes_research_runtime_ready_timeout_sec: 1200
+      private_pi5_hermes_dgx_keep_warm_runtime_ready_timeout_sec: 1200
+      # The keep-warm unit timeout defaults to readiness + 2*HTTP timeout + 60s slack.
+      # Set this only when an explicit systemd start deadline is required.
+      # private_pi5_hermes_dgx_keep_warm_timeout_start_sec: 1500
 
       # 任意: StackChan -> bridge の簡易認証
       private_pi5_stackchan_token: ""
