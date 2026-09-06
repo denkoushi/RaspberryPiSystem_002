@@ -21,6 +21,7 @@ _VLLM_RUNTIME_ENV_MAP: dict[str, str] = {
     "gpuMemoryUtilization": "VLLM_GPU_MEMORY_UTILIZATION",
     "maxModelLen": "VLLM_MAX_MODEL_LEN",
     "maxNumSeqs": "VLLM_MAX_NUM_SEQS",
+    "schedulingPolicy": "VLLM_SCHEDULING_POLICY",
     "maxNumBatchedTokens": "VLLM_MAX_NUM_BATCHED_TOKENS",
     "kvCacheDtype": "VLLM_KV_CACHE_DTYPE",
     "languageModelOnly": "VLLM_LANGUAGE_MODEL_ONLY",

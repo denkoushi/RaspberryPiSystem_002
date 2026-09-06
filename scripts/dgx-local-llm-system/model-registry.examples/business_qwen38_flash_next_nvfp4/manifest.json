@@ -23,7 +23,8 @@
     "guaranteeLevel": "strict_ready_when_orchestrated",
     "vllm": {
       "maxModelLen": 262144,
-      "maxNumSeqs": 4,
+      "maxNumSeqs": 1,
+      "schedulingPolicy": "priority",
       "maxNumBatchedTokens": 2048,
       "gpuMemoryUtilization": 0.71,
       "kvCacheDtype": "fp8",

@@ -41,7 +41,6 @@ def create_adapter_fixture(root: Path, start_contents: str) -> tuple[Path, dict[
         "BLUE_QWEN38_RECIPE_REVISION": revision,
         "VLLM_SERVED_MODEL_NAME": "system-prod-primary",
         "VLLM_MAX_MODEL_LEN": "262144",
-        "VLLM_MAX_NUM_SEQS": "4",
         "VLLM_MAX_NUM_BATCHED_TOKENS": "2048",
         "VLLM_KV_CACHE_DTYPE": "fp8",
         "BLUE_EXTRA_DOCKER_ARGS": "--ipc host",
@@ -80,12 +79,20 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture = root / "capture"
+            args_capture = root / "args-capture"
+            args_count_capture = root / "args-count-capture"
             boundary_path_capture = root / "boundary-path-capture"
             boundary_source_capture = root / "boundary-source-capture"
             start_contents = (
                 "#!/usr/bin/env bash\n"
                 "set -euo pipefail\n"
-                "printf '%s\\n' \"$TP1_MODEL_ID|$TP1_CONTAINER_NAME|$IMAGE|$SERVED_MODEL_NAME|$HF_HOME|$PORT|$MAX_MODEL_LEN|$MAX_NUM_SEQS|$MAX_NUM_BATCHED_TOKENS|$KV_CACHE_DTYPE|$PLE_OFFLOAD|$COMPILATION_MODE|$GPU_MEMORY_UTILIZATION|$EXTRA_DOCKER_ARGS\" > \"$CAPTURE\"\n"
+                "printf '%s\\n' \"$TP1_MODEL_ID|$TP1_CONTAINER_NAME|$IMAGE|$SERVED_MODEL_NAME|$HF_HOME|$PORT|$MAX_MODEL_LEN|$MAX_NUM_SEQS|$MAX_NUM_BATCHED_TOKENS|$KV_CACHE_DTYPE|$PLE_OFFLOAD|$COMPILATION_MODE|$GPU_MEMORY_UTILIZATION|$EXTRA_VLLM_ARGS|$EXTRA_DOCKER_ARGS\" > \"$CAPTURE\"\n"
+                "VLLM_ARGS=()\n"
+                "VLLM_ARGS+=(\"$EXTRA_VLLM_ARGS\")\n"
+                "VLLM_ARGS_STR=\"${VLLM_ARGS[*]}\"\n"
+                "set -- $VLLM_ARGS_STR\n"
+                "printf '%s\\n' \"$#\" > \"$ARGS_COUNT_CAPTURE\"\n"
+                "printf '%s\\n' \"$@\" > \"$ARGS_CAPTURE\"\n"
                 "printf '%s' \"$BASH_SOURCE\" > \"$BOUNDARY_PATH_CAPTURE\"\n"
                 "cat \"$BASH_SOURCE\" > \"$BOUNDARY_SOURCE_CAPTURE\"\n"
                 "cat <<'UPSTREAM_LAUNCH'\n"
@@ -101,6 +108,8 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
             original_start = (recipe / "start.sh").read_text(encoding="utf-8")
             env.update({
                 "CAPTURE": str(capture),
+                "ARGS_CAPTURE": str(args_capture),
+                "ARGS_COUNT_CAPTURE": str(args_count_capture),
                 "BOUNDARY_PATH_CAPTURE": str(boundary_path_capture),
                 "BOUNDARY_SOURCE_CAPTURE": str(boundary_source_capture),
             })
@@ -109,7 +118,12 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
                 capture.read_text(encoding="utf-8").strip(),
                 "Mia-AiLab/Qwen3.8-Flash-Next-NVFP4|system-prod-trtllm|"
                 "vllm/vllm-openai:qwen38-flash-next|system-prod-primary|"
-                f"{root / 'hf-cache'}|38083|262144|4|2048|fp8|true|0|0.71|--ipc host",
+                f"{root / 'hf-cache'}|38083|262144|1|2048|fp8|true|0|0.71|--scheduling-policy priority|--ipc host",
+            )
+            self.assertEqual(args_count_capture.read_text(encoding="utf-8").strip(), "2")
+            self.assertEqual(
+                args_capture.read_text(encoding="utf-8").splitlines(),
+                ["--scheduling-policy", "priority"],
             )
             generated_start = Path(boundary_path_capture.read_text(encoding="utf-8"))
             generated_source = boundary_source_capture.read_text(encoding="utf-8")
@@ -128,6 +142,24 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("expected exactly one pinned host bind line, found 0", result.stderr)
             self.assertEqual(list(recipe.glob(".business-qwen38-boundary-start.*")), [])
+
+    def test_adapter_rejects_non_serial_max_num_seqs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            recipe, env = create_adapter_fixture(root, "#!/usr/bin/env bash\nexit 0\n")
+            env["VLLM_MAX_NUM_SEQS"] = "4"
+            result = subprocess.run([str(ADAPTER)], env={**os.environ, **env}, text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("requires max_num_seqs=1", result.stderr)
+
+    def test_adapter_rejects_non_priority_scheduling_policy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            recipe, env = create_adapter_fixture(root, "#!/usr/bin/env bash\nexit 0\n")
+            env["VLLM_SCHEDULING_POLICY"] = "fcfs"
+            result = subprocess.run([str(ADAPTER)], env={**os.environ, **env}, text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("requires priority scheduling", result.stderr)
 
     def test_adapter_rejects_ambiguous_pinned_host_bind_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
