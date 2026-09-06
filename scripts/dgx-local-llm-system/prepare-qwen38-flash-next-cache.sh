@@ -100,6 +100,7 @@ print(path)'
         return 1
       }
       docker run --rm \
+        --user "$(id -u):$(id -g)" \
         --env HF_HOME=/hf \
         --env HF_TOKEN="${HF_TOKEN:-}" \
         --volume "${HF_CACHE_DIR}:/hf" \
