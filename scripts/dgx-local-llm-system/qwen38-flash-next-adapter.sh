@@ -85,6 +85,16 @@ if [[ ! -x "${UPSTREAM_START}" ]]; then
   echo "pinned Qwen3.8 Flash launcher is not executable: ${UPSTREAM_START}" >&2
   exit 1
 fi
+MAX_NUM_SEQS="${VLLM_MAX_NUM_SEQS:-1}"
+if [[ "${MAX_NUM_SEQS}" != "1" ]]; then
+  echo "Qwen3.8 Flash adapter requires max_num_seqs=1" >&2
+  exit 1
+fi
+SCHEDULING_POLICY="${VLLM_SCHEDULING_POLICY:-priority}"
+if [[ "${SCHEDULING_POLICY}" != "priority" ]]; then
+  echo "Qwen3.8 Flash adapter requires priority scheduling" >&2
+  exit 1
+fi
 PLE_CACHE_DIR="${HOME}/.cache/vllm/ple_cache/Mia-AiLab--Qwen3.8-Flash-Next-NVFP4"
 echo "Qwen3.8 Flash adapter: local model cache=${MODEL_DIR} persistent PLE cache=${PLE_CACHE_DIR}" >&2
 
@@ -134,7 +144,7 @@ if env \
   HF_HOME="${HF_CACHE_DIR}" \
   PORT="${HOST_PORT}" \
   MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-262144}" \
-  MAX_NUM_SEQS="${VLLM_MAX_NUM_SEQS:-4}" \
+  MAX_NUM_SEQS="${MAX_NUM_SEQS}" \
   MAX_NUM_BATCHED_TOKENS="${VLLM_MAX_NUM_BATCHED_TOKENS:-2048}" \
   KV_CACHE_DTYPE="${VLLM_KV_CACHE_DTYPE:-fp8}" \
   YARN="0" \
@@ -145,6 +155,7 @@ if env \
   HOST_SLACK_GIB="5" \
   COMPILATION_MODE="0" \
   GPU_MEMORY_UTILIZATION="${VLLM_GPU_MEMORY_UTILIZATION:-0.71}" \
+  EXTRA_VLLM_ARGS="--scheduling-policy ${SCHEDULING_POLICY}" \
   CUDAGRAPH_CAPTURE_SIZES="auto" \
   CUDAGRAPH_MODE="FULL_DECODE_ONLY" \
   REQUIRE_IDLE_GPU="true" \
