@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -95,6 +96,74 @@ class Qwen38CacheHelperTests(unittest.TestCase):
             self.assertEqual(planned.returncode, 0, planned.stderr)
             self.assertIn(f"revision={MODEL_REVISION}", planned.stdout)
             self.assertIn(f"image={IMAGE}", planned.stdout)
+
+    def test_fetch_docker_fallback_uses_host_uid_for_cache_writes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {**os.environ, **self._fixture(root)}
+            refs = (
+                root
+                / "hf-cache"
+                / "hub"
+                / "models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4"
+                / "refs"
+            )
+            shutil.rmtree(refs)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            docker_args = root / "docker-args"
+            fake_docker = fake_bin / "docker"
+            fake_docker.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$DOCKER_ARGS_LOG\"\n"
+                "previous=''\n"
+                "for argument in \"$@\"; do\n"
+                "  if [ \"$previous\" = '--volume' ]; then volume=\"${argument%%:*}\"; fi\n"
+                "  previous=\"$argument\"\n"
+                "done\n"
+                "mkdir -p \"$volume/hub/models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4/snapshots/model-revision-test\"\n",
+                encoding="utf-8",
+            )
+            fake_docker.chmod(0o755)
+            fake_python = fake_bin / "python3"
+            fake_python.write_text(
+                "#!/bin/sh\n"
+                "case \"$*\" in\n"
+                "  *huggingface_hub*) exit 1 ;;\n"
+                "  *) exec /usr/bin/python3 \"$@\" ;;\n"
+                "esac\n",
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+            fake_df = fake_bin / "df"
+            fake_df.write_text(
+                "#!/bin/sh\n"
+                "if [ \"$1\" = '-Pk' ]; then\n"
+                "  printf 'Filesystem 1024-blocks Used Available Capacity Mounted\\n'\n"
+                "  printf 'fixture 1000000000 0 500000000 0%% /\\n'\n"
+                "else\n"
+                "  exec /bin/df \"$@\"\n"
+                "fi\n",
+                encoding="utf-8",
+            )
+            fake_df.chmod(0o755)
+            env.update(
+                PATH=f"{fake_bin}:/usr/bin:/bin",
+                DOCKER_ARGS_LOG=str(docker_args),
+            )
+            fetched = subprocess.run(
+                [str(HELPER), "fetch"], env=env, text=True, capture_output=True
+            )
+            self.assertEqual(fetched.returncode, 0, fetched.stderr)
+            self.assertEqual(
+                (refs / "main").read_text(encoding="utf-8"), f"{MODEL_REVISION}\n"
+            )
+            docker_argv = docker_args.read_text(encoding="utf-8").splitlines()
+            self.assertIn("--user", docker_argv)
+            user_index = docker_argv.index("--user")
+            self.assertEqual(
+                docker_argv[user_index + 1], f"{os.getuid()}:{os.getgid()}"
+            )
 
 
 if __name__ == "__main__":
