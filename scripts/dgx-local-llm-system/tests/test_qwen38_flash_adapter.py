@@ -85,7 +85,7 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
             start_contents = (
                 "#!/usr/bin/env bash\n"
                 "set -euo pipefail\n"
-                "printf '%s\\n' \"$TP1_MODEL_ID|$TP1_CONTAINER_NAME|$IMAGE|$SERVED_MODEL_NAME|$HF_HOME|$PORT|$MAX_MODEL_LEN|$MAX_NUM_SEQS|$MAX_NUM_BATCHED_TOKENS|$KV_CACHE_DTYPE|$PLE_OFFLOAD|$COMPILATION_MODE|$EXTRA_DOCKER_ARGS\" > \"$CAPTURE\"\n"
+                "printf '%s\\n' \"$TP1_MODEL_ID|$TP1_CONTAINER_NAME|$IMAGE|$SERVED_MODEL_NAME|$HF_HOME|$PORT|$MAX_MODEL_LEN|$MAX_NUM_SEQS|$MAX_NUM_BATCHED_TOKENS|$KV_CACHE_DTYPE|$PLE_OFFLOAD|$COMPILATION_MODE|$GPU_MEMORY_UTILIZATION|$EXTRA_DOCKER_ARGS\" > \"$CAPTURE\"\n"
                 "printf '%s' \"$BASH_SOURCE\" > \"$BOUNDARY_PATH_CAPTURE\"\n"
                 "cat \"$BASH_SOURCE\" > \"$BOUNDARY_SOURCE_CAPTURE\"\n"
                 "cat <<'UPSTREAM_LAUNCH'\n"
@@ -109,7 +109,7 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
                 capture.read_text(encoding="utf-8").strip(),
                 "Mia-AiLab/Qwen3.8-Flash-Next-NVFP4|system-prod-trtllm|"
                 "vllm/vllm-openai:qwen38-flash-next|system-prod-primary|"
-                f"{root / 'hf-cache'}|38083|262144|4|2048|fp8|true|0|--ipc host",
+                f"{root / 'hf-cache'}|38083|262144|4|2048|fp8|true|0|0.71|--ipc host",
             )
             generated_start = Path(boundary_path_capture.read_text(encoding="utf-8"))
             generated_source = boundary_source_capture.read_text(encoding="utf-8")

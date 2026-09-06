@@ -33,6 +33,7 @@ class ProfileLauncherTests(unittest.TestCase):
         )
         self.assertEqual(env["VLLM_SERVED_MODEL_NAME"], "system-prod-primary")
         self.assertEqual(env["VLLM_MAX_MODEL_LEN"], "262144")
+        self.assertEqual(env["VLLM_GPU_MEMORY_UTILIZATION"], "0.71")
         self.assertEqual(env["VLLM_KV_CACHE_DTYPE"], "fp8")
         self.assertEqual(env["BLUE_QWEN38_RECIPE_REVISION"], "09d4424be2b777818471b9bba8c7775ddd538833")
         self.assertEqual(env["BLUE_QWEN38_MODEL_REVISION"], "925d7be6c14c6c9442ef83e8f05b5a3c39304f69")

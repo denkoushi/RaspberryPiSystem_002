@@ -25,6 +25,7 @@
       "maxModelLen": 262144,
       "maxNumSeqs": 4,
       "maxNumBatchedTokens": 2048,
+      "gpuMemoryUtilization": 0.71,
       "kvCacheDtype": "fp8",
       "languageModelOnly": false,
       "tensorParallelSize": 1,
