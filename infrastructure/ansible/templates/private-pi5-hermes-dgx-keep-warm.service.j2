@@ -1,3 +1,5 @@
+{% set keep_warm_ready_timeout_sec = (private_pi5_hermes_dgx_keep_warm_runtime_ready_timeout_sec | default(private_pi5_dgx_runtime_ready_timeout_sec | default(1200))) | int %}
+{% set keep_warm_upstream_timeout_sec = (private_pi5_upstream_timeout_sec | default(45)) | int %}
 [Unit]
 Description=Hermes DGX runtime keep-warm (probe /start if cold)
 After=network-online.target
@@ -10,5 +12,6 @@ Group={{ private_pi5_hermes_group }}
 WorkingDirectory={{ private_pi5_hermes_dgx_keep_warm_dir }}
 EnvironmentFile={{ private_pi5_hermes_dgx_keep_warm_env_path }}
 ExecStart=/usr/bin/python3 {{ private_pi5_hermes_dgx_keep_warm_dir }}/dgx_keep_warm.py
+TimeoutStartSec={{ private_pi5_hermes_dgx_keep_warm_timeout_start_sec | default(keep_warm_ready_timeout_sec + (2 * keep_warm_upstream_timeout_sec) + 60) }}
 StandardOutput=journal
 StandardError=journal

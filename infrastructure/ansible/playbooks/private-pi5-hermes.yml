@@ -114,7 +114,7 @@
     - name: Resolve Hermes default DGX model profile id from inventory
       ansible.builtin.set_fact:
         private_pi5_hermes_dgx_default_model_profile_id: >-
-          {{ hostvars[inventory_hostname].get('private_pi5_hermes_dgx_default_model_profile_id', 'business_qwen36_27b_nvfp4') | trim }}
+          {{ hostvars[inventory_hostname].get('private_pi5_hermes_dgx_default_model_profile_id', 'business_qwen38_flash_next_nvfp4') | trim }}
 
     - name: Resolve Hermes tools DGX token from inventory
       ansible.builtin.set_fact:
