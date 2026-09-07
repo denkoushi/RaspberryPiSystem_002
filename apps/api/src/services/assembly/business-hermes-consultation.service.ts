@@ -14,6 +14,7 @@ export type BusinessHermesConsultationMessage = {
   role: 'user' | 'assistant';
   content: string;
   evidence: ReadonlyArray<Record<string, unknown>>;
+  evidenceVisible?: boolean;
   confirmation?: BusinessHermesConsultationConfirmation;
   searchDiagnostics: ReadonlyArray<Record<string, unknown>>;
   createdAt: string;
@@ -69,6 +70,7 @@ export type BusinessHermesConsultationChatResponse = {
   status: 'ready' | 'unavailable';
   message: string | null;
   evidence: ReadonlyArray<ConsultationEvidence>;
+  evidenceVisible?: boolean;
   needsClarification: boolean;
   clarificationMessage: string | null;
   reasonCode?: string;
@@ -105,9 +107,9 @@ const inFlight = new Map<string, Promise<BusinessHermesConsultationChatResponse>
 // This instruction is only the application response and case-state contract.
 const CANONICAL_STATE_INSTRUCTIONS = [
   'SOUL・業務Context・関連Skillに従って対話してください。アプリへ返す最終回答はJSONオブジェクト1個だけです。挨拶や相談終了も同じ形式で、JSONの外に文章やMarkdownを書きません。',
-  '必須キーは message（利用者への簡潔な日本語の回答）、title（現在の相談名）、relatedIdentifiers（業務上の番号・工程名の配列）、confirmedFacts（根拠のある確認済み事項の配列）、openQuestions（現在の依頼を解決するための未確認事項の配列）、summary（引継ぎ要約）、confirmation（問いと選択肢、不要ならnull）です。文字列・配列に値がなければ空文字・空配列とし、全キーを含めます。',
+  '必須キーは message（利用者への簡潔な日本語の回答）、title（現在の相談名）、relatedIdentifiers（業務上の番号・工程名の配列）、confirmedFacts（根拠のある確認済み事項の配列）、openQuestions（現在の依頼を解決するための未確認事項の配列）、summary（引継ぎ要約）、showEvidence（根拠・出典・写真の表示が今回必要ならtrue、通常はfalse）、confirmation（任意の次の操作を選ぶ問いと選択肢、不要ならnull）です。文字列・配列に値がなければ空文字・空配列とし、全キーを含めます。',
   'title・openQuestions・summaryにも、利用者が依頼した範囲と根拠を守ってください。検索で別工程が見つかっただけでは、それを次の工程・未実施作業・今後の確認予定にしません。資料間の順序も推定しません。提案と合意済みの予定を混ぜず、不具合が報告されていない相談名に不具合を加えません。',
-  '利用者が「はい／いいえ」や選択肢での確認を希望したときは、その確認を本文だけで終えず、必ずconfirmationとoptionsを返してください。ボタンで答えられる問いは confirmation: {"prompt": "問い", "options": ["選択肢1", "選択肢2"]} にします。単一の実施確認ならoptionsは["はい", "いいえ"]、複数候補なら各候補名と必要に応じて「どれでもない」を渡してください。「AかBか」に「はい／いいえ」を使いません。選択肢は2～5個、各120文字以内です。自由回答の問いはmessageで尋ね、confirmationを付けません。optionsがなければ画面はボタンを作りません。問いはopenQuestionsだけに書かず、messageにも提示してください。',
+  '利用者が答えを選ぶ必要がある確認、または回答後に役立つ任意の次の調査があるときは、本文だけで終えずconfirmationとoptionsを返してください。任意の次の操作は未解決事項ではなく、回答済みの本文に添える候補です。confirmation: {"prompt": "問いまたは次の操作", "options": ["選択肢1", "選択肢2"]} とし、選択肢は2～5個、各120文字以内です。例は「処置を詳しく見る」「関連する要領書を探す」「根拠を確認する」です。単一の実施確認ならoptionsは["はい", "いいえ"]、複数候補なら各候補名と必要に応じて「どれでもない」を渡してください。「AかBか」に「はい／いいえ」を使いません。自由回答の問いはmessageで尋ね、confirmationを付けません。optionsがなければ画面はボタンを作りません。未解決の問いだけをopenQuestionsに入れ、問いはmessageにも提示してください。',
   '案件情報は自動保存します。相談名・関連番号の入力や保存承認を利用者に求めません。内部レコードID・版ID・写真IDは本文やrelatedIdentifiersに入れません。出典・写真カードは取得結果からサーバーが生成するため、URLを創作・再記載しません。',
   '前回の案件状態はAIの引継ぎであり、正式な業務資料ではありません。訂正時は古い前提・関連付け・未解決事項を置き換えます。過去資料の事実と現在の相談について確認した事実を区別してください。'
 ].join(' ');
@@ -344,6 +346,7 @@ function modelState(response: JsonRecord, answer: string): {
   openQuestions?: string[];
   summary?: string;
   message?: string;
+  showEvidence?: boolean;
   confirmation?: BusinessHermesConsultationConfirmation;
 } {
   const messageTexts = outputItems(response)
@@ -358,7 +361,7 @@ function modelState(response: JsonRecord, answer: string): {
     const parsed = extractEmbeddedJson(candidate, true);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
     const record = parsed as JsonRecord;
-    const hasState = ['title', 'relatedIdentifiers', 'related_identifiers', 'confirmedFacts', 'confirmed_facts', 'openQuestions', 'open_questions', 'summary', 'message', 'confirmation']
+    const hasState = ['title', 'relatedIdentifiers', 'related_identifiers', 'confirmedFacts', 'confirmed_facts', 'openQuestions', 'open_questions', 'summary', 'message', 'showEvidence', 'show_evidence', 'confirmation']
       .some((key) => record[key] !== undefined);
     if (!hasState) continue;
     return {
@@ -368,6 +371,9 @@ function modelState(response: JsonRecord, answer: string): {
       openQuestions: record.openQuestions !== undefined || record.open_questions !== undefined ? asStrings(record.openQuestions ?? record.open_questions) : undefined,
       summary: typeof record.summary === 'string' ? record.summary : undefined,
       message: typeof record.message === 'string' ? cleanMessage(record.message) ?? undefined : undefined,
+      showEvidence: typeof record.showEvidence === 'boolean'
+        ? record.showEvidence
+        : typeof record.show_evidence === 'boolean' ? record.show_evidence : undefined,
       confirmation: asConfirmation(record.confirmation)
     };
   }
@@ -376,6 +382,23 @@ function modelState(response: JsonRecord, answer: string): {
 
 function responseStatus(response: JsonRecord): string {
   return typeof response.status === 'string' ? response.status : 'completed';
+}
+
+function storedEvidence(value: unknown): { items: Record<string, unknown>[]; visible: boolean } {
+  if (Array.isArray(value)) {
+    return {
+      items: value.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object')),
+      visible: false
+    };
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { items: [], visible: false };
+  const record = value as JsonRecord;
+  return {
+    items: Array.isArray(record.items)
+      ? record.items.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object'))
+      : [],
+    visible: record.visible === true
+  };
 }
 
 function parseSseLine(value: string): JsonRecord | null {
@@ -692,6 +715,7 @@ export class BusinessHermesConsultationService {
         const asset = assets.find((candidate) => candidate.id === entry.imageAssetId);
         return asset ? { ...entry, imageMimeType: asset.mimeType } : entry;
       });
+      const evidenceVisible = state.showEvidence === true;
       const needsClarification = state.openQuestions !== undefined
         ? state.openQuestions.length > 0
         : /[?？]|確認が必要|教えて|指定して|どちら/.test(displayAnswer);
@@ -708,7 +732,10 @@ export class BusinessHermesConsultationService {
       // being checked. Do not save that late answer as a successful turn.
       controller.signal.throwIfAborted();
       await this.db.businessHermesConsultationMessage.create({ data: {
-        consultationId, role: 'assistant', content: displayAnswer, evidence: asJson(evidence),
+        consultationId, role: 'assistant', content: displayAnswer,
+        // Keep trusted evidence for later user-requested inspection, while
+        // persisting the model's explicit display decision for consultation history.
+        evidence: asJson({ items: evidence, visible: evidenceVisible }),
         ...(confirmation ? { confirmation: asJson(confirmation) } : {}),
         searchDiagnostics: asJson(searchDiagnostics(parsed))
       } });
@@ -729,7 +756,10 @@ export class BusinessHermesConsultationService {
         // the UI renders the prompt as an optional action below that answer.
         message: confirmation ? displayAnswer : needsClarification ? null : displayAnswer,
         evidence,
-        needsClarification: needsClarification || Boolean(confirmation),
+        evidenceVisible,
+        // An optional next-action confirmation can accompany a complete answer;
+        // only openQuestions represent an unresolved clarification.
+        needsClarification,
         clarificationMessage: needsClarification && !confirmation ? displayAnswer : null,
         ...(confirmation ? { confirmation } : {}),
         consultationId,
@@ -778,7 +808,10 @@ export class BusinessHermesConsultationService {
         id: message.id,
         role: message.role === 'assistant' ? 'assistant' : 'user',
         content: message.content,
-        evidence: Array.isArray(message.evidence) ? message.evidence.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object')) : [],
+        ...(() => {
+          const evidence = storedEvidence(message.evidence);
+          return { evidence: evidence.items, evidenceVisible: evidence.visible };
+        })(),
         ...(asConfirmation(message.confirmation) ? { confirmation: asConfirmation(message.confirmation) } : {}),
         searchDiagnostics: Array.isArray(message.searchDiagnostics) ? message.searchDiagnostics : [],
         createdAt: iso(message.createdAt)

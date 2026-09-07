@@ -72,8 +72,6 @@ vi.mock('./HermesChatPanel', () => ({
       {props.suggestion ? (
         <div role="group" aria-label="Hermesからの候補確認">
           <p>{props.suggestion.prompt}</p>
-          <p>{props.suggestion.title}</p>
-          <p>{props.suggestion.relatedIdentifiers.join('・')}</p>
           {props.suggestion.options?.map(option => <button key={option} type="button" onClick={() => props.onAnswerSuggestion?.(option)}>{option}</button>)}
         </div>
       ) : null}
@@ -450,7 +448,11 @@ describe('HermesFloatingChat', () => {
       { id: 'answer', role: 'assistant', content: '組立後の状態を確認します。' }
     ], {
       prompt: '漏れが見つかったのは組立後ですか？', options: ['はい', 'いいえ']
-    }));
+    })).mockResolvedValueOnce(consultationResponse(item, [
+      { id: 'question', role: 'user', content: '漏れについて相談したい' },
+      { id: 'answer', role: 'assistant', content: '組立後の状態を確認します。' },
+      { id: 'follow-up', role: 'assistant', content: '組立後の漏れとして追加確認を進めます。' }
+    ]));
 
     renderChat();
     fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
@@ -464,6 +466,7 @@ describe('HermesFloatingChat', () => {
       consultationId: item.id,
       message: '「漏れが見つかったのは組立後ですか？」への回答は「はい」です。'
     });
+    expect(await screen.findByText('組立後の漏れとして追加確認を進めます。')).toBeInTheDocument();
   });
 
   it('reopens a consultation and renders its persisted history', async () => {

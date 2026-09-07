@@ -60,6 +60,7 @@ function messagesFromConsultation(detail: BusinessHermesConsultationDetail): Her
     role: message.role,
     content: message.content,
     evidence: message.evidence,
+    evidenceVisible: message.evidenceVisible,
     createdAt: message.createdAt
   }));
 }
@@ -593,6 +594,7 @@ export function HermesFloatingChat() {
             role: 'assistant',
             content: assistantContent,
             evidence: evidenceForMessage(response.evidence),
+            evidenceVisible: 'evidenceVisible' in response ? response.evidenceVisible : undefined,
             createdAt: new Date().toISOString()
           };
           setMessages((current) => [...current, assistantMessage]);
@@ -604,6 +606,7 @@ export function HermesFloatingChat() {
                 role: assistantMessage.role,
                 content: assistantMessage.content,
                 evidence: assistantMessage.evidence ? [...assistantMessage.evidence] : [],
+                evidenceVisible: assistantMessage.evidenceVisible,
                 createdAt: assistantMessage.createdAt ?? new Date().toISOString()
               }]
             } : current);

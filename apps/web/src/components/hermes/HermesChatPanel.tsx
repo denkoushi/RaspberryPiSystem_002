@@ -15,6 +15,7 @@ export type HermesPanelMessage = {
   role: 'user' | 'assistant';
   content: string;
   evidence?: readonly BusinessHermesChatEvidence[];
+  evidenceVisible?: boolean;
   createdAt?: string;
 };
 
@@ -328,20 +329,15 @@ export default function HermesChatPanel({
                     >
                       <Message.CustomContent>
                         <p className="hermes-chat-panel__message">{message.content}</p>
-                        {message.evidence?.map((evidence) => (
+                        {message.evidenceVisible !== false ? message.evidence?.map((evidence) => (
                           <EvidenceCard key={`${message.id}-${evidence.kind}-${evidence.id}`} evidence={evidence} />
-                        ))}
+                        )) : null}
                       </Message.CustomContent>
                     </Message>
                   ))}
                   {suggestion ? (
                     <div className="hermes-chat-panel__suggestion" role="group" aria-label="Hermesからの候補確認">
-                      <p className="hermes-chat-panel__suggestion-label">確認</p>
                       <p className="hermes-chat-panel__suggestion-prompt">{suggestion.prompt}</p>
-                      {suggestion.title ? <p className="hermes-chat-panel__suggestion-detail"><strong>相談:</strong> {suggestion.title}</p> : null}
-                      {suggestion.relatedIdentifiers.length > 0 ? (
-                        <p className="hermes-chat-panel__suggestion-detail"><strong>番号:</strong> {suggestion.relatedIdentifiers.join('・')}</p>
-                      ) : null}
                       <div className="hermes-chat-panel__suggestion-actions">
                         {suggestion.options?.map((option) => (
                           <button key={option} type="button" className="hermes-chat-panel__suggestion-button" onClick={() => onAnswerSuggestion?.(option)} disabled={isBusy}>
