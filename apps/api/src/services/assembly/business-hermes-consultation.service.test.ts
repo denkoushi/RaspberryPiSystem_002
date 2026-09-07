@@ -66,7 +66,7 @@ describe('BusinessHermesConsultationService', () => {
         { type: 'function_call_output', call_id: 'call-business-search', output: '<untrusted_tool_result source="business_api">\nExplanation from tool\n\n{"result":"{\\"evidence\\":[{\\"kind\\":\\"work_instruction\\",\\"id\\":\\"step-1\\",\\"partNumber\\":\\"PN-1\\",\\"text\\":\\"公開本文\\",\\"asset_id\\":\\"asset-1\\",\\"photo_url\\":\\"https://model.invalid/fake.jpg\\"}]}"}\n</untrusted_tool_result>' },
         { type: 'function_call', name: 'skill_view', call_id: 'call-skill-view', arguments: '{"name":"business-consultation"}' },
         { type: 'function_call_output', call_id: 'call-skill-view', output: '{"kind":"work_instruction","id":"skill-fake","partNumber":"PN-FAKE","text":"skill text"}' },
-        { type: 'message', content: [{ type: 'output_text', text: '{"message":"次に確認してください。","title":"本文確認","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"本文を確認","showEvidence":true,"confirmation":null}' }] }
+        { type: 'message', content: [{ type: 'output_text', text: '{"message":"次に確認してください。","title":"本文確認","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"本文を確認","showEvidence":true,"evidenceIds":["work_instruction:step-1"],"confirmation":null}' }] }
       ] } })}\n\n`
     ].join(''), { headers: { 'content-type': 'text/event-stream' } }));
     const runtime = { ensureReady: vi.fn().mockResolvedValue(undefined), release: vi.fn().mockResolvedValue(undefined), getMode: vi.fn().mockReturnValue('always_on') };
@@ -102,9 +102,87 @@ describe('BusinessHermesConsultationService', () => {
 
     expect(result.evidence).toEqual([expect.objectContaining(evidence)]);
     expect(result.evidenceVisible).toBe(false);
-    expect(fixture.messages.at(-1)?.evidence).toEqual({ items: result.evidence, visible: false });
+    expect(fixture.messages.at(-1)?.evidence).toEqual({ items: result.evidence, visible: false, visibleIds: [] });
     expect(result.consultation.messages.at(-1)).toMatchObject({ evidence: result.evidence, evidenceVisible: false });
     expect((await service.get(consultationId))?.messages.at(-1)).toMatchObject({ evidence: result.evidence, evidenceVisible: false });
+  });
+
+  it('keeps all trusted current evidence while displaying only the explicitly selected id', async () => {
+    const fixture = dbFixture();
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: [
+      { type: 'function_call', name: 'mcp__business_api__business_hermes_search', call_id: 'candidate-search', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'candidate-search', output: JSON.stringify({ results: [
+        { kind: 'nonconformity', id: 'nc-1', nonconformityNo: 'NC-1', remarks: '寸法差', partNumber: null },
+        { kind: 'nonconformity', id: 'nc-2', nonconformityNo: 'NC-2', remarks: '傷', partNumber: null }
+      ] }) },
+        { type: 'message', content: [{ type: 'output_text', text: '{"message":"NC-1の根拠を表示します。","title":"根拠確認","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"根拠確認","showEvidence":true,"evidenceIds":["nonconformity:nc-1","nonconformity:foreign-case","work_instruction:missing"],"needsClarification":false,"confirmation":null}' }] }
+    ] } })}\n\n`, { headers: { 'content-type': 'text/event-stream' } }));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const result = await service.chat({ consultationId, message: 'NC-1の根拠を見せてください' });
+
+    expect(result.evidence.map((item) => item.id)).toEqual(['nc-1']);
+    expect(result.evidenceVisibleIds).toEqual(['nonconformity:nc-1']);
+    expect(fixture.messages.at(-1)?.evidence).toMatchObject({
+      items: [expect.objectContaining({ id: 'nc-1' }), expect.objectContaining({ id: 'nc-2' })],
+      visible: true,
+      visibleIds: ['nonconformity:nc-1']
+    });
+    expect(result.consultation.messages.at(-1)).toMatchObject({
+      evidence: [expect.objectContaining({ id: 'nc-1' }), expect.objectContaining({ id: 'nc-2' })],
+      evidenceVisible: true,
+      evidenceVisibleIds: ['nonconformity:nc-1']
+    });
+  });
+
+  it('revalidates a stored work-instruction photo before displaying it on a later turn', async () => {
+    const fixture = dbFixture();
+    const first = { kind: 'work_instruction', id: 'wi-1', partNumber: 'PN-1', text: '公開手順', asset_id: 'asset-1' };
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: [
+        { type: 'function_call', name: 'mcp__business_api__business_hermes_search', call_id: 'wi-search', arguments: '{}' },
+        { type: 'function_call_output', call_id: 'wi-search', output: JSON.stringify({ results: [first] }) },
+        { type: 'message', content: [{ type: 'output_text', text: '{"message":"公開要領を確認しました。","title":"要領確認","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"要領確認","showEvidence":false,"evidenceIds":[],"needsClarification":false,"confirmation":null}' }] }
+      ] } })}\n\n`, { headers: { 'content-type': 'text/event-stream' } }))
+      .mockResolvedValueOnce(new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: [
+        { type: 'message', content: [{ type: 'output_text', text: '{"message":"公開要領の写真を表示します。","title":"写真確認","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"写真確認","showEvidence":true,"evidenceIds":["work_instruction:wi-1"],"needsClarification":false,"confirmation":null}' }] }
+      ] } })}\n\n`, { headers: { 'content-type': 'text/event-stream' } }));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const hidden = await service.chat({ consultationId, message: '公開要領を確認してください' });
+    const shown = await service.chat({ consultationId, message: 'その写真を見せてください' });
+
+    expect(hidden.evidenceVisible).toBe(false);
+    expect(shown.evidence).toEqual([expect.objectContaining({ id: 'wi-1', imageAssetId: 'asset-1', imageUrl: '/api/work-instructions/assets/asset-1' })]);
+    expect(shown.evidenceVisibleIds).toEqual(['work_instruction:wi-1']);
+    expect(shown.consultation.messages.at(-1)).toMatchObject({ evidenceVisible: true, evidenceVisibleIds: ['work_instruction:wi-1'] });
+  });
+
+  it('does not reuse a stored photo when its asset is no longer active', async () => {
+    const fixture = dbFixture();
+    const activeLookup = vi.fn()
+      .mockResolvedValueOnce([{ id: 'asset-2', mimeType: 'image/jpeg' }])
+      .mockResolvedValueOnce([]);
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: [
+        { type: 'function_call', name: 'mcp__business_api__business_hermes_search', call_id: 'photo-search', arguments: '{}' },
+        { type: 'function_call_output', call_id: 'photo-search', output: JSON.stringify({ results: [{ kind: 'work_instruction', id: 'wi-inactive', partNumber: 'PN-2', text: '手順', asset_id: 'asset-2' }] }) },
+        { type: 'message', content: [{ type: 'output_text', text: '{"message":"確認しました。","title":"確認","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"確認","showEvidence":false,"evidenceIds":[],"needsClarification":false,"confirmation":null}' }] }
+      ] } })}\n\n`, { headers: { 'content-type': 'text/event-stream' } }))
+      .mockResolvedValueOnce(new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: [
+        { type: 'message', content: [{ type: 'output_text', text: '{"message":"写真を表示します。","title":"写真","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"写真","showEvidence":true,"evidenceIds":["work_instruction:wi-inactive"],"needsClarification":false,"confirmation":null}' }] }
+      ] } })}\n\n`, { headers: { 'content-type': 'text/event-stream' } }));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, activeAssetLookup: activeLookup,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    await service.chat({ consultationId, message: '手順を確認してください' });
+    const shown = await service.chat({ consultationId, message: '写真を見せてください' });
+
+    expect(shown.evidence).toEqual([expect.objectContaining({ kind: 'work_instruction', id: 'wi-inactive' })]);
+    expect(shown.evidence[0]).not.toHaveProperty('imageUrl');
+    expect(activeLookup).toHaveBeenNthCalledWith(2, ['asset-2']);
   });
 
   it('acquires the consultation DGX lease when the independent guide uses OpenAI', async () => {
@@ -151,7 +229,7 @@ describe('BusinessHermesConsultationService', () => {
       type: 'response.completed', response: {status: 'completed', output: [
         {type: 'function_call', name: 'mcp__business_api__business_hermes_search', call_id: 'nc-search', arguments: '{}'},
         {type: 'function_call_output', call_id: 'nc-search', output: JSON.stringify({results: [record]})},
-        {type: 'message', content: [{type: 'output_text', text: '{"message":"不適合記録を確認しました。","title":"不適合確認","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"不適合記録を確認","showEvidence":true,"confirmation":null}'}]}
+        {type: 'message', content: [{type: 'output_text', text: '{"message":"不適合記録を確認しました。","title":"不適合確認","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"不適合記録を確認","showEvidence":true,"evidenceIds":["nonconformity:nc-unidentified"],"confirmation":null}'}]}
       ]}
     })}\n\n`));
     const service = new BusinessHermesConsultationService({db: dbFixture().db as never, fetchImpl,
@@ -173,7 +251,7 @@ describe('BusinessHermesConsultationService', () => {
     const events = [
       { type: 'response.output_item.done', item: call },
       { type: 'response.output_item.done', item: full },
-      { type: 'response.completed', response: { status: 'completed', output: [call, { ...full, output: [{ type: 'input_text', text: output[0].text.slice(0, 500) + '...[more chars]' }] }, { type: 'message', content: [{ type: 'output_text', text: '{"message":"公開要領を確認しました。","title":"要領確認","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"公開要領を確認","showEvidence":true,"confirmation":null}' }] }] } }
+      { type: 'response.completed', response: { status: 'completed', output: [call, { ...full, output: [{ type: 'input_text', text: output[0].text.slice(0, 500) + '...[more chars]' }] }, { type: 'message', content: [{ type: 'output_text', text: '{"message":"公開要領を確認しました。","title":"要領確認","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"公開要領を確認","showEvidence":true,"evidenceIds":["work_instruction:step-1"],"confirmation":null}' }] }] } }
     ];
     const fetchImpl = vi.fn().mockResolvedValue(new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
@@ -182,7 +260,7 @@ describe('BusinessHermesConsultationService', () => {
     expect(result.evidenceVisible).toBe(true);
     expect(result.evidence).toHaveLength(1);
     expect(result.evidence[0]).toMatchObject({ id: 'step-1', imageAssetId: 'asset-1', text: '公開手順。'.repeat(250) });
-    expect(fixture.messages.at(-1)?.evidence).toEqual({ items: result.evidence, visible: true });
+    expect(fixture.messages.at(-1)?.evidence).toEqual({ items: result.evidence, visible: true, visibleIds: ['work_instruction:step-1'] });
     expect(result.consultation.messages.at(-1)?.searchDiagnostics).toEqual([{
       arguments: { query: '漏れ' }, total: null, truncated: false, resultIds: ['row-1']
     }]);
@@ -255,12 +333,13 @@ describe('BusinessHermesConsultationService', () => {
   it('returns an optional model-requested confirmation without deriving one from identifiers', async () => {
     const fixture = dbFixture();
     const fetchImpl = vi.fn().mockResolvedValue(new Response([
-      `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: '{"message":"候補を確認しました","title":"漏れ調査","relatedIdentifiers":["PN-B"],"confirmedFacts":[],"openQuestions":[],"summary":"候補確認","confirmation":{"prompt":"組立工程のPN-Bで続けますか？","title":"PN-B組立","relatedIdentifiers":["PN-B"]}}' } })}\n\n`
+      `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: '{"message":"候補を確認しました","title":"漏れ調査","relatedIdentifiers":["PN-B"],"confirmedFacts":[],"openQuestions":["任意の追加確認"],"summary":"候補確認","needsClarification":false,"confirmation":{"prompt":"組立工程のPN-Bで続けますか？","title":"PN-B組立","relatedIdentifiers":["PN-B"]}}' } })}\n\n`
     ].join(''), { headers: { 'content-type': 'text/event-stream' } }));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'business-hermes-chat', timeoutMs: 5_000 } });
     const result = await service.chat({ consultationId, message: '候補を確認してください' });
     expect(result.needsClarification).toBe(false);
     expect(result.message).toBe('候補を確認しました');
+    expect(result.consultation.openQuestions).toEqual([]);
     expect(result.confirmation).toEqual({ prompt: '組立工程のPN-Bで続けますか？', title: 'PN-B組立', relatedIdentifiers: ['PN-B'] });
     const reopened = await service.get(consultationId);
     expect(reopened?.messages.at(-1)?.confirmation).toEqual(result.confirmation);

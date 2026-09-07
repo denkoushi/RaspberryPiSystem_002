@@ -16,6 +16,7 @@ export type HermesPanelMessage = {
   content: string;
   evidence?: readonly BusinessHermesChatEvidence[];
   evidenceVisible?: boolean;
+  evidenceVisibleIds?: readonly string[];
   createdAt?: string;
 };
 
@@ -329,7 +330,9 @@ export default function HermesChatPanel({
                     >
                       <Message.CustomContent>
                         <p className="hermes-chat-panel__message">{message.content}</p>
-                        {message.evidenceVisible !== false ? message.evidence?.map((evidence) => (
+                        {message.evidenceVisible !== false ? (message.evidenceVisibleIds
+                          ? message.evidence?.filter((evidence) => message.evidenceVisibleIds?.includes(`${evidence.kind}:${evidence.id}`))
+                          : message.evidence)?.map((evidence) => (
                           <EvidenceCard key={`${message.id}-${evidence.kind}-${evidence.id}`} evidence={evidence} />
                         )) : null}
                       </Message.CustomContent>

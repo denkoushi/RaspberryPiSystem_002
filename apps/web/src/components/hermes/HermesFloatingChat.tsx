@@ -61,6 +61,7 @@ function messagesFromConsultation(detail: BusinessHermesConsultationDetail): Her
     content: message.content,
     evidence: message.evidence,
     evidenceVisible: message.evidenceVisible,
+    evidenceVisibleIds: message.evidenceVisibleIds,
     createdAt: message.createdAt
   }));
 }
@@ -595,6 +596,7 @@ export function HermesFloatingChat() {
             content: assistantContent,
             evidence: evidenceForMessage(response.evidence),
             evidenceVisible: 'evidenceVisible' in response ? response.evidenceVisible : undefined,
+            evidenceVisibleIds: 'evidenceVisibleIds' in response ? response.evidenceVisibleIds : undefined,
             createdAt: new Date().toISOString()
           };
           setMessages((current) => [...current, assistantMessage]);
@@ -607,6 +609,7 @@ export function HermesFloatingChat() {
                 content: assistantMessage.content,
                 evidence: assistantMessage.evidence ? [...assistantMessage.evidence] : [],
                 evidenceVisible: assistantMessage.evidenceVisible,
+                evidenceVisibleIds: assistantMessage.evidenceVisibleIds ? [...assistantMessage.evidenceVisibleIds] : undefined,
                 createdAt: assistantMessage.createdAt ?? new Date().toISOString()
               }]
             } : current);

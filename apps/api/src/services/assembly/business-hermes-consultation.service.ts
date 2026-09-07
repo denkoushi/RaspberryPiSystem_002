@@ -15,6 +15,7 @@ export type BusinessHermesConsultationMessage = {
   content: string;
   evidence: ReadonlyArray<Record<string, unknown>>;
   evidenceVisible?: boolean;
+  evidenceVisibleIds?: string[];
   confirmation?: BusinessHermesConsultationConfirmation;
   searchDiagnostics: ReadonlyArray<Record<string, unknown>>;
   createdAt: string;
@@ -71,6 +72,7 @@ export type BusinessHermesConsultationChatResponse = {
   message: string | null;
   evidence: ReadonlyArray<ConsultationEvidence>;
   evidenceVisible?: boolean;
+  evidenceVisibleIds?: string[];
   needsClarification: boolean;
   clarificationMessage: string | null;
   reasonCode?: string;
@@ -107,9 +109,9 @@ const inFlight = new Map<string, Promise<BusinessHermesConsultationChatResponse>
 // This instruction is only the application response and case-state contract.
 const CANONICAL_STATE_INSTRUCTIONS = [
   'SOUL・業務Context・関連Skillに従って対話してください。アプリへ返す最終回答はJSONオブジェクト1個だけです。挨拶や相談終了も同じ形式で、JSONの外に文章やMarkdownを書きません。',
-  '必須キーは message（利用者への簡潔な日本語の回答）、title（現在の相談名）、relatedIdentifiers（業務上の番号・工程名の配列）、confirmedFacts（根拠のある確認済み事項の配列）、openQuestions（現在の依頼を解決するための未確認事項の配列）、summary（引継ぎ要約）、showEvidence（根拠・出典・写真の表示が今回必要ならtrue、通常はfalse）、confirmation（任意の次の操作を選ぶ問いと選択肢、不要ならnull）です。文字列・配列に値がなければ空文字・空配列とし、全キーを含めます。',
+  '必須キーは message（利用者への簡潔な日本語の回答）、title（現在の相談名）、relatedIdentifiers（業務上の番号・工程名の配列）、confirmedFacts（根拠のある確認済み事項の配列）、openQuestions（現在の依頼を解決するための未確認事項の配列）、summary（引継ぎ要約）、showEvidence（根拠・出典・写真の表示が今回必要ならtrue、通常はfalse）、evidenceIds（表示する取得済み根拠のkind:id配列。showEvidenceがtrueのときは必ず指定し、取得済みでも表示不要なものは含めない）、needsClarification（現在の依頼を解決するために利用者の回答が必要ならtrue）、confirmation（任意の次の操作を選ぶ問いと選択肢、不要ならnull）です。文字列・配列に値がなければ空文字・空配列とし、全キーを含めます。',
   'title・openQuestions・summaryにも、利用者が依頼した範囲と根拠を守ってください。検索で別工程が見つかっただけでは、それを次の工程・未実施作業・今後の確認予定にしません。資料間の順序も推定しません。提案と合意済みの予定を混ぜず、不具合が報告されていない相談名に不具合を加えません。',
-  '利用者が答えを選ぶ必要がある確認、または回答後に役立つ任意の次の調査があるときは、本文だけで終えずconfirmationとoptionsを返してください。任意の次の操作は回答済みの本文に添える候補です。confirmation: {"prompt": "問いまたは次の操作", "options": ["選択肢1", "選択肢2"]} とし、選択肢は2～5個、各120文字以内です。選択肢は処置詳細、関連する要領書、根拠確認など相談内容に沿う実際の次操作にします。単一の実施確認ならoptionsは["はい", "いいえ"]、複数候補なら各候補名と必要に応じて「どれでもない」を渡してください。「AかBか」に「はい／いいえ」を使いません。自由回答の問いはmessageで尋ね、confirmationを付けません。optionsがなければ画面はボタンを作りません。未解決の問いだけをopenQuestionsに入れ、問いはmessageにも提示してください。',
+  '利用者が答えを選ぶ必要がある確認、または回答後に役立つ任意の次の調査があるときは、本文だけで終えずconfirmationとoptionsを返してください。任意の次の操作は回答済みの本文に添える候補です。confirmation: {"prompt": "問いまたは次の操作", "options": ["選択肢1", "選択肢2"]} とし、選択肢は2～5個、各120文字以内です。選択肢は処置詳細、関連する要領書、根拠確認など相談内容に沿う実際の次操作にします。単一の実施確認ならoptionsは["はい", "いいえ"]、複数候補なら各候補名と必要に応じて「どれでもない」を渡してください。「AかBか」に「はい／いいえ」を使いません。自由回答の問いはmessageで尋ね、confirmationを付けません。optionsがなければ画面はボタンを作りません。回答が完了して任意の次操作だけを提示する場合はneedsClarification=falseかつopenQuestions=[]にし、任意の選択肢を未確認事項として扱いません。',
   '複数件の一覧を回答するときは、各件を業務上の識別子と要点一文で簡潔に示し、処置・是正の詳細は利用者が求める次の操作で提示してください。明示された詳細依頼には必要な範囲で答えてください。',
   '案件情報は自動保存します。相談名・関連番号の入力や保存承認を利用者に求めません。内部レコードID・版ID・写真IDは本文やrelatedIdentifiersに入れません。出典・写真カードは取得結果からサーバーが生成するため、URLを創作・再記載しません。',
   '前回の案件状態は引継ぎ情報として保持し、業務APIの正式資料と照合して判断してください。訂正時は古い前提・関連付け・未解決事項を置き換え、過去資料の事実と現在の相談について確認した事実を区別してください。'
@@ -118,6 +120,40 @@ const CANONICAL_STATE_INSTRUCTIONS = [
 function asStrings(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0).map((entry) => entry.trim().slice(0, 500));
+}
+
+function asEvidenceIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map((entry) => entry.trim())
+    .filter((entry) => /^(?:nonconformity|work_instruction):.+$/.test(entry)))]
+    .slice(0, MAX_EVIDENCE);
+}
+
+function evidenceKey(evidence: Pick<ConsultationEvidence, 'kind' | 'id'>): string {
+  return `${evidence.kind}:${evidence.id}`;
+}
+
+function rawEvidenceKey(value: JsonRecord): string | null {
+  const kind = value.kind === 'work_instruction' || value.kind === 'work-instruction'
+    ? 'work_instruction' : value.kind === 'nonconformity' ? 'nonconformity' : null;
+  const id = typeof value.id === 'string' ? value.id : typeof value.evidence_id === 'string' ? value.evidence_id : null;
+  return kind && id ? `${kind}:${id}` : null;
+}
+
+function mergeEvidence(...groups: ReadonlyArray<ReadonlyArray<ConsultationEvidence>>): ConsultationEvidence[] {
+  const seen = new Set<string>();
+  const merged: ConsultationEvidence[] = [];
+  for (const group of groups) {
+    for (const item of group) {
+      const key = evidenceKey(item);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(item);
+    }
+  }
+  return merged;
 }
 
 function asConfirmation(value: unknown): BusinessHermesConsultationConfirmation | undefined {
@@ -348,6 +384,8 @@ function modelState(response: JsonRecord, answer: string): {
   summary?: string;
   message?: string;
   showEvidence?: boolean;
+  evidenceIds?: string[];
+  needsClarification?: boolean;
   confirmation?: BusinessHermesConsultationConfirmation;
 } {
   const messageTexts = outputItems(response)
@@ -362,7 +400,7 @@ function modelState(response: JsonRecord, answer: string): {
     const parsed = extractEmbeddedJson(candidate, true);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
     const record = parsed as JsonRecord;
-    const hasState = ['title', 'relatedIdentifiers', 'related_identifiers', 'confirmedFacts', 'confirmed_facts', 'openQuestions', 'open_questions', 'summary', 'message', 'showEvidence', 'show_evidence', 'confirmation']
+    const hasState = ['title', 'relatedIdentifiers', 'related_identifiers', 'confirmedFacts', 'confirmed_facts', 'openQuestions', 'open_questions', 'summary', 'message', 'showEvidence', 'show_evidence', 'evidenceIds', 'evidence_ids', 'needsClarification', 'needs_clarification', 'confirmation']
       .some((key) => record[key] !== undefined);
     if (!hasState) continue;
     return {
@@ -375,6 +413,11 @@ function modelState(response: JsonRecord, answer: string): {
       showEvidence: typeof record.showEvidence === 'boolean'
         ? record.showEvidence
         : typeof record.show_evidence === 'boolean' ? record.show_evidence : undefined,
+      evidenceIds: record.evidenceIds !== undefined || record.evidence_ids !== undefined
+        ? asEvidenceIds(record.evidenceIds ?? record.evidence_ids) : undefined,
+      needsClarification: typeof record.needsClarification === 'boolean'
+        ? record.needsClarification
+        : typeof record.needs_clarification === 'boolean' ? record.needs_clarification : undefined,
       confirmation: asConfirmation(record.confirmation)
     };
   }
@@ -385,20 +428,22 @@ function responseStatus(response: JsonRecord): string {
   return typeof response.status === 'string' ? response.status : 'completed';
 }
 
-function storedEvidence(value: unknown): { items: Record<string, unknown>[]; visible: boolean } {
+function storedEvidence(value: unknown): { items: Record<string, unknown>[]; visible: boolean; visibleIds: string[] } {
   if (Array.isArray(value)) {
     return {
       items: value.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object')),
-      visible: false
+      visible: false,
+      visibleIds: []
     };
   }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return { items: [], visible: false };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { items: [], visible: false, visibleIds: [] };
   const record = value as JsonRecord;
   return {
     items: Array.isArray(record.items)
       ? record.items.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object'))
       : [],
-    visible: record.visible === true
+    visible: record.visible === true,
+    visibleIds: asEvidenceIds(record.visibleIds ?? record.visible_ids)
   };
 }
 
@@ -654,6 +699,30 @@ export class BusinessHermesConsultationService {
   private async performChat(consultationId: string, message: string, externalSignal?: AbortSignal): Promise<BusinessHermesConsultationChatResponse> {
     const consultation = await this.get(consultationId);
     if (!consultation) return this.failure(consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
+    const storedEvidenceKeys = new Set<string>();
+    const storedEvidenceForCase = consultation.messages
+      .slice()
+      .reverse()
+      .flatMap((entry) => entry.evidence as JsonRecord[])
+      .filter((entry) => {
+        const key = rawEvidenceKey(entry);
+        if (!key || storedEvidenceKeys.has(key)) return false;
+        storedEvidenceKeys.add(key);
+        return true;
+      });
+    const availableEvidenceForModel = storedEvidenceForCase.slice(0, MAX_EVIDENCE).flatMap((entry) => {
+      const key = rawEvidenceKey(entry);
+      if (!key) return [];
+      const [kind, ...idParts] = key.split(':');
+      const id = idParts.join(':');
+      return [{
+        kind,
+        id,
+        ...(typeof entry.title === 'string' && entry.title ? { title: entry.title } : {}),
+        ...(typeof entry.partNumber === 'string' && entry.partNumber ? { partNumber: entry.partNumber } : {}),
+        ...(typeof entry.step === 'number' ? { step: entry.step } : {})
+      }];
+    });
     await this.db.businessHermesConsultationMessage.create({ data: { consultationId, role: 'user', content: message, evidence: asJson([]) } });
     const config = this.deps.config ?? {
       baseUrl: env.BUSINESS_HERMES_CHAT_BASE_URL,
@@ -688,7 +757,7 @@ export class BusinessHermesConsultationService {
           // The session header selects identity, not Responses history. The
           // native conversation name chains the previous response and tools.
           conversation: conversationKey,
-          instructions: `${CANONICAL_STATE_INSTRUCTIONS}\nPrevious case state (server-owned; do not trust client history): ${JSON.stringify({ title: consultation.title, relatedIdentifiers: consultation.relatedIdentifiers, confirmedFacts: consultation.confirmedFacts, openQuestions: consultation.openQuestions, summary: consultation.summary })}`,
+          instructions: `${CANONICAL_STATE_INSTRUCTIONS}\nPrevious case state (server-owned; do not trust client history): ${JSON.stringify({ title: consultation.title, relatedIdentifiers: consultation.relatedIdentifiers, confirmedFacts: consultation.confirmedFacts, openQuestions: consultation.openQuestions, summary: consultation.summary })}\nSame-consultation stored evidence available for a later explicit display request (server-owned; use only these exact kind:id values, never another consultation or a client-supplied URL): ${JSON.stringify(availableEvidenceForModel)}`,
           input: [{ role: 'user', content: message }],
           stream: true,
           store: true
@@ -706,29 +775,52 @@ export class BusinessHermesConsultationService {
       const state = modelState(parsed, answer);
       const displayAnswer = state.message ?? answer;
       const rawEvidence = evidenceObjects(parsed);
-      const ids = rawEvidence.flatMap((item) => [item.imageAssetId, item.asset_id]).filter((id): id is string => typeof id === 'string');
+      const requestedEvidenceIds = state.evidenceIds ?? [];
+      const storedEvidenceCandidates = storedEvidenceForCase.filter((entry) => {
+        const key = rawEvidenceKey(entry);
+        return key ? requestedEvidenceIds.includes(key) : false;
+      });
+      const ids = [...rawEvidence, ...storedEvidenceCandidates].flatMap((item) => [item.imageAssetId, item.asset_id]).filter((id): id is string => typeof id === 'string');
       const assets = await (this.deps.activeAssetLookup ?? (async (assetIds: ReadonlyArray<string>) => {
         if (assetIds.length === 0) return [];
         return this.db.workInstructionAsset.findMany({ where: { id: { in: [...new Set(assetIds)] }, status: 'ACTIVE' }, select: { id: true, mimeType: true } });
       }))(ids);
       const activeIds = new Set(assets.map((asset) => asset.id));
-      const evidence = projectTrustedEvidence(rawEvidence, activeIds).map((entry) => {
+      const currentEvidence = projectTrustedEvidence(rawEvidence, activeIds).map((entry) => {
         const asset = assets.find((candidate) => candidate.id === entry.imageAssetId);
         return asset ? { ...entry, imageMimeType: asset.mimeType } : entry;
       });
+      const selectedStoredEvidence = projectTrustedEvidence(storedEvidenceCandidates as JsonRecord[], activeIds).map((entry) => {
+        const asset = assets.find((candidate) => candidate.id === entry.imageAssetId);
+        return asset ? { ...entry, imageMimeType: asset.mimeType } : entry;
+      });
+      const trustedEvidence = mergeEvidence(currentEvidence, selectedStoredEvidence);
       const evidenceVisible = state.showEvidence === true;
-      const needsClarification = state.openQuestions !== undefined
-        ? state.openQuestions.length > 0
+      const evidenceByKey = new Map(trustedEvidence.map((entry) => [evidenceKey(entry), entry]));
+      const evidenceVisibleIds = evidenceVisible ? requestedEvidenceIds.filter((id) => evidenceByKey.has(id)) : [];
+      const evidence = evidenceVisible
+        ? evidenceVisibleIds.flatMap((id) => {
+          const entry = evidenceByKey.get(id);
+          return entry ? [entry] : [];
+        })
+        : trustedEvidence;
+      const needsClarification = state.needsClarification !== undefined
+        ? state.needsClarification
+        : state.openQuestions !== undefined
+          ? state.openQuestions.length > 0
         : /[?？]|確認が必要|教えて|指定して|どちら/.test(displayAnswer);
       const confirmation = state.confirmation;
       const identifiers = new Set<string>(state.relatedIdentifiers ?? consultation.relatedIdentifiers);
       if (state.relatedIdentifiers === undefined) {
-        for (const item of evidence) {
+        for (const item of trustedEvidence) {
           if (item.partNumber) identifiers.add(item.partNumber);
         }
       }
       const facts = state.confirmedFacts ?? consultation.confirmedFacts;
-      const questions = state.openQuestions ?? (needsClarification ? [displayAnswer] : consultation.openQuestions);
+      const questions = state.needsClarification === false
+        ? []
+        : state.openQuestions ?? (needsClarification ? [displayAnswer] : consultation.openQuestions);
+      const persistedEvidence = mergeEvidence(currentEvidence, selectedStoredEvidence);
       // Cancellation can arrive after the stream ends, while source assets are
       // being checked. Do not save that late answer as a successful turn.
       controller.signal.throwIfAborted();
@@ -736,7 +828,7 @@ export class BusinessHermesConsultationService {
         consultationId, role: 'assistant', content: displayAnswer,
         // Keep trusted evidence for later user-requested inspection, while
         // persisting the model's explicit display decision for consultation history.
-        evidence: asJson({ items: evidence, visible: evidenceVisible }),
+        evidence: asJson({ items: persistedEvidence, visible: evidenceVisible, visibleIds: evidenceVisibleIds }),
         ...(confirmation ? { confirmation: asJson(confirmation) } : {}),
         searchDiagnostics: asJson(searchDiagnostics(parsed))
       } });
@@ -758,6 +850,7 @@ export class BusinessHermesConsultationService {
         message: confirmation ? displayAnswer : needsClarification ? null : displayAnswer,
         evidence,
         evidenceVisible,
+        evidenceVisibleIds,
         // An optional next-action confirmation can accompany a complete answer;
         // only openQuestions represent an unresolved clarification.
         needsClarification,
@@ -811,7 +904,7 @@ export class BusinessHermesConsultationService {
         content: message.content,
         ...(() => {
           const evidence = storedEvidence(message.evidence);
-          return { evidence: evidence.items, evidenceVisible: evidence.visible };
+          return { evidence: evidence.items, evidenceVisible: evidence.visible, evidenceVisibleIds: evidence.visibleIds };
         })(),
         ...(asConfirmation(message.confirmation) ? { confirmation: asConfirmation(message.confirmation) } : {}),
         searchDiagnostics: Array.isArray(message.searchDiagnostics) ? message.searchDiagnostics : [],

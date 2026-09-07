@@ -675,6 +675,7 @@ export type BusinessHermesConsultationMessage = {
   content: string;
   evidence: BusinessHermesChatEvidence[];
   evidenceVisible?: boolean;
+  evidenceVisibleIds?: string[];
   confirmation?: BusinessHermesConsultationConfirmation;
   createdAt: string;
 };
@@ -695,6 +696,7 @@ export type BusinessHermesConsultationChatResponse = {
   reasonCode?: string;
   evidence: BusinessHermesChatEvidence[];
   evidenceVisible?: boolean;
+  evidenceVisibleIds?: string[];
   needsClarification: boolean;
   clarificationMessage: string | null;
   consultationId: string;
