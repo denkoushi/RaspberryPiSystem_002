@@ -50,6 +50,8 @@ all:
           api_business_hermes_api_key: "{{ business_hermes_api_key }}"
           api_business_hermes_model: "{{ business_hermes_model }}"
           api_business_hermes_timeout_ms: "8000"
+          api_business_hermes_chat_timeout_ms: "60000"
+          business_hermes_egress_timeout_ms: "60000"
           api_local_llm_base_url: "http://100.118.82.72:38081"
           api_local_llm_shared_token: "{{ vault_api_local_llm_shared_token | default('') }}"
           api_local_llm_model: "system-prod-primary"

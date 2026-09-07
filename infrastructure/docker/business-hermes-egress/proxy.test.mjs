@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import net from 'node:net';
 import http from 'node:http';
 import { createProxyServer, isAllowedConnect, isAllowedHttpRequest } from './proxy.mjs';
@@ -145,4 +146,41 @@ test('relays only the DGX chat path as an absolute-form HTTP request', async (t)
     request.end('{"redirect":true}');
   });
   assert.equal(redirectResponse, 502);
+});
+
+test('passes the independent egress idle timeout to the DGX upstream request', async (t) => {
+  let requestOptions;
+  const proxy = createProxyServer({
+    provider: 'dgx',
+    allowedHttpHost: '127.0.0.1',
+    allowedHttpPort: '38081',
+    httpRequest: (options) => {
+      requestOptions = options;
+      const upstream = new EventEmitter();
+      upstream.setTimeout = () => {};
+      upstream.destroy = () => {};
+      upstream.end = () => process.nextTick(() => upstream.emit('error', new Error('test upstream failure')));
+      return upstream;
+    }
+  });
+  await new Promise((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+  t.after(() => proxy.close());
+
+  const response = await new Promise((resolve, reject) => {
+    const request = http.request({
+      host: '127.0.0.1',
+      port: proxy.address().port,
+      method: 'POST',
+      path: 'http://127.0.0.1:38081/v1/chat/completions',
+      headers: { Host: '127.0.0.1:38081', 'Content-Type': 'application/json' }
+    }, (res) => {
+      res.resume();
+      res.on('end', () => resolve(res.statusCode));
+    });
+    request.on('error', reject);
+    request.end('{}');
+  });
+
+  assert.equal(response, 502);
+  assert.equal(requestOptions.timeout, 60_000);
 });

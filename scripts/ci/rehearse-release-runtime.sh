@@ -271,7 +271,7 @@ done
 declare -a SCHEDULER_ROLES=()
 for name in "$API_BLUE" "$API_GREEN"; do
   role="$(docker exec "$name" node -e \
-    "fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal').then(async r=>{const b=await r.json(); const s=b.scheduler||{}; if(!r.ok||b.ready!==true||b.database!=='ready'||s.enabled!==true||s.databaseConnection!=='connected'||!['leader','standby'].includes(s.role))process.exit(1); console.log(s.role)}).catch(()=>process.exit(1))")"
+    "fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal').then(async r=>{let b;try{b=await r.json()}catch{console.error('[ERROR] scheduler readiness diagnostic=invalid-json');process.exit(1);return} const o=b&&typeof b==='object'?b:{}; const s=o.scheduler&&typeof o.scheduler==='object'?o.scheduler:{}; const ready=o.ready===true?'true':'false'; const database=o.database==='ready'?'ready':o.database==='error'?'error':'invalid'; const role=['leader','standby','stopped'].includes(s.role)?s.role:'invalid'; const databaseConnection=['connected','disconnected','not-used'].includes(s.databaseConnection)?s.databaseConnection:'invalid'; if(!r.ok||ready!=='true'||database!=='ready'||s.enabled!==true||databaseConnection!=='connected'||!['leader','standby'].includes(role)){console.error('[ERROR] scheduler readiness diagnostic=status='+r.status+' ready='+ready+' database='+database+' role='+role+' databaseConnection='+databaseConnection);process.exit(1)} console.log(role)}).catch(()=>{console.error('[ERROR] scheduler readiness diagnostic=network-failed');process.exit(1)})")"
   SCHEDULER_ROLES+=("$role")
 done
 [[ "$(printf '%s\n' "${SCHEDULER_ROLES[@]}" | sort | tr '\n' ' ')" == 'leader standby ' ]] \

@@ -499,4 +499,195 @@ describe('BusinessHermesService', () => {
       data: expect.objectContaining({ eventCode: 'TORQUE_NG', eventId: 'torque-event-1', status: 'ready', targetKey: 'current-bolt' })
     }));
   });
+
+  it('sends bounded operator chat to the configured Business Hermes endpoint', async () => {
+    const fetchImpl = vi.fn(async (_input: URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { messages: Array<{ role: string; content: string }> };
+      expect(body.messages).toEqual([
+        { role: 'system', content: '根拠だけで回答する' },
+        { role: 'user', content: '品番: PART-1' }
+      ]);
+      return new Response(JSON.stringify({
+        model: 'business-model',
+        choices: [{ message: { content: '確認済みの案内です。' } }]
+      }), { status: 200 });
+    });
+    const service = new BusinessHermesService({
+      fetchImpl,
+      config: { provider: 'openai', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'business-model', timeoutMs: 1000 }
+    });
+
+    await expect(service.chat({
+      messages: [
+        { role: 'system', content: '根拠だけで回答する' },
+        { role: 'user', content: '品番: PART-1' }
+      ]
+    })).resolves.toEqual({ status: 'ready', message: '確認済みの案内です。' });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      new URL('https://business-hermes.test/v1/chat/completions'),
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer secret' }) })
+    );
+  });
+
+  it('keeps the server-built evidence system message intact beyond the user turn limit', async () => {
+    const evidenceSystemMessage = `EVIDENCE=${JSON.stringify({
+      nonconformity: { id: 'ng-1', text: '不適合本文' },
+      workInstruction: { id: 'step-1', imageUrl: '/api/work-instructions/assets/asset-1', text: '作業要領本文' }
+    })}${'根拠'.repeat(2_000)}`;
+    const fetchImpl = vi.fn(async (_input: URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { messages: Array<{ role: string; content: string }> };
+      expect(body.messages[0]?.content).toBe(evidenceSystemMessage);
+      expect(body.messages[0]?.content.length).toBeGreaterThan(2_000);
+      expect(body.messages[1]?.content.length).toBeLessThanOrEqual(2_000);
+      return new Response(JSON.stringify({ choices: [{ message: { content: '根拠を確認しました。' } }] }), { status: 200 });
+    });
+    const service = new BusinessHermesService({
+      fetchImpl,
+      config: { provider: 'openai', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'business-model', timeoutMs: 1000 }
+    });
+
+    await expect(service.chat({
+      messages: [
+        { role: 'system', content: evidenceSystemMessage },
+        { role: 'user', content: '品番: PART-1' }
+      ]
+    })).resolves.toMatchObject({ status: 'ready' });
+  });
+
+  it('parses strict intent JSON with omitted nullable fields and excludes assistant turns', async () => {
+    const fetchImpl = vi.fn(async (_input: URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        response_format?: { type: string };
+        messages: Array<{ role: string; content: string }>;
+      };
+      expect(body.response_format).toEqual({ type: 'json_object' });
+      expect(body.messages.filter((message) => message.role === 'user')).toHaveLength(1);
+      expect(body.messages.some((message) => message.content.includes('assistant example'))).toBe(false);
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ scope: 'nonconformity', partNumber: 'PART-1' }) } }]
+      }), { status: 200 });
+    });
+    const service = new BusinessHermesService({
+      fetchImpl,
+      config: { provider: 'openai', baseUrl: 'https://business-hermes.test', apiKey: 'secret', model: 'business-model', timeoutMs: 1000 }
+    });
+
+    await expect(service.classifyChat({
+      messages: [
+        { role: 'user', content: 'PART-1 の不適合を確認' },
+        { role: 'assistant', content: 'assistant example PART-2' }
+      ]
+    })).resolves.toEqual({
+      status: 'ready',
+      intent: { scope: 'nonconformity', partNumber: 'PART-1', shootingTarget: null, clarificationQuestion: null }
+    });
+  });
+
+  it('uses the independent chat deadline for answer generation', async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      const fetchImpl = vi.fn((_input: URL, init?: RequestInit) => {
+        signal = init?.signal;
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+        });
+      });
+      const service = new BusinessHermesService({
+        fetchImpl,
+        config: {
+          provider: 'openai',
+          baseUrl: 'https://business-hermes.test',
+          apiKey: 'secret',
+          model: 'business-model',
+          timeoutMs: 8_000,
+          chatTimeoutMs: 60_000
+        }
+      });
+      let settled = false;
+      const pending = service.chat({ messages: [{ role: 'user', content: '品番 PART-1 の不適合' }] }).finally(() => { settled = true; });
+      await flushMicrotasks();
+
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(settled).toBe(false);
+      expect(signal?.aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(pending).resolves.toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_TIMEOUT' });
+      expect(signal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses the independent chat deadline for intent classification', async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      const fetchImpl = vi.fn((_input: URL, init?: RequestInit) => {
+        signal = init?.signal;
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+        });
+      });
+      const service = new BusinessHermesService({
+        fetchImpl,
+        config: {
+          provider: 'openai',
+          baseUrl: 'https://business-hermes.test',
+          apiKey: 'secret',
+          model: 'business-model',
+          timeoutMs: 8_000,
+          chatTimeoutMs: 60_000
+        }
+      });
+      const pending = service.classifyChat({ messages: [{ role: 'user', content: '品番 PART-1 の不適合' }] });
+      await flushMicrotasks();
+
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(signal?.aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(pending).resolves.toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_TIMEOUT' });
+      expect(signal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps guide on the existing 8s deadline when chat is 60s', async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      const fetchImpl = vi.fn((_input: URL, init?: RequestInit) => {
+        signal = init?.signal;
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+        });
+      });
+      const service = new BusinessHermesService({
+        sessionService: { getDetail: vi.fn().mockResolvedValue(createSession()) } as unknown as AssemblyWorkSessionService,
+        fetchImpl,
+        config: {
+          provider: 'openai',
+          baseUrl: 'https://business-hermes.test',
+          apiKey: 'secret',
+          model: 'business-model',
+          timeoutMs: 8_000,
+          chatTimeoutMs: 60_000
+        }
+      });
+      const pending = service.guide({ sessionId: 'session-1', clientDeviceId: 'device-a', uiRevision: 'r1', eventCode: 'USER_REQUEST' });
+      await flushMicrotasks();
+
+      await vi.advanceTimersByTimeAsync(7_999);
+      expect(signal?.aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(pending).resolves.toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_TIMEOUT' });
+      expect(signal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

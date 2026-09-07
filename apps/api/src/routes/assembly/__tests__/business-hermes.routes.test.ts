@@ -15,6 +15,15 @@ function createApp() {
     evidence: []
   });
   const listProactiveSuggestions = vi.fn().mockResolvedValue([]);
+  const chat = vi.fn().mockResolvedValue({
+    status: 'ready',
+    message: '根拠を確認しました。',
+    evidence: [],
+    partNumber: 'PART-1',
+    shootingTarget: '切削',
+    needsClarification: false,
+    clarificationMessage: null
+  });
   const requireClientDevice = vi.fn(async (raw: unknown) => {
     if (raw === 'device-a') return { clientKey: 'device-a', clientDevice: { id: 'device-a', apiKey: 'device-a', name: 'A', location: null, statusClientId: null } };
     throw new ApiError(401, 'client key required', undefined, 'CLIENT_KEY_INVALID');
@@ -28,8 +37,10 @@ function createApp() {
     app,
     guide,
     listProactiveSuggestions,
+    chat,
     requireClientDevice,
-    service: { guide, listProactiveSuggestions } as never
+    service: { guide, listProactiveSuggestions } as never,
+    chatService: { chat } as never
   };
 }
 
@@ -63,5 +74,40 @@ describe('business Hermes routes', () => {
     expect(manager.statusCode).toBe(403);
     const admin = await fixture.app.inject({ method: 'GET', url: '/assembly/business-hermes/proactive-suggestions', headers: { authorization: `Bearer ${adminToken}` } });
     expect(admin.statusCode).toBe(200);
+  });
+
+  it('allows the operator chat through the existing JWT read boundary', async () => {
+    const fixture = createApp();
+    await registerBusinessHermesRoutes(fixture.app, {
+      requireClientDevice: fixture.requireClientDevice,
+      service: fixture.service,
+      chatService: fixture.chatService
+    });
+    const managerToken = jwt.sign({ sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
+
+    const unauthenticated = await fixture.app.inject({
+      method: 'POST',
+      url: '/assembly/business-hermes/chat',
+      payload: { messages: [{ role: 'user', content: '品番: PART-1' }] }
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    const response = await fixture.app.inject({
+      method: 'POST',
+      url: '/assembly/business-hermes/chat',
+      headers: { authorization: `Bearer ${managerToken}` },
+      payload: {
+        scope: 'both',
+        partNumber: 'PART-1',
+        shootingTarget: '切削',
+        messages: [{ role: 'user', content: '不適合と要領書を確認してください。' }]
+      }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(fixture.chat).toHaveBeenCalledWith(expect.objectContaining({
+      scope: 'both',
+      partNumber: 'PART-1',
+      shootingTarget: '切削'
+    }));
   });
 });

@@ -17,4 +17,20 @@ describe('business Hermes environment shape', () => {
     expect(() => schema.parse({ BUSINESS_HERMES_BASE_URL: 'https://hermes.example/api' })).toThrow();
     expect(schema.parse({ BUSINESS_HERMES_BASE_URL: 'https://hermes.example' }).BUSINESS_HERMES_BASE_URL).toBe('https://hermes.example');
   });
+
+  it('keeps the existing guide deadline and gives chat its independent 60s default', () => {
+    const parsed = schema.parse({});
+
+    expect(parsed.BUSINESS_HERMES_TIMEOUT_MS).toBe(8_000);
+    expect(parsed.BUSINESS_HERMES_CHAT_TIMEOUT_MS).toBe(60_000);
+    expect(schema.parse({
+      BUSINESS_HERMES_TIMEOUT_MS: '30000',
+      BUSINESS_HERMES_CHAT_TIMEOUT_MS: '60000'
+    })).toMatchObject({ BUSINESS_HERMES_TIMEOUT_MS: 30_000, BUSINESS_HERMES_CHAT_TIMEOUT_MS: 60_000 });
+  });
+
+  it('rejects timeout values above each contract bound', () => {
+    expect(() => schema.parse({ BUSINESS_HERMES_TIMEOUT_MS: '30001' })).toThrow();
+    expect(() => schema.parse({ BUSINESS_HERMES_CHAT_TIMEOUT_MS: '60001' })).toThrow();
+  });
 });

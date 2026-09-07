@@ -22,5 +22,9 @@ export const businessHermesEnvShape = {
   BUSINESS_HERMES_BASE_URL: optionalHermesBaseUrl,
   BUSINESS_HERMES_API_KEY: optionalTrimmed,
   BUSINESS_HERMES_MODEL: optionalTrimmed,
+  // Operator chat has two bounded upstream calls (intent and answer). Keep
+  // the guide/proactive deadline separate so their existing 8s budget stays
+  // unchanged.
   BUSINESS_HERMES_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(8_000),
+  BUSINESS_HERMES_CHAT_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(60_000),
 } as const;

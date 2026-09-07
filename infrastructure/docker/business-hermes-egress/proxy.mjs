@@ -9,10 +9,13 @@ const DGX_HOST = process.env.DGX_GATEWAY_HOST ?? '100.118.82.72';
 const DGX_PORT = process.env.DGX_GATEWAY_PORT ?? '38081';
 const DGX_PATH = '/v1/chat/completions';
 const MAX_HTTP_BODY_BYTES = 1024 * 1024;
-const configuredHttpTimeoutMs = Number(process.env.BUSINESS_HERMES_TIMEOUT_MS ?? 8000);
-const HTTP_UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredHttpTimeoutMs) && configuredHttpTimeoutMs >= 500 && configuredHttpTimeoutMs <= 30_000
+// This is an egress idle timeout, independent from the API's guide/proactive
+// and operator-chat request deadlines. The API remains the total request
+// deadline; this bound only closes a DGX socket that stops making progress.
+const configuredHttpTimeoutMs = Number(process.env.BUSINESS_HERMES_EGRESS_TIMEOUT_MS ?? 60_000);
+const HTTP_UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredHttpTimeoutMs) && configuredHttpTimeoutMs >= 500 && configuredHttpTimeoutMs <= 60_000
   ? configuredHttpTimeoutMs
-  : 8000;
+  : 60_000;
 const HTTP_FORWARD_HEADERS = ['content-type', 'authorization', 'x-llm-token', 'accept', 'user-agent'];
 
 export function isAllowedConnect(target, allowedHost = ALLOWED_HOST, allowedPort = '443') {
