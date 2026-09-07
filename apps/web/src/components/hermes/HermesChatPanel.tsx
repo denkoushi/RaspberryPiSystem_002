@@ -269,14 +269,6 @@ export default function HermesChatPanel({
       {mode === 'consultations' && !activeConsultation ? (
         <>
           <div className="hermes-chat-panel__consultation-list" aria-label="相談一覧">
-            <div className="hermes-chat-panel__list-intro">
-              <p className="hermes-chat-panel__list-title">相談を選ぶ</p>
-              {onNewConsultation ? (
-                <button type="button" className="hermes-chat-panel__new-consultation" onClick={onNewConsultation}>
-                  新しい相談を始める
-                </button>
-              ) : null}
-            </div>
             {isConsultationDetailLoading ? <p className="hermes-chat-panel__list-status" role="status">相談内容を読み込んでいます…</p> : null}
             {isConsultationsLoading ? <p className="hermes-chat-panel__list-status" role="status">相談一覧を読み込んでいます…</p> : null}
             {!isConsultationsLoading && consultations.length === 0 ? (

@@ -56,9 +56,11 @@ vi.mock('./HermesChatPanel', () => ({
     style?: CSSProperties;
   }) => (
     <section data-testid="hermes-panel" style={props.style}>
+      {props.mode === 'consultations' && props.onNewConsultation ? (
+        <button type="button" onClick={props.onNewConsultation}>新規</button>
+      ) : null}
       {props.mode === 'consultations' && !props.activeConsultation ? (
         <div data-testid="consultation-list">
-          <button type="button" onClick={props.onNewConsultation}>新しい相談を始める</button>
           {props.consultations?.map((consultation) => (
             <button key={consultation.id} type="button" onClick={() => props.onSelectConsultation?.(consultation.id)}>
               {`相談を開く: ${consultation.title}`}
@@ -575,7 +577,7 @@ describe('HermesFloatingChat', () => {
 
     renderChat();
     fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
-    fireEvent.click(await screen.findByRole('button', { name: '新しい相談を始める' }));
+    fireEvent.click(await screen.findByRole('button', { name: '新規' }));
     await screen.findByText('停止できる相談');
     fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '最初の質問' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -610,7 +612,7 @@ describe('HermesFloatingChat', () => {
       </MemoryRouter>
     );
     await waitFor(() => expect(screen.queryByText('相談内容を読み込んでいます…')).not.toBeInTheDocument());
-    expect(await screen.findByRole('button', { name: '新しい相談を始める' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '新規' })).toBeInTheDocument();
     resolveDetail?.(detail(item.id, [{ id: 'late-detail', role: 'assistant', content: '旧identityの詳細' }]));
     await waitFor(() => expect(screen.queryByText('旧identityの詳細')).not.toBeInTheDocument());
   });
