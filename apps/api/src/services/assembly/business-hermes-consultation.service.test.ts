@@ -103,6 +103,24 @@ describe('BusinessHermesConsultationService', () => {
     } finally { Object.assign(env, previous); }
   });
 
+  it('keeps trusted nonconformity cards when the source has no part number', async () => {
+    const record = {kind: 'nonconformity', id: 'nc-unidentified', nonconformityNo: 'NC-001',
+      partNumber: null, condition: null, remarks: '寸法が規格外', disposition: null};
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({
+      type: 'response.completed', response: {status: 'completed', output: [
+        {type: 'function_call', name: 'mcp__business_api__business_hermes_search', call_id: 'nc-search', arguments: '{}'},
+        {type: 'function_call_output', call_id: 'nc-search', output: JSON.stringify({results: [record]})},
+        {type: 'message', content: [{type: 'output_text', text: '不適合記録を確認しました。'}]}
+      ]}
+    })}\n\n`));
+    const service = new BusinessHermesConsultationService({db: dbFixture().db as never, fetchImpl,
+      config: {baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat'}});
+    const result = await service.chat({consultationId, message: '不適合を確認したい'});
+    expect(result.evidence).toEqual([expect.objectContaining({kind: 'nonconformity', id: record.id,
+      title: record.nonconformityNo, partNumber: '', text: record.remarks})]);
+    expect(result.consultation.messages.at(-1)?.evidence).toEqual(result.evidence);
+  });
+
   it('retains full incremental FCO text when the terminal envelope trims it', async () => {
     const fixture = dbFixture();
     const call = { type: 'function_call', name: 'mcp__business_api__business_hermes_search', call_id: 'search-1', arguments: '{"query":"漏れ"}' };
