@@ -45,6 +45,7 @@ describe('HermesChatPanel evidence cards', () => {
         id: 'message-evidence',
         role: 'assistant' as const,
         content: '回答本文',
+        evidenceVisible: true,
         evidence: [evidence],
         createdAt: '2026-09-07T00:00:00.000Z'
       }]
@@ -57,6 +58,7 @@ describe('HermesChatPanel evidence cards', () => {
           id: 'message-evidence',
           role: 'assistant',
           content: '回答本文',
+          evidenceVisible: true,
           evidence: [evidence]
         }]}
         draft=""
@@ -132,6 +134,43 @@ describe('HermesChatPanel evidence cards', () => {
     expect(screen.queryByText(/出典ID internal-source-id/)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: '出典を開く' })).toHaveAttribute('href', '/assembly/nonconformities/00008195');
     expect(screen.getByRole('button', { name: 'チャットを標準サイズに戻す' })).toBeInTheDocument();
+  });
+
+  it('keeps trusted evidence out of the normal consultation view when the model does not request display', () => {
+    render(
+      <HermesChatPanel
+        mode="consultations"
+        messages={[{
+          id: 'message-hidden-evidence',
+          role: 'assistant',
+          content: '直近の記録は3件です。',
+          evidenceVisible: false,
+          evidence: [{ kind: 'nonconformity', id: 'hidden-source', title: '00008195', partNumber: '', text: '備考' }]
+        }]}
+        draft=""
+        isBusy={false}
+        error={null}
+        authRequired={null}
+        activeConsultation={{
+          id: 'case-hidden-evidence',
+          title: '相談',
+          relatedIdentifiers: [],
+          confirmedFacts: [],
+          openQuestions: [],
+          summary: '',
+          updatedAt: '2026-09-07T00:00:00.000Z',
+          messages: []
+        }}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn()}
+        onReset={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('直近の記録は3件です。')).toBeInTheDocument();
+    expect(screen.queryByText('備考')).not.toBeInTheDocument();
+    expect(screen.queryByText('00008195')).not.toBeInTheDocument();
   });
 
   it('shows only the ten most recent consultations in the existing API order', () => {
@@ -217,7 +256,7 @@ describe('HermesChatPanel evidence cards', () => {
       />
     );
 
-    expect(screen.getByRole('group', { name: 'Hermesからの候補確認' })).toHaveTextContent('PN-A-204');
+    expect(screen.getByRole('group', { name: 'Hermesからの候補確認' })).not.toHaveTextContent('PN-A-204');
     expect(screen.queryByPlaceholderText('相談名を入力')).not.toBeInTheDocument();
     expect(screen.queryByText('保存')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'はい' }));

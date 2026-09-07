@@ -245,30 +245,13 @@
   box-shadow: 0 2px 8px rgba(0, 24, 12, 0.16);
 }
 
-.hermes-chat-panel__suggestion-label,
-.hermes-chat-panel__suggestion-prompt,
-.hermes-chat-panel__suggestion-detail {
+.hermes-chat-panel__suggestion-prompt {
   margin: 0;
 }
 
-.hermes-chat-panel__suggestion-label {
-  color: #125f37;
-  font-size: 0.76rem;
-  font-weight: 700;
-}
-
 .hermes-chat-panel__suggestion-prompt {
-  margin-top: 3px;
   font-size: 0.76rem;
   line-height: 1.4;
-}
-
-.hermes-chat-panel__suggestion-detail {
-  margin-top: 3px;
-  color: #2e6040;
-  font-size: 0.72rem;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
 }
 
 .hermes-chat-panel__suggestion-actions {
