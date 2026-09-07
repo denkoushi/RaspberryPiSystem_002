@@ -23,6 +23,8 @@
     release_pi5_handoff_attempted: false
     release_pi5_start_attempted: false
     release_pi5_business_hermes_start_attempted: false
+    release_pi5_business_hermes_egress_transition_attempted: false
+    release_pi5_business_hermes_egress_transition_rolled_back: false
     release_pi5_business_hermes_started_by_run: false
     release_pi5_healthy: false
     release_pi5_rolled_back: false
@@ -466,11 +468,166 @@
     - release_pi5_business_hermes_enabled | bool
     - release_pi5_business_hermes_egress_existing.stdout | trim | length > 0
 
+- name: Inspect the existing independent business Hermes egress environment
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{json .Config.Env}}' }}"
+      - "{{ release_pi5_business_hermes_egress_existing.stdout | trim }}"
+  register: release_pi5_business_hermes_egress_existing_env_probe
+  changed_when: false
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+    - release_pi5_business_hermes_egress_existing.stdout | trim | length > 0
+
+- name: Inspect the existing independent business Hermes egress health
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' }}"
+      - "{{ release_pi5_business_hermes_egress_existing.stdout | trim }}"
+  register: release_pi5_business_hermes_egress_existing_health_probe
+  changed_when: false
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+    - release_pi5_business_hermes_egress_existing.stdout | trim | length > 0
+
 - name: Record the independent business Hermes egress pre-rollout state
   ansible.builtin.set_fact:
     release_pi5_business_hermes_egress_existing_id: "{{ release_pi5_business_hermes_egress_existing.stdout | trim }}"
     release_pi5_business_hermes_egress_existing_image: "{{ (release_pi5_business_hermes_egress_existing_identity.stdout | default('')).split('|')[0] if (release_pi5_business_hermes_egress_existing_identity.stdout | default('') | length > 0) else '' }}"
     release_pi5_business_hermes_egress_existing_running: "{{ ((release_pi5_business_hermes_egress_existing_identity.stdout | default('')).split('|')[1] | bool) if ('|' in (release_pi5_business_hermes_egress_existing_identity.stdout | default(''))) else false }}"
+    release_pi5_business_hermes_egress_existing_health: "{{ release_pi5_business_hermes_egress_existing_health_probe.stdout | default('none') | trim }}"
+    release_pi5_business_hermes_egress_existing_env_lines: "{{ release_pi5_business_hermes_egress_existing_env_probe.stdout | default('[]') | from_json }}"
+    release_pi5_business_hermes_egress_existing_timeout_key_present: "{{ (release_pi5_business_hermes_egress_existing_env_probe.stdout | default('[]') | from_json | select('match', '^BUSINESS_HERMES_EGRESS_TIMEOUT_MS=') | list | length) > 0 }}"
+    release_pi5_business_hermes_egress_existing_legacy_timeout_key_present: "{{ (release_pi5_business_hermes_egress_existing_env_probe.stdout | default('[]') | from_json | select('match', '^BUSINESS_HERMES_TIMEOUT_MS=') | list | length) > 0 }}"
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+# The checked-out proxy uses EGRESS first and falls back to the legacy key for
+# a legacy-only container. Conflicting values are rejected before mutation.
+- name: Derive the captured Business Hermes egress timeout
+  ansible.builtin.set_fact:
+    release_pi5_business_hermes_egress_existing_provider: >-
+      {{
+        (
+          release_pi5_business_hermes_egress_existing_env_lines
+          | select('match', '^BUSINESS_HERMES_PROVIDER=')
+          | list
+          | first
+          | default('BUSINESS_HERMES_PROVIDER=' + (business_hermes_provider | default('dgx')), true)
+        ).split('=', 1)[1]
+      }}
+    release_pi5_business_hermes_egress_existing_timeout_ms: >-
+      {{
+        (
+          (
+            release_pi5_business_hermes_egress_existing_env_lines
+            | select('match', '^BUSINESS_HERMES_EGRESS_TIMEOUT_MS=')
+            | list
+            | first
+          )
+          | default(
+              release_pi5_business_hermes_egress_existing_env_lines
+              | select('match', '^BUSINESS_HERMES_TIMEOUT_MS=')
+              | list
+              | first,
+              true
+            )
+          | default('BUSINESS_HERMES_TIMEOUT_MS=8000', true)
+        ).split('=', 1)[1]
+      }}
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Derive the legacy Business Hermes egress timeout for conflict checking
+  ansible.builtin.set_fact:
+    release_pi5_business_hermes_egress_existing_legacy_timeout_ms: >-
+      {{
+        (
+          (
+            release_pi5_business_hermes_egress_existing_env_lines
+            | select('match', '^BUSINESS_HERMES_TIMEOUT_MS=')
+            | list
+            | first
+          )
+          | default(
+              release_pi5_business_hermes_egress_existing_env_lines
+              | select('match', '^BUSINESS_HERMES_EGRESS_TIMEOUT_MS=')
+              | list
+              | first,
+              true
+            )
+          | default('BUSINESS_HERMES_TIMEOUT_MS=8000', true)
+        ).split('=', 1)[1]
+      }}
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Require a valid captured Business Hermes egress timeout
+  ansible.builtin.assert:
+    that:
+      - release_pi5_business_hermes_egress_existing_timeout_ms is match('^[0-9]+$')
+      - release_pi5_business_hermes_egress_existing_timeout_ms | int >= 500
+      - release_pi5_business_hermes_egress_existing_timeout_ms | int <= 60000
+      - release_pi5_business_hermes_egress_existing_legacy_timeout_ms is match('^[0-9]+$')
+      - release_pi5_business_hermes_egress_existing_legacy_timeout_ms | int >= 500
+      - release_pi5_business_hermes_egress_existing_legacy_timeout_ms | int <= 60000
+    fail_msg: The existing Business Hermes egress timeout is not a supported rollback value.
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Refuse conflicting Business Hermes egress timeout keys
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (
+          release_pi5_business_hermes_egress_existing_timeout_key_present | bool
+          and release_pi5_business_hermes_egress_existing_legacy_timeout_key_present | bool
+        )
+        or release_pi5_business_hermes_egress_existing_timeout_ms | int
+        == release_pi5_business_hermes_egress_existing_legacy_timeout_ms | int
+    fail_msg: Existing Business Hermes egress timeout keys conflict; preserve the container and use the dedicated migration procedure.
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Refuse to change the existing Business Hermes egress provider
+  ansible.builtin.assert:
+    that:
+      - >-
+        (release_pi5_business_hermes_egress_existing_id | default('') | length == 0)
+        or release_pi5_business_hermes_egress_existing_provider == (business_hermes_provider | default('dgx'))
+    fail_msg: Existing Business Hermes egress provider differs from this release; preserve it and use the dedicated provider procedure.
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Decide whether the Business Hermes egress requires a controlled timeout transition
+  ansible.builtin.set_fact:
+    release_pi5_business_hermes_egress_transition_required: >-
+      {{
+        release_pi5_business_hermes_egress_existing_id | length == 0
+        or not (release_pi5_business_hermes_egress_existing_running | bool)
+        or release_pi5_business_hermes_egress_existing_health != 'healthy'
+        or not (release_pi5_business_hermes_egress_existing_timeout_key_present | bool)
+        or release_pi5_business_hermes_egress_existing_timeout_ms | int != (business_hermes_egress_timeout_ms | default(60000) | int)
+      }}
   when:
     - release_pi5_route == 'fresh'
     - release_pi5_business_hermes_enabled | bool
@@ -660,6 +817,97 @@
   when:
     - release_pi5_route == 'fresh'
     - release_pi5_business_hermes_enabled | bool
+
+- name: Mark the Business Hermes egress transition boundary
+  ansible.builtin.set_fact:
+    release_pi5_business_hermes_egress_transition_attempted: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+    - release_pi5_business_hermes_egress_transition_required | bool
+
+- name: Apply the Business Hermes egress timeout before candidate traffic
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'business-hermes-egress'] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  changed_when: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+    - release_pi5_business_hermes_egress_transition_required | bool
+
+- name: Resolve the Business Hermes egress after timeout transition
+  ansible.builtin.command:
+    argv:
+      - docker
+      - ps
+      - --all
+      - --filter
+      - "label=com.docker.compose.project={{ release_pi5_compose_project }}"
+      - --filter
+      - label=com.docker.compose.service=business-hermes-egress
+      - --format
+      - "{{ '{{.ID}}' }}"
+  register: release_pi5_business_hermes_egress_after_transition
+  changed_when: false
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+    - release_pi5_business_hermes_egress_transition_required | bool
+
+- name: Inspect the Business Hermes egress after timeout transition
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{.Config.Image}}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' }}"
+      - "{{ release_pi5_business_hermes_egress_after_transition.stdout | trim }}"
+  register: release_pi5_business_hermes_egress_after_transition_identity
+  changed_when: false
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+    - release_pi5_business_hermes_egress_transition_required | bool
+    - release_pi5_business_hermes_egress_after_transition.stdout | trim | length > 0
+
+- name: Inspect the Business Hermes egress environment after timeout transition
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{json .Config.Env}}' }}"
+      - "{{ release_pi5_business_hermes_egress_after_transition.stdout | trim }}"
+  register: release_pi5_business_hermes_egress_after_transition_env
+  changed_when: false
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+    - release_pi5_business_hermes_egress_transition_required | bool
+    - release_pi5_business_hermes_egress_after_transition.stdout | trim | length > 0
+
+- name: Require the Business Hermes egress timeout transition to be ready
+  ansible.builtin.assert:
+    that:
+      - release_pi5_business_hermes_egress_after_transition.stdout | trim is match('^[0-9a-f]{12,64}$')
+      - release_pi5_business_hermes_egress_after_transition_identity.stdout.split('|')[0] == release_pi5_business_hermes_egress_image
+      - release_pi5_business_hermes_egress_after_transition_identity.stdout.split('|')[1] == 'true'
+      - release_pi5_business_hermes_egress_after_transition_identity.stdout.split('|')[2] == 'healthy'
+      - >-
+        "BUSINESS_HERMES_PROVIDER={{ business_hermes_provider | default('dgx') }}"
+        in (release_pi5_business_hermes_egress_after_transition_env.stdout | from_json)
+      - >-
+        "BUSINESS_HERMES_EGRESS_TIMEOUT_MS={{ business_hermes_egress_timeout_ms | default(60000) }}"
+        in (release_pi5_business_hermes_egress_after_transition_env.stdout | from_json)
+    fail_msg: Business Hermes egress did not reach the requested image, timeout, and healthy state before candidate startup.
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+    - release_pi5_business_hermes_egress_transition_required | bool
 
 - name: Mark the inactive Pi5 candidate startup boundary
   ansible.builtin.set_fact:

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import net from 'node:net';
 import http from 'node:http';
@@ -183,4 +184,51 @@ test('passes the independent egress idle timeout to the DGX upstream request', a
 
   assert.equal(response, 502);
   assert.equal(requestOptions.timeout, 60_000);
+});
+
+test('uses the former Hermes timeout when the new egress key is absent', () => {
+  const childScript = `
+    import { EventEmitter } from 'node:events';
+    import http from 'node:http';
+    import { createProxyServer } from ${JSON.stringify(new URL('./proxy.mjs', import.meta.url).href)};
+    let requestOptions;
+    const proxy = createProxyServer({
+      provider: 'dgx',
+      allowedHttpHost: '127.0.0.1',
+      allowedHttpPort: '38081',
+      httpRequest: (options) => {
+        requestOptions = options;
+        const upstream = new EventEmitter();
+        upstream.setTimeout = () => {};
+        upstream.destroy = () => {};
+        upstream.end = () => process.nextTick(() => upstream.emit('error', new Error('test')));
+        return upstream;
+      }
+    });
+    await new Promise((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+    await new Promise((resolve, reject) => {
+      const request = http.request({
+        host: '127.0.0.1',
+        port: proxy.address().port,
+        method: 'POST',
+        path: 'http://127.0.0.1:38081/v1/chat/completions',
+        headers: { Host: '127.0.0.1:38081', 'Content-Type': 'application/json' }
+      }, (response) => {
+        response.resume();
+        response.on('end', resolve);
+      });
+      request.on('error', reject);
+      request.end('{}');
+    });
+    proxy.close();
+    if (requestOptions?.timeout !== 8_000) process.exit(1);
+  `;
+  const environment = { ...process.env, BUSINESS_HERMES_TIMEOUT_MS: '8000' };
+  delete environment.BUSINESS_HERMES_EGRESS_TIMEOUT_MS;
+  const result = spawnSync(
+    process.execPath,
+    ['--input-type=module', '--eval', childScript],
+    { env: environment, encoding: 'utf8' }
+  );
+  assert.equal(result.status, 0, result.stderr);
 });
