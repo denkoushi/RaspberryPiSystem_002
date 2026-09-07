@@ -154,6 +154,7 @@ describe('HermesChatPanel evidence cards', () => {
         error={null}
         authRequired={null}
         consultations={consultations}
+        onNewConsultation={vi.fn()}
         onDraftChange={vi.fn()}
         onSend={vi.fn()}
         onReset={vi.fn()}
@@ -164,6 +165,9 @@ describe('HermesChatPanel evidence cards', () => {
     expect(screen.getByRole('button', { name: /^相談 1 更新/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^相談 10 更新/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^相談 11 更新/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '新しい相談を始める' })).toBeInTheDocument();
+    expect(screen.queryByText('新しい相談を始める')).not.toBeInTheDocument();
+    expect(screen.queryByText('相談を選ぶ')).not.toBeInTheDocument();
   });
 
   it('renders model choices and does not invent binary buttons', () => {

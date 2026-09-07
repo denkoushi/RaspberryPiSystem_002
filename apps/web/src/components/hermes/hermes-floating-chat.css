@@ -190,34 +190,6 @@
   background: #081b16;
 }
 
-.hermes-chat-panel__list-intro {
-  padding: 8px 4px 12px;
-  color: #a9cdb5;
-  font-size: 0.78rem;
-  line-height: 1.45;
-}
-
-.hermes-chat-panel__list-intro p {
-  margin: 0 0 6px;
-}
-
-.hermes-chat-panel__list-title {
-  color: #d8ffe5;
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.hermes-chat-panel__new-consultation {
-  min-height: 36px;
-  margin-top: 4px;
-  padding: 7px 10px;
-  border: 1px solid rgba(156, 241, 185, 0.42);
-  border-radius: 8px;
-  color: #c8ffda;
-  background: rgba(113, 255, 161, 0.1);
-  cursor: pointer;
-}
-
 .hermes-chat-panel__list-status {
   margin: 8px 4px;
   color: #9bc7ac;
