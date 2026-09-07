@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { env } from '../../config/env.js';
+
 import { BusinessHermesConsultationService, projectTrustedEvidence } from './business-hermes-consultation.service.js';
 
 const consultationId = '00000000-0000-0000-0000-000000000010';
@@ -80,6 +82,25 @@ describe('BusinessHermesConsultationService', () => {
     expect(runtime.ensureReady).toHaveBeenCalledWith('business_hermes');
     expect(runtime.release).toHaveBeenCalledWith('business_hermes');
     expect(fixture.messages.map((message) => message.role)).toEqual(['user', 'assistant']);
+  });
+
+  it('acquires the consultation DGX lease when the independent guide uses OpenAI', async () => {
+    const previous = { BUSINESS_HERMES_PROVIDER: env.BUSINESS_HERMES_PROVIDER,
+      BUSINESS_HERMES_CHAT_BASE_URL: env.BUSINESS_HERMES_CHAT_BASE_URL,
+      BUSINESS_HERMES_CHAT_API_KEY: env.BUSINESS_HERMES_CHAT_API_KEY,
+      BUSINESS_HERMES_CHAT_MODEL: env.BUSINESS_HERMES_CHAT_MODEL };
+    Object.assign(env, { BUSINESS_HERMES_PROVIDER: 'openai', BUSINESS_HERMES_CHAT_BASE_URL: 'http://hermes.local',
+      BUSINESS_HERMES_CHAT_API_KEY: 'test-key', BUSINESS_HERMES_CHAT_MODEL: 'chat' });
+    try {
+      const runtime = { ensureReady: vi.fn().mockResolvedValue(undefined), release: vi.fn().mockResolvedValue(undefined) };
+      const fetchImpl = vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({type: 'response.completed', response: {status: 'completed', output: [
+        {type: 'message', content: [{type: 'output_text', text: '確認しました。'}]}
+      ]}})}\n\n`));
+      const service = new BusinessHermesConsultationService({ db: dbFixture().db as never, runtime, fetchImpl });
+      expect((await service.chat({consultationId, message: '確認したい'})).status).toBe('ready');
+      expect(runtime.ensureReady).toHaveBeenCalledWith('business_hermes');
+      expect(runtime.release).toHaveBeenCalledWith('business_hermes');
+    } finally { Object.assign(env, previous); }
   });
 
   it('retains full incremental FCO text when the terminal envelope trims it', async () => {

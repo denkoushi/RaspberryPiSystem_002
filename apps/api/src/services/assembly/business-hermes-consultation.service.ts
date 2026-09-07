@@ -634,7 +634,8 @@ export class BusinessHermesConsultationService {
       baseUrl: env.BUSINESS_HERMES_CHAT_BASE_URL,
       apiKey: env.BUSINESS_HERMES_CHAT_API_KEY,
       model: env.BUSINESS_HERMES_CHAT_MODEL ?? env.BUSINESS_HERMES_MODEL,
-      provider: env.BUSINESS_HERMES_PROVIDER,
+      // The dedicated consultation profile always uses DGX, independently of the guide.
+      provider: 'dgx' as const,
       timeoutMs: env.BUSINESS_HERMES_CHAT_TIMEOUT_MS
     };
     if (!config.baseUrl || !config.apiKey || !config.model) return this.failure(consultationId, 'HERMES_NOT_CONFIGURED');

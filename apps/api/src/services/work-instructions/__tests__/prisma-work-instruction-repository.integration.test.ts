@@ -179,6 +179,26 @@ describeIntegration('Prisma work-instruction repository (isolated integration)',
     expect(result.content[0]!.text).not.toContain('未公開本文');
   });
 
+  it('searches legacy public rows during mixed publication rollout without exposing moved drafts', async () => {
+    const term = `${fixtureToken}-mixed`;
+    for (const itemId of [7950, 7951]) {
+      await repository.applyPacket({packet: packet({itemId, modified: baseModified,
+        contentHash: `mixed-${itemId}`, partNumber: `${fixtureToken}-MIXED`,
+        steps: [{step: 1, text: term, imageName: null}]}), stagedAssets: [], now: baseModified});
+    }
+    const legacy = await prisma.workInstructionRow.findFirstOrThrow({where: {sourceSystem, sourceItemId: 7950n}});
+    await prisma.workInstructionSourcePublication.delete({where: {rowId: legacy.id}});
+    const page = await repository.searchPublishedGroups({query: term, limit: 10, offset: 0});
+    expect(page).toMatchObject({total: 1, hasMore: false});
+    expect(page.groups[0]).toMatchObject({rowCount: 2, stepCount: 2});
+    await prisma.workInstructionStep.updateMany({where: {rowId: legacy.id}, data: {text: `${term}-legacy-only`}});
+    expect((await repository.searchPublishedGroups({query: `${term}-legacy-only`, limit: 10, offset: 0})).total).toBe(1);
+    await repository.applyPacket({packet: packet({itemId: 7951, modified: new Date(baseModified.getTime() + 1000),
+      contentHash: 'moved-draft', partNumber: `${fixtureToken}-MOVED`,
+      steps: [{step: 1, text: `${term}-draft-only`, imageName: null}]}), stagedAssets: [], now: baseModified});
+    expect((await repository.searchPublishedGroups({query: `${term}-draft-only`, limit: 10, offset: 0})).total).toBe(0);
+  });
+
   it('pages published text search without losing totals or exposing newer drafts', async () => {
     const term = `${fixtureToken}-search`;
     for (let index = 0; index < 23; index++) {

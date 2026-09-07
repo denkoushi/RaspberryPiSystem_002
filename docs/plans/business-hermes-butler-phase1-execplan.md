@@ -511,3 +511,19 @@ restoration of an existing stopped service with actual Ansible tasks and a
 stateful Docker double. Required hosted CI and release artifact checks precede
 any production mutation. Runtime and Pi4 acceptance evidence will be recorded
 after the canonical release run completes.
+
+### PR review corrections
+
+PR #1350 identified two compatibility gaps. Public text search now uses the
+same publication-null legacy fallback as the existing public read API; rows
+with a publication pointer still use their published version, even after a
+draft moves to a different group. A mixed-publication PostgreSQL regression
+checks combined group counts, legacy-only text, and exclusion of moved drafts.
+The dedicated consultation profile always uses DGX, so its runtime lease no
+longer depends on whether the independent guide uses OpenAI. A service
+regression verifies acquisition and release under that guide configuration.
+
+The expand-only migration gate also required foreign keys inside new-table
+creation and separate nullable-column statements. Both revised migrations
+passed the canonical migration validator and a transaction-scoped PostgreSQL
+schema check with enforced foreign keys. No production migration was rewritten.

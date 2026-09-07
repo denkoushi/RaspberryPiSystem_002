@@ -495,7 +495,8 @@ export async function readPublishedWorkInstructionGroups(
 }
 
 /**
- * Search only the public source pointer. The effective text expression keeps
+ * Search the public source pointer and the existing publication-null legacy
+ * fallback. The effective text expression keeps
  * a published memo override authoritative, including an intentionally empty
  * override, so an imported draft or the immutable source text cannot leak
  * into a public search result. Filtering happens in PostgreSQL before the
@@ -515,9 +516,10 @@ export async function searchPublishedWorkInstructionGroups(
   if (input.shootingTarget !== undefined && !shootingTarget) return { groups: [], total: 0, hasMore: false };
   const pattern = `%${escapeLikePrefix(query)}%`;
   const records = await db.$queryRaw<Array<Partial<GroupSummaryRecord> & { total: number }>>(Prisma.sql`
-    WITH matching_keys AS (
-      SELECT DISTINCT version."partNumber" AS "partNumber",
-                      version."shootingTarget" AS "shootingTarget"
+    WITH public_steps AS (
+      SELECT publication."rowId", version."partNumber", version."shootingTarget",
+             version."sourceModified", step."id" AS "stepId",
+             CASE WHEN memo."id" IS NOT NULL THEN memo."text" ELSE step."text" END AS "text"
       FROM "WorkInstructionSourcePublication" AS publication
       JOIN "WorkInstructionSourceVersion" AS version
         ON version."id" = publication."publishedVersionId"
@@ -527,30 +529,37 @@ export async function searchPublishedWorkInstructionGroups(
         ON memo."revisionId" = publication."publishedRevisionId"
        AND memo."sourceStep" = step."step"
        AND memo."migrationState" = 'MIGRATED'
-      WHERE version."partNumber" IS NOT NULL
-        AND version."shootingTarget" IS NOT NULL
-        ${partNumber ? Prisma.sql`AND version."partNumber" = ${partNumber}` : Prisma.empty}
-        ${shootingTarget ? Prisma.sql`AND version."shootingTarget" = ${shootingTarget}` : Prisma.empty}
+      UNION ALL
+      SELECT row."id" AS "rowId", row."partNumber", row."shootingTarget",
+             row."sourceModified", step."id" AS "stepId", step."text"
+      FROM "WorkInstructionRow" AS row
+      LEFT JOIN "WorkInstructionStep" AS step ON step."rowId" = row."id"
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "WorkInstructionSourcePublication" AS publication
+        WHERE publication."rowId" = row."id"
+      )
+    ), matching_keys AS (
+      SELECT DISTINCT source."partNumber", source."shootingTarget"
+      FROM public_steps AS source
+      WHERE source."partNumber" IS NOT NULL
+        AND source."shootingTarget" IS NOT NULL
+        ${partNumber ? Prisma.sql`AND source."partNumber" = ${partNumber}` : Prisma.empty}
+        ${shootingTarget ? Prisma.sql`AND source."shootingTarget" = ${shootingTarget}` : Prisma.empty}
         AND (
-          version."partNumber" ILIKE ${pattern} ESCAPE '\\'
-          OR version."shootingTarget" ILIKE ${pattern} ESCAPE '\\'
-          OR (CASE WHEN memo."id" IS NOT NULL THEN memo."text" ELSE step."text" END) ILIKE ${pattern} ESCAPE '\\'
+          source."partNumber" ILIKE ${pattern} ESCAPE '\\'
+          OR source."shootingTarget" ILIKE ${pattern} ESCAPE '\\'
+          OR source."text" ILIKE ${pattern} ESCAPE '\\'
         )
     ), matching_groups AS (
-      SELECT version."partNumber" AS "partNumber",
-             version."shootingTarget" AS "shootingTarget",
-             COUNT(DISTINCT publication."rowId")::int AS "rowCount",
-             COUNT(step."id")::int AS "stepCount",
-             MAX(version."sourceModified") AS "latestModified"
-      FROM "WorkInstructionSourcePublication" AS publication
-      JOIN "WorkInstructionSourceVersion" AS version
-        ON version."id" = publication."publishedVersionId"
-      LEFT JOIN "WorkInstructionSourceVersionStep" AS step
-        ON step."sourceVersionId" = version."id"
+      SELECT source."partNumber", source."shootingTarget",
+             COUNT(DISTINCT source."rowId")::int AS "rowCount",
+             COUNT(source."stepId")::int AS "stepCount",
+             MAX(source."sourceModified") AS "latestModified"
+      FROM public_steps AS source
       JOIN matching_keys AS matched
-        ON matched."partNumber" = version."partNumber"
-       AND matched."shootingTarget" = version."shootingTarget"
-      GROUP BY version."partNumber", version."shootingTarget"
+        ON matched."partNumber" = source."partNumber"
+       AND matched."shootingTarget" = source."shootingTarget"
+      GROUP BY source."partNumber", source."shootingTarget"
     ), total_count AS (
       SELECT COUNT(*)::int AS "total" FROM matching_groups
     ), paged_groups AS (
