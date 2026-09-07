@@ -72,13 +72,98 @@ describe('HermesChatPanel evidence cards', () => {
     );
 
     expect(screen.getByText('回答本文')).toBeInTheDocument();
-    expect(screen.getByText(/出典ID source-step-42/)).toBeInTheDocument();
+    expect(screen.queryByText(/出典ID source-step-42/)).not.toBeInTheDocument();
     expect(screen.getByText(/元データ日時 2026-09-07/)).toBeInTheDocument();
     expect(screen.getByText('公開された本文')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '出典を開く' })).toHaveAttribute('href', '/assembly/work-instructions/public/row-42');
     expect(screen.getByText('原画像（公開写真）')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('protected-evidence-image')).toHaveAttribute('src', '/api/work-instructions/assets/active-asset-42'));
     expect(screen.getByTestId('protected-evidence-image')).toHaveAttribute('alt', '原画像（公開写真）');
+  });
+
+  it('keeps the consultation state and evidence links while hiding internal context and static labels', () => {
+    render(
+      <HermesChatPanel
+        mode="consultations"
+        messages={[{
+          id: 'message-state',
+          role: 'assistant',
+          content: '回答本文',
+          evidence: [{
+            kind: 'nonconformity',
+            id: 'internal-source-id',
+            title: '不適合番号00008195',
+            partNumber: '',
+            text: '備考の本文',
+            sourceUrl: '/assembly/nonconformities/00008195'
+          }]
+        }]}
+        draft=""
+        isBusy={false}
+        error={null}
+        authRequired={null}
+        consultations={[]}
+        activeConsultation={{
+          id: 'case-state',
+          title: '現在の相談',
+          relatedIdentifiers: ['00008195'],
+          confirmedFacts: ['確認済みの事実'],
+          openQuestions: ['未解決の確認'],
+          summary: '保存された要約',
+          updatedAt: '2026-09-07T00:00:00.000Z',
+          messages: []
+        }}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn()}
+        onReset={vi.fn()}
+        onClose={vi.fn()}
+        isExpanded
+        onToggleSize={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('heading', { name: '現在の相談' })).toBeInTheDocument();
+    expect(screen.queryByText('業務Hermes')).not.toBeInTheDocument();
+    expect(screen.queryByText('不適合・作業要領を自然な言葉で相談')).not.toBeInTheDocument();
+    expect(screen.queryByText('保存された相談情報（会話本文とは別）')).not.toBeInTheDocument();
+    expect(screen.queryByText('保存された要約')).not.toBeInTheDocument();
+    expect(screen.queryByText('確認済みの事実')).not.toBeInTheDocument();
+    expect(screen.getByText('不適合番号00008195')).toBeInTheDocument();
+    expect(screen.queryByText(/出典ID internal-source-id/)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '出典を開く' })).toHaveAttribute('href', '/assembly/nonconformities/00008195');
+    expect(screen.getByRole('button', { name: 'チャットを標準サイズに戻す' })).toBeInTheDocument();
+  });
+
+  it('shows only the ten most recent consultations in the existing API order', () => {
+    const consultations = Array.from({ length: 11 }, (_, index) => ({
+      id: `case-${index + 1}`,
+      title: `相談 ${index + 1}`,
+      relatedIdentifiers: [],
+      confirmedFacts: [],
+      openQuestions: [],
+      summary: '',
+      updatedAt: `2026-09-${String(11 - index).padStart(2, '0')}T00:00:00.000Z`
+    }));
+
+    render(
+      <HermesChatPanel
+        mode="consultations"
+        messages={[]}
+        draft=""
+        isBusy={false}
+        error={null}
+        authRequired={null}
+        consultations={consultations}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn()}
+        onReset={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /^相談 1 更新/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^相談 10 更新/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^相談 11 更新/ })).not.toBeInTheDocument();
   });
 
   it('renders model choices and does not invent binary buttons', () => {

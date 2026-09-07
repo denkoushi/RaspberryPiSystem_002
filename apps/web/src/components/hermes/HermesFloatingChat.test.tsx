@@ -46,13 +46,16 @@ vi.mock('./HermesChatPanel', () => ({
     onReset: () => void;
     onClose: () => void;
     onStop?: () => void;
+    isExpanded?: boolean;
+    onToggleSize?: () => void;
     onNewConsultation?: () => void;
     onSelectConsultation?: (consultationId: string) => void;
     onLoadOlderMessages?: () => void;
     suggestion?: { title?: string; relatedIdentifiers: string[]; prompt: string; options?: string[] } | null;
     onAnswerSuggestion?: (answer: string) => void;
+    style?: CSSProperties;
   }) => (
-    <section data-testid="hermes-panel">
+    <section data-testid="hermes-panel" style={props.style}>
       {props.mode === 'consultations' && !props.activeConsultation ? (
         <div data-testid="consultation-list">
           <button type="button" onClick={props.onNewConsultation}>新しい相談を始める</button>
@@ -95,11 +98,14 @@ vi.mock('./HermesChatPanel', () => ({
       {props.isBusy && props.onStop ? <button type="button" onClick={props.onStop}>停止</button> : null}
       <button type="button" onClick={props.onReset}>{props.activeConsultation ? '相談一覧に戻る' : 'リセット'}</button>
       <button type="button" onClick={props.onClose}>閉じる</button>
+      {props.onToggleSize ? <button type="button" onClick={props.onToggleSize}>{props.isExpanded ? '標準' : '拡大'}</button> : null}
     </section>
   )
 }));
 
 import { HermesFloatingChat } from './HermesFloatingChat';
+
+import type { CSSProperties } from 'react';
 
 function renderChat() {
   return render(
@@ -176,6 +182,50 @@ describe('HermesFloatingChat', () => {
     expect(Number.parseInt(trigger.getAttribute('style')?.match(/left: ([^;]+)/)?.[1] ?? '', 10)).toBeLessThan(initialLeft || 1000);
     fireEvent.keyDown(trigger, { key: 'Enter' });
     expect(await screen.findByTestId('hermes-panel')).toBeInTheDocument();
+  });
+
+  it('toggles the panel between standard and expanded sizes without clearing the draft', async () => {
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    const panel = await screen.findByTestId('hermes-panel');
+    const input = screen.getByRole('textbox', { name: 'Hermesへの質問' });
+    fireEvent.change(input, { target: { value: '入力中の質問' } });
+
+    expect(panel.style.width).toBe('380px');
+    expect(panel.style.height).toBe('560px');
+    fireEvent.click(screen.getByRole('button', { name: '拡大' }));
+    await waitFor(() => expect(panel.style.width).toBe('760px'));
+    expect(panel.style.height).toBe('744px');
+    expect(input).toHaveValue('入力中の質問');
+    expect(Number.parseFloat(panel.style.left) + Number.parseFloat(panel.style.width)).toBeLessThanOrEqual(window.innerWidth - 12);
+    expect(Number.parseFloat(panel.style.top) + Number.parseFloat(panel.style.height)).toBeLessThanOrEqual(window.innerHeight - 12);
+
+    fireEvent.click(screen.getByRole('button', { name: '標準' }));
+    await waitFor(() => expect(panel.style.width).toBe('380px'));
+    expect(panel.style.height).toBe('560px');
+    expect(input).toHaveValue('入力中の質問');
+  });
+
+  it('clamps the expanded panel to a small viewport', async () => {
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 320 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 240 });
+    try {
+      renderChat();
+      fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+      const panel = await screen.findByTestId('hermes-panel');
+      fireEvent.click(screen.getByRole('button', { name: '拡大' }));
+      await waitFor(() => expect(panel.style.width).toBe('296px'));
+      expect(panel.style.height).toBe('216px');
+      expect(Number.parseFloat(panel.style.left)).toBeGreaterThanOrEqual(12);
+      expect(Number.parseFloat(panel.style.top)).toBeGreaterThanOrEqual(12);
+      expect(Number.parseFloat(panel.style.left) + Number.parseFloat(panel.style.width)).toBeLessThanOrEqual(308);
+      expect(Number.parseFloat(panel.style.top) + Number.parseFloat(panel.style.height)).toBeLessThanOrEqual(228);
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalHeight });
+    }
   });
 
   it('separates a drag from a click', async () => {

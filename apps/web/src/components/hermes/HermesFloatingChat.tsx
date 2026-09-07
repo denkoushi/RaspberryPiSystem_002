@@ -35,6 +35,8 @@ type ConsultationMode = 'loading' | 'available' | 'legacy';
 
 const ICON_SIZE = 58;
 const VIEWPORT_GUTTER = 12;
+const PANEL_STANDARD_WIDTH = 380;
+const PANEL_STANDARD_HEIGHT = 560;
 
 function clampPosition(left: number, top: number, viewport: { width: number; height: number }) {
   return {
@@ -105,6 +107,7 @@ export function HermesFloatingChat() {
     return clampPosition(initialViewport.width - ICON_SIZE - 22, initialViewport.height - ICON_SIZE - 22, initialViewport);
   });
   const [open, setOpen] = useState(false);
+  const [isPanelExpanded, setIsPanelExpanded] = useState(false);
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<HermesPanelMessage[]>([INTRO_MESSAGE]);
   const [isBusy, setIsBusy] = useState(false);
@@ -643,27 +646,47 @@ export function HermesFloatingChat() {
     iconRef.current?.focus();
   }, []);
 
-  const panelWidth = Math.min(380, Math.max(280, viewport.width - 24));
+  const togglePanelSize = useCallback(() => {
+    setIsPanelExpanded((current) => !current);
+  }, []);
+
+  const panelScale = isPanelExpanded ? 2 : 1;
+  const panelWidth = isPanelExpanded
+    ? Math.min(PANEL_STANDARD_WIDTH * panelScale, Math.max(1, viewport.width - VIEWPORT_GUTTER * 2))
+    : Math.min(PANEL_STANDARD_WIDTH, Math.max(280, viewport.width - VIEWPORT_GUTTER * 2));
   const spaceAboveIcon = Math.max(180, position.top - VIEWPORT_GUTTER * 2);
   const spaceBelowIcon = Math.max(180, viewport.height - position.top - ICON_SIZE - VIEWPORT_GUTTER * 2);
   const opensAbove = position.top > viewport.height / 2 || spaceAboveIcon >= spaceBelowIcon;
-  const panelHeight = Math.min(
-    560,
-    Math.max(180, viewport.height - VIEWPORT_GUTTER * 2),
-    opensAbove ? spaceAboveIcon : spaceBelowIcon
-  );
+  const panelHeight = isPanelExpanded
+    ? Math.min(PANEL_STANDARD_HEIGHT * panelScale, Math.max(1, viewport.height - VIEWPORT_GUTTER * 2))
+    : Math.min(
+      PANEL_STANDARD_HEIGHT,
+      Math.max(180, viewport.height - VIEWPORT_GUTTER * 2),
+      opensAbove ? spaceAboveIcon : spaceBelowIcon
+    );
   const panelLeft = Math.min(
     Math.max(VIEWPORT_GUTTER, position.left + ICON_SIZE / 2 - panelWidth / 2),
     Math.max(VIEWPORT_GUTTER, viewport.width - panelWidth - VIEWPORT_GUTTER)
   );
-  const panelTop = opensAbove
-    ? Math.max(VIEWPORT_GUTTER, position.top - panelHeight - 12)
-    : Math.min(position.top + ICON_SIZE + 12, Math.max(VIEWPORT_GUTTER, viewport.height - panelHeight - VIEWPORT_GUTTER));
+  const panelTop = isPanelExpanded
+    ? (() => {
+      const preferredPanelTop = opensAbove
+        ? position.top - panelHeight - 12
+        : position.top + ICON_SIZE + 12;
+      return Math.min(
+        Math.max(VIEWPORT_GUTTER, preferredPanelTop),
+        Math.max(VIEWPORT_GUTTER, viewport.height - panelHeight - VIEWPORT_GUTTER)
+      );
+    })()
+    : opensAbove
+      ? Math.max(VIEWPORT_GUTTER, position.top - panelHeight - 12)
+      : Math.min(position.top + ICON_SIZE + 12, Math.max(VIEWPORT_GUTTER, viewport.height - panelHeight - VIEWPORT_GUTTER));
   const panelStyle = {
     left: panelLeft,
     top: panelTop,
     width: panelWidth,
-    height: panelHeight
+    height: panelHeight,
+    maxHeight: panelHeight
   };
   const iconStyle = { left: position.left, top: position.top };
   const panelProps: HermesChatPanelProps = {
@@ -685,6 +708,8 @@ export function HermesFloatingChat() {
     onReset: resetActiveConversation,
     onClose: closePanel,
     onStop: stopRequest,
+    isExpanded: isPanelExpanded,
+    onToggleSize: togglePanelSize,
     onNewConsultation: createConsultation,
     onSelectConsultation: (consultationId) => void selectConsultation(consultationId),
     onLoadOlderMessages: () => void loadOlderMessages(),
