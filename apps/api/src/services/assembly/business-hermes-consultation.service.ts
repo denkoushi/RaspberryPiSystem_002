@@ -308,7 +308,8 @@ function evidenceObjects(response: JsonRecord): JsonRecord[] {
     const effectiveId = typeof merged.id === 'string' ? merged.id : typeof merged.evidence_id === 'string' ? merged.evidence_id : undefined;
     const hasPartNumber = typeof merged.partNumber === 'string' || typeof merged.part_number === 'string';
     const hasKnownKind = merged.kind === 'work_instruction' || merged.kind === 'work-instruction' || merged.kind === 'nonconformity';
-    const isLeaf = Boolean(effectiveId && hasKnownKind && hasPartNumber && hasText && !hasChildren && (hasStep || merged.kind === 'nonconformity' || hasAsset));
+    // Nonconformity records can legitimately omit a part number; their source ID remains authoritative.
+    const isLeaf = Boolean(effectiveId && hasKnownKind && (hasPartNumber || merged.kind === 'nonconformity') && hasText && !hasChildren && (hasStep || merged.kind === 'nonconformity' || hasAsset));
     if (isLeaf) {
       // A parent work-instruction id is often inherited by a step object that
       // omits its own id. Give that leaf a stable row/step identity so the
