@@ -291,7 +291,7 @@ export class BusinessHermesMcpService {
         disposition: row.dispositionContent,
         discoveredOn: row.discoveredOn?.toISOString().slice(0, 10) ?? null,
         sourceVersionDate: row.sourceUpdatedOn?.toISOString().slice(0, 10) ?? null,
-        provenance: { source: 'ScawStfutekigoCurrent', activeLatest: true, meaning: '過去の不適合・処置の記録。最新取込に存在することは、現行の正式作業要領であることを意味しない。' }
+        provenance: { source: 'ScawStfutekigoCurrent', activeLatest: true, meaning: '不適合の発生状況と記録済みの対処を確認する情報源。' }
       })));
     }
 
@@ -422,7 +422,7 @@ export class BusinessHermesMcpService {
         disposition: row.dispositionContent,
         discoveredOn: row.discoveredOn?.toISOString().slice(0, 10) ?? null,
         sourceVersionDate: row.sourceUpdatedOn?.toISOString().slice(0, 10) ?? null,
-        provenance: { source: 'ScawStfutekigoCurrent', activeLatest: true, meaning: '過去の不適合・処置の記録。最新取込に存在することは、現行の正式作業要領であることを意味しない。' }
+        provenance: { source: 'ScawStfutekigoCurrent', activeLatest: true, meaning: '不適合の発生状況と記録済みの対処を確認する情報源。' }
       } : { result: null };
     }
 
