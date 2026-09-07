@@ -173,6 +173,46 @@ describe('HermesChatPanel evidence cards', () => {
     expect(screen.queryByText('00008195')).not.toBeInTheDocument();
   });
 
+  it('renders only the server-selected evidence ids while retaining other trusted cards in the response', () => {
+    render(
+      <HermesChatPanel
+        mode="consultations"
+        messages={[{
+          id: 'message-selected-evidence',
+          role: 'assistant',
+          content: '選択した根拠です。',
+          evidenceVisible: true,
+          evidenceVisibleIds: ['nonconformity:nc-1'],
+          evidence: [
+            { kind: 'nonconformity', id: 'nc-1', title: 'NC-1', partNumber: '', text: '選択対象' },
+            { kind: 'nonconformity', id: 'nc-2', title: 'NC-2', partNumber: '', text: '候補として保存' }
+          ]
+        }]}
+        draft=""
+        isBusy={false}
+        error={null}
+        authRequired={null}
+        activeConsultation={{
+          id: 'case-selected-evidence',
+          title: '根拠確認',
+          relatedIdentifiers: [],
+          confirmedFacts: [],
+          openQuestions: [],
+          summary: '',
+          updatedAt: '2026-09-07T00:00:00.000Z',
+          messages: []
+        }}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn()}
+        onReset={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('選択対象')).toBeInTheDocument();
+    expect(screen.queryByText('候補として保存')).not.toBeInTheDocument();
+  });
+
   it('shows only the ten most recent consultations in the existing API order', () => {
     const consultations = Array.from({ length: 11 }, (_, index) => ({
       id: `case-${index + 1}`,
