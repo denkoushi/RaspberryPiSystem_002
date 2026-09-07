@@ -12,7 +12,14 @@ const MAX_HTTP_BODY_BYTES = 1024 * 1024;
 // This is an egress idle timeout, independent from the API's guide/proactive
 // and operator-chat request deadlines. The API remains the total request
 // deadline; this bound only closes a DGX socket that stops making progress.
-const configuredHttpTimeoutMs = Number(process.env.BUSINESS_HERMES_EGRESS_TIMEOUT_MS ?? 60_000);
+// Keep the pre-chat-release variable as a rollback-compatible fallback. The
+// standard release supplies BUSINESS_HERMES_EGRESS_TIMEOUT_MS for the new
+// runtime; an older saved Compose environment still carries the former key.
+const configuredHttpTimeoutMs = Number(
+  process.env.BUSINESS_HERMES_EGRESS_TIMEOUT_MS
+  ?? process.env.BUSINESS_HERMES_TIMEOUT_MS
+  ?? 60_000
+);
 const HTTP_UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredHttpTimeoutMs) && configuredHttpTimeoutMs >= 500 && configuredHttpTimeoutMs <= 60_000
   ? configuredHttpTimeoutMs
   : 60_000;

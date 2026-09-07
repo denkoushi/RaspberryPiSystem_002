@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import os
 import re
 import shlex
@@ -1868,6 +1869,202 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         self.assertIn("'api-' + release_pi5_slot", argv)
         self.assertIn("'web-' + release_pi5_slot", argv)
         self.assertEqual(start["when"], "release_pi5_route == 'fresh'")
+
+    def test_pi5_egress_timeout_transition_is_scoped_and_rollback_safe(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        prepare_names = [task["name"] for task in prepare]
+        state = next(
+            task
+            for task in prepare
+            if task["name"] == "Record the independent business Hermes egress pre-rollout state"
+        )
+        state_fact = state["ansible.builtin.set_fact"]
+        self.assertIn("release_pi5_business_hermes_egress_existing_env_lines", state_fact)
+        self.assertIn("release_pi5_business_hermes_egress_existing_timeout_key_present", state_fact)
+
+        provider_guard = next(
+            task
+            for task in prepare
+            if task["name"] == "Refuse to change the existing Business Hermes egress provider"
+        )
+        self.assertIn("existing_provider", str(provider_guard["ansible.builtin.assert"]))
+
+        marker_index = prepare_names.index("Mark the Business Hermes egress transition boundary")
+        apply_index = prepare_names.index("Apply the Business Hermes egress timeout before candidate traffic")
+        verify_index = prepare_names.index("Require the Business Hermes egress timeout transition to be ready")
+        hermes_index = prepare_names.index("Start the independent business Hermes runtime before candidate traffic")
+        self.assertLess(marker_index, apply_index)
+        self.assertLess(apply_index, verify_index)
+        self.assertLess(verify_index, hermes_index)
+        apply = prepare[apply_index]
+        self.assertEqual(apply["environment"], "{{ release_pi5_compose_environment }}")
+        apply_argv = apply["ansible.builtin.command"]["argv"]
+        for required in ("--no-deps", "--wait", "business-hermes-egress"):
+            self.assertIn(required, apply_argv)
+
+        runtime = yaml.safe_load(
+            (ANSIBLE / "tasks/business-hermes-runtime.yml").read_text(encoding="utf-8")
+        )
+        expected = next(
+            task
+            for task in runtime
+            if task["name"] == "Define the expected Business Hermes runtime environment"
+        )["ansible.builtin.set_fact"]["business_hermes_candidate_env_expected_service_lines"]
+        self.assertTrue(
+            any(
+                line.startswith("BUSINESS_HERMES_TIMEOUT_MS=")
+                for line in expected
+            )
+        )
+        self.assertFalse(any(line.startswith("BUSINESS_HERMES_CHAT_TIMEOUT_MS=") for line in expected))
+        self.assertFalse(any(line.startswith("BUSINESS_HERMES_EGRESS_TIMEOUT_MS=") for line in expected))
+
+        rollback = yaml.safe_load(self.task_text("rollback"))
+        rollback_names = [task["name"] for task in rollback]
+        egress_block = next(
+            task
+            for task in rollback
+            if task["name"] == "Restore the previous Business Hermes egress runtime after a timeout transition"
+        )
+        egress_block_names = [task["name"] for task in egress_block["block"]]
+        resolve_absent_index = egress_block_names.index("Resolve Business Hermes egress after restoring its absent state")
+        remove_index = egress_block_names.index("Remove a Business Hermes egress created by a failed timeout transition")
+        self.assertLess(resolve_absent_index, remove_index)
+        remove = egress_block["block"][remove_index]
+        self.assertIn("after_restore_candidates.stdout", str(remove["ansible.builtin.command"]))
+        self.assertIn("rescue", egress_block)
+        rescue_names = [task["name"] for task in egress_block["rescue"]]
+        self.assertIn("Stop a Business Hermes egress left running after an incomplete rollback", rescue_names)
+        self.assertTrue(egress_block["rescue"][-1]["ansible.builtin.set_fact"]["release_pi5_business_hermes_egress_restore_failed"])
+        self.assertLess(
+            rollback_names.index("Restore the previous Business Hermes egress runtime after a timeout transition"),
+            rollback_names.index("Restore the previous Pi5 scheduler and route"),
+        )
+
+        cleanup = yaml.safe_load(self.task_text("cleanup"))
+        egress_stop = next(
+            task
+            for task in cleanup
+            if task["name"] == "Stop only the prior inactive business Hermes egress after failed fresh release"
+        )
+        egress_remove = next(
+            task
+            for task in cleanup
+            if task["name"] == "Remove a business Hermes egress created by a failed fresh release"
+        )
+        self.assertIn("not (release_pi5_business_hermes_egress_transition_attempted | default(false) | bool)", egress_stop["when"])
+        self.assertIn("not (release_pi5_business_hermes_egress_transition_attempted | default(false) | bool)", egress_remove["when"])
+
+    def test_pi5_egress_transition_decision_handles_legacy_and_new_env(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        source_tasks = [
+            next(
+                task
+                for task in prepare
+                if task["name"] == name
+            )
+            for name in (
+                "Record the independent business Hermes egress pre-rollout state",
+                "Derive the captured Business Hermes egress timeout",
+                "Derive the legacy Business Hermes egress timeout for conflict checking",
+                "Decide whether the Business Hermes egress requires a controlled timeout transition",
+            )
+        ]
+        transition_tasks = [
+            {"ansible.builtin.set_fact": task["ansible.builtin.set_fact"]}
+            for task in source_tasks
+        ]
+        plays = []
+        for environment, expected_timeout, expected_legacy_timeout, key_present, transition_required in (
+            (["BUSINESS_HERMES_TIMEOUT_MS=60000"], 60000, 60000, False, True),
+            (["BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, False),
+            (["BUSINESS_HERMES_TIMEOUT_MS=60000", "BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, False),
+        ):
+            plays.append(
+                {
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "vars": {
+                        "release_pi5_route": "fresh",
+                        "release_pi5_business_hermes_enabled": True,
+                        "release_pi5_business_hermes_egress_existing": {"stdout": "old-egress"},
+                        "release_pi5_business_hermes_egress_existing_identity": {"stdout": "old-image|true"},
+                        "release_pi5_business_hermes_egress_existing_env_probe": {
+                            "stdout": json.dumps(environment)
+                        },
+                        "release_pi5_business_hermes_egress_existing_health_probe": {"stdout": "healthy"},
+                        "business_hermes_provider": "dgx",
+                        "business_hermes_egress_timeout_ms": 60000,
+                    },
+                    "tasks": transition_tasks
+                    + [
+                        {
+                            "ansible.builtin.assert": {
+                                "that": [
+                                    "release_pi5_business_hermes_egress_existing_timeout_ms | int == "
+                                    + str(expected_timeout),
+                                    "release_pi5_business_hermes_egress_existing_legacy_timeout_ms | int == "
+                                    + str(expected_legacy_timeout),
+                                    "release_pi5_business_hermes_egress_existing_timeout_key_present | bool == "
+                                    + str(key_present).lower(),
+                                    "release_pi5_business_hermes_egress_transition_required | bool == "
+                                    + str(transition_required).lower(),
+                                ]
+                            }
+                        }
+                    ],
+                }
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            playbook = Path(directory) / "egress-transition.yml"
+            playbook.write_text(yaml.safe_dump(plays, sort_keys=False), encoding="utf-8")
+            result = subprocess.run(
+                ["ansible-playbook", str(playbook)],
+                cwd=ROOT,
+                env={key: value for key, value in os.environ.items() if key != "ANSIBLE_CONFIG"},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        conflict_guard = next(
+            task
+            for task in prepare
+            if task["name"] == "Refuse conflicting Business Hermes egress timeout keys"
+        )
+        conflict_play = {
+            "hosts": "localhost",
+            "connection": "local",
+            "gather_facts": False,
+            "vars": {
+                "release_pi5_route": "fresh",
+                "release_pi5_business_hermes_enabled": True,
+                "release_pi5_business_hermes_egress_existing": {"stdout": "old-egress"},
+                "release_pi5_business_hermes_egress_existing_identity": {"stdout": "old-image|true"},
+                "release_pi5_business_hermes_egress_existing_env_probe": {
+                    "stdout": json.dumps(["BUSINESS_HERMES_TIMEOUT_MS=8000", "BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"])
+                },
+                "release_pi5_business_hermes_egress_existing_health_probe": {"stdout": "healthy"},
+                "business_hermes_provider": "dgx",
+                "business_hermes_egress_timeout_ms": 60000,
+            },
+            "tasks": transition_tasks + [conflict_guard],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            playbook = Path(directory) / "egress-transition-conflict.yml"
+            playbook.write_text(yaml.safe_dump([conflict_play], sort_keys=False), encoding="utf-8")
+            result = subprocess.run(
+                ["ansible-playbook", str(playbook)],
+                cwd=ROOT,
+                env={key: value for key, value in os.environ.items() if key != "ANSIBLE_CONFIG"},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_pre_switch_fresh_failure_removes_only_inactive_services(self) -> None:
         prepare = yaml.safe_load(self.task_text("prepare"))
