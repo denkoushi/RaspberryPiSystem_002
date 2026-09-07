@@ -44,6 +44,8 @@ export type HermesChatPanelProps = {
   onReset: () => void;
   onClose: () => void;
   onStop?: () => void;
+  isExpanded?: boolean;
+  onToggleSize?: () => void;
   onNewConsultation?: () => void;
   onSelectConsultation?: (consultationId: string) => void;
   onLoadOlderMessages?: () => void;
@@ -133,7 +135,6 @@ function LazyProtectedImage({ imageUrl, alt }: { imageUrl: string; alt: string }
 
 function EvidenceCard({ evidence }: { evidence: BusinessHermesChatEvidence }) {
   const meta = [
-    evidence.id ? `出典ID ${evidence.id}` : null,
     evidence.partNumber ? `品番 ${evidence.partNumber}` : null,
     evidence.shootingTarget ? `対象 ${evidence.shootingTarget}` : null,
     evidence.step ? `手順 ${evidence.step}` : null,
@@ -147,7 +148,6 @@ function EvidenceCard({ evidence }: { evidence: BusinessHermesChatEvidence }) {
       <div>
         <p className="hermes-chat-panel__evidence-title">{evidence.title}</p>
         {meta ? <p className="hermes-chat-panel__evidence-meta">{meta}</p> : null}
-        {evidence.publishedVersionId ? <p className="hermes-chat-panel__evidence-meta">公開元版 {evidence.publishedVersionId}{evidence.publishedRevisionId ? `・改訂 ${evidence.publishedRevisionId}` : ''}</p> : null}
         {evidence.text ? <p className="hermes-chat-panel__evidence-text">{evidence.text}</p> : null}
         {evidence.sourceUrl ? (
           <a className="hermes-chat-panel__evidence-source" href={evidence.sourceUrl} target="_blank" rel="noreferrer">
@@ -184,6 +184,8 @@ export default function HermesChatPanel({
   onReset,
   onClose,
   onStop,
+  isExpanded = false,
+  onToggleSize,
   onNewConsultation,
   onSelectConsultation,
   onLoadOlderMessages,
@@ -213,15 +215,15 @@ export default function HermesChatPanel({
   );
 
   return (
-    <section ref={panelRef} className="hermes-chat-panel" style={style} aria-labelledby="hermes-chat-title" role="region">
+    <section ref={panelRef} className="hermes-chat-panel" style={style} aria-label="Hermesチャット" role="region">
       <header className="hermes-chat-panel__header">
         <div>
-          <h2 id="hermes-chat-title" className="hermes-chat-panel__title">
-            {mode === 'consultations' && activeConsultation ? consultationLabel(activeConsultation) : '業務Hermes'}
-          </h2>
-          <p className="hermes-chat-panel__hint">
-            {mode === 'consultations' && activeConsultation ? '相談を続ける' : '不適合・作業要領を自然な言葉で相談'}
-          </p>
+          {mode === 'consultations' && activeConsultation ? (
+            <>
+              <h2 id="hermes-chat-title" className="hermes-chat-panel__title">{consultationLabel(activeConsultation)}</h2>
+              <p className="hermes-chat-panel__hint">相談を続ける</p>
+            </>
+          ) : null}
         </div>
         <div className="hermes-chat-panel__actions">
           {mode === 'consultations' && onNewConsultation ? (
@@ -241,6 +243,16 @@ export default function HermesChatPanel({
           {isBusy && onStop ? (
             <button type="button" className="hermes-chat-panel__action hermes-chat-panel__action--stop" onClick={onStop} aria-label="回答を停止">
               停止
+            </button>
+          ) : null}
+          {onToggleSize ? (
+            <button
+              type="button"
+              className="hermes-chat-panel__action"
+              onClick={onToggleSize}
+              aria-label={isExpanded ? 'チャットを標準サイズに戻す' : 'チャットを拡大'}
+            >
+              {isExpanded ? '標準' : '拡大'}
             </button>
           ) : null}
           <button type="button" className="hermes-chat-panel__action" onClick={onClose} aria-label="チャットを閉じる">
@@ -270,7 +282,7 @@ export default function HermesChatPanel({
             {!isConsultationsLoading && consultations.length === 0 ? (
               <p className="hermes-chat-panel__list-status">まだ相談はありません。</p>
             ) : null}
-            {consultations.map((consultation) => (
+            {consultations.slice(0, 10).map((consultation) => (
               <button
                 key={consultation.id}
                 type="button"
@@ -291,19 +303,6 @@ export default function HermesChatPanel({
         </>
       ) : (
         <>
-          {mode === 'consultations' && activeConsultation ? (
-            <>
-              {(activeConsultation.summary || activeConsultation.confirmedFacts.length > 0 || activeConsultation.openQuestions.length > 0) ? (
-                <div className="hermes-chat-panel__consultation-context" aria-label="相談の引継ぎ情報">
-                  <p className="hermes-chat-panel__context-label">保存された相談情報（会話本文とは別）</p>
-                  {activeConsultation.summary ? <p><strong>要約:</strong> {activeConsultation.summary}</p> : null}
-                  {activeConsultation.confirmedFacts.length > 0 ? <p><strong>確認済み:</strong> {activeConsultation.confirmedFacts.join('・')}</p> : null}
-                  {activeConsultation.openQuestions.length > 0 ? <p><strong>未解決:</strong> {activeConsultation.openQuestions.join('・')}</p> : null}
-                </div>
-              ) : null}
-            </>
-          ) : null}
-
           <MainContainer className="hermes-chat-panel__main">
             <ChatContainer>
               <MessageList scrollBehavior={reducedMotion ? 'auto' : 'smooth'} autoScrollToBottom>
