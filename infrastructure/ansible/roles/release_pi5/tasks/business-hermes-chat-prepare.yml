@@ -1,0 +1,88 @@
+---
+- name: Inspect existing consultation services by exact Compose labels
+  ansible.builtin.command:
+    argv: [docker, ps, -a, --filter, "label=com.docker.compose.project={{ release_pi5_compose_project }}", --filter, "label=com.docker.compose.service={{ item }}", --format, "{{ '{{.ID}}' }}"]
+  loop: [business-hermes-chat-egress, business-hermes-chat]
+  register: release_pi5_chat_existing_ids
+  changed_when: false
+
+- name: Inspect existing consultation image and running state
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{.Config.Image}}|{{.State.Running}}' }}", "{{ item.stdout | trim }}"]
+  loop: "{{ release_pi5_chat_existing_ids.results }}"
+  when: item.stdout | trim | length > 0
+  register: release_pi5_chat_existing_states
+  changed_when: false
+
+- name: Record consultation rollback state
+  ansible.builtin.set_fact:
+    release_pi5_chat_before: "{{ release_pi5_chat_before | default([]) + [{'service': item.item.item, 'id': item.item.stdout | trim, 'image': (item.stdout | default('')).split('|')[0], 'running': ((item.stdout | default('')).split('|')[-1] == 'true')}] }}"
+  loop: "{{ release_pi5_chat_existing_states.results }}"
+
+- name: Preserve the fixed image boundary for existing consultation containers
+  ansible.builtin.assert:
+    that:
+      - item.id | length == 0 or item.image == (business_hermes_chat_image if item.service == 'business-hermes-chat' else business_hermes_chat_egress_image)
+    fail_msg: Existing consultation image differs; this rollout must not replace it.
+  loop: "{{ release_pi5_chat_before }}"
+
+- name: Pull the fixed consultation runtime images
+  ansible.builtin.command:
+    argv: [docker, pull, "{{ item }}"]
+  loop: ["{{ business_hermes_chat_image }}", "{{ business_hermes_chat_egress_image }}"]
+  register: release_pi5_chat_pull
+  changed_when: "'Downloaded newer image' in release_pi5_chat_pull.stdout"
+
+- name: Mark consultation file rollback boundary
+  ansible.builtin.set_fact:
+    release_pi5_chat_prepared: true
+    release_pi5_chat_started: false
+    release_pi5_chat_gateway_connected: false
+
+- name: Render the consultation profile with rollback copies
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/business-hermes-chat-runtime.yml"
+  vars:
+    business_hermes_chat_backup_files: true
+
+- name: Back up the persistent consultation environment before any edit
+  ansible.builtin.copy:
+    src: "{{ release_pi5_chat_env_file }}"
+    dest: "{{ release_pi5_run_dir }}/consultation-compose.env.before"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  when: release_pi5_chat_env_source.stat.exists | default(false)
+  register: release_pi5_chat_env_backup
+  no_log: true
+
+- name: Copy the current candidate environment for consultation settings
+  ansible.builtin.copy:
+    src: "{{ release_pi5_candidate_env_file | default(release_pi5_compose_env_source) }}"
+    dest: "{{ release_pi5_chat_env_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  register: release_pi5_chat_env_copy
+  no_log: true
+
+- name: Bind consultation credentials only to the candidate API environment
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+    mode: '0600'
+  loop:
+    - { key: BUSINESS_HERMES_CHAT_BASE_URL, value: "{{ api_business_hermes_chat_base_url }}" }
+    - { key: BUSINESS_HERMES_CHAT_API_KEY, value: "{{ business_hermes_chat_api_key }}" }
+    - { key: BUSINESS_HERMES_CHAT_MODEL, value: "{{ business_hermes_chat_model }}" }
+    - { key: BUSINESS_HERMES_MCP_API_KEY, value: "{{ business_hermes_chat_mcp_api_key }}" }
+    - { key: BUSINESS_HERMES_CHAT_TIMEOUT_MS, value: "{{ api_business_hermes_chat_timeout_ms }}" }
+  no_log: true
+
+- name: Bind consultation Compose paths and persistent candidate environment
+  ansible.builtin.set_fact:
+    release_pi5_candidate_env_file: "{{ release_pi5_chat_env_file }}"
+    release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'PI5_ENV_FILE': release_pi5_chat_env_file, 'BUSINESS_HERMES_CHAT_RUNTIME_ENV_FILE': business_hermes_chat_runtime_env_file, 'BUSINESS_HERMES_CHAT_CONFIG_FILE': business_hermes_chat_config_file, 'BUSINESS_HERMES_CHAT_SOUL_FILE': business_hermes_chat_soul_file, 'BUSINESS_HERMES_CHAT_CONTEXT_FILE': business_hermes_chat_context_file, 'BUSINESS_HERMES_CHAT_SKILLS_DIR': business_hermes_chat_skills_dir, 'BUSINESS_HERMES_CHAT_NO_BUNDLED_SKILLS_FILE': business_hermes_chat_no_bundled_skills_file, 'BUSINESS_HERMES_CHAT_IMAGE': business_hermes_chat_image, 'BUSINESS_HERMES_CHAT_EGRESS_IMAGE': business_hermes_chat_egress_image}) }}"

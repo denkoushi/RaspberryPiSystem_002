@@ -47,6 +47,17 @@ export type WorkInstructionGroupsQuery = {
   offset: number;
 };
 
+/** Public effective-text search is evaluated against the publication pointer. */
+export type WorkInstructionPublishedTextSearchQuery = WorkInstructionGroupsQuery & {
+  query: string;
+};
+
+export type WorkInstructionPublishedTextSearchPage = {
+  groups: ReadonlyArray<WorkInstructionGroupSummaryView>;
+  total: number;
+  hasMore: boolean;
+};
+
 export type WorkInstructionPartCandidatesQuery = {
   prefix: string;
   fallback: boolean;
@@ -114,6 +125,8 @@ export interface WorkInstructionRepository {
   readGroups(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>>;
   /** Public kiosk group summaries; falls back to latest summaries before backfill. */
   readPublishedGroups?(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>>;
+  /** DB-filtered search over the published pointer and effective memo text. */
+  searchPublishedGroups(input: WorkInstructionPublishedTextSearchQuery): Promise<WorkInstructionPublishedTextSearchPage>;
   readPublishedPartCandidates(input: WorkInstructionPartCandidatesQuery): Promise<WorkInstructionPartCandidatePageView>;
   readPublishedPartAlias(scannedPartNumber: string): Promise<WorkInstructionPartAliasView | null>;
   upsertPartAlias(input: UpsertWorkInstructionPartAliasInput): Promise<WorkInstructionPartAliasView>;

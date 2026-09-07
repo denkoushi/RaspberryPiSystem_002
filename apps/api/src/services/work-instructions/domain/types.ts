@@ -116,6 +116,13 @@ export type WorkInstructionRowView = {
   steps: ReadonlyArray<WorkInstructionStepView>;
   createdAt: Date;
   updatedAt: Date;
+  /** Public pointer provenance; omitted for legacy latest-only rows. */
+  publication?: {
+    publishedVersionId: string;
+    publishedVersionCreatedAt: Date;
+    publishedRevisionId: string | null;
+    publishedRevisionCreatedAt: Date | null;
+  };
 };
 
 export type WorkInstructionGroupedStepView = WorkInstructionStepView & {

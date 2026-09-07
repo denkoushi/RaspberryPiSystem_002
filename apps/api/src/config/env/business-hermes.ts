@@ -22,9 +22,14 @@ export const businessHermesEnvShape = {
   BUSINESS_HERMES_BASE_URL: optionalHermesBaseUrl,
   BUSINESS_HERMES_API_KEY: optionalTrimmed,
   BUSINESS_HERMES_MODEL: optionalTrimmed,
-  // Operator chat has two bounded upstream calls (intent and answer). Keep
-  // the guide/proactive deadline separate so their existing 8s budget stays
-  // unchanged.
+  // Native consultation Responses may perform multiple read-only tool calls.
+  // Keep their bounded investigation deadline separate from the 8s guide.
   BUSINESS_HERMES_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(8_000),
-  BUSINESS_HERMES_CHAT_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(60_000),
+  BUSINESS_HERMES_CHAT_TIMEOUT_MS: z.coerce.number().int().min(500).max(300_000).default(180_000),
+  /** Dedicated native Responses/MCP Hermes instance for consultation cases. */
+  BUSINESS_HERMES_CHAT_BASE_URL: optionalHermesBaseUrl,
+  BUSINESS_HERMES_CHAT_API_KEY: optionalTrimmed,
+  BUSINESS_HERMES_CHAT_MODEL: optionalTrimmed,
+  /** Internal read-only MCP service token; unset disables the MCP surface. */
+  BUSINESS_HERMES_MCP_API_KEY: optionalTrimmed,
 } as const;

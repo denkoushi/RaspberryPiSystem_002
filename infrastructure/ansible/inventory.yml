@@ -50,7 +50,32 @@ all:
           api_business_hermes_api_key: "{{ business_hermes_api_key }}"
           api_business_hermes_model: "{{ business_hermes_model }}"
           api_business_hermes_timeout_ms: "8000"
-          api_business_hermes_chat_timeout_ms: "60000"
+          api_business_hermes_chat_timeout_ms: "180000"
+          # Independent consultation Hermes. It is opt-in so the existing
+          # assembly-guide service keeps its current behavior. Enabled by the approved rollout.
+          # Dedicated domain-separated keys derive from the existing Vault secret unless overridden.
+          business_hermes_chat_enabled: "{{ vault_business_hermes_chat_enabled | default(true) }}"
+          business_hermes_chat_api_key: "{{ vault_business_hermes_chat_api_key | default(((business_hermes_api_key ~ ':consultation-api:v1') | hash('sha256')) if business_hermes_api_key | length >= 16 else '') }}"
+          business_hermes_chat_mcp_api_key: "{{ vault_business_hermes_chat_mcp_api_key | default(((business_hermes_api_key ~ ':consultation-mcp:v1') | hash('sha256')) if business_hermes_api_key | length >= 16 else '') }}"
+          business_hermes_chat_dgx_token: "{{ vault_api_local_llm_shared_token | default('') }}"
+          business_hermes_chat_model: "{{ vault_business_hermes_chat_model | default('system-prod-primary') }}"
+          # Resolve through the stable Caddy gateway so blue/green activation
+          # follows the canonical active slot instead of pinning api-blue/api-green.
+          business_hermes_chat_mcp_url: "{{ vault_business_hermes_chat_mcp_url | default('https://gateway/api/internal/business-hermes/mcp') }}"
+          business_hermes_chat_dgx_base_url: "{{ private_pi5_dgx_base_url | default('http://100.118.82.72:38081') }}"
+          business_hermes_chat_image: "nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a"
+          business_hermes_chat_egress_image: "node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293"
+          business_hermes_chat_runtime_env_file: "/etc/raspi-business-hermes-chat/runtime.env"
+          business_hermes_chat_config_file: "/etc/raspi-business-hermes-chat/config.yaml"
+          business_hermes_chat_soul_file: "/etc/raspi-business-hermes-chat/SOUL.md"
+          business_hermes_chat_context_file: "/etc/raspi-business-hermes-chat/AGENTS.md"
+          business_hermes_chat_skills_dir: "/etc/raspi-business-hermes-chat/skills"
+          business_hermes_chat_no_bundled_skills_file: "/etc/raspi-business-hermes-chat/.no-bundled-skills"
+          business_hermes_chat_egress_timeout_ms: "60000"
+          api_business_hermes_chat_base_url: "{{ 'http://business-hermes-chat:8642' if (business_hermes_chat_enabled | bool) else '' }}"
+          api_business_hermes_chat_api_key: "{{ business_hermes_chat_api_key }}"
+          api_business_hermes_chat_model: "{{ business_hermes_chat_model }}"
+          api_business_hermes_chat_mcp_api_key: "{{ business_hermes_chat_mcp_api_key }}"
           business_hermes_egress_timeout_ms: "60000"
           api_local_llm_base_url: "http://100.118.82.72:38081"
           api_local_llm_shared_token: "{{ vault_api_local_llm_shared_token | default('') }}"

@@ -2,6 +2,8 @@
 
 業務Hermesは、組立キオスクの案内と管理者向けNG提案だけを処理する、業務Pi5上の専用Dockerサービスです。Private Pi5 Hermes、`LOCAL_LLM_*`、`INFERENCE_PROVIDERS_JSON`、Privateの起動停止API、履歴、記憶、skills、認証情報は共有しません。業務APIの専用設定が揃わない場合は案内を `unavailable` とし、締付操作を継続します。本番mockはありません。
 
+業務相談チャットは `business-hermes-chat` という別の固定digestコンテナで提供します。既存の組立ガイド用 `business-hermes` の設定・volume・APIキー・会話履歴は変更せず、相談チャットは専用のAPI_SERVER_KEY、DGXトークン、MCP APIキー、volumeを使います。業務Pi5では承認済みの相談機能を有効にしています。`vault_business_hermes_chat_enabled` で明示的に上書きできます。専用APIキーとMCPキーは、個別のVault値がなければ既存のVault配信済み業務キーから異なる用途ラベルで導出します。秘密値はGitへ保存しません。
+
 ## 構成
 
 `business-hermes` は公式 `nousresearch/hermes-agent` ARM64イメージをdigest固定で起動し、専用volume `/opt/data` に設定と業務セッションを保持します。設定で `memory_enabled`、`user_profile_enabled` を無効化し、`skills`、`memory`、`session_search` toolsetも無効化するため、Private Pi5の記憶・skills・過去会話検索を共有しません。Docker socket、ホストの作業ディレクトリ、Private Pi5のパスはマウントしません。ルートファイルシステムはread-only、capabilityは全drop、CPU 1 core、メモリ1 GiB、PID 128に制限します。
@@ -37,6 +39,24 @@ api_business_hermes_base_url: http://business-hermes:8642
 api_business_hermes_model: system-prod-primary # DGX選択時は既存photo_labelモデル。OpenAI選択時はVaultで明示したモデルID。
 ```
 
+相談チャットを有効にする場合は、既存ガイド用とは別に次のVault変数を設定します。`vault_business_hermes_chat_mcp_url` はチャットコンテナから到達できる内部APIのMCPエンドポイントに合わせます。既定値は `http://api:3000/api/internal/business-hermes/mcp` です。
+
+```yaml
+vault_business_hermes_chat_enabled: true
+vault_business_hermes_chat_api_key: <相談チャット専用API server bearer key>
+vault_business_hermes_chat_mcp_api_key: <業務MCP専用API key>
+# 必要な環境では内部APIの実サービス名/ポートへ上書きする。
+# vault_business_hermes_chat_mcp_url: http://api:3000/api/internal/business-hermes/mcp
+```
+
+設定反映後の起動対象は、既存ガイドと別profileです。
+
+```bash
+docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.phase3.yml --profile business-hermes-chat up -d business-hermes-chat-egress business-hermes-chat
+```
+
+このprofileを指定しない通常のCompose起動では相談チャットは起動しません。MCP接続は業務Hermes内部ネットワーク上のAPIだけに向け、DGX推論は専用egress sidecarの許可済み `/v1/chat/completions` 経路を通します。既存ガイド用サービスのprofile、設定、volumeはそのままです。
+
 イメージは `nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a`、egress proxyは `node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293` を使用します。更新時は公式multi-arch indexとPi5上のARM64 manifestを確認し、digestを差し替えてCIを通します。
 
 ## ローカル検証
@@ -70,3 +90,29 @@ fresh releaseの開始時には既存の業務Hermesコンテナ状態を取得�
 実機確認では、管理者がテスト専用作業セッションで締付NGイベントを1件作り、キオスクに提案本文が表示されないこと、管理画面のADMINだけが根拠文書・ページ・対象・短文を確認できることを確認します。業務操作を止めた状態でAIコンテナを停止し、案内が利用不可になって締付操作が成功することも確認します。別端末キー、別作業者、画面revision変更の応答が混ざらないことを確認します。実データのNG履歴を品質記録へ作る手順は使用せず、テスト用データだけを使います。
 
 現時点ではVaultパスワード、Luna/OpenAIキー、Pi5へのdeploy、実OpenAI推論、実端末の複数利用者検証、DGX中央timerの実機有効状態、中央keep-warmのprofile IDと`system-prod-primary`の対応確認は未実施です。ローカル固定imageの本体healthと未認証拒否は検証済みです。
+
+
+## フェーズ1の相談チャット検証状況（2026-09-07）
+
+既存ガイドと分離した固定Hermes・DGX・実装API・分離DBで、自然文の検索、
+訂正、担当者を変えた再開、案件分離、確認ボタン、認証付き写真、停止後の
+復帰を検証した。業務データは合成fixtureを使用し、本番反映はまだ行っていない。
+最新の検証記録と残条件は[フェーズ1計画](../plans/business-hermes-butler-phase1-execplan.md)を参照する。
+
+対話姿勢はSOUL、項目の意味・正式な根拠はContext、調査方法はSkillで管理する。
+API側は構造化応答・案件保存・認証・根拠カードを担う。model.max_tokensは
+回答と案件状態の途中切れを避けるため1600。画像能力の合成probeは成功したが、
+業務チャットは付随本文と写真カードを利用し、画像の視覚的読取りは行わない。
+応答速度の最適化は利用者の実機体感後に判断する。
+
+### 相談用Hermesの標準リリース
+
+`release_pi5` が専用設定と永続candidate envを準備し、新APIへの切替後に
+相談用egressとHermesを起動します。安定gatewayは専用bridgeへ `gateway`
+のDNS alias付きで接続し、MCPはこのgateway経由で公開中APIへ届きます。
+設定は変更前のバックアップを保持し、失敗時は設定・既存コンテナの稼働状態を
+復旧します。新規コンテナだけを除去し、相談volumeは削除しません。
+復旧処理が失敗した場合も既存APIのrollbackを続け、調査用バックアップを保持します。
+
+実行は通常と同じ `scripts/update-all-clients.sh` の `--print-plan` と
+`--limit raspberrypi5 --detach` を使います。独立した手動Compose起動は不要です。

@@ -158,10 +158,22 @@
     release_pi5_healthy | default(false) | bool
     or release_pi5_rolled_back | default(false) | bool
 
+- name: Remove consultation profile backups after a verified outcome
+  ansible.builtin.file:
+    path: "{{ item.backup_file }}"
+    state: absent
+  loop: "{{ business_hermes_chat_rendered_files.results | default([]) }}"
+  when:
+    - item.backup_file is defined
+    - (release_pi5_healthy | default(false) | bool) or (release_pi5_rolled_back | default(false) | bool)
+    - not (release_pi5_chat_rollback_failed | default(false) | bool)
+  no_log: true
+
 - name: Remove private Pi5 candidate run files after a verified outcome
   ansible.builtin.file:
     path: "{{ release_pi5_run_dir }}"
     state: absent
   when: >-
-    release_pi5_healthy | default(false) | bool
-    or release_pi5_rolled_back | default(false) | bool
+    ((release_pi5_healthy | default(false) | bool)
+    or (release_pi5_rolled_back | default(false) | bool))
+    and not (release_pi5_chat_rollback_failed | default(false) | bool)

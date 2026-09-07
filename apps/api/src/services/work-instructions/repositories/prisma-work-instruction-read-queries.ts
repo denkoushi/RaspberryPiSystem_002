@@ -34,6 +34,8 @@ import type {
 import type {
   WorkInstructionGroupsQuery,
   WorkInstructionPartCandidatesQuery,
+  WorkInstructionPublishedTextSearchPage,
+  WorkInstructionPublishedTextSearchQuery,
   WorkInstructionRowsQuery
 } from './work-instruction-repository.port.js';
 
@@ -195,7 +197,13 @@ function toPublishedRowView(publication: PublishedPublicationRecord): WorkInstru
     rawManifest: asJsonValue(version.rawManifest),
     steps: version.steps.map((step) => toPublishedStepView(step, overlaysByStep, overlayAssets, memosByStep)),
     createdAt: version.createdAt,
-    updatedAt: publication.row.updatedAt
+    updatedAt: publication.row.updatedAt,
+    publication: {
+      publishedVersionId: version.id,
+      publishedVersionCreatedAt: version.createdAt,
+      publishedRevisionId: publication.publishedRevision?.id ?? null,
+      publishedRevisionCreatedAt: publication.publishedRevision?.createdAt ?? null
+    }
   };
 }
 
@@ -484,6 +492,95 @@ export async function readPublishedWorkInstructionGroups(
     );
   }, { isolationLevel: 'RepeatableRead', timeout: 30000 });
   return rows.slice(input.offset, input.offset + input.limit);
+}
+
+/**
+ * Search the public source pointer and the existing publication-null legacy
+ * fallback. The effective text expression keeps
+ * a published memo override authoritative, including an intentionally empty
+ * override, so an imported draft or the immutable source text cannot leak
+ * into a public search result. Filtering happens in PostgreSQL before the
+ * bounded page is materialized; MCP therefore does not scan every group and
+ * issue one detail query per non-match.
+ */
+export async function searchPublishedWorkInstructionGroups(
+  db: PrismaClient,
+  input: WorkInstructionPublishedTextSearchQuery
+): Promise<WorkInstructionPublishedTextSearchPage> {
+  assertPage(input);
+  const query = input.query.normalize('NFKC').trim();
+  if (!query) return { groups: [], total: 0, hasMore: false };
+  const partNumber = input.partNumber === undefined ? undefined : normalizeWorkInstructionPartNumber(input.partNumber);
+  const shootingTarget = input.shootingTarget === undefined ? undefined : normalizeWorkInstructionShootingTarget(input.shootingTarget);
+  if (input.partNumber !== undefined && !partNumber) return { groups: [], total: 0, hasMore: false };
+  if (input.shootingTarget !== undefined && !shootingTarget) return { groups: [], total: 0, hasMore: false };
+  const pattern = `%${escapeLikePrefix(query)}%`;
+  const records = await db.$queryRaw<Array<Partial<GroupSummaryRecord> & { total: number }>>(Prisma.sql`
+    WITH public_steps AS (
+      SELECT publication."rowId", version."partNumber", version."shootingTarget",
+             version."sourceModified", step."id" AS "stepId",
+             CASE WHEN memo."id" IS NOT NULL THEN memo."text" ELSE step."text" END AS "text"
+      FROM "WorkInstructionSourcePublication" AS publication
+      JOIN "WorkInstructionSourceVersion" AS version
+        ON version."id" = publication."publishedVersionId"
+      LEFT JOIN "WorkInstructionSourceVersionStep" AS step
+        ON step."sourceVersionId" = version."id"
+      LEFT JOIN "WorkInstructionEditMemoOverride" AS memo
+        ON memo."revisionId" = publication."publishedRevisionId"
+       AND memo."sourceStep" = step."step"
+       AND memo."migrationState" = 'MIGRATED'
+      UNION ALL
+      SELECT row."id" AS "rowId", row."partNumber", row."shootingTarget",
+             row."sourceModified", step."id" AS "stepId", step."text"
+      FROM "WorkInstructionRow" AS row
+      LEFT JOIN "WorkInstructionStep" AS step ON step."rowId" = row."id"
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "WorkInstructionSourcePublication" AS publication
+        WHERE publication."rowId" = row."id"
+      )
+    ), matching_keys AS (
+      SELECT DISTINCT source."partNumber", source."shootingTarget"
+      FROM public_steps AS source
+      WHERE source."partNumber" IS NOT NULL
+        AND source."shootingTarget" IS NOT NULL
+        ${partNumber ? Prisma.sql`AND source."partNumber" = ${partNumber}` : Prisma.empty}
+        ${shootingTarget ? Prisma.sql`AND source."shootingTarget" = ${shootingTarget}` : Prisma.empty}
+        AND (
+          source."partNumber" ILIKE ${pattern} ESCAPE '\\'
+          OR source."shootingTarget" ILIKE ${pattern} ESCAPE '\\'
+          OR source."text" ILIKE ${pattern} ESCAPE '\\'
+        )
+    ), matching_groups AS (
+      SELECT source."partNumber", source."shootingTarget",
+             COUNT(DISTINCT source."rowId")::int AS "rowCount",
+             COUNT(source."stepId")::int AS "stepCount",
+             MAX(source."sourceModified") AS "latestModified"
+      FROM public_steps AS source
+      JOIN matching_keys AS matched
+        ON matched."partNumber" = source."partNumber"
+       AND matched."shootingTarget" = source."shootingTarget"
+      GROUP BY source."partNumber", source."shootingTarget"
+    ), total_count AS (
+      SELECT COUNT(*)::int AS "total" FROM matching_groups
+    ), paged_groups AS (
+      SELECT * FROM matching_groups
+      ORDER BY "partNumber" COLLATE "C" ASC, "shootingTarget" COLLATE "C" ASC
+      LIMIT ${input.limit + 1} OFFSET ${input.offset}
+    )
+    SELECT paged_groups.*, total_count."total"
+    FROM total_count
+    LEFT JOIN paged_groups ON TRUE
+    ORDER BY paged_groups."partNumber" COLLATE "C" ASC, paged_groups."shootingTarget" COLLATE "C" ASC
+  `);
+  const total = records[0]?.total ?? 0;
+  const groups = records.filter((record): record is GroupSummaryRecord & { total: number } => typeof record.partNumber === 'string' && typeof record.shootingTarget === 'string').slice(0, input.limit).map((record) => ({
+    partNumber: record.partNumber,
+    shootingTarget: record.shootingTarget,
+    rowCount: record.rowCount,
+    stepCount: record.stepCount,
+    latestModified: record.latestModified
+  }));
+  return { groups, total, hasMore: records.length > input.limit };
 }
 
 type PartCandidateRecord = {

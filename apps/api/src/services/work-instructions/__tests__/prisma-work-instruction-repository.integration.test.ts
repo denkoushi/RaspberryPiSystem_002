@@ -2,6 +2,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
+import { BusinessHermesMcpService } from '../../assembly/business-hermes-mcp.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import type {
   WorkInstructionAssetInput,
@@ -160,6 +161,63 @@ describeIntegration('Prisma work-instruction repository (isolated integration)',
     await concurrentClientA?.$disconnect();
     await concurrentClientB?.$disconnect();
     await prisma.$disconnect();
+  });
+
+  it('resolves MCP detail through the published part and process after a different draft is imported', async () => {
+    const original = packet({itemId:7900,modified:baseModified,contentHash:'public-detail',
+      partNumber:`${fixtureToken}-PUBLIC`,shootingTarget:'公開工程',steps:[{step:1,text:'公開本文',imageName:null}]});
+    await repository.applyPacket({packet:original,stagedAssets:[],now:baseModified});
+    await repository.applyPacket({packet:{...original,source:{...original.source,modified:new Date(baseModified.getTime()+1000)},
+      partNumber:`${fixtureToken}-DRAFT`,shootingTarget:'未公開工程',contentHash:'draft-detail',steps:[{step:1,text:'未公開本文',imageName:null}]},stagedAssets:[],now:baseModified});
+    const row = await prisma.workInstructionRow.findFirstOrThrow({where:{sourceSystem,sourceItemId:7900n}});
+    expect(row.partNumber).toBe(`${fixtureToken}-DRAFT`);
+    const mcp = new BusinessHermesMcpService({db:prisma,workInstructions:repository});
+    const result = await mcp.call('business_hermes_get_detail',{kind:'work_instruction',id:row.id});
+    const detail = JSON.parse(result.content[0]!.text);
+    expect(detail).toMatchObject({partNumber:`${fixtureToken}-PUBLIC`,shootingTarget:'公開工程'});
+    expect(detail.rows[0].steps[0].effectiveText).toBe('公開本文');
+    expect(result.content[0]!.text).not.toContain('未公開本文');
+  });
+
+  it('searches legacy public rows during mixed publication rollout without exposing moved drafts', async () => {
+    const term = `${fixtureToken}-mixed`;
+    for (const itemId of [7950, 7951]) {
+      await repository.applyPacket({packet: packet({itemId, modified: baseModified,
+        contentHash: `mixed-${itemId}`, partNumber: `${fixtureToken}-MIXED`,
+        steps: [{step: 1, text: term, imageName: null}]}), stagedAssets: [], now: baseModified});
+    }
+    const legacy = await prisma.workInstructionRow.findFirstOrThrow({where: {sourceSystem, sourceItemId: 7950n}});
+    await prisma.workInstructionSourcePublication.delete({where: {rowId: legacy.id}});
+    const page = await repository.searchPublishedGroups({query: term, limit: 10, offset: 0});
+    expect(page).toMatchObject({total: 1, hasMore: false});
+    expect(page.groups[0]).toMatchObject({rowCount: 2, stepCount: 2});
+    await prisma.workInstructionStep.updateMany({where: {rowId: legacy.id}, data: {text: `${term}-legacy-only`}});
+    expect((await repository.searchPublishedGroups({query: `${term}-legacy-only`, limit: 10, offset: 0})).total).toBe(1);
+    await repository.applyPacket({packet: packet({itemId: 7951, modified: new Date(baseModified.getTime() + 1000),
+      contentHash: 'moved-draft', partNumber: `${fixtureToken}-MOVED`,
+      steps: [{step: 1, text: `${term}-draft-only`, imageName: null}]}), stagedAssets: [], now: baseModified});
+    expect((await repository.searchPublishedGroups({query: `${term}-draft-only`, limit: 10, offset: 0})).total).toBe(0);
+  });
+
+  it('pages published text search without losing totals or exposing newer drafts', async () => {
+    const term = `${fixtureToken}-search`;
+    for (let index = 0; index < 23; index++) {
+      const original = packet({itemId: 8000 + index, modified: baseModified,
+        contentHash: `search-${index}`, partNumber: `${fixtureToken}-${String(index).padStart(2, '0')}`,
+        steps: [{step: 1, text: term, imageName: null}]});
+      await repository.applyPacket({packet: original, stagedAssets: [], now: baseModified});
+      await repository.applyPacket({packet: {...original, source: {...original.source, modified: new Date(baseModified.getTime() + 1000)},
+        contentHash: `draft-${index}`, steps: [{step: 1, text: `${term}-draft-only`, imageName: null}]}, stagedAssets: [], now: baseModified});
+    }
+    const pages = [];
+    for (const offset of [0, 10, 20, 30]) {
+      pages.push(await repository.searchPublishedGroups({query: term, limit: 10, offset}));
+    }
+    expect(pages.map(page => page.groups.length)).toEqual([10, 10, 3, 0]);
+    expect(pages.map(page => page.total)).toEqual([23, 23, 23, 23]);
+    expect(pages.map(page => page.hasMore)).toEqual([true, true, false, false]);
+    expect(new Set(pages.flatMap(page => page.groups.map(group => group.partNumber))).size).toBe(23);
+    expect((await repository.searchPublishedGroups({query: `${term}-draft-only`, limit: 10, offset: 0})).total).toBe(0);
   });
 
   it('applies one source tuple atomically and distinguishes newer, stale, duplicate, conflict, and lists', async () => {

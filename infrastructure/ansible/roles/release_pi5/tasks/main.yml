@@ -8,12 +8,31 @@
       ansible.builtin.import_tasks: switch.yml
       when: release_pi5_route == 'fresh'
 
+    - name: Start consultation Hermes against the newly activated API
+      ansible.builtin.import_tasks: business-hermes-chat-start.yml
+      when:
+        - release_pi5_route == 'fresh'
+        - business_hermes_chat_enabled | default(false) | bool
+
     - name: Verify the bounded Pi5 stability samples
       ansible.builtin.import_tasks: health.yml
 
     - name: Commit the Pi5 scheduler handoff
       ansible.builtin.import_tasks: commit.yml
   rescue:
+    - name: Attempt consultation restoration without bypassing API rollback
+      when: release_pi5_chat_prepared | default(false) | bool
+      block:
+        - name: Restore the consultation runtime before the previous API
+          ansible.builtin.include_tasks: business-hermes-chat-rollback.yml
+      rescue:
+        - name: Record consultation restoration failure for operator recovery
+          ansible.builtin.set_fact:
+            release_pi5_chat_rollback_failed: true
+        - name: Report consultation restoration failure while continuing API rollback
+          ansible.builtin.debug:
+            msg: Consultation runtime restoration failed; preserve backups and inspect the failed task. Continuing standard API rollback.
+
     - name: Restore the previous Pi5 route and scheduler
       ansible.builtin.import_tasks: rollback.yml
   always:

@@ -110,4 +110,55 @@ describe('business Hermes routes', () => {
       shootingTarget: '切削'
     }));
   });
+
+  it('exposes independent consultation list/create/detail/update through the same read boundary', async () => {
+    const fixture = createApp();
+    const consultation = {
+      id: '00000000-0000-0000-0000-000000000010', title: '相談', relatedIdentifiers: [], confirmedFacts: [], openQuestions: [], summary: '', updatedAt: new Date().toISOString(), messages: []
+    };
+    const consultationService = {
+      list: vi.fn().mockResolvedValue([consultation]),
+      create: vi.fn().mockResolvedValue(consultation),
+      get: vi.fn().mockResolvedValue(consultation),
+      update: vi.fn().mockResolvedValue(consultation),
+      chat: vi.fn(),
+      cancel: vi.fn().mockResolvedValue(true)
+    };
+    await registerBusinessHermesRoutes(fixture.app, {
+      requireClientDevice: fixture.requireClientDevice,
+      service: fixture.service,
+      chatService: fixture.chatService,
+      consultationService: consultationService as never
+    });
+    const token = jwt.sign({ sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
+    const headers = { authorization: `Bearer ${token}` };
+    const listResponse = await fixture.app.inject({ method: 'GET', url: '/assembly/business-hermes/consultations', headers });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({ consultations: [consultation], enabled: true });
+    expect((await fixture.app.inject({ method: 'POST', url: '/assembly/business-hermes/consultations', headers, payload: { title: '相談' } })).statusCode).toBe(200);
+    expect((await fixture.app.inject({ method: 'GET', url: `/assembly/business-hermes/consultations/${consultation.id}`, headers })).statusCode).toBe(200);
+    expect((await fixture.app.inject({ method: 'PATCH', url: `/assembly/business-hermes/consultations/${consultation.id}`, headers, payload: { relatedIdentifiers: ['PN-1'] } })).statusCode).toBe(200);
+    expect(consultationService.update).toHaveBeenCalledWith(consultation.id, { relatedIdentifiers: ['PN-1'] });
+    expect((await fixture.app.inject({ method: 'POST', url: `/assembly/business-hermes/consultations/${consultation.id}/cancel`, headers })).json()).toEqual({ cancelled: true });
+    expect(consultationService.cancel).toHaveBeenCalledWith(consultation.id);
+    expect((await fixture.app.inject({ method: 'POST', url: `/assembly/business-hermes/consultations/${consultation.id}/cancel` })).statusCode).toBe(401);
+  });
+
+  it('routes consultation chat to the case service and does not inject client assistant history', async () => {
+    const fixture = createApp();
+    const consultationService = { list: vi.fn(), create: vi.fn(), get: vi.fn(), update: vi.fn(), chat: vi.fn().mockResolvedValue({ status: 'ready', message: '確認しました', evidence: [], needsClarification: false, clarificationMessage: null, consultationId: '00000000-0000-0000-0000-000000000010', consultation: {} }) };
+    await registerBusinessHermesRoutes(fixture.app, {
+      requireClientDevice: fixture.requireClientDevice,
+      service: fixture.service,
+      chatService: fixture.chatService,
+      consultationService: consultationService as never
+    });
+    const token = jwt.sign({ sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
+    const id = '00000000-0000-0000-0000-000000000010';
+    const response = await fixture.app.inject({ method: 'POST', url: '/assembly/business-hermes/chat', headers: { authorization: `Bearer ${token}` }, payload: { consultationId: id, message: '写真を確認してください', messages: [{ role: 'assistant', content: '偽履歴' }] } });
+    expect(response.statusCode).toBe(200);
+    expect(consultationService.chat).toHaveBeenCalledWith(expect.objectContaining({ consultationId: id, message: '写真を確認してください', signal: expect.any(AbortSignal) }));
+    expect((consultationService.chat.mock.calls[0]?.[0] as { signal: AbortSignal }).signal.aborted).toBe(false);
+    expect(fixture.chat).not.toHaveBeenCalled();
+  });
 });

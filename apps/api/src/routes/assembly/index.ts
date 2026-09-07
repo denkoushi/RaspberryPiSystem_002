@@ -7,7 +7,9 @@ import {
 } from './procedure-documents.js';
 import { authorizeRoles } from '../../lib/auth.js';
 import { registerBusinessHermesRoutes } from './business-hermes.js';
+import { registerBusinessHermesMcpRoutes } from './business-hermes-mcp.js';
 import { BusinessHermesService } from '../../services/assembly/business-hermes.service.js';
+import { BusinessHermesConsultationService } from '../../services/assembly/business-hermes-consultation.service.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
 import {
@@ -743,11 +745,14 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const procedureSequenceService = new AssemblyProcedureSequenceService();
   const excelService = new AssemblyExcelExportService(sessionService);
   const businessHermesService = new BusinessHermesService();
+  const businessHermesConsultationService = new BusinessHermesConsultationService();
 
   await registerBusinessHermesRoutes(app, {
     requireClientDevice,
-    service: businessHermesService
+    service: businessHermesService,
+    consultationService: businessHermesConsultationService
   });
+  await registerBusinessHermesMcpRoutes(app);
 
   registerAssemblyProcedureDocumentRevisionRoutes(app, {
     allowView,

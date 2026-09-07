@@ -1719,12 +1719,15 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         main = yaml.safe_load(self.task_text("main"))[0]
         self.assertEqual(
             [task["ansible.builtin.import_tasks"] for task in main["block"]],
-            ["prepare.yml", "switch.yml", "health.yml", "commit.yml"],
+            ["prepare.yml", "switch.yml", "business-hermes-chat-start.yml", "health.yml", "commit.yml"],
         )
         self.assertEqual(
-            [task["ansible.builtin.import_tasks"] for task in main["rescue"]],
+            [task["ansible.builtin.import_tasks"] for task in main["rescue"] if "ansible.builtin.import_tasks" in task],
             ["rollback.yml"],
         )
+        chat_restore = main["rescue"][0]
+        self.assertEqual(chat_restore["block"][0]["ansible.builtin.include_tasks"], "business-hermes-chat-rollback.yml")
+        self.assertTrue(chat_restore["rescue"][0]["ansible.builtin.set_fact"]["release_pi5_chat_rollback_failed"])
         self.assertEqual(
             [task["ansible.builtin.import_tasks"] for task in main["always"]],
             ["cleanup.yml"],
@@ -2344,6 +2347,84 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
             ),
             ["stop"],
         )
+
+
+class ConsultationRuntimeReleaseTests(unittest.TestCase):
+    """Execute the real Ansible start/rescue tasks against a stateful Docker double."""
+
+    def test_consultation_start_and_rollback_preserve_container_and_network_state(self) -> None:
+        docker_script = r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+p = Path(os.environ['CHAT_DOCKER_STATE'])
+s = json.loads(p.read_text())
+a = sys.argv[1:]
+s['events'].append(a)
+code = 0
+if a[0] == 'inspect':
+    print(json.dumps({'bluegreen_business-hermes': {}} if s['network'] else {}))
+elif a[:2] == ['network', 'connect']:
+    s['network'] = True
+elif a[:2] == ['network', 'disconnect']:
+    s['network'] = False
+elif a[0] == 'compose':
+    service = a[-1]
+    if 'up' in a:
+        s['services'][service] = True
+        if service == 'business-hermes-chat' and s.get('fail_start'):
+            s['fail_start'] = False
+            code = 1
+    elif 'rm' in a:
+        s['services'].pop(service, None)
+    elif 'stop' in a:
+        s['services'][service] = False
+p.write_text(json.dumps(s))
+sys.exit(code)
+'''
+        for existing, fail_start in [(False, False), (False, True), (True, False)]:
+            with self.subTest(existing=existing, fail_start=fail_start), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                executable = root / 'docker'
+                executable.write_text(docker_script)
+                executable.chmod(0o755)
+                initial = {'business-hermes-chat-egress': True, 'business-hermes-chat': False} if existing else {}
+                state = root / 'state.json'
+                state.write_text(json.dumps({'services': initial, 'network': existing, 'events': [], 'fail_start': fail_start}))
+                before = [{'service': service, 'id': 'existing' if existing else '', 'running': running}
+                          for service, running in [('business-hermes-chat-egress', existing), ('business-hermes-chat', False)]]
+                task_root = ANSIBLE / 'roles/release_pi5/tasks'
+                playbook = root / 'check.yml'
+                playbook.write_text(yaml.safe_dump([{
+                    'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
+                    'vars': {'release_pi5_compose_argv': [str(executable), 'compose'],
+                             'release_pi5_compose_environment': {'CHAT_DOCKER_STATE': str(state)},
+                             'release_pi5_compose_project': 'bluegreen', 'release_pi5_compose_wait_seconds': 10,
+                             'release_pi5_gateway_id': 'gateway-fixture', 'release_pi5_chat_before': before,
+                             'release_pi5_chat_gateway_connected': False,
+                             'business_hermes_chat_rendered_files': {'changed': True, 'results': []}},
+                    'environment': {'CHAT_DOCKER_STATE': str(state)},
+                    'tasks': [{'block': [
+                        {'ansible.builtin.import_tasks': str(task_root / 'business-hermes-chat-start.yml')},
+                        {'ansible.builtin.fail': {'msg': 'Simulate later API health failure'}}
+                    ], 'rescue': [
+                        {'ansible.builtin.import_tasks': str(task_root / 'business-hermes-chat-rollback.yml')}
+                    ]}]
+                }], sort_keys=False))
+                (root / 'ansible.cfg').write_text('[defaults]\nretry_files_enabled = False\n')
+                env = dict(os.environ, ANSIBLE_CONFIG=str(root / 'ansible.cfg'), ANSIBLE_NOCOLOR='1', PATH=str(root) + os.pathsep + os.environ['PATH'])
+                result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                                        env=env, capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stdout[-4000:] + result.stderr[-1000:])
+                actual = json.loads(state.read_text())
+                self.assertEqual(actual['services'], initial)
+                self.assertEqual(actual['network'], existing)
+                if not existing:
+                    connect = next(event for event in actual['events'] if event[:2] == ['network', 'connect'])
+                    self.assertEqual(connect[2:4], ['--alias', 'gateway'])
+                self.assertFalse(any('-v' in event or '--volumes' in event for event in actual['events']))
+                up = [event for event in actual['events'] if 'up' in event]
+                self.assertEqual(up[0][-1], 'business-hermes-chat-egress')
+                self.assertEqual(up[1][-1], 'business-hermes-chat')
 
 
 if __name__ == "__main__":

@@ -2,11 +2,23 @@ import axios from 'axios';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { useLocation } from 'react-router-dom';
 
-import { getResolvedClientKey, sendBusinessHermesChat } from '../../api/client';
+import {
+  cancelBusinessHermesConsultation,
+  createBusinessHermesConsultation,
+  getBusinessHermesConsultation,
+  getResolvedClientKey,
+  listBusinessHermesConsultations,
+  sendBusinessHermesChat,
+  sendBusinessHermesConsultationMessage,
+  type BusinessHermesChatResponse,
+  type BusinessHermesConsultationChatResponse,
+  type BusinessHermesConsultationDetail,
+  type BusinessHermesConsultationItem
+} from '../../api/client';
 import { getApiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../contexts/AuthContext';
 
-import type { HermesChatPanelProps, HermesPanelMessage } from './HermesChatPanel';
+import type { HermesChatPanelProps, HermesPanelMessage, HermesConsultationSuggestion } from './HermesChatPanel';
 import type { BusinessHermesChatEvidence } from '../../api/domains/assembly';
 
 import './hermes-floating-chat.css';
@@ -16,8 +28,10 @@ const HermesChatPanel = lazy(() => import('./HermesChatPanel'));
 const INTRO_MESSAGE: HermesPanelMessage = {
   id: 'hermes-intro',
   role: 'assistant',
-  content: '不適合や作業要領について質問できます。品番が分からないときも、自然な言葉で聞いてください。'
+  content: 'ご相談をどうぞ。'
 };
+
+type ConsultationMode = 'loading' | 'available' | 'legacy';
 
 const ICON_SIZE = 58;
 const VIEWPORT_GUTTER = 12;
@@ -38,6 +52,50 @@ function evidenceForMessage(evidence: readonly BusinessHermesChatEvidence[]) {
   return evidence.length > 0 ? evidence : undefined;
 }
 
+function messagesFromConsultation(detail: BusinessHermesConsultationDetail): HermesPanelMessage[] {
+  return detail.messages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    evidence: message.evidence,
+    createdAt: message.createdAt
+  }));
+}
+
+function mergeMessages(older: HermesPanelMessage[], current: HermesPanelMessage[]): HermesPanelMessage[] {
+  const seen = new Set<string>();
+  return [...older, ...current].filter((message) => {
+    if (seen.has(message.id)) return false;
+    seen.add(message.id);
+    return true;
+  });
+}
+
+function isConsultationDetail(
+  consultation: BusinessHermesConsultationItem | BusinessHermesConsultationDetail
+): consultation is BusinessHermesConsultationDetail {
+  return Array.isArray((consultation as BusinessHermesConsultationDetail).messages);
+}
+
+function pendingConfirmation(detail: BusinessHermesConsultationDetail): HermesConsultationSuggestion | null {
+  const latest = detail.messages.at(-1);
+  const confirmation = latest?.role === 'assistant' ? latest.confirmation : undefined;
+  return confirmation ? { ...confirmation, relatedIdentifiers: confirmation.relatedIdentifiers ?? [] } : null;
+}
+
+function responseText(response: BusinessHermesChatResponse | BusinessHermesConsultationChatResponse): string | null {
+  if (response.status === 'unavailable') {
+    return response.evidence.length > 0
+      ? '検索結果は取得できましたが、Hermesの回答生成は利用できません。表示中の根拠を確認してください。'
+      : response.reasonCode === 'HERMES_NOT_CONFIGURED'
+        ? 'Hermesの能力設定が未有効です。管理者の設定後に再試行してください。'
+      : response.message ?? '回答を準備できませんでした。少し待って再試行してください。';
+  }
+  return response.message ?? response.clarificationMessage ?? (
+    response.needsClarification ? '条件をもう少し教えてください。' : null
+  ) ?? (response.evidence.length > 0 ? '関連する根拠を表示します。' : null);
+}
+
 export function HermesFloatingChat() {
   const { user, token } = useAuth();
   const location = useLocation();
@@ -52,6 +110,15 @@ export function HermesFloatingChat() {
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState<string | null>(null);
+  const [consultationMode, setConsultationMode] = useState<ConsultationMode>('loading');
+  const [consultations, setConsultations] = useState<BusinessHermesConsultationItem[]>([]);
+  const [activeConsultation, setActiveConsultation] = useState<BusinessHermesConsultationDetail | null>(null);
+  const [consultationSuggestion, setConsultationSuggestion] = useState<HermesConsultationSuggestion | null>(null);
+  const [isConsultationsLoading, setIsConsultationsLoading] = useState(false);
+  const [isConsultationDetailLoading, setIsConsultationDetailLoading] = useState(false);
+  const [isMessageHistoryLoading, setIsMessageHistoryLoading] = useState(false);
+  const [messageHistoryError, setMessageHistoryError] = useState<string | null>(null);
+  const [consultationError, setConsultationError] = useState<string | null>(null);
   const [isDocumentVisible, setIsDocumentVisible] = useState(
     () => typeof document === 'undefined' || document.visibilityState === 'visible'
   );
@@ -59,7 +126,10 @@ export function HermesFloatingChat() {
   const clientKeyRef = useRef(clientKey);
   const iconRef = useRef<HTMLButtonElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const messageHistoryAbortRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
+  const consultationRequestIdRef = useRef(0);
+  const messageHistoryRequestIdRef = useRef(0);
   const identityRef = useRef('');
   const dragRef = useRef<{
     pointerId: number;
@@ -76,16 +146,40 @@ export function HermesFloatingChat() {
     [clientKey, location.pathname, location.search, token, user?.id]
   );
 
-  const resetConversation = useCallback(() => {
+  const invalidateChatRequest = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     requestIdRef.current += 1;
+    setIsBusy(false);
+  }, []);
+
+  const invalidateMessageHistory = useCallback(() => {
+    messageHistoryAbortRef.current?.abort();
+    messageHistoryAbortRef.current = null;
+    messageHistoryRequestIdRef.current += 1;
+    setIsMessageHistoryLoading(false);
+  }, []);
+
+  const resetConversation = useCallback((options: { clearConsultations?: boolean } = {}) => {
+    invalidateChatRequest();
+    invalidateMessageHistory();
+    consultationRequestIdRef.current += 1;
     setMessages([INTRO_MESSAGE]);
+    setActiveConsultation(null);
+    setConsultationSuggestion(null);
     setDraft('');
     setIsBusy(false);
     setError(null);
     setAuthRequired(null);
-  }, []);
+    setConsultationError(null);
+    setIsConsultationsLoading(false);
+    setIsConsultationDetailLoading(false);
+    setMessageHistoryError(null);
+    if (options.clearConsultations) {
+      setConsultations([]);
+      setConsultationMode('loading');
+    }
+  }, [invalidateChatRequest, invalidateMessageHistory]);
 
   useEffect(() => {
     if (!identityRef.current) {
@@ -94,7 +188,7 @@ export function HermesFloatingChat() {
     }
     if (identityRef.current === identity) return;
     identityRef.current = identity;
-    resetConversation();
+    resetConversation({ clearConsultations: true });
   }, [identity, resetConversation]);
 
   useEffect(() => {
@@ -119,7 +213,7 @@ export function HermesFloatingChat() {
       if (clientKeyRef.current === nextKey) return;
       clientKeyRef.current = nextKey;
       setClientKey(nextKey);
-      resetConversation();
+      resetConversation({ clearConsultations: true });
     };
     const intervalId = window.setInterval(checkClientKey, 2000);
     window.addEventListener('storage', checkClientKey);
@@ -129,14 +223,17 @@ export function HermesFloatingChat() {
     };
   }, [resetConversation]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => () => {
+    abortRef.current?.abort();
+    messageHistoryAbortRef.current?.abort();
+  }, []);
 
   const ensureCurrentClientKey = useCallback(() => {
     const nextKey = getResolvedClientKey();
     if (nextKey === clientKey) return true;
     clientKeyRef.current = nextKey;
     setClientKey(nextKey);
-    resetConversation();
+    resetConversation({ clearConsultations: true });
     return false;
   }, [clientKey, resetConversation]);
 
@@ -230,23 +327,211 @@ export function HermesFloatingChat() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open]);
 
-  const sendMessage = useCallback(async () => {
-    const content = draft.trim();
+  useEffect(() => {
+    if (!open || consultationMode !== 'loading') return;
+    const controller = new AbortController();
+    const requestIdentity = identity;
+    setIsConsultationsLoading(true);
+    setConsultationError(null);
+    void listBusinessHermesConsultations(controller.signal)
+      .then(({ consultations: items, enabled }) => {
+        if (controller.signal.aborted || identityRef.current !== requestIdentity) return;
+        if (!enabled) {
+          setConsultations([]);
+          setConsultationMode('legacy');
+          return;
+        }
+        setConsultations(items);
+        setConsultationMode('available');
+      })
+      .catch((requestError) => {
+        if (controller.signal.aborted || identityRef.current !== requestIdentity) return;
+        const status = axios.isAxiosError(requestError) ? requestError.response?.status : undefined;
+        if (status === 404 || status === 405) {
+          setConsultationMode('legacy');
+          return;
+        }
+        setConsultationMode('available');
+        setConsultationError(getApiErrorMessage(requestError, '相談一覧を読み込めませんでした。'));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted && identityRef.current === requestIdentity) setIsConsultationsLoading(false);
+      });
+    return () => controller.abort();
+  }, [consultationMode, identity, open]);
+
+  const replaceConsultationInList = useCallback((next: BusinessHermesConsultationItem) => {
+    setConsultations((current) => {
+      const without = current.filter((item) => item.id !== next.id);
+      return [next, ...without];
+    });
+  }, []);
+
+  const selectConsultation = useCallback(async (consultationId: string) => {
+    if (consultationMode !== 'available') return;
+    invalidateChatRequest();
+    invalidateMessageHistory();
+    const requestId = ++consultationRequestIdRef.current;
+    const requestIdentity = identity;
+    setActiveConsultation(null);
+    setConsultationSuggestion(null);
+    setMessages([INTRO_MESSAGE]);
+    setConsultationError(null);
+    setMessageHistoryError(null);
+    setIsConsultationDetailLoading(true);
+    try {
+      const detail = await getBusinessHermesConsultation(consultationId);
+      if (requestId !== consultationRequestIdRef.current || identityRef.current !== requestIdentity) return;
+      setActiveConsultation(detail);
+      setMessages(messagesFromConsultation(detail));
+      setConsultationSuggestion(pendingConfirmation(detail));
+      replaceConsultationInList(detail);
+    } catch (requestError) {
+      if (requestId !== consultationRequestIdRef.current || identityRef.current !== requestIdentity) return;
+      setConsultationError(getApiErrorMessage(requestError, '相談を開けませんでした。'));
+    } finally {
+      if (requestId === consultationRequestIdRef.current) setIsConsultationDetailLoading(false);
+    }
+  }, [consultationMode, identity, invalidateChatRequest, invalidateMessageHistory, replaceConsultationInList]);
+
+  const loadOlderMessages = useCallback(async () => {
+    const consultation = activeConsultation;
+    const messageCursor = consultation?.messagesNextCursor;
+    if (consultationMode !== 'available' || !consultation || !messageCursor || isMessageHistoryLoading || isBusy) return;
+
+    invalidateMessageHistory();
+    const requestId = messageHistoryRequestIdRef.current;
+    const requestIdentity = identity;
+    const controller = new AbortController();
+    messageHistoryAbortRef.current = controller;
+    setMessageHistoryError(null);
+    setIsMessageHistoryLoading(true);
+
+    try {
+      const olderPage = await getBusinessHermesConsultation(consultation.id, messageCursor, controller.signal);
+      if (controller.signal.aborted || requestId !== messageHistoryRequestIdRef.current || identityRef.current !== requestIdentity) return;
+      setActiveConsultation((current) => {
+        if (!current || current.id !== olderPage.id) return current;
+        return {
+          ...current,
+          messagesNextCursor: olderPage.messagesNextCursor,
+          messages: [...olderPage.messages, ...current.messages.filter((message) => !olderPage.messages.some((older) => older.id === message.id))]
+        };
+      });
+      setMessages((current) => mergeMessages(messagesFromConsultation(olderPage), current.filter((message) => message.id !== INTRO_MESSAGE.id)));
+    } catch (requestError) {
+      if (controller.signal.aborted || requestId !== messageHistoryRequestIdRef.current || identityRef.current !== requestIdentity) return;
+      setMessageHistoryError(getApiErrorMessage(requestError, '以前の履歴を読み込めませんでした。'));
+    } finally {
+      if (requestId === messageHistoryRequestIdRef.current) {
+        messageHistoryAbortRef.current = null;
+        setIsMessageHistoryLoading(false);
+      }
+    }
+  }, [activeConsultation, consultationMode, identity, invalidateMessageHistory, isBusy, isMessageHistoryLoading]);
+
+  const createConsultation = useCallback(async () => {
+    if (consultationMode !== 'available') return;
+    invalidateChatRequest();
+    invalidateMessageHistory();
+    const requestId = ++consultationRequestIdRef.current;
+    const requestIdentity = identity;
+    setActiveConsultation(null);
+    setConsultationSuggestion(null);
+    setMessages([INTRO_MESSAGE]);
+    setDraft('');
+    setConsultationError(null);
+    setMessageHistoryError(null);
+    setIsConsultationDetailLoading(true);
+    try {
+      const detail = await createBusinessHermesConsultation();
+      if (requestId !== consultationRequestIdRef.current || identityRef.current !== requestIdentity) return;
+      setActiveConsultation(detail);
+      setMessages(messagesFromConsultation(detail));
+      replaceConsultationInList(detail);
+    } catch (requestError) {
+      if (requestId !== consultationRequestIdRef.current || identityRef.current !== requestIdentity) return;
+      setConsultationError(getApiErrorMessage(requestError, '新しい相談を始められませんでした。'));
+    } finally {
+      if (requestId === consultationRequestIdRef.current) setIsConsultationDetailLoading(false);
+    }
+  }, [consultationMode, identity, invalidateChatRequest, invalidateMessageHistory, replaceConsultationInList]);
+
+  const resetActiveConversation = useCallback(() => {
+    if (consultationMode !== 'available') {
+      resetConversation();
+      return;
+    }
+    invalidateChatRequest();
+    invalidateMessageHistory();
+    consultationRequestIdRef.current += 1;
+    setActiveConsultation(null);
+    setConsultationMode('loading');
+    setConsultationSuggestion(null);
+    setMessages([INTRO_MESSAGE]);
+    setDraft('');
+    setIsBusy(false);
+    setError(null);
+    setConsultationError(null);
+    setIsConsultationsLoading(false);
+    setIsConsultationDetailLoading(false);
+    setMessageHistoryError(null);
+  }, [consultationMode, invalidateChatRequest, invalidateMessageHistory, resetConversation]);
+
+  const stopRequest = useCallback(() => {
+    if (!isBusy) return;
+    invalidateChatRequest();
+    setIsConsultationDetailLoading(false);
+    setError('回答を中止しました。必要ならもう一度送信してください。');
+    if (activeConsultation) {
+      const stopRequestId = requestIdRef.current;
+      setIsBusy(true);
+      void cancelBusinessHermesConsultation(activeConsultation.id)
+        .catch(() => {
+          if (requestIdRef.current === stopRequestId) setError('停止を確認できませんでした。少し待ってから再送信してください。');
+        })
+        .finally(() => {
+          if (requestIdRef.current === stopRequestId) setIsBusy(false);
+        });
+    }
+  }, [activeConsultation, invalidateChatRequest, isBusy]);
+
+  const sendMessage = useCallback(async (messageOverride?: string) => {
+    const content = (typeof messageOverride === 'string' ? messageOverride : draft).trim();
     if (!content || isBusy) return;
     if (!ensureCurrentClientKey()) return;
+    if (consultationMode === 'loading') {
+      setConsultationError('相談を準備しています。少し待ってから送信してください。');
+      return;
+    }
     setError(null);
     setAuthRequired(null);
+    setConsultationError(null);
+    setConsultationSuggestion(null);
 
     const userMessage: HermesPanelMessage = {
       id: `hermes-user-${Date.now()}-${requestIdRef.current}`,
       role: 'user',
-      content
+      content,
+      createdAt: new Date().toISOString()
     };
     const history = [...messages.filter((message) => message.id !== INTRO_MESSAGE.id), userMessage]
       .slice(-12)
       .map(({ role, content: messageContent }) => ({ role, content: messageContent }));
 
     setMessages((current) => [...current, userMessage]);
+    if (activeConsultation) {
+      setActiveConsultation((current) => current ? {
+        ...current,
+        messages: [...current.messages, {
+          id: userMessage.id,
+          role: 'user',
+          content,
+          evidence: [],
+          createdAt: userMessage.createdAt ?? new Date().toISOString()
+        }]
+      } : current);
+    }
     setDraft('');
     setIsBusy(true);
     const controller = new AbortController();
@@ -255,31 +540,78 @@ export function HermesFloatingChat() {
     const requestIdentity = identity;
 
     try {
-      const response = await sendBusinessHermesChat({ scope: 'both', messages: history }, controller.signal);
+      let consultation = activeConsultation;
+      if (consultationMode === 'available' && !consultation) {
+        setIsConsultationDetailLoading(true);
+        consultation = await createBusinessHermesConsultation(controller.signal);
+        if (controller.signal.aborted || requestId !== requestIdRef.current || identityRef.current !== requestIdentity) return;
+        setActiveConsultation({ ...consultation, messages: [...consultation.messages, {
+          id: userMessage.id,
+          role: 'user',
+          content,
+          evidence: [],
+          createdAt: userMessage.createdAt ?? new Date().toISOString()
+        }] });
+        replaceConsultationInList(consultation);
+        setIsConsultationDetailLoading(false);
+      }
+      const response: BusinessHermesChatResponse | BusinessHermesConsultationChatResponse = consultationMode === 'available' && consultation
+        ? await sendBusinessHermesConsultationMessage({ consultationId: consultation.id, message: content }, controller.signal)
+        : await sendBusinessHermesChat({ scope: 'both', messages: history }, controller.signal);
       const identityChanged = identityRef.current !== requestIdentity || getResolvedClientKey() !== clientKey;
-      if (identityChanged) resetConversation();
+      if (identityChanged) resetConversation({ clearConsultations: true });
       if (controller.signal.aborted || requestId !== requestIdRef.current || identityChanged) return;
-      const responseText = response.status === 'unavailable'
-        ? (response.evidence.length > 0
-          ? '検索結果は取得できましたが、Hermesの回答生成は利用できません。表示中の根拠を確認してください。'
-          : response.message ?? 'Hermesが回答を準備できませんでした。少し待って再試行してください。')
-        : response.message ?? response.clarificationMessage ?? (
-          response.needsClarification ? '条件をもう少し指定してください。' : null
-        ) ?? (response.evidence.length > 0 ? '関連する根拠を表示します。' : null);
-      if (responseText) {
-        setMessages((current) => [
-          ...current,
-          {
+      const consultationResponse: BusinessHermesConsultationChatResponse | null = 'consultationId' in response
+        ? response as BusinessHermesConsultationChatResponse
+        : null;
+      if (consultationResponse?.consultation && isConsultationDetail(consultationResponse.consultation)) {
+        const nextConsultation = consultationResponse.consultation;
+        setActiveConsultation(nextConsultation);
+        setMessages(messagesFromConsultation(nextConsultation));
+        const confirmation = consultationResponse.confirmation;
+        setConsultationSuggestion(confirmation ? {
+          prompt: confirmation.prompt,
+          options: confirmation.options,
+          title: confirmation.title,
+          relatedIdentifiers: confirmation.relatedIdentifiers ?? []
+        } : null);
+        replaceConsultationInList(nextConsultation);
+      } else {
+        if (consultationResponse?.consultation) {
+          replaceConsultationInList(consultationResponse.consultation);
+          setActiveConsultation((current) => current && current.id === consultationResponse.consultation?.id
+            ? { ...current, ...consultationResponse.consultation }
+            : current);
+        }
+        const assistantContent = responseText(response);
+        if (assistantContent) {
+          const assistantMessage: HermesPanelMessage = {
             id: `hermes-assistant-${requestId}`,
             role: 'assistant',
-            content: responseText,
-            evidence: evidenceForMessage(response.evidence)
+            content: assistantContent,
+            evidence: evidenceForMessage(response.evidence),
+            createdAt: new Date().toISOString()
+          };
+          setMessages((current) => [...current, assistantMessage]);
+          if (activeConsultation) {
+            setActiveConsultation((current) => current ? {
+              ...current,
+              messages: [...current.messages, {
+                id: assistantMessage.id,
+                role: assistantMessage.role,
+                content: assistantMessage.content,
+                evidence: assistantMessage.evidence ? [...assistantMessage.evidence] : [],
+                createdAt: assistantMessage.createdAt ?? new Date().toISOString()
+              }]
+            } : current);
           }
-        ]);
+        }
       }
       if (response.status === 'unavailable') {
         setError(response.evidence.length > 0
           ? '回答生成が利用できないため、根拠カードのみ表示しています。'
+          : response.reasonCode === 'HERMES_NOT_CONFIGURED'
+            ? 'Hermesの能力設定が未有効です。管理者の設定後に再試行してください。'
           : response.message ?? 'Hermesが回答を準備できませんでした。少し待って再試行してください。');
       }
     } catch (requestError) {
@@ -294,9 +626,17 @@ export function HermesFloatingChat() {
       if (requestId === requestIdRef.current) {
         abortRef.current = null;
         setIsBusy(false);
+        setIsConsultationDetailLoading(false);
       }
     }
-  }, [clientKey, draft, ensureCurrentClientKey, identity, isBusy, messages, resetConversation]);
+  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, messages, replaceConsultationInList, resetConversation]);
+
+  const respondToSuggestion = useCallback((answer: string) => {
+    if (!activeConsultation || !consultationSuggestion || isBusy) return;
+    const prompt = consultationSuggestion.prompt.trim();
+    const message = `「${prompt}」への回答は「${answer}」です。`;
+    void sendMessage(message);
+  }, [activeConsultation, consultationSuggestion, isBusy, sendMessage]);
 
   const closePanel = useCallback(() => {
     setOpen(false);
@@ -327,15 +667,29 @@ export function HermesFloatingChat() {
   };
   const iconStyle = { left: position.left, top: position.top };
   const panelProps: HermesChatPanelProps = {
+    mode: consultationMode === 'legacy' ? 'legacy' : 'consultations',
     messages,
     draft,
     isBusy,
     error,
     authRequired,
+    consultations,
+    activeConsultation,
+    isConsultationsLoading,
+    isConsultationDetailLoading,
+    isMessageHistoryLoading,
+    messageHistoryError,
+    consultationError,
     onDraftChange: setDraft,
     onSend: sendMessage,
-    onReset: resetConversation,
-    onClose: closePanel
+    onReset: resetActiveConversation,
+    onClose: closePanel,
+    onStop: stopRequest,
+    onNewConsultation: createConsultation,
+    onSelectConsultation: (consultationId) => void selectConsultation(consultationId),
+    onLoadOlderMessages: () => void loadOlderMessages(),
+    suggestion: consultationSuggestion,
+    onAnswerSuggestion: respondToSuggestion
   };
 
   return (

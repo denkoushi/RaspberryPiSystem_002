@@ -1,0 +1,79 @@
+---
+- name: Restore modified consultation profile files
+  ansible.builtin.copy:
+    src: "{{ item.backup_file }}"
+    dest: "{{ item.item.dest }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "{{ item.item.mode }}"
+  loop: "{{ business_hermes_chat_rendered_files.results | default([]) }}"
+  when: item.backup_file is defined
+  no_log: true
+
+- name: Restore the previous consultation candidate environment
+  ansible.builtin.copy:
+    src: "{{ release_pi5_run_dir }}/consultation-compose.env.before"
+    dest: "{{ release_pi5_chat_env_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  when: release_pi5_chat_env_backup is defined and not (release_pi5_chat_env_backup.skipped | default(false)) and release_pi5_chat_env_backup is succeeded
+  no_log: true
+
+- name: Restore existing consultation containers after profile restoration
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, item.service] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  loop: "{{ release_pi5_chat_before | default([]) }}"
+  when:
+    - release_pi5_chat_started | default(false) | bool
+    - item.id | length > 0
+  changed_when: true
+
+- name: Return previously stopped consultation services to stopped state
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['stop', item.service] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  loop: "{{ release_pi5_chat_before | default([]) }}"
+  when:
+    - release_pi5_chat_started | default(false) | bool
+    - item.id | length > 0
+    - not item.running
+  changed_when: true
+
+- name: Remove only newly created consultation containers without volumes
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['rm', '--stop', '--force', item.service] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  loop: "{{ release_pi5_chat_before | default([]) }}"
+  when:
+    - release_pi5_chat_started | default(false) | bool
+    - item.id | length == 0
+  changed_when: true
+
+- name: Undo only this release gateway bridge attachment
+  ansible.builtin.command:
+    argv: [docker, network, disconnect, "{{ release_pi5_compose_project }}_business-hermes", "{{ release_pi5_gateway_id }}"]
+  when: release_pi5_chat_gateway_connected | default(false) | bool
+  changed_when: true
+
+- name: Remove only new profile files created by the failed release
+  ansible.builtin.file:
+    path: "{{ item.item.dest }}"
+    state: absent
+  loop: "{{ business_hermes_chat_rendered_files.results | default([]) }}"
+  when:
+    - item.changed | default(false)
+    - item.backup_file is not defined
+  no_log: true
+
+- name: Remove a new consultation candidate environment after rollback
+  ansible.builtin.file:
+    path: "{{ release_pi5_chat_env_file }}"
+    state: absent
+  when:
+    - release_pi5_chat_env_copy.changed | default(false)
+    - not (release_pi5_chat_env_source.stat.exists | default(false))
+  no_log: true
