@@ -29,7 +29,7 @@ jobs:
       publishable: ${{ steps.classify.outputs.release_pair }}
     steps:
       - name: Checkout code with history
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ env.TARGET_SHA }}
@@ -64,7 +64,7 @@ jobs:
       protocol_version: ${{ steps.evidence.outputs.protocol_version }}
     steps:
       - name: Checkout exact component sources with history
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ env.TARGET_SHA }}
@@ -310,7 +310,7 @@ jobs:
       origin_job_id: ${{ steps.identity.outputs.origin_job_id }}
     steps:
       - name: Checkout exact adopting main source with history
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ env.TARGET_SHA }}
@@ -349,7 +349,7 @@ jobs:
         run: docker buildx imagetools inspect --raw "$TORQUE_REFERENCE" > torque-agent-index.json
 
       - name: Re-scan adopted torque-agent ARM64 digest under the required policy
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         env:
           TRIVY_PLATFORM: linux/arm64
         with:
@@ -362,7 +362,7 @@ jobs:
           trivyignores: .trivyignore
 
       - name: Re-scan adopted torque-agent ARMv7 digest under the required policy
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         env:
           TRIVY_PLATFORM: linux/arm/v7
         with:
@@ -440,7 +440,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.TARGET_SHA }}
 
