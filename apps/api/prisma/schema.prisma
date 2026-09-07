@@ -724,6 +724,43 @@ model BusinessHermesProactiveSuggestion {
   @@index([clientDeviceId, createdAt])
 }
 
+/// Independent business-butler consultation case. This state is intentionally
+/// separate from Hermes Memory/session state and from assembly work sessions.
+model BusinessHermesConsultation {
+  id                  String                            @id @default(uuid())
+  title               String?
+  relatedIdentifiers  Json?
+  confirmedFacts      Json?
+  openQuestions       Json?
+  summary             String?
+  hermesConversationId String?                           @unique
+  createdByUserId     String?
+  assignedUserId      String?
+  createdAt           DateTime                          @default(now())
+  updatedAt           DateTime                          @updatedAt
+  messages            BusinessHermesConsultationMessage[]
+
+  @@index([updatedAt])
+  @@index([createdByUserId, updatedAt])
+  @@index([assignedUserId, updatedAt])
+}
+
+/// Raw user/assistant history and trusted evidence for one consultation.
+/// Assistant text is model output; evidence is projected separately by the API.
+model BusinessHermesConsultationMessage {
+  id              String                 @id @default(uuid())
+  consultationId  String
+  role            String                 @db.VarChar(16)
+  content         String
+  evidence        Json?
+  confirmation    Json?
+  searchDiagnostics Json?
+  createdAt       DateTime               @default(now())
+  consultation    BusinessHermesConsultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+
+  @@index([consultationId, createdAt])
+}
+
 model ClientLog {
   id        String   @id @default(uuid())
   clientId  String

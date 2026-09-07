@@ -171,6 +171,12 @@
         - '"server" in group_names'
         - business_hermes_enabled | default(false) | bool
 
+    - name: Converge Business Hermes consultation runtime configuration
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/business-hermes-chat-runtime.yml"
+      when:
+        - '"server" in group_names'
+        - business_hermes_chat_enabled | default(false) | bool
+
     # INFERENCE_PROVIDERS_JSON と LOCAL_LLM_* の整合（DGX / Pi5 の token ドリフト防止）
     - name: Parse INFERENCE_PROVIDERS_JSON for LocalLLM alignment (server)
       ansible.builtin.set_fact:

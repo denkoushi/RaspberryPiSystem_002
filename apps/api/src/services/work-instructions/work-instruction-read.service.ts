@@ -11,6 +11,7 @@ import type {
   WorkInstructionGroupsQuery,
   WorkInstructionImportMessagesQuery,
   WorkInstructionPartCandidatesQuery,
+  WorkInstructionPublishedTextSearchQuery,
   UpsertWorkInstructionPartAliasInput,
   WorkInstructionRepository,
   WorkInstructionRowsQuery,
@@ -47,6 +48,10 @@ export class WorkInstructionReadService {
     return this.repository.readPublishedGroups
       ? this.repository.readPublishedGroups(input)
       : this.repository.readGroups(input);
+  }
+
+  searchPublishedGroups(input: WorkInstructionPublishedTextSearchQuery) {
+    return this.repository.searchPublishedGroups(input);
   }
 
   readPublishedPartCandidates(input: WorkInstructionPartCandidatesQuery): Promise<WorkInstructionPartCandidatePageView> {

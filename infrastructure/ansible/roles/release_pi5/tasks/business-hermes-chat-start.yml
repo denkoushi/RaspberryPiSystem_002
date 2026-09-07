@@ -1,0 +1,33 @@
+---
+- name: Mark the consultation startup boundary
+  ansible.builtin.set_fact:
+    release_pi5_chat_started: true
+
+- name: Start the consultation egress and create its private bridge
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'business-hermes-chat-egress'] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  changed_when: true
+
+- name: Inspect the stable gateway network membership
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{json .NetworkSettings.Networks}}' }}", "{{ release_pi5_gateway_id }}"]
+  register: release_pi5_chat_gateway_networks
+  changed_when: false
+
+- name: Connect only the stable gateway to the consultation private bridge
+  ansible.builtin.command:
+    argv: [docker, network, connect, --alias, gateway, "{{ release_pi5_compose_project }}_business-hermes", "{{ release_pi5_gateway_id }}"]
+  when: (release_pi5_compose_project ~ '_business-hermes') not in (release_pi5_chat_gateway_networks.stdout | from_json)
+  register: release_pi5_chat_gateway_connect
+  changed_when: true
+
+- name: Record gateway connection ownership for rollback
+  ansible.builtin.set_fact:
+    release_pi5_chat_gateway_connected: "{{ release_pi5_chat_gateway_connect is changed }}"
+
+- name: Start consultation Hermes after the new MCP endpoint is active
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string] + (['--force-recreate'] if (business_hermes_chat_rendered_files is changed) else []) + ['business-hermes-chat'] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  changed_when: true

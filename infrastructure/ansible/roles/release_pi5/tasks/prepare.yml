@@ -224,10 +224,22 @@
         )
     fail_msg: The persistent Business Hermes Compose environment source must be a root-owned regular file with mode 0600.
 
+- name: Inspect the persistent consultation Compose environment
+  ansible.builtin.stat:
+    path: "{{ release_pi5_chat_env_file }}"
+    follow: false
+  register: release_pi5_chat_env_source
+
+- name: Validate the persistent consultation environment ownership
+  ansible.builtin.assert:
+    that:
+      - not (release_pi5_chat_env_source.stat.exists | default(false)) or (release_pi5_chat_env_source.stat.isreg | default(false) and not (release_pi5_chat_env_source.stat.islnk | default(false)) and release_pi5_chat_env_source.stat.pw_name == 'root' and release_pi5_chat_env_source.stat.mode == '0600')
+
 - name: Resolve the existing Pi5 Compose environment source
   ansible.builtin.set_fact:
     release_pi5_compose_env_source: >-
-      {{ release_pi5_business_hermes_candidate_env_file | default('/etc/raspi-business-hermes/compose.env')
+      {{ release_pi5_chat_env_file if (release_pi5_chat_env_source.stat.exists | default(false)) else
+         release_pi5_business_hermes_candidate_env_file | default('/etc/raspi-business-hermes/compose.env')
          if (release_pi5_business_hermes_candidate_env_source.stat.exists | default(false) | bool)
          else release_pi5_env_file }}
 
@@ -908,6 +920,12 @@
     - release_pi5_route == 'fresh'
     - release_pi5_business_hermes_enabled | bool
     - release_pi5_business_hermes_egress_transition_required | bool
+
+- name: Prepare the approved consultation runtime and candidate settings
+  ansible.builtin.include_tasks: business-hermes-chat-prepare.yml
+  when:
+    - release_pi5_route == 'fresh'
+    - business_hermes_chat_enabled | default(false) | bool
 
 - name: Mark the inactive Pi5 candidate startup boundary
   ansible.builtin.set_fact:

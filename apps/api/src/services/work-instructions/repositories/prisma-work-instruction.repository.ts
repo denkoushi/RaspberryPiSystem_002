@@ -23,6 +23,8 @@ import type {
   WorkInstructionGroupsQuery,
   WorkInstructionImportMessagesQuery,
   WorkInstructionPartCandidatesQuery,
+  WorkInstructionPublishedTextSearchQuery,
+  WorkInstructionPublishedTextSearchPage,
   UpsertWorkInstructionPartAliasInput,
   WorkInstructionRepository,
   WorkInstructionRowsQuery
@@ -34,6 +36,7 @@ import {
   readWorkInstructionRows,
   readPublishedWorkInstructionGroup,
   readPublishedWorkInstructionGroups,
+  searchPublishedWorkInstructionGroups,
   readPublishedWorkInstructionPartCandidates,
   readPublishedWorkInstructionPartAlias,
   hasPublishedWorkInstructionPart
@@ -359,6 +362,10 @@ export class PrismaWorkInstructionRepository implements WorkInstructionRepositor
 
   async readPublishedGroups(input: WorkInstructionGroupsQuery) {
     return readPublishedWorkInstructionGroups(this.db, input);
+  }
+
+  async searchPublishedGroups(input: WorkInstructionPublishedTextSearchQuery): Promise<WorkInstructionPublishedTextSearchPage> {
+    return searchPublishedWorkInstructionGroups(this.db, input);
   }
 
   async readPublishedPartCandidates(input: WorkInstructionPartCandidatesQuery) {

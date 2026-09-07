@@ -1,0 +1,62 @@
+---
+- name: Validate enabled business Hermes consultation credentials
+  ansible.builtin.assert:
+    that:
+      - business_hermes_chat_enabled | default(false) | bool
+      - business_hermes_chat_api_key is defined
+      - business_hermes_chat_api_key | length >= 16
+      - business_hermes_chat_mcp_api_key is defined
+      - business_hermes_chat_mcp_api_key | length >= 16
+      - business_hermes_chat_dgx_token is defined
+      - business_hermes_chat_dgx_token | length >= 16
+      - business_hermes_chat_model | length >= 1
+      - business_hermes_chat_image is match('^nousresearch/hermes-agent:[^@]+@sha256:[0-9a-f]{64}$')
+      - business_hermes_chat_egress_image is match('^node:[^@]+@sha256:[0-9a-f]{64}$')
+      - api_business_hermes_chat_base_url == 'http://business-hermes-chat:8642'
+    fail_msg: >-
+      Enabled business Hermes consultation requires dedicated API/MCP keys,
+      a DGX token, model, internal service URL, and digest-pinned images.
+  no_log: true
+
+- name: Ensure the business Hermes consultation secret directory exists
+  ansible.builtin.file:
+    path: "{{ business_hermes_chat_runtime_env_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Ensure the business Hermes consultation skill directory exists
+  ansible.builtin.file:
+    path: "{{ business_hermes_chat_skills_dir }}/business-consultation"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Opt the dedicated profile out of bundled Skill seeding
+  ansible.builtin.file:
+    path: "{{ business_hermes_chat_no_bundled_skills_file | default((business_hermes_chat_skills_dir | dirname) + '/.no-bundled-skills') }}"
+    state: touch
+    owner: root
+    group: root
+    mode: '0644'
+    access_time: preserve
+    modification_time: preserve
+
+- name: Render the dedicated consultation profile files
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+    backup: "{{ business_hermes_chat_backup_files | default(false) | bool }}"
+  loop:
+    - { src: "{{ playbook_dir }}/../templates/business-hermes-chat-config.yaml.j2", dest: "{{ business_hermes_chat_config_file }}", mode: '0644' }
+    - { src: "{{ playbook_dir }}/../templates/business-hermes-chat-env.j2", dest: "{{ business_hermes_chat_runtime_env_file }}", mode: '0600' }
+    - { src: "{{ playbook_dir }}/../templates/business-hermes-chat/SOUL.md.j2", dest: "{{ business_hermes_chat_soul_file }}", mode: '0644' }
+    - { src: "{{ playbook_dir }}/../templates/business-hermes-chat/CONTEXT.md.j2", dest: "{{ business_hermes_chat_context_file }}", mode: '0644' }
+    - { src: "{{ playbook_dir }}/../templates/business-hermes-chat/skills/business-consultation/SKILL.md.j2", dest: "{{ business_hermes_chat_skills_dir }}/business-consultation/SKILL.md", mode: '0644' }
+  register: business_hermes_chat_rendered_files
+  no_log: true

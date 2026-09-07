@@ -618,7 +618,18 @@ export type BusinessHermesChatEvidence = {
   partNumber: string;
   shootingTarget?: string;
   step?: number;
+  sourceStep?: number;
   text: string;
+  effectiveText?: string;
+  sourceVersionDate?: string;
+  source?: Record<string, unknown>;
+  sourceUrl?: string;
+  publishedVersionId?: string;
+  publishedVersionCreatedAt?: string;
+  publishedRevisionId?: string | null;
+  publishedRevisionCreatedAt?: string | null;
+  rawImageLabel?: string;
+  imageAssetId?: string;
   imageUrl?: string;
   imageMimeType?: string;
 };
@@ -640,6 +651,135 @@ export type BusinessHermesChatResponse = {
   needsClarification: boolean;
   clarificationMessage: string | null;
 };
+
+export type BusinessHermesConsultationItem = {
+  id: string;
+  title: string;
+  relatedIdentifiers: string[];
+  confirmedFacts: string[];
+  openQuestions: string[];
+  summary: string;
+  updatedAt: string;
+};
+
+export type BusinessHermesConsultationConfirmation = {
+  prompt: string;
+  options?: string[];
+  title?: string;
+  relatedIdentifiers?: string[];
+};
+
+export type BusinessHermesConsultationMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  evidence: BusinessHermesChatEvidence[];
+  confirmation?: BusinessHermesConsultationConfirmation;
+  createdAt: string;
+};
+
+export type BusinessHermesConsultationDetail = BusinessHermesConsultationItem & {
+  messages: BusinessHermesConsultationMessage[];
+  messagesNextCursor?: string | null;
+};
+
+export type BusinessHermesConsultationPatch = {
+  title?: string;
+  relatedIdentifiers?: string[];
+};
+
+export type BusinessHermesConsultationChatResponse = {
+  status: 'ready' | 'unavailable';
+  message: string | null;
+  reasonCode?: string;
+  evidence: BusinessHermesChatEvidence[];
+  needsClarification: boolean;
+  clarificationMessage: string | null;
+  consultationId: string;
+  consultation: BusinessHermesConsultationDetail;
+  /** Present only when Hermes explicitly asks the user to confirm a candidate. */
+  confirmation?: BusinessHermesConsultationConfirmation;
+};
+
+type BusinessHermesConsultationEnvelope = {
+  consultation: BusinessHermesConsultationDetail;
+};
+
+export type BusinessHermesConsultationListResponse = {
+  consultations: BusinessHermesConsultationItem[];
+  enabled: boolean;
+};
+
+function unwrapBusinessHermesConsultation(
+  data: BusinessHermesConsultationEnvelope
+): BusinessHermesConsultationDetail {
+  return data.consultation;
+}
+
+function unwrapBusinessHermesConsultationList(
+  data: BusinessHermesConsultationListResponse
+): BusinessHermesConsultationListResponse {
+  return data;
+}
+
+export async function listBusinessHermesConsultations(signal?: AbortSignal): Promise<BusinessHermesConsultationListResponse> {
+  const { data } = await api.get<BusinessHermesConsultationListResponse>(
+    '/assembly/business-hermes/consultations',
+    { signal }
+  );
+  return unwrapBusinessHermesConsultationList(data);
+}
+
+export async function createBusinessHermesConsultation(signal?: AbortSignal): Promise<BusinessHermesConsultationDetail> {
+  const { data } = await api.post<BusinessHermesConsultationEnvelope>(
+    '/assembly/business-hermes/consultations',
+    {},
+    { signal }
+  );
+  return unwrapBusinessHermesConsultation(data);
+}
+
+export async function getBusinessHermesConsultation(
+  consultationId: string,
+  messageCursor?: string,
+  signal?: AbortSignal
+): Promise<BusinessHermesConsultationDetail> {
+  const query = messageCursor ? `?messageCursor=${encodeURIComponent(messageCursor)}` : '';
+  const { data } = await api.get<{ consultation: BusinessHermesConsultationDetail }>(
+    `/assembly/business-hermes/consultations/${encodeURIComponent(consultationId)}${query}`,
+    { signal }
+  );
+  return unwrapBusinessHermesConsultation(data);
+}
+
+export async function updateBusinessHermesConsultation(
+  consultationId: string,
+  payload: BusinessHermesConsultationPatch,
+  signal?: AbortSignal
+): Promise<BusinessHermesConsultationDetail> {
+  const { data } = await api.patch<BusinessHermesConsultationEnvelope>(
+    `/assembly/business-hermes/consultations/${encodeURIComponent(consultationId)}`,
+    payload,
+    { signal }
+  );
+  return unwrapBusinessHermesConsultation(data);
+}
+
+export async function cancelBusinessHermesConsultation(consultationId: string): Promise<void> {
+  await api.post(`/assembly/business-hermes/consultations/${encodeURIComponent(consultationId)}/cancel`, {});
+}
+
+export async function sendBusinessHermesConsultationMessage(
+  payload: { consultationId: string; message: string },
+  signal?: AbortSignal
+): Promise<BusinessHermesConsultationChatResponse> {
+  const { data } = await api.post<BusinessHermesConsultationChatResponse>(
+    '/assembly/business-hermes/chat',
+    payload,
+    { signal, timeout: BUSINESS_HERMES_CHAT_HTTP_TIMEOUT_MS }
+  );
+  return data;
+}
 
 // The common web client timeout is 120s, but one chat request can perform
 // intent extraction and answer generation sequentially. Keep this UI wait

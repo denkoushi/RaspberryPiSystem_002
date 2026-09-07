@@ -124,10 +124,15 @@
 }
 
 .hermes-chat-panel__title {
+  min-width: 0;
   margin: 0;
   color: #bcffd0;
   font-size: 0.98rem;
   font-weight: 700;
+}
+
+.hermes-chat-panel__header > div:first-child {
+  min-width: 0;
 }
 
 .hermes-chat-panel__hint {
@@ -152,6 +157,7 @@
   background: transparent;
   cursor: pointer;
   font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 .hermes-chat-panel__action:hover {
@@ -169,6 +175,201 @@
 
 .hermes-chat-panel__status--error {
   color: #ffb4a8;
+}
+
+.hermes-chat-panel__action--stop {
+  color: #ffd9a0;
+  border-color: rgba(255, 210, 139, 0.55);
+}
+
+.hermes-chat-panel__consultation-list {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px;
+  background: #081b16;
+}
+
+.hermes-chat-panel__list-intro {
+  padding: 8px 4px 12px;
+  color: #a9cdb5;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.hermes-chat-panel__list-intro p {
+  margin: 0 0 6px;
+}
+
+.hermes-chat-panel__list-title {
+  color: #d8ffe5;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.hermes-chat-panel__new-consultation {
+  min-height: 36px;
+  margin-top: 4px;
+  padding: 7px 10px;
+  border: 1px solid rgba(156, 241, 185, 0.42);
+  border-radius: 8px;
+  color: #c8ffda;
+  background: rgba(113, 255, 161, 0.1);
+  cursor: pointer;
+}
+
+.hermes-chat-panel__list-status {
+  margin: 8px 4px;
+  color: #9bc7ac;
+  font-size: 0.78rem;
+}
+
+.hermes-chat-panel__consultation-composer {
+  flex: 0 0 auto;
+  border-top: 1px solid rgba(126, 220, 171, 0.18);
+  background: #0b2820;
+}
+
+.hermes-chat-panel__consultation-item {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  margin: 6px 0;
+  padding: 10px;
+  border: 1px solid rgba(126, 220, 171, 0.24);
+  border-radius: 9px;
+  color: #dbffe6;
+  text-align: left;
+  background: #0d2a21;
+  cursor: pointer;
+}
+
+.hermes-chat-panel__consultation-item:hover {
+  border-color: rgba(156, 241, 185, 0.55);
+  background: #123a2c;
+}
+
+.hermes-chat-panel__consultation-item-title {
+  overflow: hidden;
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hermes-chat-panel__consultation-item-meta,
+.hermes-chat-panel__consultation-item-date {
+  color: #9bc7ac;
+  font-size: 0.7rem;
+}
+
+.hermes-chat-panel__consultation-context {
+  flex: 0 0 auto;
+  max-height: 112px;
+  overflow-y: auto;
+  padding: 7px 10px;
+  color: #c6e6d1;
+  background: #0a211a;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.hermes-chat-panel__consultation-context p {
+  margin: 2px 0;
+}
+
+.hermes-chat-panel__context-label {
+  color: #9bc7ac;
+  font-weight: 700;
+}
+
+.hermes-chat-panel__suggestion {
+  margin: 8px 6px;
+  padding: 9px 10px;
+  border: 1px solid rgba(88, 170, 111, 0.58);
+  border-radius: 10px;
+  color: #173d27;
+  background: #e4f9e8;
+  box-shadow: 0 2px 8px rgba(0, 24, 12, 0.16);
+}
+
+.hermes-chat-panel__suggestion-label,
+.hermes-chat-panel__suggestion-prompt,
+.hermes-chat-panel__suggestion-detail {
+  margin: 0;
+}
+
+.hermes-chat-panel__suggestion-label {
+  color: #125f37;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.hermes-chat-panel__suggestion-prompt {
+  margin-top: 3px;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.hermes-chat-panel__suggestion-detail {
+  margin-top: 3px;
+  color: #2e6040;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.hermes-chat-panel__suggestion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.hermes-chat-panel__suggestion-button {
+  min-width: 56px;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid rgba(36, 103, 59, 0.45);
+  border-radius: 7px;
+  color: #164d2b;
+  background: #f4fff5;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.hermes-chat-panel__suggestion-button--accept {
+  color: #f5fff7;
+  background: #1f7544;
+}
+
+.hermes-chat-panel__suggestion-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.hermes-chat-panel__evidence-source {
+  display: inline-block;
+  margin-top: 5px;
+  color: #165b35;
+  font-size: 0.72rem;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+}
+
+.hermes-chat-panel__evidence-image-wrap {
+  display: grid;
+  gap: 3px;
+}
+
+.hermes-chat-panel__evidence-image-caption {
+  color: #305d3e;
+  font-size: 0.68rem;
+  line-height: 1.35;
 }
 
 .hermes-chat-panel__main {
@@ -204,6 +405,36 @@
 .hermes-chat-panel .cs-message-list__scroll-wrapper {
   overflow-y: auto;
   overscroll-behavior-y: contain;
+}
+
+.hermes-chat-panel__history-loader {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin: 2px 0 10px;
+}
+
+.hermes-chat-panel__history-button {
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid rgba(156, 241, 185, 0.34);
+  border-radius: 7px;
+  color: #bfffd0;
+  font-size: 0.72rem;
+  background: rgba(113, 255, 161, 0.08);
+  cursor: pointer;
+}
+
+.hermes-chat-panel__history-button:disabled {
+  color: #86b397;
+  cursor: wait;
+}
+
+.hermes-chat-panel__history-error {
+  margin: 0;
+  color: #ffb4a8;
+  font-size: 0.7rem;
+  text-align: center;
 }
 
 .hermes-chat-panel .cs-message {
