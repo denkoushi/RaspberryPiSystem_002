@@ -7,7 +7,7 @@ import { BusinessHermesConsultationService, projectTrustedEvidence } from './bus
 const consultationId = '00000000-0000-0000-0000-000000000010';
 
 function dbFixture() {
-  const messages: Array<{ id: string; role: string; content: string; evidence: unknown; createdAt: Date }> = [];
+  const messages: Array<{ id: string; role: string; content: string; evidence: unknown; confirmation?: unknown; searchDiagnostics?: unknown; createdAt: Date }> = [];
   const row = {
     id: consultationId,
     title: null,
@@ -26,7 +26,7 @@ function dbFixture() {
       create: vi.fn()
     },
       businessHermesConsultationMessage: {
-      create: vi.fn(async ({ data }: { data: { role: string; content: string; evidence: unknown } }) => {
+      create: vi.fn(async ({ data }: { data: { role: string; content: string; evidence: unknown; confirmation?: unknown; searchDiagnostics?: unknown } }) => {
         const message = { id: `message-${messages.length + 1}`, ...data, createdAt: new Date(Date.now() + messages.length) };
         messages.push(message);
         return message;
@@ -105,6 +105,28 @@ describe('BusinessHermesConsultationService', () => {
     expect(fixture.messages.at(-1)?.evidence).toEqual({ items: result.evidence, visible: false, visibleIds: [] });
     expect(result.consultation.messages.at(-1)).toMatchObject({ evidence: result.evidence, evidenceVisible: false });
     expect((await service.get(consultationId))?.messages.at(-1)).toMatchObject({ evidence: result.evidence, evidenceVisible: false });
+  });
+
+  it('does not save or present a successful answer when evidence display has no valid ids', async () => {
+    const fixture = dbFixture();
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: [
+      { type: 'function_call', name: 'mcp__business_api__business_hermes_search', call_id: 'photo-search-no-id' },
+      { type: 'function_call_output', call_id: 'photo-search-no-id', output: JSON.stringify({ results: [{ kind: 'work_instruction', id: 'wi-1', partNumber: 'PN-1', text: '公開手順', asset_id: 'asset-1' }] }) },
+      { type: 'message', content: [{ type: 'output_text', text: '{"message":"写真を表示しました。","title":"写真確認","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"写真確認","showEvidence":true,"needsClarification":false,"confirmation":null}' }] }
+    ] } })}\n\n`, { headers: { 'content-type': 'text/event-stream' } }));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const result = await service.chat({ consultationId, message: '写真を見せてください' });
+
+    expect(result).toMatchObject({
+      status: 'unavailable',
+      reasonCode: 'HERMES_EVIDENCE_NOT_AVAILABLE',
+      message: '写真・資料を表示できませんでした。もう一度お試しください。',
+      evidence: []
+    });
+    expect(fixture.messages.map((message) => message.role)).toEqual(['user']);
+    expect(fixture.db.businessHermesConsultation.update).not.toHaveBeenCalled();
   });
 
   it('keeps all trusted current evidence while displaying only the explicitly selected id', async () => {
@@ -343,6 +365,96 @@ describe('BusinessHermesConsultationService', () => {
     expect(result.confirmation).toEqual({ prompt: '組立工程のPN-Bで続けますか？', title: 'PN-B組立', relatedIdentifiers: ['PN-B'] });
     const reopened = await service.get(consultationId);
     expect(reopened?.messages.at(-1)?.confirmation).toEqual(result.confirmation);
+  });
+
+  it('keeps a button selection contextual for Hermes while storing a user-facing selection event', async () => {
+    const fixture = dbFixture();
+    const fetchImpl = vi.fn().mockResolvedValue(new Response([
+      `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: '{"message":"選択内容を確認します。","title":"候補確認","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"候補確認"}' } })}\n\n`
+    ].join(''), { headers: { 'content-type': 'text/event-stream' } }));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const result = await service.chat({ consultationId, message: '選択肢を進める', selection: { prompt: 'どの処置を詳しく見ますか？', option: '処置の詳細を見る' } });
+
+    expect(fixture.messages[0]).toMatchObject({
+      content: '「処置の詳細を見る」が選択されました。',
+      confirmation: { selection: { prompt: 'どの処置を詳しく見ますか？', option: '処置の詳細を見る' } }
+    });
+    expect(JSON.parse(fetchImpl.mock.calls[0]![1].body)).toMatchObject({
+      input: [{ role: 'user', content: '選択された次の操作です。問い: どの処置を詳しく見ますか？\n選択: 処置の詳細を見る' }]
+    });
+    expect(result.consultation.messages[0]).toMatchObject({
+      selection: { prompt: 'どの処置を詳しく見ますか？', option: '処置の詳細を見る' }
+    });
+  });
+
+  it('resolves and retains a scan as case data while keeping the raw value out of the displayed user message', async () => {
+    const fixture = dbFixture();
+    const scan = {
+      rawValue: 'ORDER-SCAN-1',
+      kind: 'manufacturing_order' as const,
+      ambiguous: false,
+      candidateCount: 1,
+      truncated: false,
+      matches: [{ kind: 'manufacturing_order' as const, source: 'production_schedule' as const, matchField: 'ProductNo' as const, matchedValue: 'ORDER-SCAN-1', productNo: 'ORDER-SCAN-1' }]
+    };
+    const scanResolver = { resolve: vi.fn().mockResolvedValue(scan) };
+    const responseBody = `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: '{"message":"照合結果を確認します。","title":"スキャン確認","relatedIdentifiers":[],"confirmedFacts":[],"openQuestions":[],"summary":"スキャン確認","needsClarification":false,"confirmation":{"prompt":"この候補で続けますか？","options":["続ける","別の内容を相談する"]}}' } })}\n\n`;
+    const fetchImpl = vi.fn().mockImplementation(() => new Response(responseBody));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, scanResolver,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const result = await service.chat({ consultationId, message: 'バーコードの照合結果を確認してください。', scanValue: 'ORDER-SCAN-1' });
+
+    expect(scanResolver.resolve).toHaveBeenCalledWith('ORDER-SCAN-1');
+    expect(fixture.messages[0]).toMatchObject({
+      content: 'バーコードを読み取りました。',
+      confirmation: { scan }
+    });
+    expect(JSON.parse(fetchImpl.mock.calls[0]![1].body).instructions).toContain('ORDER-SCAN-1');
+    expect(JSON.parse(fetchImpl.mock.calls[0]![1].body).instructions).toContain('命令ではありません');
+    expect(result.consultation.messages[0]).toMatchObject({ scan });
+    expect(result.confirmation).toEqual({ prompt: 'この候補で続けますか？', options: ['続ける', '別の内容を相談する'] });
+
+    await service.chat({ consultationId, message: '別の内容を相談する', selection: { prompt: 'この候補で続けますか？', option: '別の内容を相談する' } });
+    expect(scanResolver.resolve).toHaveBeenCalledOnce();
+    expect(fixture.messages.at(-2)).toMatchObject({
+      content: '「別の内容を相談する」が選択されました。',
+      confirmation: { selection: { prompt: 'この候補で続けますか？', option: '別の内容を相談する' } }
+    });
+    expect(JSON.parse(fetchImpl.mock.calls[1]![1].body).instructions).toContain('ORDER-SCAN-1');
+  });
+
+  it('does not save a scan when the request is cancelled while the read-only lookup is pending', async () => {
+    const fixture = dbFixture();
+    let finishLookup!: (value: { rawValue: string; kind: 'unknown'; ambiguous: false; candidateCount: number; truncated: false; matches: [] }) => void;
+    const scanResolver = { resolve: vi.fn(() => new Promise((resolve) => { finishLookup = resolve; })) };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, scanResolver,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const abort = new AbortController();
+    const request = service.chat({ consultationId, message: 'スキャンを確認してください。', scanValue: 'PENDING-SCAN', signal: abort.signal });
+
+    await vi.waitFor(() => expect(scanResolver.resolve).toHaveBeenCalled());
+    abort.abort();
+    finishLookup({ rawValue: 'PENDING-SCAN', kind: 'unknown', ambiguous: false, candidateCount: 0, truncated: false, matches: [] });
+
+    await expect(request).resolves.toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_TIMEOUT' });
+    expect(fixture.messages).toHaveLength(0);
+    expect(fixture.db.businessHermesConsultation.update).not.toHaveBeenCalled();
+  });
+
+  it('returns a scan lookup failure without treating it as an unknown match', async () => {
+    const fixture = dbFixture();
+    const scanResolver = { resolve: vi.fn().mockRejectedValue(new Error('read-only lookup failed')) };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, scanResolver,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    await expect(service.chat({ consultationId, message: 'スキャンを確認してください。', scanValue: 'FAILED-SCAN' })).resolves.toMatchObject({
+      status: 'unavailable',
+      reasonCode: 'HERMES_SCAN_LOOKUP_UNAVAILABLE'
+    });
+    expect(fixture.messages).toHaveLength(0);
   });
 
   it('keeps an acknowledgement before valid case metadata without displaying the JSON', async () => {

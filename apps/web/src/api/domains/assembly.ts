@@ -616,6 +616,9 @@ export type BusinessHermesChatEvidence = {
   id: string;
   title: string;
   partNumber: string;
+  originDepartmentCode?: string | null;
+  originDepartmentName?: string | null;
+  originDepartmentMeaning?: string;
   shootingTarget?: string;
   step?: number;
   sourceStep?: number;
@@ -669,6 +672,26 @@ export type BusinessHermesConsultationConfirmation = {
   relatedIdentifiers?: string[];
 };
 
+export type BusinessHermesScanMatch = {
+  kind: 'manufacturing_order' | 'part_number' | 'other';
+  source: 'production_schedule' | 'nonconformity' | 'work_instruction';
+  matchField: 'ProductNo' | 'FSEIBAN' | 'FHINCD' | 'ScawStFutekigoCurrent.partNumber' | 'WorkInstruction.partNumber' | 'WorkInstructionPartAlias.canonicalPartNumber';
+  matchedValue: string;
+  productNo?: string;
+  partNumber?: string;
+  serialNumber?: string;
+  partName?: string;
+};
+
+export type BusinessHermesScanResolution = {
+  rawValue: string;
+  kind: 'manufacturing_order' | 'part_number' | 'other' | 'unknown';
+  ambiguous: boolean;
+  candidateCount: number;
+  truncated: boolean;
+  matches: BusinessHermesScanMatch[];
+};
+
 export type BusinessHermesConsultationMessage = {
   id: string;
   role: 'user' | 'assistant';
@@ -677,6 +700,8 @@ export type BusinessHermesConsultationMessage = {
   evidenceVisible?: boolean;
   evidenceVisibleIds?: string[];
   confirmation?: BusinessHermesConsultationConfirmation;
+  selection?: { prompt: string; option: string };
+  scan?: BusinessHermesScanResolution;
   createdAt: string;
 };
 
@@ -774,7 +799,7 @@ export async function cancelBusinessHermesConsultation(consultationId: string): 
 }
 
 export async function sendBusinessHermesConsultationMessage(
-  payload: { consultationId: string; message: string },
+  payload: { consultationId: string; message: string; selection?: { prompt: string; option: string }; scanValue?: string },
   signal?: AbortSignal
 ): Promise<BusinessHermesConsultationChatResponse> {
   const { data } = await api.post<BusinessHermesConsultationChatResponse>(

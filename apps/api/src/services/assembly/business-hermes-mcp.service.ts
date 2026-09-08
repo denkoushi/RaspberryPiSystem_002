@@ -34,6 +34,7 @@ type MpcDeps = {
 
 const MAX_LIMIT = 20;
 const MAX_QUERY_CHARS = 200;
+const ORIGIN_DEPARTMENT_MEANING = '起因部署';
 
 const TOOLS: ReadonlyArray<BusinessHermesMcpTool> = [
   {
@@ -43,7 +44,7 @@ const TOOLS: ReadonlyArray<BusinessHermesMcpTool> = [
   },
   {
     name: 'business_hermes_search',
-    description: 'Search active latest nonconformities and PUBLIC work-instruction text using literal case-insensitive substring matching across the selected fields. Spaces are literal characters, not AND keywords; start with one concise term and refine with identifiers, dates, or a narrower term. Results never include private paths or case history.',
+    description: 'Search active latest nonconformities and PUBLIC work-instruction text using literal case-insensitive substring matching across the selected fields. originDepartmentCode/name are explicit 起因部署 filters; they are not responsibility-department or treatment-owner filters. Spaces are literal characters, not AND keywords; start with one concise term and refine with identifiers, dates, or a narrower term. Results never include private paths or case history.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -51,6 +52,8 @@ const TOOLS: ReadonlyArray<BusinessHermesMcpTool> = [
         partNumber: { type: 'string', maxLength: 200 },
         shootingTarget: { type: 'string', maxLength: 200 },
         nonconformityNo: { type: 'string', maxLength: 120 },
+        originDepartmentCode: { type: 'string', maxLength: 120 },
+        originDepartmentName: { type: 'string', maxLength: MAX_QUERY_CHARS },
         condition: { type: 'string', maxLength: MAX_QUERY_CHARS },
         dateFrom: { type: 'string', maxLength: 10 },
         dateTo: { type: 'string', maxLength: 10 },
@@ -119,6 +122,7 @@ function publicStep(
   const effectiveText = step.memoOverride !== undefined ? step.memoOverride : step.text;
   return {
     id: step.id,
+    evidenceKey: `work_instruction:${step.id}`,
     step: step.step,
     effectiveText,
     publicEdited: step.memoOverride !== undefined,
@@ -200,14 +204,15 @@ export class BusinessHermesMcpService {
         {
           kind: 'nonconformity',
           description: 'Historical nonconformity records present in the latest import (isPresentInLatestSnapshot=true). These are not published work instructions or evidence of a defect in the current consultation.',
-          fields: ['id', 'nonconformityNo', 'partNumber', 'partName', 'machineName', 'condition', 'remarks', 'disposition', 'correctiveContent', 'discoveredOn', 'sourceVersionDate', 'provenance'],
-          fieldMeanings: { condition: '不適合内容', correctiveContent: '個別是正内容1・2。処置内容欄とは別項目', disposition: '処置内容。空欄は未記録であり処置未実施を意味しない', remarks: '備考', discoveredOn: '発見日。dateFrom/dateToはこの日を絞る', sourceVersionDate: '元データ更新日', machineName: '記録された機械名。要領書の対象工程とは同一とは限らない' }
+          fields: ['id', 'evidenceKey', 'nonconformityNo', 'partNumber', 'partName', 'machineName', 'originDepartmentCode', 'originDepartmentName', 'condition', 'remarks', 'disposition', 'correctiveContent', 'discoveredOn', 'sourceVersionDate', 'provenance'],
+          fieldMeanings: { evidenceKey: '取得済み根拠を表示指定するkind:idキー。利用者向け本文には表示しない', condition: '不適合内容', correctiveContent: '個別是正内容1・2。処置内容欄とは別項目', disposition: '処置内容。空欄は未記録であり処置未実施を意味しない', remarks: '備考', discoveredOn: '発見日。dateFrom/dateToはこの日を絞る', sourceVersionDate: '元データ更新日', machineName: '記録された機械名。要領書の対象工程とは同一とは限らない', originDepartmentCode: '起因部署コード。責任部署・処置担当とは別項目', originDepartmentName: '起因部署名。責任部署・処置担当とは別項目' },
+          responsibilityDepartment: '正式な責任部署項目はこのデータソースに提供されていません。'
         },
         {
           kind: 'work_instruction',
           description: 'PUBLIC WorkInstructionSourcePublication pointer and its effective published revision.',
-          fields: ['id', 'partNumber', 'shootingTarget', 'source', 'sourceVersionDate', 'publishedVersionId', 'publishedVersionCreatedAt', 'publishedRevisionId', 'publishedRevisionCreatedAt', 'steps.effectiveText', 'steps.imageAssetId', 'steps.imageUrl'],
-          rules: ['latest imported drafts are excluded', 'sourceVersionDate is the immutable source modified date; publishedVersionCreatedAt and publishedRevisionCreatedAt identify public publication provenance', 'memoOverride replaces source text, including an empty override', 'only ACTIVE image assets are exposed']
+          fields: ['id', 'partNumber', 'shootingTarget', 'source', 'sourceVersionDate', 'publishedVersionId', 'publishedVersionCreatedAt', 'publishedRevisionId', 'publishedRevisionCreatedAt', 'steps.id', 'steps.evidenceKey', 'steps.effectiveText', 'steps.imageAssetId', 'steps.imageUrl'],
+          rules: ['latest imported drafts are excluded', 'sourceVersionDate is the immutable source modified date; publishedVersionCreatedAt and publishedRevisionCreatedAt identify public publication provenance', 'memoOverride replaces source text, including an empty override', 'only ACTIVE image assets are exposed', 'the group id is used for detail lookup; use each steps.evidenceKey to select a displayed step']
         }
       ],
       limits: { maxResults: MAX_LIMIT, maxQueryChars: MAX_QUERY_CHARS },
@@ -221,6 +226,8 @@ export class BusinessHermesMcpService {
     const partNumber = normalizeWorkInstructionPartNumber(text(args.partNumber, 200));
     const shootingTarget = normalizeWorkInstructionShootingTarget(text(args.shootingTarget, 200));
     const nonconformityNo = text(args.nonconformityNo, 120);
+    const originDepartmentCode = text(args.originDepartmentCode, 120);
+    const originDepartmentName = text(args.originDepartmentName);
     const condition = text(args.condition);
     const dateFrom = text(args.dateFrom, 10);
     const dateTo = text(args.dateTo, 10);
@@ -241,6 +248,8 @@ export class BusinessHermesMcpService {
         isPresentInLatestSnapshot: true,
         ...(partNumber ? { partNumber } : {}),
         ...(nonconformityNo ? { nonconformityNo } : {}),
+        ...(originDepartmentCode ? { originDepartmentCode } : {}),
+        ...(originDepartmentName ? { originDepartmentName: { contains: originDepartmentName, mode: 'insensitive' } } : {}),
         ...(dateFromBound || dateToBound ? { discoveredOn: { ...(dateFromBound ? { gte: dateFromBound } : {}), ...(dateToBound ? { lte: dateToBound } : {}) } } : {}),
         ...(query ? {
           OR: [
@@ -259,7 +268,7 @@ export class BusinessHermesMcpService {
       };
       const rows = await this.db.scawStfutekigoCurrent.findMany({
         where,
-        orderBy: [{ discoveredOn: 'desc' }, { nonconformityNo: 'desc' }],
+        orderBy: [{ discoveredOn: { sort: 'desc', nulls: 'last' } }, { nonconformityNo: 'desc' }],
         skip: nonconformityOffset,
         take: limit,
         select: {
@@ -268,6 +277,8 @@ export class BusinessHermesMcpService {
           partNumber: true,
           partName: true,
           machineName: true,
+          originDepartmentCode: true,
+          originDepartmentName: true,
           discoveredOn: true,
           nonconformityContent: true,
           remarks: true,
@@ -285,6 +296,10 @@ export class BusinessHermesMcpService {
         partNumber: row.partNumber,
         partName: row.partName,
         machineName: row.machineName,
+        originDepartmentCode: row.originDepartmentCode,
+        originDepartmentName: row.originDepartmentName,
+        originDepartmentMeaning: ORIGIN_DEPARTMENT_MEANING,
+        evidenceKey: `nonconformity:${row.id}`,
         condition: row.nonconformityContent,
         remarks: row.remarks,
         correctiveContent: [row.correctiveContent1, row.correctiveContent2].filter(Boolean).join('\n') || null,
@@ -400,6 +415,8 @@ export class BusinessHermesMcpService {
           partNumber: true,
           partName: true,
           machineName: true,
+          originDepartmentCode: true,
+          originDepartmentName: true,
           discoveredOn: true,
           nonconformityContent: true,
           remarks: true,
@@ -416,6 +433,10 @@ export class BusinessHermesMcpService {
         partNumber: row.partNumber,
         partName: row.partName,
         machineName: row.machineName,
+        originDepartmentCode: row.originDepartmentCode,
+        originDepartmentName: row.originDepartmentName,
+        originDepartmentMeaning: ORIGIN_DEPARTMENT_MEANING,
+        evidenceKey: `nonconformity:${row.id}`,
         condition: row.nonconformityContent,
         remarks: row.remarks,
         correctiveContent: [row.correctiveContent1, row.correctiveContent2].filter(Boolean).join('\n') || null,
