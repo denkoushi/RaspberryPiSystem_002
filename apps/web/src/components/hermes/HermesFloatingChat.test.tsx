@@ -29,15 +29,6 @@ vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => mocks.auth
 }));
 
-vi.mock('../../features/barcode-scan/BarcodeScanModal', () => ({
-  BarcodeScanModal: (props: { open: boolean; onSuccess: (value: string) => void; onAbort: () => void }) => props.open ? (
-    <div role="dialog" aria-label="バーコードをスキャン">
-      <button type="button" onClick={() => props.onSuccess('SCAN-ORDER-1')}>テスト読取成功</button>
-      <button type="button" onClick={props.onAbort}>キャンセル</button>
-    </div>
-  ) : null
-}));
-
 vi.mock('./HermesChatPanel', () => ({
   default: (props: {
     mode?: 'legacy' | 'consultations';
@@ -124,6 +115,13 @@ vi.mock('./HermesChatPanel', () => ({
     </section>
   )
 }));
+
+const dispatchWedgeScan = (value: string, target: EventTarget = document.activeElement ?? window) => {
+  for (const character of value) {
+    fireEvent.keyDown(target, { key: character });
+  }
+  fireEvent.keyDown(target, { key: 'Enter' });
+};
 
 import { HermesFloatingChat } from './HermesFloatingChat';
 
@@ -428,7 +426,9 @@ describe('HermesFloatingChat', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Scan' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
     expect(await screen.findByRole('dialog', { name: 'バーコードをスキャン' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'テスト読取成功' }));
+    const scanStatus = screen.getByText('バーコードリーダーで移動票または部品番号を読み取ってください。');
+    expect(scanStatus).toHaveFocus();
+    dispatchWedgeScan('SCAN-ORDER-1', scanStatus);
 
     await waitFor(() => expect(mocks.sendConsultationMessage).toHaveBeenCalledWith({
       consultationId: 'case-scan',

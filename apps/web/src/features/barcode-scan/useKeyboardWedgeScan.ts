@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 
 export type UseKeyboardWedgeScanOptions = {
-  /** false のときはリスナを張らない（カメラモーダル表示中・送信中など） */
+  /** false のときはリスナを張らない（読み取り待受中以外など） */
   active: boolean;
   /** 確定したスキャン文字列（trim 済みを推奨は呼び出し側） */
   onScan: (text: string) => void;
@@ -14,11 +14,46 @@ export type UseKeyboardWedgeScanOptions = {
    * 実スキャナはキー間隔が極短いことが多い。
    */
   idleFlushMs?: number;
+  /** 他の画面と同時に待受しないための排他的な所有者名。 */
+  owner?: string;
 };
 
 const DEFAULT_MIN_CHARS = 4;
 const DEFAULT_MAX_INTER_KEY_DELAY_MS = 35;
 const DEFAULT_IDLE_MS = 120;
+
+let activeOwner: string | null = null;
+let ownershipEpoch = 0;
+const ownerListeners = new Set<() => void>();
+
+function notifyOwnerListeners() {
+  ownerListeners.forEach((listener) => listener());
+}
+
+function subscribeToOwner(listener: () => void) {
+  ownerListeners.add(listener);
+  return () => ownerListeners.delete(listener);
+}
+
+function getActiveOwnerSnapshot() {
+  return `${ownershipEpoch}:${activeOwner ?? ''}`;
+}
+
+/** HIDウェッジ入力の受信権を取得する。現在の所有者の途中入力は破棄される。 */
+export function claimKeyboardWedgeScanOwner(owner: string): void {
+  if (!owner || activeOwner === owner) return;
+  activeOwner = owner;
+  ownershipEpoch += 1;
+  notifyOwnerListeners();
+}
+
+/** HIDウェッジ入力の受信権を解放する。 */
+export function releaseKeyboardWedgeScanOwner(owner: string): void {
+  if (activeOwner !== owner) return;
+  activeOwner = null;
+  ownershipEpoch += 1;
+  notifyOwnerListeners();
+}
 
 function isTextInputTarget(target: EventTarget | null): boolean {
   if (!target || !(target instanceof HTMLElement)) return false;
@@ -37,14 +72,23 @@ export function useKeyboardWedgeScan({
   minChars = DEFAULT_MIN_CHARS,
   maxInterKeyDelayMs = DEFAULT_MAX_INTER_KEY_DELAY_MS,
   idleFlushMs = DEFAULT_IDLE_MS,
+  owner,
 }: UseKeyboardWedgeScanOptions): void {
   const onScanRef = useRef(onScan);
   onScanRef.current = onScan;
+  const ownerSnapshot = useSyncExternalStore(subscribeToOwner, getActiveOwnerSnapshot, getActiveOwnerSnapshot);
 
   useEffect(() => {
     if (!active || typeof window === 'undefined') {
       return;
     }
+
+    const listenerEpoch = ownershipEpoch;
+    const ownsInput = () => (
+      (owner ? activeOwner === owner : activeOwner === null) &&
+      ownershipEpoch === listenerEpoch
+    );
+    if (!ownsInput()) return;
 
     let buffer = '';
     let idleTimer: ReturnType<typeof window.setTimeout> | undefined;
@@ -58,6 +102,7 @@ export function useKeyboardWedgeScan({
     };
 
     const emitIfReady = (raw: string) => {
+      if (!ownsInput()) return;
       const text = raw.replace(/\r/g, '').trim();
       if (text.length >= minChars) {
         onScanRef.current(text);
@@ -81,7 +126,7 @@ export function useKeyboardWedgeScan({
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!active) return;
+      if (!active || !ownsInput()) return;
       if (isTextInputTarget(event.target)) return;
 
       if (event.key === 'Escape') {
@@ -118,5 +163,5 @@ export function useKeyboardWedgeScan({
       buffer = '';
       lastCharAt = 0;
     };
-  }, [active, minChars, maxInterKeyDelayMs, idleFlushMs]);
+  }, [active, owner, ownerSnapshot, minChars, maxInterKeyDelayMs, idleFlushMs]);
 }

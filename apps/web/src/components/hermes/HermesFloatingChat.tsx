@@ -16,9 +16,13 @@ import {
   type BusinessHermesConsultationItem
 } from '../../api/client';
 import { getApiErrorMessage } from '../../api/errors';
+import { Dialog } from '../../components/ui/Dialog';
 import { useAuth } from '../../contexts/AuthContext';
-import { BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE } from '../../features/barcode-scan/formatPresets';
-import { BARCODE_READER_OPTIONS_KIOSK_DEFAULT } from '../../features/barcode-scan/readerOptionPresets';
+import {
+  claimKeyboardWedgeScanOwner,
+  releaseKeyboardWedgeScanOwner,
+  useKeyboardWedgeScan
+} from '../../features/barcode-scan/useKeyboardWedgeScan';
 
 import type { HermesChatPanelProps, HermesPanelMessage, HermesConsultationSuggestion } from './HermesChatPanel';
 import type { BusinessHermesChatEvidence } from '../../api/domains/assembly';
@@ -26,10 +30,6 @@ import type { BusinessHermesChatEvidence } from '../../api/domains/assembly';
 import './hermes-floating-chat.css';
 
 const HermesChatPanel = lazy(() => import('./HermesChatPanel'));
-const BarcodeScanModal = lazy(async () => {
-  const module = await import('../../features/barcode-scan/BarcodeScanModal');
-  return { default: module.BarcodeScanModal };
-});
 
 const INTRO_MESSAGE: HermesPanelMessage = {
   id: 'hermes-intro',
@@ -43,6 +43,7 @@ const ICON_SIZE = 58;
 const VIEWPORT_GUTTER = 12;
 const PANEL_STANDARD_WIDTH = 380;
 const PANEL_STANDARD_HEIGHT = 560;
+const HERMES_BARCODE_SCAN_OWNER = 'hermes-floating-chat';
 
 function clampPosition(left: number, top: number, viewport: { width: number; height: number }) {
   return {
@@ -140,6 +141,7 @@ export function HermesFloatingChat() {
   const [clientKey, setClientKey] = useState(() => getResolvedClientKey());
   const clientKeyRef = useRef(clientKey);
   const iconRef = useRef<HTMLButtonElement | null>(null);
+  const scanFocusRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const messageHistoryAbortRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
@@ -156,6 +158,11 @@ export function HermesFloatingChat() {
     moved: boolean;
   } | null>(null);
   const suppressNextClickRef = useRef(false);
+
+  const closeScanner = useCallback(() => {
+    releaseKeyboardWedgeScanOwner(HERMES_BARCODE_SCAN_OWNER);
+    setIsScanOpen(false);
+  }, []);
 
   const identity = useMemo(
     () => `${token ?? 'anonymous'}:${user?.id ?? 'anonymous'}:${clientKey}:${location.pathname}:${location.search}`,
@@ -181,7 +188,7 @@ export function HermesFloatingChat() {
     invalidateMessageHistory();
     consultationRequestIdRef.current += 1;
     setMessages([INTRO_MESSAGE]);
-    setIsScanOpen(false);
+    closeScanner();
     setActiveConsultation(null);
     setConsultationSuggestion(null);
     setSelectionNotice(null);
@@ -198,7 +205,7 @@ export function HermesFloatingChat() {
       setConsultations([]);
       setConsultationMode('loading');
     }
-  }, [invalidateChatRequest, invalidateMessageHistory]);
+  }, [closeScanner, invalidateChatRequest, invalidateMessageHistory]);
 
   useEffect(() => {
     if (!identityRef.current) {
@@ -245,6 +252,7 @@ export function HermesFloatingChat() {
   useEffect(() => () => {
     abortRef.current?.abort();
     messageHistoryAbortRef.current?.abort();
+    releaseKeyboardWedgeScanOwner(HERMES_BARCODE_SCAN_OWNER);
   }, []);
 
   const ensureCurrentClientKey = useCallback(() => {
@@ -259,10 +267,10 @@ export function HermesFloatingChat() {
   const toggleOpen = useCallback(() => {
     ensureCurrentClientKey();
     setOpen((current) => {
-      if (current) setIsScanOpen(false);
+      if (current) closeScanner();
       return !current;
     });
-  }, [ensureCurrentClientKey]);
+  }, [closeScanner, ensureCurrentClientKey]);
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -342,13 +350,13 @@ export function HermesFloatingChat() {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      setIsScanOpen(false);
+      closeScanner();
       setOpen(false);
       iconRef.current?.focus();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open]);
+  }, [closeScanner, open]);
 
   useEffect(() => {
     if (!open || consultationMode !== 'loading') return;
@@ -490,7 +498,7 @@ export function HermesFloatingChat() {
     invalidateMessageHistory();
     consultationRequestIdRef.current += 1;
     setActiveConsultation(null);
-    setIsScanOpen(false);
+    closeScanner();
     setConsultationMode('loading');
     setConsultationSuggestion(null);
     setSelectionNotice(null);
@@ -503,7 +511,7 @@ export function HermesFloatingChat() {
     setIsConsultationsLoading(false);
     setIsConsultationDetailLoading(false);
     setMessageHistoryError(null);
-  }, [consultationMode, invalidateChatRequest, invalidateMessageHistory, resetConversation]);
+  }, [closeScanner, consultationMode, invalidateChatRequest, invalidateMessageHistory, resetConversation]);
 
   const stopRequest = useCallback(() => {
     if (!isBusy) return;
@@ -677,12 +685,12 @@ export function HermesFloatingChat() {
   }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, messages, replaceConsultationInList, resetConversation]);
 
   const handleScanSuccess = useCallback((value: string) => {
-    setIsScanOpen(false);
+    closeScanner();
     void sendMessage('バーコードの照合結果を確認してください。', {
       scanValue: value,
       displayContent: 'バーコードを読み取りました。'
     });
-  }, [sendMessage]);
+  }, [closeScanner, sendMessage]);
 
   const respondToSuggestion = useCallback((answer: string) => {
     if (!activeConsultation || !consultationSuggestion || isBusy) return;
@@ -693,14 +701,22 @@ export function HermesFloatingChat() {
 
   const closePanel = useCallback(() => {
     setOpen(false);
-    setIsScanOpen(false);
+    closeScanner();
     iconRef.current?.focus();
-  }, []);
+  }, [closeScanner]);
 
   const openScanner = useCallback(() => {
     if (isBusy || consultationMode === 'loading' || isConsultationsLoading || isConsultationDetailLoading || isMessageHistoryLoading || isScanOpen) return;
+    claimKeyboardWedgeScanOwner(HERMES_BARCODE_SCAN_OWNER);
     setIsScanOpen(true);
   }, [consultationMode, isBusy, isConsultationDetailLoading, isConsultationsLoading, isMessageHistoryLoading, isScanOpen]);
+
+  useKeyboardWedgeScan({
+    active: isScanOpen,
+    owner: HERMES_BARCODE_SCAN_OWNER,
+    onScan: handleScanSuccess,
+    minChars: 4
+  });
 
   const togglePanelSize = useCallback(() => {
     setIsPanelExpanded((current) => !current);
@@ -814,18 +830,27 @@ export function HermesFloatingChat() {
           <HermesChatPanel {...panelProps} style={panelStyle} />
         </Suspense>
       ) : null}
-      {isScanOpen ? (
-        <Suspense fallback={<div role="status">バーコードスキャナを準備しています…</div>}>
-          <BarcodeScanModal
-            open
-            formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE}
-            readerOptions={BARCODE_READER_OPTIONS_KIOSK_DEFAULT}
-            idleTimeoutMs={30_000}
-            onSuccess={handleScanSuccess}
-            onAbort={() => setIsScanOpen(false)}
-          />
-        </Suspense>
-      ) : null}
+      <Dialog
+        isOpen={isScanOpen}
+        onClose={closeScanner}
+        ariaLabel="バーコードをスキャン"
+        size="sm"
+        overlayZIndex={200}
+        initialFocusRef={scanFocusRef}
+      >
+        <div className="space-y-4">
+          <div ref={scanFocusRef} tabIndex={-1} role="status" aria-live="polite">
+            バーコードリーダーで移動票または部品番号を読み取ってください。
+          </div>
+          <button
+            type="button"
+            className="rounded border border-slate-400 px-4 py-2 text-sm font-medium hover:bg-slate-100"
+            onClick={closeScanner}
+          >
+            キャンセル
+          </button>
+        </div>
+      </Dialog>
     </div>
   );
 }
