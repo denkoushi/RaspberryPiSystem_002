@@ -29,16 +29,26 @@ vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => mocks.auth
 }));
 
+vi.mock('../../features/barcode-scan/BarcodeScanModal', () => ({
+  BarcodeScanModal: (props: { open: boolean; onSuccess: (value: string) => void; onAbort: () => void }) => props.open ? (
+    <div role="dialog" aria-label="バーコードをスキャン">
+      <button type="button" onClick={() => props.onSuccess('SCAN-ORDER-1')}>テスト読取成功</button>
+      <button type="button" onClick={props.onAbort}>キャンセル</button>
+    </div>
+  ) : null
+}));
+
 vi.mock('./HermesChatPanel', () => ({
   default: (props: {
     mode?: 'legacy' | 'consultations';
     messages: Array<{ id: string; content: string; evidence?: ReadonlyArray<{ id: string; title: string }> }>;
     draft: string;
     isBusy: boolean;
-    error: string | null;
-    consultationError?: string | null;
+    isConsultationsLoading?: boolean;
     isConsultationDetailLoading?: boolean;
     isMessageHistoryLoading?: boolean;
+    error: string | null;
+    consultationError?: string | null;
     consultations?: Array<{ id: string; title: string }>;
     activeConsultation?: { id: string; title: string; messages: Array<{ id: string; content: string }>; messagesNextCursor?: string | null } | null;
     onDraftChange: (value: string) => void;
@@ -51,13 +61,23 @@ vi.mock('./HermesChatPanel', () => ({
     onNewConsultation?: () => void;
     onSelectConsultation?: (consultationId: string) => void;
     onLoadOlderMessages?: () => void;
+    onScan?: () => void;
     suggestion?: { title?: string; relatedIdentifiers: string[]; prompt: string; options?: string[] } | null;
     onAnswerSuggestion?: (answer: string) => void;
+    selectionNotice?: string | null;
+    activityStatus?: string | null;
     style?: CSSProperties;
   }) => (
     <section data-testid="hermes-panel" style={props.style}>
       {props.mode === 'consultations' && props.onNewConsultation ? (
         <button type="button" onClick={props.onNewConsultation}>新規</button>
+      ) : null}
+      {props.mode === 'consultations' && props.onScan ? (
+        <button
+          type="button"
+          onClick={props.onScan}
+          disabled={props.isBusy || props.isConsultationsLoading || props.isConsultationDetailLoading || props.isMessageHistoryLoading}
+        >Scan</button>
       ) : null}
       {props.mode === 'consultations' && !props.activeConsultation ? (
         <div data-testid="consultation-list">
@@ -75,6 +95,8 @@ vi.mock('./HermesChatPanel', () => ({
           {props.suggestion.options?.map(option => <button key={option} type="button" onClick={() => props.onAnswerSuggestion?.(option)}>{option}</button>)}
         </div>
       ) : null}
+      {props.selectionNotice ? <p role="status">{props.selectionNotice}</p> : null}
+      {props.activityStatus ? <p role="status">{props.activityStatus}</p> : null}
       {props.isConsultationDetailLoading ? <p role="status">相談内容を読み込んでいます…</p> : null}
       {props.activeConsultation?.messagesNextCursor ? (
         <button type="button" onClick={props.onLoadOlderMessages} disabled={props.isMessageHistoryLoading}>
@@ -370,7 +392,7 @@ describe('HermesFloatingChat', () => {
 
   it('creates a consultation automatically when natural text starts from the list', async () => {
     const created = detail('case-natural');
-    mocks.listConsultations.mockResolvedValue({ consultations: [], enabled: true });
+    mocks.listConsultations.mockImplementation(async () => ({ consultations: [], enabled: true }));
     mocks.createConsultation.mockResolvedValue(created);
     mocks.sendConsultationMessage.mockResolvedValue(consultationResponse(created, [
       { id: 'user-1', role: 'user', content: '品番が分からない不適合を相談したい' },
@@ -390,6 +412,61 @@ describe('HermesFloatingChat', () => {
       expect.any(AbortSignal)
     );
     expect(await screen.findByText('確認したい状況を教えてください。')).toBeInTheDocument();
+  });
+
+  it('opens the existing scanner and sends its resolved value into a new consultation', async () => {
+    const created = detail('case-scan');
+    mocks.listConsultations.mockImplementation(async () => ({ consultations: [], enabled: true }));
+    mocks.createConsultation.mockResolvedValue(created);
+    mocks.sendConsultationMessage.mockResolvedValue(consultationResponse(created, [
+      { id: 'scan-answer', role: 'assistant', content: 'スキャン対象を確認します。' }
+    ]));
+
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByTestId('consultation-list');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Scan' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+    expect(await screen.findByRole('dialog', { name: 'バーコードをスキャン' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'テスト読取成功' }));
+
+    await waitFor(() => expect(mocks.sendConsultationMessage).toHaveBeenCalledWith({
+      consultationId: 'case-scan',
+      message: 'バーコードの照合結果を確認してください。',
+      scanValue: 'SCAN-ORDER-1'
+    }, expect.any(AbortSignal)));
+    expect(screen.queryByRole('dialog', { name: 'バーコードをスキャン' })).not.toBeInTheDocument();
+  });
+
+  it('closes the scanner without sending a consultation when the operator cancels', async () => {
+    mocks.listConsultations.mockResolvedValue({ consultations: [], enabled: true });
+
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByTestId('consultation-list');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Scan' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+    await screen.findByRole('dialog', { name: 'バーコードをスキャン' });
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'バーコードをスキャン' })).not.toBeInTheDocument());
+    expect(mocks.createConsultation).not.toHaveBeenCalled();
+    expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+  });
+
+  it('releases the scanner when Escape closes the chat', async () => {
+    mocks.listConsultations.mockImplementation(async () => ({ consultations: [], enabled: true }));
+
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByTestId('consultation-list');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Scan' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+    await screen.findByRole('dialog', { name: 'バーコードをスキャン' });
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'バーコードをスキャン' })).not.toBeInTheDocument());
+    expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
   });
 
   it('sends candidate yes or no as natural conversation and does not revive a rejected candidate on reopen', async () => {
@@ -427,7 +504,8 @@ describe('HermesFloatingChat', () => {
     await waitFor(() => expect(mocks.sendConsultationMessage).toHaveBeenCalledTimes(2));
     expect(mocks.sendConsultationMessage.mock.calls[1][0]).toEqual({
       consultationId: item.id,
-      message: '「Hermesが明示した候補で相談を続けますか？」への回答は「いいえ」です。'
+      message: 'いいえ',
+      selection: { prompt: 'Hermesが明示した候補で相談を続けますか？', option: 'いいえ' }
     });
     await waitFor(() => expect(screen.queryByRole('group', { name: 'Hermesからの候補確認' })).not.toBeInTheDocument());
 
@@ -464,9 +542,43 @@ describe('HermesFloatingChat', () => {
     await waitFor(() => expect(mocks.sendConsultationMessage).toHaveBeenCalledTimes(2));
     expect(mocks.sendConsultationMessage.mock.calls[1][0]).toEqual({
       consultationId: item.id,
-      message: '「漏れが見つかったのは組立後ですか？」への回答は「はい」です。'
+      message: 'はい',
+      selection: { prompt: '漏れが見つかったのは組立後ですか？', option: 'はい' }
     });
     expect(await screen.findByText('組立後の漏れとして追加確認を進めます。')).toBeInTheDocument();
+  });
+
+  it('shows selection and processing statuses separately and clears both after completion', async () => {
+    const item = consultation('case-selection-status', '選択状態の相談');
+    const created = detail(item.id);
+    let resolveSelection!: (value: unknown) => void;
+    const pendingSelection = new Promise((resolve) => { resolveSelection = resolve; });
+    mocks.listConsultations.mockResolvedValue({ consultations: [], enabled: true });
+    mocks.createConsultation.mockResolvedValue(created);
+    mocks.sendConsultationMessage
+      .mockResolvedValueOnce(consultationResponse(item, [
+        { id: 'question', role: 'user', content: '漏れについて相談したい' },
+        { id: 'answer', role: 'assistant', content: '組立後の状態を確認します。' }
+      ], { prompt: '漏れが見つかったのは組立後ですか？', options: ['はい', 'いいえ'] }))
+      .mockReturnValueOnce(pendingSelection);
+
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '漏れについて相談したい' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'はい' }));
+
+    expect(await screen.findByText('「はい」が選択されました。')).toBeInTheDocument();
+    expect(screen.getByText('確認中です。しばらくお待ちください。')).toBeInTheDocument();
+    expect(screen.queryByText(/への回答は「はい」です/)).not.toBeInTheDocument();
+
+    resolveSelection?.(consultationResponse(item, [
+      { id: 'question', role: 'user', content: '漏れについて相談したい' },
+      { id: 'answer', role: 'assistant', content: '組立後の状態を確認します。' },
+      { id: 'selected', role: 'user', content: '「はい」が選択されました。' },
+      { id: 'follow-up', role: 'assistant', content: '組立後として確認します。' }
+    ]));
+    await waitFor(() => expect(screen.queryByText('確認中です。しばらくお待ちください。')).not.toBeInTheDocument());
   });
 
   it('reopens a consultation and renders its persisted history', async () => {

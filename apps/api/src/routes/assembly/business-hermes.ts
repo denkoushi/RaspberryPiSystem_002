@@ -29,10 +29,16 @@ const chatBodySchema = z.object({
     content: z.string().trim().min(1).max(4_000)
   })).min(1).max(12).optional(),
   consultationId: z.string().uuid().optional(),
-  message: z.string().trim().min(1).max(4_000).optional()
+  message: z.string().trim().min(1).max(4_000).optional(),
+  selection: z.object({
+    prompt: z.string().trim().min(1).max(500),
+    option: z.string().trim().min(1).max(120)
+  }).optional(),
+  scanValue: z.string().trim().min(1).max(500).optional()
 }).strict().superRefine((body, ctx) => {
   if (body.consultationId && !body.message) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['message'], message: 'message is required for consultation chat' });
   if (!body.consultationId && !body.messages) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['messages'], message: 'messages is required for legacy chat' });
+  if (body.scanValue && !body.consultationId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['consultationId'], message: 'scanValue requires consultation chat' });
 });
 const consultationCreateSchema = z.object({ title: z.string().trim().min(1).max(200).optional() }).strict();
 const consultationPatchSchema = z.object({ title: z.string().trim().max(200).nullable().optional(), relatedIdentifiers: z.array(z.string().trim().min(1).max(500)).max(50).optional() }).strict();
@@ -119,7 +125,7 @@ export async function registerBusinessHermesRoutes(
       };
       reply.raw.once('close', onClose);
       try {
-        return await consultationService.chat({ consultationId: body.consultationId, message: body.message, signal: abortController.signal });
+        return await consultationService.chat({ consultationId: body.consultationId, message: body.message, selection: body.selection, scanValue: body.scanValue, signal: abortController.signal });
       } finally {
         reply.raw.off('close', onClose);
       }

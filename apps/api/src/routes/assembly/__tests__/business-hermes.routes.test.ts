@@ -161,4 +161,40 @@ describe('business Hermes routes', () => {
     expect((consultationService.chat.mock.calls[0]?.[0] as { signal: AbortSignal }).signal.aborted).toBe(false);
     expect(fixture.chat).not.toHaveBeenCalled();
   });
+
+  it('passes a bounded scan value to the consultation service through the JWT boundary', async () => {
+    const fixture = createApp();
+    const id = '00000000-0000-0000-0000-000000000010';
+    const consultationService = {
+      list: vi.fn(), create: vi.fn(), get: vi.fn(), update: vi.fn(),
+      chat: vi.fn().mockResolvedValue({ status: 'ready', message: '照合しました', evidence: [], needsClarification: false, clarificationMessage: null, consultationId: id, consultation: {} }),
+      cancel: vi.fn()
+    };
+    await registerBusinessHermesRoutes(fixture.app, {
+      requireClientDevice: fixture.requireClientDevice,
+      service: fixture.service,
+      chatService: fixture.chatService,
+      consultationService: consultationService as never
+    });
+    const token = jwt.sign({ sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
+    const response = await fixture.app.inject({
+      method: 'POST',
+      url: '/assembly/business-hermes/chat',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { consultationId: id, message: 'バーコードの照合結果を確認してください。', scanValue: 'ORDER-SCAN-1' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(consultationService.chat).toHaveBeenCalledWith(expect.objectContaining({ consultationId: id, scanValue: 'ORDER-SCAN-1' }));
+
+    consultationService.chat.mockClear();
+    const tooLong = await fixture.app.inject({
+      method: 'POST',
+      url: '/assembly/business-hermes/chat',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { consultationId: id, message: 'バーコードの照合結果を確認してください。', scanValue: 'x'.repeat(501) }
+    });
+    expect(tooLong.statusCode).not.toBe(200);
+    expect(consultationService.chat).not.toHaveBeenCalled();
+  });
 });

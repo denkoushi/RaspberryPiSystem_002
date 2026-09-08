@@ -17,6 +17,7 @@ export type HermesPanelMessage = {
   evidence?: readonly BusinessHermesChatEvidence[];
   evidenceVisible?: boolean;
   evidenceVisibleIds?: readonly string[];
+  selection?: { prompt: string; option: string };
   createdAt?: string;
 };
 
@@ -49,10 +50,13 @@ export type HermesChatPanelProps = {
   isExpanded?: boolean;
   onToggleSize?: () => void;
   onNewConsultation?: () => void;
+  onScan?: () => void;
   onSelectConsultation?: (consultationId: string) => void;
   onLoadOlderMessages?: () => void;
   suggestion?: HermesConsultationSuggestion | null;
   onAnswerSuggestion?: (answer: string) => void;
+  selectionNotice?: string | null;
+  activityStatus?: string | null;
   style?: CSSProperties;
 };
 
@@ -100,6 +104,20 @@ function consultationLabel(consultation: BusinessHermesConsultationItem): string
   return consultation.title.trim() || '新しい相談';
 }
 
+function renderMessageContent(content: string) {
+  return content.split(/\n{2,}/u).map((block, index) => {
+    const lines = block.split('\n');
+    const heading = lines.length === 1 ? lines[0]?.match(/^\*\*(.+)\*\*$/u) : null;
+    const headingWithBody = lines.length > 1 ? lines[0]?.match(/^\*\*(.+)\*\*$/u) : null;
+    return (
+      <span key={`${index}-${block.slice(0, 24)}`} className="hermes-chat-panel__message-group">
+        {heading || headingWithBody ? <span className="hermes-chat-panel__message-block hermes-chat-panel__message-heading">{(heading ?? headingWithBody)?.[1]}</span> : null}
+        {headingWithBody ? <span className="hermes-chat-panel__message-block">{lines.slice(1).join('\n')}</span> : !heading ? <span className="hermes-chat-panel__message-block">{block}</span> : null}
+      </span>
+    );
+  });
+}
+
 function LazyProtectedImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
   const [isVisible, setIsVisible] = useState(false);
   const placeholderRef = useRef<HTMLSpanElement | null>(null);
@@ -138,6 +156,7 @@ function LazyProtectedImage({ imageUrl, alt }: { imageUrl: string; alt: string }
 function EvidenceCard({ evidence }: { evidence: BusinessHermesChatEvidence }) {
   const meta = [
     evidence.partNumber ? `品番 ${evidence.partNumber}` : null,
+    evidence.originDepartmentName ? `起因部署 ${evidence.originDepartmentName}` : null,
     evidence.shootingTarget ? `対象 ${evidence.shootingTarget}` : null,
     evidence.step ? `手順 ${evidence.step}` : null,
     evidence.publishedRevisionCreatedAt ? `公開改訂の作成 ${evidence.publishedRevisionCreatedAt}` : null,
@@ -189,10 +208,13 @@ export default function HermesChatPanel({
   isExpanded = false,
   onToggleSize,
   onNewConsultation,
+  onScan,
   onSelectConsultation,
   onLoadOlderMessages,
   suggestion = null,
   onAnswerSuggestion,
+  selectionNotice = null,
+  activityStatus = null,
   style
 }: HermesChatPanelProps) {
   const reducedMotion = useReducedMotion();
@@ -233,6 +255,17 @@ export default function HermesChatPanel({
               新規
             </button>
           ) : null}
+          {mode === 'consultations' && onScan ? (
+            <button
+              type="button"
+              className="hermes-chat-panel__action"
+              onClick={onScan}
+              disabled={isBusy || isConsultationsLoading || isConsultationDetailLoading || isMessageHistoryLoading}
+              aria-label="バーコードをスキャン"
+            >
+              Scan
+            </button>
+          ) : null}
           {mode === 'consultations' && activeConsultation ? (
             <button type="button" className="hermes-chat-panel__action" onClick={onReset} aria-label="相談一覧に戻る">
               一覧
@@ -266,7 +299,9 @@ export default function HermesChatPanel({
       {authRequired ? <p className="hermes-chat-panel__status" role="status">{authRequired}</p> : null}
       {error ? <p className="hermes-chat-panel__status hermes-chat-panel__status--error" role="alert">{error}</p> : null}
       {consultationError ? <p className="hermes-chat-panel__status hermes-chat-panel__status--error" role="alert">{consultationError}</p> : null}
-      {isBusy ? <p className="hermes-chat-panel__status" role="status">回答を考えています…{onStop ? ' 停止できます。' : ''}</p> : null}
+      {selectionNotice ? <p className="hermes-chat-panel__status hermes-chat-panel__status--selection" role="status">{selectionNotice}</p> : null}
+      {activityStatus ? <p className="hermes-chat-panel__status" role="status">{activityStatus}</p> : null}
+      {isBusy && !activityStatus ? <p className="hermes-chat-panel__status" role="status">回答を考えています…{onStop ? ' 停止できます。' : ''}</p> : null}
 
       {mode === 'consultations' && !activeConsultation ? (
         <>
@@ -329,7 +364,11 @@ export default function HermesChatPanel({
                       }}
                     >
                       <Message.CustomContent>
-                        <p className="hermes-chat-panel__message">{message.content}</p>
+                        {message.selection ? (
+                          <p className="hermes-chat-panel__message-selection" role="status">「{message.selection.option}」が選択されました。</p>
+                        ) : (
+                          <div className="hermes-chat-panel__message">{message.role === 'assistant' ? renderMessageContent(message.content) : message.content}</div>
+                        )}
                         {message.evidenceVisible !== false ? (message.evidenceVisibleIds
                           ? message.evidence?.filter((evidence) => message.evidenceVisibleIds?.includes(`${evidence.kind}:${evidence.id}`))
                           : message.evidence)?.map((evidence) => (

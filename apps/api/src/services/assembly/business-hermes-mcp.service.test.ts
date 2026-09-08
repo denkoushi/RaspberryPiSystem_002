@@ -3,11 +3,40 @@ import { describe, expect, it, vi } from 'vitest';
 import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
 
 describe('BusinessHermesMcpService', () => {
+  it('keeps explicit origin-department filtering separate from free-text treatment mentions', async () => {
+    const machineOrigin = {
+      id: 'nc-machine', nonconformityNo: 'NC-MACHINE', partNumber: null, partName: '品名', machineName: '機械',
+      originDepartmentCode: 'D-MACHINE', originDepartmentName: '機械課', discoveredOn: new Date('2026-09-02T00:00:00Z'),
+      nonconformityContent: '寸法差', remarks: null, correctiveContent1: null, correctiveContent2: null,
+      dispositionContent: '機械課で処置', sourceUpdatedOn: new Date('2026-09-02T00:00:00Z')
+    };
+    const otherOrigin = { ...machineOrigin, id: 'nc-other', nonconformityNo: 'NC-OTHER', originDepartmentCode: 'D-DESIGN', originDepartmentName: '機構設計課' };
+    const findMany = vi.fn(async ({ where }: { where: Record<string, unknown> }) => (
+      where.originDepartmentName ? [machineOrigin] : [otherOrigin, machineOrigin]
+    ));
+    const db = {
+      scawStfutekigoCurrent: { findMany, findFirst: vi.fn().mockResolvedValue(machineOrigin), count: vi.fn().mockResolvedValue(1) }
+    };
+    const service = new BusinessHermesMcpService({ db: db as never, workInstructions: {} as never });
+    const response = await service.call('business_hermes_search', {
+      kind: 'nonconformity', query: '機械課', originDepartmentName: '機械課', limit: 3
+    });
+    const payload = JSON.parse(response.content[0]?.text ?? '{}') as { results: Array<Record<string, unknown>> };
+    expect(payload.results.map((result) => result.nonconformityNo)).toEqual(['NC-MACHINE']);
+    expect(payload.results[0]).toMatchObject({ evidenceKey: 'nonconformity:nc-machine' });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
+      originDepartmentName: { contains: '機械課', mode: 'insensitive' },
+      OR: expect.arrayContaining([{ dispositionContent: { contains: '機械課', mode: 'insensitive' } }])
+    }) }));
+    const detail = await service.call('business_hermes_get_detail', { kind: 'nonconformity', id: 'nc-machine' });
+    expect(JSON.parse(detail.content[0]?.text ?? '{}')).toMatchObject({ evidenceKey: 'nonconformity:nc-machine' });
+  });
+
   it('searches effective public text and keeps both source kinds visible', async () => {
     const db = {
       scawStfutekigoCurrent: {
         findMany: vi.fn().mockResolvedValue([{
-          id: 'nc-1', nonconformityNo: 'NC-1', partNumber: 'PN-1', partName: '品名', machineName: '機械',
+          id: 'nc-1', nonconformityNo: 'NC-1', partNumber: 'PN-1', partName: '品名', machineName: '機械', originDepartmentCode: 'D-01', originDepartmentName: '機構設計１課',
           discoveredOn: new Date('2026-09-01T00:00:00Z'), nonconformityContent: 'condition', remarks: null,
           correctiveContent1: null, correctiveContent2: null, dispositionContent: null, sourceUpdatedOn: new Date('2026-09-01T00:00:00Z')
         }]),
@@ -25,7 +54,20 @@ describe('BusinessHermesMcpService', () => {
     const payload = JSON.parse(response.content[0]?.text ?? '{}') as { results: Array<Record<string, unknown>>; total: number };
     expect(payload.total).toBe(5);
     expect(payload.results.map((item) => item.kind)).toEqual(['nonconformity', 'work_instruction']);
+    expect(payload.results[0]).toMatchObject({ evidenceKey: 'nonconformity:nc-1' });
+    expect((payload.results[1]?.rows as Array<{ steps: Array<Record<string, unknown>> }>)[0]?.steps[0]).toMatchObject({ evidenceKey: 'work_instruction:step-1' });
     expect(readPublishedGroup).toHaveBeenCalledWith({ partNumber: 'PN-1', shootingTarget: '切削' });
+
+    const originFiltered = await service.call('business_hermes_search', { kind: 'nonconformity', originDepartmentCode: 'D-01', originDepartmentName: '機構設計', limit: 1 });
+    const originPayload = JSON.parse(originFiltered.content[0]?.text ?? '{}') as { results: Array<Record<string, unknown>> };
+    expect(db.scawStfutekigoCurrent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        originDepartmentCode: 'D-01',
+        originDepartmentName: { contains: '機構設計', mode: 'insensitive' }
+      }),
+      orderBy: [{ discoveredOn: { sort: 'desc', nulls: 'last' } }, { nonconformityNo: 'desc' }]
+    }));
+    expect(originPayload.results[0]).toMatchObject({ originDepartmentCode: 'D-01', originDepartmentName: '機構設計１課', originDepartmentMeaning: '起因部署' });
 
     const ncFirst = await service.call('business_hermes_search', { query: 'PN-1', kind: 'both', limit: 1 });
     const ncFirstPayload = JSON.parse(ncFirst.content[0]?.text ?? '{}') as { hasMore: { workInstruction: boolean }; nextCursor: { workInstructionOffset: number | null } };
@@ -34,7 +76,7 @@ describe('BusinessHermesMcpService', () => {
 
     const detail = await service.call('business_hermes_get_detail', { kind: 'work_instruction', id: 'row-1' });
     const detailPayload = JSON.parse(detail.content[0]?.text ?? '{}') as { rows: Array<{ steps: Array<Record<string, unknown>> }> };
-    expect(detailPayload.rows[0]?.steps[0]).toMatchObject({ effectiveText: '', publicEdited: true, rawImageLabel: null });
+    expect(detailPayload.rows[0]?.steps[0]).toMatchObject({ effectiveText: '', publicEdited: true, rawImageLabel: null, evidenceKey: 'work_instruction:step-1' });
     expect(detailPayload.rows[0]?.steps[0]).not.toHaveProperty('imageStorageKey');
   });
 

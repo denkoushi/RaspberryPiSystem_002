@@ -249,6 +249,28 @@ describe('HermesChatPanel evidence cards', () => {
     expect(screen.queryByText('相談を選ぶ')).not.toBeInTheDocument();
   });
 
+  it('opens the existing barcode scanner from the consultation menu bar', () => {
+    const onScan = vi.fn();
+    render(
+      <HermesChatPanel
+        mode="consultations"
+        messages={[]}
+        draft=""
+        isBusy={false}
+        error={null}
+        authRequired={null}
+        onScan={onScan}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn()}
+        onReset={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'バーコードをスキャン' }));
+    expect(onScan).toHaveBeenCalledTimes(1);
+  });
+
   it('renders model choices and does not invent binary buttons', () => {
     const onAnswer = vi.fn();
     const props = { messages: [], draft: '', isBusy: false, error: null, authRequired: null,
@@ -260,6 +282,85 @@ describe('HermesChatPanel evidence cards', () => {
     rerender(<HermesChatPanel {...props} suggestion={{prompt: '状況を教えてください', relatedIdentifiers: []}} />);
     expect(screen.queryByRole('button', {name: 'はい'})).not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: 'いいえ'})).not.toBeInTheDocument();
+  });
+
+  it('renders structured answer headings and selection events without exposing markdown markers', () => {
+    render(
+      <HermesChatPanel
+        mode="consultations"
+        messages={[{
+          id: 'structured-answer',
+          role: 'assistant',
+          content: '**確認結果**\n00008194の記録を確認しました。\n\n**次の操作**\n必要なら処置の詳細を確認できます。'
+        }, {
+          id: 'selection-event',
+          role: 'user',
+          content: '内部保存値',
+          selection: { prompt: '次に何を確認しますか？', option: '処置の詳細を見る' }
+        }]}
+        draft=""
+        isBusy={false}
+        error={null}
+        authRequired={null}
+        activeConsultation={{
+          id: 'structured-case',
+          title: '相談',
+          relatedIdentifiers: [],
+          confirmedFacts: [],
+          openQuestions: [],
+          summary: '',
+          updatedAt: '2026-09-07T00:00:00.000Z',
+          messages: []
+        }}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn()}
+        onReset={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('確認結果')).toHaveClass('hermes-chat-panel__message-heading');
+    expect(screen.getByText('次の操作')).toHaveClass('hermes-chat-panel__message-heading');
+    expect(screen.queryByText('**確認結果**')).not.toBeInTheDocument();
+    expect(screen.getByText('「処置の詳細を見る」が選択されました。')).toHaveClass('hermes-chat-panel__message-selection');
+  });
+
+  it('preserves line breaks in user messages while formatting assistant headings', () => {
+    render(
+      <HermesChatPanel
+        mode="consultations"
+        messages={[
+          { id: 'user-multiline', role: 'user', content: 'ユーザー一行目\nユーザー二行目' },
+          { id: 'assistant-heading', role: 'assistant', content: '**確認結果**\n回答一行目\n回答二行目' }
+        ]}
+        draft=""
+        isBusy={false}
+        error={null}
+        authRequired={null}
+        activeConsultation={{
+          id: 'case-layout',
+          title: '表示確認',
+          relatedIdentifiers: [],
+          confirmedFacts: [],
+          openQuestions: [],
+          summary: '',
+          updatedAt: '2026-09-07T00:00:00.000Z',
+          messages: []
+        }}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn()}
+        onReset={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const userMessage = document.querySelector('.cs-message--outgoing .hermes-chat-panel__message');
+    expect(userMessage).not.toBeNull();
+    expect(userMessage?.textContent).toBe('ユーザー一行目\nユーザー二行目');
+    expect(userMessage).toHaveClass('hermes-chat-panel__message');
+    expect(screen.getByText('確認結果')).toHaveClass('hermes-chat-panel__message-heading');
+    const assistantBody = document.querySelector('.hermes-chat-panel__message-block:not(.hermes-chat-panel__message-heading)');
+    expect(assistantBody?.textContent).toBe('回答一行目\n回答二行目');
   });
 
   it('shows a candidate in the conversation and forwards yes or no without an edit form', () => {

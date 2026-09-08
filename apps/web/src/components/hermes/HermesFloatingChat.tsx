@@ -17,6 +17,8 @@ import {
 } from '../../api/client';
 import { getApiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../contexts/AuthContext';
+import { BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE } from '../../features/barcode-scan/formatPresets';
+import { BARCODE_READER_OPTIONS_KIOSK_DEFAULT } from '../../features/barcode-scan/readerOptionPresets';
 
 import type { HermesChatPanelProps, HermesPanelMessage, HermesConsultationSuggestion } from './HermesChatPanel';
 import type { BusinessHermesChatEvidence } from '../../api/domains/assembly';
@@ -24,6 +26,10 @@ import type { BusinessHermesChatEvidence } from '../../api/domains/assembly';
 import './hermes-floating-chat.css';
 
 const HermesChatPanel = lazy(() => import('./HermesChatPanel'));
+const BarcodeScanModal = lazy(async () => {
+  const module = await import('../../features/barcode-scan/BarcodeScanModal');
+  return { default: module.BarcodeScanModal };
+});
 
 const INTRO_MESSAGE: HermesPanelMessage = {
   id: 'hermes-intro',
@@ -62,6 +68,7 @@ function messagesFromConsultation(detail: BusinessHermesConsultationDetail): Her
     evidence: message.evidence,
     evidenceVisible: message.evidenceVisible,
     evidenceVisibleIds: message.evidenceVisibleIds,
+    selection: message.selection,
     createdAt: message.createdAt
   }));
 }
@@ -110,6 +117,7 @@ export function HermesFloatingChat() {
   });
   const [open, setOpen] = useState(false);
   const [isPanelExpanded, setIsPanelExpanded] = useState(false);
+  const [isScanOpen, setIsScanOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<HermesPanelMessage[]>([INTRO_MESSAGE]);
   const [isBusy, setIsBusy] = useState(false);
@@ -119,6 +127,8 @@ export function HermesFloatingChat() {
   const [consultations, setConsultations] = useState<BusinessHermesConsultationItem[]>([]);
   const [activeConsultation, setActiveConsultation] = useState<BusinessHermesConsultationDetail | null>(null);
   const [consultationSuggestion, setConsultationSuggestion] = useState<HermesConsultationSuggestion | null>(null);
+  const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
+  const [activityStatus, setActivityStatus] = useState<string | null>(null);
   const [isConsultationsLoading, setIsConsultationsLoading] = useState(false);
   const [isConsultationDetailLoading, setIsConsultationDetailLoading] = useState(false);
   const [isMessageHistoryLoading, setIsMessageHistoryLoading] = useState(false);
@@ -133,6 +143,7 @@ export function HermesFloatingChat() {
   const abortRef = useRef<AbortController | null>(null);
   const messageHistoryAbortRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
+  const consultationListRequestIdRef = useRef(0);
   const consultationRequestIdRef = useRef(0);
   const messageHistoryRequestIdRef = useRef(0);
   const identityRef = useRef('');
@@ -170,8 +181,11 @@ export function HermesFloatingChat() {
     invalidateMessageHistory();
     consultationRequestIdRef.current += 1;
     setMessages([INTRO_MESSAGE]);
+    setIsScanOpen(false);
     setActiveConsultation(null);
     setConsultationSuggestion(null);
+    setSelectionNotice(null);
+    setActivityStatus(null);
     setDraft('');
     setIsBusy(false);
     setError(null);
@@ -244,7 +258,10 @@ export function HermesFloatingChat() {
 
   const toggleOpen = useCallback(() => {
     ensureCurrentClientKey();
-    setOpen((current) => !current);
+    setOpen((current) => {
+      if (current) setIsScanOpen(false);
+      return !current;
+    });
   }, [ensureCurrentClientKey]);
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -325,6 +342,7 @@ export function HermesFloatingChat() {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      setIsScanOpen(false);
       setOpen(false);
       iconRef.current?.focus();
     };
@@ -336,6 +354,7 @@ export function HermesFloatingChat() {
     if (!open || consultationMode !== 'loading') return;
     const controller = new AbortController();
     const requestIdentity = identity;
+    const listRequestId = ++consultationListRequestIdRef.current;
     setIsConsultationsLoading(true);
     setConsultationError(null);
     void listBusinessHermesConsultations(controller.signal)
@@ -360,7 +379,7 @@ export function HermesFloatingChat() {
         setConsultationError(getApiErrorMessage(requestError, '相談一覧を読み込めませんでした。'));
       })
       .finally(() => {
-        if (!controller.signal.aborted && identityRef.current === requestIdentity) setIsConsultationsLoading(false);
+        if (listRequestId === consultationListRequestIdRef.current && identityRef.current === requestIdentity) setIsConsultationsLoading(false);
       });
     return () => controller.abort();
   }, [consultationMode, identity, open]);
@@ -471,8 +490,11 @@ export function HermesFloatingChat() {
     invalidateMessageHistory();
     consultationRequestIdRef.current += 1;
     setActiveConsultation(null);
+    setIsScanOpen(false);
     setConsultationMode('loading');
     setConsultationSuggestion(null);
+    setSelectionNotice(null);
+    setActivityStatus(null);
     setMessages([INTRO_MESSAGE]);
     setDraft('');
     setIsBusy(false);
@@ -486,6 +508,8 @@ export function HermesFloatingChat() {
   const stopRequest = useCallback(() => {
     if (!isBusy) return;
     invalidateChatRequest();
+    setSelectionNotice(null);
+    setActivityStatus(null);
     setIsConsultationDetailLoading(false);
     setError('回答を中止しました。必要ならもう一度送信してください。');
     if (activeConsultation) {
@@ -501,7 +525,7 @@ export function HermesFloatingChat() {
     }
   }, [activeConsultation, invalidateChatRequest, isBusy]);
 
-  const sendMessage = useCallback(async (messageOverride?: string) => {
+  const sendMessage = useCallback(async (messageOverride?: string, options?: { selection?: { prompt: string; option: string }; displayContent?: string; scanValue?: string }) => {
     const content = (typeof messageOverride === 'string' ? messageOverride : draft).trim();
     if (!content || isBusy) return;
     if (!ensureCurrentClientKey()) return;
@@ -517,21 +541,22 @@ export function HermesFloatingChat() {
     const userMessage: HermesPanelMessage = {
       id: `hermes-user-${Date.now()}-${requestIdRef.current}`,
       role: 'user',
-      content,
+      content: options?.displayContent ?? content,
+      ...(options?.selection ? { selection: options.selection } : {}),
       createdAt: new Date().toISOString()
     };
     const history = [...messages.filter((message) => message.id !== INTRO_MESSAGE.id), userMessage]
       .slice(-12)
       .map(({ role, content: messageContent }) => ({ role, content: messageContent }));
 
-    setMessages((current) => [...current, userMessage]);
-    if (activeConsultation) {
+    if (!options?.selection) setMessages((current) => [...current, userMessage]);
+    if (activeConsultation && !options?.selection) {
       setActiveConsultation((current) => current ? {
         ...current,
         messages: [...current.messages, {
           id: userMessage.id,
           role: 'user',
-          content,
+          content: options?.displayContent ?? content,
           evidence: [],
           createdAt: userMessage.createdAt ?? new Date().toISOString()
         }]
@@ -539,6 +564,10 @@ export function HermesFloatingChat() {
     }
     setDraft('');
     setIsBusy(true);
+    if (options?.selection) {
+      setSelectionNotice(options.displayContent ?? `「${options.selection.option}」が選択されました。`);
+      setActivityStatus('確認中です。しばらくお待ちください。');
+    }
     const controller = new AbortController();
     const requestId = ++requestIdRef.current;
     abortRef.current = controller;
@@ -553,7 +582,7 @@ export function HermesFloatingChat() {
         setActiveConsultation({ ...consultation, messages: [...consultation.messages, {
           id: userMessage.id,
           role: 'user',
-          content,
+          content: options?.displayContent ?? content,
           evidence: [],
           createdAt: userMessage.createdAt ?? new Date().toISOString()
         }] });
@@ -561,7 +590,12 @@ export function HermesFloatingChat() {
         setIsConsultationDetailLoading(false);
       }
       const response: BusinessHermesChatResponse | BusinessHermesConsultationChatResponse = consultationMode === 'available' && consultation
-        ? await sendBusinessHermesConsultationMessage({ consultationId: consultation.id, message: content }, controller.signal)
+        ? await sendBusinessHermesConsultationMessage({
+          consultationId: consultation.id,
+          message: content,
+          ...(options?.selection ? { selection: options.selection } : {}),
+          ...(options?.scanValue ? { scanValue: options.scanValue } : {})
+        }, controller.signal)
         : await sendBusinessHermesChat({ scope: 'both', messages: history }, controller.signal);
       const identityChanged = identityRef.current !== requestIdentity || getResolvedClientKey() !== clientKey;
       if (identityChanged) resetConversation({ clearConsultations: true });
@@ -636,21 +670,37 @@ export function HermesFloatingChat() {
         abortRef.current = null;
         setIsBusy(false);
         setIsConsultationDetailLoading(false);
+        setSelectionNotice(null);
+        setActivityStatus(null);
       }
     }
   }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, messages, replaceConsultationInList, resetConversation]);
 
+  const handleScanSuccess = useCallback((value: string) => {
+    setIsScanOpen(false);
+    void sendMessage('バーコードの照合結果を確認してください。', {
+      scanValue: value,
+      displayContent: 'バーコードを読み取りました。'
+    });
+  }, [sendMessage]);
+
   const respondToSuggestion = useCallback((answer: string) => {
     if (!activeConsultation || !consultationSuggestion || isBusy) return;
     const prompt = consultationSuggestion.prompt.trim();
-    const message = `「${prompt}」への回答は「${answer}」です。`;
-    void sendMessage(message);
+    const displayContent = `「${answer}」が選択されました。`;
+    void sendMessage(answer, { selection: { prompt, option: answer }, displayContent });
   }, [activeConsultation, consultationSuggestion, isBusy, sendMessage]);
 
   const closePanel = useCallback(() => {
     setOpen(false);
+    setIsScanOpen(false);
     iconRef.current?.focus();
   }, []);
+
+  const openScanner = useCallback(() => {
+    if (isBusy || consultationMode === 'loading' || isConsultationsLoading || isConsultationDetailLoading || isMessageHistoryLoading || isScanOpen) return;
+    setIsScanOpen(true);
+  }, [consultationMode, isBusy, isConsultationDetailLoading, isConsultationsLoading, isMessageHistoryLoading, isScanOpen]);
 
   const togglePanelSize = useCallback(() => {
     setIsPanelExpanded((current) => !current);
@@ -717,10 +767,13 @@ export function HermesFloatingChat() {
     isExpanded: isPanelExpanded,
     onToggleSize: togglePanelSize,
     onNewConsultation: createConsultation,
+    onScan: () => void openScanner(),
     onSelectConsultation: (consultationId) => void selectConsultation(consultationId),
     onLoadOlderMessages: () => void loadOlderMessages(),
     suggestion: consultationSuggestion,
-    onAnswerSuggestion: respondToSuggestion
+    onAnswerSuggestion: respondToSuggestion,
+    selectionNotice,
+    activityStatus
   };
 
   return (
@@ -759,6 +812,18 @@ export function HermesFloatingChat() {
       {open ? (
         <Suspense fallback={<div className="hermes-chat-panel" style={panelStyle} role="status">チャットを準備中…</div>}>
           <HermesChatPanel {...panelProps} style={panelStyle} />
+        </Suspense>
+      ) : null}
+      {isScanOpen ? (
+        <Suspense fallback={<div role="status">バーコードスキャナを準備しています…</div>}>
+          <BarcodeScanModal
+            open
+            formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE}
+            readerOptions={BARCODE_READER_OPTIONS_KIOSK_DEFAULT}
+            idleTimeoutMs={30_000}
+            onSuccess={handleScanSuccess}
+            onAbort={() => setIsScanOpen(false)}
+          />
         </Suspense>
       ) : null}
     </div>
