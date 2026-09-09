@@ -12,6 +12,7 @@ export type BusinessHermesConsultationConfirmation = {
 
 const MAX_MESSAGE_CHARS = 4_000;
 export const MAX_SUMMARY_CHARS = 2_000;
+const KNOWN_UPSTREAM_FAILURE = /^API call failed after \d+ retries:\s+HTTP \d{3}:\s+bad gateway:\s+\[Errno 111\]\s+Connection refused$/iu;
 
 export function asStrings(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -35,6 +36,13 @@ export function cleanMessage(value: unknown): string | null {
   const normalized = value.trim().slice(0, MAX_MESSAGE_CHARS);
   if (!normalized) return null;
   return normalized;
+}
+
+function isPlainKnownUpstreamFailure(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const cleaned = cleanMessage(value);
+  if (!cleaned || parseJson(cleaned) !== null || cleaned.startsWith('{')) return false;
+  return KNOWN_UPSTREAM_FAILURE.test(cleaned);
 }
 
 function parseJson(value: unknown): unknown {
@@ -131,6 +139,25 @@ export function responseMessage(response: JsonRecord): string | null {
   }
   if (messages.length === 0 && malformedStructuredMessage) return null;
   return messages.join('\n').slice(0, MAX_SUMMARY_CHARS) || null;
+}
+
+/**
+ * The Hermes gateway can return a completed envelope whose only text is its
+ * retry failure. Treat that fixed adapter output as transport failure; a
+ * structured JSON message that quotes the same text remains a normal answer.
+ */
+export function isKnownUpstreamFailureResponse(response: JsonRecord): boolean {
+  const direct = cleanMessage(response.output_text);
+  if (direct) return isPlainKnownUpstreamFailure(direct);
+  const output = Array.isArray(response.output) ? response.output as ResponsesOutputItem[] : [];
+  const messageValues: unknown[] = [];
+  for (const item of output) {
+    if (item.type !== 'message' || !Array.isArray(item.content)) continue;
+    for (const part of item.content as JsonRecord[]) {
+      messageValues.push(part.text ?? part.output_text ?? part.value);
+    }
+  }
+  return isPlainKnownUpstreamFailure(messageValues.at(-1));
 }
 
 function outputItems(response: JsonRecord): ResponsesOutputItem[] {

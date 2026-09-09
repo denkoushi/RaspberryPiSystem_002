@@ -12,6 +12,7 @@ import {
   asStrings,
   cleanMessage,
   evidenceObjects,
+  isKnownUpstreamFailureResponse,
   MAX_SUMMARY_CHARS,
   modelState,
   readResponsesStream,
@@ -104,6 +105,27 @@ type ConsultationDeps = {
 };
 
 type JsonRecord = Record<string, unknown>;
+
+function waitForRuntimeReady(promise: Promise<void>, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener('abort', onAbort);
+      reject(new DOMException('The operation was aborted.', 'AbortError'));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      () => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      }
+    );
+  });
+}
 
 const MAX_HISTORY = 40;
 const EVIDENCE_NOT_AVAILABLE_MESSAGE = '写真・資料を表示できませんでした。もう一度お試しください。';
@@ -408,7 +430,25 @@ export class BusinessHermesConsultationService {
     }
     const timeout = setTimeout(() => controller.abort(), Math.max(500, Math.min(300_000, config.timeoutMs ?? 180_000)));
     try {
-      if (runtime) { await runtime.ensureReady('business_hermes'); runtimeHeld = true; }
+      if (runtime) {
+        controller.signal.throwIfAborted();
+        const ready = runtime.ensureReady('business_hermes');
+        try {
+          await waitForRuntimeReady(ready, controller.signal);
+          runtimeHeld = true;
+        } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') {
+            // The shared runtime preparation must finish for its own lease
+            // accounting, but this consultation no longer waits for it.
+            void ready.then(
+              () => runtime.release('business_hermes'),
+              () => undefined
+            ).catch(() => undefined);
+            return this.failure(consultationId, 'HERMES_TIMEOUT');
+          }
+          throw error;
+        }
+      }
       const conversationKey = (await this.db.businessHermesConsultation.findUnique({ where: { id: consultationId }, select: { hermesConversationId: true } }))?.hermesConversationId ?? consultation.id;
       const response = await (this.deps.fetchImpl ?? fetch)(new URL('/v1/responses', config.baseUrl), {
         method: 'POST',
@@ -446,6 +486,7 @@ export class BusinessHermesConsultationService {
       }
       const parsed = await readResponsesStream(response, controller.signal);
       if (responseStatus(parsed) !== 'completed') return this.failure(consultationId, 'HERMES_INCOMPLETE');
+      if (isKnownUpstreamFailureResponse(parsed)) return this.failure(consultationId, 'HERMES_UPSTREAM_UNAVAILABLE');
       const answer = responseMessage(parsed);
       if (!answer) return this.failure(consultationId, 'HERMES_RESPONSE_INVALID');
       const state = modelState(parsed, answer);
