@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolvePlanningBoardDueRequest } from '../grinding-planning-board.service.js';
+import { dateValue, resolvePlanningBoardDueRequest } from '../grinding-planning-board.service.js';
+
+describe('grinding planning board timestamp parsing', () => {
+  it('treats timezone-free PostgreSQL JSON timestamps as UTC', () => {
+    expect(dateValue('2026-09-09T00:00:00.000')?.toISOString()).toBe('2026-09-09T00:00:00.000Z');
+    expect(dateValue('2026-09-09 00:00:00')?.toISOString()).toBe('2026-09-09T00:00:00.000Z');
+  });
+
+  it('preserves explicit offsets and accepts date-only due values', () => {
+    expect(dateValue('2026-09-09T00:00:00+09:00')?.toISOString()).toBe('2026-09-08T15:00:00.000Z');
+    expect(dateValue('2026-09-09')?.toISOString()).toBe('2026-09-09T00:00:00.000Z');
+  });
+
+  it('returns null for empty and invalid values', () => {
+    expect(dateValue('')).toBeNull();
+    expect(dateValue('not-a-date')).toBeNull();
+  });
+});
 
 describe('grinding planning board due requests', () => {
   it('adds calendar days from effective then original due date', () => {

@@ -24,6 +24,8 @@ export type PlanningBoardSeibanPaneProps = {
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
+  disabled?: boolean;
+  bulkDisabled?: boolean;
 };
 
 export function PlanningBoardSeibanPane({
@@ -40,7 +42,9 @@ export function PlanningBoardSeibanPane({
   onToggleAll,
   onToggleItem,
   onResourceClick,
-  onRankChange
+  onRankChange,
+  disabled = false,
+  bulkDisabled = false
 }: PlanningBoardSeibanPaneProps) {
   const selectableItems = items.filter((item) => !item.isCompleted);
   const selectedSelectableCount = selectableItems.filter((item) => selectedItemIds.has(item.itemId)).length;
@@ -64,6 +68,7 @@ export function PlanningBoardSeibanPane({
           type="button"
           className="min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
           aria-expanded={isOpen}
+          disabled={disabled}
           onClick={onToggleOpen}
         >
           <span className="flex min-w-0 items-baseline gap-2">
@@ -79,6 +84,7 @@ export function PlanningBoardSeibanPane({
             type="button"
             className="grid min-h-11 min-w-11 place-items-center rounded-md text-lg text-slate-300 hover:bg-slate-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
             aria-label={`製番${fseiban}${isFocused ? 'を一覧に戻す' : 'を広げる'}`}
+            disabled={disabled}
             onClick={onFocus}
           >
             {isFocused ? '⤡' : '⤢'}
@@ -91,7 +97,7 @@ export function PlanningBoardSeibanPane({
               ref={(element) => {
                 if (element) element.indeterminate = someSelected;
               }}
-              disabled={selectableItems.length === 0}
+              disabled={disabled || bulkDisabled || selectableItems.length === 0}
               aria-label={`製番${fseiban}を全選択`}
               onChange={(event) => onToggleAll(event.target.checked)}
             />
@@ -106,6 +112,7 @@ export function PlanningBoardSeibanPane({
           onToggleItem={onToggleItem}
           onResourceClick={onResourceClick}
           onRankChange={onRankChange}
+          disabled={disabled}
           tableLabel={`${fseiban}の工程アイテム`}
         />
       ) : null}

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
 import {
-  useKioskGrindingPlanningBoardSnapshot,
+  useKioskGrindingPlanningBoardProgressive,
   useUpdateKioskGrindingPlanningBoardOverrides,
   useUpdateKioskGrindingPlanningBoardRank,
   useUpdateKioskGrindingPlanningBoardSeibanOrder
@@ -102,15 +102,18 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [orderSaving, setOrderSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  const boardQuery = useKioskGrindingPlanningBoardSnapshot(
+  const boardQuery = useKioskGrindingPlanningBoardProgressive(
     { category, view, completionFilter: status },
-    { refetchIntervalMs: editorOpen ? false : 30000, refetchOnWindowFocus: !editorOpen }
+    { refetchIntervalMs: editorOpen ? false : undefined }
   );
   const updateOverrides = useUpdateKioskGrindingPlanningBoardOverrides();
   const updateRank = useUpdateKioskGrindingPlanningBoardRank();
   const updateOrder = useUpdateKioskGrindingPlanningBoardSeibanOrder();
 
   const data = boardQuery.data;
+  const scopeReady = boardQuery.scopeReady;
+  const bulkReady = scopeReady && boardQuery.isComplete;
+  const interactionLocked = !scopeReady;
   const sourceRevision = data?.sourceRevision ?? '';
 
   useEffect(() => {
@@ -137,7 +140,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
 
   useEffect(() => {
     setFocusedFseiban(null);
-  }, [view]);
+  }, [category, status, view]);
+
+  useEffect(() => {
+    if (!scopeReady) setFocusedFseiban(null);
+  }, [scopeReady]);
 
   const itemsBySeiban = useMemo(() => {
     const grouped = new Map<string, GrindingPlanningBoardItem[]>();
@@ -180,15 +187,16 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, []);
 
   const toggleItem = useCallback((item: GrindingPlanningBoardItem, selected: boolean) => {
-    if (item.isCompleted) return;
+    if (!scopeReady || item.isCompleted) return;
     setExcludedItemIdsByCategory((current) => {
       const next = new Set(current[category] ?? []);
       if (selected) next.delete(item.itemId); else next.add(item.itemId);
       return { ...current, [category]: next };
     });
-  }, [category]);
+  }, [category, scopeReady]);
 
   const toggleAll = useCallback((items: readonly GrindingPlanningBoardItem[], selected: boolean) => {
+    if (!bulkReady) return;
     setExcludedItemIdsByCategory((current) => {
       const next = new Set(current[category] ?? []);
       for (const item of items) {
@@ -197,9 +205,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       }
       return { ...current, [category]: next };
     });
-  }, [category]);
+  }, [bulkReady, category]);
 
   const openEditor = useCallback((items: readonly GrindingPlanningBoardItem[]) => {
+    if (!scopeReady) return;
     const target = items.filter((item) => !item.isCompleted);
     if (target.length === 0) return;
     if (!data) return;
@@ -217,7 +226,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     setEditorError(null);
     setEditorConflict(false);
     setEditorOpen(true);
-  }, [allocation, data]);
+  }, [allocation, data, scopeReady]);
 
   const applyEditor = async () => {
     if (!editorSnapshot || allocation === 'original' || editorItems.length === 0) return;
@@ -273,7 +282,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   };
 
   const changeRank = async (item: GrindingPlanningBoardItem, rank: number | null) => {
-    if (!data || allocation === 'original' || item.isCompleted) return;
+    if (!data || !scopeReady || allocation === 'original' || item.isCompleted) return;
     try {
       await updateRank.mutateAsync({ sourceRevision, itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, alternateRank: rank });
     } catch (error) {
@@ -282,7 +291,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   };
 
   const persistOrder = async (nextOrder: string[]): Promise<boolean> => {
-    if (!data || nextOrder.length > 50 || allocation === 'original') return false;
+    if (!data || !scopeReady || nextOrder.length > 50 || allocation === 'original') return false;
     if (orderRequestPendingRef.current) return false;
     const previous = registeredFseibans;
     setOrderRegistrationError(null);
@@ -404,7 +413,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         status={status}
         allocation={allocation}
         selectedCount={toolbarSelectedItems.length}
-        bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0}
+        bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady}
         registeredCount={registeredFseibans.length}
         onOpenDrawer={() => setDrawerOpen(true)}
         onCategoryChange={setCategory}
@@ -422,7 +431,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           </span>
         </div>
       ) : null}
-      {boardQuery.isLoading ? <p className="p-5 text-sm text-slate-300">読み込み中…</p> : null}
+      {boardQuery.isLoading || !scopeReady ? <p className="px-1 py-2 text-xs text-slate-400" role="status">一覧を読み込み中…</p> : null}
+      {boardQuery.isAppending ? <p className="px-1 py-1 text-xs text-slate-400" role="status">一覧を追加取得中…</p> : null}
+      {boardQuery.appendError ? <p className="px-1 py-1 text-xs text-rose-200" role="alert">一覧の追加取得に失敗しました。再読み込みしてください。</p> : null}
       {boardQuery.isError ? <p className="p-5 text-sm text-rose-200">一覧を読み込めませんでした。</p> : null}
       {data && view === 'seiban' && focusedFseiban && focusItems.length > 0 ? (
         <div className="mt-2">
@@ -438,6 +449,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             onToggleItem={toggleItem}
             onResourceClick={(item) => openEditor([item])}
             onRankChange={changeRank}
+            disabled={interactionLocked}
+            bulkDisabled={!bulkReady}
           />
         </div>
       ) : data && view === 'seiban' ? (
@@ -464,6 +477,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
                 onToggleItem={toggleItem}
                 onResourceClick={(item) => openEditor([item])}
                 onRankChange={changeRank}
+                disabled={interactionLocked}
+                bulkDisabled={!bulkReady}
               />
             );
           })}
@@ -480,6 +495,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             onToggleItem={toggleItem}
             onResourceClick={(item) => openEditor([item])}
             onRankChange={changeRank}
+            disabled={interactionLocked}
           />
         </div>
       ) : null}
@@ -494,17 +510,19 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         }}
         registrationError={orderRegistrationError}
         onRefreshOrder={orderConflict ? () => void refreshAfterOrderConflict() : undefined}
-        onRegister={allocation === 'original' ? async () => false : addSeiban}
-        onRemove={allocation === 'original' ? () => undefined : removeSeiban}
+        onRegister={allocation === 'original' || !scopeReady ? async () => false : addSeiban}
+        onRemove={allocation === 'original' || !scopeReady ? () => undefined : removeSeiban}
         onToggle={(fseiban) => setActiveFseibans((current) => {
+          if (interactionLocked) return current;
           const next = new Set(current);
           if (next.has(fseiban)) next.delete(fseiban); else next.add(fseiban);
           return next;
         })}
-        onClear={() => setActiveFseibans(new Set())}
-        onMove={allocation === 'original' || orderSaving ? () => undefined : moveSeiban}
-        orderReadOnly={allocation === 'original'}
-        orderBusy={orderSaving}
+        onClear={() => { if (!interactionLocked) setActiveFseibans(new Set()); }}
+        onMove={allocation === 'original' || orderSaving || interactionLocked ? () => undefined : moveSeiban}
+        orderReadOnly={allocation === 'original' || interactionLocked}
+        orderBusy={orderSaving || interactionLocked}
+        orderStatus={interactionLocked ? (boardQuery.isError ? '一覧を読み込めませんでした。' : '一覧を読み込み中…') : orderSaving ? '製番順を保存中…' : null}
       />
       <Dialog isOpen={editorOpen} onClose={() => setEditorOpen(false)} title="一括変更" size="lg">
         <div className="mt-4 space-y-4">

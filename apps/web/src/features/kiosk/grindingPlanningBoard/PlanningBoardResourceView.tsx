@@ -17,6 +17,7 @@ export type PlanningBoardResourceViewProps = {
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
+  disabled?: boolean;
 };
 
 export function PlanningBoardResourceView({
@@ -28,7 +29,8 @@ export function PlanningBoardResourceView({
   selectedItemIds,
   onToggleItem,
   onResourceClick,
-  onRankChange
+  onRankChange,
+  disabled = false
 }: PlanningBoardResourceViewProps) {
   const groups = useMemo(() => {
     const byResource = new Map<string, GrindingPlanningBoardItem[]>();
@@ -77,6 +79,7 @@ export function PlanningBoardResourceView({
               onToggleItem={onToggleItem}
               onResourceClick={onResourceClick}
               onRankChange={onRankChange}
+              disabled={disabled}
               showRank
               showSeiban
               tableLabel={`資源CD ${resource}の工程アイテム`}

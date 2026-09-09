@@ -43,7 +43,8 @@ export async function prepareProductionScheduleDashboardFilters(
     hasDueDateOnly,
     allowResourceOnly = false,
     locationKey,
-    siteKey
+    siteKey,
+    planningFseibans
   } = params;
 
   const textConditions = buildTextConditions(queryText);
@@ -85,6 +86,16 @@ export async function prepareProductionScheduleDashboardFilters(
     "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
   `;
+  const normalizedPlanningFseibans = planningFseibans
+    ? [...new Set(planningFseibans.map((value) => value.trim()).filter(Boolean))]
+    : [];
+  const planningScope = planningFseibans !== undefined
+    ? normalizedPlanningFseibans.length > 0
+      ? Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') IN (${Prisma.join(
+          normalizedPlanningFseibans.map((value) => Prisma.sql`${value}`)
+        )})`
+      : Prisma.sql`AND FALSE`
+    : Prisma.empty;
   const queryWhere = Prisma.sql`${buildQueryWhere({
     textConditions,
     resourceConditions,
@@ -92,15 +103,15 @@ export async function prepareProductionScheduleDashboardFilters(
     machineNameCondition,
     hasNoteOnly,
     hasDueDateOnly
-  })} ${productNoCondition}`;
-  const leaderboardExpansionWhere = buildQueryWhere({
+  })} ${productNoCondition} ${planningScope}`;
+  const leaderboardExpansionWhere = Prisma.sql`${buildQueryWhere({
     textConditions: [],
     resourceConditions,
     resourceCategoryCondition,
     machineNameCondition: Prisma.empty,
     hasNoteOnly: false,
     hasDueDateOnly: false
-  });
+  })} ${planningScope}`;
 
   const siteScopedGlobalRankLocation = siteKey?.trim().length ? siteKey.trim() : locationKey;
 

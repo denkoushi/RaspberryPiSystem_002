@@ -22,6 +22,7 @@ export type PlanningBoardItemTableProps = {
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   showRank?: boolean;
   showSeiban?: boolean;
+  disabled?: boolean;
   tableLabel: string;
 };
 
@@ -34,6 +35,7 @@ export function PlanningBoardItemTable({
   onRankChange,
   showRank = false,
   showSeiban = false,
+  disabled = false,
   tableLabel
 }: PlanningBoardItemTableProps) {
   return (
@@ -71,7 +73,7 @@ export function PlanningBoardItemTable({
                     type="checkbox"
                     className="h-5 w-5 accent-emerald-400"
                     checked={selected}
-                    disabled={item.isCompleted}
+                    disabled={disabled || item.isCompleted}
                     aria-label={`${item.fhinmei ?? item.fhincd}を選択`}
                     onChange={(event) => onToggleItem(item, event.target.checked)}
                   />
@@ -103,7 +105,7 @@ export function PlanningBoardItemTable({
                       (allocation === 'original' || item.isCompleted) && 'cursor-not-allowed opacity-60 hover:border-slate-700'
                     )}
                     aria-label={`資源CD ${currentResource ?? '未設定'}を変更`}
-                    disabled={allocation === 'original' || item.isCompleted}
+                    disabled={disabled || allocation === 'original' || item.isCompleted}
                     onClick={() => onResourceClick(item)}
                   >
                     {currentResource ?? '—'}
@@ -126,7 +128,7 @@ export function PlanningBoardItemTable({
                     {showRank ? (
                       <select
                         value={rank == null ? '' : String(rank)}
-                        disabled={allocation === 'original' || item.isCompleted || !onRankChange}
+                        disabled={disabled || allocation === 'original' || item.isCompleted || !onRankChange}
                         aria-label={`${item.fhinmei ?? item.fhincd}の個別指定`}
                         className="min-h-11 w-11 rounded-md border border-slate-700 bg-slate-950 px-0.5 text-center text-[10px] text-slate-200 disabled:cursor-not-allowed disabled:opacity-55"
                         onChange={(event) => onRankChange?.(item, event.target.value ? Number(event.target.value) : null)}

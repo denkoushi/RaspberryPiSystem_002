@@ -9,6 +9,7 @@ import {
 type SnapshotMainAndAuxGenerationRow = {
   rowsCount: bigint;
   rowsLatestCreatedAt: Date | null;
+  rowsLatestUpdatedAt: Date | null;
   orderAssignmentUpdatedAt: Date | null;
   orderSplitCount: bigint;
   orderSplitUpdatedAt: Date | null;
@@ -73,6 +74,7 @@ function buildLeaderboardShellSnapshotGenerationToken(params: {
   return JSON.stringify({
     rowsCount: String(row?.rowsCount ?? 0n),
     rowsLatestCreatedAt: normalizeDate(row?.rowsLatestCreatedAt),
+    rowsLatestUpdatedAt: normalizeDate(row?.rowsLatestUpdatedAt),
     fkojunstStatusMailRowsRevision,
     orderAssignmentUpdatedAt: normalizeDate(row?.orderAssignmentUpdatedAt),
     orderSplitCount: String(row?.orderSplitCount ?? 0n),
@@ -127,6 +129,9 @@ export async function readLeaderboardShellSnapshotGenerationTokenDetails(
       (SELECT MAX("createdAt")
        FROM "CsvDashboardRow"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "rowsLatestCreatedAt",
+      (SELECT MAX(COALESCE("updatedAt", "createdAt"))
+       FROM "CsvDashboardRow"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "rowsLatestUpdatedAt",
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleOrderAssignment"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderAssignmentUpdatedAt",

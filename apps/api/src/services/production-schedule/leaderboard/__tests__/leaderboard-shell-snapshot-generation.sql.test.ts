@@ -23,6 +23,8 @@ describe('leaderboard-shell-snapshot-generation SQL', () => {
     );
 
     expect(source).toContain('fkojunstStatusMailRowsLatestUpdatedAt');
+    expect(source).toContain('rowsLatestUpdatedAt');
+    expect(source).toContain('MAX(COALESCE("updatedAt", "createdAt"))');
     expect(source).toContain('fkojunstStatusMailRowsRevision');
     expect(source).toContain('MAX(COALESCE(r."updatedAt", r."createdAt"))');
     expect(source).toContain('ir."status" = \'COMPLETED\'::"ImportStatus"');

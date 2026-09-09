@@ -16,6 +16,12 @@ import { prisma } from '../../lib/prisma.js';
 import type { LeaderboardShellSnapshotStore } from './leaderboard/leaderboard-shell-snapshot.store.js';
 import { createInMemoryLeaderboardShellSnapshotStore } from './leaderboard/leaderboard-shell-snapshot.store.js';
 import { chunkLeaderboardRowIdsForHydrate } from './leaderboard/leaderboard-display-row-scope.js';
+import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard/leaderboard-shell-hydrate.service.js';
+import type { LeaderboardScheduleRowSql } from './leaderboard/leaderboard-schedule-row.types.js';
+import { loadLeaderboardCanonicalRows } from './leaderboard/leaderboard-canonical-row-cache.js';
+import { readLeaderboardShellSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
+import { prepareProductionScheduleDashboardFilters } from './production-schedule-query/filters.js';
+import { fetchLeaderboardPlanningScopedParentRowIds } from './leaderboard/leaderboard-row-selection.service.js';
 import {
   getResourceCategoryPolicy,
   isProductionScheduleCuttingResourceCd,
@@ -23,7 +29,6 @@ import {
   normalizeProductionScheduleResourceCd
 } from './policies/resource-category-policy.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
-import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 import { PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS } from './row-resolver/constants.js';
 import { isProductionScheduleOrderSplitEnabled } from './order-split/production-schedule-order-split-feature.js';
 import { acquireProductionScheduleParentRowLockInTransaction } from './order-split/production-schedule-parent-row-lock.service.js';
@@ -36,7 +41,11 @@ import {
   type GrindingPlanningBoardProjectionRow,
   type GrindingPlanningBoardProjectionRowDetail
 } from './grinding-planning-board-projection.js';
+import { readGrindingPlanningBoardLoadSummary } from './grinding-planning-board-load-summary.js';
 import { resolveSeibanMachineDisplayNamesBatched } from './seiban-machine-display-names.service.js';
+import {
+  resolveLeaderboardMaterializedBaseWhere
+} from './row-resolver/index.js';
 
 const DEFAULT_PAGE_SIZE = 160;
 const MAX_PAGE_SIZE = 160;
@@ -160,23 +169,244 @@ function isCategoryResource(resourceCd: string | null, category: GrindingPlannin
 }
 
 async function readWinnerRows(client: DbClient = prisma): Promise<WinnerRow[]> {
-  return client.$queryRaw<WinnerRow[]>`
-    SELECT "r"."id", "r"."rowData", "r"."updatedAt"
-    FROM "CsvDashboardRow" AS "r"
-    WHERE "r"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND ${buildMaxProductNoWinnerCondition('r')}
-  `;
+  return readWinnerRowsScoped(client);
 }
 
 async function readWinnerRowsByIds(client: DbClient, rowIds: readonly string[]): Promise<WinnerRow[]> {
-  if (rowIds.length === 0) return [];
-  return client.$queryRaw<WinnerRow[]>`
-    SELECT "r"."id", "r"."rowData", "r"."updatedAt"
-    FROM "CsvDashboardRow" AS "r"
-    WHERE "r"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND "r"."id" IN (${Prisma.join([...new Set(rowIds)].map((id) => Prisma.sql`${id}`), ',')})
-      AND ${buildMaxProductNoWinnerCondition('r')}
-  `;
+  return readWinnerRowsScoped(client, rowIds);
+}
+
+async function readWinnerRowsByFseibans(client: DbClient, fseibans: readonly string[]): Promise<WinnerRow[]> {
+  const values = [...new Set(fseibans.map((value) => value.trim()).filter(Boolean))];
+  if (values.length === 0) return [];
+  const baseWhere = await resolveLeaderboardMaterializedBaseWhere(client);
+  return client.$queryRaw<WinnerRow[]>(Prisma.sql`
+    SELECT "CsvDashboardRow"."id", "CsvDashboardRow"."rowData", "CsvDashboardRow"."updatedAt"
+    FROM "CsvDashboardRow"
+    WHERE ${baseWhere}
+      AND "CsvDashboardRow"."rowData"->>'FSEIBAN' = ANY(${values}::text[])
+  `);
+}
+
+async function readWinnerRowsScoped(client: DbClient, rowIds?: readonly string[]): Promise<WinnerRow[]> {
+  const baseWhere = await resolveLeaderboardMaterializedBaseWhere(client);
+  const scope = rowIds === undefined
+    ? Prisma.empty
+    : rowIds.length === 0
+      ? Prisma.sql`AND FALSE`
+      : Prisma.sql`AND "CsvDashboardRow"."id"::text = ANY(${[...new Set(rowIds)]}::text[])`;
+  return client.$queryRaw<WinnerRow[]>(Prisma.sql`
+    SELECT "CsvDashboardRow"."id", "CsvDashboardRow"."rowData", "CsvDashboardRow"."updatedAt"
+    FROM "CsvDashboardRow"
+    WHERE ${baseWhere} ${scope}
+  `);
+}
+
+export function dateValue(value: unknown): Date | null {
+  if (value == null) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const text = String(value).trim();
+  if (text.length === 0) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(text)
+    ? `${text}T00:00:00.000Z`
+    : /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i.test(text)
+      ? text
+      : `${text}Z`;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function planningDetailToRowDetail(row: LeaderboardScheduleRowSql): RowDetail {
+  const detail = row.planningDetail;
+  const updatedAt = row.updatedAt;
+  if (!detail) {
+    return {
+      updatedAt,
+      rowNotes: [{ dueDate: row.dueDate }],
+      orderSupplements: [{ plannedQuantity: row.plannedQuantity, plannedEndDate: row.plannedEndDate }],
+      productionScheduleProgress: { isCompleted: false, updatedAt: updatedAt ?? new Date(0) },
+      productionScheduleExternalCompletion: { isExternallyCompleted: false, updatedAt: updatedAt ?? new Date(0) },
+      orderSplits: []
+    };
+  }
+  return {
+    updatedAt,
+    rowNotes: [{ dueDate: dateValue(detail.dueDate) }],
+    orderSupplements: [{ plannedQuantity: detail.plannedQuantity, plannedEndDate: dateValue(detail.plannedEndDate) }],
+    productionScheduleProgress: { isCompleted: Boolean(detail.isCompleted), updatedAt: dateValue(detail.progressUpdatedAt) ?? new Date(0) },
+    productionScheduleExternalCompletion: { isExternallyCompleted: Boolean(detail.isExternallyCompleted), updatedAt: dateValue(detail.externalUpdatedAt) ?? new Date(0) },
+    orderSplits: detail.splits.flatMap((split) => {
+      const splitUpdatedAt = dateValue(split.updatedAt);
+      if (!splitUpdatedAt) return [];
+      return [{ id: split.id, splitQuantity: split.splitQuantity, dueDate: dateValue(split.dueDate), updatedAt: splitUpdatedAt }];
+    })
+  };
+}
+
+type PlanningSource = {
+  baseWhere: Prisma.Sql;
+  generationToken: string;
+  rows: WinnerRow[];
+  details: Map<string, RowDetail>;
+  progressRows: GrindingPlanningBoardProgressRow[];
+};
+
+async function readPlanningSource(params: {
+  siteKey: string;
+  category: GrindingPlanningBoardCategory;
+  fseibans: readonly string[];
+}): Promise<PlanningSource> {
+  const generationToken = await readLeaderboardShellSnapshotGenerationToken();
+  const baseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+  const order = uniqueFseibans(params.fseibans);
+  if (order.length === 0) {
+    return { baseWhere, generationToken, rows: [], details: new Map(), progressRows: [] };
+  }
+
+  // Reuse the existing winner/category selection path, but apply the registered
+  // seiban scope before reading any parent rows. This deliberately selects IDs
+  // only; full row hydration is delegated to the shared canonical cache path.
+  const filters = await prepareProductionScheduleDashboardFilters({
+    queryText: '',
+    productNos: [],
+    resourceCds: [],
+    assignedOnlyCds: [],
+    resourceCategory: params.category,
+    hasNoteOnly: false,
+    hasDueDateOnly: false,
+    allowResourceOnly: true,
+    locationKey: params.siteKey,
+    siteKey: params.siteKey,
+    planningFseibans: order
+  });
+  if (filters.kind === 'blocked_empty_search') {
+    return { baseWhere, generationToken, rows: [], details: new Map(), progressRows: [] };
+  }
+  const orderedRowIds = await fetchLeaderboardPlanningScopedParentRowIds({
+    leaderboardMaterializedBaseWhere: baseWhere,
+    queryWhere: filters.queryWhere,
+    completionFilter: 'all'
+  });
+  // Progress denominators are based on every registered process row. Keep the
+  // displayed source category scoped, but use the same canonical ID selector
+  // and bounded hydrate/cache path for the registered seiban progress source.
+  const progressFilters = await prepareProductionScheduleDashboardFilters({
+    queryText: '',
+    productNos: [],
+    resourceCds: [],
+    assignedOnlyCds: [],
+    resourceCategory: undefined,
+    hasNoteOnly: false,
+    hasDueDateOnly: false,
+    allowResourceOnly: true,
+    locationKey: params.siteKey,
+    siteKey: params.siteKey,
+    planningFseibans: order
+  });
+  const progressRowIds = progressFilters.kind === 'blocked_empty_search'
+    ? []
+    : await fetchLeaderboardPlanningScopedParentRowIds({
+        leaderboardMaterializedBaseWhere: baseWhere,
+        queryWhere: progressFilters.queryWhere,
+        completionFilter: 'all'
+      });
+  const cacheKey = { siteKey: params.siteKey, generationToken };
+
+  const identityRows = await loadLeaderboardCanonicalRows({
+    key: { ...cacheKey, rankContext: 'none' },
+    rowIds: orderedRowIds,
+    coverage: 'identity',
+    load: async (missingIds) => {
+      if (missingIds.length === 0) return [];
+      return fetchLeaderboardScheduleHydratedRowsOrderedByIds({
+        orderedRowIds: missingIds,
+        locationKey: params.siteKey,
+        siteScopedGlobalRankLocation: params.siteKey,
+        leaderboardMaterializedBaseWhere: baseWhere,
+        leaderboardShellListWhere: baseWhere,
+        includeRank: false,
+        canonicalSourceGenerationToken: generationToken,
+        canonicalSourceSiteKey: params.siteKey,
+        maxRows: missingIds.length
+      });
+    }
+  });
+  const plannedRows = await loadLeaderboardCanonicalRows({
+    key: cacheKey,
+    rowIds: orderedRowIds,
+    coverage: 'planning',
+    load: async (missingIds) => {
+      if (missingIds.length === 0) return [];
+      return fetchLeaderboardScheduleHydratedRowsOrderedByIds({
+        orderedRowIds: missingIds,
+        locationKey: params.siteKey,
+        siteScopedGlobalRankLocation: params.siteKey,
+        leaderboardMaterializedBaseWhere: baseWhere,
+        leaderboardShellListWhere: baseWhere,
+        includePlanningDetails: true,
+        includeRank: false,
+        planningSource: true,
+        planningDetailsOnly: true,
+        canonicalSourceGenerationToken: generationToken,
+        canonicalSourceSiteKey: params.siteKey,
+        maxRows: missingIds.length
+      });
+    }
+  });
+  const details = new Map(plannedRows.map((row) => [row.id, planningDetailToRowDetail(row)]));
+  const progressRowsWithDetails = await loadLeaderboardCanonicalRows({
+    key: cacheKey,
+    rowIds: progressRowIds,
+    coverage: 'planning',
+    load: async (missingIds) => {
+      if (missingIds.length === 0) return [];
+      return fetchLeaderboardScheduleHydratedRowsOrderedByIds({
+        orderedRowIds: missingIds,
+        locationKey: params.siteKey,
+        siteScopedGlobalRankLocation: params.siteKey,
+        leaderboardMaterializedBaseWhere: baseWhere,
+        leaderboardShellListWhere: baseWhere,
+        includePlanningDetails: true,
+        includeRank: false,
+        canonicalSourceGenerationToken: generationToken,
+        canonicalSourceSiteKey: params.siteKey,
+        maxRows: missingIds.length
+      });
+    }
+  });
+  const progressDetails = new Map(progressRowsWithDetails.map((row) => [row.id, planningDetailToRowDetail(row)]));
+  const progressPolicy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
+  return {
+    baseWhere,
+    generationToken,
+    rows: identityRows.map((row) => ({ id: row.id, rowData: row.rowData, updatedAt: row.updatedAt })),
+    details,
+    progressRows: buildPlanningProgressRows(progressRowsWithDetails, progressDetails, progressPolicy.cuttingExcludedResourceCds)
+  };
+}
+
+function buildPlanningProgressRows(
+  rows: readonly WinnerRow[],
+  details: ReadonlyMap<string, RowDetail>,
+  cuttingExcludedResourceCds: readonly string[]
+): GrindingPlanningBoardProgressRow[] {
+  return rows.flatMap((row) => {
+    const detail = details.get(row.id);
+    if (!detail) return [];
+    const data = asRowData(row.rowData);
+    const fhincd = valueAsString(data, 'FHINCD').trim().toUpperCase();
+    const resourceCd = normalizeProductionScheduleResourceCd(valueAsString(data, 'FSIGENCD'));
+    // Keep progress population aligned with the existing due-management rule:
+    // machine rows and excluded cutting resources are not process parts.
+    if (fhincd.startsWith('MH') || fhincd.startsWith('SH') || (resourceCd != null && cuttingExcludedResourceCds.includes(resourceCd))) return [];
+    return [{
+      rowId: row.id,
+      fseiban: valueAsString(data, 'FSEIBAN'),
+      productNo: valueAsString(data, 'ProductNo'),
+      fhincd: valueAsString(data, 'FHINCD'),
+      isCompleted: Boolean(detail.productionScheduleProgress?.isCompleted || detail.productionScheduleExternalCompletion?.isExternallyCompleted)
+    }];
+  });
 }
 
 async function readRowDetails(client: DbClient, rowIds: readonly string[]): Promise<Map<string, RowDetail>> {
@@ -298,63 +528,131 @@ async function getOrCreateState(siteKey: string, fseibans: readonly string[], cl
   }
 }
 
-function generationForItems(items: readonly GrindingPlanningBoardItem[], state: PlanningState): string {
-  return createHash('sha256').update(JSON.stringify({ boardVersion: state.version, order: stateOrder(state), items: items.map((item) => [item.itemId, item.itemRevision]) })).digest('hex');
+type PlanningSnapshotPayload = {
+  items: GrindingPlanningBoardItem[];
+  load: GrindingPlanningBoardLoad[];
+  unknownRequiredMinutesCount: number;
+  seibanProgress: Record<string, { completed: number; total: number }>;
+  resources: string[];
+};
+
+function isPlanningSnapshotPayload(value: unknown): value is PlanningSnapshotPayload {
+  if (value == null || typeof value !== 'object') return false;
+  const payload = value as Partial<PlanningSnapshotPayload>;
+  return Array.isArray(payload.items) && Array.isArray(payload.load) &&
+    typeof payload.unknownRequiredMinutesCount === 'number' &&
+    payload.seibanProgress != null && typeof payload.seibanProgress === 'object' &&
+    Array.isArray(payload.resources);
+}
+
+async function readPlanningSnapshotGenerationToken(siteKey: string): Promise<string> {
+  const [leaderboardGeneration, state, overrides] = await Promise.all([
+    readLeaderboardShellSnapshotGenerationToken(),
+    prisma.productionScheduleGrindingPlanningBoardState.findUnique({
+      where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } },
+      select: { version: true, updatedAt: true }
+    }),
+    prisma.productionScheduleGrindingPlanningBoardOverride.aggregate({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
+      _count: { _all: true },
+      _max: { updatedAt: true }
+    })
+  ]);
+  return JSON.stringify({
+    leaderboardGeneration,
+    boardVersion: state?.version ?? 0,
+    boardUpdatedAt: state?.updatedAt?.toISOString() ?? '',
+    overrideCount: overrides._count._all,
+    overrideUpdatedAt: overrides._max.updatedAt?.toISOString() ?? ''
+  });
 }
 
 function progressMapToRecord(progress: ReadonlyMap<string, { completed: number; total: number }>): Record<string, { completed: number; total: number }> { return Object.fromEntries(progress.entries()); }
 
-async function projectCurrentBoard(params: { client: DbClient; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; state: PlanningState; selectedFseibans?: ReadonlySet<string>; machineNames?: ReadonlyMap<string, string | null> }): Promise<{ allItems: GrindingPlanningBoardItem[]; items: GrindingPlanningBoardItem[]; load: GrindingPlanningBoardLoad[]; unknownRequiredMinutesCount: number; progress: ReturnType<typeof projectGrindingPlanningBoard>['progress']; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>; sourceRows: WinnerRow[]; details: Map<string, RowDetail> }> {
-  const [rows, policy, overrides] = await Promise.all([readWinnerRows(params.client), getResourceCategoryPolicy({ siteKey: params.siteKey }), readOverrides(params.client, params.siteKey)]);
-  const details = await readRowDetails(params.client, rows.map((row) => row.id));
-  const splitIds = rows.flatMap((row) => details.get(row.id)?.orderSplits.map((split) => split.id) ?? []);
-  const ranks = await readRanks(params.client, rows.map((row) => row.id), splitIds, params.siteKey);
-  const progressRows: GrindingPlanningBoardProgressRow[] = rows.flatMap((row) => {
-    const detail = details.get(row.id);
-    if (!detail) return [];
-    const data = asRowData(row.rowData);
-    const fhincd = valueAsString(data, 'FHINCD').trim().toUpperCase();
-    const resourceCd = normalizeProductionScheduleResourceCd(valueAsString(data, 'FSIGENCD'));
-    // Progress headers follow the existing due-management part population:
-    // machine rows and excluded cutting resources are not parts.
-    if (fhincd.startsWith('MH') || fhincd.startsWith('SH') || (resourceCd != null && policy.cuttingExcludedResourceCds.includes(resourceCd))) return [];
-    return [{ rowId: row.id, fseiban: valueAsString(data, 'FSEIBAN'), productNo: valueAsString(data, 'ProductNo'), fhincd: valueAsString(data, 'FHINCD'), isCompleted: Boolean(detail.productionScheduleProgress?.isCompleted || detail.productionScheduleExternalCompletion?.isExternallyCompleted) }];
+async function projectCurrentBoard(params: { client: DbClient; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; state: PlanningState; selectedFseibans?: ReadonlySet<string>; machineNames?: ReadonlyMap<string, string | null>; source?: PlanningSource }): Promise<{ allItems: GrindingPlanningBoardItem[]; items: GrindingPlanningBoardItem[]; load: GrindingPlanningBoardLoad[]; unknownRequiredMinutesCount: number; progress: ReturnType<typeof projectGrindingPlanningBoard>['progress']; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>; sourceRows: WinnerRow[]; details: Map<string, RowDetail> }> {
+  const source = params.source ?? await readPlanningSource({
+    siteKey: params.siteKey,
+    category: params.category,
+    fseibans: stateOrder(params.state)
   });
-  const projection = projectGrindingPlanningBoard({ rows, details, ranks, overrides, progressRows, splitEnabled: isProductionScheduleOrderSplitEnabled(), category: params.category, view: params.view, seibanOrder: stateOrder(params.state), selectedFseibans: params.selectedFseibans, machineNameBySeiban: params.machineNames, isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy) });
+  const [policy, overrides] = await Promise.all([getResourceCategoryPolicy({ siteKey: params.siteKey }), readOverrides(params.client, params.siteKey)]);
+  const rows = source.rows;
+  const details = source.details;
+  const displayRowIds = rows.filter((row) => {
+    if (!params.selectedFseibans) return true;
+    return params.selectedFseibans.has(valueAsString(asRowData(row.rowData), 'FSEIBAN'));
+  }).map((row) => row.id);
+  const splitIds = displayRowIds.flatMap((rowId) => details.get(rowId)?.orderSplits.map((split) => split.id) ?? []);
+  const ranks = await readRanks(params.client, displayRowIds, splitIds, params.siteKey);
+  const projection = projectGrindingPlanningBoard({ rows, details, ranks, overrides, progressRows: source.progressRows, splitEnabled: isProductionScheduleOrderSplitEnabled(), category: params.category, view: params.view, seibanOrder: stateOrder(params.state), selectedFseibans: params.selectedFseibans, machineNameBySeiban: params.machineNames, isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy) });
   return { allItems: projection.allItems, items: projection.items, load: projection.load, unknownRequiredMinutesCount: projection.unknownRequiredMinutesCount, progress: projection.progress, policy, overrides, sourceRows: rows, details };
 }
 
 export async function getGrindingPlanningBoard(params: { siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; fseibans?: string[]; cursor?: number; pageSize?: number; snapshotId?: string; completionFilter?: 'all' | 'complete' | 'incomplete'; snapshotStore?: LeaderboardShellSnapshotStore }): Promise<GrindingPlanningBoardResponse> {
   if ((params.cursor ?? 0) > 0 && !params.snapshotId) throw new ApiError(400, '続きの cursor には snapshotId が必要です', undefined, 'INVALID_PLANNING_BOARD_CURSOR');
-  const initialRows = await readWinnerRows();
-  const state = await getOrCreateState(params.siteKey, initialRows.map((row) => valueAsString(asRowData(row.rowData), 'FSEIBAN')), prisma);
-  const order = stateOrder(state);
+  // Ensure the shared site order exists before capturing the source generation.
+  // Re-read the state around that generation so an order update between the
+  // first lookup and the token read cannot label stale order data as current.
+  await getOrCreateState(params.siteKey, [], prisma);
+  const generationBeforeRead = await readPlanningSnapshotGenerationToken(params.siteKey);
+  const stateForRead = await getOrCreateState(params.siteKey, [], prisma);
+  const generationAfterStateRead = await readPlanningSnapshotGenerationToken(params.siteKey);
+  if (generationBeforeRead !== generationAfterStateRead) {
+    throw new ApiError(409, '一覧の元データが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
+  }
+  const order = stateOrder(stateForRead);
   const requested = params.fseibans && params.fseibans.length > 0 ? new Set(uniqueFseibans(params.fseibans)) : undefined;
   const selected = requested ? order.filter((value) => requested.has(value)) : order;
-  const names = await resolveSeibanMachineDisplayNamesBatched(order);
-  const projection = await projectCurrentBoard({ client: prisma, siteKey: params.siteKey, category: params.category, view: params.view, state, selectedFseibans: requested ? new Set(selected) : undefined, machineNames: new Map(Object.entries(names.machineNames)) });
   const completionFilter = params.completionFilter ?? 'all';
-  const filtered = completionFilter === 'complete' ? projection.items.filter((item) => item.isCompleted) : completionFilter === 'incomplete' ? projection.items.filter((item) => !item.isCompleted) : projection.items;
   const filterFingerprint = JSON.stringify({ siteKey: params.siteKey, category: params.category, view: params.view, fseibans: selected, completionFilter });
-  const generation = generationForItems(projection.allItems, state);
   const store = params.snapshotStore ?? fallbackPlanningSnapshotStore;
   let snapshotId = params.snapshotId;
   let orderedIds: readonly string[];
+  let payload: PlanningSnapshotPayload;
   if (snapshotId) {
     const snapshot = store.get(snapshotId);
     const sameScope = snapshot != null && snapshot.siteKey === params.siteKey && snapshot.locationKey === params.siteKey && snapshot.filterFingerprint === filterFingerprint;
-    if (!snapshot || !sameScope || snapshot.generationToken !== generation || snapshot.partialOrdering) {
+    const generation = await readPlanningSnapshotGenerationToken(params.siteKey);
+    if (!snapshot || !sameScope || snapshot.generationToken !== generation || snapshot.partialOrdering || !isPlanningSnapshotPayload(snapshot.payload)) {
       // A binding mismatch may refer to another terminal/site/filter. Do not
       // let one caller delete a valid snapshot owned by that scope.
       if (sameScope) store.delete(snapshotId);
       throw new ApiError(409, '一覧が更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
     }
     orderedIds = snapshot.orderedRowIds;
+    payload = snapshot.payload;
   } else {
+    const source = await readPlanningSource({
+      siteKey: params.siteKey,
+      category: params.category,
+      fseibans: selected
+    });
+    const names = await resolveSeibanMachineDisplayNamesBatched(order);
+    const projection = await projectCurrentBoard({ client: prisma, siteKey: params.siteKey, category: params.category, view: params.view, state: stateForRead, selectedFseibans: new Set(selected), machineNames: new Map(Object.entries(names.machineNames)), source });
+    const filtered = completionFilter === 'complete' ? projection.items.filter((item) => item.isCompleted) : completionFilter === 'incomplete' ? projection.items.filter((item) => !item.isCompleted) : projection.items;
+    const loadSummary = await readGrindingPlanningBoardLoadSummary({
+      client: prisma,
+      leaderboardMaterializedBaseWhere: source.baseWhere,
+      siteKey: params.siteKey,
+      category: params.category,
+      splitEnabled: isProductionScheduleOrderSplitEnabled(),
+      isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, projection.policy)
+    });
+    const generation = await readPlanningSnapshotGenerationToken(params.siteKey);
+    if (generation !== generationBeforeRead) {
+      throw new ApiError(409, '一覧の元データが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
+    }
     orderedIds = filtered.map((item) => item.itemId);
-    snapshotId = store.create({ orderedRowIds: orderedIds, partialOrdering: false, filterFingerprint, generationToken: generation, locationKey: params.siteKey, siteKey: params.siteKey });
+    payload = {
+      items: filtered,
+      load: loadSummary.load,
+      unknownRequiredMinutesCount: loadSummary.unknownRequiredMinutesCount,
+      seibanProgress: progressMapToRecord(projection.progress.bySeiban),
+      resources: await readPlanningResourceCandidates(prisma, params.category, projection.policy)
+    };
+    snapshotId = store.create({ orderedRowIds: orderedIds, partialOrdering: false, filterFingerprint, generationToken: generation, locationKey: params.siteKey, siteKey: params.siteKey, payload });
   }
-  const byId = new Map(filtered.map((item) => [item.itemId, item]));
+  const byId = new Map(payload.items.map((item) => [item.itemId, item]));
   const orderedItems = orderedIds.map((id) => byId.get(id)).filter((item): item is GrindingPlanningBoardItem => item != null);
   const cursor = Math.max(params.cursor ?? 0, 0);
   const pageSize = Math.min(Math.max(params.pageSize ?? DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
@@ -363,15 +661,15 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
     siteKey: params.siteKey,
     category: params.category,
     view: params.view,
-    sourceRevision: boardRevision(state),
-    boardVersion: state.version,
+    sourceRevision: boardRevision(stateForRead),
+    boardVersion: stateForRead.version,
     registeredFseibans: order,
     seibanOrder: selected,
-    resources: await readPlanningResourceCandidates(prisma, params.category, projection.policy),
+    resources: payload.resources,
     items: page,
-    load: projection.load,
-    unknownRequiredMinutesCount: projection.unknownRequiredMinutesCount,
-    seibanProgress: progressMapToRecord(projection.progress.bySeiban),
+    load: payload.load,
+    unknownRequiredMinutesCount: payload.unknownRequiredMinutesCount,
+    seibanProgress: payload.seibanProgress,
     snapshotId,
     nextCursor: cursor + page.length < orderedItems.length ? String(cursor + page.length) : null
   };
@@ -399,8 +697,7 @@ async function discoverSourceRows(itemIds: readonly string[]): Promise<Map<strin
 }
 
 async function ensurePlanningBoardState(siteKey: string): Promise<void> {
-  const rows = await readWinnerRows(prisma);
-  await getOrCreateState(siteKey, rows.map((row) => valueAsString(asRowData(row.rowData), 'FSEIBAN')), prisma);
+  await getOrCreateState(siteKey, [], prisma);
 }
 
 async function lockState(client: Prisma.TransactionClient, siteKey: string): Promise<PlanningState> {
@@ -553,7 +850,7 @@ export async function updateGrindingPlanningBoardRank(params: { siteKey: string;
 
 export async function updateGrindingPlanningBoardSeibanOrder(params: { siteKey: string; sourceRevision: string; fseibans: string[] }): Promise<{ sourceRevision: string; seibanOrder: string[] }> {
   const nextOrder = uniqueFseibans(params.fseibans);
-  const rows = await readWinnerRows(prisma);
+  const rows = await readWinnerRowsByFseibans(prisma, nextOrder);
   const known = new Set(rows.map((row) => valueAsString(asRowData(row.rowData), 'FSEIBAN')).filter(Boolean));
   const existingState = await getOrCreateState(params.siteKey, Array.from(known), prisma);
   const existingOrder = new Set(stateOrder(existingState));

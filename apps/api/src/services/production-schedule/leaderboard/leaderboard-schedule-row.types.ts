@@ -18,4 +18,21 @@ export type LeaderboardScheduleRowSql = {
   plannedQuantity: number | null;
   plannedStartDate: Date | null;
   plannedEndDate: Date | null;
+  /** Optional planning detail payload for the shared source adapter. */
+  planningDetail?: {
+    detailUpdatedAt: Date | null;
+    progressUpdatedAt: Date | null;
+    externalUpdatedAt: Date | null;
+    dueDate: Date | null;
+    plannedQuantity: number | null;
+    plannedEndDate: Date | null;
+    isCompleted: boolean;
+    isExternallyCompleted: boolean;
+    splits: Array<{
+      id: string;
+      splitQuantity: number;
+      dueDate: Date | null;
+      updatedAt: Date;
+    }>;
+  };
 };
