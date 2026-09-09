@@ -24,6 +24,7 @@ describe('leaderboard-shell-snapshot-generation SQL', () => {
 
     expect(source).toContain('fkojunstStatusMailRowsLatestUpdatedAt');
     expect(source).toContain('rowsLatestUpdatedAt');
+    expect(source).toContain('SET LOCAL jit = off');
     expect(source).toContain('MAX(COALESCE("updatedAt", "createdAt"))');
     expect(source).toContain('fkojunstStatusMailRowsRevision');
     expect(source).toContain('MAX(COALESCE(r."updatedAt", r."createdAt"))');
