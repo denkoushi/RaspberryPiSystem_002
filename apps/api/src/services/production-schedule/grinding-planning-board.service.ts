@@ -15,6 +15,7 @@ import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import type { LeaderboardShellSnapshotStore } from './leaderboard/leaderboard-shell-snapshot.store.js';
 import { createInMemoryLeaderboardShellSnapshotStore } from './leaderboard/leaderboard-shell-snapshot.store.js';
+import { chunkLeaderboardRowIdsForHydrate } from './leaderboard/leaderboard-display-row-scope.js';
 import {
   getResourceCategoryPolicy,
   isProductionScheduleCuttingResourceCd,
@@ -180,30 +181,40 @@ async function readWinnerRowsByIds(client: DbClient, rowIds: readonly string[]):
 
 async function readRowDetails(client: DbClient, rowIds: readonly string[]): Promise<Map<string, RowDetail>> {
   if (rowIds.length === 0) return new Map();
-  const details = await client.csvDashboardRow.findMany({
-    where: { id: { in: [...new Set(rowIds)] }, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
-    select: {
-      id: true,
-      updatedAt: true,
-      rowNotes: { where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, orderBy: { updatedAt: 'desc' }, take: 1, select: { dueDate: true } },
-      orderSupplements: { where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, select: { plannedQuantity: true, plannedEndDate: true } },
-      productionScheduleProgress: { select: { isCompleted: true, updatedAt: true } },
-      productionScheduleExternalCompletion: { select: { isExternallyCompleted: true, updatedAt: true } },
-      orderSplits: { where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, select: { id: true, splitQuantity: true, dueDate: true, updatedAt: true }, orderBy: { splitNo: 'asc' } }
-    }
-  });
-  return new Map(details.map((detail) => [detail.id, detail as RowDetail]));
+  const details = new Map<string, RowDetail>();
+  for (const chunk of chunkLeaderboardRowIdsForHydrate([...new Set(rowIds)])) {
+    const rows = await client.csvDashboardRow.findMany({
+      where: { id: { in: chunk }, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: {
+        id: true,
+        updatedAt: true,
+        rowNotes: { where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, orderBy: { updatedAt: 'desc' }, take: 1, select: { dueDate: true } },
+        orderSupplements: { where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, select: { plannedQuantity: true, plannedEndDate: true } },
+        productionScheduleProgress: { select: { isCompleted: true, updatedAt: true } },
+        productionScheduleExternalCompletion: { select: { isExternallyCompleted: true, updatedAt: true } },
+        orderSplits: { where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, select: { id: true, splitQuantity: true, dueDate: true, updatedAt: true }, orderBy: { splitNo: 'asc' } }
+      }
+    });
+    for (const detail of rows) details.set(detail.id, detail as RowDetail);
+  }
+  return details;
 }
 
 async function readRanks(client: DbClient, rowIds: readonly string[], splitIds: readonly string[], siteKey: string): Promise<GrindingPlanningBoardProjectionRanks> {
-  const rows: RankRow[] = rowIds.length === 0 ? [] : await client.productionScheduleOrderAssignment.findMany({
-    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: { in: [...new Set(rowIds)] }, OR: [{ siteKey }, { location: siteKey }] },
-    select: { csvDashboardRowId: true, resourceCd: true, orderNumber: true, updatedAt: true, siteKey: true, location: true }, orderBy: { updatedAt: 'desc' }
-  });
-  const splits: SplitRankRow[] = splitIds.length === 0 ? [] : await client.productionScheduleOrderSplitAssignment.findMany({
-    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, splitId: { in: [...new Set(splitIds)] }, OR: [{ siteKey }, { location: siteKey }] },
-    select: { splitId: true, resourceCd: true, orderNumber: true, updatedAt: true, siteKey: true, location: true }, orderBy: { updatedAt: 'desc' }
-  });
+  const rows: RankRow[] = [];
+  for (const chunk of chunkLeaderboardRowIdsForHydrate([...new Set(rowIds)])) {
+    rows.push(...await client.productionScheduleOrderAssignment.findMany({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: { in: chunk }, OR: [{ siteKey }, { location: siteKey }] },
+      select: { csvDashboardRowId: true, resourceCd: true, orderNumber: true, updatedAt: true, siteKey: true, location: true }, orderBy: { updatedAt: 'desc' }
+    }));
+  }
+  const splits: SplitRankRow[] = [];
+  for (const chunk of chunkLeaderboardRowIdsForHydrate([...new Set(splitIds)])) {
+    splits.push(...await client.productionScheduleOrderSplitAssignment.findMany({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, splitId: { in: chunk }, OR: [{ siteKey }, { location: siteKey }] },
+      select: { splitId: true, resourceCd: true, orderNumber: true, updatedAt: true, siteKey: true, location: true }, orderBy: { updatedAt: 'desc' }
+    }));
+  }
   const preferred = (candidate: { location: string; updatedAt: Date }, current: { location: string; updatedAt: Date }) => {
     const candidateRank = candidate.location === siteKey ? 0 : 1;
     const currentRank = current.location === siteKey ? 0 : 1;

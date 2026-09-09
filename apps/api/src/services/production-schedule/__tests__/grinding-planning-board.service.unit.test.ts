@@ -169,6 +169,58 @@ describe('grinding planning board service orchestration', () => {
     })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
   });
 
+  it('hydrates every row when the board has more than the PostgreSQL bind limit', async () => {
+    const rowCount = 32_768;
+    const largeRows = Array.from({ length: rowCount }, (_, index) => ({
+      ...mocks.sourceRow,
+      id: `source-row-${index + 1}`
+    }));
+    const detailIds: string[] = [];
+    const rankIds: string[] = [];
+    const detailBatchSizes: number[] = [];
+    const rankBatchSizes: number[] = [];
+
+    mocks.prisma.$queryRaw.mockImplementation(async (strings: readonly string[]) => (
+      strings.join(' ').includes('ProductionScheduleGrindingPlanningBoardState') ? [mocks.state] : largeRows
+    ));
+    mocks.prisma.csvDashboardRow.findMany.mockImplementation(async (args: { where: { id: { in: string[] } } }) => {
+      const ids = args.where.id.in;
+      detailBatchSizes.push(ids.length);
+      detailIds.push(...ids);
+      return ids.map((id) => ({
+        id,
+        updatedAt: mocks.sourceRow.updatedAt,
+        rowNotes: [{ dueDate: new Date('2026-09-20T00:00:00.000Z') }],
+        orderSupplements: [{ plannedQuantity: 1, plannedEndDate: new Date('2026-09-20T00:00:00.000Z') }],
+        productionScheduleProgress: { isCompleted: false, updatedAt: mocks.sourceRow.updatedAt },
+        productionScheduleExternalCompletion: { isExternallyCompleted: false, updatedAt: mocks.sourceRow.updatedAt },
+        orderSplits: []
+      }));
+    });
+    mocks.prisma.productionScheduleOrderAssignment.findMany.mockImplementation(async (args: { where: { csvDashboardRowId: { in: string[] } } }) => {
+      const ids = args.where.csvDashboardRowId.in;
+      rankBatchSizes.push(ids.length);
+      rankIds.push(...ids);
+      return [];
+    });
+
+    const response = await getGrindingPlanningBoard({
+      siteKey: 'site-a',
+      category: 'grinding',
+      view: 'seiban',
+      pageSize: 1,
+      snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 })
+    });
+
+    expect(response.items).toHaveLength(1);
+    expect(detailBatchSizes.every((size) => size <= 900)).toBe(true);
+    expect(rankBatchSizes.every((size) => size <= 900)).toBe(true);
+    expect(new Set(detailIds)).toHaveLength(rowCount);
+    expect(new Set(rankIds)).toHaveLength(rowCount);
+    expect(detailIds).toHaveLength(rowCount);
+    expect(rankIds).toHaveLength(rowCount);
+  });
+
   it('updates the shared seiban order only after validating its board revision', async () => {
     const secondSourceRow = {
       ...mocks.sourceRow,

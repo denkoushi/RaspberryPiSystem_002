@@ -363,8 +363,8 @@ export function useUpdateKioskGrindingPlanningBoardSeibanOrder() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardSeibanOrderRequest) => updateKioskGrindingPlanningBoardSeibanOrder(payload),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
     }
   });
 }
