@@ -55,6 +55,7 @@ export function KioskLayout() {
   const acknowledgedReadyRef = useRef<string | null>(null);
   const [noticeScheduledAt, setNoticeScheduledAt] = useState<{ runId: string; scheduledAt: string } | null>(null);
   const immersiveKioskLayout = usesKioskImmersiveLayout(location.pathname);
+  const planningBoardRoute = location.pathname.replace(/\/$/, '') === '/kiosk/production-schedule/planning-board';
   const headerReveal = useKioskBottomRightHeaderReveal(immersiveKioskLayout);
   const navTabOrder = normalizeKioskHeaderTabOrder(
     kioskConfig?.navTabOrder ?? DEFAULT_KIOSK_HEADER_TAB_ORDER
@@ -213,7 +214,9 @@ export function KioskLayout() {
     <div
       className={clsx(
         'flex flex-col bg-slate-800 text-white',
-        immersiveKioskLayout ? [VIEWPORT_HEIGHT_FULL, 'min-h-0'] : VIEWPORT_MIN_HEIGHT_FULL
+        immersiveKioskLayout
+          ? [VIEWPORT_HEIGHT_FULL, 'min-h-0', planningBoardRoute && 'kiosk-planning-board-route']
+          : VIEWPORT_MIN_HEIGHT_FULL
       )}
     >
       {/* 設定変更を監視してリダイレクト */}

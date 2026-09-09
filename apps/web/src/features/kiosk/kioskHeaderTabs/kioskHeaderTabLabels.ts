@@ -8,6 +8,7 @@ export const KIOSK_HEADER_TAB_LABELS: Record<KioskReorderableHeaderTabId, string
   production_schedule: '生産スケジュール',
   manual_order: '手動順番',
   leader_order_board: '順位ボード',
+  grinding_planning_board: '製番ボード',
   progress_overview: '進捗一覧',
   load_balancing: '負荷調整',
   purchase_order_lookup: '購買照会',

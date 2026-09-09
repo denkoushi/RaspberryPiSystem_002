@@ -1,6 +1,14 @@
 import { api } from '../http';
 
 import type { SelfInspectionStatus } from '../../features/part-measurement/types';
+import type {
+  GrindingPlanningBoardCategory,
+  GrindingPlanningBoardResponse,
+  GrindingPlanningBoardView,
+  GrindingPlanningBoardOverridesRequest,
+  GrindingPlanningBoardRankRequest,
+  GrindingPlanningBoardSeibanOrderRequest
+} from '@raspi-system/shared-types';
 export interface ProductionScheduleRow {
   id: string;
   /** `ProductionScheduleProgressOverviewSeibanItem.seibanJoinKey` と突合する専用キー。 */
@@ -732,6 +740,81 @@ export async function getKioskProductionSchedule(params?: {
   selfInspectionEligibleOnly?: boolean;
 }) {
   const { data } = await api.get<ProductionScheduleListResponse>('/kiosk/production-schedule', { params });
+  return data;
+}
+
+export type KioskGrindingPlanningBoardQuery = {
+  category: GrindingPlanningBoardCategory;
+  view: GrindingPlanningBoardView;
+  fseibans?: readonly string[];
+  cursor?: number;
+  pageSize?: number;
+  snapshotId?: string;
+  completionFilter?: 'all' | 'complete' | 'incomplete';
+};
+
+export async function getKioskGrindingPlanningBoard(params: KioskGrindingPlanningBoardQuery) {
+  const { data } = await api.get<GrindingPlanningBoardResponse>('/kiosk/production-schedule/grinding-planning-board', {
+    params: {
+      category: params.category,
+      view: params.view,
+      ...(params.fseibans && params.fseibans.length > 0 ? { fseibans: params.fseibans.join(',') } : {}),
+      ...(params.cursor == null ? {} : { cursor: params.cursor }),
+      ...(params.pageSize == null ? {} : { pageSize: params.pageSize }),
+      ...(params.snapshotId == null ? {} : { snapshotId: params.snapshotId }),
+      ...(params.completionFilter == null ? {} : { completionFilter: params.completionFilter })
+    }
+  });
+  return data;
+}
+
+export async function getKioskGrindingPlanningBoardSnapshot(params: KioskGrindingPlanningBoardQuery) {
+  const first = await getKioskGrindingPlanningBoard({ ...params, cursor: 0 });
+  const items = [...first.items];
+  const seenIds = new Set(first.items.map((item) => item.itemId));
+  let nextCursor = first.nextCursor;
+  let previousCursor = 0;
+  while (nextCursor != null) {
+    const cursor = Number(nextCursor);
+    if (!Number.isInteger(cursor) || cursor <= previousCursor) {
+      throw new Error('生産日程のページ情報が不正です。再読み込みしてください。');
+    }
+    const page = await getKioskGrindingPlanningBoard({ ...params, cursor, snapshotId: first.snapshotId });
+    if (page.sourceRevision !== first.sourceRevision || page.snapshotId !== first.snapshotId) {
+      throw new Error('表示中の生産日程が更新されました。再読み込みしてください。');
+    }
+    for (const item of page.items) {
+      if (seenIds.has(item.itemId)) throw new Error('生産日程のページに重複があります。再読み込みしてください。');
+      seenIds.add(item.itemId);
+      items.push(item);
+    }
+    previousCursor = cursor;
+    nextCursor = page.nextCursor;
+  }
+  return { ...first, items, nextCursor: null };
+}
+
+export async function updateKioskGrindingPlanningBoardOverrides(payload: GrindingPlanningBoardOverridesRequest) {
+  const { data } = await api.put<{ sourceRevision: string }>(
+    '/kiosk/production-schedule/grinding-planning-board/overrides',
+    payload
+  );
+  return data;
+}
+
+export async function updateKioskGrindingPlanningBoardRank(payload: GrindingPlanningBoardRankRequest) {
+  const { data } = await api.put<{ sourceRevision: string }>(
+    '/kiosk/production-schedule/grinding-planning-board/rank',
+    payload
+  );
+  return data;
+}
+
+export async function updateKioskGrindingPlanningBoardSeibanOrder(payload: GrindingPlanningBoardSeibanOrderRequest) {
+  const { data } = await api.put<{ sourceRevision: string; seibanOrder: string[] }>(
+    '/kiosk/production-schedule/grinding-planning-board/seiban-order',
+    payload
+  );
   return data;
 }
 

@@ -36,6 +36,12 @@ import {
   getKioskProductionScheduleSearchState,
   getKioskProductionScheduleSearchHistory,
   getKioskProductionScheduleHistoryProgress,
+  getKioskGrindingPlanningBoard,
+  getKioskGrindingPlanningBoardSnapshot,
+  updateKioskGrindingPlanningBoardOverrides,
+  updateKioskGrindingPlanningBoardRank,
+  updateKioskGrindingPlanningBoardSeibanOrder,
+  type KioskGrindingPlanningBoardQuery,
   postKioskProductionScheduleSeibanMachineNames,
   getProductionScheduleResourceCategorySettings,
   getProductionScheduleResourceCodeMappings,
@@ -87,6 +93,12 @@ import {
 } from '../client';
 
 import type { KioskProductionScheduleListCache } from '../../features/kiosk/productionSchedule/cache/kioskProductionScheduleListCache';
+import type {
+  GrindingPlanningBoardOverridesRequest,
+  GrindingPlanningBoardRankRequest,
+  GrindingPlanningBoardSeibanOrderRequest
+} from '@raspi-system/shared-types';
+
 
 export function useKioskProductionSchedule(
   params?: {
@@ -298,6 +310,62 @@ export function useKioskProductionScheduleHistoryProgress(options?: {
     queryFn: getKioskProductionScheduleHistoryProgress,
     refetchInterval: interval,
     enabled: options?.enabled ?? true
+  });
+}
+
+export function useKioskGrindingPlanningBoard(
+  params: KioskGrindingPlanningBoardQuery | undefined,
+  options?: { enabled?: boolean; refetchIntervalMs?: number | false }
+) {
+  return useQuery({
+    queryKey: ['kiosk-grinding-planning-board', params],
+    queryFn: () => getKioskGrindingPlanningBoard(params!),
+    enabled: (options?.enabled ?? true) && Boolean(params),
+    refetchInterval: options?.refetchIntervalMs ?? 30000,
+    placeholderData: (previousData) => previousData
+  });
+}
+
+export function useKioskGrindingPlanningBoardSnapshot(
+  params: KioskGrindingPlanningBoardQuery | undefined,
+  options?: { enabled?: boolean; refetchIntervalMs?: number | false; refetchOnWindowFocus?: boolean }
+) {
+  return useQuery({
+    queryKey: ['kiosk-grinding-planning-board', 'snapshot', params],
+    queryFn: () => getKioskGrindingPlanningBoardSnapshot(params!),
+    enabled: (options?.enabled ?? true) && Boolean(params),
+    refetchInterval: options?.refetchIntervalMs ?? 30000,
+    refetchOnWindowFocus: options?.refetchOnWindowFocus ?? true
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardOverrides() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardOverridesRequest) => updateKioskGrindingPlanningBoardOverrides(payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    }
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardRank() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardRankRequest) => updateKioskGrindingPlanningBoardRank(payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    }
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardSeibanOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardSeibanOrderRequest) => updateKioskGrindingPlanningBoardSeibanOrder(payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    }
   });
 }
 

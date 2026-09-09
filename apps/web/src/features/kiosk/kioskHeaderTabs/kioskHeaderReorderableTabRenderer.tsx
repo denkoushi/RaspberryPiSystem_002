@@ -102,6 +102,13 @@ export function renderKioskReorderableHeaderTab(
         isActive: pathname.startsWith('/kiosk/production-schedule/leader-order-board'),
         activeClassName: 'bg-violet-600 text-white'
       });
+    case 'grinding_planning_board':
+      return renderNavLinkTab({
+        to: '/kiosk/production-schedule/planning-board',
+        label: '製番ボード',
+        isActive: pathname.startsWith('/kiosk/production-schedule/planning-board'),
+        activeClassName: 'bg-emerald-600 text-white'
+      });
     case 'progress_overview':
       return renderNavLinkTab({
         to: '/kiosk/production-schedule/progress-overview',
