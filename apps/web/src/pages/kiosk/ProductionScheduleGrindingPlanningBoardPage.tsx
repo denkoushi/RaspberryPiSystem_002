@@ -82,6 +82,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [activeInitialized, setActiveInitialized] = useState(false);
   const [openInitialized, setOpenInitialized] = useState(false);
   const pendingOrderRef = useRef<string[] | null>(null);
+  const orderRequestPendingRef = useRef(false);
   const [editorSnapshot, setEditorSnapshot] = useState<{
     items: GrindingPlanningBoardItem[];
     sourceRevision: string;
@@ -96,6 +97,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [editorError, setEditorError] = useState<string | null>(null);
   const [editorConflict, setEditorConflict] = useState(false);
   const [orderConflict, setOrderConflict] = useState(false);
+  const [orderRegistrationError, setOrderRegistrationError] = useState<string | null>(null);
   const [rankConflict, setRankConflict] = useState(false);
   const [orderSaving, setOrderSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -281,27 +283,33 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
 
   const persistOrder = async (nextOrder: string[]): Promise<boolean> => {
     if (!data || nextOrder.length > 50 || allocation === 'original') return false;
-    if (pendingOrderRef.current !== null) return false;
+    if (orderRequestPendingRef.current) return false;
     const previous = registeredFseibans;
+    setOrderRegistrationError(null);
+    orderRequestPendingRef.current = true;
     pendingOrderRef.current = nextOrder;
     setOrderSaving(true);
     setOrderConflict(false);
     setRegisteredFseibans(nextOrder);
     try {
       const result = await updateOrder.mutateAsync({ sourceRevision, fseibans: nextOrder });
+      orderRequestPendingRef.current = false;
       pendingOrderRef.current = null;
       setOrderSaving(false);
       setRegisteredFseibans(result.seibanOrder);
       return true;
     } catch (error) {
+      orderRequestPendingRef.current = false;
       pendingOrderRef.current = null;
       setOrderSaving(false);
       setRegisteredFseibans(previous);
       if (isAxiosError(error) && error.response?.status === 409) {
         setOrderConflict(true);
+        setOrderRegistrationError('製番順が他端末で更新されています。最新状態を取得してから再登録してください。');
         setFeedback('製番順が更新されています。最新状態を取得してください。');
         return false;
       }
+      setOrderRegistrationError('製番登録を保存できませんでした。通信状態と入力値を確認してください。');
       handleError(error);
       return false;
     }
@@ -315,6 +323,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       return;
     }
     pendingOrderRef.current = null;
+    setOrderRegistrationError(null);
     setOrderSaving(false);
     setRegisteredFseibans(result.data.registeredFseibans);
     setOrderConflict(false);
@@ -328,12 +337,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       if (saved) setActiveFseibans((current) => new Set([...current].filter((value) => value !== fseiban)));
     });
   };
-  const addSeiban = (fseiban: string) => {
+  const addSeiban = async (fseiban: string): Promise<boolean> => {
     const value = fseiban.trim();
-    if (!value || registeredFseibans.includes(value) || registeredFseibans.length >= 50) return;
-    void persistOrder([value, ...registeredFseibans]).then((saved) => {
-      if (saved) setActiveFseibans((current) => new Set([value, ...current]));
-    });
+    if (!value || registeredFseibans.includes(value) || registeredFseibans.length >= 50) return false;
+    const saved = await persistOrder([value, ...registeredFseibans]);
+    if (saved) setActiveFseibans((current) => new Set([value, ...current]));
+    return saved;
   };
   const moveSeiban = (fseiban: string, direction: 'up' | 'down') => {
     const index = registeredFseibans.indexOf(fseiban);
@@ -479,8 +488,13 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         registeredFseibans={registeredFseibans}
         selectedFseibans={activeFseibans}
         machineNameBySeiban={machineNames}
-        onClose={() => setDrawerOpen(false)}
-        onRegister={allocation === 'original' ? () => undefined : addSeiban}
+        onClose={() => {
+          setDrawerOpen(false);
+          setOrderRegistrationError(null);
+        }}
+        registrationError={orderRegistrationError}
+        onRefreshOrder={orderConflict ? () => void refreshAfterOrderConflict() : undefined}
+        onRegister={allocation === 'original' ? async () => false : addSeiban}
         onRemove={allocation === 'original' ? () => undefined : removeSeiban}
         onToggle={(fseiban) => setActiveFseibans((current) => {
           const next = new Set(current);

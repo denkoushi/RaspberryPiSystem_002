@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { KioskKeyboardModal } from '../../../components/kiosk/KioskKeyboardModal';
+import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister';
 
 export type PlanningBoardSeibanDrawerProps = {
   isOpen: boolean;
@@ -9,8 +9,10 @@ export type PlanningBoardSeibanDrawerProps = {
   machineNameBySeiban?: ReadonlyMap<string, string | null>;
   orderReadOnly?: boolean;
   orderBusy?: boolean;
+  registrationError?: string | null;
+  onRefreshOrder?: () => void;
   onClose: () => void;
-  onRegister: (fseiban: string) => void;
+  onRegister: (fseiban: string) => Promise<boolean>;
   onRemove: (fseiban: string) => void;
   onToggle: (fseiban: string) => void;
   onClear: () => void;
@@ -29,15 +31,17 @@ export function PlanningBoardSeibanDrawer({
   onClear,
   onMove,
   orderReadOnly = false,
-  orderBusy = false
+  orderBusy = false,
+  registrationError: externalRegistrationError = null,
+  onRefreshOrder
 }: PlanningBoardSeibanDrawerProps) {
   const [query, setQuery] = useState('');
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
       setQuery('');
-      setKeyboardOpen(false);
+      setRegistrationError(null);
     }
   }, [isOpen]);
 
@@ -47,14 +51,6 @@ export function PlanningBoardSeibanDrawer({
       ? registeredFseibans
       : registeredFseibans.filter((fseiban) => fseiban.includes(normalized));
   }, [query, registeredFseibans]);
-
-  const register = () => {
-    if (orderReadOnly || orderBusy) return;
-    const trimmed = query.trim();
-    if (!trimmed) return;
-    onRegister(trimmed);
-    setQuery('');
-  };
 
   if (!isOpen) return null;
 
@@ -81,35 +77,32 @@ export function PlanningBoardSeibanDrawer({
           </button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-          <div className="flex gap-1.5">
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') register();
-              }}
-              placeholder="例：26-1041"
-              aria-label="製番を検索"
-              className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 text-sm text-white outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20"
-            />
-            <button
-              type="button"
-              className="min-h-11 shrink-0 rounded-md bg-emerald-400 px-3 text-xs font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
-              disabled={orderDisabled}
-              onClick={register}
-            >
-              登録
-            </button>
-          </div>
-          <button
-            type="button"
-            className="mt-2 min-h-11 w-full rounded-md border border-slate-700 bg-slate-900 text-xs font-semibold text-slate-300 hover:border-emerald-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
-            aria-expanded={keyboardOpen}
-            onClick={() => setKeyboardOpen((open) => !open)}
-          >
-            {keyboardOpen ? 'キーボードを隠す' : 'キーボードを表示'}
-          </button>
+          <SeibanSearchRegister
+            value={query}
+            onChange={(value) => {
+              setQuery(value);
+              setRegistrationError(null);
+            }}
+            onRegister={async (value) => {
+              const saved = await onRegister(value);
+              if (!saved) setRegistrationError('製番を登録できませんでした。入力値・重複・登録上限を確認してください。');
+              return saved;
+            }}
+            inputPlaceholder="例：26-1041"
+            inputType="search"
+            inputDisabled={orderReadOnly}
+            registerDisabled={orderDisabled}
+            clearOnSuccess
+            error={externalRegistrationError || registrationError ? (
+              <div className="mt-1 flex items-start justify-between gap-2 text-xs text-rose-300" role="alert">
+                <span>{externalRegistrationError || registrationError}</span>
+                {onRefreshOrder ? <button type="button" className="min-h-9 shrink-0 rounded border border-rose-300/50 px-2 text-rose-200 hover:bg-rose-950/60" onClick={onRefreshOrder}>最新状態を取得</button> : null}
+              </div>
+            ) : null}
+            inputClassName="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 text-sm text-white outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20"
+            keyboardButtonClassName="min-h-11 shrink-0 rounded-md border border-slate-700 bg-slate-900 px-2 text-xs font-semibold text-slate-300 hover:border-emerald-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+            registerButtonClassName="min-h-11 shrink-0 rounded-md bg-emerald-400 px-3 text-xs font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+          />
           <div className="mt-4 flex items-center justify-between gap-2">
             <span className="text-xs font-semibold text-slate-300">登録製番（OR）</span>
             <button
@@ -174,16 +167,6 @@ export function PlanningBoardSeibanDrawer({
           {visibleFseibans.length === 0 ? <p className="mt-4 text-xs text-slate-500">登録製番がありません。</p> : null}
         </div>
       </aside>
-      <KioskKeyboardModal
-        isOpen={keyboardOpen}
-        value={query}
-        onChange={setQuery}
-        onCancel={() => setKeyboardOpen(false)}
-        onConfirm={() => {
-          setKeyboardOpen(false);
-          register();
-        }}
-      />
     </>
   );
 }

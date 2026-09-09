@@ -10,6 +10,7 @@ import {
   kioskMetaTextClassName,
   kioskSelectClassName
 } from '../kioskTheme';
+import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister';
 
 import { LeaderBoardDueAssistPanel } from './LeaderBoardDueAssistPanel';
 import { LeaderBoardSeibanRankPicker } from './LeaderBoardSeibanRankPicker';
@@ -35,7 +36,6 @@ export type LeaderBoardLeftToolStackProps = {
   setSelectedResourceCd: (cd: string | null) => void;
   deviceCards: LeaderOrderBoardDeviceCard[];
   dueAssist: LeaderBoardDueAssistHandle;
-  openSearchKeyboard: () => void;
   searchConditions: {
     showGrindingResources: boolean;
     showCuttingResources: boolean;
@@ -86,7 +86,6 @@ export function LeaderBoardLeftToolStack({
   setSelectedResourceCd,
   deviceCards,
   dueAssist,
-  openSearchKeyboard,
   searchConditions,
   toggleGrinding,
   toggleCutting,
@@ -262,38 +261,17 @@ export function LeaderBoardLeftToolStack({
               {seibanEvalEnabled ? 'ON' : 'OFF'}
             </button>
           </div>
-          <div className="flex shrink-0 gap-1.5">
-            <input
-              value={dueAssist.searchInput}
-              disabled={seibanControlsLocked}
-              onChange={(event) => dueAssist.setSearchInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  void dueAssist.applySearch();
-                }
-              }}
-              placeholder="製番を検索"
-              className={clsx(kioskInputClassName, 'min-w-0 flex-1 text-xs')}
-            />
-            <button
-              type="button"
-              onClick={openSearchKeyboard}
-              disabled={seibanControlsLocked}
-              className={clsx(kioskButtonSecondaryClassName, 'px-2 text-xs')}
-              aria-label="キーボードを開く"
-            >
-              ⌨
-            </button>
-            <button
-              type="button"
-              onClick={() => void dueAssist.applySearch()}
-              disabled={seibanControlsLocked || dueAssist.historyWriting}
-              className={clsx(kioskButtonPrimaryClassName, 'px-2 text-xs')}
-            >
-              登録
-            </button>
-          </div>
+          <SeibanSearchRegister
+            value={dueAssist.searchInput}
+            onChange={dueAssist.setSearchInput}
+            onRegister={() => dueAssist.applySearch().then(() => undefined)}
+            inputPlaceholder="製番を検索"
+            inputDisabled={seibanControlsLocked}
+            registerDisabled={seibanControlsLocked || dueAssist.historyWriting}
+            inputClassName={clsx(kioskInputClassName, 'min-w-0 flex-1 text-xs')}
+            keyboardButtonClassName={clsx(kioskButtonSecondaryClassName, 'px-2 text-xs')}
+            registerButtonClassName={clsx(kioskButtonPrimaryClassName, 'px-2 text-xs')}
+          />
           <div
             className={clsx(
               'mt-2 grid min-h-0 flex-1 gap-2 content-start overflow-y-auto overflow-x-hidden pr-0.5',

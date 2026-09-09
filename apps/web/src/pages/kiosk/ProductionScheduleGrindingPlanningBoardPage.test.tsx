@@ -136,7 +136,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(within(drawer).getByRole('button', { name: '製番26-1042を上へ' }));
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('製番順が更新されています'));
     expect(screen.getByTestId('planning-board-seiban-26-1042')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '最新状態を取得' }));
+    fireEvent.click(within(screen.getByRole('status')).getByRole('button', { name: '最新状態を取得' }));
     await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
     expect(screen.getByRole('status')).toHaveTextContent('最新状態を取得しました');
   });
@@ -158,6 +158,180 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     await waitFor(() => expect(moveUp).toBeDisabled());
     resolveOrder?.({ sourceRevision: 'board-2', seibanOrder: ['26-1042', '26-1041'] });
     await waitFor(() => expect(moveUp).not.toBeDisabled());
+  });
+
+  it('製番登録成功後に古いsnapshotで追加製番を消さない', async () => {
+    const updated = fixture();
+    updated.sourceRevision = 'board-2';
+    updated.registeredFseibans = ['26-1043', '26-1041', '26-1042'];
+    updated.seibanOrder = updated.registeredFseibans;
+    mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isError: false, refetch: mocks.refetch });
+    mocks.order.mockImplementationOnce(async () => {
+      mocks.snapshot.mockReturnValue({ data: updated, isLoading: false, isError: false, refetch: mocks.refetch });
+      return { sourceRevision: 'board-2', seibanOrder: updated.registeredFseibans };
+    });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    const input = within(drawer).getByRole('searchbox', { name: '製番を検索' });
+    fireEvent.change(input, { target: { value: '26-1043' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: '登録' }));
+
+    await waitFor(() => expect(mocks.order).toHaveBeenCalledWith({
+      sourceRevision: 'board-1',
+      fseibans: ['26-1043', '26-1041', '26-1042']
+    }));
+    await waitFor(() => expect(within(drawer).getAllByRole('button', { name: /26-1043/ }).length).toBeGreaterThan(0));
+  });
+
+  it('登録成功レスポンスのrevisionで連続登録する', async () => {
+    let current = fixture();
+    mocks.snapshot.mockImplementation(() => ({ data: current, isLoading: false, isError: false, refetch: mocks.refetch }));
+    mocks.order
+      .mockImplementationOnce(async () => {
+        current = fixture();
+        current.sourceRevision = 'board-2';
+        current.registeredFseibans = ['26-1043', '26-1041', '26-1042'];
+        current.seibanOrder = current.registeredFseibans;
+        return { sourceRevision: 'board-2', seibanOrder: current.registeredFseibans };
+      })
+      .mockImplementationOnce(async () => {
+        current = fixture();
+        current.sourceRevision = 'board-3';
+        current.registeredFseibans = ['26-1044', '26-1043', '26-1041', '26-1042'];
+        current.seibanOrder = current.registeredFseibans;
+        return { sourceRevision: 'board-3', seibanOrder: current.registeredFseibans };
+      });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    const input = within(drawer).getByRole('searchbox', { name: '製番を検索' });
+    fireEvent.change(input, { target: { value: '26-1043' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: '登録' }));
+    await waitFor(() => expect(mocks.order).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(input, { target: { value: '26-1044' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: '登録' }));
+    await waitFor(() => expect(mocks.order).toHaveBeenCalledTimes(2));
+    expect(mocks.order.mock.calls[1]?.[0]).toMatchObject({ sourceRevision: 'board-2', fseibans: ['26-1044', '26-1043', '26-1041', '26-1042'] });
+  });
+
+  it('登録中に次の製番を入力しても成功処理で消さない', async () => {
+    let resolveOrder: ((value: { sourceRevision: string; seibanOrder: string[] }) => void) | undefined;
+    mocks.order.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveOrder = resolve;
+    }));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    const input = within(drawer).getByRole('searchbox', { name: '製番を検索' });
+    fireEvent.change(input, { target: { value: '26-1043' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: '登録' }));
+    await waitFor(() => expect(mocks.order).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(input, { target: { value: '26-1044' } });
+    resolveOrder?.({ sourceRevision: 'board-2', seibanOrder: ['26-1043', '26-1041', '26-1042'] });
+    await waitFor(() => expect(input).toHaveValue('26-1044'));
+  });
+
+  it('登録成功後に他端末の異なる順序を含むsnapshotを自動反映する', async () => {
+    let current = fixture();
+    mocks.snapshot.mockImplementation(() => ({ data: current, isLoading: false, isError: false, refetch: mocks.refetch }));
+    mocks.order.mockImplementationOnce(async () => {
+      current = fixture();
+      current.sourceRevision = 'board-2';
+      current.registeredFseibans = ['26-1043', '26-1041', '26-1042'];
+      current.seibanOrder = current.registeredFseibans;
+      return { sourceRevision: 'board-2', seibanOrder: current.registeredFseibans };
+    });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    const input = within(drawer).getByRole('searchbox', { name: '製番を検索' });
+    fireEvent.change(input, { target: { value: '26-1043' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: '登録' }));
+    await waitFor(() => expect(within(drawer).getAllByRole('button', { name: /26-1043/ }).length).toBeGreaterThan(0));
+
+    current = fixture();
+    current.sourceRevision = 'board-3';
+    current.registeredFseibans = ['26-1050', '26-1041'];
+    current.seibanOrder = current.registeredFseibans;
+    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+
+    await waitFor(() => expect(within(drawer).getAllByRole('button', { name: /26-1050/ }).length).toBeGreaterThan(0));
+    expect(within(drawer).queryAllByRole('button', { name: /26-1043/ })).toHaveLength(0);
+  });
+
+  it('409後の最新snapshot revisionを次の登録へ使う', async () => {
+    const refreshed = fixture();
+    refreshed.sourceRevision = 'board-3';
+    refreshed.registeredFseibans = ['26-1050', '26-1041'];
+    refreshed.seibanOrder = ['26-1050', '26-1041'];
+    mocks.order
+      .mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } })
+      .mockResolvedValueOnce({ sourceRevision: 'board-4', seibanOrder: ['26-1051', '26-1050', '26-1041'] });
+    mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isError: false, refetch: mocks.refetch });
+    mocks.refetch.mockImplementationOnce(async () => {
+      mocks.snapshot.mockReturnValue({ data: refreshed, isLoading: false, isError: false, refetch: mocks.refetch });
+      return { data: refreshed, isError: false };
+    });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    const input = within(drawer).getByRole('searchbox', { name: '製番を検索' });
+    fireEvent.change(input, { target: { value: '26-1043' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: '登録' }));
+    await waitFor(() => expect(within(drawer).getByRole('alert')).toHaveTextContent('他端末で更新'));
+    fireEvent.click(within(drawer).getByRole('button', { name: '最新状態を取得' }));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('最新状態を取得しました'));
+
+    fireEvent.change(input, { target: { value: '26-1051' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: '登録' }));
+    await waitFor(() => expect(mocks.order).toHaveBeenCalledTimes(2));
+    expect(mocks.order.mock.calls[1]?.[0]).toMatchObject({ sourceRevision: 'board-3' });
+  });
+
+  it('ソフトキーの値はモーダルと背面の登録入力へ反映する', () => {
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    const input = within(drawer).getByRole('searchbox', { name: '製番を検索' });
+    fireEvent.click(within(drawer).getByRole('button', { name: 'キーボードを開く' }));
+    const keyboard = screen.getByRole('dialog', { name: 'キーボード入力' });
+    fireEvent.click(within(keyboard).getByRole('button', { name: '2', exact: true }));
+    fireEvent.click(within(keyboard).getByRole('button', { name: '6', exact: true }));
+    expect(within(keyboard).getByText('26')).toBeInTheDocument();
+    fireEvent.click(within(keyboard).getByRole('button', { name: 'Backspace' }));
+    expect(within(keyboard).getAllByText('2')[0]).toBeInTheDocument();
+    fireEvent.click(within(keyboard).getByRole('button', { name: 'Cancel' }));
+    expect(input).toHaveValue('');
+
+    fireEvent.click(within(drawer).getByRole('button', { name: 'キーボードを開く' }));
+    const reopenedKeyboard = screen.getByRole('dialog', { name: 'キーボード入力' });
+    fireEvent.click(within(reopenedKeyboard).getByRole('button', { name: '2', exact: true }));
+    fireEvent.click(within(reopenedKeyboard).getByRole('button', { name: '6', exact: true }));
+    fireEvent.click(within(reopenedKeyboard).getByRole('button', { name: 'OK' }));
+    expect(input).toHaveValue('26');
+  });
+
+  it('製番登録に失敗した場合は入力値と近傍エラーを保持する', async () => {
+    mocks.order.mockRejectedValueOnce(new Error('registration failed'));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    const input = within(drawer).getByRole('searchbox', { name: '製番を検索' });
+    fireEvent.change(input, { target: { value: '26-1043' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: '登録' }));
+
+    await waitFor(() => expect(within(drawer).getByRole('alert')).toHaveTextContent('製番登録を保存できませんでした'));
+    expect(input).toHaveValue('26-1043');
   });
 
   it('順位409時も最新状態を明示取得できる', async () => {

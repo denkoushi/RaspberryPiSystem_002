@@ -11,7 +11,6 @@ import {
   useKioskProductionScheduleResources
 } from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
-import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import { applyLeaderBoardDisplayRequiredMinutesToGrouped } from '../../features/kiosk/leaderOrderBoard/applyLeaderBoardDisplayRequiredMinutes';
@@ -407,18 +406,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     setLeftStackWidthPx(Math.round(el.getBoundingClientRect().width));
     return () => ro.disconnect();
   }, [dueAssist.isDetailOpen]);
-  const [isSearchKeyboardOpen, setIsSearchKeyboardOpen] = useState(false);
-  const [searchKeyboardValue, setSearchKeyboardValue] = useState('');
-
-  const openSearchKeyboard = () => {
-    setSearchKeyboardValue(dueAssist.searchInput);
-    setIsSearchKeyboardOpen(true);
-  };
-  const confirmSearchKeyboard = () => {
-    dueAssist.setSearchInput(searchKeyboardValue);
-    setIsSearchKeyboardOpen(false);
-  };
-
   const isDueAssistDetailOpen = dueAssist.isDetailOpen;
   const closeDueAssistDetail = dueAssist.closeDetail;
   useEffect(() => {
@@ -629,7 +616,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           setSelectedResourceCd={setSelectedResourceCd}
           deviceCards={deviceCards}
           dueAssist={dueAssist}
-          openSearchKeyboard={openSearchKeyboard}
           searchConditions={searchConditions}
           toggleGrinding={toggleGrinding}
           toggleCutting={toggleCutting}
@@ -794,13 +780,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         onCancel={dueAssist.closeDatePicker}
         onCommit={(next) => void dueAssist.commitDueDate(next)}
         overlayZIndex={KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK}
-      />
-      <KioskKeyboardModal
-        isOpen={isSearchKeyboardOpen}
-        value={searchKeyboardValue}
-        onChange={setSearchKeyboardValue}
-        onCancel={() => setIsSearchKeyboardOpen(false)}
-        onConfirm={confirmSearchKeyboard}
       />
     </div>
   );
