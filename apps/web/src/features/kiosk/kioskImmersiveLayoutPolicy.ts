@@ -7,6 +7,9 @@ const KIOSK_PROGRESS_OVERVIEW_PATH_PREFIX = '/kiosk/production-schedule/progress
 /** 負荷調整（山崩し支援）専用画面 */
 const KIOSK_LOAD_BALANCING_PATH_PREFIX = '/kiosk/production-schedule/load-balancing';
 
+/** 製番別の資源・納期割当ボード */
+const KIOSK_GRINDING_PLANNING_BOARD_PATH_PREFIX = '/kiosk/production-schedule/planning-board';
+
 /**
  * pathname 末尾のスラッシュを除いたキオスクパス（空は `/`）。
  */
@@ -61,6 +64,7 @@ export function usesKioskImmersiveLayout(pathname: string): boolean {
   if (p.startsWith(KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_PROGRESS_OVERVIEW_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_LOAD_BALANCING_PATH_PREFIX)) return true;
+  if (p.startsWith(KIOSK_GRINDING_PLANNING_BOARD_PATH_PREFIX)) return true;
   if (p === KIOSK_PART_MEASUREMENT_PREFIX || p.startsWith(`${KIOSK_PART_MEASUREMENT_PREFIX}/`)) return true;
   if (p.startsWith(KIOSK_INSPECTION_DRAWING_DEV_PREVIEW_PREFIX)) return true;
   if (p.startsWith(KIOSK_ASSEMBLY_DEV_PREVIEW_PREFIX)) return true;

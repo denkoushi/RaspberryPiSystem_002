@@ -28,6 +28,7 @@ describe('usesKioskImmersiveLayout', () => {
     ['/kiosk/production-schedule/progress-overview/'],
     ['/kiosk/production-schedule/load-balancing'],
     ['/kiosk/production-schedule/load-balancing/'],
+    ['/kiosk/production-schedule/planning-board'],
     ['/kiosk/documents'],
     ['/kiosk/documents/'],
     ['/kiosk/assembly'],

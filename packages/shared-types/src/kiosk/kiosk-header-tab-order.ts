@@ -14,6 +14,7 @@ export const KIOSK_REORDERABLE_HEADER_TAB_IDS = [
   'production_schedule',
   'manual_order',
   'leader_order_board',
+  'grinding_planning_board',
   'progress_overview',
   'load_balancing',
   'purchase_order_lookup',

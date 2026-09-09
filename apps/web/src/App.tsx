@@ -63,6 +63,7 @@ import { KioskSelfInspectionRecordApprovalPage } from './pages/kiosk/KioskSelfIn
 import { MobilePlacementPage } from './pages/kiosk/MobilePlacementPage';
 import { MobilePlacementPartSearchPage } from './pages/kiosk/MobilePlacementPartSearchPage';
 import { ProductionScheduleDueManagementPage } from './pages/kiosk/ProductionScheduleDueManagementPage';
+import { ProductionScheduleGrindingPlanningBoardPage } from './pages/kiosk/ProductionScheduleGrindingPlanningBoardPage';
 import { ProductionScheduleLeaderOrderBoardPage } from './pages/kiosk/ProductionScheduleLeaderOrderBoardPage';
 import { ProductionScheduleLoadBalancingPage } from './pages/kiosk/ProductionScheduleLoadBalancingPage';
 import { ProductionScheduleManualOrderPage } from './pages/kiosk/ProductionScheduleManualOrderPage';
@@ -196,6 +197,10 @@ function App() {
             element={<ProductionScheduleLoadBalancingPage />}
           />
           <Route path="/kiosk/production-schedule/due-management" element={<ProductionScheduleDueManagementPage />} />
+          <Route
+            path="/kiosk/production-schedule/planning-board"
+            element={<ProductionScheduleGrindingPlanningBoardPage />}
+          />
           <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
           <Route path="/kiosk/mobile-placement/part-search" element={<MobilePlacementPartSearchPage />} />
           <Route path="/kiosk/mobile-placement/shelf-master" element={<KioskMobileShelfMasterPage />} />

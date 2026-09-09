@@ -1119,6 +1119,8 @@ model CsvDashboard {
   updatedAt              DateTime                 @updatedAt
   ingestRuns             CsvDashboardIngestRun[]
   rows                   CsvDashboardRow[]
+  grindingPlanningBoardStates    ProductionScheduleGrindingPlanningBoardState[]
+  grindingPlanningBoardOverrides ProductionScheduleGrindingPlanningBoardOverride[]
 
   @@index([enabled])
   @@index([gmailScheduleId])
@@ -1539,6 +1541,42 @@ model ProductionScheduleManualOrderResourceAssignment {
   @@unique([csvDashboardId, deviceScopeKey, priority], map: "ps_mo_res_assign_device_priority_key")
   @@unique([csvDashboardId, deviceScopeKey, resourceCd], map: "ps_mo_res_assign_device_resource_cd_key")
   @@index([csvDashboardId, siteKey])
+}
+
+/// キオスク研削順位ボード専用のサイト共有状態。既存順位ボードの順位・割当は変更しない。
+model ProductionScheduleGrindingPlanningBoardState {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  siteKey        String   @db.VarChar(100)
+  version        Int      @default(1)
+  seibanOrder    Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
+
+  @@unique([csvDashboardId, siteKey], map: "PSGrindingPlanningState_dashboard_site_key")
+  @@index([csvDashboardId, updatedAt], map: "PSGrindingPlanningState_dashboard_updated_idx")
+}
+
+/// 研削順位ボードの行/分割片 override。元CSV・元順位は保存せず、常に正本から再解決する。
+model ProductionScheduleGrindingPlanningBoardOverride {
+  id                String    @id @default(uuid())
+  csvDashboardId    String
+  siteKey           String    @db.VarChar(100)
+  itemKey           String    @db.VarChar(1000)
+  overrideResourceCd String?  @db.VarChar(20)
+  overrideDueDate   DateTime? @db.Date
+  alternateRank     Int?
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
+
+  @@unique([csvDashboardId, siteKey, itemKey], map: "PSGrindingPlanningOverride_dashboard_site_item_key")
+  @@index([csvDashboardId, siteKey], map: "PSGrindingPlanningOverride_dashboard_site_idx")
+  @@index([csvDashboardId, siteKey, overrideResourceCd], map: "PSGrindingPlanningOverride_resource_idx")
 }
 
 model ProductionScheduleProgress {
