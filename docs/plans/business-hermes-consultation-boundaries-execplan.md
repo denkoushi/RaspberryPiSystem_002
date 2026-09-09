@@ -14,7 +14,10 @@ Hermes consultation responses currently make one service responsible for upstrea
 - [x] (2026-09-09 10:24 JST) Reduced `SOUL.md.j2`, `CONTEXT.md.j2`, and `SKILL.md.j2` to their distinct responsibilities. JSON response keys, evidence display rules, record view rules, and confirmation shape remain in the API instruction contract only.
 - [x] (2026-09-09 10:19 JST) Completed local API/Web tests, builds, targeted lint, and diff checks; exact commands and results are recorded in the Validation section below.
 - [x] (2026-09-09 10:26 JST) Applied supervisor feedback: kept the source-ID meaning contrast and scan correction rule in their owning profiles, reduced MCP descriptions to I/O semantics, expanded the API-only display/state contract, and reran the focused API suite with 34 passing tests.
-- [ ] Supervisor review remains pending, followed by the approved existing-runner real LLM comparison, CI/PR/main integration, and standard Pi5-only deployment and device confirmation.
+- [x] (2026-09-09) Recorded the supervisor synthetic conversation finding: after correcting to PN-A dimensions, the response returned a PN-B record from a broader dimension search and described it as PN-A. Restored the missing per-record target-field check in the Skill search procedure; no code guard or classifier change was made.
+- [x] (2026-09-09) CI run `34299972180` passed classification, repo-policy, API, Web, DB, deploy-contract, container-runtime, kiosk, workspace-quality, and ci-required jobs; PR #1359 remains open.
+- [x] (2026-09-09) Supervisor recheck did not reproduce the cross-target attribution: the initial PN-B answer was correct in 15.844s, the PN-A dimension correction returned zero matching records with `recordIds=[]` in 84.858s, and an independent case returned seven PN-B records in 58.828s; isolation held.
+- [ ] Supervisor acceptance remains pending: the recheck made zero `skill_view` calls, and duplicate display-selection instructions and latency evaluation remain unresolved before approved main integration and standard Pi5-only deployment/device confirmation.
 
 ## Surprises & Discoveries
 
@@ -32,7 +35,7 @@ Hermes consultation responses currently make one service responsible for upstrea
 
 ## Outcomes & Retrospective
 
-The implementation now has one-way dependencies from the consultation service to the two focused modules, with the response parser using the evidence module only for evidence ID rules. The API and Web behavior covered by the existing focused tests remains green, and the official profile no longer repeats the API display protocol. Real LLM behavior, CI, deployment, and merged-main verification remain open work for the supervisor.
+The implementation now has one-way dependencies from the consultation service to the two focused modules, with the response parser using the evidence module only for evidence ID rules. The API, Web, and CI structural checks remain green. The supervised recheck preserved target attribution and case isolation, but did not load the Skill body and leaves duplicate display-selection instructions and latency evaluation unresolved; overall acceptance is therefore incomplete.
 
 ## Context and Orientation
 
@@ -54,11 +57,11 @@ Run from `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-consu
 
 Review the changed service and the two new modules. Confirm that `MAX_HISTORY` remains 40, `MAX_EVIDENCE` remains 24, the assistant message is saved before the consultation update, and all existing failure codes remain in the service. Review the official templates for the absence of JSON display keys and confirmation examples outside the API instruction.
 
-Run the focused checks listed in the Validation section below. This implementation stage ends with local validation and supervisor review; the next approved stage uses the existing runner for real LLM comparison, followed by CI/PR/main integration and standard Pi5-only deployment review. Leave the worktree uncommitted until that review selects the integration lifecycle.
+Run the focused checks listed in the Validation section below. The implementation stage has local and CI evidence, while overall semantic acceptance still requires the official Skill body read and resolution of display-selection and latency findings. Keep any follow-up correction scoped to those findings until supervisor acceptance selects the integration lifecycle.
 
 ## Validation and Acceptance
 
-Acceptance for this worktree is a successful API consultation test run with 34 passing tests, including stream parsing, case-state preservation, evidence trust, ID rejection, record projection, cancellation, and runtime release; a successful Hermes panel test run with 12 passing tests; successful API and Web builds; successful targeted lint; and a clean `git diff --check`. The exact commands and results are recorded in this plan so no additional validation artifact is required.
+Local validation evidence for this worktree is a successful API consultation test run with 34 passing tests, including stream parsing, case-state preservation, evidence trust, ID rejection, record projection, cancellation, and runtime release; a successful Hermes panel test run with 12 passing tests; successful API and Web builds; successful targeted lint; and a clean `git diff --check`. These checks do not establish overall semantic acceptance.
 
 The successful local commands were:
 
@@ -77,7 +80,9 @@ The successful local commands were:
     git diff --check
     Result: PASS.
 
-The implementation stage is locally validated. Real LLM comparison, CI/PR/main integration, and standard Pi5-only deployment and device confirmation are subsequent approved stages and remain pending; this branch has no commit or push yet.
+The original implementation commit and the Skill correction are pushed in PR #1359; the current follow-up plan update is intentionally uncommitted and unpushed pending supervisor confirmation. Local test/build/lint and selected CI evidence remain green, but the real-conversation result is not a full acceptance because Skill loading, display-selection duplication, and latency remain unresolved.
+
+The first supervisor synthetic comparison found a semantic failure: the PN-A dimension correction produced zero PN-A matches for the combined condition, but the response presented the broader-search PN-B record `nonconformity:00000000-0000-4000-8000-000000000101` as PN-A. The follow-up recheck did not reproduce that error: PN-B, corrected PN-A with zero matches and `recordIds=[]`, and an independent PN-B case were attributed correctly. That recheck still made zero `skill_view` calls, so Skill application, display-selection duplication, and latency remain open acceptance items.
 
 ## Idempotence and Recovery
 
@@ -93,4 +98,4 @@ The service imports `asConfirmation`, `asStrings`, `cleanMessage`, `evidenceObje
 
 The public API types in the consultation service remain available to routes, and the Web DTO fields `displayFields`, `recordIds`, and `recordView` are optional additions. Database schema, route paths, response status values, error reason codes, history ordering, and persistence semantics remain unchanged.
 
-Revision note (2026-09-09): after supervisor review, removed duplicated record/display/confirmation rules from SOUL, Context, and Skill; retained domain field/source meaning in Context and search/reuse/stop procedure in Skill; added this living plan and kept validation evidence in the plan rather than adding a separate log artifact.
+Revision note (2026-09-09): after supervisor review, removed duplicated record/display/confirmation rules from SOUL, Context, and Skill; retained domain field/source meaning in Context and search/reuse/stop procedure in Skill; added this living plan and kept validation evidence in the plan rather than adding a separate log artifact. A later synthetic correction run exposed cross-target attribution, so the Skill's existing search-result rule now explicitly requires per-record target-field matching and preserves zero-match results.
