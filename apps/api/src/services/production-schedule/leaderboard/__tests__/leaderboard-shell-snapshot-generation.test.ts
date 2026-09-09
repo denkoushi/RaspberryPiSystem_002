@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../../lib/prisma.js', () => ({
-  prisma: {
-    $queryRaw: vi.fn()
-  }
+  prisma: (() => {
+    const queryRaw = vi.fn();
+    const executeRaw = vi.fn();
+    const transaction = vi.fn(async (callback: (tx: unknown) => unknown) =>
+      callback({ $queryRaw: queryRaw, $executeRaw: executeRaw })
+    );
+    return { $queryRaw: queryRaw, $executeRaw: executeRaw, $transaction: transaction };
+  })()
 }));
 
 import { prisma } from '../../../../lib/prisma.js';
@@ -54,6 +59,7 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
     expect(token).not.toHaveProperty('fkojunstStatusMailRowsCount');
     expect(token).not.toHaveProperty('fkojunstStatusMailRowsLatestCreatedAt');
     expect(token).not.toHaveProperty('fkojunstStatusMailRowsLatestUpdatedAt');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('includes split row/assignment counts so deletions invalidate cached snapshots', async () => {
@@ -95,6 +101,11 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
     expect(token.orderSplitCount).toBe('2');
     expect(token.orderSplitAssignmentCount).toBe('3');
     expect(token.orderSplitUpdatedAt).toBe('2026-06-19T00:01:00.000Z');
+    expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything());
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      maxWait: 15_000,
+      timeout: 60_000
+    });
   });
 
   it('invalidates when a CSV row changes in place without changing count or createdAt', async () => {

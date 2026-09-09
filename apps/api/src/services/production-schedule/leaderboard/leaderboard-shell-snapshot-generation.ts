@@ -6,6 +6,11 @@ import {
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID
 } from '../constants.js';
 
+const LEADERBOARD_GENERATION_TRANSACTION_OPTIONS = Object.freeze({
+  maxWait: 15_000,
+  timeout: 60_000
+});
+
 type SnapshotMainAndAuxGenerationRow = {
   rowsCount: bigint;
   rowsLatestCreatedAt: Date | null;
@@ -123,15 +128,9 @@ export async function readLeaderboardShellSnapshotGenerationTokenDetails(
 ): Promise<LeaderboardShellSnapshotGenerationTokenDetails> {
   const mainRows = await prisma.$queryRaw<SnapshotMainAndAuxGenerationRow[]>(Prisma.sql`
     SELECT
-      (SELECT COUNT(*)::bigint
-       FROM "CsvDashboardRow"
-       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "rowsCount",
-      (SELECT MAX("createdAt")
-       FROM "CsvDashboardRow"
-       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "rowsLatestCreatedAt",
-      (SELECT MAX(COALESCE("updatedAt", "createdAt"))
-       FROM "CsvDashboardRow"
-       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "rowsLatestUpdatedAt",
+      "mainRowStats"."rowsCount",
+      "mainRowStats"."rowsLatestCreatedAt",
+      "mainRowStats"."rowsLatestUpdatedAt",
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleOrderAssignment"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderAssignmentUpdatedAt",
@@ -180,30 +179,41 @@ export async function readLeaderboardShellSnapshotGenerationTokenDetails(
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleResourceCodeMapping"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "resourceCodeMappingUpdatedAt"
+    FROM (
+      SELECT
+        COUNT(*)::bigint AS "rowsCount",
+        MAX("createdAt") AS "rowsLatestCreatedAt",
+        MAX(COALESCE("updatedAt", "createdAt")) AS "rowsLatestUpdatedAt"
+      FROM "CsvDashboardRow"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    ) AS "mainRowStats"
   `);
 
   const explicitMailRevision = options?.fkojunstStatusMailRowsRevision?.trim();
   const mailRows =
     explicitMailRevision != null && explicitMailRevision.length > 0
       ? []
-      : await prisma.$queryRaw<SnapshotMailGenerationRow[]>(Prisma.sql`
-          SELECT
-            COUNT(*)::bigint AS "fkojunstStatusMailRowsCount",
-            MAX(r."createdAt") AS "fkojunstStatusMailRowsLatestCreatedAt",
-            MAX(COALESCE(r."updatedAt", r."createdAt")) AS "fkojunstStatusMailRowsLatestUpdatedAt"
-          FROM "CsvDashboardRow" r
-          WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}
-            AND (
-              r."sourceIngestRunId" IS NULL
-              OR EXISTS (
-                SELECT 1
-                FROM "CsvDashboardIngestRun" ir
-                WHERE ir."id" = r."sourceIngestRunId"
-                  AND ir."status" = 'COMPLETED'::"ImportStatus"
-                  AND ir."completedAt" IS NOT NULL
+      : await prisma.$transaction(async (tx) => {
+          await tx.$executeRaw(Prisma.sql`SET LOCAL jit = off`);
+          return tx.$queryRaw<SnapshotMailGenerationRow[]>(Prisma.sql`
+            SELECT
+              COUNT(*)::bigint AS "fkojunstStatusMailRowsCount",
+              MAX(r."createdAt") AS "fkojunstStatusMailRowsLatestCreatedAt",
+              MAX(COALESCE(r."updatedAt", r."createdAt")) AS "fkojunstStatusMailRowsLatestUpdatedAt"
+            FROM "CsvDashboardRow" r
+            WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}
+              AND (
+                r."sourceIngestRunId" IS NULL
+                OR EXISTS (
+                  SELECT 1
+                  FROM "CsvDashboardIngestRun" ir
+                  WHERE ir."id" = r."sourceIngestRunId"
+                    AND ir."status" = 'COMPLETED'::"ImportStatus"
+                    AND ir."completedAt" IS NOT NULL
+                )
               )
-            )
-        `);
+          `);
+        }, LEADERBOARD_GENERATION_TRANSACTION_OPTIONS);
 
   const row = {
     ...mainRows[0],
