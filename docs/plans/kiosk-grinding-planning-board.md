@@ -24,6 +24,7 @@ The behavior can be observed by starting the API and web applications, opening t
 - [x] (2026-09-09 15:24 JST) Exercised the built API over real HTTP against a loopback-only disposable database with 20 production numbers × 20 items: the board returned 400 items over 160+160+80 snapshot pages, cursor-without-snapshot returned 400, a stale snapshot returned 409, and concurrent same-item writes from two client keys produced one 200 and one 409 without an automatic retry. Browser-to-API validation is being run separately by the web-validation contributor.
 - [x] (2026-09-09 14:52 JST) Stopped and removed the disposable planning-board PostgreSQL container and removed temporary dependency links from the worktree; existing source-repository containers were not modified.
 - [x] (2026-09-09 14:52 JST) Completed backend handoff. No commit, push, pull request, merge, deployment, or device distribution was performed in this worktree.
+- [x] (2026-09-09 16:05 JST) Created commit `50fccc48` (`feat: add grinding planning board`) after the repository lint hook passed, pushed `feat/kiosk-grinding-planning-board-backend` to `origin`, and removed temporary dependency links. Pull request creation and hosted CI remain the next lifecycle stage; merge, deployment, and device distribution remain out of scope.
 
 ## Surprises & Discoveries
 
