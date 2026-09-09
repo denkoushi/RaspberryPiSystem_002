@@ -17,6 +17,8 @@ export type HermesPanelMessage = {
   evidence?: readonly BusinessHermesChatEvidence[];
   evidenceVisible?: boolean;
   evidenceVisibleIds?: readonly string[];
+  recordIds?: readonly string[];
+  recordView?: 'summary' | 'detail';
   selection?: { prompt: string; option: string };
   createdAt?: string;
 };
@@ -182,6 +184,47 @@ function EvidenceCard({ evidence }: { evidence: BusinessHermesChatEvidence }) {
           {evidence.rawImageLabel ? <span className="hermes-chat-panel__evidence-image-caption">{evidence.rawImageLabel}</span> : null}
         </div>
       ) : null}
+    </article>
+  );
+}
+
+type HermesRecordField = NonNullable<BusinessHermesChatEvidence['displayFields']>['summary'][number];
+
+function recordFieldsSignature(fields: readonly HermesRecordField[]): string {
+  return fields.map((field) => JSON.stringify([field.key, field.label, field.value])).sort().join('\u0000');
+}
+
+function RecordCard({ evidence, view }: { evidence: BusinessHermesChatEvidence; view: 'summary' | 'detail' }) {
+  const [currentView, setCurrentView] = useState<'summary' | 'detail'>(view);
+  const summaryFields = evidence.displayFields?.summary ?? [];
+  const detailFields = evidence.displayFields?.detail ?? [];
+  const fields = currentView === 'detail' ? detailFields : summaryFields;
+  const canToggle = summaryFields.length > 0
+    && detailFields.length > 0
+    && recordFieldsSignature(summaryFields) !== recordFieldsSignature(detailFields);
+  if (fields.length === 0) return null;
+  return (
+    <article className="hermes-chat-panel__record" data-record-view={currentView}>
+      <div className="hermes-chat-panel__record-header">
+        <p className="hermes-chat-panel__record-title">{evidence.title}</p>
+        {canToggle ? (
+          <button
+            type="button"
+            className="hermes-chat-panel__record-toggle"
+            onClick={() => setCurrentView((previousView) => previousView === 'summary' ? 'detail' : 'summary')}
+          >
+            {currentView === 'summary' ? '詳細を見る' : '概要に戻す'}
+          </button>
+        ) : null}
+      </div>
+      <dl className="hermes-chat-panel__record-fields">
+        {fields.map((field) => (
+          <div key={`${field.key}-${field.label}`} className="hermes-chat-panel__record-field">
+            <dt>{field.label}</dt>
+            <dd>{field.value}</dd>
+          </div>
+        ))}
+      </dl>
     </article>
   );
 }
@@ -369,6 +412,10 @@ export default function HermesChatPanel({
                         ) : (
                           <div className="hermes-chat-panel__message">{message.role === 'assistant' ? renderMessageContent(message.content) : message.content}</div>
                         )}
+                        {message.recordIds?.length && message.evidence?.length ? message.recordIds.flatMap((recordId) => {
+                          const evidence = message.evidence?.find((candidate) => `${candidate.kind}:${candidate.id}` === recordId);
+                          return evidence ? [<RecordCard key={`${message.id}-record-${recordId}-${message.recordView ?? 'summary'}`} evidence={evidence} view={message.recordView ?? 'summary'} />] : [];
+                        }) : null}
                         {message.evidenceVisible !== false ? (message.evidenceVisibleIds
                           ? message.evidence?.filter((evidence) => message.evidenceVisibleIds?.includes(`${evidence.kind}:${evidence.id}`))
                           : message.evidence)?.map((evidence) => (

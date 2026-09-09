@@ -462,6 +462,69 @@
   line-height: 1.5;
 }
 
+.hermes-chat-panel__record {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(182, 255, 202, 0.22);
+}
+
+.hermes-chat-panel__record-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hermes-chat-panel__record-title {
+  margin: 0;
+  color: #12633a;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.hermes-chat-panel__record-toggle {
+  min-height: 28px;
+  padding: 4px 7px;
+  border: 1px solid rgba(36, 103, 59, 0.45);
+  border-radius: 7px;
+  color: #164d2b;
+  background: #f4fff5;
+  cursor: pointer;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.hermes-chat-panel__record-toggle:hover {
+  background: #e7f8eb;
+}
+
+.hermes-chat-panel__record-fields {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.hermes-chat-panel__record-field {
+  display: grid;
+  grid-template-columns: minmax(5.5em, 8em) minmax(0, 1fr);
+  gap: 7px;
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.42;
+}
+
+.hermes-chat-panel__record-field dt {
+  color: #3d6e50;
+  font-weight: 700;
+}
+
+.hermes-chat-panel__record-field dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .hermes-chat-panel__evidence {
   display: grid;
   gap: 8px;

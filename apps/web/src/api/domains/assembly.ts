@@ -635,6 +635,10 @@ export type BusinessHermesChatEvidence = {
   imageAssetId?: string;
   imageUrl?: string;
   imageMimeType?: string;
+  displayFields?: {
+    summary: Array<{ key: string; label: string; value: string }>;
+    detail: Array<{ key: string; label: string; value: string }>;
+  };
 };
 
 export type BusinessHermesChatRequest = {
@@ -699,6 +703,8 @@ export type BusinessHermesConsultationMessage = {
   evidence: BusinessHermesChatEvidence[];
   evidenceVisible?: boolean;
   evidenceVisibleIds?: string[];
+  recordIds?: string[];
+  recordView?: 'summary' | 'detail';
   confirmation?: BusinessHermesConsultationConfirmation;
   selection?: { prompt: string; option: string };
   scan?: BusinessHermesScanResolution;
@@ -722,6 +728,8 @@ export type BusinessHermesConsultationChatResponse = {
   evidence: BusinessHermesChatEvidence[];
   evidenceVisible?: boolean;
   evidenceVisibleIds?: string[];
+  recordIds?: string[];
+  recordView?: 'summary' | 'detail';
   needsClarification: boolean;
   clarificationMessage: string | null;
   consultationId: string;
