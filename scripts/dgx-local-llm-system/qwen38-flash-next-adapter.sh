@@ -7,7 +7,7 @@ set -euo pipefail
 # the system-prod blue endpoint and cache paths.
 
 readonly UPSTREAM_REPO_URL="https://github.com/MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark"
-readonly DEFAULT_UPSTREAM_REVISION="09d4424be2b777818471b9bba8c7775ddd538833"
+readonly DEFAULT_UPSTREAM_REVISION="d03809008834124e80223c3482f2ddb59577a48f"
 readonly DEFAULT_MODEL_REVISION="925d7be6c14c6c9442ef83e8f05b5a3c39304f69"
 readonly DEFAULT_IMAGE="vllm/vllm-openai:qwen38-flash-next@sha256:3b0e188ffceb3d07e09c3cb5215433a0020eacf02d7f882ed3a8bfd15454477e"
 readonly MODEL_ID="Mia-AiLab/Qwen3.8-Flash-Next-NVFP4"
@@ -61,13 +61,25 @@ if [[ ! -d "${MODEL_DIR}/snapshots/${MODEL_SNAPSHOT}" ]]; then
   echo "Qwen3.8 Flash cache snapshot is unavailable: ${MODEL_SNAPSHOT}" >&2
   exit 1
 fi
-# The pinned upstream start.sh intentionally selects the first snapshot entry,
-# not refs/main.  Fail closed if the cache would make those selections differ.
-FIRST_SNAPSHOT="$(ls -1d "${MODEL_DIR}"/snapshots/*/ 2>/dev/null | sed 's:/$::' | sed 's:.*/::' | sort | head -1)"
-if [[ "${FIRST_SNAPSHOT}" != "${MODEL_SNAPSHOT}" ]]; then
-  echo "Qwen3.8 Flash cache has an ambiguous snapshot selection" >&2
-  exit 1
-fi
+python3 - "${MODEL_DIR}/snapshots/${MODEL_SNAPSHOT}" <<'PY'
+import json
+import pathlib
+import sys
+
+snapshot = pathlib.Path(sys.argv[1])
+index = snapshot / "model.safetensors.index.json"
+if not index.is_file():
+    raise SystemExit(f"Qwen3.8 Flash pinned snapshot index is unavailable: {index}")
+try:
+    weight_map = json.loads(index.read_text(encoding="utf-8")).get("weight_map", {})
+except (OSError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"Qwen3.8 Flash pinned snapshot index is invalid: {index}: {exc}")
+missing = sorted({name for name in weight_map.values() if not (snapshot / name).is_file()})
+if not weight_map or missing:
+    raise SystemExit(
+        f"Qwen3.8 Flash pinned snapshot is incomplete: {snapshot} missing={len(missing)}"
+    )
+PY
 if [[ ! -d "${RECIPE_DIR}/.git" ]]; then
   echo "pinned Qwen3.8 Flash recipe checkout is unavailable: ${RECIPE_DIR}" >&2
   exit 1
@@ -137,6 +149,7 @@ chmod 0750 "${BOUNDARY_START}"
 # port, and the shipped safe profile.
 cd "${RECIPE_DIR}"
 if env \
+  ABLIT="0" \
   TP1_MODEL_ID="${MODEL_ID}" \
   TP1_CONTAINER_NAME="${CONTAINER_NAME}" \
   IMAGE="${IMAGE}" \
@@ -149,6 +162,8 @@ if env \
   KV_CACHE_DTYPE="${VLLM_KV_CACHE_DTYPE:-fp8}" \
   YARN="0" \
   MTP_NUM_SPECULATIVE_TOKENS="3" \
+  MAMBA_SSM_CACHE_DTYPE="" \
+  MTP_DRAFT_VOCAB="" \
   PLE_OFFLOAD="true" \
   HOST_RESERVE_GIB="26" \
   KV_TARGET_GIB="16" \

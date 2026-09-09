@@ -14,13 +14,20 @@ IMAGE = "vllm/vllm-openai:qwen38-flash-next@sha256:test"
 
 
 class Qwen38CacheHelperTests(unittest.TestCase):
-    def _fixture(self, root: Path) -> dict[str, str]:
+    def _fixture(
+        self,
+        root: Path,
+        *,
+        start_contents: str = "#!/usr/bin/env bash\nexit 0\n",
+    ) -> dict[str, str]:
         recipe = root / "recipe"
         recipe.mkdir()
         for name in ("download.sh", "start.sh"):
             path = recipe / name
-            path.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            contents = start_contents if name == "start.sh" else "#!/usr/bin/env bash\nexit 0\n"
+            path.write_text(contents, encoding="utf-8")
             path.chmod(0o755)
+        (recipe / ".env").write_text("IMAGE=fixture\n", encoding="utf-8")
         subprocess.run(["git", "-C", str(recipe), "init", "-q"], check=True)
         subprocess.run(["git", "-C", str(recipe), "config", "user.email", "test@example.invalid"], check=True)
         subprocess.run(["git", "-C", str(recipe), "config", "user.name", "cache-helper-test"], check=True)
@@ -120,6 +127,39 @@ class Qwen38CacheHelperTests(unittest.TestCase):
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("exact pinned revision", rejected.stderr)
 
+    def test_prepare_ple_rejects_incomplete_pinned_snapshot_before_upstream(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            called = root / "prepare-called"
+            env = {
+                **os.environ,
+                **self._fixture(
+                    root,
+                    start_contents='#!/usr/bin/env bash\nprintf called > "$PREPARE_CALLED"\nexit 0\n',
+                ),
+                "PREPARE_CALLED": str(called),
+            }
+            model_root = (
+                root
+                / "hf-cache"
+                / "hub"
+                / "models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4"
+            )
+            (model_root / "snapshots" / "other-complete").mkdir()
+            (model_root / "snapshots" / "other-complete" / "model.safetensors.index.json").write_text(
+                json.dumps({"weight_map": {"model.safetensors": "model.safetensors"}}),
+                encoding="utf-8",
+            )
+            (model_root / "snapshots" / "other-complete" / "model.safetensors").write_bytes(b"fixture")
+            (model_root / "snapshots" / MODEL_REVISION / "model.safetensors").unlink()
+
+            rejected = subprocess.run(
+                [str(HELPER), "prepare-ple"], env=env, text=True, capture_output=True
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("model snapshot incomplete", rejected.stderr)
+            self.assertFalse(called.exists())
+
     def test_plan_reports_pinned_model_and_digest(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -155,7 +195,9 @@ class Qwen38CacheHelperTests(unittest.TestCase):
                 "  if [ \"$previous\" = '--volume' ]; then volume=\"${argument%%:*}\"; fi\n"
                 "  previous=\"$argument\"\n"
                 "done\n"
-                "mkdir -p \"$volume/hub/models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4/snapshots/model-revision-test\"\n",
+                "mkdir -p \"$volume/hub/models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4/snapshots/model-revision-test\"\n"
+                "printf '%s' '{\"weight_map\":{\"model.safetensors\":\"model.safetensors\"}}' > \"$volume/hub/models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4/snapshots/model-revision-test/model.safetensors.index.json\"\n"
+                "printf '%s' fixture > \"$volume/hub/models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4/snapshots/model-revision-test/model.safetensors\"\n",
                 encoding="utf-8",
             )
             fake_docker.chmod(0o755)

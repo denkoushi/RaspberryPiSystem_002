@@ -12,10 +12,17 @@ LOCAL_HOST_LINE = "    --host 127.0.0.1 " + ("\\" * 2) + "\n"
 READINESS_MARKER = 'info "Loading weights (~3-4 min). Following logs until ready..."\n'
 
 
-def create_adapter_fixture(root: Path, start_contents: str) -> tuple[Path, dict[str, str]]:
+def create_adapter_fixture(
+    root: Path,
+    start_contents: str,
+    *,
+    recipe_env: str = "IMAGE=unused\n",
+    snapshot_complete: bool = True,
+    extra_snapshots: tuple[str, ...] = (),
+) -> tuple[Path, dict[str, str]]:
     recipe = root / "recipe"
     recipe.mkdir()
-    (recipe / ".env").write_text("IMAGE=unused\n", encoding="utf-8")
+    (recipe / ".env").write_text(recipe_env, encoding="utf-8")
     (recipe / "start.sh").write_text(start_contents, encoding="utf-8")
     (recipe / "start.sh").chmod(0o755)
     subprocess.run(["git", "-C", str(recipe), "init", "-q"], check=True)
@@ -27,7 +34,15 @@ def create_adapter_fixture(root: Path, start_contents: str) -> tuple[Path, dict[
 
     model_dir = root / "hf-cache" / "hub" / "models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4"
     (model_dir / "refs").mkdir(parents=True)
-    (model_dir / "snapshots" / "snapshot-test").mkdir(parents=True)
+    for snapshot_name in ("snapshot-test", *extra_snapshots):
+        snapshot = model_dir / "snapshots" / snapshot_name
+        snapshot.mkdir(parents=True)
+        (snapshot / "model.safetensors.index.json").write_text(
+            '{"weight_map":{"layer.safetensors":"layer.safetensors"}}\n',
+            encoding="utf-8",
+        )
+        if snapshot_name != "snapshot-test" or snapshot_complete:
+            (snapshot / "layer.safetensors").write_bytes(b"fixture")
     (model_dir / "refs" / "main").write_text("snapshot-test\n", encoding="utf-8")
     return recipe, {
         "BLUE_SERVER_MODE": "container",
@@ -217,7 +232,13 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
             recipe.mkdir()
             model_dir = Path(tmp) / "models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4"
             (model_dir / "refs").mkdir(parents=True)
-            (model_dir / "snapshots" / "snapshot-test").mkdir(parents=True)
+            snapshot = model_dir / "snapshots" / "snapshot-test"
+            snapshot.mkdir(parents=True)
+            (snapshot / "model.safetensors.index.json").write_text(
+                '{"weight_map":{"layer.safetensors":"layer.safetensors"}}\n',
+                encoding="utf-8",
+            )
+            (snapshot / "layer.safetensors").write_bytes(b"fixture")
             (model_dir / "refs" / "main").write_text("snapshot-test\n", encoding="utf-8")
             env = {
                 **os.environ,
@@ -229,6 +250,90 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
             result = subprocess.run([str(ADAPTER)], env=env, text=True, capture_output=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("checkout is unavailable", result.stderr)
+
+    def test_adapter_rejects_incomplete_pinned_snapshot_before_upstream(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = root / "upstream-called"
+            start_contents = (
+                "#!/usr/bin/env bash\n"
+                "printf '%s' called > \"$CAPTURE\"\n"
+                "cat <<'UPSTREAM_LAUNCH'\n"
+                "docker run \\\n"
+                + UPSTREAM_HOST_LINE
+                + "UPSTREAM_LAUNCH\n"
+                + "cat <<'UPSTREAM_READINESS'\n"
+                + READINESS_MARKER
+                + "UPSTREAM_READINESS\n"
+            )
+            _, env = create_adapter_fixture(
+                root,
+                start_contents,
+                snapshot_complete=False,
+                extra_snapshots=("0000000000000000000000000000000000000000",),
+            )
+            env["CAPTURE"] = str(capture)
+            result = subprocess.run([str(ADAPTER)], env={**os.environ, **env}, text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("pinned snapshot is incomplete", result.stderr)
+            self.assertFalse(capture.exists())
+
+    def test_adapter_allows_pinned_snapshot_with_other_complete_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            selected = root / "selected"
+            start_contents = (
+                "#!/usr/bin/env bash\n"
+                "tr -d '[:space:]' < \"$HF_HOME/hub/models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4/refs/main\" > \"$SELECTED\"\n"
+                "cat <<'UPSTREAM_LAUNCH'\n"
+                "docker run \\\n"
+                + UPSTREAM_HOST_LINE
+                + "UPSTREAM_LAUNCH\n"
+                + "cat <<'UPSTREAM_READINESS'\n"
+                + READINESS_MARKER
+                + "UPSTREAM_READINESS\n"
+            )
+            _, env = create_adapter_fixture(
+                root,
+                start_contents,
+                extra_snapshots=("0000000000000000000000000000000000000000",),
+            )
+            env["SELECTED"] = str(selected)
+            result = subprocess.run([str(ADAPTER)], env={**os.environ, **env}, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(selected.read_text(encoding="utf-8"), "snapshot-test")
+
+    def test_adapter_exports_unvalidated_upstream_defaults_off_at_boundary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = root / "capture"
+            start_contents = (
+                "#!/usr/bin/env bash\n"
+                "printf '%s|%s|%s|%s' \"$ABLIT\" \"$MAMBA_SSM_CACHE_DTYPE\" \"$MTP_DRAFT_VOCAB\" \"$EXTRA_DOCKER_ARGS\" > \"$CAPTURE\"\n"
+                "cat <<'UPSTREAM_LAUNCH'\n"
+                "docker run \\\n"
+                + UPSTREAM_HOST_LINE
+                + "UPSTREAM_LAUNCH\n"
+                + "cat <<'UPSTREAM_READINESS'\n"
+                + READINESS_MARKER
+                + "UPSTREAM_READINESS\n"
+            )
+            _, env = create_adapter_fixture(
+                root,
+                start_contents,
+                recipe_env=(
+                    "IMAGE=unused\n"
+                    "ABLIT=1\n"
+                    "MAMBA_SSM_CACHE_DTYPE=bfloat16\n"
+                    "MTP_DRAFT_VOCAB=files/draft_vocab_en_code_47k.txt\n"
+                    "EXTRA_DOCKER_ARGS='-e VLLM_USE_V2_MODEL_RUNNER=1'\n"
+                ),
+            )
+            env.pop("BLUE_EXTRA_DOCKER_ARGS")
+            env["CAPTURE"] = str(capture)
+            result = subprocess.run([str(ADAPTER)], env={**os.environ, **env}, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(capture.read_text(encoding="utf-8"), "0|||")
 
 
 if __name__ == "__main__":
