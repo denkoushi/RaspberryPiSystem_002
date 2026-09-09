@@ -514,6 +514,36 @@ describe('BusinessHermesConsultationService', () => {
     expect(result.message).toBeNull();
   });
 
+  it('returns the existing upstream failure contract for the Hermes retry failure envelope', async () => {
+    const fixture = dbFixture();
+    const fetchImpl = vi.fn().mockResolvedValue(new Response([
+      `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: 'API call failed after 3 retries: HTTP 502: bad gateway: [Errno 111] Connection refused' } })}\n\n`
+    ].join(''), { headers: { 'content-type': 'text/event-stream' } }));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'business-hermes-chat', timeoutMs: 5_000 } });
+
+    const result = await service.chat({ consultationId, message: '訂正を確認してください' });
+
+    expect(result).toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_UPSTREAM_UNAVAILABLE', message: null });
+    expect(fixture.messages.map((message) => message.role)).toEqual(['user']);
+    expect(fixture.db.businessHermesConsultation.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps the same text when a normal JSON answer quotes the upstream error', async () => {
+    const fixture = dbFixture();
+    const quoted = 'API call failed after 3 retries: HTTP 502: bad gateway: [Errno 111] Connection refused';
+    const fetchImpl = vi.fn().mockResolvedValue(new Response([
+      `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: JSON.stringify({ message: quoted, needsClarification: false }) } })}\n\n`
+    ].join(''), { headers: { 'content-type': 'text/event-stream' } }));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'business-hermes-chat', timeoutMs: 5_000 } });
+
+    const result = await service.chat({ consultationId, message: 'エラー文を引用して確認してください' });
+
+    expect(result).toMatchObject({ status: 'ready', message: quoted });
+    expect(fixture.messages.map((message) => message.role)).toEqual(['user', 'assistant']);
+  });
+
   it('returns an optional model-requested confirmation without deriving one from identifiers', async () => {
     const fixture = dbFixture();
     const fetchImpl = vi.fn().mockResolvedValue(new Response([
@@ -659,7 +689,8 @@ describe('BusinessHermesConsultationService', () => {
     const fixture = dbFixture();
     const draft = { message: '次は別工程です。', title: '途中の相談名', summary: '別工程へ進む予定', openQuestions: ['別工程は済みましたか'] };
     const final = { message: '組立の確認はできましたか？', title: '組立の相談', summary: '組立の確認中', openQuestions: ['組立の確認'], confirmation: { prompt: '組立の確認はできましたか？', options: ['はい', 'いいえ'] } };
-    const text = '調査しています。\n' + JSON.stringify(draft) + '\n\n' + JSON.stringify(final);
+    const text = 'API call failed after 3 retries: HTTP 502: bad gateway: [Errno 111] Connection refused\n'
+      + JSON.stringify(draft) + '\n\n' + JSON.stringify(final);
     const fetchImpl = vi.fn().mockResolvedValue(new Response('data: ' + JSON.stringify({
       type: 'response.completed', response: { status: 'completed', output: [
         { type: 'message', content: [{ type: 'output_text', text }] }
@@ -693,6 +724,86 @@ describe('BusinessHermesConsultationService', () => {
       expect(second.status).toBe('ready');
       expect(runtime.release).toHaveBeenCalledTimes(2);
     } finally { vi.useRealTimers(); }
+  });
+
+  it('cancels while runtime readiness is pending and releases once after late readiness', async () => {
+    const fixture = dbFixture();
+    let resolveReady!: () => void;
+    const ready = new Promise<void>((resolve) => { resolveReady = resolve; });
+    const runtime = {
+      ensureReady: vi.fn().mockReturnValue(ready),
+      release: vi.fn().mockResolvedValue(undefined),
+      getMode: vi.fn().mockReturnValue('on_demand')
+    };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('data: ' + JSON.stringify({
+      type: 'response.completed', response: { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: '再開しました。' }] }] }
+    }) + '\n\n', { headers: { 'content-type': 'text/event-stream' } }));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, runtime,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', provider: 'dgx' } });
+    const abort = new AbortController();
+    const first = service.chat({ consultationId, message: '準備中に中断', signal: abort.signal });
+
+    await vi.waitFor(() => expect(runtime.ensureReady).toHaveBeenCalledWith('business_hermes'));
+    abort.abort();
+    await expect(first).resolves.toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_TIMEOUT' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fixture.db.businessHermesConsultation.update).not.toHaveBeenCalled();
+    const resumed = service.chat({ consultationId, message: '再開' });
+    await Promise.resolve();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    resolveReady();
+    const resumedResult = await resumed;
+    expect(resumedResult.status).toBe('ready');
+    await vi.waitFor(() => expect(runtime.release).toHaveBeenCalledTimes(2));
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('times out while runtime readiness remains unresolved', async () => {
+    vi.useFakeTimers();
+    try {
+      const fixture = dbFixture();
+      const ready = new Promise<void>(() => undefined);
+      const runtime = {
+        ensureReady: vi.fn().mockReturnValue(ready),
+        release: vi.fn().mockResolvedValue(undefined),
+        getMode: vi.fn().mockReturnValue('on_demand')
+      };
+      const fetchImpl = vi.fn();
+      const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, runtime,
+        config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', provider: 'dgx', timeoutMs: 500 } });
+      const request = service.chat({ consultationId, message: '準備待ちで時間切れ' });
+
+      await vi.advanceTimersByTimeAsync(501);
+      await expect(request).resolves.toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_TIMEOUT' });
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(fixture.db.businessHermesConsultation.update).not.toHaveBeenCalled();
+      expect(runtime.release).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('does not release a runtime when a cancelled readiness later fails', async () => {
+    const fixture = dbFixture();
+    let rejectReady!: (error: Error) => void;
+    const ready = new Promise<void>((_resolve, reject) => { rejectReady = reject; });
+    const runtime = {
+      ensureReady: vi.fn().mockReturnValue(ready),
+      release: vi.fn().mockResolvedValue(undefined),
+      getMode: vi.fn().mockReturnValue('on_demand')
+    };
+    const fetchImpl = vi.fn();
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, runtime,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', provider: 'dgx' } });
+    const abort = new AbortController();
+    const request = service.chat({ consultationId, message: '準備失敗前に中断', signal: abort.signal });
+
+    await vi.waitFor(() => expect(runtime.ensureReady).toHaveBeenCalled());
+    abort.abort();
+    await expect(request).resolves.toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_TIMEOUT' });
+    rejectReady(new Error('runtime start failed'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(runtime.release).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('does not save a late answer when cancelled during source verification', async () => {
