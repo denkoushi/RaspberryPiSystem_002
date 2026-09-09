@@ -87,7 +87,6 @@ const SOURCE_ROW_CHUNK_SIZE = 900;
 const SPLIT_PREFIX = 'split:';
 
 function decodeAggregateOverride(row: LoadSummaryOverrideRow): LoadSummaryOverrideBinding | null {
-  if (typeof row.itemKey !== 'string') return null;
   if (row.itemKey.startsWith(SPLIT_PREFIX)) {
     const splitId = row.itemKey.slice(SPLIT_PREFIX.length);
     return splitId.length > 0

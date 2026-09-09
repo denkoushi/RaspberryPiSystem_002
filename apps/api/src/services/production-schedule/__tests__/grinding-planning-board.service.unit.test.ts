@@ -140,7 +140,12 @@ function configurePersistence(): void {
   prisma.productionScheduleOrderSplitAssignment.findMany.mockResolvedValue([]);
   prisma.productionScheduleResourceMaster.findMany.mockResolvedValue([{ resourceCd: '305' }, { resourceCd: '581' }]);
   mocks.readLeaderboardShellSnapshotGenerationToken.mockResolvedValue('leaderboard-generation-1');
-  prisma.$queryRaw.mockImplementation(async (strings: unknown) => (Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings)).includes('ProductionScheduleGrindingPlanningBoardState') ? [state] : [sourceRow]);
+  prisma.$queryRaw.mockImplementation(async (strings: unknown) => {
+    const query = Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings);
+    if (query.includes('ProductionScheduleGrindingPlanningBoardState')) return [state];
+    if (query.includes('ProductionScheduleGrindingPlanningBoardOverride')) return [];
+    return [sourceRow];
+  });
   prisma.productionScheduleGrindingPlanningBoardState.update.mockResolvedValue({ ...state, version: 1, seibanOrder: ['ORDER-A', 'ORDER-B'] });
   mocks.acquireParentRowLock.mockResolvedValue(undefined);
 }
@@ -288,9 +293,12 @@ describe('grinding planning board service orchestration', () => {
     const detailBatchSizes: number[] = [];
     const rankBatchSizes: number[] = [];
 
-    mocks.prisma.$queryRaw.mockImplementation(async (strings: unknown) => (
-      (Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings)).includes('ProductionScheduleGrindingPlanningBoardState') ? [mocks.state] : largeRows
-    ));
+    mocks.prisma.$queryRaw.mockImplementation(async (strings: unknown) => {
+      const query = Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings);
+      if (query.includes('ProductionScheduleGrindingPlanningBoardState')) return [mocks.state];
+      if (query.includes('ProductionScheduleGrindingPlanningBoardOverride')) return [];
+      return largeRows;
+    });
     mocks.prisma.csvDashboardRow.findMany.mockImplementation(async (args: { where: { id: { in: string[] } } }) => {
       const ids = args.where.id.in;
       detailBatchSizes.push(ids.length);
@@ -331,7 +339,12 @@ describe('grinding planning board service orchestration', () => {
       id: 'source-row-2',
       rowData: { ...mocks.sourceRow.rowData, FSEIBAN: 'ORDER-B' }
     };
-    mocks.prisma.$queryRaw.mockImplementation(async (strings: unknown) => (Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings)).includes('ProductionScheduleGrindingPlanningBoardState') ? [mocks.state] : [mocks.sourceRow, secondSourceRow]);
+    mocks.prisma.$queryRaw.mockImplementation(async (strings: unknown) => {
+      const query = Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings);
+      if (query.includes('ProductionScheduleGrindingPlanningBoardState')) return [mocks.state];
+      if (query.includes('ProductionScheduleGrindingPlanningBoardOverride')) return [];
+      return [mocks.sourceRow, secondSourceRow];
+    });
     const transactionClient = {
       $queryRaw: mocks.prisma.$queryRaw,
       productionScheduleGrindingPlanningBoardState: {
