@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../ProtectedImage', () => ({
@@ -171,6 +171,141 @@ describe('HermesChatPanel evidence cards', () => {
     expect(screen.getByText('直近の記録は3件です。')).toBeInTheDocument();
     expect(screen.queryByText('備考')).not.toBeInTheDocument();
     expect(screen.queryByText('00008195')).not.toBeInTheDocument();
+  });
+
+  it('renders only server-selected generic record fields without source metadata', () => {
+    render(
+      <HermesChatPanel
+        mode="consultations"
+        messages={[{
+          id: 'message-record-summary',
+          role: 'assistant',
+          content: '記録を表示します。',
+          evidenceVisible: false,
+          recordIds: ['nonconformity:nc-summary'],
+          recordView: 'summary',
+          evidence: [
+            {
+              kind: 'nonconformity', id: 'nc-summary', title: '不適合記録', partNumber: 'PN-42', text: '内部本文',
+              sourceUrl: '/private/source', sourceVersionDate: '2026-09-01',
+              displayFields: {
+                summary: [{ key: 'businessNo', label: '業務番号', value: 'NC-42' }, { key: 'request', label: '依頼内容', value: '寸法差' }],
+                detail: [{ key: 'privateDetail', label: '処置', value: '再検査' }]
+              }
+            }
+          ]
+        }]}
+        draft=""
+        isBusy={false}
+        error={null}
+        authRequired={null}
+        activeConsultation={{
+          id: 'case-record-summary',
+          title: '記録表示',
+          relatedIdentifiers: [],
+          confirmedFacts: [],
+          openQuestions: [],
+          summary: '',
+          updatedAt: '2026-09-07T00:00:00.000Z',
+          messages: []
+        }}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn()}
+        onReset={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('業務番号')).toBeInTheDocument();
+    expect(screen.getByText('NC-42')).toBeInTheDocument();
+    expect(screen.getByText('依頼内容')).toBeInTheDocument();
+    expect(screen.getByText('寸法差')).toBeInTheDocument();
+    expect(screen.queryByText('処置')).not.toBeInTheDocument();
+    expect(screen.queryByText('再検査')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '出典を開く' })).not.toBeInTheDocument();
+    expect(screen.queryByText('内部本文')).not.toBeInTheDocument();
+  });
+
+  it('toggles each selected record locally without sending a new AI request', () => {
+    const onSend = vi.fn();
+    const onAnswerSuggestion = vi.fn();
+    render(
+      <HermesChatPanel
+        mode="consultations"
+        messages={[{
+          id: 'message-record-toggle',
+          role: 'assistant',
+          content: '選択した記録を表示します。',
+          evidenceVisible: false,
+          recordIds: ['nonconformity:nc-toggle-1', 'nonconformity:nc-toggle-2', 'nonconformity:nc-toggle-same'],
+          recordView: 'summary',
+          evidence: [
+            {
+              kind: 'nonconformity', id: 'nc-toggle-1', title: '不適合記録1', partNumber: '', text: '',
+              displayFields: {
+                summary: [{ key: 'request', label: '依頼1', value: '概要1' }],
+                detail: [{ key: 'disposition', label: '処置1', value: '詳細1' }]
+              }
+            },
+            {
+              kind: 'nonconformity', id: 'nc-toggle-2', title: '不適合記録2', partNumber: '', text: '',
+              displayFields: {
+                summary: [{ key: 'request', label: '依頼2', value: '概要2' }],
+                detail: [{ key: 'disposition', label: '処置2', value: '詳細2' }]
+              }
+            },
+            {
+              kind: 'nonconformity', id: 'nc-toggle-same', title: '不適合記録（同一表示）', partNumber: '', text: '',
+              displayFields: {
+                summary: [{ key: 'request', label: '共通項目', value: '共通値' }],
+                detail: [{ key: 'request', label: '共通項目', value: '共通値' }]
+              }
+            }
+          ]
+        }]}
+        draft=""
+        isBusy={false}
+        error={null}
+        authRequired={null}
+        activeConsultation={{
+          id: 'case-record-toggle',
+          title: '記録表示',
+          relatedIdentifiers: [],
+          confirmedFacts: [],
+          openQuestions: [],
+          summary: '',
+          updatedAt: '2026-09-07T00:00:00.000Z',
+          messages: []
+        }}
+        onDraftChange={vi.fn()}
+        onSend={onSend}
+        onAnswerSuggestion={onAnswerSuggestion}
+        onReset={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const records = Array.from(document.querySelectorAll<HTMLElement>('.hermes-chat-panel__record'));
+    expect(records).toHaveLength(3);
+    expect(records[0]).toHaveAttribute('data-record-view', 'summary');
+    expect(records[1]).toHaveAttribute('data-record-view', 'summary');
+    expect(records[2]).toHaveAttribute('data-record-view', 'summary');
+    expect(within(records[2]).getByText('共通値')).toBeInTheDocument();
+    expect(within(records[2]).queryByRole('button')).not.toBeInTheDocument();
+
+    fireEvent.click(within(records[0]).getByRole('button', { name: '詳細を見る' }));
+    expect(records[0]).toHaveAttribute('data-record-view', 'detail');
+    expect(within(records[0]).getByText('詳細1')).toBeInTheDocument();
+    expect(records[1]).toHaveAttribute('data-record-view', 'summary');
+    expect(within(records[1]).getByText('概要2')).toBeInTheDocument();
+    expect(within(records[1]).queryByText('詳細2')).not.toBeInTheDocument();
+
+    fireEvent.click(within(records[0]).getByRole('button', { name: '概要に戻す' }));
+    expect(records[0]).toHaveAttribute('data-record-view', 'summary');
+    expect(within(records[0]).getByText('概要1')).toBeInTheDocument();
+    expect(within(records[0]).queryByText('詳細1')).not.toBeInTheDocument();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onAnswerSuggestion).not.toHaveBeenCalled();
   });
 
   it('renders only the server-selected evidence ids while retaining other trusted cards in the response', () => {

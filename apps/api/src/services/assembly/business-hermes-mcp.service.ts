@@ -44,19 +44,19 @@ const TOOLS: ReadonlyArray<BusinessHermesMcpTool> = [
   },
   {
     name: 'business_hermes_search',
-    description: 'Search active latest nonconformities and PUBLIC work-instruction text using literal case-insensitive substring matching across the selected fields. originDepartmentCode/name are explicit 起因部署 filters; they are not responsibility-department or treatment-owner filters. Spaces are literal characters, not AND keywords; start with one concise term and refine with identifiers, dates, or a narrower term. Results never include private paths or case history.',
+    description: 'Search active latest nonconformities and PUBLIC work-instruction text using literal case-insensitive substring matching across the selected fields. originDepartmentCode/name are explicit 起因部署 filters; they are not responsibility-department or treatment-owner filters. Spaces are literal characters, not AND keywords. Nonconformity search results include condition, remarks, correctiveContent and disposition, with the same fields as get_detail. kind=both returns both source kinds for the supplied conditions. Results never include private paths or case history.',
     inputSchema: {
       type: 'object',
       properties: {
-        query: { type: 'string', maxLength: MAX_QUERY_CHARS },
-        partNumber: { type: 'string', maxLength: 200 },
+        query: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Literal case-insensitive substring across searchable text fields; spaces are literal characters, not AND keywords. It may be combined with dedicated filters.' },
+        partNumber: { type: 'string', maxLength: 200, description: 'Known product number; use this dedicated condition for a product-specific search and follow existing source normalization.' },
         shootingTarget: { type: 'string', maxLength: 200 },
         nonconformityNo: { type: 'string', maxLength: 120 },
-        originDepartmentCode: { type: 'string', maxLength: 120 },
-        originDepartmentName: { type: 'string', maxLength: MAX_QUERY_CHARS },
-        condition: { type: 'string', maxLength: MAX_QUERY_CHARS },
-        dateFrom: { type: 'string', maxLength: 10 },
-        dateTo: { type: 'string', maxLength: 10 },
+        originDepartmentCode: { type: 'string', maxLength: 120, description: 'Exact code for the recorded origin (cause) department; it is not a responsibility-department or treatment-owner filter.' },
+        originDepartmentName: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Literal case-insensitive substring for the recorded origin (cause) department name; it is not a responsibility-department or treatment-owner filter.' },
+        condition: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Literal case-insensitive substring limited to the nonconformity content field; it may be combined with dedicated filters.' },
+        dateFrom: { type: 'string', maxLength: 10, description: 'Inclusive discoveredOn date lower bound in YYYY-MM-DD format.' },
+        dateTo: { type: 'string', maxLength: 10, description: 'Inclusive discoveredOn date upper bound in YYYY-MM-DD format.' },
         kind: { type: 'string', enum: ['nonconformity', 'work_instruction', 'both'] },
         limit: { type: 'integer', minimum: 1, maximum: MAX_LIMIT },
         nonconformityOffset: { type: 'integer', minimum: 0, maximum: 100_000 },
@@ -67,7 +67,7 @@ const TOOLS: ReadonlyArray<BusinessHermesMcpTool> = [
   },
   {
     name: 'business_hermes_get_detail',
-    description: 'Get bounded detail for one active nonconformity or PUBLIC work-instruction record.',
+    description: 'Get bounded detail for one active nonconformity or PUBLIC work-instruction record. Nonconformity detail includes condition, remarks, correctiveContent and disposition. Work-instruction detail can include rows, steps and photos.',
     inputSchema: {
       type: 'object',
       properties: {

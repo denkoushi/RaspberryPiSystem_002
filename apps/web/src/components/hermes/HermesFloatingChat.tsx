@@ -69,6 +69,8 @@ function messagesFromConsultation(detail: BusinessHermesConsultationDetail): Her
     evidence: message.evidence,
     evidenceVisible: message.evidenceVisible,
     evidenceVisibleIds: message.evidenceVisibleIds,
+    recordIds: message.recordIds,
+    recordView: message.recordView,
     selection: message.selection,
     createdAt: message.createdAt
   }));
@@ -639,6 +641,8 @@ export function HermesFloatingChat() {
             evidence: evidenceForMessage(response.evidence),
             evidenceVisible: 'evidenceVisible' in response ? response.evidenceVisible : undefined,
             evidenceVisibleIds: 'evidenceVisibleIds' in response ? response.evidenceVisibleIds : undefined,
+            recordIds: 'recordIds' in response ? response.recordIds : undefined,
+            recordView: 'recordView' in response ? response.recordView : undefined,
             createdAt: new Date().toISOString()
           };
           setMessages((current) => [...current, assistantMessage]);
@@ -652,6 +656,8 @@ export function HermesFloatingChat() {
                 evidence: assistantMessage.evidence ? [...assistantMessage.evidence] : [],
                 evidenceVisible: assistantMessage.evidenceVisible,
                 evidenceVisibleIds: assistantMessage.evidenceVisibleIds ? [...assistantMessage.evidenceVisibleIds] : undefined,
+                recordIds: assistantMessage.recordIds ? [...assistantMessage.recordIds] : undefined,
+                recordView: assistantMessage.recordView,
                 createdAt: assistantMessage.createdAt ?? new Date().toISOString()
               }]
             } : current);
