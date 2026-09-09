@@ -24,6 +24,7 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
       {
         rowsCount: 10n,
         rowsLatestCreatedAt: new Date('2026-02-01T00:00:00.000Z'),
+        rowsLatestUpdatedAt: new Date('2026-02-01T00:00:00.000Z'),
         orderAssignmentUpdatedAt: null,
         orderSplitCount: 0n,
         orderSplitUpdatedAt: null,
@@ -61,6 +62,7 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
         {
           rowsCount: 1n,
           rowsLatestCreatedAt: null,
+          rowsLatestUpdatedAt: null,
           orderAssignmentUpdatedAt: null,
           orderSplitCount: 2n,
           orderSplitUpdatedAt: new Date('2026-06-19T00:01:00.000Z'),
@@ -93,5 +95,49 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
     expect(token.orderSplitCount).toBe('2');
     expect(token.orderSplitAssignmentCount).toBe('3');
     expect(token.orderSplitUpdatedAt).toBe('2026-06-19T00:01:00.000Z');
+  });
+
+  it('invalidates when a CSV row changes in place without changing count or createdAt', async () => {
+    const row = {
+      rowsCount: 1n,
+      rowsLatestCreatedAt: new Date('2026-06-19T00:00:00.000Z'),
+      orderAssignmentUpdatedAt: null,
+      orderSplitCount: 0n,
+      orderSplitUpdatedAt: null,
+      orderSplitAssignmentCount: 0n,
+      orderSplitAssignmentUpdatedAt: null,
+      globalRowRankUpdatedAt: null,
+      rowNoteUpdatedAt: null,
+      progressUpdatedAt: null,
+      externalCompletionUpdatedAt: null,
+      fkstUpdatedAt: null,
+      fkmailUpdatedAt: null,
+      orderSupplementUpdatedAt: null,
+      seibanDueDateUpdatedAt: null,
+      seibanProcessingDueDateUpdatedAt: null,
+      resourceCategoryUpdatedAt: null,
+      resourceCodeMappingUpdatedAt: null
+    };
+
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ ...row, rowsLatestUpdatedAt: new Date('2026-06-19T00:01:00.000Z') }] as never)
+      .mockResolvedValueOnce([{ fkojunstStatusMailRowsCount: 0n, fkojunstStatusMailRowsLatestCreatedAt: null, fkojunstStatusMailRowsLatestUpdatedAt: null }] as never)
+      .mockResolvedValueOnce([{ ...row, rowsLatestUpdatedAt: new Date('2026-06-19T00:02:00.000Z') }] as never)
+      .mockResolvedValueOnce([{ fkojunstStatusMailRowsCount: 0n, fkojunstStatusMailRowsLatestCreatedAt: null, fkojunstStatusMailRowsLatestUpdatedAt: null }] as never);
+
+    const before = await readLeaderboardShellSnapshotGenerationTokenDetails();
+    const after = await readLeaderboardShellSnapshotGenerationTokenDetails();
+
+    expect(JSON.parse(before.generationToken)).toMatchObject({
+      rowsCount: '1',
+      rowsLatestCreatedAt: '2026-06-19T00:00:00.000Z',
+      rowsLatestUpdatedAt: '2026-06-19T00:01:00.000Z'
+    });
+    expect(JSON.parse(after.generationToken)).toMatchObject({
+      rowsCount: '1',
+      rowsLatestCreatedAt: '2026-06-19T00:00:00.000Z',
+      rowsLatestUpdatedAt: '2026-06-19T00:02:00.000Z'
+    });
+    expect(after.generationToken).not.toBe(before.generationToken);
   });
 });
