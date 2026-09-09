@@ -165,6 +165,8 @@ async function findMissingManualParentRowIdsForDisplayItemPrefix(params: {
   excludeParentRowIds: ReadonlySet<string>;
   leaderboardShellListWhere: Prisma.Sql;
   leaderboardMaterializedBaseWhere: Prisma.Sql;
+  canonicalSourceGenerationToken?: string;
+  canonicalSourceSiteKey?: string;
 }): Promise<string[]> {
   const gapQueries = collectDisplayItemPrefixGapQueries({
     expandedDisplayItems: params.expandedDisplayItems,
@@ -196,7 +198,9 @@ async function findMissingManualParentRowIdsForDisplayItemPrefix(params: {
     locationKey: params.locationKey,
     siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
     leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere,
-    leaderboardShellListWhere: params.leaderboardShellListWhere
+    leaderboardShellListWhere: params.leaderboardShellListWhere,
+    canonicalSourceGenerationToken: params.canonicalSourceGenerationToken,
+    canonicalSourceSiteKey: params.canonicalSourceSiteKey
   });
   return hydrated.map((row) => row.id);
 }
@@ -220,6 +224,8 @@ export async function resolveLeaderboardShellDisplayItemPrefix(params: {
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   /** shell 一覧と同一の行スコープ（resourceCds / q / 残骸除外など） */
   leaderboardShellListWhere: Prisma.Sql;
+  canonicalSourceGenerationToken?: string;
+  canonicalSourceSiteKey?: string;
 }): Promise<LeaderboardShellDisplayItemPrefixResult> {
   const mergedPrefix = [...params.mergedPrefixInitial];
   const mergeFullyCompleted = params.mergeFullyCompletedInitial;
@@ -247,7 +253,9 @@ export async function resolveLeaderboardShellDisplayItemPrefix(params: {
       siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
       excludeParentRowIds: fetchedParentIds,
       leaderboardShellListWhere: params.leaderboardShellListWhere,
-      leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere
+      leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere,
+      canonicalSourceGenerationToken: params.canonicalSourceGenerationToken,
+      canonicalSourceSiteKey: params.canonicalSourceSiteKey
     });
     if (missingParentIds.length === 0) {
       return { mergedPrefix, mergeFullyCompleted, expandedDisplayItems };
@@ -258,7 +266,9 @@ export async function resolveLeaderboardShellDisplayItemPrefix(params: {
       locationKey: params.locationKey,
       siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
       leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere,
-      leaderboardShellListWhere: params.leaderboardShellListWhere
+      leaderboardShellListWhere: params.leaderboardShellListWhere,
+      canonicalSourceGenerationToken: params.canonicalSourceGenerationToken,
+      canonicalSourceSiteKey: params.canonicalSourceSiteKey
     });
     if (hydrated.length === 0) {
       return { mergedPrefix, mergeFullyCompleted, expandedDisplayItems };

@@ -83,6 +83,8 @@ export type ProductionScheduleListParams = {
   processChangeResidualMode?: ProcessChangeResidualMode;
   /** {@link materializeProcessChangeResidualStrongEvidence} を同一リクエスト内 1 回だけ実行した結果。 */
   processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
+  /** Internal planning source scope; applied as an exact FSEIBAN IN predicate. */
+  planningFseibans?: readonly string[];
 };
 
 export type ProductionScheduleListResult = {

@@ -12,7 +12,13 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/hooks', () => ({
-  useKioskGrindingPlanningBoardSnapshot: (...args: unknown[]) => mocks.snapshot(...args),
+  useKioskGrindingPlanningBoardProgressive: (...args: unknown[]) => ({
+    ...mocks.snapshot(...args),
+    scopeReady: true,
+    isComplete: true,
+    isAppending: false,
+    appendError: null
+  }),
   useUpdateKioskGrindingPlanningBoardOverrides: () => ({ mutateAsync: mocks.overrides, isPending: false }),
   useUpdateKioskGrindingPlanningBoardRank: () => ({ mutateAsync: mocks.rank, isPending: false }),
   useUpdateKioskGrindingPlanningBoardSeibanOrder: () => ({ mutateAsync: mocks.order, isPending: false })

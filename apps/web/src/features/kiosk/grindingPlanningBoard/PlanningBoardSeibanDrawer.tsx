@@ -9,6 +9,7 @@ export type PlanningBoardSeibanDrawerProps = {
   machineNameBySeiban?: ReadonlyMap<string, string | null>;
   orderReadOnly?: boolean;
   orderBusy?: boolean;
+  orderStatus?: string | null;
   registrationError?: string | null;
   onRefreshOrder?: () => void;
   onClose: () => void;
@@ -32,6 +33,7 @@ export function PlanningBoardSeibanDrawer({
   onMove,
   orderReadOnly = false,
   orderBusy = false,
+  orderStatus = null,
   registrationError: externalRegistrationError = null,
   onRefreshOrder
 }: PlanningBoardSeibanDrawerProps) {
@@ -103,12 +105,14 @@ export function PlanningBoardSeibanDrawer({
             keyboardButtonClassName="min-h-11 shrink-0 rounded-md border border-slate-700 bg-slate-900 px-2 text-xs font-semibold text-slate-300 hover:border-emerald-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
             registerButtonClassName="min-h-11 shrink-0 rounded-md bg-emerald-400 px-3 text-xs font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
           />
+          {orderStatus ? <p className="mt-2 text-xs text-slate-400" role="status">{orderStatus}</p> : null}
           <div className="mt-4 flex items-center justify-between gap-2">
             <span className="text-xs font-semibold text-slate-300">登録製番（OR）</span>
             <button
               type="button"
               className="min-h-11 rounded-md px-2 text-xs font-semibold text-slate-400 hover:bg-slate-900 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
               onClick={onClear}
+              disabled={orderDisabled}
             >
               全て解除
             </button>
@@ -126,6 +130,7 @@ export function PlanningBoardSeibanDrawer({
                         ? 'border-emerald-400 bg-emerald-400 text-slate-950'
                         : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-emerald-300'
                     }`}
+                    disabled={orderDisabled}
                     onClick={() => onToggle(fseiban)}
                   >
                     <span className="block truncate">{fseiban}</span>

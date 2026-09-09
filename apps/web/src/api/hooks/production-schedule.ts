@@ -1,7 +1,11 @@
 import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { LEADER_BOARD_LEADER_PHASED_STALE_MS } from '../../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
+import { normalizeLeaderboardContinueFailure } from '../../features/kiosk/leaderOrderBoard/leaderboardContinueErrorPolicy';
+import {
+  LEADER_BOARD_LEADER_PHASED_STALE_MS,
+  LEADER_BOARD_SCHEDULE_REFETCH_MS
+} from '../../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
 import {
   findProcessingOrderForRow,
   patchOrderUsageForProcessingOrderChange,
@@ -96,7 +100,8 @@ import type { KioskProductionScheduleListCache } from '../../features/kiosk/prod
 import type {
   GrindingPlanningBoardOverridesRequest,
   GrindingPlanningBoardRankRequest,
-  GrindingPlanningBoardSeibanOrderRequest
+  GrindingPlanningBoardSeibanOrderRequest,
+  GrindingPlanningBoardResponse
 } from '@raspi-system/shared-types';
 
 
@@ -315,15 +320,167 @@ export function useKioskProductionScheduleHistoryProgress(options?: {
 
 export function useKioskGrindingPlanningBoard(
   params: KioskGrindingPlanningBoardQuery | undefined,
-  options?: { enabled?: boolean; refetchIntervalMs?: number | false }
+  options?: {
+    enabled?: boolean;
+    refetchIntervalMs?: number | false;
+    refetchOnWindowFocus?: boolean;
+    staleTime?: number;
+  }
 ) {
   return useQuery({
     queryKey: ['kiosk-grinding-planning-board', params],
     queryFn: () => getKioskGrindingPlanningBoard(params!),
     enabled: (options?.enabled ?? true) && Boolean(params),
     refetchInterval: options?.refetchIntervalMs ?? 30000,
+    staleTime: options?.staleTime,
+    refetchOnWindowFocus: options?.refetchOnWindowFocus,
     placeholderData: (previousData) => previousData
   });
+}
+
+export type KioskGrindingPlanningBoardProgressiveResult = {
+  data: GrindingPlanningBoardResponse | undefined;
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  error: unknown;
+  isPlaceholderData: boolean;
+  refetch: ReturnType<typeof useKioskGrindingPlanningBoard>['refetch'];
+  scopeReady: boolean;
+  isAppending: boolean;
+  isComplete: boolean;
+  appendError: unknown;
+};
+
+/**
+ * 初回ページを先に表示し、同じスナップショットの残りだけを順次追補する。
+ * 順位ボードのphased取得と同じ300秒のstale/refetch方針を使うが、契約が異なるため
+ * continue部分はこのAPI専用の薄いアダプターとして保持する。
+ */
+export function useKioskGrindingPlanningBoardProgressive(
+  params: KioskGrindingPlanningBoardQuery | undefined,
+  options?: { enabled?: boolean; refetchIntervalMs?: number | false }
+): KioskGrindingPlanningBoardProgressiveResult {
+  const query = useKioskGrindingPlanningBoard(params, {
+    enabled: options?.enabled,
+    refetchIntervalMs: options?.refetchIntervalMs ?? LEADER_BOARD_SCHEDULE_REFETCH_MS,
+    refetchOnWindowFocus: false,
+    staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS
+  });
+  const paramsKey = useMemo(() => JSON.stringify(params ?? null), [params]);
+  const [mergedData, setMergedData] = useState<GrindingPlanningBoardResponse>();
+  const [isAppending, setIsAppending] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
+  const [appendError, setAppendError] = useState<unknown>(null);
+  const runIdRef = useRef(0);
+  const syncedSignatureRef = useRef<string | null>(null);
+  const stableParams = useMemo(
+    () => paramsKey === 'null' ? undefined : JSON.parse(paramsKey) as KioskGrindingPlanningBoardQuery,
+    [paramsKey]
+  );
+
+  useEffect(() => {
+    runIdRef.current += 1;
+    syncedSignatureRef.current = null;
+    setMergedData(undefined);
+    setIsAppending(false);
+    setIsComplete(false);
+    setAppendError(null);
+  }, [paramsKey]);
+
+  const firstData = query.data;
+  const firstDataIsFresh = Boolean(firstData && !query.isPlaceholderData);
+  const firstSignature = firstData
+    ? `${query.dataUpdatedAt}:${firstData.snapshotId}:${firstData.sourceRevision}`
+    : null;
+
+  useEffect(() => {
+    if (!firstDataIsFresh || !firstData || firstSignature == null || query.isFetching) return;
+    if (syncedSignatureRef.current === firstSignature) return;
+    syncedSignatureRef.current = firstSignature;
+    const runId = ++runIdRef.current;
+    let cancelled = false;
+    const initial = firstData;
+    let items = [...initial.items];
+    let cursor = initial.nextCursor;
+    let previousCursor = -1;
+
+    setMergedData({ ...initial, items, nextCursor: cursor });
+    setAppendError(null);
+    setIsComplete(cursor == null);
+    if (cursor == null) return;
+
+    setIsAppending(true);
+    void (async () => {
+      try {
+        while (!cancelled && runId === runIdRef.current && cursor != null) {
+          const nextCursor = Number(cursor);
+          if (!Number.isInteger(nextCursor) || nextCursor <= previousCursor) {
+            throw new Error('生産日程のページ情報が不正です。再読み込みしてください。');
+          }
+          const page = await getKioskGrindingPlanningBoard({
+            ...stableParams!,
+            cursor: nextCursor,
+            pageSize: 160,
+            snapshotId: initial.snapshotId
+          });
+          if (cancelled || runId !== runIdRef.current) return;
+          if (
+            page.snapshotId !== initial.snapshotId ||
+            page.sourceRevision !== initial.sourceRevision ||
+            page.siteKey !== initial.siteKey ||
+            page.category !== initial.category ||
+            page.view !== initial.view
+          ) {
+            throw new Error('表示中の生産日程が更新されました。再読み込みしてください。');
+          }
+          const seen = new Set(items.map((item) => item.itemId));
+          const pageItems = page.items.filter((item) => {
+            if (seen.has(item.itemId)) throw new Error('生産日程のページに重複があります。再読み込みしてください。');
+            seen.add(item.itemId);
+            return true;
+          });
+          items = [...items, ...pageItems];
+          previousCursor = nextCursor;
+          cursor = page.nextCursor;
+          setMergedData((current) => current?.snapshotId === initial.snapshotId
+            ? { ...initial, items, nextCursor: cursor }
+            : current);
+          setIsComplete(cursor == null);
+        }
+      } catch (error) {
+        if (!cancelled && runId === runIdRef.current) {
+          setAppendError(normalizeLeaderboardContinueFailure(error));
+          setIsComplete(false);
+        }
+      } finally {
+        if (!cancelled && runId === runIdRef.current) setIsAppending(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      syncedSignatureRef.current = null;
+      if (runId === runIdRef.current) setIsAppending(false);
+    };
+  }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, stableParams]);
+
+  const displayData = mergedData ?? firstData;
+  const scopeReady = Boolean(
+    firstData && !query.isPlaceholderData && !query.isFetching && mergedData?.snapshotId === firstData.snapshotId
+  );
+  return {
+    data: displayData,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    isError: query.isError,
+    error: query.error,
+    isPlaceholderData: query.isPlaceholderData,
+    refetch: query.refetch,
+    scopeReady,
+    isAppending,
+    isComplete: scopeReady && isComplete,
+    appendError,
+  };
 }
 
 export function useKioskGrindingPlanningBoardSnapshot(

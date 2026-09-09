@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { Prisma } from '@prisma/client';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
@@ -75,6 +76,7 @@ type Fixture = {
   rowIds: string[];
   splitIds: string[];
   resourceNames: string[];
+  sharedStateBefore: { id: string; csvDashboardId: string; location: string; state: Prisma.JsonValue } | null;
 };
 
 const fixtures: Fixture[] = [];
@@ -98,12 +100,18 @@ async function ensureDashboard(): Promise<void> {
 
 async function createFixture(): Promise<Fixture> {
   const prefix = `grinding-board-it-${randomUUID()}`;
+  const sharedState = await db().kioskProductionScheduleSearchState.findUnique({
+    where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' } }
+  });
   const fixture: Fixture = {
     prefix,
     siteKey: `${prefix}-site`,
     rowIds: [],
     splitIds: [],
-    resourceNames: [`${prefix}-305`, `${prefix}-581`, `${prefix}-1`]
+    resourceNames: [`${prefix}-305`, `${prefix}-581`, `${prefix}-1`],
+    sharedStateBefore: sharedState
+      ? { id: sharedState.id, csvDashboardId: sharedState.csvDashboardId, location: sharedState.location, state: sharedState.state }
+      : null
   };
   await db().productionScheduleResourceMaster.createMany({
     data: [
@@ -169,6 +177,17 @@ async function addRows(fixture: Fixture, specs: readonly RowSpec[]): Promise<str
         dueDate: new Date(`${spec.dueDate ?? '2026-09-20'}T00:00:00.000Z`)
       }))
     });
+
+    // Each isolated fixture needs a registered seiban order so the planning
+    // board exercises its normal shared-history seed path. Restore the exact
+    // pre-fixture shared row during cleanup below.
+    const historyRows = await Promise.all(fixture.rowIds.map((id) => db().csvDashboardRow.findUniqueOrThrow({ where: { id }, select: { rowData: true } })));
+    const history = historyRows.map((row) => String((row.rowData as Record<string, unknown>).FSEIBAN ?? '')).filter(Boolean);
+    await db().kioskProductionScheduleSearchState.upsert({
+      where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' } },
+      create: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared', state: { history } },
+      update: { state: { history } }
+    });
   }
 
   for (const { id, data, spec } of rows) {
@@ -231,6 +250,17 @@ async function cleanupFixture(fixture: Fixture): Promise<void> {
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: fixture.siteKey }
   });
   await db().productionScheduleResourceMaster.deleteMany({ where: { resourceName: { in: fixture.resourceNames } } });
+  if (fixture.sharedStateBefore) {
+    await db().kioskProductionScheduleSearchState.upsert({
+      where: { id: fixture.sharedStateBefore.id },
+      create: fixture.sharedStateBefore,
+      update: { state: fixture.sharedStateBefore.state }
+    });
+  } else {
+    await db().kioskProductionScheduleSearchState.deleteMany({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' }
+    });
+  }
 }
 
 function boardItem(response: GrindingPlanningBoardResponse, predicate: (item: GrindingPlanningBoardItem) => boolean): GrindingPlanningBoardItem {
@@ -328,18 +358,80 @@ describeIntegration('grinding planning board service real Postgres integration',
       productNo: String(index + 1)
     })));
     const store = snapshotStore();
+    const hydrateModule = await import('../leaderboard/leaderboard-shell-hydrate.service.js');
+    const hydrateSpy = vi.spyOn(hydrateModule, 'fetchLeaderboardScheduleHydratedRowsOrderedByIds');
     const first = await boardFor(fixture, { snapshotStore: store });
     const all = [...first.items];
     let cursor = first.nextCursor;
+    const hydrationCallsAfterFirstPage = hydrateSpy.mock.calls.length;
+    expect(hydrationCallsAfterFirstPage).toBeGreaterThan(0);
+    hydrateSpy.mockImplementation(async () => {
+      throw new Error('continuation must use the stored snapshot payload');
+    });
     while (cursor != null) {
       const page = await boardFor(fixture, { cursor: Number(cursor), snapshotId: first.snapshotId, snapshotStore: store });
       all.push(...page.items);
       cursor = page.nextCursor;
     }
+    expect(hydrateSpy.mock.calls.length).toBe(hydrationCallsAfterFirstPage);
+    hydrateSpy.mockRestore();
     expect(all).toHaveLength(400);
     expect(new Set(all.map((item) => item.itemId)).size).toBe(400);
     await expect(boardFor({ ...fixture, siteKey: `${fixture.siteKey}-wrong` }, { cursor: 160, snapshotId: first.snapshotId, snapshotStore: store })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
     await expect(boardFor(fixture, { category: 'cutting', cursor: 0, snapshotId: first.snapshotId, snapshotStore: store })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
+  });
+
+  it('keeps registered items scoped while load includes an unregistered seiban', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-REGISTERED`, fhincd: 'PART-REGISTERED', processOrder: '1', productNo: '1', requiredMinutes: '10' },
+      { fseiban: `${fixture.prefix}-UNREGISTERED`, fhincd: 'PART-UNREGISTERED', processOrder: '1', productNo: '2', requiredMinutes: '20' }
+    ]);
+    await db().kioskProductionScheduleSearchState.update({
+      where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' } },
+      data: { state: { history: [`${fixture.prefix}-REGISTERED`] } }
+    });
+
+    const response = await boardFor(fixture);
+    expect(response.registeredFseibans).toEqual([`${fixture.prefix}-REGISTERED`]);
+    expect(response.items.map((item) => item.fseiban)).toEqual([`${fixture.prefix}-REGISTERED`]);
+    const resourceLoad = response.load.find((entry) => entry.resourceCd === '305');
+    expect(resourceLoad).toMatchObject({
+      originalItemCount: 2,
+      alternateItemCount: 2,
+      originalRequiredMinutes: 30,
+      alternateRequiredMinutes: 30,
+      unfinishedItemCount: 2
+    });
+  });
+
+  it('counts every registered process in progress and caps the copied seiban order at 50', async () => {
+    const progressFixture = await createFixture();
+    await addRows(progressFixture, [
+      { fseiban: `${progressFixture.prefix}-PROGRESS`, fhincd: 'PART-PROGRESS', resourceCd: '305', processOrder: '1', productNo: '1', completed: true },
+      { fseiban: `${progressFixture.prefix}-PROGRESS`, fhincd: 'PART-PROGRESS', resourceCd: '1', processOrder: '2', productNo: '1' }
+    ]);
+    const progressResponse = await boardFor(progressFixture);
+    expect(progressResponse.items).toHaveLength(1);
+    expect(progressResponse.seibanProgress[`${progressFixture.prefix}-PROGRESS`]).toEqual({ completed: 1, total: 2 });
+
+    const cappedFixture = await createFixture();
+    await addRows(cappedFixture, Array.from({ length: 52 }, (_, index) => ({
+      fseiban: `${cappedFixture.prefix}-${String(index + 1).padStart(2, '0')}`,
+      fhincd: `PART-${index + 1}`,
+      processOrder: '1',
+      productNo: String(index + 1),
+      requiredMinutes: '1'
+    })));
+    const cappedResponse = await boardFor(cappedFixture);
+    expect(cappedResponse.registeredFseibans).toHaveLength(50);
+    expect(cappedResponse.items).toHaveLength(50);
+    expect(cappedResponse.load.find((entry) => entry.resourceCd === '305')).toMatchObject({
+      originalItemCount: 52,
+      alternateItemCount: 52,
+      originalRequiredMinutes: 52,
+      alternateRequiredMinutes: 52
+    });
   });
 
   it('applies resource and due together, clears rank, preserves originals, and makes a true no-op', async () => {

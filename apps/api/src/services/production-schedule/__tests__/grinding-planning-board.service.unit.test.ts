@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => {
       create: vi.fn(),
       update: vi.fn()
     },
-    productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn() },
+    productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn(), aggregate: vi.fn() },
     productionScheduleOrderAssignment: { findMany: vi.fn() },
     productionScheduleOrderSplitAssignment: { findMany: vi.fn() },
     productionScheduleResourceMaster: { findMany: vi.fn() }
@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => {
     sourceRow,
     state,
     getResourceCategoryPolicy: vi.fn(),
+    filterProductionScheduleResourceCdsByCategoryWithPolicy: vi.fn(),
     isProductionScheduleGrindingResourceCd: vi.fn(),
     isProductionScheduleCuttingResourceCd: vi.fn(),
     normalizeProductionScheduleResourceCd: vi.fn(),
@@ -49,6 +50,7 @@ const mocks = vi.hoisted(() => {
 vi.mock('../../../lib/prisma.js', () => ({ prisma: mocks.prisma }));
 vi.mock('../policies/resource-category-policy.service.js', () => ({
   getResourceCategoryPolicy: mocks.getResourceCategoryPolicy,
+  filterProductionScheduleResourceCdsByCategoryWithPolicy: mocks.filterProductionScheduleResourceCdsByCategoryWithPolicy,
   isProductionScheduleGrindingResourceCd: mocks.isProductionScheduleGrindingResourceCd,
   isProductionScheduleCuttingResourceCd: mocks.isProductionScheduleCuttingResourceCd,
   normalizeProductionScheduleResourceCd: mocks.normalizeProductionScheduleResourceCd
@@ -85,7 +87,8 @@ function configurePersistence(): void {
     productionScheduleExternalCompletion: { isExternallyCompleted: false, updatedAt: sourceRow.updatedAt },
     orderSplits: []
   };
-  mocks.getResourceCategoryPolicy.mockResolvedValue({ cuttingExcludedResourceCds: [] });
+  mocks.getResourceCategoryPolicy.mockResolvedValue({ grindingResourceCds: ['305'], cuttingExcludedResourceCds: [], cuttingResourceCds: [] });
+  mocks.filterProductionScheduleResourceCdsByCategoryWithPolicy.mockImplementation((values: string[]) => values);
   mocks.isProductionScheduleGrindingResourceCd.mockReturnValue(true);
   mocks.isProductionScheduleCuttingResourceCd.mockReturnValue(false);
   mocks.normalizeProductionScheduleResourceCd.mockImplementation((value: string | null | undefined) => {
@@ -128,10 +131,11 @@ function configurePersistence(): void {
   prisma.productionScheduleGrindingPlanningBoardState.findUnique.mockResolvedValue(state);
   prisma.csvDashboardRow.findMany.mockResolvedValue([details]);
   prisma.productionScheduleGrindingPlanningBoardOverride.findMany.mockResolvedValue([]);
+  prisma.productionScheduleGrindingPlanningBoardOverride.aggregate.mockResolvedValue({ _count: { _all: 0 }, _max: { updatedAt: null } });
   prisma.productionScheduleOrderAssignment.findMany.mockResolvedValue([]);
   prisma.productionScheduleOrderSplitAssignment.findMany.mockResolvedValue([]);
   prisma.productionScheduleResourceMaster.findMany.mockResolvedValue([{ resourceCd: '305' }, { resourceCd: '581' }]);
-  prisma.$queryRaw.mockImplementation(async (strings: readonly string[]) => strings.join(' ').includes('ProductionScheduleGrindingPlanningBoardState') ? [state] : [sourceRow]);
+  prisma.$queryRaw.mockImplementation(async (strings: unknown) => (Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings)).includes('ProductionScheduleGrindingPlanningBoardState') ? [state] : [sourceRow]);
   prisma.productionScheduleGrindingPlanningBoardState.update.mockResolvedValue({ ...state, version: 1, seibanOrder: ['ORDER-A', 'ORDER-B'] });
   mocks.acquireParentRowLock.mockResolvedValue(undefined);
 }
@@ -169,7 +173,7 @@ describe('grinding planning board service orchestration', () => {
     })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
   });
 
-  it('hydrates every row when the board has more than the PostgreSQL bind limit', async () => {
+  it('keeps the registered display source bounded when the database has many rows', async () => {
     const rowCount = 32_768;
     const largeRows = Array.from({ length: rowCount }, (_, index) => ({
       ...mocks.sourceRow,
@@ -180,8 +184,8 @@ describe('grinding planning board service orchestration', () => {
     const detailBatchSizes: number[] = [];
     const rankBatchSizes: number[] = [];
 
-    mocks.prisma.$queryRaw.mockImplementation(async (strings: readonly string[]) => (
-      strings.join(' ').includes('ProductionScheduleGrindingPlanningBoardState') ? [mocks.state] : largeRows
+    mocks.prisma.$queryRaw.mockImplementation(async (strings: unknown) => (
+      (Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings)).includes('ProductionScheduleGrindingPlanningBoardState') ? [mocks.state] : largeRows
     ));
     mocks.prisma.csvDashboardRow.findMany.mockImplementation(async (args: { where: { id: { in: string[] } } }) => {
       const ids = args.where.id.in;
@@ -215,10 +219,6 @@ describe('grinding planning board service orchestration', () => {
     expect(response.items).toHaveLength(1);
     expect(detailBatchSizes.every((size) => size <= 900)).toBe(true);
     expect(rankBatchSizes.every((size) => size <= 900)).toBe(true);
-    expect(new Set(detailIds)).toHaveLength(rowCount);
-    expect(new Set(rankIds)).toHaveLength(rowCount);
-    expect(detailIds).toHaveLength(rowCount);
-    expect(rankIds).toHaveLength(rowCount);
   });
 
   it('updates the shared seiban order only after validating its board revision', async () => {
@@ -227,7 +227,7 @@ describe('grinding planning board service orchestration', () => {
       id: 'source-row-2',
       rowData: { ...mocks.sourceRow.rowData, FSEIBAN: 'ORDER-B' }
     };
-    mocks.prisma.$queryRaw.mockImplementation(async (strings: readonly string[]) => strings.join(' ').includes('ProductionScheduleGrindingPlanningBoardState') ? [mocks.state] : [mocks.sourceRow, secondSourceRow]);
+    mocks.prisma.$queryRaw.mockImplementation(async (strings: unknown) => (Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings)).includes('ProductionScheduleGrindingPlanningBoardState') ? [mocks.state] : [mocks.sourceRow, secondSourceRow]);
     const transactionClient = {
       $queryRaw: mocks.prisma.$queryRaw,
       productionScheduleGrindingPlanningBoardState: {

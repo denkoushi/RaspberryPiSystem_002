@@ -11,6 +11,8 @@ export type LeaderboardShellSnapshotRecord = {
   readonly generationToken: string;
   readonly locationKey: string;
   readonly siteKey: string | undefined;
+  /** Optional response payload retained by consumers that need cheap cursor continuation. */
+  readonly payload?: unknown;
   readonly createdAtMs: number;
   readonly expiresAtMs: number;
 };
@@ -35,6 +37,7 @@ export interface LeaderboardShellSnapshotStore {
     generationToken: string;
     locationKey: string;
     siteKey: string | undefined;
+    payload?: unknown;
   }): string;
 
   /**
@@ -109,6 +112,7 @@ export function createInMemoryLeaderboardShellSnapshotStore(
         generationToken: record.generationToken,
         locationKey: record.locationKey,
         siteKey: record.siteKey,
+        ...(record.payload === undefined ? {} : { payload: record.payload }),
         createdAtMs: now,
         expiresAtMs: now + defaultTtlMs
       });

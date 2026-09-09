@@ -21,6 +21,8 @@ export type PlanningBoardFocusViewProps = {
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
+  disabled?: boolean;
+  bulkDisabled?: boolean;
 };
 
 export function PlanningBoardFocusView({
@@ -34,7 +36,9 @@ export function PlanningBoardFocusView({
   onToggleAll,
   onToggleItem,
   onResourceClick,
-  onRankChange
+  onRankChange,
+  disabled = false,
+  bulkDisabled = false
 }: PlanningBoardFocusViewProps) {
   const selectableItems = items.filter((item) => !item.isCompleted);
   const selectedSelectableCount = selectableItems.filter((item) => selectedItemIds.has(item.itemId)).length;
@@ -74,7 +78,7 @@ export function PlanningBoardFocusView({
             ref={(element) => {
               if (element) element.indeterminate = someSelected;
             }}
-            disabled={selectableItems.length === 0}
+            disabled={disabled || bulkDisabled || selectableItems.length === 0}
             aria-label={`製番${fseiban}を全選択`}
             onChange={(event) => onToggleAll(event.target.checked)}
           />
@@ -90,6 +94,7 @@ export function PlanningBoardFocusView({
             onToggleItem={onToggleItem}
             onResourceClick={onResourceClick}
             onRankChange={onRankChange}
+            disabled={disabled}
             showRank
             tableLabel={`${fseiban}集中表示 ${index + 1}`}
           />
