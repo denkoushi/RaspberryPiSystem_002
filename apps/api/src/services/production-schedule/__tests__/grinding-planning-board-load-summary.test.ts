@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { Prisma } from '@prisma/client';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildGrindingPlanningBoardLoadSummary,
+  readGrindingPlanningBoardLoadSummary,
   type GrindingPlanningBoardLoadSummaryRow
 } from '../grinding-planning-board-load-summary.js';
 
@@ -97,5 +99,66 @@ describe('grinding-planning-board-load-summary', () => {
       ['G-03', 1, 1]
     ]);
     expect(result.unknownRequiredMinutesCount).toBe(0);
+  });
+
+  it('reduces materialized aggregate rows without changing the load payload contract', async () => {
+    const queryRaw = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          originalResourceCd: ' G-01 ',
+          effectiveResourceCd: 'G-02',
+          itemCount: 2n,
+          unknownItemCount: 1n,
+          requiredMinutesSum: 5
+        },
+        {
+          originalResourceCd: null,
+          effectiveResourceCd: 'G-03',
+          itemCount: 4n,
+          unknownItemCount: 4n,
+          requiredMinutesSum: null
+        }
+      ]);
+
+    const result = await readGrindingPlanningBoardLoadSummary({
+      client: { $queryRaw: queryRaw } as never,
+      siteKey: 'site-a',
+      category: 'grinding',
+      splitEnabled: true,
+      leaderboardMaterializedBaseWhere: Prisma.sql`TRUE`,
+      isResourceInCategory: (resourceCd, category) => category === 'grinding' && resourceCd.startsWith('G-')
+    });
+
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({
+      load: [
+        {
+          resourceCd: 'G-01',
+          originalItemCount: 2,
+          alternateItemCount: 0,
+          originalRequiredMinutes: 5,
+          alternateRequiredMinutes: 0,
+          unfinishedItemCount: 0,
+          requiredMinutes: 0,
+          unknownItemCount: 0,
+          originalUnknownItemCount: 1,
+          alternateUnknownItemCount: 0
+        },
+        {
+          resourceCd: 'G-02',
+          originalItemCount: 0,
+          alternateItemCount: 2,
+          originalRequiredMinutes: 0,
+          alternateRequiredMinutes: 5,
+          unfinishedItemCount: 2,
+          requiredMinutes: 5,
+          unknownItemCount: 1,
+          originalUnknownItemCount: 0,
+          alternateUnknownItemCount: 1
+        }
+      ],
+      unknownRequiredMinutesCount: 1
+    });
   });
 });
