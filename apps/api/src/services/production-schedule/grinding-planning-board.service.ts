@@ -78,7 +78,14 @@ type SplitRankRow = {
 type PlanningState = {
   id: string;
   version: number;
+  updatedAt?: Date | null;
   seibanOrder: Prisma.JsonValue;
+};
+type PlanningSnapshotGenerationDetails = {
+  generationToken: string;
+  leaderboardGenerationToken: string;
+  boardVersion: number;
+  boardUpdatedAt: string;
 };
 type CurrentProjection = {
   state: PlanningState;
@@ -255,8 +262,9 @@ async function readPlanningSource(params: {
   siteKey: string;
   category: GrindingPlanningBoardCategory;
   fseibans: readonly string[];
+  leaderboardGenerationToken?: string;
 }): Promise<PlanningSource> {
-  const generationToken = await readLeaderboardShellSnapshotGenerationToken();
+  const generationToken = params.leaderboardGenerationToken ?? await readLeaderboardShellSnapshotGenerationToken();
   const baseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
   const order = uniqueFseibans(params.fseibans);
   if (order.length === 0) {
@@ -545,7 +553,7 @@ function isPlanningSnapshotPayload(value: unknown): value is PlanningSnapshotPay
     Array.isArray(payload.resources);
 }
 
-async function readPlanningSnapshotGenerationToken(siteKey: string): Promise<string> {
+async function readPlanningSnapshotGenerationDetails(siteKey: string): Promise<PlanningSnapshotGenerationDetails> {
   const [leaderboardGeneration, state, overrides] = await Promise.all([
     readLeaderboardShellSnapshotGenerationToken(),
     prisma.productionScheduleGrindingPlanningBoardState.findUnique({
@@ -558,13 +566,32 @@ async function readPlanningSnapshotGenerationToken(siteKey: string): Promise<str
       _max: { updatedAt: true }
     })
   ]);
-  return JSON.stringify({
-    leaderboardGeneration,
-    boardVersion: state?.version ?? 0,
-    boardUpdatedAt: state?.updatedAt?.toISOString() ?? '',
-    overrideCount: overrides._count._all,
-    overrideUpdatedAt: overrides._max.updatedAt?.toISOString() ?? ''
-  });
+  const boardVersion = state?.version ?? 0;
+  const boardUpdatedAt = state?.updatedAt?.toISOString() ?? '';
+  return {
+    generationToken: JSON.stringify({
+      leaderboardGeneration,
+      boardVersion,
+      boardUpdatedAt,
+      overrideCount: overrides._count._all,
+      overrideUpdatedAt: overrides._max.updatedAt?.toISOString() ?? ''
+    }),
+    leaderboardGenerationToken: leaderboardGeneration,
+    boardVersion,
+    boardUpdatedAt
+  };
+}
+
+async function readPlanningSnapshotGenerationToken(siteKey: string): Promise<string> {
+  return (await readPlanningSnapshotGenerationDetails(siteKey)).generationToken;
+}
+
+function isPlanningStateAlignedWithGeneration(
+  state: PlanningState,
+  generation: PlanningSnapshotGenerationDetails
+): boolean {
+  const stateUpdatedAt = state.updatedAt instanceof Date ? state.updatedAt.toISOString() : '';
+  return state.version === generation.boardVersion && stateUpdatedAt === generation.boardUpdatedAt;
 }
 
 function progressMapToRecord(progress: ReadonlyMap<string, { completed: number; total: number }>): Record<string, { completed: number; total: number }> { return Object.fromEntries(progress.entries()); }
@@ -590,14 +617,12 @@ async function projectCurrentBoard(params: { client: DbClient; siteKey: string; 
 
 export async function getGrindingPlanningBoard(params: { siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; fseibans?: string[]; cursor?: number; pageSize?: number; snapshotId?: string; completionFilter?: 'all' | 'complete' | 'incomplete'; snapshotStore?: LeaderboardShellSnapshotStore }): Promise<GrindingPlanningBoardResponse> {
   if ((params.cursor ?? 0) > 0 && !params.snapshotId) throw new ApiError(400, '続きの cursor には snapshotId が必要です', undefined, 'INVALID_PLANNING_BOARD_CURSOR');
-  // Ensure the shared site order exists before capturing the source generation.
-  // Re-read the state around that generation so an order update between the
-  // first lookup and the token read cannot label stale order data as current.
-  await getOrCreateState(params.siteKey, [], prisma);
-  const generationBeforeRead = await readPlanningSnapshotGenerationToken(params.siteKey);
+  // Capture the state returned by the ensure/read and then compare it with the
+  // state fields in the generation token. A final token after the source/load
+  // work still rejects CSV, state, or override updates during the request.
   const stateForRead = await getOrCreateState(params.siteKey, [], prisma);
-  const generationAfterStateRead = await readPlanningSnapshotGenerationToken(params.siteKey);
-  if (generationBeforeRead !== generationAfterStateRead) {
+  const generationBeforeRead = await readPlanningSnapshotGenerationDetails(params.siteKey);
+  if (!isPlanningStateAlignedWithGeneration(stateForRead, generationBeforeRead)) {
     throw new ApiError(409, '一覧の元データが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
   }
   const order = stateOrder(stateForRead);
@@ -613,7 +638,7 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
     const snapshot = store.get(snapshotId);
     const sameScope = snapshot != null && snapshot.siteKey === params.siteKey && snapshot.locationKey === params.siteKey && snapshot.filterFingerprint === filterFingerprint;
     const generation = await readPlanningSnapshotGenerationToken(params.siteKey);
-    if (!snapshot || !sameScope || snapshot.generationToken !== generation || snapshot.partialOrdering || !isPlanningSnapshotPayload(snapshot.payload)) {
+    if (!snapshot || !sameScope || snapshot.generationToken !== generationBeforeRead.generationToken || snapshot.generationToken !== generation || snapshot.partialOrdering || !isPlanningSnapshotPayload(snapshot.payload)) {
       // A binding mismatch may refer to another terminal/site/filter. Do not
       // let one caller delete a valid snapshot owned by that scope.
       if (sameScope) store.delete(snapshotId);
@@ -625,7 +650,8 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
     const source = await readPlanningSource({
       siteKey: params.siteKey,
       category: params.category,
-      fseibans: selected
+      fseibans: selected,
+      leaderboardGenerationToken: generationBeforeRead.leaderboardGenerationToken
     });
     const names = await resolveSeibanMachineDisplayNamesBatched(order);
     const projection = await projectCurrentBoard({ client: prisma, siteKey: params.siteKey, category: params.category, view: params.view, state: stateForRead, selectedFseibans: new Set(selected), machineNames: new Map(Object.entries(names.machineNames)), source });
@@ -639,7 +665,7 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
       isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, projection.policy)
     });
     const generation = await readPlanningSnapshotGenerationToken(params.siteKey);
-    if (generation !== generationBeforeRead) {
+    if (generation !== generationBeforeRead.generationToken) {
       throw new ApiError(409, '一覧の元データが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
     }
     orderedIds = filtered.map((item) => item.itemId);
