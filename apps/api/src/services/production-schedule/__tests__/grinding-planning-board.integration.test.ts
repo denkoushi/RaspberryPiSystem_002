@@ -408,6 +408,43 @@ describeIntegration('grinding planning board service real Postgres integration',
     expect(boardItem(refreshed, (item) => item.sourceRowId === updatedRow).fhinmei).toBe('updated in place');
   });
 
+  it('rejects a continuation after the board state changes', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-STATE`, processOrder: '1', productNo: '1' },
+      { fseiban: `${fixture.prefix}-STATE`, processOrder: '2', productNo: '2' }
+    ]);
+    const store = snapshotStore();
+    const first = await boardFor(fixture, { pageSize: 1, snapshotStore: store });
+    expect(first.nextCursor).toBe('1');
+    const state = await db().productionScheduleGrindingPlanningBoardState.findUniqueOrThrow({
+      where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: fixture.siteKey } },
+      select: { id: true, version: true }
+    });
+    await db().productionScheduleGrindingPlanningBoardState.update({
+      where: { id: state.id },
+      data: { version: state.version + 1 }
+    });
+
+    await expect(boardFor(fixture, { cursor: 1, snapshotId: first.snapshotId, snapshotStore: store, pageSize: 1 })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
+  });
+
+  it('rejects a continuation after an override changes', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-OVERRIDE`, processOrder: '1', productNo: '1' },
+      { fseiban: `${fixture.prefix}-OVERRIDE`, processOrder: '2', productNo: '2' }
+    ]);
+    const store = snapshotStore();
+    const first = await boardFor(fixture, { pageSize: 1, snapshotStore: store });
+    expect(first.nextCursor).toBe('1');
+    const item = first.items[0];
+    if (!item) throw new Error('fixture item not found');
+    await updateItem(fixture, item, { resourceCd: '581' }, first.sourceRevision);
+
+    await expect(boardFor(fixture, { cursor: 1, snapshotId: first.snapshotId, snapshotStore: store, pageSize: 1 })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
+  });
+
   it('keeps registered items scoped while load includes an unregistered seiban', async () => {
     const fixture = await createFixture();
     await addRows(fixture, [
