@@ -381,6 +381,33 @@ describeIntegration('grinding planning board service real Postgres integration',
     await expect(boardFor(fixture, { category: 'cutting', cursor: 0, snapshotId: first.snapshotId, snapshotStore: store })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
   });
 
+  it('invalidates a snapshot and refreshes the item after an in-place CSV rowData update', async () => {
+    const fixture = await createFixture();
+    const [updatedRow] = await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-IN-PLACE`, fhincd: 'PART-1', processOrder: '1', productNo: '1' },
+      { fseiban: `${fixture.prefix}-IN-PLACE`, fhincd: 'PART-2', processOrder: '2', productNo: '2' }
+    ]);
+    const store = snapshotStore();
+    const first = await boardFor(fixture, { pageSize: 1, snapshotStore: store });
+    expect(first.nextCursor).toBe('1');
+    const before = await db().csvDashboardRow.findUniqueOrThrow({ where: { id: updatedRow }, select: { createdAt: true, rowData: true } });
+    const rowCountBefore = await db().csvDashboardRow.count({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID } });
+    await db().csvDashboardRow.update({
+      where: { id: updatedRow },
+      data: {
+        rowData: { ...(before.rowData as Record<string, unknown>), FHINMEI: 'updated in place' },
+        updatedAt: new Date('2026-09-10T00:00:00.000Z')
+      }
+    });
+    const after = await db().csvDashboardRow.findUniqueOrThrow({ where: { id: updatedRow }, select: { createdAt: true, rowData: true } });
+    expect(after.createdAt).toEqual(before.createdAt);
+    expect(await db().csvDashboardRow.count({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID } })).toBe(rowCountBefore);
+
+    await expect(boardFor(fixture, { cursor: 1, snapshotId: first.snapshotId, snapshotStore: store, pageSize: 1 })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
+    const refreshed = await boardFor(fixture, { pageSize: 1, snapshotStore: store });
+    expect(boardItem(refreshed, (item) => item.sourceRowId === updatedRow).fhinmei).toBe('updated in place');
+  });
+
   it('keeps registered items scoped while load includes an unregistered seiban', async () => {
     const fixture = await createFixture();
     await addRows(fixture, [
