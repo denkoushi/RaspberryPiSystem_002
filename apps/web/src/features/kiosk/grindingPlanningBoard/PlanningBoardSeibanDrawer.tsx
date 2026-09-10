@@ -16,6 +16,8 @@ export type PlanningBoardSeibanDrawerProps = {
   onRegister: (fseiban: string) => Promise<boolean>;
   onRemove: (fseiban: string) => void;
   onToggle: (fseiban: string) => void;
+  onOpenDueDetail: (fseiban: string) => void;
+  dueDetailTargetFseiban?: string | null;
   onClear: () => void;
   onMove: (fseiban: string, direction: 'up' | 'down') => void;
 };
@@ -29,6 +31,8 @@ export function PlanningBoardSeibanDrawer({
   onRegister,
   onRemove,
   onToggle,
+  onOpenDueDetail,
+  dueDetailTargetFseiban,
   onClear,
   onMove,
   orderReadOnly = false,
@@ -108,14 +112,27 @@ export function PlanningBoardSeibanDrawer({
           {orderStatus ? <p className="mt-2 text-xs text-slate-400" role="status">{orderStatus}</p> : null}
           <div className="mt-4 flex items-center justify-between gap-2">
             <span className="text-xs font-semibold text-slate-300">登録製番（OR）</span>
-            <button
-              type="button"
-              className="min-h-11 rounded-md px-2 text-xs font-semibold text-slate-400 hover:bg-slate-900 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
-              onClick={onClear}
-              disabled={orderDisabled}
-            >
-              全て解除
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className="min-h-11 rounded-md px-2 text-xs font-semibold text-cyan-300 hover:bg-slate-900 hover:text-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:opacity-50"
+                onClick={() => {
+                  if (dueDetailTargetFseiban) onOpenDueDetail(dueDetailTargetFseiban);
+                }}
+                disabled={!dueDetailTargetFseiban}
+                aria-label={dueDetailTargetFseiban ? `製番${dueDetailTargetFseiban}の納期詳細を開く` : '納期詳細を開く（製番未選択）'}
+              >
+                納期詳細{dueDetailTargetFseiban ? `: ${dueDetailTargetFseiban}` : ''}
+              </button>
+              <button
+                type="button"
+                className="min-h-11 rounded-md px-2 text-xs font-semibold text-slate-400 hover:bg-slate-900 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+                onClick={onClear}
+                disabled={orderDisabled}
+              >
+                全て解除
+              </button>
+            </div>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-1.5">
             {visibleFseibans.map((fseiban) => {

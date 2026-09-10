@@ -3,11 +3,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
 import {
+  useKioskProductionScheduleResources,
   useKioskGrindingPlanningBoardProgressive,
+  useKioskGrindingPlanningBoardDueDetail,
   useUpdateKioskGrindingPlanningBoardOverrides,
+  useUpdateKioskGrindingPlanningBoardDueScope,
   useUpdateKioskGrindingPlanningBoardRank,
   useUpdateKioskGrindingPlanningBoardSeibanOrder
 } from '../../api/hooks';
+import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { PlanningBoardFocusView } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardFocusView';
@@ -21,9 +25,13 @@ import {
   resolveGrindingPlanningBoardResource,
   sortGrindingPlanningBoardItems
 } from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
+import { LeaderBoardDueAssistPanel } from '../../features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel';
+import { normalizeDueDateInput } from '../../features/kiosk/productionSchedule/dueManagement';
 
 import type { PlanningBoardAllocation, PlanningBoardStatus } from '../../features/kiosk/grindingPlanningBoard/types';
 import type {
+  GrindingPlanningBoardDueScope,
+  GrindingPlanningBoardDueScopeSnapshot,
   GrindingPlanningBoardItem,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardDueRequest
@@ -60,12 +68,15 @@ function defaultDueDateFor(items: readonly GrindingPlanningBoardItem[], allocati
   return addUtcDays(base, 1);
 }
 
-function getGroupProgress(data: GrindingPlanningBoardResponse | undefined, fseiban: string) {
-  return data?.seibanProgress[fseiban] ?? null;
-}
-
 type DueMode = 'none' | 'date' | 'offsetDays' | 'restore';
 type ResourceChoice = 'unchanged' | 'restore' | string;
+
+type DuePickerState = {
+  fseiban: string;
+  value: string;
+  scope: GrindingPlanningBoardDueScope;
+  snapshot: Pick<GrindingPlanningBoardDueScopeSnapshot, 'sourceGenerationToken' | 'scopeRevision'>;
+};
 
 export function ProductionScheduleGrindingPlanningBoardPage() {
   const [category, setCategory] = useState<'grinding' | 'cutting'>('grinding');
@@ -83,6 +94,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [openInitialized, setOpenInitialized] = useState(false);
   const pendingOrderRef = useRef<string[] | null>(null);
   const orderRequestPendingRef = useRef(false);
+  const dueRequestPendingRef = useRef(false);
+  const dueDetailIdentityRef = useRef<string | null>(null);
   const [editorSnapshot, setEditorSnapshot] = useState<{
     items: GrindingPlanningBoardItem[];
     sourceRevision: string;
@@ -101,13 +114,21 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [rankConflict, setRankConflict] = useState(false);
   const [orderSaving, setOrderSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [dueDetailFseiban, setDueDetailFseiban] = useState<string | null>(null);
+  const [dueDetailTargetFseiban, setDueDetailTargetFseiban] = useState<string | null>(null);
+  const [duePickerState, setDuePickerState] = useState<DuePickerState | null>(null);
+  const [dueConflict, setDueConflict] = useState(false);
+  const [dueError, setDueError] = useState<string | null>(null);
 
   const boardQuery = useKioskGrindingPlanningBoardProgressive(
     { category, view, completionFilter: status },
     { refetchIntervalMs: editorOpen ? false : undefined }
   );
+  const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch: true });
+  const dueDetailQuery = useKioskGrindingPlanningBoardDueDetail(dueDetailFseiban);
   const updateOverrides = useUpdateKioskGrindingPlanningBoardOverrides();
-  const updateRank = useUpdateKioskGrindingPlanningBoardRank();
+  const updateDueScope = useUpdateKioskGrindingPlanningBoardDueScope();
+  const { mutateAsync: updateRankAsync } = useUpdateKioskGrindingPlanningBoardRank();
   const updateOrder = useUpdateKioskGrindingPlanningBoardSeibanOrder();
 
   const data = boardQuery.data;
@@ -115,6 +136,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const bulkReady = scopeReady && boardQuery.isComplete;
   const interactionLocked = !scopeReady;
   const sourceRevision = data?.sourceRevision ?? '';
+  const dueDetail = allocation === 'original'
+    ? dueDetailQuery.data?.original
+    : dueDetailQuery.data?.alternate;
 
   useEffect(() => {
     if (!data) return;
@@ -132,6 +156,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       setActiveFseibans(new Set(data.seibanOrder));
       setActiveInitialized(true);
     }
+    setDueDetailTargetFseiban((current) => current && serverOrder.includes(current) ? current : serverOrder[0] ?? null);
     if (!openInitialized) {
       setOpenFseibans(new Set(data.seibanOrder));
       setOpenInitialized(true);
@@ -155,6 +180,13 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     }
     return grouped;
   }, [data?.items]);
+  const sortedItemsBySeiban = useMemo(() => {
+    const sorted = new Map<string, GrindingPlanningBoardItem[]>();
+    for (const [fseiban, group] of itemsBySeiban) {
+      sorted.set(fseiban, sortGrindingPlanningBoardItems(group, registeredFseibans, view, allocation));
+    }
+    return sorted;
+  }, [allocation, itemsBySeiban, registeredFseibans, view]);
   const machineNames = useMemo(() => {
     const result = new Map<string, string | null>();
     for (const item of data?.items ?? []) if (!result.has(item.fseiban)) result.set(item.fseiban, item.machineName);
@@ -228,6 +260,87 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     setEditorOpen(true);
   }, [allocation, data, scopeReady]);
 
+  const openDueDetail = useCallback((fseiban: string) => {
+    dueDetailIdentityRef.current = fseiban;
+    setDueDetailTargetFseiban(fseiban);
+    setDueDetailFseiban(fseiban);
+    setDuePickerState(null);
+    setDueConflict(false);
+    setDueError(null);
+  }, []);
+
+  const closeDueDetail = useCallback(() => {
+    dueDetailIdentityRef.current = null;
+    setDuePickerState(null);
+    setDueDetailFseiban(null);
+    setDueConflict(false);
+    setDueError(null);
+  }, []);
+
+  const openDuePicker = useCallback((scope: GrindingPlanningBoardDueScope, currentDueDate: string | null) => {
+    const detail = dueDetailQuery.data;
+    if (!dueDetailFseiban || !detail || allocation === 'original' || dueConflict) return;
+    setDueError(null);
+    setDueConflict(false);
+    setDuePickerState({
+      fseiban: dueDetailFseiban,
+      value: normalizeDueDateInput(currentDueDate),
+      scope,
+      snapshot: {
+        sourceGenerationToken: detail.sourceGenerationToken,
+        scopeRevision: detail.scopeRevision
+      }
+    });
+  }, [allocation, dueConflict, dueDetailFseiban, dueDetailQuery.data]);
+
+  const refreshDueDetail = useCallback(async () => {
+    setDueError('最新状態を取得しています…');
+    try {
+      const [detailResult, boardResult] = await Promise.all([dueDetailQuery.refetch(), boardQuery.refetch()]);
+      if (detailResult.isError || boardResult.isError) {
+        setDueError('最新状態を取得できませんでした。再試行してください。');
+        return;
+      }
+      setDueConflict(false);
+      setDueError(null);
+      setFeedback('最新状態を取得しました。対象を選び直して再適用してください。');
+    } catch {
+      setDueError('最新状態を取得できませんでした。再試行してください。');
+    }
+  }, [boardQuery, dueDetailQuery]);
+
+  const commitDueDate = useCallback(async (nextDueDate: string) => {
+    const current = duePickerState;
+    if (!current || allocation === 'original' || dueRequestPendingRef.current) return;
+    dueRequestPendingRef.current = true;
+    try {
+      await updateDueScope.mutateAsync({
+        fseiban: current.fseiban,
+        payload: {
+          ...current.snapshot,
+          scope: current.scope,
+          dueDate: nextDueDate
+        }
+      });
+      if (dueDetailIdentityRef.current !== current.fseiban) return;
+      setDuePickerState(null);
+      setDueConflict(false);
+      setDueError(null);
+      setFeedback(`${current.fseiban}の納期を更新しました。`);
+    } catch (error) {
+      if (dueDetailIdentityRef.current !== current.fseiban) return;
+      setDuePickerState(null);
+      if (isAxiosError(error) && error.response?.status === 409) {
+        setDueConflict(true);
+        setDueError('表示中の納期が更新されています。最新状態を取得してから再適用してください。');
+      } else {
+        setDueError('納期を保存できませんでした。入力内容と通信状態を確認してください。');
+      }
+    } finally {
+      dueRequestPendingRef.current = false;
+    }
+  }, [allocation, duePickerState, updateDueScope]);
+
   const applyEditor = async () => {
     if (!editorSnapshot || allocation === 'original' || editorItems.length === 0) return;
     const offset = Number(offsetDays);
@@ -281,14 +394,14 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     }
   };
 
-  const changeRank = async (item: GrindingPlanningBoardItem, rank: number | null) => {
+  const changeRank = useCallback(async (item: GrindingPlanningBoardItem, rank: number | null) => {
     if (!data || !scopeReady || allocation === 'original' || item.isCompleted) return;
     try {
-      await updateRank.mutateAsync({ sourceRevision, itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, alternateRank: rank });
+      await updateRankAsync({ sourceRevision, itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, alternateRank: rank });
     } catch (error) {
       handleError(error);
     }
-  };
+  }, [allocation, data, handleError, scopeReady, sourceRevision, updateRankAsync]);
 
   const persistOrder = async (nextOrder: string[]): Promise<boolean> => {
     if (!data || !scopeReady || nextOrder.length > 50 || allocation === 'original') return false;
@@ -343,7 +456,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const removeSeiban = (fseiban: string) => {
     const next = registeredFseibans.filter((value) => value !== fseiban);
     void persistOrder(next).then((saved) => {
-      if (saved) setActiveFseibans((current) => new Set([...current].filter((value) => value !== fseiban)));
+      if (saved) {
+        setActiveFseibans((current) => new Set([...current].filter((value) => value !== fseiban)));
+        setDueDetailTargetFseiban((current) => current === fseiban ? null : current);
+        setDueDetailFseiban((current) => current === fseiban ? null : current);
+      }
     });
   };
   const addSeiban = async (fseiban: string): Promise<boolean> => {
@@ -376,7 +493,32 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     return `${shortDate(before)} → 変更なし`;
   };
 
-  const focusItems = focusedFseiban ? itemsBySeiban.get(focusedFseiban) ?? [] : [];
+  const focusItems = useMemo(
+    () => focusedFseiban ? sortedItemsBySeiban.get(focusedFseiban) ?? [] : [],
+    [focusedFseiban, sortedItemsBySeiban]
+  );
+  const openEditorForItem = useCallback((item: GrindingPlanningBoardItem) => openEditor([item]), [openEditor]);
+  const returnFromFocus = useCallback(() => setFocusedFseiban(null), []);
+  const toggleFocusAll = useCallback((selected: boolean) => toggleAll(focusItems, selected), [focusItems, toggleAll]);
+  const paneActionsBySeiban = useMemo(() => {
+    const actions = new Map<string, {
+      onToggleOpen: () => void;
+      onFocus: () => void;
+      onToggleAll: (selected: boolean) => void;
+    }>();
+    for (const [fseiban, group] of itemsBySeiban) {
+      actions.set(fseiban, {
+        onToggleOpen: () => setOpenFseibans((current) => {
+          const next = new Set(current);
+          if (next.has(fseiban)) next.delete(fseiban); else next.add(fseiban);
+          return next;
+        }),
+        onFocus: () => setFocusedFseiban(fseiban),
+        onToggleAll: (selected) => toggleAll(group, selected)
+      });
+    }
+    return actions;
+  }, [itemsBySeiban, toggleAll]);
   const toolbarSelectedItems = focusedFseiban
     ? selectedVisibleItems.filter((item) => item.fseiban === focusedFseiban)
     : selectedVisibleItems;
@@ -440,42 +582,40 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           <PlanningBoardFocusView
             fseiban={focusedFseiban}
             machineName={machineNames.get(focusedFseiban) ?? null}
-            items={sortGrindingPlanningBoardItems(focusItems, registeredFseibans, view, allocation)}
-            progress={getGroupProgress(data, focusedFseiban)}
+            items={focusItems}
             allocation={allocation}
             selectedItemIds={selectedItemIds}
-            onBack={() => setFocusedFseiban(null)}
-            onToggleAll={(selected) => toggleAll(focusItems, selected)}
+            onBack={returnFromFocus}
+            onToggleAll={toggleFocusAll}
             onToggleItem={toggleItem}
-            onResourceClick={(item) => openEditor([item])}
+            onResourceClick={openEditorForItem}
             onRankChange={changeRank}
             disabled={interactionLocked}
             bulkDisabled={!bulkReady}
           />
         </div>
       ) : data && view === 'seiban' ? (
-        <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
           {registeredFseibans.filter((fseiban) => activeFseibans.has(fseiban)).map((fseiban) => {
             const group = itemsBySeiban.get(fseiban) ?? [];
             if (group.length === 0) return null;
+            const actions = paneActionsBySeiban.get(fseiban);
+            if (!actions) return null;
             return (
               <PlanningBoardSeibanPane
                 key={fseiban}
                 fseiban={fseiban}
                 machineName={machineNames.get(fseiban) ?? null}
-                items={sortGrindingPlanningBoardItems(group, registeredFseibans, view, allocation)}
-                progress={getGroupProgress(data, fseiban)}
+                items={sortedItemsBySeiban.get(fseiban) ?? group}
                 allocation={allocation}
                 selectedItemIds={selectedItemIds}
                 isOpen={openFseibans.has(fseiban)}
                 isFocused={false}
-                onToggleOpen={() => setOpenFseibans((current) => {
-                  const next = new Set(current); if (next.has(fseiban)) next.delete(fseiban); else next.add(fseiban); return next;
-                })}
-                onFocus={() => setFocusedFseiban(fseiban)}
-                onToggleAll={(selected) => toggleAll(group, selected)}
+                onToggleOpen={actions.onToggleOpen}
+                onFocus={actions.onFocus}
+                onToggleAll={actions.onToggleAll}
                 onToggleItem={toggleItem}
-                onResourceClick={(item) => openEditor([item])}
+                onResourceClick={openEditorForItem}
                 onRankChange={changeRank}
                 disabled={interactionLocked}
                 bulkDisabled={!bulkReady}
@@ -489,11 +629,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             items={visibleItems}
             seibanOrder={registeredFseibans}
             resources={data.resources}
-            load={data.load}
+            resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
             allocation={allocation}
             selectedItemIds={selectedItemIds}
             onToggleItem={toggleItem}
-            onResourceClick={(item) => openEditor([item])}
+            onResourceClick={openEditorForItem}
             onRankChange={changeRank}
             disabled={interactionLocked}
           />
@@ -503,7 +643,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         isOpen={drawerOpen}
         registeredFseibans={registeredFseibans}
         selectedFseibans={activeFseibans}
+        dueDetailTargetFseiban={dueDetailTargetFseiban ?? [...activeFseibans][0] ?? null}
         machineNameBySeiban={machineNames}
+        onOpenDueDetail={openDueDetail}
         onClose={() => {
           setDrawerOpen(false);
           setOrderRegistrationError(null);
@@ -512,17 +654,56 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         onRefreshOrder={orderConflict ? () => void refreshAfterOrderConflict() : undefined}
         onRegister={allocation === 'original' || !scopeReady ? async () => false : addSeiban}
         onRemove={allocation === 'original' || !scopeReady ? () => undefined : removeSeiban}
-        onToggle={(fseiban) => setActiveFseibans((current) => {
-          if (interactionLocked) return current;
-          const next = new Set(current);
-          if (next.has(fseiban)) next.delete(fseiban); else next.add(fseiban);
-          return next;
-        })}
-        onClear={() => { if (!interactionLocked) setActiveFseibans(new Set()); }}
+        onToggle={(fseiban) => {
+          if (interactionLocked) return;
+          setDueDetailTargetFseiban(fseiban);
+          setActiveFseibans((current) => {
+            const next = new Set(current);
+            if (next.has(fseiban)) next.delete(fseiban); else next.add(fseiban);
+            return next;
+          });
+        }}
+        onClear={() => {
+          if (!interactionLocked) {
+            setActiveFseibans(new Set());
+            setDueDetailTargetFseiban(null);
+          }
+        }}
         onMove={allocation === 'original' || orderSaving || interactionLocked ? () => undefined : moveSeiban}
         orderReadOnly={allocation === 'original' || interactionLocked}
         orderBusy={orderSaving || interactionLocked}
         orderStatus={interactionLocked ? (boardQuery.isError ? '一覧を読み込めませんでした。' : '一覧を読み込み中…') : orderSaving ? '製番順を保存中…' : null}
+      />
+      {dueDetailFseiban ? (
+        <div
+          className="fixed inset-0 z-40 bg-black/45"
+          role="presentation"
+          onClick={closeDueDetail}
+        />
+      ) : null}
+      <div className="fixed inset-y-0 right-0 z-50 flex max-w-full">
+        <LeaderBoardDueAssistPanel
+          isOpen={dueDetailFseiban !== null}
+          selectedFseiban={dueDetailFseiban}
+          detail={dueDetail}
+          loading={dueDetailQuery.isLoading}
+          error={dueDetailQuery.isError}
+          dueUpdatePending={updateDueScope.isPending}
+          readOnly={allocation === 'original' || dueConflict}
+          conflict={dueConflict}
+          errorMessage={dueError}
+          onRefresh={() => void refreshDueDetail()}
+          onClose={closeDueDetail}
+          onOpenSeibanDueDatePicker={() => openDuePicker({ kind: 'seiban' }, dueDetail?.dueDate ?? null)}
+          onOpenProcessingDueDatePicker={(processingType, currentDueDate) => openDuePicker({ kind: 'processing', processingType }, currentDueDate)}
+        />
+      </div>
+      <KioskDatePickerModal
+        isOpen={duePickerState !== null}
+        value={duePickerState?.value ?? ''}
+        onCancel={() => setDuePickerState(null)}
+        onCommit={(next) => void commitDueDate(next)}
+        overlayZIndex={60}
       />
       <Dialog isOpen={editorOpen} onClose={() => setEditorOpen(false)} title="一括変更" size="lg">
         <div className="mt-4 space-y-4">

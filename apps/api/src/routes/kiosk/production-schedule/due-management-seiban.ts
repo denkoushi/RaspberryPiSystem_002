@@ -1,12 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 
 import { listSeibanProcessingDueDates } from '../../../services/production-schedule/due-date-resolution.service.js';
-import { resolveEffectiveDueDisplay } from '../../../services/production-schedule/due-management-effective-due-display.js';
+import { presentDueManagementSeibanDetail } from '../../../services/production-schedule/due-management-detail-presentation.service.js';
 import {
   getDueManagementSeibanDetailWithScope,
   toDueManagementScopeFromContext
 } from '../../../services/production-schedule/due-management-location-scope-adapter.service.js';
-import { getProcessingTypePriority } from '../../../services/production-schedule/policies/processing-priority-policy.js';
 import { productionScheduleDueManagementSeibanParamsSchema, type KioskRouteDeps } from './shared.js';
 
 export async function registerProductionScheduleDueManagementSeibanRoute(
@@ -23,44 +22,8 @@ export async function registerProductionScheduleDueManagementSeibanRoute(
       fseiban: params.fseiban
     });
     const processingDueDateMap = await listSeibanProcessingDueDates(params.fseiban);
-    const processingTypeDueDates = Array.from(
-      new Set(
-        detail.parts
-          .map((part) => part.processingType?.trim() ?? '')
-          .filter((processingType) => processingType.length > 0)
-      )
-    )
-      .sort((a, b) => {
-        const aPriority = getProcessingTypePriority(a);
-        const bPriority = getProcessingTypePriority(b);
-        if (aPriority !== bPriority) return aPriority - bPriority;
-        return a.localeCompare(b);
-      })
-      .map((processingType) => ({
-        processingType,
-        dueDate: processingDueDateMap.get(processingType) ?? null
-      }));
-
     return {
-      detail: {
-        ...detail,
-        processingTypeDueDates,
-        parts: detail.parts.map((part) => {
-          const manualDue =
-            part.processingType && processingDueDateMap.get(part.processingType)
-              ? processingDueDateMap.get(part.processingType) ?? null
-              : detail.dueDate;
-          const { displayDueDate, source } = resolveEffectiveDueDisplay({
-            manualDue,
-            plannedEndDate: part.plannedEndDate
-          });
-          return {
-            ...part,
-            effectiveDueDate: displayDueDate,
-            effectiveDueDateSource: source
-          };
-        })
-      }
+      detail: presentDueManagementSeibanDetail({ detail, processingDueDateMap })
     };
   });
 }

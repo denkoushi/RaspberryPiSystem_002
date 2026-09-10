@@ -2,6 +2,64 @@
 export type GrindingPlanningBoardView = 'seiban' | 'resource';
 export type GrindingPlanningBoardCategory = 'grinding' | 'cutting';
 
+export type GrindingPlanningBoardDueScope =
+  | { kind: 'seiban' }
+  | { kind: 'processing'; processingType: string };
+
+export interface GrindingPlanningBoardDueDetailProcess {
+  rowId: string;
+  resourceCd: string;
+  resourceNames?: string[];
+  processOrder: number | null;
+  isCompleted: boolean;
+}
+
+export interface GrindingPlanningBoardDueDetailPart {
+  productNo: string;
+  fhincd: string;
+  fhinmei: string;
+  note: string | null;
+  processCount: number;
+  totalRequiredMinutes: number;
+  processingType: string | null;
+  processingPriority: number;
+  completedProcessCount: number;
+  totalProcessCount: number;
+  actualPerPieceMinutes: number | null;
+  actualEstimatedMinutes: number;
+  actualCoverageRatio: number;
+  processes: GrindingPlanningBoardDueDetailProcess[];
+  currentPriorityRank: number | null;
+  suggestedPriorityRank: number;
+  plannedQuantity?: number | null;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+  effectiveDueDate?: string | null;
+  effectiveDueDateSource?: 'manual' | 'csv' | null;
+}
+
+export interface GrindingPlanningBoardDueDetail {
+  fseiban: string;
+  machineName: string | null;
+  dueDate: string | null;
+  parts: GrindingPlanningBoardDueDetailPart[];
+  processingTypeDueDates?: Array<{ processingType: string; dueDate: string | null }>;
+}
+
+export interface GrindingPlanningBoardDueScopeSnapshot {
+  original: GrindingPlanningBoardDueDetail;
+  alternate: GrindingPlanningBoardDueDetail;
+  sourceGenerationToken: string;
+  scopeRevision: string;
+}
+
+export interface GrindingPlanningBoardDueScopeRequest {
+  sourceGenerationToken: string;
+  scopeRevision: string;
+  scope: GrindingPlanningBoardDueScope;
+  dueDate: string;
+}
+
 export type GrindingPlanningBoardDueRequest =
   | { kind: 'date'; date: string }
   | { kind: 'offsetDays'; days: number }

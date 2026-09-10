@@ -1121,6 +1121,7 @@ model CsvDashboard {
   rows                   CsvDashboardRow[]
   grindingPlanningBoardStates    ProductionScheduleGrindingPlanningBoardState[]
   grindingPlanningBoardOverrides ProductionScheduleGrindingPlanningBoardOverride[]
+  grindingPlanningBoardDueScopes ProductionScheduleGrindingPlanningBoardDueScope[]
 
   @@index([enabled])
   @@index([gmailScheduleId])
@@ -1567,6 +1568,9 @@ model ProductionScheduleGrindingPlanningBoardOverride {
   itemKey           String    @db.VarChar(1000)
   overrideResourceCd String?  @db.VarChar(20)
   overrideDueDate   DateTime? @db.Date
+  /// null keeps the historical meaning of a missing due override; true means
+  /// an explicit processing clear falls back to the CSV planned end date.
+  dueDateCleared    Boolean?
   alternateRank     Int?
   version           Int       @default(1)
   createdAt         DateTime  @default(now())
@@ -1577,6 +1581,27 @@ model ProductionScheduleGrindingPlanningBoardOverride {
   @@unique([csvDashboardId, siteKey, itemKey], map: "PSGrindingPlanningOverride_dashboard_site_item_key")
   @@index([csvDashboardId, siteKey], map: "PSGrindingPlanningOverride_dashboard_site_idx")
   @@index([csvDashboardId, siteKey, overrideResourceCd], map: "PSGrindingPlanningOverride_resource_idx")
+}
+
+/// 研削planning boardの製番/表面処理別納期。元CSV・既存順位ボードの納期は変更しない。
+/// dueDate=null は明示クリアを表し、競合検出のため行とversionを保持する。
+model ProductionScheduleGrindingPlanningBoardDueScope {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  siteKey        String   @db.VarChar(100)
+  fseiban        String   @db.VarChar(20)
+  scopeKey       String   @db.VarChar(80)
+  scopeKind      String   @db.VarChar(20)
+  processingType String?  @db.VarChar(20)
+  dueDate        DateTime? @db.Date
+  version        Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
+
+  @@unique([csvDashboardId, siteKey, fseiban, scopeKey], map: "PSGrindingPlanningDueScope_dashboard_site_seiban_key")
+  @@index([csvDashboardId, siteKey, fseiban], map: "PSGrindingPlanningDueScope_dashboard_site_seiban_idx")
 }
 
 model ProductionScheduleProgress {

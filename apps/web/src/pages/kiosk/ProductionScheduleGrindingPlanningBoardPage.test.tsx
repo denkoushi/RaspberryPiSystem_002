@@ -1,17 +1,28 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import * as planningBoardSorting from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
+
 import { ProductionScheduleGrindingPlanningBoardPage } from './ProductionScheduleGrindingPlanningBoardPage';
 
 const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
   refetch: vi.fn(),
   overrides: vi.fn(),
+  dueDetail: vi.fn(),
+  dueScope: vi.fn(),
   rank: vi.fn(),
   order: vi.fn()
 }));
 
 vi.mock('../../api/hooks', () => ({
+  useKioskProductionScheduleResources: () => ({
+    data: {
+      resourceNameMap: {
+        '305': ['研削機Ａ']
+      }
+    }
+  }),
   useKioskGrindingPlanningBoardProgressive: (...args: unknown[]) => ({
     ...mocks.snapshot(...args),
     scopeReady: true,
@@ -19,7 +30,9 @@ vi.mock('../../api/hooks', () => ({
     isAppending: false,
     appendError: null
   }),
+  useKioskGrindingPlanningBoardDueDetail: (...args: unknown[]) => mocks.dueDetail(...args),
   useUpdateKioskGrindingPlanningBoardOverrides: () => ({ mutateAsync: mocks.overrides, isPending: false }),
+  useUpdateKioskGrindingPlanningBoardDueScope: () => ({ mutateAsync: mocks.dueScope, isPending: false }),
   useUpdateKioskGrindingPlanningBoardRank: () => ({ mutateAsync: mocks.rank, isPending: false }),
   useUpdateKioskGrindingPlanningBoardSeibanOrder: () => ({ mutateAsync: mocks.order, isPending: false })
 }));
@@ -34,7 +47,7 @@ function fixture() {
     fseiban,
     fhincd: `PART-${id}`,
     fhinmei: `部品${id}`,
-    machineName: fseiban === '26-1041' ? '自動組立機 AX-200' : '搬送装置 CV-80',
+    machineName: fseiban === '26-1041' ? '自動組立機 ＡＸ－２００' : '搬送装置 ＣＶ－８０',
     productNo: `PRODUCT-${id}`,
     processOrder,
     originalResourceCd: '305',
@@ -74,25 +87,87 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.snapshot.mockReset();
     mocks.refetch.mockReset();
     mocks.overrides.mockReset();
+    mocks.dueDetail.mockReset();
+    mocks.dueScope.mockReset();
     mocks.rank.mockReset();
     mocks.order.mockReset();
     mocks.refetch.mockResolvedValue({ data: fixture() });
     mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isError: false, refetch: mocks.refetch });
     mocks.overrides.mockResolvedValue({ sourceRevision: 'board-2' });
+    mocks.dueDetail.mockReturnValue({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() });
+    mocks.dueScope.mockResolvedValue({});
     mocks.rank.mockResolvedValue({ sourceRevision: 'board-2' });
     mocks.order.mockResolvedValue({ sourceRevision: 'board-2', seibanOrder: ['26-1041', '26-1042'] });
   });
 
-  it('通常表示から製番を広げ、製番別進捗を表示する', () => {
+  it('通常表示から製番を広げ、日付と半角機種名を表示する', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
 
     expect(screen.getByTestId('planning-board-seiban-26-1041')).toBeInTheDocument();
     expect(screen.getByTestId('planning-board-seiban-26-1042')).toBeInTheDocument();
-    expect(screen.getByText(/3\/20工程/)).toBeInTheDocument();
+    expect(screen.getByText('自動組立機 AX-200')).toBeInTheDocument();
+    expect(screen.getAllByText('5個')).toHaveLength(4);
+    expect(screen.queryByText(/3\/20工程/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: '選択' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '製番26-1041を広げる' }));
     expect(screen.getByTestId('planning-board-focus-view')).toBeInTheDocument();
+    expect(screen.getByText('自動組立機 AX-200')).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: '選択' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '製番26-1041を一覧に戻す' })).toBeInTheDocument();
+  });
+
+  it('資源CD表示は資源名を見出しに表示し、部品情報を上下2段にする', () => {
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
+
+    expect(screen.getByTestId('planning-board-resource-view')).toBeInTheDocument();
+    expect(screen.getByText('305（研削機Ａ）')).toBeInTheDocument();
+    expect(screen.queryByText(/未完\d+件/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/合計分/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('5個 · 20分').length).toBeGreaterThan(0);
+    expect(screen.getByText('26-1041 · PART-a')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]).toHaveClass('text-[15px]', 'text-white');
+  });
+
+  it('1件の選択と開閉では他の製番・行を再計算しない', () => {
+    const sortSpy = vi.spyOn(planningBoardSorting, 'sortGrindingPlanningBoardItems');
+    const dueSpy = vi.spyOn(planningBoardSorting, 'resolveGrindingPlanningBoardDueDate');
+    const resourceSpy = vi.spyOn(planningBoardSorting, 'resolveGrindingPlanningBoardResource');
+    try {
+      render(<ProductionScheduleGrindingPlanningBoardPage />);
+      sortSpy.mockClear();
+      dueSpy.mockClear();
+      resourceSpy.mockClear();
+
+      fireEvent.click(screen.getByLabelText('部品aを選択'));
+
+      expect(sortSpy).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('部品aを選択')).not.toBeChecked();
+      expect(screen.getByText('3件')).toBeInTheDocument();
+      expect(dueSpy).toHaveBeenCalledTimes(1);
+      expect(dueSpy.mock.calls.every(([item]) => item.itemId === 'a')).toBe(true);
+      expect(resourceSpy).toHaveBeenCalledTimes(1);
+      expect(resourceSpy.mock.calls.every(([item]) => item.itemId === 'a')).toBe(true);
+
+      sortSpy.mockClear();
+      dueSpy.mockClear();
+      resourceSpy.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: '製番26-1041の明細を閉じる' }));
+
+      expect(sortSpy).not.toHaveBeenCalled();
+      expect(dueSpy).not.toHaveBeenCalled();
+      expect(resourceSpy).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
+      expect(screen.getByText('対象 3件')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    } finally {
+      sortSpy.mockRestore();
+      dueSpy.mockRestore();
+      resourceSpy.mockRestore();
+    }
   });
 
   it('対象を一括変更すると開いた時点のrevisionとversionを送る', async () => {
@@ -114,12 +189,164 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
-    fireEvent.click(within(drawer).getAllByRole('button', { name: /26-1041/ })[0]!);
+    fireEvent.click(within(drawer).getAllByRole('button', { name: /^26-1041/ })[0]!);
     expect(screen.queryByTestId('planning-board-seiban-26-1041')).not.toBeInTheDocument();
 
     fireEvent.click(within(drawer).getByRole('button', { name: '製番登録ペインを閉じる' }));
     fireEvent.click(screen.getByRole('button', { name: '切削' }));
     expect(screen.getByText('2件')).toBeInTheDocument();
+  });
+
+  it('drawerで選んだ単一製番の納期詳細を開き、picker開始時の版を送る', async () => {
+    const dueRefetch = vi.fn().mockResolvedValue({ isError: false });
+    const detail = {
+      fseiban: '26-1041',
+      machineName: '自動組立機 ＡＸ－２００',
+      dueDate: '2026-09-15',
+      processingTypeDueDates: [{ processingType: '研削', dueDate: '2026-09-16' }],
+      parts: []
+    };
+    mocks.dueDetail.mockReturnValue({
+      data: {
+        original: { ...detail, dueDate: '2026-09-12' },
+        alternate: detail,
+        sourceGenerationToken: 'source-due-1',
+        scopeRevision: 'scope-due-1'
+      },
+      isLoading: false,
+      isError: false,
+      refetch: dueRefetch
+    });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    fireEvent.click(within(drawer).getAllByRole('button', { name: /^26-1041/ })[0]!);
+    fireEvent.click(within(drawer).getByRole('button', { name: '製番26-1041の納期詳細を開く' }));
+
+    expect(screen.getByRole('complementary', { name: '製番納期アシスト' })).toBeInTheDocument();
+    expect(screen.getByText('対象製番:')).toBeInTheDocument();
+    const dueButton = screen.getByRole('button', { name: /納期日:/ });
+    fireEvent.click(dueButton);
+    fireEvent.click(within(screen.getByRole('dialog', { name: '納期日' })).getByRole('button', { name: '今日' }));
+
+    await waitFor(() => expect(mocks.dueScope).toHaveBeenCalledTimes(1));
+    expect(mocks.dueScope.mock.calls[0]?.[0]).toMatchObject({
+      fseiban: '26-1041',
+      payload: {
+        sourceGenerationToken: 'source-due-1',
+        scopeRevision: 'scope-due-1',
+        scope: { kind: 'seiban' }
+      }
+    });
+  });
+
+  it('元割当の納期詳細は参照表示にして日付変更を無効にする', () => {
+    const detail = {
+      fseiban: '26-1041',
+      machineName: null,
+      dueDate: '2026-09-12',
+      processingTypeDueDates: [],
+      parts: []
+    };
+    mocks.dueDetail.mockReturnValue({
+      data: {
+        original: detail,
+        alternate: detail,
+        sourceGenerationToken: 'source-due-1',
+        scopeRevision: 'scope-due-1'
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn()
+    });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '元割当' }));
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    fireEvent.click(within(drawer).getAllByRole('button', { name: /^26-1041/ })[0]!);
+    fireEvent.click(within(drawer).getByRole('button', { name: '製番26-1041の納期詳細を開く' }));
+
+    expect(screen.getByRole('button', { name: /納期日:/ })).toBeDisabled();
+  });
+
+  it('別製番へ切り替えた後の遅延納期応答で新しいpickerを閉じない', async () => {
+    let resolveDue: ((value: unknown) => void) | undefined;
+    const detailFor = (fseiban: string) => ({
+      fseiban,
+      machineName: null,
+      dueDate: '2026-09-15',
+      processingTypeDueDates: [],
+      parts: []
+    });
+    mocks.dueDetail.mockImplementation((fseiban: string | null) => ({
+      data: fseiban ? {
+        original: detailFor(fseiban),
+        alternate: detailFor(fseiban),
+        sourceGenerationToken: `source-${fseiban}`,
+        scopeRevision: `scope-${fseiban}`
+      } : undefined,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn()
+    }));
+    mocks.dueScope.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveDue = resolve;
+    }));
+
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    fireEvent.click(within(drawer).getByRole('button', { name: '製番26-1041の納期詳細を開く' }));
+    fireEvent.click(screen.getByRole('button', { name: /納期日:/ }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '納期日' })).getByRole('button', { name: '今日' }));
+    await waitFor(() => expect(mocks.dueScope).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(within(drawer).getByRole('button', { name: /^26-1042 / }));
+    fireEvent.click(within(drawer).getByRole('button', { name: '製番26-1042の納期詳細を開く' }));
+    fireEvent.click(screen.getByRole('button', { name: /納期日:/ }));
+    expect(screen.getByRole('dialog', { name: '納期日' })).toBeInTheDocument();
+
+    resolveDue?.({});
+    await waitFor(() => expect(screen.getByRole('complementary', { name: '製番納期アシスト' })).toHaveTextContent('対象製番: 26-1042'));
+    expect(screen.getByRole('dialog', { name: '納期日' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('納期409後は編集を止め、明示的な最新取得まで再送しない', async () => {
+    const dueRefetch = vi.fn().mockResolvedValue({ isError: false });
+    const detail = {
+      fseiban: '26-1041',
+      machineName: null,
+      dueDate: '2026-09-15',
+      processingTypeDueDates: [],
+      parts: []
+    };
+    mocks.dueDetail.mockReturnValue({
+      data: {
+        original: detail,
+        alternate: detail,
+        sourceGenerationToken: 'source-due-1',
+        scopeRevision: 'scope-due-1'
+      },
+      isLoading: false,
+      isError: false,
+      refetch: dueRefetch
+    });
+    mocks.dueScope.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    fireEvent.click(within(drawer).getAllByRole('button', { name: /^26-1041/ })[0]!);
+    fireEvent.click(within(drawer).getByRole('button', { name: '製番26-1041の納期詳細を開く' }));
+    fireEvent.click(screen.getByRole('button', { name: /納期日:/ }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '納期日' })).getByRole('button', { name: '今日' }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('表示中の納期が更新されています'));
+    expect(mocks.dueScope).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: /納期日:/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '最新状態を取得' }));
+    await waitFor(() => expect(dueRefetch).toHaveBeenCalledTimes(1));
   });
 
   it('元割当表示では共有製番順の変更操作を無効にする', () => {

@@ -7,6 +7,10 @@ import {
   updateGrindingPlanningBoardRank,
   updateGrindingPlanningBoardSeibanOrder
 } from '../../../services/production-schedule/grinding-planning-board.service.js';
+import {
+  getGrindingPlanningBoardDueScope,
+  updateGrindingPlanningBoardDueScope
+} from '../../../services/production-schedule/grinding-planning-board-due-scope.service.js';
 import type { KioskRouteDeps } from './shared.js';
 
 const querySchema = z.object({
@@ -58,6 +62,24 @@ const orderBodySchema = z.object({
   fseibans: z.array(z.string().min(1).max(100)).max(50)
 });
 
+const dueScopeSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('seiban') }),
+  z.object({ kind: z.literal('processing'), processingType: z.string().min(1).max(20) })
+]);
+
+const dueScopeRequestSchema = z.object({
+  // The shell generation token contains the serialized read context and can
+  // exceed the short sourceRevision limit used by the rank endpoints.
+  sourceGenerationToken: z.string().min(1).max(16_384),
+  scopeRevision: z.string().regex(/^[0-9a-f]{64}$/),
+  scope: dueScopeSchema,
+  dueDate: z.string().max(20)
+});
+
+const seibanParamSchema = z.object({
+  fseiban: z.string().transform((value) => value.trim()).pipe(z.string().min(1).max(20))
+});
+
 function parseFseibans(value: string | undefined): string[] | undefined {
   if (!value) return undefined;
   return Array.from(new Set(value.split(',').map((item) => item.trim()).filter(Boolean)));
@@ -82,6 +104,21 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
       completionFilter: query.completionFilter,
       snapshotStore: deps.leaderboardShellSnapshotStore
     });
+  });
+
+  app.get('/kiosk/production-schedule/grinding-planning-board/seiban/:fseiban/due-detail', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const params = seibanParamSchema.parse(request.params);
+    return getGrindingPlanningBoardDueScope({ siteKey: scope.siteKey, deviceScopeKey: scope.deviceScopeKey, fseiban: params.fseiban });
+  });
+
+  app.put('/kiosk/production-schedule/grinding-planning-board/seiban/:fseiban/due-scope', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const params = seibanParamSchema.parse(request.params);
+    const body = dueScopeRequestSchema.parse(request.body);
+    return updateGrindingPlanningBoardDueScope({ siteKey: scope.siteKey, fseiban: params.fseiban, request: body });
   });
 
   app.put('/kiosk/production-schedule/grinding-planning-board/overrides', { config: { rateLimit: false } }, async (request) => {
