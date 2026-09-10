@@ -3,6 +3,7 @@ import { api } from '../http';
 import type { SelfInspectionStatus } from '../../features/part-measurement/types';
 import type {
   GrindingPlanningBoardCategory,
+  GrindingPlanningBoardOverridesResponse,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardView,
   GrindingPlanningBoardOverridesRequest,
@@ -797,8 +798,8 @@ export async function getKioskGrindingPlanningBoardSnapshot(params: KioskGrindin
   return { ...first, items, nextCursor: null };
 }
 
-export async function updateKioskGrindingPlanningBoardOverrides(payload: GrindingPlanningBoardOverridesRequest) {
-  const { data } = await api.put<{ sourceRevision: string }>(
+export async function updateKioskGrindingPlanningBoardOverrides(payload: GrindingPlanningBoardOverridesRequest): Promise<GrindingPlanningBoardOverridesResponse> {
+  const { data } = await api.put<GrindingPlanningBoardOverridesResponse>(
     '/kiosk/production-schedule/grinding-planning-board/overrides',
     payload
   );

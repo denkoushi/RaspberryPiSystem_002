@@ -147,6 +147,77 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]).toHaveClass('text-[15px]', 'text-white');
   });
 
+  it('同一scopeの背景再取得中も資源CD編集をロックしない', () => {
+    mocks.snapshot.mockReturnValue({
+      data: fixture(),
+      isLoading: false,
+      isFetching: true,
+      isError: false,
+      isPlaceholderData: false,
+      scopeReady: true,
+      refetch: mocks.refetch
+    });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    const resourceButton = screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]!;
+    expect(resourceButton).not.toBeDisabled();
+    fireEvent.click(resourceButton);
+    expect(screen.getByRole('dialog', { name: '一括変更' })).toBeInTheDocument();
+  });
+
+  it('資源CD変更はPUT完了前に表示し、保存失敗時は元へ戻す', async () => {
+    let resolveOverrides: ((value: { sourceRevision: string }) => void) | undefined;
+    mocks.overrides.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveOverrides = resolve;
+    }));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
+    const dialog = screen.getByRole('dialog', { name: '一括変更' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '資源CD 584へ変更' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '適用' }));
+    await waitFor(() => expect(mocks.overrides).toHaveBeenCalledTimes(1));
+    expect(screen.getAllByRole('button', { name: '資源CD 584を変更' }).length).toBeGreaterThan(0);
+
+    resolveOverrides?.({ sourceRevision: 'board-2' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '一括変更' })).not.toBeInTheDocument());
+  });
+
+  it('資源CD変更の保存失敗時は元の表示へ戻す', async () => {
+    mocks.overrides.mockRejectedValueOnce(new Error('override save failed'));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
+    const dialog = screen.getByRole('dialog', { name: '一括変更' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '資源CD 584へ変更' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '適用' }));
+    await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('保存できませんでした'));
+    expect(screen.getAllByRole('button', { name: '資源CD 305を変更' }).length).toBeGreaterThan(0);
+  });
+
+  it('資源CD変更の保存済みレスポンスを保持し、遅い古いGETで元へ戻さない', async () => {
+    const responseItems = fixture().items.map((item) => ({
+      ...item,
+      effectiveResourceCd: '584',
+      itemRevision: `revision-${item.itemId}-after-override`,
+      version: 3,
+      alternateRank: null
+    }));
+    mocks.overrides.mockResolvedValueOnce({ sourceRevision: 'board-1', items: responseItems });
+    const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
+    const dialog = screen.getByRole('dialog', { name: '一括変更' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '資源CD 584へ変更' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '適用' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '一括変更' })).not.toBeInTheDocument());
+    expect(screen.getAllByRole('button', { name: '資源CD 584を変更' })).toHaveLength(4);
+
+    mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isError: false, isPlaceholderData: false, refetch: mocks.refetch });
+    view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getAllByRole('button', { name: '資源CD 584を変更' })).toHaveLength(4);
+  });
+
   it('資源CD表示の個別順位は保存中に即時反映し、再取得後にserver値へ収束する', async () => {
     let current = fixture();
     let resolveRank: ((value: GrindingPlanningBoardRankResponse) => void) | undefined;
@@ -414,6 +485,45 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     });
   });
 
+  it('納期変更はPUT完了前に詳細表示へ反映し、保存中は再編集を止める', async () => {
+    let resolveDue: ((value: { scopeRevision: string }) => void) | undefined;
+    const detail = {
+      fseiban: '26-1041',
+      machineName: null,
+      dueDate: '2026-09-15',
+      processingTypeDueDates: [],
+      parts: []
+    };
+    mocks.dueDetail.mockReturnValue({
+      data: {
+        original: detail,
+        alternate: detail,
+        sourceGenerationToken: 'source-due-1',
+        scopeRevision: 'scope-due-1'
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn()
+    });
+    mocks.dueScope.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveDue = resolve;
+    }));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    fireEvent.click(within(drawer).getByRole('button', { name: '製番26-1041の納期詳細を開く' }));
+    const dueButton = screen.getByRole('button', { name: /納期日:/ });
+    const before = dueButton.textContent;
+    fireEvent.click(dueButton);
+    fireEvent.click(within(screen.getByRole('dialog', { name: '納期日' })).getByRole('button', { name: '明日' }));
+
+    await waitFor(() => expect(mocks.dueScope).toHaveBeenCalledTimes(1));
+    expect(dueButton.textContent).not.toBe(before);
+    expect(dueButton).toBeDisabled();
+    resolveDue?.({ scopeRevision: 'scope-due-2' });
+  });
+
   it('元割当の納期詳細は参照表示にして日付変更を無効にする', () => {
     const detail = {
       fseiban: '26-1041',
@@ -622,6 +732,40 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(within(drawer).getByRole('button', { name: '登録' }));
     await waitFor(() => expect(mocks.order).toHaveBeenCalledTimes(2));
     expect(mocks.order.mock.calls[1]?.[0]).toMatchObject({ sourceRevision: 'board-2', fseibans: ['26-1044', '26-1043', '26-1041', '26-1042'] });
+  });
+
+  it('遅い古いGETを挟んでも連続製番順保存は最新応答revisionを使う', async () => {
+    const initial = fixture();
+    const staleAfterFirst = fixture();
+    staleAfterFirst.sourceRevision = 'board-2';
+    staleAfterFirst.registeredFseibans = ['26-1043', '26-1041', '26-1042'];
+    staleAfterFirst.seibanOrder = staleAfterFirst.registeredFseibans;
+    const staleInitial = fixture();
+    mocks.snapshot.mockImplementation(() => ({ data: initial, isLoading: false, isError: false, refetch: mocks.refetch }));
+    mocks.order
+      .mockResolvedValueOnce({ sourceRevision: 'board-2', seibanOrder: staleAfterFirst.seibanOrder })
+      .mockResolvedValueOnce({ sourceRevision: 'board-3', seibanOrder: ['26-1044', '26-1043', '26-1041', '26-1042'] });
+    const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    const input = within(drawer).getByRole('searchbox', { name: '製番を検索' });
+    fireEvent.change(input, { target: { value: '26-1043' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: '登録' }));
+    await waitFor(() => expect(mocks.order).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(input, { target: { value: '26-1044' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: '登録' }));
+    await waitFor(() => expect(mocks.order).toHaveBeenCalledTimes(2));
+    expect(mocks.order.mock.calls[1]?.[0]).toMatchObject({ sourceRevision: 'board-2' });
+
+    mocks.snapshot.mockReturnValue({ data: staleAfterFirst, isLoading: false, isError: false, refetch: mocks.refetch });
+    view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(within(drawer).getAllByRole('button', { name: /26-1044/ }).length).toBeGreaterThan(0);
+
+    mocks.snapshot.mockReturnValue({ data: staleInitial, isLoading: false, isError: false, refetch: mocks.refetch });
+    view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(within(drawer).getAllByRole('button', { name: /26-1044/ }).length).toBeGreaterThan(0);
   });
 
   it('登録中に次の製番を入力しても成功処理で消さない', async () => {

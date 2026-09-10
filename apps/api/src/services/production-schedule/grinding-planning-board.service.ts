@@ -6,6 +6,7 @@ import type {
   GrindingPlanningBoardDueRequest,
   GrindingPlanningBoardItem,
   GrindingPlanningBoardLoad,
+  GrindingPlanningBoardOverridesResponse,
   GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardView
@@ -893,6 +894,24 @@ async function applyOverridesInTransaction(params: { client: Prisma.TransactionC
   return { state: current.state, current, overrides };
 }
 
+function projectCurrentItems(current: CurrentProjection, overrides: ReadonlyMap<string, ProductionScheduleGrindingPlanningBoardOverride>): Map<string, GrindingPlanningBoardItem> {
+  const common = {
+    rows: current.rows,
+    details: current.details,
+    ranks: current.ranks,
+    overrides,
+    progressRows: current.progressRows,
+    splitEnabled: current.splitEnabled,
+    seibanOrder: stateOrder(current.state),
+    isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, current.policy)
+  };
+  const byItemId = new Map<string, GrindingPlanningBoardItem>();
+  for (const category of ['grinding', 'cutting'] as const) {
+    for (const item of projectGrindingPlanningBoard({ ...common, category }).allItems) byItemId.set(item.itemId, item);
+  }
+  return byItemId;
+}
+
 function projectCurrentItem(current: CurrentProjection, overrides: ReadonlyMap<string, ProductionScheduleGrindingPlanningBoardOverride>, itemId: string): GrindingPlanningBoardItem {
   const common = {
     rows: current.rows,
@@ -913,7 +932,7 @@ function projectCurrentItem(current: CurrentProjection, overrides: ReadonlyMap<s
   return item;
 }
 
-export async function updateGrindingPlanningBoardOverrides(params: { siteKey: string; sourceRevision: string; items: OverrideRequest[] }): Promise<{ sourceRevision: string }> {
+export async function updateGrindingPlanningBoardOverrides(params: { siteKey: string; sourceRevision: string; items: OverrideRequest[] }): Promise<GrindingPlanningBoardOverridesResponse> {
   const itemIds = params.items.map((item) => item.itemId);
   if (new Set(itemIds).size !== itemIds.length) throw new ApiError(400, '対象アイテムが重複しています', undefined, 'DUPLICATE_ITEM');
   const sourceRowIds = await discoverSourceRows(itemIds);
@@ -924,8 +943,20 @@ export async function updateGrindingPlanningBoardOverrides(params: { siteKey: st
     // write-conflict guarantee here. RepeatableRead avoids a PostgreSQL SSI
     // predicate lock on the small override table turning independent items
     // into a false serialization conflict.
-    const result = await prisma.$transaction((client) => applyOverridesInTransaction({ client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: params.items, sourceRowIds, policy }), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
-    return { sourceRevision: boardRevision(result.state) };
+    const result = await prisma.$transaction(async (client) => {
+      const applied = await applyOverridesInTransaction({ client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: params.items, sourceRowIds, policy });
+      const projectedItems = projectCurrentItems(applied.current, applied.overrides);
+      const items = params.items.map((request) => {
+        const item = projectedItems.get(request.itemId);
+        if (!item) throw new ApiError(409, '対象アイテムが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+        return item;
+      });
+      return { ...applied, items };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    return {
+      sourceRevision: boardRevision(result.state),
+      items: result.items
+    };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD');
     throw error;

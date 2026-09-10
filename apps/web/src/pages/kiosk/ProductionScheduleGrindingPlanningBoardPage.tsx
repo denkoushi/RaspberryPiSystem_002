@@ -33,6 +33,7 @@ import type {
   GrindingPlanningBoardDueScope,
   GrindingPlanningBoardDueScopeSnapshot,
   GrindingPlanningBoardItem,
+  GrindingPlanningBoardOverrideItemRequest,
   GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardDueRequest
@@ -93,6 +94,65 @@ type PendingRankOverride = RankDisplayState & {
   phase: 'saving' | 'awaitingSync';
 };
 
+type PendingOrder = {
+  order: string[];
+  baseSourceRevision: string;
+  responseSourceRevision: string | null;
+};
+
+type PendingOverrideItem = {
+  item: GrindingPlanningBoardItem;
+  baseSourceRevision: string;
+  baseItemRevision: string;
+  baseVersion: number;
+  responseSourceRevision: string | null;
+  responseItemRevision: string | null;
+  responseVersion: number | null;
+};
+
+type PendingDueScopeUpdate = {
+  fseiban: string;
+  scope: GrindingPlanningBoardDueScope;
+  dueDate: string;
+  baseScopeRevision: string;
+  responseScopeRevision: string | null;
+};
+
+function dueScopeKey(scope: GrindingPlanningBoardDueScope): string {
+  return scope.kind === 'seiban' ? 'seiban' : `processing:${scope.processingType}`;
+}
+
+function applyOptimisticOverride(
+  item: GrindingPlanningBoardItem,
+  request: GrindingPlanningBoardOverrideItemRequest
+): GrindingPlanningBoardItem {
+  const nextResource = request.resourceCd === undefined
+    ? item.effectiveResourceCd
+    : request.resourceCd ?? item.originalResourceCd;
+  const resourceChanged = request.resourceCd !== undefined && nextResource !== item.effectiveResourceCd;
+
+  let nextDue = item.effectiveDueDate;
+  let dueChanged = false;
+  if (request.due?.kind === 'date') {
+    nextDue = request.due.date;
+    dueChanged = nextDue !== item.effectiveDueDate;
+  } else if (request.due?.kind === 'offsetDays') {
+    const base = item.effectiveDueDate ?? item.originalDueDate ?? todayJst();
+    nextDue = addUtcDays(base, request.due.days);
+    dueChanged = nextDue !== item.effectiveDueDate;
+  } else if (request.due?.kind === 'restore' && item.kind === 'row') {
+    nextDue = item.originalDueDate;
+    dueChanged = nextDue !== item.effectiveDueDate;
+  }
+
+  return {
+    ...item,
+    effectiveResourceCd: nextResource,
+    effectiveDueDate: nextDue,
+    alternateRank: resourceChanged || dueChanged ? null : item.alternateRank
+  };
+}
+
 export function ProductionScheduleGrindingPlanningBoardPage() {
   const [category, setCategory] = useState<'grinding' | 'cutting'>('grinding');
   const [view, setView] = useState<'seiban' | 'resource'>('seiban');
@@ -107,7 +167,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [orderInitialized, setOrderInitialized] = useState(false);
   const [activeInitialized, setActiveInitialized] = useState(false);
   const [openInitialized, setOpenInitialized] = useState(false);
-  const pendingOrderRef = useRef<string[] | null>(null);
+  const pendingOrderRef = useRef<PendingOrder | null>(null);
+  const latestOrderSourceRevisionRef = useRef<string | null>(null);
+  const staleOrderSourceRevisionsRef = useRef<Set<string>>(new Set());
   const orderRequestPendingRef = useRef(false);
   const dueRequestPendingRef = useRef(false);
   const dueDetailIdentityRef = useRef<string | null>(null);
@@ -135,6 +197,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [dueConflict, setDueConflict] = useState(false);
   const [dueError, setDueError] = useState<string | null>(null);
   const [pendingRankOverrides, setPendingRankOverrides] = useState<Record<string, PendingRankOverride>>({});
+  const [pendingOverrideItems, setPendingOverrideItems] = useState<Record<string, PendingOverrideItem>>({});
+  const [pendingDueScope, setPendingDueScope] = useState<PendingDueScopeUpdate | null>(null);
   const rankRequestIdRef = useRef(0);
 
   const boardQuery = useKioskGrindingPlanningBoardProgressive(
@@ -166,6 +230,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const rankMutationPending = Object.values(pendingRankOverrides).some(
     (pending) => pending.scopeKey === rankScopeKey && pending.phase === 'saving'
   );
+  const rankDisabled = useCallback((item: GrindingPlanningBoardItem) => (
+    !rankMutationReady ||
+    rankMutationPending ||
+    (pendingOverrideItems[item.itemId] != null && pendingOverrideItems[item.itemId].responseItemRevision == null)
+  ), [pendingOverrideItems, rankMutationPending, rankMutationReady]);
 
   useEffect(() => {
     setPendingRankOverrides((current) => {
@@ -191,28 +260,97 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     });
   }, [data, pendingRankOverrides, rankScopeKey]);
 
+  useEffect(() => {
+    if (!data || boardQuery.isPlaceholderData) return;
+    setPendingOverrideItems((current) => {
+      let changed = false;
+      const next: Record<string, PendingOverrideItem> = {};
+      for (const [itemId, pending] of Object.entries(current)) {
+        const currentItem = data.items.find((item) => item.itemId === itemId);
+        const baseMatches = currentItem != null && currentItem.itemRevision === pending.baseItemRevision && currentItem.version === pending.baseVersion;
+        const responseMatches = currentItem != null && pending.responseItemRevision != null && currentItem.itemRevision === pending.responseItemRevision && currentItem.version === pending.responseVersion;
+        const itemMatches = currentItem == null || (
+          currentItem.effectiveResourceCd === pending.item.effectiveResourceCd &&
+          currentItem.effectiveDueDate === pending.item.effectiveDueDate &&
+          currentItem.alternateRank === pending.item.alternateRank
+        );
+        const otherAuthoritativeItem = pending.responseItemRevision != null && currentItem != null && !baseMatches && !responseMatches;
+        if (responseMatches && itemMatches || otherAuthoritativeItem) {
+          changed = true;
+          continue;
+        }
+        next[itemId] = pending;
+      }
+      return changed ? next : current;
+    });
+  }, [boardQuery.isPlaceholderData, data, pendingOverrideItems]);
+
   const displayItems = useMemo(() => {
     if (!data) return [];
     return data.items.map((item) => {
-      const pending = pendingRankOverrides[item.itemId];
-      if (!pending || pending.scopeKey !== rankScopeKey) return item;
-      return { ...item, alternateRank: pending.rank, itemRevision: pending.itemRevision, version: pending.version };
+      const overrideItem = pendingOverrideItems[item.itemId]?.item;
+      const baseItem = overrideItem ?? item;
+      const pendingRank = pendingRankOverrides[item.itemId];
+      return pendingRank && pendingRank.scopeKey === rankScopeKey
+        ? { ...baseItem, alternateRank: pendingRank.rank, itemRevision: pendingRank.itemRevision, version: pendingRank.version }
+        : baseItem;
     });
-  }, [data, pendingRankOverrides, rankScopeKey]);
-  const dueDetail = allocation === 'original'
+  }, [data, pendingOverrideItems, pendingRankOverrides, rankScopeKey]);
+  const baseDueDetail = allocation === 'original'
     ? dueDetailQuery.data?.original
     : dueDetailQuery.data?.alternate;
+  const dueDetail = useMemo(() => {
+    if (!baseDueDetail || allocation === 'original' || !pendingDueScope || pendingDueScope.fseiban !== dueDetailFseiban) return baseDueDetail;
+    if (pendingDueScope.scope.kind === 'seiban') {
+      return { ...baseDueDetail, dueDate: pendingDueScope.dueDate };
+    }
+    const processingType = pendingDueScope.scope.processingType;
+    return {
+      ...baseDueDetail,
+      processingTypeDueDates: (baseDueDetail.processingTypeDueDates ?? []).map((entry) => (
+        entry.processingType === processingType
+          ? { ...entry, dueDate: pendingDueScope.dueDate }
+          : entry
+      ))
+    };
+  }, [allocation, baseDueDetail, dueDetailFseiban, pendingDueScope]);
+
+  useEffect(() => {
+    if (!pendingDueScope || !dueDetailQuery.data) return;
+    const currentDetail = dueDetailQuery.data.alternate;
+    if (currentDetail.fseiban !== pendingDueScope.fseiban) return;
+    if (pendingDueScope.responseScopeRevision != null && dueDetailQuery.data.scopeRevision !== pendingDueScope.baseScopeRevision) {
+      setPendingDueScope(null);
+    }
+  }, [dueDetailQuery.data, pendingDueScope]);
 
   useEffect(() => {
     if (!data) return;
+    const revisionIsStale = staleOrderSourceRevisionsRef.current.has(data.sourceRevision);
+    if (!boardQuery.isPlaceholderData && !revisionIsStale) {
+      const pending = pendingOrderRef.current;
+      if (!pending || pending.responseSourceRevision == null || data.sourceRevision !== pending.baseSourceRevision) {
+        if (latestOrderSourceRevisionRef.current != null && latestOrderSourceRevisionRef.current !== data.sourceRevision) {
+          staleOrderSourceRevisionsRef.current.add(latestOrderSourceRevisionRef.current);
+        }
+        latestOrderSourceRevisionRef.current = data.sourceRevision;
+      }
+    }
     const serverOrder = data.registeredFseibans;
     const pending = pendingOrderRef.current;
     if (!orderInitialized) {
       setRegisteredFseibans(serverOrder);
       setOrderInitialized(true);
-    } else if (!orderSaving && pending && pending.every((value, index) => serverOrder[index] === value) && pending.length === serverOrder.length) {
-      pendingOrderRef.current = null;
-    } else if (!pending) {
+    } else if (pending) {
+      const authoritative = !boardQuery.isPlaceholderData;
+      const orderMatches = pending.order.length === serverOrder.length && pending.order.every((value, index) => serverOrder[index] === value);
+      const responseMatches = authoritative && pending.responseSourceRevision != null && data.sourceRevision === pending.responseSourceRevision && orderMatches;
+      const newerAuthoritativeData = authoritative && !revisionIsStale && pending.responseSourceRevision != null && data.sourceRevision !== pending.baseSourceRevision;
+      if (!orderSaving && (responseMatches || newerAuthoritativeData)) {
+        pendingOrderRef.current = null;
+        if (newerAuthoritativeData && !responseMatches) setRegisteredFseibans(serverOrder);
+      }
+    } else if (!orderSaving && !boardQuery.isPlaceholderData && !revisionIsStale) {
       setRegisteredFseibans(serverOrder);
     }
     if (!activeInitialized) {
@@ -224,7 +362,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       setOpenFseibans(new Set(data.seibanOrder));
       setOpenInitialized(true);
     }
-  }, [activeInitialized, data, openInitialized, orderInitialized, orderSaving]);
+  }, [activeInitialized, boardQuery.isPlaceholderData, data, openInitialized, orderInitialized, orderSaving]);
 
   useEffect(() => {
     setFocusedFseiban(null);
@@ -282,28 +420,30 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, []);
 
   const toggleItem = useCallback((item: GrindingPlanningBoardItem, selected: boolean) => {
-    if (!scopeReady || item.isCompleted) return;
+    const pendingOverride = pendingOverrideItems[item.itemId];
+    if (!scopeReady || item.isCompleted || (pendingOverride != null && pendingOverride.responseItemRevision == null)) return;
     setExcludedItemIdsByCategory((current) => {
       const next = new Set(current[category] ?? []);
       if (selected) next.delete(item.itemId); else next.add(item.itemId);
       return { ...current, [category]: next };
     });
-  }, [category, scopeReady]);
+  }, [category, pendingOverrideItems, scopeReady]);
 
   const toggleAll = useCallback((items: readonly GrindingPlanningBoardItem[], selected: boolean) => {
     if (!bulkReady) return;
     setExcludedItemIdsByCategory((current) => {
       const next = new Set(current[category] ?? []);
       for (const item of items) {
-        if (item.isCompleted) continue;
+        const pendingOverride = pendingOverrideItems[item.itemId];
+        if (item.isCompleted || (pendingOverride != null && pendingOverride.responseItemRevision == null)) continue;
         if (selected) next.delete(item.itemId); else next.add(item.itemId);
       }
       return { ...current, [category]: next };
     });
-  }, [bulkReady, category]);
+  }, [bulkReady, category, pendingOverrideItems]);
 
   const openEditor = useCallback((items: readonly GrindingPlanningBoardItem[]) => {
-    if (!scopeReady) return;
+    if (!scopeReady || items.some((item) => pendingOverrideItems[item.itemId] != null && pendingOverrideItems[item.itemId].responseItemRevision == null)) return;
     const target = items.filter((item) => !item.isCompleted);
     if (target.length === 0) return;
     if (!data) return;
@@ -321,7 +461,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     setEditorError(null);
     setEditorConflict(false);
     setEditorOpen(true);
-  }, [allocation, data, scopeReady]);
+  }, [allocation, data, pendingOverrideItems, scopeReady]);
 
   const openDueDetail = useCallback((fseiban: string) => {
     dueDetailIdentityRef.current = fseiban;
@@ -342,7 +482,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
 
   const openDuePicker = useCallback((scope: GrindingPlanningBoardDueScope, currentDueDate: string | null) => {
     const detail = dueDetailQuery.data;
-    if (!dueDetailFseiban || !detail || allocation === 'original' || dueConflict) return;
+    if (!dueDetailFseiban || !detail || allocation === 'original' || dueConflict || pendingDueScope?.fseiban === dueDetailFseiban) return;
     setDueError(null);
     setDueConflict(false);
     setDuePickerState({
@@ -354,7 +494,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         scopeRevision: detail.scopeRevision
       }
     });
-  }, [allocation, dueConflict, dueDetailFseiban, dueDetailQuery.data]);
+  }, [allocation, dueConflict, dueDetailFseiban, dueDetailQuery.data, pendingDueScope]);
 
   const refreshDueDetail = useCallback(async () => {
     setDueError('最新状態を取得しています…');
@@ -376,8 +516,16 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     const current = duePickerState;
     if (!current || allocation === 'original' || dueRequestPendingRef.current) return;
     dueRequestPendingRef.current = true;
+    const pendingUpdate: PendingDueScopeUpdate = {
+      fseiban: current.fseiban,
+      scope: current.scope,
+      dueDate: nextDueDate,
+      baseScopeRevision: current.snapshot.scopeRevision,
+      responseScopeRevision: null
+    };
+    setPendingDueScope(pendingUpdate);
     try {
-      await updateDueScope.mutateAsync({
+      const result = await updateDueScope.mutateAsync({
         fseiban: current.fseiban,
         payload: {
           ...current.snapshot,
@@ -385,12 +533,16 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           dueDate: nextDueDate
         }
       });
+      setPendingDueScope((pending) => pending?.fseiban === pendingUpdate.fseiban && dueScopeKey(pending.scope) === dueScopeKey(pendingUpdate.scope)
+        ? { ...pending, responseScopeRevision: result.scopeRevision }
+        : pending);
       if (dueDetailIdentityRef.current !== current.fseiban) return;
       setDuePickerState(null);
       setDueConflict(false);
       setDueError(null);
       setFeedback(`${current.fseiban}の納期を更新しました。`);
     } catch (error) {
+      setPendingDueScope((pending) => pending?.fseiban === pendingUpdate.fseiban && dueScopeKey(pending.scope) === dueScopeKey(pendingUpdate.scope) ? null : pending);
       if (dueDetailIdentityRef.current !== current.fseiban) return;
       setDuePickerState(null);
       if (isAxiosError(error) && error.response?.status === 409) {
@@ -424,11 +576,53 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       ...(due ? { due } : {})
     }));
     if (items.every((item) => !('resourceCd' in item) && !('due' in item))) return;
+    const pendingItems = new Map(editorItems.map((item) => [item.itemId, item]));
+    setPendingOverrideItems((current) => {
+      const next = { ...current };
+      for (const request of items) {
+        const item = pendingItems.get(request.itemId);
+        if (!item) continue;
+        next[request.itemId] = {
+          item: applyOptimisticOverride(item, request),
+          baseSourceRevision: editorSnapshot.sourceRevision,
+          baseItemRevision: item.itemRevision,
+          baseVersion: item.version,
+          responseSourceRevision: null,
+          responseItemRevision: null,
+          responseVersion: null
+        };
+      }
+      return next;
+    });
     try {
-      await updateOverrides.mutateAsync({ sourceRevision: editorSnapshot.sourceRevision, items });
+      const result = await updateOverrides.mutateAsync({ sourceRevision: editorSnapshot.sourceRevision, items });
+      setPendingOverrideItems((current) => {
+        const next = { ...current };
+        for (const request of items) {
+          const pending = next[request.itemId];
+          const responseItem = (result.items ?? []).find((item) => item.itemId === request.itemId);
+          if (pending?.baseSourceRevision === editorSnapshot.sourceRevision) {
+            next[request.itemId] = {
+              ...pending,
+              item: responseItem ?? pending.item,
+              responseSourceRevision: result.sourceRevision,
+              responseItemRevision: responseItem?.itemRevision ?? null,
+              responseVersion: responseItem?.version ?? null
+            };
+          }
+        }
+        return next;
+      });
       setEditorOpen(false);
       setFeedback(`${items.length}件を更新しました。`);
     } catch (error) {
+      setPendingOverrideItems((current) => {
+        const next = { ...current };
+        for (const request of items) {
+          if (next[request.itemId]?.baseSourceRevision === editorSnapshot.sourceRevision) delete next[request.itemId];
+        }
+        return next;
+      });
       if (isAxiosError(error) && error.response?.status === 409) {
         setEditorConflict(true);
         setEditorError('表示中のデータが更新されています。最新状態を取得してから対象を選び直してください。');
@@ -458,7 +652,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   };
 
   const changeRank = useCallback(async (item: GrindingPlanningBoardItem, rank: number | null) => {
-    if (!data || !rankMutationReady || allocation === 'original' || item.isCompleted || rankMutationPending) return;
+    if (!data || !rankMutationReady || allocation === 'original' || item.isCompleted || rankMutationPending || (pendingOverrideItems[item.itemId] != null && pendingOverrideItems[item.itemId].responseItemRevision == null)) return;
     const requestId = ++rankRequestIdRef.current;
     const requestScopeKey = rankScopeKey;
     setRankConflict(false);
@@ -516,28 +710,34 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       });
       handleError(error);
     }
-  }, [allocation, data, handleError, rankMutationPending, rankMutationReady, rankScopeKey, sourceRevision, updateRankAsync]);
+  }, [allocation, data, handleError, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, sourceRevision, updateRankAsync]);
 
   const persistOrder = async (nextOrder: string[]): Promise<boolean> => {
     if (!data || !scopeReady || nextOrder.length > 50 || allocation === 'original') return false;
     if (orderRequestPendingRef.current) return false;
     const previous = registeredFseibans;
+    const requestSourceRevision = latestOrderSourceRevisionRef.current ?? sourceRevision;
     setOrderRegistrationError(null);
     orderRequestPendingRef.current = true;
-    pendingOrderRef.current = nextOrder;
+    staleOrderSourceRevisionsRef.current.add(requestSourceRevision);
+    pendingOrderRef.current = { order: nextOrder, baseSourceRevision: requestSourceRevision, responseSourceRevision: null };
     setOrderSaving(true);
     setOrderConflict(false);
     setRegisteredFseibans(nextOrder);
     try {
-      const result = await updateOrder.mutateAsync({ sourceRevision, fseibans: nextOrder });
+      const result = await updateOrder.mutateAsync({ sourceRevision: requestSourceRevision, fseibans: nextOrder });
       orderRequestPendingRef.current = false;
-      pendingOrderRef.current = null;
+      pendingOrderRef.current = { order: result.seibanOrder, baseSourceRevision: requestSourceRevision, responseSourceRevision: result.sourceRevision };
+      staleOrderSourceRevisionsRef.current.delete(result.sourceRevision);
+      latestOrderSourceRevisionRef.current = result.sourceRevision;
       setOrderSaving(false);
       setRegisteredFseibans(result.seibanOrder);
       return true;
     } catch (error) {
       orderRequestPendingRef.current = false;
       pendingOrderRef.current = null;
+      staleOrderSourceRevisionsRef.current.delete(requestSourceRevision);
+      latestOrderSourceRevisionRef.current = requestSourceRevision;
       setOrderSaving(false);
       setRegisteredFseibans(previous);
       if (isAxiosError(error) && error.response?.status === 409) {
@@ -560,6 +760,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       return;
     }
     pendingOrderRef.current = null;
+    if (latestOrderSourceRevisionRef.current != null && latestOrderSourceRevisionRef.current !== result.data.sourceRevision) {
+      staleOrderSourceRevisionsRef.current.add(latestOrderSourceRevisionRef.current);
+    }
+    latestOrderSourceRevisionRef.current = result.data.sourceRevision;
     setOrderRegistrationError(null);
     setOrderSaving(false);
     setRegisteredFseibans(result.data.registeredFseibans);
@@ -706,7 +910,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             onResourceClick={openEditorForItem}
             onRankChange={changeRank}
             disabled={interactionLocked}
-            rankDisabled={!rankMutationReady || rankMutationPending}
+            rankDisabled={rankDisabled}
             bulkDisabled={!bulkReady}
           />
         </div>
@@ -734,7 +938,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
                 onResourceClick={openEditorForItem}
                 onRankChange={changeRank}
                 disabled={interactionLocked}
-                rankDisabled={!rankMutationReady || rankMutationPending}
+                rankDisabled={rankDisabled}
                 bulkDisabled={!bulkReady}
               />
             );
@@ -753,7 +957,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             onResourceClick={openEditorForItem}
             onRankChange={changeRank}
             disabled={interactionLocked}
-            rankDisabled={!rankMutationReady || rankMutationPending}
+            rankDisabled={rankDisabled}
           />
         </div>
       ) : null}
@@ -807,7 +1011,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           loading={dueDetailQuery.isLoading}
           error={dueDetailQuery.isError}
           dueUpdatePending={updateDueScope.isPending}
-          readOnly={allocation === 'original' || dueConflict}
+          readOnly={allocation === 'original' || dueConflict || pendingDueScope?.fseiban === dueDetailFseiban}
           conflict={dueConflict}
           errorMessage={dueError}
           onRefresh={() => void refreshDueDetail()}
