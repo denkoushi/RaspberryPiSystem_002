@@ -1246,7 +1246,10 @@ export function useUpdateKioskProductionScheduleSearchHistory() {
   });
 }
 
-export type KioskProductionScheduleOrderCachePolicy = 'default' | 'leaderBoardFastPath';
+export type KioskProductionScheduleOrderCachePolicy =
+  | 'default'
+  | 'leaderBoardFastPath'
+  | 'manualOrderOptimistic';
 
 export type UpdateKioskProductionScheduleOrderVariables = {
   rowId: string;
@@ -1264,6 +1267,26 @@ type ProductionScheduleOrderRollbackContext = {
   usageSnapshots: ReadonlyArray<[QueryKey, unknown]>;
 };
 
+function normalizeTargetDeviceScopeKey(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function matchesScheduleListScope(queryKey: QueryKey, targetDeviceScopeKey: string | undefined): boolean {
+  const params = queryKey[1];
+  if (!params || typeof params !== 'object' || Array.isArray(params)) return false;
+  const cacheScope = normalizeTargetDeviceScopeKey(
+    (params as { targetDeviceScopeKey?: unknown }).targetDeviceScopeKey
+  );
+  return cacheScope === targetDeviceScopeKey;
+}
+
+function matchesOrderUsageScope(queryKey: QueryKey, targetDeviceScopeKey: string | undefined): boolean {
+  if (queryKey.length < 3) return false;
+  return normalizeTargetDeviceScopeKey(queryKey[2]) === targetDeviceScopeKey;
+}
+
 export function useUpdateKioskProductionScheduleOrder() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -1278,16 +1301,25 @@ export function useUpdateKioskProductionScheduleOrder() {
       void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
 
       const policy = variables.cachePolicy ?? 'default';
-      if (policy !== 'leaderBoardFastPath') {
+      if (policy !== 'leaderBoardFastPath' && policy !== 'manualOrderOptimistic') {
         return undefined;
       }
 
-      const scheduleSnapshots = queryClient.getQueriesData({
+      const targetDeviceScopeKey = normalizeTargetDeviceScopeKey(variables.payload.targetDeviceScopeKey);
+      const allScheduleSnapshots = queryClient.getQueriesData({
         queryKey: ['kiosk-production-schedule']
       });
-      const usageSnapshots = queryClient.getQueriesData({
+      const allUsageSnapshots = queryClient.getQueriesData({
         queryKey: ['kiosk-production-schedule-order-usage']
       });
+      const scheduleSnapshots =
+        policy === 'manualOrderOptimistic'
+          ? allScheduleSnapshots.filter(([queryKey]) => matchesScheduleListScope(queryKey, targetDeviceScopeKey))
+          : allScheduleSnapshots;
+      const usageSnapshots =
+        policy === 'manualOrderOptimistic'
+          ? allUsageSnapshots.filter(([queryKey]) => matchesOrderUsageScope(queryKey, targetDeviceScopeKey))
+          : allUsageSnapshots;
 
       let previousOrder: number | null = null;
       let rowFoundInScheduleCache = false;
@@ -1303,24 +1335,42 @@ export function useUpdateKioskProductionScheduleOrder() {
       const nextOrder = variables.payload.orderNumber;
       const resourceCd = variables.payload.resourceCd;
 
-      queryClient.setQueriesData<KioskProductionScheduleListCache>(
-        { queryKey: ['kiosk-production-schedule'] },
-        (old) => {
-          if (!old) return old;
-          return patchScheduleListProcessingOrder(old, variables.rowId, nextOrder);
+      if (policy === 'manualOrderOptimistic') {
+        for (const [queryKey] of scheduleSnapshots) {
+          queryClient.setQueryData<KioskProductionScheduleListCache>(queryKey, (old) => {
+            if (!old) return old;
+            return patchScheduleListProcessingOrder(old, variables.rowId, nextOrder);
+          });
         }
-      );
+      } else {
+        queryClient.setQueriesData<KioskProductionScheduleListCache>(
+          { queryKey: ['kiosk-production-schedule'] },
+          (old) => {
+            if (!old) return old;
+            return patchScheduleListProcessingOrder(old, variables.rowId, nextOrder);
+          }
+        );
+      }
 
       // usage は「一覧キャッシュ上で当該行を特定できたとき」だけ楽観パッチする。
       // 行が無いのに next だけ足すと占有表示がズレうる（ロールバックで一覧は戻るが usage は誤り得る）。
       if (rowFoundInScheduleCache) {
-        queryClient.setQueriesData<Record<string, number[]>>(
-          { queryKey: ['kiosk-production-schedule-order-usage'] },
-          (old) => {
-            if (!old) return old;
-            return patchOrderUsageForProcessingOrderChange(old, resourceCd, previousOrder, nextOrder);
+        if (policy === 'manualOrderOptimistic') {
+          for (const [queryKey] of usageSnapshots) {
+            queryClient.setQueryData<Record<string, number[]>>(queryKey, (old) => {
+              if (!old) return old;
+              return patchOrderUsageForProcessingOrderChange(old, resourceCd, previousOrder, nextOrder);
+            });
           }
-        );
+        } else {
+          queryClient.setQueriesData<Record<string, number[]>>(
+            { queryKey: ['kiosk-production-schedule-order-usage'] },
+            (old) => {
+              if (!old) return old;
+              return patchOrderUsageForProcessingOrderChange(old, resourceCd, previousOrder, nextOrder);
+            }
+          );
+        }
       }
 
       return { scheduleSnapshots, usageSnapshots };
@@ -1338,6 +1388,20 @@ export function useUpdateKioskProductionScheduleOrder() {
         );
         return;
       }
+      if (policy === 'manualOrderOptimistic') {
+        const serverOrder = data.orderNumber ?? null;
+        const targetDeviceScopeKey = normalizeTargetDeviceScopeKey(variables.payload.targetDeviceScopeKey);
+        const scheduleCaches = queryClient.getQueriesData({
+          queryKey: ['kiosk-production-schedule']
+        });
+        for (const [queryKey] of scheduleCaches) {
+          if (!matchesScheduleListScope(queryKey, targetDeviceScopeKey)) continue;
+          queryClient.setQueryData<KioskProductionScheduleListCache>(queryKey, (old) => {
+            if (!old) return old;
+            return patchScheduleListProcessingOrder(old, variables.rowId, serverOrder);
+          });
+        }
+      }
       // UI待ちを作らない（mutation完了は即返し、裏で再取得）
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
@@ -1347,7 +1411,7 @@ export function useUpdateKioskProductionScheduleOrder() {
     },
     onError: (_err, variables, context) => {
       const policy = variables.cachePolicy ?? 'default';
-      if (policy !== 'leaderBoardFastPath') return;
+      if (policy !== 'leaderBoardFastPath' && policy !== 'manualOrderOptimistic') return;
       const ctx = context as ProductionScheduleOrderRollbackContext | undefined;
       if (!ctx) return;
       for (const [key, snap] of ctx.scheduleSnapshots) {
