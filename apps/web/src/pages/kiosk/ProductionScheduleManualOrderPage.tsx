@@ -246,6 +246,7 @@ export function ProductionScheduleManualOrderPage() {
   } = useProductionScheduleMutations({
     isSearchStateWriting: searchStateMutation.isPending,
     noteMaxLength: NOTE_MAX_LENGTH,
+    productionScheduleOrderCachePolicy: 'manualOrderOptimistic',
     productionScheduleTargetDeviceScopeKey:
       macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
         ? activeDeviceScopeKey.trim()
