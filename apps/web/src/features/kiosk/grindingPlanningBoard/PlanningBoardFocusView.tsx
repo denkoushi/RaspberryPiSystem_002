@@ -23,6 +23,7 @@ export type PlanningBoardFocusViewProps = {
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
+  rankDisabled?: boolean;
   bulkDisabled?: boolean;
 };
 
@@ -38,6 +39,7 @@ export function PlanningBoardFocusView({
   onResourceClick,
   onRankChange,
   disabled = false,
+  rankDisabled = false,
   bulkDisabled = false
 }: PlanningBoardFocusViewProps) {
   const selectableItems = useMemo(() => items.filter((item) => !item.isCompleted), [items]);
@@ -100,6 +102,7 @@ export function PlanningBoardFocusView({
             onResourceClick={onResourceClick}
             onRankChange={onRankChange}
             disabled={disabled}
+            rankDisabled={rankDisabled}
             showRank
             showColumnHeaders={false}
             tableLabel={`${fseiban}集中表示 ${index + 1}`}

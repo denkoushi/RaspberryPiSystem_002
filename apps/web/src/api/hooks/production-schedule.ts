@@ -102,6 +102,7 @@ import type { KioskProductionScheduleListCache } from '../../features/kiosk/prod
 import type {
   GrindingPlanningBoardOverridesRequest,
   GrindingPlanningBoardRankRequest,
+  GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardSeibanOrderRequest,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardDueScopeRequest
@@ -349,6 +350,7 @@ export type KioskGrindingPlanningBoardProgressiveResult = {
   error: unknown;
   isPlaceholderData: boolean;
   refetch: ReturnType<typeof useKioskGrindingPlanningBoard>['refetch'];
+  hasStableData: boolean;
   scopeReady: boolean;
   isAppending: boolean;
   isComplete: boolean;
@@ -468,8 +470,11 @@ export function useKioskGrindingPlanningBoardProgressive(
   }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, stableParams]);
 
   const displayData = mergedData ?? firstData;
+  const hasStableData = Boolean(
+    firstData && !query.isPlaceholderData && mergedData?.snapshotId === firstData.snapshotId
+  );
   const scopeReady = Boolean(
-    firstData && !query.isPlaceholderData && !query.isFetching && mergedData?.snapshotId === firstData.snapshotId
+    hasStableData && !query.isFetching
   );
   return {
     data: displayData,
@@ -479,6 +484,7 @@ export function useKioskGrindingPlanningBoardProgressive(
     error: query.error,
     isPlaceholderData: query.isPlaceholderData,
     refetch: query.refetch,
+    hasStableData,
     scopeReady,
     isAppending,
     isComplete: scopeReady && isComplete,
@@ -513,7 +519,7 @@ export function useUpdateKioskGrindingPlanningBoardRank() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardRankRequest) => updateKioskGrindingPlanningBoardRank(payload),
-    onSuccess: () => {
+    onSuccess: (_result: GrindingPlanningBoardRankResponse) => {
       void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
     }
   });

@@ -7,6 +7,7 @@ import type {
   GrindingPlanningBoardView,
   GrindingPlanningBoardOverridesRequest,
   GrindingPlanningBoardRankRequest,
+  GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardSeibanOrderRequest,
   GrindingPlanningBoardDueScopeRequest,
   GrindingPlanningBoardDueScopeSnapshot
@@ -805,7 +806,7 @@ export async function updateKioskGrindingPlanningBoardOverrides(payload: Grindin
 }
 
 export async function updateKioskGrindingPlanningBoardRank(payload: GrindingPlanningBoardRankRequest) {
-  const { data } = await api.put<{ sourceRevision: string }>(
+  const { data } = await api.put<GrindingPlanningBoardRankResponse>(
     '/kiosk/production-schedule/grinding-planning-board/rank',
     payload
   );

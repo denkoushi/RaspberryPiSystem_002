@@ -20,6 +20,7 @@ export type PlanningBoardResourceViewProps = {
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
+  rankDisabled?: boolean;
 };
 
 export function PlanningBoardResourceView({
@@ -32,7 +33,8 @@ export function PlanningBoardResourceView({
   onToggleItem,
   onResourceClick,
   onRankChange,
-  disabled = false
+  disabled = false,
+  rankDisabled = false
 }: PlanningBoardResourceViewProps) {
   const groups = useMemo(() => {
     const byResource = new Map<string, GrindingPlanningBoardItem[]>();
@@ -69,6 +71,7 @@ export function PlanningBoardResourceView({
               onResourceClick={onResourceClick}
               onRankChange={onRankChange}
               disabled={disabled}
+              rankDisabled={rankDisabled}
               showRank
               showSeiban
               showColumnHeaders={false}

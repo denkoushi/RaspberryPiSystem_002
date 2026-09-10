@@ -5,6 +5,8 @@ import * as planningBoardSorting from '../../features/kiosk/grindingPlanningBoar
 
 import { ProductionScheduleGrindingPlanningBoardPage } from './ProductionScheduleGrindingPlanningBoardPage';
 
+import type { GrindingPlanningBoardRankResponse } from '@raspi-system/shared-types';
+
 const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
   refetch: vi.fn(),
@@ -23,13 +25,21 @@ vi.mock('../../api/hooks', () => ({
       }
     }
   }),
-  useKioskGrindingPlanningBoardProgressive: (...args: unknown[]) => ({
-    ...mocks.snapshot(...args),
-    scopeReady: true,
-    isComplete: true,
-    isAppending: false,
-    appendError: null
-  }),
+  useKioskGrindingPlanningBoardProgressive: (...args: unknown[]) => {
+    const result = mocks.snapshot(...args);
+    const params = args[0] as { category?: string; view?: string } | undefined;
+    return {
+      ...result,
+      data: result.data && (params?.category == null || params.category === result.data.category) && (params?.view == null || params.view === result.data.view)
+        ? result.data
+        : result.data ? { ...result.data, category: params?.category ?? result.data.category, view: params?.view ?? result.data.view } : result.data,
+      hasStableData: result.hasStableData ?? true,
+      scopeReady: result.scopeReady ?? true,
+      isComplete: result.isComplete ?? true,
+      isAppending: result.isAppending ?? false,
+      appendError: result.appendError ?? null
+    };
+  },
   useKioskGrindingPlanningBoardDueDetail: (...args: unknown[]) => mocks.dueDetail(...args),
   useUpdateKioskGrindingPlanningBoardOverrides: () => ({ mutateAsync: mocks.overrides, isPending: false }),
   useUpdateKioskGrindingPlanningBoardDueScope: () => ({ mutateAsync: mocks.dueScope, isPending: false }),
@@ -96,7 +106,13 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.overrides.mockResolvedValue({ sourceRevision: 'board-2' });
     mocks.dueDetail.mockReturnValue({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() });
     mocks.dueScope.mockResolvedValue({});
-    mocks.rank.mockResolvedValue({ sourceRevision: 'board-2' });
+  mocks.rank.mockImplementation(async (payload: { itemId: string; itemRevision: string; overrideVersion: number; alternateRank: number | null }): Promise<GrindingPlanningBoardRankResponse> => ({
+    sourceRevision: 'board-1',
+    itemId: payload.itemId,
+    itemRevision: `revision-${payload.itemId}-after-rank-${payload.overrideVersion + 1}`,
+    overrideVersion: payload.overrideVersion + 1,
+    alternateRank: payload.alternateRank
+  }));
     mocks.order.mockResolvedValue({ sourceRevision: 'board-2', seibanOrder: ['26-1041', '26-1042'] });
   });
 
@@ -133,7 +149,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('資源CD表示の個別順位は保存中に即時反映し、再取得後にserver値へ収束する', async () => {
     let current = fixture();
-    let resolveRank: ((value: { sourceRevision: string }) => void) | undefined;
+    let resolveRank: ((value: GrindingPlanningBoardRankResponse) => void) | undefined;
     mocks.snapshot.mockImplementation(() => ({
       data: current,
       isLoading: false,
@@ -141,9 +157,10 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       refetch: mocks.refetch
     }));
     mocks.rank.mockImplementationOnce(
-      () =>
+      (payload: { itemId: string; itemRevision: string; overrideVersion: number; alternateRank: number | null }) =>
         new Promise((resolve) => {
           resolveRank = resolve;
+          void payload;
         })
     );
 
@@ -159,10 +176,10 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(rankSelect).toBeDisabled();
 
     await act(async () => {
-      resolveRank?.({ sourceRevision: 'board-1' });
+      resolveRank?.({ sourceRevision: 'board-1', itemId: 'b', itemRevision: 'revision-b-after-rank', overrideVersion: 3, alternateRank: 1 });
     });
     expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).toHaveValue('1');
-    expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).not.toBeDisabled();
 
     current = fixture();
     const refreshedItem = current.items.find((item) => item.itemId === 'b')!;
@@ -189,12 +206,87 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(Boolean(restoredRow.compareDocumentPosition(failedRow) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
   });
 
+  it('保存成功のrevision/versionでGET未完了でも同一行・別行の次操作を送る', async () => {
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
+    const rankSelect = screen.getByRole('combobox', { name: '部品bの個別指定' });
+    fireEvent.change(rankSelect, { target: { value: '1' } });
+    await waitFor(() => expect(rankSelect).not.toBeDisabled());
+
+    fireEvent.change(rankSelect, { target: { value: '2' } });
+    await waitFor(() => expect(mocks.rank).toHaveBeenCalledTimes(2));
+    expect(mocks.rank.mock.calls[1]?.[0]).toMatchObject({ itemId: 'b', itemRevision: 'revision-b-after-rank-3', overrideVersion: 3, alternateRank: 2 });
+
+    const otherRankSelect = screen.getByRole('combobox', { name: '部品cの個別指定' });
+    await waitFor(() => expect(otherRankSelect).not.toBeDisabled());
+    fireEvent.change(otherRankSelect, { target: { value: '3' } });
+    await waitFor(() => expect(mocks.rank).toHaveBeenCalledTimes(3));
+    expect(mocks.rank.mock.calls[2]?.[0]).toMatchObject({ itemId: 'c', itemRevision: 'revision-c', overrideVersion: 2, alternateRank: 3 });
+
+    expect(rankSelect).toHaveValue('2');
+  });
+
+  it('確定済み順位を保持したまま次操作の保存失敗を元へ戻す', async () => {
+    mocks.rank.mockImplementationOnce(async () => ({ sourceRevision: 'board-1', itemId: 'b', itemRevision: 'revision-b-after-rank-3', overrideVersion: 3, alternateRank: 1 }));
+    mocks.rank.mockRejectedValueOnce(new Error('second rank save failed'));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
+    const rankSelect = screen.getByRole('combobox', { name: '部品bの個別指定' });
+    fireEvent.change(rankSelect, { target: { value: '1' } });
+    await waitFor(() => expect(rankSelect).not.toBeDisabled());
+    fireEvent.change(rankSelect, { target: { value: '2' } });
+    await waitFor(() => expect(rankSelect).toHaveValue('1'));
+    expect(mocks.rank.mock.calls[1]?.[0]).toMatchObject({ itemId: 'b', itemRevision: 'revision-b-after-rank-3', overrideVersion: 3, alternateRank: 2 });
+  });
+
+  it('保存済み順位は古いGETやGETエラーで元へ戻さない', async () => {
+    let current = fixture();
+    mocks.snapshot.mockImplementation(() => ({ data: current, isLoading: false, isError: false, isPlaceholderData: false, refetch: mocks.refetch }));
+    const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
+    const rankSelect = screen.getByRole('combobox', { name: '部品bの個別指定' });
+    fireEvent.change(rankSelect, { target: { value: '1' } });
+    await waitFor(() => expect(rankSelect).not.toBeDisabled());
+
+    current = fixture();
+    view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).toHaveValue('1');
+
+    mocks.snapshot.mockReturnValue({ data: current, isLoading: false, isError: true, isPlaceholderData: false, refetch: mocks.refetch });
+    view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).toHaveValue('1');
+  });
+
+  it('同一scopeの背景再取得中は順位を変更でき、placeholder中は変更しない', async () => {
+    mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isFetching: true, isError: false, isPlaceholderData: false, scopeReady: false, refetch: mocks.refetch });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
+    const rankSelect = screen.getByRole('combobox', { name: '部品bの個別指定' });
+    fireEvent.change(rankSelect, { target: { value: '1' } });
+    await waitFor(() => expect(mocks.rank).toHaveBeenCalledTimes(1));
+
+    mocks.rank.mockReset();
+    mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isFetching: true, isError: false, isPlaceholderData: true, scopeReady: false, refetch: mocks.refetch });
+    const placeholderView = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getAllByRole('button', { name: '資源CD' }).at(-1)!);
+    const placeholderRankSelect = screen.getAllByRole('combobox', { name: '部品bの個別指定' }).at(-1)!;
+    fireEvent.change(placeholderRankSelect, { target: { value: '1' } });
+    expect(mocks.rank).not.toHaveBeenCalled();
+    expect(placeholderRankSelect).toHaveValue('');
+    placeholderView.unmount();
+  });
+
   it('製番カード表示も同じ個別順位overlayで保存中に即時反映する', async () => {
-    let resolveRank: ((value: { sourceRevision: string }) => void) | undefined;
+    let resolveRank: ((value: GrindingPlanningBoardRankResponse) => void) | undefined;
     mocks.rank.mockImplementationOnce(
-      () =>
+      (payload: { itemId: string; itemRevision: string; overrideVersion: number; alternateRank: number | null }) =>
         new Promise((resolve) => {
           resolveRank = resolve;
+          void payload;
         })
     );
     render(<ProductionScheduleGrindingPlanningBoardPage />);
@@ -206,10 +298,10 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).toHaveValue('1');
     expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).toBeDisabled();
     await act(async () => {
-      resolveRank?.({ sourceRevision: 'board-1' });
+      resolveRank?.({ sourceRevision: 'board-1', itemId: 'b', itemRevision: 'revision-b-after-rank', overrideVersion: 3, alternateRank: 1 });
     });
     expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).toHaveValue('1');
-    expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).not.toBeDisabled();
   });
 
   it('1件の選択と開閉では他の製番・行を再計算しない', () => {

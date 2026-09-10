@@ -25,6 +25,7 @@ export type PlanningBoardItemTableProps = {
   showSeiban?: boolean;
   showColumnHeaders?: boolean;
   disabled?: boolean;
+  rankDisabled?: boolean;
   tableLabel: string;
 };
 
@@ -38,6 +39,7 @@ type PlanningBoardItemTableRowProps = {
   showRank: boolean;
   showSeiban: boolean;
   disabled: boolean;
+  rankDisabled: boolean;
 };
 
 const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
@@ -49,7 +51,8 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   onRankChange,
   showRank,
   showSeiban,
-  disabled
+  disabled,
+  rankDisabled
 }: PlanningBoardItemTableRowProps) {
   const currentResource = resolveGrindingPlanningBoardResource(item, allocation);
   const currentDue = resolveGrindingPlanningBoardDueDate(item, allocation);
@@ -142,7 +145,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
           {showRank ? (
             <select
               value={rank == null ? '' : String(rank)}
-              disabled={disabled || allocation === 'original' || item.isCompleted || !onRankChange}
+              disabled={rankDisabled || allocation === 'original' || item.isCompleted || !onRankChange}
               aria-label={`${item.fhinmei ?? item.fhincd}の個別指定`}
               className="min-h-11 w-11 rounded-md border border-slate-700 bg-slate-950 px-0.5 text-center text-[10px] text-slate-200 disabled:cursor-not-allowed disabled:opacity-55"
               onChange={(event) => onRankChange?.(item, event.target.value ? Number(event.target.value) : null)}
@@ -179,6 +182,7 @@ function areTablePropsEqual(previous: PlanningBoardItemTableProps, next: Plannin
     previous.showSeiban === next.showSeiban &&
     previous.showColumnHeaders === next.showColumnHeaders &&
     previous.disabled === next.disabled &&
+    previous.rankDisabled === next.rankDisabled &&
     previous.tableLabel === next.tableLabel &&
     areSelectionStatesEqual(previous.items, previous.selectedItemIds, next.selectedItemIds);
 }
@@ -194,6 +198,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
   showSeiban = false,
   showColumnHeaders = true,
   disabled = false,
+  rankDisabled = false,
   tableLabel
 }: PlanningBoardItemTableProps) {
   return (
@@ -231,6 +236,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
                 showRank={showRank}
                 showSeiban={showSeiban}
                 disabled={disabled}
+                rankDisabled={rankDisabled}
               />
             );
           })}
