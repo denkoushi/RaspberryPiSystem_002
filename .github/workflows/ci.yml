@@ -199,6 +199,7 @@ jobs:
             pnpm test -- --fileParallelism=true --maxWorkers=1
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          GRINDING_PLANNING_DUE_SCOPE_CI: '1'
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
           CAMERA_TYPE: mock
@@ -222,6 +223,7 @@ jobs:
             pnpm test:coverage "${shard_args[@]}" --fileParallelism=true --maxWorkers=1
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          GRINDING_PLANNING_DUE_SCOPE_CI: '1'
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
           CAMERA_TYPE: mock

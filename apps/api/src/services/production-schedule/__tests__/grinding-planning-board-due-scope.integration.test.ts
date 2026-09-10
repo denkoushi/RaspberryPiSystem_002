@@ -16,9 +16,14 @@ import { buildGrindingPlanningBoardRowItemId } from '../grinding-planning-board-
 /**
  * This suite is deliberately opt-in. It must run only against a disposable
  * localhost PostgreSQL database named planning_due_scope_* supplied through
- * TEST_DATABASE_URL.
+ * TEST_DATABASE_URL, or the exact ephemeral database used by the API CI job
+ * when that job explicitly opts in. CI=true alone is not sufficient.
  */
-const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim() ?? '';
+const hasExplicitCiOptIn = process.env.CI === 'true' &&
+  process.env.NODE_ENV === 'test' &&
+  process.env.GRINDING_PLANNING_DUE_SCOPE_CI === '1';
+const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim() ??
+  (hasExplicitCiOptIn ? process.env.DATABASE_URL?.trim() ?? '' : '');
 const databaseName = (() => {
   try {
     return new URL(testDatabaseUrl).pathname.replace(/^\//, '').split('?')[0] ?? '';
@@ -33,9 +38,12 @@ const databaseHost = (() => {
     return '';
   }
 })();
-const hasDedicatedDatabase = Boolean(testDatabaseUrl) &&
+const hasLocalDedicatedDatabase = Boolean(testDatabaseUrl) &&
   databaseName.startsWith('planning_due_scope_') &&
   ['localhost', '127.0.0.1', '::1'].includes(databaseHost);
+const hasExplicitCiDatabase = hasExplicitCiOptIn &&
+  testDatabaseUrl === 'postgresql://postgres:postgres@localhost:5432/borrow_return';
+const hasDedicatedDatabase = hasLocalDedicatedDatabase || hasExplicitCiDatabase;
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const originalSplitFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
 
