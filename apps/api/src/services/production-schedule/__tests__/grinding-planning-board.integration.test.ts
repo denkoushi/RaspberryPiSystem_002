@@ -25,16 +25,19 @@ const originalDatabaseUrl = process.env.DATABASE_URL;
 
 type PrismaClient = import('@prisma/client').PrismaClient;
 type BoardService = typeof import('../grinding-planning-board.service.js');
+type CandidateService = typeof import('../grinding-planning-board-seiban-candidates.service.js');
 type SnapshotStore = ReturnType<typeof import('../leaderboard/leaderboard-shell-snapshot.store.js').createInMemoryLeaderboardShellSnapshotStore>;
 
 let dbClient: PrismaClient | undefined;
 let boardService: BoardService | undefined;
+let candidateService: CandidateService | undefined;
 let createSnapshotStore: typeof import('../leaderboard/leaderboard-shell-snapshot.store.js').createInMemoryLeaderboardShellSnapshotStore | undefined;
 
 if (hasDedicatedDatabase) {
   process.env.DATABASE_URL = testDatabaseUrl;
   ({ prisma: dbClient } = await import('../../../lib/prisma.js'));
   boardService = await import('../grinding-planning-board.service.js');
+  candidateService = await import('../grinding-planning-board-seiban-candidates.service.js');
   ({ createInMemoryLeaderboardShellSnapshotStore: createSnapshotStore } = await import('../leaderboard/leaderboard-shell-snapshot.store.js'));
 }
 
@@ -55,9 +58,15 @@ function snapshotStore(): SnapshotStore {
   return createSnapshotStore({ defaultTtlMs: 60_000 });
 }
 
+function candidates(): CandidateService {
+  if (!candidateService) throw new Error('TEST_DATABASE_URL must point to a dedicated database');
+  return candidateService;
+}
+
 type RowSpec = {
   fseiban: string;
   fhincd?: string;
+  fhinmei?: string;
   resourceCd?: string;
   processOrder?: string;
   productNo?: string;
@@ -74,6 +83,7 @@ type Fixture = {
   prefix: string;
   siteKey: string;
   rowIds: string[];
+  seibans: string[];
   splitIds: string[];
   resourceNames: string[];
   sharedStateBefore: { id: string; csvDashboardId: string; location: string; state: Prisma.JsonValue } | null;
@@ -107,6 +117,7 @@ async function createFixture(): Promise<Fixture> {
     prefix,
     siteKey: `${prefix}-site`,
     rowIds: [],
+    seibans: [],
     splitIds: [],
     resourceNames: [`${prefix}-305`, `${prefix}-581`, `${prefix}-1`],
     sharedStateBefore: sharedState
@@ -131,12 +142,15 @@ function rowData(spec: RowSpec, index: number): Record<string, string> {
     FSIGENCD: spec.resourceCd ?? '305',
     FKOJUN: spec.processOrder ?? String(index + 1),
     ProductNo: spec.productNo ?? String(index + 1),
-    FHINMEI: 'integration part',
+    FHINMEI: spec.fhinmei ?? 'integration part',
     FSIGENSHOYORYO: spec.requiredMinutes === undefined ? '30' : spec.requiredMinutes ?? ''
   };
 }
 
 async function addRows(fixture: Fixture, specs: readonly RowSpec[]): Promise<string[]> {
+  for (const spec of specs) {
+    if (!fixture.seibans.includes(spec.fseiban)) fixture.seibans.push(spec.fseiban);
+  }
   const rows: Array<{ id: string; data: Record<string, string>; spec: RowSpec }> = [];
   for (const [index, spec] of specs.entries()) {
     const data = rowData(spec, index);
@@ -241,6 +255,7 @@ async function cleanupFixture(fixture: Fixture): Promise<void> {
     const where = { csvDashboardRowId: { in: fixture.rowIds } };
     await db().productionScheduleProgress.deleteMany({ where });
     await db().productionScheduleExternalCompletion.deleteMany({ where });
+    await db().productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: fixture.seibans } } });
     await db().productionScheduleRowNote.deleteMany({ where });
     await db().productionScheduleOrderSupplement.deleteMany({ where });
     await db().productionScheduleOrderAssignment.deleteMany({ where });
@@ -699,5 +714,101 @@ describeIntegration('grinding planning board service real Postgres integration',
       if (previousSplitFlag === undefined) vi.unstubAllEnvs();
       else vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', previousSplitFlag);
     }
+  });
+
+  it('lists due-window seiban candidates with canonical due precedence and effective completion', async () => {
+    const fixture = await createFixture();
+    const seiban = (label: string) => `${fixture.prefix.slice(-8)}-${label}`;
+    const canonical = seiban('A');
+    const done = seiban('DONE');
+    const external = seiban('EXT');
+    const edge = seiban('EDGE');
+    const outside = seiban('OUT');
+    const cutting = seiban('CUT');
+
+    await addRows(fixture, [
+      { fseiban: canonical, fhincd: 'MH-A', fhinmei: '機種Ａ', dueDate: '2026-09-20', processOrder: '1' },
+      { fseiban: canonical, fhincd: 'PART-A', fhinmei: '部品Ａ', dueDate: '2026-10-11', processOrder: '2' },
+      { fseiban: done, fhincd: 'PART-DONE', dueDate: '2026-09-15', completed: true },
+      { fseiban: external, fhincd: 'PART-EXT', dueDate: '2026-09-15', externallyCompleted: true },
+      { fseiban: edge, fhincd: 'PART-EDGE', dueDate: '2026-10-11' },
+      { fseiban: outside, fhincd: 'PART-OUT', dueDate: '2026-08-10', processOrder: '1' },
+      { fseiban: outside, fhincd: 'PART-OUT-2', dueDate: '2026-09-15', processOrder: '2' },
+      { fseiban: cutting, fhincd: 'PART-CUT', resourceCd: '700', dueDate: '2026-09-16' }
+    ]);
+    await db().kioskProductionScheduleSearchState.update({
+      where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' } },
+      data: { state: { history: [] } }
+    });
+    expect((await db().kioskProductionScheduleSearchState.findUniqueOrThrow({
+      where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' } },
+      select: { state: true }
+    })).state).toEqual({ history: [] });
+    await db().productionScheduleSeibanDueDate.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        fseiban: canonical,
+        dueDate: new Date('2026-08-11T00:00:00.000Z')
+      }
+    });
+
+    const incomplete = await candidates().getGrindingPlanningBoardSeibanCandidates({
+      siteKey: fixture.siteKey,
+      category: 'grinding',
+      completionFilter: 'incomplete',
+      now: new Date('2026-09-10T15:00:00.000Z')
+    });
+    expect(incomplete).toMatchObject({
+      today: '2026-09-11',
+      rangeStart: '2026-08-11',
+      rangeEnd: '2026-10-11',
+      completionFilter: 'incomplete'
+    });
+    expect(incomplete.candidates).toEqual([
+      expect.objectContaining({
+        fseiban: canonical,
+        machineName: '機種Ａ',
+        dueDate: '2026-08-11',
+        completedProcessCount: 0,
+        totalProcessCount: 2,
+        isCompleted: false
+      }),
+      expect.objectContaining({ fseiban: edge, dueDate: '2026-10-11', isCompleted: false })
+    ]);
+    expect(incomplete.candidates.some((candidate) => candidate.fseiban === done)).toBe(false);
+    expect(incomplete.candidates.some((candidate) => candidate.fseiban === outside)).toBe(false);
+    expect(incomplete.candidates.some((candidate) => candidate.fseiban === cutting)).toBe(false);
+
+    const all = await candidates().getGrindingPlanningBoardSeibanCandidates({
+      siteKey: fixture.siteKey,
+      category: 'grinding',
+      completionFilter: 'all',
+      now: new Date('2026-09-10T15:00:00.000Z')
+    });
+    expect(all.candidates.map((candidate) => candidate.fseiban)).toEqual([canonical, done, external, edge]);
+    expect(all.candidates.find((candidate) => candidate.fseiban === done)).toMatchObject({
+      completedProcessCount: 1,
+      totalProcessCount: 1,
+      isCompleted: true
+    });
+    expect(all.candidates.find((candidate) => candidate.fseiban === external)).toMatchObject({
+      completedProcessCount: 1,
+      totalProcessCount: 1,
+      isCompleted: true
+    });
+
+    const cuttingCandidates = await candidates().getGrindingPlanningBoardSeibanCandidates({
+      siteKey: fixture.siteKey,
+      category: 'cutting',
+      completionFilter: 'incomplete',
+      now: new Date('2026-09-10T15:00:00.000Z')
+    });
+    expect(cuttingCandidates.candidates.map((candidate) => candidate.fseiban)).toEqual([cutting]);
+
+    await expect(service().updateGrindingPlanningBoardSeibanOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: 'unused-for-limit-check',
+      fseibans: Array.from({ length: 51 }, (_, index) => `OVER-${index + 1}`)
+    })).rejects.toMatchObject({ code: 'SEIBAN_LIMIT_EXCEEDED' });
   });
 });

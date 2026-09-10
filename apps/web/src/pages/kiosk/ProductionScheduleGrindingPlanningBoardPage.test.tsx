@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
   refetch: vi.fn(),
   overrides: vi.fn(),
+  candidates: vi.fn(),
   dueDetail: vi.fn(),
   dueScope: vi.fn(),
   rank: vi.fn(),
@@ -41,6 +42,21 @@ vi.mock('../../api/hooks', () => ({
     };
   },
   useKioskGrindingPlanningBoardDueDetail: (...args: unknown[]) => mocks.dueDetail(...args),
+  useKioskGrindingPlanningBoardSeibanCandidates: (...args: unknown[]) => {
+    const result = mocks.candidates(...args);
+    return result ?? {
+      data: {
+        today: '2026-09-11',
+        rangeStart: '2026-08-11',
+        rangeEnd: '2026-10-11',
+        completionFilter: 'incomplete',
+        candidates: []
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false
+    };
+  },
   useUpdateKioskGrindingPlanningBoardOverrides: () => ({ mutateAsync: mocks.overrides, isPending: false }),
   useUpdateKioskGrindingPlanningBoardDueScope: () => ({ mutateAsync: mocks.dueScope, isPending: false }),
   useUpdateKioskGrindingPlanningBoardRank: () => ({ mutateAsync: mocks.rank, isPending: false }),
@@ -97,6 +113,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.snapshot.mockReset();
     mocks.refetch.mockReset();
     mocks.overrides.mockReset();
+    mocks.candidates.mockReset();
     mocks.dueDetail.mockReset();
     mocks.dueScope.mockReset();
     mocks.rank.mockReset();
@@ -106,6 +123,18 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.overrides.mockResolvedValue({ sourceRevision: 'board-2' });
     mocks.dueDetail.mockReturnValue({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() });
     mocks.dueScope.mockResolvedValue({});
+    mocks.candidates.mockReturnValue({
+      data: {
+        today: '2026-09-11',
+        rangeStart: '2026-08-11',
+        rangeEnd: '2026-10-11',
+        completionFilter: 'incomplete',
+        candidates: []
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false
+    });
   mocks.rank.mockImplementation(async (payload: { itemId: string; itemRevision: string; overrideVersion: number; alternateRank: number | null }): Promise<GrindingPlanningBoardRankResponse> => ({
     sourceRevision: 'board-1',
     itemId: payload.itemId,
@@ -131,6 +160,137 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByText('自動組立機 AX-200')).toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: '選択' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '製番26-1041を一覧に戻す' })).toBeInTheDocument();
+  });
+
+  it('納期候補を機種名でまとめ、複数選択を一括登録する', async () => {
+    const candidates = [
+      {
+        fseiban: 'CAND-1',
+        machineName: '長い機種名 これは36文字を超える末尾検索対象Ａ',
+        dueDate: '2026-08-10',
+        completedProcessCount: 0,
+        totalProcessCount: 2,
+        isCompleted: false
+      },
+      {
+        fseiban: 'CAND-2',
+        machineName: '長い機種名 これは36文字を超える末尾検索対象Ａ',
+        dueDate: '2026-09-20',
+        completedProcessCount: 0,
+        totalProcessCount: 1,
+        isCompleted: false
+      },
+      {
+        fseiban: 'CAND-DONE',
+        machineName: null,
+        dueDate: '2026-09-21',
+        completedProcessCount: 1,
+        totalProcessCount: 1,
+        isCompleted: true
+      }
+    ];
+    mocks.candidates.mockImplementation((args: [{ completionFilter: string }]) => ({
+      data: {
+        today: '2026-09-11',
+        rangeStart: '2026-08-11',
+        rangeEnd: '2026-10-11',
+        completionFilter: args[0]?.completionFilter,
+        candidates
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false
+    }));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    expect(screen.getByRole('button', { name: /末尾検索対象Aの候補を閉じる/ })).toBeInTheDocument();
+    expect(screen.getByText(/期限超過/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('CAND-DONEを登録候補に選択')).not.toBeInTheDocument();
+
+    fireEvent.change(within(drawer).getByRole('searchbox'), { target: { value: '末尾検索対象Ａ' } });
+    expect(screen.getByLabelText('CAND-1を登録候補に選択')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('CAND-1を登録候補に選択'));
+    fireEvent.click(screen.getByLabelText('CAND-2を登録候補に選択'));
+    fireEvent.click(screen.getByRole('button', { name: '選択した製番を登録' }));
+
+    await waitFor(() => expect(mocks.order).toHaveBeenCalledTimes(1));
+    expect(mocks.order.mock.calls[0]?.[0]).toMatchObject({
+      sourceRevision: 'board-1',
+      fseibans: ['CAND-1', 'CAND-2', '26-1041', '26-1042']
+    });
+  });
+
+  it('一括登録失敗時は候補選択を保持し、カテゴリ切替時だけ選択を破棄する', async () => {
+    const candidates = [{
+      fseiban: 'CAND-FAIL',
+      machineName: '機種Ｆ',
+      dueDate: '2026-09-10',
+      completedProcessCount: 0,
+      totalProcessCount: 1,
+      isCompleted: false
+    }];
+    mocks.candidates.mockReturnValue({
+      data: {
+        today: '2026-09-11',
+        rangeStart: '2026-08-11',
+        rangeEnd: '2026-10-11',
+        completionFilter: 'incomplete',
+        candidates
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false
+    });
+    mocks.order.mockRejectedValueOnce(new Error('save failed'));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const candidateCheckbox = screen.getByLabelText('CAND-FAILを登録候補に選択');
+    fireEvent.click(candidateCheckbox);
+    fireEvent.click(screen.getByRole('button', { name: '選択した製番を登録' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('製番登録を保存できませんでした'));
+    expect(candidateCheckbox).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    await waitFor(() => expect(screen.getByLabelText('CAND-FAILを登録候補に選択')).not.toBeChecked());
+  });
+
+  it('登録済み49件で候補を2件選んでも上限超過を送信しない', () => {
+    const manyRegistered = Array.from({ length: 49 }, (_, index) => `REGISTERED-${index + 1}`);
+    const board = fixture();
+    mocks.snapshot.mockReturnValue({
+      data: { ...board, registeredFseibans: manyRegistered, seibanOrder: manyRegistered, items: [] },
+      isLoading: false,
+      isError: false,
+      refetch: mocks.refetch
+    });
+    mocks.candidates.mockReturnValue({
+      data: {
+        today: '2026-09-11',
+        rangeStart: '2026-08-11',
+        rangeEnd: '2026-10-11',
+        completionFilter: 'incomplete',
+        candidates: [
+          { fseiban: 'CAND-LIMIT-1', machineName: null, dueDate: '2026-09-12', completedProcessCount: 0, totalProcessCount: 1, isCompleted: false },
+          { fseiban: 'CAND-LIMIT-2', machineName: null, dueDate: '2026-09-13', completedProcessCount: 0, totalProcessCount: 1, isCompleted: false }
+        ]
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false
+    });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    fireEvent.click(screen.getByLabelText('CAND-LIMIT-1を登録候補に選択'));
+    fireEvent.click(screen.getByLabelText('CAND-LIMIT-2を登録候補に選択'));
+    const registerButton = screen.getByRole('button', { name: '選択した製番を登録' });
+    expect(registerButton).toBeDisabled();
+    fireEvent.click(registerButton);
+    expect(mocks.order).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('登録上限50件を超えるため');
   });
 
   it('資源CD表示は資源名を見出しに表示し、部品情報を上下2段にする', () => {

@@ -160,3 +160,21 @@ export interface GrindingPlanningBoardSeibanOrderRequest {
   sourceRevision: string;
   fseibans: string[];
 }
+
+/** 製番登録ペインに表示する、期間内の製番候補。 */
+export interface GrindingPlanningBoardSeibanCandidate {
+  fseiban: string;
+  machineName: string | null;
+  dueDate: string;
+  completedProcessCount: number;
+  totalProcessCount: number;
+  isCompleted: boolean;
+}
+
+export interface GrindingPlanningBoardSeibanCandidatesResponse {
+  today: string;
+  rangeStart: string;
+  rangeEnd: string;
+  completionFilter: 'all' | 'incomplete';
+  candidates: GrindingPlanningBoardSeibanCandidate[];
+}
