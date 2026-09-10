@@ -236,7 +236,7 @@ export function ProductionScheduleManualOrderPage() {
     notePending,
     dueDatePending,
     pauseRefetch,
-    updateOrder,
+    updateOrderAsync,
     updateProcessing,
     saveNote,
     commitDueDate: commitDueDateMutation,
@@ -632,17 +632,30 @@ export function ProductionScheduleManualOrderPage() {
     }
   }, [partNameOptions, selectedMachineName, selectedPartName, setSearchConditions]);
 
-  const getAvailableOrders = (resourceCd: string, current: number | null) => {
-    const usage = orderUsageQuery.data?.[resourceCd] ?? [];
-    return ORDER_NUMBERS.filter((num) => num === current || !usage.includes(num));
-  };
+  const getAvailableOrders = useCallback(
+    (resourceCd: string, current: number | null) => {
+      const usage = orderUsageQuery.data?.[resourceCd] ?? [];
+      return ORDER_NUMBERS.filter((num) => num === current || !usage.includes(num));
+    },
+    [orderUsageQuery.data]
+  );
 
-  const handleOrderChange = (rowId: string, resourceCd: string, nextValue: string) => {
-    if (!activeDeviceScopeKey) return;
-    setDeviceStatus(activeDeviceScopeKey, 'saving');
-    resetOrderError();
-    updateOrder({ rowId, resourceCd, nextValue });
-  };
+  const activeDeviceScopeKeyRef = useRef(activeDeviceScopeKey);
+  const setDeviceStatusRef = useRef(setDeviceStatus);
+  const resetOrderErrorRef = useRef(resetOrderError);
+  const updateOrderAsyncRef = useRef(updateOrderAsync);
+  activeDeviceScopeKeyRef.current = activeDeviceScopeKey;
+  setDeviceStatusRef.current = setDeviceStatus;
+  resetOrderErrorRef.current = resetOrderError;
+  updateOrderAsyncRef.current = updateOrderAsync;
+
+  const handleOrderChange = useCallback(async (rowId: string, resourceCd: string, nextValue: string) => {
+    const activeDevice = activeDeviceScopeKeyRef.current;
+    if (!activeDevice) return;
+    setDeviceStatusRef.current(activeDevice, 'saving');
+    resetOrderErrorRef.current();
+    await updateOrderAsyncRef.current({ rowId, resourceCd, orderNumber: nextValue.length > 0 ? Number(nextValue) : null });
+  }, []);
 
   const handleProcessingChange = (rowId: string, nextValue: string) => {
     updateProcessing(rowId, nextValue);
@@ -880,6 +893,7 @@ export function ProductionScheduleManualOrderPage() {
                 PencilIcon={PencilIcon}
                 CalendarIcon={CalendarIcon}
                 RulerIcon={RulerIcon}
+                orderSelectVariant="leaderBoard"
               />
             </div>
           )}
