@@ -1,6 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { normalizeMachineName } from '../productionSchedule/machineName';
 import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister';
+
+import type { GrindingPlanningBoardSeibanCandidate } from '@raspi-system/shared-types';
+
+const REGISTERED_SEIBAN_MAX = 50;
+const UNSET_MACHINE_NAME = '未設定';
+
+function formatCandidateDate(value: string): string {
+  return value.slice(5).replace('-', '/');
+}
+
+function isCandidateOverdue(candidate: GrindingPlanningBoardSeibanCandidate, today: string): boolean {
+  return candidate.dueDate < today;
+}
+
+function normalizeCandidateMachineName(value: string | null | undefined): string {
+  return normalizeMachineName(value, { maxChars: Number.MAX_SAFE_INTEGER });
+}
 
 export type PlanningBoardSeibanDrawerProps = {
   isOpen: boolean;
@@ -14,12 +32,22 @@ export type PlanningBoardSeibanDrawerProps = {
   onRefreshOrder?: () => void;
   onClose: () => void;
   onRegister: (fseiban: string) => Promise<boolean>;
+  onRegisterMany: (fseibans: readonly string[]) => Promise<boolean>;
   onRemove: (fseiban: string) => void;
   onToggle: (fseiban: string) => void;
   onOpenDueDetail: (fseiban: string) => void;
   dueDetailTargetFseiban?: string | null;
   onClear: () => void;
   onMove: (fseiban: string, direction: 'up' | 'down') => void;
+  candidates?: readonly GrindingPlanningBoardSeibanCandidate[];
+  candidatesToday?: string;
+  candidatesRangeStart?: string;
+  candidatesRangeEnd?: string;
+  candidatesLoading?: boolean;
+  candidatesError?: boolean;
+  candidateScopeKey?: string;
+  showCompletedCandidates: boolean;
+  onShowCompletedCandidatesChange: (show: boolean) => void;
 };
 
 export function PlanningBoardSeibanDrawer({
@@ -29,6 +57,7 @@ export function PlanningBoardSeibanDrawer({
   machineNameBySeiban,
   onClose,
   onRegister,
+  onRegisterMany,
   onRemove,
   onToggle,
   onOpenDueDetail,
@@ -39,10 +68,20 @@ export function PlanningBoardSeibanDrawer({
   orderBusy = false,
   orderStatus = null,
   registrationError: externalRegistrationError = null,
-  onRefreshOrder
+  onRefreshOrder,
+  candidates = [],
+  candidatesToday,
+  candidatesLoading = false,
+  candidatesError = false,
+  candidateScopeKey,
+  showCompletedCandidates,
+  onShowCompletedCandidatesChange
 }: PlanningBoardSeibanDrawerProps) {
   const [query, setQuery] = useState('');
   const [registrationError, setRegistrationError] = useState<string | null>(null);
+  const [selectedCandidates, setSelectedCandidates] = useState<ReadonlySet<string>>(new Set());
+  const [collapsedMachineNames, setCollapsedMachineNames] = useState<ReadonlySet<string>>(new Set());
+  const orderDisabled = orderReadOnly || orderBusy;
 
   useEffect(() => {
     if (!isOpen) {
@@ -51,6 +90,10 @@ export function PlanningBoardSeibanDrawer({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    setSelectedCandidates(new Set());
+  }, [candidateScopeKey]);
+
   const visibleFseibans = useMemo(() => {
     const normalized = query.trim();
     return normalized.length === 0
@@ -58,9 +101,58 @@ export function PlanningBoardSeibanDrawer({
       : registeredFseibans.filter((fseiban) => fseiban.includes(normalized));
   }, [query, registeredFseibans]);
 
-  if (!isOpen) return null;
+  const visibleCandidates = useMemo(() => {
+    const normalized = normalizeCandidateMachineName(query).toLocaleLowerCase();
+    return candidates.filter((candidate) => {
+      if (!showCompletedCandidates && candidate.isCompleted) return false;
+      if (normalized.length === 0) return true;
+      return candidate.fseiban.toLocaleLowerCase().includes(normalized) ||
+        normalizeCandidateMachineName(candidate.machineName).toLocaleLowerCase().includes(normalized);
+    });
+  }, [candidates, query, showCompletedCandidates]);
 
-  const orderDisabled = orderReadOnly || orderBusy;
+  const candidateGroups = useMemo(() => {
+    const groups = new Map<string, GrindingPlanningBoardSeibanCandidate[]>();
+    for (const candidate of visibleCandidates) {
+      const machineName = normalizeCandidateMachineName(candidate.machineName) || UNSET_MACHINE_NAME;
+      const group = groups.get(machineName) ?? [];
+      group.push(candidate);
+      groups.set(machineName, group);
+    }
+    return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'ja'));
+  }, [visibleCandidates]);
+
+  const selectedCandidatesForRegistration = candidates.filter((candidate) =>
+    selectedCandidates.has(candidate.fseiban) &&
+    (!candidate.isCompleted || showCompletedCandidates) &&
+    !registeredFseibans.includes(candidate.fseiban)
+  );
+  const selectedCandidateCount = selectedCandidatesForRegistration.length;
+  const availableSlots = REGISTERED_SEIBAN_MAX - registeredFseibans.length;
+  const selectedWouldExceedLimit = selectedCandidateCount > availableSlots;
+
+  const toggleCandidate = (fseiban: string, selected: boolean) => {
+    setSelectedCandidates((current) => {
+      const next = new Set(current);
+      if (selected) next.add(fseiban); else next.delete(fseiban);
+      return next;
+    });
+  };
+
+  const registerSelectedCandidates = async () => {
+    if (selectedCandidateCount === 0 || selectedWouldExceedLimit || orderDisabled) return;
+    const fseibans = selectedCandidatesForRegistration.map((candidate) => candidate.fseiban);
+    const saved = await onRegisterMany(fseibans);
+    if (saved) {
+      setSelectedCandidates((current) => {
+        const next = new Set(current);
+        for (const fseiban of fseibans) next.delete(fseiban);
+        return next;
+      });
+    }
+  };
+
+  if (!isOpen) return null;
 
   return (
     <>
@@ -110,6 +202,98 @@ export function PlanningBoardSeibanDrawer({
             registerButtonClassName="min-h-11 shrink-0 rounded-md bg-emerald-400 px-3 text-xs font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
           />
           {orderStatus ? <p className="mt-2 text-xs text-slate-400" role="status">{orderStatus}</p> : null}
+          <section className="mt-4 rounded-md border border-slate-800 bg-slate-900/70 p-2" aria-label="納期候補">
+            <div className="flex items-start justify-end gap-2">
+              <label className="flex min-h-11 shrink-0 items-center gap-1 text-[10px] text-slate-300">
+                <input
+                  type="checkbox"
+                  className="accent-emerald-400"
+                  checked={showCompletedCandidates}
+                  onChange={(event) => onShowCompletedCandidatesChange(event.target.checked)}
+                />
+                完了分も表示
+              </label>
+            </div>
+            {selectedCandidateCount > 0 ? (
+              <div className="mt-2 rounded border border-emerald-400/40 bg-emerald-950/40 p-2">
+                <div className="text-xs text-emerald-100">選択 {selectedCandidateCount}件</div>
+                <div className="mt-1 text-[10px] text-emerald-200/80">登録残り {Math.max(availableSlots, 0)}件</div>
+                <button
+                  type="button"
+                  className="mt-2 min-h-11 w-full whitespace-nowrap rounded bg-emerald-400 px-2 font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="選択した製番を登録"
+                  disabled={orderDisabled || selectedWouldExceedLimit}
+                  onClick={() => void registerSelectedCandidates()}
+                >
+                  登録
+                </button>
+                {selectedWouldExceedLimit ? (
+                  <p className="mt-1 text-[10px] text-amber-200" role="alert">登録上限50件を超えるため登録できません。選択を減らしてください。</p>
+                ) : null}
+              </div>
+            ) : null}
+            {candidatesLoading && candidates.length === 0 ? <p className="mt-2 text-xs text-slate-500">候補を取得中…</p> : null}
+            {candidatesError ? <p className="mt-2 text-xs text-rose-300" role="alert">候補を取得できませんでした。再試行します。</p> : null}
+            {!candidatesLoading && !candidatesError && candidateGroups.length === 0 ? <p className="mt-2 text-xs text-slate-500">該当する候補はありません。</p> : null}
+            <div className="mt-2 max-h-[min(42vh,28rem)] space-y-1.5 overflow-y-auto pr-1">
+              {candidateGroups.map(([machineName, group]) => {
+                const collapsed = collapsedMachineNames.has(machineName);
+                return (
+                  <div key={machineName} className="rounded border border-slate-800 bg-slate-950/80">
+                    <button
+                      type="button"
+                      className="flex min-h-11 w-full items-center justify-between gap-2 px-2 text-left text-xs font-semibold text-slate-200"
+                      aria-expanded={!collapsed}
+                      aria-label={`機種名${machineName}の候補を${collapsed ? '開く' : '閉じる'}`}
+                      onClick={() => setCollapsedMachineNames((current) => {
+                        const next = new Set(current);
+                        if (next.has(machineName)) next.delete(machineName); else next.add(machineName);
+                        return next;
+                      })}
+                    >
+                      <span className="truncate" title={machineName}>{machineName}</span>
+                      <span className="shrink-0 text-[10px] text-slate-500">{group.length}件 {collapsed ? '▸' : '▾'}</span>
+                    </button>
+                    {!collapsed ? (
+                      <div className="space-y-1 border-t border-slate-800 p-1.5">
+                        {group.map((candidate) => {
+                          const registered = registeredFseibans.includes(candidate.fseiban);
+                          const selected = selectedCandidates.has(candidate.fseiban);
+                          const overdue = candidatesToday ? isCandidateOverdue(candidate, candidatesToday) : false;
+                          return (
+                            <label
+                              key={candidate.fseiban}
+                              className={`flex min-h-11 items-center gap-2 rounded border px-2 ${
+                                registered ? 'border-slate-800 bg-slate-900/50 opacity-70' : selected ? 'border-emerald-400/60 bg-emerald-950/40' : 'border-slate-800 bg-slate-900'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 shrink-0 accent-emerald-400"
+                                checked={registered || selected}
+                                disabled={registered || orderDisabled}
+                                onChange={(event) => toggleCandidate(candidate.fseiban, event.target.checked)}
+                                aria-label={`${candidate.fseiban}を登録候補に選択`}
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate font-mono text-xs font-bold text-white">{candidate.fseiban}</span>
+                                <span className={`block text-[10px] ${overdue ? 'font-bold text-rose-300' : 'text-slate-400'}`}>
+                                  納期 {formatCandidateDate(candidate.dueDate)}{overdue ? '・期限超過' : ''}
+                                </span>
+                              </span>
+                              <span className={`shrink-0 text-[10px] font-semibold ${registered ? 'text-cyan-300' : 'text-slate-500'}`}>
+                                {registered ? '登録済み' : candidate.isCompleted ? '完了' : '未登録'}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
           <div className="mt-4 flex items-center justify-between gap-2">
             <span className="text-xs font-semibold text-slate-300">登録製番（OR）</span>
             <div className="flex items-center gap-1">

@@ -11,7 +11,8 @@ import type {
   GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardSeibanOrderRequest,
   GrindingPlanningBoardDueScopeRequest,
-  GrindingPlanningBoardDueScopeSnapshot
+  GrindingPlanningBoardDueScopeSnapshot,
+  GrindingPlanningBoardSeibanCandidatesResponse
 } from '@raspi-system/shared-types';
 export interface ProductionScheduleRow {
   id: string;
@@ -796,6 +797,17 @@ export async function getKioskGrindingPlanningBoardSnapshot(params: KioskGrindin
     nextCursor = page.nextCursor;
   }
   return { ...first, items, nextCursor: null };
+}
+
+export async function getKioskGrindingPlanningBoardSeibanCandidates(params: {
+  category: 'grinding' | 'cutting';
+  completionFilter?: 'all' | 'incomplete';
+}) {
+  const { data } = await api.get<GrindingPlanningBoardSeibanCandidatesResponse>(
+    '/kiosk/production-schedule/grinding-planning-board/seiban-candidates',
+    { params }
+  );
+  return data;
 }
 
 export async function updateKioskGrindingPlanningBoardOverrides(payload: GrindingPlanningBoardOverridesRequest): Promise<GrindingPlanningBoardOverridesResponse> {

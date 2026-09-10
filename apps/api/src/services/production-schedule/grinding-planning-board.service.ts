@@ -177,8 +177,12 @@ export function resolvePlanningBoardDueRequest(params: {
   return base;
 }
 
+function normalizeUniqueFseibans(values: readonly string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
 function uniqueFseibans(values: readonly string[]): string[] {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).slice(0, KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX);
+  return normalizeUniqueFseibans(values).slice(0, KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX);
 }
 
 function isCategoryResource(resourceCd: string | null, category: GrindingPlanningBoardCategory, policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>): boolean {
@@ -985,7 +989,11 @@ export async function updateGrindingPlanningBoardRank(params: { siteKey: string;
 }
 
 export async function updateGrindingPlanningBoardSeibanOrder(params: { siteKey: string; sourceRevision: string; fseibans: string[] }): Promise<{ sourceRevision: string; seibanOrder: string[] }> {
-  const nextOrder = uniqueFseibans(params.fseibans);
+  const normalizedOrder = normalizeUniqueFseibans(params.fseibans);
+  if (normalizedOrder.length > KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX) {
+    throw new ApiError(400, `登録できる製番は${KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX}件までです`, undefined, 'SEIBAN_LIMIT_EXCEEDED');
+  }
+  const nextOrder = normalizedOrder;
   const rows = await readWinnerRowsByFseibans(prisma, nextOrder);
   const known = new Set(rows.map((row) => valueAsString(asRowData(row.rowData), 'FSEIBAN')).filter(Boolean));
   const existingState = await getOrCreateState(params.siteKey, Array.from(known), prisma);

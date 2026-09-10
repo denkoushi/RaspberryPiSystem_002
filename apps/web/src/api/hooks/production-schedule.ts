@@ -43,6 +43,7 @@ import {
   getKioskProductionScheduleHistoryProgress,
   getKioskGrindingPlanningBoard,
   getKioskGrindingPlanningBoardSnapshot,
+  getKioskGrindingPlanningBoardSeibanCandidates,
   updateKioskGrindingPlanningBoardOverrides,
   updateKioskGrindingPlanningBoardRank,
   updateKioskGrindingPlanningBoardSeibanOrder,
@@ -502,6 +503,23 @@ export function useKioskGrindingPlanningBoardSnapshot(
     enabled: (options?.enabled ?? true) && Boolean(params),
     refetchInterval: options?.refetchIntervalMs ?? 30000,
     refetchOnWindowFocus: options?.refetchOnWindowFocus ?? true
+  });
+}
+
+export function useKioskGrindingPlanningBoardSeibanCandidates(
+  params: { category: 'grinding' | 'cutting'; completionFilter: 'all' | 'incomplete' } | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: ['kiosk-grinding-planning-board', 'seiban-candidates', params],
+    queryFn: () => getKioskGrindingPlanningBoardSeibanCandidates(params!),
+    enabled: (options?.enabled ?? true) && Boolean(params),
+    placeholderData: (previousData, previousQuery) => {
+      const previousParams = previousQuery?.queryKey?.[2] as typeof params;
+      return previousParams?.category === params?.category ? previousData : undefined;
+    },
+    refetchInterval: 30000,
+    refetchOnWindowFocus: false
   });
 }
 

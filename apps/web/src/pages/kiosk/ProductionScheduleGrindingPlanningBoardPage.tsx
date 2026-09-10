@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   useKioskProductionScheduleResources,
   useKioskGrindingPlanningBoardProgressive,
+  useKioskGrindingPlanningBoardSeibanCandidates,
   useKioskGrindingPlanningBoardDueDetail,
   useUpdateKioskGrindingPlanningBoardOverrides,
   useUpdateKioskGrindingPlanningBoardDueScope,
@@ -163,6 +164,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [openFseibans, setOpenFseibans] = useState<ReadonlySet<string>>(new Set());
   const [registeredFseibans, setRegisteredFseibans] = useState<string[]>([]);
   const [activeFseibans, setActiveFseibans] = useState<ReadonlySet<string>>(new Set());
+  const [showCompletedCandidates, setShowCompletedCandidates] = useState(false);
   const [excludedItemIdsByCategory, setExcludedItemIdsByCategory] = useState<Record<string, ReadonlySet<string>>>({});
   const [orderInitialized, setOrderInitialized] = useState(false);
   const [activeInitialized, setActiveInitialized] = useState(false);
@@ -205,6 +207,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     { category, view, completionFilter: status },
     { refetchIntervalMs: editorOpen ? false : undefined }
   );
+  const candidateQuery = useKioskGrindingPlanningBoardSeibanCandidates({
+    category,
+    completionFilter: showCompletedCandidates ? 'all' : 'incomplete'
+  });
   const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch: true });
   const dueDetailQuery = useKioskGrindingPlanningBoardDueDetail(dueDetailFseiban);
   const updateOverrides = useUpdateKioskGrindingPlanningBoardOverrides();
@@ -713,7 +719,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, [allocation, data, handleError, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, sourceRevision, updateRankAsync]);
 
   const persistOrder = async (nextOrder: string[]): Promise<boolean> => {
-    if (!data || !scopeReady || nextOrder.length > 50 || allocation === 'original') return false;
+    if (!data || !scopeReady || allocation === 'original') return false;
+    if (nextOrder.length > 50) {
+      setOrderRegistrationError('登録上限50件を超えるため保存できません。選択を減らしてください。');
+      return false;
+    }
     if (orderRequestPendingRef.current) return false;
     const previous = registeredFseibans;
     const requestSourceRevision = latestOrderSourceRevisionRef.current ?? sourceRevision;
@@ -784,9 +794,25 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   };
   const addSeiban = async (fseiban: string): Promise<boolean> => {
     const value = fseiban.trim();
-    if (!value || registeredFseibans.includes(value) || registeredFseibans.length >= 50) return false;
+    if (!value || registeredFseibans.includes(value)) return false;
+    if (registeredFseibans.length >= 50) {
+      setOrderRegistrationError('登録上限50件を超えるため保存できません。先に登録済み製番を解除してください。');
+      return false;
+    }
     const saved = await persistOrder([value, ...registeredFseibans]);
     if (saved) setActiveFseibans((current) => new Set([value, ...current]));
+    return saved;
+  };
+  const addSeibans = async (fseibans: readonly string[]): Promise<boolean> => {
+    const additions = [...new Set(fseibans.map((value) => value.trim()).filter(Boolean))]
+      .filter((value) => !registeredFseibans.includes(value));
+    if (additions.length === 0) return true;
+    if (registeredFseibans.length + additions.length > 50) {
+      setOrderRegistrationError('登録上限50件を超えるため保存できません。選択を減らしてください。');
+      return false;
+    }
+    const saved = await persistOrder([...additions, ...registeredFseibans]);
+    if (saved) setActiveFseibans((current) => new Set([...additions, ...current]));
     return saved;
   };
   const moveSeiban = (fseiban: string, direction: 'up' | 'down') => {
@@ -975,6 +1001,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         registrationError={orderRegistrationError}
         onRefreshOrder={orderConflict ? () => void refreshAfterOrderConflict() : undefined}
         onRegister={allocation === 'original' || !scopeReady ? async () => false : addSeiban}
+        onRegisterMany={allocation === 'original' || !scopeReady ? async () => false : addSeibans}
         onRemove={allocation === 'original' || !scopeReady ? () => undefined : removeSeiban}
         onToggle={(fseiban) => {
           if (interactionLocked) return;
@@ -995,6 +1022,15 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         orderReadOnly={allocation === 'original' || interactionLocked}
         orderBusy={orderSaving || interactionLocked}
         orderStatus={interactionLocked ? (boardQuery.isError ? '一覧を読み込めませんでした。' : '一覧を読み込み中…') : orderSaving ? '製番順を保存中…' : null}
+        candidates={candidateQuery.data?.candidates}
+        candidatesToday={candidateQuery.data?.today}
+        candidatesRangeStart={candidateQuery.data?.rangeStart}
+        candidatesRangeEnd={candidateQuery.data?.rangeEnd}
+        candidatesLoading={candidateQuery.isLoading || candidateQuery.isFetching}
+        candidatesError={candidateQuery.isError}
+        candidateScopeKey={category}
+        showCompletedCandidates={showCompletedCandidates}
+        onShowCompletedCandidatesChange={setShowCompletedCandidates}
       />
       {dueDetailFseiban ? (
         <div
