@@ -78,6 +78,16 @@ type DuePickerState = {
   snapshot: Pick<GrindingPlanningBoardDueScopeSnapshot, 'sourceGenerationToken' | 'scopeRevision'>;
 };
 
+type PendingRankOverride = {
+  scopeKey: string;
+  requestId: number;
+  baseRank: number | null;
+  baseItemRevision: string;
+  baseVersion: number;
+  rank: number | null;
+  phase: 'saving' | 'awaitingSync';
+};
+
 export function ProductionScheduleGrindingPlanningBoardPage() {
   const [category, setCategory] = useState<'grinding' | 'cutting'>('grinding');
   const [view, setView] = useState<'seiban' | 'resource'>('seiban');
@@ -119,6 +129,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [duePickerState, setDuePickerState] = useState<DuePickerState | null>(null);
   const [dueConflict, setDueConflict] = useState(false);
   const [dueError, setDueError] = useState<string | null>(null);
+  const [pendingRankOverrides, setPendingRankOverrides] = useState<Record<string, PendingRankOverride>>({});
+  const rankRequestIdRef = useRef(0);
 
   const boardQuery = useKioskGrindingPlanningBoardProgressive(
     { category, view, completionFilter: status },
@@ -136,6 +148,49 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const bulkReady = scopeReady && boardQuery.isComplete;
   const interactionLocked = !scopeReady;
   const sourceRevision = data?.sourceRevision ?? '';
+  const rankScopeKey = `${data?.siteKey ?? ''}\0${category}\0${status}`;
+  const rankSyncPending = Object.values(pendingRankOverrides).some(
+    (pending) => pending.scopeKey === rankScopeKey
+  );
+
+  useEffect(() => {
+    setPendingRankOverrides((current) => {
+      let changed = false;
+      const next: Record<string, PendingRankOverride> = {};
+      for (const [itemId, pending] of Object.entries(current)) {
+        if (pending.scopeKey !== rankScopeKey) {
+          changed = true;
+          continue;
+        }
+        const currentItem = data?.items.find((item) => item.itemId === itemId);
+        if (
+          pending.phase === 'awaitingSync' &&
+          (currentItem == null ||
+            currentItem.itemRevision !== pending.baseItemRevision ||
+            currentItem.version !== pending.baseVersion)
+        ) {
+          changed = true;
+          continue;
+        }
+        next[itemId] = pending;
+      }
+      return changed ? next : current;
+    });
+  }, [data, pendingRankOverrides, rankScopeKey]);
+
+  useEffect(() => {
+    if (!boardQuery.isError) return;
+    setPendingRankOverrides((current) => (Object.keys(current).length > 0 ? {} : current));
+  }, [boardQuery.isError]);
+
+  const displayItems = useMemo(() => {
+    if (!data) return [];
+    return data.items.map((item) => {
+      const pending = pendingRankOverrides[item.itemId];
+      if (!pending || pending.scopeKey !== rankScopeKey) return item;
+      return { ...item, alternateRank: pending.rank };
+    });
+  }, [data, pendingRankOverrides, rankScopeKey]);
   const dueDetail = allocation === 'original'
     ? dueDetailQuery.data?.original
     : dueDetailQuery.data?.alternate;
@@ -173,13 +228,13 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
 
   const itemsBySeiban = useMemo(() => {
     const grouped = new Map<string, GrindingPlanningBoardItem[]>();
-    for (const item of data?.items ?? []) {
+    for (const item of displayItems) {
       const group = grouped.get(item.fseiban) ?? [];
       group.push(item);
       grouped.set(item.fseiban, group);
     }
     return grouped;
-  }, [data?.items]);
+  }, [displayItems]);
   const sortedItemsBySeiban = useMemo(() => {
     const sorted = new Map<string, GrindingPlanningBoardItem[]>();
     for (const [fseiban, group] of itemsBySeiban) {
@@ -189,12 +244,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, [allocation, itemsBySeiban, registeredFseibans, view]);
   const machineNames = useMemo(() => {
     const result = new Map<string, string | null>();
-    for (const item of data?.items ?? []) if (!result.has(item.fseiban)) result.set(item.fseiban, item.machineName);
+    for (const item of displayItems) if (!result.has(item.fseiban)) result.set(item.fseiban, item.machineName);
     return result;
-  }, [data?.items]);
+  }, [displayItems]);
   const visibleItems = useMemo(
-    () => (data?.items ?? []).filter((item) => activeFseibans.has(item.fseiban)),
-    [activeFseibans, data?.items]
+    () => displayItems.filter((item) => activeFseibans.has(item.fseiban)),
+    [activeFseibans, displayItems]
   );
   const selectedItemIds = useMemo(
     () => {
@@ -395,13 +450,51 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   };
 
   const changeRank = useCallback(async (item: GrindingPlanningBoardItem, rank: number | null) => {
-    if (!data || !scopeReady || allocation === 'original' || item.isCompleted) return;
+    if (!data || !scopeReady || allocation === 'original' || item.isCompleted || rankSyncPending) return;
+    const requestId = ++rankRequestIdRef.current;
+    const requestScopeKey = rankScopeKey;
+    setRankConflict(false);
+    setPendingRankOverrides((current) => ({
+      ...current,
+      [item.itemId]: {
+        scopeKey: requestScopeKey,
+        requestId,
+        baseRank: item.alternateRank,
+        baseItemRevision: item.itemRevision,
+        baseVersion: item.version,
+        rank,
+        phase: 'saving'
+      }
+    }));
     try {
       await updateRankAsync({ sourceRevision, itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, alternateRank: rank });
+      setPendingRankOverrides((current) => {
+        const pending = current[item.itemId];
+        if (!pending || pending.requestId !== requestId || pending.scopeKey !== requestScopeKey) return current;
+        if (pending.baseRank === rank) {
+          const next = { ...current };
+          delete next[item.itemId];
+          return next;
+        }
+        return {
+          ...current,
+          [item.itemId]: {
+            ...pending,
+            phase: 'awaitingSync'
+          }
+        };
+      });
     } catch (error) {
+      setPendingRankOverrides((current) => {
+        const pending = current[item.itemId];
+        if (!pending || pending.requestId !== requestId || pending.scopeKey !== requestScopeKey) return current;
+        const next = { ...current };
+        delete next[item.itemId];
+        return next;
+      });
       handleError(error);
     }
-  }, [allocation, data, handleError, scopeReady, sourceRevision, updateRankAsync]);
+  }, [allocation, data, handleError, rankScopeKey, rankSyncPending, scopeReady, sourceRevision, updateRankAsync]);
 
   const persistOrder = async (nextOrder: string[]): Promise<boolean> => {
     if (!data || !scopeReady || nextOrder.length > 50 || allocation === 'original') return false;
@@ -555,7 +648,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         status={status}
         allocation={allocation}
         selectedCount={toolbarSelectedItems.length}
-        bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady}
+        bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || rankSyncPending}
         registeredCount={registeredFseibans.length}
         onOpenDrawer={() => setDrawerOpen(true)}
         onCategoryChange={setCategory}
@@ -590,7 +683,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             onToggleItem={toggleItem}
             onResourceClick={openEditorForItem}
             onRankChange={changeRank}
-            disabled={interactionLocked}
+            disabled={interactionLocked || rankSyncPending}
             bulkDisabled={!bulkReady}
           />
         </div>
@@ -617,7 +710,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
                 onToggleItem={toggleItem}
                 onResourceClick={openEditorForItem}
                 onRankChange={changeRank}
-                disabled={interactionLocked}
+                disabled={interactionLocked || rankSyncPending}
                 bulkDisabled={!bulkReady}
               />
             );
@@ -635,7 +728,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             onToggleItem={toggleItem}
             onResourceClick={openEditorForItem}
             onRankChange={changeRank}
-            disabled={interactionLocked}
+            disabled={interactionLocked || rankSyncPending}
           />
         </div>
       ) : null}
