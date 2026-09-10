@@ -12,12 +12,10 @@ CREATE TABLE "ProductionScheduleGrindingPlanningBoardDueScope" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "ProductionScheduleGrindingPlanningBoardDueScope_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "ProductionScheduleGrindingPlanningBoardDueScope_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "ProductionScheduleGrindingPlanningBoardDueScope_csvDashboardId_fkey" FOREIGN KEY ("csvDashboardId") REFERENCES "CsvDashboard"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateIndex
 CREATE UNIQUE INDEX "PSGrindingPlanningDueScope_dashboard_site_seiban_key" ON "ProductionScheduleGrindingPlanningBoardDueScope"("csvDashboardId", "siteKey", "fseiban", "scopeKey");
 CREATE INDEX "PSGrindingPlanningDueScope_dashboard_site_seiban_idx" ON "ProductionScheduleGrindingPlanningBoardDueScope"("csvDashboardId", "siteKey", "fseiban");
-
--- AddForeignKey
-ALTER TABLE "ProductionScheduleGrindingPlanningBoardDueScope" ADD CONSTRAINT "ProductionScheduleGrindingPlanningBoardDueScope_csvDashboardId_fkey" FOREIGN KEY ("csvDashboardId") REFERENCES "CsvDashboard"("id") ON DELETE CASCADE ON UPDATE CASCADE;
