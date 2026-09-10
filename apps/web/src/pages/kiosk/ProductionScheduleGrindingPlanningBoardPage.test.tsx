@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   overrides: vi.fn(),
   dueDetail: vi.fn(),
   dueScope: vi.fn(),
+  candidates: vi.fn(),
   rank: vi.fn(),
   order: vi.fn()
 }));
@@ -41,6 +42,7 @@ vi.mock('../../api/hooks', () => ({
     };
   },
   useKioskGrindingPlanningBoardDueDetail: (...args: unknown[]) => mocks.dueDetail(...args),
+  useKioskGrindingPlanningBoardSeibanCandidates: (...args: unknown[]) => mocks.candidates(...args),
   useUpdateKioskGrindingPlanningBoardOverrides: () => ({ mutateAsync: mocks.overrides, isPending: false }),
   useUpdateKioskGrindingPlanningBoardDueScope: () => ({ mutateAsync: mocks.dueScope, isPending: false }),
   useUpdateKioskGrindingPlanningBoardRank: () => ({ mutateAsync: mocks.rank, isPending: false }),
@@ -99,12 +101,14 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.overrides.mockReset();
     mocks.dueDetail.mockReset();
     mocks.dueScope.mockReset();
+    mocks.candidates.mockReset();
     mocks.rank.mockReset();
     mocks.order.mockReset();
     mocks.refetch.mockResolvedValue({ data: fixture() });
     mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isError: false, refetch: mocks.refetch });
     mocks.overrides.mockResolvedValue({ sourceRevision: 'board-2' });
     mocks.dueDetail.mockReturnValue({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() });
+    mocks.candidates.mockReturnValue({ data: undefined, isFetching: false, isError: false });
     mocks.dueScope.mockResolvedValue({});
   mocks.rank.mockImplementation(async (payload: { itemId: string; itemRevision: string; overrideVersion: number; alternateRank: number | null }): Promise<GrindingPlanningBoardRankResponse> => ({
     sourceRevision: 'board-1',

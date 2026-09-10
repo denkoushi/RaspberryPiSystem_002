@@ -2,11 +2,22 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister';
 
+import type {
+  GrindingPlanningBoardSeibanCandidate,
+  GrindingPlanningBoardSeibanCandidatesResponse
+} from '@raspi-system/shared-types';
+
 export type PlanningBoardSeibanDrawerProps = {
   isOpen: boolean;
   registeredFseibans: readonly string[];
   selectedFseibans: ReadonlySet<string>;
   machineNameBySeiban?: ReadonlyMap<string, string | null>;
+  candidateData?: GrindingPlanningBoardSeibanCandidatesResponse;
+  candidateFetching?: boolean;
+  candidateError?: boolean;
+  showCompletedCandidates: boolean;
+  onShowCompletedCandidatesChange: (show: boolean) => void;
+  onRegisterMany: (fseibans: readonly string[]) => Promise<boolean>;
   orderReadOnly?: boolean;
   orderBusy?: boolean;
   orderStatus?: string | null;
@@ -27,6 +38,12 @@ export function PlanningBoardSeibanDrawer({
   registeredFseibans,
   selectedFseibans,
   machineNameBySeiban,
+  candidateData,
+  candidateFetching = false,
+  candidateError = false,
+  showCompletedCandidates,
+  onShowCompletedCandidatesChange,
+  onRegisterMany,
   onClose,
   onRegister,
   onRemove,
@@ -43,11 +60,19 @@ export function PlanningBoardSeibanDrawer({
 }: PlanningBoardSeibanDrawerProps) {
   const [query, setQuery] = useState('');
   const [registrationError, setRegistrationError] = useState<string | null>(null);
+  const [candidateSeibanQuery, setCandidateSeibanQuery] = useState('');
+  const [candidateMachineQuery, setCandidateMachineQuery] = useState('');
+  const [selectedCandidates, setSelectedCandidates] = useState<ReadonlySet<string>>(new Set());
+  const [collapsedMachineNames, setCollapsedMachineNames] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     if (!isOpen) {
       setQuery('');
       setRegistrationError(null);
+      setCandidateSeibanQuery('');
+      setCandidateMachineQuery('');
+      setSelectedCandidates(new Set());
+      setCollapsedMachineNames(new Set());
     }
   }, [isOpen]);
 
@@ -57,6 +82,48 @@ export function PlanningBoardSeibanDrawer({
       ? registeredFseibans
       : registeredFseibans.filter((fseiban) => fseiban.includes(normalized));
   }, [query, registeredFseibans]);
+
+  const candidateGroups = useMemo(() => {
+    const seibanQuery = candidateSeibanQuery.trim().toLocaleLowerCase('ja');
+    const machineQuery = candidateMachineQuery.trim().toLocaleLowerCase('ja');
+    const groups = new Map<string, GrindingPlanningBoardSeibanCandidate[]>();
+    for (const candidate of candidateData?.candidates ?? []) {
+      const machineName = candidate.machineName || '機種名未登録';
+      if (seibanQuery && !candidate.fseiban.toLocaleLowerCase('ja').includes(seibanQuery)) continue;
+      if (machineQuery && !machineName.toLocaleLowerCase('ja').includes(machineQuery)) continue;
+      const group = groups.get(machineName) ?? [];
+      group.push(candidate);
+      groups.set(machineName, group);
+    }
+    return [...groups.entries()]
+      .sort(([left], [right]) => left.localeCompare(right, 'ja'))
+      .map(([machineName, candidates]) => [
+        machineName,
+        candidates.sort((left, right) => left.dueDate.localeCompare(right.dueDate) || left.fseiban.localeCompare(right.fseiban, 'ja'))
+      ] as const);
+  }, [candidateData?.candidates, candidateMachineQuery, candidateSeibanQuery]);
+
+  const visibleCandidateCount = candidateGroups.reduce((count, [, candidates]) => count + candidates.length, 0);
+  const selectedCandidateCount = [...selectedCandidates].filter((fseiban) => !registeredFseibans.includes(fseiban)).length;
+
+  const toggleCandidate = (fseiban: string) => {
+    if (registeredFseibans.includes(fseiban) || orderDisabled) return;
+    setSelectedCandidates((current) => {
+      const next = new Set(current);
+      if (next.has(fseiban)) next.delete(fseiban); else next.add(fseiban);
+      return next;
+    });
+  };
+
+  const registerSelectedCandidates = async () => {
+    const values = [...selectedCandidates].filter((fseiban) => !registeredFseibans.includes(fseiban));
+    if (values.length === 0) return;
+    const saved = await onRegisterMany(values);
+    if (saved) setSelectedCandidates(new Set());
+    else setRegistrationError('選択した製番を登録できませんでした。登録上限・重複・通信状態を確認してください。');
+  };
+
+  const formatCandidateDate = (value: string): string => value.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$1/$2/$3');
 
   if (!isOpen) return null;
 
@@ -83,6 +150,102 @@ export function PlanningBoardSeibanDrawer({
           </button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+          <section aria-labelledby="planning-board-seiban-candidate-title" className="mb-5 rounded-lg border border-slate-800 bg-slate-900/50 p-2">
+            <div className="flex items-center justify-between gap-2">
+              <h3 id="planning-board-seiban-candidate-title" className="text-xs font-bold text-white">納期範囲の候補</h3>
+              {candidateFetching ? <span className="text-[10px] text-cyan-300" role="status">更新中…</span> : null}
+            </div>
+            <p className="mt-1 text-[10px] leading-4 text-slate-400">
+              {candidateData ? `${formatCandidateDate(candidateData.rangeStart)}〜${formatCandidateDate(candidateData.rangeEnd)}（今日: ${formatCandidateDate(candidateData.today)}）` : '候補を読み込んでいます…'}
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-1.5">
+              <input
+                type="search"
+                value={candidateSeibanQuery}
+                onChange={(event) => setCandidateSeibanQuery(event.target.value)}
+                placeholder="製番で絞り込み"
+                aria-label="候補を製番で絞り込み"
+                className="min-h-10 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-2 text-xs text-white outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+              />
+              <input
+                type="search"
+                value={candidateMachineQuery}
+                onChange={(event) => setCandidateMachineQuery(event.target.value)}
+                placeholder="機種名で絞り込み"
+                aria-label="候補を機種名で絞り込み"
+                className="min-h-10 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-2 text-xs text-white outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+              />
+            </div>
+            <label className="mt-2 flex min-h-9 items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={showCompletedCandidates}
+                onChange={(event) => onShowCompletedCandidatesChange(event.target.checked)}
+                disabled={orderReadOnly}
+                className="h-4 w-4 accent-cyan-400"
+              />
+              完了分も表示
+            </label>
+            {candidateError && !candidateData ? <p className="mt-2 text-xs text-rose-300" role="alert">候補を取得できませんでした。</p> : null}
+            {candidateData && visibleCandidateCount === 0 ? <p className="mt-2 text-xs text-slate-500">条件に一致する候補がありません。</p> : null}
+            {candidateGroups.map(([machineName, candidates]) => {
+              const collapsed = collapsedMachineNames.has(machineName);
+              return (
+                <div key={machineName} className="mt-2 overflow-hidden rounded-md border border-slate-800">
+                  <button
+                    type="button"
+                    className="flex min-h-10 w-full items-center justify-between gap-2 bg-slate-800 px-2 text-left text-xs font-semibold text-slate-200 hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"
+                    aria-expanded={!collapsed}
+                    onClick={() => setCollapsedMachineNames((current) => {
+                      const next = new Set(current);
+                      if (next.has(machineName)) next.delete(machineName); else next.add(machineName);
+                      return next;
+                    })}
+                  >
+                    <span className="truncate">{machineName}（{candidates.length}）</span>
+                    <span aria-hidden="true">{collapsed ? '＋' : '－'}</span>
+                  </button>
+                  {!collapsed ? (
+                    <div className="divide-y divide-slate-800">
+                      {candidates.map((candidate) => {
+                        const registered = registeredFseibans.includes(candidate.fseiban);
+                        const checked = selectedCandidates.has(candidate.fseiban);
+                        const overdue = candidate.dueDate < (candidateData?.today ?? '');
+                        return (
+                          <label key={candidate.fseiban} className={`flex min-h-12 items-center gap-2 px-2 py-1.5 ${registered ? 'opacity-50' : 'hover:bg-slate-800/70'}`}>
+                            <input
+                              type="checkbox"
+                              checked={registered || checked}
+                              disabled={registered || orderDisabled}
+                              onChange={() => toggleCandidate(candidate.fseiban)}
+                              className="h-4 w-4 shrink-0 accent-emerald-400"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-1.5 text-xs font-bold text-slate-100">
+                                <span className="truncate font-mono">{candidate.fseiban}</span>
+                                {registered ? <span className="shrink-0 text-[10px] text-emerald-300">登録済</span> : null}
+                              </span>
+                              <span className={`block text-[10px] ${overdue ? 'font-bold text-rose-300' : 'text-slate-400'}`}>
+                                納期 {formatCandidateDate(candidate.dueDate)}{overdue ? '・期限超過' : ''} ／ 完了 {candidate.completedProcessCount}/{candidate.totalProcessCount}
+                              </span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              className="mt-2 min-h-11 w-full rounded-md bg-cyan-400 px-2 text-xs font-bold text-slate-950 hover:bg-cyan-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:opacity-50"
+              disabled={orderDisabled || selectedCandidateCount === 0}
+              onClick={() => void registerSelectedCandidates()}
+            >
+              選択した製番を登録{selectedCandidateCount > 0 ? `（${selectedCandidateCount}件）` : ''}
+            </button>
+          </section>
           <SeibanSearchRegister
             value={query}
             onChange={(value) => {

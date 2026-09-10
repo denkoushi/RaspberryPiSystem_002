@@ -160,3 +160,21 @@ export interface GrindingPlanningBoardSeibanOrderRequest {
   sourceRevision: string;
   fseibans: string[];
 }
+
+/** 研削順位ボードの製番登録ペインに表示する納期範囲候補。 */
+export interface GrindingPlanningBoardSeibanCandidate {
+  fseiban: string;
+  machineName: string | null;
+  dueDate: string;
+  completedProcessCount: number;
+  totalProcessCount: number;
+  isCompleted: boolean;
+}
+
+export interface GrindingPlanningBoardSeibanCandidatesResponse {
+  today: string;
+  rangeStart: string;
+  rangeEnd: string;
+  completionFilter: 'all' | 'incomplete';
+  candidates: GrindingPlanningBoardSeibanCandidate[];
+}

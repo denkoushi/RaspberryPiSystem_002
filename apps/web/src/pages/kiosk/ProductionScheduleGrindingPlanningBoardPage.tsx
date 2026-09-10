@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   useKioskProductionScheduleResources,
   useKioskGrindingPlanningBoardProgressive,
+  useKioskGrindingPlanningBoardSeibanCandidates,
   useKioskGrindingPlanningBoardDueDetail,
   useUpdateKioskGrindingPlanningBoardOverrides,
   useUpdateKioskGrindingPlanningBoardDueScope,
@@ -159,6 +160,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [status, setStatus] = useState<PlanningBoardStatus>('incomplete');
   const [allocation, setAllocation] = useState<PlanningBoardAllocation>('alternate');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showCompletedCandidates, setShowCompletedCandidates] = useState(false);
   const [focusedFseiban, setFocusedFseiban] = useState<string | null>(null);
   const [openFseibans, setOpenFseibans] = useState<ReadonlySet<string>>(new Set());
   const [registeredFseibans, setRegisteredFseibans] = useState<string[]>([]);
@@ -214,6 +216,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
 
   const data = boardQuery.data;
   const scopeReady = boardQuery.scopeReady;
+  const candidateQuery = useKioskGrindingPlanningBoardSeibanCandidates(
+    drawerOpen ? { category, completionFilter: showCompletedCandidates ? 'all' : 'incomplete' } : undefined,
+    { enabled: drawerOpen && scopeReady }
+  );
   const bulkReady = scopeReady && boardQuery.isComplete;
   const interactionLocked = !scopeReady;
   const sourceRevision = data?.sourceRevision ?? '';
@@ -789,6 +795,19 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     if (saved) setActiveFseibans((current) => new Set([value, ...current]));
     return saved;
   };
+  const addSeibans = async (fseibans: readonly string[]): Promise<boolean> => {
+    const values = [...new Set(fseibans.map((fseiban) => fseiban.trim()).filter(Boolean))]
+      .filter((fseiban) => !registeredFseibans.includes(fseiban));
+    if (values.length === 0) return true;
+    const remaining = 50 - registeredFseibans.length;
+    if (values.length > remaining) {
+      setOrderRegistrationError(`登録上限は50件です。今回は${values.length}件選択されていますが、残りは${remaining}件です。選択数を減らしてください。`);
+      return false;
+    }
+    const saved = await persistOrder([...values, ...registeredFseibans]);
+    if (saved) setActiveFseibans((current) => new Set([...values, ...current]));
+    return saved;
+  };
   const moveSeiban = (fseiban: string, direction: 'up' | 'down') => {
     const index = registeredFseibans.indexOf(fseiban);
     const target = direction === 'up' ? index - 1 : index + 1;
@@ -965,6 +984,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         isOpen={drawerOpen}
         registeredFseibans={registeredFseibans}
         selectedFseibans={activeFseibans}
+        candidateData={candidateQuery.data}
+        candidateFetching={candidateQuery.isFetching}
+        candidateError={candidateQuery.isError}
+        showCompletedCandidates={showCompletedCandidates}
+        onShowCompletedCandidatesChange={setShowCompletedCandidates}
+        onRegisterMany={allocation === 'original' || !scopeReady ? async () => false : addSeibans}
         dueDetailTargetFseiban={dueDetailTargetFseiban ?? [...activeFseibans][0] ?? null}
         machineNameBySeiban={machineNames}
         onOpenDueDetail={openDueDetail}
