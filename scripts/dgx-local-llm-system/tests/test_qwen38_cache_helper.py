@@ -160,6 +160,31 @@ class Qwen38CacheHelperTests(unittest.TestCase):
             self.assertIn("model snapshot incomplete", rejected.stderr)
             self.assertFalse(called.exists())
 
+    def test_prepare_ple_forwards_enabled_upstream_speedups(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = root / "prepare-capture"
+            start = (
+                "#!/usr/bin/env bash\n"
+                "printf '%s|%s|%s|%s' \"$ABLIT\" \"$MAMBA_SSM_CACHE_DTYPE\" "
+                "\"$MTP_DRAFT_VOCAB\" \"$EXTRA_DOCKER_ARGS\" > \"$PREPARE_CAPTURE\"\n"
+                "exit 0\n"
+            )
+            env = {
+                **os.environ,
+                **self._fixture(root, start_contents=start),
+                "PREPARE_CAPTURE": str(capture),
+                "BLUE_EXTRA_DOCKER_ARGS": "--ipc host",
+            }
+            prepared = subprocess.run(
+                [str(HELPER), "prepare-ple"], env=env, text=True, capture_output=True
+            )
+            self.assertEqual(prepared.returncode, 0, prepared.stderr)
+            self.assertEqual(
+                capture.read_text(encoding="utf-8"),
+                "0|bfloat16|files/draft_vocab_en_code_47k.txt|--ipc host -e VLLM_USE_V2_MODEL_RUNNER=1",
+            )
+
     def test_plan_reports_pinned_model_and_digest(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

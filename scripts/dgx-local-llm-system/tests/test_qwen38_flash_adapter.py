@@ -101,7 +101,7 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
             start_contents = (
                 "#!/usr/bin/env bash\n"
                 "set -euo pipefail\n"
-                "printf '%s\\n' \"$TP1_MODEL_ID|$TP1_CONTAINER_NAME|$IMAGE|$SERVED_MODEL_NAME|$HF_HOME|$PORT|$MAX_MODEL_LEN|$MAX_NUM_SEQS|$MAX_NUM_BATCHED_TOKENS|$KV_CACHE_DTYPE|$PLE_OFFLOAD|$COMPILATION_MODE|$GPU_MEMORY_UTILIZATION|$EXTRA_VLLM_ARGS|$EXTRA_DOCKER_ARGS\" > \"$CAPTURE\"\n"
+                "printf '%s\\n' \"$TP1_MODEL_ID|$TP1_CONTAINER_NAME|$IMAGE|$SERVED_MODEL_NAME|$HF_HOME|$PORT|$MAX_MODEL_LEN|$MAX_NUM_SEQS|$MAX_NUM_BATCHED_TOKENS|$KV_CACHE_DTYPE|$PLE_OFFLOAD|$COMPILATION_MODE|$GPU_MEMORY_UTILIZATION|$EXTRA_VLLM_ARGS|$MAMBA_SSM_CACHE_DTYPE|$MTP_DRAFT_VOCAB|$EXTRA_DOCKER_ARGS\" > \"$CAPTURE\"\n"
                 "VLLM_ARGS=()\n"
                 "VLLM_ARGS+=(\"$EXTRA_VLLM_ARGS\")\n"
                 "VLLM_ARGS_STR=\"${VLLM_ARGS[*]}\"\n"
@@ -133,7 +133,7 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
                 capture.read_text(encoding="utf-8").strip(),
                 "Mia-AiLab/Qwen3.8-Flash-Next-NVFP4|system-prod-trtllm|"
                 "vllm/vllm-openai:qwen38-flash-next|system-prod-primary|"
-                f"{root / 'hf-cache'}|38083|262144|1|2048|fp8|true|0|0.71|--scheduling-policy priority|--ipc host",
+                f"{root / 'hf-cache'}|38083|262144|1|2048|fp8|true|0|0.71|--scheduling-policy priority|bfloat16|files/draft_vocab_en_code_47k.txt|--ipc host -e VLLM_USE_V2_MODEL_RUNNER=1",
             )
             self.assertEqual(args_count_capture.read_text(encoding="utf-8").strip(), "2")
             self.assertEqual(
@@ -303,7 +303,7 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(selected.read_text(encoding="utf-8"), "snapshot-test")
 
-    def test_adapter_exports_unvalidated_upstream_defaults_off_at_boundary(self):
+    def test_adapter_exports_enabled_upstream_speedups_at_boundary(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture = root / "capture"
@@ -333,7 +333,10 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
             env["CAPTURE"] = str(capture)
             result = subprocess.run([str(ADAPTER)], env={**os.environ, **env}, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(capture.read_text(encoding="utf-8"), "0|||")
+            self.assertEqual(
+                capture.read_text(encoding="utf-8"),
+                "0|bfloat16|files/draft_vocab_en_code_47k.txt|-e VLLM_USE_V2_MODEL_RUNNER=1",
+            )
 
 
 if __name__ == "__main__":

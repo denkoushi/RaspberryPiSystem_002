@@ -147,6 +147,11 @@ chmod 0750 "${BOUNDARY_START}"
 
 # These overrides retain the upstream model/PLE cache behavior, Business alias,
 # port, and the shipped safe profile.
+EXTRA_DOCKER_ARGS="${BLUE_EXTRA_DOCKER_ARGS:-${TRTLLM_EXTRA_DOCKER_ARGS:-}}"
+if [[ -n "${EXTRA_DOCKER_ARGS}" ]]; then
+  EXTRA_DOCKER_ARGS+=" "
+fi
+EXTRA_DOCKER_ARGS+="-e VLLM_USE_V2_MODEL_RUNNER=1"
 cd "${RECIPE_DIR}"
 if env \
   ABLIT="0" \
@@ -162,8 +167,8 @@ if env \
   KV_CACHE_DTYPE="${VLLM_KV_CACHE_DTYPE:-fp8}" \
   YARN="0" \
   MTP_NUM_SPECULATIVE_TOKENS="3" \
-  MAMBA_SSM_CACHE_DTYPE="" \
-  MTP_DRAFT_VOCAB="" \
+  MAMBA_SSM_CACHE_DTYPE="bfloat16" \
+  MTP_DRAFT_VOCAB="files/draft_vocab_en_code_47k.txt" \
   PLE_OFFLOAD="true" \
   HOST_RESERVE_GIB="26" \
   KV_TARGET_GIB="16" \
@@ -174,7 +179,7 @@ if env \
   CUDAGRAPH_CAPTURE_SIZES="auto" \
   CUDAGRAPH_MODE="FULL_DECODE_ONLY" \
   REQUIRE_IDLE_GPU="true" \
-  EXTRA_DOCKER_ARGS="${BLUE_EXTRA_DOCKER_ARGS:-${TRTLLM_EXTRA_DOCKER_ARGS:-}}" \
+  EXTRA_DOCKER_ARGS="${EXTRA_DOCKER_ARGS}" \
   "${BOUNDARY_START}"; then
   exit_code=0
 else

@@ -164,6 +164,11 @@ if [[ "${ACTION}" == "prepare-ple" ]]; then
     echo "pinned recipe .env is required before PLE preparation: ${RECIPE_DIR}/.env" >&2
     exit 1
   fi
+  EXTRA_DOCKER_ARGS="${BLUE_EXTRA_DOCKER_ARGS:-${TRTLLM_EXTRA_DOCKER_ARGS:-}}"
+  if [[ -n "${EXTRA_DOCKER_ARGS}" ]]; then
+    EXTRA_DOCKER_ARGS+=" "
+  fi
+  EXTRA_DOCKER_ARGS+="-e VLLM_USE_V2_MODEL_RUNNER=1"
   (
     cd "${RECIPE_DIR}"
     env \
@@ -180,8 +185,8 @@ if [[ "${ACTION}" == "prepare-ple" ]]; then
     KV_CACHE_DTYPE="fp8" \
     YARN="0" \
     MTP_NUM_SPECULATIVE_TOKENS="3" \
-    MAMBA_SSM_CACHE_DTYPE="" \
-    MTP_DRAFT_VOCAB="" \
+    MAMBA_SSM_CACHE_DTYPE="bfloat16" \
+    MTP_DRAFT_VOCAB="files/draft_vocab_en_code_47k.txt" \
     PLE_OFFLOAD="true" \
     HOST_RESERVE_GIB="26" \
     KV_TARGET_GIB="16" \
@@ -190,6 +195,7 @@ if [[ "${ACTION}" == "prepare-ple" ]]; then
     CUDAGRAPH_CAPTURE_SIZES="auto" \
     CUDAGRAPH_MODE="FULL_DECODE_ONLY" \
     REQUIRE_IDLE_GPU="true" \
+    EXTRA_DOCKER_ARGS="${EXTRA_DOCKER_ARGS}" \
       ./start.sh --no-launch
   )
   PLE_COUNT="$(find "${PLE_CACHE_DIR}" -maxdepth 1 -type f -name '*.packed_u8' 2>/dev/null | wc -l | tr -d ' ')"
