@@ -6,6 +6,7 @@ import type {
   GrindingPlanningBoardDueRequest,
   GrindingPlanningBoardItem,
   GrindingPlanningBoardLoad,
+  GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardView
 } from '@raspi-system/shared-types';
@@ -92,6 +93,12 @@ type CurrentProjection = {
   state: PlanningState;
   byItemId: Map<string, GrindingPlanningBoardItem>;
   overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>;
+  rows: WinnerRow[];
+  details: Map<string, RowDetail>;
+  ranks: GrindingPlanningBoardProjectionRanks;
+  progressRows: GrindingPlanningBoardProgressRow[];
+  splitEnabled: boolean;
+  policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>;
   sourceRowIds: Map<string, string>;
   masterResourceCds: Set<string>;
   parentEffectiveDueBySourceRow: Map<string, string | null>;
@@ -767,7 +774,8 @@ async function resolveCurrentProjectionInTransaction(params: { client: Prisma.Tr
     if (fhincd.startsWith('MH') || fhincd.startsWith('SH') || (resourceCd != null && params.policy.cuttingExcludedResourceCds.includes(resourceCd))) return [];
     return [{ rowId: row.id, fseiban: valueAsString(data, 'FSEIBAN'), productNo: valueAsString(data, 'ProductNo'), fhincd: valueAsString(data, 'FHINCD'), isCompleted: Boolean(detail.productionScheduleProgress?.isCompleted || detail.productionScheduleExternalCompletion?.isExternallyCompleted) }];
   });
-  const common = { rows, details, ranks, overrides, progressRows, splitEnabled: isProductionScheduleOrderSplitEnabled(), seibanOrder: stateOrder(state), isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, params.policy) };
+  const splitEnabled = isProductionScheduleOrderSplitEnabled();
+  const common = { rows, details, ranks, overrides, progressRows, splitEnabled, seibanOrder: stateOrder(state), isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, params.policy) };
   const grinding = projectGrindingPlanningBoard({ ...common, category: 'grinding' });
   const cutting = projectGrindingPlanningBoard({ ...common, category: 'cutting' });
   const byItemId = new Map<string, GrindingPlanningBoardItem>();
@@ -790,7 +798,7 @@ async function resolveCurrentProjectionInTransaction(params: { client: Prisma.Tr
     if (!item) throw new ApiError(409, '対象アイテムが消滅または工程区分が変わりました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
     if (!params.sourceRowIds.includes(item.sourceRowId)) throw new ApiError(409, 'CSVの勝者行が更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
   }
-  return { state, byItemId, overrides, sourceRowIds: new Map(), masterResourceCds, parentEffectiveDueBySourceRow, splitOriginalDueByItemId };
+  return { state, byItemId, overrides, rows, details, ranks, progressRows, splitEnabled, policy: params.policy, sourceRowIds: new Map(), masterResourceCds, parentEffectiveDueBySourceRow, splitOriginalDueByItemId };
 }
 
 function assertItemRevision(expected: string, item: GrindingPlanningBoardItem, expectedVersion?: number): void {
@@ -799,12 +807,12 @@ function assertItemRevision(expected: string, item: GrindingPlanningBoardItem, e
 
 function sameDate(a: Date | null | undefined, b: Date | null | undefined): boolean { return ymd(a) === ymd(b); }
 
-async function writeOverrideIfChanged(client: Prisma.TransactionClient, siteKey: string, itemId: string, current: ProductionScheduleGrindingPlanningBoardOverride | undefined, next: { overrideResourceCd: string | null; overrideDueDate: Date | null; dueDateCleared: boolean | null; alternateRank: number | null }): Promise<void> {
+async function writeOverrideIfChanged(client: Prisma.TransactionClient, siteKey: string, itemId: string, current: ProductionScheduleGrindingPlanningBoardOverride | undefined, next: { overrideResourceCd: string | null; overrideDueDate: Date | null; dueDateCleared: boolean | null; alternateRank: number | null }): Promise<ProductionScheduleGrindingPlanningBoardOverride | undefined> {
   const changed = current == null
     ? next.overrideResourceCd != null || next.overrideDueDate != null || next.dueDateCleared != null || next.alternateRank != null
     : current.overrideResourceCd !== next.overrideResourceCd || !sameDate(current.overrideDueDate, next.overrideDueDate) || (current.dueDateCleared ?? null) !== next.dueDateCleared || current.alternateRank !== next.alternateRank;
-  if (!changed) return;
-  await client.productionScheduleGrindingPlanningBoardOverride.upsert({
+  if (!changed) return current;
+  return client.productionScheduleGrindingPlanningBoardOverride.upsert({
     where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: itemId } },
     create: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: itemId, overrideResourceCd: next.overrideResourceCd, overrideDueDate: next.overrideDueDate, dueDateCleared: next.dueDateCleared, alternateRank: next.alternateRank },
     update: { overrideResourceCd: next.overrideResourceCd, overrideDueDate: next.overrideDueDate, dueDateCleared: next.dueDateCleared, alternateRank: next.alternateRank, version: { increment: 1 } }
@@ -813,7 +821,13 @@ async function writeOverrideIfChanged(client: Prisma.TransactionClient, siteKey:
 
 type OverrideRequest = { itemId: string; itemRevision: string; overrideVersion?: number; resourceCd?: string | null; due?: GrindingPlanningBoardDueRequest; alternateRank?: number | null };
 
-async function applyOverridesInTransaction(params: { client: Prisma.TransactionClient; siteKey: string; sourceRevision: string; requests: readonly OverrideRequest[]; sourceRowIds: ReadonlyMap<string, string>; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>> }): Promise<PlanningState> {
+type AppliedOverrides = {
+  state: PlanningState;
+  current: CurrentProjection;
+  overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>;
+};
+
+async function applyOverridesInTransaction(params: { client: Prisma.TransactionClient; siteKey: string; sourceRevision: string; requests: readonly OverrideRequest[]; sourceRowIds: ReadonlyMap<string, string>; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>> }): Promise<AppliedOverrides> {
   const rowsToLock = Array.from(new Set(params.sourceRowIds.values())).sort();
   for (const sourceRowId of rowsToLock) {
     await acquireProductionScheduleParentRowLockInTransaction(params.client, sourceRowId);
@@ -871,8 +885,32 @@ async function applyOverridesInTransaction(params: { client: Prisma.TransactionC
     const dueChanged = request.due !== undefined && effectiveDueAfterOverride !== item.effectiveDueDate;
     desired.push({ request, currentOverride, next: { overrideResourceCd: nextOverrideResource, overrideDueDate: nextOverrideDue, dueDateCleared: nextDueDateCleared, alternateRank: request.alternateRank !== undefined ? request.alternateRank : resourceChanged || dueChanged ? null : currentOverride?.alternateRank ?? null } });
   }
-  for (const update of desired) await writeOverrideIfChanged(params.client, params.siteKey, update.request.itemId, update.currentOverride, update.next);
-  return current.state;
+  const overrides = new Map(current.overrides);
+  for (const update of desired) {
+    const saved = await writeOverrideIfChanged(params.client, params.siteKey, update.request.itemId, update.currentOverride, update.next);
+    if (saved) overrides.set(update.request.itemId, saved);
+  }
+  return { state: current.state, current, overrides };
+}
+
+function projectCurrentItem(current: CurrentProjection, overrides: ReadonlyMap<string, ProductionScheduleGrindingPlanningBoardOverride>, itemId: string): GrindingPlanningBoardItem {
+  const common = {
+    rows: current.rows,
+    details: current.details,
+    ranks: current.ranks,
+    overrides,
+    progressRows: current.progressRows,
+    splitEnabled: current.splitEnabled,
+    seibanOrder: stateOrder(current.state),
+    isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, current.policy)
+  };
+  const byItemId = new Map<string, GrindingPlanningBoardItem>();
+  for (const category of ['grinding', 'cutting'] as const) {
+    for (const item of projectGrindingPlanningBoard({ ...common, category }).allItems) byItemId.set(item.itemId, item);
+  }
+  const item = byItemId.get(itemId);
+  if (!item) throw new ApiError(409, '対象アイテムが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+  return item;
 }
 
 export async function updateGrindingPlanningBoardOverrides(params: { siteKey: string; sourceRevision: string; items: OverrideRequest[] }): Promise<{ sourceRevision: string }> {
@@ -886,22 +924,29 @@ export async function updateGrindingPlanningBoardOverrides(params: { siteKey: st
     // write-conflict guarantee here. RepeatableRead avoids a PostgreSQL SSI
     // predicate lock on the small override table turning independent items
     // into a false serialization conflict.
-    const state = await prisma.$transaction((client) => applyOverridesInTransaction({ client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: params.items, sourceRowIds, policy }), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
-    return { sourceRevision: boardRevision(state) };
+    const result = await prisma.$transaction((client) => applyOverridesInTransaction({ client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: params.items, sourceRowIds, policy }), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    return { sourceRevision: boardRevision(result.state) };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD');
     throw error;
   }
 }
 
-export async function updateGrindingPlanningBoardRank(params: { siteKey: string; sourceRevision: string; itemId: string; itemRevision: string; overrideVersion?: number; alternateRank: number | null }): Promise<{ sourceRevision: string }> {
+export async function updateGrindingPlanningBoardRank(params: { siteKey: string; sourceRevision: string; itemId: string; itemRevision: string; overrideVersion?: number; alternateRank: number | null }): Promise<GrindingPlanningBoardRankResponse> {
   if (params.alternateRank != null && (!Number.isInteger(params.alternateRank) || params.alternateRank < 1 || params.alternateRank > 10)) throw new ApiError(400, '個別順位は1以上10以下で指定してください', undefined, 'INVALID_ALTERNATE_RANK');
   const sourceRowIds = await discoverSourceRows([params.itemId]);
   await ensurePlanningBoardState(params.siteKey);
   const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
   try {
-    const state = await prisma.$transaction((client) => applyOverridesInTransaction({ client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: [{ itemId: params.itemId, itemRevision: params.itemRevision, overrideVersion: params.overrideVersion, alternateRank: params.alternateRank }], sourceRowIds, policy }), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
-    return { sourceRevision: boardRevision(state) };
+    const result = await prisma.$transaction((client) => applyOverridesInTransaction({ client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: [{ itemId: params.itemId, itemRevision: params.itemRevision, overrideVersion: params.overrideVersion, alternateRank: params.alternateRank }], sourceRowIds, policy }), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    const item = projectCurrentItem(result.current, result.overrides, params.itemId);
+    return {
+      sourceRevision: boardRevision(result.state),
+      itemId: item.itemId,
+      itemRevision: item.itemRevision,
+      overrideVersion: item.version,
+      alternateRank: item.alternateRank
+    };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD');
     throw error;

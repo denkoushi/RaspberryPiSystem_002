@@ -26,6 +26,7 @@ export type PlanningBoardSeibanPaneProps = {
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
+  rankDisabled?: boolean;
   bulkDisabled?: boolean;
 };
 
@@ -74,6 +75,7 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
   onResourceClick,
   onRankChange,
   disabled = false,
+  rankDisabled = false,
   bulkDisabled = false
 }: PlanningBoardSeibanPaneProps) {
   const selectableItems = useMemo(() => items.filter((item) => !item.isCompleted), [items]);
@@ -146,6 +148,7 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
           onResourceClick={onResourceClick}
           onRankChange={onRankChange}
           disabled={disabled}
+          rankDisabled={rankDisabled}
           showColumnHeaders={false}
           tableLabel={`${fseiban}の工程アイテム`}
         />

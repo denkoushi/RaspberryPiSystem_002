@@ -143,6 +143,14 @@ export interface GrindingPlanningBoardRankRequest {
   alternateRank: number | null;
 }
 
+export interface GrindingPlanningBoardRankResponse {
+  sourceRevision: string;
+  itemId: string;
+  itemRevision: string;
+  overrideVersion: number;
+  alternateRank: number | null;
+}
+
 export interface GrindingPlanningBoardSeibanOrderRequest {
   sourceRevision: string;
   fseibans: string[];

@@ -523,10 +523,40 @@ describeIntegration('grinding planning board service real Postgres integration',
     const initial = await boardFor(fixture);
     const item = boardItem(initial, (candidate) => candidate.sourceRowId === rowId);
     expect(item.originalRank).toBe(3);
-    await updateItem(fixture, item, { alternateRank: 4 }, initial.sourceRevision);
+    const rankResult = await service().updateGrindingPlanningBoardRank({
+      siteKey: fixture.siteKey,
+      sourceRevision: initial.sourceRevision,
+      itemId: item.itemId,
+      itemRevision: item.itemRevision,
+      overrideVersion: item.version,
+      alternateRank: 4
+    });
+    expect(rankResult).toMatchObject({
+      sourceRevision: initial.sourceRevision,
+      itemId: item.itemId,
+      itemRevision: expect.any(String),
+      overrideVersion: 1,
+      alternateRank: 4
+    });
+    const secondRankResult = await service().updateGrindingPlanningBoardRank({
+      siteKey: fixture.siteKey,
+      sourceRevision: initial.sourceRevision,
+      itemId: item.itemId,
+      itemRevision: rankResult.itemRevision,
+      overrideVersion: rankResult.overrideVersion,
+      alternateRank: 5
+    });
+    expect(secondRankResult).toMatchObject({
+      itemId: item.itemId,
+      itemRevision: expect.any(String),
+      overrideVersion: 2,
+      alternateRank: 5
+    });
     const ranked = await boardFor(fixture);
     const rankedItem = boardItem(ranked, (candidate) => candidate.sourceRowId === rowId);
-    expect(rankedItem.alternateRank).toBe(4);
+    expect(rankedItem.alternateRank).toBe(5);
+    expect(rankedItem.itemRevision).toBe(secondRankResult.itemRevision);
+    expect(rankedItem.version).toBe(secondRankResult.overrideVersion);
 
     await updateItem(fixture, rankedItem, { resourceCd: '581', due: { kind: 'offsetDays', days: 2 } }, ranked.sourceRevision);
     const changed = await boardFor(fixture);
