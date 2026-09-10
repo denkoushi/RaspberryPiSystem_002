@@ -57,8 +57,10 @@ export function useKioskSharedSearchHistoryActions(options?: {
         if (result.etag) {
           etagRef.current = result.etag;
         }
-        await queryClient.invalidateQueries({ queryKey: [...SEARCH_STATE_QUERY_KEY] });
-        await queryClient.invalidateQueries({ queryKey: [...PROGRESS_OVERVIEW_QUERY_KEY] });
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: [...SEARCH_STATE_QUERY_KEY] }),
+          queryClient.invalidateQueries({ queryKey: [...PROGRESS_OVERVIEW_QUERY_KEY] })
+        ]).catch(() => {});
       } catch (error) {
         if (isAxiosError(error) && error.response?.status === 409 && attempt < 2) {
           const details = (error.response?.data?.details ?? {}) as {
