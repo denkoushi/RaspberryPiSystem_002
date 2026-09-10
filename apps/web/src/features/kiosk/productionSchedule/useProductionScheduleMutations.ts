@@ -156,7 +156,11 @@ export const useProductionScheduleMutations = ({
 
       if (splitId) {
         splitOrderMutation.mutate(
-          { splitId, payload },
+          {
+            splitId,
+            payload,
+            cachePolicy: productionScheduleOrderCachePolicy ?? 'default'
+          },
           {
             onSuccess: (data) => {
               writeSuccessListenersRef.current?.onOrderSuccess?.({
@@ -205,7 +209,11 @@ export const useProductionScheduleMutations = ({
       };
 
       if (splitId) {
-        const data = await splitOrderMutation.mutateAsync({ splitId, payload });
+        const data = await splitOrderMutation.mutateAsync({
+          splitId,
+          payload,
+          cachePolicy: productionScheduleOrderCachePolicy ?? 'default'
+        });
         writeSuccessListenersRef.current?.onOrderSuccess?.({
           rowId,
           orderNumber: data.orderNumber ?? null

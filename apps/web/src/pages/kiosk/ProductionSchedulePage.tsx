@@ -237,6 +237,7 @@ export function ProductionSchedulePage() {
   } = useProductionScheduleMutations({
     isSearchStateWriting: searchStateMutation.isPending,
     noteMaxLength: NOTE_MAX_LENGTH,
+    productionScheduleOrderCachePolicy: 'manualOrderOptimistic',
     productionScheduleTargetDeviceScopeKey:
       macManualOrderV2 && macTargetDevice.trim().length > 0 ? macTargetDevice.trim() : undefined
   });

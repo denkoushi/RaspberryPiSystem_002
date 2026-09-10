@@ -1287,121 +1287,155 @@ function matchesOrderUsageScope(queryKey: QueryKey, targetDeviceScopeKey: string
   return normalizeTargetDeviceScopeKey(queryKey[2]) === targetDeviceScopeKey;
 }
 
+type ProductionScheduleOrderCachePatchVariables = {
+  rowId: string;
+  payload: UpdateKioskProductionScheduleOrderVariables['payload'];
+  cachePolicy?: KioskProductionScheduleOrderCachePolicy;
+};
+
+function patchOrderCachesOptimistically(
+  queryClient: ReturnType<typeof useQueryClient>,
+  variables: ProductionScheduleOrderCachePatchVariables
+): ProductionScheduleOrderRollbackContext | undefined {
+  // NOTE: cancelQueries は「進行中の取得」と「更新」が競合しやすい場面で有効。
+  //       ただし await すると、取得側が即時キャンセルに対応していない場合に体感待ちを作るため、
+  //       ここでは await せず投げっぱなしにする（更新完了後に invalidate で整合を取る）。
+  void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
+  void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
+
+  const policy = variables.cachePolicy ?? 'default';
+  if (policy !== 'leaderBoardFastPath' && policy !== 'manualOrderOptimistic') {
+    return undefined;
+  }
+
+  const targetDeviceScopeKey = normalizeTargetDeviceScopeKey(variables.payload.targetDeviceScopeKey);
+  const allScheduleSnapshots = queryClient.getQueriesData({
+    queryKey: ['kiosk-production-schedule']
+  });
+  const allUsageSnapshots = queryClient.getQueriesData({
+    queryKey: ['kiosk-production-schedule-order-usage']
+  });
+  const scheduleSnapshots =
+    policy === 'manualOrderOptimistic'
+      ? allScheduleSnapshots.filter(([queryKey]) => matchesScheduleListScope(queryKey, targetDeviceScopeKey))
+      : allScheduleSnapshots;
+  const usageSnapshots =
+    policy === 'manualOrderOptimistic'
+      ? allUsageSnapshots.filter(([queryKey]) => matchesOrderUsageScope(queryKey, targetDeviceScopeKey))
+      : allUsageSnapshots;
+
+  let previousOrder: number | null = null;
+  let rowFoundInScheduleCache = false;
+  for (const [, data] of scheduleSnapshots) {
+    if (!data || typeof data !== 'object' || !('rows' in data)) continue;
+    const rows = (data as KioskProductionScheduleListCache).rows;
+    if (!Array.isArray(rows) || !rows.some((row) => row.id === variables.rowId)) continue;
+    rowFoundInScheduleCache = true;
+    previousOrder = findProcessingOrderForRow(rows, variables.rowId);
+    break;
+  }
+
+  const nextOrder = variables.payload.orderNumber;
+  const resourceCd = variables.payload.resourceCd;
+
+  if (policy === 'manualOrderOptimistic') {
+    for (const [queryKey] of scheduleSnapshots) {
+      queryClient.setQueryData<KioskProductionScheduleListCache>(queryKey, (old) => {
+        if (!old) return old;
+        return patchScheduleListProcessingOrder(old, variables.rowId, nextOrder);
+      });
+    }
+  } else {
+    queryClient.setQueriesData<KioskProductionScheduleListCache>(
+      { queryKey: ['kiosk-production-schedule'] },
+      (old) => {
+        if (!old) return old;
+        return patchScheduleListProcessingOrder(old, variables.rowId, nextOrder);
+      }
+    );
+  }
+
+  // usage は「一覧キャッシュ上で当該行を特定できたとき」だけ楽観パッチする。
+  // 行が無いのに next だけ足すと占有表示がズレうる（ロールバックで一覧は戻るが usage は誤り得る）。
+  if (rowFoundInScheduleCache) {
+    if (policy === 'manualOrderOptimistic') {
+      for (const [queryKey] of usageSnapshots) {
+        queryClient.setQueryData<Record<string, number[]>>(queryKey, (old) => {
+          if (!old) return old;
+          return patchOrderUsageForProcessingOrderChange(old, resourceCd, previousOrder, nextOrder);
+        });
+      }
+    } else {
+      queryClient.setQueriesData<Record<string, number[]>>(
+        { queryKey: ['kiosk-production-schedule-order-usage'] },
+        (old) => {
+          if (!old) return old;
+          return patchOrderUsageForProcessingOrderChange(old, resourceCd, previousOrder, nextOrder);
+        }
+      );
+    }
+  }
+
+  return { scheduleSnapshots, usageSnapshots };
+}
+
+function patchOrderCacheWithServerValue(
+  queryClient: ReturnType<typeof useQueryClient>,
+  data: { orderNumber?: number | null },
+  variables: ProductionScheduleOrderCachePatchVariables
+) {
+  const policy = variables.cachePolicy ?? 'default';
+  const serverOrder = data.orderNumber ?? null;
+  if (policy === 'leaderBoardFastPath') {
+    queryClient.setQueriesData<KioskProductionScheduleListCache>(
+      { queryKey: ['kiosk-production-schedule'] },
+      (old) => {
+        if (!old) return old;
+        return patchScheduleListProcessingOrder(old, variables.rowId, serverOrder);
+      }
+    );
+    return;
+  }
+  if (policy !== 'manualOrderOptimistic') return;
+
+  const targetDeviceScopeKey = normalizeTargetDeviceScopeKey(variables.payload.targetDeviceScopeKey);
+  const scheduleCaches = queryClient.getQueriesData({
+    queryKey: ['kiosk-production-schedule']
+  });
+  for (const [queryKey] of scheduleCaches) {
+    if (!matchesScheduleListScope(queryKey, targetDeviceScopeKey)) continue;
+    queryClient.setQueryData<KioskProductionScheduleListCache>(queryKey, (old) => {
+      if (!old) return old;
+      return patchScheduleListProcessingOrder(old, variables.rowId, serverOrder);
+    });
+  }
+}
+
+function rollbackOrderCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  context: unknown
+) {
+  const rollback = context as ProductionScheduleOrderRollbackContext | undefined;
+  if (!rollback) return;
+  for (const [key, snap] of rollback.scheduleSnapshots) {
+    queryClient.setQueryData(key, snap);
+  }
+  for (const [key, snap] of rollback.usageSnapshots) {
+    queryClient.setQueryData(key, snap);
+  }
+}
+
 export function useUpdateKioskProductionScheduleOrder() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ['kiosk-production-schedule', 'write', 'order'],
     mutationFn: ({ rowId, payload }: UpdateKioskProductionScheduleOrderVariables) =>
       updateKioskProductionScheduleOrder(rowId, payload),
-    onMutate: async (variables): Promise<ProductionScheduleOrderRollbackContext | undefined> => {
-      // NOTE: cancelQueries は「進行中の取得」と「更新」が競合しやすい場面で有効。
-      //       ただし await すると、取得側が即時キャンセルに対応していない場合に体感待ちを作るため、
-      //       ここでは await せず投げっぱなしにする（更新完了後に invalidate で整合を取る）。
-      void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
-      void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
-
-      const policy = variables.cachePolicy ?? 'default';
-      if (policy !== 'leaderBoardFastPath' && policy !== 'manualOrderOptimistic') {
-        return undefined;
-      }
-
-      const targetDeviceScopeKey = normalizeTargetDeviceScopeKey(variables.payload.targetDeviceScopeKey);
-      const allScheduleSnapshots = queryClient.getQueriesData({
-        queryKey: ['kiosk-production-schedule']
-      });
-      const allUsageSnapshots = queryClient.getQueriesData({
-        queryKey: ['kiosk-production-schedule-order-usage']
-      });
-      const scheduleSnapshots =
-        policy === 'manualOrderOptimistic'
-          ? allScheduleSnapshots.filter(([queryKey]) => matchesScheduleListScope(queryKey, targetDeviceScopeKey))
-          : allScheduleSnapshots;
-      const usageSnapshots =
-        policy === 'manualOrderOptimistic'
-          ? allUsageSnapshots.filter(([queryKey]) => matchesOrderUsageScope(queryKey, targetDeviceScopeKey))
-          : allUsageSnapshots;
-
-      let previousOrder: number | null = null;
-      let rowFoundInScheduleCache = false;
-      for (const [, data] of scheduleSnapshots) {
-        if (!data || typeof data !== 'object' || !('rows' in data)) continue;
-        const rows = (data as KioskProductionScheduleListCache).rows;
-        if (!Array.isArray(rows) || !rows.some((r) => r.id === variables.rowId)) continue;
-        rowFoundInScheduleCache = true;
-        previousOrder = findProcessingOrderForRow(rows, variables.rowId);
-        break;
-      }
-
-      const nextOrder = variables.payload.orderNumber;
-      const resourceCd = variables.payload.resourceCd;
-
-      if (policy === 'manualOrderOptimistic') {
-        for (const [queryKey] of scheduleSnapshots) {
-          queryClient.setQueryData<KioskProductionScheduleListCache>(queryKey, (old) => {
-            if (!old) return old;
-            return patchScheduleListProcessingOrder(old, variables.rowId, nextOrder);
-          });
-        }
-      } else {
-        queryClient.setQueriesData<KioskProductionScheduleListCache>(
-          { queryKey: ['kiosk-production-schedule'] },
-          (old) => {
-            if (!old) return old;
-            return patchScheduleListProcessingOrder(old, variables.rowId, nextOrder);
-          }
-        );
-      }
-
-      // usage は「一覧キャッシュ上で当該行を特定できたとき」だけ楽観パッチする。
-      // 行が無いのに next だけ足すと占有表示がズレうる（ロールバックで一覧は戻るが usage は誤り得る）。
-      if (rowFoundInScheduleCache) {
-        if (policy === 'manualOrderOptimistic') {
-          for (const [queryKey] of usageSnapshots) {
-            queryClient.setQueryData<Record<string, number[]>>(queryKey, (old) => {
-              if (!old) return old;
-              return patchOrderUsageForProcessingOrderChange(old, resourceCd, previousOrder, nextOrder);
-            });
-          }
-        } else {
-          queryClient.setQueriesData<Record<string, number[]>>(
-            { queryKey: ['kiosk-production-schedule-order-usage'] },
-            (old) => {
-              if (!old) return old;
-              return patchOrderUsageForProcessingOrderChange(old, resourceCd, previousOrder, nextOrder);
-            }
-          );
-        }
-      }
-
-      return { scheduleSnapshots, usageSnapshots };
-    },
+    onMutate: (variables) => patchOrderCachesOptimistically(queryClient, variables),
     onSuccess: (data, variables) => {
       const policy = variables.cachePolicy ?? 'default';
-      if (policy === 'leaderBoardFastPath') {
-        const serverOrder = data.orderNumber ?? null;
-        queryClient.setQueriesData<KioskProductionScheduleListCache>(
-          { queryKey: ['kiosk-production-schedule'] },
-          (old) => {
-            if (!old) return old;
-            return patchScheduleListProcessingOrder(old, variables.rowId, serverOrder);
-          }
-        );
-        return;
-      }
-      if (policy === 'manualOrderOptimistic') {
-        const serverOrder = data.orderNumber ?? null;
-        const targetDeviceScopeKey = normalizeTargetDeviceScopeKey(variables.payload.targetDeviceScopeKey);
-        const scheduleCaches = queryClient.getQueriesData({
-          queryKey: ['kiosk-production-schedule']
-        });
-        for (const [queryKey] of scheduleCaches) {
-          if (!matchesScheduleListScope(queryKey, targetDeviceScopeKey)) continue;
-          queryClient.setQueryData<KioskProductionScheduleListCache>(queryKey, (old) => {
-            if (!old) return old;
-            return patchScheduleListProcessingOrder(old, variables.rowId, serverOrder);
-          });
-        }
-      }
+      patchOrderCacheWithServerValue(queryClient, data, variables);
+      if (policy === 'leaderBoardFastPath') return;
       // UI待ちを作らない（mutation完了は即返し、裏で再取得）
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
@@ -1412,14 +1446,7 @@ export function useUpdateKioskProductionScheduleOrder() {
     onError: (_err, variables, context) => {
       const policy = variables.cachePolicy ?? 'default';
       if (policy !== 'leaderBoardFastPath' && policy !== 'manualOrderOptimistic') return;
-      const ctx = context as ProductionScheduleOrderRollbackContext | undefined;
-      if (!ctx) return;
-      for (const [key, snap] of ctx.scheduleSnapshots) {
-        queryClient.setQueryData(key, snap);
-      }
-      for (const [key, snap] of ctx.usageSnapshots) {
-        queryClient.setQueryData(key, snap);
-      }
+      rollbackOrderCaches(queryClient, context);
     }
   });
 }
@@ -1511,14 +1538,34 @@ export function useUpdateKioskProductionScheduleSplitOrder() {
         targetLocation?: string;
         targetDeviceScopeKey?: string;
       };
+      cachePolicy?: KioskProductionScheduleOrderCachePolicy;
     }) => updateKioskProductionScheduleSplitOrder(splitId, payload),
-    onMutate: () => {
-      void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
-      void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
-    },
-    onSuccess: () => {
+    onMutate: (variables) =>
+      patchOrderCachesOptimistically(queryClient, {
+        rowId: `split:${variables.splitId}`,
+        payload: variables.payload,
+        cachePolicy: variables.cachePolicy
+      }),
+    onSuccess: (data, variables) => {
+      const policy = variables.cachePolicy ?? 'default';
+      patchOrderCacheWithServerValue(queryClient, data, {
+        rowId: `split:${variables.splitId}`,
+        payload: variables.payload,
+        cachePolicy: policy
+      });
+      if (policy === 'leaderBoardFastPath') return;
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
+      if (policy === 'manualOrderOptimistic') {
+        void queryClient.invalidateQueries({
+          queryKey: ['kiosk-production-schedule-due-management-manual-order-overview']
+        });
+      }
+    },
+    onError: (_err, variables, context) => {
+      const policy = variables.cachePolicy ?? 'default';
+      if (policy !== 'leaderBoardFastPath' && policy !== 'manualOrderOptimistic') return;
+      rollbackOrderCaches(queryClient, context);
     }
   });
 }
