@@ -5,7 +5,7 @@ set -euo pipefail
 # download and first-launch PLE generation are separate from the normal blue
 # start path so a profile start can remain fail-fast and never fetch weights.
 
-readonly DEFAULT_UPSTREAM_REVISION="09d4424be2b777818471b9bba8c7775ddd538833"
+readonly DEFAULT_UPSTREAM_REVISION="d03809008834124e80223c3482f2ddb59577a48f"
 readonly DEFAULT_MODEL_REVISION="925d7be6c14c6c9442ef83e8f05b5a3c39304f69"
 readonly MODEL_ID="Mia-AiLab/Qwen3.8-Flash-Next-NVFP4"
 readonly MODEL_SIZE_GIB="99"
@@ -68,6 +68,39 @@ echo "model=${MODEL_ID} revision=${EXPECTED_MODEL_REVISION} cache=${MODEL_DIR} e
 echo "image=${IMAGE}"
 echo "ple_cache=${PLE_CACHE_DIR} expected_ple_gib=${PLE_SIZE_GIB} required_free_gib=${REQUIRED_FREE_GIB}"
 
+verify_pinned_model() {
+  MODEL_REF_FILE="${MODEL_DIR}/refs/main"
+  if [[ ! -s "${MODEL_REF_FILE}" ]]; then
+    echo "model cache refs/main is unavailable: ${MODEL_REF_FILE}" >&2
+    return 1
+  fi
+  if ! cmp -s <(printf '%s' "${EXPECTED_MODEL_REVISION}") "${MODEL_REF_FILE}"; then
+    echo "model cache refs/main is not the exact pinned revision (expected ${EXPECTED_MODEL_REVISION})" >&2
+    return 1
+  fi
+  MODEL_SNAPSHOT="${EXPECTED_MODEL_REVISION}"
+  SNAPSHOT_DIR="${MODEL_DIR}/snapshots/${MODEL_SNAPSHOT}"
+  if [[ ! -d "${SNAPSHOT_DIR}" ]]; then
+    echo "model cache snapshot is unavailable: ${SNAPSHOT_DIR}" >&2
+    return 1
+  fi
+  python3 - "${SNAPSHOT_DIR}" <<'PY'
+import json
+import pathlib
+import sys
+
+snapshot = pathlib.Path(sys.argv[1])
+index = snapshot / "model.safetensors.index.json"
+if not index.is_file():
+    raise SystemExit(f"model index missing: {index}")
+weight_map = json.loads(index.read_text(encoding="utf-8")).get("weight_map", {})
+missing = sorted({name for name in weight_map.values() if not (snapshot / name).is_file()})
+if not weight_map or missing:
+    raise SystemExit(f"model snapshot incomplete: missing={len(missing)}")
+print(f"model_snapshot_complete=true snapshot={snapshot}")
+PY
+}
+
 if [[ "${ACTION}" == "plan" ]]; then
   exit 0
 fi
@@ -126,6 +159,7 @@ print(path)'
 fi
 
 if [[ "${ACTION}" == "prepare-ple" ]]; then
+  verify_pinned_model
   if [[ ! -f "${RECIPE_DIR}/.env" ]]; then
     echo "pinned recipe .env is required before PLE preparation: ${RECIPE_DIR}/.env" >&2
     exit 1
@@ -133,6 +167,7 @@ if [[ "${ACTION}" == "prepare-ple" ]]; then
   (
     cd "${RECIPE_DIR}"
     env \
+    ABLIT="0" \
     HF_HOME="${HF_CACHE_DIR}" \
     TP1_MODEL_ID="${MODEL_ID}" \
     IMAGE="${IMAGE}" \
@@ -145,6 +180,8 @@ if [[ "${ACTION}" == "prepare-ple" ]]; then
     KV_CACHE_DTYPE="fp8" \
     YARN="0" \
     MTP_NUM_SPECULATIVE_TOKENS="3" \
+    MAMBA_SSM_CACHE_DTYPE="" \
+    MTP_DRAFT_VOCAB="" \
     PLE_OFFLOAD="true" \
     HOST_RESERVE_GIB="26" \
     KV_TARGET_GIB="16" \
@@ -171,36 +208,7 @@ if [[ "${ACTION}" == "prepare-ple" ]]; then
   exit 0
 fi
 
-MODEL_REF_FILE="${MODEL_DIR}/refs/main"
-if [[ ! -s "${MODEL_REF_FILE}" ]]; then
-  echo "model cache refs/main is unavailable: ${MODEL_REF_FILE}" >&2
-  exit 1
-fi
-if ! cmp -s <(printf '%s' "${EXPECTED_MODEL_REVISION}") "${MODEL_REF_FILE}"; then
-  echo "model cache refs/main is not the exact pinned revision (expected ${EXPECTED_MODEL_REVISION})" >&2
-  exit 1
-fi
-MODEL_SNAPSHOT="${EXPECTED_MODEL_REVISION}"
-SNAPSHOT_DIR="${MODEL_DIR}/snapshots/${MODEL_SNAPSHOT}"
-if [[ ! -d "${SNAPSHOT_DIR}" ]]; then
-  echo "model cache snapshot is unavailable: ${SNAPSHOT_DIR}" >&2
-  exit 1
-fi
-python3 - "${SNAPSHOT_DIR}" <<'PY'
-import json
-import pathlib
-import sys
-
-snapshot = pathlib.Path(sys.argv[1])
-index = snapshot / "model.safetensors.index.json"
-if not index.is_file():
-    raise SystemExit(f"model index missing: {index}")
-weight_map = json.loads(index.read_text(encoding="utf-8")).get("weight_map", {})
-missing = sorted({name for name in weight_map.values() if not (snapshot / name).is_file()})
-if not weight_map or missing:
-    raise SystemExit(f"model snapshot incomplete: missing={len(missing)}")
-print(f"model_snapshot_complete=true snapshot={snapshot}")
-PY
+verify_pinned_model
 
 PLE_COUNT="$(find "${PLE_CACHE_DIR}" -maxdepth 1 -type f -name '*.packed_u8' 2>/dev/null | wc -l | tr -d ' ')"
 if [[ "${PLE_COUNT}" -lt 1 || ! -s "${PLE_READY_MARKER}" ]]; then

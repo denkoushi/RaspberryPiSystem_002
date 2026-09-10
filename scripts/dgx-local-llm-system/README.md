@@ -244,7 +244,9 @@ curl -sS -X POST http://127.0.0.1:38081/start \
 - `qwen38-flash-next-adapter.sh`
 - `prepare-qwen38-flash-next-cache.sh`
 
-manifest は `/srv/dgx/shared-models/registry/business_qwen38_flash_next_nvfp4/manifest.json` に配置する。upstream recipe は [`MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark`](https://github.com/MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark) を `/srv/dgx/system-prod/third-party/qwen38-flash-next` に固定 revision `09d4424be2b777818471b9bba8c7775ddd538833` で checkout し、`.env` は同じ実行ユーザーの管理下で `.env.sample` から作成する。`HF_TOKEN` はその remote `.env` にだけ置く。image は manifest の arm64 digest、model cache は Hub commit `925d7be6c14c6c9442ef83e8f05b5a3c39304f69` に固定する。
+manifest は `/srv/dgx/shared-models/registry/business_qwen38_flash_next_nvfp4/manifest.json` に配置する。upstream recipe は [`MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark`](https://github.com/MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark) を `/srv/dgx/system-prod/third-party/qwen38-flash-next` に固定 revision `d03809008834124e80223c3482f2ddb59577a48f` で checkout し、`.env` は同じ実行ユーザーの管理下で `.env.sample` から作成する。`HF_TOKEN` はその remote `.env` にだけ置く。image は manifest の arm64 digest、model cache は Hub commit `925d7be6c14c6c9442ef83e8f05b5a3c39304f69` に固定する。
+
+業務adapterは公開元の新しい高速化を自動で有効化しない。起動時に `ABLIT=0`、`MAMBA_SSM_CACHE_DTYPE=`、`MTP_DRAFT_VOCAB=` を明示し、BF16 SSM・reduced draft vocabulary・ABLITを無効にする。V2 model runnerを検証するときだけ、`BLUE_EXTRA_DOCKER_ARGS`へ明示的に指定する。既存remote `.env`にこれらの設定がある場合は、切替前に意図した値か確認する。不完全な固定snapshotは、通常起動と `prepare-ple` のどちらでも上流launcher実行前に停止する。
 
 Hermes の受入完了後、同じ実行ユーザーで `prepare-qwen38-flash-next-cache.sh plan` → `fetch` → `prepare-ple` → `verify` を順に実行する。`fetch` は固定 model revision を取得し、`prepare-ple` は upstream `start.sh --no-launch` による生成を行うため、いずれも明示的な変更操作である。verify が model shard、PLE artifact、upstream preparation marker、revision/image identity を確認してから、標準 DGX control route の `/start` に `modelProfileId=business_qwen38_flash_next_nvfp4` を渡して blue を切り替える。Pi5 は alias `system-prod-primary` を維持する。
 
