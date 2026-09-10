@@ -473,9 +473,9 @@ export function useKioskGrindingPlanningBoardProgressive(
   const hasStableData = Boolean(
     firstData && !query.isPlaceholderData && mergedData?.snapshotId === firstData.snapshotId
   );
-  const scopeReady = Boolean(
-    hasStableData && !query.isFetching
-  );
+  // A same-scope revalidation keeps the current snapshot usable. Placeholder
+  // data and the first fetch remain unready through hasStableData above.
+  const scopeReady = hasStableData;
   return {
     data: displayData,
     isLoading: query.isLoading,
@@ -529,8 +529,8 @@ export function useUpdateKioskGrindingPlanningBoardSeibanOrder() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardSeibanOrderRequest) => updateKioskGrindingPlanningBoardSeibanOrder(payload),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
     }
   });
 }

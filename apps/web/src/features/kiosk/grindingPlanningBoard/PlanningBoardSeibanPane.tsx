@@ -26,7 +26,7 @@ export type PlanningBoardSeibanPaneProps = {
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
-  rankDisabled?: boolean;
+  rankDisabled?: boolean | ((item: GrindingPlanningBoardItem) => boolean);
   bulkDisabled?: boolean;
 };
 
@@ -56,6 +56,7 @@ function arePanePropsEqual(
     previous.onResourceClick === next.onResourceClick &&
     previous.onRankChange === next.onRankChange &&
     previous.disabled === next.disabled &&
+    previous.rankDisabled === next.rankDisabled &&
     previous.bulkDisabled === next.bulkDisabled &&
     areSelectionStatesEqual(previous.items, previous.selectedItemIds, next.selectedItemIds);
 }

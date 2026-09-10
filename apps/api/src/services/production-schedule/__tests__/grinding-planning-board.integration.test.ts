@@ -396,7 +396,7 @@ describeIntegration('grinding planning board service real Postgres integration',
       where: { id: updatedRow },
       data: {
         rowData: { ...(before.rowData as Record<string, unknown>), FHINMEI: 'updated in place' },
-        updatedAt: new Date('2026-09-10T00:00:00.000Z')
+        updatedAt: new Date(Date.now() + 1_000)
       }
     });
     const after = await db().csvDashboardRow.findUniqueOrThrow({ where: { id: updatedRow }, select: { createdAt: true, rowData: true } });
@@ -558,7 +558,16 @@ describeIntegration('grinding planning board service real Postgres integration',
     expect(rankedItem.itemRevision).toBe(secondRankResult.itemRevision);
     expect(rankedItem.version).toBe(secondRankResult.overrideVersion);
 
-    await updateItem(fixture, rankedItem, { resourceCd: '581', due: { kind: 'offsetDays', days: 2 } }, ranked.sourceRevision);
+    const overrideResult = await updateItem(fixture, rankedItem, { resourceCd: '581', due: { kind: 'offsetDays', days: 2 } }, ranked.sourceRevision);
+    expect(overrideResult.items).toHaveLength(1);
+    expect(overrideResult.items[0]).toMatchObject({
+      itemId: rankedItem.itemId,
+      itemRevision: expect.any(String),
+      version: 3,
+      effectiveResourceCd: '581',
+      effectiveDueDate: '2026-09-22',
+      alternateRank: null
+    });
     const changed = await boardFor(fixture);
     const changedItem = boardItem(changed, (candidate) => candidate.sourceRowId === rowId);
     expect(changedItem.effectiveResourceCd).toBe('581');

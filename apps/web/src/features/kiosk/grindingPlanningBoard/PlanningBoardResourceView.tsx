@@ -20,7 +20,7 @@ export type PlanningBoardResourceViewProps = {
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
-  rankDisabled?: boolean;
+  rankDisabled?: boolean | ((item: GrindingPlanningBoardItem) => boolean);
 };
 
 export function PlanningBoardResourceView({

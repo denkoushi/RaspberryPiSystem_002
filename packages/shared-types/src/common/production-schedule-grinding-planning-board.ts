@@ -122,6 +122,11 @@ export interface GrindingPlanningBoardResponse {
   nextCursor: string | null;
 }
 
+export interface GrindingPlanningBoardOverridesResponse {
+  sourceRevision: string;
+  items: GrindingPlanningBoardItem[];
+}
+
 export interface GrindingPlanningBoardOverrideItemRequest {
   itemId: string;
   itemRevision: string;

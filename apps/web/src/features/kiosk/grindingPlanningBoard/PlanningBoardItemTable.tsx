@@ -25,7 +25,7 @@ export type PlanningBoardItemTableProps = {
   showSeiban?: boolean;
   showColumnHeaders?: boolean;
   disabled?: boolean;
-  rankDisabled?: boolean;
+  rankDisabled?: boolean | ((item: GrindingPlanningBoardItem) => boolean);
   tableLabel: string;
 };
 
@@ -224,6 +224,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
         <tbody>
           {items.map((item) => {
             const selected = selectedItemIds.has(item.itemId);
+            const itemRankDisabled = typeof rankDisabled === 'function' ? rankDisabled(item) : rankDisabled;
             return (
               <PlanningBoardItemTableRow
                 key={item.itemId}
@@ -236,7 +237,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
                 showRank={showRank}
                 showSeiban={showSeiban}
                 disabled={disabled}
-                rankDisabled={rankDisabled}
+                rankDisabled={itemRankDisabled}
               />
             );
           })}

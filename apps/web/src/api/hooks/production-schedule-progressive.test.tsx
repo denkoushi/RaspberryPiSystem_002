@@ -2,16 +2,23 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useKioskGrindingPlanningBoardProgressive } from './production-schedule';
+import {
+  useKioskGrindingPlanningBoardProgressive,
+  useUpdateKioskGrindingPlanningBoardSeibanOrder
+} from './production-schedule';
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';
 
-const mocks = vi.hoisted(() => ({ getBoard: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getBoard: vi.fn(), updateOrder: vi.fn() }));
 
 vi.mock('../../api/client', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/client')>();
-  return { ...original, getKioskGrindingPlanningBoard: mocks.getBoard };
+  return {
+    ...original,
+    getKioskGrindingPlanningBoard: mocks.getBoard,
+    updateKioskGrindingPlanningBoardSeibanOrder: mocks.updateOrder
+  };
 });
 
 function item(id: string): GrindingPlanningBoardItem {
@@ -61,8 +68,7 @@ function response(items: GrindingPlanningBoardItem[], nextCursor: string | null,
   };
 }
 
-function wrapper() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function wrapper(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   function QueryClientWrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
   }
@@ -71,7 +77,10 @@ function wrapper() {
 }
 
 describe('useKioskGrindingPlanningBoardProgressive', () => {
-  beforeEach(() => mocks.getBoard.mockReset());
+  beforeEach(() => {
+    mocks.getBoard.mockReset();
+    mocks.updateOrder.mockReset();
+  });
 
   it('初回ページを先にreadyにし、続き400件を順次追加する', async () => {
     const first = response([item('1')], '160');
@@ -90,6 +99,7 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
 
     await waitFor(() => expect(result.result.current.scopeReady).toBe(true));
     expect(result.result.current.data?.items).toHaveLength(1);
+    expect(result.result.current.isComplete).toBe(false);
     releaseContinue?.();
     await waitFor(() => expect(result.result.current.isComplete).toBe(true));
     expect(result.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['1', '2', '3']);
@@ -114,5 +124,65 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     );
     await waitFor(() => expect(other.result.current.appendError).toBeTruthy());
     expect(other.result.current.data?.items).toHaveLength(1);
+  });
+
+  it('同一scopeの再取得中は現在のsnapshotをreadyのまま保持する', async () => {
+    const first = response([item('1')], null);
+    const refreshed = response([item('2')], null, { snapshotId: 'snapshot-2', sourceRevision: 'revision-2' });
+    let releaseRefetch: (() => void) | undefined;
+    const refetchGate = new Promise<void>((resolve) => { releaseRefetch = resolve; });
+    mocks.getBoard.mockResolvedValueOnce(first).mockImplementationOnce(async () => {
+      await refetchGate;
+      return refreshed;
+    });
+    const result = renderHook(
+      () => useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban' }),
+      { wrapper: wrapper() }
+    );
+
+    await waitFor(() => expect(result.result.current.scopeReady).toBe(true));
+    const refetch = result.result.current.refetch();
+    await waitFor(() => expect(result.result.current.isFetching).toBe(true));
+    expect(result.result.current.scopeReady).toBe(true);
+    expect(result.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['1']);
+    releaseRefetch?.();
+    await refetch;
+    await waitFor(() => expect(result.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['2']));
+  });
+
+  it('scope切替のplaceholderと初回取得はreadyにしない', async () => {
+    const first = response([item('1')], null, { sourceRevision: 'revision-1', snapshotId: 'snapshot-1' });
+    let releaseNext: (() => void) | undefined;
+    const nextGate = new Promise<void>((resolve) => { releaseNext = resolve; });
+    mocks.getBoard.mockResolvedValueOnce(first).mockImplementationOnce(async () => {
+      await nextGate;
+      return response([item('2')], null, { sourceRevision: 'revision-2', snapshotId: 'snapshot-2' });
+    });
+    const result = renderHook(
+      ({ completionFilter }: { completionFilter: 'all' | 'incomplete' }) => useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban', completionFilter }),
+      { initialProps: { completionFilter: 'incomplete' }, wrapper: wrapper() }
+    );
+
+    await waitFor(() => expect(result.result.current.scopeReady).toBe(true));
+    result.rerender({ completionFilter: 'all' });
+    await waitFor(() => expect(result.result.current.isPlaceholderData).toBe(true));
+    expect(result.result.current.scopeReady).toBe(false);
+    releaseNext?.();
+  });
+
+  it('製番順mutationはinvalidate完了をmutateAsyncの完了条件にしない', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let releaseInvalidate: (() => void) | undefined;
+    const invalidateGate = new Promise<void>((resolve) => { releaseInvalidate = resolve; });
+    vi.spyOn(client, 'invalidateQueries').mockImplementation(() => invalidateGate as Promise<void>);
+    mocks.updateOrder.mockResolvedValue({ sourceRevision: 'revision-2', seibanOrder: ['26-1041'] });
+    const result = renderHook(() => useUpdateKioskGrindingPlanningBoardSeibanOrder(), { wrapper: wrapper(client) });
+    let settled = false;
+    const mutation = result.result.current.mutateAsync({ sourceRevision: 'revision-1', fseibans: ['26-1041'] }).then(() => { settled = true; });
+
+    await waitFor(() => expect(mocks.updateOrder).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(settled).toBe(true));
+    releaseInvalidate?.();
+    await mutation;
   });
 });
