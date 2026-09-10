@@ -7,7 +7,9 @@ import type {
   GrindingPlanningBoardView,
   GrindingPlanningBoardOverridesRequest,
   GrindingPlanningBoardRankRequest,
-  GrindingPlanningBoardSeibanOrderRequest
+  GrindingPlanningBoardSeibanOrderRequest,
+  GrindingPlanningBoardDueScopeRequest,
+  GrindingPlanningBoardDueScopeSnapshot
 } from '@raspi-system/shared-types';
 export interface ProductionScheduleRow {
   id: string;
@@ -1212,6 +1214,13 @@ export async function getKioskProductionScheduleDueManagementSeibanDetail(
   return data.detail;
 }
 
+export async function getKioskGrindingPlanningBoardDueDetail(fseiban: string) {
+  const { data } = await api.get<GrindingPlanningBoardDueScopeSnapshot>(
+    `/kiosk/production-schedule/grinding-planning-board/seiban/${encodeURIComponent(fseiban)}/due-detail`
+  );
+  return data;
+}
+
 export async function getKioskProductionScheduleProgressOverview() {
   const { data } = await api.get<{ overview: ProductionScheduleProgressOverviewResult }>(
     '/kiosk/production-schedule/progress-overview'
@@ -1239,6 +1248,17 @@ export async function updateKioskProductionScheduleDueManagementSeibanProcessing
     `/kiosk/production-schedule/due-management/seiban/${encodeURIComponent(
       fseiban
     )}/processing/${encodeURIComponent(processingType)}/due-date`,
+    payload
+  );
+  return data;
+}
+
+export async function updateKioskGrindingPlanningBoardDueScope(
+  fseiban: string,
+  payload: GrindingPlanningBoardDueScopeRequest
+) {
+  const { data } = await api.put<{ success: true; sourceGenerationToken: string; scopeRevision: string }>(
+    `/kiosk/production-schedule/grinding-planning-board/seiban/${encodeURIComponent(fseiban)}/due-scope`,
     payload
   );
   return data;

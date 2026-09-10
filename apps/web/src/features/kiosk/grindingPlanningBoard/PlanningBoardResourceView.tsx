@@ -1,17 +1,19 @@
 import { useMemo } from 'react';
 
 
+import { formatResourceCdWithJapaneseNames } from '../leaderOrderBoard/formatResourceCdWithJapaneseNames';
+
 import { PlanningBoardItemTable } from './PlanningBoardItemTable';
 import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
 
 import type { PlanningBoardAllocation } from './types';
-import type { GrindingPlanningBoardItem, GrindingPlanningBoardLoad } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 export type PlanningBoardResourceViewProps = {
   items: readonly GrindingPlanningBoardItem[];
   seibanOrder: readonly string[];
   resources: readonly string[];
-  load: readonly GrindingPlanningBoardLoad[];
+  resourceNameMap: Record<string, string[]>;
   allocation: PlanningBoardAllocation;
   selectedItemIds: ReadonlySet<string>;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
@@ -24,7 +26,7 @@ export function PlanningBoardResourceView({
   items,
   seibanOrder,
   resources,
-  load,
+  resourceNameMap,
   allocation,
   selectedItemIds,
   onToggleItem,
@@ -49,28 +51,15 @@ export function PlanningBoardResourceView({
       ] as const);
   }, [allocation, items, resources, seibanOrder]);
 
-  const loadByResource = useMemo(() => new Map(load.map((entry) => [entry.resourceCd, entry])), [load]);
-
-  const formatLoad = (resource: string) => {
-    const summary = loadByResource.get(resource);
-    if (!summary) return '負荷未取得';
-    const count = allocation === 'original' ? summary.originalItemCount : summary.alternateItemCount;
-    const unknown = allocation === 'original' ? summary.originalUnknownItemCount : summary.alternateUnknownItemCount;
-    const minutes = allocation === 'original' ? summary.originalRequiredMinutes : summary.alternateRequiredMinutes;
-    const time = unknown > 0
-      ? `${minutes == null ? '時間未定' : `${minutes}分`} + 不明${unknown}件`
-      : `${minutes ?? 0}分`;
-    return `未完${count}件 · ${time}`;
-  };
-
   return (
     <div className="grid min-w-0 grid-cols-1 items-start gap-2.5 lg:grid-cols-2 xl:grid-cols-3" data-testid="planning-board-resource-view">
       {groups.map(([resource, resourceItems]) => {
         return (
           <article key={resource} className="min-w-0 overflow-hidden rounded-lg border border-slate-800 bg-slate-900/85">
-            <header className="flex min-h-14 items-center justify-between gap-2 border-b border-slate-800 px-2.5 py-2">
-              <strong className="font-mono text-sm text-white">資源CD {resource}</strong>
-              <span className="text-[11px] text-slate-400">{formatLoad(resource)}</span>
+            <header className="flex h-7 min-h-7 min-w-0 items-center gap-2 border-b border-slate-800 px-2 py-0.5">
+              <strong className="min-w-0 flex-1 truncate font-mono text-[15px] leading-none text-white">
+                {formatResourceCdWithJapaneseNames(resource, resourceNameMap)}
+              </strong>
             </header>
             <PlanningBoardItemTable
               items={resourceItems}
@@ -82,6 +71,7 @@ export function PlanningBoardResourceView({
               disabled={disabled}
               showRank
               showSeiban
+              showColumnHeaders={false}
               tableLabel={`資源CD ${resource}の工程アイテム`}
             />
           </article>

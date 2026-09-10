@@ -1,5 +1,7 @@
 import clsx from 'clsx';
+import { memo, useMemo } from 'react';
 
+import { normalizeMachineName } from '../productionSchedule/machineName';
 
 import { PlanningBoardItemTable } from './PlanningBoardItemTable';
 import { resolveGrindingPlanningBoardDueDate } from './sortGrindingPlanningBoardItems';
@@ -15,7 +17,6 @@ export type PlanningBoardSeibanPaneProps = {
   items: readonly GrindingPlanningBoardItem[];
   allocation: PlanningBoardAllocation;
   selectedItemIds: ReadonlySet<string>;
-  progress?: { completed: number; total: number } | null;
   isOpen: boolean;
   isFocused: boolean;
   onToggleOpen: () => void;
@@ -28,13 +29,42 @@ export type PlanningBoardSeibanPaneProps = {
   bulkDisabled?: boolean;
 };
 
-export function PlanningBoardSeibanPane({
+function areSelectionStatesEqual(
+  items: readonly GrindingPlanningBoardItem[],
+  previous: ReadonlySet<string>,
+  next: ReadonlySet<string>
+): boolean {
+  if (previous === next) return true;
+  return items.every((item) => previous.has(item.itemId) === next.has(item.itemId));
+}
+
+function arePanePropsEqual(
+  previous: PlanningBoardSeibanPaneProps,
+  next: PlanningBoardSeibanPaneProps
+): boolean {
+  return previous.fseiban === next.fseiban &&
+    previous.machineName === next.machineName &&
+    previous.items === next.items &&
+    previous.allocation === next.allocation &&
+    previous.isOpen === next.isOpen &&
+    previous.isFocused === next.isFocused &&
+    previous.onToggleOpen === next.onToggleOpen &&
+    previous.onFocus === next.onFocus &&
+    previous.onToggleAll === next.onToggleAll &&
+    previous.onToggleItem === next.onToggleItem &&
+    previous.onResourceClick === next.onResourceClick &&
+    previous.onRankChange === next.onRankChange &&
+    previous.disabled === next.disabled &&
+    previous.bulkDisabled === next.bulkDisabled &&
+    areSelectionStatesEqual(previous.items, previous.selectedItemIds, next.selectedItemIds);
+}
+
+export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
   fseiban,
   machineName,
   items,
   allocation,
   selectedItemIds,
-  progress,
   isOpen,
   isFocused,
   onToggleOpen,
@@ -46,14 +76,18 @@ export function PlanningBoardSeibanPane({
   disabled = false,
   bulkDisabled = false
 }: PlanningBoardSeibanPaneProps) {
-  const selectableItems = items.filter((item) => !item.isCompleted);
-  const selectedSelectableCount = selectableItems.filter((item) => selectedItemIds.has(item.itemId)).length;
+  const selectableItems = useMemo(() => items.filter((item) => !item.isCompleted), [items]);
+  const selectedSelectableCount = useMemo(
+    () => selectableItems.filter((item) => selectedItemIds.has(item.itemId)).length,
+    [selectableItems, selectedItemIds]
+  );
   const allSelected = selectableItems.length > 0 && selectedSelectableCount === selectableItems.length;
   const someSelected = selectedSelectableCount > 0 && !allSelected;
-  const nearestDue = items
+  const nearestDue = useMemo(() => items
     .map((item) => resolveGrindingPlanningBoardDueDate(item, allocation))
     .filter((date): date is string => Boolean(date))
-    .sort()[0] ?? null;
+    .sort()[0] ?? null, [allocation, items]);
+  const displayMachineName = normalizeMachineName(machineName);
 
   return (
     <article
@@ -68,16 +102,15 @@ export function PlanningBoardSeibanPane({
           type="button"
           className="min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
           aria-expanded={isOpen}
+          aria-label={`製番${fseiban}の明細を${isOpen ? '閉じる' : '開く'}`}
           disabled={disabled}
           onClick={onToggleOpen}
         >
           <span className="flex min-w-0 items-baseline gap-2">
             <strong className="shrink-0 font-mono text-sm text-white">{fseiban}</strong>
-            <span className="min-w-0 truncate text-xs text-slate-300">{machineName || '機種名未登録'}</span>
+            <span className="min-w-0 truncate text-xs text-slate-300">{displayMachineName || '機種名未登録'}</span>
           </span>
-          <span className="mt-1 block text-[11px] text-slate-400">
-            {progress ? `${progress.completed}/${progress.total}工程` : '—/—工程'} · {formatDate(nearestDue)}
-          </span>
+          <span className="mt-1 block text-[11px] text-slate-400">{formatDate(nearestDue)}</span>
         </button>
         <div className="flex shrink-0 items-center gap-0.5">
           <button
@@ -92,7 +125,7 @@ export function PlanningBoardSeibanPane({
           <label className="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-800" title="全選択">
             <input
               type="checkbox"
-              className="h-5 w-5 accent-emerald-400"
+              className="h-3.5 w-3.5 accent-emerald-400"
               checked={allSelected}
               ref={(element) => {
                 if (element) element.indeterminate = someSelected;
@@ -113,9 +146,10 @@ export function PlanningBoardSeibanPane({
           onResourceClick={onResourceClick}
           onRankChange={onRankChange}
           disabled={disabled}
+          showColumnHeaders={false}
           tableLabel={`${fseiban}の工程アイテム`}
         />
       ) : null}
     </article>
   );
-}
+}, arePanePropsEqual);

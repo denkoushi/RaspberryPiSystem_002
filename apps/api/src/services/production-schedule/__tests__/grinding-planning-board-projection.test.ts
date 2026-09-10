@@ -4,6 +4,8 @@ import {
   buildGrindingPlanningBoardLogicalKey,
   buildGrindingPlanningBoardRowItemId,
   projectGrindingPlanningBoard,
+  resolveGrindingPlanningBoardItemDueDate,
+  resolveGrindingPlanningBoardParentDueDate,
   type GrindingPlanningBoardProjectionOverride,
   type GrindingPlanningBoardProjectionRow,
   type GrindingPlanningBoardProjectionRowDetail
@@ -51,6 +53,27 @@ const baseParams = (overrides: Partial<Parameters<typeof projectGrindingPlanning
 });
 
 describe('grinding-planning-board-projection', () => {
+  it('distinguishes CSV fallback clears from explicit original restores and keeps direct split dates first', () => {
+    const originalParentDueDate = new Date('2026-09-21T00:00:00.000Z');
+    const plannedEndDate = new Date('2026-09-30T00:00:00.000Z');
+    expect(resolveGrindingPlanningBoardParentDueDate({
+      originalParentDueDate,
+      plannedEndDate,
+      override: { overrideDueDate: null, dueDateCleared: true }
+    })).toBe('2026-09-30');
+    expect(resolveGrindingPlanningBoardParentDueDate({
+      originalParentDueDate,
+      plannedEndDate,
+      override: { overrideDueDate: null, dueDateCleared: false }
+    })).toBe('2026-09-21');
+    expect(resolveGrindingPlanningBoardItemDueDate({
+      splitDueDate: new Date('2026-09-22T00:00:00.000Z'),
+      originalParentDueDate,
+      plannedEndDate,
+      parentOverride: { overrideDueDate: null, dueDateCleared: true }
+    })).toBe('2026-09-22');
+  });
+
   it('uses the exact logical key and the resolved machine/rank maps', () => {
     const params = baseParams({
       ranks: {
@@ -100,7 +123,7 @@ describe('grinding-planning-board-projection', () => {
     ]);
   });
 
-  it('does not inherit a parent override into split items and rounds split minutes', () => {
+  it('inherits a parent due override into unspecialized split items and rounds split minutes', () => {
     const splitDetail = detail({
       orderSplits: [
         { id: 'split-1', splitQuantity: 1, dueDate: null, updatedAt: new Date('2026-09-01T00:00:00.000Z') },
@@ -117,11 +140,13 @@ describe('grinding-planning-board-projection', () => {
     const result = projectGrindingPlanningBoard(
       baseParams({
         details: new Map([['row-1', splitDetail]]),
-        overrides: new Map([['row:parent', parentOverride]])
+        overrides: new Map([[buildGrindingPlanningBoardRowItemId(sourceRow().rowData), parentOverride]])
       })
     );
     expect(result.items.map((item) => item.itemId)).toEqual(['split:split-1', 'split:split-2']);
     expect(result.items.map((item) => item.effectiveResourceCd)).toEqual(['G-01', 'G-01']);
+    expect(result.items.map((item) => item.originalDueDate)).toEqual(['2026-09-10', '2026-09-10']);
+    expect(result.items.map((item) => item.effectiveDueDate)).toEqual(['2026-09-20', '2026-09-20']);
     expect(result.items.map((item) => item.alternateRank)).toEqual([null, null]);
     expect(result.items.map((item) => item.requiredMinutes)).toEqual([33, 67]);
   });

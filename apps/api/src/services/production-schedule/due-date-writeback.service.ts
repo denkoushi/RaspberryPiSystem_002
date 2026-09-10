@@ -20,16 +20,18 @@ const normalizeProcessingTypes = (processingTypes?: string[]): string[] =>
     )
   );
 
-const listSeibanRowIdsForWriteback = async (params: {
+export const listSeibanRowIdsForWriteback = async (params: {
+  client?: Prisma.TransactionClient | typeof prisma;
   fseiban: string;
   includeProcessingType?: string;
   excludeProcessingTypes?: string[];
 }): Promise<string[]> => {
+  const client = params.client ?? prisma;
   const includeProcessingType = params.includeProcessingType?.trim() ?? '';
   const excludeProcessingTypes = normalizeProcessingTypes(params.excludeProcessingTypes);
   const includeProcessingFilter =
     includeProcessingType.length > 0
-      ? prisma.$queryRaw<Array<{ id: string }>>`
+      ? client.$queryRaw<Array<{ id: string }>>`
           SELECT "CsvDashboardRow"."id"
           FROM "CsvDashboardRow"
           LEFT JOIN "ProductionScheduleRowNote" AS "n"
@@ -44,7 +46,7 @@ const listSeibanRowIdsForWriteback = async (params: {
             AND COALESCE("pp"."processingType", "n"."processingType") = ${includeProcessingType}
         `
       : excludeProcessingTypes.length > 0
-        ? prisma.$queryRaw<Array<{ id: string }>>`
+        ? client.$queryRaw<Array<{ id: string }>>`
             SELECT "CsvDashboardRow"."id"
             FROM "CsvDashboardRow"
             LEFT JOIN "ProductionScheduleRowNote" AS "n"
@@ -61,7 +63,7 @@ const listSeibanRowIdsForWriteback = async (params: {
                 OR COALESCE("pp"."processingType", "n"."processingType") NOT IN (${Prisma.join(excludeProcessingTypes)})
               )
           `
-        : prisma.$queryRaw<Array<{ id: string }>>`
+        : client.$queryRaw<Array<{ id: string }>>`
             SELECT "id"
             FROM "CsvDashboardRow"
             WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}

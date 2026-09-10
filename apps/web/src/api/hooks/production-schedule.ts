@@ -34,6 +34,7 @@ import {
   getKioskProductionScheduleDueManagementGlobalRankProposal,
   autoGenerateKioskProductionScheduleDueManagementGlobalRank,
   getKioskProductionScheduleDueManagementSeibanDetail,
+  getKioskGrindingPlanningBoardDueDetail,
   getKioskProductionScheduleProgressOverview,
   getKioskProductionScheduleProcessingTypeOptions,
   getKioskProductionScheduleOrderSplitStatus,
@@ -68,6 +69,7 @@ import {
   updateKioskProductionScheduleProcessing,
   updateKioskProductionScheduleDueManagementSeibanDueDate,
   updateKioskProductionScheduleDueManagementSeibanProcessingDueDate,
+  updateKioskGrindingPlanningBoardDueScope,
   updateKioskProductionScheduleDueManagementPartPriorities,
   updateKioskProductionScheduleDueManagementPartProcessingType,
   updateKioskProductionScheduleDueManagementPartNote,
@@ -101,7 +103,8 @@ import type {
   GrindingPlanningBoardOverridesRequest,
   GrindingPlanningBoardRankRequest,
   GrindingPlanningBoardSeibanOrderRequest,
-  GrindingPlanningBoardResponse
+  GrindingPlanningBoardResponse,
+  GrindingPlanningBoardDueScopeRequest
 } from '@raspi-system/shared-types';
 
 
@@ -591,6 +594,15 @@ export function useKioskProductionScheduleDueManagementSeibanDetail(
   });
 }
 
+export function useKioskGrindingPlanningBoardDueDetail(fseiban: string | null) {
+  return useQuery({
+    queryKey: ['kiosk-grinding-planning-board-due-detail', fseiban],
+    queryFn: () => getKioskGrindingPlanningBoardDueDetail(fseiban ?? ''),
+    enabled: typeof fseiban === 'string' && fseiban.trim().length > 0,
+    refetchOnWindowFocus: false
+  });
+}
+
 export function useKioskProductionScheduleProgressOverview() {
   return useQuery({
     queryKey: ['kiosk-production-schedule-progress-overview'],
@@ -632,6 +644,23 @@ export function useUpdateKioskProductionScheduleDueManagementSeibanProcessingDue
         queryKey: ['kiosk-production-schedule-due-management-seiban', variables.fseiban]
       });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardDueScope() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      fseiban,
+      payload
+    }: {
+      fseiban: string;
+      payload: GrindingPlanningBoardDueScopeRequest;
+    }) => updateKioskGrindingPlanningBoardDueScope(fseiban, payload),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board-due-detail', variables.fseiban] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
     }
   });
 }

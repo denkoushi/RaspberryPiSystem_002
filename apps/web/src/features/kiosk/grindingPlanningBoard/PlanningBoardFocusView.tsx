@@ -1,5 +1,7 @@
 import clsx from 'clsx';
+import { useMemo } from 'react';
 
+import { normalizeMachineName } from '../productionSchedule/machineName';
 
 import { PlanningBoardItemTable } from './PlanningBoardItemTable';
 import { resolveGrindingPlanningBoardDueDate } from './sortGrindingPlanningBoardItems';
@@ -15,7 +17,6 @@ export type PlanningBoardFocusViewProps = {
   items: readonly GrindingPlanningBoardItem[];
   allocation: PlanningBoardAllocation;
   selectedItemIds: ReadonlySet<string>;
-  progress?: { completed: number; total: number } | null;
   onBack: () => void;
   onToggleAll: (selected: boolean) => void;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
@@ -31,7 +32,6 @@ export function PlanningBoardFocusView({
   items,
   allocation,
   selectedItemIds,
-  progress,
   onBack,
   onToggleAll,
   onToggleItem,
@@ -40,16 +40,22 @@ export function PlanningBoardFocusView({
   disabled = false,
   bulkDisabled = false
 }: PlanningBoardFocusViewProps) {
-  const selectableItems = items.filter((item) => !item.isCompleted);
-  const selectedSelectableCount = selectableItems.filter((item) => selectedItemIds.has(item.itemId)).length;
+  const selectableItems = useMemo(() => items.filter((item) => !item.isCompleted), [items]);
+  const selectedSelectableCount = useMemo(
+    () => selectableItems.filter((item) => selectedItemIds.has(item.itemId)).length,
+    [selectableItems, selectedItemIds]
+  );
   const allSelected = selectableItems.length > 0 && selectedSelectableCount === selectableItems.length;
   const someSelected = selectedSelectableCount > 0 && !allSelected;
-  const nearestDue = items
+  const nearestDue = useMemo(() => items
     .map((item) => resolveGrindingPlanningBoardDueDate(item, allocation))
     .filter((date): date is string => Boolean(date))
-    .sort()[0] ?? null;
-  const splitAt = Math.ceil(items.length / 2);
-  const columns = [items.slice(0, splitAt), items.slice(splitAt)].filter((column) => column.length > 0);
+    .sort()[0] ?? null, [allocation, items]);
+  const columns = useMemo(() => {
+    const splitAt = Math.ceil(items.length / 2);
+    return [items.slice(0, splitAt), items.slice(splitAt)].filter((column) => column.length > 0);
+  }, [items]);
+  const displayMachineName = normalizeMachineName(machineName);
 
   return (
     <section className="min-w-0 overflow-hidden rounded-lg border border-emerald-400/70 bg-slate-900/90 shadow-lg shadow-emerald-950/30" data-testid="planning-board-focus-view">
@@ -57,8 +63,7 @@ export function PlanningBoardFocusView({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-baseline gap-2">
             <strong className="shrink-0 font-mono text-sm text-white">{fseiban}</strong>
-            <span className="min-w-0 truncate text-xs text-slate-300">{machineName || '機種名未登録'}</span>
-            <span className="shrink-0 text-[11px] text-slate-400">{progress ? `${progress.completed}/${progress.total}工程` : '—/—工程'}</span>
+            <span className="min-w-0 truncate text-xs text-slate-300">{displayMachineName || '機種名未登録'}</span>
             <span className="shrink-0 text-[11px] text-slate-400">{formatDate(nearestDue)}</span>
           </div>
         </div>
@@ -73,7 +78,7 @@ export function PlanningBoardFocusView({
         <label className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-md hover:bg-slate-700" title="全選択">
           <input
             type="checkbox"
-            className="h-5 w-5 accent-emerald-400"
+            className="h-3.5 w-3.5 accent-emerald-400"
             checked={allSelected}
             ref={(element) => {
               if (element) element.indeterminate = someSelected;
@@ -96,6 +101,7 @@ export function PlanningBoardFocusView({
             onRankChange={onRankChange}
             disabled={disabled}
             showRank
+            showColumnHeaders={false}
             tableLabel={`${fseiban}集中表示 ${index + 1}`}
           />
         ))}

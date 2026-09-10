@@ -49,6 +49,7 @@ export type GrindingPlanningBoardProjectionRanks = {
 export type GrindingPlanningBoardProjectionOverride = {
   overrideResourceCd: string | null;
   overrideDueDate: Date | null;
+  dueDateCleared?: boolean | null;
   alternateRank: number | null;
   version: number;
 };
@@ -119,6 +120,32 @@ function asRowData(value: GrindingPlanningBoardRowData): Record<string, unknown>
 
 function ymd(value: Date | null | undefined): string | null {
   return value == null ? null : value.toISOString().slice(0, 10);
+}
+
+export function resolveGrindingPlanningBoardParentDueDate(params: {
+  originalParentDueDate: Date | null;
+  plannedEndDate: Date | null;
+  override?: Pick<GrindingPlanningBoardProjectionOverride, 'overrideDueDate' | 'dueDateCleared'>;
+}): string | null {
+  if (params.override?.overrideDueDate != null) return ymd(params.override.overrideDueDate);
+  if (params.override?.dueDateCleared === true) return ymd(params.plannedEndDate);
+  return ymd(params.originalParentDueDate);
+}
+
+export function resolveGrindingPlanningBoardItemDueDate(params: {
+  splitDueDate: Date | null;
+  originalParentDueDate: Date | null;
+  plannedEndDate: Date | null;
+  override?: Pick<GrindingPlanningBoardProjectionOverride, 'overrideDueDate' | 'dueDateCleared'>;
+  parentOverride?: Pick<GrindingPlanningBoardProjectionOverride, 'overrideDueDate' | 'dueDateCleared'>;
+}): string | null {
+  if (params.override?.overrideDueDate != null) return ymd(params.override.overrideDueDate);
+  if (params.splitDueDate != null) return ymd(params.splitDueDate);
+  return resolveGrindingPlanningBoardParentDueDate({
+    originalParentDueDate: params.originalParentDueDate,
+    plannedEndDate: params.plannedEndDate,
+    override: params.parentOverride
+  });
 }
 
 function parseRequiredMinutes(data: GrindingPlanningBoardRowData): number | null {
@@ -360,6 +387,7 @@ function buildItems(
     const sourceQuantity = detail.orderSupplements[0]?.plannedQuantity ?? null;
     const rowCompleted = isCompleted(detail);
     const rowItemId = buildGrindingPlanningBoardRowItemId(data);
+    const parentOverride = params.overrides.get(rowItemId);
     const splits = params.splitEnabled === false
       ? [null]
       : detail.orderSplits.length > 0
@@ -384,8 +412,15 @@ function buildItems(
           );
       const requiredMinutes = displayFields.machineRequiredMinutes ?? null;
       const requiredMinutesKnown = requiredMinutes != null;
-      const originalDueDate = ymd(split?.dueDate ?? (detail.rowNotes[0]?.dueDate ?? detail.orderSupplements[0]?.plannedEndDate));
-      const effectiveDueDate = ymd(override?.overrideDueDate) ?? originalDueDate;
+      const originalParentDueDate = detail.rowNotes[0]?.dueDate ?? detail.orderSupplements[0]?.plannedEndDate ?? null;
+      const originalDueDate = ymd(split?.dueDate) ?? ymd(originalParentDueDate);
+      const effectiveDueDate = resolveGrindingPlanningBoardItemDueDate({
+        splitDueDate: split?.dueDate ?? null,
+        originalParentDueDate,
+        plannedEndDate: detail.orderSupplements[0]?.plannedEndDate ?? null,
+        override,
+        parentOverride
+      });
       const rankRow = split == null ? params.ranks.rows.get(row.id) : params.ranks.splits.get(split.id);
       const originalRank =
         rankRow != null && normalizeResourceCd(rankRow.resourceCd) === originalResourceCd
@@ -416,6 +451,11 @@ function buildItems(
         overrideVersion: override?.version ?? 0,
         overrideResourceCd: override?.overrideResourceCd ?? null,
         overrideDueDate: ymd(override?.overrideDueDate),
+        dueDateCleared: override?.dueDateCleared ?? null,
+        inheritedParentOverrideVersion: parentOverride?.version ?? 0,
+        inheritedParentOverrideDueDate: ymd(parentOverride?.overrideDueDate),
+        inheritedParentOverrideDueDateCleared: parentOverride?.dueDateCleared ?? null,
+        effectiveDueDate,
         alternateRank: override?.alternateRank ?? null,
         originalRank
       };
