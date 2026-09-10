@@ -251,7 +251,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         rowId,
         note,
         onSettled: () => {
-          void invalidateScheduleQueries().finally(onSettled);
+          onSettled();
+          void invalidateScheduleQueries().catch(() => {});
         }
       });
     },
@@ -260,7 +261,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         rowId,
         dueDate,
         onSettled: () => {
-          void invalidateScheduleQueries().finally(onSettled);
+          onSettled();
+          void invalidateScheduleQueries().catch(() => {});
         }
       });
     }
