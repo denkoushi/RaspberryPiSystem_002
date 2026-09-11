@@ -84,6 +84,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
     <tr
       key={item.itemId}
       data-testid={`planning-board-item-${item.itemId}`}
+      data-planning-board-item-id={item.itemId}
       className={clsx('border-b border-slate-800/80', item.isCompleted && 'opacity-55')}
     >
       <td className="px-1 align-middle">
@@ -177,7 +178,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
               className="min-h-11 w-11 rounded-md border border-slate-700 bg-slate-950 px-0.5 text-center text-[10px] text-slate-200 disabled:cursor-not-allowed disabled:opacity-55"
               onChange={(event) => onRankChange?.(item, event.target.value ? Number(event.target.value) : null)}
             >
-              {rankOptions.map((option) => (
+              {(rank != null && !rankOptions.some((option) => option === rank) ? [rank, ...rankOptions] : rankOptions).map((option) => (
                 <option key={option ?? 'none'} value={option ?? ''}>
                   {option == null ? '－' : option}
                 </option>

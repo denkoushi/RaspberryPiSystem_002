@@ -328,11 +328,11 @@ export function PlanningBoardSeibanDrawer({
                               <span className="min-w-0">
                                 <span className="block truncate font-mono text-xs font-bold text-white">{candidate.fseiban}</span>
                                 <span className={`block text-[10px] ${overdue ? 'font-bold text-rose-300' : 'text-slate-400'}`}>
-                                  納期 {formatCandidateDate(candidate.dueDate)}{overdue ? '・期限超過' : ''}
+                                  {formatCandidateDate(candidate.dueDate)}
+                                  <span className={`font-semibold ${registered ? 'text-cyan-300' : 'text-slate-500'}`}>
+                                    ・{registered ? '登録済み' : candidate.isCompleted ? '完了' : '未登録'}
+                                  </span>
                                 </span>
-                              </span>
-                              <span className={`col-start-2 row-start-2 justify-self-start text-[10px] font-semibold ${registered ? 'text-cyan-300' : 'text-slate-500'}`}>
-                                {registered ? '登録済み' : candidate.isCompleted ? '完了' : '未登録'}
                               </span>
                             </label>
                           );

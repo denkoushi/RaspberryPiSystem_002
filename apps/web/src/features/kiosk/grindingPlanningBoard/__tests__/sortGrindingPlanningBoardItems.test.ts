@@ -36,7 +36,7 @@ const item = (overrides: Partial<GrindingPlanningBoardItem>): GrindingPlanningBo
 });
 
 describe('sortGrindingPlanningBoardItems', () => {
-  it('orders by seiban, date, then selected allocation rank and preserves stable ties', () => {
+  it('resource表示の別割当は手動順位を最優先し、未指定を末尾に置く', () => {
     const rows = [
       item({ itemId: 'other-seiban', fseiban: '26-1042', originalDueDate: '2026-09-10', productNo: 'P-000' }),
       item({ itemId: 'rank-2', fseiban: '26-1041', originalDueDate: '2026-09-13', alternateRank: 2 }),
@@ -46,6 +46,13 @@ describe('sortGrindingPlanningBoardItems', () => {
     ];
 
     expect(sortGrindingPlanningBoardItems(rows, ['26-1041', '26-1042'], 'resource', 'alternate').map((row) => row.itemId)).toEqual([
+      'rank-1-a',
+      'rank-1-b',
+      'rank-2',
+      'earlier-date',
+      'other-seiban'
+    ]);
+    expect(sortGrindingPlanningBoardItems(rows, ['26-1041', '26-1042'], 'seiban', 'alternate').map((row) => row.itemId)).toEqual([
       'earlier-date',
       'rank-1-a',
       'rank-1-b',

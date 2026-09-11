@@ -243,6 +243,17 @@ function compareProcessOrder(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
+function compareText(a: string, b: string): number {
+  return a.localeCompare(b, 'ja');
+}
+
+function compareResourceProcessOrder(a: string, b: string): number {
+  const left = Number(a);
+  const right = Number(b);
+  if (Number.isFinite(left) && Number.isFinite(right) && left !== right) return left - right;
+  return a.localeCompare(b, 'ja');
+}
+
 export function sortGrindingPlanningBoardProjectionItems(
   items: readonly GrindingPlanningBoardItem[],
   seibanOrder: readonly string[],
@@ -257,6 +268,10 @@ export function sortGrindingPlanningBoardProjectionItems(
       const resource = (leftResource ?? '').localeCompare(rightResource ?? '');
       if (resource !== 0) return resource;
     }
+    if (view === 'resource' && allocation === 'alternate') {
+      const rank = compareNullableRank(left.alternateRank, right.alternateRank);
+      if (rank !== 0) return rank;
+    }
     const seiban =
       (orderMap.get(left.fseiban) ?? Number.MAX_SAFE_INTEGER) -
       (orderMap.get(right.fseiban) ?? Number.MAX_SAFE_INTEGER);
@@ -270,6 +285,15 @@ export function sortGrindingPlanningBoardProjectionItems(
       allocation === 'original' ? right.originalRank : right.alternateRank
     );
     if (rank !== 0) return rank;
+    if (view === 'resource' && allocation === 'alternate') {
+      return (
+        compareText(left.fseiban, right.fseiban) ||
+        compareText(left.productNo, right.productNo) ||
+        compareResourceProcessOrder(left.processOrder, right.processOrder) ||
+        compareText(left.fhincd, right.fhincd) ||
+        compareText(left.itemId, right.itemId)
+      );
+    }
     const process = compareProcessOrder(left.processOrder, right.processOrder);
     if (process !== 0) return process;
     return left.itemId.localeCompare(right.itemId);

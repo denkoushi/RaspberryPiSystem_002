@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PlanningBoardResourceView } from './PlanningBoardResourceView';
 
-import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+import type {
+  GrindingPlanningBoardItem,
+  GrindingPlanningBoardResourceOrderPlacement
+} from '@raspi-system/shared-types';
 
 class TestPointerEvent extends MouseEvent {
   readonly pointerId: number;
@@ -41,7 +44,11 @@ function item(itemId: string, resourceCd: string): GrindingPlanningBoardItem {
   };
 }
 
-function renderView(onClick = vi.fn(), onDrop = vi.fn()) {
+function renderView(
+  onClick = vi.fn(),
+  onDrop = vi.fn(),
+  onReorder: (item: GrindingPlanningBoardItem, targetItem: GrindingPlanningBoardItem, placement: GrindingPlanningBoardResourceOrderPlacement) => void = vi.fn()
+) {
   const sourceItem = item('a', '305');
   const targetItem = item('b', '584');
   render(
@@ -55,6 +62,7 @@ function renderView(onClick = vi.fn(), onDrop = vi.fn()) {
       onToggleItem={vi.fn()}
       onResourceClick={onClick}
       onResourceDrop={onDrop}
+      onResourceReorder={onReorder}
     />
   );
   return { sourceItem, targetItem, onClick, onDrop };
@@ -137,5 +145,38 @@ describe('PlanningBoardResourceView resource chip drag', () => {
     expect(cancelAnimationFrame).toHaveBeenCalledTimes(1);
     expect(document.body.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument();
     expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it('同一paneでは行の前後を判定して並べ替えcallbackを呼ぶ', () => {
+    const onReorder = vi.fn();
+    const sourceItem = item('a', '305');
+    const targetItem = item('b', '305');
+    render(
+      <PlanningBoardResourceView
+        items={[sourceItem, targetItem]}
+        seibanOrder={['26-1041']}
+        resources={['305']}
+        resourceNameMap={{}}
+        allocation="alternate"
+        selectedItemIds={new Set()}
+        onToggleItem={vi.fn()}
+        onResourceClick={vi.fn()}
+        onResourceReorder={onReorder}
+      />
+    );
+    const source = screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]!;
+    const pane = source.closest('[data-planning-board-resource-pane]')!;
+    const targetRow = screen.getByTestId('planning-board-item-b');
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: vi.fn(() => [targetRow])
+    });
+    vi.spyOn(targetRow, 'getBoundingClientRect').mockReturnValue({ top: 100, bottom: 140, height: 40 } as DOMRect);
+
+    fireEvent.pointerDown(source, { pointerId: 4, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(pane, { pointerId: 4, clientX: 10, clientY: 21 });
+    fireEvent.pointerUp(pane, { pointerId: 4, clientX: 10, clientY: 130 });
+
+    expect(onReorder).toHaveBeenCalledWith(sourceItem, targetItem, 'after');
   });
 });

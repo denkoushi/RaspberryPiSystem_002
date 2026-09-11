@@ -46,6 +46,7 @@ import {
   getKioskGrindingPlanningBoardSeibanCandidates,
   updateKioskGrindingPlanningBoardOverrides,
   updateKioskGrindingPlanningBoardRank,
+  updateKioskGrindingPlanningBoardResourceOrder,
   updateKioskGrindingPlanningBoardSeibanOrder,
   type KioskGrindingPlanningBoardQuery,
   postKioskProductionScheduleSeibanMachineNames,
@@ -104,6 +105,8 @@ import type {
   GrindingPlanningBoardOverridesRequest,
   GrindingPlanningBoardRankRequest,
   GrindingPlanningBoardRankResponse,
+  GrindingPlanningBoardResourceOrderRequest,
+  GrindingPlanningBoardResourceOrderResponse,
   GrindingPlanningBoardSeibanOrderRequest,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardDueScopeRequest
@@ -538,6 +541,16 @@ export function useUpdateKioskGrindingPlanningBoardRank() {
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardRankRequest) => updateKioskGrindingPlanningBoardRank(payload),
     onSuccess: (_result: GrindingPlanningBoardRankResponse) => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    }
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardResourceOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardResourceOrderRequest) => updateKioskGrindingPlanningBoardResourceOrder(payload),
+    onSuccess: (_result: GrindingPlanningBoardResourceOrderResponse) => {
       void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
     }
   });

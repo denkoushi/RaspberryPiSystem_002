@@ -8,6 +8,8 @@ import type {
   GrindingPlanningBoardLoad,
   GrindingPlanningBoardOverridesResponse,
   GrindingPlanningBoardRankResponse,
+  GrindingPlanningBoardResourceOrderRequest,
+  GrindingPlanningBoardResourceOrderResponse,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardView
 } from '@raspi-system/shared-types';
@@ -39,6 +41,7 @@ import {
   buildGrindingPlanningBoardLogicalKey as buildProjectionLogicalKey,
   buildGrindingPlanningBoardRowItemId,
   resolveGrindingPlanningBoardParentDueDate,
+  sortGrindingPlanningBoardProjectionItems,
   type GrindingPlanningBoardProjectionRanks,
   type GrindingPlanningBoardProgressRow,
   type GrindingPlanningBoardProjectionRow,
@@ -52,6 +55,7 @@ import {
 
 const DEFAULT_PAGE_SIZE = 160;
 const MAX_PAGE_SIZE = 160;
+const MAX_ALTERNATE_RANK = 2_147_483_647;
 const SPLIT_PREFIX = 'split:';
 const PLANNING_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 const fallbackPlanningSnapshotStore = createInMemoryLeaderboardShellSnapshotStore({
@@ -758,7 +762,7 @@ async function readState(client: Prisma.TransactionClient, siteKey: string): Pro
   return state as PlanningState;
 }
 
-async function resolveCurrentProjectionInTransaction(params: { client: Prisma.TransactionClient; siteKey: string; sourceRowIds: readonly string[]; itemIds: readonly string[]; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>> }): Promise<CurrentProjection> {
+async function resolveCurrentProjectionInTransaction(params: { client: Prisma.TransactionClient; siteKey: string; sourceRowIds: readonly string[]; itemIds: readonly string[]; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; includeAllOverrides?: boolean }): Promise<CurrentProjection> {
   const state = await readState(params.client, params.siteKey);
   const rows = await readWinnerRowsByIds(params.client, params.sourceRowIds);
   const details = await readRowDetails(params.client, rows.map((row) => row.id));
@@ -768,7 +772,11 @@ async function resolveCurrentProjectionInTransaction(params: { client: Prisma.Tr
   // The scope writer invalidates the inherited split rank while leaving the
   // split override absent, so projection must see both keys together.
   const parentItemIds = rows.map((row) => buildGrindingPlanningBoardRowItemId(asRowData(row.rowData)));
-  const overrides = await readOverrides(params.client, params.siteKey, [...new Set([...params.itemIds, ...parentItemIds])]);
+  const overrides = await readOverrides(
+    params.client,
+    params.siteKey,
+    params.includeAllOverrides ? undefined : [...new Set([...params.itemIds, ...parentItemIds])]
+  );
   const masterResourceCds = await readMasterResourceCds(params.client);
   const progressRows: GrindingPlanningBoardProgressRow[] = rows.flatMap((row) => {
     const detail = details.get(row.id);
@@ -968,7 +976,7 @@ export async function updateGrindingPlanningBoardOverrides(params: { siteKey: st
 }
 
 export async function updateGrindingPlanningBoardRank(params: { siteKey: string; sourceRevision: string; itemId: string; itemRevision: string; overrideVersion?: number; alternateRank: number | null }): Promise<GrindingPlanningBoardRankResponse> {
-  if (params.alternateRank != null && (!Number.isInteger(params.alternateRank) || params.alternateRank < 1 || params.alternateRank > 10)) throw new ApiError(400, '個別順位は1以上10以下で指定してください', undefined, 'INVALID_ALTERNATE_RANK');
+  if (params.alternateRank != null && (!Number.isSafeInteger(params.alternateRank) || params.alternateRank < 1 || params.alternateRank > MAX_ALTERNATE_RANK)) throw new ApiError(400, '個別順位は1以上2147483647以下で指定してください', undefined, 'INVALID_ALTERNATE_RANK');
   const sourceRowIds = await discoverSourceRows([params.itemId]);
   await ensurePlanningBoardState(params.siteKey);
   const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
@@ -982,6 +990,128 @@ export async function updateGrindingPlanningBoardRank(params: { siteKey: string;
       overrideVersion: item.version,
       alternateRank: item.alternateRank
     };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD');
+    throw error;
+  }
+}
+
+export async function updateGrindingPlanningBoardResourceOrder(params: {
+  siteKey: string;
+} & GrindingPlanningBoardResourceOrderRequest): Promise<GrindingPlanningBoardResourceOrderResponse> {
+  if (params.itemId === params.targetItemId) {
+    throw new ApiError(400, '同じアイテムの前後には移動できません', undefined, 'INVALID_RESOURCE_ORDER_TARGET');
+  }
+  await ensurePlanningBoardState(params.siteKey);
+  const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
+  try {
+    const result = await prisma.$transaction(async (client) => {
+      const lockedState = await lockState(client, params.siteKey);
+      assertBoardRevision(params.sourceRevision, lockedState);
+      const registeredFseibans = new Set(stateOrder(lockedState));
+      const winnerRows = await readWinnerRowsByFseibans(client, [...registeredFseibans]);
+      const registeredRows = winnerRows.filter((row) => registeredFseibans.has(valueAsString(asRowData(row.rowData), 'FSEIBAN')));
+      const registeredRowIds = [...new Set(registeredRows.map((row) => row.id))].sort();
+      const beforeLock = await resolveCurrentProjectionInTransaction({
+        client,
+        siteKey: params.siteKey,
+        sourceRowIds: registeredRowIds,
+        itemIds: [params.itemId, params.targetItemId],
+        policy,
+        includeAllOverrides: true
+      });
+      const sourceBeforeLock = beforeLock.byItemId.get(params.itemId);
+      const targetBeforeLock = beforeLock.byItemId.get(params.targetItemId);
+      if (!sourceBeforeLock || !targetBeforeLock) throw new ApiError(409, '対象アイテムが消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+      const sourceCategoryBeforeLock: GrindingPlanningBoardCategory = isCategoryResource(sourceBeforeLock.originalResourceCd, 'grinding', policy)
+        ? 'grinding'
+        : 'cutting';
+      const sourceResourceBeforeLock = sourceBeforeLock.effectiveResourceCd ?? sourceBeforeLock.originalResourceCd;
+      const targetResourceBeforeLock = targetBeforeLock.effectiveResourceCd ?? targetBeforeLock.originalResourceCd;
+      const paneRowIds = [...new Set([...beforeLock.byItemId.values()]
+        .filter((item) =>
+          isCategoryResource(item.originalResourceCd, sourceCategoryBeforeLock, policy) &&
+          sourceResourceBeforeLock != null &&
+          (item.effectiveResourceCd ?? item.originalResourceCd) === sourceResourceBeforeLock
+        )
+        .map((item) => item.sourceRowId))].sort();
+      if (targetResourceBeforeLock !== sourceResourceBeforeLock || paneRowIds.length === 0) {
+        throw new ApiError(409, '同じ資源CDの中でのみ並べ替えできます', undefined, 'RESOURCE_ORDER_PANE_MISMATCH');
+      }
+      for (const sourceRowId of paneRowIds) {
+        await acquireProductionScheduleParentRowLockInTransaction(client, sourceRowId);
+        const locked = await client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${sourceRowId} AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} FOR UPDATE`;
+        if (!locked[0]) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+      }
+      const current = await resolveCurrentProjectionInTransaction({
+        client,
+        siteKey: params.siteKey,
+        sourceRowIds: paneRowIds,
+        itemIds: [params.itemId, params.targetItemId],
+        policy,
+        includeAllOverrides: true
+      });
+      const source = current.byItemId.get(params.itemId);
+      const target = current.byItemId.get(params.targetItemId);
+      if (!source || !target) throw new ApiError(409, '対象アイテムが消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+      assertItemRevision(params.itemRevision, source, params.overrideVersion);
+      assertItemRevision(params.targetItemRevision, target, params.targetOverrideVersion);
+      if (source.isCompleted || target.isCompleted) throw new ApiError(409, '完了済みの工程は並べ替えできません', undefined, 'COMPLETED_ITEM');
+      const sourceCategory: GrindingPlanningBoardCategory = isCategoryResource(source.originalResourceCd, 'grinding', policy)
+        ? 'grinding'
+        : 'cutting';
+      if (!isCategoryResource(source.originalResourceCd, sourceCategory, policy) || !isCategoryResource(target.originalResourceCd, sourceCategory, policy)) {
+        throw new ApiError(409, '工程区分が異なるため並べ替えできません', undefined, 'RESOURCE_CATEGORY_MISMATCH');
+      }
+      const sourceResource = source.effectiveResourceCd ?? source.originalResourceCd;
+      const targetResource = target.effectiveResourceCd ?? target.originalResourceCd;
+      if (!sourceResource || sourceResource !== targetResource) {
+        throw new ApiError(409, '同じ資源CDの中でのみ並べ替えできます', undefined, 'RESOURCE_ORDER_PANE_MISMATCH');
+      }
+      const pane = [...current.byItemId.values()].filter((item) =>
+        isCategoryResource(item.originalResourceCd, sourceCategory, policy) &&
+        (item.effectiveResourceCd ?? item.originalResourceCd) === sourceResource
+      );
+      const ordered = sortGrindingPlanningBoardProjectionItems(
+        pane,
+        stateOrder(current.state),
+        'resource',
+        'alternate'
+      );
+      const originalOrder = ordered.map((item) => item.itemId);
+      const sourceIndex = ordered.findIndex((item) => item.itemId === source.itemId);
+      const targetIndex = ordered.findIndex((item) => item.itemId === target.itemId);
+      if (sourceIndex < 0 || targetIndex < 0) throw new ApiError(409, '対象アイテムが表示中の資源CDにありません', undefined, 'STALE_PLANNING_BOARD_ITEM');
+      const [moved] = ordered.splice(sourceIndex, 1);
+      const insertionIndex = ordered.findIndex((item) => item.itemId === target.itemId) + (params.placement === 'after' ? 1 : 0);
+      ordered.splice(insertionIndex, 0, moved);
+
+      const orderChanged = ordered.some((item, index) => item.itemId !== originalOrder[index]);
+      if (!orderChanged) {
+        return { state: lockedState, items: ordered };
+      }
+
+      const overrides = new Map(current.overrides);
+      for (const [index, item] of ordered.entries()) {
+        if (index + 1 > MAX_ALTERNATE_RANK) throw new ApiError(400, '資源CD内のアイテム数が上限を超えています', undefined, 'RESOURCE_ORDER_LIMIT_EXCEEDED');
+        const currentOverride = current.overrides.get(item.itemId);
+        const saved = await writeOverrideIfChanged(client, params.siteKey, item.itemId, currentOverride, {
+          overrideResourceCd: currentOverride?.overrideResourceCd ?? null,
+          overrideDueDate: currentOverride?.overrideDueDate ?? null,
+          dueDateCleared: currentOverride?.dueDateCleared ?? null,
+          alternateRank: index + 1
+        });
+        if (saved) overrides.set(item.itemId, saved);
+      }
+      const projectedItems = projectCurrentItems(current, overrides);
+      const items = ordered.map((item) => {
+        const projected = projectedItems.get(item.itemId);
+        if (!projected) throw new ApiError(409, '対象アイテムが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+        return projected;
+      });
+      return { state: lockedState, items };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    return { sourceRevision: boardRevision(result.state), items: result.items };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD');
     throw error;
