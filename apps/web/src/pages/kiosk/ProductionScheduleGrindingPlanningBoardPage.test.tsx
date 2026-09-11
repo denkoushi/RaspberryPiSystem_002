@@ -124,6 +124,14 @@ function selectAllBoardItems() {
   fireEvent.click(screen.getByLabelText('製番26-1042を全選択'));
 }
 
+function chooseResourceRank(fseiban: string, rank: number | null) {
+  const rankButton = screen.getByRole('button', { name: `${fseiban}の個別指定` });
+  fireEvent.click(rankButton);
+  const picker = screen.getByRole('dialog', { name: '順位を選択' });
+  fireEvent.click(within(picker).getByRole('button', { name: rank == null ? '-' : String(rank), exact: true }));
+  return screen.getByRole('button', { name: `${fseiban}の個別指定` });
+}
+
 describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   beforeEach(() => {
     vi.stubGlobal('PointerEvent', TestPointerEvent);
@@ -187,6 +195,60 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('button', { name: '製番26-1041の明細を開く' })).toBeInTheDocument();
   });
 
+  it('新規登録はactive/openへ追加し、既存の閉じた・除外した状態を変えず、再登録は新規として扱う', () => {
+    let current = fixture();
+    const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番26-1041の明細を閉じる' }));
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    fireEvent.click(within(drawer).getByRole('button', { name: /^26-1042 / }));
+
+    const newItem = {
+      ...current.items[0]!,
+      itemId: 'new-item',
+      sourceRowId: 'source-new-item',
+      fseiban: '26-1043',
+      fhincd: 'PART-new-item',
+      fhinmei: '部品new-item',
+      productNo: 'PRODUCT-new-item'
+    };
+    current = {
+      ...current,
+      sourceRevision: 'board-2',
+      registeredFseibans: ['26-1041', '26-1042', '26-1043'],
+      seibanOrder: ['26-1041', '26-1042', '26-1043'],
+      items: [...current.items, newItem]
+    };
+    mocks.snapshot.mockImplementation(() => ({ data: current, isLoading: false, isError: false, refetch: mocks.refetch }));
+    view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    expect(screen.getByRole('button', { name: '製番26-1041の明細を開く' })).toBeInTheDocument();
+    expect(screen.queryByTestId('planning-board-seiban-26-1042')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '製番26-1043の明細を閉じる' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const reopenedDrawer = screen.getByRole('dialog', { name: '製番登録' });
+    fireEvent.click(within(reopenedDrawer).getByRole('button', { name: /^26-1043 / }));
+    current = {
+      ...current,
+      sourceRevision: 'board-3',
+      registeredFseibans: ['26-1041', '26-1042'],
+      seibanOrder: ['26-1041', '26-1042'],
+      items: current.items.filter((item) => item.fseiban !== '26-1043')
+    };
+    view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    current = {
+      ...current,
+      sourceRevision: 'board-4',
+      registeredFseibans: ['26-1041', '26-1042', '26-1043'],
+      seibanOrder: ['26-1041', '26-1042', '26-1043'],
+      items: [...current.items, newItem]
+    };
+    view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByRole('button', { name: '製番26-1043の明細を閉じる' })).toBeInTheDocument();
+  });
+
   it('資源CD内の並べ替えを即時表示し、保存失敗時に元の順序へ戻す', async () => {
     let rejectResourceOrder: ((error: Error) => void) | undefined;
     mocks.resourceOrder.mockImplementation(() => new Promise((_resolve, reject) => {
@@ -213,7 +275,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.pointerUp(pane, { pointerId: 21, clientX: 10, clientY: 110 });
 
     expect(rowIds()).toEqual(['d', 'a', 'b', 'c']);
-    expect(within(screen.getByTestId('planning-board-item-a')).getByRole('combobox')).toBeDisabled();
+    expect(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '部品aの個別指定' })).toBeDisabled();
     await waitFor(() => expect(mocks.resourceOrder).toHaveBeenCalledWith(expect.objectContaining({
       itemId: 'd',
       targetItemId: 'a',
@@ -426,10 +488,97 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.queryByText(/未完\d+件/)).not.toBeInTheDocument();
     expect(screen.queryByText(/合計分/)).not.toBeInTheDocument();
     expect(screen.getAllByText('5個 · 20分').length).toBeGreaterThan(0);
-    expect(screen.getByText('26-1041 · PART-a')).toBeInTheDocument();
+    expect(screen.getAllByText('26-1041 · 自動組立機 AX-200')).toHaveLength(2);
     expect(screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]).toHaveClass('text-[15px]', 'text-white');
     expect(screen.getByTestId('planning-board-item-a').querySelector('td:nth-child(3)')).toHaveTextContent('1305');
     expect(screen.getByTestId('planning-board-item-c').querySelector('td:nth-child(3)')).toHaveTextContent('2305');
+  });
+
+  it('Resource-CDの特別納期はtoolbarで相互排他し、行本体で付与・解除・置換できる', async () => {
+    const baseItems = fixture().items;
+    const itemA = baseItems.find((item) => item.itemId === 'a')!;
+    mocks.overrides
+      .mockResolvedValueOnce({
+        sourceRevision: 'board-2',
+        items: [{ ...itemA, specialDue: { kind: 'today' as const, expiresAt: '2099-09-12T00:00:00.000Z' }, itemRevision: 'revision-a-special-today', version: 3 }]
+      })
+      .mockResolvedValueOnce({
+        sourceRevision: 'board-3',
+        items: [{ ...itemA, specialDue: null, itemRevision: 'revision-a-special-cleared', version: 4 }]
+      })
+      .mockResolvedValueOnce({
+        sourceRevision: 'board-4',
+        items: [{ ...itemA, specialDue: { kind: 'overnight' as const, expiresAt: '2099-09-13T23:00:00.000Z' }, itemRevision: 'revision-a-special-overnight', version: 5 }]
+      });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
+
+    const todayButton = screen.getByRole('button', { name: '今日中', exact: true });
+    const overnightButton = screen.getByRole('button', { name: '朝まで', exact: true });
+    const rowA = screen.getByTestId('planning-board-item-a');
+    expect(todayButton).toHaveAttribute('aria-pressed', 'false');
+    expect(overnightButton).toHaveAttribute('aria-pressed', 'false');
+    expect(within(rowA).queryByText('今日中')).not.toBeInTheDocument();
+
+    fireEvent.click(todayButton);
+    expect(todayButton).toHaveAttribute('aria-pressed', 'true');
+    expect(overnightButton).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(rowA);
+    await waitFor(() => expect(mocks.overrides).toHaveBeenCalledTimes(1));
+    expect(mocks.overrides.mock.calls[0]?.[0]).toMatchObject({ items: [{ itemId: 'a', specialDue: 'today' }] });
+    await waitFor(() => expect(within(rowA).getByText('今日中')).toBeInTheDocument());
+
+    fireEvent.click(rowA);
+    await waitFor(() => expect(mocks.overrides).toHaveBeenCalledTimes(2));
+    expect(mocks.overrides.mock.calls[1]?.[0]).toMatchObject({ items: [{ itemId: 'a', specialDue: null }] });
+    await waitFor(() => expect(within(rowA).queryByText('今日中')).not.toBeInTheDocument());
+
+    fireEvent.click(todayButton);
+    fireEvent.click(overnightButton);
+    expect(todayButton).toHaveAttribute('aria-pressed', 'false');
+    expect(overnightButton).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(rowA);
+    await waitFor(() => expect(mocks.overrides).toHaveBeenCalledTimes(3));
+    expect(mocks.overrides.mock.calls[2]?.[0]).toMatchObject({ items: [{ itemId: 'a', specialDue: 'overnight' }] });
+  });
+
+  it('成功通知は2.5秒で消え、後発通知を古いtimerが消さず、エラーは残る', async () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
+      fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
+      const selectRank = async (rank: number) => {
+        await act(async () => {
+          fireEvent.click(screen.getByRole('button', { name: '部品bの個別指定' }));
+        });
+        const picker = screen.getByRole('dialog', { name: '順位を選択' });
+        await act(async () => {
+          fireEvent.click(within(picker).getByRole('button', { name: String(rank), exact: true }));
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+      };
+
+      await selectRank(1);
+      expect(screen.getByText('個別順位を保存しました。')).toBeInTheDocument();
+
+      act(() => vi.advanceTimersByTime(1_000));
+      await selectRank(2);
+      expect(screen.getByText('個別順位を保存しました。')).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(1_600));
+      expect(screen.getByText('個別順位を保存しました。')).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(900));
+      expect(screen.queryByText('個別順位を保存しました。')).not.toBeInTheDocument();
+
+      mocks.rank.mockRejectedValueOnce(new Error('rank save failed'));
+      await selectRank(3);
+      expect(screen.getByRole('status')).toHaveTextContent('保存できませんでした');
+      act(() => vi.advanceTimersByTime(10_000));
+      expect(screen.getByRole('status')).toHaveTextContent('保存できませんでした');
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('同一scopeの背景再取得中も資源CD編集をロックしない', () => {
@@ -577,20 +726,19 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
     const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
-    const rankSelect = screen.getByRole('combobox', { name: '部品bの個別指定' });
-    fireEvent.change(rankSelect, { target: { value: '1' } });
+    const rankButton = chooseResourceRank('部品b', 1);
 
-    expect(rankSelect).toHaveValue('1');
+    expect(rankButton).toHaveTextContent('1');
     const rankedRow = screen.getByTestId('planning-board-item-b');
     const earlierRow = screen.getByTestId('planning-board-item-a');
     expect(Boolean(rankedRow.compareDocumentPosition(earlierRow) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
-    expect(rankSelect).toBeDisabled();
+    expect(rankButton).toBeDisabled();
 
     await act(async () => {
       resolveRank?.({ sourceRevision: 'board-1', itemId: 'b', itemRevision: 'revision-b-after-rank', overrideVersion: 3, alternateRank: 1 });
     });
-    expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).toHaveValue('1');
-    expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: '部品bの個別指定' })).toHaveTextContent('1');
+    expect(screen.getByRole('button', { name: '部品bの個別指定' })).not.toBeDisabled();
 
     current = fixture();
     const refreshedItem = current.items.find((item) => item.itemId === 'b')!;
@@ -598,8 +746,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     refreshedItem.itemRevision = 'revision-b-after-rank';
     refreshedItem.version = 3;
     view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
-    await waitFor(() => expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).not.toBeDisabled());
-    expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).toHaveValue('2');
+    await waitFor(() => expect(screen.getByRole('button', { name: '部品bの個別指定' })).not.toBeDisabled());
+    expect(screen.getByRole('button', { name: '部品bの個別指定' })).toHaveTextContent('2');
   });
 
   it('資源CD表示の個別順位は保存失敗時に元の表示へ戻る', async () => {
@@ -607,11 +755,10 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
 
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
-    const rankSelect = screen.getByRole('combobox', { name: '部品bの個別指定' });
-    fireEvent.change(rankSelect, { target: { value: '1' } });
-    expect(rankSelect).toHaveValue('1');
+    const rankButton = chooseResourceRank('部品b', 1);
+    expect(rankButton).toHaveTextContent('1');
 
-    await waitFor(() => expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).toHaveValue(''));
+    await waitFor(() => expect(screen.getByRole('button', { name: '部品bの個別指定' })).toHaveTextContent('-'));
     const restoredRow = screen.getByTestId('planning-board-item-a');
     const failedRow = screen.getByTestId('planning-board-item-b');
     expect(Boolean(restoredRow.compareDocumentPosition(failedRow) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
@@ -621,21 +768,20 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
 
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
-    const rankSelect = screen.getByRole('combobox', { name: '部品bの個別指定' });
-    fireEvent.change(rankSelect, { target: { value: '1' } });
-    await waitFor(() => expect(rankSelect).not.toBeDisabled());
+    chooseResourceRank('部品b', 1);
+    await waitFor(() => expect(screen.getByRole('button', { name: '部品bの個別指定' })).not.toBeDisabled());
 
-    fireEvent.change(rankSelect, { target: { value: '2' } });
+    chooseResourceRank('部品b', 2);
     await waitFor(() => expect(mocks.rank).toHaveBeenCalledTimes(2));
     expect(mocks.rank.mock.calls[1]?.[0]).toMatchObject({ itemId: 'b', itemRevision: 'revision-b-after-rank-3', overrideVersion: 3, alternateRank: 2 });
 
-    const otherRankSelect = screen.getByRole('combobox', { name: '部品cの個別指定' });
-    await waitFor(() => expect(otherRankSelect).not.toBeDisabled());
-    fireEvent.change(otherRankSelect, { target: { value: '3' } });
+    const otherRankButton = screen.getByRole('button', { name: '部品cの個別指定' });
+    await waitFor(() => expect(otherRankButton).not.toBeDisabled());
+    chooseResourceRank('部品c', 3);
     await waitFor(() => expect(mocks.rank).toHaveBeenCalledTimes(3));
     expect(mocks.rank.mock.calls[2]?.[0]).toMatchObject({ itemId: 'c', itemRevision: 'revision-c', overrideVersion: 2, alternateRank: 3 });
 
-    expect(rankSelect).toHaveValue('2');
+    expect(screen.getByRole('button', { name: '部品bの個別指定' })).toHaveTextContent('2');
   });
 
   it('確定済み順位を保持したまま次操作の保存失敗を元へ戻す', async () => {
@@ -644,11 +790,10 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
 
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
-    const rankSelect = screen.getByRole('combobox', { name: '部品bの個別指定' });
-    fireEvent.change(rankSelect, { target: { value: '1' } });
-    await waitFor(() => expect(rankSelect).not.toBeDisabled());
-    fireEvent.change(rankSelect, { target: { value: '2' } });
-    await waitFor(() => expect(rankSelect).toHaveValue('1'));
+    chooseResourceRank('部品b', 1);
+    await waitFor(() => expect(screen.getByRole('button', { name: '部品bの個別指定' })).not.toBeDisabled());
+    chooseResourceRank('部品b', 2);
+    await waitFor(() => expect(screen.getByRole('button', { name: '部品bの個別指定' })).toHaveTextContent('1'));
     expect(mocks.rank.mock.calls[1]?.[0]).toMatchObject({ itemId: 'b', itemRevision: 'revision-b-after-rank-3', overrideVersion: 3, alternateRank: 2 });
   });
 
@@ -658,17 +803,16 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
 
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
-    const rankSelect = screen.getByRole('combobox', { name: '部品bの個別指定' });
-    fireEvent.change(rankSelect, { target: { value: '1' } });
-    await waitFor(() => expect(rankSelect).not.toBeDisabled());
+    chooseResourceRank('部品b', 1);
+    await waitFor(() => expect(screen.getByRole('button', { name: '部品bの個別指定' })).not.toBeDisabled());
 
     current = fixture();
     view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
-    expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).toHaveValue('1');
+    expect(screen.getByRole('button', { name: '部品bの個別指定' })).toHaveTextContent('1');
 
     mocks.snapshot.mockReturnValue({ data: current, isLoading: false, isError: true, isPlaceholderData: false, refetch: mocks.refetch });
     view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
-    expect(screen.getByRole('combobox', { name: '部品bの個別指定' })).toHaveValue('1');
+    expect(screen.getByRole('button', { name: '部品bの個別指定' })).toHaveTextContent('1');
   });
 
   it('同一scopeの背景再取得中は順位を変更でき、placeholder中は変更しない', async () => {
@@ -676,18 +820,17 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
 
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
-    const rankSelect = screen.getByRole('combobox', { name: '部品bの個別指定' });
-    fireEvent.change(rankSelect, { target: { value: '1' } });
+    chooseResourceRank('部品b', 1);
     await waitFor(() => expect(mocks.rank).toHaveBeenCalledTimes(1));
 
     mocks.rank.mockReset();
     mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isFetching: true, isError: false, isPlaceholderData: true, scopeReady: false, refetch: mocks.refetch });
     const placeholderView = render(<ProductionScheduleGrindingPlanningBoardPage />);
     fireEvent.click(screen.getAllByRole('button', { name: '資源CD' }).at(-1)!);
-    const placeholderRankSelect = screen.getAllByRole('combobox', { name: '部品bの個別指定' }).at(-1)!;
-    fireEvent.change(placeholderRankSelect, { target: { value: '1' } });
+    const placeholderRankButton = screen.getAllByRole('button', { name: '部品bの個別指定' }).at(-1)!;
+    fireEvent.click(placeholderRankButton);
     expect(mocks.rank).not.toHaveBeenCalled();
-    expect(placeholderRankSelect).toHaveValue('');
+    expect(placeholderRankButton).toHaveTextContent('-');
     placeholderView.unmount();
   });
 

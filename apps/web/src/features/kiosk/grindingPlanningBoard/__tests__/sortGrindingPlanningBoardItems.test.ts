@@ -61,6 +61,22 @@ describe('sortGrindingPlanningBoardItems', () => {
     ]);
   });
 
+  it('resource表示は特別納期を先にし、同じ期限帯では既存順位を使う', () => {
+    const rows = [
+      item({ itemId: 'unassigned', alternateRank: 1 }),
+      item({ itemId: 'today-late', alternateRank: 9, specialDue: { kind: 'today', expiresAt: '2026-09-12T00:00:00.000Z' } }),
+      item({ itemId: 'overnight', alternateRank: 1, specialDue: { kind: 'overnight', expiresAt: '2026-09-13T23:00:00.000Z' } }),
+      item({ itemId: 'today-early', alternateRank: 2, specialDue: { kind: 'today', expiresAt: '2026-09-12T00:00:00.000Z' } })
+    ];
+
+    expect(sortGrindingPlanningBoardItems(rows, ['26-1041'], 'resource', 'alternate').map((row) => row.itemId)).toEqual([
+      'today-early',
+      'today-late',
+      'overnight',
+      'unassigned'
+    ]);
+  });
+
   it('uses original values in original mode and alternate fallback values in alternate mode', () => {
     const row = item({
       originalResourceCd: '305',

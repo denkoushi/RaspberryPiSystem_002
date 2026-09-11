@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PlanningBoardResourceView } from './PlanningBoardResourceView';
@@ -47,7 +47,8 @@ function item(itemId: string, resourceCd: string): GrindingPlanningBoardItem {
 function renderView(
   onClick = vi.fn(),
   onDrop = vi.fn(),
-  onReorder: (item: GrindingPlanningBoardItem, targetItem: GrindingPlanningBoardItem, placement: GrindingPlanningBoardResourceOrderPlacement) => void = vi.fn()
+  onReorder: (item: GrindingPlanningBoardItem, targetItem: GrindingPlanningBoardItem, placement: GrindingPlanningBoardResourceOrderPlacement) => void = vi.fn(),
+  options: { onSpecialDueClick?: (item: GrindingPlanningBoardItem) => void; onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void } = {}
 ) {
   const sourceItem = item('a', '305');
   const targetItem = item('b', '584');
@@ -63,6 +64,8 @@ function renderView(
       onResourceClick={onClick}
       onResourceDrop={onDrop}
       onResourceReorder={onReorder}
+      onSpecialDueClick={options.onSpecialDueClick}
+      onRankChange={options.onRankChange}
     />
   );
   return { sourceItem, targetItem, onClick, onDrop };
@@ -178,5 +181,38 @@ describe('PlanningBoardResourceView resource chip drag', () => {
     fireEvent.pointerUp(pane, { pointerId: 4, clientX: 10, clientY: 130 });
 
     expect(onReorder).toHaveBeenCalledWith(sourceItem, targetItem, 'after');
+  });
+
+  it('特別納期モードは行本体・納期・badgeだけをtoggleし、既存controlでは発火しない', () => {
+    const sourceItem = { ...item('a', '305'), specialDue: { kind: 'today' as const, expiresAt: '2099-09-12T00:00:00.000Z' } };
+    const onSpecialDueClick = vi.fn();
+    const onRankChange = vi.fn();
+    render(
+      <PlanningBoardResourceView
+        items={[sourceItem]}
+        seibanOrder={['26-1041']}
+        resources={['305']}
+        resourceNameMap={{}}
+        allocation="alternate"
+        selectedItemIds={new Set()}
+        onToggleItem={vi.fn()}
+        onResourceClick={vi.fn()}
+        onSpecialDueClick={onSpecialDueClick}
+        onRankChange={onRankChange}
+        specialDueMode="today"
+      />
+    );
+    const row = screen.getByTestId('planning-board-item-a');
+
+    fireEvent.click(within(row).getByText('今日中'));
+    fireEvent.click(within(row).getByText('09/12'));
+    expect(onSpecialDueClick).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(within(row).getByRole('button', { name: '資源CD 305を変更' }));
+    fireEvent.click(within(row).getByLabelText('部品aを選択'));
+    const rankButton = within(row).getByRole('button', { name: '部品aの個別指定' });
+    fireEvent.click(rankButton);
+    expect(onSpecialDueClick).toHaveBeenCalledTimes(2);
+    expect(onRankChange).not.toHaveBeenCalled();
   });
 });

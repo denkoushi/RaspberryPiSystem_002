@@ -39,7 +39,8 @@ import type {
   GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardResourceOrderPlacement,
   GrindingPlanningBoardResponse,
-  GrindingPlanningBoardDueRequest
+  GrindingPlanningBoardDueRequest,
+  GrindingPlanningBoardSpecialDueKind
 } from '@raspi-system/shared-types';
 
 const todayJst = () => {
@@ -75,6 +76,7 @@ function defaultDueDateFor(items: readonly GrindingPlanningBoardItem[], allocati
 
 type DueMode = 'none' | 'date' | 'offsetDays' | 'restore';
 type ResourceChoice = 'unchanged' | 'restore' | string;
+type FeedbackKind = 'processing' | 'success' | 'error';
 
 type DuePickerState = {
   fseiban: string;
@@ -111,6 +113,7 @@ type PendingOverrideItem = {
   responseSourceRevision: string | null;
   responseItemRevision: string | null;
   responseVersion: number | null;
+  expectedSpecialDueKind?: GrindingPlanningBoardSpecialDueKind | null;
 };
 
 type PendingDueScopeUpdate = {
@@ -152,7 +155,8 @@ function applyOptimisticOverride(
     ...item,
     effectiveResourceCd: nextResource,
     effectiveDueDate: nextDue,
-    alternateRank: resourceChanged || dueChanged ? null : item.alternateRank
+    alternateRank: resourceChanged || dueChanged ? null : item.alternateRank,
+    specialDue: request.specialDue === null ? null : item.specialDue
   };
 }
 
@@ -195,6 +199,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [rankConflict, setRankConflict] = useState(false);
   const [orderSaving, setOrderSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedbackKind, setFeedbackKind] = useState<FeedbackKind>('success');
+  const [specialDueMode, setSpecialDueMode] = useState<GrindingPlanningBoardSpecialDueKind | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [dueDetailFseiban, setDueDetailFseiban] = useState<string | null>(null);
   const [dueDetailTargetFseiban, setDueDetailTargetFseiban] = useState<string | null>(null);
   const [duePickerState, setDuePickerState] = useState<DuePickerState | null>(null);
@@ -207,6 +214,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const rankRequestIdRef = useRef(0);
   const resourceDragSavePendingRef = useRef(false);
   const resourceOrderSavePendingRef = useRef(false);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const feedbackRevisionRef = useRef(0);
+  const registeredServerFseibansRef = useRef<Set<string> | null>(null);
+  const boardSiteKeyRef = useRef<string | null>(null);
 
   const boardQuery = useKioskGrindingPlanningBoardProgressive(
     { category, view, completionFilter: status },
@@ -223,6 +234,42 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const { mutateAsync: updateRankAsync } = useUpdateKioskGrindingPlanningBoardRank();
   const { mutateAsync: updateResourceOrderAsync } = useUpdateKioskGrindingPlanningBoardResourceOrder();
   const updateOrder = useUpdateKioskGrindingPlanningBoardSeibanOrder();
+
+  const notify = useCallback((message: string, kind: FeedbackKind) => {
+    feedbackRevisionRef.current += 1;
+    if (feedbackTimerRef.current != null) {
+      clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = null;
+    }
+    const revision = feedbackRevisionRef.current;
+    setFeedback(message);
+    setFeedbackKind(kind);
+    if (kind === 'success') {
+      feedbackTimerRef.current = setTimeout(() => {
+        if (feedbackRevisionRef.current !== revision) return;
+        feedbackTimerRef.current = null;
+        setFeedback(null);
+      }, 2500);
+    }
+  }, []);
+
+  const clearFeedback = useCallback(() => {
+    feedbackRevisionRef.current += 1;
+    if (feedbackTimerRef.current != null) {
+      clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = null;
+    }
+    setFeedback(null);
+  }, []);
+
+  useEffect(() => () => {
+    if (feedbackTimerRef.current != null) clearTimeout(feedbackTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const data = boardQuery.data;
   const scopeReady = boardQuery.scopeReady;
@@ -282,10 +329,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         const currentItem = data.items.find((item) => item.itemId === itemId);
         const baseMatches = currentItem != null && currentItem.itemRevision === pending.baseItemRevision && currentItem.version === pending.baseVersion;
         const responseMatches = currentItem != null && pending.responseItemRevision != null && currentItem.itemRevision === pending.responseItemRevision && currentItem.version === pending.responseVersion;
+        const specialDueMatches = pending.expectedSpecialDueKind === undefined || (currentItem?.specialDue?.kind ?? null) === pending.expectedSpecialDueKind;
         const itemMatches = currentItem == null || (
           currentItem.effectiveResourceCd === pending.item.effectiveResourceCd &&
           currentItem.effectiveDueDate === pending.item.effectiveDueDate &&
-          currentItem.alternateRank === pending.item.alternateRank
+          currentItem.alternateRank === pending.item.alternateRank &&
+          specialDueMatches
         );
         const otherAuthoritativeItem = pending.responseItemRevision != null && currentItem != null && !baseMatches && !responseMatches;
         if (responseMatches && itemMatches || otherAuthoritativeItem) {
@@ -340,8 +389,26 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   useEffect(() => {
     if (!data) return;
     const revisionIsStale = staleOrderSourceRevisionsRef.current.has(data.sourceRevision);
+    const authoritative = !boardQuery.isPlaceholderData && !revisionIsStale;
+    const siteChanged = boardSiteKeyRef.current != null && boardSiteKeyRef.current !== data.siteKey;
+    const serverOrder = data.registeredFseibans;
+    const pending = pendingOrderRef.current;
+    if (siteChanged) {
+      boardSiteKeyRef.current = data.siteKey;
+      registeredServerFseibansRef.current = new Set(serverOrder);
+      setRegisteredFseibans(serverOrder);
+      setOrderInitialized(true);
+      setActiveFseibans(new Set(data.seibanOrder));
+      setActiveInitialized(true);
+      setOpenFseibans(new Set(data.seibanOrder.length > 0 ? data.seibanOrder : serverOrder));
+      setOpenInitialized(true);
+      pendingOrderRef.current = null;
+      setOrderSaving(false);
+      setDueDetailTargetFseiban((current) => current && serverOrder.includes(current) ? current : serverOrder[0] ?? null);
+      return;
+    }
+    if (boardSiteKeyRef.current == null) boardSiteKeyRef.current = data.siteKey;
     if (!boardQuery.isPlaceholderData && !revisionIsStale) {
-      const pending = pendingOrderRef.current;
       if (!pending || pending.responseSourceRevision == null || data.sourceRevision !== pending.baseSourceRevision) {
         if (latestOrderSourceRevisionRef.current != null && latestOrderSourceRevisionRef.current !== data.sourceRevision) {
           staleOrderSourceRevisionsRef.current.add(latestOrderSourceRevisionRef.current);
@@ -349,8 +416,6 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         latestOrderSourceRevisionRef.current = data.sourceRevision;
       }
     }
-    const serverOrder = data.registeredFseibans;
-    const pending = pendingOrderRef.current;
     if (!orderInitialized) {
       setRegisteredFseibans(serverOrder);
       setOrderInitialized(true);
@@ -377,6 +442,21 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         setOpenFseibans(new Set(initialOpenFseibans));
         setOpenInitialized(true);
       }
+    }
+    const orderSettled = authoritative && !orderSaving && (
+      pending == null ||
+      (pending.responseSourceRevision != null && (
+        pending.responseSourceRevision === data.sourceRevision || data.sourceRevision !== pending.baseSourceRevision
+      ))
+    );
+    if (orderSettled) {
+      const previousServerOrder = registeredServerFseibansRef.current ?? new Set<string>();
+      const newlyRegistered = serverOrder.filter((value) => !previousServerOrder.has(value));
+      if (newlyRegistered.length > 0) {
+        setActiveFseibans((current) => new Set([...current, ...newlyRegistered]));
+        setOpenFseibans((current) => new Set([...current, ...newlyRegistered]));
+      }
+      registeredServerFseibansRef.current = new Set(serverOrder);
     }
   }, [activeInitialized, boardQuery.isPlaceholderData, data, openInitialized, orderInitialized, orderSaving]);
 
@@ -432,11 +512,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const handleError = useCallback((error: unknown) => {
     if (isAxiosError(error) && error.response?.status === 409) {
       setRankConflict(true);
-      setFeedback('表示中のデータが更新されています。最新状態を取得してください。');
+      notify('表示中のデータが更新されています。最新状態を取得してください。', 'error');
       return;
     }
-    setFeedback('保存できませんでした。時間をおいて再試行してください。');
-  }, []);
+    notify('保存できませんでした。時間をおいて再試行してください。', 'error');
+  }, [notify]);
 
   const toggleItem = useCallback((item: GrindingPlanningBoardItem, selected: boolean) => {
     const pendingOverride = pendingOverrideItems[item.itemId];
@@ -461,6 +541,72 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     });
   }, [bulkReady, category, pendingOverrideItems]);
 
+  const updateSpecialDue = useCallback(async (item: GrindingPlanningBoardItem) => {
+    if (
+      !data ||
+      !scopeReady ||
+      !rankMutationReady ||
+      allocation === 'original' ||
+      specialDueMode == null ||
+      item.isCompleted ||
+      updateOverrides.isPending ||
+      resourceDragSavePendingRef.current ||
+      resourceOrderSavePendingRef.current ||
+      rankMutationPending ||
+      (pendingOverrideItems[item.itemId] != null && pendingOverrideItems[item.itemId].responseItemRevision == null)
+    ) return;
+    const nextSpecialDue = item.specialDue?.kind === specialDueMode ? null : specialDueMode;
+    const request: GrindingPlanningBoardOverrideItemRequest = {
+      itemId: item.itemId,
+      itemRevision: item.itemRevision,
+      overrideVersion: item.version,
+      specialDue: nextSpecialDue
+    };
+    const baseSourceRevision = data.sourceRevision;
+    setPendingOverrideItems((current) => ({
+      ...current,
+      [item.itemId]: {
+        item: applyOptimisticOverride(item, request),
+        baseSourceRevision,
+        baseItemRevision: item.itemRevision,
+        baseVersion: item.version,
+        responseSourceRevision: null,
+        responseItemRevision: null,
+        responseVersion: null,
+        expectedSpecialDueKind: nextSpecialDue
+      }
+    }));
+    notify(nextSpecialDue == null ? '特別納期を解除中…' : `${nextSpecialDue === 'today' ? '今日中' : '朝まで'}を保存中…`, 'processing');
+    try {
+      const result = await updateOverrides.mutateAsync({ sourceRevision: baseSourceRevision, items: [request] });
+      setPendingOverrideItems((current) => {
+        const pending = current[item.itemId];
+        if (!pending || pending.baseSourceRevision !== baseSourceRevision) return current;
+        const responseItem = (result.items ?? []).find((candidate) => candidate.itemId === item.itemId);
+        return {
+          ...current,
+          [item.itemId]: {
+            ...pending,
+            item: responseItem ?? pending.item,
+            responseSourceRevision: result.sourceRevision,
+            responseItemRevision: responseItem?.itemRevision ?? null,
+            responseVersion: responseItem?.version ?? null
+          }
+        };
+      });
+      notify(nextSpecialDue == null ? '特別納期を解除しました。' : `${nextSpecialDue === 'today' ? '今日中' : '朝まで'}を設定しました。`, 'success');
+    } catch (error) {
+      setPendingOverrideItems((current) => {
+        const pending = current[item.itemId];
+        if (!pending || pending.baseSourceRevision !== baseSourceRevision) return current;
+        const next = { ...current };
+        delete next[item.itemId];
+        return next;
+      });
+      handleError(error);
+    }
+  }, [allocation, data, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, scopeReady, specialDueMode, updateOverrides]);
+
   const openEditor = useCallback((items: readonly GrindingPlanningBoardItem[]) => {
     if (!scopeReady || items.some((item) => pendingOverrideItems[item.itemId] != null && pendingOverrideItems[item.itemId].responseItemRevision == null)) return;
     const target = items.filter((item) => !item.isCompleted);
@@ -476,11 +622,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     setDueMode('none');
     setDueDate(defaultDueDateFor(target, allocation));
     setOffsetDays('1');
-    setFeedback(null);
+    clearFeedback();
     setEditorError(null);
     setEditorConflict(false);
     setEditorOpen(true);
-  }, [allocation, data, pendingOverrideItems, scopeReady]);
+  }, [allocation, clearFeedback, data, pendingOverrideItems, scopeReady]);
 
   const openDueDetail = useCallback((fseiban: string) => {
     dueDetailIdentityRef.current = fseiban;
@@ -517,6 +663,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
 
   const refreshDueDetail = useCallback(async () => {
     setDueError('最新状態を取得しています…');
+    notify('最新状態を取得しています…', 'processing');
     try {
       const [detailResult, boardResult] = await Promise.all([dueDetailQuery.refetch(), boardQuery.refetch()]);
       if (detailResult.isError || boardResult.isError) {
@@ -525,11 +672,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       }
       setDueConflict(false);
       setDueError(null);
-      setFeedback('最新状態を取得しました。対象を選び直して再適用してください。');
+      notify('最新状態を取得しました。対象を選び直して再適用してください。', 'success');
     } catch {
       setDueError('最新状態を取得できませんでした。再試行してください。');
+      notify('最新状態を取得できませんでした。再試行してください。', 'error');
     }
-  }, [boardQuery, dueDetailQuery]);
+  }, [boardQuery, dueDetailQuery, notify]);
 
   const commitDueDate = useCallback(async (nextDueDate: string) => {
     const current = duePickerState;
@@ -543,6 +691,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       responseScopeRevision: null
     };
     setPendingDueScope(pendingUpdate);
+    notify(`${current.fseiban}の納期を保存中…`, 'processing');
     try {
       const result = await updateDueScope.mutateAsync({
         fseiban: current.fseiban,
@@ -559,7 +708,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       setDuePickerState(null);
       setDueConflict(false);
       setDueError(null);
-      setFeedback(`${current.fseiban}の納期を更新しました。`);
+      notify(`${current.fseiban}の納期を更新しました。`, 'success');
     } catch (error) {
       setPendingDueScope((pending) => pending?.fseiban === pendingUpdate.fseiban && dueScopeKey(pending.scope) === dueScopeKey(pendingUpdate.scope) ? null : pending);
       if (dueDetailIdentityRef.current !== current.fseiban) return;
@@ -567,13 +716,15 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       if (isAxiosError(error) && error.response?.status === 409) {
         setDueConflict(true);
         setDueError('表示中の納期が更新されています。最新状態を取得してから再適用してください。');
+        notify('表示中の納期が更新されています。最新状態を取得してください。', 'error');
       } else {
         setDueError('納期を保存できませんでした。入力内容と通信状態を確認してください。');
+        notify('納期を保存できませんでした。入力内容と通信状態を確認してください。', 'error');
       }
     } finally {
       dueRequestPendingRef.current = false;
     }
-  }, [allocation, duePickerState, updateDueScope]);
+  }, [allocation, duePickerState, notify, updateDueScope]);
 
   const applyEditor = async () => {
     if (!editorSnapshot || allocation === 'original' || editorItems.length === 0) return;
@@ -613,6 +764,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       }
       return next;
     });
+    notify(`${items.length}件を更新中…`, 'processing');
     try {
       const result = await updateOverrides.mutateAsync({ sourceRevision: editorSnapshot.sourceRevision, items });
       setPendingOverrideItems((current) => {
@@ -633,7 +785,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         return next;
       });
       setEditorOpen(false);
-      setFeedback(`${items.length}件を更新しました。`);
+      notify(`${items.length}件を更新しました。`, 'success');
     } catch (error) {
       setPendingOverrideItems((current) => {
         const next = { ...current };
@@ -645,10 +797,13 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       if (isAxiosError(error) && error.response?.status === 409) {
         setEditorConflict(true);
         setEditorError('表示中のデータが更新されています。最新状態を取得してから対象を選び直してください。');
+        notify('表示中のデータが更新されています。最新状態を取得してください。', 'error');
       } else if (isAxiosError(error) && typeof error.response?.data?.message === 'string') {
         setEditorError(`保存できませんでした: ${error.response.data.message}`);
+        notify(`保存できませんでした: ${error.response.data.message}`, 'error');
       } else {
         setEditorError('保存できませんでした。入力内容とネットワーク接続を確認してください。');
+        notify('保存できませんでした。入力内容とネットワーク接続を確認してください。', 'error');
       }
     }
   };
@@ -692,6 +847,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         responseVersion: null
       }
     }));
+    notify('資源CDを保存中…', 'processing');
     try {
       const result = await updateOverrides.mutateAsync({ sourceRevision: baseSourceRevision, items: [request] });
       setPendingOverrideItems((current) => {
@@ -709,7 +865,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           }
         };
       });
-      setFeedback('資源CDを' + targetResource + 'へ変更しました。');
+      notify('資源CDを' + targetResource + 'へ変更しました。', 'success');
     } catch (error) {
       setPendingOverrideItems((current) => {
         const pending = current[item.itemId];
@@ -722,7 +878,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     } finally {
       resourceDragSavePendingRef.current = false;
     }
-  }, [allocation, data, handleError, pendingOverrideItems, rankMutationPending, rankMutationReady, scopeReady, sourceRevision, updateOverrides]);
+  }, [allocation, data, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, scopeReady, sourceRevision, updateOverrides]);
 
   const reorderResourceByDrag = useCallback(async (
     item: GrindingPlanningBoardItem,
@@ -740,6 +896,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       targetItem.isCompleted ||
       currentResource == null ||
       currentResource !== resolveGrindingPlanningBoardResource(targetItem, allocation) ||
+      (item.specialDue?.expiresAt ?? null) !== (targetItem.specialDue?.expiresAt ?? null) ||
       !data.resources.includes(currentResource) ||
       updateOverrides.isPending ||
       resourceDragSavePendingRef.current ||
@@ -751,6 +908,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     resourceOrderSavePendingRef.current = true;
     setResourceOrderSaving(true);
     setRankConflict(false);
+    notify('資源CD内の順序を保存中…', 'processing');
     const requestSourceRevision = data.sourceRevision;
     const requestId = ++rankRequestIdRef.current;
     const visiblePaneItems = sortGrindingPlanningBoardItems(
@@ -772,7 +930,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     optimisticPaneItems.splice(optimisticInsertionIndex, 0, optimisticMoved);
     setPendingRankOverrides((current) => {
       const next = { ...current };
-      for (const [index, optimisticItem] of optimisticPaneItems.entries()) {
+      let bandRank = 0;
+      const specialDueBand = item.specialDue?.expiresAt ?? null;
+      for (const optimisticItem of optimisticPaneItems) {
+        if ((optimisticItem.specialDue?.expiresAt ?? null) !== specialDueBand) continue;
+        bandRank += 1;
         const previous = current[optimisticItem.itemId];
         const restoreState: RankDisplayState = previous?.phase === 'awaitingSync'
           ? { rank: previous.rank, itemRevision: previous.itemRevision, version: previous.version }
@@ -784,7 +946,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           restoreState,
           itemRevision: optimisticItem.itemRevision,
           version: optimisticItem.version,
-          rank: index + 1,
+          rank: bandRank,
           phase: 'saving'
         };
       }
@@ -817,7 +979,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         }
         return next;
       });
-      setFeedback('資源CD内の順序を保存しました。');
+      notify('資源CD内の順序を保存しました。', 'success');
     } catch (error) {
       setPendingRankOverrides((current) => {
         const next = { ...current };
@@ -838,7 +1000,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       resourceOrderSavePendingRef.current = false;
       setResourceOrderSaving(false);
     }
-  }, [allocation, data, displayItems, handleError, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, registeredFseibans, scopeReady, sourceRevision, updateOverrides.isPending, updateResourceOrderAsync, visibleItems]);
+  }, [allocation, data, displayItems, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, registeredFseibans, scopeReady, sourceRevision, updateOverrides.isPending, updateResourceOrderAsync, visibleItems]);
 
   const refreshAfterConflict = async () => {
     setEditorError('最新状態を取得しています…');
@@ -851,7 +1013,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       setEditorSnapshot(null);
       setEditorOpen(false);
       setEditorConflict(false);
-      setFeedback('最新状態を取得しました。対象を選び直して再適用してください。');
+      notify('最新状態を取得しました。対象を選び直して再適用してください。', 'success');
     } catch {
       setEditorError('最新状態を取得できませんでした。再試行してください。');
     }
@@ -881,6 +1043,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         }
       };
     });
+    notify('個別順位を保存中…', 'processing');
     try {
       const result: GrindingPlanningBoardRankResponse = await updateRankAsync({ sourceRevision, itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, alternateRank: rank });
       setPendingRankOverrides((current) => {
@@ -897,6 +1060,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           }
         };
       });
+      notify('個別順位を保存しました。', 'success');
     } catch (error) {
       setPendingRankOverrides((current) => {
         const pending = current[item.itemId];
@@ -916,7 +1080,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       });
       handleError(error);
     }
-  }, [allocation, data, handleError, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, resourceOrderSaving, sourceRevision, updateRankAsync]);
+  }, [allocation, data, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, resourceOrderSaving, sourceRevision, updateRankAsync]);
 
   const persistOrder = async (nextOrder: string[]): Promise<boolean> => {
     if (!data || !scopeReady || allocation === 'original') return false;
@@ -934,6 +1098,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     setOrderSaving(true);
     setOrderConflict(false);
     setRegisteredFseibans(nextOrder);
+    notify('製番順を保存中…', 'processing');
     try {
       const result = await updateOrder.mutateAsync({ sourceRevision: requestSourceRevision, fseibans: nextOrder });
       orderRequestPendingRef.current = false;
@@ -942,6 +1107,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       latestOrderSourceRevisionRef.current = result.sourceRevision;
       setOrderSaving(false);
       setRegisteredFseibans(result.seibanOrder);
+      notify('製番順を保存しました。', 'success');
       return true;
     } catch (error) {
       orderRequestPendingRef.current = false;
@@ -953,7 +1119,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       if (isAxiosError(error) && error.response?.status === 409) {
         setOrderConflict(true);
         setOrderRegistrationError('製番順が他端末で更新されています。最新状態を取得してから再登録してください。');
-        setFeedback('製番順が更新されています。最新状態を取得してください。');
+        notify('製番順が更新されています。最新状態を取得してください。', 'error');
         return false;
       }
       setOrderRegistrationError('製番登録を保存できませんでした。通信状態と入力値を確認してください。');
@@ -963,10 +1129,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   };
 
   const refreshAfterOrderConflict = async () => {
-    setFeedback('最新状態を取得しています…');
+    notify('最新状態を取得しています…', 'processing');
     const result = await boardQuery.refetch();
     if (result.isError || !result.data) {
-      setFeedback('最新状態を取得できませんでした。再試行してください。');
+      notify('最新状態を取得できませんでした。再試行してください。', 'error');
       return;
     }
     pendingOrderRef.current = null;
@@ -979,7 +1145,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     setRegisteredFseibans(result.data.registeredFseibans);
     setOrderConflict(false);
     setRankConflict(false);
-    setFeedback('最新状態を取得しました。');
+    notify('最新状態を取得しました。', 'success');
   };
 
   const removeSeiban = (fseiban: string) => {
@@ -987,6 +1153,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     void persistOrder(next).then((saved) => {
       if (saved) {
         setActiveFseibans((current) => new Set([...current].filter((value) => value !== fseiban)));
+        setOpenFseibans((current) => new Set([...current].filter((value) => value !== fseiban)));
         setDueDetailTargetFseiban((current) => current === fseiban ? null : current);
         setDueDetailFseiban((current) => current === fseiban ? null : current);
       }
@@ -1000,7 +1167,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       return false;
     }
     const saved = await persistOrder([value, ...registeredFseibans]);
-    if (saved) setActiveFseibans((current) => new Set([value, ...current]));
+    if (saved) {
+      setActiveFseibans((current) => new Set([value, ...current]));
+      setOpenFseibans((current) => new Set([value, ...current]));
+    }
     return saved;
   };
   const addSeibans = async (fseibans: readonly string[]): Promise<boolean> => {
@@ -1012,7 +1182,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       return false;
     }
     const saved = await persistOrder([...additions, ...registeredFseibans]);
-    if (saved) setActiveFseibans((current) => new Set([...additions, ...current]));
+    if (saved) {
+      setActiveFseibans((current) => new Set([...additions, ...current]));
+      setOpenFseibans((current) => new Set([...additions, ...current]));
+    }
     return saved;
   };
   const moveSeiban = (fseiban: string, direction: 'up' | 'down') => {
@@ -1108,13 +1281,20 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         onStatusChange={setStatus}
         onAllocationChange={setAllocation}
         onOpenDueEditor={() => openEditor(toolbarSelectedItems)}
+        specialDueMode={view === 'resource' ? specialDueMode : null}
+        onSpecialDueModeChange={view === 'resource' ? setSpecialDueMode : undefined}
+        specialDueDisabled={allocation === 'original' || interactionLocked || resourceDragDisabled}
       />
       {feedback ? (
-        <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-emerald-500/40 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-100" role="status">
+        <div className={feedbackKind === 'error'
+          ? 'mt-2 flex items-center justify-between gap-2 rounded-md border border-rose-500/50 bg-rose-950/70 px-3 py-2 text-xs text-rose-100'
+          : feedbackKind === 'processing'
+            ? 'mt-2 flex items-center justify-between gap-2 rounded-md border border-sky-500/40 bg-sky-950/60 px-3 py-2 text-xs text-sky-100'
+            : 'mt-2 flex items-center justify-between gap-2 rounded-md border border-emerald-500/40 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-100'} role="status">
           <span>{feedback}</span>
           <span className="flex shrink-0 items-center gap-1">
             {orderConflict || rankConflict ? <button type="button" className="min-h-9 rounded border border-emerald-300/50 px-2 text-emerald-100" onClick={() => void refreshAfterOrderConflict()}>最新状態を取得</button> : null}
-            <button type="button" className="min-h-9 px-2 text-slate-300" onClick={() => setFeedback(null)} aria-label="通知を閉じる">✕</button>
+            <button type="button" className="min-h-9 px-2 text-slate-300" onClick={clearFeedback} aria-label="通知を閉じる">✕</button>
           </span>
         </div>
       ) : null}
@@ -1184,6 +1364,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             onResourceDrop={moveResourceByDrag}
             onResourceReorder={reorderResourceByDrag}
             onRankChange={changeRank}
+            specialDueMode={specialDueMode}
+            onSpecialDueClick={updateSpecialDue}
+            nowMs={nowMs}
             disabled={interactionLocked}
             resourceDragDisabled={resourceDragDisabled}
             rankDisabled={rankDisabled}

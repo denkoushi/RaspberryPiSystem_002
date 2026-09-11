@@ -5,6 +5,7 @@ import type {
   GrindingPlanningBoardCategory,
   GrindingPlanningBoardItem,
   GrindingPlanningBoardLoad,
+  GrindingPlanningBoardSpecialDue,
   GrindingPlanningBoardView
 } from '@raspi-system/shared-types';
 
@@ -51,6 +52,8 @@ export type GrindingPlanningBoardProjectionOverride = {
   overrideDueDate: Date | null;
   dueDateCleared?: boolean | null;
   alternateRank: number | null;
+  specialDueKind?: string | null;
+  specialDueExpiresAt?: Date | null;
   version: number;
 };
 
@@ -247,6 +250,12 @@ function compareText(a: string, b: string): number {
   return a.localeCompare(b, 'ja');
 }
 
+function specialDueForOverride(override: GrindingPlanningBoardProjectionOverride | undefined): GrindingPlanningBoardSpecialDue | null {
+  if (override?.specialDueKind !== 'today' && override?.specialDueKind !== 'overnight') return null;
+  if (!(override.specialDueExpiresAt instanceof Date) || Number.isNaN(override.specialDueExpiresAt.getTime())) return null;
+  return { kind: override.specialDueKind, expiresAt: override.specialDueExpiresAt.toISOString() };
+}
+
 function compareResourceProcessOrder(a: string, b: string): number {
   const left = Number(a);
   const right = Number(b);
@@ -269,6 +278,14 @@ export function sortGrindingPlanningBoardProjectionItems(
       if (resource !== 0) return resource;
     }
     if (view === 'resource' && allocation === 'alternate') {
+      const leftSpecialDue = left.specialDue;
+      const rightSpecialDue = right.specialDue;
+      if (leftSpecialDue == null && rightSpecialDue != null) return 1;
+      if (leftSpecialDue != null && rightSpecialDue == null) return -1;
+      if (leftSpecialDue != null && rightSpecialDue != null) {
+        const expiry = leftSpecialDue.expiresAt.localeCompare(rightSpecialDue.expiresAt);
+        if (expiry !== 0) return expiry;
+      }
       const rank = compareNullableRank(left.alternateRank, right.alternateRank);
       if (rank !== 0) return rank;
     }
@@ -481,6 +498,8 @@ function buildItems(
         inheritedParentOverrideDueDateCleared: parentOverride?.dueDateCleared ?? null,
         effectiveDueDate,
         alternateRank: override?.alternateRank ?? null,
+        specialDueKind: override?.specialDueKind ?? null,
+        specialDueExpiresAt: override?.specialDueExpiresAt?.toISOString() ?? null,
         originalRank
       };
       items.push({
@@ -501,6 +520,7 @@ function buildItems(
         effectiveDueDate,
         originalRank,
         alternateRank: override?.alternateRank ?? null,
+        specialDue: specialDueForOverride(override),
         plannedQuantity: displayFields.plannedQuantity ?? null,
         requiredMinutes,
         requiredMinutesKnown,
