@@ -65,6 +65,13 @@ export type GrindingPlanningBoardDueRequest =
   | { kind: 'offsetDays'; days: number }
   | { kind: 'restore' };
 
+export type GrindingPlanningBoardSpecialDueKind = 'today' | 'overnight';
+
+export interface GrindingPlanningBoardSpecialDue {
+  kind: GrindingPlanningBoardSpecialDueKind;
+  expiresAt: string;
+}
+
 export type GrindingPlanningBoardItemKind = 'row' | 'split';
 
 export interface GrindingPlanningBoardItem {
@@ -85,6 +92,7 @@ export interface GrindingPlanningBoardItem {
   effectiveDueDate: string | null;
   originalRank: number | null;
   alternateRank: number | null;
+  specialDue?: GrindingPlanningBoardSpecialDue | null;
   plannedQuantity: number | null;
   requiredMinutes: number | null;
   requiredMinutesKnown: boolean;
@@ -133,6 +141,7 @@ export interface GrindingPlanningBoardOverrideItemRequest {
   overrideVersion?: number;
   resourceCd?: string | null;
   due?: GrindingPlanningBoardDueRequest;
+  specialDue?: GrindingPlanningBoardSpecialDueKind | null;
 }
 
 export interface GrindingPlanningBoardOverridesRequest {

@@ -388,8 +388,8 @@ async function writeTargetOverride(client: Prisma.TransactionClient, siteKey: st
   if (!changed && nextRank === (current?.alternateRank ?? null)) return;
   await client.productionScheduleGrindingPlanningBoardOverride.upsert({
     where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: target.itemKey } },
-    create: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: target.itemKey, overrideDueDate: nextDueDate, dueDateCleared: nextDueDateCleared, overrideResourceCd: current?.overrideResourceCd ?? null, alternateRank: nextRank },
-    update: { overrideDueDate: nextDueDate, dueDateCleared: nextDueDateCleared, alternateRank: nextRank, version: { increment: 1 } }
+    create: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: target.itemKey, overrideDueDate: nextDueDate, dueDateCleared: nextDueDateCleared, overrideResourceCd: current?.overrideResourceCd ?? null, alternateRank: nextRank, specialDueKind: current?.specialDueKind ?? null, specialDueExpiresAt: current?.specialDueExpiresAt ?? null },
+    update: { overrideDueDate: nextDueDate, dueDateCleared: nextDueDateCleared, alternateRank: nextRank, specialDueKind: current?.specialDueKind ?? null, specialDueExpiresAt: current?.specialDueExpiresAt ?? null, version: { increment: 1 } }
   });
 }
 

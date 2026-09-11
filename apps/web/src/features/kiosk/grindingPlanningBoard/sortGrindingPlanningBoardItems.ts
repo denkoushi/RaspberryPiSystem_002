@@ -52,6 +52,12 @@ export function compareGrindingPlanningBoardItems(
   view: GrindingPlanningBoardView = 'seiban'
 ): number {
   if (view === 'resource' && allocation === 'alternate') {
+    if (left.specialDue == null && right.specialDue != null) return 1;
+    if (left.specialDue != null && right.specialDue == null) return -1;
+    if (left.specialDue != null && right.specialDue != null) {
+      const expiryComparison = left.specialDue.expiresAt.localeCompare(right.specialDue.expiresAt);
+      if (expiryComparison !== 0) return expiryComparison;
+    }
     const leftRank = resolveGrindingPlanningBoardRank(left, allocation) ?? UNKNOWN_ORDER;
     const rightRank = resolveGrindingPlanningBoardRank(right, allocation) ?? UNKNOWN_ORDER;
     if (leftRank !== rightRank) return leftRank - rightRank;

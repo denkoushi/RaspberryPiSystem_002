@@ -12,7 +12,8 @@ import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } 
 import type { PlanningBoardAllocation } from './types';
 import type {
   GrindingPlanningBoardItem,
-  GrindingPlanningBoardResourceOrderPlacement
+  GrindingPlanningBoardResourceOrderPlacement,
+  GrindingPlanningBoardSpecialDueKind
 } from '@raspi-system/shared-types';
 
 export type PlanningBoardResourceViewProps = {
@@ -31,6 +32,9 @@ export type PlanningBoardResourceViewProps = {
     placement: GrindingPlanningBoardResourceOrderPlacement
   ) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
+  specialDueMode?: GrindingPlanningBoardSpecialDueKind | null;
+  onSpecialDueClick?: (item: GrindingPlanningBoardItem) => void;
+  nowMs?: number;
   disabled?: boolean;
   resourceDragDisabled?: boolean;
   rankDisabled?: boolean | ((item: GrindingPlanningBoardItem) => boolean);
@@ -61,6 +65,10 @@ type PendingResourceDrag = {
 };
 
 const RESOURCE_PANE_SELECTOR = '[data-planning-board-resource-pane]';
+
+function specialDueBand(item: GrindingPlanningBoardItem): string | null {
+  return item.specialDue?.expiresAt ?? null;
+}
 
 function resourcePaneAtPoint(
   clientX: number,
@@ -128,6 +136,9 @@ export function PlanningBoardResourceView({
   onResourceDrop,
   onResourceReorder,
   onRankChange,
+  specialDueMode = null,
+  onSpecialDueClick,
+  nowMs,
   disabled = false,
   resourceDragDisabled = false,
   rankDisabled = false
@@ -183,7 +194,9 @@ export function PlanningBoardResourceView({
     const targetItem = row == null
       ? null
       : items.find((candidate) => candidate.itemId === row.dataset.planningBoardItemId) ?? null;
+    const sameSpecialDueBand = targetItem == null || specialDueBand(targetItem) === specialDueBand(drag.item);
     const placement = row == null || targetItem == null || targetItem.itemId === drag.item.itemId || targetItem.isCompleted
+      || !sameSpecialDueBand
       ? null
       : drag.pendingClientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2
         ? 'before'
@@ -338,7 +351,7 @@ export function PlanningBoardResourceView({
     const targetItem = targetRow == null
       ? null
       : items.find((candidate) => candidate.itemId === targetRow.dataset.planningBoardItemId) ?? null;
-    const shouldReorder = isSamePaneDrop && targetItem != null && targetItem.itemId !== item.itemId && !targetItem.isCompleted;
+    const shouldReorder = isSamePaneDrop && targetItem != null && targetItem.itemId !== item.itemId && !targetItem.isCompleted && specialDueBand(targetItem) === specialDueBand(item);
     const shouldDrop = isDrag && targetResource != null && targetResource !== sourceResource;
     const placement = targetRow == null
       ? null
@@ -400,8 +413,9 @@ export function PlanningBoardResourceView({
   }, [allocation, items, resources, seibanOrder]);
 
   return (
-    <div className="grid min-w-0 grid-cols-1 items-start gap-2.5 lg:grid-cols-2 xl:grid-cols-4" data-testid="planning-board-resource-view">
-      {groups.map(([resource, resourceItems]) => {
+    <div className="min-w-0">
+      <div className="grid min-w-0 grid-cols-1 items-start gap-2.5 lg:grid-cols-2 xl:grid-cols-4" data-testid="planning-board-resource-view">
+        {groups.map(([resource, resourceItems]) => {
         return (
           <article
             key={resource}
@@ -427,6 +441,9 @@ export function PlanningBoardResourceView({
               onResourcePointerDown={handleResourcePointerDown}
               resourceDragDisabled={resourceDragDisabled}
               onRankChange={onRankChange}
+              specialDueMode={specialDueMode}
+              onSpecialDueClick={onSpecialDueClick}
+              nowMs={nowMs}
               disabled={disabled}
               rankDisabled={rankDisabled}
               showRank
@@ -437,7 +454,8 @@ export function PlanningBoardResourceView({
             />
           </article>
         );
-      })}
+        })}
+      </div>
     </div>
   );
 }

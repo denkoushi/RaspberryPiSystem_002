@@ -39,6 +39,8 @@ const dueSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('restore') })
 ]);
 
+const specialDueSchema = z.enum(['today', 'overnight']);
+
 const overridesBodySchema = z.object({
   sourceRevision: sourceRevisionSchema,
   items: z.array(z.object({
@@ -46,7 +48,8 @@ const overridesBodySchema = z.object({
     itemRevision: z.string().min(1).max(200),
     overrideVersion: z.number().int().min(0).optional(),
     resourceCd: z.string().max(20).nullable().optional(),
-    due: dueSchema.optional()
+    due: dueSchema.optional(),
+    specialDue: specialDueSchema.nullable().optional()
   })).min(1).max(2_000)
 });
 

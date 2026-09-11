@@ -11,6 +11,7 @@ import type {
   GrindingPlanningBoardResourceOrderRequest,
   GrindingPlanningBoardResourceOrderResponse,
   GrindingPlanningBoardResponse,
+  GrindingPlanningBoardSpecialDueKind,
   GrindingPlanningBoardView
 } from '@raspi-system/shared-types';
 
@@ -48,7 +49,13 @@ import {
   type GrindingPlanningBoardProjectionRowDetail
 } from './grinding-planning-board-projection.js';
 import { readGrindingPlanningBoardLoadSummary } from './grinding-planning-board-load-summary.js';
+import { buildWorkCalendarModeMap, listLoadBalancingWorkCalendarsResolved } from './load-balancing/load-balancing-settings.service.js';
+import { DEFAULT_WORK_CALENDAR_MODE, type WorkCalendarMode } from './load-balancing/work-calendar-policy.js';
 import { resolveSeibanMachineDisplayNamesBatched } from './seiban-machine-display-names.service.js';
+import {
+  isGrindingPlanningBoardSpecialDueKind,
+  resolveGrindingPlanningBoardSpecialDueExpiresAt
+} from './grinding-planning-board-special-due.js';
 import {
   resolveLeaderboardMaterializedBaseWhere
 } from './row-resolver/index.js';
@@ -820,19 +827,34 @@ function assertItemRevision(expected: string, item: GrindingPlanningBoardItem, e
 
 function sameDate(a: Date | null | undefined, b: Date | null | undefined): boolean { return ymd(a) === ymd(b); }
 
-async function writeOverrideIfChanged(client: Prisma.TransactionClient, siteKey: string, itemId: string, current: ProductionScheduleGrindingPlanningBoardOverride | undefined, next: { overrideResourceCd: string | null; overrideDueDate: Date | null; dueDateCleared: boolean | null; alternateRank: number | null }): Promise<ProductionScheduleGrindingPlanningBoardOverride | undefined> {
+function sameTimestamp(a: Date | null | undefined, b: Date | null | undefined): boolean {
+  return (a?.getTime() ?? null) === (b?.getTime() ?? null);
+}
+
+type PersistedSpecialDue = {
+  specialDueKind: string | null;
+  specialDueExpiresAt: Date | null;
+};
+
+async function writeOverrideIfChanged(client: Prisma.TransactionClient, siteKey: string, itemId: string, current: ProductionScheduleGrindingPlanningBoardOverride | undefined, next: { overrideResourceCd: string | null; overrideDueDate: Date | null; dueDateCleared: boolean | null; alternateRank: number | null } & PersistedSpecialDue): Promise<ProductionScheduleGrindingPlanningBoardOverride | undefined> {
   const changed = current == null
-    ? next.overrideResourceCd != null || next.overrideDueDate != null || next.dueDateCleared != null || next.alternateRank != null
-    : current.overrideResourceCd !== next.overrideResourceCd || !sameDate(current.overrideDueDate, next.overrideDueDate) || (current.dueDateCleared ?? null) !== next.dueDateCleared || current.alternateRank !== next.alternateRank;
+    ? next.overrideResourceCd != null || next.overrideDueDate != null || next.dueDateCleared != null || next.alternateRank != null || next.specialDueKind != null || next.specialDueExpiresAt != null
+    : current.overrideResourceCd !== next.overrideResourceCd || !sameDate(current.overrideDueDate, next.overrideDueDate) || (current.dueDateCleared ?? null) !== next.dueDateCleared || current.alternateRank !== next.alternateRank || (current.specialDueKind ?? null) !== next.specialDueKind || !sameTimestamp(current.specialDueExpiresAt, next.specialDueExpiresAt);
   if (!changed) return current;
   return client.productionScheduleGrindingPlanningBoardOverride.upsert({
     where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: itemId } },
-    create: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: itemId, overrideResourceCd: next.overrideResourceCd, overrideDueDate: next.overrideDueDate, dueDateCleared: next.dueDateCleared, alternateRank: next.alternateRank },
-    update: { overrideResourceCd: next.overrideResourceCd, overrideDueDate: next.overrideDueDate, dueDateCleared: next.dueDateCleared, alternateRank: next.alternateRank, version: { increment: 1 } }
+    create: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: itemId, overrideResourceCd: next.overrideResourceCd, overrideDueDate: next.overrideDueDate, dueDateCleared: next.dueDateCleared, alternateRank: next.alternateRank, specialDueKind: next.specialDueKind, specialDueExpiresAt: next.specialDueExpiresAt },
+    update: { overrideResourceCd: next.overrideResourceCd, overrideDueDate: next.overrideDueDate, dueDateCleared: next.dueDateCleared, alternateRank: next.alternateRank, specialDueKind: next.specialDueKind, specialDueExpiresAt: next.specialDueExpiresAt, version: { increment: 1 } }
   });
 }
 
-type OverrideRequest = { itemId: string; itemRevision: string; overrideVersion?: number; resourceCd?: string | null; due?: GrindingPlanningBoardDueRequest; alternateRank?: number | null };
+type OverrideRequest = { itemId: string; itemRevision: string; overrideVersion?: number; resourceCd?: string | null; due?: GrindingPlanningBoardDueRequest; specialDue?: GrindingPlanningBoardSpecialDueKind | null; alternateRank?: number | null };
+
+async function readSpecialDueCalendarModes(siteKey: string, requests: readonly OverrideRequest[]): Promise<ReadonlyMap<string, WorkCalendarMode>> {
+  if (!requests.some((request) => request.specialDue === 'overnight')) return new Map();
+  const settings = await listLoadBalancingWorkCalendarsResolved(siteKey);
+  return buildWorkCalendarModeMap(settings.items);
+}
 
 type AppliedOverrides = {
   state: PlanningState;
@@ -840,7 +862,7 @@ type AppliedOverrides = {
   overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>;
 };
 
-async function applyOverridesInTransaction(params: { client: Prisma.TransactionClient; siteKey: string; sourceRevision: string; requests: readonly OverrideRequest[]; sourceRowIds: ReadonlyMap<string, string>; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>> }): Promise<AppliedOverrides> {
+async function applyOverridesInTransaction(params: { client: Prisma.TransactionClient; siteKey: string; sourceRevision: string; requests: readonly OverrideRequest[]; sourceRowIds: ReadonlyMap<string, string>; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; workCalendarModeByResource: ReadonlyMap<string, WorkCalendarMode> }): Promise<AppliedOverrides> {
   const rowsToLock = Array.from(new Set(params.sourceRowIds.values())).sort();
   for (const sourceRowId of rowsToLock) {
     await acquireProductionScheduleParentRowLockInTransaction(params.client, sourceRowId);
@@ -851,7 +873,7 @@ async function applyOverridesInTransaction(params: { client: Prisma.TransactionC
   // Item mutations are guarded by the target itemRevision/overrideVersion only.
   // The board order version belongs to seiban-order mutations and must not make an
   // unrelated item edit fail after another terminal reorders the left pane.
-  const desired: Array<{ request: OverrideRequest; currentOverride: ProductionScheduleGrindingPlanningBoardOverride | undefined; next: { overrideResourceCd: string | null; overrideDueDate: Date | null; dueDateCleared: boolean | null; alternateRank: number | null } }> = [];
+  const desired: Array<{ request: OverrideRequest; currentOverride: ProductionScheduleGrindingPlanningBoardOverride | undefined; next: { overrideResourceCd: string | null; overrideDueDate: Date | null; dueDateCleared: boolean | null; alternateRank: number | null } & PersistedSpecialDue }> = [];
   for (const request of params.requests) {
     const item = current.byItemId.get(request.itemId);
     if (!item) throw new ApiError(409, '対象アイテムが消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
@@ -862,6 +884,8 @@ async function applyOverridesInTransaction(params: { client: Prisma.TransactionC
     let nextOverrideResource = currentOverride?.overrideResourceCd ?? null;
     let nextOverrideDue = currentOverride?.overrideDueDate ?? null;
     let nextDueDateCleared = currentOverride?.dueDateCleared ?? null;
+    let nextSpecialDueKind = currentOverride?.specialDueKind ?? null;
+    let nextSpecialDueExpiresAt = currentOverride?.specialDueExpiresAt ?? null;
     if (request.resourceCd !== undefined) {
       if (request.resourceCd == null) nextOverrideResource = null;
       else {
@@ -886,6 +910,22 @@ async function applyOverridesInTransaction(params: { client: Prisma.TransactionC
         nextDueDateCleared = false;
       }
     }
+    if (request.specialDue !== undefined) {
+      if (request.specialDue == null) {
+        nextSpecialDueKind = null;
+        nextSpecialDueExpiresAt = null;
+      } else {
+        if (!isGrindingPlanningBoardSpecialDueKind(request.specialDue)) throw new ApiError(400, '特別納期種別が不正です', undefined, 'INVALID_SPECIAL_DUE');
+        const effectiveResourceCd = nextOverrideResource ?? item.originalResourceCd;
+        nextSpecialDueKind = request.specialDue;
+        nextSpecialDueExpiresAt = resolveGrindingPlanningBoardSpecialDueExpiresAt({
+          kind: request.specialDue,
+          workCalendarMode: params.workCalendarModeByResource.get(
+            effectiveResourceCd == null ? '' : normalizeProductionScheduleResourceCd(effectiveResourceCd)
+          ) ?? DEFAULT_WORK_CALENDAR_MODE
+        });
+      }
+    }
     const resourceChanged = request.resourceCd !== undefined && (nextOverrideResource ?? item.originalResourceCd) !== item.effectiveResourceCd;
     const effectiveDueAfterOverride = nextOverrideDue != null
       ? ymd(nextOverrideDue)
@@ -896,7 +936,7 @@ async function applyOverridesInTransaction(params: { client: Prisma.TransactionC
             : item.originalDueDate)
         : item.originalDueDate;
     const dueChanged = request.due !== undefined && effectiveDueAfterOverride !== item.effectiveDueDate;
-    desired.push({ request, currentOverride, next: { overrideResourceCd: nextOverrideResource, overrideDueDate: nextOverrideDue, dueDateCleared: nextDueDateCleared, alternateRank: request.alternateRank !== undefined ? request.alternateRank : resourceChanged || dueChanged ? null : currentOverride?.alternateRank ?? null } });
+    desired.push({ request, currentOverride, next: { overrideResourceCd: nextOverrideResource, overrideDueDate: nextOverrideDue, dueDateCleared: nextDueDateCleared, alternateRank: request.alternateRank !== undefined ? request.alternateRank : resourceChanged || dueChanged ? null : currentOverride?.alternateRank ?? null, specialDueKind: nextSpecialDueKind, specialDueExpiresAt: nextSpecialDueExpiresAt } });
   }
   const overrides = new Map(current.overrides);
   for (const update of desired) {
@@ -950,13 +990,14 @@ export async function updateGrindingPlanningBoardOverrides(params: { siteKey: st
   const sourceRowIds = await discoverSourceRows(itemIds);
   await ensurePlanningBoardState(params.siteKey);
   const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
+  const workCalendarModeByResource = await readSpecialDueCalendarModes(params.siteKey, params.items);
   try {
     // Parent-row advisory/row locks and target item revisions provide the
     // write-conflict guarantee here. RepeatableRead avoids a PostgreSQL SSI
     // predicate lock on the small override table turning independent items
     // into a false serialization conflict.
     const result = await prisma.$transaction(async (client) => {
-      const applied = await applyOverridesInTransaction({ client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: params.items, sourceRowIds, policy });
+      const applied = await applyOverridesInTransaction({ client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: params.items, sourceRowIds, policy, workCalendarModeByResource });
       const projectedItems = projectCurrentItems(applied.current, applied.overrides);
       const items = params.items.map((request) => {
         const item = projectedItems.get(request.itemId);
@@ -980,8 +1021,9 @@ export async function updateGrindingPlanningBoardRank(params: { siteKey: string;
   const sourceRowIds = await discoverSourceRows([params.itemId]);
   await ensurePlanningBoardState(params.siteKey);
   const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
+  const workCalendarModeByResource = new Map<string, WorkCalendarMode>();
   try {
-    const result = await prisma.$transaction((client) => applyOverridesInTransaction({ client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: [{ itemId: params.itemId, itemRevision: params.itemRevision, overrideVersion: params.overrideVersion, alternateRank: params.alternateRank }], sourceRowIds, policy }), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    const result = await prisma.$transaction((client) => applyOverridesInTransaction({ client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: [{ itemId: params.itemId, itemRevision: params.itemRevision, overrideVersion: params.overrideVersion, alternateRank: params.alternateRank }], sourceRowIds, policy, workCalendarModeByResource }), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
     const item = projectCurrentItem(result.current, result.overrides, params.itemId);
     return {
       sourceRevision: boardRevision(result.state),
@@ -1068,6 +1110,11 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
       if (!sourceResource || sourceResource !== targetResource) {
         throw new ApiError(409, '同じ資源CDの中でのみ並べ替えできます', undefined, 'RESOURCE_ORDER_PANE_MISMATCH');
       }
+      const sourceSpecialDueBand = source.specialDue?.expiresAt ?? null;
+      const targetSpecialDueBand = target.specialDue?.expiresAt ?? null;
+      if (sourceSpecialDueBand !== targetSpecialDueBand) {
+        throw new ApiError(409, '特別納期の優先帯をまたいで並べ替えできません', undefined, 'SPECIAL_DUE_ORDER_BAND_MISMATCH');
+      }
       const pane = [...current.byItemId.values()].filter((item) =>
         isCategoryResource(item.originalResourceCd, sourceCategory, policy) &&
         (item.effectiveResourceCd ?? item.originalResourceCd) === sourceResource
@@ -1092,14 +1139,17 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
       }
 
       const overrides = new Map(current.overrides);
-      for (const [index, item] of ordered.entries()) {
+      const bandItems = ordered.filter((item) => (item.specialDue?.expiresAt ?? null) === sourceSpecialDueBand);
+      for (const [index, item] of bandItems.entries()) {
         if (index + 1 > MAX_ALTERNATE_RANK) throw new ApiError(400, '資源CD内のアイテム数が上限を超えています', undefined, 'RESOURCE_ORDER_LIMIT_EXCEEDED');
         const currentOverride = current.overrides.get(item.itemId);
         const saved = await writeOverrideIfChanged(client, params.siteKey, item.itemId, currentOverride, {
           overrideResourceCd: currentOverride?.overrideResourceCd ?? null,
           overrideDueDate: currentOverride?.overrideDueDate ?? null,
           dueDateCleared: currentOverride?.dueDateCleared ?? null,
-          alternateRank: index + 1
+          alternateRank: index + 1,
+          specialDueKind: currentOverride?.specialDueKind ?? null,
+          specialDueExpiresAt: currentOverride?.specialDueExpiresAt ?? null
         });
         if (saved) overrides.set(item.itemId, saved);
       }

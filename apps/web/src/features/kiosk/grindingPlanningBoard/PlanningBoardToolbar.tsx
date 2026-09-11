@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import type { PlanningBoardAllocation, PlanningBoardStatus } from './types';
 import type {
   GrindingPlanningBoardCategory,
+  GrindingPlanningBoardSpecialDueKind,
   GrindingPlanningBoardView
 } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';
@@ -48,6 +49,9 @@ export type PlanningBoardToolbarProps = {
   onStatusChange: (status: PlanningBoardStatus) => void;
   onAllocationChange: (allocation: PlanningBoardAllocation) => void;
   onOpenDueEditor: () => void;
+  specialDueMode?: GrindingPlanningBoardSpecialDueKind | null;
+  onSpecialDueModeChange?: (mode: GrindingPlanningBoardSpecialDueKind | null) => void;
+  specialDueDisabled?: boolean;
 };
 
 export function PlanningBoardToolbar({
@@ -63,7 +67,10 @@ export function PlanningBoardToolbar({
   onViewChange,
   onStatusChange,
   onAllocationChange,
-  onOpenDueEditor
+  onOpenDueEditor,
+  specialDueMode = null,
+  onSpecialDueModeChange,
+  specialDueDisabled = false
 }: PlanningBoardToolbarProps) {
   return (
     <div className="flex min-w-0 flex-nowrap items-center gap-1 overflow-x-auto rounded-lg border border-slate-800 bg-slate-925 px-1.5 py-1.5">
@@ -114,6 +121,28 @@ export function PlanningBoardToolbar({
         </SegmentButton>
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
+        {onSpecialDueModeChange ? (
+          <div className="flex shrink-0 items-center gap-1" role="group" aria-label="特別納期">
+            {(['overnight', 'today'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={specialDueMode === mode}
+                disabled={specialDueDisabled}
+                className={clsx(
+                  'min-h-9 shrink-0 rounded-md border px-2 text-[11px] font-semibold transition-colors',
+                  specialDueMode === mode
+                    ? 'border-amber-300 bg-amber-400/25 text-amber-100'
+                    : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-amber-300/70 hover:text-white',
+                  specialDueDisabled && 'cursor-not-allowed opacity-55'
+                )}
+                onClick={() => onSpecialDueModeChange(specialDueMode === mode ? null : mode)}
+              >
+                {mode === 'overnight' ? '朝まで' : '今日中'}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-emerald-300" aria-live="polite">
           {selectedCount}件
         </span>

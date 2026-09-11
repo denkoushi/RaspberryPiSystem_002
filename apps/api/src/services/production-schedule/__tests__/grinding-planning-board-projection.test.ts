@@ -6,6 +6,7 @@ import {
   projectGrindingPlanningBoard,
   resolveGrindingPlanningBoardItemDueDate,
   resolveGrindingPlanningBoardParentDueDate,
+  sortGrindingPlanningBoardProjectionItems,
   type GrindingPlanningBoardProjectionOverride,
   type GrindingPlanningBoardProjectionRow,
   type GrindingPlanningBoardProjectionRowDetail
@@ -90,6 +91,47 @@ describe('grinding-planning-board-projection', () => {
     expect(item?.machineName).toBe('機種A');
     expect(item?.originalRank).toBe(4);
     expect(item?.alternateRank).toBeNull();
+  });
+
+  it('projects special due metadata and sorts resource items by expiry before rank', () => {
+    const first = sourceRow({ FKOJUN: '10' }, 'row-first');
+    const second = sourceRow({ FKOJUN: '20' }, 'row-second');
+    const firstId = buildGrindingPlanningBoardRowItemId(first.rowData);
+    const secondId = buildGrindingPlanningBoardRowItemId(second.rowData);
+    const result = projectGrindingPlanningBoard(baseParams({
+      rows: [first, second],
+      details: new Map([
+        ['row-first', detail()],
+        ['row-second', detail()]
+      ]),
+      overrides: new Map([
+        [firstId, {
+          overrideResourceCd: null,
+          overrideDueDate: null,
+          alternateRank: 1,
+          specialDueKind: 'overnight',
+          specialDueExpiresAt: new Date('2026-09-13T23:00:00.000Z'),
+          version: 1
+        }],
+        [secondId, {
+          overrideResourceCd: null,
+          overrideDueDate: null,
+          alternateRank: 9,
+          specialDueKind: 'today',
+          specialDueExpiresAt: new Date('2026-09-11T15:00:00.000Z'),
+          version: 1
+        }]
+      ])
+    }));
+
+    expect(result.items.find((item) => item.itemId === secondId)?.specialDue).toEqual({
+      kind: 'today',
+      expiresAt: '2026-09-11T15:00:00.000Z'
+    });
+    expect(sortGrindingPlanningBoardProjectionItems(result.items, ['S-001'], 'resource', 'alternate').map((item) => item.itemId)).toEqual([
+      secondId,
+      firstId
+    ]);
   });
 
   it('coerces logical-key values as SQL JSON text and sorts original mode by original fields', () => {

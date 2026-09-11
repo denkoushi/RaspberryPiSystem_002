@@ -294,7 +294,7 @@ async function boardFor(fixture: Fixture, options: Partial<Parameters<BoardServi
   });
 }
 
-async function updateItem(fixture: Fixture, item: GrindingPlanningBoardItem, options: { resourceCd?: string | null; due?: { kind: 'date'; date: string } | { kind: 'offsetDays'; days: number } | { kind: 'restore' }; alternateRank?: number | null }, sourceRevision: string) {
+async function updateItem(fixture: Fixture, item: GrindingPlanningBoardItem, options: { resourceCd?: string | null; due?: { kind: 'date'; date: string } | { kind: 'offsetDays'; days: number } | { kind: 'restore' }; alternateRank?: number | null; specialDue?: 'today' | 'overnight' | null }, sourceRevision: string) {
   return service().updateGrindingPlanningBoardOverrides({
     siteKey: fixture.siteKey,
     sourceRevision,
@@ -603,6 +603,71 @@ describeIntegration('grinding planning board service real Postgres integration',
       db().kioskProductionScheduleSearchState.findUniqueOrThrow({ where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: fixture.siteKey } }, select: { state: true, updatedAt: true } }),
       db().productionScheduleResourceMaster.findMany({ where: { resourceName: { in: fixture.resourceNames } }, orderBy: { resourceName: 'asc' }, select: { resourceCd: true, resourceName: true, resourceClassCd: true, resourceGroupCd: true } })
     ])).toEqual(before);
+  });
+
+  it('persists special due per site, orders by expiry, preserves base rank, and rejects stale updates', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-TODAY`, fhincd: 'PART-TODAY', productNo: '1', processOrder: '1' },
+      { fseiban: `${fixture.prefix}-OVERNIGHT`, fhincd: 'PART-OVERNIGHT', productNo: '2', processOrder: '2' },
+      { fseiban: `${fixture.prefix}-PLAIN`, fhincd: 'PART-PLAIN', productNo: '3', processOrder: '3' }
+    ]);
+
+    const initial = await boardFor(fixture, { view: 'resource' });
+    const today = boardItem(initial, (item) => item.fseiban.endsWith('-TODAY'));
+    const overnight = boardItem(initial, (item) => item.fseiban.endsWith('-OVERNIGHT'));
+    const plain = boardItem(initial, (item) => item.fseiban.endsWith('-PLAIN'));
+
+    const ranked = await service().updateGrindingPlanningBoardRank({
+      siteKey: fixture.siteKey,
+      sourceRevision: initial.sourceRevision,
+      itemId: plain.itemId,
+      itemRevision: plain.itemRevision,
+      overrideVersion: plain.version,
+      alternateRank: 2
+    });
+    const afterRank = await boardFor(fixture, { view: 'resource' });
+    const rankedPlain = boardItem(afterRank, (item) => item.itemId === plain.itemId);
+    expect(rankedPlain.alternateRank).toBe(2);
+
+    const afterToday = await updateItem(fixture, today, { specialDue: 'today' }, initial.sourceRevision);
+    const afterOvernight = await updateItem(fixture, overnight, { specialDue: 'overnight' }, afterToday.sourceRevision);
+    expect(afterToday.items[0]).toMatchObject({ itemId: today.itemId, specialDue: { kind: 'today', expiresAt: expect.any(String) } });
+    expect(afterOvernight.items.find((item) => item.itemId === overnight.itemId)).toMatchObject({ specialDue: { kind: 'overnight', expiresAt: expect.any(String) } });
+
+    const saved = await db().productionScheduleGrindingPlanningBoardOverride.findMany({
+      where: { siteKey: fixture.siteKey },
+      orderBy: { itemKey: 'asc' },
+      select: { itemKey: true, alternateRank: true, specialDueKind: true, specialDueExpiresAt: true }
+    });
+    expect(saved.filter((item) => item.specialDueKind)).toHaveLength(2);
+    expect(saved.find((item) => item.itemKey === plain.itemId)?.alternateRank).toBe(2);
+
+    const resourceBoard = await boardFor(fixture, { view: 'resource' });
+    expect(resourceBoard.items.slice(0, 2).map((item) => item.itemId)).toEqual([today.itemId, overnight.itemId]);
+    expect(resourceBoard.items[2]?.itemId).toBe(plain.itemId);
+    const reloadedToday = boardItem(resourceBoard, (item) => item.itemId === today.itemId);
+    const changedToday = await updateItem(fixture, reloadedToday, { resourceCd: '581', due: { kind: 'offsetDays', days: 1 } }, resourceBoard.sourceRevision);
+    expect(changedToday.items[0]).toMatchObject({ itemId: today.itemId, specialDue: { kind: 'today' } });
+
+    await expect(updateItem(fixture, today, { specialDue: null }, initial.sourceRevision)).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
+    const current = await boardFor(fixture, { view: 'resource' });
+    const currentToday = boardItem(current, (item) => item.itemId === today.itemId);
+    const cleared = await updateItem(fixture, currentToday, { specialDue: null }, current.sourceRevision);
+    expect(cleared.items.find((item) => item.itemId === today.itemId)).toMatchObject({ specialDue: null });
+
+    const afterClear = await boardFor(fixture, { view: 'resource' });
+    expect(boardItem(afterClear, (item) => item.itemId === plain.itemId).alternateRank).toBe(2);
+
+    const otherSite = { ...fixture, siteKey: `${fixture.siteKey}-other` };
+    try {
+      const otherBoard = await boardFor(otherSite, { view: 'resource' });
+      expect(otherBoard.items.every((item) => item.specialDue == null)).toBe(true);
+    } finally {
+      await db().productionScheduleGrindingPlanningBoardState.deleteMany({ where: { siteKey: otherSite.siteKey } });
+    }
+
+    expect(ranked.itemRevision).not.toBe(plain.itemRevision);
   });
 
   it('reorders a resource pane across seibans and reindexes hidden completed siblings atomically', async () => {
