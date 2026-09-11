@@ -10,6 +10,7 @@ import {
   useUpdateKioskGrindingPlanningBoardOverrides,
   useUpdateKioskGrindingPlanningBoardDueScope,
   useUpdateKioskGrindingPlanningBoardRank,
+  useUpdateKioskGrindingPlanningBoardResourceOrder,
   useUpdateKioskGrindingPlanningBoardSeibanOrder
 } from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
@@ -36,6 +37,7 @@ import type {
   GrindingPlanningBoardItem,
   GrindingPlanningBoardOverrideItemRequest,
   GrindingPlanningBoardRankResponse,
+  GrindingPlanningBoardResourceOrderPlacement,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardDueRequest
 } from '@raspi-system/shared-types';
@@ -201,8 +203,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [pendingRankOverrides, setPendingRankOverrides] = useState<Record<string, PendingRankOverride>>({});
   const [pendingOverrideItems, setPendingOverrideItems] = useState<Record<string, PendingOverrideItem>>({});
   const [pendingDueScope, setPendingDueScope] = useState<PendingDueScopeUpdate | null>(null);
+  const [resourceOrderSaving, setResourceOrderSaving] = useState(false);
   const rankRequestIdRef = useRef(0);
   const resourceDragSavePendingRef = useRef(false);
+  const resourceOrderSavePendingRef = useRef(false);
 
   const boardQuery = useKioskGrindingPlanningBoardProgressive(
     { category, view, completionFilter: status },
@@ -217,6 +221,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const updateOverrides = useUpdateKioskGrindingPlanningBoardOverrides();
   const updateDueScope = useUpdateKioskGrindingPlanningBoardDueScope();
   const { mutateAsync: updateRankAsync } = useUpdateKioskGrindingPlanningBoardRank();
+  const { mutateAsync: updateResourceOrderAsync } = useUpdateKioskGrindingPlanningBoardResourceOrder();
   const updateOrder = useUpdateKioskGrindingPlanningBoardSeibanOrder();
 
   const data = boardQuery.data;
@@ -240,8 +245,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const rankDisabled = useCallback((item: GrindingPlanningBoardItem) => (
     !rankMutationReady ||
     rankMutationPending ||
+    resourceOrderSaving ||
     (pendingOverrideItems[item.itemId] != null && pendingOverrideItems[item.itemId].responseItemRevision == null)
-  ), [pendingOverrideItems, rankMutationPending, rankMutationReady]);
+  ), [pendingOverrideItems, rankMutationPending, rankMutationReady, resourceOrderSaving]);
 
   useEffect(() => {
     setPendingRankOverrides((current) => {
@@ -366,8 +372,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     }
     setDueDetailTargetFseiban((current) => current && serverOrder.includes(current) ? current : serverOrder[0] ?? null);
     if (!openInitialized) {
-      setOpenFseibans(new Set(data.seibanOrder));
-      setOpenInitialized(true);
+      const initialOpenFseibans = data.seibanOrder.length > 0 ? data.seibanOrder : serverOrder;
+      if (initialOpenFseibans.length > 0) {
+        setOpenFseibans(new Set(initialOpenFseibans));
+        setOpenInitialized(true);
+      }
     }
   }, [activeInitialized, boardQuery.isPlaceholderData, data, openInitialized, orderInitialized, orderSaving]);
 
@@ -416,7 +425,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     [selectedItemIds, visibleItems]
   );
   const editorItems = editorSnapshot?.items ?? [];
-  const resourceDragDisabled = updateOverrides.isPending || Object.values(pendingOverrideItems).some(
+  const resourceDragDisabled = resourceOrderSaving || rankMutationPending || updateOverrides.isPending || Object.values(pendingOverrideItems).some(
     (pending) => pending.responseItemRevision == null
   );
 
@@ -650,6 +659,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     if (
       !data ||
       !scopeReady ||
+      !rankMutationReady ||
       !sourceRevision ||
       allocation === 'original' ||
       item.isCompleted ||
@@ -657,6 +667,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       currentResource === targetResource ||
       updateOverrides.isPending ||
       resourceDragSavePendingRef.current ||
+      resourceOrderSavePendingRef.current ||
+      rankMutationPending ||
       (pendingOverride != null && pendingOverride.responseItemRevision == null)
     ) return;
 
@@ -710,7 +722,123 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     } finally {
       resourceDragSavePendingRef.current = false;
     }
-  }, [allocation, data, handleError, pendingOverrideItems, scopeReady, sourceRevision, updateOverrides]);
+  }, [allocation, data, handleError, pendingOverrideItems, rankMutationPending, rankMutationReady, scopeReady, sourceRevision, updateOverrides]);
+
+  const reorderResourceByDrag = useCallback(async (
+    item: GrindingPlanningBoardItem,
+    targetItem: GrindingPlanningBoardItem,
+    placement: GrindingPlanningBoardResourceOrderPlacement
+  ) => {
+    const currentResource = resolveGrindingPlanningBoardResource(item, allocation);
+    if (
+      !data ||
+      !scopeReady ||
+      !rankMutationReady ||
+      !sourceRevision ||
+      allocation === 'original' ||
+      item.isCompleted ||
+      targetItem.isCompleted ||
+      currentResource == null ||
+      currentResource !== resolveGrindingPlanningBoardResource(targetItem, allocation) ||
+      !data.resources.includes(currentResource) ||
+      updateOverrides.isPending ||
+      resourceDragSavePendingRef.current ||
+      resourceOrderSavePendingRef.current ||
+      rankMutationPending ||
+      Object.values(pendingOverrideItems).some((pending) => pending.responseItemRevision == null)
+    ) return;
+
+    resourceOrderSavePendingRef.current = true;
+    setResourceOrderSaving(true);
+    setRankConflict(false);
+    const requestSourceRevision = data.sourceRevision;
+    const requestId = ++rankRequestIdRef.current;
+    const visiblePaneItems = sortGrindingPlanningBoardItems(
+      visibleItems.filter((candidate) => resolveGrindingPlanningBoardResource(candidate, allocation) === currentResource),
+      registeredFseibans,
+      'resource',
+      allocation
+    );
+    const sourceIndex = visiblePaneItems.findIndex((candidate) => candidate.itemId === item.itemId);
+    const targetIndex = visiblePaneItems.findIndex((candidate) => candidate.itemId === targetItem.itemId);
+    if (sourceIndex < 0 || targetIndex < 0) {
+      resourceOrderSavePendingRef.current = false;
+      setResourceOrderSaving(false);
+      return;
+    }
+    const optimisticPaneItems = [...visiblePaneItems];
+    const [optimisticMoved] = optimisticPaneItems.splice(sourceIndex, 1);
+    const optimisticInsertionIndex = optimisticPaneItems.findIndex((candidate) => candidate.itemId === targetItem.itemId) + (placement === 'after' ? 1 : 0);
+    optimisticPaneItems.splice(optimisticInsertionIndex, 0, optimisticMoved);
+    setPendingRankOverrides((current) => {
+      const next = { ...current };
+      for (const [index, optimisticItem] of optimisticPaneItems.entries()) {
+        const previous = current[optimisticItem.itemId];
+        const restoreState: RankDisplayState = previous?.phase === 'awaitingSync'
+          ? { rank: previous.rank, itemRevision: previous.itemRevision, version: previous.version }
+          : { rank: optimisticItem.alternateRank, itemRevision: optimisticItem.itemRevision, version: optimisticItem.version };
+        next[optimisticItem.itemId] = {
+          scopeKey: rankScopeKey,
+          requestId,
+          staleStates: [...(previous?.staleStates ?? []), restoreState],
+          restoreState,
+          itemRevision: optimisticItem.itemRevision,
+          version: optimisticItem.version,
+          rank: index + 1,
+          phase: 'saving'
+        };
+      }
+      return next;
+    });
+    try {
+      const result = await updateResourceOrderAsync({
+        sourceRevision: requestSourceRevision,
+        itemId: item.itemId,
+        itemRevision: item.itemRevision,
+        overrideVersion: item.version,
+        targetItemId: targetItem.itemId,
+        targetItemRevision: targetItem.itemRevision,
+        targetOverrideVersion: targetItem.version,
+        placement
+      });
+      setPendingRankOverrides((current) => {
+        const next = { ...current };
+        for (const responseItem of result.items) {
+          const baseItem = displayItems.find((candidate) => candidate.itemId === responseItem.itemId);
+          const pending = current[responseItem.itemId];
+          if (!baseItem || !pending || pending.requestId !== requestId) continue;
+          next[responseItem.itemId] = {
+            ...pending,
+            itemRevision: responseItem.itemRevision,
+            version: responseItem.version,
+            rank: responseItem.alternateRank,
+            phase: 'awaitingSync'
+          };
+        }
+        return next;
+      });
+      setFeedback('資源CD内の順序を保存しました。');
+    } catch (error) {
+      setPendingRankOverrides((current) => {
+        const next = { ...current };
+        for (const [itemId, pending] of Object.entries(current)) {
+          if (pending.requestId !== requestId || pending.scopeKey !== rankScopeKey) continue;
+          next[itemId] = {
+            ...pending,
+            rank: pending.restoreState.rank,
+            itemRevision: pending.restoreState.itemRevision,
+            version: pending.restoreState.version,
+            phase: 'awaitingSync'
+          };
+        }
+        return next;
+      });
+      handleError(error);
+    } finally {
+      resourceOrderSavePendingRef.current = false;
+      setResourceOrderSaving(false);
+    }
+  }, [allocation, data, displayItems, handleError, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, registeredFseibans, scopeReady, sourceRevision, updateOverrides.isPending, updateResourceOrderAsync, visibleItems]);
 
   const refreshAfterConflict = async () => {
     setEditorError('最新状態を取得しています…');
@@ -730,7 +858,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   };
 
   const changeRank = useCallback(async (item: GrindingPlanningBoardItem, rank: number | null) => {
-    if (!data || !rankMutationReady || allocation === 'original' || item.isCompleted || rankMutationPending || (pendingOverrideItems[item.itemId] != null && pendingOverrideItems[item.itemId].responseItemRevision == null)) return;
+    if (!data || !rankMutationReady || allocation === 'original' || item.isCompleted || rankMutationPending || resourceOrderSaving || resourceOrderSavePendingRef.current || (pendingOverrideItems[item.itemId] != null && pendingOverrideItems[item.itemId].responseItemRevision == null)) return;
     const requestId = ++rankRequestIdRef.current;
     const requestScopeKey = rankScopeKey;
     setRankConflict(false);
@@ -788,7 +916,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       });
       handleError(error);
     }
-  }, [allocation, data, handleError, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, sourceRevision, updateRankAsync]);
+  }, [allocation, data, handleError, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, resourceOrderSaving, sourceRevision, updateRankAsync]);
 
   const persistOrder = async (nextOrder: string[]): Promise<boolean> => {
     if (!data || !scopeReady || allocation === 'original') return false;
@@ -972,7 +1100,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         status={status}
         allocation={allocation}
         selectedCount={toolbarSelectedItems.length}
-        bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || rankMutationPending}
+        bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || rankMutationPending || resourceOrderSaving}
         registeredCount={registeredFseibans.length}
         onOpenDrawer={() => setDrawerOpen(true)}
         onCategoryChange={setCategory}
@@ -1054,6 +1182,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             onToggleItem={toggleItem}
             onResourceClick={openEditorForItem}
             onResourceDrop={moveResourceByDrag}
+            onResourceReorder={reorderResourceByDrag}
             onRankChange={changeRank}
             disabled={interactionLocked}
             resourceDragDisabled={resourceDragDisabled}

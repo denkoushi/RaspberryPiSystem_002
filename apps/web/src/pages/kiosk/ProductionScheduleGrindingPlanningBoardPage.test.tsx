@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   dueDetail: vi.fn(),
   dueScope: vi.fn(),
   rank: vi.fn(),
+  resourceOrder: vi.fn(),
   order: vi.fn()
 }));
 
@@ -69,6 +70,7 @@ vi.mock('../../api/hooks', () => ({
   useUpdateKioskGrindingPlanningBoardOverrides: () => ({ mutateAsync: mocks.overrides, isPending: false }),
   useUpdateKioskGrindingPlanningBoardDueScope: () => ({ mutateAsync: mocks.dueScope, isPending: false }),
   useUpdateKioskGrindingPlanningBoardRank: () => ({ mutateAsync: mocks.rank, isPending: false }),
+  useUpdateKioskGrindingPlanningBoardResourceOrder: () => ({ mutateAsync: mocks.resourceOrder, isPending: false }),
   useUpdateKioskGrindingPlanningBoardSeibanOrder: () => ({ mutateAsync: mocks.order, isPending: false })
 }));
 
@@ -132,6 +134,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.dueDetail.mockReset();
     mocks.dueScope.mockReset();
     mocks.rank.mockReset();
+    mocks.resourceOrder.mockReset();
     mocks.order.mockReset();
     mocks.refetch.mockResolvedValue({ data: fixture() });
     mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isError: false, refetch: mocks.refetch });
@@ -150,13 +153,14 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       isFetching: false,
       isError: false
     });
-  mocks.rank.mockImplementation(async (payload: { itemId: string; itemRevision: string; overrideVersion: number; alternateRank: number | null }): Promise<GrindingPlanningBoardRankResponse> => ({
+    mocks.rank.mockImplementation(async (payload: { itemId: string; itemRevision: string; overrideVersion: number; alternateRank: number | null }): Promise<GrindingPlanningBoardRankResponse> => ({
     sourceRevision: 'board-1',
     itemId: payload.itemId,
     itemRevision: `revision-${payload.itemId}-after-rank-${payload.overrideVersion + 1}`,
     overrideVersion: payload.overrideVersion + 1,
-    alternateRank: payload.alternateRank
-  }));
+      alternateRank: payload.alternateRank
+    }));
+    mocks.resourceOrder.mockResolvedValue({ sourceRevision: 'board-1', items: [] });
     mocks.order.mockResolvedValue({ sourceRevision: 'board-2', seibanOrder: ['26-1041', '26-1042'] });
   });
 
@@ -164,7 +168,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('通常表示から製番を広げ、日付と半角機種名を表示する', () => {
+  it('通常表示で製番明細を初期展開し、手動で閉じられる', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
 
     expect(screen.getByTestId('planning-board-seiban-26-1041')).toBeInTheDocument();
@@ -175,12 +179,50 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getAllByText('5個')).toHaveLength(4);
     expect(screen.queryByText(/3\/20工程/)).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: '選択' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('planning-board-item-a')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '製番26-1041の明細を閉じる' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '製番26-1041を広げる' }));
-    expect(screen.getByTestId('planning-board-focus-view')).toBeInTheDocument();
-    expect(screen.getByText('自動組立機 AX-200')).toBeInTheDocument();
-    expect(screen.queryByRole('columnheader', { name: '選択' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '製番26-1041を一覧に戻す' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '製番26-1041の明細を閉じる' }));
+    expect(screen.queryByTestId('planning-board-item-a')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '製番26-1041の明細を開く' })).toBeInTheDocument();
+  });
+
+  it('資源CD内の並べ替えを即時表示し、保存失敗時に元の順序へ戻す', async () => {
+    let rejectResourceOrder: ((error: Error) => void) | undefined;
+    mocks.resourceOrder.mockImplementation(() => new Promise((_resolve, reject) => {
+      rejectResourceOrder = reject;
+    }));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+
+    const resourceView = screen.getByTestId('planning-board-resource-view');
+    const rowIds = () => [...resourceView.querySelectorAll<HTMLElement>('tbody tr')]
+      .map((row) => row.dataset.planningBoardItemId);
+    expect(rowIds()).toEqual(['a', 'b', 'c', 'd']);
+    const source = within(screen.getByTestId('planning-board-item-d')).getByRole('button', { name: '資源CD 305を変更' });
+    const pane = source.closest('[data-planning-board-resource-pane]')!;
+    const targetRow = screen.getByTestId('planning-board-item-a');
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: vi.fn(() => [targetRow])
+    });
+    vi.spyOn(targetRow, 'getBoundingClientRect').mockReturnValue({ top: 100, bottom: 140, height: 40 } as DOMRect);
+
+    fireEvent.pointerDown(source, { pointerId: 21, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(pane, { pointerId: 21, clientX: 10, clientY: 21 });
+    fireEvent.pointerUp(pane, { pointerId: 21, clientX: 10, clientY: 110 });
+
+    expect(rowIds()).toEqual(['d', 'a', 'b', 'c']);
+    expect(within(screen.getByTestId('planning-board-item-a')).getByRole('combobox')).toBeDisabled();
+    await waitFor(() => expect(mocks.resourceOrder).toHaveBeenCalledWith(expect.objectContaining({
+      itemId: 'd',
+      targetItemId: 'a',
+      placement: 'before'
+    })));
+
+    rejectResourceOrder?.(new Error('save failed'));
+    await waitFor(() => expect(rowIds()).toEqual(['a', 'b', 'c', 'd']));
+    expect(screen.getByRole('status')).toHaveTextContent('保存できませんでした');
   });
 
   it('機種名数字検索は候補だけを絞り、解除で選択済み製番も含めて復帰する', () => {
@@ -278,7 +320,12 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
     expect(screen.getByRole('button', { name: /末尾検索対象Aの候補を閉じる/ })).toBeInTheDocument();
-    expect(screen.getByText(/期限超過/)).toBeInTheDocument();
+    const overdueCandidateCard = screen.getByLabelText('CAND-1を登録候補に選択').closest('label');
+    expect(overdueCandidateCard).not.toBeNull();
+    expect(overdueCandidateCard).toHaveTextContent('08/10');
+    expect(overdueCandidateCard).toHaveTextContent('未登録');
+    expect(overdueCandidateCard).not.toHaveTextContent('納期');
+    expect(screen.queryByText(/期限超過/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText('CAND-DONEを登録候補に選択')).not.toBeInTheDocument();
 
     fireEvent.change(within(drawer).getByRole('searchbox'), { target: { value: '末尾検索対象Ａ' } });

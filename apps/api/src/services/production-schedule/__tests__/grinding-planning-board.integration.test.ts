@@ -605,6 +605,179 @@ describeIntegration('grinding planning board service real Postgres integration',
     ])).toEqual(before);
   });
 
+  it('reorders a resource pane across seibans and reindexes hidden completed siblings atomically', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-A`, fhincd: 'PART-A', productNo: 'Z', processOrder: '20', dueDate: '2026-09-20' },
+      { fseiban: `${fixture.prefix}-B`, fhincd: 'PART-B', productNo: 'A', processOrder: '30', dueDate: '2026-09-12' },
+      { fseiban: `${fixture.prefix}-C`, fhincd: 'PART-C', productNo: 'B', processOrder: '10', dueDate: '2026-09-13' },
+      { fseiban: `${fixture.prefix}-DONE`, fhincd: 'PART-DONE', productNo: 'C', processOrder: '1', dueDate: '2026-09-11', completed: true }
+    ]);
+    const incomplete = await boardFor(fixture, { view: 'resource', completionFilter: 'incomplete' });
+    const source = boardItem(incomplete, (item) => item.fseiban.endsWith('-C'));
+    const target = boardItem(incomplete, (item) => item.fseiban.endsWith('-A'));
+    const result = await service().updateGrindingPlanningBoardResourceOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: incomplete.sourceRevision,
+      itemId: source.itemId,
+      itemRevision: source.itemRevision,
+      overrideVersion: source.version,
+      targetItemId: target.itemId,
+      targetItemRevision: target.itemRevision,
+      targetOverrideVersion: target.version,
+      placement: 'before'
+    });
+    expect(result.items.map((item) => item.fseiban)).toEqual([
+      `${fixture.prefix}-C`,
+      `${fixture.prefix}-A`,
+      `${fixture.prefix}-B`,
+      `${fixture.prefix}-DONE`
+    ]);
+    expect(result.items.map((item) => item.alternateRank)).toEqual([1, 2, 3, 4]);
+    expect(result.items.find((item) => item.fseiban.endsWith('-DONE'))?.isCompleted).toBe(true);
+
+    const saved = await db().productionScheduleGrindingPlanningBoardOverride.findMany({
+      where: { siteKey: fixture.siteKey },
+      orderBy: { itemKey: 'asc' },
+      select: { itemKey: true, alternateRank: true, version: true }
+    });
+    expect(saved).toHaveLength(4);
+    const versionsBeforeNoop = saved.map((item) => ({ itemKey: item.itemKey, version: item.version }));
+    const afterNoop = await service().updateGrindingPlanningBoardResourceOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: result.sourceRevision,
+      itemId: result.items[0]!.itemId,
+      itemRevision: result.items[0]!.itemRevision,
+      overrideVersion: result.items[0]!.version,
+      targetItemId: result.items[1]!.itemId,
+      targetItemRevision: result.items[1]!.itemRevision,
+      targetOverrideVersion: result.items[1]!.version,
+      placement: 'before'
+    });
+    expect(afterNoop.items.map((item) => item.itemId)).toEqual(result.items.map((item) => item.itemId));
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.findMany({
+      where: { siteKey: fixture.siteKey },
+      orderBy: { itemKey: 'asc' },
+      select: { itemKey: true, version: true }
+    })).toEqual(versionsBeforeNoop);
+  });
+
+  it('persists dense resource ranks beyond ten and rejects stale or completed order targets atomically', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [
+      ...Array.from({ length: 12 }, (_, index) => ({
+        fseiban: `${fixture.prefix}-ACTIVE-${String(index + 1).padStart(2, '0')}`,
+        fhincd: `${fixture.prefix}-PART-${index + 1}`,
+        productNo: String(index + 1),
+        processOrder: String(index + 1),
+        dueDate: '2026-09-20'
+      })),
+      {
+        fseiban: `${fixture.prefix}-DONE`,
+        fhincd: `${fixture.prefix}-PART-DONE`,
+        productNo: '13',
+        processOrder: '13',
+        dueDate: '2026-09-20',
+        completed: true
+      }
+    ]);
+
+    const initial = await boardFor(fixture, { view: 'resource', completionFilter: 'incomplete' });
+    const rankedItem = boardItem(initial, (item) => item.fseiban.endsWith('-ACTIVE-11'));
+    const rankResult = await service().updateGrindingPlanningBoardRank({
+      siteKey: fixture.siteKey,
+      sourceRevision: initial.sourceRevision,
+      itemId: rankedItem.itemId,
+      itemRevision: rankedItem.itemRevision,
+      overrideVersion: rankedItem.version,
+      alternateRank: 11
+    });
+    expect(rankResult.alternateRank).toBe(11);
+
+    const ranked = await boardFor(fixture, { view: 'resource', completionFilter: 'incomplete' });
+    const source = boardItem(ranked, (item) => item.fseiban.endsWith('-ACTIVE-12'));
+    const target = boardItem(ranked, (item) => item.fseiban.endsWith('-ACTIVE-01'));
+    const reordered = await service().updateGrindingPlanningBoardResourceOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: ranked.sourceRevision,
+      itemId: source.itemId,
+      itemRevision: source.itemRevision,
+      overrideVersion: source.version,
+      targetItemId: target.itemId,
+      targetItemRevision: target.itemRevision,
+      targetOverrideVersion: target.version,
+      placement: 'before'
+    });
+    expect(reordered.items).toHaveLength(13);
+    expect(reordered.items.map((item) => item.alternateRank)).toEqual(Array.from({ length: 13 }, (_, index) => index + 1));
+    expect(reordered.items.some((item) => item.isCompleted)).toBe(true);
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: fixture.siteKey } })).toBe(13);
+
+    const staleTarget = reordered.items[1]!;
+    const staleSource = reordered.items[0]!;
+    const changedTarget = await service().updateGrindingPlanningBoardRank({
+      siteKey: fixture.siteKey,
+      sourceRevision: reordered.sourceRevision,
+      itemId: staleTarget.itemId,
+      itemRevision: staleTarget.itemRevision,
+      overrideVersion: staleTarget.version,
+      alternateRank: 12
+    });
+    expect(changedTarget.itemRevision).not.toBe(staleTarget.itemRevision);
+    const savedBeforeStale = await db().productionScheduleGrindingPlanningBoardOverride.findMany({
+      where: { siteKey: fixture.siteKey },
+      orderBy: { itemKey: 'asc' },
+      select: { itemKey: true, alternateRank: true, version: true }
+    });
+    await expect(service().updateGrindingPlanningBoardResourceOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: changedTarget.sourceRevision,
+      itemId: staleSource.itemId,
+      itemRevision: staleSource.itemRevision,
+      overrideVersion: staleSource.version,
+      targetItemId: staleTarget.itemId,
+      targetItemRevision: staleTarget.itemRevision,
+      targetOverrideVersion: staleTarget.version,
+      placement: 'before'
+    })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.findMany({
+      where: { siteKey: fixture.siteKey },
+      orderBy: { itemKey: 'asc' },
+      select: { itemKey: true, alternateRank: true, version: true }
+    })).toEqual(savedBeforeStale);
+
+    const latest = await boardFor(fixture, { view: 'resource' });
+    const completed = boardItem(latest, (item) => item.isCompleted);
+    const active = boardItem(latest, (item) => !item.isCompleted);
+    await expect(service().updateGrindingPlanningBoardResourceOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: latest.sourceRevision,
+      itemId: completed.itemId,
+      itemRevision: completed.itemRevision,
+      overrideVersion: completed.version,
+      targetItemId: active.itemId,
+      targetItemRevision: active.itemRevision,
+      targetOverrideVersion: active.version,
+      placement: 'before'
+    })).rejects.toMatchObject({ code: 'COMPLETED_ITEM' });
+    await expect(service().updateGrindingPlanningBoardResourceOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: latest.sourceRevision,
+      itemId: active.itemId,
+      itemRevision: active.itemRevision,
+      overrideVersion: active.version,
+      targetItemId: completed.itemId,
+      targetItemRevision: completed.itemRevision,
+      targetOverrideVersion: completed.version,
+      placement: 'before'
+    })).rejects.toMatchObject({ code: 'COMPLETED_ITEM' });
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.findMany({
+      where: { siteKey: fixture.siteKey },
+      orderBy: { itemKey: 'asc' },
+      select: { itemKey: true, alternateRank: true, version: true }
+    })).toEqual(savedBeforeStale);
+  });
+
   it('rejects completed and externally completed items without writing overrides', async () => {
     const fixture = await createFixture();
     const [completedRow, externalRow] = await addRows(fixture, [

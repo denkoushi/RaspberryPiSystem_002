@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   updateOverrides: vi.fn(),
   updateRank: vi.fn(),
+  updateResourceOrder: vi.fn(),
   updateOrder: vi.fn()
 }));
 
@@ -13,6 +14,7 @@ vi.mock('../../../../services/production-schedule/grinding-planning-board.servic
   getGrindingPlanningBoard: mocks.get,
   updateGrindingPlanningBoardOverrides: mocks.updateOverrides,
   updateGrindingPlanningBoardRank: mocks.updateRank,
+  updateGrindingPlanningBoardResourceOrder: mocks.updateResourceOrder,
   updateGrindingPlanningBoardSeibanOrder: mocks.updateOrder
 }));
 
@@ -97,6 +99,44 @@ describe('grinding planning board route scope', () => {
       });
       expect(response.statusCode).toBe(400);
       expect(mocks.get).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('passes the scoped same-resource order request to the service', async () => {
+    const requireClientDevice = vi.fn(async () => ({ id: 'device-1', apiKey: 'key-1', name: 'terminal-1', location: 'site-a', statusClientId: null }));
+    mocks.updateResourceOrder.mockResolvedValue({ sourceRevision: 'next', items: [] });
+    const app = await createApp(requireClientDevice);
+    try {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/kiosk/production-schedule/grinding-planning-board/resource-order',
+        headers: { 'x-client-key': 'key-1' },
+        payload: {
+          sourceRevision: 'board-revision',
+          itemId: 'source-item',
+          itemRevision: 'source-revision',
+          overrideVersion: 2,
+          targetItemId: 'target-item',
+          targetItemRevision: 'target-revision',
+          targetOverrideVersion: 3,
+          placement: 'before',
+          siteKey: 'foreign-site'
+        }
+      });
+      expect(response.statusCode).toBe(200);
+      expect(mocks.updateResourceOrder).toHaveBeenCalledWith({
+        siteKey: 'site-a',
+        sourceRevision: 'board-revision',
+        itemId: 'source-item',
+        itemRevision: 'source-revision',
+        overrideVersion: 2,
+        targetItemId: 'target-item',
+        targetItemRevision: 'target-revision',
+        targetOverrideVersion: 3,
+        placement: 'before'
+      });
     } finally {
       await app.close();
     }

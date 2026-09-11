@@ -48,8 +48,15 @@ export function compareGrindingPlanningBoardItems(
   left: GrindingPlanningBoardItem,
   right: GrindingPlanningBoardItem,
   seibanOrder: ReadonlyMap<string, number>,
-  allocation: PlanningBoardAllocation
+  allocation: PlanningBoardAllocation,
+  view: GrindingPlanningBoardView = 'seiban'
 ): number {
+  if (view === 'resource' && allocation === 'alternate') {
+    const leftRank = resolveGrindingPlanningBoardRank(left, allocation) ?? UNKNOWN_ORDER;
+    const rightRank = resolveGrindingPlanningBoardRank(right, allocation) ?? UNKNOWN_ORDER;
+    if (leftRank !== rightRank) return leftRank - rightRank;
+  }
+
   const leftSeibanOrder = seibanOrder.get(left.fseiban) ?? UNKNOWN_ORDER;
   const rightSeibanOrder = seibanOrder.get(right.fseiban) ?? UNKNOWN_ORDER;
   if (leftSeibanOrder !== rightSeibanOrder) return leftSeibanOrder - rightSeibanOrder;
@@ -89,9 +96,6 @@ export function sortGrindingPlanningBoardItems(
   return items
     .slice()
     .sort((left, right) => {
-      // Both views retain the same stable item order. The view controls grouping in the UI;
-      // the comparator only defines item order within and across the selected groups.
-      void view;
-      return compareGrindingPlanningBoardItems(left, right, orderBySeiban, allocation);
+      return compareGrindingPlanningBoardItems(left, right, orderBySeiban, allocation, view);
     })
 }

@@ -156,6 +156,24 @@ export interface GrindingPlanningBoardRankResponse {
   alternateRank: number | null;
 }
 
+export type GrindingPlanningBoardResourceOrderPlacement = 'before' | 'after';
+
+export interface GrindingPlanningBoardResourceOrderRequest {
+  sourceRevision: string;
+  itemId: string;
+  itemRevision: string;
+  overrideVersion?: number;
+  targetItemId: string;
+  targetItemRevision: string;
+  targetOverrideVersion?: number;
+  placement: GrindingPlanningBoardResourceOrderPlacement;
+}
+
+export interface GrindingPlanningBoardResourceOrderResponse {
+  sourceRevision: string;
+  items: GrindingPlanningBoardItem[];
+}
+
 export interface GrindingPlanningBoardSeibanOrderRequest {
   sourceRevision: string;
   fseibans: string[];

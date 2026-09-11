@@ -5,6 +5,7 @@ import {
   getGrindingPlanningBoard,
   updateGrindingPlanningBoardOverrides,
   updateGrindingPlanningBoardRank,
+  updateGrindingPlanningBoardResourceOrder,
   updateGrindingPlanningBoardSeibanOrder
 } from '../../../services/production-schedule/grinding-planning-board.service.js';
 import {
@@ -54,7 +55,18 @@ const rankBodySchema = z.object({
   itemId: z.string().min(1).max(2_000),
   itemRevision: z.string().min(1).max(200),
   overrideVersion: z.number().int().min(0).optional(),
-  alternateRank: z.number().int().nullable()
+  alternateRank: z.number().int().min(1).max(2_147_483_647).nullable()
+});
+
+const resourceOrderBodySchema = z.object({
+  sourceRevision: sourceRevisionSchema,
+  itemId: z.string().min(1).max(2_000),
+  itemRevision: z.string().min(1).max(200),
+  overrideVersion: z.number().int().min(0).optional(),
+  targetItemId: z.string().min(1).max(2_000),
+  targetItemRevision: z.string().min(1).max(200),
+  targetOverrideVersion: z.number().int().min(0).optional(),
+  placement: z.enum(['before', 'after'])
 });
 
 const orderBodySchema = z.object({
@@ -133,6 +145,13 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = rankBodySchema.parse(request.body);
     return updateGrindingPlanningBoardRank({ siteKey: scope.siteKey, ...body });
+  });
+
+  app.put('/kiosk/production-schedule/grinding-planning-board/resource-order', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const body = resourceOrderBodySchema.parse(request.body);
+    return updateGrindingPlanningBoardResourceOrder({ siteKey: scope.siteKey, ...body });
   });
 
   app.put('/kiosk/production-schedule/grinding-planning-board/seiban-order', { config: { rateLimit: false } }, async (request) => {

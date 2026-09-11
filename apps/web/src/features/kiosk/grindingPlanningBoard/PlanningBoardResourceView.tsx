@@ -10,7 +10,10 @@ import { PlanningBoardItemTable } from './PlanningBoardItemTable';
 import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
 
 import type { PlanningBoardAllocation } from './types';
-import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+import type {
+  GrindingPlanningBoardItem,
+  GrindingPlanningBoardResourceOrderPlacement
+} from '@raspi-system/shared-types';
 
 export type PlanningBoardResourceViewProps = {
   items: readonly GrindingPlanningBoardItem[];
@@ -22,6 +25,11 @@ export type PlanningBoardResourceViewProps = {
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onResourceDrop?: (item: GrindingPlanningBoardItem, resourceCd: string) => void;
+  onResourceReorder?: (
+    item: GrindingPlanningBoardItem,
+    targetItem: GrindingPlanningBoardItem,
+    placement: GrindingPlanningBoardResourceOrderPlacement
+  ) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
   resourceDragDisabled?: boolean;
@@ -46,6 +54,9 @@ type PendingResourceDrag = {
   dropPaneElement: HTMLElement | null;
   dropPaneOriginalOutline: string;
   dropPaneOriginalOutlineOffset: string;
+  dropRowElement: HTMLElement | null;
+  dropRowOriginalBorderTop: string;
+  dropRowOriginalBorderBottom: string;
   originalButtonOpacity: string;
 };
 
@@ -54,7 +65,6 @@ const RESOURCE_PANE_SELECTOR = '[data-planning-board-resource-pane]';
 function resourcePaneAtPoint(
   clientX: number,
   clientY: number,
-  sourceResource: string | null,
   validResources: ReadonlySet<string>
 ): HTMLElement | null {
   const elements = typeof document.elementsFromPoint === 'function'
@@ -62,12 +72,46 @@ function resourcePaneAtPoint(
     : typeof document.elementFromPoint === 'function'
       ? [document.elementFromPoint(clientX, clientY)].filter((element): element is Element => element != null)
       : [];
-  const sourceKey = sourceResource ?? '未設定';
   for (const element of elements) {
     if (!(element instanceof Element)) continue;
     const pane = element.closest<HTMLElement>(RESOURCE_PANE_SELECTOR);
     const resourceCode = pane?.dataset.resourceCode;
-    if (pane && resourceCode && validResources.has(resourceCode) && resourceCode !== sourceKey) return pane;
+    if (pane && resourceCode && validResources.has(resourceCode)) return pane;
+  }
+  return null;
+}
+
+function restoreDropRow(drag: PendingResourceDrag): void {
+  if (!drag.dropRowElement) return;
+  drag.dropRowElement.style.borderTop = drag.dropRowOriginalBorderTop;
+  drag.dropRowElement.style.borderBottom = drag.dropRowOriginalBorderBottom;
+  drag.dropRowElement = null;
+}
+
+function setDropRow(
+  drag: PendingResourceDrag,
+  row: HTMLElement | null,
+  placement: GrindingPlanningBoardResourceOrderPlacement | null
+): void {
+  restoreDropRow(drag);
+  if (!row || placement == null) return;
+  drag.dropRowElement = row;
+  drag.dropRowOriginalBorderTop = row.style.borderTop;
+  drag.dropRowOriginalBorderBottom = row.style.borderBottom;
+  if (placement === 'before') row.style.borderTop = '2px solid rgb(110 231 183)';
+  else row.style.borderBottom = '2px solid rgb(110 231 183)';
+}
+
+function itemRowAtPoint(clientX: number, clientY: number, pane: HTMLElement): HTMLElement | null {
+  const elements = typeof document.elementsFromPoint === 'function'
+    ? document.elementsFromPoint(clientX, clientY)
+    : typeof document.elementFromPoint === 'function'
+      ? [document.elementFromPoint(clientX, clientY)].filter((element): element is Element => element != null)
+      : [];
+  for (const element of elements) {
+    if (!(element instanceof Element)) continue;
+    const row = element.closest<HTMLElement>('[data-planning-board-item-id]');
+    if (row?.closest<HTMLElement>(RESOURCE_PANE_SELECTOR) === pane) return row;
   }
   return null;
 }
@@ -82,6 +126,7 @@ export function PlanningBoardResourceView({
   onToggleItem,
   onResourceClick,
   onResourceDrop,
+  onResourceReorder,
   onRankChange,
   disabled = false,
   resourceDragDisabled = false,
@@ -98,6 +143,7 @@ export function PlanningBoardResourceView({
   }, []);
 
   const restoreDropPane = useCallback((drag: PendingResourceDrag) => {
+    restoreDropRow(drag);
     if (!drag.dropPaneElement) return;
     drag.dropPaneElement.style.outline = drag.dropPaneOriginalOutline;
     drag.dropPaneElement.style.outlineOffset = drag.dropPaneOriginalOutlineOffset;
@@ -123,13 +169,27 @@ export function PlanningBoardResourceView({
     drag.ghostElement.style.transform =
       'translate3d(' + (drag.pendingClientX - drag.ghostOffsetX) + 'px, ' +
       (drag.pendingClientY - drag.ghostOffsetY) + 'px, 0)';
-    setDropPane(drag, resourcePaneAtPoint(
+    const pane = resourcePaneAtPoint(
       drag.pendingClientX,
       drag.pendingClientY,
-      drag.sourceResource,
       validResources
-    ));
-  }, [setDropPane, validResources]);
+    );
+    setDropPane(drag, pane);
+    if (pane?.dataset.resourceCode !== (drag.sourceResource ?? '未設定')) {
+      setDropRow(drag, null, null);
+      return;
+    }
+    const row = itemRowAtPoint(drag.pendingClientX, drag.pendingClientY, pane);
+    const targetItem = row == null
+      ? null
+      : items.find((candidate) => candidate.itemId === row.dataset.planningBoardItemId) ?? null;
+    const placement = row == null || targetItem == null || targetItem.itemId === drag.item.itemId || targetItem.isCompleted
+      ? null
+      : drag.pendingClientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2
+        ? 'before'
+        : 'after';
+    setDropRow(drag, row, placement);
+  }, [items, setDropPane, validResources]);
 
   const scheduleResourceDragFrame = useCallback(() => {
     const drag = pendingResourceDragRef.current;
@@ -235,6 +295,9 @@ export function PlanningBoardResourceView({
       dropPaneElement: null,
       dropPaneOriginalOutline: '',
       dropPaneOriginalOutlineOffset: '',
+      dropRowElement: null,
+      dropRowOriginalBorderTop: '',
+      dropRowOriginalBorderBottom: '',
       originalButtonOpacity: buttonElement.style.opacity
     };
     buttonElement.setPointerCapture?.(event.pointerId);
@@ -263,11 +326,25 @@ export function PlanningBoardResourceView({
     if (!drag || drag.pointerId !== event.pointerId) return;
     const isDrag = drag.dragging;
     const targetPane = isDrag
-      ? resourcePaneAtPoint(event.clientX, event.clientY, drag.sourceResource, validResources)
+      ? resourcePaneAtPoint(event.clientX, event.clientY, validResources)
       : null;
     const targetResource = targetPane?.dataset.resourceCode ?? null;
     const item = drag.item;
-    const shouldDrop = isDrag && targetResource != null && targetResource !== (drag.sourceResource ?? '未設定');
+    const sourceResource = drag.sourceResource ?? '未設定';
+    const isSamePaneDrop = isDrag && targetPane != null && targetResource === sourceResource;
+    const targetRow = isSamePaneDrop && targetPane
+      ? itemRowAtPoint(event.clientX, event.clientY, targetPane)
+      : null;
+    const targetItem = targetRow == null
+      ? null
+      : items.find((candidate) => candidate.itemId === targetRow.dataset.planningBoardItemId) ?? null;
+    const shouldReorder = isSamePaneDrop && targetItem != null && targetItem.itemId !== item.itemId && !targetItem.isCompleted;
+    const shouldDrop = isDrag && targetResource != null && targetResource !== sourceResource;
+    const placement = targetRow == null
+      ? null
+      : event.clientY < targetRow.getBoundingClientRect().top + targetRow.getBoundingClientRect().height / 2
+        ? 'before'
+        : 'after';
     if (isDrag) suppressedResourceClickPointerIdRef.current = event.pointerId;
     clearResourceDrag(event.pointerId);
     if (isDrag) {
@@ -275,7 +352,8 @@ export function PlanningBoardResourceView({
       event.stopPropagation();
     }
     if (shouldDrop) onResourceDrop?.(item, targetResource);
-  }, [clearResourceDrag, onResourceDrop, validResources]);
+    else if (shouldReorder && placement != null) onResourceReorder?.(item, targetItem, placement);
+  }, [clearResourceDrag, items, onResourceDrop, onResourceReorder, validResources]);
 
   const handleResourcePointerCancel = useCallback((event: React.PointerEvent<HTMLElement>) => {
     const drag = pendingResourceDragRef.current;
