@@ -489,7 +489,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.queryByText(/合計分/)).not.toBeInTheDocument();
     expect(screen.getAllByText('5個 · 20分').length).toBeGreaterThan(0);
     expect(screen.getAllByText('26-1041 · 自動組立機 AX-200')).toHaveLength(2);
-    expect(screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]).toHaveClass('text-[11px]', 'text-white');
+    expect(screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]).toHaveClass('text-[15px]', 'text-white');
     expect(screen.getByTestId('planning-board-item-a').querySelector('td:nth-child(3)')).toHaveTextContent('1305');
     expect(screen.getByTestId('planning-board-item-c').querySelector('td:nth-child(3)')).toHaveTextContent('2305');
   });
