@@ -108,6 +108,11 @@ function fixture() {
   };
 }
 
+function selectAllBoardItems() {
+  fireEvent.click(screen.getByLabelText('製番26-1041を全選択'));
+  fireEvent.click(screen.getByLabelText('製番26-1042を全選択'));
+}
+
 describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   beforeEach(() => {
     mocks.snapshot.mockReset();
@@ -151,6 +156,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByTestId('planning-board-seiban-26-1041')).toBeInTheDocument();
     expect(screen.getByTestId('planning-board-seiban-26-1042')).toBeInTheDocument();
     expect(screen.getByText('自動組立機 AX-200')).toBeInTheDocument();
+    expect(screen.getByLabelText('部品aを選択')).not.toBeChecked();
+    expect(screen.getByLabelText('部品bを選択')).not.toBeChecked();
     expect(screen.getAllByText('5個')).toHaveLength(4);
     expect(screen.queryByText(/3\/20工程/)).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: '選択' })).not.toBeInTheDocument();
@@ -160,6 +167,56 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByText('自動組立機 AX-200')).toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: '選択' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '製番26-1041を一覧に戻す' })).toBeInTheDocument();
+  });
+
+  it('機種名数字検索は候補だけを絞り、解除で選択済み製番も含めて復帰する', () => {
+    const candidates = [
+      {
+        fseiban: 'CAND-200',
+        machineName: '自動組立機 ＡＸ－２００',
+        dueDate: '2026-09-12',
+        completedProcessCount: 0,
+        totalProcessCount: 1,
+        isCompleted: false
+      },
+      {
+        fseiban: 'CAND-80',
+        machineName: '搬送装置 ＣＶ－８０',
+        dueDate: '2026-09-13',
+        completedProcessCount: 0,
+        totalProcessCount: 1,
+        isCompleted: false
+      }
+    ];
+    mocks.candidates.mockReturnValue({
+      data: {
+        today: '2026-09-11',
+        rangeStart: '2026-08-11',
+        rangeEnd: '2026-10-11',
+        completionFilter: 'incomplete',
+        candidates
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false
+    });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    fireEvent.click(within(drawer).getByRole('button', { name: '機種名で検索' }));
+    const machineNameSearch = within(drawer).getByTestId('planning-board-machine-name-search');
+    fireEvent.click(within(machineNameSearch).getByRole('button', { name: '2', exact: true }));
+
+    expect(screen.getByLabelText('CAND-200を登録候補に選択')).toBeInTheDocument();
+    expect(screen.queryByLabelText('CAND-80を登録候補に選択')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('CAND-200を登録候補に選択'));
+    expect(within(drawer).getByText('CAND-200 · 自動組立機 AX-200')).toBeInTheDocument();
+
+    fireEvent.click(within(drawer).getByRole('button', { name: '機種名検索を解除' }));
+    expect(screen.getByLabelText('CAND-200を登録候補に選択')).toBeInTheDocument();
+    expect(screen.getByLabelText('CAND-80を登録候補に選択')).toBeInTheDocument();
+    expect(within(drawer).getByText('CAND-200 · 自動組立機 AX-200')).toBeInTheDocument();
   });
 
   it('納期候補を機種名でまとめ、複数選択を一括登録する', async () => {
@@ -299,12 +356,18 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
 
     expect(screen.getByTestId('planning-board-resource-view')).toBeInTheDocument();
+    expect(screen.getByTestId('planning-board-resource-view')).toHaveClass('xl:grid-cols-4');
+    for (const checkbox of screen.getAllByRole('checkbox').filter((element) => element.getAttribute('aria-label')?.includes('を選択'))) {
+      expect(checkbox).not.toBeChecked();
+    }
     expect(screen.getByText('305（研削機Ａ）')).toBeInTheDocument();
     expect(screen.queryByText(/未完\d+件/)).not.toBeInTheDocument();
     expect(screen.queryByText(/合計分/)).not.toBeInTheDocument();
     expect(screen.getAllByText('5個 · 20分').length).toBeGreaterThan(0);
     expect(screen.getByText('26-1041 · PART-a')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]).toHaveClass('text-[15px]', 'text-white');
+    expect(screen.getByTestId('planning-board-item-a').querySelector('td:nth-child(3)')).toHaveTextContent('1305');
+    expect(screen.getByTestId('planning-board-item-c').querySelector('td:nth-child(3)')).toHaveTextContent('2305');
   });
 
   it('同一scopeの背景再取得中も資源CD編集をロックしない', () => {
@@ -331,6 +394,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       resolveOverrides = resolve;
     }));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    selectAllBoardItems();
 
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
     const dialog = screen.getByRole('dialog', { name: '一括変更' });
@@ -346,6 +410,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   it('資源CD変更の保存失敗時は元の表示へ戻す', async () => {
     mocks.overrides.mockRejectedValueOnce(new Error('override save failed'));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    selectAllBoardItems();
 
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
     const dialog = screen.getByRole('dialog', { name: '一括変更' });
@@ -365,6 +430,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     }));
     mocks.overrides.mockResolvedValueOnce({ sourceRevision: 'board-1', items: responseItems });
     const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    selectAllBoardItems();
 
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
     const dialog = screen.getByRole('dialog', { name: '一括変更' });
@@ -548,8 +614,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       fireEvent.click(screen.getByLabelText('部品aを選択'));
 
       expect(sortSpy).not.toHaveBeenCalled();
-      expect(screen.getByLabelText('部品aを選択')).not.toBeChecked();
-      expect(screen.getByText('3件')).toBeInTheDocument();
+      expect(screen.getByLabelText('部品aを選択')).toBeChecked();
+      expect(screen.getByText('1件')).toBeInTheDocument();
       expect(dueSpy).toHaveBeenCalledTimes(1);
       expect(dueSpy.mock.calls.every(([item]) => item.itemId === 'a')).toBe(true);
       expect(resourceSpy).toHaveBeenCalledTimes(1);
@@ -565,7 +631,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       expect(resourceSpy).not.toHaveBeenCalled();
 
       fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
-      expect(screen.getByText('対象 3件')).toBeInTheDocument();
+      expect(screen.getByText('対象 1件')).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
     } finally {
       sortSpy.mockRestore();
@@ -576,6 +642,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('対象を一括変更すると開いた時点のrevisionとversionを送る', async () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    selectAllBoardItems();
 
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
     const dialog = screen.getByRole('dialog', { name: '一括変更' });
@@ -588,7 +655,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(mocks.overrides.mock.calls[0]?.[0].items[0]).toMatchObject({ overrideVersion: 2, resourceCd: '584' });
   });
 
-  it('左ペインの製番解除は工程切替後も別の除外状態を保つ', () => {
+  it('左ペインの製番解除後も工程切替時の選択状態を保つ', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
@@ -598,7 +665,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
     fireEvent.click(within(drawer).getByRole('button', { name: '製番登録ペインを閉じる' }));
     fireEvent.click(screen.getByRole('button', { name: '切削' }));
-    expect(screen.getByText('2件')).toBeInTheDocument();
+    expect(screen.getByText('0件')).toBeInTheDocument();
   });
 
   it('drawerで選んだ単一製番の納期詳細を開き、picker開始時の版を送る', async () => {
@@ -1059,6 +1126,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   it('409時は固定した編集対象を閉じず、再適用を自動実行しない', async () => {
     mocks.overrides.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    selectAllBoardItems();
 
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
     const dialog = screen.getByRole('dialog', { name: '一括変更' });
@@ -1077,6 +1145,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     refreshed.sourceRevision = 'board-after-refetch';
     mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isError: false });
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    selectAllBoardItems();
 
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
     const dialog = screen.getByRole('dialog', { name: '一括変更' });

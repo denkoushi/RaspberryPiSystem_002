@@ -36,6 +36,10 @@ export function PlanningBoardResourceView({
   disabled = false,
   rankDisabled = false
 }: PlanningBoardResourceViewProps) {
+  const seibanRankByFseiban = useMemo(
+    () => new Map(seibanOrder.map((fseiban, index) => [fseiban, index + 1] as const)),
+    [seibanOrder]
+  );
   const groups = useMemo(() => {
     const byResource = new Map<string, GrindingPlanningBoardItem[]>();
     for (const resource of resources) byResource.set(resource, []);
@@ -54,7 +58,7 @@ export function PlanningBoardResourceView({
   }, [allocation, items, resources, seibanOrder]);
 
   return (
-    <div className="grid min-w-0 grid-cols-1 items-start gap-2.5 lg:grid-cols-2 xl:grid-cols-3" data-testid="planning-board-resource-view">
+    <div className="grid min-w-0 grid-cols-1 items-start gap-2.5 lg:grid-cols-2 xl:grid-cols-4" data-testid="planning-board-resource-view">
       {groups.map(([resource, resourceItems]) => {
         return (
           <article key={resource} className="min-w-0 overflow-hidden rounded-lg border border-slate-800 bg-slate-900/85">
@@ -74,6 +78,7 @@ export function PlanningBoardResourceView({
               rankDisabled={rankDisabled}
               showRank
               showSeiban
+              seibanRankByFseiban={seibanRankByFseiban}
               showColumnHeaders={false}
               tableLabel={`資源CD ${resource}の工程アイテム`}
             />

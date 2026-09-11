@@ -6,6 +6,7 @@ type Props = {
   value: string;
   onChange: (next: string) => void;
   disabled?: boolean;
+  ariaLabel?: string;
 };
 
 const keyClassName =
@@ -15,14 +16,14 @@ const resetClassName =
   'inline-flex h-[34px] shrink-0 items-center justify-center rounded border border-amber-300/30 bg-slate-950 px-2 text-[0.68rem] font-extrabold text-amber-200 hover:bg-slate-800 disabled:opacity-50';
 
 /** Menubar digit tenkey — digits + reset only (no input field / title / help text). */
-export function InspectionDrawingDigitTenkey({ value, onChange, disabled = false }: Props) {
+export function InspectionDrawingDigitTenkey({ value, onChange, disabled = false, ariaLabel = '図面名数字テンキー' }: Props) {
   return (
     <KioskDigitTenkey
       value={value}
       onChange={onChange}
       disabled={disabled}
       maxLength={DIGIT_QUERY_MAX_LENGTH}
-      ariaLabel="図面名数字テンキー"
+      ariaLabel={ariaLabel}
       className="flex min-w-0 flex-1 items-center justify-center gap-0.5"
       keyClassName={keyClassName}
       resetClassName={resetClassName}

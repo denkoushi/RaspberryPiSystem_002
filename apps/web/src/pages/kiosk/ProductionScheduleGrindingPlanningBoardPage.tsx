@@ -165,7 +165,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [registeredFseibans, setRegisteredFseibans] = useState<string[]>([]);
   const [activeFseibans, setActiveFseibans] = useState<ReadonlySet<string>>(new Set());
   const [showCompletedCandidates, setShowCompletedCandidates] = useState(false);
-  const [excludedItemIdsByCategory, setExcludedItemIdsByCategory] = useState<Record<string, ReadonlySet<string>>>({});
+  const [selectedItemIdsByCategory, setSelectedItemIdsByCategory] = useState<Record<string, ReadonlySet<string>>>({});
   const [orderInitialized, setOrderInitialized] = useState(false);
   const [activeInitialized, setActiveInitialized] = useState(false);
   const [openInitialized, setOpenInitialized] = useState(false);
@@ -405,10 +405,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   );
   const selectedItemIds = useMemo(
     () => {
-      const excludedItemIds = excludedItemIdsByCategory[category] ?? new Set<string>();
-      return new Set(visibleItems.filter((item) => !item.isCompleted && !excludedItemIds.has(item.itemId)).map((item) => item.itemId));
+      const selectedItemIdsForCategory = selectedItemIdsByCategory[category] ?? new Set<string>();
+      return new Set(visibleItems.filter((item) => !item.isCompleted && selectedItemIdsForCategory.has(item.itemId)).map((item) => item.itemId));
     },
-    [category, excludedItemIdsByCategory, visibleItems]
+    [category, selectedItemIdsByCategory, visibleItems]
   );
   const selectedVisibleItems = useMemo(
     () => visibleItems.filter((item) => !item.isCompleted && selectedItemIds.has(item.itemId)),
@@ -428,21 +428,21 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const toggleItem = useCallback((item: GrindingPlanningBoardItem, selected: boolean) => {
     const pendingOverride = pendingOverrideItems[item.itemId];
     if (!scopeReady || item.isCompleted || (pendingOverride != null && pendingOverride.responseItemRevision == null)) return;
-    setExcludedItemIdsByCategory((current) => {
+    setSelectedItemIdsByCategory((current) => {
       const next = new Set(current[category] ?? []);
-      if (selected) next.delete(item.itemId); else next.add(item.itemId);
+      if (selected) next.add(item.itemId); else next.delete(item.itemId);
       return { ...current, [category]: next };
     });
   }, [category, pendingOverrideItems, scopeReady]);
 
   const toggleAll = useCallback((items: readonly GrindingPlanningBoardItem[], selected: boolean) => {
     if (!bulkReady) return;
-    setExcludedItemIdsByCategory((current) => {
+    setSelectedItemIdsByCategory((current) => {
       const next = new Set(current[category] ?? []);
       for (const item of items) {
         const pendingOverride = pendingOverrideItems[item.itemId];
         if (item.isCompleted || (pendingOverride != null && pendingOverride.responseItemRevision == null)) continue;
-        if (selected) next.delete(item.itemId); else next.add(item.itemId);
+        if (selected) next.add(item.itemId); else next.delete(item.itemId);
       }
       return { ...current, [category]: next };
     });
