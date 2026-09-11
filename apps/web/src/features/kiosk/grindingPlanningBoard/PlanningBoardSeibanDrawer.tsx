@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { InspectionDrawingDigitTenkey, matchesDigitQuery } from '../../part-measurement/inspection-drawing';
 import { normalizeMachineName } from '../productionSchedule/machineName';
 import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister';
 
@@ -81,6 +82,8 @@ export function PlanningBoardSeibanDrawer({
   const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [selectedCandidates, setSelectedCandidates] = useState<ReadonlySet<string>>(new Set());
   const [collapsedMachineNames, setCollapsedMachineNames] = useState<ReadonlySet<string>>(new Set());
+  const [machineNameSearchOpen, setMachineNameSearchOpen] = useState(false);
+  const [machineNameDigitQuery, setMachineNameDigitQuery] = useState('');
   const orderDisabled = orderReadOnly || orderBusy;
 
   useEffect(() => {
@@ -105,11 +108,12 @@ export function PlanningBoardSeibanDrawer({
     const normalized = normalizeCandidateMachineName(query).toLocaleLowerCase();
     return candidates.filter((candidate) => {
       if (!showCompletedCandidates && candidate.isCompleted) return false;
+      if (!matchesDigitQuery(normalizeCandidateMachineName(candidate.machineName), machineNameDigitQuery)) return false;
       if (normalized.length === 0) return true;
       return candidate.fseiban.toLocaleLowerCase().includes(normalized) ||
         normalizeCandidateMachineName(candidate.machineName).toLocaleLowerCase().includes(normalized);
     });
-  }, [candidates, query, showCompletedCandidates]);
+  }, [candidates, machineNameDigitQuery, query, showCompletedCandidates]);
 
   const candidateGroups = useMemo(() => {
     const groups = new Map<string, GrindingPlanningBoardSeibanCandidate[]>();
@@ -158,7 +162,7 @@ export function PlanningBoardSeibanDrawer({
     <>
       <div className="fixed inset-0 z-40 bg-black/65" role="presentation" onClick={onClose} />
       <aside
-        className="fixed inset-y-0 left-0 z-50 flex w-[min(20rem,92vw)] flex-col border-r border-slate-700 bg-slate-950 shadow-2xl"
+        className="fixed inset-y-0 left-0 z-50 flex w-[min(40rem,92vw)] flex-col border-r border-slate-700 bg-slate-950 shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="planning-board-seiban-drawer-title"
@@ -203,7 +207,37 @@ export function PlanningBoardSeibanDrawer({
           />
           {orderStatus ? <p className="mt-2 text-xs text-slate-400" role="status">{orderStatus}</p> : null}
           <section className="mt-4 rounded-md border border-slate-800 bg-slate-900/70 p-2" aria-label="納期候補">
-            <div className="flex items-start justify-end gap-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className={`min-h-11 shrink-0 rounded-md border px-2 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 ${
+                    machineNameDigitQuery
+                      ? 'border-emerald-300 bg-emerald-950/60 text-emerald-100'
+                      : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-emerald-300 hover:text-white'
+                  }`}
+                  aria-label="機種名で検索"
+                  aria-expanded={machineNameSearchOpen}
+                  disabled={orderDisabled}
+                  onClick={() => setMachineNameSearchOpen((current) => !current)}
+                >
+                  機種名検索
+                </button>
+                {machineNameDigitQuery ? (
+                  <button
+                    type="button"
+                    className="min-h-11 shrink-0 rounded-md border border-slate-700 px-2 text-xs font-semibold text-slate-400 hover:border-emerald-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+                    aria-label="機種名検索を解除"
+                    disabled={orderDisabled}
+                    onClick={() => {
+                      setMachineNameDigitQuery('');
+                      setMachineNameSearchOpen(false);
+                    }}
+                  >
+                    解除
+                  </button>
+                ) : null}
+              </div>
               <label className="flex min-h-11 shrink-0 items-center gap-1 text-[10px] text-slate-300">
                 <input
                   type="checkbox"
@@ -211,22 +245,40 @@ export function PlanningBoardSeibanDrawer({
                   checked={showCompletedCandidates}
                   onChange={(event) => onShowCompletedCandidatesChange(event.target.checked)}
                 />
-                完了分も表示
+                完了表示
               </label>
             </div>
+            {machineNameSearchOpen ? (
+              <div className="mt-2 rounded border border-slate-800 bg-slate-950/80 px-1 py-1" data-testid="planning-board-machine-name-search">
+                <InspectionDrawingDigitTenkey
+                  value={machineNameDigitQuery}
+                  onChange={setMachineNameDigitQuery}
+                  disabled={orderDisabled}
+                  ariaLabel="機種名数字テンキー"
+                />
+              </div>
+            ) : null}
             {selectedCandidateCount > 0 ? (
               <div className="mt-2 rounded border border-emerald-400/40 bg-emerald-950/40 p-2">
-                <div className="text-xs text-emerald-100">選択 {selectedCandidateCount}件</div>
+                <div className="grid gap-0.5 text-xs text-emerald-100 sm:grid-cols-2">
+                  {selectedCandidatesForRegistration.map((candidate) => (
+                    <div key={candidate.fseiban} className="min-w-0 truncate">
+                      {candidate.fseiban} · {normalizeCandidateMachineName(candidate.machineName) || '機種名未登録'}
+                    </div>
+                  ))}
+                </div>
                 <div className="mt-1 text-[10px] text-emerald-200/80">登録残り {Math.max(availableSlots, 0)}件</div>
-                <button
-                  type="button"
-                  className="mt-2 min-h-11 w-full whitespace-nowrap rounded bg-emerald-400 px-2 font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label="選択した製番を登録"
-                  disabled={orderDisabled || selectedWouldExceedLimit}
-                  onClick={() => void registerSelectedCandidates()}
-                >
-                  登録
-                </button>
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    className="min-h-11 shrink-0 whitespace-nowrap rounded bg-emerald-400 px-3 text-xs font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="選択した製番を登録"
+                    disabled={orderDisabled || selectedWouldExceedLimit}
+                    onClick={() => void registerSelectedCandidates()}
+                  >
+                    登録
+                  </button>
+                </div>
                 {selectedWouldExceedLimit ? (
                   <p className="mt-1 text-[10px] text-amber-200" role="alert">登録上限50件を超えるため登録できません。選択を減らしてください。</p>
                 ) : null}
@@ -318,7 +370,7 @@ export function PlanningBoardSeibanDrawer({
               </button>
             </div>
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-1.5">
+          <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
             {visibleFseibans.map((fseiban) => {
               const selected = selectedFseibans.has(fseiban);
               return (
@@ -335,7 +387,7 @@ export function PlanningBoardSeibanDrawer({
                     onClick={() => onToggle(fseiban)}
                   >
                     <span className="block truncate">{fseiban}</span>
-                    <span className="block truncate text-[9px] font-normal opacity-70">{machineNameBySeiban?.get(fseiban) || '機種名未登録'}</span>
+                    <span className="block truncate text-[9px] font-normal text-black">{normalizeCandidateMachineName(machineNameBySeiban?.get(fseiban)) || '機種名未登録'}</span>
                   </button>
                   <div className="flex flex-col gap-0.5">
                     <button

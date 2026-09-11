@@ -24,6 +24,7 @@ export type PlanningBoardItemTableProps = {
   showRank?: boolean;
   showSeiban?: boolean;
   showColumnHeaders?: boolean;
+  seibanRankByFseiban?: ReadonlyMap<string, number>;
   disabled?: boolean;
   rankDisabled?: boolean | ((item: GrindingPlanningBoardItem) => boolean);
   tableLabel: string;
@@ -38,6 +39,7 @@ type PlanningBoardItemTableRowProps = {
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   showRank: boolean;
   showSeiban: boolean;
+  seibanRank?: number;
   disabled: boolean;
   rankDisabled: boolean;
 };
@@ -51,6 +53,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   onRankChange,
   showRank,
   showSeiban,
+  seibanRank,
   disabled,
   rankDisabled
 }: PlanningBoardItemTableRowProps) {
@@ -106,30 +109,37 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
         )}
       </td>
       <td className="px-1 align-middle">
-        <button
-          type="button"
-          className={clsx(
-            'inline-flex min-h-11 min-w-11 max-w-full items-center justify-center rounded-md border px-1 font-mono font-bold',
-            'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300',
-            showSeiban
-              ? allocation === 'alternate' &&
-                item.effectiveResourceCd != null &&
-                item.effectiveResourceCd !== item.originalResourceCd
-                ? 'border-amber-300/60 bg-amber-950/50 text-[15px] text-white'
-                : 'border-slate-700 bg-slate-900 text-[15px] text-white hover:border-indigo-300'
-              : allocation === 'alternate' &&
-                item.effectiveResourceCd != null &&
-                item.effectiveResourceCd !== item.originalResourceCd
-                ? 'border-amber-300/60 bg-amber-950/50 text-[10px] text-amber-200'
-                : 'border-slate-700 bg-slate-900 text-[10px] text-indigo-300 hover:border-indigo-300',
-            (allocation === 'original' || item.isCompleted) && 'cursor-not-allowed opacity-60 hover:border-slate-700'
-          )}
-          aria-label={`資源CD ${currentResource ?? '未設定'}を変更`}
-          disabled={disabled || allocation === 'original' || item.isCompleted}
-          onClick={() => onResourceClick(item)}
-        >
-          {currentResource ?? '—'}
-        </button>
+        <div className="flex min-w-0 items-center gap-0.5">
+          {seibanRank != null ? (
+            <span className={clsx('shrink-0 font-mono leading-none text-white', showSeiban ? 'text-[15px]' : 'text-[10px]')}>
+              {seibanRank}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className={clsx(
+              'inline-flex min-h-11 min-w-11 max-w-full items-center justify-center rounded-md border px-1 font-mono font-bold',
+              'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300',
+              showSeiban
+                ? allocation === 'alternate' &&
+                  item.effectiveResourceCd != null &&
+                  item.effectiveResourceCd !== item.originalResourceCd
+                  ? 'border-amber-300/60 bg-amber-950/50 text-[15px] text-white'
+                  : 'border-slate-700 bg-slate-900 text-[15px] text-white hover:border-indigo-300'
+                : allocation === 'alternate' &&
+                  item.effectiveResourceCd != null &&
+                  item.effectiveResourceCd !== item.originalResourceCd
+                  ? 'border-amber-300/60 bg-amber-950/50 text-[10px] text-amber-200'
+                  : 'border-slate-700 bg-slate-900 text-[10px] text-indigo-300 hover:border-indigo-300',
+              (allocation === 'original' || item.isCompleted) && 'cursor-not-allowed opacity-60 hover:border-slate-700'
+            )}
+            aria-label={`資源CD ${currentResource ?? '未設定'}を変更`}
+            disabled={disabled || allocation === 'original' || item.isCompleted}
+            onClick={() => onResourceClick(item)}
+          >
+            {currentResource ?? '—'}
+          </button>
+        </div>
       </td>
       <td className="px-1 py-1 align-middle">
         <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
@@ -181,6 +191,7 @@ function areTablePropsEqual(previous: PlanningBoardItemTableProps, next: Plannin
     previous.showRank === next.showRank &&
     previous.showSeiban === next.showSeiban &&
     previous.showColumnHeaders === next.showColumnHeaders &&
+    previous.seibanRankByFseiban === next.seibanRankByFseiban &&
     previous.disabled === next.disabled &&
     previous.rankDisabled === next.rankDisabled &&
     previous.tableLabel === next.tableLabel &&
@@ -197,6 +208,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
   showRank = false,
   showSeiban = false,
   showColumnHeaders = true,
+  seibanRankByFseiban,
   disabled = false,
   rankDisabled = false,
   tableLabel
@@ -208,7 +220,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
         <colgroup>
           <col className="w-7" />
           <col />
-          <col className="w-[3.25rem]" />
+          <col className={seibanRankByFseiban ? 'w-[4.5rem]' : 'w-[3.25rem]'} />
           <col className={showRank ? 'w-[6.5rem]' : 'w-12 xl:w-[6.5rem]'} />
         </colgroup>
         {showColumnHeaders ? (
@@ -236,6 +248,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
                 onRankChange={onRankChange}
                 showRank={showRank}
                 showSeiban={showSeiban}
+                seibanRank={seibanRankByFseiban?.get(item.fseiban)}
                 disabled={disabled}
                 rankDisabled={itemRankDisabled}
               />
