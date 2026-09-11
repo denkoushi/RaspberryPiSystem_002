@@ -202,6 +202,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [pendingOverrideItems, setPendingOverrideItems] = useState<Record<string, PendingOverrideItem>>({});
   const [pendingDueScope, setPendingDueScope] = useState<PendingDueScopeUpdate | null>(null);
   const rankRequestIdRef = useRef(0);
+  const resourceDragSavePendingRef = useRef(false);
 
   const boardQuery = useKioskGrindingPlanningBoardProgressive(
     { category, view, completionFilter: status },
@@ -415,6 +416,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     [selectedItemIds, visibleItems]
   );
   const editorItems = editorSnapshot?.items ?? [];
+  const resourceDragDisabled = updateOverrides.isPending || Object.values(pendingOverrideItems).some(
+    (pending) => pending.responseItemRevision == null
+  );
 
   const handleError = useCallback((error: unknown) => {
     if (isAxiosError(error) && error.response?.status === 409) {
@@ -639,6 +643,74 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       }
     }
   };
+
+  const moveResourceByDrag = useCallback(async (item: GrindingPlanningBoardItem, targetResource: string) => {
+    const pendingOverride = pendingOverrideItems[item.itemId];
+    const currentResource = resolveGrindingPlanningBoardResource(item, allocation);
+    if (
+      !data ||
+      !scopeReady ||
+      !sourceRevision ||
+      allocation === 'original' ||
+      item.isCompleted ||
+      !data.resources.includes(targetResource) ||
+      currentResource === targetResource ||
+      updateOverrides.isPending ||
+      resourceDragSavePendingRef.current ||
+      (pendingOverride != null && pendingOverride.responseItemRevision == null)
+    ) return;
+
+    resourceDragSavePendingRef.current = true;
+    const request: GrindingPlanningBoardOverrideItemRequest = {
+      itemId: item.itemId,
+      itemRevision: item.itemRevision,
+      overrideVersion: item.version,
+      resourceCd: targetResource
+    };
+    const baseSourceRevision = data.sourceRevision;
+    setPendingOverrideItems((current) => ({
+      ...current,
+      [item.itemId]: {
+        item: applyOptimisticOverride(item, request),
+        baseSourceRevision,
+        baseItemRevision: item.itemRevision,
+        baseVersion: item.version,
+        responseSourceRevision: null,
+        responseItemRevision: null,
+        responseVersion: null
+      }
+    }));
+    try {
+      const result = await updateOverrides.mutateAsync({ sourceRevision: baseSourceRevision, items: [request] });
+      setPendingOverrideItems((current) => {
+        const pending = current[item.itemId];
+        if (!pending || pending.baseSourceRevision !== baseSourceRevision) return current;
+        const responseItem = (result.items ?? []).find((candidate) => candidate.itemId === item.itemId);
+        return {
+          ...current,
+          [item.itemId]: {
+            ...pending,
+            item: responseItem ?? pending.item,
+            responseSourceRevision: result.sourceRevision,
+            responseItemRevision: responseItem?.itemRevision ?? null,
+            responseVersion: responseItem?.version ?? null
+          }
+        };
+      });
+      setFeedback('資源CDを' + targetResource + 'へ変更しました。');
+    } catch (error) {
+      setPendingOverrideItems((current) => {
+        const pending = current[item.itemId];
+        if (!pending || pending.baseSourceRevision !== baseSourceRevision) return current;
+        const next = { ...current };
+        delete next[item.itemId];
+        return next;
+      });
+      handleError(error);
+    } finally {
+      resourceDragSavePendingRef.current = false;
+    }
+  }, [allocation, data, handleError, pendingOverrideItems, scopeReady, sourceRevision, updateOverrides]);
 
   const refreshAfterConflict = async () => {
     setEditorError('最新状態を取得しています…');
@@ -981,8 +1053,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             selectedItemIds={selectedItemIds}
             onToggleItem={toggleItem}
             onResourceClick={openEditorForItem}
+            onResourceDrop={moveResourceByDrag}
             onRankChange={changeRank}
             disabled={interactionLocked}
+            resourceDragDisabled={resourceDragDisabled}
             rankDisabled={rankDisabled}
           />
         </div>

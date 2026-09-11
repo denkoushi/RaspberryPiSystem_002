@@ -9,6 +9,7 @@ type Props = {
   className?: string;
   keyClassName?: string;
   resetClassName?: string;
+  showReset?: boolean;
 };
 
 const defaultKeyClassName =
@@ -24,7 +25,8 @@ export function KioskDigitTenkey({
   ariaLabel = '数字テンキー',
   className,
   keyClassName = defaultKeyClassName,
-  resetClassName = defaultResetClassName
+  resetClassName = defaultResetClassName,
+  showReset = true
 }: Props) {
   return (
     <div
@@ -43,14 +45,16 @@ export function KioskDigitTenkey({
           {digit}
         </button>
       ))}
-      <button
-        type="button"
-        className={resetClassName}
-        disabled={disabled || value.length === 0}
-        onClick={() => onChange('')}
-      >
-        リセット
-      </button>
+      {showReset ? (
+        <button
+          type="button"
+          className={resetClassName}
+          disabled={disabled || value.length === 0}
+          onClick={() => onChange('')}
+        >
+          リセット
+        </button>
+      ) : null}
     </div>
   );
 }

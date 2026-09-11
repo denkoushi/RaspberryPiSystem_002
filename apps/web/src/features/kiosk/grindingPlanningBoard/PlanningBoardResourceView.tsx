@@ -1,6 +1,9 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 
+import {
+  INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX
+} from '../../part-measurement/inspection-drawing/inspectionDrawingCanvasPointer';
 import { formatResourceCdWithJapaneseNames } from '../leaderOrderBoard/formatResourceCdWithJapaneseNames';
 
 import { PlanningBoardItemTable } from './PlanningBoardItemTable';
@@ -18,10 +21,56 @@ export type PlanningBoardResourceViewProps = {
   selectedItemIds: ReadonlySet<string>;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
+  onResourceDrop?: (item: GrindingPlanningBoardItem, resourceCd: string) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
+  resourceDragDisabled?: boolean;
   rankDisabled?: boolean | ((item: GrindingPlanningBoardItem) => boolean);
 };
+
+type PendingResourceDrag = {
+  pointerId: number;
+  item: GrindingPlanningBoardItem;
+  sourceResource: string | null;
+  buttonElement: HTMLButtonElement;
+  startClientX: number;
+  startClientY: number;
+  maxMovementPx: number;
+  dragging: boolean;
+  ghostElement: HTMLDivElement | null;
+  ghostOffsetX: number;
+  ghostOffsetY: number;
+  pendingClientX: number;
+  pendingClientY: number;
+  frameId: number | null;
+  dropPaneElement: HTMLElement | null;
+  dropPaneOriginalOutline: string;
+  dropPaneOriginalOutlineOffset: string;
+  originalButtonOpacity: string;
+};
+
+const RESOURCE_PANE_SELECTOR = '[data-planning-board-resource-pane]';
+
+function resourcePaneAtPoint(
+  clientX: number,
+  clientY: number,
+  sourceResource: string | null,
+  validResources: ReadonlySet<string>
+): HTMLElement | null {
+  const elements = typeof document.elementsFromPoint === 'function'
+    ? document.elementsFromPoint(clientX, clientY)
+    : typeof document.elementFromPoint === 'function'
+      ? [document.elementFromPoint(clientX, clientY)].filter((element): element is Element => element != null)
+      : [];
+  const sourceKey = sourceResource ?? '未設定';
+  for (const element of elements) {
+    if (!(element instanceof Element)) continue;
+    const pane = element.closest<HTMLElement>(RESOURCE_PANE_SELECTOR);
+    const resourceCode = pane?.dataset.resourceCode;
+    if (pane && resourceCode && validResources.has(resourceCode) && resourceCode !== sourceKey) return pane;
+  }
+  return null;
+}
 
 export function PlanningBoardResourceView({
   items,
@@ -32,10 +81,226 @@ export function PlanningBoardResourceView({
   selectedItemIds,
   onToggleItem,
   onResourceClick,
+  onResourceDrop,
   onRankChange,
   disabled = false,
+  resourceDragDisabled = false,
   rankDisabled = false
 }: PlanningBoardResourceViewProps) {
+  const pendingResourceDragRef = useRef<PendingResourceDrag | null>(null);
+  const suppressedResourceClickPointerIdRef = useRef<number | null>(null);
+  const validResources = useMemo(() => new Set(resources), [resources]);
+
+  const cancelResourceDragFrame = useCallback((drag: PendingResourceDrag) => {
+    if (drag.frameId === null) return;
+    window.cancelAnimationFrame(drag.frameId);
+    drag.frameId = null;
+  }, []);
+
+  const restoreDropPane = useCallback((drag: PendingResourceDrag) => {
+    if (!drag.dropPaneElement) return;
+    drag.dropPaneElement.style.outline = drag.dropPaneOriginalOutline;
+    drag.dropPaneElement.style.outlineOffset = drag.dropPaneOriginalOutlineOffset;
+    drag.dropPaneElement = null;
+  }, []);
+
+  const setDropPane = useCallback((drag: PendingResourceDrag, pane: HTMLElement | null) => {
+    if (drag.dropPaneElement === pane) return;
+    restoreDropPane(drag);
+    if (!pane) return;
+    drag.dropPaneElement = pane;
+    drag.dropPaneOriginalOutline = pane.style.outline;
+    drag.dropPaneOriginalOutlineOffset = pane.style.outlineOffset;
+    pane.style.outline = '2px solid rgb(110 231 183)';
+    pane.style.outlineOffset = '-2px';
+  }, [restoreDropPane]);
+
+  const flushResourceDragFrame = useCallback(() => {
+    const drag = pendingResourceDragRef.current;
+    if (!drag) return;
+    drag.frameId = null;
+    if (!drag.ghostElement) return;
+    drag.ghostElement.style.transform =
+      'translate3d(' + (drag.pendingClientX - drag.ghostOffsetX) + 'px, ' +
+      (drag.pendingClientY - drag.ghostOffsetY) + 'px, 0)';
+    setDropPane(drag, resourcePaneAtPoint(
+      drag.pendingClientX,
+      drag.pendingClientY,
+      drag.sourceResource,
+      validResources
+    ));
+  }, [setDropPane, validResources]);
+
+  const scheduleResourceDragFrame = useCallback(() => {
+    const drag = pendingResourceDragRef.current;
+    if (!drag || drag.frameId !== null) return;
+    drag.frameId = window.requestAnimationFrame(flushResourceDragFrame);
+  }, [flushResourceDragFrame]);
+
+  const createResourceDragGhost = useCallback((drag: PendingResourceDrag) => {
+    if (drag.ghostElement) return;
+    const rect = drag.buttonElement.getBoundingClientRect();
+    const ghost = document.createElement('div');
+    ghost.textContent = drag.sourceResource ?? '—';
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.className = 'pointer-events-none fixed z-[70] inline-flex min-h-11 items-center justify-center rounded-md border border-indigo-300 bg-slate-900 px-2 font-mono text-[15px] font-bold text-white shadow-lg';
+    ghost.style.pointerEvents = 'none';
+    ghost.style.left = '0';
+    ghost.style.top = '0';
+    ghost.style.width = rect.width + 'px';
+    ghost.style.minWidth = Math.max(rect.width, 44) + 'px';
+    ghost.style.height = Math.max(rect.height, 44) + 'px';
+    ghost.style.opacity = '0.96';
+    drag.ghostOffsetX = Math.min(Math.max(0, drag.startClientX - rect.left), rect.width);
+    drag.ghostOffsetY = Math.min(Math.max(0, drag.startClientY - rect.top), rect.height);
+    document.body.appendChild(ghost);
+    drag.ghostElement = ghost;
+    drag.originalButtonOpacity = drag.buttonElement.style.opacity;
+    drag.buttonElement.style.opacity = '0.35';
+  }, []);
+
+  const clearResourceDrag = useCallback((pointerId: number) => {
+    const drag = pendingResourceDragRef.current;
+    if (!drag || drag.pointerId !== pointerId) return null;
+    cancelResourceDragFrame(drag);
+    restoreDropPane(drag);
+    drag.buttonElement.style.opacity = drag.originalButtonOpacity;
+    drag.ghostElement?.remove();
+    pendingResourceDragRef.current = null;
+    if (drag.buttonElement.hasPointerCapture?.(pointerId)) {
+      try {
+        drag.buttonElement.releasePointerCapture(pointerId);
+      } catch {
+        /* already released */
+      }
+    }
+    return drag;
+  }, [cancelResourceDragFrame, restoreDropPane]);
+
+  useEffect(() => () => {
+    const drag = pendingResourceDragRef.current;
+    if (!drag) return;
+    cancelResourceDragFrame(drag);
+    restoreDropPane(drag);
+    drag.buttonElement.style.opacity = drag.originalButtonOpacity;
+    drag.ghostElement?.remove();
+    if (drag.buttonElement.hasPointerCapture?.(drag.pointerId)) {
+      try {
+        drag.buttonElement.releasePointerCapture(drag.pointerId);
+      } catch {
+        /* already released */
+      }
+    }
+    pendingResourceDragRef.current = null;
+  }, [cancelResourceDragFrame, restoreDropPane]);
+
+  useEffect(() => {
+    const drag = pendingResourceDragRef.current;
+    if (!drag) return;
+    const sourceItem = items.find((item) => item.itemId === drag.item.itemId);
+    const sourceChanged = sourceItem == null ||
+      sourceItem.isCompleted ||
+      sourceItem.itemRevision !== drag.item.itemRevision ||
+      sourceItem.version !== drag.item.version ||
+      resolveGrindingPlanningBoardResource(sourceItem, allocation) !== drag.sourceResource;
+    if (sourceChanged || disabled || allocation === 'original' || resourceDragDisabled) {
+      clearResourceDrag(drag.pointerId);
+      suppressedResourceClickPointerIdRef.current = null;
+    }
+  }, [allocation, clearResourceDrag, disabled, items, resourceDragDisabled]);
+
+  const handleResourcePointerDown = useCallback((
+    event: React.PointerEvent<HTMLButtonElement>,
+    item: GrindingPlanningBoardItem,
+    currentResource: string | null
+  ) => {
+    if (event.button !== 0 || pendingResourceDragRef.current) return;
+    suppressedResourceClickPointerIdRef.current = null;
+    const buttonElement = event.currentTarget;
+    pendingResourceDragRef.current = {
+      pointerId: event.pointerId,
+      item,
+      sourceResource: currentResource,
+      buttonElement,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      maxMovementPx: 0,
+      dragging: false,
+      ghostElement: null,
+      ghostOffsetX: 0,
+      ghostOffsetY: 0,
+      pendingClientX: event.clientX,
+      pendingClientY: event.clientY,
+      frameId: null,
+      dropPaneElement: null,
+      dropPaneOriginalOutline: '',
+      dropPaneOriginalOutlineOffset: '',
+      originalButtonOpacity: buttonElement.style.opacity
+    };
+    buttonElement.setPointerCapture?.(event.pointerId);
+    event.stopPropagation();
+  }, []);
+
+  const handleResourcePointerMove = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    const drag = pendingResourceDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    drag.maxMovementPx = Math.max(
+      drag.maxMovementPx,
+      Math.hypot(event.clientX - drag.startClientX, event.clientY - drag.startClientY)
+    );
+    if (!drag.dragging && drag.maxMovementPx < INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX) return;
+    drag.dragging = true;
+    createResourceDragGhost(drag);
+    drag.pendingClientX = event.clientX;
+    drag.pendingClientY = event.clientY;
+    scheduleResourceDragFrame();
+    event.preventDefault();
+    event.stopPropagation();
+  }, [createResourceDragGhost, scheduleResourceDragFrame]);
+
+  const handleResourcePointerUp = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    const drag = pendingResourceDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const isDrag = drag.dragging;
+    const targetPane = isDrag
+      ? resourcePaneAtPoint(event.clientX, event.clientY, drag.sourceResource, validResources)
+      : null;
+    const targetResource = targetPane?.dataset.resourceCode ?? null;
+    const item = drag.item;
+    const shouldDrop = isDrag && targetResource != null && targetResource !== (drag.sourceResource ?? '未設定');
+    if (isDrag) suppressedResourceClickPointerIdRef.current = event.pointerId;
+    clearResourceDrag(event.pointerId);
+    if (isDrag) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (shouldDrop) onResourceDrop?.(item, targetResource);
+  }, [clearResourceDrag, onResourceDrop, validResources]);
+
+  const handleResourcePointerCancel = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    const drag = pendingResourceDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    clearResourceDrag(event.pointerId);
+    suppressedResourceClickPointerIdRef.current = null;
+    event.preventDefault();
+    event.stopPropagation();
+  }, [clearResourceDrag]);
+
+  const handleResourceLostPointerCapture = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    const drag = pendingResourceDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    clearResourceDrag(event.pointerId);
+    suppressedResourceClickPointerIdRef.current = null;
+  }, [clearResourceDrag]);
+
+  const handleResourceClick = useCallback((item: GrindingPlanningBoardItem) => {
+    if (suppressedResourceClickPointerIdRef.current !== null) {
+      suppressedResourceClickPointerIdRef.current = null;
+      return;
+    }
+    onResourceClick(item);
+  }, [onResourceClick]);
+
   const seibanRankByFseiban = useMemo(
     () => new Map(seibanOrder.map((fseiban, index) => [fseiban, index + 1] as const)),
     [seibanOrder]
@@ -50,7 +315,6 @@ export function PlanningBoardResourceView({
       byResource.set(resource, group);
     }
     return [...byResource.entries()]
-      .filter(([, resourceItems]) => resourceItems.length > 0)
       .map(([resource, resourceItems]) => [
         resource,
         sortGrindingPlanningBoardItems(resourceItems, seibanOrder, 'resource', allocation)
@@ -61,7 +325,16 @@ export function PlanningBoardResourceView({
     <div className="grid min-w-0 grid-cols-1 items-start gap-2.5 lg:grid-cols-2 xl:grid-cols-4" data-testid="planning-board-resource-view">
       {groups.map(([resource, resourceItems]) => {
         return (
-          <article key={resource} className="min-w-0 overflow-hidden rounded-lg border border-slate-800 bg-slate-900/85">
+          <article
+            key={resource}
+            className="min-w-0 overflow-hidden rounded-lg border border-slate-800 bg-slate-900/85"
+            data-planning-board-resource-pane
+            data-resource-code={resource}
+            onPointerMove={handleResourcePointerMove}
+            onPointerUp={handleResourcePointerUp}
+            onPointerCancel={handleResourcePointerCancel}
+            onLostPointerCapture={handleResourceLostPointerCapture}
+          >
             <header className="flex h-7 min-h-7 min-w-0 items-center gap-2 border-b border-slate-800 px-2 py-0.5">
               <strong className="min-w-0 flex-1 truncate font-mono text-[15px] leading-none text-white">
                 {formatResourceCdWithJapaneseNames(resource, resourceNameMap)}
@@ -72,7 +345,9 @@ export function PlanningBoardResourceView({
               allocation={allocation}
               selectedItemIds={selectedItemIds}
               onToggleItem={onToggleItem}
-              onResourceClick={onResourceClick}
+              onResourceClick={handleResourceClick}
+              onResourcePointerDown={handleResourcePointerDown}
+              resourceDragDisabled={resourceDragDisabled}
               onRankChange={onRankChange}
               disabled={disabled}
               rankDisabled={rankDisabled}

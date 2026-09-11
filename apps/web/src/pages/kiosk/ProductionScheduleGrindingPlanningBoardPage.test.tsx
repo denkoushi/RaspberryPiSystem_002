@@ -1,11 +1,20 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as planningBoardSorting from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
 
 import { ProductionScheduleGrindingPlanningBoardPage } from './ProductionScheduleGrindingPlanningBoardPage';
 
 import type { GrindingPlanningBoardRankResponse } from '@raspi-system/shared-types';
+
+class TestPointerEvent extends MouseEvent {
+  readonly pointerId: number;
+
+  constructor(type: string, init: MouseEventInit & { pointerId?: number } = {}) {
+    super(type, init);
+    this.pointerId = init.pointerId ?? 0;
+  }
+}
 
 const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
@@ -115,6 +124,7 @@ function selectAllBoardItems() {
 
 describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   beforeEach(() => {
+    vi.stubGlobal('PointerEvent', TestPointerEvent);
     mocks.snapshot.mockReset();
     mocks.refetch.mockReset();
     mocks.overrides.mockReset();
@@ -148,6 +158,10 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     alternateRank: payload.alternateRank
   }));
     mocks.order.mockResolvedValue({ sourceRevision: 'board-2', seibanOrder: ['26-1041', '26-1042'] });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('通常表示から製番を広げ、日付と半角機種名を表示する', () => {
@@ -204,16 +218,17 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
-    fireEvent.click(within(drawer).getByRole('button', { name: '機種名で検索' }));
     const machineNameSearch = within(drawer).getByTestId('planning-board-machine-name-search');
+    expect(within(drawer).queryByRole('button', { name: '機種名で検索' })).not.toBeInTheDocument();
     fireEvent.click(within(machineNameSearch).getByRole('button', { name: '2', exact: true }));
+    expect(within(machineNameSearch).getByLabelText('機種名数字検索値')).toHaveTextContent('2');
 
     expect(screen.getByLabelText('CAND-200を登録候補に選択')).toBeInTheDocument();
     expect(screen.queryByLabelText('CAND-80を登録候補に選択')).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('CAND-200を登録候補に選択'));
     expect(within(drawer).getByText('CAND-200 · 自動組立機 AX-200')).toBeInTheDocument();
 
-    fireEvent.click(within(drawer).getByRole('button', { name: '機種名検索を解除' }));
+    fireEvent.click(within(machineNameSearch).getByRole('button', { name: '機種名数字を1文字削除' }));
     expect(screen.getByLabelText('CAND-200を登録候補に選択')).toBeInTheDocument();
     expect(screen.getByLabelText('CAND-80を登録候補に選択')).toBeInTheDocument();
     expect(within(drawer).getByText('CAND-200 · 自動組立機 AX-200')).toBeInTheDocument();
@@ -386,6 +401,58 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(resourceButton).not.toBeDisabled();
     fireEvent.click(resourceButton);
     expect(screen.getByRole('dialog', { name: '一括変更' })).toBeInTheDocument();
+  });
+
+  it('資源CD chipのdragは別paneへのdrop時に既存override経路を1回だけ呼ぶ', async () => {
+    const responseItem = {
+      ...fixture().items[0]!,
+      effectiveResourceCd: '584',
+      itemRevision: 'revision-a-after-drag',
+      version: 3
+    };
+    mocks.overrides.mockResolvedValueOnce({ sourceRevision: 'board-2', items: [responseItem] });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
+
+    const source = screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]!;
+    const sourcePane = source.closest('[data-planning-board-resource-pane]')!;
+    const targetPane = screen.getByTestId('planning-board-resource-view').querySelector('[data-resource-code="584"]')!;
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: vi.fn(() => [targetPane])
+    });
+
+    fireEvent.pointerDown(source, { pointerId: 11, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(sourcePane, { pointerId: 11, clientX: 21, clientY: 10 });
+    fireEvent.pointerUp(sourcePane, { pointerId: 11, clientX: 21, clientY: 10 });
+    fireEvent.click(source);
+
+    await waitFor(() => expect(mocks.overrides).toHaveBeenCalledTimes(1));
+    expect(mocks.overrides.mock.calls[0]?.[0]).toMatchObject({
+      sourceRevision: 'board-1',
+      items: [{ itemId: 'a', itemRevision: 'revision-a', overrideVersion: 2, resourceCd: '584' }]
+    });
+    await waitFor(() => expect(screen.getAllByRole('button', { name: '資源CD 584を変更' })).toHaveLength(1));
+  });
+
+  it('資源CD chipのdrag保存失敗時は元のpane表示へ戻す', async () => {
+    mocks.overrides.mockRejectedValueOnce(new Error('drag save failed'));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
+
+    const source = screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]!;
+    const sourcePane = source.closest('[data-planning-board-resource-pane]')!;
+    const targetPane = screen.getByTestId('planning-board-resource-view').querySelector('[data-resource-code="584"]')!;
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: vi.fn(() => [targetPane])
+    });
+    fireEvent.pointerDown(source, { pointerId: 12, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(sourcePane, { pointerId: 12, clientX: 21, clientY: 10 });
+    fireEvent.pointerUp(sourcePane, { pointerId: 12, clientX: 21, clientY: 10 });
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('保存できませんでした'));
+    expect(screen.getAllByRole('button', { name: '資源CD 305を変更' })).toHaveLength(4);
   });
 
   it('資源CD変更はPUT完了前に表示し、保存失敗時は元へ戻す', async () => {

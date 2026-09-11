@@ -27,6 +27,12 @@ export type PlanningBoardItemTableProps = {
   seibanRankByFseiban?: ReadonlyMap<string, number>;
   disabled?: boolean;
   rankDisabled?: boolean | ((item: GrindingPlanningBoardItem) => boolean);
+  resourceDragDisabled?: boolean;
+  onResourcePointerDown?: (
+    event: React.PointerEvent<HTMLButtonElement>,
+    item: GrindingPlanningBoardItem,
+    currentResource: string | null
+  ) => void;
   tableLabel: string;
 };
 
@@ -42,6 +48,12 @@ type PlanningBoardItemTableRowProps = {
   seibanRank?: number;
   disabled: boolean;
   rankDisabled: boolean;
+  resourceDragDisabled: boolean;
+  onResourcePointerDown?: (
+    event: React.PointerEvent<HTMLButtonElement>,
+    item: GrindingPlanningBoardItem,
+    currentResource: string | null
+  ) => void;
 };
 
 const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
@@ -55,7 +67,9 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   showSeiban,
   seibanRank,
   disabled,
-  rankDisabled
+  rankDisabled,
+  resourceDragDisabled,
+  onResourcePointerDown
 }: PlanningBoardItemTableRowProps) {
   const currentResource = resolveGrindingPlanningBoardResource(item, allocation);
   const currentDue = resolveGrindingPlanningBoardDueDate(item, allocation);
@@ -64,6 +78,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   const requiredTime = item.requiredMinutesKnown && item.requiredMinutes != null
     ? `${item.requiredMinutes}分`
     : '時間未定';
+  const resourceDragAllowed = Boolean(onResourcePointerDown) && !resourceDragDisabled && !disabled && allocation !== 'original' && !item.isCompleted;
 
   return (
     <tr
@@ -131,10 +146,12 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
                   item.effectiveResourceCd !== item.originalResourceCd
                   ? 'border-amber-300/60 bg-amber-950/50 text-[10px] text-amber-200'
                   : 'border-slate-700 bg-slate-900 text-[10px] text-indigo-300 hover:border-indigo-300',
-              (allocation === 'original' || item.isCompleted) && 'cursor-not-allowed opacity-60 hover:border-slate-700'
+              (allocation === 'original' || item.isCompleted) && 'cursor-not-allowed opacity-60 hover:border-slate-700',
+              resourceDragAllowed && 'touch-none cursor-grab active:cursor-grabbing'
             )}
             aria-label={`資源CD ${currentResource ?? '未設定'}を変更`}
             disabled={disabled || allocation === 'original' || item.isCompleted}
+            onPointerDown={resourceDragAllowed ? (event) => onResourcePointerDown?.(event, item, currentResource) : undefined}
             onClick={() => onResourceClick(item)}
           >
             {currentResource ?? '—'}
@@ -194,6 +211,8 @@ function areTablePropsEqual(previous: PlanningBoardItemTableProps, next: Plannin
     previous.seibanRankByFseiban === next.seibanRankByFseiban &&
     previous.disabled === next.disabled &&
     previous.rankDisabled === next.rankDisabled &&
+    previous.resourceDragDisabled === next.resourceDragDisabled &&
+    previous.onResourcePointerDown === next.onResourcePointerDown &&
     previous.tableLabel === next.tableLabel &&
     areSelectionStatesEqual(previous.items, previous.selectedItemIds, next.selectedItemIds);
 }
@@ -211,6 +230,8 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
   seibanRankByFseiban,
   disabled = false,
   rankDisabled = false,
+  resourceDragDisabled = false,
+  onResourcePointerDown,
   tableLabel
 }: PlanningBoardItemTableProps) {
   return (
@@ -251,6 +272,8 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
                 seibanRank={seibanRankByFseiban?.get(item.fseiban)}
                 disabled={disabled}
                 rankDisabled={itemRankDisabled}
+                resourceDragDisabled={resourceDragDisabled}
+                onResourcePointerDown={onResourcePointerDown}
               />
             );
           })}

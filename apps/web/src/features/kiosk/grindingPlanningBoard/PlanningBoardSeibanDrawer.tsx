@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { InspectionDrawingDigitTenkey, matchesDigitQuery } from '../../part-measurement/inspection-drawing';
+import { matchesDigitQuery } from '../../part-measurement/inspection-drawing';
+import { KioskDigitTenkey } from '../KioskDigitTenkey';
 import { normalizeMachineName } from '../productionSchedule/machineName';
 import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister';
 
@@ -82,7 +83,6 @@ export function PlanningBoardSeibanDrawer({
   const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [selectedCandidates, setSelectedCandidates] = useState<ReadonlySet<string>>(new Set());
   const [collapsedMachineNames, setCollapsedMachineNames] = useState<ReadonlySet<string>>(new Set());
-  const [machineNameSearchOpen, setMachineNameSearchOpen] = useState(false);
   const [machineNameDigitQuery, setMachineNameDigitQuery] = useState('');
   const orderDisabled = orderReadOnly || orderBusy;
 
@@ -208,36 +208,6 @@ export function PlanningBoardSeibanDrawer({
           {orderStatus ? <p className="mt-2 text-xs text-slate-400" role="status">{orderStatus}</p> : null}
           <section className="mt-4 rounded-md border border-slate-800 bg-slate-900/70 p-2" aria-label="納期候補">
             <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className={`min-h-11 shrink-0 rounded-md border px-2 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 ${
-                    machineNameDigitQuery
-                      ? 'border-emerald-300 bg-emerald-950/60 text-emerald-100'
-                      : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-emerald-300 hover:text-white'
-                  }`}
-                  aria-label="機種名で検索"
-                  aria-expanded={machineNameSearchOpen}
-                  disabled={orderDisabled}
-                  onClick={() => setMachineNameSearchOpen((current) => !current)}
-                >
-                  機種名検索
-                </button>
-                {machineNameDigitQuery ? (
-                  <button
-                    type="button"
-                    className="min-h-11 shrink-0 rounded-md border border-slate-700 px-2 text-xs font-semibold text-slate-400 hover:border-emerald-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
-                    aria-label="機種名検索を解除"
-                    disabled={orderDisabled}
-                    onClick={() => {
-                      setMachineNameDigitQuery('');
-                      setMachineNameSearchOpen(false);
-                    }}
-                  >
-                    解除
-                  </button>
-                ) : null}
-              </div>
               <label className="flex min-h-11 shrink-0 items-center gap-1 text-[10px] text-slate-300">
                 <input
                   type="checkbox"
@@ -248,19 +218,47 @@ export function PlanningBoardSeibanDrawer({
                 完了表示
               </label>
             </div>
-            {machineNameSearchOpen ? (
-              <div className="mt-2 rounded border border-slate-800 bg-slate-950/80 px-1 py-1" data-testid="planning-board-machine-name-search">
-                <InspectionDrawingDigitTenkey
-                  value={machineNameDigitQuery}
-                  onChange={setMachineNameDigitQuery}
-                  disabled={orderDisabled}
-                  ariaLabel="機種名数字テンキー"
-                />
+            <div className="mt-2 flex min-w-0 items-center gap-1 rounded border border-slate-800 bg-slate-950/80 px-1 py-1" data-testid="planning-board-machine-name-search">
+              <span
+                className="min-w-0 max-w-28 flex-1 truncate rounded border border-slate-700 bg-slate-900 px-2 text-center font-mono text-sm text-white"
+                aria-label="機種名数字検索値"
+              >
+                {machineNameDigitQuery || '—'}
+              </span>
+              <KioskDigitTenkey
+                value={machineNameDigitQuery}
+                onChange={setMachineNameDigitQuery}
+                disabled={orderDisabled}
+                maxLength={200}
+                ariaLabel="機種名数字テンキー"
+                showReset={false}
+                className="flex shrink-0 flex-nowrap items-center justify-center gap-0.5"
+                keyClassName="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded border border-white/15 bg-slate-950 text-[0.82rem] font-extrabold text-white hover:bg-slate-800 disabled:opacity-50"
+              />
+              <div className="flex shrink-0 items-center gap-0.5">
+                <button
+                  type="button"
+                  className="inline-flex h-[34px] w-[34px] items-center justify-center rounded border border-white/15 bg-slate-950 text-base font-extrabold text-white hover:bg-slate-800 disabled:opacity-50"
+                  aria-label="機種名数字を1文字削除"
+                  disabled={orderDisabled || machineNameDigitQuery.length === 0}
+                  onClick={() => setMachineNameDigitQuery((current) => current.slice(0, -1))}
+                >
+                  ⌫
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-[34px] w-[34px] items-center justify-center rounded border border-amber-300/30 bg-slate-950 text-base font-extrabold text-amber-200 hover:bg-slate-800 disabled:opacity-50"
+                  aria-label="機種名数字をリセット"
+                  disabled={orderDisabled || machineNameDigitQuery.length === 0}
+                  onClick={() => setMachineNameDigitQuery('')}
+                >
+                  ↺
+                </button>
               </div>
-            ) : null}
+            </div>
             {selectedCandidateCount > 0 ? (
               <div className="mt-2 rounded border border-emerald-400/40 bg-emerald-950/40 p-2">
-                <div className="grid gap-0.5 text-xs text-emerald-100 sm:grid-cols-2">
+                <div className="grid grid-cols-2 gap-0.5 text-xs text-emerald-100">
                   {selectedCandidatesForRegistration.map((candidate) => (
                     <div key={candidate.fseiban} className="min-w-0 truncate">
                       {candidate.fseiban} · {normalizeCandidateMachineName(candidate.machineName) || '機種名未登録'}
@@ -287,7 +285,7 @@ export function PlanningBoardSeibanDrawer({
             {candidatesLoading && candidates.length === 0 ? <p className="mt-2 text-xs text-slate-500">候補を取得中…</p> : null}
             {candidatesError ? <p className="mt-2 text-xs text-rose-300" role="alert">候補を取得できませんでした。再試行します。</p> : null}
             {!candidatesLoading && !candidatesError && candidateGroups.length === 0 ? <p className="mt-2 text-xs text-slate-500">該当する候補はありません。</p> : null}
-            <div className="mt-2 max-h-[min(42vh,28rem)] space-y-1.5 overflow-y-auto pr-1">
+            <div className="mt-2 grid max-h-[min(42vh,28rem)] grid-cols-2 items-start gap-1.5 overflow-y-auto pr-1">
               {candidateGroups.map(([machineName, group]) => {
                 const collapsed = collapsedMachineNames.has(machineName);
                 return (
@@ -307,7 +305,7 @@ export function PlanningBoardSeibanDrawer({
                       <span className="shrink-0 text-[10px] text-slate-500">{group.length}件 {collapsed ? '▸' : '▾'}</span>
                     </button>
                     {!collapsed ? (
-                      <div className="space-y-1 border-t border-slate-800 p-1.5">
+                      <div className="grid grid-cols-2 gap-1 border-t border-slate-800 p-1.5">
                         {group.map((candidate) => {
                           const registered = registeredFseibans.includes(candidate.fseiban);
                           const selected = selectedCandidates.has(candidate.fseiban);
@@ -315,7 +313,7 @@ export function PlanningBoardSeibanDrawer({
                           return (
                             <label
                               key={candidate.fseiban}
-                              className={`flex min-h-11 items-center gap-2 rounded border px-2 ${
+                              className={`grid min-h-11 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5 rounded border px-2 ${
                                 registered ? 'border-slate-800 bg-slate-900/50 opacity-70' : selected ? 'border-emerald-400/60 bg-emerald-950/40' : 'border-slate-800 bg-slate-900'
                               }`}
                             >
@@ -327,13 +325,13 @@ export function PlanningBoardSeibanDrawer({
                                 onChange={(event) => toggleCandidate(candidate.fseiban, event.target.checked)}
                                 aria-label={`${candidate.fseiban}を登録候補に選択`}
                               />
-                              <span className="min-w-0 flex-1">
+                              <span className="min-w-0">
                                 <span className="block truncate font-mono text-xs font-bold text-white">{candidate.fseiban}</span>
                                 <span className={`block text-[10px] ${overdue ? 'font-bold text-rose-300' : 'text-slate-400'}`}>
                                   納期 {formatCandidateDate(candidate.dueDate)}{overdue ? '・期限超過' : ''}
                                 </span>
                               </span>
-                              <span className={`shrink-0 text-[10px] font-semibold ${registered ? 'text-cyan-300' : 'text-slate-500'}`}>
+                              <span className={`col-start-2 row-start-2 justify-self-start text-[10px] font-semibold ${registered ? 'text-cyan-300' : 'text-slate-500'}`}>
                                 {registered ? '登録済み' : candidate.isCompleted ? '完了' : '未登録'}
                               </span>
                             </label>
