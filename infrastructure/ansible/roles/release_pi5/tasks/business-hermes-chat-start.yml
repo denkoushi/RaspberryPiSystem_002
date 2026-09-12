@@ -7,7 +7,7 @@
   # Its bind-mounted proxy program is loaded only at process startup. A trial
   # rollout must activate the approved search paths even when Compose is unchanged.
   ansible.builtin.command:
-    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string] + (['--force-recreate'] if (hermes_search_trial_enabled | default(false) | bool) else []) + ['business-hermes-chat-egress'] }}"
+    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string] + (['--force-recreate'] if (lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') | bool) else []) + ['business-hermes-chat-egress'] }}"
   environment: "{{ release_pi5_compose_environment }}"
   changed_when: true
 

@@ -2401,7 +2401,6 @@ sys.exit(code)
                              'release_pi5_compose_project': 'bluegreen', 'release_pi5_compose_wait_seconds': 10,
                              'release_pi5_gateway_id': 'gateway-fixture', 'release_pi5_chat_before': before,
                              'release_pi5_chat_gateway_connected': False,
-                             **({'hermes_search_trial_enabled': True} if trial_enabled else {}),
                              'business_hermes_chat_rendered_files': {'changed': True, 'results': []}},
                     'environment': {'CHAT_DOCKER_STATE': str(state)},
                     'tasks': [{'block': [
@@ -2413,6 +2412,11 @@ sys.exit(code)
                 }], sort_keys=False))
                 (root / 'ansible.cfg').write_text('[defaults]\nretry_files_enabled = False\n')
                 env = dict(os.environ, ANSIBLE_CONFIG=str(root / 'ansible.cfg'), ANSIBLE_NOCOLOR='1', PATH=str(root) + os.pathsep + os.environ['PATH'])
+                # Match the canonical controller environment. The lowercase
+                # variable exists only inside prepare.yml's include_tasks.
+                env.pop('HERMES_SEARCH_TRIAL_ENABLED', None)
+                if trial_enabled or existing:
+                    env['HERMES_SEARCH_TRIAL_ENABLED'] = 'true' if trial_enabled else 'false'
                 result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
                                         env=env, capture_output=True, text=True, timeout=60)
                 self.assertEqual(result.returncode, 0, result.stdout[-4000:] + result.stderr[-1000:])
