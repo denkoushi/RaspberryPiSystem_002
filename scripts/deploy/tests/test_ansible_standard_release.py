@@ -2381,8 +2381,8 @@ elif a[0] == 'compose':
 p.write_text(json.dumps(s))
 sys.exit(code)
 '''
-        for existing, fail_start in [(False, False), (False, True), (True, False)]:
-            with self.subTest(existing=existing, fail_start=fail_start), tempfile.TemporaryDirectory() as directory:
+        for existing, fail_start, trial_enabled in [(False, False, False), (False, True, False), (True, False, False), (True, False, True), (True, True, True)]:
+            with self.subTest(existing=existing, fail_start=fail_start, trial_enabled=trial_enabled), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 executable = root / 'docker'
                 executable.write_text(docker_script)
@@ -2401,6 +2401,7 @@ sys.exit(code)
                              'release_pi5_compose_project': 'bluegreen', 'release_pi5_compose_wait_seconds': 10,
                              'release_pi5_gateway_id': 'gateway-fixture', 'release_pi5_chat_before': before,
                              'release_pi5_chat_gateway_connected': False,
+                             **({'hermes_search_trial_enabled': True} if trial_enabled else {}),
                              'business_hermes_chat_rendered_files': {'changed': True, 'results': []}},
                     'environment': {'CHAT_DOCKER_STATE': str(state)},
                     'tasks': [{'block': [
@@ -2424,6 +2425,8 @@ sys.exit(code)
                 self.assertFalse(any('-v' in event or '--volumes' in event for event in actual['events']))
                 up = [event for event in actual['events'] if 'up' in event]
                 self.assertEqual(up[0][-1], 'business-hermes-chat-egress')
+                self.assertEqual('--force-recreate' in up[0], trial_enabled)
+                self.assertIn('--no-deps', up[0])
                 self.assertEqual(up[1][-1], 'business-hermes-chat')
 
 
