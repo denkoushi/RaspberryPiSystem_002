@@ -8,6 +8,7 @@ _LAUNCHER_HINT_ENV_MAP: dict[str, str] = {
     "llamaServerMmproj": "LLAMA_SERVER_MMPROJ",
     "llamaServerAlias": "LLAMA_SERVER_ALIAS",
     "blueModelDir": "BLUE_MODEL_DIR",
+    "blueHfCacheDir": "BLUE_HF_CACHE_DIR",
     "blueServerImage": "BLUE_SERVER_IMAGE",
     "blueServerEntrypoint": "BLUE_SERVER_ENTRYPOINT",
     "blueServerMode": "BLUE_SERVER_MODE",

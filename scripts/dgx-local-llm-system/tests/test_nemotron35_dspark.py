@@ -58,6 +58,7 @@ class Nemotron35DsparkTests(unittest.TestCase):
         self.assertEqual(profile.declared_capabilities, ("text",))
         self.assertEqual(profile.served_alias, "system-prod-primary")
         self.assertEqual(env["BLUE_SERVER_IMAGE"], cache_helper.IMAGE)
+        self.assertEqual(env["BLUE_HF_CACHE_DIR"], cache_helper.DEFAULT_CACHE)
         for repo, rev, key in (
             (cache_helper.MODEL_ID, cache_helper.MODEL_REVISION, "VLLM_MODEL_PATH"),
             (cache_helper.DRAFT_ID, cache_helper.DRAFT_REVISION, "VLLM_SPECULATIVE_MODEL"),

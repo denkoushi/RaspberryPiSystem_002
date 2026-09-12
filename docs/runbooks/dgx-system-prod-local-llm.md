@@ -1230,6 +1230,9 @@ Qwen専用PLE adapterは利用しない。`reasoning-parser=nemotron_v3`、ツ�
 - DSpark revision: `8a0177116d138011e63103110f136ec0ca09ebbf`
 - vLLM 0.27.1 linux/arm64 digest: `sha256:1c8e60a0841b333c700488cb029d3664807249da0c071e862191b00fe34b228c`
 - 重み約22.91GB、圧縮コンテナ約10.53GB。新規通信量は合計約33.44GB。RAM使用量ではない。
+- 保存先は実行ユーザー所有の `/srv/dgx/system-prod/data/nemotron35-hf-cache`。
+  `blueHfCacheDir` が同じディレクトリをコンテナへ渡す。既存の共有 `hf-cache/hub` がroot所有でも、
+  その所有権を変更せず専用保存先で取得する。既存Qwenのcacheは変更しない。
 - 準備時の空き容量チェックは保守的な **70GiB**。展開と一時ファイルを見込んだ運用予算であり実測値ではない。
   Docker data-rootがHF cacheと別filesystemなら、両方の空き容量を別途確認する。
 

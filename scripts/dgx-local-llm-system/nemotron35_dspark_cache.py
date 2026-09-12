@@ -16,7 +16,7 @@ MODEL_REVISION = "bee7596271d1495f6992ae224aefde4410e816b8"
 DRAFT_ID = MODEL_ID + "-DSpark"
 DRAFT_REVISION = "8a0177116d138011e63103110f136ec0ca09ebbf"
 IMAGE = "vllm/vllm-openai:v0.27.1@sha256:1c8e60a0841b333c700488cb029d3664807249da0c071e862191b00fe34b228c"
-DEFAULT_CACHE = "/srv/dgx/system-prod/data/hf-cache"
+DEFAULT_CACHE = "/srv/dgx/system-prod/data/nemotron35-hf-cache"
 # Conservative preparation budget including image extraction and temporary
 # files; this is not a measured runtime RAM requirement.
 REQUIRED_FREE_GIB = 70
