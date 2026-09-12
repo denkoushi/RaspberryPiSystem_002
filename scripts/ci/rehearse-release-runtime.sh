@@ -144,6 +144,11 @@ for _ in $(seq 1 60); do
 done
 docker exec "$DB_CONTAINER" pg_isready -U postgres -d borrow_return >/dev/null
 
+FAILURE_STAGE='hermes-sealed-index-runtime'
+docker run --rm --platform "$PLATFORM" --network none --read-only --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=64m \
+  --label "$LABEL" --label "$RUN_LABEL" --entrypoint /opt/hermes-node/bin/node "$API_IMAGE" \
+  --test /app/scripts/hermes-search/hermes-device-artifact.test.mjs
+
 FAILURE_STAGE='migration-and-role-bootstrap'
 MIGRATION_PASSWORD='audit-migration-password'
 APP_PASSWORD='audit-application-password'
