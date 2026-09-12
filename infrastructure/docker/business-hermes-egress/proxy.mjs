@@ -8,6 +8,7 @@ const ALLOWED_HOST = 'api.openai.com';
 const DGX_HOST = process.env.DGX_GATEWAY_HOST ?? '100.118.82.72';
 const DGX_PORT = process.env.DGX_GATEWAY_PORT ?? '38081';
 const DGX_PATH = '/v1/chat/completions';
+const SEARCH_PATHS = new Set(['embed', 'tokenize', 'detokenize', 'rerank'].map(op => `/v1/hermes-search/${op}`));
 const MAX_HTTP_BODY_BYTES = 1024 * 1024;
 // This is an egress idle timeout, independent from the API's guide/proactive
 // and operator-chat request deadlines. The API remains the total request
@@ -49,7 +50,7 @@ export function isAllowedHttpRequest(request, allowedHost = DGX_HOST, allowedPor
   }
   if (target.protocol !== 'http:' || target.username || target.password) return false;
   if (target.hostname.toLowerCase() !== allowedHost.toLowerCase() || target.port !== String(allowedPort)) return false;
-  if (target.pathname !== allowedPath || target.search) return false;
+  if ((target.pathname !== allowedPath && !SEARCH_PATHS.has(target.pathname)) || target.search || target.hash) return false;
   return sameHostHeader(request.headers?.host, allowedHost, allowedPort);
 }
 

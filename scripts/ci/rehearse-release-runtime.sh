@@ -206,6 +206,7 @@ required = {
     '/app/storage/measuring-instrument-genres',
     '/app/storage/pallet-machine-illustrations',
     '/app/storage/csv-dashboards',
+    '/app/storage/hermes-search',
     '/app/storage/.integrity',
 }
 if set(targets) != required:

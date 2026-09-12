@@ -1,0 +1,76 @@
+---
+- name: Require the existing consultation authentication and egress for the search trial
+  ansible.builtin.assert:
+    that:
+      - business_hermes_chat_enabled | default(false) | bool
+      - business_hermes_chat_dgx_token is defined
+      - business_hermes_chat_dgx_token | length >= 16
+      - hermes_search_trial_artifact is defined
+    fail_msg: The search trial requires the existing consultation principal, egress and a sealed local index artifact.
+  no_log: true
+  when: hermes_search_trial_enabled | bool
+
+- name: Read the local artifact identity without exposing business records
+  ansible.builtin.set_fact:
+    hermes_search_trial_proof: "{{ lookup('ansible.builtin.file', hermes_search_trial_artifact ~ '/artifact.json') | from_json }}"
+  when: hermes_search_trial_enabled | bool
+
+- name: Validate the sealed artifact schema
+  ansible.builtin.assert:
+    that:
+      - hermes_search_trial_proof.schema == 'hermes-device-index/v1'
+      - hermes_search_trial_proof.files['qmd-index.sqlite'] is match('^[0-9a-f]{64}$')
+  when: hermes_search_trial_enabled | bool
+
+- name: Resolve the immutable artifact's container path
+  ansible.builtin.set_fact:
+    hermes_search_trial_container_artifact: "/app/storage/hermes-search/{{ hermes_search_trial_proof.files['qmd-index.sqlite'] }}"
+  when: hermes_search_trial_enabled | bool
+
+- name: Prepare the trial storage on the existing project SSD
+  ansible.builtin.file:
+    path: "{{ release_pi5_project_dir }}/storage/hermes-search/{{ item }}"
+    state: directory
+    owner: "{{ api_runtime_uid | default(1000) }}"
+    group: "{{ api_runtime_gid | default(1000) }}"
+    mode: '0700'
+  loop: ['', "{{ hermes_search_trial_proof.files['qmd-index.sqlite'] }}", runtime]
+  when: hermes_search_trial_enabled | bool
+
+- name: Copy the sealed snapshot, reviewed spans and complete search index
+  ansible.builtin.copy:
+    src: "{{ hermes_search_trial_artifact }}/{{ item }}"
+    dest: "{{ release_pi5_project_dir }}/storage/hermes-search/{{ hermes_search_trial_proof.files['qmd-index.sqlite'] }}/{{ item }}"
+    owner: "{{ api_runtime_uid | default(1000) }}"
+    group: "{{ api_runtime_gid | default(1000) }}"
+    mode: '0400'
+  loop: [artifact.json, snapshot.json, reviewed.json, qmd-index.sqlite]
+  no_log: true
+  when: hermes_search_trial_enabled | bool
+
+- name: Bind the trial to the already backed-up consultation candidate environment
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+    mode: '0600'
+  loop:
+    - {key: HERMES_SEARCH_TRIAL_ENABLED, value: 'true'}
+    - {key: HERMES_INFERENCE_ORIGIN, value: "{{ business_hermes_chat_dgx_base_url | default('http://100.118.82.72:38081') }}"}
+    - {key: HERMES_INFERENCE_TOKEN, value: "{{ business_hermes_chat_dgx_token }}"}
+    - {key: HERMES_INFERENCE_EGRESS, value: 'http://business-hermes-chat-egress:3128'}
+    - {key: HERMES_SEARCH_ARTIFACT_ROOT, value: "{{ hermes_search_trial_container_artifact }}"}
+    - {key: HERMES_TRIAL_SNAPSHOT_PATH, value: "{{ hermes_search_trial_container_artifact }}/snapshot.json"}
+    - {key: HERMES_ORGANIZED_MANIFEST, value: "{{ hermes_search_trial_container_artifact }}/reviewed.json"}
+  no_log: true
+  when: hermes_search_trial_enabled | bool
+
+- name: Disable only the trial when explicitly requested
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: '^HERMES_SEARCH_TRIAL_ENABLED='
+    line: HERMES_SEARCH_TRIAL_ENABLED=false
+    create: false
+    mode: '0600'
+  when: not (hermes_search_trial_enabled | bool)

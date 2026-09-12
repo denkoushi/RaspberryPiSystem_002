@@ -1,0 +1,8 @@
+{
+  "name": "hermes-search-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@tobilu/qmd": "git+https://github.com/tobi/qmd.git#04e4dbd8245c527a88f1a8f0bda547aef9ca81fb"
+  }
+}

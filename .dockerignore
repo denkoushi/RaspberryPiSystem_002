@@ -36,6 +36,9 @@ storage
 alerts
 certs
 backups
+# Private trial inputs, local models and captured business answers.
+work
+scratch
 # Keep documentation out of ordinary image contexts. The kiosk SOP generator
 # bind-mounts the canonical preview only for its independent stale check.
 docs/**
