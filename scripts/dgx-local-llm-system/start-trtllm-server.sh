@@ -32,6 +32,7 @@ fi
 # an arbitrary shell command here.
 if [[ -n "${BLUE_SERVER_ADAPTER:-}" ]]; then
   case "${BLUE_SERVER_ADAPTER}" in
+    vllm) ;; # Explicitly select the standard builder over inherited adapters.
     qwen38_flash_next)
       if [[ "${MODE}" == "container" ]]; then
         RUNNING_NAME="$(docker ps --filter "name=^/${CONTAINER_NAME}$" --format '{{.Names}}' | tr -d '\r')"
@@ -116,6 +117,11 @@ DOCKER_ARGS=(
   --gpus "all"
   --publish "127.0.0.1:${HOST_PORT}:${CONTAINER_PORT}"
 )
+
+if [[ "${VLLM_LOCAL_SNAPSHOTS_ONLY:-}" == "true" ]]; then
+  # Image fetch is an explicit preparation step, just like weight fetch.
+  DOCKER_ARGS+=( --pull never --ipc host )
+fi
 
 if [[ -n "${MODEL_DIR}" ]]; then
   DOCKER_ARGS+=( --volume "${MODEL_DIR}:${MODEL_DIR}:ro" )
