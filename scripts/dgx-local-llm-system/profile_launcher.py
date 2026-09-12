@@ -9,6 +9,8 @@ _LAUNCHER_HINT_ENV_MAP: dict[str, str] = {
     "llamaServerAlias": "LLAMA_SERVER_ALIAS",
     "blueModelDir": "BLUE_MODEL_DIR",
     "blueServerImage": "BLUE_SERVER_IMAGE",
+    "blueServerEntrypoint": "BLUE_SERVER_ENTRYPOINT",
+    "blueServerMode": "BLUE_SERVER_MODE",
     # Fixed, profile-selected adapter.  This is an enum-like selector rather
     # than a command so a registry manifest cannot inject shell code.
     "blueServerAdapter": "BLUE_SERVER_ADAPTER",
@@ -18,6 +20,14 @@ _LAUNCHER_HINT_ENV_MAP: dict[str, str] = {
 }
 
 _VLLM_RUNTIME_ENV_MAP: dict[str, str] = {
+    "modelPath": "VLLM_MODEL_PATH",
+    "speculativeModel": "VLLM_SPECULATIVE_MODEL",
+    "numSpeculativeTokens": "VLLM_NUM_SPECULATIVE_TOKENS",
+    "mambaBackend": "VLLM_MAMBA_BACKEND",
+    "mambaCacheMode": "VLLM_MAMBA_CACHE_MODE",
+    "reasoningParser": "VLLM_REASONING_PARSER",
+    "toolCallParser": "VLLM_TOOL_CALL_PARSER",
+    "localSnapshotsOnly": "VLLM_LOCAL_SNAPSHOTS_ONLY",
     "gpuMemoryUtilization": "VLLM_GPU_MEMORY_UTILIZATION",
     "maxModelLen": "VLLM_MAX_MODEL_LEN",
     "maxNumSeqs": "VLLM_MAX_NUM_SEQS",
@@ -76,6 +86,11 @@ def launcher_env_for_profile(profile: ModelProfile) -> dict[str, str]:
 
     vllm = runtime_profile.get("vllm")
     if isinstance(vllm, dict):
+        if vllm.get("localSnapshotsOnly") is True:
+            # Qwen-specific legacy JSON overrides must not change the pinned
+            # Nemotron architecture. The manifest supplies its own paths and
+            # parsers; no environment settings are persisted across starts.
+            env["VLLM_HF_OVERRIDES"] = ""
         for key, env_key in _VLLM_RUNTIME_ENV_MAP.items():
             value = _env_value(vllm.get(key))
             if value is not None:

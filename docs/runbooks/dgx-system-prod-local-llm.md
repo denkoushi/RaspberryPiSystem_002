@@ -1215,3 +1215,69 @@ NODE
 4. 性能劣化・OOM の場合は `maxModelLen` を 8192 に戻し、`gpuMemoryUtilization` を下げる。
 
 **参照**: [docs/plans/dgx-spark-optimization-execplan-202607.md](../plans/dgx-spark-optimization-execplan-202607.md) · [ADR-20260705](../decisions/ADR-20260705-dgx-spark-gb10-inference-performance-parameters.md)
+
+## Nemotron 3.5 Lightning + DSpark の段階導入
+
+対象は `business_nemotron35_lightning_dspark_nvfp4`。初期manifestは **disabled / 非推奨 / textのみ**。
+これは導入候補であり、実機起動・業務回答品質・10秒以内は未検証。Pi5のHermes、DB、MCPは変更しない。
+[NVIDIA公式手順](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4#quick-start)の
+vLLM 0.27.1 + DSpark K=3 + Marlin + FP8 KV + Mamba flashinfer/alignを既存blue起動経路で使用する。
+Qwen専用PLE adapterは利用しない。`reasoning-parser=nemotron_v3`、ツールparserは `qwen3_coder`。
+
+### 固定する配布物と準備
+
+- 本体revision: `bee7596271d1495f6992ae224aefde4410e816b8`
+- DSpark revision: `8a0177116d138011e63103110f136ec0ca09ebbf`
+- vLLM 0.27.1 linux/arm64 digest: `sha256:1c8e60a0841b333c700488cb029d3664807249da0c071e862191b00fe34b228c`
+- 重み約22.91GB、圧縮コンテナ約10.53GB。新規通信量は合計約33.44GB。RAM使用量ではない。
+- 準備時の空き容量チェックは保守的な **70GiB**。展開と一時ファイルを見込んだ運用予算であり実測値ではない。
+  Docker data-rootがHF cacheと別filesystemなら、両方の空き容量を別途確認する。
+
+実機接続・反映にはAGENTS.mdの対象SHA/CI確認と承認境界を適用する。
+承認済みSHAから、従来のDGX専用反映手順で次を配布する（通常のPi5 fleet deployだけでは反映されない）：
+
+- `profile_launcher.py`、`vllm_command_builder.py`、`start-trtllm-server.sh`、`nemotron35_dspark_cache.py`
+- 新規manifest → `/srv/dgx/shared-models/registry/business_nemotron35_lightning_dspark_nvfp4/manifest.json`
+
+先に既存runtimeファイルとactive profile、常駐モデル設定を保存する。Qwenのmanifest、重み、imageは保持する。
+control-serverはPython moduleを常駐importするため、反映時は既存の管理方式で再読込が必要。
+実際に使われているsystemd/起動wrapperを確認し、独立したcontrol-serverを追加起動しない。
+
+DGXの永続実行ユーザーで、配布済みディレクトリから明示実行する：
+
+```bash
+python3 nemotron35_dspark_cache.py plan
+python3 nemotron35_dspark_cache.py fetch
+python3 nemotron35_dspark_cache.py verify
+```
+
+`plan` は変更なし。`fetch` は固定imageを取得し、そのHub clientで両モデルの固定revisionを取得する。
+取得用コンテナはGPU・ポート・常駐サービスを使わず、active profileや `refs/main` も変更しない。
+`verify` と通常起動はネットワーク取得をせず、両snapshotの設定・重みの存在とsafetensorsの長さを確認する。
+DSparkは本体のtokenizerを使うため、draft側のtokenizerファイルを要求しない。
+この起動時検査は全重量ファイルのchecksum再計算ではない。欠損・切断・明らかな未完了取得を拒否する。
+通常起動は `--pull never` とHub/Transformers offlineを指定し、モデル・イメージの起動時ダウンロードを禁止する。
+
+### 試験切替と復帰
+
+1. 取得とverify成功後、試験時間帯の排他・常駐維持設定を確認する。
+   ControlPlaneの `DGX_KEEP_WARM_PROFILE_ID` が別モデルを指定している場合は競合させない。
+   設定変更が必要ならControlPlaneの既存手順で行い、業務優先・Lease制御を迂回しない。
+2. 試験対象manifestだけ `enabled=true` にして、既存orchestrationの停止→モデル指定業務復帰で切り替える。
+   稼働中の同じblueコンテナへの単発 `/start` は切替にならないため使わない。
+3. `/v1/models` に加え `activeProfileId`、backend、実際の起動ログのmodel/draft snapshotを確認する。
+4. Hermes経由で日本語、ツール呼び出し、根拠付き回答、該当なし、聞き返し、継続会話を確認する。
+   既存の `enable_thinking=false` を継続する。画像を読む用途はQwenを必要とする。
+5. 同じ業務質問・データ・会話条件でQwenと比較し、正答と質問送信から最終回答完了まで10秒以内を評価する。
+   最初の文字やtok/sだけで合格にしない。初回/温まった状態、繰り返しの分布、冷起動を区別する。
+6. 試験後は旧Qwen profileへ同じorchestration経路で戻し、profile一致と実際の回答まで確認する。
+   常駐維持設定も保存した値に戻す。Nemotronは再びdisabledとし、推薦変更は合格後に判断する。
+
+初期予算は同時1要求・64K文脈・GPU割当0.65・batch 2048。
+64Kは現行Hermesの最小文脈条件を満たす値で、Qwen3.8の262Kと同容量ではない。
+既存業務入力が64Kに収まることを確認し、切捨てや検索不成立を速度改善と数えない。
+公式例の最大1M文脈やGPU割当0.85を無条件に転記せず、実機の空きメモリと予約を確認してから調整する。
+失敗時は旧Qwenへ戻す。起動処理の回帰なら保存したruntimeファイルを復元してcontrolを再読込する。
+
+ローカル検証は `tests/test_nemotron35_dspark.py`、既存profile launcher / vLLM builder / Qwen adapterのテストを対象とする。
+Macでの偽Dockerによる確認は起動契約の検証であり、GB10上の実際の推論・メモリ・応答性能の証拠にはしない。

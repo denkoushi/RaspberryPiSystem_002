@@ -1,5 +1,7 @@
 # DGX system-prod LocalLLM 雛形
 
+Nemotron 3.5 Lightning + DSparkの検証候補追加は、[段階導入Runbook](../../docs/runbooks/dgx-system-prod-local-llm.md#nemotron-35-lightning--dspark-の段階導入)を参照。
+
 DGX Spark 上で `system-prod` 用 LocalLLM を **host build の `llama-server`** で動かしつつ、外部公開は `tailscale + nginx` 側へ閉じ込めるための雛形です。
 
 ## ねらい
