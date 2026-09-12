@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -615,12 +616,74 @@ def remote_script(
     return "\n".join(("set -euo pipefail", f"cd {shlex.quote(str(remote_root))}", "mkdir -p logs/deploy", "exec 9>>logs/deploy/fleet-release-state.lock", "/usr/bin/flock -n 9 || { echo 'another fleet release is running' >&2; exit 75; }", "test -z \"$(git status --porcelain)\"", f"git fetch --no-tags origin {shlex.quote(args.branch)}", f"test \"$(git rev-parse FETCH_HEAD)\" = {shlex.quote(sha)}", f"git checkout --detach {shlex.quote(sha)}", f"test \"$(git rev-parse HEAD)\" = {shlex.quote(sha)}", "test -z \"$(git status --porcelain)\"", f"exec {shlex.join(internal)}"))
 
 
-def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str, profiles: tuple[str, ...], user: str, remote_root: Path = REMOTE_ROOT) -> list[str]:
+def hermes_trial_configuration(
+    args: argparse.Namespace,
+    selection: tuple[tuple[str, tuple[str, ...]], ...],
+    remote_root: Path,
+    run_id: str,
+) -> tuple[Path | None, dict[str, str]]:
+    enabled = os.environ.get("HERMES_SEARCH_TRIAL_ENABLED", "")
+    if not enabled:
+        return None, {}
+    if enabled not in {"true", "false"}:
+        raise UsageError("HERMES_SEARCH_TRIAL_ENABLED must be true or false")
+    if args.full_fleet or selection != (("pi5", ("raspberrypi5",)),):
+        raise UsageError("the Hermes search trial requires an exact raspberrypi5-only release")
+    environment = {"HERMES_SEARCH_TRIAL_ENABLED": enabled}
+    if enabled == "false":
+        return None, environment
+    value = os.environ.get("HERMES_SEARCH_TRIAL_ARTIFACT", "")
+    source = Path(value)
+    if not value or source.is_symlink() or not source.is_dir():
+        raise UsageError("HERMES_SEARCH_TRIAL_ARTIFACT must be a sealed local directory")
+    source = source.resolve()
+    names = ("artifact.json", "qmd-index.sqlite", "snapshot.json", "reviewed.json")
+    for name in names:
+        path = source / name
+        if path.is_symlink() or not path.is_file():
+            raise UsageError(f"sealed Hermes artifact is missing a regular {name}")
+    proof = json.loads((source / "artifact.json").read_text(encoding="utf-8"))
+    if proof.get("schema") != "hermes-device-index/v1" or set(proof.get("files", {})) != set(names[1:]):
+        raise UsageError("sealed Hermes artifact has an unsupported manifest")
+    for name in names[1:]:
+        with (source / name).open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        if digest != proof["files"][name]:
+            raise UsageError(f"sealed Hermes artifact checksum mismatch: {name}")
+    environment["HERMES_SEARCH_TRIAL_ARTIFACT"] = str(
+        remote_root / "storage/hermes-search-staging" / run_id
+    )
+    return source, environment
+
+
+def stage_hermes_trial_artifact(inventory: Path, source: Path, destination: str, user: str) -> None:
+    # The canonical launcher runs on Mac; the Ansible release controller runs
+    # on Pi5. Stage only the four sealed files, then pass the Pi5-local path.
+    play = [{"hosts": "raspberrypi5", "gather_facts": False, "become": True, "tasks": [
+        {"name": "Prepare private run-scoped Hermes staging", "ansible.builtin.file": {
+            "path": destination, "state": "directory", "owner": user, "mode": "0700"}},
+        {"name": "Stage only sealed Hermes search files", "no_log": True,
+         "ansible.builtin.copy": {"src": str(source) + "/{{ item }}", "dest": destination + "/{{ item }}",
+                                  "owner": user, "mode": "0600"},
+         "loop": ["artifact.json", "qmd-index.sqlite", "snapshot.json", "reviewed.json"]},
+    ]}]
+    with tempfile.TemporaryDirectory(prefix="hermes-release-staging-") as directory:
+        path = Path(directory) / "stage.json"
+        path.write_text(json.dumps(play), encoding="utf-8")
+        run(["ansible-playbook", "-i", str(inventory), str(path), "--limit", "raspberrypi5"],
+            env=ansible_environment())
+
+
+def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str, profiles: tuple[str, ...], user: str, remote_root: Path = REMOTE_ROOT, *, hermes_environment: dict[str, str] | None = None) -> list[str]:
     command = ["/usr/bin/sudo", "-n", "/usr/bin/systemd-run", "--quiet", f"--unit={unit_name(run_id)}", f"--uid={user}", f"--setenv=HOME=/home/{user}", f"--setenv=USER={user}", f"--setenv=LOGNAME={user}", "--setenv=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "--property=Type=exec", f"--property=WorkingDirectory={remote_root}", "--property=KillMode=control-group", "--property=Restart=no", "--property=UMask=0077", "--property=StandardOutput=journal", "--property=StandardError=journal"]
     if args.detach:
         command.append("--property=RemainAfterExit=yes")
     else:
         command.append("--wait")
+    for key, value in (hermes_environment or {}).items():
+        if key not in {"HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_ARTIFACT"}:
+            raise UsageError("unsupported Hermes release environment")
+        command.append(f"--setenv={key}={value}")
     command.extend(["--", "/bin/bash", "-lc", remote_script(args, sha, run_id, relative, profiles, remote_root)])
     return command
 
@@ -961,6 +1024,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     selected = complete if not args.limit else inventory_document(inventory, args.limit)
     selection = selected_profiles(selected)
     remote_root = server_release_root(complete)
+    run_id = "plan-preview" if args.print_plan else new_run_id()
+    hermes_source, hermes_environment = hermes_trial_configuration(args, selection, remote_root, run_id)
     if getattr(args, "torque_cutover", False):
         validate_torque_cutover_selection(selected, selection)
     if args.print_plan:
@@ -972,12 +1037,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                 require_torque=getattr(args, "torque_cutover", False),
             ).agent_services
         args.agent_services = plan_agent_services
-        print(json.dumps(plan(args, sha, inventory, relative, selection, remote_root, plan_agent_services), ensure_ascii=False, indent=2))
+        document = plan(args, sha, inventory, relative, selection, remote_root, plan_agent_services)
+        if hermes_environment:
+            document["hermesSearchTrial"] = {"enabled": hermes_environment["HERMES_SEARCH_TRIAL_ENABLED"] == "true",
+                "staging": "four checksum-verified private files on Pi5 SSD" if hermes_source else "none"}
+        print(json.dumps(document, ensure_ascii=False, indent=2))
         return 0
     host, user, port = server_connection(complete)
-    run_id = new_run_id()
     profiles = tuple(item[0] for item in selection)
-    result = run(ssh_argv(host, user, port, systemd_argv(args, sha, run_id, relative, profiles, user, remote_root)), check=False)
+    if hermes_source is not None:
+        # Verify the signed exact release before copying any private artifact.
+        release_set_artifacts(sha, inventory)
+        stage_hermes_trial_artifact(inventory, hermes_source,
+            hermes_environment["HERMES_SEARCH_TRIAL_ARTIFACT"], user)
+    result = run(ssh_argv(host, user, port, systemd_argv(args, sha, run_id, relative, profiles, user, remote_root,
+        hermes_environment=hermes_environment)), check=False)
     status_command = shlex.join(["scripts/update-all-clients.sh", "--status", run_id, "--inventory", relative])
     print(json.dumps({"runId": run_id, "unit": unit_name(run_id), "detached": args.detach, "statusCommand": status_command}))
     if result.stdout:

@@ -135,7 +135,11 @@ The worker rejects missing embeddings instead of rebuilding them at startup.
 For the canonical exact-Pi5 deployment, export `HERMES_SEARCH_TRIAL_ENABLED=true`
 and `HERMES_SEARCH_TRIAL_ARTIFACT=<local sealed artifact directory>`, plus the
 existing `ANSIBLE_VAULT_PASSWORD_FILE`. Use the canonical `--print-plan` command
-above, then the same exact-limit deployment. The role uses the existing
+above, then the same exact-limit deployment. The launcher checks every checksum
+and verifies the signed release before staging only the four files through
+existing Ansible authentication into a private run-specific Pi5 SSD directory.
+It forwards the enable flag and that Pi5-local path to the remote update process;
+the Mac path and unrelated environment variables are not forwarded. The role uses the existing
 consultation credential and egress; it copies only the four sealed data files
 under the existing project's SSD storage. Export `HERMES_SEARCH_TRIAL_ENABLED=false`
 on a later canonical release to disable only this trial. Omitting the flag

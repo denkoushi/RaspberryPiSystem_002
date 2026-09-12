@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import importlib.util
 import io
 import json
@@ -67,6 +68,58 @@ def torque_capable_host(serial: str = "702902S") -> dict[str, object]:
 
 
 class StandardAnsibleReleaseTests(unittest.TestCase):
+    def test_hermes_trial_preserves_default_and_rejects_other_targets(self) -> None:
+        args = argparse.Namespace(full_fleet=False)
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(MODULE.hermes_trial_configuration(args, (), MODULE.REMOTE_ROOT, RUN_ID), (None, {}))
+        with mock.patch.dict(os.environ, {"HERMES_SEARCH_TRIAL_ENABLED": "false"}, clear=True):
+            self.assertEqual(MODULE.hermes_trial_configuration(args, (("pi5", ("raspberrypi5",)),), MODULE.REMOTE_ROOT, RUN_ID),
+                (None, {"HERMES_SEARCH_TRIAL_ENABLED": "false"}))
+            with self.assertRaisesRegex(MODULE.UsageError, "raspberrypi5-only"):
+                MODULE.hermes_trial_configuration(args, (("pi4", ("pi4-a",)),), MODULE.REMOTE_ROOT, RUN_ID)
+
+    def test_hermes_trial_checks_sealed_files_and_passes_only_pi5_local_path(self) -> None:
+        args = argparse.Namespace(full_fleet=False, detach=False, branch="main", limit="raspberrypi5")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = {}
+            for name in ("qmd-index.sqlite", "snapshot.json", "reviewed.json"):
+                data = ("synthetic:" + name).encode()
+                (root / name).write_bytes(data)
+                files[name] = hashlib.sha256(data).hexdigest()
+            (root / "artifact.json").write_text(json.dumps({"schema": "hermes-device-index/v1", "files": files}))
+            (root / "do-not-transfer.txt").write_text("excluded")
+            with mock.patch.dict(os.environ, {"HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": directory, "UNRELATED_SECRET": "must-not-forward"}, clear=True):
+                source, environment = MODULE.hermes_trial_configuration(args, (("pi5", ("raspberrypi5",)),), MODULE.REMOTE_ROOT, RUN_ID)
+                expected = f"/opt/RaspberryPiSystem_002/storage/hermes-search-staging/{RUN_ID}"
+                self.assertEqual(environment["HERMES_SEARCH_TRIAL_ARTIFACT"], expected)
+                command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY, ("pi5",), "pi", hermes_environment=environment)
+                self.assertIn(f"--setenv=HERMES_SEARCH_TRIAL_ARTIFACT={expected}", command)
+                self.assertIn("--setenv=HERMES_SEARCH_TRIAL_ENABLED=true", command)
+                self.assertNotIn(directory, " ".join(command))
+                self.assertNotIn("must-not-forward", " ".join(command))
+                self.assertEqual(source, root.resolve())
+                (root / "reviewed.json").write_text("tampered")
+                with self.assertRaisesRegex(MODULE.UsageError, "checksum mismatch"):
+                    MODULE.hermes_trial_configuration(args, (("pi5", ("raspberrypi5",)),), MODULE.REMOTE_ROOT, RUN_ID)
+
+    def test_hermes_staging_uses_only_fixed_files_and_existing_ansible_auth(self) -> None:
+        def inspect(command, **options):
+            self.assertEqual(command[:3], ["ansible-playbook", "-i", "inventory.yml"])
+            self.assertEqual(command[-2:], ["--limit", "raspberrypi5"])
+            self.assertEqual(options["env"]["ANSIBLE_VAULT_PASSWORD_FILE"], "/existing/vault")
+            play = json.loads(Path(command[3]).read_text())[0]
+            self.assertEqual(play["hosts"], "raspberrypi5")
+            self.assertEqual(play["tasks"][0]["ansible.builtin.file"]["mode"], "0700")
+            copy = play["tasks"][1]
+            self.assertTrue(copy["no_log"])
+            self.assertEqual(copy["loop"], ["artifact.json", "qmd-index.sqlite", "snapshot.json", "reviewed.json"])
+            self.assertEqual(copy["ansible.builtin.copy"]["mode"], "0600")
+            return completed(command)
+        with mock.patch.dict(os.environ, {"ANSIBLE_VAULT_PASSWORD_FILE": "/existing/vault"}), mock.patch.object(MODULE, "run", side_effect=inspect):
+            MODULE.stage_hermes_trial_artifact(Path("inventory.yml"), Path("/local/sealed"), "/remote/private", "pi")
+
     def test_server_connection_uses_concrete_deploy_executor_host(self) -> None:
         inventory = {
             "server": {"hosts": ["raspberrypi5"]},
