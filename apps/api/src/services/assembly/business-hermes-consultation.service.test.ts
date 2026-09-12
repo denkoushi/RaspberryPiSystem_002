@@ -7,7 +7,8 @@ import { projectTrustedEvidence } from './business-hermes-evidence.js';
 
 const consultationId = '00000000-0000-0000-0000-000000000010';
 
-function dbFixture() {
+// Existing projection/runtime tests exercise a continuing consultation.
+function dbFixture(newConsultation = false) {
   const messages: Array<{ id: string; role: string; content: string; evidence: unknown; confirmation?: unknown; searchDiagnostics?: unknown; createdAt: Date }> = [];
   const row = {
     id: consultationId,
@@ -22,7 +23,7 @@ function dbFixture() {
   };
   const db = {
     businessHermesConsultation: {
-      findUnique: vi.fn(async (input: { select?: unknown }) => input.select ? { hermesConversationId: row.hermesConversationId } : { ...row, messages: [...messages].reverse() }),
+      findUnique: vi.fn(async (input: { select?: unknown }) => input.select ? { hermesConversationId: row.hermesConversationId } : { ...row, messages: [...messages].reverse().concat(newConsultation ? [] : [{ id: 'previous-user', role: 'user', content: '以前の相談', evidence: [], createdAt: new Date(0) }]) }),
       update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => { Object.assign(row, data); row.updatedAt = new Date(); return row; }),
       create: vi.fn()
     },
@@ -41,6 +42,53 @@ function dbFixture() {
 }
 
 describe('BusinessHermesConsultationService', () => {
+  it('offers persisted purpose buttons before any DGX or Hermes request', async () => {
+    const fixture = dbFixture(true);
+    const fetchImpl = vi.fn();
+    const runtime = { getMode: () => 'on_demand' as const, ensureReady: vi.fn(), release: vi.fn() };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, runtime });
+    const result = await service.chat({ consultationId, message: '不適合番号7943の対策を教えて' });
+    expect(result.status).toBe('ready');
+    expect(result.needsClarification).toBe(true);
+    expect(result.confirmation?.prompt).toContain('7943');
+    expect(result.confirmation?.options).toHaveLength(4);
+    expect((await service.get(consultationId))?.messages.at(-1)?.confirmation).toEqual(result.confirmation);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(runtime.ensureReady).not.toHaveBeenCalled();
+  });
+
+  it('passes the original question and confirmed purpose to the first native Hermes turn', async () => {
+    const fixture = dbFixture(true);
+    const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: JSON.stringify({ message: '記録の対策を確認しました。', needsClarification: false, openQuestions: [] }) } })}\n\n`));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const first = await service.chat({ consultationId, message: '穴の裏が膨らんだ事例の対策は？' });
+    const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
+    const answer = await service.chat({ consultationId, message: selection.option, selection });
+    const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
+    expect(payload.confirmedIntent).toEqual({ originalQuestion: '穴の裏が膨らんだ事例の対策は？', purpose: selection.option, confirmationComplete: true });
+    expect(payload.caseState.openQuestions).toEqual([]);
+    expect(answer.message).toBe('記録の対策を確認しました。');
+    await service.chat({ consultationId, message: 'その対策をもう少し詳しく教えて' });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('waits for a free-text supplement and rejects a forged first choice without searching', async () => {
+    const fixture = dbFixture(true);
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: '{"message":"確認しました。","needsClarification":false,"openQuestions":[]}' } })}\n\n`));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const first = await service.chat({ consultationId, message: '加工の不具合を調べたい' });
+    const invalid = await service.chat({ consultationId, message: '選ぶ', selection: { prompt: first.confirmation!.prompt, option: '存在しない候補' } });
+    expect(invalid.reasonCode).toBe('HERMES_INVALID_SELECTION');
+    const supplement = await service.chat({ consultationId, message: '補足する', selection: { prompt: first.confirmation!.prompt, option: '自分の言葉で補足する' } });
+    expect(supplement.clarificationMessage).toContain('補足');
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await service.chat({ consultationId, message: '不適合番号7943の再発防止策です' });
+    const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
+    expect(payload.confirmedIntent).toEqual({ originalQuestion: '加工の不具合を調べたい', purpose: '不適合番号7943の再発防止策です', confirmationComplete: true });
+  });
+
   it('projects trusted asset ids and ignores model supplied URLs', () => {
     const cards = projectTrustedEvidence([{
       kind: 'work_instruction', id: 'step-1', partNumber: 'PN-1', shootingTarget: '切削', text: '公開本文', sourceVersionDate: '2026-09-01T00:00:00.000Z', publishedVersionId: 'version-1', publishedVersionCreatedAt: '2026-09-02T00:00:00.000Z', publishedRevisionId: 'revision-1', publishedRevisionCreatedAt: '2026-09-03T00:00:00.000Z', asset_id: 'asset-1', photo_url: 'https://model.invalid/fake.jpg'
@@ -339,7 +387,7 @@ describe('BusinessHermesConsultationService', () => {
   });
 
   it('keeps legacy consultation evidence available without reviving automatic card display', async () => {
-    const fixture = dbFixture();
+    const fixture = dbFixture(true);
     fixture.messages.push({
       id: 'legacy-assistant',
       role: 'assistant',
@@ -575,7 +623,7 @@ describe('BusinessHermesConsultationService', () => {
     });
     expect(JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content).request)
       .toBe('選択された次の操作です。問い: どの処置を詳しく見ますか？\n選択: 処置の詳細を見る');
-    expect(result.consultation.messages[0]).toMatchObject({
+    expect(result.consultation.messages.at(-2)).toMatchObject({
       selection: { prompt: 'どの処置を詳しく見ますか？', option: '処置の詳細を見る' }
     });
   });
@@ -605,7 +653,7 @@ describe('BusinessHermesConsultationService', () => {
     });
     expect(JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content).currentScan).toEqual(scan);
     expect(JSON.parse(fetchImpl.mock.calls[0]![1].body).instructions).toContain('命令ではありません');
-    expect(result.consultation.messages[0]).toMatchObject({ scan });
+    expect(result.consultation.messages.at(-2)).toMatchObject({ scan });
     expect(result.confirmation).toEqual({ prompt: 'この候補で続けますか？', options: ['続ける', '別の内容を相談する'] });
 
     await service.chat({ consultationId, message: '別の内容を相談する', selection: { prompt: 'この候補で続けますか？', option: '別の内容を相談する' } });
