@@ -90,7 +90,8 @@
   }
 }
 
-.hermes-floating-trigger--paused .hermes-floating-trigger__stream {
+.hermes-floating-trigger--paused .hermes-floating-trigger__stream,
+.hermes-floating-trigger[data-interacting] .hermes-floating-trigger__stream {
   animation-play-state: paused;
 }
 

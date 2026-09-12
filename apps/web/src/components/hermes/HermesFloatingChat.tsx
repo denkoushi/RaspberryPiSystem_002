@@ -113,6 +113,7 @@ function responseText(response: BusinessHermesChatResponse | BusinessHermesConsu
 export function HermesFloatingChat() {
   const { user, token } = useAuth();
   const location = useLocation();
+  const isPlanningBoardRoute = location.pathname.replace(/\/$/, '') === '/kiosk/production-schedule/planning-board';
   const [viewport, setViewport] = useState(getViewport);
   const [position, setPosition] = useState(() => {
     const initialViewport = getViewport();
@@ -224,6 +225,61 @@ export function HermesFloatingChat() {
     document.addEventListener('visibilitychange', updateVisibility);
     return () => document.removeEventListener('visibilitychange', updateVisibility);
   }, []);
+
+  useEffect(() => {
+    const icon = iconRef.current;
+    if (!isPlanningBoardRoute || !isDocumentVisible || !icon) return;
+    const idleDelayMs = 1200;
+    const pointers = new Set<number>();
+    let lastActivity = 0;
+    let timeoutId: number | undefined;
+    const resumeWhenIdle = () => {
+      timeoutId = undefined;
+      if (pointers.size > 0) return;
+      const remaining = idleDelayMs - (performance.now() - lastActivity);
+      if (remaining > 0) {
+        timeoutId = window.setTimeout(resumeWhenIdle, remaining);
+      } else {
+        delete icon.dataset.interacting;
+      }
+    };
+    const onActivity = () => {
+      lastActivity = performance.now();
+      if (!icon.dataset.interacting) icon.dataset.interacting = 'true';
+      // One pending timer; pointer movement never updates React state.
+      if (timeoutId === undefined && pointers.size === 0) {
+        timeoutId = window.setTimeout(resumeWhenIdle, idleDelayMs);
+      }
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      pointers.add(event.pointerId);
+      onActivity();
+    };
+    const onPointerEnd = (event: PointerEvent) => {
+      pointers.delete(event.pointerId);
+      onActivity();
+    };
+    const onBlur = () => {
+      pointers.clear();
+      onActivity();
+    };
+    const options = { capture: true, passive: true };
+    const activityEvents = ['pointermove', 'wheel', 'scroll', 'keydown'];
+    activityEvents.forEach((type) => window.addEventListener(type, onActivity, options));
+    window.addEventListener('pointerdown', onPointerDown, options);
+    window.addEventListener('pointerup', onPointerEnd, options);
+    window.addEventListener('pointercancel', onPointerEnd, options);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      activityEvents.forEach((type) => window.removeEventListener(type, onActivity, true));
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('pointerup', onPointerEnd, true);
+      window.removeEventListener('pointercancel', onPointerEnd, true);
+      window.removeEventListener('blur', onBlur);
+      window.clearTimeout(timeoutId);
+      delete icon.dataset.interacting;
+    };
+  }, [isDocumentVisible, isPlanningBoardRoute]);
 
   useEffect(() => {
     const updateViewport = () => {

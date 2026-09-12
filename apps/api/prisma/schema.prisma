@@ -1186,6 +1186,13 @@ model CsvDashboardRow {
   @@index([csvDashboardId, sourceIngestRunStartedAt, sourceRowOrdinal], map: "CsvDashRow_srcRunStart_rowOrd_idx") // sourceIngestRunId 欠損旧行の fallback 用
 }
 
+/// FKOJUNST_Status raw公開対象のstatement単位revision。履歴raw本体とは分離して単調に更新する。
+model CsvDashboardRawRevision {
+  csvDashboardId String   @id
+  revision       BigInt   @default(0)
+  updatedAt      DateTime @updatedAt
+}
+
 /// Gmail 件名 scawSTFUTEKIGO の正規化済み現在値。
 /// `nonconformityNo` は業務上の一意キーで、消えたキーも行を残したまま inactive にする。
 model ScawStfutekigoCurrent {
