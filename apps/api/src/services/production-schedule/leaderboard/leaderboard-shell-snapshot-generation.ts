@@ -5,6 +5,7 @@ import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID
 } from '../constants.js';
+import { fetchFkojunstStatusMailGenerationRevision } from '../fkojunst-status-mail-generation-revision.js';
 
 const LEADERBOARD_GENERATION_TRANSACTION_OPTIONS = Object.freeze({
   maxWait: 15_000,
@@ -71,62 +72,8 @@ function resolveFkojunstStatusMailRowsRevision(params: {
   ].join(':');
 }
 
-function buildLeaderboardShellSnapshotGenerationToken(params: {
-  row: SnapshotGenerationRow | undefined;
-  fkojunstStatusMailRowsRevision: string;
-}): string {
-  const { row, fkojunstStatusMailRowsRevision } = params;
-  return JSON.stringify({
-    rowsCount: String(row?.rowsCount ?? 0n),
-    rowsLatestCreatedAt: normalizeDate(row?.rowsLatestCreatedAt),
-    rowsLatestUpdatedAt: normalizeDate(row?.rowsLatestUpdatedAt),
-    fkojunstStatusMailRowsRevision,
-    orderAssignmentUpdatedAt: normalizeDate(row?.orderAssignmentUpdatedAt),
-    orderSplitCount: String(row?.orderSplitCount ?? 0n),
-    orderSplitUpdatedAt: normalizeDate(row?.orderSplitUpdatedAt),
-    orderSplitAssignmentCount: String(row?.orderSplitAssignmentCount ?? 0n),
-    orderSplitAssignmentUpdatedAt: normalizeDate(row?.orderSplitAssignmentUpdatedAt),
-    globalRowRankUpdatedAt: normalizeDate(row?.globalRowRankUpdatedAt),
-    rowNoteUpdatedAt: normalizeDate(row?.rowNoteUpdatedAt),
-    progressUpdatedAt: normalizeDate(row?.progressUpdatedAt),
-    externalCompletionUpdatedAt: normalizeDate(row?.externalCompletionUpdatedAt),
-    fkstUpdatedAt: normalizeDate(row?.fkstUpdatedAt),
-    fkmailUpdatedAt: normalizeDate(row?.fkmailUpdatedAt),
-    orderSupplementUpdatedAt: normalizeDate(row?.orderSupplementUpdatedAt),
-    seibanDueDateUpdatedAt: normalizeDate(row?.seibanDueDateUpdatedAt),
-    seibanProcessingDueDateUpdatedAt: normalizeDate(row?.seibanProcessingDueDateUpdatedAt),
-    resourceCategoryUpdatedAt: normalizeDate(row?.resourceCategoryUpdatedAt),
-    resourceCodeMappingUpdatedAt: normalizeDate(row?.resourceCodeMappingUpdatedAt)
-  });
-}
-
-/**
- * shell/continue 用世代トークン。集約 board 等では同一 HTTP リクエスト内 1 回読んで渡す。
- */
-export async function resolveLeaderboardShellSnapshotGenerationToken(
-  cachedGenerationToken?: string
-): Promise<string> {
-  if (cachedGenerationToken != null && cachedGenerationToken.length > 0) {
-    return cachedGenerationToken;
-  }
-  return readLeaderboardShellSnapshotGenerationToken();
-}
-
-/**
- * shell/continue の整合を壊しうる更新を軽量トークン化する。
- * continue ではこの世代だけを再読込し、全件再計算なしで snapshot 失効を判定する。
- */
-export async function readLeaderboardShellSnapshotGenerationToken(
-  options?: ReadLeaderboardShellSnapshotGenerationTokenOptions
-): Promise<string> {
-  const details = await readLeaderboardShellSnapshotGenerationTokenDetails(options);
-  return details.generationToken;
-}
-
-export async function readLeaderboardShellSnapshotGenerationTokenDetails(
-  options?: ReadLeaderboardShellSnapshotGenerationTokenOptions
-): Promise<LeaderboardShellSnapshotGenerationTokenDetails> {
-  const mainRows = await prisma.$queryRaw<SnapshotMainAndAuxGenerationRow[]>(Prisma.sql`
+async function readMainAndAuxGenerationRow(): Promise<SnapshotMainAndAuxGenerationRow[]> {
+  return prisma.$queryRaw<SnapshotMainAndAuxGenerationRow[]>(Prisma.sql`
     SELECT
       "mainRowStats"."rowsCount",
       "mainRowStats"."rowsLatestCreatedAt",
@@ -188,7 +135,64 @@ export async function readLeaderboardShellSnapshotGenerationTokenDetails(
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     ) AS "mainRowStats"
   `);
+}
 
+function buildLeaderboardShellSnapshotGenerationToken(params: {
+  row: SnapshotGenerationRow | undefined;
+  fkojunstStatusMailRowsRevision: string;
+}): string {
+  const { row, fkojunstStatusMailRowsRevision } = params;
+  return JSON.stringify({
+    rowsCount: String(row?.rowsCount ?? 0n),
+    rowsLatestCreatedAt: normalizeDate(row?.rowsLatestCreatedAt),
+    rowsLatestUpdatedAt: normalizeDate(row?.rowsLatestUpdatedAt),
+    fkojunstStatusMailRowsRevision,
+    orderAssignmentUpdatedAt: normalizeDate(row?.orderAssignmentUpdatedAt),
+    orderSplitCount: String(row?.orderSplitCount ?? 0n),
+    orderSplitUpdatedAt: normalizeDate(row?.orderSplitUpdatedAt),
+    orderSplitAssignmentCount: String(row?.orderSplitAssignmentCount ?? 0n),
+    orderSplitAssignmentUpdatedAt: normalizeDate(row?.orderSplitAssignmentUpdatedAt),
+    globalRowRankUpdatedAt: normalizeDate(row?.globalRowRankUpdatedAt),
+    rowNoteUpdatedAt: normalizeDate(row?.rowNoteUpdatedAt),
+    progressUpdatedAt: normalizeDate(row?.progressUpdatedAt),
+    externalCompletionUpdatedAt: normalizeDate(row?.externalCompletionUpdatedAt),
+    fkstUpdatedAt: normalizeDate(row?.fkstUpdatedAt),
+    fkmailUpdatedAt: normalizeDate(row?.fkmailUpdatedAt),
+    orderSupplementUpdatedAt: normalizeDate(row?.orderSupplementUpdatedAt),
+    seibanDueDateUpdatedAt: normalizeDate(row?.seibanDueDateUpdatedAt),
+    seibanProcessingDueDateUpdatedAt: normalizeDate(row?.seibanProcessingDueDateUpdatedAt),
+    resourceCategoryUpdatedAt: normalizeDate(row?.resourceCategoryUpdatedAt),
+    resourceCodeMappingUpdatedAt: normalizeDate(row?.resourceCodeMappingUpdatedAt)
+  });
+}
+
+/**
+ * shell/continue 用世代トークン。集約 board 等では同一 HTTP リクエスト内 1 回読んで渡す。
+ */
+export async function resolveLeaderboardShellSnapshotGenerationToken(
+  cachedGenerationToken?: string
+): Promise<string> {
+  if (cachedGenerationToken != null && cachedGenerationToken.length > 0) {
+    return cachedGenerationToken;
+  }
+  return readLeaderboardShellSnapshotGenerationToken();
+}
+
+/**
+ * shell/continue の整合を壊しうる更新を軽量トークン化する。
+ * continue ではこの世代だけを再読込し、全件再計算なしで snapshot 失効を判定する。
+ */
+export async function readLeaderboardShellSnapshotGenerationToken(
+  options?: ReadLeaderboardShellSnapshotGenerationTokenOptions
+): Promise<string> {
+  const details = await readLeaderboardShellSnapshotGenerationTokenDetails(options);
+  return details.generationToken;
+}
+
+export async function readLeaderboardShellSnapshotGenerationTokenDetails(
+  options?: ReadLeaderboardShellSnapshotGenerationTokenOptions
+): Promise<LeaderboardShellSnapshotGenerationTokenDetails> {
+  const mainRows = await readMainAndAuxGenerationRow();
   const explicitMailRevision = options?.fkojunstStatusMailRowsRevision?.trim();
   const mailRows =
     explicitMailRevision != null && explicitMailRevision.length > 0
@@ -231,4 +235,27 @@ export async function readLeaderboardShellSnapshotGenerationTokenDetails(
     }),
     fkojunstStatusMailRowsRevision
   };
+}
+
+/**
+ * 製番 planning board 専用の世代 token。
+ * shared shell/continue の rawMailRowsRevision 契約は維持し、board のみ永続 revision を使う。
+ */
+export async function readGrindingPlanningBoardSnapshotGenerationTokenDetails(): Promise<LeaderboardShellSnapshotGenerationTokenDetails> {
+  const [mainRows, fkojunstStatusMailGenerationRevision] = await Promise.all([
+    readMainAndAuxGenerationRow(),
+    fetchFkojunstStatusMailGenerationRevision(prisma)
+  ]);
+  const row = mainRows[0];
+  return {
+    generationToken: buildLeaderboardShellSnapshotGenerationToken({
+      row,
+      fkojunstStatusMailRowsRevision: fkojunstStatusMailGenerationRevision
+    }),
+    fkojunstStatusMailRowsRevision: fkojunstStatusMailGenerationRevision
+  };
+}
+
+export async function readGrindingPlanningBoardSnapshotGenerationToken(): Promise<string> {
+  return (await readGrindingPlanningBoardSnapshotGenerationTokenDetails()).generationToken;
 }

@@ -13,6 +13,7 @@ vi.mock('../../../../lib/prisma.js', () => ({
 
 import { prisma } from '../../../../lib/prisma.js';
 import {
+  readGrindingPlanningBoardSnapshotGenerationTokenDetails,
   readLeaderboardShellSnapshotGenerationTokenDetails,
   resolveLeaderboardShellSnapshotGenerationToken
 } from '../leaderboard-shell-snapshot-generation.js';
@@ -150,5 +151,39 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
       rowsLatestUpdatedAt: '2026-06-19T00:02:00.000Z'
     });
     expect(after.generationToken).not.toBe(before.generationToken);
+  });
+
+  it('uses the persistent raw revision for the planning-board-only token', async () => {
+    vi.mocked(prisma.$queryRaw).mockReset();
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{
+        rowsCount: 1n,
+        rowsLatestCreatedAt: null,
+        rowsLatestUpdatedAt: null,
+        orderAssignmentUpdatedAt: null,
+        orderSplitCount: 0n,
+        orderSplitUpdatedAt: null,
+        orderSplitAssignmentCount: 0n,
+        orderSplitAssignmentUpdatedAt: null,
+        globalRowRankUpdatedAt: null,
+        rowNoteUpdatedAt: null,
+        progressUpdatedAt: null,
+        externalCompletionUpdatedAt: null,
+        fkstUpdatedAt: null,
+        fkmailUpdatedAt: null,
+        orderSupplementUpdatedAt: null,
+        seibanDueDateUpdatedAt: null,
+        seibanProcessingDueDateUpdatedAt: null,
+        resourceCategoryUpdatedAt: null,
+        resourceCodeMappingUpdatedAt: null
+      }] as never)
+      .mockResolvedValueOnce([{ revision: 37n }] as never);
+
+    const details = await readGrindingPlanningBoardSnapshotGenerationTokenDetails();
+    const token = JSON.parse(details.generationToken) as Record<string, unknown>;
+
+    expect(details.fkojunstStatusMailRowsRevision).toBe('37');
+    expect(token.fkojunstStatusMailRowsRevision).toBe('37');
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
   });
 });

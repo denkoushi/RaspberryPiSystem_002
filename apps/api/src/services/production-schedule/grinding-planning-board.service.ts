@@ -24,7 +24,7 @@ import { chunkLeaderboardRowIdsForHydrate } from './leaderboard/leaderboard-disp
 import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard/leaderboard-shell-hydrate.service.js';
 import type { LeaderboardScheduleRowSql } from './leaderboard/leaderboard-schedule-row.types.js';
 import { loadLeaderboardCanonicalRows } from './leaderboard/leaderboard-canonical-row-cache.js';
-import { readLeaderboardShellSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
+import { readGrindingPlanningBoardSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
 import { prepareProductionScheduleDashboardFilters } from './production-schedule-query/filters.js';
 import { fetchLeaderboardPlanningScopedParentRowIds } from './leaderboard/leaderboard-row-selection.service.js';
 import {
@@ -290,7 +290,7 @@ async function readPlanningSource(params: {
   fseibans: readonly string[];
   leaderboardGenerationToken?: string;
 }): Promise<PlanningSource> {
-  const generationToken = params.leaderboardGenerationToken ?? await readLeaderboardShellSnapshotGenerationToken();
+  const generationToken = params.leaderboardGenerationToken ?? await readGrindingPlanningBoardSnapshotGenerationToken();
   const baseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
   const order = uniqueFseibans(params.fseibans);
   if (order.length === 0) {
@@ -581,7 +581,7 @@ function isPlanningSnapshotPayload(value: unknown): value is PlanningSnapshotPay
 
 async function readPlanningSnapshotGenerationDetails(siteKey: string): Promise<PlanningSnapshotGenerationDetails> {
   const [leaderboardGeneration, state, overrides] = await Promise.all([
-    readLeaderboardShellSnapshotGenerationToken(),
+    readGrindingPlanningBoardSnapshotGenerationToken(),
     prisma.productionScheduleGrindingPlanningBoardState.findUnique({
       where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } },
       select: { version: true, updatedAt: true }
