@@ -229,7 +229,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   });
   const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch: true });
   const dueDetailQuery = useKioskGrindingPlanningBoardDueDetail(dueDetailFseiban);
-  const updateOverrides = useUpdateKioskGrindingPlanningBoardOverrides();
+  const { mutateAsync: updateOverridesAsync, isPending: overridesPending } = useUpdateKioskGrindingPlanningBoardOverrides();
   const updateDueScope = useUpdateKioskGrindingPlanningBoardDueScope();
   const { mutateAsync: updateRankAsync } = useUpdateKioskGrindingPlanningBoardRank();
   const { mutateAsync: updateResourceOrderAsync } = useUpdateKioskGrindingPlanningBoardResourceOrder();
@@ -505,7 +505,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     [selectedItemIds, visibleItems]
   );
   const editorItems = editorSnapshot?.items ?? [];
-  const resourceDragDisabled = resourceOrderSaving || rankMutationPending || updateOverrides.isPending || Object.values(pendingOverrideItems).some(
+  const resourceDragDisabled = resourceOrderSaving || rankMutationPending || overridesPending || Object.values(pendingOverrideItems).some(
     (pending) => pending.responseItemRevision == null
   );
 
@@ -549,7 +549,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       allocation === 'original' ||
       specialDueMode == null ||
       item.isCompleted ||
-      updateOverrides.isPending ||
+      overridesPending ||
       resourceDragSavePendingRef.current ||
       resourceOrderSavePendingRef.current ||
       rankMutationPending ||
@@ -578,7 +578,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     }));
     notify(nextSpecialDue == null ? '特別納期を解除中…' : `${nextSpecialDue === 'today' ? '今日中' : '朝まで'}を保存中…`, 'processing');
     try {
-      const result = await updateOverrides.mutateAsync({ sourceRevision: baseSourceRevision, items: [request] });
+      const result = await updateOverridesAsync({ sourceRevision: baseSourceRevision, items: [request] });
       setPendingOverrideItems((current) => {
         const pending = current[item.itemId];
         if (!pending || pending.baseSourceRevision !== baseSourceRevision) return current;
@@ -605,7 +605,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       });
       handleError(error);
     }
-  }, [allocation, data, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, scopeReady, specialDueMode, updateOverrides]);
+  }, [allocation, data, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, scopeReady, specialDueMode, updateOverridesAsync, overridesPending]);
 
   const openEditor = useCallback((items: readonly GrindingPlanningBoardItem[]) => {
     if (!scopeReady || items.some((item) => pendingOverrideItems[item.itemId] != null && pendingOverrideItems[item.itemId].responseItemRevision == null)) return;
@@ -766,7 +766,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     });
     notify(`${items.length}件を更新中…`, 'processing');
     try {
-      const result = await updateOverrides.mutateAsync({ sourceRevision: editorSnapshot.sourceRevision, items });
+      const result = await updateOverridesAsync({ sourceRevision: editorSnapshot.sourceRevision, items });
       setPendingOverrideItems((current) => {
         const next = { ...current };
         for (const request of items) {
@@ -820,7 +820,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       item.isCompleted ||
       !data.resources.includes(targetResource) ||
       currentResource === targetResource ||
-      updateOverrides.isPending ||
+      overridesPending ||
       resourceDragSavePendingRef.current ||
       resourceOrderSavePendingRef.current ||
       rankMutationPending ||
@@ -849,7 +849,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     }));
     notify('資源CDを保存中…', 'processing');
     try {
-      const result = await updateOverrides.mutateAsync({ sourceRevision: baseSourceRevision, items: [request] });
+      const result = await updateOverridesAsync({ sourceRevision: baseSourceRevision, items: [request] });
       setPendingOverrideItems((current) => {
         const pending = current[item.itemId];
         if (!pending || pending.baseSourceRevision !== baseSourceRevision) return current;
@@ -878,7 +878,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     } finally {
       resourceDragSavePendingRef.current = false;
     }
-  }, [allocation, data, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, scopeReady, sourceRevision, updateOverrides]);
+  }, [allocation, data, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, scopeReady, sourceRevision, updateOverridesAsync, overridesPending]);
 
   const reorderResourceByDrag = useCallback(async (
     item: GrindingPlanningBoardItem,
@@ -898,7 +898,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       currentResource !== resolveGrindingPlanningBoardResource(targetItem, allocation) ||
       (item.specialDue?.expiresAt ?? null) !== (targetItem.specialDue?.expiresAt ?? null) ||
       !data.resources.includes(currentResource) ||
-      updateOverrides.isPending ||
+      overridesPending ||
       resourceDragSavePendingRef.current ||
       resourceOrderSavePendingRef.current ||
       rankMutationPending ||
@@ -1000,7 +1000,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       resourceOrderSavePendingRef.current = false;
       setResourceOrderSaving(false);
     }
-  }, [allocation, data, displayItems, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, registeredFseibans, scopeReady, sourceRevision, updateOverrides.isPending, updateResourceOrderAsync, visibleItems]);
+  }, [allocation, data, displayItems, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, registeredFseibans, scopeReady, sourceRevision, overridesPending, updateResourceOrderAsync, visibleItems]);
 
   const refreshAfterConflict = async () => {
     setEditorError('最新状態を取得しています…');
@@ -1455,7 +1455,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           {editorError ? <p className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800" role="alert">{editorError}</p> : null}
           {editorConflict ? <Button type="button" variant="secondary" onClick={() => void refreshAfterConflict()}>最新状態を取得して閉じる</Button> : null}
           {allocation === 'original' ? <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">元データ表示中は変更できません。別割当に切り替えてください。</p> : null}
-          <fieldset disabled={allocation === 'original' || updateOverrides.isPending}>
+          <fieldset disabled={allocation === 'original' || overridesPending}>
             <legend className="text-sm font-semibold text-slate-800">資源CD</legend>
             <div className="mt-2 flex flex-wrap gap-2">
               <button type="button" className={`min-h-11 rounded-md border px-3 text-sm ${resourceChoice === 'unchanged' ? 'border-emerald-600 bg-emerald-100 text-emerald-950' : 'border-slate-300'}`} onClick={() => setResourceChoice('unchanged')}>変更なし</button>
@@ -1484,7 +1484,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
               </p>
             ) : null}
           </fieldset>
-          <fieldset disabled={allocation === 'original' || updateOverrides.isPending}>
+          <fieldset disabled={allocation === 'original' || overridesPending}>
             <legend className="text-sm font-semibold text-slate-800">日付</legend>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
               <button type="button" className={`min-h-11 rounded-md border px-3 ${dueMode === 'none' ? 'border-emerald-600 bg-emerald-100 text-emerald-950' : 'border-slate-300'}`} onClick={() => setDueMode('none')}>変更なし</button>
@@ -1501,7 +1501,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => setEditorOpen(false)}>キャンセル</Button>
-            <Button type="button" variant="primary" disabled={allocation === 'original' || updateOverrides.isPending || (resourceChoice === 'unchanged' && dueMode === 'none')} onClick={() => void applyEditor()}>{updateOverrides.isPending ? '適用中…' : '適用'}</Button>
+            <Button type="button" variant="primary" disabled={allocation === 'original' || overridesPending || (resourceChoice === 'unchanged' && dueMode === 'none')} onClick={() => void applyEditor()}>{overridesPending ? '適用中…' : '適用'}</Button>
           </div>
         </div>
       </Dialog>
