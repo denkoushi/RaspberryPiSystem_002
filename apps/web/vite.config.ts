@@ -38,6 +38,10 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      input: {
+        app: 'index.html',
+        hermesSearchTrial: 'hermes-search-device-trial.html'
+      },
       output: {
         manualChunks: {
           vendor: [

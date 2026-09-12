@@ -2026,3 +2026,5 @@ APIの概要と詳細。
 - 2025-12-04: 工具スキャン重複対策（KB-067）と黒画像対策（KB-068）を実装完了、ナレッジベース更新（65件）
 - 2025-12-01: Ansible堅牢化・安定化計画追加、Ansibleで管理すべき設定ファイル一覧追加、ナレッジベースKB-061追加、統計更新（59件、実装計画セクション追加）
 - 2025-12-01: Ansible設定ファイル管理化実装完了（systemdサービス・アプリケーション設定）、ナレッジベースKB-062追加、統計更新（60件、インフラ関連26件、実装計画5件）
+
+- [Hermes Pi5 search / Spark inference trial](plans/hermes-pi5-search-spark-inference.md) — approved device layout, trial entry and deployment limits.

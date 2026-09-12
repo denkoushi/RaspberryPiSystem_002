@@ -49,7 +49,7 @@ test('relays an allowed CONNECT tunnel with real sockets', async (t) => {
   assert.equal(await echoed, 'test-payload');
 });
 
-test('relays only the DGX chat path as an absolute-form HTTP request', async (t) => {
+test('relays the DGX chat path as an absolute-form HTTP request', async (t) => {
   const received = [];
   const upstream = http.createServer((request, response) => {
     const chunks = [];

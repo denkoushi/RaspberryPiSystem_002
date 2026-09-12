@@ -927,6 +927,16 @@
     - release_pi5_route == 'fresh'
     - business_hermes_chat_enabled | default(false) | bool
 
+- name: Prepare the explicitly enabled SSD search trial
+  ansible.builtin.include_tasks: hermes-search-trial.yml
+  vars:
+    hermes_search_trial_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') | bool }}"
+    hermes_search_trial_artifact: "{{ lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ARTIFACT') }}"
+  when:
+    - release_pi5_route == 'fresh'
+    - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') in ['true', 'false']
+    - business_hermes_chat_enabled | default(false) | bool
+
 - name: Mark the inactive Pi5 candidate startup boundary
   ansible.builtin.set_fact:
     release_pi5_start_attempted: true

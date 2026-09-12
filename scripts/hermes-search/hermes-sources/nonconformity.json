@@ -1,0 +1,91 @@
+{
+  "schema": "hermes-source-definition/v1",
+  "id": "nonconformity",
+  "recordNumberField": "nonconformityNo",
+  "bodyFields": {
+    "condition": "不適合内容",
+    "remarks": "備考",
+    "correctiveContent": "個別是正内容",
+    "disposition": "処置内容"
+  },
+  "contextAttributes": [
+    "nonconformityNo",
+    "partNumber",
+    "partName",
+    "machineName",
+    "originDepartmentCode",
+    "originDepartmentName"
+  ],
+  "searchMetadataFields": [
+    "partNumber",
+    "partName",
+    "machineName"
+  ],
+  "lexicalFields": [
+    "partNumber",
+    "partName",
+    "machineName",
+    "condition",
+    "remarks",
+    "correctiveContent",
+    "disposition"
+  ],
+  "organizedLabels": {
+    "event": "現象",
+    "cause": "記録された原因",
+    "action": "対策・確認事項",
+    "disposition": "処置",
+    "uncertainty": "未特定・否定に関する記載"
+  },
+  "organizedContextClasses": [
+    "event",
+    "cause",
+    "uncertainty"
+  ],
+  "offlineExtraction": {
+    "fields": [
+      "remarks",
+      "condition",
+      "correctiveContent",
+      "disposition"
+    ],
+    "prompt": "不適合記録から、原文の連続した文または段落を抽出する。入力は1記録だけ。質問や想定回答は作らない。\n抽出クラスは event（発生した現象）、cause（記載された原因）、action（記載された対策・教育・確認指示）、disposition（今回の処置）、uncertainty（明示された不明・否定・未特定）。\nfield見出しそのものは抽出しない。extraction_textは原文を一字も変えず、否定、条件、左右、数値、主体を含む文を丸ごと抜き出す。離れた文を結合しない。\n行為の主体と指示内容は切り離さない。起因部署は作業担当部署という意味ではない。記載のないことは追加しない。対策が空欄でも未実施とは推定しない。\n各抽出のattributesにfield（入力の見出し名）、search_text（その箇所を普通の日本語で短く表した検索用文）、polarity（affirmed/negated/unknown）を付ける。\nsearch_textには新しい原因、結果、対策を補わず、原文が不明・否定ならそれを維持する。search_textは内部検索用で画面には表示しない。\n重複した原文は必要なクラスにつき一度だけ。eventとcauseを混ぜない。同一文が両者を含むときのみ両クラスに使ってよい。"
+  },
+  "originalOnlyContextClasses": [
+    "uncertainty"
+  ],
+  "quantityUnits": [
+    {
+      "unit": "mm",
+      "aliases": [
+        "mm",
+        "㎜",
+        "ミリメートル",
+        "ミリ"
+      ]
+    },
+    {
+      "unit": "cm",
+      "aliases": [
+        "cm",
+        "センチメートル",
+        "センチ"
+      ]
+    },
+    {
+      "unit": "kg",
+      "aliases": [
+        "kg",
+        "キログラム"
+      ]
+    },
+    {
+      "unit": "degreeC",
+      "aliases": [
+        "℃",
+        "°C",
+        "度C"
+      ]
+    }
+  ]
+}

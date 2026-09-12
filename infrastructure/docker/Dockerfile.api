@@ -1,5 +1,13 @@
 # syntax=docker/dockerfile:1
 
+# Isolated search worker runtime; the existing API keeps Node 20.
+FROM node:24-bookworm-slim@sha256:be8929e08ae137e81b5e1edba02259e6c4cb2f5ad655092bb9f56b97e41c4536 AS hermes-search-runtime
+WORKDIR /opt/hermes-runtime
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+COPY scripts/hermes-search/package.json scripts/hermes-search/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+
 FROM node:20-bookworm-slim AS workspace
 WORKDIR /app
 ENV NODE_OPTIONS=--max-old-space-size=4096
@@ -34,6 +42,7 @@ COPY packages ./packages
 COPY scripts/deploy/deploy-status-state.py ./scripts/deploy/deploy-status-state.py
 COPY scripts/part-measurement/drawing-local-rapidocr-worker.py ./scripts/part-measurement/drawing-local-rapidocr-worker.py
 COPY scripts/server/add-cert-backup-target.mjs ./scripts/server/add-cert-backup-target.mjs
+COPY scripts/hermes-search ./scripts/hermes-search
 
 WORKDIR /app/packages/shared-types
 RUN nice -n 10 pnpm build
@@ -50,6 +59,9 @@ RUN nice -n 10 pnpm run build
 
 FROM node:20-bookworm-slim AS api-runtime
 WORKDIR /app
+COPY --from=hermes-search-runtime /usr/local/bin/node /opt/hermes-node/bin/node
+COPY --from=hermes-search-runtime /opt/hermes-runtime /opt/hermes-runtime
+ENV HERMES_QMD_ROOT=/opt/hermes-runtime/node_modules/@tobilu/qmd
 ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
 # Bump the date to invalidate the cached apt layer; otherwise the CI build
 # cache keeps stale OS packages and Trivy fails on already-fixed Debian CVEs.
