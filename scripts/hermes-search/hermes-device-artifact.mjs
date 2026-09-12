@@ -20,4 +20,7 @@ export async function prepareDeviceArtifact(artifactRoot, dataDirectory) {
   // sealed source index is never opened for writing or shared between slots.
   for(const suffix of ['','-wal','-shm'])await fs.rm(path.join(data,'qmd-index.sqlite'+suffix),{force:true});
   await fs.copyFile(path.join(root,'qmd-index.sqlite'),path.join(data,'qmd-index.sqlite'));
+  // copyFile preserves the sealed source's 0400 mode. QMD needs to update
+  // SQLite metadata in this private copy; the source remains read-only.
+  await fs.chmod(path.join(data,'qmd-index.sqlite'),0o600);
 }
