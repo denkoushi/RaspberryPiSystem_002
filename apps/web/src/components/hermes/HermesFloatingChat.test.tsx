@@ -127,9 +127,9 @@ import { HermesFloatingChat } from './HermesFloatingChat';
 
 import type { CSSProperties } from 'react';
 
-function renderChat() {
+function renderChat(path = '/kiosk/assembly') {
   return render(
-    <MemoryRouter initialEntries={['/kiosk/assembly']}>
+    <MemoryRouter initialEntries={[path]}>
       <HermesFloatingChat />
     </MemoryRouter>
   );
@@ -191,6 +191,47 @@ describe('HermesFloatingChat', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('pauses board decoration throughout a held pointer and resumes after inactivity', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'] });
+    renderChat('/kiosk/production-schedule/planning-board/');
+    const trigger = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
+    expect(trigger).not.toHaveAttribute('data-interacting');
+    fireEvent.pointerDown(window, { pointerId: 1 });
+    act(() => vi.advanceTimersByTime(2000));
+    expect(trigger).toHaveAttribute('data-interacting', 'true');
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    act(() => vi.advanceTimersByTime(1000));
+    fireEvent.scroll(document);
+    act(() => vi.advanceTimersByTime(1199));
+    expect(trigger).toHaveAttribute('data-interacting', 'true');
+    act(() => vi.advanceTimersByTime(1));
+    expect(trigger).not.toHaveAttribute('data-interacting');
+  });
+
+  it('resumes after pointer cancellation and keyboard activity, and removes listeners on unmount', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'] });
+    const { unmount } = renderChat('/kiosk/production-schedule/planning-board');
+    const trigger = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
+    fireEvent.pointerDown(window, { pointerId: 1 });
+    fireEvent.pointerCancel(window, { pointerId: 1 });
+    act(() => vi.advanceTimersByTime(1200));
+    expect(trigger).not.toHaveAttribute('data-interacting');
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    expect(trigger).toHaveAttribute('data-interacting', 'true');
+    unmount();
+    expect(trigger).not.toHaveAttribute('data-interacting');
+    fireEvent.wheel(window);
+    expect(trigger).not.toHaveAttribute('data-interacting');
+  });
+
+  it('keeps decoration running during interaction outside the board', () => {
+    renderChat();
+    const trigger = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
+    fireEvent.pointerDown(window);
+    fireEvent.wheel(window);
+    expect(trigger).not.toHaveAttribute('data-interacting');
   });
 
   it('opens from the keyboard and moves within the viewport with arrow keys', async () => {
