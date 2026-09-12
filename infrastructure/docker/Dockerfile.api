@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Isolated search worker runtime; the existing API keeps Node 20.
-FROM node:24-bookworm-slim@sha256:be8929e08ae137e81b5e1edba02259e6c4cb2f5ad655092bb9f56b97e41c4536 AS hermes-search-runtime
+FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS hermes-search-runtime
 WORKDIR /opt/hermes-runtime
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
   && rm -rf /var/lib/apt/lists/*
