@@ -2028,3 +2028,5 @@ APIの概要と詳細。
 - 2025-12-01: Ansible設定ファイル管理化実装完了（systemdサービス・アプリケーション設定）、ナレッジベースKB-062追加、統計更新（60件、インフラ関連26件、実装計画5件）
 
 - [Hermes Pi5 search / Spark inference trial](plans/hermes-pi5-search-spark-inference.md) — approved device layout, trial entry and deployment limits.
+
+- [Hermes question recipes and prefetch](plans/hermes-question-prefetch.md) — isolated speculative answers and validation plan.

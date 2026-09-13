@@ -720,6 +720,19 @@ describe('HermesFloatingChat', () => {
     await waitFor(() => expect(screen.queryByText('案件Aの遅延回答')).not.toBeInTheDocument());
   });
 
+  it('cancels background work when an idle consultation is closed', async () => {
+    const item = consultation('case-prefetch-close', '先読み中の相談');
+    mocks.listConsultations.mockResolvedValue({ consultations: [], enabled: true });
+    mocks.createConsultation.mockResolvedValue({ ...item, messages: [] });
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '新規' }));
+    await screen.findByText('先読み中の相談');
+    expect(screen.queryByRole('button', { name: '停止' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    await waitFor(() => expect(mocks.cancelConsultation).toHaveBeenCalledWith(item.id));
+  });
+
   it('stops a request and allows the consultation to be sent again', async () => {
     const item = consultation('case-stop', '停止できる相談');
     const firstRequest = new Promise(() => undefined);
