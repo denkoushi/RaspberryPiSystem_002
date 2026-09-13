@@ -2029,4 +2029,5 @@ APIの概要と詳細。
 
 - [Hermes Pi5 search / Spark inference trial](plans/hermes-pi5-search-spark-inference.md) — approved device layout, trial entry and deployment limits.
 
+- [Hermes measured Skill improvement](plans/hermes-learning-evaluation.md) — private observations, staged review and comparison.
 - [Hermes question recipes and prefetch](plans/hermes-question-prefetch.md) — isolated speculative answers and validation plan.

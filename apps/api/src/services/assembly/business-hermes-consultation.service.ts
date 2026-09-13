@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
 
 import { env } from '../../config/env.js';
@@ -106,6 +106,33 @@ type ConsultationDeps = {
 
 type JsonRecord = Record<string, unknown>;
 
+// Private telemetry, never instructions or proof that the answer is correct.
+type InferenceMeasurement = {
+  conversationKey: string;
+  startedAt: string;
+  elapsedMs?: number;
+  runtimeReadyMs?: number;
+  searches?: Array<Record<string, unknown>>;
+};
+type LearningMeasurement = {
+  kind: 'business-hermes-learning-v1';
+  timingBoundary: 'server-through-response-assembly-v1';
+  runId: string;
+  startedAt: string;
+  userMessageId?: string;
+  answerMessageId?: string;
+  question?: string;
+  questionStartedAt?: string;
+  purpose?: string;
+  contextFingerprint?: string;
+  phase?: 'choice' | 'answer';
+  recipeId?: string;
+  recipeVersion: string;
+  prefetchStarted?: boolean;
+  prefetch: 'none' | 'matched' | 'discarded' | 'adopted' | 'fallback';
+  inferences: InferenceMeasurement[];
+};
+
 function waitForRuntimeReady(promise: Promise<void>, signal: AbortSignal): Promise<void> {
   if (signal.aborted) return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
   return new Promise<void>((resolve, reject) => {
@@ -148,6 +175,7 @@ type Prefetch = {
   conversationKey: string;
   controller: AbortController;
   result: Promise<JsonRecord | null>;
+  measurement: InferenceMeasurement;
   expiry?: ReturnType<typeof setTimeout>;
   finishedAt?: number;
 };
@@ -395,16 +423,39 @@ export class BusinessHermesConsultationService {
     if (input.signal?.aborted) controller.abort();
     else input.signal?.addEventListener('abort', onAbort, { once: true });
     activeControllers.set(input.consultationId, controller);
-    const run = this.performChat(input.consultationId, message, selection, scanValue, controller.signal);
+    const started = performance.now();
+    const measurement: LearningMeasurement = {
+      kind: 'business-hermes-learning-v1', timingBoundary: 'server-through-response-assembly-v1', runId: randomUUID(), startedAt: new Date().toISOString(),
+      recipeVersion: QUESTION_RECIPE_VERSION, prefetch: 'none', inferences: []
+    };
+    const run = this.performChat(input.consultationId, message, selection, scanValue, controller.signal, measurement);
     inFlight.set(input.consultationId, run);
-    try { return await run; } finally {
+    try {
+      const result = await run;
+      const completed = { ...measurement, elapsedMs: performance.now() - started,
+        questionToAnswerMs: Math.max(0, Date.now() - Date.parse(measurement.questionStartedAt ?? measurement.startedAt)),
+        status: result.status, reasonCode: result.reasonCode ?? null,
+        needsClarification: result.needsClarification };
+      if (measurement.userMessageId) {
+        try {
+          // Reuse the existing JSON column. Failures count too; never learn only
+          // from the surviving successful answers. No additional model call.
+          await this.db.businessHermesConsultationMessage.update({
+            where: { id: measurement.userMessageId }, data: { searchDiagnostics: asJson([completed]) }
+          });
+        } catch (error) {
+          logger.warn({ err: error, consultationId: input.consultationId, runId: measurement.runId }, 'Business Hermes learning measurement not persisted');
+        }
+      }
+      return result;
+    } finally {
       input.signal?.removeEventListener('abort', onAbort);
       if (activeControllers.get(input.consultationId) === controller) activeControllers.delete(input.consultationId);
       if (inFlight.get(input.consultationId) === run) inFlight.delete(input.consultationId);
     }
   }
 
-  private async performChat(consultationId: string, message: string, selection?: BusinessHermesSelection, scanValue?: string, externalSignal?: AbortSignal): Promise<BusinessHermesConsultationChatResponse> {
+  private async performChat(consultationId: string, message: string, selection?: BusinessHermesSelection, scanValue?: string, externalSignal?: AbortSignal, measurement?: LearningMeasurement): Promise<BusinessHermesConsultationChatResponse> {
     const consultation = await this.get(consultationId);
     if (!consultation) return this.failure(consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
     if (externalSignal?.aborted) return this.failure(consultationId, 'HERMES_TIMEOUT');
@@ -423,8 +474,16 @@ export class BusinessHermesConsultationService {
       && candidate.snapshot === prefetchSnapshot(consultation)
       && (candidate.finishedAt === undefined || Date.now() - candidate.finishedAt < PREFETCH_RETENTION_MS)
       ? candidate : undefined;
+    if (measurement) {
+      measurement.question = intentQuestion ?? message;
+      measurement.questionStartedAt = intentIndex > 0 ? consultation.messages[intentIndex - 1]?.createdAt : measurement.startedAt;
+      measurement.purpose = selection?.option ?? message;
+      measurement.recipeId = intentQuestion && selection ? questionRecipes(intentQuestion).find((entry) => entry.option === selection.option)?.id : undefined;
+      measurement.prefetch = matchingPrefetch ? 'matched' : candidate ? 'discarded' : 'none';
+    }
     if (!matchingPrefetch) discardPrefetch(consultationId);
     const supplementRequested = Boolean(pendingIntent && selection?.option === INTENT_SUPPLEMENT);
+    if (measurement) measurement.phase = firstQuestion || supplementRequested ? 'choice' : 'answer';
     const completingIntent = Boolean(pendingIntent || (intentQuestion && lastMessage?.content === INTENT_SUPPLEMENT_PROMPT));
     const storedEvidenceKeys = new Set<string>();
     const storedEvidenceForCase = consultation.messages
@@ -468,10 +527,14 @@ export class BusinessHermesConsultationService {
       ...(selection ? { selection } : {}),
       ...(scanResolution ? { scan: scanResolution } : {})
     } : undefined;
-    await this.db.businessHermesConsultationMessage.create({ data: { consultationId, role: 'user', content: displayedMessage, evidence: asJson([]), ...(userConfirmation ? { confirmation: asJson(userConfirmation) } : {}) } });
+    const userMessage = await this.db.businessHermesConsultationMessage.create({ data: { consultationId, role: 'user', content: displayedMessage, evidence: asJson([]), ...(userConfirmation ? { confirmation: asJson(userConfirmation) } : {}),
+      ...(measurement ? { searchDiagnostics: asJson([{ ...measurement, status: 'pending' }]) } : {})
+    } });
+    if (measurement) measurement.userMessageId = userMessage.id;
     if (externalSignal?.aborted) return this.failure(consultationId, 'HERMES_TIMEOUT');
     // Display deterministic question recipes immediately; inference runs independently.
     if (firstQuestion || supplementRequested) {
+      if (measurement) measurement.phase = 'choice';
       const prompt = firstQuestion ? `「${message.slice(0, 430)}」について、知りたい内容を選んでください。` : INTENT_SUPPLEMENT_PROMPT;
       const confirmation = firstQuestion ? { title: INTENT_CONFIRMATION_TITLE, prompt, options: [...questionRecipes(message).map((recipe) => recipe.option), INTENT_SUPPLEMENT] } : undefined;
       const answer = firstQuestion ? 'まず、知りたい内容を選んでください。' : prompt;
@@ -485,7 +548,10 @@ export class BusinessHermesConsultationService {
       const updated = await this.get(consultationId);
       if (!updated) return this.failure(consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
       if (externalSignal?.aborted) return this.failure(consultationId, 'HERMES_TIMEOUT');
-      if (firstQuestion && confirmation) this.startPrefetch(updated, message, confirmation);
+      if (firstQuestion && confirmation) {
+        this.startPrefetch(updated, message, confirmation);
+        if (measurement) measurement.prefetchStarted = prefetches.has(consultationId);
+      }
       return { status: 'ready', message: confirmation ? answer : null, evidence: [], evidenceVisible: false,
         evidenceVisibleIds: [], recordIds: [], needsClarification: true,
         clarificationMessage: confirmation ? null : answer, ...(confirmation ? { confirmation } : {}), consultationId, consultation: updated };
@@ -495,6 +561,11 @@ export class BusinessHermesConsultationService {
       consultation.openQuestions = [];
     }
     const requestInput = this.inferenceInput(consultation, message, selection, intentQuestion, availableEvidenceForModel, scanResolution);
+    if (measurement) {
+      const context = { ...requestInput };
+      delete context.questionRecipe;
+      measurement.contextFingerprint = createHash('sha256').update(JSON.stringify(context)).digest('hex');
+    }
     let adoptedConversationKey: string | undefined;
     const controller = new AbortController();
     const onAbort = () => { controller.abort(); matchingPrefetch?.controller.abort(); };
@@ -509,14 +580,20 @@ export class BusinessHermesConsultationService {
         clearTimeout(matchingPrefetch.expiry);
         prefetches.delete(consultationId);
         controller.signal.throwIfAborted();
+        measurement?.inferences.push(matchingPrefetch.measurement);
         parsed = await matchingPrefetch.result;
         controller.signal.throwIfAborted();
         if (parsed) adoptedConversationKey = matchingPrefetch.conversationKey;
+        if (measurement) {
+          measurement.prefetch = parsed ? 'matched' : 'fallback';
+        }
         logger.info({ consultationId, event: parsed ? 'matched' : 'fallback', recipeVersion: QUESTION_RECIPE_VERSION }, 'Business Hermes prefetch');
       }
       if (!parsed) {
         const conversationKey = (await this.db.businessHermesConsultation.findUnique({ where: { id: consultationId }, select: { hermesConversationId: true } }))?.hermesConversationId ?? consultation.id;
-        parsed = await this.infer(requestInput, conversationKey, controller.signal);
+        const inference: InferenceMeasurement = { conversationKey, startedAt: new Date().toISOString() };
+        measurement?.inferences.push(inference);
+        parsed = await this.infer(requestInput, conversationKey, controller.signal, inference);
       }
       if (responseStatus(parsed) !== 'completed') return this.failure(consultationId, 'HERMES_INCOMPLETE');
       if (isKnownUpstreamFailureResponse(parsed)) return this.failure(consultationId, 'HERMES_UPSTREAM_UNAVAILABLE');
@@ -589,7 +666,7 @@ export class BusinessHermesConsultationService {
       // Cancellation can arrive after the stream ends, while source assets are
       // being checked. Do not save that late answer as a successful turn.
       controller.signal.throwIfAborted();
-      await this.db.businessHermesConsultationMessage.create({ data: {
+      const answerMessage = await this.db.businessHermesConsultationMessage.create({ data: {
         consultationId, role: 'assistant', content: displayAnswer,
         // Keep trusted evidence for later user-requested inspection, while
         // persisting the model's explicit display decision for consultation history.
@@ -597,6 +674,7 @@ export class BusinessHermesConsultationService {
         ...(confirmation ? { confirmation: asJson(confirmation) } : {}),
         searchDiagnostics: asJson(searchDiagnostics(parsed))
       } });
+      if (measurement) measurement.answerMessageId = answerMessage.id;
       await this.db.businessHermesConsultation.update({ where: { id: consultationId }, data: {
         ...(adoptedConversationKey ? { hermesConversationId: adoptedConversationKey } : {}),
         title: state.title?.trim().slice(0, 200) || consultation.title || message.split(/\r?\n/)[0]?.slice(0, 80) || null,
@@ -609,6 +687,7 @@ export class BusinessHermesConsultationService {
       } });
       const updated = await this.get(consultationId);
       if (!updated) return this.failure(consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
+      if (adoptedConversationKey && measurement) measurement.prefetch = 'adopted';
       if (adoptedConversationKey) logger.info({ consultationId, event: 'adopted', recipeVersion: QUESTION_RECIPE_VERSION }, 'Business Hermes prefetch');
       return {
         status: 'ready',
@@ -659,11 +738,12 @@ export class BusinessHermesConsultationService {
     const selection = { prompt: confirmation.prompt, option: questionRecipes(question)[0]!.option };
     const pending: Prefetch = {
       snapshot: prefetchSnapshot(consultation), selection, conversationKey: randomUUID(), controller: new AbortController(),
-      result: Promise.resolve(null)
+      result: Promise.resolve(null), measurement: { conversationKey: '', startedAt: new Date().toISOString() }
     };
+    pending.measurement.conversationKey = pending.conversationKey;
     prefetches.set(consultation.id, pending);
     logger.info({ consultationId: consultation.id, event: 'started', recipeId: 'record-answer', recipeVersion: QUESTION_RECIPE_VERSION }, 'Business Hermes prefetch');
-    pending.result = this.infer(this.inferenceInput(consultation, selection.option, selection, question, [], undefined, true), pending.conversationKey, pending.controller.signal)
+    pending.result = this.infer(this.inferenceInput(consultation, selection.option, selection, question, [], undefined, true), pending.conversationKey, pending.controller.signal, pending.measurement)
       .then((parsed) => {
         if (pending.controller.signal.aborted || responseStatus(parsed) !== 'completed' || isKnownUpstreamFailureResponse(parsed) || !responseMessage(parsed)) return null;
         return parsed;
@@ -680,7 +760,8 @@ export class BusinessHermesConsultationService {
       });
   }
 
-  private async infer(input: JsonRecord, conversationKey: string, externalSignal?: AbortSignal): Promise<JsonRecord> {
+  private async infer(input: JsonRecord, conversationKey: string, externalSignal?: AbortSignal, measurement?: InferenceMeasurement): Promise<JsonRecord> {
+    const started = performance.now();
     const config = this.deps.config ?? {
       baseUrl: env.BUSINESS_HERMES_CHAT_BASE_URL,
       apiKey: env.BUSINESS_HERMES_CHAT_API_KEY,
@@ -720,6 +801,7 @@ export class BusinessHermesConsultationService {
         }
       }
       controller.signal.throwIfAborted();
+      if (measurement) measurement.runtimeReadyMs = performance.now() - started;
       const response = await (this.deps.fetchImpl ?? fetch)(new URL('/v1/responses', config.baseUrl), {
         method: 'POST',
         headers: {
@@ -745,10 +827,13 @@ export class BusinessHermesConsultationService {
         await response.body?.cancel().catch(() => undefined);
         throw new Error(response.status === 401 ? 'HERMES_UPSTREAM_UNAUTHORIZED' : 'HERMES_UPSTREAM_UNAVAILABLE');
       }
-      return await readResponsesStream(response, controller.signal);
+      const parsed = await readResponsesStream(response, controller.signal);
+      if (measurement) measurement.searches = searchDiagnostics(parsed);
+      return parsed;
     } finally {
       clearTimeout(timeout);
       externalSignal?.removeEventListener('abort', onAbort);
+      if (measurement) measurement.elapsedMs = performance.now() - started;
       if (runtimeHeld && runtime) await runtime.release('business_hermes').catch(() => undefined);
     }
   }
@@ -810,7 +895,7 @@ export class BusinessHermesConsultationService {
         ...(asConfirmation(message.confirmation) ? { confirmation: asConfirmation(message.confirmation) } : {}),
         ...(storedSelection(message.confirmation) ? { selection: storedSelection(message.confirmation) } : {}),
         ...(storedScan(message.confirmation) ? { scan: storedScan(message.confirmation) } : {}),
-        searchDiagnostics: Array.isArray(message.searchDiagnostics) ? message.searchDiagnostics : [],
+        searchDiagnostics: Array.isArray(message.searchDiagnostics) ? message.searchDiagnostics.filter((entry) => entry?.kind !== 'business-hermes-learning-v1') : [],
         createdAt: iso(message.createdAt)
       }))
     };
