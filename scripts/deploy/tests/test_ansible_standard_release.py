@@ -1725,6 +1725,9 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
             [task["ansible.builtin.import_tasks"] for task in main["rescue"] if "ansible.builtin.import_tasks" in task],
             ["rollback.yml"],
         )
+        cache_restore = main["rescue"][1]
+        self.assertEqual(cache_restore["block"][0]["ansible.builtin.include_tasks"], "business-hermes-answer-cache-rollback.yml")
+        self.assertTrue(cache_restore["rescue"][0]["ansible.builtin.set_fact"]["release_pi5_answer_cache_rollback_failed"])
         chat_restore = main["rescue"][0]
         self.assertEqual(chat_restore["block"][0]["ansible.builtin.include_tasks"], "business-hermes-chat-rollback.yml")
         self.assertTrue(chat_restore["rescue"][0]["ansible.builtin.set_fact"]["release_pi5_chat_rollback_failed"])

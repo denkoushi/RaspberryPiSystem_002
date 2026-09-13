@@ -404,7 +404,7 @@ services:
     cpus: 2
     cpu_shares: 256
     environment:
-      ANSWER_CACHE_TOKEN: ${BUSINESS_HERMES_ANSWER_CACHE_TOKEN:-disabled}
+      ANSWER_CACHE_TOKEN: ${BUSINESS_HERMES_ANSWER_CACHE_TOKEN:-}
       ANSWER_CACHE_MAINTENANCE: 'true'
       ANSWER_CACHE_SOURCES: /data/sources.json
       OMP_NUM_THREADS: '2'

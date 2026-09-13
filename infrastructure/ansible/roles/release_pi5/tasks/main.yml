@@ -20,18 +20,6 @@
     - name: Commit the Pi5 scheduler handoff
       ansible.builtin.import_tasks: commit.yml
   rescue:
-    - name: Restore the previous answer cache without bypassing API rollback
-      when: release_pi5_answer_cache_started | default(false) | bool
-      block:
-        - name: Restore the previous answer cache service
-          ansible.builtin.include_tasks: business-hermes-answer-cache-rollback.yml
-      rescue:
-        - name: Record answer cache restoration failure
-          ansible.builtin.set_fact:
-            release_pi5_answer_cache_rollback_failed: true
-        - name: Report cache restoration failure and continue API rollback
-          ansible.builtin.debug:
-            msg: Answer cache restoration failed. Preserve previous image and data; continuing standard API rollback.
     - name: Attempt consultation restoration without bypassing API rollback
       when: release_pi5_chat_prepared | default(false) | bool
       block:
@@ -44,6 +32,19 @@
         - name: Report consultation restoration failure while continuing API rollback
           ansible.builtin.debug:
             msg: Consultation runtime restoration failed; preserve backups and inspect the failed task. Continuing standard API rollback.
+
+    - name: Restore the previous answer cache without bypassing API rollback
+      when: release_pi5_answer_cache_started | default(false) | bool
+      block:
+        - name: Restore the previous answer cache service
+          ansible.builtin.include_tasks: business-hermes-answer-cache-rollback.yml
+      rescue:
+        - name: Record answer cache restoration failure
+          ansible.builtin.set_fact:
+            release_pi5_answer_cache_rollback_failed: true
+        - name: Report cache restoration failure and continue API rollback
+          ansible.builtin.debug:
+            msg: Answer cache restoration failed. Preserve previous image and data; continuing standard API rollback.
 
     - name: Restore the previous Pi5 route and scheduler
       ansible.builtin.import_tasks: rollback.yml

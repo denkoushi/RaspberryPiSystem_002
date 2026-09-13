@@ -1,8 +1,14 @@
 ---
+- name: Bind the previous cache image in the complete rollback environment
+  ansible.builtin.set_fact:
+    release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'BUSINESS_HERMES_ANSWER_CACHE_IMAGE': release_pi5_answer_cache_previous_image.stdout | trim}) }}"
+  when: release_pi5_answer_cache_previous.stdout | trim | length > 0
+  no_log: true
+
 - name: Restore the captured cache image when a previous service existed
   ansible.builtin.command:
     argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'business-hermes-answer-cache'] }}"
-  environment: "{{ release_pi5_compose_environment | combine({'BUSINESS_HERMES_ANSWER_CACHE_IMAGE': release_pi5_answer_cache_previous_image.stdout | trim}) }}"
+  environment: "{{ release_pi5_compose_environment }}"
   when: release_pi5_answer_cache_previous.stdout | trim | length > 0
   changed_when: true
 

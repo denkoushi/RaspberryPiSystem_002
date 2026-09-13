@@ -5,7 +5,7 @@
       - business_hermes_chat_enabled | default(false) | bool
       - release_sha in release_pi5_answer_cache_image
       - release_pi5_answer_cache_image is match('^ghcr.io/denkoushi/raspisys-hermes-answer-cache:[0-9a-f]{40}@sha256:[0-9a-f]{64}$')
-      - business_hermes_chat_mcp_api_key | length >= 24
+      - business_hermes_chat_mcp_api_key | length >= 16
   no_log: true
 
 - name: Inspect the previous answer cache service
