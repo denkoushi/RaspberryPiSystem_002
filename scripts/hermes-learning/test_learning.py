@@ -100,6 +100,23 @@ class LearningTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             l.prepare_review(self.db, self.skill, output)
 
+    def test_review_does_not_leak_other_retrieved_record_bodies(self):
+        item = self.item('train', question='TRAINING_QUESTION')
+        item['answer']['evidence']['items'].append({
+            'kind': 'record', 'id': 'other-case', 'text': 'HELD_OUT_RECORD_BODY',
+            'displayFields': {'detail': [{'value': 'HELD_OUT_CORRECTION'}]}})
+        self.add(item)
+        self.mark('train')
+        output = l.prepare_review(self.db, self.skill, self.root / 'review')
+        prompt = (output / 'review.txt').read_text()
+        self.assertIn('synthetic answer', prompt)
+        self.assertIn('Checked the original conditions and answer', prompt)
+        self.assertNotIn('HELD_OUT_RECORD_BODY', prompt)
+        self.assertNotIn('HELD_OUT_CORRECTION', prompt)
+        # Keep the full observation locally for source review and graph reporting.
+        self.assertIn('HELD_OUT_RECORD_BODY', self.db.execute(
+            'SELECT payload FROM observations WHERE id=?', ('train',)).fetchone()[0])
+
     def test_same_question_cannot_switch_to_heldout_in_new_revision(self):
         self.add(self.item('a'))
         self.mark('a')
@@ -194,6 +211,33 @@ class LearningTests(unittest.TestCase):
             self.assertEqual(l.execute_review(output, config), 1)
         self.assertEqual(config.read_bytes(), original)
         self.assertEqual((output / 'profile/skills/business-consultation/SKILL.md').read_text(), self.skill.read_text())
+
+    def test_native_batch_accepts_only_scoped_skill_patches(self):
+        self.add(self.item('a'))
+        self.mark('a')
+        config = self.root / 'config.yaml'
+        config.write_text('model: {default: current-local-model}')
+        safe = {'name': 'business-consultation', 'action': 'patch', 'file_path': 'SKILL.md'}
+        batches = [[safe, safe], [safe, {**safe, 'name': 'another-skill'}],
+                   [safe, {**safe, 'action': 'delete'}], [safe, {**safe, 'file_path': '../SOUL.md'}],
+                   [safe, {'action': 'batch', 'operations': [safe]}], [], None]
+        for index, operations in enumerate(batches):
+            with self.subTest(index=index):
+                output = l.prepare_review(self.db, self.skill, self.root / f'review-{index}')
+                def native(command, **kwargs):
+                    pending = Path(kwargs['env']['HERMES_HOME']) / 'pending/skills'
+                    pending.mkdir(parents=True)
+                    (pending / 'batch.json').write_text(l.encoded({'payload': {
+                        'action': 'batch', 'operations': operations}}))
+                    return subprocess.CompletedProcess(command, 0)
+                with patch('learning.subprocess.run', side_effect=native):
+                    if index == 0:
+                        self.assertEqual(l.execute_review(output, config), 1)
+                    else:
+                        with self.assertRaises(ValueError):
+                            l.execute_review(output, config)
+                self.assertEqual((output / 'profile/skills/business-consultation/SKILL.md').read_bytes(),
+                                 self.skill.read_bytes())
 
     def test_native_success_without_staged_change_is_not_reported_as_learning(self):
         self.add(self.item('a'))
