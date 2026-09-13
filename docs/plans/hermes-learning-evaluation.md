@@ -1,7 +1,7 @@
 # Hermes measured Skill improvement
 
 
-This living ExecPlan follows `.agent/PLANS.md`. Status: integration and live evaluation in progress. On 2026-09-13 the user approved deployment of telemetry, ten baseline questions, a standard Hermes Skill revision, and matched baseline/candidate evaluation. A candidate may reach production only if that comparison passes.
+This living ExecPlan follows `.agent/PLANS.md`. Status: telemetry deployed; paired Skill comparison complete; candidate rejected. Review-adapter integration is in progress. On 2026-09-13 the user approved deployment of telemetry, ten baseline questions, a standard Hermes Skill revision, and matched baseline/candidate evaluation. A candidate may reach production only if that comparison passes.
 
 ## Purpose / Big Picture
 
@@ -17,13 +17,16 @@ Turn business consultation experience into measurable, reviewable improvements. 
 - [x] (2026-09-13) Validate failure, regression, held-out isolation, staging and successful candidate paths: 56 focused API/export tests, 17 offline tests, targeted ESLint and API TypeScript checks passed. Native staging contract passed in a temporary profile on the installed Hermes image.
 
 - [x] (2026-09-13) Commit/push telemetry and evaluation implementation; create PR #1398. Freeze ten private source-grounded cases.
-- [ ] Complete CI/main integration and standard Pi5 telemetry rollout.
-- [ ] (2026-09-13) User approved the blocking Pi4 image OS-package repair. Update only affected runtime packages using existing Dockerfile patterns, then validate the six selected image contracts.
-- [ ] Freeze ten source-grounded questions (five training, five held-out) and measure the deployed baseline.
-- [ ] Execute native Hermes Skill review, test the resulting candidate under matching conditions, and grade against frozen records.
-- [ ] Publish the comparison; release the candidate only if eligible; finish/audit all task branches.
+- [x] (2026-09-13) PR #1398 merged as c7dcf0e2 after CI success; standard Pi5 run 20260913-061651-7abcc9 completed (active/exited, success/0, failed=0, unreachable=0, rescued=0). Task finish/audit completed; other WIP retained.
+- [x] (2026-09-13) Approved Pi4 OS-package repair passed all six image/platform scans and main release CI.
+- [x] (2026-09-13) Freeze and measure ten cases at a one-second selection delay. Seven completed correct answers; total-time median about 22 seconds. A separate Safari smoke recorded fast choices and a record-display failure; excluded from paired evaluation.
+- [x] (2026-09-13) Execute a clean native review, approve its standard batch of three patches only in the isolated profile, and measure/grade the same ten cases. The source snapshot remained unchanged.
+- [x] (2026-09-13) Comparison rejected the candidate: both variants completed 7/10 correct answers, with one fixed case and one regression. Total p50 22.387s -> 22.740s; p95 33.421s -> 39.217s. Keep production Skill unchanged.
+- [ ] Merge the review-input/batch-adapter fix after its CI; finish/audit the follow-up branch and remove owned experimental profiles after archiving evidence.
 
 ## Surprises & Discoveries
+
+The initial native review bundle included full retrieval envelopes from training answers. Although held-out questions were absent, unrelated retrieved source bodies could expose held-out cases. The first review was stopped and discarded before applying a Skill. Review bundles now include answer content and source-reviewed rationale, while raw evidence remains in private observations. A regression test reproduces this indirect exposure and verifies its removal. The clean native review produced one standard batch of three Skill patches; staging validation now checks every batch operation against the same Skill/action/path allowlist, rejecting mixed targets, deletes, traversal, nested and empty batches.
 
 PR #1398 CI run 34740354752 failed all six Pi4 image scans. The inspected NFC arm64 image reported 40 fixed-version OS findings; barcode and torque share gzip, PCRE2, SQLite and Perl-base findings. NFC additionally includes GLib and the full Perl packages. The user authorized this specific repair after the unrelated failure was reported. Main CI had skipped this matrix, so its success did not establish a passing baseline for these scans. No scanner exception is added.
 
@@ -75,13 +78,17 @@ Use existing TypeScript, Prisma, Vitest and ESLint for the API. Offline observat
 ## Outcomes & Retrospective
 
 
-Local implementation and focused validation are complete on `feat/hermes-learning-evaluation`, based on `36b40ac6b6536fa67710f6014f6bbcb900be2aa3`. The initial local-only phase ended before commit/push. The subsequently approved rollout phase committed the implementation as 12fc85f9 and opened PR #1398. Production rollout and real candidate evaluation remain pending CI completion. Existing WIP in other worktrees remains untouched.
+PR #1398 merged as `c7dcf0e2e310a3417387e1e14aae91d0a62a95c6`. Its CI and main release CI passed after the authorized three-Dockerfile OS-package fix. Standard Pi5 run `20260913-061651-7abcc9` completed with ActiveState=active, SubState=exited, Result=success and ExecMainStatus=0; recap failed=0, unreachable=0, rescued=0. The original task worktree was finished/audited and other WIP was preserved. Telemetry is now live; no extra LLM call was added to chat.
 
-Final tests: consultation service 54 and export 2 passed (2.22 seconds total Vitest process), offline evaluation 17 passed (0.285 seconds); targeted ESLint and API `tsc --noEmit` passed. Initial offline tests exposed a six-column SQL insert with seven placeholders, corrected before passing. Initial TypeScript checking needed the workspace part-search/shelf-layout packages built; after generating Prisma and building workspace dependencies it passed without unrelated source edits. Native `skill_manage(patch)` returned staged=true, wrote one pending record and preserved the original synthetic Skill inside a temporary directory that was removed afterward. This native contract check made no LLM request.
+Ten distinct questions were frozen before candidate development: five training and five held-out, covering eight nonconformities and two published work instructions. Both variants ran the same deployed API service with a one-second choice delay, separate native Hermes profiles, the same image/model routing, and unchanged source records. These are server-through-response-assembly measurements; the choice delay is included in total time. A separate Safari smoke showed choices within 451ms and later a record-display failure. It is excluded from the paired benchmark.
 
-Four historical live observations were imported privately with explicit historical timing provenance: three source-grounded correct answers and one wrong case-mixing answer. This includes one intentionally delayed repeated-question functional check, not four independent benchmark questions. The private report linked 28 nodes and 29 edges, and a training-only native review bundle was prepared. LLM generation of that draft was not executed in this phase. Historical timings cannot pass the new comparison gate; their role is diagnostic context and training evidence.
+The baseline completed 7/10 correct answers. A clean native Hermes review used only training answer content, timing/search diagnostics and source-reviewed rationale. Its standard batch added three instructions about short search terms, cause/dimension consistency and completing answers when evidence is sufficient. Standard `/skills approve` handling applied the inspected batch only in an isolated profile; the resulting bytes were verified before testing. Candidate SHA256: `71a8b56e4ee6ae47473bfdb467e60d5fe06f4fbedce9b10b327b7f7a4d3245f8`.
 
-No new Skill quality or production speed improvement has yet been demonstrated. The mechanism records experience and can propose/evaluate updates when explicitly run; it is not an enabled nightly job or automatic production self-modification. The new telemetry starts only after a separately authorized normal release of this code. Full CI/deploy/E2E and candidate-versus-baseline live quality trials have not been performed for this uncommitted change.
+The candidate also completed 7/10 correct answers: it fixed an unnecessary clarification in one training case but regressed on a held-out case by returning English intermediate explanation instead of a completed Japanese answer. Both variants missed the relevant manual-grinding precaution. Total p50 increased from 22.387s to 22.740s; p95 from 33.421s to 39.217s. No answer completed within ten seconds. The default comparison gate rejected the candidate for correctness regression and latency, without a context/runtime/source mismatch. Production retains baseline Skill SHA256 `9133aeb2d486f0de2bbba239e86961fb482fc94638eb1cf828a6a6dd7c0ded22`.
+
+The live exercise exposed two offline adapter gaps, now covered by 19 tests: full retrieval envelopes could expose unrelated held-out source bodies through training answers, and the validator initially rejected Hermes' standard batch wrapper even when every operation was a scoped patch. The first review was stopped/discarded; a fresh profile and reduced prompt produced the tested candidate. The fix keeps raw observations locally and validates every batch operation, including rejecting mixed targets, destructive actions, path traversal, nested and empty batches.
+
+The result establishes automatic observation collection and a tested, explicitly invoked Skill-review/comparison cycle. It does not establish that adding Skill instructions alone reaches the ten-second product goal. No nightly self-modification or model change is enabled. Real questions, answers, source snapshots, native review artifacts and the private SQLite report stay outside Git.
 
 ## Operator Workflow
 
@@ -105,7 +112,7 @@ Read each answer against its original record. Assign at least five distinct trai
 
 Use `--split holdout` for withheld examples and `--verdict pass` only for a complete correct answer. An unreviewed answer remains unknown; failed, missing and clarification-only answers cannot be graded as passing. Repeated observations of the same question/purpose share the split. Follow-ups without a recipe are scoped to their original consultation, so they cannot accidentally be paired across unrelated cases. Context fingerprints further reject comparisons with changed prior facts or available evidence.
 
-Prepare an improvement bundle using only reviewed training examples from that baseline Skill. The latest 20 training observations are included, with a 100,000-character input cap. Larger source material requires a narrower collection. The command marks those cases as exposed and never includes held-out examples:
+Prepare an improvement bundle using only reviewed training examples from that baseline Skill. The latest 20 training observations are included, with a 100,000-character input cap. Only answer content is projected from the answer envelope; retrieved evidence bodies stay local. Provide the relevant source-grounded correction in the grading rationale. Larger source material requires a narrower collection. The command marks those cases as exposed and never includes held-out examples:
 
     python3 scripts/hermes-learning/learning.py --db /private/learning/results.sqlite review --skill /private/learning/baseline.SKILL.md --out /private/learning/review-1
 
@@ -137,3 +144,7 @@ The second milestone turns observations into a private SQLite record, source-rev
 The third milestone compares measured baseline/candidate cases and writes only an eligible exact Skill artifact. Synthetic complete/failing workflows establish the gate. New production answer quality and latency remain outcomes to measure after deployment and collection, not claims of this implementation.
 
 Revision note (2026-09-13): added executable telemetry/export/evaluation/standard-review integration. Historical trial data is separately marked and cannot be mixed with the new timing boundary for promotion. No production profile or model was changed.
+
+### Follow-up integration: published torque image adoption
+
+PR 1399 initially failed `torque-release-compatibility` because PR 1398 changed the torque runtime OS source while the separate adoption stage still referenced its older build. The source publication itself passed: main CI 34741865715, job 103683501494 published and scanned both platforms from c7dcf0e2e310a3417387e1e14aae91d0a62a95c6. The immutable registry index was read back and matched the published digest. Update only the existing adoption identities and their exact workflow assertions to this successful build; preserve all source-closure, split-stage, security and signing checks. This completes the dependency caused by the authorized OS package fix and does not deploy Pi4 devices.
