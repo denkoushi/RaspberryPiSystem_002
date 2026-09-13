@@ -686,6 +686,8 @@ jobs:
           cache-to: type=gha,scope=hermes-answer-cache,mode=max
       - name: Security scan the cache image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        env:
+          TRIVY_PLATFORM: linux/arm64
         with:
           scan-type: image
           image-ref: ghcr.io/denkoushi/raspisys-hermes-answer-cache:${{ github.sha }}
