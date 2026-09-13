@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { logger } from '../lib/logger.js';
 import { env } from '../config/env.js';
+import { getBusinessHermesNightlyScheduler } from '../services/assembly/business-hermes-nightly.scheduler.js';
 import { getBackupScheduler } from '../services/backup/backup-scheduler.js';
 import { getCsvImportScheduler } from '../services/imports/csv-import-scheduler.js';
 import { getKioskDocumentGmailScheduler } from '../services/kiosk-documents/kiosk-document-gmail.scheduler.js';
@@ -116,6 +117,8 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
 
   return [
     ...definitions,
+    { name: 'business-hermes-nightly', start: () => getBusinessHermesNightlyScheduler().start(),
+      stop: () => getBusinessHermesNightlyScheduler().stop() },
     {
       name: 'file-storage-integrity-backfill',
       start: () => {
@@ -252,6 +255,7 @@ export function listPostListenSchedulerNames(): string[] {
   // Names only — used by unit tests to assert Backup/CSV membership without starting jobs.
   return [
     'signage-render',
+    'business-hermes-nightly',
     'file-storage-integrity-backfill',
     'backup',
     'csv-import',

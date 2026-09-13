@@ -46,6 +46,7 @@ export class OpenAiCompatibleTextAdapter implements TextCompletionPort {
         },
         body: JSON.stringify({
           model,
+          ...(request.jsonOutput ? { response_format: { type: 'json_object' } } : {}),
           messages: request.messages,
           max_tokens: request.maxTokens,
           temperature: request.temperature,
@@ -53,7 +54,7 @@ export class OpenAiCompatibleTextAdapter implements TextCompletionPort {
             enable_thinking: request.enableThinking,
           },
         }),
-        signal,
+        signal: request.signal ? AbortSignal.any([signal, request.signal]) : signal,
       });
 
       if (!response.ok) {

@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom';
 
 import {
   cancelBusinessHermesConsultation,
+  recordBusinessHermesFeedback,
   createBusinessHermesConsultation,
   getBusinessHermesConsultation,
   getResolvedClientKey,
@@ -72,6 +73,7 @@ function messagesFromConsultation(detail: BusinessHermesConsultationDetail): Her
     recordIds: message.recordIds,
     recordView: message.recordView,
     selection: message.selection,
+    feedback: message.feedback,
     createdAt: message.createdAt
   }));
 }
@@ -123,6 +125,7 @@ export function HermesFloatingChat() {
   const [isPanelExpanded, setIsPanelExpanded] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [draft, setDraft] = useState('');
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [messages, setMessages] = useState<HermesPanelMessage[]>([INTRO_MESSAGE]);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -830,6 +833,20 @@ export function HermesFloatingChat() {
     maxHeight: panelHeight
   };
   const iconStyle = { left: position.left, top: position.top };
+  const recordFeedback = async (messageId: string, verdict: 'helpful' | 'unhelpful') => {
+    if (!activeConsultation || feedbackBusy) return;
+    const consultationId = activeConsultation.id;
+    const requestIdentity = identity;
+    setFeedbackBusy(true);
+    try {
+      await recordBusinessHermesFeedback(consultationId, messageId, verdict);
+      if (identityRef.current !== requestIdentity) return;
+      setMessages((current) => current.map((m) => m.id === messageId ? { ...m, feedback: verdict } : m));
+      setActiveConsultation((current) => current?.id === consultationId ? { ...current, messages: current.messages.map((m) => m.id === messageId ? { ...m, feedback: verdict } : m) } : current);
+    } catch (error) {
+      if (identityRef.current === requestIdentity) setError(getApiErrorMessage(error, '評価を保存できませんでした。もう一度お試しください。'));
+    } finally { setFeedbackBusy(false); }
+  };
   const panelProps: HermesChatPanelProps = {
     mode: consultationMode === 'legacy' ? 'legacy' : 'consultations',
     messages,
@@ -844,6 +861,8 @@ export function HermesFloatingChat() {
     isMessageHistoryLoading,
     messageHistoryError,
     consultationError,
+    feedbackBusy,
+    onFeedback: (id, verdict) => void recordFeedback(id, verdict),
     onDraftChange: setDraft,
     onSend: sendMessage,
     onReset: resetActiveConversation,

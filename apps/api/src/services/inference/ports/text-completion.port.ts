@@ -11,6 +11,8 @@ export type TextCompletionRequest = {
   maxTokens: number;
   temperature: number;
   enableThinking: boolean;
+  signal?: AbortSignal;
+  jsonOutput?: boolean;
 };
 
 export type TextCompletionResult = {

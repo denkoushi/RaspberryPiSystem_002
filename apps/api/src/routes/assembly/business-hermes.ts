@@ -50,7 +50,7 @@ export type BusinessHermesRouteDeps = {
   service?: BusinessHermesService;
   chatService?: Pick<BusinessHermesChatService, 'chat'>;
   consultationService?: Pick<BusinessHermesConsultationService, 'list' | 'create' | 'get' | 'update' | 'chat' | 'cancel'>
-    & Partial<Pick<BusinessHermesConsultationService, 'getPage' | 'isEnabled'>>;
+    & Partial<Pick<BusinessHermesConsultationService, 'getPage' | 'isEnabled' | 'feedback'>>;
 };
 
 export async function registerBusinessHermesRoutes(
@@ -109,6 +109,18 @@ export async function registerBusinessHermesRoutes(
     const consultation = await consultationService.update(params.id, body);
     if (!consultation) return reply.code(404).send({ code: 'BUSINESS_HERMES_CONSULTATION_NOT_FOUND' });
     return { consultation };
+  });
+
+  app.post('/assembly/business-hermes/consultations/:id/feedback', {
+    preHandler: async (request, reply) => {
+      await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
+    }, config: { rateLimit: { max: 30, timeWindow: '1 minute' } }
+  }, async (request, reply) => {
+    const { id } = paramsSchema.parse(request.params);
+    const body = z.object({ messageId: z.string().uuid(), verdict: z.enum(['helpful', 'unhelpful']) }).strict().parse(request.body);
+    const recorded = await consultationService.feedback?.(id, body.messageId, body.verdict);
+    if (!recorded) return reply.code(409).send({ code: 'HERMES_FEEDBACK_NOT_RECORDED' });
+    return { recorded: true };
   });
 
   app.post('/assembly/business-hermes/chat', {

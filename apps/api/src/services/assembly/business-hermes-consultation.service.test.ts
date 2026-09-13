@@ -28,6 +28,7 @@ function dbFixture(newConsultation = false) {
       create: vi.fn()
     },
       businessHermesConsultationMessage: {
+      findFirst: vi.fn(async ({ where }: { where: { id: string; consultationId: string; role: string } }) => where.consultationId === consultationId ? messages.find((m) => m.id === where.id && m.role === where.role) ?? null : null),
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         const row = messages.find((entry) => entry.id === where.id)!;
         Object.assign(row, data);
@@ -47,6 +48,79 @@ function dbFixture(newConsultation = false) {
 }
 
 describe('BusinessHermesConsultationService', () => {
+  it('offers actual source choices and generates from the selected source without starting Hermes search', async () => {
+    const fixture = dbFixture(true);
+    const fetchImpl = vi.fn();
+    const option = 'この資料で回答：記録00007475：裏面の膨らみ';
+    const answerCache = { suggest: vi.fn().mockResolvedValue(null), candidates: vi.fn().mockResolvedValue([option]), answer: vi.fn() };
+    const preparedAnswer = { answer: vi.fn().mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ message: '根拠からの回答', needsClarification: false }) }) };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, answerCache, preparedAnswer,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const first = await service.chat({ consultationId, message: '裏面が膨らむ事例の対策は？' });
+    expect(first.confirmation!.options).toEqual([option, '自分の言葉で補足する']);
+    const result = await service.chat({ consultationId, message: option, selection: { prompt: first.confirmation!.prompt, option } });
+    expect(result.message).toBe('根拠からの回答');
+    expect(preparedAnswer.answer).toHaveBeenCalledWith(option, '裏面が膨らむ事例の対策は？', expect.any(AbortSignal));
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('offers a reviewed question and answers its selection without any LLM or prefetch call', async () => {
+    const fixture = dbFixture(true);
+    const fetchImpl = vi.fn();
+    const answerCache = { suggest: vi.fn().mockResolvedValue('部品Aの検査方法は？'),
+      answer: vi.fn().mockResolvedValue({ status: 'completed', learning: { canonicalQuestion: '部品Aの検査方法は？', question: '部品Aの検査方法は？', answer: '確認済みの手順', sources: [{ kind: 'nonconformity', id: 'r1', sha256: 'a'.repeat(64) }] }, output_text: JSON.stringify({ message: '確認済みの手順', needsClarification: false }) }), remember: vi.fn().mockResolvedValue(true) };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, answerCache,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const first = await service.chat({ consultationId, message: '部品Aはどう検査する？' });
+    const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
+    expect(selection.option).toBe('この質問の回答：部品Aの検査方法は？');
+    const result = await service.chat({ consultationId, message: selection.option, selection });
+    expect(result.message).toBe('確認済みの手順');
+    expect(answerCache.answer).toHaveBeenCalledWith('部品Aの検査方法は？', expect.any(AbortSignal));
+    expect(answerCache.remember).toHaveBeenCalledWith(expect.objectContaining({ question: '部品Aはどう検査する？', canonicalQuestion: '部品Aの検査方法は？' }), expect.any(AbortSignal));
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fixture.row.hermesConversationId).toBe('hermes-conversation-1');
+    expect(fixture.messages[2]!.searchDiagnostics).toEqual([expect.objectContaining({ answerCache: 'hit', inferences: [] })]);
+  });
+
+  it('investigates the selected question normally when its cached source changed', async () => {
+    const fixture = dbFixture(true);
+    const fetchImpl = vi.fn().mockResolvedValue(completedResponse('最新の記録に基づく回答'));
+    const answerCache = { suggest: vi.fn().mockResolvedValue('部品Aの検査方法は？'), answer: vi.fn().mockResolvedValue(null) };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, answerCache,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const first = await service.chat({ consultationId, message: '部品Aはどう検査する？' });
+    const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
+    const result = await service.chat({ consultationId, message: selection.option, selection });
+    expect(result.message).toBe('最新の記録に基づく回答');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(fetchImpl.mock.calls[0])).toContain('部品Aの検査方法は？');
+  });
+
+  it('automatically saves a grounded turn and accepts feedback only for its persisted assistant message', async () => {
+    const fixture = dbFixture(true);
+    const option = 'この資料で回答：記録1';
+    const learned = { canonicalQuestion: '記録1：対策は？', question: '対策は？', answer: '原文の対策', sources: [{ kind: 'nonconformity', id: 'r1', sha256: 'a'.repeat(64) }] };
+    const answerCache = { suggest: vi.fn().mockResolvedValue(null), candidates: vi.fn().mockResolvedValue([option]), answer: vi.fn(), remember: vi.fn().mockResolvedValue(true), feedback: vi.fn().mockResolvedValue(true) };
+    const preparedAnswer = { answer: vi.fn().mockResolvedValue({ status: 'completed', learning: learned, output_text: JSON.stringify({ message: learned.answer, needsClarification: false }) }) };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, answerCache, preparedAnswer });
+    const first = await service.chat({ consultationId, message: learned.question });
+    const result = await service.chat({ consultationId, message: option, selection: { prompt: first.confirmation!.prompt, option } });
+    const answer = result.consultation.messages.at(-1)!;
+    expect(answerCache.remember).toHaveBeenCalledWith({ id: answer.id, ...learned }, expect.any(AbortSignal));
+    expect(answer.feedback).toBe('pending');
+    expect(answer.searchDiagnostics.some((d) => d.kind === 'business-hermes-experience-v1')).toBe(false);
+    expect(await service.feedback('another-consultation', answer.id, 'helpful')).toBe(false);
+    expect(await service.feedback(consultationId, fixture.messages[0]!.id, 'helpful')).toBe(false);
+    expect(answerCache.feedback).not.toHaveBeenCalled();
+    expect(await service.feedback(consultationId, answer.id, 'helpful')).toBe(true);
+    expect(answerCache.feedback).toHaveBeenCalledWith(answer.id, 'helpful');
+    expect((await service.get(consultationId))!.messages.at(-1)!.feedback).toBe('helpful');
+    answerCache.feedback.mockResolvedValue(false);
+    expect(await service.feedback(consultationId, answer.id, 'unhelpful')).toBe(false);
+    expect((await service.get(consultationId))!.messages.at(-1)!.feedback).toBe('helpful');
+  });
+
   afterEach(async () => {
     await new BusinessHermesConsultationService({ db: dbFixture().db as never }).cancel(consultationId);
     vi.useRealTimers();

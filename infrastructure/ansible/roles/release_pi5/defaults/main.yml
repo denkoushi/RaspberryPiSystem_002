@@ -53,3 +53,5 @@ release_pi5_business_hermes_image: "{{ business_hermes_image | default('nousrese
 release_pi5_business_hermes_egress_image: "{{ business_hermes_egress_image | default('node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293') }}"
 
 release_pi5_chat_env_file: "{{ business_hermes_chat_runtime_env_file | default('/etc/raspi-business-hermes-chat/runtime.env') | dirname }}/compose.env"
+release_pi5_answer_cache_image: ""
+release_pi5_answer_cache_dir: "{{ release_pi5_project_dir }}/storage/hermes-search/answer-cache"

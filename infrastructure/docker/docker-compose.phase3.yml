@@ -390,6 +390,39 @@ services:
       start_period: 30s
     networks: [business-hermes]
 
+  business-hermes-answer-cache:
+    profiles: [business-hermes-answer-cache]
+    image: ${BUSINESS_HERMES_ANSWER_CACHE_IMAGE:-unused-answer-cache:disabled}
+    restart: unless-stopped
+    user: "${API_RUNTIME_UID:-1000}:${API_RUNTIME_GID:-1000}"
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=64m"]
+    mem_limit: 1400m
+    cpus: 2
+    cpu_shares: 256
+    environment:
+      ANSWER_CACHE_TOKEN: ${BUSINESS_HERMES_ANSWER_CACHE_TOKEN:-disabled}
+      ANSWER_CACHE_MAINTENANCE: 'true'
+      ANSWER_CACHE_SOURCES: /data/sources.json
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '2'
+    volumes:
+      - type: bind
+        source: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/hermes-search/answer-cache
+        target: /data
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8650/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 90s
+    networks: [business-hermes]
+
 networks:
   pi5:
     external: true
