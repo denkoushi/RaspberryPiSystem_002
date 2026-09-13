@@ -313,6 +313,13 @@ export function HermesFloatingChat() {
     releaseKeyboardWedgeScanOwner(HERMES_BARCODE_SCAN_OWNER);
   }, []);
 
+  // The server may be preparing an unselected answer even while the UI is idle.
+  useEffect(() => {
+    if (!open || !activeConsultation?.id) return;
+    const consultationId = activeConsultation.id;
+    return () => { void cancelBusinessHermesConsultation(consultationId).catch(() => undefined); };
+  }, [open, activeConsultation?.id]);
+
   const ensureCurrentClientKey = useCallback(() => {
     const nextKey = getResolvedClientKey();
     if (nextKey === clientKey) return true;
