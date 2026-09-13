@@ -678,7 +678,7 @@ jobs:
         with:
           context: services/hermes-answer-cache
           platforms: linux/arm64
-          load: true
+          load: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ghcr.io/denkoushi/raspisys-hermes-answer-cache:${{ github.sha }}
           labels: org.opencontainers.image.revision=${{ github.sha }}
@@ -701,6 +701,19 @@ jobs:
           subject-name: ghcr.io/denkoushi/raspisys-hermes-answer-cache
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+      - name: Verify the registry image with the production attestation checks
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_IMAGE: ghcr.io/denkoushi/raspisys-hermes-answer-cache:${{ github.sha }}
+        run: |
+          docker image pull "$CACHE_IMAGE"
+          exact_reference="$(docker image inspect --format '{{index .RepoDigests 0}}' "$CACHE_IMAGE")"
+          gh attestation verify "oci://$exact_reference" \
+            --bundle-from-oci --repo "$GITHUB_REPOSITORY" \
+            --source-digest "$GITHUB_SHA" --source-ref refs/heads/main \
+            --deny-self-hosted-runners
 
   release-build-contract:
     name: release-build-contract
