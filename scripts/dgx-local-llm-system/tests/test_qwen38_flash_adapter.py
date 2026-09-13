@@ -44,7 +44,21 @@ def create_adapter_fixture(
         if snapshot_name != "snapshot-test" or snapshot_complete:
             (snapshot / "layer.safetensors").write_bytes(b"fixture")
     (model_dir / "refs" / "main").write_text("snapshot-test\n", encoding="utf-8")
+    fake_bin = root / "fake-bin"
+    fake_bin.mkdir()
+    (fake_bin / "docker").write_text(
+        "#!/bin/sh\ncat <<'SOURCE'\n"
+        "class GDN:\n"
+        "    def __init__(self):\n"
+        "        self.dt_bias = nn.Parameter(torch.ones(4))\n"
+        "        self.norm = RMSNormGated(\n"
+        "            device=current_platform.current_device(),\n"
+        "        )\nSOURCE\n"
+    )
+    (fake_bin / "docker").chmod(0o755)
     return recipe, {
+        "HOME": str(root / "home"),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
         "BLUE_SERVER_MODE": "container",
         "BLUE_CONTAINER_NAME": "system-prod-trtllm",
         "BLUE_SERVER_PORT": "38083",
@@ -133,7 +147,7 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
                 capture.read_text(encoding="utf-8").strip(),
                 "Mia-AiLab/Qwen3.8-Flash-Next-NVFP4|system-prod-trtllm|"
                 "vllm/vllm-openai:qwen38-flash-next|system-prod-primary|"
-                f"{root / 'hf-cache'}|38083|262144|1|2048|fp8|true|0|0.71|--scheduling-policy priority|bfloat16|files/draft_vocab_en_code_47k.txt|--ipc host -e VLLM_USE_V2_MODEL_RUNNER=1",
+                f"{root / 'hf-cache'}|38083|262144|1|2048|fp8|true|0|0.71|--scheduling-policy priority|bfloat16|files/draft_vocab_en_code_47k.txt|--ipc host -v {root / 'home/.cache/vllm/business-patches/qwen38-gdn-meta.py'}:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:ro -e VLLM_USE_V2_MODEL_RUNNER=1",
             )
             self.assertEqual(args_count_capture.read_text(encoding="utf-8").strip(), "2")
             self.assertEqual(
@@ -335,7 +349,7 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(
                 capture.read_text(encoding="utf-8"),
-                "0|bfloat16|files/draft_vocab_en_code_47k.txt|-e VLLM_USE_V2_MODEL_RUNNER=1",
+                f"0|bfloat16|files/draft_vocab_en_code_47k.txt|-v {root / 'home/.cache/vllm/business-patches/qwen38-gdn-meta.py'}:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:ro -e VLLM_USE_V2_MODEL_RUNNER=1",
             )
 
 
