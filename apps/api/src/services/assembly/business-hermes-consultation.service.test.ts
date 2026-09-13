@@ -28,6 +28,11 @@ function dbFixture(newConsultation = false) {
       create: vi.fn()
     },
       businessHermesConsultationMessage: {
+      update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const row = messages.find((entry) => entry.id === where.id)!;
+        Object.assign(row, data);
+        return row;
+      }),
       create: vi.fn(async ({ data }: { data: { role: string; content: string; evidence: unknown; confirmation?: unknown; searchDiagnostics?: unknown } }) => {
         const message = { id: `message-${messages.length + 1}`, ...data, createdAt: new Date(Date.now() + messages.length) };
         messages.push(message);
@@ -46,6 +51,43 @@ describe('BusinessHermesConsultationService', () => {
     await new BusinessHermesConsultationService({ db: dbFixture().db as never }).cancel(consultationId);
     vi.useRealTimers();
   });
+  it('records adopted prefetch measurements privately without adding inference calls', async () => {
+    const fixture = dbFixture(true);
+    const fetchImpl = vi.fn().mockImplementation(async () => completedResponse());
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const first = await service.chat({ consultationId, message: '検査の対策は？' });
+    const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
+    const result = await service.chat({ consultationId, message: selection.option, selection });
+    const measurement = (fixture.messages[2]!.searchDiagnostics as Array<Record<string, unknown>>)[0]!;
+    expect(measurement).toMatchObject({ phase: 'answer', status: 'ready', recipeId: 'record-answer',
+      recipeVersion: '1', prefetch: 'adopted', question: '検査の対策は？', answerMessageId: fixture.messages[3]!.id });
+    expect(measurement.elapsedMs).toEqual(expect.any(Number));
+    expect(measurement.inferences).toEqual([expect.objectContaining({ elapsedMs: expect.any(Number), runtimeReadyMs: expect.any(Number) })]);
+    expect(result.consultation.messages.every((entry) => entry.searchDiagnostics.every((item) => item.kind !== 'business-hermes-learning-v1'))).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('records failed answers rather than treating missing output as success', async () => {
+    const fixture = dbFixture();
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never,
+      fetchImpl: vi.fn().mockResolvedValue(new Response('', { status: 503 })),
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const result = await service.chat({ consultationId, message: '対策は？' });
+    expect(result.status).toBe('unavailable');
+    expect(fixture.messages[0]!.searchDiagnostics).toEqual([expect.objectContaining({ status: 'unavailable', reasonCode: 'HERMES_UPSTREAM_UNAVAILABLE' })]);
+    expect(fixture.messages).toHaveLength(1);
+  });
+
+  it('preserves a valid response when the final telemetry write fails', async () => {
+    const fixture = dbFixture();
+    fixture.db.businessHermesConsultationMessage.update.mockRejectedValueOnce(new Error('telemetry unavailable'));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never,
+      fetchImpl: vi.fn().mockImplementation(async () => completedResponse()),
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    expect((await service.chat({ consultationId, message: '対策は？' })).status).toBe('ready');
+  });
+
   it('offers persisted question buttons even when inference is not configured', async () => {
     const fixture = dbFixture(true);
     const fetchImpl = vi.fn();
