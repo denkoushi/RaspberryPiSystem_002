@@ -320,6 +320,55 @@ describeIntegration('grinding planning board service real Postgres integration',
     else process.env.DATABASE_URL = originalDatabaseUrl;
   });
 
+
+  it('reuses first pages and observes CSV, progress, and other-terminal overrides on the next read', async () => {
+    const f = await createFixture();
+    await addRows(f, [{ fseiban: `${f.prefix}-ORDER`, fhincd: 'PART-A' }, { fseiban: `${f.prefix}-ORDER`, fhincd: 'PART-B' }]);
+    const store = snapshotStore();
+    const options = { snapshotStore: store, completionFilter: 'incomplete' as const };
+    const first = await boardFor(f, options);
+    expect(await boardFor(f, options)).toEqual({ ...first, snapshotId: expect.any(String) });
+    const rowId = f.rowIds[0]!;
+    const original = await db().csvDashboardRow.findUniqueOrThrow({ where: { id: rowId } });
+    await db().csvDashboardRow.update({ where: { id: rowId }, data: { rowData: { ...(original.rowData as Record<string, string>), FHINMEI: 'changed CSV part' } } });
+    const csvChanged = await boardFor(f, options);
+    expect(csvChanged.snapshotId).not.toBe(first.snapshotId);
+    expect(csvChanged.items.find((item) => item.sourceRowId === rowId)?.fhinmei).toBe('changed CSV part');
+    await db().productionScheduleProgress.create({ data: { csvDashboardRowId: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, isCompleted: true } });
+    const progressChanged = await boardFor(f, options);
+    expect(progressChanged.items).toHaveLength(1);
+    expect(Object.values(progressChanged.seibanProgress!)[0]).toMatchObject({ completed: 1, total: 2 });
+    await updateItem(f, progressChanged.items[0]!, { resourceCd: '581' }, progressChanged.sourceRevision);
+    const overridden = await boardFor(f, options);
+    expect(overridden.items[0]?.effectiveResourceCd).toBe('581');
+    expect(overridden.snapshotId).not.toBe(progressChanged.snapshotId);
+    expect(await boardFor(f, options)).toEqual({ ...overridden, snapshotId: expect.any(String) });
+  });
+
+  it('invalidates reusable first pages when resource or machine-name masters change', async () => {
+    const f = await createFixture();
+    const fseiban = `${f.prefix}-ORDER`;
+    await addRows(f, [{ fseiban }]);
+    const store = snapshotStore();
+    const options = { snapshotStore: store };
+    const first = await boardFor(f, options);
+    const resourceName = `${f.prefix}-582`;
+    f.resourceNames.push(resourceName);
+    await db().productionScheduleResourceMaster.create({ data: { resourceCd: '582', resourceName, resourceClassCd: 'M02', resourceGroupCd: 'IT' } });
+    const resourcesChanged = await boardFor(f, options);
+    expect(resourcesChanged.snapshotId).not.toBe(first.snapshotId);
+    expect(resourcesChanged.resources).toContain('582');
+    const { PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID } = await import('../constants.js');
+    const supplement = await db().productionScheduleSeibanMachineNameSupplement.create({ data: { sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID, fseiban, machineName: 'New machine' } });
+    try {
+      const nameChanged = await boardFor(f, options);
+      expect(nameChanged.items[0]?.machineName).toBe('New machine');
+      expect(nameChanged.snapshotId).not.toBe(resourcesChanged.snapshotId);
+    } finally {
+      await db().productionScheduleSeibanMachineNameSupplement.delete({ where: { id: supplement.id } });
+    }
+  });
+
   it('seeds the site order from shared history once and keeps later site order isolated', async () => {
     const fixture = await createFixture();
     await addRows(fixture, [

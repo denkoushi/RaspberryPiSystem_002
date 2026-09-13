@@ -33,7 +33,7 @@ import {
   isProductionScheduleGrindingResourceCd,
   normalizeProductionScheduleResourceCd
 } from './policies/resource-category-policy.service.js';
-import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID } from './constants.js';
 import { PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS } from './row-resolver/constants.js';
 import { isProductionScheduleOrderSplitEnabled } from './order-split/production-schedule-order-split-feature.js';
 import { acquireProductionScheduleParentRowLockInTransaction } from './order-split/production-schedule-parent-row-lock.service.js';
@@ -68,6 +68,10 @@ const PLANNING_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 const fallbackPlanningSnapshotStore = createInMemoryLeaderboardShellSnapshotStore({
   defaultTtlMs: PLANNING_SNAPSHOT_TTL_MS
 });
+// Keep only a bounded lookup of completed snapshots; the store owns payloads
+// and their original TTL. Different store instances must never share IDs.
+const MAX_REUSABLE_PLANNING_SNAPSHOTS = 128;
+const reusablePlanningSnapshotIds = new WeakMap<LeaderboardShellSnapshotStore, Map<string, string>>();
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 type RowData = Record<string, unknown>;
@@ -580,7 +584,7 @@ function isPlanningSnapshotPayload(value: unknown): value is PlanningSnapshotPay
 }
 
 async function readPlanningSnapshotGenerationDetails(siteKey: string): Promise<PlanningSnapshotGenerationDetails> {
-  const [leaderboardGeneration, state, overrides] = await Promise.all([
+  const [leaderboardGeneration, state, overrides, resources, machineNames] = await Promise.all([
     readGrindingPlanningBoardSnapshotGenerationToken(),
     prisma.productionScheduleGrindingPlanningBoardState.findUnique({
       where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } },
@@ -588,6 +592,15 @@ async function readPlanningSnapshotGenerationDetails(siteKey: string): Promise<P
     }),
     prisma.productionScheduleGrindingPlanningBoardOverride.aggregate({
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
+      _count: { _all: true },
+      _max: { updatedAt: true }
+    }),
+    prisma.productionScheduleResourceMaster.aggregate({
+      _count: { _all: true },
+      _max: { updatedAt: true }
+    }),
+    prisma.productionScheduleSeibanMachineNameSupplement.aggregate({
+      where: { sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID },
       _count: { _all: true },
       _max: { updatedAt: true }
     })
@@ -600,7 +613,12 @@ async function readPlanningSnapshotGenerationDetails(siteKey: string): Promise<P
       boardVersion,
       boardUpdatedAt,
       overrideCount: overrides._count._all,
-      overrideUpdatedAt: overrides._max.updatedAt?.toISOString() ?? ''
+      overrideUpdatedAt: overrides._max.updatedAt?.toISOString() ?? '',
+      resourceCount: resources._count._all,
+      resourceUpdatedAt: resources._max.updatedAt?.toISOString() ?? '',
+      machineNameCount: machineNames._count._all,
+      machineNameUpdatedAt: machineNames._max.updatedAt?.toISOString() ?? '',
+      splitEnabled: isProductionScheduleOrderSplitEnabled()
     }),
     leaderboardGenerationToken: leaderboardGeneration,
     boardVersion,
@@ -657,7 +675,23 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
   const completionFilter = params.completionFilter ?? 'all';
   const filterFingerprint = JSON.stringify({ siteKey: params.siteKey, category: params.category, view: params.view, fseibans: selected, completionFilter });
   const store = params.snapshotStore ?? fallbackPlanningSnapshotStore;
-  let snapshotId = params.snapshotId;
+  let reusableIds = reusablePlanningSnapshotIds.get(store);
+  if (!reusableIds) {
+    reusableIds = new Map();
+    reusablePlanningSnapshotIds.set(store, reusableIds);
+  }
+  let snapshotId = params.snapshotId ?? '';
+  if (!snapshotId) {
+    const candidateId = reusableIds.get(filterFingerprint);
+    const candidate = candidateId ? store.get(candidateId) : undefined;
+    if (candidateId && candidate && candidate.siteKey === params.siteKey && candidate.locationKey === params.siteKey &&
+      candidate.filterFingerprint === filterFingerprint && candidate.generationToken === generationBeforeRead.generationToken &&
+      !candidate.partialOrdering && isPlanningSnapshotPayload(candidate.payload)) {
+      snapshotId = candidateId;
+    } else {
+      reusableIds.delete(filterFingerprint);
+    }
+  }
   let orderedIds: readonly string[];
   let payload: PlanningSnapshotPayload;
   if (snapshotId) {
@@ -690,6 +724,7 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
       splitEnabled: isProductionScheduleOrderSplitEnabled(),
       isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, projection.policy)
     });
+    const resources = await readPlanningResourceCandidates(prisma, params.category, projection.policy);
     const generation = await readPlanningSnapshotGenerationToken(params.siteKey);
     if (generation !== generationBeforeRead.generationToken) {
       throw new ApiError(409, '一覧の元データが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
@@ -700,9 +735,18 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
       load: loadSummary.load,
       unknownRequiredMinutesCount: loadSummary.unknownRequiredMinutesCount,
       seibanProgress: progressMapToRecord(projection.progress.bySeiban),
-      resources: await readPlanningResourceCandidates(prisma, params.category, projection.policy)
+      resources
     };
-    snapshotId = store.create({ orderedRowIds: orderedIds, partialOrdering: false, filterFingerprint, generationToken: generation, locationKey: params.siteKey, siteKey: params.siteKey, payload });
+  }
+  if (!params.snapshotId) {
+    // Give every first-page request a full cursor lifetime, even when its
+    // payload was reused. Keep previous IDs valid for readers already paging.
+    snapshotId = store.create({ orderedRowIds: orderedIds, partialOrdering: false, filterFingerprint, generationToken: generationBeforeRead.generationToken, locationKey: params.siteKey, siteKey: params.siteKey, payload });
+    reusableIds.delete(filterFingerprint);
+    reusableIds.set(filterFingerprint, snapshotId);
+    if (reusableIds.size > MAX_REUSABLE_PLANNING_SNAPSHOTS) {
+      reusableIds.delete(reusableIds.keys().next().value!);
+    }
   }
   const byId = new Map(payload.items.map((item) => [item.itemId, item]));
   const orderedItems = orderedIds.map((id) => byId.get(id)).filter((item): item is GrindingPlanningBoardItem => item != null);

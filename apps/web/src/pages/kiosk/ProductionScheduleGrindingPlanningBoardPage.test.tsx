@@ -897,6 +897,23 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     }
   });
 
+
+  it('資源CD表示で1件を選択しても他の行を再描画しない', () => {
+    const data = { ...fixture(), view: 'resource' as const };
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    const dueSpy = vi.spyOn(planningBoardSorting, 'resolveGrindingPlanningBoardDueDate');
+    try {
+      render(<ProductionScheduleGrindingPlanningBoardPage />);
+      fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
+      dueSpy.mockClear();
+      fireEvent.click(screen.getByLabelText('部品aを選択'));
+      expect(screen.getByLabelText('部品aを選択')).toBeChecked();
+      expect(dueSpy).toHaveBeenCalledTimes(1);
+      expect(dueSpy.mock.calls[0]?.[0].itemId).toBe('a');
+      expect(mocks.overrides).not.toHaveBeenCalled();
+    } finally { dueSpy.mockRestore(); }
+  });
+
   it('対象を一括変更すると開いた時点のrevisionとversionを送る', async () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     selectAllBoardItems();
