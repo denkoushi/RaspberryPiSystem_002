@@ -48,7 +48,8 @@ mcp_servers:
     connect_timeout: 10
 
 agent:
-  max_turns: 12
+  # One retrieval round and an answer; Hermes owns the bounded final summary.
+  max_turns: 2
   reasoning_effort: medium
   disabled_toolsets:
     - memory
@@ -78,8 +79,8 @@ curator:
 
 platform_toolsets:
   api_server:
+    # The consultation Skill is already included in SOUL at template rendering.
     - business_api
-    - skills
 
 terminal:
   backend: local
