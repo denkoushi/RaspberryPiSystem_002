@@ -1,7 +1,7 @@
 # Hermes question recipes and one-candidate prefetch
 
 
-This living ExecPlan follows `.agent/PLANS.md`. Status: implementation in progress. Scope: dedicated business consultation on Pi5 with the existing Hermes/DGX API. User authorization includes production reflection and live Safari trials from the ongoing task; no model changes are included.
+This living ExecPlan follows `.agent/PLANS.md`. Status: first-phase mechanism deployed and evaluated; product acceptance remains unmet. Scope: dedicated business consultation on Pi5 with the existing Hermes/DGX API. User authorization includes production reflection and live Safari trials from the ongoing task; no model changes are included.
 
 ## Purpose / Big Picture
 
@@ -14,9 +14,10 @@ Show reusable questions immediately, and start preparing the most likely answer 
 - [x] (2026-09-13) Read repository boundaries, inspected current consultation, Skill, session and cancellation contracts; lifecycle audit and start succeeded from origin/main `d619f32ffcd695aac812c3504196db21dc2e1946`.
 - [x] Implemented initial recipe composition, isolated prefetch, adoption through existing evidence validation and background cancellation.
 - [x] Focused API tests 51 passed (2.30s), UI tests 25 passed (3.92s); targeted lint passed. Final cancellation guard and SOUL consistency review completed.
-- [ ] Commit, PR checks, merge and merged-main CI; integrationPending=true.
-- [ ] Standard Pi5 rollout and final-version live trials, with timing and source checks.
-- [ ] Lifecycle finish/audit and record actual outcome. Ten-second acceptance remains unproven.
+- [x] PR1396 merged as `ac0d4acca1340f8438bfa6d01a1d9515d7c25036`; main CI34733795726, CodeQL34733795715 and Secret scan34733795703 succeeded; integrationPending=false.
+- [x] Standard Pi5 run `20260913-025506-c7024b` succeeded at 2026-09-13 12:06:57 JST. Final-version Safari trials and source comparisons completed, including an explicitly delayed-choice prepared-answer test.
+- [x] Implementation worktree lifecycle finish/audit completed: cleanup=completed, main_sync=updated, remote branch absent.
+- [ ] Product acceptance: correct natural-language answers within ten seconds is still unmet; one natural-language trial mixed unrelated cases.
 
 ## Surprises & Discoveries
 
@@ -43,7 +44,17 @@ Record evaluated recipe/search improvements in the existing Skill through review
 ## Outcomes & Retrospective
 
 
-Implementation is in progress. No new-version production latency or correctness claim is available yet. PR1395 is the deployed baseline, not evidence for this change.
+The first-phase mechanism is deployed and works: matching unfinished inference is joined, a completed answer is adopted immediately, and a different choice uses an isolated confirmed session. This is not product acceptance. Two distinct numbered questions matched their source records; the natural-language question mixed different manufacturing operations and reversed part of the cause. The first numbered question was also repeated only to exercise adoption after preparation completed, not to improve a benchmark sample.
+
+Initial buttons appeared in 0.67–0.75 seconds. Selected-request server times were 8.59 seconds for the first numbered question, 12.39 seconds for the natural question, and 47.24 seconds for a different recipe on an unused numbered question. Total initial-request-to-final-response server intervals were 20.73, 29.34 and 55.39 seconds, including actual selection delay. Matching trials overlapped selection wait with inference by 12.12 and 16.93 seconds. These are measured overlaps, not a controlled claim about baseline speedup.
+
+In the deliberately delayed-choice functional test, preparation took 21.06 seconds. The tester waited 33.94 seconds after the candidate screen appeared; selecting the matching candidate then displayed the correct answer within 0.47 seconds. The full screen interval was 35.11 seconds. This proves prepared-answer adoption, not a ten-second answer from the original question.
+
+The ordinary trials' screen completion observations were sparse: post-choice upper bounds were 11.98, 29.01 and 78.77 seconds. They are not exact screen latency measurements and must not be replaced by server times. Search/tool-result intervals remained below one second (approximately 0.04–0.65 seconds). The natural-language session repeated the same broad search twice and then mixed its six results; limiting iteration and adding recipes did not eliminate that error.
+
+When a different recipe was selected, the app discarded its provisional result and did not adopt its session. The confirmed Hermes session nevertheless began approximately 24.8 seconds after the selected HTTP request arrived. Installed Hermes source already interrupts an SSE-disconnected agent using its standard hard-interrupt path; the observed delay has not been isolated between runtime readiness, admission and in-progress backend inference. Do not claim that the app abort guarantees immediate GPU cancellation.
+
+The next acceptance work is to refine question recipes so that distinct operations are resolved before synthesis, verify faithful cause wording, and isolate the switch delay. Do not add more prompt restrictions or swap models without evidence that they address those observed failures. Reviewed Skill improvement remains an explicit versioned release process, not automatic learning.
 
 ## Context and Orientation
 
@@ -98,7 +109,11 @@ All source edits are isolated in the feature worktree. Cancelling or expiring a 
 ## Artifacts and Notes
 
 
-Local audit evidence is in the current Codex workspace `work/hermes-prefetch-start-audit.json`. Further PR, exact SHA, CI, rollout run/recap/health and live measurements will be recorded here as they exist. Do not substitute earlier-version trials.
+Local audit evidence is in the current Codex workspace `work/hermes-prefetch-start-audit.json`. PR1396: https://github.com/denkoushi/RaspberryPiSystem_002/pull/1396. Final feature SHA was `a35be53048870b1b9e047b8a23ed4c3b8906921c`. PR CI34732959020 succeeded on attempt 2: the first attempt failed only in unrelated kiosk screenshot navigation waiting for networkidle; a single failed-only rerun passed. No tests were weakened. Main CI and deployed SHA are recorded above.
+
+The standard rollout returned Result=success, ExecMainStatus=0, ActiveState=active, SubState=exited; recap ok=210 changed=27 unreachable=0 failed=0 skipped=35 rescued=0 ignored=0. API and web are the green slot with the exact merge-SHA tags and build configuration suffix `f6cfcc08e7cd7df2`; API and consultation Hermes were healthy. No rescue rollback ran. Rendered Skill0.3.0 and speculative SOUL instructions were verified in the running container.
+
+The unchanged runtime reported `Mia-AiLab/Qwen3.8-Flash-Next-NVFP4`, served as `system-prod-primary`, with a 262144-token context and MTP3. No model configuration was changed for this feature. Native session counters and source comparisons are retained locally; business source text and actual answers are intentionally not copied into this repository. All figures above are from the deployed final version, not earlier trials.
 
 ## Interfaces and Dependencies
 
@@ -108,3 +123,5 @@ Keep existing public confirmation (`prompt`, `options`) and selection (`prompt`,
 Revision note: initial plan records the clarified prefetch-and-reuse intent, implementation boundaries and pending production evidence.
 
 Revision note: final review restored one foreground deadline across prefetch and fallback; the added regression and focused 51-test suite pass.
+
+Revision note: recorded merged-main CI, successful production rollout, four live scenarios, measured prefetch overlap and prepared-answer display, and the unresolved accuracy and switch-delay failures. Product acceptance remains open.
