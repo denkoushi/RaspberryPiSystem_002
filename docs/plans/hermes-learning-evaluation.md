@@ -144,3 +144,7 @@ The second milestone turns observations into a private SQLite record, source-rev
 The third milestone compares measured baseline/candidate cases and writes only an eligible exact Skill artifact. Synthetic complete/failing workflows establish the gate. New production answer quality and latency remain outcomes to measure after deployment and collection, not claims of this implementation.
 
 Revision note (2026-09-13): added executable telemetry/export/evaluation/standard-review integration. Historical trial data is separately marked and cannot be mixed with the new timing boundary for promotion. No production profile or model was changed.
+
+### Follow-up integration: published torque image adoption
+
+PR 1399 initially failed `torque-release-compatibility` because PR 1398 changed the torque runtime OS source while the separate adoption stage still referenced its older build. The source publication itself passed: main CI 34741865715, job 103683501494 published and scanned both platforms from c7dcf0e2e310a3417387e1e14aae91d0a62a95c6. The immutable registry index was read back and matched the published digest. Update only the existing adoption identities and their exact workflow assertions to this successful build; preserve all source-closure, split-stage, security and signing checks. This completes the dependency caused by the authorized OS package fix and does not deploy Pi4 devices.
