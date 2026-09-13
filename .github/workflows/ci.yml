@@ -1314,8 +1314,8 @@ jobs:
           SIGNAGE_ARTIFACT_RESULT: ${{ needs['signage-artifact-contract'].result }}
         run: |
           python3 scripts/ci/validate_required_results.py \
-            "hermes-answer-cache=$HERMES_CACHE_SELECTED:$HERMES_CACHE_RESULT" \
             --classification-result "$CHANGE_CLASSIFICATION" \
+            "hermes-answer-cache=$HERMES_CACHE_SELECTED:$HERMES_CACHE_RESULT" \
             "repo-policy=$REPO_POLICY_SELECTED:$REPO_POLICY_RESULT" \
             "workspace-quality=$WORKSPACE_QUALITY_SELECTED:$WORKSPACE_QUALITY_RESULT" \
             "api=$API_SELECTED:$API_RESULT" \
