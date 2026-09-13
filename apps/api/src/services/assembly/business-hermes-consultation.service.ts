@@ -500,6 +500,9 @@ export class BusinessHermesConsultationService {
     const onAbort = () => { controller.abort(); matchingPrefetch?.controller.abort(); };
     if (externalSignal?.aborted) onAbort();
     else externalSignal?.addEventListener('abort', onAbort, { once: true });
+    // Joining a prefetch and falling back share the existing foreground deadline.
+    const timeoutMs = this.deps.config ? this.deps.config.timeoutMs : env.BUSINESS_HERMES_CHAT_TIMEOUT_MS;
+    const timeout = setTimeout(onAbort, Math.max(500, Math.min(300_000, timeoutMs ?? 180_000)));
     try {
       let parsed: JsonRecord | null = null;
       if (matchingPrefetch) {
@@ -630,6 +633,7 @@ export class BusinessHermesConsultationService {
       const reason = error instanceof Error && ['HERMES_NOT_CONFIGURED', 'HERMES_UPSTREAM_UNAUTHORIZED'].includes(error.message) ? error.message : 'HERMES_UPSTREAM_UNAVAILABLE';
       return this.failure(consultationId, error instanceof Error && error.name === 'AbortError' ? 'HERMES_TIMEOUT' : reason);
     } finally {
+      clearTimeout(timeout);
       externalSignal?.removeEventListener('abort', onAbort);
     }
   }

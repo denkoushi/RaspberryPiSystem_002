@@ -203,6 +203,25 @@ describe('BusinessHermesConsultationService', () => {
     expect(fixture.messages).toHaveLength(3);
   });
 
+  it('bounds a joined prefetch and fallback by one foreground deadline', async () => {
+    vi.useFakeTimers();
+    const fixture = dbFixture(true);
+    const fetchImpl = vi.fn((_url: URL, options: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      options.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+    }));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', timeoutMs: 500 } });
+    const first = await service.chat({ consultationId, message: '調べてください' });
+    await vi.advanceTimersByTimeAsync(100);
+    const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
+    const selected = service.chat({ consultationId, message: selection.option, selection });
+    await vi.advanceTimersByTimeAsync(501);
+    expect((await selected).reasonCode).toBe('HERMES_TIMEOUT');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls.every((call) => call[1].signal?.aborted)).toBe(true);
+    expect(fixture.messages).toHaveLength(3);
+  });
+
   it('does not start a second unselected candidate in another consultation', async () => {
     const firstFixture = dbFixture(true);
     const secondFixture = dbFixture(true);

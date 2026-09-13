@@ -13,7 +13,7 @@ Show reusable questions immediately, and start preparing the most likely answer 
 
 - [x] (2026-09-13) Read repository boundaries, inspected current consultation, Skill, session and cancellation contracts; lifecycle audit and start succeeded from origin/main `d619f32ffcd695aac812c3504196db21dc2e1946`.
 - [x] Implemented initial recipe composition, isolated prefetch, adoption through existing evidence validation and background cancellation.
-- [x] Focused API tests 50 passed (2.08s), UI tests 25 passed (3.92s); targeted lint passed. Final cancellation guard and SOUL consistency review completed.
+- [x] Focused API tests 51 passed (2.30s), UI tests 25 passed (3.92s); targeted lint passed. Final cancellation guard and SOUL consistency review completed.
 - [ ] Commit, PR checks, merge and merged-main CI; integrationPending=true.
 - [ ] Standard Pi5 rollout and final-version live trials, with timing and source checks.
 - [ ] Lifecycle finish/audit and record actual outcome. Ten-second acceptance remains unproven.
@@ -25,7 +25,9 @@ The previous first-turn gate returned before runtime preparation and inference, 
 
 Hermes `max_turns=2` can still perform final-summary requests; it is not a guarantee of two LLM calls. The last device trial was interrupted by model startup, so warm timing and cold startup must be reported separately.
 
-Local API TypeScript compilation found unrelated stale generated Prisma/shared-package types in production-schedule modules. No Hermes errors were reported. Use clean hosted CI regeneration as the required type/build evidence; do not modify unrelated production scheduling code. Root-directory lint initially failed because the API ESLint project path is relative to the app; rerunning from each app directory passed.
+Local API TypeScript compilation found unrelated stale generated Prisma/shared-package types in production-schedule modules. No Hermes errors were reported. Use clean hosted CI regeneration as the required type/build evidence; do not modify unrelated production scheduling code. Final review found that joining a prefetch and then falling back could otherwise double the foreground deadline. The entire selected operation now shares the existing configured timeout; a fake-clock regression proves both streams abort within that single budget.
+
+Root-directory lint initially failed because the API ESLint project path is relative to the app; rerunning from each app directory passed.
 
 ## Decision Log
 
@@ -104,3 +106,5 @@ Local audit evidence is in the current Codex workspace `work/hermes-prefetch-sta
 Keep existing public confirmation (`prompt`, `options`) and selection (`prompt`, `option`) contracts. The new internal `questionRecipe` payload has `id`, `version`, `prompt`, and `speculative`; `confirmedIntent.confirmationComplete` remains false during provisional execution. `infer(input, conversationKey, signal)` returns the parsed official Responses result and owns timeout/lease cleanup. Existing trusted evidence validation remains the only path from that result to displayed records.
 
 Revision note: initial plan records the clarified prefetch-and-reuse intent, implementation boundaries and pending production evidence.
+
+Revision note: final review restored one foreground deadline across prefetch and fallback; the added regression and focused 51-test suite pass.
