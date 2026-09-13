@@ -1,0 +1,29 @@
+services:
+  answer-cache:
+    build: .
+    environment:
+      ANSWER_CACHE_SOURCES: ${ANSWER_CACHE_SOURCES:-}
+      ANSWER_CACHE_TOKEN: ${ANSWER_CACHE_TOKEN:?Set a private reader token}
+    ports: ["127.0.0.1:${ANSWER_CACHE_PORT:-8650}:8650"]
+    volumes:
+      - type: bind
+        source: ${ANSWER_CACHE_CATALOGUE_DIR:?Directory containing reviewed.json}
+        target: /catalogue
+        read_only: true
+        bind:
+          create_host_path: false
+      - answer-cache-index:/data
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=64m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    cpus: 2
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8650/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+volumes:
+  answer-cache-index:

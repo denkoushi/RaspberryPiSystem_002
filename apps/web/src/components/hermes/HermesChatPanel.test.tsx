@@ -20,6 +20,15 @@ describe('HermesChatPanel evidence cards', () => {
 
   afterEach(() => vi.restoreAllMocks());
 
+  it('records feedback on the corresponding answer and shows persisted selection', () => {
+    const onFeedback = vi.fn();
+    render(<HermesChatPanel messages={[{ id: 'answer-1', role: 'assistant', content: '回答', feedback: 'helpful' }]}
+      draft="" isBusy={false} error={null} authRequired={null} onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} onFeedback={onFeedback} />);
+    expect(screen.getByRole('button', { name: '役立った' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '合わない' }));
+    expect(onFeedback).toHaveBeenCalledWith('answer-1', 'unhelpful');
+  });
+
   it('renders source metadata, public viewer link, and raw image caption', async () => {
     const evidence = {
       kind: 'work_instruction' as const,

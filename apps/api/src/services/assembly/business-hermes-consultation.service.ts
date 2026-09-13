@@ -7,6 +7,9 @@ import { prisma } from '../../lib/prisma.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
 import type { LocalLlmRuntimeControllerPort } from '../inference/runtime/local-llm-runtime-control.port.js';
 import { BusinessHermesScanResolver, type BusinessHermesScanResolution } from './business-hermes-scan.service.js';
+import { BusinessHermesAnswerCache, CACHED_QUESTION_PREFIX, SOURCE_QUESTION_PREFIX, experienceSchema, EXPERIENCE_KIND } from './business-hermes-answer-cache.js';
+import { BusinessHermesPreparedAnswer } from './business-hermes-prepared-answer.js';
+import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
 import {
   asConfirmation,
   asStrings,
@@ -49,6 +52,7 @@ export type BusinessHermesConsultationMessage = {
   selection?: BusinessHermesSelection;
   scan?: BusinessHermesScanResolution;
   searchDiagnostics: ReadonlyArray<Record<string, unknown>>;
+  feedback?: 'pending' | 'helpful' | 'unhelpful';
   createdAt: string;
 };
 
@@ -102,6 +106,8 @@ type ConsultationDeps = {
   };
   activeAssetLookup?: (assetIds: ReadonlyArray<string>) => Promise<ReadonlyArray<{ id: string; mimeType: string }>>;
   scanResolver?: Pick<BusinessHermesScanResolver, 'resolve'>;
+  answerCache?: Pick<BusinessHermesAnswerCache, 'suggest' | 'answer'> & Partial<Pick<BusinessHermesAnswerCache, 'candidates' | 'source' | 'isEnabled' | 'remember' | 'feedback'>>;
+  preparedAnswer?: Pick<BusinessHermesPreparedAnswer, 'answer'>;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -129,6 +135,7 @@ type LearningMeasurement = {
   recipeId?: string;
   recipeVersion: string;
   prefetchStarted?: boolean;
+  answerCache?: 'offered' | 'hit' | 'fallback';
   prefetch: 'none' | 'matched' | 'discarded' | 'adopted' | 'fallback';
   inferences: InferenceMeasurement[];
 };
@@ -313,11 +320,15 @@ export class BusinessHermesConsultationService {
   private readonly db: PrismaClient;
   private readonly deps: ConsultationDeps;
   private readonly scanResolver?: Pick<BusinessHermesScanResolver, 'resolve'>;
+  private readonly answerCache: NonNullable<ConsultationDeps['answerCache']>;
+  private readonly preparedAnswer: Pick<BusinessHermesPreparedAnswer, 'answer'>;
 
   constructor(deps: ConsultationDeps = {}) {
     this.db = deps.db ?? prisma;
     this.deps = deps;
     this.scanResolver = deps.scanResolver;
+    this.answerCache = deps.answerCache ?? new BusinessHermesAnswerCache(new BusinessHermesMcpService({ db: this.db }));
+    this.preparedAnswer = deps.preparedAnswer ?? new BusinessHermesPreparedAnswer({ source: (option, signal) => this.answerCache.source?.(option, signal) ?? Promise.resolve(null) });
   }
 
   isEnabled(): boolean {
@@ -455,13 +466,32 @@ export class BusinessHermesConsultationService {
     }
   }
 
+  async feedback(consultationId: string, messageId: string, verdict: 'helpful' | 'unhelpful'): Promise<boolean> {
+    // Resolve all content server-side under the same business authorization as chat.
+    const message = await this.db.businessHermesConsultationMessage.findFirst({ where: { id: messageId, consultationId, role: 'assistant' } });
+    if (!message) return false;
+    const diagnostics = Array.isArray(message.searchDiagnostics) ? message.searchDiagnostics : [];
+    const raw = diagnostics.find((d) => d && typeof d === 'object' && !Array.isArray(d) && d.kind === EXPERIENCE_KIND);
+    const parsed = experienceSchema.safeParse(raw);
+    if (!parsed.success) return false;
+    // Repair a transient missed experience write using the durable business history.
+    if (!await this.answerCache.remember?.({ id: message.id, ...parsed.data })) return false;
+    if (!await this.answerCache.feedback?.(message.id, verdict)) return false;
+    await this.db.businessHermesConsultationMessage.update({ where: { id: message.id }, data: {
+      searchDiagnostics: asJson(diagnostics.map((d) => d === raw ? { kind: EXPERIENCE_KIND, ...parsed.data, verdict } : d))
+    } });
+    return true;
+  }
+
   private async performChat(consultationId: string, message: string, selection?: BusinessHermesSelection, scanValue?: string, externalSignal?: AbortSignal, measurement?: LearningMeasurement): Promise<BusinessHermesConsultationChatResponse> {
     const consultation = await this.get(consultationId);
     if (!consultation) return this.failure(consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
     if (externalSignal?.aborted) return this.failure(consultationId, 'HERMES_TIMEOUT');
-    const firstQuestion = consultation.messages.length === 0 && !scanValue;
+    const sourceRefinement = (this.answerCache.isEnabled?.() ?? Boolean(this.deps.answerCache?.candidates))
+      && consultation.messages.at(-1)?.content === INTENT_SUPPLEMENT_PROMPT;
+    const firstQuestion = (consultation.messages.length === 0 || sourceRefinement) && !scanValue;
     if (firstQuestion && selection) return this.failure(consultationId, 'HERMES_INVALID_SELECTION');
-    const intentIndex = consultation.messages.findIndex((entry) => entry.confirmation?.title === INTENT_CONFIRMATION_TITLE);
+    const intentIndex = consultation.messages.map((entry) => entry.confirmation?.title === INTENT_CONFIRMATION_TITLE).lastIndexOf(true);
     const intentQuestion = intentIndex > 0 ? consultation.messages[intentIndex - 1]?.content : undefined;
     const lastMessage = consultation.messages.at(-1);
     const pendingIntent = lastMessage?.confirmation?.title === INTENT_CONFIRMATION_TITLE ? lastMessage.confirmation : undefined;
@@ -536,7 +566,17 @@ export class BusinessHermesConsultationService {
     if (firstQuestion || supplementRequested) {
       if (measurement) measurement.phase = 'choice';
       const prompt = firstQuestion ? `「${message.slice(0, 430)}」について、知りたい内容を選んでください。` : INTENT_SUPPLEMENT_PROMPT;
-      const confirmation = firstQuestion ? { title: INTENT_CONFIRMATION_TITLE, prompt, options: [...questionRecipes(message).map((recipe) => recipe.option), INTENT_SUPPLEMENT] } : undefined;
+      const cachedQuestion = firstQuestion && consultation.relatedIdentifiers.length === 0
+        && consultation.confirmedFacts.length === 0 && !consultation.summary
+        ? await this.answerCache.suggest(message, externalSignal) : null;
+      const sourceChoices = firstQuestion && consultation.relatedIdentifiers.length === 0
+        && consultation.confirmedFacts.length === 0 && !consultation.summary
+        ? await this.answerCache.candidates?.(message, externalSignal) ?? [] : [];
+      if (externalSignal?.aborted) return this.failure(consultationId, 'HERMES_TIMEOUT');
+      if (cachedQuestion && measurement) measurement.answerCache = 'offered';
+      const confirmation = firstQuestion ? { title: INTENT_CONFIRMATION_TITLE, prompt, options: [
+        ...(cachedQuestion ? [CACHED_QUESTION_PREFIX + cachedQuestion] : []),
+        ...(sourceChoices.length ? sourceChoices : questionRecipes(message).map((recipe) => recipe.option)), INTENT_SUPPLEMENT] } : undefined;
       const answer = firstQuestion ? 'まず、知りたい内容を選んでください。' : prompt;
       await this.db.businessHermesConsultationMessage.create({ data: {
         consultationId, role: 'assistant', content: answer, evidence: asJson([]),
@@ -548,7 +588,7 @@ export class BusinessHermesConsultationService {
       const updated = await this.get(consultationId);
       if (!updated) return this.failure(consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
       if (externalSignal?.aborted) return this.failure(consultationId, 'HERMES_TIMEOUT');
-      if (firstQuestion && confirmation) {
+      if (firstQuestion && confirmation && !cachedQuestion && sourceChoices.length === 0) {
         this.startPrefetch(updated, message, confirmation);
         if (measurement) measurement.prefetchStarted = prefetches.has(consultationId);
       }
@@ -576,7 +616,24 @@ export class BusinessHermesConsultationService {
     const timeout = setTimeout(onAbort, Math.max(500, Math.min(300_000, timeoutMs ?? 180_000)));
     try {
       let parsed: JsonRecord | null = null;
-      if (matchingPrefetch) {
+      const selectedCachedQuestion = pendingIntent && selection?.option.startsWith(CACHED_QUESTION_PREFIX)
+        ? selection.option.slice(CACHED_QUESTION_PREFIX.length) : null;
+      if (selectedCachedQuestion && !scanValue && consultation.relatedIdentifiers.length === 0
+        && consultation.confirmedFacts.length === 0 && !consultation.summary) {
+        parsed = await this.answerCache.answer(selectedCachedQuestion, controller.signal);
+        if (measurement) measurement.answerCache = parsed ? 'hit' : 'fallback';
+        // If a source changed after offering a question, investigate that exact
+        // user-selected question through the ordinary Hermes path.
+        if (!parsed) requestInput.request = selectedCachedQuestion;
+      }
+      if (!parsed && pendingIntent && selection?.option.startsWith(SOURCE_QUESTION_PREFIX) && intentQuestion && !scanValue && consultation.relatedIdentifiers.length === 0
+        && consultation.confirmedFacts.length === 0 && !consultation.summary) {
+        const started = performance.now();
+        const startedAt = new Date().toISOString();
+        parsed = await this.preparedAnswer.answer(selection.option, intentQuestion, controller.signal);
+        measurement?.inferences.push({ conversationKey: consultationId, startedAt, elapsedMs: performance.now() - started });
+      }
+      if (!parsed && matchingPrefetch) {
         clearTimeout(matchingPrefetch.expiry);
         prefetches.delete(consultationId);
         controller.signal.throwIfAborted();
@@ -666,15 +723,19 @@ export class BusinessHermesConsultationService {
       // Cancellation can arrive after the stream ends, while source assets are
       // being checked. Do not save that late answer as a successful turn.
       controller.signal.throwIfAborted();
+      const learned = !needsClarification ? experienceSchema.safeParse(parsed.learning && typeof parsed.learning === 'object'
+        ? { ...parsed.learning, ...(intentQuestion ? { question: intentQuestion } : {}) } : null) : null;
+      const experience = learned?.success ? { kind: EXPERIENCE_KIND, ...learned.data, verdict: 'pending' } : null;
       const answerMessage = await this.db.businessHermesConsultationMessage.create({ data: {
         consultationId, role: 'assistant', content: displayAnswer,
         // Keep trusted evidence for later user-requested inspection, while
         // persisting the model's explicit display decision for consultation history.
         evidence: asJson({ items: persistedEvidence, visible: evidenceVisible, visibleIds: evidenceVisibleIds, recordIds, ...(recordView ? { recordView } : {}) }),
         ...(confirmation ? { confirmation: asJson(confirmation) } : {}),
-        searchDiagnostics: asJson(searchDiagnostics(parsed))
+        searchDiagnostics: asJson([...searchDiagnostics(parsed), ...(experience ? [experience] : [])])
       } });
       if (measurement) measurement.answerMessageId = answerMessage.id;
+      if (learned?.success) await this.answerCache.remember?.({ id: answerMessage.id, ...learned.data }, controller.signal);
       await this.db.businessHermesConsultation.update({ where: { id: consultationId }, data: {
         ...(adoptedConversationKey ? { hermesConversationId: adoptedConversationKey } : {}),
         title: state.title?.trim().slice(0, 200) || consultation.title || message.split(/\r?\n/)[0]?.slice(0, 80) || null,
@@ -895,7 +956,11 @@ export class BusinessHermesConsultationService {
         ...(asConfirmation(message.confirmation) ? { confirmation: asConfirmation(message.confirmation) } : {}),
         ...(storedSelection(message.confirmation) ? { selection: storedSelection(message.confirmation) } : {}),
         ...(storedScan(message.confirmation) ? { scan: storedScan(message.confirmation) } : {}),
-        searchDiagnostics: Array.isArray(message.searchDiagnostics) ? message.searchDiagnostics.filter((entry) => entry?.kind !== 'business-hermes-learning-v1') : [],
+        ...(() => {
+          const learned = Array.isArray(message.searchDiagnostics) ? message.searchDiagnostics.find((entry) => entry?.kind === EXPERIENCE_KIND) : null;
+          return learned && experienceSchema.safeParse(learned).success ? { feedback: learned.verdict === 'helpful' || learned.verdict === 'unhelpful' ? learned.verdict : 'pending' as const } : {};
+        })(),
+        searchDiagnostics: Array.isArray(message.searchDiagnostics) ? message.searchDiagnostics.filter((entry) => entry?.kind !== 'business-hermes-learning-v1' && entry?.kind !== EXPERIENCE_KIND) : [],
         createdAt: iso(message.createdAt)
       }))
     };

@@ -11,6 +11,7 @@ import type {
 } from '../../api/domains/assembly';
 
 export type HermesPanelMessage = {
+  feedback?: 'pending' | 'helpful' | 'unhelpful';
   id: string;
   role: 'user' | 'assistant';
   content: string;
@@ -44,6 +45,8 @@ export type HermesChatPanelProps = {
   isMessageHistoryLoading?: boolean;
   messageHistoryError?: string | null;
   consultationError?: string | null;
+  onFeedback?: (messageId: string, verdict: 'helpful' | 'unhelpful') => void;
+  feedbackBusy?: boolean;
   onDraftChange: (value: string) => void;
   onSend: () => void;
   onReset: () => void;
@@ -243,6 +246,8 @@ export default function HermesChatPanel({
   isMessageHistoryLoading = false,
   messageHistoryError = null,
   consultationError = null,
+  onFeedback,
+  feedbackBusy = false,
   onDraftChange,
   onSend,
   onReset,
@@ -421,6 +426,13 @@ export default function HermesChatPanel({
                           : message.evidence)?.map((evidence) => (
                           <EvidenceCard key={`${message.id}-${evidence.kind}-${evidence.id}`} evidence={evidence} />
                         )) : null}
+                        {message.role === 'assistant' && message.feedback && onFeedback ? (
+                          <div role="group" aria-label="回答の評価" className="hermes-chat-panel__suggestion-actions">
+                            <button type="button" className="hermes-chat-panel__suggestion-button" aria-pressed={message.feedback === 'helpful'} disabled={isBusy || feedbackBusy} onClick={() => onFeedback(message.id, 'helpful')}>役立った</button>
+                            <button type="button" className="hermes-chat-panel__suggestion-button" aria-pressed={message.feedback === 'unhelpful'} disabled={isBusy || feedbackBusy} onClick={() => onFeedback(message.id, 'unhelpful')}>合わない</button>
+                            {message.feedback !== 'pending' ? <span role="status">評価を保存しました</span> : null}
+                          </div>
+                        ) : null}
                       </Message.CustomContent>
                     </Message>
                   ))}

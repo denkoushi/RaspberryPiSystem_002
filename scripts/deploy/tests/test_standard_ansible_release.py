@@ -68,6 +68,27 @@ def torque_capable_host(serial: str = "702902S") -> dict[str, object]:
 
 
 class StandardAnsibleReleaseTests(unittest.TestCase):
+    def test_answer_cache_sealed_seed_is_pi5_only_and_checksum_bound(self):
+        args = argparse.Namespace(full_fleet=False)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = {}
+            for name in MODULE.ANSWER_CACHE_FILES:
+                data = ('synthetic:' + name).encode()
+                (root / name).write_bytes(data)
+                files[name] = hashlib.sha256(data).hexdigest()
+            (root / 'artifact.json').write_text(json.dumps({'schema': 'hermes-answer-cache/v1',
+                'sourceIndexDirectory': 'sources-' + 'a' * 64, 'files': files}))
+            with mock.patch.dict(os.environ, {'HERMES_ANSWER_CACHE_ARTIFACT': directory}, clear=True):
+                source, environment = MODULE.answer_cache_configuration(args, (('pi5', ('raspberrypi5',)),), MODULE.REMOTE_ROOT, RUN_ID)
+                self.assertEqual(source, root.resolve())
+                self.assertEqual(environment['HERMES_ANSWER_CACHE_ARTIFACT'], str(MODULE.REMOTE_ROOT / 'storage/hermes-answer-cache-staging' / RUN_ID))
+                with self.assertRaisesRegex(MODULE.UsageError, 'raspberrypi5-only'):
+                    MODULE.answer_cache_configuration(args, (('pi4', ('private',)),), MODULE.REMOTE_ROOT, RUN_ID)
+                (root / 'checks.json').write_text('changed')
+                with self.assertRaisesRegex(MODULE.UsageError, 'checksum mismatch'):
+                    MODULE.answer_cache_configuration(args, (('pi5', ('raspberrypi5',)),), MODULE.REMOTE_ROOT, RUN_ID)
+
     def test_hermes_trial_preserves_default_and_rejects_other_targets(self) -> None:
         args = argparse.Namespace(full_fleet=False)
         with mock.patch.dict(os.environ, {}, clear=True):

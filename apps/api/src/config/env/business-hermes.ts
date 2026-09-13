@@ -32,4 +32,9 @@ export const businessHermesEnvShape = {
   BUSINESS_HERMES_CHAT_MODEL: optionalTrimmed,
   /** Internal read-only MCP service token; unset disables the MCP surface. */
   BUSINESS_HERMES_MCP_API_KEY: optionalTrimmed,
+  /** Optional private GPTCache reader; unset preserves the existing chat path. */
+  BUSINESS_HERMES_ANSWER_CACHE_URL: optionalHermesBaseUrl,
+  BUSINESS_HERMES_ANSWER_CACHE_TOKEN: optionalTrimmed,
+  BUSINESS_HERMES_NIGHTLY_ENABLED: z.enum(['true', 'false']).default('false'),
+  BUSINESS_HERMES_NIGHTLY_DATA_DIR: optionalTrimmed,
 } as const;

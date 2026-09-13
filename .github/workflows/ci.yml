@@ -646,6 +646,62 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  hermes-answer-cache:
+    name: hermes-answer-cache
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.release_pair == 'true' }}
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v6
+      - name: Check catalogue and nightly regression boundaries
+        run: |
+          python3 -m pip install -r services/hermes-answer-cache/requirements.txt
+          python3 -m unittest discover -s services/hermes-answer-cache -p 'test_*.py'
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in for exact main publication
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build the ARM64 cache with its offline embedding model
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: services/hermes-answer-cache
+          platforms: linux/arm64
+          load: true
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: ghcr.io/denkoushi/raspisys-hermes-answer-cache:${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=hermes-answer-cache
+          cache-to: type=gha,scope=hermes-answer-cache,mode=max
+      - name: Security scan the cache image
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/denkoushi/raspisys-hermes-answer-cache:${{ github.sha }}
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          scanners: vuln
+          trivyignores: .trivyignore
+      - name: Attest the exact production cache image
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ghcr.io/denkoushi/raspisys-hermes-answer-cache
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
   release-build-contract:
     name: release-build-contract
     needs: change-classification
@@ -1194,6 +1250,7 @@ jobs:
     name: ci-required
     if: ${{ always() }}
     needs:
+      - hermes-answer-cache
       - change-classification
       - repo-policy
       - workspace-quality
@@ -1220,6 +1277,8 @@ jobs:
 
       - name: Require every selected CI job to pass
         env:
+          HERMES_CACHE_SELECTED: ${{ needs['change-classification'].outputs.release_pair }}
+          HERMES_CACHE_RESULT: ${{ needs['hermes-answer-cache'].result }}
           CHANGE_CLASSIFICATION: ${{ needs['change-classification'].result }}
           REPO_POLICY_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.repo_policy == 'true' }}
           REPO_POLICY_RESULT: ${{ needs['repo-policy'].result }}
@@ -1256,6 +1315,7 @@ jobs:
         run: |
           python3 scripts/ci/validate_required_results.py \
             --classification-result "$CHANGE_CLASSIFICATION" \
+            "hermes-answer-cache=$HERMES_CACHE_SELECTED:$HERMES_CACHE_RESULT" \
             "repo-policy=$REPO_POLICY_SELECTED:$REPO_POLICY_RESULT" \
             "workspace-quality=$WORKSPACE_QUALITY_SELECTED:$WORKSPACE_QUALITY_RESULT" \
             "api=$API_SELECTED:$API_RESULT" \

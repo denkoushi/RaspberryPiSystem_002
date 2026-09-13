@@ -937,6 +937,12 @@
     - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') in ['true', 'false']
     - business_hermes_chat_enabled | default(false) | bool
 
+- name: Prepare the answer cache and protected nightly checks
+  ansible.builtin.include_tasks: business-hermes-answer-cache.yml
+  when:
+    - release_pi5_route == 'fresh'
+    - business_hermes_answer_cache_enabled | default(false) | bool
+
 - name: Mark the inactive Pi5 candidate startup boundary
   ansible.builtin.set_fact:
     release_pi5_start_attempted: true

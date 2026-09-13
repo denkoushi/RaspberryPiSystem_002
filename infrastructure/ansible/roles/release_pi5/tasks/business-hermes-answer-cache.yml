@@ -1,0 +1,123 @@
+---
+- name: Require the verified answer cache image and existing business authentication
+  ansible.builtin.assert:
+    that:
+      - business_hermes_chat_enabled | default(false) | bool
+      - release_sha in release_pi5_answer_cache_image
+      - release_pi5_answer_cache_image is match('^ghcr.io/denkoushi/raspisys-hermes-answer-cache:[0-9a-f]{40}@sha256:[0-9a-f]{64}$')
+      - business_hermes_chat_mcp_api_key | length >= 16
+  no_log: true
+
+- name: Inspect the previous answer cache service
+  ansible.builtin.command:
+    argv: [docker, ps, -a, --filter, "label=com.docker.compose.project={{ release_pi5_compose_project }}", --filter, label=com.docker.compose.service=business-hermes-answer-cache, --format, "{{ '{{.ID}}' }}"]
+  register: release_pi5_answer_cache_previous
+  changed_when: false
+
+- name: Capture the previous cache image for rollback
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{.Config.Image}}' }}", "{{ release_pi5_answer_cache_previous.stdout | trim }}"]
+  when: release_pi5_answer_cache_previous.stdout | trim | length > 0
+  register: release_pi5_answer_cache_previous_image
+  changed_when: false
+
+- name: Capture whether the previous cache was running
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{.State.Running}}' }}", "{{ release_pi5_answer_cache_previous.stdout | trim }}"]
+  when: release_pi5_answer_cache_previous.stdout | trim | length > 0
+  register: release_pi5_answer_cache_previous_running
+  changed_when: false
+
+- name: Prepare private persistent answer cache directories
+  ansible.builtin.file:
+    path: "{{ release_pi5_answer_cache_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ api_runtime_uid | default(1000) }}"
+    group: "{{ api_runtime_gid | default(1000) }}"
+    mode: '0700'
+  loop: ['', index, jobs, business-experience-v1]
+
+- name: Detect already initialized answer cache
+  ansible.builtin.stat:
+    path: "{{ release_pi5_answer_cache_dir }}/checks.json"
+  register: release_pi5_answer_cache_initialized
+
+- name: Initialize once from the privately staged source-reviewed seed
+  when: not release_pi5_answer_cache_initialized.stat.exists
+  block:
+    - name: Read the sealed seed manifest
+      ansible.builtin.set_fact:
+        release_pi5_answer_cache_seed: "{{ lookup('ansible.builtin.env', 'HERMES_ANSWER_CACHE_ARTIFACT') }}"
+        release_pi5_answer_cache_manifest: "{{ lookup('ansible.builtin.file', lookup('ansible.builtin.env', 'HERMES_ANSWER_CACHE_ARTIFACT') ~ '/artifact.json') | from_json }}"
+      no_log: true
+    - name: Require a sealed seed and source index identity
+      ansible.builtin.assert:
+        that:
+          - release_pi5_answer_cache_manifest.schema == 'hermes-answer-cache/v1'
+          - release_pi5_answer_cache_manifest.sourceIndexDirectory is match('^sources-[0-9a-f]{64}$')
+    - name: Prepare the immutable source index directory
+      ansible.builtin.file:
+        path: "{{ release_pi5_answer_cache_dir }}/index/{{ release_pi5_answer_cache_manifest.sourceIndexDirectory }}"
+        state: directory
+        owner: "{{ api_runtime_uid | default(1000) }}"
+        group: "{{ api_runtime_gid | default(1000) }}"
+        mode: '0700'
+    - name: Inspect each private staged checksum
+      ansible.builtin.stat:
+        path: "{{ release_pi5_answer_cache_seed }}/{{ item }}"
+        checksum_algorithm: sha256
+        follow: false
+      loop: [reviewed.json, sources.json, checks.json, sources.faiss, sources.sqlite, experiences.sqlite]
+      register: release_pi5_answer_cache_seed_checks
+      no_log: true
+    - name: Reject modified private seed files
+      ansible.builtin.assert:
+        that:
+          - item.stat.isreg | default(false)
+          - not (item.stat.islnk | default(false))
+          - item.stat.checksum == release_pi5_answer_cache_manifest.files[item.item]
+      loop: "{{ release_pi5_answer_cache_seed_checks.results }}"
+      no_log: true
+    - name: Copy only initialization files, committing protected checks last
+      ansible.builtin.copy:
+        src: "{{ release_pi5_answer_cache_seed }}/{{ item.src }}"
+        dest: "{{ release_pi5_answer_cache_dir }}/{{ item.dest }}"
+        remote_src: true
+        owner: "{{ api_runtime_uid | default(1000) }}"
+        group: "{{ api_runtime_gid | default(1000) }}"
+        mode: '0600'
+      loop:
+        - {src: reviewed.json, dest: reviewed.json}
+        - {src: sources.json, dest: sources.json}
+        - {src: sources.faiss, dest: "index/{{ release_pi5_answer_cache_manifest.sourceIndexDirectory }}/index.faiss"}
+        - {src: sources.sqlite, dest: "index/{{ release_pi5_answer_cache_manifest.sourceIndexDirectory }}/terms.sqlite"}
+        - {src: experiences.sqlite, dest: business-experience-v1/events.sqlite}
+        - {src: checks.json, dest: checks.json}
+      no_log: true
+
+- name: Bind answer reuse and the leader-controlled nightly scheduler
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+    mode: '0600'
+  loop:
+    - {key: BUSINESS_HERMES_ANSWER_CACHE_URL, value: 'http://business-hermes-answer-cache:8650'}
+    - {key: BUSINESS_HERMES_ANSWER_CACHE_TOKEN, value: "{{ (business_hermes_chat_mcp_api_key ~ ':business-answer-cache-v1') | hash('sha256') }}"}
+    - {key: BUSINESS_HERMES_ANSWER_CACHE_IMAGE, value: "{{ release_pi5_answer_cache_image }}"}
+    - {key: BUSINESS_HERMES_NIGHTLY_ENABLED, value: 'true'}
+    - {key: BUSINESS_HERMES_NIGHTLY_DATA_DIR, value: /app/storage/hermes-search/answer-cache}
+  no_log: true
+
+- name: Bind immutable cache image and private authentication to Compose
+  ansible.builtin.set_fact:
+    release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'BUSINESS_HERMES_ANSWER_CACHE_IMAGE': release_pi5_answer_cache_image, 'BUSINESS_HERMES_ANSWER_CACHE_TOKEN': (business_hermes_chat_mcp_api_key ~ ':business-answer-cache-v1') | hash('sha256')}) }}"
+    release_pi5_answer_cache_started: true
+  no_log: true
+
+- name: Start the verified answer cache before candidate API traffic
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'business-hermes-answer-cache'] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  changed_when: true

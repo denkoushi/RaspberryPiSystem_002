@@ -1,0 +1,23 @@
+import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
+import { businessSourceAdapters, sourceDocument, type SourceDocument } from './business-hermes-source-adapters.js';
+
+/** The same visibility-aware, registered readers serve chat and nightly indexing. */
+export async function exportBusinessHermesSources(service = new BusinessHermesMcpService(), signal?: AbortSignal) {
+  const records: SourceDocument[] = [];
+  for (const [kind, { sourceKey, cursorKey }] of Object.entries(businessSourceAdapters)) {
+    let offset = 0;
+    for (let page = 0; page < 5000; page++) {
+      signal?.throwIfAborted();
+      const result = await service.call('business_hermes_search', { kind, limit: 20, [cursorKey]: offset });
+      if (result.isError) throw new Error('Authorized source export failed');
+      const data = JSON.parse(result.content[0]!.text);
+      if (!Array.isArray(data.results) || !data.hasMore || !data.nextCursor) throw new Error('Invalid source page');
+      records.push(...data.results.map(sourceDocument));
+      if (!data.hasMore[sourceKey]) break;
+      const next = data.nextCursor[cursorKey];
+      if (!Number.isSafeInteger(next) || next <= offset || page === 4999) throw new Error('Incomplete source export');
+      offset = next;
+    }
+  }
+  return { version: 2, exportedAt: new Date().toISOString(), records };
+}

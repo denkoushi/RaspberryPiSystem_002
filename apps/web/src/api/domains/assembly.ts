@@ -697,6 +697,7 @@ export type BusinessHermesScanResolution = {
 };
 
 export type BusinessHermesConsultationMessage = {
+  feedback?: 'pending' | 'helpful' | 'unhelpful';
   id: string;
   role: 'user' | 'assistant';
   content: string;
@@ -853,4 +854,8 @@ export async function listBusinessHermesProactiveSuggestions(limit = 50) {
     `/assembly/business-hermes/proactive-suggestions?limit=${Math.min(Math.max(limit, 1), 100)}`
   );
   return data.suggestions;
+}
+
+export async function recordBusinessHermesFeedback(consultationId: string, messageId: string, verdict: 'helpful' | 'unhelpful'): Promise<void> {
+  await api.post(`/assembly/business-hermes/consultations/${consultationId}/feedback`, { messageId, verdict });
 }

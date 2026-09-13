@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
+import { ZodError } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 
 import { env } from '../../../config/env.js';
@@ -30,7 +31,7 @@ function createApp() {
   });
   const app = Fastify();
   app.setErrorHandler((error, _request, reply) => {
-    const statusCode = error instanceof ApiError ? error.statusCode : 500;
+    const statusCode = error instanceof ApiError ? error.statusCode : error instanceof ZodError ? 400 : 500;
     void reply.status(statusCode).send({ code: error instanceof ApiError ? error.code : 'INTERNAL_ERROR' });
   });
   return {
@@ -122,7 +123,8 @@ describe('business Hermes routes', () => {
       get: vi.fn().mockResolvedValue(consultation),
       update: vi.fn().mockResolvedValue(consultation),
       chat: vi.fn(),
-      cancel: vi.fn().mockResolvedValue(true)
+      cancel: vi.fn().mockResolvedValue(true),
+      feedback: vi.fn().mockResolvedValue(true)
     };
     await registerBusinessHermesRoutes(fixture.app, {
       requireClientDevice: fixture.requireClientDevice,
@@ -141,6 +143,16 @@ describe('business Hermes routes', () => {
     expect(consultationService.update).toHaveBeenCalledWith(consultation.id, { relatedIdentifiers: ['PN-1'] });
     expect((await fixture.app.inject({ method: 'POST', url: `/assembly/business-hermes/consultations/${consultation.id}/cancel`, headers })).json()).toEqual({ cancelled: true });
     expect(consultationService.cancel).toHaveBeenCalledWith(consultation.id);
+    const feedbackUrl = `/assembly/business-hermes/consultations/${consultation.id}/feedback`;
+    const feedbackBody = { messageId: '00000000-0000-0000-0000-000000000020', verdict: 'helpful' };
+    expect((await fixture.app.inject({ method: 'POST', url: feedbackUrl, payload: feedbackBody })).statusCode).toBe(401);
+    expect(consultationService.feedback).not.toHaveBeenCalled();
+    expect((await fixture.app.inject({ method: 'POST', url: feedbackUrl, headers, payload: feedbackBody })).statusCode).toBe(200);
+    expect(consultationService.feedback).toHaveBeenCalledWith(consultation.id, feedbackBody.messageId, 'helpful');
+    expect((await fixture.app.inject({ method: 'POST', url: feedbackUrl, headers, payload: { ...feedbackBody, answer: '偽の回答' } })).statusCode).toBe(400);
+    consultationService.feedback.mockResolvedValue(false);
+    expect((await fixture.app.inject({ method: 'POST', url: feedbackUrl, headers, payload: feedbackBody })).statusCode).toBe(409);
+
     expect((await fixture.app.inject({ method: 'POST', url: `/assembly/business-hermes/consultations/${consultation.id}/cancel` })).statusCode).toBe(401);
   });
 

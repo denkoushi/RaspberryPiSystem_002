@@ -674,6 +674,47 @@ def stage_hermes_trial_artifact(inventory: Path, source: Path, destination: str,
             env=ansible_environment())
 
 
+ANSWER_CACHE_FILES = ('reviewed.json', 'sources.json', 'checks.json', 'sources.faiss', 'sources.sqlite', 'experiences.sqlite')
+
+
+def answer_cache_configuration(args, selection, remote_root, run_id):
+    value = os.environ.get('HERMES_ANSWER_CACHE_ARTIFACT', '')
+    if not value:
+        return None, {}
+    if args.full_fleet or selection != (("pi5", ("raspberrypi5",)),):
+        raise UsageError('answer cache initialization requires an exact raspberrypi5-only release')
+    source = Path(value)
+    if source.is_symlink() or not source.is_dir():
+        raise UsageError('Answer cache artifact must be a sealed local directory')
+    source = source.resolve()
+    for name in ('artifact.json', *ANSWER_CACHE_FILES):
+        if (source / name).is_symlink() or not (source / name).is_file():
+            raise UsageError('Missing regular answer cache artifact: ' + name)
+    manifest = json.loads((source / 'artifact.json').read_text())
+    if manifest.get('schema') != 'hermes-answer-cache/v1' or set(manifest.get('files', {})) != set(ANSWER_CACHE_FILES):
+        raise UsageError('Unsupported answer cache manifest')
+    if not re.fullmatch(r'sources-[0-9a-f]{64}', manifest.get('sourceIndexDirectory', '')):
+        raise UsageError('Invalid source index identity')
+    for name in ANSWER_CACHE_FILES:
+        with (source / name).open('rb') as stream:
+            if hashlib.file_digest(stream, 'sha256').hexdigest() != manifest['files'][name]:
+                raise UsageError('Answer cache checksum mismatch: ' + name)
+    return source, {'HERMES_ANSWER_CACHE_ARTIFACT': str(remote_root / 'storage/hermes-answer-cache-staging' / run_id)}
+
+
+def stage_answer_cache_artifact(inventory, source, destination, user):
+    play = [{'hosts': 'raspberrypi5', 'gather_facts': False, 'become': True, 'tasks': [
+        {'name': 'Prepare private answer cache staging', 'ansible.builtin.file': {
+            'path': destination, 'state': 'directory', 'owner': user, 'mode': '0700'}},
+        {'name': 'Stage only checksum-verified business cache files', 'no_log': True,
+         'ansible.builtin.copy': {'src': str(source) + '/{{ item }}', 'dest': destination + '/{{ item }}',
+                                 'owner': user, 'mode': '0600'}, 'loop': ['artifact.json', *ANSWER_CACHE_FILES]}]}]
+    with tempfile.TemporaryDirectory(prefix='answer-cache-release-staging-') as directory:
+        path = Path(directory) / 'stage.json'
+        path.write_text(json.dumps(play))
+        run(['ansible-playbook', '-i', str(inventory), str(path), '--limit', 'raspberrypi5'], env=ansible_environment())
+
+
 def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str, profiles: tuple[str, ...], user: str, remote_root: Path = REMOTE_ROOT, *, hermes_environment: dict[str, str] | None = None) -> list[str]:
     command = ["/usr/bin/sudo", "-n", "/usr/bin/systemd-run", "--quiet", f"--unit={unit_name(run_id)}", f"--uid={user}", f"--setenv=HOME=/home/{user}", f"--setenv=USER={user}", f"--setenv=LOGNAME={user}", "--setenv=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "--property=Type=exec", f"--property=WorkingDirectory={remote_root}", "--property=KillMode=control-group", "--property=Restart=no", "--property=UMask=0077", "--property=StandardOutput=journal", "--property=StandardError=journal"]
     if args.detach:
@@ -681,7 +722,7 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
     else:
         command.append("--wait")
     for key, value in (hermes_environment or {}).items():
-        if key not in {"HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_ARTIFACT"}:
+        if key not in {"HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_ARTIFACT", "HERMES_ANSWER_CACHE_ARTIFACT"}:
             raise UsageError("unsupported Hermes release environment")
         command.append(f"--setenv={key}={value}")
     command.extend(["--", "/bin/bash", "-lc", remote_script(args, sha, run_id, relative, profiles, remote_root)])
@@ -984,6 +1025,13 @@ def execute_standard_route(args: argparse.Namespace) -> int:
     signage, signage_sha = signage_identity(args.sha) if "pi3" in profiles else (f"unused-signage:{args.sha}", "0" * 64)
     pi4_hosts = list(dict(reachable_selection).get("pi4", ()))
     variables = {"release_sha": args.sha, "release_run_id": args.run_id, "release_pi5_api_image": api, "release_pi5_web_image": web, "release_signage_artifact_image": signage, "release_signage_artifact_sha256": signage_sha, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [], "release_kiosk_agent_services": list(artifacts.agent_services)}
+    cache_enabled = selected.get('_meta', {}).get('hostvars', {}).get('raspberrypi5', {}).get('business_hermes_answer_cache_enabled', False)
+    if 'pi5' in profiles and cache_enabled in (True, 'true'):
+        reference = f'ghcr.io/denkoushi/raspisys-hermes-answer-cache:{args.sha}'
+        run(['docker', 'image', 'pull', '--platform', 'linux/arm64', reference])
+        exact = _exact_repo_digest(reference)
+        verify_component_attestation(exact, args.sha)
+        variables['release_pi5_answer_cache_image'] = reference + '@' + exact.split('@')[1]
     if torque_cutover:
         cutover_plan = normalize_torque_cutover_plan(
             args.sha, args.run_id, pi4_hosts, artifacts
@@ -1026,6 +1074,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     remote_root = server_release_root(complete)
     run_id = "plan-preview" if args.print_plan else new_run_id()
     hermes_source, hermes_environment = hermes_trial_configuration(args, selection, remote_root, run_id)
+    cache_source, cache_environment = answer_cache_configuration(args, selection, remote_root, run_id)
+    hermes_environment.update(cache_environment)
     if getattr(args, "torque_cutover", False):
         validate_torque_cutover_selection(selected, selection)
     if args.print_plan:
@@ -1038,13 +1088,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             ).agent_services
         args.agent_services = plan_agent_services
         document = plan(args, sha, inventory, relative, selection, remote_root, plan_agent_services)
-        if hermes_environment:
+        if 'HERMES_SEARCH_TRIAL_ENABLED' in hermes_environment:
             document["hermesSearchTrial"] = {"enabled": hermes_environment["HERMES_SEARCH_TRIAL_ENABLED"] == "true",
                 "staging": "four checksum-verified private files on Pi5 SSD" if hermes_source else "none"}
+        if cache_source:
+            document['hermesAnswerCache'] = {'initializeOnly': True, 'staging': 'six checksum-verified private business files on Pi5 SSD'}
         print(json.dumps(document, ensure_ascii=False, indent=2))
         return 0
     host, user, port = server_connection(complete)
     profiles = tuple(item[0] for item in selection)
+    if cache_source is not None:
+        release_set_artifacts(sha, inventory)
+        stage_answer_cache_artifact(inventory, cache_source, cache_environment['HERMES_ANSWER_CACHE_ARTIFACT'], user)
     if hermes_source is not None:
         # Verify the signed exact release before copying any private artifact.
         release_set_artifacts(sha, inventory)
