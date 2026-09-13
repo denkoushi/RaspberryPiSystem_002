@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import * as machineName from '../productionSchedule/machineName';
+
 import { PlanningBoardResourceView } from './PlanningBoardResourceView';
 
 import type {
@@ -215,4 +217,63 @@ describe('PlanningBoardResourceView resource chip drag', () => {
     expect(onSpecialDueClick).toHaveBeenCalledTimes(2);
     expect(onRankChange).not.toHaveBeenCalled();
   });
+
+  it('時刻更新で期限表示が変わる行だけ再描画し、期限と内容の変更を反映する', () => {
+    const deadline = Date.parse('2026-09-14T08:00:00Z');
+    const expiring = { ...item('a', '305'), specialDue: { kind: 'today' as const, expiresAt: new Date(deadline).toISOString() } };
+    const plain = item('b', '305');
+    const props = { items: [expiring, plain], seibanOrder: ['26-1041'], resources: ['305'], resourceNameMap: {},
+      allocation: 'alternate' as const, selectedItemIds: new Set<string>(), onToggleItem: vi.fn(), onResourceClick: vi.fn() };
+    const renders = vi.spyOn(machineName, 'normalizeMachineName');
+    const view = render(<PlanningBoardResourceView {...props} nowMs={deadline - 30_000} />);
+    renders.mockClear();
+    view.rerender(<PlanningBoardResourceView {...props} nowMs={deadline - 1} />);
+    expect(renders).not.toHaveBeenCalled();
+    expect(screen.getByText('今日中')).toHaveClass('text-amber-200');
+    view.rerender(<PlanningBoardResourceView {...props} nowMs={deadline} />);
+    expect(renders).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('今日中')).toHaveClass('text-rose-300');
+    renders.mockClear();
+    view.rerender(<PlanningBoardResourceView {...props} nowMs={deadline + 30_000} />);
+    expect(renders).not.toHaveBeenCalled();
+    view.rerender(<PlanningBoardResourceView {...props} nowMs={deadline - 1} />);
+    expect(renders).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('今日中')).toHaveClass('text-amber-200');
+    view.rerender(<PlanningBoardResourceView {...props} items={[{ ...expiring, fhinmei: '更新部品' }, plain]} nowMs={deadline - 1} />);
+    expect(screen.getByText('更新部品')).toBeInTheDocument();
+  });
+
+  it('同じ挿入位置の枠線は書き直さず、前後の変更と取消を反映する', () => {
+    const onReorder = vi.fn();
+    render(<PlanningBoardResourceView items={[item('a', '305'), item('b', '305')]} seibanOrder={['26-1041']}
+      resources={['305']} resourceNameMap={{}} allocation="alternate" selectedItemIds={new Set()}
+      onToggleItem={vi.fn()} onResourceClick={vi.fn()} onResourceReorder={onReorder} />);
+    const source = screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]!;
+    const pane = source.closest('[data-planning-board-resource-pane]')!;
+    const row = screen.getByTestId('planning-board-item-b');
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [row]) });
+    vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({ top: 100, height: 40 } as DOMRect);
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => { frames.push(callback); return frames.length; });
+    const top = vi.spyOn(row.style, 'borderTop', 'set');
+    const bottom = vi.spyOn(row.style, 'borderBottom', 'set');
+    fireEvent.pointerDown(source, { pointerId: 8, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(pane, { pointerId: 8, clientX: 10, clientY: 110 });
+    frames.shift()!(0);
+    expect(row.style.borderTop).toContain('2px');
+    top.mockClear(); bottom.mockClear();
+    fireEvent.pointerMove(pane, { pointerId: 8, clientX: 11, clientY: 111 });
+    frames.shift()!(16);
+    expect(top).not.toHaveBeenCalled();
+    expect(bottom).not.toHaveBeenCalled();
+    fireEvent.pointerMove(pane, { pointerId: 8, clientX: 11, clientY: 130 });
+    frames.shift()!(32);
+    expect(row.style.borderTop).toBe('');
+    expect(row.style.borderBottom).toContain('2px');
+    fireEvent.pointerCancel(pane, { pointerId: 8 });
+    expect(row.style.borderTop).toBe('');
+    expect(row.style.borderBottom).toBe('');
+    expect(onReorder).not.toHaveBeenCalled();
+  });
+
 });

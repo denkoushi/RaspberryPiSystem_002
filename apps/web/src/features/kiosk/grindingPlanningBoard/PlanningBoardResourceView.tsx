@@ -59,6 +59,7 @@ type PendingResourceDrag = {
   dropPaneOriginalOutline: string;
   dropPaneOriginalOutlineOffset: string;
   dropRowElement: HTMLElement | null;
+  dropRowPlacement: GrindingPlanningBoardResourceOrderPlacement | null;
   dropRowOriginalBorderTop: string;
   dropRowOriginalBorderBottom: string;
   originalButtonOpacity: string;
@@ -94,6 +95,7 @@ function restoreDropRow(drag: PendingResourceDrag): void {
   drag.dropRowElement.style.borderTop = drag.dropRowOriginalBorderTop;
   drag.dropRowElement.style.borderBottom = drag.dropRowOriginalBorderBottom;
   drag.dropRowElement = null;
+  drag.dropRowPlacement = null;
 }
 
 function setDropRow(
@@ -101,9 +103,11 @@ function setDropRow(
   row: HTMLElement | null,
   placement: GrindingPlanningBoardResourceOrderPlacement | null
 ): void {
+  if (drag.dropRowElement === row && drag.dropRowPlacement === placement) return;
   restoreDropRow(drag);
   if (!row || placement == null) return;
   drag.dropRowElement = row;
+  drag.dropRowPlacement = placement;
   drag.dropRowOriginalBorderTop = row.style.borderTop;
   drag.dropRowOriginalBorderBottom = row.style.borderBottom;
   if (placement === 'before') row.style.borderTop = '2px solid rgb(110 231 183)';
@@ -309,6 +313,7 @@ export function PlanningBoardResourceView({
       dropPaneOriginalOutline: '',
       dropPaneOriginalOutlineOffset: '',
       dropRowElement: null,
+      dropRowPlacement: null,
       dropRowOriginalBorderTop: '',
       dropRowOriginalBorderBottom: '',
       originalButtonOpacity: buttonElement.style.opacity
