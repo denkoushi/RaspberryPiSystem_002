@@ -16,12 +16,16 @@ Turn business consultation experience into measurable, reviewable improvements. 
 - [x] Implement local SQLite observations, source-grounded grading, linked report, isolated standard Hermes review, and comparison gate.
 - [x] (2026-09-13) Validate failure, regression, held-out isolation, staging and successful candidate paths: 56 focused API/export tests, 17 offline tests, targeted ESLint and API TypeScript checks passed. Native staging contract passed in a temporary profile on the installed Hermes image.
 
-- [ ] Commit/PR/CI/main integration and standard Pi5 telemetry rollout.
+- [x] (2026-09-13) Commit/push telemetry and evaluation implementation; create PR #1398. Freeze ten private source-grounded cases.
+- [ ] Complete CI/main integration and standard Pi5 telemetry rollout.
+- [ ] (2026-09-13) User approved the blocking Pi4 image OS-package repair. Update only affected runtime packages using existing Dockerfile patterns, then validate the six selected image contracts.
 - [ ] Freeze ten source-grounded questions (five training, five held-out) and measure the deployed baseline.
 - [ ] Execute native Hermes Skill review, test the resulting candidate under matching conditions, and grade against frozen records.
 - [ ] Publish the comparison; release the candidate only if eligible; finish/audit all task branches.
 
 ## Surprises & Discoveries
+
+PR #1398 CI run 34740354752 failed all six Pi4 image scans. The inspected NFC arm64 image reported 40 fixed-version OS findings; barcode and torque share gzip, PCRE2, SQLite and Perl-base findings. NFC additionally includes GLib and the full Perl packages. The user authorized this specific repair after the unrelated failure was reported. Main CI had skipped this matrix, so its success did not establish a passing baseline for these scans. No scanner exception is added.
 
 
 Current consultation profile disables memory, background review, session search and Curator. The consultation Skill is compiled into SOUL, so modifying an unrelated on-disk Skill does not update the production prompt. Official Curator maintenance tracks usage and prunes/consolidates Skills; it does not establish business-answer correctness or latency improvements.
@@ -71,7 +75,7 @@ Use existing TypeScript, Prisma, Vitest and ESLint for the API. Offline observat
 ## Outcomes & Retrospective
 
 
-Local implementation and focused validation are complete on `feat/hermes-learning-evaluation`, based on `36b40ac6b6536fa67710f6014f6bbcb900be2aa3`. The working tree is intentionally retained with uncommitted implementation changes; no commit, push, PR, merge or production deployment was performed in this phase. Existing WIP in other worktrees remains untouched.
+Local implementation and focused validation are complete on `feat/hermes-learning-evaluation`, based on `36b40ac6b6536fa67710f6014f6bbcb900be2aa3`. The initial local-only phase ended before commit/push. The subsequently approved rollout phase committed the implementation as 12fc85f9 and opened PR #1398. Production rollout and real candidate evaluation remain pending CI completion. Existing WIP in other worktrees remains untouched.
 
 Final tests: consultation service 54 and export 2 passed (2.22 seconds total Vitest process), offline evaluation 17 passed (0.285 seconds); targeted ESLint and API `tsc --noEmit` passed. Initial offline tests exposed a six-column SQL insert with seven placeholders, corrected before passing. Initial TypeScript checking needed the workspace part-search/shelf-layout packages built; after generating Prisma and building workspace dependencies it passed without unrelated source edits. Native `skill_manage(patch)` returned staged=true, wrote one pending record and preserved the original synthetic Skill inside a temporary directory that was removed afterward. This native contract check made no LLM request.
 

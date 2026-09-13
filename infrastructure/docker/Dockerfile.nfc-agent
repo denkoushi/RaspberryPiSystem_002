@@ -22,11 +22,27 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pcscd pcsc-tools libpcsclite1 \
     && apt-get install -y --only-upgrade --no-install-recommends \
+      gzip libpcre2-8-0 libsqlite3-0 perl-base libglib2.0-0t64 libperl5.40 perl perl-modules-5.40 \
       libssl3t64 openssl openssl-provider-legacy \
     && for package in libssl3t64 openssl openssl-provider-legacy; do \
       version="$(dpkg-query -W -f='${Version}' "$package")"; \
       dpkg --compare-versions "$version" ge '3.5.7-1~deb13u2' \
         || { echo "$package remains below the CVE-2026-14456 fixed version: $version" >&2; exit 1; }; \
+    done \
+    && for requirement in \
+      gzip:1.13-1+deb13u1 \
+      libpcre2-8-0:10.46-1~deb13u2 \
+      libsqlite3-0:3.46.1-7+deb13u2 \
+      perl-base:5.40.1-6+deb13u1 \
+      libglib2.0-0t64:2.84.4-3~deb13u4 \
+      libperl5.40:5.40.1-6+deb13u1 \
+      perl:5.40.1-6+deb13u1 \
+      perl-modules-5.40:5.40.1-6+deb13u1 \
+    ; do \
+      package="${requirement%%:*}"; fixed_version="${requirement#*:}"; \
+      version="$(dpkg-query -W -f='${Version}' "$package")"; \
+      dpkg --compare-versions "$version" ge "$fixed_version" \
+        || { echo "$package is below the required fixed version: $version" >&2; exit 1; }; \
     done \
     && rm -rf /var/lib/apt/lists/* \
     && python -m pip uninstall --yes pip setuptools wheel
