@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import * as machineName from '../productionSchedule/machineName';
+
 import { PlanningBoardResourceView } from './PlanningBoardResourceView';
 
 import type {
@@ -214,5 +216,30 @@ describe('PlanningBoardResourceView resource chip drag', () => {
     fireEvent.click(rankButton);
     expect(onSpecialDueClick).toHaveBeenCalledTimes(2);
     expect(onRankChange).not.toHaveBeenCalled();
+  });
+
+  it('時刻更新で期限表示が変わる行だけ再描画し、期限と内容の変更を反映する', () => {
+    const deadline = Date.parse('2026-09-14T08:00:00Z');
+    const expiring = { ...item('a', '305'), specialDue: { kind: 'today' as const, expiresAt: new Date(deadline).toISOString() } };
+    const plain = item('b', '305');
+    const props = { items: [expiring, plain], seibanOrder: ['26-1041'], resources: ['305'], resourceNameMap: {},
+      allocation: 'alternate' as const, selectedItemIds: new Set<string>(), onToggleItem: vi.fn(), onResourceClick: vi.fn() };
+    const renders = vi.spyOn(machineName, 'normalizeMachineName');
+    const view = render(<PlanningBoardResourceView {...props} nowMs={deadline - 30_000} />);
+    renders.mockClear();
+    view.rerender(<PlanningBoardResourceView {...props} nowMs={deadline - 1} />);
+    expect(renders).not.toHaveBeenCalled();
+    expect(screen.getByText('今日中')).toHaveClass('text-amber-200');
+    view.rerender(<PlanningBoardResourceView {...props} nowMs={deadline} />);
+    expect(renders).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('今日中')).toHaveClass('text-rose-300');
+    renders.mockClear();
+    view.rerender(<PlanningBoardResourceView {...props} nowMs={deadline + 30_000} />);
+    expect(renders).not.toHaveBeenCalled();
+    view.rerender(<PlanningBoardResourceView {...props} nowMs={deadline - 1} />);
+    expect(renders).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('今日中')).toHaveClass('text-amber-200');
+    view.rerender(<PlanningBoardResourceView {...props} items={[{ ...expiring, fhinmei: '更新部品' }, plain]} nowMs={deadline - 1} />);
+    expect(screen.getByText('更新部品')).toBeInTheDocument();
   });
 });
