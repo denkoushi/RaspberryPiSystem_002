@@ -65,14 +65,14 @@ def read_catalogue(path):
 
 class QuestionCache:
     def __init__(self, catalogue, data_dir, model_dir, model=None):
-        from fastembed import TextEmbedding
+        from embedding import create_embedding
         from gptcache import Cache, Config
         from gptcache.adapter.api import init_similar_cache, put
         from gptcache.processor.post import nop
 
         self.cases = read_catalogue(catalogue)
         self.prepare_fact_index()
-        self.model = model or TextEmbedding(MODEL, cache_dir=str(model_dir), threads=2)
+        self.model = model or create_embedding(model_dir, data_dir)
         # Catalogue + model identity separates indexes when a question is removed
         # or corrected. The persisted catalogue remains the source of truth.
         identity = hashlib.sha256((MODEL + Path(catalogue).read_text()).encode()).hexdigest()
@@ -100,7 +100,9 @@ class QuestionCache:
             self.cache.flush()
             ready.touch()
         # Warm the embedding session before announcing readiness.
-        next(model.embed(["作業の確認方法"]))
+        # Existing indexes are ready even while DGX is reserved for private use.
+        if not hasattr(model, 'background'):
+            next(model.embed(["作業の確認方法"]))
 
     def prepare_fact_index(self):
         self.fact_index = {}
@@ -239,4 +241,6 @@ if __name__ == "__main__":
     sources = SourceCandidates(args.sources, Path(args.data_dir) / 'index' if maintenance else args.data_dir, cache.model) if args.sources else None
     from experience import ExperienceStore
     experience = ExperienceStore(args.data_dir, cache.model)
+    if hasattr(cache.model, 'background'):
+        cache.model.background = False
     serve(cache, args.host, args.port, os.environ.get("ANSWER_CACHE_TOKEN", ""), sources, experience, maintenance)

@@ -11,6 +11,6 @@ RUN apt-get update && apt-get install -y --only-upgrade --no-install-recommends 
     && rm -rf /var/lib/apt/lists/*
 RUN python -m pip uninstall --yes pip setuptools wheel
 RUN useradd --uid 10001 --create-home cache && mkdir /data && chown cache:cache /data
-COPY server.py sources.py experience.py maintenance.py runtime.py facts.py .
+COPY server.py sources.py experience.py maintenance.py runtime.py facts.py embedding.py .
 USER cache
 ENTRYPOINT ["python", "server.py", "--host", "0.0.0.0", "--catalogue", "/catalogue/reviewed.json", "--data-dir", "/data", "--model-dir", "/opt/models"]
