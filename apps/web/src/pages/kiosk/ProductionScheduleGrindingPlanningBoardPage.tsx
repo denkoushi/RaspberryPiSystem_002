@@ -493,6 +493,13 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     () => displayItems.filter((item) => activeFseibans.has(item.fseiban)),
     [activeFseibans, displayItems]
   );
+  const specialDueCounts = useMemo(() => {
+    const counts = { overnight: 0, today: 0 };
+    for (const item of visibleItems) {
+      if (item.specialDue) counts[item.specialDue.kind] += 1;
+    }
+    return counts;
+  }, [visibleItems]);
   const selectedItemIds = useMemo(
     () => {
       const selectedItemIdsForCategory = selectedItemIdsByCategory[category] ?? new Set<string>();
@@ -1284,6 +1291,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         specialDueMode={view === 'resource' ? specialDueMode : null}
         onSpecialDueModeChange={view === 'resource' ? setSpecialDueMode : undefined}
         specialDueDisabled={allocation === 'original' || interactionLocked || resourceDragDisabled}
+        specialDueCounts={specialDueCounts}
       />
       {feedback ? (
         <div className={feedbackKind === 'error'
