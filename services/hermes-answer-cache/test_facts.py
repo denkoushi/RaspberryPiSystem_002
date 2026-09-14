@@ -97,6 +97,24 @@ class FactContracts(unittest.TestCase):
         self.assertTrue(fact_matches('不適合記録123・図番MD001の記録内容を教えてください', proof['fact']))
         self.assertFalse(fact_matches('不適合記録124・図番MD001の記録内容を教えてください', proof['fact']))
 
+    def test_missing_drawing_uses_unique_record_number_and_rejects_invented_drawing(self):
+        record = {'kind': 'nonconformity', 'id': 'n1', 'nonconformityNo': '123', 'partNumber': None,
+                  'condition': '上限80℃。設計へ相談してから加工。', 'provenance': {'activeLatest': True}}
+        detail = {'content': [{'type': 'text', 'text': json.dumps(record, ensure_ascii=False, separators=(',', ':'))}]}
+        sha = hashlib.sha256(json.dumps(detail, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        packet = {'source': {'kind': 'nonconformity', 'id': 'n1', 'sha256': sha}, 'detail': detail}
+        proof = reconstruct(packet)
+        self.assertEqual(proof['question'], '不適合記録123の記録内容は？')
+        self.assertIn('図番：未記録', proof['answer'])
+        self.assertTrue(fact_matches('不適合記録123の記録内容を教えてください', proof['fact']))
+        self.assertFalse(fact_matches('不適合記録124の記録内容を教えてください', proof['fact']))
+        self.assertFalse(fact_matches('不適合記録123・図番MD001の記録内容を教えてください', proof['fact']))
+        fingerprints = {'nonconformity:n1': sha}
+        self.assertEqual(certify({}, {proof['question']: proof}, {'version': 1, 'records': [packet]}, fingerprints), [proof])
+        forged = {**proof, 'answer': proof['answer'].replace('図番：未記録', '図番：MD001')}
+        with self.assertRaisesRegex(ValueError, 'exact source fact'):
+            certify({}, {proof['question']: forged}, {'version': 1, 'records': [packet]}, fingerprints)
+
     def test_changed_source_and_forged_answer_are_rejected(self):
         packet, case = fixture()
         evidence = {'version': 1, 'records': [packet]}
@@ -214,7 +232,8 @@ class FactAdoptionIntegration(unittest.TestCase):
         self.payload['baseCatalogueSha256'] = digest(self.root / 'reviewed.json')
         atomic_json(self.job / 'input.json', self.payload)
         result = maintain(self.root, self.run, self.root)
-        self.assertNotEqual(result['status'], 'improved')
+        self.assertEqual(result['status'], 'plateau')
+        self.assertEqual(result['adoptionBasis'], 'source-fact-contract-v1')
         self.assertEqual(result['sourceFacts']['newFacts'], 0)
 
 

@@ -210,6 +210,8 @@ def maintain(root, run_id, model_dir):
         proofs = certify(current.cases, factual_cases, json.loads(fact_evidence_path.read_text()), valid_sources)
         check_question_separation(current.cases, factual_cases, checks, [])
         fact_report = {'boundary': 'source-fact-contract-v1', 'newFacts': len(proofs), 'status': 'no_eligible_facts'}
+        if not proofs and outcome == 'awaiting_holdout':
+            outcome = 'plateau'
         if proofs:
             factual = QuestionCache(fact_candidate_path, root / 'index', model_dir, current.model)
             protected_after = evaluate(factual, checks, valid_sources)
@@ -231,7 +233,7 @@ def maintain(root, run_id, model_dir):
               'referenceSha256': reference_hash, 'holdoutSha256': holdout_hash,
               'holdout': {'current': holdout_before, 'candidate': holdout_after},
               'sourceFacts': fact_report,
-              'adoptionBasis': 'source-fact-contract-v1' if fact_report and fact_report['newFacts'] else 'independent-holdout',
+              'adoptionBasis': 'source-fact-contract-v1' if fact_report else 'independent-holdout',
               'catalogueGrowth': len(candidate.cases) - len(current.cases), 'current': before, 'candidate': after,
               'baselineRegression': baseline_regression, 'deterioratingTrend': trend(history, before, reference_hash),
               'sourceCount': len(sources.records), 'activated': False}
