@@ -38,3 +38,15 @@ export function prepareSourceFact(detail: unknown, ref: Ref, now: string): FactC
   return { question, queries: [question], answer, sources: [ref], fact: { version: 1, scope, subject },
     review: { verdict: 'pass', reviewer: 'source-fact-v1', reason: '出典の全項目・本文を引用。独立した事実照合後のみ採用。', reviewedAt: now } };
 }
+
+/** Allowed retrieval questions are derived from present source fields, never a model verdict. */
+export function sourceFactQuestions(detail: unknown, fact: FactCase): string[] {
+  const response = detail as { content: Array<{ text: string }> };
+  const record = JSON.parse(response.content[0]!.text) as Record<string, unknown>;
+  const subjects = record.kind === 'nonconformity'
+    ? [['condition', '不適合内容'], ['remarks', '備考'], ['disposition', '処置内容'], ['correctiveContent', '個別是正内容']]
+      .filter(([key]) => text(record[key!])).map(([, name]) => name!)
+    : ['記載された手順', '作業手順'];
+  return subjects.flatMap(subject => ['は？', 'を教えてください'].map(suffix => `${fact.fact.scope}の${subject}${suffix}`))
+    .filter(question => question.length <= 100);
+}

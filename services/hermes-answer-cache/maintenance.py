@@ -209,7 +209,9 @@ def maintain(root, run_id, model_dir):
         factual_cases = read_catalogue(fact_candidate_path)
         proofs = certify(current.cases, factual_cases, json.loads(fact_evidence_path.read_text()), valid_sources)
         check_question_separation(current.cases, factual_cases, checks, [])
-        fact_report = {'boundary': 'source-fact-contract-v1', 'newFacts': len(proofs), 'status': 'no_eligible_facts'}
+        fact_report = {'boundary': 'source-fact-contract-v1', 'newFacts': sum(p['question'] not in current.cases for p in proofs),
+                       'newQuestions': sum(len(set(p['queries']) - set(current.cases.get(p['question'], {}).get('queries', [p['question']]))) for p in proofs),
+                       'status': 'no_eligible_facts'}
         if not proofs and outcome == 'awaiting_holdout':
             outcome = 'plateau'
         if proofs:

@@ -50,6 +50,11 @@ export function validateDocumentQuestion(question: string, identifiers: string[]
   return null;
 }
 
+// Changing the preparation contract revisits records checked before DGX question generation.
+export function documentPreparationFingerprint(document: SourceDocument) {
+  return sourceFingerprint({ document, preparation: 'dgx-questions-v1' });
+}
+
 export function selectNightDocuments(documents: SourceDocument[], cases: Array<{ sources: SourceRef[] }>,
   events: Array<{ sources: SourceRef[]; verdict: string }>, attempts: DocumentAttempts, now: number) {
   const covered = new Set(cases.flatMap(c => c.sources.map(s => s.kind + ':' + s.id)));
@@ -60,7 +65,7 @@ export function selectNightDocuments(documents: SourceDocument[], cases: Array<{
   }
   return documents.map(document => {
     const key = document.kind + ':' + document.id;
-    const sha256 = sourceFingerprint(document);
+    const sha256 = documentPreparationFingerprint(document);
     const last = attempts[key];
     const changed = last && last.sha256 !== sha256;
     return { document, key, sha256, last: last?.attemptedAt || 0,

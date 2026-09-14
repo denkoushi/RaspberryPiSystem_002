@@ -10,7 +10,7 @@ import json
 import os
 import re
 import unicodedata
-from facts import fact_matches, validate_fact_metadata
+from facts import fact_matches, fact_wordings, question_key, valid_question_shape, validate_fact_metadata
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -56,7 +56,8 @@ def read_catalogue(path):
         cases[question] = {"question": question, "answer": answer, "sources": sources, "queries": queries}
         if "fact" in case:
             validate_fact_metadata(case['fact'])
-            if len(sources) != 1 or queries != [question] or not fact_matches(question, case['fact']):
+            if (len(sources) != 1 or queries[0] != question or not fact_matches(question, case['fact'])
+                    or any(q != question and not valid_question_shape(q, case['fact']) for q in queries)):
                 raise ValueError('Invalid source fact catalogue entry')
             cases[question]['fact'] = case['fact']
     return cases
@@ -70,6 +71,7 @@ class QuestionCache:
         from gptcache.processor.post import nop
 
         self.cases = read_catalogue(catalogue)
+        self.prepare_fact_index()
         self.model = model or TextEmbedding(MODEL, cache_dir=str(model_dir), threads=2)
         # Catalogue + model identity separates indexes when a question is removed
         # or corrected. The persisted catalogue remains the source of truth.
@@ -100,15 +102,32 @@ class QuestionCache:
         # Warm the embedding session before announcing readiness.
         next(model.embed(["作業の確認方法"]))
 
+    def prepare_fact_index(self):
+        self.fact_index = {}
+        self.has_ordinary = any('fact' not in c for c in self.cases.values())
+        for canonical, case in self.cases.items():
+            if 'fact' not in case:
+                continue
+            for wording in fact_wordings(case):
+                key = question_key(wording)
+                if key in self.fact_index and self.fact_index[key] != canonical:
+                    self.fact_index[key] = None  # Ambiguous normalized identities never pick a record.
+                else:
+                    self.fact_index[key] = canonical
+
+    def search_fact(self, question):
+        if not hasattr(self, 'fact_index'):
+            self.prepare_fact_index()
+        canonical = self.fact_index.get(question_key(question))
+        return {'question': canonical} if canonical else None
+
     def search(self, question):
         from gptcache.adapter.api import get
         if not self.cases:
             return None
-        fact_hits = [q for q, case in self.cases.items() if 'fact' in case and fact_matches(question, case['fact'])]
-        if len(fact_hits) == 1:
-            return {'question': fact_hits[0]}
-        if fact_hits or all('fact' in case for case in self.cases.values()):
-            return None
+        result = self.search_fact(question)
+        if result or question_key(question) in self.fact_index or not self.has_ordinary:
+            return result
         matches = get(question, cache_obj=self.cache, top_k=3) or []
         if isinstance(matches, str):
             matches = [matches]
@@ -175,9 +194,11 @@ def serve(cache, host, port, token, sources=None, experience=None, maintenance=N
                     result = sources.lookup(question) if sources else None
                 else:
                     if self.path == "/search":
-                        result = experience.suggest(question) if experience else None
+                        result = cache.search_fact(question)
+                        if result is None and question_key(question) not in cache.fact_index:
+                            result = experience.suggest(question) if experience else None
                         cached = cache.lookup(result['question']) if result else None
-                        if cached and 'fact' in cached and not fact_matches(question, cached['fact']):
+                        if cached and 'fact' in cached and not fact_matches(question, cached['fact'], cached['queries']):
                             result = None
                         result = result or cache.search(question)
                         if result and experience and 'fact' not in (cache.lookup(result['question']) or {}) and experience.denied(cache.lookup(result['question'])):

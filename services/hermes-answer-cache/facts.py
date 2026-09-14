@@ -9,11 +9,38 @@ def normalize(value):
     return re.sub(r'\s+', '', unicodedata.normalize('NFKC', value).lower())
 
 
-def fact_matches(question, fact):
+def fact_matches(question, fact, queries=()):
     # Closed record-reading grammar: additional conditions and engineering judgments fall back.
+    if question_key(question) in {question_key(q) for q in queries}:
+        return True
     scope, subject = normalize(fact['scope']), normalize(fact['subject'])
     return bool(re.fullmatch(re.escape(scope + 'の' + subject) +
                             r'(?:は|を教えて(?:ください)?|を確認したい|について教えて(?:ください)?)[?？。！!]*', normalize(question)))
+
+
+def question_key(question):
+    return normalize(question).rstrip('?。!')
+
+
+def fact_wordings(case):
+    fact = case['fact']
+    return [*case.get('queries', []), *(fact['scope'] + 'の' + fact['subject'] + suffix for suffix in
+            ('は', 'を教えて', 'を教えてください', 'を確認したい', 'について教えて', 'について教えてください'))]
+
+
+def valid_question_shape(question, fact):
+    subjects = ('不適合内容', '備考', '処置内容', '個別是正内容') if fact['subject'] == '記録内容' else ('記載された手順', '作業手順')
+    return question in {fact['scope'] + 'の' + subject + suffix for subject in subjects for suffix in ('は？', 'を教えてください')}
+
+
+def source_questions(record, proof):
+    if record['kind'] == 'nonconformity':
+        subjects = [name for key, name in (('condition', '不適合内容'), ('remarks', '備考'),
+                    ('disposition', '処置内容'), ('correctiveContent', '個別是正内容')) if text(record.get(key))]
+    else:
+        subjects = ['記載された手順', '作業手順']
+    return [q for subject in subjects for suffix in ('は？', 'を教えてください')
+            if len(q := proof['fact']['scope'] + 'の' + subject + suffix) <= 100]
 
 
 def validate_fact_metadata(fact):
@@ -32,7 +59,7 @@ def text(value):
     return isinstance(value, str) and bool(value.strip())
 
 
-def reconstruct(packet):
+def reconstruct(packet, queries=None):
     """Rebuild allowed answer bytes from authenticated, fingerprint-bound detail fields."""
     ref, detail = packet['source'], packet['detail']
     fingerprint = hashlib.sha256(json.dumps(detail, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
@@ -77,8 +104,16 @@ def reconstruct(packet):
     question = scope + 'の' + subject + 'は？'
     if len(question) > 100 or len(answer) > 4000:
         return None
-    return {'question': question, 'answer': answer, 'sources': [ref], 'queries': [question],
-            'fact': {'version': 1, 'scope': scope, 'subject': subject}}
+    proof = {'question': question, 'answer': answer, 'sources': [ref], 'queries': [question],
+             'fact': {'version': 1, 'scope': scope, 'subject': subject}}
+    if queries is not None:
+        allowed = {question, *source_questions(r, proof)}
+        if (not isinstance(queries, list) or not 1 <= len(queries) <= 20 or queries[0] != question
+                or any(not isinstance(q, str) or q not in allowed for q in queries)
+                or len(set(queries)) != len(queries)):
+            raise ValueError('Question is not supported by source fields')
+        proof['queries'] = queries
+    return proof
 
 
 def certify(current, candidate, evidence, fingerprints):
@@ -86,6 +121,7 @@ def certify(current, candidate, evidence, fingerprints):
     if evidence.get('version') != 1 or not isinstance(evidence.get('records'), list) or len(evidence['records']) > 4:
         raise ValueError('Invalid bounded source fact evidence')
     proofs = {}
+    packets = {}
     for packet in evidence['records']:
         ref = packet['source']
         if fingerprints.get(ref['kind'] + ':' + ref['id']) != ref['sha256']:
@@ -95,11 +131,14 @@ def certify(current, candidate, evidence, fingerprints):
             if proof['question'] in proofs:
                 raise ValueError('Conflicting source fact scope')
             proofs[proof['question']] = proof
+            packets[proof['question']] = packet
     added = []
     for key, case in candidate.items():
         if current.get(key) == case:
             continue
-        proof = proofs.get(key)
+        proof = reconstruct(packets[key], case.get('queries')) if key in packets else None
+        if key in current and not set(current[key]['queries']).issubset(case['queries']):
+            raise ValueError('Source question adoption may not remove current wordings')
         if not proof or case != proof:
             raise ValueError('Candidate is not an exact source fact')
         added.append(proof)
@@ -117,6 +156,9 @@ def fact_checks(proofs):
         scope, subject = p['fact']['scope'], p['fact']['subject']
         for j, suffix in enumerate(('を教えてください', 'を確認したい')):
             checks.append({'id': f'fact-{i}-positive-{j}', 'question': scope + 'の' + subject + suffix,
+                           'expectedSource': p['sources'][0], 'exactAnswer': p['answer']})
+        for j, question in enumerate(p['queries'][1:]):
+            checks.append({'id': f'fact-{i}-generated-{j}', 'question': question,
                            'expectedSource': p['sources'][0], 'exactAnswer': p['answer']})
         # These do not assert a fabricated business fact; the contract must decline them.
         for j, question in enumerate((scope + 'の' + subject + 'は80℃でも適用できる？',
