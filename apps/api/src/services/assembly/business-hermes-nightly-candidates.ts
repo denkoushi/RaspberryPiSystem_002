@@ -10,7 +10,7 @@ export const evaluationSchema = z.object({
   version: z.literal(1),
   cases: z.array(z.object({
     id: z.string().min(1), question: z.string().trim().min(1).max(4000),
-    expectedSource: z.object({ kind: z.string(), id: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).optional(),
+    expectedSource: z.object({ kind: z.string(), id: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).nullish(),
     requiredFragments: z.array(z.string().min(1)).optional(),
     forbiddenFragments: z.array(z.string().min(1)).optional()
   })).min(4).max(200)

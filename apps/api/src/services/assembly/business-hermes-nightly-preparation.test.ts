@@ -33,6 +33,8 @@ describe('Nightly preparation with no new conversations', () => {
     mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR = await mkdtemp(path.join(os.tmpdir(), 'hermes-document-test-'));
     await writeFile(path.join(mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR, 'checks.json'), JSON.stringify({ version: 1,
       cases: ['工具返却', '設備停止', '検査場所', '部品廃棄'].map((q, i) => ({ id: String(i), question: q })) }));
+    await writeFile(path.join(mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR, 'holdout.json'), JSON.stringify({ version: 1,
+      cases: ['独立検査一', '独立検査二', '独立検査三', '独立検査四'].map((question, i) => ({ id: 'h' + i, question })) }));
     state = { baseCatalogueRelative: 'reviewed.json', baseCatalogueSha256: 'base', catalogue: { version: 1, cases: [] }, events: [], running: false };
     mocks.fetch.mockImplementation(async (url: URL) => new Response(JSON.stringify({ result:
       url.pathname.endsWith('/state') ? state : url.pathname.endsWith('/status') ? { status: 'awaiting_holdout', activated: false } : { started: true } })));
@@ -53,6 +55,27 @@ describe('Nightly preparation with no new conversations', () => {
     const read = async (name: string) => JSON.parse(await readFile(path.join(root, 'jobs', jobs[0]!, name), 'utf8'));
     return { candidate: await read('candidate.json'), input: await read('input.json'), facts: await read('fact-candidate.json') };
   }
+  it('prepares exact source facts without a holdout or model and preserves abstention checks', async () => {
+    mocks.env.BUSINESS_HERMES_BACKGROUND_ENABLED = 'true';
+    await rm(path.join(mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR, 'holdout.json'));
+    await writeFile(path.join(mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR, 'checks.json'), JSON.stringify({ version: 1,
+      cases: ['工具返却', '設備停止', '検査場所', '部品廃棄'].map((question, i) => ({ id: String(i), question, expectedSource: null })) }));
+    const published = { ...record, public: true, rows: [{ ...record.rows[0], sourceVersionDate: '2026-09-01', publication: { publishedVersionId: 'v1' } }] };
+    mocks.detail.mockResolvedValue({ content: [{ type: 'text', text: JSON.stringify(published) }] });
+    const result = await new BusinessHermesNightlyService().run(new AbortController().signal);
+    expect(mocks.complete).not.toHaveBeenCalled();
+    expect(mocks.ready).not.toHaveBeenCalled();
+    expect((await prepared()).facts.cases).toHaveLength(1);
+    expect(result.documentProgress).toEqual({ total: 1, processed: 1, remaining: 0 });
+    expect(JSON.parse(await readFile(path.join(mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR, 'document-attempts.json'), 'utf8'))).toHaveProperty('work_instruction:one');
+  });
+  it('does not consume document progress when the validation worker fails', async () => {
+    await rm(path.join(mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR, 'holdout.json'));
+    mocks.fetch.mockImplementation(async (url: URL) => new Response(JSON.stringify({ result:
+      url.pathname.endsWith('/state') ? state : url.pathname.endsWith('/status') ? { status: 'failed', activated: false } : { started: true } })));
+    expect(await new BusinessHermesNightlyService().run(new AbortController().signal)).toMatchObject({status: 'failed'});
+    await expect(readFile(path.join(mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR, 'document-attempts.json'))).rejects.toMatchObject({code: 'ENOENT'});
+  });
   it('defers background work without consuming the document checkpoint or starting DGX', async () => {
     mocks.env.BUSINESS_HERMES_BACKGROUND_ENABLED = 'true';
     mocks.complete.mockReset().mockRejectedValue(new InferenceDeferredError());
@@ -73,7 +96,7 @@ describe('Nightly preparation with no new conversations', () => {
     const { candidate, input } = await prepared();
     expect(candidate.cases).toHaveLength(1);
     expect(candidate.cases[0]).toMatchObject({ question, answer: '設計へ相談してから加工。', sources: [{ kind: 'work_instruction', id: 'one' }] });
-    expect(input).toMatchObject({ holdoutSha256: null, decisions: [{ origin: 'document', verdict: 'pass' }] });
+    expect(input).toMatchObject({ holdoutSha256: expect.any(String), decisions: [{ origin: 'document', verdict: 'pass' }] });
     expect(JSON.stringify(mocks.complete.mock.calls)).not.toContain('工具返却');
     expect(mocks.release).toHaveBeenCalledWith('business_hermes');
     expect(mocks.complete).toHaveBeenCalledTimes(3);
