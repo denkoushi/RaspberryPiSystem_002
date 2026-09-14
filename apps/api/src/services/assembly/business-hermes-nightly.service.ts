@@ -22,7 +22,7 @@ type Case = { fact?: SourceFact; question: string; queries: string[]; answer: st
   review: { verdict: string; reviewer: string; reason: string; reviewedAt: string } };
 type Event = { id: string; question: string; canonical: string | null; answer: string; sources: Source[]; verdict: string };
 type State = { baseCatalogueRelative: string; baseCatalogueSha256: string; catalogue: {version: number; cases: Case[]}; events: Event[]; running: boolean };
-type Report = { status: string; runId: string; baselineRegression?: boolean; deterioratingTrend?: boolean; liveSlower?: boolean; preparationFailed?: number; activated?: boolean; preparedDocuments?: number };
+type Report = { status: string; runId: string; baselineRegression?: boolean; deterioratingTrend?: boolean; liveSlower?: boolean; preparationFailed?: number; activated?: boolean; preparedDocuments?: number; sourceFacts?: { newFacts: number }; documentProgress?: { total: number; processed: number; remaining: number } };
 
 export function nightlyTimings(diagnostics: unknown[]) {
   const times = diagnostics.flatMap(value => Array.isArray(value) ? value : []).filter(d => d?.kind === 'business-hermes-learning-v1'
@@ -106,21 +106,23 @@ export class BusinessHermesNightlyService {
       const reference = evaluationSchema.parse(JSON.parse(referenceText));
       const holdoutText = await optionalText(path.join(root, 'holdout.json'));
       const holdout = holdoutText === null ? null : evaluationSchema.parse(JSON.parse(holdoutText));
+      const sourceOnly = holdout === null;
+      const learningEvents = sourceOnly ? [] : state.events;
       const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
       const evaluationHashes = { referenceSha256: sha256(referenceText), holdoutSha256: holdoutText === null ? null : sha256(holdoutText) };
       const protectedQuestions = [...reference.cases, ...(holdout?.cases || [])].map(c => c.question);
       const sources = await exportBusinessHermesSources(this.details, signal);
       const attemptsText = await optionalText(path.join(root, 'document-attempts.json'));
       const attempts: DocumentAttempts = attemptsText === null ? {} : documentAttemptsSchema.parse(JSON.parse(attemptsText));
-      const documents = selectNightDocuments(sources.records, state.catalogue.cases, state.events, attempts, Date.now());
-      if (env.BUSINESS_HERMES_BACKGROUND_ENABLED === 'true' && !documents.length && !state.events.length) {
+      const documents = selectNightDocuments(sources.records, state.catalogue.cases, learningEvents, attempts, Date.now());
+      if (env.BUSINESS_HERMES_BACKGROUND_ENABLED === 'true' && !documents.length && !learningEvents.length) {
         return { runId, status: 'no_work' };
       }
-      const blocked = state.events.filter(e => e.verdict === 'unhelpful');
+      const blocked = learningEvents.filter(e => e.verdict === 'unhelpful');
       const fingerprints: Record<string, string | null> = {};
       const records = new Map<string, Record<string, unknown>>();
       const detailPackets: Array<{ source: Source; detail: unknown }> = [];
-      const refs = [...state.catalogue.cases.flatMap(c => c.sources), ...state.events.flatMap(e => e.sources), ...[...reference.cases, ...(holdout?.cases || [])].flatMap(c => c.expectedSource ? [c.expectedSource] : []), ...documents.map(d => ({ ...d.document, sha256: '' }))];
+      const refs = [...state.catalogue.cases.flatMap(c => c.sources), ...learningEvents.flatMap(e => e.sources), ...[...reference.cases, ...(holdout?.cases || [])].flatMap(c => c.expectedSource ? [c.expectedSource] : []), ...documents.map(d => ({ ...d.document, sha256: '' }))];
       for (const ref of refs) {
         signal.throwIfAborted();
         const key = ref.kind + ':' + ref.id;
@@ -139,7 +141,7 @@ export class BusinessHermesNightlyService {
       // Negative user feedback remains authoritative, even when an automatic judge passes.
       const denied = (answer: string, refs: Source[]) => blocked.some(e => e.answer === answer && sourceFingerprint(e.sources) === sourceFingerprint(refs));
       const cases = structuredClone(state.catalogue.cases).filter(c => current(c.sources) && !denied(c.answer, c.sources));
-      const events = state.events.filter(e => e.verdict !== 'unhelpful' && e.sources.length === 1 && e.canonical && e.canonical.length <= 100 && !overlapsNightQuestion(e.question, protectedQuestions) && !overlapsNightQuestion(e.canonical, protectedQuestions) && current(e.sources))
+      const events = learningEvents.filter(e => e.verdict !== 'unhelpful' && e.sources.length === 1 && e.canonical && e.canonical.length <= 100 && !overlapsNightQuestion(e.question, protectedQuestions) && !overlapsNightQuestion(e.canonical, protectedQuestions) && current(e.sources))
         .filter(e => !cases.some(c => c.question === e.canonical && (c.fact || c.queries.includes(e.question)))).slice(0, 8);
       if (env.BUSINESS_HERMES_BACKGROUND_ENABLED === 'true' && !events.length && !documents.length) {
         return { runId, status: 'no_work' };
@@ -150,7 +152,7 @@ export class BusinessHermesNightlyService {
       const factCases = structuredClone(state.catalogue.cases).filter(c => current(c.sources));
       for (const packet of detailPackets) {
         const fact = prepareSourceFact(packet.detail, packet.source, new Date().toISOString());
-        if (!fact || denied(fact.answer, fact.sources) || factCases.some(c => c.question === fact.question)
+        if (!fact || factCases.some(c => c.question === fact.question)
           || overlapsNightQuestion(fact.question, protectedQuestions)) continue;
         factCases.push(fact);
       }
@@ -158,16 +160,20 @@ export class BusinessHermesNightlyService {
       await atomicJson(path.join(job, 'fact-candidate.json'), { version: 1, cases: factCases });
       const factEvidenceSha256 = sha256(await readFile(path.join(job, 'fact-evidence.json'), 'utf8'));
       const factCandidateSha256 = sha256(await readFile(path.join(job, 'fact-candidate.json'), 'utf8'));
+      if (sourceOnly) {
+        for (const selected of documents) attempts[selected.key] = { sha256: selected.sha256, attemptedAt: Date.now() };
+      }
+      const modelDocuments = sourceOnly ? [] : documents;
       const runtime = getLocalLlmRuntimeController();
       let held = false;
       const decisions: Array<{eventId: string; verdict: string; reason?: string; origin?: string}> = [];
       try {
-        if ((events.length || documents.length) && runtime && env.BUSINESS_HERMES_BACKGROUND_ENABLED !== 'true') {
+        if ((events.length || modelDocuments.length) && runtime && env.BUSINESS_HERMES_BACKGROUND_ENABLED !== 'true') {
           await runtime.ensureReady('business_hermes'); held = true;
         }
-        const completion = (events.length || documents.length) ? getInferenceRuntime().createTextCompletionPort() : null;
+        const completion = (events.length || modelDocuments.length) ? getInferenceRuntime().createTextCompletionPort() : null;
         // Only source evidence enters this prompt. Evaluation questions/answers never do.
-        for (const selected of documents) {
+        for (const selected of modelDocuments) {
           signal.throwIfAborted();
           attempts[selected.key] = { sha256: selected.sha256, attemptedAt: Date.now() };
           try {
@@ -243,7 +249,9 @@ export class BusinessHermesNightlyService {
         livePerformance: nightlyTimings(messages.map(m => m.searchDiagnostics)) });
       // Keep only entries still present in the authorized corpus; the ledger is scheduling data.
       const visible = new Set(sources.records.map(d => d.kind + ':' + d.id));
-      await atomicJson(path.join(root, 'document-attempts.json'), Object.fromEntries(Object.entries(attempts).filter(([key]) => visible.has(key))));
+      const nextAttempts = Object.fromEntries(Object.entries(attempts).filter(([key]) => visible.has(key)));
+      const processed = sources.records.filter(d => nextAttempts[d.kind + ':' + d.id]?.sha256 === sourceFingerprint(d)).length;
+      const documentProgress = { total: sources.records.length, processed, remaining: sources.records.length - processed };
       await this.request('start', { runId }, signal);
       for (;;) {
         await delay(5000, undefined, { signal });
@@ -252,7 +260,10 @@ export class BusinessHermesNightlyService {
         if (['regression', 'slower', 'failed', 'interrupted', 'awaiting_holdout'].includes(result.status) || result.baselineRegression || result.deterioratingTrend || result.liveSlower || result.preparationFailed) {
           await this.alert(result.status === 'awaiting_holdout' ? '独立評価問題が未設定' : result.preparationFailed ? '候補作成の一部が失敗' : result.liveSlower ? '日中の回答時間が悪化' : result.deterioratingTrend ? '悪化傾向' : result.baselineRegression ? '基準からの低下' : result.status, runId);
         }
-        return { ...result, preparedDocuments: documents.length };
+        if (!['failed', 'interrupted'].includes(result.status)) {
+          await atomicJson(path.join(root, 'document-attempts.json'), nextAttempts);
+        }
+        return { ...result, preparedDocuments: documents.length, documentProgress };
       }
     } catch (error) {
       await this.request('cancel', { runId }, AbortSignal.timeout(10_000)).catch(() => undefined);

@@ -52,7 +52,7 @@ class FactContracts(unittest.TestCase):
         experience = Mock()
         experience.suggest.return_value = {'question': case['question']}
         experience.lookup.return_value = {**case, 'answer': '利用者が正しいと判定した別回答'}
-        experience.denied.return_value = False
+        experience.denied.return_value = True
         with patch('server.HTTPServer') as http:
             serve(cache, '127.0.0.1', 0, 'x' * 24, experience=experience)
             handler_class = http.call_args.args[1]
@@ -66,6 +66,8 @@ class FactContracts(unittest.TestCase):
             return handler.reply.call_args.args
         self.assertEqual(request('/search', '図番MD001・対象検査の公開要領の記載本文を教えて'), (200, {'result': None}))
         self.assertEqual(request('/lookup', case['question'])[1]['result']['answer'], case['answer'])
+        self.assertIsNotNone(request('/search', case['question'])[1]['result'])
+        experience.denied.assert_not_called()
 
     def test_actual_cache_index_never_semantically_matches_certified_facts(self):
         from test_experience import Embedding

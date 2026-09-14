@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { overlapsNightQuestion, selectNightDocuments, validateDocumentQuestion } from './business-hermes-nightly-candidates.js';
+import { evaluationSchema, overlapsNightQuestion, selectNightDocuments, validateDocumentQuestion } from './business-hermes-nightly-candidates.js';
 import { sourceFingerprint } from './business-hermes-answer-cache.js';
 
 describe('Document question selection and filtering', () => {
@@ -31,4 +31,11 @@ describe('Document question selection and filtering', () => {
     expect(overlapsNightQuestion('公開要領：MD001・加工：加工前の設計相談について教えて', ['加工前の設計相談について教えて'])).toBe(true);
     expect(overlapsNightQuestion('工具の保管方法を教えて', ['加工前の確認を教えて'])).toBe(false);
   });
+});
+
+
+it('accepts explicit abstention sources without weakening identified source validation', () => {
+  const data = { version: 1, cases: Array.from({length: 4}, (_, i) => ({id: String(i), question: '未記録' + i, expectedSource: null})) };
+  expect(evaluationSchema.parse(data).cases.every(c => c.expectedSource === null)).toBe(true);
+  expect(evaluationSchema.safeParse({...data, cases: [{...data.cases[0], expectedSource:{kind:'nonconformity', id:'one', sha256:'invalid'}}, ...data.cases.slice(1)]}).success).toBe(false);
 });

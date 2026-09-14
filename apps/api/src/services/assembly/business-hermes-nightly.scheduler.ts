@@ -20,7 +20,7 @@ export class BusinessHermesNightlyScheduler {
         do {
           const signal = AbortSignal.any([stopped, AbortSignal.timeout(20 * 60_000)]);
           const result = await new BusinessHermesNightlyService().run(signal);
-          logger.info({ runId: result.runId, status: result.status }, 'Hermes improvement batch completed');
+          logger.info({ runId: result.runId, status: result.status, documentProgress: result.documentProgress, adoptedFacts: result.activated ? result.sourceFacts?.newFacts : 0 }, 'Hermes improvement batch completed');
           if (['no_work', 'already_running', 'deferred', 'failed', 'interrupted'].includes(result.status)) {
             this.nextCheck = Date.now() + (result.status === 'no_work' ? 15 : 1) * 60_000;
             break;

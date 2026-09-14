@@ -180,12 +180,12 @@ def serve(cache, host, port, token, sources=None, experience=None, maintenance=N
                         if cached and 'fact' in cached and not fact_matches(question, cached['fact']):
                             result = None
                         result = result or cache.search(question)
-                        if result and experience and experience.denied(cache.lookup(result['question'])):
+                        if result and experience and 'fact' not in (cache.lookup(result['question']) or {}) and experience.denied(cache.lookup(result['question'])):
                             result = None
                     else:
                         cached = cache.lookup(question)
                         result = cached if cached and 'fact' in cached else (experience.lookup(question) if experience else None) or cached
-                        if experience and experience.denied(result):
+                        if experience and 'fact' not in (result or {}) and experience.denied(result):
                             result = None
                 self.reply(200, {"result": result})
             except (ValueError, KeyError, TypeError):
