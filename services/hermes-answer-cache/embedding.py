@@ -63,8 +63,12 @@ class RemoteEmbedding:
             vectors = np.asarray(raw_vectors, dtype='float32')
             if vectors.shape != (len(texts), 384) or not np.isfinite(vectors).all():
                 raise ValueError('Invalid embedding vectors')
-            if not np.all(np.abs(np.linalg.norm(vectors, axis=1) - 1) < 0.01):
-                raise ValueError('Unnormalized embedding vectors')
+            # MiniLM returns raw vectors. Normalizing here would change the
+            # existing GPTCache distance thresholds; SourceCandidates already
+            # normalizes its own copies for cosine search.
+            norms = np.linalg.norm(vectors, axis=1)
+            if not np.isfinite(norms).all() or not np.all(norms > 0):
+                raise ValueError('Invalid embedding magnitude')
             return vectors
         except (OSError, http.client.HTTPException) as error:
             raise EmbeddingDeferred('DGX embedding temporarily unavailable') from error

@@ -78,6 +78,14 @@ class RemoteEmbeddingTests(unittest.TestCase):
             with self.assertRaises(EmbeddingDeferred):
                 list(RemoteEmbedding(self.tmp.name, connection=self.connection).embed(['synthetic']))
 
+    def test_raw_minilm_magnitudes_are_preserved_for_existing_distance_thresholds(self):
+        self.responses = [self.response(embeddings=[[3.5] + [0.0] * 383])]
+        model = RemoteEmbedding(self.tmp.name, connection=self.connection)
+        first = list(model.embed(['synthetic']))[0]
+        saved = list(model.embed(['synthetic']))[0]
+        self.assertEqual(float(first[0]), 3.5)
+        self.assertEqual(float(saved[0]), 3.5)
+
 
 if __name__ == '__main__':
     unittest.main()
