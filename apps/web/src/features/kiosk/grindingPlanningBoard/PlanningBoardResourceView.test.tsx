@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as machineName from '../productionSchedule/machineName';
@@ -76,6 +76,7 @@ function renderView(
 describe('PlanningBoardResourceView resource chip drag', () => {
   beforeEach(() => {
     vi.stubGlobal('PointerEvent', TestPointerEvent);
+    localStorage.clear();
   });
 
   afterEach(() => {
@@ -144,11 +145,11 @@ describe('PlanningBoardResourceView resource chip drag', () => {
     fireEvent.pointerMove(sourcePane, { pointerId: 3, clientX: 31, clientY: 10 });
 
     expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
-    expect(document.body.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
+    expect(document.body.querySelector(':scope > div[aria-hidden="true"]')).toBeInTheDocument();
     fireEvent.pointerCancel(sourcePane, { pointerId: 3, clientX: 31, clientY: 10 });
 
     expect(cancelAnimationFrame).toHaveBeenCalledTimes(1);
-    expect(document.body.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument();
+    expect(document.body.querySelector(':scope > div[aria-hidden="true"]')).not.toBeInTheDocument();
     expect(onDrop).not.toHaveBeenCalled();
   });
 
@@ -241,5 +242,116 @@ describe('PlanningBoardResourceView resource chip drag', () => {
     expect(screen.getByText('今日中')).toHaveClass('text-amber-200');
     view.rerender(<PlanningBoardResourceView {...props} items={[{ ...expiring, fhinmei: '更新部品' }, plain]} nowMs={deadline - 1} />);
     expect(screen.getByText('更新部品')).toBeInTheDocument();
+  });
+});
+
+describe('PlanningBoardResourceView pane layout', () => {
+  const props = {
+    items: Array.from({ length: 10 }, (_, index) => item(String(index), '305')),
+    resources: ['305', '584', '999'], seibanOrder: ['26-1041'], resourceNameMap: {},
+    allocation: 'alternate' as const, selectedItemIds: new Set<string>(),
+    onToggleItem: vi.fn(), onResourceClick: vi.fn(), preferenceScope: 'site:grinding'
+  };
+  const order = () => [...screen.getByTestId('planning-board-resource-view').children].map((slot) => (slot as HTMLElement).dataset.resourceSlot);
+  const handle = () => screen.getByRole('button', { name: '資源CD 305のペインを並べ替え' });
+  const target = () => screen.getByTestId('planning-board-resource-view').querySelector('[data-resource-code="584"]')!;
+
+  beforeEach(() => {
+    vi.stubGlobal('PointerEvent', TestPointerEvent);
+    localStorage.clear();
+    vi.useFakeTimers();
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target()]) });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('記号だけで複数ペインを独立して伸縮し、元の配置枠とスクロール位置を維持する', () => {
+    render(<PlanningBoardResourceView {...props} />);
+    const first = screen.getByRole('button', { name: '資源CD 305を拡張' });
+    const slot = first.closest('[data-resource-slot]') as HTMLElement;
+    const height = slot.style.height;
+    const scroller = slot.querySelector('[data-resource-scroll]')!;
+    scroller.scrollTop = 120;
+    expect(first.textContent).toBe('↧');
+    expect(first).not.toHaveAttribute('title');
+    fireEvent.click(first);
+    fireEvent.click(screen.getByRole('button', { name: '資源CD 584を拡張' }));
+    expect(screen.getByRole('button', { name: '資源CD 305を縮小' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: '資源CD 584を縮小' })).toHaveAttribute('aria-expanded', 'true');
+    expect(slot.style.height).toBe(height);
+    fireEvent.click(first);
+    expect(first.textContent).toBe('↧');
+    expect(screen.getByRole('button', { name: '資源CD 584を縮小' })).toHaveAttribute('aria-expanded', 'true');
+    expect(scroller.scrollTop).toBe(120);
+    expect(scroller.querySelectorAll('tbody tr')).toHaveLength(10);
+    expect(order()).toEqual(props.resources);
+  });
+
+  it('長押し後だけ移動を確定し、再表示でも端末内の保存順を復元する', () => {
+    const view = render(<PlanningBoardResourceView {...props} />);
+    fireEvent.pointerDown(handle(), { pointerId: 20, button: 0, clientX: 5, clientY: 5 });
+    act(() => vi.advanceTimersByTime(449));
+    expect(document.querySelector('[data-planning-board-pane-ghost]')).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(document.querySelector('[data-planning-board-pane-ghost]')).not.toBeNull();
+    fireEvent.pointerMove(handle(), { pointerId: 20, clientX: 400, clientY: 5 });
+    fireEvent.pointerUp(handle(), { pointerId: 20, clientX: 400, clientY: 5 });
+    expect(order()).toEqual(['584', '305', '999']);
+    expect(document.querySelector('[data-planning-board-pane-ghost]')).toBeNull();
+    view.unmount();
+    render(<PlanningBoardResourceView {...props} />);
+    expect(order()).toEqual(['584', '305', '999']);
+  });
+
+  it.each(['short', 'early-move', 'cancel', 'capture-lost', 'blur', 'outside'] as const)('%sでは保存せずゴーストも残さない', (mode) => {
+    render(<PlanningBoardResourceView {...props} />);
+    fireEvent.pointerDown(handle(), { pointerId: 21, button: 0, clientX: 5, clientY: 5 });
+    if (mode === 'early-move') fireEvent.pointerMove(handle(), { pointerId: 21, clientX: 40, clientY: 5 });
+    if (mode !== 'short') act(() => vi.advanceTimersByTime(450));
+    if (mode === 'cancel') fireEvent.pointerCancel(handle(), { pointerId: 21 });
+    if (mode === 'capture-lost') fireEvent.lostPointerCapture(handle(), { pointerId: 21 });
+    if (mode === 'blur') fireEvent.blur(window);
+    if (mode === 'outside') vi.mocked(document.elementsFromPoint).mockReturnValue([]);
+    fireEvent.pointerUp(handle(), { pointerId: 21, clientX: 400, clientY: 5 });
+    act(() => vi.advanceTimersByTime(500));
+    expect(order()).toEqual(props.resources);
+    expect(document.querySelector('[data-planning-board-pane-ghost]')).toBeNull();
+    expect(localStorage.getItem('kiosk.planning-board.resource-panes:site:grinding')).toBeNull();
+  });
+
+  it('移動中のpointermoveは1フレームにまとめ、アンマウントで後始末する', () => {
+    const view = render(<PlanningBoardResourceView {...props} />);
+    fireEvent.pointerDown(handle(), { pointerId: 22, button: 0, clientX: 5, clientY: 5 });
+    act(() => vi.advanceTimersByTime(450));
+    const frame = vi.spyOn(window, 'requestAnimationFrame');
+    fireEvent.pointerMove(handle(), { pointerId: 22, clientX: 40, clientY: 5 });
+    fireEvent.pointerMove(handle(), { pointerId: 22, clientX: 50, clientY: 5 });
+    expect(frame).toHaveBeenCalledTimes(1);
+    view.unmount();
+    expect(document.querySelector('[data-planning-board-pane-ghost]')).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('保存順はスコープごとに分離し、新規資源は末尾へ、復帰資源は元の位置へ戻す', () => {
+    localStorage.setItem('kiosk.planning-board.resource-panes:site:grinding', JSON.stringify(['584', '305', '999']));
+    const view = render(<PlanningBoardResourceView {...props} />);
+    expect(order()).toEqual(['584', '305', '999']);
+    view.rerender(<PlanningBoardResourceView {...props} items={[]} resources={['305', '999', '777']} />);
+    expect(order()).toEqual(['305', '999', '777']);
+    view.rerender(<PlanningBoardResourceView {...props} />);
+    expect(order()).toEqual(['584', '305', '999']);
+    view.rerender(<PlanningBoardResourceView {...props} preferenceScope="site:cutting" />);
+    expect(order()).toEqual(props.resources);
+  });
+
+  it('壊れた保存データや保存不可でも表示とキーボード並べ替えを継続できる', () => {
+    localStorage.setItem('kiosk.planning-board.resource-panes:site:grinding', '{broken');
+    render(<PlanningBoardResourceView {...props} />);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+    fireEvent.keyDown(handle(), { key: 'ArrowRight', altKey: true });
+    expect(order()).toEqual(['584', '305', '999']);
   });
 });
