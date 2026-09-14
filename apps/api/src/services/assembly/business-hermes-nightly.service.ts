@@ -15,13 +15,14 @@ import { exportBusinessHermesSources } from './business-hermes-source-export.js'
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
+import { InferenceDeferredError } from '../inference/ports/text-completion.port.js';
 
 type Source = { kind: string; id: string; sha256: string };
 type Case = { fact?: SourceFact; question: string; queries: string[]; answer: string; sources: Source[];
   review: { verdict: string; reviewer: string; reason: string; reviewedAt: string } };
 type Event = { id: string; question: string; canonical: string | null; answer: string; sources: Source[]; verdict: string };
 type State = { baseCatalogueRelative: string; baseCatalogueSha256: string; catalogue: {version: number; cases: Case[]}; events: Event[]; running: boolean };
-type Report = { status: string; runId: string; baselineRegression?: boolean; deterioratingTrend?: boolean; liveSlower?: boolean; preparationFailed?: number; activated?: boolean };
+type Report = { status: string; runId: string; baselineRegression?: boolean; deterioratingTrend?: boolean; liveSlower?: boolean; preparationFailed?: number; activated?: boolean; preparedDocuments?: number };
 
 export function nightlyTimings(diagnostics: unknown[]) {
   const times = diagnostics.flatMap(value => Array.isArray(value) ? value : []).filter(d => d?.kind === 'business-hermes-learning-v1'
@@ -47,6 +48,7 @@ export function composeSourceQuotes(payload: unknown, units: Record<string, stri
 
 async function modelJson(completion: TextCompletionPort, system: string, content: string, signal: AbortSignal) {
   const response = await completion.complete({ useCase: 'business_hermes', maxTokens: 650, temperature: 0,
+    background: env.BUSINESS_HERMES_BACKGROUND_ENABLED === 'true',
     enableThinking: false, jsonOutput: true, signal: AbortSignal.any([signal, AbortSignal.timeout(45_000)]),
     messages: [{ role: 'system', content: system }, { role: 'user', content }] });
   return { value: JSON.parse(response.rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')), model: response.model };
@@ -97,7 +99,6 @@ export class BusinessHermesNightlyService {
     const root = env.BUSINESS_HERMES_NIGHTLY_DATA_DIR!;
     const runId = randomUUID();
     const job = path.join(root, 'jobs', runId);
-    await mkdir(job, { recursive: true, mode: 0o700 });
     try {
       const state = await this.request<State>('state', {}, signal);
       if (state.running) return { runId, status: 'already_running' };
@@ -112,6 +113,9 @@ export class BusinessHermesNightlyService {
       const attemptsText = await optionalText(path.join(root, 'document-attempts.json'));
       const attempts: DocumentAttempts = attemptsText === null ? {} : documentAttemptsSchema.parse(JSON.parse(attemptsText));
       const documents = selectNightDocuments(sources.records, state.catalogue.cases, state.events, attempts, Date.now());
+      if (env.BUSINESS_HERMES_BACKGROUND_ENABLED === 'true' && !documents.length && !state.events.length) {
+        return { runId, status: 'no_work' };
+      }
       const blocked = state.events.filter(e => e.verdict === 'unhelpful');
       const fingerprints: Record<string, string | null> = {};
       const records = new Map<string, Record<string, unknown>>();
@@ -135,6 +139,12 @@ export class BusinessHermesNightlyService {
       // Negative user feedback remains authoritative, even when an automatic judge passes.
       const denied = (answer: string, refs: Source[]) => blocked.some(e => e.answer === answer && sourceFingerprint(e.sources) === sourceFingerprint(refs));
       const cases = structuredClone(state.catalogue.cases).filter(c => current(c.sources) && !denied(c.answer, c.sources));
+      const events = state.events.filter(e => e.verdict !== 'unhelpful' && e.sources.length === 1 && e.canonical && e.canonical.length <= 100 && !overlapsNightQuestion(e.question, protectedQuestions) && !overlapsNightQuestion(e.canonical, protectedQuestions) && current(e.sources))
+        .filter(e => !cases.some(c => c.question === e.canonical && (c.fact || c.queries.includes(e.question)))).slice(0, 8);
+      if (env.BUSINESS_HERMES_BACKGROUND_ENABLED === 'true' && !events.length && !documents.length) {
+        return { runId, status: 'no_work' };
+      }
+      await mkdir(job, { recursive: true, mode: 0o700 });
       // Freeze evidence and factual candidates before model generation; no test questions enter prompts.
       // Disputed legacy answers remain subject to the serving veto; this path must not delete them.
       const factCases = structuredClone(state.catalogue.cases).filter(c => current(c.sources));
@@ -152,9 +162,9 @@ export class BusinessHermesNightlyService {
       let held = false;
       const decisions: Array<{eventId: string; verdict: string; reason?: string; origin?: string}> = [];
       try {
-        const events = state.events.filter(e => e.verdict !== 'unhelpful' && e.sources.length === 1 && e.canonical && e.canonical.length <= 100 && !overlapsNightQuestion(e.question, protectedQuestions) && !overlapsNightQuestion(e.canonical, protectedQuestions) && current(e.sources))
-          .filter(e => !cases.some(c => c.question === e.canonical && (c.fact || c.queries.includes(e.question)))).slice(0, 8);
-        if ((events.length || documents.length) && runtime) { await runtime.ensureReady('business_hermes'); held = true; }
+        if ((events.length || documents.length) && runtime && env.BUSINESS_HERMES_BACKGROUND_ENABLED !== 'true') {
+          await runtime.ensureReady('business_hermes'); held = true;
+        }
         const completion = (events.length || documents.length) ? getInferenceRuntime().createTextCompletionPort() : null;
         // Only source evidence enters this prompt. Evaluation questions/answers never do.
         for (const selected of documents) {
@@ -180,6 +190,7 @@ export class BusinessHermesNightlyService {
                 sources: [{ kind: selected.document.kind, id: selected.document.id, sha256: fingerprints[selected.key]! }] });
             }
           } catch (error) {
+            if (error instanceof InferenceDeferredError) throw error;
             signal.throwIfAborted();
             decisions.push({ eventId: selected.key, origin: 'document', verdict: 'failed', reason: 'generation_failed' });
           }
@@ -213,7 +224,10 @@ export class BusinessHermesNightlyService {
               cases.push(existing);
             }
             existing.queries.push(event.question);
-          } catch (error) { signal.throwIfAborted(); decisions.push({ eventId: event.id, verdict: 'failed' }); }
+          } catch (error) {
+            if (error instanceof InferenceDeferredError) throw error;
+            signal.throwIfAborted(); decisions.push({ eventId: event.id, verdict: 'failed' });
+          }
           logger.info({ runId, stage: 'candidate-review', completed: decisions.length }, 'Hermes nightly progress');
         }
       } finally { if (held && runtime) await runtime.release('business_hermes'); }
@@ -238,10 +252,11 @@ export class BusinessHermesNightlyService {
         if (['regression', 'slower', 'failed', 'interrupted', 'awaiting_holdout'].includes(result.status) || result.baselineRegression || result.deterioratingTrend || result.liveSlower || result.preparationFailed) {
           await this.alert(result.status === 'awaiting_holdout' ? '独立評価問題が未設定' : result.preparationFailed ? '候補作成の一部が失敗' : result.liveSlower ? '日中の回答時間が悪化' : result.deterioratingTrend ? '悪化傾向' : result.baselineRegression ? '基準からの低下' : result.status, runId);
         }
-        return result;
+        return { ...result, preparedDocuments: documents.length };
       }
     } catch (error) {
       await this.request('cancel', { runId }, AbortSignal.timeout(10_000)).catch(() => undefined);
+      if (error instanceof InferenceDeferredError) return { runId, status: 'deferred' };
       await this.alert(signal.aborted ? '処理中断' : '検証失敗', runId);
       throw error;
     }

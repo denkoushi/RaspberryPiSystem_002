@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  env: { BUSINESS_HERMES_NIGHTLY_DATA_DIR: '', BUSINESS_HERMES_ANSWER_CACHE_URL: 'http://cache.test', BUSINESS_HERMES_ANSWER_CACHE_TOKEN: 'test-token' },
+  env: { BUSINESS_HERMES_BACKGROUND_ENABLED: 'false', BUSINESS_HERMES_NIGHTLY_DATA_DIR: '', BUSINESS_HERMES_ANSWER_CACHE_URL: 'http://cache.test', BUSINESS_HERMES_ANSWER_CACHE_TOKEN: 'test-token' },
   complete: vi.fn(), detail: vi.fn(), export: vi.fn(), ready: vi.fn(), release: vi.fn(), fetch: vi.fn()
 }));
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
@@ -16,6 +16,7 @@ vi.mock('../inference/inference-runtime.js', () => ({ getInferenceRuntime: () =>
 vi.mock('../inference/runtime/get-local-llm-runtime-controller.js', () => ({ getLocalLlmRuntimeController: () => ({ ensureReady: mocks.ready, release: mocks.release }) }));
 vi.mock('node:timers/promises', () => ({ setTimeout: async () => undefined }));
 
+import { InferenceDeferredError } from '../inference/ports/text-completion.port.js';
 import { BusinessHermesNightlyService } from './business-hermes-nightly.service.js';
 import { sourceDocument } from './business-hermes-source-adapters.js';
 
@@ -27,6 +28,7 @@ describe('Nightly preparation with no new conversations', () => {
   let state: { baseCatalogueRelative: string; baseCatalogueSha256: string; catalogue: { version: number; cases: unknown[] }; events: unknown[]; running: boolean };
   beforeEach(async () => {
     vi.clearAllMocks();
+    mocks.env.BUSINESS_HERMES_BACKGROUND_ENABLED = 'false';
     mocks.complete.mockReset();
     mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR = await mkdtemp(path.join(os.tmpdir(), 'hermes-document-test-'));
     await writeFile(path.join(mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR, 'checks.json'), JSON.stringify({ version: 1,
@@ -51,6 +53,21 @@ describe('Nightly preparation with no new conversations', () => {
     const read = async (name: string) => JSON.parse(await readFile(path.join(root, 'jobs', jobs[0]!, name), 'utf8'));
     return { candidate: await read('candidate.json'), input: await read('input.json'), facts: await read('fact-candidate.json') };
   }
+  it('defers background work without consuming the document checkpoint or starting DGX', async () => {
+    mocks.env.BUSINESS_HERMES_BACKGROUND_ENABLED = 'true';
+    mocks.complete.mockReset().mockRejectedValue(new InferenceDeferredError());
+    expect(await new BusinessHermesNightlyService().run(new AbortController().signal)).toMatchObject({ status: 'deferred' });
+    expect(mocks.ready).not.toHaveBeenCalled();
+    expect(mocks.complete.mock.calls[0]![0]).toMatchObject({ background: true });
+    await expect(readFile(path.join(mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR, 'document-attempts.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+  it('uses no inference when background source work is empty', async () => {
+    mocks.env.BUSINESS_HERMES_BACKGROUND_ENABLED = 'true';
+    mocks.export.mockResolvedValue({ version: 1, records: [] });
+    expect(await new BusinessHermesNightlyService().run(new AbortController().signal)).toMatchObject({ status: 'no_work' });
+    expect(mocks.complete).not.toHaveBeenCalled();
+    expect(mocks.ready).not.toHaveBeenCalled();
+  });
   it('stages a source-quoted answer and releases the lease; evaluation stays out of prompts', async () => {
     await new BusinessHermesNightlyService().run(new AbortController().signal);
     const { candidate, input } = await prepared();

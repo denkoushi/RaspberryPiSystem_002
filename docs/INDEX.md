@@ -2034,3 +2034,5 @@ APIの概要と詳細。
 - [Hermes source-fact adoption](plans/hermes-source-fact-adoption.md)
 - [Hermes reviewed answer reuse](plans/hermes-answer-cache.md) — GPTCache question suggestions and source-checked answer reuse.
 - [Hermes question recipes and prefetch](plans/hermes-question-prefetch.md) — isolated speculative answers and validation plan.
+
+- [Hermes spare-capacity preparation](plans/hermes-background-admission.md)

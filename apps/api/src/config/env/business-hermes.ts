@@ -36,5 +36,6 @@ export const businessHermesEnvShape = {
   BUSINESS_HERMES_ANSWER_CACHE_URL: optionalHermesBaseUrl,
   BUSINESS_HERMES_ANSWER_CACHE_TOKEN: optionalTrimmed,
   BUSINESS_HERMES_NIGHTLY_ENABLED: z.enum(['true', 'false']).default('false'),
+  BUSINESS_HERMES_BACKGROUND_ENABLED: z.enum(['true', 'false']).default('false'),
   BUSINESS_HERMES_NIGHTLY_DATA_DIR: optionalTrimmed,
 } as const;
