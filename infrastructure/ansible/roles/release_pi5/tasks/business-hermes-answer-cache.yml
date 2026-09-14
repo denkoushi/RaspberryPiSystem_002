@@ -107,6 +107,7 @@
     - {key: BUSINESS_HERMES_ANSWER_CACHE_TOKEN, value: "{{ (business_hermes_chat_mcp_api_key ~ ':business-answer-cache-v1') | hash('sha256') }}"}
     - {key: BUSINESS_HERMES_ANSWER_CACHE_IMAGE, value: "{{ release_pi5_answer_cache_image }}"}
     - {key: BUSINESS_HERMES_NIGHTLY_ENABLED, value: 'true'}
+    - {key: BUSINESS_HERMES_BACKGROUND_ENABLED, value: "{{ business_hermes_background_enabled | default(false) | bool | ternary('true', 'false') }}"}
     - {key: BUSINESS_HERMES_NIGHTLY_DATA_DIR, value: /app/storage/hermes-search/answer-cache}
   no_log: true
 
