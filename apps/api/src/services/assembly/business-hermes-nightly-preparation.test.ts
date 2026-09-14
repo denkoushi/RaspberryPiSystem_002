@@ -102,7 +102,9 @@ describe('Nightly preparation with no new conversations', () => {
     await rm(path.join(mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR, 'holdout.json'));
     mocks.fetch.mockImplementation(async (url: URL) => new Response(JSON.stringify({ result:
       url.pathname.endsWith('/state') ? state : url.pathname.endsWith('/status') ? { status, activated: false } : { started: true } })));
-    expect(await new BusinessHermesNightlyService().run(new AbortController().signal)).toMatchObject({status});
+    const result = await new BusinessHermesNightlyService().run(new AbortController().signal);
+    expect(result).toMatchObject({status});
+    if (status === 'deferred') expect(result).not.toHaveProperty('documentProgress');
     await expect(readFile(path.join(mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR, 'document-attempts.json'))).rejects.toMatchObject({code: 'ENOENT'});
   });
   it('defers background work without consuming the document checkpoint or starting DGX', async () => {
