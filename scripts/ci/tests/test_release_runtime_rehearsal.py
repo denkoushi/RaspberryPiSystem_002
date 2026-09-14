@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -25,6 +26,44 @@ def job_block(job: str) -> str:
 
 
 class ReleaseRuntimeRehearsalTests(unittest.TestCase):
+    def test_scheduler_waits_for_readiness_and_reports_a_bounded_failure(self) -> None:
+        start = SCRIPT.index('declare -a SCHEDULER_ROLES=()')
+        end = SCRIPT.index("FAILURE_STAGE='web-health'", start)
+        probe = SCRIPT[start:end]
+        for succeeds in (True, False):
+            with self.subTest(succeeds=succeeds), tempfile.TemporaryDirectory() as directory:
+                harness = r"""
+set -euo pipefail
+API_BLUE=blue
+API_GREEN=green
+TEMP_DIR="$1"
+docker() {
+  local name="$2" count=0
+  [[ ! -f "$TEMP_DIR/$name.count" ]] || count="$(cat "$TEMP_DIR/$name.count")"
+  count=$((count + 1))
+  echo "$count" > "$TEMP_DIR/$name.count"
+  if [[ "$name" == blue && "$count" == 1 ]]; then
+    echo 'not yet connected' >&2
+    return 1
+  fi
+  if [[ "$name" == blue ]]; then echo leader; else echo standby; fi
+}
+sleep() {
+  if [[ "$2MODE" == timeout ]]; then SECONDS=$((SECONDS + 181)); fi
+}
+""".replace('$2MODE', 'success' if succeeds else 'timeout')
+                result = subprocess.run(
+                    ['bash', '-c', harness + probe, 'probe-test', directory],
+                    capture_output=True, text=True, timeout=10, check=False,
+                )
+                if succeeds:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual((Path(directory) / 'blue.count').read_text().strip(), '2')
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('container=blue', result.stderr)
+                    self.assertIn('not yet connected', result.stderr)
+
     def test_exact_main_cannot_shorten_the_bounded_monitor(self) -> None:
         environment = os.environ.copy()
         environment.update(

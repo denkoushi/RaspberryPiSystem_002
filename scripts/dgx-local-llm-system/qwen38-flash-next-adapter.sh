@@ -151,6 +151,9 @@ EXTRA_DOCKER_ARGS="${BLUE_EXTRA_DOCKER_ARGS:-${TRTLLM_EXTRA_DOCKER_ARGS:-}}"
 if [[ -n "${EXTRA_DOCKER_ARGS}" ]]; then
   EXTRA_DOCKER_ARGS+=" "
 fi
+META_PATCH_PATH="${HOME}/.cache/vllm/business-patches/qwen38-gdn-meta.py"
+python3 "${SCRIPT_DIR}/qwen38_meta_patch.py" "${IMAGE}" "${META_PATCH_PATH}"
+EXTRA_DOCKER_ARGS+="-v ${META_PATCH_PATH}:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:ro "
 EXTRA_DOCKER_ARGS+="-e VLLM_USE_V2_MODEL_RUNNER=1"
 cd "${RECIPE_DIR}"
 if env \
