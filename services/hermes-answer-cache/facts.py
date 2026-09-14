@@ -41,10 +41,8 @@ def reconstruct(packet):
     r = json.loads(detail['content'][0]['text'])
     if (r.get('kind'), r.get('id')) != (ref['kind'], ref['id']):
         raise ValueError('Source fact identity mismatch')
-    if not label(r.get('partNumber')):
-        return None
     if r['kind'] == 'nonconformity':
-        if not label(r.get('nonconformityNo')) or r.get('provenance', {}).get('activeLatest') is not True:
+        if 'partNumber' not in r or (r.get('partNumber') is not None and not label(r['partNumber'])) or not label(r.get('nonconformityNo')) or r.get('provenance', {}).get('activeLatest') is not True:
             return None
         fields = [('condition', '不適合内容'), ('remarks', '備考'), ('disposition', '処置内容'), ('correctiveContent', '個別是正内容'),
                   ('partName', '品名'), ('machineName', '機械名'), ('originDepartmentCode', '起因部署コード'),
@@ -52,13 +50,17 @@ def reconstruct(packet):
         if (any(r.get(k) is not None and not isinstance(r[k], str) for k, _ in fields)
                 or not any(text(r.get(k)) for k, _ in fields[:4])):
             return None
-        scope = f"不適合記録{r['nonconformityNo']}・図番{r['partNumber']}"
+        scope = f"不適合記録{r['nonconformityNo']}"
+        if r.get('partNumber') is None:
+            fields.insert(0, ('partNumber', '図番'))
+        else:
+            scope += f"・図番{r['partNumber']}"
         subject = '記録内容'
         answer = scope + '\n過去記録の引用であり、現在の作業指示ではありません。\n' + '\n'.join(
             name + '：' + (r[k] if text(r.get(k)) else '未記録') for k, name in fields)
     elif r['kind'] == 'work_instruction':
         rows = r.get('rows')
-        if r.get('public') is not True or not label(r.get('shootingTarget')) or not isinstance(rows, list) or len(rows) != 1:
+        if not label(r.get('partNumber')) or r.get('public') is not True or not label(r.get('shootingTarget')) or not isinstance(rows, list) or len(rows) != 1:
             return None
         row = rows[0]
         steps = row.get('steps', [])

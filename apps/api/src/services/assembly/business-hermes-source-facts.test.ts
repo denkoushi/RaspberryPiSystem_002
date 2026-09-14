@@ -18,6 +18,13 @@ describe('Source-exact fact preparation', () => {
     expect(fact.answer).toContain('現在の作業指示ではありません');
     expect(fact.queries).toEqual([fact.question]);
   });
+  it('uses the unique record number when the source explicitly has no drawing number', () => {
+    const fact = prepare({ ...record, partNumber: null })!;
+    expect(fact.question).toBe('不適合記録123の記録内容は？');
+    expect(fact.answer).toContain('図番：未記録');
+    expect(fact.answer).toContain('不適合内容：上限80℃。設計へ相談してから加工。');
+    expect(prepare({ ...record, partNumber: null, nonconformityNo: null })).toBeNull();
+  });
   it('rejects stale, unscoped, oversized and invalid field sources', () => {
     for (const r of [{ ...record, provenance: { activeLatest: false } }, { ...record, partNumber: '' },
       { ...record, condition: '長'.repeat(4001) }, { ...record, condition: 80 }]) expect(prepare(r)).toBeNull();
