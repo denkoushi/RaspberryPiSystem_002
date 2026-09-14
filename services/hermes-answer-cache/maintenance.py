@@ -278,7 +278,8 @@ if __name__ == '__main__':
         try:
             print(json.dumps(maintain(root, args.run_id, args.model_dir)))
         except Exception as error:
+            from embedding import EmbeddingDeferred
             atomic_json(root / 'jobs' / args.run_id / 'result.json',
-                        {'runId': args.run_id, 'status': 'failed', 'finishedAt': time.time(),
+                        {'runId': args.run_id, 'status': 'deferred' if isinstance(error, EmbeddingDeferred) else 'failed', 'finishedAt': time.time(),
                          'reason': str(error)[:300], 'activated': False})
             raise

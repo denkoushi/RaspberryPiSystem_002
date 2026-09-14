@@ -6,6 +6,7 @@
       - release_sha in release_pi5_answer_cache_image
       - release_pi5_answer_cache_image is match('^ghcr.io/denkoushi/raspisys-hermes-answer-cache:[0-9a-f]{40}@sha256:[0-9a-f]{64}$')
       - business_hermes_chat_mcp_api_key | length >= 16
+      - business_hermes_chat_dgx_token | length >= 16
   no_log: true
 
 - name: Inspect the previous answer cache service
@@ -109,11 +110,13 @@
     - {key: BUSINESS_HERMES_NIGHTLY_ENABLED, value: 'true'}
     - {key: BUSINESS_HERMES_BACKGROUND_ENABLED, value: "{{ business_hermes_background_enabled | default(false) | bool | ternary('true', 'false') }}"}
     - {key: BUSINESS_HERMES_NIGHTLY_DATA_DIR, value: /app/storage/hermes-search/answer-cache}
+    - {key: ANSWER_CACHE_EMBEDDING_ORIGIN, value: "{{ business_hermes_chat_dgx_base_url | default('http://100.118.82.72:38081') }}"}
+    - {key: ANSWER_CACHE_EMBEDDING_TOKEN, value: "{{ business_hermes_chat_dgx_token }}"}
   no_log: true
 
 - name: Bind immutable cache image and private authentication to Compose
   ansible.builtin.set_fact:
-    release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'BUSINESS_HERMES_ANSWER_CACHE_IMAGE': release_pi5_answer_cache_image, 'BUSINESS_HERMES_ANSWER_CACHE_TOKEN': (business_hermes_chat_mcp_api_key ~ ':business-answer-cache-v1') | hash('sha256')}) }}"
+    release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'BUSINESS_HERMES_ANSWER_CACHE_IMAGE': release_pi5_answer_cache_image, 'BUSINESS_HERMES_ANSWER_CACHE_TOKEN': (business_hermes_chat_mcp_api_key ~ ':business-answer-cache-v1') | hash('sha256'), 'ANSWER_CACHE_EMBEDDING_ORIGIN': business_hermes_chat_dgx_base_url | default('http://100.118.82.72:38081'), 'ANSWER_CACHE_EMBEDDING_TOKEN': business_hermes_chat_dgx_token}) }}"
     release_pi5_answer_cache_started: true
   no_log: true
 

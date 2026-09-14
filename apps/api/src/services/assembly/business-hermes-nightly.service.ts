@@ -285,6 +285,7 @@ export class BusinessHermesNightlyService {
         await delay(5000, undefined, { signal });
         const result = await this.request<Report>('status', { runId }, signal);
         if (result.status === 'running') continue;
+        if (result.status === 'deferred') return result;
         if (['regression', 'slower', 'failed', 'interrupted', 'awaiting_holdout'].includes(result.status) || result.baselineRegression || result.deterioratingTrend || result.liveSlower || result.preparationFailed) {
           await this.alert(result.status === 'awaiting_holdout' ? '独立評価問題が未設定' : result.preparationFailed ? '候補作成の一部が失敗' : result.liveSlower ? '日中の回答時間が悪化' : result.deterioratingTrend ? '悪化傾向' : result.baselineRegression ? '基準からの低下' : result.status, runId);
         }
