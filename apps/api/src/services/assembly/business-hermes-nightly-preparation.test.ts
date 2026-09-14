@@ -61,6 +61,25 @@ describe('Nightly preparation with no new conversations', () => {
     expect(mocks.release).toHaveBeenCalledWith('business_hermes');
     expect(mocks.complete).toHaveBeenCalledTimes(3);
   });
+  it('freezes factual evidence before model generation without giving the model evaluation questions', async () => {
+    const published = { ...record, public: true, rows: [{ ...record.rows[0], sourceVersionDate: '2026-09-01', publication: { publishedVersionId: 'v1' } }] };
+    mocks.detail.mockResolvedValue({ content: [{ type: 'text', text: JSON.stringify(published) }] });
+    mocks.complete.mockReset().mockImplementation(async () => {
+      const root = mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR;
+      const [id] = await readdir(path.join(root, 'jobs'));
+      const evidence = JSON.parse(await readFile(path.join(root, 'jobs', id!, 'fact-evidence.json'), 'utf8'));
+      const facts = JSON.parse(await readFile(path.join(root, 'jobs', id!, 'fact-candidate.json'), 'utf8'));
+      expect(evidence.records).toHaveLength(1);
+      expect(Object.keys(evidence.records[0].source).sort()).toEqual(['id', 'kind', 'sha256']);
+      expect(facts.cases[0].answer).toContain('設計へ相談してから加工。');
+      return json({ questions: [] });
+    });
+    await new BusinessHermesNightlyService().run(new AbortController().signal);
+    const { input } = await prepared();
+    expect(input.factEvidenceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(input.factCandidateSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(mocks.complete.mock.calls)).not.toContain('記載本文を確認したい');
+  });
   it('does not admit an answer when the reviewer reports omitted conditions', async () => {
     mocks.complete.mockReset().mockResolvedValueOnce(json({ questions: [question] }))
       .mockResolvedValueOnce(json({ quote_ids: ['work_instruction:one#/steps/0/text'] }))

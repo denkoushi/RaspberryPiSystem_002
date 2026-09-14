@@ -71,6 +71,10 @@ class MaintenanceRuntime:
             holdout_hash = digest(holdout_path) if holdout_path.exists() else None
             if holdout_hash != activation.get('holdoutSha256'):
                 raise ValueError('Independent holdout changed during maintenance')
+            if activation.get('factEvidenceSha256'):
+                if (digest(inside(self.root, str((job / 'fact-evidence.json').relative_to(self.root)))) != activation['factEvidenceSha256']
+                        or digest(inside(self.root, str((job / 'fact-candidate.json').relative_to(self.root)))) != activation['factCandidateSha256']):
+                    raise ValueError('Source fact preparation changed during maintenance')
             source_path = inside(self.root, activation['sources'])
             if source_path.parent != job or digest(source_path) != activation['sourceSha256']:
                 raise ValueError('Prepared source identity mismatch')
