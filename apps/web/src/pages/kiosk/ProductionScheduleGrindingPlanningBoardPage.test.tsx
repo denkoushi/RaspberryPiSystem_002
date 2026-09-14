@@ -987,42 +987,48 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('納期変更はPUT完了前に詳細表示へ反映し、保存中は再編集を止める', async () => {
-    let resolveDue: ((value: { scopeRevision: string }) => void) | undefined;
-    const detail = {
-      fseiban: '26-1041',
-      machineName: null,
-      dueDate: '2026-09-15',
-      processingTypeDueDates: [],
-      parts: []
-    };
-    mocks.dueDetail.mockReturnValue({
-      data: {
-        original: detail,
-        alternate: detail,
-        sourceGenerationToken: 'source-due-1',
-        scopeRevision: 'scope-due-1'
-      },
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn()
-    });
-    mocks.dueScope.mockImplementationOnce(() => new Promise((resolve) => {
-      resolveDue = resolve;
-    }));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-11T00:00:00Z'));
+    try {
+      let resolveDue: ((value: { scopeRevision: string }) => void) | undefined;
+      const detail = {
+        fseiban: '26-1041',
+        machineName: null,
+        dueDate: '2026-09-15',
+        processingTypeDueDates: [],
+        parts: []
+      };
+      mocks.dueDetail.mockReturnValue({
+        data: {
+          original: detail,
+          alternate: detail,
+          sourceGenerationToken: 'source-due-1',
+          scopeRevision: 'scope-due-1'
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn()
+      });
+      mocks.dueScope.mockImplementationOnce(() => new Promise((resolve) => {
+        resolveDue = resolve;
+      }));
+      render(<ProductionScheduleGrindingPlanningBoardPage />);
 
-    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
-    const drawer = screen.getByRole('dialog', { name: '製番登録' });
-    fireEvent.click(within(drawer).getByRole('button', { name: '製番26-1041の納期詳細を開く' }));
-    const dueButton = screen.getByRole('button', { name: /納期日:/ });
-    const before = dueButton.textContent;
-    fireEvent.click(dueButton);
-    fireEvent.click(within(screen.getByRole('dialog', { name: '納期日' })).getByRole('button', { name: '明日' }));
+      fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+      const drawer = screen.getByRole('dialog', { name: '製番登録' });
+      fireEvent.click(within(drawer).getByRole('button', { name: '製番26-1041の納期詳細を開く' }));
+      const dueButton = screen.getByRole('button', { name: /納期日:/ });
+      const before = dueButton.textContent;
+      fireEvent.click(dueButton);
+      fireEvent.click(within(screen.getByRole('dialog', { name: '納期日' })).getByRole('button', { name: '明日' }));
 
-    await waitFor(() => expect(mocks.dueScope).toHaveBeenCalledTimes(1));
-    expect(dueButton.textContent).not.toBe(before);
-    expect(dueButton).toBeDisabled();
-    resolveDue?.({ scopeRevision: 'scope-due-2' });
+      await waitFor(() => expect(mocks.dueScope).toHaveBeenCalledTimes(1));
+      expect(dueButton.textContent).not.toBe(before);
+      expect(dueButton).toBeDisabled();
+      resolveDue?.({ scopeRevision: 'scope-due-2' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('元割当の納期詳細は参照表示にして日付変更を無効にする', () => {
