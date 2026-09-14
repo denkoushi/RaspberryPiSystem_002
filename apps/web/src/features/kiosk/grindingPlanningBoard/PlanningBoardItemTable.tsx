@@ -50,7 +50,7 @@ type PlanningBoardItemTableRowProps = {
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   onSpecialDueClick?: (item: GrindingPlanningBoardItem) => void;
   specialDueMode: GrindingPlanningBoardSpecialDueKind | null;
-  nowMs: number;
+  specialDueExpired: boolean;
   showRank: boolean;
   showSeiban: boolean;
   seibanRank?: number;
@@ -80,7 +80,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   resourceDragDisabled,
   onResourcePointerDown,
   specialDueMode,
-  nowMs
+  specialDueExpired
 }: PlanningBoardItemTableRowProps) {
   const currentResource = resolveGrindingPlanningBoardResource(item, allocation);
   const currentDue = resolveGrindingPlanningBoardDueDate(item, allocation);
@@ -91,7 +91,6 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
     : '時間未定';
   const machineName = normalizeMachineName(item.machineName);
   const specialDue = item.specialDue;
-  const specialDueExpired = specialDue != null && new Date(specialDue.expiresAt).getTime() <= nowMs;
   const specialDueLabel = specialDue?.kind === 'today' ? '今日中' : specialDue?.kind === 'overnight' ? '朝まで' : null;
   const resourceDragAllowed = Boolean(onResourcePointerDown) && !resourceDragDisabled && !disabled && allocation !== 'original' && !item.isCompleted;
   const rankPickerPanelId = useId();
@@ -358,7 +357,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
                 onRankChange={onRankChange}
                 onSpecialDueClick={onSpecialDueClick}
                 specialDueMode={specialDueMode}
-                nowMs={resolvedNowMs}
+                specialDueExpired={item.specialDue != null && new Date(item.specialDue.expiresAt).getTime() <= resolvedNowMs}
                 showRank={showRank}
                 showSeiban={showSeiban}
                 seibanRank={seibanRankByFseiban?.get(item.fseiban)}

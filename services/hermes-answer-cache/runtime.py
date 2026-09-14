@@ -67,6 +67,10 @@ class MaintenanceRuntime:
             current, _ = self.paths()
             if digest(current) != activation['baseCatalogueSha256'] or digest(self.root / 'checks.json') != activation['referenceSha256']:
                 raise ValueError('Current catalogue or protected checks changed during maintenance')
+            holdout_path = self.root / 'holdout.json'
+            holdout_hash = digest(holdout_path) if holdout_path.exists() else None
+            if holdout_hash != activation.get('holdoutSha256'):
+                raise ValueError('Independent holdout changed during maintenance')
             source_path = inside(self.root, activation['sources'])
             if source_path.parent != job or digest(source_path) != activation['sourceSha256']:
                 raise ValueError('Prepared source identity mismatch')

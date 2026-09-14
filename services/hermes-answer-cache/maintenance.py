@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import os
+import unicodedata
 import time
 from pathlib import Path
 
@@ -36,13 +37,18 @@ def evaluate(cache, checks, valid_sources):
         else:
             references = {(s['kind'], s['id']) for s in answer['sources']}
             identity_ok = (expected['kind'], expected['id']) in references
-            text_ok = all(fragment in answer['answer'] for fragment in case.get('requiredFragments', []))
+            text_ok = (all(fragment in answer['answer'] for fragment in case.get('requiredFragments', []))
+                       and not any(fragment in answer['answer'] for fragment in case.get('forbiddenFragments', [])))
             verdict = 'correct' if identity_ok and text_ok else 'wrong'
-        rows.append({'id': case['id'], 'verdict': verdict, 'elapsedMs': elapsed})
+        rows.append({'id': case['id'], 'verdict': verdict, 'elapsedMs': elapsed, 'answerable': expected is not None})
     times = sorted(row['elapsedMs'] for row in rows)
     return {'correct': sum(r['verdict'] == 'correct' for r in rows),
             'wrong': sum(r['verdict'] == 'wrong' for r in rows), 'total': len(rows),
-            'p95Ms': times[min(len(times) - 1, int(len(times) * .95))], 'rows': rows}
+            'p95Ms': times[min(len(times) - 1, int(len(times) * .95))], 'rows': rows,
+            'boundary': 'cache-search-and-lookup-v1',
+            'answerable': sum(r['answerable'] for r in rows),
+            'answeredCorrectly': sum(r['answerable'] and r['verdict'] == 'correct' for r in rows),
+            'abstainedCorrectly': sum(not r['answerable'] and r['verdict'] == 'correct' for r in rows)}
 
 
 def decide(current, candidate):
@@ -62,6 +68,79 @@ def decide(current, candidate):
     if candidate['correct'] > current['correct'] or candidate['wrong'] < current['wrong']:
         return 'improved'
     return 'plateau'
+
+
+def normalize_question(question):
+    return ''.join(c for c in unicodedata.normalize('NFKC', question).lower() if c.isalnum())
+
+
+def overlaps_question(question, protected):
+    left = normalize_question(question)
+    grams = lambda value: {value[i:i + 3] for i in range(len(value) - 2)}
+    a = grams(left)
+    for other in protected:
+        right = normalize_question(other)
+        if left == right or (min(len(left), len(right)) >= 8 and (left in right or right in left)):
+            return True
+        b = grams(right)
+        union = a | b
+        if union and len(a & b) / len(union) >= .8:
+            return True
+    return False
+
+
+def load_checks(path, holdout=False):
+    document = json.loads(Path(path).read_text())
+    checks = document.get('cases')
+    if document.get('version') != 1 or not isinstance(checks, list) or not 4 <= len(checks) <= 200:
+        raise ValueError('Protected evaluation checks are missing or invalid')
+    if any(not isinstance(c.get('id'), str) or not c['id'] or not isinstance(c.get('question'), str)
+           or not 1 <= len(c['question']) <= 4000 for c in checks):
+        raise ValueError('Evaluation identities and questions are required')
+    if len({c['id'] for c in checks}) != len(checks) or len({normalize_question(c['question']) for c in checks}) != len(checks):
+        raise ValueError('Evaluation identities and questions must be unique')
+    for check in checks:
+        for field in ('requiredFragments', 'forbiddenFragments'):
+            fragments = check.get(field, [])
+            if not isinstance(fragments, list) or any(not isinstance(f, str) or not f for f in fragments):
+                raise ValueError('Evaluation fragments must be nonempty strings')
+        expected = check.get('expectedSource')
+        if expected is not None and (not isinstance(expected, dict) or not all(
+                isinstance(expected.get(key), str) and expected[key] for key in ('kind', 'id', 'sha256'))):
+            raise ValueError('Evaluation source is invalid')
+    if holdout:
+        if document.get('provenance') != 'human-reviewed-real-questions' or not document.get('reviewedBy') or not document.get('reviewedAt'):
+            raise ValueError('Independent holdout needs documented human review of real questions')
+        if not any(c.get('expectedSource') for c in checks) or not any(not c.get('expectedSource') for c in checks):
+            raise ValueError('Independent holdout needs answerable and abstention cases')
+        if any(c.get('expectedSource') and not c.get('requiredFragments') for c in checks):
+            raise ValueError('Independent answer checks need required source fragments')
+    return checks
+
+
+def check_question_separation(current, candidate, regression, holdout):
+    known = [q for c in current.values() for q in [c['question'], *c['queries']]]
+    if any(overlaps_question(c['question'], known + [r['question'] for r in regression]) for c in holdout):
+        raise ValueError('Holdout questions overlap the existing catalogue or regression checks')
+    protected = [c['question'] for c in regression + holdout]
+    for key, case in candidate.items():
+        old = current.get(key)
+        old_words = [old['question'], *old['queries']] if old else []
+        for wording in [case['question'], *case['queries']]:
+            if wording not in old_words and overlaps_question(wording, protected):
+                raise ValueError('Candidate question leaks protected evaluation')
+
+
+def adoption_outcome(before, after, holdout_before=None, holdout_after=None):
+    regression = decide(before, after)
+    if regression in ('regression', 'slower'):
+        return regression
+    if holdout_before is None or holdout_after is None:
+        return 'awaiting_holdout'
+    independent = decide(holdout_before, holdout_after)
+    if independent in ('regression', 'slower'):
+        return independent
+    return 'improved' if independent == 'improved' else 'plateau'
 
 
 def trend(history, current, reference):
@@ -88,12 +167,12 @@ def maintain(root, run_id, model_dir):
         raise ValueError('Catalogue changed before maintenance')
     reference_path = root / 'checks.json'
     reference_hash = digest(reference_path)
-    reference = json.loads(reference_path.read_text())
-    checks = reference['cases']
-    if reference.get('version') != 1 or not 4 <= len(checks) <= 200:
-        raise ValueError('Protected reference checks are missing or invalid')
-    if len({c['id'] for c in checks}) != len(checks):
-        raise ValueError('Reference identities must be unique')
+    checks = load_checks(reference_path)
+    holdout_path = root / 'holdout.json'
+    holdout_hash = digest(holdout_path) if holdout_path.exists() else None
+    holdout = load_checks(holdout_path, holdout=True) if holdout_hash else []
+    if payload.get('referenceSha256') != reference_hash or payload.get('holdoutSha256') != holdout_hash:
+        raise ValueError('Evaluation changed after candidate preparation began')
     current = QuestionCache(current_path, root / 'index', model_dir)
     # API writes source-only version 2 exports; prepare them away from chat requests.
     source_path = job / 'sources.json'
@@ -108,23 +187,27 @@ def maintain(root, run_id, model_dir):
         if any(valid_sources.get(s['kind'] + ':' + s['id']) != s['sha256'] for s in record['sources']):
             raise ValueError('Candidate has changed or unverified sources')
     # References themselves cannot silently become invalid or be used as training aliases.
-    for check in checks:
+    check_question_separation(current.cases, candidate.cases, checks, holdout)
+    for check in checks + holdout:
         expected = check.get('expectedSource')
         if expected and valid_sources.get(expected['kind'] + ':' + expected['id']) != expected['sha256']:
             raise ValueError('Protected reference source changed or unavailable; review required')
     before = evaluate(current, checks, valid_sources)
     after = evaluate(candidate, checks, valid_sources)
-    outcome = decide(before, after)
-    if outcome == 'plateau' and len(candidate.cases) > len(current.cases):
-        outcome = 'coverage_added'
+    holdout_before = evaluate(current, holdout, valid_sources) if holdout else None
+    holdout_after = evaluate(candidate, holdout, valid_sources) if holdout else None
+    outcome = adoption_outcome(before, after, holdout_before, holdout_after)
     history_path = root / 'history.json'
     history = json.loads(history_path.read_text()) if history_path.exists() else []
     baseline = next((r['current'] for r in history if r.get('referenceSha256') == reference_hash), before)
     baseline_regression = before['correct'] < baseline['correct'] or before['wrong'] > baseline['wrong']
     report = {'runId': run_id, 'finishedAt': time.time(), 'status': outcome,
-              'referenceSha256': reference_hash, 'current': before, 'candidate': after,
+              'referenceSha256': reference_hash, 'holdoutSha256': holdout_hash,
+              'holdout': {'current': holdout_before, 'candidate': holdout_after},
+              'catalogueGrowth': len(candidate.cases) - len(current.cases), 'current': before, 'candidate': after,
               'baselineRegression': baseline_regression, 'deterioratingTrend': trend(history, before, reference_hash),
               'sourceCount': len(sources.records), 'activated': False}
+    report['candidateDecisions'] = payload.get('decisions', [])
     report['preparationFailed'] = sum(d.get('verdict') == 'failed' for d in payload.get('decisions', []))
     live = payload.get('livePerformance', {})
     previous_live = next((r['livePerformance'] for r in reversed(history)
@@ -135,10 +218,10 @@ def maintain(root, run_id, model_dir):
                                 or live['over10sRate'] > previous_live['over10sRate'] + .1))
     # Record the exact files to switch. The request process applies this manifest
     # only after the worker exits successfully and verifies its current catalogue.
-    activation = {'baseCatalogueSha256': baseline_hash, 'referenceSha256': reference_hash,
+    activation = {'baseCatalogueSha256': baseline_hash, 'referenceSha256': reference_hash, 'holdoutSha256': holdout_hash,
                   'sources': str(source_path.relative_to(root)), 'sourceSha256': digest(source_path),
-                  'catalogue': str(candidate_path.relative_to(root)) if outcome in ('improved', 'coverage_added') else None,
-                  'catalogueSha256': digest(candidate_path) if outcome in ('improved', 'coverage_added') else None}
+                  'catalogue': str(candidate_path.relative_to(root)) if outcome == 'improved' else None,
+                  'catalogueSha256': digest(candidate_path) if outcome == 'improved' else None}
     atomic_json(job / 'activation.json', activation)
     atomic_json(job / 'result.json', report)
     atomic_json(history_path, (history + [report])[-90:])
