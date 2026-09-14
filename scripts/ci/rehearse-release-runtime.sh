@@ -276,8 +276,22 @@ for name in "$API_BLUE" "$API_GREEN"; do
 done
 declare -a SCHEDULER_ROLES=()
 for name in "$API_BLUE" "$API_GREEN"; do
-  role="$(docker exec "$name" node -e \
-    "fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal').then(async r=>{let b;try{b=await r.json()}catch{console.error('[ERROR] scheduler readiness diagnostic=invalid-json');process.exit(1);return} const o=b&&typeof b==='object'?b:{}; const s=o.scheduler&&typeof o.scheduler==='object'?o.scheduler:{}; const ready=o.ready===true?'true':'false'; const database=o.database==='ready'?'ready':o.database==='error'?'error':'invalid'; const role=['leader','standby','stopped'].includes(s.role)?s.role:'invalid'; const databaseConnection=['connected','disconnected','not-used'].includes(s.databaseConnection)?s.databaseConnection:'invalid'; if(!r.ok||ready!=='true'||database!=='ready'||s.enabled!==true||databaseConnection!=='connected'||!['leader','standby'].includes(role)){console.error('[ERROR] scheduler readiness diagnostic=status='+r.status+' ready='+ready+' database='+database+' role='+role+' databaseConnection='+databaseConnection);process.exit(1)} console.log(role)}).catch(()=>{console.error('[ERROR] scheduler readiness diagnostic=network-failed');process.exit(1)})")"
+  scheduler_deadline=$((SECONDS + 180))
+  scheduler_diagnostic="${TEMP_DIR}/scheduler-${name}.log"
+  scheduler_ready=0
+  while ((SECONDS < scheduler_deadline)); do
+    if role="$(docker exec "$name" node -e \
+    "fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal', {signal:AbortSignal.timeout(3000)}).then(async r=>{let b;try{b=await r.json()}catch{console.error('[ERROR] scheduler readiness diagnostic=invalid-json');process.exit(1);return} const o=b&&typeof b==='object'?b:{}; const s=o.scheduler&&typeof o.scheduler==='object'?o.scheduler:{}; const ready=o.ready===true?'true':'false'; const database=o.database==='ready'?'ready':o.database==='error'?'error':'invalid'; const role=['leader','standby','stopped'].includes(s.role)?s.role:'invalid'; const databaseConnection=['connected','disconnected','not-used'].includes(s.databaseConnection)?s.databaseConnection:'invalid'; if(!r.ok||ready!=='true'||database!=='ready'||s.enabled!==true||databaseConnection!=='connected'||!['leader','standby'].includes(role)){console.error('[ERROR] scheduler readiness diagnostic=status='+r.status+' ready='+ready+' database='+database+' role='+role+' databaseConnection='+databaseConnection);process.exit(1)} console.log(role)}).catch(()=>{console.error('[ERROR] scheduler readiness diagnostic=network-failed');process.exit(1)})" 2>"$scheduler_diagnostic")"; then
+      scheduler_ready=1
+      break
+    fi
+    sleep 2
+  done
+  if ((scheduler_ready == 0)); then
+    echo "[ERROR] scheduler readiness timed out: container=${name}" >&2
+    cat "$scheduler_diagnostic" >&2
+    exit 1
+  fi
   SCHEDULER_ROLES+=("$role")
 done
 [[ "$(printf '%s\n' "${SCHEDULER_ROLES[@]}" | sort | tr '\n' ' ')" == 'leader standby ' ]] \

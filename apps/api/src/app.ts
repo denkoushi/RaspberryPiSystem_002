@@ -19,6 +19,7 @@ import { SignageRenderer } from './services/signage/signage.renderer.js';
 import { SignageService } from './services/signage/index.js';
 import { probePlaywrightChromiumAvailability } from './services/signage/loan-grid/playwright/playwright-chromium-availability.js';
 import { refreshProductionScheduleOrderSplitPilotGateCache } from './services/production-schedule/order-split/production-schedule-order-split-feature.js';
+import { isCandidateValidationMode } from './bootstrap/candidate-validation.js';
 import { createSchedulerRuntimeState } from './bootstrap/scheduler-runtime-state.js';
 import { createDeployReadinessObservability } from './services/system/deploy-readiness-observability.js';
 
@@ -26,7 +27,9 @@ export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
   registerErrorHandler(app);
   registerRequestLogger(app);
-  app.decorate('schedulerRuntimeState', createSchedulerRuntimeState());
+  // Declare the expected scheduler before listen so startup cannot appear ready.
+  const schedulerEnabled = process.env['PI5_SCHEDULER_LEADER_ENABLED'] === '1' && !isCandidateValidationMode();
+  app.decorate('schedulerRuntimeState', createSchedulerRuntimeState(schedulerEnabled));
   app.decorate('deployReadinessObservability', createDeployReadinessObservability());
 
   // NOTE:
