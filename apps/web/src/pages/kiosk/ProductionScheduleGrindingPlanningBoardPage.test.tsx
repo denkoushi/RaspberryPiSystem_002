@@ -516,6 +516,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const todayButton = screen.getByRole('button', { name: '今日中', exact: true });
     const overnightButton = screen.getByRole('button', { name: '朝まで', exact: true });
     const rowA = screen.getByTestId('planning-board-item-a');
+    expect(screen.getByLabelText('朝までのアイテム件数')).toHaveTextContent('0件');
+    expect(screen.getByLabelText('今日中のアイテム件数')).toHaveTextContent('0件');
     expect(todayButton).toHaveAttribute('aria-pressed', 'false');
     expect(overnightButton).toHaveAttribute('aria-pressed', 'false');
     expect(within(rowA).queryByText('今日中')).not.toBeInTheDocument();
@@ -527,11 +529,15 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     await waitFor(() => expect(mocks.overrides).toHaveBeenCalledTimes(1));
     expect(mocks.overrides.mock.calls[0]?.[0]).toMatchObject({ items: [{ itemId: 'a', specialDue: 'today' }] });
     await waitFor(() => expect(within(rowA).getByText('今日中')).toBeInTheDocument());
+    expect(screen.getByLabelText('今日中のアイテム件数')).toHaveTextContent('1件');
+    expect(rowA).toHaveClass('outline-amber-300');
 
     fireEvent.click(rowA);
     await waitFor(() => expect(mocks.overrides).toHaveBeenCalledTimes(2));
     expect(mocks.overrides.mock.calls[1]?.[0]).toMatchObject({ items: [{ itemId: 'a', specialDue: null }] });
     await waitFor(() => expect(within(rowA).queryByText('今日中')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('今日中のアイテム件数')).toHaveTextContent('0件');
+    expect(rowA).not.toHaveClass('outline-amber-300');
 
     fireEvent.click(todayButton);
     fireEvent.click(overnightButton);
@@ -540,6 +546,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(rowA);
     await waitFor(() => expect(mocks.overrides).toHaveBeenCalledTimes(3));
     expect(mocks.overrides.mock.calls[2]?.[0]).toMatchObject({ items: [{ itemId: 'a', specialDue: 'overnight' }] });
+    await waitFor(() => expect(screen.getByLabelText('朝までのアイテム件数')).toHaveTextContent('1件'));
+    expect(screen.getByLabelText('今日中のアイテム件数')).toHaveTextContent('0件');
   });
 
   it('成功通知は2.5秒で消え、後発通知を古いtimerが消さず、エラーは残る', async () => {

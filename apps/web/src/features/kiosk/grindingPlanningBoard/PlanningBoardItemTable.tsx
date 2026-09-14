@@ -106,7 +106,13 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
       key={item.itemId}
       data-testid={`planning-board-item-${item.itemId}`}
       data-planning-board-item-id={item.itemId}
-      className={clsx('border-b border-slate-800/80', specialDueMode && !item.isCompleted && 'cursor-pointer', item.isCompleted && 'opacity-55')}
+      className={clsx(
+        'border-b border-slate-800/80',
+        specialDue && 'outline outline-1 -outline-offset-1',
+        specialDue && (specialDueExpired ? 'outline-rose-400' : 'outline-amber-300'),
+        specialDueMode && !item.isCompleted && 'cursor-pointer',
+        item.isCompleted && 'opacity-55'
+      )}
       onClick={specialDueMode && !item.isCompleted ? () => onSpecialDueClick?.(item) : undefined}
     >
       <td className="px-1 align-middle">

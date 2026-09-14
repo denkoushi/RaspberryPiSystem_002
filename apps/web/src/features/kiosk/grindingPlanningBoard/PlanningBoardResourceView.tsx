@@ -496,7 +496,7 @@ export function PlanningBoardResourceView({
           return (
             <div key={resource} className="relative min-w-0" data-resource-slot={resource} style={{ height: heights.normal, zIndex: expanded.get(resource)?.layer ?? 0 }}>
               <article
-                className="absolute inset-x-0 top-0 flex min-w-0 flex-col overflow-hidden rounded-lg border border-slate-800 bg-slate-900"
+                className={`absolute inset-x-0 top-0 flex min-w-0 flex-col overflow-hidden rounded-lg border bg-slate-900 ${isExpanded ? 'border-slate-200' : 'border-slate-800'}`}
                 style={{ height: isExpanded ? Math.max(heights.normal, Math.min(expanded.get(resource)!.height, heights.expanded)) : heights.normal }}
                 data-planning-board-resource-pane
                 data-resource-code={resource}
