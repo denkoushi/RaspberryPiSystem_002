@@ -136,7 +136,8 @@ export class BusinessHermesNightlyService {
       const denied = (answer: string, refs: Source[]) => blocked.some(e => e.answer === answer && sourceFingerprint(e.sources) === sourceFingerprint(refs));
       const cases = structuredClone(state.catalogue.cases).filter(c => current(c.sources) && !denied(c.answer, c.sources));
       // Freeze evidence and factual candidates before model generation; no test questions enter prompts.
-      const factCases = structuredClone(cases);
+      // Disputed legacy answers remain subject to the serving veto; this path must not delete them.
+      const factCases = structuredClone(state.catalogue.cases).filter(c => current(c.sources));
       for (const packet of detailPackets) {
         const fact = prepareSourceFact(packet.detail, packet.source, new Date().toISOString());
         if (!fact || denied(fact.answer, fact.sources) || factCases.some(c => c.question === fact.question)
