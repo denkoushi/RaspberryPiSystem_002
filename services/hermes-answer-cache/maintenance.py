@@ -37,7 +37,8 @@ def evaluate(cache, checks, valid_sources):
         else:
             references = {(s['kind'], s['id']) for s in answer['sources']}
             identity_ok = (expected['kind'], expected['id']) in references
-            text_ok = (all(fragment in answer['answer'] for fragment in case.get('requiredFragments', []))
+            text_ok = ((case.get('exactAnswer') is None or answer['answer'] == case['exactAnswer'])
+                       and all(fragment in answer['answer'] for fragment in case.get('requiredFragments', []))
                        and not any(fragment in answer['answer'] for fragment in case.get('forbiddenFragments', [])))
             verdict = 'correct' if identity_ok and text_ok else 'wrong'
         rows.append({'id': case['id'], 'verdict': verdict, 'elapsedMs': elapsed, 'answerable': expected is not None})
@@ -197,6 +198,31 @@ def maintain(root, run_id, model_dir):
     holdout_before = evaluate(current, holdout, valid_sources) if holdout else None
     holdout_after = evaluate(candidate, holdout, valid_sources) if holdout else None
     outcome = adoption_outcome(before, after, holdout_before, holdout_after)
+    fact_report = None
+    fact_hash = payload.get('factEvidenceSha256')
+    if not holdout and fact_hash:
+        from facts import certify, fact_checks
+        fact_evidence_path = job / 'fact-evidence.json'
+        fact_candidate_path = job / 'fact-candidate.json'
+        if digest(fact_evidence_path) != fact_hash or digest(fact_candidate_path) != payload.get('factCandidateSha256'):
+            raise ValueError('Source facts changed after preparation')
+        factual_cases = read_catalogue(fact_candidate_path)
+        proofs = certify(current.cases, factual_cases, json.loads(fact_evidence_path.read_text()), valid_sources)
+        check_question_separation(current.cases, factual_cases, checks, [])
+        fact_report = {'boundary': 'source-fact-contract-v1', 'newFacts': len(proofs), 'status': 'no_eligible_facts'}
+        if proofs:
+            factual = QuestionCache(fact_candidate_path, root / 'index', model_dir, current.model)
+            protected_after = evaluate(factual, checks, valid_sources)
+            contract = fact_checks(proofs)
+            contract_before = evaluate(current, contract, valid_sources)
+            contract_after = evaluate(factual, contract, valid_sources)
+            decision = adoption_outcome(before, protected_after, contract_before, contract_after)
+            # Every new fact must work; aggregate gains cannot certify an untested/broken addition.
+            if contract_after['correct'] != contract_after['total']:
+                decision = 'regression'
+            fact_report.update({'status': decision, 'current': contract_before, 'candidate': contract_after})
+            outcome = decision
+            candidate_path, candidate, after = fact_candidate_path, factual, protected_after
     history_path = root / 'history.json'
     history = json.loads(history_path.read_text()) if history_path.exists() else []
     baseline = next((r['current'] for r in history if r.get('referenceSha256') == reference_hash), before)
@@ -204,6 +230,8 @@ def maintain(root, run_id, model_dir):
     report = {'runId': run_id, 'finishedAt': time.time(), 'status': outcome,
               'referenceSha256': reference_hash, 'holdoutSha256': holdout_hash,
               'holdout': {'current': holdout_before, 'candidate': holdout_after},
+              'sourceFacts': fact_report,
+              'adoptionBasis': 'source-fact-contract-v1' if fact_report and fact_report['newFacts'] else 'independent-holdout',
               'catalogueGrowth': len(candidate.cases) - len(current.cases), 'current': before, 'candidate': after,
               'baselineRegression': baseline_regression, 'deterioratingTrend': trend(history, before, reference_hash),
               'sourceCount': len(sources.records), 'activated': False}
@@ -218,7 +246,9 @@ def maintain(root, run_id, model_dir):
                                 or live['over10sRate'] > previous_live['over10sRate'] + .1))
     # Record the exact files to switch. The request process applies this manifest
     # only after the worker exits successfully and verifies its current catalogue.
-    activation = {'baseCatalogueSha256': baseline_hash, 'referenceSha256': reference_hash, 'holdoutSha256': holdout_hash,
+    activation = {'factEvidenceSha256': fact_hash if fact_report else None,
+                  'factCandidateSha256': payload.get('factCandidateSha256') if fact_report else None,
+                  'baseCatalogueSha256': baseline_hash, 'referenceSha256': reference_hash, 'holdoutSha256': holdout_hash,
                   'sources': str(source_path.relative_to(root)), 'sourceSha256': digest(source_path),
                   'catalogue': str(candidate_path.relative_to(root)) if outcome == 'improved' else None,
                   'catalogueSha256': digest(candidate_path) if outcome == 'improved' else None}

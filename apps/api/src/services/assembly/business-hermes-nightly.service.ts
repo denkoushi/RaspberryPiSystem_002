@@ -9,6 +9,7 @@ import { logger } from '../../lib/logger.js';
 import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
 import { sourceFingerprint } from './business-hermes-answer-cache.js';
 import { documentAttemptsSchema, evaluationSchema, overlapsNightQuestion, selectNightDocuments, validateDocumentQuestion, type DocumentAttempts } from './business-hermes-nightly-candidates.js';
+import { prepareSourceFact, type SourceFact } from './business-hermes-source-facts.js';
 import { projectBusinessSource } from './business-hermes-source-adapters.js';
 import { exportBusinessHermesSources } from './business-hermes-source-export.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
@@ -16,7 +17,7 @@ import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
 
 type Source = { kind: string; id: string; sha256: string };
-type Case = { question: string; queries: string[]; answer: string; sources: Source[];
+type Case = { fact?: SourceFact; question: string; queries: string[]; answer: string; sources: Source[];
   review: { verdict: string; reviewer: string; reason: string; reviewedAt: string } };
 type Event = { id: string; question: string; canonical: string | null; answer: string; sources: Source[]; verdict: string };
 type State = { baseCatalogueRelative: string; baseCatalogueSha256: string; catalogue: {version: number; cases: Case[]}; events: Event[]; running: boolean };
@@ -114,6 +115,7 @@ export class BusinessHermesNightlyService {
       const blocked = state.events.filter(e => e.verdict === 'unhelpful');
       const fingerprints: Record<string, string | null> = {};
       const records = new Map<string, Record<string, unknown>>();
+      const detailPackets: Array<{ source: Source; detail: unknown }> = [];
       const refs = [...state.catalogue.cases.flatMap(c => c.sources), ...state.events.flatMap(e => e.sources), ...[...reference.cases, ...(holdout?.cases || [])].flatMap(c => c.expectedSource ? [c.expectedSource] : []), ...documents.map(d => ({ ...d.document, sha256: '' }))];
       for (const ref of refs) {
         signal.throwIfAborted();
@@ -125,6 +127,7 @@ export class BusinessHermesNightlyService {
           const record = JSON.parse(result.content[0]!.text);
           if (record.kind !== ref.kind || record.id !== ref.id) throw new Error('Source detail identity mismatch');
           records.set(key, record);
+          if (documents.some(d => d.key === key)) detailPackets.push({ source: { kind: ref.kind, id: ref.id, sha256: fingerprints[key]! }, detail: result });
         }
       }
       const current = (refs: Source[]) => refs.every(s => fingerprints[s.kind + ':' + s.id] === s.sha256);
@@ -132,12 +135,25 @@ export class BusinessHermesNightlyService {
       // Negative user feedback remains authoritative, even when an automatic judge passes.
       const denied = (answer: string, refs: Source[]) => blocked.some(e => e.answer === answer && sourceFingerprint(e.sources) === sourceFingerprint(refs));
       const cases = structuredClone(state.catalogue.cases).filter(c => current(c.sources) && !denied(c.answer, c.sources));
+      // Freeze evidence and factual candidates before model generation; no test questions enter prompts.
+      // Disputed legacy answers remain subject to the serving veto; this path must not delete them.
+      const factCases = structuredClone(state.catalogue.cases).filter(c => current(c.sources));
+      for (const packet of detailPackets) {
+        const fact = prepareSourceFact(packet.detail, packet.source, new Date().toISOString());
+        if (!fact || denied(fact.answer, fact.sources) || factCases.some(c => c.question === fact.question)
+          || overlapsNightQuestion(fact.question, protectedQuestions)) continue;
+        factCases.push(fact);
+      }
+      await atomicJson(path.join(job, 'fact-evidence.json'), { version: 1, records: detailPackets });
+      await atomicJson(path.join(job, 'fact-candidate.json'), { version: 1, cases: factCases });
+      const factEvidenceSha256 = sha256(await readFile(path.join(job, 'fact-evidence.json'), 'utf8'));
+      const factCandidateSha256 = sha256(await readFile(path.join(job, 'fact-candidate.json'), 'utf8'));
       const runtime = getLocalLlmRuntimeController();
       let held = false;
       const decisions: Array<{eventId: string; verdict: string; reason?: string; origin?: string}> = [];
       try {
         const events = state.events.filter(e => e.verdict !== 'unhelpful' && e.sources.length === 1 && e.canonical && e.canonical.length <= 100 && !overlapsNightQuestion(e.question, protectedQuestions) && !overlapsNightQuestion(e.canonical, protectedQuestions) && current(e.sources))
-          .filter(e => !cases.some(c => c.question === e.canonical && c.queries.includes(e.question))).slice(0, 8);
+          .filter(e => !cases.some(c => c.question === e.canonical && (c.fact || c.queries.includes(e.question)))).slice(0, 8);
         if ((events.length || documents.length) && runtime) { await runtime.ensureReady('business_hermes'); held = true; }
         const completion = (events.length || documents.length) ? getInferenceRuntime().createTextCompletionPort() : null;
         // Only source evidence enters this prompt. Evaluation questions/answers never do.
@@ -209,7 +225,7 @@ export class BusinessHermesNightlyService {
       await atomicJson(path.join(job, 'candidate.json'), { version: 1, cases });
       await atomicJson(path.join(job, 'input.json'), { baseCatalogueRelative: state.baseCatalogueRelative,
         baseCatalogueSha256: state.baseCatalogueSha256, sourceFingerprints: fingerprints, decisions,
-        ...evaluationHashes,
+        ...evaluationHashes, factEvidenceSha256, factCandidateSha256,
         livePerformance: nightlyTimings(messages.map(m => m.searchDiagnostics)) });
       // Keep only entries still present in the authorized corpus; the ledger is scheduling data.
       const visible = new Set(sources.records.map(d => d.kind + ':' + d.id));

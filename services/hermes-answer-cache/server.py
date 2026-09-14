@@ -10,6 +10,7 @@ import json
 import os
 import re
 import unicodedata
+from facts import fact_matches, validate_fact_metadata
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -53,6 +54,11 @@ def read_catalogue(path):
         ):
             raise ValueError("Expected bounded, reviewed question wordings")
         cases[question] = {"question": question, "answer": answer, "sources": sources, "queries": queries}
+        if "fact" in case:
+            validate_fact_metadata(case['fact'])
+            if len(sources) != 1 or queries != [question] or not fact_matches(question, case['fact']):
+                raise ValueError('Invalid source fact catalogue entry')
+            cases[question]['fact'] = case['fact']
     return cases
 
 
@@ -85,6 +91,8 @@ class QuestionCache:
                            config=Config(similarity_threshold=0.90))
         if not ready.exists():
             for question, case in self.cases.items():
+                if "fact" in case:
+                    continue
                 for wording in set([question, *case["queries"]]):
                     put(wording, question, cache_obj=self.cache)
             self.cache.flush()
@@ -96,12 +104,17 @@ class QuestionCache:
         from gptcache.adapter.api import get
         if not self.cases:
             return None
+        fact_hits = [q for q, case in self.cases.items() if 'fact' in case and fact_matches(question, case['fact'])]
+        if len(fact_hits) == 1:
+            return {'question': fact_hits[0]}
+        if fact_hits or all('fact' in case for case in self.cases.values()):
+            return None
         matches = get(question, cache_obj=self.cache, top_k=3) or []
         if isinstance(matches, str):
             matches = [matches]
         # This is a suggestion, never an assertion of equivalent conditions.
         required = identifiers(question)
-        return next(({"question": q} for q in matches if q in self.cases
+        return next(({"question": q} for q in matches if q in self.cases and "fact" not in self.cases[q]
                      and required.issubset(identifiers(q))), None)
 
     def lookup(self, question):
@@ -162,11 +175,16 @@ def serve(cache, host, port, token, sources=None, experience=None, maintenance=N
                     result = sources.lookup(question) if sources else None
                 else:
                     if self.path == "/search":
-                        result = (experience.suggest(question) if experience else None) or cache.search(question)
+                        result = experience.suggest(question) if experience else None
+                        cached = cache.lookup(result['question']) if result else None
+                        if cached and 'fact' in cached and not fact_matches(question, cached['fact']):
+                            result = None
+                        result = result or cache.search(question)
                         if result and experience and experience.denied(cache.lookup(result['question'])):
                             result = None
                     else:
-                        result = (experience.lookup(question) if experience else None) or cache.lookup(question)
+                        cached = cache.lookup(question)
+                        result = cached if cached and 'fact' in cached else (experience.lookup(question) if experience else None) or cached
                         if experience and experience.denied(result):
                             result = None
                 self.reply(200, {"result": result})
