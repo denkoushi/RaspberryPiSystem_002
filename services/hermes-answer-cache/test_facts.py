@@ -69,6 +69,29 @@ class FactContracts(unittest.TestCase):
         self.assertIsNotNone(request('/search', case['question'])[1]['result'])
         experience.denied.assert_not_called()
 
+    def test_eight_thousand_facts_search_without_scanning_or_embedding(self):
+        cache = object.__new__(QuestionCache)
+        cache.cases = {f'q{i}': {'fact': {'version': 1, 'scope': f'不適合記録{i}', 'subject': '記録内容'},
+                                  'queries': [f'不適合記録{i}の処置内容は？']} for i in range(8000)}
+        cache.prepare_fact_index()
+        with patch('server.fact_matches', side_effect=AssertionError('linear scan')), patch('gptcache.adapter.api.get', side_effect=AssertionError('embedding')):
+            self.assertEqual(cache.search('不適合記録7999の処置内容は？'), {'question': 'q7999'})
+            self.assertEqual(cache.search('不適合記録7999の記録内容を教えてください'), {'question': 'q7999'})
+            self.assertIsNone(cache.search('不適合記録7999の処置内容は80℃でも適用できる？'))
+
+    def test_model_questions_require_supported_fields_and_cannot_rewrite_answer(self):
+        packet, case = fixture()
+        alias = case['fact']['scope'] + 'の作業手順は？'
+        proposed = {k: v for k, v in case.items() if k != 'review'}
+        proposed['queries'] = [case['question'], alias]
+        fingerprints = {'work_instruction:one': packet['source']['sha256']}
+        self.assertEqual(certify({}, {case['question']: proposed}, {'version': 1, 'records': [packet]}, fingerprints), [proposed])
+        self.assertEqual(len(fact_checks([proposed])), 7)
+        for invalid in ('別製品' + alias, alias + '80℃でもよい？', case['fact']['scope'] + 'の原因は？'):
+            broken = {**proposed, 'queries': [case['question'], invalid]}
+            with self.assertRaisesRegex(ValueError, 'supported by source fields'):
+                certify({}, {case['question']: broken}, {'version': 1, 'records': [packet]}, fingerprints)
+
     def test_actual_cache_index_never_semantically_matches_certified_facts(self):
         from test_experience import Embedding
         _, case = fixture()
@@ -176,6 +199,8 @@ class FactAdoptionIntegration(unittest.TestCase):
         class Cache:
             def __init__(inner, catalogue, *args):
                 inner.cases = read_catalogue(catalogue); inner.model = object()
+            prepare_fact_index = QuestionCache.prepare_fact_index
+            search_fact = QuestionCache.search_fact
             search = QuestionCache.search
             lookup = QuestionCache.lookup
         self.cache_type = Cache
@@ -199,6 +224,24 @@ class FactAdoptionIntegration(unittest.TestCase):
         self.assertEqual(cache.lookup(hit['question'])['answer'], self.case['answer'])
         self.assertIsNone(cache.search('図番MD001・対象加工の公開要領の記載本文は90℃でも適用できる？'))
         self.assertTrue(json.loads((self.root / 'previous-active.json').read_text()))
+
+    def test_generated_question_is_independently_certified_activated_and_served(self):
+        original = copy.deepcopy(self.case)
+        atomic_json(self.root / 'reviewed.json', {'version': 1, 'cases': [original]})
+        atomic_json(self.job / 'candidate.json', {'version': 1, 'cases': [original]})
+        alias = self.case['fact']['scope'] + 'の作業手順は？'
+        self.case['queries'].append(alias)
+        atomic_json(self.job / 'fact-candidate.json', {'version': 1, 'cases': [self.case]})
+        self.payload['baseCatalogueSha256'] = digest(self.root / 'reviewed.json')
+        self.payload['factCandidateSha256'] = digest(self.job / 'fact-candidate.json')
+        atomic_json(self.job / 'input.json', self.payload)
+        result = maintain(self.root, self.run, self.root)
+        self.assertEqual(result['status'], 'improved')
+        self.assertEqual(result['sourceFacts']['newFacts'], 0)
+        self.assertEqual(result['sourceFacts']['newQuestions'], 1)
+        _, cache = self.activate()
+        hit = cache.search(alias)
+        self.assertEqual(cache.lookup(hit['question'])['answer'], original['answer'])
 
     def test_fact_evidence_changed_before_or_after_validation_cannot_activate(self):
         maintain(self.root, self.run, self.root)

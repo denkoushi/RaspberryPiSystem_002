@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluationSchema, overlapsNightQuestion, selectNightDocuments, validateDocumentQuestion } from './business-hermes-nightly-candidates.js';
+import { documentPreparationFingerprint, evaluationSchema, overlapsNightQuestion, selectNightDocuments, validateDocumentQuestion } from './business-hermes-nightly-candidates.js';
 import { sourceFingerprint } from './business-hermes-answer-cache.js';
 
 describe('Document question selection and filtering', () => {
@@ -13,10 +13,16 @@ describe('Document question selection and filtering', () => {
     expect(next).toHaveLength(4);
     expect(next.some(s => selected.some(previous => previous.key === s.key))).toBe(false);
   });
+  it('revisits records checked before DGX preparation without waiting seven days', () => {
+    const attempts = { 'work_instruction:one': {sha256: sourceFingerprint(document), attemptedAt: 1000} };
+    expect(selectNightDocuments([document], [], [], attempts, 2000)).toHaveLength(1);
+    attempts['work_instruction:one'].sha256 = documentPreparationFingerprint(document);
+    expect(selectNightDocuments([document], [], [], attempts, 2000)).toHaveLength(0);
+  });
   it('prioritizes changed documents and negative-feedback demand', () => {
     const other = { ...document, id: 'two' };
     const changed = { ...document, text: '更新された条件' };
-    const attempts = { 'work_instruction:one': { sha256: sourceFingerprint(document), attemptedAt: 1000 } };
+    const attempts = { 'work_instruction:one': { sha256: documentPreparationFingerprint(document), attemptedAt: 1000 } };
     expect(selectNightDocuments([other, changed], [], [], attempts, 2000)[0]?.document).toEqual(changed);
     expect(selectNightDocuments([document, other], [], [{ sources: [other], verdict: 'unhelpful' }], {}, 2000)[0]?.document).toEqual(other);
   });
