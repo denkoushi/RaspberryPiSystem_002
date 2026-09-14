@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 
 import {
@@ -8,6 +8,7 @@ import { formatResourceCdWithJapaneseNames } from '../leaderOrderBoard/formatRes
 
 import { PlanningBoardItemTable } from './PlanningBoardItemTable';
 import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
+import { usePlanningBoardPaneOrder } from './usePlanningBoardPaneOrder';
 
 import type { PlanningBoardAllocation } from './types';
 import type {
@@ -21,6 +22,7 @@ export type PlanningBoardResourceViewProps = {
   seibanOrder: readonly string[];
   resources: readonly string[];
   resourceNameMap: Record<string, string[]>;
+  preferenceScope?: string;
   allocation: PlanningBoardAllocation;
   selectedItemIds: ReadonlySet<string>;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
@@ -129,6 +131,7 @@ export function PlanningBoardResourceView({
   seibanOrder,
   resources,
   resourceNameMap,
+  preferenceScope = 'default',
   allocation,
   selectedItemIds,
   onToggleItem,
@@ -412,48 +415,157 @@ export function PlanningBoardResourceView({
       ] as const);
   }, [allocation, items, resources, seibanOrder]);
 
+  const paneResources = useMemo(() => groups.map(([resource]) => resource), [groups]);
+  const paneResourceSet = useMemo(() => new Set(paneResources), [paneResources]);
+  const paneAtPoint = useCallback((x: number, y: number) => resourcePaneAtPoint(x, y, paneResourceSet), [paneResourceSet]);
+  const paneOrder = usePlanningBoardPaneOrder(paneResources, preferenceScope, paneAtPoint, disabled);
+  const groupsByResource = useMemo(() => new Map(groups), [groups]);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [expanded, setExpanded] = useState<ReadonlyMap<string, { layer: number; height: number }>>(new Map());
+  const topLayerRef = useRef(0);
+  const [heights, setHeights] = useState({ normal: 361, expanded: 722 });
+  const [bottomSpace, setBottomSpace] = useState(0);
+
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    let scrollParent = grid.parentElement;
+    while (scrollParent && !/(auto|scroll)/.test(getComputedStyle(scrollParent).overflowY)) scrollParent = scrollParent.parentElement;
+    const tables = [...grid.querySelectorAll<HTMLTableElement>('table')];
+    const measure = () => {
+      // Measure only the first seven rows, and leave short panes the same height.
+      const bodyHeight = Math.max(315, ...tables.map((table) => {
+        const rows = [...table.querySelectorAll<HTMLTableRowElement>('tbody tr')].slice(0, 7);
+        return rows.reduce((height, row) => height + row.getBoundingClientRect().height, 0) + (7 - rows.length) * 45;
+      }));
+      const normal = Math.ceil(bodyHeight) + 46;
+      const expandedHeight = Math.max(normal, (scrollParent?.clientHeight || window.innerHeight) - 20);
+      setHeights((current) => current.normal === normal && current.expanded === expandedHeight
+        ? current : { normal, expanded: expandedHeight });
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    tables.forEach((table) => observer?.observe(table));
+    if (scrollParent) observer?.observe(scrollParent);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [groups]);
+
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const gridRect = grid.getBoundingClientRect();
+    const overflow = [...grid.children].reduce((space, slot) => {
+      const resource = (slot as HTMLElement).dataset.resourceSlot;
+      return resource && expanded.has(resource)
+        ? Math.max(space, slot.getBoundingClientRect().top - gridRect.bottom + Math.max(heights.normal, Math.min(expanded.get(resource)!.height, heights.expanded)))
+        : space;
+    }, 0);
+    setBottomSpace(Math.ceil(overflow));
+  }, [expanded, heights, paneOrder.order]);
+
+  const toggleExpanded = (resource: string, button: HTMLButtonElement) => {
+    const opening = !expanded.has(resource);
+    const layer = ++topLayerRef.current;
+    const paneTop = button.closest('article')?.getBoundingClientRect().top ?? 0;
+    const available = Math.min(heights.expanded, window.innerHeight - Math.max(0, paneTop) - 20);
+    const needsScroll = available <= heights.normal;
+    const height = needsScroll ? heights.expanded : available;
+    setExpanded((current) => {
+      const next = new Map(current);
+      if (next.has(resource)) next.delete(resource); else next.set(resource, { layer, height });
+      return next;
+    });
+    if (opening && needsScroll) {
+      // Keep the symbol button reachable when opening a pane near the bottom.
+      requestAnimationFrame(() => {
+        if (button.isConnected) button.closest('article')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+      });
+    }
+  };
+
   return (
-    <div className="min-w-0">
-      <div className="grid min-w-0 grid-cols-1 items-start gap-2.5 lg:grid-cols-2 xl:grid-cols-4" data-testid="planning-board-resource-view">
-        {groups.map(([resource, resourceItems]) => {
-        return (
-          <article
-            key={resource}
-            className="min-w-0 overflow-hidden rounded-lg border border-slate-800 bg-slate-900/85"
-            data-planning-board-resource-pane
-            data-resource-code={resource}
-            onPointerMove={handleResourcePointerMove}
-            onPointerUp={handleResourcePointerUp}
-            onPointerCancel={handleResourcePointerCancel}
-            onLostPointerCapture={handleResourceLostPointerCapture}
-          >
-            <header className="flex h-7 min-h-7 min-w-0 items-center gap-2 border-b border-slate-800 px-2 py-0.5">
-              <strong className="min-w-0 flex-1 truncate font-mono text-[15px] leading-none text-white">
-                {formatResourceCdWithJapaneseNames(resource, resourceNameMap)}
-              </strong>
-            </header>
-            <PlanningBoardItemTable
-              items={resourceItems}
-              allocation={allocation}
-              selectedItemIds={selectedItemIds}
-              onToggleItem={onToggleItem}
-              onResourceClick={handleResourceClick}
-              onResourcePointerDown={handleResourcePointerDown}
-              resourceDragDisabled={resourceDragDisabled}
-              onRankChange={onRankChange}
-              specialDueMode={specialDueMode}
-              onSpecialDueClick={onSpecialDueClick}
-              nowMs={nowMs}
-              disabled={disabled}
-              rankDisabled={rankDisabled}
-              showRank
-              showSeiban
-              seibanRankByFseiban={seibanRankByFseiban}
-              showColumnHeaders={false}
-              tableLabel={`資源CD ${resource}の工程アイテム`}
-            />
-          </article>
-        );
+    <div className="relative isolate min-w-0" style={{ paddingBottom: bottomSpace }}>
+      <div ref={gridRef} className="relative grid min-w-0 grid-cols-1 items-start gap-2.5 lg:grid-cols-2 xl:grid-cols-4" data-testid="planning-board-resource-view">
+        {paneOrder.order.map((resource) => {
+          const resourceItems = groupsByResource.get(resource) ?? [];
+          const isExpanded = expanded.has(resource);
+          return (
+            <div key={resource} className="relative min-w-0" data-resource-slot={resource} style={{ height: heights.normal, zIndex: expanded.get(resource)?.layer ?? 0 }}>
+              <article
+                className="absolute inset-x-0 top-0 flex min-w-0 flex-col overflow-hidden rounded-lg border border-slate-800 bg-slate-900"
+                style={{ height: isExpanded ? Math.max(heights.normal, Math.min(expanded.get(resource)!.height, heights.expanded)) : heights.normal }}
+                data-planning-board-resource-pane
+                data-resource-code={resource}
+                data-expanded={isExpanded}
+                onPointerDownCapture={() => {
+                  if (!isExpanded) return;
+                  const layer = ++topLayerRef.current;
+                  setExpanded((current) => {
+                    const pane = current.get(resource);
+                    return pane ? new Map(current).set(resource, { ...pane, layer }) : current;
+                  });
+                }}
+                onPointerMove={handleResourcePointerMove}
+                onPointerUp={handleResourcePointerUp}
+                onPointerCancel={handleResourcePointerCancel}
+                onLostPointerCapture={handleResourceLostPointerCapture}
+              >
+                <header className="flex h-11 min-h-11 min-w-0 items-center border-b border-slate-800">
+                  <button
+                    type="button"
+                    className="h-11 min-w-0 flex-1 touch-none select-none truncate px-2 text-left font-mono text-[15px] font-bold leading-none text-white focus-visible:outline focus-visible:outline-emerald-300"
+                    disabled={disabled}
+                    aria-label={`資源CD ${resource}のペインを並べ替え`}
+                    aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown"
+                    onContextMenu={(event) => event.preventDefault()}
+                    onPointerDown={(event) => paneOrder.onPointerDown(event, resource)}
+                    onPointerMove={paneOrder.onPointerMove}
+                    onPointerUp={paneOrder.onPointerUp}
+                    onPointerCancel={paneOrder.onPointerCancel}
+                    onLostPointerCapture={paneOrder.onPointerCancel}
+                    onKeyDown={(event) => paneOrder.onKeyDown(event, resource)}
+                  >
+                    {formatResourceCdWithJapaneseNames(resource, resourceNameMap)}
+                  </button>
+                  <button
+                    type="button"
+                    className="h-11 w-11 shrink-0 text-2xl leading-none text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-emerald-300"
+                    aria-label={`資源CD ${resource}を${isExpanded ? '縮小' : '拡張'}`}
+                    aria-expanded={isExpanded}
+                    onClick={(event) => toggleExpanded(resource, event.currentTarget)}
+                  >
+                    <span aria-hidden="true">{isExpanded ? '↥' : '↧'}</span>
+                  </button>
+                </header>
+                <div className="min-h-0 flex-1 overflow-y-auto" style={{ scrollbarGutter: 'stable' }} data-resource-scroll>
+                  <PlanningBoardItemTable
+                    items={resourceItems}
+                    allocation={allocation}
+                    selectedItemIds={selectedItemIds}
+                    onToggleItem={onToggleItem}
+                    onResourceClick={handleResourceClick}
+                    onResourcePointerDown={handleResourcePointerDown}
+                    resourceDragDisabled={resourceDragDisabled}
+                    onRankChange={onRankChange}
+                    specialDueMode={specialDueMode}
+                    onSpecialDueClick={onSpecialDueClick}
+                    nowMs={nowMs}
+                    disabled={disabled}
+                    rankDisabled={rankDisabled}
+                    showRank
+                    showSeiban
+                    seibanRankByFseiban={seibanRankByFseiban}
+                    showColumnHeaders={false}
+                    tableLabel={`資源CD ${resource}の工程アイテム`}
+                  />
+                </div>
+              </article>
+            </div>
+          );
         })}
       </div>
     </div>

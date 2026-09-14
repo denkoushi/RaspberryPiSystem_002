@@ -1353,6 +1353,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       ) : data ? (
         <div className="mt-2">
           <PlanningBoardResourceView
+            key={`${data.siteKey}:${category}`}
+            preferenceScope={`${data.siteKey}:${category}`}
             items={visibleItems}
             seibanOrder={registeredFseibans}
             resources={data.resources}
