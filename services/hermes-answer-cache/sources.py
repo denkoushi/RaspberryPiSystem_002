@@ -42,7 +42,7 @@ class SourceCandidates:
         from preparation import remote_preparation, index_rows
         preparation = remote_preparation(model)
         if preparation and (not index_path.exists() or not (directory / 'terms.sqlite').exists()):
-            preparation.build('sources', index_rows([{'text': t} for t in self.texts], model), directory)
+            preparation.build('sources', index_rows([{'text': t} for t in self.texts], model, previous), directory)
         if index_path.exists():
             self.index = faiss.read_index(str(index_path))
         else:

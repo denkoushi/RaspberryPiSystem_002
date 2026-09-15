@@ -132,11 +132,17 @@ class RemotePreparation:
                     pass
 
 
-def index_rows(records, model):
+def index_rows(records, model, previous=None):
     import numpy as np
+    # Earlier Pi-built source indexes may contain completed vectors that predate
+    # the HTTP embedding checkpoint database. Reuse them by exact model input.
+    known = {text: i for i, text in enumerate(previous.texts)} if previous else {}
     for start in range(0, len(records), 8):
         batch = records[start:start + 8]
-        for row, vector in zip(batch, model.embed([r['text'] for r in batch]), strict=True):
+        missing = [r['text'] for r in batch if r['text'] not in known]
+        fresh = iter(model.embed(missing)) if missing else iter(())
+        for row in batch:
+            vector = previous.index.reconstruct(known[row['text']]) if row['text'] in known else next(fresh)
             yield {**row, 'vector': base64.b64encode(np.asarray(vector, dtype='<f4').tobytes()).decode()}
 
 

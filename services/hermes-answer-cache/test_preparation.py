@@ -33,6 +33,22 @@ class FixtureTransport(RemotePreparation):
 
 
 class RemotePreparationTest(unittest.TestCase):
+    def test_existing_source_vectors_are_reused_without_repeating_model_work(self):
+        import numpy as np
+        from unittest.mock import Mock
+        from preparation import index_rows
+        old = np.ones(384, dtype='float32') / np.sqrt(384)
+        new = -np.ones(384, dtype='float32')
+        previous = Mock(texts=['existing'])
+        previous.index.reconstruct.return_value = old
+        model = Mock()
+        model.embed.return_value = iter([new])
+        rows = list(index_rows([{'text': 'existing'}, {'text': 'new'}], model, previous))
+        model.embed.assert_called_once_with(['new'])
+        previous.index.reconstruct.assert_called_once_with(0)
+        np.testing.assert_array_equal(np.frombuffer(base64.b64decode(rows[0]['vector']), dtype='<f4'), old)
+        np.testing.assert_array_equal(np.frombuffer(base64.b64decode(rows[1]['vector']), dtype='<f4'), new)
+
     def test_completed_files_are_verified_before_installing(self):
         with tempfile.TemporaryDirectory() as temporary:
             target = Path(temporary) / 'index'
