@@ -831,6 +831,12 @@
     - release_pi5_route == 'fresh'
     - release_pi5_business_hermes_enabled | bool
 
+- name: Isolate egress runtime files from deployment checkouts
+  ansible.builtin.include_tasks: business-hermes-egress-prepare.yml
+  when:
+    - release_pi5_route == 'fresh'
+    - (release_pi5_business_hermes_enabled | bool) or (business_hermes_chat_enabled | default(false) | bool)
+
 - name: Mark the Business Hermes egress transition boundary
   ansible.builtin.set_fact:
     release_pi5_business_hermes_egress_transition_attempted: true

@@ -67,3 +67,26 @@ docker run --rm --read-only --cap-drop=ALL \
   '
 
 echo "business-hermes egress permission fixture passed"
+
+# A later deployment replaces the checkout inode under umask 0077. The published
+# program must still load with cap_drop=ALL, including on a subsequent restart.
+docker run --rm --mount "type=volume,src=$VOLUME,dst=/fixture" "$IMAGE" sh -c '
+  mkdir /fixture/published
+  cp /fixture/proxy.mjs /fixture/published/proxy.mjs
+  chown 0:0 /fixture/published/proxy.mjs
+  chmod 0644 /fixture/published/proxy.mjs
+  umask 0077
+  printf "throw new Error(\"old checkout must not execute\");\n" > /fixture/replaced.mjs
+  mv /fixture/replaced.mjs /fixture/proxy.mjs
+  chown 1001:1001 /fixture/proxy.mjs
+'
+for attempt in 1 2; do
+  docker run --rm --read-only --cap-drop=ALL --security-opt no-new-privileges:true \
+    --mount "type=bind,src=$VOLUME_MOUNTPOINT/published/proxy.mjs,dst=/opt/business-hermes-egress/proxy.mjs,readonly" \
+    "$IMAGE" node --input-type=module -e '
+      import assert from "node:assert/strict";
+      import {isAllowedHttpRequest} from "/opt/business-hermes-egress/proxy.mjs";
+      assert.equal(isAllowedHttpRequest({method:"POST",url:"http://100.118.82.72:38081/v1/hermes-search/prepare",headers:{host:"100.118.82.72:38081"}}),true);
+    '
+done
+echo "isolated egress survives checkout replacement and restart"
