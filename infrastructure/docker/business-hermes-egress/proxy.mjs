@@ -8,7 +8,7 @@ const ALLOWED_HOST = 'api.openai.com';
 const DGX_HOST = process.env.DGX_GATEWAY_HOST ?? '100.118.82.72';
 const DGX_PORT = process.env.DGX_GATEWAY_PORT ?? '38081';
 const DGX_PATH = '/v1/chat/completions';
-const SEARCH_PATHS = new Set(['embed', 'tokenize', 'detokenize', 'rerank'].map(op => `/v1/hermes-search/${op}`));
+const SEARCH_PATHS = new Set(['embed', 'tokenize', 'detokenize', 'rerank', 'prepare'].map(op => `/v1/hermes-search/${op}`));
 const MAX_HTTP_BODY_BYTES = 1024 * 1024;
 // This is an egress idle timeout, independent from the API's guide/proactive
 // and operator-chat request deadlines. The API remains the total request
