@@ -25,7 +25,7 @@ The initial topic is 金属塗装の実技準備. The user authorized implementa
 
 ## Current Deliverable Boundary
 
-The pilot now includes authenticated API intake, durable PostgreSQL job/choice state, the lease-fenced worker, existing DGX inference adapters, Hermes attachment/choice controls, and authenticated image/PDF responses. The fixed React report is connected to persisted results. Capability probing keeps the existing Hermes path available when disabled. Pi5 enables the feature through inventory and the existing environment templates.
+The pilot now includes authenticated API intake, durable PostgreSQL job/choice state, the lease-fenced worker, existing DGX inference adapters, Hermes attachment/choice controls, and authenticated image/PDF responses. The fixed React report is connected to persisted results. Capability probing keeps the existing Hermes path available when disabled. Pi5 enables the feature through inventory, the existing environment templates and the rollback-backed consultation candidate environment update.
 
 Synthetic checks demonstrate the local loop with real PostgreSQL and Git and injected inference. Hosted CI, deployed runtime health and real-source OCR/inference quality are separate evidence; do not report them as complete until verified.
 
