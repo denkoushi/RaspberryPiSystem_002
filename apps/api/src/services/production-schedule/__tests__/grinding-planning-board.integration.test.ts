@@ -776,6 +776,41 @@ describeIntegration('grinding planning board service real Postgres integration',
     })).toEqual(versionsBeforeNoop);
   });
 
+  it('reorders moved split children consecutively without changing another resource', async () => {
+    const previousSplitFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
+    vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', 'true');
+    try {
+      const fixture = await createFixture();
+      await addRows(fixture, [
+        { fseiban: `${fixture.prefix}-A`, resourceCd: '305' },
+        { fseiban: `${fixture.prefix}-SPLIT`, resourceCd: '581', splitQuantity: 2 },
+        { fseiban: `${fixture.prefix}-OTHER`, resourceCd: '581' }
+      ]);
+      const initial = await boardFor(fixture, { view: 'resource' });
+      const split = boardItem(initial, (item) => item.kind === 'split');
+      await updateItem(fixture, split, { resourceCd: '305' }, initial.sourceRevision);
+      const ready = await boardFor(fixture, { view: 'resource' });
+      const source = boardItem(ready, (item) => item.kind === 'split');
+      const target = boardItem(ready, (item) => item.fseiban.endsWith('-A'));
+      const reorder = (item: GrindingPlanningBoardItem, anchor: GrindingPlanningBoardItem) => service().updateGrindingPlanningBoardResourceOrder({
+        siteKey: fixture.siteKey, sourceRevision: ready.sourceRevision,
+        itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version,
+        targetItemId: anchor.itemId, targetItemRevision: anchor.itemRevision, targetOverrideVersion: anchor.version,
+        placement: 'before'
+      });
+      const first = await reorder(source, target);
+      expect(first.items.map((item) => item.itemId)).toEqual([source.itemId, target.itemId]);
+      const second = await reorder(first.items[1]!, first.items[0]!);
+      expect(second.items.map((item) => item.itemId)).toEqual([target.itemId, source.itemId]);
+      await expect(reorder(source, target)).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
+      const other = boardItem(ready, (item) => item.fseiban.endsWith('-OTHER'));
+      expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: fixture.siteKey, itemKey: other.itemId } })).toBe(0);
+    } finally {
+      if (previousSplitFlag === undefined) delete process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
+      else vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', previousSplitFlag);
+    }
+  });
+
   it('persists dense resource ranks beyond ten and rejects stale or completed order targets atomically', async () => {
     const fixture = await createFixture();
     await addRows(fixture, [

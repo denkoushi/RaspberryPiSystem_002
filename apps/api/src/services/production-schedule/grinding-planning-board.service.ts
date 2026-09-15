@@ -813,9 +813,9 @@ async function readState(client: Prisma.TransactionClient, siteKey: string): Pro
   return state as PlanningState;
 }
 
-async function resolveCurrentProjectionInTransaction(params: { client: Prisma.TransactionClient; siteKey: string; sourceRowIds: readonly string[]; itemIds: readonly string[]; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; includeAllOverrides?: boolean }): Promise<CurrentProjection> {
-  const state = await readState(params.client, params.siteKey);
-  const rows = await readWinnerRowsByIds(params.client, params.sourceRowIds);
+async function resolveCurrentProjectionInTransaction(params: { client: Prisma.TransactionClient; siteKey: string; sourceRowIds: readonly string[]; itemIds: readonly string[]; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; includeAllOverrides?: boolean; preloaded?: { rows: WinnerRow[]; state: PlanningState; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride> } }): Promise<CurrentProjection> {
+  const state = params.preloaded?.state ?? await readState(params.client, params.siteKey);
+  const rows = params.preloaded?.rows ?? await readWinnerRowsByIds(params.client, params.sourceRowIds);
   const details = await readRowDetails(params.client, rows.map((row) => row.id));
   const splitIds = rows.flatMap((row) => details.get(row.id)?.orderSplits.map((split) => split.id) ?? []);
   const ranks = await readRanks(params.client, rows.map((row) => row.id), splitIds, params.siteKey);
@@ -823,7 +823,7 @@ async function resolveCurrentProjectionInTransaction(params: { client: Prisma.Tr
   // The scope writer invalidates the inherited split rank while leaving the
   // split override absent, so projection must see both keys together.
   const parentItemIds = rows.map((row) => buildGrindingPlanningBoardRowItemId(asRowData(row.rowData)));
-  const overrides = await readOverrides(
+  const overrides = params.preloaded?.overrides ?? await readOverrides(
     params.client,
     params.siteKey,
     params.includeAllOverrides ? undefined : [...new Set([...params.itemIds, ...parentItemIds])]
@@ -1097,14 +1097,40 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
       const registeredFseibans = new Set(stateOrder(lockedState));
       const winnerRows = await readWinnerRowsByFseibans(client, [...registeredFseibans]);
       const registeredRows = winnerRows.filter((row) => registeredFseibans.has(valueAsString(asRowData(row.rowData), 'FSEIBAN')));
-      const registeredRowIds = [...new Set(registeredRows.map((row) => row.id))].sort();
+      const allOverrides = await readOverrides(client, params.siteKey);
+      // Select the resource's parents before hydrating details or calculating progress.
+      // Split resource overrides can move children independently of their parent.
+      const splits = await client.productionScheduleOrderSplit.findMany({
+        where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, parentCsvDashboardRowId: { in: registeredRows.map((row) => row.id) } },
+        select: { id: true, parentCsvDashboardRowId: true }
+      });
+      const parentByItem = new Map(registeredRows.map((row) => [buildGrindingPlanningBoardRowItemId(asRowData(row.rowData)), row]));
+      const rowById = new Map(registeredRows.map((row) => [row.id, row]));
+      for (const split of splits) {
+        const parent = rowById.get(split.parentCsvDashboardRowId);
+        if (parent) parentByItem.set(`${SPLIT_PREFIX}${split.id}`, parent);
+      }
+      const sourceParent = parentByItem.get(params.itemId);
+      const targetParent = parentByItem.get(params.targetItemId);
+      if (!sourceParent || !targetParent) throw new ApiError(409, '対象アイテムが消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+      const originalResource = normalizeProductionScheduleResourceCd(valueAsString(asRowData(sourceParent.rowData), 'FSIGENCD'));
+      const resource = allOverrides.get(params.itemId)?.overrideResourceCd ?? originalResource;
+      const category: GrindingPlanningBoardCategory = isCategoryResource(originalResource, 'grinding', policy) ? 'grinding' : 'cutting';
+      const candidateIds = new Set([sourceParent.id, targetParent.id]);
+      for (const [itemId, row] of parentByItem) {
+        const original = normalizeProductionScheduleResourceCd(valueAsString(asRowData(row.rowData), 'FSIGENCD'));
+        if (isCategoryResource(original, category, policy) && (allOverrides.get(itemId)?.overrideResourceCd ?? original) === resource) candidateIds.add(row.id);
+      }
+      const candidateRows = registeredRows.filter((row) => candidateIds.has(row.id));
+      const registeredRowIds = candidateRows.map((row) => row.id).sort();
       const beforeLock = await resolveCurrentProjectionInTransaction({
         client,
         siteKey: params.siteKey,
         sourceRowIds: registeredRowIds,
         itemIds: [params.itemId, params.targetItemId],
         policy,
-        includeAllOverrides: true
+        includeAllOverrides: true,
+        preloaded: { rows: candidateRows, state: lockedState, overrides: allOverrides }
       });
       const sourceBeforeLock = beforeLock.byItemId.get(params.itemId);
       const targetBeforeLock = beforeLock.byItemId.get(params.targetItemId);
@@ -1129,14 +1155,9 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
         const locked = await client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${sourceRowId} AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} FOR UPDATE`;
         if (!locked[0]) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
       }
-      const current = await resolveCurrentProjectionInTransaction({
-        client,
-        siteKey: params.siteKey,
-        sourceRowIds: paneRowIds,
-        itemIds: [params.itemId, params.targetItemId],
-        policy,
-        includeAllOverrides: true
-      });
+      // RepeatableRead keeps the projection stable. The parent locks above reject
+      // concurrent parent writes; the board lock serializes override writers.
+      const current = beforeLock;
       const source = current.byItemId.get(params.itemId);
       const target = current.byItemId.get(params.targetItemId);
       if (!source || !target) throw new ApiError(409, '対象アイテムが消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');

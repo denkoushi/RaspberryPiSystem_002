@@ -27,8 +27,10 @@ import {
   resolveGrindingPlanningBoardResource,
   sortGrindingPlanningBoardItems
 } from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
+import { usePlanningBoardReorderQueue } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardReorderQueue';
 import { LeaderBoardDueAssistPanel } from '../../features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel';
 import { normalizeDueDateInput } from '../../features/kiosk/productionSchedule/dueManagement';
+import { useUnsavedChangesGuard } from '../../features/navigation/useUnsavedChangesGuard';
 
 import type { PlanningBoardAllocation, PlanningBoardStatus } from '../../features/kiosk/grindingPlanningBoard/types';
 import type {
@@ -271,6 +273,15 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     return () => window.clearInterval(interval);
   }, []);
 
+  const handleError = useCallback((error: unknown) => {
+    if (isAxiosError(error) && error.response?.status === 409) {
+      setRankConflict(true);
+      notify('表示中のデータが更新されています。最新状態を取得してください。', 'error');
+      return;
+    }
+    notify('保存できませんでした。時間をおいて再試行してください。', 'error');
+  }, [notify]);
+
   const data = boardQuery.data;
   const scopeReady = boardQuery.scopeReady;
   const bulkReady = scopeReady && boardQuery.isComplete;
@@ -347,7 +358,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     });
   }, [boardQuery.isPlaceholderData, data, pendingOverrideItems]);
 
-  const displayItems = useMemo(() => {
+  const baseDisplayItems = useMemo(() => {
     if (!data) return [];
     return data.items.map((item) => {
       const overrideItem = pendingOverrideItems[item.itemId]?.item;
@@ -358,6 +369,24 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         : baseItem;
     });
   }, [data, pendingOverrideItems, pendingRankOverrides, rankScopeKey]);
+  const reorderQueue = usePlanningBoardReorderQueue({
+    scope: `${rankScopeKey}:${allocation}`,
+    items: baseDisplayItems,
+    seibanOrder: registeredFseibans,
+    sourceRevision,
+    save: updateResourceOrderAsync,
+    refresh: () => boardQuery.refetch(),
+    onStart: () => { setRankConflict(false); notify('資源CD内の順序を保存中…', 'processing'); },
+    onSuccess: () => notify('資源CD内の順序を保存しました。', 'success'),
+    onError: (error) => { handleError(error); setRankConflict(true); }
+  });
+  const displayItems = reorderQueue.items;
+  useUnsavedChangesGuard(reorderQueue.pending);
+  useEffect(() => {
+    resourceOrderSavePendingRef.current = reorderQueue.pending;
+    setResourceOrderSaving(reorderQueue.pending);
+  }, [reorderQueue.pending]);
+
   const baseDueDetail = allocation === 'original'
     ? dueDetailQuery.data?.original
     : dueDetailQuery.data?.alternate;
@@ -512,18 +541,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     [selectedItemIds, visibleItems]
   );
   const editorItems = editorSnapshot?.items ?? [];
-  const resourceDragDisabled = resourceOrderSaving || rankMutationPending || overridesPending || Object.values(pendingOverrideItems).some(
+  const resourceDragDisabled = reorderQueue.blocked || rankMutationPending || overridesPending || Object.values(pendingOverrideItems).some(
     (pending) => pending.responseItemRevision == null
   );
 
-  const handleError = useCallback((error: unknown) => {
-    if (isAxiosError(error) && error.response?.status === 409) {
-      setRankConflict(true);
-      notify('表示中のデータが更新されています。最新状態を取得してください。', 'error');
-      return;
-    }
-    notify('保存できませんでした。時間をおいて再試行してください。', 'error');
-  }, [notify]);
+
 
   const toggleItem = useCallback((item: GrindingPlanningBoardItem, selected: boolean) => {
     const pendingOverride = pendingOverrideItems[item.itemId];
@@ -907,107 +929,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       !data.resources.includes(currentResource) ||
       overridesPending ||
       resourceDragSavePendingRef.current ||
-      resourceOrderSavePendingRef.current ||
       rankMutationPending ||
       Object.values(pendingOverrideItems).some((pending) => pending.responseItemRevision == null)
     ) return;
 
-    resourceOrderSavePendingRef.current = true;
-    setResourceOrderSaving(true);
-    setRankConflict(false);
-    notify('資源CD内の順序を保存中…', 'processing');
-    const requestSourceRevision = data.sourceRevision;
-    const requestId = ++rankRequestIdRef.current;
-    const visiblePaneItems = sortGrindingPlanningBoardItems(
-      visibleItems.filter((candidate) => resolveGrindingPlanningBoardResource(candidate, allocation) === currentResource),
-      registeredFseibans,
-      'resource',
-      allocation
-    );
-    const sourceIndex = visiblePaneItems.findIndex((candidate) => candidate.itemId === item.itemId);
-    const targetIndex = visiblePaneItems.findIndex((candidate) => candidate.itemId === targetItem.itemId);
-    if (sourceIndex < 0 || targetIndex < 0) {
-      resourceOrderSavePendingRef.current = false;
-      setResourceOrderSaving(false);
-      return;
-    }
-    const optimisticPaneItems = [...visiblePaneItems];
-    const [optimisticMoved] = optimisticPaneItems.splice(sourceIndex, 1);
-    const optimisticInsertionIndex = optimisticPaneItems.findIndex((candidate) => candidate.itemId === targetItem.itemId) + (placement === 'after' ? 1 : 0);
-    optimisticPaneItems.splice(optimisticInsertionIndex, 0, optimisticMoved);
-    setPendingRankOverrides((current) => {
-      const next = { ...current };
-      let bandRank = 0;
-      const specialDueBand = item.specialDue?.expiresAt ?? null;
-      for (const optimisticItem of optimisticPaneItems) {
-        if ((optimisticItem.specialDue?.expiresAt ?? null) !== specialDueBand) continue;
-        bandRank += 1;
-        const previous = current[optimisticItem.itemId];
-        const restoreState: RankDisplayState = previous?.phase === 'awaitingSync'
-          ? { rank: previous.rank, itemRevision: previous.itemRevision, version: previous.version }
-          : { rank: optimisticItem.alternateRank, itemRevision: optimisticItem.itemRevision, version: optimisticItem.version };
-        next[optimisticItem.itemId] = {
-          scopeKey: rankScopeKey,
-          requestId,
-          staleStates: [...(previous?.staleStates ?? []), restoreState],
-          restoreState,
-          itemRevision: optimisticItem.itemRevision,
-          version: optimisticItem.version,
-          rank: bandRank,
-          phase: 'saving'
-        };
-      }
-      return next;
-    });
-    try {
-      const result = await updateResourceOrderAsync({
-        sourceRevision: requestSourceRevision,
-        itemId: item.itemId,
-        itemRevision: item.itemRevision,
-        overrideVersion: item.version,
-        targetItemId: targetItem.itemId,
-        targetItemRevision: targetItem.itemRevision,
-        targetOverrideVersion: targetItem.version,
-        placement
-      });
-      setPendingRankOverrides((current) => {
-        const next = { ...current };
-        for (const responseItem of result.items) {
-          const baseItem = displayItems.find((candidate) => candidate.itemId === responseItem.itemId);
-          const pending = current[responseItem.itemId];
-          if (!baseItem || !pending || pending.requestId !== requestId) continue;
-          next[responseItem.itemId] = {
-            ...pending,
-            itemRevision: responseItem.itemRevision,
-            version: responseItem.version,
-            rank: responseItem.alternateRank,
-            phase: 'awaitingSync'
-          };
-        }
-        return next;
-      });
-      notify('資源CD内の順序を保存しました。', 'success');
-    } catch (error) {
-      setPendingRankOverrides((current) => {
-        const next = { ...current };
-        for (const [itemId, pending] of Object.entries(current)) {
-          if (pending.requestId !== requestId || pending.scopeKey !== rankScopeKey) continue;
-          next[itemId] = {
-            ...pending,
-            rank: pending.restoreState.rank,
-            itemRevision: pending.restoreState.itemRevision,
-            version: pending.restoreState.version,
-            phase: 'awaitingSync'
-          };
-        }
-        return next;
-      });
-      handleError(error);
-    } finally {
-      resourceOrderSavePendingRef.current = false;
-      setResourceOrderSaving(false);
-    }
-  }, [allocation, data, displayItems, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, registeredFseibans, scopeReady, sourceRevision, overridesPending, updateResourceOrderAsync, visibleItems]);
+    reorderQueue.enqueue({ item, target: targetItem, placement });
+  }, [allocation, data, pendingOverrideItems, rankMutationPending, rankMutationReady, scopeReady, sourceRevision, overridesPending, reorderQueue]);
 
   const refreshAfterConflict = async () => {
     setEditorError('最新状態を取得しています…');
@@ -1090,7 +1017,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, [allocation, data, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, resourceOrderSaving, sourceRevision, updateRankAsync]);
 
   const persistOrder = async (nextOrder: string[]): Promise<boolean> => {
-    if (!data || !scopeReady || allocation === 'original') return false;
+    if (!data || !scopeReady || reorderQueue.pending || allocation === 'original') return false;
     if (nextOrder.length > 50) {
       setOrderRegistrationError('登録上限50件を超えるため保存できません。選択を減らしてください。');
       return false;
@@ -1152,6 +1079,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     setRegisteredFseibans(result.data.registeredFseibans);
     setOrderConflict(false);
     setRankConflict(false);
+    reorderQueue.acceptRefreshedState();
     notify('最新状態を取得しました。', 'success');
   };
 
@@ -1280,13 +1208,14 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         status={status}
         allocation={allocation}
         selectedCount={toolbarSelectedItems.length}
+        scopeDisabled={reorderQueue.pending}
         bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || rankMutationPending || resourceOrderSaving}
         registeredCount={registeredFseibans.length}
         onOpenDrawer={() => setDrawerOpen(true)}
-        onCategoryChange={setCategory}
+        onCategoryChange={(value) => { if (!reorderQueue.pending) setCategory(value); }}
         onViewChange={setView}
-        onStatusChange={setStatus}
-        onAllocationChange={setAllocation}
+        onStatusChange={(value) => { if (!reorderQueue.pending) setStatus(value); }}
+        onAllocationChange={(value) => { if (!reorderQueue.pending) setAllocation(value); }}
         onOpenDueEditor={() => openEditor(toolbarSelectedItems)}
         specialDueMode={view === 'resource' ? specialDueMode : null}
         onSpecialDueModeChange={view === 'resource' ? setSpecialDueMode : undefined}
