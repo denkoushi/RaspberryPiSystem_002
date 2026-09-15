@@ -12,6 +12,8 @@ export type SeibanSearchRegisterProps = {
   inputAriaLabel?: string;
   inputType?: 'text' | 'search';
   inputDisabled?: boolean;
+  onInputFocus?: () => void;
+  showKeyboardButton?: boolean;
   registerDisabled?: boolean;
   clearOnSuccess?: boolean;
   onClearError?: () => void;
@@ -29,6 +31,8 @@ export function SeibanSearchRegister({
   inputAriaLabel = '製番を検索',
   inputType = 'text',
   inputDisabled = false,
+  onInputFocus,
+  showKeyboardButton = true,
   registerDisabled = false,
   clearOnSuccess = false,
   onClearError,
@@ -60,6 +64,7 @@ export function SeibanSearchRegister({
       <div className="flex shrink-0 gap-1.5">
         <input
           type={inputType}
+          onFocus={onInputFocus}
           value={value}
           disabled={inputDisabled}
           onChange={(event) => {
@@ -76,7 +81,7 @@ export function SeibanSearchRegister({
           aria-label={inputAriaLabel}
           className={inputClassName}
         />
-        <button
+        {showKeyboardButton ? <button
           type="button"
           onClick={() => {
             setKeyboardValue(value);
@@ -87,7 +92,7 @@ export function SeibanSearchRegister({
           aria-label="キーボードを開く"
         >
           ⌨
-        </button>
+        </button> : null}
         <button
           type="button"
           onClick={register}

@@ -325,7 +325,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('status')).toHaveTextContent('保存できませんでした');
   });
 
-  it('機種名数字検索は候補だけを絞り、解除で選択済み製番も含めて復帰する', () => {
+  it('機種名数字検索は入力時だけ候補を表示し、解除後も登録製番と選択を保持する', () => {
     const candidates = [
       {
         fseiban: 'CAND-200',
@@ -362,17 +362,19 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
     const machineNameSearch = within(drawer).getByTestId('planning-board-machine-name-search');
     expect(within(drawer).queryByRole('button', { name: '機種名で検索' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('CAND-200を登録候補に選択')).not.toBeInTheDocument();
+    expect(within(drawer).getByText('26-1041', { exact: true })).toBeInTheDocument();
     fireEvent.click(within(machineNameSearch).getByRole('button', { name: '2', exact: true }));
-    expect(within(machineNameSearch).getByLabelText('機種名数字検索値')).toHaveTextContent('2');
+    expect(within(drawer).getByLabelText('機種名数字検索値')).toHaveTextContent('2');
 
     expect(screen.getByLabelText('CAND-200を登録候補に選択')).toBeInTheDocument();
     expect(screen.queryByLabelText('CAND-80を登録候補に選択')).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('CAND-200を登録候補に選択'));
     expect(within(drawer).getByText('CAND-200 · 自動組立機 AX-200')).toBeInTheDocument();
 
-    fireEvent.click(within(machineNameSearch).getByRole('button', { name: '機種名数字を1文字削除' }));
-    expect(screen.getByLabelText('CAND-200を登録候補に選択')).toBeInTheDocument();
-    expect(screen.getByLabelText('CAND-80を登録候補に選択')).toBeInTheDocument();
+    fireEvent.click(within(machineNameSearch).getByRole('button', { name: '入力を1文字削除' }));
+    expect(screen.queryByLabelText('CAND-200を登録候補に選択')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('CAND-80を登録候補に選択')).not.toBeInTheDocument();
     expect(within(drawer).getByText('CAND-200 · 自動組立機 AX-200')).toBeInTheDocument();
   });
 
@@ -419,6 +421,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    fireEvent.change(within(drawer).getByRole('searchbox'), { target: { value: '末尾検索対象Ａ' } });
     expect(screen.getByRole('button', { name: /末尾検索対象Aの候補を閉じる/ })).toBeInTheDocument();
     const overdueCandidateCard = screen.getByLabelText('CAND-1を登録候補に選択').closest('label');
     expect(overdueCandidateCard).not.toBeNull();
@@ -466,6 +469,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    fireEvent.change(screen.getByRole('searchbox', { name: '製番を検索' }), { target: { value: 'CAND' } });
     const candidateCheckbox = screen.getByLabelText('CAND-FAILを登録候補に選択');
     fireEvent.click(candidateCheckbox);
     fireEvent.click(screen.getByRole('button', { name: '選択した製番を登録' }));
@@ -503,6 +507,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    fireEvent.change(screen.getByRole('searchbox', { name: '製番を検索' }), { target: { value: 'CAND' } });
     fireEvent.click(screen.getByLabelText('CAND-LIMIT-1を登録候補に選択'));
     fireEvent.click(screen.getByLabelText('CAND-LIMIT-2を登録候補に選択'));
     const registerButton = screen.getByRole('button', { name: '選択した製番を登録' });
@@ -1399,28 +1404,32 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(mocks.order.mock.calls[1]?.[0]).toMatchObject({ sourceRevision: 'board-3' });
   });
 
-  it('ソフトキーの値はモーダルと背面の登録入力へ反映する', () => {
+  it('共通数字キーは選択欄へ入力し、常設英字とハイフンは製番へ入力する', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
-
+    expect(mocks.candidates.mock.calls.at(-1)?.[1]).toEqual({ enabled: false });
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    expect(mocks.candidates.mock.calls.at(-1)?.[1]).toEqual({ enabled: true });
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
     const input = within(drawer).getByRole('searchbox', { name: '製番を検索' });
-    fireEvent.click(within(drawer).getByRole('button', { name: 'キーボードを開く' }));
-    const keyboard = screen.getByRole('dialog', { name: 'キーボード入力' });
-    fireEvent.click(within(keyboard).getByRole('button', { name: '2', exact: true }));
-    fireEvent.click(within(keyboard).getByRole('button', { name: '6', exact: true }));
-    expect(within(keyboard).getByText('26')).toBeInTheDocument();
-    fireEvent.click(within(keyboard).getByRole('button', { name: 'Backspace' }));
-    expect(within(keyboard).getAllByText('2')[0]).toBeInTheDocument();
-    fireEvent.click(within(keyboard).getByRole('button', { name: 'Cancel' }));
+    expect(within(drawer).queryByRole('button', { name: 'キーボードを開く' })).not.toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: '2', exact: true }));
     expect(input).toHaveValue('');
-
-    fireEvent.click(within(drawer).getByRole('button', { name: 'キーボードを開く' }));
-    const reopenedKeyboard = screen.getByRole('dialog', { name: 'キーボード入力' });
-    fireEvent.click(within(reopenedKeyboard).getByRole('button', { name: '2', exact: true }));
-    fireEvent.click(within(reopenedKeyboard).getByRole('button', { name: '6', exact: true }));
-    fireEvent.click(within(reopenedKeyboard).getByRole('button', { name: 'OK' }));
-    expect(input).toHaveValue('26');
+    expect(within(drawer).getByLabelText('機種名数字検索値')).toHaveTextContent('2');
+    fireEvent.focus(input);
+    fireEvent.click(within(drawer).getByRole('button', { name: '6', exact: true }));
+    fireEvent.click(within(drawer).getByRole('button', { name: '製番にハイフンを入力' }));
+    fireEvent.click(within(drawer).getByRole('button', { name: 'A', exact: true }));
+    expect(input).toHaveValue('6-A');
+    fireEvent.click(within(drawer).getByRole('button', { name: '入力を1文字削除' }));
+    expect(input).toHaveValue('6-');
+    fireEvent.click(within(drawer).getByRole('button', { name: '機種名数字検索値' }));
+    fireEvent.click(within(drawer).getByRole('button', { name: '0', exact: true }));
+    expect(within(drawer).getByLabelText('機種名数字検索値')).toHaveTextContent('20');
+    expect(input).toHaveValue('6-');
+    fireEvent.click(within(drawer).getByRole('button', { name: '入力をリセット' }));
+    expect(within(drawer).getByLabelText('機種名数字検索値')).toHaveTextContent('—');
+    fireEvent.click(within(drawer).getByRole('button', { name: '製番登録ペインを閉じる' }));
+    expect(mocks.candidates.mock.calls.at(-1)?.[1]).toEqual({ enabled: false });
   });
 
   it('製番登録に失敗した場合は入力値と近傍エラーを保持する', async () => {

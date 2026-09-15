@@ -9,6 +9,8 @@ import type { GrindingPlanningBoardSeibanCandidate } from '@raspi-system/shared-
 
 const REGISTERED_SEIBAN_MAX = 50;
 const UNSET_MACHINE_NAME = '未設定';
+const LETTER_KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const KEY_CLASS = 'flex h-11 min-w-0 items-center justify-center rounded border border-slate-700 bg-slate-900 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-40';
 
 function formatCandidateDate(value: string): string {
   return value.slice(5).replace('-', '/');
@@ -84,11 +86,20 @@ export function PlanningBoardSeibanDrawer({
   const [selectedCandidates, setSelectedCandidates] = useState<ReadonlySet<string>>(new Set());
   const [collapsedMachineNames, setCollapsedMachineNames] = useState<ReadonlySet<string>>(new Set());
   const [machineNameDigitQuery, setMachineNameDigitQuery] = useState('');
+  const [inputTarget, setInputTarget] = useState<'machine' | 'seiban'>('machine');
+  const activeQuery = inputTarget === 'machine' ? machineNameDigitQuery : query;
+  const hasCandidateQuery = activeQuery.trim().length > 0;
+  const changeActiveQuery = (value: string) => {
+    if (inputTarget === 'machine') setMachineNameDigitQuery(value);
+    else { setQuery(value); setRegistrationError(null); }
+  };
   const orderDisabled = orderReadOnly || orderBusy;
 
   useEffect(() => {
     if (!isOpen) {
       setQuery('');
+      setMachineNameDigitQuery('');
+      setInputTarget('machine');
       setRegistrationError(null);
     }
   }, [isOpen]);
@@ -98,22 +109,22 @@ export function PlanningBoardSeibanDrawer({
   }, [candidateScopeKey]);
 
   const visibleFseibans = useMemo(() => {
-    const normalized = query.trim();
+    const normalized = inputTarget === 'seiban' ? query.trim() : '';
     return normalized.length === 0
       ? registeredFseibans
       : registeredFseibans.filter((fseiban) => fseiban.includes(normalized));
-  }, [query, registeredFseibans]);
+  }, [inputTarget, query, registeredFseibans]);
 
   const visibleCandidates = useMemo(() => {
+    if (!isOpen || !hasCandidateQuery) return [];
     const normalized = normalizeCandidateMachineName(query).toLocaleLowerCase();
     return candidates.filter((candidate) => {
       if (!showCompletedCandidates && candidate.isCompleted) return false;
-      if (!matchesDigitQuery(normalizeCandidateMachineName(candidate.machineName), machineNameDigitQuery)) return false;
-      if (normalized.length === 0) return true;
-      return candidate.fseiban.toLocaleLowerCase().includes(normalized) ||
-        normalizeCandidateMachineName(candidate.machineName).toLocaleLowerCase().includes(normalized);
+      const machineName = normalizeCandidateMachineName(candidate.machineName);
+      if (inputTarget === 'machine') return matchesDigitQuery(machineName, machineNameDigitQuery);
+      return candidate.fseiban.toLocaleLowerCase().includes(normalized) || machineName.toLocaleLowerCase().includes(normalized);
     });
-  }, [candidates, machineNameDigitQuery, query, showCompletedCandidates]);
+  }, [candidates, hasCandidateQuery, inputTarget, isOpen, machineNameDigitQuery, query, showCompletedCandidates]);
 
   const candidateGroups = useMemo(() => {
     const groups = new Map<string, GrindingPlanningBoardSeibanCandidate[]>();
@@ -179,83 +190,69 @@ export function PlanningBoardSeibanDrawer({
           </button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-          <SeibanSearchRegister
-            value={query}
-            onChange={(value) => {
-              setQuery(value);
-              setRegistrationError(null);
-            }}
-            onRegister={async (value) => {
-              const saved = await onRegister(value);
-              if (!saved) setRegistrationError('製番を登録できませんでした。入力値・重複・登録上限を確認してください。');
-              return saved;
-            }}
-            inputPlaceholder="例：26-1041"
-            inputType="search"
-            inputDisabled={orderReadOnly}
-            registerDisabled={orderDisabled}
-            clearOnSuccess
-            error={externalRegistrationError || registrationError ? (
-              <div className="mt-1 flex items-start justify-between gap-2 text-xs text-rose-300" role="alert">
-                <span>{externalRegistrationError || registrationError}</span>
-                {onRefreshOrder ? <button type="button" className="min-h-9 shrink-0 rounded border border-rose-300/50 px-2 text-rose-200 hover:bg-rose-950/60" onClick={onRefreshOrder}>最新状態を取得</button> : null}
-              </div>
-            ) : null}
-            inputClassName="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 text-sm text-white outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20"
-            keyboardButtonClassName="min-h-11 shrink-0 rounded-md border border-slate-700 bg-slate-900 px-2 text-xs font-semibold text-slate-300 hover:border-emerald-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
-            registerButtonClassName="min-h-11 shrink-0 rounded-md bg-emerald-400 px-3 text-xs font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
-          />
+          <div className="flex flex-wrap items-start gap-2">
+            <div>
+            <SeibanSearchRegister
+              value={query}
+              showKeyboardButton={false}
+              onInputFocus={() => setInputTarget('seiban')}
+              onChange={(value) => {
+                setInputTarget('seiban');
+                setQuery(value);
+                setRegistrationError(null);
+              }}
+              onRegister={async (value) => {
+                const saved = await onRegister(value);
+                if (!saved) setRegistrationError('製番を登録できませんでした。入力値・重複・登録上限を確認してください。');
+                return saved;
+              }}
+              inputPlaceholder="26-1041"
+              inputType="search"
+              inputDisabled={orderReadOnly}
+              registerDisabled={orderDisabled}
+              clearOnSuccess
+              error={externalRegistrationError || registrationError ? (
+                <div className="mt-1 flex items-start justify-between gap-2 text-xs text-rose-300" role="alert">
+                  <span>{externalRegistrationError || registrationError}</span>
+                  {onRefreshOrder ? <button type="button" className="min-h-9 shrink-0 rounded border border-rose-300/50 px-2 text-rose-200 hover:bg-rose-950/60" onClick={onRefreshOrder}>最新状態を取得</button> : null}
+                </div>
+              ) : null}
+              inputClassName={`min-h-11 w-[10ch] [&::-webkit-search-cancel-button]:appearance-none rounded-md border bg-slate-900 px-2 font-mono text-sm text-white outline-none ${inputTarget === 'seiban' ? 'border-emerald-400 ring-1 ring-emerald-400/20' : 'border-slate-700'}`}
+              keyboardButtonClassName="min-h-11 shrink-0 rounded-md border border-slate-700 bg-slate-900 px-2 text-xs font-semibold text-slate-300 hover:border-emerald-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+              registerButtonClassName="min-h-11 shrink-0 rounded-md bg-emerald-400 px-3 text-xs font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+            />
+            </div>
+            <button
+              type="button"
+              onClick={() => setInputTarget('machine')}
+              disabled={orderDisabled}
+              aria-pressed={inputTarget === 'machine'}
+              aria-label="機種名数字検索値"
+              className={`flex h-11 w-28 items-center gap-1 rounded-md border bg-slate-900 px-2 text-sm text-white ${inputTarget === 'machine' ? 'border-emerald-400 ring-1 ring-emerald-400/20' : 'border-slate-700'}`}
+            >
+              <span className="shrink-0 text-xs text-slate-400">機種</span>
+              <span className="min-w-0 flex-1 truncate font-mono">{machineNameDigitQuery || '—'}</span>
+            </button>
+            <label className="ml-auto flex min-h-11 shrink-0 items-center gap-1 text-xs text-slate-300">
+              <input type="checkbox" className="accent-emerald-400" checked={showCompletedCandidates} onChange={(event) => onShowCompletedCandidatesChange(event.target.checked)} />
+              完了表示
+            </label>
+          </div>
+          <div className="mt-2 space-y-1" data-testid="planning-board-machine-name-search">
+            <div className="grid grid-cols-[minmax(0,10fr)_1fr_1fr_1fr] gap-1">
+              <KioskDigitTenkey value={activeQuery} onChange={changeActiveQuery} disabled={orderDisabled} maxLength={100} ariaLabel="共通数字テンキー" showReset={false} className="grid grid-cols-10 gap-1" keyClassName={KEY_CLASS} />
+              <button type="button" className={KEY_CLASS} disabled={orderDisabled || query.length >= 100} onClick={() => { setInputTarget('seiban'); setQuery(`${query}-`); setRegistrationError(null); }} aria-label="製番にハイフンを入力">−</button>
+              <button type="button" className={KEY_CLASS} disabled={orderDisabled || activeQuery.length === 0} onClick={() => changeActiveQuery(activeQuery.slice(0, -1))} aria-label="入力を1文字削除">⌫</button>
+              <button type="button" className={KEY_CLASS} disabled={orderDisabled || activeQuery.length === 0} onClick={() => changeActiveQuery('')} aria-label="入力をリセット">↺</button>
+            </div>
+            <div className="grid grid-cols-[repeat(13,minmax(0,1fr))] gap-1" role="group" aria-label="製番アルファベットキー">
+              {LETTER_KEYS.map((letter) => (
+                <button key={letter} type="button" className={KEY_CLASS} disabled={orderDisabled || query.length >= 100} onClick={() => { setInputTarget('seiban'); setQuery(`${query}${letter}`); setRegistrationError(null); }}>{letter}</button>
+              ))}
+            </div>
+          </div>
           {orderStatus ? <p className="mt-2 text-xs text-slate-400" role="status">{orderStatus}</p> : null}
-          <section className="mt-4 rounded-md border border-slate-800 bg-slate-900/70 p-2" aria-label="納期候補">
-            <div className="flex items-start justify-between gap-2">
-              <label className="flex min-h-11 shrink-0 items-center gap-1 text-[10px] text-slate-300">
-                <input
-                  type="checkbox"
-                  className="accent-emerald-400"
-                  checked={showCompletedCandidates}
-                  onChange={(event) => onShowCompletedCandidatesChange(event.target.checked)}
-                />
-                完了表示
-              </label>
-            </div>
-            <div className="mt-2 flex min-w-0 items-center gap-1 rounded border border-slate-800 bg-slate-950/80 px-1 py-1" data-testid="planning-board-machine-name-search">
-              <span
-                className="min-w-0 max-w-28 flex-1 truncate rounded border border-slate-700 bg-slate-900 px-2 text-center font-mono text-sm text-white"
-                aria-label="機種名数字検索値"
-              >
-                {machineNameDigitQuery || '—'}
-              </span>
-              <KioskDigitTenkey
-                value={machineNameDigitQuery}
-                onChange={setMachineNameDigitQuery}
-                disabled={orderDisabled}
-                maxLength={200}
-                ariaLabel="機種名数字テンキー"
-                showReset={false}
-                className="flex shrink-0 flex-nowrap items-center justify-center gap-0.5"
-                keyClassName="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded border border-white/15 bg-slate-950 text-[0.82rem] font-extrabold text-white hover:bg-slate-800 disabled:opacity-50"
-              />
-              <div className="flex shrink-0 items-center gap-0.5">
-                <button
-                  type="button"
-                  className="inline-flex h-[34px] w-[34px] items-center justify-center rounded border border-white/15 bg-slate-950 text-base font-extrabold text-white hover:bg-slate-800 disabled:opacity-50"
-                  aria-label="機種名数字を1文字削除"
-                  disabled={orderDisabled || machineNameDigitQuery.length === 0}
-                  onClick={() => setMachineNameDigitQuery((current) => current.slice(0, -1))}
-                >
-                  ⌫
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex h-[34px] w-[34px] items-center justify-center rounded border border-amber-300/30 bg-slate-950 text-base font-extrabold text-amber-200 hover:bg-slate-800 disabled:opacity-50"
-                  aria-label="機種名数字をリセット"
-                  disabled={orderDisabled || machineNameDigitQuery.length === 0}
-                  onClick={() => setMachineNameDigitQuery('')}
-                >
-                  ↺
-                </button>
-              </div>
-            </div>
+          <section className="mt-2" aria-label="納期候補">
             {selectedCandidateCount > 0 ? (
               <div className="mt-2 rounded border border-emerald-400/40 bg-emerald-950/40 p-2">
                 <div className="grid grid-cols-2 gap-0.5 text-xs text-emerald-100">
@@ -282,9 +279,9 @@ export function PlanningBoardSeibanDrawer({
                 ) : null}
               </div>
             ) : null}
-            {candidatesLoading && candidates.length === 0 ? <p className="mt-2 text-xs text-slate-500">候補を取得中…</p> : null}
-            {candidatesError ? <p className="mt-2 text-xs text-rose-300" role="alert">候補を取得できませんでした。再試行します。</p> : null}
-            {!candidatesLoading && !candidatesError && candidateGroups.length === 0 ? <p className="mt-2 text-xs text-slate-500">該当する候補はありません。</p> : null}
+            {hasCandidateQuery && candidatesLoading && candidates.length === 0 ? <p className="mt-2 text-xs text-slate-500">候補を取得中…</p> : null}
+            {hasCandidateQuery && candidatesError ? <p className="mt-2 text-xs text-rose-300" role="alert">候補を取得できませんでした。再試行します。</p> : null}
+            {hasCandidateQuery && !candidatesLoading && !candidatesError && candidateGroups.length === 0 ? <p className="mt-2 text-xs text-slate-500">該当する候補はありません。</p> : null}
             <div className="mt-2 grid max-h-[min(42vh,28rem)] grid-cols-2 items-start gap-1.5 overflow-y-auto pr-1">
               {candidateGroups.map(([machineName, group]) => {
                 const collapsed = collapsedMachineNames.has(machineName);

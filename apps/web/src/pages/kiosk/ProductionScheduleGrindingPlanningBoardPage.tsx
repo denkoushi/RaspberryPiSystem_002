@@ -228,7 +228,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const candidateQuery = useKioskGrindingPlanningBoardSeibanCandidates({
     category,
     completionFilter: showCompletedCandidates ? 'all' : 'incomplete'
-  });
+  }, { enabled: drawerOpen });
   const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch: true });
   const dueDetailQuery = useKioskGrindingPlanningBoardDueDetail(dueDetailFseiban);
   const { mutateAsync: updateOverridesAsync, isPending: overridesPending } = useUpdateKioskGrindingPlanningBoardOverrides();
