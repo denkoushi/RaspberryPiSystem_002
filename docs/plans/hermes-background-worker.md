@@ -19,7 +19,8 @@ This living plan follows `.agent/PLANS.md`. Approval on 2026-09-15 permits proce
 - [x] 2026-09-15: Created isolated branch `feat/hermes-background-worker` from `0f38b6c1261305c1b1c0b0855cdbe24955823fd8` using the lifecycle CLI.
 - [x] 2026-09-15: Reuse batch export evidence and hash all source fields; focused tests and ESLint passed. Full incremental export remains open.
 - [x] 2026-09-15: PR #1418 merged as `97997021f6cd013e94f3e1981948e9b935f2a730`; Pi5 deployment `20260915-031014-793110` completed (`active/exited/success/0`, recap 219 ok, 27 changed, no failures or unreachable hosts). Four initial batches succeeded with protected 22/26, wrong 0.
-- [x] 2026-09-15: Internal source reader uses 200-record pages; interactive tool limit remains 20. Focused 25 tests and ESLint passed; integration and deployment pending.
+- [x] 2026-09-15: Internal source reader uses 200-record pages; interactive tool limit remains 20. Focused 25 TypeScript tests and ESLint passed; integration and deployment pending.
+- [x] 2026-09-15: Profiled catalogue validation and replaced per-record regex compilation with a literal scope prefix plus the unchanged fixed grammar. 32 Python tests passed. Isolated Pi comparison over 2,206 records produced identical catalogues; three alternating runs per version measured median 0.900 seconds before and 0.121 seconds after.
 - [ ] Define and implement bounded remote preparation submission, result identity, cancellation and retry through DGX resource admission.
 - [ ] Separate calculation from local activation; verify interrupted/replayed work never commits twice or accepts stale sources.
 - [ ] Add scoped production-schedule reading and deterministic evaluation through existing business services.
@@ -102,3 +103,5 @@ The read-only audit before work is stored in the conversation workspace at `work
 Revision 2026-09-15: created this executable plan to preserve boundaries and the full remaining scope while starting with the observed repeated-read cost.
 
 Revision 2026-09-15: after the first production measurement, continue the same milestone with internal 200-record source pages. Reuse the existing visibility and serialization logic; do not expose a larger MCP tool limit. Full incremental export and transactional source generations remain open.
+
+Revision 2026-09-15: the source-page follow-up also removes measured regex compilation overhead in catalogue validation. It does not change the accepted grammar, source facts, model or certification rules.
