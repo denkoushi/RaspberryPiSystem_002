@@ -88,6 +88,14 @@ class QuestionCache:
 
         index_dir = Path(data_dir) / identity
         ready = index_dir / "ready"
+        from preparation import remote_preparation, index_rows
+        preparation = remote_preparation(model)
+        if preparation and not ready.exists():
+            rows = [{'text': wording, 'canonical': question} for question, case in self.cases.items()
+                    if 'fact' not in case for wording in sorted(set([question, *case['queries']]))]
+            if rows:
+                preparation.build('questions', index_rows(rows, model), index_dir)
+                ready.touch()
         init_similar_cache(data_dir=str(index_dir), cache_obj=self.cache,
                            embedding=Embedding(), post_func=nop,
                            config=Config(similarity_threshold=0.90))
@@ -168,7 +176,7 @@ def serve(cache, host, port, token, sources=None, experience=None, maintenance=N
                 return self.reply(401, {"error": "unauthorized"})
             if maintenance and self.path != '/maintenance/cancel':
                 cache, sources = maintenance.refresh(cache, sources)
-            if self.path not in ("/maintenance/state", "/maintenance/start", "/maintenance/status", "/maintenance/cancel", "/search", "/lookup", "/candidates", "/source", "/experience", "/feedback"):
+            if self.path not in ("/maintenance/authorize", "/maintenance/state", "/maintenance/start", "/maintenance/status", "/maintenance/cancel", "/search", "/lookup", "/candidates", "/source", "/experience", "/feedback"):
                 return self.reply(404, {"error": "not found"})
             try:
                 size = int(self.headers.get("Content-Length", "0"))
@@ -182,6 +190,8 @@ def serve(cache, host, port, token, sources=None, experience=None, maintenance=N
                 if self.path.startswith('/maintenance/'):
                     if not maintenance:
                         return self.reply(404, {'error': 'maintenance disabled'})
+                    if self.path == '/maintenance/authorize':
+                        return self.reply(200, {'result': maintenance.authorize(payload.get('runId'), payload.get('sourceSha256'))})
                     if self.path == '/maintenance/cancel':
                         return self.reply(200, {'result': maintenance.cancel(payload.get('runId'))})
                     result = maintenance.state(experience) if self.path == '/maintenance/state' else (

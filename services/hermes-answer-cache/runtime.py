@@ -56,6 +56,8 @@ class MaintenanceRuntime:
             return cache, sources
         job = self.root / 'jobs' / self.run_id
         code = self.process.returncode
+        if code == 0 and not (job / 'cancelled').exists() and self.awaiting_source_recheck(job):
+            return cache, sources
         self.process = None
         self.log.close()
         if code != 0 or (job / 'cancelled').exists():
@@ -64,6 +66,10 @@ class MaintenanceRuntime:
             from server import QuestionCache
             from sources import SourceCandidates
             activation = json.loads((job / 'activation.json').read_text())
+            if json.loads((job / 'input.json').read_text()).get('requireSourceRecheck'):
+                checked = json.loads((job / 'source-recheck.json').read_text())
+                if checked != {'runId': self.run_id, 'sourceSha256': activation['sourceSha256']}:
+                    raise ValueError('Source recheck identity mismatch')
             current, _ = self.paths()
             if digest(current) != activation['baseCatalogueSha256'] or digest(self.root / 'checks.json') != activation['referenceSha256']:
                 raise ValueError('Current catalogue or protected checks changed during maintenance')
@@ -107,6 +113,24 @@ class MaintenanceRuntime:
             pass
         return next_cache, new_sources
 
+    def awaiting_source_recheck(self, job):
+        if not (job / 'activation.json').exists() or (job / 'cancelled').exists():
+            return False
+        return (json.loads((job / 'input.json').read_text()).get('requireSourceRecheck') is True
+                and not (job / 'source-recheck.json').exists())
+
+    def authorize(self, run_id, source_sha256):
+        if (run_id != self.run_id or self.process is None or self.process.poll() != 0):
+            raise ValueError('Preparation is not ready for source recheck')
+        job = self.root / 'jobs' / run_id
+        if (job / 'cancelled').exists():
+            raise ValueError('Preparation was cancelled')
+        activation = json.loads((job / 'activation.json').read_text())
+        if source_sha256 != activation['sourceSha256'] or digest(job / 'sources.json') != source_sha256:
+            raise ValueError('Rechecked source identity mismatch')
+        atomic_json(job / 'source-recheck.json', {'runId': run_id, 'sourceSha256': source_sha256})
+        return {'runId': run_id, 'status': 'source_rechecked'}
+
     def cancel(self, run_id):
         if self.process and self.run_id == run_id:
             (self.root / 'jobs' / run_id / 'cancelled').touch()
@@ -133,5 +157,8 @@ class MaintenanceRuntime:
             raise ValueError('Invalid maintenance identity')
         if self.process and self.run_id == run_id and self.process.poll() is None:
             return {'runId': run_id, 'status': 'running'}
+        job = self.root / 'jobs' / run_id
+        if self.awaiting_source_recheck(job):
+            return {'runId': run_id, 'status': 'awaiting_source_recheck'}
         path = self.root / 'jobs' / run_id / 'result.json'
         return json.loads(path.read_text()) if path.exists() else {'runId': run_id, 'status': 'interrupted'}

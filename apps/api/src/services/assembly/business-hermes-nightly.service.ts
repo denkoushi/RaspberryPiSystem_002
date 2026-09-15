@@ -274,7 +274,7 @@ export class BusinessHermesNightlyService {
       await atomicJson(path.join(job, 'sources.json'), sources);
       await atomicJson(path.join(job, 'candidate.json'), { version: 1, cases });
       await atomicJson(path.join(job, 'input.json'), { baseCatalogueRelative: state.baseCatalogueRelative,
-        baseCatalogueSha256: state.baseCatalogueSha256, sourceFingerprints: fingerprints, decisions,
+        baseCatalogueSha256: state.baseCatalogueSha256, sourceFingerprints: fingerprints, decisions, requireSourceRecheck: true,
         ...evaluationHashes, factEvidenceSha256, factCandidateSha256,
         livePerformance: nightlyTimings(messages.map(m => m.searchDiagnostics)) });
       // Keep only entries still present in the authorized corpus; the ledger is scheduling data.
@@ -285,8 +285,17 @@ export class BusinessHermesNightlyService {
       await this.request('start', { runId }, signal);
       for (;;) {
         await delay(5000, undefined, { signal });
-        const result = await this.request<Report>('status', { runId }, signal);
+        let result = await this.request<Report>('status', { runId }, signal);
         if (result.status === 'running') continue;
+        if (result.status === 'awaiting_source_recheck') {
+          const currentSources = await exportBusinessHermesSources(this.details, signal);
+          if (sourceFingerprint(currentSources.records) !== sourceFingerprint(sources.records)) {
+            await this.request('cancel', { runId }, signal);
+            return { runId, status: 'deferred' }; // Updated, removed or hidden data needs a new batch.
+          }
+          await this.request('authorize', { runId, sourceSha256: sha256(await readFile(path.join(job, 'sources.json'), 'utf8')) }, signal);
+          result = await this.request<Report>('status', { runId }, signal);
+        }
         if (result.status === 'deferred') return result;
         if (['regression', 'slower', 'failed', 'interrupted', 'awaiting_holdout'].includes(result.status) || result.baselineRegression || result.deterioratingTrend || result.liveSlower || result.preparationFailed) {
           await this.alert(result.status === 'awaiting_holdout' ? '独立評価問題が未設定' : result.preparationFailed ? '候補作成の一部が失敗' : result.liveSlower ? '日中の回答時間が悪化' : result.deterioratingTrend ? '悪化傾向' : result.baselineRegression ? '基準からの低下' : result.status, runId);

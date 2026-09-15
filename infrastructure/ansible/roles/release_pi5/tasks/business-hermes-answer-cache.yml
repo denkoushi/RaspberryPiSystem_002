@@ -112,11 +112,12 @@
     - {key: BUSINESS_HERMES_NIGHTLY_DATA_DIR, value: /app/storage/hermes-search/answer-cache}
     - {key: ANSWER_CACHE_EMBEDDING_ORIGIN, value: "{{ business_hermes_chat_dgx_base_url | default('http://100.118.82.72:38081') }}"}
     - {key: ANSWER_CACHE_EMBEDDING_TOKEN, value: "{{ business_hermes_chat_dgx_token }}"}
+    - {key: ANSWER_CACHE_REMOTE_PREPARATION, value: "{{ business_hermes_remote_preparation_enabled | default(false) | bool | ternary('true', 'false') }}"}
   no_log: true
 
 - name: Bind immutable cache image and private authentication to Compose
   ansible.builtin.set_fact:
-    release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'BUSINESS_HERMES_ANSWER_CACHE_IMAGE': release_pi5_answer_cache_image, 'BUSINESS_HERMES_ANSWER_CACHE_TOKEN': (business_hermes_chat_mcp_api_key ~ ':business-answer-cache-v1') | hash('sha256'), 'ANSWER_CACHE_EMBEDDING_ORIGIN': business_hermes_chat_dgx_base_url | default('http://100.118.82.72:38081'), 'ANSWER_CACHE_EMBEDDING_TOKEN': business_hermes_chat_dgx_token}) }}"
+    release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'BUSINESS_HERMES_ANSWER_CACHE_IMAGE': release_pi5_answer_cache_image, 'BUSINESS_HERMES_ANSWER_CACHE_TOKEN': (business_hermes_chat_mcp_api_key ~ ':business-answer-cache-v1') | hash('sha256'), 'ANSWER_CACHE_EMBEDDING_ORIGIN': business_hermes_chat_dgx_base_url | default('http://100.118.82.72:38081'), 'ANSWER_CACHE_EMBEDDING_TOKEN': business_hermes_chat_dgx_token, 'ANSWER_CACHE_REMOTE_PREPARATION': (business_hermes_remote_preparation_enabled | default(false) | bool | ternary('true', 'false'))}) }}"
     release_pi5_answer_cache_started: true
   no_log: true
 

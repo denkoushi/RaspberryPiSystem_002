@@ -57,6 +57,7 @@ all:
           business_hermes_chat_enabled: "{{ vault_business_hermes_chat_enabled | default(true) }}"
           business_hermes_answer_cache_enabled: true
           business_hermes_background_enabled: true
+          business_hermes_remote_preparation_enabled: true
           business_hermes_chat_api_key: "{{ vault_business_hermes_chat_api_key | default(((business_hermes_api_key ~ ':consultation-api:v1') | hash('sha256')) if business_hermes_api_key | length >= 16 else '') }}"
           business_hermes_chat_mcp_api_key: "{{ vault_business_hermes_chat_mcp_api_key | default(((business_hermes_api_key ~ ':consultation-mcp:v1') | hash('sha256')) if business_hermes_api_key | length >= 16 else '') }}"
           business_hermes_chat_dgx_token: "{{ vault_api_local_llm_shared_token | default('') }}"

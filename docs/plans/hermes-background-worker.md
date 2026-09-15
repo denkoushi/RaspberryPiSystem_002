@@ -19,10 +19,11 @@ This living plan follows `.agent/PLANS.md`. Approval on 2026-09-15 permits proce
 - [x] 2026-09-15: Created isolated branch `feat/hermes-background-worker` from `0f38b6c1261305c1b1c0b0855cdbe24955823fd8` using the lifecycle CLI.
 - [x] 2026-09-15: Reuse batch export evidence and hash all source fields; focused tests and ESLint passed. Full incremental export remains open.
 - [x] 2026-09-15: PR #1418 merged as `97997021f6cd013e94f3e1981948e9b935f2a730`; Pi5 deployment `20260915-031014-793110` completed (`active/exited/success/0`, recap 219 ok, 27 changed, no failures or unreachable hosts). Four initial batches succeeded with protected 22/26, wrong 0.
-- [x] 2026-09-15: Internal source reader uses 200-record pages; interactive tool limit remains 20. Focused 25 TypeScript tests and ESLint passed; integration and deployment pending.
+- [x] 2026-09-15: Internal source reader uses 200-record pages; interactive tool limit remains 20. Focused 25 TypeScript tests and ESLint passed; PR #1419 merged as 693f5e2f1f348a10310c8e21275ca3d3d2dfdc59 and Pi5 deployment 20260915-041423-f0f4dc completed successfully. Initial five batches passed, adding 20 facts and 38 wordings.
 - [x] 2026-09-15: Profiled catalogue validation and replaced per-record regex compilation with a literal scope prefix plus the unchanged fixed grammar. 32 Python tests passed. Isolated Pi comparison over 2,206 records produced identical catalogues; three alternating runs per version measured median 0.900 seconds before and 0.121 seconds after.
-- [ ] Define and implement bounded remote preparation submission, result identity, cancellation and retry through DGX resource admission.
-- [ ] Separate calculation from local activation; verify interrupted/replayed work never commits twice or accepts stale sources.
+- [x] Implement bounded remote index submission and verified artifact installation locally; coordinated control-plane support is on feat/hermes-preparation-worker.
+- [ ] Integrate and deploy the remote index path after the supporting DGX release is verified.
+- [x] Keep calculation separate from Pi certification/activation. Add a post-computation authorized source export comparison and a run/source-hash-bound authorization step; changed or removed sources defer without consuming progress. Focused Python and TypeScript checks passed.
 - [ ] Add scoped production-schedule reading and deterministic evaluation through existing business services.
 - [ ] Review, focused validation, CI, staged integration/deployment and production evidence.
 
@@ -56,9 +57,13 @@ This reduces redundant detail queries; it is not complete incremental export. Be
 
 ### Milestone 2: Remote computation and safe resumption
 
-Separate calculation from activation in the existing Python service. Define versioned inputs and outputs with a stable job ID, source/evaluation/model hashes and bounded payload sizes. Keep durable submission and adoption state on Pi. A repeated identical job returns its existing result; reuse of the ID with different input is rejected. Cancellation and a lost HTTP response cannot imply success. DGX stores only bounded temporary inputs/derived artifacts under an isolated worker owner; no private mounts or credentials are shared.
+Keep evaluation and adoption on the Pi where queries are served. Moving the entire maintenance process would measure DGX latency instead and incorrectly transfer adoption authority. Move source SQLite/FAISS construction and question GPTCache construction/flush through a `RemotePreparation` adapter in `services/hermes-answer-cache/preparation.py`. The adapter installs only complete verified artifacts; `QuestionCache` and `SourceCandidates` then use their existing readers and checks. The pending consumer PR sets `business_hermes_remote_preparation_enabled=true` for Pi5; the release role delivers `ANSWER_CACHE_REMOTE_PREPARATION` to the cache container. Do not merge/deploy this enabling consumer until control-plane support has passed live verification. Its absence/false preserves the existing local builder for rollback.
 
-Extend the control-plane resource lifecycle to cover CPU preparation as well as model calls. Each work unit must finish or checkpoint before private compute starts; enforce host memory headroom in addition to container limits. Verify this on a bounded fixture before moving the production index. Establish exact route/schema and image ownership in the coordinated control-plane plan before edits there. No consumer deployment precedes this support.
+The exact resource contract is recorded in the control-plane plan `docs/exec-plans/hermes-index-preparation.md` on branch `feat/hermes-preparation-worker`. POST `/v1/hermes-search/prepare` uses the existing egress/token and is forced to priority 10. The immutable job ID hashes a manifest of ordered chunk hashes, row count and index kind. Inputs contain text and pinned MiniLM vectors (plus canonical question labels for GPTCache), never final answers or credentials. Requests contain at most 128 rows/512 KiB. DGX closes artifacts and returns their exact names, sizes and hashes; Pi downloads bounded chunks, verifies everything, then installs. There is one disposable worker under the existing Unix supervisor/container, with a 20-second work-unit deadline, 256 MiB scratch bound and 60-second idle expiry. Private unload terminates it and removes scratch.
+
+Durable embeddings remain checkpointed on Pi using the existing eight-text requests. A lost DGX scratch requires replay of index inserts, but completed embedding calculation is reused. No client-side adoption follows a deferred, interrupted or corrupt response. The existing local maintenance subprocess and cancellation marker remain authoritative. Pi source recheck now occurs after computation: repeat the authorized export and compare complete record revisions with the prepared export. A mismatch cancels and defers the batch. Only a matching run ID/source-file hash authorization permits the request process to apply its existing base/evaluation/fact/source checks and atomic active pointer. This is a recheck, not a cross-database transaction; answer-time live-source verification remains mandatory.
+
+The future retention of old Pi job/index generations and incremental export are not silently included here. DGX scratch needs no durable recovery and cannot become a new data authority.
 
 ### Milestone 3: Scoped table support
 
@@ -70,7 +75,7 @@ Run the narrow tests below, then required hosted CI on exact PR heads. For coord
 
 ## Concrete Steps
 
-For the source-page follow-up, work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/perf--hermes-source-pages`. Use the existing pnpm workspace. Run focused tests from `apps/api` with `pnpm exec vitest run src/services/assembly/business-hermes-nightly-source-evidence.test.ts src/services/assembly/business-hermes-nightly-preparation.test.ts src/services/assembly/business-hermes-nightly-candidates.test.ts src/services/assembly/business-hermes-mcp.service.test.ts`. Add the new test paths as they are created. Run ESLint on changed TypeScript files. Do not use production credentials for fixtures.
+For remote preparation, work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-remote-preparation`. Use the existing pnpm workspace. Run focused tests from `apps/api` with `pnpm exec vitest run src/services/assembly/business-hermes-nightly-source-evidence.test.ts src/services/assembly/business-hermes-nightly-preparation.test.ts src/services/assembly/business-hermes-nightly-candidates.test.ts src/services/assembly/business-hermes-mcp.service.test.ts`. Add the new test paths as they are created. Run ESLint on changed TypeScript files. Do not use production credentials for fixtures.
 
 Deployment validation budget is 45 minutes of local validation; hosted CI provides broad checks. Follow the standard wrapper plan and exact-host deploy from `docs/guides/deployment.md`. Keep production unchanged if a required boundary is unverified.
 
@@ -105,3 +110,5 @@ Revision 2026-09-15: created this executable plan to preserve boundaries and the
 Revision 2026-09-15: after the first production measurement, continue the same milestone with internal 200-record source pages. Reuse the existing visibility and serialization logic; do not expose a larger MCP tool limit. Full incremental export and transactional source generations remain open.
 
 Revision 2026-09-15: the source-page follow-up also removes measured regex compilation overhead in catalogue validation. It does not change the accepted grammar, source facts, model or certification rules.
+
+Revision 2026-09-15: implement remote index construction while retaining Pi latency evaluation/adoption, and add a fresh authorized source comparison before activation. Real cross-repository child-process validation preserved nine source rankings over 257 records and ten question lookups; release integration and production enablement remain pending.
