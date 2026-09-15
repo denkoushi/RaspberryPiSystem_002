@@ -1432,6 +1432,30 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(mocks.candidates.mock.calls.at(-1)?.[1]).toEqual({ enabled: false });
   });
 
+  it('検索に一致しなくても登録製番は全件表示し、選択状態と並び順を保持する', () => {
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    const input = within(drawer).getByRole('searchbox', { name: '製番を検索' });
+    const registeredCards = () => within(drawer).getAllByRole('button', { name: /^26-104[12] / });
+    const initialCards = registeredCards();
+    const initialSelection = initialCards.map((card) => card.getAttribute('aria-pressed'));
+    expect(initialCards).toHaveLength(2);
+
+    fireEvent.focus(input);
+    fireEvent.click(within(drawer).getByRole('button', { name: '9', exact: true }));
+    expect(input).toHaveValue('9');
+    expect(registeredCards()).toEqual(initialCards);
+    expect(registeredCards().map((card) => card.getAttribute('aria-pressed'))).toEqual(initialSelection);
+    expect(within(drawer).queryByText('登録製番がありません。')).not.toBeInTheDocument();
+
+    fireEvent.click(within(drawer).getByRole('button', { name: '機種名数字検索値' }));
+    fireEvent.click(within(drawer).getByRole('button', { name: '8', exact: true }));
+    expect(registeredCards()).toEqual(initialCards);
+    fireEvent.click(within(drawer).getByRole('button', { name: '入力をリセット' }));
+    expect(registeredCards()).toEqual(initialCards);
+  });
+
   it('製番登録に失敗した場合は入力値と近傍エラーを保持する', async () => {
     mocks.order.mockRejectedValueOnce(new Error('registration failed'));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
