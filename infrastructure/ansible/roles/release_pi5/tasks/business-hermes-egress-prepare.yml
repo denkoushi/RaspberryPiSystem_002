@@ -1,0 +1,31 @@
+---
+# Published programs outlive deployment checkouts and remain available to rollback.
+- name: Define the managed egress artifact directory
+  ansible.builtin.set_fact:
+    release_pi5_egress_artifact_root: /etc/raspi-business-hermes/egress
+
+- name: Create the managed egress artifact directory
+  ansible.builtin.file:
+    path: "{{ release_pi5_egress_artifact_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Publish the candidate egress program outside the checkout
+  ansible.builtin.include_tasks: business-hermes-egress-artifact.yml
+  vars:
+    egress_artifact_source: "{{ release_pi5_project_dir }}/infrastructure/docker/business-hermes-egress/proxy.mjs"
+    egress_artifact_key: candidate
+
+- name: Capture each previous egress program before switching its mount
+  ansible.builtin.include_tasks: business-hermes-egress-capture.yml
+  loop: [business-hermes-egress, business-hermes-chat-egress]
+  loop_control:
+    loop_var: egress_service
+
+- name: Bind isolated egress programs to candidate and rollback Compose environments
+  ansible.builtin.set_fact:
+    release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'BUSINESS_HERMES_EGRESS_PROXY_FILE': release_pi5_egress_artifacts.candidate, 'BUSINESS_HERMES_CHAT_EGRESS_PROXY_FILE': release_pi5_egress_artifacts.candidate}) }}"
+    release_pi5_rollback_compose_environment: "{{ release_pi5_rollback_compose_environment | combine({'BUSINESS_HERMES_EGRESS_PROXY_FILE': release_pi5_egress_artifacts.get('business-hermes-egress', release_pi5_egress_artifacts.candidate), 'BUSINESS_HERMES_CHAT_EGRESS_PROXY_FILE': release_pi5_egress_artifacts.get('business-hermes-chat-egress', release_pi5_egress_artifacts.candidate)}) }}"
+    release_pi5_business_hermes_egress_transition_required: true

@@ -1,0 +1,13 @@
+---
+- name: Verify each egress uses the isolated candidate program
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}|{{range .Mounts}}{{if eq .Destination \"/opt/business-hermes-egress/proxy.mjs\"}}{{.Source}}{{end}}{{end}}' }}"
+      - "{{ release_pi5_compose_project }}-{{ item }}-1"
+  loop: "{{ (['business-hermes-egress'] if release_pi5_business_hermes_enabled | bool else []) + (['business-hermes-chat-egress'] if business_hermes_chat_enabled | default(false) | bool else []) }}"
+  register: release_pi5_egress_health
+  changed_when: false
+  failed_when: release_pi5_egress_health.stdout != 'running|healthy|' ~ release_pi5_egress_artifacts.candidate
