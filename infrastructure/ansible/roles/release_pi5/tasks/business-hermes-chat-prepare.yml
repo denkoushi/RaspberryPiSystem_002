@@ -75,6 +75,8 @@
     create: false
     mode: '0600'
   loop:
+    - { key: LOCAL_LLM_SHARED_TOKEN, value: "{{ api_local_llm_shared_token | default('') }}" }
+    - { key: INFERENCE_PROVIDERS_JSON, value: "{{ inference_providers_json | default('') }}" }
     - { key: HERMES_KNOWLEDGE_ENABLED, value: "{{ hermes_knowledge_enabled | default(false) | bool | ternary('true', 'false') }}" }
     - { key: BUSINESS_HERMES_EGRESS_PROXY_FILE, value: "{{ release_pi5_egress_artifacts.candidate }}" }
     - { key: BUSINESS_HERMES_CHAT_EGRESS_PROXY_FILE, value: "{{ release_pi5_egress_artifacts.candidate }}" }

@@ -63,6 +63,34 @@ def role_text(role: str) -> str:
 
 
 class StandardReleaseAnsibleTests(unittest.TestCase):
+    def test_consultation_candidate_rotates_all_shared_inference_consumers(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_pi5/tasks/business-hermes-chat-prepare.yml").read_text())
+        task = next(item for item in tasks if item["name"] == "Bind consultation credentials only to the candidate API environment")
+        bindings = {item["key"]: item["value"] for item in task["loop"]}
+        self.assertIn("api_local_llm_shared_token", bindings["LOCAL_LLM_SHARED_TOKEN"])
+        self.assertIn("inference_providers_json", bindings["INFERENCE_PROVIDERS_JSON"])
+        self.assertTrue(task["no_log"])
+        self.assertEqual(task["ansible.builtin.lineinfile"]["mode"], "0600")
+
+    def test_answer_cache_credentials_use_private_env_file_in_start_and_rollback(self) -> None:
+        tasks_root = ANSIBLE / "roles/release_pi5/tasks"
+        tasks = yaml.safe_load((tasks_root / "business-hermes-answer-cache.yml").read_text())
+        bindings = [task["ansible.builtin.set_fact"]["release_pi5_compose_environment"]
+                    for task in tasks if "release_pi5_compose_environment" in task.get("ansible.builtin.set_fact", {})]
+        self.assertEqual(len(bindings), 1)
+        self.assertNotIn("TOKEN", bindings[0])
+        self.assertNotIn("api_key", bindings[0])
+        private_file = next(task for task in tasks if "ansible.builtin.lineinfile" in task)
+        self.assertTrue(private_file["no_log"])
+        self.assertEqual(private_file["ansible.builtin.lineinfile"]["mode"], "0600")
+        self.assertIn("BUSINESS_HERMES_ANSWER_CACHE_TOKEN", [item["key"] for item in private_file["loop"]])
+        self.assertIn("ANSWER_CACHE_EMBEDDING_TOKEN", [item["key"] for item in private_file["loop"]])
+        for filename in ("business-hermes-answer-cache.yml", "business-hermes-answer-cache-rollback.yml"):
+            for task in yaml.safe_load((tasks_root / filename).read_text()):
+                argv = task.get("ansible.builtin.command", {}).get("argv", "")
+                if "'up'" in str(argv):
+                    self.assertIn("['--env-file', release_pi5_chat_env_file, 'up'", argv)
+
     def test_shared_torque_inventory_contract_executes_with_complete_settings(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             playbook = Path(directory) / "contract.yml"

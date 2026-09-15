@@ -34,6 +34,7 @@ from rolling_release.attestation_environment import (
     isolated_attestation_environment,
 )
 from controller_gh_verifier import resolve_attestation_verifier
+from rolling_release.safe_diagnostics import summarize_release_journal
 
 ROOT = Path(__file__).resolve().parents[2]
 ANSIBLE = ROOT / "infrastructure/ansible"
@@ -1054,7 +1055,7 @@ def status(args: argparse.Namespace) -> int:
     show = run(ssh_argv(host, user, port, ["/usr/bin/sudo", "-n", "/usr/bin/systemctl", "show", "--no-pager", *[f"--property={item}" for item in properties], "--", unit]), check=False)
     journal = run(ssh_argv(host, user, port, ["/usr/bin/sudo", "-n", "/usr/bin/journalctl", "--unit", unit, "--lines=200", "--no-pager", "--output=short-iso"]), check=False)
     values = dict(line.split("=", 1) for line in show.stdout.splitlines() if "=" in line)
-    print(json.dumps({"runId": args.status, "unit": unit, "status": values, "journal": journal.stdout.splitlines()}, ensure_ascii=False))
+    print(json.dumps({"runId": args.status, "unit": unit, "status": values, "journal": summarize_release_journal(journal.stdout)}, ensure_ascii=False))
     known = values.get("LoadState") == "loaded"
     healthy = values.get("ActiveState") != "failed" and values.get("Result") in {"", "success"}
     return 0 if show.returncode == 0 and known and healthy else 1

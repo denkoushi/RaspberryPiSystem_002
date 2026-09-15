@@ -143,3 +143,32 @@ def valid_projected_diagnostic(value: Any, run_id: str) -> bool:
         valid_binding_text(value.get(field), allow_empty=field == "play")
         for field in ("scope", "host", "play", "task")
     ) and valid_diagnostic(diagnostic)
+
+
+def summarize_release_journal(raw: str) -> list[str]:
+    """Return closed progress summaries, never raw journal commands or payloads."""
+    summaries: list[str] = []
+    for line in raw.splitlines():
+        # Only Ansible's stdout/stderr process, never sudo's command/continuation log.
+        match = re.fullmatch(r"\S+ \S+ bash\[\d+\]: (.*)", line)
+        if match is None:
+            continue
+        message = match.group(1)
+        if message.startswith("TASK ["):
+            summaries.append("TASK [details omitted]")
+        elif re.fullmatch(r"(?:ok|changed|skipping): \[[A-Za-z0-9_.-]+\]", message):
+            summaries.append(message.split(":", 1)[0])
+        elif message.startswith(("fatal:", "failed:")):
+            summaries.append("task failed (details omitted)")
+        elif re.fullmatch(r"PLAY RECAP \*+", message):
+            summaries.append("PLAY RECAP")
+        else:
+            recap = re.fullmatch(
+                r"[A-Za-z0-9_.-]+\s+:\s+"
+                r"(ok=\d+\s+changed=\d+\s+unreachable=\d+\s+failed=\d+"
+                r"\s+skipped=\d+\s+rescued=\d+\s+ignored=\d+)\s*",
+                message,
+            )
+            if recap:
+                summaries.append(" ".join(recap.group(1).split()))
+    return summaries
