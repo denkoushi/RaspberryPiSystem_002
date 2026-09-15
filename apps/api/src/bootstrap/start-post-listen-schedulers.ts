@@ -261,9 +261,9 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
 export function listPostListenSchedulerNames(): string[] {
   // Names only — used by unit tests to assert Backup/CSV membership without starting jobs.
   return [
+    'hermes-knowledge',
     'signage-render',
     'business-hermes-nightly',
-    'hermes-knowledge',
     'file-storage-integrity-backfill',
     'backup',
     'csv-import',
