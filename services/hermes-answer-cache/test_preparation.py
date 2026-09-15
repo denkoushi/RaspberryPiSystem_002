@@ -37,7 +37,7 @@ class RemotePreparationTest(unittest.TestCase):
         import numpy as np
         from unittest.mock import Mock
         from preparation import index_rows
-        old = np.ones(384, dtype='float32') / np.sqrt(384)
+        old = (np.ones(384, dtype='float32') / np.sqrt(384)).astype('float32')
         new = -np.ones(384, dtype='float32')
         previous = Mock(texts=['existing'])
         previous.index.reconstruct.return_value = old
