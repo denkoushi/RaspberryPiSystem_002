@@ -29,6 +29,9 @@ vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => mocks.auth
 }));
 
+// Legacy behavior is exercised with the new capability explicitly disabled.
+vi.mock('../../api/http', () => ({ api: { get: vi.fn().mockResolvedValue({ data: { enabled: false } }) } }));
+
 vi.mock('./HermesChatPanel', () => ({
   default: (props: {
     mode?: 'legacy' | 'consultations';

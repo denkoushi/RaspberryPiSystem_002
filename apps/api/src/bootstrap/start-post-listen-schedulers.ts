@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../config/env.js';
 import { getBusinessHermesNightlyScheduler } from '../services/assembly/business-hermes-nightly.scheduler.js';
@@ -97,6 +98,12 @@ export async function startSchedulerStepGroup(
 
 export function buildPostListenSchedulerDefinitions(app: FastifyInstance): SchedulerStepDefinition[] {
   const definitions: SchedulerStepDefinition[] = [];
+  if (process.env.HERMES_KNOWLEDGE_ENABLED === 'true') {
+    definitions.push({ name: 'hermes-knowledge',
+      start: async () => { const runtime = getKnowledgeRuntime(); await runtime.documents.initialize(); runtime.worker.start(); },
+      stop: () => getKnowledgeRuntime().worker.stop(),
+    });
+  }
   if (env.SIGNAGE_RENDER_ENABLED) {
     definitions.push({
       name: 'signage-render',
@@ -254,6 +261,7 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
 export function listPostListenSchedulerNames(): string[] {
   // Names only — used by unit tests to assert Backup/CSV membership without starting jobs.
   return [
+    'hermes-knowledge',
     'signage-render',
     'business-hermes-nightly',
     'file-storage-integrity-backfill',

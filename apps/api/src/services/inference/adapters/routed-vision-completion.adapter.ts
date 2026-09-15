@@ -2,6 +2,7 @@ import type { VisionCompletionPort, VisionCompletionInput, VisionCompletionResul
 import { emitInferenceCallOutcome } from '../observability/inference-observability.js';
 import { InferenceRouter } from '../routing/inference-router.js';
 import type { InferenceUseCase } from '../types/inference-usecase.js';
+import { InferenceDeferredError } from '../ports/text-completion.port.js';
 
 import { extractTextFromOpenAiStylePayload, type OpenAiStyleChatResponse } from './openai-chat-response.util.js';
 import {
@@ -51,6 +52,7 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
     const started = performance.now();
     const useCase = this.deps.useCase;
     const { provider, model } = this.deps.router.resolve(useCase);
+    if (input.background && model !== 'system-prod-primary') throw new Error('Background admission requires the DGX model alias');
     const inputSize = input.imageBytes.length + Buffer.byteLength(input.userText, 'utf8');
     let result: 'ok' | 'failure' = 'failure';
     let errorReason: string | undefined;
@@ -68,7 +70,7 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
           'X-LLM-Token': provider.sharedToken,
         },
         body: JSON.stringify({
-          model,
+          model: input.background ? 'dgx-background-preparation' : model,
           messages: [
             {
               role: 'user',
@@ -85,7 +87,7 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
           temperature: input.temperature ?? this.deps.getTemperature(),
           chat_template_kwargs: { enable_thinking: false },
         }),
-        signal,
+        signal: input.signal ? AbortSignal.any([signal, input.signal]) : signal,
       });
 
     const parseAndReturn = async (response: Response): Promise<VisionCompletionResult> => {
@@ -120,6 +122,7 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
 
     try {
       let response = await postChat(input.imageBytes, input.mimeType);
+      if (input.background && [429, 503].includes(response.status)) throw new InferenceDeferredError();
 
       if (response.ok) {
         return await parseAndReturn(response);
@@ -136,6 +139,7 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
               : { maxEdge: 512, quality: 72 };
           const reencoded = await reencode(input.imageBytes, input.mimeType, reencodeOpts);
           response = await postChat(reencoded, 'image/jpeg');
+          if (input.background && [429, 503].includes(response.status)) throw new InferenceDeferredError();
           if (response.ok) {
             return await parseAndReturn(response);
           }

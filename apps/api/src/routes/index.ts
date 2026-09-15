@@ -27,6 +27,7 @@ import { registerLoanReportRoutes } from './reports/loan-report.js';
 import { registerTorqueWrenchRoutes } from './torque-wrenches/index.js';
 import { registerTorqueTrainingRoutes } from './torque-training/index.js';
 import { registerWorkInstructionRoutes } from './work-instructions/index.js';
+import { registerHermesKnowledgeRoutes } from './hermes-knowledge.js';
 
 /**
  * すべてのルートを登録
@@ -40,6 +41,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       await registerSystemRoutes(subApp);
       await registerAuthRoutes(subApp);
       await registerAssemblyRoutes(subApp);
+      registerHermesKnowledgeRoutes(subApp);
       await registerTorqueWrenchRoutes(subApp);
       await registerTorqueTrainingRoutes(subApp);
 

@@ -60,3 +60,11 @@ pi5_phase3_storage_contract:
     suffix: .integrity
     runtime_path: /app/storage/.integrity
     mode: '0750'
+  - logical_key: knowledge-assets-storage
+    suffix: knowledge-assets
+    runtime_path: /app/storage/knowledge-assets
+    mode: '0755'
+  - logical_key: knowledge-git-storage
+    suffix: knowledge-git
+    runtime_path: /app/storage/knowledge-git
+    mode: '0755'

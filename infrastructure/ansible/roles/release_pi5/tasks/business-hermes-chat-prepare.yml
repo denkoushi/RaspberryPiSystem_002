@@ -75,6 +75,7 @@
     create: false
     mode: '0600'
   loop:
+    - { key: HERMES_KNOWLEDGE_ENABLED, value: "{{ hermes_knowledge_enabled | default(false) | bool | ternary('true', 'false') }}" }
     - { key: BUSINESS_HERMES_CHAT_BASE_URL, value: "{{ api_business_hermes_chat_base_url }}" }
     - { key: BUSINESS_HERMES_CHAT_API_KEY, value: "{{ business_hermes_chat_api_key }}" }
     - { key: BUSINESS_HERMES_CHAT_MODEL, value: "{{ business_hermes_chat_model }}" }

@@ -1,6 +1,6 @@
 import { ChatContainer, MainContainer, Message, MessageInput, MessageList } from '@chatscope/chat-ui-kit-react';
 import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { ProtectedImage } from '../ProtectedImage';
 
@@ -32,6 +32,8 @@ export type HermesConsultationSuggestion = {
 };
 
 export type HermesChatPanelProps = {
+  conversationExtension?: ReactNode;
+  attachmentControl?: ReactNode;
   mode?: 'legacy' | 'consultations';
   messages: readonly HermesPanelMessage[];
   draft: string;
@@ -233,6 +235,8 @@ function RecordCard({ evidence, view }: { evidence: BusinessHermesChatEvidence; 
 }
 
 export default function HermesChatPanel({
+  conversationExtension,
+  attachmentControl,
   mode = 'legacy',
   messages,
   draft,
@@ -345,6 +349,7 @@ export default function HermesChatPanel({
       </header>
 
       {authRequired ? <p className="hermes-chat-panel__status" role="status">{authRequired}</p> : null}
+      {conversationExtension}
       {error ? <p className="hermes-chat-panel__status hermes-chat-panel__status--error" role="alert">{error}</p> : null}
       {consultationError ? <p className="hermes-chat-panel__status hermes-chat-panel__status--error" role="alert">{consultationError}</p> : null}
       {selectionNotice ? <p className="hermes-chat-panel__status hermes-chat-panel__status--selection" role="status">{selectionNotice}</p> : null}
@@ -455,6 +460,7 @@ export default function HermesChatPanel({
           </MainContainer>
         </>
       )}
+      {attachmentControl}
     </section>
   );
 }

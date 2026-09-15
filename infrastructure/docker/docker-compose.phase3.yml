@@ -58,6 +58,8 @@ services:
       - assembly-procedure-images-storage:/app/storage/assembly-procedure-images
       - assembly-procedure-assets-storage:/app/storage/assembly-procedure-assets
       - work-instruction-assets-storage:/app/storage/work-instruction-assets
+      - knowledge-assets-storage:/app/storage/knowledge-assets
+      - knowledge-git-storage:/app/storage/knowledge-git
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
       - csv-dashboard-storage:/app/storage/csv-dashboards
@@ -488,3 +490,9 @@ volumes:
     name: ${PI5_VOLUME_PREFIX:-docker}_business-hermes-data
   business-hermes-chat-data:
     name: ${PI5_VOLUME_PREFIX:-docker}_business-hermes-chat-data
+  knowledge-assets-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-assets-storage
+  knowledge-git-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-git-storage

@@ -4557,3 +4557,36 @@ model WorkInstructionSourceAssetDeletionAudit {
   @@index([status, requestedAt], map: "WorkInstructionSourceAssetDeletionAudit_idx_status")
   @@index([sourceVersionId, requestedAt], map: "WorkInstructionSourceAssetDeletionAudit_idx_version")
 }
+
+/// Owner-scoped raw intake and durable knowledge processing state.
+model KnowledgeIntake {
+  id             String   @id
+  sequence       BigInt   @unique @default(autoincrement())
+  ownerKey       String
+  conversationId String
+  inputHash      String
+  text           String
+  files          Json
+  sources        Json?
+  organized      Json?
+  state          String   @default("receiving")
+  action         String?
+  version        Int      @default(1)
+  attempts       Int      @default(0)
+  retryAt        DateTime @default(now())
+  result         Json?
+  errorCode      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([state, retryAt, createdAt])
+  @@index([ownerKey, conversationId, createdAt])
+}
+
+/// Accepted publication pointer and a lease serializing topic publication.
+model KnowledgeTopic {
+  id             String   @id
+  revision       String?
+  leaseToken     String?
+  leaseUntil     DateTime?
+}

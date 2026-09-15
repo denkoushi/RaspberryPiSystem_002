@@ -94,7 +94,7 @@ RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && command -v ndlocr-lite \
   && ndlocr-lite --help >/dev/null \
   && python3 -c "from rapidocr import RapidOCR; print('rapidocr-ok')" \
-  && apt-get purge -y git python3-pip \
+  && apt-get purge -y python3-pip \
   && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/*
 
@@ -137,6 +137,8 @@ RUN mkdir -p /app/storage/photos \
   /app/storage/assembly-procedure-images \
   /app/storage/assembly-procedure-assets \
   /app/storage/work-instruction-assets \
+  /app/storage/knowledge-assets \
+  /app/storage/knowledge-git \
   /app/storage/measuring-instrument-genres \
   /app/storage/part-measurement-drawings \
   /app/storage/pallet-machine-illustrations \

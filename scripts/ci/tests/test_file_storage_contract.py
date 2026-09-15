@@ -131,7 +131,8 @@ class FileStorageContractTest(unittest.TestCase):
             {entry["logical_key"] for entry in STORAGE_CONTRACT},
             {key for key in SERVER_MODEL["volumes"] if key in expected_keys},
         )
-        self.assertEqual(len(STORAGE_CONTRACT), 14)
+        self.assertEqual(len(STORAGE_CONTRACT), 16)
+        self.assertTrue({"knowledge-assets-storage", "knowledge-git-storage"} <= expected_keys)
         for entry in STORAGE_CONTRACT:
             key = entry["logical_key"]
             server_volume = SERVER_MODEL["volumes"][key]
@@ -169,6 +170,14 @@ class FileStorageContractTest(unittest.TestCase):
             "/app/storage/.integrity",
         ):
             self.assertIn(source, BACKUP_SCRIPT)
+
+    def test_knowledge_storage_is_in_runtime_rehearsal_and_disaster_recovery(self):
+        for suffix in ("knowledge-assets", "knowledge-git"):
+            runtime_path = f"/app/storage/{suffix}"
+            for relative in ("scripts/ci/rehearse-release-runtime.sh", "infrastructure/docker/Dockerfile.api"):
+                self.assertIn(runtime_path, (ROOT / relative).read_text())
+            self.assertIn(f"../../.docker/local/storage/{suffix}:{runtime_path}", MAC_OVERRIDE)
+            self.assertIn(f'Path("storage/{suffix}")', (ROOT / "scripts/google_drive_dr/source_policy.py").read_text())
 
     def test_work_instruction_originals_are_durable_and_recoverable(self):
         suffix = "work-instruction-assets"

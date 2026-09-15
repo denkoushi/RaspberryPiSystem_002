@@ -128,6 +128,7 @@ describe('start-post-listen-schedulers fail-closed group', () => {
 describe('start-post-listen-schedulers naming contract', () => {
   it('keeps a stable ordered membership for Blue/Green stop guarantees', () => {
     expect(listPostListenSchedulerNames()).toEqual([
+      'hermes-knowledge',
       'signage-render',
       'business-hermes-nightly',
       'file-storage-integrity-backfill',

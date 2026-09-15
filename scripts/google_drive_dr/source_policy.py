@@ -50,6 +50,8 @@ PRIMARY_STORAGE_RELATIVE_SOURCES = (
     ("assembly-procedure-images", Path("storage/assembly-procedure-images")),
     ("assembly-procedure-assets", Path("storage/assembly-procedure-assets")),
     ("work-instruction-assets", Path("storage/work-instruction-assets")),
+    ("knowledge-assets", Path("storage/knowledge-assets")),
+    ("knowledge-git", Path("storage/knowledge-git")),
     ("measuring-instrument-genres", Path("storage/measuring-instrument-genres")),
     ("pallet-machine-illustrations", Path("storage/pallet-machine-illustrations")),
     ("csv-dashboards", Path("storage/csv-dashboards")),

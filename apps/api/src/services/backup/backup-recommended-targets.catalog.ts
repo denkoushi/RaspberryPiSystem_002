@@ -80,6 +80,10 @@ function kioskClientSpecs(host: string): RecommendedBackupTargetSpec[] {
  */
 export function getRecommendedBackupTargetCatalog(): RecommendedBackupTargetSpec[] {
   const server: RecommendedBackupTargetSpec[] = [
+    ...['knowledge-assets', 'knowledge-git'].map(source => ({
+      id: `server-directory-${source}`, message: `Hermesナレッジの永続領域（${source}）`,
+      target: { kind: 'directory' as const, source: `/app/storage/${source}`, schedule: DEFAULT_SCHEDULE, enabled: true, storage: DROPBOX, retention: DEFAULT_RETENTION },
+    })),
     {
       id: 'server-directory-part-measurement-drawings',
       message: '部品測定図面ストレージ（ホスト永続ボリューム）',

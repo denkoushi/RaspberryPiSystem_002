@@ -86,6 +86,13 @@ DATABASE_URL="$MIGRATION_DATABASE_URL" "$PNPM" --dir "$ROOT/apps/api" exec prism
 
 psql "$APP_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 <<'SQL'
 BEGIN;
+INSERT INTO "KnowledgeIntake" (id, "ownerKey", "conversationId", "inputHash", text, files, "updatedAt")
+VALUES ('role-contract-knowledge', 'client:test', 'conversation', 'hash', 'memo', '[]', NOW());
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM "KnowledgeIntake" WHERE id = 'role-contract-knowledge' AND sequence > 0) THEN
+    RAISE EXCEPTION 'Knowledge sequence cannot be used by application role';
+  END IF;
+END $$;
 INSERT INTO "ClientDevice" (id, name, "apiKey", "updatedAt")
 VALUES ('role-contract-client', 'role-contract-client', 'client-key-role-contract', NOW());
 UPDATE "ClientDevice" SET location = 'contract' WHERE id = 'role-contract-client';
