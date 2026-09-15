@@ -634,7 +634,8 @@
   ansible.builtin.set_fact:
     release_pi5_business_hermes_egress_transition_required: >-
       {{
-        release_pi5_business_hermes_egress_existing_id | length == 0
+        (business_hermes_remote_preparation_enabled | default(false) | bool)
+        or release_pi5_business_hermes_egress_existing_id | length == 0
         or not (release_pi5_business_hermes_egress_existing_running | bool)
         or release_pi5_business_hermes_egress_existing_health != 'healthy'
         or not (release_pi5_business_hermes_egress_existing_timeout_key_present | bool)
@@ -840,7 +841,7 @@
 
 - name: Apply the Business Hermes egress timeout before candidate traffic
   ansible.builtin.command:
-    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'business-hermes-egress'] }}"
+    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string] + (['--force-recreate'] if (business_hermes_remote_preparation_enabled | default(false) | bool) else []) + ['business-hermes-egress'] }}"
   environment: "{{ release_pi5_compose_environment }}"
   changed_when: true
   when:

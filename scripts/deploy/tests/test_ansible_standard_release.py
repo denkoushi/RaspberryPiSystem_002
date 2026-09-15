@@ -1905,7 +1905,7 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         apply = prepare[apply_index]
         self.assertEqual(apply["environment"], "{{ release_pi5_compose_environment }}")
         apply_argv = apply["ansible.builtin.command"]["argv"]
-        for required in ("--no-deps", "--wait", "business-hermes-egress"):
+        for required in ("--no-deps", "--wait", "business-hermes-egress", "--force-recreate", "business_hermes_remote_preparation_enabled"):
             self.assertIn(required, apply_argv)
 
         runtime = yaml.safe_load(
@@ -1981,10 +1981,11 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
             for task in source_tasks
         ]
         plays = []
-        for environment, expected_timeout, expected_legacy_timeout, key_present, transition_required in (
-            (["BUSINESS_HERMES_TIMEOUT_MS=60000"], 60000, 60000, False, True),
-            (["BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, False),
-            (["BUSINESS_HERMES_TIMEOUT_MS=60000", "BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, False),
+        for environment, expected_timeout, expected_legacy_timeout, key_present, transition_required, remote_preparation in (
+            (["BUSINESS_HERMES_TIMEOUT_MS=60000"], 60000, 60000, False, True, False),
+            (["BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, False, False),
+            (["BUSINESS_HERMES_TIMEOUT_MS=60000", "BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, False, False),
+            (["BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, True, True),
         ):
             plays.append(
                 {
@@ -2002,6 +2003,7 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
                         "release_pi5_business_hermes_egress_existing_health_probe": {"stdout": "healthy"},
                         "business_hermes_provider": "dgx",
                         "business_hermes_egress_timeout_ms": 60000,
+                        "business_hermes_remote_preparation_enabled": remote_preparation,
                     },
                     "tasks": transition_tasks
                     + [
