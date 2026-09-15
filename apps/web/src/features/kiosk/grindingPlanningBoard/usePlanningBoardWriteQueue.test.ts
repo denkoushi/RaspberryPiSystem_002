@@ -55,6 +55,22 @@ describe('planning board background writes', () => {
     await act(async () => h.requests[2].resolve(h.saved('b', 4, 1)));
     expect(h.result.current.items.map((item) => item.alternateRank)).toEqual([1, 4]);
   });
+  it('undoes dependent selection changes in reverse order when removing and re-adding the same seiban fails', async () => {
+    const h = setup();
+    let active = true;
+    const enqueue = (order: string[], nextActive: boolean) => {
+      const previousActive = active;
+      act(() => { h.result.current.enqueue({ label: '製番順', itemIds: [], seibans: ['a'], order: true,
+        apply: (display) => ({ ...display, order }), save: h.save,
+        onFailed: () => { active = previousActive; } }); });
+      active = nextActive;
+    };
+    enqueue(['b'], false); enqueue(['a', 'b'], true);
+    await act(async () => h.requests[0].reject(new Error('offline')));
+    expect(active).toBe(true);
+    expect(h.result.current.order).toEqual(['a', 'b']);
+    expect(h.save).toHaveBeenCalledTimes(1);
+  });
   it('blocks further writes after failed recovery without replaying cancelled input', async () => {
     const h = setup(); h.refresh.mockResolvedValue({ isError: true }); h.change('a', 1); h.change('b', 2);
     await act(async () => h.requests[0].reject(new Error('offline')));

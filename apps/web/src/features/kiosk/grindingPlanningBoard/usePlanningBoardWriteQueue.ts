@@ -147,7 +147,8 @@ export function usePlanningBoardWriteQueue(options: Options) {
               if (!cancelled.some((prior) => overlap(prior, candidate))) return true;
               cancelled.push(candidate); return false;
             });
-            for (const cancelledWrite of cancelled) cancelledWrite.onFailed?.(error);
+            // Undo the newest accepted UI changes first (for example remove → add the same seiban).
+            for (const cancelledWrite of [...cancelled].reverse()) cancelledWrite.onFailed?.(error);
             current.recovering = true;
             latest.current.onError(error);
             changed();
@@ -156,7 +157,7 @@ export function usePlanningBoardWriteQueue(options: Options) {
               if (refreshed && typeof refreshed === 'object' && 'isError' in refreshed && refreshed.isError) throw new Error('Refresh failed');
             } catch {
               current.blocked = true;
-              for (const pending of current.writes) pending.onFailed?.(error);
+              for (const pending of [...current.writes].reverse()) pending.onFailed?.(error);
               current.writes = [];
             } finally {
               current.recovering = false;
