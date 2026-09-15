@@ -29,7 +29,7 @@ describe('BusinessHermesMcpService', () => {
       OR: expect.arrayContaining([{ dispositionContent: { contains: '機械課', mode: 'insensitive' } }])
     }) }));
     const detail = await service.call('business_hermes_get_detail', { kind: 'nonconformity', id: 'nc-machine' });
-    expect(JSON.parse(detail.content[0]?.text ?? '{}')).toMatchObject({ evidenceKey: 'nonconformity:nc-machine' });
+    expect(JSON.parse(detail.content[0]?.text ?? '{}')).toEqual(payload.results[0]);
   });
 
   it('searches effective public text and keeps both source kinds visible', async () => {
@@ -78,6 +78,8 @@ describe('BusinessHermesMcpService', () => {
     const detailPayload = JSON.parse(detail.content[0]?.text ?? '{}') as { rows: Array<{ steps: Array<Record<string, unknown>> }> };
     expect(detailPayload.rows[0]?.steps[0]).toMatchObject({ effectiveText: '', publicEdited: true, rawImageLabel: null, evidenceKey: 'work_instruction:step-1' });
     expect(detailPayload.rows[0]?.steps[0]).not.toHaveProperty('imageStorageKey');
+    const exported = await service.call('business_hermes_search', { kind: 'work_instruction' });
+    expect(JSON.parse(exported.content[0]!.text).results[0]).toEqual(detailPayload);
   });
 
   it('rejects an unqualified nonconformity detail request', async () => {

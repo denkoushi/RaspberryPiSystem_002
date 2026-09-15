@@ -2036,3 +2036,5 @@ APIの概要と詳細。
 - [Hermes question recipes and prefetch](plans/hermes-question-prefetch.md) — isolated speculative answers and validation plan.
 
 - [Hermes spare-capacity preparation](plans/hermes-background-admission.md)
+
+- [Hermes background worker implementation](plans/hermes-background-worker.md)

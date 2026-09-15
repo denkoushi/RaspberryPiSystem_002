@@ -1,6 +1,8 @@
+import { sourceFingerprint } from './business-hermes-source-identity.js';
+
 /** Table-specific fields stop here. Learning/search use SourceDocument only. */
 export type SourceDocument = {
-  kind: string; id: string; title: string; text: string; identifiers: string[];
+  kind: string; id: string; title: string; text: string; identifiers: string[]; revision?: string;
 };
 type SourceAdapter = {
   cursorKey: string; sourceKey: string;
@@ -39,5 +41,5 @@ export function projectBusinessSource(record: Record<string, unknown>) {
 export function sourceDocument(record: Record<string, unknown>): SourceDocument {
   const projected = projectBusinessSource(record);
   return { kind: String(record.kind), id: String(record.id), title: projected.title.replace(/\s+/g, ' ').slice(0, 100),
-    text: projected.searchText, identifiers: projected.identifiers };
+    text: projected.searchText, identifiers: projected.identifiers, revision: sourceFingerprint(record) };
 }

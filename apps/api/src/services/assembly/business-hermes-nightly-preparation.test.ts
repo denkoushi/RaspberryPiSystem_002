@@ -55,6 +55,15 @@ describe('Nightly preparation with no new conversations', () => {
     const read = async (name: string) => JSON.parse(await readFile(path.join(root, 'jobs', jobs[0]!, name), 'utf8'));
     return { candidate: await read('candidate.json'), input: await read('input.json'), facts: await read('fact-candidate.json') };
   }
+  it('uses exported evidence for catalogue references instead of reading them twice', async () => {
+    mocks.export.mockImplementation(async (_reader, _signal, accept) => {
+      accept(record);
+      return { version: 2, records: [sourceDocument(record)] };
+    });
+    await new BusinessHermesNightlyService().run(new AbortController().signal);
+    expect(mocks.detail).not.toHaveBeenCalled();
+    expect((await prepared()).input.sourceFingerprints['work_instruction:one']).toMatch(/^[a-f0-9]{64}$/);
+  });
   it('asks DGX for source-supported questions without a holdout and preserves abstention checks', async () => {
     mocks.env.BUSINESS_HERMES_BACKGROUND_ENABLED = 'true';
     await rm(path.join(mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR, 'holdout.json'));

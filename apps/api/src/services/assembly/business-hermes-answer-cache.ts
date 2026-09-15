@@ -1,5 +1,6 @@
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { sourceFingerprint } from './business-hermes-source-identity.js';
+export { sourceFingerprint } from './business-hermes-source-identity.js';
 
 import { businessSourceAdapters, sourceDocument } from './business-hermes-source-adapters.js';
 import { env } from '../../config/env.js';
@@ -15,16 +16,6 @@ const sourceSchema = z.object({
 export const experienceSchema = z.object({ canonicalQuestion: questionSchema.nullable(), question: z.string().trim().min(1).max(4000), answer: z.string().min(1).max(4000), sources: z.array(sourceSchema).min(1).max(8) });
 export const EXPERIENCE_KIND = 'business-hermes-experience-v1';
 const answerSchema = z.object({ question: questionSchema, answer: z.string().min(1).max(4000), sources: z.array(sourceSchema).min(1).max(8) });
-
-// Shared with the catalogue producer: hash the complete current MCP detail,
-// including publication/active-source state, rather than just its stable ID.
-export function sourceFingerprint(value: unknown): string {
-  const canonical = (item: unknown): unknown => Array.isArray(item) ? item.map(canonical)
-    : item !== null && typeof item === 'object'
-      ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, val]) => [key, canonical(val)]))
-      : item;
-  return createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
-}
 
 export class BusinessHermesAnswerCache {
   constructor(private readonly details: Pick<BusinessHermesMcpService, 'call'>,

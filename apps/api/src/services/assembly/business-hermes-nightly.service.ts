@@ -1,3 +1,4 @@
+import { NightlySourceEvidence } from './business-hermes-nightly-source-evidence.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -111,7 +112,8 @@ export class BusinessHermesNightlyService {
       const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
       const evaluationHashes = { referenceSha256: sha256(referenceText), holdoutSha256: holdoutText === null ? null : sha256(holdoutText) };
       const protectedQuestions = [...reference.cases, ...(holdout?.cases || [])].map(c => c.question);
-      const sources = await exportBusinessHermesSources(this.details, signal);
+      const evidence = new NightlySourceEvidence();
+      const sources = await exportBusinessHermesSources(this.details, signal, record => evidence.add(record));
       const attemptsText = await optionalText(path.join(root, 'document-attempts.json'));
       const attempts: DocumentAttempts = attemptsText === null ? {} : documentAttemptsSchema.parse(JSON.parse(attemptsText));
       const documents = selectNightDocuments(sources.records, state.catalogue.cases, learningEvents, attempts, Date.now());
@@ -127,7 +129,7 @@ export class BusinessHermesNightlyService {
         signal.throwIfAborted();
         const key = ref.kind + ':' + ref.id;
         if (Object.hasOwn(fingerprints, key)) continue;
-        const result = await this.details.call('business_hermes_get_detail', { kind: ref.kind, id: ref.id });
+        const result = await evidence.read(ref, this.details, signal);
         fingerprints[key] = result.isError ? null : sourceFingerprint(result);
         if (!result.isError) {
           const record = JSON.parse(result.content[0]!.text);
