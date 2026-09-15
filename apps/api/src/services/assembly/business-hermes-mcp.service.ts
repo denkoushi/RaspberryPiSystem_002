@@ -88,9 +88,9 @@ function text(value: unknown, max = MAX_QUERY_CHARS): string | null {
   return normalized || null;
 }
 
-function safeLimit(value: unknown): number {
+function safeLimit(value: unknown, maximum = MAX_LIMIT): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) return 10;
-  return Math.max(1, Math.min(MAX_LIMIT, value));
+  return Math.max(1, Math.min(maximum, value));
 }
 
 function safeOffset(value: unknown): number {
@@ -198,6 +198,18 @@ export class BusinessHermesMcpService {
     return jsonText(await this.detail(args));
   }
 
+  /** Internal catalogue preparation reuses the authorized reader in larger pages.
+   * This is not an MCP tool; interactive calls retain their 20-result bound.
+   */
+  async readSourcePage(kind: string, offset: number): Promise<BusinessHermesMcpResult> {
+    if (!['nonconformity', 'work_instruction'].includes(kind)
+        || !Number.isSafeInteger(offset) || offset < 0 || offset >= 100_000) {
+      throw new Error('Invalid source export cursor');
+    }
+    return jsonText(await this.search({ kind, limit: 200,
+      nonconformityOffset: offset, workInstructionOffset: offset }, 200));
+  }
+
   private describeSources() {
     return {
       sources: [
@@ -221,7 +233,7 @@ export class BusinessHermesMcpService {
     };
   }
 
-  private async search(args: Record<string, unknown>) {
+  private async search(args: Record<string, unknown>, maximum = MAX_LIMIT) {
     const query = text(args.query);
     const partNumber = normalizeWorkInstructionPartNumber(text(args.partNumber, 200));
     const shootingTarget = normalizeWorkInstructionShootingTarget(text(args.shootingTarget, 200));
@@ -237,7 +249,7 @@ export class BusinessHermesMcpService {
     if (dateTo !== null && dateToBound === null) return { error: 'dateTo must be a valid YYYY-MM-DD date' };
     if (dateFromBound && dateToBound && dateFromBound > dateToBound) return { error: 'dateFrom must be on or before dateTo' };
     const kind = args.kind === 'nonconformity' || args.kind === 'work_instruction' ? args.kind : 'both';
-    const limit = safeLimit(args.limit);
+    const limit = safeLimit(args.limit, maximum);
     const nonconformityOffset = safeOffset(args.nonconformityOffset);
     const workInstructionOffset = safeOffset(args.workInstructionOffset);
     const results: unknown[] = [];

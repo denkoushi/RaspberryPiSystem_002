@@ -8,7 +8,7 @@ export async function exportBusinessHermesSources(service = new BusinessHermesMc
     let offset = 0;
     for (let page = 0; page < 5000; page++) {
       signal?.throwIfAborted();
-      const result = await service.call('business_hermes_search', { kind, limit: 20, [cursorKey]: offset });
+      const result = await service.readSourcePage(kind, offset);
       if (result.isError) throw new Error('Authorized source export failed');
       const data = JSON.parse(result.content[0]!.text);
       if (!Array.isArray(data.results) || !data.hasMore || !data.nextCursor) throw new Error('Invalid source page');
