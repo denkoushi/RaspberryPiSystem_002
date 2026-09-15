@@ -48,6 +48,8 @@ BEGIN
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public'
       AND c.relkind IN ('r', 'p', 'S', 'v', 'm', 'f')
+    -- Table ownership moves its owned sequences; process standalone sequences last.
+    ORDER BY CASE WHEN c.relkind = 'S' THEN 1 ELSE 0 END, c.oid
   LOOP
     IF item.relkind = 'S' THEN
       EXECUTE format('ALTER SEQUENCE %s OWNER TO raspi_migrator', item.identity);

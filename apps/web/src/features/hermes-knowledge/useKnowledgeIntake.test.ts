@@ -12,6 +12,12 @@ beforeEach(() => {
   vi.mocked(api.get).mockImplementation(async url => ({ data: url.endsWith('capabilities') ? { enabled: true } : { intakes: [] } }));
 });
 describe('Knowledge intake UI contract', () => {
+  it('does not request capabilities while Hermes is closed', async () => {
+    const { rerender } = renderHook(({ open }) => useKnowledgeIntake('actor', null, open), { initialProps: { open: false } });
+    expect(api.get).not.toHaveBeenCalled();
+    rerender({ open: true });
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/hermes-knowledge/capabilities', expect.anything()));
+  });
   it('preserves attachments and submission identity after a failed send', async () => {
     const { result } = renderHook(() => useKnowledgeIntake('actor', null, true));
     await waitFor(() => expect(result.current.enabled).toBe(true));

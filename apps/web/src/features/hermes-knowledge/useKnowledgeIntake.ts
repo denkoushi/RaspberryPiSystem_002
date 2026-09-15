@@ -42,11 +42,15 @@ export function useKnowledgeIntake(identity: string, consultationId: string | nu
 
   useEffect(() => {
     setEnabled(false); setFiles([]); setItems([]); setError(null); setLocalId(conversationKey()); submission.current = null;
+  }, [identity]);
+
+  useEffect(() => {
+    if (!open) return;
     const controller = new AbortController();
     void api.get<{ enabled: boolean }>('/hermes-knowledge/capabilities', { signal: controller.signal })
       .then(({ data }) => { if (!controller.signal.aborted) setEnabled(data.enabled); }).catch(() => undefined);
     return () => controller.abort();
-  }, [identity]);
+  }, [identity, open]);
 
   useEffect(() => {
     setItems([]);

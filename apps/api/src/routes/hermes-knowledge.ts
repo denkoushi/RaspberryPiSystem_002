@@ -23,7 +23,7 @@ export async function knowledgeActor(request: FastifyRequest, reply: FastifyRepl
 
 export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
   const enabled = process.env.HERMES_KNOWLEDGE_ENABLED === 'true';
-  app.get('/hermes-knowledge/capabilities', async (request, reply) => {
+  app.get('/hermes-knowledge/capabilities', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     await knowledgeActor(request, reply);
     return { enabled, maxPdfPages: 20, maxPdfBytes: 20_000_000, maxImageBytes: 10_000_000 };
   });
@@ -43,33 +43,33 @@ export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
       throw error;
     }
   });
-  app.get('/hermes-knowledge/intakes', async (request, reply) => {
+  app.get('/hermes-knowledge/intakes', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     const owner = await knowledgeActor(request, reply);
     const { conversationId } = z.object({ conversationId: z.string().uuid() }).parse(request.query);
     return { intakes: (await runtime.repository.history(owner, conversationId)).map(intakeResponse) };
   });
-  app.post('/hermes-knowledge/intakes/:id/retry', async (request, reply) => {
+  app.post('/hermes-knowledge/intakes/:id/retry', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     const owner = await knowledgeActor(request, reply);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const { version } = z.object({ version: z.number().int().positive() }).strict().parse(request.body);
     if (!await runtime.repository.retry(id, owner, version)) throw new ApiError(409, '再処理できる状態ではありません。最新の状態を確認してください。');
     runtime.worker.kick(); return intakeResponse((await runtime.repository.get(id, owner))!);
   });
-  app.post('/hermes-knowledge/intakes/:id/choice', async (request, reply) => {
+  app.post('/hermes-knowledge/intakes/:id/choice', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     const owner = await knowledgeActor(request, reply);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const { version, action } = z.object({ version: z.number().int().positive(), action: z.enum(['save', 'ask', 'report', 'delegate']) }).strict().parse(request.body);
     if (!await runtime.repository.choose(id, owner, version, action)) throw new ApiError(409, 'この確認は古くなっています。最新の入力からやり直してください。');
     runtime.worker.kick(); return intakeResponse((await runtime.repository.get(id, owner))!);
   });
-  app.get('/hermes-knowledge/sources/:sourceId/images/:imageId', async (request, reply) => {
+  app.get('/hermes-knowledge/sources/:sourceId/images/:imageId', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     await knowledgeActor(request, reply);
     const { sourceId, imageId } = z.object({ sourceId: z.string().uuid(), imageId: z.string().regex(/^[a-f0-9]{64}$/) }).parse(request.params);
     const allowed = (await runtime.repository.readySources()).some(record => record.source.id === sourceId && record.source.images.some(image => image.id === imageId));
     if (!allowed) throw new ApiError(404, '画像が見つかりません。');
     return reply.header('Cache-Control', 'private, no-store').type('image/jpeg').send(await runtime.assets.readDisplay(imageId));
   });
-  app.get('/hermes-knowledge/sources/:sourceId/pdf', async (request, reply) => {
+  app.get('/hermes-knowledge/sources/:sourceId/pdf', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     await knowledgeActor(request, reply);
     const { sourceId } = z.object({ sourceId: z.string().uuid() }).parse(request.params);
     const source = (await runtime.repository.readySources()).find(record => record.source.id === sourceId)?.source;
