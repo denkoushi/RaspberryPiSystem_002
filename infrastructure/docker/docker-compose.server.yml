@@ -111,6 +111,8 @@ services:
       # 組立手順書の原本・overlay asset（不変blob。未マウントだと再作成で消失）
       - assembly-procedure-assets-storage:/app/storage/assembly-procedure-assets
       - work-instruction-assets-storage:/app/storage/work-instruction-assets
+      - knowledge-assets-storage:/app/storage/knowledge-assets
+      - knowledge-git-storage:/app/storage/knowledge-git
       # 計測機器ジャンル点検画像（未マウントだとコンテナ再作成でファイル消失）
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       # パレット可視化・加工機イラスト（未マウントだとデプロイでコンテナ再作成時にファイル消失）
@@ -340,3 +342,17 @@ volumes:
       type: none
       o: bind
       device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/.integrity
+  knowledge-assets-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-assets-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/knowledge-assets
+  knowledge-git-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-git-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/knowledge-git

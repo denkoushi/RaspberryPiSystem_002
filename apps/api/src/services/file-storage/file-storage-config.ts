@@ -2,6 +2,7 @@ import path from 'node:path';
 
 export const DURABLE_FILE_NAMESPACES = [
   'photos',
+  'knowledge-assets',
   'thumbnails',
   'pdfs',
   'part-measurement-drawings',

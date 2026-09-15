@@ -78,7 +78,7 @@ class Pi5VolumeMaterializerTest(unittest.TestCase):
         self.assertEqual(specs[0].driver, "local")
         self.assertEqual(specs[0].options["o"], "bind")
 
-    def test_rendered_production_and_staging_models_cover_all_thirteen_mounts(self) -> None:
+    def test_rendered_production_and_staging_models_cover_all_declared_mounts(self) -> None:
         expected_suffixes = {
             "photos",
             "thumbnails",
@@ -90,6 +90,8 @@ class Pi5VolumeMaterializerTest(unittest.TestCase):
             "assembly-procedure-images",
             "assembly-procedure-assets",
             "work-instruction-assets",
+            "knowledge-assets",
+            "knowledge-git",
             "measuring-instrument-genres",
             "pallet-machine-illustrations",
             "csv-dashboards",
@@ -101,7 +103,7 @@ class Pi5VolumeMaterializerTest(unittest.TestCase):
         ):
             phase3, server = rendered_models(root, prefix)
             specs = MODULE.required_volume_specs(phase3, server)
-            self.assertEqual(len(specs), 14)
+            self.assertEqual(len(specs), 16)
             self.assertEqual(
                 {spec.name for spec in specs},
                 {
@@ -129,7 +131,7 @@ class Pi5VolumeMaterializerTest(unittest.TestCase):
                 for mount in api_mounts
                 if mount.split(":", 1)[0] in durable_keys
             }
-            self.assertEqual(len(durable_mounts), 14)
+            self.assertEqual(len(durable_mounts), 16)
             self.assertEqual(
                 {
                     mount.split(":", 1)[1]

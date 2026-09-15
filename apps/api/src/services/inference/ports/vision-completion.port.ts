@@ -14,6 +14,8 @@ export type VisionCompletionInput = {
    */
   maxTokens?: number;
   temperature?: number;
+  signal?: AbortSignal;
+  background?: boolean;
 };
 
 export type VisionCompletionResult = {

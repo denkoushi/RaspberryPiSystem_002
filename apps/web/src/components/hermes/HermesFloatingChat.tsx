@@ -24,6 +24,8 @@ import {
   releaseKeyboardWedgeScanOwner,
   useKeyboardWedgeScan
 } from '../../features/barcode-scan/useKeyboardWedgeScan';
+import { KnowledgeAttachments, KnowledgeIntakePanel } from '../../features/hermes-knowledge/KnowledgeIntakePanel';
+import { useKnowledgeIntake } from '../../features/hermes-knowledge/useKnowledgeIntake';
 
 import type { HermesChatPanelProps, HermesPanelMessage, HermesConsultationSuggestion } from './HermesChatPanel';
 import type { BusinessHermesChatEvidence } from '../../api/domains/assembly';
@@ -174,6 +176,7 @@ export function HermesFloatingChat() {
     () => `${token ?? 'anonymous'}:${user?.id ?? 'anonymous'}:${clientKey}:${location.pathname}:${location.search}`,
     [clientKey, location.pathname, location.search, token, user?.id]
   );
+  const knowledge = useKnowledgeIntake(identity, activeConsultation?.id ?? null, open);
 
   const invalidateChatRequest = useCallback(() => {
     abortRef.current?.abort();
@@ -601,10 +604,17 @@ export function HermesFloatingChat() {
     }
   }, [activeConsultation, invalidateChatRequest, isBusy]);
 
-  const sendMessage = useCallback(async (messageOverride?: string, options?: { selection?: { prompt: string; option: string }; displayContent?: string; scanValue?: string }) => {
+  const sendMessage = useCallback(async (messageOverride?: string, options?: { selection?: { prompt: string; option: string }; displayContent?: string; scanValue?: string; skipKnowledge?: boolean }) => {
     const content = (typeof messageOverride === 'string' ? messageOverride : draft).trim();
-    if (!content || isBusy) return;
+    if ((!content && !knowledge.files.length) || isBusy || knowledge.busy) return;
     if (!ensureCurrentClientKey()) return;
+    if (!options?.selection && !options?.scanValue && !options?.skipKnowledge) {
+      try {
+        const handled = await knowledge.receive(content);
+        if (handled !== false) { if (handled === true) setDraft(''); return; }
+      } catch { return; }
+    }
+    if (!content) return;
     if (consultationMode === 'loading') {
       setConsultationError('相談を準備しています。少し待ってから送信してください。');
       return;
@@ -754,7 +764,7 @@ export function HermesFloatingChat() {
         setActivityStatus(null);
       }
     }
-  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, messages, replaceConsultationInList, resetConversation]);
+  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, messages, replaceConsultationInList, resetConversation, knowledge]);
 
   const handleScanSuccess = useCallback((value: string) => {
     closeScanner();
@@ -848,10 +858,13 @@ export function HermesFloatingChat() {
     } finally { setFeedbackBusy(false); }
   };
   const panelProps: HermesChatPanelProps = {
+    conversationExtension: knowledge.enabled ? <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
+      onChoose={(item, action) => void knowledge.choose(item, action)} onDelegate={text => void sendMessage(text, { skipKnowledge: true })} /> : null,
+    attachmentControl: knowledge.enabled ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,
     mode: consultationMode === 'legacy' ? 'legacy' : 'consultations',
     messages,
     draft,
-    isBusy,
+    isBusy: isBusy || knowledge.busy,
     error,
     authRequired,
     consultations,
@@ -865,19 +878,19 @@ export function HermesFloatingChat() {
     onFeedback: (id, verdict) => void recordFeedback(id, verdict),
     onDraftChange: setDraft,
     onSend: sendMessage,
-    onReset: resetActiveConversation,
+    onReset: () => { knowledge.reset(); resetActiveConversation(); },
     onClose: closePanel,
-    onStop: stopRequest,
+    onStop: knowledge.busy ? undefined : stopRequest,
     isExpanded: isPanelExpanded,
     onToggleSize: togglePanelSize,
-    onNewConsultation: createConsultation,
+    onNewConsultation: () => { knowledge.reset(); void createConsultation(); },
     onScan: () => void openScanner(),
     onSelectConsultation: (consultationId) => void selectConsultation(consultationId),
     onLoadOlderMessages: () => void loadOlderMessages(),
     suggestion: consultationSuggestion,
     onAnswerSuggestion: respondToSuggestion,
     selectionNotice,
-    activityStatus
+    activityStatus: knowledge.busy ? '入力を受け付けています…' : activityStatus
   };
 
   return (

@@ -38,3 +38,5 @@ export * from './assembly/index.js';
 
 // ドメイン非依存の正規化overlay/画像領域型
 export * from './overlay/index.js';
+
+export * from './knowledge/index.js';

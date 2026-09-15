@@ -2038,3 +2038,4 @@ APIの概要と詳細。
 - [Hermes spare-capacity preparation](plans/hermes-background-admission.md)
 
 - [Hermes background worker implementation](plans/hermes-background-worker.md)
+- [Hermes knowledge intake and reports](plans/hermes-knowledge.md) — Markdown/Git, photographs, PDFs and remaining integration work.
