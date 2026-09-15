@@ -249,6 +249,44 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('button', { name: '製番26-1043の明細を閉じる' })).toBeInTheDocument();
   });
 
+  it('保存中も次のドラッグを即時表示し、確定した版で順番に保存する', async () => {
+    const replies: ((value: unknown) => void)[] = [];
+    mocks.resourceOrder.mockImplementation(() => new Promise((resolve) => replies.push(resolve)));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+    const drag = (from: string, to: string, pointerId: number) => {
+      const source = within(screen.getByTestId(`planning-board-item-${from}`)).getByRole('button', { name: '資源CD 305を変更' });
+      const pane = source.closest('[data-planning-board-resource-pane]')!;
+      const target = screen.getByTestId(`planning-board-item-${to}`);
+      Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
+      vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({ top: 100, bottom: 140, height: 40 } as DOMRect);
+      fireEvent.pointerDown(source, { pointerId, button: 0, clientX: 10, clientY: 10 });
+      fireEvent.pointerMove(pane, { pointerId, clientX: 10, clientY: 21 });
+      fireEvent.pointerUp(pane, { pointerId, clientX: 10, clientY: 110 });
+    };
+    const order = () => [...screen.getByTestId('planning-board-resource-view').querySelectorAll<HTMLElement>('tbody tr')].map((row) => row.dataset.planningBoardItemId);
+    drag('d', 'a', 31);
+    drag('c', 'd', 32);
+    expect(order()).toEqual(['c', 'd', 'a', 'b']);
+    expect(mocks.resourceOrder).toHaveBeenCalledTimes(1);
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    const response = (ids: string[], version: number) => ({ sourceRevision: 'board-1', items: ids.map((id, index) => ({
+      ...fixture().items.find((item) => item.itemId === id)!, itemRevision: `${id}-saved-${version}`, version, alternateRank: index + 1
+    })) });
+    replies[0](response(['d', 'a', 'b', 'c'], 3));
+    await waitFor(() => expect(mocks.resourceOrder).toHaveBeenCalledTimes(2));
+    expect(mocks.resourceOrder.mock.calls[1][0]).toMatchObject({ itemId: 'c', itemRevision: 'c-saved-3', targetItemId: 'd', targetItemRevision: 'd-saved-3' });
+    expect(order()).toEqual(['c', 'd', 'a', 'b']);
+    replies[1](response(['c', 'd', 'a', 'b'], 4));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('順序を保存しました'));
+    expect(order()).toEqual(['c', 'd', 'a', 'b']);
+    const savedUnload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(savedUnload);
+    expect(savedUnload.defaultPrevented).toBe(false);
+  });
+
   it('資源CD内の並べ替えを即時表示し、保存失敗時に元の順序へ戻す', async () => {
     let rejectResourceOrder: ((error: Error) => void) | undefined;
     mocks.resourceOrder.mockImplementation(() => new Promise((_resolve, reject) => {

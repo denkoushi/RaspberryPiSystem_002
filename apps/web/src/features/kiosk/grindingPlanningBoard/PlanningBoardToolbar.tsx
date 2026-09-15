@@ -15,17 +15,19 @@ type SegmentButtonProps = {
   children: ReactNode;
   onClick: () => void;
   ariaLabel?: string;
+  disabled?: boolean;
 };
 
-function SegmentButton({ pressed, children, onClick, ariaLabel }: SegmentButtonProps) {
+function SegmentButton({ pressed, children, onClick, ariaLabel, disabled = false }: SegmentButtonProps) {
   return (
     <button
       type="button"
       aria-pressed={pressed}
       aria-label={ariaLabel}
+      disabled={disabled}
       onClick={onClick}
       className={clsx(
-        'min-h-11 shrink-0 rounded-md px-2.5 text-xs font-semibold transition-colors',
+        'min-h-11 shrink-0 rounded-md px-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-55',
         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300',
         pressed ? 'bg-emerald-400 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
       )}
@@ -42,6 +44,7 @@ export type PlanningBoardToolbarProps = {
   allocation: PlanningBoardAllocation;
   selectedCount: number;
   bulkDisabled?: boolean;
+  scopeDisabled?: boolean;
   registeredCount: number;
   onOpenDrawer: () => void;
   onCategoryChange: (category: GrindingPlanningBoardCategory) => void;
@@ -62,6 +65,7 @@ export function PlanningBoardToolbar({
   allocation,
   selectedCount,
   bulkDisabled = false,
+  scopeDisabled = false,
   registeredCount,
   onOpenDrawer,
   onCategoryChange,
@@ -85,10 +89,10 @@ export function PlanningBoardToolbar({
         製番 {registeredCount}
       </button>
       <div className="flex shrink-0 items-center gap-1" role="group" aria-label="工程">
-        <SegmentButton pressed={category === 'grinding'} onClick={() => onCategoryChange('grinding')}>
+        <SegmentButton disabled={scopeDisabled} pressed={category === 'grinding'} onClick={() => onCategoryChange('grinding')}>
           研削
         </SegmentButton>
-        <SegmentButton pressed={category === 'cutting'} onClick={() => onCategoryChange('cutting')}>
+        <SegmentButton disabled={scopeDisabled} pressed={category === 'cutting'} onClick={() => onCategoryChange('cutting')}>
           切削
         </SegmentButton>
       </div>
@@ -103,22 +107,22 @@ export function PlanningBoardToolbar({
       </div>
       <span className="h-7 w-px shrink-0 bg-slate-800" aria-hidden="true" />
       <div className="flex shrink-0 items-center gap-1" role="group" aria-label="進捗">
-        <SegmentButton pressed={status === 'incomplete'} onClick={() => onStatusChange('incomplete')}>
+        <SegmentButton disabled={scopeDisabled} pressed={status === 'incomplete'} onClick={() => onStatusChange('incomplete')}>
           未完
         </SegmentButton>
-        <SegmentButton pressed={status === 'all'} onClick={() => onStatusChange('all')}>
+        <SegmentButton disabled={scopeDisabled} pressed={status === 'all'} onClick={() => onStatusChange('all')}>
           両方
         </SegmentButton>
-        <SegmentButton pressed={status === 'complete'} onClick={() => onStatusChange('complete')}>
+        <SegmentButton disabled={scopeDisabled} pressed={status === 'complete'} onClick={() => onStatusChange('complete')}>
           完了
         </SegmentButton>
       </div>
       <span className="h-7 w-px shrink-0 bg-slate-800" aria-hidden="true" />
       <div className="flex shrink-0 items-center gap-1" role="group" aria-label="割当">
-        <SegmentButton pressed={allocation === 'alternate'} onClick={() => onAllocationChange('alternate')}>
+        <SegmentButton disabled={scopeDisabled} pressed={allocation === 'alternate'} onClick={() => onAllocationChange('alternate')}>
           別割当
         </SegmentButton>
-        <SegmentButton pressed={allocation === 'original'} onClick={() => onAllocationChange('original')}>
+        <SegmentButton disabled={scopeDisabled} pressed={allocation === 'original'} onClick={() => onAllocationChange('original')}>
           元割当
         </SegmentButton>
       </div>
