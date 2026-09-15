@@ -36,7 +36,7 @@ class MaintenanceRuntime:
     def start(self, run_id):
         if not re.fullmatch(r'[0-9a-f-]{36}', run_id or ''):
             raise ValueError('Invalid maintenance identity')
-        if self.process and self.process.poll() is None:
+        if self.busy():
             return {'started': False, 'runId': self.run_id}
         job = self.root / 'jobs' / run_id
         inside(self.root, str((job / 'input.json').relative_to(self.root)))
@@ -113,10 +113,17 @@ class MaintenanceRuntime:
             pass
         return next_cache, new_sources
 
+    def busy(self):
+        return bool(self.process and (self.process.poll() is None or
+                    (self.process.returncode == 0 and self.awaiting_source_recheck(self.root / 'jobs' / self.run_id))))
+
     def awaiting_source_recheck(self, job):
-        if not (job / 'activation.json').exists() or (job / 'cancelled').exists():
+        if (not (job / 'activation.json').exists() or not (job / 'result.json').exists()
+                or (job / 'cancelled').exists()):
             return False
-        return (json.loads((job / 'input.json').read_text()).get('requireSourceRecheck') is True
+        report = json.loads((job / 'result.json').read_text())
+        return (report.get('status') in ('improved', 'plateau', 'regression', 'slower', 'awaiting_holdout')
+                and json.loads((job / 'input.json').read_text()).get('requireSourceRecheck') is True
                 and not (job / 'source-recheck.json').exists())
 
     def authorize(self, run_id, source_sha256):
@@ -149,7 +156,7 @@ class MaintenanceRuntime:
                     'answer': row['answer'], 'verdict': row['verdict'], 'sources': json.loads(row['sources'])})
         return {'baseCatalogueRelative': str(path.relative_to(self.root)), 'baseCatalogueSha256': digest(path),
                 'catalogue': json.loads(path.read_text()), 'events': events,
-                'running': bool(self.process and self.process.poll() is None),
+                'running': self.busy(),
                 'referenceSha256': digest(self.root / 'checks.json') if (self.root / 'checks.json').exists() else None}
 
     def status(self, run_id):

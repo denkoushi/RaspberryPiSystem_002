@@ -185,6 +185,8 @@ class NightlyAdoptionIntegrationTests(unittest.TestCase):
         cache = self.cache_type(self.root / 'reviewed.json')
         self.assertIs(runtime.refresh(cache, object())[0], cache)
         self.assertEqual(runtime.status(self.run)['status'], 'awaiting_source_recheck')
+        self.assertTrue(runtime.state(None)['running'])
+        self.assertEqual(runtime.start('c' * 36), {'started': False, 'runId': self.run})
         self.assertFalse((self.root / 'active.json').exists())
         with self.assertRaises(ValueError):
             runtime.authorize(self.run, 'wrong-generation')
@@ -194,6 +196,17 @@ class NightlyAdoptionIntegrationTests(unittest.TestCase):
         self.assertEqual(len(next_cache.cases), 1)
         self.assertIs(runtime.refresh(next_cache, sources)[0], next_cache)
         self.assertEqual((self.root / 'active.json').read_bytes(), pointer)
+
+    def test_failed_worker_does_not_request_authorization_for_leftover_manifest(self):
+        self.input['requireSourceRecheck'] = True
+        atomic_json(self.job / 'input.json', self.input)
+        maintain(self.root, self.run, self.root)
+        atomic_json(self.job / 'result.json', {'runId': self.run, 'status': 'failed', 'activated': False})
+        runtime = self.runtime()
+        runtime.process.returncode = 1
+        runtime.process.poll.return_value = 1
+        self.assertEqual(runtime.status(self.run)['status'], 'failed')
+        self.assertFalse(runtime.busy())
 
     def test_revoked_or_cancelled_source_recheck_cannot_adopt(self):
         self.input['requireSourceRecheck'] = True
