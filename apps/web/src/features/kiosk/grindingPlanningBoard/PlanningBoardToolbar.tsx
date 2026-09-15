@@ -46,6 +46,7 @@ export type PlanningBoardToolbarProps = {
   bulkDisabled?: boolean;
   scopeDisabled?: boolean;
   registeredCount: number;
+  feedback?: ReactNode;
   onOpenDrawer: () => void;
   onCategoryChange: (category: GrindingPlanningBoardCategory) => void;
   onViewChange: (view: GrindingPlanningBoardView) => void;
@@ -67,6 +68,7 @@ export function PlanningBoardToolbar({
   bulkDisabled = false,
   scopeDisabled = false,
   registeredCount,
+  feedback,
   onOpenDrawer,
   onCategoryChange,
   onViewChange,
@@ -126,6 +128,7 @@ export function PlanningBoardToolbar({
           元割当
         </SegmentButton>
       </div>
+      <div className="h-11 min-w-64 flex-1 overflow-hidden">{feedback}</div>
       <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
         {onSpecialDueModeChange ? (
           <div className="flex shrink-0 items-center gap-1" role="group" aria-label="特別納期">

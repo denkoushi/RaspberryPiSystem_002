@@ -1220,24 +1220,25 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         specialDueMode={view === 'resource' ? specialDueMode : null}
         onSpecialDueModeChange={view === 'resource' ? setSpecialDueMode : undefined}
         specialDueDisabled={allocation === 'original' || interactionLocked || resourceDragDisabled}
+        feedback={feedback ? (
+          <div className={`flex h-full min-w-0 items-center gap-1 rounded-md px-2 text-xs ${
+            feedbackKind === 'error' ? 'bg-rose-950/70 text-rose-100'
+              : feedbackKind === 'processing' ? 'bg-sky-950/60 text-sky-100'
+                : 'bg-emerald-950/60 text-emerald-100'
+          }`} role="status">
+            <span className="min-w-0 flex-1 truncate">{feedback}</span>
+            {orderConflict || rankConflict ? (
+              <button type="button" className="h-11 w-11 shrink-0 rounded text-lg text-emerald-100" onClick={() => void refreshAfterOrderConflict()} aria-label="最新状態を取得">↻</button>
+            ) : null}
+            <button type="button" className="h-11 w-11 shrink-0 text-slate-300" onClick={clearFeedback} aria-label="通知を閉じる">✕</button>
+          </div>
+        ) : boardQuery.appendError ? (
+          <div className="flex h-full items-center px-2 text-xs text-rose-200" role="alert"><span className="truncate">一覧の追加取得に失敗しました。再読み込みしてください。</span></div>
+        ) : boardQuery.isLoading || !scopeReady || boardQuery.isAppending ? (
+          <div className="flex h-full items-center px-2 text-xs text-slate-400" role="status"><span className="truncate">{boardQuery.isLoading || !scopeReady ? '一覧を読み込み中…' : '一覧を追加取得中…'}</span></div>
+        ) : null}
         specialDueCounts={specialDueCounts}
       />
-      {feedback ? (
-        <div className={feedbackKind === 'error'
-          ? 'mt-2 flex items-center justify-between gap-2 rounded-md border border-rose-500/50 bg-rose-950/70 px-3 py-2 text-xs text-rose-100'
-          : feedbackKind === 'processing'
-            ? 'mt-2 flex items-center justify-between gap-2 rounded-md border border-sky-500/40 bg-sky-950/60 px-3 py-2 text-xs text-sky-100'
-            : 'mt-2 flex items-center justify-between gap-2 rounded-md border border-emerald-500/40 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-100'} role="status">
-          <span>{feedback}</span>
-          <span className="flex shrink-0 items-center gap-1">
-            {orderConflict || rankConflict ? <button type="button" className="min-h-9 rounded border border-emerald-300/50 px-2 text-emerald-100" onClick={() => void refreshAfterOrderConflict()}>最新状態を取得</button> : null}
-            <button type="button" className="min-h-9 px-2 text-slate-300" onClick={clearFeedback} aria-label="通知を閉じる">✕</button>
-          </span>
-        </div>
-      ) : null}
-      {boardQuery.isLoading || !scopeReady ? <p className="px-1 py-2 text-xs text-slate-400" role="status">一覧を読み込み中…</p> : null}
-      {boardQuery.isAppending ? <p className="px-1 py-1 text-xs text-slate-400" role="status">一覧を追加取得中…</p> : null}
-      {boardQuery.appendError ? <p className="px-1 py-1 text-xs text-rose-200" role="alert">一覧の追加取得に失敗しました。再読み込みしてください。</p> : null}
       {boardQuery.isError ? <p className="p-5 text-sm text-rose-200">一覧を読み込めませんでした。</p> : null}
       {data && view === 'seiban' && focusedFseiban && focusItems.length > 0 ? (
         <div className="mt-2">
