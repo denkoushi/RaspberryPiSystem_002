@@ -49,7 +49,7 @@ type PlanningBoardItemTableRowProps = {
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   onSpecialDueClick?: (item: GrindingPlanningBoardItem) => void;
-  specialDueMode: GrindingPlanningBoardSpecialDueKind | null;
+  specialDueEnabled: boolean;
   specialDueExpired: boolean;
   showRank: boolean;
   showSeiban: boolean;
@@ -79,7 +79,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   rankDisabled,
   resourceDragDisabled,
   onResourcePointerDown,
-  specialDueMode,
+  specialDueEnabled,
   specialDueExpired
 }: PlanningBoardItemTableRowProps) {
   const currentResource = resolveGrindingPlanningBoardResource(item, allocation);
@@ -90,7 +90,8 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
     ? `${item.requiredMinutes}分`
     : '時間未定';
   const machineName = normalizeMachineName(item.machineName);
-  const specialDue = item.specialDue;
+  const pendingSpecialDue = (item as GrindingPlanningBoardItem & { pendingSpecialDue?: 'today' | 'overnight' | null }).pendingSpecialDue;
+  const specialDue = pendingSpecialDue !== undefined ? (pendingSpecialDue == null ? null : { kind: pendingSpecialDue }) : item.specialDue;
   const specialDueLabel = specialDue?.kind === 'today' ? '今日中' : specialDue?.kind === 'overnight' ? '朝まで' : null;
   const resourceDragAllowed = Boolean(onResourcePointerDown) && !resourceDragDisabled && !disabled && allocation !== 'original' && !item.isCompleted;
   const rankPickerPanelId = useId();
@@ -109,11 +110,11 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
       className={clsx(
         'border-b border-slate-800/80',
         specialDue && 'outline outline-1 -outline-offset-1',
-        specialDue && (specialDueExpired ? 'outline-rose-400' : 'outline-amber-300'),
-        specialDueMode && !item.isCompleted && 'cursor-pointer',
+        specialDue && (pendingSpecialDue === undefined && specialDueExpired ? 'outline-rose-400' : 'outline-amber-300'),
+        specialDueEnabled && !item.isCompleted && 'cursor-pointer',
         item.isCompleted && 'opacity-55'
       )}
-      onClick={specialDueMode && !item.isCompleted ? () => onSpecialDueClick?.(item) : undefined}
+      onClick={specialDueEnabled && !item.isCompleted ? () => onSpecialDueClick?.(item) : undefined}
     >
       <td className="px-1 align-middle">
         <label className="grid min-h-11 w-full place-items-center" onClick={(event) => event.stopPropagation()}>
@@ -129,7 +130,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
       </td>
       <td className="min-w-0 px-1 py-1 align-middle">
         {showSeiban ? (
-          <div className="min-w-0 text-white" title={specialDue ? `${specialDueLabel}（${new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(specialDue.expiresAt))}まで）` : undefined}>
+          <div className="min-w-0 text-white" title={pendingSpecialDue === undefined && item.specialDue ? `${specialDueLabel}（${new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(item.specialDue.expiresAt))}まで）` : undefined}>
             <div className="min-w-0 leading-tight">
               <span className="break-words font-mono text-[10px] font-semibold [overflow-wrap:anywhere]">{item.fhincd || item.productNo}</span>
               <span className="ml-1 break-words font-semibold [overflow-wrap:anywhere]">{item.fhinmei || '部品名未登録'}</span>
@@ -292,7 +293,7 @@ function areTablePropsEqual(previous: PlanningBoardItemTableProps, next: Plannin
     previous.onResourceClick === next.onResourceClick &&
     previous.onRankChange === next.onRankChange &&
     previous.onSpecialDueClick === next.onSpecialDueClick &&
-    previous.specialDueMode === next.specialDueMode &&
+    Boolean(previous.specialDueMode) === Boolean(next.specialDueMode) &&
     previous.nowMs === next.nowMs &&
     previous.showRank === next.showRank &&
     previous.showSeiban === next.showSeiban &&
@@ -362,7 +363,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
                 onResourceClick={onResourceClick}
                 onRankChange={onRankChange}
                 onSpecialDueClick={onSpecialDueClick}
-                specialDueMode={specialDueMode}
+                specialDueEnabled={Boolean(specialDueMode)}
                 specialDueExpired={item.specialDue != null && new Date(item.specialDue.expiresAt).getTime() <= resolvedNowMs}
                 showRank={showRank}
                 showSeiban={showSeiban}

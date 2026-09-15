@@ -27,23 +27,26 @@ import {
   resolveGrindingPlanningBoardResource,
   sortGrindingPlanningBoardItems
 } from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
-import { usePlanningBoardReorderQueue } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardReorderQueue';
+import { usePlanningBoardWriteQueue } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 import { LeaderBoardDueAssistPanel } from '../../features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel';
 import { normalizeDueDateInput } from '../../features/kiosk/productionSchedule/dueManagement';
 import { useUnsavedChangesGuard } from '../../features/navigation/useUnsavedChangesGuard';
 
 import type { PlanningBoardAllocation, PlanningBoardStatus } from '../../features/kiosk/grindingPlanningBoard/types';
+import type { PlanningBoardDisplayItem } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 import type {
   GrindingPlanningBoardDueScope,
   GrindingPlanningBoardDueScopeSnapshot,
   GrindingPlanningBoardItem,
   GrindingPlanningBoardOverrideItemRequest,
-  GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardResourceOrderPlacement,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardDueRequest,
   GrindingPlanningBoardSpecialDueKind
 } from '@raspi-system/shared-types';
+
+const EMPTY_ITEMS: GrindingPlanningBoardItem[] = [];
+const EMPTY_ORDER: string[] = [];
 
 const todayJst = () => {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -87,37 +90,6 @@ type DuePickerState = {
   snapshot: Pick<GrindingPlanningBoardDueScopeSnapshot, 'sourceGenerationToken' | 'scopeRevision'>;
 };
 
-type RankDisplayState = {
-  rank: number | null;
-  itemRevision: string;
-  version: number;
-};
-
-type PendingRankOverride = RankDisplayState & {
-  scopeKey: string;
-  requestId: number;
-  staleStates: RankDisplayState[];
-  restoreState: RankDisplayState;
-  phase: 'saving' | 'awaitingSync';
-};
-
-type PendingOrder = {
-  order: string[];
-  baseSourceRevision: string;
-  responseSourceRevision: string | null;
-};
-
-type PendingOverrideItem = {
-  item: GrindingPlanningBoardItem;
-  baseSourceRevision: string;
-  baseItemRevision: string;
-  baseVersion: number;
-  responseSourceRevision: string | null;
-  responseItemRevision: string | null;
-  responseVersion: number | null;
-  expectedSpecialDueKind?: GrindingPlanningBoardSpecialDueKind | null;
-};
-
 type PendingDueScopeUpdate = {
   fseiban: string;
   scope: GrindingPlanningBoardDueScope;
@@ -126,14 +98,10 @@ type PendingDueScopeUpdate = {
   responseScopeRevision: string | null;
 };
 
-function dueScopeKey(scope: GrindingPlanningBoardDueScope): string {
-  return scope.kind === 'seiban' ? 'seiban' : `processing:${scope.processingType}`;
-}
-
 function applyOptimisticOverride(
   item: GrindingPlanningBoardItem,
   request: GrindingPlanningBoardOverrideItemRequest
-): GrindingPlanningBoardItem {
+): PlanningBoardDisplayItem {
   const nextResource = request.resourceCd === undefined
     ? item.effectiveResourceCd
     : request.resourceCd ?? item.originalResourceCd;
@@ -158,7 +126,8 @@ function applyOptimisticOverride(
     effectiveResourceCd: nextResource,
     effectiveDueDate: nextDue,
     alternateRank: resourceChanged || dueChanged ? null : item.alternateRank,
-    specialDue: request.specialDue === null ? null : item.specialDue
+    specialDue: request.specialDue === null ? null : item.specialDue,
+    ...(request.specialDue !== undefined ? { pendingSpecialDue: request.specialDue } : {})
   };
 }
 
@@ -170,18 +139,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [focusedFseiban, setFocusedFseiban] = useState<string | null>(null);
   const [openFseibans, setOpenFseibans] = useState<ReadonlySet<string>>(new Set());
-  const [registeredFseibans, setRegisteredFseibans] = useState<string[]>([]);
   const [activeFseibans, setActiveFseibans] = useState<ReadonlySet<string>>(new Set());
   const [showCompletedCandidates, setShowCompletedCandidates] = useState(false);
   const [selectedItemIdsByCategory, setSelectedItemIdsByCategory] = useState<Record<string, ReadonlySet<string>>>({});
-  const [orderInitialized, setOrderInitialized] = useState(false);
   const [activeInitialized, setActiveInitialized] = useState(false);
   const [openInitialized, setOpenInitialized] = useState(false);
-  const pendingOrderRef = useRef<PendingOrder | null>(null);
-  const latestOrderSourceRevisionRef = useRef<string | null>(null);
-  const staleOrderSourceRevisionsRef = useRef<Set<string>>(new Set());
-  const orderRequestPendingRef = useRef(false);
-  const dueRequestPendingRef = useRef(false);
   const dueDetailIdentityRef = useRef<string | null>(null);
   const [editorSnapshot, setEditorSnapshot] = useState<{
     items: GrindingPlanningBoardItem[];
@@ -190,6 +152,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     load: GrindingPlanningBoardResponse['load'];
   } | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const editorGenerationRef = useRef(0);
   const [resourceChoice, setResourceChoice] = useState<ResourceChoice>('unchanged');
   const [dueMode, setDueMode] = useState<DueMode>('none');
   const [dueDate, setDueDate] = useState(() => addUtcDays(todayJst(), 3));
@@ -199,7 +162,6 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [orderConflict, setOrderConflict] = useState(false);
   const [orderRegistrationError, setOrderRegistrationError] = useState<string | null>(null);
   const [rankConflict, setRankConflict] = useState(false);
-  const [orderSaving, setOrderSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [feedbackKind, setFeedbackKind] = useState<FeedbackKind>('success');
   const [specialDueMode, setSpecialDueMode] = useState<GrindingPlanningBoardSpecialDueKind | null>(null);
@@ -209,13 +171,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [duePickerState, setDuePickerState] = useState<DuePickerState | null>(null);
   const [dueConflict, setDueConflict] = useState(false);
   const [dueError, setDueError] = useState<string | null>(null);
-  const [pendingRankOverrides, setPendingRankOverrides] = useState<Record<string, PendingRankOverride>>({});
-  const [pendingOverrideItems, setPendingOverrideItems] = useState<Record<string, PendingOverrideItem>>({});
   const [pendingDueScope, setPendingDueScope] = useState<PendingDueScopeUpdate | null>(null);
-  const [resourceOrderSaving, setResourceOrderSaving] = useState(false);
-  const rankRequestIdRef = useRef(0);
-  const resourceDragSavePendingRef = useRef(false);
-  const resourceOrderSavePendingRef = useRef(false);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const feedbackRevisionRef = useRef(0);
   const registeredServerFseibansRef = useRef<Set<string> | null>(null);
@@ -231,11 +187,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, { enabled: drawerOpen });
   const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch: true });
   const dueDetailQuery = useKioskGrindingPlanningBoardDueDetail(dueDetailFseiban);
-  const { mutateAsync: updateOverridesAsync, isPending: overridesPending } = useUpdateKioskGrindingPlanningBoardOverrides();
-  const updateDueScope = useUpdateKioskGrindingPlanningBoardDueScope();
-  const { mutateAsync: updateRankAsync } = useUpdateKioskGrindingPlanningBoardRank();
-  const { mutateAsync: updateResourceOrderAsync } = useUpdateKioskGrindingPlanningBoardResourceOrder();
-  const updateOrder = useUpdateKioskGrindingPlanningBoardSeibanOrder();
+  const { mutateAsync: updateOverridesAsync } = useUpdateKioskGrindingPlanningBoardOverrides({ invalidateOnSuccess: false });
+  const updateDueScope = useUpdateKioskGrindingPlanningBoardDueScope({ invalidateOnSuccess: false });
+  const { mutateAsync: updateRankAsync } = useUpdateKioskGrindingPlanningBoardRank({ invalidateOnSuccess: false });
+  const { mutateAsync: updateResourceOrderAsync } = useUpdateKioskGrindingPlanningBoardResourceOrder({ invalidateOnSuccess: false });
+  const updateOrder = useUpdateKioskGrindingPlanningBoardSeibanOrder({ invalidateOnSuccess: false });
 
   const notify = useCallback((message: string, kind: FeedbackKind) => {
     feedbackRevisionRef.current += 1;
@@ -297,95 +253,26 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     !boardQuery.isError &&
     !boardQuery.isPlaceholderData
   );
-  const rankMutationPending = Object.values(pendingRankOverrides).some(
-    (pending) => pending.scopeKey === rankScopeKey && pending.phase === 'saving'
-  );
-  const rankDisabled = useCallback((item: GrindingPlanningBoardItem) => (
-    !rankMutationReady ||
-    rankMutationPending ||
-    resourceOrderSaving ||
-    (pendingOverrideItems[item.itemId] != null && pendingOverrideItems[item.itemId].responseItemRevision == null)
-  ), [pendingOverrideItems, rankMutationPending, rankMutationReady, resourceOrderSaving]);
-
-  useEffect(() => {
-    setPendingRankOverrides((current) => {
-      let changed = false;
-      const next: Record<string, PendingRankOverride> = {};
-      for (const [itemId, pending] of Object.entries(current)) {
-        if (pending.scopeKey !== rankScopeKey) {
-          changed = true;
-          continue;
-        }
-        const currentItem = data?.items.find((item) => item.itemId === itemId);
-        const isAuthoritative = currentItem?.itemRevision === pending.itemRevision && currentItem.version === pending.version;
-        const isStale = currentItem != null && pending.staleStates.some(
-          (state) => state.itemRevision === currentItem.itemRevision && state.version === currentItem.version
-        );
-        if (pending.phase === 'awaitingSync' && currentItem != null && (isAuthoritative || !isStale)) {
-          changed = true;
-          continue;
-        }
-        next[itemId] = pending;
-      }
-      return changed ? next : current;
-    });
-  }, [data, pendingRankOverrides, rankScopeKey]);
-
-  useEffect(() => {
-    if (!data || boardQuery.isPlaceholderData) return;
-    setPendingOverrideItems((current) => {
-      let changed = false;
-      const next: Record<string, PendingOverrideItem> = {};
-      for (const [itemId, pending] of Object.entries(current)) {
-        const currentItem = data.items.find((item) => item.itemId === itemId);
-        const baseMatches = currentItem != null && currentItem.itemRevision === pending.baseItemRevision && currentItem.version === pending.baseVersion;
-        const responseMatches = currentItem != null && pending.responseItemRevision != null && currentItem.itemRevision === pending.responseItemRevision && currentItem.version === pending.responseVersion;
-        const specialDueMatches = pending.expectedSpecialDueKind === undefined || (currentItem?.specialDue?.kind ?? null) === pending.expectedSpecialDueKind;
-        const itemMatches = currentItem == null || (
-          currentItem.effectiveResourceCd === pending.item.effectiveResourceCd &&
-          currentItem.effectiveDueDate === pending.item.effectiveDueDate &&
-          currentItem.alternateRank === pending.item.alternateRank &&
-          specialDueMatches
-        );
-        const otherAuthoritativeItem = pending.responseItemRevision != null && currentItem != null && !baseMatches && !responseMatches;
-        if (responseMatches && itemMatches || otherAuthoritativeItem) {
-          changed = true;
-          continue;
-        }
-        next[itemId] = pending;
-      }
-      return changed ? next : current;
-    });
-  }, [boardQuery.isPlaceholderData, data, pendingOverrideItems]);
-
-  const baseDisplayItems = useMemo(() => {
-    if (!data) return [];
-    return data.items.map((item) => {
-      const overrideItem = pendingOverrideItems[item.itemId]?.item;
-      const baseItem = overrideItem ?? item;
-      const pendingRank = pendingRankOverrides[item.itemId];
-      return pendingRank && pendingRank.scopeKey === rankScopeKey
-        ? { ...baseItem, alternateRank: pendingRank.rank, itemRevision: pendingRank.itemRevision, version: pendingRank.version }
-        : baseItem;
-    });
-  }, [data, pendingOverrideItems, pendingRankOverrides, rankScopeKey]);
-  const reorderQueue = usePlanningBoardReorderQueue({
+  const writeQueue = usePlanningBoardWriteQueue({
     scope: `${rankScopeKey}:${allocation}`,
-    items: baseDisplayItems,
-    seibanOrder: registeredFseibans,
+    items: data?.items ?? EMPTY_ITEMS,
+    order: data?.registeredFseibans ?? EMPTY_ORDER,
     sourceRevision,
-    save: updateResourceOrderAsync,
-    refresh: () => boardQuery.refetch(),
-    onStart: () => { setRankConflict(false); notify('資源CD内の順序を保存中…', 'processing'); },
-    onSuccess: () => notify('資源CD内の順序を保存しました。', 'success'),
-    onError: (error) => { handleError(error); setRankConflict(true); }
+    refresh: async () => {
+      const result = await boardQuery.refetch();
+      if (dueDetailIdentityRef.current) await dueDetailQuery.refetch();
+      return result;
+    },
+    onStart: (label) => notify(`${label}を保存中…`, 'processing'),
+    onSuccess: (label) => notify(`${label}を保存しました。`, 'success'),
+    onError: handleError
   });
-  const displayItems = reorderQueue.items;
-  useUnsavedChangesGuard(reorderQueue.pending);
-  useEffect(() => {
-    resourceOrderSavePendingRef.current = reorderQueue.pending;
-    setResourceOrderSaving(reorderQueue.pending);
-  }, [reorderQueue.pending]);
+  const { enqueue: enqueueWrite, items: displayItems, order: registeredFseibans, hasPendingSeiban, acceptRefreshedState } = writeQueue;
+  const writeBlocked = writeQueue.blocked || rankConflict || orderConflict;
+  const rankDisabled = useCallback((item: GrindingPlanningBoardItem) =>
+    !rankMutationReady || writeBlocked || hasPendingSeiban(item.fseiban, true),
+  [rankMutationReady, writeBlocked, hasPendingSeiban]);
+  useUnsavedChangesGuard(writeQueue.pending);
 
   const baseDueDetail = allocation === 'original'
     ? dueDetailQuery.data?.original
@@ -416,86 +303,36 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, [dueDetailQuery.data, pendingDueScope]);
 
   useEffect(() => {
-    if (!data) return;
-    const revisionIsStale = staleOrderSourceRevisionsRef.current.has(data.sourceRevision);
-    const authoritative = !boardQuery.isPlaceholderData && !revisionIsStale;
+    if (!data || boardQuery.isPlaceholderData) return;
     const siteChanged = boardSiteKeyRef.current != null && boardSiteKeyRef.current !== data.siteKey;
-    const serverOrder = data.registeredFseibans;
-    const pending = pendingOrderRef.current;
-    if (siteChanged) {
-      boardSiteKeyRef.current = data.siteKey;
-      registeredServerFseibansRef.current = new Set(serverOrder);
-      setRegisteredFseibans(serverOrder);
-      setOrderInitialized(true);
+    const previous = registeredServerFseibansRef.current;
+    boardSiteKeyRef.current = data.siteKey;
+    if (!activeInitialized || siteChanged) {
       setActiveFseibans(new Set(data.seibanOrder));
       setActiveInitialized(true);
-      setOpenFseibans(new Set(data.seibanOrder.length > 0 ? data.seibanOrder : serverOrder));
+    }
+    if (!openInitialized || siteChanged) {
+      setOpenFseibans(new Set(data.seibanOrder.length ? data.seibanOrder : data.registeredFseibans));
       setOpenInitialized(true);
-      pendingOrderRef.current = null;
-      setOrderSaving(false);
-      setDueDetailTargetFseiban((current) => current && serverOrder.includes(current) ? current : serverOrder[0] ?? null);
-      return;
     }
-    if (boardSiteKeyRef.current == null) boardSiteKeyRef.current = data.siteKey;
-    if (!boardQuery.isPlaceholderData && !revisionIsStale) {
-      if (!pending || pending.responseSourceRevision == null || data.sourceRevision !== pending.baseSourceRevision) {
-        if (latestOrderSourceRevisionRef.current != null && latestOrderSourceRevisionRef.current !== data.sourceRevision) {
-          staleOrderSourceRevisionsRef.current.add(latestOrderSourceRevisionRef.current);
-        }
-        latestOrderSourceRevisionRef.current = data.sourceRevision;
+    if (!writeQueue.pending) {
+      const added = data.registeredFseibans.filter((value) => previous != null && !previous.has(value));
+      if (added.length) {
+        setActiveFseibans((current) => new Set([...current, ...added]));
+        setOpenFseibans((current) => new Set([...current, ...added]));
       }
+      registeredServerFseibansRef.current = new Set(data.registeredFseibans);
     }
-    if (!orderInitialized) {
-      setRegisteredFseibans(serverOrder);
-      setOrderInitialized(true);
-    } else if (pending) {
-      const authoritative = !boardQuery.isPlaceholderData;
-      const orderMatches = pending.order.length === serverOrder.length && pending.order.every((value, index) => serverOrder[index] === value);
-      const responseMatches = authoritative && pending.responseSourceRevision != null && data.sourceRevision === pending.responseSourceRevision && orderMatches;
-      const newerAuthoritativeData = authoritative && !revisionIsStale && pending.responseSourceRevision != null && data.sourceRevision !== pending.baseSourceRevision;
-      if (!orderSaving && (responseMatches || newerAuthoritativeData)) {
-        pendingOrderRef.current = null;
-        if (newerAuthoritativeData && !responseMatches) setRegisteredFseibans(serverOrder);
-      }
-    } else if (!orderSaving && !boardQuery.isPlaceholderData && !revisionIsStale) {
-      setRegisteredFseibans(serverOrder);
-    }
-    if (!activeInitialized) {
-      setActiveFseibans(new Set(data.seibanOrder));
-      setActiveInitialized(true);
-    }
-    setDueDetailTargetFseiban((current) => current && serverOrder.includes(current) ? current : serverOrder[0] ?? null);
-    if (!openInitialized) {
-      const initialOpenFseibans = data.seibanOrder.length > 0 ? data.seibanOrder : serverOrder;
-      if (initialOpenFseibans.length > 0) {
-        setOpenFseibans(new Set(initialOpenFseibans));
-        setOpenInitialized(true);
-      }
-    }
-    const orderSettled = authoritative && !orderSaving && (
-      pending == null ||
-      (pending.responseSourceRevision != null && (
-        pending.responseSourceRevision === data.sourceRevision || data.sourceRevision !== pending.baseSourceRevision
-      ))
-    );
-    if (orderSettled) {
-      const previousServerOrder = registeredServerFseibansRef.current ?? new Set<string>();
-      const newlyRegistered = serverOrder.filter((value) => !previousServerOrder.has(value));
-      if (newlyRegistered.length > 0) {
-        setActiveFseibans((current) => new Set([...current, ...newlyRegistered]));
-        setOpenFseibans((current) => new Set([...current, ...newlyRegistered]));
-      }
-      registeredServerFseibansRef.current = new Set(serverOrder);
-    }
-  }, [activeInitialized, boardQuery.isPlaceholderData, data, openInitialized, orderInitialized, orderSaving]);
+  }, [activeInitialized, boardQuery.isPlaceholderData, data, openInitialized, writeQueue.pending]);
 
   useEffect(() => {
-    setFocusedFseiban(null);
-  }, [category, status, view]);
-
-  useEffect(() => {
-    if (!scopeReady) setFocusedFseiban(null);
-  }, [scopeReady]);
+    const registered = new Set(registeredFseibans);
+    const prune = (current: ReadonlySet<string>) => [...current].every((value) => registered.has(value))
+      ? current : new Set([...current].filter((value) => registered.has(value)));
+    setActiveFseibans(prune);
+    setOpenFseibans(prune);
+    setDueDetailTargetFseiban((current) => current && registered.has(current) ? current : null);
+  }, [registeredFseibans]);
 
   const itemsBySeiban = useMemo(() => {
     const grouped = new Map<string, GrindingPlanningBoardItem[]>();
@@ -525,7 +362,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const specialDueCounts = useMemo(() => {
     const counts = { overnight: 0, today: 0 };
     for (const item of visibleItems) {
-      if (item.specialDue) counts[item.specialDue.kind] += 1;
+      const preview = item as PlanningBoardDisplayItem;
+      const kind = preview.pendingSpecialDue !== undefined ? preview.pendingSpecialDue : item.specialDue?.kind;
+      if (kind) counts[kind] += 1;
     }
     return counts;
   }, [visibleItems]);
@@ -541,106 +380,70 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     [selectedItemIds, visibleItems]
   );
   const editorItems = editorSnapshot?.items ?? [];
-  const resourceDragDisabled = reorderQueue.blocked || rankMutationPending || overridesPending || Object.values(pendingOverrideItems).some(
-    (pending) => pending.responseItemRevision == null
-  );
-
-
+  const resourceDragDisabled = writeBlocked;
+  const currentItemsRef = useRef(displayItems);
+  currentItemsRef.current = displayItems;
+  const specialDueModeRef = useRef(specialDueMode);
+  specialDueModeRef.current = specialDueMode;
 
   const toggleItem = useCallback((item: GrindingPlanningBoardItem, selected: boolean) => {
-    const pendingOverride = pendingOverrideItems[item.itemId];
-    if (!scopeReady || item.isCompleted || (pendingOverride != null && pendingOverride.responseItemRevision == null)) return;
+    if (!scopeReady || item.isCompleted) return;
     setSelectedItemIdsByCategory((current) => {
       const next = new Set(current[category] ?? []);
       if (selected) next.add(item.itemId); else next.delete(item.itemId);
       return { ...current, [category]: next };
     });
-  }, [category, pendingOverrideItems, scopeReady]);
-
+  }, [category, scopeReady]);
   const toggleAll = useCallback((items: readonly GrindingPlanningBoardItem[], selected: boolean) => {
     if (!bulkReady) return;
     setSelectedItemIdsByCategory((current) => {
       const next = new Set(current[category] ?? []);
       for (const item of items) {
-        const pendingOverride = pendingOverrideItems[item.itemId];
-        if (item.isCompleted || (pendingOverride != null && pendingOverride.responseItemRevision == null)) continue;
+        if (item.isCompleted) continue;
         if (selected) next.add(item.itemId); else next.delete(item.itemId);
       }
       return { ...current, [category]: next };
     });
-  }, [bulkReady, category, pendingOverrideItems]);
+  }, [bulkReady, category]);
 
-  const updateSpecialDue = useCallback(async (item: GrindingPlanningBoardItem) => {
-    if (
-      !data ||
-      !scopeReady ||
-      !rankMutationReady ||
-      allocation === 'original' ||
-      specialDueMode == null ||
-      item.isCompleted ||
-      overridesPending ||
-      resourceDragSavePendingRef.current ||
-      resourceOrderSavePendingRef.current ||
-      rankMutationPending ||
-      (pendingOverrideItems[item.itemId] != null && pendingOverrideItems[item.itemId].responseItemRevision == null)
-    ) return;
-    const nextSpecialDue = item.specialDue?.kind === specialDueMode ? null : specialDueMode;
-    const request: GrindingPlanningBoardOverrideItemRequest = {
-      itemId: item.itemId,
-      itemRevision: item.itemRevision,
-      overrideVersion: item.version,
-      specialDue: nextSpecialDue
-    };
-    const baseSourceRevision = data.sourceRevision;
-    setPendingOverrideItems((current) => ({
-      ...current,
-      [item.itemId]: {
-        item: applyOptimisticOverride(item, request),
-        baseSourceRevision,
-        baseItemRevision: item.itemRevision,
-        baseVersion: item.version,
-        responseSourceRevision: null,
-        responseItemRevision: null,
-        responseVersion: null,
-        expectedSpecialDueKind: nextSpecialDue
-      }
-    }));
-    notify(nextSpecialDue == null ? '特別納期を解除中…' : `${nextSpecialDue === 'today' ? '今日中' : '朝まで'}を保存中…`, 'processing');
-    try {
-      const result = await updateOverridesAsync({ sourceRevision: baseSourceRevision, items: [request] });
-      setPendingOverrideItems((current) => {
-        const pending = current[item.itemId];
-        if (!pending || pending.baseSourceRevision !== baseSourceRevision) return current;
-        const responseItem = (result.items ?? []).find((candidate) => candidate.itemId === item.itemId);
-        return {
-          ...current,
-          [item.itemId]: {
-            ...pending,
-            item: responseItem ?? pending.item,
-            responseSourceRevision: result.sourceRevision,
-            responseItemRevision: responseItem?.itemRevision ?? null,
-            responseVersion: responseItem?.version ?? null
-          }
-        };
-      });
-      notify(nextSpecialDue == null ? '特別納期を解除しました。' : `${nextSpecialDue === 'today' ? '今日中' : '朝まで'}を設定しました。`, 'success');
-    } catch (error) {
-      setPendingOverrideItems((current) => {
-        const pending = current[item.itemId];
-        if (!pending || pending.baseSourceRevision !== baseSourceRevision) return current;
-        const next = { ...current };
-        delete next[item.itemId];
-        return next;
-      });
-      handleError(error);
-    }
-  }, [allocation, data, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, scopeReady, specialDueMode, updateOverridesAsync, overridesPending]);
+  const enqueueOverrides = useCallback((
+    originals: readonly GrindingPlanningBoardItem[], requests: GrindingPlanningBoardOverrideItemRequest[],
+    label: string, onFailed?: (error: unknown) => void, capturedSourceRevision?: string
+  ) => {
+    if (writeBlocked || originals.some((item) => hasPendingSeiban(item.fseiban, true))) return false;
+    const patches = new Map(requests.map((request) => [request.itemId, request]));
+    return enqueueWrite({
+      label, itemIds: originals.map((item) => item.itemId), seibans: [...new Set(originals.map((item) => item.fseiban))],
+      apply: (display) => ({ ...display, items: display.items.map((item) => {
+        const request = patches.get(item.itemId);
+        return request ? applyOptimisticOverride(item, request) : item;
+      }) }),
+      save: async (context) => updateOverridesAsync({ sourceRevision: capturedSourceRevision ?? context.sourceRevision,
+        items: requests.map((request) => {
+          const item = context.item(originals.find((candidate) => candidate.itemId === request.itemId)!);
+          return { ...request, itemRevision: item.itemRevision, overrideVersion: item.version };
+        }) }),
+      onFailed
+    });
+  }, [enqueueWrite, updateOverridesAsync, writeBlocked, hasPendingSeiban]);
+
+  const updateSpecialDue = useCallback((original: GrindingPlanningBoardItem) => {
+    const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId) ?? original;
+    const mode = specialDueModeRef.current;
+    if (!scopeReady || !rankMutationReady || allocation === 'original' || !mode || item.isCompleted) return;
+    const preview = item as PlanningBoardDisplayItem;
+    const kind = preview.pendingSpecialDue !== undefined ? preview.pendingSpecialDue : item.specialDue?.kind;
+    const next = kind === mode ? null : mode;
+    enqueueOverrides([item], [{ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, specialDue: next }],
+      next === null ? '特別納期の解除' : next === 'today' ? '今日中' : '朝まで');
+  }, [allocation, enqueueOverrides, rankMutationReady, scopeReady]);
 
   const openEditor = useCallback((items: readonly GrindingPlanningBoardItem[]) => {
-    if (!scopeReady || items.some((item) => pendingOverrideItems[item.itemId] != null && pendingOverrideItems[item.itemId].responseItemRevision == null)) return;
+    if (!scopeReady || writeBlocked || items.some((item) => hasPendingSeiban(item.fseiban, true))) return;
     const target = items.filter((item) => !item.isCompleted);
     if (target.length === 0) return;
     if (!data) return;
+    editorGenerationRef.current += 1;
     setEditorSnapshot({
       items: [...target],
       sourceRevision: data.sourceRevision,
@@ -655,7 +458,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     setEditorError(null);
     setEditorConflict(false);
     setEditorOpen(true);
-  }, [allocation, clearFeedback, data, pendingOverrideItems, scopeReady]);
+  }, [allocation, clearFeedback, data, scopeReady, writeBlocked, hasPendingSeiban]);
 
   const openDueDetail = useCallback((fseiban: string) => {
     dueDetailIdentityRef.current = fseiban;
@@ -676,7 +479,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
 
   const openDuePicker = useCallback((scope: GrindingPlanningBoardDueScope, currentDueDate: string | null) => {
     const detail = dueDetailQuery.data;
-    if (!dueDetailFseiban || !detail || allocation === 'original' || dueConflict || pendingDueScope?.fseiban === dueDetailFseiban) return;
+    if (!dueDetailFseiban || !detail || allocation === 'original' || dueConflict || hasPendingSeiban(dueDetailFseiban) || pendingDueScope?.fseiban === dueDetailFseiban) return;
     setDueError(null);
     setDueConflict(false);
     setDuePickerState({
@@ -688,7 +491,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         scopeRevision: detail.scopeRevision
       }
     });
-  }, [allocation, dueConflict, dueDetailFseiban, dueDetailQuery.data, pendingDueScope]);
+  }, [allocation, dueConflict, dueDetailFseiban, dueDetailQuery.data, pendingDueScope, hasPendingSeiban]);
 
   const refreshDueDetail = useCallback(async () => {
     setDueError('最新状態を取得しています…');
@@ -700,60 +503,47 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         return;
       }
       setDueConflict(false);
+      setRankConflict(false);
+      acceptRefreshedState();
       setDueError(null);
       notify('最新状態を取得しました。対象を選び直して再適用してください。', 'success');
     } catch {
       setDueError('最新状態を取得できませんでした。再試行してください。');
       notify('最新状態を取得できませんでした。再試行してください。', 'error');
     }
-  }, [boardQuery, dueDetailQuery, notify]);
+  }, [boardQuery, dueDetailQuery, notify, acceptRefreshedState]);
 
-  const commitDueDate = useCallback(async (nextDueDate: string) => {
+  const commitDueDate = useCallback((nextDueDate: string) => {
     const current = duePickerState;
-    if (!current || allocation === 'original' || dueRequestPendingRef.current) return;
-    dueRequestPendingRef.current = true;
-    const pendingUpdate: PendingDueScopeUpdate = {
-      fseiban: current.fseiban,
-      scope: current.scope,
-      dueDate: nextDueDate,
-      baseScopeRevision: current.snapshot.scopeRevision,
-      responseScopeRevision: null
-    };
-    setPendingDueScope(pendingUpdate);
-    notify(`${current.fseiban}の納期を保存中…`, 'processing');
-    try {
-      const result = await updateDueScope.mutateAsync({
-        fseiban: current.fseiban,
-        payload: {
-          ...current.snapshot,
-          scope: current.scope,
-          dueDate: nextDueDate
-        }
-      });
-      setPendingDueScope((pending) => pending?.fseiban === pendingUpdate.fseiban && dueScopeKey(pending.scope) === dueScopeKey(pendingUpdate.scope)
-        ? { ...pending, responseScopeRevision: result.scopeRevision }
-        : pending);
-      if (dueDetailIdentityRef.current !== current.fseiban) return;
-      setDuePickerState(null);
-      setDueConflict(false);
-      setDueError(null);
-      notify(`${current.fseiban}の納期を更新しました。`, 'success');
-    } catch (error) {
-      setPendingDueScope((pending) => pending?.fseiban === pendingUpdate.fseiban && dueScopeKey(pending.scope) === dueScopeKey(pendingUpdate.scope) ? null : pending);
-      if (dueDetailIdentityRef.current !== current.fseiban) return;
-      setDuePickerState(null);
-      if (isAxiosError(error) && error.response?.status === 409) {
-        setDueConflict(true);
-        setDueError('表示中の納期が更新されています。最新状態を取得してから再適用してください。');
-        notify('表示中の納期が更新されています。最新状態を取得してください。', 'error');
-      } else {
-        setDueError('納期を保存できませんでした。入力内容と通信状態を確認してください。');
-        notify('納期を保存できませんでした。入力内容と通信状態を確認してください。', 'error');
+    if (!current || allocation === 'original' || writeBlocked || hasPendingSeiban(current.fseiban)) return;
+    const pendingUpdate: PendingDueScopeUpdate = { fseiban: current.fseiban, scope: current.scope, dueDate: nextDueDate,
+      baseScopeRevision: current.snapshot.scopeRevision, responseScopeRevision: null };
+    const accepted = enqueueWrite({ label: `${current.fseiban}の納期`, itemIds: [], seibans: [current.fseiban], wholeSeiban: true,
+      apply: (display) => display,
+      save: async () => {
+        const result = await updateDueScope.mutateAsync({ fseiban: current.fseiban,
+          payload: { ...current.snapshot, scope: current.scope, dueDate: nextDueDate } });
+        setPendingDueScope((pending) => pending?.fseiban === current.fseiban
+          ? { ...pending, responseScopeRevision: result.scopeRevision } : pending);
+        // Scope writes invalidate item revisions without returning them. Read them before this seiban becomes editable again.
+        const [detail, board] = await Promise.all([dueDetailQuery.refetch(), boardQuery.refetch()]);
+        if (detail.isError || board.isError) throw new Error('納期保存後の最新状態を取得できませんでした。');
+        return {};
+      },
+      onSaved: () => {
+        setPendingDueScope((pending) => pending?.fseiban === current.fseiban ? null : pending);
+        if (dueDetailIdentityRef.current === current.fseiban) { setDueConflict(false); setDueError(null); }
+      },
+      onFailed: (error) => {
+        setPendingDueScope((pending) => pending?.fseiban === current.fseiban ? null : pending);
+        if (dueDetailIdentityRef.current !== current.fseiban) return;
+        const conflict = isAxiosError(error) && error.response?.status === 409;
+        setDueConflict(conflict);
+        setDueError(conflict ? '表示中の納期が更新されています。最新状態を取得してから再適用してください。' : '納期を保存できませんでした。最新状態を取得して確認してください。');
       }
-    } finally {
-      dueRequestPendingRef.current = false;
-    }
-  }, [allocation, duePickerState, notify, updateDueScope]);
+    });
+    if (accepted) { setPendingDueScope(pendingUpdate); setDuePickerState(null); }
+  }, [allocation, boardQuery, dueDetailQuery, duePickerState, enqueueWrite, updateDueScope, writeBlocked, hasPendingSeiban]);
 
   const applyEditor = async () => {
     if (!editorSnapshot || allocation === 'original' || editorItems.length === 0) return;
@@ -775,166 +565,57 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       ...(due ? { due } : {})
     }));
     if (items.every((item) => !('resourceCd' in item) && !('due' in item))) return;
-    const pendingItems = new Map(editorItems.map((item) => [item.itemId, item]));
-    setPendingOverrideItems((current) => {
-      const next = { ...current };
-      for (const request of items) {
-        const item = pendingItems.get(request.itemId);
-        if (!item) continue;
-        next[request.itemId] = {
-          item: applyOptimisticOverride(item, request),
-          baseSourceRevision: editorSnapshot.sourceRevision,
-          baseItemRevision: item.itemRevision,
-          baseVersion: item.version,
-          responseSourceRevision: null,
-          responseItemRevision: null,
-          responseVersion: null
-        };
-      }
-      return next;
-    });
-    notify(`${items.length}件を更新中…`, 'processing');
-    try {
-      const result = await updateOverridesAsync({ sourceRevision: editorSnapshot.sourceRevision, items });
-      setPendingOverrideItems((current) => {
-        const next = { ...current };
-        for (const request of items) {
-          const pending = next[request.itemId];
-          const responseItem = (result.items ?? []).find((item) => item.itemId === request.itemId);
-          if (pending?.baseSourceRevision === editorSnapshot.sourceRevision) {
-            next[request.itemId] = {
-              ...pending,
-              item: responseItem ?? pending.item,
-              responseSourceRevision: result.sourceRevision,
-              responseItemRevision: responseItem?.itemRevision ?? null,
-              responseVersion: responseItem?.version ?? null
-            };
-          }
-        }
-        return next;
-      });
-      setEditorOpen(false);
-      notify(`${items.length}件を更新しました。`, 'success');
-    } catch (error) {
-      setPendingOverrideItems((current) => {
-        const next = { ...current };
-        for (const request of items) {
-          if (next[request.itemId]?.baseSourceRevision === editorSnapshot.sourceRevision) delete next[request.itemId];
-        }
-        return next;
-      });
-      if (isAxiosError(error) && error.response?.status === 409) {
-        setEditorConflict(true);
-        setEditorError('表示中のデータが更新されています。最新状態を取得してから対象を選び直してください。');
-        notify('表示中のデータが更新されています。最新状態を取得してください。', 'error');
-      } else if (isAxiosError(error) && typeof error.response?.data?.message === 'string') {
-        setEditorError(`保存できませんでした: ${error.response.data.message}`);
-        notify(`保存できませんでした: ${error.response.data.message}`, 'error');
-      } else {
-        setEditorError('保存できませんでした。入力内容とネットワーク接続を確認してください。');
-        notify('保存できませんでした。入力内容とネットワーク接続を確認してください。', 'error');
-      }
-    }
+    const editorGeneration = editorGenerationRef.current;
+    const accepted = enqueueOverrides(editorItems, items, `${items.length}件の変更`, (error) => {
+      if (editorGenerationRef.current !== editorGeneration) return;
+      const conflict = isAxiosError(error) && error.response?.status === 409;
+      setEditorConflict(conflict);
+      setEditorError(conflict ? '表示中のデータが更新されています。最新状態を取得してから対象を選び直してください。' : '保存できませんでした。入力内容と通信状態を確認してください。');
+      setEditorOpen(true);
+    }, editorSnapshot?.sourceRevision);
+    if (accepted) setEditorOpen(false);
   };
 
-  const moveResourceByDrag = useCallback(async (item: GrindingPlanningBoardItem, targetResource: string) => {
-    const pendingOverride = pendingOverrideItems[item.itemId];
-    const currentResource = resolveGrindingPlanningBoardResource(item, allocation);
-    if (
-      !data ||
-      !scopeReady ||
-      !rankMutationReady ||
-      !sourceRevision ||
-      allocation === 'original' ||
-      item.isCompleted ||
-      !data.resources.includes(targetResource) ||
-      currentResource === targetResource ||
-      overridesPending ||
-      resourceDragSavePendingRef.current ||
-      resourceOrderSavePendingRef.current ||
-      rankMutationPending ||
-      (pendingOverride != null && pendingOverride.responseItemRevision == null)
-    ) return;
+  const moveResourceByDrag = useCallback((item: GrindingPlanningBoardItem, targetResource: string) => {
+    if (!data || !scopeReady || !rankMutationReady || allocation === 'original' || item.isCompleted ||
+      !data.resources.includes(targetResource) || resolveGrindingPlanningBoardResource(item, allocation) === targetResource) return;
+    enqueueOverrides([item], [{ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, resourceCd: targetResource }], '資源CD');
+  }, [allocation, data, enqueueOverrides, rankMutationReady, scopeReady]);
 
-    resourceDragSavePendingRef.current = true;
-    const request: GrindingPlanningBoardOverrideItemRequest = {
-      itemId: item.itemId,
-      itemRevision: item.itemRevision,
-      overrideVersion: item.version,
-      resourceCd: targetResource
-    };
-    const baseSourceRevision = data.sourceRevision;
-    setPendingOverrideItems((current) => ({
-      ...current,
-      [item.itemId]: {
-        item: applyOptimisticOverride(item, request),
-        baseSourceRevision,
-        baseItemRevision: item.itemRevision,
-        baseVersion: item.version,
-        responseSourceRevision: null,
-        responseItemRevision: null,
-        responseVersion: null
-      }
-    }));
-    notify('資源CDを保存中…', 'processing');
-    try {
-      const result = await updateOverridesAsync({ sourceRevision: baseSourceRevision, items: [request] });
-      setPendingOverrideItems((current) => {
-        const pending = current[item.itemId];
-        if (!pending || pending.baseSourceRevision !== baseSourceRevision) return current;
-        const responseItem = (result.items ?? []).find((candidate) => candidate.itemId === item.itemId);
-        return {
-          ...current,
-          [item.itemId]: {
-            ...pending,
-            item: responseItem ?? pending.item,
-            responseSourceRevision: result.sourceRevision,
-            responseItemRevision: responseItem?.itemRevision ?? null,
-            responseVersion: responseItem?.version ?? null
-          }
-        };
-      });
-      notify('資源CDを' + targetResource + 'へ変更しました。', 'success');
-    } catch (error) {
-      setPendingOverrideItems((current) => {
-        const pending = current[item.itemId];
-        if (!pending || pending.baseSourceRevision !== baseSourceRevision) return current;
-        const next = { ...current };
-        delete next[item.itemId];
-        return next;
-      });
-      handleError(error);
-    } finally {
-      resourceDragSavePendingRef.current = false;
-    }
-  }, [allocation, data, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, scopeReady, sourceRevision, updateOverridesAsync, overridesPending]);
-
-  const reorderResourceByDrag = useCallback(async (
-    item: GrindingPlanningBoardItem,
-    targetItem: GrindingPlanningBoardItem,
-    placement: GrindingPlanningBoardResourceOrderPlacement
-  ) => {
-    const currentResource = resolveGrindingPlanningBoardResource(item, allocation);
-    if (
-      !data ||
-      !scopeReady ||
-      !rankMutationReady ||
-      !sourceRevision ||
-      allocation === 'original' ||
-      item.isCompleted ||
-      targetItem.isCompleted ||
-      currentResource == null ||
-      currentResource !== resolveGrindingPlanningBoardResource(targetItem, allocation) ||
+  const reorderResourceByDrag = useCallback((item: GrindingPlanningBoardItem, targetItem: GrindingPlanningBoardItem,
+    placement: GrindingPlanningBoardResourceOrderPlacement) => {
+    const resource = resolveGrindingPlanningBoardResource(item, allocation);
+    if (!data || !scopeReady || !rankMutationReady || writeBlocked || allocation === 'original' || item.isCompleted || targetItem.isCompleted ||
+      !resource || resource !== resolveGrindingPlanningBoardResource(targetItem, allocation) ||
       (item.specialDue?.expiresAt ?? null) !== (targetItem.specialDue?.expiresAt ?? null) ||
-      !data.resources.includes(currentResource) ||
-      overridesPending ||
-      resourceDragSavePendingRef.current ||
-      rankMutationPending ||
-      Object.values(pendingOverrideItems).some((pending) => pending.responseItemRevision == null)
-    ) return;
-
-    reorderQueue.enqueue({ item, target: targetItem, placement });
-  }, [allocation, data, pendingOverrideItems, rankMutationPending, rankMutationReady, scopeReady, sourceRevision, overridesPending, reorderQueue]);
+      hasPendingSeiban(item.fseiban, true) || hasPendingSeiban(targetItem.fseiban, true)) return;
+    const affected = currentItemsRef.current.filter((candidate) => resolveGrindingPlanningBoardResource(candidate, allocation) === resource);
+    enqueueWrite({ label: '資源CD内の順序', itemIds: affected.map((candidate) => candidate.itemId),
+      seibans: [...new Set(affected.map((candidate) => candidate.fseiban))], order: true,
+      apply: (display) => {
+        const source = display.items.find((candidate) => candidate.itemId === item.itemId);
+        const target = display.items.find((candidate) => candidate.itemId === targetItem.itemId);
+        if (!source || !target) return display;
+        const ordered = sortGrindingPlanningBoardItems(display.items.filter((candidate) =>
+          resolveGrindingPlanningBoardResource(candidate, allocation) === resolveGrindingPlanningBoardResource(source, allocation) &&
+          (candidate.specialDue?.expiresAt ?? null) === (source.specialDue?.expiresAt ?? null)), display.order, 'resource', 'alternate');
+        const from = ordered.findIndex((candidate) => candidate.itemId === source.itemId);
+        if (from < 0 || !ordered.some((candidate) => candidate.itemId === target.itemId)) return display;
+        const [moved] = ordered.splice(from, 1);
+        ordered.splice(ordered.findIndex((candidate) => candidate.itemId === target.itemId) + (placement === 'after' ? 1 : 0), 0, moved);
+        const ranks = new Map(ordered.map((candidate, index) => [candidate.itemId, index + 1]));
+        return { ...display, items: display.items.map((candidate) => ranks.has(candidate.itemId) ? { ...candidate, alternateRank: ranks.get(candidate.itemId)! } : candidate) };
+      },
+      save: async (context) => {
+        const source = context.item(item); const target = context.item(targetItem);
+        const response = await updateResourceOrderAsync({ sourceRevision: context.sourceRevision, itemId: source.itemId,
+          itemRevision: source.itemRevision, overrideVersion: source.version, targetItemId: target.itemId,
+          targetItemRevision: target.itemRevision, targetOverrideVersion: target.version, placement });
+        return { ...response, items: response.items.map((ranked) => ({ ...context.item(affected.find((candidate) => candidate.itemId === ranked.itemId) ?? ranked),
+          alternateRank: ranked.alternateRank, itemRevision: ranked.itemRevision, version: ranked.version })) };
+      }
+    });
+  }, [allocation, data, enqueueWrite, rankMutationReady, scopeReady, updateResourceOrderAsync, writeBlocked, hasPendingSeiban]);
 
   const refreshAfterConflict = async () => {
     setEditorError('最新状態を取得しています…');
@@ -947,188 +628,95 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       setEditorSnapshot(null);
       setEditorOpen(false);
       setEditorConflict(false);
+      setRankConflict(false);
+      acceptRefreshedState();
       notify('最新状態を取得しました。対象を選び直して再適用してください。', 'success');
     } catch {
       setEditorError('最新状態を取得できませんでした。再試行してください。');
     }
   };
 
-  const changeRank = useCallback(async (item: GrindingPlanningBoardItem, rank: number | null) => {
-    if (!data || !rankMutationReady || allocation === 'original' || item.isCompleted || rankMutationPending || resourceOrderSaving || resourceOrderSavePendingRef.current || (pendingOverrideItems[item.itemId] != null && pendingOverrideItems[item.itemId].responseItemRevision == null)) return;
-    const requestId = ++rankRequestIdRef.current;
-    const requestScopeKey = rankScopeKey;
-    setRankConflict(false);
-    setPendingRankOverrides((current) => {
-      const previous = current[item.itemId];
-      const previousState: RankDisplayState = previous?.phase === 'awaitingSync'
-        ? { rank: previous.rank, itemRevision: previous.itemRevision, version: previous.version }
-        : { rank: item.alternateRank, itemRevision: item.itemRevision, version: item.version };
-      return {
-        ...current,
-        [item.itemId]: {
-          scopeKey: requestScopeKey,
-          requestId,
-          staleStates: previous == null ? [previousState] : [...previous.staleStates, previousState],
-          restoreState: previousState,
-          itemRevision: item.itemRevision,
-          version: item.version,
-          rank,
-          phase: 'saving'
-        }
-      };
+  const changeRank = useCallback((item: GrindingPlanningBoardItem, rank: number | null) => {
+    if (!data || !rankMutationReady || allocation === 'original' || item.isCompleted || writeBlocked || hasPendingSeiban(item.fseiban, true)) return;
+    enqueueWrite({ label: '個別順位', itemIds: [item.itemId], seibans: [item.fseiban],
+      apply: (display) => ({ ...display, items: display.items.map((candidate) => candidate.itemId === item.itemId ? { ...candidate, alternateRank: rank } : candidate) }),
+      save: async (context) => {
+        const current = context.item(item);
+        const result = await updateRankAsync({ sourceRevision: context.sourceRevision, itemId: current.itemId,
+          itemRevision: current.itemRevision, overrideVersion: current.version, alternateRank: rank });
+        return { sourceRevision: result.sourceRevision, items: [{ ...current, alternateRank: result.alternateRank,
+          itemRevision: result.itemRevision, version: result.overrideVersion }] };
+      }
     });
-    notify('個別順位を保存中…', 'processing');
-    try {
-      const result: GrindingPlanningBoardRankResponse = await updateRankAsync({ sourceRevision, itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, alternateRank: rank });
-      setPendingRankOverrides((current) => {
-        const pending = current[item.itemId];
-        if (!pending || pending.requestId !== requestId || pending.scopeKey !== requestScopeKey) return current;
-        return {
-          ...current,
-          [item.itemId]: {
-            ...pending,
-            rank: result.alternateRank,
-            itemRevision: result.itemRevision,
-            version: result.overrideVersion,
-            phase: 'awaitingSync'
-          }
-        };
-      });
-      notify('個別順位を保存しました。', 'success');
-    } catch (error) {
-      setPendingRankOverrides((current) => {
-        const pending = current[item.itemId];
-        if (!pending || pending.requestId !== requestId || pending.scopeKey !== requestScopeKey) return current;
-        const restoredStates = [...pending.staleStates, { rank: pending.rank, itemRevision: pending.itemRevision, version: pending.version }];
-        return {
-          ...current,
-          [item.itemId]: {
-            ...pending,
-            staleStates: restoredStates,
-            rank: pending.restoreState.rank,
-            itemRevision: pending.restoreState.itemRevision,
-            version: pending.restoreState.version,
-            phase: 'awaitingSync'
-          }
-        };
-      });
-      handleError(error);
-    }
-  }, [allocation, data, handleError, notify, pendingOverrideItems, rankMutationPending, rankMutationReady, rankScopeKey, resourceOrderSaving, sourceRevision, updateRankAsync]);
+  }, [allocation, data, enqueueWrite, rankMutationReady, updateRankAsync, writeBlocked, hasPendingSeiban]);
 
-  const persistOrder = async (nextOrder: string[]): Promise<boolean> => {
-    if (!data || !scopeReady || reorderQueue.pending || allocation === 'original') return false;
+  const persistOrder = (nextOrder: string[], onAccepted?: () => void, onRejected?: () => void): Promise<boolean> => {
+    if (!data || !scopeReady || writeBlocked || allocation === 'original') return Promise.resolve(false);
     if (nextOrder.length > 50) {
       setOrderRegistrationError('登録上限50件を超えるため保存できません。選択を減らしてください。');
-      return false;
+      return Promise.resolve(false);
     }
-    if (orderRequestPendingRef.current) return false;
-    const previous = registeredFseibans;
-    const requestSourceRevision = latestOrderSourceRevisionRef.current ?? sourceRevision;
     setOrderRegistrationError(null);
-    orderRequestPendingRef.current = true;
-    staleOrderSourceRevisionsRef.current.add(requestSourceRevision);
-    pendingOrderRef.current = { order: nextOrder, baseSourceRevision: requestSourceRevision, responseSourceRevision: null };
-    setOrderSaving(true);
-    setOrderConflict(false);
-    setRegisteredFseibans(nextOrder);
-    notify('製番順を保存中…', 'processing');
-    try {
-      const result = await updateOrder.mutateAsync({ sourceRevision: requestSourceRevision, fseibans: nextOrder });
-      orderRequestPendingRef.current = false;
-      pendingOrderRef.current = { order: result.seibanOrder, baseSourceRevision: requestSourceRevision, responseSourceRevision: result.sourceRevision };
-      staleOrderSourceRevisionsRef.current.delete(result.sourceRevision);
-      latestOrderSourceRevisionRef.current = result.sourceRevision;
-      setOrderSaving(false);
-      setRegisteredFseibans(result.seibanOrder);
-      notify('製番順を保存しました。', 'success');
-      return true;
-    } catch (error) {
-      orderRequestPendingRef.current = false;
-      pendingOrderRef.current = null;
-      staleOrderSourceRevisionsRef.current.delete(requestSourceRevision);
-      latestOrderSourceRevisionRef.current = requestSourceRevision;
-      setOrderSaving(false);
-      setRegisteredFseibans(previous);
-      if (isAxiosError(error) && error.response?.status === 409) {
-        setOrderConflict(true);
-        setOrderRegistrationError('製番順が他端末で更新されています。最新状態を取得してから再登録してください。');
-        notify('製番順が更新されています。最新状態を取得してください。', 'error');
-        return false;
-      }
-      setOrderRegistrationError('製番登録を保存できませんでした。通信状態と入力値を確認してください。');
-      handleError(error);
-      return false;
-    }
+    return new Promise((resolve) => {
+      const accepted = enqueueWrite({ label: '製番順', itemIds: [], seibans: [...new Set([...registeredFseibans, ...nextOrder])], order: true,
+        apply: (display) => ({ ...display, order: nextOrder }),
+        save: async (context) => {
+          const result = await updateOrder.mutateAsync({ sourceRevision: context.sourceRevision, fseibans: nextOrder });
+          return { sourceRevision: result.sourceRevision, order: result.seibanOrder };
+        },
+        onSaved: () => resolve(true),
+        onFailed: (error) => {
+          onRejected?.();
+          resolve(false);
+          const conflict = isAxiosError(error) && error.response?.status === 409;
+          setOrderConflict(conflict);
+          setOrderRegistrationError(conflict ? '製番順が他端末で更新されています。最新状態を取得してから再登録してください。' : '製番登録を保存できませんでした。通信状態と入力値を確認してください。');
+        }
+      });
+      if (accepted) onAccepted?.(); else resolve(false);
+    });
   };
 
   const refreshAfterOrderConflict = async () => {
     notify('最新状態を取得しています…', 'processing');
     const result = await boardQuery.refetch();
-    if (result.isError || !result.data) {
-      notify('最新状態を取得できませんでした。再試行してください。', 'error');
-      return;
-    }
-    pendingOrderRef.current = null;
-    if (latestOrderSourceRevisionRef.current != null && latestOrderSourceRevisionRef.current !== result.data.sourceRevision) {
-      staleOrderSourceRevisionsRef.current.add(latestOrderSourceRevisionRef.current);
-    }
-    latestOrderSourceRevisionRef.current = result.data.sourceRevision;
-    setOrderRegistrationError(null);
-    setOrderSaving(false);
-    setRegisteredFseibans(result.data.registeredFseibans);
-    setOrderConflict(false);
-    setRankConflict(false);
-    reorderQueue.acceptRefreshedState();
+    if (result.isError || !result.data) { notify('最新状態を取得できませんでした。再試行してください。', 'error'); return; }
+    setOrderRegistrationError(null); setOrderConflict(false); setRankConflict(false);
+    acceptRefreshedState();
     notify('最新状態を取得しました。', 'success');
   };
-
   const removeSeiban = (fseiban: string) => {
-    const next = registeredFseibans.filter((value) => value !== fseiban);
-    void persistOrder(next).then((saved) => {
-      if (saved) {
-        setActiveFseibans((current) => new Set([...current].filter((value) => value !== fseiban)));
-        setOpenFseibans((current) => new Set([...current].filter((value) => value !== fseiban)));
-        setDueDetailTargetFseiban((current) => current === fseiban ? null : current);
-        setDueDetailFseiban((current) => current === fseiban ? null : current);
-      }
+    const wasActive = activeFseibans.has(fseiban);
+    const wasOpen = openFseibans.has(fseiban);
+    void persistOrder(registeredFseibans.filter((value) => value !== fseiban), () => {
+      setActiveFseibans((current) => new Set([...current].filter((value) => value !== fseiban)));
+      setOpenFseibans((current) => new Set([...current].filter((value) => value !== fseiban)));
+      setDueDetailTargetFseiban((current) => current === fseiban ? null : current);
+      setDueDetailFseiban((current) => current === fseiban ? null : current);
+    }, () => {
+      if (wasActive) setActiveFseibans((current) => new Set([...current, fseiban]));
+      if (wasOpen) setOpenFseibans((current) => new Set([...current, fseiban]));
+    });
+  };
+  const addSeibans = async (fseibans: readonly string[]): Promise<boolean> => {
+    const additions = [...new Set(fseibans.map((value) => value.trim()).filter(Boolean))].filter((value) => !registeredFseibans.includes(value));
+    if (!additions.length) return true;
+    return persistOrder([...additions, ...registeredFseibans], () => {
+      setActiveFseibans((current) => new Set([...additions, ...current]));
+      setOpenFseibans((current) => new Set([...additions, ...current]));
+    }, () => {
+      setActiveFseibans((current) => new Set([...current].filter((value) => !additions.includes(value))));
+      setOpenFseibans((current) => new Set([...current].filter((value) => !additions.includes(value))));
     });
   };
   const addSeiban = async (fseiban: string): Promise<boolean> => {
-    const value = fseiban.trim();
-    if (!value || registeredFseibans.includes(value)) return false;
-    if (registeredFseibans.length >= 50) {
-      setOrderRegistrationError('登録上限50件を超えるため保存できません。先に登録済み製番を解除してください。');
-      return false;
-    }
-    const saved = await persistOrder([value, ...registeredFseibans]);
-    if (saved) {
-      setActiveFseibans((current) => new Set([value, ...current]));
-      setOpenFseibans((current) => new Set([value, ...current]));
-    }
-    return saved;
-  };
-  const addSeibans = async (fseibans: readonly string[]): Promise<boolean> => {
-    const additions = [...new Set(fseibans.map((value) => value.trim()).filter(Boolean))]
-      .filter((value) => !registeredFseibans.includes(value));
-    if (additions.length === 0) return true;
-    if (registeredFseibans.length + additions.length > 50) {
-      setOrderRegistrationError('登録上限50件を超えるため保存できません。選択を減らしてください。');
-      return false;
-    }
-    const saved = await persistOrder([...additions, ...registeredFseibans]);
-    if (saved) {
-      setActiveFseibans((current) => new Set([...additions, ...current]));
-      setOpenFseibans((current) => new Set([...additions, ...current]));
-    }
-    return saved;
+    if (!fseiban.trim() || registeredFseibans.includes(fseiban.trim())) return false;
+    return addSeibans([fseiban]);
   };
   const moveSeiban = (fseiban: string, direction: 'up' | 'down') => {
-    const index = registeredFseibans.indexOf(fseiban);
-    const target = direction === 'up' ? index - 1 : index + 1;
+    const index = registeredFseibans.indexOf(fseiban); const target = direction === 'up' ? index - 1 : index + 1;
     if (index < 0 || target < 0 || target >= registeredFseibans.length) return;
-    const next = [...registeredFseibans];
-    [next[index], next[target]] = [next[target], next[index]];
+    const next = [...registeredFseibans]; [next[index], next[target]] = [next[target], next[index]];
     void persistOrder(next);
   };
 
@@ -1208,14 +796,14 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         status={status}
         allocation={allocation}
         selectedCount={toolbarSelectedItems.length}
-        scopeDisabled={reorderQueue.pending}
-        bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || rankMutationPending || resourceOrderSaving}
+        scopeDisabled={writeQueue.pending}
+        bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || writeBlocked}
         registeredCount={registeredFseibans.length}
         onOpenDrawer={() => setDrawerOpen(true)}
-        onCategoryChange={(value) => { if (!reorderQueue.pending) setCategory(value); }}
+        onCategoryChange={(value) => { if (!writeQueue.pending) setCategory(value); }}
         onViewChange={setView}
-        onStatusChange={(value) => { if (!reorderQueue.pending) setStatus(value); }}
-        onAllocationChange={(value) => { if (!reorderQueue.pending) setAllocation(value); }}
+        onStatusChange={(value) => { if (!writeQueue.pending) setStatus(value); }}
+        onAllocationChange={(value) => { if (!writeQueue.pending) setAllocation(value); }}
         onOpenDueEditor={() => openEditor(toolbarSelectedItems)}
         specialDueMode={view === 'resource' ? specialDueMode : null}
         onSpecialDueModeChange={view === 'resource' ? setSpecialDueMode : undefined}
@@ -1344,10 +932,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             setDueDetailTargetFseiban(null);
           }
         }}
-        onMove={allocation === 'original' || orderSaving || interactionLocked ? () => undefined : moveSeiban}
+        onMove={allocation === 'original' || writeBlocked || interactionLocked ? () => undefined : moveSeiban}
         orderReadOnly={allocation === 'original' || interactionLocked}
-        orderBusy={orderSaving || interactionLocked}
-        orderStatus={interactionLocked ? (boardQuery.isError ? '一覧を読み込めませんでした。' : '一覧を読み込み中…') : orderSaving ? '製番順を保存中…' : null}
+        orderBusy={writeBlocked || interactionLocked}
+        orderStatus={interactionLocked ? (boardQuery.isError ? '一覧を読み込めませんでした。' : '一覧を読み込み中…') : null}
         candidates={candidateQuery.data?.candidates}
         candidatesToday={candidateQuery.data?.today}
         candidatesRangeStart={candidateQuery.data?.rangeStart}
@@ -1372,8 +960,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           detail={dueDetail}
           loading={dueDetailQuery.isLoading}
           error={dueDetailQuery.isError}
-          dueUpdatePending={updateDueScope.isPending}
-          readOnly={allocation === 'original' || dueConflict || pendingDueScope?.fseiban === dueDetailFseiban}
+          dueUpdatePending={pendingDueScope?.fseiban === dueDetailFseiban}
+          readOnly={allocation === 'original' || dueConflict || (dueDetailFseiban != null && hasPendingSeiban(dueDetailFseiban)) || pendingDueScope?.fseiban === dueDetailFseiban}
           conflict={dueConflict}
           errorMessage={dueError}
           onRefresh={() => void refreshDueDetail()}
@@ -1395,7 +983,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           {editorError ? <p className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800" role="alert">{editorError}</p> : null}
           {editorConflict ? <Button type="button" variant="secondary" onClick={() => void refreshAfterConflict()}>最新状態を取得して閉じる</Button> : null}
           {allocation === 'original' ? <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">元データ表示中は変更できません。別割当に切り替えてください。</p> : null}
-          <fieldset disabled={allocation === 'original' || overridesPending}>
+          <fieldset disabled={allocation === 'original' || writeBlocked}>
             <legend className="text-sm font-semibold text-slate-800">資源CD</legend>
             <div className="mt-2 flex flex-wrap gap-2">
               <button type="button" className={`min-h-11 rounded-md border px-3 text-sm ${resourceChoice === 'unchanged' ? 'border-emerald-600 bg-emerald-100 text-emerald-950' : 'border-slate-300'}`} onClick={() => setResourceChoice('unchanged')}>変更なし</button>
@@ -1424,7 +1012,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
               </p>
             ) : null}
           </fieldset>
-          <fieldset disabled={allocation === 'original' || overridesPending}>
+          <fieldset disabled={allocation === 'original' || writeBlocked}>
             <legend className="text-sm font-semibold text-slate-800">日付</legend>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
               <button type="button" className={`min-h-11 rounded-md border px-3 ${dueMode === 'none' ? 'border-emerald-600 bg-emerald-100 text-emerald-950' : 'border-slate-300'}`} onClick={() => setDueMode('none')}>変更なし</button>
@@ -1441,7 +1029,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => setEditorOpen(false)}>キャンセル</Button>
-            <Button type="button" variant="primary" disabled={allocation === 'original' || overridesPending || (resourceChoice === 'unchanged' && dueMode === 'none')} onClick={() => void applyEditor()}>{overridesPending ? '適用中…' : '適用'}</Button>
+            <Button type="button" variant="primary" disabled={allocation === 'original' || writeBlocked || (resourceChoice === 'unchanged' && dueMode === 'none')} onClick={() => void applyEditor()}>{writeBlocked ? '適用中…' : '適用'}</Button>
           </div>
         </div>
       </Dialog>
