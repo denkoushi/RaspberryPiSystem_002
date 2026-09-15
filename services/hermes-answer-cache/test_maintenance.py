@@ -177,6 +177,49 @@ class NightlyAdoptionIntegrationTests(unittest.TestCase):
         runtime.log = Mock()
         return runtime
 
+    def test_remote_completion_waits_for_pi_source_recheck_and_commits_once(self):
+        self.input['requireSourceRecheck'] = True
+        atomic_json(self.job / 'input.json', self.input)
+        maintain(self.root, self.run, self.root)
+        runtime = self.runtime()
+        cache = self.cache_type(self.root / 'reviewed.json')
+        self.assertIs(runtime.refresh(cache, object())[0], cache)
+        self.assertEqual(runtime.status(self.run)['status'], 'awaiting_source_recheck')
+        self.assertTrue(runtime.state(None)['running'])
+        self.assertEqual(runtime.start('c' * 36), {'started': False, 'runId': self.run})
+        self.assertFalse((self.root / 'active.json').exists())
+        with self.assertRaises(ValueError):
+            runtime.authorize(self.run, 'wrong-generation')
+        runtime.authorize(self.run, digest(self.job / 'sources.json'))
+        next_cache, sources = runtime.refresh(cache, object())
+        pointer = (self.root / 'active.json').read_bytes()
+        self.assertEqual(len(next_cache.cases), 1)
+        self.assertIs(runtime.refresh(next_cache, sources)[0], next_cache)
+        self.assertEqual((self.root / 'active.json').read_bytes(), pointer)
+
+    def test_failed_worker_does_not_request_authorization_for_leftover_manifest(self):
+        self.input['requireSourceRecheck'] = True
+        atomic_json(self.job / 'input.json', self.input)
+        maintain(self.root, self.run, self.root)
+        atomic_json(self.job / 'result.json', {'runId': self.run, 'status': 'failed', 'activated': False})
+        runtime = self.runtime()
+        runtime.process.returncode = 1
+        runtime.process.poll.return_value = 1
+        self.assertEqual(runtime.status(self.run)['status'], 'failed')
+        self.assertFalse(runtime.busy())
+
+    def test_revoked_or_cancelled_source_recheck_cannot_adopt(self):
+        self.input['requireSourceRecheck'] = True
+        atomic_json(self.job / 'input.json', self.input)
+        maintain(self.root, self.run, self.root)
+        runtime = self.runtime()
+        cache = self.cache_type(self.root / 'reviewed.json')
+        runtime.cancel(self.run)
+        with self.assertRaises(ValueError):
+            runtime.authorize(self.run, digest(self.job / 'sources.json'))
+        self.assertIs(runtime.refresh(cache, object())[0], cache)
+        self.assertFalse((self.root / 'active.json').exists())
+
     def test_verified_independent_gain_activates_the_prepared_catalogue(self):
         report = maintain(self.root, self.run, self.root)
         self.assertEqual(report['status'], 'improved')

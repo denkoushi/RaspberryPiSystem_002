@@ -49,7 +49,8 @@ test('relays an allowed CONNECT tunnel with real sockets', async (t) => {
   assert.equal(await echoed, 'test-payload');
 });
 
-test('relays the DGX chat path as an absolute-form HTTP request', async (t) => {
+for (const route of ['/v1/chat/completions', '/v1/hermes-search/prepare']) {
+test(`relays ${route} as an absolute-form HTTP request`, async (t) => {
   const received = [];
   const upstream = http.createServer((request, response) => {
     const chunks = [];
@@ -85,7 +86,7 @@ test('relays the DGX chat path as an absolute-form HTTP request', async (t) => {
       host: '127.0.0.1',
       port: proxyPort,
       method: 'POST',
-      path: `http://127.0.0.1:${upstreamPort}/v1/chat/completions`,
+      path: `http://127.0.0.1:${upstreamPort}${route}`,
       headers: {
         Host: `127.0.0.1:${upstreamPort}`,
         Authorization: 'Bearer redacted-token',
@@ -104,7 +105,7 @@ test('relays the DGX chat path as an absolute-form HTTP request', async (t) => {
   assert.deepEqual(response, { status: 200, body: '{"ok":true}' });
   assert.deepEqual(received, [{
     method: 'POST',
-    url: '/v1/chat/completions',
+    url: route,
     host: `127.0.0.1:${upstreamPort}`,
     authorization: 'Bearer redacted-token',
     llmToken: 'redacted-token',
@@ -118,17 +119,17 @@ test('relays the DGX chat path as an absolute-form HTTP request', async (t) => {
   }, '127.0.0.1', upstreamPort, '/v1/chat/completions', 'dgx'), false);
   assert.equal(isAllowedHttpRequest({
     method: 'POST',
-    url: `http://127.0.0.1:${upstreamPort}/v1/chat/completions`,
+    url: `http://127.0.0.1:${upstreamPort}${route}`,
     headers: { host: `127.0.0.1:${upstreamPort}` }
   }, '127.0.0.1', upstreamPort, '/v1/chat/completions', 'dgx'), true);
   assert.equal(isAllowedHttpRequest({
     method: 'POST',
-    url: `http://127.0.0.1:${upstreamPort}/v1/chat/completions`,
+    url: `http://127.0.0.1:${upstreamPort}${route}`,
     headers: { host: '127.0.0.1:38081' }
   }, '127.0.0.1', upstreamPort, '/v1/chat/completions', 'dgx'), false);
   assert.equal(isAllowedHttpRequest({
     method: 'POST',
-    url: `http://127.0.0.1:${upstreamPort}/v1/chat/completions`,
+    url: `http://127.0.0.1:${upstreamPort}${route}`,
     headers: { host: `127.0.0.1:${upstreamPort}` }
   }, '127.0.0.1', upstreamPort, '/v1/chat/completions', 'openai'), false);
 
@@ -137,7 +138,7 @@ test('relays the DGX chat path as an absolute-form HTTP request', async (t) => {
       host: '127.0.0.1',
       port: proxyPort,
       method: 'POST',
-      path: `http://127.0.0.1:${upstreamPort}/v1/chat/completions`,
+      path: `http://127.0.0.1:${upstreamPort}${route}`,
       headers: { Host: `127.0.0.1:${upstreamPort}`, 'Content-Type': 'application/json' }
     }, (res) => {
       res.resume();
@@ -148,6 +149,7 @@ test('relays the DGX chat path as an absolute-form HTTP request', async (t) => {
   });
   assert.equal(redirectResponse, 502);
 });
+}
 
 test('passes the independent egress idle timeout to the DGX upstream request', async (t) => {
   let requestOptions;

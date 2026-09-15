@@ -55,6 +55,23 @@ describe('Nightly preparation with no new conversations', () => {
     const read = async (name: string) => JSON.parse(await readFile(path.join(root, 'jobs', jobs[0]!, name), 'utf8'));
     return { candidate: await read('candidate.json'), input: await read('input.json'), facts: await read('fact-candidate.json') };
   }
+  it.each(['unchanged', 'updated', 'removed'])('rechecks %s source data before local adoption', async (change) => {
+    let polls = 0;
+    mocks.fetch.mockImplementation(async (url: URL) => new Response(JSON.stringify({ result:
+      url.pathname.endsWith('/state') ? state : url.pathname.endsWith('/status')
+        ? { status: ++polls === 1 ? 'awaiting_source_recheck' : 'improved', activated: polls > 1 } : { started: true } })));
+    const original = sourceDocument(record);
+    const current = change === 'removed' ? [] : [change === 'updated'
+      ? sourceDocument({ ...record, rows: [{ steps: [{ step: 1, effectiveText: '新しい作業条件。' }] }] }) : original];
+    mocks.export.mockResolvedValueOnce({ version: 2, records: [original] }).mockResolvedValueOnce({ version: 2, records: current });
+    const result = await new BusinessHermesNightlyService().run(new AbortController().signal);
+    expect(result.status).toBe(change === 'unchanged' ? 'improved' : 'deferred');
+    expect(mocks.fetch.mock.calls.some(([url]) => (url as URL).pathname.endsWith('/authorize'))).toBe(change === 'unchanged');
+    if (change !== 'unchanged') {
+      expect(mocks.fetch.mock.calls.some(([url]) => (url as URL).pathname.endsWith('/cancel'))).toBe(true);
+      await expect(readFile(path.join(mocks.env.BUSINESS_HERMES_NIGHTLY_DATA_DIR, 'document-attempts.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+    }
+  });
   it('uses exported evidence for catalogue references instead of reading them twice', async () => {
     mocks.export.mockImplementation(async (_reader, _signal, accept) => {
       accept(record);
