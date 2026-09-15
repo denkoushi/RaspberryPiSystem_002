@@ -1127,6 +1127,27 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
                 fcntl.flock(descriptor, fcntl.LOCK_UN)
                 os.close(descriptor)
 
+    def test_status_journal_excludes_credentials_and_command_continuations(self) -> None:
+        prefix = "2026-09-15T19:17:37+09:00 raspberrypi "
+        raw = "\n".join([
+            prefix + "sudo[123]: COMMAND=TOKEN=synthetic-secret command",
+            prefix + "sudo[123]: (command continued) more-synthetic-secret",
+            prefix + "bash[456]: TASK [sensitive-template-value] ***",
+            prefix + "bash[456]: ok: [raspberrypi5]",
+            prefix + 'bash[456]: fatal: [raspberrypi5]: FAILED! {"token": "synthetic-secret"}',
+            prefix + 'bash[456]: {"token": "synthetic-secret"}',
+            prefix + "bash[456]: PLAY RECAP *****",
+            prefix + "bash[456]: raspberrypi5 : ok=1 changed=0 unreachable=0 failed=1 skipped=0 rescued=0 ignored=0",
+            "unstructured synthetic-secret",
+        ])
+        summaries = MODULE.summarize_release_journal(raw)
+        self.assertEqual(summaries, [
+            "TASK [details omitted]", "ok", "task failed (details omitted)",
+            "PLAY RECAP", "ok=1 changed=0 unreachable=0 failed=1 skipped=0 rescued=0 ignored=0",
+        ])
+        self.assertNotIn("synthetic-secret", "\n".join(summaries))
+        self.assertNotIn("sensitive-template-value", "\n".join(summaries))
+
     def test_status_reads_only_systemd_and_journal(self) -> None:
         args = argparse.Namespace(inventory=MODULE.DEFAULT_INVENTORY, status=RUN_ID)
         inventory = {
@@ -1146,7 +1167,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             calls.append(command)
             if "systemctl" in command[-1]:
                 return completed(command, "LoadState=loaded\nActiveState=inactive\nResult=success\nExecMainStatus=0\n")
-            return completed(command, "one journal line\n")
+            return completed(command, "2026-09-15T19:17:37+09:00 raspberrypi sudo[123]: COMMAND=TOKEN=synthetic-secret\n")
 
         with mock.patch.object(MODULE, "inventory_path", return_value=(Path("inventory.yml"), MODULE.DEFAULT_INVENTORY)), mock.patch.object(
             MODULE, "inventory_document", return_value=inventory
@@ -1155,6 +1176,8 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
 
         payload = json.loads(output.getvalue())
         self.assertEqual(payload["status"]["Result"], "success")
+        self.assertEqual(payload["journal"], [])
+        self.assertNotIn("synthetic-secret", output.getvalue())
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0][-2], "pi@100.106.158.2")
         self.assertIn("systemctl show", calls[0][-1])
