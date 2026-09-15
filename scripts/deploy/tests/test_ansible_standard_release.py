@@ -63,6 +63,15 @@ def role_text(role: str) -> str:
 
 
 class StandardReleaseAnsibleTests(unittest.TestCase):
+    def test_consultation_candidate_rotates_all_shared_inference_consumers(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_pi5/tasks/business-hermes-chat-prepare.yml").read_text())
+        task = next(item for item in tasks if item["name"] == "Bind consultation credentials only to the candidate API environment")
+        bindings = {item["key"]: item["value"] for item in task["loop"]}
+        self.assertIn("api_local_llm_shared_token", bindings["LOCAL_LLM_SHARED_TOKEN"])
+        self.assertIn("inference_providers_json", bindings["INFERENCE_PROVIDERS_JSON"])
+        self.assertTrue(task["no_log"])
+        self.assertEqual(task["ansible.builtin.lineinfile"]["mode"], "0600")
+
     def test_answer_cache_credentials_use_private_env_file_in_start_and_rollback(self) -> None:
         tasks_root = ANSIBLE / "roles/release_pi5/tasks"
         tasks = yaml.safe_load((tasks_root / "business-hermes-answer-cache.yml").read_text())
