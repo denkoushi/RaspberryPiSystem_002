@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 
-import { matchesDigitQuery } from '../../part-measurement/inspection-drawing';
 import { KioskDigitTenkey } from '../KioskDigitTenkey';
 import { normalizeMachineName } from '../productionSchedule/machineName';
 import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister';
@@ -89,6 +89,8 @@ export function PlanningBoardSeibanDrawer({
   const [inputTarget, setInputTarget] = useState<'machine' | 'seiban'>('machine');
   const activeQuery = inputTarget === 'machine' ? machineNameDigitQuery : query;
   const hasCandidateQuery = activeQuery.trim().length > 0;
+  const search = useMemo(() => ({ target: inputTarget, value: activeQuery }), [inputTarget, activeQuery]);
+  const deferredSearch = useDeferredValue(search);
   const changeActiveQuery = (value: string) => {
     if (inputTarget === 'machine') setMachineNameDigitQuery(value);
     else { setQuery(value); setRegistrationError(null); }
@@ -108,28 +110,34 @@ export function PlanningBoardSeibanDrawer({
     setSelectedCandidates(new Set());
   }, [candidateScopeKey]);
 
-  const visibleFseibans = useMemo(() => {
-    const normalized = inputTarget === 'seiban' ? query.trim() : '';
-    return normalized.length === 0
-      ? registeredFseibans
-      : registeredFseibans.filter((fseiban) => fseiban.includes(normalized));
-  }, [inputTarget, query, registeredFseibans]);
+  const indexedCandidates = useMemo(() => candidates.map((candidate) => {
+    const machineName = normalizeCandidateMachineName(candidate.machineName);
+    return {
+      candidate,
+      machineName,
+      machineDigits: extractInspectionDrawingAsciiDigits(machineName),
+      seibanText: candidate.fseiban.toLocaleLowerCase(),
+      machineText: machineName.toLocaleLowerCase()
+    };
+  }), [candidates]);
 
   const visibleCandidates = useMemo(() => {
-    if (!isOpen || !hasCandidateQuery) return [];
-    const normalized = normalizeCandidateMachineName(query).toLocaleLowerCase();
-    return candidates.filter((candidate) => {
-      if (!showCompletedCandidates && candidate.isCompleted) return false;
-      const machineName = normalizeCandidateMachineName(candidate.machineName);
-      if (inputTarget === 'machine') return matchesDigitQuery(machineName, machineNameDigitQuery);
-      return candidate.fseiban.toLocaleLowerCase().includes(normalized) || machineName.toLocaleLowerCase().includes(normalized);
+    if (!isOpen || !deferredSearch.value.trim()) return [];
+    const normalized = normalizeCandidateMachineName(deferredSearch.value).toLocaleLowerCase();
+    const digits = extractInspectionDrawingAsciiDigits(deferredSearch.value);
+    return indexedCandidates.filter((entry) => {
+      if (!showCompletedCandidates && entry.candidate.isCompleted) return false;
+      return deferredSearch.target === 'machine'
+        ? entry.machineDigits.includes(digits)
+        : entry.seibanText.includes(normalized) || entry.machineText.includes(normalized);
     });
-  }, [candidates, hasCandidateQuery, inputTarget, isOpen, machineNameDigitQuery, query, showCompletedCandidates]);
+  }, [deferredSearch, indexedCandidates, isOpen, showCompletedCandidates]);
 
   const candidateGroups = useMemo(() => {
     const groups = new Map<string, GrindingPlanningBoardSeibanCandidate[]>();
-    for (const candidate of visibleCandidates) {
-      const machineName = normalizeCandidateMachineName(candidate.machineName) || UNSET_MACHINE_NAME;
+    for (const entry of visibleCandidates) {
+      const { candidate } = entry;
+      const machineName = entry.machineName || UNSET_MACHINE_NAME;
       const group = groups.get(machineName) ?? [];
       group.push(candidate);
       groups.set(machineName, group);
@@ -137,22 +145,22 @@ export function PlanningBoardSeibanDrawer({
     return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'ja'));
   }, [visibleCandidates]);
 
-  const selectedCandidatesForRegistration = candidates.filter((candidate) =>
+  const selectedCandidatesForRegistration = useMemo(() => candidates.filter((candidate) =>
     selectedCandidates.has(candidate.fseiban) &&
     (!candidate.isCompleted || showCompletedCandidates) &&
     !registeredFseibans.includes(candidate.fseiban)
-  );
+  ), [candidates, registeredFseibans, selectedCandidates, showCompletedCandidates]);
   const selectedCandidateCount = selectedCandidatesForRegistration.length;
   const availableSlots = REGISTERED_SEIBAN_MAX - registeredFseibans.length;
   const selectedWouldExceedLimit = selectedCandidateCount > availableSlots;
 
-  const toggleCandidate = (fseiban: string, selected: boolean) => {
+  const toggleCandidate = useCallback((fseiban: string, selected: boolean) => {
     setSelectedCandidates((current) => {
       const next = new Set(current);
       if (selected) next.add(fseiban); else next.delete(fseiban);
       return next;
     });
-  };
+  }, []);
 
   const registerSelectedCandidates = async () => {
     if (selectedCandidateCount === 0 || selectedWouldExceedLimit || orderDisabled) return;
@@ -166,6 +174,67 @@ export function PlanningBoardSeibanDrawer({
       });
     }
   };
+
+  const candidateCards = useMemo(() => (
+    <div className="mt-2 grid max-h-[min(42vh,28rem)] grid-cols-2 items-start gap-1.5 overflow-y-auto pr-1">
+      {candidateGroups.map(([machineName, group]) => {
+        const collapsed = collapsedMachineNames.has(machineName);
+        return (
+          <div key={machineName} className="rounded border border-slate-800 bg-slate-950/80">
+            <button
+              type="button"
+              className="flex min-h-11 w-full items-center justify-between gap-2 px-2 text-left text-xs font-semibold text-slate-200"
+              aria-expanded={!collapsed}
+              aria-label={`機種名${machineName}の候補を${collapsed ? '開く' : '閉じる'}`}
+              onClick={() => setCollapsedMachineNames((current) => {
+                const next = new Set(current);
+                if (next.has(machineName)) next.delete(machineName); else next.add(machineName);
+                return next;
+              })}
+            >
+              <span className="truncate" title={machineName}>{machineName}</span>
+              <span className="shrink-0 text-[10px] text-slate-500">{group.length}件 {collapsed ? '▸' : '▾'}</span>
+            </button>
+            {!collapsed ? (
+              <div className="grid grid-cols-2 gap-1 border-t border-slate-800 p-1.5">
+                {group.map((candidate) => {
+                  const registered = registeredFseibans.includes(candidate.fseiban);
+                  const selected = selectedCandidates.has(candidate.fseiban);
+                  const overdue = candidatesToday ? isCandidateOverdue(candidate, candidatesToday) : false;
+                  return (
+                    <label
+                      key={candidate.fseiban}
+                      className={`grid min-h-11 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5 rounded border px-2 ${
+                        registered ? 'border-slate-800 bg-slate-900/50 opacity-70' : selected ? 'border-emerald-400/60 bg-emerald-950/40' : 'border-slate-800 bg-slate-900'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 shrink-0 accent-emerald-400"
+                        checked={registered || selected}
+                        disabled={registered || orderDisabled}
+                        onChange={(event) => toggleCandidate(candidate.fseiban, event.target.checked)}
+                        aria-label={`${candidate.fseiban}を登録候補に選択`}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate font-mono text-xs font-bold text-white">{candidate.fseiban}</span>
+                        <span className={`block text-[10px] ${overdue ? 'font-bold text-rose-300' : 'text-slate-400'}`}>
+                          {formatCandidateDate(candidate.dueDate)}
+                          <span className={`font-semibold ${registered ? 'text-cyan-300' : 'text-slate-500'}`}>
+                            ・{registered ? '登録済み' : candidate.isCompleted ? '完了' : '未登録'}
+                          </span>
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  ), [candidateGroups, candidatesToday, collapsedMachineNames, orderDisabled, registeredFseibans, selectedCandidates, toggleCandidate]);
 
   if (!isOpen) return null;
 
@@ -252,7 +321,7 @@ export function PlanningBoardSeibanDrawer({
             </div>
           </div>
           {orderStatus ? <p className="mt-2 text-xs text-slate-400" role="status">{orderStatus}</p> : null}
-          <section className="mt-2" aria-label="納期候補">
+          <section className="mt-2" aria-label="納期候補" aria-busy={search !== deferredSearch}>
             {selectedCandidateCount > 0 ? (
               <div className="mt-2 rounded border border-emerald-400/40 bg-emerald-950/40 p-2">
                 <div className="grid grid-cols-2 gap-0.5 text-xs text-emerald-100">
@@ -281,65 +350,8 @@ export function PlanningBoardSeibanDrawer({
             ) : null}
             {hasCandidateQuery && candidatesLoading && candidates.length === 0 ? <p className="mt-2 text-xs text-slate-500">候補を取得中…</p> : null}
             {hasCandidateQuery && candidatesError ? <p className="mt-2 text-xs text-rose-300" role="alert">候補を取得できませんでした。再試行します。</p> : null}
-            {hasCandidateQuery && !candidatesLoading && !candidatesError && candidateGroups.length === 0 ? <p className="mt-2 text-xs text-slate-500">該当する候補はありません。</p> : null}
-            <div className="mt-2 grid max-h-[min(42vh,28rem)] grid-cols-2 items-start gap-1.5 overflow-y-auto pr-1">
-              {candidateGroups.map(([machineName, group]) => {
-                const collapsed = collapsedMachineNames.has(machineName);
-                return (
-                  <div key={machineName} className="rounded border border-slate-800 bg-slate-950/80">
-                    <button
-                      type="button"
-                      className="flex min-h-11 w-full items-center justify-between gap-2 px-2 text-left text-xs font-semibold text-slate-200"
-                      aria-expanded={!collapsed}
-                      aria-label={`機種名${machineName}の候補を${collapsed ? '開く' : '閉じる'}`}
-                      onClick={() => setCollapsedMachineNames((current) => {
-                        const next = new Set(current);
-                        if (next.has(machineName)) next.delete(machineName); else next.add(machineName);
-                        return next;
-                      })}
-                    >
-                      <span className="truncate" title={machineName}>{machineName}</span>
-                      <span className="shrink-0 text-[10px] text-slate-500">{group.length}件 {collapsed ? '▸' : '▾'}</span>
-                    </button>
-                    {!collapsed ? (
-                      <div className="grid grid-cols-2 gap-1 border-t border-slate-800 p-1.5">
-                        {group.map((candidate) => {
-                          const registered = registeredFseibans.includes(candidate.fseiban);
-                          const selected = selectedCandidates.has(candidate.fseiban);
-                          const overdue = candidatesToday ? isCandidateOverdue(candidate, candidatesToday) : false;
-                          return (
-                            <label
-                              key={candidate.fseiban}
-                              className={`grid min-h-11 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5 rounded border px-2 ${
-                                registered ? 'border-slate-800 bg-slate-900/50 opacity-70' : selected ? 'border-emerald-400/60 bg-emerald-950/40' : 'border-slate-800 bg-slate-900'
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 shrink-0 accent-emerald-400"
-                                checked={registered || selected}
-                                disabled={registered || orderDisabled}
-                                onChange={(event) => toggleCandidate(candidate.fseiban, event.target.checked)}
-                                aria-label={`${candidate.fseiban}を登録候補に選択`}
-                              />
-                              <span className="min-w-0">
-                                <span className="block truncate font-mono text-xs font-bold text-white">{candidate.fseiban}</span>
-                                <span className={`block text-[10px] ${overdue ? 'font-bold text-rose-300' : 'text-slate-400'}`}>
-                                  {formatCandidateDate(candidate.dueDate)}
-                                  <span className={`font-semibold ${registered ? 'text-cyan-300' : 'text-slate-500'}`}>
-                                    ・{registered ? '登録済み' : candidate.isCompleted ? '完了' : '未登録'}
-                                  </span>
-                                </span>
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
+            {hasCandidateQuery && search === deferredSearch && !candidatesLoading && !candidatesError && candidateGroups.length === 0 ? <p className="mt-2 text-xs text-slate-500">該当する候補はありません。</p> : null}
+            {hasCandidateQuery ? candidateCards : null}
           </section>
           <div className="mt-4 flex items-center justify-between gap-2">
             <span className="text-xs font-semibold text-slate-300">登録製番（OR）</span>
@@ -366,7 +378,7 @@ export function PlanningBoardSeibanDrawer({
             </div>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-            {visibleFseibans.map((fseiban) => {
+            {registeredFseibans.map((fseiban) => {
               const selected = selectedFseibans.has(fseiban);
               return (
                 <div key={fseiban} className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.25rem] gap-0.5">
@@ -417,7 +429,7 @@ export function PlanningBoardSeibanDrawer({
               );
             })}
           </div>
-          {visibleFseibans.length === 0 ? <p className="mt-4 text-xs text-slate-500">登録製番がありません。</p> : null}
+          {registeredFseibans.length === 0 ? <p className="mt-4 text-xs text-slate-500">登録製番がありません。</p> : null}
         </div>
       </aside>
     </>
