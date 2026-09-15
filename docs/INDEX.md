@@ -8,6 +8,8 @@
 
 ## 🎯 目的別インデックス
 
+- 製番ボードの即時表示と順次保存: [ExecPlan](./plans/planning-board-background-writes.md)
+
 - SharePoint作業要領の受信・ラズパイ側統合・参照API: [ExecPlan](./plans/sharepoint-work-instructions-execplan.md)
 - 自主検査 作業要領UI/UX: [ExecPlan](./plans/self-inspection-work-instruction-uiux.md)
 - SCAW不適合の日次取込・current/revision・安全な検証と運用: [ExecPlan](./plans/scaw-nonconformity-self-inspection-execplan.md) · [Operations Runbook](./runbooks/scaw-nonconformity-self-inspection.md)

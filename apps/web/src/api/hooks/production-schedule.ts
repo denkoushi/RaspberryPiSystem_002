@@ -526,41 +526,45 @@ export function useKioskGrindingPlanningBoardSeibanCandidates(
   });
 }
 
-export function useUpdateKioskGrindingPlanningBoardOverrides() {
+export function useUpdateKioskGrindingPlanningBoardOverrides(options?: { invalidateOnSuccess?: boolean }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardOverridesRequest) => updateKioskGrindingPlanningBoardOverrides(payload),
     onSuccess: () => {
+      if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
     }
   });
 }
 
-export function useUpdateKioskGrindingPlanningBoardRank() {
+export function useUpdateKioskGrindingPlanningBoardRank(options?: { invalidateOnSuccess?: boolean }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardRankRequest) => updateKioskGrindingPlanningBoardRank(payload),
     onSuccess: (_result: GrindingPlanningBoardRankResponse) => {
+      if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
     }
   });
 }
 
-export function useUpdateKioskGrindingPlanningBoardResourceOrder() {
+export function useUpdateKioskGrindingPlanningBoardResourceOrder(options?: { invalidateOnSuccess?: boolean }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardResourceOrderRequest) => updateKioskGrindingPlanningBoardResourceOrder(payload),
     onSuccess: (_result: GrindingPlanningBoardResourceOrderResponse) => {
+      if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
     }
   });
 }
 
-export function useUpdateKioskGrindingPlanningBoardSeibanOrder() {
+export function useUpdateKioskGrindingPlanningBoardSeibanOrder(options?: { invalidateOnSuccess?: boolean }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardSeibanOrderRequest) => updateKioskGrindingPlanningBoardSeibanOrder(payload),
     onSuccess: () => {
+      if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
     }
   });
@@ -685,7 +689,7 @@ export function useUpdateKioskProductionScheduleDueManagementSeibanProcessingDue
   });
 }
 
-export function useUpdateKioskGrindingPlanningBoardDueScope() {
+export function useUpdateKioskGrindingPlanningBoardDueScope(options?: { invalidateOnSuccess?: boolean }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
@@ -696,6 +700,7 @@ export function useUpdateKioskGrindingPlanningBoardDueScope() {
       payload: GrindingPlanningBoardDueScopeRequest;
     }) => updateKioskGrindingPlanningBoardDueScope(fseiban, payload),
     onSuccess: (_data, variables) => {
+      if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board-due-detail', variables.fseiban] });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
     }
