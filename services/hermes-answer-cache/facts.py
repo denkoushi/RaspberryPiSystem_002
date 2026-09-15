@@ -13,9 +13,11 @@ def fact_matches(question, fact, queries=()):
     # Closed record-reading grammar: additional conditions and engineering judgments fall back.
     if question_key(question) in {question_key(q) for q in queries}:
         return True
-    scope, subject = normalize(fact['scope']), normalize(fact['subject'])
-    return bool(re.fullmatch(re.escape(scope + 'の' + subject) +
-                            r'(?:は|を教えて(?:ください)?|を確認したい|について教えて(?:ください)?)[?？。！!]*', normalize(question)))
+    prefix = normalize(fact['scope']) + 'の' + normalize(fact['subject'])
+    normalized = normalize(question)
+    # Keep one fixed grammar instead of compiling a different regex per record.
+    return normalized.startswith(prefix) and bool(re.fullmatch(
+        r'(?:は|を教えて(?:ください)?|を確認したい|について教えて(?:ください)?)[?？。！!]*', normalized[len(prefix):]))
 
 
 def question_key(question):

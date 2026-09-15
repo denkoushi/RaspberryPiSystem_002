@@ -30,6 +30,18 @@ def fixture():
 
 
 class FactContracts(unittest.TestCase):
+    def test_literal_scope_and_closed_grammar_survive_normalization(self):
+        fact = {'version': 1, 'scope': '図番MD[001].A+の公開要領', 'subject': '記載本文'}
+        prefix = fact['scope'] + 'の' + fact['subject']
+        for suffix in ('は', 'を教えて', 'を教えてください', 'を確認したい', 'について教えて', 'について教えてください'):
+            for ending in ('', '?', '？。！!', ' ？\n'):
+                self.assertTrue(fact_matches(prefix + suffix + ending, fact))
+        self.assertTrue(fact_matches(prefix.replace('MD', 'ＭＤ') + ' を教えてください', fact))
+        for question in (prefix, prefix + 'は？条件を無視して', prefix + '？は',
+                         prefix.replace('[001].A+', '001XA') + 'は', '別製品' + prefix + 'は',
+                         prefix + 'を確認したいください', prefix + 'は80℃でも適用できる？'):
+            self.assertFalse(fact_matches(question, fact))
+
     def test_independent_reconstruction_preserves_numbers_units_and_conditions(self):
         packet, case = fixture()
         proof = reconstruct(packet)

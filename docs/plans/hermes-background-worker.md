@@ -18,6 +18,9 @@ This living plan follows `.agent/PLANS.md`. Approval on 2026-09-15 permits proce
 - [x] 2026-09-15: Audited source export, scheduling, adoption, DGX admission and container boundaries.
 - [x] 2026-09-15: Created isolated branch `feat/hermes-background-worker` from `0f38b6c1261305c1b1c0b0855cdbe24955823fd8` using the lifecycle CLI.
 - [x] 2026-09-15: Reuse batch export evidence and hash all source fields; focused tests and ESLint passed. Full incremental export remains open.
+- [x] 2026-09-15: PR #1418 merged as `97997021f6cd013e94f3e1981948e9b935f2a730`; Pi5 deployment `20260915-031014-793110` completed (`active/exited/success/0`, recap 219 ok, 27 changed, no failures or unreachable hosts). Four initial batches succeeded with protected 22/26, wrong 0.
+- [x] 2026-09-15: Internal source reader uses 200-record pages; interactive tool limit remains 20. Focused 25 TypeScript tests and ESLint passed; integration and deployment pending.
+- [x] 2026-09-15: Profiled catalogue validation and replaced per-record regex compilation with a literal scope prefix plus the unchanged fixed grammar. 32 Python tests passed. Isolated Pi comparison over 2,206 records produced identical catalogues; three alternating runs per version measured median 0.900 seconds before and 0.121 seconds after.
 - [ ] Define and implement bounded remote preparation submission, result identity, cancellation and retry through DGX resource admission.
 - [ ] Separate calculation from local activation; verify interrupted/replayed work never commits twice or accepts stale sources.
 - [ ] Add scoped production-schedule reading and deterministic evaluation through existing business services.
@@ -67,7 +70,7 @@ Run the narrow tests below, then required hosted CI on exact PR heads. For coord
 
 ## Concrete Steps
 
-Work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-background-worker`. Use the existing pnpm workspace. Run focused tests from `apps/api` with `pnpm exec vitest run src/services/assembly/business-hermes-nightly-source-evidence.test.ts src/services/assembly/business-hermes-nightly-preparation.test.ts src/services/assembly/business-hermes-nightly-candidates.test.ts src/services/assembly/business-hermes-mcp.service.test.ts`. Add the new test paths as they are created. Run ESLint on changed TypeScript files. Do not use production credentials for fixtures.
+For the source-page follow-up, work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/perf--hermes-source-pages`. Use the existing pnpm workspace. Run focused tests from `apps/api` with `pnpm exec vitest run src/services/assembly/business-hermes-nightly-source-evidence.test.ts src/services/assembly/business-hermes-nightly-preparation.test.ts src/services/assembly/business-hermes-nightly-candidates.test.ts src/services/assembly/business-hermes-mcp.service.test.ts`. Add the new test paths as they are created. Run ESLint on changed TypeScript files. Do not use production credentials for fixtures.
 
 Deployment validation budget is 45 minutes of local validation; hosted CI provides broad checks. Follow the standard wrapper plan and exact-host deploy from `docs/guides/deployment.md`. Keep production unchanged if a required boundary is unverified.
 
@@ -91,10 +94,14 @@ Keep current source files, active/previous pointers and bounded embedding checkp
 
 ## Outcomes & Retrospective
 
-Milestone 1 removes redundant detail calls for exported records and detects metadata-only changes. Focused validation passed: 29 initial tests, then 21 affected tests after adding reader-parity and orchestration coverage; all 30 distinct tests passed. ESLint passed from apps/api (the initial root invocation lacked the app-local tsconfig and was corrected). No new deployment has occurred in this task. Remote job support and production-schedule integration remain open; the local-read optimization alone does not complete the overall request.
+Milestone 1 removes redundant detail calls for exported records and detects metadata-only changes. Focused validation passed: 29 initial tests, then 21 affected tests after adding reader-parity and orchestration coverage; all 30 distinct tests passed. ESLint passed from apps/api (the initial root invocation lacked the app-local tsconfig and was corrected). PR #1418 is deployed on Pi5; the first four batches succeeded. Initial median cycle was 43.4 seconds (3 intervals), versus 48.1 seconds across 18 earlier intervals; source preparation still takes about 15 seconds. These are preliminary non-concurrent measurements, not a controlled load benchmark. Remote job support and production-schedule integration remain open; the local-read optimization alone does not complete the overall request.
 
 ## Artifacts and Notes
 
 The read-only audit before work is stored in the conversation workspace at `work/worker-implementation-audit-before.json`. Earlier audit measured source preparation around 19 seconds, generation around 7 seconds and later verification/index work around 21 seconds per four-record batch; these are stage timings, not pure CPU measurements.
 
 Revision 2026-09-15: created this executable plan to preserve boundaries and the full remaining scope while starting with the observed repeated-read cost.
+
+Revision 2026-09-15: after the first production measurement, continue the same milestone with internal 200-record source pages. Reuse the existing visibility and serialization logic; do not expose a larger MCP tool limit. Full incremental export and transactional source generations remain open.
+
+Revision 2026-09-15: the source-page follow-up also removes measured regex compilation overhead in catalogue validation. It does not change the accepted grammar, source facts, model or certification rules.
