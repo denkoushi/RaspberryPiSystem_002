@@ -22,6 +22,13 @@
   when: release_pi5_chat_env_backup is defined and not (release_pi5_chat_env_backup.skipped | default(false)) and release_pi5_chat_env_backup is succeeded
   no_log: true
 
+- name: Bind the captured consultation egress program for rollback
+  ansible.builtin.set_fact:
+    release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'BUSINESS_HERMES_CHAT_EGRESS_PROXY_FILE': release_pi5_rollback_compose_environment['BUSINESS_HERMES_CHAT_EGRESS_PROXY_FILE']}) }}"
+  when:
+    - release_pi5_rollback_compose_environment is defined
+    - "'BUSINESS_HERMES_CHAT_EGRESS_PROXY_FILE' in release_pi5_rollback_compose_environment"
+
 - name: Restore existing consultation containers after profile restoration
   ansible.builtin.command:
     argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, item.service] }}"

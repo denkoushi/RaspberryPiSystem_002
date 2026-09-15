@@ -1719,7 +1719,7 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         main = yaml.safe_load(self.task_text("main"))[0]
         self.assertEqual(
             [task["ansible.builtin.import_tasks"] for task in main["block"]],
-            ["prepare.yml", "switch.yml", "business-hermes-chat-start.yml", "health.yml", "commit.yml"],
+            ["prepare.yml", "switch.yml", "business-hermes-chat-start.yml", "business-hermes-egress-health.yml", "health.yml", "commit.yml"],
         )
         self.assertEqual(
             [task["ansible.builtin.import_tasks"] for task in main["rescue"] if "ansible.builtin.import_tasks" in task],

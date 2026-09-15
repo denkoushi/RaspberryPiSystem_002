@@ -226,7 +226,7 @@ services:
       BUSINESS_HERMES_EGRESS_TIMEOUT_MS: ${BUSINESS_HERMES_EGRESS_TIMEOUT_MS:-60000}
     volumes:
       - type: bind
-        source: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker/business-hermes-egress/proxy.mjs
+        source: ${BUSINESS_HERMES_EGRESS_PROXY_FILE:-${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker/business-hermes-egress/proxy.mjs}
         target: /opt/business-hermes-egress/proxy.mjs
         read_only: true
         bind:
@@ -309,7 +309,7 @@ services:
       BUSINESS_HERMES_EGRESS_TIMEOUT_MS: ${BUSINESS_HERMES_CHAT_EGRESS_TIMEOUT_MS:-60000}
     volumes:
       - type: bind
-        source: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker/business-hermes-egress/proxy.mjs
+        source: ${BUSINESS_HERMES_CHAT_EGRESS_PROXY_FILE:-${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker/business-hermes-egress/proxy.mjs}
         target: /opt/business-hermes-egress/proxy.mjs
         read_only: true
         bind:

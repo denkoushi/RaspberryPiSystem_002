@@ -14,6 +14,10 @@
         - release_pi5_route == 'fresh'
         - business_hermes_chat_enabled | default(false) | bool
 
+    - name: Verify isolated egress mounts before committing Pi5 traffic
+      ansible.builtin.import_tasks: business-hermes-egress-health.yml
+      when: release_pi5_egress_artifacts is defined
+
     - name: Verify the bounded Pi5 stability samples
       ansible.builtin.import_tasks: health.yml
 
