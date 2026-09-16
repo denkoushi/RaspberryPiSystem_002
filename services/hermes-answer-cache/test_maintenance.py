@@ -152,6 +152,7 @@ class NightlyAdoptionIntegrationTests(unittest.TestCase):
             def __init__(inner, catalogue, *args):
                 inner.cases = read_catalogue(catalogue)
                 inner.model = object()
+                inner.close = Mock()
 
             def search(inner, question):
                 if question == '設計者の承諾が必要な工程を教えて' and inner.cases:
@@ -183,7 +184,7 @@ class NightlyAdoptionIntegrationTests(unittest.TestCase):
         maintain(self.root, self.run, self.root)
         runtime = self.runtime()
         cache = self.cache_type(self.root / 'reviewed.json')
-        self.assertIs(runtime.refresh(cache, object())[0], cache)
+        self.assertIs(runtime.refresh(cache, Mock())[0], cache)
         self.assertEqual(runtime.status(self.run)['status'], 'awaiting_source_recheck')
         self.assertTrue(runtime.state(None)['running'])
         self.assertEqual(runtime.start('c' * 36), {'started': False, 'runId': self.run})
@@ -191,7 +192,7 @@ class NightlyAdoptionIntegrationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             runtime.authorize(self.run, 'wrong-generation')
         runtime.authorize(self.run, digest(self.job / 'sources.json'))
-        next_cache, sources = runtime.refresh(cache, object())
+        next_cache, sources = runtime.refresh(cache, Mock())
         pointer = (self.root / 'active.json').read_bytes()
         self.assertEqual(len(next_cache.cases), 1)
         self.assertIs(runtime.refresh(next_cache, sources)[0], next_cache)
@@ -217,7 +218,7 @@ class NightlyAdoptionIntegrationTests(unittest.TestCase):
         runtime.cancel(self.run)
         with self.assertRaises(ValueError):
             runtime.authorize(self.run, digest(self.job / 'sources.json'))
-        self.assertIs(runtime.refresh(cache, object())[0], cache)
+        self.assertIs(runtime.refresh(cache, Mock())[0], cache)
         self.assertFalse((self.root / 'active.json').exists())
 
     def test_verified_independent_gain_activates_the_prepared_catalogue(self):
@@ -226,7 +227,7 @@ class NightlyAdoptionIntegrationTests(unittest.TestCase):
         self.assertEqual(report['holdout']['candidate']['answeredCorrectly'], 1)
         runtime = self.runtime()
         cache = self.cache_type(self.root / 'reviewed.json')
-        next_cache, _ = runtime.refresh(cache, object())
+        next_cache, _ = runtime.refresh(cache, Mock())
         self.assertEqual(len(next_cache.cases), 1)
         self.assertEqual(runtime.paths()[0], self.job / 'candidate.json')
 
@@ -240,7 +241,7 @@ class NightlyAdoptionIntegrationTests(unittest.TestCase):
         self.assertIsNone(json.loads((self.job / 'activation.json').read_text())['catalogue'])
         runtime = self.runtime()
         cache = self.cache_type(self.root / 'reviewed.json')
-        self.assertIs(runtime.refresh(cache, object())[0], cache)
+        self.assertIs(runtime.refresh(cache, Mock())[0], cache)
         self.assertEqual(runtime.paths()[0], self.root / 'reviewed.json')
 
     def test_changed_holdout_cannot_activate_an_old_comparison(self):
@@ -248,9 +249,58 @@ class NightlyAdoptionIntegrationTests(unittest.TestCase):
         (self.root / 'holdout.json').write_text('{}')
         runtime = self.runtime()
         cache = self.cache_type(self.root / 'reviewed.json')
-        self.assertIs(runtime.refresh(cache, object())[0], cache)
+        self.assertIs(runtime.refresh(cache, Mock())[0], cache)
         self.assertFalse((self.root / 'active.json').exists())
         self.assertEqual(json.loads((self.job / 'result.json').read_text())['status'], 'failed')
+
+    def test_activation_releases_only_replaced_indexes(self):
+        maintain(self.root, self.run, self.root)
+        cache = self.cache_type(self.root / 'reviewed.json')
+        cache.close = Mock()
+        sources = Mock()
+        next_cache, next_sources = self.runtime().refresh(cache, sources)
+        cache.close.assert_called_once_with()
+        sources.close.assert_called_once_with()
+        next_sources.close.assert_not_called()
+        self.assertIsNot(next_cache, cache)
+
+    def test_source_only_activation_keeps_current_question_index_open(self):
+        (self.root / 'holdout.json').unlink()
+        self.input['holdoutSha256'] = None
+        atomic_json(self.job / 'input.json', self.input)
+        maintain(self.root, self.run, self.root)
+        cache = self.cache_type(self.root / 'reviewed.json')
+        cache.close = Mock()
+        sources = Mock()
+        self.assertIs(self.runtime().refresh(cache, sources)[0], cache)
+        cache.close.assert_not_called()
+        sources.close.assert_called_once_with()
+
+    def test_failed_commit_closes_candidates_and_preserves_active_indexes(self):
+        maintain(self.root, self.run, self.root)
+        cache, candidate, sources, candidate_sources = Mock(), Mock(), Mock(), Mock()
+        real_atomic = atomic_json
+        def fail_pointer(path, value):
+            if Path(path).name == 'active.json':
+                raise OSError('synthetic commit failure')
+            return real_atomic(path, value)
+        with patch('server.QuestionCache', return_value=candidate), \
+             patch('sources.SourceCandidates', return_value=candidate_sources), \
+             patch('runtime.atomic_json', side_effect=fail_pointer):
+            self.assertEqual(self.runtime().refresh(cache, sources), (cache, sources))
+        candidate.close.assert_called_once_with()
+        candidate_sources.close.assert_called_once_with()
+        cache.close.assert_not_called()
+        sources.close.assert_not_called()
+
+    def test_cleanup_failure_cannot_undo_committed_activation(self):
+        maintain(self.root, self.run, self.root)
+        cache = self.cache_type(self.root / 'reviewed.json')
+        cache.close = Mock(side_effect=OSError('synthetic cleanup failure'))
+        with self.assertLogs('runtime', level='WARNING'):
+            next_cache, _ = self.runtime().refresh(cache, Mock())
+        self.assertIsNot(next_cache, cache)
+        self.assertEqual(self.runtime().paths()[0], self.job / 'candidate.json')
 
     def test_changed_evaluation_before_worker_start_is_rejected(self):
         self.input['holdoutSha256'] = 'old-hash'
