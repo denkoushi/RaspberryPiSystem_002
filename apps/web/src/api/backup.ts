@@ -312,6 +312,13 @@ export interface KioskDocumentGmailIngestSchedule {
   enabled?: boolean;
 }
 
+/** backup.json の Raspberry Pi 在庫写真メール取込設定 */
+export interface ItemInventoryGmailIngestConfig {
+  enabled: boolean;
+  subjectTokens: string[];
+  fromEmail?: string;
+}
+
 export interface BackupTarget {
   kind: 'database' | 'file' | 'directory' | 'csv' | 'image' | 'client-file' | 'client-directory';
   source: string;
@@ -387,6 +394,8 @@ export interface BackupConfig {
   };
   /** キオスク要領書: Gmail から PDF/HTML 添付を取り込む cron スケジュール */
   kioskDocumentGmailIngest?: KioskDocumentGmailIngestSchedule[];
+  /** Raspberry Pi 在庫: Gmail から写真付きマニフェストを取り込む設定 */
+  itemInventoryGmailIngest?: ItemInventoryGmailIngestConfig;
 }
 
 // バックアップ設定API

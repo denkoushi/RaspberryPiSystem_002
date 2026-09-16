@@ -6,6 +6,8 @@ import {
   type InventoryItem,
 } from '../../api/client';
 import {
+  useBackupConfig,
+  useBackupConfigMutations,
   useInventoryHistory,
   useInventoryImportMessages,
   useInventoryImports,
@@ -14,6 +16,8 @@ import {
   useInventoryMutations,
 } from '../../api/hooks';
 import { useNfcStream } from '../../hooks/useNfcStream';
+
+import type { BackupConfig } from '../../api/backup';
 
 const inputClass = 'min-h-10 rounded-md border border-white/20 bg-slate-950/60 px-3 text-white placeholder:text-white/40 focus:border-sky-400 focus:outline-none';
 const selectClass = `${inputClass} min-w-36`;
@@ -80,6 +84,8 @@ export function RaspiInventoryPage() {
   const locationsQuery = useInventoryLocations();
   const historyQuery = useInventoryHistory();
   const mutations = useInventoryMutations();
+  const backupConfigQuery = useBackupConfig();
+  const backupConfigMutations = useBackupConfigMutations();
   const imports = importsQuery.data ?? [];
   const items = itemsQuery.data ?? [];
   const locations = useMemo(() => locationsQuery.data ?? [], [locationsQuery.data]);
@@ -100,6 +106,17 @@ export function RaspiInventoryPage() {
   const [replacementUids, setReplacementUids] = useState<Record<string, string>>({});
   const [moveDrawers, setMoveDrawers] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  const [itemInventoryGmailEnabled, setItemInventoryGmailEnabled] = useState(false);
+  const [itemInventoryGmailSaveMessage, setItemInventoryGmailSaveMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const enabled = backupConfigQuery.data?.itemInventoryGmailIngest?.enabled;
+    if (typeof enabled === 'boolean') {
+      setItemInventoryGmailEnabled(enabled);
+    } else if (backupConfigQuery.data) {
+      setItemInventoryGmailEnabled(false);
+    }
+  }, [backupConfigQuery.data]);
 
   useEffect(() => {
     if (!selectedImport) return;
@@ -195,6 +212,31 @@ export function RaspiInventoryPage() {
     } catch (error) { setActionError(errorText(error)); }
   };
 
+  const saveItemInventoryGmailSetting = async () => {
+    const config = backupConfigQuery.data;
+    if (!config || backupConfigQuery.isError) {
+      setItemInventoryGmailSaveMessage('設定を取得できないため保存できません');
+      return;
+    }
+
+    setActionError(null);
+    setItemInventoryGmailSaveMessage(null);
+    try {
+      const current = config.itemInventoryGmailIngest;
+      const itemInventoryGmailIngest: NonNullable<BackupConfig['itemInventoryGmailIngest']> = current
+        ? { ...current, enabled: itemInventoryGmailEnabled }
+        : { enabled: itemInventoryGmailEnabled, subjectTokens: ['[ItemlistRaspi-photo]'] };
+      await backupConfigMutations.updateConfig.mutateAsync({
+        ...config,
+        itemInventoryGmailIngest,
+      });
+      setItemInventoryGmailSaveMessage(`保存しました（${itemInventoryGmailEnabled ? '有効' : '無効'}）`);
+    } catch (error) {
+      setItemInventoryGmailSaveMessage(null);
+      setActionError(errorText(error));
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -209,6 +251,37 @@ export function RaspiInventoryPage() {
           <button type="button" className={buttonClass} onClick={() => void mutations.ingest.mutateAsync(undefined).catch((error) => setActionError(errorText(error)))} disabled={mutations.ingest.isPending}>今すぐ確認</button>
         </div>
         <p className="mt-2 text-sm text-white/65">件名トークン [ItemlistRaspi-photo] の未読メールを確認します。JSONのphotos配列と同名JPEGが揃わない場合は再試行可能なエラーとして残ります。</p>
+        <div className="mt-4 rounded border border-white/15 bg-slate-950/30 p-3">
+          <h3 className="font-semibold">在庫写真メール自動取込設定</h3>
+          {backupConfigQuery.isLoading ? <p className="mt-2 text-sm text-white/60">設定を読み込み中...</p> : backupConfigQuery.isError || !backupConfigQuery.data ? (
+            <p className="mt-2 text-sm text-amber-200" role="alert">設定を取得できないため、ON/OFFの保存は無効です。</p>
+          ) : (
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  aria-label="在庫写真メール自動取込"
+                  checked={itemInventoryGmailEnabled}
+                  onChange={(event) => {
+                    setItemInventoryGmailEnabled(event.target.checked);
+                    setItemInventoryGmailSaveMessage(null);
+                  }}
+                  disabled={backupConfigMutations.updateConfig.isPending}
+                />
+                自動取込を有効にする
+              </label>
+              <button
+                type="button"
+                className={secondaryButtonClass}
+                onClick={() => void saveItemInventoryGmailSetting()}
+                disabled={backupConfigMutations.updateConfig.isPending}
+              >
+                {backupConfigMutations.updateConfig.isPending ? '保存中...' : '設定を保存'}
+              </button>
+              {itemInventoryGmailSaveMessage ? <span className="text-sm text-emerald-300" role="status">{itemInventoryGmailSaveMessage}</span> : null}
+            </div>
+          )}
+        </div>
         {(messagesQuery.data ?? []).filter((entry) => entry.outcome === 'RETRYABLE' || entry.outcome === 'PROCESSING').map((entry) => (
           <div key={entry.id} className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded border border-amber-400/40 bg-amber-950/40 p-3 text-sm">
             <span>メール {entry.gmailMessageId}: {entry.errorMessage ?? '再試行可能なエラー'}</span>
