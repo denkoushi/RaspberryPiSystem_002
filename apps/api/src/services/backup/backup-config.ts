@@ -17,7 +17,7 @@ export const CsvImportTypeSchema = z.enum([
  * CSVインポートターゲット（スケジュール内の1つの対象）
  */
 export const CsvImportTargetSchema = z.object({
-  type: CsvImportTypeSchema,
+  type: z.union([CsvImportTypeSchema, z.literal('itemInventoryGmail')]),
   source: z.string() // Dropbox用: パス、Gmail用: 件名パターン
 });
 

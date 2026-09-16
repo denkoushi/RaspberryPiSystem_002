@@ -15,6 +15,9 @@ vi.mock('../../../lib/prisma.js', () => ({
       update: vi.fn(),
       delete: vi.fn(),
     },
+    inventoryNfcTag: {
+      findFirst: vi.fn(),
+    },
   },
 }));
 
@@ -269,6 +272,14 @@ describe('ItemService', () => {
         },
       });
     });
+
+    it('在庫NFCタグと同じUIDのアイテムを作成できない', async () => {
+      vi.mocked(prisma.inventoryNfcTag.findFirst).mockResolvedValue({ id: 'inventory-tag-1' } as any);
+
+      await expect(itemService.create({ itemCode: 'ITEM001', name: 'Item', nfcTagUid: 'INV-TAG-1' }))
+        .rejects.toMatchObject({ statusCode: 409 });
+      expect(prisma.item.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('update', () => {
@@ -331,4 +342,3 @@ describe('ItemService', () => {
     });
   });
 });
-

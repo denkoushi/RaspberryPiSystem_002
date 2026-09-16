@@ -11,6 +11,8 @@ import { InventoryConflictError, InventoryInsufficientStockError } from '../../s
 
 const uidQuery = z.object({ uid: z.string().trim().min(1).max(256) });
 const idParams = z.object({ id: z.string().uuid() });
+const importPhotoParams = z.object({ payloadId: z.string().uuid(), photoId: z.string().uuid() });
+const itemPhotoParams = z.object({ itemId: z.string().uuid(), photoId: z.string().uuid() });
 const compartmentParams = z.object({ id: z.string().uuid() });
 const manage = authorizeRoles('ADMIN', 'MANAGER');
 const read = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
@@ -139,6 +141,28 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     const { id } = idParams.parse(request.params);
     const body = registerBody.parse(request.body ?? {});
     return { result: await services.inventory.registerImport({ ...body, payloadId: id, actor: await actor(request) }) };
+  });
+
+  app.delete('/item-inventory/imports/:payloadId/photos/:photoId', { preHandler: [manage] }, async (request) => {
+    const { payloadId, photoId } = importPhotoParams.parse(request.params);
+    return { result: await services.inventory.deleteImportPhoto(payloadId, photoId) };
+  });
+
+  app.put('/item-inventory/imports/:id/photos/order', { preHandler: [manage] }, async (request) => {
+    const { id } = idParams.parse(request.params);
+    const body = z.object({ photoIds: z.array(z.string().uuid()) }).parse(request.body ?? {});
+    return { result: await services.inventory.reorderImportPhotos(id, body.photoIds) };
+  });
+
+  app.delete('/item-inventory/items/:itemId/photos/:photoId', { preHandler: [manage] }, async (request) => {
+    const { itemId, photoId } = itemPhotoParams.parse(request.params);
+    return { result: await services.inventory.deleteInventoryItemPhoto(itemId, photoId) };
+  });
+
+  app.put('/item-inventory/items/:itemId/photos/order', { preHandler: [manage] }, async (request) => {
+    const { itemId } = z.object({ itemId: z.string().uuid() }).parse(request.params);
+    const body = z.object({ photoIds: z.array(z.string().uuid()) }).parse(request.body ?? {});
+    return { result: await services.inventory.reorderInventoryItemPhotos(itemId, body.photoIds) };
   });
 
   app.post('/item-inventory/compartments', { preHandler: [manage] }, async (request) => {

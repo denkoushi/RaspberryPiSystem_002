@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
+vi.mock('../../../lib/photo-storage.js', () => ({ PhotoStorage: { deletePhoto: vi.fn().mockResolvedValue(undefined) } }));
+
 import { ItemInventoryService } from '../item-inventory.service.js';
+import { PhotoStorage } from '../../../lib/photo-storage.js';
 
 function transactionDb(overrides: Record<string, unknown> = {}) {
   const tx = {
@@ -131,10 +134,13 @@ describe('ItemInventoryService safety boundaries', () => {
         findFirst: vi.fn().mockResolvedValue(null),
         create: photoCreate,
       },
-      inventoryImportPayload: { update: vi.fn().mockResolvedValue({}) },
+      inventoryImportPayload: {
+        findUnique: vi.fn().mockResolvedValue(payload),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        update: vi.fn().mockResolvedValue({}),
+      },
     };
     const db = {
-      inventoryImportPayload: { findUnique: vi.fn().mockResolvedValue(payload) },
       $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)),
     };
     const service = new ItemInventoryService(db as never);
@@ -147,6 +153,124 @@ describe('ItemInventoryService safety boundaries', () => {
       compartments: [{ id: 'compartment-1', stockQuantity: 7, drawerId: 'drawer-1' }],
     });
     expect(photoCreate).toHaveBeenCalledTimes(1);
+    expect(photoCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ photoIndex: 1 }) });
+  });
+
+  it('allows only one of two concurrent registrations to claim the candidate', async () => {
+    let claimed = false;
+    const itemCreate = vi.fn().mockResolvedValue({ id: 'item-1', itemCode: 'RI-2-TEST' });
+    const compartmentCreate = vi.fn().mockResolvedValue({ id: 'compartment-1', stockQuantity: 0 });
+    const tagCreate = vi.fn().mockResolvedValue({ id: 'tag-1', uid: 'item-uid', kind: 'ITEM', compartmentId: 'compartment-1' });
+    const tx = {
+      inventoryImportPayload: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'payload-1', status: 'PENDING', sourceItemId: 2, area: 'A', category: null, note: null, photos: [] }),
+        updateMany: vi.fn().mockImplementation(async () => {
+          if (claimed) return { count: 0 };
+          claimed = true;
+          return { count: 1 };
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      inventoryDrawer: { findUnique: vi.fn().mockResolvedValue({ id: 'drawer-1', shelfId: 'shelf-1', shelf: { area: 'A' } }) },
+      inventoryItem: { create: itemCreate },
+      inventoryCompartment: { create: compartmentCreate },
+      inventoryNfcTag: { findUnique: vi.fn().mockResolvedValue(null), create: tagCreate },
+      inventoryTransaction: { create: vi.fn().mockResolvedValue({}) },
+      employee: { findFirst: vi.fn().mockResolvedValue(null) },
+      item: { findFirst: vi.fn().mockResolvedValue(null) },
+      measuringInstrumentTag: { findFirst: vi.fn().mockResolvedValue(null) },
+      riggingGearTag: { findFirst: vi.fn().mockResolvedValue(null) },
+    };
+    const db = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
+    const service = new ItemInventoryService(db as never);
+
+    const results = await Promise.allSettled([
+      service.registerImport({ payloadId: 'payload-1', mode: 'NEW_ITEM', shelfId: 'shelf-1', drawerId: 'drawer-1', itemTagUid: 'item-uid', initialQuantity: 0 }),
+      service.registerImport({ payloadId: 'payload-1', mode: 'NEW_ITEM', shelfId: 'shelf-1', drawerId: 'drawer-1', itemTagUid: 'item-uid', initialQuantity: 0 }),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect((results.find((result) => result.status === 'rejected') as PromiseRejectedResult).reason).toMatchObject({ statusCode: 409 });
+    expect(itemCreate).toHaveBeenCalledTimes(1);
+    expect(compartmentCreate).toHaveBeenCalledTimes(1);
+    expect(tagCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('deletes a pending photo, compacts its order, and removes an unreferenced file', async () => {
+    const remaining = [{ id: 'photo-2', photoIndex: 2, createdAt: new Date(), photoUrl: '/api/storage/photos/two.jpg' }];
+    const tx = {
+      inventoryImportPayload: { findUnique: vi.fn().mockResolvedValue({ status: 'PENDING' }) },
+      inventoryImportPhoto: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'photo-1', photoUrl: '/api/storage/photos/one.jpg' }),
+        findMany: vi.fn().mockResolvedValue(remaining),
+        delete: vi.fn(),
+        update: vi.fn(),
+        count: vi.fn().mockResolvedValue(0),
+      },
+      inventoryItemPhoto: { count: vi.fn().mockResolvedValue(0) },
+    };
+    const db = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
+    const service = new ItemInventoryService(db as never);
+
+    await expect(service.deleteImportPhoto('payload-1', 'photo-1')).resolves.toEqual({ photoId: 'photo-1' });
+
+    expect(tx.inventoryImportPhoto.delete).toHaveBeenCalledWith({ where: { id: 'photo-1' } });
+    expect(tx.inventoryImportPhoto.update).toHaveBeenNthCalledWith(1, { where: { id: 'photo-2' }, data: { photoIndex: -1 } });
+    expect(tx.inventoryImportPhoto.update).toHaveBeenNthCalledWith(2, { where: { id: 'photo-2' }, data: { photoIndex: 1 } });
+    expect(PhotoStorage.deletePhoto).toHaveBeenCalledWith('/api/storage/photos/one.jpg');
+  });
+
+  it('reorders every photo in a pending candidate and rejects incomplete orders', async () => {
+    const photos = [
+      { id: 'photo-1', photoIndex: 1, createdAt: new Date(1) },
+      { id: 'photo-2', photoIndex: 2, createdAt: new Date(2) },
+    ];
+    const tx = {
+      inventoryImportPayload: { findUnique: vi.fn().mockResolvedValue({ status: 'PENDING' }) },
+      inventoryImportPhoto: { findMany: vi.fn().mockResolvedValue(photos), update: vi.fn() },
+    };
+    const db = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
+    const service = new ItemInventoryService(db as never);
+
+    await expect(service.reorderImportPhotos('payload-1', ['photo-2', 'photo-1'])).resolves.toEqual({ payloadId: 'payload-1', photoIds: ['photo-2', 'photo-1'] });
+    await expect(service.reorderImportPhotos('payload-1', ['photo-2'])).rejects.toMatchObject({ statusCode: 400 });
+    expect(tx.inventoryImportPhoto.update).toHaveBeenCalledWith({ where: { id: 'photo-2' }, data: { photoIndex: 1 } });
+    expect(tx.inventoryImportPhoto.update).toHaveBeenCalledWith({ where: { id: 'photo-1' }, data: { photoIndex: 2 } });
+  });
+
+  it('deletes and reorders registered photos without deleting a still-referenced file', async () => {
+    const tx = {
+      inventoryItemPhoto: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'item-photo-1', inventoryItemId: 'item-1', photoUrl: '/photos/shared.jpg' }),
+        findMany: vi.fn().mockResolvedValue([{ id: 'item-photo-2', photoIndex: 2, createdAt: new Date() }]),
+        delete: vi.fn(),
+        update: vi.fn(),
+        count: vi.fn().mockResolvedValue(0),
+      },
+      inventoryImportPhoto: { count: vi.fn().mockResolvedValue(1), findMany: vi.fn().mockResolvedValue([]) },
+    };
+    const db = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
+    const service = new ItemInventoryService(db as never);
+    vi.mocked(PhotoStorage.deletePhoto).mockClear();
+
+    await service.deleteInventoryItemPhoto('item-1', 'item-photo-1');
+    expect(tx.inventoryItemPhoto.delete).toHaveBeenCalledWith({ where: { id: 'item-photo-1' } });
+    expect(PhotoStorage.deletePhoto).not.toHaveBeenCalled();
+
+    const reorderTx = {
+      inventoryItemPhoto: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'item-photo-1', photoIndex: 1, createdAt: new Date(1) },
+          { id: 'item-photo-2', photoIndex: 2, createdAt: new Date(2) },
+        ]),
+        update: vi.fn(),
+      },
+    };
+    const reorderDb = { $transaction: vi.fn(async (work: (value: typeof reorderTx) => Promise<unknown>) => work(reorderTx)) };
+    await new ItemInventoryService(reorderDb as never).reorderInventoryItemPhotos('item-1', ['item-photo-2', 'item-photo-1']);
+    expect(reorderTx.inventoryItemPhoto.update).toHaveBeenCalledWith({ where: { id: 'item-photo-2' }, data: { photoIndex: 1 } });
+    expect(reorderTx.inventoryItemPhoto.update).toHaveBeenCalledWith({ where: { id: 'item-photo-1' }, data: { photoIndex: 2 } });
   });
 
   it('binds an existing item to a compartment and records its initial stock', async () => {

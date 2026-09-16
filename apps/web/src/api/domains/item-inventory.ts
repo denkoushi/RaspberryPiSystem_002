@@ -1,7 +1,8 @@
 import { api } from '../http';
 
 export type InventoryTagKind = 'ITEM' | 'QUANTITY' | 'RESTOCK';
-export type InventoryPhoto = { id: string; photoUrl: string; originalFilename: string; sha256?: string };
+export type InventoryPhoto = { id: string; photoIndex: number; photoUrl: string; originalFilename: string; sha256?: string };
+export type InventoryImportPhoto = { id: string; photoIndex: number; filename: string; photoUrl: string; sha256: string };
 type InventoryItemFields = {
   id: string;
   itemCode: string;
@@ -52,7 +53,7 @@ export type InventoryImport = {
   note: string | null;
   manifest: unknown;
   status: string;
-  photos: Array<{ id: string; photoIndex: number; filename: string; photoUrl: string; sha256: string }>;
+  photos: InventoryImportPhoto[];
   messages: Array<{ gmailMessageId: string; outcome: string; errorMessage: string | null }>;
 };
 export type InventoryHistoryEntry = {
@@ -92,6 +93,26 @@ export async function getInventoryTags() {
 export async function getInventoryImports() {
   const { data } = await api.get<{ imports: InventoryImport[] }>('/item-inventory/imports');
   return data.imports;
+}
+
+export async function deleteInventoryImportPhoto(payloadId: string, photoId: string) {
+  const { data } = await api.delete<{ result: unknown }>(`/item-inventory/imports/${payloadId}/photos/${photoId}`);
+  return data.result;
+}
+
+export async function reorderInventoryImportPhotos(payloadId: string, photoIds: string[]) {
+  const { data } = await api.put<{ result: unknown }>(`/item-inventory/imports/${payloadId}/photos/order`, { photoIds });
+  return data.result;
+}
+
+export async function deleteInventoryItemPhoto(itemId: string, photoId: string) {
+  const { data } = await api.delete<{ result: unknown }>(`/item-inventory/items/${itemId}/photos/${photoId}`);
+  return data.result;
+}
+
+export async function reorderInventoryItemPhotos(itemId: string, photoIds: string[]) {
+  const { data } = await api.put<{ result: unknown }>(`/item-inventory/items/${itemId}/photos/order`, { photoIds });
+  return data.result;
 }
 
 export async function getInventoryHistory(limit = 100) {
@@ -173,7 +194,7 @@ export async function processInventoryTransaction(input: {
 }
 
 export async function cancelInventoryTransaction(id: string) {
-  const { data } = await api.post(`/item-inventory/transactions/${id}/cancel`);
+  const { data } = await api.post<{ transaction: InventoryHistoryEntry }>(`/item-inventory/transactions/${id}/cancel`);
   return data;
 }
 

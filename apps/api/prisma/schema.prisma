@@ -959,10 +959,11 @@ model InventoryItemPhoto {
   originalFilename String
   sha256           String        @db.VarChar(64)
   sourcePayloadId  String?
+  photoIndex       Int           @default(0)
   createdAt        DateTime      @default(now())
   inventoryItem    InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
 
-  @@index([inventoryItemId, createdAt])
+  @@index([inventoryItemId, photoIndex, createdAt])
   @@index([sha256])
 }
 

@@ -24,6 +24,9 @@ export async function processCsvImportFromTargets(
   // 各ターゲットをパース
   const parsedData = new Map<string, unknown[]>();
   for (const target of targets) {
+    if (target.type === 'itemInventoryGmail') {
+      throw new ApiError(400, 'itemInventoryGmail target must be executed by the inventory intake service');
+    }
     const buffer = files.get(target.type);
     if (!buffer) {
       continue; // ファイルが存在しない場合はスキップ
@@ -69,6 +72,9 @@ export async function processCsvImportFromTargets(
   try {
     // 各タイプを順次インポート（トランザクションは各インポータ内で処理）
     for (const target of targets) {
+      if (target.type === 'itemInventoryGmail') {
+        continue;
+      }
       const rows = parsedData.get(target.type);
       if (!rows || rows.length === 0) {
         continue;

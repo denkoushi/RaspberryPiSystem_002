@@ -8,6 +8,7 @@ import type { CsvImporter, ImportSummary } from '../csv-importer.types.js';
 import { buildUpdateDiff } from '../diff/master-data-diff.js';
 import { CsvImportConfigService } from '../csv-import-config.service.js';
 import { CsvRowMapper } from '../csv-row-mapper.js';
+import { assertInventoryNfcUidAvailable } from '../../../lib/nfc-uid-availability.js';
 
 const { EmployeeStatus } = pkg;
 
@@ -171,6 +172,7 @@ export class EmployeeCsvImporter implements CsvImporter {
             // 更新処理
             const nfcTagUidToCheck = row.nfcTagUid ? row.nfcTagUid.trim() : null;
             if (nfcTagUidToCheck) {
+              await assertInventoryNfcUidAvailable(nfcTagUidToCheck, tx);
               const otherEmployee = await tx.employee.findFirst({
                 where: {
                   nfcTagUid: nfcTagUidToCheck,
@@ -202,6 +204,7 @@ export class EmployeeCsvImporter implements CsvImporter {
             const nfcTagUidToCheck = row.nfcTagUid ? row.nfcTagUid.trim() : null;
             
             if (nfcTagUidToCheck) {
+              await assertInventoryNfcUidAvailable(nfcTagUidToCheck, tx);
               const existingWithSameNfcTag = await tx.employee.findFirst({
                 where: {
                   nfcTagUid: nfcTagUidToCheck
@@ -271,4 +274,3 @@ export class EmployeeCsvImporter implements CsvImporter {
     return result;
   }
 }
-
