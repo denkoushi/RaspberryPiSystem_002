@@ -75,6 +75,9 @@ class SourceCandidates:
         if self.index.ntotal != len(self.records) or self.index.d != 384:
             raise ValueError('Source index identity mismatch')
 
+    def close(self):
+        self.lexical.close()
+
     def search(self, question):
         import faiss
         import numpy as np
