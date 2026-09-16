@@ -15,3 +15,4 @@ export * from './hooks/self-inspection-nonconformities';
 export * from './hooks/csv-visualization';
 export * from './hooks/rigging';
 export * from './hooks/backup';
+export * from './hooks/item-inventory';

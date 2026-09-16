@@ -194,6 +194,20 @@ export const BackupConfigSchema = z.object({
       enabled: false,
       subjectTokens: ['[Kakou-Dandori-photo]'],
     }),
+  /** Raspberry Pi ItemlistRaspi photo-manifest intake. */
+  itemInventoryGmailIngest: z
+    .object({
+      enabled: z.boolean().default(false),
+      subjectTokens: z
+        .array(z.literal('[ItemlistRaspi-photo]'))
+        .default(['[ItemlistRaspi-photo]']),
+      fromEmail: z.string().optional(),
+    })
+    .optional()
+    .default({
+      enabled: false,
+      subjectTokens: ['[ItemlistRaspi-photo]'],
+    }),
 });
 
 export type BackupConfig = z.infer<typeof BackupConfigSchema>;
@@ -376,5 +390,9 @@ export const defaultBackupConfig: BackupConfig = {
   workInstructionGmailIngest: {
     enabled: false,
     subjectTokens: ['[Kakou-Dandori-photo]'],
-  }
+  },
+  itemInventoryGmailIngest: {
+    enabled: false,
+    subjectTokens: ['[ItemlistRaspi-photo]'],
+  },
 };

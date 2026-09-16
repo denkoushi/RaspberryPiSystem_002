@@ -28,6 +28,7 @@ import { registerTorqueWrenchRoutes } from './torque-wrenches/index.js';
 import { registerTorqueTrainingRoutes } from './torque-training/index.js';
 import { registerWorkInstructionRoutes } from './work-instructions/index.js';
 import { registerHermesKnowledgeRoutes } from './hermes-knowledge.js';
+import { registerItemInventoryRoutes } from './item-inventory/index.js';
 
 /**
  * すべてのルートを登録
@@ -83,6 +84,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       registerLoanReportRoutes(subApp);
       // SharePoint作業要領の取り込み・参照
       registerWorkInstructionRoutes(subApp);
+      registerItemInventoryRoutes(subApp);
     },
     { prefix: '/api' },
   );

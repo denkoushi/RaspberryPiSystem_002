@@ -30,6 +30,7 @@ import { PartMeasurementTemplatesPage } from './pages/admin/PartMeasurementTempl
 import { PhotoGallerySeedPage } from './pages/admin/PhotoGallerySeedPage';
 import { PhotoLoanLabelReviewsPage } from './pages/admin/PhotoLoanLabelReviewsPage';
 import { ProductionScheduleSettingsPage } from './pages/admin/ProductionScheduleSettingsPage';
+import { RaspiInventoryPage } from './pages/admin/RaspiInventoryPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
 import { SelfInspectionOutOfToleranceReviewsPage } from './pages/admin/SelfInspectionOutOfToleranceReviewsPage';
 import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
@@ -46,6 +47,7 @@ import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
+import { KioskItemInventoryPage } from './pages/kiosk/KioskItemInventoryPage';
 import { KioskMobilePalletVisualizationPage } from './pages/kiosk/KioskMobilePalletVisualizationPage';
 import { KioskMobileShelfMasterPage } from './pages/kiosk/KioskMobileShelfMasterPage';
 import { KioskMobileZero2wStatusPage } from './pages/kiosk/KioskMobileZero2wStatusPage';
@@ -181,6 +183,7 @@ function App() {
         <Route element={<KioskLayout />}>
           <Route path="/kiosk" element={<KioskRedirect />} />
           <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
+          <Route path="/kiosk/inventory" element={<KioskItemInventoryPage />} />
           <Route path="/kiosk/photo" element={<KioskPhotoBorrowPage />} />
           <Route path="/kiosk/instruments/borrow" element={<KioskInstrumentBorrowPage />} />
           <Route path="/kiosk/rigging/borrow" element={<KioskRiggingBorrowPage />} />
@@ -339,6 +342,7 @@ function App() {
       >
         <Route index element={<DashboardPage />} />
         <Route path="tools">
+          <Route path="raspi-inventory" element={<RaspiInventoryPage />} />
           <Route path="employees" element={<EmployeesPage />} />
           <Route path="dgx-resource" element={<DgxResourceAdminPage />} />
           <Route path="items" element={<ItemsPage />} />
