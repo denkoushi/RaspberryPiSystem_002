@@ -3,8 +3,6 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  useBackupConfig,
-  useBackupConfigMutations,
   useInventoryHistory,
   useInventoryImportMessages,
   useInventoryImports,
@@ -16,13 +14,10 @@ import { useNfcStream } from '../../hooks/useNfcStream';
 
 import { RaspiInventoryPage } from './RaspiInventoryPage';
 
-import type { BackupConfig } from '../../api/backup';
 import type { InventoryImport, InventoryItem, InventoryShelf } from '../../api/client';
 
 vi.mock('../../api/client', () => ({ inventoryThumbnailUrl: (value: string) => value }));
 vi.mock('../../api/hooks', () => ({
-  useBackupConfig: vi.fn(),
-  useBackupConfigMutations: vi.fn(),
   useInventoryHistory: vi.fn(),
   useInventoryImportMessages: vi.fn(),
   useInventoryImports: vi.fn(),
@@ -91,28 +86,6 @@ const mutations = {
   replaceTag: { mutateAsync: vi.fn(), isPending: false },
 };
 
-const backupConfig: BackupConfig = {
-  storage: { provider: 'gmail', options: { gmail: { clientId: 'client-id' } } },
-  targets: [{ kind: 'database', source: 'employees', enabled: true }],
-  csvImports: [{
-    id: 'csv-import-scaw',
-    provider: 'gmail',
-    targets: [{ type: 'csvDashboards', source: 'scaw-dashboard' }],
-    schedule: '0 10 * * *',
-    enabled: true,
-    replaceExisting: false,
-  }],
-  itemInventoryGmailIngest: {
-    enabled: false,
-    subjectTokens: ['[ItemlistRaspi-photo]'],
-    fromEmail: 'inventory@example.com',
-  },
-};
-
-const backupConfigMutations = {
-  updateConfig: { mutateAsync: vi.fn(), isPending: false },
-};
-
 function arrange(imports: InventoryImport[] = []) {
   vi.mocked(useNfcStream).mockReturnValue(null);
   vi.mocked(useInventoryImports).mockReturnValue({ data: imports } as never);
@@ -121,10 +94,6 @@ function arrange(imports: InventoryImport[] = []) {
   vi.mocked(useInventoryLocations).mockReturnValue({ data: locations } as never);
   vi.mocked(useInventoryHistory).mockReturnValue({ data: [] } as never);
   vi.mocked(useInventoryMutations).mockReturnValue(mutations as never);
-  vi.mocked(useBackupConfig).mockReturnValue({ data: backupConfig, isLoading: false, isError: false } as never);
-  backupConfigMutations.updateConfig.mutateAsync.mockReset();
-  backupConfigMutations.updateConfig.mutateAsync.mockResolvedValue({ success: true });
-  vi.mocked(useBackupConfigMutations).mockReturnValue(backupConfigMutations as never);
 }
 
 describe('RaspiInventoryPage response shapes', () => {
@@ -178,34 +147,13 @@ describe('RaspiInventoryPage response shapes', () => {
     }));
   });
 
-  it('saves only the inventory Gmail enabled flag and preserves its existing settings', async () => {
+  it('keeps Gmail schedule controls and full manual ingest off the inventory page', () => {
     arrange();
 
     render(<MemoryRouter initialEntries={['/admin/tools/raspi-inventory']}><RaspiInventoryPage /></MemoryRouter>);
-    fireEvent.click(screen.getByRole('checkbox', { name: '在庫写真メール自動取込' }));
-    fireEvent.click(screen.getByRole('button', { name: '設定を保存' }));
 
-    await vi.waitFor(() => expect(backupConfigMutations.updateConfig.mutateAsync).toHaveBeenCalledTimes(1));
-    const [updatedConfig] = backupConfigMutations.updateConfig.mutateAsync.mock.calls[0];
-    expect(updatedConfig.storage).toEqual(backupConfig.storage);
-    expect(updatedConfig.targets).toEqual(backupConfig.targets);
-    expect(updatedConfig.csvImports).toEqual(backupConfig.csvImports);
-    expect(updatedConfig.itemInventoryGmailIngest).toEqual({
-      enabled: true,
-      subjectTokens: ['[ItemlistRaspi-photo]'],
-      fromEmail: 'inventory@example.com',
-    });
-    await vi.waitFor(() => expect(screen.getByText('保存しました（有効）')).toBeInTheDocument());
-  });
-
-  it('does not allow saving when the backup config could not be fetched', () => {
-    arrange();
-    vi.mocked(useBackupConfig).mockReturnValue({ data: undefined, isLoading: false, isError: true } as never);
-
-    render(<MemoryRouter initialEntries={['/admin/tools/raspi-inventory']}><RaspiInventoryPage /></MemoryRouter>);
-
-    expect(screen.getByText('設定を取得できないため、ON/OFFの保存は無効です。')).toBeInTheDocument();
+    expect(screen.queryByText('在庫写真メール自動取込設定')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '設定を保存' })).not.toBeInTheDocument();
-    expect(backupConfigMutations.updateConfig.mutateAsync).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '今すぐ確認' })).not.toBeInTheDocument();
   });
 });

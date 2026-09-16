@@ -6,8 +6,6 @@ import {
   type InventoryItem,
 } from '../../api/client';
 import {
-  useBackupConfig,
-  useBackupConfigMutations,
   useInventoryHistory,
   useInventoryImportMessages,
   useInventoryImports,
@@ -17,10 +15,8 @@ import {
 } from '../../api/hooks';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
-import type { BackupConfig } from '../../api/backup';
-
 const inputClass = 'min-h-10 rounded-md border border-white/20 bg-slate-950/60 px-3 text-white placeholder:text-white/40 focus:border-sky-400 focus:outline-none';
-const selectClass = `${inputClass} min-w-36`;
+const selectClass = `${inputClass} w-full`;
 const buttonClass = 'min-h-10 rounded-md bg-sky-600 px-4 font-semibold text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-40';
 const secondaryButtonClass = 'min-h-10 rounded-md border border-white/20 bg-white/5 px-4 font-semibold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40';
 const dangerButtonClass = 'min-h-10 rounded-md bg-red-600 px-4 font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40';
@@ -84,8 +80,6 @@ export function RaspiInventoryPage() {
   const locationsQuery = useInventoryLocations();
   const historyQuery = useInventoryHistory();
   const mutations = useInventoryMutations();
-  const backupConfigQuery = useBackupConfig();
-  const backupConfigMutations = useBackupConfigMutations();
   const imports = importsQuery.data ?? [];
   const items = itemsQuery.data ?? [];
   const locations = useMemo(() => locationsQuery.data ?? [], [locationsQuery.data]);
@@ -106,17 +100,6 @@ export function RaspiInventoryPage() {
   const [replacementUids, setReplacementUids] = useState<Record<string, string>>({});
   const [moveDrawers, setMoveDrawers] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<string | null>(null);
-  const [itemInventoryGmailEnabled, setItemInventoryGmailEnabled] = useState(false);
-  const [itemInventoryGmailSaveMessage, setItemInventoryGmailSaveMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    const enabled = backupConfigQuery.data?.itemInventoryGmailIngest?.enabled;
-    if (typeof enabled === 'boolean') {
-      setItemInventoryGmailEnabled(enabled);
-    } else if (backupConfigQuery.data) {
-      setItemInventoryGmailEnabled(false);
-    }
-  }, [backupConfigQuery.data]);
 
   useEffect(() => {
     if (!selectedImport) return;
@@ -212,31 +195,6 @@ export function RaspiInventoryPage() {
     } catch (error) { setActionError(errorText(error)); }
   };
 
-  const saveItemInventoryGmailSetting = async () => {
-    const config = backupConfigQuery.data;
-    if (!config || backupConfigQuery.isError) {
-      setItemInventoryGmailSaveMessage('設定を取得できないため保存できません');
-      return;
-    }
-
-    setActionError(null);
-    setItemInventoryGmailSaveMessage(null);
-    try {
-      const current = config.itemInventoryGmailIngest;
-      const itemInventoryGmailIngest: NonNullable<BackupConfig['itemInventoryGmailIngest']> = current
-        ? { ...current, enabled: itemInventoryGmailEnabled }
-        : { enabled: itemInventoryGmailEnabled, subjectTokens: ['[ItemlistRaspi-photo]'] };
-      await backupConfigMutations.updateConfig.mutateAsync({
-        ...config,
-        itemInventoryGmailIngest,
-      });
-      setItemInventoryGmailSaveMessage(`保存しました（${itemInventoryGmailEnabled ? '有効' : '無効'}）`);
-    } catch (error) {
-      setItemInventoryGmailSaveMessage(null);
-      setActionError(errorText(error));
-    }
-  };
-
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -245,50 +203,16 @@ export function RaspiInventoryPage() {
       </div>
       {actionError ? <div className="rounded-md border border-red-400/50 bg-red-950/60 p-3 text-red-100" role="alert">{actionError}</div> : null}
 
-      <section className="rounded-lg border border-white/15 bg-slate-900/60 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold">Gmail取り込み</h2>
-          <button type="button" className={buttonClass} onClick={() => void mutations.ingest.mutateAsync(undefined).catch((error) => setActionError(errorText(error)))} disabled={mutations.ingest.isPending}>今すぐ確認</button>
-        </div>
-        <p className="mt-2 text-sm text-white/65">件名トークン [ItemlistRaspi-photo] の未読メールを確認します。JSONのphotos配列と同名JPEGが揃わない場合は再試行可能なエラーとして残ります。</p>
-        <div className="mt-4 rounded border border-white/15 bg-slate-950/30 p-3">
-          <h3 className="font-semibold">在庫写真メール自動取込設定</h3>
-          {backupConfigQuery.isLoading ? <p className="mt-2 text-sm text-white/60">設定を読み込み中...</p> : backupConfigQuery.isError || !backupConfigQuery.data ? (
-            <p className="mt-2 text-sm text-amber-200" role="alert">設定を取得できないため、ON/OFFの保存は無効です。</p>
-          ) : (
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2 text-sm font-semibold">
-                <input
-                  type="checkbox"
-                  aria-label="在庫写真メール自動取込"
-                  checked={itemInventoryGmailEnabled}
-                  onChange={(event) => {
-                    setItemInventoryGmailEnabled(event.target.checked);
-                    setItemInventoryGmailSaveMessage(null);
-                  }}
-                  disabled={backupConfigMutations.updateConfig.isPending}
-                />
-                自動取込を有効にする
-              </label>
-              <button
-                type="button"
-                className={secondaryButtonClass}
-                onClick={() => void saveItemInventoryGmailSetting()}
-                disabled={backupConfigMutations.updateConfig.isPending}
-              >
-                {backupConfigMutations.updateConfig.isPending ? '保存中...' : '設定を保存'}
-              </button>
-              {itemInventoryGmailSaveMessage ? <span className="text-sm text-emerald-300" role="status">{itemInventoryGmailSaveMessage}</span> : null}
-            </div>
-          )}
-        </div>
+      {(messagesQuery.data ?? []).some((entry) => entry.outcome === 'RETRYABLE' || entry.outcome === 'PROCESSING') ? <section className="rounded-lg border border-amber-400/40 bg-amber-950/40 p-4">
+        <h2 className="text-lg font-bold">取込エラー・再試行</h2>
+        <p className="mt-1 text-sm text-white/65">在庫写真メールの処理に失敗したメッセージだけ、ここから再試行できます。</p>
         {(messagesQuery.data ?? []).filter((entry) => entry.outcome === 'RETRYABLE' || entry.outcome === 'PROCESSING').map((entry) => (
           <div key={entry.id} className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded border border-amber-400/40 bg-amber-950/40 p-3 text-sm">
             <span>メール {entry.gmailMessageId}: {entry.errorMessage ?? '再試行可能なエラー'}</span>
             <button type="button" className={secondaryButtonClass} onClick={() => void mutations.retryImport.mutateAsync(entry.id).catch((error) => setActionError(errorText(error)))}>再試行</button>
           </div>
         ))}
-      </section>
+      </section> : null}
 
       <section className="rounded-lg border border-white/15 bg-slate-900/60 p-4">
         <h2 className="text-lg font-bold">登録レビュー</h2>
@@ -316,14 +240,14 @@ export function RaspiInventoryPage() {
                   <button type="button" className={draft.mode === 'NEW_ITEM' ? buttonClass : secondaryButtonClass} onClick={() => updateDraft('mode', 'NEW_ITEM')}>新規登録</button>
                   <button type="button" className={draft.mode === 'EXISTING_ITEM' ? buttonClass : secondaryButtonClass} onClick={() => updateDraft('mode', 'EXISTING_ITEM')}>既存に追加</button>
                 </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <label className="flex flex-col gap-1 text-sm">アイテム名<input className={inputClass} value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} /></label>
-                  <label className="flex flex-col gap-1 text-sm">型式<input className={inputClass} value={draft.model} onChange={(event) => updateDraft('model', event.target.value)} /></label>
-                  <label className="flex flex-col gap-1 text-sm sm:col-span-2">用途<input className={inputClass} value={draft.usage} onChange={(event) => updateDraft('usage', event.target.value)} /></label>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <label className="flex w-full max-w-md flex-col gap-1 text-sm">アイテム名<input className={`${inputClass} w-full`} value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} /></label>
+                  <label className="flex w-full max-w-xs flex-col gap-1 text-sm">型式<input className={`${inputClass} w-full`} value={draft.model} onChange={(event) => updateDraft('model', event.target.value)} /></label>
+                  <label className="flex w-full max-w-md flex-col gap-1 text-sm">用途<input className={`${inputClass} w-full`} value={draft.usage} onChange={(event) => updateDraft('usage', event.target.value)} /></label>
                 </div>
                 {draft.mode === 'EXISTING_ITEM' ? (
                   <div className="mt-3 flex flex-col gap-2">
-                    <label className="flex flex-col gap-1 text-sm">追加先アイテム<select className={selectClass} value={draft.itemId} onChange={(event) => {
+                    <label className="flex w-full max-w-md flex-col gap-1 text-sm">追加先アイテム<select className={selectClass} value={draft.itemId} onChange={(event) => {
                       const itemId = event.target.value;
                       const selectedItem = items.find((item) => item.id === itemId);
                       setDraft((current) => ({
@@ -338,11 +262,11 @@ export function RaspiInventoryPage() {
                   </div>
                 ) : (
                   <div className="mt-3 flex flex-col gap-3">
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <label className="flex flex-col gap-1 text-sm">棚番号<select className={selectClass} value={draft.shelfId} onChange={(event) => { updateDraft('shelfId', event.target.value); updateDraft('drawerId', ''); }}><option value="">棚を選択</option>{shelvesForArea.map((shelf) => <option key={shelf.id} value={shelf.id}>棚{shelf.shelfNumber}</option>)}</select></label>
-                      <label className="flex flex-col gap-1 text-sm">引き出し番号<select className={selectClass} value={draft.drawerId} onChange={(event) => updateDraft('drawerId', event.target.value)} disabled={!draft.shelfId}><option value="">引き出しを選択</option>{drawersForShelf.map((drawer) => <option key={drawer.id} value={drawer.id}>引き出し{drawer.drawerNumber}</option>)}</select></label>
+                    <div className="flex flex-wrap gap-2">
+                      <label className="flex w-40 flex-col gap-1 text-sm">棚番号<select className={selectClass} value={draft.shelfId} onChange={(event) => { updateDraft('shelfId', event.target.value); updateDraft('drawerId', ''); }}><option value="">棚を選択</option>{shelvesForArea.map((shelf) => <option key={shelf.id} value={shelf.id}>棚{shelf.shelfNumber}</option>)}</select></label>
+                      <label className="flex w-44 flex-col gap-1 text-sm">引き出し番号<select className={selectClass} value={draft.drawerId} onChange={(event) => updateDraft('drawerId', event.target.value)} disabled={!draft.shelfId}><option value="">引き出しを選択</option>{drawersForShelf.map((drawer) => <option key={drawer.id} value={drawer.id}>引き出し{drawer.drawerNumber}</option>)}</select></label>
                     </div>
-                    <label className="flex flex-col gap-1 text-sm">アイテムNFC UID<input className={inputClass} value={draft.itemTagUid} onChange={(event) => updateDraft('itemTagUid', event.target.value)} /><button type="button" className={secondaryButtonClass} onClick={() => setScanTarget('item')}>NFCを読み取る</button></label>
+                    <label className="flex w-full max-w-lg flex-col gap-1 text-sm">アイテムNFC UID<div className="flex flex-wrap gap-2"><input className={`${inputClass} min-w-0 flex-1`} value={draft.itemTagUid} onChange={(event) => updateDraft('itemTagUid', event.target.value)} /><button type="button" className={secondaryButtonClass} onClick={() => setScanTarget('item')}>NFCを読み取る</button></div></label>
                     <div className="flex flex-wrap gap-4"><div><p className="mb-1 text-sm">初期実在庫数（ソフトウェア keypad）</p><NumericKeypad value={draft.initialQuantity} onChange={(value) => updateDraft('initialQuantity', value)} /></div></div>
                   </div>
                 )}
@@ -356,14 +280,14 @@ export function RaspiInventoryPage() {
 
       <section className="rounded-lg border border-white/15 bg-slate-900/60 p-4">
         <h2 className="text-lg font-bold">棚・引き出し管理</h2>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <input className={inputClass} placeholder="エリア" value={newArea} onChange={(event) => setNewArea(event.target.value)} />
-          <input className={`${inputClass} w-28`} type="number" min={1} value={newShelfNumber} onChange={(event) => setNewShelfNumber(Number(event.target.value))} aria-label="棚番号" />
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="flex w-full max-w-xs flex-col gap-1 text-sm">エリア<input className={`${inputClass} w-full`} placeholder="例: 30007_KSJP-55" value={newArea} onChange={(event) => setNewArea(event.target.value)} /></label>
+          <label className="flex w-32 flex-col gap-1 text-sm">棚番号<input className={`${inputClass} w-20`} type="number" min={1} value={newShelfNumber} onChange={(event) => setNewShelfNumber(Number(event.target.value))} /></label>
           <button type="button" className={buttonClass} onClick={() => void mutations.createShelf.mutateAsync({ area: newArea, shelfNumber: newShelfNumber }).then(() => setNewArea('')).catch((error) => setActionError(errorText(error)))}>棚を追加</button>
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <select className={selectClass} value={newShelfId} onChange={(event) => setNewShelfId(event.target.value)}><option value="">棚を選択</option>{locations.map((shelf) => <option key={shelf.id} value={shelf.id}>{shelf.area} / 棚{shelf.shelfNumber}</option>)}</select>
-          <input className={`${inputClass} w-28`} type="number" min={1} value={newDrawerNumber} onChange={(event) => setNewDrawerNumber(Number(event.target.value))} aria-label="引き出し番号" />
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="flex w-full max-w-sm flex-col gap-1 text-sm">追加先の棚<select className={selectClass} value={newShelfId} onChange={(event) => setNewShelfId(event.target.value)}><option value="">棚を選択</option>{locations.map((shelf) => <option key={shelf.id} value={shelf.id}>{shelf.area} / 棚{shelf.shelfNumber}</option>)}</select></label>
+          <label className="flex w-40 flex-col gap-1 text-sm">引き出し番号<input className={`${inputClass} w-20`} type="number" min={1} value={newDrawerNumber} onChange={(event) => setNewDrawerNumber(Number(event.target.value))} /></label>
           <button type="button" className={buttonClass} onClick={() => void mutations.createDrawer.mutateAsync({ shelfId: newShelfId, drawerNumber: newDrawerNumber }).catch((error) => setActionError(errorText(error)))}>引き出しを追加</button>
         </div>
       </section>
@@ -371,25 +295,28 @@ export function RaspiInventoryPage() {
       <section className="rounded-lg border border-white/15 bg-slate-900/60 p-4">
         <h2 className="text-lg font-bold">既存アイテムに区画を追加</h2>
         <p className="mt-1 text-sm text-white/65">メールレビューとは別に、同じアイテム情報を別の区画へ割り当てます。初期数量とアイテムNFCを登録します。</p>
-        <div className="mt-3 grid gap-3 lg:grid-cols-4">
-          <label className="flex flex-col gap-1 text-sm">アイテム<select className={selectClass} value={binding.itemId} onChange={(event) => setBinding((current) => ({ ...current, itemId: event.target.value }))}><option value="">選択してください</option>{items.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.itemCode})</option>)}</select></label>
-          <label className="flex flex-col gap-1 text-sm">エリア・棚<select className={selectClass} value={binding.shelfId} onChange={(event) => setBinding((current) => ({ ...current, shelfId: event.target.value, drawerId: '' }))}><option value="">選択してください</option>{locations.map((shelf) => <option key={shelf.id} value={shelf.id}>{shelf.area} / 棚{shelf.shelfNumber}</option>)}</select></label>
-          <label className="flex flex-col gap-1 text-sm">引き出し<select className={selectClass} value={binding.drawerId} onChange={(event) => setBinding((current) => ({ ...current, drawerId: event.target.value }))} disabled={!binding.shelfId}><option value="">選択してください</option>{bindingDrawers.map((drawer) => <option key={drawer.id} value={drawer.id}>引き出し{drawer.drawerNumber}</option>)}</select></label>
-          <label className="flex flex-col gap-1 text-sm">アイテムNFC UID<input className={inputClass} value={binding.itemTagUid} onChange={(event) => setBinding((current) => ({ ...current, itemTagUid: event.target.value }))} /><button type="button" className={secondaryButtonClass} onClick={() => setScanTarget('binding-item')}>NFCを読み取る</button></label>
+        <div className="mt-3 flex max-w-5xl flex-wrap items-start gap-4">
+          <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2">
+            <label className="flex w-full max-w-md flex-col gap-1 text-sm">アイテム<select className={selectClass} value={binding.itemId} onChange={(event) => setBinding((current) => ({ ...current, itemId: event.target.value }))}><option value="">選択してください</option>{items.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.itemCode})</option>)}</select></label>
+            <label className="flex w-52 flex-col gap-1 text-sm">エリア・棚<select className={selectClass} value={binding.shelfId} onChange={(event) => setBinding((current) => ({ ...current, shelfId: event.target.value, drawerId: '' }))}><option value="">選択してください</option>{locations.map((shelf) => <option key={shelf.id} value={shelf.id}>{shelf.area} / 棚{shelf.shelfNumber}</option>)}</select></label>
+            <label className="flex w-44 flex-col gap-1 text-sm">引き出し<select className={selectClass} value={binding.drawerId} onChange={(event) => setBinding((current) => ({ ...current, drawerId: event.target.value }))} disabled={!binding.shelfId}><option value="">選択してください</option>{bindingDrawers.map((drawer) => <option key={drawer.id} value={drawer.id}>引き出し{drawer.drawerNumber}</option>)}</select></label>
+            <label className="flex w-full max-w-lg flex-col gap-1 text-sm">アイテムNFC UID<div className="flex flex-wrap gap-2"><input className={`${inputClass} min-w-0 flex-1`} value={binding.itemTagUid} onChange={(event) => setBinding((current) => ({ ...current, itemTagUid: event.target.value }))} /><button type="button" className={secondaryButtonClass} onClick={() => setScanTarget('binding-item')}>NFCを読み取る</button></div></label>
+            <button type="button" className={buttonClass} onClick={() => void submitBinding()} disabled={mutations.bindCompartment.isPending}>区画を登録</button>
+          </div>
+          <div className="shrink-0"><p className="mb-1 text-sm">初期実在庫数</p><NumericKeypad value={binding.initialQuantity} onChange={(value) => setBinding((current) => ({ ...current, initialQuantity: value }))} /></div>
         </div>
-        <div className="mt-3 flex flex-wrap items-end gap-4"><div><p className="mb-1 text-sm">初期実在庫数</p><NumericKeypad value={binding.initialQuantity} onChange={(value) => setBinding((current) => ({ ...current, initialQuantity: value }))} /></div><button type="button" className={buttonClass} onClick={() => void submitBinding()} disabled={mutations.bindCompartment.isPending}>区画を登録</button></div>
       </section>
 
       <section className="rounded-lg border border-white/15 bg-slate-900/60 p-4">
         <h2 className="text-lg font-bold">数量NFC・補充NFC</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <div className="rounded border border-white/15 p-3">
+          <div className="w-full max-w-2xl rounded border border-white/15 p-3">
             <h3 className="font-semibold">数量タグ（任意の正の数量）</h3>
-            <div className="mt-2 flex flex-wrap gap-2"><input className={inputClass} placeholder="UID" value={quantityUid} onChange={(event) => setQuantityUid(event.target.value)} /><input className={`${inputClass} w-24`} type="number" min={1} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} aria-label="数量" /><button type="button" className={secondaryButtonClass} onClick={() => setScanTarget('quantity')}>NFC</button><button type="button" className={buttonClass} onClick={() => void mutations.quantityTag.mutateAsync({ uid: quantityUid, quantity }).catch((error) => setActionError(errorText(error)))}>登録</button></div>
+            <div className="mt-2 flex flex-wrap items-end gap-2"><label className="flex w-full max-w-sm flex-col gap-1 text-sm">数量タグUID<input className={`${inputClass} w-full`} placeholder="UID" value={quantityUid} onChange={(event) => setQuantityUid(event.target.value)} /></label><label className="flex w-24 flex-col gap-1 text-sm">数量<input className={`${inputClass} w-full`} type="number" min={1} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} /></label><button type="button" className={secondaryButtonClass} onClick={() => setScanTarget('quantity')}>NFCを読み取る</button><button type="button" className={buttonClass} onClick={() => void mutations.quantityTag.mutateAsync({ uid: quantityUid, quantity }).catch((error) => setActionError(errorText(error)))}>登録</button></div>
           </div>
-          <div className="rounded border border-white/15 p-3">
+          <div className="w-full max-w-2xl rounded border border-white/15 p-3">
             <h3 className="font-semibold">補充モードタグ</h3>
-            <div className="mt-2 flex flex-wrap gap-2"><input className={inputClass} placeholder="UID" value={restockUid} onChange={(event) => setRestockUid(event.target.value)} /><button type="button" className={secondaryButtonClass} onClick={() => setScanTarget('restock')}>NFC</button><button type="button" className={buttonClass} onClick={() => void mutations.restockTag.mutateAsync(restockUid).catch((error) => setActionError(errorText(error)))}>登録</button></div>
+            <div className="mt-2 flex flex-wrap items-end gap-2"><label className="flex w-full max-w-sm flex-col gap-1 text-sm">補充モードタグUID<input className={`${inputClass} w-full`} placeholder="UID" value={restockUid} onChange={(event) => setRestockUid(event.target.value)} /></label><button type="button" className={secondaryButtonClass} onClick={() => setScanTarget('restock')}>NFCを読み取る</button><button type="button" className={buttonClass} onClick={() => void mutations.restockTag.mutateAsync(restockUid).catch((error) => setActionError(errorText(error)))}>登録</button></div>
           </div>
         </div>
       </section>
@@ -401,10 +328,10 @@ export function RaspiInventoryPage() {
             <div key={compartment.id} className="rounded border border-white/15 bg-slate-950/30 p-3">
               <div className="flex flex-wrap justify-between gap-2"><div><strong>{item.name}</strong> <span className="text-sm text-white/60">{item.itemCode}</span></div><span className="font-bold">現在庫 {compartment.stockQuantity}</span></div>
               <p className="mt-1 text-sm text-white/65">{compartment.area} / 棚{compartment.shelfNumber} / 引出し{compartment.drawerNumber} / NFC {compartment.itemTagUid ?? '未設定'}</p>
-              <div className="mt-3 grid gap-2 lg:grid-cols-3">
-                <div className="flex gap-2"><input className={`${inputClass} w-full`} type="number" min={0} placeholder="修正後在庫" value={corrections[compartment.id] ?? ''} onChange={(event) => setCorrections((current) => ({ ...current, [compartment.id]: event.target.value }))} /><button type="button" className={secondaryButtonClass} onClick={() => void submitCorrection(compartment.id)}>修正</button></div>
-                <div className="flex gap-2"><select className={`${selectClass} w-full`} value={moveDrawers[compartment.id] ?? ''} onChange={(event) => setMoveDrawers((current) => ({ ...current, [compartment.id]: event.target.value }))}><option value="">移動先</option>{allDrawers.filter((drawer) => drawer.area === compartment.area).map((drawer) => <option key={drawer.id} value={drawer.id}>棚{drawer.shelf.shelfNumber} / 引出し{drawer.drawerNumber}</option>)}</select><button type="button" className={secondaryButtonClass} onClick={() => void submitMove(compartment.id)}>移動</button></div>
-                <div className="flex gap-2"><input className={`${inputClass} w-full`} placeholder="新UID" value={replacementUids[compartment.id] ?? ''} onChange={(event) => setReplacementUids((current) => ({ ...current, [compartment.id]: event.target.value }))} /><button type="button" className={secondaryButtonClass} onClick={() => void submitReplacement(compartment.id)}>交換</button></div>
+              <div className="mt-3 flex flex-wrap items-end gap-3">
+                <div className="flex items-end gap-2"><label className="flex w-36 flex-col gap-1 text-sm">修正後在庫<input className={`${inputClass} w-28`} type="number" min={0} value={corrections[compartment.id] ?? ''} onChange={(event) => setCorrections((current) => ({ ...current, [compartment.id]: event.target.value }))} /></label><button type="button" className={secondaryButtonClass} onClick={() => void submitCorrection(compartment.id)}>修正</button></div>
+                <div className="flex items-end gap-2"><label className="flex w-64 flex-col gap-1 text-sm">移動先<select className={selectClass} value={moveDrawers[compartment.id] ?? ''} onChange={(event) => setMoveDrawers((current) => ({ ...current, [compartment.id]: event.target.value }))}><option value="">移動先</option>{allDrawers.filter((drawer) => drawer.area === compartment.area).map((drawer) => <option key={drawer.id} value={drawer.id}>棚{drawer.shelf.shelfNumber} / 引出し{drawer.drawerNumber}</option>)}</select></label><button type="button" className={secondaryButtonClass} onClick={() => void submitMove(compartment.id)}>移動</button></div>
+                <div className="flex items-end gap-2"><label className="flex w-full max-w-sm flex-col gap-1 text-sm">交換後アイテムNFC UID<input className={`${inputClass} w-full`} value={replacementUids[compartment.id] ?? ''} onChange={(event) => setReplacementUids((current) => ({ ...current, [compartment.id]: event.target.value }))} /></label><button type="button" className={secondaryButtonClass} onClick={() => void submitReplacement(compartment.id)}>交換</button></div>
               </div>
             </div>
           ))) }
