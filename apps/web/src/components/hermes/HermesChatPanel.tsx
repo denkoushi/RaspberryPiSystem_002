@@ -31,9 +31,13 @@ export type HermesConsultationSuggestion = {
   prompt: string;
 };
 
+export type HermesKnowledgeMode = 'search' | 'knowledge';
+
 export type HermesChatPanelProps = {
   conversationExtension?: ReactNode;
   attachmentControl?: ReactNode;
+  knowledgeMode?: HermesKnowledgeMode;
+  onKnowledgeModeChange?: (mode: HermesKnowledgeMode) => void;
   mode?: 'legacy' | 'consultations';
   messages: readonly HermesPanelMessage[];
   draft: string;
@@ -94,6 +98,32 @@ function useReducedMotion(): boolean {
   }, []);
 
   return reducedMotion;
+}
+
+function ResetIcon() {
+  return (
+    <svg className="hermes-chat-panel__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <polyline points="3 4 3 10 9 10" />
+    </svg>
+  );
+}
+
+function ResizeIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg className="hermes-chat-panel__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {expanded ? <><polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" /><line x1="10" y1="14" x2="3" y2="21" /><line x1="14" y1="10" x2="21" y2="3" /></> : <><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></>}
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg className="hermes-chat-panel__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <line x1="5" y1="5" x2="19" y2="19" />
+      <line x1="19" y1="5" x2="5" y2="19" />
+    </svg>
+  );
 }
 
 function formatConsultationUpdatedAt(value: string): string {
@@ -237,6 +267,8 @@ function RecordCard({ evidence, view }: { evidence: BusinessHermesChatEvidence; 
 export default function HermesChatPanel({
   conversationExtension,
   attachmentControl,
+  knowledgeMode = 'search',
+  onKnowledgeModeChange,
   mode = 'legacy',
   messages,
   draft,
@@ -293,13 +325,21 @@ export default function HermesChatPanel({
   return (
     <section ref={panelRef} className="hermes-chat-panel" style={style} aria-label="Hermesチャット" role="region">
       <header className="hermes-chat-panel__header">
-        <div>
-          {mode === 'consultations' && activeConsultation ? (
-            <>
-              <h2 id="hermes-chat-title" className="hermes-chat-panel__title">{consultationLabel(activeConsultation)}</h2>
-              <p className="hermes-chat-panel__hint">相談を続ける</p>
-            </>
+        <div className="hermes-chat-panel__header-main">
+          {onKnowledgeModeChange ? (
+            <div className="hermes-chat-panel__mode-selector">
+              <button type="button" className={`hermes-chat-panel__mode${knowledgeMode === 'search' ? ' hermes-chat-panel__mode--selected' : ''}`} aria-pressed={knowledgeMode === 'search'} onClick={() => onKnowledgeModeChange('search')}>検索</button>
+              <button type="button" className={`hermes-chat-panel__mode${knowledgeMode === 'knowledge' ? ' hermes-chat-panel__mode--selected' : ''}`} aria-pressed={knowledgeMode === 'knowledge'} onClick={() => onKnowledgeModeChange('knowledge')}>ナレッジ</button>
+            </div>
           ) : null}
+          <div className="hermes-chat-panel__header-title">
+            {mode === 'consultations' && activeConsultation ? (
+              <>
+                <h2 id="hermes-chat-title" className="hermes-chat-panel__title">{consultationLabel(activeConsultation)}</h2>
+                <p className="hermes-chat-panel__hint">相談を続ける</p>
+              </>
+            ) : null}
+          </div>
         </div>
         <div className="hermes-chat-panel__actions">
           {mode === 'consultations' && onNewConsultation ? (
@@ -324,7 +364,7 @@ export default function HermesChatPanel({
             </button>
           ) : (
             <button type="button" className="hermes-chat-panel__action" onClick={onReset} aria-label="会話をリセット">
-              リセット
+              <ResetIcon />
             </button>
           )}
           {isBusy && onStop ? (
@@ -339,11 +379,11 @@ export default function HermesChatPanel({
               onClick={onToggleSize}
               aria-label={isExpanded ? 'チャットを標準サイズに戻す' : 'チャットを拡大'}
             >
-              {isExpanded ? '標準' : '拡大'}
+              <ResizeIcon expanded={isExpanded} />
             </button>
           ) : null}
           <button type="button" className="hermes-chat-panel__action" onClick={onClose} aria-label="チャットを閉じる">
-            閉じる
+            <CloseIcon />
           </button>
         </div>
       </header>

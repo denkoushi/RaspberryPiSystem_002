@@ -37,7 +37,6 @@ export function useKnowledgeIntake(identity: string, consultationId: string | nu
   const conversationId = consultationId ?? localId;
   const active = useRef({ identity, conversationId }); active.current = { identity, conversationId };
   const submission = useRef<{ signature: string; id: string } | null>(null);
-  const delegated = useRef(new Set<string>());
   const operation = useRef(false);
 
   useEffect(() => {
@@ -60,7 +59,7 @@ export function useKnowledgeIntake(identity: string, consultationId: string | nu
       if (pending) return; pending = true;
       try {
         const { data } = await api.get<{ intakes: KnowledgeIntakeView[] }>('/hermes-knowledge/intakes', { params: { conversationId }, signal: controller.signal });
-        if (!controller.signal.aborted) setItems(data.intakes.filter(item => !delegated.current.has(item.id)));
+        if (!controller.signal.aborted) setItems(data.intakes);
       } catch (failure) {
         if (!controller.signal.aborted) setError(getApiErrorMessage(failure, '記録の処理状況を取得できませんでした。'));
       } finally { pending = false; }
@@ -87,9 +86,8 @@ export function useKnowledgeIntake(identity: string, consultationId: string | nu
       const { data } = await api.post<KnowledgeIntakeView>('/hermes-knowledge/intakes', { id: submission.current.id, conversationId, text, files: encoded });
       if (active.current.identity !== scope.identity || active.current.conversationId !== scope.conversationId) return null;
       submission.current = null; setFiles([]);
-      if (data.state === 'delegated' && !files.length) { delegated.current.add(data.id); return false; }
       setItems(current => [...current.filter(item => item.id !== data.id), data]);
-      return true;
+      return data.state === 'delegated' ? false : true;
     } catch (failure) {
       if (active.current.identity === scope.identity) setError(getApiErrorMessage(failure, failure instanceof Error ? failure.message : '送信できませんでした。内容を保持しています。'));
       // Throw so the caller preserves its draft as well as attachments and stable submission ID.

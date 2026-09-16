@@ -19,6 +19,8 @@ describe('Knowledge organizer inference boundary', () => {
     expect(await new InferenceKnowledgeOrganizer({ complete }, { describe: describePhoto }).organize(source, controller.signal)).toEqual(note);
     expect(describePhoto).toHaveBeenCalledWith(source.images[0], controller.signal);
     expect(complete.mock.calls[0]?.[0]).toMatchObject({ background: true, useCase: 'business_hermes', signal: controller.signal });
+    expect(complete.mock.calls[0]?.[0].messages[0]?.content).toContain('ナレッジ');
+    expect(complete.mock.calls[0]?.[0].messages[0]?.content).not.toContain('技能検定');
     expect(JSON.parse(complete.mock.calls[0]![0].messages[1]!.content)).toEqual({ text: source.text, photos: [{ id: 'a'.repeat(64), description: '板が写っている。' }] });
   });
 

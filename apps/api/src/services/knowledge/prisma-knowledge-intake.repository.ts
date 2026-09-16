@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient, type KnowledgeIntake } from '@prisma/client';
 
-import { PILOT_TOPIC, knowledgeSourceSchema, organizedNoteSchema } from './knowledge-source.js';
+import { KNOWLEDGE_TOPIC, knowledgeSourceSchema, organizedNoteSchema } from './knowledge-source.js';
 import type { KnowledgeSource, OrganizedNote } from './knowledge-source.js';
 import type { Intake, IntakeResult, KnowledgeAction, KnowledgeIntakeRepositoryPort } from './knowledge-intake.port.js';
 
@@ -71,17 +71,17 @@ export class PrismaKnowledgeIntakeRepository implements KnowledgeIntakeRepositor
   }
 
   async claim(token: string) {
-    await this.db.knowledgeTopic.upsert({ where: { id: PILOT_TOPIC.id }, update: {}, create: { id: PILOT_TOPIC.id } });
+    await this.db.knowledgeTopic.upsert({ where: { id: KNOWLEDGE_TOPIC.id }, update: {}, create: { id: KNOWLEDGE_TOPIC.id } });
     return this.db.$transaction(async tx => {
       const now = new Date();
-      const lock = await tx.knowledgeTopic.updateMany({ where: { id: PILOT_TOPIC.id, OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }] }, data: { leaseToken: token, leaseUntil: new Date(Date.now() + 60_000) } });
+      const lock = await tx.knowledgeTopic.updateMany({ where: { id: KNOWLEDGE_TOPIC.id, OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }] }, data: { leaseToken: token, leaseUntil: new Date(Date.now() + 60_000) } });
       if (!lock.count) return null;
       const row = await tx.knowledgeIntake.findFirst({ where: { retryAt: { lte: now }, OR: [
         { state: 'working' }, { state: 'pending', action: { not: null } },
         { state: 'pending', action: null, updatedAt: { lt: new Date(Date.now() - 60_000) } },
       ] }, orderBy: { sequence: 'asc' } });
       if (!row) {
-        await tx.knowledgeTopic.update({ where: { id: PILOT_TOPIC.id }, data: { leaseToken: null, leaseUntil: null } });
+        await tx.knowledgeTopic.update({ where: { id: KNOWLEDGE_TOPIC.id }, data: { leaseToken: null, leaseUntil: null } });
         return null;
       }
       return decode(await tx.knowledgeIntake.update({ where: { id: row.id }, data: { state: 'working', attempts: { increment: 1 } } }));
@@ -89,15 +89,15 @@ export class PrismaKnowledgeIntakeRepository implements KnowledgeIntakeRepositor
   }
 
   async renew(token: string) {
-    return (await this.db.knowledgeTopic.updateMany({ where: { id: PILOT_TOPIC.id, leaseToken: token, leaseUntil: { gt: new Date() } }, data: { leaseUntil: new Date(Date.now() + 60_000) } })).count === 1;
+    return (await this.db.knowledgeTopic.updateMany({ where: { id: KNOWLEDGE_TOPIC.id, leaseToken: token, leaseUntil: { gt: new Date() } }, data: { leaseUntil: new Date(Date.now() + 60_000) } })).count === 1;
   }
   async release(token: string) {
-    await this.db.knowledgeTopic.updateMany({ where: { id: PILOT_TOPIC.id, leaseToken: token }, data: { leaseToken: null, leaseUntil: null } });
+    await this.db.knowledgeTopic.updateMany({ where: { id: KNOWLEDGE_TOPIC.id, leaseToken: token }, data: { leaseToken: null, leaseUntil: null } });
   }
 
   private async fenced(token: string, operation: (tx: Prisma.TransactionClient) => Promise<void>) {
     await this.db.$transaction(async tx => {
-      const lock = await tx.knowledgeTopic.updateMany({ where: { id: PILOT_TOPIC.id, leaseToken: token, leaseUntil: { gt: new Date() } }, data: { leaseUntil: new Date(Date.now() + 60_000) } });
+      const lock = await tx.knowledgeTopic.updateMany({ where: { id: KNOWLEDGE_TOPIC.id, leaseToken: token, leaseUntil: { gt: new Date() } }, data: { leaseUntil: new Date(Date.now() + 60_000) } });
       if (!lock.count) throw new Error('KNOWLEDGE_LEASE_LOST');
       await operation(tx);
     });
@@ -114,7 +114,7 @@ export class PrismaKnowledgeIntakeRepository implements KnowledgeIntakeRepositor
         if (newer) state = 'superseded';
       }
       await tx.knowledgeIntake.update({ where: { id }, data: { state, action, result: asJson(result), errorCode: null, version: { increment: 1 } } });
-      if (revision) await tx.knowledgeTopic.update({ where: { id: PILOT_TOPIC.id }, data: { revision } });
+      if (revision) await tx.knowledgeTopic.update({ where: { id: KNOWLEDGE_TOPIC.id }, data: { revision } });
     });
   }
   async fail(id: string, token: string, errorCode: string, deferred: boolean) {
@@ -133,5 +133,5 @@ export class PrismaKnowledgeIntakeRepository implements KnowledgeIntakeRepositor
       return (decoded.sources ?? []).map((source, index) => ({ source, organized: decoded.organized![index]! }));
     });
   }
-  async publication() { return (await this.db.knowledgeTopic.findUnique({ where: { id: PILOT_TOPIC.id } }))?.revision ?? null; }
+  async publication() { return (await this.db.knowledgeTopic.findUnique({ where: { id: KNOWLEDGE_TOPIC.id } }))?.revision ?? null; }
 }

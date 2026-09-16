@@ -27,7 +27,7 @@ import {
 import { KnowledgeAttachments, KnowledgeIntakePanel } from '../../features/hermes-knowledge/KnowledgeIntakePanel';
 import { useKnowledgeIntake } from '../../features/hermes-knowledge/useKnowledgeIntake';
 
-import type { HermesChatPanelProps, HermesPanelMessage, HermesConsultationSuggestion } from './HermesChatPanel';
+import type { HermesChatPanelProps, HermesPanelMessage, HermesConsultationSuggestion, HermesKnowledgeMode } from './HermesChatPanel';
 import type { BusinessHermesChatEvidence } from '../../api/domains/assembly';
 
 import './hermes-floating-chat.css';
@@ -124,6 +124,7 @@ export function HermesFloatingChat() {
     return clampPosition(initialViewport.width - ICON_SIZE - 22, initialViewport.height - ICON_SIZE - 22, initialViewport);
   });
   const [open, setOpen] = useState(false);
+  const [knowledgeMode, setKnowledgeMode] = useState<HermesKnowledgeMode>('search');
   const [isPanelExpanded, setIsPanelExpanded] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [draft, setDraft] = useState('');
@@ -146,6 +147,10 @@ export function HermesFloatingChat() {
   const [isDocumentVisible, setIsDocumentVisible] = useState(
     () => typeof document === 'undefined' || document.visibilityState === 'visible'
   );
+  const draftRevisionRef = useRef(0);
+  const knowledgeModeRevisionRef = useRef(0);
+  const knowledgeModeRef = useRef(knowledgeMode);
+  knowledgeModeRef.current = knowledgeMode;
   const [clientKey, setClientKey] = useState(() => getResolvedClientKey());
   const clientKeyRef = useRef(clientKey);
   const iconRef = useRef<HTMLButtonElement | null>(null);
@@ -176,7 +181,7 @@ export function HermesFloatingChat() {
     () => `${token ?? 'anonymous'}:${user?.id ?? 'anonymous'}:${clientKey}:${location.pathname}:${location.search}`,
     [clientKey, location.pathname, location.search, token, user?.id]
   );
-  const knowledge = useKnowledgeIntake(identity, activeConsultation?.id ?? null, open);
+  const knowledge = useKnowledgeIntake(identity, activeConsultation?.id ?? null, open && knowledgeMode === 'knowledge');
 
   const invalidateChatRequest = useCallback(() => {
     abortRef.current?.abort();
@@ -342,6 +347,16 @@ export function HermesFloatingChat() {
       return !current;
     });
   }, [closeScanner, ensureCurrentClientKey]);
+
+  const handleKnowledgeModeChange = useCallback((mode: HermesKnowledgeMode) => {
+    knowledgeModeRevisionRef.current += 1;
+    setKnowledgeMode(mode);
+  }, []);
+
+  const handleDraftChange = useCallback((value: string) => {
+    draftRevisionRef.current += 1;
+    setDraft(value);
+  }, []);
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -606,12 +621,22 @@ export function HermesFloatingChat() {
 
   const sendMessage = useCallback(async (messageOverride?: string, options?: { selection?: { prompt: string; option: string }; displayContent?: string; scanValue?: string; skipKnowledge?: boolean }) => {
     const content = (typeof messageOverride === 'string' ? messageOverride : draft).trim();
-    if ((!content && !knowledge.files.length) || isBusy || knowledge.busy) return;
+    const hasKnowledgeFiles = knowledgeMode === 'knowledge' && knowledge.files.length > 0;
+    if ((!content && !hasKnowledgeFiles) || isBusy || (knowledgeMode === 'knowledge' && knowledge.busy)) return;
     if (!ensureCurrentClientKey()) return;
-    if (!options?.selection && !options?.scanValue && !options?.skipKnowledge) {
+    if (knowledgeMode === 'knowledge' && !options?.selection && !options?.scanValue && !options?.skipKnowledge) {
+      const draftRevision = draftRevisionRef.current;
+      const knowledgeModeRevision = knowledgeModeRevisionRef.current;
       try {
         const handled = await knowledge.receive(content);
-        if (handled !== false) { if (handled === true) setDraft(''); return; }
+        const canClearDraft = draftRevisionRef.current === draftRevision
+          && knowledgeModeRevisionRef.current === knowledgeModeRevision
+          && knowledgeModeRef.current === knowledgeMode;
+        if (handled === true) { if (canClearDraft) setDraft(''); return; }
+        if (handled === null) return;
+        if (knowledge.enabled) { if (canClearDraft) setDraft(''); return; }
+        setError('ナレッジ機能を利用できません。');
+        return;
       } catch { return; }
     }
     if (!content) return;
@@ -764,7 +789,7 @@ export function HermesFloatingChat() {
         setActivityStatus(null);
       }
     }
-  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, messages, replaceConsultationInList, resetConversation, knowledge]);
+  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, knowledge, knowledgeMode, messages, replaceConsultationInList, resetConversation]);
 
   const handleScanSuccess = useCallback((value: string) => {
     closeScanner();
@@ -858,13 +883,15 @@ export function HermesFloatingChat() {
     } finally { setFeedbackBusy(false); }
   };
   const panelProps: HermesChatPanelProps = {
-    conversationExtension: knowledge.enabled ? <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
+    knowledgeMode,
+    onKnowledgeModeChange: handleKnowledgeModeChange,
+    conversationExtension: knowledgeMode === 'knowledge' && knowledge.enabled ? <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
       onChoose={(item, action) => void knowledge.choose(item, action)} onDelegate={text => void sendMessage(text, { skipKnowledge: true })} /> : null,
-    attachmentControl: knowledge.enabled ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,
+    attachmentControl: knowledgeMode === 'knowledge' && knowledge.enabled ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,
     mode: consultationMode === 'legacy' ? 'legacy' : 'consultations',
     messages,
     draft,
-    isBusy: isBusy || knowledge.busy,
+    isBusy: isBusy || (knowledgeMode === 'knowledge' && knowledge.busy),
     error,
     authRequired,
     consultations,
@@ -876,11 +903,11 @@ export function HermesFloatingChat() {
     consultationError,
     feedbackBusy,
     onFeedback: (id, verdict) => void recordFeedback(id, verdict),
-    onDraftChange: setDraft,
+    onDraftChange: handleDraftChange,
     onSend: sendMessage,
     onReset: () => { knowledge.reset(); resetActiveConversation(); },
     onClose: closePanel,
-    onStop: knowledge.busy ? undefined : stopRequest,
+    onStop: knowledgeMode === 'knowledge' && knowledge.busy ? undefined : stopRequest,
     isExpanded: isPanelExpanded,
     onToggleSize: togglePanelSize,
     onNewConsultation: () => { knowledge.reset(); void createConsultation(); },
@@ -890,7 +917,7 @@ export function HermesFloatingChat() {
     suggestion: consultationSuggestion,
     onAnswerSuggestion: respondToSuggestion,
     selectionNotice,
-    activityStatus: knowledge.busy ? '入力を受け付けています…' : activityStatus
+    activityStatus: knowledgeMode === 'knowledge' && knowledge.busy ? '入力を受け付けています…' : activityStatus
   };
 
   return (
