@@ -148,6 +148,66 @@ describe('ItemInventoryService safety boundaries', () => {
     });
     expect(photoCreate).toHaveBeenCalledTimes(1);
   });
+
+  it('binds an existing item to a compartment and records its initial stock', async () => {
+    const item = { id: 'item-1', itemCode: 'RI-2-TEST', name: '既存治具' };
+    const drawer = {
+      id: 'drawer-1',
+      shelfId: 'shelf-1',
+      drawerNumber: 3,
+      shelf: { area: '30007_KSJP-55', shelfNumber: 2 },
+    };
+    const compartment = { id: 'compartment-1', drawerId: drawer.id, inventoryItemId: item.id, stockQuantity: 4 };
+    const tag = { id: 'tag-1', uid: 'item-uid', kind: 'ITEM', compartmentId: compartment.id };
+    const transaction = { id: 'transaction-1', action: 'REGISTER' };
+    const tx = {
+      employee: { findFirst: vi.fn().mockResolvedValue(null) },
+      item: { findFirst: vi.fn().mockResolvedValue(null) },
+      measuringInstrumentTag: { findFirst: vi.fn().mockResolvedValue(null) },
+      riggingGearTag: { findFirst: vi.fn().mockResolvedValue(null) },
+      inventoryItem: { findUnique: vi.fn().mockResolvedValue(item) },
+      inventoryDrawer: { findUnique: vi.fn().mockResolvedValue(drawer) },
+      inventoryCompartment: { create: vi.fn().mockResolvedValue(compartment) },
+      inventoryNfcTag: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue(tag),
+      },
+      inventoryTransaction: { create: vi.fn().mockResolvedValue(transaction) },
+    };
+    const db = {
+      $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)),
+    };
+    const service = new ItemInventoryService(db as never);
+
+    await expect(service.bindCompartment({
+      itemId: item.id,
+      shelfId: drawer.shelfId,
+      drawerId: drawer.id,
+      itemTagUid: ' item-uid ',
+      initialQuantity: 4,
+      actor: { clientId: 'terminal-1', performedByUserId: 'user-1' },
+    })).resolves.toMatchObject({ item, compartment, tag });
+
+    expect(tx.inventoryCompartment.create).toHaveBeenCalledWith({
+      data: { drawerId: drawer.id, inventoryItemId: item.id, stockQuantity: 4 },
+    });
+    expect(tx.inventoryNfcTag.create).toHaveBeenCalledWith({
+      data: { uid: 'item-uid', kind: 'ITEM', compartmentId: compartment.id },
+    });
+    expect(tx.inventoryTransaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'REGISTER',
+        inventoryItemId: item.id,
+        compartmentId: compartment.id,
+        clientId: 'terminal-1',
+        performedByUserId: 'user-1',
+        delta: 4,
+        beforeQuantity: 0,
+        afterQuantity: 4,
+        details: { binding: 'EXISTING_ITEM', itemTagUid: 'item-uid' },
+      }),
+    });
+  });
 });
 
 function inventoryState(stockQuantity = 10) {
