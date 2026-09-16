@@ -9,6 +9,7 @@ import { GmailRequestGateService, GmailRateLimitedDeferredError } from '../gmail
 import { AdaptiveRateController } from '../adaptive-rate-controller.js';
 import {
   assertCsvGmailSubjectPatternAllowed,
+  isItemInventoryGmailSubject,
   isWorkInstructionGmailSubject,
 } from '../../gmail/gmail-subject-reservation.policy.js';
 
@@ -247,11 +248,11 @@ export class GmailStorageProvider implements StorageProvider {
         seen.add(messageId);
         const message = await this.gmailClient.getMessage(messageId);
         const subject = message?.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject')?.value ?? '';
-        if (isWorkInstructionGmailSubject(subject)) {
+        if (isWorkInstructionGmailSubject(subject) || isItemInventoryGmailSubject(subject)) {
           ownedSeen = true;
           logger?.info(
             { messageId, messageSubject: subject },
-            '[GmailStorageProvider] Work-instruction message is owned by dedicated importer, skipping CSV path'
+            '[GmailStorageProvider] Dedicated importer message is owned by another importer, skipping CSV path'
           );
           continue;
         }

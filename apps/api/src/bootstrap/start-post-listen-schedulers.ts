@@ -8,6 +8,7 @@ import { getCsvImportScheduler } from '../services/imports/csv-import-scheduler.
 import { getKioskDocumentGmailScheduler } from '../services/kiosk-documents/kiosk-document-gmail.scheduler.js';
 import { getKioskDocumentOcrScheduler } from '../services/kiosk-documents/kiosk-document-ocr.scheduler.js';
 import { getWorkInstructionGmailScheduler } from '../services/work-instructions/work-instruction-gmail.scheduler.js';
+import { getItemInventoryScheduler } from '../services/item-inventory/item-inventory.scheduler.js';
 import { getGmailTrashCleanupScheduler } from '../services/gmail/gmail-trash-cleanup.scheduler.js';
 import { getDueManagementTuningOrchestrator } from '../services/production-schedule/auto-tuning/tuning-orchestrator.service.js';
 import { getAlertsDispatcher } from '../services/alerts/alerts-dispatcher.js';
@@ -189,6 +190,16 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       },
       stop: () => {
         getWorkInstructionGmailScheduler().stop();
+      },
+    },
+    {
+      name: 'item-inventory-gmail',
+      start: async () => {
+        await getItemInventoryScheduler().start();
+        logger.info('Item inventory Gmail scheduler started');
+      },
+      stop: () => {
+        getItemInventoryScheduler().stop();
       },
     },
     {

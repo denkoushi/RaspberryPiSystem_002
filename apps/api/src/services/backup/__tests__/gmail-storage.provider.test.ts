@@ -101,6 +101,37 @@ describe('GmailStorageProvider', () => {
       expect(mockGmailApiClient.archiveMessage).not.toHaveBeenCalled();
     });
 
+    it('skips item-inventory messages before downloading a broad CSV match', async () => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        subjectPattern: 'CSV Import',
+        oauthService: mockOAuthService,
+        onTokenUpdate,
+      });
+      mockGmailApiClient.searchMessages.mockResolvedValueOnce(['inventory-message']);
+      mockGmailApiClient.searchMessagesAll.mockResolvedValueOnce(['inventory-message', 'csv-message']);
+      mockGmailApiClient.getMessage.mockImplementation((messageId: string) => Promise.resolve({
+        id: messageId,
+        threadId: messageId,
+        labelIds: ['UNREAD'],
+        snippet: '',
+        payload: {
+          headers: [{
+            name: 'Subject',
+            value: messageId === 'inventory-message' ? '[ItemlistRaspi-photo] 2' : 'CSV Import',
+          }],
+          parts: [],
+        },
+      }));
+      mockGmailApiClient.getFirstAttachment.mockResolvedValueOnce({ buffer: Buffer.from('csv'), filename: 'items.csv' });
+      mockGmailApiClient.archiveMessage.mockResolvedValueOnce(undefined);
+
+      await expect(provider.download('CSV Import')).resolves.toEqual(Buffer.from('csv'));
+      expect(mockGmailApiClient.getFirstAttachment).toHaveBeenCalledWith('csv-message');
+      expect(mockGmailApiClient.getFirstAttachment).not.toHaveBeenCalledWith('inventory-message');
+    });
+
     it('should download file from Gmail using subject pattern', async () => {
       const provider = new GmailStorageProvider({
         oauth2Client,

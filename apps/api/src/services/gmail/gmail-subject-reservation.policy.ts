@@ -12,6 +12,9 @@ export const GMAIL_SUBJECT_PATTERN_RESERVED_CODE = 'GMAIL_SUBJECT_PATTERN_RESERV
 export const WORK_INSTRUCTION_GMAIL_SUBJECT_TOKENS = [
   '[Kakou-Dandori-photo]',
 ] as const;
+export const ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS = [
+  '[ItemlistRaspi-photo]',
+] as const;
 
 const RESERVED_PATTERN_MESSAGE =
   '「DocumentASM」は組立手順書専用の件名です。このメールに一致するCSV件名パターンは登録できません。';
@@ -57,6 +60,14 @@ export function assertCsvGmailSubjectPatternAllowed(pattern: string): void {
 export function isWorkInstructionGmailSubject(subject: string): boolean {
   const normalized = subject.normalize('NFC').trim();
   return WORK_INSTRUCTION_GMAIL_SUBJECT_TOKENS.some((token) =>
+    normalized === token || normalized.startsWith(`${token} `) || normalized.startsWith(`${token}\t`)
+  );
+}
+
+/** Return true for the inventory token and its optional variable suffix. */
+export function isItemInventoryGmailSubject(subject: string): boolean {
+  const normalized = subject.normalize('NFC').trim();
+  return ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS.some((token) =>
     normalized === token || normalized.startsWith(`${token} `) || normalized.startsWith(`${token}\t`)
   );
 }

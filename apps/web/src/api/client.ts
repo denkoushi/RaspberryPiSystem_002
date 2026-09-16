@@ -29,6 +29,7 @@ export * from './domains/csv-visualization';
 export * from './domains/assembly';
 export * from './domains/torque-wrenches';
 export * from './domains/torque-training';
+export * from './domains/item-inventory';
 
 // Compatibility re-exports: feature types (do not add new ones)
 export type {

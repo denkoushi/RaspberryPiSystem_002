@@ -51,6 +51,32 @@ describe('findEligibleKioskMessages', () => {
     expect(selected.scanned).toBe(26);
     expect(searchMessagesAll).toHaveBeenCalledTimes(1);
   });
+
+  it('also skips item-inventory messages from a broad kiosk search', async () => {
+    const initialIds = ['inventory-owned'];
+    const validId = 'kiosk-valid';
+    const getMessage = vi.fn(async (messageId: string) => ({
+      id: messageId,
+      threadId: messageId,
+      labelIds: ['UNREAD'],
+      snippet: '',
+      internalDateMs: 1,
+      payload: {
+        headers: [{ name: 'Subject', value: messageId === validId ? 'DocumentASM' : '[ItemlistRaspi-photo] 2' }],
+      },
+    }));
+    const searchMessagesAll = vi.fn(async () => [...initialIds, validId]);
+
+    const selected = await findEligibleKioskMessages(
+      { getMessage, searchMessagesAll },
+      'subject:"DocumentASM" is:unread',
+      initialIds
+    );
+
+    expect(selected.ids).toEqual([validId]);
+    expect(selected.scanned).toBe(2);
+    expect(searchMessagesAll).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('buildGmailDedupeKey', () => {

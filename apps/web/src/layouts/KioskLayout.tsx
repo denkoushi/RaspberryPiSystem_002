@@ -16,6 +16,7 @@ import {
   VIEWPORT_HEIGHT_FULL,
   VIEWPORT_MIN_HEIGHT_FULL
 } from '../constants/viewportLayout';
+import { InventoryNfcRouter } from '../features/kiosk/InventoryNfcRouter';
 import {
   KIOSK_IMMERSIVE_HEADER_BORDER_CLASS,
   KIOSK_IMMERSIVE_HEADER_FIXED_CLASS,
@@ -221,6 +222,7 @@ export function KioskLayout() {
     >
       {/* 設定変更を監視してリダイレクト */}
       <KioskRedirect />
+      <InventoryNfcRouter />
       {deployStatus?.preNotice ? (
         <KioskDeployPreNotice runId={preNoticeRunId} scheduledAt={preNoticeScheduledAt} />
       ) : null}
