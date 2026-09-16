@@ -1,26 +1,26 @@
 {
   "artifacts": {
-    "manual.html": "6462e053c998b00eb7762d10e74027c1ddb8c392a0022c111eedf591d4f97803",
-    "screens/edit-advanced-point.png": "ad8131211fb52c5f10d81f313f91a1980921c61a704c6c2397c1a6081290f8e1",
-    "screens/edit-basics.png": "5d9c95c27fbc73f1cdd3168be780bbd6256e3628c867581bd128e112d084b14b",
-    "screens/edit-group-history.png": "80dad0c05cc965287239d5a5bd44a065a668808536401bfbb7873044faeb0a88",
-    "screens/edit-point-management.png": "5d9c95c27fbc73f1cdd3168be780bbd6256e3628c867581bd128e112d084b14b",
-    "screens/edit-required-point.png": "5d9c95c27fbc73f1cdd3168be780bbd6256e3628c867581bd128e112d084b14b",
-    "screens/edit-trial-report.png": "5d9c95c27fbc73f1cdd3168be780bbd6256e3628c867581bd128e112d084b14b",
-    "screens/edit-visual-source.png": "8f983379761cd11bb08a0f323c92c911952c70e49adef5fc05c9c469a89af35e",
-    "screens/library-entry-search.png": "6352e734edbfb441c1fb47895811da76c15bbf34880f3c01b360496237ecce0a",
-    "screens/library-template-management.png": "6352e734edbfb441c1fb47895811da76c15bbf34880f3c01b360496237ecce0a",
-    "screens/library-visual-management.png": "62926d4b8659139e2166c1406661e91804d880bc6be376008fbe1d01d4ea5589",
-    "sheets/edit-advanced-point.png": "758387d739134c70995ce9fb82aae380c1ded2541a99d3d1587b1615f3a800d8",
-    "sheets/edit-basics.png": "b05fdf903173e55c33252b44ae81753a10a5637bbeeda888811600b9f3b7b567",
-    "sheets/edit-group-history.png": "826c59268b4baf7df5cb4bcafcab4042b3f9b08c3978495631b10e9844d1953e",
-    "sheets/edit-point-management.png": "81b9b0001528675e88acfdf76d8fcec0713446843c32d32cfb75e7f7239bb3be",
-    "sheets/edit-required-point.png": "6b6ecc309c39fa91dd7a549459b37c99c6bd9bd0f36d1696c0d2f4ce1bf181d3",
-    "sheets/edit-trial-report.png": "8ecdeff0cae5db3534c67256fc2569f78e5f6a727143d7e45dc4bd4a62a46523",
-    "sheets/edit-visual-source.png": "e78fcccec9b52989088bfcdd397ffc816a9e1f56bda382f0b3e60c6a10dfe30e",
-    "sheets/library-entry-search.png": "4e1952aeba29dce5cca795c1d55232ad24f0af763307490cc1d6039b06f8dd20",
-    "sheets/library-template-management.png": "2934ec0cf940b0a22ac167132b8087f670240c9fe6281a6bfe4bf180ca45ce63",
-    "sheets/library-visual-management.png": "d1ecb646fa6044ae9807b0ccb7b7c2ad6e9c836a48df179c5c0f4d0a272835ae"
+    "manual.html": "765d7a89bba9b454c2687ff304258d023fe022c4991f614a8f131885a8b2ef18",
+    "screens/edit-advanced-point.png": "0434398ea8b51bbe1a843886da4118bd120bdf52911790fb98bb2f0af06435ad",
+    "screens/edit-basics.png": "cc2eaec92be1ba1e7763709480ac44d75c748523402a0735354165eaa4aa4e3f",
+    "screens/edit-group-history.png": "9cea9accdac4d3e1e0cbd3c977832a7526bb7c423be941435332449a9104b351",
+    "screens/edit-point-management.png": "cc2eaec92be1ba1e7763709480ac44d75c748523402a0735354165eaa4aa4e3f",
+    "screens/edit-required-point.png": "cc2eaec92be1ba1e7763709480ac44d75c748523402a0735354165eaa4aa4e3f",
+    "screens/edit-trial-report.png": "cc2eaec92be1ba1e7763709480ac44d75c748523402a0735354165eaa4aa4e3f",
+    "screens/edit-visual-source.png": "fa3d4b62b981752bcdf4f878bee472ef35718331d2d0c76446de2de9f31503b5",
+    "screens/library-entry-search.png": "b3d87f3f2688d514e026135e746e60c2f2cc774800ca410d166b684e1d69154f",
+    "screens/library-template-management.png": "b3d87f3f2688d514e026135e746e60c2f2cc774800ca410d166b684e1d69154f",
+    "screens/library-visual-management.png": "07c349d26c4a8e280a78418e49888b37a654c8cd2daf12b84b2a45715f92d7a8",
+    "sheets/edit-advanced-point.png": "2e772ed17bef232582c46c7880645458499d02ecb0dff35b33c1cfe3e41ed080",
+    "sheets/edit-basics.png": "45810904c92e092ec741055d308d6b697ea86100203b652829b6e98bcda37688",
+    "sheets/edit-group-history.png": "6fcd990d61849bf18387ae92ec866f3a77e7e0bed3b0b4585e6b3d6e96335761",
+    "sheets/edit-point-management.png": "af8cdcaff974d621e764193a5e249929998b21e0d279a0241d1af76efc63d4b7",
+    "sheets/edit-required-point.png": "95a78e431d982bec1a98586a7d7fe49a4d335fee1d7f747bf91ffc060dba9a22",
+    "sheets/edit-trial-report.png": "72cca4f55bb6ff5d7c3563fef5aabaacfa0efcfc9ce2446b2387d30f74c2924a",
+    "sheets/edit-visual-source.png": "12f49bb028716e01a95519c63e0ad625d2dbbd37b3b2e34c0562ab3b4f0e4f12",
+    "sheets/library-entry-search.png": "c10c2671be7ed89c37cc1b1cd559e570ccca82138fbebe2c95515f0a29fd499e",
+    "sheets/library-template-management.png": "52a9f7bcfe872a75e4ce55917a7eea33a6cad40db14440cd1753872f657ba7b0",
+    "sheets/library-visual-management.png": "fb1fbcb14e389052d4527e080eac4c70475d607e9977f009f096c7aca2d28d06"
   },
   "browserVersion": "141.0.7390.37",
   "definitionSha256": "b07cc7dbe4f1b9d7f004d8c708baf828731fac3bd12419d402eddae24127ee5e",
@@ -663,7 +663,7 @@
       }
     ]
   },
-  "htmlSha256": "6462e053c998b00eb7762d10e74027c1ddb8c392a0022c111eedf591d4f97803",
+  "htmlSha256": "765d7a89bba9b454c2687ff304258d023fe022c4991f614a8f131885a8b2ef18",
   "schemaVersion": 1,
-  "sourceSha256": "e818fd0778a4d20a7de6b86e6decd90e8dd4322502602c1b24a474107e783092"
+  "sourceSha256": "083dfe317ea92f1ce959cab91eb8c4cc72fbf874326508620588596910767b20"
 }
