@@ -22,8 +22,8 @@ export function intakeResponse(row: Intake) {
     ...(row.result?.report ? { report: row.result.report } : {}),
     errorCode: row.errorCode,
     choices: row.state === 'choice' ? [
-      { id: 'save', label: '実技準備の記録に残す' }, { id: 'ask', label: '実技準備について調べる' },
-      { id: 'report', label: '実技準備のレポートにする' }, { id: 'delegate', label: '別の業務について相談する' },
+      { id: 'save', label: 'ナレッジの記録に残す' }, { id: 'ask', label: 'ナレッジについて調べる' },
+      { id: 'report', label: 'ナレッジのレポートにする' }, { id: 'delegate', label: '別の業務について相談する' },
     ] : [],
   };
 }

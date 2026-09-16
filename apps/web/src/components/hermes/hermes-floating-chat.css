@@ -114,6 +114,7 @@
 
 .hermes-chat-panel__header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -132,7 +133,48 @@
   font-weight: 700;
 }
 
-.hermes-chat-panel__header > div:first-child {
+.hermes-chat-panel__header-main {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hermes-chat-panel__mode-selector {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid rgba(156, 241, 185, 0.3);
+  border-radius: 8px;
+  background: rgba(2, 28, 21, 0.5);
+}
+
+.hermes-chat-panel__mode {
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 6px;
+  color: #9bc7ac;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hermes-chat-panel__mode:hover {
+  color: #e8fff0;
+  background: rgba(113, 255, 161, 0.12);
+}
+
+.hermes-chat-panel__mode--selected {
+  color: #082218;
+  background: #9cf1b9;
+}
+
+.hermes-chat-panel__header-title {
   min-width: 0;
 }
 
@@ -144,8 +186,16 @@
 
 .hermes-chat-panel__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
+}
+
+.hermes-chat-panel__icon {
+  display: block;
+  width: 17px;
+  height: 17px;
 }
 
 .hermes-chat-panel__action {

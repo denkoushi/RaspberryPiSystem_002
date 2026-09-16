@@ -11,6 +11,9 @@ const record: ReadyKnowledgeSource = {
 describe('Knowledge source projection', () => {
   it('retains unabridged originals and source identity alongside AI text', () => {
     const result = renderKnowledgeDocument([record]);
+    expect(result.report.title).toBe('ナレッジ');
+    expect(result.markdown).toContain('# ナレッジ');
+    expect(result.markdown).not.toContain('金属塗装');
     expect(result.markdown).toContain('> マスキングを先に練習。\n> 乾燥時間は要確認。');
     expect(result.markdown).toContain(record.source.id);
     expect(result.markdown).toContain('AIが整理した内容');
