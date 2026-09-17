@@ -7,6 +7,7 @@ describe('kiosk-header-tab-order normalization', () => {
     expect(normalizeKioskHeaderTabOrder(['leader_order_board', 'unknown', 'borrow'])).toEqual([
       'leader_order_board',
       'borrow',
+      'inventory_settings',
       'self_inspection',
       'instruments_borrow',
       'rigging_borrow',
@@ -34,6 +35,7 @@ describe('kiosk-header-tab-order normalization', () => {
     ).toEqual([
       'borrow',
       'self_inspection',
+      'inventory_settings',
       'instruments_borrow',
       'rigging_borrow',
       'production_schedule',
