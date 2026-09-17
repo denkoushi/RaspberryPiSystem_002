@@ -245,6 +245,11 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { result: await services.inventory.deleteInventoryItemPhoto(itemId, photoId) };
   });
 
+  app.delete('/item-inventory/items/:id', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = idParams.parse(request.params);
+    return { result: await services.inventory.deleteItem(id) };
+  });
+
   app.put('/item-inventory/items/:itemId/photos/order', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { itemId } = z.object({ itemId: z.string().uuid() }).parse(request.params);
     const body = z.object({ photoIds: z.array(z.string().uuid()) }).parse(request.body ?? {});

@@ -122,6 +122,13 @@ export async function deleteInventoryItemPhoto(itemId: string, photoId: string, 
   return data.result;
 }
 
+export async function deleteInventoryItem(itemId: string, accessPassword?: string) {
+  const { data } = await api.delete<{ result: unknown }>(`/item-inventory/items/${itemId}`, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
+}
+
 export async function reorderInventoryItemPhotos(itemId: string, photoIds: string[], accessPassword?: string) {
   const { data } = await api.put<{ result: unknown }>(`/item-inventory/items/${itemId}/photos/order`, { photoIds }, {
     headers: inventorySettingsHeaders(accessPassword)

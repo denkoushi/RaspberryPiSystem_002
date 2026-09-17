@@ -30,7 +30,7 @@ const validPacket = {
   warnings: [],
 };
 
-function createFakeDb(records: Map<string, { outcome: string; nextRetryAt: Date | null; updatedAt: Date; gmailMessageId?: string }>) {
+function createFakeDb(records: Map<string, { outcome: string; nextRetryAt: Date | null; updatedAt: Date; gmailMessageId?: string; payloadId?: string | null; errorMessage?: string | null; mailCleanupPending?: boolean; mailCleanupCompleted?: boolean }>) {
   const messageStore = new Map(records);
   const payloadCreate = vi.fn().mockResolvedValue({ id: 'payload-1' });
   const db = {
@@ -50,13 +50,14 @@ function createFakeDb(records: Map<string, { outcome: string; nextRetryAt: Date 
         messageStore.set(key, value);
         return value;
       }),
+      findMany: vi.fn().mockResolvedValue([]),
     },
     inventoryImportPayload: {
       findUnique: vi.fn().mockResolvedValue(null),
       create: payloadCreate,
     },
   };
-  return { db, payloadCreate };
+  return { db, payloadCreate, messageStore };
 }
 
 function config() {
@@ -75,6 +76,8 @@ describe('ItemInventoryGmailIngestionService', () => {
       searchMessagesAll: vi.fn().mockResolvedValue(ids),
       getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
       getAttachment: vi.fn(),
+      markAsRead: vi.fn().mockResolvedValue(undefined),
+      trashMessage: vi.fn().mockResolvedValue(undefined),
     };
     const service = new ItemInventoryGmailIngestionService(vi.fn().mockResolvedValue(gmail), db as never);
 
@@ -82,6 +85,8 @@ describe('ItemInventoryGmailIngestionService', () => {
     expect(gmail.getMessage).toHaveBeenCalledTimes(1);
     expect(gmail.getMessage).toHaveBeenCalledWith('valid-message');
     expect(payloadCreate).toHaveBeenCalledTimes(1);
+    expect(gmail.markAsRead).toHaveBeenCalledWith('valid-message');
+    expect(gmail.trashMessage).toHaveBeenCalledWith('valid-message');
   });
 
   it('allows an explicit retry to recover a PROCESSING record', async () => {
@@ -94,10 +99,53 @@ describe('ItemInventoryGmailIngestionService', () => {
       searchMessagesAll: vi.fn(),
       getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
       getAttachment: vi.fn(),
+      markAsRead: vi.fn().mockResolvedValue(undefined),
+      trashMessage: vi.fn().mockResolvedValue(undefined),
     };
     const service = new ItemInventoryGmailIngestionService(vi.fn().mockResolvedValue(gmail), db as never);
 
     await expect(service.retryRecord('processing-message', { config: config(), allowWait: true })).resolves.toMatchObject({ pending: 1 });
     expect(payloadCreate).toHaveBeenCalledTimes(1);
+    expect(gmail.trashMessage).toHaveBeenCalledWith('processing-message');
+  });
+
+  it('does not trash a message whose manifest cannot be ingested', async () => {
+    const { db } = createFakeDb(new Map());
+    resolvePacketMock.mockRejectedValueOnce(new Error('manifest is invalid'));
+    const gmail = {
+      searchMessagesAll: vi.fn().mockResolvedValue(['invalid-message']),
+      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
+      getAttachment: vi.fn(),
+      markAsRead: vi.fn().mockResolvedValue(undefined),
+      trashMessage: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = new ItemInventoryGmailIngestionService(vi.fn().mockResolvedValue(gmail), db as never);
+
+    await expect(service.runOnce({ config: config(), allowWait: true })).resolves.toMatchObject({ retryable: 1 });
+    expect(gmail.markAsRead).not.toHaveBeenCalled();
+    expect(gmail.trashMessage).not.toHaveBeenCalled();
+  });
+
+  it('cleans up an existing successful record without re-importing its payload', async () => {
+    const existing = { gmailMessageId: 'old-success', outcome: 'PENDING', payloadId: 'payload-1', errorMessage: null, nextRetryAt: null, updatedAt: new Date() };
+    const { db, messageStore } = createFakeDb(new Map([['old-success', existing]]));
+    db.inventoryImportMessage.findMany.mockImplementation(async () => {
+      const record = messageStore.get('old-success');
+      return record?.mailCleanupCompleted ? [] : [record];
+    });
+    const gmail = {
+      searchMessagesAll: vi.fn().mockResolvedValue([]),
+      getMessage: vi.fn(),
+      getAttachment: vi.fn(),
+      markAsRead: vi.fn().mockResolvedValue(undefined),
+      trashMessage: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = new ItemInventoryGmailIngestionService(vi.fn().mockResolvedValue(gmail), db as never);
+
+    await expect(service.runOnce({ config: config(), allowWait: true })).resolves.toMatchObject({ pending: 1 });
+    await expect(service.runOnce({ config: config(), allowWait: true })).resolves.toMatchObject({ scanned: 0, processed: 0, pending: 0, duplicate: 0, skipped: 0 });
+    expect(gmail.getMessage).not.toHaveBeenCalled();
+    expect(gmail.trashMessage).toHaveBeenCalledTimes(1);
+    expect(messageStore.get('old-success')).toMatchObject({ mailCleanupCompleted: true, mailCleanupPending: false });
   });
 });

@@ -13,6 +13,7 @@ import {
   useInventoryLocations,
   useInventoryMutations,
 } from '../../api/hooks';
+import { InventoryPhotoDialog } from '../../components/kiosk/InventoryPhotoDialog';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 const inputClass = 'min-h-10 rounded-md border border-white/20 bg-slate-950/60 px-3 text-white placeholder:text-white/40 focus:border-sky-400 focus:outline-none';
@@ -100,7 +101,8 @@ export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string
   const selectedImport = imports.find((entry) => entry.id === selectedImportId) ?? null;
   const selectedImportPhotos = selectedImport?.photos ?? [];
   const photoEditingPending = mutations.deleteImportPhoto.isPending || mutations.reorderImportPhotos.isPending;
-  const registeredPhotoEditingPending = mutations.deleteItemPhoto.isPending || mutations.reorderItemPhotos.isPending;
+  const deleteItemPending = mutations.deleteItem?.isPending ?? false;
+  const registeredPhotoEditingPending = mutations.deleteItemPhoto.isPending || mutations.reorderItemPhotos.isPending || deleteItemPending;
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [draggedPhotoId, setDraggedPhotoId] = useState<string | null>(null);
   const [dragOverPhotoId, setDragOverPhotoId] = useState<string | null>(null);
@@ -121,6 +123,7 @@ export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string
   const [replacementUids, setReplacementUids] = useState<Record<string, string>>({});
   const [moveDrawers, setMoveDrawers] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
   const selectedImportSourceItemId = selectedImport?.sourceItemId;
   const areas = useMemo(
     () => Array.from(new Set([selectedImport?.area, ...locations.map((shelf) => shelf.area)].filter((area): area is string => Boolean(area)))),
@@ -133,8 +136,11 @@ export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string
       : Boolean(draft.shelfId && draft.drawerId && draft.itemTagUid.trim())
   );
   const isBindingReady = Boolean(binding.itemId && binding.shelfId && binding.drawerId && binding.itemTagUid.trim());
-  const isNewShelfReady = Boolean(newArea.trim()) && Number.isSafeInteger(newShelfNumber) && newShelfNumber >= 1;
-  const isNewDrawerReady = Boolean(newShelfId) && Number.isSafeInteger(newDrawerNumber) && newDrawerNumber >= 1;
+  const selectedShelf = locations.find((shelf) => shelf.id === newShelfId);
+  const duplicateShelf = locations.some((shelf) => shelf.area === newArea.trim() && shelf.shelfNumber === newShelfNumber);
+  const duplicateDrawer = Boolean(selectedShelf?.drawers.some((drawer) => drawer.drawerNumber === newDrawerNumber));
+  const isNewShelfReady = Boolean(newArea.trim()) && Number.isSafeInteger(newShelfNumber) && newShelfNumber >= 1 && !duplicateShelf;
+  const isNewDrawerReady = Boolean(newShelfId) && Number.isSafeInteger(newDrawerNumber) && newDrawerNumber >= 1 && !duplicateDrawer;
   const isQuantityTagReady = Boolean(quantityUid.trim()) && Number.isSafeInteger(quantity) && quantity >= 1;
 
   useEffect(() => {
@@ -250,6 +256,12 @@ export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string
     if (!window.confirm(`「${filename}」を登録済みアイテムから削除しますか？`)) return;
     setActionError(null);
     void mutations.deleteItemPhoto.mutateAsync({ itemId, photoId }).catch((error) => setActionError(errorText(error)));
+  };
+
+  const deleteRegisteredItem = (item: InventoryItem) => {
+    if (!mutations.deleteItem || !window.confirm(`「${item.name}」を登録済みアイテムから削除しますか？履歴は保持されます。`)) return;
+    setActionError(null);
+    void mutations.deleteItem.mutateAsync(item.id).catch((error) => setActionError(errorText(error)));
   };
 
   const dropRegisteredPhoto = (item: InventoryItem, targetPhotoId: string) => {
@@ -381,9 +393,11 @@ export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string
                           onDragOver={(event) => { event.preventDefault(); setDragOverPhotoId(photo.id); }}
                           onDrop={(event) => { event.preventDefault(); dropImportPhoto(photo.id); }}
                           onDragEnd={() => { setDraggedPhotoId(null); setDragOverPhotoId(null); }}
-                          className={`w-28 rounded border bg-slate-900/70 p-1.5 ${dragOverPhotoId === photo.id ? 'border-sky-400' : 'border-white/15'} ${draggedPhotoId === photo.id ? 'opacity-50' : ''}`}
+                          className={`w-24 rounded border bg-slate-900/70 p-1.5 ${dragOverPhotoId === photo.id ? 'border-sky-400' : 'border-white/15'} ${draggedPhotoId === photo.id ? 'opacity-50' : ''}`}
                         >
-                          <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-20 w-full rounded object-cover" />
+                          <button type="button" className="block w-full rounded focus:outline-none focus:ring-2 focus:ring-sky-300" aria-label={`${photo.filename}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.filename })}>
+                            <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-24 w-full rounded object-cover" />
+                          </button>
                           <figcaption className="truncate px-1 pt-1 text-xs text-white/70" title={photo.filename}>{index + 1}. {photo.filename}</figcaption>
                           <div className="mt-1 flex items-center gap-1">
                             <button type="button" className={keypadButtonClass} aria-label={`画像${index + 1}を上へ`} disabled={index === 0 || photoEditingPending} onClick={() => moveImportPhoto(photo.id, -1)}>↑</button>
@@ -448,14 +462,26 @@ export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string
       <div className="flex min-w-0 flex-col gap-6">
       <section className="rounded-lg border border-white/15 bg-slate-900/60 p-4">
         <h2 className="text-lg font-bold">棚・引き出し管理</h2>
-        <div className="mt-3 flex flex-wrap items-end gap-2 xl:flex-nowrap">
-          <label className="flex w-40 shrink-0 flex-col gap-1 text-sm">エリア<select className={selectClass} value={areas.includes(newArea) ? newArea : '__new__'} onChange={(event) => setNewArea(event.target.value === '__new__' ? '' : event.target.value)}><option value="__new__">新しいエリアを入力</option>{areas.map((area) => <option key={area} value={area}>{area}</option>)}</select></label>
-          {!areas.includes(newArea) ? <label className="flex w-40 shrink-0 flex-col gap-1 text-sm">新しいエリア<input className={`${inputClass} w-full`} placeholder="例: 30007_KSJP-55" value={newArea} onChange={(event) => setNewArea(event.target.value)} /></label> : null}
-          <label className="flex w-14 shrink-0 flex-col gap-1 text-sm">棚番号<input className={`${inputClass} w-full`} type="number" min={1} value={newShelfNumber} onChange={(event) => setNewShelfNumber(Number(event.target.value))} /></label>
-          <button type="button" className={`${actionButtonClass(isNewShelfReady, mutations.createShelf.isPending).replace('px-4', 'px-2')} shrink-0 whitespace-nowrap`} disabled={mutations.createShelf.isPending || !isNewShelfReady} onClick={() => void mutations.createShelf.mutateAsync({ area: newArea, shelfNumber: newShelfNumber }).then(() => setNewArea('')).catch((error) => setActionError(errorText(error)))}>{mutations.createShelf.isPending ? '追加中…' : '棚を追加'}</button>
-          <label className="flex w-44 shrink-0 flex-col gap-1 text-sm">追加先の棚<select className={selectClass} value={newShelfId} onChange={(event) => setNewShelfId(event.target.value)}><option value="">棚を選択</option>{locations.map((shelf) => <option key={shelf.id} value={shelf.id}>{shelf.area} / 棚{shelf.shelfNumber}</option>)}</select></label>
-          <label className="flex w-16 shrink-0 flex-col gap-1 text-sm">引き出し番号<input className={`${inputClass} w-full`} type="number" min={1} value={newDrawerNumber} onChange={(event) => setNewDrawerNumber(Number(event.target.value))} /></label>
-          <button type="button" className={`${actionButtonClass(isNewDrawerReady, mutations.createDrawer.isPending).replace('px-4', 'px-2')} shrink-0 whitespace-nowrap`} disabled={mutations.createDrawer.isPending || !isNewDrawerReady} onClick={() => void mutations.createDrawer.mutateAsync({ shelfId: newShelfId, drawerNumber: newDrawerNumber }).catch((error) => setActionError(errorText(error)))}>{mutations.createDrawer.isPending ? '追加中…' : '引き出しを追加'}</button>
+        <div className="mt-3 grid gap-4 lg:grid-cols-2">
+          <div className="rounded border border-white/10 bg-slate-950/20 p-3">
+            <h3 className="font-semibold">棚を追加</h3>
+            <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_auto] sm:items-end">
+              <label className="flex min-w-0 flex-col gap-1 text-sm">エリア<select className={selectClass} value={areas.includes(newArea) ? newArea : '__new__'} onChange={(event) => setNewArea(event.target.value === '__new__' ? '' : event.target.value)}><option value="__new__">新しいエリアを入力</option>{areas.map((area) => <option key={area} value={area}>{area}</option>)}</select></label>
+              {!areas.includes(newArea) ? <label className="flex min-w-0 flex-col gap-1 text-sm sm:col-span-2">新しいエリア<input className={`${inputClass} w-full`} placeholder="例: 30007_KSJP-55" value={newArea} onChange={(event) => setNewArea(event.target.value)} /></label> : null}
+              <label className="flex min-w-0 flex-col gap-1 text-sm">棚番号<input className={`${inputClass} w-full`} type="number" min={1} value={newShelfNumber} onChange={(event) => setNewShelfNumber(Number(event.target.value))} /></label>
+              <button type="button" className="min-h-10 rounded-md bg-sky-600 px-3 font-semibold text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-40" disabled={mutations.createShelf.isPending || !isNewShelfReady} onClick={() => void mutations.createShelf.mutateAsync({ area: newArea, shelfNumber: newShelfNumber }).then(() => setNewArea('')).catch((error) => setActionError(errorText(error)))}>{mutations.createShelf.isPending ? '追加中…' : '棚を追加'}</button>
+            </div>
+            {duplicateShelf ? <p className="mt-2 text-sm text-amber-200">同じエリアの棚番号は登録済みです。</p> : null}
+          </div>
+          <div className="rounded border border-white/10 bg-slate-950/20 p-3">
+            <h3 className="font-semibold">引き出しを追加</h3>
+            <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_auto] sm:items-end">
+              <label className="flex min-w-0 flex-col gap-1 text-sm">追加先の棚<select className={selectClass} value={newShelfId} onChange={(event) => setNewShelfId(event.target.value)}><option value="">棚を選択</option>{locations.map((shelf) => <option key={shelf.id} value={shelf.id}>{shelf.area} / 棚{shelf.shelfNumber}</option>)}</select></label>
+              <label className="flex min-w-0 flex-col gap-1 text-sm">引き出し番号<input className={`${inputClass} w-full`} type="number" min={1} value={newDrawerNumber} onChange={(event) => setNewDrawerNumber(Number(event.target.value))} /></label>
+              <button type="button" className="min-h-10 rounded-md bg-sky-600 px-3 font-semibold text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-40" disabled={mutations.createDrawer.isPending || !isNewDrawerReady} onClick={() => void mutations.createDrawer.mutateAsync({ shelfId: newShelfId, drawerNumber: newDrawerNumber }).catch((error) => setActionError(errorText(error)))}>{mutations.createDrawer.isPending ? '追加中…' : '引き出しを追加'}</button>
+            </div>
+            {duplicateDrawer ? <p className="mt-2 text-sm text-amber-200">選択した棚の引き出し番号は登録済みです。</p> : null}
+          </div>
         </div>
       </section>
 
@@ -493,7 +519,13 @@ export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string
         <div className="mt-3 flex flex-col gap-4">
           {items.length === 0 ? <p className="text-sm text-white/60">登録済みアイテムはありません。</p> : items.flatMap((item: InventoryItem) => item.compartments.map((compartment) => (
             <div key={compartment.id} className="rounded border border-white/15 bg-slate-950/30 p-3">
-              <div className="flex flex-wrap justify-between gap-2"><div className="min-w-0"><strong>{item.name}</strong> <span className="text-sm text-white/60">{item.itemCode}</span>{item.photos.length > 0 ? <div className="mt-2 flex max-w-full gap-2 overflow-x-auto" aria-label={`${item.name}の写真`}>
+                  <div className="flex flex-wrap justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <strong>{item.name}</strong><span className="text-sm text-white/60">{item.itemCode}</span>
+                        {item.compartments[0]?.id === compartment.id ? <button type="button" className={`${dangerButtonClass} px-3 text-sm`} disabled={deleteItemPending} onClick={() => deleteRegisteredItem(item)}>{deleteItemPending ? '削除中…' : 'アイテムを削除'}</button> : null}
+                      </div>
+                      {item.photos.length > 0 ? <div className="mt-2 flex max-w-full gap-2 overflow-x-auto" aria-label={`${item.name}の写真`}>
                 {item.photos.map((photo, index) => <figure
                   key={photo.id}
                   draggable={!registeredPhotoEditingPending}
@@ -508,9 +540,11 @@ export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string
                   onDragOver={(event) => { event.preventDefault(); setDragOverRegisteredPhotoId(photo.id); }}
                   onDrop={(event) => { event.preventDefault(); dropRegisteredPhoto(item, photo.id); }}
                   onDragEnd={() => { setDraggedRegisteredPhoto(null); setDragOverRegisteredPhotoId(null); }}
-                  className={`w-28 shrink-0 rounded border bg-slate-900/70 p-1 ${dragOverRegisteredPhotoId === photo.id ? 'border-sky-400' : 'border-white/15'} ${draggedRegisteredPhoto?.photoId === photo.id ? 'opacity-50' : ''}`}
+                  className={`w-40 shrink-0 rounded border bg-slate-900/70 p-1 ${dragOverRegisteredPhotoId === photo.id ? 'border-sky-400' : 'border-white/15'} ${draggedRegisteredPhoto?.photoId === photo.id ? 'opacity-50' : ''}`}
                 >
-                  <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-20 w-full rounded object-cover" />
+                  <button type="button" className="block w-full rounded focus:outline-none focus:ring-2 focus:ring-sky-300" aria-label={`${photo.originalFilename}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.originalFilename })}>
+                    <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-40 w-full rounded object-cover" />
+                  </button>
                   <figcaption className="truncate px-1 pt-1 text-xs text-white/70" title={photo.originalFilename}>{index + 1}. {photo.originalFilename}</figcaption>
                   <div className="mt-1 flex items-center gap-1">
                     <button type="button" className={keypadButtonClass} aria-label={`登録済み画像${index + 1}を上へ`} disabled={index === 0 || registeredPhotoEditingPending} onClick={() => moveRegisteredPhoto(item, photo.id, -1)}>↑</button>
@@ -518,8 +552,14 @@ export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string
                     <button type="button" className={`${actionButtonClass(true, registeredPhotoEditingPending, 'danger').replace('px-4', 'px-2')} ml-auto text-sm`} aria-label={`登録済み画像${index + 1}を削除`} disabled={registeredPhotoEditingPending} onClick={() => deleteRegisteredPhoto(item.id, photo.id, photo.originalFilename)}>削除</button>
                   </div>
                 </figure>)}
-              </div> : null}</div><span className="font-bold">現在庫 {compartment.stockQuantity}</span></div>
-              <p className="mt-1 text-sm text-white/65">{compartment.area} / 棚{compartment.shelfNumber} / 引出し{compartment.drawerNumber} / NFC {compartment.itemTagUid ?? '未設定'}</p>
+              </div> : null}
+                    </div>
+                    <dl className="grid shrink-0 gap-1 text-sm text-white/75 sm:min-w-52 sm:grid-cols-[auto_1fr] sm:gap-x-3">
+                      <dt className="font-semibold text-white/55">現在庫</dt><dd className="font-bold">{compartment.stockQuantity}</dd>
+                      <dt className="font-semibold text-white/55">保管場所</dt><dd>{compartment.area} / 棚{compartment.shelfNumber} / 引出し{compartment.drawerNumber}</dd>
+                      <dt className="font-semibold text-white/55">アイテムNFC</dt><dd className="break-all">{compartment.itemTagUid ?? '未設定'}</dd>
+                    </dl>
+                  </div>
               <div className="mt-3 flex flex-wrap items-end gap-3">
                 <div className="flex items-end gap-2"><label className="flex w-28 flex-col gap-1 text-sm">修正後在庫<input className={`${inputClass} w-full`} type="number" min={0} value={corrections[compartment.id] ?? ''} onChange={(event) => setCorrections((current) => ({ ...current, [compartment.id]: event.target.value }))} /></label><button type="button" className={`${actionButtonClass(isNonNegativeInteger(corrections[compartment.id]), mutations.correction.isPending).replace('px-4', 'px-2')} whitespace-nowrap`} disabled={mutations.correction.isPending || !isNonNegativeInteger(corrections[compartment.id])} onClick={() => void submitCorrection(compartment.id)}>{mutations.correction.isPending ? '修正中…' : '修正'}</button></div>
                 <div className="flex items-end gap-2"><label className="flex w-64 flex-col gap-1 text-sm">移動先<select className={selectClass} value={moveDrawers[compartment.id] ?? ''} onChange={(event) => setMoveDrawers((current) => ({ ...current, [compartment.id]: event.target.value }))}><option value="">移動先</option>{allDrawers.filter((drawer) => drawer.area === compartment.area).map((drawer) => <option key={drawer.id} value={drawer.id}>棚{drawer.shelf.shelfNumber} / 引出し{drawer.drawerNumber}</option>)}</select></label><button type="button" className={`${actionButtonClass(Boolean(moveDrawers[compartment.id]), mutations.move.isPending).replace('px-4', 'px-2')} whitespace-nowrap`} disabled={mutations.move.isPending || !moveDrawers[compartment.id]} onClick={() => void submitMove(compartment.id)}>{mutations.move.isPending ? '移動中…' : '移動'}</button></div>
@@ -527,6 +567,12 @@ export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string
               </div>
             </div>
           ))) }
+          {items.filter((item) => item.compartments.length === 0).map((item) => (
+            <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded border border-white/15 bg-slate-950/30 p-3">
+              <div><strong>{item.name}</strong> <span className="text-sm text-white/60">{item.itemCode}</span><p className="mt-1 text-sm text-white/60">区画未登録</p></div>
+              <button type="button" className={`${dangerButtonClass} px-3 text-sm`} disabled={deleteItemPending} onClick={() => deleteRegisteredItem(item)}>{deleteItemPending ? '削除中…' : 'アイテムを削除'}</button>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -534,6 +580,7 @@ export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string
         <h2 className="text-lg font-bold">在庫履歴</h2>
           <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b border-white/15 text-white/65"><tr><th className="p-2">日時</th><th className="p-2">端末</th><th className="p-2">アイテム</th><th className="p-2">区画</th><th className="p-2">増減</th><th className="p-2">前後</th><th className="p-2">操作</th></tr></thead><tbody>{(historyQuery.data ?? []).map((entry) => { const canCancel = ['ISSUE', 'RESTOCK', 'CORRECTION'].includes(entry.action); return <tr key={entry.id} className="border-b border-white/10"><td className="p-2">{formatDate(entry.createdAt)}</td><td className="p-2">{entry.clientId ?? '-'}</td><td className="p-2">{entry.inventoryItem.name}</td><td className="p-2">{entry.compartment ? `${entry.compartment.drawer.shelf.area} / 棚${entry.compartment.drawer.shelf.shelfNumber} / 引出し${entry.compartment.drawer.drawerNumber}` : '-'}</td><td className="p-2">{entry.delta > 0 ? '+' : ''}{entry.delta}</td><td className="p-2">{entry.beforeQuantity} → {entry.afterQuantity}</td><td className="p-2"><button type="button" className={`${actionButtonClass(canCancel, mutations.cancel.isPending, 'danger')} whitespace-nowrap`} disabled={!canCancel || mutations.cancel.isPending} onClick={() => { if (window.confirm('直前の取引を取り消しますか？')) void mutations.cancel.mutateAsync(entry.id).catch((error) => setActionError(errorText(error))); }}>{mutations.cancel.isPending ? '取消中…' : '直前取消'}</button></td></tr>; })}</tbody></table></div>
       </section>
+      <InventoryPhotoDialog photoUrl={selectedPhoto?.url ?? null} alt={selectedPhoto?.alt ?? ''} onClose={() => setSelectedPhoto(null)} />
       </div>
     </div>
   );

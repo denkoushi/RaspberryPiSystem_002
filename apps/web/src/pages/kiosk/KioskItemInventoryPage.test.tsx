@@ -126,16 +126,16 @@ describe('KioskItemInventoryPage', () => {
       restock: false,
     })));
     expect(screen.getByText(/払い出しました/)).toBeInTheDocument();
-    expect(screen.getByText(/現在庫 8個/)).toBeInTheDocument();
+    expect(screen.getByText(/8個/)).toBeInTheDocument();
     expect(screen.getByAltText('item.jpg')).toBeInTheDocument();
 
     await act(async () => {
       navigateToEvent?.({ uid: otherItemTag.uid, timestamp: new Date(Date.now() + 2).toISOString(), inventoryTag: otherItemTag });
     });
-    expect(screen.getByText(/現在庫 20個/)).toBeInTheDocument();
+    expect(screen.getByText(/20個/)).toBeInTheDocument();
     await act(async () => { screen.getByRole('button', { name: '直前の取引を取消' }).click(); });
     await waitFor(() => expect(cancelMutateAsync).toHaveBeenCalledWith('transaction-id'));
-    expect(screen.getByText(/現在庫 20個/)).toBeInTheDocument();
+    expect(screen.getByText(/20個/)).toBeInTheDocument();
   });
 
   it('processes restock order, resets explicitly, and clears the flow after 30 seconds', async () => {
@@ -179,7 +179,7 @@ describe('KioskItemInventoryPage', () => {
     });
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ restock: true, restockTagUid: 'restock-uid' })));
     expect(screen.getByText(/補充しました/)).toBeInTheDocument();
-    expect(screen.getByText(/現在庫 12個/)).toBeInTheDocument();
+    expect(screen.getByText(/12個/)).toBeInTheDocument();
 
     await act(async () => {
       navigateToEvent?.({ uid: 'restock-uid-2', timestamp: new Date(Date.now() + 3).toISOString(), inventoryTag: { id: 'restock-tag-2', uid: 'restock-uid-2', kind: 'RESTOCK', quantity: null, compartment: null } });

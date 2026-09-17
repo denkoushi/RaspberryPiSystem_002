@@ -8,6 +8,7 @@ import {
   type InventoryTag,
 } from '../../api/client';
 import { useInventoryMutations } from '../../api/hooks';
+import { InventoryPhotoDialog } from '../../components/kiosk/InventoryPhotoDialog';
 import {
   kioskButtonDangerClassName,
   kioskButtonSecondaryClassName,
@@ -58,6 +59,7 @@ export function KioskItemInventoryPage() {
   const [messageKind, setMessageKind] = useState<'info' | 'success' | 'error'>('info');
   const [lastTransaction, setLastTransaction] = useState<InventoryHistoryEntry | null>(null);
   const [busy, setBusy] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
   const flowRef = useRef({ restockMode: false, restockTagUid: null as string | null, selectedTag: null as InventoryTag | null, processing: false });
   const mountedRef = useRef(true);
   const eventQueueRef = useRef<NfcEvent[]>([]);
@@ -241,24 +243,28 @@ export function KioskItemInventoryPage() {
         <h1 className={kioskPageTitleClassName}>在庫操作</h1>
         {restockMode ? <span className="rounded-full bg-amber-400 px-4 py-2 text-base font-bold text-slate-950">補充モード</span> : null}
       </div>
-      <div className={`${panelClass} min-h-48 p-8 text-center`} role="status" aria-live="polite">
-        <p className="text-3xl font-black tracking-wide">{message}</p>
+      <div className={`${panelClass} p-5 text-center`} role="status" aria-live="polite">
+        <p className={messageKind === 'info' ? 'text-base font-medium tracking-wide text-white/65' : 'text-xl font-semibold tracking-wide'}>{message}</p>
         {selectedTag?.compartment ? (
-          <p className="mt-5 text-xl text-white/80">
-            {selectedTag.compartment.item.name}{' '}現在庫 {selectedTag.compartment.stockQuantity}個
-            {locationText ? ` (${locationText})` : ''}
-          </p>
+          <dl className="mx-auto mt-5 grid max-w-2xl gap-x-6 gap-y-2 text-left text-lg text-white/85 sm:grid-cols-[auto_1fr]">
+            <dt className="font-semibold text-white/60">アイテム</dt><dd>{selectedTag.compartment.item.name}</dd>
+            <dt className="font-semibold text-white/60">現在庫</dt><dd>{selectedTag.compartment.stockQuantity}個</dd>
+            {locationText ? <><dt className="font-semibold text-white/60">保管場所</dt><dd>{locationText}</dd></> : null}
+          </dl>
         ) : null}
         {selectedPhotos.length > 0 ? <div className="mx-auto mt-4 flex w-full max-w-full justify-start gap-2 overflow-x-auto" aria-label="品物写真">
-          {selectedPhotos.map((photo) => <img key={photo.id} src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-24 w-24 shrink-0 rounded object-cover" />)}
+          {selectedPhotos.map((photo) => <button key={photo.id} type="button" className="shrink-0 rounded focus:outline-none focus:ring-2 focus:ring-sky-300" aria-label={`${photo.originalFilename}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.originalFilename })}>
+            <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-40 w-40 rounded object-cover" />
+          </button>)}
         </div> : null}
         {restockTagUid ? <p className="mt-3 text-sm text-white/60">補充タグ: {restockTagUid}</p> : null}
       </div>
+      <InventoryPhotoDialog photoUrl={selectedPhoto?.url ?? null} alt={selectedPhoto?.alt ?? ''} onClose={() => setSelectedPhoto(null)} />
       <div className={`${kioskPanelClassName} flex flex-wrap justify-center gap-3 p-4`}>
         <button type="button" className={kioskButtonSecondaryClassName} onClick={reset} disabled={busy}>選択をリセット</button>
         <button type="button" className={kioskButtonDangerClassName} onClick={() => void cancelLast()} disabled={!lastTransaction || busy}>直前の取引を取消</button>
       </div>
-      <p className="text-center text-sm text-white/60">30秒操作がない場合、選択中のアイテムと補充モードを自動解除します。</p>
+      <p className="text-center text-xs text-white/50">30秒操作がない場合、選択中のアイテムと補充モードを自動解除します。</p>
     </section>
   );
 }
