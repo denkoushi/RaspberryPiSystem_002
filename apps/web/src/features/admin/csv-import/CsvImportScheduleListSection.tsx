@@ -17,18 +17,18 @@ type CsvImportScheduleListSectionProps = {
 
 export function CsvImportScheduleListSection({ form, run, csvDashboardsData }: CsvImportScheduleListSectionProps) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
+    <div className="overflow-x-auto rounded-md">
+      <table className="min-w-[1280px] w-full text-left text-sm">
         <thead className="bg-slate-200 text-slate-900">
           <tr className="border-b-2 border-slate-500">
-            <th className="px-2 py-1">ID</th>
-            <th className="px-2 py-1">名前</th>
-            <th className="px-2 py-1">プロバイダー</th>
-            <th className="px-2 py-1">スケジュール</th>
-            <th className="px-2 py-1">CSVパス</th>
-            <th className="px-2 py-1">状態</th>
-            <th className="px-2 py-1">自動バックアップ</th>
-            <th className="px-2 py-1">操作</th>
+            <th className="min-w-[180px] px-2 py-1">ID</th>
+            <th className="min-w-[160px] px-2 py-1">名前</th>
+            <th className="min-w-[125px] px-2 py-1">プロバイダー</th>
+            <th className="min-w-[230px] px-2 py-1">スケジュール</th>
+            <th className="min-w-[310px] px-2 py-1">CSVパス</th>
+            <th className="min-w-[90px] px-2 py-1">状態</th>
+            <th className="min-w-[140px] px-2 py-1">自動バックアップ</th>
+            <th className="min-w-[250px] px-2 py-1">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -43,8 +43,8 @@ export function CsvImportScheduleListSection({ form, run, csvDashboardsData }: C
               <tr key={schedule.id} className="border-t border-slate-500">
                 {form.editingId === schedule.id ? (
                   <>
-                    <td className="px-2 py-1">{schedule.id}</td>
-                    <td className="px-2 py-1">
+                    <td className="min-w-[180px] align-top px-2 py-1">{schedule.id}</td>
+                    <td className="min-w-[160px] align-top px-2 py-1">
                       <input
                         type="text"
                         className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 text-xs"
@@ -52,7 +52,7 @@ export function CsvImportScheduleListSection({ form, run, csvDashboardsData }: C
                         onChange={(e) => form.setFormData({ ...form.formData, name: e.target.value })}
                       />
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="min-w-[125px] align-top px-2 py-1">
                       <select
                         className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 text-xs"
                         value={form.formData.provider || ''}
@@ -63,7 +63,7 @@ export function CsvImportScheduleListSection({ form, run, csvDashboardsData }: C
                         <option value="gmail">Gmail</option>
                       </select>
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="min-w-[230px] align-top px-2 py-1">
                       <CsvImportScheduleTimingFields
                         variant="edit"
                         scheduleMode={form.scheduleMode}
@@ -80,7 +80,7 @@ export function CsvImportScheduleListSection({ form, run, csvDashboardsData }: C
                         onOffsetMinutesChange={form.setOffsetMinutes}
                       />
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="min-w-[310px] align-top px-2 py-1">
                       <CsvImportTargetsEditor
                         formData={form.formData}
                         setFormData={form.setFormData}
@@ -91,17 +91,17 @@ export function CsvImportScheduleListSection({ form, run, csvDashboardsData }: C
                         compact
                       />
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="min-w-[90px] align-top px-2 py-1">
                       <input
                         type="checkbox"
                         checked={form.formData.enabled}
                         onChange={(e) => form.setFormData({ ...form.formData, enabled: e.target.checked })}
                       />
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="min-w-[140px] align-top px-2 py-1">
                       {form.formData.autoBackupAfterImport?.enabled ? '有効' : '無効'}
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="min-w-[250px] align-top px-2 py-1">
                       <div className="space-y-1">
                         {form.validationError && (
                           <div className="rounded-md border border-red-600 bg-red-50 p-1 text-xs text-red-700">

@@ -10,7 +10,7 @@ import { KioskItemInventoryPage } from './KioskItemInventoryPage';
 import type { NfcEvent } from '../../hooks/useNfcStream';
 
 
-vi.mock('../../api/client', () => ({ resolveInventoryTag: vi.fn() }));
+vi.mock('../../api/client', () => ({ resolveInventoryTag: vi.fn(), inventoryThumbnailUrl: (value: string) => value }));
 vi.mock('../../api/hooks', () => ({ useInventoryMutations: vi.fn() }));
 
 const itemTag = {
@@ -34,7 +34,7 @@ const itemTag = {
       category: '治具',
       area: '30007_KSJP-55',
       note: null,
-      photos: [],
+      photos: [{ id: 'inventory-photo-id', photoIndex: 1, photoUrl: '/photos/item.jpg', originalFilename: 'item.jpg' }],
       compartments: [],
     },
   },
@@ -46,6 +46,19 @@ const quantityTag = {
   kind: 'QUANTITY',
   quantity: 2,
   compartment: null,
+} as InventoryTag;
+
+const otherItemTag = {
+  ...itemTag,
+  id: 'other-item-tag-id',
+  uid: 'other-item-uid',
+  compartment: {
+    ...itemTag.compartment,
+    id: 'other-compartment-id',
+    stockQuantity: 20,
+    itemTagUid: 'other-item-uid',
+    item: { ...itemTag.compartment.item, id: 'other-inventory-item-id', itemCode: 'RI-2-OTHER' },
+  },
 } as InventoryTag;
 
 describe('KioskItemInventoryPage', () => {
@@ -72,9 +85,24 @@ describe('KioskItemInventoryPage', () => {
         compartment: null,
       },
     });
+    const cancelMutateAsync = vi.fn().mockResolvedValue({
+      transaction: {
+        id: 'cancel-transaction-id',
+        action: 'CANCEL',
+        inventoryItemId: 'inventory-item-id',
+        compartmentId: 'compartment-id',
+        clientId: 'client-id',
+        delta: 2,
+        beforeQuantity: 8,
+        afterQuantity: 10,
+        createdAt: new Date().toISOString(),
+        inventoryItem: { itemCode: 'RI-2-TEST', name: '治具' },
+        compartment: null,
+      },
+    });
     vi.mocked(useInventoryMutations).mockReturnValue({
       transaction: { mutateAsync, isPending: false },
-      cancel: { mutateAsync: vi.fn(), isPending: false },
+      cancel: { mutateAsync: cancelMutateAsync, isPending: false },
     } as never);
 
     let navigateToEvent: ((event: NfcEvent) => void) | null = null;
@@ -98,6 +126,16 @@ describe('KioskItemInventoryPage', () => {
       restock: false,
     })));
     expect(screen.getByText(/払い出しました/)).toBeInTheDocument();
+    expect(screen.getByText(/現在庫 8個/)).toBeInTheDocument();
+    expect(screen.getByAltText('item.jpg')).toBeInTheDocument();
+
+    await act(async () => {
+      navigateToEvent?.({ uid: otherItemTag.uid, timestamp: new Date(Date.now() + 2).toISOString(), inventoryTag: otherItemTag });
+    });
+    expect(screen.getByText(/現在庫 20個/)).toBeInTheDocument();
+    await act(async () => { screen.getByRole('button', { name: '直前の取引を取消' }).click(); });
+    await waitFor(() => expect(cancelMutateAsync).toHaveBeenCalledWith('transaction-id'));
+    expect(screen.getByText(/現在庫 20個/)).toBeInTheDocument();
   });
 
   it('processes restock order, resets explicitly, and clears the flow after 30 seconds', async () => {
@@ -141,12 +179,13 @@ describe('KioskItemInventoryPage', () => {
     });
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ restock: true, restockTagUid: 'restock-uid' })));
     expect(screen.getByText(/補充しました/)).toBeInTheDocument();
+    expect(screen.getByText(/現在庫 12個/)).toBeInTheDocument();
 
     await act(async () => {
       navigateToEvent?.({ uid: 'restock-uid-2', timestamp: new Date(Date.now() + 3).toISOString(), inventoryTag: { id: 'restock-tag-2', uid: 'restock-uid-2', kind: 'RESTOCK', quantity: null, compartment: null } });
     });
     expect(screen.getByText('補充モード')).toBeInTheDocument();
-    await act(async () => { screen.getByRole('button', { name: '直前取消 / リセット' }).click(); });
+    await act(async () => { screen.getByRole('button', { name: '選択をリセット' }).click(); });
     expect(screen.queryByText('補充モード')).not.toBeInTheDocument();
     expect(screen.getByText('アイテムNFCタグを読み取ってください')).toBeInTheDocument();
 

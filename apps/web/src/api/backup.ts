@@ -43,9 +43,11 @@ export interface BackupHistoryFilters {
 
 // CSVインポートターゲットの型定義
 export interface CsvImportTarget {
-  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards';
+  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards' | 'productionActualHours' | 'itemInventoryGmail';
   source: string; // Dropbox用: パス、Gmail用: 件名パターン、CSVダッシュボード用: ダッシュボードID
 }
+
+export const ITEM_INVENTORY_GMAIL_SUBJECT_TOKEN = '[ItemlistRaspi-photo]';
 
 export type CsvImportSubjectPatternType =
   | 'employees'
@@ -113,6 +115,7 @@ export interface CsvImportSchedule {
     retryInterval: number; // 秒
     exponentialBackoff: boolean;
   };
+  metadata?: Record<string, unknown>;
 }
 
 export interface CsvImportScheduleListResponse {

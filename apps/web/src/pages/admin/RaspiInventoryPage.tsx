@@ -87,9 +87,17 @@ export function RaspiInventoryPage() {
   const locations = useMemo(() => locationsQuery.data ?? [], [locationsQuery.data]);
   const [selectedImportId, setSelectedImportId] = useState('');
   const selectedImport = imports.find((entry) => entry.id === selectedImportId) ?? null;
+  const selectedImportPhotos = selectedImport?.photos ?? [];
+  const photoEditingPending = mutations.deleteImportPhoto.isPending || mutations.reorderImportPhotos.isPending;
+  const registeredPhotoEditingPending = mutations.deleteItemPhoto.isPending || mutations.reorderItemPhotos.isPending;
   const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [draggedPhotoId, setDraggedPhotoId] = useState<string | null>(null);
+  const [dragOverPhotoId, setDragOverPhotoId] = useState<string | null>(null);
+  const [draggedRegisteredPhoto, setDraggedRegisteredPhoto] = useState<{ itemId: string; photoId: string } | null>(null);
+  const [dragOverRegisteredPhotoId, setDragOverRegisteredPhotoId] = useState<string | null>(null);
   const [scanTarget, setScanTarget] = useState<'item' | 'binding-item' | 'quantity' | 'restock' | null>(null);
   const lastScanKeyRef = useRef<string | null>(null);
+  const nfcBaselineKeyRef = useRef<string | null>(null);
   const [quantityUid, setQuantityUid] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [restockUid, setRestockUid] = useState('');
@@ -102,22 +110,26 @@ export function RaspiInventoryPage() {
   const [replacementUids, setReplacementUids] = useState<Record<string, string>>({});
   const [moveDrawers, setMoveDrawers] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  const selectedImportSourceItemId = selectedImport?.sourceItemId;
 
   useEffect(() => {
-    if (!selectedImport) return;
-    setDraft({ ...emptyDraft, name: `ItemlistRaspi ${selectedImport.sourceItemId}` });
+    if (selectedImportSourceItemId == null) return;
+    setDraft({ ...emptyDraft, name: `ItemlistRaspi ${selectedImportSourceItemId}` });
     setScanTarget(null);
-  }, [selectedImport, selectedImportId]);
+    nfcBaselineKeyRef.current = null;
+  }, [selectedImportId, selectedImportSourceItemId]);
 
   useEffect(() => {
     if (!nfcEvent || !scanTarget) return;
     const key = nfcEvent.eventId != null ? String(nfcEvent.eventId) : `${nfcEvent.uid}:${nfcEvent.timestamp}`;
+    if (nfcBaselineKeyRef.current === key) return;
     if (lastScanKeyRef.current === key) return;
     lastScanKeyRef.current = key;
     if (scanTarget === 'item') setDraft((current) => ({ ...current, itemTagUid: nfcEvent.uid }));
     if (scanTarget === 'binding-item') setBinding((current) => ({ ...current, itemTagUid: nfcEvent.uid }));
     if (scanTarget === 'quantity') setQuantityUid(nfcEvent.uid);
     if (scanTarget === 'restock') setRestockUid(nfcEvent.uid);
+    nfcBaselineKeyRef.current = null;
     setScanTarget(null);
   }, [nfcEvent, scanTarget]);
 
@@ -139,6 +151,88 @@ export function RaspiInventoryPage() {
   );
 
   const updateDraft = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((current) => ({ ...current, [key]: value }));
+
+  const armNfcTarget = (target: 'item' | 'binding-item' | 'quantity' | 'restock') => {
+    nfcBaselineKeyRef.current = nfcEvent ? (nfcEvent.eventId != null ? String(nfcEvent.eventId) : `${nfcEvent.uid}:${nfcEvent.timestamp}`) : null;
+    setScanTarget(target);
+  };
+
+  const savePhotoOrder = async (photoIds: string[]) => {
+    if (!selectedImport) return;
+    setActionError(null);
+    try {
+      await mutations.reorderImportPhotos.mutateAsync({ payloadId: selectedImport.id, photoIds });
+    } catch (error) {
+      setActionError(errorText(error));
+    }
+  };
+
+  const moveImportPhoto = (photoId: string, offset: -1 | 1) => {
+    const currentIndex = selectedImportPhotos.findIndex((photo) => photo.id === photoId);
+    const nextIndex = currentIndex + offset;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= selectedImportPhotos.length) return;
+    const nextPhotoIds = selectedImportPhotos.map((photo) => photo.id);
+    [nextPhotoIds[currentIndex], nextPhotoIds[nextIndex]] = [nextPhotoIds[nextIndex], nextPhotoIds[currentIndex]];
+    void savePhotoOrder(nextPhotoIds);
+  };
+
+  const deleteImportPhoto = (photoId: string, filename: string) => {
+    if (!selectedImport || !window.confirm(`「${filename}」を候補から削除しますか？`)) return;
+    setActionError(null);
+    void mutations.deleteImportPhoto.mutateAsync({ payloadId: selectedImport.id, photoId }).catch((error) => setActionError(errorText(error)));
+  };
+
+  const dropImportPhoto = (targetPhotoId: string) => {
+    const sourcePhotoId = draggedPhotoId;
+    setDraggedPhotoId(null);
+    setDragOverPhotoId(null);
+    if (!sourcePhotoId || sourcePhotoId === targetPhotoId) return;
+    const sourceIndex = selectedImportPhotos.findIndex((photo) => photo.id === sourcePhotoId);
+    const targetIndex = selectedImportPhotos.findIndex((photo) => photo.id === targetPhotoId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const nextPhotoIds = selectedImportPhotos.map((photo) => photo.id);
+    const [movedPhotoId] = nextPhotoIds.splice(sourceIndex, 1);
+    nextPhotoIds.splice(targetIndex, 0, movedPhotoId);
+    void savePhotoOrder(nextPhotoIds);
+  };
+
+  const saveRegisteredPhotoOrder = async (itemId: string, photoIds: string[]) => {
+    setActionError(null);
+    try {
+      await mutations.reorderItemPhotos.mutateAsync({ itemId, photoIds });
+    } catch (error) {
+      setActionError(errorText(error));
+    }
+  };
+
+  const moveRegisteredPhoto = (item: InventoryItem, photoId: string, offset: -1 | 1) => {
+    const currentIndex = item.photos.findIndex((photo) => photo.id === photoId);
+    const nextIndex = currentIndex + offset;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= item.photos.length) return;
+    const nextPhotoIds = item.photos.map((photo) => photo.id);
+    [nextPhotoIds[currentIndex], nextPhotoIds[nextIndex]] = [nextPhotoIds[nextIndex], nextPhotoIds[currentIndex]];
+    void saveRegisteredPhotoOrder(item.id, nextPhotoIds);
+  };
+
+  const deleteRegisteredPhoto = (itemId: string, photoId: string, filename: string) => {
+    if (!window.confirm(`「${filename}」を登録済みアイテムから削除しますか？`)) return;
+    setActionError(null);
+    void mutations.deleteItemPhoto.mutateAsync({ itemId, photoId }).catch((error) => setActionError(errorText(error)));
+  };
+
+  const dropRegisteredPhoto = (item: InventoryItem, targetPhotoId: string) => {
+    const source = draggedRegisteredPhoto;
+    setDraggedRegisteredPhoto(null);
+    setDragOverRegisteredPhotoId(null);
+    if (!source || source.itemId !== item.id || source.photoId === targetPhotoId) return;
+    const sourceIndex = item.photos.findIndex((photo) => photo.id === source.photoId);
+    const targetIndex = item.photos.findIndex((photo) => photo.id === targetPhotoId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const nextPhotoIds = item.photos.map((photo) => photo.id);
+    const [movedPhotoId] = nextPhotoIds.splice(sourceIndex, 1);
+    nextPhotoIds.splice(targetIndex, 0, movedPhotoId);
+    void saveRegisteredPhotoOrder(item.id, nextPhotoIds);
+  };
 
   const registerSelected = async () => {
     if (!selectedImport) return;
@@ -166,9 +260,12 @@ export function RaspiInventoryPage() {
   };
 
   const submitCorrection = async (compartmentId: string) => {
-    const desired = Number(corrections[compartmentId]);
+    const raw = corrections[compartmentId] ?? '';
+    if (raw.trim() === '') { setActionError('修正後在庫を入力してください（0は入力できます）'); return; }
+    const desired = Number(raw);
     if (!Number.isSafeInteger(desired) || desired < 0) { setActionError('在庫数は0以上の整数で入力してください'); return; }
     if (!window.confirm('この区画の在庫数を修正しますか？')) return;
+    setActionError(null);
     try { await mutations.correction.mutateAsync({ compartmentId, desiredQuantity: desired }); } catch (error) { setActionError(errorText(error)); }
   };
 
@@ -230,11 +327,43 @@ export function RaspiInventoryPage() {
             </div>
             {selectedImport ? (
               <div className="w-full max-w-xl justify-self-start rounded border border-white/15 bg-slate-950/30 p-4">
-                <div className="flex flex-wrap items-start gap-3">
-                  <div className="flex flex-wrap gap-2">
-                    {selectedImport.photos.map((photo) => <img key={photo.id} src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-56 w-56 max-w-full rounded object-cover" />)}
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-semibold">候補写真（{selectedImportPhotos.length}枚）</h3>
+                    <p className="text-xs text-white/55">カードをドラッグ、または矢印で並び替え</p>
                   </div>
-                  <dl className="min-w-48 flex-1 text-sm text-white/75">
+                  {selectedImportPhotos.length === 0 ? <p className="rounded border border-dashed border-white/20 p-4 text-sm text-white/60">写真はありません。</p> : (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedImportPhotos.map((photo, index) => (
+                        <figure
+                          key={photo.id}
+                          data-testid={`inventory-import-photo-${photo.id}`}
+                          draggable={!photoEditingPending}
+                          onDragStart={(event) => {
+                            if (photoEditingPending) return;
+                            setDraggedPhotoId(photo.id);
+                            if (event.dataTransfer) {
+                              event.dataTransfer.effectAllowed = 'move';
+                              event.dataTransfer.setData('text/plain', photo.id);
+                            }
+                          }}
+                          onDragOver={(event) => { event.preventDefault(); setDragOverPhotoId(photo.id); }}
+                          onDrop={(event) => { event.preventDefault(); dropImportPhoto(photo.id); }}
+                          onDragEnd={() => { setDraggedPhotoId(null); setDragOverPhotoId(null); }}
+                          className={`w-36 rounded border bg-slate-900/70 p-1.5 ${dragOverPhotoId === photo.id ? 'border-sky-400' : 'border-white/15'} ${draggedPhotoId === photo.id ? 'opacity-50' : ''}`}
+                        >
+                          <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-28 w-full rounded object-cover" />
+                          <figcaption className="truncate px-1 pt-1 text-xs text-white/70" title={photo.filename}>{index + 1}. {photo.filename}</figcaption>
+                          <div className="mt-1 flex items-center gap-1">
+                            <button type="button" className={keypadButtonClass} aria-label={`画像${index + 1}を上へ`} disabled={index === 0 || photoEditingPending} onClick={() => moveImportPhoto(photo.id, -1)}>↑</button>
+                            <button type="button" className={keypadButtonClass} aria-label={`画像${index + 1}を下へ`} disabled={index === selectedImportPhotos.length - 1 || photoEditingPending} onClick={() => moveImportPhoto(photo.id, 1)}>↓</button>
+                            <button type="button" className={`${dangerButtonClass.replace('px-4', 'px-2')} ml-auto text-sm`} aria-label={`画像${index + 1}を削除`} disabled={photoEditingPending} onClick={() => deleteImportPhoto(photo.id, photo.filename)}>削除</button>
+                          </div>
+                        </figure>
+                      ))}
+                    </div>
+                  )}
+                  <dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-white/75">
                     <div><dt className="inline font-semibold">エリア: </dt><dd className="inline">{selectedImport.area}</dd></div>
                     <div><dt className="inline font-semibold">カテゴリ: </dt><dd className="inline">{selectedImport.category ?? '-'}</dd></div>
                     <div><dt className="inline font-semibold">メモ: </dt><dd className="inline">{selectedImport.note ?? '-'}</dd></div>
@@ -271,7 +400,7 @@ export function RaspiInventoryPage() {
                         <label className="flex w-40 flex-col gap-1 text-sm">棚番号<select className={selectClass} value={draft.shelfId} onChange={(event) => { updateDraft('shelfId', event.target.value); updateDraft('drawerId', ''); }}><option value="">棚を選択</option>{shelvesForArea.map((shelf) => <option key={shelf.id} value={shelf.id}>棚{shelf.shelfNumber}</option>)}</select></label>
                         <label className="flex w-44 flex-col gap-1 text-sm">引き出し番号<select className={selectClass} value={draft.drawerId} onChange={(event) => updateDraft('drawerId', event.target.value)} disabled={!draft.shelfId}><option value="">引き出しを選択</option>{drawersForShelf.map((drawer) => <option key={drawer.id} value={drawer.id}>引き出し{drawer.drawerNumber}</option>)}</select></label>
                       </div>
-                      <label className="flex w-full max-w-lg flex-col gap-1 text-sm">アイテムNFC UID<div className="flex flex-wrap gap-2"><input className={`${inputClass} min-w-0 flex-1`} value={draft.itemTagUid} onChange={(event) => updateDraft('itemTagUid', event.target.value)} /><button type="button" className={secondaryButtonClass} onClick={() => setScanTarget('item')}>NFCを読み取る</button></div></label>
+                      <label className="flex w-full max-w-lg flex-col gap-1 text-sm">アイテムNFC UID<div className="flex flex-wrap gap-2"><input className={`${inputClass} min-w-0 flex-1`} value={draft.itemTagUid} onChange={(event) => updateDraft('itemTagUid', event.target.value)} /><button type="button" className={secondaryButtonClass} onClick={() => armNfcTarget('item')}>NFCを読み取る</button></div></label>
                     </div>
                     <div className="shrink-0"><p className="mb-1 text-sm">初期実在庫数（ソフトウェア keypad）</p><NumericKeypad value={draft.initialQuantity} onChange={(value) => updateDraft('initialQuantity', value)} /></div>
                   </div>
@@ -306,7 +435,7 @@ export function RaspiInventoryPage() {
             <label className="flex w-full max-w-md flex-col gap-1 text-sm">アイテム<select className={selectClass} value={binding.itemId} onChange={(event) => setBinding((current) => ({ ...current, itemId: event.target.value }))}><option value="">選択してください</option>{items.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.itemCode})</option>)}</select></label>
             <label className="flex w-52 flex-col gap-1 text-sm">エリア・棚<select className={selectClass} value={binding.shelfId} onChange={(event) => setBinding((current) => ({ ...current, shelfId: event.target.value, drawerId: '' }))}><option value="">選択してください</option>{locations.map((shelf) => <option key={shelf.id} value={shelf.id}>{shelf.area} / 棚{shelf.shelfNumber}</option>)}</select></label>
             <label className="flex w-44 flex-col gap-1 text-sm">引き出し<select className={selectClass} value={binding.drawerId} onChange={(event) => setBinding((current) => ({ ...current, drawerId: event.target.value }))} disabled={!binding.shelfId}><option value="">選択してください</option>{bindingDrawers.map((drawer) => <option key={drawer.id} value={drawer.id}>引き出し{drawer.drawerNumber}</option>)}</select></label>
-            <label className="flex w-full max-w-lg flex-col gap-1 text-sm">アイテムNFC UID<div className="flex flex-wrap gap-2"><input className={`${inputClass} min-w-0 flex-1`} value={binding.itemTagUid} onChange={(event) => setBinding((current) => ({ ...current, itemTagUid: event.target.value }))} /><button type="button" className={secondaryButtonClass} onClick={() => setScanTarget('binding-item')}>NFCを読み取る</button></div></label>
+            <label className="flex w-full max-w-lg flex-col gap-1 text-sm">アイテムNFC UID<div className="flex flex-wrap gap-2"><input className={`${inputClass} min-w-0 flex-1`} value={binding.itemTagUid} onChange={(event) => setBinding((current) => ({ ...current, itemTagUid: event.target.value }))} /><button type="button" className={secondaryButtonClass} onClick={() => armNfcTarget('binding-item')}>NFCを読み取る</button></div></label>
             <button type="button" className={buttonClass} onClick={() => void submitBinding()} disabled={mutations.bindCompartment.isPending}>区画を登録</button>
           </div>
           <div className="shrink-0"><p className="mb-1 text-sm">初期実在庫数</p><NumericKeypad value={binding.initialQuantity} onChange={(value) => setBinding((current) => ({ ...current, initialQuantity: value }))} /></div>
@@ -318,11 +447,11 @@ export function RaspiInventoryPage() {
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="w-full max-w-2xl rounded border border-white/15 p-3">
             <h3 className="font-semibold">数量タグ（任意の正の数量）</h3>
-            <div className="mt-2 flex flex-wrap items-end gap-2"><label className="flex w-full max-w-sm flex-col gap-1 text-sm">数量タグUID<input className={`${inputClass} w-full`} placeholder="UID" value={quantityUid} onChange={(event) => setQuantityUid(event.target.value)} /></label><label className="flex w-24 flex-col gap-1 text-sm">数量<input className={`${inputClass} w-full`} type="number" min={1} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} /></label><button type="button" className={secondaryButtonClass} onClick={() => setScanTarget('quantity')}>NFCを読み取る</button><button type="button" className={buttonClass} onClick={() => void mutations.quantityTag.mutateAsync({ uid: quantityUid, quantity }).catch((error) => setActionError(errorText(error)))}>登録</button></div>
+            <div className="mt-2 flex flex-wrap items-end gap-2"><label className="flex w-full max-w-sm flex-col gap-1 text-sm">数量タグUID<div className="flex flex-wrap gap-2"><input className={`${inputClass} min-w-0 flex-1`} placeholder="UID" value={quantityUid} onChange={(event) => setQuantityUid(event.target.value)} /><button type="button" className={secondaryButtonClass} onClick={() => armNfcTarget('quantity')}>NFCを読み取る</button></div></label><label className="flex w-24 flex-col gap-1 text-sm">数量<input className={`${inputClass} w-full`} type="number" min={1} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} /></label><button type="button" className={buttonClass} onClick={() => void mutations.quantityTag.mutateAsync({ uid: quantityUid, quantity }).catch((error) => setActionError(errorText(error)))}>登録</button></div>
           </div>
           <div className="w-full max-w-2xl rounded border border-white/15 p-3">
             <h3 className="font-semibold">補充モードタグ</h3>
-            <div className="mt-2 flex flex-wrap items-end gap-2"><label className="flex w-full max-w-sm flex-col gap-1 text-sm">補充モードタグUID<input className={`${inputClass} w-full`} placeholder="UID" value={restockUid} onChange={(event) => setRestockUid(event.target.value)} /></label><button type="button" className={secondaryButtonClass} onClick={() => setScanTarget('restock')}>NFCを読み取る</button><button type="button" className={buttonClass} onClick={() => void mutations.restockTag.mutateAsync(restockUid).catch((error) => setActionError(errorText(error)))}>登録</button></div>
+            <div className="mt-2 flex flex-wrap items-end gap-2"><label className="flex w-full max-w-sm flex-col gap-1 text-sm">補充モードタグUID<div className="flex flex-wrap gap-2"><input className={`${inputClass} min-w-0 flex-1`} placeholder="UID" value={restockUid} onChange={(event) => setRestockUid(event.target.value)} /><button type="button" className={secondaryButtonClass} onClick={() => armNfcTarget('restock')}>NFCを読み取る</button></div></label><button type="button" className={buttonClass} onClick={() => void mutations.restockTag.mutateAsync(restockUid).catch((error) => setActionError(errorText(error)))}>登録</button></div>
           </div>
         </div>
       </section>
@@ -332,7 +461,32 @@ export function RaspiInventoryPage() {
         <div className="mt-3 flex flex-col gap-4">
           {items.length === 0 ? <p className="text-sm text-white/60">登録済みアイテムはありません。</p> : items.flatMap((item: InventoryItem) => item.compartments.map((compartment) => (
             <div key={compartment.id} className="rounded border border-white/15 bg-slate-950/30 p-3">
-              <div className="flex flex-wrap justify-between gap-2"><div><strong>{item.name}</strong> <span className="text-sm text-white/60">{item.itemCode}</span></div><span className="font-bold">現在庫 {compartment.stockQuantity}</span></div>
+              <div className="flex flex-wrap justify-between gap-2"><div className="min-w-0"><strong>{item.name}</strong> <span className="text-sm text-white/60">{item.itemCode}</span>{item.photos.length > 0 ? <div className="mt-2 flex max-w-full gap-2 overflow-x-auto" aria-label={`${item.name}の写真`}>
+                {item.photos.map((photo, index) => <figure
+                  key={photo.id}
+                  draggable={!registeredPhotoEditingPending}
+                  onDragStart={(event) => {
+                    if (registeredPhotoEditingPending) return;
+                    setDraggedRegisteredPhoto({ itemId: item.id, photoId: photo.id });
+                    if (event.dataTransfer) {
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', photo.id);
+                    }
+                  }}
+                  onDragOver={(event) => { event.preventDefault(); setDragOverRegisteredPhotoId(photo.id); }}
+                  onDrop={(event) => { event.preventDefault(); dropRegisteredPhoto(item, photo.id); }}
+                  onDragEnd={() => { setDraggedRegisteredPhoto(null); setDragOverRegisteredPhotoId(null); }}
+                  className={`w-28 shrink-0 rounded border bg-slate-900/70 p-1 ${dragOverRegisteredPhotoId === photo.id ? 'border-sky-400' : 'border-white/15'} ${draggedRegisteredPhoto?.photoId === photo.id ? 'opacity-50' : ''}`}
+                >
+                  <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-20 w-full rounded object-cover" />
+                  <figcaption className="truncate px-1 pt-1 text-xs text-white/70" title={photo.originalFilename}>{index + 1}. {photo.originalFilename}</figcaption>
+                  <div className="mt-1 flex items-center gap-1">
+                    <button type="button" className={keypadButtonClass} aria-label={`登録済み画像${index + 1}を上へ`} disabled={index === 0 || registeredPhotoEditingPending} onClick={() => moveRegisteredPhoto(item, photo.id, -1)}>↑</button>
+                    <button type="button" className={keypadButtonClass} aria-label={`登録済み画像${index + 1}を下へ`} disabled={index === item.photos.length - 1 || registeredPhotoEditingPending} onClick={() => moveRegisteredPhoto(item, photo.id, 1)}>↓</button>
+                    <button type="button" className={`${dangerButtonClass.replace('px-4', 'px-2')} ml-auto text-sm`} aria-label={`登録済み画像${index + 1}を削除`} disabled={registeredPhotoEditingPending} onClick={() => deleteRegisteredPhoto(item.id, photo.id, photo.originalFilename)}>削除</button>
+                  </div>
+                </figure>)}
+              </div> : null}</div><span className="font-bold">現在庫 {compartment.stockQuantity}</span></div>
               <p className="mt-1 text-sm text-white/65">{compartment.area} / 棚{compartment.shelfNumber} / 引出し{compartment.drawerNumber} / NFC {compartment.itemTagUid ?? '未設定'}</p>
               <div className="mt-3 flex flex-wrap items-end gap-3">
                 <div className="flex items-end gap-2"><label className="flex w-28 flex-col gap-1 text-sm">修正後在庫<input className={`${inputClass} w-full`} type="number" min={0} value={corrections[compartment.id] ?? ''} onChange={(event) => setCorrections((current) => ({ ...current, [compartment.id]: event.target.value }))} /></label><button type="button" className={compactSecondaryButtonClass} onClick={() => void submitCorrection(compartment.id)}>修正</button></div>

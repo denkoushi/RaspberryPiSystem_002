@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import {
+  inventoryThumbnailUrl,
   resolveInventoryTag,
   type InventoryHistoryEntry,
   type InventoryTag,
@@ -68,6 +69,12 @@ export function KioskItemInventoryPage() {
   useEffect(() => {
     transactionMutateRef.current = mutations.transaction.mutateAsync;
   }, [mutations.transaction.mutateAsync]);
+
+  const updateDisplayedStock = (transaction: Pick<InventoryHistoryEntry, 'compartmentId' | 'afterQuantity'>) => {
+    setSelectedTag((current) => current?.compartment?.id === transaction.compartmentId
+      ? { ...current, compartment: { ...current.compartment, stockQuantity: transaction.afterQuantity } }
+      : current);
+  };
 
   useEffect(() => {
     mountedRef.current = true;
@@ -150,6 +157,7 @@ export function KioskItemInventoryPage() {
               idempotencyKey: `nfc-${event.eventId ?? `${event.uid}-${event.timestamp}`}`,
             });
             setLastTransaction(result.transaction);
+            updateDisplayedStock(result.transaction);
             setMessage(restock ? `補充しました（${result.transaction.delta}個）` : `払い出しました（${Math.abs(result.transaction.delta)}個）`);
             setMessageKind('success');
             playInventoryTone(restock ? 'restock' : 'success');
@@ -158,7 +166,6 @@ export function KioskItemInventoryPage() {
             flow.selectedTag = null;
             setRestockMode(false);
             setRestockTagUid(null);
-            setSelectedTag(null);
           } catch (error) {
             setMessage(messageFromError(error));
             setMessageKind('error');
@@ -193,7 +200,8 @@ export function KioskItemInventoryPage() {
     if (!lastTransaction || busy) return;
     setBusy(true);
     try {
-      await mutations.cancel.mutateAsync(lastTransaction.id);
+      const result = await mutations.cancel.mutateAsync(lastTransaction.id);
+      updateDisplayedStock(result.transaction);
       setLastTransaction(null);
       setMessage('直前の取引を取り消しました');
       setMessageKind('success');
@@ -210,6 +218,7 @@ export function KioskItemInventoryPage() {
   const locationText = selectedTag?.compartment
     ? `${selectedTag.compartment.area} / 棚${selectedTag.compartment.shelfNumber} / 引出し${selectedTag.compartment.drawerNumber}`
     : null;
+  const selectedPhotos = selectedTag?.compartment?.item.photos ?? [];
   const panelClass = messageKind === 'success' ? kioskSuccessPanelClassName : messageKind === 'error' ? kioskErrorPanelClassName : kioskInfoPanelClassName;
 
   return (
@@ -226,10 +235,13 @@ export function KioskItemInventoryPage() {
             {locationText ? ` (${locationText})` : ''}
           </p>
         ) : null}
+        {selectedPhotos.length > 0 ? <div className="mx-auto mt-4 flex w-full max-w-full justify-start gap-2 overflow-x-auto" aria-label="品物写真">
+          {selectedPhotos.map((photo) => <img key={photo.id} src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-24 w-24 shrink-0 rounded object-cover" />)}
+        </div> : null}
         {restockTagUid ? <p className="mt-3 text-sm text-white/60">補充タグ: {restockTagUid}</p> : null}
       </div>
       <div className={`${kioskPanelClassName} flex flex-wrap justify-center gap-3 p-4`}>
-        <button type="button" className={kioskButtonSecondaryClassName} onClick={reset} disabled={busy}>直前取消 / リセット</button>
+        <button type="button" className={kioskButtonSecondaryClassName} onClick={reset} disabled={busy}>選択をリセット</button>
         <button type="button" className={kioskButtonDangerClassName} onClick={() => void cancelLast()} disabled={!lastTransaction || busy}>直前の取引を取消</button>
       </div>
       <p className="text-center text-sm text-white/60">30秒操作がない場合、選択中のアイテムと補充モードを自動解除します。</p>

@@ -3,6 +3,8 @@ import { Prisma, PrismaClient, InventoryImportPayloadStatus, InventoryNfcTagKind
 
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
+import { logger } from '../../lib/logger.js';
+import { PhotoStorage } from '../../lib/photo-storage.js';
 
 export class InventoryInsufficientStockError extends Error {
   constructor() {
@@ -42,7 +44,7 @@ function locationDto(compartment: {
   stockQuantity: number;
   drawer: { drawerNumber: number; shelf: { area: string; shelfNumber: number } };
   itemTag: { uid: string } | null;
-  inventoryItem: { id: string; itemCode: string; name: string; model: string | null; usage: string | null; category: string | null; area: string | null; note: string | null; photos?: Array<{ id: string; photoUrl: string; originalFilename: string }> };
+  inventoryItem: { id: string; itemCode: string; name: string; model: string | null; usage: string | null; category: string | null; area: string | null; note: string | null; photos?: Array<{ id: string; photoIndex: number; photoUrl: string; originalFilename: string }> };
 }) {
   return {
     id: compartment.id,
@@ -98,7 +100,7 @@ export class ItemInventoryService {
         compartment: {
           include: {
             drawer: { include: { shelf: true } },
-            inventoryItem: { include: { photos: { orderBy: { createdAt: 'asc' } } } },
+            inventoryItem: { include: { photos: { orderBy: [{ photoIndex: 'asc' }, { createdAt: 'asc' }] } } },
             itemTag: true,
           },
         },
@@ -161,7 +163,7 @@ export class ItemInventoryService {
     const items = await this.db.inventoryItem.findMany({
       orderBy: [{ name: 'asc' }, { itemCode: 'asc' }],
       include: {
-        photos: { orderBy: { createdAt: 'asc' } },
+        photos: { orderBy: [{ photoIndex: 'asc' }, { createdAt: 'asc' }] },
         compartments: {
           include: { drawer: { include: { shelf: true } }, itemTag: true },
           orderBy: { createdAt: 'asc' },
@@ -180,6 +182,131 @@ export class ItemInventoryService {
       orderBy: { createdAt: 'asc' },
       include: { photos: { orderBy: { photoIndex: 'asc' } }, messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
     });
+  }
+
+  async deleteImportPhoto(payloadId: string, photoId: string) {
+    const result = await this.serializable(async (tx) => {
+      const payload = await tx.inventoryImportPayload.findUnique({ where: { id: payloadId }, select: { status: true } });
+      if (!payload) throw new ApiError(404, 'インポート候補が見つかりません');
+      if (payload.status !== InventoryImportPayloadStatus.PENDING) throw new ApiError(409, '登録済みの候補は編集できません');
+
+      const photo = await tx.inventoryImportPhoto.findFirst({ where: { id: photoId, payloadId } });
+      if (!photo) throw new ApiError(404, '写真が見つかりません');
+      const remaining = await tx.inventoryImportPhoto.findMany({
+        where: { payloadId, id: { not: photoId } },
+        orderBy: [{ photoIndex: 'asc' }, { createdAt: 'asc' }],
+      });
+
+      await tx.inventoryImportPhoto.delete({ where: { id: photoId } });
+      for (const [index, remainingPhoto] of remaining.entries()) {
+        await tx.inventoryImportPhoto.update({ where: { id: remainingPhoto.id }, data: { photoIndex: -(index + 1) } });
+      }
+      for (const [index, remainingPhoto] of remaining.entries()) {
+        await tx.inventoryImportPhoto.update({ where: { id: remainingPhoto.id }, data: { photoIndex: index + 1 } });
+      }
+
+      const [registeredReferences, pendingReferences] = await Promise.all([
+        tx.inventoryItemPhoto.count({ where: { photoUrl: photo.photoUrl } }),
+        tx.inventoryImportPhoto.count({ where: { photoUrl: photo.photoUrl } }),
+      ]);
+      return {
+        photoId,
+        photoUrlToDelete: registeredReferences === 0 && pendingReferences === 0 ? photo.photoUrl : null,
+      };
+    });
+
+    if (result.photoUrlToDelete) {
+      try {
+        await PhotoStorage.deletePhoto(result.photoUrlToDelete);
+      } catch (error) {
+        logger.warn({ err: error, payloadId, photoId, photoUrl: result.photoUrlToDelete }, 'Inventory import photo file deletion failed');
+      }
+    }
+    return { photoId: result.photoId };
+  }
+
+  async reorderImportPhotos(payloadId: string, photoIds: string[]) {
+    await this.serializable(async (tx) => {
+      const payload = await tx.inventoryImportPayload.findUnique({ where: { id: payloadId }, select: { status: true } });
+      if (!payload) throw new ApiError(404, 'インポート候補が見つかりません');
+      if (payload.status !== InventoryImportPayloadStatus.PENDING) throw new ApiError(409, '登録済みの候補は編集できません');
+
+      const photos = await tx.inventoryImportPhoto.findMany({
+        where: { payloadId },
+        orderBy: [{ photoIndex: 'asc' }, { createdAt: 'asc' }],
+      });
+      const photoIdsSet = new Set(photoIds);
+      const knownPhotoIds = new Set(photos.map((photo) => photo.id));
+      if (photoIds.length !== photos.length || photoIdsSet.size !== photos.length || photoIds.some((id) => !knownPhotoIds.has(id))) {
+        throw new ApiError(400, '写真の並び順が不正です');
+      }
+
+      for (const [index, photo] of photos.entries()) {
+        await tx.inventoryImportPhoto.update({ where: { id: photo.id }, data: { photoIndex: -(index + 1) } });
+      }
+      for (const [index, id] of photoIds.entries()) {
+        await tx.inventoryImportPhoto.update({ where: { id }, data: { photoIndex: index + 1 } });
+      }
+    });
+    return { payloadId, photoIds };
+  }
+
+  async deleteInventoryItemPhoto(itemId: string, photoId: string) {
+    const result = await this.serializable(async (tx) => {
+      const photo = await tx.inventoryItemPhoto.findFirst({ where: { id: photoId, inventoryItemId: itemId } });
+      if (!photo) throw new ApiError(404, '登録済み写真が見つかりません');
+
+      await tx.inventoryItemPhoto.delete({ where: { id: photoId } });
+      const remaining = await tx.inventoryItemPhoto.findMany({
+        where: { inventoryItemId: itemId },
+        orderBy: [{ photoIndex: 'asc' }, { createdAt: 'asc' }],
+      });
+      for (const [index, remainingPhoto] of remaining.entries()) {
+        await tx.inventoryItemPhoto.update({ where: { id: remainingPhoto.id }, data: { photoIndex: -(index + 1) } });
+      }
+      for (const [index, remainingPhoto] of remaining.entries()) {
+        await tx.inventoryItemPhoto.update({ where: { id: remainingPhoto.id }, data: { photoIndex: index + 1 } });
+      }
+
+      const [registeredReferences, pendingReferences] = await Promise.all([
+        tx.inventoryItemPhoto.count({ where: { photoUrl: photo.photoUrl } }),
+        tx.inventoryImportPhoto.count({ where: { photoUrl: photo.photoUrl } }),
+      ]);
+      return {
+        photoId,
+        photoUrlToDelete: registeredReferences === 0 && pendingReferences === 0 ? photo.photoUrl : null,
+      };
+    });
+
+    if (result.photoUrlToDelete) {
+      try {
+        await PhotoStorage.deletePhoto(result.photoUrlToDelete);
+      } catch (error) {
+        logger.warn({ err: error, itemId, photoId, photoUrl: result.photoUrlToDelete }, 'Registered inventory photo file deletion failed');
+      }
+    }
+    return { photoId: result.photoId };
+  }
+
+  async reorderInventoryItemPhotos(itemId: string, photoIds: string[]) {
+    await this.serializable(async (tx) => {
+      const photos = await tx.inventoryItemPhoto.findMany({
+        where: { inventoryItemId: itemId },
+        orderBy: [{ photoIndex: 'asc' }, { createdAt: 'asc' }],
+      });
+      const photoIdsSet = new Set(photoIds);
+      const knownPhotoIds = new Set(photos.map((photo) => photo.id));
+      if (photoIds.length !== photos.length || photoIdsSet.size !== photos.length || photoIds.some((id) => !knownPhotoIds.has(id))) {
+        throw new ApiError(400, '登録済み写真の並び順が不正です');
+      }
+      for (const [index, photo] of photos.entries()) {
+        await tx.inventoryItemPhoto.update({ where: { id: photo.id }, data: { photoIndex: -(index + 1) } });
+      }
+      for (const [index, id] of photoIds.entries()) {
+        await tx.inventoryItemPhoto.update({ where: { id }, data: { photoIndex: index + 1 } });
+      }
+    });
+    return { itemId, photoIds };
   }
 
   async listImportMessages() {
@@ -263,28 +390,52 @@ export class ItemInventoryService {
     reviewNote?: string;
     actor?: InventoryActor;
   }) {
-    const payload = await this.db.inventoryImportPayload.findUnique({
-      where: { id: input.payloadId },
-      include: { photos: { orderBy: { photoIndex: 'asc' } } },
-    });
-    if (!payload) throw new ApiError(404, 'インポート候補が見つかりません');
-    if (payload.status !== InventoryImportPayloadStatus.PENDING) throw new ApiError(409, 'この候補は処理済みです');
-    if (input.mode === 'EXISTING_ITEM') {
-      if (!input.itemId) throw new ApiError(400, '既存アイテムを選択してください');
-      const item = await this.db.$transaction(async (tx) => {
-        const existing = await tx.inventoryItem.findUnique({ where: { id: input.itemId } });
+    if (!input.shelfId || !input.drawerId || !input.itemTagUid) {
+      if (input.mode === 'NEW_ITEM') throw new ApiError(400, 'エリア、棚、引き出し、アイテムNFCタグを指定してください');
+    }
+    if (input.mode === 'EXISTING_ITEM' && !input.itemId) {
+      throw new ApiError(400, '既存アイテムを選択してください');
+    }
+    const initialQuantity = input.mode === 'NEW_ITEM' ? nonNegativeInteger(input.initialQuantity ?? 0, '初期数量') : 0;
+    const cleanUid = input.mode === 'NEW_ITEM' ? input.itemTagUid!.trim() : '';
+    if (input.mode === 'NEW_ITEM' && !cleanUid) throw new ApiError(400, 'アイテムNFC UIDを指定してください');
+
+    return this.serializable(async (tx) => {
+      const currentPayload = await tx.inventoryImportPayload.findUnique({
+        where: { id: input.payloadId },
+        include: { photos: { orderBy: { photoIndex: 'asc' } } },
+      });
+      if (!currentPayload) throw new ApiError(404, 'インポート候補が見つかりません');
+      if (currentPayload.status !== InventoryImportPayloadStatus.PENDING) throw new ApiError(409, 'この候補は処理済みです');
+      const claim = await tx.inventoryImportPayload.updateMany({
+        where: { id: input.payloadId, status: InventoryImportPayloadStatus.PENDING },
+        // Transition inside the transaction so a concurrent registrar cannot
+        // match the same PENDING row after the first transaction commits.
+        // Any later failure rolls this claim back with the rest of the work.
+        data: { status: InventoryImportPayloadStatus.REGISTERED },
+      });
+      if (claim.count !== 1) throw new ApiError(409, 'この候補は処理済みです');
+
+      if (input.mode === 'EXISTING_ITEM') {
+        const existing = await tx.inventoryItem.findUnique({ where: { id: input.itemId! } });
         if (!existing) throw new ApiError(404, '既存アイテムが見つかりません');
+        const lastPhoto = await tx.inventoryItemPhoto.findFirst({
+          where: { inventoryItemId: existing.id },
+          orderBy: [{ photoIndex: 'desc' }, { createdAt: 'desc' }],
+          select: { photoIndex: true },
+        });
+        let nextPhotoIndex = (lastPhoto?.photoIndex ?? 0) + 1;
         const updated = await tx.inventoryItem.update({
           where: { id: existing.id },
           data: {
             ...(input.name?.trim() ? { name: input.name.trim() } : {}),
             ...(input.model !== undefined ? { model: input.model.trim() || null } : {}),
             ...(input.usage !== undefined ? { usage: input.usage.trim() || null } : {}),
-            ...(payload.category !== null ? { category: payload.category } : {}),
-            ...(payload.note !== null ? { note: payload.note } : {}),
+            ...(currentPayload.category !== null ? { category: currentPayload.category } : {}),
+            ...(currentPayload.note !== null ? { note: currentPayload.note } : {}),
           },
         });
-        for (const photo of payload.photos) {
+        for (const photo of currentPayload.photos) {
           const already = await tx.inventoryItemPhoto.findFirst({ where: { inventoryItemId: existing.id, sha256: photo.sha256 } });
           if (!already) {
             await tx.inventoryItemPhoto.create({
@@ -293,13 +444,14 @@ export class ItemInventoryService {
                 photoUrl: photo.photoUrl,
                 originalFilename: photo.filename,
                 sha256: photo.sha256,
-                sourcePayloadId: payload.id,
+                sourcePayloadId: currentPayload.id,
+                photoIndex: nextPhotoIndex++,
               },
             });
           }
         }
         await tx.inventoryImportPayload.update({
-          where: { id: payload.id },
+          where: { id: currentPayload.id },
           data: {
             status: InventoryImportPayloadStatus.REGISTERED,
             registrationMode: InventoryRegistrationMode.EXISTING_ITEM,
@@ -308,21 +460,13 @@ export class ItemInventoryService {
             reviewNote: input.reviewNote?.trim() || null,
           },
         });
-        return updated;
-      });
-      return { mode: input.mode, item };
-    }
-    if (!input.shelfId || !input.drawerId || !input.itemTagUid) {
-      throw new ApiError(400, 'エリア、棚、引き出し、アイテムNFCタグを指定してください');
-    }
-    const initialQuantity = nonNegativeInteger(input.initialQuantity ?? 0, '初期数量');
-    const cleanName = input.name?.trim() || `ItemlistRaspi ${payload.sourceItemId}`;
-    const cleanUid = input.itemTagUid.trim();
-    if (!cleanUid) throw new ApiError(400, 'アイテムNFC UIDを指定してください');
-    const result = await this.db.$transaction(async (tx) => {
+        return { mode: input.mode, item: updated };
+      }
+
+      const cleanName = input.name?.trim() || `ItemlistRaspi ${currentPayload.sourceItemId}`;
       const drawer = await tx.inventoryDrawer.findUnique({ where: { id: input.drawerId }, include: { shelf: true } });
       if (!drawer || drawer.shelfId !== input.shelfId) throw new ApiError(400, '棚と引き出しの組み合わせが不正です');
-      if (drawer.shelf.area !== payload.area) throw new ApiError(400, 'JSONのエリアと棚のエリアが一致しません');
+      if (drawer.shelf.area !== currentPayload.area) throw new ApiError(400, 'JSONのエリアと棚のエリアが一致しません');
       await this.assertNfcUidAvailable(cleanUid, tx);
       const existingTag = await tx.inventoryNfcTag.findUnique({ where: { uid: cleanUid } });
       if (existingTag && (existingTag.kind !== InventoryNfcTagKind.ITEM || existingTag.compartmentId)) {
@@ -330,19 +474,20 @@ export class ItemInventoryService {
       }
       const item = await tx.inventoryItem.create({
         data: {
-          itemCode: newItemCode(payload.sourceItemId),
+          itemCode: newItemCode(currentPayload.sourceItemId),
           name: cleanName,
           model: input.model?.trim() || null,
           usage: input.usage?.trim() || null,
-          category: payload.category,
-          area: payload.area,
-          note: payload.note,
+          category: currentPayload.category,
+          area: currentPayload.area,
+          note: currentPayload.note,
           photos: {
-            create: payload.photos.map((photo) => ({
+            create: currentPayload.photos.map((photo, index) => ({
               photoUrl: photo.photoUrl,
               originalFilename: photo.filename,
               sha256: photo.sha256,
-              sourcePayloadId: payload.id,
+              sourcePayloadId: currentPayload.id,
+              photoIndex: index + 1,
             })),
           },
         },
@@ -365,11 +510,11 @@ export class ItemInventoryService {
           delta: initialQuantity,
           beforeQuantity: 0,
           afterQuantity: initialQuantity,
-          details: { sourcePayloadId: payload.id, itemTagUid: cleanUid },
+          details: { sourcePayloadId: currentPayload.id, itemTagUid: cleanUid },
         },
       });
       await tx.inventoryImportPayload.update({
-        where: { id: payload.id },
+        where: { id: currentPayload.id },
         data: {
           status: InventoryImportPayloadStatus.REGISTERED,
           registrationMode: InventoryRegistrationMode.NEW_ITEM,
@@ -378,9 +523,8 @@ export class ItemInventoryService {
           reviewNote: input.reviewNote?.trim() || null,
         },
       });
-      return { item, compartment };
+      return { mode: input.mode, item, compartment };
     });
-    return { mode: input.mode, ...result };
   }
 
   async bindCompartment(input: {

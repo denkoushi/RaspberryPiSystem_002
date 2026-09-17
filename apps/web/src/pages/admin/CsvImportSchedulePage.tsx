@@ -7,7 +7,6 @@ import { CsvImportScheduleCreateForm } from '../../features/admin/csv-import/Csv
 import { CsvImportScheduleListSection } from '../../features/admin/csv-import/CsvImportScheduleListSection';
 import { CsvImportScheduleWarningsBanner } from '../../features/admin/csv-import/CsvImportScheduleWarningsBanner';
 import { CsvImportSubjectPatternSection } from '../../features/admin/csv-import/CsvImportSubjectPatternSection';
-import { ItemInventoryGmailScheduleCard } from '../../features/admin/csv-import/ItemInventoryGmailScheduleCard';
 import { useCsvImportScheduleForm } from '../../features/admin/csv-import/useCsvImportScheduleForm';
 import { useCsvImportScheduleRun } from '../../features/admin/csv-import/useCsvImportScheduleRun';
 
@@ -48,7 +47,6 @@ export function CsvImportSchedulePage() {
         </div>
       }
     >
-      <ItemInventoryGmailScheduleCard />
       <CsvImportScheduleWarningsBanner warnings={form.displayedScheduleWarnings} />
       <CsvImportScheduleCreateForm form={form} csvDashboardsData={csvDashboardsData} />
       <CsvImportScheduleListSection form={form} run={run} csvDashboardsData={csvDashboardsData} />

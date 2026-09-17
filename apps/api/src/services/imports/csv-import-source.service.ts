@@ -56,7 +56,7 @@ export class CsvImportSourceService {
     const { target, provider, storageProvider, patternCache, logger } = params;
 
     // NOTE: csvDashboards は別ルートで処理する（ここでは扱わない）
-    if (target.type === 'csvDashboards') {
+    if (target.type === 'csvDashboards' || target.type === 'itemInventoryGmail') {
       throw new Error('CsvImportSourceService.downloadMasterCsv does not support csvDashboards target');
     }
 
@@ -102,4 +102,3 @@ export class CsvImportSourceService {
     throw new Error(`No matching Gmail messages found for ${target.type}`);
   }
 }
-

@@ -1,6 +1,7 @@
 import type { Prisma, Employee, EmployeeStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
+import { assertInventoryNfcUidAvailable } from '../../lib/nfc-uid-availability.js';
 
 export interface EmployeeCreateInput {
   employeeCode: string;
@@ -79,6 +80,11 @@ export class EmployeeService {
     const displayName = data.lastName && data.firstName
       ? `${data.lastName} ${data.firstName}`
       : data.displayName || '';
+
+    const nfcTagUid = data.nfcTagUid?.trim();
+    if (nfcTagUid) {
+      await assertInventoryNfcUidAvailable(nfcTagUid, prisma);
+    }
     
     return await prisma.employee.create({
       data: {
@@ -114,6 +120,10 @@ export class EmployeeService {
       updateData.firstName = data.firstName;
     }
     if (data.nfcTagUid !== undefined) {
+      const nfcTagUid = data.nfcTagUid?.trim();
+      if (nfcTagUid) {
+        await assertInventoryNfcUidAvailable(nfcTagUid, prisma);
+      }
       updateData.nfcTagUid = data.nfcTagUid ?? null;
     }
     if (data.department !== undefined) {
@@ -198,4 +208,3 @@ export class EmployeeService {
     });
   }
 }
-
