@@ -8,6 +8,7 @@ export const KIOSK_HEADER_TAB_ORDER_SCOPE_SHARED = 'shared';
 /** 画面遷移タブ + 納期管理 + 通話（サイネージ・管理・問い合わせは固定） */
 export const KIOSK_REORDERABLE_HEADER_TAB_IDS = [
   'borrow',
+  'inventory_settings',
   'self_inspection',
   'instruments_borrow',
   'rigging_borrow',

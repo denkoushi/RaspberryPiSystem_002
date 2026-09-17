@@ -196,6 +196,20 @@ export function KioskItemInventoryPage() {
     return () => window.clearTimeout(timer);
   }, [restockMode, selectedTag, message]);
 
+  useEffect(() => {
+    if (messageKind === 'info') return;
+    const timer = window.setTimeout(() => {
+      const flow = flowRef.current;
+      setMessage(flow.restockMode
+        ? '補充モードです。アイテムNFCタグを読み取ってください'
+        : flow.selectedTag
+          ? '数量NFCタグを読み取ってください'
+          : 'アイテムNFCタグを読み取ってください');
+      setMessageKind('info');
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [message, messageKind]);
+
   const cancelLast = async () => {
     if (!lastTransaction || busy) return;
     setBusy(true);

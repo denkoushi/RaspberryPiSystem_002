@@ -1,5 +1,9 @@
 import { api } from '../http';
 
+function inventorySettingsHeaders(accessPassword?: string) {
+  return accessPassword ? { 'x-kiosk-access-password': accessPassword } : undefined;
+}
+
 export type InventoryTagKind = 'ITEM' | 'QUANTITY' | 'RESTOCK';
 export type InventoryPhoto = { id: string; photoIndex: number; photoUrl: string; originalFilename: string; sha256?: string };
 export type InventoryImportPhoto = { id: string; photoIndex: number; filename: string; photoUrl: string; sha256: string };
@@ -90,28 +94,38 @@ export async function getInventoryTags() {
   return data.tags;
 }
 
-export async function getInventoryImports() {
-  const { data } = await api.get<{ imports: InventoryImport[] }>('/item-inventory/imports');
+export async function getInventoryImports(accessPassword?: string) {
+  const { data } = await api.get<{ imports: InventoryImport[] }>('/item-inventory/imports', {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data.imports;
 }
 
-export async function deleteInventoryImportPhoto(payloadId: string, photoId: string) {
-  const { data } = await api.delete<{ result: unknown }>(`/item-inventory/imports/${payloadId}/photos/${photoId}`);
+export async function deleteInventoryImportPhoto(payloadId: string, photoId: string, accessPassword?: string) {
+  const { data } = await api.delete<{ result: unknown }>(`/item-inventory/imports/${payloadId}/photos/${photoId}`, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data.result;
 }
 
-export async function reorderInventoryImportPhotos(payloadId: string, photoIds: string[]) {
-  const { data } = await api.put<{ result: unknown }>(`/item-inventory/imports/${payloadId}/photos/order`, { photoIds });
+export async function reorderInventoryImportPhotos(payloadId: string, photoIds: string[], accessPassword?: string) {
+  const { data } = await api.put<{ result: unknown }>(`/item-inventory/imports/${payloadId}/photos/order`, { photoIds }, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data.result;
 }
 
-export async function deleteInventoryItemPhoto(itemId: string, photoId: string) {
-  const { data } = await api.delete<{ result: unknown }>(`/item-inventory/items/${itemId}/photos/${photoId}`);
+export async function deleteInventoryItemPhoto(itemId: string, photoId: string, accessPassword?: string) {
+  const { data } = await api.delete<{ result: unknown }>(`/item-inventory/items/${itemId}/photos/${photoId}`, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data.result;
 }
 
-export async function reorderInventoryItemPhotos(itemId: string, photoIds: string[]) {
-  const { data } = await api.put<{ result: unknown }>(`/item-inventory/items/${itemId}/photos/order`, { photoIds });
+export async function reorderInventoryItemPhotos(itemId: string, photoIds: string[], accessPassword?: string) {
+  const { data } = await api.put<{ result: unknown }>(`/item-inventory/items/${itemId}/photos/order`, { photoIds }, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data.result;
 }
 
@@ -120,8 +134,10 @@ export async function getInventoryHistory(limit = 100) {
   return data.history;
 }
 
-export async function getInventoryImportMessages() {
-  const { data } = await api.get<{ messages: Array<{ id: string; gmailMessageId: string; outcome: string; errorMessage: string | null; updatedAt: string }> }>('/item-inventory/import-messages');
+export async function getInventoryImportMessages(accessPassword?: string) {
+  const { data } = await api.get<{ messages: Array<{ id: string; gmailMessageId: string; outcome: string; errorMessage: string | null; updatedAt: string }> }>('/item-inventory/import-messages', {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data.messages;
 }
 
@@ -130,8 +146,10 @@ export async function ingestInventoryMail(messageId?: string) {
   return data.result;
 }
 
-export async function retryInventoryImportMessage(id: string) {
-  const { data } = await api.post(`/item-inventory/import-messages/${id}/retry`);
+export async function retryInventoryImportMessage(id: string, accessPassword?: string) {
+  const { data } = await api.post(`/item-inventory/import-messages/${id}/retry`, undefined, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data;
 }
 
@@ -146,8 +164,10 @@ export async function registerInventoryImport(id: string, input: {
   itemTagUid?: string;
   initialQuantity?: number;
   reviewNote?: string;
-}) {
-  const { data } = await api.post<{ result: unknown }>(`/item-inventory/imports/${id}/register`, input);
+}, accessPassword?: string) {
+  const { data } = await api.post<{ result: unknown }>(`/item-inventory/imports/${id}/register`, input, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data.result;
 }
 
@@ -157,28 +177,38 @@ export async function bindInventoryCompartment(input: {
   drawerId: string;
   itemTagUid: string;
   initialQuantity: number;
-}) {
-  const { data } = await api.post<{ result: unknown }>('/item-inventory/compartments', input);
+}, accessPassword?: string) {
+  const { data } = await api.post<{ result: unknown }>('/item-inventory/compartments', input, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data.result;
 }
 
-export async function createInventoryShelf(input: { area: string; shelfNumber: number }) {
-  const { data } = await api.post('/item-inventory/locations/shelves', input);
+export async function createInventoryShelf(input: { area: string; shelfNumber: number }, accessPassword?: string) {
+  const { data } = await api.post('/item-inventory/locations/shelves', input, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data;
 }
 
-export async function createInventoryDrawer(input: { shelfId: string; drawerNumber: number }) {
-  const { data } = await api.post('/item-inventory/locations/drawers', input);
+export async function createInventoryDrawer(input: { shelfId: string; drawerNumber: number }, accessPassword?: string) {
+  const { data } = await api.post('/item-inventory/locations/drawers', input, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data;
 }
 
-export async function registerInventoryQuantityTag(input: { uid: string; quantity: number }) {
-  const { data } = await api.post('/item-inventory/tags/quantity', input);
+export async function registerInventoryQuantityTag(input: { uid: string; quantity: number }, accessPassword?: string) {
+  const { data } = await api.post('/item-inventory/tags/quantity', input, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data;
 }
 
-export async function registerInventoryRestockTag(uid: string) {
-  const { data } = await api.post('/item-inventory/tags/restock', { uid });
+export async function registerInventoryRestockTag(uid: string, accessPassword?: string) {
+  const { data } = await api.post('/item-inventory/tags/restock', { uid }, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data;
 }
 
@@ -193,23 +223,31 @@ export async function processInventoryTransaction(input: {
   return data;
 }
 
-export async function cancelInventoryTransaction(id: string) {
-  const { data } = await api.post<{ transaction: InventoryHistoryEntry }>(`/item-inventory/transactions/${id}/cancel`);
+export async function cancelInventoryTransaction(id: string, accessPassword?: string) {
+  const { data } = await api.post<{ transaction: InventoryHistoryEntry }>(`/item-inventory/transactions/${id}/cancel`, undefined, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data;
 }
 
-export async function correctInventoryStock(input: { compartmentId: string; desiredQuantity: number; note?: string }) {
-  const { data } = await api.post('/item-inventory/corrections', input);
+export async function correctInventoryStock(input: { compartmentId: string; desiredQuantity: number; note?: string }, accessPassword?: string) {
+  const { data } = await api.post('/item-inventory/corrections', input, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data;
 }
 
-export async function moveInventoryCompartment(id: string, drawerId: string) {
-  const { data } = await api.put(`/item-inventory/compartments/${id}/location`, { drawerId });
+export async function moveInventoryCompartment(id: string, drawerId: string, accessPassword?: string) {
+  const { data } = await api.put(`/item-inventory/compartments/${id}/location`, { drawerId }, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data;
 }
 
-export async function replaceInventoryItemTag(id: string, uid: string) {
-  const { data } = await api.put(`/item-inventory/compartments/${id}/tag`, { uid });
+export async function replaceInventoryItemTag(id: string, uid: string, accessPassword?: string) {
+  const { data } = await api.put(`/item-inventory/compartments/${id}/tag`, { uid }, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
   return data;
 }
 

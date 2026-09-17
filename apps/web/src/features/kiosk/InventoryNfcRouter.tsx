@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useNfcStream, type NfcEvent } from '../../hooks/useNfcStream';
 
 /** Classify inventory tags globally while non-inventory tags fall through. */
 export function InventoryNfcRouter() {
-  const event = useNfcStream(true, undefined, { role: 'inventory' });
+  const location = useLocation();
+  const event = useNfcStream(location.pathname !== '/kiosk/inventory/settings', undefined, { role: 'inventory' });
   const navigate = useNavigate();
 
   useEffect(() => {

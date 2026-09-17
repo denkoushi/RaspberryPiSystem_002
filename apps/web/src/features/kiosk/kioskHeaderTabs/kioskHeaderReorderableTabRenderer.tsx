@@ -59,6 +59,13 @@ export function renderKioskReorderableHeaderTab(
         isActive: pathname === '/kiosk' || pathname === '/kiosk/tag' || pathname === '/kiosk/photo',
         activeClassName: 'bg-emerald-500 text-white'
       });
+    case 'inventory_settings':
+      return renderNavLinkTab({
+        to: '/kiosk/inventory/settings',
+        label: '在庫設定',
+        isActive: pathname.startsWith('/kiosk/inventory/settings'),
+        activeClassName: 'bg-sky-600 text-white'
+      });
     case 'self_inspection':
       return renderNavLinkTab({
         to: '/kiosk/part-measurement/self-inspection',
