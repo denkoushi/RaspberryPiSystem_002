@@ -154,6 +154,7 @@ describe('RaspiInventoryPage response shapes', () => {
 
     render(<MemoryRouter initialEntries={['/admin/tools/raspi-inventory']}><RaspiInventoryPage /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: /候補 #2/ }));
+    expect(screen.getByLabelText('エリア')).toHaveValue('30007_KSJP-55');
     fireEvent.click(screen.getByRole('button', { name: '既存に追加' }));
     fireEvent.change(screen.getByLabelText('追加先アイテム'), { target: { value: registeredItem.id } });
 
@@ -215,7 +216,9 @@ describe('RaspiInventoryPage response shapes', () => {
 
     const view = render(<MemoryRouter initialEntries={['/admin/tools/raspi-inventory']}><RaspiInventoryPage /></MemoryRouter>);
     const uidInput = screen.getByLabelText('アイテムNFC UID');
-    fireEvent.click(screen.getAllByRole('button', { name: 'NFCを読み取る' })[0]);
+    const readButton = screen.getAllByRole('button', { name: 'NFCを読み取る' })[0];
+    fireEvent.click(readButton);
+    expect(readButton).toHaveClass('bg-amber-400');
     expect(uidInput).toHaveValue('');
 
     vi.mocked(useNfcStream).mockReturnValue(nextEvent as never);
@@ -233,12 +236,18 @@ describe('RaspiInventoryPage response shapes', () => {
       render(<MemoryRouter initialEntries={['/admin/tools/raspi-inventory']}><RaspiInventoryPage /></MemoryRouter>);
       const input = screen.getByLabelText('修正後在庫');
       fireEvent.change(input, { target: { value: '' } });
-      fireEvent.click(screen.getByRole('button', { name: '修正' }));
+      const correctionButton = screen.getByRole('button', { name: '修正' });
+      expect(correctionButton).toBeDisabled();
       expect(correction).not.toHaveBeenCalled();
-      expect(screen.getByRole('alert')).toHaveTextContent('修正後在庫を入力してください');
 
+      fireEvent.change(input, { target: { value: '-1' } });
+      expect(correctionButton).toBeDisabled();
+      fireEvent.change(input, { target: { value: '1.5' } });
+      expect(correctionButton).toBeDisabled();
       fireEvent.change(input, { target: { value: '0' } });
-      fireEvent.click(screen.getByRole('button', { name: '修正' }));
+      expect(correctionButton).toBeEnabled();
+      expect(correctionButton).toHaveClass('bg-sky-600');
+      fireEvent.click(correctionButton);
       await vi.waitFor(() => expect(correction).toHaveBeenCalledWith({ compartmentId: 'compartment-1', desiredQuantity: 0 }));
     } finally {
       confirm.mockRestore();

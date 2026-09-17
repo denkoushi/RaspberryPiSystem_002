@@ -8,6 +8,10 @@ import { requireClientDevice } from '../kiosk/shared.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import { getItemInventoryServices } from '../../services/item-inventory/item-inventory-service.factory.js';
 import { InventoryConflictError, InventoryInsufficientStockError } from '../../services/item-inventory/item-inventory.service.js';
+import {
+  SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
+  verifyDueManagementAccessPassword
+} from '../../services/production-schedule/production-schedule-settings.service.js';
 
 const uidQuery = z.object({ uid: z.string().trim().min(1).max(256) });
 const idParams = z.object({ id: z.string().uuid() });
@@ -18,8 +22,44 @@ const manage = authorizeRoles('ADMIN', 'MANAGER');
 const read = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
   await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
 };
+const inventorySettingsRateLimit = { max: 10, timeWindow: '1 minute' };
+const inventorySettingsFailedAttemptLimit = 10;
+const inventorySettingsFailedAttempts = new Map<string, { count: number; resetAt: number }>();
 
 const adminAuthorizedRequests = new WeakSet<FastifyRequest>();
+
+function inventorySettingsAttemptKey(request: FastifyRequest): string {
+  const rawClientKey = request.headers['x-client-key'];
+  const clientKey = typeof rawClientKey === 'string' ? rawClientKey : rawClientKey?.[0] ?? '';
+  return `${request.ip}:${clientKey}`;
+}
+
+function pruneInventorySettingsFailedAttempts(now: number): void {
+  for (const [key, entry] of inventorySettingsFailedAttempts) {
+    if (entry.resetAt <= now) inventorySettingsFailedAttempts.delete(key);
+  }
+}
+
+function inventorySettingsAttemptsBlocked(request: FastifyRequest): boolean {
+  const now = Date.now();
+  pruneInventorySettingsFailedAttempts(now);
+  return (inventorySettingsFailedAttempts.get(inventorySettingsAttemptKey(request))?.count ?? 0) >= inventorySettingsFailedAttemptLimit;
+}
+
+function recordInventorySettingsFailedAttempt(request: FastifyRequest): void {
+  const now = Date.now();
+  const key = inventorySettingsAttemptKey(request);
+  const current = inventorySettingsFailedAttempts.get(key);
+  if (!current || current.resetAt <= now) {
+    inventorySettingsFailedAttempts.set(key, { count: 1, resetAt: now + 60000 });
+    return;
+  }
+  current.count += 1;
+}
+
+function clearInventorySettingsFailedAttempts(request: FastifyRequest): void {
+  inventorySettingsFailedAttempts.delete(inventorySettingsAttemptKey(request));
+}
 
 async function writeOrKiosk(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (request.headers.authorization) {
@@ -35,7 +75,41 @@ async function writeOrKiosk(request: FastifyRequest, reply: FastifyReply): Promi
 }
 
 async function cancelWrite(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (request.headers['x-kiosk-access-password']) {
+    await authorizeManageOrKiosk(request, reply);
+    return;
+  }
   await writeOrKiosk(request, reply);
+}
+
+async function authorizeManageOrKiosk(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const rawPassword = request.headers['x-kiosk-access-password'];
+  if (rawPassword) {
+    await requireClientDevice(request.headers['x-client-key']);
+    if (inventorySettingsAttemptsBlocked(request)) {
+      throw new ApiError(429, '操作パスワードの試行回数が上限に達しました。しばらくしてから再試行してください', undefined, 'INVENTORY_SETTINGS_ACCESS_RATE_LIMITED');
+    }
+    const password = Array.isArray(rawPassword) ? rawPassword[0] : rawPassword;
+    if (!password || !/^\d{4}$/.test(password.trim())) {
+      recordInventorySettingsFailedAttempt(request);
+      throw new ApiError(403, '在庫設定の操作パスワードが違います', undefined, 'INVENTORY_SETTINGS_ACCESS_DENIED');
+    }
+    const result = await verifyDueManagementAccessPassword({
+      location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
+      password: password.trim()
+    });
+    if (!result.success) {
+      recordInventorySettingsFailedAttempt(request);
+      throw new ApiError(403, '在庫設定の操作パスワードが違います', undefined, 'INVENTORY_SETTINGS_ACCESS_DENIED');
+    }
+    clearInventorySettingsFailedAttempts(request);
+    // A verified PIN grants the same cross-terminal cancellation scope as an
+    // ADMIN request, while the actor remains the kiosk client device.
+    adminAuthorizedRequests.add(request);
+    return;
+  }
+  await manage(request, reply);
+  adminAuthorizedRequests.add(request);
 }
 
 async function actor(request: FastifyRequest) {
@@ -71,9 +145,21 @@ const transactionBody = z.object({
   restock: z.boolean().default(false),
   idempotencyKey: z.string().trim().min(1).max(200).optional(),
 });
+const inventorySettingsAccessPasswordBody = z.object({
+  password: z.string().trim().regex(/^\d{4}$/, '操作パスワードは4桁の数字で入力してください')
+});
 
 export function registerItemInventoryRoutes(app: FastifyInstance): void {
   const services = getItemInventoryServices();
+
+  app.post('/kiosk/item-inventory/settings/verify-access-password', { config: { rateLimit: inventorySettingsRateLimit } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const body = inventorySettingsAccessPasswordBody.parse(request.body ?? {});
+    return verifyDueManagementAccessPassword({
+      location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
+      password: body.password
+    });
+  });
 
   app.get('/item-inventory/tags/resolve', { preHandler: [read] }, async (request) => {
     const query = uidQuery.parse(request.query ?? {});
@@ -87,8 +173,8 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     const query = z.object({ limit: z.coerce.number().int().min(1).max(500).default(100) }).parse(request.query ?? {});
     return { history: await services.inventory.listHistory(query.limit) };
   });
-  app.get('/item-inventory/imports', { preHandler: [manage] }, async () => ({ imports: await services.inventory.listPendingImports() }));
-  app.get('/item-inventory/import-messages', { preHandler: [manage] }, async () => ({ messages: await services.inventory.listImportMessages() }));
+  app.get('/item-inventory/imports', { preHandler: [authorizeManageOrKiosk] }, async () => ({ imports: await services.inventory.listPendingImports() }));
+  app.get('/item-inventory/import-messages', { preHandler: [authorizeManageOrKiosk] }, async () => ({ messages: await services.inventory.listImportMessages() }));
 
   app.post('/item-inventory/transactions', { preHandler: [writeOrKiosk] }, async (request) => {
     const body = transactionBody.parse(request.body ?? {});
@@ -110,7 +196,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     }
   });
 
-  app.post('/item-inventory/corrections', { preHandler: [manage] }, async (request) => {
+  app.post('/item-inventory/corrections', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({ compartmentId: z.string().uuid(), desiredQuantity: z.number().int().min(0), note: z.string().max(1000).optional() }).parse(request.body ?? {});
     try {
       const transaction = await services.inventory.correctStock(body.compartmentId, body.desiredQuantity, await actor(request), body.note);
@@ -120,52 +206,52 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     }
   });
 
-  app.post('/item-inventory/locations/shelves', { preHandler: [manage] }, async (request) => {
+  app.post('/item-inventory/locations/shelves', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({ area: z.string().trim().min(1).max(200), shelfNumber: z.number().int().min(1) }).parse(request.body ?? {});
     return { shelf: await services.inventory.createShelf(body.area, body.shelfNumber) };
   });
-  app.post('/item-inventory/locations/drawers', { preHandler: [manage] }, async (request) => {
+  app.post('/item-inventory/locations/drawers', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({ shelfId: z.string().uuid(), drawerNumber: z.number().int().min(1) }).parse(request.body ?? {});
     return { drawer: await services.inventory.createDrawer(body.shelfId, body.drawerNumber) };
   });
-  app.post('/item-inventory/tags/quantity', { preHandler: [manage] }, async (request) => {
+  app.post('/item-inventory/tags/quantity', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({ uid: z.string().trim().min(1).max(256), quantity: z.number().int().min(1) }).parse(request.body ?? {});
     return { tag: await services.inventory.upsertQuantityTag(body.uid, body.quantity) };
   });
-  app.post('/item-inventory/tags/restock', { preHandler: [manage] }, async (request) => {
+  app.post('/item-inventory/tags/restock', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({ uid: z.string().trim().min(1).max(256) }).parse(request.body ?? {});
     return { tag: await services.inventory.upsertRestockTag(body.uid) };
   });
 
-  app.post('/item-inventory/imports/:id/register', { preHandler: [manage] }, async (request) => {
+  app.post('/item-inventory/imports/:id/register', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { id } = idParams.parse(request.params);
     const body = registerBody.parse(request.body ?? {});
     return { result: await services.inventory.registerImport({ ...body, payloadId: id, actor: await actor(request) }) };
   });
 
-  app.delete('/item-inventory/imports/:payloadId/photos/:photoId', { preHandler: [manage] }, async (request) => {
+  app.delete('/item-inventory/imports/:payloadId/photos/:photoId', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { payloadId, photoId } = importPhotoParams.parse(request.params);
     return { result: await services.inventory.deleteImportPhoto(payloadId, photoId) };
   });
 
-  app.put('/item-inventory/imports/:id/photos/order', { preHandler: [manage] }, async (request) => {
+  app.put('/item-inventory/imports/:id/photos/order', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { id } = idParams.parse(request.params);
     const body = z.object({ photoIds: z.array(z.string().uuid()) }).parse(request.body ?? {});
     return { result: await services.inventory.reorderImportPhotos(id, body.photoIds) };
   });
 
-  app.delete('/item-inventory/items/:itemId/photos/:photoId', { preHandler: [manage] }, async (request) => {
+  app.delete('/item-inventory/items/:itemId/photos/:photoId', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { itemId, photoId } = itemPhotoParams.parse(request.params);
     return { result: await services.inventory.deleteInventoryItemPhoto(itemId, photoId) };
   });
 
-  app.put('/item-inventory/items/:itemId/photos/order', { preHandler: [manage] }, async (request) => {
+  app.put('/item-inventory/items/:itemId/photos/order', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { itemId } = z.object({ itemId: z.string().uuid() }).parse(request.params);
     const body = z.object({ photoIds: z.array(z.string().uuid()) }).parse(request.body ?? {});
     return { result: await services.inventory.reorderInventoryItemPhotos(itemId, body.photoIds) };
   });
 
-  app.post('/item-inventory/compartments', { preHandler: [manage] }, async (request) => {
+  app.post('/item-inventory/compartments', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({
       itemId: z.string().uuid(),
       shelfId: z.string().uuid(),
@@ -176,19 +262,19 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { result: await services.inventory.bindCompartment({ ...body, actor: await actor(request) }) };
   });
 
-  app.post('/item-inventory/import-messages/:id/retry', { preHandler: [manage] }, async (request) => {
+  app.post('/item-inventory/import-messages/:id/retry', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { id } = idParams.parse(request.params);
     const config = await BackupConfigLoader.load();
     const result = await services.ingestion.retryRecord(id, { config, allowWait: true });
     return { result };
   });
 
-  app.put('/item-inventory/compartments/:id/location', { preHandler: [manage] }, async (request) => {
+  app.put('/item-inventory/compartments/:id/location', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { id } = compartmentParams.parse(request.params);
     const body = z.object({ drawerId: z.string().uuid() }).parse(request.body ?? {});
     return { transaction: await services.inventory.moveLocation(id, body.drawerId, await actor(request)) };
   });
-  app.put('/item-inventory/compartments/:id/tag', { preHandler: [manage] }, async (request) => {
+  app.put('/item-inventory/compartments/:id/tag', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { id } = compartmentParams.parse(request.params);
     const body = z.object({ uid: z.string().trim().min(1).max(256) }).parse(request.body ?? {});
     return { tag: await services.inventory.replaceItemTag(id, body.uid, await actor(request)) };
