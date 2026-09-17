@@ -161,6 +161,7 @@ export class ItemInventoryService {
 
   async listItems() {
     const items = await this.db.inventoryItem.findMany({
+      where: { deletedAt: null },
       orderBy: [{ name: 'asc' }, { itemCode: 'asc' }],
       include: {
         photos: { orderBy: [{ photoIndex: 'asc' }, { createdAt: 'asc' }] },
@@ -174,6 +175,31 @@ export class ItemInventoryService {
       ...item,
       compartments: compartments.map((compartment) => locationDto({ ...compartment, inventoryItem: item })),
     }));
+  }
+
+  async deleteItem(itemId: string) {
+    return this.db.$transaction(async (tx) => {
+      const item = await tx.inventoryItem.findUnique({ where: { id: itemId } });
+      if (!item) throw new ApiError(404, '登録済みアイテムが見つかりません');
+      if (item.deletedAt) throw new ApiError(409, 'このアイテムは既に削除されています');
+
+      const compartments = await tx.inventoryCompartment.findMany({
+        where: { inventoryItemId: itemId },
+        select: { id: true },
+      });
+      const compartmentIds = compartments.map(({ id }) => id);
+      if (compartmentIds.length > 0) {
+        // Only item tags point at these compartments. Quantity/restock tags
+        // have no compartmentId and therefore remain untouched.
+        await tx.inventoryNfcTag.updateMany({
+          where: { compartmentId: { in: compartmentIds } },
+          data: { compartmentId: null },
+        });
+        await tx.inventoryCompartment.deleteMany({ where: { inventoryItemId: itemId } });
+      }
+      await tx.inventoryItem.update({ where: { id: itemId }, data: { deletedAt: new Date() } });
+      return { id: itemId };
+    });
   }
 
   async listPendingImports() {
@@ -419,6 +445,7 @@ export class ItemInventoryService {
       if (input.mode === 'EXISTING_ITEM') {
         const existing = await tx.inventoryItem.findUnique({ where: { id: input.itemId! } });
         if (!existing) throw new ApiError(404, '既存アイテムが見つかりません');
+        if (existing.deletedAt) throw new ApiError(404, '既存アイテムが見つかりません');
         const lastPhoto = await tx.inventoryItemPhoto.findFirst({
           where: { inventoryItemId: existing.id },
           orderBy: [{ photoIndex: 'desc' }, { createdAt: 'desc' }],
@@ -544,6 +571,7 @@ export class ItemInventoryService {
         tx.inventoryDrawer.findUnique({ where: { id: input.drawerId }, include: { shelf: true } }),
       ]);
       if (!item) throw new ApiError(404, '既存アイテムが見つかりません');
+      if (item.deletedAt) throw new ApiError(404, '既存アイテムが見つかりません');
       if (!drawer || drawer.shelfId !== input.shelfId) throw new ApiError(400, '棚と引き出しの組み合わせが不正です');
       await this.assertNfcUidAvailable(cleanUid, tx);
       const existingTag = await tx.inventoryNfcTag.findUnique({ where: { uid: cleanUid } });

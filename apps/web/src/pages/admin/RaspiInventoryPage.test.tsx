@@ -88,6 +88,7 @@ const mutations = {
   correction: { mutateAsync: vi.fn(), isPending: false },
   move: { mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false },
   replaceTag: { mutateAsync: vi.fn(), isPending: false },
+  deleteItem: { mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false },
 };
 
 function arrange(imports: InventoryImport[] = []) {
@@ -107,7 +108,8 @@ describe('RaspiInventoryPage response shapes', () => {
     try {
       render(<MemoryRouter initialEntries={['/admin/tools/raspi-inventory']}><RaspiInventoryPage /></MemoryRouter>);
 
-      expect(screen.getByText(/30007_KSJP-55 \/ 棚2 \/ 引出し3 \/ NFC item-uid/)).toBeInTheDocument();
+      expect(screen.getByText('30007_KSJP-55 / 棚2 / 引出し3')).toBeInTheDocument();
+      expect(screen.getByText('item-uid')).toBeInTheDocument();
       expect(screen.getByAltText('registered.jpg')).toBeInTheDocument();
       const moveOption = screen.getByRole('option', { name: '棚2 / 引出し4' });
       expect(moveOption).toBeInTheDocument();
@@ -116,6 +118,35 @@ describe('RaspiInventoryPage response shapes', () => {
       fireEvent.change(moveOption.parentElement, { target: { value: 'drawer-2' } });
       fireEvent.click(screen.getByRole('button', { name: '移動' }));
       expect(mutations.move.mutateAsync).toHaveBeenCalledWith({ id: 'compartment-1', drawerId: 'drawer-2' });
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  it('disables shelf and drawer creation when the number already exists', () => {
+    arrange();
+    render(<MemoryRouter initialEntries={['/admin/tools/raspi-inventory']}><RaspiInventoryPage /></MemoryRouter>);
+
+    fireEvent.change(screen.getByLabelText('エリア'), { target: { value: '30007_KSJP-55' } });
+    fireEvent.change(screen.getByLabelText('棚番号'), { target: { value: '2' } });
+    expect(screen.getByRole('button', { name: '棚を追加' })).toBeDisabled();
+    expect(screen.getByText('同じエリアの棚番号は登録済みです。')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('追加先の棚'), { target: { value: 'shelf-1' } });
+    fireEvent.change(screen.getByLabelText('引き出し番号'), { target: { value: '3' } });
+    expect(screen.getByRole('button', { name: '引き出しを追加' })).toBeDisabled();
+    expect(screen.getByText('選択した棚の引き出し番号は登録済みです。')).toBeInTheDocument();
+  });
+
+  it('deletes a registered item after confirmation', async () => {
+    const deleteItem = mutations.deleteItem.mutateAsync;
+    deleteItem.mockClear();
+    arrange();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      render(<MemoryRouter initialEntries={['/admin/tools/raspi-inventory']}><RaspiInventoryPage /></MemoryRouter>);
+      fireEvent.click(screen.getByRole('button', { name: 'アイテムを削除' }));
+      await vi.waitFor(() => expect(deleteItem).toHaveBeenCalledWith('item-1'));
     } finally {
       confirm.mockRestore();
     }

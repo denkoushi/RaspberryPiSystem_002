@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 
-import { Prisma } from '@prisma/client';
+import { InventoryImportOutcome, Prisma } from '@prisma/client';
 import { logger } from '../../lib/logger.js';
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
 import { PhotoStorage } from '../../lib/photo-storage.js';
@@ -15,6 +15,7 @@ export type ItemInventoryGmailPort = ItemInventoryAttachmentClient & {
   searchMessagesAll: (query: string) => Promise<string[]>;
   getMessage: (messageId: string) => Promise<GmailMessage>;
   markAsRead?: (messageId: string) => Promise<void>;
+  trashMessage: (messageId: string) => Promise<void>;
 };
 
 export type ItemInventoryCycleSummary = {
@@ -43,13 +44,28 @@ function isProcessingStale(record: { outcome: string; updatedAt: Date }, now: Da
   return record.outcome === 'PROCESSING' && record.updatedAt.getTime() <= now.getTime() - ITEM_INVENTORY_RETRY_DELAY_MS;
 }
 
+function isGmailMessageGone(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 3 && current; depth += 1) {
+    if (typeof current !== 'object' || current === null) break;
+    const candidate = current as { status?: unknown; code?: unknown; cause?: unknown; response?: { status?: unknown; statusCode?: unknown } };
+    const status = candidate.status ?? candidate.code ?? candidate.response?.status ?? candidate.response?.statusCode;
+    if (status === 404 || status === '404') return true;
+    current = candidate.cause;
+  }
+  return false;
+}
+
 function shouldSkipRecord(
-  record: { outcome: string; nextRetryAt: Date | null; updatedAt: Date } | null,
+  record: { outcome: string; nextRetryAt: Date | null; updatedAt: Date; mailCleanupPending?: boolean; mailCleanupCompleted?: boolean } | null,
   now: Date,
   forceRetry = false,
 ): boolean {
   if (!record || forceRetry) return false;
-  if (['APPLIED', 'DUPLICATE', 'INVALID', 'PENDING'].includes(record.outcome)) return true;
+  if (record.mailCleanupCompleted) return true;
+  if (record.mailCleanupPending) return Boolean(record.nextRetryAt && record.nextRetryAt > now);
+  if (['DUPLICATE', 'PENDING'].includes(record.outcome)) return false;
+  if (['APPLIED', 'INVALID'].includes(record.outcome)) return true;
   if (record.outcome === 'PROCESSING') return !isProcessingStale(record, now);
   return !isRetryable(record, now);
 }
@@ -69,23 +85,41 @@ export class ItemInventoryGmailIngestionService {
     const summary = emptySummary();
     try {
       const gmail = await this.gmailFactory(options.config, { allowWait: options.allowWait });
-      const messageIds = options.messageId
+      const now = new Date();
+      const searchedMessageIds = options.messageId
         ? [options.messageId]
         : await gmail.searchMessagesAll(buildItemInventoryGmailSearchQuery(options.config.itemInventoryGmailIngest ?? {
           enabled: false,
           subjectTokens: ['[ItemlistRaspi-photo]'],
         }));
-      summary.scanned = messageIds.length;
-      const now = new Date();
+      const cleanupRecords = options.messageId ? [] : await this.db.inventoryImportMessage.findMany({
+        where: {
+          OR: [
+            { mailCleanupPending: true, OR: [{ nextRetryAt: null }, { nextRetryAt: { lte: now } }] },
+            { outcome: { in: ['PENDING', 'DUPLICATE'] }, mailCleanupPending: false, mailCleanupCompleted: false },
+          ],
+        },
+        orderBy: [{ nextRetryAt: 'asc' }, { updatedAt: 'asc' }],
+        take: ITEM_INVENTORY_BATCH_LIMIT,
+      });
+      const messageIds = [...new Set([...searchedMessageIds, ...cleanupRecords.map((record) => record.gmailMessageId)])];
+      summary.scanned = searchedMessageIds.length;
       const eligibleMessageIds: string[] = [];
+      const cleanupOnlyMessageIds: string[] = [];
       for (const messageId of messageIds) {
         const record = await this.db.inventoryImportMessage.findUnique({ where: { gmailMessageId: messageId } });
-        if (!shouldSkipRecord(record, now, options.forceRetry && options.messageId === messageId)) {
+        const forceRetry = options.forceRetry && options.messageId === messageId;
+        if (record && !record.mailCleanupCompleted && (record.mailCleanupPending || ['PENDING', 'DUPLICATE'].includes(record.outcome))) {
+          if (!shouldSkipRecord(record, now, forceRetry)) cleanupOnlyMessageIds.push(messageId);
+        } else if (!shouldSkipRecord(record, now, forceRetry)) {
           eligibleMessageIds.push(messageId);
         }
-        if (eligibleMessageIds.length >= ITEM_INVENTORY_BATCH_LIMIT) break;
       }
-      for (const messageId of eligibleMessageIds) {
+      const selectedMessageIds = eligibleMessageIds.slice(0, ITEM_INVENTORY_BATCH_LIMIT);
+      if (selectedMessageIds.length < ITEM_INVENTORY_BATCH_LIMIT) {
+        selectedMessageIds.push(...cleanupOnlyMessageIds.slice(0, ITEM_INVENTORY_BATCH_LIMIT - selectedMessageIds.length));
+      }
+      for (const messageId of selectedMessageIds) {
         // Gmail requests and photo writes are intentionally sequential to keep
         // source order deterministic and stay within the shared Gmail quota.
         // eslint-disable-next-line no-await-in-loop
@@ -115,11 +149,15 @@ export class ItemInventoryGmailIngestionService {
   private async processMessage(gmail: ItemInventoryGmailPort, messageId: string, config: BackupConfig, forceRetry = false): Promise<'pending' | 'duplicate' | 'retryable' | 'skipped' | 'processed'> {
     const now = new Date();
     const existing = await this.db.inventoryImportMessage.findUnique({ where: { gmailMessageId: messageId } });
+    if (existing && ['PENDING', 'DUPLICATE'].includes(existing.outcome)) {
+      if (existing.mailCleanupCompleted || shouldSkipRecord(existing, now, forceRetry)) return 'skipped';
+      return this.acknowledgeSuccessfulMessage(gmail, messageId, existing.outcome, existing.payloadId, existing.errorMessage);
+    }
     if (shouldSkipRecord(existing, now, forceRetry)) return 'skipped';
     await this.db.inventoryImportMessage.upsert({
       where: { gmailMessageId: messageId },
       create: { gmailMessageId: messageId, outcome: 'PROCESSING' },
-      update: { outcome: 'PROCESSING', errorMessage: null, nextRetryAt: null },
+      update: { outcome: 'PROCESSING', errorMessage: null, nextRetryAt: null, mailCleanupPending: false, mailCleanupCompleted: false },
     });
     let message: GmailMessage;
     try {
@@ -151,9 +189,9 @@ export class ItemInventoryGmailIngestionService {
     if (duplicate) {
       await this.db.inventoryImportMessage.update({
         where: { gmailMessageId: messageId },
-        data: { outcome: 'DUPLICATE', payloadId: duplicate.id, errorMessage: null, nextRetryAt: null },
+        data: { outcome: 'DUPLICATE', payloadId: duplicate.id, errorMessage: null, nextRetryAt: null, mailCleanupPending: false, mailCleanupCompleted: false },
       });
-      return 'duplicate';
+      return this.acknowledgeSuccessfulMessage(gmail, messageId, 'DUPLICATE', duplicate.id);
     }
       const storedPhotos: Array<{ photoIndex: number; filename: string; photoUrl: string; sha256: string }> = [];
     try {
@@ -178,23 +216,14 @@ export class ItemInventoryGmailIngestionService {
           photos: { create: storedPhotos },
         },
       });
-      await this.db.inventoryImportMessage.update({ where: { gmailMessageId: messageId }, data: { outcome: 'PENDING', payloadId: payload.id, errorMessage: null, nextRetryAt: null } });
-      if (gmail.markAsRead) {
-        try {
-          await gmail.markAsRead(messageId);
-        } catch (error) {
-          logger.warn({ err: error, messageId }, '[ItemInventoryGmailIngestion] accepted message could not be marked read');
-        }
-      }
-      return 'pending';
+      return this.acknowledgeSuccessfulMessage(gmail, messageId, 'PENDING', payload.id);
     } catch (error) {
       // A unique race means another worker already accepted the same payload.
       const raced = error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
       if (raced) {
         const payload = await this.db.inventoryImportPayload.findUnique({ where: { contentHash: packet.contentHash } });
         if (payload) {
-          await this.db.inventoryImportMessage.update({ where: { gmailMessageId: messageId }, data: { outcome: 'DUPLICATE', payloadId: payload.id, errorMessage: null, nextRetryAt: null } });
-          return 'duplicate';
+          return this.acknowledgeSuccessfulMessage(gmail, messageId, 'DUPLICATE', payload.id);
         }
       }
       await this.recordRetry(messageId, errorMessage(error));
@@ -210,13 +239,72 @@ export class ItemInventoryGmailIngestionService {
         outcome: 'RETRYABLE',
         errorMessage: prefix ? `${prefix}: ${messageText}` : messageText,
         nextRetryAt: new Date(Date.now() + ITEM_INVENTORY_RETRY_DELAY_MS),
+        mailCleanupPending: false,
+        mailCleanupCompleted: false,
       },
       update: {
         outcome: 'RETRYABLE',
         errorMessage: prefix ? `${prefix}: ${messageText}` : messageText,
         nextRetryAt: new Date(Date.now() + ITEM_INVENTORY_RETRY_DELAY_MS),
+        mailCleanupPending: false,
+        mailCleanupCompleted: false,
       },
     });
     logger.warn({ messageId, error: messageText }, '[ItemInventoryGmailIngestion] message is retryable');
+  }
+
+  private async acknowledgeSuccessfulMessage(
+    gmail: ItemInventoryGmailPort,
+    messageId: string,
+    outcome: InventoryImportOutcome,
+    payloadId?: string | null,
+    errorMessageText?: string | null,
+  ): Promise<'pending' | 'duplicate'> {
+    await this.db.inventoryImportMessage.update({
+      where: { gmailMessageId: messageId },
+      data: {
+        outcome,
+        ...(payloadId ? { payloadId } : {}),
+        errorMessage: errorMessageText ?? null,
+        nextRetryAt: new Date(Date.now() + ITEM_INVENTORY_RETRY_DELAY_MS),
+        mailCleanupPending: true,
+        mailCleanupCompleted: false,
+      },
+    });
+    try {
+      let messageGone = false;
+      if (gmail.markAsRead) {
+        try {
+          await gmail.markAsRead(messageId);
+        } catch (error) {
+          if (!isGmailMessageGone(error)) throw error;
+          messageGone = true;
+        }
+      }
+      if (!messageGone) {
+        try {
+          await gmail.trashMessage(messageId);
+        } catch (error) {
+          if (!isGmailMessageGone(error)) throw error;
+        }
+      }
+      await this.db.inventoryImportMessage.update({
+        where: { gmailMessageId: messageId },
+        data: { nextRetryAt: null, mailCleanupPending: false, mailCleanupCompleted: true },
+      });
+    } catch (error) {
+      const reason = errorMessage(error);
+      await this.db.inventoryImportMessage.update({
+        where: { gmailMessageId: messageId },
+        data: {
+          errorMessage: errorMessageText ? `${errorMessageText}; mail cleanup: ${reason}` : `mail cleanup: ${reason}`,
+          nextRetryAt: new Date(Date.now() + ITEM_INVENTORY_RETRY_DELAY_MS),
+          mailCleanupPending: true,
+          mailCleanupCompleted: false,
+        },
+      });
+      logger.warn({ err: error, messageId }, '[ItemInventoryGmailIngestion] accepted message mail cleanup is pending');
+    }
+    return outcome === 'DUPLICATE' ? 'duplicate' : 'pending';
   }
 }

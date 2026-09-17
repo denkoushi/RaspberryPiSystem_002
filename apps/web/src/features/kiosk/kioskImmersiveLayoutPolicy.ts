@@ -47,7 +47,8 @@ const KIOSK_BORROW_IMMERSIVE_PATH_EXACT = [
 const IMMERSIVE_PATH_EXACT = new Set<string>([
   ...KIOSK_BORROW_IMMERSIVE_PATH_EXACT,
   '/kiosk/production-schedule',
-  '/kiosk/documents'
+  '/kiosk/documents',
+  '/kiosk/inventory'
 ]);
 
 /**
@@ -60,6 +61,7 @@ const IMMERSIVE_PATH_EXACT = new Set<string>([
  */
 export function usesKioskImmersiveLayout(pathname: string): boolean {
   const p = normalizeKioskPathname(pathname);
+  if (p === '/kiosk/inventory/settings' || p.startsWith('/kiosk/inventory/settings/')) return true;
   if (p.startsWith(KIOSK_MANUAL_ORDER_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_PROGRESS_OVERVIEW_PATH_PREFIX)) return true;

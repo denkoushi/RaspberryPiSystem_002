@@ -941,6 +941,7 @@ model InventoryItem {
   category       String?
   area           String?
   note           String?
+  deletedAt      DateTime?
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
   photos         InventoryItemPhoto[]
@@ -950,6 +951,7 @@ model InventoryItem {
 
   @@index([name])
   @@index([category])
+  @@index([deletedAt])
 }
 
 model InventoryItemPhoto {
@@ -1015,6 +1017,8 @@ model InventoryImportMessage {
   outcome        InventoryImportOutcome  @default(PENDING)
   errorMessage   String?
   nextRetryAt    DateTime?
+  mailCleanupPending   Boolean               @default(false)
+  mailCleanupCompleted Boolean               @default(false)
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
   payload        InventoryImportPayload? @relation(fields: [payloadId], references: [id], onDelete: SetNull)

@@ -6,6 +6,7 @@ import {
   correctInventoryStock,
   createInventoryDrawer,
   createInventoryShelf,
+  deleteInventoryItem,
   deleteInventoryImportPhoto,
   deleteInventoryItemPhoto,
   getInventoryHistory,
@@ -116,6 +117,7 @@ export function useInventoryMutations(accessPassword?: string) {
       },
       onSettled: () => { void queryClient.invalidateQueries({ queryKey: inventoryKeys.items }); },
     }),
+    deleteItem: useMutation({ mutationFn: (itemId: string) => deleteInventoryItem(itemId, accessPassword), onSuccess: invalidate }),
     reorderItemPhotos: useMutation({
       mutationFn: ({ itemId, photoIds }: { itemId: string; photoIds: string[] }) => reorderInventoryItemPhotos(itemId, photoIds, accessPassword),
       onMutate: async ({ itemId, photoIds }) => {

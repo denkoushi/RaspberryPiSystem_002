@@ -102,6 +102,34 @@ describe('ItemInventoryService safety boundaries', () => {
     }]);
   });
 
+  it('soft-deletes an item, releases only its item tags, and keeps transaction history attached', async () => {
+    const item = { id: 'item-1', deletedAt: null };
+    const tx = {
+      inventoryItem: {
+        findUnique: vi.fn().mockResolvedValue(item),
+        update: vi.fn().mockResolvedValue({ ...item, deletedAt: new Date() }),
+      },
+      inventoryCompartment: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'compartment-1' }, { id: 'compartment-2' }]),
+        deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
+      },
+      inventoryNfcTag: { updateMany: vi.fn().mockResolvedValue({ count: 2 }) },
+      inventoryTransaction: { deleteMany: vi.fn() },
+    };
+    const db = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
+    const service = new ItemInventoryService(db as never);
+
+    await expect(service.deleteItem(item.id)).resolves.toEqual({ id: item.id });
+
+    expect(tx.inventoryNfcTag.updateMany).toHaveBeenCalledWith({
+      where: { compartmentId: { in: ['compartment-1', 'compartment-2'] } },
+      data: { compartmentId: null },
+    });
+    expect(tx.inventoryCompartment.deleteMany).toHaveBeenCalledWith({ where: { inventoryItemId: item.id } });
+    expect(tx.inventoryItem.update).toHaveBeenCalledWith({ where: { id: item.id }, data: { deletedAt: expect.any(Date) } });
+    expect(tx.inventoryTransaction.deleteMany).not.toHaveBeenCalled();
+  });
+
   it('preserves existing item metadata, stock, and compartment on photo-only registration', async () => {
     const existing = {
       id: 'item-1',
@@ -331,6 +359,43 @@ describe('ItemInventoryService safety boundaries', () => {
         details: { binding: 'EXISTING_ITEM', itemTagUid: 'item-uid' },
       }),
     });
+  });
+
+  it('reassigns an item tag released by item deletion', async () => {
+    const item = { id: 'item-2', itemCode: 'RI-2-OTHER', name: '再割当治具', deletedAt: null };
+    const drawer = { id: 'drawer-2', shelfId: 'shelf-2', drawerNumber: 4, shelf: { area: 'A', shelfNumber: 1 } };
+    const compartment = { id: 'compartment-2', drawerId: drawer.id, inventoryItemId: item.id, stockQuantity: 0 };
+    const releasedTag = { id: 'tag-released', uid: 'released-item-uid', kind: 'ITEM', compartmentId: null };
+    const tx = {
+      employee: { findFirst: vi.fn().mockResolvedValue(null) },
+      item: { findFirst: vi.fn().mockResolvedValue(null) },
+      measuringInstrumentTag: { findFirst: vi.fn().mockResolvedValue(null) },
+      riggingGearTag: { findFirst: vi.fn().mockResolvedValue(null) },
+      inventoryItem: { findUnique: vi.fn().mockResolvedValue(item) },
+      inventoryDrawer: { findUnique: vi.fn().mockResolvedValue(drawer) },
+      inventoryCompartment: { create: vi.fn().mockResolvedValue(compartment) },
+      inventoryNfcTag: {
+        findUnique: vi.fn().mockResolvedValue(releasedTag),
+        update: vi.fn().mockResolvedValue({ ...releasedTag, compartmentId: compartment.id }),
+        create: vi.fn(),
+      },
+      inventoryTransaction: { create: vi.fn().mockResolvedValue({ id: 'transaction-2' }) },
+    };
+    const db = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
+
+    await new ItemInventoryService(db as never).bindCompartment({
+      itemId: item.id,
+      shelfId: drawer.shelfId,
+      drawerId: drawer.id,
+      itemTagUid: releasedTag.uid,
+      initialQuantity: 0,
+    });
+
+    expect(tx.inventoryNfcTag.update).toHaveBeenCalledWith({
+      where: { id: releasedTag.id },
+      data: { compartmentId: compartment.id },
+    });
+    expect(tx.inventoryNfcTag.create).not.toHaveBeenCalled();
   });
 });
 
