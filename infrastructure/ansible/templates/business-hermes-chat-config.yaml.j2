@@ -3,7 +3,7 @@ model:
   default: {{ business_hermes_chat_model | to_json }}
   provider: custom:business-chat-dgx
   base_url: {{ business_hermes_chat_dgx_base_url | default('http://100.118.82.72:38081') }}/v1
-  max_tokens: 1600
+  max_tokens: 4000
   api_mode: chat_completions
 
 custom_providers:
@@ -48,8 +48,8 @@ mcp_servers:
     connect_timeout: 10
 
 agent:
-  # One retrieval round and an answer; Hermes owns the bounded final summary.
-  max_turns: 2
+  # Signage needs source discovery, data lookup, proposal validation, then the answer.
+  max_turns: 12
   reasoning_effort: medium
   disabled_toolsets:
     - memory

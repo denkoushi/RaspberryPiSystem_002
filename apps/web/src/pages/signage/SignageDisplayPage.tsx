@@ -180,16 +180,17 @@ export function SignageDisplayPage() {
       fullLayoutSlot?.kind === 'kiosk_leader_order_cards' ||
       fullLayoutSlot?.kind === 'mobile_placement_parts_shelf_grid' ||
       fullLayoutSlot?.kind === 'self_inspection_machine_board');
+  const isCanvasSignage = content?.layoutConfig?.layout === 'CANVAS' || Boolean(content?.layoutConfig?.layout === 'FULL' && content.layoutConfig.a2ui);
 
   useEffect(() => {
-    if (!isKioskJpegFullSignage) {
+    if (!isKioskJpegFullSignage && !isCanvasSignage) {
       return undefined;
     }
     const id = window.setInterval(() => {
       setKioskProgressImageTick((t) => t + 1);
     }, 5000);
     return () => window.clearInterval(id);
-  }, [isKioskJpegFullSignage]);
+  }, [isCanvasSignage, isKioskJpegFullSignage]);
 
   const pdfIntervalMs = useMemo(() => {
     if (!content?.pdf || content.displayMode !== 'SLIDESHOW') {
@@ -241,6 +242,18 @@ export function SignageDisplayPage() {
 
   if (!content) {
     return renderStateScreen('表示できるコンテンツがありません');
+  }
+
+  if (isCanvasSignage) {
+    return (
+      <div className={`${screenClass} flex items-center justify-center bg-slate-950 p-0`}>
+        <img
+          src={getSignageCurrentImageUrl(kioskProgressImageTick)}
+          alt="業務Hermesが作成したサイネージ画面"
+          className="h-full w-full object-contain"
+        />
+      </div>
+    );
   }
 
   if (content.contentType === 'TOOLS') {

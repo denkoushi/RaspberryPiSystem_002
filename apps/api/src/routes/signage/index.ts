@@ -6,6 +6,7 @@ import { registerPdfRoutes } from './pdfs.js';
 import { registerEmergencyRoutes } from './emergency.js';
 import { registerRenderRoutes } from './render.js';
 import { registerVisualizationImageRoute } from './visualization-image.js';
+import { registerCanvasPreviewRoute } from './canvas-preview.js';
 
 export async function registerSignageRoutes(app: FastifyInstance): Promise<void> {
   const signageService = new SignageService();
@@ -18,8 +19,8 @@ export async function registerSignageRoutes(app: FastifyInstance): Promise<void>
       registerEmergencyRoutes(subApp, signageService);
       registerRenderRoutes(subApp, signageService);
       registerVisualizationImageRoute(subApp, signageService);
+      registerCanvasPreviewRoute(subApp, signageService);
     },
     { prefix: '/signage' },
   );
 }
-

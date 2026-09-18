@@ -47,6 +47,9 @@ all:
           business_hermes_runtime_env_file: "/etc/raspi-business-hermes/runtime.env"
           business_hermes_model: "{{ inference_photo_label_model if (business_hermes_provider | default('dgx')) == 'dgx' else (vault_business_hermes_model | default('')) }}"
           api_business_hermes_base_url: "{{ 'http://business-hermes:8642' if (business_hermes_enabled | bool) else '' }}"
+          # The API's A2UI renderer follows the active Blue/Green web slot through
+          # the stable internal gateway; this is not a Mac localhost setting.
+          business_hermes_web_base_url: "https://gateway"
           api_business_hermes_api_key: "{{ business_hermes_api_key }}"
           api_business_hermes_model: "{{ business_hermes_model }}"
           api_business_hermes_timeout_ms: "8000"

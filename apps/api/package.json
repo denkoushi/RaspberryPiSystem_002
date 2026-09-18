@@ -40,6 +40,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@a2ui/web_core": "0.11.0",
     "@fastify/compress": "^8.0.0",
     "@fastify/cors": "^11.2.0",
     "@fastify/helmet": "^13.0.2",

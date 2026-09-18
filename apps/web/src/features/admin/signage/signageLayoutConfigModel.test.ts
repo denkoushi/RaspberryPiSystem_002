@@ -295,6 +295,32 @@ describe('signageLayoutConfigModel', () => {
     });
   });
 
+  it('preserves live A2UI bindings when editing schedule metadata', () => {
+    const original: SignageLayoutConfig = {
+      layout: 'FULL', slots: [], a2ui: {
+        layoutMessage: { version: 'v0.9', updateComponents: { surfaceId: 'signage', components: [{ id: 'root', component: 'Text', text: { path: '/value' } }] } },
+        dataMessage: { version: 'v0.9', updateDataModel: { surfaceId: 'signage', path: '/', value: {} } },
+        bindings: [{ path: '/value', source: { kind: 'self_inspection', id: 'row' }, select: '/entries/0/value', format: 'text' }],
+      },
+    };
+    expect(roundTripLayoutConfig(original)).toEqual(original);
+  });
+
+  it('preserves a freeform canvas while the legacy editor only changes schedule metadata', () => {
+    const original: SignageLayoutConfig = {
+      layout: 'CANVAS',
+      width: 1920,
+      height: 1080,
+      backgroundColor: '#020617',
+      elements: [{
+        id: 'title', kind: 'text', x: 40, y: 30, width: 900, height: 100, text: '進捗',
+        style: { fontSize: 48, fontWeight: '700', color: '#f8fafc' },
+      }],
+    };
+
+    expect(roundTripLayoutConfig(original)).toEqual(original);
+  });
+
   describe('round-trip parse → build for SPLIT layouts', () => {
     it('loans + pdf', () => {
       const original: SignageLayoutConfig = {

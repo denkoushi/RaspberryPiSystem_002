@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bar, BarChart, Cell, LabelList, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, Cell, LabelList, Tooltip, XAxis, YAxis, type XAxisTickContentProps } from 'recharts';
 
 import { LoadBalancingChartContainer } from './LoadBalancingChartContainer';
 import {
@@ -103,7 +103,7 @@ export function LoadBalancingOverviewResourceChart({ rows, showOverLabels = true
                 interval={0}
                 height={loadBalancingOverviewChartXAxisHeight}
                 tickMargin={loadBalancingOverviewXAxisLayout.tickMargin}
-                tick={(props) => (
+                tick={(props: XAxisTickContentProps) => (
                   <LoadBalancingOverviewResourceChartXAxisTick
                     {...props}
                     displayNameByCd={displayNameByCd}

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
@@ -53,6 +53,15 @@ export type BusinessHermesRouteDeps = {
     & Partial<Pick<BusinessHermesConsultationService, 'getPage' | 'isEnabled' | 'feedback'>>;
 };
 
+// The web app sends both headers. Preserve the signed-in actor for approval.
+async function authorizeConsultation(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (request.headers.authorization) {
+    await authorizeRoles('ADMIN', 'MANAGER', 'VIEWER')(request, reply);
+  } else {
+    await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
+  }
+}
+
 export async function registerBusinessHermesRoutes(
   app: FastifyInstance,
   deps: BusinessHermesRouteDeps
@@ -63,13 +72,13 @@ export async function registerBusinessHermesRoutes(
 
   app.get('/assembly/business-hermes/consultations', {
     preHandler: async (request, reply) => {
-      await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
+      await authorizeConsultation(request, reply);
     }
   }, async () => ({ consultations: await consultationService.list(), enabled: typeof consultationService.isEnabled === 'function' ? consultationService.isEnabled() : true }));
 
   app.post('/assembly/business-hermes/consultations', {
     preHandler: async (request, reply) => {
-      await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
+      await authorizeConsultation(request, reply);
     }
   }, async (request) => {
     const body = consultationCreateSchema.parse(request.body ?? {});
@@ -78,7 +87,7 @@ export async function registerBusinessHermesRoutes(
 
   app.get('/assembly/business-hermes/consultations/:id', {
     preHandler: async (request, reply) => {
-      await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
+      await authorizeConsultation(request, reply);
     }
   }, async (request, reply) => {
     const params = paramsSchema.parse(request.params);
@@ -92,7 +101,7 @@ export async function registerBusinessHermesRoutes(
 
   app.post('/assembly/business-hermes/consultations/:id/cancel', {
     preHandler: async (request, reply) => {
-      await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
+      await authorizeConsultation(request, reply);
     }
   }, async (request) => {
     const { id } = paramsSchema.parse(request.params);
@@ -101,7 +110,7 @@ export async function registerBusinessHermesRoutes(
 
   app.patch('/assembly/business-hermes/consultations/:id', {
     preHandler: async (request, reply) => {
-      await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
+      await authorizeConsultation(request, reply);
     }
   }, async (request, reply) => {
     const params = paramsSchema.parse(request.params);
@@ -113,7 +122,7 @@ export async function registerBusinessHermesRoutes(
 
   app.post('/assembly/business-hermes/consultations/:id/feedback', {
     preHandler: async (request, reply) => {
-      await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
+      await authorizeConsultation(request, reply);
     }, config: { rateLimit: { max: 30, timeWindow: '1 minute' } }
   }, async (request, reply) => {
     const { id } = paramsSchema.parse(request.params);
@@ -125,7 +134,7 @@ export async function registerBusinessHermesRoutes(
 
   app.post('/assembly/business-hermes/chat', {
     preHandler: async (request, reply) => {
-      await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
+      await authorizeConsultation(request, reply);
     },
     config: { rateLimit: { max: 12, timeWindow: '1 minute' } }
   }, async (request, reply) => {
@@ -137,7 +146,14 @@ export async function registerBusinessHermesRoutes(
       };
       reply.raw.once('close', onClose);
       try {
-        return await consultationService.chat({ consultationId: body.consultationId, message: body.message, selection: body.selection, scanValue: body.scanValue, signal: abortController.signal });
+        return await consultationService.chat({
+          consultationId: body.consultationId,
+          message: body.message,
+          selection: body.selection,
+          scanValue: body.scanValue,
+          actor: request.user ? { userId: request.user.id, role: request.user.role } : undefined,
+          signal: abortController.signal
+        });
       } finally {
         reply.raw.off('close', onClose);
       }

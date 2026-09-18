@@ -1,3 +1,5 @@
+import { SignageA2uiDataService } from './signage-a2ui-data.service.js';
+import { SignageA2uiRenderer } from './signage-a2ui-renderer.js';
 import sharp from 'sharp';
 import path from 'path';
 import { promises as fs } from 'fs';
@@ -8,6 +10,8 @@ import { logger } from '../../lib/logger.js';
 import { env } from '../../config/env.js';
 import { prisma } from '../../lib/prisma.js';
 import type {
+  SignageCanvasTextElement,
+  SignageCanvasLayoutConfig,
   PdfSlotConfig,
   CsvDashboardSlotConfig,
   VisualizationSlotConfig,
@@ -16,6 +20,7 @@ import type {
   MobilePlacementPartsShelfGridSlotConfig,
   SelfInspectionMachineBoardSlotConfig,
 } from './signage-layout.types.js';
+import { signageCanvasLayoutSchema } from './signage-canvas.js';
 import type { RenderablePane } from './signage-pane-resolver.js';
 import { resolveSplitPanes } from './signage-pane-resolver.js';
 import { CsvDashboardTemplateRenderer } from '../csv-dashboard/csv-dashboard-template-renderer.js';
@@ -177,16 +182,37 @@ export class SignageRenderer {
       lastFilename = result.filename;
       logger.info({ location: 'signage.renderer.ts:renderCurrentContent', filename: result.filename }, 'Legacy global signage image saved');
     } else {
+      let clientKeysRendered = 0;
       for (const clientKey of clientKeys) {
-        const content = await this.signageService.getContent({ clientKey });
-        const buffer = await this.renderContent(content);
-        const result = await SignageRenderStorage.saveRenderedImageForClient(buffer, clientKey);
-        lastFilename = result.filename;
-        logger.info(
-          { location: 'signage.renderer.ts:renderCurrentContent', filename: result.filename, clientKeyLen: clientKey.length },
-          'Client signage image saved',
-        );
+        try {
+          const content = await this.signageService.getContent({ clientKey });
+          const buffer = await this.renderContent(content);
+          const result = await SignageRenderStorage.saveRenderedImageForClient(buffer, clientKey);
+          lastFilename = result.filename;
+          clientKeysRendered += 1;
+          logger.info(
+            { location: 'signage.renderer.ts:renderCurrentContent', filename: result.filename, clientKeyLen: clientKey.length },
+            'Client signage image saved',
+          );
+        } catch (error) {
+          // Rendering and storage are atomic per client. Do not replace this
+          // client's previous JPEG, and continue with the remaining devices.
+          logger.warn(
+            { err: error, location: 'signage.renderer.ts:renderCurrentContent', clientKeyLen: clientKey.length },
+            'Client signage image was not updated',
+          );
+        }
       }
+
+      if (clientKeysRendered === 0) {
+        throw new Error('All client signage images failed to render');
+      }
+
+      return {
+        renderedAt: new Date(),
+        filename: lastFilename,
+        clientKeysRendered,
+      };
     }
 
     return {
@@ -201,6 +227,11 @@ export class SignageRenderer {
    */
   async renderVisualizationToBuffer(dashboardId: string): Promise<Buffer> {
     return await this.renderVisualizationDashboard(dashboardId);
+  }
+
+  /** 業務Hermesの承認前プレビュー用。保存やスケジュール変更は行わない。 */
+  async renderCanvasPreviewToBuffer(layout: SignageCanvasLayoutConfig): Promise<Buffer> {
+    return await this.renderCanvasLayout(layout, { failOnVisualizationError: true });
   }
 
   private async renderContent(content: SignageContentResponse): Promise<Buffer> {
@@ -256,6 +287,15 @@ export class SignageRenderer {
     }
 
     const layoutConfig = content.layoutConfig;
+
+    if (layoutConfig.layout === 'CANVAS') {
+      return await this.renderCanvasLayout(layoutConfig);
+    }
+
+    if (layoutConfig.layout === 'FULL' && layoutConfig.a2ui) {
+      const resolved = await new SignageA2uiDataService().resolve(layoutConfig.a2ui);
+      return new SignageA2uiRenderer().renderImage(resolved);
+    }
 
     if (layoutConfig.layout === 'FULL') {
       // 全体表示: 最初のスロットを全体に表示
@@ -398,6 +438,97 @@ export class SignageRenderer {
     }
 
     return await this.renderMessage('表示するコンテンツがありません');
+  }
+
+  /**
+   * 業務Hermesが作成した安全な画面仕様を、既存の可視化データソース／レンダラーで合成する。
+   * データはこの描画周期ごとに取得し、仕様にはコードやURLを含めない。
+   */
+  private async renderCanvasLayout(
+    rawLayout: SignageCanvasLayoutConfig,
+    options: { failOnVisualizationError?: boolean } = {},
+  ): Promise<Buffer> {
+    const parsed = signageCanvasLayoutSchema.safeParse(rawLayout);
+    if (!parsed.success) {
+      return await this.renderMessage('サイネージ画面仕様を検証できません');
+    }
+    const layout = parsed.data;
+    const visualizationElements = layout.elements.filter((element) => element.kind === 'visualization');
+    const svg = this.buildCanvasBackgroundSvg(layout);
+    const scaleX = WIDTH / layout.width;
+    const scaleY = HEIGHT / layout.height;
+    const overlays: Array<{ input: Buffer; left: number; top: number }> = [];
+
+    for (const element of visualizationElements) {
+      try {
+        const output = await this.visualizationService.renderToBuffer(
+          {
+            dataSourceType: element.dataSourceType,
+            rendererType: element.rendererType,
+            dataSourceConfig: {
+              ...element.dataSourceConfig,
+              ...(element.dataSourceType === 'production_schedule' ? { refresh: true } : {}),
+            },
+            rendererConfig: {
+              ...element.rendererConfig,
+              ...(element.title ? { title: element.title } : {}),
+            },
+          },
+          { width: element.width, height: element.height, title: element.title },
+        );
+        // Resize each overlay explicitly before compositing. Sharp schedules resize
+        // before composite internally, so keeping the logical-canvas coordinates
+        // here would otherwise make placement depend on the input canvas size.
+        overlays.push({
+          input: await sharp(output.buffer)
+            .resize(Math.max(1, Math.round(element.width * scaleX)), Math.max(1, Math.round(element.height * scaleY)), { fit: 'fill' })
+            .png()
+            .toBuffer(),
+          left: Math.round(element.x * scaleX),
+          top: Math.round(element.y * scaleY),
+        });
+      } catch (error) {
+        logger.warn({ err: error, elementId: element.id }, 'Signage canvas visualization element failed');
+        if (options.failOnVisualizationError) {
+          throw error;
+        }
+      }
+    }
+
+    return await sharp(Buffer.from(svg))
+      .resize(WIDTH, HEIGHT, { fit: 'fill' })
+      .composite(overlays)
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toBuffer();
+  }
+
+  private buildCanvasBackgroundSvg(layout: SignageCanvasLayoutConfig): string {
+    const elements = layout.elements.map((element) => {
+      if (element.kind === 'text') return this.buildCanvasTextElementSvg(element);
+      return `<rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="12" fill="#0f172a" stroke="#334155" stroke-width="2" />`;
+    }).join('\n');
+    return `<svg width="${layout.width}" height="${layout.height}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="${layout.backgroundColor}" />${elements}</svg>`;
+  }
+
+  private buildCanvasTextElementSvg(element: SignageCanvasTextElement): string {
+    const style = element.style ?? {};
+    const fontSize = style.fontSize ?? 32;
+    const lineHeight = Math.round(fontSize * 1.25);
+    const lines = element.text.split(/\r?\n/u).slice(0, Math.max(1, Math.floor(element.height / lineHeight)));
+    const textX = style.align === 'middle'
+      ? element.x + element.width / 2
+      : style.align === 'end'
+        ? element.x + element.width - 16
+        : element.x + 16;
+    const textAnchor = style.align === 'middle' ? 'middle' : style.align === 'end' ? 'end' : 'start';
+    const contentHeight = lines.length * lineHeight;
+    const firstBaseline = style.verticalAlign === 'middle'
+      ? element.y + (element.height - contentHeight) / 2 + fontSize
+      : style.verticalAlign === 'bottom'
+        ? element.y + element.height - contentHeight + fontSize
+        : element.y + fontSize + 8;
+    const tspans = lines.map((line, index) => `<tspan x="${textX}" dy="${index === 0 ? 0 : lineHeight}">${this.escapeXml(line)}</tspan>`).join('');
+    return `<text x="${textX}" y="${firstBaseline}" text-anchor="${textAnchor}" font-size="${fontSize}" font-weight="${style.fontWeight ?? 'normal'}" fill="${style.color ?? '#f8fafc'}" font-family="sans-serif">${tspans}</text>`;
   }
 
   /**

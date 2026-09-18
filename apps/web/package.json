@@ -12,6 +12,8 @@
     "test:coverage": "vitest run --coverage --coverage.provider=v8"
   },
   "dependencies": {
+    "@a2ui/react": "0.11.1",
+    "@a2ui/web_core": "0.11.0",
     "@chatscope/chat-ui-kit-react": "^2.0.3",
     "@chatscope/chat-ui-kit-styles": "^1.4.0",
     "@digital-go-jp/design-tokens": "1.1.9",
@@ -30,7 +32,8 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.23.1",
     "recharts": "^3.8.1",
-    "xstate": "^5.8.0"
+    "xstate": "^5.8.0",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.1.5",

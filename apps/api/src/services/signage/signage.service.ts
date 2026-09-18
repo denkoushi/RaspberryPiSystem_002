@@ -1,5 +1,5 @@
 import { Prisma, SignageContentType, SignageDisplayMode } from '@prisma/client';
-import type { SignageSchedule } from '@prisma/client';
+import type { PrismaClient, SignageSchedule } from '@prisma/client';
 import {
   formatClientDeviceLocationLabel,
   PHOTO_LOAN_CARD_PRIMARY_LABEL,
@@ -44,6 +44,7 @@ import { logger } from '../../lib/logger.js';
 import { PdfStorage } from '../../lib/pdf-storage.js';
 import { env } from '../../config/env.js';
 import type {
+  AnySignageLayoutConfig,
   SignageLayoutConfig,
   SignageLayoutConfigJson,
   SignageSlot,
@@ -51,6 +52,7 @@ import type {
   LoansSlotConfig,
   CsvDashboardSlotConfig,
 } from './signage-layout.types.js';
+import { isSignageCanvasLayout } from './signage-layout.types.js';
 import { CsvDashboardService } from '../csv-dashboard/index.js';
 import { MeasuringInstrumentLoanEventService } from '../measuring-instruments/measuring-instrument-loan-event.service.js';
 
@@ -99,7 +101,7 @@ const WEEKDAY_MAP: Record<string, number> = {
 export interface SignageContentResponse {
   contentType: SignageContentType;
   displayMode: SignageDisplayMode;
-  layoutConfig?: SignageLayoutConfig; // 新形式のレイアウト設定（優先）
+  layoutConfig?: AnySignageLayoutConfig; // 新形式のレイアウト設定（優先）
   tools?: Array<{
     id: string;
     itemCode: string;
@@ -145,6 +147,8 @@ export interface SignageContentResponse {
 }
 
 export class SignageService {
+  constructor(private readonly db: Pick<PrismaClient, 'signageSchedule' | 'clientDevice'> = prisma) {}
+
   private readonly csvDashboardService = new CsvDashboardService();
   private readonly measuringInstrumentLoanEventService = new MeasuringInstrumentLoanEventService();
   private static readonly MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
@@ -178,7 +182,7 @@ export class SignageService {
   private readonly scheduleSummaryOrderBy = [{ priority: 'desc' as const }, { id: 'asc' as const }];
 
   private async findScheduleSummaries(where: Prisma.SignageScheduleWhereInput): Promise<ScheduleSummary[]> {
-    return prisma.signageSchedule.findMany({
+    return this.db.signageSchedule.findMany({
       where,
       orderBy: this.scheduleSummaryOrderBy,
       select: this.scheduleSummarySelect,
@@ -196,7 +200,7 @@ export class SignageService {
    * レンダラ用：キャッシュ生成対象の ClientDevice.apiKey 一覧（安定した順序）
    */
   async listSignageRenderClientApiKeys(): Promise<string[]> {
-    const rows = await prisma.clientDevice.findMany({
+    const rows = await this.db.clientDevice.findMany({
       select: { apiKey: true },
       orderBy: { apiKey: 'asc' },
     });
@@ -317,9 +321,9 @@ export class SignageService {
       logger.info({ emergencyId: emergency.id }, 'Emergency display active');
       
       // layoutConfigを優先し、nullの場合は旧形式から変換
-      let layoutConfig: SignageLayoutConfig;
+      let layoutConfig: AnySignageLayoutConfig;
       if (emergency.layoutConfig && typeof emergency.layoutConfig === 'object') {
-        layoutConfig = emergency.layoutConfig as unknown as SignageLayoutConfig;
+        layoutConfig = emergency.layoutConfig as unknown as AnySignageLayoutConfig;
       } else {
         // 旧形式から変換
         const contentType = emergency.contentType || SignageContentType.TOOLS;
@@ -334,10 +338,11 @@ export class SignageService {
       }
 
       // layoutConfigに基づいてレスポンスを構築
+      const layoutSlots = isSignageCanvasLayout(layoutConfig) ? [] : layoutConfig.slots;
       const [tools, measuringInstruments] = await Promise.all([this.getToolsData(), this.getMeasuringInstrumentData()]);
       
       // PDFスロットの情報を収集
-      const pdfSlots = layoutConfig.slots.filter((slot) => slot.kind === 'pdf') as Array<SignageSlot & { config: PdfSlotConfig }>;
+      const pdfSlots = layoutSlots.filter((slot) => slot.kind === 'pdf') as Array<SignageSlot & { config: PdfSlotConfig }>;
       const pdfDataMap = new Map<string, { id: string; name: string; pages: string[]; slideInterval: number | null }>();
 
       for (const slot of pdfSlots) {
@@ -359,7 +364,7 @@ export class SignageService {
       }
 
       // CSVダッシュボードスロットの情報を収集
-      const csvDashboardSlots = layoutConfig.slots.filter((slot) => slot.kind === 'csv_dashboard') as Array<SignageSlot & { config: CsvDashboardSlotConfig }>;
+      const csvDashboardSlots = layoutSlots.filter((slot) => slot.kind === 'csv_dashboard') as Array<SignageSlot & { config: CsvDashboardSlotConfig }>;
       const csvDashboardDataMap = new Map<string, { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> }>();
 
       for (const slot of csvDashboardSlots) {
@@ -376,10 +381,12 @@ export class SignageService {
       let contentType: SignageContentType;
       let displayMode: SignageDisplayMode = SignageDisplayMode.SINGLE;
 
-      if (layoutConfig.layout === 'FULL') {
-        if (layoutConfig.slots.some((s) => s.kind === 'pdf')) {
+      if (layoutConfig.layout === 'CANVAS') {
+        contentType = SignageContentType.TOOLS;
+      } else if (layoutConfig.layout === 'FULL') {
+        if (layoutSlots.some((s) => s.kind === 'pdf')) {
           contentType = SignageContentType.PDF;
-          const pdfSlot = layoutConfig.slots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig };
+          const pdfSlot = layoutSlots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig };
           if (pdfSlot) {
             displayMode = pdfSlot.config.displayMode === 'SLIDESHOW' ? SignageDisplayMode.SLIDESHOW : SignageDisplayMode.SINGLE;
           }
@@ -388,7 +395,7 @@ export class SignageService {
         }
       } else {
         contentType = SignageContentType.SPLIT;
-        const pdfSlot = layoutConfig.slots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig } | undefined;
+        const pdfSlot = layoutSlots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig } | undefined;
         if (pdfSlot) {
           displayMode = pdfSlot.config.displayMode === 'SLIDESHOW' ? SignageDisplayMode.SLIDESHOW : SignageDisplayMode.SINGLE;
         }
@@ -397,7 +404,7 @@ export class SignageService {
       // PDF情報を取得（後方互換のため）
       let pdfPayload: SignageContentResponse['pdf'] = null;
       if (contentType === SignageContentType.PDF || contentType === SignageContentType.SPLIT) {
-        const pdfSlot = layoutConfig.slots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig } | undefined;
+        const pdfSlot = layoutSlots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig } | undefined;
         if (pdfSlot) {
           pdfPayload = pdfDataMap.get(pdfSlot.config.pdfId) || null;
         }
@@ -419,8 +426,8 @@ export class SignageService {
         contentType,
         displayMode,
         layoutConfig, // 新形式を追加
-        tools: layoutConfig.slots.some((s) => s.kind === 'loans') ? tools : undefined,
-        measuringInstruments: layoutConfig.slots.some((s) => s.kind === 'loans') ? measuringInstruments : undefined,
+        tools: layoutSlots.some((s) => s.kind === 'loans') ? tools : undefined,
+        measuringInstruments: layoutSlots.some((s) => s.kind === 'loans') ? measuringInstruments : undefined,
         pdf: pdfPayload,
         pdfsById: Object.keys(pdfsById).length > 0 ? pdfsById : undefined,
         csvDashboardsById: Object.keys(csvDashboardsById).length > 0 ? csvDashboardsById : undefined,
@@ -742,12 +749,12 @@ export class SignageService {
 
   private async buildScheduleResponse(schedule: ScheduleSummary): Promise<SignageContentResponse | null> {
     // layoutConfigを優先し、nullの場合は旧形式から変換
-    let layoutConfig: SignageLayoutConfig;
+    let layoutConfig: AnySignageLayoutConfig;
     let pdf: { id: string; displayMode: SignageDisplayMode; slideInterval: number | null } | null = null;
 
     if (schedule.layoutConfig && typeof schedule.layoutConfig === 'object') {
       // 新形式（layoutConfig）を使用
-      layoutConfig = schedule.layoutConfig as unknown as SignageLayoutConfig;
+      layoutConfig = schedule.layoutConfig as unknown as AnySignageLayoutConfig;
     } else {
       // 旧形式から変換（PDF情報が必要な場合は取得）
       if (schedule.pdfId) {
@@ -764,10 +771,11 @@ export class SignageService {
     }
 
     // layoutConfigに基づいてレスポンスを構築
+    const layoutSlots = isSignageCanvasLayout(layoutConfig) ? [] : layoutConfig.slots;
     const [tools, measuringInstruments] = await Promise.all([this.getToolsData(), this.getMeasuringInstrumentData()]);
     
     // PDFスロットの情報を収集
-    const pdfSlots = layoutConfig.slots.filter((slot) => slot.kind === 'pdf') as Array<SignageSlot & { config: PdfSlotConfig }>;
+    const pdfSlots = layoutSlots.filter((slot) => slot.kind === 'pdf') as Array<SignageSlot & { config: PdfSlotConfig }>;
     const pdfDataMap = new Map<string, { id: string; name: string; pages: string[]; slideInterval: number | null }>();
 
     for (const slot of pdfSlots) {
@@ -789,7 +797,7 @@ export class SignageService {
     }
 
     // CSVダッシュボードスロットの情報を収集
-    const csvDashboardSlots = layoutConfig.slots.filter((slot) => slot.kind === 'csv_dashboard') as Array<SignageSlot & { config: CsvDashboardSlotConfig }>;
+    const csvDashboardSlots = layoutSlots.filter((slot) => slot.kind === 'csv_dashboard') as Array<SignageSlot & { config: CsvDashboardSlotConfig }>;
     const csvDashboardDataMap = new Map<string, { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> }>();
 
     for (const slot of csvDashboardSlots) {
@@ -806,10 +814,12 @@ export class SignageService {
     let contentType: SignageContentType;
     let displayMode: SignageDisplayMode = SignageDisplayMode.SINGLE;
 
-    if (layoutConfig.layout === 'FULL') {
-      if (layoutConfig.slots.some((s) => s.kind === 'pdf')) {
+    if (layoutConfig.layout === 'CANVAS') {
+      contentType = SignageContentType.TOOLS;
+    } else if (layoutConfig.layout === 'FULL') {
+      if (layoutSlots.some((s) => s.kind === 'pdf')) {
         contentType = SignageContentType.PDF;
-        const pdfSlot = layoutConfig.slots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig };
+        const pdfSlot = layoutSlots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig };
         if (pdfSlot) {
           displayMode = pdfSlot.config.displayMode === 'SLIDESHOW' ? SignageDisplayMode.SLIDESHOW : SignageDisplayMode.SINGLE;
         }
@@ -818,7 +828,7 @@ export class SignageService {
       }
     } else {
       contentType = SignageContentType.SPLIT;
-      const pdfSlot = layoutConfig.slots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig } | undefined;
+      const pdfSlot = layoutSlots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig } | undefined;
       if (pdfSlot) {
         displayMode = pdfSlot.config.displayMode === 'SLIDESHOW' ? SignageDisplayMode.SLIDESHOW : SignageDisplayMode.SINGLE;
       }
@@ -827,7 +837,7 @@ export class SignageService {
     // PDF情報を取得（後方互換のため）
     let pdfPayload: SignageContentResponse['pdf'] = null;
     if (contentType === SignageContentType.PDF || contentType === SignageContentType.SPLIT) {
-      const pdfSlot = layoutConfig.slots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig } | undefined;
+      const pdfSlot = layoutSlots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig } | undefined;
       if (pdfSlot) {
         pdfPayload = pdfDataMap.get(pdfSlot.config.pdfId) || null;
       }
@@ -849,8 +859,8 @@ export class SignageService {
       contentType,
       displayMode,
       layoutConfig, // 新形式を追加
-      tools: layoutConfig.slots.some((s) => s.kind === 'loans') ? tools : undefined,
-      measuringInstruments: layoutConfig.slots.some((s) => s.kind === 'loans') ? measuringInstruments : undefined,
+      tools: layoutSlots.some((s) => s.kind === 'loans') ? tools : undefined,
+      measuringInstruments: layoutSlots.some((s) => s.kind === 'loans') ? measuringInstruments : undefined,
       pdf: pdfPayload,
       pdfsById: Object.keys(pdfsById).length > 0 ? pdfsById : undefined,
       csvDashboardsById: Object.keys(csvDashboardsById).length > 0 ? csvDashboardsById : undefined,
@@ -873,7 +883,7 @@ export class SignageService {
     priority: number;
     enabled: boolean;
   }> {
-    const schedule = await prisma.signageSchedule.create({
+    const schedule = await this.db.signageSchedule.create({
       data: {
         name: input.name,
         contentType: input.contentType,
@@ -909,7 +919,7 @@ export class SignageService {
     priority: number;
     enabled: boolean;
   }> {
-    const schedule = await prisma.signageSchedule.update({
+    const schedule = await this.db.signageSchedule.update({
       where: { id },
       data: {
         ...(input.name !== undefined && { name: input.name }),
@@ -936,7 +946,7 @@ export class SignageService {
    * スケジュールを削除
    */
   async deleteSchedule(id: string): Promise<void> {
-    await prisma.signageSchedule.delete({
+    await this.db.signageSchedule.delete({
       where: { id },
     });
   }

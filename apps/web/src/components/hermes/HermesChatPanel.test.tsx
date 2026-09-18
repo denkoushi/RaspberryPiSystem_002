@@ -1,5 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { renderSignageCanvasPreviewMock } = vi.hoisted(() => ({ renderSignageCanvasPreviewMock: vi.fn() }));
+
+vi.mock('../../api/domains/signage', () => ({ renderSignageCanvasPreview: renderSignageCanvasPreviewMock }));
 
 vi.mock('../ProtectedImage', () => ({
   ProtectedImage: ({ imagePath, alt }: { imagePath: string; alt: string }) => (
@@ -11,6 +16,10 @@ import HermesChatPanel from './HermesChatPanel';
 
 describe('HermesChatPanel evidence cards', () => {
   beforeEach(() => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    renderSignageCanvasPreviewMock.mockResolvedValue(new Blob(['preview'], { type: 'image/jpeg' }));
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: vi.fn(() => 'blob:signage-preview') });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() });
     const nativeQuerySelector = Element.prototype.querySelector;
     vi.spyOn(Element.prototype, 'querySelector').mockImplementation(function (selector: string) {
       if (selector.includes('data-cs-message-list') && selector.includes('last-of-type')) return null;
@@ -426,6 +435,130 @@ describe('HermesChatPanel evidence cards', () => {
     rerender(<HermesChatPanel {...props} suggestion={{prompt: '状況を教えてください', relatedIdentifiers: []}} />);
     expect(screen.queryByRole('button', {name: 'はい'})).not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: 'いいえ'})).not.toBeInTheDocument();
+  });
+
+  it('previews a freeform signage proposal with its concrete schedule changes', async () => {
+    render(
+      <HermesChatPanel
+        mode="consultations"
+        messages={[{ id: 'signage-answer', role: 'assistant', content: 'サイネージ案を作成しました。' }]}
+        draft=""
+        isBusy={false}
+        error={null}
+        authRequired={null}
+        activeConsultation={{
+          id: 'signage-case', title: 'サイネージ相談', relatedIdentifiers: [], confirmedFacts: [],
+          openQuestions: [], summary: '', updatedAt: '2026-09-16T00:00:00.000Z', messages: []
+        }}
+        suggestion={{
+          prompt: 'この内容を承認しますか？',
+          relatedIdentifiers: [],
+          options: ['このサイネージ設定を適用する', 'このサイネージ設定は適用しない'],
+          signageProposal: {
+            scheduleName: '進捗と品番',
+            deviceScopeKey: '工場A - 組立1',
+            targetClientDeviceIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
+            dayOfWeek: [1, 3],
+            startTime: '08:00',
+            endTime: '17:00',
+            priority: 2,
+            enabled: true,
+            canvas: {
+              width: 1920,
+              height: 1080,
+              backgroundColor: '#020617',
+              elements: [
+                { id: 'summary', kind: 'text', x: 0, y: 0, width: 600, height: 180, text: '進捗集計' },
+                {
+                  id: 'orders', kind: 'visualization', x: 620, y: 0, width: 1200, height: 900,
+                  title: '品番表', dataSourceType: 'production_schedule', dataSourceConfig: { view: 'table' },
+                  rendererType: 'table', rendererConfig: {}
+                }
+              ]
+            }
+          }
+        }}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn()}
+        onReset={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const preview = screen.getByTestId('signage-proposal-preview');
+    expect(preview).toHaveTextContent('新規サイネージ画面案');
+    expect(preview).toHaveTextContent('進捗と品番');
+    expect(preview).toHaveTextContent('工場A - 組立1');
+    expect(preview).toHaveTextContent('2台の登録済み端末');
+    expect(preview).toHaveTextContent('月・水');
+    expect(preview).toHaveTextContent('進捗集計');
+    expect(preview).toHaveTextContent('品番表');
+    expect(preview).toHaveTextContent('production_schedule');
+    expect(screen.getByRole('button', { name: 'このサイネージ設定を適用する' })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole('img', { name: 'サイネージの実データプレビュー。2要素' })).toHaveAttribute('src', 'blob:signage-preview'));
+    expect(renderSignageCanvasPreviewMock).toHaveBeenCalledWith(expect.objectContaining({ width: 1920, height: 1080 }));
+    expect(screen.getByRole('button', { name: 'このサイネージ設定を適用する' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'このサイネージ設定は適用しない' })).toBeInTheDocument();
+  });
+
+  it('renders an official A2UI proposal in the conversation preview', async () => {
+    renderSignageCanvasPreviewMock.mockClear();
+    render(
+      <HermesChatPanel
+        mode="consultations"
+        messages={[]}
+        draft=""
+        isBusy={false}
+        error={null}
+        authRequired={null}
+        activeConsultation={{
+          id: 'a2ui-case', title: 'A2UIサイネージ相談', relatedIdentifiers: [], confirmedFacts: [],
+          openQuestions: [], summary: '', updatedAt: '2026-09-16T00:00:00.000Z', messages: []
+        }}
+        suggestion={{
+          prompt: 'この内容を承認しますか？',
+          relatedIdentifiers: [],
+          options: ['このサイネージ設定を適用する', 'このサイネージ設定は適用しない'],
+          signageProposal: {
+            scheduleName: 'A2UI進捗',
+            a2ui: {
+              layoutMessage: {
+                version: 'v0.9',
+                updateComponents: {
+                  surfaceId: 'signage',
+                  components: [
+                    { id: 'root', component: 'Column', children: ['title', 'chart'] },
+                    { id: 'title', component: 'Text', text: { path: '/screen/title' }, variant: 'h1' },
+                    { id: 'chart', component: 'BarChart', data: { path: '/schedule/progress' } }
+                  ]
+                }
+              },
+              dataMessage: {
+                version: 'v0.9',
+                updateDataModel: {
+                  surfaceId: 'signage',
+                  path: '/',
+                  value: {
+                    screen: { title: '組立ライン進捗' },
+                    schedule: { progress: [{ label: '完了', value: 72 }, { label: '残り', value: 28 }] }
+                  }
+                }
+              }
+            }
+          }
+        }}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn()}
+        onReset={vi.fn()}
+        onClose={vi.fn()}
+      />, { wrapper: StrictMode }
+    );
+
+    expect(screen.getByTestId('signage-a2ui-preview')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('組立ライン進捗')).toBeInTheDocument());
+    expect(screen.getByTestId('signage-a2ui-chart')).toBeInTheDocument();
+    expect(renderSignageCanvasPreviewMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'このサイネージ設定を適用する' })).not.toBeDisabled();
   });
 
   it('renders structured answer headings and selection events without exposing markdown markers', () => {
