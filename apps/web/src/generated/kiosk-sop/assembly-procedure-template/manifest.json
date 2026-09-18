@@ -1,9 +1,9 @@
 {
   "artifacts": {
-    "manual.html": "afaf94d959736a76893ccab261d19fd95ac70db9f2a600820fe6b8fd539fee6f",
+    "manual.html": "a8638e6e37c267994cc3f252bfaa1ffb3a84ecaf6a782caa991f47c0f1b3dc58",
     "screens/assembly-document-editor-auth.png": "1599025d64b19e66dd5404ddd34d4caaeba4ecd386bbe58b01392b9d648972dc",
     "screens/assembly-document-editor-conflict.png": "50cc1893d8e6cf1bf7f7076445dec6e38c6b7167c2254cc518bed4009088ca80",
-    "screens/assembly-document-editor-image-properties.png": "2c5438d27efa6c000952c279a9e7e38c6d78dffdd62c7ea14a968f9dd4ed1775",
+    "screens/assembly-document-editor-image-properties.png": "f1703aa242f79155ab4cd08af8bd334b71c69008568f71fa53ac6f573f8403d6",
     "screens/assembly-document-editor-publish.png": "8ab6e99c56beb9f091810a9132da535d444a780cdb853730ac6eb1c6190a350d",
     "screens/assembly-document-editor-range.png": "52d7b2606c791b8e7a5e96aa4aee9365b40e84e2116dce84abfcfb6e2c8dc67a",
     "screens/assembly-document-editor-shape-properties.png": "9c89bff7280372beb0e7fa4a957c9e7dd92d73ac9404500a796490f3a81aeb88",
@@ -20,7 +20,7 @@
     "screens/assembly-template-save.png": "9c573ba099027096733231a32a43d7ec38544a12c759d135f919a71d75d0eae7",
     "sheets/assembly-document-editor-auth.png": "fc6e1ebc188c414eb82d9f667b6b67e72f5bfb3cfb5cead5855ecee0978c414f",
     "sheets/assembly-document-editor-conflict.png": "e1f2149805546497041c09fa843eb87ac421d9a2ad6e04f45f202595c4818420",
-    "sheets/assembly-document-editor-image-properties.png": "2cff023a664fac7e5bfffc8f7d73e19be52b367e0ee64b399ff821950d9935c4",
+    "sheets/assembly-document-editor-image-properties.png": "05ecdb061c6ae959a8f6a17cd67c253758edb8c281cd84775a4845815dc0d993",
     "sheets/assembly-document-editor-publish.png": "e63e2a109087f9d6a59081644480d09761d12b20a73ffee2e15c17e5ed2cd8b1",
     "sheets/assembly-document-editor-range.png": "ae0298474cec3fb42865eacd89a3c56dc632061d8d2862b10f8b30c20652bb5f",
     "sheets/assembly-document-editor-shape-properties.png": "6694823ebff58de5cb7e4912d46c780f01659f86412993943047129c61ae7818",
@@ -495,7 +495,7 @@
       }
     ]
   },
-  "htmlSha256": "afaf94d959736a76893ccab261d19fd95ac70db9f2a600820fe6b8fd539fee6f",
+  "htmlSha256": "a8638e6e37c267994cc3f252bfaa1ffb3a84ecaf6a782caa991f47c0f1b3dc58",
   "schemaVersion": 1,
-  "sourceSha256": "dddaee5a5958786cd7a3541330ade9e20a3bdbf4cb48c9a5eef00a4b6b9b8d0a"
+  "sourceSha256": "d3c214eeb529c9ab5a52059fa589283bfa3d60a74e8a9873443de495aac34459"
 }
