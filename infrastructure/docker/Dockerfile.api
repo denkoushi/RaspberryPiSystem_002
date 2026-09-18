@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1
 
 # Isolated search worker runtime; the existing API keeps Node 20.
-FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS hermes-search-runtime
+FROM node:26-bookworm-slim@sha256:cd9f682fa2885cd1056e830424764158570061c59736a1da836bc3d73df095ae AS hermes-search-runtime
 WORKDIR /opt/hermes-runtime
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 COPY scripts/hermes-search/package.json scripts/hermes-search/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
-FROM node:20-bookworm-slim AS workspace
+FROM node:26-bookworm-slim AS workspace
 WORKDIR /app
 ENV NODE_OPTIONS=--max-old-space-size=4096
 
@@ -57,7 +57,7 @@ WORKDIR /app/apps/api
 RUN nice -n 10 pnpm prisma generate
 RUN nice -n 10 pnpm run build
 
-FROM node:20-bookworm-slim AS api-runtime
+FROM node:26-bookworm-slim AS api-runtime
 WORKDIR /app
 COPY --from=hermes-search-runtime /usr/local/bin/node /opt/hermes-node/bin/node
 COPY --from=hermes-search-runtime /opt/hermes-runtime /opt/hermes-runtime
