@@ -88,6 +88,8 @@ export type TorqueTrainingSessionApi = {
 
 export type TorqueTrainingMetricApi = {
   conditionFingerprint: string;
+  trainingName: string;
+  targetBolt: string;
   attemptCount: number;
   passRate: number;
   meanAbsoluteErrorPercent: number;
