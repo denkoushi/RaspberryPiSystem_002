@@ -61,6 +61,29 @@ def production_web_variables() -> dict[str, str]:
 
 
 class AnsibleTemplateContractTests(unittest.TestCase):
+    def test_business_hermes_a2ui_uses_the_standard_gateway_origin(self) -> None:
+        inventory = PRIMARY_INVENTORY.read_text(encoding="utf-8")
+        self.assertIn('business_hermes_web_base_url: "https://gateway"', inventory)
+
+        environment = Environment(undefined=StrictUndefined)
+        rendered_api = environment.from_string(
+            (ANSIBLE_ROOT / "templates/api.env.j2").read_text(encoding="utf-8")
+        ).render(
+            app_database_url="postgresql://postgres:test@db:5432/borrow_return",
+            api_jwt_access_secret="a" * 32,
+            api_jwt_refresh_secret="b" * 32,
+            business_hermes_web_base_url="https://gateway",
+        )
+        rendered_compose = environment.from_string(
+            DOCKER_ENV_TEMPLATE.read_text(encoding="utf-8")
+        ).render(
+            admin_allow_nets=["127.0.0.1/32"],
+            app_database_url="postgresql://postgres:test@db:5432/borrow_return",
+            business_hermes_web_base_url="https://gateway",
+        )
+        self.assertIn("BUSINESS_HERMES_WEB_BASE_URL=https://gateway", rendered_api)
+        self.assertIn("BUSINESS_HERMES_WEB_BASE_URL=https://gateway", rendered_compose)
+
     def test_pi5_web_build_values_have_one_server_owned_source(self) -> None:
         expected = production_web_variables()
         source = WEB_BUILD_VARS.read_text(encoding="utf-8")

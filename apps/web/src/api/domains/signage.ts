@@ -50,10 +50,38 @@ export interface SignageSlot {
   config: SignageSlotConfig | Record<string, never>;
 }
 
-export interface SignageLayoutConfig {
-  layout: 'FULL' | 'SPLIT';
-  slots: SignageSlot[];
+export interface SignageCanvasElement {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  kind: 'text' | 'visualization';
+  text?: string;
+  title?: string;
+  style?: {
+    fontSize?: number;
+    fontWeight?: 'normal' | '600' | '700';
+    color?: string;
+    align?: 'start' | 'middle' | 'end';
+    verticalAlign?: 'top' | 'middle' | 'bottom';
+  };
+  dataSourceType?: string;
+  dataSourceConfig?: Record<string, unknown>;
+  rendererType?: string;
+  rendererConfig?: Record<string, unknown>;
 }
+
+export interface SignageCanvasPreviewSpec {
+  width: number;
+  height: number;
+  backgroundColor: string;
+  elements: SignageCanvasElement[];
+}
+
+export type SignageLayoutConfig =
+  | { layout: 'FULL' | 'SPLIT'; slots: SignageSlot[]; a2ui?: NonNullable<import('./assembly').BusinessHermesSignageProposal['a2ui']> }
+  | { layout: 'CANVAS'; width: number; height: number; backgroundColor: string; elements: SignageCanvasElement[] };
 
 export interface SignageSchedule {
   id: string;
@@ -249,6 +277,14 @@ export async function setSignageEmergency(payload: {
 
 export async function getSignageContent() {
   const { data } = await api.get<SignageContentResponse>('/signage/content');
+  return data;
+}
+
+/** 業務Hermesの提案キャンバスを保存せず、実データ込みのJPEGとして取得する。 */
+export async function renderSignageCanvasPreview(spec: SignageCanvasPreviewSpec): Promise<Blob> {
+  const { data } = await api.post<Blob>('/signage/canvas-preview', spec, {
+    responseType: 'blob',
+  });
   return data;
 }
 

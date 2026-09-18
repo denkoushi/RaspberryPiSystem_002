@@ -1,3 +1,5 @@
+import type { SignageA2uiProposal } from './signage-a2ui.js';
+
 /**
  * サイネージレイアウト設定の型定義
  */
@@ -129,9 +131,62 @@ export interface SignageSlot {
 export interface SignageLayoutConfig {
   layout: SignageLayoutType;
   slots: SignageSlot[];
+  a2ui?: SignageA2uiProposal;
+}
+
+export type SignageCanvasTextAlign = 'start' | 'middle' | 'end';
+export type SignageCanvasVerticalAlign = 'top' | 'middle' | 'bottom';
+
+export interface SignageCanvasTextStyle {
+  fontSize?: number;
+  fontWeight?: 'normal' | '600' | '700';
+  color?: string;
+  align?: SignageCanvasTextAlign;
+  verticalAlign?: SignageCanvasVerticalAlign;
+}
+
+export interface SignageCanvasElementGeometry {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface SignageCanvasTextElement extends SignageCanvasElementGeometry {
+  kind: 'text';
+  text: string;
+  style?: SignageCanvasTextStyle;
+}
+
+export interface SignageCanvasVisualizationElement extends SignageCanvasElementGeometry {
+  kind: 'visualization';
+  title?: string;
+  dataSourceType: 'production_schedule' | 'measuring_instruments' | 'pallet_visualization_board';
+  dataSourceConfig: Record<string, unknown>;
+  rendererType: 'kpi_cards' | 'table' | 'bar_chart' | 'progress_list' | 'pallet_visualization_board';
+  rendererConfig: Record<string, unknown>;
+}
+
+export type SignageCanvasElement = SignageCanvasTextElement | SignageCanvasVisualizationElement;
+
+export interface SignageCanvasLayoutConfig {
+  layout: 'CANVAS';
+  width: number;
+  height: number;
+  backgroundColor: string;
+  elements: SignageCanvasElement[];
+}
+
+export type AnySignageLayoutConfig = SignageLayoutConfig | SignageCanvasLayoutConfig;
+
+export function isSignageCanvasLayout(
+  layoutConfig: AnySignageLayoutConfig | null | undefined,
+): layoutConfig is SignageCanvasLayoutConfig {
+  return layoutConfig?.layout === 'CANVAS';
 }
 
 /**
  * layoutConfigのJSON型（PrismaのJson型として使用）
  */
-export type SignageLayoutConfigJson = SignageLayoutConfig | null;
+export type SignageLayoutConfigJson = AnySignageLayoutConfig | null;

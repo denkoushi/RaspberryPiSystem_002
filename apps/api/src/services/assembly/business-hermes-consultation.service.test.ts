@@ -4,14 +4,15 @@ import { env } from '../../config/env.js';
 
 import { BusinessHermesConsultationService } from './business-hermes-consultation.service.js';
 import { projectTrustedEvidence } from './business-hermes-evidence.js';
+import { signageToolProposal } from './business-hermes-responses.js';
 
 const consultationId = '00000000-0000-0000-0000-000000000010';
 
 // Existing projection/runtime tests exercise a continuing consultation.
-function dbFixture(newConsultation = false) {
+function dbFixture(newConsultation = false, fixtureId = consultationId) {
   const messages: Array<{ id: string; role: string; content: string; evidence: unknown; confirmation?: unknown; searchDiagnostics?: unknown; createdAt: Date }> = [];
   const row = {
-    id: consultationId,
+    id: fixtureId,
     title: null,
     relatedIdentifiers: [],
     confirmedFacts: [],
@@ -28,7 +29,7 @@ function dbFixture(newConsultation = false) {
       create: vi.fn()
     },
       businessHermesConsultationMessage: {
-      findFirst: vi.fn(async ({ where }: { where: { id: string; consultationId: string; role: string } }) => where.consultationId === consultationId ? messages.find((m) => m.id === where.id && m.role === where.role) ?? null : null),
+      findFirst: vi.fn(async ({ where }: { where: { id: string; consultationId: string; role: string } }) => where.consultationId === fixtureId ? messages.find((m) => m.id === where.id && m.role === where.role) ?? null : null),
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         const row = messages.find((entry) => entry.id === where.id)!;
         Object.assign(row, data);
@@ -62,6 +63,278 @@ describe('BusinessHermesConsultationService', () => {
     expect(result.message).toBe('根拠からの回答');
     expect(preparedAnswer.answer).toHaveBeenCalledWith(option, '裏面が膨らむ事例の対策は？', expect.any(AbortSignal));
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('sends a first-turn signage request to the business Hermes conversation without unrelated question recipes', async () => {
+    const fixture = dbFixture(true);
+    const scheduleId = '33333333-3333-4333-8333-333333333333';
+    const targetId = '11111111-1111-4111-8111-111111111111';
+    const proposal = {
+      scheduleName: '業務進捗',
+      deviceScopeKey: '工場A - 組立1',
+      targetClientDeviceIds: [targetId],
+      dayOfWeek: [1, 2, 3, 4, 5],
+      startTime: '08:00',
+      endTime: '17:00',
+      priority: 10,
+      enabled: true
+    };
+    const canonicalProposal = { ...proposal, scheduleId };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({ type: 'response.completed', response: {
+      status: 'completed', output_text: JSON.stringify({ message: '設定案です。', needsClarification: false, signageProposal: proposal })
+    } })}\n\n`));
+    const prepareSignageProposal = vi.fn().mockResolvedValue({
+      proposal: canonicalProposal,
+      schedule: {
+        id: scheduleId, name: proposal.scheduleName, contentType: 'TOOLS', pdfId: null, layoutConfig: null,
+        targetClientCount: 1, targetClientDevices: [{ id: targetId, name: '業務キオスク', deviceScopeKey: proposal.deviceScopeKey }],
+        targetAllClients: false, deviceScopeKey: proposal.deviceScopeKey, slideIntervalSeconds: null, seibanPerPage: null,
+        dayOfWeek: proposal.dayOfWeek, startTime: proposal.startTime, endTime: proposal.endTime,
+        priority: proposal.priority, enabled: proposal.enabled
+      }
+    });
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      signageControl: { prepareSignageProposal, applySignageProposal: vi.fn() } as never,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const result = await service.chat({ consultationId, message: '業務進捗サイネージを設定したい' });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(fetchImpl.mock.calls[0])).not.toContain('record-answer');
+    expect(result.confirmation).toMatchObject({
+      title: 'サイネージ設定の確認',
+      signageProposal: canonicalProposal,
+      options: ['このサイネージ設定を適用する', 'このサイネージ設定は適用しない']
+    });
+    expect(result.message).toContain('業務キオスク');
+    expect(result.needsClarification).toBe(false);
+  });
+
+  it('keeps a Hermes signage proposal read-only until an authenticated manager approves it', async () => {
+    const fixture = dbFixture();
+    const scheduleId = '33333333-3333-4333-8333-333333333333';
+    const targetId = '11111111-1111-4111-8111-111111111111';
+    const proposal = {
+      scheduleName: '業務進捗',
+      deviceScopeKey: '工場A - 組立1',
+      targetClientDeviceIds: [targetId],
+      dayOfWeek: [1, 2, 3, 4, 5],
+      startTime: '08:00',
+      endTime: '17:00',
+      priority: 10,
+      enabled: true
+    };
+    const canonicalProposal = { ...proposal, scheduleId };
+    const prepareSignageProposal = vi.fn().mockResolvedValue({
+      proposal: canonicalProposal,
+      schedule: {
+        id: scheduleId, name: '業務進捗', contentType: 'TOOLS', pdfId: null, layoutConfig: null,
+        targetClientCount: 1,
+        targetClientDevices: [{ id: targetId, name: '業務キオスク', deviceScopeKey: '工場A - 組立1' }],
+        targetAllClients: false, deviceScopeKey: '工場A - 組立1', slideIntervalSeconds: null, seibanPerPage: null,
+        dayOfWeek: proposal.dayOfWeek, startTime: proposal.startTime, endTime: proposal.endTime,
+        priority: proposal.priority, enabled: proposal.enabled
+      }
+    });
+    const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: {
+      status: 'completed', output_text: JSON.stringify({
+        message: 'サイネージ設定案を作成しました。',
+        needsClarification: false,
+        signageProposal: proposal
+      })
+    } })}\n\n`));
+    const applySignageProposal = vi.fn().mockResolvedValue({ content: [{ type: 'text', text: '{"action":"created"}' }] });
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      signageControl: { applySignageProposal, prepareSignageProposal } as never,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const proposed = await service.chat({ consultationId, message: '業務進捗サイネージを設定したい' });
+    expect(proposed.confirmation).toMatchObject({ signageProposal: canonicalProposal });
+    expect(proposed.message).toContain('業務キオスク');
+    expect(proposed.message).toContain('08:00〜17:00');
+    expect(proposed.message).not.toBe('サイネージ設定案を作成しました。');
+    expect(applySignageProposal).not.toHaveBeenCalled();
+
+    const selection = {
+      prompt: proposed.confirmation!.prompt,
+      option: 'このサイネージ設定を適用する'
+    };
+    const viewerAttempt = await service.chat({ consultationId, message: selection.option, selection,
+      actor: { userId: 'viewer', role: 'VIEWER' } });
+    expect(viewerAttempt.reasonCode).toBeUndefined();
+    expect(viewerAttempt.confirmation).toMatchObject({ signageProposal: canonicalProposal });
+    expect(viewerAttempt.message).toContain('ADMINまたはMANAGER');
+    expect(applySignageProposal).not.toHaveBeenCalled();
+
+    const managerApproval = await service.chat({ consultationId, message: selection.option, selection,
+      actor: { userId: 'manager', role: 'MANAGER' } });
+    expect(managerApproval.message).toBe('サイネージ設定を反映しました。');
+    expect(applySignageProposal).toHaveBeenCalledTimes(1);
+    expect(applySignageProposal).toHaveBeenCalledWith(canonicalProposal);
+    expect(JSON.stringify(fixture.messages)).not.toContain('targetClientKeys');
+
+    await service.chat({ consultationId, message: selection.option, selection,
+      actor: { userId: 'manager', role: 'MANAGER' } });
+    expect(applySignageProposal).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a stale proposal selection after a newer proposal replaces it', async () => {
+    const fixture = dbFixture();
+    const proposalA = { scheduleName: '業務進捗', startTime: '08:00' };
+    const proposalB = { scheduleName: '業務進捗', startTime: '09:00' };
+    const canonicalA = { ...proposalA, scheduleId: '33333333-3333-4333-8333-333333333333' };
+    const canonicalB = { ...proposalB, scheduleId: '33333333-3333-4333-8333-333333333333' };
+    const preview = (proposal: typeof canonicalA) => ({
+      id: proposal.scheduleId, name: proposal.scheduleName!, contentType: 'TOOLS', pdfId: null, layoutConfig: null,
+      targetClientCount: 0, targetClientDevices: [], targetAllClients: true, deviceScopeKey: null,
+      slideIntervalSeconds: null, seibanPerPage: null, dayOfWeek: [1], startTime: proposal.startTime!, endTime: '17:00', priority: 1, enabled: true
+    });
+    const responseFor = (proposal: object) => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: {
+      status: 'completed', output_text: JSON.stringify({ message: '設定案です。', needsClarification: false, signageProposal: proposal })
+    } })}\n\n`);
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(responseFor(proposalA))
+      .mockResolvedValueOnce(responseFor(proposalB));
+    const prepareSignageProposal = vi.fn()
+      .mockResolvedValueOnce({ proposal: canonicalA, schedule: preview(canonicalA) })
+      .mockResolvedValueOnce({ proposal: canonicalB, schedule: preview(canonicalB) });
+    const applySignageProposal = vi.fn().mockResolvedValue({ content: [{ type: 'text', text: '{"action":"updated"}' }] });
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      signageControl: { applySignageProposal, prepareSignageProposal } as never,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const first = await service.chat({ consultationId, message: '最初の設定案' });
+    const oldSelection = { prompt: first.confirmation!.prompt, option: 'このサイネージ設定を適用する' };
+    const newer = await service.chat({ consultationId, message: '別の設定案' });
+    const stale = await service.chat({ consultationId, message: oldSelection.option, selection: oldSelection,
+      actor: { userId: 'manager', role: 'MANAGER' } });
+    expect(stale.reasonCode).toBe('HERMES_INVALID_SELECTION');
+    expect(applySignageProposal).not.toHaveBeenCalled();
+
+    const currentSelection = { prompt: newer.confirmation!.prompt, option: oldSelection.option };
+    await service.chat({ consultationId, message: currentSelection.option, selection: currentSelection,
+      actor: { userId: 'manager', role: 'MANAGER' } });
+    expect(applySignageProposal).toHaveBeenCalledWith(canonicalB);
+  });
+
+  it('rejects an approval when a nested canvas element changes', async () => {
+    const fixture = dbFixture();
+    const canvasA = {
+      width: 1920, height: 1080, backgroundColor: '#020617',
+      elements: [{ id: 'title', kind: 'text', x: 40, y: 30, width: 1840, height: 80, text: '業務進捗' }]
+    };
+    const canvasB = {
+      ...canvasA,
+      elements: [{ ...canvasA.elements[0], x: 80 }]
+    };
+    const proposalA = { scheduleName: '業務進捗', canvas: canvasA };
+    const proposalB = { scheduleName: '業務進捗', canvas: canvasB };
+    const canonicalA = { ...proposalA, scheduleId: '33333333-3333-4333-8333-333333333333' };
+    const canonicalB = { ...proposalB, scheduleId: '33333333-3333-4333-8333-333333333333' };
+    const preview = (proposal: typeof canonicalA) => ({
+      id: proposal.scheduleId, name: '業務進捗', contentType: 'TOOLS', pdfId: null, layoutConfig: null,
+      targetClientCount: 0, targetClientDevices: [], targetAllClients: true, deviceScopeKey: null,
+      slideIntervalSeconds: null, seibanPerPage: null, dayOfWeek: [1], startTime: '08:00', endTime: '17:00', priority: 1, enabled: true
+    });
+    const responseFor = (proposal: object) => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: {
+      status: 'completed', output_text: JSON.stringify({ message: '設定案です。', needsClarification: false, signageProposal: proposal })
+    } })}\n\n`);
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(responseFor(proposalA))
+      .mockResolvedValueOnce(responseFor(proposalB));
+    const prepareSignageProposal = vi.fn()
+      .mockResolvedValueOnce({ proposal: canonicalA, schedule: preview(canonicalA) })
+      .mockResolvedValueOnce({ proposal: canonicalB, schedule: preview(canonicalB) });
+    const applySignageProposal = vi.fn().mockResolvedValue({ content: [{ type: 'text', text: '{"action":"updated"}' }] });
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      signageControl: { applySignageProposal, prepareSignageProposal } as never,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const first = await service.chat({ consultationId, message: '最初のcanvas設定案' });
+    const oldSelection = { prompt: first.confirmation!.prompt, option: 'このサイネージ設定を適用する' };
+    const newer = await service.chat({ consultationId, message: '位置を変えたcanvas設定案' });
+    expect(newer.confirmation!.prompt).not.toBe(oldSelection.prompt);
+
+    const stale = await service.chat({ consultationId, message: oldSelection.option, selection: oldSelection,
+      actor: { userId: 'manager', role: 'MANAGER' } });
+    expect(stale.reasonCode).toBe('HERMES_INVALID_SELECTION');
+    expect(applySignageProposal).not.toHaveBeenCalled();
+
+    await service.chat({ consultationId, message: 'このサイネージ設定を適用する',
+      selection: { prompt: newer.confirmation!.prompt, option: oldSelection.option },
+      actor: { userId: 'manager', role: 'MANAGER' } });
+    expect(applySignageProposal).toHaveBeenCalledWith(canonicalB);
+  });
+
+  it('rejects a signage approval copied from another consultation', async () => {
+    const otherId = '00000000-0000-0000-0000-000000000011';
+    const firstFixture = dbFixture();
+    const otherFixture = dbFixture(false, otherId);
+    const rawProposal = { scheduleName: '業務進捗', startTime: '08:00' };
+    const canonicalProposal = { ...rawProposal, scheduleId: '33333333-3333-4333-8333-333333333333' };
+    const preparation = {
+      proposal: canonicalProposal,
+      schedule: {
+        id: canonicalProposal.scheduleId, name: '業務進捗', contentType: 'TOOLS', pdfId: null, layoutConfig: null,
+        targetClientCount: 0, targetClientDevices: [], targetAllClients: true, deviceScopeKey: null,
+        slideIntervalSeconds: null, seibanPerPage: null, dayOfWeek: [1], startTime: '08:00', endTime: '17:00', priority: 1, enabled: true
+      }
+    };
+    const response = new Response(`data: ${JSON.stringify({ type: 'response.completed', response: {
+      status: 'completed', output_text: JSON.stringify({ message: '設定案です。', needsClarification: false, signageProposal: rawProposal })
+    } })}\n\n`);
+    const firstApply = vi.fn();
+    const otherApply = vi.fn();
+    const firstService = new BusinessHermesConsultationService({ db: firstFixture.db as never,
+      fetchImpl: vi.fn().mockResolvedValue(response.clone()),
+      signageControl: { applySignageProposal: firstApply, prepareSignageProposal: vi.fn().mockResolvedValue(preparation) } as never,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const otherService = new BusinessHermesConsultationService({ db: otherFixture.db as never,
+      fetchImpl: vi.fn().mockResolvedValue(response.clone()),
+      signageControl: { applySignageProposal: otherApply, prepareSignageProposal: vi.fn().mockResolvedValue(preparation) } as never,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const first = await firstService.chat({ consultationId, message: '最初の設定案' });
+    await otherService.chat({ consultationId: otherId, message: '別案件の設定案' });
+    const copied = await otherService.chat({ consultationId: otherId, message: 'この設定を適用する', selection: {
+      prompt: first.confirmation!.prompt, option: 'このサイネージ設定を適用する'
+    }, actor: { userId: 'manager', role: 'MANAGER' } });
+    expect(copied.reasonCode).toBe('HERMES_INVALID_SELECTION');
+    expect(firstApply).not.toHaveBeenCalled();
+    expect(otherApply).not.toHaveBeenCalled();
+  });
+
+  it('does not apply a signage proposal produced through the answer cache', async () => {
+    const fixture = dbFixture(true);
+    const proposal = {
+      scheduleId: '33333333-3333-4333-8333-333333333333',
+      startTime: '09:00'
+    };
+    const answerCache = {
+      suggest: vi.fn().mockResolvedValue('業務進捗サイネージを設定したい'),
+      answer: vi.fn().mockResolvedValue({
+        status: 'completed',
+        output_text: JSON.stringify({ message: '設定案です。', needsClarification: false, signageProposal: proposal })
+      })
+    };
+    const applySignageProposal = vi.fn();
+    const prepareSignageProposal = vi.fn().mockResolvedValue({
+      proposal,
+      schedule: {
+        id: proposal.scheduleId, name: '業務進捗', contentType: 'TOOLS', pdfId: null, layoutConfig: null,
+        targetClientCount: 0, targetClientDevices: [], targetAllClients: true, deviceScopeKey: null,
+        slideIntervalSeconds: null, seibanPerPage: null, dayOfWeek: [1], startTime: proposal.startTime,
+        endTime: '17:00', priority: 1, enabled: true
+      }
+    });
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, answerCache,
+      signageControl: { applySignageProposal, prepareSignageProposal } as never,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const first = await service.chat({ consultationId, message: 'サイネージ設定を確認したい' });
+    const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
+    const result = await service.chat({ consultationId, message: selection.option, selection });
+    expect(result.confirmation?.signageProposal).toEqual(proposal);
+    expect(applySignageProposal).not.toHaveBeenCalled();
   });
 
   it('offers a reviewed question and answers its selection without any LLM or prefetch call', async () => {
@@ -160,6 +433,53 @@ describe('BusinessHermesConsultationService', () => {
       fetchImpl: vi.fn().mockImplementation(async () => completedResponse()),
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
     expect((await service.chat({ consultationId, message: '対策は？' })).status).toBe('ready');
+  });
+
+  it('does not present a malformed signage proposal as ready', async () => {
+    const fixture = dbFixture();
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never,
+      fetchImpl: vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({ type: 'response.completed', response: {
+        status: 'completed', output_text: JSON.stringify({
+          message: 'サイネージの提案ができました。プレビューを確認してください。',
+          signageProposal: { scheduleName: '品質確認', a2ui: { layoutMessage: {} } }
+        })
+      } })}\n\n`)),
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const result = await service.chat({ consultationId, message: 'サイネージを作成して' });
+    expect(result.status).toBe('unavailable');
+    expect(result.confirmation).toBeUndefined();
+    expect(fixture.messages[0]!.searchDiagnostics).toEqual([
+      expect.objectContaining({ reasonCode: 'HERMES_SIGNAGE_PROPOSAL_INVALID' })
+    ]);
+  });
+
+  it('uses only the validated configuration tool result even if the final answer wraps it incorrectly', async () => {
+    const fixture = dbFixture();
+    const proposal = { scheduleId: '33333333-3333-4333-8333-333333333333', enabled: false };
+    const response = {
+      status: 'completed',
+      output_text: JSON.stringify({ message: '提案しました', signageProposal: { proposal } }),
+      output: [
+        { type: 'function_call', call_id: 'config-1', name: 'mcp__business_api__business_hermes_configure_signage_custom_dashboard', arguments: '{}' },
+        { type: 'function_call_output', call_id: 'config-1', output: [{ type: 'input_text', text: JSON.stringify({ result: JSON.stringify({ action: 'proposed', proposal }) }) }] }
+      ]
+    };
+    const prepare = vi.fn().mockResolvedValue({ proposal, schedule: {
+      id: proposal.scheduleId, name: '品質確認', dayOfWeek: [1], startTime: '08:00', endTime: '17:00',
+      priority: 1, enabled: false, targetClientDevices: [], targetClientCount: 1, targetAllClients: false
+    } });
+    const apply = vi.fn();
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never,
+      fetchImpl: vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({ type: 'response.completed', response })}\n\n`)),
+      signageControl: { prepareSignageProposal: prepare, applySignageProposal: apply } as never,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const result = await service.chat({ consultationId, message: 'サイネージを停止して' });
+    expect(result.status).toBe('ready');
+    expect(result.confirmation?.signageProposal).toEqual(proposal);
+    expect(prepare).toHaveBeenCalledWith(proposal);
+    expect(apply).not.toHaveBeenCalled();
+    response.output[0]!.name = 'mcp__business_api__business_hermes_search';
+    expect(signageToolProposal(response)).toBeUndefined();
   });
 
   it('offers persisted question buttons even when inference is not configured', async () => {

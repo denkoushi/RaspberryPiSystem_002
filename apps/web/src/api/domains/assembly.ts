@@ -26,6 +26,7 @@ import type {
   AssemblyWorkUnitInvalidationDto,
   AssemblyWorkUnitInvalidationInput,
 } from '../../features/assembly/types';
+import type { A2uiMessage } from '@a2ui/web_core/v0_9';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
 export async function listAssemblySeibanCandidates(params: { prefix: string; limit?: number }) {
@@ -674,6 +675,61 @@ export type BusinessHermesConsultationConfirmation = {
   options?: string[];
   title?: string;
   relatedIdentifiers?: string[];
+  signageProposal?: BusinessHermesSignageProposal;
+};
+
+export type BusinessHermesSignageCanvasElement = {
+  id: string;
+  kind: 'text' | 'visualization';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text?: string;
+  title?: string;
+  style?: {
+    fontSize?: number;
+    fontWeight?: 'normal' | '600' | '700';
+    color?: string;
+    align?: 'start' | 'middle' | 'end';
+    verticalAlign?: 'top' | 'middle' | 'bottom';
+  };
+  dataSourceType?: 'production_schedule' | 'measuring_instruments' | 'pallet_visualization_board';
+  dataSourceConfig?: Record<string, unknown>;
+  rendererType?: 'kpi_cards' | 'table' | 'bar_chart' | 'progress_list' | 'pallet_visualization_board';
+  rendererConfig?: Record<string, unknown>;
+};
+
+export type BusinessHermesSignageProposal = {
+  scheduleName?: string;
+  scheduleId?: string;
+  deviceScopeKey?: string;
+  dayOfWeek?: number[];
+  startTime?: string;
+  endTime?: string;
+  priority?: number;
+  slideIntervalSeconds?: number;
+  seibanPerPage?: number;
+  targetClientDeviceIds?: string[];
+  enabled?: boolean;
+  canvas?: {
+    width: number;
+    height: number;
+    backgroundColor: string;
+    elements: BusinessHermesSignageCanvasElement[];
+  };
+  a2ui?: {
+    layoutMessage: A2uiMessage;
+    dataMessage: A2uiMessage;
+    bindings?: Array<{
+      path: string;
+      source: { kind: 'visualization' | 'self_inspection' | 'part_measurement'; id: string } | { kind: 'work_instruction'; partNumber: string; shootingTarget: string };
+      select: string;
+      format: 'text' | 'series' | 'image';
+      labelField?: string;
+      valueField?: string;
+    }>;
+  };
 };
 
 export type BusinessHermesScanMatch = {

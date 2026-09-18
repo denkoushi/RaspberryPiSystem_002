@@ -1,11 +1,23 @@
 ---
 name: business-consultation
-description: Read-only business consultation over authorized nonconformity and published work-instruction sources.
-version: 0.3.0
+description: Read-only business consultation plus explicitly confirmed signage configuration over authorized business sources.
+version: 0.4.0
 platforms: [linux]
 ---
 
 業務相談の進め方:
+
+## 明示確認が必要なサイネージ設定
+
+サイネージ設定は、利用者が変更内容を明示的に確認した後だけ実行する。MCPは提案だけを返し、アプリがその提案と実データのプレビューを表示して認証済みADMINまたはMANAGERの承認操作を受けた場合だけ反映する。新規作成と進捗ページ設定に対応する表示は既存レンダラの `kiosk_progress_overview` である。文字・数値・写真・棒グラフをRow/Column/Cardで自由に配置する場合は `business_hermes_configure_signage_custom_dashboard` を使い、公式A2UI v0.9の `layoutMessage` と `dataMessage` を唯一の表示定義として返す。アプリは同じ定義をプレビュー表示し、表示定義とデータ参照を保存し、既存の定期描画からJPEGを配信する。A2UI提案に旧canvasを併記しない。既存スケジュールは表示種類を変えずに運用設定を変更できる。
+
+- `business_hermes_list_signage_targets` で既存のClientDevice識別子・名称・正規のdeviceScopeKeyを確認する。対象ClientDevice IDは非機密の識別子であり、APIキーを要求・生成・表示しない。
+- `business_hermes_list_signage_schedules` で既存スケジュールの非機密ID、名称、contentType、既存の安全な表示内容・レイアウト要約、対象数、曜日、時間帯、優先度、enabled、進捗画面の安全なページ設定を確認する。名前が不明ならこのIDを使い、APIキーを識別子にしない。
+- `business_hermes_configure_signage_kiosk_progress_overview` の新規作成では、対象ClientDevice ID、deviceScopeKey、曜日、開始・終了時刻、優先度を明示的にそろえる。既存スケジュールは種類を変えず、曜日・時間帯・優先度・enabled・対象端末を変更できる。既存の `contentType`、`pdfId`、`layoutConfig` は保持し、進捗画面のスコープ・ページ設定以外の表示内容は変更しない。入力から省略された値は現在値を保持する。
+- 時間帯と優先度はスケジュール選択、`slideIntervalSeconds` は同じ進捗画面内のページ切替である。「一定周期で別画面として再表示する頻度」はこの操作では対応しない。データ更新間隔は既存サイネージ運用に従い、データ変更のためにLLMを呼び出さない。
+- 自由画面の新規作成では、登録済みClientDevice ID、正規スコープ、曜日、時間帯、優先度を明示し、`business_hermes_read_signage_source` で利用可能な業務データと実際の項目を取得してA2UIコンポーネントを組み立てる。`surfaceId=signage`、`root`、既存コンポーネントへの参照、許可済みデータパスを守り、`canvas` は併記しない。JavaScript、SQL、shell、任意URL、APIキーは指定しない。既存のレガシー表示を自由画面へ変換せず、新規スケジュールとして提案する。
+- 自由画面でも省略した運用項目は現在値を保持する。アプリに表示された実データプレビューと具体的な変更箇所を確認できるまで承認を求めず、承認後もデータ更新のためにLLMを呼び出さない。
+- 同じ名前が複数件ある場合は、推測で更新せずIDまたは一意化を求める。変更ツールを呼ぶ前に、変更対象と値を短く示して提案し、承認操作を待つ。
 
 ## 検索前の目的確認（選択式の試用）
 
@@ -36,3 +48,17 @@ platforms: [linux]
 ## 質問の型の改善
 
 回答は自動でSkillへ書き戻さない。試用で元の質問、型のID・版、原文に照らした正否、検索回数、候補表示まで・選択まで・選択後の回答完了までの時間を確認する。正しく回答できた条件と検索方法をこのSkillへ反映し、型の意味を変える場合はアプリの型の版も更新する。回答文そのものや未検証の推測を固定の正解として登録しない。対象・条件の差し替えで再利用し、新ジャンルは利用できる情報源とツールの契約を確認してから対応する。
+
+### サイネージの変動値
+
+`business_hermes_read_signage_source` を引数なしで呼ぶと、登録済みダッシュボードと自主検査の参照先が得られる。`source` を付けて呼ぶと現在値が得られる。測定器の使用状況と製品の測定値は別物。測定記録表には `part_measurement`、自主検査には `self_inspection` を使う。要領書は既存検索で公開済み部品番号・撮影対象を選び、`source={kind:"work_instruction",partNumber,shootingTarget}` を使う。
+
+変動する値をモデル自身で作らない。`a2ui.bindings` の各要素に `path`（表示データのJSONポインタ）、`source`、`select`（取得結果のJSONポインタ）、`format` を指定する。`format=text` は文字・数値・真偽値の単一項目、`series` は配列（既定の列名はlabel/value、必要ならlabelField/valueField指定）、`image` は公開要領書のimageUrlを選ぶ。例: `{path:"/quality/value",source:{kind:"self_inspection",id:"取得したscheduleRowId"},select:"/entries/0/values/0/value",format:"text"}`。`dataMessage` は静的な見出しだけでもよい。アプリがプレビューと定期描画のたびに同じ参照を解決する。
+
+利用可能なコンポーネントはText/Row/Column/Card/Image/BarChart。ColumnやRowのchildrenに配置するIDを並べ、rootからつなぐ。Text.text、Image.url/description、BarChart.dataに `{path:"/自由な項目名"}` を指定できる。Image.urlは必ず公開要領書へのbindingを使う。固定のinspection/schedule等のパス名に合わせる必要はない。取得結果にないID・項目を推測せず、必要な参照先がなければその点だけ確認する。
+
+表示間隔の「10分おきに再登場」は未対応。曜日・開始終了時刻・停止再開は既存スケジュールを更新する。優先度やページ切替秒数を再登場頻度として扱わない。利用者の画面には機能や実装方式の説明を書かず、依頼された業務情報を表示する。
+
+A2UIのwire形式は厳密に `layoutMessage={version:"v0.9",updateComponents:{surfaceId:"signage",components:[...]}}`、`dataMessage={version:"v0.9",updateDataModel:{surfaceId:"signage",path:"/",value:{}}}`。surfaceIdをメッセージ直下に置かない。写真も `business_hermes_read_signage_source` で取得結果を読み、検索結果のrowsと混同せず、その結果のstepsからselectを指定する。大きな測定値はTextのvariant=h1、見出しはh2を使い、左右のColumnにweight=1を設定する。
+
+設定ツールがaction=proposedを返したら、アプリはその検証済みproposalを直接使う。最終回答へsignageProposalやA2UIのJSONを写し直さず、短いmessageとneedsClarification=falseだけを返す。測定値には取得した単位を見出しに含める。

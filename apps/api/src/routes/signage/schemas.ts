@@ -1,4 +1,6 @@
+import { parseSignageA2uiProposal, signageA2uiProposalSchema } from '../../services/signage/signage-a2ui.js';
 import { z } from 'zod';
+import { signageCanvasLayoutSchema } from '../../services/signage/signage-canvas.js';
 
 // layoutConfigのスキーマ定義
 const pdfSlotConfigSchema = z
@@ -169,16 +171,21 @@ const slotSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
-const layoutConfigSchema = z
+const legacyLayoutConfigSchema = z
   .object({
     layout: z.enum(['FULL', 'SPLIT']),
-    slots: z.array(slotSchema).min(1),
+    slots: z.array(slotSchema),
+    a2ui: signageA2uiProposalSchema.refine((value) => Boolean(parseSignageA2uiProposal(value))).optional(),
   })
   .optional()
   .nullable()
   .superRefine((value, ctx) => {
     if (!value) {
       return;
+    }
+
+    if (value.a2ui ? value.layout !== 'FULL' || value.slots.length !== 0 : value.slots.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['slots'], message: 'A2UI requires FULL with no slots; other layouts require slots' });
     }
 
     value.slots.forEach((slot, index) => {
@@ -198,6 +205,8 @@ const layoutConfigSchema = z
       }
     });
   });
+
+const layoutConfigSchema = z.union([legacyLayoutConfigSchema, signageCanvasLayoutSchema]).optional().nullable();
 
 export const scheduleSchema = z.object({
   name: z.string().min(1),

@@ -30,6 +30,8 @@ export type SignageSelfInspectionTargetMode = 'kiosk_active_sessions' | 'manual_
 
 export interface SignageScheduleEditorState {
   formData: Partial<SignageSchedule>;
+  /** 管理UIがまだ編集できないCANVASを、既存内容のまま再保存するための保持値。 */
+  preservedCanvasLayoutConfig: SignageLayoutConfig | null;
   useNewLayout: boolean;
   layoutType: 'FULL' | 'SPLIT';
   leftSlotKind: SignageSplitSlotKind;
@@ -107,6 +109,7 @@ export function createDefaultEditorState(): SignageScheduleEditorState {
 
 export function createResetEditorStatePatch(): SignageScheduleEditorStatePatch {
   return {
+    preservedCanvasLayoutConfig: null,
     useNewLayout: false,
     layoutType: 'FULL',
     fullSlotKind: 'loans',
@@ -126,14 +129,21 @@ export function createResetEditorStatePatch(): SignageScheduleEditorStatePatch {
 export function parseScheduleToEditorStatePatch(schedule: SignageSchedule): SignageScheduleEditorStatePatch {
   const hasLayoutConfig = schedule.layoutConfig !== null && schedule.layoutConfig !== undefined;
   const patch: SignageScheduleEditorStatePatch = {
+    preservedCanvasLayoutConfig: null,
     useNewLayout: hasLayoutConfig,
   };
 
   if (hasLayoutConfig && schedule.layoutConfig) {
     const config = schedule.layoutConfig;
-    patch.layoutType = config.layout;
+    if (config.layout === 'CANVAS' || (config.layout === 'FULL' && config.a2ui)) {
+      // The legacy editor has no canvas controls. Keep its validated payload
+      // intact instead of interpreting it as FULL/SPLIT and losing elements.
+      patch.preservedCanvasLayoutConfig = config;
+      patch.useNewLayout = false;
+    } else {
+      patch.layoutType = config.layout;
 
-    if (config.layout === 'FULL') {
+      if (config.layout === 'FULL') {
       const slot = config.slots[0];
       Object.assign(patch, createResetFullSlotSpecificFieldsPatch());
       if (slot) {
@@ -189,7 +199,7 @@ export function parseScheduleToEditorStatePatch(schedule: SignageSchedule): Sign
           patch.fullSlotKind = 'loans';
         }
       }
-    } else {
+      } else {
       Object.assign(patch, createResetFullSlotSpecificFieldsPatch());
       const leftSlot = config.slots.find((s) => s.position === 'LEFT');
       const rightSlot = config.slots.find((s) => s.position === 'RIGHT');
@@ -239,6 +249,7 @@ export function parseScheduleToEditorStatePatch(schedule: SignageSchedule): Sign
           patch.rightCsvDashboardId = null;
           patch.rightVisualizationDashboardId = null;
         }
+      }
       }
     }
   } else {
@@ -314,7 +325,7 @@ export function buildLayoutConfigFromEditorState(
   } = state;
 
   if (!useNewLayout) {
-    return null; // 旧形式を使用
+    return state.preservedCanvasLayoutConfig ?? null; // 旧形式を使用
   }
 
   if (layoutType === 'FULL') {

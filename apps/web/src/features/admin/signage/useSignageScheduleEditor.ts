@@ -30,6 +30,7 @@ function applyEditorStatePatch(
   patch: SignageScheduleEditorStatePatch,
   setters: {
     setFormData: (value: Partial<SignageSchedule>) => void;
+    setPreservedCanvasLayoutConfig: (value: NonNullable<SignageSchedule['layoutConfig']> | null) => void;
     setUseNewLayout: (value: boolean) => void;
     setLayoutType: (value: 'FULL' | 'SPLIT') => void;
     setLeftSlotKind: (value: SignageSplitSlotKind) => void;
@@ -64,6 +65,7 @@ function applyEditorStatePatch(
   }
 ) {
   if (patch.formData !== undefined) setters.setFormData(patch.formData);
+  if (patch.preservedCanvasLayoutConfig !== undefined) setters.setPreservedCanvasLayoutConfig(patch.preservedCanvasLayoutConfig);
   if (patch.useNewLayout !== undefined) setters.setUseNewLayout(patch.useNewLayout);
   if (patch.layoutType !== undefined) setters.setLayoutType(patch.layoutType);
   if (patch.leftSlotKind !== undefined) setters.setLeftSlotKind(patch.leftSlotKind);
@@ -150,6 +152,9 @@ export function useSignageScheduleEditor() {
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<SignageSchedule>>(DEFAULT_SCHEDULE_FORM_DATA);
+  const [preservedCanvasLayoutConfig, setPreservedCanvasLayoutConfig] = useState<
+    NonNullable<SignageSchedule['layoutConfig']> | null
+  >(null);
   const [useNewLayout, setUseNewLayout] = useState(false); // 新形式を使用するか
   const [layoutType, setLayoutType] = useState<'FULL' | 'SPLIT'>('FULL'); // レイアウトタイプ
   const [leftSlotKind, setLeftSlotKind] = useState<'loans' | 'pdf' | 'csv_dashboard' | 'visualization'>('loans'); // 左スロットの種類
@@ -196,6 +201,7 @@ export function useSignageScheduleEditor() {
 
   const editorSetters = {
     setFormData,
+    setPreservedCanvasLayoutConfig,
     setUseNewLayout,
     setLayoutType,
     setLeftSlotKind,
@@ -239,6 +245,7 @@ export function useSignageScheduleEditor() {
 
   const getEditorState = (): SignageScheduleEditorState => ({
     formData,
+    preservedCanvasLayoutConfig,
     useNewLayout,
     layoutType,
     leftSlotKind,
@@ -304,7 +311,10 @@ export function useSignageScheduleEditor() {
 
       if (layoutConfig) {
         // 新形式を使用する場合、contentTypeとpdfIdをlayoutConfigから推論
-        if (layoutConfig.layout === 'FULL') {
+        if (layoutConfig.layout === 'CANVAS') {
+          // CANVAS is produced by Business Hermes and preserved by this
+          // legacy editor; do not infer or replace its content metadata.
+        } else if (layoutConfig.layout === 'FULL') {
           const slot = layoutConfig.slots[0];
           if (slot.kind === 'pdf') {
             contentType = 'PDF';
@@ -404,6 +414,8 @@ export function useSignageScheduleEditor() {
     isCreating,
     editingId,
     formData,
+    preservedCanvasLayoutConfig,
+    setPreservedCanvasLayoutConfig,
     setFormData,
     useNewLayout,
     setUseNewLayout,

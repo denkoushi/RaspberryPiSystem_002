@@ -1,4 +1,5 @@
 import { asEvidenceIds, requestedRecordIds } from './business-hermes-evidence.js';
+import { parseBusinessHermesSignageProposal, type BusinessHermesSignageProposal } from './business-hermes-mcp.service.js';
 
 type JsonRecord = Record<string, unknown>;
 type ResponsesOutputItem = JsonRecord & { type?: string };
@@ -8,6 +9,7 @@ export type BusinessHermesConsultationConfirmation = {
   options?: string[];
   title?: string;
   relatedIdentifiers?: string[];
+  signageProposal?: BusinessHermesSignageProposal;
 };
 
 const MAX_MESSAGE_CHARS = 4_000;
@@ -27,7 +29,8 @@ export function asConfirmation(value: unknown): BusinessHermesConsultationConfir
   const options = [...new Set(asStrings(record.options))].filter((option) => option.length <= 120).slice(0, 5);
   const title = cleanMessage(record.title);
   const relatedIdentifiers = asStrings(record.relatedIdentifiers).slice(0, 10);
-  return { prompt: prompt.slice(0, 500), ...(options.length >= 2 ? { options } : {}), ...(title ? { title: title.slice(0, 200) } : {}), ...(relatedIdentifiers.length > 0 ? { relatedIdentifiers } : {}) };
+  const signageProposal = parseBusinessHermesSignageProposal(record.signageProposal);
+  return { prompt: prompt.slice(0, 500), ...(options.length >= 2 ? { options } : {}), ...(title ? { title: title.slice(0, 200) } : {}), ...(relatedIdentifiers.length > 0 ? { relatedIdentifiers } : {}), ...(signageProposal ? { signageProposal } : {}) };
 }
 
 
@@ -171,7 +174,7 @@ function isTrustedBusinessToolName(value: unknown): boolean {
     || value === 'mcp__business_api__business_hermes_get_detail';
 }
 
-function trustedBusinessToolCallIds(items: ReadonlyArray<ResponsesOutputItem>): ReadonlySet<string> {
+function trustedBusinessToolCallIds(items: ReadonlyArray<ResponsesOutputItem>, isTrustedName = isTrustedBusinessToolName): ReadonlySet<string> {
   const ids = new Set<string>();
   for (const item of items) {
     if (item.type !== 'function_call' && item.type !== 'tool_call') continue;
@@ -179,10 +182,26 @@ function trustedBusinessToolCallIds(items: ReadonlyArray<ResponsesOutputItem>): 
     if (!callId) continue;
     const nested = parseJson(item.arguments);
     const nestedName = nested && typeof nested === 'object' && !Array.isArray(nested) ? (nested as JsonRecord).name : undefined;
-    if (isTrustedBusinessToolName(item.name)
-      || (item.name === 'tool_call' && isTrustedBusinessToolName(nestedName))) ids.add(callId);
+    if (isTrustedName(item.name)
+      || (item.name === 'tool_call' && isTrustedName(nestedName))) ids.add(callId);
   }
   return ids;
+}
+
+/** Use the validated proposal itself, without asking the model to copy its JSON. */
+export function signageToolProposal(response: JsonRecord): BusinessHermesSignageProposal | undefined {
+  const items = outputItems(response);
+  const names = ['business_hermes_configure_signage_kiosk_progress_overview', 'business_hermes_configure_signage_custom_dashboard'];
+  const trusted = trustedBusinessToolCallIds(items, (name) => typeof name === 'string'
+    && names.some((allowed) => name === allowed || name === `mcp__business_api__${allowed}`));
+  for (const item of [...items].reverse()) {
+    if (item.type !== 'function_call_output' || typeof item.call_id !== 'string' || !trusted.has(item.call_id)) continue;
+    const raw = unwrapToolResult(item.output);
+    const result = Array.isArray(raw) && raw.length === 1 ? raw[0] : raw;
+    if (!result || typeof result !== 'object' || Array.isArray(result) || (result as JsonRecord).action !== 'proposed') return undefined;
+    return parseBusinessHermesSignageProposal((result as JsonRecord).proposal);
+  }
+  return undefined;
 }
 
 export function searchDiagnostics(response: JsonRecord): Array<Record<string, unknown>> {
@@ -276,6 +295,8 @@ export function modelState(response: JsonRecord, answer: string): {
   recordView?: 'summary' | 'detail';
   needsClarification?: boolean;
   confirmation?: BusinessHermesConsultationConfirmation;
+  signageProposal?: BusinessHermesSignageProposal;
+  signageProposalInvalid?: boolean;
 } {
   const messageTexts = outputItems(response)
     .filter((item) => item.type === 'message' && Array.isArray(item.content))
@@ -289,11 +310,12 @@ export function modelState(response: JsonRecord, answer: string): {
     const parsed = extractEmbeddedJson(candidate, true);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
     const record = parsed as JsonRecord;
-    const hasState = ['title', 'relatedIdentifiers', 'related_identifiers', 'confirmedFacts', 'confirmed_facts', 'openQuestions', 'open_questions', 'summary', 'message', 'showEvidence', 'show_evidence', 'evidenceIds', 'evidence_ids', 'recordIds', 'record_ids', 'recordView', 'record_view', 'needsClarification', 'needs_clarification', 'confirmation']
+    const hasState = ['title', 'relatedIdentifiers', 'related_identifiers', 'confirmedFacts', 'confirmed_facts', 'openQuestions', 'open_questions', 'summary', 'message', 'showEvidence', 'show_evidence', 'evidenceIds', 'evidence_ids', 'recordIds', 'record_ids', 'recordView', 'record_view', 'needsClarification', 'needs_clarification', 'confirmation', 'signageProposal']
       .some((key) => record[key] !== undefined);
     if (!hasState) continue;
     const recordIdValue = record.recordIds !== undefined ? record.recordIds : record.record_ids;
     const parsedRecordIds = recordIdValue !== undefined ? requestedRecordIds(recordIdValue) : { ids: [], invalid: false };
+    const signageProposal = parseBusinessHermesSignageProposal(record.signageProposal);
     return {
       title: typeof record.title === 'string' ? record.title : undefined,
       relatedIdentifiers: record.relatedIdentifiers !== undefined || record.related_identifiers !== undefined ? asStrings(record.relatedIdentifiers ?? record.related_identifiers) : undefined,
@@ -314,7 +336,9 @@ export function modelState(response: JsonRecord, answer: string): {
       needsClarification: typeof record.needsClarification === 'boolean'
         ? record.needsClarification
         : typeof record.needs_clarification === 'boolean' ? record.needs_clarification : undefined,
-      confirmation: asConfirmation(record.confirmation)
+      confirmation: asConfirmation(record.confirmation),
+      signageProposal,
+      signageProposalInvalid: record.signageProposal != null && !signageProposal
     };
   }
   return {};

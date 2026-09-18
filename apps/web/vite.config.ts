@@ -40,7 +40,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         app: 'index.html',
-        hermesSearchTrial: 'hermes-search-device-trial.html'
+        hermesSearchTrial: 'hermes-search-device-trial.html',
+        a2uiPrint: 'a2ui-print.html'
       },
       output: {
         manualChunks: {

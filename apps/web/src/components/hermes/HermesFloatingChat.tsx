@@ -723,7 +723,8 @@ export function HermesFloatingChat() {
           prompt: confirmation.prompt,
           options: confirmation.options,
           title: confirmation.title,
-          relatedIdentifiers: confirmation.relatedIdentifiers ?? []
+          relatedIdentifiers: confirmation.relatedIdentifiers ?? [],
+          signageProposal: confirmation.signageProposal
         } : null);
         replaceConsultationInList(nextConsultation);
       } else {

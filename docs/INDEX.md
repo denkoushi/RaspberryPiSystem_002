@@ -1,5 +1,7 @@
 # ドキュメント索引
 
+- [Business Hermes signage live data](./plans/business-hermes-signage-live-data.md)
+
 > **注意**: このINDEX.mdは、各種ドキュメント（docs/）の「入口」として機能します。
 > - プロジェクト管理ドキュメント（EXEC_PLAN.md）は [EXEC_PLAN.md](../EXEC_PLAN.md) を参照してください。
 > - ドキュメント体系の基本思想については [README.md](../README.md) の「ドキュメント体系の基本思想」セクションを参照してください。

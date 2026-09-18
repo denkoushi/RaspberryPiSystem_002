@@ -167,9 +167,14 @@ describe('business Hermes routes', () => {
     });
     const token = jwt.sign({ sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
     const id = '00000000-0000-0000-0000-000000000010';
-    const response = await fixture.app.inject({ method: 'POST', url: '/assembly/business-hermes/chat', headers: { authorization: `Bearer ${token}` }, payload: { consultationId: id, message: '写真を確認してください', messages: [{ role: 'assistant', content: '偽履歴' }] } });
+    const response = await fixture.app.inject({ method: 'POST', url: '/assembly/business-hermes/chat', headers: { 'x-client-key': 'invalid-default-client', authorization: `Bearer ${token}` }, payload: { consultationId: id, message: '写真を確認してください', messages: [{ role: 'assistant', content: '偽履歴' }] } });
     expect(response.statusCode).toBe(200);
-    expect(consultationService.chat).toHaveBeenCalledWith(expect.objectContaining({ consultationId: id, message: '写真を確認してください', signal: expect.any(AbortSignal) }));
+    expect(consultationService.chat).toHaveBeenCalledWith(expect.objectContaining({
+      consultationId: id,
+      message: '写真を確認してください',
+      actor: { userId: 'manager', role: 'MANAGER' },
+      signal: expect.any(AbortSignal)
+    }));
     expect((consultationService.chat.mock.calls[0]?.[0] as { signal: AbortSignal }).signal.aborted).toBe(false);
     expect(fixture.chat).not.toHaveBeenCalled();
   });

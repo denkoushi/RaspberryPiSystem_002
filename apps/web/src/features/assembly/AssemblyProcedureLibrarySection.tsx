@@ -24,6 +24,7 @@ import { useAssemblyLibraryFilterOptions } from './useAssemblyLibraryFilterOptio
 import { useAssemblyProcedureLibrary } from './useAssemblyProcedureLibrary';
 
 import type { AssemblyProcedureDocumentDto, AssemblyProcedureDocumentSummaryDto } from './types';
+import type { MouseEvent } from 'react';
 
 type Props = {
   refreshToken?: number;
@@ -274,7 +275,7 @@ export function AssemblyProcedureLibrarySection({
                           )}
                           aria-disabled={!isPublished}
                           title={!isPublished ? '公開後にテンプレート作成できます' : '新規テンプレート'}
-                          onClick={(event) => {
+                          onClick={(event: MouseEvent<HTMLAnchorElement>) => {
                             if (!isPublished) event.preventDefault();
                           }}
                         >

@@ -2,12 +2,17 @@ import { ChatContainer, MainContainer, Message, MessageInput, MessageList } from
 import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
+import { renderSignageCanvasPreview } from '../../api/domains/signage';
 import { ProtectedImage } from '../ProtectedImage';
+
+import { HermesA2uiPreview } from './HermesA2uiPreview';
 
 import type {
   BusinessHermesChatEvidence,
   BusinessHermesConsultationDetail,
-  BusinessHermesConsultationItem
+  BusinessHermesConsultationItem,
+  BusinessHermesSignageCanvasElement,
+  BusinessHermesSignageProposal
 } from '../../api/domains/assembly';
 
 export type HermesPanelMessage = {
@@ -29,6 +34,7 @@ export type HermesConsultationSuggestion = {
   title?: string;
   relatedIdentifiers: string[];
   prompt: string;
+  signageProposal?: BusinessHermesSignageProposal;
 };
 
 export type HermesKnowledgeMode = 'search' | 'knowledge';
@@ -264,6 +270,167 @@ function RecordCard({ evidence, view }: { evidence: BusinessHermesChatEvidence; 
   );
 }
 
+const SIGNAGE_DAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+const SIGNAGE_APPROVAL_OPTION = 'このサイネージ設定を適用する';
+
+function safeSignageColor(value: string | undefined, fallback: string): string {
+  return value && /^#[0-9a-fA-F]{6}$/u.test(value) ? value : fallback;
+}
+
+function signageCanvasElementLabel(element: BusinessHermesSignageCanvasElement): string {
+  if (element.kind === 'text') return element.text?.replace(/\s+/gu, ' ').trim() || '文字';
+  return `${element.title ?? element.rendererType ?? '可視化'} / ${element.dataSourceType ?? 'データソース'}`;
+}
+
+function SignageProposalPreview({
+  proposal,
+  onPreviewReady
+}: {
+  proposal: BusinessHermesSignageProposal;
+  onPreviewReady?: (ready: boolean) => void;
+}) {
+  const canvas = proposal.canvas;
+  const a2ui = proposal.a2ui;
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [previewAttempt, setPreviewAttempt] = useState(0);
+  const scheduleChangeRows = [
+    proposal.scheduleName ? ['スケジュール', proposal.scheduleName] : null,
+    proposal.deviceScopeKey ? ['配信スコープ', proposal.deviceScopeKey] : null,
+    proposal.targetClientDeviceIds ? ['配信先', `${proposal.targetClientDeviceIds.length}台の登録済み端末`] : null,
+    proposal.dayOfWeek ? ['曜日', proposal.dayOfWeek.map((day) => SIGNAGE_DAY_LABELS[day] ?? String(day)).join('・')] : null,
+    proposal.startTime || proposal.endTime ? ['時間帯', `${proposal.startTime ?? '現在値'}〜${proposal.endTime ?? '現在値'}`] : null,
+    proposal.priority !== undefined ? ['優先度', String(proposal.priority)] : null,
+    proposal.enabled !== undefined ? ['状態', proposal.enabled ? '有効' : '停止'] : null,
+    proposal.slideIntervalSeconds !== undefined ? ['ページ切替', `${proposal.slideIntervalSeconds}秒`] : null,
+    proposal.seibanPerPage !== undefined ? ['1ページの製番数', `${proposal.seibanPerPage}件`] : null
+  ].filter((row): row is [string, string] => row !== null);
+
+  useEffect(() => {
+    let disposed = false;
+    let objectUrl: string | null = null;
+    setPreviewImageUrl(null);
+    setPreviewFailed(false);
+    if (!canvas && !a2ui) {
+      onPreviewReady?.(true);
+      return () => { disposed = true; };
+    }
+    if (a2ui) {
+      return () => { disposed = true; };
+    }
+    if (!canvas) return () => { disposed = true; };
+    onPreviewReady?.(false);
+
+    void renderSignageCanvasPreview(canvas)
+      .then((blob) => {
+        if (disposed || typeof URL.createObjectURL !== 'function') {
+          if (!disposed && typeof URL.createObjectURL !== 'function') {
+            setPreviewFailed(true);
+            onPreviewReady?.(false);
+          }
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        if (disposed) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        objectUrl = url;
+        setPreviewImageUrl(url);
+        onPreviewReady?.(true);
+      })
+      .catch(() => {
+        if (!disposed) {
+          setPreviewFailed(true);
+          onPreviewReady?.(false);
+        }
+      });
+
+    return () => {
+      disposed = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [a2ui, canvas, onPreviewReady, previewAttempt]);
+
+  return (
+    <div className="hermes-chat-panel__signage-preview" data-testid="signage-proposal-preview">
+      <div className="hermes-chat-panel__signage-preview-header">
+        <strong>{proposal.scheduleId ? '既存スケジュールの変更案' : '新規サイネージ画面案'}</strong>
+        <span>{a2ui ? 'プレビュー' : canvas ? `${canvas.width}×${canvas.height}` : '標準進捗画面'}</span>
+      </div>
+      {scheduleChangeRows.length > 0 ? (
+        <dl className="hermes-chat-panel__signage-change-list">
+          {scheduleChangeRows.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      {a2ui ? (
+        <HermesA2uiPreview proposal={a2ui} onReady={onPreviewReady} />
+      ) : canvas ? (
+        previewImageUrl ? (
+          <img
+            className="hermes-chat-panel__signage-rendered-preview"
+            src={previewImageUrl}
+            alt={`サイネージの実データプレビュー。${canvas.elements.length}要素`}
+          />
+        ) : (
+          <>
+            {!previewFailed ? <p className="hermes-chat-panel__signage-preview-loading" role="status">実データプレビューを生成中…</p> : (
+              <div className="hermes-chat-panel__signage-preview-error" role="status">
+                <span>実データプレビューを取得できないため、適用操作を無効にしています。</span>
+                <button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>実データプレビューを再試行</button>
+              </div>
+            )}
+            <div
+              className="hermes-chat-panel__signage-canvas"
+              role="img"
+              aria-label={`サイネージキャンバスの構成プレビュー。${canvas.elements.length}要素`}
+              style={{
+                backgroundColor: safeSignageColor(canvas.backgroundColor, '#020617'),
+                aspectRatio: `${canvas.width} / ${canvas.height}`
+              }}
+            >
+              {canvas.elements.map((element) => {
+                const elementStyle: CSSProperties = {
+                  left: `${(element.x / canvas.width) * 100}%`,
+                  top: `${(element.y / canvas.height) * 100}%`,
+                  width: `${(element.width / canvas.width) * 100}%`,
+                  height: `${(element.height / canvas.height) * 100}%`,
+                  color: safeSignageColor(element.style?.color, '#f8fafc'),
+                  textAlign: element.style?.align === 'middle' ? 'center' : element.style?.align === 'end' ? 'right' : 'left',
+                  fontWeight: element.style?.fontWeight ?? 'normal'
+                };
+                return (
+                  <div
+                    key={element.id}
+                    className={`hermes-chat-panel__signage-canvas-element hermes-chat-panel__signage-canvas-element--${element.kind}`}
+                    style={elementStyle}
+                    title={signageCanvasElementLabel(element)}
+                  >
+                    {element.kind === 'text' ? element.text : (
+                      <>
+                        <span className="hermes-chat-panel__signage-canvas-element-title">{element.title ?? element.rendererType ?? '可視化'}</span>
+                        <span className="hermes-chat-panel__signage-canvas-element-source">{element.dataSourceType ?? 'データソース'}</span>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )
+      ) : (
+        <p className="hermes-chat-panel__signage-preview-note">既存の表示内容を保持し、指定された運用設定だけを変更します。</p>
+      )}
+      <p className="hermes-chat-panel__signage-preview-note">表示されていない設定は現在値を保持します。反映にはADMINまたはMANAGERの承認が必要です。</p>
+    </div>
+  );
+}
+
 export default function HermesChatPanel({
   conversationExtension,
   attachmentControl,
@@ -303,6 +470,10 @@ export default function HermesChatPanel({
 }: HermesChatPanelProps) {
   const reducedMotion = useReducedMotion();
   const panelRef = useRef<HTMLElement | null>(null);
+  const signagePreviewToken = suggestion?.signageProposal?.canvas || suggestion?.signageProposal?.a2ui
+    ? JSON.stringify({ canvas: suggestion.signageProposal.canvas, a2ui: suggestion.signageProposal.a2ui })
+    : '';
+  const [signagePreviewReady, setSignagePreviewReady] = useState(() => signagePreviewToken === '');
 
   useEffect(() => {
     const editor = panelRef.current?.querySelector<HTMLElement>('[contenteditable="true"]');
@@ -483,10 +654,17 @@ export default function HermesChatPanel({
                   ))}
                   {suggestion ? (
                     <div className="hermes-chat-panel__suggestion" role="group" aria-label="Hermesからの候補確認">
+                      {suggestion.signageProposal ? <SignageProposalPreview proposal={suggestion.signageProposal} onPreviewReady={setSignagePreviewReady} /> : null}
                       <p className="hermes-chat-panel__suggestion-prompt">{suggestion.prompt}</p>
                       <div className="hermes-chat-panel__suggestion-actions">
                         {suggestion.options?.map((option) => (
-                          <button key={option} type="button" className="hermes-chat-panel__suggestion-button" onClick={() => onAnswerSuggestion?.(option)} disabled={isBusy}>
+                          <button
+                            key={option}
+                            type="button"
+                            className="hermes-chat-panel__suggestion-button"
+                            onClick={() => onAnswerSuggestion?.(option)}
+                            disabled={isBusy || (option === SIGNAGE_APPROVAL_OPTION && Boolean(suggestion.signageProposal?.canvas || suggestion.signageProposal?.a2ui) && !signagePreviewReady)}
+                          >
                             {option}
                           </button>
                         ))}
