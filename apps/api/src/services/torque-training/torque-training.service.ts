@@ -444,7 +444,10 @@ export class TorqueTrainingService {
       ? []
       : await prisma.torqueTrainingSession.findMany({
           where: { id: { in: recentSessionIds.map((row) => row.id) } },
-          include: { attempts: true }
+          include: {
+            attempts: true,
+            programVersion: { select: { displayName: true, nominalDiameter: true } }
+          }
         });
     const sessionsById = new Map(sessions.map((session) => [session.id, session]));
     const grouped = new Map<string, typeof sessions>();
@@ -455,25 +458,30 @@ export class TorqueTrainingService {
       rows.push(session);
       grouped.set(session.conditionFingerprint, rows);
     }
-    const metrics = [...grouped.entries()].map(([conditionFingerprint, rows]) => ({
-      conditionFingerprint,
-      sessions: rows.map((session) => ({
-        sessionId: session.id,
-        completedAt: session.completedAt?.toISOString() ?? null,
-        ...summarizeTrainingAttempts(session.attempts.map((attempt) => ({
+    const metrics = [...grouped.entries()].map(([conditionFingerprint, rows]) => {
+      const latestSession = rows[0]!;
+      return {
+        conditionFingerprint,
+        trainingName: latestSession.programVersion.displayName,
+        targetBolt: latestSession.programVersion.nominalDiameter,
+        sessions: rows.map((session) => ({
+          sessionId: session.id,
+          completedAt: session.completedAt?.toISOString() ?? null,
+          ...summarizeTrainingAttempts(session.attempts.map((attempt) => ({
+            accepted: attempt.accepted,
+            judgement: attempt.judgement,
+            deviationPercent: attempt.deviationPercent,
+            absoluteDeviationPercent: attempt.absoluteDeviationPercent
+          })))
+        })),
+        ...summarizeTrainingAttempts(rows.flatMap((session) => session.attempts.map((attempt) => ({
           accepted: attempt.accepted,
           judgement: attempt.judgement,
           deviationPercent: attempt.deviationPercent,
           absoluteDeviationPercent: attempt.absoluteDeviationPercent
-        })))
-      })),
-      ...summarizeTrainingAttempts(rows.flatMap((session) => session.attempts.map((attempt) => ({
-        accepted: attempt.accepted,
-        judgement: attempt.judgement,
-        deviationPercent: attempt.deviationPercent,
-        absoluteDeviationPercent: attempt.absoluteDeviationPercent
-      }))))
-    }));
+        }))))
+      };
+    });
     return {
       employee: { id: employee.id, employeeCode: employee.employeeCode, displayName: employee.displayName },
       currentSession: activeSession ? serializeSession(activeSession) : null,

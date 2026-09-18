@@ -14,6 +14,7 @@ export type TorqueTrainingAttemptHistoryProps = {
   items: Array<TorqueTrainingAttemptHistoryItem | null>;
   recordedCount: number;
   outOfSequenceItems?: Array<Omit<TorqueTrainingAttemptHistoryItem, 'attemptNo'> & { attemptNo: null }>;
+  className?: string;
 };
 
 /**
@@ -23,10 +24,11 @@ export type TorqueTrainingAttemptHistoryProps = {
 export function TorqueTrainingAttemptHistory({
   items,
   recordedCount,
-  outOfSequenceItems = []
+  outOfSequenceItems = [],
+  className = 'max-w-5xl'
 }: TorqueTrainingAttemptHistoryProps) {
   return (
-    <section className="w-full max-w-lg" aria-label="訓練試行履歴" data-testid="torque-training-attempt-history">
+    <section className={`w-full ${className}`} aria-label="訓練試行履歴" data-testid="torque-training-attempt-history">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-sm font-bold">試行履歴</h3>
         <span className="text-xs text-white/60">記録 {recordedCount} / {items.length}</span>
