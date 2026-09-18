@@ -14,7 +14,7 @@ export type CsvImportType =
  * CSVインポートターゲット（スケジュール内の1つの対象）
  */
 export interface CsvImportTarget {
-  type: CsvImportType;
+  type: CsvImportType | 'itemInventoryGmail';
   source: string; // Dropbox用: パス、Gmail用: 件名パターン、CSVダッシュボード用: ダッシュボードID
 }
 
@@ -56,4 +56,3 @@ export interface CsvImporter {
    */
   readonly type: CsvImportType;
 }
-

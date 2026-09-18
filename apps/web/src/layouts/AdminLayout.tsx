@@ -33,6 +33,9 @@ export function AdminLayout() {
             <NavLink to="/admin/tools/items" className={linkClass}>
               アイテム
             </NavLink>
+            <NavLink to="/admin/tools/raspi-inventory" className={linkClass}>
+              Raspberry Pi在庫
+            </NavLink>
             <NavLink to="/admin/tools/unified" className={linkClass}>
               統合一覧
             </NavLink>

@@ -75,6 +75,43 @@ enum ImportStatus {
   FAILED
 }
 
+enum InventoryImportOutcome {
+  PENDING
+  PROCESSING
+  APPLIED
+  DUPLICATE
+  INVALID
+  RETRYABLE
+}
+
+enum InventoryImportPayloadStatus {
+  PENDING
+  REGISTERED
+  INVALID
+  DUPLICATE
+}
+
+enum InventoryRegistrationMode {
+  NEW_ITEM
+  EXISTING_ITEM
+}
+
+enum InventoryNfcTagKind {
+  ITEM
+  QUANTITY
+  RESTOCK
+}
+
+enum InventoryTransactionAction {
+  ISSUE
+  RESTOCK
+  CANCEL
+  CORRECTION
+  LOCATION_CHANGE
+  TAG_REPLACEMENT
+  REGISTER
+}
+
 /// SCAW 不適合の source payload が current にどう追加されたか。
 enum ScawStfutekigoRevisionType {
   CREATED
@@ -892,6 +929,182 @@ model ImportJob {
   summary     Json?
   createdAt   DateTime     @default(now())
   completedAt DateTime?
+}
+
+/// Raspberry Pi inventory item information shared by every physical compartment.
+model InventoryItem {
+  id             String                   @id @default(uuid())
+  itemCode       String                   @unique
+  name           String
+  model          String?
+  usage          String?
+  category       String?
+  area           String?
+  note           String?
+  deletedAt      DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  photos         InventoryItemPhoto[]
+  compartments   InventoryCompartment[]
+  importPayloads InventoryImportPayload[]
+  transactions   InventoryTransaction[]
+
+  @@index([name])
+  @@index([category])
+  @@index([deletedAt])
+}
+
+model InventoryItemPhoto {
+  id               String        @id @default(uuid())
+  inventoryItemId  String
+  photoUrl         String
+  originalFilename String
+  sha256           String        @db.VarChar(64)
+  sourcePayloadId  String?
+  photoIndex       Int           @default(0)
+  createdAt        DateTime      @default(now())
+  inventoryItem    InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryItemId, photoIndex, createdAt])
+  @@index([sha256])
+}
+
+/// Canonical source manifest. The unique content hash makes Gmail resends safe.
+model InventoryImportPayload {
+  id               String                       @id @default(uuid())
+  contentHash      String                       @unique @db.VarChar(64)
+  sourceSystem     String
+  sourceList       String
+  sourceItemId     Int
+  sourceModified   DateTime
+  area             String
+  category         String?
+  note             String?
+  manifest         Json
+  status           InventoryImportPayloadStatus @default(PENDING)
+  registrationMode InventoryRegistrationMode?
+  registeredItemId String?
+  reviewedAt       DateTime?
+  reviewNote       String?
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+  registeredItem   InventoryItem?               @relation(fields: [registeredItemId], references: [id], onDelete: SetNull)
+  photos           InventoryImportPhoto[]
+  messages         InventoryImportMessage[]
+
+  @@index([status, createdAt])
+  @@index([sourceSystem, sourceList, sourceItemId, sourceModified])
+}
+
+model InventoryImportPhoto {
+  id         String                 @id @default(uuid())
+  payloadId  String
+  photoIndex Int
+  filename   String
+  photoUrl   String
+  sha256     String                 @db.VarChar(64)
+  createdAt  DateTime               @default(now())
+  payload    InventoryImportPayload @relation(fields: [payloadId], references: [id], onDelete: Cascade)
+
+  @@unique([payloadId, photoIndex])
+  @@index([payloadId, filename])
+}
+
+model InventoryImportMessage {
+  id             String                  @id @default(uuid())
+  gmailMessageId String                  @unique
+  payloadId      String?
+  outcome        InventoryImportOutcome  @default(PENDING)
+  errorMessage   String?
+  nextRetryAt    DateTime?
+  mailCleanupPending   Boolean               @default(false)
+  mailCleanupCompleted Boolean               @default(false)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  payload        InventoryImportPayload? @relation(fields: [payloadId], references: [id], onDelete: SetNull)
+
+  @@index([outcome, nextRetryAt, createdAt])
+  @@index([payloadId])
+}
+
+model InventoryShelf {
+  id          String            @id @default(uuid())
+  area        String
+  shelfNumber Int
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  drawers     InventoryDrawer[]
+
+  @@unique([area, shelfNumber])
+  @@index([area, shelfNumber])
+}
+
+model InventoryDrawer {
+  id           String                 @id @default(uuid())
+  shelfId      String
+  drawerNumber Int
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  shelf        InventoryShelf         @relation(fields: [shelfId], references: [id], onDelete: Cascade)
+  compartments InventoryCompartment[]
+
+  @@unique([shelfId, drawerNumber])
+  @@index([shelfId, drawerNumber])
+}
+
+model InventoryCompartment {
+  id              String                 @id @default(uuid())
+  drawerId        String
+  inventoryItemId String
+  stockQuantity   Int                    @default(0)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  drawer          InventoryDrawer        @relation(fields: [drawerId], references: [id], onDelete: Cascade)
+  inventoryItem   InventoryItem          @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  itemTag         InventoryNfcTag?
+  transactions    InventoryTransaction[]
+
+  @@index([drawerId])
+  @@index([inventoryItemId])
+}
+
+model InventoryNfcTag {
+  id            String                @id @default(uuid())
+  uid           String                @unique
+  kind          InventoryNfcTagKind
+  quantity      Int?
+  compartmentId String?               @unique
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  compartment   InventoryCompartment? @relation(fields: [compartmentId], references: [id], onDelete: SetNull)
+
+  @@index([kind])
+}
+
+model InventoryTransaction {
+  id                String                     @id @default(uuid())
+  action            InventoryTransactionAction
+  inventoryItemId   String
+  compartmentId     String?
+  clientId          String?
+  performedByUserId String?
+  quantityTagId     String?
+  idempotencyKey    String?
+  reversalOfId      String?                    @unique
+  delta             Int                        @default(0)
+  beforeQuantity    Int
+  afterQuantity     Int
+  details           Json?
+  createdAt         DateTime                   @default(now())
+  inventoryItem     InventoryItem              @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  compartment       InventoryCompartment?      @relation(fields: [compartmentId], references: [id], onDelete: SetNull)
+  reversalOf        InventoryTransaction?      @relation("InventoryTransactionReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
+  reversedBy        InventoryTransaction?      @relation("InventoryTransactionReversal")
+
+  @@unique([clientId, idempotencyKey])
+  @@index([compartmentId, createdAt])
+  @@index([inventoryItemId, createdAt])
+  @@index([action, createdAt])
 }
 
 model CsvImportHistory {

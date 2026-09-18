@@ -226,4 +226,30 @@ describe('CsvDashboardImportService ingest behavior', () => {
       receivedAt
     );
   });
+
+  it('skips item-inventory messages before CSV parsing and Gmail post-processing', async () => {
+    const service = new CsvDashboardImportService() as any;
+    service.subjectPatternProvider = {
+      listEnabledPatterns: vi.fn().mockResolvedValue(['CSV Import']),
+    };
+    service.unifiedMailboxFetcher = {
+      fetchBySubjectPatterns: vi.fn().mockResolvedValue({
+        'CSV Import': [{
+          buffer: Buffer.from('{"schema_version":1}'),
+          messageId: 'inventory-message',
+          messageSubject: '[ItemlistRaspi-photo] 2',
+        }],
+      }),
+    };
+    service.ingestor = { ingestFromGmail: vi.fn() };
+
+    const result = await service.ingestTargets({
+      provider: 'gmail',
+      storageProvider: { downloadAllBySubjectPatterns: vi.fn() },
+      dashboardIds: ['dashboard-1'],
+    });
+
+    expect(service.ingestor.ingestFromGmail).not.toHaveBeenCalled();
+    expect(result['dashboard-1'].debug.downloadedMessageIdSuffixes).toEqual([]);
+  });
 });

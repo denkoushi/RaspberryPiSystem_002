@@ -210,7 +210,7 @@ class FactAdoptionIntegration(unittest.TestCase):
         # Exercise actual serving dispatch; only embedding/index construction is replaced.
         class Cache:
             def __init__(inner, catalogue, *args):
-                inner.cases = read_catalogue(catalogue); inner.model = object()
+                inner.cases = read_catalogue(catalogue); inner.model = object(); inner.close = Mock()
             prepare_fact_index = QuestionCache.prepare_fact_index
             search_fact = QuestionCache.search_fact
             search = QuestionCache.search
@@ -223,7 +223,7 @@ class FactAdoptionIntegration(unittest.TestCase):
     def activate(self):
         runtime = MaintenanceRuntime(self.root, self.root); runtime.run_id = self.run
         runtime.process = Mock(returncode=0); runtime.process.poll.return_value = 0; runtime.log = Mock()
-        return runtime, runtime.refresh(self.cache_type(self.root / 'reviewed.json'), object())[0]
+        return runtime, runtime.refresh(self.cache_type(self.root / 'reviewed.json'), Mock())[0]
 
     def test_no_human_labels_prepare_evaluate_activate_and_serve(self):
         result = maintain(self.root, self.run, self.root)

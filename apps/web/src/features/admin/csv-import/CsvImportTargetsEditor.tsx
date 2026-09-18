@@ -1,7 +1,7 @@
+import { ITEM_INVENTORY_GMAIL_SUBJECT_TOKEN, type CsvImportSchedule, type CsvImportSubjectPattern, type CsvImportSubjectPatternType, type CsvImportTarget } from '../../../api/backup';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 
-import type { CsvImportSchedule, CsvImportSubjectPattern, CsvImportSubjectPatternType } from '../../../api/backup';
 import type { CsvDashboard } from '../../../api/client';
 
 type CsvImportTargetsEditorProps = {
@@ -26,7 +26,7 @@ export function CsvImportTargetsEditor({
   showHelpText = false
 }: CsvImportTargetsEditorProps) {
   const selectClassName = compact
-    ? 'flex-1 rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs'
+    ? 'min-w-[180px] flex-1 shrink-0 rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs'
     : 'flex-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900';
   const deleteButtonClassName = compact ? 'text-red-600 text-xs px-1 py-0.5' : 'text-red-600';
   const addButtonClassName = compact ? 'text-blue-600 text-xs px-1 py-0.5' : 'text-blue-600';
@@ -36,13 +36,18 @@ export function CsvImportTargetsEditor({
     <>
       <div className={compact ? 'space-y-1' : 'space-y-2'}>
         {(formData.targets || []).map((target, index) => (
-          <div key={index} className={compact ? 'flex gap-1' : 'flex gap-2'}>
+          <div key={index} className={compact ? 'flex flex-wrap items-center gap-1' : 'flex gap-2'}>
             <select
               className={selectClassName}
               value={target.type}
               onChange={(e) => {
                 const newTargets = [...(formData.targets || [])];
-                newTargets[index] = { ...target, type: e.target.value as 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards', source: '' };
+                const type = e.target.value as CsvImportTarget['type'];
+                newTargets[index] = {
+                  ...target,
+                  type,
+                  source: type === 'itemInventoryGmail' ? ITEM_INVENTORY_GMAIL_SUBJECT_TOKEN : '',
+                };
                 setFormData({ ...formData, targets: newTargets });
               }}
             >
@@ -52,6 +57,7 @@ export function CsvImportTargetsEditor({
               <option value="riggingGears">吊具</option>
               <option value="machines">加工機</option>
               <option value="csvDashboards">CSVダッシュボード</option>
+              <option value="itemInventoryGmail">Raspberry Pi在庫写真メール</option>
             </select>
             {target.type === 'csvDashboards' ? (
               <select
@@ -96,6 +102,13 @@ export function CsvImportTargetsEditor({
                   </option>
                 ))}
               </select>
+            ) : target.type === 'itemInventoryGmail' ? (
+              <Input
+                className={compact ? 'min-w-[220px] flex-1 text-xs' : 'flex-1'}
+                value={ITEM_INVENTORY_GMAIL_SUBJECT_TOKEN}
+                readOnly
+                aria-label="Raspberry Pi在庫写真メールの固定件名"
+              />
             ) : provider === 'gmail' ? (
               <select
                 className={selectClassName}
@@ -115,7 +128,7 @@ export function CsvImportTargetsEditor({
               </select>
             ) : (
               <Input
-                className={compact ? 'flex-1 text-xs' : 'flex-1'}
+                className={compact ? 'min-w-[160px] flex-1 text-xs' : 'flex-1'}
                 placeholder={target.type === 'employees' ? '/backups/csv/employees.csv' : target.type === 'items' ? '/backups/csv/items.csv' : target.type === 'machines' ? '/backups/csv/machines.csv' : '/backups/csv/...'}
                 value={target.source}
                 onChange={(e) => {

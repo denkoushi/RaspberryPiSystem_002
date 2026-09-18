@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
-export const PILOT_TOPIC = { id: 'metal-painting-practice', title: '金属塗装の実技準備' } as const;
+// The legacy id remains the durable publication/lease key for existing knowledge data.
+export const KNOWLEDGE_TOPIC = { id: 'metal-painting-practice', title: 'ナレッジ' } as const;
+export const PILOT_TOPIC = KNOWLEDGE_TOPIC;
 
 export const knowledgeSourceSchema = z.object({
   id: z.string().uuid(),

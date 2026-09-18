@@ -7,6 +7,7 @@ import { ensureFkojunstStatusMailCsvImportSchedule } from './fkojunst-status-mai
 import { ensureSeibanMachineNameSupplementCsvImportSchedule } from './seiban-machine-name-supplement-import-schedule.policy.js';
 import { ensureRiggingSlingsInspectionCsvImportSchedule } from './slings-inspection-import-schedule.policy.js';
 import { ensureScawStfutekigoCsvImportSchedule } from './scaw-stfutekigo-import-schedule.policy.js';
+import { ensureItemInventoryGmailCsvImportSchedule } from './item-inventory-import-schedule.policy.js';
 
 export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig): {
   config: BackupConfig;
@@ -19,8 +20,9 @@ export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig)
   const fkobainoEnsured = ensureFkobainoCsvImportSchedule(customerScawEnsured.config);
   const riggingSlingsEnsured = ensureRiggingSlingsInspectionCsvImportSchedule(fkobainoEnsured.config);
   const scawStfutekigoEnsured = ensureScawStfutekigoCsvImportSchedule(riggingSlingsEnsured.config);
+  const itemInventoryEnsured = ensureItemInventoryGmailCsvImportSchedule(scawStfutekigoEnsured.config);
   return {
-    config: scawStfutekigoEnsured.config,
+    config: itemInventoryEnsured.config,
     repaired:
       fkojunstEnsured.repaired ||
       fkojunstStatusMailEnsured.repaired ||
@@ -28,7 +30,8 @@ export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig)
       customerScawEnsured.repaired ||
       fkobainoEnsured.repaired ||
       riggingSlingsEnsured.repaired ||
-      scawStfutekigoEnsured.repaired,
+      scawStfutekigoEnsured.repaired ||
+      itemInventoryEnsured.repaired,
   };
 }
 

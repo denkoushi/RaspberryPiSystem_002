@@ -11,6 +11,12 @@ import { CsvImportSourceService } from './csv-import-source.service.js';
 import { CsvImportConfigService } from './csv-import-config.service.js';
 import { GmailRateLimitedDeferredError } from '../backup/gmail-request-gate.service.js';
 import { ActualHoursImportOrchestratorService } from '../production-schedule/actual-hours/actual-hours-import-orchestrator.service.js';
+import { getItemInventoryServices } from '../item-inventory/item-inventory-service.factory.js';
+import type {
+  ItemInventoryCycleSummary,
+  ItemInventoryGmailIngestionService,
+} from '../item-inventory/item-inventory-gmail-ingestion.service.js';
+import { ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
 
 export type CsvImportExecutionSummary = {
   employees?: { processed: number; created: number; updated: number };
@@ -35,6 +41,7 @@ export type CsvImportExecutionSummary = {
     excludedPreFlaggedRows: number;
     featureKeyCount: number;
   };
+  itemInventoryGmail?: ItemInventoryCycleSummary;
 };
 
 type LoggerLike = {
@@ -77,6 +84,7 @@ type CsvImportExecutionDeps = {
   createCsvImportSourceService: () => CsvImportSourceService;
   createCsvDashboardImportService: () => CsvDashboardImportService;
   createCsvImportConfigService: () => CsvImportConfigService;
+  createItemInventoryGmailIngestionService: () => ItemInventoryGmailIngestionService;
   processCsvImportFromTargets: ProcessCsvImportFromTargetsFn;
   logger: LoggerLike;
 };
@@ -102,6 +110,7 @@ export class CsvImportExecutionService {
       createCsvImportSourceService: () => new CsvImportSourceService(),
       createCsvDashboardImportService: () => new CsvDashboardImportService(),
       createCsvImportConfigService: () => new CsvImportConfigService(),
+      createItemInventoryGmailIngestionService: () => getItemInventoryServices().ingestion,
       processCsvImportFromTargets,
       logger,
       ...overrides,
@@ -128,7 +137,7 @@ export class CsvImportExecutionService {
 
     // 手動実行の場合はリトライをスキップして直接実行
     if (skipRetry) {
-      return await this.executeAttempt(config, importSchedule, provider, { gmailAllowWait: true });
+      return await this.executeAttempt(config, importSchedule, provider, { gmailAllowWait: true, manual: true });
     }
 
     // リトライ設定
@@ -142,7 +151,7 @@ export class CsvImportExecutionService {
     let lastError: Error | undefined;
     for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
       try {
-        return await this.executeAttempt(config, importSchedule, provider, { gmailAllowWait: false });
+        return await this.executeAttempt(config, importSchedule, provider, { gmailAllowWait: false, manual: false });
       } catch (error) {
         // 429クールダウンは「待つ/延期」すべき状態なので、ここで汎用Errorに包まず上位へ伝播させる
         if (error instanceof GmailRateLimitedDeferredError) {
@@ -181,7 +190,7 @@ export class CsvImportExecutionService {
     config: BackupConfig,
     importSchedule: NonNullable<BackupConfig['csvImports']>[0],
     provider: 'dropbox' | 'gmail',
-    opts: { gmailAllowWait: boolean }
+    opts: { gmailAllowWait: boolean; manual: boolean }
   ): Promise<CsvImportExecutionSummary> {
     // ストレージプロバイダーを作成（Factoryパターンを使用）
     const protocol = 'http'; // スケジューラー内ではプロトコルは不要
@@ -212,21 +221,6 @@ export class CsvImportExecutionService {
       this.deps.logger?.info?.({ provider }, '[CsvImportScheduler] Access token updated');
     };
 
-    // StorageProviderFactoryを使用してプロバイダーを作成
-    const storageProvider = await this.deps.storageProviderFactory.createFromConfig(
-      {
-        ...config,
-        storage: {
-          ...config.storage,
-          provider,
-        },
-      },
-      protocol,
-      host,
-      onTokenUpdate,
-      { allowFallbackToLocal: provider !== 'gmail', gmailAllowWait: opts.gmailAllowWait }
-    );
-
     // ターゲットを取得（新形式優先、旧形式は変換）
     let targets: CsvImportTarget[] = [];
     if (importSchedule.targets && importSchedule.targets.length > 0) {
@@ -248,7 +242,7 @@ export class CsvImportExecutionService {
     const configService = this.deps.createCsvImportConfigService();
     const filteredTargets: CsvImportTarget[] = [];
     for (const target of targets) {
-      if (target.type === 'csvDashboards') {
+      if (target.type === 'csvDashboards' || target.type === 'itemInventoryGmail') {
         filteredTargets.push(target);
         continue;
       }
@@ -273,7 +267,64 @@ export class CsvImportExecutionService {
     // CSVダッシュボード用のターゲットと通常のインポート用のターゲットを分離
     const csvDashboardTargets = targets.filter((t) => t.type === 'csvDashboards');
     const productionActualHoursTargets = targets.filter((t) => t.type === 'productionActualHours');
-    const importTargets = targets.filter((t) => t.type !== 'csvDashboards' && t.type !== 'productionActualHours');
+    const itemInventoryTargets = targets.filter((t) => t.type === 'itemInventoryGmail');
+    const importTargets = targets.filter(
+      (t) => t.type !== 'csvDashboards' && t.type !== 'productionActualHours' && t.type !== 'itemInventoryGmail'
+    );
+
+    if (itemInventoryTargets.length > 0 && provider !== 'gmail') {
+      throw new Error('itemInventoryGmail import requires Gmail storage provider');
+    }
+
+    // The JSON+JPEG intake uses its Gmail client directly. Do not create a
+    // CSV storage provider, or pass the special target to the CSV parser, when
+    // this schedule contains only the inventory intake target.
+    const storageProvider = targets.some((target) => target.type !== 'itemInventoryGmail')
+      ? await this.deps.storageProviderFactory.createFromConfig(
+        {
+          ...config,
+          storage: {
+            ...config.storage,
+            provider,
+          },
+        },
+        protocol,
+        host,
+        onTokenUpdate,
+        { allowFallbackToLocal: provider !== 'gmail', gmailAllowWait: opts.gmailAllowWait }
+      )
+      : undefined;
+
+    let itemInventoryResult: ItemInventoryCycleSummary | undefined;
+    if (itemInventoryTargets.length > 0) {
+      const legacyConfig = config.itemInventoryGmailIngest ?? {
+        enabled: false,
+        subjectTokens: [ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS[0]],
+      };
+      const metadata = importSchedule.metadata;
+      const fromEmail = metadata && typeof metadata === 'object' && typeof metadata.itemInventoryFromEmail === 'string'
+        ? metadata.itemInventoryFromEmail
+        : legacyConfig.fromEmail;
+      const invalidSubjectTarget = itemInventoryTargets.find(
+        (target) => target.source.trim() !== ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS[0],
+      );
+      if (invalidSubjectTarget) {
+        throw new Error(`Raspberry Pi在庫写真メールの件名は${ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS[0]}で固定です`);
+      }
+      itemInventoryResult = await this.deps.createItemInventoryGmailIngestionService().runOnce({
+        config: {
+          ...config,
+          itemInventoryGmailIngest: {
+            ...legacyConfig,
+            enabled: true,
+            subjectTokens: [...ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS],
+            ...(fromEmail ? { fromEmail } : {}),
+          },
+        },
+        allowWait: opts.gmailAllowWait,
+        manual: opts.manual,
+      });
+    }
 
     // CSVファイルをダウンロード
     const fileMap = new Map<string, Buffer>();
@@ -285,6 +336,7 @@ export class CsvImportExecutionService {
 
     // CSVダッシュボード用の処理
     if (csvDashboardTargets.length > 0) {
+      if (!storageProvider) throw new Error('CSV dashboard import requires a storage provider');
       const csvDashboardImportService = this.deps.createCsvDashboardImportService();
       const dashboardIds = csvDashboardTargets.map((t) => t.source);
       csvDashboardResults = await csvDashboardImportService.ingestTargets({
@@ -295,6 +347,7 @@ export class CsvImportExecutionService {
     }
 
     if (productionActualHoursTargets.length > 0) {
+      if (!storageProvider) throw new Error('Production actual hours import requires a storage provider');
       const orchestrator = new ActualHoursImportOrchestratorService();
       const locationKey = resolveImportMetadataLocationKey(importSchedule.metadata);
       let rowsProcessed = 0;
@@ -353,6 +406,7 @@ export class CsvImportExecutionService {
 
     // 通常のCSVインポート処理
     if (importTargets.length > 0) {
+      if (!storageProvider) throw new Error('CSV import requires a storage provider');
       for (const target of importTargets) {
         const { buffer, resolvedSource } = await csvImportSourceService.downloadMasterCsv({
           target,
@@ -389,11 +443,19 @@ export class CsvImportExecutionService {
       this.deps.logger?.info?.({ taskId: importSchedule.id, summary }, '[CsvImportScheduler] CSV import completed');
 
       // CSVダッシュボードの結果も含めて返す
-      return { ...summary, csvDashboards: csvDashboardResults, productionActualHours: productionActualHoursResult };
+      return {
+        ...summary,
+        csvDashboards: csvDashboardResults,
+        productionActualHours: productionActualHoursResult,
+        ...(itemInventoryResult ? { itemInventoryGmail: itemInventoryResult } : {}),
+      };
     }
 
     // CSVダッシュボードのみの場合
-    return { csvDashboards: csvDashboardResults, productionActualHours: productionActualHoursResult };
+    return {
+      csvDashboards: csvDashboardResults,
+      productionActualHours: productionActualHoursResult,
+      ...(itemInventoryResult ? { itemInventoryGmail: itemInventoryResult } : {}),
+    };
   }
 }
-

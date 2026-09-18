@@ -29,6 +29,44 @@ describe('HermesChatPanel evidence cards', () => {
 
   afterEach(() => vi.restoreAllMocks());
 
+  it('shows the selected knowledge mode and keeps header control handlers', () => {
+    const onKnowledgeModeChange = vi.fn();
+    const onReset = vi.fn();
+    const onClose = vi.fn();
+    const onToggleSize = vi.fn();
+    const props = {
+      knowledgeMode: 'search' as const,
+      onKnowledgeModeChange,
+      messages: [],
+      draft: '',
+      isBusy: false,
+      error: null,
+      authRequired: null,
+      onDraftChange: vi.fn(),
+      onSend: vi.fn(),
+      onReset,
+      onClose,
+      isExpanded: false,
+      onToggleSize
+    };
+    const { rerender } = render(<HermesChatPanel {...props} />);
+
+    expect(screen.getByRole('button', { name: '検索' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'ナレッジ' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    fireEvent.click(screen.getByRole('button', { name: '会話をリセット' }));
+    fireEvent.click(screen.getByRole('button', { name: 'チャットを拡大' }));
+    fireEvent.click(screen.getByRole('button', { name: 'チャットを閉じる' }));
+    expect(onKnowledgeModeChange).toHaveBeenCalledWith('knowledge');
+    expect(onReset).toHaveBeenCalledOnce();
+    expect(onToggleSize).toHaveBeenCalledOnce();
+    expect(onClose).toHaveBeenCalledOnce();
+
+    rerender(<HermesChatPanel {...props} knowledgeMode="knowledge" isExpanded />);
+    expect(screen.getByRole('button', { name: 'ナレッジ' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'チャットを標準サイズに戻す' })).toBeInTheDocument();
+  });
+
   it('records feedback on the corresponding answer and shows persisted selection', () => {
     const onFeedback = vi.fn();
     render(<HermesChatPanel messages={[{ id: 'answer-1', role: 'assistant', content: '回答', feedback: 'helpful' }]}

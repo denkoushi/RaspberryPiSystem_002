@@ -72,7 +72,7 @@ export class KnowledgeWorker {
       await repository.finish(intake.id, token, 'choice', action, { message: 'この内容は、どのように扱いますか？' }); return;
     }
     if (action === 'delegate') {
-      await repository.finish(intake.id, token, 'delegated', action, { message: intake.files.length ? 'この添付は実技準備の記録として登録していません。ほかの業務については文章でご相談ください。' : '通常の業務相談に引き継ぎます。' }); return;
+      await repository.finish(intake.id, token, 'delegated', action, { message: intake.files.length ? 'この添付はナレッジの記録として登録していません。ほかの業務については文章でご相談ください。' : '通常の業務相談に引き継ぎます。' }); return;
     }
     const ready = await repository.readySources();
     if (action === 'ask' || action === 'report') {
@@ -89,7 +89,7 @@ export class KnowledgeWorker {
       organized = [];
       await repository.saveProgress(intake.id, token, sources, organized);
     }
-    if (ready.length + sources.length > 20) throw new Error('Pilot topic exceeds 20 sources/pages');
+    if (ready.length + sources.length > 20) throw new Error('Knowledge exceeds 20 sources/pages');
     for (let index = organized.length; index < sources.length; index++) {
       signal.throwIfAborted();
       organized.push(await organizer.organize(sources[index]!, signal));
@@ -101,6 +101,6 @@ export class KnowledgeWorker {
     if (!await repository.renew(token)) throw new Error('KNOWLEDGE_LEASE_LOST');
     const publication = await documents.publish(document, previous?.revision ?? null);
     signal.throwIfAborted();
-    await repository.finish(intake.id, token, 'ready', 'save', { message: '実技準備の記録に整理して保存しました。', report: document.report, revision: publication.revision }, publication.revision);
+    await repository.finish(intake.id, token, 'ready', 'save', { message: 'ナレッジの記録に整理して保存しました。', report: document.report, revision: publication.revision }, publication.revision);
   }
 }

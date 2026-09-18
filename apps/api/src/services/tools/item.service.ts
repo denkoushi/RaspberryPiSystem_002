@@ -1,6 +1,7 @@
 import type { Prisma, Item, ItemStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
+import { assertInventoryNfcUidAvailable } from '../../lib/nfc-uid-availability.js';
 
 export interface ItemCreateInput {
   itemCode: string;
@@ -74,6 +75,10 @@ export class ItemService {
    * アイテムを作成
    */
   async create(data: ItemCreateInput): Promise<Item> {
+    const nfcTagUid = data.nfcTagUid?.trim();
+    if (nfcTagUid) {
+      await assertInventoryNfcUidAvailable(nfcTagUid, prisma);
+    }
     return await prisma.item.create({
       data: {
         itemCode: data.itemCode,
@@ -92,6 +97,10 @@ export class ItemService {
    * アイテムを更新
    */
   async update(id: string, data: ItemUpdateInput): Promise<Item> {
+    const nfcTagUid = data.nfcTagUid?.trim();
+    if (nfcTagUid) {
+      await assertInventoryNfcUidAvailable(nfcTagUid, prisma);
+    }
     return await prisma.item.update({
       where: { id },
       data
@@ -105,4 +114,3 @@ export class ItemService {
     return await prisma.item.delete({ where: { id } });
   }
 }
-

@@ -5,6 +5,7 @@ import {
   ASSEMBLY_PROCEDURE_GMAIL_SUBJECT,
   assertCsvGmailSubjectPatternAllowed,
   canCsvSubjectPatternMatchReservedSubject,
+  isItemInventoryGmailSubject,
   isWorkInstructionGmailSubject,
 } from '../gmail-subject-reservation.policy.js';
 
@@ -57,6 +58,22 @@ describe('gmail-subject-reservation.policy', () => {
     'prefix [Kakou-Dandori-photo] ID645 snapshot',
   ])('does not claim a colliding or non-leading subject: %s', (subject) => {
     expect(isWorkInstructionGmailSubject(subject)).toBe(false);
+  });
+
+  it.each([
+    '[ItemlistRaspi-photo]',
+    '[ItemlistRaspi-photo] 2 snapshot',
+    '  [ItemlistRaspi-photo]\t2 snapshot',
+  ])('claims the canonical leading item-inventory token: %s', (subject) => {
+    expect(isItemInventoryGmailSubject(subject)).toBe(true);
+  });
+
+  it.each([
+    '[ItemlistRaspi-photo]-backup',
+    'Re: [ItemlistRaspi-photo] 2 snapshot',
+    'prefix [ItemlistRaspi-photo] 2 snapshot',
+  ])('does not claim a colliding item-inventory subject: %s', (subject) => {
+    expect(isItemInventoryGmailSubject(subject)).toBe(false);
   });
 
   it('uses only the canonical token in work-instruction configuration defaults', () => {

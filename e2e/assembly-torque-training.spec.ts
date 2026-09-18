@@ -265,7 +265,27 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
     if (path === '/api/kiosk/config') return route.fulfill({ json: { kioskInitialRoute: 'assembly', navTabOrder: [] } });
     if (path === '/api/system/deploy-status') return route.fulfill({ json: { isMaintenance: false } });
     if (path === '/api/torque-training/programs' && request.method() === 'GET') return route.fulfill({ json: { programs: [menuProgram] } });
-    if (path === '/api/torque-training/operator-context') return route.fulfill({ json: { employee: { id: employeeId, employeeCode: 'E2E001', displayName: 'E2E 作業者' }, currentSession: null, metrics: [] } });
+    if (path === '/api/torque-training/operator-context') return route.fulfill({ json: {
+      employee: { id: employeeId, employeeCode: 'E2E001', displayName: 'E2E 作業者' },
+      currentSession: null,
+      metrics: committedAttemptCount >= 5 ? [{
+        conditionFingerprint: fingerprint,
+        trainingName: version.displayName,
+        targetBolt: version.nominalDiameter,
+        attemptCount: 5,
+        passRate: 1,
+        meanAbsoluteErrorPercent: 0,
+        variationPercent: 0,
+        sessions: [{
+          sessionId: session().id,
+          completedAt: '2026-08-09T00:05:00.000Z',
+          attemptCount: 5,
+          passRate: 1,
+          meanAbsoluteErrorPercent: 0,
+          variationPercent: 0
+        }]
+      }] : []
+    } });
     if (path === '/api/torque-training/sessions' && request.method() === 'POST') return route.fulfill({ status: 201, json: { session: session() } });
     if (path.endsWith(`/sessions/${session().id}`) && request.method() === 'GET') {
       trainingSessionGets += 1;
@@ -348,7 +368,7 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
 
   await page.goto('/kiosk/assembly/training', { waitUntil: 'networkidle' });
   await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __trainingNfcReady?: boolean }).__trainingNfcReady))).toBe(true);
-  await expectMaxWidth(page.getByTestId('torque-training-preparation'), 576);
+  await expectMaxWidth(page.getByTestId('torque-training-preparation'), 1024);
   await expectMaxWidth(page.getByTestId('torque-training-nfc-guide'), 448);
   await emitNfc(page, 'NFC-E2E-TRAINING');
   await expect(page.getByText('E2E 作業者', { exact: true })).toBeVisible();
@@ -386,7 +406,7 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
   await expectMaxWidth(page.getByTestId('torque-training-wrench-connection'), 512);
   await expect(page.getByTestId('torque-training-wrench-target-values')).toHaveCount(0);
   const attemptHistory = page.getByRole('region', { name: '訓練試行履歴' });
-  await expectMaxWidth(attemptHistory, 512);
+  await expectMaxWidth(attemptHistory, 1024);
   await expect.poll(() => trainingHeartbeats, { timeout: 15_000 }).toBeGreaterThanOrEqual(5);
   const sessionGetsBeforeFallback = trainingSessionGets;
   await expect.poll(() => trainingSessionGets, { timeout: 3_000 }).toBeGreaterThan(sessionGetsBeforeFallback);
@@ -406,8 +426,23 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
   }
   committedAttemptCount = 5;
   await emitTorqueTrainingCommitted(page, session().id, 'training-source-event-5');
-  await expect(page.getByText('訓練が完了しました。次の作業者はNFCタグを読み取ってください。')).toBeVisible();
+  await expect(page.getByTestId('torque-training-completed-result')).toBeVisible();
+  await expect(page.getByTestId('torque-training-wrench-preparation-panel')).toHaveCount(0);
+  await expect(page.getByTestId('torque-training-wrench-connection')).toHaveCount(0);
+  await expect(page.getByText('E2E 作業者', { exact: true })).toBeVisible();
+  const growthCard = page.getByTestId('torque-training-growth-card');
+  await expect(growthCard).toContainText('M6 E2E訓練');
+  await expect(growthCard).toContainText('対象ボルト: M6');
+  await expect(growthCard).toContainText('合格した回数');
+  await expect(growthCard).toContainText('今回');
+  await expect(growthCard).not.toContainText(fingerprint);
+  await emitNfc(page, 'NFC-E2E-OTHER-OPERATOR');
+  await expect(page.getByTestId('torque-training-completed-result')).toBeVisible();
+  await expect(page.getByText('E2E 作業者', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '訓練完了', exact: true }).click();
+  await expect(page.getByTestId('torque-training-completed-result')).toHaveCount(0);
   await expect(page.getByText('E2E 作業者', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('torque-training-nfc-guide')).toBeVisible();
 
   await page.getByRole('button', { name: '設定', exact: true }).click();
   const accessDialog = page.getByRole('dialog', { name: '訓練設定の認証' });

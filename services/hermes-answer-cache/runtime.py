@@ -1,5 +1,6 @@
 """Request-process owner of atomic, prebuilt maintenance activation."""
 import json
+import logging
 import re
 import subprocess
 import sys
@@ -12,6 +13,16 @@ def inside(root, relative):
     if not candidate.is_relative_to(root.resolve()) or not candidate.is_file():
         raise ValueError('Invalid private cache file')
     return candidate
+
+
+def close_retired(resource):
+    if resource is None:
+        return
+    try:
+        resource.close()
+    except Exception as error:
+        # Cleanup must never roll back an already committed in-memory version.
+        logging.getLogger(__name__).warning('Retired index cleanup failed: %s', type(error).__name__)
 
 
 class MaintenanceRuntime:
@@ -62,6 +73,8 @@ class MaintenanceRuntime:
         self.log.close()
         if code != 0 or (job / 'cancelled').exists():
             return cache, sources
+        new_sources = None
+        next_cache = cache
         try:
             from server import QuestionCache
             from sources import SourceCandidates
@@ -102,9 +115,15 @@ class MaintenanceRuntime:
             report = json.loads(report_path.read_text())
             atomic_json(active, {'catalogue': str(next_path.relative_to(self.root)), 'sources': str(source_path.relative_to(self.root))})
         except Exception as error:
+            close_retired(new_sources)
+            if next_cache is not cache:
+                close_retired(next_cache)
             atomic_json(job / 'result.json', {'runId': self.run_id, 'status': 'failed', 'activated': False,
                                              'reason': str(error)[:300]})
             return cache, sources
+        close_retired(sources)
+        if next_cache is not cache:
+            close_retired(cache)
         # Nothing after the commit point may return the old in-memory version.
         try:
             report.update({'activated': bool(activation['catalogue']), 'sourcesRefreshed': True})

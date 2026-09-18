@@ -637,6 +637,14 @@ describe('torque training API concurrency boundary', () => {
     const metrics = response.json().metrics as Array<{ conditionFingerprint: string; sessions: unknown[] }>;
     expect(metrics.find((metric) => metric.conditionFingerprint === 'fixture-fingerprint')?.sessions).toHaveLength(10);
     expect(metrics.find((metric) => metric.conditionFingerprint === 'other-fingerprint')?.sessions).toHaveLength(1);
+    expect(metrics.find((metric) => metric.conditionFingerprint === 'fixture-fingerprint')).toMatchObject({
+      trainingName: version.displayName,
+      targetBolt: version.nominalDiameter
+    });
+    expect(metrics.find((metric) => metric.conditionFingerprint === 'other-fingerprint')).toMatchObject({
+      trainingName: 'M6 other jig',
+      targetBolt: 'M6'
+    });
   });
 
   it('locks concurrent revisions and enforces ADMIN authorization', async () => {

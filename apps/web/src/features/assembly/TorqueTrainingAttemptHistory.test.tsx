@@ -38,7 +38,7 @@ describe('TorqueTrainingAttemptHistory', () => {
     );
 
     const history = screen.getByRole('region', { name: '訓練試行履歴' });
-    expect(history).toHaveClass('max-w-lg');
+    expect(history).toHaveClass('max-w-5xl');
     expect(history.querySelectorAll('[data-testid^="torque-training-attempt-"]')).toHaveLength(6);
     expect(history).toHaveTextContent('記録 1 / 5');
     expect(history).not.toHaveTextContent('合格');

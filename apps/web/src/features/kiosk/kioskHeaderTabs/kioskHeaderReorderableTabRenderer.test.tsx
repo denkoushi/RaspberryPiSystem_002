@@ -40,4 +40,14 @@ describe('kiosk header reorderable tabs', () => {
 
     expect(screen.getByRole('link', { name: '持出' })).toHaveAttribute('href', '/kiosk/photo');
   });
+
+  it('renders the inventory settings tab with its protected kiosk route', () => {
+    render(
+      <MemoryRouter>
+        {renderKioskReorderableHeaderTab('inventory_settings', baseContext)}
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('link', { name: '在庫設定' })).toHaveAttribute('href', '/kiosk/inventory/settings');
+  });
 });

@@ -8,7 +8,10 @@ import { PdfStorageFileStoreAdapter } from './adapters/pdf-storage-file-store.ad
 import { PdfStorageRenderAdapter } from './adapters/pdf-storage-render.adapter.js';
 import { PlaywrightHtmlToPdfAdapter } from './adapters/playwright-html-to-pdf.adapter.js';
 import { resolveGmailApiClientFromBackupConfig } from '../gmail/gmail-api-client.factory.js';
-import { isWorkInstructionGmailSubject } from '../gmail/gmail-subject-reservation.policy.js';
+import {
+  isItemInventoryGmailSubject,
+  isWorkInstructionGmailSubject,
+} from '../gmail/gmail-subject-reservation.policy.js';
 
 /** @internal 単体テスト用に公開 */
 export function buildKioskDocumentGmailSearchQuery(subjectPattern: string, fromEmail?: string): string {
@@ -69,11 +72,11 @@ export async function findEligibleKioskMessages(
       const message = await gmailClient.getMessage(messageId);
       scanned += 1;
       const subject = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject')?.value ?? '';
-      if (isWorkInstructionGmailSubject(subject)) {
+      if (isWorkInstructionGmailSubject(subject) || isItemInventoryGmailSubject(subject)) {
         ownedSeen = true;
         logger?.info(
           { messageId, messageSubject: subject },
-          '[KioskDocumentGmailIngestion] Work-instruction message is owned by dedicated importer, skipping'
+          '[KioskDocumentGmailIngestion] Dedicated importer message is owned by another importer, skipping'
         );
         continue;
       }

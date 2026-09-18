@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
+import { resolveInventoryTag, type InventoryTag } from '../api/client';
 import { resolveNfcRuntimeContract } from '../features/nfc/nfcRuntimeContract';
 
 import type { NfcStreamPolicy } from '../features/nfc/nfcPolicy';
@@ -11,7 +12,11 @@ export interface NfcEvent {
   type?: string;
   eventId?: number;
   eventKey?: string;
+  inventoryTag?: InventoryTag;
 }
+
+type NfcSubscriberRole = 'legacy' | 'inventory';
+type NfcSubscriber = { role: NfcSubscriberRole; setEvent: (event: NfcEvent | null) => void };
 
 const isBrowser = typeof window !== 'undefined';
 const LAST_EVENT_ID_KEY = 'kiosk-last-event-id';
@@ -29,128 +34,153 @@ const persistEventId = (eventId: number) => {
   window.sessionStorage.setItem(LAST_EVENT_ID_KEY, String(eventId));
 };
 
-// ViteのVITE_*はビルド時に埋め込まれる。
-// - localOnlyポリシー: ws://localhost:7071/stream のみ（フォールバック無し）
-// - legacyポリシー: 従来互換（HTTPSページでは host 経由の /stream も候補に入る）
-export function useNfcStream(enabled = false, policy?: NfcStreamPolicy) {
+type NfcHub = {
+  subscribers: Set<NfcSubscriber>;
+  socket: WebSocket | null;
+  reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  candidateIndex: number;
+  activeSince: string | null;
+  lastEventKey: string | null;
+  lastProcessedEventId: number | null;
+  generation: number;
+  classificationQueue: Promise<void>;
+};
+
+const hub: NfcHub = {
+  subscribers: new Set(),
+  socket: null,
+  reconnectTimer: undefined,
+  candidateIndex: 0,
+  activeSince: null,
+  lastEventKey: null,
+  lastProcessedEventId: null,
+  generation: 0,
+  classificationQueue: Promise.resolve(),
+};
+
+function closeHubSocket() {
+  hub.generation += 1;
+  if (hub.reconnectTimer !== undefined) clearTimeout(hub.reconnectTimer);
+  hub.reconnectTimer = undefined;
+  hub.socket?.close();
+  hub.socket = null;
+  hub.activeSince = null;
+  hub.lastEventKey = null;
+  hub.classificationQueue = Promise.resolve();
+}
+
+function notifySubscribers(event: NfcEvent, role: NfcSubscriberRole) {
+  for (const subscriber of hub.subscribers) {
+    if (subscriber.role === role) subscriber.setEvent(event);
+  }
+}
+
+function enqueueEvent(event: NfcEvent, generation: number) {
+  hub.classificationQueue = hub.classificationQueue
+    .then(async () => {
+      if (generation !== hub.generation || hub.subscribers.size === 0) return;
+      const hasInventorySubscriber = [...hub.subscribers].some((subscriber) => subscriber.role === 'inventory');
+      if (!hasInventorySubscriber) {
+        notifySubscribers(event, 'legacy');
+        return;
+      }
+      try {
+        const inventoryTag = await resolveInventoryTag(event.uid);
+        if (generation !== hub.generation || hub.subscribers.size === 0) return;
+        notifySubscribers(inventoryTag ? { ...event, inventoryTag } : event, inventoryTag ? 'inventory' : 'legacy');
+      } catch {
+        // Inventory lookup failure must not block the existing NFC flows.
+        if (generation === hub.generation) notifySubscribers(event, 'legacy');
+      }
+    })
+    .catch(() => {
+      // A malformed or failed classification is isolated to this event.
+    });
+}
+
+function startHubSocket(policy?: NfcStreamPolicy) {
+  if (hub.socket || hub.subscribers.size === 0) return;
+  const runtime = resolveNfcRuntimeContract(policy);
+  if (runtime.policy === 'disabled' || runtime.streamUrls.length === 0) return;
+  hub.activeSince = new Date().toISOString();
+  hub.candidateIndex = 0;
+  const generation = hub.generation;
+  if (hub.lastProcessedEventId === null) hub.lastProcessedEventId = readStoredEventId();
+
+  const connect = () => {
+    if (generation !== hub.generation || hub.subscribers.size === 0 || runtime.streamUrls.length === 0) return;
+    try {
+      const url = runtime.streamUrls[Math.min(hub.candidateIndex, runtime.streamUrls.length - 1)];
+      let opened = false;
+      const socket = new WebSocket(url);
+      hub.socket = socket;
+      socket.onopen = () => { opened = true; };
+      socket.onmessage = (message) => {
+        if (generation !== hub.generation) return;
+        try {
+          const payload = JSON.parse(message.data) as Partial<NfcEvent>;
+          if (typeof payload.uid !== 'string' || typeof payload.timestamp !== 'string') return;
+          if (hub.activeSince && payload.timestamp < hub.activeSince) return;
+          const eventId = typeof payload.eventId === 'number' ? payload.eventId : null;
+          if (eventId !== null) {
+            const lastProcessed = hub.lastProcessedEventId ?? readStoredEventId();
+            if (lastProcessed !== null && eventId <= lastProcessed) return;
+            hub.lastProcessedEventId = eventId;
+            persistEventId(eventId);
+          }
+          const eventKey = `${payload.uid}:${payload.timestamp}`;
+          if (eventId === null && hub.lastEventKey === eventKey) return;
+          hub.lastEventKey = eventKey;
+          enqueueEvent(payload as NfcEvent, generation);
+        } catch {
+          // Ignore malformed payloads.
+        }
+      };
+      socket.onclose = () => {
+        if (generation !== hub.generation || hub.socket !== socket || hub.subscribers.size === 0) return;
+        hub.socket = null;
+        if (!opened && hub.candidateIndex < runtime.streamUrls.length - 1) {
+          hub.candidateIndex += 1;
+          hub.reconnectTimer = setTimeout(connect, 100);
+          return;
+        }
+        hub.reconnectTimer = setTimeout(connect, 2000);
+      };
+      socket.onerror = () => {
+        // onclose handles reconnects; connection failures are expected when the agent is off.
+      };
+    } catch {
+      if (generation !== hub.generation || hub.subscribers.size === 0) return;
+      const hasFallback = hub.candidateIndex < runtime.streamUrls.length - 1;
+      if (hasFallback) hub.candidateIndex += 1;
+      hub.reconnectTimer = setTimeout(connect, hasFallback ? 100 : 2000);
+    }
+  };
+  connect();
+}
+
+export function useNfcStream(
+  enabled = false,
+  policy?: NfcStreamPolicy,
+  options: { role?: NfcSubscriberRole } = {},
+) {
   const [event, setEvent] = useState<NfcEvent | null>(null);
-  const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
-  const lastEventKeyRef = useRef<string | null>(null); // 最後に処理したイベントのキー
-  const lastProcessedEventIdRef = useRef<number | null>(null);
-  // enabled=trueになった時刻を記録し、それ以前のイベントを無視するためのref
-  const enabledAtRef = useRef<string | null>(null);
+  const role = options.role ?? 'legacy';
 
   useEffect(() => {
-    const runtime = resolveNfcRuntimeContract(policy);
-    const resolvedPolicy = runtime.policy;
-
-    if (!enabled || resolvedPolicy === 'disabled') {
+    if (!enabled) {
       setEvent(null);
-      // enabled=falseになったらenabledAtをリセット
-      enabledAtRef.current = null;
       return;
     }
-
-    // enabled=trueになった時刻を記録（ISO文字列で比較可能）
-    const enabledAt = new Date().toISOString();
-    enabledAtRef.current = enabledAt;
-
-    const wsCandidates = runtime.streamUrls;
-    let socket: WebSocket | null = null;
-    let isMounted = true;
-    let candidateIdx = 0;
-
-    if (lastProcessedEventIdRef.current === null) {
-      lastProcessedEventIdRef.current = readStoredEventId();
-    }
-
-    const connect = () => {
-      if (!isMounted) return;
-      if (wsCandidates.length === 0) return;
-      
-      try {
-        const url = wsCandidates[Math.min(candidateIdx, wsCandidates.length - 1)];
-        let opened = false;
-        socket = new WebSocket(url);
-        socket.onopen = () => {
-          opened = true;
-        };
-        socket.onmessage = (message) => {
-          if (!isMounted) return;
-          try {
-            const payload = JSON.parse(message.data) as NfcEvent;
-
-            // スコープ分離: enabled=trueになった時刻より前のイベントは無視
-            // これにより、別ページから遷移してきた際に以前のイベントを拾わない
-            if (enabledAtRef.current && payload.timestamp < enabledAtRef.current) {
-              return;
-            }
-
-            const eventId = typeof payload.eventId === 'number' ? payload.eventId : null;
-            if (eventId !== null) {
-              const lastProcessed = lastProcessedEventIdRef.current ?? readStoredEventId();
-              if (lastProcessed !== null && eventId <= lastProcessed) {
-                return;
-              }
-            }
-            // 同じイベント（uid + timestamp）を複数回発火しないようにする（eventIdが無い場合のフォールバック）
-            const eventKey = `${payload.uid}:${payload.timestamp}`;
-            if (eventId === null && lastEventKeyRef.current === eventKey) {
-              return;
-            }
-            lastEventKeyRef.current = eventKey;
-            if (eventId !== null) {
-              lastProcessedEventIdRef.current = eventId;
-              persistEventId(eventId);
-            }
-            setEvent(payload);
-          } catch {
-            // ignore malformed payload
-          }
-        };
-        socket.onclose = () => {
-          if (!isMounted) return;
-
-          // legacy互換: localhostへ接続できない場合は、次の候補へ即フォールバックする。
-          if (!opened && candidateIdx < wsCandidates.length - 1) {
-            candidateIdx += 1;
-            reconnectTimeout.current = setTimeout(connect, 100);
-            return;
-          }
-
-          // エラーをコンソールに出力しない（WebSocket接続エラーは正常な動作の一部）
-          reconnectTimeout.current = setTimeout(connect, 2000);
-        };
-        socket.onerror = (_error) => {
-          // エラーをコンソールに出力しない（WebSocket接続エラーは正常な動作の一部）
-          // 接続が失敗した場合は、oncloseが呼ばれるので、そこで再接続する
-        };
-      } catch (error) {
-        // 接続エラーは無視（NFCエージェントが起動していない場合など）
-        if (isMounted) {
-          if (candidateIdx < wsCandidates.length - 1) {
-            candidateIdx += 1;
-            reconnectTimeout.current = setTimeout(connect, 100);
-            return;
-          }
-          reconnectTimeout.current = setTimeout(connect, 2000);
-        }
-      }
-    };
-
-    connect();
-
+    const subscriber: NfcSubscriber = { role, setEvent };
+    hub.subscribers.add(subscriber);
+    startHubSocket(policy);
     return () => {
-      isMounted = false;
-      socket?.close();
-      if (reconnectTimeout.current) {
-        clearTimeout(reconnectTimeout.current);
-      }
-      // クリーンアップ時にイベントキーをリセット（再接続時に新しいイベントを受け付けるため）
-      lastEventKeyRef.current = null;
+      hub.subscribers.delete(subscriber);
       setEvent(null);
+      if (hub.subscribers.size === 0) closeHubSocket();
     };
-  }, [enabled, policy]);
+  }, [enabled, policy, role]);
 
   return event;
 }

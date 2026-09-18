@@ -11,7 +11,9 @@ const mocks = vi.hoisted(() => ({
   getConsultation: vi.fn(),
   sendConsultationMessage: vi.fn(),
   updateConsultation: vi.fn(),
-  cancelConsultation: vi.fn()
+  cancelConsultation: vi.fn(),
+  knowledgeGet: vi.fn(),
+  knowledgePost: vi.fn()
 }));
 
 vi.mock('../../api/client', () => ({
@@ -30,7 +32,7 @@ vi.mock('../../contexts/AuthContext', () => ({
 }));
 
 // Legacy behavior is exercised with the new capability explicitly disabled.
-vi.mock('../../api/http', () => ({ api: { get: vi.fn().mockResolvedValue({ data: { enabled: false } }) } }));
+vi.mock('../../api/http', () => ({ api: { get: mocks.knowledgeGet, post: mocks.knowledgePost } }));
 
 vi.mock('./HermesChatPanel', () => ({
   default: (props: {
@@ -45,6 +47,10 @@ vi.mock('./HermesChatPanel', () => ({
     consultationError?: string | null;
     consultations?: Array<{ id: string; title: string }>;
     activeConsultation?: { id: string; title: string; messages: Array<{ id: string; content: string }>; messagesNextCursor?: string | null } | null;
+    knowledgeMode?: 'search' | 'knowledge';
+    onKnowledgeModeChange?: (mode: 'search' | 'knowledge') => void;
+    conversationExtension?: ReactNode;
+    attachmentControl?: ReactNode;
     onDraftChange: (value: string) => void;
     onSend: () => void;
     onReset: () => void;
@@ -63,6 +69,12 @@ vi.mock('./HermesChatPanel', () => ({
     style?: CSSProperties;
   }) => (
     <section data-testid="hermes-panel" style={props.style}>
+      {props.onKnowledgeModeChange ? (
+        <div data-testid="hermes-mode-selector">
+          <button type="button" aria-pressed={props.knowledgeMode === 'search'} onClick={() => props.onKnowledgeModeChange?.('search')}>検索</button>
+          <button type="button" aria-pressed={props.knowledgeMode === 'knowledge'} onClick={() => props.onKnowledgeModeChange?.('knowledge')}>ナレッジ</button>
+        </div>
+      ) : null}
       {props.mode === 'consultations' && props.onNewConsultation ? (
         <button type="button" onClick={props.onNewConsultation}>新規</button>
       ) : null}
@@ -105,6 +117,8 @@ vi.mock('./HermesChatPanel', () => ({
       ))}
       {props.error ? <p role="alert">{props.error}</p> : null}
       {props.consultationError ? <p role="alert">{props.consultationError}</p> : null}
+      {props.conversationExtension}
+      {props.attachmentControl}
       <input
         aria-label="Hermesへの質問"
         value={props.draft}
@@ -128,7 +142,7 @@ const dispatchWedgeScan = (value: string, target: EventTarget = document.activeE
 
 import { HermesFloatingChat } from './HermesFloatingChat';
 
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 function renderChat(path = '/kiosk/assembly') {
   return render(
@@ -190,6 +204,8 @@ describe('HermesFloatingChat', () => {
     mocks.sendConsultationMessage.mockReset();
     mocks.updateConsultation.mockReset();
     mocks.cancelConsultation.mockReset().mockResolvedValue(undefined);
+    mocks.knowledgeGet.mockReset().mockImplementation(async (url: string) => ({ data: url.endsWith('capabilities') ? { enabled: false } : { intakes: [] } }));
+    mocks.knowledgePost.mockReset();
   });
 
   afterEach(() => {
@@ -268,6 +284,165 @@ describe('HermesFloatingChat', () => {
     await waitFor(() => expect(panel.style.width).toBe('380px'));
     expect(panel.style.height).toBe('560px');
     expect(input).toHaveValue('入力中の質問');
+  });
+
+  it('routes the default search request through Chat without knowledge intake', async () => {
+    mocks.knowledgeGet.mockImplementation(async (url: string) => ({ data: url.endsWith('capabilities') ? { enabled: true } : { intakes: [] } }));
+    mocks.send.mockResolvedValue({
+      status: 'ready',
+      message: '検索結果です',
+      evidence: [],
+      partNumber: null,
+      shootingTarget: null,
+      needsClarification: false,
+      clarificationMessage: null
+    });
+
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    expect(screen.getByRole('button', { name: '検索' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '三島工場機械課の最近の不適合情報を２件出して' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+
+    await waitFor(() => expect(mocks.send).toHaveBeenCalledOnce());
+    expect(mocks.send.mock.calls[0][0].messages.at(-1)).toEqual({
+      role: 'user',
+      content: '三島工場機械課の最近の不適合情報を２件出して'
+    });
+    expect(mocks.knowledgeGet).not.toHaveBeenCalled();
+    expect(mocks.knowledgePost).not.toHaveBeenCalled();
+  });
+
+  it('switches explicitly to knowledge, preserves draft and attachments, and routes intake only there', async () => {
+    mocks.knowledgeGet.mockImplementation(async (url: string) => ({ data: url.endsWith('capabilities') ? { enabled: true } : { intakes: [] } }));
+    mocks.knowledgePost.mockResolvedValue({ data: {
+      id: 'knowledge-intake-1', text: '設備点検の記録', state: 'ready', version: 2, message: 'ナレッジの記録に整理して保存しました。',
+      files: [{ filename: '点検.jpg', kind: 'image' }], choices: [], errorCode: null
+    } });
+    mocks.send.mockResolvedValue({
+      status: 'ready', message: '検索結果です', evidence: [], partNumber: null, shootingTarget: null,
+      needsClarification: false, clarificationMessage: null
+    });
+
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
+    const attachment = await screen.findByLabelText('写真・PDFを添付');
+    const file = new File(['image'], '点検.jpg', { type: 'image/jpeg' });
+    fireEvent.change(input, { target: { value: '設備点検の記録' } });
+    fireEvent.change(attachment, { target: { files: [file] } });
+
+    fireEvent.click(screen.getByRole('button', { name: '検索' }));
+    expect(input).toHaveValue('設備点検の記録');
+    expect(screen.queryByLabelText('写真・PDFを添付')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('button', { name: '新規' })).not.toBeInTheDocument());
+    fireEvent.change(input, { target: { value: '三島工場機械課の最近の不適合情報を２件出して' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.send).toHaveBeenCalledOnce());
+    expect(mocks.send.mock.calls[0][0].messages.at(-1)).toEqual({
+      role: 'user', content: '三島工場機械課の最近の不適合情報を２件出して'
+    });
+    expect(mocks.knowledgePost).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    expect(await screen.findByLabelText('写真・PDFを添付')).toBeInTheDocument();
+    expect(screen.getByText('点検.jpg')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '添付を送信' }));
+    await waitFor(() => expect(mocks.knowledgePost).toHaveBeenCalledOnce());
+    expect(mocks.knowledgePost.mock.calls[0][1]).toMatchObject({
+      files: [{ filename: '点検.jpg', kind: 'image', base64: 'aW1hZ2U=' }]
+    });
+    expect(mocks.send).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a newer Search draft after a Knowledge request resolves', async () => {
+    const knowledgeResult = {
+      id: 'knowledge-intake-pending', text: 'ナレッジ登録を待つ入力', state: 'ready', version: 2,
+      message: 'ナレッジの記録に整理して保存しました。', files: [], choices: [], errorCode: null
+    };
+    let knowledgeResolved = false;
+    mocks.knowledgeGet.mockImplementation(async (url: string) => ({ data: url.endsWith('capabilities') ? { enabled: true } : { intakes: knowledgeResolved ? [knowledgeResult] : [] } }));
+    let resolveKnowledge!: (value: unknown) => void;
+    const knowledgeResponse = new Promise(resolve => { resolveKnowledge = resolve; });
+    mocks.knowledgePost.mockReturnValueOnce(knowledgeResponse);
+
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
+    fireEvent.change(input, { target: { value: 'ナレッジ登録を待つ入力' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.knowledgePost).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole('button', { name: '検索' }));
+    fireEvent.change(input, { target: { value: '検索中に作った新しい質問' } });
+    expect(input).toHaveValue('検索中に作った新しい質問');
+
+    await act(async () => {
+      knowledgeResolved = true;
+      resolveKnowledge({ data: knowledgeResult });
+      await knowledgeResponse;
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    await screen.findByText('ナレッジの記録に整理して保存しました。');
+    expect(input).toHaveValue('検索中に作った新しい質問');
+  });
+
+  it('submits Search while a Knowledge request remains pending', async () => {
+    mocks.knowledgeGet.mockImplementation(async (url: string) => ({ data: url.endsWith('capabilities') ? { enabled: true } : { intakes: [] } }));
+    let resolveKnowledge!: (value: unknown) => void;
+    let knowledgeSettled = false;
+    const knowledgeResponse = new Promise(resolve => { resolveKnowledge = value => { knowledgeSettled = true; resolve(value); }; });
+    mocks.knowledgePost.mockReturnValueOnce(knowledgeResponse);
+    mocks.send.mockResolvedValue({
+      status: 'ready', message: '検索結果です', evidence: [], partNumber: null, shootingTarget: null,
+      needsClarification: false, clarificationMessage: null
+    });
+
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
+    fireEvent.change(input, { target: { value: '処理中のナレッジ入力' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.knowledgePost).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole('button', { name: '検索' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: '新規' })).not.toBeInTheDocument());
+    fireEvent.change(input, { target: { value: '保留中でも送る検索質問' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.send).toHaveBeenCalledOnce());
+    expect(knowledgeSettled).toBe(false);
+    expect(mocks.knowledgePost).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      resolveKnowledge({ data: {
+        id: 'knowledge-intake-pending-search', text: '処理中のナレッジ入力', state: 'ready', version: 2,
+        message: 'ナレッジの記録に整理して保存しました。', files: [], choices: [], errorCode: null
+      } });
+      await knowledgeResponse;
+    });
+  });
+
+  it('does not fall back to Chat when knowledge inference delegates an intake', async () => {
+    mocks.knowledgeGet.mockImplementation(async (url: string) => ({ data: url.endsWith('capabilities') ? { enabled: true } : { intakes: [] } }));
+    mocks.knowledgePost.mockResolvedValue({ data: {
+      id: 'knowledge-intake-delegated', text: '別業務の確認', state: 'delegated', version: 2, message: '通常の業務相談に引き継ぎます。',
+      files: [], choices: [], errorCode: null
+    } });
+
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
+    fireEvent.change(input, { target: { value: '別業務の確認' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+
+    await waitFor(() => expect(mocks.knowledgePost).toHaveBeenCalledOnce());
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(input).toHaveValue('');
+    expect(await screen.findByText('通常の業務相談に引き継ぎます。')).toBeInTheDocument();
   });
 
   it('clamps the expanded panel to a small viewport', async () => {

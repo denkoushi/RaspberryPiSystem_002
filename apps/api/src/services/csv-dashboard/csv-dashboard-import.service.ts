@@ -27,7 +27,10 @@ import {
 } from '../production-schedule/constants.js';
 import { RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID } from '../rigging/constants.js';
 import { ensureRiggingSlingsInspectionPowerappsDashboard } from '../rigging/slings-inspection-powerapps-dashboard.definition.js';
-import { isWorkInstructionGmailSubject } from '../gmail/gmail-subject-reservation.policy.js';
+import {
+  isItemInventoryGmailSubject,
+  isWorkInstructionGmailSubject,
+} from '../gmail/gmail-subject-reservation.policy.js';
 import { ensureScawStfutekigoDashboard } from '../scaw-stfutekigo/dashboard.definition.js';
 import {
   SCAW_STFUTEKIGO_DASHBOARD_ID,
@@ -328,10 +331,14 @@ export class CsvDashboardImportService {
         // Work-instruction mail belongs to its dedicated importer. The
         // unified CSV mailbox can still return it for a broad legacy pattern,
         // so ownership must be checked before parsing or post-processing.
-        if (provider === 'gmail' && messageSubject && isWorkInstructionGmailSubject(messageSubject)) {
+        if (
+          provider === 'gmail' &&
+          messageSubject &&
+          (isWorkInstructionGmailSubject(messageSubject) || isItemInventoryGmailSubject(messageSubject))
+        ) {
           logger?.info(
             { messageId, messageSubject },
-            '[CsvDashboardImportService] Work-instruction message is owned by dedicated importer, skipping'
+            '[CsvDashboardImportService] Dedicated importer message is owned by another importer, skipping'
           );
           continue;
         }

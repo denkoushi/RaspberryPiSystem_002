@@ -112,6 +112,13 @@ class QuestionCache:
         if not hasattr(model, 'background'):
             next(model.embed(["作業の確認方法"]))
 
+    def close(self):
+        # GPTCache 0.1.44 SQLStorage.close() is a no-op; dispose its pool explicitly.
+        try:
+            self.cache.data_manager.close()
+        finally:
+            self.cache.data_manager.s._engine.dispose()
+
     def prepare_fact_index(self):
         self.fact_index = {}
         self.has_ordinary = any('fact' not in c for c in self.cases.values())
