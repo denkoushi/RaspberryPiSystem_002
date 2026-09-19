@@ -7,6 +7,21 @@ export type HermesTrialAnswer = {
   answer: string;
   recordIds: string[];
   elapsedMs: number;
+  confirmationPending?: {
+    request: string;
+    question: string;
+    purpose: string | null;
+    requiredItems: Array<{id: string; label: string; type: string; candidates: unknown[]}>;
+    confirmedInfo: Record<string, unknown>;
+    unresolvedItems: string[];
+  } | null;
+};
+
+type TrialSession = {
+  pending: unknown | null;
+  searchRequest: string | null;
+  jevDialogue: Array<{role: 'assistant'; content: string}>;
+  expiresAt: number;
 };
 
 type WorkerResponse = { workerReady?: boolean; workerRequestId?: string; workerError?: string; runtime?: {
@@ -19,6 +34,7 @@ export class HermesSearchTrialService {
   private runtime: WorkerResponse['runtime'];
   private ready: Promise<void> | null = null;
   private failure: Error | null = null;
+  private readonly sessions = new Map<string, TrialSession>();
 
   constructor(private readonly settings = {
     enabled: process.env.HERMES_SEARCH_TRIAL_ENABLED === 'true',
@@ -86,9 +102,14 @@ export class HermesSearchTrialService {
       organizedCount: this.runtime?.organized?.count, snapshotId: this.runtime?.snapshot?.snapshotId };
   }
 
-  async answer(question: string): Promise<HermesTrialAnswer> {
+  async answer(question: string, sessionId?: string): Promise<HermesTrialAnswer> {
     await this.start();
     if (this.pending) throw new Error('別の検索を処理中です。少し待って再送してください。');
+    const activeSessionId = sessionId ?? randomUUID();
+    const now = Date.now();
+    for (const [id, session] of this.sessions) if (session.expiresAt <= now) this.sessions.delete(id);
+    const stored = this.sessions.get(activeSessionId);
+    const session = stored && stored.expiresAt > now ? stored : { pending: null, searchRequest: null, jevDialogue: [], expiresAt: now };
     const result = await new Promise<HermesTrialAnswer>((resolve, reject) => {
       const id = randomUUID();
       const timeout = setTimeout(() => {
@@ -96,11 +117,23 @@ export class HermesSearchTrialService {
         reject(new Error('検索の待ち時間を超えました。該当なしとは判断していません。'));
       }, 30000);
       this.pending = { id, resolve: value => { clearTimeout(timeout); resolve(value); }, reject: error => { clearTimeout(timeout); reject(error); } };
-      this.child!.stdin.write(JSON.stringify({ type:'request', requestId:id, question })+'\n');
+      this.child!.stdin.write(JSON.stringify({ type:'request', requestId:id, question, session })+'\n');
     });
-    // Source identities and spans remain in the worker; send only the existing text answer.
-    return { status:result.status, answer:result.answer, recordIds:result.recordIds, elapsedMs:result.elapsedMs };
+    const workerSession = (result as HermesTrialAnswer & {session?: Omit<TrialSession, 'expiresAt'>}).session;
+    if (workerSession && result.status === 'clarification') {
+      this.sessions.set(activeSessionId, { ...workerSession, expiresAt: Date.now() + 10 * 60 * 1000 });
+    } else {
+      this.sessions.delete(activeSessionId);
+    }
+    // Source identities and spans remain in the worker; send only the existing text answer and the bounded confirmation state.
+    return {
+      status: result.status,
+      answer: result.answer,
+      recordIds: result.recordIds,
+      elapsedMs: result.elapsedMs,
+      confirmationPending: result.confirmationPending ?? null
+    };
   }
 
-  close() { this.child?.kill('SIGTERM'); }
+  close() { this.sessions.clear(); this.child?.kill('SIGTERM'); }
 }

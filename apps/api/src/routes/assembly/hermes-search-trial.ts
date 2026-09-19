@@ -12,9 +12,12 @@ export async function registerHermesSearchTrialRoutes(app: FastifyInstance, serv
     catch { return reply.code(503).send({code:'HERMES_SEARCH_UNAVAILABLE',message:'試用検索を利用できません。'}); }
   });
   app.post('/assembly/hermes-search-trial/answer', {preHandler,config:{rateLimit:{max:12,timeWindow:'1 minute'}}}, async (request,reply) => {
-    const {question} = z.object({question:z.string().trim().min(1).max(4000)}).strict().parse(request.body);
+    const {question, sessionId} = z.object({
+      question: z.string().trim().min(1).max(4000),
+      sessionId: z.string().uuid().optional()
+    }).strict().parse(request.body);
     if (!service.isEnabled()) return reply.code(503).send({code:'HERMES_SEARCH_DISABLED',message:'試用検索は無効です。'});
-    try { return await service.answer(question); }
+    try { return await service.answer(question, sessionId); }
     catch (error) { return reply.code(503).send({code:'HERMES_SEARCH_UNAVAILABLE',message:error instanceof Error?error.message:'検索に失敗しました。'}); }
   });
   app.addHook('onClose',async()=>service.close());
