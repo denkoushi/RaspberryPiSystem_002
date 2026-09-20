@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { SignageContentType } from '@prisma/client';
 import { z } from 'zod';
 
@@ -26,6 +26,11 @@ import { normalizeWorkInstructionPartNumber, normalizeWorkInstructionShootingTar
 import type { WorkInstructionGroupSummaryView, WorkInstructionGroupView, WorkInstructionStepView } from '../work-instructions/domain/types.js';
 import { WorkInstructionReadService } from '../work-instructions/work-instruction-read.service.js';
 import { getWorkInstructionServices } from '../work-instructions/work-instruction-service.factory.js';
+import {
+  businessHermesSourceDefinition,
+  businessHermesSourceDefinitionList,
+  type BusinessHermesSourceKind
+} from './business-hermes-source-adapters.js';
 
 export const BUSINESS_HERMES_MCP_TOOL_NAMES = [
   'business_hermes_describe_sources',
@@ -51,17 +56,89 @@ export type BusinessHermesMcpResult = {
   isError?: boolean;
 };
 
+export type BusinessHermesSourceCandidate = {
+  kind: BusinessHermesSourceKind;
+  field: string;
+  value: string;
+  code?: string;
+  source: string;
+  matchedTerms: ReadonlyArray<string>;
+};
+
+export type BusinessHermesSourceFieldResolution = {
+  kind: BusinessHermesSourceKind;
+  field: string;
+  status: 'resolved' | 'ambiguous';
+  truncated?: boolean;
+  candidates: ReadonlyArray<BusinessHermesSourceCandidate>;
+  selected?: BusinessHermesSourceCandidate;
+};
+
+export type BusinessHermesSourceResolution = {
+  version: 1;
+  request: string;
+  terms: ReadonlyArray<string>;
+  requestedKinds: ReadonlyArray<BusinessHermesSourceKind>;
+  requestedLimit: number;
+  unresolvedConditions: ReadonlyArray<string>;
+  fields: ReadonlyArray<BusinessHermesSourceFieldResolution>;
+  ambiguous: boolean;
+};
+
+export type BusinessHermesGroundedSearch = {
+  resolution: BusinessHermesSourceResolution;
+  conditions: Readonly<Record<string, string | number>> | null;
+  result: Record<string, unknown> | null;
+  evidence: ReadonlyArray<Record<string, unknown>>;
+};
+
+/**
+ * Task-only OpenJev seam. The selector may choose only values/results that
+ * this service already read from the authorized database. Production callers
+ * leave it unset and retain the existing deterministic resolver.
+ */
+export type BusinessHermesOpenJevSelector = {
+  selectSourceCandidates(input: {
+    request: string;
+    context?: Readonly<Record<string, unknown>>;
+    terms: ReadonlyArray<string>;
+    candidates: ReadonlyArray<BusinessHermesSourceCandidate>;
+    truncatedFields: ReadonlySet<string>;
+  }): Promise<ReadonlyArray<BusinessHermesSourceCandidate>>;
+  selectGroundedResults(input: {
+    request: string;
+    context?: Readonly<Record<string, unknown>>;
+    conditions: Readonly<Record<string, string | number>>;
+    result: Record<string, unknown>;
+    evidence: ReadonlyArray<Record<string, unknown>>;
+  }): Promise<ReadonlyArray<string>>;
+};
+
 type MpcDeps = {
   db?: PrismaClient;
   nonconformities?: Pick<ScawStFutekigoReadService, 'readCurrentByPartNumber'>;
   workInstructions?: Pick<WorkInstructionReadService, 'readPublishedGroups' | 'readPublishedGroup' | 'searchPublishedGroups'>;
   signage?: Pick<SignageService, 'listSchedulesForManagement' | 'createSchedule' | 'updateSchedule'>;
   a2uiData?: Pick<SignageA2uiDataService, 'resolve' | 'readSource' | 'listSources'>;
+  openJevSelector?: BusinessHermesOpenJevSelector;
+};
+
+type BusinessHermesSourceCount = {
+  total: number | null;
+  returned: number;
+  returnedScope: 'returned_page';
 };
 
 const MAX_LIMIT = 20;
 const MAX_QUERY_CHARS = 200;
 const ORIGIN_DEPARTMENT_MEANING = '起因部署';
+const MAX_SOURCE_CANDIDATE_VALUES = 64;
+const MAX_SOURCE_CANDIDATES_PER_FIELD = 6;
+const MAX_SOURCE_CANDIDATE_TERMS = 12;
+const MAX_GROUNDED_EVIDENCE = 64;
+const SOURCE_RESOLUTION_VERSION = 1 as const;
+const SOURCE_CONDITION_FIELDS = new Set(['partNumber', 'shootingTarget', 'nonconformityNo', 'originDepartmentName']);
+const JAPANESE_PARTICLES = new Set(['の', 'を', 'に', 'へ', 'が', 'は', 'で', 'と', 'や', 'も', 'から', 'まで', 'より', 'だけ', 'など', 'について']);
 
 const signageFields = {
   scheduleName: z.string().trim().min(1).max(200).optional(),
@@ -272,12 +349,12 @@ const TOOLS: ReadonlyArray<BusinessHermesMcpTool> = [
   },
   {
     name: 'business_hermes_describe_sources',
-    description: 'Describe the authorized read-only business sources and their bounded result semantics.',
+    description: 'Describe the authorized read-only business sources, record units, field/date meanings, real relation keys, and bounded retrieval operations before searching.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
     name: 'business_hermes_search',
-    description: 'Search active latest nonconformities and PUBLIC work-instruction text using literal case-insensitive substring matching across the selected fields. originDepartmentCode/name are explicit 起因部署 filters; they are not responsibility-department or treatment-owner filters. Spaces are literal characters, not AND keywords. Nonconformity search results include condition, remarks, correctiveContent and disposition, with the same fields as get_detail. kind=both returns both source kinds for the supplied conditions. Results never include private paths or case history.',
+    description: 'Search active latest nonconformities and PUBLIC work-instruction text using the source contract returned by business_hermes_describe_sources. originDepartmentCode/name are explicit 起因部署 filters; they are not responsibility-department or treatment-owner filters. Spaces are literal characters, not AND keywords. Nonconformity search results include condition, remarks, correctiveContent and disposition, with the same fields as get_detail. kind=both returns both source kinds for the supplied conditions. Results never include private paths or case history.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -605,6 +682,346 @@ function safeScheduleDraft(
   };
 }
 
+function sourceCandidateTerms(value: string): string[] {
+  const normalized = value.normalize('NFKC').replace(/[「」『』【】（）()［］[\]、。！？!?：:;,，．]/g, ' ');
+  const terms = new Set<string>();
+  const add = (term: string) => {
+    const candidate = term.trim();
+    if (Array.from(candidate).length >= 2) terms.add(candidate);
+  };
+  const segmenter = new Intl.Segmenter('ja', { granularity: 'word' });
+  let run = '';
+  const flush = () => {
+    add(run);
+    run = '';
+  };
+  for (const segment of segmenter.segment(normalized)) {
+    const token = segment.segment.trim();
+    if (!token || !segment.isWordLike || JAPANESE_PARTICLES.has(token)) {
+      flush();
+      continue;
+    }
+    add(token);
+    run += token;
+  }
+  flush();
+  for (const identifier of normalized.match(/[A-Za-z0-9][A-Za-z0-9_-]{2,}/g) ?? []) add(identifier);
+  return [...terms].sort((left, right) => right.length - left.length).slice(0, MAX_SOURCE_CANDIDATE_TERMS);
+}
+
+function normalizedCandidateValue(value: string): string {
+  return value.normalize('NFKC').toUpperCase();
+}
+
+function matchedCandidateTerms(value: string, terms: ReadonlyArray<string>): string[] {
+  const normalized = normalizedCandidateValue(value);
+  return terms.filter((term) => normalized.includes(normalizedCandidateValue(term)));
+}
+
+function candidateScore(candidate: BusinessHermesSourceCandidate): number {
+  return candidate.matchedTerms.reduce((score, term) => score + Math.max(1, Array.from(term).length) ** 2, 0);
+}
+
+function buildSourceResolution(
+  request: string,
+  terms: ReadonlyArray<string>,
+  candidates: ReadonlyArray<BusinessHermesSourceCandidate>,
+  truncatedFields: ReadonlySet<string>
+): BusinessHermesSourceResolution {
+  const groups = new Map<string, BusinessHermesSourceCandidate>();
+  for (const candidate of candidates) {
+    const key = [candidate.kind, candidate.field, candidate.value, candidate.code ?? '', candidate.source].join('\u0000');
+    const current = groups.get(key);
+    if (!current) {
+      groups.set(key, candidate);
+      continue;
+    }
+    groups.set(key, { ...current, matchedTerms: [...new Set([...current.matchedTerms, ...candidate.matchedTerms])] });
+  }
+  const byField = new Map<string, BusinessHermesSourceCandidate[]>();
+  for (const candidate of groups.values()) {
+    const key = `${candidate.kind}\u0000${candidate.field}`;
+    const current = byField.get(key) ?? [];
+    current.push(candidate);
+    byField.set(key, current);
+  }
+  const fields: BusinessHermesSourceFieldResolution[] = [];
+  for (const [key, values] of byField) {
+    const [kind, field] = key.split('\u0000') as [BusinessHermesSourceKind, string];
+    const sorted = values.sort((left, right) => candidateScore(right) - candidateScore(left) || left.value.localeCompare(right.value, 'ja'));
+    const exact = sorted.filter((candidate) => normalizedCandidateValue(request).includes(normalizedCandidateValue(candidate.value)));
+    const topCoverage = Math.max(...sorted.map((candidate) => candidate.matchedTerms.length));
+    const top = (exact.length === 1
+      ? exact
+      : sorted.filter((candidate) => candidate.matchedTerms.length === topCoverage)).slice(0, MAX_SOURCE_CANDIDATES_PER_FIELD);
+    const truncated = truncatedFields.has(key);
+    // A ranked candidate is only a suggestion. Automatic resolution requires
+    // the complete authorized value to be present in the request text.
+    const status = exact.length === 1 && !truncated ? 'resolved' : 'ambiguous';
+    fields.push({
+      kind,
+      field,
+      status,
+      ...(truncated ? { truncated: true } : {}),
+      candidates: top,
+      ...(status === 'resolved' ? { selected: top[0] } : {})
+    });
+  }
+  fields.sort((left, right) => left.kind.localeCompare(right.kind) || left.field.localeCompare(right.field));
+  const requestedKinds = businessHermesSourceDefinitionList()
+    .filter((definition) => definition.requestHints.some((hint) => request.includes(hint)))
+    .map((definition) => definition.kind);
+  return {
+    version: SOURCE_RESOLUTION_VERSION,
+    request,
+    terms,
+    requestedKinds,
+    requestedLimit: requestedResultLimit(request),
+    unresolvedConditions: unresolvedConditionNames(request),
+    fields,
+    ambiguous: fields.some((field) => field.status === 'ambiguous'
+      && SOURCE_CONDITION_FIELDS.has(field.field)
+      && (requestedKinds.length === 0 || requestedKinds.includes(field.kind)))
+  };
+}
+
+function requestedResultLimit(request: string): number {
+  const match = request.match(/(?:^|[^0-9])([0-9]{1,3})\s*件/u);
+  if (!match) return 10;
+  const value = Number(match[1]);
+  return Number.isSafeInteger(value) ? Math.max(1, Math.min(MAX_LIMIT, value)) : 10;
+}
+
+function unresolvedConditionNames(request: string): string[] {
+  // Date operators are intentionally detected, not interpreted. A free-form
+  // year can mean discoveredOn, sourceVersionDate, or publication metadata;
+  // silently choosing one would drop the user's condition.
+  return /(?:\b\d{4}-\d{2}-\d{2}\b|\b\d{4}年|以降|以前|年度)/u.test(request) ? ['date'] : [];
+}
+
+function sourceSearchConditions(resolution: BusinessHermesSourceResolution): Readonly<Record<string, string | number>> | null {
+  if (resolution.ambiguous || resolution.unresolvedConditions.length > 0) return null;
+  const relevant = resolution.fields.filter((field) => SOURCE_CONDITION_FIELDS.has(field.field)
+    && (resolution.requestedKinds.length === 0 || resolution.requestedKinds.includes(field.kind)));
+  if (relevant.length === 0 || relevant.some((field) => field.status === 'ambiguous' || !field.selected)) return null;
+  const selected = relevant.map((field) => field.selected!);
+  const kinds = new Set(selected.map((candidate) => candidate.kind));
+  const conditions: Record<string, string | number> = {
+    kind: kinds.size > 1 ? 'both' : [...kinds][0]!,
+    limit: resolution.requestedLimit
+  };
+  for (const field of relevant) {
+    const candidate = field.selected!;
+    if (field.field === 'partNumber') {
+      conditions.partNumber = normalizeWorkInstructionPartNumber(candidate.value) ?? candidate.value;
+    } else if (field.field === 'shootingTarget') {
+      conditions.shootingTarget = normalizeWorkInstructionShootingTarget(candidate.value) ?? candidate.value;
+    } else if (field.field === 'nonconformityNo') {
+      conditions.nonconformityNo = candidate.value;
+    } else if (field.field === 'originDepartmentName') {
+      conditions.originDepartmentName = candidate.value;
+      if (candidate.code) conditions.originDepartmentCode = candidate.code;
+    }
+  }
+  return conditions;
+}
+
+function sourceCount(result: Record<string, unknown>, kind: 'nonconformity' | 'workInstruction'): BusinessHermesSourceCount | null {
+  const counts = result.sourceCounts;
+  if (!counts || typeof counts !== 'object' || Array.isArray(counts)) return null;
+  const count = (counts as Record<string, unknown>)[kind];
+  if (!count || typeof count !== 'object' || Array.isArray(count)) return null;
+  const record = count as Record<string, unknown>;
+  const total = record.total === null || (typeof record.total === 'number' && Number.isSafeInteger(record.total))
+    ? record.total : null;
+  const returned = typeof record.returned === 'number' && Number.isSafeInteger(record.returned) ? record.returned : null;
+  if (returned === null) return null;
+  return { total, returned, returnedScope: 'returned_page' };
+}
+
+function groundedEvidence(
+  result: Record<string, unknown> | null,
+  conditions: Readonly<Record<string, string | number>> | null
+): Record<string, unknown>[] {
+  if (!result || !Array.isArray(result.results)) return [];
+  const evidence: Record<string, unknown>[] = [];
+  const nonconformityCount = sourceCount(result, 'nonconformity');
+  const workInstructionCount = sourceCount(result, 'workInstruction');
+  const visibleNonconformityCount = result.results.filter((entry) => entry && typeof entry === 'object'
+    && !Array.isArray(entry) && (entry as Record<string, unknown>).kind === 'nonconformity').length;
+  const visibleWorkInstructionCount = result.results.filter((entry) => entry && typeof entry === 'object'
+    && !Array.isArray(entry) && (entry as Record<string, unknown>).kind === 'work_instruction').length;
+  const legacyTotal = typeof result.total === 'number' && Number.isSafeInteger(result.total) ? result.total : null;
+  const nonconformityTotal = nonconformityCount?.total
+    ?? (conditions?.kind === 'nonconformity' ? legacyTotal : null);
+  const nonconformityReturned = nonconformityCount?.returned ?? visibleNonconformityCount;
+  const workInstructionReturned = workInstructionCount?.returned ?? visibleWorkInstructionCount;
+  for (const entry of result.results) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const item = entry as Record<string, unknown>;
+    if (item.kind === 'nonconformity') {
+      evidence.push({
+        ...item,
+        ...(nonconformityTotal === null ? {} : { sourceResultCount: nonconformityTotal }),
+        sourceReturnedCount: nonconformityReturned
+      });
+      continue;
+    }
+    if (item.kind !== 'work_instruction' || !Array.isArray(item.rows)) continue;
+    const sourceRowCount = item.rows.length;
+    for (const row of item.rows) {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+      const rowRecord = row as Record<string, unknown>;
+      if (!Array.isArray(rowRecord.steps)) continue;
+      for (const step of rowRecord.steps) {
+        if (!step || typeof step !== 'object' || Array.isArray(step)) continue;
+        const stepRecord = step as Record<string, unknown>;
+        if (typeof stepRecord.id !== 'string') continue;
+        evidence.push({
+          ...stepRecord,
+          kind: 'work_instruction',
+          title: '公開作業要領',
+          partNumber: item.partNumber,
+          shootingTarget: item.shootingTarget,
+          sourceGroupCount: workInstructionReturned,
+          sourceGroupCountScope: 'returned_page',
+          ...(workInstructionCount?.total === null || workInstructionCount?.total === undefined
+            ? {} : { sourceGroupTotal: workInstructionCount.total }),
+          sourceRowCount
+        });
+      }
+    }
+  }
+  return evidence.slice(0, MAX_GROUNDED_EVIDENCE);
+}
+
+function sameSourceCandidate(left: BusinessHermesSourceCandidate, right: BusinessHermesSourceCandidate): boolean {
+  return left.kind === right.kind && left.field === right.field
+    && left.value === right.value && left.code === right.code && left.source === right.source;
+}
+
+function applyOpenJevCandidateSelection(
+  resolution: BusinessHermesSourceResolution,
+  selectedCandidates: ReadonlyArray<BusinessHermesSourceCandidate>,
+  truncatedFields: ReadonlySet<string>
+): BusinessHermesSourceResolution {
+  const fields = resolution.fields.map((field) => {
+    const key = sourceFieldKey(field.kind, field.field);
+    if (field.status === 'resolved' || field.truncated || truncatedFields.has(key)) return field;
+    const matches = selectedCandidates.filter((candidate) =>
+      candidate.kind === field.kind && candidate.field === field.field
+        && field.candidates.some((available) => sameSourceCandidate(available, candidate)));
+    if (matches.length !== 1) return field;
+    return { ...field, status: 'resolved' as const, selected: matches[0] };
+  });
+  return {
+    ...resolution,
+    fields,
+    ambiguous: fields.some((field) => field.status === 'ambiguous'
+      && SOURCE_CONDITION_FIELDS.has(field.field)
+      && (resolution.requestedKinds.length === 0 || resolution.requestedKinds.includes(field.kind)))
+  };
+}
+
+function filterGroundedResult(result: Record<string, unknown>, selectedKeys: ReadonlyArray<string>): Record<string, unknown> {
+  const selected = new Set(selectedKeys);
+  if (!Array.isArray(result.results)) return result;
+  const results = result.results.filter((entry): entry is Record<string, unknown> => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    const item = entry as Record<string, unknown>;
+    if (typeof item.kind !== 'string' || typeof item.id !== 'string') return false;
+    if (selected.has(`${item.kind}:${item.id}`)) return true;
+    if (item.kind !== 'work_instruction' || !Array.isArray(item.rows)) return false;
+    return (item.rows as unknown[]).some((row: unknown) => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+      const steps = (row as Record<string, unknown>).steps;
+      return Array.isArray(steps) && steps.some((step: unknown) => step && typeof step === 'object' && !Array.isArray(step)
+        && typeof (step as Record<string, unknown>).id === 'string'
+        && selected.has(`work_instruction:${(step as Record<string, unknown>).id}`));
+    });
+  });
+  const sourceCounts = result.sourceCounts && typeof result.sourceCounts === 'object' && !Array.isArray(result.sourceCounts)
+    ? Object.fromEntries(Object.entries(result.sourceCounts as Record<string, unknown>).map(([key, value]) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return [key, value];
+      const record = value as Record<string, unknown>;
+      return [key, { ...record, returned: results.filter((entry) =>
+        (key === 'nonconformity' && entry.kind === 'nonconformity')
+          || (key === 'workInstruction' && entry.kind === 'work_instruction')).length }];
+    }))
+    : result.sourceCounts;
+  return { ...result, results, sourceCounts };
+}
+
+function uniqueTextValues(items: ReadonlyArray<Record<string, unknown>>, field: string): string[] {
+  return [...new Set(items.flatMap((item) => typeof item[field] === 'string' && item[field].trim() ? [item[field].trim()] : []))];
+}
+
+function numericEvidenceValue(items: ReadonlyArray<Record<string, unknown>>, field: string): number | null {
+  const value = items.find((item) => typeof item[field] === 'number' && Number.isSafeInteger(item[field]))?.[field];
+  return typeof value === 'number' ? value : null;
+}
+
+/**
+ * The source result is authoritative for bounded facts that must not be
+ * restated from model prose. Record cards carry the full source text.
+ */
+export function groundedAnswerMessage(
+  grounding: BusinessHermesGroundedSearch,
+  display: { recordCount: number; recordView?: 'summary' | 'detail' }
+): string | null {
+  if (!grounding.conditions || !grounding.result) return null;
+  const kind = grounding.conditions.kind;
+  const evidence = [...grounding.evidence];
+  const statements: string[] = [];
+  const sourceHas = (sourceKind: 'nonconformity' | 'work_instruction') =>
+    kind === 'both' || kind === sourceKind;
+  if (sourceHas('nonconformity')) {
+    const items = evidence.filter((item) => item.kind === 'nonconformity');
+    const count = sourceCount(grounding.result, 'nonconformity')?.total
+      ?? numericEvidenceValue(items, 'sourceResultCount')
+      ?? items.length;
+    const returned = sourceCount(grounding.result, 'nonconformity')?.returned
+      ?? numericEvidenceValue(items, 'sourceReturnedCount')
+      ?? items.length;
+    const identifiers = uniqueTextValues(items, 'nonconformityNo');
+    const dates = uniqueTextValues(items, 'discoveredOn');
+    statements.push(`不適合を${count}件確認しました（返却${returned}件）。${identifiers.length > 0 ? `不適合番号: ${identifiers.join('、')}。` : ''}${dates.length > 0 ? `発見日: ${dates.join('、')}。` : ''}`);
+  }
+  if (sourceHas('work_instruction')) {
+    const items = evidence.filter((item) => item.kind === 'work_instruction');
+    const count = sourceCount(grounding.result, 'workInstruction')?.returned
+      ?? numericEvidenceValue(items, 'sourceGroupCount')
+      ?? new Set(items.map((item) => `${item.partNumber ?? ''}\u0000${item.shootingTarget ?? ''}`)).size;
+    const total = sourceCount(grounding.result, 'workInstruction')?.total
+      ?? numericEvidenceValue(items, 'sourceGroupTotal');
+    const groupRows = new Map<string, number>();
+    for (const item of items) {
+      const key = `${item.partNumber ?? ''}\u0000${item.shootingTarget ?? ''}`;
+      const rows = item.sourceRowCount;
+      if (typeof rows === 'number' && Number.isSafeInteger(rows)) groupRows.set(key, Math.max(groupRows.get(key) ?? 0, rows));
+    }
+    const rowCount = [...groupRows.values()].reduce((sum, rows) => sum + rows, 0);
+    const dates = uniqueTextValues(items, 'sourceVersionDate');
+    const totalSuffix = total !== null && total !== count ? `（既知の総数${total}グループ）` : '';
+    statements.push(`公開作業要領を${count}グループ（返却ページ内）${totalSuffix}${rowCount > 0 ? `、${rowCount}行` : ''}確認しました。${dates.length > 0 ? `元データ更新日: ${dates.join('、')}。` : ''}`);
+  }
+  if (statements.length === 0) return null;
+  const displayStatement = display.recordCount === 0
+    ? '記録カードの表示指定はありません。'
+    : display.recordView === 'detail'
+      ? '選択した記録カードに原文を表示します。'
+      : '選択した記録カードは概要表示です。原文は詳細表示で確認できます。';
+  return `${statements.join(' ')}${displayStatement}`;
+}
+
+function escapeLikeValue(value: string): string {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+function sourceFieldKey(kind: BusinessHermesSourceKind, field: string): string {
+  return `${kind}\u0000${field}`;
+}
+
 function publicStep(
   step: WorkInstructionStepView,
   sourceModified: Date,
@@ -675,6 +1092,7 @@ export class BusinessHermesMcpService {
   private readonly workInstructions: Pick<WorkInstructionReadService, 'readPublishedGroups' | 'readPublishedGroup' | 'searchPublishedGroups'>;
   private readonly signage: Pick<SignageService, 'listSchedulesForManagement' | 'createSchedule' | 'updateSchedule'>;
   private readonly a2uiData: Pick<SignageA2uiDataService, 'resolve' | 'readSource' | 'listSources'>;
+  private readonly openJevSelector?: BusinessHermesOpenJevSelector;
 
   constructor(deps: MpcDeps = {}) {
     this.db = deps.db ?? prisma;
@@ -682,10 +1100,185 @@ export class BusinessHermesMcpService {
     this.workInstructions = deps.workInstructions ?? getWorkInstructionServices().read;
     this.signage = deps.signage ?? new SignageService();
     this.a2uiData = deps.a2uiData ?? new SignageA2uiDataService(this.db);
+    this.openJevSelector = deps.openJevSelector;
   }
 
   listTools(): ReadonlyArray<BusinessHermesMcpTool> {
     return TOOLS;
+  }
+
+  /**
+   * Resolve user wording against bounded, authorized source values before the
+   * answer limit is applied. The result is server-owned retrieval context for
+   * native Hermes, not a model-created alias or a business-data catalogue.
+   */
+  async resolveAndSearch(request: string, context?: Readonly<Record<string, unknown>>): Promise<BusinessHermesGroundedSearch> {
+    const normalizedRequest = text(request, MAX_QUERY_CHARS) ?? '';
+    const terms = sourceCandidateTerms(normalizedRequest);
+    if (terms.length === 0) {
+      const resolution = buildSourceResolution(normalizedRequest, terms, [], new Set());
+      return { resolution, conditions: null, result: null, evidence: [] };
+    }
+    const [nonconformity, workInstruction] = await Promise.all([
+      this.readNonconformityCandidates(terms),
+      this.readWorkInstructionCandidates(terms)
+    ]);
+    const candidates = [...nonconformity.candidates, ...workInstruction.candidates];
+    const truncatedFields = new Set([...nonconformity.truncatedFields, ...workInstruction.truncatedFields]);
+    let resolution = buildSourceResolution(normalizedRequest, terms, candidates, truncatedFields);
+    if (this.openJevSelector && candidates.length > 0) {
+      const selectedCandidates = await this.openJevSelector.selectSourceCandidates({
+        request: normalizedRequest,
+        context,
+        terms,
+        candidates,
+        truncatedFields
+      });
+      resolution = applyOpenJevCandidateSelection(resolution, selectedCandidates, truncatedFields);
+    }
+    const conditions = sourceSearchConditions(resolution);
+    if (!conditions) return { resolution, conditions: null, result: null, evidence: [] };
+    const response = await this.call('business_hermes_search', conditions);
+    if (response.isError) return { resolution, conditions, result: null, evidence: [] };
+    let result: Record<string, unknown> | null = null;
+    try {
+      const parsed: unknown = JSON.parse(response.content[0]?.text ?? 'null');
+      result = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+    } catch {
+      result = null;
+    }
+    return this.finishGroundedSearch(normalizedRequest, resolution, conditions, result, context);
+  }
+
+  /** Isolated Chat pilot: execute the existing MCP contract, retaining its factual projection. */
+  async resolveAndSearchPlanned(
+    request: string,
+    conditions: Readonly<Record<string, string | number>>,
+    context?: Readonly<Record<string, unknown>>
+  ): Promise<BusinessHermesGroundedSearch> {
+    const kinds: BusinessHermesSourceKind[] = conditions.kind === 'both'
+      ? ['nonconformity', 'work_instruction'] : [conditions.kind as BusinessHermesSourceKind];
+    const resolution: BusinessHermesSourceResolution = {
+      version: SOURCE_RESOLUTION_VERSION, request, terms: [], requestedKinds: kinds,
+      requestedLimit: Number(conditions.limit), unresolvedConditions: [], fields: [], ambiguous: false
+    };
+    const response = await this.call('business_hermes_search', conditions);
+    if (response.isError) throw new Error(response.content[0]?.text ?? 'Planned search failed');
+    const parsed: unknown = JSON.parse(response.content[0]?.text ?? 'null');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid search result');
+    return this.finishGroundedSearch(request, resolution, conditions, parsed as Record<string, unknown>, context);
+  }
+
+  private async finishGroundedSearch(
+    request: string,
+    resolution: BusinessHermesSourceResolution,
+    conditions: Readonly<Record<string, string | number>> | null,
+    result: Record<string, unknown> | null,
+    context?: Readonly<Record<string, unknown>>
+  ): Promise<BusinessHermesGroundedSearch> {
+    let evidence = groundedEvidence(result, conditions);
+    if (this.openJevSelector && result && conditions && evidence.length > 0) {
+      const selectedKeys = await this.openJevSelector.selectGroundedResults({ request, context, conditions, result, evidence });
+      result = filterGroundedResult(result, selectedKeys);
+      evidence = groundedEvidence(result, conditions);
+    }
+    return { resolution, conditions, result, evidence };
+  }
+
+  private async readNonconformityCandidates(terms: ReadonlyArray<string>): Promise<{
+    candidates: BusinessHermesSourceCandidate[];
+    truncatedFields: ReadonlySet<string>;
+  }> {
+    const definition = businessHermesSourceDefinition('nonconformity');
+    if (!definition) return { candidates: [], truncatedFields: new Set() };
+    const pages = await Promise.all(definition.candidateFields.map(async (field) => {
+      const column = Prisma.raw(`"${field.name}"`);
+      const codeColumn = field.codeField ? Prisma.raw(`"${field.codeField}"`) : Prisma.raw('NULL');
+      const patterns = Prisma.join(terms.map((term) => Prisma.sql`${column} ILIKE ${`%${escapeLikeValue(term)}%`} ESCAPE '\\'`), ' OR ');
+      const rows = await this.db.$queryRaw<Array<{ value: string | null; code: string | null }>>(Prisma.sql`
+        SELECT DISTINCT ${column} AS "value", ${codeColumn} AS "code"
+        FROM "ScawStfutekigoCurrent"
+        WHERE "isPresentInLatestSnapshot" = TRUE
+          AND ${column} IS NOT NULL
+          AND (${patterns})
+        LIMIT ${MAX_SOURCE_CANDIDATE_VALUES + 1}
+      `);
+      return {
+        field,
+        rows,
+        truncated: rows.length > MAX_SOURCE_CANDIDATE_VALUES
+      };
+    }));
+    const candidates = pages.flatMap(({ field, rows }) => rows.slice(0, MAX_SOURCE_CANDIDATE_VALUES).flatMap((row) => {
+      const value = row.value?.trim() ?? '';
+      if (!value) return [];
+      const matchedTerms = matchedCandidateTerms(value, terms);
+      if (matchedTerms.length === 0) return [];
+      const code = row.code?.trim() ?? '';
+      return [{
+        kind: 'nonconformity' as const,
+        field: field.name,
+        value,
+        ...(code ? { code } : {}),
+        source: field.source,
+        matchedTerms
+      }];
+    }));
+    return {
+      candidates,
+      truncatedFields: new Set(pages.filter((page) => page.truncated).map((page) => sourceFieldKey('nonconformity', page.field.name)))
+    };
+  }
+
+  private async readWorkInstructionCandidates(terms: ReadonlyArray<string>): Promise<{
+    candidates: BusinessHermesSourceCandidate[];
+    truncatedFields: ReadonlySet<string>;
+  }> {
+    const definition = businessHermesSourceDefinition('work_instruction');
+    if (!definition) return { candidates: [], truncatedFields: new Set() };
+    const pages = await Promise.all(definition.candidateFields.map(async (field) => {
+      const column = field.name === 'partNumber' ? Prisma.raw('"partNumber"') : Prisma.raw('"shootingTarget"');
+      const patterns = Prisma.join(terms.map((term) => Prisma.sql`${column} ILIKE ${`%${escapeLikeValue(term)}%`} ESCAPE '\\'`), ' OR ');
+      const rows = await this.db.$queryRaw<Array<{ value: string | null }>>(Prisma.sql`
+        WITH public_groups AS (
+          SELECT version."partNumber" AS "partNumber", version."shootingTarget" AS "shootingTarget"
+          FROM "WorkInstructionSourcePublication" AS publication
+          JOIN "WorkInstructionSourceVersion" AS version
+            ON version."id" = publication."publishedVersionId"
+          WHERE version."partNumber" IS NOT NULL AND version."shootingTarget" IS NOT NULL
+          UNION
+          SELECT row."partNumber" AS "partNumber", row."shootingTarget" AS "shootingTarget"
+          FROM "WorkInstructionRow" AS row
+          LEFT JOIN "WorkInstructionSourcePublication" AS publication ON publication."rowId" = row."id"
+          WHERE row."partNumber" IS NOT NULL AND row."shootingTarget" IS NOT NULL AND publication."rowId" IS NULL
+        )
+        SELECT DISTINCT ${column} AS "value"
+        FROM public_groups
+        WHERE ${column} IS NOT NULL
+          AND (${patterns})
+        LIMIT ${MAX_SOURCE_CANDIDATE_VALUES + 1}
+      `);
+      return { field, rows, truncated: rows.length > MAX_SOURCE_CANDIDATE_VALUES };
+    }));
+    const candidates = pages.flatMap(({ field, rows }) => rows.slice(0, MAX_SOURCE_CANDIDATE_VALUES).flatMap((row) => {
+      const value = row.value?.trim() ?? '';
+      if (!value) return [];
+      const normalizedValue = field.name === 'partNumber'
+        ? normalizeWorkInstructionPartNumber(value) ?? value
+        : normalizeWorkInstructionShootingTarget(value) ?? value;
+      const matchedTerms = matchedCandidateTerms(normalizedValue, terms);
+      return matchedTerms.length > 0 ? [{
+        kind: 'work_instruction' as const,
+        field: field.name,
+        value: normalizedValue,
+        source: field.source,
+        matchedTerms
+      }] : [];
+    }));
+    return {
+      candidates,
+      truncatedFields: new Set(pages.filter((page) => page.truncated).map((page) => sourceFieldKey('work_instruction', page.field.name)))
+    };
   }
 
   async call(name: string, rawArgs: unknown): Promise<BusinessHermesMcpResult> {
@@ -1015,25 +1608,21 @@ export class BusinessHermesMcpService {
 
   private describeSources() {
     return {
-      sources: [
-        {
-          kind: 'nonconformity',
-          description: 'Historical nonconformity records present in the latest import (isPresentInLatestSnapshot=true). These are not published work instructions or evidence of a defect in the current consultation.',
-          fields: ['id', 'evidenceKey', 'nonconformityNo', 'partNumber', 'partName', 'machineName', 'originDepartmentCode', 'originDepartmentName', 'condition', 'remarks', 'disposition', 'correctiveContent', 'discoveredOn', 'sourceVersionDate', 'provenance'],
-          fieldMeanings: { evidenceKey: '取得済み根拠を表示指定するkind:idキー。利用者向け本文には表示しない', condition: '不適合内容', correctiveContent: '個別是正内容1・2。処置内容欄とは別項目', disposition: '処置内容。空欄は未記録であり処置未実施を意味しない', remarks: '備考', discoveredOn: '発見日。dateFrom/dateToはこの日を絞る', sourceVersionDate: '元データ更新日', machineName: '記録された機械名。要領書の対象工程とは同一とは限らない', originDepartmentCode: '起因部署コード。責任部署・処置担当とは別項目', originDepartmentName: '起因部署名。責任部署・処置担当とは別項目' },
+      sources: businessHermesSourceDefinitionList().map((definition) => ({
+        ...definition,
+        fields: definition.fields.map((field) => field.name),
+        fieldDefinitions: definition.fields,
+        fieldMeanings: Object.fromEntries(definition.fields.map((field) => [field.name, field.meaning])),
+        rules: definition.constraints,
+        ...(definition.kind === 'nonconformity' ? {
           responsibilityDepartment: '正式な責任部署項目はこのデータソースに提供されていません。'
-        },
-        {
-          kind: 'work_instruction',
-          description: 'PUBLIC WorkInstructionSourcePublication pointer and its effective published revision.',
-          fields: ['id', 'partNumber', 'shootingTarget', 'source', 'sourceVersionDate', 'publishedVersionId', 'publishedVersionCreatedAt', 'publishedRevisionId', 'publishedRevisionCreatedAt', 'steps.id', 'steps.evidenceKey', 'steps.effectiveText', 'steps.imageAssetId', 'steps.imageUrl'],
-          rules: ['latest imported drafts are excluded', 'sourceVersionDate is the immutable source modified date; publishedVersionCreatedAt and publishedRevisionCreatedAt identify public publication provenance', 'memoOverride replaces source text, including an empty override', 'only ACTIVE image assets are exposed', 'the group id is used for detail lookup; use each steps.evidenceKey to select a displayed step']
-        }
-      ],
+        } : {})
+      })),
       limits: { maxResults: MAX_LIMIT, maxQueryChars: MAX_QUERY_CHARS },
       signageDataSources: SIGNAGE_CANVAS_DATA_SOURCE_DESCRIPTIONS,
       searchSemantics: 'query and condition use literal case-insensitive substring matching; spaces are literal characters, not AND keywords. Start with one concise term, then refine with identifiers, dates, or a narrower term.',
-      authorization: 'Existing API read visibility and publication/active-asset rules remain authoritative.'
+      authorization: 'Existing API read visibility and publication/active-asset rules remain authoritative.',
+      derivedSearch: 'The existing GPTCache/FastEmbed/FAISS/SQLite FTS path may suggest a source question in background preparation. It does not replace live MCP search, source authorization, or answer-time source verification.'
     };
   }
 
@@ -1190,6 +1779,17 @@ export class BusinessHermesMcpService {
     const total = totalKnown
       ? kind === 'both' ? nonconformityTotal + workInstructionTotal : kind === 'nonconformity' ? nonconformityTotal : workInstructionTotal
       : null;
+    const sourceCounts: Record<string, BusinessHermesSourceCount> = {};
+    if (kind === 'nonconformity' || kind === 'both') {
+      sourceCounts.nonconformity = { total: nonconformityTotal, returned: visibleNonconformityCount, returnedScope: 'returned_page' };
+    }
+    if (kind === 'work_instruction' || kind === 'both') {
+      sourceCounts.workInstruction = {
+        total: totalKnown ? workInstructionTotal : null,
+        returned: visibleWorkInstructionCount,
+        returnedScope: 'returned_page'
+      };
+    }
     // Cursor points at the first matching group not returned in this page.
     // This matters when `both` fills the page with NC rows first.
     const nextWorkInstructionResultOffset = workInstructionResultOffsets[visibleWorkInstructionCount];
@@ -1201,6 +1801,7 @@ export class BusinessHermesMcpService {
     return {
       results: visibleResults,
       total,
+      sourceCounts,
       limit,
       truncated: Boolean(truncated || nonconformityHasMore || workInstructionHasMore),
       hasMore: {

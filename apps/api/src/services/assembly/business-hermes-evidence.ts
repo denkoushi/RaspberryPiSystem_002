@@ -5,9 +5,15 @@ export type ConsultationEvidence = {
   id: string;
   title: string;
   partNumber: string;
+  nonconformityNo?: string | null;
   originDepartmentCode?: string | null;
   originDepartmentName?: string | null;
   originDepartmentMeaning?: string;
+  condition?: string | null;
+  remarks?: string | null;
+  correctiveContent?: string | null;
+  disposition?: string | null;
+  discoveredOn?: string | null;
   shootingTarget?: string;
   step?: number;
   sourceStep?: number;
@@ -104,12 +110,20 @@ function projectDisplayFields(input: {
       displayField('partName', '品名', input.item.partName),
       displayField('machineName', '機械名', input.item.machineName),
       displayField('discoveredOn', '発見日', input.item.discoveredOn),
+      displayField('sourceVersionDate', '元データ更新日', input.item.sourceVersionDate),
+      displayField('sourceResultCount', '検索結果件数', input.item.sourceResultCount),
+      displayField('sourceReturnedCount', '取得件数', input.item.sourceReturnedCount),
       displayField('condition', '不適合内容', input.item.condition, 240),
       displayField('originDepartmentName', '起因部署', input.item.originDepartmentName)
     ]
     : [
       displayField('partNumber', '品番', input.partNumber),
       displayField('shootingTarget', '対象', input.item.shootingTarget),
+      displayField('sourceGroupCount', '返却ページの公開グループ数', input.item.sourceGroupCount),
+      displayField('sourceGroupTotal', '公開グループ総数（既知の場合）', input.item.sourceGroupTotal),
+      displayField('sourceGroupCountScope', '件数の範囲', input.item.sourceGroupCountScope === 'returned_page' ? '返却ページ内' : undefined),
+      displayField('sourceRowCount', '公開行数', input.item.sourceRowCount),
+      displayField('sourceVersionDate', '元データ更新日', input.item.sourceVersionDate),
       displayField('step', '手順', input.step),
       displayField('text', '要点', input.item.effectiveText ?? input.item.text ?? input.text, 240),
     ];
@@ -185,9 +199,15 @@ export function projectTrustedEvidence(raw: ReadonlyArray<JsonRecord>, activeAss
       title: typeof item.title === 'string' ? item.title : typeof item.nonconformityNo === 'string' ? item.nonconformityNo : kind === 'work_instruction' ? '公開作業要領' : '不適合',
       partNumber,
       ...(kind === 'nonconformity' ? {
+        nonconformityNo: typeof item.nonconformityNo === 'string' ? item.nonconformityNo : null,
         originDepartmentCode: typeof item.originDepartmentCode === 'string' ? item.originDepartmentCode : null,
         originDepartmentName: typeof item.originDepartmentName === 'string' ? item.originDepartmentName : null,
-        originDepartmentMeaning: '起因部署'
+        originDepartmentMeaning: '起因部署',
+        condition: typeof item.condition === 'string' ? item.condition : null,
+        remarks: typeof item.remarks === 'string' ? item.remarks : null,
+        correctiveContent: typeof item.correctiveContent === 'string' ? item.correctiveContent : null,
+        disposition: typeof item.disposition === 'string' ? item.disposition : null,
+        discoveredOn: typeof item.discoveredOn === 'string' ? item.discoveredOn : null
       } : {}),
       shootingTarget: typeof item.shootingTarget === 'string' ? item.shootingTarget : undefined,
       step,

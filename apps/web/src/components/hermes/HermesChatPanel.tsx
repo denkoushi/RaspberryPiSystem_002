@@ -488,7 +488,7 @@ export default function HermesChatPanel({
       disabled={isBusy || isConsultationDetailLoading || isMessageHistoryLoading || (mode === 'consultations' && isConsultationsLoading)}
       sendButton
       attachButton={false}
-      placeholder={isBusy ? '回答を取得中…' : isConsultationsLoading ? '相談一覧を準備中…' : knowledgeMode === 'record-pilot' ? '自然文で架空記録を検索…' : '自然な言葉で相談…'}
+      placeholder={isBusy ? '回答を取得中…' : isConsultationsLoading ? '相談一覧を準備中…' : knowledgeMode === 'record-pilot' ? '自然文で不適合記録を検索…' : '自然な言葉で相談…'}
       aria-label="Hermesへの質問"
       onChange={(_innerHtml, textContent) => onDraftChange(textContent)}
       onSend={() => onSend()}
