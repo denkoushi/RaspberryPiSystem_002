@@ -39,7 +39,8 @@ export class HermesSearchTrialService {
   constructor(private readonly settings = {
     enabled: process.env.HERMES_SEARCH_TRIAL_ENABLED === 'true',
     node: process.env.HERMES_SEARCH_NODE ?? '/opt/hermes-node/bin/node',
-    entry: process.env.HERMES_SEARCH_ENTRY ?? '/app/scripts/hermes-search/hermes-qmd-prefetch-worker.mjs'
+    entry: process.env.HERMES_SEARCH_ENTRY ?? '/app/scripts/hermes-search/hermes-qmd-prefetch-worker.mjs',
+    recordPilotFixture: process.env.HERMES_SEARCH_TRIAL_RECORD_PILOT_FIXTURE ?? null,
   }) {}
 
   isEnabled() { return this.settings.enabled; }
@@ -48,7 +49,7 @@ export class HermesSearchTrialService {
     if (!this.settings.enabled) return Promise.reject(new Error('試用検索は無効です。'));
     if (this.failure) return Promise.reject(this.failure);
     if (this.ready) return this.ready;
-    if (!process.env.HERMES_INFERENCE_ORIGIN || !process.env.HERMES_INFERENCE_TOKEN) {
+    if ((!process.env.HERMES_INFERENCE_ORIGIN || !process.env.HERMES_INFERENCE_TOKEN) && !this.settings.recordPilotFixture) {
       return Promise.reject(new Error('試用検索の接続設定がありません。'));
     }
     this.ready = new Promise((resolve, reject) => {

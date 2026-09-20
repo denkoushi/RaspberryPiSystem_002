@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "classificationAxes": {
+    "process": [
+      { "id": "turning", "description": "旋盤加工である。" },
+      { "id": "milling", "description": "フライス加工である。" },
+      { "id": "inspection", "description": "検査工程である。" },
+      { "id": "unknown", "description": "本文から工程を特定できない。" }
+    ],
+    "phenomenon": [
+      { "id": "oversize", "description": "寸法が規格または上限を超えている。" },
+      { "id": "surface_damage", "description": "表面の打痕、傷、へこみなどの損傷がある。" },
+      { "id": "missing_marking", "description": "刻印または表示の一部が欠落している。" },
+      { "id": "unknown", "description": "本文から不適合の現象を特定できない。" }
+    ],
+    "treatment": [
+      { "id": "rework", "description": "再加工または手直しを実施している。" },
+      { "id": "segregate", "description": "対象を選別または隔離している。" },
+      { "id": "design_consultation", "description": "設計または技術部門へ確認・相談している。" },
+      { "id": "unknown", "description": "本文に処置の記載がない、または特定できない。" }
+    ],
+    "cause": [
+      { "id": "tool_wear", "description": "工具の摩耗が原因として本文に明記されている。" },
+      { "id": "unknown", "description": "原因が本文に明記されていない、または特定できない。" }
+    ]
+  },
+  "records": [
+    {
+      "id": "fixture-nc-001",
+      "rawText": "工程：旋盤加工。現象：外径が規格上限を0.12 mm超過。処置：再加工を実施。原因は記載なし。",
+      "expectedClassification": { "process": "turning", "phenomenon": "oversize", "treatment": "rework", "cause": "unknown" }
+    },
+    {
+      "id": "fixture-nc-002",
+      "rawText": "工程：フライス加工。現象：側面に打痕を確認。処置：選別して隔離。",
+      "expectedClassification": { "process": "milling", "phenomenon": "surface_damage", "treatment": "segregate", "cause": "unknown" }
+    },
+    {
+      "id": "fixture-nc-003",
+      "rawText": "工程：検査。現象：刻印が一部欠落。処置：設計へ確認依頼。原因：工具摩耗。",
+      "expectedClassification": { "process": "inspection", "phenomenon": "missing_marking", "treatment": "design_consultation", "cause": "tool_wear" }
+    },
+    {
+      "id": "fixture-nc-004",
+      "rawText": "工程：旋盤加工。現象：外径が規格上限を0.08 mm超過。処置：選別して隔離。",
+      "expectedClassification": { "process": "turning", "phenomenon": "oversize", "treatment": "segregate", "cause": "unknown" }
+    },
+    {
+      "id": "fixture-nc-005",
+      "rawText": "工程：フライス加工。現象：側面に打痕を確認。処置：再加工を実施。",
+      "expectedClassification": { "process": "milling", "phenomenon": "surface_damage", "treatment": "rework", "cause": "unknown" }
+    },
+    {
+      "id": "fixture-nc-006",
+      "rawText": "工程：検査。現象：刻印が一部欠落。処置：選別して隔離。原因は記載なし。",
+      "expectedClassification": { "process": "inspection", "phenomenon": "missing_marking", "treatment": "segregate", "cause": "unknown" }
+    }
+  ],
+  "queries": [
+    {
+      "id": "query-expanded-display-turning-treatment",
+      "text": "旋盤加工で寸法が上限を超えた不適合の処置を確認したい。",
+      "expectedClassification": { "process": "turning", "phenomenon": "oversize", "treatment": "unknown", "cause": "unknown" },
+      "expectedRecordIds": ["fixture-nc-001", "fixture-nc-004"]
+    },
+    {
+      "id": "query-expanded-display-milling-treatment",
+      "text": "フライス加工で表面に打痕がある不適合を探したい。処置も確認したい。",
+      "expectedClassification": { "process": "milling", "phenomenon": "surface_damage", "treatment": "unknown", "cause": "unknown" },
+      "expectedRecordIds": ["fixture-nc-002", "fixture-nc-005"]
+    },
+    {
+      "id": "query-expanded-rework-turning",
+      "text": "旋盤加工で寸法が上限を超え、再加工した不適合記録を探して原文を確認したい。",
+      "expectedClassification": { "process": "turning", "phenomenon": "oversize", "treatment": "rework", "cause": "unknown" },
+      "expectedRecordIds": ["fixture-nc-001"]
+    },
+    {
+      "id": "query-expanded-segregate-turning",
+      "text": "旋盤加工で寸法が上限を超え、選別して隔離した不適合記録を探して原文を確認したい。",
+      "expectedClassification": { "process": "turning", "phenomenon": "oversize", "treatment": "segregate", "cause": "unknown" },
+      "expectedRecordIds": ["fixture-nc-004"]
+    },
+    {
+      "id": "query-expanded-segregate-milling",
+      "text": "フライス加工で表面に打痕があり、選別して隔離した不適合記録を探したい。",
+      "expectedClassification": { "process": "milling", "phenomenon": "surface_damage", "treatment": "segregate", "cause": "unknown" },
+      "expectedRecordIds": ["fixture-nc-002"]
+    },
+    {
+      "id": "query-expanded-rework-milling",
+      "text": "フライス加工で表面に打痕があり、再加工した不適合記録を探したい。",
+      "expectedClassification": { "process": "milling", "phenomenon": "surface_damage", "treatment": "rework", "cause": "unknown" },
+      "expectedRecordIds": ["fixture-nc-005"]
+    }
+  ]
+}

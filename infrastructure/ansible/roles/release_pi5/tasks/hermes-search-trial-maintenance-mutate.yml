@@ -56,6 +56,20 @@
     ] if release_pi5_trial_maintenance == 'on' else []) }}
   no_log: true
 
+- name: Remove pilot-only settings when returning the trial path to OFF
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: "^{{ item }}="
+    state: absent
+    create: false
+    mode: '0600'
+  loop:
+    - HERMES_JEV_PROVIDER
+    - HERMES_SEARCH_TRIAL_RECORD_PILOT_FIXTURE
+    - HERMES_SEARCH_TRIAL_RECORD_PILOT_STORE
+  no_log: true
+  when: release_pi5_trial_maintenance == 'off'
+
 - name: Bind the active API recreation to the dedicated trial environment
   ansible.builtin.set_fact:
     release_pi5_trial_maintenance_original_compose_environment: "{{ release_pi5_compose_environment }}"

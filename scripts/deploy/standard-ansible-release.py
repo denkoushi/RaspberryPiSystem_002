@@ -664,6 +664,70 @@ def hermes_trial_configuration(
     return source, environment
 
 
+RECORD_PILOT_ARTIFACT_FILES = ("fixture.mjs", "base-fixture.json", "store.json")
+
+
+def hermes_record_pilot_configuration(
+    args: argparse.Namespace,
+    selection: tuple[tuple[str, tuple[str, ...]], ...],
+    remote_root: Path,
+    run_id: str,
+) -> tuple[Path | None, dict[str, str]]:
+    value = os.environ.get("HERMES_SEARCH_TRIAL_RECORD_PILOT_ARTIFACT", "")
+    if not value:
+        return None, {}
+    if os.environ.get("HERMES_SEARCH_TRIAL_ENABLED") != "true":
+        raise UsageError("record pilot requires HERMES_SEARCH_TRIAL_ENABLED=true")
+    if args.full_fleet or selection != (("pi5", ("raspberrypi5",)),):
+        raise UsageError("the Hermes record pilot requires an exact raspberrypi5-only release")
+    source = Path(value)
+    if source.is_symlink() or not source.is_dir():
+        raise UsageError("HERMES_SEARCH_TRIAL_RECORD_PILOT_ARTIFACT must be a sealed local directory")
+    source = source.resolve()
+    manifest_path = source / "artifact.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise UsageError("record pilot artifact is missing a regular artifact.json")
+    for name in RECORD_PILOT_ARTIFACT_FILES:
+        path = source / name
+        if path.is_symlink() or not path.is_file():
+            raise UsageError(f"record pilot artifact is missing a regular {name}")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise UsageError("record pilot artifact has an unreadable manifest") from error
+    if (
+        manifest.get("schema") != "hermes-record-pilot/v1"
+        or manifest.get("fixtureId") != "hermes-jev-record-pilot-expanded-v1"
+        or manifest.get("recordCount") != 6
+        or manifest.get("queryCount") != 6
+        or set(manifest.get("files", {})) != set(RECORD_PILOT_ARTIFACT_FILES)
+    ):
+        raise UsageError("record pilot artifact has an unsupported manifest")
+    for name in RECORD_PILOT_ARTIFACT_FILES:
+        with (source / name).open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        if digest != manifest["files"][name]:
+            raise UsageError(f"record pilot artifact checksum mismatch: {name}")
+    try:
+        store = json.loads((source / "store.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise UsageError("record pilot store is unreadable") from error
+    if (
+        store.get("schemaVersion") != 1
+        or store.get("fixtureId") != manifest["fixtureId"]
+        or len(store.get("records", [])) != 6
+        or len(store.get("classifications", [])) != 6
+    ):
+        raise UsageError("record pilot store does not match the fixed six-record boundary")
+    destination = remote_root / "storage/hermes-search/record-pilot" / run_id
+    return source, {
+        "HERMES_SEARCH_TRIAL_ENABLED": "true",
+        "HERMES_SEARCH_TRIAL_JEV_ENABLED": "true",
+        "HERMES_JEV_PROVIDER": "typesafe-direct",
+        "HERMES_SEARCH_TRIAL_RECORD_PILOT_ARTIFACT": str(destination),
+    }
+
+
 def hermes_trial_maintenance_configuration(
     args: argparse.Namespace,
     selection: tuple[tuple[str, tuple[str, ...]], ...],
@@ -673,7 +737,9 @@ def hermes_trial_maintenance_configuration(
         return {}
     if selection != (("pi5", ("raspberrypi5",)),):
         raise UsageError("Hermes search trial maintenance requires an exact raspberrypi5-only release")
-    if os.environ.get("HERMES_SEARCH_TRIAL_ENABLED") or os.environ.get("HERMES_SEARCH_TRIAL_ARTIFACT"):
+    if (os.environ.get("HERMES_SEARCH_TRIAL_ENABLED")
+            or os.environ.get("HERMES_SEARCH_TRIAL_ARTIFACT")
+            or os.environ.get("HERMES_SEARCH_TRIAL_RECORD_PILOT_ARTIFACT")):
         raise UsageError("Hermes search trial maintenance cannot be combined with trial staging environment")
     if os.environ.get("HERMES_SEARCH_TRIAL_JEV_ENABLED", "false") != "false":
         raise UsageError("Hermes search trial maintenance requires HERMES_SEARCH_TRIAL_JEV_ENABLED=false")
@@ -692,6 +758,22 @@ def stage_hermes_trial_artifact(inventory: Path, source: Path, destination: str,
          "loop": ["artifact.json", "qmd-index.sqlite", "snapshot.json", "reviewed.json"]},
     ]}]
     with tempfile.TemporaryDirectory(prefix="hermes-release-staging-") as directory:
+        path = Path(directory) / "stage.json"
+        path.write_text(json.dumps(play), encoding="utf-8")
+        run(["ansible-playbook", "-i", str(inventory), str(path), "--limit", "raspberrypi5"],
+            env=ansible_environment())
+
+
+def stage_hermes_record_pilot_artifact(inventory: Path, source: Path, destination: str, user: str) -> None:
+    play = [{"hosts": "raspberrypi5", "gather_facts": False, "become": True, "tasks": [
+        {"name": "Prepare private run-scoped Hermes record pilot", "ansible.builtin.file": {
+            "path": destination, "state": "directory", "owner": user, "mode": "0700"}},
+        {"name": "Stage only the fixed fictional record pilot files", "no_log": True,
+         "ansible.builtin.copy": {"src": str(source) + "/{{ item }}", "dest": destination + "/{{ item }}",
+                                  "owner": user, "mode": "0600"},
+         "loop": ["artifact.json", *RECORD_PILOT_ARTIFACT_FILES]},
+    ]}]
+    with tempfile.TemporaryDirectory(prefix="hermes-record-pilot-staging-") as directory:
         path = Path(directory) / "stage.json"
         path.write_text(json.dumps(play), encoding="utf-8")
         run(["ansible-playbook", "-i", str(inventory), str(path), "--limit", "raspberrypi5"],
@@ -746,7 +828,10 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
     else:
         command.append("--wait")
     for key, value in (hermes_environment or {}).items():
-        if key not in {"HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_ARTIFACT", "HERMES_SEARCH_TRIAL_MAINTENANCE", "HERMES_ANSWER_CACHE_ARTIFACT"}:
+        if key not in {"HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_JEV_ENABLED",
+                       "HERMES_JEV_PROVIDER", "HERMES_SEARCH_TRIAL_RECORD_PILOT_ARTIFACT",
+                       "HERMES_SEARCH_TRIAL_ARTIFACT", "HERMES_SEARCH_TRIAL_MAINTENANCE",
+                       "HERMES_ANSWER_CACHE_ARTIFACT"}:
             raise UsageError("unsupported Hermes release environment")
         command.append(f"--setenv={key}={value}")
     command.extend(["--", "/bin/bash", "-lc", remote_script(args, sha, run_id, relative, profiles, remote_root)])
@@ -1104,6 +1189,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_id = "plan-preview" if args.print_plan else new_run_id()
     hermes_environment = hermes_trial_maintenance_configuration(args, selection)
     hermes_source = None
+    hermes_record_pilot_source = None
+    if not hermes_environment:
+        hermes_record_pilot_source, hermes_environment = hermes_record_pilot_configuration(
+            args, selection, remote_root, run_id
+        )
     if not hermes_environment:
         hermes_source, hermes_environment = hermes_trial_configuration(args, selection, remote_root, run_id)
     cache_source, cache_environment = answer_cache_configuration(args, selection, remote_root, run_id)
@@ -1122,7 +1212,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         document = plan(args, sha, inventory, relative, selection, remote_root, plan_agent_services)
         if 'HERMES_SEARCH_TRIAL_ENABLED' in hermes_environment:
             document["hermesSearchTrial"] = {"enabled": hermes_environment["HERMES_SEARCH_TRIAL_ENABLED"] == "true",
-                "staging": "four checksum-verified private files on Pi5 SSD" if hermes_source else "none"}
+                "staging": ("fixed fictional record pilot files on Pi5 SSD" if hermes_record_pilot_source
+                            else "four checksum-verified private files on Pi5 SSD" if hermes_source else "none")}
+        if hermes_record_pilot_source:
+            document["hermesRecordPilot"] = {
+                "fixture": "six fixed fictional records and six fixed questions",
+                "provider": "typesafe-direct",
+                "staging": "checksum-verified private files on Pi5 SSD",
+                "jev": "enabled only for this exact Pi5 trial route",
+            }
         if 'HERMES_SEARCH_TRIAL_MAINTENANCE' in hermes_environment:
             document["hermesSearchTrialMaintenance"] = {
                 "mode": hermes_environment["HERMES_SEARCH_TRIAL_MAINTENANCE"],
@@ -1144,6 +1242,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         release_set_artifacts(sha, inventory)
         stage_hermes_trial_artifact(inventory, hermes_source,
             hermes_environment["HERMES_SEARCH_TRIAL_ARTIFACT"], user)
+    if hermes_record_pilot_source is not None:
+        # Verify the signed exact release before copying any private artifact.
+        release_set_artifacts(sha, inventory)
+        stage_hermes_record_pilot_artifact(
+            inventory,
+            hermes_record_pilot_source,
+            hermes_environment["HERMES_SEARCH_TRIAL_RECORD_PILOT_ARTIFACT"],
+            user,
+        )
     result = run(ssh_argv(host, user, port, systemd_argv(args, sha, run_id, relative, profiles, user, remote_root,
         hermes_environment=hermes_environment)), check=False)
     status_command = shlex.join(["scripts/update-all-clients.sh", "--status", run_id, "--inventory", relative])
