@@ -20,6 +20,7 @@ import {nonconformityDefinition,nonconformityDefinitionDigest} from './hermes-so
 import {RemoteInference} from './hermes-remote-inference.mjs';
 import {prepareDeviceArtifact} from './hermes-device-artifact.mjs';
 import {interpretWithJev} from './hermes-jev-intent.mjs';
+import {RecordPilot} from './hermes-jev-record-pilot.mjs';
 import {HERMES_JEV_TRIAL_CONTRACT, isSyntheticTrialRequest, syntheticConditionFromResolution, syntheticConfirmationPending} from './hermes-jev-trial-fixture.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -412,9 +413,37 @@ class TrialWorker {
     this.runtime = null;
     this.jevEnabled = options.jevEnabled ?? process.env.HERMES_SEARCH_TRIAL_JEV_ENABLED === 'true';
     this.intentEvaluator = options.intentEvaluator ?? interpretWithJev;
+    this.recordPilot = options.recordPilot ?? (process.env.HERMES_SEARCH_TRIAL_RECORD_PILOT_FIXTURE
+      ? new RecordPilot({
+        fixturePath: process.env.HERMES_SEARCH_TRIAL_RECORD_PILOT_FIXTURE,
+        storePath: process.env.HERMES_SEARCH_TRIAL_RECORD_PILOT_STORE
+          ?? path.join(DATA_DIRECTORY, 'hermes-jev-record-pilot-store.json'),
+      })
+      : null);
   }
 
   async start() {
+    if (this.recordPilot) {
+      if (!this.jevEnabled) throw new Error('record pilot requires HERMES_SEARCH_TRIAL_JEV_ENABLED=true');
+      const recordPilotRuntime = await this.recordPilot.prepare();
+      this.runtime = {
+        protocol: 'hermes-ui-record-pilot/v1',
+        platform: process.platform,
+        executionPlane: 'fictional-record-pilot',
+        piUsed: false,
+        snapshot: {
+          snapshotId: recordPilotRuntime.fixtureId,
+          digest: null,
+          count: recordPilotRuntime.recordCount,
+          snapshotScope: 'fixed fictional record fixture',
+          authorizedFlag: true,
+        },
+        qmd: { used: false, reason: 'record pilot uses persisted JEV classifications' },
+        selector: { used: false, reason: 'record pilot uses exact stored classification matching' },
+        recordPilot: recordPilotRuntime,
+      };
+      return this.runtime;
+    }
     if(process.env.HERMES_SEARCH_ARTIFACT_ROOT) {
       if(!this.remote)throw new Error('device trial requires remote inference');
       await prepareDeviceArtifact(process.env.HERMES_SEARCH_ARTIFACT_ROOT,DATA_DIRECTORY);
@@ -478,8 +507,26 @@ class TrialWorker {
   }
 
   async answer(question, conversation = {}) {
-    if (!this.qmd || !this.runtime) throw new Error('trial worker is not ready');
+    if (!this.runtime || (!this.qmd && !this.recordPilot)) throw new Error('trial worker is not ready');
     const started = performance.now();
+    if (this.recordPilot) {
+      if (typeof question !== 'string' || !question.trim()) {
+        return {
+          status: 'clarification', mode: 'record_pilot_local', answer: '質問内容を入力してください。',
+          recordIds: [], selectedSourceSpans: [], qmd: { used: false }, selector: { used: false },
+          snapshot: this.runtime.snapshot, elapsedMs: Math.round((performance.now() - started) * 10) / 10,
+        };
+      }
+      const result = await this.recordPilot.answer(question);
+      return {
+        ...result,
+        mode: 'record_pilot_local',
+        snapshot: this.runtime.snapshot,
+        qmd: { used: false },
+        selector: { used: false },
+        recordPilot: this.recordPilot.metrics(),
+      };
+    }
     const records = this.qmd.snapshot.records;
     const directRequest = directNumberRequest(question, records);
     if (directRequest) {
@@ -741,6 +788,7 @@ class TrialWorker {
   }
 
   async stop() {
+    await this.recordPilot?.close();
     this.selector.stop();
     await this.qmd?.close();
   }
