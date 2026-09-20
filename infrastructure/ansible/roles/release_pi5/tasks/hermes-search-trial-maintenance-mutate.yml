@@ -1,0 +1,93 @@
+---
+- name: Record the maintenance environment path
+  ansible.builtin.set_fact:
+    release_pi5_trial_maintenance_env_file: "{{ release_pi5_chat_env_file }}"
+    release_pi5_trial_maintenance_env_created: false
+    release_pi5_trial_maintenance_env_changed: false
+
+- name: Seed the dedicated trial environment from the active API environment when absent
+  ansible.builtin.copy:
+    src: "{{ release_pi5_compose_env_source }}"
+    dest: "{{ release_pi5_trial_maintenance_env_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  when: not (release_pi5_chat_env_source.stat.exists | default(false) | bool)
+  register: release_pi5_trial_maintenance_seed
+  no_log: true
+
+- name: Record whether the dedicated trial environment was created by this run
+  ansible.builtin.set_fact:
+    release_pi5_trial_maintenance_env_created: "{{ release_pi5_trial_maintenance_seed is changed }}"
+
+- name: Save the original trial environment before editing it
+  ansible.builtin.copy:
+    src: "{{ release_pi5_trial_maintenance_env_file }}"
+    dest: "{{ release_pi5_run_dir }}/hermes-search-trial-maintenance.env.before"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+
+- name: Mark the environment restoration boundary
+  ansible.builtin.set_fact:
+    release_pi5_trial_maintenance_env_changed: true
+
+- name: Apply the requested trial flags and fixed ON settings
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+    mode: '0600'
+  loop: >-
+    {{ [
+      {'key': 'HERMES_SEARCH_TRIAL_ENABLED', 'value': ('true' if release_pi5_trial_maintenance == 'on' else 'false')},
+      {'key': 'HERMES_SEARCH_TRIAL_JEV_ENABLED', 'value': 'false'}
+    ] + ([
+      {'key': 'HERMES_INFERENCE_ORIGIN', 'value': business_hermes_chat_dgx_base_url | default('http://100.118.82.72:38081')},
+      {'key': 'HERMES_INFERENCE_TOKEN', 'value': business_hermes_chat_dgx_token},
+      {'key': 'HERMES_INFERENCE_EGRESS', 'value': 'http://business-hermes-chat-egress:3128'},
+      {'key': 'HERMES_SEARCH_ARTIFACT_ROOT', 'value': '/app/storage/hermes-search/' ~ release_pi5_trial_maintenance_manifest.files['qmd-index.sqlite']},
+      {'key': 'HERMES_TRIAL_SNAPSHOT_PATH', 'value': '/app/storage/hermes-search/' ~ release_pi5_trial_maintenance_manifest.files['qmd-index.sqlite'] ~ '/snapshot.json'},
+      {'key': 'HERMES_ORGANIZED_MANIFEST', 'value': '/app/storage/hermes-search/' ~ release_pi5_trial_maintenance_manifest.files['qmd-index.sqlite'] ~ '/reviewed.json'}
+    ] if release_pi5_trial_maintenance == 'on' else []) }}
+  no_log: true
+
+- name: Bind the active API recreation to the dedicated trial environment
+  ansible.builtin.set_fact:
+    release_pi5_trial_maintenance_original_compose_environment: "{{ release_pi5_compose_environment }}"
+    release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'PI5_ENV_FILE': release_pi5_trial_maintenance_env_file}) }}"
+
+- name: Recreate only the same active API service with the requested trial setting
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'api-' + release_pi5_active_slot] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  register: release_pi5_trial_maintenance_api
+  changed_when: true
+
+- name: Resolve the recreated same active API container
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['ps', '-q', 'api-' + release_pi5_active_slot] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  register: release_pi5_trial_maintenance_api_id
+  changed_when: false
+
+- name: Require the recreated active API identity
+  ansible.builtin.assert:
+    that:
+      - release_pi5_trial_maintenance_api_id.stdout | trim is match('^[0-9a-f]{12,64}$')
+
+- name: Bind existing health checks to the recreated active API
+  ansible.builtin.set_fact:
+    release_pi5_active_api_id: "{{ release_pi5_trial_maintenance_api_id.stdout | trim }}"
+    release_pi5_api_id: "{{ release_pi5_trial_maintenance_api_id.stdout | trim }}"
+
+- name: Confirm the same active API remains healthy after trial maintenance
+  ansible.builtin.include_tasks: health.yml
+
+- name: Mark trial maintenance as successfully applied
+  ansible.builtin.set_fact:
+    release_pi5_trial_maintenance_applied: true

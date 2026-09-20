@@ -1,0 +1,146 @@
+---
+- name: Require a settled same-release active API for trial maintenance
+  ansible.builtin.assert:
+    that:
+      - release_pi5_trial_maintenance | default('') in ['on', 'off']
+      - release_pi5_route == 'settled'
+      - release_pi5_same_release | bool
+      - release_pi5_active_slot in ['blue', 'green']
+      - release_pi5_active_api_id is match('^[0-9a-f]{12,64}$')
+    fail_msg: Hermes search trial maintenance requires the settled same-release active Pi5 API.
+
+- name: Inspect the current Compose environment used by the active API
+  ansible.builtin.stat:
+    path: "{{ release_pi5_compose_env_source }}"
+    follow: false
+  register: release_pi5_trial_maintenance_source
+  changed_when: false
+
+- name: Require the current Compose environment to be a private regular file
+  ansible.builtin.assert:
+    that:
+      - release_pi5_trial_maintenance_source.stat.isreg | default(false) | bool
+      - not (release_pi5_trial_maintenance_source.stat.islnk | default(false) | bool)
+      - release_pi5_trial_maintenance_source.stat.pw_name == 'root'
+      - release_pi5_trial_maintenance_source.stat.gr_name == 'root'
+      - release_pi5_trial_maintenance_source.stat.mode == '0600'
+    fail_msg: The active API Compose environment is not a root-owned private regular file.
+
+- name: Locate the single existing sealed Hermes search artifact on the Pi5 SSD
+  ansible.builtin.shell: |
+    set -euo pipefail
+    root={{ (release_pi5_project_dir ~ '/storage/hermes-search') | quote }}
+    test -d "$root"
+    candidates=()
+    while IFS= read -r -d '' manifest; do
+      directory="${manifest%/artifact.json}"
+      for name in qmd-index.sqlite snapshot.json reviewed.json; do
+        test -f "$directory/$name" || continue 2
+        test ! -L "$directory/$name" || continue 2
+      done
+      candidates+=("$directory")
+    done < <(find "$root" -mindepth 2 -maxdepth 2 -type f -name artifact.json -print0)
+    test "${#candidates[@]}" -eq 1
+    printf '%s\n' "${candidates[0]}"
+  args:
+    executable: /bin/bash
+  register: release_pi5_trial_maintenance_artifact_dir
+  changed_when: false
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on'
+
+- name: Read the existing sealed artifact manifest without exposing records
+  ansible.builtin.slurp:
+    src: "{{ release_pi5_trial_maintenance_artifact_dir.stdout | trim }}/artifact.json"
+  register: release_pi5_trial_maintenance_manifest_raw
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on'
+
+- name: Validate the existing sealed artifact manifest
+  ansible.builtin.set_fact:
+    release_pi5_trial_maintenance_manifest: "{{ release_pi5_trial_maintenance_manifest_raw.content | b64decode | from_json }}"
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on'
+
+- name: Require the fixed Hermes device-index artifact schema
+  ansible.builtin.assert:
+    that:
+      - release_pi5_trial_maintenance_manifest.schema == 'hermes-device-index/v1'
+      - (release_pi5_trial_maintenance_manifest.files | list | sort) == ['qmd-index.sqlite', 'reviewed.json', 'snapshot.json']
+      - release_pi5_trial_maintenance_manifest.files['qmd-index.sqlite'] is match('^[0-9a-f]{64}$')
+      - release_pi5_trial_maintenance_artifact_dir.stdout | trim | basename == release_pi5_trial_maintenance_manifest.files['qmd-index.sqlite']
+      - release_pi5_trial_maintenance_manifest.files['reviewed.json'] is match('^[0-9a-f]{64}$')
+      - release_pi5_trial_maintenance_manifest.files['snapshot.json'] is match('^[0-9a-f]{64}$')
+    fail_msg: The existing Pi5 Hermes artifact is missing the fixed schema or immutable file identity.
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on'
+
+- name: Verify checksums of the existing sealed Hermes artifact
+  ansible.builtin.command:
+    argv: [sha256sum, "{{ release_pi5_trial_maintenance_artifact_dir.stdout | trim }}/{{ item }}"]
+  loop: [qmd-index.sqlite, snapshot.json, reviewed.json]
+  register: release_pi5_trial_maintenance_checksums
+  changed_when: false
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on'
+
+- name: Require the existing sealed Hermes artifact checksums
+  ansible.builtin.assert:
+    that:
+      - item.stdout.split()[0] == release_pi5_trial_maintenance_manifest.files[item.item]
+    fail_msg: The existing Pi5 Hermes artifact checksum does not match its manifest.
+  loop: "{{ release_pi5_trial_maintenance_checksums.results | default([]) }}"
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on'
+
+- name: Require the existing consultation principal before enabling the trial
+  ansible.builtin.assert:
+    that:
+      - business_hermes_chat_enabled | default(false) | bool
+      - business_hermes_chat_dgx_token is defined
+      - business_hermes_chat_dgx_token | length >= 16
+    fail_msg: The trial cannot be enabled without the existing consultation principal.
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on'
+
+- name: Verify the existing consultation egress is healthy before enabling the trial
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}' }}"
+      - "{{ release_pi5_compose_project }}-business-hermes-chat-egress-1"
+  register: release_pi5_trial_maintenance_egress
+  changed_when: false
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on'
+
+- name: Require the existing consultation egress to be healthy
+  ansible.builtin.assert:
+    that:
+      - release_pi5_trial_maintenance_egress.stdout == 'running|healthy'
+    fail_msg: The existing consultation egress is not healthy; trial enablement stopped before editing the environment.
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on'
+
+- name: Verify the active API can resolve the existing consultation egress
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ release_pi5_active_api_id }}"
+      - node
+      - -e
+      - "require('dns').lookup('business-hermes-chat-egress', (error) => process.exit(error ? 1 : 0))"
+  register: release_pi5_trial_maintenance_dns
+  changed_when: false
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on'
+
+- name: Require the existing consultation egress DNS path
+  ansible.builtin.assert:
+    that: [release_pi5_trial_maintenance_dns.rc == 0]
+    fail_msg: The active API cannot resolve the existing consultation egress; trial enablement stopped before editing the environment.
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on'

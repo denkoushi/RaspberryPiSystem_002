@@ -1747,7 +1747,7 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         main = yaml.safe_load(self.task_text("main"))[0]
         self.assertEqual(
             [task["ansible.builtin.import_tasks"] for task in main["block"]],
-            ["prepare.yml", "switch.yml", "business-hermes-chat-start.yml", "business-hermes-egress-health.yml", "health.yml", "commit.yml"],
+            ["prepare.yml", "hermes-search-trial-maintenance-run.yml", "switch.yml", "business-hermes-chat-start.yml", "business-hermes-egress-health.yml", "health.yml", "commit.yml"],
         )
         self.assertEqual(
             [task["ansible.builtin.import_tasks"] for task in main["rescue"] if "ansible.builtin.import_tasks" in task],
@@ -1763,6 +1763,30 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
             [task["ansible.builtin.import_tasks"] for task in main["always"]],
             ["cleanup.yml"],
         )
+
+    def test_hermes_trial_maintenance_is_scoped_and_has_same_api_recovery(self) -> None:
+        tasks_root = ANSIBLE / "roles/release_pi5/tasks"
+        preflight = (tasks_root / "hermes-search-trial-maintenance.yml").read_text(encoding="utf-8")
+        mutation = yaml.safe_load(
+            (tasks_root / "hermes-search-trial-maintenance-mutate.yml").read_text(encoding="utf-8")
+        )
+        run = (tasks_root / "hermes-search-trial-maintenance-run.yml").read_text(encoding="utf-8")
+
+        self.assertIn("release_pi5_route == 'settled'", preflight)
+        self.assertIn("release_pi5_trial_maintenance == 'on'", preflight)
+        self.assertIn("release_pi5_trial_maintenance_manifest.files", preflight)
+        self.assertIn("HERMES_SEARCH_TRIAL_JEV_ENABLED", str(mutation))
+        self.assertIn("'value': 'false'", str(mutation))
+        recreate = next(
+            task["ansible.builtin.command"]
+            for task in mutation
+            if task.get("name") == "Recreate only the same active API service with the requested trial setting"
+        )
+        self.assertIn("api-' + release_pi5_active_slot", recreate["argv"])
+        self.assertNotIn("web-", recreate["argv"])
+        self.assertIn("hermes-search-trial-maintenance.env.before", run)
+        self.assertIn("Recreate the same active API with the original environment", run)
+        self.assertIn("include_tasks: health.yml", run)
 
     def test_pi5_has_no_legacy_subsystem_or_new_framework(self) -> None:
         candidate = role_text(self.ROLE)
