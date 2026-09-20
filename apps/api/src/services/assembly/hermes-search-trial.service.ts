@@ -121,7 +121,11 @@ export class HermesSearchTrialService {
       this.child!.stdin.write(JSON.stringify({ type:'request', requestId:id, question, session })+'\n');
     });
     const workerSession = (result as HermesTrialAnswer & {session?: Omit<TrialSession, 'expiresAt'>}).session;
-    if (workerSession && result.status === 'clarification') {
+    // Keep the bounded conversation target after a successful search as well:
+    // follow-up questions such as asking for the date of the displayed record
+    // must reach the same classifier state without exposing the session to the
+    // browser.
+    if (workerSession && (result.status === 'clarification' || result.status === 'completed')) {
       this.sessions.set(activeSessionId, { ...workerSession, expiresAt: Date.now() + 10 * 60 * 1000 });
     } else {
       this.sessions.delete(activeSessionId);
