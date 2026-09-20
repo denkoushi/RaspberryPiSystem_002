@@ -5,8 +5,35 @@ import path from 'node:path';
 
 import { createTypesafeDirectEvaluate } from './hermes-jev-record-pilot.mjs';
 
-export const CLASSIFIER_SCHEMA = 'hermes-jev-record-classification/v1';
-export const CLASSIFIER_DEFINITION_VERSION = 2;
+export const CLASSIFIER_SCHEMA = 'hermes-jev-record-classification/v2';
+export const CLASSIFIER_DEFINITION_VERSION = 3;
+
+const QUERY_NONE = '__none_requested__';
+const QUERY_DECISION_POLICY = Object.freeze({
+  // Inclusion is read-only retrieval, so a plausible positive is retained as
+  // a candidate. Exclusion is stricter because an ambiguous negative must not
+  // be presented as proven absence.
+  includeAt: 0.6,
+  excludeAt: 0.75,
+  uncertainFrom: 0.35,
+});
+const QUERY_CHOICE_POLICY = Object.freeze({ uncertainBelow: 0.5 });
+const RECORD_CHOICE_POLICY = Object.freeze({ candidateAt: 0.2 });
+const RECORD_NOUL_POLICY = Object.freeze({
+  definiteYesAt: 0.5,
+  candidateAt: 0.2,
+  uncertainFrom: 0.35,
+});
+
+const DISPLAY_REQUESTS = Object.freeze([
+  ['originalText', '記録の原文または記載内容そのものを表示する要求'],
+  ['discoveredOn', '発生日・発見日・日付を表示する要求'],
+  ['process', '工程を表示する要求'],
+  ['phenomenon', '現象・不適合内容を表示する要求'],
+  ['treatment', '処置・対応・是正内容を表示する要求'],
+  ['cause', '原因を表示する要求'],
+  ['identifiers', '不適合番号・品番など識別情報を表示する要求'],
+]);
 
 const GROUPS = Object.freeze([
   {
@@ -107,55 +134,256 @@ function sourceRecord(record) {
   };
 }
 
-function groupOptions(group, mode) {
-  const prefix = mode === 'record' ? '本文' : '検索質問';
-  const options = group.options.map((option) => Array.isArray(option) ? { id: option[0], description: option[1] } : option);
-  if (group.cardinality === 'single') {
-    return {
-      type: 'choice',
-      instructions: `${prefix}に記載された${group.label}を一つ選ぶ。記載がなければ unknown を選び、記載のない原因・処置・工程を補わない。`,
-      criteria: Object.fromEntries(options.map((option) => [option.id, option.description]))
-    };
-  }
-  return null;
+function optionsFor(group) {
+  return group.options.map((option) => Array.isArray(option) ? { id: option[0], description: option[1] } : option);
 }
 
-function buildQuestions(definition, mode) {
+function choiceQuestion(instructions, options) {
+  return {
+    type: 'choice',
+    instructions,
+    criteria: Object.fromEntries(options.map((option) => [option.id, option.description])),
+  };
+}
+
+function noulQuestion(instructions, trueDescription, falseDescription) {
+  return {
+    type: 'noul',
+    instructions,
+    criteria: { true: trueDescription, false: falseDescription },
+  };
+}
+
+function buildRecordQuestions(definition) {
   const questions = {};
   for (const group of definition.groups) {
-    const options = group.options.map((option) => Array.isArray(option) ? { id: option[0], description: option[1] } : option);
-    const single = groupOptions(group, mode);
-    if (single) questions[group.id] = single;
-    else for (const { id, description } of options) {
-      questions[`${group.id}:${id}`] = {
-        type: 'choice',
-        instructions: `${mode === 'record' ? '本文' : '検索質問'}に、${group.label}として「${description}」が明記または明確に示されているか判定する。記載がない場合は absent。推測で present にしない。`,
-        criteria: { present: '本文または質問に該当する内容がある', absent: '該当する内容がない、または判断できない' }
-      };
+    const options = optionsFor(group);
+    if (group.cardinality === 'single') {
+      questions[group.id] = choiceQuestion(
+        `記録本文に記載された${group.label}を一つ選ぶ。本文にない原因・処置・工程を補わず、特定できない場合だけ unknown を選ぶ。`,
+        options,
+      );
+      continue;
+    }
+    for (const { id, description } of options) {
+      questions[`${group.id}:${id}`] = noulQuestion(
+        `記録本文に、${group.label}として「${description}」が明記または明確に示されているか判定する。単に関連しそうという理由では yes にせず、記載がない場合は no とする。`,
+        `本文に該当する${group.label}の内容が明記または明確に示されている。`,
+        `本文に該当する${group.label}の内容がない、または記載だけでは判断できない。`,
+      );
     }
   }
   return questions;
 }
 
-function choice(answer) {
-  return isObject(answer) && answer.type === 'choice' && typeof answer.choice === 'string' ? answer.choice : null;
-}
-
-function classificationFromAnswers(answers, definition) {
-  if (!isObject(answers)) throw new Error('JEV response has no answers');
-  const classification = {};
+function buildQueryQuestions(definition) {
+  const questions = {};
   for (const group of definition.groups) {
-    const options = group.options.map((option) => Array.isArray(option) ? { id: option[0], description: option[1] } : option);
+    const options = optionsFor(group);
     if (group.cardinality === 'single') {
-      const value = choice(answers[group.id]);
-      if (!options.some((option) => option.id === value)) throw new Error(`JEV returned unsupported ${group.id}`);
-      classification[group.id] = value;
+      questions[group.id] = choiceQuestion(
+        `ユーザーの検索要求が、${group.label}を単一の絞り込み条件として指定している場合はその値を一つ選ぶ。指定がない、表示するだけ、または本文からの推測にとどまる場合は ${QUERY_NONE} を選ぶ。`,
+        [{ id: QUERY_NONE, description: `${group.label}を検索条件として指定していない` }, ...options],
+      );
       continue;
     }
-    const selected = options.filter((option) => choice(answers[`${group.id}:${option.id}`]) === 'present').map((option) => option.id);
+    for (const { id, description } of options) {
+      questions[`include:${group.id}:${id}`] = noulQuestion(
+        `ユーザーの検索要求は、${group.label}として「${description}」に該当する記録を含める条件を指定しているか。表示要求や単なる話題ではなく、検索対象を絞る条件として判定する。`,
+        `該当する${group.label}の記録を検索結果に含める条件が指定されている。`,
+        `その${group.label}を含める検索条件は指定されていない。`,
+      );
+      questions[`exclude:${group.id}:${id}`] = noulQuestion(
+        `ユーザーの検索要求は、${group.label}として「${description}」に該当する記録を除外する条件を指定しているか。「除く」「以外」などの否定条件だけを判定し、通常の含める条件とは分ける。`,
+        `該当する${group.label}の記録を検索結果から除外する条件が指定されている。`,
+        `その${group.label}を除外する条件は指定されていない。`,
+      );
+    }
+  }
+  for (const [id, description] of DISPLAY_REQUESTS) {
+    questions[`display:${id}`] = noulQuestion(
+      `ユーザーは検索結果で「${description}」を表示することを求めているか。これは検索対象を絞る条件ではなく、表示要求として判定する。`,
+      `その表示内容が要求されている。`,
+      `その表示内容は要求されていない。`,
+    );
+  }
+  questions.conversation_target = choiceQuestion(
+    'このメッセージが、会話状態に示された前回の検索対象への追加質問・確認回答か、新しい検索要求かを選ぶ。前回の対象を勝手に変更しない。',
+    [
+      { id: 'same_target', description: '前回の検索結果または確認待ちの対象を引き継ぐ' },
+      { id: 'new_search', description: '前回とは別の検索を開始する' },
+      { id: 'no_prior_target', description: '前回の検索対象がない' },
+    ],
+  );
+  return questions;
+}
+
+function buildQuestions(definition, mode) {
+  return mode === 'record' ? buildRecordQuestions(definition) : buildQueryQuestions(definition);
+}
+
+function validProbability(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function normalizeChoiceJudgment(answer, options, label) {
+  if (!isObject(answer) || answer.type !== 'choice' || typeof answer.choice !== 'string') {
+    throw new Error(`JEV returned invalid Choice answer for ${label}`);
+  }
+  const allowed = new Set(options.map((option) => option.id));
+  if (!allowed.has(answer.choice)) throw new Error(`JEV returned unsupported Choice for ${label}`);
+  if (!isObject(answer.probabilities) || options.some((option) => !validProbability(answer.probabilities[option.id]))) {
+    throw new Error(`JEV returned incomplete Choice probabilities for ${label}`);
+  }
+  const probabilitySum = options.reduce((sum, option) => sum + answer.probabilities[option.id], 0);
+  if (Math.abs(probabilitySum - 1) > 0.02) throw new Error(`JEV returned invalid Choice probability distribution for ${label}`);
+  if (!validProbability(answer.confidence)) throw new Error(`JEV returned invalid Choice confidence for ${label}`);
+  return {
+    type: 'choice',
+    choice: answer.choice,
+    probabilities: Object.fromEntries(options.map((option) => [option.id, answer.probabilities[option.id]])),
+    confidence: answer.confidence,
+  };
+}
+
+function normalizeNoulJudgment(answer, label) {
+  if (!isObject(answer) || answer.type !== 'noul' || !validProbability(answer.noul)) {
+    throw new Error(`JEV returned invalid Noul answer for ${label}`);
+  }
+  return { type: 'noul', noul: answer.noul };
+}
+
+function recordNoulDecision(noul) {
+  if (noul >= RECORD_NOUL_POLICY.definiteYesAt) return 'yes';
+  if (noul >= RECORD_NOUL_POLICY.uncertainFrom) return 'uncertain';
+  if (noul >= RECORD_NOUL_POLICY.candidateAt) return 'candidate';
+  return 'no';
+}
+
+function queryNoulDecision(noul, polarity = 'include') {
+  const acceptAt = polarity === 'exclude' ? QUERY_DECISION_POLICY.excludeAt : QUERY_DECISION_POLICY.includeAt;
+  if (noul >= acceptAt) return 'yes';
+  if (noul >= QUERY_DECISION_POLICY.uncertainFrom) return 'uncertain';
+  return 'no';
+}
+
+function queryOptionMayBeMentioned(question, option) {
+  const source = `${option.description ?? ''} ${option.observedTerm ?? ''}`
+    .normalize('NFKC')
+    .replace(/[「」『』【】（）()［］[\]、。！？!?：:;,，．/]/g, ' ');
+  const terms = source.split(/\s+/u).filter((term) => Array.from(term).length >= 2 && !STOP_WORDS.has(term));
+  return terms.some((term) => question.normalize('NFKC').includes(term));
+}
+
+function displayRequestFrom(question, judgments) {
+  const requested = new Set();
+  for (const [id] of DISPLAY_REQUESTS) {
+    const judgment = judgments[`display:${id}`];
+    if (judgment?.type === 'noul' && judgment.noul >= QUERY_DECISION_POLICY.includeAt) requested.add(id);
+  }
+  const normalized = question.normalize('NFKC');
+  if (/原文|原記録|記載内容|内容そのもの/u.test(normalized)) requested.add('originalText');
+  if (/発生日|発見日|日付|いつ|年月日/u.test(normalized)) requested.add('discoveredOn');
+  if (/工程/u.test(normalized)) requested.add('process');
+  if (/現象|不適合内容|不具合|状況/u.test(normalized)) requested.add('phenomenon');
+  if (/処置|処理|手直し|是正|対応/u.test(normalized)) requested.add('treatment');
+  if (/原因/u.test(normalized)) requested.add('cause');
+  if (/不適合番号|記録番号|品番|識別/u.test(normalized)) requested.add('identifiers');
+  return { originalText: true, requested: [...requested] };
+}
+
+function queryClassificationFromAnswers(answers, definition, question) {
+  const classification = {};
+  const judgments = {};
+  const include = {};
+  const exclude = {};
+  const unresolved = [];
+  for (const group of definition.groups) {
+    const options = optionsFor(group);
+    if (group.cardinality === 'single') {
+      const judgment = normalizeChoiceJudgment(answers[group.id], [{ id: QUERY_NONE, description: '指定なし' }, ...options], group.id);
+      judgments[group.id] = judgment;
+      classification[group.id] = judgment.choice === QUERY_NONE ? 'unspecified' : judgment.choice;
+      if (judgment.choice !== QUERY_NONE) include[group.id] = judgment.choice;
+      if (judgment.choice !== QUERY_NONE && judgment.confidence < QUERY_CHOICE_POLICY.uncertainBelow && queryOptionMayBeMentioned(question, options.find((option) => option.id === judgment.choice) ?? {})) {
+        unresolved.push({ kind: 'include', groupId: group.id, optionId: judgment.choice, reason: 'Choice confidence is low' });
+      }
+      continue;
+    }
+    const selected = [];
+    const excluded = [];
+    for (const option of options) {
+      const includeKey = `include:${group.id}:${option.id}`;
+      const excludeKey = `exclude:${group.id}:${option.id}`;
+      const includeJudgment = normalizeNoulJudgment(answers[includeKey], includeKey);
+      const excludeJudgment = normalizeNoulJudgment(answers[excludeKey], excludeKey);
+      judgments[includeKey] = includeJudgment;
+      judgments[excludeKey] = excludeJudgment;
+      const includeDecision = queryNoulDecision(includeJudgment.noul, 'include');
+      const excludeDecision = queryNoulDecision(excludeJudgment.noul, 'exclude');
+      if (includeDecision === 'yes') selected.push(option.id);
+      if (excludeDecision === 'yes') excluded.push(option.id);
+      if (includeDecision === 'uncertain' && queryOptionMayBeMentioned(question, option)) {
+        unresolved.push({ kind: 'include', groupId: group.id, optionId: option.id, reason: 'Noul include probability is ambiguous' });
+      }
+      if (excludeDecision === 'uncertain' && queryOptionMayBeMentioned(question, option)) {
+        unresolved.push({ kind: 'exclude', groupId: group.id, optionId: option.id, reason: 'Noul exclude probability is ambiguous' });
+      }
+    }
+    classification[group.id] = selected;
+    if (selected.length) include[group.id] = selected;
+    if (excluded.length) exclude[group.id] = excluded;
+  }
+  const conversationTarget = normalizeChoiceJudgment(answers.conversation_target, [
+    { id: 'same_target', description: '前回対象' },
+    { id: 'new_search', description: '新規検索' },
+    { id: 'no_prior_target', description: '前回対象なし' },
+  ], 'conversation_target');
+  judgments.conversation_target = conversationTarget;
+  const display = displayRequestFrom(question, answers);
+  for (const [id] of DISPLAY_REQUESTS) {
+    const judgment = judgments[`display:${id}`];
+    if (judgment?.type === 'noul' && judgment.noul >= QUERY_DECISION_POLICY.uncertainFrom && judgment.noul < QUERY_DECISION_POLICY.includeAt) {
+      // Display ambiguity does not change the record set. Keep it for the
+      // caller, but do not turn it into an unresolved search condition.
+      display.uncertain = [...(display.uncertain ?? []), id];
+    }
+  }
+  return {
+    classification,
+    judgments,
+    query: { include, exclude, display, unresolved, conversationTarget: conversationTarget.choice },
+  };
+}
+
+function recordClassificationFromAnswers(answers, definition) {
+  if (!isObject(answers)) throw new Error('JEV response has no answers');
+  const classification = {};
+  const judgments = {};
+  for (const group of definition.groups) {
+    const options = optionsFor(group);
+    if (group.cardinality === 'single') {
+      const judgment = normalizeChoiceJudgment(answers[group.id], options, group.id);
+      judgments[group.id] = judgment;
+      classification[group.id] = judgment.choice;
+      continue;
+    }
+    const selected = [];
+    for (const option of options) {
+      const key = `${group.id}:${option.id}`;
+      const judgment = normalizeNoulJudgment(answers[key], key);
+      judgments[key] = { ...judgment, decision: recordNoulDecision(judgment.noul) };
+      if (judgments[key].decision === 'yes') selected.push(option.id);
+    }
     classification[group.id] = selected;
   }
-  return classification;
+  return { classification, judgments };
+}
+
+function classificationFromAnswers(answers, definition, mode, question) {
+  return mode === 'record'
+    ? recordClassificationFromAnswers(answers, definition)
+    : queryClassificationFromAnswers(answers, definition, question);
 }
 
 function observedFields(records) {
@@ -212,8 +440,24 @@ export function buildClassificationDefinition(records, previousDefinition = null
     schema: 'hermes-classification-definition/v1',
     version: CLASSIFIER_DEFINITION_VERSION,
     groups: [
-      ...GROUPS.map((group) => ({ id: group.id, label: group.label, cardinality: group.cardinality, options: group.options.map(([id, description]) => ({ id, description })) })),
-      { id: 'observed_topic', label: '実データに現れる検索テーマ', cardinality: 'multiple', options: observedTopics }
+      ...GROUPS.map((group) => ({
+        id: group.id,
+        label: group.label,
+        cardinality: group.cardinality,
+        questionType: group.cardinality === 'single' ? 'choice' : 'noul',
+        recordPolicy: group.cardinality === 'multiple' ? RECORD_NOUL_POLICY : null,
+        queryPolicy: group.cardinality === 'multiple' ? QUERY_DECISION_POLICY : null,
+        options: group.options.map(([id, description]) => ({ id, description })),
+      })),
+      {
+        id: 'observed_topic',
+        label: '実データに現れる検索テーマ',
+        cardinality: 'multiple',
+        questionType: 'noul',
+        recordPolicy: RECORD_NOUL_POLICY,
+        queryPolicy: QUERY_DECISION_POLICY,
+        options: observedTopics,
+      }
     ],
     exactFields: ['nonconformityNo', 'partNumber', 'partName', 'machineName', 'originDepartmentCode', 'originDepartmentName', 'discoveredOn'],
     observedFields: observedFields(normalized),
@@ -275,7 +519,7 @@ async function writeStore(storePath, value) {
 }
 
 function reusableClassification(value, savedDefinition, definition) {
-  if (!isObject(value) || !isObject(savedDefinition) || savedDefinition.version !== definition.version) return null;
+  if (!isObject(value) || !isObject(value.classification) || !isObject(value.judgments) || !isObject(savedDefinition) || savedDefinition.version !== definition.version) return null;
   const savedGroups = new Map(Array.isArray(savedDefinition.groups) ? savedDefinition.groups.map((group) => [group.id, group]) : []);
   for (const group of definition.groups) {
     const savedGroup = savedGroups.get(group.id);
@@ -291,18 +535,29 @@ function reusableClassification(value, savedDefinition, definition) {
     }
   }
   const normalized = {};
+  const judgments = {};
   for (const group of definition.groups) {
-    const candidate = value[group.id];
+    const candidate = value.classification[group.id];
     const allowed = new Set(group.options.map((option) => option.id));
     if (group.cardinality === 'single') {
       if (!allowed.has(candidate)) return null;
       normalized[group.id] = candidate;
+      const judgment = value.judgments[group.id];
+      try { judgments[group.id] = normalizeChoiceJudgment(judgment, optionsFor(group), group.id); } catch { return null; }
     } else {
       if (!Array.isArray(candidate) || candidate.some((item) => !allowed.has(item))) return null;
       normalized[group.id] = candidate;
+      for (const option of optionsFor(group)) {
+        const key = `${group.id}:${option.id}`;
+        const judgment = value.judgments[key];
+        try {
+          const normalizedJudgment = normalizeNoulJudgment(judgment, key);
+          judgments[key] = { ...normalizedJudgment, decision: recordNoulDecision(normalizedJudgment.noul) };
+        } catch { return null; }
+      }
     }
   }
-  return normalized;
+  return { classification: normalized, judgments };
 }
 
 function questionTerms(question) {
@@ -353,19 +608,13 @@ function hasRecentRequest(question) {
   return /最近|最新|直近/.test(question);
 }
 
-export function resolvedConditionCount(question, classification, conditions, exclude = {}) {
-  const semantic = Object.entries(classification).filter(([, value]) => Array.isArray(value) ? value.length > 0 : value && value !== 'unknown');
-  return semantic.length + Object.keys(conditions).length + Object.keys(exclude).length + (questionTerms(question).length > 0 && !displayOnlyRequest(question, conditions) ? 1 : 0);
-}
-
-function matchesClassification(saved, query) {
-  for (const group of query.groups) {
-    const value = query.classification[group.id];
-    if (group.cardinality === 'single') {
-      if (value !== 'unknown' && saved[group.id] !== value) return false;
-    } else if (Array.isArray(value) && value.length && !value.every((item) => saved[group.id]?.includes(item))) return false;
-  }
-  return true;
+export function resolvedConditionCount(question, interpretation, conditions, exclude = {}) {
+  const include = isObject(interpretation?.include) ? interpretation.include : interpretation;
+  const semanticInclude = Object.entries(include ?? {}).filter(([, value]) => Array.isArray(value) ? value.length > 0 : value && value !== 'unknown' && value !== 'unspecified');
+  const semanticExclude = isObject(interpretation?.exclude)
+    ? Object.entries(interpretation.exclude).filter(([, value]) => Array.isArray(value) ? value.length > 0 : Boolean(value))
+    : [];
+  return semanticInclude.length + semanticExclude.length + Object.keys(conditions).length + Object.keys(exclude).length;
 }
 
 function matchesConditions(record, conditions) {
@@ -376,27 +625,89 @@ function matchesConditions(record, conditions) {
   });
 }
 
-function lexicalMatch(record, terms) {
-  if (terms.length === 0) return true;
-  const haystack = Object.values(record).filter((value) => typeof value === 'string').join('\n').normalize('NFKC');
-  return terms.some((term) => haystack.includes(term));
-}
-
 function limitFromQuestion(question) {
   const match = question.normalize('NFKC').match(/([1-9][0-9]*)\s*件/u);
   return Math.min(20, match ? Number(match[1]) : 20);
 }
 
+function entryFor(value) {
+  return isObject(value) && isObject(value.classification)
+    ? value
+    : { classification: isObject(value) ? value : {}, judgments: {} };
+}
+
+function recordConditionState(entry, group, optionId) {
+  const safeEntry = entryFor(entry);
+  if (group.cardinality === 'single') {
+    if (safeEntry.classification[group.id] === optionId) return 'yes';
+    const probability = safeEntry.judgments?.[group.id]?.probabilities?.[optionId];
+    return validProbability(probability) && probability >= RECORD_CHOICE_POLICY.candidateAt ? 'uncertain' : 'no';
+  }
+  const key = `${group.id}:${optionId}`;
+  const judgment = safeEntry.judgments?.[key];
+  if (!judgment || judgment.type !== 'noul' || !validProbability(judgment.noul)) return 'no';
+  return recordNoulDecision(judgment.noul);
+}
+
+function semanticSearchMatch(entry, query) {
+  const uncertain = [];
+  const excludedUncertain = [];
+  const groupsById = new Map((query.groups ?? []).map((group) => [group.id, group]));
+  const include = query.semanticInclude ?? query.include ?? {};
+  const exclude = query.semanticExclude ?? {};
+  for (const [groupId, requested] of Object.entries(include)) {
+    const group = groupsById.get(groupId);
+    if (!group) continue;
+    const values = Array.isArray(requested) ? requested : [requested];
+    for (const optionId of values) {
+      const state = recordConditionState(entry, group, optionId);
+      if (state === 'no') return { ok: false, uncertain, excludedUncertain };
+      if (state !== 'yes') uncertain.push({ groupId, optionId });
+    }
+  }
+  for (const [groupId, requested] of Object.entries(exclude)) {
+    const group = groupsById.get(groupId);
+    if (!group) continue;
+    const values = Array.isArray(requested) ? requested : [requested];
+    for (const optionId of values) {
+      const state = recordConditionState(entry, group, optionId);
+      if (state === 'yes') return { ok: false, uncertain, excludedUncertain };
+      if (state !== 'no') {
+        // A negative condition is not proven by an ambiguous judgment. Do not
+        // return the row as if the exclusion had been satisfied.
+        excludedUncertain.push({ groupId, optionId });
+        return { ok: false, uncertain, excludedUncertain };
+      }
+    }
+  }
+  return { ok: true, uncertain, excludedUncertain };
+}
+
 export function searchStored(store, query) {
-  const matches = store.records.filter((record) => store.classificationsById.has(record.id)
-    && matchesClassification(store.classificationsById.get(record.id) ?? {}, query)
-    && matchesConditions(record, query.conditions)
-    && (Object.keys(query.exclude).length === 0 || !matchesConditions(record, query.exclude))
-    && lexicalMatch(record, query.lexicalTerms));
+  const matches = [];
+  const uncertainRecordIds = [];
+  const excludedUncertainRecordIds = [];
+  for (const record of store.records) {
+    const entry = store.classificationsById.get(record.id);
+    const exactExclude = query.exactExclude ?? query.exclude ?? {};
+    if (!entry || !matchesConditions(record, query.conditions ?? {})) continue;
+    if (Object.keys(exactExclude).length && matchesConditions(record, exactExclude)) continue;
+    const semantic = semanticSearchMatch(entry, query);
+    if (!semantic.ok) {
+      if (semantic.excludedUncertain.length) excludedUncertainRecordIds.push(record.id);
+      continue;
+    }
+    matches.push(record);
+    if (semantic.uncertain.length) uncertainRecordIds.push(record.id);
+  }
   const ordered = hasRecentRequest(query.question)
     ? [...matches].sort((left, right) => String(right.discoveredOn ?? '').localeCompare(String(left.discoveredOn ?? '')))
     : matches;
-  return ordered.slice(0, query.limit);
+  return {
+    records: ordered.slice(0, query.limit),
+    uncertainRecordIds: uncertainRecordIds.filter((id) => ordered.slice(0, query.limit).some((record) => record.id === id)),
+    excludedUncertainRecordIds,
+  };
 }
 
 function queryConversationState(question, conversation = {}) {
@@ -411,6 +722,30 @@ function queryConversationState(question, conversation = {}) {
     request: question,
     relatedHistory: [...previousRequest, ...dialogue],
     confirmationPending: safeConversation.confirmationPending ?? safeConversation.pending ?? null,
+    conversationTarget: safeConversation.conversationTarget ?? null,
+  };
+}
+
+function isContinuationRequest(question, conversation = {}) {
+  const safeConversation = isObject(conversation) ? conversation : {};
+  const previous = typeof safeConversation.searchRequest === 'string' && safeConversation.searchRequest.trim();
+  if (!previous) return false;
+  if (safeConversation.confirmationPending ?? safeConversation.pending) return true;
+  if (displayOnlyRequest(question, {})) return true;
+  return /^(その|この|前の|該当|同じ|先ほど|さきほど|続き|上記|対象)/u.test(question.trim())
+    || /(?:は|の|について)？(?:発生日|発見日|日付|原因|処置|対応|工程|現象|内容|番号|品番)[？?]?$/u.test(question.trim());
+}
+
+function effectiveConversationRequest(question, conversation = {}) {
+  const safeConversation = isObject(conversation) ? conversation : {};
+  const previous = typeof safeConversation.searchRequest === 'string' ? safeConversation.searchRequest.trim() : '';
+  if (!previous || !isContinuationRequest(question, safeConversation)) {
+    return { question, target: 'new_search', baseRequest: question };
+  }
+  return {
+    question: `${previous}\n追加の要求: ${question}`,
+    target: 'previous_search',
+    baseRequest: previous,
   };
 }
 
@@ -421,7 +756,8 @@ async function classifyText(question, definition, evaluate, mode, conversation =
     questions: buildQuestions(definition, mode),
     maxRetries: 0
   });
-  return { classification: classificationFromAnswers(result?.answers, definition), response: result?.response ?? null, usage: result?.usage ?? null };
+  const evaluated = classificationFromAnswers(result?.answers, definition, mode, question);
+  return { ...evaluated, response: result?.response ?? null, usage: result?.usage ?? null };
 }
 
 export class AuthorizedRecordClassifier {
@@ -441,8 +777,8 @@ export class AuthorizedRecordClassifier {
   async persistStore() {
     const classifications = this.store.records
       .map((record) => {
-        const classification = this.store.classificationsById.get(record.id);
-        return classification ? { id: record.id, classification } : null;
+        const evaluated = this.store.classificationsById.get(record.id);
+        return evaluated ? { id: record.id, ...evaluated } : null;
       })
       .filter(Boolean);
     this.store.classifications = classifications;
@@ -464,7 +800,7 @@ export class AuthorizedRecordClassifier {
       try {
         const evaluated = await classifyText(record.rawText, this.definition, this.evaluateImplementation, 'record');
         this.calls.push({ phase: 'record', recordIdSha256: sha256(record.id), requestSha256: sha256(record.rawText), questionCount: Object.keys(buildQuestions(this.definition, 'record')).length, elapsedMs: Number((performance.now() - started).toFixed(3)) });
-        this.store.classificationsById.set(record.id, evaluated.classification);
+        this.store.classificationsById.set(record.id, { classification: evaluated.classification, judgments: evaluated.judgments });
         this.pendingRecordIds.delete(record.id);
         this.runtime.classifiedRecordCount += 1;
         this.runtime.pendingRecordCount = this.pendingRecordIds.size;
@@ -494,7 +830,7 @@ export class AuthorizedRecordClassifier {
     let reusedRecordCount = 0;
     for (const record of records) {
       const previous = savedRecords.get(record.id);
-      const previousClassification = savedClassifications.get(record.id)?.classification;
+      const previousClassification = savedClassifications.get(record.id);
       const reusable = reusableClassification(previousClassification, saved?.definition, this.definition);
       if (previous?.sourceContentSha256 === record.sourceContentSha256 && reusable) {
         classificationsById.set(record.id, reusable);
@@ -546,11 +882,12 @@ export class AuthorizedRecordClassifier {
     return `分類処理中のため、現在は分類済み ${coverage.classified}/${coverage.total} 件だけが検索対象です。未分類の記録は結果に含まれていません。`;
   }
 
-  sessionFor(question, conversation, pending) {
+  sessionFor(question, conversation, pending, searchRequest = question, conversationTarget = 'new_search') {
     const safeConversation = isObject(conversation) ? conversation : {};
     return {
       pending: pending ?? null,
-      searchRequest: typeof safeConversation.searchRequest === 'string' ? safeConversation.searchRequest : question,
+      searchRequest,
+      conversationTarget,
       jevDialogue: Array.isArray(safeConversation.relatedHistory)
         ? safeConversation.relatedHistory.filter((item) => isObject(item) && item.role === 'assistant' && typeof item.content === 'string').slice(-8)
         : [],
@@ -560,45 +897,105 @@ export class AuthorizedRecordClassifier {
   async answer(question, conversation = {}) {
     if (!this.store || !this.definition) throw new Error('record classifier is not ready');
     const started = performance.now();
-    const pending = isObject(conversation) ? (conversation.confirmationPending ?? conversation.pending ?? null) : null;
-    const evaluated = await classifyText(question, this.definition, async (input) => {
+    const safeConversation = isObject(conversation) ? conversation : {};
+    const pending = safeConversation.confirmationPending ?? safeConversation.pending ?? null;
+    const requestContext = effectiveConversationRequest(question, safeConversation);
+    const evaluated = await classifyText(requestContext.question, this.definition, async (input) => {
       const callStarted = performance.now();
       const result = await this.evaluateImplementation(input);
-      this.calls.push({ phase: 'query', requestSha256: sha256(question), questionCount: Object.keys(input.questions).length, elapsedMs: Number((performance.now() - callStarted).toFixed(3)) });
+      this.calls.push({ phase: 'query', requestSha256: sha256(requestContext.question), questionCount: Object.keys(input.questions).length, elapsedMs: Number((performance.now() - callStarted).toFixed(3)) });
       return result;
-    }, 'query', conversation);
+    }, 'query', { ...safeConversation, conversationTarget: requestContext.target });
     const coverage = this.coverage();
     const coverageNotice = this.coverageNotice(coverage);
-    const structured = extractStructuredConditions(question, this.store.records);
+    const structured = extractStructuredConditions(requestContext.question, this.store.records);
+    const semanticInclude = evaluated.query?.include ?? {};
+    const semanticExclude = evaluated.query?.exclude ?? {};
+    const display = evaluated.query?.display ?? displayRequestFrom(question, evaluated.judgments ?? {});
     const query = {
-      question,
+      question: requestContext.question,
       classification: evaluated.classification,
       groups: this.definition.groups,
       conditions: structured.include,
-      exclude: structured.exclude,
-      lexicalTerms: questionTerms(question).filter((term) => ![...Object.values(structured.include), ...Object.values(structured.exclude)]
-        .some((value) => String(value).includes(term))),
-      limit: limitFromQuestion(question)
+      exactExclude: structured.exclude,
+      semanticInclude,
+      semanticExclude,
+      limit: limitFromQuestion(requestContext.question),
     };
-    if (resolvedConditionCount(question, evaluated.classification, structured.include, structured.exclude) === 0 || displayOnlyRequest(question, structured.include)) {
+    const unresolved = evaluated.query?.unresolved ?? [];
+    const displayOnly = requestContext.target === 'new_search' && displayOnlyRequest(question, structured.include);
+    const conditionCount = resolvedConditionCount(requestContext.question, { include: semanticInclude, exclude: semanticExclude }, structured.include, structured.exclude);
+    const unresolvedLabels = unresolved.map((item) => {
+      const group = this.definition.groups.find((candidate) => candidate.id === item.groupId);
+      const option = group?.options?.find((candidate) => candidate.id === item.optionId);
+      return `${group?.label ?? item.groupId}: ${option?.description ?? item.optionId}`;
+    });
+    if (unresolved.length || conditionCount === 0 || displayOnly) {
+      const nextPending = unresolved.length
+        ? {
+          request: requestContext.baseRequest,
+          question: `次の検索条件の意味を確認してください: ${unresolvedLabels.join('、')}`,
+          purpose: 'resolve_search_condition',
+          requiredItems: unresolved.map((item) => ({
+            id: `${item.kind}:${item.groupId}:${item.optionId}`,
+            label: this.definition.groups.find((group) => group.id === item.groupId)?.label ?? item.groupId,
+            type: item.kind,
+            candidates: [item.optionId],
+          })),
+          confirmedInfo: structured.include,
+          unresolvedItems: unresolved.map((item) => `${item.kind}:${item.groupId}:${item.optionId}`),
+        }
+        : pending;
+      const clarification = unresolved.length
+        ? `検索条件の解釈を確定できませんでした。${unresolvedLabels.join('、')}について、含める条件か除外条件かを指定してください。`
+        : displayOnly
+          ? '発生日を確認する対象の不適合番号、品番、工程、現象、部署などを指定してください。'
+          : '検索条件を特定できませんでした。工程、現象、処置、原因、品番、不適合番号、部署などを指定してください。';
       return {
         status: 'clarification',
-        answer: [coverageNotice, displayOnlyRequest(question, structured.include) ? '発生日を確認する対象の不適合番号、品番、工程、現象、部署などを指定してください。' : '検索条件を特定できませんでした。工程、現象、処置、原因、品番、不適合番号、部署などを指定してください。'].filter(Boolean).join('\n\n'),
+        answer: [coverageNotice, clarification].filter(Boolean).join('\n\n'),
         recordIds: [],
-        confirmationPending: pending,
-        classifier: { classification: evaluated.classification, conditions: structured.include, exclude: structured.exclude, display: { originalText: true }, reason: 'conditions_not_resolved', coverage },
-        session: this.sessionFor(question, conversation, pending),
+        confirmationPending: nextPending,
+        classifier: {
+          classification: evaluated.classification,
+          conditions: structured.include,
+          exclude: structured.exclude,
+          search: { include: semanticInclude, exclude: semanticExclude, unresolved, target: requestContext.target },
+          display,
+          reason: unresolved.length ? 'conditions_ambiguous' : 'conditions_not_resolved',
+          coverage,
+        },
+        session: this.sessionFor(question, safeConversation, nextPending, requestContext.baseRequest, requestContext.target),
         elapsedMs: Number((performance.now() - started).toFixed(3))
       };
     }
-    const records = searchStored(this.store, query);
+    const search = searchStored(this.store, query);
+    const records = search.records;
+    const uncertaintyNotice = search.uncertainRecordIds.length
+      ? `分類が不確かな候補 ${search.uncertainRecordIds.length} 件を含みます。原文を確認して判断してください。`
+      : '';
+    const excludedUncertainNotice = search.excludedUncertainRecordIds.length
+      ? `除外条件の分類を確定できない ${search.excludedUncertainRecordIds.length} 件は、条件を満たすと断定せず結果から除外しました。`
+      : '';
     const answer = records.map((record) => record.rawText).join('\n\n');
     return {
       status: 'completed',
-      answer: [coverageNotice, answer || '指定条件に一致する記録はありませんでした。未分類の記録については判断していません。'].filter(Boolean).join('\n\n'),
+      answer: [coverageNotice, uncertaintyNotice, excludedUncertainNotice, answer || '指定条件に一致する記録はありませんでした。未分類の記録については判断していません。'].filter(Boolean).join('\n\n'),
       recordIds: records.map((record) => `nonconformity:${record.id}`),
       confirmationPending: pending,
-      classifier: { classification: evaluated.classification, conditions: structured.include, exclude: structured.exclude, display: { originalText: true }, matchedCount: records.length, limit: query.limit, coverage },
+      classifier: {
+        classification: evaluated.classification,
+        conditions: structured.include,
+        exclude: structured.exclude,
+        search: { include: semanticInclude, exclude: semanticExclude, unresolved, target: requestContext.target },
+        display,
+        matchedCount: records.length,
+        uncertainRecordIds: search.uncertainRecordIds,
+        excludedUncertainRecordIds: search.excludedUncertainRecordIds,
+        limit: query.limit,
+        coverage,
+      },
+      session: this.sessionFor(question, safeConversation, null, requestContext.target === 'previous_search' ? requestContext.baseRequest : question, requestContext.target),
       elapsedMs: Number((performance.now() - started).toFixed(3))
     };
   }
