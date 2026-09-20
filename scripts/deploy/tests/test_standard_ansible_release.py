@@ -99,6 +99,54 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(MODULE.UsageError, "raspberrypi5-only"):
                 MODULE.hermes_trial_configuration(args, (("pi4", ("pi4-a",)),), MODULE.REMOTE_ROOT, RUN_ID)
 
+    def test_hermes_trial_maintenance_is_exact_pi5_and_jev_is_not_forwarded(self) -> None:
+        args = argparse.Namespace(
+            hermes_search_trial_maintenance="on",
+            full_fleet=False,
+            limit="raspberrypi5",
+        )
+        with mock.patch.dict(os.environ, {}, clear=True):
+            environment = MODULE.hermes_trial_maintenance_configuration(
+                args, (("pi5", ("raspberrypi5",)),)
+            )
+        self.assertEqual(environment, {"HERMES_SEARCH_TRIAL_MAINTENANCE": "on"})
+
+        with mock.patch.dict(os.environ, {"HERMES_SEARCH_TRIAL_JEV_ENABLED": "true"}, clear=True):
+            with self.assertRaisesRegex(MODULE.UsageError, "JEV_ENABLED=false"):
+                MODULE.hermes_trial_maintenance_configuration(
+                    args, (("pi5", ("raspberrypi5",)),)
+                )
+
+        with mock.patch.dict(os.environ, {"HERMES_SEARCH_TRIAL_ARTIFACT": "/private"}, clear=True):
+            with self.assertRaisesRegex(MODULE.UsageError, "trial staging"):
+                MODULE.hermes_trial_maintenance_configuration(
+                    args, (("pi5", ("raspberrypi5",)),)
+                )
+
+        with self.assertRaisesRegex(MODULE.UsageError, "exact --limit raspberrypi5"):
+            MODULE.parse_arguments([
+                "main", MODULE.DEFAULT_INVENTORY, "--limit", "pi5", "--hermes-search-trial-maintenance=off"
+            ])
+
+    def test_hermes_trial_maintenance_systemd_boundary_forwards_only_mode(self) -> None:
+        args = argparse.Namespace(
+            branch="main", inventory=MODULE.DEFAULT_INVENTORY, limit="raspberrypi5",
+            full_fleet=False, detach=True, torque_cutover=False,
+        )
+        command = MODULE.systemd_argv(
+            args,
+            SHA,
+            RUN_ID,
+            MODULE.DEFAULT_INVENTORY,
+            ("pi5",),
+            "pi",
+            hermes_environment={"HERMES_SEARCH_TRIAL_MAINTENANCE": "off"},
+        )
+        rendered = " ".join(command)
+        self.assertIn("--setenv=HERMES_SEARCH_TRIAL_MAINTENANCE=off", rendered)
+        self.assertNotIn("HERMES_SEARCH_TRIAL_JEV_ENABLED", rendered)
+        self.assertNotIn("HERMES_SEARCH_TRIAL_ARTIFACT", rendered)
+
     def test_hermes_trial_checks_sealed_files_and_passes_only_pi5_local_path(self) -> None:
         args = argparse.Namespace(full_fleet=False, detach=False, branch="main", limit="raspberrypi5")
         with tempfile.TemporaryDirectory() as directory:

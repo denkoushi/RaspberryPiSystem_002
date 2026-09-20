@@ -151,6 +151,7 @@ def parser() -> Parser:
     value.add_argument("--print-plan", action="store_true")
     value.add_argument("--detach", action="store_true")
     value.add_argument("--torque-cutover", action="store_true")
+    value.add_argument("--hermes-search-trial-maintenance", choices=("on", "off"))
     value.add_argument("--status")
     value.add_argument("--execute-standard-route", action="store_true", help=argparse.SUPPRESS)
     value.add_argument("--sha", help=argparse.SUPPRESS)
@@ -173,10 +174,14 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         setattr(args, name, explicit or positional)
     if args.full_fleet and args.limit:
         raise UsageError("--full-fleet cannot be combined with --limit")
+    if args.hermes_search_trial_maintenance and args.limit != "raspberrypi5":
+        raise UsageError("Hermes search trial maintenance requires an exact --limit raspberrypi5")
+    if args.hermes_search_trial_maintenance and (args.full_fleet or args.torque_cutover):
+        raise UsageError("Hermes search trial maintenance cannot be combined with full-fleet or torque cutover")
     if args.print_plan and args.detach:
         raise UsageError("--print-plan cannot be combined with --detach")
     if args.status:
-        if any((args.branch, args.limit, args.full_fleet, args.print_plan, args.detach, args.torque_cutover, args.execute_standard_route)):
+        if any((args.branch, args.limit, args.full_fleet, args.print_plan, args.detach, args.torque_cutover, args.hermes_search_trial_maintenance, args.execute_standard_route)):
             raise UsageError("--status accepts only RUN_ID and optional --inventory")
         if not RUN_ID.fullmatch(args.status):
             raise UsageError("run ID must use YYYYMMDD-HHMMSS-<6 lowercase hex>")
@@ -559,6 +564,8 @@ def plan(
     )
     pi4_hosts = list(dict(selection).get("pi4", ()))
     variables = {"release_sha": sha, "release_run_id": "plan-preview", "release_pi5_api_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[0], "release_pi5_web_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[1], "release_signage_artifact_sha256": "0" * 64, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [], "release_kiosk_agent_services": list(selected_agents)}
+    if getattr(args, "hermes_search_trial_maintenance", None):
+        variables["release_pi5_trial_maintenance"] = args.hermes_search_trial_maintenance
     if torque_cutover:
         variables.update(
             {
@@ -657,6 +664,22 @@ def hermes_trial_configuration(
     return source, environment
 
 
+def hermes_trial_maintenance_configuration(
+    args: argparse.Namespace,
+    selection: tuple[tuple[str, tuple[str, ...]], ...],
+) -> dict[str, str]:
+    mode = getattr(args, "hermes_search_trial_maintenance", None)
+    if not mode:
+        return {}
+    if selection != (("pi5", ("raspberrypi5",)),):
+        raise UsageError("Hermes search trial maintenance requires an exact raspberrypi5-only release")
+    if os.environ.get("HERMES_SEARCH_TRIAL_ENABLED") or os.environ.get("HERMES_SEARCH_TRIAL_ARTIFACT"):
+        raise UsageError("Hermes search trial maintenance cannot be combined with trial staging environment")
+    if os.environ.get("HERMES_SEARCH_TRIAL_JEV_ENABLED", "false") != "false":
+        raise UsageError("Hermes search trial maintenance requires HERMES_SEARCH_TRIAL_JEV_ENABLED=false")
+    return {"HERMES_SEARCH_TRIAL_MAINTENANCE": mode}
+
+
 def stage_hermes_trial_artifact(inventory: Path, source: Path, destination: str, user: str) -> None:
     # The canonical launcher runs on Mac; the Ansible release controller runs
     # on Pi5. Stage only the four sealed files, then pass the Pi5-local path.
@@ -723,7 +746,7 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
     else:
         command.append("--wait")
     for key, value in (hermes_environment or {}).items():
-        if key not in {"HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_ARTIFACT", "HERMES_ANSWER_CACHE_ARTIFACT"}:
+        if key not in {"HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_ARTIFACT", "HERMES_SEARCH_TRIAL_MAINTENANCE", "HERMES_ANSWER_CACHE_ARTIFACT"}:
             raise UsageError("unsupported Hermes release environment")
         command.append(f"--setenv={key}={value}")
     command.extend(["--", "/bin/bash", "-lc", remote_script(args, sha, run_id, relative, profiles, remote_root)])
@@ -1026,6 +1049,11 @@ def execute_standard_route(args: argparse.Namespace) -> int:
     signage, signage_sha = signage_identity(args.sha) if "pi3" in profiles else (f"unused-signage:{args.sha}", "0" * 64)
     pi4_hosts = list(dict(reachable_selection).get("pi4", ()))
     variables = {"release_sha": args.sha, "release_run_id": args.run_id, "release_pi5_api_image": api, "release_pi5_web_image": web, "release_signage_artifact_image": signage, "release_signage_artifact_sha256": signage_sha, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [], "release_kiosk_agent_services": list(artifacts.agent_services)}
+    maintenance = os.environ.get("HERMES_SEARCH_TRIAL_MAINTENANCE", "")
+    if maintenance:
+        if maintenance not in {"on", "off"} or args.limit != "raspberrypi5" or requested_selection != (("pi5", ("raspberrypi5",)),):
+            raise RuntimeError("Hermes search trial maintenance launch is not Pi5-only")
+        variables["release_pi5_trial_maintenance"] = maintenance
     cache_enabled = selected.get('_meta', {}).get('hostvars', {}).get('raspberrypi5', {}).get('business_hermes_answer_cache_enabled', False)
     if 'pi5' in profiles and cache_enabled in (True, 'true'):
         reference = f'ghcr.io/denkoushi/raspisys-hermes-answer-cache:{args.sha}'
@@ -1074,7 +1102,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     selection = selected_profiles(selected)
     remote_root = server_release_root(complete)
     run_id = "plan-preview" if args.print_plan else new_run_id()
-    hermes_source, hermes_environment = hermes_trial_configuration(args, selection, remote_root, run_id)
+    hermes_environment = hermes_trial_maintenance_configuration(args, selection)
+    hermes_source = None
+    if not hermes_environment:
+        hermes_source, hermes_environment = hermes_trial_configuration(args, selection, remote_root, run_id)
     cache_source, cache_environment = answer_cache_configuration(args, selection, remote_root, run_id)
     hermes_environment.update(cache_environment)
     if getattr(args, "torque_cutover", False):
@@ -1092,6 +1123,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if 'HERMES_SEARCH_TRIAL_ENABLED' in hermes_environment:
             document["hermesSearchTrial"] = {"enabled": hermes_environment["HERMES_SEARCH_TRIAL_ENABLED"] == "true",
                 "staging": "four checksum-verified private files on Pi5 SSD" if hermes_source else "none"}
+        if 'HERMES_SEARCH_TRIAL_MAINTENANCE' in hermes_environment:
+            document["hermesSearchTrialMaintenance"] = {
+                "mode": hermes_environment["HERMES_SEARCH_TRIAL_MAINTENANCE"],
+                "target": "raspberrypi5",
+                "artifactTransfer": "none; reuse the existing sealed Pi5 artifact",
+                "jev": "forced-off",
+            }
         if cache_source:
             document['hermesAnswerCache'] = {'initializeOnly': True, 'staging': 'six checksum-verified private business files on Pi5 SSD'}
         print(json.dumps(document, ensure_ascii=False, indent=2))

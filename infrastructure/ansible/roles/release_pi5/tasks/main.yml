@@ -4,6 +4,10 @@
     - name: Prepare the inactive Pi5 candidate
       ansible.builtin.import_tasks: prepare.yml
 
+    - name: Apply the explicitly requested settled Hermes search trial maintenance
+      ansible.builtin.import_tasks: hermes-search-trial-maintenance-run.yml
+      when: release_pi5_trial_maintenance | default('') in ['on', 'off']
+
     - name: Switch Pi5 traffic from a fresh release
       ansible.builtin.import_tasks: switch.yml
       when: release_pi5_route == 'fresh'
