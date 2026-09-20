@@ -27,21 +27,22 @@
     fail_msg: The active API Compose environment is not a root-owned private regular file.
 
 - name: Locate the single existing sealed Hermes search artifact on the Pi5 SSD
-  ansible.builtin.shell: |
-    set -euo pipefail
-    root={{ (release_pi5_project_dir ~ '/storage/hermes-search') | quote }}
-    test -d "$root"
-    candidates=()
-    while IFS= read -r -d '' manifest; do
-      directory="${manifest%/artifact.json}"
-      for name in qmd-index.sqlite snapshot.json reviewed.json; do
-        test -f "$directory/$name" || continue 2
-        test ! -L "$directory/$name" || continue 2
-      done
-      candidates+=("$directory")
-    done < <(find "$root" -mindepth 2 -maxdepth 2 -type f -name artifact.json -print0)
-    test "${#candidates[@]}" -eq 1
-    printf '%s\n' "${candidates[0]}"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      root={{ (release_pi5_project_dir ~ '/storage/hermes-search') | quote }}
+      test -d "$root"
+      candidates=()
+      while IFS= read -r -d '' manifest; do
+        directory="${manifest%/artifact.json}"
+        for name in qmd-index.sqlite snapshot.json reviewed.json; do
+          test -f "$directory/$name" || continue 2
+          test ! -L "$directory/$name" || continue 2
+        done
+        candidates+=("$directory")
+      done < <(find "$root" -mindepth 2 -maxdepth 2 -type f -name artifact.json -print0)
+      test "${#candidates[@]}" -eq 1
+      printf '%s\n' "${candidates[0]}"
   args:
     executable: /bin/bash
   register: release_pi5_trial_maintenance_artifact_dir
