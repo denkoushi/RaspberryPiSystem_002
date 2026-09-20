@@ -16,6 +16,11 @@ function SearchTrial() {
   const [error,setError]=useState<string|null>(null);
   const [scope,setScope]=useState<{enabled:boolean;snapshotCount?:number;organizedCount?:number}>({enabled:false});
   const [elapsed,setElapsed]=useState<number|null>(null);
+  const [confirmationPending,setConfirmationPending]=useState<{
+    question:string;
+    requiredItems:Array<{candidates:unknown[]}>;
+  }|null>(null);
+  const sessionId=useRef(crypto.randomUUID());
   const completion=useRef<{started:number;messageId:string}|null>(null);
   const submitting=useRef(false);
 
@@ -41,8 +46,8 @@ function SearchTrial() {
     return ()=>{cancelAnimationFrame(first);cancelAnimationFrame(second);};
   },[messages]);
 
-  const send=async()=>{
-    const question=draft.trim();
+  const send=async(suggestedQuestion?:string)=>{
+    const question=(suggestedQuestion??draft).trim();
     if(!question || submitting.current || !scope.enabled)return;
     submitting.current=true;setBusy(true);setError(null);setElapsed(null);
     const started=performance.now();
@@ -50,10 +55,15 @@ function SearchTrial() {
     setMessages(previous=>[...previous,{id:userId,role:'user',content:question}]);
     setDraft('');
     try {
-      const {data}=await api.post<{answer:string;status:string}>('/assembly/hermes-search-trial/answer',{question},{timeout:35000});
+      const {data}=await api.post<{
+        answer:string;
+        status:string;
+        confirmationPending?:{question:string;requiredItems:Array<{candidates:unknown[]}>}|null;
+      }>('/assembly/hermes-search-trial/answer',{question,sessionId:sessionId.current},{timeout:35000});
       const id=crypto.randomUUID();
       completion.current={started,messageId:id};
       setMessages(previous=>[...previous,{id,role:'assistant',content:data.answer}]);
+      setConfirmationPending(data.confirmationPending ?? null);
     } catch(err) {
       completion.current=null;
       setError(getApiErrorMessage(err,'検索に失敗しました。該当なしとは判断していません。'));
@@ -69,7 +79,15 @@ function SearchTrial() {
     </p>
     <HermesChatPanel messages={messages} draft={draft} isBusy={busy} error={error}
       authRequired={null} onDraftChange={setDraft} onSend={()=>void send()}
-      onReset={()=>{if(!busy){setMessages([]);setError(null);setElapsed(null);}}}
+      suggestion={confirmationPending ? {
+        prompt:confirmationPending.question,
+        options:confirmationPending.requiredItems.flatMap(item=>item.candidates)
+          .filter((candidate):candidate is string=>typeof candidate==='string')
+          .map(candidate=>`${candidate}でお願いします`),
+        relatedIdentifiers:[]
+      } : null}
+      onAnswerSuggestion={(answer)=>void send(answer)}
+      onReset={()=>{if(!busy){sessionId.current=crypto.randomUUID();setMessages([]);setConfirmationPending(null);setError(null);setElapsed(null);}}}
       onClose={()=>window.history.back()} isExpanded
       style={{position:'fixed',top:64,left:16,right:16,bottom:16,width:'auto',height:'auto',maxWidth:'none',maxHeight:'none'}} />
   </>;

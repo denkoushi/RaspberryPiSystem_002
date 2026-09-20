@@ -19,6 +19,8 @@ import {quantityConstraint,fieldInputs} from './hermes-evidence-units.mjs';
 import {nonconformityDefinition,nonconformityDefinitionDigest} from './hermes-source-definition.mjs';
 import {RemoteInference} from './hermes-remote-inference.mjs';
 import {prepareDeviceArtifact} from './hermes-device-artifact.mjs';
+import {interpretWithJev} from './hermes-jev-intent.mjs';
+import {HERMES_JEV_TRIAL_CONTRACT, isSyntheticTrialRequest, syntheticConditionFromResolution, syntheticConfirmationPending} from './hermes-jev-trial-fixture.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WORKSPACE = path.resolve(process.env.HERMES_UI_TRIAL_WORKSPACE ?? ROOT);
@@ -298,6 +300,19 @@ function directNumberRequest(question, records) {
   return { probe, direct, recordsByNumber };
 }
 
+function trialSession(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { pending: null, searchRequest: null, jevDialogue: [] };
+  return {
+    pending: value.pending ?? null,
+    searchRequest: typeof value.searchRequest === 'string' ? value.searchRequest : null,
+    jevDialogue: Array.isArray(value.jevDialogue) ? value.jevDialogue : []
+  };
+}
+
+function pendingAnswer(pending) {
+  return pending?.question ?? HERMES_JEV_TRIAL_CONTRACT.confirmationQuestion;
+}
+
 class SelectorClient {
   constructor() {
     this.child = null;
@@ -387,7 +402,7 @@ class SelectorClient {
 }
 
 class TrialWorker {
-  constructor() {
+  constructor(options = {}) {
     this.qmd = null;
     this.remote = process.env.HERMES_INFERENCE_ORIGIN ? new RemoteInference({
       baseUrl:process.env.HERMES_INFERENCE_ORIGIN, token:process.env.HERMES_INFERENCE_TOKEN,
@@ -395,6 +410,8 @@ class TrialWorker {
     }) : null;
     this.selector = this.remote ?? new SelectorClient();
     this.runtime = null;
+    this.jevEnabled = options.jevEnabled ?? process.env.HERMES_SEARCH_TRIAL_JEV_ENABLED === 'true';
+    this.intentEvaluator = options.intentEvaluator ?? interpretWithJev;
   }
 
   async start() {
@@ -460,7 +477,7 @@ class TrialWorker {
     return this.runtime;
   }
 
-  async answer(question) {
+  async answer(question, conversation = {}) {
     if (!this.qmd || !this.runtime) throw new Error('trial worker is not ready');
     const started = performance.now();
     const records = this.qmd.snapshot.records;
@@ -494,7 +511,65 @@ class TrialWorker {
         elapsedMs: Math.round((performance.now() - started) * 10) / 10,
       };
     }
-    const qmd = await this.qmd.search(question, { limit: 20 });
+
+    const session = trialSession(conversation);
+    let searchQuestion = question;
+    if (this.jevEnabled) {
+      // The connection check is synthetic-only. No search result, source
+      // text, display history, or non-synthetic follow-up enters JEV.
+      if (!isSyntheticTrialRequest(question)) {
+        return {
+          status: 'unavailable', mode: 'jev_synthetic_only',
+          answer: 'JEV接続確認は架空データ専用です。JEV送信も検索も実行していません。',
+          recordIds: [], selectedSourceSpans: [], qmd: { used: false }, selector: { used: false },
+          snapshot: this.runtime.snapshot, session, elapsedMs: Math.round((performance.now() - started) * 10) / 10,
+        };
+      }
+      let intent;
+      try {
+        intent = await this.intentEvaluator({
+          request: question,
+          relatedHistory: session.jevDialogue,
+          confirmationPending: session.pending,
+        });
+      } catch (error) {
+        return {
+          status: 'unavailable', mode: 'jev_unavailable',
+          answer: 'JEV接続を確認できないため、検索は実行していません。',
+          recordIds: [], selectedSourceSpans: [], qmd: { used: false }, selector: { used: false },
+          snapshot: this.runtime.snapshot, session,
+          jev: { used: true, error: String(error?.message ?? error) },
+          elapsedMs: Math.round((performance.now() - started) * 10) / 10,
+        };
+      }
+      if (session.pending) {
+        const resolution = intent.confirmationResolution;
+        const resolvedCondition = syntheticConditionFromResolution(resolution);
+        if (!resolvedCondition) {
+          const nextPending = resolution?.nextPending ?? session.pending;
+          return {
+            status: 'clarification', mode: 'jev_confirmation_pending', answer: pendingAnswer(nextPending),
+            confirmationPending: nextPending, recordIds: [], selectedSourceSpans: [], qmd: { used: false }, selector: { used: false },
+            snapshot: this.runtime.snapshot,
+            session: { pending: nextPending, searchRequest: session.searchRequest, jevDialogue: session.jevDialogue },
+            jev: { used: true, relation: intent.relation, action: intent.action },
+            elapsedMs: Math.round((performance.now() - started) * 10) / 10,
+          };
+        }
+        searchQuestion = `${session.searchRequest ?? ''} ${resolvedCondition}`.trim();
+      } else if (intent.requiresClarification) {
+        const nextPending = syntheticConfirmationPending();
+        return {
+          status: 'clarification', mode: 'jev_confirmation_pending', answer: nextPending.question,
+          confirmationPending: nextPending, recordIds: [], selectedSourceSpans: [], qmd: { used: false }, selector: { used: false },
+          snapshot: this.runtime.snapshot,
+          session: { pending: nextPending, searchRequest: question, jevDialogue: [{ role: 'assistant', content: nextPending.question }] },
+          jev: { used: true, relation: intent.relation, action: intent.action },
+          elapsedMs: Math.round((performance.now() - started) * 10) / 10,
+        };
+      }
+    }
+    const qmd = await this.qmd.search(searchQuestion, { limit: 20 });
     if (qmd.status !== 'ok') {
       if (qmd.status === 'clarification') {
         return {
@@ -524,14 +599,14 @@ class TrialWorker {
       };
     }
     if (this.organized) {
-      const candidates = await this.organized.retrieve(question, qmd.results);
-      const selection = candidates.length ? await this.selector.select(question, candidates.map(row => ({
+      const candidates = await this.organized.retrieve(searchQuestion, qmd.results);
+      const selection = candidates.length ? await this.selector.select(searchQuestion, candidates.map(row => ({
         recordId: row.recordId, canonicalField: 'organizedContext', sourceFields: FIELD_ORDER,
         sourceText: row.rankingText,
       }))) : {rerankingScore:[]};
       if (!Array.isArray(selection.rerankingScore) || selection.rerankingScore.length!==candidates.length) throw new Error('reranking record count mismatch');
       const scores=selection.scoreKind==='raw_relevance_logit'?selection.rerankingScore:selectorRecordScores(selection.rerankingScore,candidates.length);
-      const constraints=quantityConstraint(question,candidates,this.organized.source.definition);
+      const constraints=quantityConstraint(searchQuestion,candidates,this.organized.source.definition);
       const conditionSelections=[];
       let permitted=candidates.map((_row,index)=>index);
       let conditionFailure;
@@ -539,7 +614,7 @@ class TrialWorker {
         permitted=permitted.filter(index=>constraints.eligibleIds.includes(candidates[index].recordId));
         if(constraints.unsupported)conditionFailure='この試用では数値の範囲・大小条件を確実に照合できません。対象の記録を指定してください。';
         else if(!permitted.length)conditionFailure='整理済みの原文に指定された数値・単位を対応付けられませんでした。数値や単位を確認してください。未整理の記録まで存在しないと判断したものではありません。';
-        else for(const clause of this.organized.source.nonNumericConditionQueries?.(question)??[]) {
+        else for(const clause of this.organized.source.nonNumericConditionQueries?.(searchQuestion)??[]) {
           const ranked=await this.selector.select(clause,candidates.map(row=>({recordId:row.recordId,sourceText:row.rankingText})));
           if(!Array.isArray(ranked.rerankingScore)||ranked.rerankingScore.length!==candidates.length
             ||ranked.rerankingScore.some(score=>typeof score!=='number'||!Number.isFinite(score)))throw new Error('invalid condition ranking');
@@ -551,10 +626,10 @@ class TrialWorker {
           if(!permitted.includes(best))conditionFailure='数値の条件と、現象の条件に対応する記録を同じ記録に絞れませんでした。数値と現象が同じ事例の条件か、確認してください。該当記録が存在しないと判断したものではありません。';
         }
       }
-      const decision = conditionFailure?{rows:[],reason:conditionFailure}:this.organized.select(question,
+      const decision = conditionFailure?{rows:[],reason:conditionFailure}:this.organized.select(searchQuestion,
         permitted.map(index=>candidates[index]),permitted.map(index=>scores[index]),{scoreKind:selection.scoreKind});
       const fieldSelection=[];
-      const focusedQuestion=this.organized.source.semanticFieldQuery?.(question);
+      const focusedQuestion=this.organized.source.semanticFieldQuery?.(searchQuestion);
       if(focusedQuestion&&decision.rows.length) {
         const projectedRows=[];
         for(const row of decision.rows) {
@@ -569,7 +644,7 @@ class TrialWorker {
         }
         decision.rows=projectedRows;
       }
-      const projected = projectOrganized(question, decision.rows, this.qmd.recordsById);
+      const projected = projectOrganized(searchQuestion, decision.rows, this.qmd.recordsById);
       if (decision.insufficientCount) projected.answer += `\n\n希望された${decision.requestedCount}件を揃えられていません。残りの記録が存在しないという意味ではありません。`;
       return {
         status: projected.answer ? 'completed' : 'clarification', mode: 'offline_organized_original_answer',
@@ -598,7 +673,7 @@ class TrialWorker {
     }
     let selection;
     try {
-      selection = await this.selector.select(retrievalSubject(question), sourceRecords);
+      selection = await this.selector.select(retrievalSubject(searchQuestion), sourceRecords);
     } catch (error) {
       return {
         status: 'unavailable',
@@ -620,7 +695,7 @@ class TrialWorker {
       if (span.sourceHash !== sha256(source.sourceText)) throw new Error('selector composite source hash mismatch');
       spans.push(...materializeOriginalSpans(span, contextSegments.get(span.recordId)));
     }
-    const recordSelection = chooseRelevantRecords(relevantResults, selection, question);
+    const recordSelection = chooseRelevantRecords(relevantResults, selection, searchQuestion);
     if (recordSelection.status !== 'ok') {
       return {
         status: 'unavailable',
@@ -644,7 +719,7 @@ class TrialWorker {
         elapsedMs: Math.round((performance.now() - started) * 10) / 10,
       };
     }
-    const projected = projectRequestedFields(question, recordSelection.results);
+    const projected = projectRequestedFields(searchQuestion, recordSelection.results);
     return {
       status: projected.answer ? 'completed' : 'unavailable',
       mode: projected.answer ? 'qmd_lex_vec_open_provence' : 'selector_no_selection',
@@ -689,7 +764,7 @@ async function main() {
       request = JSON.parse(line);
       if (request.type === 'cancel') continue;
       if (request.type !== 'request' || typeof request.requestId !== 'string' || typeof request.question !== 'string') throw new Error('request type, requestId, and question are required');
-      const result = await worker.answer(request.question);
+      const result = await worker.answer(request.question, request.session);
       emit({ workerRequestId: request.requestId, stage: 'completed', result, elapsedMs: result.elapsedMs });
     } catch (error) {
       emit({
