@@ -34,9 +34,9 @@ all:
           migration_database_url: "{{ vault_migration_database_url }}"
           api_jwt_access_secret: "{{ vault_api_jwt_access_secret }}"
           api_jwt_refresh_secret: "{{ vault_api_jwt_refresh_secret }}"
-          # Fixed fictional record pilot only; injected into the pilot candidate
-          # environment by the Pi5 release task, never into browser assets.
-          hermes_search_record_pilot_typesafe_api_key: "{{ vault_hermes_search_record_pilot_typesafe_api_key | default('') }}"
+          # Server-side JEV credential for incremental classification of the
+          # authorized nonconformity snapshot. It is never sent to browser assets.
+          hermes_search_typesafe_api_key: "{{ vault_hermes_search_record_pilot_typesafe_api_key | default('') }}"
           # Business Hermes runs as an independent container on this Pi5. Keep
           # both credentials in Vault; they are never shared with Private Pi5
           # Hermes or the ordinary API .env beyond the API-side bearer key.

@@ -2036,6 +2036,7 @@ APIの概要と詳細。
 - [Hermes measured Skill improvement](plans/hermes-learning-evaluation.md) — private observations, staged review and comparison.
 - [Hermes nightly document questions](plans/hermes-nightly-doc2query.md) — bounded source generation and independent adoption checks.
 - [Hermes source-fact adoption](plans/hermes-source-fact-adoption.md)
+- [Hermes source semantics pilot](plans/hermes-source-semantics-pilot.md)
 - [Hermes reviewed answer reuse](plans/hermes-answer-cache.md) — GPTCache question suggestions and source-checked answer reuse.
 - [Hermes question recipes and prefetch](plans/hermes-question-prefetch.md) — isolated speculative answers and validation plan.
 

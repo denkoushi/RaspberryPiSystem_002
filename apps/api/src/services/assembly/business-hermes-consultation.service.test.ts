@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { env } from '../../config/env.js';
 
 import { BusinessHermesConsultationService } from './business-hermes-consultation.service.js';
+import { CACHED_QUESTION_PREFIX, SOURCE_QUESTION_PREFIX } from './business-hermes-answer-cache.js';
 import { projectTrustedEvidence } from './business-hermes-evidence.js';
 import { signageToolProposal } from './business-hermes-responses.js';
 
@@ -48,7 +49,346 @@ function dbFixture(newConsultation = false, fixtureId = consultationId) {
   return { db, row, messages };
 }
 
+function ambiguousSourceGrounding(request: string, values: ReadonlyArray<string>): BusinessHermesGroundedSearch {
+  const candidates = values.map((value, index) => ({ kind: 'nonconformity' as const, field: 'originDepartmentName', value,
+    code: `D-${index + 1}`, source: 'test', matchedTerms: ['機械課'] }));
+  return {
+    resolution: { version: 1, request, terms: ['機械課'], requestedKinds: ['nonconformity'], requestedLimit: 2,
+      unresolvedConditions: [], ambiguous: true,
+      fields: [{ kind: 'nonconformity', field: 'originDepartmentName', status: 'ambiguous', candidates }] },
+    conditions: null, result: null, evidence: []
+  };
+}
+
+function resolvedSourceGrounding(request: string, kind: 'nonconformity' | 'work_instruction', conditions: Readonly<Record<string, string | number>>): BusinessHermesGroundedSearch {
+  return {
+    resolution: { version: 1, request, terms: [], requestedKinds: [kind], requestedLimit: Number(conditions.limit ?? 10),
+      unresolvedConditions: [], fields: [], ambiguous: false },
+    conditions, result: { results: [], total: 0, limit: Number(conditions.limit ?? 10) }, evidence: []
+  };
+}
+
 describe('BusinessHermesConsultationService', () => {
+  it('runs the isolated OpenJev purpose and one-load responder without double source search or prefetch', async () => {
+    const fixture = dbFixture(true);
+    const evidence = {
+      kind: 'nonconformity', id: 'nc-1', evidenceKey: 'nonconformity:nc-1', nonconformityNo: '00008196', partNumber: 'MD-1',
+      originDepartmentName: '三島工場製造部機械課', discoveredOn: '2026-09-04', sourceVersionDate: '2026-09-06', text: '加工不良'
+    };
+    const grounding = {
+      resolution: { version: 1 as const, request: '三島工場の機械課', terms: ['機械課'], requestedKinds: ['nonconformity' as const], requestedLimit: 1,
+        unresolvedConditions: [], fields: [{ kind: 'nonconformity' as const, field: 'originDepartmentName', status: 'resolved' as const,
+          candidates: [{ kind: 'nonconformity' as const, field: 'originDepartmentName', value: '三島工場製造部機械課', code: 'A', source: 'test', matchedTerms: ['機械課'] }],
+          selected: { kind: 'nonconformity' as const, field: 'originDepartmentName', value: '三島工場製造部機械課', code: 'A', source: 'test', matchedTerms: ['機械課'] } }], ambiguous: false },
+      conditions: { kind: 'nonconformity', limit: 1, originDepartmentName: '三島工場製造部機械課' },
+      result: { results: [{ kind: 'nonconformity', id: 'nc-1', originDepartmentName: '三島工場製造部機械課' }], total: 1, limit: 1,
+        sourceCounts: { nonconformity: { total: 1, returned: 1, returnedScope: 'returned_page' } } },
+      evidence: [evidence]
+    };
+    const selectIntent = vi.fn().mockImplementation(async ({ options }: { options: ReadonlyArray<string> }) => options[0]);
+    const resolveAndSearch = vi.fn().mockResolvedValue(grounding);
+    const generate = vi.fn().mockResolvedValue({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ message: '根拠を確認しました。', needsClarification: false }) }] }] });
+    const answerCache = { suggest: vi.fn().mockResolvedValue(null), candidates: vi.fn().mockResolvedValue([]), answer: vi.fn() };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, answerCache,
+      sourceResolver: { resolveAndSearch }, openJevIntentSelector: { selectIntent }, openJevResponder: { generate } });
+
+    const result = await service.chat({ consultationId, message: '三島工場の機械課の不適合を探して' });
+
+    expect(result.status).toBe('ready');
+    expect(result.message).toContain('不適合を1件確認しました');
+    expect(selectIntent).toHaveBeenCalledTimes(1);
+    expect(resolveAndSearch).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(fixture.messages.map((message) => message.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+  });
+
+  it('grounds a fresh natural Chat turn without requiring evaluator-selected choices and preserves the generated answer', async () => {
+    const fixture = dbFixture(true);
+    const openJevGrounder = vi.fn().mockResolvedValue(undefined);
+    const generate = vi.fn().mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ message: '参照対象を指定してください。', needsClarification: true }) });
+    const sourceResolver = { resolveAndSearch: vi.fn() };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, sourceResolver,
+      openJevGrounder, openJevResponder: { generate }, answerCache: { suggest: vi.fn(), answer: vi.fn() } });
+    const response = await service.chat({ consultationId, message: 'この資料の日付の意味を教えて' });
+    expect(openJevGrounder).toHaveBeenCalledWith({ request: 'この資料の日付の意味を教えて', references: [], history: [] });
+    expect(sourceResolver.resolveAndSearch).not.toHaveBeenCalled();
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(response.clarificationMessage).toBe('参照対象を指定してください。');
+    expect(response.confirmation).toBeUndefined();
+    expect(fixture.messages.map((entry) => entry.role)).toEqual(['user', 'assistant']);
+  });
+
+  it('keeps the original request and limit when a natural source candidate is selected', async () => {
+    const fixture = dbFixture(true);
+    const original = '三島工場の機械課の不適合を2件探して';
+    const officialDepartment = '三島工場製造部機械課';
+    const requests: string[] = [];
+    const openJevGrounder = vi.fn(async ({ request }: { request: string }) => {
+      requests.push(request);
+      return requests.length === 1
+        ? ambiguousSourceGrounding(request, [officialDepartment, '大阪工場製造部機械課'])
+        : resolvedSourceGrounding(request, 'nonconformity', { kind: 'nonconformity', limit: 2, originDepartmentName: officialDepartment });
+    });
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, openJevGrounder,
+      openJevResponder: { generate: vi.fn().mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ message: '確認しました。', needsClarification: false }) }) },
+      answerCache: { suggest: vi.fn(), answer: vi.fn() } });
+
+    const first = await service.chat({ consultationId, message: original });
+    const selection = { prompt: first.confirmation!.prompt, option: officialDepartment };
+    const result = await service.chat({ consultationId, message: officialDepartment, selection });
+
+    expect(result.needsClarification).toBe(false);
+    expect(requests).toEqual([original, `${original}\n${officialDepartment}`]);
+  });
+
+  it('does not prepend a pending source question to a free-text topic change', async () => {
+    const fixture = dbFixture(true);
+    const original = '三島工場の機械課の不適合を2件探して';
+    const changedTopic = '品番MD000006698の公開されている研削の作業要領の内容を教えて';
+    const requests: string[] = [];
+    const openJevGrounder = vi.fn(async ({ request }: { request: string }) => {
+      requests.push(request);
+      return requests.length === 1
+        ? ambiguousSourceGrounding(request, ['三島工場製造部機械課', '大阪工場製造部機械課'])
+        : resolvedSourceGrounding(request, 'work_instruction', { kind: 'work_instruction', limit: 10, partNumber: 'MD000006698', shootingTarget: '研削' });
+    });
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, openJevGrounder,
+      openJevResponder: { generate: vi.fn().mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ message: '要領を確認しました。', needsClarification: false }) }) },
+      answerCache: { suggest: vi.fn(), answer: vi.fn() } });
+
+    const first = await service.chat({ consultationId, message: original });
+    expect(first.needsClarification).toBe(true);
+    const result = await service.chat({ consultationId, message: changedTopic });
+
+    expect(result.needsClarification).toBe(false);
+    expect(requests).toEqual([original, changedTopic]);
+    expect(openJevGrounder.mock.calls[1]![0].history).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'user', content: original })
+    ]));
+  });
+
+  it('retains the root request through consecutive source candidate confirmations', async () => {
+    const fixture = dbFixture(true);
+    const original = '三島工場の機械課の不適合を2件探して';
+    const candidateA = '三島工場製造部機械課';
+    const candidateB = '大阪工場製造部機械課';
+    const requests: string[] = [];
+    const openJevGrounder = vi.fn(async ({ request }: { request: string }) => {
+      requests.push(request);
+      if (requests.length === 1) return ambiguousSourceGrounding(request, [candidateA, candidateB]);
+      if (requests.length === 2) return ambiguousSourceGrounding(request, [candidateB, '名古屋工場製造部機械課']);
+      return resolvedSourceGrounding(request, 'nonconformity', { kind: 'nonconformity', limit: 2, originDepartmentName: candidateB });
+    });
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, openJevGrounder,
+      openJevResponder: { generate: vi.fn().mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ message: '確認しました。', needsClarification: false }) }) },
+      answerCache: { suggest: vi.fn(), answer: vi.fn() } });
+
+    const first = await service.chat({ consultationId, message: original });
+    const firstSelection = { prompt: first.confirmation!.prompt, option: candidateA };
+    const second = await service.chat({ consultationId, message: candidateA, selection: firstSelection });
+    const secondSelection = { prompt: second.confirmation!.prompt, option: candidateB };
+    const result = await service.chat({ consultationId, message: candidateB, selection: secondSelection });
+
+    expect(result.needsClarification).toBe(false);
+    expect(requests).toEqual([original, `${original}\n${candidateA}`, `${original}\n${candidateB}`]);
+  });
+
+  it('preserves an earlier resolved department while a later source candidate confirms the part number', async () => {
+    const fixture = dbFixture(true);
+    const original = '三島工場の機械課で品番MD000006698の不適合を2件探して';
+    const department = '三島工場製造部機械課';
+    const partNumber = 'MD000006698';
+    const requests: string[] = [];
+    const histories: Array<ReadonlyArray<{ role: string; content: string; recordIds?: string[] }>> = [];
+    const departmentCandidate = { kind: 'nonconformity' as const, field: 'originDepartmentName', value: department,
+      code: '110507051', source: 'test', matchedTerms: ['機械課'] };
+    const partCandidate = { kind: 'nonconformity' as const, field: 'partNumber', value: partNumber,
+      source: 'test', matchedTerms: [partNumber] };
+    const openJevGrounder = vi.fn(async ({ request, history }: { request: string; history: ReadonlyArray<{ role: string; content: string; recordIds?: string[] }> }) => {
+      requests.push(request);
+      histories.push(history);
+      if (requests.length === 1) return {
+        resolution: { version: 1 as const, request, terms: [], requestedKinds: ['nonconformity' as const], requestedLimit: 2,
+          unresolvedConditions: [], ambiguous: true,
+          fields: [{ kind: 'nonconformity' as const, field: 'originDepartmentName', status: 'ambiguous' as const, candidates: [departmentCandidate] }] },
+        conditions: null, result: null, evidence: []
+      };
+      if (requests.length === 2) return {
+        resolution: { version: 1 as const, request, terms: [], requestedKinds: ['nonconformity' as const], requestedLimit: 2,
+          unresolvedConditions: [], ambiguous: true,
+          fields: [
+            { kind: 'nonconformity' as const, field: 'originDepartmentName', status: 'resolved' as const, candidates: [departmentCandidate], selected: departmentCandidate },
+            { kind: 'nonconformity' as const, field: 'partNumber', status: 'ambiguous' as const, candidates: [partCandidate] }
+          ] },
+        conditions: null, result: null, evidence: []
+      };
+      return {
+        resolution: { version: 1 as const, request, terms: [], requestedKinds: ['nonconformity' as const], requestedLimit: 2,
+          unresolvedConditions: [], ambiguous: false,
+          fields: [
+            { kind: 'nonconformity' as const, field: 'originDepartmentName', status: 'resolved' as const, candidates: [departmentCandidate], selected: departmentCandidate },
+            { kind: 'nonconformity' as const, field: 'partNumber', status: 'resolved' as const, candidates: [partCandidate], selected: partCandidate }
+          ] },
+        conditions: { kind: 'nonconformity', limit: 2, originDepartmentName: department, originDepartmentCode: '110507051', partNumber },
+        result: { results: [], total: 0, limit: 2 }, evidence: []
+      };
+    });
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, openJevGrounder,
+      openJevResponder: { generate: vi.fn().mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ message: '確認しました。', needsClarification: false }) }) },
+      answerCache: { suggest: vi.fn(), answer: vi.fn() } });
+
+    const first = await service.chat({ consultationId, message: original });
+    const firstSelection = { prompt: first.confirmation!.prompt, option: department };
+    const second = await service.chat({ consultationId, message: department, selection: firstSelection });
+    const secondSelection = { prompt: second.confirmation!.prompt, option: partNumber };
+    const result = await service.chat({ consultationId, message: partNumber, selection: secondSelection });
+
+    expect(result.needsClarification).toBe(false);
+    expect(requests).toEqual([original, `${original}\n${department}`, `${original}\n${partNumber}`]);
+    expect(histories[2]).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'user', content: `「${department}」が選択されました。` })
+    ]));
+    const finalUserMessage = fixture.messages.at(-2);
+    const finalDiagnostics = finalUserMessage?.searchDiagnostics as Array<Record<string, unknown>> | undefined;
+    expect(finalDiagnostics?.find((entry) => entry.kind === 'business-hermes-source-resolution-v1')?.conditions).toEqual({
+      kind: 'nonconformity', limit: 2, originDepartmentName: department, originDepartmentCode: '110507051', partNumber
+    });
+  });
+
+  it('retains authoritative facts when the isolated natural-Chat generator invents units and counts', async () => {
+    const fixture = dbFixture(true);
+    const evidence = { kind: 'nonconformity', id: 'nc-fact', evidenceKey: 'nonconformity:nc-fact',
+      nonconformityNo: 'NC-FACT', partNumber: 'PN-FACT', condition: 'ずれ0.7', disposition: null,
+      sourceResultCount: 1, sourceReturnedCount: 1 };
+    const grounding = {
+      resolution: { version: 1 as const, request: 'この品番の不適合を探して', terms: [],
+        requestedKinds: ['nonconformity' as const], requestedLimit: 1, unresolvedConditions: [], fields: [], ambiguous: false },
+      conditions: { kind: 'nonconformity', limit: 1, partNumber: 'PN-FACT' },
+      result: { results: [evidence], total: 1, limit: 1,
+        sourceCounts: { nonconformity: { total: 1, returned: 1, returnedScope: 'returned_page' } } },
+      evidence: [evidence]
+    };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never,
+      openJevGrounder: async () => grounding,
+      openJevResponder: { generate: async () => ({ status: 'completed', output_text: JSON.stringify({
+        message: '全999件で、ずれは0.7mmです。処置は未実施です。', needsClarification: false
+      }) }) }, answerCache: { suggest: vi.fn(), answer: vi.fn() } });
+    const result = await service.chat({ consultationId, message: 'この品番の不適合を探して' });
+    expect(result.status).toBe('ready');
+    expect(result.message).toContain('不適合を1件確認しました');
+    expect(result.message).not.toMatch(/999|mm|未実施/);
+    expect(result.recordIds).toEqual(['nonconformity:nc-fact']);
+    expect(JSON.stringify(result.evidence)).toContain('ずれ0.7');
+    expect(JSON.stringify(result.evidence)).not.toContain('0.7mm');
+  });
+
+  it('carries stored source facts and history into a causal follow-up without replacing its direct answer', async () => {
+    const fixture = dbFixture();
+    const record = {
+      kind: 'nonconformity', id: 'nc-follow-up', evidenceKey: 'nonconformity:nc-follow-up',
+      nonconformityNo: 'NC-FOLLOW-UP', partNumber: 'PN-FOLLOW-UP', originDepartmentName: '三島工場製造部機械課',
+      condition: '加工不良', remarks: null, correctiveContent: null, disposition: '再検査', discoveredOn: '2026-09-04', sourceVersionDate: '2026-09-06',
+      text: '加工不良'
+    };
+    const grounding = {
+      resolution: { version: 1 as const, request: 'PN-FOLLOW-UPの不適合', terms: ['PN-FOLLOW-UP', '不適合'], requestedKinds: ['nonconformity' as const], requestedLimit: 1,
+        unresolvedConditions: [], fields: [], ambiguous: false },
+      conditions: { kind: 'nonconformity' as const, limit: 1, partNumber: 'PN-FOLLOW-UP' },
+      result: { results: [record], total: 1, limit: 1, sourceCounts: { nonconformity: { total: 1, returned: 1, returnedScope: 'returned_page' } } },
+      evidence: [record]
+    };
+    const sourceResolver = { resolveAndSearch: vi.fn()
+      .mockResolvedValueOnce(grounding)
+      .mockResolvedValue({ resolution: { version: 1 as const, request: 'その原因は？', terms: [], requestedKinds: [], requestedLimit: 10, unresolvedConditions: [], fields: [], ambiguous: false }, conditions: null, result: null, evidence: [] }) };
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(completedResponse('記録を確認しました。'))
+      .mockResolvedValueOnce(completedResponse('原因は記録されていません。不適合内容は加工不良です。備考は未記録です。'));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    await service.chat({ consultationId, message: 'PN-FOLLOW-UPの不適合を確認して' });
+    const followUp = await service.chat({ consultationId, message: 'その原因は？' });
+    const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[1]![1].body).input[0].content);
+
+    expect(payload.history).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'user', content: 'PN-FOLLOW-UPの不適合を確認して' }),
+      expect.objectContaining({ role: 'assistant', content: '不適合を1件確認しました（返却1件）。不適合番号: NC-FOLLOW-UP。発見日: 2026-09-04。選択した記録カードに原文を表示します。' })
+    ]));
+    expect(payload.history.at(-1)).toMatchObject({ role: 'assistant', recordIds: ['nonconformity:nc-follow-up'] });
+    expect(payload.availableEvidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({ evidenceKey: 'nonconformity:nc-follow-up', condition: '加工不良', remarks: null, disposition: '再検査', discoveredOn: '2026-09-04' })
+    ]));
+    expect(payload.displayedEvidence).toEqual([
+      expect.objectContaining({ evidenceKey: 'nonconformity:nc-follow-up', condition: '加工不良', disposition: '再検査' })
+    ]);
+    expect(followUp.message).toBe('原因は記録されていません。不適合内容は加工不良です。備考は未記録です。');
+    expect(followUp.message).not.toContain('件確認しました');
+  });
+
+  it('passes prior source conditions as context without rewriting a contextual follow-up', async () => {
+    const fixture = dbFixture();
+    const record = {
+      kind: 'nonconformity', id: 'nc-same-part', evidenceKey: 'nonconformity:nc-same-part',
+      nonconformityNo: 'NC-SAME-PART', partNumber: 'PN-SAME-PART', originDepartmentName: '三島工場製造部機械課',
+      condition: '傷', discoveredOn: '2026-09-03', sourceVersionDate: '2026-09-06', text: '傷'
+    };
+    const grounding = {
+      resolution: { version: 1 as const, request: '三島工場製造部機械課の不適合を2件', terms: [], requestedKinds: ['nonconformity' as const], requestedLimit: 2,
+        unresolvedConditions: [], fields: [], ambiguous: false },
+      conditions: { kind: 'nonconformity' as const, limit: 2, partNumber: 'PN-SAME-PART', originDepartmentName: '三島工場製造部機械課' },
+      result: { results: [record], total: 1, limit: 2, sourceCounts: { nonconformity: { total: 1, returned: 1, returnedScope: 'returned_page' } } },
+      evidence: [record]
+    };
+    const sourceResolver = { resolveAndSearch: vi.fn().mockResolvedValue(grounding) };
+    const fetchImpl = vi.fn().mockImplementation(async () => completedResponse());
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, sourceResolver, fetchImpl,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    await service.chat({ consultationId, message: '三島工場製造部機械課のPN-SAME-PARTの不適合を2件' });
+    expect(sourceResolver.resolveAndSearch).toHaveBeenCalledTimes(1);
+    expect(fixture.messages.some((entry) => Array.isArray(entry.searchDiagnostics)
+      && entry.searchDiagnostics.some((diagnostic) => diagnostic.kind === 'business-hermes-source-resolution-v1'))).toBe(true);
+    await service.chat({ consultationId, message: '同じ品番の過去事例は？' });
+
+    expect(sourceResolver.resolveAndSearch.mock.calls[1]![1]).toMatchObject({ previousConditions: { limit: 2 } });
+    expect(sourceResolver.resolveAndSearch.mock.calls[1]![0]).toBe('同じ品番の過去事例は？');
+    expect(sourceResolver.resolveAndSearch.mock.calls[1]![1]).toMatchObject({
+      history: expect.arrayContaining([expect.objectContaining({ content: '三島工場製造部機械課のPN-SAME-PARTの不適合を2件' })]),
+      previousConditions: { kind: 'nonconformity', limit: 2, partNumber: 'PN-SAME-PART', originDepartmentName: '三島工場製造部機械課' }
+    });
+    const nativePayload = JSON.parse(JSON.parse(fetchImpl.mock.calls[1]![1].body).input[0].content);
+    expect(nativePayload.request).toBe('同じ品番の過去事例は？');
+    expect(nativePayload.previousConditions).toEqual({ kind: 'nonconformity', limit: 2, partNumber: 'PN-SAME-PART', originDepartmentName: '三島工場製造部機械課' });
+  });
+
+  it('does not carry the previous target into an explicit part correction', async () => {
+    const fixture = dbFixture();
+    const record = {
+      kind: 'nonconformity', id: 'nc-correction', evidenceKey: 'nonconformity:nc-correction',
+      nonconformityNo: 'NC-CORRECTION', partNumber: 'PN-A', originDepartmentName: '三島工場製造部機械課',
+      condition: '傷', discoveredOn: '2026-09-03', sourceVersionDate: '2026-09-06', text: '傷'
+    };
+    const grounding = {
+      resolution: { version: 1 as const, request: 'PN-Aの不適合を2件', terms: [], requestedKinds: ['nonconformity' as const], requestedLimit: 2,
+        unresolvedConditions: [], fields: [], ambiguous: false },
+      conditions: { kind: 'nonconformity' as const, limit: 2, partNumber: 'PN-A', originDepartmentName: '三島工場製造部機械課' },
+      result: { results: [record], total: 1, limit: 2, sourceCounts: { nonconformity: { total: 1, returned: 1, returnedScope: 'returned_page' } } },
+      evidence: [record]
+    };
+    const sourceResolver = { resolveAndSearch: vi.fn().mockResolvedValue(grounding) };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, sourceResolver,
+      fetchImpl: vi.fn().mockResolvedValue(completedResponse()), config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    await service.chat({ consultationId, message: 'PN-Aの不適合を2件' });
+    await service.chat({ consultationId, message: 'PN-Bの過去の不適合を調べて' });
+
+    const correctedRequest = sourceResolver.resolveAndSearch.mock.calls[1]![0];
+    expect(correctedRequest).toBe('PN-Bの過去の不適合を調べて');
+    expect(sourceResolver.resolveAndSearch.mock.calls[1]![1]).toMatchObject({
+      previousConditions: { partNumber: 'PN-A', originDepartmentName: '三島工場製造部機械課' }
+    });
+  });
+
   it('offers actual source choices and generates from the selected source without starting Hermes search', async () => {
     const fixture = dbFixture(true);
     const fetchImpl = vi.fn();
@@ -508,11 +848,323 @@ describe('BusinessHermesConsultationService', () => {
     const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
     expect(payload.confirmedIntent).toEqual({ originalQuestion: '穴の裏が膨らんだ事例の対策は？', purpose: selection.option, confirmationComplete: false });
     expect(payload.questionRecipe).toMatchObject({ id: 'record-answer', version: '1', speculative: true });
+    expect(payload.sourceDefinitions.map((source: { kind: string }) => source.kind)).toEqual(['nonconformity', 'work_instruction']);
+    expect(payload.sourceDefinitions.find((source: { kind: string }) => source.kind === 'nonconformity')).toMatchObject({
+      recordUnit: '1行 = 1件の不適合記録',
+      relationKeys: [{ key: 'partNumber', target: 'work_instruction.partNumber' }]
+    });
+    expect(JSON.stringify(JSON.parse(fetchImpl.mock.calls[0]![1].body).instructions)).not.toContain('同じpartNumberだけ');
     expect(fixture.row.hermesConversationId).toBe(JSON.parse(fetchImpl.mock.calls[0]![1].body).conversation);
     expect(payload.caseState.openQuestions).toEqual([]);
     expect(answer.message).toBe('記録の対策を確認しました。');
     await service.chat({ consultationId, message: 'その対策をもう少し詳しく教えて' });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts server-resolved conditions and trusted DB facts without a duplicate native search', async () => {
+    const fixture = dbFixture(true);
+    const record = {
+      kind: 'nonconformity', id: 'nc-grounded', evidenceKey: 'nonconformity:nc-grounded', nonconformityNo: '00008196',
+      partNumber: 'MD005195722', originDepartmentCode: '110507051', originDepartmentName: '三島工場製造部機械課',
+      condition: '加工不良', discoveredOn: '2026-09-04', sourceVersionDate: '2026-09-06', sourceResultCount: 1, sourceReturnedCount: 1, text: '加工不良'
+    };
+    const grounding = {
+      resolution: {
+        version: 1 as const,
+        request: '三島工場の機械課の直近の不適合を2件探して',
+        terms: ['三島工場', '機械課', '不適合'],
+        requestedKinds: ['nonconformity' as const],
+        requestedLimit: 2,
+        unresolvedConditions: [],
+        ambiguous: false,
+        fields: [{
+          kind: 'nonconformity' as const,
+          field: 'originDepartmentName',
+          status: 'resolved' as const,
+          candidates: [{ kind: 'nonconformity' as const, field: 'originDepartmentName', value: '三島工場製造部機械課', code: '110507051', source: 'ScawStFutekigoCurrent', matchedTerms: ['三島工場', '機械課'] }],
+          selected: { kind: 'nonconformity' as const, field: 'originDepartmentName', value: '三島工場製造部機械課', code: '110507051', source: 'ScawStFutekigoCurrent', matchedTerms: ['三島工場', '機械課'] }
+        }]
+      },
+      conditions: { kind: 'nonconformity' as const, limit: 2, originDepartmentName: '三島工場製造部機械課', originDepartmentCode: '110507051' },
+      result: { results: [record], total: 1, limit: 2, truncated: false, hasMore: { nonconformity: false, workInstruction: false }, nextCursor: { nonconformityOffset: null, workInstructionOffset: null } },
+      evidence: [record]
+    };
+    const sourceResolver = { resolveAndSearch: vi.fn().mockResolvedValue(grounding) };
+    const answerCache = { suggest: vi.fn().mockResolvedValue(null), candidates: vi.fn().mockResolvedValue(['候補']), answer: vi.fn() };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({ type: 'response.completed', response: {
+      status: 'completed',
+      output_text: JSON.stringify({ message: '正式な起因部署の直近記録です。', needsClarification: false, recordIds: ['nonconformity:nc-grounded'], recordView: 'summary' })
+    } })}\n\n`));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver, answerCache,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const first = await service.chat({ consultationId, message: '三島工場の機械課の直近の不適合を2件探して' });
+    const selection = { prompt: first.confirmation!.prompt, option: '候補' };
+    const response = await service.chat({ consultationId, message: selection.option, selection });
+    const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
+
+    expect(sourceResolver.resolveAndSearch).toHaveBeenCalledTimes(2);
+    expect(payload.sourceResolution).toMatchObject({ ambiguous: false, requestedKinds: ['nonconformity'] });
+    expect(payload.groundedSearch).toMatchObject({ conditions: grounding.conditions, result: grounding.result });
+    expect(response.recordIds).toEqual(['nonconformity:nc-grounded']);
+    expect(response.message).toBe('不適合を1件確認しました（返却1件）。不適合番号: 00008196。発見日: 2026-09-04。選択した記録カードは概要表示です。原文は詳細表示で確認できます。');
+    expect(response.evidence[0]).toMatchObject({ id: 'nc-grounded' });
+    expect(response.evidence[0]?.displayFields.detail).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'nonconformityNo', value: '00008196' }),
+      expect.objectContaining({ key: 'discoveredOn', value: '2026-09-04' }),
+      expect.objectContaining({ key: 'sourceVersionDate', value: '2026-09-06' }),
+      expect.objectContaining({ key: 'sourceResultCount', value: '1' }),
+      expect.objectContaining({ key: 'sourceReturnedCount', value: '1' })
+    ]));
+    expect(fixture.messages[2]!.evidence).toEqual([record]);
+  });
+
+  it('shows trusted source counts, identifiers, dates, and public text in normal source cards', async () => {
+    const fixture = dbFixture(true);
+    const partNumber = 'MD000006698';
+    const shootingTarget = '研削';
+    const stepOne = { kind: 'work_instruction', id: 'step-1', evidenceKey: 'work_instruction:step-1', partNumber, shootingTarget,
+      step: 1, effectiveText: 'O3030\nベッセルコマ\n段差17', sourceVersionDate: '2026-09-06', publishedVersionId: 'version-1', publishedVersionCreatedAt: '2026-09-07T01:02:03.000Z', publishedRevisionId: 'revision-1', publishedRevisionCreatedAt: '2026-09-08T04:05:06.000Z', sourceGroupCount: 1, sourceGroupCountScope: 'returned_page', sourceRowCount: 2 };
+    const stepTwo = { kind: 'work_instruction', id: 'step-2', evidenceKey: 'work_instruction:step-2', partNumber, shootingTarget,
+      step: 2, effectiveText: 'O3035\n確認してから作業', sourceVersionDate: '2026-09-06', publishedVersionId: 'version-2', publishedVersionCreatedAt: '2026-09-07T07:08:09.000Z', publishedRevisionId: 'revision-2', publishedRevisionCreatedAt: '2026-09-08T10:11:12.000Z', sourceGroupCount: 1, sourceGroupCountScope: 'returned_page', sourceRowCount: 2 };
+    const group = { kind: 'work_instruction', id: 'group-1', partNumber, shootingTarget, public: true,
+      rows: [
+        { id: 'row-1', steps: [stepOne] },
+        { id: 'row-2', steps: [stepTwo] }
+      ] };
+    const grounding = {
+      resolution: {
+        version: 1 as const, request: `品番${partNumber}の公開${shootingTarget}要領`, terms: [partNumber, shootingTarget, '公開', '要領'],
+        requestedKinds: ['work_instruction' as const], requestedLimit: 1, unresolvedConditions: [], ambiguous: false,
+        fields: [
+          { kind: 'work_instruction' as const, field: 'partNumber', status: 'resolved' as const, candidates: [{ kind: 'work_instruction' as const, field: 'partNumber', value: partNumber, source: 'WorkInstructionSourcePublication', matchedTerms: [partNumber] }],
+            selected: { kind: 'work_instruction' as const, field: 'partNumber', value: partNumber, source: 'WorkInstructionSourcePublication', matchedTerms: [partNumber] } },
+          { kind: 'work_instruction' as const, field: 'shootingTarget', status: 'resolved' as const, candidates: [{ kind: 'work_instruction' as const, field: 'shootingTarget', value: shootingTarget, source: 'WorkInstructionSourcePublication', matchedTerms: [shootingTarget] }],
+            selected: { kind: 'work_instruction' as const, field: 'shootingTarget', value: shootingTarget, source: 'WorkInstructionSourcePublication', matchedTerms: [shootingTarget] } }
+        ]
+      },
+      conditions: { kind: 'work_instruction' as const, limit: 1, partNumber, shootingTarget },
+      result: { results: [group], total: 1, limit: 1, truncated: false, hasMore: { nonconformity: false, workInstruction: false }, nextCursor: { nonconformityOffset: null, workInstructionOffset: null } },
+      evidence: [stepOne, stepTwo]
+    };
+    const sourceResolver = { resolveAndSearch: vi.fn().mockResolvedValue(grounding) };
+    const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: {
+      status: 'completed',
+      output: [
+        { type: 'function_call', name: 'business_hermes_search', call_id: 'search-public', arguments: JSON.stringify(grounding.conditions) },
+        { type: 'function_call_output', call_id: 'search-public', output: JSON.stringify(grounding.result) }
+      ],
+      output_text: JSON.stringify({ message: '公開要領を2件確認しました。', needsClarification: false, recordIds: ['work_instruction:step-2'] })
+    } })}\n\n`));
+    const answerCache = { suggest: vi.fn().mockResolvedValue(null), candidates: vi.fn().mockResolvedValue(['候補']), answer: vi.fn() };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver, answerCache,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const first = await service.chat({ consultationId, message: `品番${partNumber}の公開${shootingTarget}要領の内容を教えて` });
+    const selection = { prompt: first.confirmation!.prompt, option: '候補' };
+    const response = await service.chat({ consultationId, message: selection.option, selection });
+
+    expect(response.message).toBe('公開作業要領を1グループ（返却ページ内）、2行確認しました。元データ更新日: 2026-09-06。選択した記録カードは概要表示です。原文は詳細表示で確認できます。');
+    expect(response.recordIds).toEqual(['work_instruction:step-2']);
+    expect(response.recordView).toBe('summary');
+    expect(response.consultation.messages.at(-1)?.content).toBe(response.message);
+    const cards = response.evidence.filter((entry) => entry.kind === 'work_instruction');
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.displayFields?.summary).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'sourceGroupCount', value: '1' }),
+      expect.objectContaining({ key: 'sourceGroupCountScope', value: '返却ページ内' }),
+      expect.objectContaining({ key: 'sourceRowCount', value: '2' }),
+      expect.objectContaining({ key: 'sourceVersionDate', value: '2026-09-06' })
+    ]));
+    expect(cards[0]?.displayFields?.detail.find((field) => field.key === 'text')?.value).toBe(stepTwo.effectiveText);
+    expect(response.consultation.messages.at(-1)?.evidence.filter((entry) => entry.kind === 'work_instruction')).toHaveLength(2);
+
+    await service.chat({ consultationId, message: '表示した手順の並びを確認して' });
+    const nextPayload = JSON.parse(JSON.parse(fetchImpl.mock.calls[1]![1].body).input[0].content);
+    expect(nextPayload.history.at(-1)).toMatchObject({ role: 'assistant', recordIds: ['work_instruction:step-2'] });
+    expect(nextPayload.availableEvidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({ evidenceKey: 'work_instruction:step-1', effectiveText: stepOne.effectiveText }),
+      expect.objectContaining({ evidenceKey: 'work_instruction:step-2', effectiveText: stepTwo.effectiveText,
+        sourceVersionDate: '2026-09-06', publishedVersionId: 'version-2', publishedVersionCreatedAt: '2026-09-07T07:08:09.000Z',
+        publishedRevisionId: 'revision-2', publishedRevisionCreatedAt: '2026-09-08T10:11:12.000Z' })
+    ]));
+    expect(nextPayload.displayedEvidence).toEqual([
+      expect.objectContaining({ evidenceKey: 'work_instruction:step-2', effectiveText: stepTwo.effectiveText })
+    ]);
+  });
+
+  it('requires an official candidate confirmation before native search and display', async () => {
+    const fixture = dbFixture(true);
+    const officialDepartment = '三島工場製造部機械課';
+    const record = {
+      kind: 'nonconformity', id: 'nc-confirmed', evidenceKey: 'nonconformity:nc-confirmed', nonconformityNo: '00008196',
+      partNumber: 'MD005195722', originDepartmentCode: '110507051', originDepartmentName: officialDepartment,
+      condition: '加工不良', discoveredOn: '2026-09-04', sourceVersionDate: '2026-09-06', text: '加工不良'
+    };
+    const ambiguousResolution = {
+      version: 1 as const, request: '三島工場の機械課の不適合', terms: ['三島工場', '機械課', '不適合'],
+      requestedKinds: ['nonconformity' as const], requestedLimit: 2, unresolvedConditions: [], ambiguous: true,
+      fields: [{ kind: 'nonconformity' as const, field: 'originDepartmentName', status: 'ambiguous' as const,
+        candidates: [
+          { kind: 'nonconformity' as const, field: 'originDepartmentName', value: officialDepartment, code: '110507051', source: 'ScawStFutekigoCurrent', matchedTerms: ['三島工場', '機械課'] },
+          { kind: 'nonconformity' as const, field: 'originDepartmentName', value: '大阪工場製造部機械課', code: '220507051', source: 'ScawStFutekigoCurrent', matchedTerms: ['機械課'] }
+        ] }]
+    };
+    const confirmedGrounding = {
+      resolution: { ...ambiguousResolution, request: `${ambiguousResolution.request}\n${officialDepartment}`, ambiguous: false,
+        fields: [{ ...ambiguousResolution.fields[0]!, status: 'resolved' as const, selected: ambiguousResolution.fields[0]!.candidates[0] }] },
+      conditions: { kind: 'nonconformity' as const, limit: 2, originDepartmentName: officialDepartment, originDepartmentCode: '110507051' },
+      result: { results: [record], total: 1, limit: 2, truncated: false, hasMore: { nonconformity: false, workInstruction: false }, nextCursor: { nonconformityOffset: null, workInstructionOffset: null } },
+      evidence: [record]
+    };
+    const sourceResolver = { resolveAndSearch: vi.fn().mockImplementation(async (request: string) =>
+      request.includes(officialDepartment) ? confirmedGrounding : { resolution: ambiguousResolution, conditions: null, result: null, evidence: [] }) };
+    const nativeConfirmation = new Response(`data: ${JSON.stringify({ type: 'response.completed', response: {
+      status: 'completed', output_text: JSON.stringify({ message: '起因部署を確認してください。', needsClarification: true,
+        confirmation: { title: '起因部署の確認', prompt: 'どの正式な起因部署ですか？', options: [officialDepartment, '大阪工場製造部機械課'] } })
+    } })}\n\n`);
+    const nativeAnswer = new Response(`data: ${JSON.stringify({ type: 'response.completed', response: {
+      status: 'completed',
+      output: [
+        { type: 'function_call', name: 'business_hermes_search', call_id: 'search-confirmed', arguments: JSON.stringify(confirmedGrounding.conditions) },
+        { type: 'function_call_output', call_id: 'search-confirmed', output: JSON.stringify(confirmedGrounding.result) }
+      ],
+      output_text: JSON.stringify({ message: '正式な起因部署の記録です。', needsClarification: false, recordIds: ['nonconformity:nc-confirmed'] })
+    } })}\n\n`);
+    const fetchImpl = vi.fn().mockResolvedValueOnce(nativeConfirmation).mockResolvedValueOnce(nativeAnswer);
+    const answerCache = { suggest: vi.fn().mockResolvedValue(null), candidates: vi.fn().mockResolvedValue(['候補']), answer: vi.fn() };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver, answerCache,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const first = await service.chat({ consultationId, message: '三島工場の機械課の不適合を2件探して' });
+    const purposeSelection = { prompt: first.confirmation!.prompt, option: '候補' };
+    const candidatePrompt = await service.chat({ consultationId, message: purposeSelection.option, selection: purposeSelection });
+    const candidateSelection = { prompt: candidatePrompt.confirmation!.prompt, option: officialDepartment };
+    const result = await service.chat({ consultationId, message: candidateSelection.option, selection: candidateSelection });
+
+    expect(candidatePrompt.confirmation?.options).toEqual([officialDepartment, '大阪工場製造部機械課']);
+    expect(sourceResolver.resolveAndSearch).toHaveBeenCalledTimes(3);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(result.recordIds).toEqual(['nonconformity:nc-confirmed']);
+    expect(result.evidence[0]).toMatchObject({ id: 'nc-confirmed' });
+  });
+
+  it('does not let a confirmed candidate A authorize candidate B', async () => {
+    const fixture = dbFixture(true);
+    const candidateA = '三島工場製造部機械課';
+    const candidateB = '大阪工場製造部機械課';
+    const resolution = {
+      version: 1 as const, request: '三島工場の機械課の不適合', terms: ['三島工場', '機械課', '不適合'],
+      requestedKinds: ['nonconformity' as const], requestedLimit: 1, unresolvedConditions: [], ambiguous: true,
+      fields: [{ kind: 'nonconformity' as const, field: 'originDepartmentName', status: 'ambiguous' as const,
+        candidates: [
+          { kind: 'nonconformity' as const, field: 'originDepartmentName', value: candidateA, code: 'A', source: 'ScawStFutekigoCurrent', matchedTerms: ['機械課'] },
+          { kind: 'nonconformity' as const, field: 'originDepartmentName', value: candidateB, code: 'B', source: 'ScawStFutekigoCurrent', matchedTerms: ['機械課'] }
+        ] }]
+    };
+    const confirmedGrounding = {
+      resolution: { ...resolution, ambiguous: false, fields: [{ ...resolution.fields[0]!, status: 'resolved' as const, selected: resolution.fields[0]!.candidates[0] }] },
+      conditions: { kind: 'nonconformity' as const, limit: 1, originDepartmentName: candidateA, originDepartmentCode: 'A' },
+      result: { results: [], total: 0, limit: 1, truncated: false }, evidence: []
+    };
+    const sourceResolver = { resolveAndSearch: vi.fn().mockImplementation(async (request: string) => request.includes(candidateA)
+      ? confirmedGrounding : { resolution, conditions: null, result: null, evidence: [] }) };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({ type: 'response.completed', response: {
+      status: 'completed',
+      output: [
+        { type: 'function_call', name: 'business_hermes_search', call_id: 'search-wrong-candidate', arguments: JSON.stringify({ kind: 'nonconformity', limit: 1, originDepartmentName: candidateA, originDepartmentCode: 'B' }) },
+        { type: 'function_call_output', call_id: 'search-wrong-candidate', output: JSON.stringify({ results: [{ kind: 'nonconformity', id: 'nc-b', originDepartmentName: candidateB, originDepartmentCode: 'B' }], total: 1, limit: 1 }) }
+      ],
+      output_text: JSON.stringify({ message: '別候補の記録です。', needsClarification: false })
+    } })}\n\n`));
+    const answerCache = { suggest: vi.fn().mockResolvedValue(null), candidates: vi.fn().mockResolvedValue([candidateA]), answer: vi.fn() };
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver, answerCache,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const first = await service.chat({ consultationId, message: '三島工場の機械課の不適合を1件探して' });
+    const selection = { prompt: first.confirmation!.prompt, option: candidateA };
+    const result = await service.chat({ consultationId, message: selection.option, selection });
+
+    expect(result.reasonCode).toBe('HERMES_SEARCH_CONDITIONS_NOT_CONFIRMED');
+    expect(fixture.messages).toHaveLength(3);
+    const guardMeasurement = fixture.messages[2]!.searchDiagnostics.find((entry) => entry.kind === 'business-hermes-learning-v1') as { sourceGuardFailure?: unknown } | undefined;
+    const guardFailure = guardMeasurement?.sourceGuardFailure;
+    expect(guardFailure).toMatchObject({
+      reasonCode: 'HERMES_SEARCH_CONDITIONS_NOT_CONFIRMED',
+      expectedConditions: { kind: 'nonconformity', limit: 1, originDepartmentName: candidateA, originDepartmentCode: 'A' },
+      nativeSearches: [{
+        arguments: { kind: 'nonconformity', limit: 1, originDepartmentName: candidateA, originDepartmentCode: 'B' },
+        queryPresent: false,
+        conditionPresent: false
+      }]
+    });
+  });
+
+  it('does not accept a cached answer when source conditions are unresolved', async () => {
+    const fixture = dbFixture(true);
+    const sourceResolver = { resolveAndSearch: vi.fn().mockResolvedValue({
+      resolution: {
+        version: 1 as const, request: '架空工場の不適合', terms: ['架空工場'], requestedKinds: ['nonconformity' as const],
+        requestedLimit: 10, unresolvedConditions: [], fields: [{
+          kind: 'nonconformity' as const, field: 'originDepartmentName', status: 'ambiguous' as const,
+          candidates: [{ kind: 'nonconformity' as const, field: 'originDepartmentName', value: '三島工場製造部機械課', source: 'ScawStFutekigoCurrent', matchedTerms: ['工場'] }]
+        }], ambiguous: true
+      },
+      conditions: null, result: null, evidence: []
+    }) };
+    const cachedOption = `${CACHED_QUESTION_PREFIX}架空工場の不適合`;
+    const answerCache = { suggest: vi.fn().mockResolvedValue(null), candidates: vi.fn().mockResolvedValue([cachedOption]), answer: vi.fn().mockResolvedValue({
+      status: 'completed', output_text: JSON.stringify({ message: 'キャッシュ回答', needsClarification: false })
+    }) };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({ type: 'response.completed', response: {
+      status: 'completed', output_text: JSON.stringify({ message: '未確認回答', needsClarification: false })
+    } })}\n\n`));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver, answerCache,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const first = await service.chat({ consultationId, message: '架空工場の不適合' });
+    const selection = { prompt: first.confirmation!.prompt, option: cachedOption };
+    const result = await service.chat({ consultationId, message: selection.option, selection });
+
+    expect(answerCache.answer).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(result.reasonCode).toBeUndefined();
+    expect(result.needsClarification).toBe(true);
+    expect(result.confirmation?.options).toEqual(['三島工場製造部機械課']);
+  });
+
+  it('does not adopt a prepared single-source answer before native source verification', async () => {
+    const fixture = dbFixture(true);
+    const sourceOption = `${SOURCE_QUESTION_PREFIX}架空工場の不適合`;
+    const sourceResolver = { resolveAndSearch: vi.fn().mockResolvedValue({
+      resolution: {
+        version: 1 as const, request: '架空工場の不適合', terms: ['架空工場'], requestedKinds: ['nonconformity' as const],
+        requestedLimit: 10, unresolvedConditions: [], fields: [{
+          kind: 'nonconformity' as const, field: 'originDepartmentName', status: 'ambiguous' as const,
+          candidates: [{ kind: 'nonconformity' as const, field: 'originDepartmentName', value: '三島工場製造部機械課', source: 'ScawStFutekigoCurrent', matchedTerms: ['工場'] }]
+        }], ambiguous: true
+      },
+      conditions: null, result: null, evidence: []
+    }) };
+    const preparedAnswer = { answer: vi.fn().mockResolvedValue({
+      status: 'completed', output_text: JSON.stringify({ message: '単一資料の回答', needsClarification: false })
+    }) };
+    const answerCache = { suggest: vi.fn().mockResolvedValue(null), candidates: vi.fn().mockResolvedValue([sourceOption]), answer: vi.fn() };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({ type: 'response.completed', response: {
+      status: 'completed', output_text: JSON.stringify({ message: '未確認回答', needsClarification: false })
+    } })}\n\n`));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver, answerCache, preparedAnswer,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+
+    const first = await service.chat({ consultationId, message: '架空工場の不適合' });
+    const selection = { prompt: first.confirmation!.prompt, option: sourceOption };
+    const result = await service.chat({ consultationId, message: selection.option, selection });
+
+    expect(preparedAnswer.answer).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(result.reasonCode).toBeUndefined();
+    expect(result.needsClarification).toBe(true);
+    expect(result.confirmation?.options).toEqual(['三島工場製造部機械課']);
   });
 
   it('discards the candidate for a supplement and rejects a forged first choice', async () => {

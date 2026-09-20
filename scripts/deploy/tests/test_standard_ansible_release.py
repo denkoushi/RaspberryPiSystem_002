@@ -147,47 +147,19 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         self.assertNotIn("HERMES_SEARCH_TRIAL_JEV_ENABLED", rendered)
         self.assertNotIn("HERMES_SEARCH_TRIAL_ARTIFACT", rendered)
 
-    def test_record_pilot_is_fixed_pi5_only_and_forwards_no_secret(self) -> None:
+    def test_fixed_record_pilot_artifact_is_retired(self) -> None:
         args = argparse.Namespace(full_fleet=False, detach=False, branch="main", limit="raspberrypi5")
         source = ROOT / "scripts/hermes-search/hermes-jev-record-pilot-artifact"
         with mock.patch.dict(os.environ, {
             "HERMES_SEARCH_TRIAL_ENABLED": "true",
             "HERMES_SEARCH_TRIAL_RECORD_PILOT_ARTIFACT": str(source),
-            "TYPESAFE_API_KEY": "must-not-forward",
         }, clear=True):
-            resolved, environment = MODULE.hermes_record_pilot_configuration(
-                args, (("pi5", ("raspberrypi5",)),), MODULE.REMOTE_ROOT, RUN_ID
-            )
-        expected = f"/opt/RaspberryPiSystem_002/storage/hermes-search/record-pilot/{RUN_ID}"
-        self.assertEqual(resolved, source.resolve())
-        self.assertEqual(environment["HERMES_SEARCH_TRIAL_RECORD_PILOT_ARTIFACT"], expected)
-        self.assertEqual(environment["HERMES_JEV_PROVIDER"], "typesafe-direct")
-        self.assertEqual(environment["HERMES_SEARCH_TRIAL_JEV_ENABLED"], "true")
-        command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY, ("pi5",), "pi", hermes_environment=environment)
-        rendered = " ".join(command)
-        self.assertIn(f"--setenv=HERMES_SEARCH_TRIAL_RECORD_PILOT_ARTIFACT={expected}", rendered)
-        self.assertNotIn("must-not-forward", rendered)
-        with mock.patch.dict(os.environ, {
-            "HERMES_SEARCH_TRIAL_ENABLED": "true",
-            "HERMES_SEARCH_TRIAL_RECORD_PILOT_ARTIFACT": str(source),
-        }, clear=True):
-            with self.assertRaisesRegex(MODULE.UsageError, "raspberrypi5-only"):
-                MODULE.hermes_record_pilot_configuration(
-                    args, (("pi4", ("pi4-a",)),), MODULE.REMOTE_ROOT, RUN_ID
-                )
+            with self.assertRaisesRegex(MODULE.UsageError, "retired"):
+                MODULE.hermes_trial_configuration(args, (("pi5", ("raspberrypi5",)),), MODULE.REMOTE_ROOT, RUN_ID)
 
-    def test_record_pilot_staging_uses_manifest_and_three_fixed_files(self) -> None:
-        def inspect(command, **options):
-            play = json.loads(Path(command[3]).read_text())[0]
-            self.assertEqual(play["hosts"], "raspberrypi5")
-            self.assertEqual(play["tasks"][1]["loop"], ["artifact.json", *MODULE.RECORD_PILOT_ARTIFACT_FILES])
-            self.assertTrue(play["tasks"][1]["no_log"])
-            self.assertEqual(play["tasks"][1]["ansible.builtin.copy"]["mode"], "0600")
-            return completed(command)
-        with mock.patch.object(MODULE, "run", side_effect=inspect):
-            MODULE.stage_hermes_record_pilot_artifact(
-                Path("inventory.yml"), Path("/local/sealed-pilot"), "/remote/pilot", "pi"
-            )
+    def test_record_classification_uses_the_real_sealed_device_artifact(self) -> None:
+        self.assertFalse(hasattr(MODULE, "hermes_record_pilot_configuration"))
+        self.assertFalse(hasattr(MODULE, "stage_hermes_record_pilot_artifact"))
 
     def test_hermes_trial_checks_sealed_files_and_passes_only_pi5_local_path(self) -> None:
         args = argparse.Namespace(full_fleet=False, detach=False, branch="main", limit="raspberrypi5")

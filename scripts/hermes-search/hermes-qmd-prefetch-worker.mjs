@@ -20,7 +20,7 @@ import {nonconformityDefinition,nonconformityDefinitionDigest} from './hermes-so
 import {RemoteInference} from './hermes-remote-inference.mjs';
 import {prepareDeviceArtifact} from './hermes-device-artifact.mjs';
 import {interpretWithJev} from './hermes-jev-intent.mjs';
-import {RecordPilot} from './hermes-jev-record-pilot.mjs';
+import {AuthorizedRecordClassifier} from './hermes-jev-record-classifier.mjs';
 import {HERMES_JEV_TRIAL_CONTRACT, isSyntheticTrialRequest, syntheticConditionFromResolution, syntheticConfirmationPending} from './hermes-jev-trial-fixture.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -413,34 +413,27 @@ class TrialWorker {
     this.runtime = null;
     this.jevEnabled = options.jevEnabled ?? process.env.HERMES_SEARCH_TRIAL_JEV_ENABLED === 'true';
     this.intentEvaluator = options.intentEvaluator ?? interpretWithJev;
-    this.recordPilot = options.recordPilot ?? (process.env.HERMES_SEARCH_TRIAL_RECORD_PILOT_FIXTURE
-      ? new RecordPilot({
-        fixturePath: process.env.HERMES_SEARCH_TRIAL_RECORD_PILOT_FIXTURE,
-        storePath: process.env.HERMES_SEARCH_TRIAL_RECORD_PILOT_STORE
-          ?? path.join(DATA_DIRECTORY, 'hermes-jev-record-pilot-store.json'),
+    const recordSource = process.env.HERMES_SEARCH_RECORD_SOURCE ?? process.env.HERMES_TRIAL_SNAPSHOT_PATH;
+    this.recordClassifier = options.recordClassifier ?? (recordSource && process.env.HERMES_SEARCH_TRIAL_JEV_ENABLED === 'true'
+      ? new AuthorizedRecordClassifier({
+        snapshotPath: recordSource,
+        storePath: process.env.HERMES_SEARCH_RECORD_CLASSIFICATION_STORE ?? path.join(DATA_DIRECTORY, 'hermes-jev-record-classifications.json'),
       })
       : null);
   }
 
   async start() {
-    if (this.recordPilot) {
-      if (!this.jevEnabled) throw new Error('record pilot requires HERMES_SEARCH_TRIAL_JEV_ENABLED=true');
-      const recordPilotRuntime = await this.recordPilot.prepare();
+    if (this.recordClassifier) {
+      const classifierRuntime = await this.recordClassifier.prepare();
       this.runtime = {
-        protocol: 'hermes-ui-record-pilot/v1',
+        protocol: 'hermes-ui-record-search/v1',
         platform: process.platform,
-        executionPlane: 'fictional-record-pilot',
-        piUsed: false,
-        snapshot: {
-          snapshotId: recordPilotRuntime.fixtureId,
-          digest: null,
-          count: recordPilotRuntime.recordCount,
-          snapshotScope: 'fixed fictional record fixture',
-          authorizedFlag: true,
-        },
-        qmd: { used: false, reason: 'record pilot uses persisted JEV classifications' },
-        selector: { used: false, reason: 'record pilot uses exact stored classification matching' },
-        recordPilot: recordPilotRuntime,
+        executionPlane: 'authorized-record-classification',
+        piUsed: null,
+        snapshot: { count: classifierRuntime.recordCount, snapshotScope: classifierRuntime.source, authorizedFlag: true },
+        qmd: { used: false, reason: 'JEV classifications are persisted incrementally; raw records remain source-owned' },
+        selector: { used: false, reason: 'stored classification and code-owned exact conditions' },
+        recordClassification: classifierRuntime,
       };
       return this.runtime;
     }
@@ -507,24 +500,18 @@ class TrialWorker {
   }
 
   async answer(question, conversation = {}) {
-    if (!this.runtime || (!this.qmd && !this.recordPilot)) throw new Error('trial worker is not ready');
+    if (!this.runtime || (!this.qmd && !this.recordClassifier)) throw new Error('record search worker is not ready');
     const started = performance.now();
-    if (this.recordPilot) {
-      if (typeof question !== 'string' || !question.trim()) {
-        return {
-          status: 'clarification', mode: 'record_pilot_local', answer: '質問内容を入力してください。',
-          recordIds: [], selectedSourceSpans: [], qmd: { used: false }, selector: { used: false },
-          snapshot: this.runtime.snapshot, elapsedMs: Math.round((performance.now() - started) * 10) / 10,
-        };
-      }
-      const result = await this.recordPilot.answer(question);
+    if (this.recordClassifier) {
+      const result = await this.recordClassifier.answer(question);
       return {
         ...result,
-        mode: 'record_pilot_local',
+        mode: 'authorized_record_classification',
         snapshot: this.runtime.snapshot,
         qmd: { used: false },
         selector: { used: false },
-        recordPilot: this.recordPilot.metrics(),
+        recordClassification: this.recordClassifier.metrics(),
+        elapsedMs: Number((performance.now() - started).toFixed(3)),
       };
     }
     const records = this.qmd.snapshot.records;
@@ -788,7 +775,7 @@ class TrialWorker {
   }
 
   async stop() {
-    await this.recordPilot?.close();
+    await this.recordClassifier?.close();
     this.selector.stop();
     await this.qmd?.close();
   }

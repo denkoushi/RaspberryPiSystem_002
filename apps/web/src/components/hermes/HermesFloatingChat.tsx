@@ -924,7 +924,7 @@ export function HermesFloatingChat() {
     recordPilotAvailable: recordPilotScope.enabled,
     onKnowledgeModeChange: handleKnowledgeModeChange,
     conversationExtension: knowledgeMode === 'record-pilot' ? <p className="hermes-chat-panel__status" role="note">
-      JEV記録検索：架空の6記録だけが対象です。工程・現象など、知りたい条件を自然文で入力してください。記録の原文をそのまま表示します。
+      JEV記録検索：取り込み済みの実際の不適合記録が対象です。工程・現象・処置・原因など、知りたい条件を自然文で入力してください。記録の原文をそのまま表示します。条件を特定できない質問には確認を返します。
     </p> : knowledgeMode === 'knowledge' && knowledge.enabled ? <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
       onChoose={(item, action) => void knowledge.choose(item, action)} onDelegate={text => void sendMessage(text, { skipKnowledge: true })} /> : null,
     attachmentControl: knowledgeMode === 'knowledge' && knowledge.enabled ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,

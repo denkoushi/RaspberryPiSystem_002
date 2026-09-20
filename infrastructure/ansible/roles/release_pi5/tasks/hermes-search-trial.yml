@@ -10,6 +10,17 @@
   no_log: true
   when: hermes_search_trial_enabled | bool
 
+- name: Require the server-side TypeSafe credential for real-record classification
+  ansible.builtin.assert:
+    that:
+      - hermes_search_typesafe_api_key is defined
+      - hermes_search_typesafe_api_key | length >= 16
+    fail_msg: Real nonconformity record classification requires the Vault-provided TypeSafe credential.
+  no_log: true
+  when:
+    - hermes_search_trial_enabled | bool
+    - hermes_search_trial_jev_enabled | default(true) | bool
+
 - name: Read the local artifact identity without exposing business records
   ansible.builtin.set_fact:
     hermes_search_trial_proof: "{{ lookup('ansible.builtin.file', hermes_search_trial_artifact ~ '/artifact.json') | from_json }}"
@@ -57,7 +68,11 @@
     mode: '0600'
   loop:
     - {key: HERMES_SEARCH_TRIAL_ENABLED, value: 'true'}
-    - {key: HERMES_SEARCH_TRIAL_JEV_ENABLED, value: "{{ hermes_search_trial_jev_enabled | default(false) | bool | string | lower }}"}
+    - {key: HERMES_SEARCH_TRIAL_JEV_ENABLED, value: "{{ hermes_search_trial_jev_enabled | default(true) | bool | string | lower }}"}
+    - {key: HERMES_SEARCH_RECORD_SOURCE, value: "{{ hermes_search_trial_container_artifact }}/snapshot.json"}
+    - {key: HERMES_SEARCH_RECORD_CLASSIFICATION_STORE, value: "/app/storage/hermes-search/runtime/jev-record-classifications.json"}
+    - {key: HERMES_JEV_PROVIDER, value: 'typesafe-direct'}
+    - {key: TYPESAFE_API_KEY, value: "{{ hermes_search_typesafe_api_key }}"}
     - {key: HERMES_INFERENCE_ORIGIN, value: "{{ business_hermes_chat_dgx_base_url | default('http://100.118.82.72:38081') }}"}
     - {key: HERMES_INFERENCE_TOKEN, value: "{{ business_hermes_chat_dgx_token }}"}
     - {key: HERMES_INFERENCE_EGRESS, value: 'http://business-hermes-chat-egress:3128'}
@@ -65,6 +80,16 @@
     - {key: HERMES_TRIAL_SNAPSHOT_PATH, value: "{{ hermes_search_trial_container_artifact }}/snapshot.json"}
     - {key: HERMES_ORGANIZED_MANIFEST, value: "{{ hermes_search_trial_container_artifact }}/reviewed.json"}
   no_log: true
+  when: hermes_search_trial_enabled | bool
+
+- name: Remove legacy fixed-record classifier settings
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: "^{{ item }}="
+    state: absent
+  loop:
+    - HERMES_SEARCH_TRIAL_RECORD_PILOT_FIXTURE
+    - HERMES_SEARCH_TRIAL_RECORD_PILOT_STORE
   when: hermes_search_trial_enabled | bool
 
 - name: Disable only the trial when explicitly requested

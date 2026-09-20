@@ -40,17 +40,17 @@ export class HermesSearchTrialService {
     enabled: process.env.HERMES_SEARCH_TRIAL_ENABLED === 'true',
     node: process.env.HERMES_SEARCH_NODE ?? '/opt/hermes-node/bin/node',
     entry: process.env.HERMES_SEARCH_ENTRY ?? '/app/scripts/hermes-search/hermes-qmd-prefetch-worker.mjs',
-    recordPilotFixture: process.env.HERMES_SEARCH_TRIAL_RECORD_PILOT_FIXTURE ?? null,
+    recordSource: process.env.HERMES_SEARCH_RECORD_SOURCE ?? process.env.HERMES_TRIAL_SNAPSHOT_PATH ?? null,
   }) {}
 
   isEnabled() { return this.settings.enabled; }
 
   private start(): Promise<void> {
-    if (!this.settings.enabled) return Promise.reject(new Error('試用検索は無効です。'));
+    if (!this.settings.enabled) return Promise.reject(new Error('JEV記録検索は無効です。'));
     if (this.failure) return Promise.reject(this.failure);
     if (this.ready) return this.ready;
-    if ((!process.env.HERMES_INFERENCE_ORIGIN || !process.env.HERMES_INFERENCE_TOKEN) && !this.settings.recordPilotFixture) {
-      return Promise.reject(new Error('試用検索の接続設定がありません。'));
+    if ((!process.env.HERMES_INFERENCE_ORIGIN || !process.env.HERMES_INFERENCE_TOKEN) && !this.settings.recordSource) {
+      return Promise.reject(new Error('JEV記録検索の接続設定がありません。'));
     }
     this.ready = new Promise((resolve, reject) => {
       const child = spawn(this.settings.node, ['--max-old-space-size=384', this.settings.entry, '--hermes-ui-prefetch-worker'], {
@@ -60,7 +60,7 @@ export class HermesSearchTrialService {
       this.child = child;
       let buffer = '';
       const fail = () => {
-        const error = new Error('試用検索を利用できません。検索失敗のため、該当なしとは判断していません。');
+        const error = new Error('JEV記録検索を利用できません。検索失敗のため、該当なしとは判断していません。');
         this.failure = error;
         this.pending?.reject(error);
         this.pending = null;

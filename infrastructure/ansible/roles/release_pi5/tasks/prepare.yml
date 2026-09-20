@@ -942,18 +942,7 @@
   when:
     - release_pi5_route == 'fresh'
     - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') in ['true', 'false']
-    - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_RECORD_PILOT_ARTIFACT') | length == 0
     - business_hermes_chat_enabled | default(false) | bool
-
-- name: Prepare the fixed fictional Hermes record pilot
-  ansible.builtin.include_tasks: hermes-search-record-pilot.yml
-  vars:
-    hermes_search_record_pilot_artifact: "{{ lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_RECORD_PILOT_ARTIFACT') }}"
-    hermes_search_record_pilot_artifact_files: [fixture.mjs, base-fixture.json, store.json]
-  when:
-    - release_pi5_route == 'fresh'
-    - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_RECORD_PILOT_ARTIFACT') | length > 0
-    - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') == 'true'
 
 - name: Prepare the answer cache and protected nightly checks
   ansible.builtin.include_tasks: business-hermes-answer-cache.yml
