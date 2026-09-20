@@ -424,7 +424,7 @@ class TrialWorker {
 
   async start() {
     if (this.recordClassifier) {
-      const classifierRuntime = await this.recordClassifier.prepare();
+      const classifierRuntime = await this.recordClassifier.prepare({ background: true });
       this.runtime = {
         protocol: 'hermes-ui-record-search/v1',
         platform: process.platform,
@@ -503,7 +503,12 @@ class TrialWorker {
     if (!this.runtime || (!this.qmd && !this.recordClassifier)) throw new Error('record search worker is not ready');
     const started = performance.now();
     if (this.recordClassifier) {
-      const result = await this.recordClassifier.answer(question);
+      const session = trialSession(conversation);
+      const result = await this.recordClassifier.answer(question, {
+        relatedHistory: session.jevDialogue,
+        confirmationPending: session.pending,
+        searchRequest: session.searchRequest,
+      });
       return {
         ...result,
         mode: 'authorized_record_classification',

@@ -66,3 +66,31 @@ test('JEV remains disabled on the existing worker path by default', async () => 
   assert.equal(result.status, 'completed');
   assert.deepEqual(searched, ['業務対象の記録を確認したい']);
 });
+
+test('worker forwards the existing session to the real-record classifier', async () => {
+  let received;
+  const worker = new TrialWorker({
+    recordClassifier: {
+      answer: async (question, conversation) => {
+        received = { question, conversation };
+        return { status: 'clarification', answer: '確認が必要です。', recordIds: [], elapsedMs: 0 };
+      },
+      metrics: () => ({})
+    }
+  });
+  worker.runtime = { snapshot: { count: 2 } };
+  const result = await worker.answer('続きの質問', {
+    pending: { request: '前の質問' },
+    searchRequest: '前の質問',
+    jevDialogue: [{ role: 'assistant', content: '追加条件を指定してください。' }],
+  });
+  assert.equal(result.status, 'clarification');
+  assert.deepEqual(received, {
+    question: '続きの質問',
+    conversation: {
+      relatedHistory: [{ role: 'assistant', content: '追加条件を指定してください。' }],
+      confirmationPending: { request: '前の質問' },
+      searchRequest: '前の質問',
+    }
+  });
+});
