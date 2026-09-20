@@ -88,7 +88,54 @@ test('classifies real snapshot rows incrementally and refuses unbound display-on
     return evaluator(input);
   } });
   const thirdRuntime = await third.prepare();
-  assert.equal(thirdRuntime.classifiedRecordCount, 1);
-  assert.equal(thirdRuntime.reusedRecordCount, 2);
-  assert.equal(thirdCalls, 1);
+  assert.equal(thirdRuntime.classifiedRecordCount, 3);
+  assert.equal(thirdRuntime.reusedRecordCount, 0);
+  assert.equal(thirdCalls, 3);
+});
+
+test('starts with reusable classifications and persists each background result', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-real-classifier-background-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  await writeFile(snapshotPath, JSON.stringify(snapshot));
+  const started = [];
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: async (input) => {
+    started.push(input.state.request);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    return evaluator(input);
+  } });
+  const runtime = await classifier.prepare({ background: true });
+  assert.equal(runtime.classificationStatus, 'running');
+  assert.equal(runtime.pendingRecordCount, 2);
+  assert.equal(started.length, 1);
+  const checkpoint = JSON.parse(await readFile(storePath, 'utf8'));
+  assert.equal(checkpoint.classifications.length, 0);
+  await classifier.classificationPromise;
+  assert.equal(classifier.metrics().classificationStatus, 'complete');
+  assert.equal(classifier.metrics().pending, 0);
+  const persisted = JSON.parse(await readFile(storePath, 'utf8'));
+  assert.equal(persisted.classifications.length, 2);
+});
+
+test('passes the existing conversation state into query classification', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-real-classifier-conversation-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  await writeFile(snapshotPath, JSON.stringify(snapshot));
+  let queryState;
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: async (input) => {
+    if (input.state.request === '続きの質問') queryState = input.state;
+    return evaluator(input);
+  } });
+  await classifier.prepare();
+  await classifier.answer('続きの質問', {
+    searchRequest: '機械課の不適合',
+    relatedHistory: [{ role: 'assistant', content: '対象をもう少し具体化してください。' }],
+    confirmationPending: { request: '機械課の不適合', unresolvedItems: ['対象'] },
+  });
+  assert.deepEqual(queryState.relatedHistory, [
+    { role: 'user', content: '機械課の不適合' },
+    { role: 'assistant', content: '対象をもう少し具体化してください。' },
+  ]);
+  assert.deepEqual(queryState.confirmationPending, { request: '機械課の不適合', unresolvedItems: ['対象'] });
 });

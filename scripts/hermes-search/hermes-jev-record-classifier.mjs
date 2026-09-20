@@ -170,6 +170,7 @@ function observedFields(records) {
 function observedTopicOptions(records) {
   const counts = new Map();
   const labels = new Set(['不適合番号', '品番', '品名', '機械名', '起因部署', '発見日', '不適合内容', '備考', '個別是正内容', '処置内容']);
+  const segmenter = typeof Intl?.Segmenter === 'function' ? new Intl.Segmenter('ja', { granularity: 'word' }) : null;
   for (const record of records) {
     const values = Object.entries(record)
       .filter(([key]) => !OBSERVED_TOPIC_EXCLUDED_FIELDS.has(key))
@@ -177,8 +178,7 @@ function observedTopicOptions(records) {
     const terms = new Set();
     for (const value of values) {
       const normalized = value.normalize('NFKC').replace(/[「」『』【】（）()［］[\]、。！？!?：:;,，．\n]/g, ' ');
-      if (typeof Intl?.Segmenter === 'function') {
-        const segmenter = new Intl.Segmenter('ja', { granularity: 'word' });
+      if (segmenter) {
         let run = '';
         const flush = () => {
           const candidate = run.trim();
@@ -280,6 +280,15 @@ function reusableClassification(value, savedDefinition, definition) {
   for (const group of definition.groups) {
     const savedGroup = savedGroups.get(group.id);
     if (group.id !== 'observed_topic' && canonicalJson(savedGroup) !== canonicalJson(group)) return null;
+    if (group.id === 'observed_topic') {
+      if (!isObject(savedGroup) || savedGroup.cardinality !== group.cardinality) return null;
+      const savedOptionIds = new Set((savedGroup.options ?? []).map((option) => option?.id).filter(Boolean));
+      const currentOptionIds = new Set((group.options ?? []).map((option) => option?.id).filter(Boolean));
+      // A new observed topic changes the meaning of an existing row's
+      // multi-tag result. Treat that row as pending instead of silently
+      // reusing a classification that cannot answer the new topic.
+      if ([...currentOptionIds].some((id) => !savedOptionIds.has(id))) return null;
+    }
   }
   const normalized = {};
   for (const group of definition.groups) {
@@ -379,7 +388,8 @@ function limitFromQuestion(question) {
 }
 
 export function searchStored(store, query) {
-  const matches = store.records.filter((record) => matchesClassification(store.classificationsById.get(record.id) ?? {}, query)
+  const matches = store.records.filter((record) => store.classificationsById.has(record.id)
+    && matchesClassification(store.classificationsById.get(record.id) ?? {}, query)
     && matchesConditions(record, query.conditions)
     && (Object.keys(query.exclude).length === 0 || !matchesConditions(record, query.exclude))
     && lexicalMatch(record, query.lexicalTerms));
@@ -389,10 +399,25 @@ export function searchStored(store, query) {
   return ordered.slice(0, query.limit);
 }
 
-async function classifyText(question, definition, evaluate, mode) {
+function queryConversationState(question, conversation = {}) {
+  const safeConversation = isObject(conversation) ? conversation : {};
+  const dialogue = Array.isArray(safeConversation.relatedHistory)
+    ? safeConversation.relatedHistory.filter((item) => isObject(item) && typeof item.role === 'string' && typeof item.content === 'string').slice(-8)
+    : [];
+  const previousRequest = typeof safeConversation.searchRequest === 'string' && safeConversation.searchRequest.trim() && safeConversation.searchRequest !== question
+    ? [{ role: 'user', content: safeConversation.searchRequest }]
+    : [];
+  return {
+    request: question,
+    relatedHistory: [...previousRequest, ...dialogue],
+    confirmationPending: safeConversation.confirmationPending ?? safeConversation.pending ?? null,
+  };
+}
+
+async function classifyText(question, definition, evaluate, mode, conversation = {}) {
   const result = await evaluate({
     model: 'typesafe-ai/jev',
-    state: { request: question, relatedHistory: [], confirmationPending: null },
+    state: mode === 'query' ? queryConversationState(question, conversation) : { request: question, relatedHistory: [], confirmationPending: null },
     questions: buildQuestions(definition, mode),
     maxRetries: 0
   });
@@ -408,71 +433,142 @@ export class AuthorizedRecordClassifier {
     this.store = null;
     this.runtime = null;
     this.calls = [];
+    this.pendingRecordIds = new Set();
+    this.classificationPromise = null;
+    this.closed = false;
   }
 
-  async prepare() {
+  async persistStore() {
+    const classifications = this.store.records
+      .map((record) => {
+        const classification = this.store.classificationsById.get(record.id);
+        return classification ? { id: record.id, classification } : null;
+      })
+      .filter(Boolean);
+    this.store.classifications = classifications;
+    await writeStore(this.storePath, {
+      schema: CLASSIFIER_SCHEMA,
+      definitionSha256: this.store.definitionSha256,
+      definition: this.definition,
+      source: this.store.source,
+      records: this.store.records,
+      classifications,
+      pendingRecordIds: [...this.pendingRecordIds],
+    });
+  }
+
+  async classifyPending(records, { continueOnError = false } = {}) {
+    for (const record of records) {
+      if (this.closed) return;
+      const started = performance.now();
+      try {
+        const evaluated = await classifyText(record.rawText, this.definition, this.evaluateImplementation, 'record');
+        this.calls.push({ phase: 'record', recordIdSha256: sha256(record.id), requestSha256: sha256(record.rawText), questionCount: Object.keys(buildQuestions(this.definition, 'record')).length, elapsedMs: Number((performance.now() - started).toFixed(3)) });
+        this.store.classificationsById.set(record.id, evaluated.classification);
+        this.pendingRecordIds.delete(record.id);
+        this.runtime.classifiedRecordCount += 1;
+        this.runtime.pendingRecordCount = this.pendingRecordIds.size;
+        await this.persistStore();
+      } catch (error) {
+        this.runtime.classificationFailureCount += 1;
+        this.runtime.pendingRecordCount = this.pendingRecordIds.size;
+        this.runtime.classificationStatus = 'partial';
+        if (!continueOnError) throw error;
+      }
+    }
+    this.runtime.pendingRecordCount = this.pendingRecordIds.size;
+    this.runtime.classificationStatus = this.pendingRecordIds.size === 0 ? 'complete' : 'partial';
+  }
+
+  async prepare({ background = false } = {}) {
     if (!this.snapshotPath || !this.storePath) throw new Error('record classification source and store are required');
+    if (this.runtime) return this.runtime;
     const records = await readSnapshot(this.snapshotPath);
     const saved = await readStore(this.storePath);
     this.definition = buildClassificationDefinition(records, saved?.definition);
     const definitionSha256 = definitionHash(this.definition);
     const savedRecords = new Map((saved?.records ?? []).map((record) => [record.id, record]));
     const savedClassifications = new Map((saved?.classifications ?? []).map((classification) => [classification.id, classification]));
-    const classifications = [];
+    const classificationsById = new Map();
+    const pendingRecords = [];
     let reusedRecordCount = 0;
-    let classifiedRecordCount = 0;
     for (const record of records) {
       const previous = savedRecords.get(record.id);
       const previousClassification = savedClassifications.get(record.id)?.classification;
       const reusable = reusableClassification(previousClassification, saved?.definition, this.definition);
       if (previous?.sourceContentSha256 === record.sourceContentSha256 && reusable) {
-        classifications.push({ id: record.id, classification: reusable });
+        classificationsById.set(record.id, reusable);
         reusedRecordCount += 1;
         continue;
       }
-      const started = performance.now();
-      const evaluated = await classifyText(record.rawText, this.definition, this.evaluateImplementation, 'record');
-      this.calls.push({ phase: 'record', recordIdSha256: sha256(record.id), requestSha256: sha256(record.rawText), questionCount: Object.keys(buildQuestions(this.definition, 'record')).length, elapsedMs: Number((performance.now() - started).toFixed(3)) });
-      classifications.push({ id: record.id, classification: evaluated.classification });
-      classifiedRecordCount += 1;
+      pendingRecords.push(record);
     }
+    this.pendingRecordIds = new Set(pendingRecords.map((record) => record.id));
     this.store = {
       schema: CLASSIFIER_SCHEMA,
       definitionSha256,
       source: { snapshotDigest: sha256(canonicalJson(records)), recordCount: records.length },
       records,
-      classifications,
-      classificationsById: new Map(classifications.map((item) => [item.id, item.classification]))
+      classifications: [],
+      classificationsById,
     };
-    await writeStore(this.storePath, {
-      schema: CLASSIFIER_SCHEMA,
-      definitionSha256,
-      definition: this.definition,
-      source: this.store.source,
-      records,
-      classifications
-    });
     this.runtime = {
       definitionVersion: CLASSIFIER_DEFINITION_VERSION,
       definitionSha256,
       recordCount: records.length,
       reusedRecordCount,
-      classifiedRecordCount,
+      classifiedRecordCount: 0,
+      pendingRecordCount: pendingRecords.length,
+      classificationFailureCount: 0,
+      classificationStatus: pendingRecords.length === 0 ? 'complete' : 'running',
       classificationCalls: this.calls.filter((call) => call.phase === 'record').length,
       source: 'authorized latest nonconformity snapshot'
     };
+    await this.persistStore();
+    if (background) {
+      this.classificationPromise = this.classifyPending(pendingRecords, { continueOnError: true }).catch(() => {
+        this.runtime.classificationStatus = 'partial';
+      });
+    } else {
+      await this.classifyPending(pendingRecords);
+    }
     return this.runtime;
   }
 
-  async answer(question) {
+  coverage() {
+    const total = this.store?.records.length ?? 0;
+    const classified = this.store?.classificationsById.size ?? 0;
+    return { total, classified, pending: Math.max(0, total - classified), complete: total > 0 && classified === total };
+  }
+
+  coverageNotice(coverage) {
+    if (coverage.complete) return '';
+    return `分類処理中のため、現在は分類済み ${coverage.classified}/${coverage.total} 件だけが検索対象です。未分類の記録は結果に含まれていません。`;
+  }
+
+  sessionFor(question, conversation, pending) {
+    const safeConversation = isObject(conversation) ? conversation : {};
+    return {
+      pending: pending ?? null,
+      searchRequest: typeof safeConversation.searchRequest === 'string' ? safeConversation.searchRequest : question,
+      jevDialogue: Array.isArray(safeConversation.relatedHistory)
+        ? safeConversation.relatedHistory.filter((item) => isObject(item) && item.role === 'assistant' && typeof item.content === 'string').slice(-8)
+        : [],
+    };
+  }
+
+  async answer(question, conversation = {}) {
     if (!this.store || !this.definition) throw new Error('record classifier is not ready');
     const started = performance.now();
+    const pending = isObject(conversation) ? (conversation.confirmationPending ?? conversation.pending ?? null) : null;
     const evaluated = await classifyText(question, this.definition, async (input) => {
       const callStarted = performance.now();
       const result = await this.evaluateImplementation(input);
       this.calls.push({ phase: 'query', requestSha256: sha256(question), questionCount: Object.keys(input.questions).length, elapsedMs: Number((performance.now() - callStarted).toFixed(3)) });
       return result;
-    }, 'query');
+    }, 'query', conversation);
+    const coverage = this.coverage();
+    const coverageNotice = this.coverageNotice(coverage);
     const structured = extractStructuredConditions(question, this.store.records);
     const query = {
       question,
@@ -487,10 +583,11 @@ export class AuthorizedRecordClassifier {
     if (resolvedConditionCount(question, evaluated.classification, structured.include, structured.exclude) === 0 || displayOnlyRequest(question, structured.include)) {
       return {
         status: 'clarification',
-        answer: displayOnlyRequest(question, structured.include) ? '発生日を確認する対象の不適合番号、品番、工程、現象、部署などを指定してください。' : '検索条件を特定できませんでした。工程、現象、処置、原因、品番、不適合番号、部署などを指定してください。',
+        answer: [coverageNotice, displayOnlyRequest(question, structured.include) ? '発生日を確認する対象の不適合番号、品番、工程、現象、部署などを指定してください。' : '検索条件を特定できませんでした。工程、現象、処置、原因、品番、不適合番号、部署などを指定してください。'].filter(Boolean).join('\n\n'),
         recordIds: [],
-        confirmationPending: null,
-        classifier: { classification: evaluated.classification, conditions: structured.include, exclude: structured.exclude, display: { originalText: true }, reason: 'conditions_not_resolved' },
+        confirmationPending: pending,
+        classifier: { classification: evaluated.classification, conditions: structured.include, exclude: structured.exclude, display: { originalText: true }, reason: 'conditions_not_resolved', coverage },
+        session: this.sessionFor(question, conversation, pending),
         elapsedMs: Number((performance.now() - started).toFixed(3))
       };
     }
@@ -498,18 +595,19 @@ export class AuthorizedRecordClassifier {
     const answer = records.map((record) => record.rawText).join('\n\n');
     return {
       status: 'completed',
-      answer: answer || '指定条件に一致する記録はありませんでした。読み込んでいない記録については判断していません。',
+      answer: [coverageNotice, answer || '指定条件に一致する記録はありませんでした。未分類の記録については判断していません。'].filter(Boolean).join('\n\n'),
       recordIds: records.map((record) => `nonconformity:${record.id}`),
-      classifier: { classification: evaluated.classification, conditions: structured.include, exclude: structured.exclude, display: { originalText: true }, matchedCount: records.length, limit: query.limit },
+      confirmationPending: pending,
+      classifier: { classification: evaluated.classification, conditions: structured.include, exclude: structured.exclude, display: { originalText: true }, matchedCount: records.length, limit: query.limit, coverage },
       elapsedMs: Number((performance.now() - started).toFixed(3))
     };
   }
 
   metrics() {
-    return { ...this.runtime, queryClassificationCalls: this.calls.filter((call) => call.phase === 'query').length, apiCalls: this.calls.length, calls: this.calls };
+    return { ...this.runtime, ...this.coverage(), classificationCalls: this.calls.filter((call) => call.phase === 'record').length, queryClassificationCalls: this.calls.filter((call) => call.phase === 'query').length, apiCalls: this.calls.length, calls: this.calls };
   }
 
-  async close() {}
+  async close() { this.closed = true; }
 }
 
 export { GROUPS };
