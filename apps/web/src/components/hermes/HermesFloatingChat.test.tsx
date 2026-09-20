@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   clientKey: 'client-key-test',
   auth: { user: null, token: null },
   send: vi.fn(),
+  getTrialScope: vi.fn(),
+  sendTrialAnswer: vi.fn(),
   listConsultations: vi.fn(),
   createConsultation: vi.fn(),
   getConsultation: vi.fn(),
@@ -24,6 +26,8 @@ vi.mock('../../api/client', () => ({
   listBusinessHermesConsultations: mocks.listConsultations,
   sendBusinessHermesChat: mocks.send,
   sendBusinessHermesConsultationMessage: mocks.sendConsultationMessage,
+  getHermesSearchTrialScope: mocks.getTrialScope,
+  sendHermesSearchTrialAnswer: mocks.sendTrialAnswer,
   updateBusinessHermesConsultation: mocks.updateConsultation
 }));
 
@@ -47,8 +51,9 @@ vi.mock('./HermesChatPanel', () => ({
     consultationError?: string | null;
     consultations?: Array<{ id: string; title: string }>;
     activeConsultation?: { id: string; title: string; messages: Array<{ id: string; content: string }>; messagesNextCursor?: string | null } | null;
-    knowledgeMode?: 'search' | 'knowledge';
-    onKnowledgeModeChange?: (mode: 'search' | 'knowledge') => void;
+    knowledgeMode?: 'search' | 'knowledge' | 'record-pilot';
+    recordPilotAvailable?: boolean;
+    onKnowledgeModeChange?: (mode: 'search' | 'knowledge' | 'record-pilot') => void;
     conversationExtension?: ReactNode;
     attachmentControl?: ReactNode;
     onDraftChange: (value: string) => void;
@@ -73,6 +78,7 @@ vi.mock('./HermesChatPanel', () => ({
         <div data-testid="hermes-mode-selector">
           <button type="button" aria-pressed={props.knowledgeMode === 'search'} onClick={() => props.onKnowledgeModeChange?.('search')}>検索</button>
           <button type="button" aria-pressed={props.knowledgeMode === 'knowledge'} onClick={() => props.onKnowledgeModeChange?.('knowledge')}>ナレッジ</button>
+          {props.recordPilotAvailable ? <button type="button" aria-pressed={props.knowledgeMode === 'record-pilot'} onClick={() => props.onKnowledgeModeChange?.('record-pilot')}>JEV記録</button> : null}
         </div>
       ) : null}
       {props.mode === 'consultations' && props.onNewConsultation ? (
@@ -197,6 +203,8 @@ describe('HermesFloatingChat', () => {
     mocks.auth.user = null;
     mocks.auth.token = null;
     mocks.send.mockReset();
+    mocks.getTrialScope.mockReset().mockResolvedValue({ enabled: false });
+    mocks.sendTrialAnswer.mockReset();
     mocks.listConsultations.mockReset();
     mocks.listConsultations.mockRejectedValue({ isAxiosError: true, response: { status: 404 } });
     mocks.createConsultation.mockReset();
@@ -311,6 +319,71 @@ describe('HermesFloatingChat', () => {
     });
     expect(mocks.knowledgeGet).not.toHaveBeenCalled();
     expect(mocks.knowledgePost).not.toHaveBeenCalled();
+  });
+
+  it('exposes the JEV record mode only when the trial scope is enabled', async () => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true, snapshotCount: 6, organizedCount: 6 });
+    mocks.sendTrialAnswer.mockResolvedValue({
+      status: 'completed',
+      answer: '工程：旋盤加工。現象：外径が規格上限を0.12 mm超過。処置：再加工を実施。原因は記載なし。',
+      recordIds: ['fixture-nc-001'],
+      elapsedMs: 12
+    });
+
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    const pilotButton = await screen.findByRole('button', { name: 'JEV記録' });
+    fireEvent.click(pilotButton);
+    const input = screen.getByRole('textbox', { name: 'Hermesへの質問' });
+    fireEvent.change(input, { target: { value: '旋盤加工で外径が大きい記録を探して' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce());
+    expect(mocks.sendTrialAnswer.mock.calls[0][0]).toMatchObject({ question: '旋盤加工で外径が大きい記録を探して' });
+    expect(mocks.sendTrialAnswer.mock.calls[0][0].sessionId).toEqual(expect.any(String));
+    expect(await screen.findByText('工程：旋盤加工。現象：外径が規格上限を0.12 mm超過。処置：再加工を実施。原因は記載なし。')).toBeInTheDocument();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps the record-pilot confirmation round trip on one session', async () => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true, snapshotCount: 6, organizedCount: 6 });
+    mocks.sendTrialAnswer
+      .mockResolvedValueOnce({
+        status: 'clarification',
+        answer: '処置条件を指定しますか？',
+        recordIds: [],
+        elapsedMs: 8,
+        confirmationPending: {
+          request: 'clarify',
+          question: '処置条件を指定しますか？',
+          purpose: '検索条件の確認',
+          requiredItems: [],
+          confirmedInfo: {},
+          unresolvedItems: ['treatment']
+        }
+      })
+      .mockResolvedValueOnce({
+        status: 'completed',
+        answer: '工程：フライス加工。現象：側面に打痕を確認。処置：選別して隔離。',
+        recordIds: ['fixture-nc-002'],
+        elapsedMs: 11
+      });
+
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'JEV記録' }));
+    const input = screen.getByRole('textbox', { name: 'Hermesへの質問' });
+    fireEvent.change(input, { target: { value: 'フライス加工の打痕記録を探して' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce());
+    expect(await screen.findByText('処置条件を指定しますか？')).toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: '処置は指定しません' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledTimes(2));
+    expect(mocks.sendTrialAnswer.mock.calls[1][0].sessionId).toBe(mocks.sendTrialAnswer.mock.calls[0][0].sessionId);
+    expect(await screen.findByText('工程：フライス加工。現象：側面に打痕を確認。処置：選別して隔離。')).toBeInTheDocument();
   });
 
   it('switches explicitly to knowledge, preserves draft and attachments, and routes intake only there', async () => {

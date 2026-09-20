@@ -7,14 +7,17 @@ import {
   recordBusinessHermesFeedback,
   createBusinessHermesConsultation,
   getBusinessHermesConsultation,
+  getHermesSearchTrialScope,
   getResolvedClientKey,
   listBusinessHermesConsultations,
   sendBusinessHermesChat,
   sendBusinessHermesConsultationMessage,
+  sendHermesSearchTrialAnswer,
   type BusinessHermesChatResponse,
   type BusinessHermesConsultationChatResponse,
   type BusinessHermesConsultationDetail,
-  type BusinessHermesConsultationItem
+  type BusinessHermesConsultationItem,
+  type HermesSearchTrialScope
 } from '../../api/client';
 import { getApiErrorMessage } from '../../api/errors';
 import { Dialog } from '../../components/ui/Dialog';
@@ -125,6 +128,7 @@ export function HermesFloatingChat() {
   });
   const [open, setOpen] = useState(false);
   const [knowledgeMode, setKnowledgeMode] = useState<HermesKnowledgeMode>('search');
+  const [recordPilotScope, setRecordPilotScope] = useState<HermesSearchTrialScope & { loaded: boolean }>({ enabled: false, loaded: false });
   const [isPanelExpanded, setIsPanelExpanded] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [draft, setDraft] = useState('');
@@ -158,6 +162,7 @@ export function HermesFloatingChat() {
   const abortRef = useRef<AbortController | null>(null);
   const messageHistoryAbortRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
+  const recordPilotSessionIdRef = useRef(crypto.randomUUID());
   const consultationListRequestIdRef = useRef(0);
   const consultationRequestIdRef = useRef(0);
   const messageHistoryRequestIdRef = useRef(0);
@@ -215,6 +220,7 @@ export function HermesFloatingChat() {
     setIsConsultationsLoading(false);
     setIsConsultationDetailLoading(false);
     setMessageHistoryError(null);
+    recordPilotSessionIdRef.current = crypto.randomUUID();
     if (options.clearConsultations) {
       setConsultations([]);
       setConsultationMode('loading');
@@ -228,6 +234,7 @@ export function HermesFloatingChat() {
     }
     if (identityRef.current === identity) return;
     identityRef.current = identity;
+    setRecordPilotScope({ enabled: false, loaded: false });
     resetConversation({ clearConsultations: true });
   }, [identity, resetConversation]);
 
@@ -350,8 +357,9 @@ export function HermesFloatingChat() {
 
   const handleKnowledgeModeChange = useCallback((mode: HermesKnowledgeMode) => {
     knowledgeModeRevisionRef.current += 1;
+    if ((mode === 'record-pilot') !== (knowledgeMode === 'record-pilot')) resetConversation();
     setKnowledgeMode(mode);
-  }, []);
+  }, [knowledgeMode, resetConversation]);
 
   const handleDraftChange = useCallback((value: string) => {
     draftRevisionRef.current += 1;
@@ -477,6 +485,19 @@ export function HermesFloatingChat() {
       });
     return () => controller.abort();
   }, [consultationMode, identity, open]);
+
+  useEffect(() => {
+    if (!open || recordPilotScope.loaded) return;
+    const controller = new AbortController();
+    void getHermesSearchTrialScope(controller.signal)
+      .then((scope) => {
+        if (!controller.signal.aborted) setRecordPilotScope({ ...scope, loaded: true });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setRecordPilotScope({ enabled: false, loaded: true });
+      });
+    return () => controller.abort();
+  }, [identity, open, recordPilotScope.loaded]);
 
   const replaceConsultationInList = useCallback((next: BusinessHermesConsultationItem) => {
     setConsultations((current) => {
@@ -640,7 +661,7 @@ export function HermesFloatingChat() {
       } catch { return; }
     }
     if (!content) return;
-    if (consultationMode === 'loading') {
+    if (knowledgeMode !== 'record-pilot' && consultationMode === 'loading') {
       setConsultationError('相談を準備しています。少し待ってから送信してください。');
       return;
     }
@@ -661,7 +682,7 @@ export function HermesFloatingChat() {
       .map(({ role, content: messageContent }) => ({ role, content: messageContent }));
 
     if (!options?.selection) setMessages((current) => [...current, userMessage]);
-    if (activeConsultation && !options?.selection) {
+    if (activeConsultation && !options?.selection && knowledgeMode !== 'record-pilot') {
       setActiveConsultation((current) => current ? {
         ...current,
         messages: [...current.messages, {
@@ -685,6 +706,21 @@ export function HermesFloatingChat() {
     const requestIdentity = identity;
 
     try {
+      if (knowledgeMode === 'record-pilot') {
+        const response = await sendHermesSearchTrialAnswer({
+          question: content,
+          sessionId: recordPilotSessionIdRef.current
+        }, controller.signal);
+        if (controller.signal.aborted || requestId !== requestIdRef.current || identityRef.current !== requestIdentity) return;
+        setMessages((current) => [...current, {
+          id: `hermes-assistant-${requestId}`,
+          role: 'assistant',
+          content: response.answer,
+          recordIds: response.recordIds,
+          createdAt: new Date().toISOString()
+        }]);
+        return;
+      }
       let consultation = activeConsultation;
       if (consultationMode === 'available' && !consultation) {
         setIsConsultationDetailLoading(true);
@@ -885,11 +921,14 @@ export function HermesFloatingChat() {
   };
   const panelProps: HermesChatPanelProps = {
     knowledgeMode,
+    recordPilotAvailable: recordPilotScope.enabled,
     onKnowledgeModeChange: handleKnowledgeModeChange,
-    conversationExtension: knowledgeMode === 'knowledge' && knowledge.enabled ? <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
+    conversationExtension: knowledgeMode === 'record-pilot' ? <p className="hermes-chat-panel__status" role="note">
+      JEV記録検索：架空の6記録だけが対象です。工程・現象など、知りたい条件を自然文で入力してください。記録の原文をそのまま表示します。
+    </p> : knowledgeMode === 'knowledge' && knowledge.enabled ? <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
       onChoose={(item, action) => void knowledge.choose(item, action)} onDelegate={text => void sendMessage(text, { skipKnowledge: true })} /> : null,
     attachmentControl: knowledgeMode === 'knowledge' && knowledge.enabled ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,
-    mode: consultationMode === 'legacy' ? 'legacy' : 'consultations',
+    mode: knowledgeMode === 'record-pilot' || consultationMode === 'legacy' ? 'legacy' : 'consultations',
     messages,
     draft,
     isBusy: isBusy || (knowledgeMode === 'knowledge' && knowledge.busy),
