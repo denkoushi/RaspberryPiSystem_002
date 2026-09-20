@@ -660,6 +660,28 @@ export type BusinessHermesChatResponse = {
   clarificationMessage: string | null;
 };
 
+export type HermesSearchTrialScope = {
+  enabled: boolean;
+  snapshotCount?: number;
+  organizedCount?: number;
+  snapshotId?: string;
+};
+
+export type HermesSearchTrialAnswer = {
+  status: string;
+  answer: string;
+  recordIds: string[];
+  elapsedMs: number;
+  confirmationPending?: {
+    request: string;
+    question: string;
+    purpose: string | null;
+    requiredItems: Array<{ id: string; label: string; type: string; candidates: unknown[] }>;
+    confirmedInfo: Record<string, unknown>;
+    unresolvedItems: string[];
+  } | null;
+};
+
 export type BusinessHermesConsultationItem = {
   id: string;
   title: string;
@@ -803,6 +825,23 @@ export type BusinessHermesConsultationListResponse = {
   consultations: BusinessHermesConsultationItem[];
   enabled: boolean;
 };
+
+export async function getHermesSearchTrialScope(signal?: AbortSignal): Promise<HermesSearchTrialScope> {
+  const { data } = await api.get<HermesSearchTrialScope>('/assembly/hermes-search-trial/scope', { signal });
+  return data;
+}
+
+export async function sendHermesSearchTrialAnswer(
+  payload: { question: string; sessionId: string },
+  signal?: AbortSignal
+): Promise<HermesSearchTrialAnswer> {
+  const { data } = await api.post<HermesSearchTrialAnswer>(
+    '/assembly/hermes-search-trial/answer',
+    payload,
+    { signal, timeout: 35_000 }
+  );
+  return data;
+}
 
 function unwrapBusinessHermesConsultation(
   data: BusinessHermesConsultationEnvelope

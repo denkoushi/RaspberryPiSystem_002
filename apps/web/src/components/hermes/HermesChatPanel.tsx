@@ -37,12 +37,13 @@ export type HermesConsultationSuggestion = {
   signageProposal?: BusinessHermesSignageProposal;
 };
 
-export type HermesKnowledgeMode = 'search' | 'knowledge';
+export type HermesKnowledgeMode = 'search' | 'knowledge' | 'record-pilot';
 
 export type HermesChatPanelProps = {
   conversationExtension?: ReactNode;
   attachmentControl?: ReactNode;
   knowledgeMode?: HermesKnowledgeMode;
+  recordPilotAvailable?: boolean;
   onKnowledgeModeChange?: (mode: HermesKnowledgeMode) => void;
   mode?: 'legacy' | 'consultations';
   messages: readonly HermesPanelMessage[];
@@ -435,6 +436,7 @@ export default function HermesChatPanel({
   conversationExtension,
   attachmentControl,
   knowledgeMode = 'search',
+  recordPilotAvailable = false,
   onKnowledgeModeChange,
   mode = 'legacy',
   messages,
@@ -486,7 +488,7 @@ export default function HermesChatPanel({
       disabled={isBusy || isConsultationDetailLoading || isMessageHistoryLoading || (mode === 'consultations' && isConsultationsLoading)}
       sendButton
       attachButton={false}
-      placeholder={isBusy ? '回答を取得中…' : isConsultationsLoading ? '相談一覧を準備中…' : '自然な言葉で相談…'}
+      placeholder={isBusy ? '回答を取得中…' : isConsultationsLoading ? '相談一覧を準備中…' : knowledgeMode === 'record-pilot' ? '自然文で架空記録を検索…' : '自然な言葉で相談…'}
       aria-label="Hermesへの質問"
       onChange={(_innerHtml, textContent) => onDraftChange(textContent)}
       onSend={() => onSend()}
@@ -501,6 +503,7 @@ export default function HermesChatPanel({
             <div className="hermes-chat-panel__mode-selector">
               <button type="button" className={`hermes-chat-panel__mode${knowledgeMode === 'search' ? ' hermes-chat-panel__mode--selected' : ''}`} aria-pressed={knowledgeMode === 'search'} onClick={() => onKnowledgeModeChange('search')}>検索</button>
               <button type="button" className={`hermes-chat-panel__mode${knowledgeMode === 'knowledge' ? ' hermes-chat-panel__mode--selected' : ''}`} aria-pressed={knowledgeMode === 'knowledge'} onClick={() => onKnowledgeModeChange('knowledge')}>ナレッジ</button>
+              {recordPilotAvailable ? <button type="button" className={`hermes-chat-panel__mode${knowledgeMode === 'record-pilot' ? ' hermes-chat-panel__mode--selected' : ''}`} aria-pressed={knowledgeMode === 'record-pilot'} onClick={() => onKnowledgeModeChange('record-pilot')}>JEV記録</button> : null}
             </div>
           ) : null}
           <div className="hermes-chat-panel__header-title">
