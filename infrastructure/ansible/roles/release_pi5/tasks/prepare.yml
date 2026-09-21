@@ -945,6 +945,14 @@
     - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') in ['true', 'false']
     - business_hermes_chat_enabled | default(false) | bool
 
+- name: Bind the finalized search environment to the candidate API
+  ansible.builtin.set_fact:
+    release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'PI5_ENV_FILE': release_pi5_chat_env_file}) }}"
+  when:
+    - release_pi5_route == 'fresh'
+    - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') in ['true', 'false']
+    - business_hermes_chat_enabled | default(false) | bool
+
 - name: Prepare the answer cache and protected nightly checks
   ansible.builtin.include_tasks: business-hermes-answer-cache.yml
   when:
@@ -1001,6 +1009,45 @@
     release_pi5_api_id: "{{ release_pi5_fresh_ids.results[0].stdout }}"
     release_pi5_web_id: "{{ release_pi5_fresh_ids.results[1].stdout }}"
   when: release_pi5_route == 'fresh'
+
+- name: Read the candidate API Hermes search environment without exposing secrets
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{json .Config.Env}}' }}"
+      - "{{ release_pi5_api_id }}"
+  register: release_pi5_candidate_search_env
+  changed_when: false
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') == 'true'
+    - business_hermes_chat_enabled | default(false) | bool
+
+- name: Require the candidate API to receive the finalized Hermes search environment
+  ansible.builtin.assert:
+    that:
+      - "'HERMES_SEARCH_TRIAL_ENABLED=true' in (release_pi5_candidate_search_env.stdout | from_json)"
+      - "'HERMES_SEARCH_TRIAL_JEV_ENABLED=true' in (release_pi5_candidate_search_env.stdout | from_json)"
+      - "'HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=false' in (release_pi5_candidate_search_env.stdout | from_json)"
+      - "'HERMES_JEV_PROVIDER=typesafe-direct' in (release_pi5_candidate_search_env.stdout | from_json)"
+      - >-
+        (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_SEARCH_RECORD_SOURCE=.+$') | list | length) == 1
+      - >-
+        (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_SEARCH_RECORD_CLASSIFICATION_STORE=.+$') | list | length) == 1
+      - >-
+        (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^TYPESAFE_API_KEY=.+$') | list | length) == 1
+    fail_msg: Candidate API did not receive the finalized Hermes search settings before traffic cutover.
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') == 'true'
+    - business_hermes_chat_enabled | default(false) | bool
 
 - name: Record same-release Pi5 candidate container IDs
   ansible.builtin.set_fact:
