@@ -67,6 +67,25 @@ test('JEV remains disabled on the existing worker path by default', async () => 
   assert.deepEqual(searched, ['業務対象の記録を確認したい']);
 });
 
+test('record classification can be disabled without disabling JEV search', () => {
+  const worker = new TrialWorker({ jevEnabled: true, recordClassificationEnabled: false });
+  assert.equal(worker.jevEnabled, true);
+  assert.equal(worker.recordClassificationEnabled, false);
+});
+
+test('worker reads the classification gate from startup environment independently', () => {
+  const previous = process.env.HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED;
+  process.env.HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED = 'false';
+  try {
+    const worker = new TrialWorker({ jevEnabled: true });
+    assert.equal(worker.jevEnabled, true);
+    assert.equal(worker.recordClassificationEnabled, false);
+  } finally {
+    if (previous === undefined) delete process.env.HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED;
+    else process.env.HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED = previous;
+  }
+});
+
 test('worker forwards the existing session to the real-record classifier', async () => {
   let received;
   const worker = new TrialWorker({

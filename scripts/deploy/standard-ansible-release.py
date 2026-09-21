@@ -640,9 +640,14 @@ def hermes_trial_configuration(
         return None, {}
     if enabled not in {"true", "false"}:
         raise UsageError("HERMES_SEARCH_TRIAL_ENABLED must be true or false")
+    classification_enabled = os.environ.get("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED", "")
+    if classification_enabled and classification_enabled not in {"true", "false"}:
+        raise UsageError("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED must be true or false")
     if args.full_fleet or selection != (("pi5", ("raspberrypi5",)),):
         raise UsageError("the Hermes search trial requires an exact raspberrypi5-only release")
     environment = {"HERMES_SEARCH_TRIAL_ENABLED": enabled}
+    if classification_enabled:
+        environment["HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED"] = classification_enabled
     if enabled == "false":
         return None, environment
     value = os.environ.get("HERMES_SEARCH_TRIAL_ARTIFACT", "")
@@ -753,6 +758,7 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
         command.append("--wait")
     for key, value in (hermes_environment or {}).items():
         if key not in {"HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_JEV_ENABLED",
+                       "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED",
                        "HERMES_JEV_PROVIDER",
                        "HERMES_SEARCH_TRIAL_ARTIFACT", "HERMES_SEARCH_TRIAL_MAINTENANCE",
                        "HERMES_ANSWER_CACHE_ARTIFACT"}:

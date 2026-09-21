@@ -196,6 +196,7 @@ test('starts with reusable classifications and persists each background result',
   } });
   const runtime = await classifier.prepare({ background: true });
   assert.equal(runtime.classificationStatus, 'running');
+  assert.equal(runtime.classificationEnabled, true);
   assert.equal(runtime.pendingRecordCount, 2);
   assert.equal(started.length, 1);
   const checkpoint = JSON.parse(await readFile(storePath, 'utf8'));
@@ -205,6 +206,61 @@ test('starts with reusable classifications and persists each background result',
   assert.equal(classifier.metrics().pending, 0);
   const persisted = JSON.parse(await readFile(storePath, 'utf8'));
   assert.equal(persisted.classifications.length, 2);
+});
+
+test('classification-off startup reads saved results without starting record JEV or rewriting the store', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-record-classification-off-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  await writeFile(snapshotPath, JSON.stringify(snapshot));
+  const seeded = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: evaluator });
+  await seeded.prepare();
+  const before = await readFile(storePath, 'utf8');
+  await writeFile(snapshotPath, JSON.stringify({
+    ...snapshot,
+    records: [...snapshot.records, {
+      ...snapshot.records[0], id: 'real-3', nonconformityNo: '00010003'
+    }],
+  }));
+  let recordCalls = 0;
+  const disabled = new AuthorizedRecordClassifier({
+    snapshotPath,
+    storePath,
+    classificationEnabled: false,
+    evaluateImplementation: async (input) => {
+      if (!Object.keys(input.questions).some((key) => key.startsWith('include:'))) recordCalls += 1;
+      return evaluator(input);
+    },
+  });
+  const runtime = await disabled.prepare({ background: true });
+  assert.equal(runtime.classificationStatus, 'disabled');
+  assert.equal(runtime.classificationEnabled, false);
+  assert.equal(disabled.classificationPromise, null);
+  assert.equal(recordCalls, 0);
+  assert.deepEqual(disabled.coverage(), { total: 3, classified: 2, pending: 1, complete: false });
+  assert.equal(await readFile(storePath, 'utf8'), before);
+
+  const result = await disabled.answer('旋盤加工で寸法が上限を超えた不適合');
+  assert.deepEqual(result.recordIds, ['nonconformity:real-1']);
+  assert.match(result.answer, /事前分類は停止中です/);
+  assert.doesNotMatch(result.answer, /分類処理中/);
+  assert.equal(disabled.metrics().classificationCalls, 0);
+  assert.ok(disabled.metrics().queryClassificationCalls > 0);
+
+  const resumed = new AuthorizedRecordClassifier({
+    snapshotPath,
+    storePath,
+    classificationEnabled: true,
+    evaluateImplementation: async (input) => {
+      if (!Object.keys(input.questions).some((key) => key.startsWith('include:'))) recordCalls += 1;
+      return evaluator(input);
+    },
+  });
+  const resumedRuntime = await resumed.prepare();
+  assert.equal(resumedRuntime.classificationEnabled, true);
+  assert.equal(resumedRuntime.classificationStatus, 'complete');
+  assert.equal(resumedRuntime.classifiedRecordCount, 1);
+  assert.equal(recordCalls, 1);
 });
 
 test('passes the existing conversation state into query classification', async () => {

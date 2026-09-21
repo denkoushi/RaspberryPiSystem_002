@@ -412,12 +412,14 @@ class TrialWorker {
     this.selector = this.remote ?? new SelectorClient();
     this.runtime = null;
     this.jevEnabled = options.jevEnabled ?? process.env.HERMES_SEARCH_TRIAL_JEV_ENABLED === 'true';
+    this.recordClassificationEnabled = options.recordClassificationEnabled ?? process.env.HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED !== 'false';
     this.intentEvaluator = options.intentEvaluator ?? interpretWithJev;
     const recordSource = process.env.HERMES_SEARCH_RECORD_SOURCE ?? process.env.HERMES_TRIAL_SNAPSHOT_PATH;
-    this.recordClassifier = options.recordClassifier ?? (recordSource && process.env.HERMES_SEARCH_TRIAL_JEV_ENABLED === 'true'
+    this.recordClassifier = options.recordClassifier ?? (recordSource && this.jevEnabled
       ? new AuthorizedRecordClassifier({
         snapshotPath: recordSource,
         storePath: process.env.HERMES_SEARCH_RECORD_CLASSIFICATION_STORE ?? path.join(DATA_DIRECTORY, 'hermes-jev-record-classifications.json'),
+        classificationEnabled: this.recordClassificationEnabled,
       })
       : null);
   }

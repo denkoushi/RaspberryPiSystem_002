@@ -939,6 +939,7 @@
   vars:
     hermes_search_trial_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') | bool }}"
     hermes_search_trial_artifact: "{{ lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ARTIFACT') }}"
+    hermes_search_record_classification_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED') | lower }}"
   when:
     - release_pi5_route == 'fresh'
     - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') in ['true', 'false']

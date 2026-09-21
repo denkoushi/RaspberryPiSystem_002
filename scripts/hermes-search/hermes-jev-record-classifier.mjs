@@ -974,10 +974,11 @@ async function classifyText(question, definition, evaluate, mode, conversation =
 }
 
 export class AuthorizedRecordClassifier {
-  constructor({ snapshotPath, storePath, evaluateImplementation = createTypesafeDirectEvaluate() } = {}) {
+  constructor({ snapshotPath, storePath, evaluateImplementation = createTypesafeDirectEvaluate(), classificationEnabled = process.env.HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED !== 'false' } = {}) {
     this.snapshotPath = snapshotPath;
     this.storePath = storePath;
     this.evaluateImplementation = evaluateImplementation;
+    this.classificationEnabled = classificationEnabled;
     this.definition = null;
     this.store = null;
     this.runtime = null;
@@ -1069,10 +1070,12 @@ export class AuthorizedRecordClassifier {
       classifiedRecordCount: 0,
       pendingRecordCount: pendingRecords.length,
       classificationFailureCount: 0,
-      classificationStatus: pendingRecords.length === 0 ? 'complete' : 'running',
+      classificationStatus: !this.classificationEnabled ? 'disabled' : pendingRecords.length === 0 ? 'complete' : 'running',
+      classificationEnabled: this.classificationEnabled,
       classificationCalls: this.calls.filter((call) => call.phase === 'record').length,
       source: 'authorized latest nonconformity snapshot'
     };
+    if (!this.classificationEnabled) return this.runtime;
     await this.persistStore();
     if (background) {
       this.classificationPromise = this.classifyPending(pendingRecords, { continueOnError: true }).catch(() => {
@@ -1092,6 +1095,12 @@ export class AuthorizedRecordClassifier {
 
   coverageNotice(coverage) {
     if (coverage.complete) return '';
+    if (this.runtime?.classificationStatus === 'disabled') {
+      return `事前分類は停止中です。分類済み ${coverage.classified}/${coverage.total} 件を検索対象にしています。未分類の記録は結果に含まれていません。`;
+    }
+    if (this.runtime?.classificationStatus === 'partial') {
+      return `事前分類は未完了です。分類済み ${coverage.classified}/${coverage.total} 件を検索対象にしています。未分類の記録は結果に含まれていません。`;
+    }
     return `分類処理中のため、現在は分類済み ${coverage.classified}/${coverage.total} 件だけが検索対象です。未分類の記録は結果に含まれていません。`;
   }
 
