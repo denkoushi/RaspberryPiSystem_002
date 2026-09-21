@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { AuthorizedRecordClassifier, buildClassificationDefinition } from './hermes-jev-record-classifier.mjs';
+import { AuthorizedRecordClassifier, buildClassificationDefinition, extractStructuredConditions } from './hermes-jev-record-classifier.mjs';
 
 const snapshot = {
   schema: 'hermes-qmd-snapshot/v1',
@@ -147,6 +147,40 @@ test('classifies real snapshot rows incrementally and refuses unbound display-on
   assert.equal(thirdRuntime.classifiedRecordCount, 3);
   assert.equal(thirdRuntime.reusedRecordCount, 0);
   assert.equal(thirdCalls, 3);
+});
+
+test('resolves a facility term to its recorded origin-department scope and applies recent limit in code', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-organization-scope-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  const organizationSnapshot = {
+    ...snapshot,
+    records: [
+      { ...snapshot.records[0], id: 'north-machine', nonconformityNo: '00010101', originDepartmentCode: 'N-M', originDepartmentName: '北工場製造部機械課', discoveredOn: '2026-09-20' },
+      { ...snapshot.records[0], id: 'north-quality', nonconformityNo: '00010102', originDepartmentCode: 'N-Q', originDepartmentName: '北工場品質保証課', discoveredOn: '2026-09-19' },
+      { ...snapshot.records[0], id: 'north-old', nonconformityNo: '00010103', originDepartmentCode: 'N-M', originDepartmentName: '北工場製造部機械課', discoveredOn: '2026-09-18' },
+      { ...snapshot.records[1], id: 'south-machine', nonconformityNo: '00010104', originDepartmentCode: 'S-M', originDepartmentName: '南工場製造部機械課', discoveredOn: '2026-09-21' },
+    ],
+  };
+  const extracted = extractStructuredConditions('北工場の不適合２件。直近', organizationSnapshot.records);
+  assert.deepEqual(extracted.unresolved, []);
+  assert.deepEqual(extracted.organization.include.map((value) => value.name).sort(), [
+    '北工場品質保証課', '北工場製造部機械課',
+  ]);
+
+  await writeFile(snapshotPath, JSON.stringify(organizationSnapshot));
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: evaluator });
+  await classifier.prepare();
+  const result = await classifier.answer('北工場の不適合２件。直近');
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(result.recordIds, ['nonconformity:north-machine', 'nonconformity:north-quality']);
+  assert.equal(result.classifier.limit, 2);
+  assert.deepEqual(result.classifier.organization.matchedTerms, ['北工場']);
+
+  const ambiguous = extractStructuredConditions('機械課の不適合', organizationSnapshot.records);
+  assert.equal(ambiguous.unresolved[0].reason, 'ambiguous');
+  const unknown = extractStructuredConditions('架空工場の不適合', organizationSnapshot.records);
+  assert.equal(unknown.unresolved[0].reason, 'not_found');
 });
 
 test('starts with reusable classifications and persists each background result', async () => {
