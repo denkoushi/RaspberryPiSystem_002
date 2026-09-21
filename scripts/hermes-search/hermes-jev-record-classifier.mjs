@@ -4,6 +4,16 @@ import { performance } from 'node:perf_hooks';
 import path from 'node:path';
 
 import { createTypesafeDirectEvaluate } from './hermes-jev-record-pilot.mjs';
+import {
+  applySearchDelta,
+  deltaFingerprint,
+  emptySearchState,
+  exactSearchArguments,
+  hasSemanticConditions,
+  searchStateSummary,
+  stateFingerprint,
+  validateSearchState,
+} from './hermes-search-state.mjs';
 
 export const CLASSIFIER_SCHEMA = 'hermes-jev-record-classification/v2';
 export const CLASSIFIER_DEFINITION_VERSION = 4;
@@ -236,6 +246,17 @@ function buildQueryQuestions(definition) {
       { id: 'no_prior_target', description: '前回の検索対象がない' },
     ],
   );
+  questions.change_action = choiceQuestion(
+    '前回の確定条件に対するこのメッセージの操作を選ぶ。現在の確定条件に合わない検索結果が混ざったという指摘は、条件自体を変更・解除する指示と区別する。参照する既存条件と訂正意図が明確なら correct_condition、条件を追加・指定項目だけを置換・指定項目を解除・新規検索する指示ならそれぞれを選び、意味を確定できなければ clarify を選ぶ。',
+    [
+      { id: 'add_condition', description: '前回の条件を保持して条件を追加する' },
+      { id: 'replace_condition', description: '指定された条件項目だけを置換する' },
+      { id: 'remove_condition', description: '指定された条件項目を解除する' },
+      { id: 'correct_condition', description: '前回の条件の誤りを訂正する' },
+      { id: 'new_search', description: '前回とは別の検索を開始する' },
+      { id: 'clarify', description: '操作の意味を確定できないので確認する' },
+    ],
+  );
   return questions;
 }
 
@@ -361,6 +382,15 @@ function queryClassificationFromAnswers(answers, definition, question) {
     { id: 'no_prior_target', description: '前回対象なし' },
   ], 'conversation_target');
   judgments.conversation_target = conversationTarget;
+  const changeAction = normalizeChoiceJudgment(answers.change_action, [
+    { id: 'add_condition', description: '前回条件への追加' },
+    { id: 'replace_condition', description: '指定項目の置換' },
+    { id: 'remove_condition', description: '指定項目の解除' },
+    { id: 'correct_condition', description: '前回条件の訂正' },
+    { id: 'new_search', description: '新規検索' },
+    { id: 'clarify', description: '意味不確定' },
+  ], 'change_action');
+  judgments.change_action = changeAction;
   const display = displayRequestFrom(question, answers);
   for (const [id] of DISPLAY_REQUESTS) {
     const judgment = judgments[`display:${id}`];
@@ -373,7 +403,7 @@ function queryClassificationFromAnswers(answers, definition, question) {
   return {
     classification,
     judgments,
-    query: { include, exclude, display, unresolved, conversationTarget: conversationTarget.choice },
+    query: { include, exclude, display, unresolved, conversationTarget: conversationTarget.choice, changeAction: changeAction.choice },
   };
 }
 
@@ -708,8 +738,19 @@ function organizationIndex(records) {
   return [...values.values()];
 }
 
-function resolveOrganizationConditions(question, records) {
-  const candidates = organizationIndex(records);
+function sameOrganizationValue(left, right) {
+  return normalizedOrganizationValue(left?.name) === normalizedOrganizationValue(right?.name)
+    && (!left?.code || !right?.code || normalizedOrganizationValue(left.code) === normalizedOrganizationValue(right.code));
+}
+
+function resolveOrganizationConditions(question, records, previousOrganization = null) {
+  const allCandidates = organizationIndex(records);
+  const requestedQuestionTerms = questionOrganizationTerms(question);
+  const requestsFacility = requestedQuestionTerms.some((term) => [...ORGANIZATION_FACILITY_UNITS]
+    .some((unit) => normalizedOrganizationValue(term).endsWith(normalizedOrganizationValue(unit))));
+  const candidates = !requestsFacility && previousOrganization?.include?.length
+    ? allCandidates.filter((candidate) => previousOrganization.include.some((value) => sameOrganizationValue(candidate, value)))
+    : allCandidates;
   const knownTerms = new Map();
   for (const candidate of candidates) {
     for (const term of candidate.terms) {
@@ -764,11 +805,11 @@ function firstMatch(question, records, field) {
   return candidates.find((value) => question.includes(value)) ?? null;
 }
 
-export function extractStructuredConditions(question, records) {
+export function extractStructuredConditions(question, records, context = {}) {
   const result = {};
   const exclude = {};
   const normalized = question.normalize('NFKC');
-  const organization = resolveOrganizationConditions(normalized, records);
+  const organization = resolveOrganizationConditions(normalized, records, context.organization ?? null);
   const numbers = normalized.match(/(?:不適合|記録|番号)?\s*([0-9０-９]{4,})(?!\s*年)/u)?.[1];
   if (numbers) result.nonconformityNo = numbers.replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
   for (const field of ['partNumber', 'partName', 'machineName', 'originDepartmentCode']) {
@@ -813,10 +854,13 @@ function matchesConditions(record, conditions) {
   });
 }
 
-function matchesOrganizationScope(record, values) {
-  if (!Array.isArray(values) || values.length === 0) return false;
+function matchesOrganizationScope(record, values, matchedTerms = []) {
   const name = normalizedOrganizationValue(record.originDepartmentName);
   const code = normalizedOrganizationValue(record.originDepartmentCode);
+  if (Array.isArray(matchedTerms) && matchedTerms.length > 0) {
+    return matchedTerms.every((term) => name.includes(normalizedOrganizationValue(term)));
+  }
+  if (!Array.isArray(values) || values.length === 0) return false;
   return values.some((value) => normalizedOrganizationValue(value.name) === name
     && (!value.code || normalizedOrganizationValue(value.code) === code));
 }
@@ -837,8 +881,12 @@ function compareRecentRecords(left, right) {
 }
 
 function limitFromQuestion(question) {
+  return explicitLimitFromQuestion(question) ?? 20;
+}
+
+function explicitLimitFromQuestion(question) {
   const match = question.normalize('NFKC').match(/([1-9][0-9]*)\s*件/u);
-  return Math.min(20, match ? Number(match[1]) : 20);
+  return match ? Math.min(20, Number(match[1])) : null;
 }
 
 function entryFor(value) {
@@ -898,14 +946,17 @@ export function searchStored(store, query) {
   const matches = [];
   const uncertainRecordIds = [];
   const excludedUncertainRecordIds = [];
+  const semanticRequired = Object.keys(query.semanticInclude ?? query.include ?? {}).length > 0
+    || Object.keys(query.semanticExclude ?? {}).length > 0;
   for (const record of store.records) {
     const entry = store.classificationsById.get(record.id);
     const exactExclude = query.exactExclude ?? query.exclude ?? {};
-    if (!entry || !matchesConditions(record, query.conditions ?? {})) continue;
+    if (semanticRequired && !entry) continue;
+    if (!matchesConditions(record, query.conditions ?? {})) continue;
     if (Object.keys(exactExclude).length && matchesConditions(record, exactExclude)) continue;
-    if (query.organization?.include?.length && !matchesOrganizationScope(record, query.organization.include)) continue;
+    if (query.organization?.include?.length && !matchesOrganizationScope(record, query.organization.include, query.organization.matchedTerms)) continue;
     if (query.organization?.exclude?.length && matchesOrganizationScope(record, query.organization.exclude)) continue;
-    const semantic = semanticSearchMatch(entry, query);
+    const semantic = semanticRequired ? semanticSearchMatch(entry, query) : { ok: true, uncertain: [], excludedUncertain: [] };
     if (!semantic.ok) {
       if (semantic.excludedUncertain.length) excludedUncertainRecordIds.push(record.id);
       continue;
@@ -913,7 +964,7 @@ export function searchStored(store, query) {
     matches.push(record);
     if (semantic.uncertain.length) uncertainRecordIds.push(record.id);
   }
-  const ordered = hasRecentRequest(query.question)
+  const ordered = query.sort?.field === 'discoveredOn' || hasRecentRequest(query.question)
     ? [...matches].sort(compareRecentRecords)
     : matches;
   return {
@@ -936,7 +987,14 @@ function queryConversationState(question, conversation = {}) {
     relatedHistory: [...previousRequest, ...dialogue],
     confirmationPending: safeConversation.confirmationPending ?? safeConversation.pending ?? null,
     conversationTarget: safeConversation.conversationTarget ?? null,
+    // The bounded SearchState is the source of truth for change intent. Do
+    // not substitute the previous natural-language request for these values.
+    searchState: safeConversation.searchState ? validateSearchState(safeConversation.searchState) : null,
   };
+}
+
+function isCorrectionFeedback(question) {
+  return /(?:混ざ|混在|違(?:う|って)|誤(?:り|って)|訂正|正しく)/u.test(question.normalize('NFKC'));
 }
 
 function isContinuationRequest(question, conversation = {}) {
@@ -959,6 +1017,141 @@ function effectiveConversationRequest(question, conversation = {}) {
     question: `${previous}\n追加の要求: ${question}`,
     target: 'previous_search',
     baseRequest: previous,
+  };
+}
+
+function explicitNewSearch(question) {
+  return /(?:新しく|新規に|別の|別件|改めて|検索を切り替え)/u.test(question.normalize('NFKC'));
+}
+
+function explicitRemoval(question) {
+  return /(?:外して|解除して|指定を外|指定なし|なしにして|取り除いて|除去して)/u.test(question.normalize('NFKC'));
+}
+
+function explicitReplacement(question) {
+  return /(?:に変えて|に変更して|変更する|切り替えて|置き換えて)/u.test(question.normalize('NFKC'));
+}
+
+function removeDimensions(question, structured) {
+  const normalized = question.normalize('NFKC');
+  const remove = {};
+  if (structured.organization?.include?.length || structured.organization?.exclude?.length
+    || /(?:工場|本社|事業所|センター|研究所|部署|部門|組織)指定/u.test(normalized)) remove.organization = true;
+  if (/(?:件数|表示件数|件だけ|件に)/u.test(normalized)) remove.limit = true;
+  if (/(?:並び|順番|直近|最新|最近)/u.test(normalized)) remove.sort = true;
+  const exactFields = [];
+  if (/(?:不適合番号|番号)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('nonconformityNo');
+  if (/(?:品番)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('partNumber');
+  if (/(?:品名)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('partName');
+  if (/(?:機械名?|設備)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('machineName');
+  if (/(?:発生日|発見日|日付)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('discoveredOn');
+  if (exactFields.length) remove.exactFields = [...new Set(exactFields)];
+  const semanticFields = [];
+  if (/(?:工程|現象|原因|処置|対応)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) {
+    if (/工程/u.test(normalized)) semanticFields.push('process');
+    if (/現象/u.test(normalized)) semanticFields.push('phenomenon');
+    if (/(?:原因)/u.test(normalized)) semanticFields.push('cause');
+    if (/(?:処置|対応)/u.test(normalized)) semanticFields.push('treatment');
+  }
+  if (semanticFields.length) remove.semanticFields = [...new Set(semanticFields)];
+  return remove;
+}
+
+function deltaAction(question, evaluated, previousState) {
+  if (!previousState || previousState.revision === 0) return 'new_search';
+  const lexicalAction = explicitNewSearch(question)
+    ? 'new_search'
+    : explicitRemoval(question)
+      ? 'remove_condition'
+      : explicitReplacement(question)
+        ? 'replace_condition'
+        : isCorrectionFeedback(question)
+          ? 'correct_condition'
+          : null;
+  const action = evaluated?.query?.changeAction;
+  if (!['add_condition', 'replace_condition', 'remove_condition', 'correct_condition', 'new_search'].includes(action)) return null;
+  return lexicalAction && lexicalAction !== action ? null : action;
+}
+
+function structuredOrganizationForState(organization) {
+  if (!organization || (!organization.include?.length && !organization.exclude?.length && !organization.matchedTerms?.length)) return undefined;
+  return {
+    include: organization.include ?? [],
+    exclude: organization.exclude ?? [],
+    matchedTerms: organization.matchedTerms ?? [],
+    status: organization.unresolved?.length ? 'unresolved' : 'resolved',
+  };
+}
+
+function buildSearchDelta(question, evaluated, structured, previousState) {
+  const action = deltaAction(question, evaluated, previousState);
+  const appliedAction = action ?? 'clarify';
+  const normalized = question.normalize('NFKC');
+  const exactInclude = { ...structured.include };
+  const exactExclude = { ...structured.exclude };
+  const semanticInclude = evaluated.query?.include ?? {};
+  const semanticExclude = { ...(evaluated.query?.exclude ?? {}) };
+  // A correction/feedback turn must not invert an already confirmed positive
+  // condition merely because JEV represented the wording as an exclusion.
+  // The bounded SearchState remains authoritative; only contradictory values
+  // from this turn are discarded, while unrelated conditions still apply.
+  if (action === 'correct_condition') {
+    for (const [groupId, requested] of Object.entries(semanticExclude)) {
+      const prior = previousState.semantic.include[groupId];
+      const priorValues = Array.isArray(prior) ? prior : prior ? [prior] : [];
+      const requestedValues = Array.isArray(requested) ? requested : [requested];
+      const remaining = requestedValues.filter((value) => !priorValues.includes(value));
+      if (remaining.length) semanticExclude[groupId] = remaining;
+      else delete semanticExclude[groupId];
+    }
+  }
+  const delta = {
+    action: appliedAction,
+    exact: {
+      include: exactInclude,
+      exclude: exactExclude,
+      organization: structuredOrganizationForState(structured.organization),
+    },
+    semantic: { include: semanticInclude, exclude: semanticExclude },
+    unresolvedConditions: [
+      ...(evaluated.query?.unresolved ?? []),
+      ...(structured.unresolved ?? []),
+      ...(action ? [] : [{ kind: 'action', field: 'changeAction', term: question, reason: 'change_intent_unresolved' }]),
+    ],
+  };
+  const requestedDisplay = evaluated.query?.display ?? displayRequestFrom(question, evaluated.judgments ?? {});
+  if (appliedAction === 'new_search' || requestedDisplay.requested?.length) delta.display = requestedDisplay;
+  const unsupportedSource = normalized.match(/(?:設備点検|計測機器|作業要領書|作業要領|要領書)/u)?.[0];
+  if (unsupportedSource) {
+    delta.unresolvedConditions.push({ kind: 'source', field: 'source', term: unsupportedSource, reason: 'source_not_connected_in_this_milestone' });
+  }
+  const limit = explicitLimitFromQuestion(normalized);
+  if (limit !== null) delta.limit = limit;
+  if (hasRecentRequest(normalized)) delta.sort = { field: 'discoveredOn', direction: 'desc' };
+  if (appliedAction === 'remove_condition') {
+    delta.remove = removeDimensions(normalized, structured);
+    if (Object.keys(delta.remove).length === 0) {
+      delta.unresolvedConditions.push({ kind: 'action', field: 'remove', term: question, reason: 'condition_to_remove_unresolved' });
+    }
+    if (delta.remove.organization) delta.exact.organization = undefined;
+    if (delta.remove.limit) delta.limit = undefined;
+    if (delta.remove.sort) delta.sort = undefined;
+  }
+  return delta;
+}
+
+function queryFromSearchState(question, state) {
+  return {
+    question,
+    classification: {},
+    groups: [],
+    conditions: state.exact.include,
+    exactExclude: state.exact.exclude,
+    organization: state.exact.organization,
+    semanticInclude: state.semantic.include,
+    semanticExclude: state.semantic.exclude,
+    limit: state.limit,
+    sort: state.sort,
   };
 }
 
@@ -1104,12 +1297,13 @@ export class AuthorizedRecordClassifier {
     return `分類処理中のため、現在は分類済み ${coverage.classified}/${coverage.total} 件だけが検索対象です。未分類の記録は結果に含まれていません。`;
   }
 
-  sessionFor(question, conversation, pending, searchRequest = question, conversationTarget = 'new_search') {
+  sessionFor(question, conversation, pending, searchRequest = question, conversationTarget = 'new_search', searchState = emptySearchState()) {
     const safeConversation = isObject(conversation) ? conversation : {};
     return {
       pending: pending ?? null,
-      searchRequest,
+      searchRequest: searchState.revision > 0 ? null : searchRequest,
       conversationTarget,
+      searchState: validateSearchState(searchState),
       jevDialogue: Array.isArray(safeConversation.relatedHistory)
         ? safeConversation.relatedHistory.filter((item) => isObject(item) && item.role === 'assistant' && typeof item.content === 'string').slice(-8)
         : [],
@@ -1121,45 +1315,53 @@ export class AuthorizedRecordClassifier {
     const started = performance.now();
     const safeConversation = isObject(conversation) ? conversation : {};
     const pending = safeConversation.confirmationPending ?? safeConversation.pending ?? null;
-    const requestContext = effectiveConversationRequest(question, safeConversation);
-    const evaluated = await classifyText(requestContext.question, this.definition, async (input) => {
+    const previousState = safeConversation.searchState ? validateSearchState(safeConversation.searchState) : emptySearchState();
+    const conversationTarget = previousState.revision > 0 ? 'previous_search' : 'new_search';
+    const evaluated = await classifyText(question, this.definition, async (input) => {
       const callStarted = performance.now();
       const result = await this.evaluateImplementation(input);
-      this.calls.push({ phase: 'query', requestSha256: sha256(requestContext.question), questionCount: Object.keys(input.questions).length, elapsedMs: Number((performance.now() - callStarted).toFixed(3)) });
+      this.calls.push({ phase: 'query', requestSha256: sha256(question), questionCount: Object.keys(input.questions).length, elapsedMs: Number((performance.now() - callStarted).toFixed(3)) });
       return result;
-    }, 'query', { ...safeConversation, conversationTarget: requestContext.target });
+    }, 'query', {
+      ...safeConversation,
+    searchRequest: previousState.revision > 0 ? null : safeConversation.searchRequest,
+      conversationTarget,
+      searchState: previousState,
+    });
     const coverage = this.coverage();
-    const coverageNotice = this.coverageNotice(coverage);
-    const structured = extractStructuredConditions(requestContext.question, this.store.records);
-    const semanticInclude = evaluated.query?.include ?? {};
-    const semanticExclude = evaluated.query?.exclude ?? {};
-    const display = evaluated.query?.display ?? displayRequestFrom(question, evaluated.judgments ?? {});
-    const query = {
-      question: requestContext.question,
-      classification: evaluated.classification,
-      groups: this.definition.groups,
-      conditions: structured.include,
-      exactExclude: structured.exclude,
-      organization: structured.organization,
-      semanticInclude,
-      semanticExclude,
-      limit: limitFromQuestion(requestContext.question),
-    };
-    const unresolved = evaluated.query?.unresolved ?? [];
-    const displayOnly = requestContext.target === 'new_search' && displayOnlyRequest(question, structured.include, structured);
-    const conditionCount = resolvedConditionCount(requestContext.question, { include: semanticInclude, exclude: semanticExclude }, structured.include, structured.exclude, structured.organization);
-    const structuredUnresolved = structured.unresolved ?? [];
-    const allUnresolved = [...unresolved, ...structuredUnresolved];
+    const structured = extractStructuredConditions(question, this.store.records, { organization: previousState.exact.organization });
+    const delta = buildSearchDelta(question, evaluated, structured, previousState);
+    const deltaDigest = deltaFingerprint(delta);
+    const allUnresolved = delta.unresolvedConditions ?? [];
     const unresolvedLabels = allUnresolved.map((item) => {
       if (item.kind === undefined) return `起因部署の範囲: ${item.term}`;
       const group = this.definition.groups.find((candidate) => candidate.id === item.groupId);
       const option = group?.options?.find((candidate) => candidate.id === item.optionId);
-      return `${group?.label ?? item.groupId}: ${option?.description ?? item.optionId}`;
+      return `${group?.label ?? item.field ?? item.groupId}: ${option?.description ?? item.term ?? item.optionId ?? item.reason}`;
     });
+    const nextState = allUnresolved.length ? previousState : applySearchDelta(previousState, delta);
+    const semanticInclude = nextState.semantic.include;
+    const semanticExclude = nextState.semantic.exclude;
+    const display = nextState.display;
+    const query = {
+      question,
+      classification: evaluated.classification,
+      groups: this.definition.groups,
+      conditions: nextState.exact.include,
+      exactExclude: nextState.exact.exclude,
+      organization: nextState.exact.organization,
+      semanticInclude,
+      semanticExclude,
+      limit: nextState.limit,
+      sort: nextState.sort,
+    };
+    const coverageNotice = hasSemanticConditions(nextState) ? this.coverageNotice(coverage) : '';
+    const displayOnly = nextState.revision === 1 && delta.action === 'new_search' && displayOnlyRequest(question, structured.include, structured);
+    const conditionCount = resolvedConditionCount(question, { include: semanticInclude, exclude: semanticExclude }, nextState.exact.include, nextState.exact.exclude, nextState.exact.organization);
     if (allUnresolved.length || conditionCount === 0 || displayOnly) {
       const nextPending = allUnresolved.length
         ? {
-          request: requestContext.baseRequest,
+          request: question,
           question: `次の検索条件の意味を確認してください: ${unresolvedLabels.join('、')}`,
           purpose: 'resolve_search_condition',
           requiredItems: allUnresolved.map((item) => ({
@@ -1184,15 +1386,24 @@ export class AuthorizedRecordClassifier {
         confirmationPending: nextPending,
         classifier: {
           classification: evaluated.classification,
-          conditions: structured.include,
-          exclude: structured.exclude,
-          organization: structured.organization,
-          search: { include: semanticInclude, exclude: semanticExclude, unresolved: allUnresolved, target: requestContext.target },
+          conditions: nextState.exact.include,
+          exclude: nextState.exact.exclude,
+          organization: nextState.exact.organization,
+          search: { include: semanticInclude, exclude: semanticExclude, unresolved: allUnresolved, target: conversationTarget },
           display,
           reason: allUnresolved.length ? 'conditions_ambiguous' : 'conditions_not_resolved',
           coverage,
         },
-        session: this.sessionFor(question, safeConversation, nextPending, requestContext.baseRequest, requestContext.target),
+        searchState: previousState,
+        searchDelta: { action: delta.action, digest: deltaDigest, applied: false },
+        searchDiagnostics: {
+          before: stateFingerprint(previousState),
+          after: stateFingerprint(previousState),
+          delta: deltaDigest,
+          state: searchStateSummary(previousState),
+          resultCount: 0,
+        },
+        session: this.sessionFor(question, safeConversation, nextPending, question, conversationTarget, previousState),
         elapsedMs: Number((performance.now() - started).toFixed(3))
       };
     }
@@ -1212,10 +1423,10 @@ export class AuthorizedRecordClassifier {
       confirmationPending: pending,
       classifier: {
         classification: evaluated.classification,
-        conditions: structured.include,
-        exclude: structured.exclude,
-        organization: structured.organization,
-        search: { include: semanticInclude, exclude: semanticExclude, unresolved: allUnresolved, target: requestContext.target },
+        conditions: nextState.exact.include,
+        exclude: nextState.exact.exclude,
+        organization: nextState.exact.organization,
+        search: { include: semanticInclude, exclude: semanticExclude, unresolved: allUnresolved, target: conversationTarget },
         display,
         matchedCount: records.length,
         uncertainRecordIds: search.uncertainRecordIds,
@@ -1223,7 +1434,20 @@ export class AuthorizedRecordClassifier {
         limit: query.limit,
         coverage,
       },
-      session: this.sessionFor(question, safeConversation, null, requestContext.target === 'previous_search' ? requestContext.baseRequest : question, requestContext.target),
+      searchState: nextState,
+      searchDelta: { action: delta.action, digest: deltaDigest, applied: true },
+      searchPlan: exactSearchArguments(nextState)
+        ? { mode: 'exact', source: 'nonconformity', args: exactSearchArguments(nextState) }
+        : { mode: 'classified' },
+      searchDiagnostics: {
+        before: stateFingerprint(previousState),
+        after: stateFingerprint(nextState),
+        delta: deltaDigest,
+        state: searchStateSummary(nextState),
+        resultCount: records.length,
+        classificationCoverage: coverage,
+      },
+      session: this.sessionFor(question, safeConversation, null, question, conversationTarget, nextState),
       elapsedMs: Number((performance.now() - started).toFixed(3))
     };
   }

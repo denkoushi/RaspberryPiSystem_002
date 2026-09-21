@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { AuthorizedRecordClassifier, buildClassificationDefinition, extractStructuredConditions } from './hermes-jev-record-classifier.mjs';
+import { applySearchDelta, emptySearchState, exactSearchArguments } from './hermes-search-state.mjs';
 
 const snapshot = {
   schema: 'hermes-qmd-snapshot/v1',
@@ -40,6 +41,19 @@ function evaluator({ state, questions }) {
     const options = Object.keys(questions[key].criteria ?? {});
     if (key === 'conversation_target') {
       answers[key] = choiceAnswer(state.conversationTarget === 'previous_search' ? 'same_target' : '__none_requested__' in questions[key].criteria ? 'no_prior_target' : 'new_search', options);
+    } else if (key === 'change_action') {
+      const selected = state.conversationTarget !== 'previous_search' || /新しく|新規に|別の|別件/u.test(request)
+        ? 'new_search'
+        : /外して|解除して|指定なし/u.test(request)
+          ? 'remove_condition'
+          : /に変えて|に変更して|切り替えて|置き換えて/u.test(request)
+            ? 'replace_condition'
+            : /混ざ|混在|違(?:う|って)|誤(?:り|って)|訂正|正しく/u.test(request)
+              ? 'correct_condition'
+              : /組立|旋盤|フライス|上限|打痕|再加工|隔離|交換|工場|課|件|直近|最新|最近|発生日|発見日|日付/u.test(request)
+                ? 'add_condition'
+                : 'clarify';
+      answers[key] = choiceAnswer(selected, options);
     } else if (key.startsWith('display:')) {
       const displayKey = key.slice('display:'.length);
       const requested = (displayKey === 'discoveredOn' && /発生日|発見日|日付/u.test(request))
@@ -58,8 +72,8 @@ function evaluator({ state, questions }) {
       answers[key] = noulAnswer(requested ? 0.96 : 0.01);
     } else if (key === 'process') {
       const selected = isQuery
-        ? (request.includes('旋盤') ? 'turning' : request.includes('フライス') ? 'milling' : '__none_requested__')
-        : (request.includes('旋盤') ? 'turning' : request.includes('フライス') ? 'milling' : 'unknown');
+        ? (request.includes('組立') ? 'assembly' : request.includes('旋盤') ? 'turning' : request.includes('フライス') ? 'milling' : '__none_requested__')
+        : (request.includes('組立') ? 'assembly' : request.includes('旋盤') ? 'turning' : request.includes('フライス') ? 'milling' : 'unknown');
       answers[key] = choiceAnswer(selected, options);
     } else if (key === 'dimension_direction') {
       const selected = request.includes('上限') || request.includes('超過')
@@ -89,6 +103,183 @@ function evaluator({ state, questions }) {
   }
   return Promise.resolve({ answers });
 }
+
+test('SearchState reducer keeps unspecified dimensions and distinguishes correction', () => {
+  const first = applySearchDelta(emptySearchState(), {
+    action: 'new_search',
+    semantic: { include: { process: 'assembly' }, exclude: {} },
+    unresolvedConditions: [],
+  });
+  const narrowed = applySearchDelta(first, {
+    action: 'add_condition',
+    exact: { include: {}, exclude: {}, organization: {
+      include: [{ name: '三島工場組立課', code: 'M-1' }], exclude: [], matchedTerms: ['三島工場'], status: 'resolved'
+    } },
+    semantic: { include: {}, exclude: {} },
+    unresolvedConditions: [],
+  });
+  const corrected = applySearchDelta(narrowed, {
+    action: 'correct_condition',
+    semantic: { include: {}, exclude: {} },
+    unresolvedConditions: [],
+  });
+  assert.equal(corrected.semantic.include.process, 'assembly');
+  assert.deepEqual(corrected.exact.organization.include.map((value) => value.name), ['三島工場組立課']);
+  assert.equal(corrected.lastAction, 'correct_condition');
+});
+
+test('correct_condition replaces only the explicitly corrected fields', () => {
+  const first = applySearchDelta(emptySearchState(), {
+    action: 'new_search',
+    exact: {
+      include: { partName: '旧品名' },
+      exclude: {},
+      organization: { include: [{ name: '工場A' }], exclude: [], matchedTerms: ['工場A'], status: 'resolved' },
+    },
+    semantic: { include: { process: 'assembly', phenomenon: ['surface_damage'] }, exclude: {} },
+    unresolvedConditions: [],
+  });
+  const corrected = applySearchDelta(first, {
+    action: 'correct_condition',
+    exact: {
+      include: { partName: '新品名' },
+      exclude: {},
+      organization: { include: [{ name: '工場B' }], exclude: [], matchedTerms: ['工場B'], status: 'resolved' },
+    },
+    semantic: { include: { phenomenon: ['crack_or_breakage'] }, exclude: {} },
+    unresolvedConditions: [],
+  });
+  assert.deepEqual(corrected.exact.include, { partName: '新品名' });
+  assert.deepEqual(corrected.exact.organization.matchedTerms, ['工場B']);
+  assert.deepEqual(corrected.semantic.include, { process: 'assembly', phenomenon: ['crack_or_breakage'] });
+});
+
+test('replacement patches only named fields and does not clear an unspecified organization', () => {
+  const first = applySearchDelta(emptySearchState(), {
+    action: 'new_search',
+    exact: {
+      include: { partName: '軸' },
+      exclude: {},
+      organization: { include: [{ name: '三島工場製造部機械課', code: 'M-1' }], exclude: [], matchedTerms: ['三島工場', '機械課'], status: 'resolved' },
+    },
+    semantic: { include: { process: 'assembly', phenomenon: ['surface_damage'] }, exclude: {} },
+    unresolvedConditions: [],
+  });
+  const replaced = applySearchDelta(first, {
+    action: 'replace_condition',
+    exact: { include: {}, exclude: {} },
+    semantic: { include: { cause: ['equipment_failure'] }, exclude: {} },
+    unresolvedConditions: [],
+  });
+  assert.deepEqual(replaced.exact.include, { partName: '軸' });
+  assert.deepEqual(replaced.exact.organization.matchedTerms, ['三島工場', '機械課']);
+  assert.deepEqual(replaced.semantic.include, {
+    process: 'assembly', phenomenon: ['surface_damage'], cause: ['equipment_failure'],
+  });
+
+  const exactOnly = applySearchDelta(emptySearchState(), {
+    action: 'new_search',
+    exact: {
+      include: { partName: '軸', machineName: '旋盤A' },
+      exclude: {},
+      organization: { include: [{ name: '三島工場製造部機械課', code: 'M-1' }], exclude: [], matchedTerms: ['三島工場', '機械課'], status: 'resolved' },
+    },
+    semantic: { include: {}, exclude: {} },
+    unresolvedConditions: [],
+  });
+  assert.deepEqual(exactSearchArguments(exactOnly), {
+    kind: 'nonconformity', limit: 20, partName: '軸', machineName: '旋盤A',
+    originDepartmentNames: ['三島工場', '機械課'],
+  });
+});
+
+test('exact exclusion remains on the live search plan', () => {
+  const state = applySearchDelta(emptySearchState(), {
+    action: 'new_search',
+    exact: {
+      include: {},
+      exclude: { partName: '旧品名' },
+      organization: { include: [], exclude: [{ name: '工場B' }], matchedTerms: [], status: 'resolved' },
+    },
+    semantic: { include: {}, exclude: {} },
+    unresolvedConditions: [],
+  });
+  assert.deepEqual(exactSearchArguments(state), {
+    kind: 'nonconformity', limit: 20,
+    exactExclude: { partName: '旧品名' },
+    excludeOriginDepartmentNames: ['工場B'],
+  });
+});
+
+test('conversation updates keep process, add facility, and do not invert a correction', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-search-state-conversation-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  const stateSnapshot = {
+    ...snapshot,
+    records: [
+      { ...snapshot.records[0], id: 'mishima-assembly-1', nonconformityNo: '00010201', originDepartmentCode: 'M-A', originDepartmentName: '三島工場組立課', condition: '組立工程で不適合', discoveredOn: '2026-09-20' },
+      { ...snapshot.records[0], id: 'mishima-assembly-2', nonconformityNo: '00010202', originDepartmentCode: 'M-A', originDepartmentName: '三島工場組立課', condition: '組立工程で別の不適合', discoveredOn: '2026-09-19' },
+      { ...snapshot.records[0], id: 'sendai-assembly', nonconformityNo: '00010203', originDepartmentCode: 'S-A', originDepartmentName: '仙台工場組立課', condition: '組立工程で不適合', discoveredOn: '2026-09-21' },
+    ],
+  };
+  await writeFile(snapshotPath, JSON.stringify(stateSnapshot));
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: evaluator });
+  await classifier.prepare();
+  const first = await classifier.answer('組立工程の原因と処置');
+  assert.deepEqual(first.searchState.semantic.include, { process: 'assembly' });
+  const second = await classifier.answer('三島工場だけにしぼって', first.session);
+  assert.deepEqual(second.recordIds, ['nonconformity:mishima-assembly-1', 'nonconformity:mishima-assembly-2']);
+  assert.equal(second.searchState.semantic.include.process, 'assembly');
+  assert.deepEqual(second.searchState.exact.organization.matchedTerms, ['三島工場']);
+  const unclear = await classifier.answer('もう少し', second.session);
+  assert.equal(unclear.status, 'clarification');
+  assert.equal(unclear.searchDelta.action, 'clarify');
+  assert.equal(unclear.searchState.revision, second.searchState.revision);
+  const third = await classifier.answer('組立工程以外が混ざってるけど', second.session);
+  assert.deepEqual(third.recordIds, second.recordIds);
+  assert.equal(third.searchState.semantic.include.process, 'assembly');
+  assert.deepEqual(third.searchState.semantic.exclude, {});
+  assert.equal(third.searchDelta.action, 'correct_condition');
+  const replaced = await classifier.answer('仙台工場に変えて', third.session);
+  assert.deepEqual(replaced.recordIds, ['nonconformity:sendai-assembly']);
+  assert.equal(replaced.searchState.semantic.include.process, 'assembly');
+  assert.equal(replaced.searchDelta.action, 'replace_condition');
+  const unrestricted = await classifier.answer('工場指定を外して', replaced.session);
+  assert.deepEqual(unrestricted.recordIds, [
+    'nonconformity:mishima-assembly-1', 'nonconformity:mishima-assembly-2', 'nonconformity:sendai-assembly'
+  ]);
+  assert.equal(unrestricted.searchState.exact.organization.include.length, 0);
+  const unresolved = await classifier.answer('架空工場だけにして', unrestricted.session);
+  assert.equal(unresolved.status, 'clarification');
+  assert.equal(unresolved.searchState.revision, unrestricted.searchState.revision);
+  const newSource = await classifier.answer('新しく設備点検を探したい', unrestricted.session);
+  assert.equal(newSource.status, 'clarification');
+  assert.equal(newSource.searchState.revision, unrestricted.searchState.revision);
+});
+
+test('exact facility and recent limit use all current records even when classification is absent', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-exact-unclassified-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  const exactSnapshot = {
+    ...snapshot,
+    records: [
+      { ...snapshot.records[0], id: 'mishima-new', nonconformityNo: '00010301', originDepartmentName: '三島工場品質課', discoveredOn: '2026-09-21' },
+      { ...snapshot.records[0], id: 'mishima-old', nonconformityNo: '00010302', originDepartmentName: '三島工場品質課', discoveredOn: '2026-09-20' },
+      { ...snapshot.records[0], id: 'sendai', nonconformityNo: '00010303', originDepartmentName: '仙台工場品質課', discoveredOn: '2026-09-22' },
+    ],
+  };
+  await writeFile(snapshotPath, JSON.stringify(exactSnapshot));
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath, storePath, classificationEnabled: false, evaluateImplementation: evaluator });
+  await classifier.prepare();
+  const result = await classifier.answer('三島工場の不適合２件。直近');
+  assert.deepEqual(result.recordIds, ['nonconformity:mishima-new', 'nonconformity:mishima-old']);
+  assert.equal(result.searchPlan.mode, 'exact');
+  assert.deepEqual(exactSearchArguments(result.searchState), {
+    kind: 'nonconformity', limit: 2, originDepartmentName: '三島工場',
+  });
+});
 
 test('classifies real snapshot rows incrementally and refuses unbound display-only questions', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-real-classifier-'));
@@ -149,6 +340,20 @@ test('classifies real snapshot rows incrementally and refuses unbound display-on
   assert.equal(thirdCalls, 3);
 });
 
+test('removes an exact machine condition without treating it as a semantic field', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-exact-removal-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  await writeFile(snapshotPath, JSON.stringify(snapshot));
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: evaluator });
+  await classifier.prepare();
+  const machine = await classifier.answer('旋盤Aの不適合');
+  assert.equal(machine.searchState.exact.include.machineName, '旋盤A');
+  const removed = await classifier.answer('機械指定を外して', machine.session);
+  assert.equal(removed.searchState.exact.include.machineName, undefined);
+  assert.equal(removed.searchDelta.action, 'remove_condition');
+});
+
 test('resolves a facility term to its recorded origin-department scope and applies recent limit in code', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-organization-scope-'));
   const snapshotPath = path.join(directory, 'snapshot.json');
@@ -179,6 +384,14 @@ test('resolves a facility term to its recorded origin-department scope and appli
 
   const ambiguous = extractStructuredConditions('機械課の不適合', organizationSnapshot.records);
   assert.equal(ambiguous.unresolved[0].reason, 'ambiguous');
+  const scoped = extractStructuredConditions('機械課の不適合', organizationSnapshot.records, {
+    organization: {
+      include: [{ name: '北工場製造部機械課', code: 'N-M' }, { name: '北工場品質保証課', code: 'N-Q' }],
+      exclude: [], matchedTerms: ['北工場'], status: 'resolved',
+    },
+  });
+  assert.deepEqual(scoped.unresolved, []);
+  assert.deepEqual(scoped.organization.include.map((value) => value.name), ['北工場製造部機械課']);
   const unknown = extractStructuredConditions('架空工場の不適合', organizationSnapshot.records);
   assert.equal(unknown.unresolved[0].reason, 'not_found');
 });

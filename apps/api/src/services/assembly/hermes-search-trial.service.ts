@@ -1,6 +1,19 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {setPriority} from 'node:os';
+import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
+
+type SearchState = Record<string, unknown>;
+type SearchDiagnostics = {
+  before: string;
+  after: string;
+  delta: string;
+  state: Record<string, unknown>;
+  resultCount: number;
+  source?: string;
+  classificationCoverage?: Record<string, unknown>;
+};
+type SearchPlan = { mode: 'exact' | 'classified'; source?: string; args?: Record<string, unknown> };
 
 export type HermesTrialAnswer = {
   status: string;
@@ -15,11 +28,16 @@ export type HermesTrialAnswer = {
     confirmedInfo: Record<string, unknown>;
     unresolvedItems: string[];
   } | null;
+  searchState?: SearchState;
+  searchDelta?: { action: string; digest: string; applied: boolean };
+  searchPlan?: SearchPlan;
+  searchDiagnostics?: SearchDiagnostics;
 };
 
 type TrialSession = {
   pending: unknown | null;
-  searchRequest: string | null;
+  searchRequest: null;
+  searchState: SearchState | null;
   jevDialogue: Array<{role: 'assistant'; content: string}>;
   expiresAt: number;
 };
@@ -35,6 +53,7 @@ export class HermesSearchTrialService {
   private ready: Promise<void> | null = null;
   private failure: Error | null = null;
   private readonly sessions = new Map<string, TrialSession>();
+  private sourceSearch: BusinessHermesMcpService | null = null;
 
   constructor(private readonly settings = {
     enabled: process.env.HERMES_SEARCH_TRIAL_ENABLED === 'true',
@@ -110,7 +129,7 @@ export class HermesSearchTrialService {
     const now = Date.now();
     for (const [id, session] of this.sessions) if (session.expiresAt <= now) this.sessions.delete(id);
     const stored = this.sessions.get(activeSessionId);
-    const session = stored && stored.expiresAt > now ? stored : { pending: null, searchRequest: null, jevDialogue: [], expiresAt: now };
+    const session = stored && stored.expiresAt > now ? stored : { pending: null, searchRequest: null, searchState: null, jevDialogue: [], expiresAt: now };
     const result = await new Promise<HermesTrialAnswer>((resolve, reject) => {
       const id = randomUUID();
       const timeout = setTimeout(() => {
@@ -130,13 +149,31 @@ export class HermesSearchTrialService {
     } else {
       this.sessions.delete(activeSessionId);
     }
+    const exact = result.searchPlan?.mode === 'exact' ? await this.searchExactNonconformity(result.searchPlan.args ?? {}) : null;
     // Source identities and spans remain in the worker; send only the existing text answer and the bounded confirmation state.
     return {
       status: result.status,
-      answer: result.answer,
-      recordIds: result.recordIds,
+      answer: exact ? exact.answer : result.answer,
+      recordIds: exact ? exact.recordIds : result.recordIds,
       elapsedMs: result.elapsedMs,
-      confirmationPending: result.confirmationPending ?? null
+      confirmationPending: result.confirmationPending ?? null,
+      searchState: result.searchState,
+      searchDelta: result.searchDelta,
+      searchPlan: result.searchPlan,
+      searchDiagnostics: exact ? { ...result.searchDiagnostics, resultCount: exact.recordIds.length, source: 'postgresql' } as SearchDiagnostics : result.searchDiagnostics,
+    };
+  }
+
+  private async searchExactNonconformity(args: Record<string, unknown>): Promise<{ answer: string; recordIds: string[] }> {
+    this.sourceSearch ??= new BusinessHermesMcpService();
+    const response = await this.sourceSearch.call('business_hermes_search', args);
+    const text = response.content.find((item) => item.type === 'text')?.text;
+    if (!text || response.isError) throw new Error('既存のPostgreSQL検索を実行できませんでした。該当なしとは判断していません。');
+    const payload = JSON.parse(text) as { results?: Array<{ kind?: string; id?: string; rawText?: string }> };
+    const rows = (payload.results ?? []).filter((row) => row.kind === 'nonconformity' && typeof row.id === 'string');
+    return {
+      answer: rows.map((row) => row.rawText ?? '').filter(Boolean).join('\n\n') || '指定条件に一致する記録はありませんでした。',
+      recordIds: rows.map((row) => `nonconformity:${row.id}`),
     };
   }
 

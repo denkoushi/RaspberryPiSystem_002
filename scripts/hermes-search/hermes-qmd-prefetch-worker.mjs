@@ -302,10 +302,11 @@ function directNumberRequest(question, records) {
 }
 
 function trialSession(value = {}) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return { pending: null, searchRequest: null, jevDialogue: [] };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { pending: null, searchRequest: null, searchState: null, jevDialogue: [] };
   return {
     pending: value.pending ?? null,
     searchRequest: typeof value.searchRequest === 'string' ? value.searchRequest : null,
+    searchState: value.searchState && typeof value.searchState === 'object' ? value.searchState : null,
     jevDialogue: Array.isArray(value.jevDialogue) ? value.jevDialogue : []
   };
 }
@@ -510,6 +511,7 @@ class TrialWorker {
         relatedHistory: session.jevDialogue,
         confirmationPending: session.pending,
         searchRequest: session.searchRequest,
+        ...(session.searchState ? { searchState: session.searchState } : {}),
       });
       return {
         ...result,

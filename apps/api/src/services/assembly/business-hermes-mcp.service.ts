@@ -362,11 +362,23 @@ const TOOLS: ReadonlyArray<BusinessHermesMcpTool> = [
         partNumber: { type: 'string', maxLength: 200, description: 'Known product number; use this dedicated condition for a product-specific search and follow existing source normalization.' },
         shootingTarget: { type: 'string', maxLength: 200 },
         nonconformityNo: { type: 'string', maxLength: 120 },
+        partName: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Exact recorded part name for a nonconformity search.' },
+        machineName: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Exact recorded machine name for a nonconformity search.' },
         originDepartmentCode: { type: 'string', maxLength: 120, description: 'Exact code for the recorded origin (cause) department; it is not a responsibility-department or treatment-owner filter.' },
         originDepartmentName: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Literal case-insensitive substring for the recorded origin (cause) department name; it is not a responsibility-department or treatment-owner filter.' },
+        originDepartmentNames: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: MAX_QUERY_CHARS }, description: 'Multiple literal origin-department terms; every term must match the recorded origin name.' },
         condition: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Literal case-insensitive substring limited to the nonconformity content field; it may be combined with dedicated filters.' },
         dateFrom: { type: 'string', maxLength: 10, description: 'Inclusive discoveredOn date lower bound in YYYY-MM-DD format.' },
         dateTo: { type: 'string', maxLength: 10, description: 'Inclusive discoveredOn date upper bound in YYYY-MM-DD format.' },
+        exactExclude: { type: 'object', properties: {
+          nonconformityNo: { type: 'string', maxLength: 120 },
+          partNumber: { type: 'string', maxLength: 200 },
+          partName: { type: 'string', maxLength: MAX_QUERY_CHARS },
+          machineName: { type: 'string', maxLength: MAX_QUERY_CHARS },
+          originDepartmentCode: { type: 'string', maxLength: 120 },
+          discoveredOn: { type: 'string', maxLength: 10 }
+        }, additionalProperties: false, description: 'Exact nonconformity values to exclude while retaining all other exact conditions.' },
+        excludeOriginDepartmentNames: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: MAX_QUERY_CHARS }, description: 'Literal origin-department terms to exclude from the live latest-data search.' },
         kind: { type: 'string', enum: ['nonconformity', 'work_instruction', 'both'] },
         limit: { type: 'integer', minimum: 1, maximum: MAX_LIMIT },
         nonconformityOffset: { type: 'integer', minimum: 0, maximum: 100_000 },
@@ -487,6 +499,30 @@ function text(value: unknown, max = MAX_QUERY_CHARS): string | null {
   if (typeof value !== 'string') return null;
   const normalized = value.replace(/\s+/g, ' ').trim().slice(0, max);
   return normalized || null;
+}
+
+function nonconformityRawText(row: {
+  nonconformityNo: string | null;
+  partNumber: string | null;
+  partName: string | null;
+  machineName: string | null;
+  originDepartmentName: string | null;
+  discoveredOn: Date | null;
+  nonconformityContent: string | null;
+  remarks: string | null;
+  correctiveContent1: string | null;
+  correctiveContent2: string | null;
+  dispositionContent: string | null;
+}): string {
+  const fields: Array<[string, string | null]> = [
+    ['不適合番号', row.nonconformityNo], ['品番', row.partNumber], ['品名', row.partName],
+    ['機械名', row.machineName], ['起因部署', row.originDepartmentName],
+    ['発見日', row.discoveredOn?.toISOString().slice(0, 10) ?? null],
+    ['不適合内容', row.nonconformityContent], ['備考', row.remarks],
+    ['個別是正内容', [row.correctiveContent1, row.correctiveContent2].filter(Boolean).join('\n') || null],
+    ['処置内容', row.dispositionContent]
+  ];
+  return fields.filter(([, value]) => value?.trim()).map(([label, value]) => `${label}: ${value!.trim()}`).join('\n');
 }
 
 function safeLimit(value: unknown, maximum = MAX_LIMIT): number {
@@ -1631,8 +1667,42 @@ export class BusinessHermesMcpService {
     const partNumber = normalizeWorkInstructionPartNumber(text(args.partNumber, 200));
     const shootingTarget = normalizeWorkInstructionShootingTarget(text(args.shootingTarget, 200));
     const nonconformityNo = text(args.nonconformityNo, 120);
+    const partName = text(args.partName);
+    const machineName = text(args.machineName);
     const originDepartmentCode = text(args.originDepartmentCode, 120);
     const originDepartmentName = text(args.originDepartmentName);
+    const originDepartmentNames = Array.isArray(args.originDepartmentNames)
+      ? [...new Set(args.originDepartmentNames.map((value) => text(value)).filter((value): value is string => Boolean(value)))].slice(0, 12)
+      : [];
+    const excludeOriginDepartmentNames = Array.isArray(args.excludeOriginDepartmentNames)
+      ? [...new Set(args.excludeOriginDepartmentNames.map((value) => text(value)).filter((value): value is string => Boolean(value)))].slice(0, 12)
+      : [];
+    const exactExclude = args.exactExclude && typeof args.exactExclude === 'object' && !Array.isArray(args.exactExclude)
+      ? args.exactExclude as Record<string, unknown>
+      : {};
+    const exactExcludeFields = ['nonconformityNo', 'partNumber', 'partName', 'machineName', 'originDepartmentCode', 'discoveredOn'] as const;
+    const unsupportedExactExcludeField = Object.keys(exactExclude).find((field) => !exactExcludeFields.includes(field as (typeof exactExcludeFields)[number]));
+    if (unsupportedExactExcludeField) return { error: `exactExclude.${unsupportedExactExcludeField} is not supported` };
+    const exactExclusionWhere: Array<Record<string, unknown>> = [];
+    for (const field of exactExcludeFields) {
+      const raw = exactExclude[field];
+      const values = (Array.isArray(raw) ? raw : [raw])
+        .map((value) => text(value, field === 'nonconformityNo' || field === 'originDepartmentCode' ? 120 : field === 'discoveredOn' ? 10 : 200))
+        .filter((value): value is string => Boolean(value));
+      if (!values.length) continue;
+      if (field === 'discoveredOn') {
+        const ranges = values.map((value) => {
+          const from = parseDateBound(value, false);
+          const to = parseDateBound(value, true);
+          return from && to ? { discoveredOn: { gte: from, lte: to } } : null;
+        });
+        if (ranges.some((range) => range === null)) return { error: 'exactExclude.discoveredOn must contain valid YYYY-MM-DD dates' };
+        exactExclusionWhere.push({ OR: ranges });
+      } else {
+        exactExclusionWhere.push({ [field]: { in: values } });
+      }
+    }
+    exactExclusionWhere.push(...excludeOriginDepartmentNames.map((term) => ({ originDepartmentName: { contains: term, mode: 'insensitive' } })));
     const condition = text(args.condition);
     const dateFrom = text(args.dateFrom, 10);
     const dateTo = text(args.dateTo, 10);
@@ -1653,8 +1723,12 @@ export class BusinessHermesMcpService {
         isPresentInLatestSnapshot: true,
         ...(partNumber ? { partNumber } : {}),
         ...(nonconformityNo ? { nonconformityNo } : {}),
+        ...(partName ? { partName } : {}),
+        ...(machineName ? { machineName } : {}),
         ...(originDepartmentCode ? { originDepartmentCode } : {}),
         ...(originDepartmentName ? { originDepartmentName: { contains: originDepartmentName, mode: 'insensitive' } } : {}),
+        ...(originDepartmentNames.length ? { AND: originDepartmentNames.map((term) => ({ originDepartmentName: { contains: term, mode: 'insensitive' } })) } : {}),
+        ...(exactExclusionWhere.length ? { NOT: { OR: exactExclusionWhere } } : {}),
         ...(dateFromBound || dateToBound ? { discoveredOn: { ...(dateFromBound ? { gte: dateFromBound } : {}), ...(dateToBound ? { lte: dateToBound } : {}) } } : {}),
         ...(query ? {
           OR: [
@@ -1709,6 +1783,7 @@ export class BusinessHermesMcpService {
         remarks: row.remarks,
         correctiveContent: [row.correctiveContent1, row.correctiveContent2].filter(Boolean).join('\n') || null,
         disposition: row.dispositionContent,
+        rawText: nonconformityRawText(row),
         discoveredOn: row.discoveredOn?.toISOString().slice(0, 10) ?? null,
         sourceVersionDate: row.sourceUpdatedOn?.toISOString().slice(0, 10) ?? null,
         provenance: { source: 'ScawStfutekigoCurrent', activeLatest: true, meaning: '不適合の発生状況と記録済みの対処を確認する情報源。' }
@@ -1858,6 +1933,7 @@ export class BusinessHermesMcpService {
         remarks: row.remarks,
         correctiveContent: [row.correctiveContent1, row.correctiveContent2].filter(Boolean).join('\n') || null,
         disposition: row.dispositionContent,
+        rawText: nonconformityRawText(row),
         discoveredOn: row.discoveredOn?.toISOString().slice(0, 10) ?? null,
         sourceVersionDate: row.sourceUpdatedOn?.toISOString().slice(0, 10) ?? null,
         provenance: { source: 'ScawStfutekigoCurrent', activeLatest: true, meaning: '不適合の発生状況と記録済みの対処を確認する情報源。' }
