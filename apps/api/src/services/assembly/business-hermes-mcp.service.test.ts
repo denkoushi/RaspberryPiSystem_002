@@ -337,6 +337,19 @@ describe('BusinessHermesMcpService', () => {
       }),
     }));
 
+    await service.call('business_hermes_search', {
+      kind: 'nonconformity',
+      exactExclude: { partName: '品名' }, excludeOriginDepartmentNames: ['機構設計'], limit: 1
+    });
+    expect(db.scawStfutekigoCurrent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        NOT: { OR: [
+          { partName: { in: ['品名'] } },
+          { originDepartmentName: { contains: '機構設計', mode: 'insensitive' } },
+        ] },
+      }),
+    }));
+
     const ncFirst = await service.call('business_hermes_search', { query: 'PN-1', kind: 'both', limit: 1 });
     const ncFirstPayload = JSON.parse(ncFirst.content[0]?.text ?? '{}') as { hasMore: { workInstruction: boolean }; nextCursor: { workInstructionOffset: number | null } };
     expect(ncFirstPayload.hasMore.workInstruction).toBe(true);

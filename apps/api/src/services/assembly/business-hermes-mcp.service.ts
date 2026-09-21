@@ -370,6 +370,15 @@ const TOOLS: ReadonlyArray<BusinessHermesMcpTool> = [
         condition: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Literal case-insensitive substring limited to the nonconformity content field; it may be combined with dedicated filters.' },
         dateFrom: { type: 'string', maxLength: 10, description: 'Inclusive discoveredOn date lower bound in YYYY-MM-DD format.' },
         dateTo: { type: 'string', maxLength: 10, description: 'Inclusive discoveredOn date upper bound in YYYY-MM-DD format.' },
+        exactExclude: { type: 'object', properties: {
+          nonconformityNo: { type: 'string', maxLength: 120 },
+          partNumber: { type: 'string', maxLength: 200 },
+          partName: { type: 'string', maxLength: MAX_QUERY_CHARS },
+          machineName: { type: 'string', maxLength: MAX_QUERY_CHARS },
+          originDepartmentCode: { type: 'string', maxLength: 120 },
+          discoveredOn: { type: 'string', maxLength: 10 }
+        }, additionalProperties: false, description: 'Exact nonconformity values to exclude while retaining all other exact conditions.' },
+        excludeOriginDepartmentNames: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: MAX_QUERY_CHARS }, description: 'Literal origin-department terms to exclude from the live latest-data search.' },
         kind: { type: 'string', enum: ['nonconformity', 'work_instruction', 'both'] },
         limit: { type: 'integer', minimum: 1, maximum: MAX_LIMIT },
         nonconformityOffset: { type: 'integer', minimum: 0, maximum: 100_000 },
@@ -1665,6 +1674,35 @@ export class BusinessHermesMcpService {
     const originDepartmentNames = Array.isArray(args.originDepartmentNames)
       ? [...new Set(args.originDepartmentNames.map((value) => text(value)).filter((value): value is string => Boolean(value)))].slice(0, 12)
       : [];
+    const excludeOriginDepartmentNames = Array.isArray(args.excludeOriginDepartmentNames)
+      ? [...new Set(args.excludeOriginDepartmentNames.map((value) => text(value)).filter((value): value is string => Boolean(value)))].slice(0, 12)
+      : [];
+    const exactExclude = args.exactExclude && typeof args.exactExclude === 'object' && !Array.isArray(args.exactExclude)
+      ? args.exactExclude as Record<string, unknown>
+      : {};
+    const exactExcludeFields = ['nonconformityNo', 'partNumber', 'partName', 'machineName', 'originDepartmentCode', 'discoveredOn'] as const;
+    const unsupportedExactExcludeField = Object.keys(exactExclude).find((field) => !exactExcludeFields.includes(field as (typeof exactExcludeFields)[number]));
+    if (unsupportedExactExcludeField) return { error: `exactExclude.${unsupportedExactExcludeField} is not supported` };
+    const exactExclusionWhere: Array<Record<string, unknown>> = [];
+    for (const field of exactExcludeFields) {
+      const raw = exactExclude[field];
+      const values = (Array.isArray(raw) ? raw : [raw])
+        .map((value) => text(value, field === 'nonconformityNo' || field === 'originDepartmentCode' ? 120 : field === 'discoveredOn' ? 10 : 200))
+        .filter((value): value is string => Boolean(value));
+      if (!values.length) continue;
+      if (field === 'discoveredOn') {
+        const ranges = values.map((value) => {
+          const from = parseDateBound(value, false);
+          const to = parseDateBound(value, true);
+          return from && to ? { discoveredOn: { gte: from, lte: to } } : null;
+        });
+        if (ranges.some((range) => range === null)) return { error: 'exactExclude.discoveredOn must contain valid YYYY-MM-DD dates' };
+        exactExclusionWhere.push({ OR: ranges });
+      } else {
+        exactExclusionWhere.push({ [field]: { in: values } });
+      }
+    }
+    exactExclusionWhere.push(...excludeOriginDepartmentNames.map((term) => ({ originDepartmentName: { contains: term, mode: 'insensitive' } })));
     const condition = text(args.condition);
     const dateFrom = text(args.dateFrom, 10);
     const dateTo = text(args.dateTo, 10);
@@ -1690,6 +1728,7 @@ export class BusinessHermesMcpService {
         ...(originDepartmentCode ? { originDepartmentCode } : {}),
         ...(originDepartmentName ? { originDepartmentName: { contains: originDepartmentName, mode: 'insensitive' } } : {}),
         ...(originDepartmentNames.length ? { AND: originDepartmentNames.map((term) => ({ originDepartmentName: { contains: term, mode: 'insensitive' } })) } : {}),
+        ...(exactExclusionWhere.length ? { NOT: { OR: exactExclusionWhere } } : {}),
         ...(dateFromBound || dateToBound ? { discoveredOn: { ...(dateFromBound ? { gte: dateFromBound } : {}), ...(dateToBound ? { lte: dateToBound } : {}) } } : {}),
         ...(query ? {
           OR: [

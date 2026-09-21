@@ -1039,13 +1039,21 @@ function removeDimensions(question, structured) {
     || /(?:工場|本社|事業所|センター|研究所|部署|部門|組織)指定/u.test(normalized)) remove.organization = true;
   if (/(?:件数|表示件数|件だけ|件に)/u.test(normalized)) remove.limit = true;
   if (/(?:並び|順番|直近|最新|最近)/u.test(normalized)) remove.sort = true;
-  if (/(?:工程|現象|原因|処置|対応|設備|機械)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) {
-    remove.semanticFields = [];
-    if (/工程/u.test(normalized)) remove.semanticFields.push('process');
-    if (/現象/u.test(normalized)) remove.semanticFields.push('phenomenon');
-    if (/(?:原因)/u.test(normalized)) remove.semanticFields.push('cause');
-    if (/(?:処置|対応)/u.test(normalized)) remove.semanticFields.push('treatment');
+  const exactFields = [];
+  if (/(?:不適合番号|番号)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('nonconformityNo');
+  if (/(?:品番)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('partNumber');
+  if (/(?:品名)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('partName');
+  if (/(?:機械名?|設備)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('machineName');
+  if (/(?:発生日|発見日|日付)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('discoveredOn');
+  if (exactFields.length) remove.exactFields = [...new Set(exactFields)];
+  const semanticFields = [];
+  if (/(?:工程|現象|原因|処置|対応)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) {
+    if (/工程/u.test(normalized)) semanticFields.push('process');
+    if (/現象/u.test(normalized)) semanticFields.push('phenomenon');
+    if (/(?:原因)/u.test(normalized)) semanticFields.push('cause');
+    if (/(?:処置|対応)/u.test(normalized)) semanticFields.push('treatment');
   }
+  if (semanticFields.length) remove.semanticFields = [...new Set(semanticFields)];
   return remove;
 }
 

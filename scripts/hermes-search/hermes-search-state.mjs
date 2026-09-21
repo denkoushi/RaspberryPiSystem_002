@@ -193,7 +193,7 @@ export function applySearchDelta(previous, rawDelta) {
   if (delta.action === 'clarify') throw new Error('cannot apply an unresolved SearchDelta');
   let next = delta.action === 'new_search' ? emptySearchState() : clone(current);
   if (delta.exact) {
-    if (delta.action === 'add_condition' || delta.action === 'correct_condition') {
+    if (delta.action === 'add_condition') {
       next.exact.include = mergeMaps(next.exact.include, delta.exact.include);
       next.exact.exclude = mergeMaps(next.exact.exclude, delta.exact.exclude);
       if (delta.exact.organization?.include.length || delta.exact.organization?.exclude.length) {
@@ -205,6 +205,10 @@ export function applySearchDelta(previous, rawDelta) {
           status: delta.exact.organization.status,
         };
       }
+    } else if (delta.action === 'correct_condition') {
+      next.exact.include = replaceMaps(next.exact.include, delta.exact.include);
+      next.exact.exclude = replaceMaps(next.exact.exclude, delta.exact.exclude);
+      if (delta.exact.organization) next.exact.organization = delta.exact.organization;
     } else if (delta.action !== 'remove_condition') {
       if (Object.keys(delta.exact.include).length) next.exact.include = replaceMaps(next.exact.include, delta.exact.include);
       if (Object.keys(delta.exact.exclude).length) next.exact.exclude = replaceMaps(next.exact.exclude, delta.exact.exclude);
@@ -212,9 +216,12 @@ export function applySearchDelta(previous, rawDelta) {
     }
   }
   if (delta.semantic && delta.action !== 'remove_condition') {
-    if (delta.action === 'add_condition' || delta.action === 'correct_condition') {
+    if (delta.action === 'add_condition') {
       next.semantic.include = mergeMaps(next.semantic.include, delta.semantic.include);
       next.semantic.exclude = mergeMaps(next.semantic.exclude, delta.semantic.exclude);
+    } else if (delta.action === 'correct_condition') {
+      next.semantic.include = replaceMaps(next.semantic.include, delta.semantic.include);
+      next.semantic.exclude = replaceMaps(next.semantic.exclude, delta.semantic.exclude);
     } else if (delta.action === 'new_search' || Object.keys(delta.semantic.include).length || Object.keys(delta.semantic.exclude).length) {
       next.semantic.include = replaceMaps(next.semantic.include, delta.semantic.include);
       next.semantic.exclude = replaceMaps(next.semantic.exclude, delta.semantic.exclude);
@@ -275,8 +282,11 @@ export function searchStateSummary(state) {
 
 export function exactSearchArguments(state) {
   const value = validateSearchState(state);
-  if (hasSemanticConditions(value) || value.exact.organization.exclude.length || Object.keys(value.exact.exclude).length) return null;
-  if (Object.keys(value.exact.include).length === 0 && value.exact.organization.include.length === 0) return null;
+  if (hasSemanticConditions(value)) return null;
+  if (Object.keys(value.exact.include).length === 0
+    && Object.keys(value.exact.exclude).length === 0
+    && value.exact.organization.include.length === 0
+    && value.exact.organization.exclude.length === 0) return null;
   const args = { kind: 'nonconformity', limit: value.limit };
   for (const [field, expected] of Object.entries(value.exact.include)) {
     if (!EXACT_FIELDS.has(field)) return null;
@@ -285,8 +295,14 @@ export function exactSearchArguments(state) {
       args.dateTo = expected;
     } else args[field] = expected;
   }
+  for (const field of Object.keys(value.exact.exclude)) {
+    if (!EXACT_FIELDS.has(field)) return null;
+  }
+  if (Object.keys(value.exact.exclude).length) args.exactExclude = value.exact.exclude;
   const organizationTerms = unique(value.exact.organization.matchedTerms);
   if (organizationTerms.length === 1) args.originDepartmentName = organizationTerms[0];
   if (organizationTerms.length > 1) args.originDepartmentNames = organizationTerms;
+  const excludedOrganizationTerms = unique(value.exact.organization.exclude.map((item) => item.name));
+  if (excludedOrganizationTerms.length) args.excludeOriginDepartmentNames = excludedOrganizationTerms;
   return args;
 }

@@ -128,6 +128,32 @@ test('SearchState reducer keeps unspecified dimensions and distinguishes correct
   assert.equal(corrected.lastAction, 'correct_condition');
 });
 
+test('correct_condition replaces only the explicitly corrected fields', () => {
+  const first = applySearchDelta(emptySearchState(), {
+    action: 'new_search',
+    exact: {
+      include: { partName: '旧品名' },
+      exclude: {},
+      organization: { include: [{ name: '工場A' }], exclude: [], matchedTerms: ['工場A'], status: 'resolved' },
+    },
+    semantic: { include: { process: 'assembly', phenomenon: ['surface_damage'] }, exclude: {} },
+    unresolvedConditions: [],
+  });
+  const corrected = applySearchDelta(first, {
+    action: 'correct_condition',
+    exact: {
+      include: { partName: '新品名' },
+      exclude: {},
+      organization: { include: [{ name: '工場B' }], exclude: [], matchedTerms: ['工場B'], status: 'resolved' },
+    },
+    semantic: { include: { phenomenon: ['crack_or_breakage'] }, exclude: {} },
+    unresolvedConditions: [],
+  });
+  assert.deepEqual(corrected.exact.include, { partName: '新品名' });
+  assert.deepEqual(corrected.exact.organization.matchedTerms, ['工場B']);
+  assert.deepEqual(corrected.semantic.include, { process: 'assembly', phenomenon: ['crack_or_breakage'] });
+});
+
 test('replacement patches only named fields and does not clear an unspecified organization', () => {
   const first = applySearchDelta(emptySearchState(), {
     action: 'new_search',
@@ -164,6 +190,24 @@ test('replacement patches only named fields and does not clear an unspecified or
   assert.deepEqual(exactSearchArguments(exactOnly), {
     kind: 'nonconformity', limit: 20, partName: '軸', machineName: '旋盤A',
     originDepartmentNames: ['三島工場', '機械課'],
+  });
+});
+
+test('exact exclusion remains on the live search plan', () => {
+  const state = applySearchDelta(emptySearchState(), {
+    action: 'new_search',
+    exact: {
+      include: {},
+      exclude: { partName: '旧品名' },
+      organization: { include: [], exclude: [{ name: '工場B' }], matchedTerms: [], status: 'resolved' },
+    },
+    semantic: { include: {}, exclude: {} },
+    unresolvedConditions: [],
+  });
+  assert.deepEqual(exactSearchArguments(state), {
+    kind: 'nonconformity', limit: 20,
+    exactExclude: { partName: '旧品名' },
+    excludeOriginDepartmentNames: ['工場B'],
   });
 });
 
@@ -294,6 +338,20 @@ test('classifies real snapshot rows incrementally and refuses unbound display-on
   assert.equal(thirdRuntime.classifiedRecordCount, 3);
   assert.equal(thirdRuntime.reusedRecordCount, 0);
   assert.equal(thirdCalls, 3);
+});
+
+test('removes an exact machine condition without treating it as a semantic field', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-exact-removal-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  await writeFile(snapshotPath, JSON.stringify(snapshot));
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: evaluator });
+  await classifier.prepare();
+  const machine = await classifier.answer('旋盤Aの不適合');
+  assert.equal(machine.searchState.exact.include.machineName, '旋盤A');
+  const removed = await classifier.answer('機械指定を外して', machine.session);
+  assert.equal(removed.searchState.exact.include.machineName, undefined);
+  assert.equal(removed.searchDelta.action, 'remove_condition');
 });
 
 test('resolves a facility term to its recorded origin-department scope and applies recent limit in code', async () => {
