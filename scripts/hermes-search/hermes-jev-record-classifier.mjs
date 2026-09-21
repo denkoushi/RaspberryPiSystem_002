@@ -246,6 +246,17 @@ function buildQueryQuestions(definition) {
       { id: 'no_prior_target', description: '前回の検索対象がない' },
     ],
   );
+  questions.change_action = choiceQuestion(
+    '前回の確定条件に対するこのメッセージの操作を選ぶ。条件を追加、指定項目だけを置換、指定項目を解除、訂正、または新規検索する。意味を確定できなければ clarify を選ぶ。',
+    [
+      { id: 'add_condition', description: '前回の条件を保持して条件を追加する' },
+      { id: 'replace_condition', description: '指定された条件項目だけを置換する' },
+      { id: 'remove_condition', description: '指定された条件項目を解除する' },
+      { id: 'correct_condition', description: '前回の条件の誤りを訂正する' },
+      { id: 'new_search', description: '前回とは別の検索を開始する' },
+      { id: 'clarify', description: '操作の意味を確定できないので確認する' },
+    ],
+  );
   return questions;
 }
 
@@ -371,6 +382,15 @@ function queryClassificationFromAnswers(answers, definition, question) {
     { id: 'no_prior_target', description: '前回対象なし' },
   ], 'conversation_target');
   judgments.conversation_target = conversationTarget;
+  const changeAction = normalizeChoiceJudgment(answers.change_action, [
+    { id: 'add_condition', description: '前回条件への追加' },
+    { id: 'replace_condition', description: '指定項目の置換' },
+    { id: 'remove_condition', description: '指定項目の解除' },
+    { id: 'correct_condition', description: '前回条件の訂正' },
+    { id: 'new_search', description: '新規検索' },
+    { id: 'clarify', description: '意味不確定' },
+  ], 'change_action');
+  judgments.change_action = changeAction;
   const display = displayRequestFrom(question, answers);
   for (const [id] of DISPLAY_REQUESTS) {
     const judgment = judgments[`display:${id}`];
@@ -383,7 +403,7 @@ function queryClassificationFromAnswers(answers, definition, question) {
   return {
     classification,
     judgments,
-    query: { include, exclude, display, unresolved, conversationTarget: conversationTarget.choice },
+    query: { include, exclude, display, unresolved, conversationTarget: conversationTarget.choice, changeAction: changeAction.choice },
   };
 }
 
@@ -718,8 +738,19 @@ function organizationIndex(records) {
   return [...values.values()];
 }
 
-function resolveOrganizationConditions(question, records) {
-  const candidates = organizationIndex(records);
+function sameOrganizationValue(left, right) {
+  return normalizedOrganizationValue(left?.name) === normalizedOrganizationValue(right?.name)
+    && (!left?.code || !right?.code || normalizedOrganizationValue(left.code) === normalizedOrganizationValue(right.code));
+}
+
+function resolveOrganizationConditions(question, records, previousOrganization = null) {
+  const allCandidates = organizationIndex(records);
+  const requestedQuestionTerms = questionOrganizationTerms(question);
+  const requestsFacility = requestedQuestionTerms.some((term) => [...ORGANIZATION_FACILITY_UNITS]
+    .some((unit) => normalizedOrganizationValue(term).endsWith(normalizedOrganizationValue(unit))));
+  const candidates = !requestsFacility && previousOrganization?.include?.length
+    ? allCandidates.filter((candidate) => previousOrganization.include.some((value) => sameOrganizationValue(candidate, value)))
+    : allCandidates;
   const knownTerms = new Map();
   for (const candidate of candidates) {
     for (const term of candidate.terms) {
@@ -774,11 +805,11 @@ function firstMatch(question, records, field) {
   return candidates.find((value) => question.includes(value)) ?? null;
 }
 
-export function extractStructuredConditions(question, records) {
+export function extractStructuredConditions(question, records, context = {}) {
   const result = {};
   const exclude = {};
   const normalized = question.normalize('NFKC');
-  const organization = resolveOrganizationConditions(normalized, records);
+  const organization = resolveOrganizationConditions(normalized, records, context.organization ?? null);
   const numbers = normalized.match(/(?:不適合|記録|番号)?\s*([0-9０-９]{4,})(?!\s*年)/u)?.[1];
   if (numbers) result.nonconformityNo = numbers.replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
   for (const field of ['partNumber', 'partName', 'machineName', 'originDepartmentCode']) {
@@ -823,10 +854,13 @@ function matchesConditions(record, conditions) {
   });
 }
 
-function matchesOrganizationScope(record, values) {
-  if (!Array.isArray(values) || values.length === 0) return false;
+function matchesOrganizationScope(record, values, matchedTerms = []) {
   const name = normalizedOrganizationValue(record.originDepartmentName);
   const code = normalizedOrganizationValue(record.originDepartmentCode);
+  if (Array.isArray(matchedTerms) && matchedTerms.length > 0) {
+    return matchedTerms.every((term) => name.includes(normalizedOrganizationValue(term)));
+  }
+  if (!Array.isArray(values) || values.length === 0) return false;
   return values.some((value) => normalizedOrganizationValue(value.name) === name
     && (!value.code || normalizedOrganizationValue(value.code) === code));
 }
@@ -920,7 +954,7 @@ export function searchStored(store, query) {
     if (semanticRequired && !entry) continue;
     if (!matchesConditions(record, query.conditions ?? {})) continue;
     if (Object.keys(exactExclude).length && matchesConditions(record, exactExclude)) continue;
-    if (query.organization?.include?.length && !matchesOrganizationScope(record, query.organization.include)) continue;
+    if (query.organization?.include?.length && !matchesOrganizationScope(record, query.organization.include, query.organization.matchedTerms)) continue;
     if (query.organization?.exclude?.length && matchesOrganizationScope(record, query.organization.exclude)) continue;
     const semantic = semanticRequired ? semanticSearchMatch(entry, query) : { ok: true, uncertain: [], excludedUncertain: [] };
     if (!semantic.ok) {
@@ -953,7 +987,9 @@ function queryConversationState(question, conversation = {}) {
     relatedHistory: [...previousRequest, ...dialogue],
     confirmationPending: safeConversation.confirmationPending ?? safeConversation.pending ?? null,
     conversationTarget: safeConversation.conversationTarget ?? null,
-    searchState: safeConversation.searchState ? searchStateSummary(safeConversation.searchState) : null,
+    // The bounded SearchState is the source of truth for change intent. Do
+    // not substitute the previous natural-language request for these values.
+    searchState: safeConversation.searchState ? validateSearchState(safeConversation.searchState) : null,
   };
 }
 
@@ -1014,20 +1050,23 @@ function removeDimensions(question, structured) {
 }
 
 function deltaAction(question, evaluated, previousState) {
-  if (!previousState || previousState.revision === 0 || explicitNewSearch(question)) return 'new_search';
-  if (explicitRemoval(question)) return 'remove_condition';
-  if (explicitReplacement(question)) return 'replace_condition';
-  if (isCorrectionFeedback(question)) return 'correct_condition';
-  if (evaluated?.query?.conversationTarget === 'same_target') return 'add_condition';
-  // A bounded state is the authority once the user has an active search. If
-  // JEV cannot label a short follow-up, retain the state and add only the
-  // conditions resolved from this turn; the unresolved branch still asks for
-  // confirmation instead of discarding the wording.
-  return 'add_condition';
+  if (!previousState || previousState.revision === 0) return 'new_search';
+  const lexicalAction = explicitNewSearch(question)
+    ? 'new_search'
+    : explicitRemoval(question)
+      ? 'remove_condition'
+      : explicitReplacement(question)
+        ? 'replace_condition'
+        : isCorrectionFeedback(question)
+          ? 'correct_condition'
+          : null;
+  const action = evaluated?.query?.changeAction;
+  if (!['add_condition', 'replace_condition', 'remove_condition', 'correct_condition', 'new_search'].includes(action)) return null;
+  return lexicalAction && lexicalAction !== action ? null : action;
 }
 
 function structuredOrganizationForState(organization) {
-  if (!organization) return undefined;
+  if (!organization || (!organization.include?.length && !organization.exclude?.length && !organization.matchedTerms?.length)) return undefined;
   return {
     include: organization.include ?? [],
     exclude: organization.exclude ?? [],
@@ -1038,6 +1077,7 @@ function structuredOrganizationForState(organization) {
 
 function buildSearchDelta(question, evaluated, structured, previousState) {
   const action = deltaAction(question, evaluated, previousState);
+  const appliedAction = action ?? 'clarify';
   const normalized = question.normalize('NFKC');
   const exactInclude = { ...structured.include };
   const exactExclude = { ...structured.exclude };
@@ -1058,17 +1098,21 @@ function buildSearchDelta(question, evaluated, structured, previousState) {
     }
   }
   const delta = {
-    action,
+    action: appliedAction,
     exact: {
       include: exactInclude,
       exclude: exactExclude,
       organization: structuredOrganizationForState(structured.organization),
     },
     semantic: { include: semanticInclude, exclude: semanticExclude },
-    unresolvedConditions: [...(evaluated.query?.unresolved ?? []), ...(structured.unresolved ?? [])],
+    unresolvedConditions: [
+      ...(evaluated.query?.unresolved ?? []),
+      ...(structured.unresolved ?? []),
+      ...(action ? [] : [{ kind: 'action', field: 'changeAction', term: question, reason: 'change_intent_unresolved' }]),
+    ],
   };
   const requestedDisplay = evaluated.query?.display ?? displayRequestFrom(question, evaluated.judgments ?? {});
-  if (action === 'new_search' || requestedDisplay.requested?.length) delta.display = requestedDisplay;
+  if (appliedAction === 'new_search' || requestedDisplay.requested?.length) delta.display = requestedDisplay;
   const unsupportedSource = normalized.match(/(?:設備点検|計測機器|作業要領書|作業要領|要領書)/u)?.[0];
   if (unsupportedSource) {
     delta.unresolvedConditions.push({ kind: 'source', field: 'source', term: unsupportedSource, reason: 'source_not_connected_in_this_milestone' });
@@ -1076,8 +1120,11 @@ function buildSearchDelta(question, evaluated, structured, previousState) {
   const limit = explicitLimitFromQuestion(normalized);
   if (limit !== null) delta.limit = limit;
   if (hasRecentRequest(normalized)) delta.sort = { field: 'discoveredOn', direction: 'desc' };
-  if (action === 'remove_condition') {
+  if (appliedAction === 'remove_condition') {
     delta.remove = removeDimensions(normalized, structured);
+    if (Object.keys(delta.remove).length === 0) {
+      delta.unresolvedConditions.push({ kind: 'action', field: 'remove', term: question, reason: 'condition_to_remove_unresolved' });
+    }
     if (delta.remove.organization) delta.exact.organization = undefined;
     if (delta.remove.limit) delta.limit = undefined;
     if (delta.remove.sort) delta.sort = undefined;
@@ -1274,7 +1321,7 @@ export class AuthorizedRecordClassifier {
       searchState: previousState,
     });
     const coverage = this.coverage();
-    const structured = extractStructuredConditions(question, this.store.records);
+    const structured = extractStructuredConditions(question, this.store.records, { organization: previousState.exact.organization });
     const delta = buildSearchDelta(question, evaluated, structured, previousState);
     const deltaDigest = deltaFingerprint(delta);
     const allUnresolved = delta.unresolvedConditions ?? [];

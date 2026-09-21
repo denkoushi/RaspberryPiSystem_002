@@ -362,8 +362,11 @@ const TOOLS: ReadonlyArray<BusinessHermesMcpTool> = [
         partNumber: { type: 'string', maxLength: 200, description: 'Known product number; use this dedicated condition for a product-specific search and follow existing source normalization.' },
         shootingTarget: { type: 'string', maxLength: 200 },
         nonconformityNo: { type: 'string', maxLength: 120 },
+        partName: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Exact recorded part name for a nonconformity search.' },
+        machineName: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Exact recorded machine name for a nonconformity search.' },
         originDepartmentCode: { type: 'string', maxLength: 120, description: 'Exact code for the recorded origin (cause) department; it is not a responsibility-department or treatment-owner filter.' },
         originDepartmentName: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Literal case-insensitive substring for the recorded origin (cause) department name; it is not a responsibility-department or treatment-owner filter.' },
+        originDepartmentNames: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: MAX_QUERY_CHARS }, description: 'Multiple literal origin-department terms; every term must match the recorded origin name.' },
         condition: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Literal case-insensitive substring limited to the nonconformity content field; it may be combined with dedicated filters.' },
         dateFrom: { type: 'string', maxLength: 10, description: 'Inclusive discoveredOn date lower bound in YYYY-MM-DD format.' },
         dateTo: { type: 'string', maxLength: 10, description: 'Inclusive discoveredOn date upper bound in YYYY-MM-DD format.' },
@@ -1655,8 +1658,13 @@ export class BusinessHermesMcpService {
     const partNumber = normalizeWorkInstructionPartNumber(text(args.partNumber, 200));
     const shootingTarget = normalizeWorkInstructionShootingTarget(text(args.shootingTarget, 200));
     const nonconformityNo = text(args.nonconformityNo, 120);
+    const partName = text(args.partName);
+    const machineName = text(args.machineName);
     const originDepartmentCode = text(args.originDepartmentCode, 120);
     const originDepartmentName = text(args.originDepartmentName);
+    const originDepartmentNames = Array.isArray(args.originDepartmentNames)
+      ? [...new Set(args.originDepartmentNames.map((value) => text(value)).filter((value): value is string => Boolean(value)))].slice(0, 12)
+      : [];
     const condition = text(args.condition);
     const dateFrom = text(args.dateFrom, 10);
     const dateTo = text(args.dateTo, 10);
@@ -1677,8 +1685,11 @@ export class BusinessHermesMcpService {
         isPresentInLatestSnapshot: true,
         ...(partNumber ? { partNumber } : {}),
         ...(nonconformityNo ? { nonconformityNo } : {}),
+        ...(partName ? { partName } : {}),
+        ...(machineName ? { machineName } : {}),
         ...(originDepartmentCode ? { originDepartmentCode } : {}),
         ...(originDepartmentName ? { originDepartmentName: { contains: originDepartmentName, mode: 'insensitive' } } : {}),
+        ...(originDepartmentNames.length ? { AND: originDepartmentNames.map((term) => ({ originDepartmentName: { contains: term, mode: 'insensitive' } })) } : {}),
         ...(dateFromBound || dateToBound ? { discoveredOn: { ...(dateFromBound ? { gte: dateFromBound } : {}), ...(dateToBound ? { lte: dateToBound } : {}) } } : {}),
         ...(query ? {
           OR: [

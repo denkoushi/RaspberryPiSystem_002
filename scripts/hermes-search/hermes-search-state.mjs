@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 export const SEARCH_STATE_SCHEMA = 'hermes-search-state/v1';
 
-const ACTIONS = new Set(['new_search', 'add_condition', 'replace_condition', 'remove_condition', 'correct_condition']);
+const ACTIONS = new Set(['new_search', 'add_condition', 'replace_condition', 'remove_condition', 'correct_condition', 'clarify']);
 const EXACT_FIELDS = new Set([
   'nonconformityNo', 'partNumber', 'partName', 'machineName', 'originDepartmentCode', 'discoveredOn'
 ]);
@@ -176,7 +176,9 @@ function mergeMaps(current, incoming) {
 }
 
 function replaceMaps(current, incoming) {
-  return incoming ? clone(incoming) : current;
+  const result = { ...current };
+  for (const [field, value] of Object.entries(incoming ?? {})) result[field] = clone(value);
+  return result;
 }
 
 function removeMapFields(map, fields) {
@@ -188,6 +190,7 @@ function removeMapFields(map, fields) {
 export function applySearchDelta(previous, rawDelta) {
   const current = validateSearchState(previous ?? emptySearchState());
   const delta = validateSearchDelta(rawDelta);
+  if (delta.action === 'clarify') throw new Error('cannot apply an unresolved SearchDelta');
   let next = delta.action === 'new_search' ? emptySearchState() : clone(current);
   if (delta.exact) {
     if (delta.action === 'add_condition' || delta.action === 'correct_condition') {
@@ -282,7 +285,8 @@ export function exactSearchArguments(state) {
       args.dateTo = expected;
     } else args[field] = expected;
   }
-  const organizationTerm = value.exact.organization.matchedTerms[0];
-  if (organizationTerm) args.originDepartmentName = organizationTerm;
+  const organizationTerms = unique(value.exact.organization.matchedTerms);
+  if (organizationTerms.length === 1) args.originDepartmentName = organizationTerms[0];
+  if (organizationTerms.length > 1) args.originDepartmentNames = organizationTerms;
   return args;
 }

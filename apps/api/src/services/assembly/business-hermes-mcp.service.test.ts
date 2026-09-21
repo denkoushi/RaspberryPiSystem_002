@@ -322,6 +322,21 @@ describe('BusinessHermesMcpService', () => {
     }));
     expect(originPayload.results[0]).toMatchObject({ originDepartmentCode: 'D-01', originDepartmentName: '機構設計１課', originDepartmentMeaning: '起因部署' });
 
+    await service.call('business_hermes_search', {
+      kind: 'nonconformity', partName: '品名', machineName: '機械',
+      originDepartmentNames: ['三島工場', '機械課'], limit: 1
+    });
+    expect(db.scawStfutekigoCurrent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        partName: '品名',
+        machineName: '機械',
+        AND: [
+          { originDepartmentName: { contains: '三島工場', mode: 'insensitive' } },
+          { originDepartmentName: { contains: '機械課', mode: 'insensitive' } },
+        ],
+      }),
+    }));
+
     const ncFirst = await service.call('business_hermes_search', { query: 'PN-1', kind: 'both', limit: 1 });
     const ncFirstPayload = JSON.parse(ncFirst.content[0]?.text ?? '{}') as { hasMore: { workInstruction: boolean }; nextCursor: { workInstructionOffset: number | null } };
     expect(ncFirstPayload.hasMore.workInstruction).toBe(true);
