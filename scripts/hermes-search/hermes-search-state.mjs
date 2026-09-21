@@ -196,7 +196,7 @@ export function applySearchDelta(previous, rawDelta) {
     if (delta.action === 'add_condition') {
       next.exact.include = mergeMaps(next.exact.include, delta.exact.include);
       next.exact.exclude = mergeMaps(next.exact.exclude, delta.exact.exclude);
-      if (delta.exact.organization?.include.length || delta.exact.organization?.exclude.length) {
+      if (delta.exact.organization?.include.length || delta.exact.organization?.exclude.length || delta.exact.organization?.matchedTerms.length) {
         next.exact.organization = {
           ...next.exact.organization,
           include: [...next.exact.organization.include, ...delta.exact.organization.include],
@@ -230,6 +230,9 @@ export function applySearchDelta(previous, rawDelta) {
   if (delta.action === 'remove_condition') {
     const remove = delta.remove ?? {};
     if (remove.organization) next.exact.organization = emptySearchState().exact.organization;
+    else if (remove.organizationFacility) {
+      next.exact.organization = delta.exact?.organization ?? emptySearchState().exact.organization;
+    }
     if (Array.isArray(remove.exactFields)) {
       next.exact.include = removeMapFields(next.exact.include, remove.exactFields);
       next.exact.exclude = removeMapFields(next.exact.exclude, remove.exactFields);

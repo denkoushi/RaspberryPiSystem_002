@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import { AuthorizedRecordClassifier, buildClassificationDefinition, extractStructuredConditions } from './hermes-jev-record-classifier.mjs';
 import { applySearchDelta, emptySearchState, exactSearchArguments } from './hermes-search-state.mjs';
+import { evaluateAmbiguityImpact, RESOLUTION_ACTIONS } from './hermes-resolution-policy.mjs';
 
 const snapshot = {
   schema: 'hermes-qmd-snapshot/v1',
@@ -22,6 +23,24 @@ const snapshot = {
     }
   ]
 };
+
+test('evaluates ambiguity by search impact instead of confirming every ambiguous value', () => {
+  assert.deepEqual(evaluateAmbiguityImpact({
+    ambiguity: { reason: 'candidate_set' },
+    candidateSetSafe: true,
+  }), { action: RESOLUTION_ACTIONS.CONTINUE_SET, reason: 'candidate_set_preserves_reading_intent' });
+  assert.deepEqual(evaluateAmbiguityImpact({
+    ambiguity: { reason: 'candidate_set' },
+    candidateSetSafe: true,
+    existingCondition: true,
+  }), { action: RESOLUTION_ACTIONS.RESOLVE_EXISTING, reason: 'existing_condition_limits_scope' });
+  assert.deepEqual(evaluateAmbiguityImpact({
+    ambiguity: { reason: 'different_interpretations' },
+  }), { action: RESOLUTION_ACTIONS.CONFIRM, reason: 'interpretation_changes_search_scope' });
+  assert.deepEqual(evaluateAmbiguityImpact({
+    ambiguity: { reason: 'not_found' },
+  }), { action: RESOLUTION_ACTIONS.CONFIRM, reason: 'meaning_unresolved' });
+});
 
 function choiceAnswer(choice, options) {
   const otherProbability = options.length > 1 ? 0.06 / (options.length - 1) : 0;
@@ -382,8 +401,12 @@ test('resolves a facility term to its recorded origin-department scope and appli
   assert.equal(result.classifier.limit, 2);
   assert.deepEqual(result.classifier.organization.matchedTerms, ['北工場']);
 
-  const ambiguous = extractStructuredConditions('機械課の不適合', organizationSnapshot.records);
-  assert.equal(ambiguous.unresolved[0].reason, 'ambiguous');
+  const sameFormalDepartment = extractStructuredConditions('機械課の不適合', organizationSnapshot.records);
+  assert.deepEqual(sameFormalDepartment.unresolved, []);
+  assert.equal(sameFormalDepartment.organization.resolution.action, RESOLUTION_ACTIONS.CONTINUE_SET);
+  assert.deepEqual(sameFormalDepartment.organization.include.map((value) => value.name).sort(), [
+    '北工場製造部機械課', '南工場製造部機械課',
+  ]);
   const scoped = extractStructuredConditions('機械課の不適合', organizationSnapshot.records, {
     organization: {
       include: [{ name: '北工場製造部機械課', code: 'N-M' }, { name: '北工場品質保証課', code: 'N-Q' }],
@@ -391,9 +414,51 @@ test('resolves a facility term to its recorded origin-department scope and appli
     },
   });
   assert.deepEqual(scoped.unresolved, []);
+  assert.equal(scoped.organization.resolution.action, RESOLUTION_ACTIONS.RESOLVE_EXISTING);
   assert.deepEqual(scoped.organization.include.map((value) => value.name), ['北工場製造部機械課']);
   const unknown = extractStructuredConditions('架空工場の不適合', organizationSnapshot.records);
   assert.equal(unknown.unresolved[0].reason, 'not_found');
+  assert.equal(unknown.organization.resolution.action, RESOLUTION_ACTIONS.CONFIRM);
+});
+
+test('keeps a factory scope while resolving a new department and removes only the factory scope', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-organization-set-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  const organizationSnapshot = {
+    ...snapshot,
+    records: [
+      { ...snapshot.records[0], id: 'north-machine', nonconformityNo: '00010401', originDepartmentCode: 'N-M', originDepartmentName: '北工場製造部機械課', discoveredOn: '2026-09-20' },
+      { ...snapshot.records[0], id: 'north-material', nonconformityNo: '00010402', originDepartmentCode: 'N-S', originDepartmentName: '北工場資材課', discoveredOn: '2026-09-21' },
+      { ...snapshot.records[0], id: 'south-material', nonconformityNo: '00010403', originDepartmentCode: 'S-S', originDepartmentName: '南工場資材課', discoveredOn: '2026-09-22' },
+    ],
+  };
+  await writeFile(snapshotPath, JSON.stringify(organizationSnapshot));
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath, storePath, classificationEnabled: false, evaluateImplementation: evaluator });
+  await classifier.prepare();
+
+  const factory = await classifier.answer('北工場の不適合');
+  assert.deepEqual(factory.searchState.exact.organization.matchedTerms, ['北工場']);
+
+  const department = await classifier.answer('資材課の最近の不適合1件', factory.session);
+  assert.deepEqual(department.recordIds, ['nonconformity:north-material']);
+  assert.deepEqual(department.searchState.exact.organization.matchedTerms, ['北工場', '資材課']);
+  assert.deepEqual(exactSearchArguments(department.searchState), {
+    kind: 'nonconformity', limit: 1, originDepartmentNames: ['北工場', '資材課'],
+  });
+
+  const unrestricted = await classifier.answer('工場指定を外して', department.session);
+  assert.deepEqual(unrestricted.recordIds, ['nonconformity:south-material']);
+  assert.deepEqual(unrestricted.searchState.exact.organization.matchedTerms, ['資材課']);
+  assert.deepEqual(exactSearchArguments(unrestricted.searchState), {
+    kind: 'nonconformity', limit: 1, originDepartmentName: '資材課',
+  });
+
+  const sameFormalName = await classifier.answer('資材課の直近の不適合2件');
+  assert.deepEqual(sameFormalName.recordIds, ['nonconformity:south-material', 'nonconformity:north-material']);
+  const unknown = await classifier.answer('月面課の不適合');
+  assert.equal(unknown.status, 'clarification');
+  assert.equal(unknown.searchDelta.applied, false);
 });
 
 test('starts with reusable classifications and persists each background result', async () => {

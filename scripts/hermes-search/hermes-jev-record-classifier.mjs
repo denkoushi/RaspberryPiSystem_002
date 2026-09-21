@@ -14,6 +14,10 @@ import {
   stateFingerprint,
   validateSearchState,
 } from './hermes-search-state.mjs';
+import {
+  evaluateAmbiguityImpact,
+  RESOLUTION_ACTIONS,
+} from './hermes-resolution-policy.mjs';
 
 export const CLASSIFIER_SCHEMA = 'hermes-jev-record-classification/v2';
 export const CLASSIFIER_DEFINITION_VERSION = 4;
@@ -708,6 +712,16 @@ function isOrganizationTerm(term) {
     && normalized.length > normalizedOrganizationValue(unit).length);
 }
 
+function isOrganizationFacilityTerm(term) {
+  const normalized = normalizedOrganizationValue(term);
+  return [...ORGANIZATION_FACILITY_UNITS].some((unit) => normalized.endsWith(normalizedOrganizationValue(unit))
+    && normalized.length > normalizedOrganizationValue(unit).length);
+}
+
+function embeddedOrganizationFacilityTerms(value) {
+  return organizationTerms(value).filter((term) => isOrganizationFacilityTerm(term));
+}
+
 function questionOrganizationTerms(question) {
   const normalized = text(question).normalize('NFKC');
   const terms = new Set();
@@ -738,21 +752,14 @@ function organizationIndex(records) {
   return [...values.values()];
 }
 
-function sameOrganizationValue(left, right) {
-  return normalizedOrganizationValue(left?.name) === normalizedOrganizationValue(right?.name)
-    && (!left?.code || !right?.code || normalizedOrganizationValue(left.code) === normalizedOrganizationValue(right.code));
-}
-
-function resolveOrganizationConditions(question, records, previousOrganization = null) {
+function resolveOrganizationConditions(question, records, previousOrganization = null, {
+  ignorePreviousFacility = false,
+  retainPreviousDepartment = false,
+} = {}) {
   const allCandidates = organizationIndex(records);
   const requestedQuestionTerms = questionOrganizationTerms(question);
-  const requestsFacility = requestedQuestionTerms.some((term) => [...ORGANIZATION_FACILITY_UNITS]
-    .some((unit) => normalizedOrganizationValue(term).endsWith(normalizedOrganizationValue(unit))));
-  const candidates = !requestsFacility && previousOrganization?.include?.length
-    ? allCandidates.filter((candidate) => previousOrganization.include.some((value) => sameOrganizationValue(candidate, value)))
-    : allCandidates;
   const knownTerms = new Map();
-  for (const candidate of candidates) {
+  for (const candidate of allCandidates) {
     for (const term of candidate.terms) {
       const key = normalizedOrganizationValue(term);
       if (!isOrganizationTerm(term)) continue;
@@ -761,30 +768,72 @@ function resolveOrganizationConditions(question, records, previousOrganization =
       knownTerms.set(key, values);
     }
   }
-  const requested = [...knownTerms.entries()]
-    .filter(([term]) => normalizedOrganizationValue(question).includes(term))
-    .map(([term, values]) => ({ term, values }))
+  const previousFacilityTerms = ignorePreviousFacility ? [] : (previousOrganization?.matchedTerms ?? [])
+    .filter((term) => isOrganizationFacilityTerm(term));
+  const requestedFacilityTerms = requestedQuestionTerms.flatMap((term) => embeddedOrganizationFacilityTerms(term));
+  const facilityScopeTerms = [...new Set(requestedFacilityTerms.length > 0 ? requestedFacilityTerms : previousFacilityTerms)];
+  const requestedTerms = requestedQuestionTerms.length > 0
+    ? requestedQuestionTerms
+    : retainPreviousDepartment
+      ? (previousOrganization?.matchedTerms ?? []).filter((term) => !isOrganizationFacilityTerm(term))
+      : [];
+  const requested = [...new Set(requestedTerms.map((term) => normalizedOrganizationValue(term)))]
+    .map((term) => ({ term, values: knownTerms.get(term) ?? [] }))
+    .filter(({ term, values }) => values.length > 0 || !requestedQuestionTerms.some((requestedTerm) => normalizedOrganizationValue(requestedTerm) === term))
     .sort((left, right) => right.term.length - left.term.length);
   const unknown = questionOrganizationTerms(question).find((term) => isOrganizationTerm(term)
     && ![...knownTerms.keys()].some((known) => known === normalizedOrganizationValue(term)));
+  if (unknown) {
+    return {
+      include: [],
+      exclude: [],
+      unresolved: [{ field: 'originDepartmentName', term: unknown, reason: 'not_found' }],
+      resolution: {
+        action: RESOLUTION_ACTIONS.CONFIRM,
+        reason: 'meaning_unresolved',
+        ambiguityReason: 'not_found',
+      },
+    };
+  }
   if (requested.length === 0) {
-    return unknown
-      ? { include: [], exclude: [], unresolved: [{ field: 'originDepartmentName', term: unknown, reason: 'not_found' }] }
-      : { include: [], exclude: [], unresolved: [] };
+    return {
+      include: [],
+      exclude: [],
+      unresolved: [],
+      resolution: evaluateAmbiguityImpact(),
+    };
   }
 
   const selectedTerms = requested.filter((item, index) => index === 0 || !requested.some((other, otherIndex) => otherIndex < index && other.term.includes(item.term)));
-  const selectedValues = candidates.filter((candidate) => selectedTerms.every(({ term }) => candidate.terms.some((candidateTerm) => normalizedOrganizationValue(candidateTerm) === term)));
-  const facilityRequested = selectedTerms.some(({ term }) => {
-    const raw = term;
-    return [...ORGANIZATION_FACILITY_UNITS].some((unit) => raw.endsWith(normalizedOrganizationValue(unit)));
+  const candidates = facilityScopeTerms.length > 0
+    ? allCandidates.filter((candidate) => facilityScopeTerms.some((term) => candidate.terms.some((candidateTerm) => normalizedOrganizationValue(candidateTerm) === normalizedOrganizationValue(term))))
+    : allCandidates;
+  const nonFacilityTerms = selectedTerms.filter(({ term }) => !isOrganizationFacilityTerm(term));
+  const selectedValues = candidates.filter((candidate) => nonFacilityTerms.every(({ term }) => candidate.terms.some((candidateTerm) => normalizedOrganizationValue(candidateTerm) === term)));
+  const resolutionAssessments = nonFacilityTerms.map(({ term }) => {
+    const values = selectedValues.filter((candidate) => candidate.terms.some((candidateTerm) => normalizedOrganizationValue(candidateTerm) === term));
+    const ambiguity = values.length > 1 || previousFacilityTerms.length > 0
+      ? { reason: 'candidate_set' }
+      : null;
+    const impact = evaluateAmbiguityImpact({
+      ambiguity,
+      candidateSetSafe: true,
+      existingCondition: previousFacilityTerms.length > 0,
+    });
+    return { term, candidateCount: values.length, ...impact };
   });
-  const distinctParents = new Set(selectedValues.map((candidate) => {
-    const name = normalizedOrganizationValue(candidate.name);
-    const unit = [...ORGANIZATION_FACILITY_UNITS].map(normalizedOrganizationValue).find((suffix) => name.includes(suffix));
-    return unit ? name.slice(0, name.indexOf(unit) + unit.length) : name;
-  }));
-  const ambiguous = !facilityRequested && selectedValues.length > 1 && distinctParents.size > 1;
+  const confirmation = resolutionAssessments.find(({ action }) => action === RESOLUTION_ACTIONS.CONFIRM);
+  if (confirmation) {
+    return {
+      include: [],
+      exclude: [],
+      unresolved: [{ field: 'originDepartmentName', term: confirmation.term, reason: confirmation.reason }],
+      resolution: confirmation,
+    };
+  }
+  const resolution = resolutionAssessments.find(({ action }) => action === RESOLUTION_ACTIONS.RESOLVE_EXISTING)
+    ?? resolutionAssessments.find(({ action }) => action === RESOLUTION_ACTIONS.CONTINUE_SET)
+    ?? evaluateAmbiguityImpact();
   const include = [];
   const exclude = [];
   for (const selected of selectedTerms) {
@@ -792,11 +841,19 @@ function resolveOrganizationConditions(question, records, previousOrganization =
     (organizationTermIsExcluded(question, selected.term) ? exclude : include).push(...values);
   }
   const unique = (values) => [...new Map(values.map((value) => [`${value.name}\u0000${value.code ?? ''}`, value])).values()];
+  const includedTerms = [
+    ...facilityScopeTerms.filter((term) => !organizationTermIsExcluded(question, term)),
+    ...selectedTerms.filter(({ term }) => !organizationTermIsExcluded(question, term)).map(({ term }) => term),
+  ];
   return {
     include: unique(include),
     exclude: unique(exclude),
-    unresolved: ambiguous ? [{ field: 'originDepartmentName', term: selectedTerms.map(({ term }) => term).join('、'), reason: 'ambiguous' }] : [],
-    matchedTerms: selectedTerms.map(({ term }) => term),
+    unresolved: [],
+    resolution,
+    // The values are the authorized set; matchedTerms preserves the compact
+    // conditions for the live reader. Multiple values with the same formal
+    // meaning are intentionally a union, not a Choice requiring confirmation.
+    matchedTerms: [...new Set(includedTerms)],
   };
 }
 
@@ -809,7 +866,10 @@ export function extractStructuredConditions(question, records, context = {}) {
   const result = {};
   const exclude = {};
   const normalized = question.normalize('NFKC');
-  const organization = resolveOrganizationConditions(normalized, records, context.organization ?? null);
+  const organization = resolveOrganizationConditions(normalized, records, context.organization ?? null, {
+    ignorePreviousFacility: context.ignorePreviousFacility === true,
+    retainPreviousDepartment: context.retainPreviousDepartment === true,
+  });
   const numbers = normalized.match(/(?:不適合|記録|番号)?\s*([0-9０-９]{4,})(?!\s*年)/u)?.[1];
   if (numbers) result.nonconformityNo = numbers.replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
   for (const field of ['partNumber', 'partName', 'machineName', 'originDepartmentCode']) {
@@ -843,7 +903,8 @@ export function resolvedConditionCount(question, interpretation, conditions, exc
     ? Object.entries(interpretation.exclude).filter(([, value]) => Array.isArray(value) ? value.length > 0 : Boolean(value))
     : [];
   return semanticInclude.length + semanticExclude.length + Object.keys(conditions).length + Object.keys(exclude).length
-    + (organization?.include?.length ? 1 : 0) + (organization?.exclude?.length ? 1 : 0);
+    + (organization?.include?.length || organization?.matchedTerms?.length ? 1 : 0)
+    + (organization?.exclude?.length ? 1 : 0);
 }
 
 function matchesConditions(record, conditions) {
@@ -954,7 +1015,8 @@ export function searchStored(store, query) {
     if (semanticRequired && !entry) continue;
     if (!matchesConditions(record, query.conditions ?? {})) continue;
     if (Object.keys(exactExclude).length && matchesConditions(record, exactExclude)) continue;
-    if (query.organization?.include?.length && !matchesOrganizationScope(record, query.organization.include, query.organization.matchedTerms)) continue;
+    if ((query.organization?.include?.length || query.organization?.matchedTerms?.length)
+      && !matchesOrganizationScope(record, query.organization.include, query.organization.matchedTerms)) continue;
     if (query.organization?.exclude?.length && matchesOrganizationScope(record, query.organization.exclude)) continue;
     const semantic = semanticRequired ? semanticSearchMatch(entry, query) : { ok: true, uncertain: [], excludedUncertain: [] };
     if (!semantic.ok) {
@@ -1028,6 +1090,10 @@ function explicitRemoval(question) {
   return /(?:外して|解除して|指定を外|指定なし|なしにして|取り除いて|除去して)/u.test(question.normalize('NFKC'));
 }
 
+function removesOrganizationFacility(question) {
+  return /(?:工場|本社|事業所|センター|研究所)(?:指定)?(?:を|は)?(?:外して|解除して|指定なし|なしにして|取り除いて|除去して)/u.test(question.normalize('NFKC'));
+}
+
 function explicitReplacement(question) {
   return /(?:に変えて|に変更して|変更する|切り替えて|置き換えて)/u.test(question.normalize('NFKC'));
 }
@@ -1035,8 +1101,9 @@ function explicitReplacement(question) {
 function removeDimensions(question, structured) {
   const normalized = question.normalize('NFKC');
   const remove = {};
-  if (structured.organization?.include?.length || structured.organization?.exclude?.length
-    || /(?:工場|本社|事業所|センター|研究所|部署|部門|組織)指定/u.test(normalized)) remove.organization = true;
+  if (removesOrganizationFacility(normalized)) remove.organizationFacility = true;
+  else if (structured.organization?.include?.length || structured.organization?.exclude?.length
+    || /(?:部署|部門|組織)指定/u.test(normalized)) remove.organization = true;
   if (/(?:件数|表示件数|件だけ|件に)/u.test(normalized)) remove.limit = true;
   if (/(?:並び|順番|直近|最新|最近)/u.test(normalized)) remove.sort = true;
   const exactFields = [];
@@ -1329,7 +1396,16 @@ export class AuthorizedRecordClassifier {
       searchState: previousState,
     });
     const coverage = this.coverage();
-    const structured = extractStructuredConditions(question, this.store.records, { organization: previousState.exact.organization });
+    const removeFacilityScope = previousState.revision > 0 && removesOrganizationFacility(question);
+    const organizationContext = previousState.revision > 0 && !explicitNewSearch(question)
+      && (!explicitRemoval(question) || removeFacilityScope)
+      ? previousState.exact.organization
+      : null;
+    const structured = extractStructuredConditions(question, this.store.records, {
+      organization: organizationContext,
+      ignorePreviousFacility: removeFacilityScope,
+      retainPreviousDepartment: removeFacilityScope,
+    });
     const delta = buildSearchDelta(question, evaluated, structured, previousState);
     const deltaDigest = deltaFingerprint(delta);
     const allUnresolved = delta.unresolvedConditions ?? [];
@@ -1389,6 +1465,7 @@ export class AuthorizedRecordClassifier {
           conditions: nextState.exact.include,
           exclude: nextState.exact.exclude,
           organization: nextState.exact.organization,
+          resolutionImpact: structured.organization?.resolution ?? null,
           search: { include: semanticInclude, exclude: semanticExclude, unresolved: allUnresolved, target: conversationTarget },
           display,
           reason: allUnresolved.length ? 'conditions_ambiguous' : 'conditions_not_resolved',
@@ -1426,6 +1503,7 @@ export class AuthorizedRecordClassifier {
         conditions: nextState.exact.include,
         exclude: nextState.exact.exclude,
         organization: nextState.exact.organization,
+        resolutionImpact: structured.organization?.resolution ?? null,
         search: { include: semanticInclude, exclude: semanticExclude, unresolved: allUnresolved, target: conversationTarget },
         display,
         matchedCount: records.length,
