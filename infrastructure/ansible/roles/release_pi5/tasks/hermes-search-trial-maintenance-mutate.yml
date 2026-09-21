@@ -45,8 +45,12 @@
   loop: >-
     {{ [
       {'key': 'HERMES_SEARCH_TRIAL_ENABLED', 'value': ('true' if release_pi5_trial_maintenance == 'on' else 'false')},
-      {'key': 'HERMES_SEARCH_TRIAL_JEV_ENABLED', 'value': 'false'}
+      {'key': 'HERMES_SEARCH_TRIAL_JEV_ENABLED', 'value': ('true' if release_pi5_trial_maintenance == 'on' else 'false')}
     ] + ([
+      {'key': 'HERMES_SEARCH_RECORD_SOURCE', 'value': '/app/storage/hermes-search/' ~ release_pi5_trial_maintenance_manifest.files['qmd-index.sqlite'] ~ '/snapshot.json'},
+      {'key': 'HERMES_SEARCH_RECORD_CLASSIFICATION_STORE', 'value': '/app/storage/hermes-search/runtime/jev-record-classifications.json'},
+      {'key': 'HERMES_JEV_PROVIDER', 'value': 'typesafe-direct'},
+      {'key': 'TYPESAFE_API_KEY', 'value': hermes_search_typesafe_api_key},
       {'key': 'HERMES_INFERENCE_ORIGIN', 'value': business_hermes_chat_dgx_base_url | default('http://100.118.82.72:38081')},
       {'key': 'HERMES_INFERENCE_TOKEN', 'value': business_hermes_chat_dgx_token},
       {'key': 'HERMES_INFERENCE_EGRESS', 'value': 'http://business-hermes-chat-egress:3128'},
@@ -64,7 +68,10 @@
     create: false
     mode: '0600'
   loop:
+    - HERMES_SEARCH_RECORD_SOURCE
+    - HERMES_SEARCH_RECORD_CLASSIFICATION_STORE
     - HERMES_JEV_PROVIDER
+    - TYPESAFE_API_KEY
     - HERMES_SEARCH_TRIAL_RECORD_PILOT_FIXTURE
     - HERMES_SEARCH_TRIAL_RECORD_PILOT_STORE
   no_log: true

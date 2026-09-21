@@ -1775,8 +1775,13 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         self.assertIn("release_pi5_route == 'settled'", preflight)
         self.assertIn("release_pi5_trial_maintenance == 'on'", preflight)
         self.assertIn("release_pi5_trial_maintenance_manifest.files", preflight)
+        self.assertIn("hermes_search_typesafe_api_key", preflight)
         self.assertIn("HERMES_SEARCH_TRIAL_JEV_ENABLED", str(mutation))
-        self.assertIn("'value': 'false'", str(mutation))
+        self.assertIn("'value': ('true' if release_pi5_trial_maintenance == 'on' else 'false')", str(mutation))
+        self.assertIn("HERMES_SEARCH_RECORD_SOURCE", str(mutation))
+        self.assertIn("HERMES_SEARCH_RECORD_CLASSIFICATION_STORE", str(mutation))
+        self.assertIn("HERMES_JEV_PROVIDER", str(mutation))
+        self.assertIn("TYPESAFE_API_KEY", str(mutation))
         recreate = next(
             task["ansible.builtin.command"]
             for task in mutation

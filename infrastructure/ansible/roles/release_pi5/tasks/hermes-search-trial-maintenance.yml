@@ -104,6 +104,15 @@
   no_log: true
   when: release_pi5_trial_maintenance == 'on'
 
+- name: Require the server-side TypeSafe credential before enabling real-record JEV
+  ansible.builtin.assert:
+    that:
+      - hermes_search_typesafe_api_key is defined
+      - hermes_search_typesafe_api_key | length >= 16
+    fail_msg: Real nonconformity record classification requires the Vault-provided TypeSafe credential.
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on'
+
 - name: Verify the existing consultation egress is healthy before enabling the trial
   ansible.builtin.command:
     argv:
