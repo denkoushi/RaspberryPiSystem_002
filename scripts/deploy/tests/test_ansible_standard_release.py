@@ -1822,6 +1822,67 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
             launcher,
         )
 
+    def test_explicit_trial_rebinds_the_candidate_api_to_the_finalized_chat_env(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_pi5/tasks/prepare.yml").read_text(encoding="utf-8")
+        )
+        trial_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Prepare the explicitly enabled SSD search trial"
+        )
+        rebind_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Bind the finalized search environment to the candidate API"
+        )
+        startup_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Start only inactive Pi5 API and Web services"
+        )
+        self.assertLess(trial_index, rebind_index)
+        self.assertLess(rebind_index, startup_index)
+        rebind = prepare_tasks[rebind_index]
+        self.assertEqual(
+            rebind["ansible.builtin.set_fact"]["release_pi5_compose_environment"],
+            "{{ release_pi5_compose_environment | combine({'PI5_ENV_FILE': release_pi5_chat_env_file}) }}",
+        )
+        self.assertEqual(
+            rebind["when"],
+            [
+                "release_pi5_route == 'fresh'",
+                "lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') in ['true', 'false']",
+                "business_hermes_chat_enabled | default(false) | bool",
+            ],
+        )
+        inspect_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Read the candidate API Hermes search environment without exposing secrets"
+        )
+        assert_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Require the candidate API to receive the finalized Hermes search environment"
+        )
+        ids_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Record fresh Pi5 candidate container IDs"
+        )
+        self.assertLess(trial_index, rebind_index)
+        self.assertLess(rebind_index, startup_index)
+        self.assertLess(startup_index, ids_index)
+        self.assertLess(ids_index, inspect_index)
+        self.assertLess(inspect_index, assert_index)
+        self.assertIn("HERMES_SEARCH_TRIAL_ENABLED=true", str(prepare_tasks[assert_index]))
+        self.assertIn("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=false", str(prepare_tasks[assert_index]))
+        self.assertIn("HERMES_JEV_PROVIDER=typesafe-direct", str(prepare_tasks[assert_index]))
+        self.assertIn("TYPESAFE_API_KEY=.+", str(prepare_tasks[assert_index]))
+        self.assertTrue(prepare_tasks[inspect_index]["no_log"])
+        self.assertTrue(prepare_tasks[assert_index]["no_log"])
+
     def test_omitting_record_classification_setting_preserves_existing_private_env_value(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             artifact = Path(directory)
