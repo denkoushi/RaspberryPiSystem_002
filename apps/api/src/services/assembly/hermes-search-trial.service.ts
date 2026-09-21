@@ -38,7 +38,7 @@ export class HermesSearchTrialService {
 
   constructor(private readonly settings = {
     enabled: process.env.HERMES_SEARCH_TRIAL_ENABLED === 'true',
-    node: process.env.HERMES_SEARCH_NODE ?? '/opt/hermes-node/bin/node',
+    node: process.env.HERMES_SEARCH_NODE ?? process.execPath,
     entry: process.env.HERMES_SEARCH_ENTRY ?? '/app/scripts/hermes-search/hermes-qmd-prefetch-worker.mjs',
     recordSource: process.env.HERMES_SEARCH_RECORD_SOURCE ?? process.env.HERMES_TRIAL_SNAPSHOT_PATH ?? null,
   }) {}
