@@ -95,6 +95,8 @@ const GROUPS = Object.freeze([
 ]);
 
 const STOP_WORDS = new Set(['について', '確認', 'したい', '探して', '検索', '記録', '不適合', '最近', '最新', '直近', '原文', '内容', '発生', '発生日', '教えて', 'ください', '除く', '除外', '以外', 'の', 'を', 'が', 'は', 'で', 'に', 'へ', 'と', 'や', 'も']);
+const ORGANIZATION_UNITS = Object.freeze(['工場', '本社', '事業所', 'センター', '研究所', '部', '課', '係', '室', '班']);
+const ORGANIZATION_FACILITY_UNITS = new Set(['工場', '本社', '事業所', 'センター', '研究所']);
 const OBSERVED_TOPIC_EXCLUDED_FIELDS = new Set([
   'id', 'kind', 'nonconformityNo', 'partNumber', 'partName', 'machineName', 'originDepartmentCode',
   'originDepartmentName', 'originDepartmentMeaning', 'evidenceKey', 'discoveredOn', 'sourceVersionDate',
@@ -650,6 +652,113 @@ function questionTerms(question) {
   return [...words].sort((left, right) => right.length - left.length).slice(0, 16);
 }
 
+function normalizedOrganizationValue(value) {
+  return text(value).normalize('NFKC').replace(/[\s・\/\\_-]+/gu, '').toUpperCase();
+}
+
+function organizationTerms(value) {
+  const normalized = text(value).normalize('NFKC');
+  const terms = new Set([normalized]);
+  const unitPattern = /(?:工場|本社|事業所|センター|研究所|部|課|係|室|班)/gu;
+  let previousEnd = 0;
+  for (const match of normalized.matchAll(unitPattern)) {
+    const end = (match.index ?? 0) + match[0].length;
+    const segment = normalized.slice(previousEnd, end).trim();
+    const prefix = normalized.slice(0, end).trim();
+    if (segment.length >= 2) terms.add(segment);
+    if (prefix.length >= 2) terms.add(prefix);
+    previousEnd = end;
+  }
+  return [...terms].filter((term) => normalizedOrganizationValue(term).length >= 2);
+}
+
+function isOrganizationTerm(term) {
+  const normalized = normalizedOrganizationValue(term);
+  return ORGANIZATION_UNITS.some((unit) => normalized.endsWith(normalizedOrganizationValue(unit))
+    && normalized.length > normalizedOrganizationValue(unit).length);
+}
+
+function questionOrganizationTerms(question) {
+  const normalized = text(question).normalize('NFKC');
+  const terms = new Set();
+  const pattern = /[\p{Script=Han}々ーA-Za-z0-9]{1,32}(?:工場|本社|事業所|センター|研究所|部|課|係|室|班)/gu;
+  for (const match of normalized.matchAll(pattern)) {
+    if (isOrganizationTerm(match[0])) terms.add(match[0]);
+  }
+  return [...terms];
+}
+
+function organizationTermIsExcluded(question, term) {
+  const normalizedQuestion = normalizedOrganizationValue(question);
+  const normalizedTerm = normalizedOrganizationValue(term);
+  const index = normalizedQuestion.indexOf(normalizedTerm);
+  if (index < 0) return false;
+  const suffix = normalizedQuestion.slice(index + normalizedTerm.length, index + normalizedTerm.length + 4);
+  return /^(?:を|は)?(?:除く|除外|以外)/u.test(suffix);
+}
+
+function organizationIndex(records) {
+  const values = new Map();
+  for (const record of records) {
+    const name = text(record.originDepartmentName);
+    if (!name) continue;
+    const key = `${normalizedOrganizationValue(name)}\u0000${text(record.originDepartmentCode)}`;
+    if (!values.has(key)) values.set(key, { name, code: text(record.originDepartmentCode) || null, terms: organizationTerms(name) });
+  }
+  return [...values.values()];
+}
+
+function resolveOrganizationConditions(question, records) {
+  const candidates = organizationIndex(records);
+  const knownTerms = new Map();
+  for (const candidate of candidates) {
+    for (const term of candidate.terms) {
+      const key = normalizedOrganizationValue(term);
+      if (!isOrganizationTerm(term)) continue;
+      const values = knownTerms.get(key) ?? [];
+      if (!values.some((value) => value.name === candidate.name && value.code === candidate.code)) values.push(candidate);
+      knownTerms.set(key, values);
+    }
+  }
+  const requested = [...knownTerms.entries()]
+    .filter(([term]) => normalizedOrganizationValue(question).includes(term))
+    .map(([term, values]) => ({ term, values }))
+    .sort((left, right) => right.term.length - left.term.length);
+  const unknown = questionOrganizationTerms(question).find((term) => isOrganizationTerm(term)
+    && ![...knownTerms.keys()].some((known) => known === normalizedOrganizationValue(term)));
+  if (requested.length === 0) {
+    return unknown
+      ? { include: [], exclude: [], unresolved: [{ field: 'originDepartmentName', term: unknown, reason: 'not_found' }] }
+      : { include: [], exclude: [], unresolved: [] };
+  }
+
+  const selectedTerms = requested.filter((item, index) => index === 0 || !requested.some((other, otherIndex) => otherIndex < index && other.term.includes(item.term)));
+  const selectedValues = candidates.filter((candidate) => selectedTerms.every(({ term }) => candidate.terms.some((candidateTerm) => normalizedOrganizationValue(candidateTerm) === term)));
+  const facilityRequested = selectedTerms.some(({ term }) => {
+    const raw = term;
+    return [...ORGANIZATION_FACILITY_UNITS].some((unit) => raw.endsWith(normalizedOrganizationValue(unit)));
+  });
+  const distinctParents = new Set(selectedValues.map((candidate) => {
+    const name = normalizedOrganizationValue(candidate.name);
+    const unit = [...ORGANIZATION_FACILITY_UNITS].map(normalizedOrganizationValue).find((suffix) => name.includes(suffix));
+    return unit ? name.slice(0, name.indexOf(unit) + unit.length) : name;
+  }));
+  const ambiguous = !facilityRequested && selectedValues.length > 1 && distinctParents.size > 1;
+  const include = [];
+  const exclude = [];
+  for (const selected of selectedTerms) {
+    const values = selectedValues.filter((candidate) => candidate.terms.some((candidateTerm) => normalizedOrganizationValue(candidateTerm) === selected.term));
+    (organizationTermIsExcluded(question, selected.term) ? exclude : include).push(...values);
+  }
+  const unique = (values) => [...new Map(values.map((value) => [`${value.name}\u0000${value.code ?? ''}`, value])).values()];
+  return {
+    include: unique(include),
+    exclude: unique(exclude),
+    unresolved: ambiguous ? [{ field: 'originDepartmentName', term: selectedTerms.map(({ term }) => term).join('、'), reason: 'ambiguous' }] : [],
+    matchedTerms: selectedTerms.map(({ term }) => term),
+  };
+}
+
 function firstMatch(question, records, field) {
   const candidates = [...new Set(records.map((record) => text(record[field])).filter(Boolean))].sort((left, right) => right.length - left.length);
   return candidates.find((value) => question.includes(value)) ?? null;
@@ -659,9 +768,10 @@ export function extractStructuredConditions(question, records) {
   const result = {};
   const exclude = {};
   const normalized = question.normalize('NFKC');
+  const organization = resolveOrganizationConditions(normalized, records);
   const numbers = normalized.match(/(?:不適合|記録|番号)?\s*([0-9０-９]{4,})(?!\s*年)/u)?.[1];
   if (numbers) result.nonconformityNo = numbers.replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
-  for (const field of ['partNumber', 'partName', 'machineName', 'originDepartmentCode', 'originDepartmentName']) {
+  for (const field of ['partNumber', 'partName', 'machineName', 'originDepartmentCode']) {
     const match = firstMatch(normalized, records, field);
     if (match) {
       if (new RegExp(`${match}(?:を|は)?(?:除く|除外|以外)`).test(normalized)) exclude[field] = match;
@@ -670,11 +780,13 @@ export function extractStructuredConditions(question, records) {
   }
   const date = normalized.match(/(20\d{2})\s*[年./-]\s*(\d{1,2})\s*[月./-]\s*(\d{1,2})\s*日?/u);
   if (date) result.discoveredOn = `${date[1]}-${String(date[2]).padStart(2, '0')}-${String(date[3]).padStart(2, '0')}`;
-  return { include: result, exclude };
+  return { include: result, exclude, organization, unresolved: organization.unresolved };
 }
 
-function displayOnlyRequest(question, conditions = {}) {
+function displayOnlyRequest(question, conditions = {}, structured = {}) {
   return Object.keys(conditions).length === 0
+    && !structured.organization?.include?.length
+    && !structured.organization?.exclude?.length
     && /発生日|発見日|日付|いつ|年月日/.test(question)
     && !/どの記録|どの不適合|番号|品番|工程|現象|原因|処置|部署|機械/.test(question);
 }
@@ -683,13 +795,14 @@ function hasRecentRequest(question) {
   return /最近|最新|直近/.test(question);
 }
 
-export function resolvedConditionCount(question, interpretation, conditions, exclude = {}) {
+export function resolvedConditionCount(question, interpretation, conditions, exclude = {}, organization = null) {
   const include = isObject(interpretation?.include) ? interpretation.include : interpretation;
   const semanticInclude = Object.entries(include ?? {}).filter(([, value]) => Array.isArray(value) ? value.length > 0 : value && value !== 'unknown' && value !== 'unspecified');
   const semanticExclude = isObject(interpretation?.exclude)
     ? Object.entries(interpretation.exclude).filter(([, value]) => Array.isArray(value) ? value.length > 0 : Boolean(value))
     : [];
-  return semanticInclude.length + semanticExclude.length + Object.keys(conditions).length + Object.keys(exclude).length;
+  return semanticInclude.length + semanticExclude.length + Object.keys(conditions).length + Object.keys(exclude).length
+    + (organization?.include?.length ? 1 : 0) + (organization?.exclude?.length ? 1 : 0);
 }
 
 function matchesConditions(record, conditions) {
@@ -698,6 +811,29 @@ function matchesConditions(record, conditions) {
     const wanted = field === 'nonconformityNo' ? String(expected).replace(/^0+(?=\d)/, '') : String(expected);
     return actual === wanted;
   });
+}
+
+function matchesOrganizationScope(record, values) {
+  if (!Array.isArray(values) || values.length === 0) return false;
+  const name = normalizedOrganizationValue(record.originDepartmentName);
+  const code = normalizedOrganizationValue(record.originDepartmentCode);
+  return values.some((value) => normalizedOrganizationValue(value.name) === name
+    && (!value.code || normalizedOrganizationValue(value.code) === code));
+}
+
+function compareRecentRecords(left, right) {
+  const leftDate = text(left.discoveredOn);
+  const rightDate = text(right.discoveredOn);
+  if (!leftDate && rightDate) return 1;
+  if (leftDate && !rightDate) return -1;
+  const dateOrder = rightDate.localeCompare(leftDate);
+  if (dateOrder !== 0) return dateOrder;
+  const leftNo = text(left.nonconformityNo).replace(/^0+(?=\d)/u, '');
+  const rightNo = text(right.nonconformityNo).replace(/^0+(?=\d)/u, '');
+  if (/^\d+$/u.test(leftNo) && /^\d+$/u.test(rightNo) && leftNo.length <= 15 && rightNo.length <= 15) {
+    return Number(rightNo) - Number(leftNo);
+  }
+  return rightNo.localeCompare(leftNo, 'ja');
 }
 
 function limitFromQuestion(question) {
@@ -767,6 +903,8 @@ export function searchStored(store, query) {
     const exactExclude = query.exactExclude ?? query.exclude ?? {};
     if (!entry || !matchesConditions(record, query.conditions ?? {})) continue;
     if (Object.keys(exactExclude).length && matchesConditions(record, exactExclude)) continue;
+    if (query.organization?.include?.length && !matchesOrganizationScope(record, query.organization.include)) continue;
+    if (query.organization?.exclude?.length && matchesOrganizationScope(record, query.organization.exclude)) continue;
     const semantic = semanticSearchMatch(entry, query);
     if (!semantic.ok) {
       if (semantic.excludedUncertain.length) excludedUncertainRecordIds.push(record.id);
@@ -776,7 +914,7 @@ export function searchStored(store, query) {
     if (semantic.uncertain.length) uncertainRecordIds.push(record.id);
   }
   const ordered = hasRecentRequest(query.question)
-    ? [...matches].sort((left, right) => String(right.discoveredOn ?? '').localeCompare(String(left.discoveredOn ?? '')))
+    ? [...matches].sort(compareRecentRecords)
     : matches;
   return {
     records: ordered.slice(0, query.limit),
@@ -993,36 +1131,40 @@ export class AuthorizedRecordClassifier {
       groups: this.definition.groups,
       conditions: structured.include,
       exactExclude: structured.exclude,
+      organization: structured.organization,
       semanticInclude,
       semanticExclude,
       limit: limitFromQuestion(requestContext.question),
     };
     const unresolved = evaluated.query?.unresolved ?? [];
-    const displayOnly = requestContext.target === 'new_search' && displayOnlyRequest(question, structured.include);
-    const conditionCount = resolvedConditionCount(requestContext.question, { include: semanticInclude, exclude: semanticExclude }, structured.include, structured.exclude);
-    const unresolvedLabels = unresolved.map((item) => {
+    const displayOnly = requestContext.target === 'new_search' && displayOnlyRequest(question, structured.include, structured);
+    const conditionCount = resolvedConditionCount(requestContext.question, { include: semanticInclude, exclude: semanticExclude }, structured.include, structured.exclude, structured.organization);
+    const structuredUnresolved = structured.unresolved ?? [];
+    const allUnresolved = [...unresolved, ...structuredUnresolved];
+    const unresolvedLabels = allUnresolved.map((item) => {
+      if (item.kind === undefined) return `起因部署の範囲: ${item.term}`;
       const group = this.definition.groups.find((candidate) => candidate.id === item.groupId);
       const option = group?.options?.find((candidate) => candidate.id === item.optionId);
       return `${group?.label ?? item.groupId}: ${option?.description ?? item.optionId}`;
     });
-    if (unresolved.length || conditionCount === 0 || displayOnly) {
-      const nextPending = unresolved.length
+    if (allUnresolved.length || conditionCount === 0 || displayOnly) {
+      const nextPending = allUnresolved.length
         ? {
           request: requestContext.baseRequest,
           question: `次の検索条件の意味を確認してください: ${unresolvedLabels.join('、')}`,
           purpose: 'resolve_search_condition',
-          requiredItems: unresolved.map((item) => ({
-            id: `${item.kind}:${item.groupId}:${item.optionId}`,
-            label: this.definition.groups.find((group) => group.id === item.groupId)?.label ?? item.groupId,
-            type: item.kind,
-            candidates: [item.optionId],
+          requiredItems: allUnresolved.map((item) => ({
+            id: item.kind === undefined ? `structured:organization:${item.term}` : `${item.kind}:${item.groupId}:${item.optionId}`,
+            label: item.kind === undefined ? '起因部署の範囲' : this.definition.groups.find((group) => group.id === item.groupId)?.label ?? item.groupId,
+            type: item.kind === undefined ? 'choice' : item.kind,
+            candidates: item.kind === undefined ? [] : [item.optionId],
           })),
-          confirmedInfo: structured.include,
-          unresolvedItems: unresolved.map((item) => `${item.kind}:${item.groupId}:${item.optionId}`),
+          confirmedInfo: { ...structured.include, organization: structured.organization },
+          unresolvedItems: allUnresolved.map((item) => item.kind === undefined ? `structured:organization:${item.term}` : `${item.kind}:${item.groupId}:${item.optionId}`),
         }
         : pending;
-      const clarification = unresolved.length
-        ? `検索条件の解釈を確定できませんでした。${unresolvedLabels.join('、')}について、含める条件か除外条件かを指定してください。`
+      const clarification = allUnresolved.length
+        ? `検索条件の解釈を確定できませんでした。${unresolvedLabels.join('、')}について、対象範囲を指定してください。`
         : displayOnly
           ? '発生日を確認する対象の不適合番号、品番、工程、現象、部署などを指定してください。'
           : '検索条件を特定できませんでした。工程、現象、処置、原因、品番、不適合番号、部署などを指定してください。';
@@ -1035,9 +1177,10 @@ export class AuthorizedRecordClassifier {
           classification: evaluated.classification,
           conditions: structured.include,
           exclude: structured.exclude,
-          search: { include: semanticInclude, exclude: semanticExclude, unresolved, target: requestContext.target },
+          organization: structured.organization,
+          search: { include: semanticInclude, exclude: semanticExclude, unresolved: allUnresolved, target: requestContext.target },
           display,
-          reason: unresolved.length ? 'conditions_ambiguous' : 'conditions_not_resolved',
+          reason: allUnresolved.length ? 'conditions_ambiguous' : 'conditions_not_resolved',
           coverage,
         },
         session: this.sessionFor(question, safeConversation, nextPending, requestContext.baseRequest, requestContext.target),
@@ -1062,7 +1205,8 @@ export class AuthorizedRecordClassifier {
         classification: evaluated.classification,
         conditions: structured.include,
         exclude: structured.exclude,
-        search: { include: semanticInclude, exclude: semanticExclude, unresolved, target: requestContext.target },
+        organization: structured.organization,
+        search: { include: semanticInclude, exclude: semanticExclude, unresolved: allUnresolved, target: requestContext.target },
         display,
         matchedCount: records.length,
         uncertainRecordIds: search.uncertainRecordIds,
