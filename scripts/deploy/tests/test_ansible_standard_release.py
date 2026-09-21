@@ -1859,6 +1859,19 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
                 )
             self.assertEqual(environment["HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED"], "false")
 
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+                "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED": "true",
+            }, clear=True):
+                _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                    SimpleNamespace(full_fleet=False),
+                    (("pi5", ("raspberrypi5",)),),
+                    Path("/opt/RaspberryPiSystem_002"),
+                    "test-run",
+                )
+            self.assertEqual(environment["HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED"], "true")
+
     def test_pi5_has_no_legacy_subsystem_or_new_framework(self) -> None:
         candidate = role_text(self.ROLE)
         defaults = yaml.safe_load(

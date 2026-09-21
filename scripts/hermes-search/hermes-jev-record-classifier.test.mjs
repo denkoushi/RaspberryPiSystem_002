@@ -196,6 +196,7 @@ test('starts with reusable classifications and persists each background result',
   } });
   const runtime = await classifier.prepare({ background: true });
   assert.equal(runtime.classificationStatus, 'running');
+  assert.equal(runtime.classificationEnabled, true);
   assert.equal(runtime.pendingRecordCount, 2);
   assert.equal(started.length, 1);
   const checkpoint = JSON.parse(await readFile(storePath, 'utf8'));
@@ -245,6 +246,21 @@ test('classification-off startup reads saved results without starting record JEV
   assert.doesNotMatch(result.answer, /分類処理中/);
   assert.equal(disabled.metrics().classificationCalls, 0);
   assert.ok(disabled.metrics().queryClassificationCalls > 0);
+
+  const resumed = new AuthorizedRecordClassifier({
+    snapshotPath,
+    storePath,
+    classificationEnabled: true,
+    evaluateImplementation: async (input) => {
+      if (!Object.keys(input.questions).some((key) => key.startsWith('include:'))) recordCalls += 1;
+      return evaluator(input);
+    },
+  });
+  const resumedRuntime = await resumed.prepare();
+  assert.equal(resumedRuntime.classificationEnabled, true);
+  assert.equal(resumedRuntime.classificationStatus, 'complete');
+  assert.equal(resumedRuntime.classifiedRecordCount, 1);
+  assert.equal(recordCalls, 1);
 });
 
 test('passes the existing conversation state into query classification', async () => {
