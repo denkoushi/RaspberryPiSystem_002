@@ -39,7 +39,7 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
             API_DOCKERFILE,
         )
         self.assertIn("test -s /opt/hermes-node/bin/node", API_DOCKERFILE)
-        self.assertIn("grep -Eq '^v24\\\\.'", API_DOCKERFILE)
+        self.assertIn("grep -Eq '^v24\\.'", API_DOCKERFILE)
         self.assertIn(
             "COPY --from=hermes-search-runtime /opt/hermes-node /opt/hermes-node",
             API_DOCKERFILE,

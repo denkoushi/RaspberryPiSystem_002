@@ -11,7 +11,7 @@ RUN npm ci --omit=dev --no-audit --no-fund
 # image must never publish an empty cross-stage copy.
 RUN install -D -m 0755 /usr/local/bin/node /opt/hermes-node/bin/node \
   && test -s /opt/hermes-node/bin/node \
-  && /opt/hermes-node/bin/node --version | grep -Eq '^v24\\.'
+  && /opt/hermes-node/bin/node --version | grep -Eq '^v24\.'
 
 FROM node:20-bookworm-slim AS workspace
 WORKDIR /app
@@ -104,7 +104,7 @@ RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && rm -rf /var/lib/apt/lists/*
 
 RUN test -s /opt/hermes-node/bin/node \
-  && /opt/hermes-node/bin/node --version | grep -Eq '^v24\\.'
+  && /opt/hermes-node/bin/node --version | grep -Eq '^v24\.'
 
 # Manifests + prod install + Chromium before build artifacts: avoids invalidating heavy layers on API source changes.
 COPY --from=workspace /app/package.json ./package.json
