@@ -82,6 +82,17 @@
   no_log: true
   when: hermes_search_trial_enabled | bool
 
+- name: Apply record classification gate when explicitly configured
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: '^HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED='
+    line: "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED={{ hermes_search_record_classification_enabled }}"
+    create: false
+    mode: '0600'
+  when:
+    - hermes_search_trial_enabled | bool
+    - hermes_search_record_classification_enabled in ['true', 'false']
+
 - name: Remove legacy fixed-record classifier settings
   ansible.builtin.lineinfile:
     path: "{{ release_pi5_chat_env_file }}"
@@ -106,6 +117,15 @@
     path: "{{ release_pi5_chat_env_file }}"
     regexp: '^HERMES_SEARCH_TRIAL_JEV_ENABLED='
     line: HERMES_SEARCH_TRIAL_JEV_ENABLED=false
+    create: false
+    mode: '0600'
+  when: not (hermes_search_trial_enabled | bool)
+
+- name: Disable record classification when the search trial is disabled
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: '^HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED='
+    line: HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=false
     create: false
     mode: '0600'
   when: not (hermes_search_trial_enabled | bool)

@@ -2,16 +2,21 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
+import runpy
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 import yaml
 from jinja2 import Environment, StrictUndefined
@@ -21,6 +26,15 @@ ANSIBLE = ROOT / "infrastructure/ansible"
 PLAYBOOK = (ANSIBLE / "playbooks/deploy-release-standard.yml").read_text(
     encoding="utf-8"
 )
+_DEPLOY_SCRIPTS = str(ROOT / "scripts/deploy")
+sys.path.insert(0, _DEPLOY_SCRIPTS)
+try:
+    STANDARD_RELEASE = runpy.run_path(
+        str(ROOT / "scripts/deploy/standard-ansible-release.py"),
+        run_name="standard_release_test",
+    )
+finally:
+    sys.path.remove(_DEPLOY_SCRIPTS)
 _FORBIDDEN_CLEANUP_COMMANDS = frozenset({"stop", "kill", "wait", "restart"})
 _COMMAND_WORD_RE = re.compile(r"(?<![A-Za-z0-9_-])(stop|kill|wait|restart)(?![A-Za-z0-9_-])")
 
@@ -1792,6 +1806,58 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         self.assertIn("hermes-search-trial-maintenance.env.before", run)
         self.assertIn("Recreate the same active API with the original environment", run)
         self.assertIn("include_tasks: health.yml", run)
+
+    def test_record_classification_gate_is_distributed_separately_from_jev_search(self) -> None:
+        launcher = (ROOT / "scripts/deploy/standard-ansible-release.py").read_text(encoding="utf-8")
+        trial_prepare = (ANSIBLE / "roles/release_pi5/tasks/hermes-search-trial.yml").read_text(encoding="utf-8")
+        prepare = (ANSIBLE / "roles/release_pi5/tasks/prepare.yml").read_text(encoding="utf-8")
+        self.assertIn("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED", launcher)
+        self.assertIn("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED", trial_prepare)
+        self.assertIn("hermes_search_record_classification_enabled", prepare)
+        self.assertIn("Apply record classification gate when explicitly configured", trial_prepare)
+        self.assertIn("hermes_search_record_classification_enabled in ['true', 'false']", trial_prepare)
+        self.assertIn("HERMES_SEARCH_TRIAL_JEV_ENABLED", launcher)
+        self.assertNotIn(
+            "classification_enabled = os.environ.get(\"HERMES_SEARCH_TRIAL_JEV_ENABLED\"",
+            launcher,
+        )
+
+    def test_omitting_record_classification_setting_preserves_existing_private_env_value(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory)
+            files = {}
+            for name in ("qmd-index.sqlite", "snapshot.json", "reviewed.json"):
+                data = ("sealed:" + name).encode()
+                (artifact / name).write_bytes(data)
+                files[name] = hashlib.sha256(data).hexdigest()
+            (artifact / "artifact.json").write_text(
+                json.dumps({"schema": "hermes-device-index/v1", "files": files}),
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+            }, clear=True):
+                _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                    SimpleNamespace(full_fleet=False),
+                    (("pi5", ("raspberrypi5",)),),
+                    Path("/opt/RaspberryPiSystem_002"),
+                    "test-run",
+                )
+            self.assertNotIn("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED", environment)
+
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+                "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED": "false",
+            }, clear=True):
+                _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                    SimpleNamespace(full_fleet=False),
+                    (("pi5", ("raspberrypi5",)),),
+                    Path("/opt/RaspberryPiSystem_002"),
+                    "test-run",
+                )
+            self.assertEqual(environment["HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED"], "false")
 
     def test_pi5_has_no_legacy_subsystem_or_new_framework(self) -> None:
         candidate = role_text(self.ROLE)
