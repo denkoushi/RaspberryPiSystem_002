@@ -13,6 +13,12 @@ The business Pi owns source records, visibility, accepted answers and durable pr
 
 This living plan follows `.agent/PLANS.md`. Approval on 2026-09-15 permits proceeding with the staged implementation; do not request the same approval again. Never claim an incomplete milestone is production-ready.
 
+## Follow-up: JEV record search state connection (2026-09-21)
+
+This bounded follow-up covers nonconformity search only. The connection order is: natural-language input → JEV intent delta plus code-owned exact-value resolution → validated `SearchDelta` → session-owned `SearchState` update → existing search path → original-record display. The API and Node24 worker must carry the structured state; prior natural-language history is context only and cannot be the source of truth. Exact-only conditions must reuse the existing PostgreSQL/read-service path and include all current valid records, including unclassified records. No new search framework, source connection, classification-store migration, multi-source connection, PR, merge, or deploy is part of this milestone.
+
+User-visible completion requires the three existing turns, `三島工場の不適合2件。直近`, another organization and wording, condition replacement, condition removal, an unresolved condition, and an explicit new search to be exercised through the real API/session/worker/JEV route. For each turn, evidence must compare the before-state, accepted delta, after-state, and result metadata without logging raw records or secrets. Exact conditions must intersect semantic conditions over the full source set before applying limit/sort. Record-condition classification errors remain separately reported from successful state retention. The milestone remains incomplete until the actual screen acceptance is performed.
+
 ## Progress
 
 - [x] 2026-09-15: Audited source export, scheduling, adoption, DGX admission and container boundaries.

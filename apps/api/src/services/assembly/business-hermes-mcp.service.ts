@@ -489,6 +489,30 @@ function text(value: unknown, max = MAX_QUERY_CHARS): string | null {
   return normalized || null;
 }
 
+function nonconformityRawText(row: {
+  nonconformityNo: string | null;
+  partNumber: string | null;
+  partName: string | null;
+  machineName: string | null;
+  originDepartmentName: string | null;
+  discoveredOn: Date | null;
+  nonconformityContent: string | null;
+  remarks: string | null;
+  correctiveContent1: string | null;
+  correctiveContent2: string | null;
+  dispositionContent: string | null;
+}): string {
+  const fields: Array<[string, string | null]> = [
+    ['不適合番号', row.nonconformityNo], ['品番', row.partNumber], ['品名', row.partName],
+    ['機械名', row.machineName], ['起因部署', row.originDepartmentName],
+    ['発見日', row.discoveredOn?.toISOString().slice(0, 10) ?? null],
+    ['不適合内容', row.nonconformityContent], ['備考', row.remarks],
+    ['個別是正内容', [row.correctiveContent1, row.correctiveContent2].filter(Boolean).join('\n') || null],
+    ['処置内容', row.dispositionContent]
+  ];
+  return fields.filter(([, value]) => value?.trim()).map(([label, value]) => `${label}: ${value!.trim()}`).join('\n');
+}
+
 function safeLimit(value: unknown, maximum = MAX_LIMIT): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) return 10;
   return Math.max(1, Math.min(maximum, value));
@@ -1709,6 +1733,7 @@ export class BusinessHermesMcpService {
         remarks: row.remarks,
         correctiveContent: [row.correctiveContent1, row.correctiveContent2].filter(Boolean).join('\n') || null,
         disposition: row.dispositionContent,
+        rawText: nonconformityRawText(row),
         discoveredOn: row.discoveredOn?.toISOString().slice(0, 10) ?? null,
         sourceVersionDate: row.sourceUpdatedOn?.toISOString().slice(0, 10) ?? null,
         provenance: { source: 'ScawStfutekigoCurrent', activeLatest: true, meaning: '不適合の発生状況と記録済みの対処を確認する情報源。' }
@@ -1858,6 +1883,7 @@ export class BusinessHermesMcpService {
         remarks: row.remarks,
         correctiveContent: [row.correctiveContent1, row.correctiveContent2].filter(Boolean).join('\n') || null,
         disposition: row.dispositionContent,
+        rawText: nonconformityRawText(row),
         discoveredOn: row.discoveredOn?.toISOString().slice(0, 10) ?? null,
         sourceVersionDate: row.sourceUpdatedOn?.toISOString().slice(0, 10) ?? null,
         provenance: { source: 'ScawStfutekigoCurrent', activeLatest: true, meaning: '不適合の発生状況と記録済みの対処を確認する情報源。' }

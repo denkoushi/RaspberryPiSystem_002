@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { AuthorizedRecordClassifier, buildClassificationDefinition, extractStructuredConditions } from './hermes-jev-record-classifier.mjs';
+import { applySearchDelta, emptySearchState, exactSearchArguments } from './hermes-search-state.mjs';
 
 const snapshot = {
   schema: 'hermes-qmd-snapshot/v1',
@@ -58,8 +59,8 @@ function evaluator({ state, questions }) {
       answers[key] = noulAnswer(requested ? 0.96 : 0.01);
     } else if (key === 'process') {
       const selected = isQuery
-        ? (request.includes('旋盤') ? 'turning' : request.includes('フライス') ? 'milling' : '__none_requested__')
-        : (request.includes('旋盤') ? 'turning' : request.includes('フライス') ? 'milling' : 'unknown');
+        ? (request.includes('組立') ? 'assembly' : request.includes('旋盤') ? 'turning' : request.includes('フライス') ? 'milling' : '__none_requested__')
+        : (request.includes('組立') ? 'assembly' : request.includes('旋盤') ? 'turning' : request.includes('フライス') ? 'milling' : 'unknown');
       answers[key] = choiceAnswer(selected, options);
     } else if (key === 'dimension_direction') {
       const selected = request.includes('上限') || request.includes('超過')
@@ -89,6 +90,96 @@ function evaluator({ state, questions }) {
   }
   return Promise.resolve({ answers });
 }
+
+test('SearchState reducer keeps unspecified dimensions and distinguishes correction', () => {
+  const first = applySearchDelta(emptySearchState(), {
+    action: 'new_search',
+    semantic: { include: { process: 'assembly' }, exclude: {} },
+    unresolvedConditions: [],
+  });
+  const narrowed = applySearchDelta(first, {
+    action: 'add_condition',
+    exact: { include: {}, exclude: {}, organization: {
+      include: [{ name: '三島工場組立課', code: 'M-1' }], exclude: [], matchedTerms: ['三島工場'], status: 'resolved'
+    } },
+    semantic: { include: {}, exclude: {} },
+    unresolvedConditions: [],
+  });
+  const corrected = applySearchDelta(narrowed, {
+    action: 'correct_condition',
+    semantic: { include: {}, exclude: {} },
+    unresolvedConditions: [],
+  });
+  assert.equal(corrected.semantic.include.process, 'assembly');
+  assert.deepEqual(corrected.exact.organization.include.map((value) => value.name), ['三島工場組立課']);
+  assert.equal(corrected.lastAction, 'correct_condition');
+});
+
+test('conversation updates keep process, add facility, and do not invert a correction', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-search-state-conversation-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  const stateSnapshot = {
+    ...snapshot,
+    records: [
+      { ...snapshot.records[0], id: 'mishima-assembly-1', nonconformityNo: '00010201', originDepartmentCode: 'M-A', originDepartmentName: '三島工場組立課', condition: '組立工程で不適合', discoveredOn: '2026-09-20' },
+      { ...snapshot.records[0], id: 'mishima-assembly-2', nonconformityNo: '00010202', originDepartmentCode: 'M-A', originDepartmentName: '三島工場組立課', condition: '組立工程で別の不適合', discoveredOn: '2026-09-19' },
+      { ...snapshot.records[0], id: 'sendai-assembly', nonconformityNo: '00010203', originDepartmentCode: 'S-A', originDepartmentName: '仙台工場組立課', condition: '組立工程で不適合', discoveredOn: '2026-09-21' },
+    ],
+  };
+  await writeFile(snapshotPath, JSON.stringify(stateSnapshot));
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: evaluator });
+  await classifier.prepare();
+  const first = await classifier.answer('組立工程の原因と処置');
+  assert.deepEqual(first.searchState.semantic.include, { process: 'assembly' });
+  const second = await classifier.answer('三島工場だけにしぼって', first.session);
+  assert.deepEqual(second.recordIds, ['nonconformity:mishima-assembly-1', 'nonconformity:mishima-assembly-2']);
+  assert.equal(second.searchState.semantic.include.process, 'assembly');
+  assert.deepEqual(second.searchState.exact.organization.matchedTerms, ['三島工場']);
+  const third = await classifier.answer('組立工程以外が混ざってるけど', second.session);
+  assert.deepEqual(third.recordIds, second.recordIds);
+  assert.equal(third.searchState.semantic.include.process, 'assembly');
+  assert.deepEqual(third.searchState.semantic.exclude, {});
+  assert.equal(third.searchDelta.action, 'correct_condition');
+  const replaced = await classifier.answer('仙台工場に変えて', third.session);
+  assert.deepEqual(replaced.recordIds, ['nonconformity:sendai-assembly']);
+  assert.equal(replaced.searchState.semantic.include.process, 'assembly');
+  assert.equal(replaced.searchDelta.action, 'replace_condition');
+  const unrestricted = await classifier.answer('工場指定を外して', replaced.session);
+  assert.deepEqual(unrestricted.recordIds, [
+    'nonconformity:mishima-assembly-1', 'nonconformity:mishima-assembly-2', 'nonconformity:sendai-assembly'
+  ]);
+  assert.equal(unrestricted.searchState.exact.organization.include.length, 0);
+  const unresolved = await classifier.answer('架空工場だけにして', unrestricted.session);
+  assert.equal(unresolved.status, 'clarification');
+  assert.equal(unresolved.searchState.revision, unrestricted.searchState.revision);
+  const newSource = await classifier.answer('新しく設備点検を探したい', unrestricted.session);
+  assert.equal(newSource.status, 'clarification');
+  assert.equal(newSource.searchState.revision, unrestricted.searchState.revision);
+});
+
+test('exact facility and recent limit use all current records even when classification is absent', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-exact-unclassified-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  const exactSnapshot = {
+    ...snapshot,
+    records: [
+      { ...snapshot.records[0], id: 'mishima-new', nonconformityNo: '00010301', originDepartmentName: '三島工場品質課', discoveredOn: '2026-09-21' },
+      { ...snapshot.records[0], id: 'mishima-old', nonconformityNo: '00010302', originDepartmentName: '三島工場品質課', discoveredOn: '2026-09-20' },
+      { ...snapshot.records[0], id: 'sendai', nonconformityNo: '00010303', originDepartmentName: '仙台工場品質課', discoveredOn: '2026-09-22' },
+    ],
+  };
+  await writeFile(snapshotPath, JSON.stringify(exactSnapshot));
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath, storePath, classificationEnabled: false, evaluateImplementation: evaluator });
+  await classifier.prepare();
+  const result = await classifier.answer('三島工場の不適合２件。直近');
+  assert.deepEqual(result.recordIds, ['nonconformity:mishima-new', 'nonconformity:mishima-old']);
+  assert.equal(result.searchPlan.mode, 'exact');
+  assert.deepEqual(exactSearchArguments(result.searchState), {
+    kind: 'nonconformity', limit: 2, originDepartmentName: '三島工場',
+  });
+});
 
 test('classifies real snapshot rows incrementally and refuses unbound display-only questions', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-real-classifier-'));
