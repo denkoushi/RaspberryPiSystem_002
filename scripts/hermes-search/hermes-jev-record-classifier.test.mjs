@@ -316,3 +316,46 @@ test('migrates only legacy dimension conflicts instead of reclassifying every sa
   assert.equal(runtime.classifiedRecordCount, 1);
   assert.equal(calls, 1);
 });
+
+test('reclassifies a legacy tag that contradicts its stored Noul probability', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-dimension-contradiction-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  const contradictionSnapshot = {
+    ...snapshot,
+    records: [{ ...snapshot.records[0], id: 'migration-contradiction', nonconformityNo: '00010031', condition: '外径が上限を超過' }],
+  };
+  await writeFile(snapshotPath, JSON.stringify(contradictionSnapshot));
+  const seeded = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: evaluator });
+  await seeded.prepare();
+  const persisted = JSON.parse(await readFile(storePath, 'utf8'));
+  const legacyDefinition = {
+    ...persisted.definition,
+    version: 3,
+    groups: persisted.definition.groups
+      .filter((group) => group.id !== 'dimension_direction')
+      .map((group) => group.id === 'phenomenon'
+        ? { ...group, options: [{ id: 'oversize', description: '寸法・形状が規格または上限を超えている' }, { id: 'undersize', description: '寸法・形状が規格または下限を下回っている' }, ...group.options] }
+        : group),
+  };
+  const entry = persisted.classifications[0];
+  const legacyEntry = {
+    id: entry.id,
+    classification: {
+      ...Object.fromEntries(Object.entries(entry.classification).filter(([key]) => key !== 'dimension_direction')),
+      phenomenon: [...entry.classification.phenomenon, 'oversize'],
+    },
+    judgments: {
+      ...entry.judgments,
+      'phenomenon:oversize': { type: 'noul', noul: 0.01 },
+      'phenomenon:undersize': { type: 'noul', noul: 0.01 },
+    },
+  };
+  await writeFile(storePath, JSON.stringify({ ...persisted, definition: legacyDefinition, classifications: [legacyEntry] }));
+  let calls = 0;
+  const migrated = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: async (input) => { calls += 1; return evaluator(input); } });
+  const runtime = await migrated.prepare();
+  assert.equal(runtime.reusedRecordCount, 0);
+  assert.equal(runtime.classifiedRecordCount, 1);
+  assert.equal(calls, 1);
+});

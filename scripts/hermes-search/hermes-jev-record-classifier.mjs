@@ -549,10 +549,14 @@ function legacyDimensionDirection(value) {
     judgment: judgments[`phenomenon:${optionId}`],
   }));
   if (legacy.some(({ judgment }) => !isObject(judgment) || judgment.type !== 'noul' || !validProbability(judgment.noul))) return null;
-  const yes = legacy.filter(({ selected, judgment }) => selected || recordNoulDecision(judgment.noul) === 'yes');
+  const judged = legacy.map((entry) => ({ ...entry, decision: recordNoulDecision(entry.judgment.noul) }));
+  // The old multi-tag result is reusable only when its selected tags agree
+  // with the stored probabilities and both sides are definite. A tag that
+  // contradicts its probability is not evidence for either direction.
+  if (judged.some(({ selected, decision }) => selected !== (decision === 'yes'))) return null;
+  if (judged.some(({ decision }) => !['yes', 'no'].includes(decision))) return null;
+  const yes = judged.filter(({ decision }) => decision === 'yes');
   if (yes.length > 1) return null;
-  const ambiguous = legacy.some(({ selected, judgment }) => !selected && recordNoulDecision(judgment.noul) !== 'no');
-  if (ambiguous) return null;
   if (yes.length === 1) return {
     choice: yes[0].optionId,
     judgment: { type: 'choice', choice: yes[0].optionId, source: 'legacy_noul_migration' },
