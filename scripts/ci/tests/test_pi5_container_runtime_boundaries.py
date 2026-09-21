@@ -33,6 +33,18 @@ def service(compose: str, name: str) -> str:
 
 
 class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
+    def test_hermes_worker_runtime_is_staged_and_verified(self):
+        self.assertIn(
+            "install -D -m 0755 /usr/local/bin/node /opt/hermes-node/bin/node",
+            API_DOCKERFILE,
+        )
+        self.assertIn("test -s /opt/hermes-node/bin/node", API_DOCKERFILE)
+        self.assertIn("grep -Eq '^v24\\\\.'", API_DOCKERFILE)
+        self.assertIn(
+            "COPY --from=hermes-search-runtime /opt/hermes-node /opt/hermes-node",
+            API_DOCKERFILE,
+        )
+
     def test_api_runtime_requires_fixed_expat_package(self):
         runtime = API_DOCKERFILE.split(" AS api-runtime\n", 1)[1]
         self.assertRegex(runtime, r"apt-get install -y --only-upgrade[^\n]* libexpat1")
