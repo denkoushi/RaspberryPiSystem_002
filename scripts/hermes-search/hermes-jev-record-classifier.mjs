@@ -6,7 +6,8 @@ import path from 'node:path';
 import { createTypesafeDirectEvaluate } from './hermes-jev-record-pilot.mjs';
 
 export const CLASSIFIER_SCHEMA = 'hermes-jev-record-classification/v2';
-export const CLASSIFIER_DEFINITION_VERSION = 3;
+export const CLASSIFIER_DEFINITION_VERSION = 4;
+const PREVIOUS_CLASSIFIER_DEFINITION_VERSION = 3;
 
 const QUERY_NONE = '__none_requested__';
 const QUERY_DECISION_POLICY = Object.freeze({
@@ -45,10 +46,17 @@ const GROUPS = Object.freeze([
   },
   {
     id: 'phenomenon', cardinality: 'multiple', label: '現象', options: [
-      ['oversize', '寸法・形状が規格または上限を超えている'], ['undersize', '寸法・形状が規格または下限を下回っている'],
       ['position_error', '位置・ピッチ・ずれの不適合'], ['surface_damage', '傷・打痕・へこみなどの表面損傷'],
       ['missing_marking', '刻印・表示・識別情報の欠落'], ['crack_or_breakage', '割れ・破損・欠け'],
       ['other_recorded', '本文に記載されたその他の現象']
+    ]
+  },
+  {
+    id: 'dimension_direction', cardinality: 'single', label: '寸法・形状の大小方向', options: [
+      ['oversize', '基準値・指定値より大きい、規格または上限を超えている'],
+      ['undersize', '基準値・指定値より小さい、規格または下限を下回っている'],
+      ['not_applicable', '寸法・形状の大小方向を判定する記載がない'],
+      ['unknown', '寸法・形状に関する記載はあるが、大小方向を確定できない']
     ]
   },
   {
@@ -154,13 +162,24 @@ function noulQuestion(instructions, trueDescription, falseDescription) {
   };
 }
 
+function singleChoiceInstructions(group, mode) {
+  if (group.id === 'dimension_direction') {
+    return mode === 'record'
+      ? '記録本文の寸法・形状の大小方向を一つ選ぶ。基準値・指定値より大きい、上限超過、過大は oversize、基準値・指定値より小さい、下限未満、不足は undersize とする。寸法の大小方向に関する記載がなければ not_applicable、寸法に関係するが大小方向を確定できない、または記載が矛盾する場合は unknown とする。本文にない数値や方向を補わず、oversize と undersize を同時に選ばない。'
+      : `ユーザーの検索要求が、寸法・形状の大小方向を単一の絞り込み条件として指定している場合だけ選ぶ。上限超過・基準値より大きい・過大は oversize、下限未満・指定値より小さい・不足は undersize とする。表示するだけ、大小方向の指定がない、または本文からの推測にとどまる場合は ${QUERY_NONE} を選ぶ。oversize と undersize を同時に条件化しない。`;
+  }
+  return mode === 'record'
+    ? `記録本文に記載された${group.label}を一つ選ぶ。本文にない原因・処置・工程を補わず、特定できない場合だけ unknown を選ぶ。`
+    : `ユーザーの検索要求が、${group.label}を単一の絞り込み条件として指定している場合はその値を一つ選ぶ。指定がない、表示するだけ、または本文からの推測にとどまる場合は ${QUERY_NONE} を選ぶ。`;
+}
+
 function buildRecordQuestions(definition) {
   const questions = {};
   for (const group of definition.groups) {
     const options = optionsFor(group);
     if (group.cardinality === 'single') {
       questions[group.id] = choiceQuestion(
-        `記録本文に記載された${group.label}を一つ選ぶ。本文にない原因・処置・工程を補わず、特定できない場合だけ unknown を選ぶ。`,
+        singleChoiceInstructions(group, 'record'),
         options,
       );
       continue;
@@ -182,7 +201,7 @@ function buildQueryQuestions(definition) {
     const options = optionsFor(group);
     if (group.cardinality === 'single') {
       questions[group.id] = choiceQuestion(
-        `ユーザーの検索要求が、${group.label}を単一の絞り込み条件として指定している場合はその値を一つ選ぶ。指定がない、表示するだけ、または本文からの推測にとどまる場合は ${QUERY_NONE} を選ぶ。`,
+        singleChoiceInstructions(group, 'query'),
         [{ id: QUERY_NONE, description: `${group.label}を検索条件として指定していない` }, ...options],
       );
       continue;
@@ -518,12 +537,52 @@ async function writeStore(storePath, value) {
   await rename(temporary, storePath);
 }
 
+const LEGACY_DIMENSION_OPTION_IDS = new Set(['oversize', 'undersize']);
+
+function legacyDimensionDirection(value) {
+  const classification = value?.classification;
+  const judgments = value?.judgments;
+  if (!isObject(classification) || !isObject(judgments) || !Array.isArray(classification.phenomenon)) return null;
+  const legacy = [...LEGACY_DIMENSION_OPTION_IDS].map((optionId) => ({
+    optionId,
+    selected: classification.phenomenon.includes(optionId),
+    judgment: judgments[`phenomenon:${optionId}`],
+  }));
+  if (legacy.some(({ judgment }) => !isObject(judgment) || judgment.type !== 'noul' || !validProbability(judgment.noul))) return null;
+  const yes = legacy.filter(({ selected, judgment }) => selected || recordNoulDecision(judgment.noul) === 'yes');
+  if (yes.length > 1) return null;
+  const ambiguous = legacy.some(({ selected, judgment }) => !selected && recordNoulDecision(judgment.noul) !== 'no');
+  if (ambiguous) return null;
+  if (yes.length === 1) return {
+    choice: yes[0].optionId,
+    judgment: { type: 'choice', choice: yes[0].optionId, source: 'legacy_noul_migration' },
+  };
+  return {
+    choice: 'not_applicable',
+    judgment: { type: 'choice', choice: 'not_applicable', source: 'legacy_noul_migration' },
+  };
+}
+
+function compatibleSavedGroup(savedGroup, currentGroup) {
+  if (!isObject(savedGroup)) return false;
+  if (currentGroup.id === 'phenomenon') {
+    const removeLegacy = (group) => ({
+      ...group,
+      options: (group.options ?? []).filter((option) => !LEGACY_DIMENSION_OPTION_IDS.has(option?.id)),
+    });
+    return canonicalJson(removeLegacy(savedGroup)) === canonicalJson(removeLegacy(currentGroup));
+  }
+  return canonicalJson(savedGroup) === canonicalJson(currentGroup);
+}
+
 function reusableClassification(value, savedDefinition, definition) {
-  if (!isObject(value) || !isObject(value.classification) || !isObject(value.judgments) || !isObject(savedDefinition) || savedDefinition.version !== definition.version) return null;
+  if (!isObject(value) || !isObject(value.classification) || !isObject(value.judgments) || !isObject(savedDefinition)) return null;
+  if (![PREVIOUS_CLASSIFIER_DEFINITION_VERSION, definition.version].includes(savedDefinition.version)) return null;
   const savedGroups = new Map(Array.isArray(savedDefinition.groups) ? savedDefinition.groups.map((group) => [group.id, group]) : []);
   for (const group of definition.groups) {
     const savedGroup = savedGroups.get(group.id);
-    if (group.id !== 'observed_topic' && canonicalJson(savedGroup) !== canonicalJson(group)) return null;
+    if (group.id === 'dimension_direction' && !savedGroup) continue;
+    if (group.id !== 'observed_topic' && !compatibleSavedGroup(savedGroup, group)) return null;
     if (group.id === 'observed_topic') {
       if (!isObject(savedGroup) || savedGroup.cardinality !== group.cardinality) return null;
       const savedOptionIds = new Set((savedGroup.options ?? []).map((option) => option?.id).filter(Boolean));
@@ -536,17 +595,29 @@ function reusableClassification(value, savedDefinition, definition) {
   }
   const normalized = {};
   const judgments = {};
+  const migratedDimension = !Object.hasOwn(value.classification, 'dimension_direction') ? legacyDimensionDirection(value) : null;
+  if (!Object.hasOwn(value.classification, 'dimension_direction') && !migratedDimension) return null;
   for (const group of definition.groups) {
-    const candidate = value.classification[group.id];
+    const candidate = group.id === 'dimension_direction'
+      ? (migratedDimension?.choice ?? value.classification[group.id])
+      : value.classification[group.id];
     const allowed = new Set(group.options.map((option) => option.id));
     if (group.cardinality === 'single') {
       if (!allowed.has(candidate)) return null;
       normalized[group.id] = candidate;
-      const judgment = value.judgments[group.id];
+      const judgment = group.id === 'dimension_direction' && migratedDimension
+        ? migratedDimension.judgment
+        : value.judgments[group.id];
+      if (group.id === 'dimension_direction' && migratedDimension) {
+        judgments[group.id] = judgment;
+        continue;
+      }
       try { judgments[group.id] = normalizeChoiceJudgment(judgment, optionsFor(group), group.id); } catch { return null; }
     } else {
-      if (!Array.isArray(candidate) || candidate.some((item) => !allowed.has(item))) return null;
-      normalized[group.id] = candidate;
+      if (!Array.isArray(candidate)) return null;
+      const filteredCandidate = candidate.filter((item) => allowed.has(item));
+      if (filteredCandidate.length !== candidate.filter((item) => !LEGACY_DIMENSION_OPTION_IDS.has(item)).length) return null;
+      normalized[group.id] = filteredCandidate;
       for (const option of optionsFor(group)) {
         const key = `${group.id}:${option.id}`;
         const judgment = value.judgments[key];
