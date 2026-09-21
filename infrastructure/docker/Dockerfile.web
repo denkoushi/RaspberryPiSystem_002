@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:20-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY apps/web/package.json apps/web/
@@ -73,7 +73,7 @@ RUN if [ -n "$VITE_RELEASE_SHA" ] && ! printf '%s' "$VITE_RELEASE_SHA" | grep -E
     && cd apps/web \
     && GOMAXPROCS=1 VITE_RELEASE_SHA="$VITE_RELEASE_SHA" nice -n 10 pnpm run build
 
-FROM golang:1.26.6-alpine AS caddy-build
+FROM golang:1.27.1-alpine AS caddy-build
 WORKDIR /src
 ARG TARGETOS=linux
 ARG TARGETARCH
