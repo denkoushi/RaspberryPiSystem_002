@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { AuthorizedRecordClassifier } from './hermes-jev-record-classifier.mjs';
+import { AuthorizedRecordClassifier, buildClassificationDefinition } from './hermes-jev-record-classifier.mjs';
 
 const snapshot = {
   schema: 'hermes-qmd-snapshot/v1',
@@ -61,6 +61,13 @@ function evaluator({ state, questions }) {
         ? (request.includes('旋盤') ? 'turning' : request.includes('フライス') ? 'milling' : '__none_requested__')
         : (request.includes('旋盤') ? 'turning' : request.includes('フライス') ? 'milling' : 'unknown');
       answers[key] = choiceAnswer(selected, options);
+    } else if (key === 'dimension_direction') {
+      const selected = request.includes('上限') || request.includes('超過')
+        ? 'oversize'
+        : request.includes('下限') || request.includes('小さい') || request.includes('不足')
+          ? 'undersize'
+          : isQuery ? '__none_requested__' : 'not_applicable';
+      answers[key] = choiceAnswer(selected, options);
     } else if (key === 'cause_status') {
       const selected = request.includes('原因：') ? 'cause_recorded' : request.includes('原因なし') ? 'cause_not_recorded' : isQuery ? '__none_requested__' : 'unknown';
       answers[key] = choiceAnswer(selected, options);
@@ -113,8 +120,8 @@ test('classifies real snapshot rows incrementally and refuses unbound display-on
   assert.equal(persisted.records.length, 2);
   assert.equal(persisted.classifications.length, 2);
   assert.equal(persisted.classifications[0].judgments.process.type, 'choice');
-  assert.equal(persisted.classifications[0].judgments['phenomenon:oversize'].type, 'noul');
-  assert.equal(persisted.classifications[0].judgments['phenomenon:oversize'].noul, 0.96);
+  assert.equal(persisted.classifications[0].classification.dimension_direction, 'oversize');
+  assert.equal(persisted.classifications[0].judgments.dimension_direction.type, 'choice');
   assert.ok(!JSON.stringify(persisted.classifications).includes('旋盤加工で外径が上限を超過'));
   assert.ok(!persisted.definition.groups.find((group) => group.id === 'observed_topic').options.some((option) => option.observedTerm === 'PART'));
 
@@ -223,7 +230,7 @@ test('does not convert an invalid judgment response into a negative classificati
     storePath,
     evaluateImplementation: async (input) => {
       const result = await evaluator(input);
-      delete result.answers['phenomenon:oversize'];
+      delete result.answers['phenomenon:surface_damage'];
       return result;
     },
   });
@@ -234,4 +241,121 @@ test('does not convert an invalid judgment response into a negative classificati
   const persisted = JSON.parse(await readFile(storePath, 'utf8'));
   assert.equal(persisted.classifications.length, 0);
   assert.equal(persisted.pendingRecordIds.length, 2);
+});
+
+test('does not select an undersize record for an oversize query', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-dimension-direction-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  const directionSnapshot = {
+    ...snapshot,
+    records: [
+      { ...snapshot.records[0], id: 'direction-large', nonconformityNo: '00010011', condition: '外径が上限を超過' },
+      { ...snapshot.records[1], id: 'direction-small', nonconformityNo: '00010012', condition: '指定寸法より小さい' },
+    ],
+  };
+  await writeFile(snapshotPath, JSON.stringify(directionSnapshot));
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: evaluator });
+  await classifier.prepare();
+  const result = await classifier.answer('寸法が上限を超えた不適合の処置を確認したい。');
+  assert.deepEqual(result.recordIds, ['nonconformity:direction-large']);
+});
+
+test('migrates only legacy dimension conflicts instead of reclassifying every saved row', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-dimension-migration-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  const directionSnapshot = {
+    ...snapshot,
+    records: [
+      { ...snapshot.records[0], id: 'migration-large', nonconformityNo: '00010021', condition: '外径が上限を超過' },
+      { ...snapshot.records[1], id: 'migration-conflict', nonconformityNo: '00010022', condition: '寸法の記載が矛盾' },
+    ],
+  };
+  await writeFile(snapshotPath, JSON.stringify(directionSnapshot));
+  const seeded = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: evaluator });
+  await seeded.prepare();
+  const persisted = JSON.parse(await readFile(storePath, 'utf8'));
+  const legacyDefinition = {
+    ...persisted.definition,
+    version: 3,
+    groups: persisted.definition.groups
+      .filter((group) => group.id !== 'dimension_direction')
+      .map((group) => group.id === 'phenomenon'
+        ? { ...group, options: [{ id: 'oversize', description: '寸法・形状が規格または上限を超えている' }, { id: 'undersize', description: '寸法・形状が規格または下限を下回っている' }, ...group.options] }
+        : group),
+  };
+  const large = persisted.classifications.find((entry) => entry.id === 'migration-large');
+  const conflict = persisted.classifications.find((entry) => entry.id === 'migration-conflict');
+  const legacyEntry = (entry, direction) => ({
+    id: entry.id,
+    classification: {
+      ...Object.fromEntries(Object.entries(entry.classification).filter(([key]) => key !== 'dimension_direction')),
+      phenomenon: [...entry.classification.phenomenon, direction],
+    },
+    judgments: {
+      ...entry.judgments,
+      [`phenomenon:${direction}`]: { type: 'noul', noul: 0.9 },
+      'phenomenon:oversize': { type: 'noul', noul: direction === 'oversize' ? 0.9 : 0.01 },
+      'phenomenon:undersize': { type: 'noul', noul: direction === 'undersize' ? 0.9 : 0.01 },
+    },
+  });
+  const conflictEntry = {
+    ...legacyEntry(conflict, 'undersize'),
+    classification: { ...legacyEntry(conflict, 'undersize').classification, phenomenon: [...conflict.classification.phenomenon, 'oversize', 'undersize'] },
+    judgments: {
+      ...legacyEntry(conflict, 'undersize').judgments,
+      'phenomenon:oversize': { type: 'noul', noul: 0.9 },
+    },
+  };
+  await writeFile(storePath, JSON.stringify({ ...persisted, definition: legacyDefinition, classifications: [legacyEntry(large, 'oversize'), conflictEntry] }));
+  let calls = 0;
+  const migrated = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: async (input) => { calls += 1; return evaluator(input); } });
+  const runtime = await migrated.prepare();
+  assert.equal(runtime.reusedRecordCount, 1);
+  assert.equal(runtime.classifiedRecordCount, 1);
+  assert.equal(calls, 1);
+});
+
+test('reclassifies a legacy tag that contradicts its stored Noul probability', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-dimension-contradiction-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const storePath = path.join(directory, 'classifications.json');
+  const contradictionSnapshot = {
+    ...snapshot,
+    records: [{ ...snapshot.records[0], id: 'migration-contradiction', nonconformityNo: '00010031', condition: '外径が上限を超過' }],
+  };
+  await writeFile(snapshotPath, JSON.stringify(contradictionSnapshot));
+  const seeded = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: evaluator });
+  await seeded.prepare();
+  const persisted = JSON.parse(await readFile(storePath, 'utf8'));
+  const legacyDefinition = {
+    ...persisted.definition,
+    version: 3,
+    groups: persisted.definition.groups
+      .filter((group) => group.id !== 'dimension_direction')
+      .map((group) => group.id === 'phenomenon'
+        ? { ...group, options: [{ id: 'oversize', description: '寸法・形状が規格または上限を超えている' }, { id: 'undersize', description: '寸法・形状が規格または下限を下回っている' }, ...group.options] }
+        : group),
+  };
+  const entry = persisted.classifications[0];
+  const legacyEntry = {
+    id: entry.id,
+    classification: {
+      ...Object.fromEntries(Object.entries(entry.classification).filter(([key]) => key !== 'dimension_direction')),
+      phenomenon: [...entry.classification.phenomenon, 'oversize'],
+    },
+    judgments: {
+      ...entry.judgments,
+      'phenomenon:oversize': { type: 'noul', noul: 0.01 },
+      'phenomenon:undersize': { type: 'noul', noul: 0.01 },
+    },
+  };
+  await writeFile(storePath, JSON.stringify({ ...persisted, definition: legacyDefinition, classifications: [legacyEntry] }));
+  let calls = 0;
+  const migrated = new AuthorizedRecordClassifier({ snapshotPath, storePath, evaluateImplementation: async (input) => { calls += 1; return evaluator(input); } });
+  const runtime = await migrated.prepare();
+  assert.equal(runtime.reusedRecordCount, 0);
+  assert.equal(runtime.classifiedRecordCount, 1);
+  assert.equal(calls, 1);
 });
