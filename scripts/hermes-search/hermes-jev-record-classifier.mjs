@@ -247,7 +247,7 @@ function buildQueryQuestions(definition) {
     ],
   );
   questions.change_action = choiceQuestion(
-    '前回の確定条件に対するこのメッセージの操作を選ぶ。条件を追加、指定項目だけを置換、指定項目を解除、訂正、または新規検索する。意味を確定できなければ clarify を選ぶ。',
+    '前回の確定条件に対するこのメッセージの操作を選ぶ。現在の確定条件に合わない検索結果が混ざったという指摘は、条件自体を変更・解除する指示と区別する。参照する既存条件と訂正意図が明確なら correct_condition、条件を追加・指定項目だけを置換・指定項目を解除・新規検索する指示ならそれぞれを選び、意味を確定できなければ clarify を選ぶ。',
     [
       { id: 'add_condition', description: '前回の条件を保持して条件を追加する' },
       { id: 'replace_condition', description: '指定された条件項目だけを置換する' },
