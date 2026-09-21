@@ -7,6 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
   && rm -rf /var/lib/apt/lists/*
 COPY scripts/hermes-search/package.json scripts/hermes-search/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
+# Materialize the worker binary as a regular staged artifact.  The release
+# image must never publish an empty cross-stage copy.
+RUN install -D -m 0755 /usr/local/bin/node /opt/hermes-node/bin/node \
+  && test -s /opt/hermes-node/bin/node \
+  && /opt/hermes-node/bin/node --version | grep -Eq '^v24\.'
 
 FROM node:20-bookworm-slim AS workspace
 WORKDIR /app
@@ -59,7 +64,7 @@ RUN nice -n 10 pnpm run build
 
 FROM node:20-bookworm-slim AS api-runtime
 WORKDIR /app
-COPY --from=hermes-search-runtime /usr/local/bin/node /opt/hermes-node/bin/node
+COPY --from=hermes-search-runtime /opt/hermes-node /opt/hermes-node
 COPY --from=hermes-search-runtime /opt/hermes-runtime /opt/hermes-runtime
 ENV HERMES_QMD_ROOT=/opt/hermes-runtime/node_modules/@tobilu/qmd
 ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
@@ -97,6 +102,9 @@ RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && apt-get purge -y python3-pip \
   && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/*
+
+RUN test -s /opt/hermes-node/bin/node \
+  && /opt/hermes-node/bin/node --version | grep -Eq '^v24\.'
 
 # Manifests + prod install + Chromium before build artifacts: avoids invalidating heavy layers on API source changes.
 COPY --from=workspace /app/package.json ./package.json
