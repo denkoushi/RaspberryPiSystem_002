@@ -32,17 +32,19 @@
       set -euo pipefail
       root={{ (release_pi5_project_dir ~ '/storage/hermes-search') | quote }}
       test -d "$root"
-      candidates=()
+      candidate_count=0
+      candidate_dir=''
       while IFS= read -r -d '' manifest; do
         directory="${manifest%/artifact.json}"
         for name in qmd-index.sqlite snapshot.json reviewed.json; do
           test -f "$directory/$name" || continue 2
           test ! -L "$directory/$name" || continue 2
         done
-        candidates+=("$directory")
+        candidate_count=$((candidate_count + 1))
+        candidate_dir="$directory"
       done < <(find "$root" -mindepth 2 -maxdepth 2 -type f -name artifact.json -print0)
-      test "${#candidates[@]}" -eq 1
-      printf '%s\n' "${candidates[0]}"
+      test "$candidate_count" -eq 1
+      printf '%s\n' "$candidate_dir"
   args:
     executable: /bin/bash
   register: release_pi5_trial_maintenance_artifact_dir
