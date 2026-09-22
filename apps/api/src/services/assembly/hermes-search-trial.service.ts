@@ -13,6 +13,7 @@ type SearchDiagnostics = {
   source?: string;
   classificationCoverage?: Record<string, unknown>;
   conditionChange?: Record<string, unknown>;
+  operationDecision?: Record<string, unknown>;
 };
 type SearchPlan = { mode: 'exact' | 'classified'; source?: string; args?: Record<string, unknown> };
 

@@ -10,7 +10,8 @@ describe('Hermes search trial authorization',()=>{
     const app=Fastify();
     app.setErrorHandler((error,_request,reply)=>reply.code(error instanceof ApiError?error.statusCode:400).send({code:'REJECTED'}));
     const conditionChange={operationJudgment:{type:'choice',choice:'remove_condition'},targetJudgment:{type:'choice',choice:'organization_facility'},selectedTarget:'organization_facility',remove:{organizationFacility:true},rejectionReason:null};
-    const answer=vi.fn().mockResolvedValue({status:'completed',answer:'現象:\n左側の穴 0.5㎜。\n処置:\n再製作。',recordIds:['synthetic'],elapsedMs:2,searchDiagnostics:{conditionChange}});
+    const operationDecision={changeActionJudgment:{type:'choice',choice:'replace_condition',probabilities:{replace_condition:1},confidence:0.94},code:{lexicalAction:'new_search',judgedAction:'replace_condition',action:null,rejectionReason:'lexical_action_mismatch'}};
+    const answer=vi.fn().mockResolvedValue({status:'completed',answer:'現象:\n左側の穴 0.5㎜。\n処置:\n再製作。',recordIds:['synthetic'],elapsedMs:2,searchDiagnostics:{conditionChange,operationDecision}});
     const service={isEnabled:()=>true,scope:async()=>({enabled:true}),answer,close:vi.fn()};
     await registerHermesSearchTrialRoutes(app,service as never);
     const url='/assembly/hermes-search-trial/answer';
@@ -22,6 +23,7 @@ describe('Hermes search trial authorization',()=>{
     expect(response.statusCode).toBe(200);
     expect(response.json().answer).toBe('現象:\n左側の穴 0.5㎜。\n処置:\n再製作。');
     expect(response.json().searchDiagnostics.conditionChange).toEqual(conditionChange);
+    expect(response.json().searchDiagnostics.operationDecision).toEqual(operationDecision);
     const sessionId='00000000-0000-4000-8000-000000000001';
     const sessionResponse=await app.inject({...request,payload:{question:'処置は？',sessionId}});
     expect(sessionResponse.statusCode).toBe(200);

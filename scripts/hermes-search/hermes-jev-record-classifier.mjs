@@ -1237,8 +1237,8 @@ function resolveRemovalTarget(evaluated, candidates, previousState, records) {
   return { selected, organization, unresolved: organization.unresolved };
 }
 
-function deltaAction(question, evaluated, previousState) {
-  if (!previousState || previousState.revision === 0) return 'new_search';
+function operationDecision(question, evaluated, previousState) {
+  const initialSearch = !previousState || previousState.revision === 0;
   const lexicalAction = explicitNewSearch(question)
     ? 'new_search'
     : explicitRemoval(question)
@@ -1248,9 +1248,19 @@ function deltaAction(question, evaluated, previousState) {
         : isCorrectionFeedback(question)
           ? 'correct_condition'
           : null;
-  const action = evaluated?.query?.changeAction;
-  if (!['add_condition', 'replace_condition', 'remove_condition', 'correct_condition', 'new_search'].includes(action)) return null;
-  return lexicalAction && lexicalAction !== action ? null : action;
+  const judgedAction = evaluated?.query?.changeAction ?? null;
+  const rejectionReason = initialSearch ? null
+    : judgedAction === 'clarify' ? 'jev_clarification'
+      : !['add_condition', 'replace_condition', 'remove_condition', 'correct_condition', 'new_search'].includes(judgedAction) ? 'jev_action_unavailable'
+        : lexicalAction && lexicalAction !== judgedAction ? 'lexical_action_mismatch' : null;
+  return {
+    initialSearch, lexicalAction, judgedAction, rejectionReason,
+    action: initialSearch ? 'new_search' : rejectionReason ? null : judgedAction,
+  };
+}
+
+function deltaAction(question, evaluated, previousState) {
+  return operationDecision(question, evaluated, previousState).action;
 }
 
 function structuredOrganizationForState(organization) {
@@ -1510,7 +1520,20 @@ export class AuthorizedRecordClassifier {
     const removalCandidates = removalCandidatesFor(previousState, this.definition);
     const fieldMentions = explicitRemoval(question) ? [] : organizationQuestionInput(question, this.store.records).mentions;
     const conversationTarget = previousState.revision > 0 ? 'previous_search' : 'new_search';
+    let operationInput;
     const evaluated = await classifyText(question, this.definition, async (input) => {
+      // Capture only this decision's actual input. Never expose source records,
+      // provider credentials, the complete response or unrelated JEV questions.
+      operationInput = {
+        searchState: input.state.searchState,
+        conversationTarget: input.state.conversationTarget,
+        confirmationPendingPresent: Boolean(input.state.confirmationPending),
+        relatedHistoryCount: input.state.relatedHistory.length,
+        questions: {
+          conversation_target: input.questions.conversation_target,
+          change_action: input.questions.change_action,
+        },
+      };
       const callStarted = performance.now();
       const result = await this.evaluateImplementation(input);
       this.calls.push({ phase: 'query', requestSha256: sha256(question), questionCount: Object.keys(input.questions).length, elapsedMs: Number((performance.now() - callStarted).toFixed(3)) });
@@ -1538,6 +1561,20 @@ export class AuthorizedRecordClassifier {
     });
     const delta = buildSearchDelta(question, evaluated, structured, previousState, removal);
     const deltaDigest = deltaFingerprint(delta);
+    const operationDiagnostic = {
+      model: evaluated.model,
+      requestSha256: sha256(question),
+      input: operationInput,
+      conversationTargetJudgment: evaluated.judgments.conversation_target,
+      changeActionJudgment: evaluated.judgments.change_action,
+      code: operationDecision(question, evaluated, previousState),
+      organization: {
+        ...structuredOrganizationForState(structured.organization),
+        unresolved: structured.organization?.unresolved ?? [],
+        resolution: structured.organization?.resolution ?? null,
+      },
+      proposedDelta: delta,
+    };
     const allUnresolved = delta.unresolvedConditions ?? [];
     const unresolvedLabels = allUnresolved.map((item) => {
       if (item.kind === undefined) return `起因部署の範囲: ${item.term}`;
@@ -1621,6 +1658,7 @@ export class AuthorizedRecordClassifier {
           delta: deltaDigest,
           state: searchStateSummary(previousState),
           resultCount: 0,
+          operationDecision: operationDiagnostic,
           ...(conditionChange ? { conditionChange } : {}),
         },
         session: this.sessionFor(question, safeConversation, nextPending, question, conversationTarget, previousState),
@@ -1667,6 +1705,7 @@ export class AuthorizedRecordClassifier {
         state: searchStateSummary(nextState),
         resultCount: records.length,
         classificationCoverage: coverage,
+        operationDecision: operationDiagnostic,
         ...(conditionChange ? { conditionChange } : {}),
       },
       session: this.sessionFor(question, safeConversation, null, question, conversationTarget, nextState),

@@ -581,6 +581,77 @@ test('distinguishes source field labels from organization values after factory r
   assert.deepEqual(uncertainField.searchState, previous);
 });
 
+test('diagnoses JEV clarification separately from lexical disagreement without changing operation decisions', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-operation-decision-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const records = [
+    { ...snapshot.records[0], id: 'material-sendai', originDepartmentName: '仙台工場管理部資材課', originDepartmentCode: '110701052' },
+    { ...snapshot.records[1], id: 'material-mishima', originDepartmentName: '三島工場管理部資材課', originDepartmentCode: '110501051' },
+    { ...snapshot.records[0], id: 'machine-sendai', originDepartmentName: '仙台工場製造部機械課（製造）', originDepartmentCode: '110707054' },
+    { ...snapshot.records[1], id: 'machine-mishima', originDepartmentName: '三島工場製造部機械課', originDepartmentCode: '110507051' },
+  ];
+  const previous = {
+    schema: 'hermes-search-state/v1', revision: 7, sources: ['nonconformity'],
+    exact: { include: {}, exclude: {}, organization: {
+      include: records.slice(2).map((row) => ({ name: row.originDepartmentName, code: row.originDepartmentCode })),
+      exclude: [], matchedTerms: ['機械課'], status: 'resolved',
+    } },
+    semantic: { include: {}, exclude: {} }, sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 2, display: { originalText: true, requested: ['cause'] },
+    unresolvedConditions: [], lastAction: 'replace_condition',
+  };
+  const question = '仙台工場または三島工場の資材課の最近の不適合2件を新しく検索して';
+  await writeFile(snapshotPath, JSON.stringify({ ...snapshot, records }));
+  let selectedAction;
+  let sentInput;
+  let returnedAnswers;
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath,
+    storePath: path.join(directory, 'classifications.json'), classificationEnabled: false,
+    evaluateImplementation: async (input) => {
+      sentInput = input;
+      const result = await evaluator(input);
+      result.answers.change_action = choiceAnswer(selectedAction, Object.keys(input.questions.change_action.criteria));
+      returnedAnswers = result.answers;
+      return { ...result, model: 'test-jev', response: { private: 'must-not-be-exposed' } };
+    },
+  });
+  await classifier.prepare();
+  for (const [choice, reason] of [['clarify', 'jev_clarification'], ['replace_condition', 'lexical_action_mismatch'], ['new_search', null]]) {
+    selectedAction = choice;
+    const result = await classifier.answer(question, { searchState: previous });
+    const diagnostic = result.searchDiagnostics.operationDecision;
+    assert.ok(diagnostic);
+    assert.deepEqual(diagnostic.input.searchState, previous);
+    assert.equal(diagnostic.input.conversationTarget, sentInput.state.conversationTarget);
+    assert.deepEqual(diagnostic.input.questions, {
+      conversation_target: sentInput.questions.conversation_target,
+      change_action: sentInput.questions.change_action,
+    });
+    assert.deepEqual(diagnostic.conversationTargetJudgment, returnedAnswers.conversation_target);
+    assert.deepEqual(diagnostic.changeActionJudgment, returnedAnswers.change_action);
+    assert.equal(diagnostic.code.lexicalAction, 'new_search');
+    assert.equal(diagnostic.code.judgedAction, choice);
+    assert.equal(diagnostic.code.rejectionReason, reason);
+    assert.equal(diagnostic.model, 'test-jev');
+    assert.equal(diagnostic.organization.resolution.action, RESOLUTION_ACTIONS.CONTINUE_SET);
+    assert.deepEqual(diagnostic.organization.matchedTerms, ['仙台工場', '三島工場', '資材課']);
+    assert.equal(diagnostic.organization.include.length, 2);
+    assert.equal(diagnostic.proposedDelta.action, reason ? 'clarify' : 'new_search');
+    assert.equal(result.searchDelta.applied, !reason);
+    if (reason) {
+      assert.deepEqual(result.searchState, previous);
+      assert.equal(diagnostic.proposedDelta.unresolvedConditions[0].reason, 'change_intent_unresolved');
+    } else {
+      assert.deepEqual(result.searchPlan.args, { kind: 'nonconformity', limit: 2,
+        originDepartmentNameAny: ['仙台工場', '三島工場'], originDepartmentName: '資材課' });
+    }
+    assert.equal(JSON.stringify(diagnostic).includes('must-not-be-exposed'), false);
+    assert.equal(JSON.stringify(diagnostic).includes(snapshot.records[0].condition), false);
+    assert.equal('request' in diagnostic.input, false);
+  }
+  assert.equal(classifier.calls.filter(({ phase }) => phase === 'record').length, 0);
+});
+
 test('selects a current removal target independently and preserves every other condition', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-removal-target-'));
   const snapshotPath = path.join(directory, 'snapshot.json');
