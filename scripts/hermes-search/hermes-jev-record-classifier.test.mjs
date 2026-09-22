@@ -81,6 +81,8 @@ function evaluator({ state, questions }) {
                 ? 'add_condition'
                 : 'clarify';
       answers[key] = choiceAnswer(selected, options);
+    } else if (key === 'display_source_heading' || key === 'display_other_fields') {
+      answers[key] = noulAnswer(0.01);
     } else if (key.startsWith('display:')) {
       const displayKey = key.slice('display:'.length);
       const requested = (displayKey === 'discoveredOn' && /発生日|発見日|日付/u.test(request))
@@ -579,6 +581,183 @@ test('distinguishes source field labels from organization values after factory r
   const uncertainField = await classifier.answer('各起因部署を表示して', { searchState: previous });
   assert.equal(uncertainField.status, 'clarification');
   assert.deepEqual(uncertainField.searchState, previous);
+});
+
+test('maps a display-only judgment to the existing Delta without changing the search target', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-display-operation-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const records = [
+    { ...snapshot.records[0], originDepartmentName: '三島工場管理部資材課', originDepartmentCode: '110501051' },
+    { ...snapshot.records[1], originDepartmentName: '仙台工場管理部資材課', originDepartmentCode: '110701052' },
+  ];
+  const previous = {
+    schema: 'hermes-search-state/v1', revision: 5, sources: ['nonconformity'],
+    exact: { include: {}, exclude: {}, organization: {
+      include: records.map((row) => ({ name: row.originDepartmentName, code: row.originDepartmentCode })),
+      exclude: [], matchedTerms: ['資材課'], status: 'resolved',
+    } },
+    semantic: { include: {}, exclude: {} }, sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 2, display: { originalText: true, requested: ['originalText', 'phenomenon'] },
+    unresolvedConditions: [], lastAction: 'correct_condition',
+  };
+  await writeFile(snapshotPath, JSON.stringify({ ...snapshot, records }));
+  let displayConfidence = 0.94;
+  let displayNoul = 0.94;
+  let sourceHeadingNoul = 0.94;
+  let targetConfidence = 0.94;
+  let otherFieldsNoul = 0.01;
+  let treatmentNoul = null;
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath,
+    storePath: path.join(directory, 'classifications.json'), classificationEnabled: false,
+    evaluateImplementation: async (input) => {
+      assert.ok(input.questions.change_action.criteria.update_display);
+      const result = await evaluator(input);
+      result.answers.conversation_target.confidence = targetConfidence;
+      result.answers.change_action = {
+        ...choiceAnswer('update_display', Object.keys(input.questions.change_action.criteria)),
+        confidence: displayConfidence,
+      };
+      result.answers['display:cause'] = noulAnswer(displayNoul);
+      if (treatmentNoul !== null) result.answers['display:treatment'] = noulAnswer(treatmentNoul);
+      if (input.questions.display_source_heading) result.answers.display_source_heading = noulAnswer(sourceHeadingNoul);
+      if (input.questions.display_other_fields) result.answers.display_other_fields = noulAnswer(otherFieldsNoul);
+      return result;
+    },
+  });
+  await classifier.prepare();
+  for (const question of ['その記録の起因部署名を表示して', 'その記録の起因部署を表示して', 'その記録の起因部署欄を表示して']) {
+    const result = await classifier.answer(question, { searchState: previous });
+    assert.equal(result.status, 'completed');
+    assert.equal(result.searchDelta.action, 'replace_condition');
+    assert.equal(result.searchDelta.applied, true);
+    assert.deepEqual(result.searchState, { ...previous, revision: 6,
+      display: { originalText: true, requested: ['originalText'] }, lastAction: 'replace_condition' });
+    assert.deepEqual(result.searchDiagnostics.operationDecision.proposedDelta, {
+      action: 'replace_condition', display: { originalText: true, requested: ['originalText'] }, unresolvedConditions: [],
+    });
+    assert.deepEqual(result.searchPlan.args, { kind: 'nonconformity', limit: 2, originDepartmentName: '資材課' });
+  }
+  const constrained = { ...previous,
+    exact: { ...previous.exact, include: { partNumber: 'PART-1' }, exclude: { machineName: '旋盤B' } },
+    semantic: { include: { process: 'turning' }, exclude: { phenomenon: ['surface_damage'] } },
+  };
+  otherFieldsNoul = 0.94;
+  const combined = await classifier.answer('起因部署と原因を表示して', { searchState: previous });
+  assert.equal(combined.searchDelta.applied, true);
+  assert.deepEqual(combined.searchState.display, { originalText: true, requested: ['originalText', 'cause'] });
+  assert.deepEqual(combined.searchState.exact, previous.exact);
+  otherFieldsNoul = 0.4;
+  const uncertainCombined = await classifier.answer('起因部署と原因を表示して', { searchState: previous });
+  assert.equal(uncertainCombined.searchDelta.applied, false);
+  assert.deepEqual(uncertainCombined.searchState, previous);
+  const confirmedCombined = await classifier.answer('はい、原因も表示して', {
+    searchState: previous, confirmationPending: uncertainCombined.confirmationPending,
+  });
+  assert.equal(confirmedCombined.searchDelta.applied, true);
+  assert.deepEqual(confirmedCombined.searchState.display, { originalText: true, requested: ['originalText', 'cause'] });
+  assert.deepEqual(confirmedCombined.searchState.exact, previous.exact);
+  assert.equal(confirmedCombined.confirmationPending, null);
+  otherFieldsNoul = 0.94;
+  treatmentNoul = 0.4;
+  const partialFields = await classifier.answer('起因部署と原因と処置を表示して', { searchState: previous });
+  assert.equal(partialFields.searchDelta.applied, false);
+  assert.deepEqual(partialFields.confirmationPending.confirmedInfo.display.requested, ['originalText', 'cause']);
+  treatmentNoul = 0.94;
+  displayNoul = 0.01;
+  const completedFields = await classifier.answer('はい、処置も表示して', {
+    searchState: previous, confirmationPending: partialFields.confirmationPending,
+  });
+  assert.equal(completedFields.searchDelta.applied, true);
+  assert.deepEqual(completedFields.searchState.display.requested, ['originalText', 'cause', 'treatment']);
+  assert.deepEqual(completedFields.searchState.exact, previous.exact);
+  assert.equal(completedFields.confirmationPending, null);
+  treatmentNoul = null;
+  displayNoul = 0.94;
+  otherFieldsNoul = 0.01;
+  const retained = await classifier.answer('その記録の起因部署名を表示して', { searchState: constrained });
+  assert.deepEqual(retained.searchState.exact, constrained.exact);
+  assert.deepEqual(retained.searchState.semantic, constrained.semantic);
+  assert.equal(retained.searchState.limit, constrained.limit);
+  assert.deepEqual(retained.searchState.sort, constrained.sort);
+  for (const question of ['起因部署が月面課の不適合を表示して', '仙台工場の不適合を表示して', 'その記録を1件表示して', '上限を超えた不適合を表示して']) {
+    const conflict = await classifier.answer(question, { searchState: previous });
+    assert.equal(conflict.status, 'clarification');
+    assert.equal(conflict.searchDelta.applied, false);
+    assert.deepEqual(conflict.searchState, previous);
+    assert.ok(conflict.searchDiagnostics.operationDecision.proposedDelta.unresolvedConditions.length);
+  }
+  const pending = { request: '月面課の不適合', question: '部署を確認してください', purpose: 'resolve_search_condition',
+    requiredItems: [{ id: 'organization:月面課', label: '月面課', type: 'choice', candidates: [] }],
+    confirmedInfo: {}, unresolvedItems: ['organization:月面課'] };
+  const stillPending = await classifier.answer('その記録の起因部署名を表示して', { searchState: previous, confirmationPending: pending });
+  assert.equal(stillPending.searchDelta.applied, false);
+  assert.deepEqual(stillPending.confirmationPending, pending);
+  assert.deepEqual(stillPending.searchState, previous);
+  for (const noul of [0.01, 0.4]) {
+    displayNoul = noul;
+    for (const question of ['その記録の起因部署名を表示して', 'その記録の機械名を表示して']) {
+      const sourceField = await classifier.answer(question, { searchState: previous });
+      assert.equal(sourceField.searchDelta.applied, true);
+      assert.deepEqual(sourceField.searchState.display, { originalText: true, requested: ['originalText'] });
+      assert.deepEqual(sourceField.searchState.exact, previous.exact);
+    }
+    const unresolvedDisplay = await classifier.answer('その記録の未定義項目を表示して', { searchState: previous });
+    assert.equal(unresolvedDisplay.status, 'clarification');
+    assert.equal(unresolvedDisplay.searchDelta.applied, false);
+    assert.deepEqual(unresolvedDisplay.searchState, previous);
+    assert.ok(unresolvedDisplay.searchDiagnostics.operationDecision.proposedDelta.unresolvedConditions.some(({ reason }) => reason === 'display_field_unresolved'));
+    const resolvedDisplay = await classifier.answer('その記録の起因部署名を表示して', {
+      searchState: previous, confirmationPending: unresolvedDisplay.confirmationPending,
+    });
+    assert.equal(resolvedDisplay.searchDelta.applied, true);
+    assert.equal(resolvedDisplay.confirmationPending, null);
+    assert.deepEqual(resolvedDisplay.searchState.exact, previous.exact);
+  }
+  displayNoul = 0.94;
+  for (const noul of [0.01, 0.4]) {
+    displayNoul = noul;
+    for (const question of ['原因は表示しないで', '工程は表示しないで', '現象は表示しないで']) {
+      const hidden = await classifier.answer(question, { searchState: previous });
+      assert.equal(hidden.searchDelta.applied, false);
+      assert.deepEqual(hidden.searchState, previous);
+    }
+  }
+  displayNoul = 0.94;
+  for (const noul of [0.01, 0.4]) {
+    sourceHeadingNoul = noul;
+    const hidden = await classifier.answer('起因部署は表示しないで', { searchState: previous });
+    assert.equal(hidden.searchDelta.applied, false);
+    assert.deepEqual(hidden.searchState, previous);
+    assert.ok(hidden.searchDiagnostics.operationDecision.proposedDelta.unresolvedConditions.some(({ reason }) => reason === 'display_heading_intent_unresolved'));
+  }
+  sourceHeadingNoul = 0.94;
+  targetConfidence = 0.2;
+  const uncertainTarget = await classifier.answer('その記録の起因部署名を表示して', { searchState: previous });
+  assert.equal(uncertainTarget.searchDelta.applied, false);
+  assert.equal(uncertainTarget.searchDiagnostics.operationDecision.code.rejectionReason, 'display_target_unresolved');
+  assert.deepEqual(uncertainTarget.searchState, previous);
+  targetConfidence = 0.94;
+  const confirmedTarget = await classifier.answer('その記録の起因部署名を表示して', {
+    searchState: previous, confirmationPending: uncertainTarget.confirmationPending,
+  });
+  assert.equal(confirmedTarget.searchDelta.applied, true);
+  assert.equal(confirmedTarget.confirmationPending, null);
+  assert.deepEqual(confirmedTarget.searchState.exact, previous.exact);
+  displayConfidence = 0.2;
+  const uncertain = await classifier.answer('その記録の起因部署名を表示して', { searchState: previous });
+  assert.equal(uncertain.searchDelta.applied, false);
+  assert.equal(uncertain.searchDiagnostics.operationDecision.code.rejectionReason, 'display_operation_uncertain');
+  displayConfidence = 0.94;
+  const confirmedOperation = await classifier.answer('その記録の起因部署名を表示して', {
+    searchState: previous, confirmationPending: uncertain.confirmationPending,
+  });
+  assert.equal(confirmedOperation.searchDelta.applied, true);
+  assert.equal(confirmedOperation.confirmationPending, null);
+  assert.deepEqual(confirmedOperation.searchState.exact, previous.exact);
+  const noPrior = await classifier.answer('その記録の起因部署名を表示して');
+  assert.equal(noPrior.searchDelta.applied, false);
+  assert.equal(noPrior.searchDiagnostics.operationDecision.code.rejectionReason, 'display_target_unresolved');
+  assert.equal(classifier.calls.filter(({ phase }) => phase === 'record').length, 0);
 });
 
 test('diagnoses JEV clarification separately from lexical disagreement without changing operation decisions', async () => {

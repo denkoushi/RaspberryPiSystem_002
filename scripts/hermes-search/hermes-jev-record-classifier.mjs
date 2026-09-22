@@ -249,13 +249,14 @@ function buildQueryQuestions(definition, removalCandidates = [], fieldMentions =
     ],
   );
   questions.change_action = choiceQuestion(
-    '前回の確定条件に対するこのメッセージの操作を選ぶ。現在の確定条件に合わない検索結果が混ざったという指摘は、条件自体を変更・解除する指示と区別する。参照する既存条件と訂正意図が明確なら correct_condition、条件を追加・指定項目だけを置換・指定項目を解除・新規検索する指示ならそれぞれを選び、意味を確定できなければ clarify を選ぶ。',
+    '前回の確定条件に対するこのメッセージの操作を選ぶ。現在の確定条件に合わない検索結果が混ざったという指摘は、条件自体を変更・解除する指示と区別する。参照する既存条件と訂正意図が明確なら correct_condition、条件を追加・指定項目だけを置換・指定項目を解除・新規検索する指示ならそれぞれを選ぶ。前回の検索対象・条件・件数・並び順を変えず、その記録の項目や原文を表示するだけなら update_display を選ぶ。条件変更も含む要求は update_display ではなく該当する条件操作を選び、意味を確定できなければ clarify を選ぶ。',
     [
       { id: 'add_condition', description: '前回の条件を保持して条件を追加する' },
       { id: 'replace_condition', description: '指定された条件項目だけを置換する' },
       { id: 'remove_condition', description: '指定された条件項目を解除する' },
       { id: 'correct_condition', description: '前回の条件の誤りを訂正する' },
       { id: 'new_search', description: '前回とは別の検索を開始する' },
+      { id: 'update_display', description: '前回の検索対象・条件・件数・並び順をすべて保持し、表示する項目だけを指定する。検索条件の追加・置換・解除ではない' },
       { id: 'clarify', description: '操作の意味を確定できないので確認する' },
     ],
   );
@@ -409,9 +410,14 @@ function queryClassificationFromAnswers(answers, definition, question) {
     { id: 'remove_condition', description: '指定項目の解除' },
     { id: 'correct_condition', description: '前回条件の訂正' },
     { id: 'new_search', description: '新規検索' },
+    { id: 'update_display', description: '検索条件を保持して表示項目だけを指定' },
     { id: 'clarify', description: '意味不確定' },
   ], 'change_action');
   judgments.change_action = changeAction;
+  if (changeAction.choice === 'update_display') for (const [id] of DISPLAY_REQUESTS) {
+    const key = `display:${id}`;
+    judgments[key] = normalizeNoulJudgment(answers[key], key);
+  }
   const display = displayRequestFrom(question, answers);
   for (const [id] of DISPLAY_REQUESTS) {
     const judgment = judgments[`display:${id}`];
@@ -751,12 +757,21 @@ function previousOrganizationTermsAfterFacility(previousOrganization) {
     .flatMap((term) => organizationDepartmentTermsAfterFacility(term)))];
 }
 
+function sourceFieldHeadings() {
+  return Object.entries(SOURCE_FIELDS).flatMap(([field, label]) =>
+    [label, `${label}名`, `${label}欄`].map((heading) => ({ field, label, heading })));
+}
+
+function mentionedSourceHeadings(question) {
+  const spans = text(question).normalize('NFKC').match(/[\p{Script=Han}\p{Script=Katakana}々ーA-Za-z0-9]+/gu) ?? [];
+  return sourceFieldHeadings().filter(({ heading }) => spans.includes(heading));
+}
+
 function organizationQuestionInput(question, records, judgments = {}) {
   const normalized = text(question).normalize('NFKC');
   const values = organizationIndex(records);
   const knownTerms = new Set(values.flatMap((value) => value.terms.map(normalizedOrganizationValue)));
-  const headings = Object.entries(SOURCE_FIELDS).flatMap(([field, label]) =>
-    [label, `${label}名`, `${label}欄`].map((heading) => ({ field, label, heading })));
+  const headings = sourceFieldHeadings();
   const mentions = [];
   const explicitTerms = [];
   const unresolved = [];
@@ -1249,13 +1264,20 @@ function operationDecision(question, evaluated, previousState) {
           ? 'correct_condition'
           : null;
   const judgedAction = evaluated?.query?.changeAction ?? null;
-  const rejectionReason = initialSearch ? null
-    : judgedAction === 'clarify' ? 'jev_clarification'
-      : !['add_condition', 'replace_condition', 'remove_condition', 'correct_condition', 'new_search'].includes(judgedAction) ? 'jev_action_unavailable'
-        : lexicalAction && lexicalAction !== judgedAction ? 'lexical_action_mismatch' : null;
+  // Display is already an independently replaceable part of SearchDelta.
+  // The JEV option need not add an action or schema to SearchState.
+  const displayOnly = judgedAction === 'update_display';
+  const mappedAction = displayOnly ? 'replace_condition' : judgedAction;
+  const rejectionReason = displayOnly && (initialSearch || evaluated.query.conversationTarget !== 'same_target'
+    || evaluated.judgments.conversation_target.confidence < QUERY_CHOICE_POLICY.uncertainBelow) ? 'display_target_unresolved'
+    : displayOnly && evaluated.judgments.change_action.confidence < QUERY_CHOICE_POLICY.uncertainBelow ? 'display_operation_uncertain'
+      : initialSearch ? null
+        : judgedAction === 'clarify' ? 'jev_clarification'
+          : !['add_condition', 'replace_condition', 'remove_condition', 'correct_condition', 'new_search'].includes(mappedAction) ? 'jev_action_unavailable'
+            : lexicalAction && lexicalAction !== mappedAction ? 'lexical_action_mismatch' : null;
   return {
     initialSearch, lexicalAction, judgedAction, rejectionReason,
-    action: initialSearch ? 'new_search' : rejectionReason ? null : judgedAction,
+    action: rejectionReason ? null : initialSearch ? 'new_search' : mappedAction,
   };
 }
 
@@ -1274,7 +1296,8 @@ function structuredOrganizationForState(organization) {
 }
 
 function buildSearchDelta(question, evaluated, structured, previousState, removal = null) {
-  const action = deltaAction(question, evaluated, previousState);
+  const operation = operationDecision(question, evaluated, previousState);
+  const action = operation.action;
   const appliedAction = action ?? 'clarify';
   const normalized = question.normalize('NFKC');
   const exactInclude = { ...structured.include };
@@ -1308,10 +1331,13 @@ function buildSearchDelta(question, evaluated, structured, previousState, remova
       // Their answers do not select its target or add replacement conditions.
       ...(appliedAction === 'remove_condition' ? (removal?.unresolved ?? []) : (evaluated.query?.unresolved ?? [])),
       ...(structured.unresolved ?? []),
-      ...(action ? [] : [{ kind: 'action', field: 'changeAction', term: question, reason: 'change_intent_unresolved' }]),
+      ...(action ? [] : [{
+        kind: ['display_target_unresolved', 'display_operation_uncertain'].includes(operation.rejectionReason) ? 'display' : 'action',
+        field: 'changeAction', term: question, reason: 'change_intent_unresolved',
+      }]),
     ],
   };
-  const requestedDisplay = evaluated.query?.display ?? displayRequestFrom(question, evaluated.judgments ?? {});
+  let requestedDisplay = evaluated.query?.display ?? displayRequestFrom(question, evaluated.judgments ?? {});
   if (appliedAction === 'new_search' || requestedDisplay.requested?.length) delta.display = requestedDisplay;
   const unsupportedSource = normalized.match(/(?:設備点検|計測機器|作業要領書|作業要領|要領書)/u)?.[0];
   if (unsupportedSource) {
@@ -1320,6 +1346,41 @@ function buildSearchDelta(question, evaluated, structured, previousState, remova
   const limit = explicitLimitFromQuestion(normalized);
   if (limit !== null) delta.limit = limit;
   if (hasRecentRequest(normalized)) delta.sort = { field: 'discoveredOn', direction: 'desc' };
+  if (evaluated.query?.changeAction === 'update_display') {
+    if (mentionedSourceHeadings(question).length) {
+      // Code resolves the source field; JEV resolves whether showing it is
+      // requested. Generic semantic guesses cannot override an exact heading.
+      if (evaluated.judgments.display_source_heading?.noul >= QUERY_DECISION_POLICY.includeAt) {
+        const otherIntent = evaluated.judgments.display_other_fields?.noul;
+        if (otherIntent >= QUERY_DECISION_POLICY.includeAt) {
+          if (!requestedDisplay.requested?.length || requestedDisplay.requested.some((id) => !(evaluated.judgments[`display:${id}`]?.noul >= QUERY_DECISION_POLICY.includeAt))) {
+            delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_intent_unresolved' });
+          }
+          requestedDisplay = { originalText: true, requested: [...new Set(['originalText', ...requestedDisplay.requested])] };
+        } else {
+          if (!(otherIntent < QUERY_DECISION_POLICY.uncertainFrom)) {
+            delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_intent_unresolved' });
+          }
+          requestedDisplay = { originalText: true, requested: ['originalText'] };
+        }
+      } else {
+        delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_heading_intent_unresolved' });
+      }
+    } else if (!requestedDisplay.requested?.length) {
+      delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_field_unresolved' });
+    } else if (requestedDisplay.requested.some((id) => !(evaluated.judgments[`display:${id}`]?.noul >= QUERY_DECISION_POLICY.includeAt))) {
+      delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_intent_unresolved' });
+    }
+    // Never apply speculative filters, nor silently discard a conflicting or
+    // unknown condition, when the chosen operation changes only presentation.
+    if (Object.keys(exactInclude).length || Object.keys(exactExclude).length
+      || delta.exact.organization || Object.keys(semanticInclude).length || Object.keys(semanticExclude).length
+      || limit !== null || delta.sort) {
+      delta.unresolvedConditions.push({ kind: 'action', field: 'changeAction', term: question, reason: 'display_condition_conflict' });
+    }
+    return { action: appliedAction, display: requestedDisplay,
+      unresolvedConditions: [...previousState.unresolvedConditions, ...delta.unresolvedConditions] };
+  }
   if (appliedAction === 'remove_condition') {
     delta.remove = removal?.selected?.remove ?? {};
     delta.exact = { include: {}, exclude: {}, ...removal?.selected?.exact, organization: structuredOrganizationForState(removal?.organization) };
@@ -1349,13 +1410,31 @@ function queryFromSearchState(question, state) {
 }
 
 async function classifyText(question, definition, evaluate, mode, conversation = {}) {
+  const questions = buildQuestions(definition, mode, conversation.removalCandidates, conversation.fieldMentions);
+  const sourceHeadings = mode === 'query' ? mentionedSourceHeadings(question) : [];
+  if (sourceHeadings.length) {
+    questions.display_source_heading = noulQuestion(
+      `ユーザーは次の情報源項目を表示することを明確に求めているか: ${sourceHeadings.map(({ label }) => label).join('、')}。現在の要求と会話状態に基づき、項目を表示する肯定的な要求と、非表示・表示の禁止・検索条件の指定・単なる言及を区別する。一つでも非表示を求めている、または表示意図が確定しない場合は肯定しない。`,
+      '挙げた項目を表示する肯定的な要求であり、非表示の要求はない。',
+      '非表示の要求、検索条件、単なる言及、または表示意図を確定できない。',
+    );
+    questions.display_other_fields = noulQuestion(
+      `要求中の項目「${sourceHeadings.map(({ label }) => label).join('、')}」そのものとは別に、他の表示内容も独立して求めているか。項目名に含まれる文字や関連しそうな意味から別項目を補わない。表示内容の候補: ${DISPLAY_REQUESTS.map(([, description]) => description).join('、')}。`,
+      '情報源の項目名とは別に、追加の表示内容も明確に要求している。',
+      '情報源の項目名への要求だけであり、別の表示内容は独立して要求していない。',
+    );
+  }
   const result = await evaluate({
     model: 'typesafe-ai/jev',
     state: mode === 'query' ? queryConversationState(question, conversation) : { request: question, relatedHistory: [], confirmationPending: null },
-    questions: buildQuestions(definition, mode, conversation.removalCandidates, conversation.fieldMentions),
+    questions,
     maxRetries: 0
   });
   const evaluated = classificationFromAnswers(result?.answers, definition, mode, question);
+  if (sourceHeadings.length) {
+    evaluated.judgments.display_source_heading = normalizeNoulJudgment(result.answers.display_source_heading, 'display_source_heading');
+    evaluated.judgments.display_other_fields = normalizeNoulJudgment(result.answers.display_other_fields, 'display_other_fields');
+  }
   if (mode === 'query' && conversation.removalCandidates?.length) {
     evaluated.judgments.removal_target = normalizeChoiceJudgment(result.answers.removal_target,
       [{ id: QUERY_NONE }, ...conversation.removalCandidates], 'removal_target');
@@ -1560,6 +1639,29 @@ export class AuthorizedRecordClassifier {
       fieldMentionJudgments: evaluated.judgments,
     });
     const delta = buildSearchDelta(question, evaluated, structured, previousState, removal);
+    const pendingDisplayOnly = Array.isArray(pending?.requiredItems) && pending.requiredItems.length > 0
+      && pending.requiredItems.every((item) => item?.type === 'display');
+    const retainedPending = evaluated.query.changeAction === 'update_display' && pendingDisplayOnly ? null : pending;
+    const confirmedDisplay = evaluated.query.changeAction === 'update_display' && pendingDisplayOnly
+      ? pending.confirmedInfo?.display : null;
+    const confirmedDisplayRequests = [...(confirmedDisplay?.requested ?? [])];
+    if (evaluated.query.changeAction === 'update_display' && delta.action !== 'clarify') {
+      const hasSourceHeading = mentionedSourceHeadings(question).length > 0;
+      if (hasSourceHeading && evaluated.judgments.display_source_heading?.noul >= QUERY_DECISION_POLICY.includeAt) {
+        confirmedDisplayRequests.push('originalText');
+      }
+      if (!hasSourceHeading || evaluated.judgments.display_other_fields?.noul >= QUERY_DECISION_POLICY.includeAt) {
+        confirmedDisplayRequests.push(...evaluated.query.display.requested.filter((id) =>
+          evaluated.judgments[`display:${id}`]?.noul >= QUERY_DECISION_POLICY.includeAt));
+      }
+    }
+    if (confirmedDisplay && delta.display) {
+      delta.display = { originalText: true,
+        requested: [...new Set([...confirmedDisplay.requested, ...delta.display.requested])] };
+    }
+    if (evaluated.query.changeAction === 'update_display' && retainedPending) {
+      delta.unresolvedConditions.push({ kind: 'action', field: 'changeAction', reason: 'pending_condition_requires_resolution' });
+    }
     const deltaDigest = deltaFingerprint(delta);
     const operationDiagnostic = {
       model: evaluated.model,
@@ -1567,6 +1669,8 @@ export class AuthorizedRecordClassifier {
       input: operationInput,
       conversationTargetJudgment: evaluated.judgments.conversation_target,
       changeActionJudgment: evaluated.judgments.change_action,
+      displayHeadingJudgment: evaluated.judgments.display_source_heading ?? null,
+      displayOtherFieldsJudgment: evaluated.judgments.display_other_fields ?? null,
       code: operationDecision(question, evaluated, previousState),
       organization: {
         ...structuredOrganizationForState(structured.organization),
@@ -1614,7 +1718,7 @@ export class AuthorizedRecordClassifier {
       rejectionReason: allUnresolved.length ? 'removal_target_unresolved' : conditionCount === 0 ? 'no_remaining_conditions' : null,
     } : undefined;
     if (allUnresolved.length || conditionCount === 0 || displayOnly) {
-      const nextPending = allUnresolved.length
+      const nextPending = evaluated.query.changeAction === 'update_display' && retainedPending ? retainedPending : allUnresolved.length
         ? {
           request: question,
           question: `次の検索条件の意味を確認してください: ${unresolvedLabels.join('、')}`,
@@ -1625,7 +1729,10 @@ export class AuthorizedRecordClassifier {
             type: item.kind === undefined ? 'choice' : item.kind,
             candidates: item.field === 'removalTarget' ? removalCandidates.map(({ id, label }) => ({ id, label })) : item.kind === undefined ? [] : [item.optionId],
           })),
-          confirmedInfo: { ...structured.include, organization: structured.organization },
+          confirmedInfo: { ...structured.include, organization: structured.organization,
+            ...(confirmedDisplayRequests.length
+              ? { display: { originalText: true, requested: [...new Set(confirmedDisplayRequests)] } } : {}),
+          },
           unresolvedItems: allUnresolved.map((item) => item.kind === undefined ? `structured:organization:${item.term}` : `${item.kind}:${item.groupId ?? item.field}:${item.optionId ?? item.reason}`),
         }
         : pending;
@@ -1678,7 +1785,7 @@ export class AuthorizedRecordClassifier {
       status: 'completed',
       answer: [coverageNotice, uncertaintyNotice, excludedUncertainNotice, answer || '指定条件に一致する記録はありませんでした。未分類の記録については判断していません。'].filter(Boolean).join('\n\n'),
       recordIds: records.map((record) => `nonconformity:${record.id}`),
-      confirmationPending: pending,
+      confirmationPending: retainedPending,
       classifier: {
         classification: evaluated.classification,
         conditions: nextState.exact.include,
