@@ -950,8 +950,26 @@
     release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'PI5_ENV_FILE': release_pi5_chat_env_file}) }}"
   when:
     - release_pi5_route == 'fresh'
-    - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') in ['true', 'false']
     - business_hermes_chat_enabled | default(false) | bool
+
+- name: Read the finalized Hermes search environment before candidate startup
+  ansible.builtin.slurp:
+    src: "{{ release_pi5_chat_env_file }}"
+  register: release_pi5_finalized_search_env
+  no_log: true
+  when:
+    - release_pi5_route == 'fresh'
+    - business_hermes_chat_enabled | default(false) | bool
+
+- name: Determine the effective Hermes search trial setting
+  ansible.builtin.set_fact:
+    release_pi5_search_trial_effective_enabled: >-
+      {{
+        ((release_pi5_finalized_search_env.content | b64decode).splitlines()
+        | select('match', '^HERMES_SEARCH_TRIAL_ENABLED=true$') | list | length) == 1
+      }}
+  when:
+    - release_pi5_finalized_search_env is defined
 
 - name: Prepare the answer cache and protected nightly checks
   ansible.builtin.include_tasks: business-hermes-answer-cache.yml
@@ -1023,7 +1041,7 @@
   no_log: true
   when:
     - release_pi5_route == 'fresh'
-    - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') == 'true'
+    - release_pi5_search_trial_effective_enabled | default(false) | bool
     - business_hermes_chat_enabled | default(false) | bool
 
 - name: Require the candidate API to receive the finalized Hermes search environment
@@ -1046,7 +1064,7 @@
   no_log: true
   when:
     - release_pi5_route == 'fresh'
-    - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') == 'true'
+    - release_pi5_search_trial_effective_enabled | default(false) | bool
     - business_hermes_chat_enabled | default(false) | bool
 
 - name: Record same-release Pi5 candidate container IDs
