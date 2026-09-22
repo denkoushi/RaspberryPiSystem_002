@@ -249,13 +249,14 @@ function buildQueryQuestions(definition, removalCandidates = [], fieldMentions =
     ],
   );
   questions.change_action = choiceQuestion(
-    '前回の確定条件に対するこのメッセージの操作を選ぶ。現在の確定条件に合わない検索結果が混ざったという指摘は、条件自体を変更・解除する指示と区別する。参照する既存条件と訂正意図が明確なら correct_condition、条件を追加・指定項目だけを置換・指定項目を解除・新規検索する指示ならそれぞれを選び、意味を確定できなければ clarify を選ぶ。',
+    '前回の確定条件に対するこのメッセージの操作を選ぶ。現在の確定条件に合わない検索結果が混ざったという指摘は、条件自体を変更・解除する指示と区別する。参照する既存条件と訂正意図が明確なら correct_condition、条件を追加・指定項目だけを置換・指定項目を解除・新規検索する指示ならそれぞれを選ぶ。前回の検索対象・条件・件数・並び順を変えず、その記録の項目や原文を表示するだけなら update_display を選ぶ。条件変更も含む要求は update_display ではなく該当する条件操作を選び、意味を確定できなければ clarify を選ぶ。',
     [
       { id: 'add_condition', description: '前回の条件を保持して条件を追加する' },
       { id: 'replace_condition', description: '指定された条件項目だけを置換する' },
       { id: 'remove_condition', description: '指定された条件項目を解除する' },
       { id: 'correct_condition', description: '前回の条件の誤りを訂正する' },
       { id: 'new_search', description: '前回とは別の検索を開始する' },
+      { id: 'update_display', description: '前回の検索対象・条件・件数・並び順をすべて保持し、表示する項目だけを指定する。検索条件の追加・置換・解除ではない' },
       { id: 'clarify', description: '操作の意味を確定できないので確認する' },
     ],
   );
@@ -409,6 +410,7 @@ function queryClassificationFromAnswers(answers, definition, question) {
     { id: 'remove_condition', description: '指定項目の解除' },
     { id: 'correct_condition', description: '前回条件の訂正' },
     { id: 'new_search', description: '新規検索' },
+    { id: 'update_display', description: '検索条件を保持して表示項目だけを指定' },
     { id: 'clarify', description: '意味不確定' },
   ], 'change_action');
   judgments.change_action = changeAction;
@@ -1249,13 +1251,19 @@ function operationDecision(question, evaluated, previousState) {
           ? 'correct_condition'
           : null;
   const judgedAction = evaluated?.query?.changeAction ?? null;
-  const rejectionReason = initialSearch ? null
-    : judgedAction === 'clarify' ? 'jev_clarification'
-      : !['add_condition', 'replace_condition', 'remove_condition', 'correct_condition', 'new_search'].includes(judgedAction) ? 'jev_action_unavailable'
-        : lexicalAction && lexicalAction !== judgedAction ? 'lexical_action_mismatch' : null;
+  // Display is already an independently replaceable part of SearchDelta.
+  // The JEV option need not add an action or schema to SearchState.
+  const displayOnly = judgedAction === 'update_display';
+  const mappedAction = displayOnly ? 'replace_condition' : judgedAction;
+  const rejectionReason = displayOnly && (initialSearch || evaluated.query.conversationTarget !== 'same_target') ? 'display_target_unresolved'
+    : displayOnly && evaluated.judgments.change_action.confidence < QUERY_CHOICE_POLICY.uncertainBelow ? 'display_operation_uncertain'
+      : initialSearch ? null
+        : judgedAction === 'clarify' ? 'jev_clarification'
+          : !['add_condition', 'replace_condition', 'remove_condition', 'correct_condition', 'new_search'].includes(mappedAction) ? 'jev_action_unavailable'
+            : lexicalAction && lexicalAction !== mappedAction ? 'lexical_action_mismatch' : null;
   return {
     initialSearch, lexicalAction, judgedAction, rejectionReason,
-    action: initialSearch ? 'new_search' : rejectionReason ? null : judgedAction,
+    action: rejectionReason ? null : initialSearch ? 'new_search' : mappedAction,
   };
 }
 
@@ -1320,6 +1328,17 @@ function buildSearchDelta(question, evaluated, structured, previousState, remova
   const limit = explicitLimitFromQuestion(normalized);
   if (limit !== null) delta.limit = limit;
   if (hasRecentRequest(normalized)) delta.sort = { field: 'discoveredOn', direction: 'desc' };
+  if (evaluated.query?.changeAction === 'update_display') {
+    // Never apply speculative filters, nor silently discard a conflicting or
+    // unknown condition, when the chosen operation changes only presentation.
+    if (Object.keys(exactInclude).length || Object.keys(exactExclude).length
+      || delta.exact.organization || Object.keys(semanticInclude).length || Object.keys(semanticExclude).length
+      || limit !== null || delta.sort) {
+      delta.unresolvedConditions.push({ kind: 'action', field: 'changeAction', term: question, reason: 'display_condition_conflict' });
+    }
+    return { action: appliedAction, display: requestedDisplay,
+      unresolvedConditions: [...previousState.unresolvedConditions, ...delta.unresolvedConditions] };
+  }
   if (appliedAction === 'remove_condition') {
     delta.remove = removal?.selected?.remove ?? {};
     delta.exact = { include: {}, exclude: {}, ...removal?.selected?.exact, organization: structuredOrganizationForState(removal?.organization) };
@@ -1560,6 +1579,9 @@ export class AuthorizedRecordClassifier {
       fieldMentionJudgments: evaluated.judgments,
     });
     const delta = buildSearchDelta(question, evaluated, structured, previousState, removal);
+    if (evaluated.query.changeAction === 'update_display' && pending) {
+      delta.unresolvedConditions.push({ kind: 'action', field: 'changeAction', reason: 'pending_condition_requires_resolution' });
+    }
     const deltaDigest = deltaFingerprint(delta);
     const operationDiagnostic = {
       model: evaluated.model,
@@ -1614,7 +1636,7 @@ export class AuthorizedRecordClassifier {
       rejectionReason: allUnresolved.length ? 'removal_target_unresolved' : conditionCount === 0 ? 'no_remaining_conditions' : null,
     } : undefined;
     if (allUnresolved.length || conditionCount === 0 || displayOnly) {
-      const nextPending = allUnresolved.length
+      const nextPending = evaluated.query.changeAction === 'update_display' && pending ? pending : allUnresolved.length
         ? {
           request: question,
           question: `次の検索条件の意味を確認してください: ${unresolvedLabels.join('、')}`,
