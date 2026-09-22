@@ -1,35 +1,11 @@
 import { machineTypeDisplayKey } from '../signage/mobile-placement-parts-shelf/normalizers.js';
+import { normalizeOutsideDimensionsDisplay } from '../production-schedule/production-schedule-snapshot-fields.js';
 
-/** rowData から外寸らしき列を探す（環境差に耐える複数キー）。 */
-const OUTSIDE_DIMENSION_ROW_DATA_KEYS = [
-  'FGAISUN',
-  'FSUNPO',
-  'FGAISUNPO',
-  'OutsideDimensions',
-  'GAISUN',
-  'FGAISUNKEI',
-] as const;
-
-/**
- * 外寸表示用: 前後空白除去・連続空白を1つに（カード内の固定レイアウト向け）。
- */
-export function normalizeOutsideDimensionsDisplay(raw: string): string {
-  return raw.replace(/\s+/g, ' ').trim();
-}
-
-export function extractOutsideDimensionsDisplay(rowData: Record<string, unknown>): string | null {
-  for (const key of OUTSIDE_DIMENSION_ROW_DATA_KEYS) {
-    const v = rowData[key];
-    if (typeof v === 'string') {
-      const s = normalizeOutsideDimensionsDisplay(v);
-      if (s.length > 0) return s;
-    }
-    if (typeof v === 'number' && Number.isFinite(v)) {
-      return String(v);
-    }
-  }
-  return null;
-}
+// Compatibility exports for the remaining pallet list reader and existing callers.
+export {
+  extractOutsideDimensionsDisplay,
+  normalizeOutsideDimensionsDisplay,
+} from '../production-schedule/production-schedule-snapshot-fields.js';
 
 /** 着手日（DB Date）を YYYY-MM-DD で返す。 */
 export function formatPlannedStartDateForPalletDisplay(date: Date | null | undefined): string | null {

@@ -1,7 +1,8 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
-import { listScheduleRowsByProductNo } from '../part-measurement/part-measurement-schedule-lookup.service.js';
+import { listScheduleRowsByProductNo } from '../production-schedule/production-schedule-lookup.service.js';
+import { findProductionSchedulePlacementSnapshot } from '../production-schedule/production-schedule-snapshot.service.js';
 import { normalizeSlipToken } from './mobile-placement-slip-match.js';
 
 export type RegisterOrderPlacementInput = {
@@ -54,11 +55,8 @@ export async function registerOrderPlacement(input: RegisterOrderPlacementInput)
     );
   }
 
-  const row = await prisma.csvDashboardRow.findFirst({
-    where: { id: primary.rowId },
-    select: { id: true, rowData: true }
-  });
-  if (!row) {
+  const snapshot = await findProductionSchedulePlacementSnapshot(primary.rowId);
+  if (!snapshot) {
     throw new ApiError(
       404,
       'スケジュール行の取得に失敗しました',
@@ -67,12 +65,11 @@ export async function registerOrderPlacement(input: RegisterOrderPlacementInput)
     );
   }
 
-  const rd = (row.rowData ?? {}) as Record<string, unknown>;
   const scheduleSnapshot: Record<string, unknown> = {
-    ProductNo: rd.ProductNo ?? null,
-    FSEIBAN: rd.FSEIBAN ?? null,
-    FHINCD: rd.FHINCD ?? null,
-    FHINMEI: rd.FHINMEI ?? null
+    ProductNo: snapshot.manufacturingOrderNo,
+    FSEIBAN: snapshot.seiban,
+    FHINCD: snapshot.partCode,
+    FHINMEI: snapshot.partName
   };
 
   const scheduleJson = scheduleSnapshot as Prisma.InputJsonValue;
@@ -90,7 +87,7 @@ export async function registerOrderPlacement(input: RegisterOrderPlacementInput)
         clientDeviceId: input.clientDeviceId,
         shelfCodeRaw: shelfStored,
         manufacturingOrderBarcodeRaw: manufacturingOrderStored,
-        csvDashboardRowId: row.id,
+        csvDashboardRowId: snapshot.rowId,
         scheduleSnapshot: scheduleJson,
         branchNo: nextBranch,
         actionType: 'CREATE_BRANCH'
@@ -102,7 +99,7 @@ export async function registerOrderPlacement(input: RegisterOrderPlacementInput)
         manufacturingOrderBarcodeRaw: manufacturingOrderStored,
         branchNo: nextBranch,
         shelfCodeRaw: shelfStored,
-        csvDashboardRowId: row.id,
+        csvDashboardRowId: snapshot.rowId,
         scheduleSnapshot: scheduleJson,
         lastEventId: createdEv.id
       }
@@ -113,7 +110,7 @@ export async function registerOrderPlacement(input: RegisterOrderPlacementInput)
 
   return {
     event: ev,
-    resolvedRowId: row.id,
+    resolvedRowId: snapshot.rowId,
     branchState
   };
 }

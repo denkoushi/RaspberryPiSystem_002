@@ -1,4 +1,4 @@
-import type { PartMeasurementScheduleRowCandidate } from '../part-measurement/part-measurement-schedule-lookup.service.js';
+import type { ProductionScheduleLookupRow } from '../production-schedule/production-schedule-lookup.service.js';
 
 /** 配膳・照合で共通のトークン正規化（全角スペース等） */
 export function normalizeSlipToken(value: string): string {
@@ -10,8 +10,8 @@ export function normalizeSlipToken(value: string): string {
  * ProductNo の winner 条件と ORDER BY は lookup 側で揃えているので先頭を採用する。
  */
 export function pickPrimaryScheduleRowForOrder(
-  rows: PartMeasurementScheduleRowCandidate[]
-): PartMeasurementScheduleRowCandidate | null {
+  rows: ProductionScheduleLookupRow[]
+): ProductionScheduleLookupRow | null {
   return rows[0] ?? null;
 }
 
@@ -47,8 +47,8 @@ export type SlipPairMatchResult =
  * 呼び出し側で DB から解決した候補行を渡す。
  */
 export function evaluateSlipPairMatch(params: {
-  transferRow: PartMeasurementScheduleRowCandidate | null;
-  actualRow: PartMeasurementScheduleRowCandidate | null;
+  transferRow: ProductionScheduleLookupRow | null;
+  actualRow: ProductionScheduleLookupRow | null;
   transferPartBarcodeRaw: string;
   actualPartBarcodeRaw: string;
 }): SlipPairMatchResult {

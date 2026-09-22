@@ -78,6 +78,95 @@ module.exports = {
   },
   overrides: [
     {
+      "files": [
+        "src/services/part-measurement/part-measurement-resolve.service.ts",
+        "src/services/mobile-placement/mobile-placement-order-lookup.ts",
+        "src/services/mobile-placement/haizen-placement.service.ts",
+        "src/services/mobile-placement/mobile-placement-order-placement.service.ts",
+        "src/services/mobile-placement/mobile-placement-slip-match.ts",
+        "src/services/pallet-visualization/pallet-visualization-schedule-resolver.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "**/part-measurement-schedule-lookup.service",
+                  "**/part-measurement-schedule-lookup.service.js",
+                  "**/part-measurement-schedule-lookup.service.ts"
+                ],
+                "message": "日程検索は production-schedule/production-schedule-lookup.service.js を参照する。"
+              },
+              {
+                "group": [
+                  "**/part-measurement/index",
+                  "**/part-measurement/index.js",
+                  "**/part-measurement/index.ts"
+                ],
+                "importNames": [
+                  "listScheduleRowsByProductNo",
+                  "listScheduleRowsByFseiban",
+                  "resolveMachineNameForSeiban",
+                  "PartMeasurementScheduleRowCandidate"
+                ],
+                "message": "日程検索を part-measurement の再export経由で参照しない。"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/services/production-schedule/production-schedule-lookup.service.ts",
+        "src/services/production-schedule/production-schedule-snapshot.service.ts",
+        "src/services/production-schedule/production-schedule-snapshot-fields.ts",
+        "src/services/production-schedule/seiban-progress.service.ts",
+        "src/services/production-schedule/production-schedule-effective-completion.sql.ts",
+        "src/services/production-schedule/constants.ts",
+        "src/services/production-schedule/row-resolver/*.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "**/part-measurement/**",
+                  "**/mobile-placement/**",
+                  "**/pallet-visualization/**",
+                  "**/production-schedule-query.service",
+                  "**/production-schedule-query.service.js",
+                  "**/production-schedule-query.service.ts",
+                  "**/production-schedule-query/**"
+                ],
+                "message": "日程lookupの読取依存から利用業務や広いquery facadeへ逆依存させない。"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      files: [
+        'src/services/mobile-placement/mobile-placement-order-placement.service.ts',
+        'src/services/mobile-placement/haizen-placement.service.ts',
+        'src/services/pallet-visualization/pallet-visualization-schedule-resolver.ts'
+      ],
+      rules: {
+        'no-restricted-syntax': [
+          'error',
+          {
+            selector: "MemberExpression[property.name='csvDashboardRow'], MemberExpression[computed=true][property.value='csvDashboardRow'], Property[key.name='csvDashboardRow'], Property[key.value='csvDashboardRow']",
+            message: '選択済み日程行の読取は production-schedule-snapshot.service.js の公開窓口を使う。'
+          }
+        ]
+      }
+    },
+    {
       files: ['src/services/part-measurement/self-inspection.service.ts'],
       rules: {
         'max-lines': ['error', { max: 350, skipBlankLines: true, skipComments: true }],
