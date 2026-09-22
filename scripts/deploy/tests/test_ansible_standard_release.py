@@ -86,6 +86,23 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertTrue(task["no_log"])
         self.assertEqual(task["ansible.builtin.lineinfile"]["mode"], "0600")
 
+    def test_omitted_trial_toggle_preserves_the_approved_private_search_settings(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_pi5/tasks/business-hermes-chat-prepare.yml").read_text())
+        preserve = next(item for item in tasks if item["name"] == "Preserve approved search trial settings when the toggle is omitted")
+        self.assertTrue(preserve["no_log"])
+        self.assertIn("lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') == ''", preserve["when"])
+        preserved = str(next(item for item in tasks if item["name"] == "Select the approved search trial settings to preserve"))
+        for key in (
+            "HERMES_SEARCH_TRIAL_ENABLED",
+            "HERMES_SEARCH_TRIAL_JEV_ENABLED",
+            "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED",
+            "HERMES_JEV_PROVIDER",
+            "HERMES_SEARCH_RECORD_SOURCE",
+            "HERMES_SEARCH_RECORD_CLASSIFICATION_STORE",
+            "TYPESAFE_API_KEY",
+        ):
+            self.assertIn(key, preserved)
+
     def test_answer_cache_credentials_use_private_env_file_in_start_and_rollback(self) -> None:
         tasks_root = ANSIBLE / "roles/release_pi5/tasks"
         tasks = yaml.safe_load((tasks_root / "business-hermes-answer-cache.yml").read_text())
@@ -1852,10 +1869,14 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
             rebind["when"],
             [
                 "release_pi5_route == 'fresh'",
-                "lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') in ['true', 'false']",
                 "business_hermes_chat_enabled | default(false) | bool",
             ],
         )
+        effective = next(
+            task for task in prepare_tasks
+            if task.get("name") == "Determine the effective Hermes search trial setting"
+        )
+        self.assertIn("HERMES_SEARCH_TRIAL_ENABLED=true", str(effective))
         inspect_index = next(
             index
             for index, task in enumerate(prepare_tasks)
@@ -1876,6 +1897,7 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         self.assertLess(startup_index, ids_index)
         self.assertLess(ids_index, inspect_index)
         self.assertLess(inspect_index, assert_index)
+        self.assertIn("release_pi5_search_trial_effective_enabled", str(prepare_tasks[inspect_index]))
         self.assertIn("HERMES_SEARCH_TRIAL_ENABLED=true", str(prepare_tasks[assert_index]))
         self.assertIn("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=false", str(prepare_tasks[assert_index]))
         self.assertIn("HERMES_JEV_PROVIDER=typesafe-direct", str(prepare_tasks[assert_index]))

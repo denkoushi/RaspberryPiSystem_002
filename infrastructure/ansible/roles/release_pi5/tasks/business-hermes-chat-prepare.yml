@@ -67,6 +67,40 @@
   register: release_pi5_chat_env_copy
   no_log: true
 
+- name: Read the previous consultation environment when the search trial toggle is omitted
+  ansible.builtin.slurp:
+    src: "{{ release_pi5_run_dir }}/consultation-compose.env.before"
+  register: release_pi5_chat_env_search_trial_backup
+  no_log: true
+  when:
+    - release_pi5_chat_env_source.stat.exists | default(false) | bool
+    - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') == ''
+
+- name: Select the approved search trial settings to preserve
+  ansible.builtin.set_fact:
+    release_pi5_search_trial_preserved_lines: >-
+      {{
+        (release_pi5_chat_env_search_trial_backup.content | b64decode).splitlines()
+        | select('match', '^(HERMES_SEARCH_TRIAL_ENABLED|HERMES_SEARCH_TRIAL_JEV_ENABLED|HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED|HERMES_JEV_PROVIDER|HERMES_SEARCH_RECORD_SOURCE|HERMES_SEARCH_RECORD_CLASSIFICATION_STORE|TYPESAFE_API_KEY|HERMES_INFERENCE_ORIGIN|HERMES_INFERENCE_TOKEN|HERMES_INFERENCE_EGRESS|HERMES_SEARCH_ARTIFACT_ROOT|HERMES_TRIAL_SNAPSHOT_PATH|HERMES_ORGANIZED_MANIFEST)=')
+        | list
+      }}
+  when:
+    - release_pi5_chat_env_search_trial_backup.content is defined
+    - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') == ''
+
+- name: Preserve approved search trial settings when the toggle is omitted
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: "^{{ item.split('=')[0] }}="
+    line: "{{ item }}"
+    create: false
+    mode: '0600'
+  loop: "{{ release_pi5_search_trial_preserved_lines | default([]) }}"
+  no_log: true
+  when:
+    - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') == ''
+    - release_pi5_search_trial_preserved_lines | default([]) | length > 0
+
 - name: Bind consultation credentials only to the candidate API environment
   ansible.builtin.lineinfile:
     path: "{{ release_pi5_chat_env_file }}"
