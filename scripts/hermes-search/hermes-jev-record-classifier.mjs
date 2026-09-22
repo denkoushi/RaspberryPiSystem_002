@@ -1347,7 +1347,18 @@ function buildSearchDelta(question, evaluated, structured, previousState, remova
       // Code resolves the source field; JEV resolves whether showing it is
       // requested. Generic semantic guesses cannot override an exact heading.
       if (evaluated.judgments.display_source_heading?.noul >= QUERY_DECISION_POLICY.includeAt) {
-        requestedDisplay = { originalText: true, requested: ['originalText'] };
+        const otherIntent = evaluated.judgments.display_other_fields?.noul;
+        if (otherIntent >= QUERY_DECISION_POLICY.includeAt) {
+          if (!requestedDisplay.requested?.length || requestedDisplay.requested.some((id) => !(evaluated.judgments[`display:${id}`]?.noul >= QUERY_DECISION_POLICY.includeAt))) {
+            delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_intent_unresolved' });
+          }
+          requestedDisplay = { originalText: true, requested: [...new Set(['originalText', ...requestedDisplay.requested])] };
+        } else {
+          if (!(otherIntent < QUERY_DECISION_POLICY.uncertainFrom)) {
+            delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_intent_unresolved' });
+          }
+          requestedDisplay = { originalText: true, requested: ['originalText'] };
+        }
       } else {
         delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_heading_intent_unresolved' });
       }
@@ -1403,6 +1414,11 @@ async function classifyText(question, definition, evaluate, mode, conversation =
       '挙げた項目を表示する肯定的な要求であり、非表示の要求はない。',
       '非表示の要求、検索条件、単なる言及、または表示意図を確定できない。',
     );
+    questions.display_other_fields = noulQuestion(
+      `要求中の項目「${sourceHeadings.map(({ label }) => label).join('、')}」そのものとは別に、他の表示内容も独立して求めているか。項目名に含まれる文字や関連しそうな意味から別項目を補わない。表示内容の候補: ${DISPLAY_REQUESTS.map(([, description]) => description).join('、')}。`,
+      '情報源の項目名とは別に、追加の表示内容も明確に要求している。',
+      '情報源の項目名への要求だけであり、別の表示内容は独立して要求していない。',
+    );
   }
   const result = await evaluate({
     model: 'typesafe-ai/jev',
@@ -1413,6 +1429,7 @@ async function classifyText(question, definition, evaluate, mode, conversation =
   const evaluated = classificationFromAnswers(result?.answers, definition, mode, question);
   if (sourceHeadings.length) {
     evaluated.judgments.display_source_heading = normalizeNoulJudgment(result.answers.display_source_heading, 'display_source_heading');
+    evaluated.judgments.display_other_fields = normalizeNoulJudgment(result.answers.display_other_fields, 'display_other_fields');
   }
   if (mode === 'query' && conversation.removalCandidates?.length) {
     evaluated.judgments.removal_target = normalizeChoiceJudgment(result.answers.removal_target,
@@ -1632,6 +1649,7 @@ export class AuthorizedRecordClassifier {
       conversationTargetJudgment: evaluated.judgments.conversation_target,
       changeActionJudgment: evaluated.judgments.change_action,
       displayHeadingJudgment: evaluated.judgments.display_source_heading ?? null,
+      displayOtherFieldsJudgment: evaluated.judgments.display_other_fields ?? null,
       code: operationDecision(question, evaluated, previousState),
       organization: {
         ...structuredOrganizationForState(structured.organization),

@@ -81,7 +81,7 @@ function evaluator({ state, questions }) {
                 ? 'add_condition'
                 : 'clarify';
       answers[key] = choiceAnswer(selected, options);
-    } else if (key === 'display_source_heading') {
+    } else if (key === 'display_source_heading' || key === 'display_other_fields') {
       answers[key] = noulAnswer(0.01);
     } else if (key.startsWith('display:')) {
       const displayKey = key.slice('display:'.length);
@@ -605,6 +605,7 @@ test('maps a display-only judgment to the existing Delta without changing the se
   let displayNoul = 0.94;
   let sourceHeadingNoul = 0.94;
   let targetConfidence = 0.94;
+  let otherFieldsNoul = 0.01;
   const classifier = new AuthorizedRecordClassifier({ snapshotPath,
     storePath: path.join(directory, 'classifications.json'), classificationEnabled: false,
     evaluateImplementation: async (input) => {
@@ -617,6 +618,7 @@ test('maps a display-only judgment to the existing Delta without changing the se
       };
       result.answers['display:cause'] = noulAnswer(displayNoul);
       if (input.questions.display_source_heading) result.answers.display_source_heading = noulAnswer(sourceHeadingNoul);
+      if (input.questions.display_other_fields) result.answers.display_other_fields = noulAnswer(otherFieldsNoul);
       return result;
     },
   });
@@ -637,6 +639,16 @@ test('maps a display-only judgment to the existing Delta without changing the se
     exact: { ...previous.exact, include: { partNumber: 'PART-1' }, exclude: { machineName: '旋盤B' } },
     semantic: { include: { process: 'turning' }, exclude: { phenomenon: ['surface_damage'] } },
   };
+  otherFieldsNoul = 0.94;
+  const combined = await classifier.answer('起因部署と原因を表示して', { searchState: previous });
+  assert.equal(combined.searchDelta.applied, true);
+  assert.deepEqual(combined.searchState.display, { originalText: true, requested: ['originalText', 'cause'] });
+  assert.deepEqual(combined.searchState.exact, previous.exact);
+  otherFieldsNoul = 0.4;
+  const uncertainCombined = await classifier.answer('起因部署と原因を表示して', { searchState: previous });
+  assert.equal(uncertainCombined.searchDelta.applied, false);
+  assert.deepEqual(uncertainCombined.searchState, previous);
+  otherFieldsNoul = 0.01;
   const retained = await classifier.answer('その記録の起因部署名を表示して', { searchState: constrained });
   assert.deepEqual(retained.searchState.exact, constrained.exact);
   assert.deepEqual(retained.searchState.semantic, constrained.semantic);
