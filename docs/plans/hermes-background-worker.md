@@ -57,6 +57,8 @@ The same real Chat setup stopped at `その記録の起因部署名を表示し�
 
 Add a display-only option to the existing query operation Choice, validate its prior target and conflicts, and map it to the existing display-only replacement Delta. Preserve exact/semantic filters, organization sets, limit, sort and original text; unknown/conflicting conditions and pending clarification must not disappear. Do not change SearchState, record classification v4, lexical guards for other operations, deployment or authentication. Focused tests cover the captured request/state, the already-used field-display paraphrases, retained conditions and conflicting/unknown values. Then use normal PR/CI/review/merge/standard Deploy and the same real Chat setup before the unchanged OR request. Unit judgments do not replace real JEV/API/DB/UI acceptance.
 
+Review identified an empty-display replacement. Exact headings from the existing source definition can use its existing original-text projection without adding display fields or another dictionary; otherwise an empty/uncertain display selection confirms and preserves the prior state. Regression covers both source-heading resolution and genuinely unresolved display requests.
+
 ### Follow-up: distinguish operation-decision rejection reasons (2026-09-22)
 
 Keep the captured OR request `仙台工場または三島工場の資材課の最近の不適合2件を新しく検索して` and its revision-7 SearchState unchanged. Existing evidence resolves both factories and the department but combines JEV clarification and lexical/JEV disagreement as `change_intent_unresolved`.

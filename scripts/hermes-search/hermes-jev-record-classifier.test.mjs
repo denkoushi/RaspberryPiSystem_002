@@ -600,6 +600,7 @@ test('maps a display-only judgment to the existing Delta without changing the se
   };
   await writeFile(snapshotPath, JSON.stringify({ ...snapshot, records }));
   let displayConfidence = 0.94;
+  let displayNoul = 0.94;
   const classifier = new AuthorizedRecordClassifier({ snapshotPath,
     storePath: path.join(directory, 'classifications.json'), classificationEnabled: false,
     evaluateImplementation: async (input) => {
@@ -609,7 +610,7 @@ test('maps a display-only judgment to the existing Delta without changing the se
         ...choiceAnswer('update_display', Object.keys(input.questions.change_action.criteria)),
         confidence: displayConfidence,
       };
-      result.answers['display:cause'] = noulAnswer(0.94);
+      result.answers['display:cause'] = noulAnswer(displayNoul);
       return result;
     },
   });
@@ -649,6 +650,21 @@ test('maps a display-only judgment to the existing Delta without changing the se
   assert.equal(stillPending.searchDelta.applied, false);
   assert.deepEqual(stillPending.confirmationPending, pending);
   assert.deepEqual(stillPending.searchState, previous);
+  for (const noul of [0.01, 0.4]) {
+    displayNoul = noul;
+    for (const question of ['その記録の起因部署名を表示して', 'その記録の機械名を表示して']) {
+      const sourceField = await classifier.answer(question, { searchState: previous });
+      assert.equal(sourceField.searchDelta.applied, true);
+      assert.deepEqual(sourceField.searchState.display, { originalText: true, requested: ['originalText'] });
+      assert.deepEqual(sourceField.searchState.exact, previous.exact);
+    }
+    const unresolvedDisplay = await classifier.answer('その記録の未定義項目を表示して', { searchState: previous });
+    assert.equal(unresolvedDisplay.status, 'clarification');
+    assert.equal(unresolvedDisplay.searchDelta.applied, false);
+    assert.deepEqual(unresolvedDisplay.searchState, previous);
+    assert.ok(unresolvedDisplay.searchDiagnostics.operationDecision.proposedDelta.unresolvedConditions.some(({ reason }) => reason === 'display_field_unresolved'));
+  }
+  displayNoul = 0.94;
   displayConfidence = 0.2;
   const uncertain = await classifier.answer('その記録の起因部署名を表示して', { searchState: previous });
   assert.equal(uncertain.searchDelta.applied, false);

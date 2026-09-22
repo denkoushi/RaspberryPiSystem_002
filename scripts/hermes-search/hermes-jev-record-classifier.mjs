@@ -753,12 +753,16 @@ function previousOrganizationTermsAfterFacility(previousOrganization) {
     .flatMap((term) => organizationDepartmentTermsAfterFacility(term)))];
 }
 
+function sourceFieldHeadings() {
+  return Object.entries(SOURCE_FIELDS).flatMap(([field, label]) =>
+    [label, `${label}名`, `${label}欄`].map((heading) => ({ field, label, heading })));
+}
+
 function organizationQuestionInput(question, records, judgments = {}) {
   const normalized = text(question).normalize('NFKC');
   const values = organizationIndex(records);
   const knownTerms = new Set(values.flatMap((value) => value.terms.map(normalizedOrganizationValue)));
-  const headings = Object.entries(SOURCE_FIELDS).flatMap(([field, label]) =>
-    [label, `${label}名`, `${label}欄`].map((heading) => ({ field, label, heading })));
+  const headings = sourceFieldHeadings();
   const mentions = [];
   const explicitTerms = [];
   const unresolved = [];
@@ -1319,7 +1323,7 @@ function buildSearchDelta(question, evaluated, structured, previousState, remova
       ...(action ? [] : [{ kind: 'action', field: 'changeAction', term: question, reason: 'change_intent_unresolved' }]),
     ],
   };
-  const requestedDisplay = evaluated.query?.display ?? displayRequestFrom(question, evaluated.judgments ?? {});
+  let requestedDisplay = evaluated.query?.display ?? displayRequestFrom(question, evaluated.judgments ?? {});
   if (appliedAction === 'new_search' || requestedDisplay.requested?.length) delta.display = requestedDisplay;
   const unsupportedSource = normalized.match(/(?:設備点検|計測機器|作業要領書|作業要領|要領書)/u)?.[0];
   if (unsupportedSource) {
@@ -1329,6 +1333,17 @@ function buildSearchDelta(question, evaluated, structured, previousState, remova
   if (limit !== null) delta.limit = limit;
   if (hasRecentRequest(normalized)) delta.sort = { field: 'discoveredOn', direction: 'desc' };
   if (evaluated.query?.changeAction === 'update_display') {
+    if (!requestedDisplay.requested?.length) {
+      // An exact source heading can be shown by the existing original-text
+      // projection even when it has no semantic DISPLAY_REQUESTS category.
+      const headings = sourceFieldHeadings();
+      const spans = normalized.match(/[\p{Script=Han}\p{Script=Katakana}々ーA-Za-z0-9]+/gu) ?? [];
+      if (spans.some((span) => headings.some(({ heading }) => heading === span))) {
+        requestedDisplay = { ...requestedDisplay, requested: ['originalText'] };
+      } else {
+        delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_field_unresolved' });
+      }
+    }
     // Never apply speculative filters, nor silently discard a conflicting or
     // unknown condition, when the chosen operation changes only presentation.
     if (Object.keys(exactInclude).length || Object.keys(exactExclude).length
