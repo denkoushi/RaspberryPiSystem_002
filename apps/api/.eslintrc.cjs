@@ -154,7 +154,8 @@ module.exports = {
       files: [
         'src/services/mobile-placement/mobile-placement-order-placement.service.ts',
         'src/services/mobile-placement/haizen-placement.service.ts',
-        'src/services/pallet-visualization/pallet-visualization-schedule-resolver.ts'
+        'src/services/pallet-visualization/pallet-visualization-schedule-resolver.ts',
+        'src/services/pallet-visualization/pallet-visualization-query.service.ts'
       ],
       rules: {
         'no-restricted-syntax': [

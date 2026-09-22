@@ -69,3 +69,39 @@ export async function findProductionSchedulePalletSnapshot(
     outsideDimensionsDisplay: extractOutsideDimensionsDisplay(fields),
   };
 }
+
+export type ProductionSchedulePalletDisplaySnapshot = {
+  rowId: string;
+  plannedQuantity: number | null;
+  plannedStartDate: Date | null;
+  outsideDimensionsDisplay: string | null;
+};
+
+/** Batch fallback for pallet lists. Unlike registration, supplements are not dashboard-filtered. */
+export async function listProductionSchedulePalletDisplaySnapshots(
+  rowIds: string[]
+): Promise<ProductionSchedulePalletDisplaySnapshot[]> {
+  if (rowIds.length === 0) return [];
+
+  const rows = await prisma.csvDashboardRow.findMany({
+    where: { id: { in: rowIds } },
+    select: {
+      id: true,
+      rowData: true,
+      orderSupplements: {
+        take: 1,
+        select: { plannedQuantity: true, plannedStartDate: true },
+      },
+    },
+  });
+  return rows.map((row) => {
+    const rowData = (row.rowData ?? null) as Record<string, unknown> | null;
+    const supplement = row.orderSupplements[0];
+    return {
+      rowId: row.id,
+      plannedQuantity: supplement?.plannedQuantity ?? null,
+      plannedStartDate: supplement?.plannedStartDate ?? null,
+      outsideDimensionsDisplay: rowData ? extractOutsideDimensionsDisplay(rowData) : null,
+    };
+  });
+}
