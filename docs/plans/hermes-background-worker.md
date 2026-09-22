@@ -33,6 +33,14 @@ Limit this repair to maintenance classification-gate delivery and fresh/settled 
 Legitimate settled/chat-disabled skips must continue without reading absent content; a required failed or missing read must stop before startup. Use the existing deployment tests for these two regressions, then normal PR/CI/review/merge and the canonical deployment/maintenance entrypoint.
 Restore from the existing Vault and checksum-verified Pi5 artifact, without modifying the v4 classification store or the search implementation. Compare the store hash before/after, re-identify the browser-facing active API, verify scope and JEV-record mode, and only then resume the unchanged #1459 acceptance cases. Ordinary consultation responses are excluded from that acceptance evidence.
 
+## Follow-up: resolve the condition being removed (2026-09-22)
+
+The captured real request `仙台工場の指定を解除して` selected `remove_condition`, but code treated it as whole-organization removal, leaving no usable condition and rejecting the delta. The original raw JEV response was neither persisted nor returned; do not present a later judgment as that original response. Keep the restored deployment/authentication path unchanged.
+
+Build bounded removal candidates from the current SearchState and existing organization resolver. Ask JEV for the target separately from the operation in the existing query call, validate the selected candidate in code, and connect only that candidate to the existing Delta. Unknown targets require confirmation, never fallback to whole-organization removal. Preserve unrelated department, semantic, count, sort, and display conditions. Keep only the relevant typed judgments/target/rejection evidence in the existing authenticated search diagnostics, without raw records, secrets, or a new diagnostic/search route.
+
+Validation stays within the fixed removal cases and paraphrases plus affected existing regressions: factory-only removal after separate/compound organization setup, preservation of department/process/limit/sort, unknown target, and unchanged set search/refinement. Use normal PR/CI/review/merge and standard Deploy, then resume the same real JEV/API/PostgreSQL/floating-chat acceptance; stop on failure without changing expectations. Classification remains OFF with v4 and the saved store unchanged.
+
 ## Progress
 
 - [x] 2026-09-15: Audited source export, scheduling, adoption, DGX admission and container boundaries.

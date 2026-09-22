@@ -88,11 +88,12 @@ test('worker reads the classification gate from startup environment independentl
 
 test('worker forwards the existing session to the real-record classifier', async () => {
   let received;
+  const conditionChange = { selectedTarget: null, remove: {}, rejectionReason: 'removal_target_unresolved' };
   const worker = new TrialWorker({
     recordClassifier: {
       answer: async (question, conversation) => {
         received = { question, conversation };
-        return { status: 'clarification', answer: '確認が必要です。', recordIds: [], elapsedMs: 0 };
+        return { status: 'clarification', answer: '確認が必要です。', recordIds: [], elapsedMs: 0, searchDiagnostics: { conditionChange } };
       },
       metrics: () => ({})
     }
@@ -104,6 +105,7 @@ test('worker forwards the existing session to the real-record classifier', async
     jevDialogue: [{ role: 'assistant', content: '追加条件を指定してください。' }],
   });
   assert.equal(result.status, 'clarification');
+  assert.deepEqual(result.searchDiagnostics.conditionChange, conditionChange);
   assert.deepEqual(received, {
     question: '続きの質問',
     conversation: {

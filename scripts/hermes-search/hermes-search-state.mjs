@@ -236,7 +236,7 @@ export function applySearchDelta(previous, rawDelta) {
   }
   if (delta.action === 'remove_condition') {
     const remove = delta.remove ?? {};
-    if (remove.organization) next.exact.organization = emptySearchState().exact.organization;
+    if (remove.organization) next.exact.organization = delta.exact?.organization ?? emptySearchState().exact.organization;
     else if (remove.organizationFacility) {
       next.exact.organization = delta.exact?.organization ?? emptySearchState().exact.organization;
     }
