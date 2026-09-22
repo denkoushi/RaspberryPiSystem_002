@@ -1296,7 +1296,8 @@ function structuredOrganizationForState(organization) {
 }
 
 function buildSearchDelta(question, evaluated, structured, previousState, removal = null) {
-  const action = deltaAction(question, evaluated, previousState);
+  const operation = operationDecision(question, evaluated, previousState);
+  const action = operation.action;
   const appliedAction = action ?? 'clarify';
   const normalized = question.normalize('NFKC');
   const exactInclude = { ...structured.include };
@@ -1330,7 +1331,10 @@ function buildSearchDelta(question, evaluated, structured, previousState, remova
       // Their answers do not select its target or add replacement conditions.
       ...(appliedAction === 'remove_condition' ? (removal?.unresolved ?? []) : (evaluated.query?.unresolved ?? [])),
       ...(structured.unresolved ?? []),
-      ...(action ? [] : [{ kind: 'action', field: 'changeAction', term: question, reason: 'change_intent_unresolved' }]),
+      ...(action ? [] : [{
+        kind: ['display_target_unresolved', 'display_operation_uncertain'].includes(operation.rejectionReason) ? 'display' : 'action',
+        field: 'changeAction', term: question, reason: 'change_intent_unresolved',
+      }]),
     ],
   };
   let requestedDisplay = evaluated.query?.display ?? displayRequestFrom(question, evaluated.judgments ?? {});
@@ -1640,6 +1644,17 @@ export class AuthorizedRecordClassifier {
     const retainedPending = evaluated.query.changeAction === 'update_display' && pendingDisplayOnly ? null : pending;
     const confirmedDisplay = evaluated.query.changeAction === 'update_display' && pendingDisplayOnly
       ? pending.confirmedInfo?.display : null;
+    const confirmedDisplayRequests = [...(confirmedDisplay?.requested ?? [])];
+    if (evaluated.query.changeAction === 'update_display' && delta.action !== 'clarify') {
+      const hasSourceHeading = mentionedSourceHeadings(question).length > 0;
+      if (hasSourceHeading && evaluated.judgments.display_source_heading?.noul >= QUERY_DECISION_POLICY.includeAt) {
+        confirmedDisplayRequests.push('originalText');
+      }
+      if (!hasSourceHeading || evaluated.judgments.display_other_fields?.noul >= QUERY_DECISION_POLICY.includeAt) {
+        confirmedDisplayRequests.push(...evaluated.query.display.requested.filter((id) =>
+          evaluated.judgments[`display:${id}`]?.noul >= QUERY_DECISION_POLICY.includeAt));
+      }
+    }
     if (confirmedDisplay && delta.display) {
       delta.display = { originalText: true,
         requested: [...new Set([...confirmedDisplay.requested, ...delta.display.requested])] };
@@ -1715,10 +1730,8 @@ export class AuthorizedRecordClassifier {
             candidates: item.field === 'removalTarget' ? removalCandidates.map(({ id, label }) => ({ id, label })) : item.kind === undefined ? [] : [item.optionId],
           })),
           confirmedInfo: { ...structured.include, organization: structured.organization,
-            ...(evaluated.query.changeAction === 'update_display' && delta.action !== 'clarify'
-              && evaluated.judgments.display_source_heading?.noul >= QUERY_DECISION_POLICY.includeAt
-              ? { display: { originalText: true, requested: [...new Set([...(confirmedDisplay?.requested ?? []), 'originalText'])] } }
-              : confirmedDisplay ? { display: confirmedDisplay } : {}),
+            ...(confirmedDisplayRequests.length
+              ? { display: { originalText: true, requested: [...new Set(confirmedDisplayRequests)] } } : {}),
           },
           unresolvedItems: allUnresolved.map((item) => item.kind === undefined ? `structured:organization:${item.term}` : `${item.kind}:${item.groupId ?? item.field}:${item.optionId ?? item.reason}`),
         }

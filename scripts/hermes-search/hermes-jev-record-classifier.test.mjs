@@ -606,6 +606,7 @@ test('maps a display-only judgment to the existing Delta without changing the se
   let sourceHeadingNoul = 0.94;
   let targetConfidence = 0.94;
   let otherFieldsNoul = 0.01;
+  let treatmentNoul = null;
   const classifier = new AuthorizedRecordClassifier({ snapshotPath,
     storePath: path.join(directory, 'classifications.json'), classificationEnabled: false,
     evaluateImplementation: async (input) => {
@@ -617,6 +618,7 @@ test('maps a display-only judgment to the existing Delta without changing the se
         confidence: displayConfidence,
       };
       result.answers['display:cause'] = noulAnswer(displayNoul);
+      if (treatmentNoul !== null) result.answers['display:treatment'] = noulAnswer(treatmentNoul);
       if (input.questions.display_source_heading) result.answers.display_source_heading = noulAnswer(sourceHeadingNoul);
       if (input.questions.display_other_fields) result.answers.display_other_fields = noulAnswer(otherFieldsNoul);
       return result;
@@ -655,6 +657,22 @@ test('maps a display-only judgment to the existing Delta without changing the se
   assert.deepEqual(confirmedCombined.searchState.display, { originalText: true, requested: ['originalText', 'cause'] });
   assert.deepEqual(confirmedCombined.searchState.exact, previous.exact);
   assert.equal(confirmedCombined.confirmationPending, null);
+  otherFieldsNoul = 0.94;
+  treatmentNoul = 0.4;
+  const partialFields = await classifier.answer('起因部署と原因と処置を表示して', { searchState: previous });
+  assert.equal(partialFields.searchDelta.applied, false);
+  assert.deepEqual(partialFields.confirmationPending.confirmedInfo.display.requested, ['originalText', 'cause']);
+  treatmentNoul = 0.94;
+  displayNoul = 0.01;
+  const completedFields = await classifier.answer('はい、処置も表示して', {
+    searchState: previous, confirmationPending: partialFields.confirmationPending,
+  });
+  assert.equal(completedFields.searchDelta.applied, true);
+  assert.deepEqual(completedFields.searchState.display.requested, ['originalText', 'cause', 'treatment']);
+  assert.deepEqual(completedFields.searchState.exact, previous.exact);
+  assert.equal(completedFields.confirmationPending, null);
+  treatmentNoul = null;
+  displayNoul = 0.94;
   otherFieldsNoul = 0.01;
   const retained = await classifier.answer('その記録の起因部署名を表示して', { searchState: constrained });
   assert.deepEqual(retained.searchState.exact, constrained.exact);
@@ -719,11 +737,23 @@ test('maps a display-only judgment to the existing Delta without changing the se
   assert.equal(uncertainTarget.searchDiagnostics.operationDecision.code.rejectionReason, 'display_target_unresolved');
   assert.deepEqual(uncertainTarget.searchState, previous);
   targetConfidence = 0.94;
+  const confirmedTarget = await classifier.answer('その記録の起因部署名を表示して', {
+    searchState: previous, confirmationPending: uncertainTarget.confirmationPending,
+  });
+  assert.equal(confirmedTarget.searchDelta.applied, true);
+  assert.equal(confirmedTarget.confirmationPending, null);
+  assert.deepEqual(confirmedTarget.searchState.exact, previous.exact);
   displayConfidence = 0.2;
   const uncertain = await classifier.answer('その記録の起因部署名を表示して', { searchState: previous });
   assert.equal(uncertain.searchDelta.applied, false);
   assert.equal(uncertain.searchDiagnostics.operationDecision.code.rejectionReason, 'display_operation_uncertain');
   displayConfidence = 0.94;
+  const confirmedOperation = await classifier.answer('その記録の起因部署名を表示して', {
+    searchState: previous, confirmationPending: uncertain.confirmationPending,
+  });
+  assert.equal(confirmedOperation.searchDelta.applied, true);
+  assert.equal(confirmedOperation.confirmationPending, null);
+  assert.deepEqual(confirmedOperation.searchState.exact, previous.exact);
   const noPrior = await classifier.answer('その記録の起因部署名を表示して');
   assert.equal(noPrior.searchDelta.applied, false);
   assert.equal(noPrior.searchDiagnostics.operationDecision.code.rejectionReason, 'display_target_unresolved');
