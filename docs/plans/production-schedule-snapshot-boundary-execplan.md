@@ -1,7 +1,7 @@
 ---
 title: Production schedule snapshot ownership boundary
 status: completed
-scope: Order placement registration, haizen scan, pallet item registration
+scope: Order placement registration, haizen scan, pallet item registration and list fallback
 updated: 2026-09-22
 ---
 
@@ -84,3 +84,42 @@ findProductionSchedulePlacementSnapshot(rowId) returns a nullable ProductionSche
 Revision note (2026-09-22): bounded continuation after the user requested resumption; previous local milestone remains preserved.
 
 Revision note (2026-09-22): completed local migration and verification; documented the test-mock type correction, exact validation results, compatibility exception, cleanup and deferred read policies.
+
+## Pallet list continuation (2026-09-22)
+
+This continuation starts from fetched origin/main d435175ced8ce4a53d3b3fcf02d351f8642de55f in branch feat/production-schedule-pallet-list-boundary. The preceding registration work is historical and was integrated in PR #1466. The current bounded change moves only the batch CSV fallback read in pallet-visualization-query.service.ts into the existing production-schedule snapshot owner. Preserve board/machine/summary responses, sorting, persisted-snapshot precedence per field, zero, missing rows, errors, exact projection and zero-or-one batch read. No schema, migration, HTTP, rendering or dependency changes.
+
+The list deliberately has no dashboard predicate on either rows or supplements. Do not reuse the dashboard-filtered registration reader. Add listProductionSchedulePalletDisplaySnapshots(rowIds: string[]) returning rowId, plannedQuantity, plannedStartDate and outsideDimensionsDisplay; an empty input performs no query. CSV conversion belongs to production schedule; date formatting and saved-snapshot precedence remain in the pallet consumer. No generic rowData crosses this boundary.
+
+### Progress
+
+- [x] Audited existing worktrees and created a clean worktree with the standard lifecycle CLI; original Pi and DGX work were preserved.
+- [x] Before production edits, real-PostgreSQL consumer characterization passed 13/13; Vitest 1.05s, test bodies 165ms.
+- [x] Moved the batch reader and CSV conversion; switched the consumer and extended the scoped ESLint guard. Existing dimension compatibility exports remain.
+- [x] Unchanged consumer cases 13/13, owner contract cases 11/11 and display helper cases 5/5 passed; 29 total in 0.837s. Changed-file lint, API/test types and 32 dependency probes passed. Both disposable runs ended with TEMP_RESOURCE_REMAINING=0 and no Docker inventory differences.
+
+### Validation and recovery
+
+Use Node 24 and corepack pnpm 9.15.9. Run the new pallet-visualization-query.service.test.ts before and after extraction in the disposable scripts/test/work-instructions-validation.sh environment, with env -i, CI=true, PI5_SCHEDULER_LEADER_ENABLED=0 and existing migrations applied only to the unique loopback database. Preserve its fixture and assertion file unchanged after the baseline. Run the existing production-schedule-snapshot.service.test.ts and pallet display helper tests at the final boundary. Add only focused new-reader tests for empty input and its semantic projection. Lint changed TypeScript, run tsc --noEmit -p tsconfig.build.json, type-check new test files, and prove the new guard rejects direct CSV access while the owner is allowed. The ordinary local validation budget is 20 minutes.
+
+For local recovery, restore only this continuation's tracked edits and remove only its new test files; do not reset other worktrees. Keep compatibility dimension exports for remaining existing callers/tests; the production-schedule module owns them, and removal requires an independently verified consumer migration. Barcode/part-search/assembly reads and Pi-DGX contracts remain separate work. Production updates, if undertaken, require the same exact-SHA CI and canonical Pi5 deployment evidence as the preceding milestone.
+
+Revision note: added the narrowly scoped pallet-list continuation and its pre-move characterization gate.
+
+### Outcome and evidence
+
+This continuation is complete as a reviewable local implementation. No commit, push, PR, merge or production connection/deployment was performed in this continuation. The board, single-machine and machine-summary consumers all use the production-schedule-owned batch projection. Consumer characterization is byte-identical to the pre-move file (SHA-256 3e59e22758b87368629dc73411e120b4be8a1cd45902c77b2f7c85e86aad5413). The existing single-row registration contracts still pass. No new dependency, migration, API change, ID change, compatibility layer or retry was introduced.
+
+Decision: keep the list contract separate from registration. Its production supplement relation is unique by csvDashboardRowId, but the existing take:1 and lack of dashboard filtering are retained exactly. Display date formatting and per-field saved-snapshot preference remain in the consumer. Empty row IDs are still filtered and duplicates removed before the batch call. The shared public function also short-circuits empty input.
+
+Commands from the worktree used Node 24 / corepack pnpm 9.15.9. The PostgreSQL commands ran through the disposable wrapper after prisma migrate deploy, with inherited external credentials excluded and the wrapper's loopback URL/temp paths asserted before executing:
+
+    corepack pnpm --filter @raspi-system/api exec vitest run src/services/pallet-visualization/__tests__/pallet-visualization-query.service.test.ts --fileParallelism=false
+    corepack pnpm --filter @raspi-system/api exec vitest run src/services/pallet-visualization/__tests__/pallet-visualization-query.service.test.ts src/services/production-schedule/__tests__/production-schedule-snapshot.service.test.ts src/services/pallet-visualization/__tests__/pallet-visualization-display-fields.test.ts --fileParallelism=false
+    corepack pnpm --filter @raspi-system/api exec tsc --noEmit -p tsconfig.build.json
+
+ESLint covered the two production readers, pallet display helper and two changed/new test files. A temporary tsconfig checked both test files with the API typeRoots. Dependency probes covered dot/computed/optional/destructured CSV access in all four guarded consumers, allowed business writes and owner reads, and rejected reverse imports from the snapshot owner into part measurement, placement and pallet code. Local verification stayed within the ordinary 20-minute budget (commands completed in a few minutes); no failed validation or unrelated fixes occurred. The initial lifecycle audit needed the existing Homebrew gh directory added to PATH, after which audit and start succeeded.
+
+Original Pi checkout remained clean at a71968c; DGX retained its two pre-existing character-chat changes at 5b389d0. The new branch/worktree contains only the seven intended changed/new files and remains available for review. Production behavior was not manually exercised; the real-DB assertions are local compatibility evidence, not a new deployment claim.
+
+Revision note: completed the pallet-list extraction and recorded unchanged baseline, final validation, remaining compatibility exports, deferred work and local recovery scope.

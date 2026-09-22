@@ -1,7 +1,7 @@
 import { machineTypeDisplayKey } from '../signage/mobile-placement-parts-shelf/normalizers.js';
 import { normalizeOutsideDimensionsDisplay } from '../production-schedule/production-schedule-snapshot-fields.js';
 
-// Compatibility exports for the remaining pallet list reader and existing callers.
+// Compatibility exports for existing callers; production schedule owns the CSV field interpretation.
 export {
   extractOutsideDimensionsDisplay,
   normalizeOutsideDimensionsDisplay,

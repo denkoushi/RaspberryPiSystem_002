@@ -7,6 +7,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import {
   findProductionSchedulePalletSnapshot,
   findProductionSchedulePlacementSnapshot,
+  listProductionSchedulePalletDisplaySnapshots,
 } from '../production-schedule-snapshot.service.js';
 import { extractOutsideDimensionsDisplay, normalizeOutsideDimensionsDisplay } from '../production-schedule-snapshot-fields.js';
 import * as legacyDisplayFields from '../../pallet-visualization/pallet-visualization-display-fields.js';
@@ -103,6 +104,29 @@ describe('production schedule snapshot contract (PostgreSQL)', () => {
     await supplement(rowId, dashboardId, 9, new Date('2026-09-03T00:00:00Z'));
     await expect(findProductionSchedulePalletSnapshot(rowId)).resolves.toMatchObject({
       rowId, manufacturingOrderNo: '100', seiban: 'S', plannedQuantity: null, plannedStartDate: null,
+    });
+  });
+
+  it('skips the pallet display batch query for empty input', async () => {
+    const read = vi.spyOn(prisma.csvDashboardRow, 'findMany');
+    await expect(listProductionSchedulePalletDisplaySnapshots([])).resolves.toEqual([]);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('returns only semantic pallet display fields, with unscoped supplements and exact row IDs', async () => {
+    const rowId = await seed({ ProductNo: '100', FGAISUN: ' ', FSUNPO: 0 });
+    await supplement(rowId, dashboardId, 0, new Date('2026-09-04T00:00:00Z'));
+    const rowIds = [randomUUID(), ` ${rowId} `, rowId, rowId];
+    const read = vi.spyOn(prisma.csvDashboardRow, 'findMany');
+    await expect(listProductionSchedulePalletDisplaySnapshots(rowIds)).resolves.toEqual([{
+      rowId, plannedQuantity: 0, plannedStartDate: new Date('2026-09-04T00:00:00Z'), outsideDimensionsDisplay: '0',
+    }]);
+    expect(read).toHaveBeenCalledExactlyOnceWith({
+      where: { id: { in: rowIds } },
+      select: {
+        id: true, rowData: true,
+        orderSupplements: { take: 1, select: { plannedQuantity: true, plannedStartDate: true } },
+      },
     });
   });
 
