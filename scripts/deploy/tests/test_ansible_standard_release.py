@@ -1740,6 +1740,103 @@ esac
 
 
 class Pi5CanonicalStandardRouteTests(unittest.TestCase):
+    def test_finalized_search_read_distinguishes_required_reads_from_legitimate_skips(self) -> None:
+        production = yaml.safe_load((ANSIBLE / 'roles/release_pi5/tasks/prepare.yml').read_text())
+        selected = [task for task in production if task['name'] in {
+            'Read the finalized Hermes search environment before candidate startup',
+            'Require the finalized search environment when a fresh consultation API needs it',
+            'Determine the effective Hermes search trial setting',
+        }]
+        cases = [('settled', True, None, True), ('fresh', False, None, True),
+                 ('fresh', True, None, True), ('fresh', True, {'skipped': True}, False),
+                 ('fresh', True, {'failed': True}, False), ('fresh', True, {}, False),
+                 ('fresh', True, {'content': ''}, False)]
+        for route, chat, unread, success in cases:
+            with self.subTest(route=route, chat=chat, unread=unread), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                env_file = root / 'compose.env'
+                env_file.write_text('HERMES_SEARCH_TRIAL_ENABLED=true\n')
+                marker = root / 'continued'
+                tasks = selected if unread is None else selected[1:]
+                variables = {'release_pi5_route': route, 'business_hermes_chat_enabled': chat,
+                             'release_pi5_chat_env_file': str(env_file)}
+                if unread is not None:
+                    variables['release_pi5_finalized_search_env'] = unread
+                playbook = root / 'check.yml'
+                playbook.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local',
+                    'gather_facts': False, 'vars': variables, 'tasks': tasks + [
+                        {'ansible.builtin.copy': {'dest': str(marker),
+                         'content': '{{ release_pi5_search_trial_effective_enabled | default("not-required") }}'}}
+                    ]}], sort_keys=False))
+                (root / 'ansible.cfg').write_text('[defaults]\nretry_files_enabled = False\n')
+                result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                    env=dict(os.environ, ANSIBLE_CONFIG=str(root / 'ansible.cfg'), ANSIBLE_NOCOLOR='1'),
+                    capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode == 0, success, result.stdout[-3000:] + result.stderr[-1000:])
+                self.assertEqual(marker.exists(), success)
+                if success:
+                    self.assertEqual(marker.read_text().lower(), 'true' if route == 'fresh' and chat else 'not-required')
+
+    def test_maintenance_gate_is_applied_and_verified_before_recreation(self) -> None:
+        task_root = ANSIBLE / 'roles/release_pi5/tasks'
+        preflight = yaml.safe_load((task_root / 'hermes-search-trial-maintenance.yml').read_text())
+        start = next(i for i, t in enumerate(preflight) if t['name'] == 'Read the current trial environment before any maintenance mutation')
+        end = next(i for i, t in enumerate(preflight) if t['name'] == 'Locate the single existing sealed Hermes search artifact on the Pi5 SSD')
+        mutation = yaml.safe_load((task_root / 'hermes-search-trial-maintenance-mutate.yml').read_text())
+        names = ['Apply the explicitly requested record classification gate for maintenance',
+                 'Read the finalized maintenance environment before API recreation',
+                 'Verify the final classification gate before API recreation']
+        gate_tasks = [t for t in mutation if t['name'] in names]
+        recreate_index = next(i for i, t in enumerate(mutation) if t['name'] == 'Recreate only the same active API service with the requested trial setting')
+        self.assertLess(max(i for i, t in enumerate(mutation) if t['name'] in names), recreate_index)
+        api_tasks = [t for t in mutation if t['name'] in {
+            'Inspect the recreated API classification gate before any worker request',
+            'Require the recreated API to inherit the verified classification gate'}]
+        key = 'HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED'
+        cases = [(None, 'false', 'false'), ('true', 'false', 'false'), ('false', None, 'false'),
+                 ('true', None, 'true'), ('false', 'true', 'true'), (None, None, None)]
+        for before, requested, expected in cases:
+            with self.subTest(before=before, requested=requested), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                env_file = root / 'compose.env'
+                original = 'UNCHANGED=preserve\n' + (f'{key}={before}\n' if before else '')
+                env_file.write_text(original)
+                marker = root / 'api-start-env.json'
+                # Existing Ansible executable-task pattern: capture the environment at
+                # the recreation boundary, then inspect that same inherited environment.
+                docker = root / 'docker'
+                docker.write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\n'
+                    'p=Path(os.environ["CAPTURE_ENV"])\n'
+                    'if sys.argv[1]=="inspect": print(p.read_text())\n'
+                    'else: p.write_text(json.dumps(Path(os.environ["PI5_ENV_FILE"]).read_text().splitlines()))\n')
+                docker.chmod(0o755)
+                variables = {'release_pi5_trial_maintenance': 'on', 'release_pi5_compose_env_source': str(env_file),
+                    'release_pi5_trial_maintenance_env_file': str(env_file), 'release_pi5_active_api_id': 'fixture-api',
+                    'release_pi5_compose_argv': [str(docker), 'compose'], 'release_pi5_active_slot': 'green',
+                    'release_pi5_compose_wait_seconds': 10,
+                    'release_pi5_compose_environment': {'PI5_ENV_FILE': str(env_file), 'CAPTURE_ENV': str(marker)}}
+                playbook = root / 'check.yml'
+                playbook.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local',
+                    'gather_facts': False, 'vars': variables, 'environment': {'CAPTURE_ENV': str(marker)},
+                    'tasks': preflight[start:end] + gate_tasks + [mutation[recreate_index]] + api_tasks
+                }], sort_keys=False))
+                (root / 'ansible.cfg').write_text('[defaults]\nretry_files_enabled = False\n')
+                environment = dict(os.environ, ANSIBLE_CONFIG=str(root / 'ansible.cfg'), ANSIBLE_NOCOLOR='1',
+                                   PATH=str(root) + os.pathsep + os.environ['PATH'])
+                environment.pop(key, None)
+                if requested is not None:
+                    environment[key] = requested
+                result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                    env=environment, capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode == 0, expected is not None,
+                                 result.stdout[-3000:] + result.stderr[-1000:])
+                self.assertEqual(marker.exists(), expected is not None)
+                if expected is None:
+                    self.assertEqual(env_file.read_text(), original)
+                else:
+                    self.assertIn(f'{key}={expected}', json.loads(marker.read_text()))
+                    self.assertIn('UNCHANGED=preserve', env_file.read_text())
+
     ROLE = "release_pi5"
 
     def task_text(self, name: str) -> str:

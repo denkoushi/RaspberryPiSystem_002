@@ -688,7 +688,13 @@ def hermes_trial_maintenance_configuration(
         raise UsageError("Hermes search trial maintenance cannot be combined with trial staging environment")
     if os.environ.get("HERMES_SEARCH_TRIAL_JEV_ENABLED", "false") != "false":
         raise UsageError("Hermes search trial maintenance requires HERMES_SEARCH_TRIAL_JEV_ENABLED=false")
-    return {"HERMES_SEARCH_TRIAL_MAINTENANCE": mode}
+    environment = {"HERMES_SEARCH_TRIAL_MAINTENANCE": mode}
+    classification_enabled = os.environ.get("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED", "")
+    if classification_enabled:
+        if classification_enabled not in {"true", "false"}:
+            raise UsageError("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED must be true or false")
+        environment["HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED"] = classification_enabled
+    return environment
 
 
 def stage_hermes_trial_artifact(inventory: Path, source: Path, destination: str, user: str) -> None:

@@ -961,6 +961,20 @@
     - release_pi5_route == 'fresh'
     - business_hermes_chat_enabled | default(false) | bool
 
+- name: Require the finalized search environment when a fresh consultation API needs it
+  ansible.builtin.assert:
+    that:
+      - release_pi5_finalized_search_env is defined
+      - release_pi5_finalized_search_env is not skipped
+      - release_pi5_finalized_search_env is succeeded
+      - release_pi5_finalized_search_env.content is defined
+      - release_pi5_finalized_search_env.content is string
+      - release_pi5_finalized_search_env.content | length > 0
+    fail_msg: The fresh consultation API requires a successfully read finalized environment before startup.
+  when:
+    - release_pi5_route == 'fresh'
+    - business_hermes_chat_enabled | default(false) | bool
+
 - name: Determine the effective Hermes search trial setting
   ansible.builtin.set_fact:
     release_pi5_search_trial_effective_enabled: >-
@@ -969,7 +983,8 @@
         | select('match', '^HERMES_SEARCH_TRIAL_ENABLED=true$') | list | length) == 1
       }}
   when:
-    - release_pi5_finalized_search_env is defined
+    - release_pi5_route == 'fresh'
+    - business_hermes_chat_enabled | default(false) | bool
 
 - name: Prepare the answer cache and protected nightly checks
   ansible.builtin.include_tasks: business-hermes-answer-cache.yml

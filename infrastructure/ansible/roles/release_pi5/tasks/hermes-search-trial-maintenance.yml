@@ -26,6 +26,51 @@
       - release_pi5_trial_maintenance_source.stat.mode == '0600'
     fail_msg: The active API Compose environment is not a root-owned private regular file.
 
+- name: Read the current trial environment before any maintenance mutation
+  ansible.builtin.slurp:
+    src: "{{ release_pi5_compose_env_source }}"
+  register: release_pi5_trial_maintenance_env_before
+  no_log: true
+
+- name: Require the current trial environment to have been read successfully
+  ansible.builtin.assert:
+    that:
+      - release_pi5_trial_maintenance_env_before is not skipped
+      - release_pi5_trial_maintenance_env_before is succeeded
+      - release_pi5_trial_maintenance_env_before.content is defined
+      - release_pi5_trial_maintenance_env_before.content is string
+      - release_pi5_trial_maintenance_env_before.content | length > 0
+    fail_msg: Trial maintenance requires a successfully read current environment before changing settings.
+
+- name: Resolve the explicit or preserved record classification gate
+  ansible.builtin.set_fact:
+    release_pi5_trial_classification_requested: "{{ lookup('ansible.builtin.env', 'HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED') }}"
+    release_pi5_trial_classification_before: >-
+      {{ (release_pi5_trial_maintenance_env_before.content | b64decode).splitlines()
+         | select('match', '^HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=') | list }}
+  no_log: true
+
+- name: Require a definite classification gate before enabling search
+  ansible.builtin.assert:
+    that:
+      - release_pi5_trial_classification_requested in ['', 'true', 'false']
+      - >-
+        release_pi5_trial_maintenance != 'on'
+        or release_pi5_trial_classification_requested in ['true', 'false']
+        or (release_pi5_trial_classification_before | length == 1
+            and release_pi5_trial_classification_before[0] in
+            ['HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=true', 'HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=false'])
+    fail_msg: Search enablement requires an explicit true/false record classification setting or one valid preserved setting; missing is not OFF.
+
+- name: Record the effective classification gate for startup verification
+  ansible.builtin.set_fact:
+    release_pi5_trial_classification_effective: >-
+      {{ release_pi5_trial_classification_requested
+         if release_pi5_trial_classification_requested != ''
+         else (release_pi5_trial_classification_before[0].split('=', 1)[1]
+               if release_pi5_trial_classification_before | length == 1 else '') }}
+  no_log: true
+
 - name: Locate the single existing sealed Hermes search artifact on the Pi5 SSD
   ansible.builtin.shell:
     cmd: |

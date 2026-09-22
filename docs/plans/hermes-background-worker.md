@@ -27,6 +27,12 @@ The shared ambiguity policy is `detect ambiguity → evaluate search impact → 
 
 The change is limited to `scripts/hermes-search/hermes-jev-record-classifier.mjs`, the small domain-neutral `hermes-resolution-policy.mjs`, `scripts/hermes-search/hermes-search-state.mjs`, their focused tests, and the existing exact-search handoff tests as needed. Candidate discovery must continue to use the complete current authorized snapshot, not displayed rows or saved classifications. Exact searches must continue through `HermesSearchTrialService` and `BusinessHermesMcpService` against current PostgreSQL data, including unclassified records, before applying date ordering and the requested limit. Representative acceptance cases are fixed: new `資材課` recent one-result search without a factory; department refinement after a factory is set; wording/department/limit changes through the same generic path; factory removal retaining the department; a newly added same-named department in another factory; and a truly unknown organization term returning confirmation. A small set of non-matching wording cases remains regression coverage and does not expand the acceptance list.
 
+## Follow-up: restore the existing JEV entry safely (2026-09-22)
+
+Limit this repair to maintenance classification-gate delivery and fresh/settled environment-read guards. The launcher must carry an explicit classification `false` through systemd to the existing Ansible maintenance path; omission preserves a valid existing value, never implies OFF. Validate the final gate before API recreation and its container inheritance before requesting the Node24 worker.
+Legitimate settled/chat-disabled skips must continue without reading absent content; a required failed or missing read must stop before startup. Use the existing deployment tests for these two regressions, then normal PR/CI/review/merge and the canonical deployment/maintenance entrypoint.
+Restore from the existing Vault and checksum-verified Pi5 artifact, without modifying the v4 classification store or the search implementation. Compare the store hash before/after, re-identify the browser-facing active API, verify scope and JEV-record mode, and only then resume the unchanged #1459 acceptance cases. Ordinary consultation responses are excluded from that acceptance evidence.
+
 ## Progress
 
 - [x] 2026-09-15: Audited source export, scheduling, adoption, DGX admission and container boundaries.
