@@ -663,6 +663,12 @@ test('maps a display-only judgment to the existing Delta without changing the se
     assert.equal(unresolvedDisplay.searchDelta.applied, false);
     assert.deepEqual(unresolvedDisplay.searchState, previous);
     assert.ok(unresolvedDisplay.searchDiagnostics.operationDecision.proposedDelta.unresolvedConditions.some(({ reason }) => reason === 'display_field_unresolved'));
+    const resolvedDisplay = await classifier.answer('その記録の起因部署名を表示して', {
+      searchState: previous, confirmationPending: unresolvedDisplay.confirmationPending,
+    });
+    assert.equal(resolvedDisplay.searchDelta.applied, true);
+    assert.equal(resolvedDisplay.confirmationPending, null);
+    assert.deepEqual(resolvedDisplay.searchState.exact, previous.exact);
   }
   displayNoul = 0.94;
   displayConfidence = 0.2;

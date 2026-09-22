@@ -1594,7 +1594,10 @@ export class AuthorizedRecordClassifier {
       fieldMentionJudgments: evaluated.judgments,
     });
     const delta = buildSearchDelta(question, evaluated, structured, previousState, removal);
-    if (evaluated.query.changeAction === 'update_display' && pending) {
+    const pendingDisplayOnly = Array.isArray(pending?.requiredItems) && pending.requiredItems.length > 0
+      && pending.requiredItems.every((item) => item?.type === 'display');
+    const retainedPending = evaluated.query.changeAction === 'update_display' && pendingDisplayOnly ? null : pending;
+    if (evaluated.query.changeAction === 'update_display' && retainedPending) {
       delta.unresolvedConditions.push({ kind: 'action', field: 'changeAction', reason: 'pending_condition_requires_resolution' });
     }
     const deltaDigest = deltaFingerprint(delta);
@@ -1651,7 +1654,7 @@ export class AuthorizedRecordClassifier {
       rejectionReason: allUnresolved.length ? 'removal_target_unresolved' : conditionCount === 0 ? 'no_remaining_conditions' : null,
     } : undefined;
     if (allUnresolved.length || conditionCount === 0 || displayOnly) {
-      const nextPending = evaluated.query.changeAction === 'update_display' && pending ? pending : allUnresolved.length
+      const nextPending = evaluated.query.changeAction === 'update_display' && retainedPending ? retainedPending : allUnresolved.length
         ? {
           request: question,
           question: `次の検索条件の意味を確認してください: ${unresolvedLabels.join('、')}`,
@@ -1715,7 +1718,7 @@ export class AuthorizedRecordClassifier {
       status: 'completed',
       answer: [coverageNotice, uncertaintyNotice, excludedUncertainNotice, answer || '指定条件に一致する記録はありませんでした。未分類の記録については判断していません。'].filter(Boolean).join('\n\n'),
       recordIds: records.map((record) => `nonconformity:${record.id}`),
-      confirmationPending: pending,
+      confirmationPending: retainedPending,
       classifier: {
         classification: evaluated.classification,
         conditions: nextState.exact.include,
