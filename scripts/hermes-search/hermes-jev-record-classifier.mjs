@@ -249,7 +249,7 @@ function buildQueryQuestions(definition, removalCandidates = [], fieldMentions =
     ],
   );
   questions.change_action = choiceQuestion(
-    '前回の確定条件に対するこのメッセージの操作を選ぶ。現在の確定条件に合わない検索結果が混ざったという指摘は、条件自体を変更・解除する指示と区別する。参照する既存条件と訂正意図が明確なら correct_condition、条件を追加・指定項目だけを置換・指定項目を解除・新規検索する指示ならそれぞれを選ぶ。前回の検索対象・条件・件数・並び順を変えず、その記録の項目や原文を表示するだけなら update_display を選ぶ。条件変更も含む要求は update_display ではなく該当する条件操作を選び、意味を確定できなければ clarify を選ぶ。',
+    '前回の確定条件に対するこのメッセージの操作を選ぶ。条件への言及、同じ値の再指定、実際の変更を区別する。同じ条件の再指定は変更ではない。件数・並び順だけ変える要求は replace_condition。「表示」という語だけで update_display にしない。現在の確定条件に合わない検索結果が混ざったという指摘は、条件自体を変更・解除する指示と区別する。参照する既存条件と訂正意図が明確なら correct_condition、条件を追加・指定項目だけを置換・指定項目を解除・新規検索する指示ならそれぞれを選ぶ。前回の検索対象・条件・件数・並び順を変えず、その記録の項目や原文を表示するだけなら update_display を選ぶ。条件変更も含む要求は update_display ではなく該当する条件操作を選び、意味を確定できなければ clarify を選ぶ。',
     [
       { id: 'add_condition', description: '前回の条件を保持して条件を追加する' },
       { id: 'replace_condition', description: '指定された条件項目だけを置換する' },
@@ -1252,7 +1252,81 @@ function resolveRemovalTarget(evaluated, candidates, previousState, records) {
   return { selected, organization, unresolved: organization.unresolved };
 }
 
-function operationDecision(question, evaluated, previousState) {
+// Compare predicates, never the rows currently satisfying them. In particular,
+// facility alternatives are OR, department terms are AND, and exclusions retain
+// their polarity. Candidate cardinality is not a proof of equal search scope.
+function searchPredicates(state) {
+  const value = validateSearchState(state);
+  const values = (items) => [...new Set((Array.isArray(items) ? items : [items]).map((item) => text(item)))].sort();
+  const map = (items) => Object.fromEntries(Object.entries(items).sort(([a], [b]) => a.localeCompare(b))
+    .map(([field, expected]) => [field, values(expected)]));
+  const organizations = (items) => values(items.map(({ name, code }) => JSON.stringify([
+    normalizedOrganizationValue(name), code ? normalizedOrganizationValue(code) : null,
+  ])));
+  const organization = value.exact.organization;
+  return {
+    sources: values(value.sources),
+    exactInclude: map(value.exact.include), exactExclude: map(value.exact.exclude),
+    organization: {
+      facilityAny: values(organization.matchedTerms.filter(isOrganizationFacilityTerm).map(normalizedOrganizationValue)),
+      departmentAll: values(organization.matchedTerms.filter((term) => !isOrganizationFacilityTerm(term)).map(normalizedOrganizationValue)),
+      // Legacy states without compact predicates still have a selected set.
+      selectedAny: organization.matchedTerms.length ? [] : organizations(organization.include),
+      excludeAny: organizations(organization.exclude),
+    },
+    semanticInclude: map(value.semantic.include), semanticExclude: map(value.semantic.exclude),
+  };
+}
+
+function conditionEffect(question, evaluated, structured, independent, previousState) {
+  const normalized = question.normalize('NFKC');
+  const delta = {
+    action: 'replace_condition',
+    exact: { include: structured.include, exclude: structured.exclude,
+      organization: structuredOrganizationForState(structured.organization) },
+    semantic: { include: evaluated.query.include, exclude: evaluated.query.exclude },
+    ...(explicitLimitFromQuestion(normalized) !== null ? { limit: explicitLimitFromQuestion(normalized) } : {}),
+    ...(hasRecentRequest(normalized) ? { sort: { field: 'discoveredOn', direction: 'desc' } } : {}),
+  };
+  const continued = applySearchDelta(previousState, delta);
+  const standalone = applySearchDelta(emptySearchState(), { ...delta, action: 'new_search',
+    exact: { ...delta.exact, organization: structuredOrganizationForState(independent.organization) } });
+  const before = searchPredicates(previousState);
+  const after = searchPredicates(continued);
+  const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+  const changedPredicates = Object.keys(before).filter((key) => !same(before[key], after[key]));
+  const changedScalars = ['limit', 'sort'].filter((key) => !same(previousState[key], continued[key]));
+  const unresolved = previousState.unresolvedConditions.length + (evaluated.query.unresolved?.length ?? 0)
+    + (structured.unresolved?.length ?? 0) + (independent.unresolved?.length ?? 0);
+  const overlaps = (kind) => Object.entries(continued[kind].include)
+    .some(([field, included]) => {
+      const excluded = continued[kind].exclude[field];
+      if (!excluded) return false;
+      const positives = Array.isArray(included) ? included : [included];
+      const negatives = Array.isArray(excluded) ? excluded : [excluded];
+      return positives.some((item) => negatives.includes(item));
+    });
+  // Preserve the selected reader's existing logic: live exact exclusions are
+  // NOT(OR fields); the classified reader excludes the complete exact tuple.
+  // Do not turn a partial overlap with that tuple into a contradictory request.
+  const exactContradiction = exactSearchArguments(continued) ? overlaps('exact')
+    : Object.keys(continued.exact.exclude).length > 0
+      && matchesConditions(continued.exact.include, continued.exact.exclude);
+  const contradictory = exactContradiction || overlaps('semantic');
+  const targetEquivalent = !unresolved && !contradictory
+    && same(after, searchPredicates(standalone))
+    && ['limit', 'sort'].every((key) => same(continued[key], standalone[key]));
+  return {
+    changedPredicates, changedScalars, contradictory,
+    targetEquivalent,
+    targetImpact: evaluateAmbiguityImpact({
+      ambiguity: { reason: unresolved ? 'unresolved_meaning' : 'different_interpretations' },
+      existingCondition: targetEquivalent,
+    }),
+  };
+}
+
+function operationDecision(question, evaluated, previousState, effect = null) {
   const initialSearch = !previousState || previousState.revision === 0;
   const lexicalAction = explicitNewSearch(question)
     ? 'new_search'
@@ -1268,8 +1342,10 @@ function operationDecision(question, evaluated, previousState) {
   // The JEV option need not add an action or schema to SearchState.
   const displayOnly = judgedAction === 'update_display';
   const mappedAction = displayOnly ? 'replace_condition' : judgedAction;
-  const rejectionReason = displayOnly && (initialSearch || evaluated.query.conversationTarget !== 'same_target'
-    || evaluated.judgments.conversation_target.confidence < QUERY_CHOICE_POLICY.uncertainBelow) ? 'display_target_unresolved'
+  const unresolvedTarget = evaluated.query.conversationTarget !== 'same_target'
+    || evaluated.judgments.conversation_target.confidence < QUERY_CHOICE_POLICY.uncertainBelow;
+  const rejectionReason = displayOnly && (initialSearch || (unresolvedTarget
+    && effect?.targetImpact.action !== RESOLUTION_ACTIONS.RESOLVE_EXISTING)) ? 'display_target_unresolved'
     : displayOnly && evaluated.judgments.change_action.confidence < QUERY_CHOICE_POLICY.uncertainBelow ? 'display_operation_uncertain'
       : initialSearch ? null
         : judgedAction === 'clarify' ? 'jev_clarification'
@@ -1295,8 +1371,8 @@ function structuredOrganizationForState(organization) {
   };
 }
 
-function buildSearchDelta(question, evaluated, structured, previousState, removal = null) {
-  const operation = operationDecision(question, evaluated, previousState);
+function buildSearchDelta(question, evaluated, structured, previousState, removal = null, effect = null) {
+  const operation = operationDecision(question, evaluated, previousState, effect);
   const action = operation.action;
   const appliedAction = action ?? 'clarify';
   const normalized = question.normalize('NFKC');
@@ -1371,14 +1447,15 @@ function buildSearchDelta(question, evaluated, structured, previousState, remova
     } else if (requestedDisplay.requested.some((id) => !(evaluated.judgments[`display:${id}`]?.noul >= QUERY_DECISION_POLICY.includeAt))) {
       delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_intent_unresolved' });
     }
-    // Never apply speculative filters, nor silently discard a conflicting or
-    // unknown condition, when the chosen operation changes only presentation.
-    if (Object.keys(exactInclude).length || Object.keys(exactExclude).length
-      || delta.exact.organization || Object.keys(semanticInclude).length || Object.keys(semanticExclude).length
-      || limit !== null || delta.sort) {
+    // Reasserting a predicate is not a change. Explicit count/order updates
+    // are scalar replacements; a different/contradictory predicate still needs
+    // a condition operation, not a silently successful display-only response.
+    if (!effect || effect.changedPredicates.length || effect.contradictory) {
       delta.unresolvedConditions.push({ kind: 'action', field: 'changeAction', term: question, reason: 'display_condition_conflict' });
     }
     return { action: appliedAction, display: requestedDisplay,
+      ...(effect?.changedScalars.includes('limit') ? { limit: delta.limit } : {}),
+      ...(effect?.changedScalars.includes('sort') ? { sort: delta.sort } : {}),
       unresolvedConditions: [...previousState.unresolvedConditions, ...delta.unresolvedConditions] };
   }
   if (appliedAction === 'remove_condition') {
@@ -1638,7 +1715,11 @@ export class AuthorizedRecordClassifier {
       organization: organizationContext,
       fieldMentionJudgments: evaluated.judgments,
     });
-    const delta = buildSearchDelta(question, evaluated, structured, previousState, removal);
+    const effect = evaluated.query.changeAction === 'update_display'
+      ? conditionEffect(question, evaluated, structured, extractStructuredConditions(question, this.store.records, {
+        fieldMentionJudgments: evaluated.judgments,
+      }), previousState) : null;
+    const delta = buildSearchDelta(question, evaluated, structured, previousState, removal, effect);
     const pendingDisplayOnly = Array.isArray(pending?.requiredItems) && pending.requiredItems.length > 0
       && pending.requiredItems.every((item) => item?.type === 'display');
     const retainedPending = evaluated.query.changeAction === 'update_display' && pendingDisplayOnly ? null : pending;
@@ -1671,7 +1752,8 @@ export class AuthorizedRecordClassifier {
       changeActionJudgment: evaluated.judgments.change_action,
       displayHeadingJudgment: evaluated.judgments.display_source_heading ?? null,
       displayOtherFieldsJudgment: evaluated.judgments.display_other_fields ?? null,
-      code: operationDecision(question, evaluated, previousState),
+      code: operationDecision(question, evaluated, previousState, effect),
+      ...(effect ? { conditionEffect: effect } : {}),
       organization: {
         ...structuredOrganizationForState(structured.organization),
         unresolved: structured.organization?.unresolved ?? [],

@@ -583,6 +583,168 @@ test('distinguishes source field labels from organization values after factory r
   assert.deepEqual(uncertainField.searchState, previous);
 });
 
+test('compares reasserted predicates and target interpretations for the captured display-operation failure', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-condition-effect-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const records = [
+    { ...snapshot.records[0], originDepartmentName: '三島工場管理部資材課', originDepartmentCode: '110501051' },
+    { ...snapshot.records[1], originDepartmentName: '仙台工場管理部資材課', originDepartmentCode: '110701052' },
+  ];
+  const previous = {
+    schema: 'hermes-search-state/v1', revision: 4, sources: ['nonconformity'],
+    exact: { include: {}, exclude: {}, organization: {
+      include: records.map((row) => ({ name: row.originDepartmentName, code: row.originDepartmentCode })),
+      exclude: [], matchedTerms: ['資材課'], status: 'resolved',
+    } },
+    semantic: { include: {}, exclude: {} }, sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 2, display: { originalText: true, requested: ['originalText', 'phenomenon', 'cause'] },
+    unresolvedConditions: [], lastAction: 'replace_condition',
+  };
+  // The two captured judgments from req-1i0, not a high-confidence substitute.
+  let target = { type: 'choice', choice: 'same_target',
+    probabilities: { same_target: 0.61, new_search: 0.19, no_prior_target: 0.2 }, confidence: 0.42 };
+  let operation = { type: 'choice', choice: 'update_display', probabilities: {
+    add_condition: 0.01, replace_condition: 0.27, remove_condition: 0.02,
+    correct_condition: 0.06, new_search: 0.02, update_display: 0.59, clarify: 0.03,
+  }, confidence: 0.52 };
+  let contradict = false;
+  await writeFile(snapshotPath, JSON.stringify({ ...snapshot, records }));
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath,
+    storePath: path.join(directory, 'classifications.json'), classificationEnabled: false,
+    evaluateImplementation: async (input) => {
+      const result = await evaluator(input);
+      result.answers.conversation_target = target;
+      result.answers.change_action = operation;
+      for (const key of ['originalText', 'phenomenon', 'cause']) result.answers[`display:${key}`] = noulAnswer(0.94);
+      if (contradict) {
+        result.answers['include:phenomenon:surface_damage'] = noulAnswer(0.94);
+        result.answers['exclude:phenomenon:surface_damage'] = noulAnswer(0.94);
+      }
+      return result;
+    },
+  });
+  await classifier.prepare();
+  const question = '資材課の不適合を最新順で2件表示して';
+  const result = await classifier.answer(question, { searchState: previous });
+  const diagnostic = result.searchDiagnostics.operationDecision;
+  assert.equal(result.status, 'completed');
+  assert.equal(result.searchDelta.applied, true);
+  assert.deepEqual(result.searchState, { ...previous, revision: 5 });
+  assert.deepEqual(diagnostic.conversationTargetJudgment, target);
+  assert.deepEqual(diagnostic.changeActionJudgment, operation);
+  assert.equal(diagnostic.code.rejectionReason, null);
+  assert.deepEqual(diagnostic.conditionEffect.changedPredicates, []);
+  assert.deepEqual(diagnostic.conditionEffect.changedScalars, []);
+  assert.equal(diagnostic.conditionEffect.targetEquivalent, true);
+  assert.equal(diagnostic.conditionEffect.targetImpact.action, RESOLUTION_ACTIONS.RESOLVE_EXISTING);
+  assert.deepEqual(diagnostic.proposedDelta.unresolvedConditions, []);
+  assert.deepEqual(result.searchPlan.args, { kind: 'nonconformity', limit: 2, originDepartmentName: '資材課' });
+
+  // The independent interpretation must not inherit an omitted old predicate.
+  // Equal currently returned rows would not make these predicates equivalent.
+  const scoped = { ...previous, exact: { ...previous.exact, organization: {
+    ...previous.exact.organization, include: [previous.exact.organization.include[1]],
+    matchedTerms: ['仙台工場', '資材課'],
+  } } };
+  for (const state of [scoped,
+    { ...previous, exact: { ...previous.exact, exclude: { partNumber: 'ABSENT-PART' } } },
+    { ...previous, semantic: { include: { process: 'turning' }, exclude: {} } },
+  ]) {
+    const different = await classifier.answer(question, { searchState: state });
+    assert.equal(different.searchDelta.applied, false);
+    assert.deepEqual(different.searchState, state);
+    assert.equal(different.searchDiagnostics.operationDecision.conditionEffect.targetEquivalent, false);
+    assert.equal(different.searchDiagnostics.operationDecision.code.rejectionReason, 'display_target_unresolved');
+  }
+  const alternatives = { ...previous, exact: { ...previous.exact, organization: {
+    ...previous.exact.organization, matchedTerms: ['仙台工場', '三島工場', '資材課'],
+  } } };
+  const narrowed = await classifier.answer('仙台工場の資材課の不適合を最新順で2件表示して', { searchState: alternatives });
+  assert.equal(narrowed.searchDelta.applied, false);
+  assert.ok(narrowed.searchDiagnostics.operationDecision.conditionEffect.changedPredicates.includes('organization'));
+
+  target = choiceAnswer('same_target', ['same_target', 'new_search', 'no_prior_target']);
+  for (const [request, state, scalar, expected] of [
+    ['資材課の不適合を最新順で1件表示して', previous, 'limit', 1],
+    [question, { ...previous, sort: null }, 'sort', previous.sort],
+  ]) {
+    const updated = await classifier.answer(request, { searchState: state });
+    assert.equal(updated.searchDelta.applied, true);
+    assert.deepEqual(updated.searchState[scalar], expected);
+    for (const field of ['exact', 'semantic', scalar === 'limit' ? 'sort' : 'limit']) {
+      assert.deepEqual(updated.searchState[field], state[field]);
+    }
+    assert.deepEqual(updated.searchDiagnostics.operationDecision.conditionEffect.changedScalars, [scalar]);
+  }
+  const unknown = await classifier.answer('月面課の不適合を最新順で2件表示して', { searchState: previous });
+  assert.equal(unknown.searchDelta.applied, false);
+  assert.deepEqual(unknown.searchState, previous);
+  assert.ok(unknown.searchDiagnostics.operationDecision.proposedDelta.unresolvedConditions.some(({ reason }) => reason === 'not_found'));
+  contradict = true;
+  const conflicting = await classifier.answer('打痕を含めて打痕を除外して表示して', { searchState: previous });
+  assert.equal(conflicting.searchDelta.applied, false);
+  assert.equal(conflicting.searchDiagnostics.operationDecision.conditionEffect.contradictory, true);
+  assert.deepEqual(conflicting.searchState, previous);
+  contradict = false;
+  operation = choiceAnswer('replace_condition', Object.keys(operation.probabilities));
+  const replacement = await classifier.answer('仙台工場の資材課に変えて', { searchState: previous });
+  assert.equal(replacement.searchDelta.applied, true);
+  assert.deepEqual(replacement.searchPlan.args, { kind: 'nonconformity', limit: 2,
+    originDepartmentNameAny: ['仙台工場'], originDepartmentName: '資材課' });
+  assert.equal(classifier.calls.filter(({ phase }) => phase === 'record').length, 0);
+});
+
+test('keeps organization identity and exact-exclusion logic in condition comparison', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-condition-review-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const records = ['CODE-1', 'CODE-2'].map((code, index) => ({ ...snapshot.records[index],
+    originDepartmentName: '北工場管理部調達課', originDepartmentCode: code,
+  }));
+  await writeFile(snapshotPath, JSON.stringify({ ...snapshot, records }));
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath,
+    storePath: path.join(directory, 'classifications.json'), classificationEnabled: false,
+    evaluateImplementation: async (input) => {
+      const result = await evaluator(input);
+      result.answers.change_action = choiceAnswer('update_display', Object.keys(input.questions.change_action.criteria));
+      return result;
+    },
+  });
+  await classifier.prepare();
+  await t.test('changing one coded exclusion to both is not the same predicate', async () => {
+    const question = '北工場管理部調達課を除く不適合の原文を表示して';
+    const structured = extractStructuredConditions(question, records);
+    assert.equal(structured.organization.exclude.length, 2);
+    const previous = applySearchDelta(emptySearchState(), { action: 'new_search', exact: {
+      organization: { ...structured.organization, exclude: [structured.organization.exclude[0]] },
+    } });
+    const result = await classifier.answer(question, { searchState: previous });
+    assert.equal(result.searchDelta.applied, false);
+    assert.deepEqual(result.searchState, previous);
+    assert.ok(result.searchDiagnostics.operationDecision.conditionEffect.changedPredicates.includes('organization'));
+  });
+  await t.test('classified exact exclusions are a whole conjunction, not individual negations', async () => {
+    const previous = applySearchDelta(emptySearchState(), { action: 'new_search',
+      exact: { include: { partNumber: 'PART-1' }, exclude: { partNumber: 'PART-1', machineName: 'フライスB' } },
+      semantic: { include: { process: 'turning' }, exclude: {} },
+    });
+    const result = await classifier.answer('PART-1の原文を表示して', { searchState: previous });
+    assert.equal(result.searchDelta.applied, true);
+    assert.equal(result.searchDiagnostics.operationDecision.conditionEffect.contradictory, false);
+    assert.deepEqual(result.searchState.exact, previous.exact);
+    assert.deepEqual(result.searchState.semantic, previous.semantic);
+    assert.equal(result.searchPlan.mode, 'classified');
+    for (const contradictoryState of [
+      { ...previous, semantic: { include: {}, exclude: {} } },
+      { ...previous, exact: { ...previous.exact, exclude: { partNumber: 'PART-1' } } },
+    ]) {
+      const conflicting = await classifier.answer('PART-1の原文を表示して', { searchState: contradictoryState });
+      assert.equal(conflicting.searchDelta.applied, false);
+      assert.equal(conflicting.searchDiagnostics.operationDecision.conditionEffect.contradictory, true);
+      assert.deepEqual(conflicting.searchState, contradictoryState);
+    }
+  });
+});
+
 test('maps a display-only judgment to the existing Delta without changing the search target', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-display-operation-'));
   const snapshotPath = path.join(directory, 'snapshot.json');
@@ -679,7 +841,13 @@ test('maps a display-only judgment to the existing Delta without changing the se
   assert.deepEqual(retained.searchState.semantic, constrained.semantic);
   assert.equal(retained.searchState.limit, constrained.limit);
   assert.deepEqual(retained.searchState.sort, constrained.sort);
-  for (const question of ['起因部署が月面課の不適合を表示して', '仙台工場の不適合を表示して', 'その記録を1件表示して', '上限を超えた不適合を表示して']) {
+  const countOnly = await classifier.answer('その記録を1件表示して', { searchState: previous });
+  assert.equal(countOnly.searchDelta.applied, true);
+  assert.equal(countOnly.searchState.limit, 1);
+  assert.deepEqual(countOnly.searchState.exact, previous.exact);
+  assert.deepEqual(countOnly.searchState.semantic, previous.semantic);
+  assert.deepEqual(countOnly.searchState.sort, previous.sort);
+  for (const question of ['起因部署が月面課の不適合を表示して', '仙台工場の不適合を表示して', '上限を超えた不適合を表示して']) {
     const conflict = await classifier.answer(question, { searchState: previous });
     assert.equal(conflict.status, 'clarification');
     assert.equal(conflict.searchDelta.applied, false);
