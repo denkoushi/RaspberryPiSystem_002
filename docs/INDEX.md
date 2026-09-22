@@ -1,4 +1,6 @@
 # ドキュメント索引
+- 生産日程スナップショットの所有境界: [ExecPlan](./plans/production-schedule-snapshot-boundary-execplan.md)
+- 生産日程検索の所有境界と互換性維持: [ExecPlan](./plans/production-schedule-lookup-boundary-execplan.md)
 
 - [Business Hermes signage live data](./plans/business-hermes-signage-live-data.md)
 

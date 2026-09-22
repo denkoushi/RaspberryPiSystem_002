@@ -8,8 +8,8 @@ import {
 import {
   listScheduleRowsByProductNo,
   resolveMachineNameForSeiban,
-  type PartMeasurementScheduleRowCandidate
-} from './part-measurement-schedule-lookup.service.js';
+  type ProductionScheduleLookupRow
+} from '../production-schedule/production-schedule-lookup.service.js';
 import { PartMeasurementTemplateService } from './part-measurement-template.service.js';
 
 type ActiveTemplate = Awaited<ReturnType<PartMeasurementTemplateService['findActiveByFhincdGroupAndResource']>>;
@@ -24,7 +24,7 @@ export type ResolveTicketInput = {
   deviceScopeKey?: string | null;
 };
 
-export type ResolvedTicketCandidate = PartMeasurementScheduleRowCandidate & {
+export type ResolvedTicketCandidate = ProductionScheduleLookupRow & {
   machineName: string | null;
 };
 

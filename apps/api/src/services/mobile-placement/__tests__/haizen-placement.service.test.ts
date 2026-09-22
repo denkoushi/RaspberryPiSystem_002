@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
-import { listScheduleRowsByProductNo } from '../../part-measurement/part-measurement-schedule-lookup.service.js';
+import { listScheduleRowsByProductNo } from '../../production-schedule/production-schedule-lookup.service.js';
 import {
   applyHaizenScan,
   getHaizenPresetShelf,
@@ -33,7 +33,7 @@ vi.mock('../../../lib/prisma.js', () => ({
   }
 }));
 
-vi.mock('../../part-measurement/part-measurement-schedule-lookup.service.js', () => ({
+vi.mock('../../production-schedule/production-schedule-lookup.service.js', () => ({
   listScheduleRowsByProductNo: vi.fn()
 }));
 
@@ -213,7 +213,7 @@ describe('haizen-placement.service', () => {
     vi.mocked(listScheduleRowsByProductNo).mockResolvedValue([]);
 
     const updatedAt = new Date('2025-05-01T10:00:00.000Z');
-    vi.mocked(prisma.$transaction).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) => {
       const tx = {
         haizenScanEvent: {
           create: vi.fn().mockResolvedValue({ id: 'ev-unres' })
@@ -231,7 +231,7 @@ describe('haizen-placement.service', () => {
           })
         }
       };
-      return fn(tx);
+      return fn(tx as unknown as Prisma.TransactionClient);
     });
 
     const result = await applyHaizenScan({
@@ -273,7 +273,7 @@ describe('haizen-placement.service', () => {
     } as never);
 
     const updatedAt = new Date('2025-05-02T11:00:00.000Z');
-    vi.mocked(prisma.$transaction).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) => {
       const tx = {
         haizenScanEvent: {
           create: vi.fn().mockResolvedValue({ id: 'ev-res' })
@@ -296,7 +296,7 @@ describe('haizen-placement.service', () => {
           })
         }
       };
-      return fn(tx);
+      return fn(tx as unknown as Prisma.TransactionClient);
     });
 
     const result = await applyHaizenScan({
@@ -332,5 +332,58 @@ describe('haizen-placement.service', () => {
       orderBy: { updatedAt: 'desc' },
       take: 10
     });
+  });
+});
+
+describe('haizen snapshot read compatibility', () => {
+  const candidate = { rowId: 'first', productNo: '100', fseiban: 'S', fhincd: 'P', fhinmei: 'Name', fsigencd: 'MC', fkojun: 1 };
+  const tx = { haizenScanEvent: { create: vi.fn() }, haizenCurrentPlacement: { upsert: vi.fn() } };
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ id: 'device', haizenPresetShelfCodeRaw: ' shelf ' } as never);
+    vi.mocked(listScheduleRowsByProductNo).mockResolvedValue([candidate, { ...candidate, rowId: 'later' }]);
+    tx.haizenScanEvent.create.mockResolvedValue({ id: 'event' });
+    tx.haizenCurrentPlacement.upsert.mockImplementation(async ({ create }) => ({
+      ...create, id: 'current', updatedAt: new Date('2026-09-01T00:00:00Z'),
+    }));
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) => fn(tx as unknown as Prisma.TransactionClient));
+  });
+
+  it('retains raw JSON in both event and projection, and string-only DTO fields', async () => {
+    const snapshot = { ProductNo: 0, FSEIBAN: ' S ', FHINCD: false, FHINMEI: ['Name'] };
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'first', rowData: snapshot } as never);
+    const result = await applyHaizenScan({ clientDeviceId: 'device', manufacturingOrderBarcodeRaw: ' 100 ' });
+    expect(result).toMatchObject({ resolutionStatus: 'RESOLVED', current: {
+      csvDashboardRowId: 'first', productNo: '100', fseiban: ' S ', fhincd: null, fhinmei: null,
+    } });
+    expect(prisma.csvDashboardRow.findFirst).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'first' }, select: { id: true, rowData: true },
+    });
+    expect(tx.haizenScanEvent.create.mock.calls[0][0].data.scheduleSnapshot).toEqual(snapshot);
+    const upsert = tx.haizenCurrentPlacement.upsert.mock.calls[0][0];
+    expect(upsert.create.scheduleSnapshot).toEqual(snapshot);
+    expect(upsert.update.scheduleSnapshot).toEqual(snapshot);
+  });
+
+  it('records UNRESOLVED with JSON null when the selected row disappears', async () => {
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue(null);
+    const result = await applyHaizenScan({ clientDeviceId: 'device', manufacturingOrderBarcodeRaw: '100' });
+    expect(result).toMatchObject({ resolutionStatus: 'UNRESOLVED', current: {
+      csvDashboardRowId: null, resolutionNote: 'UNRESOLVED', productNo: '100',
+    } });
+    expect(tx.haizenScanEvent.create.mock.calls[0][0].data).toMatchObject({
+      csvDashboardRowId: null, scheduleSnapshot: Prisma.JsonNull, resolutionStatus: 'UNRESOLVED',
+    });
+    const upsert = tx.haizenCurrentPlacement.upsert.mock.calls[0][0];
+    expect(upsert.create.scheduleSnapshot).toBe(Prisma.JsonNull);
+    expect(upsert.update.scheduleSnapshot).toBe(Prisma.JsonNull);
+    expect(prisma.csvDashboardRow.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('propagates read failures instead of recording UNRESOLVED', async () => {
+    const failure = new Error('snapshot read unavailable');
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockRejectedValue(failure);
+    await expect(applyHaizenScan({ clientDeviceId: 'device', manufacturingOrderBarcodeRaw: '100' })).rejects.toBe(failure);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
