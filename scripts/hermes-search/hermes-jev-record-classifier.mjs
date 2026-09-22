@@ -722,6 +722,18 @@ function embeddedOrganizationFacilityTerms(value) {
   return organizationTerms(value).filter((term) => isOrganizationFacilityTerm(term));
 }
 
+function organizationDepartmentTermsAfterFacility(value) {
+  const terms = organizationTerms(value);
+  const facilityTerms = terms.filter((term) => isOrganizationFacilityTerm(term));
+  return terms.filter((term) => !isOrganizationFacilityTerm(term)
+    && facilityTerms.every((facilityTerm) => !normalizedOrganizationValue(term).includes(normalizedOrganizationValue(facilityTerm))));
+}
+
+function previousOrganizationTermsAfterFacility(previousOrganization) {
+  return [...new Set((previousOrganization?.matchedTerms ?? [])
+    .flatMap((term) => organizationDepartmentTermsAfterFacility(term)))];
+}
+
 function questionOrganizationTerms(question) {
   const normalized = text(question).normalize('NFKC');
   const terms = new Set();
@@ -770,12 +782,19 @@ function resolveOrganizationConditions(question, records, previousOrganization =
   }
   const previousFacilityTerms = ignorePreviousFacility ? [] : (previousOrganization?.matchedTerms ?? [])
     .filter((term) => isOrganizationFacilityTerm(term));
-  const requestedFacilityTerms = requestedQuestionTerms.flatMap((term) => embeddedOrganizationFacilityTerms(term));
+  const requestedFacilityTerms = ignorePreviousFacility
+    ? []
+    : requestedQuestionTerms.flatMap((term) => embeddedOrganizationFacilityTerms(term));
   const facilityScopeTerms = [...new Set(requestedFacilityTerms.length > 0 ? requestedFacilityTerms : previousFacilityTerms)];
   const requestedTerms = requestedQuestionTerms.length > 0
-    ? requestedQuestionTerms
+    ? retainPreviousDepartment
+      ? [...new Set([
+        ...previousOrganizationTermsAfterFacility(previousOrganization),
+        ...requestedQuestionTerms.filter((term) => !isOrganizationFacilityTerm(term)),
+      ])]
+      : requestedQuestionTerms
     : retainPreviousDepartment
-      ? (previousOrganization?.matchedTerms ?? []).filter((term) => !isOrganizationFacilityTerm(term))
+      ? previousOrganizationTermsAfterFacility(previousOrganization)
       : [];
   const requested = [...new Set(requestedTerms.map((term) => normalizedOrganizationValue(term)))]
     .map((term) => ({ term, values: knownTerms.get(term) ?? [] }))
@@ -919,7 +938,10 @@ function matchesOrganizationScope(record, values, matchedTerms = []) {
   const name = normalizedOrganizationValue(record.originDepartmentName);
   const code = normalizedOrganizationValue(record.originDepartmentCode);
   if (Array.isArray(matchedTerms) && matchedTerms.length > 0) {
-    return matchedTerms.every((term) => name.includes(normalizedOrganizationValue(term)));
+    const facilityTerms = matchedTerms.filter((term) => isOrganizationFacilityTerm(term));
+    const departmentTerms = matchedTerms.filter((term) => !isOrganizationFacilityTerm(term));
+    return (facilityTerms.length === 0 || facilityTerms.some((term) => name.includes(normalizedOrganizationValue(term))))
+      && departmentTerms.every((term) => name.includes(normalizedOrganizationValue(term)));
   }
   if (!Array.isArray(values) || values.length === 0) return false;
   return values.some((value) => normalizedOrganizationValue(value.name) === name

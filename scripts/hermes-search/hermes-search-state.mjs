@@ -20,6 +20,13 @@ function unique(values) {
   return [...new Set(values)];
 }
 
+const ORGANIZATION_FACILITY_SUFFIXES = ['工場', '本社', '事業所', 'センター', '研究所'];
+
+function isOrganizationFacilityTerm(value) {
+  const normalized = String(value ?? '').normalize('NFKC').replace(/[\s・/\\_-]+/gu, '').toUpperCase();
+  return ORGANIZATION_FACILITY_SUFFIXES.some((suffix) => normalized.endsWith(suffix) && normalized.length > suffix.length);
+}
+
 function normalizeObject(value) {
   return isObject(value) ? value : {};
 }
@@ -303,8 +310,11 @@ export function exactSearchArguments(state) {
   }
   if (Object.keys(value.exact.exclude).length) args.exactExclude = value.exact.exclude;
   const organizationTerms = unique(value.exact.organization.matchedTerms);
-  if (organizationTerms.length === 1) args.originDepartmentName = organizationTerms[0];
-  if (organizationTerms.length > 1) args.originDepartmentNames = organizationTerms;
+  const facilityTerms = organizationTerms.filter(isOrganizationFacilityTerm);
+  const departmentTerms = organizationTerms.filter((term) => !isOrganizationFacilityTerm(term));
+  if (facilityTerms.length) args.originDepartmentNameAny = facilityTerms;
+  if (departmentTerms.length === 1) args.originDepartmentName = departmentTerms[0];
+  if (departmentTerms.length > 1) args.originDepartmentNames = departmentTerms;
   const excludedOrganizationTerms = unique(value.exact.organization.exclude.map((item) => item.name));
   if (excludedOrganizationTerms.length) args.excludeOriginDepartmentNames = excludedOrganizationTerms;
   return args;

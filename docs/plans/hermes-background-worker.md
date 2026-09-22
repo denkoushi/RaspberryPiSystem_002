@@ -42,6 +42,7 @@ The change is limited to `scripts/hermes-search/hermes-jev-record-classifier.mjs
 - [ ] Review, focused validation, CI, staged integration/deployment and production evidence.
 - [x] 2026-09-22: Recorded the shared organization-scope rules, affected modules, and fixed representative cases for the JEV follow-up.
 - [x] 2026-09-22: Added the domain-neutral ambiguity-impact policy and applied it to organization candidate sets, prior SearchState scope, and unresolved terms; focused regressions pass locally.
+- [x] 2026-09-22: Reproduced and corrected the two PR review cases: facility removal now derives department-only terms from prior compound values, and multiple facilities remain OR while department terms remain AND through the existing live reader.
 - [ ] 2026-09-22: Complete real JEV/API/DB handoff and floating-chat acceptance for the fixed representative cases.
 
 ## Context and Orientation
@@ -67,6 +68,8 @@ Remote work cannot use the current local PID/flock/shared-path assumptions. Exis
 2026-09-22, Codex: Represent organization ambiguity by unresolved meaning, not by the cardinality of the authorized match set. Keep facility and department terms in the existing organization state fields; derive the next candidate pool from the prior facility terms, never from the prior department values. On facility removal, recompute the department against the full authorized snapshot and retain only the department terms. This preserves the existing SearchState schema while making exact arguments express the same set at the live reader boundary.
 
 2026-09-22, Codex: Make ambiguity impact explicit and reusable: `candidate_set` can continue as a set, a confirmed existing condition can resolve its scope, and only meaning-unresolved or scope-changing interpretations confirm. Keep the policy separate from organization names so later condition resolvers can reuse it without adding source-specific exceptions.
+
+2026-09-22, Codex: Preserve the existing SearchState schema and direct multi-term reader behavior. Exact plans split structural facility alternatives into `originDepartmentNameAny` and keep department terms in the existing exact fields, so the adapter applies `(facility A OR facility B) AND department` without changing unrelated callers of `originDepartmentNames`.
 
 ## Plan of Work
 

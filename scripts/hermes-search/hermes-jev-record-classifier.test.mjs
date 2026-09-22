@@ -208,7 +208,7 @@ test('replacement patches only named fields and does not clear an unspecified or
   });
   assert.deepEqual(exactSearchArguments(exactOnly), {
     kind: 'nonconformity', limit: 20, partName: '軸', machineName: '旋盤A',
-    originDepartmentNames: ['三島工場', '機械課'],
+    originDepartmentNameAny: ['三島工場'], originDepartmentName: '機械課',
   });
 });
 
@@ -296,7 +296,7 @@ test('exact facility and recent limit use all current records even when classifi
   assert.deepEqual(result.recordIds, ['nonconformity:mishima-new', 'nonconformity:mishima-old']);
   assert.equal(result.searchPlan.mode, 'exact');
   assert.deepEqual(exactSearchArguments(result.searchState), {
-    kind: 'nonconformity', limit: 2, originDepartmentName: '三島工場',
+    kind: 'nonconformity', limit: 2, originDepartmentNameAny: ['三島工場'],
   });
 });
 
@@ -444,7 +444,7 @@ test('keeps a factory scope while resolving a new department and removes only th
   assert.deepEqual(department.recordIds, ['nonconformity:north-material']);
   assert.deepEqual(department.searchState.exact.organization.matchedTerms, ['北工場', '資材課']);
   assert.deepEqual(exactSearchArguments(department.searchState), {
-    kind: 'nonconformity', limit: 1, originDepartmentNames: ['北工場', '資材課'],
+    kind: 'nonconformity', limit: 1, originDepartmentNameAny: ['北工場'], originDepartmentName: '資材課',
   });
 
   const unrestricted = await classifier.answer('工場指定を外して', department.session);
@@ -452,6 +452,23 @@ test('keeps a factory scope while resolving a new department and removes only th
   assert.deepEqual(unrestricted.searchState.exact.organization.matchedTerms, ['資材課']);
   assert.deepEqual(exactSearchArguments(unrestricted.searchState), {
     kind: 'nonconformity', limit: 1, originDepartmentName: '資材課',
+  });
+
+  const explicitFactoryRemoval = await classifier.answer('北工場を外して', department.session);
+  assert.deepEqual(explicitFactoryRemoval.recordIds, ['nonconformity:south-material']);
+  assert.deepEqual(explicitFactoryRemoval.searchState.exact.organization.matchedTerms, ['資材課']);
+
+  const compound = await classifier.answer('北工場資材課の不適合');
+  const compoundRemoval = await classifier.answer('工場指定を外して', compound.session);
+  assert.deepEqual(compoundRemoval.recordIds, ['nonconformity:north-material', 'nonconformity:south-material']);
+  assert.deepEqual(compoundRemoval.searchState.exact.organization.matchedTerms, ['資材課']);
+
+  const eitherFactory = await classifier.answer('北工場または南工場の資材課の直近2件');
+  assert.deepEqual(eitherFactory.recordIds, ['nonconformity:south-material', 'nonconformity:north-material']);
+  assert.deepEqual(eitherFactory.searchState.exact.organization.matchedTerms, ['北工場', '南工場', '資材課']);
+  assert.deepEqual(exactSearchArguments(eitherFactory.searchState), {
+    kind: 'nonconformity', limit: 2,
+    originDepartmentNameAny: ['北工場', '南工場'], originDepartmentName: '資材課',
   });
 
   const sameFormalName = await classifier.answer('資材課の直近の不適合2件');

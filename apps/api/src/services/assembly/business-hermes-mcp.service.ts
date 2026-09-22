@@ -367,6 +367,7 @@ const TOOLS: ReadonlyArray<BusinessHermesMcpTool> = [
         originDepartmentCode: { type: 'string', maxLength: 120, description: 'Exact code for the recorded origin (cause) department; it is not a responsibility-department or treatment-owner filter.' },
         originDepartmentName: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Literal case-insensitive substring for the recorded origin (cause) department name; it is not a responsibility-department or treatment-owner filter.' },
         originDepartmentNames: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: MAX_QUERY_CHARS }, description: 'Multiple literal origin-department terms; every term must match the recorded origin name.' },
+        originDepartmentNameAny: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: MAX_QUERY_CHARS }, description: 'Alternative literal origin-department terms; at least one term must match the recorded origin name. Combine with originDepartmentName for an AND condition.' },
         condition: { type: 'string', maxLength: MAX_QUERY_CHARS, description: 'Literal case-insensitive substring limited to the nonconformity content field; it may be combined with dedicated filters.' },
         dateFrom: { type: 'string', maxLength: 10, description: 'Inclusive discoveredOn date lower bound in YYYY-MM-DD format.' },
         dateTo: { type: 'string', maxLength: 10, description: 'Inclusive discoveredOn date upper bound in YYYY-MM-DD format.' },
@@ -1674,6 +1675,9 @@ export class BusinessHermesMcpService {
     const originDepartmentNames = Array.isArray(args.originDepartmentNames)
       ? [...new Set(args.originDepartmentNames.map((value) => text(value)).filter((value): value is string => Boolean(value)))].slice(0, 12)
       : [];
+    const originDepartmentNameAny = Array.isArray(args.originDepartmentNameAny)
+      ? [...new Set(args.originDepartmentNameAny.map((value) => text(value)).filter((value): value is string => Boolean(value)))].slice(0, 12)
+      : [];
     const excludeOriginDepartmentNames = Array.isArray(args.excludeOriginDepartmentNames)
       ? [...new Set(args.excludeOriginDepartmentNames.map((value) => text(value)).filter((value): value is string => Boolean(value)))].slice(0, 12)
       : [];
@@ -1727,7 +1731,12 @@ export class BusinessHermesMcpService {
         ...(machineName ? { machineName } : {}),
         ...(originDepartmentCode ? { originDepartmentCode } : {}),
         ...(originDepartmentName ? { originDepartmentName: { contains: originDepartmentName, mode: 'insensitive' } } : {}),
-        ...(originDepartmentNames.length ? { AND: originDepartmentNames.map((term) => ({ originDepartmentName: { contains: term, mode: 'insensitive' } })) } : {}),
+        ...(originDepartmentNames.length || originDepartmentNameAny.length ? {
+          AND: [
+            ...originDepartmentNames.map((term) => ({ originDepartmentName: { contains: term, mode: 'insensitive' } })),
+            ...(originDepartmentNameAny.length ? [{ OR: originDepartmentNameAny.map((term) => ({ originDepartmentName: { contains: term, mode: 'insensitive' } })) }] : []),
+          ],
+        } : {}),
         ...(exactExclusionWhere.length ? { NOT: { OR: exactExclusionWhere } } : {}),
         ...(dateFromBound || dateToBound ? { discoveredOn: { ...(dateFromBound ? { gte: dateFromBound } : {}), ...(dateToBound ? { lte: dateToBound } : {}) } } : {}),
         ...(query ? {

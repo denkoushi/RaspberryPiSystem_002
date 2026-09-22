@@ -338,6 +338,23 @@ describe('BusinessHermesMcpService', () => {
     }));
 
     await service.call('business_hermes_search', {
+      kind: 'nonconformity', partName: '品名',
+      originDepartmentNameAny: ['北工場', '南工場'], originDepartmentName: '機械課', limit: 1
+    });
+    expect(db.scawStfutekigoCurrent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        partName: '品名',
+        originDepartmentName: { contains: '機械課', mode: 'insensitive' },
+        AND: [{
+          OR: [
+            { originDepartmentName: { contains: '北工場', mode: 'insensitive' } },
+            { originDepartmentName: { contains: '南工場', mode: 'insensitive' } },
+          ],
+        }],
+      }),
+    }));
+
+    await service.call('business_hermes_search', {
       kind: 'nonconformity',
       exactExclude: { partName: '品名' }, excludeOriginDepartmentNames: ['機構設計'], limit: 1
     });
