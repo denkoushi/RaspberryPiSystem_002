@@ -526,11 +526,14 @@ test('distinguishes source field labels from organization values after factory r
     assert.deepEqual(display.unresolved, []);
     assert.deepEqual(display.organization.include, []);
   }
-  for (const request of ['起因部署が月面課の不適合', '起因部署が起因部の不適合', '機械名課の不適合']) {
+  for (const request of ['起因部署が月面課の不適合', '起因部署が起因部の不適合', '機械名課の不適合', '備考センターの不適合']) {
     const unknown = extractStructuredConditions(request, records);
     assert.equal(unknown.unresolved[0].reason, 'not_found');
     assert.equal(unknown.organization.resolution.action, RESOLUTION_ACTIONS.CONFIRM);
   }
+  const fieldPrefixValue = extractStructuredConditions('備考センターの不適合', [{ originDepartmentName: '備考センター' }]);
+  assert.deepEqual(fieldPrefixValue.unresolved, []);
+  assert.deepEqual(fieldPrefixValue.organization.matchedTerms, ['備考センター']);
   await writeFile(snapshotPath, JSON.stringify({ ...snapshot, records }));
   const classifier = new AuthorizedRecordClassifier({ snapshotPath, storePath: path.join(directory, 'classifications.json'), classificationEnabled: false, evaluateImplementation: evaluator });
   await classifier.prepare();

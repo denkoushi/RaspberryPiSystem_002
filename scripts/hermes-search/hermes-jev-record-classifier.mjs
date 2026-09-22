@@ -754,7 +754,7 @@ function questionOrganizationTerms(question) {
     normalized = normalized.replaceAll(heading, (match, offset, source) => {
       // A heading inside a longer name is not a field reference. Preserve it
       // for candidate resolution, including unknown values with such names.
-      const wordCharacter = /[\p{Script=Han}々ーA-Za-z0-9]/u;
+      const wordCharacter = /[\p{Script=Han}\p{Script=Katakana}々ーA-Za-z0-9]/u;
       return wordCharacter.test(source[offset - 1] ?? '') || wordCharacter.test(source[offset + match.length] ?? '') ? match : ' ';
     });
   }
