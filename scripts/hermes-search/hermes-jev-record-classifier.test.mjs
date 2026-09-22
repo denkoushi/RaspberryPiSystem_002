@@ -543,6 +543,26 @@ test('selects a current removal target independently and preserves every other c
   assert.deepEqual(withoutDepartment.searchState.exact.organization.matchedTerms, ['仙台工場']);
   assert.deepEqual(withoutDepartment.searchState.semantic, previous.semantic);
 
+  const factorySet = applySearchDelta(previous, {
+    action: 'replace_condition', exact: { organization: extractStructuredConditions('仙台工場または三島工場の資材課', classifier.store.records).organization },
+  });
+  target = 'organization_facility:仙台工場';
+  const withoutOneFactory = await classifier.answer('仙台工場の指定だけ解除して', { searchState: factorySet });
+  assert.deepEqual(withoutOneFactory.searchState.exact.organization.matchedTerms, ['三島工場', '資材課']);
+  for (const field of ['semantic', 'limit', 'sort', 'display']) assert.deepEqual(withoutOneFactory.searchState[field], factorySet[field]);
+  target = 'organization_facility';
+  const withoutFactories = await classifier.answer('工場の指定を全部解除して', { searchState: factorySet });
+  assert.deepEqual(withoutFactories.searchState.exact.organization.matchedTerms, ['資材課']);
+
+  const withExclusions = applySearchDelta(factorySet, {
+    action: 'replace_condition', exact: { organization: { ...factorySet.exact.organization, exclude: factorySet.exact.organization.include } },
+  });
+  target = 'organization_exclude:0';
+  const withoutOneExclusion = await classifier.answer('先に指定した組織の除外だけ解除して', { searchState: withExclusions });
+  assert.deepEqual(withoutOneExclusion.searchState.exact.organization, {
+    ...withExclusions.exact.organization, exclude: withExclusions.exact.organization.exclude.slice(1),
+  });
+
   target = 'semantic:process';
   const withoutProcess = await classifier.answer('工程の指定を解除して', { searchState: previous });
   assert.deepEqual(withoutProcess.searchState.semantic.include, {});

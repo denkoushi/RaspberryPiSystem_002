@@ -263,7 +263,7 @@ function buildQueryQuestions(definition, removalCandidates = []) {
   );
   if (removalCandidates.length) {
     questions.removal_target = choiceQuestion(
-      'If `request` asks to remove a search condition, select exactly the CURRENT condition in `removalCandidates` that it refers to. The operation is judged separately. A factory/location scope and a department filter are different conditions even when their names occur together. Remove only the requested condition; keep every other condition. Select organization_all only when the user explicitly removes the whole organization scope, not just its factory or department. A whole-field/group candidate removes every value and polarity in that field/group: select it only for an explicit whole-field/group removal; select the individual value/polarity candidate for one condition. If no current candidate fits, several different conditions could be meant, or this is not a removal request, select __none_requested__. Do not infer a broader target from a narrower or unknown name.',
+      'If `request` asks to remove a search condition, select exactly the CURRENT condition in `removalCandidates` that it refers to. The operation is judged separately. A factory/location scope and a department filter are different conditions even when their names occur together. Remove only the requested condition; keep every other condition. Select organization_all only when the user explicitly removes the whole organization scope, not just its factory or department. A whole-field/group candidate (including factory or department groups) removes every listed value: select it only for an explicit whole-field/group removal; select the individual value/polarity candidate for one condition. If no current candidate fits, several different conditions could be meant, or this is not a removal request, select __none_requested__. Do not infer a broader target from a narrower or unknown name.',
       [
         { id: QUERY_NONE, description: '解除する現在の条件を一つに特定できない、候補にない、または解除の要求ではない' },
         ...removalCandidates.map(({ id, label, values }) => ({ id, description: { condition: label, currentValues: values } })),
@@ -1134,6 +1134,15 @@ function removalCandidatesFor(state, definition) {
   const departments = previousOrganizationTermsAfterFacility(organization);
   if (facilities.length) candidates.push({ id: 'organization_facility', label: '工場・拠点の限定条件（部署条件は残す）', values: facilities, remove: { organizationFacility: true }, remainingTerms: departments });
   if (departments.length) candidates.push({ id: 'organization_department', label: '部署の限定条件（工場・拠点条件は残す）', values: departments, remove: { organization: true }, remainingTerms: facilities });
+  if (facilities.length > 1) for (const term of facilities) {
+    candidates.push({ id: `organization_facility:${term}`, label: '指定した工場・拠点だけの限定条件（ほかの拠点・部署条件は残す）', values: [term], remove: { organizationFacility: true }, remainingTerms: [...facilities.filter((value) => value !== term), ...departments] });
+  }
+  if (departments.length > 1) for (const term of departments) {
+    candidates.push({ id: `organization_department:${term}`, label: '指定した部署だけの条件（工場・ほかの部署条件は残す）', values: [term], remove: { organization: true }, remainingTerms: [...facilities, ...departments.filter((value) => value !== term)] });
+  }
+  for (const [index, excluded] of organization.exclude.entries()) {
+    candidates.push({ id: `organization_exclude:${index}`, label: '指定した組織の除外条件だけ（含む条件とほかの除外条件は残す）', values: { exclude: excluded }, remove: { organization: true }, organization: { ...organization, exclude: organization.exclude.filter((_, position) => position !== index) } });
+  }
   if ((facilities.length && departments.length) || organization.exclude.length
     || (!facilities.length && !departments.length && organization.include.length)) {
     candidates.push({ id: 'organization_all', label: '工場・部署・組織除外の条件をすべて解除する', values: organization, remove: { organization: true } });
@@ -1172,7 +1181,7 @@ function resolveRemovalTarget(evaluated, candidates, previousState, records) {
   if (!selected || judgment.confidence < QUERY_CHOICE_POLICY.uncertainBelow) {
     return { unresolved: [{ kind: 'action', field: 'removalTarget', reason: 'condition_to_remove_unresolved' }] };
   }
-  if (!selected.remainingTerms) return { selected, unresolved: [] };
+  if (!selected.remainingTerms) return { selected, organization: selected.organization, unresolved: [] };
   // Only code-owned, already confirmed remaining terms enter the resolver.
   // The removal utterance must not introduce a new organization restriction.
   const organization = resolveOrganizationConditions(selected.remainingTerms.join(' '), records);
