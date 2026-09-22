@@ -263,7 +263,7 @@ function buildQueryQuestions(definition, removalCandidates = []) {
   );
   if (removalCandidates.length) {
     questions.removal_target = choiceQuestion(
-      'If `request` asks to remove a search condition, select exactly the CURRENT condition in `removalCandidates` that it refers to. The operation is judged separately. A factory/location scope and a department filter are different conditions even when their names occur together. Remove only the requested condition; keep every other condition. Select organization_all only when the user explicitly removes the whole organization scope, not just its factory or department. If no current candidate fits, several different conditions could be meant, or this is not a removal request, select __none_requested__. Do not infer a broader target from a narrower or unknown name.',
+      'If `request` asks to remove a search condition, select exactly the CURRENT condition in `removalCandidates` that it refers to. The operation is judged separately. A factory/location scope and a department filter are different conditions even when their names occur together. Remove only the requested condition; keep every other condition. Select organization_all only when the user explicitly removes the whole organization scope, not just its factory or department. A semantic group candidate removes every value and polarity in that group: select it only for an explicit whole-group removal; select the individual value/polarity candidate for one condition. If no current candidate fits, several different conditions could be meant, or this is not a removal request, select __none_requested__. Do not infer a broader target from a narrower or unknown name.',
       [
         { id: QUERY_NONE, description: '解除する現在の条件を一つに特定できない、候補にない、または解除の要求ではない' },
         ...removalCandidates.map(({ id, label, values }) => ({ id, description: { condition: label, currentValues: values } })),
@@ -1143,8 +1143,21 @@ function removalCandidatesFor(state, definition) {
   }
   for (const field of new Set([...Object.keys(state.semantic.include), ...Object.keys(state.semantic.exclude)])) {
     const group = definition.groups.find(({ id }) => id === field);
-    const describe = (value) => (Array.isArray(value) ? value : value ? [value] : []).map((id) => group?.options.find((option) => option.id === id)?.description ?? id);
+    const valuesFor = (value) => Array.isArray(value) ? value : value ? [value] : [];
+    const describe = (value) => valuesFor(value).map((id) => group?.options.find((option) => option.id === id)?.description ?? id);
     candidates.push({ id: `semantic:${field}`, label: group?.label ?? field, values: { include: describe(state.semantic.include[field]), exclude: describe(state.semantic.exclude[field]) }, remove: { semanticFields: [field] } });
+    const conditions = ['include', 'exclude'].flatMap((polarity) => valuesFor(state.semantic[polarity][field]).map((id) => ({ polarity, id })));
+    if (conditions.length > 1) {
+      for (const { polarity, id } of conditions) {
+        const semantic = { include: {}, exclude: {} };
+        for (const side of ['include', 'exclude']) {
+          const previous = state.semantic[side][field];
+          const remaining = valuesFor(previous).filter((value) => side !== polarity || value !== id);
+          if (remaining.length) semantic[side][field] = Array.isArray(previous) ? remaining : remaining[0];
+        }
+        candidates.push({ id: `semantic:${field}:${polarity}:${id}`, label: `${group?.label ?? field}の個別条件（ほかの値・除外条件は残す）`, values: { [polarity]: describe(id) }, remove: { semanticFields: [field] }, semantic });
+      }
+    }
   }
   candidates.push({ id: 'limit', label: '返す記録数の指定', values: state.limit, remove: { limit: true } });
   if (state.sort) candidates.push({ id: 'sort', label: '記録の並び順の指定', values: state.sort, remove: { sort: true } });
@@ -1242,7 +1255,7 @@ function buildSearchDelta(question, evaluated, structured, previousState, remova
   if (appliedAction === 'remove_condition') {
     delta.remove = removal?.selected?.remove ?? {};
     delta.exact = { include: {}, exclude: {}, organization: structuredOrganizationForState(removal?.organization) };
-    delta.semantic = { include: {}, exclude: {} };
+    delta.semantic = removal?.selected?.semantic ?? { include: {}, exclude: {} };
     // Removing one condition never replaces an unrelated limit, order, or
     // display setting merely because those words also appeared in the request.
     delete delta.limit;

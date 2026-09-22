@@ -247,6 +247,12 @@ export function applySearchDelta(previous, rawDelta) {
     if (Array.isArray(remove.semanticFields)) {
       next.semantic.include = removeMapFields(next.semantic.include, remove.semanticFields);
       next.semantic.exclude = removeMapFields(next.semantic.exclude, remove.semanticFields);
+      for (const field of remove.semanticFields) {
+        for (const polarity of ['include', 'exclude']) {
+          const retained = delta.semantic?.[polarity]?.[field];
+          if (retained !== undefined) next.semantic[polarity][field] = clone(retained);
+        }
+      }
     }
     if (remove.sort) next.sort = null;
     if (remove.limit) next.limit = 20;

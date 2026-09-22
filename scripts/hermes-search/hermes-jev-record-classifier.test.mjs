@@ -555,6 +555,23 @@ test('selects a current removal target independently and preserves every other c
   assert.equal(withoutLimit.searchState.limit, emptySearchState().limit);
   for (const field of ['exact', 'semantic', 'sort', 'display']) assert.deepEqual(withoutLimit.searchState[field], previous[field]);
 
+  const multiplePhenomena = applySearchDelta(previous, {
+    action: 'add_condition',
+    semantic: { include: { phenomenon: ['surface_damage', 'missing_marking'] }, exclude: { phenomenon: ['crack_or_breakage'] } },
+  });
+  target = 'semantic:phenomenon:include:surface_damage';
+  const withoutDamage = await classifier.answer('打痕を含む条件だけ解除して', { searchState: multiplePhenomena });
+  assert.deepEqual(withoutDamage.searchState.semantic, {
+    include: { process: 'turning', phenomenon: ['missing_marking'] }, exclude: { phenomenon: ['crack_or_breakage'] },
+  });
+  target = 'semantic:phenomenon:exclude:crack_or_breakage';
+  const withoutExclusion = await classifier.answer('割れを除外する条件だけ解除して', { searchState: multiplePhenomena });
+  assert.deepEqual(withoutExclusion.searchState.semantic, { include: multiplePhenomena.semantic.include, exclude: {} });
+  for (const field of ['exact', 'limit', 'sort', 'display']) assert.deepEqual(withoutExclusion.searchState[field], multiplePhenomena[field]);
+  target = 'semantic:phenomenon';
+  const withoutPhenomena = await classifier.answer('現象の条件を全部解除して', { searchState: multiplePhenomena });
+  assert.deepEqual(withoutPhenomena.searchState.semantic, previous.semantic);
+
   for (const selection of [{ choice: '__none_requested__', confidence: 0.94 }, { choice: 'organization_facility', confidence: 0.2 }]) {
     target = selection.choice;
     confidence = selection.confidence;
