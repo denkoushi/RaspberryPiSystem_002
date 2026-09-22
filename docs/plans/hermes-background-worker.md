@@ -59,6 +59,8 @@ Add a display-only option to the existing query operation Choice, validate its p
 
 Review identified an empty-display replacement. Exact headings from the existing source definition can use its existing original-text projection without adding display fields or another dictionary; otherwise an empty/uncertain display selection confirms and preserves the prior state. Regression covers both source-heading resolution and genuinely unresolved display requests.
 
+Follow-up review requires exact source headings to take precedence over semantic display guesses. A query-only Noul resolves positive display intent for those existing headings; negative/uncertain intent confirms without applying a delta. A resolved display-only clarification can complete, while pending search-condition clarification stays intact. This changes display metadata rather than the selected records; compare the original OR pre-state explicitly and do not claim a different state reproduces the old failure.
+
 ### Follow-up: distinguish operation-decision rejection reasons (2026-09-22)
 
 Keep the captured OR request `仙台工場または三島工場の資材課の最近の不適合2件を新しく検索して` and its revision-7 SearchState unchanged. Existing evidence resolves both factories and the department but combines JEV clarification and lexical/JEV disagreement as `change_intent_unresolved`.

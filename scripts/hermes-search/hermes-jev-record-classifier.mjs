@@ -758,6 +758,11 @@ function sourceFieldHeadings() {
     [label, `${label}名`, `${label}欄`].map((heading) => ({ field, label, heading })));
 }
 
+function mentionedSourceHeadings(question) {
+  const spans = text(question).normalize('NFKC').match(/[\p{Script=Han}\p{Script=Katakana}々ーA-Za-z0-9]+/gu) ?? [];
+  return sourceFieldHeadings().filter(({ heading }) => spans.includes(heading));
+}
+
 function organizationQuestionInput(question, records, judgments = {}) {
   const normalized = text(question).normalize('NFKC');
   const values = organizationIndex(records);
@@ -1333,16 +1338,16 @@ function buildSearchDelta(question, evaluated, structured, previousState, remova
   if (limit !== null) delta.limit = limit;
   if (hasRecentRequest(normalized)) delta.sort = { field: 'discoveredOn', direction: 'desc' };
   if (evaluated.query?.changeAction === 'update_display') {
-    if (!requestedDisplay.requested?.length) {
-      // An exact source heading can be shown by the existing original-text
-      // projection even when it has no semantic DISPLAY_REQUESTS category.
-      const headings = sourceFieldHeadings();
-      const spans = normalized.match(/[\p{Script=Han}\p{Script=Katakana}々ーA-Za-z0-9]+/gu) ?? [];
-      if (spans.some((span) => headings.some(({ heading }) => heading === span))) {
-        requestedDisplay = { ...requestedDisplay, requested: ['originalText'] };
+    if (mentionedSourceHeadings(question).length) {
+      // Code resolves the source field; JEV resolves whether showing it is
+      // requested. Generic semantic guesses cannot override an exact heading.
+      if (evaluated.judgments.display_source_heading?.noul >= QUERY_DECISION_POLICY.includeAt) {
+        requestedDisplay = { originalText: true, requested: ['originalText'] };
       } else {
-        delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_field_unresolved' });
+        delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_heading_intent_unresolved' });
       }
+    } else if (!requestedDisplay.requested?.length) {
+      delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_field_unresolved' });
     }
     // Never apply speculative filters, nor silently discard a conflicting or
     // unknown condition, when the chosen operation changes only presentation.
@@ -1383,13 +1388,25 @@ function queryFromSearchState(question, state) {
 }
 
 async function classifyText(question, definition, evaluate, mode, conversation = {}) {
+  const questions = buildQuestions(definition, mode, conversation.removalCandidates, conversation.fieldMentions);
+  const sourceHeadings = mode === 'query' ? mentionedSourceHeadings(question) : [];
+  if (sourceHeadings.length) {
+    questions.display_source_heading = noulQuestion(
+      `ユーザーは次の情報源項目を表示することを明確に求めているか: ${sourceHeadings.map(({ label }) => label).join('、')}。現在の要求と会話状態に基づき、項目を表示する肯定的な要求と、非表示・表示の禁止・検索条件の指定・単なる言及を区別する。一つでも非表示を求めている、または表示意図が確定しない場合は肯定しない。`,
+      '挙げた項目を表示する肯定的な要求であり、非表示の要求はない。',
+      '非表示の要求、検索条件、単なる言及、または表示意図を確定できない。',
+    );
+  }
   const result = await evaluate({
     model: 'typesafe-ai/jev',
     state: mode === 'query' ? queryConversationState(question, conversation) : { request: question, relatedHistory: [], confirmationPending: null },
-    questions: buildQuestions(definition, mode, conversation.removalCandidates, conversation.fieldMentions),
+    questions,
     maxRetries: 0
   });
   const evaluated = classificationFromAnswers(result?.answers, definition, mode, question);
+  if (sourceHeadings.length) {
+    evaluated.judgments.display_source_heading = normalizeNoulJudgment(result.answers.display_source_heading, 'display_source_heading');
+  }
   if (mode === 'query' && conversation.removalCandidates?.length) {
     evaluated.judgments.removal_target = normalizeChoiceJudgment(result.answers.removal_target,
       [{ id: QUERY_NONE }, ...conversation.removalCandidates], 'removal_target');
@@ -1607,6 +1624,7 @@ export class AuthorizedRecordClassifier {
       input: operationInput,
       conversationTargetJudgment: evaluated.judgments.conversation_target,
       changeActionJudgment: evaluated.judgments.change_action,
+      displayHeadingJudgment: evaluated.judgments.display_source_heading ?? null,
       code: operationDecision(question, evaluated, previousState),
       organization: {
         ...structuredOrganizationForState(structured.organization),

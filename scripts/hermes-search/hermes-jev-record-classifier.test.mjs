@@ -81,6 +81,8 @@ function evaluator({ state, questions }) {
                 ? 'add_condition'
                 : 'clarify';
       answers[key] = choiceAnswer(selected, options);
+    } else if (key === 'display_source_heading') {
+      answers[key] = noulAnswer(0.01);
     } else if (key.startsWith('display:')) {
       const displayKey = key.slice('display:'.length);
       const requested = (displayKey === 'discoveredOn' && /発生日|発見日|日付/u.test(request))
@@ -601,6 +603,7 @@ test('maps a display-only judgment to the existing Delta without changing the se
   await writeFile(snapshotPath, JSON.stringify({ ...snapshot, records }));
   let displayConfidence = 0.94;
   let displayNoul = 0.94;
+  let sourceHeadingNoul = 0.94;
   const classifier = new AuthorizedRecordClassifier({ snapshotPath,
     storePath: path.join(directory, 'classifications.json'), classificationEnabled: false,
     evaluateImplementation: async (input) => {
@@ -611,6 +614,7 @@ test('maps a display-only judgment to the existing Delta without changing the se
         confidence: displayConfidence,
       };
       result.answers['display:cause'] = noulAnswer(displayNoul);
+      if (input.questions.display_source_heading) result.answers.display_source_heading = noulAnswer(sourceHeadingNoul);
       return result;
     },
   });
@@ -621,9 +625,9 @@ test('maps a display-only judgment to the existing Delta without changing the se
     assert.equal(result.searchDelta.action, 'replace_condition');
     assert.equal(result.searchDelta.applied, true);
     assert.deepEqual(result.searchState, { ...previous, revision: 6,
-      display: { originalText: true, requested: ['cause'] }, lastAction: 'replace_condition' });
+      display: { originalText: true, requested: ['originalText'] }, lastAction: 'replace_condition' });
     assert.deepEqual(result.searchDiagnostics.operationDecision.proposedDelta, {
-      action: 'replace_condition', display: { originalText: true, requested: ['cause'] }, unresolvedConditions: [],
+      action: 'replace_condition', display: { originalText: true, requested: ['originalText'] }, unresolvedConditions: [],
     });
     assert.deepEqual(result.searchPlan.args, { kind: 'nonconformity', limit: 2, originDepartmentName: '資材課' });
   }
@@ -671,6 +675,14 @@ test('maps a display-only judgment to the existing Delta without changing the se
     assert.deepEqual(resolvedDisplay.searchState.exact, previous.exact);
   }
   displayNoul = 0.94;
+  for (const noul of [0.01, 0.4]) {
+    sourceHeadingNoul = noul;
+    const hidden = await classifier.answer('起因部署は表示しないで', { searchState: previous });
+    assert.equal(hidden.searchDelta.applied, false);
+    assert.deepEqual(hidden.searchState, previous);
+    assert.ok(hidden.searchDiagnostics.operationDecision.proposedDelta.unresolvedConditions.some(({ reason }) => reason === 'display_heading_intent_unresolved'));
+  }
+  sourceHeadingNoul = 0.94;
   displayConfidence = 0.2;
   const uncertain = await classifier.answer('その記録の起因部署名を表示して', { searchState: previous });
   assert.equal(uncertain.searchDelta.applied, false);
