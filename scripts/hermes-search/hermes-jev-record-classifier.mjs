@@ -209,7 +209,7 @@ function buildRecordQuestions(definition) {
   return questions;
 }
 
-function buildQueryQuestions(definition, removalCandidates = []) {
+function buildQueryQuestions(definition, removalCandidates = [], fieldMentions = []) {
   const questions = {};
   for (const group of definition.groups) {
     const options = optionsFor(group);
@@ -268,11 +268,21 @@ function buildQueryQuestions(definition, removalCandidates = []) {
       ],
     );
   }
+  for (const mention of fieldMentions) {
+    questions[mention.id] = choiceQuestion(
+      { question: 'In `request`, does this source span refer to a field to display/use, or specify an organization VALUE to filter by? Use the source field meaning and recorded value candidates; do not turn a display request into a filter. An unknown value explicitly supplied by the user is still condition_value, never a field_reference just because it is absent from candidates.', mention },
+      [
+        { id: 'field_reference', description: 'The span names or describes a source field, not a value restricting records.' },
+        { id: 'condition_value', description: 'The span supplies an organization value, including an unknown value.' },
+        { id: 'unresolved', description: 'Its role cannot be determined from the request and current conditions.' },
+      ],
+    );
+  }
   return questions;
 }
 
-function buildQuestions(definition, mode, removalCandidates = []) {
-  return mode === 'record' ? buildRecordQuestions(definition) : buildQueryQuestions(definition, removalCandidates);
+function buildQuestions(definition, mode, removalCandidates = [], fieldMentions = []) {
+  return mode === 'record' ? buildRecordQuestions(definition) : buildQueryQuestions(definition, removalCandidates, fieldMentions);
 }
 
 function validProbability(value) {
@@ -741,24 +751,42 @@ function previousOrganizationTermsAfterFacility(previousOrganization) {
     .flatMap((term) => organizationDepartmentTermsAfterFacility(term)))];
 }
 
-function questionOrganizationTerms(question) {
-  // Recognize complete source headings before looking for value-shaped spans.
-  // This is not an unknown-value allowlist: all remaining candidates must still
-  // resolve against the authorized organization index below.
-  let normalized = text(question).normalize('NFKC');
-  // These are grammatical field references, derived from the source labels,
-  // not organization aliases. A longer value still reaches the resolver.
-  const headings = Object.values(SOURCE_FIELDS).flatMap((label) => [label, `${label}名`, `${label}欄`]);
-  for (const label of headings.sort((left, right) => right.length - left.length)) {
-    const heading = label.normalize('NFKC');
-    normalized = normalized.replaceAll(heading, (match, offset, source) => {
-      // A heading inside a longer name is not a field reference. Preserve it
-      // for candidate resolution, including unknown values with such names.
-      const wordCharacter = /[\p{Script=Han}\p{Script=Katakana}々ーA-Za-z0-9]/u;
-      return wordCharacter.test(source[offset - 1] ?? '') || wordCharacter.test(source[offset + match.length] ?? '') ? match : ' ';
-    });
-  }
-  const terms = new Set();
+function organizationQuestionInput(question, records, judgments = {}) {
+  const normalized = text(question).normalize('NFKC');
+  const values = organizationIndex(records);
+  const knownTerms = new Set(values.flatMap((value) => value.terms.map(normalizedOrganizationValue)));
+  const headings = Object.entries(SOURCE_FIELDS).flatMap(([field, label]) =>
+    [label, `${label}名`, `${label}欄`].map((heading) => ({ field, label, heading })));
+  const mentions = [];
+  const explicitTerms = [];
+  const unresolved = [];
+  const masked = normalized.replace(/[\p{Script=Han}\p{Script=Katakana}々ーA-Za-z0-9]+/gu, (span, offset) => {
+    const sourceField = headings.find(({ heading }) => span.includes(heading));
+    if (!sourceField || !questionOrganizationTerms(span).length || knownTerms.has(normalizedOrganizationValue(span))) return span;
+    const isHeading = headings.some(({ heading }) => heading === span);
+    const valuePosition = /(?:が|は|[:=])\s*[「『"]?$/u.test(normalized.slice(0, offset));
+    if (isHeading && !valuePosition) return ' ';
+    // A complete organization-shaped value is still resolved as a value, not
+    // deleted because a source heading occurs inside it.
+    if (!isHeading && isOrganizationTerm(span)) return span;
+    const mention = {
+      id: `field_mention:${mentions.length}`, span, offset,
+      field: sourceField.field, meaning: sourceField.label,
+      valueCandidates: values.map(({ name, code }) => ({ name, code })),
+    };
+    mentions.push(mention);
+    const judgment = judgments[mention.id];
+    if (judgment?.confidence >= QUERY_CHOICE_POLICY.uncertainBelow && judgment.choice === 'field_reference') return ' ';
+    if (judgment?.confidence >= QUERY_CHOICE_POLICY.uncertainBelow && judgment.choice === 'condition_value') explicitTerms.push(span);
+    else unresolved.push({ field: sourceField.field, term: span, reason: 'field_reference_unresolved' });
+    return ' ';
+  });
+  return { masked, mentions, explicitTerms, unresolved };
+}
+
+function questionOrganizationTerms(question, explicitTerms = []) {
+  const normalized = text(question).normalize('NFKC');
+  const terms = new Set(explicitTerms);
   const pattern = /[\p{Script=Han}々ーA-Za-z0-9]{1,32}(?:工場|本社|事業所|センター|研究所|部|課|係|室|班)/gu;
   for (const match of normalized.matchAll(pattern)) {
     if (isOrganizationTerm(match[0])) terms.add(match[0]);
@@ -789,9 +817,15 @@ function organizationIndex(records) {
 function resolveOrganizationConditions(question, records, previousOrganization = null, {
   ignorePreviousFacility = false,
   retainPreviousDepartment = false,
+  fieldMentionJudgments = {},
 } = {}) {
   const allCandidates = organizationIndex(records);
-  const requestedQuestionTerms = questionOrganizationTerms(question);
+  const input = organizationQuestionInput(question, records, fieldMentionJudgments);
+  const requestedQuestionTerms = questionOrganizationTerms(input.masked, input.explicitTerms);
+  if (input.unresolved.length) return {
+    include: [], exclude: [], unresolved: input.unresolved,
+    resolution: evaluateAmbiguityImpact({ ambiguity: { reason: 'different_interpretations' } }),
+  };
   const knownTerms = new Map();
   for (const candidate of allCandidates) {
     for (const term of candidate.terms) {
@@ -822,8 +856,7 @@ function resolveOrganizationConditions(question, records, previousOrganization =
     .map((term) => ({ term, values: knownTerms.get(term) ?? [] }))
     .filter(({ term, values }) => values.length > 0 || !requestedQuestionTerms.some((requestedTerm) => normalizedOrganizationValue(requestedTerm) === term))
     .sort((left, right) => right.term.length - left.term.length);
-  const unknown = requestedQuestionTerms.find((term) => isOrganizationTerm(term)
-    && ![...knownTerms.keys()].some((known) => known === normalizedOrganizationValue(term)));
+  const unknown = requestedQuestionTerms.find((term) => !knownTerms.has(normalizedOrganizationValue(term)));
   if (unknown) {
     return {
       include: [],
@@ -910,6 +943,7 @@ export function extractStructuredConditions(question, records, context = {}) {
   const organization = resolveOrganizationConditions(normalized, records, context.organization ?? null, {
     ignorePreviousFacility: context.ignorePreviousFacility === true,
     retainPreviousDepartment: context.retainPreviousDepartment === true,
+    fieldMentionJudgments: context.fieldMentionJudgments,
   });
   const numbers = normalized.match(/(?:不適合|記録|番号)?\s*([0-9０-９]{4,})(?!\s*年)/u)?.[1];
   if (numbers) result.nonconformityNo = numbers.replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
@@ -1097,6 +1131,7 @@ function queryConversationState(question, conversation = {}) {
     // not substitute the previous natural-language request for these values.
     searchState: safeConversation.searchState ? validateSearchState(safeConversation.searchState) : null,
     removalCandidates: (safeConversation.removalCandidates ?? []).map(({ id, label, values }) => ({ id, label, values })),
+    fieldMentions: safeConversation.fieldMentions ?? [],
   };
 }
 
@@ -1307,13 +1342,17 @@ async function classifyText(question, definition, evaluate, mode, conversation =
   const result = await evaluate({
     model: 'typesafe-ai/jev',
     state: mode === 'query' ? queryConversationState(question, conversation) : { request: question, relatedHistory: [], confirmationPending: null },
-    questions: buildQuestions(definition, mode, conversation.removalCandidates),
+    questions: buildQuestions(definition, mode, conversation.removalCandidates, conversation.fieldMentions),
     maxRetries: 0
   });
   const evaluated = classificationFromAnswers(result?.answers, definition, mode, question);
   if (mode === 'query' && conversation.removalCandidates?.length) {
     evaluated.judgments.removal_target = normalizeChoiceJudgment(result.answers.removal_target,
       [{ id: QUERY_NONE }, ...conversation.removalCandidates], 'removal_target');
+  }
+  if (mode === 'query' && evaluated.query?.changeAction !== 'remove_condition') for (const mention of conversation.fieldMentions ?? []) {
+    evaluated.judgments[mention.id] = normalizeChoiceJudgment(result.answers[mention.id],
+      ['field_reference', 'condition_value', 'unresolved'].map((id) => ({ id })), mention.id);
   }
   return { ...evaluated, model: result?.model ?? null, response: result?.response ?? null, usage: result?.usage ?? null };
 }
@@ -1469,6 +1508,7 @@ export class AuthorizedRecordClassifier {
     const pending = safeConversation.confirmationPending ?? safeConversation.pending ?? null;
     const previousState = safeConversation.searchState ? validateSearchState(safeConversation.searchState) : emptySearchState();
     const removalCandidates = removalCandidatesFor(previousState, this.definition);
+    const fieldMentions = explicitRemoval(question) ? [] : organizationQuestionInput(question, this.store.records).mentions;
     const conversationTarget = previousState.revision > 0 ? 'previous_search' : 'new_search';
     const evaluated = await classifyText(question, this.definition, async (input) => {
       const callStarted = performance.now();
@@ -1481,6 +1521,7 @@ export class AuthorizedRecordClassifier {
       conversationTarget,
       searchState: previousState,
       removalCandidates,
+      fieldMentions,
     });
     const coverage = this.coverage();
     const removing = deltaAction(question, evaluated, previousState) === 'remove_condition';
@@ -1493,6 +1534,7 @@ export class AuthorizedRecordClassifier {
       ? { include: {}, exclude: {}, organization: removal.organization, unresolved: [] }
       : extractStructuredConditions(question, this.store.records, {
       organization: organizationContext,
+      fieldMentionJudgments: evaluated.judgments,
     });
     const delta = buildSearchDelta(question, evaluated, structured, previousState, removal);
     const deltaDigest = deltaFingerprint(delta);

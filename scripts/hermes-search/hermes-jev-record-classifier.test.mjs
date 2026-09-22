@@ -547,6 +547,38 @@ test('distinguishes source field labels from organization values after factory r
   assert.deepEqual(result.searchPlan.args, { kind: 'nonconformity', limit: 2, originDepartmentName: '資材課' });
   assert.deepEqual(result.recordIds, ['nonconformity:material-mishima', 'nonconformity:material-sendai']);
   assert.equal(classifier.calls.filter(({ phase }) => phase === 'record').length, 0);
+
+  let fieldRole = 'field_reference';
+  let fieldConfidence = 0.94;
+  let evaluatedFieldState;
+  classifier.evaluateImplementation = async (input) => {
+    const response = await evaluator(input);
+    evaluatedFieldState = input.state;
+    response.answers.change_action = choiceAnswer('add_condition', Object.keys(input.questions.change_action.criteria));
+    for (const mention of input.state.fieldMentions) {
+      response.answers[mention.id] = { ...choiceAnswer(fieldRole, Object.keys(input.questions[mention.id].criteria)), confidence: fieldConfidence };
+    }
+    return response;
+  };
+  for (const request of ['各起因部署を表示して', '当該起因部署を表示して']) {
+    const shown = await classifier.answer(request, { searchState: previous });
+    assert.equal(shown.status, 'completed');
+    assert.deepEqual(shown.searchState.exact, previous.exact);
+    assert.equal(evaluatedFieldState.fieldMentions[0].meaning, '起因部署');
+    assert.equal(evaluatedFieldState.fieldMentions[0].valueCandidates.length, 3);
+    assert.deepEqual(evaluatedFieldState.searchState, previous);
+  }
+  fieldRole = 'condition_value';
+  const unknownFieldValue = await classifier.answer('起因部署が「起因部署」の不適合', { searchState: previous });
+  assert.equal(unknownFieldValue.status, 'clarification');
+  assert.equal(unknownFieldValue.searchDelta.applied, false);
+  assert.match(unknownFieldValue.answer, /起因部署/);
+  assert.deepEqual(unknownFieldValue.searchState, previous);
+  fieldRole = 'field_reference';
+  fieldConfidence = 0.2;
+  const uncertainField = await classifier.answer('各起因部署を表示して', { searchState: previous });
+  assert.equal(uncertainField.status, 'clarification');
+  assert.deepEqual(uncertainField.searchState, previous);
 });
 
 test('selects a current removal target independently and preserves every other condition', async () => {
