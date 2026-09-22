@@ -746,7 +746,10 @@ function questionOrganizationTerms(question) {
   // This is not an unknown-value allowlist: all remaining candidates must still
   // resolve against the authorized organization index below.
   let normalized = text(question).normalize('NFKC');
-  for (const label of Object.values(SOURCE_FIELDS).sort((left, right) => right.length - left.length)) {
+  // These are grammatical field references, derived from the source labels,
+  // not organization aliases. A longer value still reaches the resolver.
+  const headings = Object.values(SOURCE_FIELDS).flatMap((label) => [label, `${label}名`, `${label}欄`]);
+  for (const label of headings.sort((left, right) => right.length - left.length)) {
     const heading = label.normalize('NFKC');
     normalized = normalized.replaceAll(heading, (match, offset, source) => {
       // A heading inside a longer name is not a field reference. Preserve it

@@ -517,13 +517,15 @@ test('distinguishes source field labels from organization values after factory r
   assert.deepEqual(structured.unresolved, []);
   assert.deepEqual(structured.organization.matchedTerms, ['資材課']);
   assert.equal(structured.organization.resolution.action, RESOLUTION_ACTIONS.CONTINUE_SET);
-  for (const request of ['資材課の不適合を最新順で2件表示して', '起因部署：資材課の最近の不適合2件']) {
+  for (const request of ['資材課の不適合を最新順で2件表示して', '起因部署：資材課の最近の不適合2件', '起因部署名が資材課の不適合']) {
     assert.deepEqual(extractStructuredConditions(request, records).organization, structured.organization);
   }
   assert.deepEqual(extractStructuredConditions('起因部署が機械課の不適合', records).organization.matchedTerms, ['機械課']);
-  const display = extractStructuredConditions('その記録の起因部署を表示して', records);
-  assert.deepEqual(display.unresolved, []);
-  assert.deepEqual(display.organization.include, []);
+  for (const request of ['その記録の起因部署を表示して', 'その記録の起因部署名を表示して', 'その記録の起因部署欄を表示して']) {
+    const display = extractStructuredConditions(request, records);
+    assert.deepEqual(display.unresolved, []);
+    assert.deepEqual(display.organization.include, []);
+  }
   for (const request of ['起因部署が月面課の不適合', '起因部署が起因部の不適合', '機械名課の不適合']) {
     const unknown = extractStructuredConditions(request, records);
     assert.equal(unknown.unresolved[0].reason, 'not_found');
