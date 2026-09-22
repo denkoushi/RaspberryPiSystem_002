@@ -19,6 +19,14 @@ This bounded follow-up covers nonconformity search only. The connection order is
 
 User-visible completion requires the three existing turns, `三島工場の不適合2件。直近`, another organization and wording, condition replacement, condition removal, an unresolved condition, and an explicit new search to be exercised through the real API/session/worker/JEV route. For each turn, evidence must compare the before-state, accepted delta, after-state, and result metadata without logging raw records or secrets. Exact conditions must intersect semantic conditions over the full source set before applying limit/sort. Record-condition classification errors remain separately reported from successful state retention. The milestone remains incomplete until the actual screen acceptance is performed.
 
+## Follow-up: shared organization scope and ambiguity (2026-09-22)
+
+This follow-up keeps the same worker, `SearchState`, source definitions, and live PostgreSQL/read-service boundary. The common rule is that code owns authorized candidate discovery, exact organization scope, state transitions, and retrieval; JEV only supplies narrow semantic judgments. A formally resolved department is a set of matching effective origin-department values, not a Choice that selects one record or one factory. A factory is an independent scope condition: it is preserved when a department is refined, and can be removed without removing the department condition. Only an absent formal value or a genuinely different unresolved interpretation returns confirmation; multiple same-named departments across factories do not.
+
+The shared ambiguity policy is `detect ambiguity → evaluate search impact → continue as a set, resolve with an existing SearchState condition, or confirm`. A candidate set is safe to continue when it preserves the reading intent; an existing confirmed condition may narrow the set even when the current wording has several candidates; an interpretation that changes the target, and an unknown term whose meaning cannot be resolved, requires confirmation. This policy is domain-neutral and is not a department-specific exception. It does not infer correctness from a typed JEV value or from the number of returned records.
+
+The change is limited to `scripts/hermes-search/hermes-jev-record-classifier.mjs`, the small domain-neutral `hermes-resolution-policy.mjs`, `scripts/hermes-search/hermes-search-state.mjs`, their focused tests, and the existing exact-search handoff tests as needed. Candidate discovery must continue to use the complete current authorized snapshot, not displayed rows or saved classifications. Exact searches must continue through `HermesSearchTrialService` and `BusinessHermesMcpService` against current PostgreSQL data, including unclassified records, before applying date ordering and the requested limit. Representative acceptance cases are fixed: new `資材課` recent one-result search without a factory; department refinement after a factory is set; wording/department/limit changes through the same generic path; factory removal retaining the department; a newly added same-named department in another factory; and a truly unknown organization term returning confirmation. A small set of non-matching wording cases remains regression coverage and does not expand the acceptance list.
+
 ## Progress
 
 - [x] 2026-09-15: Audited source export, scheduling, adoption, DGX admission and container boundaries.
@@ -32,6 +40,10 @@ User-visible completion requires the three existing turns, `三島工場の不�
 - [x] Keep calculation separate from Pi certification/activation. Add a post-computation authorized source export comparison and a run/source-hash-bound authorization step; changed or removed sources defer without consuming progress. Focused Python and TypeScript checks passed.
 - [ ] Add scoped production-schedule reading and deterministic evaluation through existing business services.
 - [ ] Review, focused validation, CI, staged integration/deployment and production evidence.
+- [x] 2026-09-22: Recorded the shared organization-scope rules, affected modules, and fixed representative cases for the JEV follow-up.
+- [x] 2026-09-22: Added the domain-neutral ambiguity-impact policy and applied it to organization candidate sets, prior SearchState scope, and unresolved terms; focused regressions pass locally.
+- [x] 2026-09-22: Reproduced and corrected the two PR review cases: facility removal now derives department-only terms from prior compound values, and multiple facilities remain OR while department terms remain AND through the existing live reader.
+- [ ] 2026-09-22: Complete real JEV/API/DB handoff and floating-chat acceptance for the fixed representative cases.
 
 ## Context and Orientation
 
@@ -52,6 +64,12 @@ Remote work cannot use the current local PID/flock/shared-path assumptions. Exis
 2026-09-15, Codex: Keep source fingerprinting as a pure module so source adapters do not depend on HTTP/cache code. Retain the existing exported function for current callers.
 
 2026-09-15, Codex: Keep adoption and evidence checks on the business Pi. A remote worker receives bounded input and returns reconstructible output; it never gets database credentials or host Docker control. Add supporting DGX contract before enabling the business consumer. Reuse Docker and existing admission rather than add a cluster platform.
+
+2026-09-22, Codex: Represent organization ambiguity by unresolved meaning, not by the cardinality of the authorized match set. Keep facility and department terms in the existing organization state fields; derive the next candidate pool from the prior facility terms, never from the prior department values. On facility removal, recompute the department against the full authorized snapshot and retain only the department terms. This preserves the existing SearchState schema while making exact arguments express the same set at the live reader boundary.
+
+2026-09-22, Codex: Make ambiguity impact explicit and reusable: `candidate_set` can continue as a set, a confirmed existing condition can resolve its scope, and only meaning-unresolved or scope-changing interpretations confirm. Keep the policy separate from organization names so later condition resolvers can reuse it without adding source-specific exceptions.
+
+2026-09-22, Codex: Preserve the existing SearchState schema and direct multi-term reader behavior. Exact plans split structural facility alternatives into `originDepartmentNameAny` and keep department terms in the existing exact fields, so the adapter applies `(facility A OR facility B) AND department` without changing unrelated callers of `originDepartmentNames`.
 
 ## Plan of Work
 
