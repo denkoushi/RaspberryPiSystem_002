@@ -494,6 +494,56 @@ test('keeps a factory scope while resolving a new department and removes only th
   assert.equal(unknown.searchDelta.applied, false);
 });
 
+test('distinguishes source field labels from organization values after factory removal', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-field-value-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const records = [
+    { ...snapshot.records[0], id: 'material-mishima', originDepartmentName: '三島工場管理部資材課', originDepartmentCode: '110501051' },
+    { ...snapshot.records[1], id: 'material-sendai', originDepartmentName: '仙台工場管理部資材課', originDepartmentCode: '110701052' },
+    { ...snapshot.records[0], id: 'machine-sendai', originDepartmentName: '仙台工場製造部機械課', originDepartmentCode: 'machine' },
+  ];
+  const previous = {
+    schema: 'hermes-search-state/v1', revision: 3, sources: ['nonconformity'],
+    exact: { include: {}, exclude: {}, organization: {
+      include: records.slice(0, 2).map((row) => ({ name: row.originDepartmentName, code: row.originDepartmentCode })),
+      exclude: [], matchedTerms: ['資材課'], status: 'resolved',
+    } },
+    semantic: { include: {}, exclude: {} }, sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 1, display: { originalText: true, requested: ['phenomenon'] },
+    unresolvedConditions: [], lastAction: 'remove_condition',
+  };
+  const failedRequest = '起因部署が資材課の不適合を最新順で2件表示して';
+  const structured = extractStructuredConditions(failedRequest, records, { organization: previous.exact.organization });
+  assert.deepEqual(structured.unresolved, []);
+  assert.deepEqual(structured.organization.matchedTerms, ['資材課']);
+  assert.equal(structured.organization.resolution.action, RESOLUTION_ACTIONS.CONTINUE_SET);
+  for (const request of ['資材課の不適合を最新順で2件表示して', '起因部署：資材課の最近の不適合2件']) {
+    assert.deepEqual(extractStructuredConditions(request, records).organization, structured.organization);
+  }
+  assert.deepEqual(extractStructuredConditions('起因部署が機械課の不適合', records).organization.matchedTerms, ['機械課']);
+  const display = extractStructuredConditions('その記録の起因部署を表示して', records);
+  assert.deepEqual(display.unresolved, []);
+  assert.deepEqual(display.organization.include, []);
+  for (const request of ['起因部署が月面課の不適合', '起因部署が起因部の不適合', '機械名課の不適合']) {
+    const unknown = extractStructuredConditions(request, records);
+    assert.equal(unknown.unresolved[0].reason, 'not_found');
+    assert.equal(unknown.organization.resolution.action, RESOLUTION_ACTIONS.CONFIRM);
+  }
+  await writeFile(snapshotPath, JSON.stringify({ ...snapshot, records }));
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath, storePath: path.join(directory, 'classifications.json'), classificationEnabled: false, evaluateImplementation: evaluator });
+  await classifier.prepare();
+  const result = await classifier.answer(failedRequest, { searchState: previous });
+  assert.equal(result.status, 'completed');
+  assert.equal(result.searchDelta.applied, true);
+  assert.deepEqual(result.searchState.exact.organization.matchedTerms, ['資材課']);
+  assert.deepEqual(result.searchState.semantic, previous.semantic);
+  assert.deepEqual(result.searchState.sort, previous.sort);
+  assert.equal(result.searchState.limit, 2);
+  assert.deepEqual(result.searchPlan.args, { kind: 'nonconformity', limit: 2, originDepartmentName: '資材課' });
+  assert.deepEqual(result.recordIds, ['nonconformity:material-mishima', 'nonconformity:material-sendai']);
+  assert.equal(classifier.calls.filter(({ phase }) => phase === 'record').length, 0);
+});
+
 test('selects a current removal target independently and preserves every other condition', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-removal-target-'));
   const snapshotPath = path.join(directory, 'snapshot.json');

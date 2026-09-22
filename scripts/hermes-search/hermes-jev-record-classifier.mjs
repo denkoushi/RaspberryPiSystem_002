@@ -4,6 +4,7 @@ import { performance } from 'node:perf_hooks';
 import path from 'node:path';
 
 import { createTypesafeDirectEvaluate } from './hermes-jev-record-pilot.mjs';
+import { nonconformityDefinition } from './hermes-source-definition.mjs';
 import {
   applySearchDelta,
   deltaFingerprint,
@@ -22,6 +23,7 @@ import {
 export const CLASSIFIER_SCHEMA = 'hermes-jev-record-classification/v2';
 export const CLASSIFIER_DEFINITION_VERSION = 4;
 const PREVIOUS_CLASSIFIER_DEFINITION_VERSION = 3;
+const SOURCE_FIELDS = Object.freeze({ ...nonconformityDefinition.metadataFields, ...nonconformityDefinition.bodyFields });
 
 const QUERY_NONE = '__none_requested__';
 const QUERY_DECISION_POLICY = Object.freeze({
@@ -141,11 +143,7 @@ function text(value) {
 }
 
 function rawText(record) {
-  const fields = [
-    ['不適合番号', record.nonconformityNo], ['品番', record.partNumber], ['品名', record.partName],
-    ['機械名', record.machineName], ['起因部署', record.originDepartmentName], ['発見日', record.discoveredOn],
-    ['不適合内容', record.condition], ['備考', record.remarks], ['個別是正内容', record.correctiveContent], ['処置内容', record.disposition]
-  ];
+  const fields = Object.entries(SOURCE_FIELDS).map(([field, label]) => [label, record[field]]);
   return fields.filter(([, value]) => text(value)).map(([label, value]) => `${label}: ${text(value)}`).join('\n');
 }
 
@@ -461,7 +459,7 @@ function observedFields(records) {
 
 function observedTopicOptions(records) {
   const counts = new Map();
-  const labels = new Set(['不適合番号', '品番', '品名', '機械名', '起因部署', '発見日', '不適合内容', '備考', '個別是正内容', '処置内容']);
+  const labels = new Set(Object.values(SOURCE_FIELDS));
   const segmenter = typeof Intl?.Segmenter === 'function' ? new Intl.Segmenter('ja', { granularity: 'word' }) : null;
   for (const record of records) {
     const values = Object.entries(record)
@@ -744,7 +742,19 @@ function previousOrganizationTermsAfterFacility(previousOrganization) {
 }
 
 function questionOrganizationTerms(question) {
-  const normalized = text(question).normalize('NFKC');
+  // Recognize complete source headings before looking for value-shaped spans.
+  // This is not an unknown-value allowlist: all remaining candidates must still
+  // resolve against the authorized organization index below.
+  let normalized = text(question).normalize('NFKC');
+  for (const label of Object.values(SOURCE_FIELDS).sort((left, right) => right.length - left.length)) {
+    const heading = label.normalize('NFKC');
+    normalized = normalized.replaceAll(heading, (match, offset, source) => {
+      // A heading inside a longer name is not a field reference. Preserve it
+      // for candidate resolution, including unknown values with such names.
+      const wordCharacter = /[\p{Script=Han}々ーA-Za-z0-9]/u;
+      return wordCharacter.test(source[offset - 1] ?? '') || wordCharacter.test(source[offset + match.length] ?? '') ? match : ' ';
+    });
+  }
   const terms = new Set();
   const pattern = /[\p{Script=Han}々ーA-Za-z0-9]{1,32}(?:工場|本社|事業所|センター|研究所|部|課|係|室|班)/gu;
   for (const match of normalized.matchAll(pattern)) {
@@ -809,7 +819,7 @@ function resolveOrganizationConditions(question, records, previousOrganization =
     .map((term) => ({ term, values: knownTerms.get(term) ?? [] }))
     .filter(({ term, values }) => values.length > 0 || !requestedQuestionTerms.some((requestedTerm) => normalizedOrganizationValue(requestedTerm) === term))
     .sort((left, right) => right.term.length - left.term.length);
-  const unknown = questionOrganizationTerms(question).find((term) => isOrganizationTerm(term)
+  const unknown = requestedQuestionTerms.find((term) => isOrganizationTerm(term)
     && ![...knownTerms.keys()].some((known) => known === normalizedOrganizationValue(term)));
   if (unknown) {
     return {

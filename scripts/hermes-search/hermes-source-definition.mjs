@@ -15,7 +15,7 @@ export function validateSourceDefinition(value,expectedId) {
   if(!expectedId || value?.schema!=='hermes-source-definition/v1' || value.id!==expectedId) {
     throw new Error('source definition does not match its ingestion adapter');
   }
-  for(const name of ['bodyFields','organizedLabels']) {
+  for(const name of ['bodyFields','organizedLabels',...(value.metadataFields===undefined?[]:['metadataFields'])]) {
     const entries=Object.entries(value[name]??{});
     if(!entries.length || entries.some(([key,label])=>!key || typeof label!=='string' || !label)) {
       throw new Error(`invalid ${name}`);

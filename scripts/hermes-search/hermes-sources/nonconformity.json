@@ -2,6 +2,14 @@
   "schema": "hermes-source-definition/v1",
   "id": "nonconformity",
   "recordNumberField": "nonconformityNo",
+  "metadataFields": {
+    "nonconformityNo": "不適合番号",
+    "partNumber": "品番",
+    "partName": "品名",
+    "machineName": "機械名",
+    "originDepartmentName": "起因部署",
+    "discoveredOn": "発見日"
+  },
   "bodyFields": {
     "condition": "不適合内容",
     "remarks": "備考",
