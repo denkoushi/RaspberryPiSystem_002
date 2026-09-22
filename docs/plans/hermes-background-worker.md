@@ -120,7 +120,8 @@ Compare normalized predicates and logical relations, not returned rows; an indep
 Same predicates preserve conditions, explicit count/order changes update only those fields, and unknown/conflicting or scope-changing interpretations still confirm. Keep the existing display-only, organization-set, facility-refinement/removal regressions and resume the unchanged real conversation/OR acceptance after normal CI, review, merge, release, and standard Pi5 Deploy.
 Classification stays OFF, definition v4 and saved judgments unchanged. No distribution/authentication/search-framework changes.
 
-Focused validation: 33 existing Node tests passed, including the captured target confidence 0.42 and update-display confidence 0.52 together. Reassertion preserves predicates; count/order updates use the existing replacement Delta; omitted facility/exclusion/semantic predicates, changed factory alternatives, unknown departments, and contradictory polarities cannot use the equivalence proof. Hosted CI/review and post-Deploy real JEV/API/PostgreSQL/UI acceptance remain pending.
+Focused validation: 36 Node tests passed, including the captured target confidence 0.42 and update-display confidence 0.52 together. Reassertion preserves predicates; count/order updates use the existing replacement Delta; omitted facility/exclusion/semantic predicates, changed factory alternatives, unknown departments, and contradictory polarities cannot use the equivalence proof.
+Two review cases failed before the correction and passed afterward: retain organization name/code pairs, and evaluate whole exact exclusions according to the selected existing reader (classified tuple versus live exact independent exclusions). Reader semantics themselves are unchanged. Hosted CI/review and post-Deploy real JEV/API/PostgreSQL/UI acceptance remain pending.
 
 ### Milestone 1: Remove repeated reads without changing answers
 

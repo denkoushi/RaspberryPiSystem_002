@@ -694,6 +694,57 @@ test('compares reasserted predicates and target interpretations for the captured
   assert.equal(classifier.calls.filter(({ phase }) => phase === 'record').length, 0);
 });
 
+test('keeps organization identity and exact-exclusion logic in condition comparison', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-condition-review-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  const records = ['CODE-1', 'CODE-2'].map((code, index) => ({ ...snapshot.records[index],
+    originDepartmentName: '北工場管理部調達課', originDepartmentCode: code,
+  }));
+  await writeFile(snapshotPath, JSON.stringify({ ...snapshot, records }));
+  const classifier = new AuthorizedRecordClassifier({ snapshotPath,
+    storePath: path.join(directory, 'classifications.json'), classificationEnabled: false,
+    evaluateImplementation: async (input) => {
+      const result = await evaluator(input);
+      result.answers.change_action = choiceAnswer('update_display', Object.keys(input.questions.change_action.criteria));
+      return result;
+    },
+  });
+  await classifier.prepare();
+  await t.test('changing one coded exclusion to both is not the same predicate', async () => {
+    const question = '北工場管理部調達課を除く不適合の原文を表示して';
+    const structured = extractStructuredConditions(question, records);
+    assert.equal(structured.organization.exclude.length, 2);
+    const previous = applySearchDelta(emptySearchState(), { action: 'new_search', exact: {
+      organization: { ...structured.organization, exclude: [structured.organization.exclude[0]] },
+    } });
+    const result = await classifier.answer(question, { searchState: previous });
+    assert.equal(result.searchDelta.applied, false);
+    assert.deepEqual(result.searchState, previous);
+    assert.ok(result.searchDiagnostics.operationDecision.conditionEffect.changedPredicates.includes('organization'));
+  });
+  await t.test('classified exact exclusions are a whole conjunction, not individual negations', async () => {
+    const previous = applySearchDelta(emptySearchState(), { action: 'new_search',
+      exact: { include: { partNumber: 'PART-1' }, exclude: { partNumber: 'PART-1', machineName: 'フライスB' } },
+      semantic: { include: { process: 'turning' }, exclude: {} },
+    });
+    const result = await classifier.answer('PART-1の原文を表示して', { searchState: previous });
+    assert.equal(result.searchDelta.applied, true);
+    assert.equal(result.searchDiagnostics.operationDecision.conditionEffect.contradictory, false);
+    assert.deepEqual(result.searchState.exact, previous.exact);
+    assert.deepEqual(result.searchState.semantic, previous.semantic);
+    assert.equal(result.searchPlan.mode, 'classified');
+    for (const contradictoryState of [
+      { ...previous, semantic: { include: {}, exclude: {} } },
+      { ...previous, exact: { ...previous.exact, exclude: { partNumber: 'PART-1' } } },
+    ]) {
+      const conflicting = await classifier.answer('PART-1の原文を表示して', { searchState: contradictoryState });
+      assert.equal(conflicting.searchDelta.applied, false);
+      assert.equal(conflicting.searchDiagnostics.operationDecision.conditionEffect.contradictory, true);
+      assert.deepEqual(conflicting.searchState, contradictoryState);
+    }
+  });
+});
+
 test('maps a display-only judgment to the existing Delta without changing the search target', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-display-operation-'));
   const snapshotPath = path.join(directory, 'snapshot.json');

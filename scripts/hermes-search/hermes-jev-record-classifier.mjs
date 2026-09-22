@@ -1260,6 +1260,9 @@ function searchPredicates(state) {
   const values = (items) => [...new Set((Array.isArray(items) ? items : [items]).map((item) => text(item)))].sort();
   const map = (items) => Object.fromEntries(Object.entries(items).sort(([a], [b]) => a.localeCompare(b))
     .map(([field, expected]) => [field, values(expected)]));
+  const organizations = (items) => values(items.map(({ name, code }) => JSON.stringify([
+    normalizedOrganizationValue(name), code ? normalizedOrganizationValue(code) : null,
+  ])));
   const organization = value.exact.organization;
   return {
     sources: values(value.sources),
@@ -1268,8 +1271,8 @@ function searchPredicates(state) {
       facilityAny: values(organization.matchedTerms.filter(isOrganizationFacilityTerm).map(normalizedOrganizationValue)),
       departmentAll: values(organization.matchedTerms.filter((term) => !isOrganizationFacilityTerm(term)).map(normalizedOrganizationValue)),
       // Legacy states without compact predicates still have a selected set.
-      selectedAny: organization.matchedTerms.length ? [] : values(organization.include.map(({ name }) => normalizedOrganizationValue(name))),
-      excludeAny: values(organization.exclude.map(({ name }) => normalizedOrganizationValue(name))),
+      selectedAny: organization.matchedTerms.length ? [] : organizations(organization.include),
+      excludeAny: organizations(organization.exclude),
     },
     semanticInclude: map(value.semantic.include), semanticExclude: map(value.semantic.exclude),
   };
@@ -1295,14 +1298,21 @@ function conditionEffect(question, evaluated, structured, independent, previousS
   const changedScalars = ['limit', 'sort'].filter((key) => !same(previousState[key], continued[key]));
   const unresolved = previousState.unresolvedConditions.length + (evaluated.query.unresolved?.length ?? 0)
     + (structured.unresolved?.length ?? 0) + (independent.unresolved?.length ?? 0);
-  const contradictory = ['exact', 'semantic'].some((kind) => Object.entries(continued[kind].include)
+  const overlaps = (kind) => Object.entries(continued[kind].include)
     .some(([field, included]) => {
       const excluded = continued[kind].exclude[field];
       if (!excluded) return false;
       const positives = Array.isArray(included) ? included : [included];
       const negatives = Array.isArray(excluded) ? excluded : [excluded];
       return positives.some((item) => negatives.includes(item));
-    }));
+    });
+  // Preserve the selected reader's existing logic: live exact exclusions are
+  // NOT(OR fields); the classified reader excludes the complete exact tuple.
+  // Do not turn a partial overlap with that tuple into a contradictory request.
+  const exactContradiction = exactSearchArguments(continued) ? overlaps('exact')
+    : Object.keys(continued.exact.exclude).length > 0
+      && matchesConditions(continued.exact.include, continued.exact.exclude);
+  const contradictory = exactContradiction || overlaps('semantic');
   const targetEquivalent = !unresolved && !contradictory
     && same(after, searchPredicates(standalone))
     && ['limit', 'sort'].every((key) => same(continued[key], standalone[key]));
