@@ -188,9 +188,12 @@ function replaceMaps(current, incoming) {
   return result;
 }
 
-function removeMapFields(map, fields) {
+function removeMapFields(map, fields, retained = {}) {
   const result = { ...map };
-  for (const field of fields) delete result[field];
+  for (const field of fields) {
+    delete result[field];
+    if (retained[field] !== undefined) result[field] = clone(retained[field]);
+  }
   return result;
 }
 
@@ -241,18 +244,12 @@ export function applySearchDelta(previous, rawDelta) {
       next.exact.organization = delta.exact?.organization ?? emptySearchState().exact.organization;
     }
     if (Array.isArray(remove.exactFields)) {
-      next.exact.include = removeMapFields(next.exact.include, remove.exactFields);
-      next.exact.exclude = removeMapFields(next.exact.exclude, remove.exactFields);
+      next.exact.include = removeMapFields(next.exact.include, remove.exactFields, delta.exact?.include);
+      next.exact.exclude = removeMapFields(next.exact.exclude, remove.exactFields, delta.exact?.exclude);
     }
     if (Array.isArray(remove.semanticFields)) {
-      next.semantic.include = removeMapFields(next.semantic.include, remove.semanticFields);
-      next.semantic.exclude = removeMapFields(next.semantic.exclude, remove.semanticFields);
-      for (const field of remove.semanticFields) {
-        for (const polarity of ['include', 'exclude']) {
-          const retained = delta.semantic?.[polarity]?.[field];
-          if (retained !== undefined) next.semantic[polarity][field] = clone(retained);
-        }
-      }
+      next.semantic.include = removeMapFields(next.semantic.include, remove.semanticFields, delta.semantic?.include);
+      next.semantic.exclude = removeMapFields(next.semantic.exclude, remove.semanticFields, delta.semantic?.exclude);
     }
     if (remove.sort) next.sort = null;
     if (remove.limit) next.limit = 20;

@@ -572,6 +572,17 @@ test('selects a current removal target independently and preserves every other c
   const withoutPhenomena = await classifier.answer('現象の条件を全部解除して', { searchState: multiplePhenomena });
   assert.deepEqual(withoutPhenomena.searchState.semantic, previous.semantic);
 
+  const exactPolarities = applySearchDelta(previous, {
+    action: 'add_condition', exact: { include: { partNumber: 'PART-1' }, exclude: { partNumber: 'PART-2' } },
+  });
+  target = 'exact:partNumber:include:PART-1';
+  const withoutIncludedPart = await classifier.answer('品番PART-1の指定だけ解除して', { searchState: exactPolarities });
+  assert.deepEqual(withoutIncludedPart.searchState.exact, { ...exactPolarities.exact, include: {} });
+  target = 'exact:partNumber:exclude:PART-2';
+  const withoutExcludedPart = await classifier.answer('品番PART-2の除外指定だけ解除して', { searchState: exactPolarities });
+  assert.deepEqual(withoutExcludedPart.searchState.exact, { ...exactPolarities.exact, exclude: {} });
+  for (const field of ['semantic', 'limit', 'sort', 'display']) assert.deepEqual(withoutExcludedPart.searchState[field], exactPolarities[field]);
+
   for (const selection of [{ choice: '__none_requested__', confidence: 0.94 }, { choice: 'organization_facility', confidence: 0.2 }]) {
     target = selection.choice;
     confidence = selection.confidence;
