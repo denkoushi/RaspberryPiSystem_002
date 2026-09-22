@@ -41,6 +41,14 @@ Build bounded removal candidates from the current SearchState and existing organ
 
 Validation stays within the fixed removal cases and paraphrases plus affected existing regressions: factory-only removal after separate/compound organization setup, preservation of department/process/limit/sort, unknown target, and unchanged set search/refinement. Use normal PR/CI/review/merge and standard Deploy, then resume the same real JEV/API/PostgreSQL/floating-chat acceptance; stop on failure without changing expectations. Classification remains OFF with v4 and the saved store unchanged.
 
+## Follow-up: distinguish source field mentions from values (2026-09-22)
+
+The captured request `起因部署が資材課の不適合を最新順で2件表示して`, after the successful factory removal (revision 3, department set only, limit 1), produced the false unknown value `起因部`. Reproduce that exact request/state before changing extraction. Source-defined field labels must be recognized as complete spans before organization-value candidates are extracted; formal values still use the existing resolver and genuinely unknown values still require confirmation. A field display request must not create a condition. Move the existing source labels to the existing source definition rather than maintain a second query dictionary. Keep classification v4, saved judgments, removal behavior, deployment and authentication unchanged.
+
+Focused validation covers the failed wording, equivalent label/no-label wording, another existing department, display-only field mentions, unknown values, and the existing set/refinement/removal tests. Normal PR/CI/review/merge and standard Deploy precede real JEV-record acceptance; compare ordered IDs and original text against the same live PostgreSQL conditions. Resume only the already fixed remaining cases and stop on failure without changing expectations.
+
+Review found that character-boundary guards still confused grammatical modifiers with longer values. Formal organization/hierarchy candidates take precedence in code. Only a source-containing span whose role remains contextual is sent to a narrow field-reference/value/unresolved Choice in the existing query call, with the source field meaning, authorized candidate values and current SearchState. Validate its judgment with the existing threshold; an unknown selected value or uncertain role still confirms. No new record-classification question or state schema is introduced.
+
 ## Progress
 
 - [x] 2026-09-15: Audited source export, scheduling, adoption, DGX admission and container boundaries.
