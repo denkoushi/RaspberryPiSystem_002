@@ -51,6 +51,14 @@ Review found that character-boundary guards still confused grammatical modifiers
 
 ## Progress
 
+### Follow-up: distinguish operation-decision rejection reasons (2026-09-22)
+
+Keep the captured OR request `仙台工場または三島工場の資材課の最近の不適合2件を新しく検索して` and its revision-7 SearchState unchanged. Existing evidence resolves both factories and the department but combines JEV clarification and lexical/JEV disagreement as `change_intent_unresolved`.
+
+First add bounded evidence to the existing searchDiagnostics response only: actual operation input/questions, validated unchanged Choice values/probabilities/confidence, code decision/rejection reason, resolved organization and proposed Delta. Do not change the operation policy before a single same-state real-path reproduction identifies the cause. Never log credentials or record text.
+
+Normal PR/CI/review/merge/standard Deploy applies to diagnostics too; compare the reconstructed pre-state exactly before submitting the target once. A successful replay alone does not explain the original failure. Preserve #1463 behavior, classification OFF/v4/saved store and Node24; stop if the raw decision or cause remains unavailable.
+
 - [x] 2026-09-15: Audited source export, scheduling, adoption, DGX admission and container boundaries.
 - [x] 2026-09-15: Created isolated branch `feat/hermes-background-worker` from `0f38b6c1261305c1b1c0b0855cdbe24955823fd8` using the lifecycle CLI.
 - [x] 2026-09-15: Reuse batch export evidence and hash all source fields; focused tests and ESLint passed. Full incremental export remains open.
