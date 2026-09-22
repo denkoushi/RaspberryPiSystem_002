@@ -9,7 +9,8 @@ describe('Hermes search trial authorization',()=>{
   it('uses the existing reader boundary, preserves original text and keeps failure separate from no match',async()=>{
     const app=Fastify();
     app.setErrorHandler((error,_request,reply)=>reply.code(error instanceof ApiError?error.statusCode:400).send({code:'REJECTED'}));
-    const answer=vi.fn().mockResolvedValue({status:'completed',answer:'現象:\n左側の穴 0.5㎜。\n処置:\n再製作。',recordIds:['synthetic'],elapsedMs:2});
+    const conditionChange={operationJudgment:{type:'choice',choice:'remove_condition'},targetJudgment:{type:'choice',choice:'organization_facility'},selectedTarget:'organization_facility',remove:{organizationFacility:true},rejectionReason:null};
+    const answer=vi.fn().mockResolvedValue({status:'completed',answer:'現象:\n左側の穴 0.5㎜。\n処置:\n再製作。',recordIds:['synthetic'],elapsedMs:2,searchDiagnostics:{conditionChange}});
     const service={isEnabled:()=>true,scope:async()=>({enabled:true}),answer,close:vi.fn()};
     await registerHermesSearchTrialRoutes(app,service as never);
     const url='/assembly/hermes-search-trial/answer';
@@ -20,6 +21,7 @@ describe('Hermes search trial authorization',()=>{
     const response=await app.inject(request);
     expect(response.statusCode).toBe(200);
     expect(response.json().answer).toBe('現象:\n左側の穴 0.5㎜。\n処置:\n再製作。');
+    expect(response.json().searchDiagnostics.conditionChange).toEqual(conditionChange);
     const sessionId='00000000-0000-4000-8000-000000000001';
     const sessionResponse=await app.inject({...request,payload:{question:'処置は？',sessionId}});
     expect(sessionResponse.statusCode).toBe(200);

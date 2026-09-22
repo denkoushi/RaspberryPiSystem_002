@@ -211,7 +211,7 @@ function buildRecordQuestions(definition) {
   return questions;
 }
 
-function buildQueryQuestions(definition) {
+function buildQueryQuestions(definition, removalCandidates = []) {
   const questions = {};
   for (const group of definition.groups) {
     const options = optionsFor(group);
@@ -261,11 +261,20 @@ function buildQueryQuestions(definition) {
       { id: 'clarify', description: '操作の意味を確定できないので確認する' },
     ],
   );
+  if (removalCandidates.length) {
+    questions.removal_target = choiceQuestion(
+      'If `request` asks to remove a search condition, select exactly the CURRENT condition in `removalCandidates` that it refers to. The operation is judged separately. A factory/location scope and a department filter are different conditions even when their names occur together. Remove only the requested condition; keep every other condition. Select organization_all only when the user explicitly removes the whole organization scope, not just its factory or department. A whole-field/group candidate (including factory or department groups) removes every listed value: select it only for an explicit whole-field/group removal; select the individual value/polarity candidate for one condition. If no current candidate fits, several different conditions could be meant, or this is not a removal request, select __none_requested__. Do not infer a broader target from a narrower or unknown name.',
+      [
+        { id: QUERY_NONE, description: '解除する現在の条件を一つに特定できない、候補にない、または解除の要求ではない' },
+        ...removalCandidates.map(({ id, label, values }) => ({ id, description: { condition: label, currentValues: values } })),
+      ],
+    );
+  }
   return questions;
 }
 
-function buildQuestions(definition, mode) {
-  return mode === 'record' ? buildRecordQuestions(definition) : buildQueryQuestions(definition);
+function buildQuestions(definition, mode, removalCandidates = []) {
+  return mode === 'record' ? buildRecordQuestions(definition) : buildQueryQuestions(definition, removalCandidates);
 }
 
 function validProbability(value) {
@@ -1074,6 +1083,7 @@ function queryConversationState(question, conversation = {}) {
     // The bounded SearchState is the source of truth for change intent. Do
     // not substitute the previous natural-language request for these values.
     searchState: safeConversation.searchState ? validateSearchState(safeConversation.searchState) : null,
+    removalCandidates: (safeConversation.removalCandidates ?? []).map(({ id, label, values }) => ({ id, label, values })),
   };
 }
 
@@ -1112,38 +1122,71 @@ function explicitRemoval(question) {
   return /(?:外して|解除して|指定を外|指定なし|なしにして|取り除いて|除去して)/u.test(question.normalize('NFKC'));
 }
 
-function removesOrganizationFacility(question) {
-  return /(?:工場|本社|事業所|センター|研究所)(?:指定)?(?:を|は)?(?:外して|解除して|指定なし|なしにして|取り除いて|除去して)/u.test(question.normalize('NFKC'));
-}
-
 function explicitReplacement(question) {
   return /(?:に変えて|に変更して|変更する|切り替えて|置き換えて)/u.test(question.normalize('NFKC'));
 }
 
-function removeDimensions(question, structured) {
-  const normalized = question.normalize('NFKC');
-  const remove = {};
-  if (removesOrganizationFacility(normalized)) remove.organizationFacility = true;
-  else if (structured.organization?.include?.length || structured.organization?.exclude?.length
-    || /(?:部署|部門|組織)指定/u.test(normalized)) remove.organization = true;
-  if (/(?:件数|表示件数|件だけ|件に)/u.test(normalized)) remove.limit = true;
-  if (/(?:並び|順番|直近|最新|最近)/u.test(normalized)) remove.sort = true;
-  const exactFields = [];
-  if (/(?:不適合番号|番号)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('nonconformityNo');
-  if (/(?:品番)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('partNumber');
-  if (/(?:品名)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('partName');
-  if (/(?:機械名?|設備)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('machineName');
-  if (/(?:発生日|発見日|日付)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) exactFields.push('discoveredOn');
-  if (exactFields.length) remove.exactFields = [...new Set(exactFields)];
-  const semanticFields = [];
-  if (/(?:工程|現象|原因|処置|対応)(?:の)?指定(?:を)?(?:外して|解除して|なしにして)/u.test(normalized)) {
-    if (/工程/u.test(normalized)) semanticFields.push('process');
-    if (/現象/u.test(normalized)) semanticFields.push('phenomenon');
-    if (/(?:原因)/u.test(normalized)) semanticFields.push('cause');
-    if (/(?:処置|対応)/u.test(normalized)) semanticFields.push('treatment');
+function removalCandidatesFor(state, definition) {
+  if (state.revision === 0) return [];
+  const candidates = [];
+  const organization = state.exact.organization;
+  const facilities = [...new Set(organization.matchedTerms.flatMap(embeddedOrganizationFacilityTerms))];
+  const departments = previousOrganizationTermsAfterFacility(organization);
+  if (facilities.length) candidates.push({ id: 'organization_facility', label: '工場・拠点の限定条件（部署条件は残す）', values: facilities, remove: { organizationFacility: true }, remainingTerms: departments });
+  if (departments.length) candidates.push({ id: 'organization_department', label: '部署の限定条件（工場・拠点条件は残す）', values: departments, remove: { organization: true }, remainingTerms: facilities });
+  if (facilities.length > 1) for (const term of facilities) {
+    candidates.push({ id: `organization_facility:${term}`, label: '指定した工場・拠点だけの限定条件（ほかの拠点・部署条件は残す）', values: [term], remove: { organizationFacility: true }, remainingTerms: [...facilities.filter((value) => value !== term), ...departments] });
   }
-  if (semanticFields.length) remove.semanticFields = [...new Set(semanticFields)];
-  return remove;
+  if (departments.length > 1) for (const term of departments) {
+    candidates.push({ id: `organization_department:${term}`, label: '指定した部署だけの条件（工場・ほかの部署条件は残す）', values: [term], remove: { organization: true }, remainingTerms: [...facilities, ...departments.filter((value) => value !== term)] });
+  }
+  for (const [index, excluded] of organization.exclude.entries()) {
+    candidates.push({ id: `organization_exclude:${index}`, label: '指定した組織の除外条件だけ（含む条件とほかの除外条件は残す）', values: { exclude: excluded }, remove: { organization: true }, organization: { ...organization, exclude: organization.exclude.filter((_, position) => position !== index) } });
+  }
+  if ((facilities.length && departments.length) || organization.exclude.length
+    || (!facilities.length && !departments.length && organization.include.length)) {
+    candidates.push({ id: 'organization_all', label: '工場・部署・組織除外の条件をすべて解除する', values: organization, remove: { organization: true } });
+  }
+  for (const kind of ['exact', 'semantic']) {
+    for (const field of new Set([...Object.keys(state[kind].include), ...Object.keys(state[kind].exclude)])) {
+      const group = kind === 'semantic' ? definition.groups.find(({ id }) => id === field) : null;
+      const label = group?.label ?? field;
+      const valuesFor = (value) => Array.isArray(value) ? value : value ? [value] : [];
+      const describe = (value) => valuesFor(value).map((id) => group?.options.find((option) => option.id === id)?.description ?? id);
+      const remove = { [`${kind}Fields`]: [field] };
+      candidates.push({ id: `${kind}:${field}`, label, values: { include: describe(state[kind].include[field]), exclude: describe(state[kind].exclude[field]) }, remove });
+      const conditions = ['include', 'exclude'].flatMap((polarity) => valuesFor(state[kind][polarity][field]).map((id) => ({ polarity, id })));
+      if (conditions.length > 1) {
+        for (const { polarity, id } of conditions) {
+          const retained = { include: {}, exclude: {} };
+          for (const side of ['include', 'exclude']) {
+            const previous = state[kind][side][field];
+            const remaining = valuesFor(previous).filter((value) => side !== polarity || value !== id);
+            if (remaining.length) retained[side][field] = Array.isArray(previous) ? remaining : remaining[0];
+          }
+          candidates.push({ id: `${kind}:${field}:${polarity}:${id}`, label: `${label}の個別条件（ほかの値・除外条件は残す）`, values: { [polarity]: describe(id) }, remove, [kind]: retained });
+        }
+      }
+    }
+  }
+  candidates.push({ id: 'limit', label: '返す記録数の指定', values: state.limit, remove: { limit: true } });
+  if (state.sort) candidates.push({ id: 'sort', label: '記録の並び順の指定', values: state.sort, remove: { sort: true } });
+  if (state.display.requested.length) candidates.push({ id: 'display', label: '表示項目の指定（原文表示は維持）', values: state.display.requested, remove: { display: true } });
+  return candidates;
+}
+
+function resolveRemovalTarget(evaluated, candidates, previousState, records) {
+  const judgment = evaluated.judgments.removal_target;
+  const selected = candidates.find(({ id }) => id === judgment?.choice);
+  if (!selected || judgment.confidence < QUERY_CHOICE_POLICY.uncertainBelow) {
+    return { unresolved: [{ kind: 'action', field: 'removalTarget', reason: 'condition_to_remove_unresolved' }] };
+  }
+  if (!selected.remainingTerms) return { selected, organization: selected.organization, unresolved: [] };
+  // Only code-owned, already confirmed remaining terms enter the resolver.
+  // The removal utterance must not introduce a new organization restriction.
+  const organization = resolveOrganizationConditions(selected.remainingTerms.join(' '), records);
+  organization.exclude = previousState.exact.organization.exclude;
+  return { selected, organization, unresolved: organization.unresolved };
 }
 
 function deltaAction(question, evaluated, previousState) {
@@ -1172,7 +1215,7 @@ function structuredOrganizationForState(organization) {
   };
 }
 
-function buildSearchDelta(question, evaluated, structured, previousState) {
+function buildSearchDelta(question, evaluated, structured, previousState, removal = null) {
   const action = deltaAction(question, evaluated, previousState);
   const appliedAction = action ?? 'clarify';
   const normalized = question.normalize('NFKC');
@@ -1203,7 +1246,9 @@ function buildSearchDelta(question, evaluated, structured, previousState) {
     },
     semantic: { include: semanticInclude, exclude: semanticExclude },
     unresolvedConditions: [
-      ...(evaluated.query?.unresolved ?? []),
+      // Inclusion/exclusion questions are speculative on a removal turn.
+      // Their answers do not select its target or add replacement conditions.
+      ...(appliedAction === 'remove_condition' ? (removal?.unresolved ?? []) : (evaluated.query?.unresolved ?? [])),
       ...(structured.unresolved ?? []),
       ...(action ? [] : [{ kind: 'action', field: 'changeAction', term: question, reason: 'change_intent_unresolved' }]),
     ],
@@ -1218,13 +1263,14 @@ function buildSearchDelta(question, evaluated, structured, previousState) {
   if (limit !== null) delta.limit = limit;
   if (hasRecentRequest(normalized)) delta.sort = { field: 'discoveredOn', direction: 'desc' };
   if (appliedAction === 'remove_condition') {
-    delta.remove = removeDimensions(normalized, structured);
-    if (Object.keys(delta.remove).length === 0) {
-      delta.unresolvedConditions.push({ kind: 'action', field: 'remove', term: question, reason: 'condition_to_remove_unresolved' });
-    }
-    if (delta.remove.organization) delta.exact.organization = undefined;
-    if (delta.remove.limit) delta.limit = undefined;
-    if (delta.remove.sort) delta.sort = undefined;
+    delta.remove = removal?.selected?.remove ?? {};
+    delta.exact = { include: {}, exclude: {}, ...removal?.selected?.exact, organization: structuredOrganizationForState(removal?.organization) };
+    delta.semantic = removal?.selected?.semantic ?? { include: {}, exclude: {} };
+    // Removing one condition never replaces an unrelated limit, order, or
+    // display setting merely because those words also appeared in the request.
+    delete delta.limit;
+    delete delta.sort;
+    delete delta.display;
   }
   return delta;
 }
@@ -1248,11 +1294,15 @@ async function classifyText(question, definition, evaluate, mode, conversation =
   const result = await evaluate({
     model: 'typesafe-ai/jev',
     state: mode === 'query' ? queryConversationState(question, conversation) : { request: question, relatedHistory: [], confirmationPending: null },
-    questions: buildQuestions(definition, mode),
+    questions: buildQuestions(definition, mode, conversation.removalCandidates),
     maxRetries: 0
   });
   const evaluated = classificationFromAnswers(result?.answers, definition, mode, question);
-  return { ...evaluated, response: result?.response ?? null, usage: result?.usage ?? null };
+  if (mode === 'query' && conversation.removalCandidates?.length) {
+    evaluated.judgments.removal_target = normalizeChoiceJudgment(result.answers.removal_target,
+      [{ id: QUERY_NONE }, ...conversation.removalCandidates], 'removal_target');
+  }
+  return { ...evaluated, model: result?.model ?? null, response: result?.response ?? null, usage: result?.usage ?? null };
 }
 
 export class AuthorizedRecordClassifier {
@@ -1405,6 +1455,7 @@ export class AuthorizedRecordClassifier {
     const safeConversation = isObject(conversation) ? conversation : {};
     const pending = safeConversation.confirmationPending ?? safeConversation.pending ?? null;
     const previousState = safeConversation.searchState ? validateSearchState(safeConversation.searchState) : emptySearchState();
+    const removalCandidates = removalCandidatesFor(previousState, this.definition);
     const conversationTarget = previousState.revision > 0 ? 'previous_search' : 'new_search';
     const evaluated = await classifyText(question, this.definition, async (input) => {
       const callStarted = performance.now();
@@ -1416,23 +1467,26 @@ export class AuthorizedRecordClassifier {
     searchRequest: previousState.revision > 0 ? null : safeConversation.searchRequest,
       conversationTarget,
       searchState: previousState,
+      removalCandidates,
     });
     const coverage = this.coverage();
-    const removeFacilityScope = previousState.revision > 0 && removesOrganizationFacility(question);
+    const removing = deltaAction(question, evaluated, previousState) === 'remove_condition';
+    const removal = removing ? resolveRemovalTarget(evaluated, removalCandidates, previousState, this.store.records) : null;
     const organizationContext = previousState.revision > 0 && !explicitNewSearch(question)
-      && (!explicitRemoval(question) || removeFacilityScope)
+      && !explicitRemoval(question)
       ? previousState.exact.organization
       : null;
-    const structured = extractStructuredConditions(question, this.store.records, {
+    const structured = removing
+      ? { include: {}, exclude: {}, organization: removal.organization, unresolved: [] }
+      : extractStructuredConditions(question, this.store.records, {
       organization: organizationContext,
-      ignorePreviousFacility: removeFacilityScope,
-      retainPreviousDepartment: removeFacilityScope,
     });
-    const delta = buildSearchDelta(question, evaluated, structured, previousState);
+    const delta = buildSearchDelta(question, evaluated, structured, previousState, removal);
     const deltaDigest = deltaFingerprint(delta);
     const allUnresolved = delta.unresolvedConditions ?? [];
     const unresolvedLabels = allUnresolved.map((item) => {
       if (item.kind === undefined) return `起因部署の範囲: ${item.term}`;
+      if (item.field === 'removalTarget') return `解除する条件（${removalCandidates.map(({ label }) => label).join('、')}）`;
       const group = this.definition.groups.find((candidate) => candidate.id === item.groupId);
       const option = group?.options?.find((candidate) => candidate.id === item.optionId);
       return `${group?.label ?? item.field ?? item.groupId}: ${option?.description ?? item.term ?? item.optionId ?? item.reason}`;
@@ -1456,6 +1510,17 @@ export class AuthorizedRecordClassifier {
     const coverageNotice = hasSemanticConditions(nextState) ? this.coverageNotice(coverage) : '';
     const displayOnly = nextState.revision === 1 && delta.action === 'new_search' && displayOnlyRequest(question, structured.include, structured);
     const conditionCount = resolvedConditionCount(question, { include: semanticInclude, exclude: semanticExclude }, nextState.exact.include, nextState.exact.exclude, nextState.exact.organization);
+    const conditionChange = removing ? {
+      model: evaluated.model,
+      operationJudgment: evaluated.judgments.change_action,
+      targetJudgment: evaluated.judgments.removal_target ?? null,
+      candidates: removalCandidates.map(({ id, label, values }) => ({ id, label, values })),
+      selectedTarget: removal.selected?.id ?? null,
+      remove: delta.remove,
+      resolutionImpact: removal.organization?.resolution ?? null,
+      remainingConditionCount: conditionCount,
+      rejectionReason: allUnresolved.length ? 'removal_target_unresolved' : conditionCount === 0 ? 'no_remaining_conditions' : null,
+    } : undefined;
     if (allUnresolved.length || conditionCount === 0 || displayOnly) {
       const nextPending = allUnresolved.length
         ? {
@@ -1463,13 +1528,13 @@ export class AuthorizedRecordClassifier {
           question: `次の検索条件の意味を確認してください: ${unresolvedLabels.join('、')}`,
           purpose: 'resolve_search_condition',
           requiredItems: allUnresolved.map((item) => ({
-            id: item.kind === undefined ? `structured:organization:${item.term}` : `${item.kind}:${item.groupId}:${item.optionId}`,
-            label: item.kind === undefined ? '起因部署の範囲' : this.definition.groups.find((group) => group.id === item.groupId)?.label ?? item.groupId,
+            id: item.kind === undefined ? `structured:organization:${item.term}` : `${item.kind}:${item.groupId ?? item.field}:${item.optionId ?? item.reason}`,
+            label: item.kind === undefined ? '起因部署の範囲' : this.definition.groups.find((group) => group.id === item.groupId)?.label ?? item.field ?? item.groupId,
             type: item.kind === undefined ? 'choice' : item.kind,
-            candidates: item.kind === undefined ? [] : [item.optionId],
+            candidates: item.field === 'removalTarget' ? removalCandidates.map(({ id, label }) => ({ id, label })) : item.kind === undefined ? [] : [item.optionId],
           })),
           confirmedInfo: { ...structured.include, organization: structured.organization },
-          unresolvedItems: allUnresolved.map((item) => item.kind === undefined ? `structured:organization:${item.term}` : `${item.kind}:${item.groupId}:${item.optionId}`),
+          unresolvedItems: allUnresolved.map((item) => item.kind === undefined ? `structured:organization:${item.term}` : `${item.kind}:${item.groupId ?? item.field}:${item.optionId ?? item.reason}`),
         }
         : pending;
       const clarification = allUnresolved.length
@@ -1501,6 +1566,7 @@ export class AuthorizedRecordClassifier {
           delta: deltaDigest,
           state: searchStateSummary(previousState),
           resultCount: 0,
+          ...(conditionChange ? { conditionChange } : {}),
         },
         session: this.sessionFor(question, safeConversation, nextPending, question, conversationTarget, previousState),
         elapsedMs: Number((performance.now() - started).toFixed(3))
@@ -1546,6 +1612,7 @@ export class AuthorizedRecordClassifier {
         state: searchStateSummary(nextState),
         resultCount: records.length,
         classificationCoverage: coverage,
+        ...(conditionChange ? { conditionChange } : {}),
       },
       session: this.sessionFor(question, safeConversation, null, question, conversationTarget, nextState),
       elapsedMs: Number((performance.now() - started).toFixed(3))

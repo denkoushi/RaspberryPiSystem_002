@@ -60,6 +60,14 @@ function evaluator({ state, questions }) {
     const options = Object.keys(questions[key].criteria ?? {});
     if (key === 'conversation_target') {
       answers[key] = choiceAnswer(state.conversationTarget === 'previous_search' ? 'same_target' : '__none_requested__' in questions[key].criteria ? 'no_prior_target' : 'new_search', options);
+    } else if (key === 'removal_target') {
+      const target = /工場/u.test(request) ? 'organization_facility'
+        : /部署/u.test(request) ? 'organization_department'
+          : /工程/u.test(request) ? 'semantic:process'
+            : /品番/u.test(request) ? 'exact:partNumber'
+              : /機械/u.test(request) ? 'exact:machineName'
+                : /件数/u.test(request) ? 'limit' : '__none_requested__';
+      answers[key] = choiceAnswer(options.includes(target) ? target : '__none_requested__', options);
     } else if (key === 'change_action') {
       const selected = state.conversationTarget !== 'previous_search' || /新しく|新規に|別の|別件/u.test(request)
         ? 'new_search'
@@ -458,6 +466,14 @@ test('keeps a factory scope while resolving a new department and removes only th
   assert.deepEqual(explicitFactoryRemoval.recordIds, ['nonconformity:south-material']);
   assert.deepEqual(explicitFactoryRemoval.searchState.exact.organization.matchedTerms, ['資材課']);
 
+  const namedScopeRemoval = await classifier.answer('北工場の指定を解除して', department.session);
+  assert.deepEqual(namedScopeRemoval.searchState.exact.organization.matchedTerms, ['資材課']);
+  assert.deepEqual(namedScopeRemoval.recordIds, ['nonconformity:south-material']);
+  assert.equal(namedScopeRemoval.searchDiagnostics.conditionChange.operationJudgment.choice, 'remove_condition');
+  assert.equal(namedScopeRemoval.searchDiagnostics.conditionChange.targetJudgment.choice, 'organization_facility');
+  assert.deepEqual(namedScopeRemoval.searchDiagnostics.conditionChange.remove, { organizationFacility: true });
+  assert.equal(namedScopeRemoval.searchDiagnostics.conditionChange.resolutionImpact.action, RESOLUTION_ACTIONS.CONTINUE_SET);
+
   const compound = await classifier.answer('北工場資材課の不適合');
   const compoundRemoval = await classifier.answer('工場指定を外して', compound.session);
   assert.deepEqual(compoundRemoval.recordIds, ['nonconformity:north-material', 'nonconformity:south-material']);
@@ -476,6 +492,130 @@ test('keeps a factory scope while resolving a new department and removes only th
   const unknown = await classifier.answer('月面課の不適合');
   assert.equal(unknown.status, 'clarification');
   assert.equal(unknown.searchDelta.applied, false);
+});
+
+test('selects a current removal target independently and preserves every other condition', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-removal-target-'));
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  await writeFile(snapshotPath, JSON.stringify({ ...snapshot, records: [
+    { ...snapshot.records[0], originDepartmentName: '仙台工場管理部資材課' },
+    { ...snapshot.records[1], originDepartmentName: '三島工場管理部資材課' },
+  ] }));
+  let target = 'organization_facility';
+  let confidence = 0.94;
+  let evaluatedState;
+  const classifier = new AuthorizedRecordClassifier({
+    snapshotPath, storePath: path.join(directory, 'classifications.json'), classificationEnabled: false,
+    evaluateImplementation: async (input) => {
+      evaluatedState = input.state;
+      const result = await evaluator(input);
+      result.answers.change_action = choiceAnswer('remove_condition', Object.keys(input.questions.change_action.criteria));
+      result.answers.removal_target = { ...choiceAnswer(target, Object.keys(input.questions.removal_target.criteria)), confidence };
+      result.model = 'synthetic-contract-model';
+      return result;
+    },
+  });
+  await classifier.prepare();
+  const organization = extractStructuredConditions('仙台工場の資材課', classifier.store.records).organization;
+  const previous = applySearchDelta(emptySearchState(), {
+    action: 'new_search', exact: { organization },
+    semantic: { include: { process: 'turning' }, exclude: {} },
+    limit: 2, sort: { field: 'discoveredOn', direction: 'desc' },
+    display: { originalText: true, requested: ['originalText'] },
+  });
+  for (const question of ['仙台工場の指定を解除して', 'その拠点だけに限定するのはやめて']) {
+    const result = await classifier.answer(question, { searchState: previous });
+    assert.equal(result.searchDelta.action, 'remove_condition');
+    assert.equal(result.searchDelta.applied, true);
+    assert.deepEqual(result.searchState.exact.organization.matchedTerms, ['資材課']);
+    assert.equal(result.searchState.exact.organization.include.length, 2);
+    for (const field of ['semantic', 'limit', 'sort', 'display']) assert.deepEqual(result.searchState[field], previous[field]);
+    assert.deepEqual(evaluatedState.searchState, previous);
+    assert.deepEqual(evaluatedState.removalCandidates.find(({ id }) => id === 'organization_facility').values, ['仙台工場']);
+    assert.deepEqual(evaluatedState.removalCandidates.find(({ id }) => id === 'organization_department').values, ['資材課']);
+    assert.deepEqual(result.searchDiagnostics.conditionChange.remove, { organizationFacility: true });
+    assert.equal(result.searchDiagnostics.conditionChange.rejectionReason, null);
+    assert.equal(result.searchDiagnostics.conditionChange.model, 'synthetic-contract-model');
+    assert.equal(result.searchDiagnostics.conditionChange.remainingConditionCount, 2);
+  }
+  target = 'organization_department';
+  const withoutDepartment = await classifier.answer('部署の限定を解除して', { searchState: previous });
+  assert.deepEqual(withoutDepartment.searchState.exact.organization.matchedTerms, ['仙台工場']);
+  assert.deepEqual(withoutDepartment.searchState.semantic, previous.semantic);
+
+  const factorySet = applySearchDelta(previous, {
+    action: 'replace_condition', exact: { organization: extractStructuredConditions('仙台工場または三島工場の資材課', classifier.store.records).organization },
+  });
+  target = 'organization_facility:仙台工場';
+  const withoutOneFactory = await classifier.answer('仙台工場の指定だけ解除して', { searchState: factorySet });
+  assert.deepEqual(withoutOneFactory.searchState.exact.organization.matchedTerms, ['三島工場', '資材課']);
+  for (const field of ['semantic', 'limit', 'sort', 'display']) assert.deepEqual(withoutOneFactory.searchState[field], factorySet[field]);
+  target = 'organization_facility';
+  const withoutFactories = await classifier.answer('工場の指定を全部解除して', { searchState: factorySet });
+  assert.deepEqual(withoutFactories.searchState.exact.organization.matchedTerms, ['資材課']);
+
+  const withExclusions = applySearchDelta(factorySet, {
+    action: 'replace_condition', exact: { organization: { ...factorySet.exact.organization, exclude: factorySet.exact.organization.include } },
+  });
+  target = 'organization_exclude:0';
+  const withoutOneExclusion = await classifier.answer('先に指定した組織の除外だけ解除して', { searchState: withExclusions });
+  assert.deepEqual(withoutOneExclusion.searchState.exact.organization, {
+    ...withExclusions.exact.organization, exclude: withExclusions.exact.organization.exclude.slice(1),
+  });
+
+  target = 'semantic:process';
+  const withoutProcess = await classifier.answer('工程の指定を解除して', { searchState: previous });
+  assert.deepEqual(withoutProcess.searchState.semantic.include, {});
+  assert.deepEqual(withoutProcess.searchState.exact, previous.exact);
+  assert.equal(withoutProcess.searchState.limit, 2);
+  assert.deepEqual(withoutProcess.searchState.sort, previous.sort);
+
+  target = 'limit';
+  const withoutLimit = await classifier.answer('最新順のままで、件数指定を解除して', { searchState: previous });
+  assert.equal(withoutLimit.searchState.limit, emptySearchState().limit);
+  for (const field of ['exact', 'semantic', 'sort', 'display']) assert.deepEqual(withoutLimit.searchState[field], previous[field]);
+
+  const multiplePhenomena = applySearchDelta(previous, {
+    action: 'add_condition',
+    semantic: { include: { phenomenon: ['surface_damage', 'missing_marking'] }, exclude: { phenomenon: ['crack_or_breakage'] } },
+  });
+  target = 'semantic:phenomenon:include:surface_damage';
+  const withoutDamage = await classifier.answer('打痕を含む条件だけ解除して', { searchState: multiplePhenomena });
+  assert.deepEqual(withoutDamage.searchState.semantic, {
+    include: { process: 'turning', phenomenon: ['missing_marking'] }, exclude: { phenomenon: ['crack_or_breakage'] },
+  });
+  target = 'semantic:phenomenon:exclude:crack_or_breakage';
+  const withoutExclusion = await classifier.answer('割れを除外する条件だけ解除して', { searchState: multiplePhenomena });
+  assert.deepEqual(withoutExclusion.searchState.semantic, { include: multiplePhenomena.semantic.include, exclude: {} });
+  for (const field of ['exact', 'limit', 'sort', 'display']) assert.deepEqual(withoutExclusion.searchState[field], multiplePhenomena[field]);
+  target = 'semantic:phenomenon';
+  const withoutPhenomena = await classifier.answer('現象の条件を全部解除して', { searchState: multiplePhenomena });
+  assert.deepEqual(withoutPhenomena.searchState.semantic, previous.semantic);
+
+  const exactPolarities = applySearchDelta(previous, {
+    action: 'add_condition', exact: { include: { partNumber: 'PART-1' }, exclude: { partNumber: 'PART-2' } },
+  });
+  target = 'exact:partNumber:include:PART-1';
+  const withoutIncludedPart = await classifier.answer('品番PART-1の指定だけ解除して', { searchState: exactPolarities });
+  assert.deepEqual(withoutIncludedPart.searchState.exact, { ...exactPolarities.exact, include: {} });
+  target = 'exact:partNumber:exclude:PART-2';
+  const withoutExcludedPart = await classifier.answer('品番PART-2の除外指定だけ解除して', { searchState: exactPolarities });
+  assert.deepEqual(withoutExcludedPart.searchState.exact, { ...exactPolarities.exact, exclude: {} });
+  for (const field of ['semantic', 'limit', 'sort', 'display']) assert.deepEqual(withoutExcludedPart.searchState[field], exactPolarities[field]);
+
+  for (const selection of [{ choice: '__none_requested__', confidence: 0.94 }, { choice: 'organization_facility', confidence: 0.2 }]) {
+    target = selection.choice;
+    confidence = selection.confidence;
+    const unresolved = await classifier.answer('その条件を解除して', { searchState: previous });
+    assert.equal(unresolved.status, 'clarification');
+    assert.equal(unresolved.searchDelta.applied, false);
+    assert.deepEqual(unresolved.searchState, previous);
+    assert.equal(unresolved.searchDiagnostics.conditionChange.selectedTarget, null);
+    assert.equal(unresolved.searchDiagnostics.conditionChange.rejectionReason, 'removal_target_unresolved');
+    assert.ok(unresolved.confirmationPending.requiredItems.some(({ label }) => label === 'removalTarget'));
+  }
+  assert.equal(classifier.metrics().classificationCalls, 0);
+  assert.equal(classifier.definition.version, 4);
 });
 
 test('starts with reusable classifications and persists each background result', async () => {
