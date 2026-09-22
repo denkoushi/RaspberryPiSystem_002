@@ -414,6 +414,10 @@ function queryClassificationFromAnswers(answers, definition, question) {
     { id: 'clarify', description: '意味不確定' },
   ], 'change_action');
   judgments.change_action = changeAction;
+  if (changeAction.choice === 'update_display') for (const [id] of DISPLAY_REQUESTS) {
+    const key = `display:${id}`;
+    judgments[key] = normalizeNoulJudgment(answers[key], key);
+  }
   const display = displayRequestFrom(question, answers);
   for (const [id] of DISPLAY_REQUESTS) {
     const judgment = judgments[`display:${id}`];
@@ -1264,7 +1268,8 @@ function operationDecision(question, evaluated, previousState) {
   // The JEV option need not add an action or schema to SearchState.
   const displayOnly = judgedAction === 'update_display';
   const mappedAction = displayOnly ? 'replace_condition' : judgedAction;
-  const rejectionReason = displayOnly && (initialSearch || evaluated.query.conversationTarget !== 'same_target') ? 'display_target_unresolved'
+  const rejectionReason = displayOnly && (initialSearch || evaluated.query.conversationTarget !== 'same_target'
+    || evaluated.judgments.conversation_target.confidence < QUERY_CHOICE_POLICY.uncertainBelow) ? 'display_target_unresolved'
     : displayOnly && evaluated.judgments.change_action.confidence < QUERY_CHOICE_POLICY.uncertainBelow ? 'display_operation_uncertain'
       : initialSearch ? null
         : judgedAction === 'clarify' ? 'jev_clarification'
@@ -1348,6 +1353,8 @@ function buildSearchDelta(question, evaluated, structured, previousState, remova
       }
     } else if (!requestedDisplay.requested?.length) {
       delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_field_unresolved' });
+    } else if (requestedDisplay.requested.some((id) => !(evaluated.judgments[`display:${id}`]?.noul >= QUERY_DECISION_POLICY.includeAt))) {
+      delta.unresolvedConditions.push({ kind: 'display', field: 'display', term: question, reason: 'display_intent_unresolved' });
     }
     // Never apply speculative filters, nor silently discard a conflicting or
     // unknown condition, when the chosen operation changes only presentation.

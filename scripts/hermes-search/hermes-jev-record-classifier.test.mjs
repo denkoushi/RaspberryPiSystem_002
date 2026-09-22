@@ -604,11 +604,13 @@ test('maps a display-only judgment to the existing Delta without changing the se
   let displayConfidence = 0.94;
   let displayNoul = 0.94;
   let sourceHeadingNoul = 0.94;
+  let targetConfidence = 0.94;
   const classifier = new AuthorizedRecordClassifier({ snapshotPath,
     storePath: path.join(directory, 'classifications.json'), classificationEnabled: false,
     evaluateImplementation: async (input) => {
       assert.ok(input.questions.change_action.criteria.update_display);
       const result = await evaluator(input);
+      result.answers.conversation_target.confidence = targetConfidence;
       result.answers.change_action = {
         ...choiceAnswer('update_display', Object.keys(input.questions.change_action.criteria)),
         confidence: displayConfidence,
@@ -676,6 +678,15 @@ test('maps a display-only judgment to the existing Delta without changing the se
   }
   displayNoul = 0.94;
   for (const noul of [0.01, 0.4]) {
+    displayNoul = noul;
+    for (const question of ['原因は表示しないで', '工程は表示しないで', '現象は表示しないで']) {
+      const hidden = await classifier.answer(question, { searchState: previous });
+      assert.equal(hidden.searchDelta.applied, false);
+      assert.deepEqual(hidden.searchState, previous);
+    }
+  }
+  displayNoul = 0.94;
+  for (const noul of [0.01, 0.4]) {
     sourceHeadingNoul = noul;
     const hidden = await classifier.answer('起因部署は表示しないで', { searchState: previous });
     assert.equal(hidden.searchDelta.applied, false);
@@ -683,6 +694,12 @@ test('maps a display-only judgment to the existing Delta without changing the se
     assert.ok(hidden.searchDiagnostics.operationDecision.proposedDelta.unresolvedConditions.some(({ reason }) => reason === 'display_heading_intent_unresolved'));
   }
   sourceHeadingNoul = 0.94;
+  targetConfidence = 0.2;
+  const uncertainTarget = await classifier.answer('その記録の起因部署名を表示して', { searchState: previous });
+  assert.equal(uncertainTarget.searchDelta.applied, false);
+  assert.equal(uncertainTarget.searchDiagnostics.operationDecision.code.rejectionReason, 'display_target_unresolved');
+  assert.deepEqual(uncertainTarget.searchState, previous);
+  targetConfidence = 0.94;
   displayConfidence = 0.2;
   const uncertain = await classifier.answer('その記録の起因部署名を表示して', { searchState: previous });
   assert.equal(uncertain.searchDelta.applied, false);
