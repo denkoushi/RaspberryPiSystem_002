@@ -60,6 +60,34 @@
     ] if release_pi5_trial_maintenance == 'on' else []) }}
   no_log: true
 
+- name: Apply the explicitly requested record classification gate for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED='
+    line: "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED={{ release_pi5_trial_classification_requested }}"
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_classification_requested in ['true', 'false']
+
+- name: Read the finalized maintenance environment before API recreation
+  ansible.builtin.slurp:
+    src: "{{ release_pi5_trial_maintenance_env_file }}"
+  register: release_pi5_trial_maintenance_env_final
+  no_log: true
+
+- name: Verify the final classification gate before API recreation
+  ansible.builtin.assert:
+    that:
+      - release_pi5_trial_maintenance_env_final is not skipped
+      - release_pi5_trial_maintenance_env_final is succeeded
+      - release_pi5_trial_maintenance_env_final.content is defined
+      - >-
+        ((release_pi5_trial_maintenance_env_final.content | b64decode).splitlines()
+         | select('match', '^HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=') | list)
+        == ['HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=' ~ release_pi5_trial_classification_effective]
+    fail_msg: The finalized classification gate does not match the explicit or preserved setting; API startup stopped.
+  when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != ''
+
 - name: Remove pilot-only settings when returning the trial path to OFF
   ansible.builtin.lineinfile:
     path: "{{ release_pi5_trial_maintenance_env_file }}"
@@ -105,6 +133,24 @@
   ansible.builtin.set_fact:
     release_pi5_active_api_id: "{{ release_pi5_trial_maintenance_api_id.stdout | trim }}"
     release_pi5_api_id: "{{ release_pi5_trial_maintenance_api_id.stdout | trim }}"
+
+- name: Inspect the recreated API classification gate before any worker request
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{json .Config.Env}}' }}", "{{ release_pi5_active_api_id }}"]
+  register: release_pi5_trial_maintenance_api_env
+  changed_when: false
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != ''
+
+- name: Require the recreated API to inherit the verified classification gate
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_api_env.stdout | from_json)
+         | select('match', '^HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=') | list)
+        == ['HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=' ~ release_pi5_trial_classification_effective]
+    fail_msg: The recreated API did not inherit the verified classification gate; trial maintenance cannot succeed.
+  when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != ''
 
 - name: Confirm the same active API remains healthy after trial maintenance
   ansible.builtin.include_tasks: health.yml
