@@ -83,6 +83,28 @@ test('direct TypeSafe adapter uses the official request boundary without Vercel 
   assert.equal(result.answers.process.choice, 'turning');
 });
 
+test('direct TypeSafe failures expose only a fixed category and upstream status', async () => {
+  const input = { model: 'typesafe-ai/jev', state: { request: '架空質問' }, questions: {} };
+  const cases = [
+    {
+      fetchImpl: async () => new Response('private upstream body', { status: 503 }),
+      expected: { provider: 'typesafe-direct', failureCode: 'upstream_http', httpStatus: 503 },
+    },
+    {
+      fetchImpl: async () => { const error = new Error('private transport detail'); error.name = 'AbortError'; throw error; },
+      expected: { provider: 'typesafe-direct', failureCode: 'timeout' },
+    },
+  ];
+  for (const { fetchImpl, expected } of cases) {
+    const evaluate = createTypesafeDirectEvaluate({ apiKey: 'fixture-only-key', fetchImpl });
+    await assert.rejects(evaluate(input), (error) => {
+      assert.deepEqual(error.hermesDiagnostic, expected);
+      assert.ok(!error.message.includes('private'));
+      return true;
+    });
+  }
+});
+
 test('expanded fixed fixture distinguishes same process and phenomenon by explicit treatment', async () => {
   validateFixture(expandedFixture);
   const result = await runPilot({

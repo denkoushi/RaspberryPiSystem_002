@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
+import pino from 'pino';
 import {describe,it,expect,vi} from 'vitest';
 import {env} from '../../../config/env.js';
 import {ApiError} from '../../../lib/errors.js';
@@ -55,6 +56,27 @@ describe('Hermes search trial authorization',()=>{
     expect(response.statusCode).toBe(200);
     expect(response.json().confirmationPending).toEqual(confirmationPending);
     expect(answer).toHaveBeenCalledWith('架空対象の記録を確認したい',sessionId);
+    await app.close();
+  });
+
+  it('logs only an allowlisted worker failure diagnostic and keeps it out of the response',async()=>{
+    const output: Array<Record<string, unknown>> = [];
+    const logger = pino({level:'warn'}, {write:line=>output.push(JSON.parse(line) as Record<string, unknown>)});
+    const app=Fastify({loggerInstance:logger});
+    const answer=vi.fn().mockRejectedValue(Object.assign(
+      new Error('検索に失敗しました。該当なしとは判断していません。'),
+      {workerFailureDiagnostic:{stage:'jev_query',exceptionType:'TypeSafeDirectError',provider:'typesafe-direct',failureCode:'upstream_http',httpStatus:503,message:'private detail'}},
+    ));
+    const service={isEnabled:()=>true,scope:async()=>({enabled:true}),answer,close:vi.fn()};
+    await registerHermesSearchTrialRoutes(app,service as never);
+    const token=jwt.sign({sub:'reader',username:'reader',role:'VIEWER'},env.JWT_ACCESS_SECRET);
+    const response=await app.inject({method:'POST',url:'/assembly/hermes-search-trial/answer',headers:{authorization:`Bearer ${token}`},payload:{question:'質問の原文'}});
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({code:'HERMES_SEARCH_UNAVAILABLE',message:'検索に失敗しました。該当なしとは判断していません。'});
+    const diagnostic=output.find(entry=>entry.msg==='Hermes search worker request failed');
+    expect(diagnostic).toMatchObject({stage:'jev_query',exceptionType:'TypeSafeDirectError',provider:'typesafe-direct',failureCode:'upstream_http',httpStatus:503});
+    expect(JSON.stringify(diagnostic)).not.toContain('private detail');
+    expect(JSON.stringify(diagnostic)).not.toContain('質問の原文');
     await app.close();
   });
 });

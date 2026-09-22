@@ -44,7 +44,7 @@ type TrialSession = {
   expiresAt: number;
 };
 
-type WorkerResponse = { workerReady?: boolean; workerRequestId?: string; workerError?: string; runtime?: {
+type WorkerResponse = { workerReady?: boolean; workerRequestId?: string; workerError?: string; failureDiagnostic?: unknown; runtime?: {
   snapshot?: { count: number; snapshotId: string }; organized?: { count: number };
 }; result?: HermesTrialAnswer };
 
@@ -107,7 +107,11 @@ export class HermesSearchTrialService {
             else if (row.workerRequestId === this.pending?.id) {
               const pending = this.pending;
               this.pending = null;
-              if (row.workerError || !row.result || typeof row.result.answer !== 'string') pending?.reject(new Error('検索に失敗しました。該当なしとは判断していません。'));
+              if (row.workerError || !row.result || typeof row.result.answer !== 'string') {
+                const error = new Error('検索に失敗しました。該当なしとは判断していません。') as Error & { workerFailureDiagnostic?: unknown };
+                if (row.failureDiagnostic !== undefined) error.workerFailureDiagnostic = row.failureDiagnostic;
+                pending?.reject(error);
+              }
               else pending?.resolve(row.result);
             } else if (row.workerError) { clearTimeout(timeout); fail(); }
           } catch { fail(); child.kill('SIGTERM'); }
