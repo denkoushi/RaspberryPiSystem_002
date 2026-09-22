@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildServer } from '../../app.js';
 import {
   createTestClientDevice,
@@ -142,13 +142,14 @@ describe('mobile-placement API', () => {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
         occurredAt: new Date(),
         rowData: {
-          ProductNo: '999001',
-          FSEIBAN: 'ABCD1234',
-          FHINCD: 'FH-XYZ',
-          FHINMEI: 'demo'
+          ProductNo: ' 999001 ',
+          FSEIBAN: ' abcd1234 ',
+          FHINCD: 123,
+          FHINMEI: false
         }
       }
     });
+    const scheduleRowRead = vi.spyOn(prisma.csvDashboardRow, 'findFirst');
     const ok = await app.inject({
       method: 'POST',
       url: '/api/mobile-placement/register',
@@ -163,6 +164,22 @@ describe('mobile-placement API', () => {
       }
     });
     expect(ok.statusCode).toBe(200);
+    expect(ok.json().resolveMatchKind).toBe('itemCode');
+    expect(scheduleRowRead).toHaveBeenCalledExactlyOnceWith({
+      where: { id: row.id, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: { rowData: true }
+    });
+    const event = await prisma.mobilePlacementEvent.findFirst({
+      where: { csvDashboardRowId: row.id },
+      select: { scheduleSnapshot: true }
+    });
+    expect(event?.scheduleSnapshot).toEqual({
+      ProductNo: ' 999001 ',
+      FSEIBAN: ' abcd1234 ',
+      FHINCD: 123,
+      FHINMEI: false
+    });
+    vi.restoreAllMocks();
 
     const otherItem = await createTestItem({ itemCode: 'OTHER-ITEM-9' });
     const mismatch = await app.inject({
@@ -178,9 +195,23 @@ describe('mobile-placement API', () => {
         csvDashboardRowId: row.id
       }
     });
-    expectApiError(mismatch, 400);
+    expectApiError(mismatch, 400, 'スキャン値が選択したスケジュール行');
 
     await prisma.csvDashboardRow.deleteMany({ where: { id: row.id } });
+    const missing = await app.inject({
+      method: 'POST',
+      url: '/api/mobile-placement/register',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey
+      },
+      payload: {
+        shelfCodeRaw: 'S3',
+        itemBarcodeRaw: 'ABCD1234',
+        csvDashboardRowId: row.id
+      }
+    });
+    expectApiError(missing, 404, '指定のスケジュール行が見つかりません');
   });
 
   it('POST /api/mobile-placement/verify-slip-match returns ok when slips match', async () => {

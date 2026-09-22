@@ -12,6 +12,13 @@ export type ProductionSchedulePlacementSnapshot = {
   partName: Prisma.JsonValue;
 };
 
+export type ProductionSchedulePlacementBarcodeSnapshot = Pick<
+  ProductionSchedulePlacementSnapshot,
+  'manufacturingOrderNo' | 'seiban' | 'partCode' | 'partName'
+> & {
+  barcodeMatchValues: string[];
+};
+
 export type ProductionSchedulePalletSnapshot = ProductionSchedulePlacementSnapshot & {
   resourceCode: Prisma.JsonValue;
   plannedQuantity: number | null;
@@ -30,6 +37,23 @@ function toPlacementSnapshot(row: { id: string; rowData: Prisma.JsonValue }): Pr
   };
 }
 
+function toPlacementBarcodeSnapshot(rowData: Prisma.JsonValue): ProductionSchedulePlacementBarcodeSnapshot {
+  const fields = (rowData ?? {}) as Record<string, Prisma.JsonValue | undefined>;
+  const barcodeMatchValues = [fields.ProductNo, fields.FSEIBAN, fields.FHINCD].flatMap((value) => {
+    if (typeof value !== 'string') return [];
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? [trimmed] : [];
+  });
+
+  return {
+    manufacturingOrderNo: fields.ProductNo ?? null,
+    seiban: fields.FSEIBAN ?? null,
+    partCode: fields.FHINCD ?? null,
+    partName: fields.FHINMEI ?? null,
+    barcodeMatchValues,
+  };
+}
+
 /** Read an already selected row. Missing rows return null; database errors propagate to the caller. */
 export async function findProductionSchedulePlacementSnapshot(
   rowId: string
@@ -39,6 +63,17 @@ export async function findProductionSchedulePlacementSnapshot(
     select: { id: true, rowData: true },
   });
   return row ? toPlacementSnapshot(row) : null;
+}
+
+/** Read a selected placement barcode row within the production schedule dashboard. */
+export async function findProductionSchedulePlacementBarcodeSnapshot(
+  rowId: string
+): Promise<ProductionSchedulePlacementBarcodeSnapshot | null> {
+  const row = await prisma.csvDashboardRow.findFirst({
+    where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+    select: { rowData: true },
+  });
+  return row ? toPlacementBarcodeSnapshot(row.rowData) : null;
 }
 
 /** Preserve the existing pallet projection, including dashboard scope on supplements only. */
