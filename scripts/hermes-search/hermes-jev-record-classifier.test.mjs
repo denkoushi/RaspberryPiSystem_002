@@ -648,6 +648,13 @@ test('maps a display-only judgment to the existing Delta without changing the se
   const uncertainCombined = await classifier.answer('起因部署と原因を表示して', { searchState: previous });
   assert.equal(uncertainCombined.searchDelta.applied, false);
   assert.deepEqual(uncertainCombined.searchState, previous);
+  const confirmedCombined = await classifier.answer('はい、原因も表示して', {
+    searchState: previous, confirmationPending: uncertainCombined.confirmationPending,
+  });
+  assert.equal(confirmedCombined.searchDelta.applied, true);
+  assert.deepEqual(confirmedCombined.searchState.display, { originalText: true, requested: ['originalText', 'cause'] });
+  assert.deepEqual(confirmedCombined.searchState.exact, previous.exact);
+  assert.equal(confirmedCombined.confirmationPending, null);
   otherFieldsNoul = 0.01;
   const retained = await classifier.answer('その記録の起因部署名を表示して', { searchState: constrained });
   assert.deepEqual(retained.searchState.exact, constrained.exact);

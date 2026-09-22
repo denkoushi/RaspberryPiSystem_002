@@ -1638,6 +1638,12 @@ export class AuthorizedRecordClassifier {
     const pendingDisplayOnly = Array.isArray(pending?.requiredItems) && pending.requiredItems.length > 0
       && pending.requiredItems.every((item) => item?.type === 'display');
     const retainedPending = evaluated.query.changeAction === 'update_display' && pendingDisplayOnly ? null : pending;
+    const confirmedDisplay = evaluated.query.changeAction === 'update_display' && pendingDisplayOnly
+      ? pending.confirmedInfo?.display : null;
+    if (confirmedDisplay && delta.display) {
+      delta.display = { originalText: true,
+        requested: [...new Set([...confirmedDisplay.requested, ...delta.display.requested])] };
+    }
     if (evaluated.query.changeAction === 'update_display' && retainedPending) {
       delta.unresolvedConditions.push({ kind: 'action', field: 'changeAction', reason: 'pending_condition_requires_resolution' });
     }
@@ -1708,7 +1714,12 @@ export class AuthorizedRecordClassifier {
             type: item.kind === undefined ? 'choice' : item.kind,
             candidates: item.field === 'removalTarget' ? removalCandidates.map(({ id, label }) => ({ id, label })) : item.kind === undefined ? [] : [item.optionId],
           })),
-          confirmedInfo: { ...structured.include, organization: structured.organization },
+          confirmedInfo: { ...structured.include, organization: structured.organization,
+            ...(evaluated.query.changeAction === 'update_display' && delta.action !== 'clarify'
+              && evaluated.judgments.display_source_heading?.noul >= QUERY_DECISION_POLICY.includeAt
+              ? { display: { originalText: true, requested: [...new Set([...(confirmedDisplay?.requested ?? []), 'originalText'])] } }
+              : confirmedDisplay ? { display: confirmedDisplay } : {}),
+          },
           unresolvedItems: allUnresolved.map((item) => item.kind === undefined ? `structured:organization:${item.term}` : `${item.kind}:${item.groupId ?? item.field}:${item.optionId ?? item.reason}`),
         }
         : pending;
