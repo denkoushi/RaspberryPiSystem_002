@@ -87,10 +87,21 @@ this handoff.
   claim is possible.
 - The remaining previously fixed three-turn case that exercises meaning-based
   search/correction, and a separate-session Exact case, were **not run** in
-  this acceptance attempt. Do not count them as pass or fail. The fixed wording
-  and expectations are recorded in the existing
-  [search follow-up plan](./hermes-background-worker.md); do not replace them
-  with shorthand from a local harness or add acceptance cases.
+  this acceptance attempt. Do not count them as pass or fail. Their **exact
+  screen wording** is in the earlier #1471 screen-acceptance record in local
+  Codex task `01a0cd41-5bd7-7960-81cf-6ca9fc8c5055` (host `local`), not in
+  the [search follow-up plan](./hermes-background-worker.md). The next agent
+  must read that task before submitting anything; if it is unavailable, stop
+  rather than infer wording from shorthand or change the case. The wording is
+  intentionally not copied to public GitHub because it contains business
+  terms. The fixed transitions, stated without those terms, are:
+
+  | Turn | Expected search-state/result behavior |
+  | --- | --- |
+  | 1 | New meaning-based search for a process plus two requested original-text fields; retain the positive process condition. |
+  | 2 | Add the specified facility while retaining the process condition. |
+  | 3 | Treat corrective feedback as a correction; retain the process and facility as positive conditions, not exclusions. |
+  | Separate Exact | Start a fresh session; return the latest two authorized records under its explicit facility condition. |
 - The current semantic reader skips records without saved classifications;
   exact plans use the existing live read service and include valid unclassified
   records. This is the current, explicitly bounded source behavior, not proof
@@ -129,8 +140,9 @@ failure from that tooling interruption.
    creating a second search/diagnostic path. Recheck the active API/worker and
    classification gate/store hash. If safe capture is unavailable, report a
    validation blocker instead of speculatively editing search code.
-3. Run only the already fixed remaining screen utterances in the original
-   order; the independent Exact request needs a fresh session. For each same
+3. Read the cited Codex task to recover the exact original screen wording,
+   then run only those fixed remaining utterances in the original order; the
+   independent Exact request needs a fresh session. For each same
    response, inspect JEV judgments, code acceptance/rejection,
    `SearchDelta`/`SearchState`, plan mode, unresolved conditions, ordered IDs,
    and raw-text equality against the corresponding current source/DB.
