@@ -1344,16 +1344,21 @@ function operationDecision(question, evaluated, previousState, effect = null) {
   const mappedAction = displayOnly ? 'replace_condition' : judgedAction;
   const unresolvedTarget = evaluated.query.conversationTarget !== 'same_target'
     || evaluated.judgments.conversation_target.confidence < QUERY_CHOICE_POLICY.uncertainBelow;
+  const equivalentNewSearch = !initialSearch && lexicalAction === 'new_search' && judgedAction === 'replace_condition'
+    && evaluated.query.conversationTarget === 'new_search'
+    && evaluated.judgments.conversation_target.confidence >= QUERY_CHOICE_POLICY.uncertainBelow
+    && evaluated.judgments.change_action.confidence < QUERY_CHOICE_POLICY.uncertainBelow
+    && effect?.targetImpact.action === RESOLUTION_ACTIONS.RESOLVE_EXISTING;
   const rejectionReason = displayOnly && (initialSearch || (unresolvedTarget
     && effect?.targetImpact.action !== RESOLUTION_ACTIONS.RESOLVE_EXISTING)) ? 'display_target_unresolved'
     : displayOnly && evaluated.judgments.change_action.confidence < QUERY_CHOICE_POLICY.uncertainBelow ? 'display_operation_uncertain'
       : initialSearch ? null
         : judgedAction === 'clarify' ? 'jev_clarification'
           : !['add_condition', 'replace_condition', 'remove_condition', 'correct_condition', 'new_search'].includes(mappedAction) ? 'jev_action_unavailable'
-            : lexicalAction && lexicalAction !== mappedAction ? 'lexical_action_mismatch' : null;
+            : lexicalAction && lexicalAction !== mappedAction && !equivalentNewSearch ? 'lexical_action_mismatch' : null;
   return {
     initialSearch, lexicalAction, judgedAction, rejectionReason,
-    action: rejectionReason ? null : initialSearch ? 'new_search' : mappedAction,
+    action: rejectionReason ? null : initialSearch || equivalentNewSearch ? 'new_search' : mappedAction,
   };
 }
 
@@ -1716,6 +1721,10 @@ export class AuthorizedRecordClassifier {
       fieldMentionJudgments: evaluated.judgments,
     });
     const effect = evaluated.query.changeAction === 'update_display'
+      || (explicitNewSearch(question) && evaluated.query.changeAction === 'replace_condition'
+        && evaluated.query.conversationTarget === 'new_search'
+        && evaluated.judgments.conversation_target.confidence >= QUERY_CHOICE_POLICY.uncertainBelow
+        && evaluated.judgments.change_action.confidence < QUERY_CHOICE_POLICY.uncertainBelow)
       ? conditionEffect(question, evaluated, structured, extractStructuredConditions(question, this.store.records, {
         fieldMentionJudgments: evaluated.judgments,
       }), previousState) : null;
