@@ -152,6 +152,7 @@ module.exports = {
     },
     {
       files: [
+        'src/services/mobile-placement/mobile-placement.service.ts',
         'src/services/mobile-placement/mobile-placement-order-placement.service.ts',
         'src/services/mobile-placement/haizen-placement.service.ts',
         'src/services/pallet-visualization/pallet-visualization-schedule-resolver.ts',
