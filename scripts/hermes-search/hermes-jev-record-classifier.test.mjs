@@ -928,7 +928,7 @@ test('maps a display-only judgment to the existing Delta without changing the se
   assert.equal(classifier.calls.filter(({ phase }) => phase === 'record').length, 0);
 });
 
-test('diagnoses JEV clarification separately from lexical disagreement without changing operation decisions', async () => {
+test('resolves low-confidence new-search disagreement only when both targets are equivalent', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-operation-decision-'));
   const snapshotPath = path.join(directory, 'snapshot.json');
   const records = [
@@ -950,6 +950,7 @@ test('diagnoses JEV clarification separately from lexical disagreement without c
   const question = '仙台工場または三島工場の資材課の最近の不適合2件を新しく検索して';
   await writeFile(snapshotPath, JSON.stringify({ ...snapshot, records }));
   let selectedAction;
+  let actionConfidence = 0.38;
   let sentInput;
   let returnedAnswers;
   const classifier = new AuthorizedRecordClassifier({ snapshotPath,
@@ -957,13 +958,20 @@ test('diagnoses JEV clarification separately from lexical disagreement without c
     evaluateImplementation: async (input) => {
       sentInput = input;
       const result = await evaluator(input);
-      result.answers.change_action = choiceAnswer(selectedAction, Object.keys(input.questions.change_action.criteria));
+      result.answers.conversation_target = { type: 'choice', choice: 'new_search',
+        probabilities: { same_target: 0.06, new_search: 0.92, no_prior_target: 0.02 }, confidence: 0.88 };
+      result.answers.change_action = selectedAction === 'replace_condition'
+        ? { type: 'choice', choice: selectedAction, probabilities: {
+          add_condition: 0, replace_condition: 0.47, remove_condition: 0.06, correct_condition: 0.26,
+          new_search: 0.19, update_display: 0, clarify: 0.02,
+        }, confidence: actionConfidence }
+        : choiceAnswer(selectedAction, Object.keys(input.questions.change_action.criteria));
       returnedAnswers = result.answers;
       return { ...result, model: 'test-jev', response: { private: 'must-not-be-exposed' } };
     },
   });
   await classifier.prepare();
-  for (const [choice, reason] of [['clarify', 'jev_clarification'], ['replace_condition', 'lexical_action_mismatch'], ['new_search', null]]) {
+  for (const [choice, reason] of [['clarify', 'jev_clarification'], ['replace_condition', null], ['new_search', null]]) {
     selectedAction = choice;
     const result = await classifier.answer(question, { searchState: previous });
     const diagnostic = result.searchDiagnostics.operationDecision;
@@ -989,12 +997,41 @@ test('diagnoses JEV clarification separately from lexical disagreement without c
       assert.deepEqual(result.searchState, previous);
       assert.equal(diagnostic.proposedDelta.unresolvedConditions[0].reason, 'change_intent_unresolved');
     } else {
+      assert.equal(diagnostic.code.action, 'new_search');
       assert.deepEqual(result.searchPlan.args, { kind: 'nonconformity', limit: 2,
         originDepartmentNameAny: ['仙台工場', '三島工場'], originDepartmentName: '資材課' });
+      if (choice === 'replace_condition') {
+        assert.deepEqual([...result.recordIds].sort(), ['nonconformity:material-mishima', 'nonconformity:material-sendai']);
+        assert.equal(diagnostic.conditionEffect.targetEquivalent, true);
+        assert.equal(diagnostic.conditionEffect.targetImpact.action, RESOLUTION_ACTIONS.RESOLVE_EXISTING);
+      }
     }
     assert.equal(JSON.stringify(diagnostic).includes('must-not-be-exposed'), false);
     assert.equal(JSON.stringify(diagnostic).includes(snapshot.records[0].condition), false);
     assert.equal('request' in diagnostic.input, false);
+  }
+  selectedAction = 'replace_condition';
+  actionConfidence = 0.94;
+  const confidentReplace = await classifier.answer(question, { searchState: previous });
+  assert.equal(confidentReplace.searchDelta.applied, false);
+  assert.equal(confidentReplace.searchDiagnostics.operationDecision.code.rejectionReason, 'lexical_action_mismatch');
+  assert.deepEqual(confidentReplace.searchState, previous);
+
+  actionConfidence = 0.38;
+  const retainedConditions = [
+    { ...previous, semantic: { include: { process: 'turning' }, exclude: {} } },
+    { ...previous, exact: { ...previous.exact, exclude: { partNumber: 'EXCLUDED-PART' } } },
+    { ...previous, semantic: { include: {}, exclude: { treatment: 'rework' } } },
+    { ...previous, unresolvedConditions: [{ kind: 'condition', field: 'process', term: 'turning', reason: 'unresolved' }] },
+  ];
+  for (const retainedCondition of retainedConditions) {
+    const differentTarget = await classifier.answer(question, { searchState: retainedCondition });
+    const differentDiagnostic = differentTarget.searchDiagnostics.operationDecision;
+    assert.equal(differentTarget.searchDelta.applied, false);
+    assert.deepEqual(differentTarget.searchState, retainedCondition);
+    assert.equal(differentDiagnostic.conditionEffect.targetEquivalent, false);
+    assert.equal(differentDiagnostic.code.rejectionReason, 'lexical_action_mismatch');
+    assert.equal(differentDiagnostic.proposedDelta.unresolvedConditions[0].reason, 'change_intent_unresolved');
   }
   assert.equal(classifier.calls.filter(({ phase }) => phase === 'record').length, 0);
 });
