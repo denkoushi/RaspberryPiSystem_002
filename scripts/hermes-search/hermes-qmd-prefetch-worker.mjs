@@ -59,6 +59,13 @@ const SELECTOR_RUNNER = path.resolve(
 );
 const PREFIX = '__HERMES_UI_PREFETCH__';
 const SELECTOR_PREFIX = '__HERMES_SELECTOR__';
+const TYPESAFE_FAILURE_CODES = new Set([
+  'missing_credentials', 'transport_unavailable', 'upstream_http', 'invalid_json',
+  'invalid_answers', 'timeout', 'connection_failed',
+]);
+const SAFE_EXCEPTION_NAMES = new Set([
+  'AbortError', 'RangeError', 'ReferenceError', 'SyntaxError', 'TypeError', 'Error',
+]);
 
 const FIELD_ORDER = Object.keys(nonconformityDefinition.bodyFields);
 const CONTEXT_ATTRIBUTE_ORDER = nonconformityDefinition.contextAttributes;
@@ -69,6 +76,28 @@ function emit(value) {
     typeof current === 'bigint' ? Number(current) : current
   )) + '\n');
   process.stdout.flush?.();
+}
+
+function failureDiagnostic(error) {
+  const diagnostic = error?.hermesDiagnostic;
+  if (error?.name === 'TypeSafeDirectError'
+    && diagnostic?.provider === 'typesafe-direct'
+    && TYPESAFE_FAILURE_CODES.has(diagnostic.failureCode)
+    && (diagnostic.failureCode !== 'upstream_http'
+      || (Number.isInteger(diagnostic.httpStatus) && diagnostic.httpStatus >= 100 && diagnostic.httpStatus <= 599))) {
+    return {
+      stage: 'jev_query',
+      exceptionType: 'TypeSafeDirectError',
+      provider: 'typesafe-direct',
+      failureCode: diagnostic.failureCode,
+      ...(diagnostic.failureCode === 'upstream_http' ? { httpStatus: diagnostic.httpStatus } : {}),
+    };
+  }
+  return {
+    stage: 'worker_request',
+    exceptionType: SAFE_EXCEPTION_NAMES.has(error?.name) ? error.name : 'Error',
+    failureCode: 'unclassified',
+  };
 }
 
 function sha256(value) {
@@ -814,7 +843,7 @@ async function main() {
       emit({
         workerRequestId: request && typeof request.requestId === 'string' ? request.requestId : null,
         workerError: 'trial worker request failed',
-        detail: String(error?.message ?? error),
+        failureDiagnostic: failureDiagnostic(error),
       });
     }
   }

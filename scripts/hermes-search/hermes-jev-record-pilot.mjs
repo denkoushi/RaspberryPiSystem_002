@@ -82,15 +82,20 @@ function connectionMetadata() {
   return { provider: 'vercel-ai-gateway', endpoint: null, model: MODEL };
 }
 
-function safeDirectError(message) {
+function safeDirectError(message, failureCode, httpStatus) {
   const error = new Error(message);
   error.name = 'TypeSafeDirectError';
+  error.hermesDiagnostic = {
+    provider: DIRECT_PROVIDER,
+    failureCode,
+    ...(Number.isInteger(httpStatus) ? { httpStatus } : {}),
+  };
   return error;
 }
 
 export function createTypesafeDirectEvaluate({ apiKey = process.env.TYPESAFE_API_KEY, fetchImpl = globalThis.fetch } = {}) {
-  if (!apiKey) throw safeDirectError('TYPESAFE_API_KEY is required for the typesafe-direct provider');
-  if (typeof fetchImpl !== 'function') throw safeDirectError('global fetch is required for the typesafe-direct provider');
+  if (!apiKey) throw safeDirectError('TYPESAFE_API_KEY is required for the typesafe-direct provider', 'missing_credentials');
+  if (typeof fetchImpl !== 'function') throw safeDirectError('global fetch is required for the typesafe-direct provider', 'transport_unavailable');
 
   return async (input) => {
     const controller = new AbortController();
@@ -106,19 +111,19 @@ export function createTypesafeDirectEvaluate({ apiKey = process.env.TYPESAFE_API
         body: JSON.stringify({ model: DIRECT_MODEL, state: input.state, questions: input.questions }),
         signal: controller.signal,
       });
-      if (!response.ok) throw safeDirectError(`TypeSafe API returned HTTP ${response.status}`);
+      if (!response.ok) throw safeDirectError(`TypeSafe API returned HTTP ${response.status}`, 'upstream_http', response.status);
       let result;
       try {
         result = await response.json();
       } catch {
-        throw safeDirectError('TypeSafe API returned invalid JSON');
+        throw safeDirectError('TypeSafe API returned invalid JSON', 'invalid_json');
       }
-      if (!isObject(result) || !isObject(result.answers)) throw safeDirectError('TypeSafe API response has no answers');
+      if (!isObject(result) || !isObject(result.answers)) throw safeDirectError('TypeSafe API response has no answers', 'invalid_answers');
       return result;
     } catch (error) {
-      if (error?.name === 'AbortError') throw safeDirectError(`TypeSafe API timed out after ${DIRECT_TIMEOUT_MS}ms`);
+      if (error?.name === 'AbortError') throw safeDirectError(`TypeSafe API timed out after ${DIRECT_TIMEOUT_MS}ms`, 'timeout');
       if (error?.name === 'TypeSafeDirectError') throw error;
-      throw safeDirectError('TypeSafe API connection failed');
+      throw safeDirectError('TypeSafe API connection failed', 'connection_failed');
     } finally {
       clearTimeout(timeout);
     }
