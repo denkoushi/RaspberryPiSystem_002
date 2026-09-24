@@ -47,7 +47,7 @@ jobs:
       full_suite: ${{ steps.classify.outputs.full_suite }}
     steps:
       - name: Checkout code with history
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -82,7 +82,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Test classifier and workflow contracts
         run: python3 -m unittest discover -s scripts/ci/tests -p 'test_*.py'
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -125,7 +125,7 @@ jobs:
       # pnpm 9 uses npm's retired audit endpoint. Keep the workspace toolchain
       # unchanged and isolate the bulk-advisory client after all Node 20 work.
       - name: Setup Node.js for bulk advisory audit
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -145,7 +145,7 @@ jobs:
         include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"shard":"all","shard_id":"all","coverage":true,"build":true}]' || '[{"shard":"1/3","shard_id":"1-of-3","coverage":true,"build":true},{"shard":"2/3","shard_id":"2-of-3","coverage":true,"build":false},{"shard":"3/3","shard_id":"3-of-3","coverage":true,"build":false}]') }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -237,7 +237,7 @@ jobs:
 
       - name: Upload API coverage artifact
         if: ${{ always() && matrix.coverage }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: api-coverage-${{ matrix.shard_id }}
           path: apps/api/coverage/
@@ -254,7 +254,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -279,7 +279,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -389,7 +389,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code with migration base
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -409,7 +409,7 @@ jobs:
           command -v ansible-playbook
 
       - name: Cache Ansible collections
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.ansible/collections
           key: ansible-collections-${{ runner.os }}-community-general-v1
@@ -429,7 +429,7 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Checkout exact candidate source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -472,7 +472,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install client test runner
         run: |
@@ -517,7 +517,7 @@ jobs:
         include: ${{ fromJSON(needs.change-classification.outputs.pi4_agent_matrix) }}
     steps:
       - name: Checkout exact candidate source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up QEMU for the selected Pi4 platform
         uses: docker/setup-qemu-action@v4
@@ -540,7 +540,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=pi4-agent-${{ matrix.service }}-${{ matrix.platform_tag }},ignore-error=true
 
       - name: Scan the Pi4 agent image contract
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           scan-type: image
           image-ref: ${{ matrix.image }}:${{ github.sha }}-${{ matrix.platform_tag }}
@@ -559,7 +559,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout exact candidate source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install the exact Signage attestation verifier
         if: ${{ github.event_name != 'push' }}
@@ -626,7 +626,7 @@ jobs:
             --build-arg "MANIFEST_SHA256=$manifest_sha" .
 
       - name: Security scan exact Signage artifact image
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           scan-type: 'image'
           image-ref: raspisys-pi3-signage-contract:${{ github.sha }}
@@ -637,7 +637,7 @@ jobs:
           trivyignores: '.trivyignore'
 
       - name: Upload the verified and scanned Signage artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: pi3-signage-release-${{ github.sha }}
           path: |
@@ -658,7 +658,7 @@ jobs:
       attestations: write
     steps:
       - name: Checkout exact source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Check catalogue and nightly regression boundaries
         run: |
           python3 -m pip install -r services/hermes-answer-cache/requirements.txt
@@ -685,7 +685,7 @@ jobs:
           cache-from: type=gha,scope=hermes-answer-cache
           cache-to: type=gha,scope=hermes-answer-cache,mode=max
       - name: Security scan the cache image
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         env:
           TRIVY_PLATFORM: linux/arm64
         with:
@@ -698,7 +698,7 @@ jobs:
           trivyignores: .trivyignore
       - name: Attest the exact production cache image
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/denkoushi/raspisys-hermes-answer-cache
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -733,7 +733,7 @@ jobs:
       config_hash: ${{ steps.contract.outputs.config_hash }}
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Ansible renderer
         run: |
@@ -757,7 +757,7 @@ jobs:
           echo "config_hash=$config_hash" >> "$GITHUB_OUTPUT"
 
       - name: Upload sealed build contract
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-build-contract-${{ github.sha }}
           path: ${{ runner.temp }}/release-build-contract.json
@@ -784,10 +784,10 @@ jobs:
       repository: ${{ steps.identity.outputs.repository }}
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download sealed build contract
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-build-contract-${{ github.sha }}
           path: ${{ runner.temp }}/release-contract
@@ -850,7 +850,7 @@ jobs:
           < "$RUNNER_TEMP/release-api-manifest.json"
 
       - name: Security scan exact ARM64 API digest
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           scan-type: 'image'
           image-ref: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}
@@ -880,10 +880,10 @@ jobs:
       repository: ${{ steps.identity.outputs.repository }}
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download sealed build contract
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-build-contract-${{ github.sha }}
           path: ${{ runner.temp }}/release-contract
@@ -926,7 +926,7 @@ jobs:
         run: docker pull --platform linux/arm64 "$IMAGE_REFERENCE"
 
       - name: Security scan exact ARM64 Web digest
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           scan-type: 'image'
           image-ref: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}
@@ -958,7 +958,7 @@ jobs:
       packages: read
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Log in to GHCR for exact digest rehearsal
         uses: docker/login-action@v4
@@ -992,11 +992,11 @@ jobs:
         include: ${{ fromJSON(needs.change-classification.outputs.docker_matrix) }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Security scan (Trivy fs)
         if: matrix.image == 'api'
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           scan-type: 'fs'
           ignore-unfixed: true
@@ -1056,7 +1056,7 @@ jobs:
             = 4444444444444444444444444444444444444444444444444444444444444444
 
       - name: Security scan (Trivy image ${{ matrix.image }})
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           scan-type: 'image'
           image-ref: ${{ matrix.tag }}
@@ -1073,7 +1073,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -1146,7 +1146,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -1157,7 +1157,7 @@ jobs:
 
       - name: Upload generated candidate, visual report, and diff diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: kiosk-sop-diagnostics-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/kiosk-sop-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}/
@@ -1170,7 +1170,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -1241,7 +1241,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: playwright-report/
@@ -1249,7 +1249,7 @@ jobs:
 
       - name: Upload Playwright traces (on failure)
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-traces
           path: test-results/
@@ -1266,10 +1266,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
 
@@ -1305,7 +1305,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout aggregate validator
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Require every selected CI job to pass
         env:
@@ -1401,7 +1401,7 @@ jobs:
             dockerfile: infrastructure/docker/Dockerfile.torque-agent
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -1431,7 +1431,7 @@ jobs:
           sbom: true
 
       - name: Security scan exact published Pi4 agent ARM64 digest
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         env:
           TRIVY_PLATFORM: linux/arm64
         with:
@@ -1444,7 +1444,7 @@ jobs:
           trivyignores: .trivyignore
 
       - name: Security scan exact published Pi4 agent ARMv7 digest
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         env:
           TRIVY_PLATFORM: linux/arm/v7
         with:
@@ -1475,7 +1475,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout exact-main Signage publication gate
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Require fixed external checks on the exact SHA
         env:
@@ -1512,10 +1512,10 @@ jobs:
       packages: write
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download the verified and scanned Signage artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: pi3-signage-release-${{ github.sha }}
           path: .
@@ -1636,7 +1636,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout release gate
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Require fixed external checks on the exact SHA
         env:
@@ -1679,7 +1679,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Log in to GHCR for signed release publication
         uses: docker/login-action@v4
