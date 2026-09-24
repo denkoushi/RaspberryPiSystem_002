@@ -3,6 +3,7 @@
 import './executor.test.mjs';
 import './structural-text.test.mjs';
 import './evaluate.test.mjs';
+import './stage-score.test.mjs';
 import './relevance-jev.test.mjs';
 import './planner-jev.test.mjs';
 import './query-plan.test.mjs';

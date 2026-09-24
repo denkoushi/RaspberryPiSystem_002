@@ -11,6 +11,12 @@ export function toRetrievalEnrichment(stored) {
       if (typeof item?.value === 'string' && item.value) tags.push(item.value);
     }
   }
+  for (const alias of stored?.aliases ?? []) {
+    if (typeof alias?.term === 'string' && alias.term) tags.push(alias.term);
+    for (const alt of alias?.alts ?? []) {
+      if (typeof alt === 'string' && alt) tags.push(alt);
+    }
+  }
   return {
     summary: typeof stored?.summary === 'string' ? stored.summary : '',
     queries: Array.isArray(stored?.queries) ? stored.queries.filter((query) => typeof query === 'string') : [],

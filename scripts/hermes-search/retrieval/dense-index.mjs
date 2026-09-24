@@ -20,3 +20,24 @@ export function createDenseRanker(rows, embedQuery) {
     };
   };
 }
+
+export function createScopedDenseRanker(rows, embedQuery, limit = 50) {
+  const byId = new Map(rows.map((row) => [row.id, row.vector]));
+  return async function rank(query, filtered) {
+    const started = Date.now();
+    const embedStarted = Date.now();
+    const [vector] = await embedQuery([query]);
+    const embedMs = Date.now() - embedStarted;
+    const pool = Array.isArray(filtered)
+      ? filtered.map((record) => ({ id: record.id, vector: byId.get(record.id) })).filter((row) => row.vector)
+      : rows;
+    const top = rankByCosine(vector, pool, limit);
+    return {
+      ok: true,
+      orderedIds: top.map((item) => item.id),
+      cosines: new Map(top.map((item) => [item.id, item.cosine])),
+      searchMs: Date.now() - started,
+      embedMs,
+    };
+  };
+}

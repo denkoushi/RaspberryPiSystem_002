@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // One-process gold evaluation. Record text stays out of the summary and the --out file.
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -8,8 +9,9 @@ import { fileURLToPath } from 'node:url';
 import { digestRecords } from '../hermes-qmd-snapshot-export.mjs';
 import { fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
 import { attachEnrichment, readEnrichmentStores, splitEnrichmentArg } from './enrichment-attach.mjs';
-import { execute, openQmdVectorRanker } from './executor.mjs';
-import { createDenseRanker } from './dense-index.mjs';
+import { execute, openQmdVectorRanker, recordPassage } from './executor.mjs';
+import { createDenseRanker, createScopedDenseRanker } from './dense-index.mjs';
+import { planStage } from './stage-score.mjs';
 import { createOnnxEmbedder, createOnnxReranker, DEFAULT_EMBED_MODEL, DEFAULT_RERANK_MODEL } from './embed-runtime.mjs';
 import { linkEntities } from './entity-link.mjs';
 import { createPlanner } from './planner-jev.mjs';
@@ -42,6 +44,7 @@ export function parseArgs(argv) {
     gold: null, snapshot: null, qmdIndex: null, embedModel: null, out: null, jevRelevance: null,
     variant: 'a', entityLink: false, rerankMode: 'replace',
     enrichment: [], noEnrichment: false, allowSubset: false,
+    stageDump: false, retriever: 'lexical',
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -52,6 +55,8 @@ export function parseArgs(argv) {
     else if (arg === '--enrichment') parsed.enrichment.push(...splitEnrichmentArg(argv[++index]));
     else if (arg === '--no-enrichment') parsed.noEnrichment = true;
     else if (arg === '--allow-subset') parsed.allowSubset = true;
+    else if (arg === '--stage-dump') parsed.stageDump = true;
+    else if (arg === '--retriever') parsed.retriever = argv[++index];
     else if (arg === '--out') parsed.out = argv[++index];
     else if (arg === '--variant') parsed.variant = argv[++index];
     else if (arg === '--entity-link') parsed.entityLink = true;
@@ -68,9 +73,41 @@ export function parseArgs(argv) {
     } else throw new Error(`unknown argument: ${arg}`);
   }
   if (!parsed.gold || !parsed.snapshot || !parsed.out) {
-    throw new Error('Usage: node retrieval/evaluate.mjs --gold <file> --snapshot <path> [--variant a|b|c] [--entity-link] [--rerank-mode replace|gate] [--jev-relevance] [--enrichment <jsonl>] [--no-enrichment] [--allow-subset] --out <file>');
+    throw new Error('Usage: node retrieval/evaluate.mjs --gold <file> --snapshot <path> [--variant a|b|c] [--retriever lexical|dense|hybrid] [--stage-dump] [--entity-link] [--rerank-mode replace|gate] [--jev-relevance] [--enrichment <jsonl>] [--no-enrichment] [--allow-subset] --out <file>');
   }
   return parsed;
+}
+
+export async function loadHashedDenseRows({ records, bodyFields, embed, modelId, cacheRoot }) {
+  const hash = createHash('sha256');
+  hash.update(String(modelId));
+  const passages = [];
+  for (const record of records) {
+    const text = recordPassage(record, bodyFields);
+    passages.push(text);
+    hash.update('\n');
+    hash.update(String(record.id ?? ''));
+    hash.update('\n');
+    hash.update(text);
+  }
+  const digest = hash.digest('hex');
+  const safeModel = String(modelId).replace(/[^\w.-]+/gu, '_');
+  const cachePath = path.join(cacheRoot, `dense-${safeModel}-${digest}.json`);
+  try {
+    const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    if (cached.digest === digest && Array.isArray(cached.rows) && cached.rows.length === records.length) {
+      return { rows: cached.rows, buildMs: 0 };
+    }
+  } catch {
+    // Rebuild when the private cache is missing or unreadable.
+  }
+  const started = performance.now();
+  const vectors = await embed(passages, { prefix: 'passage: ' });
+  const buildMs = Math.round(performance.now() - started);
+  const rows = records.map((record, index) => ({ id: record.id, vector: vectors[index] }));
+  await fsp.mkdir(cacheRoot, { recursive: true, mode: 0o700 });
+  await fsp.writeFile(cachePath, JSON.stringify({ digest, rows }), { mode: 0o600 });
+  return { rows, buildMs };
 }
 
 function latencyPair(values) {
@@ -144,8 +181,11 @@ export async function evaluateGold(options) {
   const bodyFields = fieldsWithRole(catalog, 'body');
   const variant = options.variant ?? 'a';
   if (!['a', 'b', 'c'].includes(variant)) throw new Error('variant must be a, b, or c');
+  const retriever = options.retriever ?? 'lexical';
+  if (!['lexical', 'dense', 'hybrid'].includes(retriever)) throw new Error('retriever must be lexical, dense, or hybrid');
   const useDense = variant === 'b' || variant === 'c';
-  const embedder = (options.entityLink || useDense) && !options.embed
+  const dateField = fieldsWithRole(catalog, 'date')[0] ?? 'discoveredOn';
+  const embedder = (options.entityLink || useDense || retriever !== 'lexical') && !options.embed
     ? await createOnnxEmbedder({ modelId: options.embedModelId })
     : null;
   const embed = options.embed ?? (embedder ? (texts, extra) => embedder.embed(texts, extra) : null);
@@ -189,6 +229,26 @@ export async function evaluateGold(options) {
       return { ranked: candidates.map((item, index) => ({ id: item.id, score: scores[index] })) };
     }
     : null);
+  let retrieverDense = null;
+  let denseBuildMs = null;
+  let queryEmbedMs = null;
+  if (retriever !== 'lexical') {
+    if (!cachedEmbed) throw new Error('dense retriever requires an embedder');
+    const workRoot = options.workRoot ?? path.join(process.env.HOME, 'Documents', 'hermes-retrieval-private', 'work');
+    const modelId = embedder?.modelId ?? options.embedModelId ?? 'custom';
+    const built = await loadHashedDenseRows({
+      records: payload.records,
+      bodyFields,
+      embed: cachedEmbed,
+      modelId,
+      cacheRoot: path.join(workRoot, 'dense-cache'),
+    });
+    denseBuildMs = built.buildMs;
+    const probeStarted = performance.now();
+    await cachedEmbed(['qxprobe'], { prefix: 'query: ' });
+    queryEmbedMs = Math.round(performance.now() - probeStarted);
+    retrieverDense = createScopedDenseRanker(built.rows, (queries) => cachedEmbed(queries, { prefix: 'query: ' }), 50);
+  }
   const vector = denseRank
     ? (query) => denseRank(query)
     : null;
@@ -213,7 +273,9 @@ export async function evaluateGold(options) {
   } else if (!denseRank) {
     vectorPrepareReason = 'qmd index or embed model flag is not set';
   }
-  const activeVector = vector ?? (ranker ? (query, filteredRecords) => ranker.rank(query, filteredRecords) : null);
+  const activeVector = retrieverDense
+    ?? vector
+    ?? (ranker ? (query, filteredRecords) => ranker.rank(query, filteredRecords) : null);
   const details = [];
   try {
     for (const item of gold) {
@@ -265,6 +327,8 @@ export async function evaluateGold(options) {
           relevance: options.relevance,
           rerank,
           rerankMode: variant === 'c' ? (options.rerankMode ?? 'replace') : null,
+          retriever,
+          stageDump: Boolean(options.stageDump),
         });
         if (!activeVector && validation.plan.semanticQuery.trim() && vectorPrepareReason) {
           executed.timings.vectorStatus = /not set|not found|was not found/u.test(vectorPrepareReason) ? 'skipped' : 'failed';
@@ -309,6 +373,18 @@ export async function evaluateGold(options) {
         relevanceMs: executed.timings?.relevanceMs ?? null,
         vectorStatus: executed.timings?.vectorStatus ?? null,
         totalMs: Math.round(performance.now() - wallStarted),
+        ...(options.stageDump ? {
+          stage: planStage(planned.plan, { outOfScope: Boolean(validation.outOfScope), dateField }),
+          candidateIds: executed.candidateIds ?? [],
+          finalIds: executed.results.map((result) => result.recordId),
+          timings: {
+            planMs: planned.timings?.planMs ?? null,
+            retrieveMs: executed.timings?.totalMs ?? null,
+            vectorMs: executed.timings?.vectorMs ?? null,
+            relevanceMs: executed.timings?.relevanceMs ?? null,
+            totalMs: Math.round(performance.now() - wallStarted),
+          },
+        } : {}),
       });
     }
   } finally {
@@ -316,6 +392,7 @@ export async function evaluateGold(options) {
   }
   const summary = {
     cases: details.length,
+    ...(retriever !== 'lexical' ? { retriever, denseBuildMs, queryEmbedMs } : {}),
     precisionAvg: details.length ? details.reduce((sum, item) => sum + item.precision, 0) / details.length : 0,
     casesAllRelevant: details.filter((item) => item.allRelevant).length,
     statusCorrect: details.filter((item) => item.statusCorrect).length,
@@ -374,6 +451,8 @@ async function main() {
     enrichmentPaths: args.noEnrichment ? [] : args.enrichment,
     noEnrichment: args.noEnrichment,
     allowSubset: args.allowSubset,
+    stageDump: args.stageDump,
+    retriever: args.retriever,
     embedModelId: DEFAULT_EMBED_MODEL,
     rerankModelId: DEFAULT_RERANK_MODEL,
   });

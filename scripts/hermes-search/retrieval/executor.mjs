@@ -8,6 +8,7 @@ import { normalizeForMatch } from './value-index.mjs';
 
 /** Reciprocal-rank constant. One value shared by fusion. */
 export const RRF_K = 60;
+export const STAGE_CANDIDATE_LIMIT = 50;
 /**
  * A content token is generic when it occurs in more than this fraction of the snapshot.
  * The IDF cutoff for a snapshot is specificTokenIdfThreshold(documentCount).
@@ -76,7 +77,7 @@ function enrichmentText(record) {
   return parts.join('\n');
 }
 
-function bodyText(record, bodyFields) {
+export function recordPassage(record, bodyFields) {
   const parts = [];
   for (const key of bodyFields) {
     const value = record?.[key];
@@ -106,7 +107,7 @@ export function prepareLexicalCorpus(records, bodyFields) {
   const documents = [];
   let totalLength = 0;
   for (const record of records) {
-    const folded = bodyText(record, bodyFields).normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
+    const folded = recordPassage(record, bodyFields).normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
     const length = Math.max(0, folded.length - 1);
     totalLength += length;
     documents.push({ id: record.id, folded, length });
@@ -148,7 +149,7 @@ export function buildLexicalIndex(records, bodyFields, query, corpus = null, fil
   for (const record of rows) {
     const folded = prepared
       ? record.folded
-      : bodyText(record, bodyFields).normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
+      : recordPassage(record, bodyFields).normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
     const length = prepared ? record.length : Math.max(0, folded.length - 1);
     if (!prepared) totalLength += length;
     const counts = new Map();
@@ -198,7 +199,7 @@ export function buildLexicalIndex(records, bodyFields, query, corpus = null, fil
 
 export function matchesSpecificToken(record, bodyFields, index) {
   if (!index?.specificTokens?.size) return false;
-  const folded = bodyText(record, bodyFields).normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
+  const folded = recordPassage(record, bodyFields).normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
   if (!folded) return false;
   for (const token of index.specificTokens) {
     if (folded.includes(token)) return true;
@@ -274,6 +275,23 @@ export function fuseRankings(lexicalOrdered, vectorOrdered) {
   }
   fused.sort((left, right) => right.score - left.score || String(left.id).localeCompare(String(right.id)));
   return fused.slice(0, RELEVANCE_CANDIDATE_LIMIT);
+}
+
+/** Reciprocal-rank fusion of two ordered id lists. No recall floor and no cap. */
+export function rrfCombine(lexicalOrdered, vectorOrdered, k = RRF_K) {
+  const score = new Map();
+  const add = (list) => {
+    (list ?? []).forEach((item, index) => {
+      const id = item?.id;
+      if (!id) return;
+      score.set(id, (score.get(id) ?? 0) + 1 / (k + index + 1));
+    });
+  };
+  add(lexicalOrdered);
+  add(vectorOrdered);
+  return [...score.entries()]
+    .map(([id, value]) => ({ id, score: value }))
+    .sort((left, right) => right.score - left.score || String(left.id).localeCompare(String(right.id)));
 }
 
 function compareRaw(left, right) {
@@ -451,16 +469,31 @@ export async function execute(plan, options = {}) {
   }
   const byId = new Map(filtered.map((record) => [record.id, record]));
   const filteredOnly = !semanticQuery && hasAppliedHardFilter(plan, options.catalog);
+  const retriever = options.retriever === 'dense' || options.retriever === 'hybrid' ? options.retriever : 'lexical';
+  let candidateIds = [];
   let ranked;
+  const rowsOf = (ordered) => ordered
+    .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
+    .filter((item) => item.record);
   if (filteredOnly) {
     ranked = filtered.map((record) => ({ record, score: 0, lexicalValue: 0 }));
+    candidateIds = ranked.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.record.id);
   } else if (!semanticQuery) {
     ranked = [];
+  } else if (retriever === 'dense') {
+    candidateIds = vectorOrdered.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.id);
+    ranked = rowsOf(vectorOrdered.slice(0, RELEVANCE_CANDIDATE_LIMIT));
+  } else if (retriever === 'hybrid') {
+    const fused = rrfCombine(lexicalRows.filter((item) => item.contentTokenScore > 0), vectorOrdered);
+    candidateIds = fused.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.id);
+    ranked = rowsOf(fused.slice(0, RELEVANCE_CANDIDATE_LIMIT));
   } else if (vectorOrdered.length) {
     ranked = fuseRankings(lexicalRows.filter((item) => item.contentTokenScore > 0), vectorOrdered)
       .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
       .filter((item) => item.record);
+    candidateIds = ranked.map((item) => item.record.id);
   } else {
+    candidateIds = lexicalRows.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.id);
     const pool = filtered.length <= RELEVANCE_CANDIDATE_LIMIT ? lexicalRows : lexicalRows.slice(0, RELEVANCE_CANDIDATE_LIMIT);
     ranked = pool
       .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
@@ -542,6 +575,7 @@ export async function execute(plan, options = {}) {
     requested: limit,
     returned: results.length,
     results,
+    ...(options.stageDump ? { candidateIds } : {}),
     timings: {
       filterMs,
       lexicalMs,

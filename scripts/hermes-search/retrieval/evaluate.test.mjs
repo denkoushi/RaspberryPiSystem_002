@@ -46,6 +46,15 @@ test('an enrichment store attaches summary, queries, and flattened facet tags', 
     queries: ['qxenrich ask'],
     tags: ['qxenrich tag', 'qxenrich part'],
   });
+  const aliased = attachEnrichment([{ id: 'rec-1' }], new Map([['rec-1', {
+    schema: 'hermes-retrieval-enrichment/v1',
+    recordId: 'rec-1',
+    summary: 'qxenrich note',
+    queries: [],
+    facets: { phenomenon: [], cause: [], process: [], part: [], treatment: [] },
+    aliases: [{ term: 'qxterm', alts: ['qxalt'] }],
+  }]]));
+  assert.deepEqual(aliased[0].enrichment.tags, ['qxterm', 'qxalt']);
   assert.equal(attached[1].enrichment, undefined);
 
   const args = parseArgs(['--gold', 'g', '--snapshot', 's', '--enrichment', storePath, '--enrichment', 'a.jsonl,b.jsonl', '--out', 'o']);
