@@ -4,6 +4,7 @@ import { normalizeForMatch } from './value-index.mjs';
 export const QUERY_PLAN_SCHEMA = 'hermes-query-plan/v1';
 const OPS = new Set(['eq', 'in', 'not_in', 'before', 'after', 'between']);
 const DATE_OPS = new Set(['before', 'after', 'between']);
+const ENUMERATED_OPS = new Set(['eq', 'in', 'not_in']);
 const SINGLE_VALUE_OPS = new Set(['eq', 'before', 'after']);
 
 function freeze(value) {
@@ -136,9 +137,41 @@ export function validateQueryPlan(plan, catalog, valueIndex) {
       limit: plan.limit,
       display: [...plan.display],
       unresolved: [],
-      ...(contentDecision ? { diagnostics: { contentDecision } } : {}),
+      ...(contentDecision || plan?.diagnostics?.limitExplicit === true || plan?.diagnostics?.limitExplicit === false ? {
+        diagnostics: {
+          ...(contentDecision ? { contentDecision } : {}),
+          ...(plan?.diagnostics?.limitExplicit === true || plan?.diagnostics?.limitExplicit === false
+            ? { limitExplicit: plan.diagnostics.limitExplicit === true }
+            : {}),
+        },
+      } : {}),
     }),
   };
+}
+
+function fieldOf(catalog, source, key) {
+  let entries = [];
+  try {
+    entries = catalogEntries(catalog);
+  } catch {
+    entries = [];
+  }
+  return entries.find((entry) => entry.id === source)?.fields.find((item) => item.key === key) ?? null;
+}
+
+export function hasAppliedHardFilter(plan, catalog) {
+  const filters = Array.isArray(plan?.filters) ? plan.filters : [];
+  return filters.some((filter) => {
+    const field = fieldOf(catalog, filter?.source, filter?.field);
+    if (field?.role === 'date' || DATE_OPS.has(filter?.op)) return true;
+    return field?.enumerated === true && ENUMERATED_OPS.has(filter?.op);
+  });
+}
+
+/** Skip relevance only when a hard filter is applied and the content noul is false. */
+export function shouldSkipRelevance(plan, catalog) {
+  if (plan?.diagnostics?.contentDecision?.jev !== false) return false;
+  return hasAppliedHardFilter(plan, catalog);
 }
 
 function copyContentDecision(plan) {

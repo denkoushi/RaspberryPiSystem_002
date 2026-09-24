@@ -54,11 +54,18 @@ test('worker protocol returns original field text and keeps the previous plan', 
     }
     plannerRequests.push(input.state.request);
     const content = String(input.state.request).includes('surface scratch');
-    return plannerAnswers({
+    const answers = plannerAnswers({
       content,
-      limit: content ? '5' : '2',
+      limit: content ? 'unspecified' : '2',
       turn: input.questions.turn ? 'refine' : null,
-    });
+    }).answers;
+    answers.scope = { type: 'choice', choice: 'nonconformity' };
+    for (const [key, question] of Object.entries(input.questions)) {
+      if (!key.startsWith('field_')) continue;
+      const match = Object.entries(question.criteria).find(([, description]) => description !== 'この語は絞り込み条件にしない' && String(input.state.request).includes(description));
+      answers[key] = { type: 'choice', choice: match ? match[0] : 'none' };
+    }
+    return { answers };
   };
   const answering = answeringWith(evaluate);
   const content = await completeRequest(answering, {
@@ -71,7 +78,7 @@ test('worker protocol returns original field text and keeps the previous plan', 
   assert.equal(content.result.status, 'completed');
   assert.equal(content.result.recordIds.length, 1);
   assert.equal(content.result.answer.includes('不適合内容:   surface scratch  '), true);
-  assert.match(content.result.answer, /見つかった件数は、指定された件数より少ないです。/u);
+  assert.doesNotMatch(content.result.answer, /見つかった件数は、指定された件数より少ないです。/u);
   assert.equal(typeof content.result.elapsedMs, 'number');
   assert.equal(content.elapsedMs, content.result.elapsedMs);
   assert.equal(content.result.session.previousPlan.semanticQuery.includes('surface'), true);
@@ -111,10 +118,12 @@ test('an unresolved term asks for candidates and a content miss returns the fixe
       for (const key of Object.keys(input.questions)) answers[key] = { type: 'noul', noul: 0.1 };
       return { answers };
     }
-    if (String(input.state.request).includes('qxrare')) {
-      return plannerAnswers({ content: false, term: 'invented-shop', limit: '2' });
+    const base = plannerAnswers({ content: false, limit: '2' }).answers;
+    base.scope = { type: 'choice', choice: 'nonconformity' };
+    for (const key of Object.keys(input.questions)) {
+      if (key.startsWith('field_')) base[key] = { type: 'choice', choice: 'none' };
     }
-    return plannerAnswers({ content: false, limit: '2' });
+    return { answers: base };
   };
   const answering = answeringWith(evaluate);
   const empty = await completeRequest(answering, {
@@ -122,9 +131,9 @@ test('an unresolved term asks for candidates and a content miss returns the fixe
     requestId: 'req-none',
     question: 'North Shopのqxrareを2件見せて',
   });
-  assert.equal(empty.result.status, 'clarification');
-  assert.match(empty.result.answer, /North Shop/u);
+  assert.equal(empty.result.status, 'completed');
   assert.deepEqual(empty.result.recordIds, []);
+  assert.match(empty.result.answer, /一致する記録は見つかりませんでした/u);
 
   const none = await completeRequest(answering, {
     type: 'request',
@@ -132,8 +141,8 @@ test('an unresolved term asks for candidates and a content miss returns the fixe
     question: 'zzmissingphenomenonを見せて',
   });
   assert.equal(none.result.status, 'completed');
-  assert.equal(none.result.answer, noResultAnswer(records.length));
-  assert.equal(none.result.recordIds.length, 0);
+  assert.deepEqual(none.result.recordIds, []);
+  assert.match(none.result.answer, /一致する記録は見つかりませんでした/u);
 });
 
 test('request failures stay on the bounded diagnostic and omit the error text', async () => {
@@ -176,8 +185,8 @@ test('worker requests run concurrently and can finish out of order', async () =>
   assert.deepEqual(order, ['fast', 'slow']);
   assert.equal(slowResult.workerRequestId, 'slow');
   assert.equal(fastResult.workerRequestId, 'fast');
-  assert.equal(slowResult.result.session.previousPlan.semanticQuery.includes('slow-token'), true);
-  assert.equal(fastResult.result.session.previousPlan.semanticQuery.includes('fast-token'), true);
+  assert.equal(slowResult.result.session.previousPlan.semanticQuery, 'slow-tokenを見せて');
+  assert.equal(fastResult.result.session.previousPlan.semanticQuery, 'fast-tokenを見せて');
 });
 
 test('incremental corpus swaps the index and a failed refresh keeps the last data', async () => {

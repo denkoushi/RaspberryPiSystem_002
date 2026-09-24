@@ -47,10 +47,18 @@ export function deriveCatalog(definition) {
   for (const [key, label] of Object.entries(metadata)) add(key, label, 'metadata');
   for (const [key, label] of Object.entries(body)) add(key, label, 'body');
   const labeled = typeof definition.label === 'string' && definition.label ? definition.label : sourceLabels[definition.id];
+  const description = typeof definition.description === 'string' && definition.description.trim()
+    ? definition.description.trim()
+    : (typeof labeled === 'string' && labeled ? labeled : definition.id);
+  const valueChoiceCap = Number.isInteger(definition.valueChoiceCap) && definition.valueChoiceCap > 0
+    ? definition.valueChoiceCap
+    : 300;
   return freeze({
     schema: 'hermes-source-catalog/v1',
     id: definition.id,
     label: typeof labeled === 'string' && labeled ? labeled : definition.id,
+    description,
+    valueChoiceCap,
     fields,
   });
 }

@@ -1,11 +1,15 @@
 import { performance } from 'node:perf_hooks';
 import { catalogEntries, fieldsWithRole } from './catalog.mjs';
 import { RELEVANCE_CANDIDATE_LIMIT } from './relevance-jev.mjs';
+import { DEFAULT_EMBED_BUDGET_MS, withEmbeddingBudget } from './query-embedding.mjs';
 import { contentQuery, contentTokens } from './structural-text.mjs';
+import { hasAppliedHardFilter } from './query-plan.mjs';
 import { normalizeForMatch } from './value-index.mjs';
 
 /** Reciprocal-rank constant. One value shared by fusion. */
+export const RERANK_ACCEPT_AT = 0.3;
 export const RRF_K = 60;
+export const STAGE_CANDIDATE_LIMIT = 50;
 /**
  * A content token is generic when it occurs in more than this fraction of the snapshot.
  * The IDF cutoff for a snapshot is specificTokenIdfThreshold(documentCount).
@@ -64,12 +68,24 @@ function tokenBigrams(token) {
   return grams;
 }
 
-function bodyText(record, bodyFields) {
+function enrichmentText(record) {
+  const extra = record?.enrichment;
+  if (!extra || typeof extra !== 'object') return '';
+  const parts = [];
+  if (typeof extra.summary === 'string' && extra.summary) parts.push(extra.summary);
+  if (Array.isArray(extra.queries)) parts.push(...extra.queries.filter((item) => typeof item === 'string' && item));
+  if (Array.isArray(extra.tags)) parts.push(...extra.tags.filter((item) => typeof item === 'string' && item));
+  return parts.join('\n');
+}
+
+export function recordPassage(record, bodyFields) {
   const parts = [];
   for (const key of bodyFields) {
     const value = record?.[key];
     if (typeof value === 'string' && value) parts.push(value);
   }
+  const extra = enrichmentText(record);
+  if (extra) parts.push(extra);
   return parts.join('\n');
 }
 
@@ -92,7 +108,7 @@ export function prepareLexicalCorpus(records, bodyFields) {
   const documents = [];
   let totalLength = 0;
   for (const record of records) {
-    const folded = bodyText(record, bodyFields).normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
+    const folded = recordPassage(record, bodyFields).normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
     const length = Math.max(0, folded.length - 1);
     totalLength += length;
     documents.push({ id: record.id, folded, length });
@@ -101,8 +117,26 @@ export function prepareLexicalCorpus(records, bodyFields) {
   return { documents, docCount, totalLength, avgLength: docCount ? totalLength / docCount : 0 };
 }
 
-export function buildLexicalIndex(records, bodyFields, query, corpus = null) {
+function filterValueTexts(filters) {
+  const values = [];
+  for (const filter of filters ?? []) {
+    for (const value of filter?.values ?? []) {
+      if (typeof value === 'string' && value.trim()) values.push(value.normalize('NFKC').toLowerCase());
+    }
+  }
+  return values;
+}
+
+function tokenMatchesFilterValue(token, values) {
+  if (!values.length) return false;
+  const folded = token.normalize('NFKC').toLowerCase();
+  return values.some((value) => value.includes(folded) || folded.includes(value));
+}
+
+export function buildLexicalIndex(records, bodyFields, query, corpus = null, filters = []) {
   const tokens = contentTokens(query);
+  const filterValues = filterValueTexts(filters);
+  const quietTokens = new Set(tokens.filter((token) => tokenMatchesFilterValue(token, filterValues)));
   const { bigrams: queryGrams, unigrams } = queryTerms(tokens);
   const df = new Map();
   for (const gram of queryGrams) df.set(gram, 0);
@@ -116,7 +150,7 @@ export function buildLexicalIndex(records, bodyFields, query, corpus = null) {
   for (const record of rows) {
     const folded = prepared
       ? record.folded
-      : bodyText(record, bodyFields).normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
+      : recordPassage(record, bodyFields).normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
     const length = prepared ? record.length : Math.max(0, folded.length - 1);
     if (!prepared) totalLength += length;
     const counts = new Map();
@@ -156,6 +190,7 @@ export function buildLexicalIndex(records, bodyFields, query, corpus = null) {
   }
   return {
     tokens,
+    quietTokens,
     documents,
     idf,
     specificTokens,
@@ -165,7 +200,7 @@ export function buildLexicalIndex(records, bodyFields, query, corpus = null) {
 
 export function matchesSpecificToken(record, bodyFields, index) {
   if (!index?.specificTokens?.size) return false;
-  const folded = bodyText(record, bodyFields).normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
+  const folded = recordPassage(record, bodyFields).normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
   if (!folded) return false;
   for (const token of index.specificTokens) {
     if (folded.includes(token)) return true;
@@ -201,6 +236,7 @@ function scoreDocument(recordId, index) {
       parts += 1;
     }
     if (!parts) continue;
+    if (index.quietTokens?.has(token)) continue;
     score += tokenScore;
     if (tokenScore > contentTokenScore) contentTokenScore = tokenScore;
   }
@@ -240,6 +276,23 @@ export function fuseRankings(lexicalOrdered, vectorOrdered) {
   }
   fused.sort((left, right) => right.score - left.score || String(left.id).localeCompare(String(right.id)));
   return fused.slice(0, RELEVANCE_CANDIDATE_LIMIT);
+}
+
+/** Reciprocal-rank fusion of two ordered id lists. No recall floor and no cap. */
+export function rrfCombine(lexicalOrdered, vectorOrdered, k = RRF_K) {
+  const score = new Map();
+  const add = (list) => {
+    (list ?? []).forEach((item, index) => {
+      const id = item?.id;
+      if (!id) return;
+      score.set(id, (score.get(id) ?? 0) + 1 / (k + index + 1));
+    });
+  };
+  add(lexicalOrdered);
+  add(vectorOrdered);
+  return [...score.entries()]
+    .map(([id, value]) => ({ id, score: value }))
+    .sort((left, right) => right.score - left.score || String(left.id).localeCompare(String(right.id)));
 }
 
 function compareRaw(left, right) {
@@ -367,7 +420,7 @@ export async function execute(plan, options = {}) {
   const bodyFields = bodyFieldsFor(plan, options);
   const customLexical = typeof options.lexical === 'function' ? options.lexical : null;
   const lexicalIndex = semanticQuery && !customLexical
-    ? buildLexicalIndex(records, bodyFields, semanticQuery, options.lexicalCorpus)
+    ? buildLexicalIndex(records, bodyFields, semanticQuery, options.lexicalCorpus, filters)
     : null;
   let vectorStatus = semanticQuery ? 'skipped' : 'not_requested';
   let vectorReason = semanticQuery && typeof options.vector !== 'function' ? 'vector ranker was not provided' : null;
@@ -390,15 +443,19 @@ export async function execute(plan, options = {}) {
         contentTokenScore = scored.contentTokenScore;
       }
       lexicalScores.set(record.id, score);
-      if (contentTokenScore > 0) lexicalRows.push({ id: record.id, score, contentTokenScore });
+      lexicalRows.push({ id: record.id, score, contentTokenScore });
     }
     lexicalRows.sort((left, right) => right.score - left.score || String(left.id).localeCompare(String(right.id)));
   }
   const lexicalMs = semanticQuery ? Math.round(performance.now() - lexicalStarted) : 0;
+  const vectorBudgetMs = Number.isFinite(options.vectorBudgetMs) ? options.vectorBudgetMs : DEFAULT_EMBED_BUDGET_MS;
   if (semanticQuery && typeof options.vector === 'function') {
     const vectorStarted = performance.now();
     try {
-      const ranked = await options.vector(semanticQuery, filtered);
+      const ranked = await withEmbeddingBudget(
+        () => options.vector(semanticQuery, filtered),
+        vectorBudgetMs,
+      );
       vectorMs = Math.round(performance.now() - vectorStarted);
       if (ranked?.ok) {
         vectorOrdered = vectorOrder(ranked, new Set(filtered.map((record) => record.id)));
@@ -411,18 +468,64 @@ export async function execute(plan, options = {}) {
       }
     } catch (error) {
       vectorMs = Math.round(performance.now() - vectorStarted);
-      vectorStatus = 'failed';
+      vectorStatus = error?.code === 'timeout' ? 'timeout' : 'failed';
       vectorReason = safeReason(error);
     }
   }
+  const vectorReady = vectorStatus === 'ok' && vectorOrdered.length > 0;
+  const retriever = options.retriever === 'dense' || options.retriever === 'hybrid'
+    ? (vectorReady ? options.retriever : 'lexical')
+    : 'lexical';
   const byId = new Map(filtered.map((record) => [record.id, record]));
-  let ranked = semanticQuery
-    ? fuseRankings(lexicalRows, vectorOrdered)
+  const filteredOnly = !semanticQuery && hasAppliedHardFilter(plan, options.catalog);
+  let candidateIds = [];
+  let ranked;
+  const rowsOf = (ordered) => ordered
+    .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
+    .filter((item) => item.record);
+  if (filteredOnly) {
+    ranked = filtered.map((record) => ({ record, score: 0, lexicalValue: 0 }));
+    candidateIds = ranked.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.record.id);
+  } else if (!semanticQuery) {
+    ranked = [];
+  } else if (retriever === 'dense') {
+    candidateIds = vectorOrdered.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.id);
+    ranked = rowsOf(vectorOrdered.slice(0, RELEVANCE_CANDIDATE_LIMIT));
+  } else if (retriever === 'hybrid') {
+    const fused = rrfCombine(lexicalRows.filter((item) => item.contentTokenScore > 0), vectorOrdered);
+    candidateIds = fused.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.id);
+    ranked = rowsOf(fused.slice(0, RELEVANCE_CANDIDATE_LIMIT));
+  } else if (vectorOrdered.length) {
+    ranked = fuseRankings(lexicalRows.filter((item) => item.contentTokenScore > 0), vectorOrdered)
       .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
-      .filter((item) => item.record)
-    : filtered.map((record) => ({ record, score: 0, lexicalValue: 0 }));
+      .filter((item) => item.record);
+    candidateIds = ranked.map((item) => item.record.id);
+  } else {
+    candidateIds = lexicalRows.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.id);
+    const pool = filtered.length <= RELEVANCE_CANDIDATE_LIMIT ? lexicalRows : lexicalRows.slice(0, RELEVANCE_CANDIDATE_LIMIT);
+    ranked = pool
+      .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
+      .filter((item) => item.record);
+  }
   let relevanceMs = semanticQuery ? 0 : null;
-  if (semanticQuery && typeof options.relevance === 'function') {
+  let rerankMs = null;
+  if (semanticQuery && typeof options.rerank === 'function') {
+    const rerankStarted = performance.now();
+    const pool = ranked.slice(0, RELEVANCE_CANDIDATE_LIMIT);
+    const judged = await options.rerank({
+      semanticQuery,
+      candidates: pool.map((item) => ({ id: item.record.id, record: item.record })),
+      bodyFields,
+    });
+    rerankMs = Math.round(performance.now() - rerankStarted);
+    const scored = new Map((judged?.ranked ?? []).map((item) => [item.id, Number(item.score) || 0]));
+    const kept = pool.filter((item) => (scored.get(item.record.id) ?? 0) >= (options.rerankMin ?? RERANK_ACCEPT_AT));
+    ranked = kept.map((item) => ({ ...item, score: scored.get(item.record.id) ?? 0 }));
+    if (options.rerankMode === 'replace') {
+      relevanceMs = null;
+    }
+  }
+  if (semanticQuery && typeof options.relevance === 'function' && options.rerankMode !== 'replace') {
     const relevanceStarted = performance.now();
     try {
       const judged = await options.relevance({
@@ -449,8 +552,12 @@ export async function execute(plan, options = {}) {
       }, plan);
     }
   }
-  const direction = plan?.sort && plan.sort !== 'relevance' ? (plan.sort.direction === 'asc' ? 1 : -1) : null;
-  const sortField = direction ? plan.sort.field : null;
+  const direction = filteredOnly && (plan?.sort === 'relevance' || !plan?.sort)
+    ? -1
+    : (plan?.sort && plan.sort !== 'relevance' ? (plan.sort.direction === 'asc' ? 1 : -1) : null);
+  const sortField = direction
+    ? (plan?.sort && plan.sort !== 'relevance' ? plan.sort.field : (options.catalog ? fieldsWithRole(options.catalog, 'date')[0] : null))
+    : null;
   ranked.sort((left, right) => {
     if (sortField) {
       const compared = compareRaw(left.record?.[sortField], right.record?.[sortField]) * direction;
@@ -472,10 +579,11 @@ export async function execute(plan, options = {}) {
   }));
   return {
     status: results.length ? 'answer' : 'no_result',
-    insufficient: results.length < limit,
+    insufficient: plan?.diagnostics?.limitExplicit === false ? false : results.length < limit,
     requested: limit,
     returned: results.length,
     results,
+    ...(options.stageDump ? { candidateIds } : {}),
     timings: {
       filterMs,
       lexicalMs,
@@ -483,6 +591,7 @@ export async function execute(plan, options = {}) {
       vectorStatus,
       vectorReason,
       relevanceMs,
+      rerankMs,
       filteredCount: filtered.length,
       totalMs: Math.round(performance.now() - started),
     },
