@@ -5,7 +5,6 @@ import { catalogEntries } from './catalog.mjs';
 import { QUERY_PLAN_SCHEMA, hasAppliedHardFilter, shouldSkipRelevance } from './query-plan.mjs';
 import { enumeratedChoiceGroups } from './value-index.mjs';
 import { nextIsoDay, parsePeriods, previousIsoDay, referenceDate } from './period-parse.mjs';
-import { contentTokens, stripListedTerms } from './structural-text.mjs';
 
 const LIMIT_OPTIONS = ['1', '2', '3', '5', '10', '20'];
 const LIMIT_UNSPECIFIED = 'unspecified';
@@ -300,7 +299,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const limitExplicit = fromIndex ? Boolean(limitChoice && limitChoice !== LIMIT_UNSPECIFIED) : Boolean(limitChoice);
       if (!fromIndex && !limitChoice) unresolved.push({ term: 'limit', candidates: [...LIMIT_OPTIONS] });
       const contentChoice = chosen(answers.content, ['true', 'false']);
-      void contentChoice;
+      if (!contentChoice) unresolved.push({ term: 'content', candidates: ['true', 'false'] });
 
       const carried = turn === 'refine' && Array.isArray(previousPlan?.filters)
         ? previousPlan.filters
@@ -324,8 +323,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         if (filter) dated.push(filter);
       }
       const filters = mergeFilters([...carried, ...selected, ...dated]);
-      const residualTokens = residualContentTokens(question, filters);
-      const jev = residualTokens.length > 0;
+      const jev = contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;
       const finalContent = jev === true && unresolved.length === 0;
       const sortMode = resolveSort(question, jev, hasAppliedHardFilter({ filters }, catalog));
       const sort = sortMode === 'recent' && recentField
@@ -344,7 +342,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         display: entries.flatMap((entry) => entry.fields.map((field) => field.key)),
         unresolved: outOfScope ? [] : unresolved,
         diagnostics: {
-          contentDecision: { jev, residualTokens, final: finalContent },
+          contentDecision: { jev, residualTokens: [], final: finalContent },
           scope: outOfScope ? 'out_of_scope' : 'records',
           limitExplicit,
         },
@@ -352,43 +350,6 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       return { plan, timings: { planMs } };
     },
   };
-}
-
-function coversSelectedValue(token, value) {
-  const needle = String(token ?? '').normalize('NFKC').toLowerCase();
-  const hay = String(value ?? '').normalize('NFKC').toLowerCase();
-  if (needle.length < 2 || hay.length < 2) return false;
-  let index = 0;
-  let from = 0;
-  while (index < needle.length) {
-    let length = needle.length - index;
-    let foundAt = -1;
-    while (length >= 2) {
-      const at = hay.indexOf(needle.slice(index, index + length), from);
-      if (at >= 0) {
-        foundAt = at;
-        break;
-      }
-      length -= 1;
-    }
-    if (foundAt < 0) return false;
-    index += length;
-    from = foundAt + length;
-  }
-  return true;
-}
-
-function residualContentTokens(question, filters) {
-  const values = [];
-  for (const filter of filters ?? []) {
-    if (filter?.op === 'before' || filter?.op === 'after' || filter?.op === 'between') continue;
-    for (const value of filter?.values ?? []) {
-      if (typeof value === 'string' && value) values.push(value.normalize('NFKC'));
-    }
-  }
-  return contentTokens(stripListedTerms(question, values))
-    .filter((token) => token !== '件')
-    .filter((token) => !values.some((value) => coversSelectedValue(token, value)));
 }
 
 function scopeChoiceOf(answer, sourceIds) {
