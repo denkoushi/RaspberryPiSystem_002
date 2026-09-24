@@ -187,6 +187,39 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(MODULE.UsageError, "must be true or false"):
                 MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
 
+    def test_maintenance_enrichment_override_reaches_systemd_without_defaulting(self) -> None:
+        args = argparse.Namespace(hermes_search_trial_maintenance="on", branch="main",
+                                  limit="raspberrypi5", full_fleet=False, detach=True,
+                                  torque_cutover=False)
+        env_name = "HERMES_RETRIEVAL_ENRICHMENT_ENABLED"
+        for value in (None, "false", "true"):
+            with self.subTest(value=value), mock.patch.dict(os.environ, {} if value is None else {env_name: value}, clear=True):
+                environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+                command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
+                                             ("pi5",), "pi", hermes_environment=environment)
+                if value is None:
+                    self.assertNotIn(env_name, environment)
+                    self.assertFalse(any(env_name in item for item in command))
+                else:
+                    self.assertEqual(environment[env_name], value)
+                    self.assertIn(f"--setenv={env_name}={value}", command)
+        with mock.patch.dict(os.environ, {env_name: "yes"}, clear=True):
+            with self.assertRaisesRegex(MODULE.UsageError, "HERMES_RETRIEVAL_ENRICHMENT_ENABLED must be true or false"):
+                MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+        with mock.patch.dict(os.environ, {
+            env_name: "true",
+            "HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS": "100",
+            "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY": "1",
+            "HERMES_RETRIEVAL_ENRICHMENT_WINDOW": "22-6",
+        }, clear=True):
+            environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+            self.assertEqual(environment["HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS"], "100")
+            self.assertEqual(environment["HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY"], "1")
+            self.assertEqual(environment["HERMES_RETRIEVAL_ENRICHMENT_WINDOW"], "22-6")
+        with mock.patch.dict(os.environ, {"HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY": "3"}, clear=True):
+            with self.assertRaisesRegex(MODULE.UsageError, "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY must be 1 or 2"):
+                MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+
     def test_fixed_record_pilot_artifact_is_retired(self) -> None:
         args = argparse.Namespace(full_fleet=False, detach=False, branch="main", limit="raspberrypi5")
         source = ROOT / "scripts/hermes-search/hermes-jev-record-pilot-artifact"

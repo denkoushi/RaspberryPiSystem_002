@@ -1941,6 +1941,15 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         self.assertIn("hermes_retrieval_v2_enabled", prepare)
         self.assertIn("Apply retrieval v2 gate when explicitly configured", trial_prepare)
         self.assertIn("hermes_retrieval_v2_enabled in ['true', 'false']", trial_prepare)
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", launcher)
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", trial_prepare)
+        self.assertIn("hermes_retrieval_enrichment_enabled", prepare)
+        self.assertIn("Apply retrieval enrichment gate when explicitly configured", trial_prepare)
+        self.assertIn("hermes_retrieval_enrichment_enabled in ['true', 'false']", trial_prepare)
+        chat_prepare = (ANSIBLE / "roles/release_pi5/tasks/business-hermes-chat-prepare.yml").read_text(encoding="utf-8")
+        maintenance = (ANSIBLE / "roles/release_pi5/tasks/hermes-search-trial-maintenance.yml").read_text(encoding="utf-8")
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", chat_prepare)
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", maintenance)
 
     def test_explicit_trial_rebinds_the_candidate_api_to_the_finalized_chat_env(self) -> None:
         prepare_tasks = yaml.safe_load(

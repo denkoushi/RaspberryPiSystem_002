@@ -624,6 +624,51 @@ def remote_script(
     return "\n".join(("set -euo pipefail", f"cd {shlex.quote(str(remote_root))}", "mkdir -p logs/deploy", "exec 9>>logs/deploy/fleet-release-state.lock", "/usr/bin/flock -n 9 || { echo 'another fleet release is running' >&2; exit 75; }", "test -z \"$(git status --porcelain)\"", f"git fetch --no-tags origin {shlex.quote(args.branch)}", f"test \"$(git rev-parse FETCH_HEAD)\" = {shlex.quote(sha)}", f"git checkout --detach {shlex.quote(sha)}", f"test \"$(git rev-parse HEAD)\" = {shlex.quote(sha)}", "test -z \"$(git status --porcelain)\"", f"exec {shlex.join(internal)}"))
 
 
+def optional_bool_setting(name: str) -> str:
+    value = os.environ.get(name, "")
+    if value and value not in {"true", "false"}:
+        raise UsageError(f"{name} must be true or false")
+    return value
+
+
+def optional_cap_setting(name: str) -> str:
+    value = os.environ.get(name, "")
+    if value and not re.fullmatch(r"[1-9][0-9]{0,5}", value):
+        raise UsageError(f"{name} must be a positive integer")
+    return value
+
+
+def optional_concurrency_setting(name: str) -> str:
+    value = os.environ.get(name, "")
+    if value and value not in {"1", "2"}:
+        raise UsageError(f"{name} must be 1 or 2")
+    return value
+
+
+def optional_window_setting(name: str) -> str:
+    value = os.environ.get(name, "")
+    if value and not re.fullmatch(r"(?:[01]?[0-9]|2[0-3])-(?:[01]?[0-9]|2[0-3])", value):
+        raise UsageError(f"{name} must be HH-HH")
+    return value
+
+
+def enrichment_environment() -> dict[str, str]:
+    environment: dict[str, str] = {}
+    enabled = optional_bool_setting("HERMES_RETRIEVAL_ENRICHMENT_ENABLED")
+    max_records = optional_cap_setting("HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS")
+    concurrency = optional_concurrency_setting("HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY")
+    window = optional_window_setting("HERMES_RETRIEVAL_ENRICHMENT_WINDOW")
+    if enabled:
+        environment["HERMES_RETRIEVAL_ENRICHMENT_ENABLED"] = enabled
+    if max_records:
+        environment["HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS"] = max_records
+    if concurrency:
+        environment["HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY"] = concurrency
+    if window:
+        environment["HERMES_RETRIEVAL_ENRICHMENT_WINDOW"] = window
+    return environment
+
+
 def hermes_trial_configuration(
     args: argparse.Namespace,
     selection: tuple[tuple[str, tuple[str, ...]], ...],
@@ -646,6 +691,7 @@ def hermes_trial_configuration(
     retrieval_v2_enabled = os.environ.get("HERMES_RETRIEVAL_V2_ENABLED", "")
     if retrieval_v2_enabled and retrieval_v2_enabled not in {"true", "false"}:
         raise UsageError("HERMES_RETRIEVAL_V2_ENABLED must be true or false")
+    enrichment = enrichment_environment()
     if args.full_fleet or selection != (("pi5", ("raspberrypi5",)),):
         raise UsageError("the Hermes search trial requires an exact raspberrypi5-only release")
     environment = {"HERMES_SEARCH_TRIAL_ENABLED": enabled}
@@ -653,6 +699,7 @@ def hermes_trial_configuration(
         environment["HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED"] = classification_enabled
     if retrieval_v2_enabled:
         environment["HERMES_RETRIEVAL_V2_ENABLED"] = retrieval_v2_enabled
+    environment.update(enrichment)
     if enabled == "false":
         return None, environment
     value = os.environ.get("HERMES_SEARCH_TRIAL_ARTIFACT", "")
@@ -704,6 +751,7 @@ def hermes_trial_maintenance_configuration(
         if retrieval_v2_enabled not in {"true", "false"}:
             raise UsageError("HERMES_RETRIEVAL_V2_ENABLED must be true or false")
         environment["HERMES_RETRIEVAL_V2_ENABLED"] = retrieval_v2_enabled
+    environment.update(enrichment_environment())
     return environment
 
 
@@ -776,6 +824,10 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
         if key not in {"HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_JEV_ENABLED",
                        "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED",
                        "HERMES_RETRIEVAL_V2_ENABLED",
+                       "HERMES_RETRIEVAL_ENRICHMENT_ENABLED",
+                       "HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS",
+                       "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY",
+                       "HERMES_RETRIEVAL_ENRICHMENT_WINDOW",
                        "HERMES_JEV_PROVIDER",
                        "HERMES_SEARCH_TRIAL_ARTIFACT", "HERMES_SEARCH_TRIAL_MAINTENANCE",
                        "HERMES_ANSWER_CACHE_ARTIFACT"}:
