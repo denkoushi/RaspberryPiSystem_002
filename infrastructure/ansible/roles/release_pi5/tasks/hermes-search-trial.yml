@@ -104,6 +104,32 @@
     - hermes_search_trial_enabled | bool
     - hermes_retrieval_v2_enabled in ['true', 'false']
 
+- name: Apply retrieval enrichment gate when explicitly configured
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_ENRICHMENT_ENABLED='
+    line: "HERMES_RETRIEVAL_ENRICHMENT_ENABLED={{ hermes_retrieval_enrichment_enabled }}"
+    create: false
+    mode: '0600'
+  when:
+    - hermes_search_trial_enabled | bool
+    - hermes_retrieval_enrichment_enabled in ['true', 'false']
+
+- name: Apply retrieval enrichment pilot limits when explicitly configured
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+    mode: '0600'
+  loop:
+    - { key: HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS, value: "{{ hermes_retrieval_enrichment_max_records }}" }
+    - { key: HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY, value: "{{ hermes_retrieval_enrichment_concurrency }}" }
+    - { key: HERMES_RETRIEVAL_ENRICHMENT_WINDOW, value: "{{ hermes_retrieval_enrichment_window }}" }
+  when:
+    - hermes_search_trial_enabled | bool
+    - item.value | length > 0
+
 - name: Remove legacy fixed-record classifier settings
   ansible.builtin.lineinfile:
     path: "{{ release_pi5_chat_env_file }}"
@@ -146,6 +172,15 @@
     path: "{{ release_pi5_chat_env_file }}"
     regexp: '^HERMES_RETRIEVAL_V2_ENABLED='
     line: HERMES_RETRIEVAL_V2_ENABLED=false
+    create: false
+    mode: '0600'
+  when: not (hermes_search_trial_enabled | bool)
+
+- name: Disable retrieval enrichment when the search trial is disabled
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_ENRICHMENT_ENABLED='
+    line: HERMES_RETRIEVAL_ENRICHMENT_ENABLED=false
     create: false
     mode: '0600'
   when: not (hermes_search_trial_enabled | bool)

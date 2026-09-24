@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcessByStdio, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import {setPriority} from 'node:os';
 import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
@@ -100,6 +101,7 @@ export class HermesSearchTrialService {
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private corpusReady = false;
   private lastCorpusCount = 0;
+  private enrichmentChild: ChildProcessByStdio<Writable, null, null> | null = null;
 
   private readonly settings: TrialSettings;
 
@@ -382,14 +384,37 @@ export class HermesSearchTrialService {
       const mode = this.corpusReady ? 'incremental' : 'full';
       this.corpusReady = true;
       this.child?.stdin.write(`${JSON.stringify({ type: 'corpus', mode, records, asOf: new Date().toISOString() })}\n`);
+      this.kickEnrichment(records);
     } catch {
       console.warn(`hermes retrieval refresh failed count=${this.lastCorpusCount}`);
     }
+  }
+
+  private kickEnrichment(records: Array<Record<string, unknown>>) {
+    if (process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED !== 'true' || this.enrichmentChild || records.length === 0) return;
+    const entry = process.env.HERMES_RETRIEVAL_ENRICHMENT_ENTRY
+      ?? '/app/scripts/hermes-search/retrieval/enrichment-runner.mjs';
+    let child: ChildProcessByStdio<Writable, null, null>;
+    try {
+      child = spawn(this.settings.node, [entry], { env: process.env, stdio: ['pipe', 'ignore', 'ignore'] });
+    } catch {
+      console.warn('hermes retrieval enrichment start failed');
+      return;
+    }
+    this.enrichmentChild = child;
+    const clear = () => { if (this.enrichmentChild === child) this.enrichmentChild = null; };
+    child.once('spawn', () => { if (child.pid) try { setPriority(child.pid, 19); } catch { /* OS may reject the priority. */ } });
+    child.once('error', () => { clear(); console.warn('hermes retrieval enrichment start failed'); });
+    child.once('exit', clear);
+    child.stdin.on('error', clear);
+    child.stdin.write(JSON.stringify({ records }));
+    child.stdin.end();
   }
 
   close() {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     this.sessions.clear();
     this.child?.kill('SIGTERM');
+    this.enrichmentChild?.kill('SIGTERM');
   }
 }

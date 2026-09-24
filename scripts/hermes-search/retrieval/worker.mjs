@@ -12,6 +12,8 @@ import { createRelevanceJudge } from './relevance-jev.mjs';
 import { validateQueryPlan } from './query-plan.mjs';
 import { buildValueIndex, findCandidateValues } from './value-index.mjs';
 import { buildCorpusView, replaceCorpus, stampAnswer } from './corpus.mjs';
+import { attachEnrichment } from './enrichment-attach.mjs';
+import { readEnrichmentStore, storePathFromEnv } from './enrichment-store.mjs';
 
 export const WORKER_PREFIX = '__HERMES_UI_PREFETCH__';
 const ANSWER_ROLES = new Set(['identifier', 'date', 'organization', 'body']);
@@ -133,6 +135,20 @@ function formatRecords(results, catalog) {
   }).filter(Boolean).join('\n\n');
 }
 
+function applyEnrichment(view, enrichmentById) {
+  if (!enrichmentById || enrichmentById.size === 0) return view;
+  return { ...view, records: attachEnrichment(view.records, enrichmentById) };
+}
+
+async function loadEnrichmentById() {
+  try {
+    return await readEnrichmentStore(storePathFromEnv());
+  } catch {
+    console.warn('hermes retrieval enrichment store unreadable');
+    return null;
+  }
+}
+
 function publicRecordId(sourceId, recordId) {
   const id = String(recordId ?? '');
   if (!id) return id;
@@ -160,19 +176,21 @@ export function createRetrievalAnswering({
   lexicalCorpus = null,
   evaluate,
   vector = null,
+  enrichmentById = null,
   snapshotCount = Array.isArray(records) ? records.length : 0,
 } = {}) {
   if (!Array.isArray(records)) throw new TypeError('records must be an array');
   const planner = createPlanner(typeof evaluate === 'function' ? { evaluate } : {});
   const relevance = createRelevanceJudge(typeof evaluate === 'function' ? { evaluate } : {});
   const sourceId = catalogEntries(catalog)[0]?.id ?? null;
-  let current = buildCorpusView(records, catalog, null);
+  let current = applyEnrichment(buildCorpusView(records, catalog, null), enrichmentById);
   if (valueIndex) current = { ...current, valueIndex, lexicalCorpus, snapshotCount };
   return {
-    replaceCorpus(message) {
+    async replaceCorpus(message) {
       const count = current.snapshotCount;
       try {
-        current = replaceCorpus(current, catalog, message);
+        const enrichmentById = await readEnrichmentStore(storePathFromEnv()).catch(() => null);
+        current = applyEnrichment(replaceCorpus(current, catalog, message), enrichmentById);
         return { ok: true, count: current.snapshotCount };
       } catch {
         console.warn(`hermes retrieval corpus refresh failed count=${count}`);
@@ -361,6 +379,7 @@ export async function main() {
     }
     answering = createRetrievalAnswering({
       ...resources,
+      enrichmentById: await loadEnrichmentById(),
       vector: ranker ? (query, filtered) => ranker.rank(query, filtered) : null,
     });
     emit(readyPayload(resources));

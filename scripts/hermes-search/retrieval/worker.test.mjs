@@ -191,7 +191,7 @@ test('worker requests run concurrently and can finish out of order', async () =>
 
 test('incremental corpus swaps the index and a failed refresh keeps the last data', async () => {
   const answering = answeringWith(async () => plannerAnswers({ content: false, term: null, limit: '1' }));
-  const swapped = answering.replaceCorpus({
+  const swapped = await answering.replaceCorpus({
     mode: 'incremental',
     asOf: '2026-09-24T00:30:00.000Z',
     records: [
@@ -209,7 +209,7 @@ test('incremental corpus swaps the index and a failed refresh keeps the last dat
   const warn = [];
   const original = console.warn;
   console.warn = (line) => warn.push(String(line));
-  const failed = answering.replaceCorpus({ mode: 'incremental', records: [boom] });
+  const failed = await answering.replaceCorpus({ mode: 'incremental', records: [boom] });
   console.warn = original;
   assert.equal(failed.ok, false);
   assert.equal(failed.count, records.length + 1);

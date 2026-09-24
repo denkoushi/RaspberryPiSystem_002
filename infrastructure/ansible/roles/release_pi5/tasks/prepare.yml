@@ -941,6 +941,10 @@
     hermes_search_trial_artifact: "{{ lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ARTIFACT') }}"
     hermes_search_record_classification_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED') | lower }}"
     hermes_retrieval_v2_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_V2_ENABLED') | lower }}"
+    hermes_retrieval_enrichment_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_ENABLED') | lower }}"
+    hermes_retrieval_enrichment_max_records: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS') }}"
+    hermes_retrieval_enrichment_concurrency: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY') }}"
+    hermes_retrieval_enrichment_window: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_WINDOW') }}"
   when:
     - release_pi5_route == 'fresh'
     - lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') in ['true', 'false']
@@ -1071,6 +1075,11 @@
         select('match', '^HERMES_RETRIEVAL_V2_ENABLED=') | list | length) == 0
         or (release_pi5_candidate_search_env.stdout | from_json |
         select('match', '^HERMES_RETRIEVAL_V2_ENABLED=(true|false)$') | list | length) == 1
+      - >-
+        (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_RETRIEVAL_ENRICHMENT_ENABLED=') | list | length) == 0
+        or (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_RETRIEVAL_ENRICHMENT_ENABLED=(true|false)$') | list | length) == 1
       - "'HERMES_JEV_PROVIDER=typesafe-direct' in (release_pi5_candidate_search_env.stdout | from_json)"
       - >-
         (release_pi5_candidate_search_env.stdout | from_json |
