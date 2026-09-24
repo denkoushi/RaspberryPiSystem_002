@@ -324,6 +324,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
         selfInspectionTemplateId: string | null;
         selfInspectionStatus: SelfInspectionStatus | null;
         selfInspectionEntryPath: string | null;
+        selfInspectionResourceCds: string[];
+        selfInspectionResourceCd: string | null;
       }
     >();
     for (const d of decorationsQuery.data?.rowDecorations ?? []) {
@@ -333,7 +335,9 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
         hasSelfInspectionDrawing: d.hasSelfInspectionDrawing,
         selfInspectionTemplateId: d.selfInspectionTemplateId ?? null,
         selfInspectionStatus: d.selfInspectionStatus ?? null,
-        selfInspectionEntryPath: d.selfInspectionEntryPath ?? null
+        selfInspectionEntryPath: d.selfInspectionEntryPath ?? null,
+        selfInspectionResourceCds: d.selfInspectionResourceCds ?? [],
+        selfInspectionResourceCd: d.selfInspectionResourceCd ?? null
       });
     }
     return m;

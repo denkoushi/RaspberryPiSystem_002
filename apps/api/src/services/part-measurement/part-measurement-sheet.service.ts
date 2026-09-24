@@ -92,6 +92,7 @@ export type FindOrOpenInput = {
   productNo: string;
   processGroup: string;
   resourceCd: string;
+  fkojun?: string | null;
   /** 日程行からヘッダを埋める（検証用） */
   scheduleRowId?: string | null;
   fseiban?: string | null;
@@ -263,16 +264,29 @@ export class PartMeasurementSheetService {
       return { mode: 'needs_resolve' as const, sheet: null };
     }
 
-    const template = await prisma.partMeasurementTemplate.findFirst({
-      where: {
-        fhincd,
-        processGroup: prismaGroup,
-        resourceCd,
-        isActive: true
-      },
-      orderBy: { version: 'desc' },
-      include: partMeasurementTemplateFullInclude
-    });
+    const fkojun = input.fkojun?.trim() || '';
+    const templateWhere = {
+      fhincd,
+      processGroup: prismaGroup,
+      resourceCd,
+      isActive: true
+    };
+    const template =
+      (await prisma.partMeasurementTemplate.findFirst({
+        where: {
+          ...templateWhere,
+          OR: fkojun ? [{ fkojun }, { fkojun: '' }, { fkojun: null }] : [{ fkojun: '' }, { fkojun: null }]
+        },
+        orderBy: { version: 'desc' },
+        include: partMeasurementTemplateFullInclude
+      })) ??
+      (fkojun
+        ? await prisma.partMeasurementTemplate.findFirst({
+        where: { ...templateWhere, OR: [{ fkojun: '' }, { fkojun: null }] },
+            orderBy: { version: 'desc' },
+            include: partMeasurementTemplateFullInclude
+          })
+        : null);
     if (!template) {
       return {
         mode: 'needs_template' as const,
@@ -284,7 +298,8 @@ export class PartMeasurementSheetService {
           fhinmei,
           machineName: input.machineName?.trim() || null,
           resourceCd,
-          processGroup: group
+          processGroup: group,
+          fkojun
         }
       };
     }

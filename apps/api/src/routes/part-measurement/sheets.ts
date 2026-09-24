@@ -143,6 +143,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
           productNo: body.productNo,
           processGroup: body.processGroup,
           resourceCd: body.resourceCd,
+          fkojun: body.fkojun,
           scheduleRowId: body.scheduleRowId,
           fseiban: body.fseiban,
           fhincd: body.fhincd,

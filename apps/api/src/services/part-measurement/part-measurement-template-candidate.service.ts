@@ -18,6 +18,7 @@ export type ListTemplateCandidatesInput = {
   fhincd: string;
   processGroup: PartMeasurementProcessGroup;
   resourceCd: string;
+  fkojun?: string;
   /** 日程の品名（FHINMEI_ONLY 照合） */
   fhinmei?: string | null;
   /** 一覧のテキスト絞り込み */
@@ -46,6 +47,7 @@ export class PartMeasurementTemplateCandidateService {
       return [];
     }
     const scheduleResourceNorm = normalizeResourceCd(input.resourceCd);
+    const scheduleFkojun = input.fkojun?.trim() ?? '';
     const fhincdDb = input.fhincd.trim();
     const scheduleProcessGroup = input.processGroup;
     const scheduleFhinmeiNorm = normalizeFhinmeiForMatch(input.fhinmei);
@@ -55,7 +57,10 @@ export class PartMeasurementTemplateCandidateService {
         where: productionPartMeasurementTemplateWhere({
           isActive: true,
           templateScope: 'THREE_KEY',
-          fhincd: { equals: fhincdDb, mode: 'insensitive' }
+          fhincd: { equals: fhincdDb, mode: 'insensitive' },
+          OR: scheduleFkojun
+            ? [{ fkojun: scheduleFkojun }, { fkojun: '' }, { fkojun: null }]
+            : [{ fkojun: '' }, { fkojun: null }]
         }),
         include: partMeasurementTemplateFullInclude
       }),

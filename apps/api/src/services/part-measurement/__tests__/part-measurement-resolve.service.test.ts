@@ -60,7 +60,7 @@ describe('part measurement schedule resolution compatibility', () => {
     expect(result.ambiguous).toBe(false);
     expect(result.fhincdMismatch).toBe(false);
     expect(result.template).toEqual(template);
-    expect(templateLookup).toHaveBeenCalledExactlyOnceWith('PART-A', 'CUTTING', 'MC01');
+    expect(templateLookup).toHaveBeenCalledExactlyOnceWith('PART-A', 'CUTTING', 'MC01', '10');
     expect(getResourceCategoryPolicy).toHaveBeenCalledWith({ deviceScopeKey: 'factory - terminal' });
   });
 });

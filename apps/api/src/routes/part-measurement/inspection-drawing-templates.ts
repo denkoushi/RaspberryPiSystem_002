@@ -63,6 +63,7 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
           fhincd: body.fhincd,
           processGroup,
           resourceCds: body.resourceCds,
+          fkojun: body.fkojun,
           name: body.name,
           displayName: body.displayName,
           items: body.items,
@@ -152,6 +153,7 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
         fhincd: q.fhincd,
         processGroup,
         resourceCd: q.resourceCd,
+        fkojun: q.fkojun,
         includeInactive: q.includeInactive === true,
         visualName: q.visualName,
         digitQuery: q.digitQuery
@@ -161,6 +163,7 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
           id: template.id,
           fhincd: template.fhincd,
           resourceCd: template.resourceCd,
+          fkojun: template.fkojun,
           processGroup: serializeTemplateProcessGroup(template.processGroup),
           name: template.name,
           version: template.version,

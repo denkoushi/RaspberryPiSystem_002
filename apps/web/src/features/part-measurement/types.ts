@@ -110,6 +110,7 @@ export type PartMeasurementTemplateSiblingGroupDto = {
   displayName: string;
   fhincd: string;
   processGroup: PartMeasurementProcessGroup | null;
+  fkojun?: string;
   activeResourceCds: string[];
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -120,6 +121,7 @@ export type KioskInspectionDrawingTemplateSummaryDto = {
   id: string;
   fhincd: string;
   resourceCd: string;
+  fkojun?: string;
   processGroup: PartMeasurementProcessGroup | null;
   name: string;
   version: number;
@@ -141,6 +143,7 @@ export type PartMeasurementTemplateDto = {
   id: string;
   fhincd: string;
   resourceCd: string;
+  fkojun?: string;
   /** 正本（切削/研削）のみ。候補テンプレでは null */
   processGroup: PartMeasurementProcessGroup | null;
   templateScope: PartMeasurementTemplateScope;
@@ -631,6 +634,7 @@ export type KioskPartMeasurementTemplatePickLocationState = {
   fhincd: string;
   fhinmei: string;
   resourceCd: string;
+  fkojun?: number | null;
   processGroup: PartMeasurementProcessGroup;
   machineName: string | null;
   scheduleRowId?: string | null;

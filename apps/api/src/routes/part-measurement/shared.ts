@@ -61,6 +61,7 @@ export const findOrOpenSheetBodySchema = z.object({
   productNo: z.string().min(1).max(120),
   processGroup: processGroupSchema,
   resourceCd: z.string().min(1).max(120),
+  fkojun: z.string().max(120).optional(),
   scheduleRowId: z.string().uuid().optional().nullable(),
   fseiban: z.string().max(120).optional().nullable(),
   fhincd: z.string().max(120).optional().nullable(),
@@ -159,6 +160,7 @@ export const createTemplateBodySchema = z
     fhincd: z.string().max(120),
     processGroup: processGroupSchema,
     resourceCd: z.string().max(120),
+    fkojun: z.string().max(120).optional().default(''),
     name: z.string().min(1).max(200),
     items: z.array(templateItemSchema).min(1).max(200),
     visualTemplateId: z.string().uuid().optional().nullable(),
@@ -203,6 +205,7 @@ export const createInspectionDrawingTemplateGroupBodySchema = z
     fhincd: z.string().min(1).max(120),
     processGroup: processGroupSchema,
     resourceCds: inspectionDrawingTemplateResourceCdsSchema,
+    fkojun: z.string().max(120).optional().default(''),
     name: z.string().min(1).max(200),
     displayName: z.string().max(200).optional().nullable(),
     items: z.array(templateItemSchema).min(1).max(200),
@@ -263,13 +266,15 @@ export const cloneTemplateForScheduleBodySchema = z.object({
   sourceTemplateId: z.string().uuid(),
   fhincd: z.string().min(1).max(120),
   processGroup: processGroupSchema,
-  resourceCd: z.string().min(1).max(120)
+  resourceCd: z.string().min(1).max(120),
+  fkojun: z.string().max(120).optional().default('')
 });
 
 export const listTemplatesQuerySchema = z.object({
   fhincd: z.string().max(120).optional(),
   processGroup: processGroupSchema.optional(),
   resourceCd: z.string().max(120).optional(),
+  fkojun: z.string().max(120).optional(),
   includeInactive: z.coerce.boolean().optional()
 });
 
@@ -320,7 +325,8 @@ export const optionalQueryTrueOnlyBooleanSchema = z
 export const activeTemplateExistsQuerySchema = z.object({
   fhincd: z.string().min(1).max(120),
   processGroup: processGroupSchema,
-  resourceCd: z.string().min(1).max(120)
+  resourceCd: z.string().min(1).max(120),
+  fkojun: z.string().max(120).optional().default('')
 });
 
 export const drawingOcrCandidateBodySchema = z.object({
@@ -336,6 +342,7 @@ export const listTemplateCandidatesQuerySchema = z.object({
   fhincd: z.string().min(1).max(120),
   processGroup: processGroupSchema,
   resourceCd: z.string().min(1).max(120),
+  fkojun: z.string().max(120).optional(),
   fhinmei: z.string().max(500).optional(),
   q: z.string().max(200).optional()
 });
@@ -710,6 +717,7 @@ export function serializeTemplateSiblingGroup(
     displayName: string;
     fhincd: string;
     processGroup: string;
+    fkojun: string | null;
     createdAt?: Date;
     updatedAt?: Date;
   },
@@ -720,6 +728,7 @@ export function serializeTemplateSiblingGroup(
     displayName: group.displayName,
     fhincd: group.fhincd,
     processGroup: serializeTemplateProcessGroup(group.processGroup),
+    fkojun: group.fkojun ?? '',
     activeResourceCds,
     createdAt: group.createdAt?.toISOString?.() ?? null,
     updatedAt: group.updatedAt?.toISOString?.() ?? null
@@ -731,6 +740,7 @@ export function serializeTemplate(
     id: string;
     fhincd: string;
     resourceCd: string;
+    fkojun: string | null;
     processGroup: string;
     templateScope?: string;
     candidateFhinmei?: string | null;
@@ -753,6 +763,7 @@ export function serializeTemplate(
     id: t.id,
     fhincd: t.fhincd,
     resourceCd: t.resourceCd,
+    fkojun: t.fkojun ?? '',
     processGroup: serializeTemplateProcessGroup(t.processGroup),
     templateScope: serializeTemplateScope(t.templateScope ?? 'THREE_KEY'),
     candidateFhinmei: t.candidateFhinmei ?? null,

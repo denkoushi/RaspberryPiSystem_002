@@ -71,7 +71,9 @@ export async function enrichProductionScheduleRowsForSelfInspectionCandidate(
         hasSelfInspectionDrawing: decoration?.hasSelfInspectionDrawing ?? false,
         selfInspectionTemplateId: decoration?.selfInspectionTemplateId ?? null,
         selfInspectionStatus: decoration?.selfInspectionStatus ?? null,
-        selfInspectionEntryPath: decoration?.selfInspectionEntryPath ?? null
+        selfInspectionEntryPath: decoration?.selfInspectionEntryPath ?? null,
+        selfInspectionResourceCds: decoration?.selfInspectionResourceCds ?? [],
+        selfInspectionResourceCd: decoration?.selfInspectionResourceCd ?? null
       };
     });
   };

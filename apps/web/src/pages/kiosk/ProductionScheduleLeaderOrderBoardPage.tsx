@@ -531,11 +531,17 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   }, [invalidateScheduleQueries, queryClient]);
 
   const handleOpenInspectionDigitalInput = useCallback(
-    (row: LeaderBoardRow) => {
+    (row: LeaderBoardRow, selectedResourceCd: string) => {
       const path = row.selfInspectionEntryPath?.trim();
       if (!path) return;
       setInspectionWorkflowRow(null);
-      navigate(path);
+      if (path.includes('/self-inspection/start?')) {
+        const url = new URL(path, window.location.origin);
+        url.searchParams.set('resourceCd', selectedResourceCd);
+        navigate(`${url.pathname}${url.search}`);
+      } else {
+        navigate(path);
+      }
     },
     [navigate]
   );
@@ -546,7 +552,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   );
 
   const handleOpenInspectionPaperPrint = useCallback(
-    async (row: LeaderBoardRow) => {
+    async (row: LeaderBoardRow, selectedResourceCd: string) => {
       const templateId = row.selfInspectionTemplateId?.trim();
       if (!templateId) return;
       setInspectionWorkflowRow(null);
@@ -558,7 +564,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           fseiban: row.fseiban,
           fhincd: row.fhincd,
           fhinmei: row.fhinmei,
-          resourceCd: row.resourceCd,
+          resourceCd: selectedResourceCd,
           machineName: row.machineName
         });
         navigate(

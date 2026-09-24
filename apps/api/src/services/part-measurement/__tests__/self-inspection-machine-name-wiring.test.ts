@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
     },
     resolveMachineNames: vi.fn(),
     verifyScheduleRow: vi.fn(),
+    buildSessionBusinessKey: vi.fn(),
     serializeSession: vi.fn(),
     serializeSummary: vi.fn(),
     loadParticipantSummaries: vi.fn(),
@@ -34,7 +35,7 @@ vi.mock('../self-inspection-item-lock.repository.js', () => ({
   lockSelfInspectionItemBusinessKey: mocks.lockBusinessKey
 }));
 vi.mock('../self-inspection/shared.js', () => ({
-  buildSessionBusinessKey: vi.fn(() => 'business-key'),
+  buildSessionBusinessKey: mocks.buildSessionBusinessKey,
   hasInspectionDrawingTemplate: vi.fn(() => true),
   normalizeText: (value: string | null | undefined) => (value ?? '').trim(),
   resolveExpectedEntryCount: vi.fn(() => 1),
@@ -74,15 +75,25 @@ describe('self-inspection machine-name API wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.resolveMachineNames.mockResolvedValue({ machineNames: { 'FS-1': '正本機種名' } });
-    mocks.verifyScheduleRow.mockResolvedValue(undefined);
+    mocks.verifyScheduleRow.mockResolvedValue({});
     mocks.lockBusinessKey.mockResolvedValue(undefined);
     mocks.loadParticipantSummaries.mockResolvedValue(new Map());
     mocks.loadPendingReviewCounts.mockResolvedValue(new Map());
-    mocks.prisma.partMeasurementTemplate.findFirst.mockResolvedValue({ id: 'template-1', fhincd: 'FH-1' });
+    mocks.prisma.partMeasurementTemplate.findFirst.mockResolvedValue({
+      id: 'template-1', fhincd: 'FH-1', resourceCd: 'R1', processGroup: 'CUTTING',
+      fkojun: '', siblingGroupId: null, isActive: true, templateScope: 'THREE_KEY'
+    });
+    mocks.buildSessionBusinessKey.mockImplementation((input: {
+      productNo: string; processGroup: string; resourceCd: string; scheduleRowId: string;
+    }) => [input.productNo, input.processGroup, input.resourceCd, input.scheduleRowId].join('::'));
     mocks.prisma.productionScheduleOrderSupplement.findFirst.mockResolvedValue({ plannedQuantity: 5 });
     mocks.transaction.selfInspectionItemInvalidation.findUnique.mockResolvedValue(null);
-    mocks.transaction.selfInspectionSession.upsert.mockResolvedValue({ machineName: '正本機種名' });
-    mocks.serializeSession.mockImplementation(async (session: { machineName: string | null }) => ({
+    mocks.transaction.selfInspectionSession.upsert.mockResolvedValue({ id: 'session-1', machineName: '正本機種名' });
+    mocks.serializeSession.mockImplementation(async (session: Record<string, unknown>) => ({
+      id: session.id,
+      templateId: session.templateId,
+      resourceCd: session.resourceCd,
+      scheduleResourceCd: session.scheduleResourceCd,
       machineName: session.machineName
     }));
     mocks.serializeSummary.mockImplementation((session: { id: string; machineName: string | null }) => ({
@@ -119,6 +130,74 @@ describe('self-inspection machine-name API wiring', () => {
         create: expect.objectContaining({ machineName: '正本機種名' })
       })
     );
+  });
+
+  it('starts on a selected sibling resource while keeping the scheduled resource as the session key', async () => {
+    const plannedTemplate = {
+      id: 'template-plan', fhincd: 'FH-1', resourceCd: 'R1', processGroup: 'CUTTING',
+      fkojun: '10', siblingGroupId: 'group-10', isActive: true, templateScope: 'THREE_KEY'
+    };
+    mocks.verifyScheduleRow.mockResolvedValue({ FKOJUN: 10 });
+    mocks.prisma.partMeasurementTemplate.findFirst.mockImplementation(async (args: { where: Record<string, unknown> }) => {
+      if (args.where.id === 'template-plan') return plannedTemplate;
+      if (args.where.resourceCd === 'R2' || args.where.resourceCd === 'R3') {
+        return {
+          ...plannedTemplate,
+          id: `template-${args.where.resourceCd}`,
+          resourceCd: args.where.resourceCd
+        };
+      }
+      return null;
+    });
+
+    const persistedByBusinessKey = new Map<string, Record<string, unknown>>();
+    mocks.transaction.selfInspectionSession.upsert.mockImplementation(async (args: {
+      where: { sessionBusinessKey: string };
+      create: Record<string, unknown>;
+    }) => {
+      const existing = persistedByBusinessKey.get(args.where.sessionBusinessKey);
+      if (existing) return existing;
+      const created = { id: 'session-R2', ...args.create };
+      persistedByBusinessKey.set(args.where.sessionBusinessKey, created);
+      return created;
+    });
+
+    const results = [];
+    for (const resourceCd of ['R2', 'R3']) {
+      results.push(await resolveOrCreateSelfInspectionSession({
+        templateId: 'template-plan',
+        productNo: 'PO-1',
+        processGroup: 'CUTTING',
+        resourceCd,
+        scheduleRowId: 'row-1',
+        fseiban: 'FS-1',
+        fhincd: 'FH-1',
+        fhinmei: '品名'
+      }));
+    }
+
+    expect(mocks.verifyScheduleRow).toHaveBeenNthCalledWith(1, 'row-1', {
+      productNo: 'PO-1', fseiban: 'FS-1', fhincd: 'FH-1', resourceCd: 'R1'
+    });
+    const upserts = mocks.transaction.selfInspectionSession.upsert.mock.calls;
+    expect(upserts).toHaveLength(2);
+    expect(upserts.map(([args]) => args.where.sessionBusinessKey)).toEqual([
+      'PO-1::CUTTING::R1::row-1',
+      'PO-1::CUTTING::R1::row-1'
+    ]);
+    expect(upserts.map(([args]) => args.create)).toEqual([
+      expect.objectContaining({ templateId: 'template-R2', scheduleResourceCd: 'R1', resourceCd: 'R2' }),
+      expect.objectContaining({ templateId: 'template-R3', scheduleResourceCd: 'R1', resourceCd: 'R3' })
+    ]);
+    expect(upserts[1]?.[0].update).toEqual({});
+    expect(results).toEqual([
+      expect.objectContaining({
+        id: 'session-R2', templateId: 'template-R2', scheduleResourceCd: 'R1', resourceCd: 'R2'
+      }),
+      expect.objectContaining({
+        id: 'session-R2', templateId: 'template-R2', scheduleResourceCd: 'R1', resourceCd: 'R2'
+      })
+    ]);
   });
 
   it('requires a matching supplement order for unassigned seiban', async () => {

@@ -22,6 +22,7 @@ export type InspectionDrawingCreatePreviewScenarioConfig = {
   isEditing: boolean;
   lineageLocked: boolean;
   fhincd: string;
+  fkojun: string;
   resourceCd: string;
   resourceSelectOptions: ReadonlyArray<{ value: string; label: string }>;
   processGroup: PartMeasurementProcessGroup;
@@ -39,6 +40,7 @@ export function getInspectionDrawingCreatePreviewScenarioConfig(
 ): InspectionDrawingCreatePreviewScenarioConfig {
   const base = {
     fhincd: 'SD000107240',
+    fkojun: '10',
     resourceCd: '033',
     resourceSelectOptions: LONG_RESOURCE_OPTIONS,
     processGroup: 'cutting' as PartMeasurementProcessGroup,
@@ -87,6 +89,7 @@ export function toPreviewMetadataRowProps(
   InspectionDrawingCreateMetadataRowProps,
   | 'lineageLocked'
   | 'fhincd'
+  | 'fkojun'
   | 'resourceCd'
   | 'resourceSelectOptions'
   | 'processGroup'
@@ -100,6 +103,7 @@ export function toPreviewMetadataRowProps(
   return {
     lineageLocked: config.lineageLocked,
     fhincd: config.fhincd,
+    fkojun: config.fkojun,
     resourceCd: config.resourceCd,
     resourceSelectOptions: config.resourceSelectOptions,
     processGroup: config.processGroup,
