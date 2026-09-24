@@ -236,6 +236,40 @@ describeIntegration('grinding planning board lightweight load summary integratio
     else process.env.DATABASE_URL = originalDatabaseUrl;
   });
 
+  it('counts separate unassigned orders and applies only the matching order override', async () => {
+    const siteKey = `it-${randomUUID().slice(0, 8)}`;
+    const base = { FSEIBAN: '********', FHINCD: 'MASKED-PART', FSIGENCD: 'G-01', FKOJUN: '230' };
+    const first = await db().csvDashboardRow.create({
+      data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
+        dataHash: randomUUID(), rowData: { ...base, ProductNo: '0003729969', FSIGENSHOYORYO: '10' } }
+    });
+    const second = await db().csvDashboardRow.create({
+      data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
+        dataHash: randomUUID(), rowData: { ...base, ProductNo: '0004104427', FSIGENSHOYORYO: '20' } }
+    });
+    fixtures.push({ siteKey, rowIds: [first.id, second.id], splitIds: [] });
+    await db().productionScheduleGrindingPlanningBoardOverride.create({
+      data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey,
+        itemKey: buildGrindingPlanningBoardRowItemId(first.rowData), overrideResourceCd: 'G-02' }
+    });
+    const params = { client: db(), siteKey, category: 'grinding' as const, splitEnabled: false,
+      isResourceInCategory: (resourceCd: string, category: 'grinding' | 'cutting') =>
+        category === 'grinding' && resourceCd.startsWith('G-') };
+    const aggregate = await summaryReader()({ ...params,
+      leaderboardMaterializedBaseWhere: Prisma.sql`
+        "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND "CsvDashboardRow"."id" IN (${first.id}, ${second.id})` });
+    const fallback = await summaryReader()({ ...params, winnerRowIds: [first.id, second.id] });
+
+    expect(aggregate).toEqual(fallback);
+    expect(aggregate.load.find((entry) => entry.resourceCd === 'G-01')).toMatchObject({
+      originalItemCount: 2, originalRequiredMinutes: 30, alternateItemCount: 1, alternateRequiredMinutes: 20
+    });
+    expect(aggregate.load.find((entry) => entry.resourceCd === 'G-02')).toMatchObject({
+      alternateItemCount: 1, alternateRequiredMinutes: 10
+    });
+  });
+
   it('reads minimal source columns, applies override/split/completion rules, and equals full projection load', async () => {
     const fixture = await createFixture();
     const movedParent = fixture.rows.find((row) => String(row.data.FSEIBAN).endsWith('-A'))!;

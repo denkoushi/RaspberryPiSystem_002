@@ -16,6 +16,28 @@ FROM "CsvDashboardRow"
 WHERE "csvDashboardId" = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01'
   AND btrim(coalesce("rowData"->>'FSEIBAN', '')) = '********';
 
+-- Board row IDs also gain ProductNo. Keep existing per-site overrides attached
+-- to the order that owned the former four-column key.
+CREATE TEMP TABLE unassigned_board_item_keys ON COMMIT DROP AS
+SELECT
+  serialized."id",
+  'row:' || rtrim(translate(replace(encode(convert_to(serialized.legacy_json, 'UTF8'), 'base64'), E'\n', ''), '+/', '-_'), '=') AS legacy_item_key,
+  'row:' || rtrim(translate(replace(encode(convert_to(
+    left(serialized.legacy_json, length(serialized.legacy_json) - 1) || ',' || to_json(serialized.product_no)::text || ']',
+    'UTF8'), 'base64'), E'\n', ''), '+/', '-_'), '=') AS next_item_key
+FROM (
+  SELECT
+    "id",
+    "rowData"->>'ProductNo' AS product_no,
+    '[' || to_json(coalesce("rowData"->>'FSEIBAN', ''))::text
+        || ',' || to_json(coalesce("rowData"->>'FHINCD', ''))::text
+        || ',' || to_json(coalesce("rowData"->>'FSIGENCD', ''))::text
+        || ',' || to_json(coalesce("rowData"->>'FKOJUN', ''))::text || ']' AS legacy_json
+  FROM "CsvDashboardRow"
+  WHERE "csvDashboardId" = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01'
+    AND btrim(coalesce("rowData"->>'FSEIBAN', '')) = '********'
+) AS serialized;
+
 DO $$
 BEGIN
   IF EXISTS (
@@ -44,11 +66,37 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Unassigned production schedule hash collides with an existing row';
   END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM unassigned_board_item_keys GROUP BY legacy_item_key HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'Ambiguous legacy unassigned planning board item key';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM "ProductionScheduleGrindingPlanningBoardOverride" AS old_override
+    INNER JOIN unassigned_board_item_keys AS k ON k.legacy_item_key = old_override."itemKey"
+    INNER JOIN "ProductionScheduleGrindingPlanningBoardOverride" AS new_override
+      ON new_override."csvDashboardId" = old_override."csvDashboardId"
+     AND new_override."siteKey" = old_override."siteKey"
+     AND new_override."itemKey" = k.next_item_key
+     AND new_override."id" <> old_override."id"
+    WHERE old_override."csvDashboardId" = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01'
+  ) THEN
+    RAISE EXCEPTION 'Unassigned planning board override key collides with an existing override';
+  END IF;
 END $$;
 
 UPDATE "CsvDashboardRow" AS r
 SET "dataHash" = h.next_hash
 FROM unassigned_order_hashes AS h
 WHERE r."id" = h."id" AND r."dataHash" IS DISTINCT FROM h.next_hash;
+
+UPDATE "ProductionScheduleGrindingPlanningBoardOverride" AS o
+SET "itemKey" = k.next_item_key
+FROM unassigned_board_item_keys AS k
+WHERE o."csvDashboardId" = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01'
+  AND o."itemKey" = k.legacy_item_key
+  AND o."itemKey" IS DISTINCT FROM k.next_item_key;
 
 COMMIT;

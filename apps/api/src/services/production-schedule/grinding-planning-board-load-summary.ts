@@ -68,6 +68,7 @@ type LoadSummaryOverrideRow = {
 type LoadSummaryOverrideBinding = {
   itemKind: 'row' | 'split';
   fseiban: string | null;
+  productNo: string | null;
   fhincd: string | null;
   resourceCd: string | null;
   processOrder: string | null;
@@ -93,6 +94,7 @@ function decodeAggregateOverride(row: LoadSummaryOverrideRow): LoadSummaryOverri
       ? {
           itemKind: 'split',
           fseiban: null,
+          productNo: null,
           fhincd: null,
           resourceCd: null,
           processOrder: null,
@@ -104,17 +106,20 @@ function decodeAggregateOverride(row: LoadSummaryOverrideRow): LoadSummaryOverri
   if (!row.itemKey.startsWith('row:')) return null;
   try {
     const values: unknown = JSON.parse(Buffer.from(row.itemKey.slice(4), 'base64url').toString('utf8'));
-    if (!Array.isArray(values) || values.length !== 4 || values.some((value) => typeof value !== 'string')) return null;
+    if (!Array.isArray(values) || values.some((value) => typeof value !== 'string')
+      || !(values.length === 4 && values[0] !== '********' || values.length === 5 && values[0] === '********')) return null;
     const canonicalItemKey = buildGrindingPlanningBoardRowItemId({
       FSEIBAN: values[0],
       FHINCD: values[1],
       FSIGENCD: values[2],
-      FKOJUN: values[3]
+      FKOJUN: values[3],
+      ProductNo: values[4]
     });
     if (canonicalItemKey !== row.itemKey) return null;
     return {
       itemKind: 'row',
       fseiban: values[0],
+      productNo: values[4] ?? null,
       fhincd: values[1],
       resourceCd: values[2],
       processOrder: values[3],
@@ -319,6 +324,7 @@ async function readAggregatedLoadSummary(params: {
       SELECT
         b."id" AS "sourceRowId",
         b."fseiban",
+        b."productNo",
         b."fhincd",
         b."processOrder",
         b."resourceCd" AS "originalResourceCd",
@@ -354,6 +360,7 @@ async function readAggregatedLoadSummary(params: {
       SELECT
         "CsvDashboardRow"."id",
         "CsvDashboardRow"."rowData"->>'FSEIBAN' AS "fseiban",
+        "CsvDashboardRow"."rowData"->>'ProductNo' AS "productNo",
         "CsvDashboardRow"."rowData"->>'FHINCD' AS "fhincd",
         "CsvDashboardRow"."rowData"->>'FSIGENCD' AS "resourceCd",
         "CsvDashboardRow"."rowData"->>'FKOJUN' AS "processOrder",
@@ -374,6 +381,7 @@ async function readAggregatedLoadSummary(params: {
       LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
         ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
         AND "supplement"."csvDashboardId" = ${params.dashboardId}
+        AND "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo')
       WHERE ${params.leaderboardMaterializedBaseWhere}
         AND NOT (
           COALESCE("p"."isCompleted", FALSE)
@@ -384,6 +392,7 @@ async function readAggregatedLoadSummary(params: {
       SELECT
         b."id" AS "sourceRowId",
         b."fseiban",
+        b."productNo",
         b."fhincd",
         b."processOrder",
         b."resourceCd" AS "originalResourceCd",
@@ -412,6 +421,7 @@ async function readAggregatedLoadSummary(params: {
             PARTITION BY
               "items"."itemKind",
               COALESCE("items"."fseiban", ''),
+              CASE WHEN "items"."fseiban" = '********' THEN COALESCE("items"."productNo", '') ELSE '' END,
               COALESCE("items"."fhincd", ''),
               COALESCE("items"."processOrder", ''),
               COALESCE("items"."originalResourceCd", ''),
@@ -428,6 +438,7 @@ async function readAggregatedLoadSummary(params: {
       FROM jsonb_to_recordset(${overrideJson}::jsonb) AS "overrideRows"(
         "itemKind" text,
         "fseiban" text,
+        "productNo" text,
         "fhincd" text,
         "resourceCd" text,
         "processOrder" text,
@@ -452,6 +463,7 @@ async function readAggregatedLoadSummary(params: {
           "deduplicatedItems"."itemKind" = 'row'
           AND "overrides"."itemKind" = 'row'
           AND "overrides"."fseiban" = COALESCE("deduplicatedItems"."fseiban", '')
+          AND ("deduplicatedItems"."fseiban" <> '********' OR "overrides"."productNo" = COALESCE("deduplicatedItems"."productNo", ''))
           AND "overrides"."fhincd" = COALESCE("deduplicatedItems"."fhincd", '')
           AND "overrides"."resourceCd" = COALESCE("deduplicatedItems"."originalResourceCd", '')
           AND "overrides"."processOrder" = COALESCE("deduplicatedItems"."processOrder", '')
@@ -549,6 +561,7 @@ export async function readGrindingPlanningBoardLoadSummary(
       LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
         ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
         AND "supplement"."csvDashboardId" = ${dashboardId}
+        AND "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo')
       ${splitJoin}
       WHERE ${where}
         AND NOT (
