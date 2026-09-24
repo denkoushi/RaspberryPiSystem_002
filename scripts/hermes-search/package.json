@@ -3,8 +3,10 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@huggingface/transformers": "^3.7.6",
     "@tobilu/qmd": "git+https://github.com/tobi/qmd.git#04e4dbd8245c527a88f1a8f0bda547aef9ca81fb",
     "ai": "7.0.105"
+  },
+  "devDependencies": {
+    "@huggingface/transformers": "^3.7.6"
   }
 }

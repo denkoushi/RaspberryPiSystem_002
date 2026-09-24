@@ -1,12 +1,13 @@
 import { performance } from 'node:perf_hooks';
 import { catalogEntries, fieldsWithRole } from './catalog.mjs';
-import { RERANK_ACCEPT_AT } from './embed-runtime.mjs';
 import { RELEVANCE_CANDIDATE_LIMIT } from './relevance-jev.mjs';
+import { DEFAULT_EMBED_BUDGET_MS, withEmbeddingBudget } from './query-embedding.mjs';
 import { contentQuery, contentTokens } from './structural-text.mjs';
 import { hasAppliedHardFilter } from './query-plan.mjs';
 import { normalizeForMatch } from './value-index.mjs';
 
 /** Reciprocal-rank constant. One value shared by fusion. */
+export const RERANK_ACCEPT_AT = 0.3;
 export const RRF_K = 60;
 export const STAGE_CANDIDATE_LIMIT = 50;
 /**
@@ -447,10 +448,14 @@ export async function execute(plan, options = {}) {
     lexicalRows.sort((left, right) => right.score - left.score || String(left.id).localeCompare(String(right.id)));
   }
   const lexicalMs = semanticQuery ? Math.round(performance.now() - lexicalStarted) : 0;
+  const vectorBudgetMs = Number.isFinite(options.vectorBudgetMs) ? options.vectorBudgetMs : DEFAULT_EMBED_BUDGET_MS;
   if (semanticQuery && typeof options.vector === 'function') {
     const vectorStarted = performance.now();
     try {
-      const ranked = await options.vector(semanticQuery, filtered);
+      const ranked = await withEmbeddingBudget(
+        () => options.vector(semanticQuery, filtered),
+        vectorBudgetMs,
+      );
       vectorMs = Math.round(performance.now() - vectorStarted);
       if (ranked?.ok) {
         vectorOrdered = vectorOrder(ranked, new Set(filtered.map((record) => record.id)));
@@ -463,13 +468,16 @@ export async function execute(plan, options = {}) {
       }
     } catch (error) {
       vectorMs = Math.round(performance.now() - vectorStarted);
-      vectorStatus = 'failed';
+      vectorStatus = error?.code === 'timeout' ? 'timeout' : 'failed';
       vectorReason = safeReason(error);
     }
   }
+  const vectorReady = vectorStatus === 'ok' && vectorOrdered.length > 0;
+  const retriever = options.retriever === 'dense' || options.retriever === 'hybrid'
+    ? (vectorReady ? options.retriever : 'lexical')
+    : 'lexical';
   const byId = new Map(filtered.map((record) => [record.id, record]));
   const filteredOnly = !semanticQuery && hasAppliedHardFilter(plan, options.catalog);
-  const retriever = options.retriever === 'dense' || options.retriever === 'hybrid' ? options.retriever : 'lexical';
   let candidateIds = [];
   let ranked;
   const rowsOf = (ordered) => ordered

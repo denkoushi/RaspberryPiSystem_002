@@ -5,6 +5,7 @@ import { catalogEntries } from './catalog.mjs';
 import { QUERY_PLAN_SCHEMA, hasAppliedHardFilter, shouldSkipRelevance } from './query-plan.mjs';
 import { enumeratedChoiceGroups } from './value-index.mjs';
 import { nextIsoDay, parsePeriods, previousIsoDay, referenceDate } from './period-parse.mjs';
+import { contentTokens, stripListedTerms } from './structural-text.mjs';
 
 const LIMIT_OPTIONS = ['1', '2', '3', '5', '10', '20'];
 const LIMIT_UNSPECIFIED = 'unspecified';
@@ -166,9 +167,13 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           id: entry.id,
           description: entry.description || entry.label || entry.id,
         }));
-        sourceOptions.push({ id: OUT_OF_SCOPE, description: '記録を探していない。挨拶、天気、一般知識、言葉の定義である。' });
+        const catalogText = sourceOptions.map((option) => option.description).join('。');
+        sourceOptions.push({
+          id: OUT_OF_SCOPE,
+          description: `記録を探していない。対象は「${catalogText}」だけであり、それ以外の発話である。`,
+        });
         questions.scope = choiceQuestion(
-          'この発話が探している記録の種類を選ぶ。不適合、部署、日付、件数、現象についての検索は記録の質問である。挨拶、天気、一般知識、言葉の定義だけを out_of_scope にする。',
+          `この発話が探している記録の種類を選ぶ。対象はカタログの「${catalogText}」だけである。その記録を探していない発話は out_of_scope。`,
           sourceOptions,
         );
       }
@@ -318,7 +323,10 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         if (filter) dated.push(filter);
       }
       const filters = mergeFilters([...carried, ...selected, ...dated]);
-      const jev = contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;
+      const residualTokens = residualContentTokens(question, filters);
+      const jev = residualTokens.length === 0
+        ? false
+        : contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;
       const finalContent = jev === true && unresolved.length === 0;
       const sortMode = resolveSort(question, jev, hasAppliedHardFilter({ filters }, catalog));
       const sort = sortMode === 'recent' && recentField
@@ -337,7 +345,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         display: entries.flatMap((entry) => entry.fields.map((field) => field.key)),
         unresolved: outOfScope ? [] : unresolved,
         diagnostics: {
-          contentDecision: { jev, residualTokens: [], final: finalContent },
+          contentDecision: { jev, residualTokens, final: finalContent },
           scope: outOfScope ? 'out_of_scope' : 'records',
           limitExplicit,
         },
@@ -345,6 +353,17 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       return { plan, timings: { planMs } };
     },
   };
+}
+
+function residualContentTokens(question, filters) {
+  const values = [];
+  for (const filter of filters ?? []) {
+    if (filter?.op === 'before' || filter?.op === 'after' || filter?.op === 'between') continue;
+    for (const value of filter?.values ?? []) {
+      if (typeof value === 'string' && value) values.push(value);
+    }
+  }
+  return contentTokens(stripListedTerms(question, values));
 }
 
 function resolveSort(question, contentJev, hardFilter) {

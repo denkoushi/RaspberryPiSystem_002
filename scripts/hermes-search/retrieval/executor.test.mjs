@@ -256,3 +256,20 @@ test('enrichment text ranks like body text', async () => {
   }), { records: recordsWithExtra, bodyFields: body });
   assert.deepEqual(executed.results.map((result) => result.recordId), ['tagged']);
 });
+
+test('hybrid falls back to lexical when query embedding times out', async () => {
+  const executed = await execute(plan({
+    semanticQuery: 'qxrare',
+    sort: 'relevance',
+    limit: 5,
+    display: ['condition'],
+  }), {
+    records,
+    catalog,
+    retriever: 'hybrid',
+    vectorBudgetMs: 20,
+    vector: () => new Promise(() => {}),
+  });
+  assert.equal(executed.timings.vectorStatus, 'timeout');
+  assert.ok(executed.results.length >= 1);
+});

@@ -12,7 +12,6 @@ import { attachEnrichment, readEnrichmentStores, splitEnrichmentArg } from './en
 import { execute, openQmdVectorRanker, recordPassage } from './executor.mjs';
 import { createDenseRanker, createScopedDenseRanker } from './dense-index.mjs';
 import { planStage } from './stage-score.mjs';
-import { createOnnxEmbedder, createOnnxReranker, DEFAULT_EMBED_MODEL, DEFAULT_RERANK_MODEL } from './embed-runtime.mjs';
 import { linkEntities } from './entity-link.mjs';
 import { createPlanner } from './planner-jev.mjs';
 import { createRelevanceJudge, candidateBody } from './relevance-jev.mjs';
@@ -187,9 +186,9 @@ export async function evaluateGold(options) {
   if (!['lexical', 'dense', 'hybrid'].includes(retriever)) throw new Error('retriever must be lexical, dense, or hybrid');
   const useDense = variant === 'b' || variant === 'c';
   const dateField = fieldsWithRole(catalog, 'date')[0] ?? 'discoveredOn';
-  const embedder = (options.entityLink || useDense || retriever !== 'lexical') && !options.embed
-    ? await createOnnxEmbedder({ modelId: options.embedModelId })
-    : null;
+  const needsOnnx = (options.entityLink || useDense || retriever !== 'lexical') && !options.embed;
+  const onnx = needsOnnx ? await import('./embed-runtime.mjs') : null;
+  const embedder = onnx ? await onnx.createOnnxEmbedder({ modelId: options.embedModelId }) : null;
   const embed = options.embed ?? (embedder ? (texts, extra) => embedder.embed(texts, extra) : null);
   const memo = new Map();
   const cachedEmbed = embed
@@ -222,7 +221,7 @@ export async function evaluateGold(options) {
     denseRank = createDenseRanker(rows, (queries) => cachedEmbed(queries, { prefix: 'query: ' }));
   }
   const reranker = variant === 'c' && !options.rerank
-    ? await createOnnxReranker({ modelId: options.rerankModelId })
+    ? await onnx.createOnnxReranker({ modelId: options.rerankModelId })
     : null;
   const rerank = options.rerank ?? (reranker
     ? async ({ semanticQuery, candidates, bodyFields: fields }) => {
@@ -457,8 +456,8 @@ async function main() {
     stageDump: args.stageDump,
     retriever: args.retriever,
     now: args.now,
-    embedModelId: DEFAULT_EMBED_MODEL,
-    rerankModelId: DEFAULT_RERANK_MODEL,
+    embedModelId: 'Xenova/multilingual-e5-base',
+    rerankModelId: 'Xenova/bge-reranker-base',
   });
   await fsp.mkdir(path.dirname(args.out), { recursive: true, mode: 0o700 });
   await fsp.writeFile(args.out, `${JSON.stringify({ summary, cases: details }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });

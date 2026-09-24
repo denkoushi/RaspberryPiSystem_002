@@ -220,6 +220,7 @@ export function createRetrievalAnswering({
         records: view.records,
         catalog,
         lexicalCorpus: view.lexicalCorpus,
+        retriever: 'lexical',
         vector: typeof vector === 'function' ? vector : null,
         relevance: (input) => relevance.judge(input),
       });

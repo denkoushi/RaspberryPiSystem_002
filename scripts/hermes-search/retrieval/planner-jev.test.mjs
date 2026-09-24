@@ -167,7 +167,7 @@ test('a content noul keeps one call and strips structural words from semanticQue
   assert.equal(calls, 1);
   assert.equal(plan.semanticQuery, 'North Shopのsurface scratchを最新3件見せて');
   assert.equal(plan.diagnostics.contentDecision.final, true);
-  assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, []);
+  assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, ['surface', 'scratch']);
   assert.equal(plan.limit, 3);
   assert.deepEqual(plan.sort, { field: 'discoveredOn', direction: 'desc' });
 });
@@ -195,7 +195,7 @@ test('a false content noul skips relevance and does not search residual tokens',
   assert.equal(plan.semanticQuery, '');
   assert.deepEqual(plan.diagnostics.contentDecision, {
     jev: false,
-    residualTokens: [],
+    residualTokens: ['qxrare'],
     final: false,
   });
 });
@@ -230,7 +230,8 @@ test('value-index planner keeps one call, selects close values, and rejects non-
   let calls = 0;
   const evaluate = async (input) => {
     calls += 1;
-    assert.match(input.questions.scope.criteria.out_of_scope, /挨拶、天気/);
+    assert.match(input.questions.scope.criteria.out_of_scope, /不適合として記録された事象/);
+    assert.match(input.questions.scope.instructions, /不適合として記録された事象/);
     assert.equal(input.questions.limit.criteria.unspecified, '件数の指定はない');
     const field = Object.entries(input.questions).find(([key]) => key.startsWith('field_'));
     assert.equal(field[1].criteria.none, 'この語は絞り込み条件にしない');
@@ -360,6 +361,45 @@ test('an ambiguous period is chosen inside the existing evaluate call', async ()
   assert.equal(calls, 1);
   assert.equal(plan.filters[0].op, 'between');
   assert.deepEqual(plan.filters[0].values, ['2025-12-01', '2025-12-31']);
+});
+
+test('filter-only wording cannot stay content-true after consumed tokens are removed', async () => {
+  const evaluate = async () => ({
+    answers: {
+      term_0: { type: 'choice', choice: 'v0' },
+      sort: { type: 'choice', choice: 'relevance' },
+      limit: { type: 'choice', choice: '3' },
+      content: { type: 'noul', noul: true },
+    },
+  });
+  const { plan } = await createPlanner({ evaluate }).plan({
+    question: 'North Shopの記録を3件',
+    catalog,
+    candidates: [{
+      term: 'North Shop',
+      source: 'nonconformity',
+      field: 'originDepartmentName',
+      values: ['North Shop'],
+    }],
+    now: '2026-09-24',
+  });
+  assert.equal(plan.diagnostics.contentDecision.jev, false);
+  assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, []);
+  assert.equal(plan.semanticQuery, '');
+  const periodOnly = await createPlanner({ evaluate: async () => ({
+    answers: {
+      sort: { type: 'choice', choice: 'relevance' },
+      limit: { type: 'choice', choice: '5' },
+      content: { type: 'noul', noul: true },
+    },
+  }) }).plan({
+    question: '2024年の記録を見せて',
+    catalog,
+    candidates: [],
+    now: '2026-09-24',
+  });
+  assert.equal(periodOnly.plan.diagnostics.contentDecision.jev, false);
+  assert.equal(periodOnly.plan.filters[0].op, 'between');
 });
 
 test('a content question without recency stays relevance even if JEV picks recent', async () => {
