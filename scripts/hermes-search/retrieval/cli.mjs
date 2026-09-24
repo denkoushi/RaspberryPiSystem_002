@@ -227,6 +227,7 @@ async function main() {
       vector,
       catalog,
       relevance: relevanceEnabled(args.jevRelevance) ? (input) => createRelevanceJudge().judge(input) : undefined,
+      requestStartedAt: started,
     });
   } finally {
     if (ranker) await ranker.close();

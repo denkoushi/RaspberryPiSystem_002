@@ -1,7 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadNonconformityCatalog } from './catalog.mjs';
-import { execute, fuseRankings, RRF_K } from './executor.mjs';
+import {
+  execute,
+  fuseRankings,
+  RRF_K,
+  RECENT_CONTENT_LEXICAL_FRACTION,
+  RECENT_CONTENT_DENSE_FRACTION,
+  RECENT_CONTENT_MAX_BATCHES,
+  RECENT_CONTENT_DEADLINE_MS,
+  RECENT_CONTENT_BATCH_ESTIMATE_MS,
+  buildRecentContentPool,
+} from './executor.mjs';
 import { records } from './fixtures/synthetic-records.mjs';
 import { QUERY_PLAN_SCHEMA } from './query-plan.mjs';
 
@@ -255,6 +265,197 @@ test('enrichment text ranks like body text', async () => {
     display: ['condition'],
   }), { records: recordsWithExtra, bodyFields: body });
   assert.deepEqual(executed.results.map((result) => result.recordId), ['tagged']);
+});
+
+function recentContentPlan(overrides = {}) {
+  return plan({
+    semanticQuery: 'qxrare',
+    sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 2,
+    display: ['condition', 'discoveredOn'],
+    diagnostics: { contentDecision: { jev: true, residualTokens: [], final: true }, limitExplicit: true },
+    ...overrides,
+  });
+}
+
+function bodyRecord(id, discoveredOn, condition, extra = {}) {
+  return {
+    id,
+    discoveredOn,
+    originDepartmentName: 'North Shop',
+    condition,
+    remarks: '',
+    correctiveContent: '',
+    disposition: '',
+    ...extra,
+  };
+}
+
+test('recent content checks newest low-score matches before older high-score matches', async () => {
+  assert.equal(RECENT_CONTENT_LEXICAL_FRACTION, 0.2);
+  assert.equal(RECENT_CONTENT_MAX_BATCHES, 3);
+  assert.equal(RECENT_CONTENT_DEADLINE_MS, 4500);
+  assert.equal(RECENT_CONTENT_BATCH_ESTIMATE_MS, 900);
+  const dated = [];
+  for (let index = 0; index < 20; index += 1) {
+    dated.push(bodyRecord(
+      `old-${index}`,
+      `2020-01-${String(index + 1).padStart(2, '0')}`,
+      'qxrare qxrare qxrare qxrare',
+    ));
+  }
+  dated.push(bodyRecord('new-low-1', '2026-04-01', 'qxrare once'));
+  dated.push(bodyRecord('new-low-2', '2026-05-01', 'qxrare once'));
+  dated.push(bodyRecord('new-low-3', '2026-06-01', 'qxrare once'));
+  const batches = [];
+  const executed = await execute(recentContentPlan(), {
+    records: dated,
+    catalog,
+    relevance: async ({ candidates }) => {
+      batches.push(candidates.map((item) => item.id));
+      const ranked = candidates
+        .filter((item) => item.id.startsWith('new-low'))
+        .map((item) => ({ id: item.id, probability: 0.9 }));
+      return { ok: true, ranked };
+    },
+  });
+  assert.equal(executed.status, 'answer');
+  assert.deepEqual(executed.results.map((result) => result.recordId), ['new-low-3', 'new-low-2']);
+  assert.equal(executed.insufficient, false);
+  assert.equal(batches.length, 1);
+  assert.deepEqual(batches[0].slice(0, 3), ['new-low-3', 'new-low-2', 'new-low-1']);
+});
+
+test('recent content stops at the batch cap and the time budget with insufficient', async () => {
+  const dated = [];
+  for (let index = 0; index < 40; index += 1) {
+    dated.push(bodyRecord(`match-${String(index).padStart(2, '0')}`, `2024-02-${String((index % 28) + 1).padStart(2, '0')}`, 'qxrare once'));
+  }
+  let calls = 0;
+  const capped = await execute(recentContentPlan({ limit: 5 }), {
+    records: dated,
+    catalog,
+    relevance: async () => {
+      calls += 1;
+      return { ok: true, ranked: [] };
+    },
+  });
+  assert.equal(calls, RECENT_CONTENT_MAX_BATCHES);
+  assert.equal(capped.status, 'no_result');
+  assert.equal(capped.insufficient, true);
+  assert.equal(capped.returned, 0);
+  assert.equal(capped.requested, 5);
+
+  calls = 0;
+  let elapsed = 2100;
+  const partial = await execute(recentContentPlan({ limit: 5 }), {
+    records: dated,
+    catalog,
+    requestStartedAt: 0,
+    now: () => elapsed,
+    relevance: async ({ candidates }) => {
+      calls += 1;
+      elapsed += 2000;
+      return { ok: true, ranked: [{ id: candidates[0].id, probability: 0.9 }] };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(partial.status, 'answer');
+  assert.equal(partial.returned, 1);
+  assert.equal(partial.insufficient, true);
+  assert.match(partial.results[0].recordId, /^match-/);
+
+  calls = 0;
+  elapsed = 4000;
+  const tooLate = await execute(recentContentPlan({ limit: 5 }), {
+    records: dated,
+    catalog,
+    requestStartedAt: 0,
+    now: () => elapsed,
+    relevance: async () => {
+      calls += 1;
+      return { ok: true, ranked: [] };
+    },
+  });
+  assert.equal(calls, 0);
+  assert.equal(tooLate.status, 'no_result');
+  assert.equal(tooLate.insufficient, true);
+  assert.equal(tooLate.returned, 0);
+});
+
+test('recent content applies hard filters and a period before the date-ordered gate', async () => {
+  const dated = [
+    bodyRecord('other-shop', '2026-07-01', 'qxrare once', { originDepartmentName: 'South Shop' }),
+    bodyRecord('too-new', '2027-01-01', 'qxrare once'),
+    bodyRecord('in-period-new', '2026-06-01', 'qxrare once'),
+    bodyRecord('in-period-old', '2025-02-01', 'qxrare qxrare qxrare qxrare'),
+    bodyRecord('before-period', '2024-12-01', 'qxrare qxrare qxrare qxrare'),
+  ];
+  const executed = await execute(recentContentPlan({
+    filters: [
+      { source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] },
+      { source: 'nonconformity', field: 'discoveredOn', op: 'between', values: ['2025-01-01', '2026-12-31'] },
+    ],
+    limit: 1,
+  }), {
+    records: dated,
+    catalog,
+    relevance: async ({ candidates }) => ({
+      ok: true,
+      ranked: candidates.map((item) => ({ id: item.id, probability: 0.9 })),
+    }),
+  });
+  assert.deepEqual(executed.results.map((result) => result.recordId), ['in-period-new']);
+  assert.equal(executed.results[0].fields.condition, 'qxrare once');
+});
+
+test('relevance sort and filter-only questions keep the previous candidate order', async () => {
+  const dated = [];
+  for (let index = 0; index < 20; index += 1) {
+    dated.push(bodyRecord(`old-${index}`, '2020-01-02', 'qxrare qxrare qxrare qxrare'));
+  }
+  dated.push(bodyRecord('new-low', '2026-06-01', 'qxrare once'));
+  const relevanceSorted = await execute(plan({
+    semanticQuery: 'qxrare',
+    sort: 'relevance',
+    limit: 1,
+    display: ['condition'],
+    diagnostics: { contentDecision: { jev: true, residualTokens: [], final: true }, limitExplicit: true },
+  }), { records: dated, catalog });
+  assert.notEqual(relevanceSorted.results[0].recordId, 'new-low');
+
+  const filterOnly = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }],
+    sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 1,
+    display: ['discoveredOn'],
+    diagnostics: { contentDecision: { jev: false, residualTokens: [], final: false }, limitExplicit: true },
+  }), { records: dated, catalog });
+  assert.equal(filterOnly.results[0].recordId, 'new-low');
+  assert.equal(filterOnly.timings.relevanceMs, null);
+});
+
+test('hybrid recent content also admits a dense hit near the top cosine', () => {
+  assert.equal(RECENT_CONTENT_DENSE_FRACTION, 0.75);
+  const byId = new Map([
+    ['lexical-old', { id: 'lexical-old' }],
+    ['dense-new', { id: 'dense-new' }],
+    ['weak-dense', { id: 'weak-dense' }],
+  ]);
+  const pool = buildRecentContentPool({
+    lexicalRows: [
+      { id: 'lexical-old', score: 4, contentTokenScore: 4 },
+      { id: 'dense-new', score: 0.1, contentTokenScore: 0.1 },
+      { id: 'weak-dense', score: 0, contentTokenScore: 0 },
+    ],
+    vectorOrdered: [
+      { id: 'dense-new', cosine: 0.9 },
+      { id: 'weak-dense', cosine: 0.2 },
+    ],
+    retriever: 'hybrid',
+    byId,
+  });
+  assert.deepEqual(pool.map((item) => item.record.id).sort(), ['dense-new', 'lexical-old']);
 });
 
 test('hybrid falls back to lexical when query embedding times out', async () => {
