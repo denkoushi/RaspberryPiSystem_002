@@ -11,6 +11,7 @@ import {
   dispatchWorkerRequest,
   encodeWorkerLine,
   failureDiagnostic,
+  formatCoverageNotice,
   noResultAnswer,
   readyPayload,
 } from './worker.mjs';
@@ -91,6 +92,7 @@ test('worker protocol returns original field text and keeps the previous plan', 
   assert.equal(counted.result.status, 'completed');
   assert.equal(counted.result.recordIds.length, 2);
   assert.match(counted.result.answer, /不適合内容: paint drip/u);
+  assert.match(counted.result.answer, /該当3件のうち、新しい順に2件を表示しています。/u);
   assert.doesNotMatch(counted.result.answer, /不存在の証明/u);
 
   const follow = await completeRequest(answering, {
@@ -217,4 +219,29 @@ test('incremental corpus swaps the index and a failed refresh keeps the last dat
   assert.equal(warn[0].includes('surface'), false);
   const again = await answering.answer('何件ですか');
   assert.equal(again.dataAsOf, '2026-09-24 09:30');
+});
+
+test('coverage notice follows the known total, the sort, and an unknown floor', () => {
+  assert.equal(
+    formatCoverageNotice({ known: true, total: 19, shown: 5, order: 'date_desc' }),
+    '該当19件のうち、新しい順に5件を表示しています。',
+  );
+  assert.equal(
+    formatCoverageNotice({ known: true, total: 19, shown: 2, order: 'date_desc' }),
+    '該当19件のうち、新しい順に2件を表示しています。',
+  );
+  assert.equal(formatCoverageNotice({ known: true, total: 3, shown: 3, order: 'date_desc' }), '');
+  assert.equal(formatCoverageNotice(null), '');
+  assert.equal(
+    formatCoverageNotice({ known: false, total: null, floor: 15, shown: 5, order: 'relevance' }),
+    '該当15件以上のうち、関連度の高い順に5件を表示しています。',
+  );
+  assert.equal(
+    formatCoverageNotice({ known: false, total: null, floor: null, shown: 1, order: 'date_desc' }),
+    'ほかにも該当する可能性があります。',
+  );
+  assert.equal(
+    formatCoverageNotice({ known: true, total: 4, shown: 2, order: 'date_asc' }),
+    '該当4件のうち、古い順に2件を表示しています。',
+  );
 });
