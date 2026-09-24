@@ -474,3 +474,94 @@ test('hybrid falls back to lexical when query embedding times out', async () => 
   assert.equal(executed.timings.vectorStatus, 'timeout');
   assert.ok(executed.results.length >= 1);
 });
+
+function syntheticDated(count, department = 'North Shop') {
+  return Array.from({ length: count }, (_, index) => bodyRecord(
+    `syn-${String(index).padStart(2, '0')}`,
+    `2026-${String((index % 12) + 1).padStart(2, '0')}-15`,
+    'synthetic note',
+    { originDepartmentName: department },
+  ));
+}
+
+test('coverage reports an exact date-desc total when the default cap hides matches', async () => {
+  const executed = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }],
+    sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 5,
+    diagnostics: { limitExplicit: false },
+    display: ['discoveredOn'],
+  }), { records: syntheticDated(19), catalog });
+  assert.equal(executed.returned, 5);
+  assert.deepEqual(executed.coverage, { known: true, total: 19, shown: 5, order: 'date_desc' });
+});
+
+test('coverage keeps the exact total when the user asked for fewer than the matches', async () => {
+  const executed = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }],
+    sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 2,
+    diagnostics: { limitExplicit: true },
+    display: ['discoveredOn'],
+  }), { records: syntheticDated(19), catalog });
+  assert.equal(executed.returned, 2);
+  assert.deepEqual(executed.coverage, { known: true, total: 19, shown: 2, order: 'date_desc' });
+});
+
+test('coverage is omitted when every match is shown', async () => {
+  const executed = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }],
+    sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 5,
+    diagnostics: { limitExplicit: false },
+    display: ['discoveredOn'],
+  }), { records: syntheticDated(3), catalog });
+  assert.equal(executed.returned, 3);
+  assert.equal(executed.coverage, undefined);
+});
+
+test('coverage stays inexact when relevance only judged the top candidate batch', async () => {
+  const dated = Array.from({ length: 20 }, (_, index) => bodyRecord(
+    `cand-${String(index).padStart(2, '0')}`,
+    `2026-03-${String((index % 28) + 1).padStart(2, '0')}`,
+    'qxrare once',
+  ));
+  let judged = 0;
+  const executed = await execute(plan({
+    semanticQuery: 'qxrare',
+    sort: 'relevance',
+    limit: 5,
+    display: ['condition'],
+  }), {
+    records: dated,
+    catalog,
+    relevance: async ({ candidates }) => {
+      judged = candidates.length;
+      return { ok: true, ranked: candidates.map((item) => ({ id: item.id, probability: 0.9 })) };
+    },
+  });
+  assert.equal(judged, 15);
+  assert.equal(executed.returned, 5);
+  assert.deepEqual(executed.coverage, { known: false, total: null, floor: 15, shown: 5, order: 'relevance' });
+});
+
+test('coverage stays inexact when a deadline stops before the pool is judged', async () => {
+  const dated = Array.from({ length: 40 }, (_, index) => bodyRecord(
+    `late-${String(index).padStart(2, '0')}`,
+    `2024-04-${String((index % 28) + 1).padStart(2, '0')}`,
+    'qxrare once',
+  ));
+  let elapsed = 2100;
+  const executed = await execute(recentContentPlan({ limit: 5 }), {
+    records: dated,
+    catalog,
+    requestStartedAt: 0,
+    now: () => elapsed,
+    relevance: async ({ candidates }) => {
+      elapsed += 2000;
+      return { ok: true, ranked: [{ id: candidates[0].id, probability: 0.9 }] };
+    },
+  });
+  assert.equal(executed.returned, 1);
+  assert.deepEqual(executed.coverage, { known: false, total: null, floor: null, shown: 1, order: 'date_desc' });
+});

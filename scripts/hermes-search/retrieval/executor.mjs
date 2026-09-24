@@ -298,7 +298,9 @@ export function fuseRankings(lexicalOrdered, vectorOrdered) {
     fused.push({ id, score, contentTokenScore: contentScore.get(id) ?? 0, vectorRank: vectorPosition });
   }
   fused.sort((left, right) => right.score - left.score || String(left.id).localeCompare(String(right.id)));
-  return fused.slice(0, RELEVANCE_CANDIDATE_LIMIT);
+  const capped = fused.slice(0, RELEVANCE_CANDIDATE_LIMIT);
+  Object.defineProperty(capped, 'truncated', { value: fused.length > RELEVANCE_CANDIDATE_LIMIT });
+  return capped;
 }
 
 /** Reciprocal-rank fusion of two ordered id lists. No recall floor and no cap. */
@@ -396,6 +398,25 @@ function bodyFieldsFor(plan, options) {
 
 function planLimit(plan) {
   return Number.isInteger(plan?.limit) ? Math.min(20, Math.max(1, plan.limit)) : 5;
+}
+
+function coverageOrder(plan, filteredOnly) {
+  if (plan?.sort && plan.sort !== 'relevance') {
+    return plan.sort.direction === 'asc' ? 'date_asc' : 'date_desc';
+  }
+  if (filteredOnly) return 'date_desc';
+  return 'relevance';
+}
+
+/** Exact total only when every post-filter candidate was eligible for the result set. */
+export function buildCoverage({ known, matchCount, shown, order }) {
+  if (!Number.isInteger(shown) || shown < 1) return null;
+  if (known) {
+    if (!Number.isInteger(matchCount) || matchCount <= shown) return null;
+    return { known: true, total: matchCount, shown, order };
+  }
+  const floor = Number.isInteger(matchCount) && matchCount > shown ? matchCount : null;
+  return { known: false, total: null, floor, shown, order };
 }
 
 export function isRecentContentPlan(plan, catalog) {
@@ -584,6 +605,8 @@ export async function execute(plan, options = {}) {
     .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
     .filter((item) => item.record);
   const recentContent = isRecentContentPlan(plan, options.catalog);
+  let candidatePoolTruncated = false;
+  let relevanceCut = false;
   if (recentContent) {
     const dateField = dateRoleField(plan, options.catalog);
     ranked = orderRecentContentPool(buildRecentContentPool({
@@ -600,18 +623,23 @@ export async function execute(plan, options = {}) {
     ranked = [];
   } else if (retriever === 'dense') {
     candidateIds = vectorOrdered.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.id);
+    candidatePoolTruncated = vectorOrdered.length > RELEVANCE_CANDIDATE_LIMIT;
     ranked = rowsOf(vectorOrdered.slice(0, RELEVANCE_CANDIDATE_LIMIT));
   } else if (retriever === 'hybrid') {
     const fused = rrfCombine(lexicalRows.filter((item) => item.contentTokenScore > 0), vectorOrdered);
     candidateIds = fused.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.id);
+    candidatePoolTruncated = fused.length > RELEVANCE_CANDIDATE_LIMIT;
     ranked = rowsOf(fused.slice(0, RELEVANCE_CANDIDATE_LIMIT));
   } else if (vectorOrdered.length) {
-    ranked = fuseRankings(lexicalRows.filter((item) => item.contentTokenScore > 0), vectorOrdered)
+    const fused = fuseRankings(lexicalRows.filter((item) => item.contentTokenScore > 0), vectorOrdered);
+    candidatePoolTruncated = fused.truncated === true;
+    ranked = fused
       .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
       .filter((item) => item.record);
     candidateIds = ranked.map((item) => item.record.id);
   } else {
     candidateIds = lexicalRows.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.id);
+    candidatePoolTruncated = lexicalRows.length > RELEVANCE_CANDIDATE_LIMIT;
     const pool = filtered.length <= RELEVANCE_CANDIDATE_LIMIT ? lexicalRows : lexicalRows.slice(0, RELEVANCE_CANDIDATE_LIMIT);
     ranked = pool
       .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
@@ -627,13 +655,19 @@ export async function execute(plan, options = {}) {
       ? options.recentContentMaxBatches
       : RECENT_CONTENT_MAX_BATCHES;
     const accepted = [];
+    const poolSize = ranked.length;
+    let poolCursor = 0;
     const relevanceStarted = clock();
     let batches = 0;
     let batchEstimateMs = RECENT_CONTENT_BATCH_ESTIMATE_MS;
     try {
-      for (let offset = 0; accepted.length < limit && offset < ranked.length && batches < maxBatches; offset += RELEVANCE_CANDIDATE_LIMIT) {
-        if (!recentContentBatchFits({ nowMs: clock(), requestStartedAt, estimateMs: batchEstimateMs })) break;
-        const batch = ranked.slice(offset, offset + RELEVANCE_CANDIDATE_LIMIT);
+      for (; accepted.length < limit && poolCursor < poolSize && batches < maxBatches;) {
+        if (!recentContentBatchFits({ nowMs: clock(), requestStartedAt, estimateMs: batchEstimateMs })) {
+          relevanceCut = true;
+          break;
+        }
+        const batch = ranked.slice(poolCursor, poolCursor + RELEVANCE_CANDIDATE_LIMIT);
+        poolCursor += batch.length;
         const batchStarted = clock();
         batches += 1;
         const judged = await options.relevance({
@@ -655,9 +689,9 @@ export async function execute(plan, options = {}) {
         for (const item of batch) {
           if (!acceptedIds.has(item.record.id)) continue;
           accepted.push(item);
-          if (accepted.length >= limit) break;
         }
       }
+      if (poolCursor < poolSize) relevanceCut = true;
       relevanceMs = Math.round(clock() - relevanceStarted);
       ranked = accepted;
     } catch (error) {
@@ -668,6 +702,7 @@ export async function execute(plan, options = {}) {
     }
   } else if (semanticQuery && typeof options.rerank === 'function') {
     const rerankStarted = performance.now();
+    if (ranked.length > RELEVANCE_CANDIDATE_LIMIT) candidatePoolTruncated = true;
     const pool = ranked.slice(0, RELEVANCE_CANDIDATE_LIMIT);
     const judged = await options.rerank({
       semanticQuery,
@@ -734,11 +769,18 @@ export async function execute(plan, options = {}) {
     recordId: item.record.id,
     fields: originalFields(item.record, display),
   }));
+  const coverage = buildCoverage({
+    known: !candidatePoolTruncated && !relevanceCut,
+    matchCount: ranked.length,
+    shown: results.length,
+    order: coverageOrder(plan, filteredOnly),
+  });
   return {
     status: results.length ? 'answer' : 'no_result',
     insufficient: plan?.diagnostics?.limitExplicit === false ? false : results.length < limit,
     requested: limit,
     returned: results.length,
+    ...(coverage ? { coverage } : {}),
     results,
     ...(options.stageDump ? { candidateIds } : {}),
     timings: {

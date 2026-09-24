@@ -18,6 +18,11 @@ import { readEnrichmentStore, storePathFromEnv } from './enrichment-store.mjs';
 export const WORKER_PREFIX = '__HERMES_UI_PREFETCH__';
 const ANSWER_ROLES = new Set(['identifier', 'date', 'organization', 'body']);
 const INSUFFICIENT_NOTICE = '見つかった件数は、指定された件数より少ないです。';
+const COVERAGE_ORDER = {
+  date_desc: '新しい順',
+  date_asc: '古い順',
+  relevance: '関連度の高い順',
+};
 const OUT_OF_SCOPE_ANSWER = '不適合情報の検索に関する質問として解釈できませんでした。';
 const UNAVAILABLE_ANSWER = '検索に失敗しました。該当なしとは判断していません。';
 const TYPESAFE_FAILURE_CODES = new Set([
@@ -27,6 +32,19 @@ const TYPESAFE_FAILURE_CODES = new Set([
 const SAFE_EXCEPTION_NAMES = new Set([
   'AbortError', 'RangeError', 'ReferenceError', 'SyntaxError', 'TypeError', 'Error',
 ]);
+
+export function formatCoverageNotice(coverage) {
+  if (!coverage || !Number.isInteger(coverage.shown) || coverage.shown < 1) return '';
+  const order = COVERAGE_ORDER[coverage.order] ?? COVERAGE_ORDER.date_desc;
+  if (coverage.known === true && Number.isInteger(coverage.total) && coverage.total > coverage.shown) {
+    return `該当${coverage.total}件のうち、${order}に${coverage.shown}件を表示しています。`;
+  }
+  if (coverage.known === false && Number.isInteger(coverage.floor) && coverage.floor > coverage.shown) {
+    return `該当${coverage.floor}件以上のうち、${order}に${coverage.shown}件を表示しています。`;
+  }
+  if (coverage.known === false) return 'ほかにも該当する可能性があります。';
+  return '';
+}
 
 export function noResultAnswer(snapshotCount) {
   const count = Number.isInteger(snapshotCount) && snapshotCount >= 0 ? snapshotCount : 0;
@@ -156,7 +174,7 @@ function publicRecordId(sourceId, recordId) {
   return sourceId ? `${sourceId}:${id}` : id;
 }
 
-function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previousPlan, dataAsOf }) {
+function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previousPlan, dataAsOf, coverage = null }) {
   const stamped = stampAnswer(answer, dataAsOf);
   return {
     status,
@@ -166,6 +184,7 @@ function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previ
     dataAsOf: stamped.dataAsOf,
     confirmationPending: confirmation ?? null,
     session: sessionOf(previousPlan),
+    ...(coverage ? { coverage } : {}),
   };
 }
 
@@ -264,7 +283,9 @@ export function createRetrievalAnswering({
         });
       }
       const body = formatRecords(executed.results, catalog);
-      const answer = executed.insufficient && body ? `${body}\n\n${INSUFFICIENT_NOTICE}` : body;
+      const notice = formatCoverageNotice(executed.coverage);
+      let answer = executed.insufficient && body ? `${body}\n\n${INSUFFICIENT_NOTICE}` : body;
+      if (notice) answer = answer ? `${answer}\n\n${notice}` : notice;
       return trialResult({
         status: 'completed',
         answer,
@@ -272,6 +293,7 @@ export function createRetrievalAnswering({
         elapsedMs: elapsed(),
         previousPlan: compact,
         dataAsOf: view.dataAsOf,
+        coverage: executed.coverage ?? null,
       });
     },
   };
