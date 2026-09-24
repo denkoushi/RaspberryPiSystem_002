@@ -110,7 +110,7 @@ test('planner can refine a previous plan without a second evaluate call', async 
   assert.equal(calls, 1);
   assert.equal(plan.filters.some((filter) => filter.field === 'machineName' && filter.values[0] === 'Lathe-1'), true);
   assert.equal(plan.filters.some((filter) => filter.field === 'originDepartmentName' && filter.values[0] === 'South Shop'), true);
-  assert.equal(plan.sort, 'relevance');
+  assert.deepEqual(plan.sort, { field: 'discoveredOn', direction: 'desc' });
 });
 
 test('an answer outside the candidate ids stays unresolved', async () => {
@@ -305,6 +305,77 @@ test('selected department covers particle and cause phrasing without a content q
     valueIndex,
   });
   assert.equal(asked.plan.semanticQuery, '北海の機械課のburrtoken');
+});
+
+test('an unambiguous period becomes one date filter inside the same evaluate call', async () => {
+  let calls = 0;
+  const evaluate = async (input) => {
+    calls += 1;
+    assert.equal(input.questions.period, undefined);
+    return {
+      answers: {
+        sort: { type: 'choice', choice: 'recent' },
+        limit: { type: 'choice', choice: '5' },
+        content: { type: 'noul', noul: true },
+      },
+    };
+  };
+  const { plan } = await createPlanner({ evaluate }).plan({
+    question: '2024年のqxrare',
+    catalog,
+    candidates: [],
+    now: '2026-09-24',
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(plan.filters, [{
+    source: 'nonconformity',
+    field: 'discoveredOn',
+    op: 'between',
+    values: ['2024-01-01', '2024-12-31'],
+  }]);
+  assert.equal(plan.sort, 'relevance');
+  assert.equal(plan.semanticQuery, '2024年のqxrare');
+});
+
+test('an ambiguous period is chosen inside the existing evaluate call', async () => {
+  let calls = 0;
+  const evaluate = async (input) => {
+    calls += 1;
+    assert.deepEqual(Object.keys(input.questions.period.criteria), ['p0', 'p1', 'none']);
+    return {
+      answers: {
+        period: { type: 'choice', choice: 'p1' },
+        sort: { type: 'choice', choice: 'recent' },
+        limit: { type: 'choice', choice: '5' },
+        content: { type: 'noul', noul: true },
+      },
+    };
+  };
+  const { plan } = await createPlanner({ evaluate }).plan({
+    question: '12月のqxrare',
+    catalog,
+    candidates: [],
+    now: '2026-09-24',
+  });
+  assert.equal(calls, 1);
+  assert.equal(plan.filters[0].op, 'between');
+  assert.deepEqual(plan.filters[0].values, ['2025-12-01', '2025-12-31']);
+});
+
+test('a content question without recency stays relevance even if JEV picks recent', async () => {
+  const evaluate = async () => ({
+    answers: {
+      sort: { type: 'choice', choice: 'recent' },
+      limit: { type: 'choice', choice: '5' },
+      content: { type: 'noul', noul: true },
+    },
+  });
+  const { plan } = await createPlanner({ evaluate }).plan({
+    question: 'qxrareを見せて',
+    catalog,
+    candidates: [],
+  });
+  assert.equal(plan.sort, 'relevance');
 });
 
 test('a low-confidence department value asks for clarification instead of a content search', async () => {

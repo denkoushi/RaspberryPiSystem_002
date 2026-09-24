@@ -44,7 +44,7 @@ export function parseArgs(argv) {
     gold: null, snapshot: null, qmdIndex: null, embedModel: null, out: null, jevRelevance: null,
     variant: 'a', entityLink: false, rerankMode: 'replace',
     enrichment: [], noEnrichment: false, allowSubset: false,
-    stageDump: false, retriever: 'lexical',
+    stageDump: false, retriever: 'lexical', now: null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -57,6 +57,7 @@ export function parseArgs(argv) {
     else if (arg === '--allow-subset') parsed.allowSubset = true;
     else if (arg === '--stage-dump') parsed.stageDump = true;
     else if (arg === '--retriever') parsed.retriever = argv[++index];
+    else if (arg === '--now') parsed.now = argv[++index];
     else if (arg === '--out') parsed.out = argv[++index];
     else if (arg === '--variant') parsed.variant = argv[++index];
     else if (arg === '--entity-link') parsed.entityLink = true;
@@ -72,8 +73,9 @@ export function parseArgs(argv) {
       } else parsed.jevRelevance = true;
     } else throw new Error(`unknown argument: ${arg}`);
   }
+  if (parsed.now != null && !/^\d{4}-\d{2}-\d{2}$/u.test(parsed.now)) throw new Error('--now must be YYYY-MM-DD');
   if (!parsed.gold || !parsed.snapshot || !parsed.out) {
-    throw new Error('Usage: node retrieval/evaluate.mjs --gold <file> --snapshot <path> [--variant a|b|c] [--retriever lexical|dense|hybrid] [--stage-dump] [--entity-link] [--rerank-mode replace|gate] [--jev-relevance] [--enrichment <jsonl>] [--no-enrichment] [--allow-subset] --out <file>');
+    throw new Error('Usage: node retrieval/evaluate.mjs --gold <file> --snapshot <path> [--variant a|b|c] [--retriever lexical|dense|hybrid] [--stage-dump] [--now YYYY-MM-DD] [--entity-link] [--rerank-mode replace|gate] [--jev-relevance] [--enrichment <jsonl>] [--no-enrichment] [--allow-subset] --out <file>');
   }
   return parsed;
 }
@@ -296,6 +298,7 @@ export async function evaluateGold(options) {
         candidates,
         valueIndex,
         choiceGroups,
+        now: options.now,
       });
       const validation = planned.plan?.diagnostics?.scope === 'out_of_scope'
         ? { ok: false, outOfScope: true }
@@ -453,6 +456,7 @@ async function main() {
     allowSubset: args.allowSubset,
     stageDump: args.stageDump,
     retriever: args.retriever,
+    now: args.now,
     embedModelId: DEFAULT_EMBED_MODEL,
     rerankModelId: DEFAULT_RERANK_MODEL,
   });

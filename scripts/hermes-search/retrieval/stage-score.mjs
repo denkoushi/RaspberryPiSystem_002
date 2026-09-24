@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { nextIsoDay, previousIsoDay } from './period-parse.mjs';
 
 const DATE_OPS = new Set(['before', 'after', 'between']);
 
@@ -30,8 +31,8 @@ export function planStage(plan, { outOfScope = false, dateField = 'discoveredOn'
     const dated = DATE_OPS.has(filter?.op) || (filter?.field === dateField && filter?.op === 'eq');
     if (dated) {
       sawDate = true;
-      if (filter.op === 'after') from = values[0] ?? from;
-      else if (filter.op === 'before') to = values[0] ?? to;
+      if (filter.op === 'after') from = values[0] ? nextIsoDay(values[0]) : from;
+      else if (filter.op === 'before') to = values[0] ? previousIsoDay(values[0]) : to;
       else if (filter.op === 'between') {
         const ordered = [...values].sort();
         from = ordered[0] ?? from;

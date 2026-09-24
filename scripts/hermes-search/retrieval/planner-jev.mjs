@@ -2,8 +2,9 @@
 // evaluate is injectable; the default transport follows hermes-jev-record-pilot.
 import { performance } from 'node:perf_hooks';
 import { catalogEntries } from './catalog.mjs';
-import { QUERY_PLAN_SCHEMA, shouldSkipRelevance } from './query-plan.mjs';
+import { QUERY_PLAN_SCHEMA, hasAppliedHardFilter, shouldSkipRelevance } from './query-plan.mjs';
 import { enumeratedChoiceGroups } from './value-index.mjs';
+import { nextIsoDay, parsePeriods, previousIsoDay, referenceDate } from './period-parse.mjs';
 
 const LIMIT_OPTIONS = ['1', '2', '3', '5', '10', '20'];
 const LIMIT_UNSPECIFIED = 'unspecified';
@@ -16,6 +17,7 @@ const VALUE_RIVAL_GAP = 0.2;
 const VALUE_CLOSE_GAP = 0.12;
 const MAX_MULTI_VALUES = 8;
 const OUT_OF_SCOPE = 'out_of_scope';
+const RECENCY = /最近|直近|新しい順|最新/u;
 
 function choiceQuestion(instructions, options) {
   return {
@@ -140,7 +142,7 @@ async function defaultEvaluate(input) {
 export function createPlanner({ evaluate = defaultEvaluate } = {}) {
   if (typeof evaluate !== 'function') throw new TypeError('evaluate must be a function');
   return {
-    async plan({ question, previousPlan = null, catalog, candidates = [], valueIndex = null, choiceGroups = null }) {
+    async plan({ question, previousPlan = null, catalog, candidates = [], valueIndex = null, choiceGroups = null, now = null }) {
       if (typeof question !== 'string' || !question.trim()) throw new TypeError('question must be a non-empty string');
       if (!Array.isArray(candidates)) throw new TypeError('candidates must be an array');
       const entries = catalogEntries(catalog);
@@ -193,10 +195,21 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           { id: 'refine', description: '直前の計画を土台に、今回選んだ条件で更新する' },
         ]);
       }
-      questions.sort = choiceQuestion('結果の並べ方を一つ選ぶ。', [
-        { id: 'recent', description: '日付が新しい順' },
-        { id: 'relevance', description: '意味の近さ順' },
-      ]);
+      questions.sort = choiceQuestion(
+        '結果の並べ方を一つ選ぶ。内容の質問は意味の近さ順が既定。最近・直近・新しい順・最新のように新しさを求めているときだけ日付が新しい順。内容がなく絞り込みだけのときは日付が新しい順。',
+        [
+          { id: 'recent', description: '日付が新しい順' },
+          { id: 'relevance', description: '意味の近さ順' },
+        ],
+      );
+      const periodMatches = parsePeriods(question, now ?? referenceDate(new Date()));
+      const periodChoices = periodMatches.flatMap((match) => match.interpretations);
+      const periodAmbiguous = periodChoices.length > 1;
+      if (periodAmbiguous) {
+        const options = periodChoices.map((item, index) => ({ id: `p${index}`, description: item.label }));
+        options.push({ id: NONE, description: '期間では絞らない' });
+        questions.period = choiceQuestion('発話中の期間として合うものを一つ選ぶ。曖昧でなければ none。', options);
+      }
       const limitOptions = LIMIT_OPTIONS.map((count) => ({ id: count, description: `${count}件` }));
       if (fromIndex) limitOptions.push({ id: LIMIT_UNSPECIFIED, description: '件数の指定はない' });
       questions.limit = choiceQuestion(
@@ -275,7 +288,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const turn = hasPrevious ? chosen(answers.turn, ['new_search', 'refine']) : 'new_search';
       if (hasPrevious && !turn) unresolved.push({ term: 'turn', candidates: ['new_search', 'refine'] });
       const sortChoice = chosen(answers.sort, ['recent', 'relevance']);
-      if (!sortChoice) unresolved.push({ term: 'sort', candidates: ['recent', 'relevance'] });
+      void sortChoice;
       const limitAllowed = fromIndex ? [...LIMIT_OPTIONS, LIMIT_UNSPECIFIED] : LIMIT_OPTIONS;
       const limitChoice = chosen(answers.limit, limitAllowed);
       const limitExplicit = fromIndex ? Boolean(limitChoice && limitChoice !== LIMIT_UNSPECIFIED) : Boolean(limitChoice);
@@ -288,16 +301,32 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           .filter((filter) => filter && typeof filter.source === 'string' && typeof filter.field === 'string' && typeof filter.op === 'string' && Array.isArray(filter.values))
           .map((filter) => ({ source: filter.source, field: filter.field, op: filter.op, values: [...filter.values] }))
         : [];
-      const filters = mergeFilters([...carried, ...selected]);
+      const plannedSources = outOfScope ? [] : (fromIndex && scopeIds.includes(scopeChoice) ? [scopeChoice] : entries.map((entry) => entry.id));
+      const dateOwner = entries.find((entry) => plannedSources.includes(entry.id) && entry.fields.some((field) => field.role === 'date'));
+      const dateKey = dateOwner?.fields.find((field) => field.role === 'date')?.key ?? null;
+      const dated = [];
+      const recentField = dateField(entries);
+      if (dateOwner && dateKey && periodChoices.length) {
+        let picked = periodChoices.length === 1 ? periodChoices[0] : null;
+        if (periodAmbiguous) {
+          const allowed = [...periodChoices.map((_, index) => `p${index}`), NONE];
+          const periodChoice = chosen(answers.period, allowed);
+          if (!periodChoice) unresolved.push({ term: 'period', candidates: periodChoices.map((item) => item.label) });
+          else if (periodChoice !== NONE) picked = periodChoices[Number(periodChoice.slice(1))] ?? null;
+        }
+        const filter = picked ? periodFilter(dateOwner.id, dateKey, picked) : null;
+        if (filter) dated.push(filter);
+      }
+      const filters = mergeFilters([...carried, ...selected, ...dated]);
       const jev = contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;
       const finalContent = jev === true && unresolved.length === 0;
-      const recentField = dateField(entries);
-      let sort = sortChoice === 'recent' && recentField
+      const sortMode = resolveSort(question, jev, hasAppliedHardFilter({ filters }, catalog));
+      const sort = sortMode === 'recent' && recentField
         ? { field: recentField, direction: 'desc' }
         : 'relevance';
       const plan = {
         schema: QUERY_PLAN_SCHEMA,
-        sources: outOfScope ? [] : (fromIndex && scopeIds.includes(scopeChoice) ? [scopeChoice] : entries.map((entry) => entry.id)),
+        sources: plannedSources,
         filters: outOfScope ? [] : filters,
         semanticQuery: outOfScope || unresolved.length || shouldSkipRelevance({
           filters,
@@ -316,6 +345,20 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       return { plan, timings: { planMs } };
     },
   };
+}
+
+function resolveSort(question, contentJev, hardFilter) {
+  const recency = RECENCY.test(String(question ?? ''));
+  const filterOnly = contentJev === false && hardFilter;
+  if (recency || filterOnly) return 'recent';
+  return 'relevance';
+}
+
+function periodFilter(source, field, bounds) {
+  if (bounds.from && bounds.to) return { source, field, op: 'between', values: [bounds.from, bounds.to] };
+  if (bounds.from) return { source, field, op: 'after', values: [previousIsoDay(bounds.from)] };
+  if (bounds.to) return { source, field, op: 'before', values: [nextIsoDay(bounds.to)] };
+  return null;
 }
 
 function labelOf(entries, source, field) {

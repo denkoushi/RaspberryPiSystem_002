@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { periodSpans } from './period-parse.mjs';
 
 const raw = JSON.parse(readFileSync(new URL('./query-structural-words.json', import.meta.url), 'utf8'));
 const rawWords = raw?.words;
@@ -73,8 +74,16 @@ export function contentTokens(text) {
     .filter((token) => token.length >= 2 || SINGLE_KANJI.test(token) || SINGLE_KATAKANA.test(token));
 }
 
+function stripPeriodText(text) {
+  const source = String(text ?? '').normalize('NFKC');
+  const spans = periodSpans(source).sort((left, right) => right.start - left.start);
+  let result = source;
+  for (const span of spans) result = `${result.slice(0, span.start)} ${result.slice(span.end)}`;
+  return result;
+}
+
 export function contentQuery(text) {
-  let result = stripListedTerms(text, structuralWords).replace(COUNT_EXPRESSION, ' ');
+  let result = stripListedTerms(stripPeriodText(text), structuralWords).replace(COUNT_EXPRESSION, ' ');
   const kept = [];
   for (const fragment of result.split(/\s+/u)) {
     if (!fragment) continue;
