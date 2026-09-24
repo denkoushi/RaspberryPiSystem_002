@@ -93,6 +93,28 @@ describe('grinding-planning-board-projection', () => {
     expect(item?.alternateRank).toBeNull();
   });
 
+  it('uses order-specific IDs and part progress for unassigned seiban', () => {
+    const first = sourceRow({ FSEIBAN: '********', ProductNo: '0003729969' }, 'row-old');
+    const second = sourceRow({ FSEIBAN: '********', ProductNo: '0004104427' }, 'row-new');
+    expect(buildGrindingPlanningBoardRowItemId(first.rowData)).not.toBe(
+      buildGrindingPlanningBoardRowItemId(second.rowData));
+    const result = projectGrindingPlanningBoard(baseParams({
+      rows: [first, second],
+      details: new Map([
+        ['row-old', detail({ productionScheduleProgress: { isCompleted: true, updatedAt: new Date('2026-09-01') } })],
+        ['row-new', detail()],
+      ]),
+    }));
+    expect(result.items).toHaveLength(2);
+    expect(new Set(result.items.map((item) => item.itemId)).size).toBe(2);
+    expect(result.items.find((item) => item.productNo === '0003729969')?.progress).toEqual({
+      completed: 1, total: 1, quantityKnown: false
+    });
+    expect(result.items.find((item) => item.productNo === '0004104427')?.progress).toEqual({
+      completed: 0, total: 1, quantityKnown: false
+    });
+  });
+
   it('projects special due metadata and sorts resource items by expiry before rank', () => {
     const first = sourceRow({ FKOJUN: '10' }, 'row-first');
     const second = sourceRow({ FKOJUN: '20' }, 'row-second');

@@ -2,6 +2,7 @@ import { ApiError } from '../../../../lib/errors.js';
 import { logger } from '../../../../lib/logger.js';
 import { prisma } from '../../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../../production-schedule/constants.js';
+import { isUnassignedProductionSeiban } from '../../../production-schedule/row-resolver/constants.js';
 import { resolveProductionSchedulePlannedQuantity } from '../../../production-schedule/self-inspection-schedule-eligibility.js';
 import { verifyProductionScheduleRowOrThrow } from '../../../production-schedule/verify-production-schedule-row.js';
 import { partMeasurementTemplateFullInclude } from '../../part-measurement-template-include.js';
@@ -75,7 +76,8 @@ export async function resetSelfInspectionSession(
     const supplement = await tx.productionScheduleOrderSupplement.findFirst({
       where: {
         csvDashboardRowId: scheduleRowId,
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        ...(isUnassignedProductionSeiban(lockedSession.fseiban) ? { productNo: lockedSession.productNo } : {})
       },
       select: { plannedQuantity: true }
     });

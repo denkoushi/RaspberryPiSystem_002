@@ -90,6 +90,8 @@ export async function fetchProductionScheduleDashboardRowsRawPage(params: {
     LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
       ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND (BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) <> '********'
+        OR "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo'))
     LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
       ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}

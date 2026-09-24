@@ -5,7 +5,10 @@ import {
   mergeLeaderboardShellPriorityAndFillerUpTo,
   type LeaderboardScheduleRowSql,
 } from '../leaderboard/leaderboard-row-selection.service.js';
-import { buildMaxProductNoLogicalKeyPartitionExprs } from '../row-resolver/max-product-no-winner-spec.js';
+import {
+  buildMaxProductNoLogicalKeyMatchAndSql,
+  buildMaxProductNoLogicalKeyPartitionExprs,
+} from '../row-resolver/max-product-no-winner-spec.js';
 
 const row = (
   id: string,
@@ -42,6 +45,10 @@ describe('winner logical key specification (parity helper)', () => {
     expect(exprs).toContain('FHINCD');
     expect(exprs).toContain('FSIGENCD');
     expect(exprs).toContain('FKOJUN');
+    expect(exprs).toContain("THEN BTRIM(COALESCE(\"t\".\"rowData\"->>'ProductNo', '')) ELSE '' END");
+    const match = buildMaxProductNoLogicalKeyMatchAndSql('inner', 'outer');
+    expect(match).toContain("<> '********' OR");
+    expect(match).toContain("\"inner\".\"rowData\"->>'ProductNo'");
   });
 });
 

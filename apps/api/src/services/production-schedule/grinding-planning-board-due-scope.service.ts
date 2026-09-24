@@ -10,6 +10,7 @@ import type {
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { isUnassignedProductionSeiban } from './row-resolver/constants.js';
 import { type DueManagementSeibanDetail } from './due-management-query.service.js';
 import { getDueManagementSeibanDetailWithScope } from './due-management-location-scope-adapter.service.js';
 import { presentDueManagementSeibanDetail, type PartEffectiveDueDate, type PresentedDueManagementSeibanDetail } from './due-management-detail-presentation.service.js';
@@ -276,6 +277,7 @@ function buildAlternateDetail(params: { original: DueManagementSeibanDetail; sco
 export async function getGrindingPlanningBoardDueScope(params: { siteKey: string; deviceScopeKey?: string; fseiban: string }): Promise<GrindingPlanningBoardDueScopeSnapshot & { scope: GrindingPlanningBoardDueScope }> {
   const fseiban = params.fseiban.trim();
   if (!fseiban) throw new ApiError(400, '製番は必須です', undefined, 'INVALID_SEIBAN');
+  if (isUnassignedProductionSeiban(fseiban)) throw new ApiError(400, '仮製番の納期一括編集は製造 order を区別できません', undefined, 'UNASSIGNED_SEIBAN_DUE_SCOPE_UNSUPPORTED');
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const before = await readSnapshotParts({ client: prisma, siteKey: params.siteKey, fseiban });
     const original = await getDueManagementSeibanDetailWithScope({ locationScope: { siteKey: params.siteKey, deviceScopeKey: params.deviceScopeKey }, fseiban });
@@ -396,6 +398,7 @@ async function writeTargetOverride(client: Prisma.TransactionClient, siteKey: st
 export async function updateGrindingPlanningBoardDueScope(params: { siteKey: string; fseiban: string; request: GrindingPlanningBoardDueScopeRequest }): Promise<{ success: true; sourceGenerationToken: string; scopeRevision: string }> {
   const fseiban = params.fseiban.trim();
   if (!fseiban) throw new ApiError(400, '製番は必須です', undefined, 'INVALID_SEIBAN');
+  if (isUnassignedProductionSeiban(fseiban)) throw new ApiError(400, '仮製番の納期一括編集は製造 order を区別できません', undefined, 'UNASSIGNED_SEIBAN_DUE_SCOPE_UNSUPPORTED');
   const scope = normalizeScope(params.request.scope);
   if (!isValidDueDateText(params.request.dueDate)) throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください', undefined, 'INVALID_DUE_DATE');
   const dueDate = dateValue(params.request.dueDate.trim());

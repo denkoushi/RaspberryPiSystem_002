@@ -8,6 +8,7 @@ import {
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
+import { isUnassignedProductionSeiban } from '../production-schedule/row-resolver/constants.js';
 import { resolveProductionSchedulePlannedQuantity } from '../production-schedule/self-inspection-schedule-eligibility.js';
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from './self-inspection-machine-board-cache-invalidation.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
@@ -465,7 +466,8 @@ export class SelfInspectionItemLifecycleService {
     const supplement = await tx.productionScheduleOrderSupplement.findFirst({
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        csvDashboardRowId: normalizeText(target.scheduleRowId)
+        csvDashboardRowId: normalizeText(target.scheduleRowId),
+        ...(isUnassignedProductionSeiban(target.fseiban) ? { productNo: normalizeText(target.productNo) } : {})
       },
       select: { plannedQuantity: true }
     });

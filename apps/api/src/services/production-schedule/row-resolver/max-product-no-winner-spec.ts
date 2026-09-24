@@ -1,4 +1,4 @@
-import { PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS } from './constants.js';
+import { PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS, PRODUCTION_SCHEDULE_UNASSIGNED_SEIBAN } from './constants.js';
 
 const SQL_IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -17,9 +17,10 @@ export const quoteSqlIdentifierOrThrow = (identifier: string): string => {
  */
 export const buildMaxProductNoLogicalKeyPartitionExprs = (rowAlias: string): string => {
   const rowAliasQuoted = quoteSqlIdentifierOrThrow(rowAlias);
-  return PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.map(
+  const columns = PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.map(
     (column) => `COALESCE(${rowAliasQuoted}."rowData"->>'${column}', '')`
   ).join(', ');
+  return `${columns}, CASE WHEN BTRIM(COALESCE(${rowAliasQuoted}."rowData"->>'FSEIBAN', '')) = '${PRODUCTION_SCHEDULE_UNASSIGNED_SEIBAN}' THEN BTRIM(COALESCE(${rowAliasQuoted}."rowData"->>'ProductNo', '')) ELSE '' END`;
 };
 
 /**
@@ -47,8 +48,9 @@ export const buildMaxProductNoLogicalKeyMatchAndSql = (
 ): string => {
   const inner = quoteSqlIdentifierOrThrow(innerAlias);
   const outer = quoteSqlIdentifierOrThrow(outerAlias);
-  return PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.map(
+  const conditions = PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.map(
     (column) =>
       `COALESCE(${inner}."rowData"->>'${column}', '') = COALESCE(${outer}."rowData"->>'${column}', '')`
   ).join('\n      AND ');
+  return `${conditions}\n      AND (BTRIM(COALESCE(${outer}."rowData"->>'FSEIBAN', '')) <> '${PRODUCTION_SCHEDULE_UNASSIGNED_SEIBAN}' OR BTRIM(COALESCE(${inner}."rowData"->>'ProductNo', '')) = BTRIM(COALESCE(${outer}."rowData"->>'ProductNo', '')))`;
 };

@@ -3,6 +3,7 @@ import { Prisma, type PartMeasurementProcessGroup } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
+import { isUnassignedProductionSeiban } from '../production-schedule/row-resolver/constants.js';
 import { resolveProductionSchedulePlannedQuantity } from '../production-schedule/self-inspection-schedule-eligibility.js';
 import { verifyProductionScheduleRowOrThrow } from '../production-schedule/verify-production-schedule-row.js';
 
@@ -93,7 +94,8 @@ export class SelfInspectionPaperReportIssueService {
     const supplement = await prisma.productionScheduleOrderSupplement.findFirst({
       where: {
         csvDashboardRowId: scheduleRowId,
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        ...(isUnassignedProductionSeiban(fseiban) ? { productNo } : {})
       },
       select: { plannedQuantity: true }
     });
