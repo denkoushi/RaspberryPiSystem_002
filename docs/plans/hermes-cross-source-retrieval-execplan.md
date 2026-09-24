@@ -2,7 +2,7 @@
 id: hermes-cross-source-retrieval-execplan
 title: Hermes cross-source record retrieval (source catalog, query plan, offline evaluation)
 status: in-progress
-last_verified: 2026-09-23
+last_verified: 2026-09-24
 ---
 
 # Build scalable cross-source record retrieval for the Hermes floating Chat
@@ -32,6 +32,7 @@ Today only one source (nonconformity records) is searchable, only questions that
 - [ ] Later phase (not scheduled): second source and cross-source merge.
 - [ ] Milestone 5: multi-turn plan replacement measured on dialogue cases.
 - [ ] Milestone 6: floating-Chat integration behind a separate switch; screen-complete p95 measured on the Pi5 kiosk (deployment only with explicit approval).
+- [x] (2026-09-24) Stage-metric method is the comparison path (`--stage-dump` and `retrieval/stage-score.mjs`). Chosen method: period slot plus the sort rule, hybrid RRF(k=60) of lexical and dense, enrichment text (summary, queries, tags, aliases) on both sides. Query-time DGX embedding is allowed; the Qwen3-Embedding-0.6B contract is not defined yet. Production stays lexical with embedding `none`. On a private 50-case set, paraphrase top-15 rates were lexical 0.00, hybrid e5-base 0.38, hybrid e5 plus enrichment aliases 0.44, hybrid ruri-v3-310m plus aliases 0.62, hybrid Qwen3-Embedding-0.6B plus aliases 0.69. Whole-set status correctness moved from 0.74 to 0.86 with period/sort plus hybrid plus aliases. Mac p95 stayed at or under 2.4 s. Enrichment covered only a 1,000-record subset that contained the targets, so those rates are biased upward. See ADR-20260924.
 
 ## Surprises & Discoveries
 
@@ -56,6 +57,9 @@ Today only one source (nonconformity records) is searchable, only questions that
 - Decision: the planner is JEV only; the DGX planner adapter and comparison are dropped.
   Rationale: DGX Spark answers have taken over a minute in practice, and the business model can be stopped when a Private workload takes the GPU, so it cannot support a 5-second answer. JEV calls measured 632-968 ms including worker time on 2026-09-23. If JEV cannot reach the plan-accuracy threshold, stop and report instead of switching models silently.
   Date/Author: 2026-09-24, owner.
+- Decision: query-time DGX embedding is allowed; production still defaults to lexical and embedding none. Details and aggregate rates are in ADR-20260924.
+  Rationale: the owner allowed DGX calls at query time. The Qwen3-Embedding-0.6B contract is not defined, so the port has no remote adapter yet.
+  Date/Author: 2026-09-24, owner. Supersedes the next entry for the DGX query-time ban only.
 - Decision: the per-question query embedding must not depend on DGX availability for the 5-second path.
   Rationale: the same preemption that rules out the DGX planner would make semantic search unavailable. Milestone 4 measures EmbeddingGemma query embedding on the Pi5 CPU; if it fits the retrieval budget, the Pi5 computes query embeddings and DGX is used only for bulk indexing, otherwise the fallback is lexical-only search with an explicit notice.
   Date/Author: 2026-09-24, supervising agent.
