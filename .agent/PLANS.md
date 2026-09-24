@@ -4,38 +4,25 @@ This document describes the requirements for an execution plan ("ExecPlan"), a d
  
 ## How to use ExecPlans and PLANS.md
  
-When authoring an executable specification (ExecPlan), follow PLANS.md _to the letter_. If it is not in your context, refresh your memory by reading the entire PLANS.md file. Be thorough in reading (and re-reading) source material to produce an accurate specification. When creating a spec, start from the skeleton and flesh it out as you do your research.
+When authoring an executable specification (ExecPlan), follow this document. If it is not in your context, read the parts that apply to the plan you are writing. Be thorough in reading source material to produce an accurate specification. When creating a spec, start from the skeleton and flesh it out as you do your research.
  
-When implementing an executable specification (ExecPlan), do not prompt the user for "next steps"; simply proceed to the next milestone. Keep all sections up to date, add or split entries in the list at every stopping point to affirmatively state the progress made and next steps. Resolve ambiguities autonomously, and commit frequently.
+When implementing an executable specification (ExecPlan), proceed milestone to milestone within the stage the user explicitly requested. Stop and ask before commit, push, PR, merge, release, or deploy unless the user already approved that stage. Record ambiguities resolved in the Decision Log.
  
-When discussing an executable specification (ExecPlan), record decisions in a log in the spec for posterity; it should be unambiguously clear why any change to the specification was made. ExecPlans are living documents, and it should always be possible to restart from _only_ the ExecPlan and no other work.
+When discussing an executable specification (ExecPlan), record decisions in a log in the spec for posterity; it should be clear why any change to the specification was made. ExecPlans are living documents, and it should be possible to restart from the ExecPlan alone.
  
 When researching a design with challenging requirements or significant unknowns, use milestones to implement proof of concepts, "toy implementations", etc., that allow validating whether the user's proposal is feasible. Read the source code of libraries by finding or acquiring them, research deeply, and include prototypes to guide a fuller implementation.
  
 ## Git task lifecycle contract
 
-Every implementation task that uses a feature branch must use the repository lifecycle CLI from the repository root:
-`python3 -m scripts.git_lifecycle.cli`.
-
-Before starting, run `audit --json` as a read-only inventory. Start a task with
-`start --branch <branch>`. It must fetch `origin` and anchor the new linked worktree to the exact fetched `origin/main`; it must not clean, reset, stash, or otherwise modify a dirty or diverged main worktree. Such main state is reported as `main_sync=skipped_dirty` or `main_sync=skipped_diverged`, while an independent task worktree may still be created.
-
-After the task PR is merged, run `finish --worktree <exact-path> --pr <number>`. Only a merged same-repository PR with matching head branch and SHA, an ordinary clean status, and no assume-unchanged/skip-worktree-style index flag is eligible. Ignored material is counted and warned but does not block disposable-worktree cleanup; credentials must remain outside task worktrees. Cleanup removes that worktree without force and compare-and-deletes only the expected local branch ref. Unsafe or ambiguous targets remain protected. The remote branch is deleted by GitHub's merge setting, not by a local remote-ref deletion command.
-
-`finish` performs target cleanup before independently attempting main synchronization. A clean fast-forwardable main may be updated (`updated`); an already-current main reports `already_current`; dirty or diverged main is retained and reports `skipped_dirty` or `skipped_diverged`. A skipped main synchronization does not invalidate successful target cleanup. Run `audit --json` again and record the PR, merge SHA, target cleanup result, `main_sync`, and protected items in the task's completion evidence.
-
-This CLI is an explicitly invoked development-workstation tool. Do not add it to deploy, Ansible, Docker build, fleet deployment, Git hooks, or shared CI preflight paths; full PR pagination runs only for an explicit lifecycle audit. `finish` reads only the PR number supplied by the operator.
+Use `python3 -m scripts.git_lifecycle.cli` in the order audit, start, finish, audit, following [`.cursor/rules/20-git-workflow.mdc`](../.cursor/rules/20-git-workflow.mdc). Never clean, reset, or stash a dirty main worktree. Record the PR, merge SHA, cleanup result, and `main_sync` in the completion evidence.
 
 ## Requirements
  
-NON-NEGOTIABLE REQUIREMENTS:
- 
-* Every ExecPlan must be fully self-contained. Self-contained means that in its current form it contains all knowledge and instructions needed for a novice to succeed.
-* Every ExecPlan is a living document. Contributors are required to revise it as progress is made, as discoveries occur, and as design decisions are finalized. Each revision must remain fully self-contained.
-* Every ExecPlan must enable a complete novice to implement the feature end-to-end without prior knowledge of this repo.
+* Every ExecPlan must be fully self-contained. Self-contained means that in its current form it contains all knowledge and instructions a novice needs to implement the feature end-to-end without prior knowledge of this repo.
+* Every ExecPlan is a living document. Revise it as progress is made, as discoveries occur, and as design decisions are finalized.
 * Every ExecPlan must produce a demonstrably working behavior, not merely code changes to "meet a definition".
 * Every ExecPlan must define every term of art in plain language or do not use it.
-* An ExecPlan that includes a commit, pull request, release, or production deployment must not be marked complete until the worktree is clean, the local branch matches its origin branch, every effective change and deployed SHA is contained in `origin/main`, and production SHA evidence is recorded separately. If `scripts/update-all-clients.sh` exposes `mainIntegration.completionEligible` and it is not `true`, the plan must remain in progress even when the release itself succeeded.
+* An ExecPlan that includes a commit, pull request, release, or production deployment must not be marked complete until the worktree is clean, the local branch matches its origin branch, every effective change and deployed SHA is contained in `origin/main`, and production SHA evidence is recorded separately.
 * Approved feature-branch verification may proceed before merge, but its operational success is not repository completion. Record `integrationPending`, the PR or superseding change, required CI, main merge, and any merged-main verification as open work.
  
 Purpose and intent come first. Begin by explaining, in a few sentences, why the work matters from a user's perspective: what someone can do after this change that they could not do before, and how to see it working. Then guide the reader through the exact steps to achieve that outcome, including what to edit, what to run, and what they should observe.
@@ -52,7 +39,7 @@ Write in plain prose. Prefer sentences over lists. Avoid checklists, tables, and
  
 ## Guidelines
  
-Self-containment and plain language are paramount. If you introduce a phrase that is not ordinary English ("daemon", "middleware", "RPC gateway", "filter graph"), define it immediately and remind the reader how it manifests in this repository (for example, by naming the files or commands where it appears). Do not say "as defined previously" or "according to the architecture doc." Include the needed explanation here, even if you repeat yourself.
+Use self-containment and plain language. If you introduce a phrase that is not ordinary English ("daemon", "middleware", "RPC gateway", "filter graph"), define it immediately and remind the reader how it manifests in this repository (for example, by naming the files or commands where it appears). Do not say "as defined previously" or "according to the architecture doc." Include the needed explanation here, even if you repeat yourself.
  
 Avoid common failure modes. Do not rely on undefined jargon. Do not describe "the letter of a feature" so narrowly that the resulting code compiles but does nothing meaningful. Do not outsource key decisions to the reader. When ambiguity exists, resolve it in the plan itself and explain why you chose that path. Err on the side of over-explaining user-visible effects and under-specifying incidental implementation details.
  
@@ -62,7 +49,7 @@ Specify repository context explicitly. Name files with full repository-relative 
  
 Be idempotent and safe. Write the steps so they can be run multiple times without causing damage or drift. If a step can fail halfway, include how to retry or adapt. If a migration or destructive operation is necessary, spell out backups or safe fallbacks. Prefer additive, testable changes that can be validated as you go.
  
-Validation is not optional. Include instructions to run tests, to start the system if applicable, and to observe it doing something useful. Describe comprehensive testing for any new features or capabilities. Include expected outputs and error messages so a novice can tell success from failure. Where possible, show how to prove that the change is effective beyond compilation (for example, through a small end-to-end scenario, a CLI invocation, or an HTTP request/response transcript). State the exact test commands appropriate to the project’s toolchain and how to interpret their results.
+Include instructions to run tests, to start the system if applicable, and to observe it doing something useful. Describe comprehensive testing for any new features or capabilities. Include expected outputs and error messages so a novice can tell success from failure. Where possible, show how to prove that the change is effective beyond compilation (for example, through a small end-to-end scenario, a CLI invocation, or an HTTP request/response transcript). State the exact test commands appropriate to the project’s toolchain and how to interpret their results.
  
 Capture evidence. When your steps produce terminal output, short diffs, or logs, include them inside the single fenced block as indented examples. Keep them concise and focused on what proves success. If you need to include a patch, prefer file-scoped diffs or small excerpts that a reader can recreate by following your instructions rather than pasting large blobs.
  
@@ -75,7 +62,7 @@ Each milestone must be independently verifiable and incrementally implement the 
 ## Living plans and design decisions
  
 * ExecPlans are living documents. As you make key design decisions, update the plan to record both the decision and the thinking behind it. Record all decisions in the `Decision Log` section.
-* ExecPlans must contain and maintain a `Progress` section, a `Surprises & Discoveries` section, a `Decision Log`, and an `Outcomes & Retrospective` section. These are not optional.
+* ExecPlans must contain and maintain a `Progress` section, a `Surprises & Discoveries` section, a `Decision Log`, and an `Outcomes & Retrospective` section.
 * When you discover optimizer behavior, performance tradeoffs, unexpected bugs, or inverse/unapply semantics that shaped your approach, capture those observations in the `Surprises & Discoveries` section with short evidence snippets (test output is ideal).
 * If you change course mid-implementation, document why in the `Decision Log` and reflect the implications in `Progress`. Plans are guides for the next contributor as much as checklists for you.
 * At completion of a major task or the full plan, write an `Outcomes & Retrospective` entry summarizing what was achieved, what remains, and lessons learned.
@@ -84,7 +71,7 @@ Each milestone must be independently verifiable and incrementally implement the 
  
 It is acceptable—-and often encouraged—-to include explicit prototyping milestones when they de-risk a larger change. Examples: adding a low-level operator to a dependency to validate feasibility, or exploring two composition orders while measuring optimizer effects. Keep prototypes additive and testable. Clearly label the scope as “prototyping”; describe how to run and observe results; and state the criteria for promoting or discarding the prototype.
  
-Prefer additive code changes followed by subtractions that keep tests passing. Parallel implementations (e.g., keeping an adapter alongside an older path during migration) are fine when they reduce risk or enable tests to continue passing during a large migration. Describe how to validate both paths and how to retire one safely with tests. When working with multiple new libraries or feature areas, consider creating spikes that evaluate the feasibility of these features _independently_ of one another, proving that the external library performs as expected and implements the features we need in isolation.
+Prefer additive code changes followed by subtractions that keep tests passing. Parallel implementations (e.g., keeping an adapter alongside an older path during migration) are fine when they reduce risk or enable tests to continue passing during a large migration. Describe how to validate both paths and how to retire one safely with tests. When working with multiple new libraries or feature areas, consider creating spikes that evaluate the feasibility of these features independently of one another, proving that the external library performs as expected and implements the features we need.
  
 ## Skeleton of a Good ExecPlan
  
@@ -163,6 +150,6 @@ In crates/foo/planner.rs, define:
     }
 ```
  
-If you follow the guidance above, a single, stateless agent -- or a human novice -- can read your ExecPlan from top to bottom and produce a working, observable result. That is the bar: SELF-CONTAINED, SELF-SUFFICIENT, NOVICE-GUIDING, OUTCOME-FOCUSED.
+If you follow the guidance above, a single, stateless agent -- or a human novice -- can read your ExecPlan from top to bottom and produce a working, observable result. That is the bar: a self-contained plan that a novice can follow to an observable outcome.
  
 When you revise a plan, you must ensure your changes are comprehensively reflected across all sections, including the living document sections, and you must write a note at the bottom of the plan describing the change and the reason why. ExecPlans must describe not just the what but the why for almost everything.

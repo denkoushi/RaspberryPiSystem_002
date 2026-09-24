@@ -1,0 +1,12 @@
+- Title: `KB-xxx: <short summary>`
+- Status: `active | superseded | archived`
+- Scope: affected feature/system
+- Context: what happened, when, where
+- Symptoms Or Trigger: logs, behavior, reproduction
+- Investigation: hypothesis -> evidence -> result
+- Root Cause: confirmed cause, or `unknown`
+- Fix: smallest effective change
+- Prevention: test, monitor, guard, runbook update
+- Validation: commands and observed results
+- Open Items: remaining work
+- References: PR, issue, docs, logs, code
