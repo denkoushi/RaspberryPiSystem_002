@@ -109,8 +109,7 @@ describe('self-inspection machine-name API wiring', () => {
     expect(mocks.prisma.productionScheduleOrderSupplement.findFirst).toHaveBeenCalledWith({
       where: {
         csvDashboardRowId: 'row-1',
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        productNo: 'PO-1'
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID
       },
       select: { plannedQuantity: true }
     });
@@ -120,6 +119,28 @@ describe('self-inspection machine-name API wiring', () => {
         create: expect.objectContaining({ machineName: '正本機種名' })
       })
     );
+  });
+
+  it('requires a matching supplement order for unassigned seiban', async () => {
+    await resolveOrCreateSelfInspectionSession({
+      templateId: 'template-1',
+      productNo: '0003729969',
+      processGroup: 'CUTTING',
+      resourceCd: 'R1',
+      scheduleRowId: 'row-1',
+      fseiban: '********',
+      fhincd: 'FH-1',
+      fhinmei: '品名'
+    });
+
+    expect(mocks.prisma.productionScheduleOrderSupplement.findFirst).toHaveBeenCalledWith({
+      where: {
+        csvDashboardRowId: 'row-1',
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        productNo: '0003729969'
+      },
+      select: { plannedQuantity: true }
+    });
   });
 
   it('does not persist the unresolved machine-name sentinel as a canonical name', async () => {

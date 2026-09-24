@@ -3,6 +3,7 @@ import type { PartMeasurementProcessGroup } from '@prisma/client';
 import { ApiError } from '../../../../lib/errors.js';
 import { prisma } from '../../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../../production-schedule/constants.js';
+import { isUnassignedProductionSeiban } from '../../../production-schedule/row-resolver/constants.js';
 import { resolveProductionSchedulePlannedQuantity } from '../../../production-schedule/self-inspection-schedule-eligibility.js';
 import { resolveSeibanMachineDisplayNamesBatched } from '../../../production-schedule/seiban-machine-display-names.service.js';
 import { normalizeSeibanMachineNameForPersistence } from '../../../production-schedule/seiban-machine-name-state.js';
@@ -89,7 +90,7 @@ export async function resolveOrCreateSelfInspectionSession(
     where: {
       csvDashboardRowId: scheduleRowId,
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      productNo
+      ...(isUnassignedProductionSeiban(fseiban) ? { productNo } : {})
     },
     select: { plannedQuantity: true }
   });

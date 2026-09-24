@@ -381,7 +381,8 @@ async function readAggregatedLoadSummary(params: {
       LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
         ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
         AND "supplement"."csvDashboardId" = ${params.dashboardId}
-        AND "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo')
+        AND (BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) <> '********'
+          OR "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo'))
       WHERE ${params.leaderboardMaterializedBaseWhere}
         AND NOT (
           COALESCE("p"."isCompleted", FALSE)
@@ -561,7 +562,8 @@ export async function readGrindingPlanningBoardLoadSummary(
       LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
         ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
         AND "supplement"."csvDashboardId" = ${dashboardId}
-        AND "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo')
+        AND (BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) <> '********'
+          OR "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo'))
       ${splitJoin}
       WHERE ${where}
         AND NOT (
