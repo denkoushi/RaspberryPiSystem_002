@@ -9,6 +9,8 @@ export type InspectionDrawingCreateMetadataRowProps = {
   lineageLocked: boolean;
   fhincd: string;
   onFhincdChange: (value: string) => void;
+  fkojun: string;
+  onFkojunChange: (value: string) => void;
   resourceCd: string;
   onResourceCdChange: (value: string) => void;
   resourceCds?: string[];

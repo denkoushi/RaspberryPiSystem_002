@@ -41,6 +41,7 @@ export function registerProductionTemplateCreateRoutes(app: FastifyInstance, dep
         fhincd: body.fhincd,
         processGroup,
         resourceCd: body.resourceCd,
+        fkojun: body.fkojun,
         name: body.name,
         items: body.items,
         visualTemplateId: body.visualTemplateId ?? null,

@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Dialog } from '../../components/ui/Dialog';
 import {
@@ -16,13 +17,15 @@ export type SelfInspectionWorkflowTarget = {
   machineName: string | null;
   selfInspectionTemplateId: string | null;
   selfInspectionEntryPath: string | null;
+  selfInspectionResourceCds?: string[];
+  selfInspectionResourceCd?: string | null;
 };
 
 type Props = {
   target: SelfInspectionWorkflowTarget | null;
   onClose: () => void;
-  onOpenDigitalInput: (target: SelfInspectionWorkflowTarget) => void;
-  onOpenPaperPrint: (target: SelfInspectionWorkflowTarget) => void;
+  onOpenDigitalInput: (target: SelfInspectionWorkflowTarget, resourceCd: string) => void;
+  onOpenPaperPrint: (target: SelfInspectionWorkflowTarget, resourceCd: string) => void;
 };
 
 export function SelfInspectionWorkflowModal({
@@ -31,8 +34,27 @@ export function SelfInspectionWorkflowModal({
   onOpenDigitalInput,
   onOpenPaperPrint
 }: Props) {
-  const canOpenDigitalInput = Boolean(target?.selfInspectionEntryPath?.trim());
-  const canOpenPaperPrint = Boolean(target?.selfInspectionTemplateId?.trim());
+  const resourceOptions = useMemo(() => {
+    if (!target) return [];
+    const options = [...new Set((target.selfInspectionResourceCds ?? []).map((cd) => cd.trim()).filter(Boolean))];
+    if (target.selfInspectionResourceCd?.trim() && !options.includes(target.selfInspectionResourceCd.trim())) {
+      options.push(target.selfInspectionResourceCd.trim());
+    }
+    if (options.length === 0 && target.resourceCd.trim()) options.push(target.resourceCd.trim());
+    return options;
+  }, [target]);
+  const savedResourceCd = target?.selfInspectionResourceCd?.trim() ?? '';
+  const [selectedResourceCd, setSelectedResourceCd] = useState('');
+  useEffect(() => {
+    setSelectedResourceCd((current) => {
+      if (savedResourceCd) return savedResourceCd;
+      if (current && resourceOptions.includes(current)) return current;
+      return resourceOptions.length === 1 ? resourceOptions[0] : '';
+    });
+  }, [resourceOptions, savedResourceCd, target?.scheduleRowId]);
+  const selectedResourceIsValid = resourceOptions.includes(selectedResourceCd);
+  const canOpenDigitalInput = Boolean(target?.selfInspectionEntryPath?.trim()) && selectedResourceIsValid;
+  const canOpenPaperPrint = Boolean(target?.selfInspectionTemplateId?.trim()) && selectedResourceIsValid;
 
   return (
     <Dialog
@@ -57,6 +79,21 @@ export function SelfInspectionWorkflowModal({
               <span className="shrink-0 font-semibold text-white/55">資源</span>
               <span className="font-mono font-bold text-white">{target.resourceCd.trim() || '—'}</span>
             </div>
+            {resourceOptions.length > 1 || savedResourceCd ? (
+              <label className="flex min-w-0 items-center gap-2">
+                <span className="shrink-0 font-semibold text-white/55">検査資源</span>
+                <select
+                  value={selectedResourceCd}
+                  disabled={Boolean(savedResourceCd)}
+                  onChange={(event) => setSelectedResourceCd(event.target.value)}
+                  className="min-h-9 min-w-0 flex-1 rounded border border-white/20 bg-slate-800 px-2 font-mono font-bold text-white disabled:opacity-70"
+                >
+                  {resourceOptions.length > 1 && !savedResourceCd ? <option value="">資源を選択</option> : null}
+                  {resourceOptions.map((resourceCd) => <option key={resourceCd} value={resourceCd}>{resourceCd}</option>)}
+                </select>
+                {savedResourceCd ? <span className="shrink-0 text-white/50">記録済み</span> : null}
+              </label>
+            ) : null}
             <div className="flex min-w-0 gap-2">
               <span className="shrink-0 font-semibold text-white/55">部品</span>
               <span className="min-w-0 truncate font-semibold text-white">
@@ -76,7 +113,7 @@ export function SelfInspectionWorkflowModal({
             <button
               type="button"
               disabled={!canOpenDigitalInput}
-              onClick={() => onOpenDigitalInput(target)}
+              onClick={() => onOpenDigitalInput(target, selectedResourceCd)}
               className={clsx(
                 'rounded-md px-4 py-3 text-left text-sm font-semibold transition-colors',
                 canOpenDigitalInput
@@ -89,7 +126,7 @@ export function SelfInspectionWorkflowModal({
             <button
               type="button"
               disabled={!canOpenPaperPrint}
-              onClick={() => onOpenPaperPrint(target)}
+              onClick={() => onOpenPaperPrint(target, selectedResourceCd)}
               className={clsx(
                 'rounded-md px-4 py-3 text-left text-sm font-semibold transition-colors',
                 canOpenPaperPrint

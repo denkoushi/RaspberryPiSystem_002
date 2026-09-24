@@ -1,0 +1,9 @@
+- Title: `ADR-YYYYMMDD: <decision>`
+- Status: proposed/accepted/superseded
+- Context: problem, constraints
+- Decision: chosen approach
+- Alternatives: options considered
+- Consequences: benefits, costs, risks
+- Validation: how the decision is checked
+- Supersedes / Superseded By
+- References: 関連リンク

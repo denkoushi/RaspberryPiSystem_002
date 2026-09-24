@@ -1805,6 +1805,7 @@
 | [ADR-20260211-production-schedule-expression-indexes.md](./decisions/ADR-20260211-production-schedule-expression-indexes.md) | 生産スケジュールパフォーマンス最適化のための式インデックス追加 |
 | [ADR-20260228-ibus-kiosk-multilayer-suppression.md](./decisions/ADR-20260228-ibus-kiosk-multilayer-suppression.md) | IBus UI 再発を防ぐ多層抑止とモジュール分離 |
 | [ADR-20260705-dgx-spark-gb10-inference-performance-parameters.md](./decisions/ADR-20260705-dgx-spark-gb10-inference-performance-parameters.md) | DGX Spark GB10 推論性能パラメータ（Marlin/KV f16/chunked prefill無効） |
+| [ADR-20260924-ai-agent-rules-context-slimming.md](./decisions/ADR-20260924-ai-agent-rules-context-slimming.md) | AI向け常時ルールの削減と正本一本化 |
 
 ### モジュール仕様（modules/）
 

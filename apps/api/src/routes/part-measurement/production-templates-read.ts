@@ -35,6 +35,7 @@ export function registerProductionTemplateReadRoutes(app: FastifyInstance, deps:
         fhincd: q.fhincd,
         processGroup,
         resourceCd: q.resourceCd,
+        fkojun: q.fkojun,
         fhinmei: q.fhinmei,
         q: q.q
       });
@@ -54,7 +55,8 @@ export function registerProductionTemplateReadRoutes(app: FastifyInstance, deps:
       const exists = await templateService.existsActiveProductionThreeKeyTemplate(
         q.fhincd,
         processGroup,
-        q.resourceCd
+        q.resourceCd,
+        q.fkojun
       );
       return { exists };
     });
@@ -67,6 +69,7 @@ export function registerProductionTemplateReadRoutes(app: FastifyInstance, deps:
         fhincd: q.fhincd,
         processGroup,
         resourceCd: q.resourceCd,
+        fkojun: q.fkojun,
         includeInactive: q.includeInactive === true
       });
       return { templates: list.map((t) => serializeTemplate({ ...t, items: t.items })) };

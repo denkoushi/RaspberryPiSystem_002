@@ -1,23 +1,23 @@
 {
   "artifacts": {
-    "manual.html": "765d7a89bba9b454c2687ff304258d023fe022c4991f614a8f131885a8b2ef18",
-    "screens/edit-advanced-point.png": "0434398ea8b51bbe1a843886da4118bd120bdf52911790fb98bb2f0af06435ad",
-    "screens/edit-basics.png": "cc2eaec92be1ba1e7763709480ac44d75c748523402a0735354165eaa4aa4e3f",
-    "screens/edit-group-history.png": "9cea9accdac4d3e1e0cbd3c977832a7526bb7c423be941435332449a9104b351",
-    "screens/edit-point-management.png": "cc2eaec92be1ba1e7763709480ac44d75c748523402a0735354165eaa4aa4e3f",
-    "screens/edit-required-point.png": "cc2eaec92be1ba1e7763709480ac44d75c748523402a0735354165eaa4aa4e3f",
-    "screens/edit-trial-report.png": "cc2eaec92be1ba1e7763709480ac44d75c748523402a0735354165eaa4aa4e3f",
-    "screens/edit-visual-source.png": "fa3d4b62b981752bcdf4f878bee472ef35718331d2d0c76446de2de9f31503b5",
+    "manual.html": "64fd05f1a4c2562a6d369c6ce850fbacede81a3be39604d3bdf0c1d99659ed45",
+    "screens/edit-advanced-point.png": "7d563d06bee3f0c3d92e37f2b856d184ae3c02b8e289b19f0925b08e100877b4",
+    "screens/edit-basics.png": "b595f3a98e44eb9a779dde9483b46823262a0ba092c77528adaff7ce891ba7ec",
+    "screens/edit-group-history.png": "a7c5ca7b2a1bf9a03b85bf0174e090c502c1809152b4b0686ad9bb879a38f788",
+    "screens/edit-point-management.png": "b595f3a98e44eb9a779dde9483b46823262a0ba092c77528adaff7ce891ba7ec",
+    "screens/edit-required-point.png": "b595f3a98e44eb9a779dde9483b46823262a0ba092c77528adaff7ce891ba7ec",
+    "screens/edit-trial-report.png": "b595f3a98e44eb9a779dde9483b46823262a0ba092c77528adaff7ce891ba7ec",
+    "screens/edit-visual-source.png": "848fbbd8c8d716f095fa76f104579cda676ab98be03437ce8542a4501046ce3e",
     "screens/library-entry-search.png": "b3d87f3f2688d514e026135e746e60c2f2cc774800ca410d166b684e1d69154f",
     "screens/library-template-management.png": "b3d87f3f2688d514e026135e746e60c2f2cc774800ca410d166b684e1d69154f",
     "screens/library-visual-management.png": "07c349d26c4a8e280a78418e49888b37a654c8cd2daf12b84b2a45715f92d7a8",
-    "sheets/edit-advanced-point.png": "2e772ed17bef232582c46c7880645458499d02ecb0dff35b33c1cfe3e41ed080",
-    "sheets/edit-basics.png": "45810904c92e092ec741055d308d6b697ea86100203b652829b6e98bcda37688",
-    "sheets/edit-group-history.png": "6fcd990d61849bf18387ae92ec866f3a77e7e0bed3b0b4585e6b3d6e96335761",
-    "sheets/edit-point-management.png": "af8cdcaff974d621e764193a5e249929998b21e0d279a0241d1af76efc63d4b7",
-    "sheets/edit-required-point.png": "95a78e431d982bec1a98586a7d7fe49a4d335fee1d7f747bf91ffc060dba9a22",
-    "sheets/edit-trial-report.png": "72cca4f55bb6ff5d7c3563fef5aabaacfa0efcfc9ce2446b2387d30f74c2924a",
-    "sheets/edit-visual-source.png": "12f49bb028716e01a95519c63e0ad625d2dbbd37b3b2e34c0562ab3b4f0e4f12",
+    "sheets/edit-advanced-point.png": "625b38209ce7232a0a3e34e604600918d82a292ee7396f5c21143fe26fb64a9c",
+    "sheets/edit-basics.png": "37fe50c1bff401c5f3a8ee241d77197b9ae4c53db7cda975f3355d20a580692d",
+    "sheets/edit-group-history.png": "cb3bd1a8b0453d8821ae74ae1fe0b1df1f821deacc50505cc87e293417972229",
+    "sheets/edit-point-management.png": "3d773edbdf483a40ff903908bbd672d6946ad2f124a86aea9ea14ae66265b906",
+    "sheets/edit-required-point.png": "de5efb77d5095f0882a4e09f0fd7e5a38399b2c7a54f3069443f3d332f38428c",
+    "sheets/edit-trial-report.png": "3981eb3d28ead9bda1aa1dff8de9fe29701ef4fa2580c1b7c62e7b54501961ad",
+    "sheets/edit-visual-source.png": "39c09d9ec9d7a0b92b69d67d7ace31e505215edf2043a131a1270450ceb8ef14",
     "sheets/library-entry-search.png": "c10c2671be7ed89c37cc1b1cd559e570ccca82138fbebe2c95515f0a29fd499e",
     "sheets/library-template-management.png": "52a9f7bcfe872a75e4ce55917a7eea33a6cad40db14440cd1753872f657ba7b0",
     "sheets/library-visual-management.png": "fb1fbcb14e389052d4527e080eac4c70475d607e9977f009f096c7aca2d28d06"
@@ -91,10 +91,10 @@
           "ariaLabel": null,
           "role": null,
           "tagName": "dl",
-          "text": "品番 PART-9000 資源 R001（旋盤1号） 工程 切削 研削 テンプレ 検査数 全数 抜き取り1個 最初と最後 指定数 指定数"
+          "text": "品番 PART-9000 工順 (FKOJUN) 資源 R001（旋盤1号） 工程 切削 研削 テンプレ 検査数 全数 抜き取り1個 最初と最後 指定数 指定数"
         },
         "target": {
-          "x": 0.7645975748697916,
+          "x": 0.9543965657552084,
           "y": 0.0798611111111111
         },
         "targetId": "template-metadata"
@@ -108,8 +108,8 @@
           "text": "既存: 図面71-A61"
         },
         "target": {
-          "x": 0.9316609700520834,
-          "y": 0.0798611111111111
+          "x": 0.18073527018229166,
+          "y": 0.13541666666666666
         },
         "targetId": "open-visual-source"
       },
@@ -122,7 +122,7 @@
           "text": "検査数 全数 抜き取り1個 最初と最後 指定数"
         },
         "target": {
-          "x": 0.61279296875,
+          "x": 0.8025919596354166,
           "y": 0.0798611111111111
         },
         "targetId": "self-inspection-setting"
@@ -136,7 +136,7 @@
           "text": "保存"
         },
         "target": {
-          "x": 0.138671875,
+          "x": 0.3057352701822917,
           "y": 0.13310185185185186
         },
         "targetId": "save-revision"
@@ -368,7 +368,7 @@
           "text": "テスト入力"
         },
         "target": {
-          "x": 0.3575541178385417,
+          "x": 0.5246175130208334,
           "y": 0.13310185185185186
         },
         "targetId": "test-input"
@@ -382,7 +382,7 @@
           "text": "ガイド試行"
         },
         "target": {
-          "x": 0.4364115397135417,
+          "x": 0.6034749348958334,
           "y": 0.13310185185185186
         },
         "targetId": "guided-trial"
@@ -396,7 +396,7 @@
           "text": "− ＋ □"
         },
         "target": {
-          "x": 0.091796875,
+          "x": 0.2588602701822917,
           "y": 0.13078703703703703
         },
         "targetId": "zoom-drawing"
@@ -410,7 +410,7 @@
           "text": "保存済み帳票"
         },
         "target": {
-          "x": 0.2786966959635417,
+          "x": 0.4457600911458333,
           "y": 0.13541666666666666
         },
         "targetId": "saved-report"
@@ -424,7 +424,7 @@
           "text": "一覧へ戻る"
         },
         "target": {
-          "x": 0.5582377115885416,
+          "x": 0.7253011067708334,
           "y": 0.13541666666666666
         },
         "targetId": "return-library"
@@ -663,7 +663,7 @@
       }
     ]
   },
-  "htmlSha256": "765d7a89bba9b454c2687ff304258d023fe022c4991f614a8f131885a8b2ef18",
+  "htmlSha256": "64fd05f1a4c2562a6d369c6ce850fbacede81a3be39604d3bdf0c1d99659ed45",
   "schemaVersion": 1,
-  "sourceSha256": "77bfbb749f120a35ebcb4d7d571bd6cb130faf73716f2a3e04d6cb9993e0d682"
+  "sourceSha256": "1643e362dcb7c1af31a440233beab58ca234e023d1054a628b00af288894c05d"
 }

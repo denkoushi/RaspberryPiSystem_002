@@ -33,7 +33,8 @@ export {
 
 const CREATE_MANY_CHUNK_SIZE = 200;
 const PROCESS_CHANGE_RESIDUAL_EVIDENCE_CREATE_MANY_CHUNK_SIZE = 200;
-const REPLACEMENT_TX_TIMEOUT_MS = 60_000;
+// Pi5で約8万行の世代確認と全件置換が60秒を超えるため、同一原子処理の上限を確保する。
+const REPLACEMENT_TX_TIMEOUT_MS = 300_000;
 const REPLACEMENT_TX_MAX_WAIT_MS = 15_000;
 
 const ALLOWED_STATUS = new Set(['C', 'P', 'S', 'R', 'X', 'O']);

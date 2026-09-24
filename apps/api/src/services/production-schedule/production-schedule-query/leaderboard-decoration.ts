@@ -75,7 +75,9 @@ export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(param
       hasSelfInspectionDrawing: selfInspectionById.get(r.id)?.hasSelfInspectionDrawing ?? false,
       selfInspectionTemplateId: selfInspectionById.get(r.id)?.selfInspectionTemplateId ?? null,
       selfInspectionStatus: selfInspectionById.get(r.id)?.selfInspectionStatus ?? null,
-      selfInspectionEntryPath: selfInspectionById.get(r.id)?.selfInspectionEntryPath ?? null
+      selfInspectionEntryPath: selfInspectionById.get(r.id)?.selfInspectionEntryPath ?? null,
+      selfInspectionResourceCds: selfInspectionById.get(r.id)?.selfInspectionResourceCds ?? [],
+      selfInspectionResourceCd: selfInspectionById.get(r.id)?.selfInspectionResourceCd ?? null
     })),
     leaderboardFooterChipsByPartKey: leaderboardFooterChipsByPartKey ?? {}
   };
@@ -131,6 +133,8 @@ export type ProductionScheduleLeaderboardDecorationPayload = {
     selfInspectionTemplateId: string | null;
     selfInspectionStatus: ProductionScheduleSelfInspectionStatus | null;
     selfInspectionEntryPath: string | null;
+    selfInspectionResourceCds: string[];
+    selfInspectionResourceCd: string | null;
   }>;
   leaderboardFooterChipsByPartKey: Record<string, LeaderboardPartFooterProcessItem[]>;
 };
@@ -184,7 +188,9 @@ export async function enrichLeaderboardListRowsAndFooter(params: {
       hasSelfInspectionDrawing: decoration?.hasSelfInspectionDrawing ?? false,
       selfInspectionTemplateId: decoration?.selfInspectionTemplateId ?? null,
       selfInspectionStatus: decoration?.selfInspectionStatus ?? null,
-      selfInspectionEntryPath: decoration?.selfInspectionEntryPath ?? null
+      selfInspectionEntryPath: decoration?.selfInspectionEntryPath ?? null,
+      selfInspectionResourceCds: decoration?.selfInspectionResourceCds ?? [],
+      selfInspectionResourceCd: decoration?.selfInspectionResourceCd ?? null
     };
   });
 

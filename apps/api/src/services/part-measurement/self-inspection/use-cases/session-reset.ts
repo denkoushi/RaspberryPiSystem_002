@@ -54,7 +54,10 @@ export async function resetSelfInspectionSession(
   const result = await prisma.$transaction(async (tx) => {
     await lockSelfInspectionItemBusinessKey(tx, session.sessionBusinessKey);
     await lockSessionRow(tx, sessionId);
-    const lockedSession = await tx.selfInspectionSession.findUnique({ where: { id: sessionId } });
+    const lockedSession = await tx.selfInspectionSession.findUnique({
+      where: { id: sessionId },
+      include: { template: { select: { fkojun: true } } }
+    });
     if (!lockedSession) throw new ApiError(404, '自主検査セッションが見つかりません');
     assertSelfInspectionSessionActive(lockedSession);
 
@@ -66,12 +69,19 @@ export async function resetSelfInspectionSession(
 
     const scheduleRowId = normalizeText(lockedSession.scheduleRowId);
     if (!scheduleRowId) throw new ApiError(400, '日程行IDがないためリセットできません');
-    await verifyProductionScheduleRowOrThrow(scheduleRowId, {
+    const scheduleRowData = await verifyProductionScheduleRowOrThrow(scheduleRowId, {
       productNo: lockedSession.productNo,
       fseiban: normalizeText(lockedSession.fseiban) || undefined,
       fhincd: lockedSession.fhincd,
-      resourceCd: lockedSession.resourceCd
+      resourceCd: lockedSession.scheduleResourceCd || lockedSession.resourceCd
     });
+    const scheduleFkojun = normalizeText(String(scheduleRowData.FKOJUN ?? ''));
+    if (
+      normalizeText(lockedSession.template.fkojun) &&
+      normalizeText(lockedSession.template.fkojun) !== scheduleFkojun
+    ) {
+      throw new ApiError(400, '自主検査テンプレートの工順が日程行と一致しません');
+    }
 
     const supplement = await tx.productionScheduleOrderSupplement.findFirst({
       where: {
@@ -93,6 +103,9 @@ export async function resetSelfInspectionSession(
         fhincd: lockedSession.fhincd.trim(),
         processGroup: lockedSession.processGroup,
         resourceCd: lockedSession.resourceCd,
+        OR: normalizeText(lockedSession.template.fkojun)
+          ? [{ fkojun: normalizeText(lockedSession.template.fkojun) }]
+          : [{ fkojun: '' }, { fkojun: null }],
         isActive: true,
         templateScope: 'THREE_KEY'
       },
@@ -122,7 +135,7 @@ export async function resetSelfInspectionSession(
     const sessionBusinessKey = buildSessionBusinessKey({
       productNo: restartPayload.productNo,
       processGroup: restartPayload.processGroup,
-      resourceCd: restartPayload.resourceCd,
+      resourceCd: restartPayload.scheduleResourceCd,
       scheduleRowId: restartPayload.scheduleRowId
     });
     const newSession = await tx.selfInspectionSession.create({
@@ -131,6 +144,7 @@ export async function resetSelfInspectionSession(
         templateId: restartPayload.templateId,
         productNo: restartPayload.productNo,
         processGroup: restartPayload.processGroup,
+        scheduleResourceCd: restartPayload.scheduleResourceCd,
         resourceCd: restartPayload.resourceCd,
         scheduleRowId: restartPayload.scheduleRowId,
         fseiban: restartPayload.fseiban,

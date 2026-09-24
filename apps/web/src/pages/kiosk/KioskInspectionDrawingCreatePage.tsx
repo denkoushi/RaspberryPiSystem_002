@@ -131,6 +131,7 @@ export function KioskInspectionDrawingCreatePage() {
 
   const [processGroup, setProcessGroup] = useState<PartMeasurementProcessGroup>('cutting');
   const [fhincd, setFhincd] = useState('');
+  const [fkojun, setFkojun] = useState('');
   const [resourceCd, setResourceCd] = useState('');
   const [resourceCds, setResourceCds] = useState<string[]>([]);
   const [templateName, setTemplateName] = useState('');
@@ -226,6 +227,7 @@ export function KioskInspectionDrawingCreatePage() {
     return resolveInspectionDrawingCreateKeyCollisionForResources({
       fhincd: f,
       processGroup,
+      fkojun,
       resourceCds: selectedResourceCds,
       sourceDraft: sourceTemplateDraft,
       activeExistsByResourceCd: activeKeyExistsByResourceCd
@@ -233,6 +235,7 @@ export function KioskInspectionDrawingCreatePage() {
   }, [
     activeKeyExistsByResourceCd,
     fhincd,
+    fkojun,
     isEditing,
     processGroup,
     selectedResourceCds,
@@ -398,6 +401,7 @@ export function KioskInspectionDrawingCreatePage() {
         templateName: effectiveTemplateName,
         fhincd,
         resourceCds: selectedResourceCds,
+        fkojun,
         processGroup,
         visualSource,
         visualTemplateId: snapshotVisualTemplateId,
@@ -410,6 +414,7 @@ export function KioskInspectionDrawingCreatePage() {
     [
       effectiveTemplateName,
       fhincd,
+      fkojun,
       groupSaveMode,
       hasPendingLocalSelection,
       points,
@@ -425,6 +430,7 @@ export function KioskInspectionDrawingCreatePage() {
   const hasNewDraftContent =
     effectiveTemplateName.trim().length > 0 ||
     fhincd.trim().length > 0 ||
+    fkojun.trim().length > 0 ||
     selectedResourceCds.length > 0 ||
     points.length > 0 ||
     Boolean(snapshotVisualTemplateId) ||
@@ -483,6 +489,7 @@ export function KioskInspectionDrawingCreatePage() {
       setTemplateName(loaded.name);
       setTemplateNameAutoMode(false);
       setFhincd(loaded.fhincd);
+      setFkojun(loaded.fkojun ?? '');
       setResourceCd(loaded.resourceCd);
       setResourceCds([loaded.resourceCd]);
       setGroupSaveMode(loaded.siblingGroupId ? 'group' : 'single');
@@ -508,6 +515,7 @@ export function KioskInspectionDrawingCreatePage() {
           templateName: loaded.name,
           fhincd: loaded.fhincd,
           resourceCds: [loaded.resourceCd],
+          fkojun: loaded.fkojun,
           processGroup: loadedProcessGroup,
           visualSource: loaded.visualTemplateId?.trim() ? 'pickExisting' : 'unselected',
           visualTemplateId: loaded.visualTemplateId?.trim() ? loaded.visualTemplateId : null,
@@ -528,6 +536,7 @@ export function KioskInspectionDrawingCreatePage() {
     setTemplateName('');
     setTemplateNameAutoMode(true);
     setFhincd('');
+    setFkojun('');
     setResourceCd('');
     setResourceCds([]);
     setGroupSaveMode('single');
@@ -552,6 +561,7 @@ export function KioskInspectionDrawingCreatePage() {
       setTemplateNameAutoMode(true);
       setTemplateName('');
       setFhincd(draft.fhincd);
+      setFkojun(draft.fkojun ?? '');
       setResourceCd(draft.resourceCd);
       setResourceCds([draft.resourceCd]);
       setProcessGroup(draft.processGroup);
@@ -804,7 +814,7 @@ export function KioskInspectionDrawingCreatePage() {
           const entries = await Promise.all(
             selectedResourceCds.map(async (selectedResourceCd) => {
               const exists = await existsActivePartMeasurementTemplate(
-                { fhincd: f, processGroup, resourceCd: selectedResourceCd },
+                { fhincd: f, processGroup, resourceCd: selectedResourceCd, fkojun },
                 clientKey
               );
               return [selectedResourceCd, exists] as const;
@@ -823,7 +833,7 @@ export function KioskInspectionDrawingCreatePage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [clientKey, fhincd, isEditing, processGroup, selectedResourceCds]);
+  }, [clientKey, fhincd, fkojun, isEditing, processGroup, selectedResourceCds]);
 
   useEffect(() => {
     resetZoom();
@@ -1203,6 +1213,7 @@ export function KioskInspectionDrawingCreatePage() {
             fhincd: f,
             resourceCds: targetResourceCds,
             processGroup,
+            fkojun: fkojun.trim(),
             name,
             displayName: name,
             visualTemplateId,
@@ -1230,6 +1241,7 @@ export function KioskInspectionDrawingCreatePage() {
             fhincd: f,
             resourceCd: targetResourceCds[0]!,
             processGroup,
+            fkojun: fkojun.trim(),
             name,
             visualTemplateId,
             selfInspectionMode: selfInspectionPayload.selfInspectionMode,
@@ -1318,6 +1330,8 @@ export function KioskInspectionDrawingCreatePage() {
           lineageLocked,
           fhincd,
           onFhincdChange: setFhincd,
+          fkojun,
+          onFkojunChange: setFkojun,
           resourceCd,
           onResourceCdChange: setResourceCd,
           resourceCds: lineageLocked ? undefined : resourceCds,

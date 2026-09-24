@@ -58,6 +58,7 @@ export async function findOrOpenPartMeasurementSheet(
     productNo: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
+    fkojun?: string;
     scheduleRowId?: string | null;
     fseiban?: string | null;
     fhincd?: string | null;
@@ -262,6 +263,7 @@ export async function listPartMeasurementTemplates(
     fhincd?: string;
     processGroup?: PartMeasurementProcessGroup;
     resourceCd?: string;
+    fkojun?: string;
     includeInactive?: boolean;
   },
   clientKey?: string
@@ -279,6 +281,7 @@ export async function existsActivePartMeasurementTemplate(
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
+    fkojun?: string;
   },
   clientKey?: string
 ): Promise<boolean> {
@@ -295,6 +298,7 @@ export async function listKioskInspectionDrawingTemplates(
     fhincd?: string;
     processGroup?: PartMeasurementProcessGroup;
     resourceCd?: string;
+    fkojun?: string;
     includeInactive?: boolean;
     visualName?: string;
     digitQuery?: string;
@@ -1033,6 +1037,7 @@ export async function createKioskInspectionDrawingTemplateGroup(
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCds: string[];
+    fkojun?: string;
     name: string;
     displayName?: string | null;
     visualTemplateId: string;
@@ -1123,6 +1128,7 @@ export async function listPartMeasurementTemplateCandidates(
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
+    fkojun?: string;
     fhinmei?: string;
     q?: string;
   },
@@ -1145,6 +1151,7 @@ export async function clonePartMeasurementTemplateForScheduleKey(
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
+    fkojun?: string;
   },
   clientKey?: string
 ): Promise<PartMeasurementTemplateDto> {
@@ -1322,6 +1329,7 @@ export async function createPartMeasurementTemplate(
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
+    fkojun?: string;
     name: string;
     visualTemplateId?: string | null;
     candidateFhinmei?: string | null;

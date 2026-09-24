@@ -47,6 +47,7 @@ export function KioskPartMeasurementTemplatePickPage() {
       fhincd: ctx.fhincd,
       processGroup: ctx.processGroup,
       resourceCd: ctx.resourceCd,
+      fkojun: ctx.fkojun == null ? '' : String(ctx.fkojun),
       fhinmei: ctx.fhinmei,
       q: filterQ.trim() || undefined
     };
@@ -73,6 +74,7 @@ export function KioskPartMeasurementTemplatePickPage() {
       state: {
         fhincd: ctx.fhincd,
         resourceCd: ctx.resourceCd,
+        fkojun: ctx.fkojun == null ? '' : String(ctx.fkojun),
         processGroup: ctx.processGroup,
         fhinmei: ctx.fhinmei
       }
@@ -91,7 +93,8 @@ export function KioskPartMeasurementTemplatePickPage() {
             sourceTemplateId: c.template.id,
             fhincd: ctx.fhincd,
             processGroup: ctx.processGroup,
-            resourceCd: ctx.resourceCd
+            resourceCd: ctx.resourceCd,
+            fkojun: ctx.fkojun == null ? '' : String(ctx.fkojun)
           },
           clientKey
         );

@@ -65,6 +65,14 @@ type TargetSnapshot = {
 };
 
 const sessionLifecycleInclude = {
+  template: {
+    select: {
+      siblingGroupId: true,
+      fhincd: true,
+      processGroup: true,
+      fkojun: true
+    }
+  },
   entries: {
     select: {
       id: true,
@@ -371,7 +379,7 @@ export class SelfInspectionItemLifecycleService {
       if (locked.invalidatedAt) {
         throw conflict('この自主検査アイテムは既に削除済みです');
       }
-      this.assertSessionMatchesTarget(locked, target);
+      await this.assertSessionMatchesTarget(tx, locked, target);
       return {
         itemBusinessKey: locked.sessionBusinessKey,
         sessionId: locked.id,
@@ -397,20 +405,11 @@ export class SelfInspectionItemLifecycleService {
     return this.resolveUnstartedScheduleSnapshot(tx, target, seed.itemBusinessKey);
   }
 
-  private assertSessionMatchesTarget(
-    session: {
-      id: string;
-      productNo: string;
-      processGroup: PartMeasurementProcessGroup;
-      resourceCd: string;
-      scheduleRowId: string | null;
-      fseiban: string | null;
-      fhincd: string;
-      fhinmei: string;
-      templateId: string;
-    },
+  private async assertSessionMatchesTarget(
+    tx: Prisma.TransactionClient,
+    session: Prisma.SelfInspectionSessionGetPayload<{ include: typeof sessionLifecycleInclude }>,
     target: SelfInspectionInvalidationTarget
-  ): void {
+  ): Promise<void> {
     if (target.kind === 'session') {
       if (session.id !== target.sessionId) {
         throw conflict('削除対象の自主検査セッションが更新されています');
@@ -418,16 +417,42 @@ export class SelfInspectionItemLifecycleService {
       return;
     }
     assertSame(session.productNo, target.productNo, '製造order');
-    assertSame(session.resourceCd, target.resourceCd, '資源CD');
+    assertSame(session.scheduleResourceCd || session.resourceCd, target.resourceCd, '資源CD');
     assertSame(session.fseiban ?? '', target.fseiban, '製番');
     assertSame(session.fhincd, target.fhincd, '品番');
     assertSame(session.fhinmei, target.fhinmei, '品名');
     if (
       session.processGroup !== target.processGroup ||
-      normalizeText(session.scheduleRowId) !== normalizeText(target.scheduleRowId) ||
-      session.templateId !== target.templateId
+      normalizeText(session.scheduleRowId) !== normalizeText(target.scheduleRowId)
     ) {
       throw new ApiError(400, '削除対象の自主検査情報が現在のセッションと一致しません');
+    }
+
+    if (session.templateId !== target.templateId) {
+      const scheduleTemplate = await tx.partMeasurementTemplate.findUnique({
+        where: { id: target.templateId },
+        select: {
+          siblingGroupId: true,
+          fhincd: true,
+          processGroup: true,
+          fkojun: true,
+          resourceCd: true,
+          templateScope: true
+        }
+      });
+      if (
+        !scheduleTemplate ||
+        scheduleTemplate.templateScope !== 'THREE_KEY' ||
+        scheduleTemplate.resourceCd !== normalizeText(target.resourceCd) ||
+        !scheduleTemplate.siblingGroupId ||
+        scheduleTemplate.siblingGroupId !== session.template.siblingGroupId ||
+        normalizeText(scheduleTemplate.fhincd).toLowerCase() !==
+          normalizeText(session.template.fhincd).toLowerCase() ||
+        scheduleTemplate.processGroup !== session.template.processGroup ||
+        normalizeText(scheduleTemplate.fkojun) !== normalizeText(session.template.fkojun)
+      ) {
+        throw new ApiError(400, '削除対象の自主検査情報が現在のセッションと一致しません');
+      }
     }
   }
 

@@ -80,16 +80,41 @@ export class SelfInspectionPaperReportIssueService {
     if (fhincd !== normalizeText(template.fhincd)) {
       throw new ApiError(400, '品番がテンプレートと一致しません');
     }
-    if (resourceCd !== normalizeText(template.resourceCd)) {
-      throw new ApiError(400, '資源CDがテンプレートと一致しません');
-    }
-
-    await verifyProductionScheduleRowOrThrow(scheduleRowId, {
+    const scheduleRowData = await verifyProductionScheduleRowOrThrow(scheduleRowId, {
       productNo,
       fseiban,
       fhincd,
-      resourceCd
+      resourceCd: template.resourceCd
     });
+    const scheduleFkojun = normalizeText(String(scheduleRowData.FKOJUN ?? ''));
+    if (normalizeText(template.fkojun) && normalizeText(template.fkojun) !== scheduleFkojun) {
+      throw new ApiError(400, '自主検査テンプレートの工順が日程行と一致しません');
+    }
+    let actualResourceTemplate = template;
+    if (resourceCd !== normalizeText(template.resourceCd)) {
+      if (!template.siblingGroupId) {
+        throw new ApiError(400, '選択した資源はこの自主検査テンプレートに登録されていません');
+      }
+      const sibling = await prisma.partMeasurementTemplate.findFirst({
+        where: {
+          siblingGroupId: template.siblingGroupId,
+          fhincd: template.fhincd,
+          processGroup: template.processGroup,
+          OR: normalizeText(template.fkojun)
+            ? [{ fkojun: normalizeText(template.fkojun) }]
+            : [{ fkojun: '' }, { fkojun: null }],
+          resourceCd,
+          isActive: true,
+          templateScope: 'THREE_KEY'
+        },
+        include: partMeasurementTemplateFullInclude
+      });
+      if (!sibling) {
+        throw new ApiError(400, '選択した資源の有効な自主検査テンプレートがありません');
+      }
+      assertTemplateSupportsSelfInspectionPaperReport(sibling);
+      actualResourceTemplate = sibling;
+    }
 
     const supplement = await prisma.productionScheduleOrderSupplement.findFirst({
       where: {
@@ -107,17 +132,17 @@ export class SelfInspectionPaperReportIssueService {
       throw new ApiError(400, `指示数は${SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT}以下である必要があります`);
     }
 
-    const templateConfig = templateConfigFromTemplate(template);
+    const templateConfig = templateConfigFromTemplate(actualResourceTemplate);
     const expectedEntryCount = tryResolveExpectedEntryCount(templateConfig, plannedQuantity);
     if (expectedEntryCount == null) {
       throw new ApiError(409, '自主検査の必要件数を解決できません');
     }
-    const pagePlans = buildSelfInspectionPaperReportPagePlans(template, plannedQuantity);
+    const pagePlans = buildSelfInspectionPaperReportPagePlans(actualResourceTemplate, plannedQuantity);
     const now = new Date();
     const sessionBusinessKey = buildSessionBusinessKey({
       productNo,
       processGroup: template.processGroup,
-      resourceCd,
+      resourceCd: template.resourceCd,
       scheduleRowId
     });
 
@@ -136,9 +161,10 @@ export class SelfInspectionPaperReportIssueService {
         where: { sessionBusinessKey },
         create: {
           sessionBusinessKey,
-          templateId: template.id,
+          templateId: actualResourceTemplate.id,
           productNo,
           processGroup: template.processGroup,
+          scheduleResourceCd: template.resourceCd,
           resourceCd,
           scheduleRowId,
           fseiban,
@@ -159,7 +185,7 @@ export class SelfInspectionPaperReportIssueService {
       if (session.completedAt) {
         throw new ApiError(409, '完了済みの自主検査は紙帳票を再発行できません');
       }
-      if (session.templateId !== template.id) {
+      if (session.templateId !== actualResourceTemplate.id) {
         throw new ApiError(
           409,
           '既存の自主検査セッションのテンプレートと印刷テンプレートが異なります。リセット後に再発行してください。'
@@ -181,12 +207,12 @@ export class SelfInspectionPaperReportIssueService {
         data: {
           sessionId: session.id,
           scheduleRowId,
-          templateId: template.id,
+          templateId: actualResourceTemplate.id,
           status: 'ISSUED',
           issuedAt: now,
           clientDeviceId: input.clientDeviceId ?? null,
           plannedQuantity,
-          templateVersion: template.version
+          templateVersion: actualResourceTemplate.version
         }
       });
 

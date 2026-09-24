@@ -26,6 +26,7 @@ import type {
 type LocationState = {
   fhincd: string;
   resourceCd: string;
+  fkojun?: number | string | null;
   processGroup: PartMeasurementProcessGroup;
   /** 候補1要素登録時の初期値 */
   fhinmei?: string;
@@ -162,6 +163,7 @@ export function KioskPartMeasurementTemplatePage() {
           templateScope,
           fhincd: templateScope === 'fhinmei_only' ? '' : fhincd,
           resourceCd: templateScope === 'fhinmei_only' ? '' : resourceCd,
+          fkojun: templateScope === 'three_key' && fixed.fkojun != null ? String(fixed.fkojun) : '',
           processGroup,
           name: templateName,
           visualTemplateId,

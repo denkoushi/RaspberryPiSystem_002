@@ -2818,11 +2818,13 @@ model PartMeasurementTemplateSiblingGroup {
   displayName  String
   fhincd       String
   processGroup PartMeasurementProcessGroup
+  fkojun       String?
   createdAt    DateTime                    @default(now())
   updatedAt    DateTime                    @updatedAt
   templates    PartMeasurementTemplate[]
 
   @@index([fhincd, processGroup], map: "PartMeasurementTemplateSiblingGroup_idx_key")
+  @@index([fhincd, processGroup, fkojun], map: "PartMeasurementTemplateSiblingGroup_idx_fkojun")
 }
 
 model PartMeasurementTemplate {
@@ -2831,6 +2833,7 @@ model PartMeasurementTemplate {
   templateScope              PartMeasurementTemplateScope         @default(THREE_KEY)
   fhincd                     String
   processGroup               PartMeasurementProcessGroup
+  fkojun                     String?
   /// 資源CD（テンプレート識別キー）。移行前データは __LEGACY__
   resourceCd                 String
   /// FHINMEI_ONLY 候補の照合キー（正規化はAPI側）。THREE_KEY / FHINCD_RESOURCE では null。
@@ -2856,6 +2859,7 @@ model PartMeasurementTemplate {
 
   @@unique([fhincd, processGroup, resourceCd, version], map: "PartMeasurementTemplate_unique_fhincd_group_resource_version")
   @@index([fhincd, processGroup, resourceCd, isActive], map: "PartMeasurementTemplate_idx_lookup")
+  @@index([fhincd, processGroup, resourceCd, fkojun, isActive], map: "PartMeasurementTemplate_idx_fkojun_lookup")
   @@index([templateScope, fhincd, resourceCd, isActive])
   @@index([visualTemplateId])
   @@index([siblingGroupId, isActive], map: "PartMeasurementTemplate_idx_sibling_active")
@@ -3941,6 +3945,7 @@ model SelfInspectionSession {
   templateId                       String
   productNo                        String
   processGroup                     PartMeasurementProcessGroup
+  scheduleResourceCd               String?
   resourceCd                       String
   scheduleRowId                    String?
   fseiban                          String?

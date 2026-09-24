@@ -13,7 +13,9 @@ const DEFAULT_LEADERBOARD_ROW_DECORATION: LeaderboardRowDecoration = {
   hasSelfInspectionDrawing: false,
   selfInspectionTemplateId: null,
   selfInspectionStatus: null,
-  selfInspectionEntryPath: null
+  selfInspectionEntryPath: null,
+  selfInspectionResourceCds: [],
+  selfInspectionResourceCd: null
 };
 
 function normalizeLeaderboardRowDecoration(
@@ -28,7 +30,9 @@ function normalizeLeaderboardRowDecoration(
     hasSelfInspectionDrawing: raw.hasSelfInspectionDrawing === true,
     selfInspectionTemplateId: raw.selfInspectionTemplateId ?? null,
     selfInspectionStatus: raw.selfInspectionStatus ?? null,
-    selfInspectionEntryPath: raw.selfInspectionEntryPath ?? null
+    selfInspectionEntryPath: raw.selfInspectionEntryPath ?? null,
+    selfInspectionResourceCds: raw.selfInspectionResourceCds ?? [],
+    selfInspectionResourceCd: raw.selfInspectionResourceCd ?? null
   };
 }
 
@@ -50,6 +54,8 @@ export type PersistedLeaderboardBoardCacheRecord = {
         selfInspectionTemplateId: string | null;
         selfInspectionStatus: SelfInspectionStatus | null;
         selfInspectionEntryPath: string | null;
+        selfInspectionResourceCds?: string[];
+        selfInspectionResourceCd?: string | null;
       }
     >;
     leaderboardFooterChipsByPartKey: Record<string, unknown>;

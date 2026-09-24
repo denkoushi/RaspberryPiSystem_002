@@ -19,12 +19,14 @@ export type InspectionDrawingSourceTemplateDraft = {
   sourceFhincd: string;
   sourceProcessGroup: PartMeasurementProcessGroup;
   sourceResourceCd: string;
+  sourceFkojun?: string;
 };
 
 export type InspectionDrawingCreateDraftForm = {
   templateName: string;
   fhincd: string;
   resourceCd: string;
+  fkojun?: string;
   processGroup: PartMeasurementProcessGroup;
   points: InspectionDrawingPoint[];
   selfInspectionMode: SelfInspectionMode;
@@ -39,6 +41,7 @@ export type TemplateBusinessKey = {
   fhincd: string;
   processGroup: PartMeasurementProcessGroup;
   resourceCd: string;
+  fkojun?: string;
 };
 
 export type InspectionDrawingCreateKeyCollision =
@@ -79,6 +82,7 @@ export type InspectionDrawingCreateDirtySnapshot = {
   templateName: string;
   fhincd: string;
   resourceCds: string[];
+  fkojun: string;
   processGroup: PartMeasurementProcessGroup;
   visualSource: InspectionDrawingVisualSource;
   visualTemplateId: string | null;
@@ -143,6 +147,7 @@ export function buildInspectionDrawingCreateDirtySnapshot(params: {
   templateName: string;
   fhincd: string;
   resourceCds: string[];
+  fkojun?: string;
   processGroup: PartMeasurementProcessGroup;
   visualSource: InspectionDrawingVisualSource;
   visualTemplateId: string | null | undefined;
@@ -156,6 +161,7 @@ export function buildInspectionDrawingCreateDirtySnapshot(params: {
     templateName: normalizeText(params.templateName),
     fhincd: normalizeFhincdForTemplateKey(params.fhincd),
     resourceCds: normalizeUniqueInspectionDrawingResourceCds(params.resourceCds),
+    fkojun: normalizeText(params.fkojun ?? ''),
     processGroup: params.processGroup,
     visualSource: params.visualSource,
     visualTemplateId: normalizeNullableId(params.visualTemplateId),
@@ -223,7 +229,8 @@ export function normalizeTemplateBusinessKey(key: TemplateBusinessKey): Template
   return {
     fhincd: normalizeFhincdForTemplateKey(key.fhincd),
     processGroup: key.processGroup,
-    resourceCd: key.resourceCd.trim()
+    resourceCd: key.resourceCd.trim(),
+    fkojun: normalizeText(key.fkojun ?? '')
   };
 }
 
@@ -233,7 +240,8 @@ export function templateBusinessKeysEqual(a: TemplateBusinessKey, b: TemplateBus
   return (
     left.fhincd === right.fhincd &&
     left.processGroup === right.processGroup &&
-    left.resourceCd === right.resourceCd
+    left.resourceCd === right.resourceCd &&
+    left.fkojun === right.fkojun
   );
 }
 
@@ -258,6 +266,7 @@ export function templateToCreateDraft(template: PartMeasurementTemplateDto): Ins
     templateName: template.name,
     fhincd: template.fhincd,
     resourceCd: template.resourceCd,
+    fkojun: template.fkojun,
     processGroup,
     points: templateItemsToDraftDrawingPoints(template.items),
     selfInspectionMode: template.selfInspectionMode,
@@ -273,7 +282,8 @@ export function templateToCreateDraft(template: PartMeasurementTemplateDto): Ins
       sourceTemplateId: template.id,
       sourceFhincd: template.fhincd,
       sourceProcessGroup: processGroup,
-      sourceResourceCd: template.resourceCd
+      sourceResourceCd: template.resourceCd,
+      sourceFkojun: template.fkojun
     }
   };
 }
@@ -282,20 +292,23 @@ export function resolveInspectionDrawingCreateKeyCollision(params: {
   fhincd: string;
   processGroup: PartMeasurementProcessGroup;
   resourceCd: string;
+  fkojun?: string;
   sourceDraft: InspectionDrawingSourceTemplateDraft | null;
   activeExists: boolean;
 }): InspectionDrawingCreateKeyCollision | null {
   const key = normalizeTemplateBusinessKey({
     fhincd: params.fhincd,
     processGroup: params.processGroup,
-    resourceCd: params.resourceCd
+    resourceCd: params.resourceCd,
+    fkojun: params.fkojun
   });
 
   if (params.sourceDraft) {
     const sourceKey = normalizeTemplateBusinessKey({
       fhincd: params.sourceDraft.sourceFhincd,
       processGroup: params.sourceDraft.sourceProcessGroup,
-      resourceCd: params.sourceDraft.sourceResourceCd
+      resourceCd: params.sourceDraft.sourceResourceCd,
+      fkojun: params.sourceDraft.sourceFkojun
     });
     if (templateBusinessKeysEqual(key, sourceKey)) {
       return 'same_as_source';
@@ -313,6 +326,7 @@ export function resolveInspectionDrawingCreateKeyCollisionForResources(params: {
   fhincd: string;
   processGroup: PartMeasurementProcessGroup;
   resourceCds: string[];
+  fkojun?: string;
   sourceDraft: InspectionDrawingSourceTemplateDraft | null;
   activeExistsByResourceCd: Record<string, boolean>;
 }): InspectionDrawingCreateKeyCollision | null {
@@ -321,6 +335,7 @@ export function resolveInspectionDrawingCreateKeyCollisionForResources(params: {
       fhincd: params.fhincd,
       processGroup: params.processGroup,
       resourceCd,
+      fkojun: params.fkojun,
       sourceDraft: params.sourceDraft,
       activeExists: params.activeExistsByResourceCd[resourceCd] === true
     });
@@ -358,7 +373,7 @@ export function inspectionDrawingCreateKeyCollisionMessage(
   reason: InspectionDrawingCreateKeyCollision
 ): string {
   if (reason === 'same_as_source') {
-    return '流用元と同じ品番・工程・資源CDです。工程または資源CDを変更してください。';
+    return '流用元と同じ品番・工程・工順・資源CDです。工順、工程または資源CDを変更してください。';
   }
-  return '同一品番・工程・資源CDの有効テンプレートが既にあります。新規作成はできません。一覧から「編集」してください。';
+  return '同一品番・工程・工順・資源CDの有効テンプレートが既にあります。新規作成はできません。一覧から「編集」してください。';
 }
