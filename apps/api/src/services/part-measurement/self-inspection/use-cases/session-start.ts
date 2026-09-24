@@ -50,7 +50,6 @@ export async function resolveOrCreateSelfInspectionSession(
       id: input.templateId,
       isActive: true,
       processGroup: input.processGroup,
-      resourceCd,
       templateScope: 'THREE_KEY'
     },
     include: partMeasurementTemplateFullInclude
@@ -78,12 +77,40 @@ export async function resolveOrCreateSelfInspectionSession(
   if (!fseiban) {
     throw new ApiError(400, '製番が必要です');
   }
-  await verifyProductionScheduleRowOrThrow(scheduleRowId, {
+  const scheduleRowData = await verifyProductionScheduleRowOrThrow(scheduleRowId, {
     productNo,
     fseiban,
     fhincd,
-    resourceCd
+    resourceCd: template.resourceCd
   });
+  const scheduleFkojun = normalizeText(String(scheduleRowData.FKOJUN ?? ''));
+  if (normalizeText(template.fkojun) && normalizeText(template.fkojun) !== scheduleFkojun) {
+    throw new ApiError(400, '自主検査テンプレートの工順が日程行と一致しません');
+  }
+  let actualResourceTemplate = template;
+  if (resourceCd !== normalizeText(template.resourceCd)) {
+    if (!template.siblingGroupId) {
+      throw new ApiError(400, '選択した資源はこの自主検査テンプレートに登録されていません');
+    }
+    const sibling = await prisma.partMeasurementTemplate.findFirst({
+      where: {
+        siblingGroupId: template.siblingGroupId,
+        fhincd: template.fhincd,
+        processGroup: template.processGroup,
+        OR: normalizeText(template.fkojun)
+          ? [{ fkojun: normalizeText(template.fkojun) }]
+          : [{ fkojun: '' }, { fkojun: null }],
+        resourceCd,
+        isActive: true,
+        templateScope: 'THREE_KEY'
+      },
+      include: partMeasurementTemplateFullInclude
+    });
+    if (!sibling || !hasInspectionDrawingTemplate(sibling)) {
+      throw new ApiError(400, '選択した資源の有効な自主検査テンプレートがありません');
+    }
+    actualResourceTemplate = sibling;
+  }
   const { machineNames } = await resolveSeibanMachineDisplayNamesBatched([fseiban]);
   const canonicalMachineName = normalizeSeibanMachineNameForPersistence(machineNames[fseiban]);
   const supplement = await prisma.productionScheduleOrderSupplement.findFirst({
@@ -101,13 +128,13 @@ export async function resolveOrCreateSelfInspectionSession(
     throw new ApiError(400, '指示数が補助データにないため自主検査を開始できません');
   }
   const expectedEntryCount = resolveExpectedEntryCount(
-    templateConfigFromTemplate(template),
+    templateConfigFromTemplate(actualResourceTemplate),
     plannedQuantity
   );
   const sessionBusinessKey = buildSessionBusinessKey({
     productNo,
     processGroup: input.processGroup,
-    resourceCd,
+    resourceCd: template.resourceCd,
     scheduleRowId
   });
 
@@ -143,9 +170,10 @@ export async function resolveOrCreateSelfInspectionSession(
       where: { sessionBusinessKey },
       create: {
         sessionBusinessKey,
-        templateId: template.id,
+        templateId: actualResourceTemplate.id,
         productNo,
         processGroup: input.processGroup,
+        scheduleResourceCd: template.resourceCd,
         resourceCd,
         scheduleRowId,
         fseiban,

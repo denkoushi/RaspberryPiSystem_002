@@ -88,6 +88,29 @@ function normalizeResourceCd(raw: string): string {
   return t.length > 0 ? t : PART_MEASUREMENT_LEGACY_RESOURCE_CD;
 }
 
+function normalizeFkojun(raw: string | null | undefined): string {
+  return String(raw ?? '').trim();
+}
+
+function fkojunWhere(fkojun: string): Prisma.PartMeasurementTemplateWhereInput {
+  const normalized = normalizeFkojun(fkojun);
+  return normalized
+    ? { fkojun: normalized }
+    : { OR: [{ fkojun: '' }, { fkojun: null }] };
+}
+
+function appendFkojunFilter(
+  where: Prisma.PartMeasurementTemplateWhereInput,
+  fkojun: string
+): void {
+  const existingAnd = where.AND == null
+    ? []
+    : Array.isArray(where.AND)
+      ? where.AND
+      : [where.AND];
+  where.AND = [...existingAnd, fkojunWhere(fkojun)];
+}
+
 function threeKeyFhincdEqualsFilter(fhincd: string): Prisma.StringFilter {
   return { equals: normalizeFhincd(fhincd), mode: 'insensitive' };
 }
@@ -127,6 +150,7 @@ type ResolvedLineage = {
   fhincd: string;
   processGroup: PartMeasurementProcessGroup;
   resourceCd: string;
+  fkojun?: string;
   candidateFhinmei: string | null;
 };
 
@@ -144,13 +168,15 @@ async function assertNoActiveProductionThreeKeyTemplateInTransaction(
   tx: Prisma.TransactionClient,
   fhincd: string,
   processGroup: PartMeasurementProcessGroup,
-  resourceCd: string
+  resourceCd: string,
+  fkojun = ''
 ): Promise<void> {
   const existingActive = await tx.partMeasurementTemplate.findFirst({
     where: {
       fhincd: threeKeyFhincdEqualsFilter(fhincd),
       processGroup,
       resourceCd,
+      AND: [fkojunWhere(fkojun)],
       isActive: true,
       templateScope: 'THREE_KEY'
     },
@@ -229,6 +255,7 @@ async function insertNextTemplateVersionInTransaction(
   options?: InsertNextTemplateVersionOptions
 ) {
   const { fhincd, processGroup, resourceCd, templateScope, candidateFhinmei } = lineage;
+  const fkojun = normalizeFkojun(lineage.fkojun);
 
   if (isProductionThreeKeyLineage(templateScope, processGroup) && !options?.lineageLockHeld) {
     await acquireThreeKeyLineageTransactionLock(tx, fhincd, processGroup, resourceCd);
@@ -242,6 +269,8 @@ async function insertNextTemplateVersionInTransaction(
   const fhincdWhere = lineageFhincdWhere(templateScope, processGroup, fhincd);
   const persistedFhincd = storageFhincdForLineage(templateScope, processGroup, fhincd);
 
+  // Keep versions unique under the retained pre-FKOJUN DB index while the
+  // active-version switch remains scoped to this FKOJUN lineage.
   const agg = await tx.partMeasurementTemplate.aggregate({
     where: { fhincd: fhincdWhere, processGroup, resourceCd },
     _max: { version: true }
@@ -249,7 +278,12 @@ async function insertNextTemplateVersionInTransaction(
   const nextVersion = (agg._max.version ?? 0) + 1;
 
   await tx.partMeasurementTemplate.updateMany({
-    where: { fhincd: fhincdWhere, processGroup, resourceCd },
+    where: {
+      fhincd: fhincdWhere,
+      processGroup,
+      resourceCd,
+      AND: [fkojunWhere(fkojun)]
+    },
     data: { isActive: false }
   });
 
@@ -259,6 +293,7 @@ async function insertNextTemplateVersionInTransaction(
       fhincd: persistedFhincd,
       processGroup,
       resourceCd,
+      fkojun,
       candidateFhinmei,
       name: content.name.trim(),
       version: nextVersion,
@@ -384,6 +419,7 @@ export class PartMeasurementTemplateService {
     fhincd?: string;
     processGroup?: PartMeasurementProcessGroup;
     resourceCd?: string;
+    fkojun?: string;
     includeInactive?: boolean;
     /** 図面名の部分一致（大文字小文字無視） */
     visualName?: string;
@@ -405,6 +441,9 @@ export class PartMeasurementTemplateService {
     if (query.resourceCd !== undefined) {
       where.resourceCd = normalizeResourceCd(query.resourceCd);
     }
+    if (query.fkojun !== undefined) {
+      appendFkojunFilter(where, query.fkojun);
+    }
     if (!query.includeInactive) {
       where.isActive = true;
     }
@@ -423,7 +462,7 @@ export class PartMeasurementTemplateService {
 
     const rows = await prisma.partMeasurementTemplate.findMany({
       where: productionPartMeasurementTemplateWhere(where),
-      orderBy: [{ fhincd: 'asc' }, { processGroup: 'asc' }, { resourceCd: 'asc' }, { version: 'desc' }],
+      orderBy: [{ fhincd: 'asc' }, { processGroup: 'asc' }, { fkojun: 'asc' }, { resourceCd: 'asc' }, { version: 'desc' }],
       include: {
         siblingGroup: true,
         visualTemplate: true,
@@ -478,7 +517,8 @@ export class PartMeasurementTemplateService {
   async findActiveByFhincdGroupAndResource(
     fhincd: string,
     processGroup: PartMeasurementProcessGroup,
-    resourceCd: string
+    resourceCd: string,
+    fkojun = ''
   ) {
     const f = normalizeFhincd(fhincd);
     const r = normalizeResourceCd(resourceCd);
@@ -488,6 +528,7 @@ export class PartMeasurementTemplateService {
         fhincd: threeKeyFhincdEqualsFilter(f),
         processGroup,
         resourceCd: r,
+        AND: [fkojunWhere(fkojun)],
         isActive: true,
         templateScope: 'THREE_KEY'
       },
@@ -500,7 +541,8 @@ export class PartMeasurementTemplateService {
   async existsActiveProductionThreeKeyTemplate(
     fhincd: string,
     processGroup: PartMeasurementProcessGroup,
-    resourceCd: string
+    resourceCd: string,
+    fkojun = ''
   ): Promise<boolean> {
     const f = normalizeFhincd(fhincd);
     const r = normalizeResourceCd(resourceCd);
@@ -512,6 +554,7 @@ export class PartMeasurementTemplateService {
         fhincd: threeKeyFhincdEqualsFilter(f),
         processGroup,
         resourceCd: r,
+        AND: [fkojunWhere(fkojun)],
         isActive: true,
         templateScope: 'THREE_KEY'
       }),
@@ -524,6 +567,7 @@ export class PartMeasurementTemplateService {
     fhincd?: string;
     processGroup?: PartMeasurementProcessGroup;
     resourceCd?: string;
+    fkojun?: string;
     includeInactive?: boolean;
   }) {
     const where: Prisma.PartMeasurementTemplateWhereInput = {};
@@ -536,12 +580,15 @@ export class PartMeasurementTemplateService {
     if (query.resourceCd !== undefined) {
       where.resourceCd = normalizeResourceCd(query.resourceCd);
     }
+    if (query.fkojun !== undefined) {
+      appendFkojunFilter(where, query.fkojun);
+    }
     if (!query.includeInactive) {
       where.isActive = true;
     }
     return prisma.partMeasurementTemplate.findMany({
       where: productionPartMeasurementTemplateWhere(where),
-      orderBy: [{ fhincd: 'asc' }, { processGroup: 'asc' }, { resourceCd: 'asc' }, { version: 'desc' }],
+      orderBy: [{ fhincd: 'asc' }, { processGroup: 'asc' }, { fkojun: 'asc' }, { resourceCd: 'asc' }, { version: 'desc' }],
       include: partMeasurementTemplateFullInclude
     });
   }
@@ -553,6 +600,7 @@ export class PartMeasurementTemplateService {
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
+    fkojun?: string;
     name: string;
     items: TemplateItemInput[];
     visualTemplateId?: string | null;
@@ -570,6 +618,7 @@ export class PartMeasurementTemplateService {
     let fhincd = params.fhincd.trim();
     let processGroup: PartMeasurementProcessGroup = params.processGroup;
     let resourceCd = normalizeResourceCd(params.resourceCd);
+    let fkojun = normalizeFkojun(params.fkojun);
     let candidateFhinmei: string | null =
       params.candidateFhinmei != null && String(params.candidateFhinmei).trim().length > 0
         ? String(params.candidateFhinmei).trim()
@@ -577,6 +626,7 @@ export class PartMeasurementTemplateService {
 
     if (templateScope === 'FHINCD_RESOURCE') {
       processGroup = 'CANDIDATE_FHINCD_RESOURCE';
+      fkojun = '';
       candidateFhinmei = null;
       if (fhincd.length === 0) {
         throw new ApiError(400, 'FIHNCD が空です');
@@ -584,6 +634,7 @@ export class PartMeasurementTemplateService {
       fhincd = normalizeFhincd(fhincd);
     } else if (templateScope === 'FHINMEI_ONLY') {
       processGroup = 'CANDIDATE_FHINMEI_ONLY';
+      fkojun = '';
       fhincd = PART_MEASUREMENT_FHINMEI_ONLY_BUCKET_FHINCD;
       resourceCd = randomUUID().replace(/-/g, '').slice(0, 32);
       if (!candidateFhinmei || candidateFhinmei.length === 0) {
@@ -621,14 +672,15 @@ export class PartMeasurementTemplateService {
             tx,
             fhincd,
             processGroup,
-            resourceCd
+            resourceCd,
+            fkojun
           );
         }
       }
 
       return insertNextTemplateVersionInTransaction(
         tx,
-        { templateScope, fhincd, processGroup, resourceCd, candidateFhinmei },
+        { templateScope, fhincd, processGroup, resourceCd, fkojun, candidateFhinmei },
         {
           name: params.name,
           items: params.items,
@@ -645,6 +697,7 @@ export class PartMeasurementTemplateService {
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCds: string[];
+    fkojun?: string;
     name: string;
     displayName?: string | null;
     items: TemplateItemInput[];
@@ -665,6 +718,7 @@ export class PartMeasurementTemplateService {
       throw new ApiError(400, 'FIHNCD が空です');
     }
     const resourceCds = normalizeUniqueResourceCds(params.resourceCds);
+    const fkojun = normalizeFkojun(params.fkojun);
     if (resourceCds.length === 0) {
       throw new ApiError(400, '資源CDを1件以上選択してください');
     }
@@ -689,7 +743,8 @@ export class PartMeasurementTemplateService {
           tx,
           fhincd,
           params.processGroup,
-          resourceCd
+          resourceCd,
+          fkojun
         );
       }
 
@@ -697,7 +752,8 @@ export class PartMeasurementTemplateService {
         data: {
           displayName,
           fhincd,
-          processGroup: params.processGroup
+          processGroup: params.processGroup,
+          fkojun
         }
       });
       const templates = [];
@@ -709,6 +765,7 @@ export class PartMeasurementTemplateService {
             fhincd,
             processGroup: params.processGroup,
             resourceCd,
+            fkojun,
             candidateFhinmei: null
           },
           {
@@ -798,6 +855,7 @@ export class PartMeasurementTemplateService {
             fhincd: member.fhincd,
             processGroup: member.processGroup,
             resourceCd: member.resourceCd,
+            fkojun: normalizeFkojun(member.fkojun),
             candidateFhinmei: member.candidateFhinmei
           },
           {
@@ -882,6 +940,7 @@ export class PartMeasurementTemplateService {
             fhincd: threeKeyFhincdEqualsFilter(group.fhincd),
             processGroup: group.processGroup,
             resourceCd,
+            AND: [fkojunWhere(normalizeFkojun(group.fkojun))],
             isActive: true,
             templateScope: 'THREE_KEY'
           }),
@@ -903,6 +962,7 @@ export class PartMeasurementTemplateService {
             fhincd: group.fhincd,
             processGroup: group.processGroup,
             resourceCd,
+            fkojun: normalizeFkojun(group.fkojun),
             candidateFhinmei: null
           },
           {
@@ -1123,6 +1183,7 @@ export class PartMeasurementTemplateService {
       fhincd: source.fhincd,
       processGroup: source.processGroup,
       resourceCd: source.resourceCd,
+      fkojun: normalizeFkojun(source.fkojun),
       candidateFhinmei: nextCandidate
     };
 
@@ -1215,9 +1276,11 @@ export class PartMeasurementTemplateService {
     targetFhincd: string;
     targetProcessGroup: PartMeasurementProcessGroup;
     targetResourceCd: string;
+    targetFkojun?: string;
   }) {
     const fhincd = normalizeFhincd(params.targetFhincd);
     const resourceCd = normalizeResourceCd(params.targetResourceCd);
+    const fkojun = normalizeFkojun(params.targetFkojun);
     if (fhincd.length === 0) {
       throw new ApiError(400, 'FIHNCD が空です');
     }
@@ -1238,7 +1301,8 @@ export class PartMeasurementTemplateService {
       source.templateScope === 'THREE_KEY' &&
       sourceFhincdNorm === targetFhincdNorm &&
       sourceResNorm === resourceCd &&
-      source.processGroup === params.targetProcessGroup;
+      source.processGroup === params.targetProcessGroup &&
+      normalizeFkojun(source.fkojun) === fkojun;
 
     if (sameThreeKey) {
       return {
@@ -1272,6 +1336,7 @@ export class PartMeasurementTemplateService {
           fhincd: threeKeyFhincdEqualsFilter(fhincd),
           processGroup: params.targetProcessGroup,
           resourceCd,
+          AND: [fkojunWhere(fkojun)],
           isActive: true,
           templateScope: 'THREE_KEY'
         }),
@@ -1289,6 +1354,7 @@ export class PartMeasurementTemplateService {
           fhincd,
           processGroup: params.targetProcessGroup,
           resourceCd,
+          fkojun,
           candidateFhinmei: null
         },
         {

@@ -39,6 +39,7 @@ export type SelfInspectionSessionForDecoration = {
   id: string;
   scheduleRowId: string | null;
   templateId: string;
+  resourceCd: string;
   plannedQuantity: number;
   expectedEntryCount: number;
   completedAt: Date | null;
@@ -49,6 +50,7 @@ export type SelfInspectionSessionForDecoration = {
     selfInspectionMode: SelfInspectionMode;
     selfInspectionFixedCount: number | null;
     selfInspectionSampleSize: number | null;
+    siblingGroupId: string | null;
   };
   _count: { entries: number };
 };
@@ -56,6 +58,7 @@ export type SelfInspectionSessionForDecoration = {
 export type SelfInspectionDecorationCache = {
   policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>;
   templateByKey: Map<string, SelfInspectionTemplate>;
+  resourceCdsBySiblingGroupId: Map<string, string[]>;
   invalidatedScheduleRowIds: Set<string>;
   /** 値 null = 問い合わせ済み・セッションなし（negative cache） */
   sessionsByScheduleRowId: Map<string, SelfInspectionSessionForDecoration | null>;
@@ -64,9 +67,28 @@ export type SelfInspectionDecorationCache = {
 function templateKeyForRow(
   fhincd: string,
   processGroup: PartMeasurementProcessGroup,
-  resourceCd: string
+  resourceCd: string,
+  fkojun: string | null
 ): string {
-  return `${fhincd}::${processGroup}::${resourceCd}`;
+  return `${fhincd}::${processGroup}::${normalizeText(fkojun)}::${resourceCd}`;
+}
+
+async function loadActiveResourceCdsBySiblingGroupIds(groupIds: string[]) {
+  const groupIdsUnique = [...new Set(groupIds.filter(Boolean))];
+  const result = new Map<string, string[]>();
+  if (groupIdsUnique.length === 0) return result;
+  const rows = await prisma.partMeasurementTemplate.findMany({
+    where: { siblingGroupId: { in: groupIdsUnique }, isActive: true, templateScope: 'THREE_KEY' },
+    orderBy: [{ siblingGroupId: 'asc' }, { resourceCd: 'asc' }],
+    select: { siblingGroupId: true, resourceCd: true }
+  });
+  for (const row of rows) {
+    if (!row.siblingGroupId) continue;
+    const codes = result.get(row.siblingGroupId) ?? [];
+    codes.push(row.resourceCd);
+    result.set(row.siblingGroupId, codes);
+  }
+  return result;
 }
 
 /** 装飾用キャッシュ。テンプレは resourceCds 指定時のみ資源で絞って preload し、それ以外は行キー単位で ensure する。 */
@@ -79,6 +101,7 @@ export async function createSelfInspectionDecorationCache(scope?: {
     .map((cd) => normalizeText(cd))
     .filter((cd) => cd.length > 0);
   const templateByKey = new Map<string, SelfInspectionTemplate>();
+  const resourceCdsBySiblingGroupId = new Map<string, string[]>();
   if (normalizedResourceCds.length > 0) {
     const templates = await prisma.partMeasurementTemplate.findMany({
       where: {
@@ -93,14 +116,19 @@ export async function createSelfInspectionDecorationCache(scope?: {
         continue;
       }
       templateByKey.set(
-        templateKeyForRow(template.fhincd, template.processGroup, template.resourceCd),
+        templateKeyForRow(template.fhincd, template.processGroup, template.resourceCd, template.fkojun),
         template
       );
     }
+    const groupResources = await loadActiveResourceCdsBySiblingGroupIds(
+      templates.map((template) => template.siblingGroupId ?? '')
+    );
+    for (const [groupId, resourceCds] of groupResources) resourceCdsBySiblingGroupId.set(groupId, resourceCds);
   }
   return {
     policy,
     templateByKey,
+    resourceCdsBySiblingGroupId,
     invalidatedScheduleRowIds: new Set(),
     sessionsByScheduleRowId: new Map()
   };
@@ -110,16 +138,18 @@ export async function ensureSelfInspectionTemplatesForRows(
   cache: SelfInspectionDecorationCache,
   rows: Array<{ rowData: Prisma.JsonValue }>
 ): Promise<void> {
-  const missingKeys = new Map<string, { fhincd: string; processGroup: PartMeasurementProcessGroup; resourceCd: string }>();
+  const missingKeys = new Map<string, { fhincd: string; processGroup: PartMeasurementProcessGroup; resourceCd: string; fkojun: string }>();
   for (const row of rows) {
     const rowData = (row.rowData ?? {}) as Record<string, unknown>;
     const resourceCd = normalizeText(String(rowData.FSIGENCD ?? ''));
     const fhincd = normalizeText(String(rowData.FHINCD ?? ''));
+    const fkojun = normalizeText(String(rowData.FKOJUN ?? ''));
     if (!resourceCd || !fhincd) continue;
     const processGroup = isProductionScheduleGrindingResourceCd(resourceCd, cache.policy) ? 'GRINDING' : 'CUTTING';
-    const key = templateKeyForRow(fhincd, processGroup, resourceCd);
-    if (!cache.templateByKey.has(key) && !missingKeys.has(key)) {
-      missingKeys.set(key, { fhincd, processGroup, resourceCd });
+    const key = templateKeyForRow(fhincd, processGroup, resourceCd, fkojun);
+    const legacyKey = templateKeyForRow(fhincd, processGroup, resourceCd, '');
+    if (!cache.templateByKey.has(key) && !(fkojun && cache.templateByKey.has(legacyKey)) && !missingKeys.has(key)) {
+      missingKeys.set(key, { fhincd, processGroup, resourceCd, fkojun });
     }
   }
   if (missingKeys.size === 0) {
@@ -132,7 +162,10 @@ export async function ensureSelfInspectionTemplatesForRows(
       OR: [...missingKeys.values()].map((key) => ({
         fhincd: key.fhincd,
         processGroup: key.processGroup,
-        resourceCd: key.resourceCd
+        resourceCd: key.resourceCd,
+        OR: key.fkojun
+          ? [{ fkojun: key.fkojun }, { fkojun: '' }, { fkojun: null }]
+          : [{ fkojun: '' }, { fkojun: null }]
       }))
     },
     include: partMeasurementTemplateFullInclude
@@ -142,10 +175,14 @@ export async function ensureSelfInspectionTemplatesForRows(
       continue;
     }
     cache.templateByKey.set(
-      templateKeyForRow(template.fhincd, template.processGroup, template.resourceCd),
+      templateKeyForRow(template.fhincd, template.processGroup, template.resourceCd, template.fkojun),
       template
     );
   }
+  const groupResources = await loadActiveResourceCdsBySiblingGroupIds(
+    templates.map((template) => template.siblingGroupId ?? '')
+  );
+  for (const [groupId, resourceCds] of groupResources) cache.resourceCdsBySiblingGroupId.set(groupId, resourceCds);
 }
 
 export async function ensureSelfInspectionSessionsInCache(
@@ -165,6 +202,7 @@ export async function ensureSelfInspectionSessionsInCache(
             selfInspectionMode: true,
             selfInspectionFixedCount: true,
             selfInspectionSampleSize: true,
+            siblingGroupId: true,
           },
         },
         entries: {
@@ -250,6 +288,8 @@ type LeaderboardSelfInspectionDecoration = {
   selfInspectionTemplateId: string | null;
   selfInspectionStatus: SelfInspectionStatusDto | null;
   selfInspectionEntryPath: string | null;
+  selfInspectionResourceCds?: string[];
+  selfInspectionResourceCd?: string | null;
   resolvedPlannedQuantity?: number | null;
   resolvedRequiredEntryCount?: number | null;
   completedEntryCount?: number | null;
@@ -283,6 +323,8 @@ function buildLeaderboardDecorationFromSession(
     id: rowId,
     hasSelfInspectionDrawing: true,
     selfInspectionTemplateId: session.templateId,
+    selfInspectionResourceCds: [session.resourceCd],
+    selfInspectionResourceCd: session.resourceCd,
     selfInspectionStatus: resolveStatus({
       completedEntryCount: session._count.entries,
       hasAnyLotEntry: session.entries.length > 0,
@@ -352,6 +394,7 @@ export async function buildLeaderboardDecorations(
     const fhincd = normalizeText(String(rowData.FHINCD ?? ''));
     const productNo = normalizeText(String(rowData.ProductNo ?? ''));
     const fhinmei = normalizeText(String(rowData.FHINMEI ?? ''));
+    const fkojun = normalizeText(String(rowData.FKOJUN ?? ''));
     const fseiban = normalizeText(String(rowData.FSEIBAN ?? ''));
     if (!resourceCd || !fhincd || !productNo || !fhinmei || !fseiban) {
       return emptyLeaderboardSelfInspectionDecoration(row.id);
@@ -359,7 +402,11 @@ export async function buildLeaderboardDecorations(
     const processGroup = isProductionScheduleGrindingResourceCd(resourceCd, activeCache.policy)
       ? 'GRINDING'
       : 'CUTTING';
-    const template = activeCache.templateByKey.get(templateKeyForRow(fhincd, processGroup, resourceCd));
+    const template =
+      activeCache.templateByKey.get(templateKeyForRow(fhincd, processGroup, resourceCd, fkojun)) ??
+      (fkojun
+        ? activeCache.templateByKey.get(templateKeyForRow(fhincd, processGroup, resourceCd, ''))
+        : undefined);
     if (!template || !hasInspectionDrawingTemplate(template)) {
       return emptyLeaderboardSelfInspectionDecoration(row.id);
     }
@@ -376,6 +423,10 @@ export async function buildLeaderboardDecorations(
       id: row.id,
       hasSelfInspectionDrawing: true,
       selfInspectionTemplateId: template.id,
+      selfInspectionResourceCds: template.siblingGroupId
+        ? activeCache.resourceCdsBySiblingGroupId.get(template.siblingGroupId) ?? [template.resourceCd]
+        : [template.resourceCd],
+      selfInspectionResourceCd: null,
       selfInspectionStatus: resolveStatus({
         completedEntryCount: 0,
         completedAt: null

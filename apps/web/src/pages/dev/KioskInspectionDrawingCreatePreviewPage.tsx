@@ -100,6 +100,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
         metadata={{
           ...toPreviewMetadataRowProps(scenarioConfig),
           onFhincdChange: () => undefined,
+          onFkojunChange: () => undefined,
           onResourceCdChange: () => undefined,
           resourceNameMap: {},
           onTemplateNameChange: () => undefined,

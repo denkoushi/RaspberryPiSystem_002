@@ -42,6 +42,8 @@ export interface ProductionScheduleRow {
   hasSelfInspectionDrawing?: boolean;
   selfInspectionStatus?: SelfInspectionStatus | null;
   selfInspectionEntryPath?: string | null;
+  selfInspectionResourceCds?: string[];
+  selfInspectionResourceCd?: string | null;
   /** 順位ボード: 機械行の FSIGENSHOYORYO（分）。`+人` OFF 時の表示基準。 */
   machineRequiredMinutes?: number;
   /** 順位ボード: 同一 ProductNo + FKOJUN の FSIGENCD=10 人工数（分）。 */
@@ -116,6 +118,8 @@ export type ProductionScheduleLeaderboardDecorationsResponse = {
     selfInspectionTemplateId: string | null;
     selfInspectionStatus: SelfInspectionStatus | null;
     selfInspectionEntryPath: string | null;
+    selfInspectionResourceCds: string[];
+    selfInspectionResourceCd: string | null;
   }>;
   leaderboardFooterChipsByPartKey?: ProductionScheduleListResponse['leaderboardFooterChipsByPartKey'];
 };

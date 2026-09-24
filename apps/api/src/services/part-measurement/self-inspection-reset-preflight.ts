@@ -13,6 +13,7 @@ export type SelfInspectionResetRestartPayload = {
   templateId: string;
   productNo: string;
   processGroup: PartMeasurementProcessGroup;
+  scheduleResourceCd: string;
   resourceCd: string;
   scheduleRowId: string;
   fseiban: string;
@@ -29,6 +30,7 @@ export type SelfInspectionSessionResetSnapshot = {
   templateId: string;
   productNo: string;
   processGroup: PartMeasurementProcessGroup;
+  scheduleResourceCd: string;
   resourceCd: string;
   scheduleRowId: string | null;
   fseiban: string | null;
@@ -96,6 +98,7 @@ export function buildRestartPayloadFromSessionSnapshot(input: {
   session: {
     productNo: string;
     processGroup: PartMeasurementProcessGroup;
+    scheduleResourceCd?: string | null;
     resourceCd: string;
     scheduleRowId: string | null;
     fseiban: string | null;
@@ -117,6 +120,7 @@ export function buildRestartPayloadFromSessionSnapshot(input: {
   }
   const productNo = input.session.productNo.trim();
   const resourceCd = input.session.resourceCd.trim();
+  const scheduleResourceCd = input.session.scheduleResourceCd?.trim() || resourceCd;
   const fhincd = input.session.fhincd.trim();
   const fhinmei = input.session.fhinmei.trim();
   if (!productNo || !resourceCd || !fhincd || !fhinmei) {
@@ -126,6 +130,7 @@ export function buildRestartPayloadFromSessionSnapshot(input: {
     templateId: input.activeTemplateId,
     productNo,
     processGroup: input.session.processGroup,
+    scheduleResourceCd,
     resourceCd,
     scheduleRowId,
     fseiban,
@@ -143,6 +148,7 @@ export function buildSessionResetSnapshot(session: {
   templateId: string;
   productNo: string;
   processGroup: PartMeasurementProcessGroup;
+  scheduleResourceCd?: string | null;
   resourceCd: string;
   scheduleRowId: string | null;
   fseiban: string | null;
@@ -162,6 +168,7 @@ export function buildSessionResetSnapshot(session: {
     templateId: session.templateId,
     productNo: session.productNo,
     processGroup: session.processGroup,
+    scheduleResourceCd: session.scheduleResourceCd?.trim() || session.resourceCd,
     resourceCd: session.resourceCd,
     scheduleRowId: session.scheduleRowId,
     fseiban: session.fseiban,

@@ -13,6 +13,8 @@ export type LeaderboardRowDecoration = {
   selfInspectionTemplateId: string | null;
   selfInspectionStatus: SelfInspectionStatus | null;
   selfInspectionEntryPath: string | null;
+  selfInspectionResourceCds?: string[];
+  selfInspectionResourceCd?: string | null;
 };
 
 type LeaderboardFooterChipsByPartKey = NonNullable<
@@ -44,7 +46,9 @@ export function mergeLeaderboardDecorationsIntoAccumulator(
       hasSelfInspectionDrawing: d.hasSelfInspectionDrawing,
       selfInspectionTemplateId: d.selfInspectionTemplateId ?? null,
       selfInspectionStatus: d.selfInspectionStatus ?? null,
-      selfInspectionEntryPath: d.selfInspectionEntryPath ?? null
+      selfInspectionEntryPath: d.selfInspectionEntryPath ?? null,
+      selfInspectionResourceCds: d.selfInspectionResourceCds ?? [],
+      selfInspectionResourceCd: d.selfInspectionResourceCd ?? null
     });
   }
   const leaderboardFooterChipsByPartKey: LeaderboardFooterChipsByPartKey = {

@@ -84,13 +84,23 @@ export class PartMeasurementResolveService {
     const prismaGroup = apiProcessGroupToPrisma(group);
     const templateFhincd = selected?.fhincd.trim() ?? '';
     const templateResourceCd = selected?.fsigencd.trim() ?? wantResource;
+    const templateFkojun = selected?.fkojun == null ? '' : String(selected.fkojun);
     const template =
       templateFhincd.length > 0 && templateResourceCd.length > 0
-        ? await this.templates.findActiveByFhincdGroupAndResource(
+        ? (await this.templates.findActiveByFhincdGroupAndResource(
             templateFhincd,
             prismaGroup,
-            templateResourceCd
-          )
+            templateResourceCd,
+            templateFkojun
+          )) ??
+          (templateFkojun
+            ? await this.templates.findActiveByFhincdGroupAndResource(
+                templateFhincd,
+                prismaGroup,
+                templateResourceCd,
+                ''
+              )
+            : null)
         : null;
 
     return {

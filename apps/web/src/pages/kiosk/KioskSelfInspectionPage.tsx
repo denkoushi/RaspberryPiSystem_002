@@ -96,6 +96,8 @@ function mapEligibleRow(row: ProductionScheduleRow): SelfInspectionCandidateRow 
     plannedQuantity,
     selfInspectionTemplateId: templateId,
     selfInspectionEntryPath: entryPath.length > 0 ? entryPath : null,
+    selfInspectionResourceCds: row.selfInspectionResourceCds ?? [],
+    selfInspectionResourceCd: row.selfInspectionResourceCd ?? null,
     status: row.selfInspectionStatus ?? null
   };
 }
@@ -493,11 +495,17 @@ export function KioskSelfInspectionPage() {
   }, [exactScannedProductNo, hasScannedProductFilter, rows, scheduleQuery.isFetching, trimmedResourceCd]);
 
   const handleOpenInspectionDigitalInput = useCallback(
-    (target: SelfInspectionWorkflowTarget) => {
+    (target: SelfInspectionWorkflowTarget, selectedResourceCd: string) => {
       const path = target.selfInspectionEntryPath?.trim();
       if (!path) return;
       setInspectionWorkflowTarget(null);
-      navigate(path);
+      if (path.includes('/self-inspection/start?')) {
+        const url = new URL(path, window.location.origin);
+        url.searchParams.set('resourceCd', selectedResourceCd);
+        navigate(`${url.pathname}${url.search}`);
+      } else {
+        navigate(path);
+      }
     },
     [navigate]
   );
@@ -508,7 +516,7 @@ export function KioskSelfInspectionPage() {
   );
 
   const handleOpenInspectionPaperPrint = useCallback(
-    async (target: SelfInspectionWorkflowTarget) => {
+    async (target: SelfInspectionWorkflowTarget, selectedResourceCd: string) => {
       const templateId = target.selfInspectionTemplateId?.trim();
       if (!templateId) return;
       setInspectionWorkflowTarget(null);
@@ -520,7 +528,7 @@ export function KioskSelfInspectionPage() {
           fseiban: target.fseiban,
           fhincd: target.fhincd,
           fhinmei: target.fhinmei,
-          resourceCd: target.resourceCd,
+          resourceCd: selectedResourceCd,
           machineName: target.machineName
         });
         navigate(
@@ -877,7 +885,7 @@ export function KioskSelfInspectionPage() {
         target={inspectionWorkflowTarget}
         onClose={() => setInspectionWorkflowTarget(null)}
         onOpenDigitalInput={handleOpenInspectionDigitalInput}
-        onOpenPaperPrint={(target) => void handleOpenInspectionPaperPrint(target)}
+        onOpenPaperPrint={(target, resourceCd) => void handleOpenInspectionPaperPrint(target, resourceCd)}
       />
       <SelfInspectionItemInvalidationDialog
         row={invalidationRow}

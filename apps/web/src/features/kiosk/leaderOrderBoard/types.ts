@@ -36,6 +36,8 @@ export type LeaderBoardRow = {
   selfInspectionTemplateId: string | null;
   selfInspectionStatus: SelfInspectionStatus | null;
   selfInspectionEntryPath: string | null;
+  selfInspectionResourceCds?: string[];
+  selfInspectionResourceCd?: string | null;
   /** display item 契約 */
   sourceRowId: string;
   splitId: string | null;
