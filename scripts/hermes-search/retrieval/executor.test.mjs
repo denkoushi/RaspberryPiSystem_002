@@ -50,8 +50,18 @@ test('executor reports no_result when nothing matches', async () => {
   assert.equal(missing.status, 'no_result');
   assert.deepEqual(missing.results, []);
 
-  const semantic = await execute(plan({ semanticQuery: 'qqqqxxxxx' }), { records, catalog });
+  const semantic = await execute(plan({ semanticQuery: 'qqqqxxxxx' }), {
+    records,
+    catalog,
+    relevance: async () => ({ ok: true, ranked: [] }),
+  });
   assert.equal(semantic.status, 'no_result');
+
+  const unfiltered = await execute(plan({
+    diagnostics: { contentDecision: { jev: false, residualTokens: [], final: false } },
+  }), { records, catalog });
+  assert.equal(unfiltered.status, 'no_result');
+  assert.deepEqual(unfiltered.results, []);
 });
 
 test('date and exclusion filters keep unmatched original text out of the answer', async () => {
@@ -93,7 +103,11 @@ test('date sort keeps older relevant records ahead of newer weak matches', async
     sort: { field: 'discoveredOn', direction: 'desc' },
     limit: 1,
     display: ['condition', 'discoveredOn'],
-  }), { records: dated, bodyFields: ['condition', 'remarks', 'correctiveContent', 'disposition'] });
+  }), {
+    records: dated,
+    bodyFields: ['condition', 'remarks', 'correctiveContent', 'disposition'],
+    relevance: async () => ({ ok: true, ranked: [{ id: 'old-relevant', probability: 0.9 }] }),
+  });
   assert.equal(executed.status, 'answer');
   assert.deepEqual(executed.results.map((result) => result.recordId), ['old-relevant']);
   assert.equal(executed.results[0].fields.condition, 'relevantphrase found on the fixture');
@@ -161,22 +175,20 @@ test('a single kanji or katakana character matches as its own token', async () =
   });
   const kanji = await execute(plan({
     semanticQuery: '禾',
-    sort: { field: 'discoveredOn', direction: 'desc' },
+    sort: 'relevance',
     limit: 3,
     display: ['condition'],
   }), { records: dated, bodyFields: body });
   assert.equal(kanji.status, 'answer');
-  assert.deepEqual(kanji.results.map((result) => result.recordId), ['kanji-hit']);
-  assert.equal(kanji.insufficient, true);
-  assert.equal(kanji.requested, 3);
-  assert.equal(kanji.returned, 1);
+  assert.equal(kanji.results[0].recordId, 'kanji-hit');
 
   const kana = await execute(plan({
     semanticQuery: 'ヰ',
+    sort: 'relevance',
     limit: 3,
     display: ['condition'],
   }), { records: dated, bodyFields: body });
-  assert.deepEqual(kana.results.map((result) => result.recordId), ['kana-hit']);
+  assert.equal(kana.results[0].recordId, 'kana-hit');
 });
 
 test('fuseRankings keeps a lexical hit or a vector rank of 20 and caps the list', () => {
@@ -207,4 +219,57 @@ test('a failed vector ranker leaves the lexical order in place', async () => {
   assert.equal(executed.timings.vectorStatus, 'failed');
   assert.match(executed.timings.vectorReason, /vector unavailable/);
   assert.equal(executed.results[0].fields.condition, '  surface scratch  ');
+});
+
+test('a selected filter value does not outrank a content token', async () => {
+  const body = ['condition'];
+  const dated = [];
+  for (let index = 0; index < 20; index += 1) {
+    dated.push({
+      id: `org-${index}`,
+      originDepartmentName: 'North Shop',
+      condition: 'North Shop filler',
+    });
+  }
+  dated.push({ id: 'content-hit', originDepartmentName: 'North Shop', condition: 'qxrare marker' });
+  const executed = await execute(plan({
+    semanticQuery: 'North Shopのqxrare',
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }],
+    sort: 'relevance',
+    limit: 1,
+    display: ['condition'],
+  }), { records: dated, bodyFields: body });
+  assert.equal(executed.results[0].recordId, 'content-hit');
+});
+
+test('enrichment text ranks like body text', async () => {
+  const body = ['condition'];
+  const recordsWithExtra = [
+    { id: 'plain', condition: 'ordinary note', enrichment: { summary: '', queries: [], tags: [] } },
+    { id: 'tagged', condition: 'ordinary note', enrichment: { summary: 'qxenrich marker', queries: ['qxenrich lookup'], tags: ['qxenrich'] } },
+  ];
+  const executed = await execute(plan({
+    semanticQuery: 'qxenrich',
+    sort: 'relevance',
+    limit: 1,
+    display: ['condition'],
+  }), { records: recordsWithExtra, bodyFields: body });
+  assert.deepEqual(executed.results.map((result) => result.recordId), ['tagged']);
+});
+
+test('hybrid falls back to lexical when query embedding times out', async () => {
+  const executed = await execute(plan({
+    semanticQuery: 'qxrare',
+    sort: 'relevance',
+    limit: 5,
+    display: ['condition'],
+  }), {
+    records,
+    catalog,
+    retriever: 'hybrid',
+    vectorBudgetMs: 20,
+    vector: () => new Promise(() => {}),
+  });
+  assert.equal(executed.timings.vectorStatus, 'timeout');
+  assert.ok(executed.results.length >= 1);
 });

@@ -12,12 +12,13 @@ import { createRelevanceJudge } from './relevance-jev.mjs';
 import { validateQueryPlan } from './query-plan.mjs';
 import { buildValueIndex, findCandidateValues } from './value-index.mjs';
 import { buildCorpusView, replaceCorpus, stampAnswer } from './corpus.mjs';
-import { attachEnrichment } from './enrichment-contract.mjs';
+import { attachEnrichment } from './enrichment-attach.mjs';
 import { readEnrichmentStore, storePathFromEnv } from './enrichment-store.mjs';
 
 export const WORKER_PREFIX = '__HERMES_UI_PREFETCH__';
 const ANSWER_ROLES = new Set(['identifier', 'date', 'organization', 'body']);
 const INSUFFICIENT_NOTICE = '見つかった件数は、指定された件数より少ないです。';
+const OUT_OF_SCOPE_ANSWER = '不適合情報の検索に関する質問として解釈できませんでした。';
 const UNAVAILABLE_ANSWER = '検索に失敗しました。該当なしとは判断していません。';
 const TYPESAFE_FAILURE_CODES = new Set([
   'missing_credentials', 'transport_unavailable', 'upstream_http', 'invalid_json',
@@ -29,7 +30,7 @@ const SAFE_EXCEPTION_NAMES = new Set([
 
 export function noResultAnswer(snapshotCount) {
   const count = Number.isInteger(snapshotCount) && snapshotCount >= 0 ? snapshotCount : 0;
-  return `読み込んだスナップショット${count}件の中に、一致する記録は見つかりませんでした。これは不存在の証明ではありません。`;
+  return `検索対象${count}件の中に、一致する記録は見つかりませんでした。これは不存在の証明ではありません。`;
 }
 
 export function failureDiagnostic(error) {
@@ -202,9 +203,25 @@ export function createRetrievalAnswering({
       const elapsed = () => Math.round((performance.now() - started) * 10) / 10;
       const previousPlan = session?.previousPlan && typeof session.previousPlan === 'object' ? session.previousPlan : null;
       const candidates = findCandidateValues(question, view.valueIndex, catalog);
-      const planned = await planner.plan({ question, previousPlan, catalog, candidates });
+      const planned = await planner.plan({
+        question,
+        previousPlan,
+        catalog,
+        candidates,
+        valueIndex: view.valueIndex,
+      });
       const compact = compactPlan(planned.plan);
-      const validation = validateQueryPlan(planned.plan, catalog, valueIndex);
+      if (planned.plan?.diagnostics?.scope === 'out_of_scope') {
+        return trialResult({
+          status: 'completed',
+          answer: OUT_OF_SCOPE_ANSWER,
+          recordIds: [],
+          elapsedMs: elapsed(),
+          previousPlan: compact,
+          dataAsOf: view.dataAsOf,
+        });
+      }
+      const validation = validateQueryPlan(planned.plan, catalog, view.valueIndex);
       if (!validation.ok) {
         const answer = clarificationAnswer(validation.clarification);
         return trialResult({
@@ -221,6 +238,7 @@ export function createRetrievalAnswering({
         records: view.records,
         catalog,
         lexicalCorpus: view.lexicalCorpus,
+        retriever: 'lexical',
         vector: typeof vector === 'function' ? vector : null,
         relevance: (input) => relevance.judge(input),
       });

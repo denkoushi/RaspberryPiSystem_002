@@ -6,7 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
+import { digestRecords } from '../hermes-qmd-snapshot-export.mjs';
 import { loadNonconformityCatalog } from './catalog.mjs';
+import { attachEnrichment, readEnrichmentStores, splitEnrichmentArg } from './enrichment-attach.mjs';
 import { execute, openQmdVectorRanker } from './executor.mjs';
 import { createPlanner } from './planner-jev.mjs';
 import { createRelevanceJudge } from './relevance-jev.mjs';
@@ -15,14 +17,20 @@ import { buildValueIndex, findCandidateValues } from './value-index.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-function parseArgs(argv) {
-  const parsed = { snapshot: null, planJson: null, qmdIndex: null, embedModel: null, jevRelevance: null, questionParts: [] };
+export function parseArgs(argv) {
+  const parsed = {
+    snapshot: null, planJson: null, qmdIndex: null, embedModel: null, jevRelevance: null,
+    enrichment: [], noEnrichment: false, allowSubset: false, questionParts: [],
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--snapshot') parsed.snapshot = argv[++index];
     else if (arg === '--plan-json') parsed.planJson = argv[++index];
     else if (arg === '--qmd-index') parsed.qmdIndex = argv[++index];
     else if (arg === '--embed-model') parsed.embedModel = argv[++index];
+    else if (arg === '--enrichment') parsed.enrichment.push(...splitEnrichmentArg(argv[++index]));
+    else if (arg === '--no-enrichment') parsed.noEnrichment = true;
+    else if (arg === '--allow-subset') parsed.allowSubset = true;
     else if (arg === '--jev-relevance') {
       const next = argv[index + 1];
       if (next === 'false' || next === 'off') {
@@ -42,7 +50,7 @@ function parseArgs(argv) {
 }
 
 function printUsage() {
-  console.error('Usage: node scripts/hermes-search/retrieval/cli.mjs --snapshot <path> [--qmd-index <path>] [--embed-model <path>] [--jev-relevance] [--plan-json \'<json>\'] "<question>"');
+  console.error('Usage: node scripts/hermes-search/retrieval/cli.mjs --snapshot <path> [--qmd-index <path>] [--embed-model <path>] [--jev-relevance] [--enrichment <jsonl>] [--no-enrichment] [--allow-subset] [--plan-json \'<json>\'] "<question>"');
 }
 
 async function ensurePrivate(kind) {
@@ -128,6 +136,17 @@ async function main() {
   const started = performance.now();
   const payload = JSON.parse(fs.readFileSync(args.snapshot, 'utf8'));
   if (!payload || typeof payload !== 'object' || !Array.isArray(payload.records)) throw new Error('snapshot records must be an array');
+  if (!args.allowSubset) {
+    if (payload.recordCount != null && payload.recordCount !== payload.records.length) {
+      throw new Error('snapshot recordCount does not match records length');
+    }
+    if (typeof payload.digest === 'string' && payload.digest && payload.digest !== digestRecords(payload.records)) {
+      throw new Error('snapshot digest does not match canonical records');
+    }
+  }
+  if (!args.noEnrichment && args.enrichment.length) {
+    payload.records = attachEnrichment(payload.records, readEnrichmentStores(args.enrichment));
+  }
   const catalog = loadNonconformityCatalog();
   const valueIndex = buildValueIndex(payload.records, catalog);
   let submitted = null;
@@ -157,6 +176,7 @@ async function main() {
       previousPlan: null,
       catalog,
       candidates,
+      valueIndex,
     });
     planMs = planned.timings.planMs;
     submitted = planned.plan;
