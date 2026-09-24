@@ -142,7 +142,10 @@ function decodeRowItemId(itemId: string): string | null {
   if (!itemId.startsWith('row:')) return null;
   try {
     const parsed = JSON.parse(Buffer.from(itemId.slice(4), 'base64url').toString('utf8'));
-    if (!Array.isArray(parsed) || parsed.length !== PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.length) return null;
+    if (!Array.isArray(parsed) || !(
+      parsed.length === PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.length && parsed[0] !== '********'
+      || parsed.length === PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.length + 1 && parsed[0] === '********'
+    )) return null;
     return JSON.stringify(parsed);
   } catch {
     return null;

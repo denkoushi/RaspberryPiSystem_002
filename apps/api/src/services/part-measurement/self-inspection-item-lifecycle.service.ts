@@ -465,7 +465,8 @@ export class SelfInspectionItemLifecycleService {
     const supplement = await tx.productionScheduleOrderSupplement.findFirst({
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        csvDashboardRowId: normalizeText(target.scheduleRowId)
+        csvDashboardRowId: normalizeText(target.scheduleRowId),
+        productNo: normalizeText(target.productNo)
       },
       select: { plannedQuantity: true }
     });

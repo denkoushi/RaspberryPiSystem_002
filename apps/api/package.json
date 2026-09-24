@@ -29,6 +29,8 @@
     "register:torque-training-catalog:prod": "node dist/scripts/register-torque-training-catalog.js",
     "correct:self-inspection-md004121632-021-single": "tsx src/scripts/correct-self-inspection-md004121632-021-single.ts",
     "correct:self-inspection-md004121632-021-single:prod": "node dist/scripts/correct-self-inspection-md004121632-021-single.js",
+    "restore:unassigned-order-0003729969": "tsx src/scripts/restore-unassigned-order-0003729969.ts",
+    "restore:unassigned-order-0003729969:prod": "node dist/scripts/restore-unassigned-order-0003729969.js",
     "import:resource-groupcd": "tsx src/scripts/import-resource-groupcd.ts",
     "cleanup:pdf-orphans": "tsx src/scripts/cleanup-pdf-storage-orphans.ts",
     "prisma:migrate": "prisma migrate dev",

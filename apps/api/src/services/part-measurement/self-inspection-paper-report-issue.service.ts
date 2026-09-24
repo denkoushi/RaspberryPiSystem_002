@@ -93,7 +93,8 @@ export class SelfInspectionPaperReportIssueService {
     const supplement = await prisma.productionScheduleOrderSupplement.findFirst({
       where: {
         csvDashboardRowId: scheduleRowId,
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        productNo
       },
       select: { plannedQuantity: true }
     });

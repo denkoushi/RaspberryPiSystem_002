@@ -75,7 +75,8 @@ export async function resetSelfInspectionSession(
     const supplement = await tx.productionScheduleOrderSupplement.findFirst({
       where: {
         csvDashboardRowId: scheduleRowId,
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        productNo: lockedSession.productNo
       },
       select: { plannedQuantity: true }
     });

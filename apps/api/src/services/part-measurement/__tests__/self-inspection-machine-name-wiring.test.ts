@@ -68,7 +68,7 @@ vi.mock('../self-inspection-participant-names.query.js', () => ({
 
 import { listSelfInspectionSessions } from '../self-inspection/use-cases/session-query.js';
 import { resolveOrCreateSelfInspectionSession } from '../self-inspection/use-cases/session-start.js';
-import { SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL } from '../../production-schedule/constants.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID, SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL } from '../../production-schedule/constants.js';
 
 describe('self-inspection machine-name API wiring', () => {
   beforeEach(() => {
@@ -106,6 +106,14 @@ describe('self-inspection machine-name API wiring', () => {
     });
 
     expect(mocks.verifyScheduleRow).toHaveBeenCalled();
+    expect(mocks.prisma.productionScheduleOrderSupplement.findFirst).toHaveBeenCalledWith({
+      where: {
+        csvDashboardRowId: 'row-1',
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        productNo: 'PO-1'
+      },
+      select: { plannedQuantity: true }
+    });
     expect(mocks.resolveMachineNames).toHaveBeenCalledWith(['FS-1']);
     expect(mocks.transaction.selfInspectionSession.upsert).toHaveBeenCalledWith(
       expect.objectContaining({

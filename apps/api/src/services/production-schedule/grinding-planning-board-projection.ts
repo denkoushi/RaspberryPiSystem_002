@@ -9,7 +9,10 @@ import type {
   GrindingPlanningBoardView
 } from '@raspi-system/shared-types';
 
-import { PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS } from './row-resolver/constants.js';
+import {
+  PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
+  isUnassignedProductionSeiban,
+} from './row-resolver/constants.js';
 import { applySplitQuantityToProductionScheduleRowDisplayFields } from './order-split/split-display-required-minutes.js';
 
 export type GrindingPlanningBoardRowData = Prisma.JsonValue | Record<string, unknown>;
@@ -180,7 +183,11 @@ function isInCategory(
 
 /** Existing winner identity semantics: COALESCE(raw, '') and SQL text coercion. */
 export function buildGrindingPlanningBoardLogicalKey(rowData: GrindingPlanningBoardRowData): string {
-  return JSON.stringify(PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.map((column) => rowValue(rowData, column)));
+  const parts = PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.map((column) => rowValue(rowData, column));
+  if (isUnassignedProductionSeiban(rowValue(rowData, 'FSEIBAN'))) {
+    parts.push(rowValue(rowData, 'ProductNo'));
+  }
+  return JSON.stringify(parts);
 }
 
 export function buildGrindingPlanningBoardRowItemId(rowData: GrindingPlanningBoardRowData): string {
@@ -188,8 +195,9 @@ export function buildGrindingPlanningBoardRowItemId(rowData: GrindingPlanningBoa
 }
 
 function buildPartKey(fseiban: string, productNo: string, fhincd: string): string {
-  void productNo;
-  return [fseiban.trim(), fhincd.trim()].join('\0');
+  const parts = [fseiban.trim(), fhincd.trim()];
+  if (isUnassignedProductionSeiban(fseiban)) parts.push(productNo.trim());
+  return parts.join('\0');
 }
 
 function buildProgressProjection(

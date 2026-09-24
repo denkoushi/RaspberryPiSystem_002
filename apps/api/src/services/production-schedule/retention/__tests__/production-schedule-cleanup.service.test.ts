@@ -74,6 +74,24 @@ describe('production-schedule-cleanup.service', () => {
 
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
     expect(result.deletedCount).toBe(3);
+    const sql = vi.mocked(prisma.$executeRaw).mock.calls[0]?.[0] as { sql: string };
+    expect(sql.sql).toContain("THEN BTRIM(COALESCE(\"r\".\"rowData\"->>'ProductNo', '')) ELSE '' END");
+  });
+
+  it('keeps separate cleanup keys for unassigned orders', async () => {
+    const base = { FSEIBAN: '********', FHINCD: 'P', FSIGENCD: '500', FKOJUN: '230' };
+    const rows = [{ data: { ...base, ProductNo: '0003729969' } },
+      { data: { ...base, ProductNo: '0004104427' } }];
+    const logicalKeys = ProductionScheduleCleanupService.extractLogicalKeysFromRows({ rows });
+    expect(logicalKeys).toHaveLength(2);
+
+    vi.mocked(prisma.$executeRaw).mockResolvedValue(0 as never);
+    await new ProductionScheduleCleanupService().deleteDuplicateLosersForKeys({
+      csvDashboardId: 'dash', logicalKeys,
+    });
+    const sql = vi.mocked(prisma.$executeRaw).mock.calls[0]?.[0] as { sql: string };
+    expect(sql.sql).toContain('k."ProductNo"');
+    expect(sql.sql).toContain("THEN BTRIM(COALESCE(\"r\".\"rowData\"->>'ProductNo', '')) ELSE '' END");
   });
 
   it('deleteDuplicateLosersForKeys: keysが空なら何もしない', async () => {
@@ -84,4 +102,3 @@ describe('production-schedule-cleanup.service', () => {
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
   });
 });
-

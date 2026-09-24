@@ -5,9 +5,9 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { ApiError } from '../../lib/errors.js';
 import {
-  PRODUCTION_SCHEDULE_HASH_KEY_COLUMNS,
   PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN,
   PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
+  calculateProductionScheduleDataHash,
   resolveToMaxProductNoPerLogicalKey,
 } from '../production-schedule/row-resolver/index.js';
 import {
@@ -166,10 +166,6 @@ export class CsvDashboardIngestor {
             }));
       const productNoDedupSkippedRows = oneYearFilteredRows.length - productionScheduleDedupRows.length;
       const preDedupSkippedRows = oneYearDroppedCount + productNoDedupSkippedRows;
-      const dedupKeyColumns =
-        isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP'
-          ? [...PRODUCTION_SCHEDULE_HASH_KEY_COLUMNS]
-          : dashboard.dedupKeyColumns;
       const ingestRows: Array<{
         data: NormalizedRowData;
         occurredAt: Date;
@@ -181,7 +177,9 @@ export class CsvDashboardIngestor {
         dashboard.ingestMode === 'DEDUP'
           ? productionScheduleDedupRows.map((row) => ({
               ...row,
-              hash: this.calculateDataHash(row.data, dedupKeyColumns),
+              hash: isProductionScheduleDashboard
+                ? calculateProductionScheduleDataHash(row.data)
+                : this.calculateDataHash(row.data, dashboard.dedupKeyColumns),
             }))
           : productionScheduleDedupRows;
 
@@ -378,7 +376,7 @@ export class CsvDashboardIngestor {
         try {
           const keyColumns =
             isProductionScheduleDashboard && dashboard.dedupKeyColumns.length === 0
-              ? [...PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS]
+              ? [...PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS, PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN]
               : dashboard.dedupKeyColumns;
           const dedupKeys = CsvDashboardIngestor.extractDedupKeysFromRows({
             rows: productionScheduleDedupRows,
