@@ -11,6 +11,24 @@ export const RERANK_ACCEPT_AT = 0.3;
 export const RRF_K = 60;
 export const STAGE_CANDIDATE_LIMIT = 50;
 /**
+ * Recent + content treats content as a gate and orders by the date role.
+ * A lexical row enters the pool when its score is at least this fraction of
+ * the best lexical score and a non-filter content token scored above zero.
+ */
+export const RECENT_CONTENT_LEXICAL_FRACTION = 0.2;
+/**
+ * Hybrid and dense add rows whose cosine is at least this fraction of the
+ * best cosine in the filtered set. The fraction is relative, not an absolute cutoff.
+ */
+export const RECENT_CONTENT_DENSE_FRACTION = 0.75;
+/** Newest-first relevance batches. Each batch uses the existing 15-candidate judge. */
+export const RECENT_CONTENT_MAX_BATCHES = 3;
+/**
+ * Do not start another relevance batch after this budget.
+ * Three existing judge calls then stay under a 5s p95.
+ */
+export const RECENT_CONTENT_TIME_BUDGET_MS = 3200;
+/**
  * A content token is generic when it occurs in more than this fraction of the snapshot.
  * The IDF cutoff for a snapshot is specificTokenIdfThreshold(documentCount).
  */
@@ -375,6 +393,74 @@ function planLimit(plan) {
   return Number.isInteger(plan?.limit) ? Math.min(20, Math.max(1, plan.limit)) : 5;
 }
 
+export function isRecentContentPlan(plan, catalog) {
+  if (plan?.diagnostics?.contentDecision?.final !== true) return false;
+  const query = typeof plan?.semanticQuery === 'string' ? plan.semanticQuery.trim() : '';
+  if (!query) return false;
+  const sort = plan?.sort;
+  if (!sort || sort === 'relevance' || sort.direction === 'asc' || typeof sort.field !== 'string') return false;
+  const dateField = catalog ? fieldsWithRole(catalog, 'date')[0] : null;
+  return dateField ? sort.field === dateField : true;
+}
+
+function dateRoleField(plan, catalog) {
+  if (plan?.sort && plan.sort !== 'relevance' && typeof plan.sort.field === 'string') return plan.sort.field;
+  return catalog ? fieldsWithRole(catalog, 'date')[0] : null;
+}
+
+/**
+ * Content gate after hard filters. Lexical rows need a substantive content
+ * token and a score at the generic fraction of the top score. Hybrid and
+ * dense also admit dense hits at the generic fraction of the top cosine.
+ */
+export function buildRecentContentPool({ lexicalRows, vectorOrdered, retriever, byId }) {
+  const lexicalTop = (lexicalRows ?? []).reduce((max, row) => Math.max(max, Number(row.score) || 0), 0);
+  const lexicalFloor = lexicalTop * RECENT_CONTENT_LEXICAL_FRACTION;
+  const lexicalById = new Map((lexicalRows ?? []).map((row) => [row.id, row]));
+  const admitted = new Map();
+  if (retriever !== 'dense') {
+    for (const row of lexicalRows ?? []) {
+      const score = Number(row.score) || 0;
+      if (!(Number(row.contentTokenScore) > 0) || score <= 0 || score < lexicalFloor) continue;
+      const record = byId.get(row.id);
+      if (!record) continue;
+      admitted.set(row.id, { record, score, lexicalValue: score });
+    }
+  }
+  if (retriever === 'hybrid' || retriever === 'dense') {
+    const denseTop = (vectorOrdered ?? []).reduce((max, row) => Math.max(max, Number(row.cosine) || 0), 0);
+    const denseFloor = denseTop * RECENT_CONTENT_DENSE_FRACTION;
+    if (denseTop > 0) {
+      for (const row of vectorOrdered ?? []) {
+        const cosine = Number(row.cosine) || 0;
+        if (cosine < denseFloor) continue;
+        const record = byId.get(row.id);
+        if (!record) continue;
+        const lexical = lexicalById.get(row.id);
+        const existing = admitted.get(row.id);
+        const score = Math.max(existing?.score ?? 0, cosine, Number(lexical?.score) || 0);
+        admitted.set(row.id, {
+          record,
+          score,
+          lexicalValue: Number(lexical?.score) || existing?.lexicalValue || 0,
+        });
+      }
+    }
+  }
+  return [...admitted.values()];
+}
+
+export function orderRecentContentPool(pool, dateField) {
+  return [...pool].sort((left, right) => {
+    if (dateField) {
+      const compared = compareRaw(right.record?.[dateField], left.record?.[dateField]);
+      if (compared !== 0) return compared;
+    }
+    if (left.score !== right.score) return right.score - left.score;
+    return String(left.record?.id ?? '').localeCompare(String(right.record?.id ?? ''));
+  });
+}
+
 function unavailableResult(reason, timings, plan) {
   const limit = planLimit(plan);
   return {
@@ -483,7 +569,17 @@ export async function execute(plan, options = {}) {
   const rowsOf = (ordered) => ordered
     .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
     .filter((item) => item.record);
-  if (filteredOnly) {
+  const recentContent = isRecentContentPlan(plan, options.catalog);
+  if (recentContent) {
+    const dateField = dateRoleField(plan, options.catalog);
+    ranked = orderRecentContentPool(buildRecentContentPool({
+      lexicalRows,
+      vectorOrdered,
+      retriever,
+      byId,
+    }), dateField);
+    candidateIds = ranked.map((item) => item.record.id);
+  } else if (filteredOnly) {
     ranked = filtered.map((record) => ({ record, score: 0, lexicalValue: 0 }));
     candidateIds = ranked.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.record.id);
   } else if (!semanticQuery) {
@@ -509,7 +605,51 @@ export async function execute(plan, options = {}) {
   }
   let relevanceMs = semanticQuery ? 0 : null;
   let rerankMs = null;
-  if (semanticQuery && typeof options.rerank === 'function') {
+  const limit = planLimit(plan);
+  if (recentContent && typeof options.relevance === 'function' && options.rerankMode !== 'replace') {
+    const budgetMs = Number.isFinite(options.recentContentBudgetMs)
+      ? options.recentContentBudgetMs
+      : RECENT_CONTENT_TIME_BUDGET_MS;
+    const maxBatches = Number.isInteger(options.recentContentMaxBatches)
+      ? options.recentContentMaxBatches
+      : RECENT_CONTENT_MAX_BATCHES;
+    const accepted = [];
+    const relevanceStarted = performance.now();
+    let batches = 0;
+    try {
+      for (let offset = 0; accepted.length < limit && offset < ranked.length && batches < maxBatches; offset += RELEVANCE_CANDIDATE_LIMIT) {
+        if (batches > 0 && performance.now() - relevanceStarted >= budgetMs) break;
+        const batch = ranked.slice(offset, offset + RELEVANCE_CANDIDATE_LIMIT);
+        batches += 1;
+        const judged = await options.relevance({
+          semanticQuery,
+          candidates: batch.map((item) => ({ id: item.record.id, record: item.record })),
+          bodyFields,
+        });
+        if (!judged?.ok || !Array.isArray(judged.ranked)) {
+          relevanceMs = Number.isFinite(judged?.relevanceMs)
+            ? judged.relevanceMs
+            : Math.round(performance.now() - relevanceStarted);
+          return unavailableResult(judged?.reason ?? 'relevance judgment unavailable', {
+            filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, relevanceMs, filteredCount: filtered.length, started,
+          }, plan);
+        }
+        const acceptedIds = new Set(judged.ranked.map((item) => item.id));
+        for (const item of batch) {
+          if (!acceptedIds.has(item.record.id)) continue;
+          accepted.push(item);
+          if (accepted.length >= limit) break;
+        }
+      }
+      relevanceMs = Math.round(performance.now() - relevanceStarted);
+      ranked = accepted;
+    } catch (error) {
+      relevanceMs = Number.isFinite(error?.relevanceMs) ? error.relevanceMs : Math.round(performance.now() - relevanceStarted);
+      return unavailableResult(safeReason(error), {
+        filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, relevanceMs, filteredCount: filtered.length, started,
+      }, plan);
+    }
+  } else if (semanticQuery && typeof options.rerank === 'function') {
     const rerankStarted = performance.now();
     const pool = ranked.slice(0, RELEVANCE_CANDIDATE_LIMIT);
     const judged = await options.rerank({
@@ -525,7 +665,7 @@ export async function execute(plan, options = {}) {
       relevanceMs = null;
     }
   }
-  if (semanticQuery && typeof options.relevance === 'function' && options.rerankMode !== 'replace') {
+  if (!recentContent && semanticQuery && typeof options.relevance === 'function' && options.rerankMode !== 'replace') {
     const relevanceStarted = performance.now();
     try {
       const judged = await options.relevance({
@@ -562,12 +702,12 @@ export async function execute(plan, options = {}) {
     if (sortField) {
       const compared = compareRaw(left.record?.[sortField], right.record?.[sortField]) * direction;
       if (compared !== 0) return compared;
+      if (left.score !== right.score) return right.score - left.score;
     } else if (left.score !== right.score) {
       return right.score - left.score;
     }
     return String(left.record?.id ?? '').localeCompare(String(right.record?.id ?? ''));
   });
-  const limit = planLimit(plan);
   const display = Array.isArray(plan?.display) ? plan.display : [];
   const sourceId = Array.isArray(plan?.sources) && plan.sources.length === 1
     ? plan.sources[0]
