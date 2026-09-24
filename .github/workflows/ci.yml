@@ -1261,10 +1261,27 @@ jobs:
           docker stop postgres-e2e || true
           docker rm postgres-e2e || true
 
+  hermes-retrieval:
+    name: hermes-retrieval
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Run retrieval tests
+        working-directory: scripts/hermes-search
+        run: node --test retrieval/
+
   ci-required:
     name: ci-required
     if: ${{ always() }}
     needs:
+      - hermes-retrieval
       - hermes-answer-cache
       - change-classification
       - repo-policy
@@ -1294,6 +1311,7 @@ jobs:
         env:
           HERMES_CACHE_SELECTED: ${{ needs['change-classification'].outputs.release_pair }}
           HERMES_CACHE_RESULT: ${{ needs['hermes-answer-cache'].result }}
+          HERMES_RETRIEVAL_RESULT: ${{ needs['hermes-retrieval'].result }}
           CHANGE_CLASSIFICATION: ${{ needs['change-classification'].result }}
           REPO_POLICY_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.repo_policy == 'true' }}
           REPO_POLICY_RESULT: ${{ needs['repo-policy'].result }}
@@ -1331,6 +1349,7 @@ jobs:
           python3 scripts/ci/validate_required_results.py \
             --classification-result "$CHANGE_CLASSIFICATION" \
             "hermes-answer-cache=$HERMES_CACHE_SELECTED:$HERMES_CACHE_RESULT" \
+            "hermes-retrieval=true:$HERMES_RETRIEVAL_RESULT" \
             "repo-policy=$REPO_POLICY_SELECTED:$REPO_POLICY_RESULT" \
             "workspace-quality=$WORKSPACE_QUALITY_SELECTED:$WORKSPACE_QUALITY_RESULT" \
             "api=$API_SELECTED:$API_RESULT" \
