@@ -1,0 +1,15 @@
+[
+  {
+    "id": "example-content",
+    "question": "North Shopのsurface scratchを最新1件見せて",
+    "expect": "answer",
+    "judge": { "anyOf": ["scratch"] },
+    "filterField": "originDepartmentName"
+  },
+  {
+    "id": "example-missing",
+    "question": "zzzznonewordの記録を2件探して",
+    "expect": "no_result",
+    "judge": { "anyOf": ["zzzznoneword"] }
+  }
+]

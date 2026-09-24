@@ -1,0 +1,267 @@
+#!/usr/bin/env node
+// One-process gold evaluation. Record text stays out of the summary and the --out file.
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
+import { performance } from 'node:perf_hooks';
+import { fileURLToPath } from 'node:url';
+import { fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
+import { execute, openQmdVectorRanker } from './executor.mjs';
+import { createPlanner } from './planner-jev.mjs';
+import { createRelevanceJudge } from './relevance-jev.mjs';
+import { validateQueryPlan } from './query-plan.mjs';
+import { buildValueIndex, findCandidateValues } from './value-index.mjs';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+export function percentile(values, ratio) {
+  const numbers = values.filter((value) => Number.isFinite(value));
+  if (!numbers.length) return null;
+  const sorted = [...numbers].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(ratio * sorted.length) - 1));
+  return sorted[index];
+}
+
+export function countKeywordHits(results, keywords, bodyFields) {
+  const needles = keywords.filter((keyword) => typeof keyword === 'string' && keyword);
+  let hits = 0;
+  for (const result of results ?? []) {
+    const text = bodyFields.map((key) => result?.fields?.[key] ?? '').join('\n');
+    if (needles.some((keyword) => text.includes(keyword))) hits += 1;
+  }
+  return hits;
+}
+
+function parseArgs(argv) {
+  const parsed = { gold: null, snapshot: null, qmdIndex: null, embedModel: null, out: null, jevRelevance: null };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--gold') parsed.gold = argv[++index];
+    else if (arg === '--snapshot') parsed.snapshot = argv[++index];
+    else if (arg === '--qmd-index') parsed.qmdIndex = argv[++index];
+    else if (arg === '--embed-model') parsed.embedModel = argv[++index];
+    else if (arg === '--out') parsed.out = argv[++index];
+    else if (arg === '--jev-relevance') {
+      const next = argv[index + 1];
+      if (next === 'false' || next === 'off') {
+        parsed.jevRelevance = false;
+        index += 1;
+      } else if (next === 'true' || next === 'on') {
+        parsed.jevRelevance = true;
+        index += 1;
+      } else parsed.jevRelevance = true;
+    } else throw new Error(`unknown argument: ${arg}`);
+  }
+  if (!parsed.gold || !parsed.snapshot || !parsed.out) {
+    throw new Error('Usage: node retrieval/evaluate.mjs --gold <file> --snapshot <path> --qmd-index <path> --embed-model <path> [--jev-relevance] --out <file>');
+  }
+  return parsed;
+}
+
+function latencyPair(values) {
+  return { p50: percentile(values, 0.5), p95: percentile(values, 0.95) };
+}
+
+function relevanceEnabled(flag) {
+  if (flag === false) return false;
+  if (flag === true) return true;
+  return Boolean(process.env.TYPESAFE_API_KEY);
+}
+
+function readGold(file) {
+  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (!Array.isArray(parsed) || !parsed.length) throw new Error('gold file must be a non-empty array');
+  return parsed.map((item, index) => {
+    if (!item || typeof item.id !== 'string' || !item.id) throw new Error(`gold case ${index} needs an id`);
+    if (typeof item.question !== 'string' || !item.question.trim()) throw new Error(`gold case ${item.id} needs a question`);
+    if (!['answer', 'no_result', 'clarification'].includes(item.expect)) throw new Error(`gold case ${item.id} has an unknown expect`);
+    if (!Array.isArray(item.judge?.anyOf) || item.judge.anyOf.some((keyword) => typeof keyword !== 'string' || !keyword)) {
+      throw new Error(`gold case ${item.id} needs judge.anyOf strings`);
+    }
+    if (item.filterField != null && typeof item.filterField !== 'string') throw new Error(`gold case ${item.id} has a bad filterField`);
+    return item;
+  });
+}
+
+async function resolveQmdRoot() {
+  const candidates = [process.env.HERMES_QMD_ROOT, path.resolve(here, '../node_modules/@tobilu/qmd')].filter(Boolean);
+  for (const root of candidates) {
+    try {
+      await fsp.access(path.join(root, 'dist/index.js'));
+      return root;
+    } catch {
+      // Try the next location.
+    }
+  }
+  return null;
+}
+
+function casePrecision(expect, hits, returned) {
+  if (returned === 0) return expect === 'no_result' ? 1 : 0;
+  return hits / returned;
+}
+
+function allRelevant(expect, hits, returned) {
+  if (hits !== returned) return false;
+  if (expect === 'answer') return returned > 0;
+  return returned === 0;
+}
+
+export async function evaluateGold(options) {
+  const gold = readGold(options.goldPath);
+  const payload = JSON.parse(fs.readFileSync(options.snapshotPath, 'utf8'));
+  if (!Array.isArray(payload?.records)) throw new Error('snapshot records must be an array');
+  const catalog = loadNonconformityCatalog();
+  const valueIndex = buildValueIndex(payload.records, catalog);
+  const bodyFields = fieldsWithRole(catalog, 'body');
+  let ranker = null;
+  let vectorPrepareReason = null;
+  if (options.qmdIndex && options.embedModel) {
+    const qmdRoot = await resolveQmdRoot();
+    if (!qmdRoot) vectorPrepareReason = 'QMD runtime dist/index.js was not found. Set HERMES_QMD_ROOT.';
+    else {
+      try {
+        ranker = await openQmdVectorRanker({
+          indexSourcePath: options.qmdIndex,
+          embedModelPath: options.embedModel,
+          workRoot: options.workRoot,
+          qmdRoot,
+          sourceId: catalog.id,
+        });
+      } catch (error) {
+        vectorPrepareReason = String(error?.message ?? error).slice(0, 300);
+      }
+    }
+  } else {
+    vectorPrepareReason = 'qmd index or embed model flag is not set';
+  }
+  const vector = ranker ? (query, filteredRecords) => ranker.rank(query, filteredRecords) : null;
+  const details = [];
+  try {
+    for (const item of gold) {
+      const wallStarted = performance.now();
+      const candidates = findCandidateValues(item.question, valueIndex, catalog);
+      const planned = await createPlanner().plan({
+        question: item.question,
+        previousPlan: null,
+        catalog,
+        candidates,
+      });
+      const validation = validateQueryPlan(planned.plan, catalog, valueIndex);
+      let executed;
+      if (!validation.ok) {
+        executed = {
+          status: 'clarification',
+          results: [],
+          insufficient: false,
+          requested: null,
+          returned: 0,
+          timings: { totalMs: 0, vectorMs: null, vectorStatus: 'not_requested', vectorReason: null },
+        };
+      } else {
+        executed = await execute(validation.plan, {
+          records: payload.records,
+          vector,
+          catalog,
+          relevance: options.relevance,
+        });
+        if (!ranker && validation.plan.semanticQuery.trim() && vectorPrepareReason) {
+          executed.timings.vectorStatus = /not set|not found|was not found/u.test(vectorPrepareReason) ? 'skipped' : 'failed';
+          executed.timings.vectorReason = vectorPrepareReason;
+        }
+      }
+      const hits = countKeywordHits(executed.results, item.judge.anyOf, bodyFields);
+      const returned = executed.returned ?? executed.results.length;
+      const precision = casePrecision(item.expect, hits, returned);
+      const planFilters = validation.ok ? validation.plan.filters : (planned.plan?.filters ?? []);
+      details.push({
+        id: item.id,
+        status: executed.status,
+        expect: item.expect,
+        statusCorrect: executed.status === item.expect,
+        hits,
+        returned,
+        requested: executed.requested ?? null,
+        insufficient: Boolean(executed.insufficient),
+        precision,
+        allRelevant: allRelevant(item.expect, hits, returned),
+        filterField: item.filterField ?? null,
+        filterApplied: item.filterField ? planFilters.some((filter) => filter.field === item.filterField) : null,
+        ids: executed.results.map((result) => result.recordId),
+        planMs: planned.timings?.planMs ?? null,
+        retrieveMs: executed.timings?.totalMs ?? null,
+        vectorMs: executed.timings?.vectorMs ?? null,
+        relevanceMs: executed.timings?.relevanceMs ?? null,
+        vectorStatus: executed.timings?.vectorStatus ?? null,
+        totalMs: Math.round(performance.now() - wallStarted),
+      });
+    }
+  } finally {
+    if (ranker) await ranker.close();
+  }
+  const summary = {
+    cases: details.length,
+    precisionAvg: details.length ? details.reduce((sum, item) => sum + item.precision, 0) / details.length : 0,
+    casesAllRelevant: details.filter((item) => item.allRelevant).length,
+    statusCorrect: details.filter((item) => item.statusCorrect).length,
+    latency: {
+      plan: latencyPair(details.map((item) => item.planMs)),
+      retrieve: latencyPair(details.map((item) => item.retrieveMs)),
+      total: latencyPair(details.map((item) => item.totalMs)),
+      cold: details[0]
+        ? {
+          plan: details[0].planMs,
+          retrieve: details[0].retrieveMs,
+          total: details[0].totalMs,
+          vector: details[0].vectorMs,
+          relevance: details[0].relevanceMs,
+        }
+        : null,
+      warm: {
+        plan: latencyPair(details.slice(1).map((item) => item.planMs)),
+        retrieve: latencyPair(details.slice(1).map((item) => item.retrieveMs)),
+        total: latencyPair(details.slice(1).map((item) => item.totalMs)),
+        vector: latencyPair(details.slice(1).map((item) => item.vectorMs)),
+        relevance: latencyPair(details.slice(1).map((item) => item.relevanceMs)),
+      },
+    },
+    hitRatios: details.map((item) => ({
+      id: item.id,
+      status: item.status,
+      expect: item.expect,
+      statusCorrect: item.statusCorrect,
+      hits: item.hits,
+      returned: item.returned,
+      ratio: item.returned ? `${item.hits}/${item.returned}` : `${item.hits}/0`,
+      relevanceMs: item.relevanceMs,
+    })),
+  };
+  return { summary, details };
+}
+
+async function main() {
+  if (!process.env.TYPESAFE_API_KEY) {
+    console.error('TYPESAFE_API_KEY is not set');
+    process.exit(1);
+  }
+  const args = parseArgs(process.argv.slice(2));
+  const workRoot = path.join(process.env.HOME, 'Documents', 'hermes-retrieval-private', 'work');
+  const { summary, details } = await evaluateGold({
+    goldPath: args.gold,
+    snapshotPath: args.snapshot,
+    qmdIndex: args.qmdIndex,
+    embedModel: args.embedModel,
+    workRoot,
+    relevance: relevanceEnabled(args.jevRelevance) ? (input) => createRelevanceJudge().judge(input) : undefined,
+  });
+  await fsp.mkdir(path.dirname(args.out), { recursive: true, mode: 0o700 });
+  await fsp.writeFile(args.out, `${JSON.stringify({ summary, cases: details }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(String(error?.message ?? error).slice(0, 300));
+    process.exit(1);
+  });
+}
