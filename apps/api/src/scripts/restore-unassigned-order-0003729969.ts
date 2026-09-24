@@ -14,6 +14,8 @@ import {
   dedupeFkojunstMailRowsByLatest,
   toFkojunstMailNormalizedRow,
 } from '../services/production-schedule/fkojunst-status-mail-sync.pipeline.js';
+import { acquireFkojunstStatusMailCriticalTransactionLock } from '../services/production-schedule/fkojunst-status-mail-critical-lock.js';
+import { fetchFkojunstStatusMailGenerationSignals } from '../services/production-schedule/fkojunst-status-mail-generation-signals.js';
 import { normalizeProductionScheduleResourceCd } from '../services/production-schedule/policies/resource-category-policy.service.js';
 import { calculateProductionScheduleDataHash } from '../services/production-schedule/row-resolver/constants.js';
 
@@ -64,6 +66,7 @@ async function main(): Promise<void> {
   const plannedStartDate = parseDate(supplement['着手日'] ?? '');
   const plannedEndDate = parseDate(supplement['完了日'] ?? '');
 
+  const statusSourceRevision = (await fetchFkojunstStatusMailGenerationSignals(prisma)).rowsRevision;
   const statusSourceRows = await prisma.csvDashboardRow.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
@@ -198,21 +201,32 @@ async function main(): Promise<void> {
         String((row.rowData as Record<string, unknown>).FSIGENCD ?? '')),
       row.id,
     ]));
-    await prisma.productionScheduleFkojunstMailStatus.createMany({
-      data: matchedStatuses.map((status) => {
-        const csvDashboardRowId = rowIdByStatusKey.get(statusKey(status.fkojun, status.fkoteicd));
-        assert(csvDashboardRowId, 'FKOJUNST_Status has no restored schedule row');
-        return {
-          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-          csvDashboardRowId,
-          sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
-          fkojun: status.fkojun,
-          fkoteicd: status.fkoteicd,
-          fsezono: status.fsezono,
-          statusCode: status.statusCode,
-          sourceUpdatedAt: status.sourceUpdatedAt,
-        };
-      }),
+    const statusInputs = matchedStatuses.map((status) => {
+      const csvDashboardRowId = rowIdByStatusKey.get(statusKey(status.fkojun, status.fkoteicd));
+      assert(csvDashboardRowId, 'FKOJUNST_Status has no restored schedule row');
+      return {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId,
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+        fkojun: status.fkojun,
+        fkoteicd: status.fkoteicd,
+        fsezono: status.fsezono,
+        statusCode: status.statusCode,
+        sourceUpdatedAt: status.sourceUpdatedAt,
+      };
+    });
+    await prisma.$transaction(async (tx) => {
+      await acquireFkojunstStatusMailCriticalTransactionLock(tx);
+      const currentRevision = (await fetchFkojunstStatusMailGenerationSignals(tx)).rowsRevision;
+      assert(currentRevision === statusSourceRevision, 'FKOJUNST_Status source changed during recovery');
+      const currentStatusCount = await tx.productionScheduleFkojunstMailStatus.count({
+        where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fsezono: PRODUCT_NO },
+      });
+      assert(currentStatusCount === 0, 'Target FKOJUNST_Status links changed during recovery');
+      await tx.productionScheduleFkojunstMailStatus.createMany({ data: statusInputs });
+    }, {
+      maxWait: 15_000,
+      timeout: 60_000,
     });
   }
   console.log(JSON.stringify({ restoredOrder: PRODUCT_NO, scheduleRows: existingRows.length,
