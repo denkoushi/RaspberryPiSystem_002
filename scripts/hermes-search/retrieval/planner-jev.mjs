@@ -18,6 +18,7 @@ const VALUE_RIVAL_GAP = 0.2;
 const VALUE_CLOSE_GAP = 0.12;
 const MAX_MULTI_VALUES = 8;
 const OUT_OF_SCOPE = 'out_of_scope';
+const OUT_OF_SCOPE_MARGIN = 0.2;
 const RECENCY = /最近|直近|新しい順|最新/u;
 
 function choiceQuestion(instructions, options) {
@@ -170,10 +171,10 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         const catalogText = sourceOptions.map((option) => option.description).join('。');
         sourceOptions.push({
           id: OUT_OF_SCOPE,
-          description: `記録を探していない。対象は「${catalogText}」だけであり、それ以外の発話である。`,
+          description: `天気、食事、スポーツ、旅行、雑談のように、作業・品質・工程・設計・調達の出来事ではない発話。迷う場合は「${catalogText}」側。`,
         });
         questions.scope = choiceQuestion(
-          `この発話が探している記録の種類を選ぶ。対象はカタログの「${catalogText}」だけである。その記録を探していない発話は out_of_scope。`,
+          `この発話が探している記録の種類を選ぶ。カタログは「${catalogText}」。図面、設計、工程、品質、調達など、その記録になりうる作業上の出来事は対象にする。out_of_scope は明らかに無関係なときだけ。`,
           sourceOptions,
         );
       }
@@ -245,7 +246,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const answers = answersOf(evaluated);
       const unresolved = fromIndex ? [] : usable.slice(asked.length).map((group) => ({ term: group.term, candidates: [...group.values] }));
       const scopeIds = entries.map((entry) => entry.id);
-      const scopeChoice = fromIndex ? chosen(answers.scope, [...scopeIds, OUT_OF_SCOPE]) : scopeIds[0];
+      const scopeChoice = fromIndex ? scopeChoiceOf(answers.scope, scopeIds) : scopeIds[0];
       const outOfScope = fromIndex && scopeChoice === OUT_OF_SCOPE;
       const selected = [];
       const resolvedTerms = [];
@@ -299,7 +300,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const limitExplicit = fromIndex ? Boolean(limitChoice && limitChoice !== LIMIT_UNSPECIFIED) : Boolean(limitChoice);
       if (!fromIndex && !limitChoice) unresolved.push({ term: 'limit', candidates: [...LIMIT_OPTIONS] });
       const contentChoice = chosen(answers.content, ['true', 'false']);
-      if (!contentChoice) unresolved.push({ term: 'content', candidates: ['true', 'false'] });
+      void contentChoice;
 
       const carried = turn === 'refine' && Array.isArray(previousPlan?.filters)
         ? previousPlan.filters
@@ -324,9 +325,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       }
       const filters = mergeFilters([...carried, ...selected, ...dated]);
       const residualTokens = residualContentTokens(question, filters);
-      const jev = residualTokens.length === 0
-        ? false
-        : contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;
+      const jev = residualTokens.length > 0;
       const finalContent = jev === true && unresolved.length === 0;
       const sortMode = resolveSort(question, jev, hasAppliedHardFilter({ filters }, catalog));
       const sort = sortMode === 'recent' && recentField
@@ -355,15 +354,62 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
   };
 }
 
+function coversSelectedValue(token, value) {
+  const needle = String(token ?? '').normalize('NFKC').toLowerCase();
+  const hay = String(value ?? '').normalize('NFKC').toLowerCase();
+  if (needle.length < 2 || hay.length < 2) return false;
+  let index = 0;
+  let from = 0;
+  while (index < needle.length) {
+    let length = needle.length - index;
+    let foundAt = -1;
+    while (length >= 2) {
+      const at = hay.indexOf(needle.slice(index, index + length), from);
+      if (at >= 0) {
+        foundAt = at;
+        break;
+      }
+      length -= 1;
+    }
+    if (foundAt < 0) return false;
+    index += length;
+    from = foundAt + length;
+  }
+  return true;
+}
+
 function residualContentTokens(question, filters) {
   const values = [];
   for (const filter of filters ?? []) {
     if (filter?.op === 'before' || filter?.op === 'after' || filter?.op === 'between') continue;
     for (const value of filter?.values ?? []) {
-      if (typeof value === 'string' && value) values.push(value);
+      if (typeof value === 'string' && value) values.push(value.normalize('NFKC'));
     }
   }
-  return contentTokens(stripListedTerms(question, values));
+  return contentTokens(stripListedTerms(question, values))
+    .filter((token) => token !== '件')
+    .filter((token) => !values.some((value) => coversSelectedValue(token, value)));
+}
+
+function scopeChoiceOf(answer, sourceIds) {
+  const probabilities = answer?.probabilities;
+  if (probabilities && typeof probabilities === 'object') {
+    let best = null;
+    let bestScore = -1;
+    for (const id of sourceIds) {
+      const score = Number(probabilities[id]);
+      if (Number.isFinite(score) && score > bestScore) {
+        bestScore = score;
+        best = id;
+      }
+    }
+    const outside = Number(probabilities[OUT_OF_SCOPE]);
+    const floor = bestScore < 0 ? 0 : bestScore;
+    if (Number.isFinite(outside) && outside >= floor + OUT_OF_SCOPE_MARGIN) return OUT_OF_SCOPE;
+    return best ?? sourceIds[0];
+  }
+  const pick = chosen(answer, [...sourceIds, OUT_OF_SCOPE]);
+  return pick === OUT_OF_SCOPE ? OUT_OF_SCOPE : (pick ?? sourceIds[0]);
 }
 
 function resolveSort(question, contentJev, hardFilter) {

@@ -110,7 +110,7 @@ test('planner can refine a previous plan without a second evaluate call', async 
   assert.equal(calls, 1);
   assert.equal(plan.filters.some((filter) => filter.field === 'machineName' && filter.values[0] === 'Lathe-1'), true);
   assert.equal(plan.filters.some((filter) => filter.field === 'originDepartmentName' && filter.values[0] === 'South Shop'), true);
-  assert.deepEqual(plan.sort, { field: 'discoveredOn', direction: 'desc' });
+  assert.equal(plan.sort, 'relevance');
 });
 
 test('an answer outside the candidate ids stays unresolved', async () => {
@@ -192,12 +192,9 @@ test('a false content noul skips relevance and does not search residual tokens',
       values: ['North Shop'],
     }],
   });
-  assert.equal(plan.semanticQuery, '');
-  assert.deepEqual(plan.diagnostics.contentDecision, {
-    jev: false,
-    residualTokens: ['qxrare'],
-    final: false,
-  });
+  assert.equal(plan.semanticQuery, 'North Shopのqxrareを最新3件見せて');
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
+  assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, ['qxrare']);
 });
 
 test('a false content noul without a hard filter keeps the whole question for relevance', async () => {
@@ -217,7 +214,7 @@ test('a false content noul without a hard filter keeps the whole question for re
   });
   assert.deepEqual(plan.filters, []);
   assert.equal(plan.semanticQuery, question);
-  assert.equal(plan.diagnostics.contentDecision.jev, false);
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
 });
 
 test('value-index planner keeps one call, selects close values, and rejects non-record questions', async () => {
@@ -298,7 +295,7 @@ test('selected department covers particle and cause phrasing without a content q
     catalog,
     valueIndex,
   });
-  assert.equal(covered.plan.semanticQuery, '');
+  assert.equal(covered.plan.semanticQuery, '北海の機械課が原因の記録');
   assert.equal(covered.plan.filters[0].values[0], '北海工場製造部機械課');
   const asked = await createPlanner({ evaluate: departmentAnswers({ value: 1, none: 0 }, 0.9) }).plan({
     question: '北海の機械課のburrtoken',
@@ -361,6 +358,64 @@ test('an ambiguous period is chosen inside the existing evaluate call', async ()
   assert.equal(calls, 1);
   assert.equal(plan.filters[0].op, 'between');
   assert.deepEqual(plan.filters[0].values, ['2025-12-01', '2025-12-31']);
+});
+
+test('an abbreviated organization value is consumed and a close out-of-scope score stays in scope', async () => {
+  const abbreviated = await createPlanner({ evaluate: async () => ({
+    answers: {
+      term_0: { type: 'choice', choice: 'v0' },
+      sort: { type: 'choice', choice: 'relevance' },
+      limit: { type: 'choice', choice: '5' },
+      content: { type: 'noul', noul: true },
+    },
+  }) }).plan({
+    question: '三島工場機械課の最近あった件を教えて',
+    catalog,
+    candidates: [{
+      term: '三島',
+      source: 'nonconformity',
+      field: 'originDepartmentName',
+      values: ['三島工場製造部機械課'],
+    }],
+  });
+  assert.equal(abbreviated.plan.filters[0].values[0], '三島工場製造部機械課');
+  assert.deepEqual(abbreviated.plan.diagnostics.contentDecision.residualTokens, []);
+  assert.equal(abbreviated.plan.diagnostics.contentDecision.jev, false);
+
+  const kept = await createPlanner({ evaluate: async (input) => {
+    assert.match(input.questions.scope.instructions, /図面、設計、工程/);
+    return {
+      answers: {
+        scope: { type: 'choice', probabilities: { nonconformity: 0.45, out_of_scope: 0.55 } },
+        sort: { type: 'choice', choice: 'relevance' },
+        limit: { type: 'choice', choice: 'unspecified' },
+        content: { type: 'noul', noul: true },
+      },
+    };
+  } }).plan({
+    question: '図面の差し替えを忘れたqxdraw',
+    catalog,
+    valueIndex: buildValueIndex([{ id: 'a', originDepartmentName: 'North Shop' }], catalog),
+  });
+  assert.equal(kept.plan.diagnostics.scope, 'records');
+  assert.equal(kept.plan.diagnostics.contentDecision.jev, true);
+});
+
+test('colloquial katakana stays content when JEV marks content false', async () => {
+  const { plan } = await createPlanner({ evaluate: async () => ({
+    answers: {
+      sort: { type: 'choice', choice: 'relevance' },
+      limit: { type: 'choice', choice: '5' },
+      content: { type: 'noul', noul: false },
+    },
+  }) }).plan({
+    question: '送りねじがゴロゴロ鳴るので台座面を削り直した件',
+    catalog,
+    candidates: [],
+  });
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
+  assert.ok(plan.diagnostics.contentDecision.residualTokens.some((token) => token.includes('ゴロゴロ')));
+  assert.ok(plan.diagnostics.contentDecision.residualTokens.includes('送りねじ'));
 });
 
 test('filter-only wording cannot stay content-true after consumed tokens are removed', async () => {

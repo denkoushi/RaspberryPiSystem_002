@@ -35,6 +35,13 @@ test('contentQuery drops a period expression so it is not a content token', () =
   assert.equal(contentQuery('直近3か月のqxrare'), 'qxrare');
 });
 
+test('contentQuery keeps katakana and kanji compounds', () => {
+  const tokens = contentQuery('送りねじがゴロゴロ鳴るので台座面を削り直した件');
+  assert.match(tokens, /送りねじ/);
+  assert.match(tokens, /ゴロゴロ/);
+  assert.match(tokens, /台座面/);
+});
+
 test('contentQuery keeps a content token that merely contains a particle', () => {
   assert.equal(contentQuery('abcやdef'), 'abcやdef');
   assert.equal(contentQuery('surface scratch'), 'surface scratch');
