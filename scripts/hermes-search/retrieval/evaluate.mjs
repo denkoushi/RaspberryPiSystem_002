@@ -5,7 +5,9 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
+import { digestRecords } from '../hermes-qmd-snapshot-export.mjs';
 import { fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
+import { attachEnrichment, readEnrichmentStores, splitEnrichmentArg } from './enrichment-attach.mjs';
 import { execute, openQmdVectorRanker } from './executor.mjs';
 import { createDenseRanker } from './dense-index.mjs';
 import { createOnnxEmbedder, createOnnxReranker, DEFAULT_EMBED_MODEL, DEFAULT_RERANK_MODEL } from './embed-runtime.mjs';
@@ -35,10 +37,11 @@ export function countKeywordHits(results, keywords, bodyFields) {
   return hits;
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const parsed = {
     gold: null, snapshot: null, qmdIndex: null, embedModel: null, out: null, jevRelevance: null,
     variant: 'a', entityLink: false, rerankMode: 'replace',
+    enrichment: [], noEnrichment: false, allowSubset: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -46,6 +49,9 @@ function parseArgs(argv) {
     else if (arg === '--snapshot') parsed.snapshot = argv[++index];
     else if (arg === '--qmd-index') parsed.qmdIndex = argv[++index];
     else if (arg === '--embed-model') parsed.embedModel = argv[++index];
+    else if (arg === '--enrichment') parsed.enrichment.push(...splitEnrichmentArg(argv[++index]));
+    else if (arg === '--no-enrichment') parsed.noEnrichment = true;
+    else if (arg === '--allow-subset') parsed.allowSubset = true;
     else if (arg === '--out') parsed.out = argv[++index];
     else if (arg === '--variant') parsed.variant = argv[++index];
     else if (arg === '--entity-link') parsed.entityLink = true;
@@ -62,7 +68,7 @@ function parseArgs(argv) {
     } else throw new Error(`unknown argument: ${arg}`);
   }
   if (!parsed.gold || !parsed.snapshot || !parsed.out) {
-    throw new Error('Usage: node retrieval/evaluate.mjs --gold <file> --snapshot <path> [--variant a|b|c] [--entity-link] [--rerank-mode replace|gate] [--jev-relevance] --out <file>');
+    throw new Error('Usage: node retrieval/evaluate.mjs --gold <file> --snapshot <path> [--variant a|b|c] [--entity-link] [--rerank-mode replace|gate] [--jev-relevance] [--enrichment <jsonl>] [--no-enrichment] [--allow-subset] --out <file>');
   }
   return parsed;
 }
@@ -105,6 +111,15 @@ async function resolveQmdRoot() {
   return null;
 }
 
+export function assertSnapshotIdentity(payload) {
+  if (payload.recordCount != null && payload.recordCount !== payload.records.length) {
+    throw new Error('snapshot recordCount does not match records length');
+  }
+  if (typeof payload.digest === 'string' && payload.digest && payload.digest !== digestRecords(payload.records)) {
+    throw new Error('snapshot digest does not match canonical records');
+  }
+}
+
 function casePrecision(expect, hits, returned) {
   if (returned === 0) return expect === 'no_result' ? 1 : 0;
   return hits / returned;
@@ -120,6 +135,10 @@ export async function evaluateGold(options) {
   const gold = readGold(options.goldPath);
   const payload = JSON.parse(fs.readFileSync(options.snapshotPath, 'utf8'));
   if (!Array.isArray(payload?.records)) throw new Error('snapshot records must be an array');
+  if (!options.allowSubset) assertSnapshotIdentity(payload);
+  if (!options.noEnrichment && options.enrichmentPaths?.length) {
+    payload.records = attachEnrichment(payload.records, readEnrichmentStores(options.enrichmentPaths));
+  }
   const catalog = loadNonconformityCatalog();
   const valueIndex = buildValueIndex(payload.records, catalog);
   const bodyFields = fieldsWithRole(catalog, 'body');
@@ -352,6 +371,9 @@ async function main() {
     variant: args.variant,
     entityLink: args.entityLink,
     rerankMode: args.rerankMode,
+    enrichmentPaths: args.noEnrichment ? [] : args.enrichment,
+    noEnrichment: args.noEnrichment,
+    allowSubset: args.allowSubset,
     embedModelId: DEFAULT_EMBED_MODEL,
     rerankModelId: DEFAULT_RERANK_MODEL,
   });
