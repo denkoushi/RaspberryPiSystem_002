@@ -193,6 +193,99 @@ test('the enrichment window accepts an overnight range and rejects an open gate 
   assert.equal(withinWindow('', day), true);
 });
 
+function batchSettings(overrides) {
+  return {
+    enabled: true,
+    maxRecords: 100,
+    concurrency: 1,
+    timeoutMs: 5000,
+    window: '',
+    origin: 'http://127.0.0.1:9',
+    token: 'synthetic-token-value',
+    egress: '',
+    model: 'mock-model',
+    profile: 'business_qwen36_27b_nvfp4',
+    ...overrides,
+  };
+}
+
+function chatResponse(record) {
+  return {
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      choices: [{ message: { content: JSON.stringify(payloadFor(record)) } }],
+      usage: { prompt_tokens: 11, completion_tokens: 7 },
+    }),
+  };
+}
+
+test('enrichment stops before the next record when the window closes and keeps completed rows', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-window-'));
+  const storePath = path.join(directory, 'retrieval-enrichment.jsonl');
+  const inside = new Date('2026-01-15T15:30:00Z');
+  const outside = new Date('2026-01-15T03:30:00Z');
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records: records.slice(0, 3),
+    catalog,
+    storePath,
+    statusPath: path.join(directory, 'status.json'),
+    settings: batchSettings({ window: '22-6', maxRecords: 3 }),
+    fetchImpl: async () => chatResponse(records[calls++]),
+    sleep: async () => {},
+    now: () => (calls < 1 ? inside : outside),
+  });
+  assert.equal(status.reason, 'outside_window');
+  assert.equal(status.succeeded, 1);
+  assert.equal(status.failed, 0);
+  assert.equal(calls, 1);
+  const stored = await readEnrichmentStore(storePath);
+  assert.equal(stored.has(records[0].id), true);
+  assert.equal(stored.has(records[1].id), false);
+});
+
+test('enrichment without a window runs through the record cap', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-cap-'));
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records,
+    catalog,
+    storePath: path.join(directory, 'store.jsonl'),
+    settings: batchSettings({ window: '', maxRecords: 2 }),
+    fetchImpl: async () => chatResponse(records[calls++]),
+    sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(status.reason, 'completed');
+  assert.equal(status.succeeded, 2);
+  assert.equal(status.deferred, records.length - 2);
+  assert.equal(calls, 2);
+});
+
+test('an enrichment retry does not start after the window closes', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-retry-'));
+  const inside = new Date('2026-01-15T15:30:00Z');
+  const outside = new Date('2026-01-15T03:30:00Z');
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records: records.slice(0, 2),
+    catalog,
+    storePath: path.join(directory, 'store.jsonl'),
+    settings: batchSettings({ window: '22-6', maxRecords: 2 }),
+    fetchImpl: async () => {
+      calls += 1;
+      return { ok: false, status: 400, text: async () => '' };
+    },
+    sleep: async () => {},
+    now: () => (calls < 1 ? inside : outside),
+  });
+  assert.equal(calls, 1);
+  assert.equal(status.reason, 'outside_window');
+  assert.equal(status.failed, 0);
+  assert.equal(status.succeeded, 0);
+});
+
 test('the retrieval worker attaches the agreed enrichment shape when a store entry exists', async () => {
   const answering = createRetrievalAnswering({
     records: records.slice(0, 1),

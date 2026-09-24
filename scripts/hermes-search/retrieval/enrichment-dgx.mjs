@@ -47,6 +47,7 @@ export async function requestEnrichment({
   systemPrompt,
   recordText,
   fetchImpl,
+  now = () => new Date(),
 }) {
   const fetchFn = fetchImpl ?? (settings.egress ? throughEgress(settings.egress) : fetch);
   const messages = [
@@ -56,6 +57,9 @@ export async function requestEnrichment({
   const guided = await postChat(fetchFn, settings, messages, true);
   if (guided.ok) return guided;
   if (guided.unsupported || guided.errorClass === 'invalid_json') {
+    if (!withinWindow(settings.window, now())) {
+      return { ok: false, stopped: true, errorClass: 'outside_window', latencyMs: guided.latencyMs ?? 0 };
+    }
     return postChat(fetchFn, settings, messages, false);
   }
   return guided;

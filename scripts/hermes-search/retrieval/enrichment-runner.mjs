@@ -94,12 +94,25 @@ export async function runEnrichmentBatch({
   const capped = pending.slice(0, settings.maxRecords);
   status.deferred = pending.length - capped.length;
   let consecutiveFailures = 0;
-  for (let index = 0; index < capped.length; index += settings.concurrency) {
-    const slice = capped.slice(index, index + settings.concurrency);
+  let stoppedOutside = false;
+  for (let index = 0; index < capped.length && !stoppedOutside; index += settings.concurrency) {
+    const slice = [];
+    for (const record of capped.slice(index, index + settings.concurrency)) {
+      if (!withinWindow(settings.window, now())) {
+        stoppedOutside = true;
+        break;
+      }
+      slice.push(record);
+    }
+    if (slice.length === 0) break;
     const results = await Promise.all(slice.map((record) => enrichOne({
-      record, catalog, template, promptHash, settings, fetchImpl,
+      record, catalog, template, promptHash, settings, fetchImpl, now,
     })));
     for (const result of results) {
+      if (result.stopped) {
+        stoppedOutside = true;
+        continue;
+      }
       status.examined += 1;
       status.latencyMsTotal += result.latencyMs;
       status.latenciesMs.push(result.latencyMs);
@@ -120,6 +133,7 @@ export async function runEnrichmentBatch({
       byId.set(result.row.recordId, result.row);
     }
     if (results.some((result) => result.ok)) await writeEnrichmentStore(storePath, byId);
+    if (stoppedOutside) break;
     if (consecutiveFailures >= 3) {
       status.reason = 'backoff';
       await sleep(BACKOFF_MS[Math.min(consecutiveFailures, BACKOFF_MS.length) - 1]);
@@ -129,17 +143,21 @@ export async function runEnrichmentBatch({
       await sleep(BACKOFF_MS[Math.min(consecutiveFailures, BACKOFF_MS.length) - 1]);
     }
   }
+  if (stoppedOutside) status.reason = 'outside_window';
   status.elapsedMs = Math.round(performance.now() - started);
   status.estimatedFullCorpusMs = estimateFullCorpus(status, selected.length);
   await publish(statusPath, status);
   return status;
 }
 
-async function enrichOne({ record, catalog, template, promptHash, settings, fetchImpl }) {
+async function enrichOne({ record, catalog, template, promptHash, settings, fetchImpl, now }) {
   const text = recordText(record, catalog);
   const response = await requestEnrichment({
-    settings, systemPrompt: template, recordText: text, fetchImpl,
+    settings, systemPrompt: template, recordText: text, fetchImpl, now,
   });
+  if (response.stopped) {
+    return { ok: false, stopped: true, latencyMs: response.latencyMs ?? 0 };
+  }
   if (!response.ok) {
     return { ok: false, errorClass: response.errorClass, latencyMs: response.latencyMs ?? 0 };
   }
