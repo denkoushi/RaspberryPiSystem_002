@@ -1,5 +1,6 @@
 # ドキュメント索引
 - Hermes横断レコード検索（ソースカタログ・検索計画・手元評価・5秒目標）: [ADR](./decisions/ADR-20260923-hermes-cross-source-retrieval.md) / [ExecPlan](./plans/hermes-cross-source-retrieval-execplan.md)
+- Hermes検索のオフラインDGXエンリッチメント（既定OFF、照会時は呼ばない）: [Plan](./plans/hermes-dgx-retrieval-enrichment.md)
 - Hermes/JEV不適合検索の引き継ぎ・達成範囲・未検証事項: [Handoff Plan](./plans/hermes-jev-search-handoff-20260923.md)
 - 生産日程スナップショットの所有境界: [ExecPlan](./plans/production-schedule-snapshot-boundary-execplan.md)
 - 生産日程検索の所有境界と互換性維持: [ExecPlan](./plans/production-schedule-lookup-boundary-execplan.md)
