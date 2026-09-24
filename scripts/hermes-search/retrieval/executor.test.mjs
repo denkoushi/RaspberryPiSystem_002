@@ -8,7 +8,8 @@ import {
   RECENT_CONTENT_LEXICAL_FRACTION,
   RECENT_CONTENT_DENSE_FRACTION,
   RECENT_CONTENT_MAX_BATCHES,
-  RECENT_CONTENT_TIME_BUDGET_MS,
+  RECENT_CONTENT_DEADLINE_MS,
+  RECENT_CONTENT_BATCH_ESTIMATE_MS,
   buildRecentContentPool,
 } from './executor.mjs';
 import { records } from './fixtures/synthetic-records.mjs';
@@ -293,7 +294,8 @@ function bodyRecord(id, discoveredOn, condition, extra = {}) {
 test('recent content checks newest low-score matches before older high-score matches', async () => {
   assert.equal(RECENT_CONTENT_LEXICAL_FRACTION, 0.2);
   assert.equal(RECENT_CONTENT_MAX_BATCHES, 3);
-  assert.equal(RECENT_CONTENT_TIME_BUDGET_MS, 3200);
+  assert.equal(RECENT_CONTENT_DEADLINE_MS, 4500);
+  assert.equal(RECENT_CONTENT_BATCH_ESTIMATE_MS, 900);
   const dated = [];
   for (let index = 0; index < 20; index += 1) {
     dated.push(bodyRecord(
@@ -345,18 +347,40 @@ test('recent content stops at the batch cap and the time budget with insufficien
   assert.equal(capped.requested, 5);
 
   calls = 0;
-  const budget = await execute(recentContentPlan({ limit: 5 }), {
+  let elapsed = 2100;
+  const partial = await execute(recentContentPlan({ limit: 5 }), {
     records: dated,
     catalog,
-    recentContentBudgetMs: 0,
+    requestStartedAt: 0,
+    now: () => elapsed,
+    relevance: async ({ candidates }) => {
+      calls += 1;
+      elapsed += 2000;
+      return { ok: true, ranked: [{ id: candidates[0].id, probability: 0.9 }] };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(partial.status, 'answer');
+  assert.equal(partial.returned, 1);
+  assert.equal(partial.insufficient, true);
+  assert.match(partial.results[0].recordId, /^match-/);
+
+  calls = 0;
+  elapsed = 4000;
+  const tooLate = await execute(recentContentPlan({ limit: 5 }), {
+    records: dated,
+    catalog,
+    requestStartedAt: 0,
+    now: () => elapsed,
     relevance: async () => {
       calls += 1;
       return { ok: true, ranked: [] };
     },
   });
-  assert.equal(calls, 1);
-  assert.equal(budget.insufficient, true);
-  assert.equal(budget.returned, 0);
+  assert.equal(calls, 0);
+  assert.equal(tooLate.status, 'no_result');
+  assert.equal(tooLate.insufficient, true);
+  assert.equal(tooLate.returned, 0);
 });
 
 test('recent content applies hard filters and a period before the date-ordered gate', async () => {

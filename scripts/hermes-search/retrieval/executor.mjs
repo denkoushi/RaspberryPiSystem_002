@@ -24,10 +24,15 @@ export const RECENT_CONTENT_DENSE_FRACTION = 0.75;
 /** Newest-first relevance batches. Each batch uses the existing 15-candidate judge. */
 export const RECENT_CONTENT_MAX_BATCHES = 3;
 /**
- * Do not start another relevance batch after this budget.
- * Three existing judge calls then stay under a 5s p95.
+ * Overall answer deadline measured from the request start.
+ * A further relevance batch is not started when the time left is below the batch estimate.
  */
-export const RECENT_CONTENT_TIME_BUDGET_MS = 3200;
+export const RECENT_CONTENT_DEADLINE_MS = 4500;
+/**
+ * Expected duration of one relevance batch before a batch has been measured.
+ * After the first batch, the estimate is that batch's measured duration.
+ */
+export const RECENT_CONTENT_BATCH_ESTIMATE_MS = 900;
 /**
  * A content token is generic when it occurs in more than this fraction of the snapshot.
  * The IDF cutoff for a snapshot is specificTokenIdfThreshold(documentCount).
@@ -450,6 +455,15 @@ export function buildRecentContentPool({ lexicalRows, vectorOrdered, retriever, 
   return [...admitted.values()];
 }
 
+/** True when one more relevance batch can start before the overall deadline. */
+export function recentContentBatchFits({ nowMs, requestStartedAt, estimateMs }) {
+  const start = Number.isFinite(requestStartedAt) ? requestStartedAt : nowMs;
+  const estimate = Number.isFinite(estimateMs) && estimateMs > 0
+    ? estimateMs
+    : RECENT_CONTENT_BATCH_ESTIMATE_MS;
+  return (start + RECENT_CONTENT_DEADLINE_MS) - nowMs >= estimate;
+}
+
 export function orderRecentContentPool(pool, dateField) {
   return [...pool].sort((left, right) => {
     if (dateField) {
@@ -607,29 +621,32 @@ export async function execute(plan, options = {}) {
   let rerankMs = null;
   const limit = planLimit(plan);
   if (recentContent && typeof options.relevance === 'function' && options.rerankMode !== 'replace') {
-    const budgetMs = Number.isFinite(options.recentContentBudgetMs)
-      ? options.recentContentBudgetMs
-      : RECENT_CONTENT_TIME_BUDGET_MS;
+    const clock = typeof options.now === 'function' ? options.now : () => performance.now();
+    const requestStartedAt = Number.isFinite(options.requestStartedAt) ? options.requestStartedAt : started;
     const maxBatches = Number.isInteger(options.recentContentMaxBatches)
       ? options.recentContentMaxBatches
       : RECENT_CONTENT_MAX_BATCHES;
     const accepted = [];
-    const relevanceStarted = performance.now();
+    const relevanceStarted = clock();
     let batches = 0;
+    let batchEstimateMs = RECENT_CONTENT_BATCH_ESTIMATE_MS;
     try {
       for (let offset = 0; accepted.length < limit && offset < ranked.length && batches < maxBatches; offset += RELEVANCE_CANDIDATE_LIMIT) {
-        if (batches > 0 && performance.now() - relevanceStarted >= budgetMs) break;
+        if (!recentContentBatchFits({ nowMs: clock(), requestStartedAt, estimateMs: batchEstimateMs })) break;
         const batch = ranked.slice(offset, offset + RELEVANCE_CANDIDATE_LIMIT);
+        const batchStarted = clock();
         batches += 1;
         const judged = await options.relevance({
           semanticQuery,
           candidates: batch.map((item) => ({ id: item.record.id, record: item.record })),
           bodyFields,
         });
+        const measured = clock() - batchStarted;
+        if (measured > 0) batchEstimateMs = measured;
         if (!judged?.ok || !Array.isArray(judged.ranked)) {
           relevanceMs = Number.isFinite(judged?.relevanceMs)
             ? judged.relevanceMs
-            : Math.round(performance.now() - relevanceStarted);
+            : Math.round(clock() - relevanceStarted);
           return unavailableResult(judged?.reason ?? 'relevance judgment unavailable', {
             filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, relevanceMs, filteredCount: filtered.length, started,
           }, plan);
@@ -641,10 +658,10 @@ export async function execute(plan, options = {}) {
           if (accepted.length >= limit) break;
         }
       }
-      relevanceMs = Math.round(performance.now() - relevanceStarted);
+      relevanceMs = Math.round(clock() - relevanceStarted);
       ranked = accepted;
     } catch (error) {
-      relevanceMs = Number.isFinite(error?.relevanceMs) ? error.relevanceMs : Math.round(performance.now() - relevanceStarted);
+      relevanceMs = Number.isFinite(error?.relevanceMs) ? error.relevanceMs : Math.round(clock() - relevanceStarted);
       return unavailableResult(safeReason(error), {
         filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, relevanceMs, filteredCount: filtered.length, started,
       }, plan);

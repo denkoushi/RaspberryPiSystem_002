@@ -331,6 +331,7 @@ export async function evaluateGold(options) {
           rerankMode: variant === 'c' ? (options.rerankMode ?? 'replace') : null,
           retriever,
           stageDump: Boolean(options.stageDump),
+          requestStartedAt: wallStarted,
         });
         if (!activeVector && validation.plan.semanticQuery.trim() && vectorPrepareReason) {
           executed.timings.vectorStatus = /not set|not found|was not found/u.test(vectorPrepareReason) ? 'skipped' : 'failed';

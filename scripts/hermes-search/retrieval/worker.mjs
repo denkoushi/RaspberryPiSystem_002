@@ -241,6 +241,7 @@ export function createRetrievalAnswering({
         retriever: 'lexical',
         vector: typeof vector === 'function' ? vector : null,
         relevance: (input) => relevance.judge(input),
+        requestStartedAt: started,
       });
       if (executed.status === 'unavailable') {
         return trialResult({
