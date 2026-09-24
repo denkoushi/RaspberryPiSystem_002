@@ -48,6 +48,10 @@
     release_pi5_trial_classification_before: >-
       {{ (release_pi5_trial_maintenance_env_before.content | b64decode).splitlines()
          | select('match', '^HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=') | list }}
+    release_pi5_trial_retrieval_v2_requested: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_V2_ENABLED') }}"
+    release_pi5_trial_retrieval_v2_before: >-
+      {{ (release_pi5_trial_maintenance_env_before.content | b64decode).splitlines()
+         | select('match', '^HERMES_RETRIEVAL_V2_ENABLED=') | list }}
   no_log: true
 
 - name: Require a definite classification gate before enabling search
@@ -62,6 +66,17 @@
             ['HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=true', 'HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=false'])
     fail_msg: Search enablement requires an explicit true/false record classification setting or one valid preserved setting; missing is not OFF.
 
+- name: Require an explicit or preserved retrieval v2 gate
+  ansible.builtin.assert:
+    that:
+      - release_pi5_trial_retrieval_v2_requested in ['', 'true', 'false']
+      - >-
+        release_pi5_trial_retrieval_v2_before | length == 0
+        or (release_pi5_trial_retrieval_v2_before | length == 1
+            and release_pi5_trial_retrieval_v2_before[0] in
+            ['HERMES_RETRIEVAL_V2_ENABLED=true', 'HERMES_RETRIEVAL_V2_ENABLED=false'])
+    fail_msg: Retrieval v2 must be omitted, true, or false; an omitted value preserves the existing line and does not turn the gate on.
+
 - name: Record the effective classification gate for startup verification
   ansible.builtin.set_fact:
     release_pi5_trial_classification_effective: >-
@@ -69,6 +84,11 @@
          if release_pi5_trial_classification_requested != ''
          else (release_pi5_trial_classification_before[0].split('=', 1)[1]
                if release_pi5_trial_classification_before | length == 1 else '') }}
+    release_pi5_trial_retrieval_v2_effective: >-
+      {{ release_pi5_trial_retrieval_v2_requested
+         if release_pi5_trial_retrieval_v2_requested != ''
+         else (release_pi5_trial_retrieval_v2_before[0].split('=', 1)[1]
+               if release_pi5_trial_retrieval_v2_before | length == 1 else '') }}
   no_log: true
 
 - name: Locate the single existing sealed Hermes search artifact on the Pi5 SSD

@@ -100,6 +100,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             "HERMES_SEARCH_RECORD_SOURCE",
             "HERMES_SEARCH_RECORD_CLASSIFICATION_STORE",
             "TYPESAFE_API_KEY",
+            "HERMES_RETRIEVAL_V2_ENABLED",
         ):
             self.assertIn(key, preserved)
 
@@ -1935,6 +1936,11 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
             "classification_enabled = os.environ.get(\"HERMES_SEARCH_TRIAL_JEV_ENABLED\"",
             launcher,
         )
+        self.assertIn("HERMES_RETRIEVAL_V2_ENABLED", launcher)
+        self.assertIn("HERMES_RETRIEVAL_V2_ENABLED", trial_prepare)
+        self.assertIn("hermes_retrieval_v2_enabled", prepare)
+        self.assertIn("Apply retrieval v2 gate when explicitly configured", trial_prepare)
+        self.assertIn("hermes_retrieval_v2_enabled in ['true', 'false']", trial_prepare)
 
     def test_explicit_trial_rebinds_the_candidate_api_to_the_finalized_chat_env(self) -> None:
         prepare_tasks = yaml.safe_load(
@@ -2051,6 +2057,69 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
                     "test-run",
                 )
             self.assertEqual(environment["HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED"], "true")
+
+    def test_omitting_retrieval_v2_setting_preserves_existing_private_env_value(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory)
+            files = {}
+            for name in ("qmd-index.sqlite", "snapshot.json", "reviewed.json"):
+                data = ("sealed:" + name).encode()
+                (artifact / name).write_bytes(data)
+                files[name] = hashlib.sha256(data).hexdigest()
+            (artifact / "artifact.json").write_text(
+                json.dumps({"schema": "hermes-device-index/v1", "files": files}),
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+            }, clear=True):
+                _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                    SimpleNamespace(full_fleet=False),
+                    (("pi5", ("raspberrypi5",)),),
+                    Path("/opt/RaspberryPiSystem_002"),
+                    "test-run",
+                )
+            self.assertNotIn("HERMES_RETRIEVAL_V2_ENABLED", environment)
+
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+                "HERMES_RETRIEVAL_V2_ENABLED": "false",
+            }, clear=True):
+                _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                    SimpleNamespace(full_fleet=False),
+                    (("pi5", ("raspberrypi5",)),),
+                    Path("/opt/RaspberryPiSystem_002"),
+                    "test-run",
+                )
+            self.assertEqual(environment["HERMES_RETRIEVAL_V2_ENABLED"], "false")
+
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+                "HERMES_RETRIEVAL_V2_ENABLED": "true",
+            }, clear=True):
+                _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                    SimpleNamespace(full_fleet=False),
+                    (("pi5", ("raspberrypi5",)),),
+                    Path("/opt/RaspberryPiSystem_002"),
+                    "test-run",
+                )
+            self.assertEqual(environment["HERMES_RETRIEVAL_V2_ENABLED"], "true")
+
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+                "HERMES_RETRIEVAL_V2_ENABLED": "yes",
+            }, clear=True):
+                with self.assertRaisesRegex(STANDARD_RELEASE["UsageError"], "HERMES_RETRIEVAL_V2_ENABLED must be true or false"):
+                    STANDARD_RELEASE["hermes_trial_configuration"](
+                        SimpleNamespace(full_fleet=False),
+                        (("pi5", ("raspberrypi5",)),),
+                        Path("/opt/RaspberryPiSystem_002"),
+                        "test-run",
+                    )
 
     def test_pi5_has_no_legacy_subsystem_or_new_framework(self) -> None:
         candidate = role_text(self.ROLE)

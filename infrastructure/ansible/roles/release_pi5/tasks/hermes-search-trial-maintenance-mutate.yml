@@ -69,6 +69,15 @@
     mode: '0600'
   when: release_pi5_trial_classification_requested in ['true', 'false']
 
+- name: Apply the explicitly requested retrieval v2 gate for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_V2_ENABLED='
+    line: "HERMES_RETRIEVAL_V2_ENABLED={{ release_pi5_trial_retrieval_v2_requested }}"
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_retrieval_v2_requested in ['true', 'false']
+
 - name: Read the finalized maintenance environment before API recreation
   ansible.builtin.slurp:
     src: "{{ release_pi5_trial_maintenance_env_file }}"
@@ -87,6 +96,16 @@
         == ['HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=' ~ release_pi5_trial_classification_effective]
     fail_msg: The finalized classification gate does not match the explicit or preserved setting; API startup stopped.
   when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != ''
+
+- name: Verify the final retrieval v2 gate before API recreation
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_env_final.content | b64decode).splitlines()
+         | select('match', '^HERMES_RETRIEVAL_V2_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_V2_ENABLED=' ~ release_pi5_trial_retrieval_v2_effective]
+    fail_msg: The finalized retrieval v2 gate does not match the explicit or preserved setting; API startup stopped.
+  when: release_pi5_trial_retrieval_v2_effective in ['true', 'false']
 
 - name: Remove pilot-only settings when returning the trial path to OFF
   ansible.builtin.lineinfile:
@@ -140,7 +159,7 @@
   register: release_pi5_trial_maintenance_api_env
   changed_when: false
   no_log: true
-  when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != ''
+  when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != '' or release_pi5_trial_retrieval_v2_effective in ['true', 'false']
 
 - name: Require the recreated API to inherit the verified classification gate
   ansible.builtin.assert:
@@ -151,6 +170,16 @@
         == ['HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=' ~ release_pi5_trial_classification_effective]
     fail_msg: The recreated API did not inherit the verified classification gate; trial maintenance cannot succeed.
   when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != ''
+
+- name: Require the recreated API to inherit the verified retrieval v2 gate
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_api_env.stdout | from_json)
+         | select('match', '^HERMES_RETRIEVAL_V2_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_V2_ENABLED=' ~ release_pi5_trial_retrieval_v2_effective]
+    fail_msg: The recreated API did not inherit the verified retrieval v2 gate; trial maintenance cannot succeed.
+  when: release_pi5_trial_retrieval_v2_effective in ['true', 'false']
 
 - name: Confirm the same active API remains healthy after trial maintenance
   ansible.builtin.include_tasks: health.yml

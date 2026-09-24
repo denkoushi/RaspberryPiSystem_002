@@ -167,6 +167,26 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(MODULE.UsageError, "must be true or false"):
                 MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
 
+    def test_maintenance_retrieval_v2_override_reaches_systemd_without_defaulting(self) -> None:
+        args = argparse.Namespace(hermes_search_trial_maintenance="on", branch="main",
+                                  limit="raspberrypi5", full_fleet=False, detach=True,
+                                  torque_cutover=False)
+        key = "HERMES_RETRIEVAL_V2_ENABLED"
+        for value in (None, "false", "true"):
+            with self.subTest(value=value), mock.patch.dict(os.environ, {} if value is None else {key: value}, clear=True):
+                environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+                command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
+                                             ("pi5",), "pi", hermes_environment=environment)
+                if value is None:
+                    self.assertNotIn(key, environment)
+                    self.assertFalse(any(key in item for item in command))
+                else:
+                    self.assertEqual(environment[key], value)
+                    self.assertIn(f"--setenv={key}={value}", command)
+        with mock.patch.dict(os.environ, {key: "0"}, clear=True):
+            with self.assertRaisesRegex(MODULE.UsageError, "must be true or false"):
+                MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+
     def test_fixed_record_pilot_artifact_is_retired(self) -> None:
         args = argparse.Namespace(full_fleet=False, detach=False, branch="main", limit="raspberrypi5")
         source = ROOT / "scripts/hermes-search/hermes-jev-record-pilot-artifact"
