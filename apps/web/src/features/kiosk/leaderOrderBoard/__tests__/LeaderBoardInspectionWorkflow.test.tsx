@@ -86,8 +86,8 @@ describe('leader board inspection workflow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'デジタル入力' }));
     fireEvent.click(screen.getByRole('button', { name: '帳票紙印刷' }));
 
-    expect(onOpenDigitalInput).toHaveBeenCalledWith(row);
-    expect(onOpenPaperPrint).toHaveBeenCalledWith(row);
+    expect(onOpenDigitalInput).toHaveBeenCalledWith(row, '305');
+    expect(onOpenPaperPrint).toHaveBeenCalledWith(row, '305');
   });
 
   it('disables digital input but keeps paper print available for paper-only rows', () => {
@@ -116,6 +116,6 @@ describe('leader board inspection workflow', () => {
     fireEvent.click(screen.getByRole('button', { name: '帳票紙印刷' }));
 
     expect(onOpenDigitalInput).not.toHaveBeenCalled();
-    expect(onOpenPaperPrint).toHaveBeenCalledWith(row);
+    expect(onOpenPaperPrint).toHaveBeenCalledWith(row, '305');
   });
 });

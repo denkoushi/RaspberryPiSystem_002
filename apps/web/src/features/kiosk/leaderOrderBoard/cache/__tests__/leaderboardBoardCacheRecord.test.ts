@@ -98,7 +98,9 @@ describe('leaderboardBoardCacheRecord', () => {
       hasSelfInspectionDrawing: true,
       selfInspectionTemplateId: 'tpl-1',
       selfInspectionStatus: 'in_progress',
-      selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/sessions/s1'
+      selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/sessions/s1',
+      selfInspectionResourceCds: ['R2', 'R3'],
+      selfInspectionResourceCd: 'R2'
     });
     const ser = serializeAccumulatedDecorations(acc);
     const back = deserializeAccumulatedDecorations(ser);
@@ -108,7 +110,9 @@ describe('leaderboardBoardCacheRecord', () => {
       hasSelfInspectionDrawing: true,
       selfInspectionTemplateId: 'tpl-1',
       selfInspectionStatus: 'in_progress',
-      selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/sessions/s1'
+      selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/sessions/s1',
+      selfInspectionResourceCds: ['R2', 'R3'],
+      selfInspectionResourceCd: 'R2'
     });
   });
 
@@ -125,7 +129,9 @@ describe('leaderboardBoardCacheRecord', () => {
       hasSelfInspectionDrawing: false,
       selfInspectionTemplateId: null,
       selfInspectionStatus: null,
-      selfInspectionEntryPath: null
+      selfInspectionEntryPath: null,
+      selfInspectionResourceCds: [],
+      selfInspectionResourceCd: null
     });
   });
 
