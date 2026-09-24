@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcessByStdio, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import {setPriority} from 'node:os';
 import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
@@ -100,7 +101,7 @@ export class HermesSearchTrialService {
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private corpusReady = false;
   private lastCorpusCount = 0;
-  private enrichmentChild: ChildProcessWithoutNullStreams | null = null;
+  private enrichmentChild: ChildProcessByStdio<Writable, null, null> | null = null;
 
   private readonly settings: TrialSettings;
 
@@ -393,7 +394,7 @@ export class HermesSearchTrialService {
     if (process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED !== 'true' || this.enrichmentChild || records.length === 0) return;
     const entry = process.env.HERMES_RETRIEVAL_ENRICHMENT_ENTRY
       ?? '/app/scripts/hermes-search/retrieval/enrichment-runner.mjs';
-    let child: ChildProcessWithoutNullStreams;
+    let child: ChildProcessByStdio<Writable, null, null>;
     try {
       child = spawn(this.settings.node, [entry], { env: process.env, stdio: ['pipe', 'ignore', 'ignore'] });
     } catch {
