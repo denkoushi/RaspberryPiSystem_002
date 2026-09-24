@@ -652,6 +652,29 @@ def optional_window_setting(name: str) -> str:
     return value
 
 
+ENRICHMENT_IDS_CONTAINER = "/app/storage/hermes-search/runtime/retrieval-enrichment-ids.txt"
+ENRICHMENT_ID_LINE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def enrichment_id_source() -> Path | None:
+    value = os.environ.get("HERMES_RETRIEVAL_ENRICHMENT_IDS", "")
+    if not value:
+        return None
+    source = Path(value)
+    if not source.is_absolute() or source.is_symlink() or not source.is_file():
+        raise UsageError("HERMES_RETRIEVAL_ENRICHMENT_IDS must be an absolute regular file")
+    lines = source.read_text(encoding="utf-8").splitlines()
+    ids = [line.strip() for line in lines if line.strip()]
+    if not ids or any(ENRICHMENT_ID_LINE.fullmatch(item) is None for item in ids):
+        raise UsageError("HERMES_RETRIEVAL_ENRICHMENT_IDS must contain only record ids")
+    if len(ids) != len(set(ids)):
+        raise UsageError("HERMES_RETRIEVAL_ENRICHMENT_IDS contains a duplicate id")
+    return source.resolve()
+
+
 def enrichment_environment() -> dict[str, str]:
     environment: dict[str, str] = {}
     enabled = optional_bool_setting("HERMES_RETRIEVAL_ENRICHMENT_ENABLED")
@@ -666,6 +689,8 @@ def enrichment_environment() -> dict[str, str]:
         environment["HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY"] = concurrency
     if window:
         environment["HERMES_RETRIEVAL_ENRICHMENT_WINDOW"] = window
+    if enrichment_id_source() is not None:
+        environment["HERMES_RETRIEVAL_ENRICHMENT_IDS"] = ENRICHMENT_IDS_CONTAINER
     return environment
 
 
@@ -814,6 +839,20 @@ def stage_answer_cache_artifact(inventory, source, destination, user):
         run(['ansible-playbook', '-i', str(inventory), str(path), '--limit', 'raspberrypi5'], env=ansible_environment())
 
 
+def stage_enrichment_ids(inventory: Path, source: Path, destination: Path, user: str) -> None:
+    play = [{"hosts": "raspberrypi5", "gather_facts": False, "become": True, "tasks": [
+        {"name": "Prepare the enrichment id directory", "ansible.builtin.file": {
+            "path": str(destination.parent), "state": "directory", "owner": user, "mode": "0700"}},
+        {"name": "Stage the id-only enrichment allowlist", "no_log": True, "ansible.builtin.copy": {
+            "src": str(source), "dest": str(destination), "owner": user, "mode": "0600"}},
+    ]}]
+    with tempfile.TemporaryDirectory(prefix="hermes-enrichment-ids-") as directory:
+        path = Path(directory) / "stage.json"
+        path.write_text(json.dumps(play), encoding="utf-8")
+        run(["ansible-playbook", "-i", str(inventory), str(path), "--limit", "raspberrypi5"],
+            env=ansible_environment())
+
+
 def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str, profiles: tuple[str, ...], user: str, remote_root: Path = REMOTE_ROOT, *, hermes_environment: dict[str, str] | None = None) -> list[str]:
     command = ["/usr/bin/sudo", "-n", "/usr/bin/systemd-run", "--quiet", f"--unit={unit_name(run_id)}", f"--uid={user}", f"--setenv=HOME=/home/{user}", f"--setenv=USER={user}", f"--setenv=LOGNAME={user}", "--setenv=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "--property=Type=exec", f"--property=WorkingDirectory={remote_root}", "--property=KillMode=control-group", "--property=Restart=no", "--property=UMask=0077", "--property=StandardOutput=journal", "--property=StandardError=journal"]
     if args.detach:
@@ -828,6 +867,7 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
                        "HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS",
                        "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY",
                        "HERMES_RETRIEVAL_ENRICHMENT_WINDOW",
+                       "HERMES_RETRIEVAL_ENRICHMENT_IDS",
                        "HERMES_JEV_PROVIDER",
                        "HERMES_SEARCH_TRIAL_ARTIFACT", "HERMES_SEARCH_TRIAL_MAINTENANCE",
                        "HERMES_ANSWER_CACHE_ARTIFACT"}:
@@ -1215,6 +1255,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "artifactTransfer": "none; reuse the existing sealed Pi5 artifact",
                 "jev": "forced-off",
             }
+        if "HERMES_RETRIEVAL_ENRICHMENT_IDS" in hermes_environment:
+            document["hermesRetrievalEnrichmentIds"] = {
+                "containerPath": ENRICHMENT_IDS_CONTAINER,
+                "transfer": "one id-only file staged to the Pi5 runtime path; omission leaves the existing line unchanged",
+            }
         if cache_source:
             document['hermesAnswerCache'] = {'initializeOnly': True, 'staging': 'six checksum-verified private business files on Pi5 SSD'}
         print(json.dumps(document, ensure_ascii=False, indent=2))
@@ -1229,6 +1274,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         release_set_artifacts(sha, inventory)
         stage_hermes_trial_artifact(inventory, hermes_source,
             hermes_environment["HERMES_SEARCH_TRIAL_ARTIFACT"], user)
+    if "HERMES_RETRIEVAL_ENRICHMENT_IDS" in hermes_environment:
+        release_set_artifacts(sha, inventory)
+        stage_enrichment_ids(
+            inventory,
+            enrichment_id_source(),
+            remote_root / "storage/hermes-search/runtime/retrieval-enrichment-ids.txt",
+            user,
+        )
     result = run(ssh_argv(host, user, port, systemd_argv(args, sha, run_id, relative, profiles, user, remote_root,
         hermes_environment=hermes_environment)), check=False)
     status_command = shlex.join(["scripts/update-all-clients.sh", "--status", run_id, "--inventory", relative])

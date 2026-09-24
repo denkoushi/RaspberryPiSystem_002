@@ -1950,6 +1950,10 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         maintenance = (ANSIBLE / "roles/release_pi5/tasks/hermes-search-trial-maintenance.yml").read_text(encoding="utf-8")
         self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", chat_prepare)
         self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", maintenance)
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_IDS", launcher)
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_IDS", trial_prepare)
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_IDS", chat_prepare)
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_IDS", maintenance)
 
     def test_explicit_trial_rebinds_the_candidate_api_to_the_finalized_chat_env(self) -> None:
         prepare_tasks = yaml.safe_load(

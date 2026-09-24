@@ -18,6 +18,7 @@ export function enrichmentSettings(env = process.env) {
     concurrency,
     timeoutMs,
     window: env.HERMES_RETRIEVAL_ENRICHMENT_WINDOW || '',
+    idAllowlist: env.HERMES_RETRIEVAL_ENRICHMENT_IDS || '',
     origin: env.HERMES_INFERENCE_ORIGIN || '',
     token: env.HERMES_INFERENCE_TOKEN || '',
     egress: env.HERMES_INFERENCE_EGRESS || '',
@@ -46,6 +47,7 @@ export async function requestEnrichment({
   systemPrompt,
   recordText,
   fetchImpl,
+  now = () => new Date(),
 }) {
   const fetchFn = fetchImpl ?? (settings.egress ? throughEgress(settings.egress) : fetch);
   const messages = [
@@ -55,6 +57,9 @@ export async function requestEnrichment({
   const guided = await postChat(fetchFn, settings, messages, true);
   if (guided.ok) return guided;
   if (guided.unsupported || guided.errorClass === 'invalid_json') {
+    if (!withinWindow(settings.window, now())) {
+      return { ok: false, stopped: true, errorClass: 'outside_window', latencyMs: guided.latencyMs ?? 0 };
+    }
     return postChat(fetchFn, settings, messages, false);
   }
   return guided;

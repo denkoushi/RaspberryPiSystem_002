@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtemp, readdir, readFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { records } from './fixtures/synthetic-records.mjs';
@@ -15,7 +15,7 @@ import {
   verifyEvidence,
 } from './enrichment-contract.mjs';
 import { withinWindow } from './enrichment-dgx.mjs';
-import { needsEnrichment, runEnrichmentBatch } from './enrichment-runner.mjs';
+import { needsEnrichment, readIdAllowlist, runEnrichmentBatch } from './enrichment-runner.mjs';
 import { readEnrichmentStore, writeAtomic, writeEnrichmentStore } from './enrichment-store.mjs';
 import { createRetrievalAnswering } from './worker.mjs';
 
@@ -156,12 +156,134 @@ test('a failed atomic write leaves the previous store intact', async () => {
   assert.equal(names.some((name) => name.includes('.tmp')), false);
 });
 
+test('an id allowlist keeps only listed records and rejects other file text', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-ids-'));
+  const allowPath = path.join(directory, 'ids.txt');
+  const kept = '11111111-1111-4111-8111-111111111111';
+  const dropped = '22222222-2222-4222-8222-222222222222';
+  await writeFile(allowPath, `${kept}\n`);
+  assert.deepEqual([...(await readIdAllowlist(allowPath))], [kept]);
+  await writeFile(allowPath, 'not-an-id\n');
+  await assert.rejects(readIdAllowlist(allowPath), /not an id/);
+  const settings = {
+    enabled: true, maxRecords: 100, concurrency: 1, timeoutMs: 5000, window: '22-6',
+    idAllowlist: allowPath, origin: 'http://127.0.0.1:9', token: 'synthetic-token-value',
+    egress: '', model: 'mock-model', profile: 'business_qwen36_27b_nvfp4',
+  };
+  await writeFile(allowPath, `${kept}\n`);
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records: [{ ...records[0], id: kept }, { ...records[1], id: dropped }],
+    catalog, storePath: path.join(directory, 'store.jsonl'), statusPath: path.join(directory, 'status.json'),
+    settings, fetchImpl: async () => { calls += 1; throw new Error('unused'); }, sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(status.reason, 'outside_window');
+  assert.equal(status.allowlistCount, 1);
+  assert.equal(status.allowlistMatched, 1);
+  assert.equal(status.corpusCount, 1);
+  assert.equal(calls, 0);
+});
+
 test('the enrichment window accepts an overnight range and rejects an open gate by default', () => {
   const night = new Date('2026-01-15T15:30:00Z');
   const day = new Date('2026-01-15T03:30:00Z');
   assert.equal(withinWindow('22-6', night), true);
   assert.equal(withinWindow('22-6', day), false);
   assert.equal(withinWindow('', day), true);
+});
+
+function batchSettings(overrides) {
+  return {
+    enabled: true,
+    maxRecords: 100,
+    concurrency: 1,
+    timeoutMs: 5000,
+    window: '',
+    origin: 'http://127.0.0.1:9',
+    token: 'synthetic-token-value',
+    egress: '',
+    model: 'mock-model',
+    profile: 'business_qwen36_27b_nvfp4',
+    ...overrides,
+  };
+}
+
+function chatResponse(record) {
+  return {
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      choices: [{ message: { content: JSON.stringify(payloadFor(record)) } }],
+      usage: { prompt_tokens: 11, completion_tokens: 7 },
+    }),
+  };
+}
+
+test('enrichment stops before the next record when the window closes and keeps completed rows', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-window-'));
+  const storePath = path.join(directory, 'retrieval-enrichment.jsonl');
+  const inside = new Date('2026-01-15T15:30:00Z');
+  const outside = new Date('2026-01-15T03:30:00Z');
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records: records.slice(0, 3),
+    catalog,
+    storePath,
+    statusPath: path.join(directory, 'status.json'),
+    settings: batchSettings({ window: '22-6', maxRecords: 3 }),
+    fetchImpl: async () => chatResponse(records[calls++]),
+    sleep: async () => {},
+    now: () => (calls < 1 ? inside : outside),
+  });
+  assert.equal(status.reason, 'outside_window');
+  assert.equal(status.succeeded, 1);
+  assert.equal(status.failed, 0);
+  assert.equal(calls, 1);
+  const stored = await readEnrichmentStore(storePath);
+  assert.equal(stored.has(records[0].id), true);
+  assert.equal(stored.has(records[1].id), false);
+});
+
+test('enrichment without a window runs through the record cap', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-cap-'));
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records,
+    catalog,
+    storePath: path.join(directory, 'store.jsonl'),
+    settings: batchSettings({ window: '', maxRecords: 2 }),
+    fetchImpl: async () => chatResponse(records[calls++]),
+    sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(status.reason, 'completed');
+  assert.equal(status.succeeded, 2);
+  assert.equal(status.deferred, records.length - 2);
+  assert.equal(calls, 2);
+});
+
+test('an enrichment retry does not start after the window closes', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-retry-'));
+  const inside = new Date('2026-01-15T15:30:00Z');
+  const outside = new Date('2026-01-15T03:30:00Z');
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records: records.slice(0, 2),
+    catalog,
+    storePath: path.join(directory, 'store.jsonl'),
+    settings: batchSettings({ window: '22-6', maxRecords: 2 }),
+    fetchImpl: async () => {
+      calls += 1;
+      return { ok: false, status: 400, text: async () => '' };
+    },
+    sleep: async () => {},
+    now: () => (calls < 1 ? inside : outside),
+  });
+  assert.equal(calls, 1);
+  assert.equal(status.reason, 'outside_window');
+  assert.equal(status.failed, 0);
+  assert.equal(status.succeeded, 0);
 });
 
 test('the retrieval worker attaches the agreed enrichment shape when a store entry exists', async () => {
