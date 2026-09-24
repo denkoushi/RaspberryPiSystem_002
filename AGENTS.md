@@ -20,6 +20,14 @@
 
 大きな文書を一括で読まず、依頼と変更対象に関係する箇所を検索して読む。編集前に `git status` / `git diff` を確認し、既存の未コミット変更をユーザーの WIP として保護する。
 
+## Token-Efficient Work
+
+- 次の巨大ファイル・生成物は全文を読まず `rg` で該当行だけ読む: `EXEC_PLAN.md`、`docs/INDEX.md`、`docs/knowledge-base/index.md`、`pnpm-lock.yaml`、`apps/web/src/generated/**`、`docs/design-previews/**`、`docs/security/evidence/**`、`docs/_meta/document-inventory.json`、ローカル生成の `.cursor/debug-*.log`
+- 読み済みのファイルは再読しない。編集後の確認は差分で行う
+- テストやCIのログは失敗部分に絞る（対象テスト指定、`gh run view --log-failed` 等）
+- PRとCIの手順（待ち方、再実行、PR本文）は `.cursor/rules/20-git-workflow.mdc` に従う
+- 使える環境では、広い探索や大きなログの精読をサブエージェントに任せ、要約だけを受け取る
+
 ## Git Task Lifecycle
 
 変更を伴う新規タスクで既存のタスクbranchまたはworktreeがない場合は、専用のfeature branchとlinked worktreeを1つ使う。既存タスクはそれを引き継ぐ。ユーザーのWIPをclean、reset、stash、checkoutしない。

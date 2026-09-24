@@ -31,6 +31,7 @@ Anthropic guidance used as the reference:
 - `AGENTS.md` carries the safety prohibitions Codex needs (history rewrite, destructive operations, secrets) because Codex does not read `.mdc`. `20` no longer allows `--force` "with a reason".
 - `.agent/PLANS.md` stops at the user-requested stage before commit/push/PR/merge/release/deploy.
 - Emphasis is kept only on core safety prohibitions.
+- `AGENTS.md` now lists known huge files/generated artifacts and output-narrowing behavior; PR/CI waiting and rerun pitfalls live in `20`.
 
 ## Alternatives
 

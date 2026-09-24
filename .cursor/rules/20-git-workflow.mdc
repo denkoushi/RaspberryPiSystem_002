@@ -34,6 +34,12 @@ alwaysApply: false
 
 - ドキュメント変更時は `.cursor/rules/30-docs-maintenance.mdc` のチェックに従う
 
+## PRとCI
+
+- PR本文は最初から `.github/pull_request_template.md` の Deploy impact 表を埋める。内容は `python3 scripts/ci/validate_deploy_impact.py` で事前に検証できる（分類JSONは `scripts/ci/classify_event_changes.py` の出力が要る）
+- CIは待機コマンドを1回使って待つ（例: `gh pr checks <PR> --watch`）。短いsleepと状態確認を繰り返さない
+- PR本文を直した後は、古いrunを `gh run rerun` しない。再実行は古い本文のイベントで動き、本文編集で起動した新しいrunも同時実行制御で打ち切られる。必要なら本文編集で起動した新しいrunの方を再実行する
+
 ## タスク開始・監査・完了（固定）
 
 実装入口は`python3 -m scripts.git_lifecycle.cli`に固定する。
