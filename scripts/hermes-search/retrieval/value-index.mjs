@@ -1,4 +1,5 @@
 import { catalogEntries } from './catalog.mjs';
+import { contentTokens } from './structural-text.mjs';
 
 const MAX_PARTIAL_CANDIDATES = 8;
 const MIN_TERM_LENGTH = 2;
@@ -37,6 +38,64 @@ function pushGroup(groups, group) {
   const signature = `${group.source}\0${group.field}\0${group.term}`;
   if (groups.some((existing) => `${existing.source}\0${existing.field}\0${existing.term}` === signature)) return;
   groups.push(group);
+}
+
+export const VALUE_CHOICE_CAP = 300;
+export const VALUE_CHOICE_TOP_K = 20;
+
+function characterBigrams(text) {
+  const folded = normalizeForMatch(text).replace(/\s+/gu, '');
+  const grams = [];
+  for (let index = 0; index < folded.length - 1; index += 1) grams.push(folded.slice(index, index + 2));
+  return grams;
+}
+
+function valueChoiceCap(entry) {
+  return Number.isInteger(entry?.valueChoiceCap) && entry.valueChoiceCap > 0 ? entry.valueChoiceCap : VALUE_CHOICE_CAP;
+}
+
+export function choiceValuesForField(question, values, { cap = VALUE_CHOICE_CAP, topK = VALUE_CHOICE_TOP_K } = {}) {
+  const list = (values ?? []).filter((value) => typeof value === 'string' && value.trim());
+  if (list.length <= cap) return list;
+  const queryGrams = characterBigrams(question);
+  const documentFrequency = new Map();
+  const valueGrams = list.map((value) => {
+    const grams = new Set(characterBigrams(value));
+    for (const gram of grams) documentFrequency.set(gram, (documentFrequency.get(gram) ?? 0) + 1);
+    return grams;
+  });
+  const total = list.length;
+  const scored = list.map((value, index) => {
+    let score = 0;
+    for (const gram of queryGrams) {
+      if (!valueGrams[index].has(gram)) continue;
+      const df = documentFrequency.get(gram) ?? 0;
+      score += Math.log((total + 1) / (df + 1));
+    }
+    return { value, score };
+  });
+  scored.sort((left, right) => right.score - left.score || left.value.localeCompare(right.value, 'ja'));
+  const picked = new Set(scored.filter((item) => item.score > 0).slice(0, topK).map((item) => item.value));
+  const tokens = contentTokens(typeof question === 'string' ? question : '');
+  for (const value of list) {
+    const norm = normalizeForMatch(value);
+    if (tokens.some((token) => token && norm.includes(normalizeForMatch(token)))) picked.add(value);
+  }
+  return [...picked];
+}
+
+export function enumeratedChoiceGroups(question, valueIndex, catalog) {
+  const groups = [];
+  for (const entry of catalogEntries(catalog)) {
+    const fields = valueIndex?.values?.[entry.id] ?? {};
+    for (const field of entry.fields) {
+      if (!field.filterable || !field.enumerated) continue;
+      const values = choiceValuesForField(question, fields[field.key] ?? [], { cap: valueChoiceCap(entry) });
+      if (!values.length) continue;
+      groups.push({ source: entry.id, field: field.key, values });
+    }
+  }
+  return groups;
 }
 
 export function findCandidateValues(question, valueIndex, catalog) {

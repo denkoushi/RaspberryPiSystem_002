@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadNonconformityCatalog } from './catalog.mjs';
 import { createPlanner } from './planner-jev.mjs';
+import { buildValueIndex } from './value-index.mjs';
 
 const catalog = loadNonconformityCatalog();
 const fixedDescriptions = new Set([
@@ -164,14 +165,14 @@ test('a content noul keeps one call and strips structural words from semanticQue
     }],
   });
   assert.equal(calls, 1);
-  assert.equal(plan.semanticQuery, 'surface scratch');
+  assert.equal(plan.semanticQuery, 'North Shopのsurface scratchを最新3件見せて');
   assert.equal(plan.diagnostics.contentDecision.final, true);
-  assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, ['surface', 'scratch']);
+  assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, []);
   assert.equal(plan.limit, 3);
   assert.deepEqual(plan.sort, { field: 'discoveredOn', direction: 'desc' });
 });
 
-test('a false content noul cannot drop a residual content token', async () => {
+test('a false content noul skips relevance and does not search residual tokens', async () => {
   const evaluate = async () => ({
     answers: {
       term_0: { type: 'choice', choice: 'v0' },
@@ -191,10 +192,132 @@ test('a false content noul cannot drop a residual content token', async () => {
       values: ['North Shop'],
     }],
   });
-  assert.equal(plan.semanticQuery, 'qxrare');
+  assert.equal(plan.semanticQuery, '');
   assert.deepEqual(plan.diagnostics.contentDecision, {
     jev: false,
-    residualTokens: ['qxrare'],
-    final: true,
+    residualTokens: [],
+    final: false,
   });
 });
+
+test('a false content noul without a hard filter keeps the whole question for relevance', async () => {
+  const evaluate = async () => ({
+    answers: {
+      sort: { type: 'choice', choice: 'recent' },
+      limit: { type: 'choice', choice: '3' },
+      content: { type: 'noul', noul: 0.1 },
+    },
+  });
+  const question = 'qxrareを最新3件見せて';
+  const { plan } = await createPlanner({ evaluate }).plan({
+    question,
+    previousPlan: null,
+    catalog,
+    candidates: [],
+  });
+  assert.deepEqual(plan.filters, []);
+  assert.equal(plan.semanticQuery, question);
+  assert.equal(plan.diagnostics.contentDecision.jev, false);
+});
+
+test('value-index planner keeps one call, selects close values, and rejects non-record questions', async () => {
+  const records = [
+    { id: 'a', originDepartmentName: 'Alpha Plant Manufacturing Machining' },
+    { id: 'b', originDepartmentName: 'Alpha Plant Manufacturing Assembly' },
+    { id: 'c', originDepartmentName: 'Beta Plant Support' },
+  ];
+  const valueIndex = buildValueIndex(records, catalog);
+  let calls = 0;
+  const evaluate = async (input) => {
+    calls += 1;
+    assert.match(input.questions.scope.criteria.out_of_scope, /挨拶、天気/);
+    assert.equal(input.questions.limit.criteria.unspecified, '件数の指定はない');
+    const field = Object.entries(input.questions).find(([key]) => key.startsWith('field_'));
+    assert.equal(field[1].criteria.none, 'この語は絞り込み条件にしない');
+    const ids = Object.entries(field[1].criteria).filter(([, description]) => description.includes('Machining') || description.includes('Assembly'));
+    return {
+      answers: {
+        scope: { type: 'choice', choice: 'nonconformity' },
+        [field[0]]: {
+          type: 'choice',
+          probabilities: Object.fromEntries([
+            ...ids.map(([id]) => [id, 0.82]),
+            ['none', 0.05],
+          ]),
+        },
+        sort: { type: 'choice', choice: 'recent' },
+        limit: { type: 'choice', choice: 'unspecified' },
+        content: { type: 'noul', noul: 0.1 },
+      },
+    };
+  };
+  const selected = await createPlanner({ evaluate }).plan({
+    question: 'Alpha Plant Machining',
+    catalog,
+    valueIndex,
+  });
+  assert.equal(calls, 1);
+  assert.equal(selected.plan.diagnostics.scope, 'records');
+  assert.equal(selected.plan.diagnostics.limitExplicit, false);
+  assert.equal(selected.plan.filters[0].op, 'in');
+  assert.equal(selected.plan.filters[0].values.length, 2);
+  const rejected = await createPlanner({ evaluate: async () => ({
+    answers: {
+      scope: { type: 'choice', choice: 'out_of_scope' },
+      sort: { type: 'choice', choice: 'recent' },
+      limit: { type: 'choice', choice: 'unspecified' },
+      content: { type: 'noul', noul: 0.1 },
+    },
+  }) }).plan({ question: 'what is the weather', catalog, valueIndex });
+  assert.equal(rejected.plan.diagnostics.scope, 'out_of_scope');
+  assert.deepEqual(rejected.plan.sources, []);
+});
+
+function departmentAnswers(probabilities, content = 0.1) {
+  return async (input) => {
+    const field = Object.entries(input.questions).find(([key]) => key.startsWith('field_'));
+    const valueId = Object.entries(field[1].criteria).find(([, description]) => description.includes('機械課'))[0];
+    return {
+      answers: {
+        scope: { type: 'choice', choice: 'nonconformity' },
+        [field[0]]: { type: 'choice', probabilities: { [valueId]: probabilities.value, none: probabilities.none } },
+        sort: { type: 'choice', choice: 'recent' },
+        limit: { type: 'choice', choice: 'unspecified' },
+        content: { type: 'noul', noul: content },
+      },
+    };
+  };
+}
+
+test('selected department covers particle and cause phrasing without a content query', async () => {
+  const records = [{ id: 'a', originDepartmentName: '北海工場製造部機械課' }];
+  const valueIndex = buildValueIndex(records, catalog);
+  const covered = await createPlanner({ evaluate: departmentAnswers({ value: 1, none: 0 }) }).plan({
+    question: '北海の機械課が原因の記録',
+    catalog,
+    valueIndex,
+  });
+  assert.equal(covered.plan.semanticQuery, '');
+  assert.equal(covered.plan.filters[0].values[0], '北海工場製造部機械課');
+  const asked = await createPlanner({ evaluate: departmentAnswers({ value: 1, none: 0 }, 0.9) }).plan({
+    question: '北海の機械課のburrtoken',
+    catalog,
+    valueIndex,
+  });
+  assert.equal(asked.plan.semanticQuery, '北海の機械課のburrtoken');
+});
+
+test('a low-confidence department value asks for clarification instead of a content search', async () => {
+  const records = [{ id: 'a', originDepartmentName: '北海工場製造部機械課' }];
+  const valueIndex = buildValueIndex(records, catalog);
+  const { plan } = await createPlanner({ evaluate: departmentAnswers({ value: 0.26, none: 0.29 }) }).plan({
+    question: '北海の機戒課',
+    catalog,
+    valueIndex,
+  });
+  assert.equal(plan.semanticQuery, '');
+  assert.equal(plan.filters.length, 0);
+  assert.equal(plan.unresolved.length, 1);
+  assert.deepEqual(plan.unresolved[0].candidates, ['北海工場製造部機械課']);
+});
+

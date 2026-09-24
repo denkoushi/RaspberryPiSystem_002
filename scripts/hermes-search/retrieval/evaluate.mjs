@@ -7,8 +7,11 @@ import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
 import { execute, openQmdVectorRanker } from './executor.mjs';
+import { createDenseRanker } from './dense-index.mjs';
+import { createOnnxEmbedder, createOnnxReranker, DEFAULT_EMBED_MODEL, DEFAULT_RERANK_MODEL } from './embed-runtime.mjs';
+import { linkEntities } from './entity-link.mjs';
 import { createPlanner } from './planner-jev.mjs';
-import { createRelevanceJudge } from './relevance-jev.mjs';
+import { createRelevanceJudge, candidateBody } from './relevance-jev.mjs';
 import { validateQueryPlan } from './query-plan.mjs';
 import { buildValueIndex, findCandidateValues } from './value-index.mjs';
 
@@ -33,7 +36,10 @@ export function countKeywordHits(results, keywords, bodyFields) {
 }
 
 function parseArgs(argv) {
-  const parsed = { gold: null, snapshot: null, qmdIndex: null, embedModel: null, out: null, jevRelevance: null };
+  const parsed = {
+    gold: null, snapshot: null, qmdIndex: null, embedModel: null, out: null, jevRelevance: null,
+    variant: 'a', entityLink: false, rerankMode: 'replace',
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--gold') parsed.gold = argv[++index];
@@ -41,6 +47,9 @@ function parseArgs(argv) {
     else if (arg === '--qmd-index') parsed.qmdIndex = argv[++index];
     else if (arg === '--embed-model') parsed.embedModel = argv[++index];
     else if (arg === '--out') parsed.out = argv[++index];
+    else if (arg === '--variant') parsed.variant = argv[++index];
+    else if (arg === '--entity-link') parsed.entityLink = true;
+    else if (arg === '--rerank-mode') parsed.rerankMode = argv[++index];
     else if (arg === '--jev-relevance') {
       const next = argv[index + 1];
       if (next === 'false' || next === 'off') {
@@ -53,7 +62,7 @@ function parseArgs(argv) {
     } else throw new Error(`unknown argument: ${arg}`);
   }
   if (!parsed.gold || !parsed.snapshot || !parsed.out) {
-    throw new Error('Usage: node retrieval/evaluate.mjs --gold <file> --snapshot <path> --qmd-index <path> --embed-model <path> [--jev-relevance] --out <file>');
+    throw new Error('Usage: node retrieval/evaluate.mjs --gold <file> --snapshot <path> [--variant a|b|c] [--entity-link] [--rerank-mode replace|gate] [--jev-relevance] --out <file>');
   }
   return parsed;
 }
@@ -74,7 +83,7 @@ function readGold(file) {
   return parsed.map((item, index) => {
     if (!item || typeof item.id !== 'string' || !item.id) throw new Error(`gold case ${index} needs an id`);
     if (typeof item.question !== 'string' || !item.question.trim()) throw new Error(`gold case ${item.id} needs a question`);
-    if (!['answer', 'no_result', 'clarification'].includes(item.expect)) throw new Error(`gold case ${item.id} has an unknown expect`);
+    if (!['answer', 'no_result', 'clarification', 'out_of_scope'].includes(item.expect)) throw new Error(`gold case ${item.id} has an unknown expect`);
     if (!Array.isArray(item.judge?.anyOf) || item.judge.anyOf.some((keyword) => typeof keyword !== 'string' || !keyword)) {
       throw new Error(`gold case ${item.id} needs judge.anyOf strings`);
     }
@@ -114,9 +123,59 @@ export async function evaluateGold(options) {
   const catalog = loadNonconformityCatalog();
   const valueIndex = buildValueIndex(payload.records, catalog);
   const bodyFields = fieldsWithRole(catalog, 'body');
+  const variant = options.variant ?? 'a';
+  if (!['a', 'b', 'c'].includes(variant)) throw new Error('variant must be a, b, or c');
+  const useDense = variant === 'b' || variant === 'c';
+  const embedder = (options.entityLink || useDense) && !options.embed
+    ? await createOnnxEmbedder({ modelId: options.embedModelId })
+    : null;
+  const embed = options.embed ?? (embedder ? (texts, extra) => embedder.embed(texts, extra) : null);
+  const memo = new Map();
+  const cachedEmbed = embed
+    ? async (texts, extra) => {
+      const prefix = extra?.prefix ?? '';
+      const missing = [];
+      for (const text of texts) if (!memo.has(prefix + text)) missing.push(text);
+      if (missing.length) {
+        const fresh = await embed(missing, extra);
+        missing.forEach((text, index) => memo.set(prefix + text, fresh[index]));
+      }
+      return texts.map((text) => memo.get(prefix + text));
+    }
+    : null;
+  let denseRank = null;
+  if (useDense) {
+    const cachePath = path.join(options.workRoot ?? path.join(process.env.HOME, 'Documents', 'hermes-retrieval-private', 'work'), `dense-${embedder?.modelId ?? 'custom'}.json`);
+    let rows = null;
+    try {
+      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+      if (cached.count === payload.records.length && cached.rows?.length === payload.records.length) rows = cached.rows;
+    } catch { rows = null; }
+    if (!rows) {
+      const texts = payload.records.map((record) => bodyFields.map((key) => record?.[key] ?? '').join('\n').slice(0, 500));
+      const vectors = await cachedEmbed(texts, { prefix: 'passage: ' });
+      rows = payload.records.map((record, index) => ({ id: record.id, vector: vectors[index] }));
+      await fsp.mkdir(path.dirname(cachePath), { recursive: true, mode: 0o700 });
+      await fsp.writeFile(cachePath, JSON.stringify({ count: rows.length, rows }), { mode: 0o600 });
+    }
+    denseRank = createDenseRanker(rows, (queries) => cachedEmbed(queries, { prefix: 'query: ' }));
+  }
+  const reranker = variant === 'c' && !options.rerank
+    ? await createOnnxReranker({ modelId: options.rerankModelId })
+    : null;
+  const rerank = options.rerank ?? (reranker
+    ? async ({ semanticQuery, candidates, bodyFields: fields }) => {
+      const pairs = candidates.map((item) => [semanticQuery, candidateBody(item.record, fields)]);
+      const scores = await reranker.scorePairs(pairs);
+      return { ranked: candidates.map((item, index) => ({ id: item.id, score: scores[index] })) };
+    }
+    : null);
+  const vector = denseRank
+    ? (query) => denseRank(query)
+    : null;
   let ranker = null;
   let vectorPrepareReason = null;
-  if (options.qmdIndex && options.embedModel) {
+  if (!denseRank && options.qmdIndex && options.embedModel) {
     const qmdRoot = await resolveQmdRoot();
     if (!qmdRoot) vectorPrepareReason = 'QMD runtime dist/index.js was not found. Set HERMES_QMD_ROOT.';
     else {
@@ -132,24 +191,45 @@ export async function evaluateGold(options) {
         vectorPrepareReason = String(error?.message ?? error).slice(0, 300);
       }
     }
-  } else {
+  } else if (!denseRank) {
     vectorPrepareReason = 'qmd index or embed model flag is not set';
   }
-  const vector = ranker ? (query, filteredRecords) => ranker.rank(query, filteredRecords) : null;
+  const activeVector = vector ?? (ranker ? (query, filteredRecords) => ranker.rank(query, filteredRecords) : null);
   const details = [];
   try {
     for (const item of gold) {
       const wallStarted = performance.now();
       const candidates = findCandidateValues(item.question, valueIndex, catalog);
+      const choiceGroups = options.entityLink
+        ? await linkEntities({
+          question: item.question,
+          valueIndex,
+          catalog,
+          embed: (texts) => cachedEmbed(texts, { prefix: 'query: ' }),
+        })
+        : null;
       const planned = await createPlanner().plan({
         question: item.question,
         previousPlan: null,
         catalog,
         candidates,
+        valueIndex,
+        choiceGroups,
       });
-      const validation = validateQueryPlan(planned.plan, catalog, valueIndex);
+      const validation = planned.plan?.diagnostics?.scope === 'out_of_scope'
+        ? { ok: false, outOfScope: true }
+        : validateQueryPlan(planned.plan, catalog, valueIndex);
       let executed;
-      if (!validation.ok) {
+      if (validation.outOfScope) {
+        executed = {
+          status: 'out_of_scope',
+          results: [],
+          insufficient: false,
+          requested: null,
+          returned: 0,
+          timings: { totalMs: 0, vectorMs: null, vectorStatus: 'not_requested', vectorReason: null },
+        };
+      } else if (!validation.ok) {
         executed = {
           status: 'clarification',
           results: [],
@@ -161,19 +241,31 @@ export async function evaluateGold(options) {
       } else {
         executed = await execute(validation.plan, {
           records: payload.records,
-          vector,
+          vector: activeVector,
           catalog,
           relevance: options.relevance,
+          rerank,
+          rerankMode: variant === 'c' ? (options.rerankMode ?? 'replace') : null,
         });
-        if (!ranker && validation.plan.semanticQuery.trim() && vectorPrepareReason) {
+        if (!activeVector && validation.plan.semanticQuery.trim() && vectorPrepareReason) {
           executed.timings.vectorStatus = /not set|not found|was not found/u.test(vectorPrepareReason) ? 'skipped' : 'failed';
           executed.timings.vectorReason = vectorPrepareReason;
         }
       }
       const hits = countKeywordHits(executed.results, item.judge.anyOf, bodyFields);
       const returned = executed.returned ?? executed.results.length;
-      const precision = casePrecision(item.expect, hits, returned);
       const planFilters = validation.ok ? validation.plan.filters : (planned.plan?.filters ?? []);
+      const filterBlob = planFilters.flatMap((filter) => filter.values ?? []).join('\n');
+      const filterIncludes = Array.isArray(item.filterIncludes) ? item.filterIncludes : null;
+      const filterIncludesOk = filterIncludes
+        ? filterIncludes.every((part) => typeof part === 'string' && filterBlob.includes(part))
+        : null;
+      let precision = item.expect === 'out_of_scope'
+        ? (executed.status === 'out_of_scope' && returned === 0 ? 1 : 0)
+        : item.expect === 'clarification'
+          ? (executed.status === 'clarification' && returned === 0 ? 1 : 0)
+          : casePrecision(item.expect, hits, returned);
+      if (item.expect === 'answer' && filterIncludesOk && executed.status === 'answer' && returned > 0) precision = 1;
       details.push({
         id: item.id,
         status: executed.status,
@@ -184,9 +276,13 @@ export async function evaluateGold(options) {
         requested: executed.requested ?? null,
         insufficient: Boolean(executed.insufficient),
         precision,
-        allRelevant: allRelevant(item.expect, hits, returned),
+        allRelevant: item.expect === 'out_of_scope'
+          ? executed.status === 'out_of_scope' && returned === 0
+          : allRelevant(item.expect, hits, returned),
+        category: typeof item.category === 'string' ? item.category : null,
         filterField: item.filterField ?? null,
         filterApplied: item.filterField ? planFilters.some((filter) => filter.field === item.filterField) : null,
+        filterIncludesOk,
         ids: executed.results.map((result) => result.recordId),
         planMs: planned.timings?.planMs ?? null,
         retrieveMs: executed.timings?.totalMs ?? null,
@@ -253,6 +349,11 @@ async function main() {
     embedModel: args.embedModel,
     workRoot,
     relevance: relevanceEnabled(args.jevRelevance) ? (input) => createRelevanceJudge().judge(input) : undefined,
+    variant: args.variant,
+    entityLink: args.entityLink,
+    rerankMode: args.rerankMode,
+    embedModelId: DEFAULT_EMBED_MODEL,
+    rerankModelId: DEFAULT_RERANK_MODEL,
   });
   await fsp.mkdir(path.dirname(args.out), { recursive: true, mode: 0o700 });
   await fsp.writeFile(args.out, `${JSON.stringify({ summary, cases: details }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });

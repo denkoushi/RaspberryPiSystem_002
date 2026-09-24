@@ -34,8 +34,9 @@ test('relevance judgment uses one call, drops false candidates, and caps the que
     assert.ok(keys.length >= 1);
     assert.ok(keys.length <= RELEVANCE_CANDIDATE_LIMIT);
     assert.ok(keys.every((key) => input.questions[key].type === 'noul'));
-    assert.match(input.questions[keys[0]].criteria.true, /明示的に記述/);
-    assert.match(input.questions[keys[0]].criteria.true, /部品や工程だけ/);
+    assert.match(input.questions[keys[0]].criteria.true, /明示的に記述している/);
+    assert.match(input.questions[keys[0]].criteria.true, /組織・日付・件数は判断に使わない/);
+    assert.match(input.questions[keys[0]].criteria.false, /別の現象/);
     const answers = {};
     for (const key of keys) {
       const text = input.questions[key].instructions;

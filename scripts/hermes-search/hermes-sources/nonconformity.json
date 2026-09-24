@@ -1,6 +1,8 @@
 {
   "schema": "hermes-source-definition/v1",
   "id": "nonconformity",
+  "description": "不適合として記録された事象",
+  "valueChoiceCap": 300,
   "recordNumberField": "nonconformityNo",
   "metadataFields": {
     "nonconformityNo": "不適合番号",

@@ -157,6 +157,7 @@ async function main() {
       previousPlan: null,
       catalog,
       candidates,
+      valueIndex,
     });
     planMs = planned.timings.planMs;
     submitted = planned.plan;
