@@ -7,8 +7,14 @@ import { prisma } from '../lib/prisma.js';
 import { CsvDashboardIngestor } from '../services/csv-dashboard/csv-dashboard-ingestor.js';
 import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
 } from '../services/production-schedule/constants.js';
+import {
+  dedupeFkojunstMailRowsByLatest,
+  toFkojunstMailNormalizedRow,
+} from '../services/production-schedule/fkojunst-status-mail-sync.pipeline.js';
+import { normalizeProductionScheduleResourceCd } from '../services/production-schedule/policies/resource-category-policy.service.js';
 import { calculateProductionScheduleDataHash } from '../services/production-schedule/row-resolver/constants.js';
 
 const PRODUCT_NO = '0003729969';
@@ -20,6 +26,8 @@ type CsvRecord = Record<string, string>;
 const rowKey = (row: CsvRecord): string => `${row.FSIGENCD}\t${row.FKOJUN}`;
 const dbRowKey = (row: Record<string, unknown>): string =>
   `${String(row.FSIGENCD ?? '')}\t${String(row.FKOJUN ?? '')}`;
+const statusKey = (processOrder: string, resourceCd: string): string =>
+  `${processOrder.trim()}\t${normalizeProductionScheduleResourceCd(resourceCd.trim())}`;
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -55,6 +63,36 @@ async function main(): Promise<void> {
     'Archived supplement does not match resource 500, process 230, quantity 20');
   const plannedStartDate = parseDate(supplement['着手日'] ?? '');
   const plannedEndDate = parseDate(supplement['完了日'] ?? '');
+
+  const statusSourceRows = await prisma.csvDashboardRow.findMany({
+    where: {
+      csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+      rowData: { path: ['FSEZONO'], equals: PRODUCT_NO },
+    },
+    select: { id: true, rowData: true, sourceRowOrdinal: true, sourceIngestRunStartedAt: true },
+  });
+  assert(statusSourceRows.length === 10, 'Expected ten FKOJUNST_Status source rows');
+  const normalizedStatuses = statusSourceRows.map((row) => {
+    const status = toFkojunstMailNormalizedRow(
+      row.id,
+      row.rowData as Record<string, unknown>,
+      row.sourceRowOrdinal,
+      row.sourceIngestRunStartedAt,
+    ).row;
+    assert(status, 'FKOJUNST_Status source has an invalid key');
+    return status;
+  });
+  const statusWinners = dedupeFkojunstMailRowsByLatest(normalizedStatuses);
+  assert(statusWinners.length === 5 && statusWinners.every((row) =>
+    row.fsezono === PRODUCT_NO && row.statusCode === 'R' && !row.hasUnparseableDate),
+  'FKOJUNST_Status source differs from the expected target status');
+  const archivedStatusKeys = new Set(targetRows.map((row) => statusKey(row.FKOJUN, row.FSIGENCD)));
+  const matchedStatuses = statusWinners.filter((row) => archivedStatusKeys.has(statusKey(row.fkojun, row.fkoteicd)));
+  const unmatchedStatuses = statusWinners.filter((row) => !archivedStatusKeys.has(statusKey(row.fkojun, row.fkoteicd)));
+  assert(matchedStatuses.length === 4 && unmatchedStatuses.length === 1
+    && unmatchedStatuses[0]?.fkojun === '300' && unmatchedStatuses[0]?.fkoteicd === '731'
+    && matchedStatuses.some((row) => row.fkojun === '230' && row.fkoteicd === '500'),
+  'FKOJUNST_Status source does not match the archived schedule');
 
   const maskedRows = await prisma.csvDashboardRow.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, rowData: { path: ['FSEIBAN'], equals: '********' } },
@@ -94,8 +132,29 @@ async function main(): Promise<void> {
       && existingSupplement.plannedQuantity === 20,
     'Existing supplement conflicts with archived data');
   }
+  const existingStatuses = await prisma.productionScheduleFkojunstMailStatus.findMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fsezono: PRODUCT_NO },
+    select: { csvDashboardRowId: true, fkojun: true, fkoteicd: true, statusCode: true, sourceUpdatedAt: true },
+  });
+  assert(existingStatuses.length === 0 || existingStatuses.length === matchedStatuses.length,
+    'Partial target FKOJUNST_Status links already exist; inspect before recovery');
+  if (existingStatuses.length > 0) {
+    const existingRowIdByKey = new Map(existingRows.map((row) => [
+      statusKey(String((row.rowData as Record<string, unknown>).FKOJUN ?? ''),
+        String((row.rowData as Record<string, unknown>).FSIGENCD ?? '')),
+      row.id,
+    ]));
+    assert(existingStatuses.every((existing) => {
+      const source = matchedStatuses.find((row) =>
+        statusKey(row.fkojun, row.fkoteicd) === statusKey(existing.fkojun, existing.fkoteicd));
+      return source && existing.csvDashboardRowId === existingRowIdByKey.get(statusKey(source.fkojun, source.fkoteicd))
+        && existing.statusCode === source.statusCode
+        && existing.sourceUpdatedAt.getTime() === source.sourceUpdatedAt.getTime();
+    }), 'Existing FKOJUNST_Status links conflict with the source');
+  }
   console.log(JSON.stringify({ execute, archivedScheduleRows: targetRows.length,
     existingScheduleRows: existingRows.length, existingSupplement: existingSupplement != null,
+    existingStatuses: existingStatuses.length, archivedMatchedStatuses: matchedStatuses.length,
     maskedRowsChecked: maskedRows.length }));
   if (!execute) return;
 
@@ -133,8 +192,32 @@ async function main(): Promise<void> {
       },
     });
   }
+  if (existingStatuses.length === 0) {
+    const rowIdByStatusKey = new Map(existingRows.map((row) => [
+      statusKey(String((row.rowData as Record<string, unknown>).FKOJUN ?? ''),
+        String((row.rowData as Record<string, unknown>).FSIGENCD ?? '')),
+      row.id,
+    ]));
+    await prisma.productionScheduleFkojunstMailStatus.createMany({
+      data: matchedStatuses.map((status) => {
+        const csvDashboardRowId = rowIdByStatusKey.get(statusKey(status.fkojun, status.fkoteicd));
+        assert(csvDashboardRowId, 'FKOJUNST_Status has no restored schedule row');
+        return {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          csvDashboardRowId,
+          sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+          fkojun: status.fkojun,
+          fkoteicd: status.fkoteicd,
+          fsezono: status.fsezono,
+          statusCode: status.statusCode,
+          sourceUpdatedAt: status.sourceUpdatedAt,
+        };
+      }),
+    });
+  }
   console.log(JSON.stringify({ restoredOrder: PRODUCT_NO, scheduleRows: existingRows.length,
-    resourceCd: '500', processOrder: '230', plannedQuantity: 20 }));
+    resourceCd: '500', processOrder: '230', plannedQuantity: 20,
+    linkedStatuses: matchedStatuses.length }));
 }
 
 void main()
