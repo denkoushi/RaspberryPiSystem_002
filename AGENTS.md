@@ -22,14 +22,17 @@
 
 ## Git Task Lifecycle
 
-変更を伴う新規タスクで既存のタスクbranchまたはworktreeがない場合は、専用のfeature branchとlinked worktreeを1つ使う。既存タスクの継続作業ではそのbranchまたはworktreeを引き継ぎ、ユーザーのWIPをclean、reset、stash、checkoutしない。
+変更を伴う新規タスクで既存のタスクbranchまたはworktreeがない場合は、専用のfeature branchとlinked worktreeを1つ使う。既存タスクはそれを引き継ぐ。ユーザーのWIPをclean、reset、stash、checkoutしない。
 
-開始、監査、終了には`python3 -m scripts.git_lifecycle.cli`を使い、詳細は`.cursor/rules/20-git-workflow.mdc`に従う。rawな`git worktree add`や手動の一括削除を標準手順にしない。このCLIは開発端末で明示実行するGit運用ツールに限定し、Deploy、Ansible、Docker build、fleet deploy、Git hook、CI共通preflightから呼び出さない。
+`python3 -m scripts.git_lifecycle.cli` を `.cursor/rules/20-git-workflow.mdc` に従って使い、rawな`git worktree add`や手動の一括削除を標準手順にしない。このCLIをDeploy、Ansible、Docker build、fleet deploy、Git hook、CI共通preflightから呼び出さない。
 
 ## Scope And Evidence
 
 - 依頼から変更対象、受入条件、成功を示す証拠を絞り、最小変更で満たす。近接する改善や失敗を見つけても、依頼との因果がなければ別スコープとする。
-- 実装依頼は commit、push、PR、merge、release、deploy の許可を含まない。依頼された段階を越える前に明示承認を得る。
+- **実装依頼は commit、push、PR、merge、release、deploy の許可を含まない。** 依頼された段階を越える前に明示承認を得る。
+- 明示依頼なしに `push --force`、`rebase`/`amend` 等の履歴改変を行わない。`rm -rf` やDB/ボリューム削除、証明書/鍵の上書きなど破壊的操作も同様に行わない。
+- 秘密情報（`.env` 等）をcommitしない。
+- 重要な変更・調査・障害対応は KB / ADR / Runbook / Plan のいずれか1つを正本として更新する（詳細は `.cursor/rules/01-core-docs-and-knowledge.mdc`）。
 - コード、テスト、CIの変更では、`10-quality-ci-and-tests.mdc` の検証予算、再実行上限、停止条件を守る。無関係な失敗は修正せず、別件として報告する。
 - 複雑な機能追加や大きなリファクタだけ、`.agent/PLANS.md` に従って `docs/plans/` に ExecPlan を作る。小変更へ形式的な計画文書を追加しない。
 - ルートの `EXEC_PLAN.md` は legacy historical log であり、詳細正本にせず、新しい進捗ログを追記しない。

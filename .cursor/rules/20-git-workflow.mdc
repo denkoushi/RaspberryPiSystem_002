@@ -8,9 +8,9 @@ alwaysApply: false
 ## 原則
 
 - 変更は目的ごとに分割し、混在を避ける（1コミット=1意図）
-- push/merge/release/deploy は**明示依頼がある時のみ**行う
-- 既定フローは **`start` → feature branch/worktree作業 → PR → mainマージ → `finish` → `audit`** とする
-- `main` への直作業（直接コミット）は禁止し、必ず feature ブランチで作業する
+- push/merge/release/deploy は明示依頼がある時のみ行う
+- 既定フローは `start` → feature branch/worktree作業 → PR → mainマージ → `finish` → `audit` とする
+- `main` への直接コミットは行わず、feature ブランチで作業する
 - task worktreeの起点はfetch済みの正確な`origin/main`とする。main worktreeのdirtyまたはdivergedは対象taskを止める理由にしない。
 
 ## コミットメッセージ
@@ -20,7 +20,7 @@ alwaysApply: false
 
 ## 危険操作の扱い
 
-- `--force`、履歴改変、main直系へのpush は原則禁止（必要なら理由・手順・影響を明記）
+- `--force`、履歴改変（`rebase`/`amend` 等）、main直系へのpushは、明示的なユーザー依頼がない限り行わない
 - task cleanupで`git worktree remove --force`、`git branch -D`、wildcard削除、remote refの直接削除を使わない。GitHubのmerge後remote branch削除設定を正本とする。
 
 ## 最低限チェック（git操作時）
@@ -30,14 +30,9 @@ alwaysApply: false
 - `git diff --check` で空白・差分破損を確認
 - 変更に未コミットのユーザー作業が混ざっていないことを確認
 
-## ドキュメント変更時の追加チェック
+## ドキュメント変更時
 
-- 追加・変更した Markdown の相対リンクが壊れていないこと
-- 不自然な連続疑問符などの文字化けを追加していないこと
-- 1,000文字を超える長大な1行を追加していないこと
-- `docs/INDEX.md` と `docs/knowledge-base/index.md` に本文級の追記をしていないこと
-- 同じ事実を KB / Runbook / ADR / Plan / Index / `EXEC_PLAN.md` へ全文コピーしていないこと
-- `EXEC_PLAN.md` へ詳細ログを追記していないこと
+- ドキュメント変更時は `.cursor/rules/30-docs-maintenance.mdc` のチェックに従う
 
 ## タスク開始・監査・完了（固定）
 
