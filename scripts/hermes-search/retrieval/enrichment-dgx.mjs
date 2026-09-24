@@ -18,6 +18,7 @@ export function enrichmentSettings(env = process.env) {
     concurrency,
     timeoutMs,
     window: env.HERMES_RETRIEVAL_ENRICHMENT_WINDOW || '',
+    idAllowlist: env.HERMES_RETRIEVAL_ENRICHMENT_IDS || '',
     origin: env.HERMES_INFERENCE_ORIGIN || '',
     token: env.HERMES_INFERENCE_TOKEN || '',
     egress: env.HERMES_INFERENCE_EGRESS || '',

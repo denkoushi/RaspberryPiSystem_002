@@ -126,6 +126,7 @@
     - { key: HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS, value: "{{ hermes_retrieval_enrichment_max_records }}" }
     - { key: HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY, value: "{{ hermes_retrieval_enrichment_concurrency }}" }
     - { key: HERMES_RETRIEVAL_ENRICHMENT_WINDOW, value: "{{ hermes_retrieval_enrichment_window }}" }
+    - { key: HERMES_RETRIEVAL_ENRICHMENT_IDS, value: "{{ hermes_retrieval_enrichment_ids }}" }
   when:
     - hermes_search_trial_enabled | bool
     - item.value | length > 0

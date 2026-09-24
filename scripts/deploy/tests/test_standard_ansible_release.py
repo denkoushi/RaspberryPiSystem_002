@@ -219,6 +219,19 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY": "3"}, clear=True):
             with self.assertRaisesRegex(MODULE.UsageError, "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY must be 1 or 2"):
                 MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+        with tempfile.TemporaryDirectory() as directory:
+            allow = Path(directory) / "ids.txt"
+            allow.write_text("11111111-1111-4111-8111-111111111111\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, {"HERMES_RETRIEVAL_ENRICHMENT_IDS": str(allow)}, clear=True):
+                environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+                self.assertEqual(environment["HERMES_RETRIEVAL_ENRICHMENT_IDS"], MODULE.ENRICHMENT_IDS_CONTAINER)
+                command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
+                                             ("pi5",), "pi", hermes_environment=environment)
+                self.assertIn(f"--setenv=HERMES_RETRIEVAL_ENRICHMENT_IDS={MODULE.ENRICHMENT_IDS_CONTAINER}", command)
+            allow.write_text("not-an-id\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, {"HERMES_RETRIEVAL_ENRICHMENT_IDS": str(allow)}, clear=True):
+                with self.assertRaisesRegex(MODULE.UsageError, "only record ids"):
+                    MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
 
     def test_fixed_record_pilot_artifact_is_retired(self) -> None:
         args = argparse.Namespace(full_fleet=False, detach=False, branch="main", limit="raspberrypi5")

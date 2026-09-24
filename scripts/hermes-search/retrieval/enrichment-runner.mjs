@@ -1,5 +1,6 @@
 // Incremental, resumable enrichment. A DGX failure backs off and never answers chat.
 import { performance } from 'node:perf_hooks';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { loadNonconformityCatalog } from './catalog.mjs';
 import { recordFromAuthorizedRow } from './corpus.mjs';
@@ -17,6 +18,20 @@ import { enrichmentSettings, requestEnrichment, withinWindow } from './enrichmen
 import { readEnrichmentStore, statusPathFromEnv, storePathFromEnv, writeEnrichmentStore, writeStatus } from './enrichment-store.mjs';
 
 const BACKOFF_MS = [5_000, 15_000, 60_000];
+const ID_LINE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+export async function readIdAllowlist(filePath) {
+  const raw = await readFile(filePath, 'utf8');
+  const ids = new Set();
+  for (const line of raw.split('\n')) {
+    const id = line.trim();
+    if (!id) continue;
+    if (!ID_LINE.test(id)) throw new Error('enrichment id allowlist line is not an id');
+    ids.add(id);
+  }
+  if (ids.size === 0) throw new Error('enrichment id allowlist is empty');
+  return ids;
+}
 
 export function selectRecords(records) {
   return (records ?? []).map((row) => (
@@ -42,8 +57,12 @@ export async function runEnrichmentBatch({
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
   const started = performance.now();
-  const selected = selectRecords(records);
+  const loaded = selectRecords(records);
+  const allowlist = settings.idAllowlist ? await readIdAllowlist(settings.idAllowlist) : null;
+  const selected = allowlist ? loaded.filter((record) => allowlist.has(record.id)) : loaded;
   const status = emptyStatus(settings, selected.length);
+  status.allowlistCount = allowlist ? allowlist.size : 0;
+  status.allowlistMatched = allowlist ? selected.length : 0;
   if (!settings.enabled) {
     status.reason = 'disabled';
     await publish(statusPath, status);
@@ -174,6 +193,8 @@ function emptyStatus(settings, corpusCount) {
     corpusCount,
     maxRecords: settings.maxRecords,
     concurrency: settings.concurrency,
+    allowlistCount: 0,
+    allowlistMatched: 0,
     examined: 0,
     skipped: 0,
     succeeded: 0,

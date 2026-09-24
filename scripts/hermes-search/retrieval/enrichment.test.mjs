@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtemp, readdir, readFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { records } from './fixtures/synthetic-records.mjs';
@@ -15,7 +15,7 @@ import {
   verifyEvidence,
 } from './enrichment-contract.mjs';
 import { withinWindow } from './enrichment-dgx.mjs';
-import { needsEnrichment, runEnrichmentBatch } from './enrichment-runner.mjs';
+import { needsEnrichment, readIdAllowlist, runEnrichmentBatch } from './enrichment-runner.mjs';
 import { readEnrichmentStore, writeAtomic, writeEnrichmentStore } from './enrichment-store.mjs';
 import { createRetrievalAnswering } from './worker.mjs';
 
@@ -154,6 +154,35 @@ test('a failed atomic write leaves the previous store intact', async () => {
   assert.equal(await readFile(storePath, 'utf8'), before);
   const names = await readdir(directory);
   assert.equal(names.some((name) => name.includes('.tmp')), false);
+});
+
+test('an id allowlist keeps only listed records and rejects other file text', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-ids-'));
+  const allowPath = path.join(directory, 'ids.txt');
+  const kept = '11111111-1111-4111-8111-111111111111';
+  const dropped = '22222222-2222-4222-8222-222222222222';
+  await writeFile(allowPath, `${kept}\n`);
+  assert.deepEqual([...(await readIdAllowlist(allowPath))], [kept]);
+  await writeFile(allowPath, 'not-an-id\n');
+  await assert.rejects(readIdAllowlist(allowPath), /not an id/);
+  const settings = {
+    enabled: true, maxRecords: 100, concurrency: 1, timeoutMs: 5000, window: '22-6',
+    idAllowlist: allowPath, origin: 'http://127.0.0.1:9', token: 'synthetic-token-value',
+    egress: '', model: 'mock-model', profile: 'business_qwen36_27b_nvfp4',
+  };
+  await writeFile(allowPath, `${kept}\n`);
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records: [{ ...records[0], id: kept }, { ...records[1], id: dropped }],
+    catalog, storePath: path.join(directory, 'store.jsonl'), statusPath: path.join(directory, 'status.json'),
+    settings, fetchImpl: async () => { calls += 1; throw new Error('unused'); }, sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(status.reason, 'outside_window');
+  assert.equal(status.allowlistCount, 1);
+  assert.equal(status.allowlistMatched, 1);
+  assert.equal(status.corpusCount, 1);
+  assert.equal(calls, 0);
 });
 
 test('the enrichment window accepts an overnight range and rejects an open gate by default', () => {

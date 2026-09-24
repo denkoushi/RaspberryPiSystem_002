@@ -98,6 +98,7 @@
     - { key: HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS, value: "{{ release_pi5_trial_enrichment_max_records }}" }
     - { key: HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY, value: "{{ release_pi5_trial_enrichment_concurrency }}" }
     - { key: HERMES_RETRIEVAL_ENRICHMENT_WINDOW, value: "{{ release_pi5_trial_enrichment_window }}" }
+    - { key: HERMES_RETRIEVAL_ENRICHMENT_IDS, value: "{{ release_pi5_trial_enrichment_ids }}" }
   when: item.value | length > 0
 
 - name: Read the finalized maintenance environment before API recreation
