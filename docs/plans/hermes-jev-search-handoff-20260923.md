@@ -7,6 +7,11 @@ last_verified: 2026-09-23
 
 # Hermes/JEV record-search handoff
 
+> **Frozen 2026-09-23:** by owner decision this path receives only security or
+> outage fixes. New retrieval work follows
+> [ADR-20260923](../decisions/ADR-20260923-hermes-cross-source-retrieval.md) and its
+> [ExecPlan](./hermes-cross-source-retrieval-execplan.md).
+
 ## Outcome and boundary
 
 The requested user outcome is to ask the existing floating Chat in natural
