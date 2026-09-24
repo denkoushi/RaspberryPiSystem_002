@@ -6,6 +6,8 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
+import { attachEnrichment } from './enrichment-contract.mjs';
+import { readEnrichmentStore } from './enrichment-store.mjs';
 import { execute, openQmdVectorRanker } from './executor.mjs';
 import { createPlanner } from './planner-jev.mjs';
 import { createRelevanceJudge } from './relevance-jev.mjs';
@@ -32,14 +34,15 @@ export function countKeywordHits(results, keywords, bodyFields) {
   return hits;
 }
 
-function parseArgs(argv) {
-  const parsed = { gold: null, snapshot: null, qmdIndex: null, embedModel: null, out: null, jevRelevance: null };
+export function parseArgs(argv) {
+  const parsed = { gold: null, snapshot: null, qmdIndex: null, embedModel: null, enrichment: null, out: null, jevRelevance: null };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--gold') parsed.gold = argv[++index];
     else if (arg === '--snapshot') parsed.snapshot = argv[++index];
     else if (arg === '--qmd-index') parsed.qmdIndex = argv[++index];
     else if (arg === '--embed-model') parsed.embedModel = argv[++index];
+    else if (arg === '--enrichment') parsed.enrichment = argv[++index];
     else if (arg === '--out') parsed.out = argv[++index];
     else if (arg === '--jev-relevance') {
       const next = argv[index + 1];
@@ -53,7 +56,7 @@ function parseArgs(argv) {
     } else throw new Error(`unknown argument: ${arg}`);
   }
   if (!parsed.gold || !parsed.snapshot || !parsed.out) {
-    throw new Error('Usage: node retrieval/evaluate.mjs --gold <file> --snapshot <path> --qmd-index <path> --embed-model <path> [--jev-relevance] --out <file>');
+    throw new Error('Usage: node retrieval/evaluate.mjs --gold <file> --snapshot <path> [--enrichment <jsonl>] --qmd-index <path> --embed-model <path> [--jev-relevance] --out <file>');
   }
   return parsed;
 }
@@ -111,6 +114,10 @@ export async function evaluateGold(options) {
   const gold = readGold(options.goldPath);
   const payload = JSON.parse(fs.readFileSync(options.snapshotPath, 'utf8'));
   if (!Array.isArray(payload?.records)) throw new Error('snapshot records must be an array');
+  if (options.enrichmentPath) {
+    const byId = await readEnrichmentStore(options.enrichmentPath);
+    payload.records = attachEnrichment(payload.records, byId);
+  }
   const catalog = loadNonconformityCatalog();
   const valueIndex = buildValueIndex(payload.records, catalog);
   const bodyFields = fieldsWithRole(catalog, 'body');
@@ -251,6 +258,7 @@ async function main() {
     snapshotPath: args.snapshot,
     qmdIndex: args.qmdIndex,
     embedModel: args.embedModel,
+    enrichmentPath: args.enrichment,
     workRoot,
     relevance: relevanceEnabled(args.jevRelevance) ? (input) => createRelevanceJudge().judge(input) : undefined,
   });
