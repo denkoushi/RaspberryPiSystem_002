@@ -325,7 +325,14 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         if (filter) dated.push(filter);
       }
       const filters = mergeFilters([...carried, ...selected, ...dated]);
-      const jev = contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;
+      const judged = contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;
+      // A refine turn without content of its own keeps the previous content condition,
+      // for example "そのうち三島工場資材課の" after "錆の不適合".
+      const previousQuery = turn === 'refine' && typeof previousPlan?.semanticQuery === 'string'
+        ? previousPlan.semanticQuery.trim()
+        : '';
+      const carriedQuery = judged === false && previousQuery ? previousQuery : '';
+      const jev = carriedQuery ? true : judged;
       const finalContent = jev === true && unresolved.length === 0;
       const sortMode = resolveSort(question, jev, hasAppliedHardFilter({ filters }, catalog));
       const sort = sortMode === 'recent' && recentField
@@ -338,7 +345,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         semanticQuery: outOfScope || unresolved.length || shouldSkipRelevance({
           filters,
           diagnostics: { contentDecision: { jev } },
-        }, catalog) ? '' : question.trim(),
+        }, catalog) ? '' : (carriedQuery || question.trim()),
         sort,
         limit: limitExplicit ? Number(limitChoice) : 5,
         display: entries.flatMap((entry) => entry.fields.map((field) => field.key)),

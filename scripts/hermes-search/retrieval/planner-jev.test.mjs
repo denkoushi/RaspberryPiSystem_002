@@ -114,7 +114,9 @@ test('planner can refine a previous plan without a second evaluate call', async 
   assert.equal(calls, 1);
   assert.equal(plan.filters.some((filter) => filter.field === 'machineName' && filter.values[0] === 'Lathe-1'), true);
   assert.equal(plan.filters.some((filter) => filter.field === 'originDepartmentName' && filter.values[0] === 'South Shop'), true);
-  assert.deepEqual(plan.sort, { field: 'discoveredOn', direction: 'desc' });
+  // The follow-up adds only an organization, so the previous content condition stays.
+  assert.equal(plan.semanticQuery, 'paint');
+  assert.equal(plan.sort, 'relevance');
 });
 
 test('an answer outside the candidate ids stays unresolved', async () => {
@@ -417,3 +419,22 @@ test('a low-confidence department value asks for clarification instead of a cont
   assert.deepEqual(plan.unresolved[0].candidates, ['北海工場製造部機械課']);
 });
 
+
+test('a refine turn without its own content keeps the previous content condition', async () => {
+  const evaluate = async () => ({
+    answers: {
+      term_0: { type: 'choice', choice: 'v0' },
+      turn: { type: 'choice', choice: 'refine' },
+      sort: { type: 'choice', choice: 'relevance' },
+      limit: { type: 'choice', choice: '5' },
+      content: { type: 'noul', noul: 0.1 },
+    },
+  });
+  const previousPlan = { sources: ['nonconformity'], filters: [], semanticQuery: 'rust on the table', sort: 'relevance', limit: 5 };
+  const candidates = [{ term: 'South Shop', source: 'nonconformity', field: 'originDepartmentName', values: ['South Shop'] }];
+  const refined = await createPlanner({ evaluate }).plan({ question: 'South Shopだけ', previousPlan, catalog, candidates });
+  assert.equal(refined.plan.semanticQuery, 'rust on the table');
+  assert.equal(refined.plan.filters.some((filter) => filter.values[0] === 'South Shop'), true);
+  const fresh = await createPlanner({ evaluate }).plan({ question: 'South Shopだけ', previousPlan: null, catalog, candidates });
+  assert.equal(fresh.plan.semanticQuery, '');
+});
