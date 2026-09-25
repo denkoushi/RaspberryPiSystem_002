@@ -44,6 +44,9 @@ Today only one source (nonconformity records) is searchable, only questions that
 - Observation: a second source already has an authorized read path.
   Evidence: `apps/api/src/services/assembly/business-hermes-mcp.service.ts` imports `WorkInstructionReadService` and has `readWorkInstructionCandidates`.
 
+- Observation (2026-09-25): after PR #1485 reached Pi5 with the index flag on, the dense store stayed at its 16-byte header. Two causes were found in order. First, the DGX release wrote the business proxy drop-in and restarted the proxy without a systemd daemon reload, so `POST /v1/embeddings` still went to the LLM and returned 404. A manual `daemon-reload` and proxy restart fixed that; the playbook fix belongs to `DGXSparkControlPlane`. Second, the DGX embedding server accepts about 1024 tokens per input (`--ctx-size 2048 --parallel 2`), and one long record failed its whole batch of 8.
+  Evidence: probes from the Pi5 API container with generated text only. Short input was 404 before the reload and 200 after it. After the reload, 800 characters passed and 1000 failed, and 8 inputs of 500 characters took about 1.1 s. Document text is now capped at 700 characters, and a failed batch is retried one record at a time.
+
 ## Decision Log
 
 - Decision: replace per-record LLM classification with ingest-time lexical and embedding indexing for all new work.

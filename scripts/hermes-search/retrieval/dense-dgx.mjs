@@ -19,7 +19,9 @@ export const DGX_EMBED_BATCH = 8;
 export const DGX_QUERY_TASK = 'Given a user question, retrieve relevant passages that answer the question';
 export const DGX_QUERY_TIMEOUT_MS = DEFAULT_EMBED_BUDGET_MS;
 export const DGX_INDEX_TIMEOUT_MS = 10_000;
-export const DGX_MAX_INPUT_CHARS = 1800;
+// The DGX llama-server gives each of its 2 slots about 1024 tokens. Dummy Japanese text
+// passed at 800 characters and failed at 1000, so documents keep a margin below that.
+export const DGX_MAX_INPUT_CHARS = 700;
 export const DEFAULT_DENSE_STORE = '/app/storage/hermes-search/runtime/retrieval-dense-dgx.bin';
 const MAGIC = Buffer.from('HDG1');
 const VERSION = 1;
@@ -215,20 +217,34 @@ export async function refreshDenseIndex({
   let embedded = 0;
   let failed = 0;
   if (pending.length) await writeDenseStore(storePath, done);
+  const embedBatch = async (batch) => {
+    const vectors = await embed(batch.map((item) => item.text), { role: 'document' });
+    if (!Array.isArray(vectors) || vectors.length !== batch.length) throw new Error('embedding count mismatch');
+    batch.forEach((item, index) => {
+      const vector = vectors[index] instanceof Float32Array ? vectors[index] : Float32Array.from(vectors[index]);
+      done.push({ id: item.id, hash: item.hash, vector });
+    });
+    embedded += batch.length;
+  };
   for (let offset = 0; offset < pending.length; offset += DGX_EMBED_BATCH) {
     const batch = pending.slice(offset, offset + DGX_EMBED_BATCH);
     try {
-      const vectors = await embed(batch.map((item) => item.text), { role: 'document' });
-      if (!Array.isArray(vectors) || vectors.length !== batch.length) throw new Error('embedding count mismatch');
-      batch.forEach((item, index) => {
-        const vector = vectors[index] instanceof Float32Array ? vectors[index] : Float32Array.from(vectors[index]);
-        done.push({ id: item.id, hash: item.hash, vector });
-      });
-      embedded += batch.length;
-      await writeDenseStore(storePath, done);
+      await embedBatch(batch);
     } catch {
-      failed += batch.length;
+      // One rejected record must not drop the rest of its batch, so retry each record alone.
+      if (batch.length === 1) {
+        failed += 1;
+        continue;
+      }
+      for (const item of batch) {
+        try {
+          await embedBatch([item]);
+        } catch {
+          failed += 1;
+        }
+      }
     }
+    await writeDenseStore(storePath, done);
   }
   const finalEntries = done;
   if (!pending.length) await writeDenseStore(storePath, finalEntries);
