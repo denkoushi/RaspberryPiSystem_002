@@ -94,7 +94,7 @@ function catalogFields(catalog) {
   return catalogEntries(catalog).flatMap((entry) => entry.fields);
 }
 
-function compactPlan(plan) {
+export function compactPlan(plan) {
   if (!plan || typeof plan !== 'object') return null;
   return {
     sources: Array.isArray(plan.sources) ? [...plan.sources] : [],

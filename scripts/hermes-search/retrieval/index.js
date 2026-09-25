@@ -6,6 +6,7 @@ import './period-parse.test.mjs';
 import './query-embedding.test.mjs';
 import './evaluate.test.mjs';
 import './stage-score.test.mjs';
+import './dialogue-eval.test.mjs';
 import './relevance-jev.test.mjs';
 import './planner-jev.test.mjs';
 import './query-plan.test.mjs';
