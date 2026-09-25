@@ -28,8 +28,10 @@ function choiceQuestion(instructions, options) {
   };
 }
 
-function buildRequest(question, previousPlan) {
-  if (!previousPlan || typeof previousPlan !== 'object') return question;
+// The previous plan goes to relatedHistory, not into the request text, so JEV judges
+// content, limit, and filter values from the current utterance alone.
+function previousPlanHistory(previousPlan) {
+  if (!previousPlan || typeof previousPlan !== 'object') return [];
   const summary = {
     sources: previousPlan.sources ?? [],
     filters: previousPlan.filters ?? [],
@@ -37,7 +39,7 @@ function buildRequest(question, previousPlan) {
     sort: previousPlan.sort ?? null,
     limit: previousPlan.limit ?? null,
   };
-  return `${question}\n\nprevious_plan:\n${JSON.stringify(summary)}`;
+  return [{ role: 'assistant', content: `直前の検索計画: ${JSON.stringify(summary)}` }];
 }
 
 function valuesFromAnswer(answer, options, indexedValues) {
@@ -234,8 +236,8 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const evaluated = await evaluate({
         model: 'typesafe-ai/jev',
         state: {
-          request: buildRequest(question, hasPrevious ? previousPlan : null),
-          relatedHistory: [],
+          request: question,
+          relatedHistory: previousPlanHistory(hasPrevious ? previousPlan : null),
           confirmationPending: null,
         },
         questions,

@@ -79,6 +79,10 @@ test('planner can refine a previous plan without a second evaluate call', async 
     calls += 1;
     assert.deepEqual(Object.keys(input.questions.turn.criteria).sort(), ['new_search', 'refine']);
     assertChoicesFromCandidates(input.questions, ['South Shop']);
+    // The current utterance alone is judged; the previous plan is context only.
+    assert.equal(input.state.request, 'South Shopも見る');
+    assert.equal(input.state.relatedHistory.length, 1);
+    assert.match(input.state.relatedHistory[0].content, /Lathe-1/u);
     return {
       answers: {
         term_0: { type: 'choice', choice: 'v0' },
