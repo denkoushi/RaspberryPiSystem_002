@@ -942,6 +942,17 @@ describeIntegration('grinding planning board service real Postgres integration',
     expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: fixture.siteKey } })).toBe(0);
   });
 
+  it('rejects a row item id with non-string logical-key parts as invalid input', async () => {
+    const fixture = await createFixture();
+    const response = await boardFor(fixture);
+    const itemId = `row:${Buffer.from(JSON.stringify([{ toString: null }, '', '', '']), 'utf8').toString('base64url')}`;
+    await expect(service().updateGrindingPlanningBoardOverrides({
+      siteKey: fixture.siteKey,
+      sourceRevision: response.sourceRevision,
+      items: [{ itemId, itemRevision: 0, resourceCd: '581' }]
+    })).rejects.toMatchObject({ code: 'INVALID_ITEM_ID' });
+  });
+
   it('rolls back the entire bulk mutation when one item revision is stale', async () => {
     const fixture = await createFixture();
     const [firstRow, secondRow] = await addRows(fixture, [

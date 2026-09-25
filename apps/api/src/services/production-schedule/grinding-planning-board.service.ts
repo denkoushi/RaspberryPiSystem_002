@@ -142,7 +142,7 @@ function decodeRowItemId(itemId: string): string | null {
   if (!itemId.startsWith('row:')) return null;
   try {
     const parsed = JSON.parse(Buffer.from(itemId.slice(4), 'base64url').toString('utf8'));
-    if (!Array.isArray(parsed) || !(
+    if (!Array.isArray(parsed) || !parsed.every((part) => typeof part === 'string') || !(
       parsed.length === PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.length && parsed[0] !== '********'
       || parsed.length === PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.length + 1 && parsed[0] === '********'
     )) return null;
@@ -224,8 +224,9 @@ async function readWinnerRowsByFseibans(client: DbClient, fseibans: readonly str
   `);
 }
 
+/** `decodeRowItemId` guarantees a JSON array of strings. */
 function logicalKeyFseiban(logicalKey: string): string {
-  return String((JSON.parse(logicalKey) as unknown[])[0]);
+  return (JSON.parse(logicalKey) as string[])[0];
 }
 
 /** Matches the logical-key identity (`COALESCE(raw, '')`) exactly, unlike the trimmed FSEIBAN lookup. */
