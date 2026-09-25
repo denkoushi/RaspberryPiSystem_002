@@ -28,8 +28,10 @@ function choiceQuestion(instructions, options) {
   };
 }
 
-function buildRequest(question, previousPlan) {
-  if (!previousPlan || typeof previousPlan !== 'object') return question;
+// The previous plan is a named state field, separate from `request`, so JEV judges
+// content, limit, and filter values from the current utterance alone.
+function previousPlanSummary(previousPlan) {
+  if (!previousPlan || typeof previousPlan !== 'object') return null;
   const summary = {
     sources: previousPlan.sources ?? [],
     filters: previousPlan.filters ?? [],
@@ -37,7 +39,7 @@ function buildRequest(question, previousPlan) {
     sort: previousPlan.sort ?? null,
     limit: previousPlan.limit ?? null,
   };
-  return `${question}\n\nprevious_plan:\n${JSON.stringify(summary)}`;
+  return summary;
 }
 
 function valuesFromAnswer(answer, options, indexedValues) {
@@ -183,6 +185,10 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
     async plan({ question, previousPlan = null, catalog, candidates = [], valueIndex = null, choiceGroups = null, now = null }) {
       if (typeof question !== 'string' || !question.trim()) throw new TypeError('question must be a non-empty string');
       if (!Array.isArray(candidates)) throw new TypeError('candidates must be an array');
+      const hasPrevious = Boolean(previousPlan && typeof previousPlan === 'object');
+      // With a previous plan in state, name `request` so each judgment reads the current
+      // utterance. First turns keep the original wording.
+      const said = (original, named) => (hasPrevious ? named : original);
       const entries = catalogEntries(catalog);
       if (!entries.length) throw new TypeError('catalog is empty');
       const enumeratedFields = entries.reduce((count, entry) => count + entry.fields.filter((field) => field.filterable && field.enumerated).length, 0);
@@ -210,7 +216,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           description: `天気、食事、スポーツ、旅行、雑談のように、作業・品質・工程・設計・調達の出来事ではない発話。迷う場合は「${catalogText}」側。`,
         });
         questions.scope = choiceQuestion(
-          `この発話が探している記録の種類を選ぶ。カタログは「${catalogText}」。図面、設計、工程、品質、調達など、その記録になりうる作業上の出来事は対象にする。out_of_scope は明らかに無関係なときだけ。`,
+          `${said('この発話', '`request`')}が探している記録の種類を選ぶ。カタログは「${catalogText}」。図面、設計、工程、品質、調達など、その記録になりうる作業上の出来事は対象にする。out_of_scope は明らかに無関係なときだけ。`,
           sourceOptions,
         );
       }
@@ -224,21 +230,20 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         options.push({ id: NONE, description: 'この語は絞り込み条件にしない' });
         questions[key] = choiceQuestion(
           fromIndex
-            ? `この発話が指定している${labelOf(entries, group.source, group.field)}の値を、意味が合うものだけ選ぶ。省略、通称、一字の揺れも同じ値として扱う。指定がなければ none。`
-            : `質問中の「${group.term}」に対応する${labelOf(entries, group.source, group.field)}の値を一つ選ぶ。候補にない値は作らない。該当しなければ none。`,
+            ? `${said('この発話', '`request`')}が指定している${labelOf(entries, group.source, group.field)}の値を、意味が合うものだけ選ぶ。省略、通称、一字の揺れも同じ値として扱う。指定がなければ none。`
+            : `${said('質問', '`request`')}中の「${group.term}」に対応する${labelOf(entries, group.source, group.field)}の値を一つ選ぶ。候補にない値は作らない。該当しなければ none。`,
           options,
         );
         optionMap.set(key, { group, options });
       });
-      const hasPrevious = Boolean(previousPlan && typeof previousPlan === 'object');
       if (hasPrevious) {
-        questions.turn = choiceQuestion('この発話は直前の検索計画の更新か、新しい検索か。', [
-          { id: 'new_search', description: '直前の計画は使わず、今回の発話だけで検索する' },
-          { id: 'refine', description: '直前の計画を土台に、今回選んだ条件で更新する' },
+        questions.turn = choiceQuestion('`request` は `previous_plan` を土台にした続きの依頼か、`request` だけで完結する新しい検索か。', [
+          { id: 'new_search', description: '`request` だけで探す条件が完結している、または `previous_plan` の組織や範囲を外す・置き換える（例: 全部門で、〇〇課の最近の不適合N件、別の不具合の不適合）' },
+          { id: 'refine', description: '`request` が `previous_plan` の結果をさらに絞る・件数を変える・組織を追加する（例: そのうち〇〇の、〇〇に限定して、N件にして、〇〇も見る）' },
         ]);
       }
       questions.sort = choiceQuestion(
-        '結果の並べ方を一つ選ぶ。内容の質問は意味の近さ順が既定。最近・直近・新しい順・最新のように新しさを求めているときだけ日付が新しい順。内容がなく絞り込みだけのときは日付が新しい順。',
+        said('', '`request` に合う') + '結果の並べ方を一つ選ぶ。内容の質問は意味の近さ順が既定。最近・直近・新しい順・最新のように新しさを求めているときだけ日付が新しい順。内容がなく絞り込みだけのときは日付が新しい順。',
         [
           { id: 'recent', description: '日付が新しい順' },
           { id: 'relevance', description: '意味の近さ順' },
@@ -250,17 +255,17 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       if (periodAmbiguous) {
         const options = periodChoices.map((item, index) => ({ id: `p${index}`, description: item.label }));
         options.push({ id: NONE, description: '期間では絞らない' });
-        questions.period = choiceQuestion('発話中の期間として合うものを一つ選ぶ。曖昧でなければ none。', options);
+        questions.period = choiceQuestion(said('発話', '`request` ') + '中の期間として合うものを一つ選ぶ。曖昧でなければ none。', options);
       }
       const limitOptions = LIMIT_OPTIONS.map((count) => ({ id: count, description: `${count}件` }));
       if (fromIndex) limitOptions.push({ id: LIMIT_UNSPECIFIED, description: '件数の指定はない' });
       questions.limit = choiceQuestion(
-        fromIndex ? '発話が件数を明示しているときだけその件数を選ぶ。明示がなければ unspecified。' : '返す件数の上限を一つ選ぶ。',
+        fromIndex ? said('発話', '`request`') + 'が件数を明示しているときだけその件数を選ぶ。明示がなければ unspecified。' : said('返す件数の上限を一つ選ぶ。', '`request` に合う件数の上限を一つ選ぶ。'),
         limitOptions,
       );
       questions.content = {
         type: 'noul',
-        instructions: '質問は、組織・日付の順序・件数とは別に、何が起きたか（現象・不具合・原因・処置）という内容条件を指定しているか。',
+        instructions: said('質問', '`request`') + 'は、組織・日付の順序・件数とは別に、何が起きたか（現象・不具合・原因・処置）という内容条件を指定しているか。',
         criteria: {
           true: '現象、不具合、原因、処置などの内容条件が指定されている。',
           false: '組織、日付の順序、件数だけで、内容条件はない。',
@@ -271,7 +276,8 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const evaluated = await evaluate({
         model: 'typesafe-ai/jev',
         state: {
-          request: buildRequest(question, hasPrevious ? previousPlan : null),
+          request: question,
+          ...(hasPrevious ? { previous_plan: previousPlanSummary(previousPlan) } : {}),
           relatedHistory: [],
           confirmationPending: null,
         },
@@ -360,7 +366,14 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         if (filter) dated.push(filter);
       }
       const filters = mergeFilters([...carried, ...selected, ...dated]);
-      const jev = contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;
+      const judged = contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;
+      // A refine turn without content of its own keeps the previous content condition,
+      // for example "そのうち三島工場資材課の" after "錆の不適合".
+      const previousQuery = turn === 'refine' && typeof previousPlan?.semanticQuery === 'string'
+        ? previousPlan.semanticQuery.trim()
+        : '';
+      const carriedQuery = judged === false && previousQuery ? previousQuery : '';
+      const jev = carriedQuery ? true : judged;
       const finalContent = jev === true && unresolved.length === 0;
       const sortMode = resolveSort(question, jev, hasAppliedHardFilter({ filters }, catalog));
       const sort = sortMode === 'recent' && recentField
@@ -373,7 +386,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         semanticQuery: outOfScope || unresolved.length || shouldSkipRelevance({
           filters,
           diagnostics: { contentDecision: { jev } },
-        }, catalog) ? '' : question.trim(),
+        }, catalog) ? '' : (carriedQuery || question.trim()),
         sort,
         limit: limitExplicit ? Number(limitChoice) : 5,
         display: entries.flatMap((entry) => entry.fields.map((field) => field.key)),
@@ -392,6 +405,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           questionVersion: PLANNER_QUESTION_VERSION,
           turn: hasPrevious ? (turn ?? 'unresolved') : 'first',
           answers: summarizeAnswers(questions, answers),
+          fields: Object.fromEntries([...optionMap].map(([key, mapped]) => [key, mapped.group.field ?? mapped.group.term ?? null])),
         },
       };
     },
