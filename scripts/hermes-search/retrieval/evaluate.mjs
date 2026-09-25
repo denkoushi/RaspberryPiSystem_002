@@ -11,6 +11,7 @@ import { fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
 import { attachEnrichment, readEnrichmentStores, splitEnrichmentArg } from './enrichment-attach.mjs';
 import { execute, openQmdVectorRanker, recordPassage } from './executor.mjs';
 import { createDenseRanker, createScopedDenseRanker } from './dense-index.mjs';
+import { refreshDenseIndex } from './dense-dgx.mjs';
 import { planStage } from './stage-score.mjs';
 import { linkEntities } from './entity-link.mjs';
 import { createPlanner } from './planner-jev.mjs';
@@ -109,6 +110,17 @@ export async function loadHashedDenseRows({ records, bodyFields, embed, modelId,
   await fsp.mkdir(cacheRoot, { recursive: true, mode: 0o700 });
   await fsp.writeFile(cachePath, JSON.stringify({ digest, rows }), { mode: 0o600 });
   return { rows, buildMs };
+}
+
+// DGX evaluation builds document vectors with the production index path, so the input cap,
+// the per-record retry, and skipped records match what the Pi5 worker stores.
+export async function loadDgxDenseRows({ records, bodyFields, embed, storePath }) {
+  const result = await refreshDenseIndex({ records, bodyFields, storePath, embed });
+  return {
+    rows: result.entries.map((entry) => ({ id: entry.id, vector: entry.vector })),
+    buildMs: result.ms,
+    failed: result.failed,
+  };
 }
 
 function latencyPair(values) {
@@ -247,20 +259,33 @@ export async function evaluateGold(options) {
     : null);
   let retrieverDense = null;
   let denseBuildMs = null;
+  let denseFailed = null;
   let queryEmbedMs = null;
   if (retriever !== 'lexical') {
     if (!cachedEmbed) throw new Error('dense retriever requires an embedder');
     const workRoot = options.workRoot ?? path.join(process.env.HOME, 'Documents', 'hermes-retrieval-private', 'work');
     const modelId = dgxEmbedder?.modelId ?? embedder?.modelId ?? options.embedModelId ?? 'custom';
-    const built = await loadHashedDenseRows({
-      records: payload.records,
-      bodyFields,
-      embed: cachedEmbed,
-      modelId,
-      cacheRoot: path.join(workRoot, 'dense-cache'),
-      passageExtra,
-    });
+    const built = dgxEmbedder
+      ? await loadDgxDenseRows({
+        records: payload.records,
+        bodyFields,
+        embed: (texts, extra) => dgxEmbedder.embed(texts, extra),
+        storePath: path.join(
+          workRoot,
+          'dense-cache',
+          `dgx-${createHash('sha256').update(JSON.stringify(options.enrichmentPaths ?? [])).digest('hex').slice(0, 12)}.bin`,
+        ),
+      })
+      : await loadHashedDenseRows({
+        records: payload.records,
+        bodyFields,
+        embed: cachedEmbed,
+        modelId,
+        cacheRoot: path.join(workRoot, 'dense-cache'),
+        passageExtra,
+      });
     denseBuildMs = built.buildMs;
+    denseFailed = built.failed ?? null;
     const probeStarted = performance.now();
     await cachedEmbed(['qxprobe'], queryExtra);
     queryEmbedMs = Math.round(performance.now() - probeStarted);
@@ -411,7 +436,7 @@ export async function evaluateGold(options) {
   }
   const summary = {
     cases: details.length,
-    ...(retriever !== 'lexical' ? { retriever, denseBuildMs, queryEmbedMs } : {}),
+    ...(retriever !== 'lexical' ? { retriever, denseBuildMs, denseFailed, queryEmbedMs } : {}),
     precisionAvg: details.length ? details.reduce((sum, item) => sum + item.precision, 0) / details.length : 0,
     casesAllRelevant: details.filter((item) => item.allRelevant).length,
     statusCorrect: details.filter((item) => item.statusCorrect).length,
