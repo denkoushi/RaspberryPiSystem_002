@@ -9,7 +9,9 @@ const FIXTURE_PATH = path.join(HERE, 'hermes-jev-record-pilot-fixture.json');
 const MODEL = 'typesafe-ai/jev';
 const DIRECT_PROVIDER = 'typesafe-direct';
 const DIRECT_ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
-const DIRECT_MODEL = 'jev-latest';
+// Pinned so a TypeSafe alias move cannot change planner and relevance behavior unannounced.
+// Replay the private stage and dialogue sets before changing it.
+const DIRECT_MODEL = 'jev-1.13.0';
 const DIRECT_TIMEOUT_MS = 10_000;
 const AXES = ['process', 'phenomenon', 'treatment', 'cause'];
 
