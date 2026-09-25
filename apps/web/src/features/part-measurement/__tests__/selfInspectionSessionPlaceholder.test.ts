@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  consumeSelfInspectionSeededEntry,
   isSelfInspectionSessionSeedPending,
   resolveSelfInspectionSessionPlaceholderData,
   resolveSelfInspectionUnsavedEntryInitialData
@@ -74,5 +75,22 @@ describe('isSelfInspectionSessionSeedPending', () => {
     expect(isSelfInspectionSessionSeedPending({ data: {}, dataUpdateCount: 1 })).toBe(false);
     expect(isSelfInspectionSessionSeedPending({ data: undefined, dataUpdateCount: 0 })).toBe(false);
     expect(isSelfInspectionSessionSeedPending(undefined)).toBe(false);
+  });
+});
+
+describe('consumeSelfInspectionSeededEntry', () => {
+  it('rebinds a seeded entry saved elsewhere even after switching away before its fetch finished', () => {
+    const seeded = new Set<string>();
+    expect(consumeSelfInspectionSeededEntry(seeded, { entryKey: 's:0', isSeedPending: true, isSavedOnServer: false })).toBe('none');
+    expect(consumeSelfInspectionSeededEntry(seeded, { entryKey: 's:1', isSeedPending: true, isSavedOnServer: false })).toBe('none');
+    expect(consumeSelfInspectionSeededEntry(seeded, { entryKey: 's:0', isSeedPending: false, isSavedOnServer: true })).toBe('rebind_to_server');
+    expect(consumeSelfInspectionSeededEntry(seeded, { entryKey: 's:0', isSeedPending: false, isSavedOnServer: true })).toBe('none');
+    expect(consumeSelfInspectionSeededEntry(seeded, { entryKey: 's:1', isSeedPending: false, isSavedOnServer: false })).toBe('none');
+    expect(seeded.size).toBe(0);
+  });
+
+  it('does nothing for entries that were never seeded', () => {
+    const seeded = new Set<string>();
+    expect(consumeSelfInspectionSeededEntry(seeded, { entryKey: 's:2', isSeedPending: false, isSavedOnServer: true })).toBe('none');
   });
 });

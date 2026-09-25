@@ -43,3 +43,19 @@ export function isSelfInspectionSessionSeedPending(
 ): boolean {
   return state !== undefined && state.data !== undefined && state.dataUpdateCount === 0;
 }
+
+/**
+ * 仮表示した entry の記録を更新し、サーバー値へ置き換えるべきかを返す。
+ * entry ごとに記録するため、確認前に別 entry へ移っても戻ったときに照合される。
+ */
+export function consumeSelfInspectionSeededEntry(
+  seededEntryKeys: Set<string>,
+  input: { entryKey: string; isSeedPending: boolean; isSavedOnServer: boolean }
+): 'rebind_to_server' | 'none' {
+  if (input.isSeedPending) {
+    seededEntryKeys.add(input.entryKey);
+    return 'none';
+  }
+  if (!seededEntryKeys.delete(input.entryKey)) return 'none';
+  return input.isSavedOnServer ? 'rebind_to_server' : 'none';
+}

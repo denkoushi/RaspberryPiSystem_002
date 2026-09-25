@@ -75,6 +75,7 @@ import {
 import { resolveSelfInspectionRequiredEntryCount } from '../../features/part-measurement/selfInspectionSessionEntryCount';
 import { SelfInspectionSessionHeader } from '../../features/part-measurement/SelfInspectionSessionHeader';
 import { resolveSelfInspectionSessionNotice } from '../../features/part-measurement/selfInspectionSessionNotice';
+import { consumeSelfInspectionSeededEntry } from '../../features/part-measurement/selfInspectionSessionPlaceholder';
 import { shouldAutosaveSelfInspectionDraftEntry } from '../../features/part-measurement/shouldAutosaveSelfInspectionDraftEntry';
 import { usePartMeasurementDrawingBlobUrl, resolveKioskDrawingDisplayWidth } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useSelfInspectionGuidedFocus } from '../../features/part-measurement/useSelfInspectionGuidedFocus';
@@ -528,20 +529,16 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     }
   }, [draftBoundKey, draftValuesByEntryIndex, isSessionPlaceholderData, savedDraftByEntryIndex, selectedEntryIndex, session]);
 
-  const seededEntryKeyRef = useRef<string | null>(null);
+  // 仮表示した entry を個別に記録する。確認前に別 entry へ移っても、戻ったときにサーバー照合を必ず行う。
+  const seededEntryKeysRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!session?.id) return;
-    const entryKey = `${session.id}:${selectedEntryIndex}`;
-    if (isEntryFreshnessPending) {
-      seededEntryKeyRef.current = entryKey;
-      return;
-    }
-    if (seededEntryKeyRef.current !== entryKey) {
-      seededEntryKeyRef.current = null;
-      return;
-    }
-    seededEntryKeyRef.current = null;
-    if (!isSelfInspectionEntryIndexSavedOnServer(session, selectedEntryIndex)) return;
+    const action = consumeSelfInspectionSeededEntry(seededEntryKeysRef.current, {
+      entryKey: `${session.id}:${selectedEntryIndex}`,
+      isSeedPending: isEntryFreshnessPending,
+      isSavedOnServer: isSelfInspectionEntryIndexSavedOnServer(session, selectedEntryIndex)
+    });
+    if (action !== 'rebind_to_server') return;
     // 仮表示中に他端末が同じ slot を保存していた。入力途中でもサーバー値に置き換え、上書きを防ぐ。
     const binding = createSelfInspectionEntryDraftBinding(session, selectedEntryIndex);
     setDraftValuesByEntryIndex((prev) => ({ ...prev, [selectedEntryIndex]: binding.draft }));
