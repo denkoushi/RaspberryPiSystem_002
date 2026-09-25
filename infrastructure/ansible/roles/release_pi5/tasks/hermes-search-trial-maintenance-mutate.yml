@@ -101,6 +101,24 @@
     - { key: HERMES_RETRIEVAL_ENRICHMENT_IDS, value: "{{ release_pi5_trial_enrichment_ids }}" }
   when: item.value | length > 0
 
+- name: Apply the explicitly requested dense retrieval provider for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_DENSE_PROVIDER='
+    line: "HERMES_RETRIEVAL_DENSE_PROVIDER={{ release_pi5_trial_dense_provider_requested }}"
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_dense_provider_requested in ['off', 'dgx']
+
+- name: Apply the explicitly requested dense index gate for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_DENSE_INDEX_ENABLED='
+    line: "HERMES_RETRIEVAL_DENSE_INDEX_ENABLED={{ release_pi5_trial_dense_index_requested }}"
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_dense_index_requested in ['true', 'false']
+
 - name: Read the finalized maintenance environment before API recreation
   ansible.builtin.slurp:
     src: "{{ release_pi5_trial_maintenance_env_file }}"
@@ -139,6 +157,26 @@
         == ['HERMES_RETRIEVAL_ENRICHMENT_ENABLED=' ~ release_pi5_trial_enrichment_effective]
     fail_msg: The finalized retrieval enrichment gate does not match the explicit or preserved setting; API startup stopped.
   when: release_pi5_trial_enrichment_effective in ['true', 'false']
+
+- name: Verify the final dense retrieval provider before API recreation
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_env_final.content | b64decode).splitlines()
+         | select('match', '^HERMES_RETRIEVAL_DENSE_PROVIDER=') | list)
+        == ['HERMES_RETRIEVAL_DENSE_PROVIDER=' ~ release_pi5_trial_dense_provider_effective]
+    fail_msg: The finalized dense retrieval provider does not match the explicit or preserved setting; API startup stopped.
+  when: release_pi5_trial_dense_provider_effective in ['off', 'dgx']
+
+- name: Verify the final dense index gate before API recreation
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_env_final.content | b64decode).splitlines()
+         | select('match', '^HERMES_RETRIEVAL_DENSE_INDEX_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_DENSE_INDEX_ENABLED=' ~ release_pi5_trial_dense_index_effective]
+    fail_msg: The finalized dense index gate does not match the explicit or preserved setting; API startup stopped.
+  when: release_pi5_trial_dense_index_effective in ['true', 'false']
 
 - name: Remove pilot-only settings when returning the trial path to OFF
   ansible.builtin.lineinfile:
@@ -192,7 +230,7 @@
   register: release_pi5_trial_maintenance_api_env
   changed_when: false
   no_log: true
-  when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != '' or release_pi5_trial_retrieval_v2_effective in ['true', 'false'] or release_pi5_trial_enrichment_effective in ['true', 'false']
+  when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != '' or release_pi5_trial_retrieval_v2_effective in ['true', 'false'] or release_pi5_trial_enrichment_effective in ['true', 'false'] or release_pi5_trial_dense_provider_effective in ['off', 'dgx'] or release_pi5_trial_dense_index_effective in ['true', 'false']
 
 - name: Require the recreated API to inherit the verified classification gate
   ansible.builtin.assert:
@@ -223,6 +261,26 @@
         == ['HERMES_RETRIEVAL_ENRICHMENT_ENABLED=' ~ release_pi5_trial_enrichment_effective]
     fail_msg: The recreated API did not inherit the verified retrieval enrichment gate; trial maintenance cannot succeed.
   when: release_pi5_trial_enrichment_effective in ['true', 'false']
+
+- name: Require the recreated API to inherit the verified dense retrieval provider
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_api_env.stdout | from_json)
+         | select('match', '^HERMES_RETRIEVAL_DENSE_PROVIDER=') | list)
+        == ['HERMES_RETRIEVAL_DENSE_PROVIDER=' ~ release_pi5_trial_dense_provider_effective]
+    fail_msg: The recreated API did not inherit the verified dense retrieval provider; trial maintenance cannot succeed.
+  when: release_pi5_trial_dense_provider_effective in ['off', 'dgx']
+
+- name: Require the recreated API to inherit the verified dense index gate
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_api_env.stdout | from_json)
+         | select('match', '^HERMES_RETRIEVAL_DENSE_INDEX_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_DENSE_INDEX_ENABLED=' ~ release_pi5_trial_dense_index_effective]
+    fail_msg: The recreated API did not inherit the verified dense index gate; trial maintenance cannot succeed.
+  when: release_pi5_trial_dense_index_effective in ['true', 'false']
 
 - name: Confirm the same active API remains healthy after trial maintenance
   ansible.builtin.include_tasks: health.yml

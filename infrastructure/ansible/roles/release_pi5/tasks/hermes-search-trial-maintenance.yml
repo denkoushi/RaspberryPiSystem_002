@@ -60,6 +60,14 @@
     release_pi5_trial_enrichment_concurrency: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY') }}"
     release_pi5_trial_enrichment_window: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_WINDOW') }}"
     release_pi5_trial_enrichment_ids: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_IDS') }}"
+    release_pi5_trial_dense_provider_requested: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_DENSE_PROVIDER') }}"
+    release_pi5_trial_dense_provider_before: >-
+      {{ (release_pi5_trial_maintenance_env_before.content | b64decode).splitlines()
+         | select('match', '^HERMES_RETRIEVAL_DENSE_PROVIDER=') | list }}
+    release_pi5_trial_dense_index_requested: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_DENSE_INDEX_ENABLED') }}"
+    release_pi5_trial_dense_index_before: >-
+      {{ (release_pi5_trial_maintenance_env_before.content | b64decode).splitlines()
+         | select('match', '^HERMES_RETRIEVAL_DENSE_INDEX_ENABLED=') | list }}
   no_log: true
 
 - name: Require a definite classification gate before enabling search
@@ -96,6 +104,23 @@
             ['HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true', 'HERMES_RETRIEVAL_ENRICHMENT_ENABLED=false'])
     fail_msg: Retrieval enrichment must be omitted, true, or false; an omitted value preserves the existing line and does not turn the gate on.
 
+- name: Require an explicit or preserved dense retrieval provider
+  ansible.builtin.assert:
+    that:
+      - release_pi5_trial_dense_provider_requested in ['', 'off', 'dgx']
+      - >-
+        release_pi5_trial_dense_provider_before | length == 0
+        or (release_pi5_trial_dense_provider_before | length == 1
+            and release_pi5_trial_dense_provider_before[0] in
+            ['HERMES_RETRIEVAL_DENSE_PROVIDER=off', 'HERMES_RETRIEVAL_DENSE_PROVIDER=dgx'])
+      - release_pi5_trial_dense_index_requested in ['', 'true', 'false']
+      - >-
+        release_pi5_trial_dense_index_before | length == 0
+        or (release_pi5_trial_dense_index_before | length == 1
+            and release_pi5_trial_dense_index_before[0] in
+            ['HERMES_RETRIEVAL_DENSE_INDEX_ENABLED=true', 'HERMES_RETRIEVAL_DENSE_INDEX_ENABLED=false'])
+    fail_msg: Dense retrieval must be omitted or off/dgx, and the index gate omitted or true/false; an omitted value preserves the existing line.
+
 - name: Record the effective classification gate for startup verification
   ansible.builtin.set_fact:
     release_pi5_trial_classification_effective: >-
@@ -113,6 +138,16 @@
          if release_pi5_trial_enrichment_requested != ''
          else (release_pi5_trial_enrichment_before[0].split('=', 1)[1]
                if release_pi5_trial_enrichment_before | length == 1 else '') }}
+    release_pi5_trial_dense_provider_effective: >-
+      {{ release_pi5_trial_dense_provider_requested
+         if release_pi5_trial_dense_provider_requested != ''
+         else (release_pi5_trial_dense_provider_before[0].split('=', 1)[1]
+               if release_pi5_trial_dense_provider_before | length == 1 else '') }}
+    release_pi5_trial_dense_index_effective: >-
+      {{ release_pi5_trial_dense_index_requested
+         if release_pi5_trial_dense_index_requested != ''
+         else (release_pi5_trial_dense_index_before[0].split('=', 1)[1]
+               if release_pi5_trial_dense_index_before | length == 1 else '') }}
   no_log: true
 
 - name: Locate the single existing sealed Hermes search artifact on the Pi5 SSD
