@@ -65,6 +65,7 @@ import {
   buildSelfInspectionDraftBoundKey,
   canRebindSelfInspectionEntryDraft,
   createSelfInspectionEntryDraftBinding,
+  isSelfInspectionEntryIndexSavedOnServer,
   resolveSelfInspectionDraftBoundKeySyncWithoutRebind
 } from '../../features/part-measurement/selfInspectionSessionDraftBinding';
 import {
@@ -74,6 +75,7 @@ import {
 import { resolveSelfInspectionRequiredEntryCount } from '../../features/part-measurement/selfInspectionSessionEntryCount';
 import { SelfInspectionSessionHeader } from '../../features/part-measurement/SelfInspectionSessionHeader';
 import { resolveSelfInspectionSessionNotice } from '../../features/part-measurement/selfInspectionSessionNotice';
+import { consumeSelfInspectionSeededEntry } from '../../features/part-measurement/selfInspectionSessionPlaceholder';
 import { shouldAutosaveSelfInspectionDraftEntry } from '../../features/part-measurement/shouldAutosaveSelfInspectionDraftEntry';
 import { usePartMeasurementDrawingBlobUrl, resolveKioskDrawingDisplayWidth } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useSelfInspectionGuidedFocus } from '../../features/part-measurement/useSelfInspectionGuidedFocus';
@@ -249,6 +251,8 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
   const session = sessionQuery.data;
   const isSessionPlaceholderData = sessionQuery.isPlaceholderData;
   const isEntryFocusFetching = sessionQuery.isFetching && isSessionPlaceholderData;
+  // 未保存 slot をキャッシュから仮表示中。入力は許可し、書き込みは最新取得の完了まで待つ。
+  const isEntryFreshnessPending = !isInspectorMode && operatorSessionQuery.isSeedPending;
   const latestSessionRef = useRef(session);
   latestSessionRef.current = session;
   const requiredEntryCount = session ? resolveSelfInspectionRequiredEntryCount(session) : 0;
@@ -358,6 +362,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
       isInspectorMode ||
       isSessionReadOnly ||
       !sessionEmployeeGateReady ||
+      isEntryFreshnessPending ||
       persistInFlightRef.current
     ) {
       return;
@@ -417,6 +422,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     };
   }, [
     draftValuesByEntryIndex,
+    isEntryFreshnessPending,
     isInspectorMode,
     isSessionIdentityReady,
     isSessionReadOnly,
@@ -522,6 +528,24 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
       setDraftBoundKey(boundKeySync);
     }
   }, [draftBoundKey, draftValuesByEntryIndex, isSessionPlaceholderData, savedDraftByEntryIndex, selectedEntryIndex, session]);
+
+  // 仮表示した entry を個別に記録する。確認前に別 entry へ移っても、戻ったときにサーバー照合を必ず行う。
+  const seededEntryKeysRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!session?.id) return;
+    const action = consumeSelfInspectionSeededEntry(seededEntryKeysRef.current, {
+      entryKey: `${session.id}:${selectedEntryIndex}`,
+      isSeedPending: isEntryFreshnessPending,
+      isSavedOnServer: isSelfInspectionEntryIndexSavedOnServer(session, selectedEntryIndex)
+    });
+    if (action !== 'rebind_to_server') return;
+    // 仮表示中に他端末が同じ slot を保存していた。入力途中でもサーバー値に置き換え、上書きを防ぐ。
+    const binding = createSelfInspectionEntryDraftBinding(session, selectedEntryIndex);
+    setDraftValuesByEntryIndex((prev) => ({ ...prev, [selectedEntryIndex]: binding.draft }));
+    setSavedDraftByEntryIndex((prev) => ({ ...prev, [selectedEntryIndex]: binding.saved }));
+    setDraftBoundKey(binding.boundKey);
+    setActionError('他の端末でこの件数が保存されていたため、最新の値を表示しました。');
+  }, [isEntryFreshnessPending, selectedEntryIndex, session]);
 
   const currentDraftBoundKey = session
     ? buildSelfInspectionDraftBoundKey(session, selectedEntryIndex)
@@ -734,10 +758,12 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
 
   const saveActionState = useMemo(
     () =>
-      sessionActionContext && isSessionIdentityReady
-        ? resolveSelfInspectionSaveActionState(sessionActionContext)
-        : { enabled: false, reason: 'read_only' as const },
-    [isSessionIdentityReady, sessionActionContext]
+      !sessionActionContext || !isSessionIdentityReady
+        ? { enabled: false, reason: 'read_only' as const }
+        : isEntryFreshnessPending
+          ? { enabled: false, reason: 'syncing_latest' as const }
+          : resolveSelfInspectionSaveActionState(sessionActionContext),
+    [isEntryFreshnessPending, isSessionIdentityReady, sessionActionContext]
   );
 
   const completeActionState = useMemo(
@@ -761,6 +787,9 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
       if (!sessionActionContext || !isSessionIdentityReady) {
         return { enabled: false, reason: 'read_only' as const };
       }
+      if (isEntryFreshnessPending) {
+        return { enabled: false, reason: 'syncing_latest' as const };
+      }
       const state = resolveSelfInspectionCompleteActionState(sessionActionContext);
       if (
         session?.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT' &&
@@ -770,7 +799,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
       }
       return state;
     },
-    [isInspectorMode, isSessionIdentityReady, session, sessionActionContext, sessionEmployeeGateReady]
+    [isEntryFreshnessPending, isInspectorMode, isSessionIdentityReady, session, sessionActionContext, sessionEmployeeGateReady]
   );
   const completeActionHint = isInspectorMode
     ? completeActionState.enabled
@@ -847,7 +876,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     entryIndex: number,
     draft: Record<string, string>
   ): Promise<SelfInspectionLotEntryDto | null> => {
-    if (!session || !isSessionIdentityReady || persistInFlightRef.current) {
+    if (!session || !isSessionIdentityReady || isEntryFreshnessPending || persistInFlightRef.current) {
       return null;
     }
     const saveState = resolveSelfInspectionSaveActionState({

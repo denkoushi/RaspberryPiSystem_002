@@ -1,5 +1,6 @@
 
 import { areRequiredSelfInspectionSlotsFilled } from './selfInspectionEntrySlots';
+import { isSelfInspectionSessionSeedPending } from './selfInspectionSessionPlaceholder';
 
 import type { SelfInspectionLotEntryDto, SelfInspectionSessionDetailDto } from './types';
 import type { QueryClient } from '@tanstack/react-query';
@@ -111,6 +112,8 @@ export function patchSelfInspectionSessionCachesAfterEntrySave(
   });
 
   for (const query of queries) {
+    // 仮表示中の entry はサーバー取得で置き換えるまで触らない（取得完了を書き込み再開の合図にするため）。
+    if (isSelfInspectionSessionSeedPending(query.state)) continue;
     const keyEntryIndex = query.queryKey[2];
     const queryEntryIndex =
       typeof keyEntryIndex === 'number' && Number.isFinite(keyEntryIndex) ? keyEntryIndex : null;
