@@ -371,8 +371,9 @@ export class CsvDashboardIngestor {
         }
       );
 
-      // DEDUP全体: 今回観測したキー範囲に限定して重複 loser を即時削除（ベストエフォート）
-      if (dashboard.ingestMode === 'DEDUP') {
+      // FKOJUNST_Status は dataHash で取込時に重複を防ぎ、公開時にも最新行へ絞る。
+      // JSON列の全件走査になる loser 削除は行わない。
+      if (dashboard.ingestMode === 'DEDUP' && !isFkojunstStatusMailDashboard) {
         try {
           const keyColumns =
             isProductionScheduleDashboard && dashboard.dedupKeyColumns.length === 0
