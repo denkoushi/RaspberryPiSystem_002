@@ -15,8 +15,12 @@ import {
   verifyEvidence,
 } from './enrichment-contract.mjs';
 import { withinWindow } from './enrichment-dgx.mjs';
-import { needsEnrichment, readIdAllowlist, runEnrichmentBatch } from './enrichment-runner.mjs';
-import { readEnrichmentStore, writeAtomic, writeEnrichmentStore } from './enrichment-store.mjs';
+import {
+  MAX_CONTENT_ATTEMPTS, needsEnrichment, readIdAllowlist, runEnrichmentBatch,
+} from './enrichment-runner.mjs';
+import {
+  failuresPathFor, readEnrichmentFailures, readEnrichmentStore, writeAtomic, writeEnrichmentStore,
+} from './enrichment-store.mjs';
 import { createRetrievalAnswering } from './worker.mjs';
 
 const catalog = loadNonconformityCatalog();
@@ -74,6 +78,23 @@ test('aliases keep only terms from the record and require two expanded queries',
   }, text, record.id), /alias alternatives/u);
   const attached = toRetrievalEnrichment(verified);
   assert.ok(attached.tags.includes('ギアボックス'));
+});
+
+test('the alias fallback keeps the record without aliases when the alias rule fails', () => {
+  const record = records[0];
+  const text = recordText(record, catalog);
+  const parsed = parseEnrichmentPayload({
+    ...payloadFor(record),
+    aliases: [{ term: record.partName, alts: ['ギアボックス'] }],
+  });
+  const verified = verifyEvidence(parsed, text, record.id, { aliasFallback: true });
+  assert.equal(verified.aliasesRejected, true);
+  assert.deepEqual(verified.aliases, []);
+  assert.equal(verified.aliasesKept, 0);
+  assert.equal(verified.aliasesDropped, 1);
+  assert.equal(verified.enrichmentSchemaVersion, 1);
+  assert.equal(verified.summary, 'demo summary');
+  assert.equal(verified.queries.length, 3);
 });
 
 test('evidence that is not in the record text is dropped and counted', () => {
@@ -284,6 +305,113 @@ test('an enrichment retry does not start after the window closes', async () => {
   assert.equal(status.reason, 'outside_window');
   assert.equal(status.failed, 0);
   assert.equal(status.succeeded, 0);
+});
+
+function recordOf(options) {
+  const user = JSON.parse(options.body).messages.at(-1).content;
+  return records.find((item) => user.includes(item.condition.trim()));
+}
+
+function contentResponse(content, finishReason = 'stop') {
+  return {
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ choices: [{ message: { content }, finish_reason: finishReason }] }),
+  };
+}
+
+test('a record the model cannot answer is set aside and does not block the rest', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-poison-'));
+  const storePath = path.join(directory, 'store.jsonl');
+  const poison = records[0];
+  const calls = [];
+  const run = (maxRecords) => runEnrichmentBatch({
+    records: records.slice(0, 3),
+    catalog,
+    storePath,
+    settings: batchSettings({ maxRecords }),
+    fetchImpl: async (url, options) => {
+      const record = recordOf(options);
+      calls.push(record.id);
+      return record === poison ? contentResponse('{"facets": ') : chatResponse(record);
+    },
+    sleep: async () => { throw new Error('content failures must not back off'); },
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  const first = await run(1);
+  assert.equal(first.failed, 1);
+  assert.equal(first.failureCounts.invalid_json, 1);
+  assert.equal(first.reason, 'completed');
+  const ledger = await readEnrichmentFailures(failuresPathFor(storePath));
+  assert.equal(ledger.get(poison.id).attempts, 1);
+  assert.equal(ledger.get(poison.id).lastErrorClass, 'invalid_json');
+  const second = await run(1);
+  assert.equal(second.succeeded, 1);
+  assert.notEqual(calls.at(-1), poison.id);
+  for (let index = 0; index < MAX_CONTENT_ATTEMPTS; index += 1) await run(3);
+  const last = await run(3);
+  assert.equal(last.gaveUp, 1);
+  assert.equal(last.examined, 0);
+  assert.equal(calls.filter((id) => id === poison.id).length, MAX_CONTENT_ATTEMPTS * 2);
+  const stored = await readEnrichmentStore(storePath);
+  assert.equal(stored.size, 2);
+});
+
+test('a truncated answer is named and is not retried without the schema', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-truncated-'));
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records: records.slice(0, 1),
+    catalog,
+    storePath: path.join(directory, 'store.jsonl'),
+    settings: batchSettings({ maxRecords: 1 }),
+    fetchImpl: async () => {
+      calls += 1;
+      return contentResponse('{"facets": {', 'length');
+    },
+    sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(status.failureCounts, { truncated: 1 });
+  assert.equal(status.parseFailures, 1);
+});
+
+test('a schema mismatch keeps its fixed reason and a JSON syntax error keeps none', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-schema-'));
+  const status = await runEnrichmentBatch({
+    records: records.slice(0, 2),
+    catalog,
+    storePath: path.join(directory, 'store.jsonl'),
+    settings: batchSettings({ maxRecords: 2 }),
+    fetchImpl: async (url, options) => (recordOf(options) === records[0]
+      ? contentResponse(JSON.stringify({ ...payloadFor(records[0]), summary: 'x'.repeat(61) }))
+      : contentResponse('not json at all')),
+    sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(status.failureCounts.schema_mismatch, 1);
+  assert.equal(status.failureCounts.invalid_json, 1);
+  assert.deepEqual(Object.keys(status.failureDetails), ['summary must be one line of at most 60 characters']);
+});
+
+test('DGX transport failures still back off', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-backoff-'));
+  const sleeps = [];
+  const status = await runEnrichmentBatch({
+    records: records.slice(0, 4),
+    catalog,
+    storePath: path.join(directory, 'store.jsonl'),
+    settings: batchSettings({ maxRecords: 4 }),
+    fetchImpl: async () => ({ ok: false, status: 503, text: async () => '' }),
+    sleep: async (ms) => { sleeps.push(ms); },
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(status.reason, 'backoff');
+  assert.equal(status.examined, 3);
+  assert.deepEqual(status.failureCounts, { http: 3 });
+  assert.equal(sleeps.length, 3);
+  assert.deepEqual(await readEnrichmentFailures(failuresPathFor(path.join(directory, 'store.jsonl'))), new Map());
 });
 
 test('the retrieval worker attaches the agreed enrichment shape when a store entry exists', async () => {

@@ -91,6 +91,8 @@ export function pilotSummary(status, rows, corpusCount) {
     succeeded: status.succeeded,
     failed: status.failed,
     parseFailures: status.parseFailures,
+    failureCounts: status.failureCounts,
+    gaveUp: status.gaveUp,
     evidenceKept: kept,
     evidenceDropped: dropped,
     evidenceDropRate: kept + dropped ? dropped / (kept + dropped) : 0,

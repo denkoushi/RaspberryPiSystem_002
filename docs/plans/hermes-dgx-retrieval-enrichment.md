@@ -17,6 +17,10 @@ Reuse the consultation principal already bound as `HERMES_INFERENCE_TOKEN` (`bus
 
 The API process that already reloads the live corpus starts `scripts/hermes-search/retrieval/enrichment-runner.mjs` at low priority, separate from the answering worker. Failures back off and do not change chat answers. The store is `/app/storage/hermes-search/runtime/retrieval-enrichment.jsonl`. Counts and timings are in `retrieval-enrichment-status.json` and one count-only log line.
 
+Failures are split into content failures (`invalid_json`, `schema_mismatch`, `truncated` when the answer stops at the token cap, and `rule_violation`) and DGX failures (`timeout`, `transport`, `http`). Only DGX failures count toward backoff. Content failures go to `retrieval-enrichment-failures.json` beside the store with an attempt count, untried records run first, and a record is set aside after three content failures until its text or the prompt changes. The status file carries `failureCounts`, `failureDetails` (fixed schema messages only, never answer text), `gaveUp`, and `aliasesRejected`.
+
+When the aliases fail the two-expanded-queries rule, the runner keeps the summary, facets, and queries as a schema v1 row without aliases instead of discarding the record. The offline ingest keeps the strict rule. The first overnight pilot (2026-09-25) stored only 14 of 1,000 records because three content failures ended each pass and the next pass retried the same records first.
+
 The retrieval worker, when that file exists, sets `record.enrichment = { summary, queries, tags }`. `tags` are the flattened facet values plus any kept alias alternatives.
 
 ## Validation
