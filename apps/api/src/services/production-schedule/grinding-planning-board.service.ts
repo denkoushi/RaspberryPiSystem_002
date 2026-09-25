@@ -208,10 +208,6 @@ function isCategoryResource(resourceCd: string | null, category: GrindingPlannin
   return category === 'grinding' ? isProductionScheduleGrindingResourceCd(resourceCd, policy) : isProductionScheduleCuttingResourceCd(resourceCd, policy);
 }
 
-async function readWinnerRows(client: DbClient = prisma): Promise<WinnerRow[]> {
-  return readWinnerRowsScoped(client);
-}
-
 async function readWinnerRowsByIds(client: DbClient, rowIds: readonly string[]): Promise<WinnerRow[]> {
   return readWinnerRowsScoped(client, rowIds);
 }
@@ -225,6 +221,23 @@ async function readWinnerRowsByFseibans(client: DbClient, fseibans: readonly str
     FROM "CsvDashboardRow"
     WHERE ${baseWhere}
       AND "CsvDashboardRow"."rowData"->>'FSEIBAN' = ANY(${values}::text[])
+  `);
+}
+
+function logicalKeyFseiban(logicalKey: string): string {
+  return String((JSON.parse(logicalKey) as unknown[])[0]);
+}
+
+/** Matches the logical-key identity (`COALESCE(raw, '')`) exactly, unlike the trimmed FSEIBAN lookup. */
+async function readWinnerRowsByLogicalKeyFseibans(client: DbClient, fseibans: readonly string[]): Promise<WinnerRow[]> {
+  const values = [...new Set(fseibans)];
+  if (values.length === 0) return [];
+  const baseWhere = await resolveLeaderboardMaterializedBaseWhere(client);
+  return client.$queryRaw<WinnerRow[]>(Prisma.sql`
+    SELECT "CsvDashboardRow"."id", "CsvDashboardRow"."rowData", "CsvDashboardRow"."updatedAt"
+    FROM "CsvDashboardRow"
+    WHERE ${baseWhere}
+      AND COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '') = ANY(${values}::text[])
   `);
 }
 
@@ -775,7 +788,15 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
 }
 
 async function discoverSourceRows(itemIds: readonly string[]): Promise<Map<string, string>> {
-  const rows = await readWinnerRows(prisma);
+  const logicalKeyByItem = new Map<string, string>();
+  for (const itemId of itemIds) {
+    if (itemId.startsWith(SPLIT_PREFIX)) continue;
+    const logicalKey = decodeRowItemId(itemId);
+    if (logicalKey == null) throw new ApiError(400, '対象アイテムIDが不正です', undefined, 'INVALID_ITEM_ID');
+    logicalKeyByItem.set(itemId, logicalKey);
+  }
+  // The logical key starts with the raw FSEIBAN, so saves read only the edited seibans instead of every winner row.
+  const rows = await readWinnerRowsByLogicalKeyFseibans(prisma, [...logicalKeyByItem.values()].map(logicalKeyFseiban));
   const byLogicalKey = new Map(rows.map((row) => [buildGrindingPlanningBoardLogicalKey(asRowData(row.rowData)), row.id]));
   const splitIds = itemIds.filter((itemId) => itemId.startsWith(SPLIT_PREFIX)).map((itemId) => itemId.slice(SPLIT_PREFIX.length));
   const splits = splitIds.length === 0 ? [] : await prisma.productionScheduleOrderSplit.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, id: { in: splitIds } }, select: { id: true, parentCsvDashboardRowId: true } });
@@ -786,9 +807,7 @@ async function discoverSourceRows(itemIds: readonly string[]): Promise<Map<strin
       if (split) sourceByItem.set(itemId, split.parentCsvDashboardRowId);
       continue;
     }
-    const logicalKey = decodeRowItemId(itemId);
-    if (logicalKey == null) throw new ApiError(400, '対象アイテムIDが不正です', undefined, 'INVALID_ITEM_ID');
-    const sourceRowId = byLogicalKey.get(logicalKey);
+    const sourceRowId = byLogicalKey.get(logicalKeyByItem.get(itemId) ?? '');
     if (sourceRowId) sourceByItem.set(itemId, sourceRowId);
   }
   if (sourceByItem.size !== new Set(itemIds).size) throw new ApiError(409, '対象アイテムが消滅または更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
