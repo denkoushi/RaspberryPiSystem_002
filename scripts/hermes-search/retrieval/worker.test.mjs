@@ -44,6 +44,8 @@ function answeringWith(evaluate) {
 
 test('worker protocol returns original field text and keeps the previous plan', async () => {
   const plannerRequests = [];
+  const plannerHistories = [];
+  const plannerStates = [];
   const evaluate = async (input) => {
     if (input.questions.candidate_0) {
       const answers = {};
@@ -54,6 +56,8 @@ test('worker protocol returns original field text and keeps the previous plan', 
       return { answers };
     }
     plannerRequests.push(input.state.request);
+    plannerHistories.push(input.state.relatedHistory);
+    plannerStates.push(input.state);
     const content = String(input.state.request).includes('surface scratch');
     const answers = plannerAnswers({
       content,
@@ -102,7 +106,10 @@ test('worker protocol returns original field text and keeps the previous plan', 
     session: counted.result.session,
   });
   assert.equal(follow.result.status, 'completed');
-  assert.match(plannerRequests.at(-1), /previous_plan/u);
+  assert.equal(plannerRequests.at(-1), '1件に絞って');
+  assert.equal(plannerHistories.at(-1).length, 0);
+  assert.equal(plannerStates.at(-1).previous_plan.filters.length > 0, true);
+  assert.equal('previous_plan' in plannerStates[0], false);
   assert.equal(follow.result.session.previousPlan.filters.length > 0, true);
 
   const line = encodeWorkerLine(content);
