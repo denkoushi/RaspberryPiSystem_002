@@ -15,9 +15,23 @@ import {
   verifyEvidence,
 } from './enrichment-contract.mjs';
 import { enrichmentSettings, requestEnrichment, withinWindow } from './enrichment-dgx.mjs';
-import { readEnrichmentStore, statusPathFromEnv, storePathFromEnv, writeEnrichmentStore, writeStatus } from './enrichment-store.mjs';
+import {
+  failuresPathFor,
+  readEnrichmentFailures,
+  readEnrichmentStore,
+  statusPathFromEnv,
+  storePathFromEnv,
+  writeEnrichmentFailures,
+  writeEnrichmentStore,
+  writeStatus,
+} from './enrichment-store.mjs';
 
 const BACKOFF_MS = [5_000, 15_000, 60_000];
+// The model answers the same record the same way, so a record is set aside after this many content failures.
+export const MAX_CONTENT_ATTEMPTS = 3;
+// Failures that belong to the answer for one record. Transport, timeout, and HTTP failures mean DGX
+// itself is unhealthy, so only those count toward backoff.
+const CONTENT_FAILURES = new Set(['invalid_json', 'schema_mismatch', 'truncated', 'rule_violation']);
 const ID_LINE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 export async function readIdAllowlist(filePath) {
@@ -80,6 +94,8 @@ export async function runEnrichmentBatch({
     return status;
   }
   const byId = await readEnrichmentStore(storePath);
+  const failuresPath = storePath ? failuresPathFor(storePath) : null;
+  const failures = failuresPath ? await readEnrichmentFailures(failuresPath) : new Map();
   const promptHash = promptSha256(catalog);
   const template = promptTemplate(catalog);
   const pending = [];
@@ -89,11 +105,19 @@ export async function runEnrichmentBatch({
       status.skipped += 1;
       continue;
     }
-    pending.push(record);
+    const attempts = contentAttempts(failures.get(record.id), record, catalog, promptHash);
+    if (attempts >= MAX_CONTENT_ATTEMPTS) {
+      status.gaveUp += 1;
+      continue;
+    }
+    pending.push({ record, attempts });
   }
-  const capped = pending.slice(0, settings.maxRecords);
+  // Untried records go first, so records that failed before do not hold back the rest.
+  pending.sort((left, right) => left.attempts - right.attempts);
+  const capped = pending.slice(0, settings.maxRecords).map((item) => item.record);
   status.deferred = pending.length - capped.length;
   let consecutiveFailures = 0;
+  let failuresChanged = false;
   let stoppedOutside = false;
   for (let index = 0; index < capped.length && !stoppedOutside; index += settings.concurrency) {
     const slice = [];
@@ -119,12 +143,20 @@ export async function runEnrichmentBatch({
       if (!result.ok) {
         status.failed += 1;
         status.lastErrorClass = result.errorClass;
-        if (result.errorClass === 'invalid_json') status.parseFailures += 1;
+        countFailure(status, result);
+        if (CONTENT_FAILURES.has(result.errorClass)) {
+          status.parseFailures += 1;
+          recordContentFailure(failures, result, catalog, promptHash);
+          failuresChanged = true;
+          continue;
+        }
         consecutiveFailures += 1;
         continue;
       }
       consecutiveFailures = 0;
+      if (failures.delete(result.row.recordId)) failuresChanged = true;
       status.succeeded += 1;
+      if (result.aliasesRejected) status.aliasesRejected += 1;
       status.evidenceDropped += result.evidenceDropped;
       status.evidenceKept += result.evidenceKept;
       status.aliasesDropped += result.aliasesDropped;
@@ -133,13 +165,17 @@ export async function runEnrichmentBatch({
       byId.set(result.row.recordId, result.row);
     }
     if (results.some((result) => result.ok)) await writeEnrichmentStore(storePath, byId);
+    if (failuresChanged && failuresPath) {
+      await writeEnrichmentFailures(failuresPath, failures);
+      failuresChanged = false;
+    }
     if (stoppedOutside) break;
     if (consecutiveFailures >= 3) {
       status.reason = 'backoff';
       await sleep(BACKOFF_MS[Math.min(consecutiveFailures, BACKOFF_MS.length) - 1]);
       break;
     }
-    if (results.some((result) => !result.ok)) {
+    if (consecutiveFailures > 0) {
       await sleep(BACKOFF_MS[Math.min(consecutiveFailures, BACKOFF_MS.length) - 1]);
     }
   }
@@ -159,13 +195,17 @@ async function enrichOne({ record, catalog, template, promptHash, settings, fetc
     return { ok: false, stopped: true, latencyMs: response.latencyMs ?? 0 };
   }
   if (!response.ok) {
-    return { ok: false, errorClass: response.errorClass, latencyMs: response.latencyMs ?? 0 };
+    return {
+      ok: false, record, errorClass: response.errorClass, detail: response.detail, latencyMs: response.latencyMs ?? 0,
+    };
   }
   let verified;
   try {
-    verified = verifyEvidence(response.parsed, text, record.id);
-  } catch {
-    return { ok: false, errorClass: 'invalid_json', latencyMs: response.latencyMs ?? 0 };
+    verified = verifyEvidence(response.parsed, text, record.id, { aliasFallback: true });
+  } catch (error) {
+    return {
+      ok: false, record, errorClass: 'rule_violation', detail: error?.message, latencyMs: response.latencyMs ?? 0,
+    };
   }
   return {
     ok: true,
@@ -174,6 +214,7 @@ async function enrichOne({ record, catalog, template, promptHash, settings, fetc
     evidenceKept: verified.evidenceKept,
     aliasesDropped: verified.aliasesDropped,
     aliasesKept: verified.aliasesKept,
+    aliasesRejected: verified.aliasesRejected,
     usage: response.usage,
     row: {
       schema: STORE_SCHEMA,
@@ -223,6 +264,10 @@ function emptyStatus(settings, corpusCount) {
     aliasesDropped: 0,
     aliasesKept: 0,
     parseFailures: 0,
+    failureCounts: {},
+    failureDetails: {},
+    gaveUp: 0,
+    aliasesRejected: 0,
     latenciesMs: [],
     latencyMsTotal: 0,
     promptTokens: 0,
@@ -231,6 +276,33 @@ function emptyStatus(settings, corpusCount) {
     elapsedMs: 0,
     estimatedFullCorpusMs: null,
   };
+}
+
+function contentAttempts(entry, record, catalog, promptHash) {
+  if (!entry) return 0;
+  // A changed record or prompt earns fresh attempts.
+  if (entry.sourceRecordHash !== sourceRecordHash(record, catalog) || entry.promptSha256 !== promptHash) return 0;
+  return entry.attempts;
+}
+
+function recordContentFailure(failures, result, catalog, promptHash) {
+  const { record } = result;
+  const attempts = contentAttempts(failures.get(record.id), record, catalog, promptHash) + 1;
+  failures.set(record.id, {
+    recordId: record.id,
+    attempts,
+    lastErrorClass: result.errorClass,
+    lastDetail: typeof result.detail === 'string' ? result.detail : null,
+    sourceRecordHash: sourceRecordHash(record, catalog),
+    promptSha256: promptHash,
+    lastAttemptAt: new Date().toISOString(),
+  });
+}
+
+function countFailure(status, result) {
+  status.failureCounts[result.errorClass] = (status.failureCounts[result.errorClass] ?? 0) + 1;
+  if (typeof result.detail !== 'string') return;
+  status.failureDetails[result.detail] = (status.failureDetails[result.detail] ?? 0) + 1;
 }
 
 function addUsage(status, usage) {
@@ -258,6 +330,7 @@ async function publish(statusPath, status) {
     `skipped=${status.skipped}`,
     `succeeded=${status.succeeded}`,
     `failed=${status.failed}`,
+    `gaveUp=${status.gaveUp}`,
     `evidenceDropped=${status.evidenceDropped}`,
     `latencyMsTotal=${status.latencyMsTotal}`,
     `estimatedFullCorpusMs=${status.estimatedFullCorpusMs ?? 'na'}`,

@@ -39,6 +39,37 @@ export async function writeEnrichmentStore(filePath, byId) {
   await writeAtomic(filePath, body);
 }
 
+// Content failures per record, so a record the model cannot answer does not block the rest.
+export function failuresPathFor(storePath) {
+  return `${storePath.replace(/\.jsonl$/u, '')}-failures.json`;
+}
+
+export async function readEnrichmentFailures(filePath) {
+  let raw;
+  try {
+    raw = await readFile(filePath, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return new Map();
+    throw error;
+  }
+  const byId = new Map();
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return byId;
+  }
+  for (const row of Array.isArray(payload?.records) ? payload.records : []) {
+    if (typeof row?.recordId !== 'string' || !row.recordId || !Number.isInteger(row.attempts)) continue;
+    byId.set(row.recordId, row);
+  }
+  return byId;
+}
+
+export async function writeEnrichmentFailures(filePath, byId) {
+  await writeAtomic(filePath, `${JSON.stringify({ records: [...byId.values()] })}\n`);
+}
+
 export async function writeStatus(filePath, status) {
   await writeAtomic(filePath, `${JSON.stringify(status)}\n`);
 }
