@@ -12,3 +12,4 @@ import './query-plan.test.mjs';
 import './value-index.test.mjs';
 import './worker.test.mjs';
 import './corpus.test.mjs';
+import './dense-dgx.test.mjs';

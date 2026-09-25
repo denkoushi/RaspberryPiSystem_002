@@ -6,6 +6,7 @@ import readline from 'node:readline';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { catalogEntries, fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
+import { createDenseRuntime, denseSettings } from './dense-dgx.mjs';
 import { execute, openQmdVectorRanker, prepareLexicalCorpus } from './executor.mjs';
 import { createPlanner } from './planner-jev.mjs';
 import { createRelevanceJudge } from './relevance-jev.mjs';
@@ -16,6 +17,12 @@ import { attachEnrichment } from './enrichment-attach.mjs';
 import { readEnrichmentStore, storePathFromEnv } from './enrichment-store.mjs';
 
 export const WORKER_PREFIX = '__HERMES_UI_PREFETCH__';
+let denseFallbackCount = 0;
+
+export function noteDenseFallback(status) {
+  denseFallbackCount += 1;
+  console.info(`hermes retrieval dense fallback count=${denseFallbackCount} status=${status}`);
+}
 const ANSWER_ROLES = new Set(['identifier', 'date', 'organization', 'body']);
 const INSUFFICIENT_NOTICE = '見つかった件数は、指定された件数より少ないです。';
 const COVERAGE_ORDER = {
@@ -195,6 +202,7 @@ export function createRetrievalAnswering({
   lexicalCorpus = null,
   evaluate,
   vector = null,
+  dense = null,
   enrichmentById = null,
   snapshotCount = Array.isArray(records) ? records.length : 0,
 } = {}) {
@@ -210,6 +218,7 @@ export function createRetrievalAnswering({
       try {
         const enrichmentById = await readEnrichmentStore(storePathFromEnv()).catch(() => null);
         current = applyEnrichment(replaceCorpus(current, catalog, message), enrichmentById);
+        dense?.schedule?.(current.records, fieldsWithRole(catalog, 'body'));
         return { ok: true, count: current.snapshotCount };
       } catch {
         console.warn(`hermes retrieval corpus refresh failed count=${count}`);
@@ -257,8 +266,8 @@ export function createRetrievalAnswering({
         records: view.records,
         catalog,
         lexicalCorpus: view.lexicalCorpus,
-        retriever: 'lexical',
-        vector: typeof vector === 'function' ? vector : null,
+        retriever: dense?.queryEnabled ? 'hybrid' : 'lexical',
+        vector: dense?.queryEnabled ? (query, filtered) => dense.rank(query, filtered) : (typeof vector === 'function' ? vector : null),
         relevance: (input) => relevance.judge(input),
         requestStartedAt: started,
       });
@@ -281,6 +290,10 @@ export function createRetrievalAnswering({
           previousPlan: compact,
           dataAsOf: view.dataAsOf,
         });
+      }
+      const vectorStatus = executed.timings?.vectorStatus;
+      if (dense?.queryEnabled && (vectorStatus === 'timeout' || vectorStatus === 'failed')) {
+        noteDenseFallback(vectorStatus);
       }
       const body = formatRecords(executed.results, catalog);
       const notice = formatCoverageNotice(executed.coverage);
@@ -400,9 +413,18 @@ export async function main() {
     } catch {
       ranker = null;
     }
+    const denseConfig = denseSettings(process.env);
+    const dense = (denseConfig.queryEnabled || denseConfig.indexEnabled)
+      ? createDenseRuntime({ settings: denseConfig })
+      : null;
+    if (dense) {
+      await dense.load().catch(() => 0);
+      dense.schedule(resources.records, fieldsWithRole(resources.catalog, 'body'));
+    }
     answering = createRetrievalAnswering({
       ...resources,
       enrichmentById: await loadEnrichmentById(),
+      dense,
       vector: ranker ? (query, filtered) => ranker.rank(query, filtered) : null,
     });
     emit(readyPayload(resources));

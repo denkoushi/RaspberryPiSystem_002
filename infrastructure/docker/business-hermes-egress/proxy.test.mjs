@@ -234,3 +234,18 @@ test('uses the former Hermes timeout when the new egress key is absent', () => {
   );
   assert.equal(result.status, 0, result.stderr);
 });
+
+test('allows POST /v1/embeddings on the same DGX host and rejects every other embeddings shape', () => {
+  const request = (method, url, host = '100.118.82.72:38081') => ({
+    method,
+    url,
+    headers: { host },
+  });
+  assert.equal(isAllowedHttpRequest(request('POST', 'http://100.118.82.72:38081/v1/embeddings')), true);
+  assert.equal(isAllowedHttpRequest(request('GET', 'http://100.118.82.72:38081/v1/embeddings')), false);
+  assert.equal(isAllowedHttpRequest(request('POST', 'http://100.118.82.72:38081/v1/embeddings?q=1')), false);
+  assert.equal(isAllowedHttpRequest(request('POST', 'http://100.118.82.72:38082/v1/embeddings', '100.118.82.72:38082')), false);
+  assert.equal(isAllowedHttpRequest(request('POST', 'http://100.118.82.72:38081/v1/embeddings/extra')), false);
+  assert.equal(isAllowedHttpRequest(request('POST', 'http://example.invalid:38081/v1/embeddings', 'example.invalid:38081')), false);
+  assert.equal(isAllowedHttpRequest(request('POST', 'http://100.118.82.72:38081/v1/chat/completions')), true);
+});

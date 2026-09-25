@@ -675,6 +675,24 @@ def enrichment_id_source() -> Path | None:
     return source.resolve()
 
 
+def optional_dense_provider_setting(name: str = "HERMES_RETRIEVAL_DENSE_PROVIDER") -> str:
+    value = os.environ.get(name, "")
+    if value and value not in {"off", "dgx"}:
+        raise UsageError(f"{name} must be off or dgx")
+    return value
+
+
+def dense_environment() -> dict[str, str]:
+    environment: dict[str, str] = {}
+    provider = optional_dense_provider_setting()
+    index_enabled = optional_bool_setting("HERMES_RETRIEVAL_DENSE_INDEX_ENABLED")
+    if provider:
+        environment["HERMES_RETRIEVAL_DENSE_PROVIDER"] = provider
+    if index_enabled:
+        environment["HERMES_RETRIEVAL_DENSE_INDEX_ENABLED"] = index_enabled
+    return environment
+
+
 def enrichment_environment() -> dict[str, str]:
     environment: dict[str, str] = {}
     enabled = optional_bool_setting("HERMES_RETRIEVAL_ENRICHMENT_ENABLED")
@@ -725,6 +743,7 @@ def hermes_trial_configuration(
     if retrieval_v2_enabled:
         environment["HERMES_RETRIEVAL_V2_ENABLED"] = retrieval_v2_enabled
     environment.update(enrichment)
+    environment.update(dense_environment())
     if enabled == "false":
         return None, environment
     value = os.environ.get("HERMES_SEARCH_TRIAL_ARTIFACT", "")
@@ -777,6 +796,7 @@ def hermes_trial_maintenance_configuration(
             raise UsageError("HERMES_RETRIEVAL_V2_ENABLED must be true or false")
         environment["HERMES_RETRIEVAL_V2_ENABLED"] = retrieval_v2_enabled
     environment.update(enrichment_environment())
+    environment.update(dense_environment())
     return environment
 
 
@@ -868,6 +888,8 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
                        "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY",
                        "HERMES_RETRIEVAL_ENRICHMENT_WINDOW",
                        "HERMES_RETRIEVAL_ENRICHMENT_IDS",
+                       "HERMES_RETRIEVAL_DENSE_PROVIDER",
+                       "HERMES_RETRIEVAL_DENSE_INDEX_ENABLED",
                        "HERMES_JEV_PROVIDER",
                        "HERMES_SEARCH_TRIAL_ARTIFACT", "HERMES_SEARCH_TRIAL_MAINTENANCE",
                        "HERMES_ANSWER_CACHE_ARTIFACT"}:

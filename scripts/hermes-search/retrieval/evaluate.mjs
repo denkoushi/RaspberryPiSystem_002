@@ -79,7 +79,7 @@ export function parseArgs(argv) {
   return parsed;
 }
 
-export async function loadHashedDenseRows({ records, bodyFields, embed, modelId, cacheRoot }) {
+export async function loadHashedDenseRows({ records, bodyFields, embed, modelId, cacheRoot, passageExtra = { prefix: 'passage: ' } }) {
   const hash = createHash('sha256');
   hash.update(String(modelId));
   const passages = [];
@@ -103,7 +103,7 @@ export async function loadHashedDenseRows({ records, bodyFields, embed, modelId,
     // Rebuild when the private cache is missing or unreadable.
   }
   const started = performance.now();
-  const vectors = await embed(passages, { prefix: 'passage: ' });
+  const vectors = await embed(passages, passageExtra);
   const buildMs = Math.round(performance.now() - started);
   const rows = records.map((record, index) => ({ id: record.id, vector: vectors[index] }));
   await fsp.mkdir(cacheRoot, { recursive: true, mode: 0o700 });
@@ -186,10 +186,25 @@ export async function evaluateGold(options) {
   if (!['lexical', 'dense', 'hybrid'].includes(retriever)) throw new Error('retriever must be lexical, dense, or hybrid');
   const useDense = variant === 'b' || variant === 'c';
   const dateField = fieldsWithRole(catalog, 'date')[0] ?? 'discoveredOn';
-  const needsOnnx = (options.entityLink || useDense || retriever !== 'lexical') && !options.embed;
+  const denseProvider = options.denseProvider ?? process.env.HERMES_RETRIEVAL_DENSE_PROVIDER ?? 'off';
+  const useDgx = denseProvider === 'dgx';
+  const needsOnnx = !useDgx && (options.entityLink || useDense || retriever !== 'lexical') && !options.embed;
   const onnx = needsOnnx ? await import('./embed-runtime.mjs') : null;
   const embedder = onnx ? await onnx.createOnnxEmbedder({ modelId: options.embedModelId }) : null;
-  const embed = options.embed ?? (embedder ? (texts, extra) => embedder.embed(texts, extra) : null);
+  let dgxEmbedder = null;
+  if (useDgx && !options.embed && (useDense || retriever !== 'lexical')) {
+    const baseUrl = options.denseBaseUrl ?? process.env.HERMES_RETRIEVAL_DENSE_BASE_URL;
+    if (!baseUrl) throw new Error('dgx dense evaluation requires HERMES_RETRIEVAL_DENSE_BASE_URL');
+    const { createDgxEmbedder } = await import('./dense-dgx.mjs');
+    dgxEmbedder = createDgxEmbedder({
+      baseUrl,
+      token: process.env.HERMES_INFERENCE_TOKEN || '',
+      timeoutMs: 10_000,
+    });
+  }
+  const embed = options.embed ?? (dgxEmbedder ? (texts, extra) => dgxEmbedder.embed(texts, extra) : (embedder ? (texts, extra) => embedder.embed(texts, extra) : null));
+  const passageExtra = useDgx ? { role: 'document' } : { prefix: 'passage: ' };
+  const queryExtra = useDgx ? { role: 'query' } : { prefix: 'query: ' };
   const memo = new Map();
   const cachedEmbed = embed
     ? async (texts, extra) => {
@@ -213,12 +228,12 @@ export async function evaluateGold(options) {
     } catch { rows = null; }
     if (!rows) {
       const texts = payload.records.map((record) => bodyFields.map((key) => record?.[key] ?? '').join('\n').slice(0, 500));
-      const vectors = await cachedEmbed(texts, { prefix: 'passage: ' });
+      const vectors = await cachedEmbed(texts, passageExtra);
       rows = payload.records.map((record, index) => ({ id: record.id, vector: vectors[index] }));
       await fsp.mkdir(path.dirname(cachePath), { recursive: true, mode: 0o700 });
       await fsp.writeFile(cachePath, JSON.stringify({ count: rows.length, rows }), { mode: 0o600 });
     }
-    denseRank = createDenseRanker(rows, (queries) => cachedEmbed(queries, { prefix: 'query: ' }));
+    denseRank = createDenseRanker(rows, (queries) => cachedEmbed(queries, queryExtra));
   }
   const reranker = variant === 'c' && !options.rerank
     ? await onnx.createOnnxReranker({ modelId: options.rerankModelId })
@@ -236,19 +251,20 @@ export async function evaluateGold(options) {
   if (retriever !== 'lexical') {
     if (!cachedEmbed) throw new Error('dense retriever requires an embedder');
     const workRoot = options.workRoot ?? path.join(process.env.HOME, 'Documents', 'hermes-retrieval-private', 'work');
-    const modelId = embedder?.modelId ?? options.embedModelId ?? 'custom';
+    const modelId = dgxEmbedder?.modelId ?? embedder?.modelId ?? options.embedModelId ?? 'custom';
     const built = await loadHashedDenseRows({
       records: payload.records,
       bodyFields,
       embed: cachedEmbed,
       modelId,
       cacheRoot: path.join(workRoot, 'dense-cache'),
+      passageExtra,
     });
     denseBuildMs = built.buildMs;
     const probeStarted = performance.now();
-    await cachedEmbed(['qxprobe'], { prefix: 'query: ' });
+    await cachedEmbed(['qxprobe'], queryExtra);
     queryEmbedMs = Math.round(performance.now() - probeStarted);
-    retrieverDense = createScopedDenseRanker(built.rows, (queries) => cachedEmbed(queries, { prefix: 'query: ' }), 50);
+    retrieverDense = createScopedDenseRanker(built.rows, (queries) => cachedEmbed(queries, queryExtra), 50);
   }
   const vector = denseRank
     ? (query) => denseRank(query)
@@ -287,7 +303,7 @@ export async function evaluateGold(options) {
           question: item.question,
           valueIndex,
           catalog,
-          embed: (texts) => cachedEmbed(texts, { prefix: 'query: ' }),
+          embed: (texts) => cachedEmbed(texts, queryExtra),
         })
         : null;
       const planned = await createPlanner().plan({
