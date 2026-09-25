@@ -11,6 +11,7 @@ import { createRetrievalAnswering, noteDenseFallback } from './worker.mjs';
 import {
   DGX_EMBED_BATCH,
   DGX_EMBED_DIM,
+  DGX_MAX_INPUT_CHARS,
   denseDocumentText,
   denseQueryText,
   denseSettings,
@@ -105,17 +106,14 @@ test('index refresh skips an unchanged text hash and resumes after a partial wri
     { id: 'b', condition: 'beta note' },
     { id: 'c', condition: 'gamma note' },
   ];
-  let calls = 0;
-  const embed = async (texts) => {
-    calls += 1;
-    if (calls === 1) throw new Error('batch failed');
-    return texts.map((_, index) => vector(index + 1));
-  };
+  const embed = async (texts) => texts.map((_, index) => vector(index + 1));
   const first = await refreshDenseIndex({
     records: records.slice(0, 2),
     bodyFields,
     storePath,
-    embed,
+    embed: async () => {
+      throw new Error('embedding unavailable');
+    },
   });
   assert.equal(first.failed, 2);
   assert.equal(first.embedded, 0);
@@ -205,4 +203,31 @@ test('a query timeout falls back to lexical and hybrid fusion still ranks a dens
     evaluate: async () => ({ plan: null }),
   });
   assert.equal(typeof answering.answer, 'function');
+});
+
+test('a rejected record is retried alone so the rest of its batch is still stored', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'dense-dgx-'));
+  const storePath = path.join(directory, 'retrieval-dense-dgx.bin');
+  const records = Array.from({ length: DGX_EMBED_BATCH }, (_, index) => ({
+    id: `r${index}`,
+    condition: index === 3 ? 'too long for the gateway' : `note ${index}`,
+  }));
+  const calls = [];
+  const embed = async (texts) => {
+    calls.push(texts.length);
+    if (texts.some((text) => text.includes('too long'))) throw new Error('embedding http failed');
+    return texts.map((_, index) => vector(index + 1));
+  };
+  const result = await refreshDenseIndex({ records, bodyFields, storePath, embed });
+  assert.equal(result.embedded, DGX_EMBED_BATCH - 1);
+  assert.equal(result.failed, 1);
+  assert.deepEqual(calls, [DGX_EMBED_BATCH, ...Array(DGX_EMBED_BATCH).fill(1)]);
+  const stored = await readDenseStore(storePath);
+  assert.deepEqual(stored.map((entry) => entry.id).sort(), records.map((r) => r.id).filter((id) => id !== 'r3').sort());
+});
+
+test('document text is capped below the DGX per-slot token limit', () => {
+  const text = denseDocumentText({ id: 'long', condition: '寸'.repeat(DGX_MAX_INPUT_CHARS + 500) }, bodyFields);
+  assert.equal(text.length <= DGX_MAX_INPUT_CHARS, true);
+  assert.equal(DGX_MAX_INPUT_CHARS < 800, true);
 });
