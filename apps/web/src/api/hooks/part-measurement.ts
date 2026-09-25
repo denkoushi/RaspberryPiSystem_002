@@ -2,7 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { purgeLeaderboardBoardCacheForScheduleRow } from '../../features/kiosk/leaderOrderBoard/cache/purgeLeaderboardBoardCacheForScheduleRow';
 import { patchSelfInspectionSessionCachesAfterEntrySave } from '../../features/part-measurement/mergeSelfInspectionSessionAfterEntrySave';
-import { resolveSelfInspectionSessionPlaceholderData } from '../../features/part-measurement/selfInspectionSessionPlaceholder';
+import {
+  isSelfInspectionSessionSeedPending,
+  resolveSelfInspectionSessionPlaceholderData,
+  resolveSelfInspectionUnsavedEntryInitialData
+} from '../../features/part-measurement/selfInspectionSessionPlaceholder';
 import {
   resolveOrCreateSelfInspectionSession,
   listSelfInspectionSessions,
@@ -31,7 +35,7 @@ import {
   getSelfInspectionInvalidation
 } from '../client';
 
-import type { SelfInspectionStatus } from '../../features/part-measurement/types';
+import type { SelfInspectionSessionDetailDto, SelfInspectionStatus } from '../../features/part-measurement/types';
 
 export function useSelfInspectionSessions(
   params?: {
@@ -172,13 +176,33 @@ export function useSelfInspectionSession(
   sessionId?: string | null,
   options?: { enabled?: boolean; entryIndex?: number }
 ) {
+  const queryClient = useQueryClient();
   const entryIndex = options?.entryIndex;
-  return useQuery({
-    queryKey: selfInspectionSessionQueryKey(sessionId!, entryIndex),
+  const resolveUnsavedEntryInitial = () =>
+    resolveSelfInspectionUnsavedEntryInitialData(
+      queryClient
+        .getQueryCache()
+        .findAll({ queryKey: ['self-inspection-session', sessionId] })
+        .map((query) => ({
+          data: query.state.data as SelfInspectionSessionDetailDto | undefined,
+          updatedAt: query.state.dataUpdatedAt
+        })),
+      sessionId,
+      entryIndex
+    );
+  const queryKey = selfInspectionSessionQueryKey(sessionId!, entryIndex);
+  const query = useQuery({
+    queryKey,
     queryFn: () => getSelfInspectionSession(sessionId!, { entryIndex }),
+    initialData: () => resolveUnsavedEntryInitial()?.data,
+    // 元キャッシュの取得時刻を引き継ぎ、staleとしてマウント時に裏で再取得させる。
+    initialDataUpdatedAt: () => resolveUnsavedEntryInitial()?.updatedAt,
     placeholderData: (previousData) => resolveSelfInspectionSessionPlaceholderData(previousData, sessionId),
     enabled: (options?.enabled ?? true) && Boolean(sessionId)
   });
+  const isSeedPending =
+    !query.isPlaceholderData && isSelfInspectionSessionSeedPending(queryClient.getQueryState(queryKey));
+  return { ...query, isSeedPending };
 }
 
 export function useSelfInspectionInspectorMeasurementSession(

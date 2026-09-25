@@ -15,6 +15,7 @@ import type { SelfInspectionSessionDetailDto } from './types';
 
 export type SelfInspectionActionReason =
   | 'read_only'
+  | 'syncing_latest'
   | 'saving'
   | 'completing'
   | 'no_changes'
@@ -260,6 +261,8 @@ export function selfInspectionActionReasonMessage(
   switch (reason) {
     case 'read_only':
       return 'このセッションは読み取り専用です。';
+    case 'syncing_latest':
+      return '最新の状態を確認中です。';
     case 'saving':
       return '保存処理中です。';
     case 'completing':
