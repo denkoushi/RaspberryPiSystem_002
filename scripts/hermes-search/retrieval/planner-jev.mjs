@@ -79,6 +79,43 @@ function answersOf(result) {
   return result?.answers && typeof result.answers === 'object' ? result.answers : {};
 }
 
+// Decision receipt: which option each question chose, with its confidence and the top
+// alternatives. Choice ids are mapped to their option text so a field answer reads as the
+// chosen value. The receipt holds no record text.
+export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-09-25';
+
+export function summarizeAnswers(questions, answers) {
+  const summary = {};
+  for (const [id, question] of Object.entries(questions ?? {})) {
+    const answer = answers?.[id];
+    if (!answer || typeof answer !== 'object') {
+      summary[id] = { missing: true };
+      continue;
+    }
+    if (question?.type === 'choice') {
+      const label = (option) => (id === 'turn' || id === 'sort' || id === 'scope' || id === 'limit' || id === 'period'
+        ? option
+        : (question.criteria?.[option] ?? option));
+      const probabilities = answer.probabilities && typeof answer.probabilities === 'object' ? answer.probabilities : {};
+      const top = Object.entries(probabilities)
+        .filter(([, value]) => Number.isFinite(Number(value)))
+        .sort((left, right) => Number(right[1]) - Number(left[1]))
+        .slice(0, 3)
+        .map(([option, value]) => [label(option), Number(Number(value).toFixed(3))]);
+      summary[id] = {
+        choice: typeof answer.choice === 'string' ? label(answer.choice) : null,
+        ...(Number.isFinite(Number(answer.confidence)) ? { confidence: Number(Number(answer.confidence).toFixed(3)) } : {}),
+        ...(top.length ? { top } : {}),
+      };
+    } else if (question?.type === 'noul') {
+      summary[id] = { noul: typeof answer.noul === 'number' ? Number(answer.noul.toFixed(3)) : answer.noul ?? null };
+    } else {
+      summary[id] = { answered: true };
+    }
+  }
+  return summary;
+}
+
 function chosen(answer, allowedIds) {
   if (!answer || typeof answer !== 'object') return null;
   if (answer.type === 'choice' && allowedIds.includes(answer.choice)) return answer.choice;
@@ -360,7 +397,17 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           limitExplicit,
         },
       };
-      return { plan, timings: { planMs } };
+      return {
+        plan,
+        timings: { planMs },
+        receipt: {
+          model: typeof evaluated?.model === 'string' ? evaluated.model : null,
+          questionVersion: PLANNER_QUESTION_VERSION,
+          turn: hasPrevious ? (turn ?? 'unresolved') : 'first',
+          answers: summarizeAnswers(questions, answers),
+          fields: Object.fromEntries([...optionMap].map(([key, mapped]) => [key, mapped.group.field ?? mapped.group.term ?? null])),
+        },
+      };
     },
   };
 }

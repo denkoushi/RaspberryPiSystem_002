@@ -87,6 +87,16 @@ test('worker protocol returns original field text and keeps the previous plan', 
   assert.equal(typeof content.result.elapsedMs, 'number');
   assert.equal(content.elapsedMs, content.result.elapsedMs);
   assert.equal(content.result.session.previousPlan.semanticQuery.includes('surface'), true);
+  const receipt = content.result.receipt;
+  assert.equal(receipt.schema, 'hermes-search-receipt/v1');
+  assert.equal(receipt.outcome, 'answer');
+  assert.equal(receipt.resultCount, 1);
+  assert.equal(receipt.jev.turn, 'first');
+  assert.equal(receipt.jev.questionVersion.startsWith('planner-questions-'), true);
+  assert.equal(typeof receipt.jev.answers.content.noul, 'number');
+  assert.equal(Object.values(receipt.jev.fields).every((field) => typeof field === 'string'), true);
+  assert.equal(typeof receipt.elapsedMs, 'number');
+  assert.doesNotMatch(JSON.stringify(receipt), /不適合内容/u);
 
   const counted = await completeRequest(answering, {
     type: 'request',
