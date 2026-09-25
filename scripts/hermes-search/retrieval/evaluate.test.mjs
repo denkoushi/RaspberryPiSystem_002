@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { evenIndexes, localSettings, structuralSample } from './enrichment-cli.mjs';
 import { attachEnrichment, readEnrichmentStores } from './enrichment-attach.mjs';
-import { assertSnapshotIdentity, countKeywordHits, parseArgs, percentile } from './evaluate.mjs';
+import { assertSnapshotIdentity, countKeywordHits, loadDgxDenseRows, parseArgs, percentile } from './evaluate.mjs';
+import { fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
+import { DGX_EMBED_DIM, DGX_MAX_INPUT_CHARS } from './dense-dgx.mjs';
 
 test('gold example file matches the case shape and the judge counts body keywords', () => {
   const gold = JSON.parse(readFileSync(new URL('./fixtures/gold.example.json', import.meta.url), 'utf8'));
@@ -98,4 +100,26 @@ test('a subset snapshot skips only the digest and recordCount check', () => {
   assert.doesNotThrow(() => {
     if (!args.allowSubset) assertSnapshotIdentity(subset);
   });
+});
+
+test('dgx evaluation stores the production-capped text and skips a rejected record', async () => {
+  const bodyFields = fieldsWithRole(loadNonconformityCatalog(), 'body');
+  const storePath = path.join(mkdtempSync(path.join(tmpdir(), 'eval-dgx-')), 'dgx.bin');
+  const records = [
+    { id: 'a', condition: 'x'.repeat(DGX_MAX_INPUT_CHARS + 100) },
+    { id: 'b', condition: 'rejected by the gateway' },
+    { id: 'c', condition: 'short note' },
+  ];
+  const seen = [];
+  const embed = async (texts) => {
+    seen.push(...texts);
+    if (texts.some((text) => text.includes('rejected'))) throw new Error('embedding http failed');
+    return texts.map(() => new Float32Array(DGX_EMBED_DIM).fill(0.5));
+  };
+  const built = await loadDgxDenseRows({ records, bodyFields, embed, storePath });
+  assert.deepEqual(built.rows.map((row) => row.id).sort(), ['a', 'c']);
+  assert.equal(built.failed, 1);
+  assert.equal(seen.every((text) => text.length <= DGX_MAX_INPUT_CHARS), true);
+  const again = await loadDgxDenseRows({ records, bodyFields, embed: async () => { throw new Error('unused'); }, storePath });
+  assert.deepEqual(again.rows.map((row) => row.id).sort(), ['a', 'c']);
 });
