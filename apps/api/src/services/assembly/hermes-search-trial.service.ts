@@ -36,6 +36,8 @@ export type HermesTrialAnswer = {
   searchPlan?: SearchPlan;
   searchDiagnostics?: SearchDiagnostics;
   dataAsOf?: string | null;
+  /** Planner decisions and outcome for the API log. Routes remove it before replying. */
+  receipt?: Record<string, unknown>;
 };
 
 type TrialSession = {
@@ -326,6 +328,7 @@ export class HermesSearchTrialService {
         searchPlan: result.searchPlan,
         searchDiagnostics: result.searchDiagnostics,
         dataAsOf: result.dataAsOf ?? null,
+        ...(result.receipt && typeof result.receipt === 'object' ? { receipt: result.receipt } : {}),
       };
     } catch (error) {
       if (!written) this.releaseSlot();

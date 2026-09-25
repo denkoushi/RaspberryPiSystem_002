@@ -181,7 +181,7 @@ function publicRecordId(sourceId, recordId) {
   return sourceId ? `${sourceId}:${id}` : id;
 }
 
-function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previousPlan, dataAsOf, coverage = null }) {
+function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previousPlan, dataAsOf, coverage = null, receipt = null }) {
   const stamped = stampAnswer(answer, dataAsOf);
   return {
     status,
@@ -192,7 +192,17 @@ function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previ
     confirmationPending: confirmation ?? null,
     session: sessionOf(previousPlan),
     ...(coverage ? { coverage } : {}),
+    ...(receipt ? { receipt: { ...receipt, elapsedMs } } : {}),
   };
+}
+
+function numericTimings(timings) {
+  const picked = {};
+  for (const [key, value] of Object.entries(timings ?? {})) {
+    if (typeof value === 'number' && Number.isFinite(value)) picked[key] = Math.round(value * 10) / 10;
+    else if (typeof value === 'string' && value.length <= 32) picked[key] = value;
+  }
+  return picked;
 }
 
 export function createRetrievalAnswering({
@@ -239,6 +249,16 @@ export function createRetrievalAnswering({
         valueIndex: view.valueIndex,
       });
       const compact = compactPlan(planned.plan);
+      // One receipt per answer for the API log: the planner decisions and the outcome.
+      const receiptOf = (outcome, extra = {}) => ({
+        schema: 'hermes-search-receipt/v1',
+        outcome,
+        plan: compact,
+        unresolved: Array.isArray(planned.plan?.unresolved) ? planned.plan.unresolved.map((item) => item?.term ?? null) : [],
+        jev: planned.receipt ?? null,
+        planMs: planned.timings?.planMs ?? null,
+        ...extra,
+      });
       if (planned.plan?.diagnostics?.scope === 'out_of_scope') {
         return trialResult({
           status: 'completed',
@@ -246,6 +266,7 @@ export function createRetrievalAnswering({
           recordIds: [],
           elapsedMs: elapsed(),
           previousPlan: compact,
+          receipt: receiptOf('out_of_scope'),
           dataAsOf: view.dataAsOf,
         });
       }
@@ -259,6 +280,7 @@ export function createRetrievalAnswering({
           elapsedMs: elapsed(),
           confirmation: confirmationPending(question, validation.clarification, answer),
           previousPlan: compact,
+          receipt: receiptOf('clarification'),
           dataAsOf: view.dataAsOf,
         });
       }
@@ -278,6 +300,7 @@ export function createRetrievalAnswering({
           recordIds: [],
           elapsedMs: elapsed(),
           previousPlan: compact,
+          receipt: receiptOf('unavailable', { timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
         });
       }
@@ -288,6 +311,7 @@ export function createRetrievalAnswering({
           recordIds: [],
           elapsedMs: elapsed(),
           previousPlan: compact,
+          receipt: receiptOf('no_result', { retriever: dense?.queryEnabled ? 'hybrid' : 'lexical', timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
         });
       }
@@ -307,6 +331,11 @@ export function createRetrievalAnswering({
         previousPlan: compact,
         dataAsOf: view.dataAsOf,
         coverage: executed.coverage ?? null,
+        receipt: receiptOf('answer', {
+          resultCount: executed.results.length,
+          retriever: dense?.queryEnabled ? 'hybrid' : 'lexical',
+          timings: numericTimings(executed.timings),
+        }),
       });
     },
   };

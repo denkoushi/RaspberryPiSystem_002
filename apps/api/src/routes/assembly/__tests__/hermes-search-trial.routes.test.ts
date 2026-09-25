@@ -79,4 +79,21 @@ describe('Hermes search trial authorization',()=>{
     expect(JSON.stringify(diagnostic)).not.toContain('質問の原文');
     await app.close();
   });
+
+  it('logs one receipt with the question and keeps it out of the kiosk response',async()=>{
+    const output:Array<Record<string, unknown>>=[];
+    const logger=pino({level:'info'},{write:line=>output.push(JSON.parse(line) as Record<string, unknown>)});
+    const app=Fastify({loggerInstance:logger});
+    const receipt={schema:'hermes-search-receipt/v1',outcome:'answer',plan:{filters:[],semanticQuery:'q',sort:'relevance',limit:5},jev:{model:'jev-1.13.0',turn:'first',answers:{content:{noul:0.9}}},resultCount:1};
+    const answer=vi.fn().mockResolvedValue({status:'completed',answer:'処置:\n再製作。',recordIds:['synthetic'],elapsedMs:2,receipt});
+    await registerHermesSearchTrialRoutes(app,{isEnabled:()=>true,scope:async()=>({enabled:true}),answer,close:vi.fn()} as never);
+    const token=jwt.sign({sub:'reader',username:'reader',role:'VIEWER'},env.JWT_ACCESS_SECRET);
+    const response=await app.inject({method:'POST',url:'/assembly/hermes-search-trial/answer',headers:{authorization:`Bearer ${token}`},payload:{question:'溶接の不適合'}});
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).not.toHaveProperty('receipt');
+    const line=output.find((entry)=>entry.msg==='Hermes search receipt');
+    expect(line?.hermesReceipt).toMatchObject({...receipt,question:'溶接の不適合'});
+    expect(JSON.stringify(line)).not.toContain('再製作');
+    await app.close();
+  });
 });

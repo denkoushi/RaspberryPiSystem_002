@@ -49,7 +49,16 @@ export async function registerHermesSearchTrialRoutes(app: FastifyInstance, serv
       sessionId: z.string().uuid().optional()
     }).strict().parse(request.body);
     if (!service.isEnabled()) return reply.code(503).send({code:'HERMES_SEARCH_DISABLED',message:'JEV記録検索は無効です。'});
-    try { return await service.answer(question, sessionId); }
+    try {
+      const { receipt, ...answer } = await service.answer(question, sessionId);
+      if (receipt) {
+        // One line per answer with the question text and the planner decisions. Record text
+        // is not included; the kiosk response never carries the receipt.
+        const requestId = /^[A-Za-z0-9_-]{1,64}$/u.test(request.id) ? request.id : undefined;
+        app.log.info({ requestId, hermesReceipt: { ...receipt, question } }, 'Hermes search receipt');
+      }
+      return answer;
+    }
     catch (error) {
       const diagnostic = safeWorkerFailureDiagnostic(error);
       if (diagnostic) {

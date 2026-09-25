@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadNonconformityCatalog } from './catalog.mjs';
-import { createPlanner } from './planner-jev.mjs';
+import { summarizeAnswers, createPlanner } from './planner-jev.mjs';
 import { buildValueIndex } from './value-index.mjs';
 
 const catalog = loadNonconformityCatalog();
@@ -413,3 +413,21 @@ test('a low-confidence department value asks for clarification instead of a cont
   assert.deepEqual(plan.unresolved[0].candidates, ['北海工場製造部機械課']);
 });
 
+
+test('the planner receipt maps a field choice to its value and keeps top probabilities', () => {
+  const questions = {
+    field_0: { type: 'choice', instructions: 'x', criteria: { v0: 'South Shop', none: 'この語は絞り込み条件にしない' } },
+    turn: { type: 'choice', instructions: 'x', criteria: { new_search: 'a', refine: 'b' } },
+    content: { type: 'noul', instructions: 'x', criteria: { true: 'a', false: 'b' } },
+    limit: { type: 'choice', instructions: 'x', criteria: { 2: '2件' } },
+  };
+  const summary = summarizeAnswers(questions, {
+    field_0: { type: 'choice', choice: 'v0', confidence: 0.91234, probabilities: { v0: 0.9, none: 0.1 } },
+    turn: { type: 'choice', choice: 'refine' },
+    content: { type: 'noul', noul: 0.12345 },
+  });
+  assert.deepEqual(summary.field_0, { choice: 'South Shop', confidence: 0.912, top: [['South Shop', 0.9], ['この語は絞り込み条件にしない', 0.1]] });
+  assert.deepEqual(summary.turn, { choice: 'refine' });
+  assert.deepEqual(summary.content, { noul: 0.123 });
+  assert.deepEqual(summary.limit, { missing: true });
+});
