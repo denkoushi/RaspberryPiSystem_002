@@ -7,8 +7,8 @@ import { buildValueIndex } from './value-index.mjs';
 const catalog = loadNonconformityCatalog();
 const fixedDescriptions = new Set([
   'この語は絞り込み条件にしない',
-  '直前の計画は使わず、今回の発話だけで検索する',
-  '直前の計画を土台に、今回選んだ条件で更新する',
+  '`request` だけで探す条件が完結している、または `previous_plan` の組織や範囲を外す・置き換える（例: 全部門で、〇〇課の最近の不適合N件、別の不具合の不適合）',
+  '`request` が `previous_plan` の結果をさらに絞る・件数を変える・組織を追加する（例: そのうち〇〇の、〇〇に限定して、N件にして、〇〇も見る）',
   '日付が新しい順',
   '意味の近さ順',
   '1件', '2件', '3件', '5件', '10件', '20件',
@@ -81,8 +81,10 @@ test('planner can refine a previous plan without a second evaluate call', async 
     assertChoicesFromCandidates(input.questions, ['South Shop']);
     // The current utterance alone is judged; the previous plan is context only.
     assert.equal(input.state.request, 'South Shopも見る');
-    assert.equal(input.state.relatedHistory.length, 1);
-    assert.match(input.state.relatedHistory[0].content, /Lathe-1/u);
+    assert.equal(input.state.previous_plan.filters[0].values[0], 'Lathe-1');
+    for (const [id, question] of Object.entries(input.questions)) {
+      assert.match(question.instructions, /`request`/u, `${id} names the current utterance`);
+    }
     return {
       answers: {
         term_0: { type: 'choice', choice: 'v0' },
@@ -437,4 +439,21 @@ test('a refine turn without its own content keeps the previous content condition
   assert.equal(refined.plan.filters.some((filter) => filter.values[0] === 'South Shop'), true);
   const fresh = await createPlanner({ evaluate }).plan({ question: 'South Shopだけ', previousPlan: null, catalog, candidates });
   assert.equal(fresh.plan.semanticQuery, '');
+});
+
+test('a first turn keeps the original question wording and sends no previous plan', async () => {
+  let seen = null;
+  const evaluate = async (input) => {
+    seen = input;
+    return { answers: { term_0: { type: 'choice', choice: 'v0' }, sort: { type: 'choice', choice: 'recent' }, limit: { type: 'choice', choice: '5' }, content: { type: 'noul', noul: 0.1 } } };
+  };
+  await createPlanner({ evaluate }).plan({
+    question: 'South Shopの不適合',
+    previousPlan: null,
+    catalog,
+    candidates: [{ term: 'South Shop', source: 'nonconformity', field: 'originDepartmentName', values: ['South Shop'] }],
+  });
+  assert.equal('previous_plan' in seen.state, false);
+  for (const question of Object.values(seen.questions)) assert.doesNotMatch(question.instructions, /`request`/u);
+  assert.match(seen.questions.content.instructions, /^質問は、/u);
 });
