@@ -22,7 +22,9 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - [x] (2026-09-26) Milestone 3: Kiosk setup screen gets an on-screen PIN keypad and a tabbed shell, with the NFCタグ and 棚・引き出し tabs. Related web tests pass (141 files, 731 tests).
 - [x] (2026-09-26) Milestone 3 merged as PR #1508 (merge SHA c9905040).
 - [x] (2026-09-26) Milestone 4: Kiosk setup 登録待ち tab becomes a step-by-step registration flow with automatic NFC reads (`InventoryRegistrationTab`). Photo delete asks inline instead of `window.confirm`. Related web tests 142 files / 734 tests pass.
-- [ ] Milestone 5: Kiosk setup アイテム編集 tab (move, item tag swap, photo order and delete, item delete); the kiosk stops using the admin page component.
+- [x] (2026-09-26) Milestone 2 deployed to Pi5 (run 20260926-105538-221a46, recap failed=0 unreachable=0; health ok).
+- [x] (2026-09-26) Milestone 4 merged as PR #1509 (merge SHA 1992470e).
+- [x] (2026-09-26) Milestone 5: Kiosk setup アイテム編集 tab (move to a free drawer, add another drawer with a held tag and count, photo order and delete, item delete with confirm). Item tag swap lives in the NFCタグ tab. The kiosk no longer imports `RaspiInventoryPage`, whose NFC listener is now limited to the admin route. Related web tests 143 files / 737 tests pass.
 - [ ] Milestone 6: Knowledge record and final verification on a kiosk-sized viewport.
 
 ## Surprises & Discoveries
@@ -75,6 +77,9 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
   Date/Author: 2026-09-26 / Claude.
 - Decision: 棚・引き出し adds the next consecutive number with one touch, and gap numbers are left to the admin PC page.
   Rationale: This avoids a keypad step for the common case. A new area name is the only text on the kiosk and sits behind a "keyboard terminals" fold.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: The history table and cancelling another terminal's transaction stay on the admin PC page only.
+  Rationale: On the kiosk, the daily screen already undoes the terminal's own last action. Cross-terminal cancellation is an administrative correction that needs the full history table, which does not fit a touch screen.
   Date/Author: 2026-09-26 / Claude.
 - Decision (was open; user approved 2026-09-26): In the kiosk registration flow, the 名前など step is optional. It is prefilled with the current default (`ItemlistRaspi <sourceItemId>`), and model and usage are left blank. The step offers the ordinary text input, which works on terminals with a keyboard and IBus. Japanese renaming on keyboard-less terminals is done later on the admin PC page.
   Rationale: The on-screen keyboard cannot type Japanese, and building a kana keyboard is outside this scope. Ask the user before Milestone 4 whether this default is acceptable.

@@ -23,8 +23,8 @@ vi.mock('../../hooks/useNfcStream', () => ({
 vi.mock('../../features/kiosk/inventory/setup/InventoryRegistrationTab', () => ({
   InventoryRegistrationTab: ({ accessPassword }: { accessPassword: string }) => <div>registration-open:{accessPassword}</div>
 }));
-vi.mock('../admin/RaspiInventoryPage', () => ({
-  RaspiInventoryPage: ({ accessPassword }: { accessPassword?: string }) => <div>settings-open:{accessPassword}</div>
+vi.mock('../../features/kiosk/inventory/setup/InventoryItemEditTab', () => ({
+  InventoryItemEditTab: ({ accessPassword }: { accessPassword: string }) => <div>item-edit-open:{accessPassword}</div>
 }));
 
 function renderPage() {
@@ -83,7 +83,7 @@ describe('KioskItemInventorySettingsPage', () => {
     expect(await screen.findByRole('tab', { name: '登録待ち' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('registration-open:2520')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'アイテム編集' }));
-    expect(screen.getByText('settings-open:2520')).toBeInTheDocument();
+    expect(screen.getByText('item-edit-open:2520')).toBeInTheDocument();
     prompt.mockRestore();
   });
 
