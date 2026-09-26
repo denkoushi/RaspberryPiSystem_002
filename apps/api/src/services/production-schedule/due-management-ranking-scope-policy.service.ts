@@ -1,4 +1,4 @@
-import { resolveSiteKeyFromScopeKey } from '../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../lib/site-directory.js';
 
 export const GLOBAL_SHARED_LOCATION_KEY = 'shared-global-rank';
 export const LOCAL_TEMPORARY_OVERRIDE_TTL_MINUTES = 8 * 60;
@@ -21,7 +21,7 @@ export function resolveRankingScopePolicy(params: {
   targetLocation: string;
 }): RankingScopePolicy {
   const normalizedScope = (params.requestedScope ?? '').trim();
-  const siteKey = resolveSiteKeyFromScopeKey(params.targetLocation);
+  const siteKey = resolveSiteKeyForScopeKey(params.targetLocation);
   if (normalizedScope === 'locationScoped') {
     return {
       scope: 'locationScoped',

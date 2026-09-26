@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { assertRegisteredDeviceScopeKey } from '../../../lib/manual-order-device-scope.js';
 import {
   deleteProductionScheduleOrderSplits,
@@ -68,7 +68,7 @@ async function resolveSplitMutationLocation(params: {
         );
       }
       await assertRegisteredDeviceScopeKey(requestedTargetDeviceScopeKey);
-      return resolveSiteKeyFromScopeKey(requestedTargetDeviceScopeKey);
+      return resolveSiteKeyForScopeKey(requestedTargetDeviceScopeKey);
     }
 
     if (requestedTargetDeviceScopeKey) {
@@ -87,7 +87,7 @@ async function resolveSplitMutationLocation(params: {
         'TARGET_LOCATION_FORBIDDEN'
       );
     }
-    return resolveSiteKeyFromScopeKey(deviceScopeKey);
+    return resolveSiteKeyForScopeKey(deviceScopeKey);
   }
 
   const requestedTargetLocation = body.targetLocation?.trim();
@@ -163,7 +163,7 @@ export async function registerProductionScheduleOrderSplitRoutes(
         actorClientKey: clientKey,
         actorLocation,
         targetLocation: locationKey,
-        siteKey: resolveSiteKeyFromScopeKey(locationKey),
+        siteKey: resolveSiteKeyForScopeKey(locationKey),
         requestId: request.id
       }
     });
@@ -190,7 +190,7 @@ export async function registerProductionScheduleOrderSplitRoutes(
         actorClientKey: clientKey,
         actorLocation,
         targetLocation: locationKey,
-        siteKey: resolveSiteKeyFromScopeKey(locationKey),
+        siteKey: resolveSiteKeyForScopeKey(locationKey),
         requestId: request.id
       }
     });
@@ -221,7 +221,7 @@ export async function registerProductionScheduleOrderSplitRoutes(
         actorClientKey: clientKey,
         actorLocation,
         targetLocation: locationKey,
-        siteKey: resolveSiteKeyFromScopeKey(locationKey),
+        siteKey: resolveSiteKeyForScopeKey(locationKey),
         requestId: request.id
       }
     });
@@ -242,7 +242,7 @@ export async function registerProductionScheduleOrderSplitRoutes(
       audit: {
         actorClientKey: clientKey,
         actorLocation,
-        targetLocation: resolveSiteKeyFromScopeKey(deviceScopeKey),
+        targetLocation: resolveSiteKeyForScopeKey(deviceScopeKey),
         siteKey: locationScopeContext.siteKey,
         requestId: request.id
       }

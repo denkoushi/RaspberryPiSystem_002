@@ -1,7 +1,7 @@
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
 import { assertRegisteredDeviceScopeKey } from '../../../lib/manual-order-device-scope.js';
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { canProxyTargetLocation } from '../shared.js';
 
 /**
@@ -31,7 +31,7 @@ export async function resolveProductionScheduleAssignmentLocationKey(params: {
       );
     }
     await assertRegisteredDeviceScopeKey(requested);
-    return resolveSiteKeyFromScopeKey(requested);
+    return resolveSiteKeyForScopeKey(requested);
   }
   if (requested) {
     throw new ApiError(
@@ -41,5 +41,5 @@ export async function resolveProductionScheduleAssignmentLocationKey(params: {
       'TARGET_DEVICE_SCOPE_KEY_FORBIDDEN'
     );
   }
-  return resolveSiteKeyFromScopeKey(actor);
+  return resolveSiteKeyForScopeKey(actor);
 }

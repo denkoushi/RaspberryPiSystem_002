@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { logger } from '../../../lib/logger.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
@@ -17,7 +17,7 @@ import { parseYearMonthRangeInclusive } from './year-month-range.js';
 export { SHARED_LOAD_BALANCING_SITE_KEY } from './load-balancing-settings-merge.js';
 
 const normalizeLocation = (location: string): string => location.trim();
-const normalizeSiteKey = (location: string): string => resolveSiteKeyFromScopeKey(normalizeLocation(location));
+const normalizeSiteKey = (location: string): string => resolveSiteKeyForScopeKey(normalizeLocation(location));
 
 const normalizeResourceCd = (value: string): string => value.trim().toUpperCase();
 

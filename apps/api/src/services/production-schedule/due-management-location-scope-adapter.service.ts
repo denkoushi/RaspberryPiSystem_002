@@ -1,4 +1,5 @@
-import { DEFAULT_LOCATION_SCOPE_KEY, resolveSiteKeyFromScopeKey } from '../../lib/location-scope-resolver.js';
+import { DEFAULT_LOCATION_SCOPE_KEY } from '../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../lib/site-directory.js';
 import {
   getDueManagementSeibanDetail,
   listDueManagementSummaries,
@@ -30,7 +31,7 @@ export const resolveDueManagementLocationScope = (
 ): ResolvedDueManagementLocationScope => {
   const deviceScopeKey = normalizeScopeToken(scope.deviceScopeKey);
   const fallbackScopeKey = deviceScopeKey || DEFAULT_LOCATION_SCOPE_KEY;
-  const siteKey = normalizeScopeToken(scope.siteKey) || resolveSiteKeyFromScopeKey(fallbackScopeKey);
+  const siteKey = normalizeScopeToken(scope.siteKey) || resolveSiteKeyForScopeKey(fallbackScopeKey);
   return {
     deviceScopeKey: deviceScopeKey || fallbackScopeKey,
     siteKey
