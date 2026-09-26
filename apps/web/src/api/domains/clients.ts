@@ -70,6 +70,18 @@ export function guessLegacySiteKey(client: Pick<ClientDevice, 'location' | 'name
 
 export type ClientLogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
+export interface KioskSite {
+  key: string;
+  displayName: string;
+  sortOrder: number;
+}
+
+/** キオスク（x-client-key）向けの拠点一覧 */
+export async function getKioskSites() {
+  const { data } = await api.get<{ sites: KioskSite[] }>('/kiosk/sites');
+  return data.sites;
+}
+
 export interface ClientLogEntry {
   id?: string;
   clientId: string;

@@ -17,6 +17,7 @@ const mockUseResources = vi.fn();
 const mockIsMacEnvironment = vi.fn();
 
 vi.mock('../../api/hooks', () => ({
+  useKioskSites: () => ({ data: undefined }),
   useKioskProductionScheduleLoadBalancingOverview: (...args: unknown[]) => mockUseOverview(...args),
   useKioskProductionScheduleResources: (...args: unknown[]) => mockUseResources(...args),
   useKioskProductionScheduleLoadBalancingMachineMonthlyLoad: (...args: unknown[]) =>

@@ -7,6 +7,7 @@ import {
   getClientLogs,
   getClientStatuses,
   getClientAlerts,
+  getKioskSites,
   acknowledgeAlert,
   createSite,
   getSites,
@@ -73,6 +74,16 @@ export function useCreateSite() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sites'] });
     }
+  });
+}
+
+/** キオスクの拠点選択肢（管理画面で登録した拠点） */
+export function useKioskSites(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['kiosk-sites'],
+    queryFn: getKioskSites,
+    staleTime: 5 * 60_000,
+    enabled: options?.enabled ?? true
   });
 }
 
