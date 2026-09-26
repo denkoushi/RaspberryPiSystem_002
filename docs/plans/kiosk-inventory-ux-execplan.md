@@ -20,7 +20,8 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - [x] (2026-09-26) Milestone 1 deployed to Pi5 (run 20260926-101836-a72d4c, recap failed=0 unreachable=0; `/api/system/health` ok; unauthenticated correction returns 401).
 - [x] (2026-09-26) Milestone 2 merged as PR #1507 (merge SHA 13617380).
 - [x] (2026-09-26) Milestone 3: Kiosk setup screen gets an on-screen PIN keypad and a tabbed shell, with the NFCタグ and 棚・引き出し tabs. Related web tests pass (141 files, 731 tests).
-- [ ] Milestone 4: Kiosk setup 登録待ち tab becomes a step-by-step registration flow with automatic NFC reads.
+- [x] (2026-09-26) Milestone 3 merged as PR #1508 (merge SHA c9905040).
+- [x] (2026-09-26) Milestone 4: Kiosk setup 登録待ち tab becomes a step-by-step registration flow with automatic NFC reads (`InventoryRegistrationTab`). Photo delete asks inline instead of `window.confirm`. Related web tests 142 files / 734 tests pass.
 - [ ] Milestone 5: Kiosk setup アイテム編集 tab (move, item tag swap, photo order and delete, item delete); the kiosk stops using the admin page component.
 - [ ] Milestone 6: Knowledge record and final verification on a kiosk-sized viewport.
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { InventoryPinPad } from '../../features/kiosk/inventory/setup/InventoryPinPad';
+import { InventoryRegistrationTab } from '../../features/kiosk/inventory/setup/InventoryRegistrationTab';
 import { InventoryShelvesTab } from '../../features/kiosk/inventory/setup/InventoryShelvesTab';
 import { InventoryTagsTab } from '../../features/kiosk/inventory/setup/InventoryTagsTab';
 import { kioskButtonSecondaryClassName } from '../../features/kiosk/kioskTheme';
@@ -47,10 +48,11 @@ export function KioskItemInventorySettingsPage() {
         ))}
       </div>
       <div role="tabpanel" aria-label={TABS.find((entry) => entry.id === tab)?.label}>
+        {tab === 'review' ? <InventoryRegistrationTab accessPassword={accessPassword} /> : null}
         {tab === 'shelves' ? <InventoryShelvesTab accessPassword={accessPassword} /> : null}
         {tab === 'tags' ? <InventoryTagsTab accessPassword={accessPassword} /> : null}
-        {/* Registration and item editing move to kiosk components in Milestones 4 and 5. */}
-        {tab === 'review' || tab === 'items' ? <RaspiInventoryPage accessPassword={accessPassword} /> : null}
+        {/* Item editing moves to a kiosk component in Milestone 5. */}
+        {tab === 'items' ? <RaspiInventoryPage accessPassword={accessPassword} /> : null}
       </div>
     </section>
   );
