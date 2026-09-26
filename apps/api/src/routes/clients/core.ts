@@ -53,7 +53,9 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
       defaultMode: body.defaultMode ?? undefined,
       kioskInitialRoute: body.kioskInitialRoute,
       haizenEdgeEnabled: body.haizenEdgeEnabled,
-      shelfLayoutEditEnabled: body.shelfLayoutEditEnabled
+      shelfLayoutEditEnabled: body.shelfLayoutEditEnabled,
+      siteKey: body.siteKey,
+      canProxyOtherDevices: body.canProxyOtherDevices
     });
     return { client };
   });

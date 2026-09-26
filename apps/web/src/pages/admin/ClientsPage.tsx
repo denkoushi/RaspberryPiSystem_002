@@ -8,7 +8,15 @@ import {
 import clsx from 'clsx';
 import { useMemo, useState } from 'react';
 
-import { useClients, useClientMutations, useClientStatuses, useClientLogs } from '../../api/hooks';
+import { guessLegacySiteKey } from '../../api/client';
+import {
+  useClients,
+  useClientMutations,
+  useClientStatuses,
+  useClientLogs,
+  useCreateSite,
+  useSites
+} from '../../api/hooks';
 import { SignagePdfManager } from '../../components/signage/SignagePdfManager';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -48,7 +56,13 @@ export function ClientsPage() {
   const [selectedInitialRoute, setSelectedInitialRoute] = useState<EditableKioskInitialRoute>('');
   const [editingHaizenEdge, setEditingHaizenEdge] = useState(false);
   const [editingShelfLayout, setEditingShelfLayout] = useState(false);
+  const [editingSiteKey, setEditingSiteKey] = useState('');
+  const [editingProxy, setEditingProxy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const sitesQuery = useSites();
+  const createSiteMutation = useCreateSite();
+  const [newSiteKey, setNewSiteKey] = useState('');
+  const [siteError, setSiteError] = useState<string | null>(null);
   const dateFormatter = useMemo(
     () =>
       new Intl.DateTimeFormat('ja-JP', {
@@ -71,6 +85,8 @@ export function ClientsPage() {
     setSelectedInitialRoute(normalizeKioskInitialRoute(client.kioskInitialRoute) ?? '');
     setEditingHaizenEdge(Boolean(client.haizenEdgeEnabled));
     setEditingShelfLayout(Boolean(client.shelfLayoutEditEnabled));
+    setEditingSiteKey(client.siteKey ?? '');
+    setEditingProxy(Boolean(client.canProxyOtherDevices));
     setEditError(null);
   };
 
@@ -93,7 +109,9 @@ export function ClientsPage() {
           defaultMode: selectedMode,
           kioskInitialRoute: selectedInitialRoute || null,
           haizenEdgeEnabled: editingHaizenEdge,
-          shelfLayoutEditEnabled: editingShelfLayout
+          shelfLayoutEditEnabled: editingShelfLayout,
+          siteKey: editingSiteKey || null,
+          canProxyOtherDevices: editingProxy
         }
       });
       setEditingId(null);
@@ -102,6 +120,8 @@ export function ClientsPage() {
       setSelectedInitialRoute('');
       setEditingHaizenEdge(false);
       setEditingShelfLayout(false);
+      setEditingSiteKey('');
+      setEditingProxy(false);
       setEditError(null);
     } catch {
       setEditError('保存に失敗しました。時間をおいて再試行してください。');
@@ -115,7 +135,28 @@ export function ClientsPage() {
     setSelectedInitialRoute('');
     setEditingHaizenEdge(false);
     setEditingShelfLayout(false);
+    setEditingSiteKey('');
+    setEditingProxy(false);
     setEditError(null);
+  };
+
+  const handleCreateSite = async () => {
+    const key = newSiteKey.trim();
+    if (!key) {
+      setSiteError('拠点名を入力してください。');
+      return;
+    }
+    if (key.includes(' - ')) {
+      setSiteError('拠点名に「 - 」は使えません。');
+      return;
+    }
+    try {
+      await createSiteMutation.mutateAsync({ key });
+      setNewSiteKey('');
+      setSiteError(null);
+    } catch {
+      setSiteError('拠点の登録に失敗しました。同じ名前が既にないか確認してください。');
+    }
   };
 
   const formatDateTime = (iso?: string | null) => (iso ? dateFormatter.format(new Date(iso)) : '-');
@@ -320,6 +361,8 @@ export function ClientsPage() {
                 <tr className="border-b-2 border-slate-500">
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">名前</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">場所</th>
+                  <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">拠点</th>
+                  <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">代理操作</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">APIキー</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">起動先</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">Zero2W配膳</th>
@@ -346,6 +389,52 @@ export function ClientsPage() {
                         )}
                       </td>
                       <td className="px-4 py-2 text-sm font-semibold text-slate-700">{client.location ?? '-'}</td>
+                      <td className="px-4 py-2 align-top">
+                        {isEditing ? (
+                          <div className="flex min-w-[12rem] flex-col gap-1">
+                            <select
+                              value={editingSiteKey}
+                              onChange={(e) => setEditingSiteKey(e.target.value)}
+                              className="rounded-md border-2 border-slate-500 bg-white px-2 py-1 text-sm font-semibold text-slate-900"
+                              aria-label="拠点"
+                            >
+                              <option value="">未設定（場所から推測: {guessLegacySiteKey(client)}）</option>
+                              {(sitesQuery.data ?? []).map((site) => (
+                                <option key={site.key} value={site.key}>
+                                  {site.displayName}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="text-xs text-slate-600">
+                              拠点を変えると、この端末の製番ボードなどは新しい拠点のデータを表示します。
+                            </p>
+                          </div>
+                        ) : client.siteKey ? (
+                          <span className="text-sm font-semibold text-slate-900">{client.siteKey}</span>
+                        ) : (
+                          <span className="text-sm font-semibold text-slate-500">
+                            未設定（推測: {guessLegacySiteKey(client)}）
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 align-top">
+                        {isEditing ? (
+                          <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-900">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-emerald-600"
+                              checked={editingProxy}
+                              onChange={(e) => setEditingProxy(e.target.checked)}
+                              aria-label="他端末の代理操作を許可"
+                            />
+                            許可
+                          </label>
+                        ) : (
+                          <span className="text-sm font-semibold text-slate-900">
+                            {client.canProxyOtherDevices ? '許可' : '—'}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-2 font-mono text-sm font-semibold text-slate-700">{client.apiKey}</td>
                       <td className="px-4 py-2">
                         {editingId === client.id ? (
@@ -475,6 +564,45 @@ export function ClientsPage() {
             <p className="text-sm text-slate-700">クライアント端末が登録されていません。</p>
           )}
         </Card>
+      <Card title="拠点（工場）">
+        <div className="space-y-3">
+          {sitesQuery.isError ? (
+            <p className="text-sm font-semibold text-red-600">拠点一覧の取得に失敗しました</p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">
+              {(sitesQuery.data ?? []).map((site) => (
+                <li
+                  key={site.key}
+                  className="rounded-md border-2 border-slate-300 px-3 py-1 text-sm font-semibold text-slate-900"
+                >
+                  {site.displayName}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex flex-wrap items-start gap-2">
+            <Input
+              value={newSiteKey}
+              onChange={(e) => setNewSiteKey(e.target.value)}
+              maxLength={50}
+              placeholder="新しい拠点名（例: 第1工場）"
+              aria-label="新しい拠点名"
+            />
+            <Button
+              type="button"
+              onClick={handleCreateSite}
+              disabled={createSiteMutation.isPending}
+              className="px-3 py-1 text-sm"
+            >
+              拠点を追加
+            </Button>
+          </div>
+          {siteError ? <p className="text-xs font-semibold text-red-600">{siteError}</p> : null}
+          <p className="text-xs text-slate-600">
+            端末ごとの拠点は下の「クライアント端末管理」で設定します。未設定の端末は、場所の「 - 」より前の文字を拠点として扱います。
+          </p>
+        </div>
+      </Card>
       <SignagePdfManager title="サイネージPDFアップロード（キオスク向け）" />
     </div>
   );

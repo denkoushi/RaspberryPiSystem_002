@@ -5,6 +5,7 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
+import { invalidateSiteDirectory } from '../../lib/site-directory.js';
 import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-config.js';
 import {
   resolveTelemetryAlertDecision,
@@ -74,6 +75,12 @@ async function createTelemetrySlackAlerts(params: {
  * 管理者のみ: 端末を inventory 等から登録・再同期する（create + update の upsert）。
  * update では表示名を上書きしない（管理画面の手動編集と競合させない）。
  */
+/** 空文字・空白だけの location は「指定なし」とし、既存値を消さない。 */
+function normalizeOptionalLocation(location: string | null | undefined): string | undefined {
+  const trimmed = location?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 export async function registerClientDeviceAdmin(params: {
   apiKey: string;
   name: string;
@@ -83,12 +90,12 @@ export async function registerClientDeviceAdmin(params: {
   return prisma.clientDevice.upsert({
     where: { apiKey: params.apiKey },
     update: {
-      location: params.location ?? undefined,
+      location: normalizeOptionalLocation(params.location),
       lastSeenAt: now,
     },
     create: {
       name: params.name,
-      location: params.location ?? undefined,
+      location: normalizeOptionalLocation(params.location),
       apiKey: params.apiKey,
       lastSeenAt: now,
     },
@@ -105,7 +112,7 @@ export async function touchClientHeartbeat(params: { clientKey: string; location
     return await prisma.clientDevice.update({
       where: { apiKey: params.clientKey },
       data: {
-        location: params.location ?? undefined,
+        location: normalizeOptionalLocation(params.location),
         lastSeenAt: now,
       },
     });
@@ -145,9 +152,11 @@ export async function updateClientDevice(params: {
   kioskInitialRoute?: string | null;
   haizenEdgeEnabled?: boolean;
   shelfLayoutEditEnabled?: boolean;
+  siteKey?: string | null;
+  canProxyOtherDevices?: boolean;
 }) {
   try {
-    return await prisma.clientDevice.update({
+    const updated = await prisma.clientDevice.update({
       where: { id: params.id },
       data: {
         name: params.name ?? undefined,
@@ -156,12 +165,23 @@ export async function updateClientDevice(params: {
         ...(params.haizenEdgeEnabled !== undefined ? { haizenEdgeEnabled: params.haizenEdgeEnabled } : {}),
         ...(params.shelfLayoutEditEnabled !== undefined
           ? { shelfLayoutEditEnabled: params.shelfLayoutEditEnabled }
+          : {}),
+        ...(params.siteKey !== undefined ? { siteKey: params.siteKey } : {}),
+        ...(params.canProxyOtherDevices !== undefined
+          ? { canProxyOtherDevices: params.canProxyOtherDevices }
           : {})
       }
     });
+    if (params.siteKey !== undefined) {
+      invalidateSiteDirectory();
+    }
+    return updated;
   } catch (error) {
     if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
       throw new ApiError(404, 'クライアントデバイスが見つかりません');
+    }
+    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2003') {
+      throw new ApiError(400, '指定された拠点は登録されていません', undefined, 'UNKNOWN_SITE');
     }
     throw error;
   }
