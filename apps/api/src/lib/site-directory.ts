@@ -21,11 +21,15 @@ export type SiteDirectoryClient = {
       select: { name: true; location: true; siteKey: true };
     }): Promise<SiteDirectoryDeviceRow[]>;
   };
+  site: {
+    findMany(args: { select: { key: true } }): Promise<Array<{ key: string }>>;
+  };
 };
 
 export const SITE_DIRECTORY_TTL_MS = 30_000;
 
 let explicitSiteByDeviceScopeKey: ReadonlyMap<string, string> = new Map();
+let registeredSiteKeys: ReadonlySet<string> = new Set();
 let lastAttemptAt = 0;
 let inflight: Promise<void> | null = null;
 
@@ -55,8 +59,12 @@ export function buildExplicitSiteMap(rows: readonly SiteDirectoryDeviceRow[]): M
 
 export async function refreshSiteDirectory(client: SiteDirectoryClient, now: number = Date.now()): Promise<void> {
   lastAttemptAt = now;
-  const rows = await client.clientDevice.findMany({ select: { name: true, location: true, siteKey: true } });
+  const [rows, sites] = await Promise.all([
+    client.clientDevice.findMany({ select: { name: true, location: true, siteKey: true } }),
+    client.site.findMany({ select: { key: true } })
+  ]);
   explicitSiteByDeviceScopeKey = buildExplicitSiteMap(rows);
+  registeredSiteKeys = new Set(sites.map((site) => site.key));
 }
 
 /**
@@ -79,15 +87,19 @@ export function invalidateSiteDirectory(): void {
 
 /**
  * scope 文字列（deviceScopeKey または既に siteKey の値）から拠点を求める。
- * 登録端末の deviceScopeKey に明示拠点があればそれを、なければ従来の推測を返す。
+ * 登録済みの拠点キー（Site.key）はそのまま返す。これにより一度求めた拠点を再度渡しても
+ * 別の拠点へ変わらない（冪等）。それ以外は、登録端末の deviceScopeKey に明示拠点があれば
+ * それを、なければ従来の推測を返す。
  */
 export function resolveSiteKeyForScopeKey(scopeKey: string): string {
   const trimmed = scopeKey.trim();
+  if (registeredSiteKeys.has(trimmed)) return trimmed;
   return explicitSiteByDeviceScopeKey.get(trimmed) ?? resolveSiteKeyFromScopeKey(trimmed);
 }
 
 export function resetSiteDirectoryForTest(): void {
   explicitSiteByDeviceScopeKey = new Map();
+  registeredSiteKeys = new Set();
   lastAttemptAt = 0;
   inflight = null;
 }
