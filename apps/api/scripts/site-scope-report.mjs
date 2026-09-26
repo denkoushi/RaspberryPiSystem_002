@@ -12,6 +12,8 @@
  */
 import { prisma } from '../dist/lib/prisma.js';
 import { resolveDeviceScopeKey, resolveSiteKeyFromScopeKey } from '../dist/lib/location-scope-resolver.js';
+import { GLOBAL_SHARED_LOCATION_KEY } from '../dist/services/production-schedule/due-management-ranking-scope-policy.service.js';
+import { SHARED_RESOURCE_CATEGORY_LOCATION } from '../dist/services/production-schedule/policies/resource-category-policy.service.js';
 
 /** [table, column, role] — role says what the column holds today. */
 export const SITE_SCOPED_COLUMNS = [
@@ -52,6 +54,13 @@ export const SITE_SCOPED_COLUMNS = [
 
 const quoteIdent = (name) => `"${name.replaceAll('"', '""')}"`;
 
+/** Valid cross-site sentinels per table: they are not accidental sites and must not be merged. */
+const SHARED_SENTINELS_BY_TABLE = {
+  ProductionScheduleGlobalRank: [GLOBAL_SHARED_LOCATION_KEY],
+  ProductionScheduleGlobalRowRank: [GLOBAL_SHARED_LOCATION_KEY],
+  ProductionScheduleResourceCategoryConfig: [SHARED_RESOURCE_CATEGORY_LOCATION]
+};
+
 async function main() {
   const [sites, devices] = await Promise.all([
     prisma.site.findMany({ select: { key: true } }),
@@ -86,13 +95,19 @@ async function main() {
       table,
       column,
       role,
-      values: rows.map((row) => ({ value: row.value, count: row.count, ...classify(row.value) }))
+      values: rows.map((row) => ({
+        value: row.value,
+        count: row.count,
+        ...((SHARED_SENTINELS_BY_TABLE[table] ?? []).includes(row.value) ? { kind: 'shared-sentinel' } : classify(row.value))
+      }))
     });
   }
 
   const suspicious = tables.flatMap((entry) =>
     entry.values
-      .filter((value) => entry.role !== 'device' && value.kind !== 'registered-site')
+      .filter(
+        (value) => entry.role !== 'device' && value.kind !== 'registered-site' && value.kind !== 'shared-sentinel'
+      )
       .map((value) => ({ table: entry.table, column: entry.column, value: value.value, count: value.count, kind: value.kind }))
   );
 
