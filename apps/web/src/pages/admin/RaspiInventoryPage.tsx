@@ -86,7 +86,7 @@ function formatDate(value: string) {
 
 export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string } = {}) {
   const location = useLocation();
-  const isActiveRoute = location.pathname === '/admin/tools/raspi-inventory' || location.pathname === '/kiosk/inventory/settings';
+  const isActiveRoute = location.pathname === '/admin/tools/raspi-inventory';
   const nfcEvent = useNfcStream(isActiveRoute);
   const importsQuery = useInventoryImports(accessPassword);
   const messagesQuery = useInventoryImportMessages(accessPassword);

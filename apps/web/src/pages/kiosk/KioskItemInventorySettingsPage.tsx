@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { InventoryItemEditTab } from '../../features/kiosk/inventory/setup/InventoryItemEditTab';
 import { InventoryPinPad } from '../../features/kiosk/inventory/setup/InventoryPinPad';
 import { InventoryRegistrationTab } from '../../features/kiosk/inventory/setup/InventoryRegistrationTab';
 import { InventoryShelvesTab } from '../../features/kiosk/inventory/setup/InventoryShelvesTab';
 import { InventoryTagsTab } from '../../features/kiosk/inventory/setup/InventoryTagsTab';
 import { kioskButtonSecondaryClassName } from '../../features/kiosk/kioskTheme';
-import { RaspiInventoryPage } from '../admin/RaspiInventoryPage';
 
 type SetupTab = 'review' | 'shelves' | 'tags' | 'items';
 
@@ -51,8 +51,7 @@ export function KioskItemInventorySettingsPage() {
         {tab === 'review' ? <InventoryRegistrationTab accessPassword={accessPassword} /> : null}
         {tab === 'shelves' ? <InventoryShelvesTab accessPassword={accessPassword} /> : null}
         {tab === 'tags' ? <InventoryTagsTab accessPassword={accessPassword} /> : null}
-        {/* Item editing moves to a kiosk component in Milestone 5. */}
-        {tab === 'items' ? <RaspiInventoryPage accessPassword={accessPassword} /> : null}
+        {tab === 'items' ? <InventoryItemEditTab accessPassword={accessPassword} /> : null}
       </div>
     </section>
   );
