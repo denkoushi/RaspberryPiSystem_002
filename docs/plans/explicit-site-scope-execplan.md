@@ -41,7 +41,11 @@ After this plan is complete, an administrator can open 管理画面 > クライ�
 - [ ] Follow-up (optional, separate PR because the CI change classifier treats `scripts/register-clients.sh` as an unknown path and runs the full suite): make the script omit an empty location instead of relying on the API.
 - [x] (2026-09-26) Milestone 3a merged as PR #1501 (merge `2b0b01d3`), including Codex-reported fixes: a site key may not equal an existing device scope key (409 `SITE_KEY_CONFLICTS_WITH_DEVICE`), and registration, heartbeat location changes and admin renames invalidate the site directory.
 - [x] (2026-09-26) Milestone 3b implemented on `feat/explicit-site-scope-m3b`: `GET /api/kiosk/sites` (x-client-key), migration `20260926130000_seed_planned_sites` registers トークプラザ and 第1工場 so the pickers keep their choices, and the five hard-coded lists (manual order, leader order board, load balancing proxy panel, due management, production schedule) use `useKioskSiteKeys`, which falls back to the old fixed list until the server list arrives. Evidence: web kiosk/admin tests 172 files / 942 tests plus 3 hook tests passed; site-scope API integration 8 tests passed on a disposable PostgreSQL.
-- [ ] Milestone 4: dry-run report, reviewed merge of accidental sites into 第2工場, and assignment of every production device to its site.
+- [x] (2026-09-26) Milestone 3b merged as PR #1502 (merge `9690bf39`), including Codex-reported fixes (site options refresh every 5 minutes; site display name always equals the key).
+- [x] (2026-09-26) Milestone 3a deployed to Pi5 only with run `20260926-042918-059d7a`: `SubState=exited`, `Result=success`, recap `ok=263 changed=31 unreachable=0 failed=0 skipped=38 rescued=0`.
+- [x] (2026-09-26) Milestone 4a implemented on `feat/explicit-site-scope-m4a`: read-only report `apps/api/scripts/site-scope-report.mjs` that counts rows per value for the 33 site- or device-scoped columns and classifies each value as a registered site, a registered device scope key (with the device's explicit and guessed site), an unregistered device of a registered site, or unknown. Verified on a disposable PostgreSQL with seeded rows under `Mac` and `raspi5_serber`.
+- [ ] Milestone 4a production run: after deploy, run the report on Pi5 and show the user the site-scoped values outside registered sites.
+- [ ] Milestone 4b: reviewed merge of accidental sites into 第2工場 and assignment of every production device to its site.
 - [ ] Milestone 5: remove the text-guess fallback once every device has an explicit site.
 
 ## Surprises & Discoveries
@@ -89,6 +93,12 @@ Milestone 3 lets an administrator manage sites and assign them. The admin API ga
 Milestone 3 is delivered as two pull requests to keep each change small: 3a (admin API, admin page, registration fixes) and 3b (web site pickers).
 
 Milestone 4 merges accidental sites. A script under `scripts/site-scope/` prints, for every site-scoped table, the row counts per site key and the rows that would conflict when a source site is merged into a target site, without writing. The user reviews the report and confirms the mapping (initially `Mac`, `raspi5_serber`, `ラズパイ5`, `factory`, `default` and the seed sites into `第2工場`, only where rows exist). The apply mode backs up the affected rows to a JSON file, then in one transaction per table re-keys source rows whose natural key is free in the target and skips rows that conflict (target wins), with ordered lists such as the 製番ボード registered numbers appended after the target's existing order. The same run assigns the explicit site to every production device. Production execution requires explicit user approval and is recorded in this plan.
+
+The report is run on Pi5 inside the API container, from the repository checkout on Pi5 at `/opt/RaspberryPiSystem_002`:
+
+    docker compose -f infrastructure/docker/docker-compose.server.yml exec -T -w /app/apps/api api node scripts/site-scope-report.mjs > /tmp/site-scope-report.json
+
+It only issues `SELECT` statements. The field `siteScopedValuesOutsideRegisteredSites` lists what the merge in Milestone 4b must handle.
 
 Milestone 5 removes the text guess. Once telemetry and a database query show that every active device has an explicit site, a device without one is rejected with a clear error on site-scoped screens, and the fallback code and its compatibility reads are removed in a separate pull request.
 
