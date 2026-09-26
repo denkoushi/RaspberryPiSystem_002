@@ -44,6 +44,40 @@ describe('site assignment administration', () => {
     );
   });
 
+  it('refuses a site key that equals an existing device scope key', async () => {
+    const device = await createTestClientDevice();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: { key: device.name }
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().errorCode ?? response.json().code).toBe('SITE_KEY_CONFLICTS_WITH_DEVICE');
+  });
+
+  it('follows a renamed or relocated device immediately', async () => {
+    await prisma.site.upsert({ where: { key: siteKey }, update: {}, create: { key: siteKey, displayName: siteKey } });
+    const device = await createTestClientDevice();
+    const headers = { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' };
+    await app.inject({ method: 'PUT', url: `/api/clients/${device.id}`, headers, payload: { siteKey } });
+
+    const renamed = `renamed-${Date.now()}`;
+    await app.inject({ method: 'PUT', url: `/api/clients/${device.id}`, headers, payload: { name: renamed } });
+    await app.inject({ method: 'GET', url: '/api/sites', headers: createAuthHeader(adminToken) });
+    expect(resolveSiteKeyForScopeKey(renamed)).toBe(siteKey);
+
+    const relocated = `relocated-${Date.now()}`;
+    await app.inject({
+      method: 'POST',
+      url: '/api/clients/heartbeat',
+      headers: { 'Content-Type': 'application/json', 'x-client-key': device.apiKey },
+      payload: { location: relocated }
+    });
+    await app.inject({ method: 'GET', url: '/api/sites', headers: createAuthHeader(adminToken) });
+    expect(resolveSiteKeyForScopeKey(relocated)).toBe(siteKey);
+  });
+
   it('requires a manager or admin for site administration', async () => {
     const viewer = await createTestUser('VIEWER');
     const response = await app.inject({ method: 'GET', url: '/api/sites', headers: createAuthHeader(viewer.token) });

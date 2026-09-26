@@ -87,7 +87,7 @@ export async function registerClientDeviceAdmin(params: {
   location?: string | null;
 }) {
   const now = new Date();
-  return prisma.clientDevice.upsert({
+  const device = await prisma.clientDevice.upsert({
     where: { apiKey: params.apiKey },
     update: {
       location: normalizeOptionalLocation(params.location),
@@ -100,6 +100,9 @@ export async function registerClientDeviceAdmin(params: {
       lastSeenAt: now,
     },
   });
+  // location が変わると端末スコープキーが変わるため、拠点の対応表を読み直させる。
+  invalidateSiteDirectory();
+  return device;
 }
 
 /**
@@ -108,14 +111,19 @@ export async function registerClientDeviceAdmin(params: {
  */
 export async function touchClientHeartbeat(params: { clientKey: string; location?: string | null }) {
   const now = new Date();
+  const location = normalizeOptionalLocation(params.location);
   try {
-    return await prisma.clientDevice.update({
+    const device = await prisma.clientDevice.update({
       where: { apiKey: params.clientKey },
       data: {
-        location: normalizeOptionalLocation(params.location),
+        location,
         lastSeenAt: now,
       },
     });
+    if (location !== undefined) {
+      invalidateSiteDirectory();
+    }
+    return device;
   } catch (error) {
     if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
       throw new ApiError(404, 'クライアントデバイスが見つかりません', undefined, 'CLIENT_DEVICE_NOT_FOUND');
@@ -172,7 +180,8 @@ export async function updateClientDevice(params: {
           : {})
       }
     });
-    if (params.siteKey !== undefined) {
+    // 拠点・端末名（location 未設定時の端末スコープキー）の変更を、次のリクエストから反映する。
+    if (params.siteKey !== undefined || params.name !== undefined) {
       invalidateSiteDirectory();
     }
     return updated;
