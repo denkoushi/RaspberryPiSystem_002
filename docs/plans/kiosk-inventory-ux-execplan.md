@@ -25,9 +25,14 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - [x] (2026-09-26) Milestone 2 deployed to Pi5 (run 20260926-105538-221a46, recap failed=0 unreachable=0; health ok).
 - [x] (2026-09-26) Milestone 4 merged as PR #1509 (merge SHA 1992470e).
 - [x] (2026-09-26) Milestone 5: Kiosk setup アイテム編集 tab (move to a free drawer, add another drawer with a held tag and count, photo order and delete, item delete with confirm). Item tag swap lives in the NFCタグ tab. The kiosk no longer imports `RaspiInventoryPage`, whose NFC listener is now limited to the admin route. Related web tests 143 files / 737 tests pass.
-- [ ] Milestone 6: Knowledge record and final verification on a kiosk-sized viewport.
+- [x] (2026-09-26) Milestone 5 merged as PR #1510 (merge SHA ec299635).
+- [ ] Deploy of Milestones 3–5 (run 20260926-112811-48762d failed safely: PR #1510 was merged right after the run started, so Pi5 fetched a SHA different from the plan and exited before changes; redeploy after main CI for ec299635).
+- [ ] Milestone 6 (completed: KB-409 knowledge record; remaining: visual check on a kiosk-sized viewport).
 
 ## Surprises & Discoveries
+
+- Observation: Merging to `main` while a standard release run is starting makes the run fail, because the Pi5 unit fetches `origin/main` a few seconds after it starts and refuses a SHA that differs from the planned `releaseSha`.
+  Evidence: run `20260926-112811-48762d` journal: `13617380d..ec2996352 main -> origin/main`, then `status=1/FAILURE` three seconds after start; Pi5 health ok with an unchanged uptime.
 
 - Observation: The kiosk has a touch panel and no physical keyboard. The shared on-screen keyboard only types A to Z and 0 to 9, so it cannot enter Japanese item names.
   Evidence: `apps/web/src/components/kiosk/KioskKeyboardModal.tsx` defines `NUMBER_KEYS` and `LETTER_ROWS` only. `docs/knowledge-base/frontend.md` records that touch-panel kiosks lack a keyboard. Some Pi4 kiosks do run IBus and mozc for Japanese input (`docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md`), but that needs a keyboard.
