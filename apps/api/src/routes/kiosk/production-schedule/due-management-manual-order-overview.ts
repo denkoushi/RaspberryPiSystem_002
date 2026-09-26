@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY } from '../../../lib/manual-order-device-scope.js';
 import {
   listDueManagementManualOrderOverview,
@@ -55,7 +55,7 @@ export async function registerProductionScheduleDueManagementManualOrderOverview
         if (
           deviceScopeKey &&
           deviceScopeKey !== MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY &&
-          resolveSiteKeyFromScopeKey(deviceScopeKey) !== siteKey
+          resolveSiteKeyForScopeKey(deviceScopeKey) !== siteKey
         ) {
           throw new ApiError(
             400,

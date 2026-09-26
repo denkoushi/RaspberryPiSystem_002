@@ -22,6 +22,8 @@ import { refreshProductionScheduleOrderSplitPilotGateCache } from './services/pr
 import { isCandidateValidationMode } from './bootstrap/candidate-validation.js';
 import { createSchedulerRuntimeState } from './bootstrap/scheduler-runtime-state.js';
 import { createDeployReadinessObservability } from './services/system/deploy-readiness-observability.js';
+import { prisma } from './lib/prisma.js';
+import { ensureSiteDirectoryFresh, refreshSiteDirectory } from './lib/site-directory.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
@@ -120,6 +122,21 @@ export async function buildServer(): Promise<FastifyInstance> {
     }
   }
   
+  // 端末の明示拠点の対応表（docs/plans/explicit-site-scope-execplan.md）。
+  // 読み込みに失敗しても従来の location 推測で動くため、起動・リクエストは止めない。
+  try {
+    await refreshSiteDirectory(prisma);
+  } catch (err) {
+    app.log.warn({ err }, 'Site directory could not be loaded; falling back to location-derived sites');
+  }
+  app.addHook('onRequest', async (request) => {
+    try {
+      await ensureSiteDirectoryFresh(prisma);
+    } catch (err) {
+      request.log.warn({ err }, 'Site directory refresh failed; keeping the previous directory');
+    }
+  });
+
   // ルートを登録
   await registerRoutes(app);
   return app;

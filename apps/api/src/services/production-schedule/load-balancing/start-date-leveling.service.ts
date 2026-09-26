@@ -1,4 +1,4 @@
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { assembleStartDateLevelingResult } from './start-date-leveling-assembler.js';
 import { listStartDateLevelingQueryRows } from './start-date-leveling-query.service.js';
 import { fetchLoadBalancingWinnerRowIds } from './load-balancing-winner-row-ids.js';
@@ -17,7 +17,7 @@ async function fetchLevelingRows(params: {
     toMonth: params.toMonth,
     maxMonths: 12
   });
-  const siteKey = resolveSiteKeyFromScopeKey(params.siteKeyInput.trim());
+  const siteKey = resolveSiteKeyForScopeKey(params.siteKeyInput.trim());
   const winnerRowIds = await fetchLoadBalancingWinnerRowIds();
   const queryRows = await listStartDateLevelingQueryRows({
     siteKey,

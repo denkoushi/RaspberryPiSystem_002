@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { assertRegisteredDeviceScopeKey } from '../../../lib/manual-order-device-scope.js';
 import { upsertProductionScheduleOrder } from '../../../services/production-schedule/production-schedule-command.service.js';
 import { canProxyTargetLocation } from '../shared.js';
@@ -49,7 +49,7 @@ export async function registerProductionScheduleOrderRoute(
           );
         }
         await assertRegisteredDeviceScopeKey(requestedTargetDeviceScopeKey);
-        targetLocation = resolveSiteKeyFromScopeKey(requestedTargetDeviceScopeKey);
+        targetLocation = resolveSiteKeyForScopeKey(requestedTargetDeviceScopeKey);
       } else {
         if (requestedTargetDeviceScopeKey) {
           throw new ApiError(

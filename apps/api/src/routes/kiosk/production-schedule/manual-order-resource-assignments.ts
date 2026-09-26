@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY } from '../../../lib/manual-order-device-scope.js';
 import {
   listManualOrderResourceAssignmentsForSite,
@@ -76,7 +76,7 @@ export async function registerProductionScheduleManualOrderResourceAssignmentsRo
 
       if (
         deviceScopeKey !== MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY &&
-        resolveSiteKeyFromScopeKey(deviceScopeKey) !== normalizedSiteKey
+        resolveSiteKeyForScopeKey(deviceScopeKey) !== normalizedSiteKey
       ) {
         throw new ApiError(
           400,

@@ -1,4 +1,4 @@
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL } from '../constants.js';
 import { resolveSeibanMachineDisplayNamesBatched } from '../seiban-machine-display-names.service.js';
 import {
@@ -52,7 +52,7 @@ export async function getProductionScheduleMachineMonthlyLoad(params: {
   machineName?: string | null;
   fhincd?: string | null;
 }): Promise<MachineMonthlyLoadResult> {
-  const siteKey = resolveSiteKeyFromScopeKey(params.siteKeyInput.trim());
+  const siteKey = resolveSiteKeyForScopeKey(params.siteKeyInput.trim());
   const range = parseYearMonthRangeInclusive({
     fromMonth: params.fromMonth,
     toMonth: params.toMonth,

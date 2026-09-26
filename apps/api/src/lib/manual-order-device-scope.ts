@@ -28,13 +28,15 @@ export async function listRegisteredDeviceScopeKeysForSite(siteKey: string): Pro
     where: {
       location: { not: null }
     },
-    select: { location: true }
+    select: { location: true, siteKey: true }
   });
   const unique = new Set<string>();
   for (const row of rows) {
     const loc = row.location?.trim() ?? '';
     if (!loc) continue;
-    if (resolveSiteKeyFromScopeKey(loc) === normalizedSite) {
+    // 明示拠点があればそれを、なければ従来どおり location 文字列から推測する。
+    const rowSiteKey = row.siteKey?.trim() || resolveSiteKeyFromScopeKey(loc);
+    if (rowSiteKey === normalizedSite) {
       unique.add(loc);
     }
   }
