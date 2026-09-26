@@ -55,6 +55,13 @@ export function useInventoryImportMessages(accessPassword?: string) {
   });
 }
 export function useInventoryHistory() { return useQuery({ queryKey: inventoryKeys.history, queryFn: () => getInventoryHistory() }); }
+export function useInventoryCompartmentHistory(compartmentId: string | null, limit = 3) {
+  return useQuery({
+    queryKey: [...inventoryKeys.history, compartmentId, limit],
+    queryFn: () => getInventoryHistory(limit, compartmentId ?? undefined),
+    enabled: Boolean(compartmentId),
+  });
+}
 export function useResolvedInventoryTag(uid: string, enabled = true) {
   return useQuery({ queryKey: ['inventory-tag', uid], queryFn: () => resolveInventoryTag(uid), enabled: enabled && Boolean(uid), staleTime: 30000 });
 }

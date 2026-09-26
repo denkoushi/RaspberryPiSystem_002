@@ -136,8 +136,10 @@ export async function reorderInventoryItemPhotos(itemId: string, photoIds: strin
   return data.result;
 }
 
-export async function getInventoryHistory(limit = 100) {
-  const { data } = await api.get<{ history: InventoryHistoryEntry[] }>('/item-inventory/history', { params: { limit } });
+export async function getInventoryHistory(limit = 100, compartmentId?: string) {
+  const { data } = await api.get<{ history: InventoryHistoryEntry[] }>('/item-inventory/history', {
+    params: compartmentId ? { limit, compartmentId } : { limit },
+  });
   return data.history;
 }
 
@@ -237,7 +239,10 @@ export async function cancelInventoryTransaction(id: string, accessPassword?: st
   return data;
 }
 
-export async function correctInventoryStock(input: { compartmentId: string; desiredQuantity: number; note?: string }, accessPassword?: string) {
+export async function correctInventoryStock(
+  input: { compartmentId: string; desiredQuantity: number; expectedBeforeQuantity?: number; note?: string },
+  accessPassword?: string,
+) {
   const { data } = await api.post('/item-inventory/corrections', input, {
     headers: inventorySettingsHeaders(accessPassword)
   });

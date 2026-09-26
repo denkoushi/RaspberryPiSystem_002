@@ -488,4 +488,47 @@ describe('ItemInventoryService stock transactions', () => {
 
     await expect(service.cancelTransaction(first.transaction.id, { clientId: 'terminal-1' })).rejects.toThrow('在庫が更新されています');
   });
+
+  it('corrects stock when the kiosk saw the current balance', async () => {
+    const { state, db } = inventoryState(12);
+    const service = new ItemInventoryService(db as never);
+
+    const correction = await service.correctStock('compartment-1', 9, { clientId: 'terminal-1' }, undefined, { expectedBeforeQuantity: 12 });
+
+    expect(correction).toMatchObject({ action: 'CORRECTION', delta: -3, beforeQuantity: 12, afterQuantity: 9, clientId: 'terminal-1' });
+    expect(state.compartment.stockQuantity).toBe(9);
+  });
+
+  it('refuses a correction when stock changed after the kiosk showed it', async () => {
+    const { state, tx, db } = inventoryState(10);
+    const service = new ItemInventoryService(db as never);
+
+    await expect(service.correctStock('compartment-1', 9, { clientId: 'terminal-1' }, undefined, { expectedBeforeQuantity: 12 }))
+      .rejects.toThrow('在庫が変わりました');
+    expect(state.compartment.stockQuantity).toBe(10);
+    expect(tx.inventoryCompartment.update).not.toHaveBeenCalled();
+    expect(tx.inventoryTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it('corrects without a balance check when no expected balance is sent', async () => {
+    const { state, db } = inventoryState(10);
+    const service = new ItemInventoryService(db as never);
+
+    await service.correctStock('compartment-1', 4, { clientId: null });
+
+    expect(state.compartment.stockQuantity).toBe(4);
+  });
+});
+
+describe('ItemInventoryService history', () => {
+  it('filters history by compartment only when one is given', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const service = new ItemInventoryService({ inventoryTransaction: { findMany } } as never);
+
+    await service.listHistory(3, { compartmentId: 'compartment-1' });
+    await service.listHistory(100);
+
+    expect(findMany.mock.calls[0][0]).toMatchObject({ where: { compartmentId: 'compartment-1' }, take: 3 });
+    expect(findMany.mock.calls[1][0].where).toBeUndefined();
+  });
 });
