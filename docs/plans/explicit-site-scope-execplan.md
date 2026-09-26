@@ -48,7 +48,8 @@ After this plan is complete, an administrator can open 管理画面 > クライ�
 - [x] (2026-09-26 15:05 JST) Milestone 4a production run on Pi5 (container `bluegreen-api-blue-1`, read-only). Outside registered sites: 製番ボード state under `Mac` (1 row) and overrides under `Mac` (26; 第2工場 has 56); global ranks under `Mac` (6 seibans, 546 row ranks) and under `第2工場 - kensakuMain` (legacy device-keyed); load-balancing capacity under `shared` (9, the valid shared fallback). All other site-scoped tables were already under 第2工場.
 - [x] (2026-09-26) User decisions for Milestone 4b: merge only the 製番ボード; do not merge the `Mac` global ranking (keep its rows); assign every device, including Pi5 (`raspi5_serber`, a server whose key is only used for status and call targets) and `zero2w-tanaban01`, to 第2工場.
 - [x] (2026-09-26) Milestone 4b implemented on `feat/explicit-site-scope-m4b`: `apps/api/scripts/site-scope-merge.mjs` (dry run by default; `--apply` writes a backup first and applies in one transaction; `--restore` undoes from the backup). Verified on a disposable PostgreSQL: dry run, apply, idempotent re-run, refusal to overwrite an existing backup, and full restore.
-- [ ] Milestone 4b production: deploy, run the dry run on Pi5 and show it to the user, then apply with the user's approval and confirm the Mac, Safari and Pi4 show the same 製番ボード.
+- [x] (2026-09-26) Milestone 4b merged as PR #1504 (merge `d257598f`, including Codex-reported fixes: backup under the writable `/opt/backups` mount, version-guarded restore, and undo of a merge-created target state) and deployed to Pi5 with run `20260926-072631-8a38c1` (`Result=success`, recap `failed=0 rescued=0`).
+- [x] (2026-09-26 16:45:17 JST, backup `createdAt` 2026-09-26T07:45:17.892Z) Milestone 4b production. The `--source=Mac` dry run showed 10 seibans to append and 21 overrides to move; the user then clarified that the Mac 製番ボード data must not be merged at all. Ran a devices-only assignment instead (`--source=__devices_only__ --target=第2工場 --assign-devices`, dry run then `--apply --backup=/opt/backups/site-scope-merge-backup-20260926.json`): 0 seibans, 0 overrides, 14 devices set to 第2工場. The read-only report afterwards showed every device with explicit site 第2工場; the Mac board rows (1 state, 26 overrides) remain in the database, unused. The user confirmed on the real kiosks that the Mac now shows the same 製番ボード as the Pi4.
 - [ ] Milestone 5: remove the text-guess fallback once every device has an explicit site.
 
 ## Surprises & Discoveries
@@ -66,6 +67,7 @@ After this plan is complete, an administrator can open 管理画面 > クライ�
 - Decision: Replace the `Mac` string comparison with a per-device boolean `canProxyOtherDevices`, backfilled for the device whose current scope key is `Mac`, before any site or location changes. Rationale: it removes the hidden coupling found above and is behavior-neutral when the backfill is exact. Date/Author: 2026-09-26, Claude.
 - Decision: While `ClientDevice.siteKey` is empty, the resolver keeps today's text guess. Rationale: every milestone before Milestone 4 must be deployable without changing any visible behavior, which also makes each one trivially reversible. Date/Author: 2026-09-26, Claude.
 - Decision: Merging accidental sites uses deterministic rules, with 第2工場 rows winning on conflict, a dry-run report reviewed by the user before any write, and a pre-merge backup of the affected rows. Rationale: the user chose to merge rather than discard; deterministic rules make the result reproducible and auditable. The concrete per-table rules are finalized in Milestone 4 after the dry-run shows real row counts. Date/Author: 2026-09-26, Claude.
+- Decision: Do not merge the Mac 製番ボード (registered seibans and overrides) into 第2工場; only assign devices. Rationale: the user clarified after the dry run that the Mac-only seibans are not wanted in the shared board. The rows are kept, not deleted. Date/Author: 2026-09-26, user.
 - Decision: The user offered JEV (the repository's LLM-based judgment component) for decisions. It is not used for the merge because conflict resolution must be deterministic and reviewable; it may be revisited if a merge case needs judgment that rules cannot express. Date/Author: 2026-09-26, Claude.
 
 - Decision: The Milestone 2 site directory is an in-memory map from device scope key to explicit site, loaded when the API starts and refreshed at most every 30 seconds by a request hook, instead of turning every caller into an asynchronous database lookup. Rationale: `ClientDevice` has about fifteen rows, eight of the callers are synchronous helpers inside services, and the codebase already keeps the order-split pilot gate the same way. A failed reload keeps the previous map and does not fail requests; unknown keys keep today's text guess. Milestone 3 must call `invalidateSiteDirectory()` after an administrator changes a device site so the next request reloads immediately. Date/Author: 2026-09-26, Claude.
@@ -73,7 +75,11 @@ After this plan is complete, an administrator can open 管理画面 > クライ�
 
 ## Outcomes & Retrospective
 
-Not started.
+As of 2026-09-26 Milestones 1 to 4 are in production. Every device has an explicit site (第2工場), so all kiosks, the Mac and the Pi5 share one 製番ボード and the other site-scoped data, and the Mac proxy privilege is an explicit setting. New sites can be added in 管理画面 and assigned per device. The location-text guess still exists but is no longer reached for any registered device; Milestone 5 removes it after a few days of observation.
+
+Lessons: ask about each data set separately and restate the exact rows before a production data change; the numbered question about global rankings was read by the user as being about the 製番ボード seibans, which the dry run exposed before anything was written. Codex review caught real defects in every pull request (backfill whitespace, idempotent site resolution, key-namespace collisions, stale directory after renames, picker refresh, backup location and restore safety).
+
+Open follow-ups: Milestone 5; make `scripts/register-clients.sh` omit an empty location (separate PR); optionally delete the unused Mac 製番ボード rows once the user confirms they are not needed.
 
 ## Context and Orientation
 
@@ -95,7 +101,7 @@ Milestone 3 lets an administrator manage sites and assign them. The admin API ga
 
 Milestone 3 is delivered as two pull requests to keep each change small: 3a (admin API, admin page, registration fixes) and 3b (web site pickers).
 
-Milestone 4 merges accidental sites. A script under `scripts/site-scope/` prints, for every site-scoped table, the row counts per site key and the rows that would conflict when a source site is merged into a target site, without writing. The user reviews the report and confirms the mapping (initially `Mac`, `raspi5_serber`, `ラズパイ5`, `factory`, `default` and the seed sites into `第2工場`, only where rows exist). The apply mode backs up the affected rows to a JSON file, then in one transaction per table re-keys source rows whose natural key is free in the target and skips rows that conflict (target wins), with ordered lists such as the 製番ボード registered numbers appended after the target's existing order. The same run assigns the explicit site to every production device. Production execution requires explicit user approval and is recorded in this plan.
+Milestone 4 (as originally planned; see the Decision Log for the devices-only change) merges accidental sites. A script under `scripts/site-scope/` prints, for every site-scoped table, the row counts per site key and the rows that would conflict when a source site is merged into a target site, without writing. The user reviews the report and confirms the mapping (initially `Mac`, `raspi5_serber`, `ラズパイ5`, `factory`, `default` and the seed sites into `第2工場`, only where rows exist). The apply mode backs up the affected rows to a JSON file, then in one transaction per table re-keys source rows whose natural key is free in the target and skips rows that conflict (target wins), with ordered lists such as the 製番ボード registered numbers appended after the target's existing order. The same run assigns the explicit site to every production device. Production execution requires explicit user approval and is recorded in this plan.
 
 The report is run on Pi5 inside the API container, from the repository checkout on Pi5 at `/opt/RaspberryPiSystem_002`:
 
@@ -103,13 +109,15 @@ The report is run on Pi5 inside the API container, from the repository checkout 
 
 It only issues `SELECT` statements. The field `siteScopedValuesOutsideRegisteredSites` lists what the merge in Milestone 4b must handle.
 
-The Milestone 4b merge is run on Pi5 in the API container (working directory `/app/apps/api`). The dry run prints the plan without writing:
+The Milestone 4b operation that was actually approved and run on Pi5 (API container, working directory `/app/apps/api`) assigns devices only. `__devices_only__` is a source key with no data, so no 製番ボード row is merged. Dry run first:
 
-    node scripts/site-scope-merge.mjs --source=Mac --target=第2工場 --assign-devices
+    node scripts/site-scope-merge.mjs --source=__devices_only__ --target=第2工場 --assign-devices
 
-After the user approves the printed plan, apply it. The API container is read-only except for its mounted directories, so the backup goes to `/opt/backups` (the host's `/opt/backups`); the file must not exist yet:
+After the user approves the printed plan (0 seibans, 0 overrides, the listed devices), apply it. The API container is read-only except for its mounted directories, so the backup goes to `/opt/backups` (the host's `/opt/backups`); the file must not exist yet:
 
-    node scripts/site-scope-merge.mjs --source=Mac --target=第2工場 --assign-devices --apply --backup=/opt/backups/site-scope-merge-backup-20260926.json
+    node scripts/site-scope-merge.mjs --source=__devices_only__ --target=第2工場 --assign-devices --apply --backup=/opt/backups/site-scope-merge-backup-20260926.json
+
+Do not run the script with `--source=Mac`: that merges the Mac 製番ボード (10 seibans, 21 overrides), which the user explicitly rejected on 2026-09-26.
 
 To undo, restore from that backup. Restore refuses to write anything if the target board or a moved override was edited after the merge, and it deletes a target board state that the merge itself created. The API reloads the site directory within 30 seconds; 製番ボード caches follow the bumped state version.
 
@@ -123,7 +131,7 @@ Work happens in the linked worktree created by `python3 -m scripts.git_lifecycle
 
 ## Validation and Acceptance
 
-Each milestone is a separate pull request with a completed deploy-impact table, green CI, a squash merge, and a Pi5-only standard deployment approved by the user. Milestones 1 to 3 must show no visible change: the 製番ボード counts on the Mac and on a Pi4 stay as before, and the Mac still sees its proxy target selector. Milestone 4 is accepted when, after the approved merge, the Mac, Safari and every Pi4 show the same 製番ボード registered numbers and the dry-run report run again shows no rows left under the merged source sites.
+Each milestone is a separate pull request with a completed deploy-impact table, green CI, a squash merge, and a Pi5-only standard deployment approved by the user. Milestones 1 to 3 must show no visible change: the 製番ボード counts on the Mac and on a Pi4 stay as before, and the Mac still sees its proxy target selector. Milestone 4 is accepted when, after the approved devices-only assignment, every device has an explicit site in the report and the Mac, Safari and every Pi4 show the same 製番ボード registered numbers. The unused Mac 製番ボード rows are expected to remain under `Mac` in the report (not merged by decision).
 
 ## Idempotence and Recovery
 
