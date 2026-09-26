@@ -19,11 +19,12 @@
  *
  * Run on Pi5 (API container, working directory /app/apps/api):
  *   node scripts/site-scope-merge.mjs --source=Mac --target=第2工場 --assign-devices
- *   node scripts/site-scope-merge.mjs --source=Mac --target=第2工場 --assign-devices --apply --backup=/app/storage/site-scope-merge-backup.json
+ *   node scripts/site-scope-merge.mjs --source=Mac --target=第2工場 --assign-devices --apply --backup=/opt/backups/site-scope-merge-backup.json
  * Undo from the backup (restores the target order, moves overrides back with
  * their original alternateRank, clears the assigned device sites):
- *   node scripts/site-scope-merge.mjs --restore=/app/storage/site-scope-merge-backup.json
+ *   node scripts/site-scope-merge.mjs --restore=/opt/backups/site-scope-merge-backup.json
  */
+import { randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 
 import { prisma } from '../dist/lib/prisma.js';
@@ -106,12 +107,19 @@ function summarize(plan) {
 }
 
 async function apply(plan, backupPath) {
+  const writesTargetState = plan.appended.length > 0;
+  const createdTargetStateId = writesTargetState && !plan.targetState ? randomUUID() : null;
+  // The expected post-merge state lets --restore refuse to overwrite later edits.
   const backup = {
     createdAt: new Date().toISOString(),
     source: plan.source,
     target: plan.target,
     sourceState: plan.sourceState,
     targetState: plan.targetState,
+    createdTargetStateId,
+    mergedTargetState: writesTargetState
+      ? { seibanOrder: plan.mergedOrder, version: plan.targetState ? plan.targetState.version + 1 : 1 }
+      : null,
     movedOverrides: plan.movedOverrides,
     devices: plan.devices
   };
@@ -127,7 +135,12 @@ async function apply(plan, backupPath) {
         if (updated.count !== 1) throw new Error('Target board state changed during the merge; re-run the dry run');
       } else {
         await tx.productionScheduleGrindingPlanningBoardState.create({
-          data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: plan.target, seibanOrder: plan.mergedOrder }
+          data: {
+            id: createdTargetStateId,
+            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+            siteKey: plan.target,
+            seibanOrder: plan.mergedOrder
+          }
         });
       }
     }
@@ -148,20 +161,42 @@ async function apply(plan, backupPath) {
   });
 }
 
+const sameOrder = (left, right) => JSON.stringify(asStringArray(left)) === JSON.stringify(asStringArray(right));
+
+/**
+ * Undo a merge. Every changed row must still be exactly as the merge left it;
+ * if anyone edited the target board afterwards, nothing is written.
+ */
 async function restore(backupPath) {
   const backup = JSON.parse(readFileSync(backupPath, 'utf8'));
   await prisma.$transaction(async (tx) => {
-    if (backup.targetState) {
-      await tx.productionScheduleGrindingPlanningBoardState.update({
-        where: { id: backup.targetState.id },
-        data: { seibanOrder: backup.targetState.seibanOrder, version: { increment: 1 } }
-      });
+    if (backup.mergedTargetState) {
+      const stateId = backup.createdTargetStateId ?? backup.targetState?.id;
+      const current = await tx.productionScheduleGrindingPlanningBoardState.findUnique({ where: { id: stateId } });
+      if (
+        !current ||
+        current.version !== backup.mergedTargetState.version ||
+        !sameOrder(current.seibanOrder, backup.mergedTargetState.seibanOrder)
+      ) {
+        throw new Error('The target 製番ボード changed after the merge; restore aborted without writing');
+      }
+      if (backup.createdTargetStateId) {
+        await tx.productionScheduleGrindingPlanningBoardState.delete({ where: { id: stateId } });
+      } else {
+        await tx.productionScheduleGrindingPlanningBoardState.update({
+          where: { id: stateId },
+          data: { seibanOrder: backup.targetState.seibanOrder, version: { increment: 1 } }
+        });
+      }
     }
     for (const row of backup.movedOverrides) {
-      await tx.productionScheduleGrindingPlanningBoardOverride.updateMany({
-        where: { id: row.id, siteKey: backup.target },
+      const restored = await tx.productionScheduleGrindingPlanningBoardOverride.updateMany({
+        where: { id: row.id, siteKey: backup.target, version: row.version + 1 },
         data: { siteKey: backup.source, alternateRank: row.alternateRank, version: { increment: 1 } }
       });
+      if (restored.count !== 1) {
+        throw new Error(`Override ${row.id} changed after the merge; restore aborted without writing`);
+      }
     }
     if (backup.devices.length > 0) {
       await tx.clientDevice.updateMany({

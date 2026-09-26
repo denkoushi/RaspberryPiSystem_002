@@ -107,13 +107,13 @@ The Milestone 4b merge is run on Pi5 in the API container (working directory `/a
 
     node scripts/site-scope-merge.mjs --source=Mac --target=第2工場 --assign-devices
 
-After the user approves the printed plan, apply it; the backup file must not exist yet:
+After the user approves the printed plan, apply it. The API container is read-only except for its mounted directories, so the backup goes to `/opt/backups` (the host's `/opt/backups`); the file must not exist yet:
 
-    node scripts/site-scope-merge.mjs --source=Mac --target=第2工場 --assign-devices --apply --backup=/app/storage/site-scope-merge-backup-20260926.json
+    node scripts/site-scope-merge.mjs --source=Mac --target=第2工場 --assign-devices --apply --backup=/opt/backups/site-scope-merge-backup-20260926.json
 
-To undo, restore from that backup. The API reloads the site directory within 30 seconds; 製番ボード caches follow the bumped state version.
+To undo, restore from that backup. Restore refuses to write anything if the target board or a moved override was edited after the merge, and it deletes a target board state that the merge itself created. The API reloads the site directory within 30 seconds; 製番ボード caches follow the bumped state version.
 
-    node scripts/site-scope-merge.mjs --restore=/app/storage/site-scope-merge-backup-20260926.json
+    node scripts/site-scope-merge.mjs --restore=/opt/backups/site-scope-merge-backup-20260926.json
 
 Milestone 5 removes the text guess. Once telemetry and a database query show that every active device has an explicit site, a device without one is rejected with a clear error on site-scoped screens, and the fallback code and its compatibility reads are removed in a separate pull request.
 
