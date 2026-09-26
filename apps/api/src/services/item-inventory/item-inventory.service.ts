@@ -339,8 +339,9 @@ export class ItemInventoryService {
     return this.db.inventoryImportMessage.findMany({ orderBy: { updatedAt: 'desc' }, take: 100 });
   }
 
-  async listHistory(limit = 100) {
+  async listHistory(limit = 100, filter: { compartmentId?: string } = {}) {
     return this.db.inventoryTransaction.findMany({
+      where: filter.compartmentId ? { compartmentId: filter.compartmentId } : undefined,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: Math.min(Math.max(limit, 1), 500),
       include: { inventoryItem: true, compartment: { include: { drawer: { include: { shelf: true } } } } },
@@ -695,12 +696,22 @@ export class ItemInventoryService {
     });
   }
 
-  async correctStock(compartmentId: string, desiredQuantity: number, actor: InventoryActor, note?: string) {
+  async correctStock(
+    compartmentId: string,
+    desiredQuantity: number,
+    actor: InventoryActor,
+    note?: string,
+    options: { expectedBeforeQuantity?: number } = {},
+  ) {
     nonNegativeInteger(desiredQuantity, '在庫数');
     return this.serializable(async (tx) => {
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "InventoryCompartment" WHERE "id" = ${compartmentId} FOR UPDATE`);
       const compartment = await tx.inventoryCompartment.findUnique({ where: { id: compartmentId } });
       if (!compartment) throw new ApiError(404, '在庫区画が見つかりません');
+      // The kiosk shows "before -> counted"; refuse if another terminal moved stock in between.
+      if (options.expectedBeforeQuantity !== undefined && options.expectedBeforeQuantity !== compartment.stockQuantity) {
+        throw new InventoryConflictError('在庫が変わりました。もう一度数えてください');
+      }
       const delta = desiredQuantity - compartment.stockQuantity;
       await tx.inventoryCompartment.update({ where: { id: compartmentId }, data: { stockQuantity: desiredQuantity } });
       return tx.inventoryTransaction.create({

@@ -2052,3 +2052,4 @@ APIの概要と詳細。
 
 - [Hermes background worker implementation](plans/hermes-background-worker.md)
 - [Hermes knowledge intake and reports](plans/hermes-knowledge.md) — Markdown/Git, photographs, PDFs and remaining integration work.
+- [Kiosk inventory daily/setup screens](plans/kiosk-inventory-ux-execplan.md) — NFC-first 在庫操作 with password-free correction and a separate touch setup screen.

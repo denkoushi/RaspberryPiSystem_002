@@ -82,6 +82,16 @@ async function cancelWrite(request: FastifyRequest, reply: FastifyReply): Promis
   await writeOrKiosk(request, reply);
 }
 
+// Kiosk stock correction is daily work: a registered terminal may correct without the
+// settings password. A request that does send the password keeps the settings checks.
+async function correctionWrite(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (request.headers['x-kiosk-access-password']) {
+    await authorizeManageOrKiosk(request, reply);
+    return;
+  }
+  await writeOrKiosk(request, reply);
+}
+
 async function authorizeManageOrKiosk(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const rawPassword = request.headers['x-kiosk-access-password'];
   if (rawPassword) {
@@ -170,8 +180,11 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   app.get('/item-inventory/locations', { preHandler: [read] }, async () => ({ locations: await services.inventory.listLocations() }));
   app.get('/item-inventory/items', { preHandler: [read] }, async () => ({ items: await services.inventory.listItems() }));
   app.get('/item-inventory/history', { preHandler: [read] }, async (request) => {
-    const query = z.object({ limit: z.coerce.number().int().min(1).max(500).default(100) }).parse(request.query ?? {});
-    return { history: await services.inventory.listHistory(query.limit) };
+    const query = z.object({
+      limit: z.coerce.number().int().min(1).max(500).default(100),
+      compartmentId: z.string().uuid().optional(),
+    }).parse(request.query ?? {});
+    return { history: await services.inventory.listHistory(query.limit, { compartmentId: query.compartmentId }) };
   });
   app.get('/item-inventory/imports', { preHandler: [authorizeManageOrKiosk] }, async () => ({ imports: await services.inventory.listPendingImports() }));
   app.get('/item-inventory/import-messages', { preHandler: [authorizeManageOrKiosk] }, async () => ({ messages: await services.inventory.listImportMessages() }));
@@ -196,10 +209,21 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     }
   });
 
-  app.post('/item-inventory/corrections', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
-    const body = z.object({ compartmentId: z.string().uuid(), desiredQuantity: z.number().int().min(0), note: z.string().max(1000).optional() }).parse(request.body ?? {});
+  app.post('/item-inventory/corrections', { preHandler: [correctionWrite] }, async (request) => {
+    const body = z.object({
+      compartmentId: z.string().uuid(),
+      desiredQuantity: z.number().int().min(0),
+      expectedBeforeQuantity: z.number().int().min(0).optional(),
+      note: z.string().max(1000).optional(),
+    }).parse(request.body ?? {});
     try {
-      const transaction = await services.inventory.correctStock(body.compartmentId, body.desiredQuantity, await actor(request), body.note);
+      const transaction = await services.inventory.correctStock(
+        body.compartmentId,
+        body.desiredQuantity,
+        await actor(request),
+        body.note,
+        { expectedBeforeQuantity: body.expectedBeforeQuantity },
+      );
       return { transaction: { ...transaction, createdAt: transaction.createdAt.toISOString() } };
     } catch (error) {
       mapMutationError(error);
