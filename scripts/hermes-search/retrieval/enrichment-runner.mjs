@@ -236,6 +236,7 @@ async function enrichOne({ record, catalog, template, promptHash, settings, fetc
         evidenceKept: verified.evidenceKept,
         aliasesDropped: verified.aliasesDropped,
         aliasesKept: verified.aliasesKept,
+        aliasesRejected: verified.aliasesRejected,
         promptTokens: response.usage?.promptTokens ?? null,
         completionTokens: response.usage?.completionTokens ?? null,
       },

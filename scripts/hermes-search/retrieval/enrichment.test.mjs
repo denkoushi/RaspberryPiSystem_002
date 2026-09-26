@@ -14,7 +14,7 @@ import {
   toRetrievalEnrichment,
   verifyEvidence,
 } from './enrichment-contract.mjs';
-import { withinWindow } from './enrichment-dgx.mjs';
+import { ENRICHMENT_MAX_TOKENS, withinWindow } from './enrichment-dgx.mjs';
 import {
   MAX_CONTENT_ATTEMPTS, needsEnrichment, readIdAllowlist, runEnrichmentBatch,
 } from './enrichment-runner.mjs';
@@ -393,6 +393,32 @@ test('a schema mismatch keeps its fixed reason and a JSON syntax error keeps non
   assert.equal(status.failureCounts.schema_mismatch, 1);
   assert.equal(status.failureCounts.invalid_json, 1);
   assert.deepEqual(Object.keys(status.failureDetails), ['summary must be one line of at most 60 characters']);
+});
+
+test('the request asks for the widened token cap and the row records a rejected alias set', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-cap-tokens-'));
+  const storePath = path.join(directory, 'store.jsonl');
+  const record = records[0];
+  const bodies = [];
+  const status = await runEnrichmentBatch({
+    records: [record],
+    catalog,
+    storePath,
+    settings: batchSettings({ maxRecords: 1 }),
+    fetchImpl: async (url, options) => {
+      bodies.push(JSON.parse(options.body));
+      return contentResponse(JSON.stringify({
+        ...payloadFor(record),
+        aliases: [{ term: record.partName, alts: ['ギアボックス'] }],
+      }));
+    },
+    sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(bodies[0].max_tokens, ENRICHMENT_MAX_TOKENS);
+  assert.equal(status.aliasesRejected, 1);
+  const stored = await readEnrichmentStore(storePath);
+  assert.equal(stored.get(record.id).metrics.aliasesRejected, true);
 });
 
 test('DGX transport failures still back off', async () => {

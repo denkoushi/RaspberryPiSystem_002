@@ -2,6 +2,9 @@
 import { throughEgress } from '../hermes-remote-inference.mjs';
 import { ENRICHMENT_JSON_SCHEMA, parseEnrichmentPayload } from './enrichment-contract.mjs';
 
+// The 2026-09-26 overnight pilot stopped 78 of 1,000 answers at 800 tokens; successes averaged about 520.
+export const ENRICHMENT_MAX_TOKENS = 1200;
+
 const USAGE_KEYS = [
   ['prompt_tokens', 'promptTokens'],
   ['completion_tokens', 'completionTokens'],
@@ -72,7 +75,7 @@ async function postChat(fetchFn, settings, messages, guided) {
     model: settings.model,
     messages,
     temperature: 0,
-    max_tokens: 800,
+    max_tokens: ENRICHMENT_MAX_TOKENS,
     chat_template_kwargs: { enable_thinking: false },
   };
   if (guided) {

@@ -21,6 +21,10 @@ Failures are split into content failures (`invalid_json`, `schema_mismatch`, `tr
 
 When the aliases fail the two-expanded-queries rule, the runner keeps the summary, facets, and queries as a schema v1 row without aliases instead of discarding the record. The offline ingest keeps the strict rule. The first overnight pilot (2026-09-25) stored only 14 of 1,000 records because three content failures ended each pass and the next pass retried the same records first.
 
+The second overnight pilot (2026-09-26) stored 930 of 1,000 records. All 78 content failures were `truncated` at the 800-token cap, so the cap is now 1,200 tokens. Of the stored rows, 134 kept aliases (schema v2) and 796 had none (schema v1). Rows now record `metrics.aliasesRejected`, so later runs can tell a rejected alias set from a model that returned no aliases.
+
+The runner starts only after the retrieval worker is ready, and the worker starts on the first Chat request after an API restart. After a release, one Chat question is needed before the overnight window.
+
 The retrieval worker, when that file exists, sets `record.enrichment = { summary, queries, tags }`. `tags` are the flattened facet values plus any kept alias alternatives.
 
 ## Validation
