@@ -44,8 +44,11 @@ After this plan is complete, an administrator can open 管理画面 > クライ�
 - [x] (2026-09-26) Milestone 3b merged as PR #1502 (merge `9690bf39`), including Codex-reported fixes (site options refresh every 5 minutes; site display name always equals the key).
 - [x] (2026-09-26) Milestone 3a deployed to Pi5 only with run `20260926-042918-059d7a`: `SubState=exited`, `Result=success`, recap `ok=263 changed=31 unreachable=0 failed=0 skipped=38 rescued=0`.
 - [x] (2026-09-26) Milestone 4a implemented on `feat/explicit-site-scope-m4a`: read-only report `apps/api/scripts/site-scope-report.mjs` that counts rows per value for the 33 site- or device-scoped columns and classifies each value as a registered site, a registered device scope key (with the device's explicit and guessed site), an unregistered device of a registered site, or unknown. Verified on a disposable PostgreSQL with seeded rows under `Mac` and `raspi5_serber`.
-- [ ] Milestone 4a production run: after deploy, run the report on Pi5 and show the user the site-scoped values outside registered sites.
-- [ ] Milestone 4b: reviewed merge of accidental sites into 第2工場 and assignment of every production device to its site.
+- [x] (2026-09-26) Milestone 4a merged as PR #1503 (merge `c4ea3c87`, including the Codex-reported fix that treats `shared-global-rank` and the `shared` resource category row as valid sentinels) and deployed to Pi5 with run `20260926-054932-9ef264` (`Result=success`, recap `failed=0 rescued=0`). Milestone 3b was deployed before it with run `20260926-051708-d4d3f8` and the user confirmed the Mac pickers still show 第2工場・トークプラザ・第1工場.
+- [x] (2026-09-26 15:05 JST) Milestone 4a production run on Pi5 (container `bluegreen-api-blue-1`, read-only). Outside registered sites: 製番ボード state under `Mac` (1 row) and overrides under `Mac` (26; 第2工場 has 56); global ranks under `Mac` (6 seibans, 546 row ranks) and under `第2工場 - kensakuMain` (legacy device-keyed); load-balancing capacity under `shared` (9, the valid shared fallback). All other site-scoped tables were already under 第2工場.
+- [x] (2026-09-26) User decisions for Milestone 4b: merge only the 製番ボード; do not merge the `Mac` global ranking (keep its rows); assign every device, including Pi5 (`raspi5_serber`, a server whose key is only used for status and call targets) and `zero2w-tanaban01`, to 第2工場.
+- [x] (2026-09-26) Milestone 4b implemented on `feat/explicit-site-scope-m4b`: `apps/api/scripts/site-scope-merge.mjs` (dry run by default; `--apply` writes a backup first and applies in one transaction; `--restore` undoes from the backup). Verified on a disposable PostgreSQL: dry run, apply, idempotent re-run, refusal to overwrite an existing backup, and full restore.
+- [ ] Milestone 4b production: deploy, run the dry run on Pi5 and show it to the user, then apply with the user's approval and confirm the Mac, Safari and Pi4 show the same 製番ボード.
 - [ ] Milestone 5: remove the text-guess fallback once every device has an explicit site.
 
 ## Surprises & Discoveries
@@ -99,6 +102,18 @@ The report is run on Pi5 inside the API container, from the repository checkout 
     docker compose -f infrastructure/docker/docker-compose.server.yml exec -T -w /app/apps/api api node scripts/site-scope-report.mjs > /tmp/site-scope-report.json
 
 It only issues `SELECT` statements. The field `siteScopedValuesOutsideRegisteredSites` lists what the merge in Milestone 4b must handle.
+
+The Milestone 4b merge is run on Pi5 in the API container (working directory `/app/apps/api`). The dry run prints the plan without writing:
+
+    node scripts/site-scope-merge.mjs --source=Mac --target=第2工場 --assign-devices
+
+After the user approves the printed plan, apply it. The API container is read-only except for its mounted directories, so the backup goes to `/opt/backups` (the host's `/opt/backups`); the file must not exist yet:
+
+    node scripts/site-scope-merge.mjs --source=Mac --target=第2工場 --assign-devices --apply --backup=/opt/backups/site-scope-merge-backup-20260926.json
+
+To undo, restore from that backup. Restore refuses to write anything if the target board or a moved override was edited after the merge, and it deletes a target board state that the merge itself created. The API reloads the site directory within 30 seconds; 製番ボード caches follow the bumped state version.
+
+    node scripts/site-scope-merge.mjs --restore=/opt/backups/site-scope-merge-backup-20260926.json
 
 Milestone 5 removes the text guess. Once telemetry and a database query show that every active device has an explicit site, a device without one is rejected with a clear error on site-scoped screens, and the fallback code and its compatibility reads are removed in a separate pull request.
 
