@@ -30,10 +30,10 @@ import {
 import { shouldRequireTargetLocationForActor } from '../shared.js';
 
 const requireTargetLocationIfNeeded = (params: {
-  actorLocation: string;
+  actor: { canProxyOtherDevices: boolean };
   requestedTargetLocation?: string;
 }): void => {
-  if (!shouldRequireTargetLocationForActor(params.actorLocation)) {
+  if (!shouldRequireTargetLocationForActor(params.actor)) {
     return;
   }
   if (params.requestedTargetLocation && params.requestedTargetLocation.trim().length > 0) {
@@ -57,7 +57,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
     const actorDueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
     const actorLocation = actorDueManagementScope.deviceScopeKey;
     const query = productionScheduleDueManagementGlobalRankQuerySchema.parse(request.query);
-    requireTargetLocationIfNeeded({ actorLocation, requestedTargetLocation: query.targetLocation });
+    requireTargetLocationIfNeeded({ actor: locationScopeContext, requestedTargetLocation: query.targetLocation });
     const targetLocation = deps.resolveTargetLocation({
       requestedTargetLocation: query.targetLocation,
       actorLocation
@@ -93,7 +93,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
     const actorDueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
     const actorLocation = actorDueManagementScope.deviceScopeKey;
     const body = productionScheduleDueManagementGlobalRankBodySchema.parse(request.body);
-    requireTargetLocationIfNeeded({ actorLocation, requestedTargetLocation: body.targetLocation });
+    requireTargetLocationIfNeeded({ actor: locationScopeContext, requestedTargetLocation: body.targetLocation });
     const targetLocation = deps.resolveTargetLocation({
       requestedTargetLocation: body.targetLocation,
       actorLocation
@@ -165,7 +165,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
       const actorDueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
       const actorLocation = actorDueManagementScope.deviceScopeKey;
       const query = productionScheduleDueManagementGlobalRankQuerySchema.parse(request.query);
-      requireTargetLocationIfNeeded({ actorLocation, requestedTargetLocation: query.targetLocation });
+      requireTargetLocationIfNeeded({ actor: locationScopeContext, requestedTargetLocation: query.targetLocation });
       const targetLocation = deps.resolveTargetLocation({
         requestedTargetLocation: query.targetLocation,
         actorLocation
@@ -192,7 +192,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
       const actorDueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
       const actorLocation = actorDueManagementScope.deviceScopeKey;
       const writePolicy = productionScheduleDueManagementGlobalRankAutoGenerateBodySchema.parse(request.body);
-      requireTargetLocationIfNeeded({ actorLocation, requestedTargetLocation: writePolicy?.targetLocation });
+      requireTargetLocationIfNeeded({ actor: locationScopeContext, requestedTargetLocation: writePolicy?.targetLocation });
       const targetLocation = deps.resolveTargetLocation({
         requestedTargetLocation: writePolicy?.targetLocation,
         actorLocation
@@ -217,7 +217,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
       const actorDueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
       const actorLocation = actorDueManagementScope.deviceScopeKey;
       const query = productionScheduleDueManagementLearningReportQuerySchema.parse(request.query);
-      requireTargetLocationIfNeeded({ actorLocation, requestedTargetLocation: query.targetLocation });
+      requireTargetLocationIfNeeded({ actor: locationScopeContext, requestedTargetLocation: query.targetLocation });
       const targetLocation = deps.resolveTargetLocation({
         requestedTargetLocation: query.targetLocation,
         actorLocation
@@ -245,7 +245,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
       const actorDueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
       const actorLocation = actorDueManagementScope.deviceScopeKey;
       const query = productionScheduleDueManagementGlobalRankQuerySchema.parse(request.query);
-      requireTargetLocationIfNeeded({ actorLocation, requestedTargetLocation: query.targetLocation });
+      requireTargetLocationIfNeeded({ actor: locationScopeContext, requestedTargetLocation: query.targetLocation });
       const targetLocation = deps.resolveTargetLocation({
         requestedTargetLocation: query.targetLocation,
         actorLocation

@@ -42,7 +42,7 @@ export async function registerProductionScheduleDueManagementManualOrderOverview
           );
         }
 
-        if (!canProxyTargetLocation(actorLocation) && siteKey !== locationScopeContext.siteKey) {
+        if (!canProxyTargetLocation(locationScopeContext) && siteKey !== locationScopeContext.siteKey) {
           throw new ApiError(
             403,
             'この端末では他工場の手動順番全体像を参照できません',
@@ -84,7 +84,7 @@ export async function registerProductionScheduleDueManagementManualOrderOverview
       if (
         requestedTargetLocation &&
         requestedTargetLocation !== actorLocation &&
-        !canProxyTargetLocation(actorLocation)
+        !canProxyTargetLocation(locationScopeContext)
       ) {
         throw new ApiError(
           403,

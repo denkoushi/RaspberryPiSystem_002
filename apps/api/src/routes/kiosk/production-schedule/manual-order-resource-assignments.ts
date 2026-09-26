@@ -10,7 +10,7 @@ import {
   replaceManualOrderResourceAssignmentsForDevice
 } from '../../../services/production-schedule/manual-order-resource-assignment.service.js';
 import { canProxyTargetLocation } from '../shared.js';
-import { toLegacyLocationKeyFromDeviceScope, type KioskRouteDeps } from './shared.js';
+import type { KioskRouteDeps } from './shared.js';
 
 const querySchema = z.object({
   siteKey: z.string().min(1).max(100)
@@ -35,11 +35,10 @@ export async function registerProductionScheduleManualOrderResourceAssignmentsRo
       }
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-      const actorLocation = toLegacyLocationKeyFromDeviceScope(locationScopeContext.deviceScopeKey);
       const { siteKey } = querySchema.parse(request.query);
       const normalizedSiteKey = siteKey.trim();
 
-      if (!canProxyTargetLocation(actorLocation) && normalizedSiteKey !== locationScopeContext.siteKey) {
+      if (!canProxyTargetLocation(locationScopeContext) && normalizedSiteKey !== locationScopeContext.siteKey) {
         throw new ApiError(
           403,
           'この端末では他工場の資源割り当てを参照できません',
@@ -62,12 +61,11 @@ export async function registerProductionScheduleManualOrderResourceAssignmentsRo
       }
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-      const actorLocation = toLegacyLocationKeyFromDeviceScope(locationScopeContext.deviceScopeKey);
       const body = putBodySchema.parse(request.body);
       const normalizedSiteKey = body.siteKey.trim();
       const deviceScopeKey = body.deviceScopeKey.trim();
 
-      if (!canProxyTargetLocation(actorLocation) && normalizedSiteKey !== locationScopeContext.siteKey) {
+      if (!canProxyTargetLocation(locationScopeContext) && normalizedSiteKey !== locationScopeContext.siteKey) {
         throw new ApiError(
           403,
           'この端末では他工場の資源割り当てを更新できません',

@@ -90,8 +90,8 @@ describe('Kiosk Production Schedule Order Split API (integration)', () => {
     });
     await prisma.clientDevice.upsert({
       where: { apiKey: MAC_CLIENT_KEY },
-      update: { name: 'Split Route Mac Client', location: 'Mac', defaultMode: 'TAG' },
-      create: { apiKey: MAC_CLIENT_KEY, name: 'Split Route Mac Client', location: 'Mac', defaultMode: 'TAG' }
+      update: { name: 'Split Route Mac Client', location: 'Mac', defaultMode: 'TAG', canProxyOtherDevices: true },
+      create: { apiKey: MAC_CLIENT_KEY, name: 'Split Route Mac Client', location: 'Mac', defaultMode: 'TAG', canProxyOtherDevices: true }
     });
     await prisma.clientDevice.upsert({
       where: { apiKey: 'client-split-route-target-key' },

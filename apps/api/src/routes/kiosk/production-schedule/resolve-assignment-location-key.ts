@@ -12,6 +12,8 @@ import { canProxyTargetLocation } from '../shared.js';
  */
 export async function resolveProductionScheduleAssignmentLocationKey(params: {
   actorDeviceScopeKey: string;
+  /** 呼び出し端末の `ClientDevice.canProxyOtherDevices`（旧: deviceScopeKey が 'Mac'） */
+  actorCanProxyOtherDevices: boolean;
   targetDeviceScopeKey?: string;
 }): Promise<string> {
   const actor = params.actorDeviceScopeKey.trim();
@@ -19,7 +21,7 @@ export async function resolveProductionScheduleAssignmentLocationKey(params: {
     return actor;
   }
   const requested = params.targetDeviceScopeKey?.trim();
-  if (canProxyTargetLocation(actor)) {
+  if (canProxyTargetLocation({ canProxyOtherDevices: params.actorCanProxyOtherDevices })) {
     if (!requested) {
       throw new ApiError(
         400,

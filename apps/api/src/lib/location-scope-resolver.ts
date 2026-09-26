@@ -13,6 +13,9 @@ export type ClientDeviceForScopeResolution = {
   statusClientId?: string | null;
   name: string;
   location?: string | null;
+  /** 明示的な拠点。設定済みなら location 文字列からの推測より優先する。 */
+  siteKey?: string | null;
+  canProxyOtherDevices?: boolean | null;
 };
 
 export type CredentialIdentity = {
@@ -27,6 +30,8 @@ export type StandardLocationScopeContext = {
   deviceName: DeviceName;
   infraHost: InfraHost;
   credentialIdentity: CredentialIdentity;
+  /** 他端末の代理操作（対象端末の指定）を許可された端末か */
+  canProxyOtherDevices: boolean;
 };
 
 export type LocationScopeContext = StandardLocationScopeContext;
@@ -84,8 +89,15 @@ export const resolveDeviceScopeKey = (
   clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>
 ): DeviceScopeKey => asDeviceScopeKey(resolveLegacyLocationKey(clientDevice));
 
-export const resolveSiteKey = (clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>): SiteKey =>
-  asSiteKey(resolveSiteKeyFromScopeKey(resolveDeviceScopeKey(clientDevice)));
+export const resolveSiteKey = (
+  clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name' | 'siteKey'>
+): SiteKey => {
+  const explicitSiteKey = normalizeToken(clientDevice.siteKey);
+  if (explicitSiteKey) {
+    return asSiteKey(explicitSiteKey);
+  }
+  return asSiteKey(resolveSiteKeyFromScopeKey(resolveDeviceScopeKey(clientDevice)));
+};
 
 export const resolveDeviceName = (clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>): DeviceName =>
   asDeviceName(resolveDeviceNameFromScopeKey(resolveDeviceScopeKey(clientDevice)));
@@ -110,10 +122,11 @@ const resolveStandardLocationScopeContext = (
   const deviceScopeKey = resolveDeviceScopeKey(clientDevice);
   return {
     deviceScopeKey,
-    siteKey: asSiteKey(resolveSiteKeyFromScopeKey(deviceScopeKey)),
+    siteKey: resolveSiteKey(clientDevice),
     deviceName: asDeviceName(resolveDeviceNameFromScopeKey(deviceScopeKey)),
     infraHost: resolveInfraHost(clientDevice),
-    credentialIdentity: resolveCredentialIdentity(clientDevice)
+    credentialIdentity: resolveCredentialIdentity(clientDevice),
+    canProxyOtherDevices: clientDevice.canProxyOtherDevices === true
   };
 };
 

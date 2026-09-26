@@ -73,6 +73,30 @@ describe('location-scope-resolver', () => {
     });
   });
 
+  it('prefers an explicit site over the location text guess', () => {
+    const input = { location: null, name: 'Mac', siteKey: ' 第2工場 ' };
+    expect(resolveSiteKey(input)).toBe('第2工場');
+    expect(resolveDeviceScopeKey(input)).toBe('Mac');
+    const context = resolveLocationScopeContext({ ...input, id: 'mac', apiKey: 'client-key-mac-kiosk1' });
+    expect(context.siteKey).toBe('第2工場');
+    expect(context.deviceScopeKey).toBe('Mac');
+  });
+
+  it('keeps the location text guess when no explicit site is set', () => {
+    expect(resolveSiteKey({ location: '第2工場 - Sessaku-01', name: 'raspi4', siteKey: null })).toBe('第2工場');
+    expect(resolveSiteKey({ location: null, name: 'Mac', siteKey: '  ' })).toBe('Mac');
+  });
+
+  it('exposes the proxy capability only when the device flag is true', () => {
+    const base = { id: 'mac', apiKey: 'client-key-mac-kiosk1', location: null, name: 'Mac' };
+    expect(resolveLocationScopeContext(base).canProxyOtherDevices).toBe(false);
+    expect(resolveLocationScopeContext({ ...base, canProxyOtherDevices: true }).canProxyOtherDevices).toBe(true);
+    expect(
+      resolveLocationScopeContext({ ...base, name: 'raspi4', location: '第2工場 - A', canProxyOtherDevices: true })
+        .canProxyOtherDevices
+    ).toBe(true);
+  });
+
   it('does not expose legacy location key in standard scope context', () => {
     const context = resolveLocationScopeContext({
       id: 'client-uuid',

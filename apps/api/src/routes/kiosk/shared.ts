@@ -14,8 +14,6 @@ import {
 import { env } from '../../config/env.js';
 import { getKioskRateLimitService } from '../../services/security/kiosk-rate-limit.service.js';
 
-const MAC_LOCATION_ALIAS = 'Mac';
-
 export { normalizeClientKey };
 
 export const parseCsvList = (value: string | undefined): string[] => {
@@ -57,7 +55,15 @@ export async function checkPowerRateLimit(clientKey: string, ip: string): Promis
 
 export async function requireClientDevice(rawClientKey: unknown): Promise<{
   clientKey: string;
-  clientDevice: { id: string; apiKey: string; name: string; location: string | null; statusClientId: string | null };
+  clientDevice: {
+    id: string;
+    apiKey: string;
+    name: string;
+    location: string | null;
+    statusClientId: string | null;
+    siteKey: string | null;
+    canProxyOtherDevices: boolean;
+  };
 }> {
   return requireKioskClientDevice(rawClientKey);
 }
@@ -95,14 +101,17 @@ export const resolveTargetLocation = (params: {
   return params.actorLocation;
 };
 
-export const shouldRequireTargetLocationForActor = (actorLocation: string): boolean => {
+export const shouldRequireTargetLocationForActor = (
+  actor: Pick<LocationScopeContext, 'canProxyOtherDevices'>
+): boolean => {
   const requireForMac = process.env.KIOSK_DUE_MANAGEMENT_REQUIRE_TARGET_LOCATION_FOR_MAC === 'true';
   if (!requireForMac) {
     return false;
   }
-  return actorLocation === MAC_LOCATION_ALIAS;
+  return actor.canProxyOtherDevices;
 };
 
-export const canProxyTargetLocation = (actorLocation: string): boolean => {
-  return actorLocation === MAC_LOCATION_ALIAS;
+/** 代理操作は端末設定 `ClientDevice.canProxyOtherDevices` で許可する（旧: deviceScopeKey が 'Mac'）。 */
+export const canProxyTargetLocation = (actor: Pick<LocationScopeContext, 'canProxyOtherDevices'>): boolean => {
+  return actor.canProxyOtherDevices;
 };
