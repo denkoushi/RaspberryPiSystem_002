@@ -26,7 +26,13 @@ ALTER TABLE "ClientDevice"
   FOREIGN KEY ("siteKey") REFERENCES "Site"("key") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- The proxy privilege used to be "device scope key equals 'Mac'". Carry it over
--- exactly, using the same derivation as location-scope-resolver.ts.
+-- exactly, using the same derivation as location-scope-resolver.ts. JavaScript
+-- String.prototype.trim() strips every ECMAScript WhiteSpace and LineTerminator,
+-- so the same explicit character set is stripped here (btrim() only strips spaces).
 UPDATE "ClientDevice"
 SET "canProxyOtherDevices" = true
-WHERE COALESCE(NULLIF(btrim("location"), ''), NULLIF(btrim("name"), ''), 'default') = 'Mac';
+WHERE COALESCE(
+  NULLIF(regexp_replace("location", '^[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+|[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+$', '', 'g'), ''),
+  NULLIF(regexp_replace("name", '^[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+|[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+$', '', 'g'), ''),
+  'default'
+) = 'Mac';
