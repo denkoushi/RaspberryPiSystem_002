@@ -55,7 +55,7 @@ export async function getSites() {
   return data.sites;
 }
 
-export async function createSite(payload: { key: string; displayName?: string }) {
+export async function createSite(payload: { key: string }) {
   const { data } = await api.post<{ site: Site }>('/sites', payload);
   return data.site;
 }

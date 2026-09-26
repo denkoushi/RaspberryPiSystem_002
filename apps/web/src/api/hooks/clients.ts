@@ -83,6 +83,8 @@ export function useKioskSites(options?: { enabled?: boolean }) {
     queryKey: ['kiosk-sites'],
     queryFn: getKioskSites,
     staleTime: 5 * 60_000,
+    // 開いたままの画面にも、管理画面で追加した拠点を反映する（アプリ全体で focus 時の再取得は無効）。
+    refetchInterval: 5 * 60_000,
     enabled: options?.enabled ?? true
   });
 }

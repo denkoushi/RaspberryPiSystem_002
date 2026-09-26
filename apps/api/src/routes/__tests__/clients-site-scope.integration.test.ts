@@ -28,7 +28,13 @@ describe('site assignment administration', () => {
 
   it('creates and lists sites, rejecting duplicates and the location delimiter', async () => {
     const headers = { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' };
-    const created = await app.inject({ method: 'POST', url: '/api/sites', headers, payload: { key: ` ${siteKey} ` } });
+    // 表示名は常に拠点名と同じ（別名は受け付けない）。
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { key: ` ${siteKey} `, displayName: '別名' }
+    });
     expect(created.statusCode).toBe(200);
     expect(created.json().site).toMatchObject({ key: siteKey, displayName: siteKey });
 
