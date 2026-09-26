@@ -22,6 +22,7 @@ export async function registerProductionScheduleOrderUsageRoute(
 
     const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
       actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       targetDeviceScopeKey: query.targetDeviceScopeKey
     });
 

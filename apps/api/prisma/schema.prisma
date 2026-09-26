@@ -483,6 +483,11 @@ model ClientDevice {
   haizenEdgeEnabled                             Boolean                                        @default(false)
   /// キオスク棚レイアウト編集（区画フロアプラン・マス割当）を許可する端末
   shelfLayoutEditEnabled                        Boolean                                        @default(false)
+  /// 明示的な拠点（未設定時は location 文字列から推測する旧互換）
+  siteKey                                       String?
+  site                                          Site?                                          @relation(fields: [siteKey], references: [key], onDelete: Restrict, onUpdate: Cascade)
+  /// 他端末の代理操作（手動順番・負荷調整などで対象端末を指定）を許可する端末
+  canProxyOtherDevices                          Boolean                                        @default(false)
   lastSeenAt                                    DateTime?
   createdAt                                     DateTime                                       @default(now())
   updatedAt                                     DateTime                                       @updatedAt
@@ -515,6 +520,17 @@ model ClientDevice {
   workInstructionPartAliases                    WorkInstructionPartAlias[]                     @relation("WorkInstructionPartAliasLastSelectedClientDevice")
 
   @@index([statusClientId])
+  @@index([siteKey])
+}
+
+/// 拠点（工場）。キオスク端末の拠点共有データ（製番ボード等）の単位。
+model Site {
+  key         String         @id
+  displayName String
+  sortOrder   Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  devices     ClientDevice[]
 }
 
 /// Zero2W / ヘッドレスエッジ由来の配膳スキャン履歴（1スキャン1行）

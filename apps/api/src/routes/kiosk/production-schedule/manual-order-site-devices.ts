@@ -5,10 +5,7 @@ import { ApiError } from '../../../lib/errors.js';
 import { listRegisteredDeviceScopeKeysForSite } from '../../../lib/manual-order-device-scope.js';
 import { canProxyTargetLocation } from '../shared.js';
 import { env } from '../../../config/env.js';
-import {
-  toLegacyLocationKeyFromDeviceScope,
-  type KioskRouteDeps
-} from './shared.js';
+import type { KioskRouteDeps } from './shared.js';
 
 const querySchema = z.object({
   siteKey: z.string().min(1).max(100)
@@ -27,11 +24,10 @@ export async function registerProductionScheduleManualOrderSiteDevicesRoute(
       }
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-      const actorLocation = toLegacyLocationKeyFromDeviceScope(locationScopeContext.deviceScopeKey);
       const { siteKey } = querySchema.parse(request.query);
       const normalizedSiteKey = siteKey.trim();
 
-      if (!canProxyTargetLocation(actorLocation) && normalizedSiteKey !== locationScopeContext.siteKey) {
+      if (!canProxyTargetLocation(locationScopeContext) && normalizedSiteKey !== locationScopeContext.siteKey) {
         throw new ApiError(
           403,
           'この端末では他工場の端末一覧を参照できません',

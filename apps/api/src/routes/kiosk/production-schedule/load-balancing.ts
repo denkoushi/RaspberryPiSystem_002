@@ -136,6 +136,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
 
     const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
       actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       targetDeviceScopeKey: query.targetDeviceScopeKey
     });
 
@@ -159,6 +160,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
 
       const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
         actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
         targetDeviceScopeKey: query.targetDeviceScopeKey
       });
 
@@ -199,6 +201,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
 
       const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
         actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
         targetDeviceScopeKey: query.targetDeviceScopeKey
       });
 
@@ -240,6 +243,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
 
       const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
         actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
         targetDeviceScopeKey: body.targetDeviceScopeKey
       });
 
@@ -283,6 +287,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
 
       const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
         actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
         targetDeviceScopeKey: body.targetDeviceScopeKey
       });
 
@@ -309,6 +314,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
 
       const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
         actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
         targetDeviceScopeKey: body.targetDeviceScopeKey
       });
 
@@ -336,6 +342,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
 
       const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
         actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
         targetDeviceScopeKey: body.targetDeviceScopeKey
       });
 
@@ -362,6 +369,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
 
       const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
         actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
         targetDeviceScopeKey: body.targetDeviceScopeKey
       });
 
@@ -387,6 +395,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
 
     const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
       actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       targetDeviceScopeKey: body.targetDeviceScopeKey
     });
 

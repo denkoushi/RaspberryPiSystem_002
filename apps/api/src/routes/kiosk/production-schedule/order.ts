@@ -31,7 +31,7 @@ export async function registerProductionScheduleOrderRoute(
       const requestedTargetDeviceScopeKey = body.targetDeviceScopeKey?.trim();
       const requestedTargetLocation = body.targetLocation?.trim();
 
-      if (canProxyTargetLocation(actorLocation)) {
+      if (canProxyTargetLocation(locationScopeContext)) {
         if (!requestedTargetDeviceScopeKey) {
           throw new ApiError(
             400,
@@ -74,7 +74,7 @@ export async function registerProductionScheduleOrderRoute(
       if (
         requestedTargetLocation &&
         requestedTargetLocation !== actorLocation &&
-        !canProxyTargetLocation(actorLocation)
+        !canProxyTargetLocation(locationScopeContext)
       ) {
         throw new ApiError(
           403,

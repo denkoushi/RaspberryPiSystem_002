@@ -1,4 +1,5 @@
 # ドキュメント索引
+- 端末の拠点を明示設定へ移行（Mac代理操作の設定化・誤拠点データの統合）: [ExecPlan](./plans/explicit-site-scope-execplan.md)
 - Hermes横断レコード検索（ソースカタログ・検索計画・手元評価・5秒目標）: [ADR](./decisions/ADR-20260923-hermes-cross-source-retrieval.md) / [ExecPlan](./plans/hermes-cross-source-retrieval-execplan.md)
 - Hermes検索のオフラインDGXエンリッチメント（既定OFF、照会時は呼ばない）: [Plan](./plans/hermes-dgx-retrieval-enrichment.md)
 - Hermes retrieval hybrid and enrichment aliases: [ADR-20260924](./decisions/ADR-20260924-hermes-retrieval-hybrid-enrichment.md)
