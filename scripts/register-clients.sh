@@ -118,15 +118,14 @@ register_client() {
   
   # クライアントデバイスを登録（管理者専用 POST /clients）
   local response
-  # location が空のときは送らない（管理画面で設定済みの値を空で上書きしない）。
-  # 拠点（siteKey）と代理操作の可否は管理画面の設定が正であり、ここでは送らない。
-  local register_body
-  register_body=$(jq -n --arg apiKey "${api_key}" --arg name "${name}" --arg location "${location}" \
-    '{apiKey: $apiKey, name: $name} + (if $location == "" then {} else {location: $location} end)')
   response=$(curl -sS "${curl_common_opts[@]}" -X POST "${API_BASE_URL}/clients" \
     -H "Authorization: Bearer ${TOKEN}" \
     -H "Content-Type: application/json" \
-    -d "${register_body}")
+    -d "{
+      \"apiKey\": \"${api_key}\",
+      \"name\": \"${name}\",
+      \"location\": \"${location}\"
+    }")
 
   if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
     echo "[ERROR] Failed to register client ${name}: $(echo "$response" | jq -r '.message // .error')"
