@@ -15,7 +15,8 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - [x] (2026-09-26) Read the current kiosk inventory code, API authorization, service methods, tests, NFC routing, and the kiosk keyboard component; recorded findings below.
 - [x] (2026-09-26) User approved the flow: stock checking and correction are merged into the daily 在庫操作 screen without a password; setup stays separate with the password.
 - [x] (2026-09-26) Milestone 1: API allows kiosk stock correction without the password, guarded by an expected-before check, and history can be filtered by compartment. Web client and `useInventoryCompartmentHistory` hook added. Focused API tests 27/27 pass; api and web type checks pass.
-- [ ] Milestone 2: Daily 在庫操作 screen shows item detail, recent history, touch correction, a result panel with undo, and a tag-less picker.
+- [x] (2026-09-26) Milestone 1 merged as PR #1506 (merge SHA 60ba5c25); main CI green.
+- [x] (2026-09-26) Milestone 2: Daily 在庫操作 screen shows item detail, recent history, touch correction with undo, and a tag-less picker; header tab renamed 在庫 and pointed at `/kiosk/inventory`. Related web tests 28/28 and `tsc -b` pass. Real-kiosk screen check is left to Milestone 6.
 - [ ] Milestone 3: Kiosk setup screen gets an on-screen PIN keypad and a tabbed shell, with the NFCタグ and 棚・引き出し tabs.
 - [ ] Milestone 4: Kiosk setup 登録待ち tab becomes a step-by-step registration flow with automatic NFC reads.
 - [ ] Milestone 5: Kiosk setup アイテム編集 tab (move, item tag swap, photo order and delete, item delete); the kiosk stops using the admin page component.
@@ -60,7 +61,13 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - Decision: The password unlock lasts while the worker stays on the setup page. Leaving the page (unmounting it) forgets the password. No timer.
   Rationale: This is today's behaviour: `accessPassword` lives in React state of `KioskItemInventorySettingsPage`. The mockup text says 在庫操作に戻るとロック, which matches. A timer would add state without a stated need.
   Date/Author: 2026-09-26 / Claude.
-- Decision (open, default chosen): In the kiosk registration flow, the 名前など step is optional. It is prefilled with the current default (`ItemlistRaspi <sourceItemId>`), and model and usage are left blank. The step offers the ordinary text input, which works on terminals with a keyboard and IBus. Japanese renaming on keyboard-less terminals is done later on the admin PC page.
+- Decision: The daily correction keypad reuses the existing `apps/web/src/features/kiosk/KioskDigitTenkey.tsx` with larger key classes, instead of moving `NumericKeypad` out of `RaspiInventoryPage.tsx`.
+  Rationale: A kiosk tenkey already exists and is used by other kiosk screens, and the admin page and its tests stay untouched.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: The success panel reuses the existing message area and the existing 直前の取引を取消 button, instead of a separate large いまの取引を取り消す button.
+  Rationale: The existing button already undoes the last issue, restock or correction, and the existing tests pin its name.
+  Date/Author: 2026-09-26 / Claude.
+- Decision (was open; user approved 2026-09-26): In the kiosk registration flow, the 名前など step is optional. It is prefilled with the current default (`ItemlistRaspi <sourceItemId>`), and model and usage are left blank. The step offers the ordinary text input, which works on terminals with a keyboard and IBus. Japanese renaming on keyboard-less terminals is done later on the admin PC page.
   Rationale: The on-screen keyboard cannot type Japanese, and building a kana keyboard is outside this scope. Ask the user before Milestone 4 whether this default is acceptable.
   Date/Author: 2026-09-26 / Claude.
 

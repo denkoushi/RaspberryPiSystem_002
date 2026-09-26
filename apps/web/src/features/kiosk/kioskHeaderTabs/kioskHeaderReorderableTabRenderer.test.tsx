@@ -41,13 +41,23 @@ describe('kiosk header reorderable tabs', () => {
     expect(screen.getByRole('link', { name: '持出' })).toHaveAttribute('href', '/kiosk/photo');
   });
 
-  it('renders the inventory settings tab with its protected kiosk route', () => {
+  it('renders the inventory tab pointing at the daily inventory screen', () => {
     render(
       <MemoryRouter>
         {renderKioskReorderableHeaderTab('inventory_settings', baseContext)}
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('link', { name: '在庫設定' })).toHaveAttribute('href', '/kiosk/inventory/settings');
+    expect(screen.getByRole('link', { name: '在庫' })).toHaveAttribute('href', '/kiosk/inventory');
+  });
+
+  it('keeps the inventory tab active on the setup screen', () => {
+    render(
+      <MemoryRouter>
+        {renderKioskReorderableHeaderTab('inventory_settings', { ...baseContext, pathname: '/kiosk/inventory/settings' })}
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('link', { name: '在庫' }).className).toContain('bg-sky-600');
   });
 });

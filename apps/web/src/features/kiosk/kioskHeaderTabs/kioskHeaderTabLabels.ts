@@ -2,7 +2,7 @@ import type { KioskReorderableHeaderTabId } from '@raspi-system/shared-types';
 
 export const KIOSK_HEADER_TAB_LABELS: Record<KioskReorderableHeaderTabId, string> = {
   borrow: '持出',
-  inventory_settings: '在庫設定',
+  inventory_settings: '在庫',
   self_inspection: '自主検査',
   instruments_borrow: '計測機器 持出',
   rigging_borrow: '吊具 持出',

@@ -243,7 +243,7 @@ export async function correctInventoryStock(
   input: { compartmentId: string; desiredQuantity: number; expectedBeforeQuantity?: number; note?: string },
   accessPassword?: string,
 ) {
-  const { data } = await api.post('/item-inventory/corrections', input, {
+  const { data } = await api.post<{ transaction: InventoryHistoryEntry }>('/item-inventory/corrections', input, {
     headers: inventorySettingsHeaders(accessPassword)
   });
   return data;

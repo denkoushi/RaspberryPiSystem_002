@@ -39,7 +39,7 @@ const inventoryKeys = {
   importMessages: ['inventory-import-messages'],
 };
 
-export function useInventoryItems() { return useQuery({ queryKey: inventoryKeys.items, queryFn: getInventoryItems }); }
+export function useInventoryItems(enabled = true) { return useQuery({ queryKey: inventoryKeys.items, queryFn: getInventoryItems, enabled }); }
 export function useInventoryLocations() { return useQuery({ queryKey: inventoryKeys.locations, queryFn: getInventoryLocations }); }
 export function useInventoryTags() { return useQuery({ queryKey: inventoryKeys.tags, queryFn: getInventoryTags }); }
 export function useInventoryImports(accessPassword?: string) {
