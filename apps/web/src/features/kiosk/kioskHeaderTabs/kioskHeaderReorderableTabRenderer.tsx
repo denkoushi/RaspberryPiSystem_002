@@ -61,9 +61,9 @@ export function renderKioskReorderableHeaderTab(
       });
     case 'inventory_settings':
       return renderNavLinkTab({
-        to: '/kiosk/inventory/settings',
-        label: '在庫設定',
-        isActive: pathname.startsWith('/kiosk/inventory/settings'),
+        to: '/kiosk/inventory',
+        label: '在庫',
+        isActive: pathname.startsWith('/kiosk/inventory'),
         activeClassName: 'bg-sky-600 text-white'
       });
     case 'self_inspection':
