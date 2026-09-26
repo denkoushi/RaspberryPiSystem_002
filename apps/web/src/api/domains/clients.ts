@@ -12,6 +12,10 @@ export interface ClientDevice {
   haizenEdgeEnabled?: boolean;
   /** キオスク棚レイアウト編集を許可 */
   shelfLayoutEditEnabled?: boolean;
+  /** 明示拠点（Site.key）。未設定なら location 文字列から推測される */
+  siteKey?: string | null;
+  /** 他端末の代理操作（手動順番・負荷調整などで対象端末を指定）を許可 */
+  canProxyOtherDevices?: boolean;
   /** キオスクのサイネージプレビュー参照先（API が返す場合のみ） */
   signagePreviewTargetApiKey?: string | null;
   lastSeenAt?: string | null;
@@ -32,10 +36,36 @@ export async function updateClient(
     kioskInitialRoute?: string | null;
     haizenEdgeEnabled?: boolean;
     shelfLayoutEditEnabled?: boolean;
+    siteKey?: string | null;
+    canProxyOtherDevices?: boolean;
   }
 ) {
   const { data } = await api.put<{ client: ClientDevice }>(`/clients/${id}`, payload);
   return data.client;
+}
+
+export interface Site {
+  key: string;
+  displayName: string;
+  sortOrder: number;
+}
+
+export async function getSites() {
+  const { data } = await api.get<{ sites: Site[] }>('/sites');
+  return data.sites;
+}
+
+export async function createSite(payload: { key: string; displayName?: string }) {
+  const { data } = await api.post<{ site: Site }>('/sites', payload);
+  return data.site;
+}
+
+/** サーバー（location-scope-resolver.ts）と同じ、location 文字列からの旧来の拠点推測。表示専用。 */
+export function guessLegacySiteKey(client: Pick<ClientDevice, 'location' | 'name'>): string {
+  const scopeKey = client.location?.trim() || client.name.trim() || 'default';
+  const delimiterIndex = scopeKey.indexOf(' - ');
+  if (delimiterIndex < 0) return scopeKey;
+  return scopeKey.slice(0, delimiterIndex).trim() || scopeKey;
 }
 
 export type ClientLogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';

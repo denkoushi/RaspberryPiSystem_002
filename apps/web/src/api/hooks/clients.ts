@@ -8,6 +8,8 @@ import {
   getClientStatuses,
   getClientAlerts,
   acknowledgeAlert,
+  createSite,
+  getSites,
   updateClient,
   type ClientLogLevel
 } from '../client';
@@ -44,6 +46,8 @@ export function useClientMutations() {
         kioskInitialRoute?: string | null;
         haizenEdgeEnabled?: boolean;
         shelfLayoutEditEnabled?: boolean;
+        siteKey?: string | null;
+        canProxyOtherDevices?: boolean;
       };
     }) => updateClient(id, payload),
     onSuccess: () => {
@@ -53,6 +57,23 @@ export function useClientMutations() {
     }
   });
   return { update };
+}
+
+export function useSites() {
+  return useQuery({
+    queryKey: ['sites'],
+    queryFn: getSites
+  });
+}
+
+export function useCreateSite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: createSite,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sites'] });
+    }
+  });
 }
 
 export function useClientStatuses() {
