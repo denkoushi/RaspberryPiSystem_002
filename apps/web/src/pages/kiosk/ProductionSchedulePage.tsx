@@ -42,6 +42,7 @@ import {
 } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
 import { useProductionScheduleSearchConditions } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
 import { useSharedSearchHistory } from '../../features/kiosk/productionSchedule/useSharedSearchHistory';
+import { KIOSK_DEFAULT_SITE_KEY, useKioskSiteKeys } from '../../features/kiosk/sites/useKioskSiteKeys';
 import { useKioskOpenPartMeasurementFromScheduleRow } from '../../features/part-measurement/useKioskOpenPartMeasurementFromScheduleRow';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useTimedHoverReveal } from '../../hooks/useTimedHoverReveal';
@@ -54,7 +55,6 @@ const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
   readProductionBuildConfig().manualOrderDeviceScopeV2Enabled;
 const PRODUCTION_SCHEDULE_MAC_TARGET_SITE_KEY = 'production-schedule-mac-target-site';
 const PRODUCTION_SCHEDULE_MAC_TARGET_DEVICE_KEY = 'production-schedule-mac-target-device';
-const DEFAULT_MAC_TARGET_SITES = ['第2工場', 'トークプラザ', '第1工場'] as const;
 
 const SORT_MODE_KEY = 'production-schedule-sort-mode';
 const NOTE_COLUMN_WIDTH = 140;
@@ -137,10 +137,11 @@ export function ProductionSchedulePage() {
   const isMac =
     typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
   const macManualOrderV2 = isMac && MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED;
+  const macTargetSites = useKioskSiteKeys({ enabled: macManualOrderV2 });
   const [macTargetSite, setMacTargetSite] = useState<string>(() => {
-    if (typeof window === 'undefined') return DEFAULT_MAC_TARGET_SITES[0];
+    if (typeof window === 'undefined') return KIOSK_DEFAULT_SITE_KEY;
     const stored = window.localStorage.getItem(PRODUCTION_SCHEDULE_MAC_TARGET_SITE_KEY)?.trim();
-    return stored && stored.length > 0 ? stored : DEFAULT_MAC_TARGET_SITES[0];
+    return stored && stored.length > 0 ? stored : KIOSK_DEFAULT_SITE_KEY;
   });
   const [macTargetDevice, setMacTargetDevice] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
@@ -687,7 +688,7 @@ export function ProductionSchedulePage() {
             className="h-8 max-w-[200px] rounded border border-amber-300/50 bg-slate-900 px-2 text-xs text-white"
             aria-label="工場を選択"
           >
-            {DEFAULT_MAC_TARGET_SITES.map((site) => (
+            {macTargetSites.map((site) => (
               <option key={site} value={site}>
                 {site}
               </option>

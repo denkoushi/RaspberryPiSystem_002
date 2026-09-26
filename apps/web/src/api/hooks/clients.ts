@@ -7,6 +7,7 @@ import {
   getClientLogs,
   getClientStatuses,
   getClientAlerts,
+  getKioskSites,
   acknowledgeAlert,
   createSite,
   getSites,
@@ -73,6 +74,18 @@ export function useCreateSite() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sites'] });
     }
+  });
+}
+
+/** キオスクの拠点選択肢（管理画面で登録した拠点） */
+export function useKioskSites(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['kiosk-sites'],
+    queryFn: getKioskSites,
+    staleTime: 5 * 60_000,
+    // 開いたままの画面にも、管理画面で追加した拠点を反映する（アプリ全体で focus 時の再取得は無効）。
+    refetchInterval: 5 * 60_000,
+    enabled: options?.enabled ?? true
   });
 }
 

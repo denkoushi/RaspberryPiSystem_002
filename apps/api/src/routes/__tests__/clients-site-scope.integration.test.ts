@@ -28,7 +28,13 @@ describe('site assignment administration', () => {
 
   it('creates and lists sites, rejecting duplicates and the location delimiter', async () => {
     const headers = { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' };
-    const created = await app.inject({ method: 'POST', url: '/api/sites', headers, payload: { key: ` ${siteKey} ` } });
+    // 表示名は常に拠点名と同じ（別名は受け付けない）。
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { key: ` ${siteKey} `, displayName: '別名' }
+    });
     expect(created.statusCode).toBe(200);
     expect(created.json().site).toMatchObject({ key: siteKey, displayName: siteKey });
 
@@ -76,6 +82,23 @@ describe('site assignment administration', () => {
     });
     await app.inject({ method: 'GET', url: '/api/sites', headers: createAuthHeader(adminToken) });
     expect(resolveSiteKeyForScopeKey(relocated)).toBe(siteKey);
+  });
+
+  it('lists sites for kiosks with a client key, keeping the previous picker order', async () => {
+    const device = await createTestClientDevice();
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/sites',
+      headers: { 'x-client-key': device.apiKey }
+    });
+    expect(response.statusCode).toBe(200);
+    const keys = response.json().sites.map((site: { key: string }) => site.key);
+    // 他のテストで作った拠点（sortOrder 0）が混ざるため、既定 3 拠点の相対順だけを確認する。
+    const planned = ['第2工場', 'トークプラザ', '第1工場'];
+    expect(keys.filter((key: string) => planned.includes(key))).toEqual(planned);
+
+    const anonymous = await app.inject({ method: 'GET', url: '/api/kiosk/sites' });
+    expect(anonymous.statusCode).toBe(401);
   });
 
   it('requires a manager or admin for site administration', async () => {

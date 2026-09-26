@@ -5,11 +5,11 @@ import {
   useKioskProductionScheduleManualOrderSiteDevices
 } from '../../../api/hooks';
 import { stripSitePrefixFromDeviceLabel } from '../manualOrder/manualOrderDeviceDisplayLabel';
+import { KIOSK_DEFAULT_SITE_KEY, useKioskSiteKeys } from '../sites/useKioskSiteKeys';
 
 import type { ProductionScheduleDueManagementManualOrderOverviewResource } from '../../../api/client';
 
 const MANUAL_ORDER_PAGE_SITE_KEY = 'manual-order-page-site';
-const DEFAULT_SITES = ['第2工場', 'トークプラザ', '第1工場'] as const;
 
 export type ManualOrderOverviewDeviceCard = {
   deviceScopeKey: string;
@@ -18,10 +18,11 @@ export type ManualOrderOverviewDeviceCard = {
 };
 
 export function useManualOrderPageController() {
+  const siteKeys = useKioskSiteKeys();
   const [siteKey, setSiteKey] = useState<string>(() => {
-    if (typeof window === 'undefined') return DEFAULT_SITES[0];
+    if (typeof window === 'undefined') return KIOSK_DEFAULT_SITE_KEY;
     const stored = window.localStorage.getItem(MANUAL_ORDER_PAGE_SITE_KEY)?.trim();
-    return stored && stored.length > 0 ? stored : DEFAULT_SITES[0];
+    return stored && stored.length > 0 ? stored : KIOSK_DEFAULT_SITE_KEY;
   });
 
   const siteDevicesQuery = useKioskProductionScheduleManualOrderSiteDevices(siteKey, { enabled: true });
@@ -68,7 +69,7 @@ export function useManualOrderPageController() {
 
   return {
     siteKey,
-    defaultSites: DEFAULT_SITES,
+    defaultSites: siteKeys,
     deviceCards,
     siteDevicesQuery,
     overviewQuery,

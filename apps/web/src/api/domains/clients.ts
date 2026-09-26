@@ -55,7 +55,7 @@ export async function getSites() {
   return data.sites;
 }
 
-export async function createSite(payload: { key: string; displayName?: string }) {
+export async function createSite(payload: { key: string }) {
   const { data } = await api.post<{ site: Site }>('/sites', payload);
   return data.site;
 }
@@ -69,6 +69,18 @@ export function guessLegacySiteKey(client: Pick<ClientDevice, 'location' | 'name
 }
 
 export type ClientLogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
+export interface KioskSite {
+  key: string;
+  displayName: string;
+  sortOrder: number;
+}
+
+/** キオスク（x-client-key）向けの拠点一覧 */
+export async function getKioskSites() {
+  const { data } = await api.get<{ sites: KioskSite[] }>('/kiosk/sites');
+  return data.sites;
+}
 
 export interface ClientLogEntry {
   id?: string;

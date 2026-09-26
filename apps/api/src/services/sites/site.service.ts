@@ -17,7 +17,7 @@ export async function listSites(): Promise<SiteDto[]> {
   });
 }
 
-export async function createSite(params: { key: string; displayName?: string; sortOrder?: number }): Promise<SiteDto> {
+export async function createSite(params: { key: string; sortOrder?: number }): Promise<SiteDto> {
   const key = params.key.trim();
   if (!key) {
     throw new ApiError(400, '拠点名を入力してください', undefined, 'SITE_KEY_REQUIRED');
@@ -36,7 +36,7 @@ export async function createSite(params: { key: string; displayName?: string; so
       'SITE_KEY_CONFLICTS_WITH_DEVICE'
     );
   }
-  const displayName = params.displayName?.trim() || key;
+  const displayName = key;
   try {
     const site = await prisma.site.create({
       data: { key, displayName, sortOrder: params.sortOrder ?? 0 },
