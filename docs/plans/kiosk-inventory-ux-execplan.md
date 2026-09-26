@@ -17,7 +17,9 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - [x] (2026-09-26) Milestone 1: API allows kiosk stock correction without the password, guarded by an expected-before check, and history can be filtered by compartment. Web client and `useInventoryCompartmentHistory` hook added. Focused API tests 27/27 pass; api and web type checks pass.
 - [x] (2026-09-26) Milestone 1 merged as PR #1506 (merge SHA 60ba5c25); main CI green.
 - [x] (2026-09-26) Milestone 2: Daily 在庫操作 screen shows item detail, recent history, touch correction with undo, and a tag-less picker; header tab renamed 在庫 and pointed at `/kiosk/inventory`. Related web tests 28/28 and `tsc -b` pass. Real-kiosk screen check is left to Milestone 6.
-- [ ] Milestone 3: Kiosk setup screen gets an on-screen PIN keypad and a tabbed shell, with the NFCタグ and 棚・引き出し tabs.
+- [x] (2026-09-26) Milestone 1 deployed to Pi5 (run 20260926-101836-a72d4c, recap failed=0 unreachable=0; `/api/system/health` ok; unauthenticated correction returns 401).
+- [x] (2026-09-26) Milestone 2 merged as PR #1507 (merge SHA 13617380).
+- [x] (2026-09-26) Milestone 3: Kiosk setup screen gets an on-screen PIN keypad and a tabbed shell, with the NFCタグ and 棚・引き出し tabs. Related web tests pass (141 files, 731 tests).
 - [ ] Milestone 4: Kiosk setup 登録待ち tab becomes a step-by-step registration flow with automatic NFC reads.
 - [ ] Milestone 5: Kiosk setup アイテム編集 tab (move, item tag swap, photo order and delete, item delete); the kiosk stops using the admin page component.
 - [ ] Milestone 6: Knowledge record and final verification on a kiosk-sized viewport.
@@ -66,6 +68,12 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
   Date/Author: 2026-09-26 / Claude.
 - Decision: The success panel reuses the existing message area and the existing 直前の取引を取消 button, instead of a separate large いまの取引を取り消す button.
   Rationale: The existing button already undoes the last issue, restock or correction, and the existing tests pin its name.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: Setup NFC reads listen as an ordinary (legacy) NFC subscriber, not with the `inventory` role.
+  Rationale: `useNfcStream` delivers `inventory`-role events only for UIDs that already resolve to an inventory tag. New tags being registered are unknown, so they arrive only to legacy subscribers. The global inventory router is already off on the setup path.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: 棚・引き出し adds the next consecutive number with one touch, and gap numbers are left to the admin PC page.
+  Rationale: This avoids a keypad step for the common case. A new area name is the only text on the kiosk and sits behind a "keyboard terminals" fold.
   Date/Author: 2026-09-26 / Claude.
 - Decision (was open; user approved 2026-09-26): In the kiosk registration flow, the 名前など step is optional. It is prefilled with the current default (`ItemlistRaspi <sourceItemId>`), and model and usage are left blank. The step offers the ordinary text input, which works on terminals with a keyboard and IBus. Japanese renaming on keyboard-less terminals is done later on the admin PC page.
   Rationale: The on-screen keyboard cannot type Japanese, and building a kana keyboard is outside this scope. Ask the user before Milestone 4 whether this default is acceptable.
