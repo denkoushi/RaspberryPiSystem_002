@@ -14,6 +14,7 @@ import { prisma } from '../dist/lib/prisma.js';
 import { resolveDeviceScopeKey, resolveSiteKeyFromScopeKey } from '../dist/lib/location-scope-resolver.js';
 import { GLOBAL_SHARED_LOCATION_KEY } from '../dist/services/production-schedule/due-management-ranking-scope-policy.service.js';
 import { SHARED_RESOURCE_CATEGORY_LOCATION } from '../dist/services/production-schedule/policies/resource-category-policy.service.js';
+import { SHARED_LOAD_BALANCING_SITE_KEY } from '../dist/services/production-schedule/load-balancing/load-balancing-settings-merge.js';
 
 /** [table, column, role] — role says what the column holds today. */
 export const SITE_SCOPED_COLUMNS = [
@@ -58,7 +59,12 @@ const quoteIdent = (name) => `"${name.replaceAll('"', '""')}"`;
 const SHARED_SENTINELS_BY_TABLE = {
   ProductionScheduleGlobalRank: [GLOBAL_SHARED_LOCATION_KEY],
   ProductionScheduleGlobalRowRank: [GLOBAL_SHARED_LOCATION_KEY],
-  ProductionScheduleResourceCategoryConfig: [SHARED_RESOURCE_CATEGORY_LOCATION]
+  ProductionScheduleResourceCategoryConfig: [SHARED_RESOURCE_CATEGORY_LOCATION],
+  ProductionScheduleResourceCapacityBase: [SHARED_LOAD_BALANCING_SITE_KEY],
+  ProductionScheduleResourceMonthlyCapacity: [SHARED_LOAD_BALANCING_SITE_KEY],
+  ProductionScheduleResourceWorkCalendar: [SHARED_LOAD_BALANCING_SITE_KEY],
+  ProductionScheduleLoadBalanceClass: [SHARED_LOAD_BALANCING_SITE_KEY],
+  ProductionScheduleLoadBalanceTransferRule: [SHARED_LOAD_BALANCING_SITE_KEY]
 };
 
 async function main() {
@@ -106,7 +112,12 @@ async function main() {
   const suspicious = tables.flatMap((entry) =>
     entry.values
       .filter(
-        (value) => entry.role !== 'device' && value.kind !== 'registered-site' && value.kind !== 'shared-sentinel'
+        (value) =>
+          entry.role !== 'device' &&
+          value.kind !== 'registered-site' &&
+          value.kind !== 'shared-sentinel' &&
+          // Global ranks keyed by a device scope key are that device's own (locationScoped) ranking.
+          !(entry.role === 'site-device-or-shared' && value.kind === 'device-scope-key')
       )
       .map((value) => ({ table: entry.table, column: entry.column, value: value.value, count: value.count, kind: value.kind }))
   );
