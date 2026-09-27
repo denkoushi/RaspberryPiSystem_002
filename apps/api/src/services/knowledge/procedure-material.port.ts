@@ -26,4 +26,6 @@ export interface ProcedureMaterialRepositoryPort {
   materialsOf(procedureId: string, limit: number): Promise<ProcedureMaterial[]>;
   finish(id: string, token: string, outcome: { procedureId: string } | { unassigned: true }): Promise<void>;
   fail(id: string, token: string, errorCode: string, deferred: boolean): Promise<void>;
+  /** Gives failed materials a fresh set of attempts, e.g. after a release that may fix the cause. */
+  requeueFailed(): Promise<number>;
 }

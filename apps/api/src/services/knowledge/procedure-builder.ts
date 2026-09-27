@@ -67,8 +67,25 @@ export function validateAssignment(raw: RawAssignment, topics: ProcedureTopic[])
     if (!topic) throw new Error('UNKNOWN_PROCEDURE_TOPIC');
     return { kind: 'existing', topic };
   }
-  const header = procedureHeaderSchema.parse(raw.header);
+  const header = procedureHeaderSchema.parse(normalizeHeader(raw.header));
   return { kind: 'new', header: { ...header, reviewTier: enforceReviewTier(header, raw.confidence) } };
+}
+
+const IDENTIFIER_KEYS = ['partNumber', 'drawingNumber', 'processName'] as const;
+
+/**
+ * Models omit empty objects, send empty strings or add unrequested keys. Only the known
+ * identifier keys with non-empty text survive; a missing tier falls back to the safe side.
+ */
+export function normalizeHeader(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const header = raw as Record<string, unknown>;
+  const given = header.identifiers && typeof header.identifiers === 'object' ? header.identifiers as Record<string, unknown> : {};
+  const identifiers = Object.fromEntries(IDENTIFIER_KEYS.flatMap(key => {
+    const value = given[key];
+    return typeof value === 'string' && value.trim() ? [[key, value.trim()]] : [];
+  }));
+  return { title: header.title, category: header.category, identifiers, reviewTier: header.reviewTier ?? 'approval_required' };
 }
 
 function sourceOf(material: ProcedureMaterial, quote: string | undefined): KnowledgeProcedureSource {

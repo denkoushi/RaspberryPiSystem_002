@@ -59,6 +59,9 @@ describe.skipIf(!enabled)('Procedure material queue PostgreSQL contract', () => 
     await materials.fail(claimed.id, 'w2', 'NO_SUPPORTED_STEPS', false);
     row = await db.knowledgeProcedureMaterial.findUniqueOrThrow({ where: { id: claimed.id } });
     expect(row).toMatchObject({ state: 'failed', errorCode: 'NO_SUPPORTED_STEPS' });
+    expect(await materials.requeueFailed()).toBe(1);
+    row = await db.knowledgeProcedureMaterial.findUniqueOrThrow({ where: { id: claimed.id } });
+    expect(row).toMatchObject({ state: 'pending', attempts: 0, leaseToken: null });
   });
 
   it('enforces the state domain in the database', async () => {

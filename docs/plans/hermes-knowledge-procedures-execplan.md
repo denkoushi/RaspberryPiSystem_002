@@ -27,7 +27,8 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-09-27) マイルストーン1: 手順書のデータ形（`KnowledgeProcedure`/`KnowledgeProcedureRevision`、加算 migration `20260927100000_add_knowledge_procedures`、内容の検証 `procedure-content.ts`）、公開済みの一覧・詳細・写真の読み取り API、表示部品 `KnowledgeProcedureView`/`KnowledgeProcedureDialog` を実装した。承認が要る手順書は、この段階の仕組みでは公開できない（`publishAutomatic` が拒否する）。
 - [x] (2026-09-27) マイルストーン1: PR #1515 を main へ統合し（merge `72bf05aa94523d6bf9d09768ba3ace18cbb61e05`）、Pi5 へ標準ローリング更新で反映した（run `20260927-010628-f0b65c`、`SubState=exited`/`Result=success`/`ExecMainStatus=0`、recap `ok=263 changed=31 unreachable=0 failed=0`）。反映後、API/Web が同 SHA のイメージで `healthy`、migration 適用済み、`/api/system/health` 200、`/api/hermes-knowledge/procedures` が未認証で 401 を確認した。Chat からの入口はマイルストーン4で付ける。
 - [x] (2026-09-27) マイルストーン2a: 素材キュー（`KnowledgeProcedureMaterial`、migration `20260927140000_add_knowledge_procedure_materials`）、主題の振り分けと手順の組み立て（`procedure-builder.ts`、`procedure-inference.ts`、`procedure-worker.ts`）、試作の保存経路のキュー投入への切り替え、既存の保存済み素材の取り込みを実装した。
-- [ ] マイルストーン2a: PR、CI、main 統合、Pi5 反映、実際の素材での品質確認。
+- [x] (2026-09-27) マイルストーン2a: PR #1516 を main へ統合し（merge `877a74bd8d4acb97c068c5b86d17196a4cfd5eb7`）、Pi5 へ反映した（run `20260927-021711-0af964`、`Result=success`、recap `failed=0`）。
+- [ ] マイルストーン2a: AI 出力の正規化の修正を反映し、実際の素材での品質を確かめる。
 - [ ] マイルストーン2b: 文字のある PDF の束を DocJev で分割・分類してから取り込む処理と、Excel の取り込み。
 - [ ] マイルストーン3: 確認の区分（承認が要るもの／自動公開）と、承認・誤り報告・修正の流れ。
 - [ ] マイルストーン4: Chat からの閲覧（主題名での直接表示）。
@@ -50,6 +51,10 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: 作業要領の写真 4 件はすべて「読める文字がない」エラー。スキャン図面 8 件は英語 OCR の文字化けで 4 件正解、組立手順書画像 3 件は 0 件正解（1 件エラー）。画像頁を含むスライド資料 4 件もエラー。LiteParse の OCR 言語は `jev_docs/ocr/liteparse.py` に `en` で固定されており、`jpn` に差し替えても図面の文字は化けたままだった。
 - Observation: 文字のある PDF の束の分割は正確だった。
   Evidence: 要領書 21 頁、作業要領書 1 頁、報告 7 頁、要領書 21 頁、作業要領書 1 頁を連結した 51 頁の PDF を、境界・分類とも正しく 5 つに分けた。判定 0.9 秒、全体 5 秒。
+
+- Observation: 本番で最初の素材の手順書づくりが、AI の出力形式のずれで 4 回続けて失敗した。
+  Evidence: 2026-09-27 の Pi5 ログで、主題の振り分け結果の `header.identifiers` が欠けて `ZodError`（`identifiers` Required）になった。品番などが無いメモで、AI は空の `identifiers` を丸ごと省いた。修正では、既知の 3 項目だけを取り出して空文字や余分な項目を捨て、欠けた確認区分は承認が要る側に倒す正規化を入れ、手順の出典欠落は組み立て側で捨てる扱いにした。あわせて、起動のたびに失敗扱いの素材へ再試行の回数を与え直す。
+  Evidence: この失敗の前に、業務用 LLM が他の作業で止まっており、受付の用途判定と振り分けは LLM の復帰（準備に約 235 秒）まで待った。素材は失われず、自動で再開した。
 
 ## Decision Log
 
