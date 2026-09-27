@@ -38,7 +38,12 @@ function createKnowledgeRuntime() {
     logError: error => logger.warn({ err: error }, 'Knowledge background processing failed'),
   });
   // Sources saved before procedure building existed; enqueue is idempotent per source id.
-  const backfillLegacyMaterials = async () => { await materials.enqueue('legacy-ready', await repository.readySources()); };
+  // Failed materials get new attempts on each start, since a new release may have fixed the cause.
+  const backfillLegacyMaterials = async () => {
+    await materials.enqueue('legacy-ready', await repository.readySources());
+    const requeued = await materials.requeueFailed();
+    if (requeued) logger.info({ requeued }, 'Knowledge procedure materials requeued after start');
+  };
   return { repository, assets, documents, worker, intake: new KnowledgeIntakeService(repository, assets, inference, runtime),
     procedures, materials, backfillLegacyMaterials,
     procedureWorker: new ProcedureWorker({ materials, procedures, inference: new ProcedureInference(text),

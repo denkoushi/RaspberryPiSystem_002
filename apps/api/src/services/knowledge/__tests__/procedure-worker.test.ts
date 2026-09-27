@@ -17,7 +17,7 @@ const setupHeader = { title: '部品Aの段取り', category: '段取り手順',
 function harness(options: { claimed: ProcedureMaterial | null; topics?: { procedureId: string; header: typeof generalHeader | typeof setupHeader }[]; earlier?: ProcedureMaterial[] }) {
   const materials = {
     enqueue: vi.fn(), claim: vi.fn().mockResolvedValue(options.claimed), renew: vi.fn().mockResolvedValue(true),
-    materialsOf: vi.fn().mockResolvedValue(options.earlier ?? []), finish: vi.fn(), fail: vi.fn().mockResolvedValue(undefined),
+    materialsOf: vi.fn().mockResolvedValue(options.earlier ?? []), finish: vi.fn(), fail: vi.fn().mockResolvedValue(undefined), requeueFailed: vi.fn(),
   } satisfies ProcedureMaterialRepositoryPort;
   const procedures = {
     createDraft: vi.fn().mockResolvedValue({ procedureId: 'p-new', revisionId: 'r1', revisionNumber: 1 }),

@@ -67,6 +67,12 @@ export class PrismaProcedureMaterialRepository implements ProcedureMaterialRepos
     if (!done.count) throw new Error('PROCEDURE_MATERIAL_LEASE_LOST');
   }
 
+  async requeueFailed() {
+    return (await this.db.knowledgeProcedureMaterial.updateMany({
+      where: { state: 'failed' }, data: { state: 'pending', attempts: 0, retryAt: new Date(), leaseToken: null, leaseUntil: null },
+    })).count;
+  }
+
   async fail(id: string, token: string, errorCode: string, deferred: boolean) {
     const row = await this.db.knowledgeProcedureMaterial.findUnique({ where: { id } });
     if (!row || row.leaseToken !== token) return;

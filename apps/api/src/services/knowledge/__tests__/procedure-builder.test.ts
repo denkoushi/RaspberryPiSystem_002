@@ -40,6 +40,13 @@ describe('procedure topic assignment', () => {
     expect(created).toMatchObject({ kind: 'new', header: { reviewTier: 'approval_required' } });
     expect(() => validateAssignment({ action: 'new', header: { title: '' }, confidence: 0.9 }, topics)).toThrow();
   });
+
+  it('normalizes model headers that omit identifiers, send empty values or extra keys', () => {
+    const omitted = validateAssignment({ action: 'new', header: { title: '技能検定の申し込み', category: '事務手続き', reviewTier: 'auto_publish' }, confidence: 0.95 }, topics);
+    expect(omitted).toEqual({ kind: 'new', header: { title: '技能検定の申し込み', category: '事務手続き', identifiers: {}, reviewTier: 'auto_publish' } });
+    const noisy = validateAssignment({ action: 'new', header: { title: '部品Aの段取り', category: '段取り', identifiers: { partNumber: ' P-1 ', drawingNumber: '', machine: 'M1' } }, confidence: 0.95 }, topics);
+    expect(noisy).toMatchObject({ kind: 'new', header: { identifiers: { partNumber: 'P-1' }, reviewTier: 'approval_required' } });
+  });
 });
 
 describe('procedure content from composed steps', () => {

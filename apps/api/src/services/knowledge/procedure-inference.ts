@@ -19,7 +19,8 @@ const stepsSchema = z.object({
     cautions: z.array(z.string().trim().min(1).max(1000)).max(10).default([]),
     needsReview: z.array(z.string().trim().min(1).max(1000)).max(10).default([]),
     photoIds: z.array(z.string()).max(8).default([]),
-    sources: z.array(z.object({ materialId: z.string(), quote: z.string().max(2000).optional() })).max(20),
+    // Missing sources are tolerated here; the builder drops steps that end up without one.
+    sources: z.array(z.object({ materialId: z.string(), quote: z.string().max(2000).optional() })).max(20).default([]),
   })).max(100),
 });
 
@@ -30,7 +31,7 @@ const ASSIGN_INSTRUCTION = [
   '品番・図番・工程は素材に書かれている場合だけ入れ、推測しません。',
   '品質に直結する作業（切削、段取り、検査、組立など）は reviewTier を approval_required、一般的な事務手続きや知識は auto_publish にします。',
   'JSONだけを返します: {"action":"existing|new|none","procedureId":"既存の場合のID","header":{"title":"...","category":"段取り手順など短い分類","identifiers":{"partNumber":"...","drawingNumber":"...","processName":"..."},"reviewTier":"approval_required|auto_publish"},"confidence":0.0}',
-  'identifiers に値がない項目は省略します。new のときだけ header を入れます。',
+  'identifiers は常にオブジェクトで入れ、値がない項目だけ省略します（どれもなければ {}）。new のときだけ header を入れます。',
 ].join('\n');
 
 const COMPOSE_INSTRUCTION = [
