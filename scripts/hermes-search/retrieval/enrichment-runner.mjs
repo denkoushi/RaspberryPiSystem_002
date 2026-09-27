@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { loadNonconformityCatalog } from './catalog.mjs';
 import { recordFromAuthorizedRow } from './corpus.mjs';
 import {
+  ENRICHMENT_ALIAS_SCHEMA_VERSION,
   ENRICHMENT_SCHEMA_VERSION,
   STATUS_SCHEMA,
   STORE_SCHEMA,
@@ -53,9 +54,12 @@ export function selectRecords(records) {
   )).filter((row) => row && typeof row.id === 'string' && row.id);
 }
 
+// Rows with aliases are schema v2 and rows without are v1; both are current.
+const CURRENT_SCHEMA_VERSIONS = new Set([ENRICHMENT_SCHEMA_VERSION, ENRICHMENT_ALIAS_SCHEMA_VERSION]);
+
 export function needsEnrichment(existing, record, catalog, promptHash) {
   if (!existing) return true;
-  return existing.enrichmentSchemaVersion !== ENRICHMENT_SCHEMA_VERSION
+  return !CURRENT_SCHEMA_VERSIONS.has(existing.enrichmentSchemaVersion)
     || existing.promptSha256 !== promptHash
     || existing.sourceRecordHash !== sourceRecordHash(record, catalog);
 }

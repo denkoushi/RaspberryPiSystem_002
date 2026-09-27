@@ -11,6 +11,7 @@ import {
   parseEnrichmentPayload,
   promptSha256,
   recordText,
+  sourceRecordHash,
   toRetrievalEnrichment,
   verifyEvidence,
 } from './enrichment-contract.mjs';
@@ -78,6 +79,24 @@ test('aliases keep only terms from the record and require two expanded queries',
   }, text, record.id), /alias alternatives/u);
   const attached = toRetrievalEnrichment(verified);
   assert.ok(attached.tags.includes('ギアボックス'));
+});
+
+test('a stored row with aliases is current and is not enriched again', () => {
+  const record = records[0];
+  const promptHash = promptSha256(catalog);
+  const verified = verifyEvidence(parseEnrichmentPayload({
+    ...payloadFor(record),
+    queries: ['ギアボックスの状態は？', 'ギアボックスの記録は？', '処置済みの記録は？'],
+    aliases: [{ term: record.partName, alts: ['ギアボックス'] }],
+  }), recordText(record, catalog), record.id);
+  assert.equal(verified.enrichmentSchemaVersion, 2);
+  const row = {
+    enrichmentSchemaVersion: verified.enrichmentSchemaVersion,
+    promptSha256: promptHash,
+    sourceRecordHash: sourceRecordHash(record, catalog),
+  };
+  assert.equal(needsEnrichment(row, record, catalog, promptHash), false);
+  assert.equal(needsEnrichment({ ...row, enrichmentSchemaVersion: 3 }, record, catalog, promptHash), true);
 });
 
 test('the alias fallback keeps the record without aliases when the alias rule fails', () => {

@@ -113,6 +113,14 @@ export class HermesSearchTrialService {
 
   isEnabled() { return this.settings.enabled; }
 
+  // Enrichment runs from the corpus refresh, which starts with the worker. Without this, an API
+  // restart leaves the overnight enrichment idle until the first Chat request.
+  warmForEnrichment() {
+    if (!this.settings.enabled || !this.settings.retrievalV2) return;
+    if (process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED !== 'true') return;
+    this.start().catch(() => { console.warn('hermes retrieval warm start failed'); });
+  }
+
   private start(): Promise<void> {
     if (!this.settings.enabled) return Promise.reject(new Error('JEV記録検索は無効です。'));
     if (this.failure) return Promise.reject(this.failure);

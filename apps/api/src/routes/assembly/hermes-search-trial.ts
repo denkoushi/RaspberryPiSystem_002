@@ -69,4 +69,5 @@ export async function registerHermesSearchTrialRoutes(app: FastifyInstance, serv
     }
   });
   app.addHook('onClose',async()=>service.close());
+  app.addHook('onReady',async()=>{ service.warmForEnrichment?.(); });
 }
