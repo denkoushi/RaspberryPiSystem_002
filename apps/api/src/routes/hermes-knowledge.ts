@@ -6,6 +6,7 @@ import { ApiError } from '../lib/errors.js';
 import { findClientDeviceByApiKey, parseKioskApiClientKeyHeader } from '../services/clients/client-device-auth.service.js';
 import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js';
 import { intakeResponse } from '../services/knowledge/knowledge-intake.service.js';
+import { procedureImageIds } from '../services/knowledge/procedure-content.js';
 
 export async function knowledgeActor(request: FastifyRequest, reply: FastifyReply): Promise<string> {
   if (request.headers.authorization) {
@@ -67,6 +68,25 @@ export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
     const { sourceId, imageId } = z.object({ sourceId: z.string().uuid(), imageId: z.string().regex(/^[a-f0-9]{64}$/) }).parse(request.params);
     const allowed = (await runtime.repository.readySources()).some(record => record.source.id === sourceId && record.source.images.some(image => image.id === imageId));
     if (!allowed) throw new ApiError(404, '画像が見つかりません。');
+    return reply.header('Cache-Control', 'private, no-store').type('image/jpeg').send(await runtime.assets.readDisplay(imageId));
+  });
+  app.get('/hermes-knowledge/procedures', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
+    await knowledgeActor(request, reply);
+    return { procedures: await runtime.procedures.listPublished() };
+  });
+  app.get('/hermes-knowledge/procedures/:procedureId', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
+    await knowledgeActor(request, reply);
+    const { procedureId } = z.object({ procedureId: z.string().uuid() }).parse(request.params);
+    const procedure = await runtime.procedures.getPublished(procedureId);
+    if (!procedure) throw new ApiError(404, '公開済みの手順書が見つかりません。');
+    return { procedure };
+  });
+  app.get('/hermes-knowledge/procedures/:procedureId/images/:imageId', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
+    await knowledgeActor(request, reply);
+    const { procedureId, imageId } = z.object({ procedureId: z.string().uuid(), imageId: z.string().regex(/^[a-f0-9]{64}$/) }).parse(request.params);
+    // Only photos referenced by the published revision are readable through this route.
+    const procedure = await runtime.procedures.getPublished(procedureId);
+    if (!procedure || !procedureImageIds(procedure).has(imageId)) throw new ApiError(404, '画像が見つかりません。');
     return reply.header('Cache-Control', 'private, no-store').type('image/jpeg').send(await runtime.assets.readDisplay(imageId));
   });
   app.get('/hermes-knowledge/sources/:sourceId/pdf', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
