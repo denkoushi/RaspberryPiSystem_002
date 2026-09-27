@@ -17,6 +17,17 @@ function reviewTier(row: KnowledgeProcedure) {
   if (!tier) throw new Error(`Unknown procedure review tier: ${row.reviewTier}`);
   return tier;
 }
+const BUILD_LEASE_MS = 60_000;
+const MAX_BUILD_ATTEMPTS = 5;
+
+function topicRecord(row: KnowledgeProcedure) {
+  return {
+    procedureId: row.id,
+    header: { title: row.title, category: row.category, identifiers: identifiers(row), reviewTier: reviewTier(row) },
+    parts: row.target && row.workType ? { target: row.target, workType: row.workType, ...(row.detail ? { detail: row.detail } : {}) } : null,
+  };
+}
+
 function toDocument(procedure: KnowledgeProcedure, revision: KnowledgeProcedureRevision): KnowledgeProcedureDocument {
   const state = PROCEDURE_REVISION_STATES.find(value => value === revision.state);
   if (!state) throw new Error(`Unknown procedure revision state: ${revision.state}`);
@@ -65,10 +76,57 @@ export class PrismaKnowledgeProcedureRepository implements KnowledgeProcedureRep
   }
 
   async listTopics() {
-    const rows = await this.db.knowledgeProcedure.findMany({ orderBy: { createdAt: 'asc' } });
-    return rows.map(row => ({ procedureId: row.id, header: {
-      title: row.title, category: row.category, identifiers: identifiers(row), reviewTier: reviewTier(row),
-    } }));
+    return (await this.db.knowledgeProcedure.findMany({ orderBy: { createdAt: 'asc' } })).map(topicRecord);
+  }
+
+  async searchTopics(query: string, limit: number) {
+    const q = query.trim();
+    const rows = await this.db.knowledgeProcedure.findMany({
+      where: q ? { OR: [
+        { title: { contains: q, mode: 'insensitive' } }, { partNumber: { contains: q, mode: 'insensitive' } },
+        { drawingNumber: { contains: q, mode: 'insensitive' } },
+      ] } : {},
+      orderBy: { updatedAt: 'desc' }, take: limit,
+    });
+    return rows.map(topicRecord);
+  }
+
+  async claimBuild(token: string) {
+    return this.db.$transaction(async tx => {
+      const now = new Date();
+      const row = await tx.knowledgeProcedure.findFirst({
+        where: { buildRequestedAt: { not: null }, OR: [{ buildRetryAt: null }, { buildRetryAt: { lte: now } }],
+          AND: [{ OR: [{ buildLeaseUntil: null }, { buildLeaseUntil: { lt: now } }] }] },
+        orderBy: { buildRequestedAt: 'asc' },
+      });
+      if (!row?.buildRequestedAt) return null;
+      const won = await tx.knowledgeProcedure.updateMany({
+        where: { id: row.id, buildLeaseUntil: row.buildLeaseUntil },
+        data: { buildLeaseToken: token, buildLeaseUntil: new Date(now.getTime() + BUILD_LEASE_MS), buildAttempts: (row.buildAttempts ?? 0) + 1 },
+      });
+      return won.count ? { procedureId: row.id, header: topicRecord(row).header, requestedAt: row.buildRequestedAt } : null;
+    });
+  }
+
+  async completeBuild(procedureId: string, token: string, requestedAt: Date) {
+    await this.db.knowledgeProcedure.updateMany({ where: { id: procedureId, buildLeaseToken: token }, data: { buildLeaseToken: null, buildLeaseUntil: null } });
+    // A decision that arrived during the build moved buildRequestedAt, so the topic is built again.
+    await this.db.knowledgeProcedure.updateMany({ where: { id: procedureId, buildRequestedAt: requestedAt },
+      data: { buildRequestedAt: null, buildAttempts: 0, buildRetryAt: null, buildErrorCode: null } });
+  }
+
+  async failBuild(procedureId: string, token: string, errorCode: string, deferred: boolean) {
+    const row = await this.db.knowledgeProcedure.findUnique({ where: { id: procedureId } });
+    if (!row || row.buildLeaseToken !== token) return;
+    // Exhausted builds stop retrying but keep the request so the next decision or release retries.
+    const attempts = row.buildAttempts ?? 0;
+    const exhausted = !deferred && attempts >= MAX_BUILD_ATTEMPTS;
+    await this.db.knowledgeProcedure.updateMany({ where: { id: procedureId, buildLeaseToken: token }, data: {
+      buildErrorCode: errorCode, buildLeaseToken: null, buildLeaseUntil: null,
+      // Admission refusal is not the topic's fault and must not exhaust its attempts.
+      ...(deferred ? { buildAttempts: Math.max(0, attempts - 1) } : {}),
+      buildRetryAt: new Date(Date.now() + (exhausted ? 24 * 3_600_000 : deferred ? 60_000 : Math.min(300_000, 15_000 * 2 ** attempts))),
+    } });
   }
 
   async listPublished(): Promise<KnowledgeProcedureSummary[]> {

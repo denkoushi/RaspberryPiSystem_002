@@ -28,7 +28,9 @@ import {
   useKeyboardWedgeScan
 } from '../../features/barcode-scan/useKeyboardWedgeScan';
 import { KnowledgeAttachments, KnowledgeIntakePanel } from '../../features/hermes-knowledge/KnowledgeIntakePanel';
+import { KnowledgePosterBar } from '../../features/hermes-knowledge/KnowledgePosterBar';
 import { useKnowledgeIntake } from '../../features/hermes-knowledge/useKnowledgeIntake';
+import { useKnowledgePoster } from '../../features/hermes-knowledge/useKnowledgePoster';
 
 import type { HermesChatPanelProps, HermesPanelMessage, HermesConsultationSuggestion, HermesKnowledgeMode } from './HermesChatPanel';
 import type { BusinessHermesChatEvidence } from '../../api/domains/assembly';
@@ -49,6 +51,7 @@ const ICON_SIZE = 58;
 const VIEWPORT_GUTTER = 12;
 const PANEL_STANDARD_WIDTH = 380;
 const PANEL_STANDARD_HEIGHT = 560;
+const PANEL_EXPANDED_KEY = 'hermes-chat-expanded';
 const HERMES_BARCODE_SCAN_OWNER = 'hermes-floating-chat';
 
 function clampPosition(left: number, top: number, viewport: { width: number; height: number }) {
@@ -129,7 +132,8 @@ export function HermesFloatingChat() {
   const [open, setOpen] = useState(false);
   const [knowledgeMode, setKnowledgeMode] = useState<HermesKnowledgeMode>('search');
   const [recordPilotScope, setRecordPilotScope] = useState<HermesSearchTrialScope & { loaded: boolean }>({ enabled: false, loaded: false });
-  const [isPanelExpanded, setIsPanelExpanded] = useState(false);
+  // The chosen size is a per-terminal convenience; storage may be unavailable.
+  const [isPanelExpanded, setIsPanelExpanded] = useState(() => { try { return localStorage.getItem(PANEL_EXPANDED_KEY) === '1'; } catch { return false; } });
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [feedbackBusy, setFeedbackBusy] = useState(false);
@@ -187,6 +191,7 @@ export function HermesFloatingChat() {
     [clientKey, location.pathname, location.search, token, user?.id]
   );
   const knowledge = useKnowledgeIntake(identity, activeConsultation?.id ?? null, open && knowledgeMode === 'knowledge');
+  const knowledgePoster = useKnowledgePoster(open && knowledgeMode === 'knowledge' && knowledge.enabled);
 
   const invalidateChatRequest = useCallback(() => {
     abortRef.current?.abort();
@@ -649,7 +654,9 @@ export function HermesFloatingChat() {
       const draftRevision = draftRevisionRef.current;
       const knowledgeModeRevision = knowledgeModeRevisionRef.current;
       try {
-        const handled = await knowledge.receive(content);
+        const author = knowledgePoster.poster ? { tagUid: knowledgePoster.poster.tagUid, partNumber: knowledgePoster.partNumber } : null;
+        // Each post needs its own tag scan; the sent post keeps its tag for triage in memory.
+        const handled = await knowledge.receive(content, author, knowledgePoster.consume);
         const canClearDraft = draftRevisionRef.current === draftRevision
           && knowledgeModeRevisionRef.current === knowledgeModeRevision
           && knowledgeModeRef.current === knowledgeMode;
@@ -826,15 +833,17 @@ export function HermesFloatingChat() {
         setActivityStatus(null);
       }
     }
-  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, knowledge, knowledgeMode, messages, replaceConsultationInList, resetConversation]);
+  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, knowledge, knowledgeMode, knowledgePoster, messages, replaceConsultationInList, resetConversation]);
 
   const handleScanSuccess = useCallback((value: string) => {
     closeScanner();
+    // In knowledge mode a routing-slip barcode only tags the next post with its part number.
+    if (knowledgeModeRef.current === 'knowledge') { knowledgePoster.setPartNumber(value.trim().slice(0, 64) || null); return; }
     void sendMessage('バーコードの照合結果を確認してください。', {
       scanValue: value,
       displayContent: 'バーコードを読み取りました。'
     });
-  }, [closeScanner, sendMessage]);
+  }, [closeScanner, knowledgePoster, sendMessage]);
 
   const respondToSuggestion = useCallback((answer: string) => {
     if (!activeConsultation || !consultationSuggestion || isBusy) return;
@@ -863,7 +872,10 @@ export function HermesFloatingChat() {
   });
 
   const togglePanelSize = useCallback(() => {
-    setIsPanelExpanded((current) => !current);
+    setIsPanelExpanded((current) => {
+      try { localStorage.setItem(PANEL_EXPANDED_KEY, current ? '0' : '1'); } catch { /* size stays for this session */ }
+      return !current;
+    });
   }, []);
 
   const panelScale = isPanelExpanded ? 2 : 1;
@@ -925,8 +937,14 @@ export function HermesFloatingChat() {
     onKnowledgeModeChange: handleKnowledgeModeChange,
     conversationExtension: knowledgeMode === 'record-pilot' ? <p className="hermes-chat-panel__status" role="note">
       JEV記録検索：取り込み済みの実際の不適合記録が対象です。工程・現象・処置・原因など、知りたい条件を自然文で入力してください。記録の原文をそのまま表示します。条件を特定できない質問には確認を返します。
-    </p> : knowledgeMode === 'knowledge' && knowledge.enabled ? <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
-      onChoose={(item, action) => void knowledge.choose(item, action)} onDelegate={text => void sendMessage(text, { skipKnowledge: true })} /> : null,
+    </p> : knowledgeMode === 'knowledge' && knowledge.enabled ? <>
+      <KnowledgePosterBar poster={knowledgePoster.poster} verifying={knowledgePoster.verifying} error={knowledgePoster.error}
+        partNumber={knowledgePoster.partNumber} pending={knowledgePoster.pending} onClearPartNumber={() => knowledgePoster.setPartNumber(null)}
+        onPendingDecided={(intakeId, title) => { knowledgePoster.removePending(intakeId); knowledge.markDecided(intakeId, title); }} />
+      <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
+        onChoose={(item, action) => void knowledge.choose(item, action)} onDelegate={text => void sendMessage(text, { skipKnowledge: true })}
+        triage={{ tagFor: knowledge.tagFor, decided: knowledge.decided, later: knowledge.later, onDecided: knowledge.markDecided, onLater: knowledge.markLater }} />
+    </> : null,
     attachmentControl: knowledgeMode === 'knowledge' && knowledge.enabled ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,
     mode: knowledgeMode === 'record-pilot' || consultationMode === 'legacy' ? 'legacy' : 'consultations',
     messages,

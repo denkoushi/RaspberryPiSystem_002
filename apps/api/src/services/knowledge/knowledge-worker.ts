@@ -10,6 +10,7 @@ import type { KnowledgeAssetStore } from './knowledge-asset-store.js';
 import type { PdfKnowledgeImporter } from './pdf-knowledge-importer.js';
 import { importKnowledgeNote } from './knowledge-image-importer.js';
 import type { ProcedureMaterialRepositoryPort } from './procedure-material.port.js';
+import type { TriageRepositoryPort } from './triage.port.js';
 
 /** Newest ready sources passed to one question; older ones stay stored. */
 export const KNOWLEDGE_ANSWER_SOURCE_LIMIT = 40;
@@ -19,7 +20,7 @@ export class KnowledgeWorker {
   private timer: ReturnType<typeof setInterval> | null = null;
   private controller: AbortController | null = null;
   constructor(private readonly deps: {
-    repository: KnowledgeIntakeRepositoryPort; materials: ProcedureMaterialRepositoryPort;
+    repository: KnowledgeIntakeRepositoryPort; materials: ProcedureMaterialRepositoryPort; triage: TriageRepositoryPort;
     organizer: KnowledgeOrganizerPort; inference: KnowledgeInferencePort; assets: KnowledgeAssetStore;
     pdf: PdfKnowledgeImporter; runtime: LocalLlmRuntimeControllerPort;
     logError: (error: unknown) => void;
@@ -66,7 +67,7 @@ export class KnowledgeWorker {
     finally { await this.deps.runtime.release('business_hermes'); }
   }
   private async process(intake: Intake, token: string, signal: AbortSignal) {
-    const { repository, inference, organizer, assets, pdf, materials } = this.deps;
+    const { repository, inference, organizer, assets, pdf, materials, triage } = this.deps;
     const classified = intake.action && intake.action !== 'clarify' ? intake.action
       : !intake.text.trim() ? 'clarify' : await this.foreground(() => inference.classify(intake, signal), signal);
     const action = await repository.route(intake.id, intake.ownerKey, classified);
@@ -99,8 +100,9 @@ export class KnowledgeWorker {
     }
     signal.throwIfAborted();
     if (!await repository.renew(token)) throw new Error('KNOWLEDGE_LEASE_LOST');
-    // Each organized source becomes a material; the procedure worker assigns it to a topic.
+    // Each organized source becomes a material; the poster decides which topic the post joins.
     await materials.enqueue(intake.id, sources.map((source, index) => ({ source, organized: organized[index]! })));
-    await repository.finish(intake.id, token, 'ready', 'save', { message: 'ナレッジに取り込みました。手順書への整理を続けています。' });
+    await triage.open(intake.id, intake.posterEmployeeId);
+    await repository.finish(intake.id, token, 'ready', 'save', { message: 'ナレッジに取り込みました。追加先を選んでください。' });
   }
 }

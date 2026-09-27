@@ -37,6 +37,11 @@ vi.mock('../../contexts/AuthContext', () => ({
 
 // Legacy behavior is exercised with the new capability explicitly disabled.
 vi.mock('../../api/http', () => ({ api: { get: mocks.knowledgeGet, post: mocks.knowledgePost } }));
+// Tag scanning is covered by useKnowledgePoster; here an employee has already scanned.
+vi.mock('../../features/hermes-knowledge/useKnowledgePoster', () => ({
+  useKnowledgePoster: () => ({ poster: { tagUid: 'tag-1', name: '田中' }, pending: [], partNumber: null, setPartNumber: () => undefined,
+    error: null, verifying: false, consume: () => null, clear: () => undefined, removePending: () => undefined }),
+}));
 
 vi.mock('./HermesChatPanel', () => ({
   default: (props: {

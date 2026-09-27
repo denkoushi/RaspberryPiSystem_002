@@ -5,6 +5,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { PrismaKnowledgeIntakeRepository } from '../prisma-knowledge-intake.repository.js';
 import { KnowledgeWorker } from '../knowledge-worker.js';
 import { PrismaProcedureMaterialRepository } from '../prisma-procedure-material.repository.js';
+import { PrismaTriageRepository } from '../prisma-triage.repository.js';
 import { KnowledgeAssetStore } from '../knowledge-asset-store.js';
 import { PdfKnowledgeImporter } from '../pdf-knowledge-importer.js';
 import type { DurableFileStorePort } from '../../file-storage/durable-file-store.port.js';
@@ -15,16 +16,18 @@ const enabled = process.env.KNOWLEDGE_DATABASE_TEST === '1';
 const db = new PrismaClient({ datasourceUrl: 'postgresql://postgres:disposable-test@127.0.0.1:25433/knowledge_test' });
 const repository = new PrismaKnowledgeIntakeRepository(db);
 const materials = new PrismaProcedureMaterialRepository(db);
-const input = (ownerKey = 'client:one', conversationId = randomUUID()) => ({ id: randomUUID(), ownerKey, conversationId, inputHash: 'hash', text: '塗装のメモ', files: [] });
+const triage = new PrismaTriageRepository(db);
+const input = (ownerKey = 'client:one', conversationId = randomUUID()) => ({ id: randomUUID(), ownerKey, conversationId, inputHash: 'hash', text: '塗装のメモ', files: [],
+  posterEmployeeId: 'employee-1', posterNameSnapshot: '田中', scannedPartNumber: null });
 
 describe.skipIf(!enabled)('Knowledge PostgreSQL state contract', () => {
-  beforeEach(async () => { await db.knowledgeProcedureMaterial.deleteMany(); await db.knowledgeIntake.deleteMany(); await db.knowledgeTopic.deleteMany(); });
+  beforeEach(async () => { await db.knowledgeTriage.deleteMany(); await db.knowledgeProcedureMaterial.deleteMany(); await db.knowledgeIntake.deleteMany(); await db.knowledgeTopic.deleteMany(); });
   afterAll(async () => { await db.$disconnect(); });
 
-  it('queues a saved source once for procedure building and answers from it after worker recreation', async () => {
+  it('queues a saved source once, opens the poster\'s triage and answers from it after worker recreation', async () => {
     const assets = new KnowledgeAssetStore({} as DurableFileStorePort);
     const inference = { classify: async () => 'save' as const, answer: async (_question: string, sources: unknown[]) => ({ message: `sources:${sources.length}` }) };
-    const deps = { repository, materials, assets, inference,
+    const deps = { repository, materials, triage, assets, inference,
       organizer: { organize: async () => ({ title: '塗装準備', summary: '塗装のメモ', category: '実技準備', quotes: ['塗装のメモ'], photos: [] }) },
       pdf: new PdfKnowledgeImporter(assets, { extract: () => { throw new Error('unused'); } }, { runOcrOnImage: async () => ({ text: '', engine: 'test' }) }),
       runtime: { getMode: () => 'always_on' as const, ensureReady: async () => undefined, release: async () => undefined }, logError: (error: unknown) => { throw error; },
@@ -35,8 +38,9 @@ describe.skipIf(!enabled)('Knowledge PostgreSQL state contract', () => {
     const queued = await db.knowledgeProcedureMaterial.findMany();
     expect(queued).toHaveLength(1);
     expect(queued[0]).toMatchObject({ intakeId: first.id, sourceId: first.id, state: 'pending' });
-    // Re-enqueueing the same source (retry or legacy backfill) does not duplicate it.
-    await materials.enqueue('legacy-ready', await repository.readySources());
+    expect((await triage.get([first.id]))[0]).toMatchObject({ posterEmployeeId: 'employee-1', state: 'suggesting' });
+    // Re-enqueueing the same source (a retried intake) does not duplicate it.
+    await materials.enqueue(first.id, await repository.readySources());
     expect(await db.knowledgeProcedureMaterial.count()).toBe(1);
     await new KnowledgeWorker(deps).tick();
     const question = input(); await repository.receive(question); await repository.accepted(question.id, question.ownerKey); await repository.route(question.id, question.ownerKey, 'ask');

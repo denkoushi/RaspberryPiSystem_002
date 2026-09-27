@@ -19,7 +19,19 @@ import { InferenceKnowledgeOrganizer } from './inference-knowledge-organizer.js'
 import { PdfKnowledgeImporter } from './pdf-knowledge-importer.js';
 import { PopplerPdfPagesAdapter } from './poppler-pdf-pages.adapter.js';
 import { KnowledgeWorker } from './knowledge-worker.js';
-import { KnowledgeIntakeService } from './knowledge-intake.service.js';
+import { KnowledgeIntakeService, type Poster } from './knowledge-intake.service.js';
+import { KnowledgeTriageService } from './knowledge-triage.service.js';
+import { ensureKnowledgeReferenceData } from './knowledge-reference-data.js';
+import { PrismaTriageRepository } from './prisma-triage.repository.js';
+
+async function resolvePoster(tagUid: string): Promise<Poster | null> {
+  const employee = await prisma.employee.findFirst({ where: { nfcTagUid: tagUid.trim() }, select: { id: true, displayName: true, status: true } });
+  return employee && employee.status === 'ACTIVE' ? { id: employee.id, displayName: employee.displayName } : null;
+}
+
+async function activeWorkTypes(): Promise<string[]> {
+  return (await prisma.knowledgeWorkType.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' }, select: { name: true } })).map(row => row.name);
+}
 
 function createKnowledgeRuntime() {
   const files = getFileStorageRuntime();
@@ -34,20 +46,18 @@ function createKnowledgeRuntime() {
   const pdf = new PdfKnowledgeImporter(assets, new PopplerPdfPagesAdapter(), getImageOcrPort());
   const materials = new PrismaProcedureMaterialRepository(prisma);
   const procedures = new PrismaKnowledgeProcedureRepository(prisma);
-  const worker = new KnowledgeWorker({ repository, materials, organizer, inference, assets, pdf, runtime,
+  const triage = new PrismaTriageRepository(prisma);
+  const worker = new KnowledgeWorker({ repository, materials, triage, organizer, inference, assets, pdf, runtime,
     logError: error => logger.warn({ err: error }, 'Knowledge background processing failed'),
   });
-  // Sources saved before procedure building existed; enqueue is idempotent per source id.
-  // Failed materials get new attempts on each start, since a new release may have fixed the cause.
-  const backfillLegacyMaterials = async () => {
-    await materials.enqueue('legacy-ready', await repository.readySources());
-    const requeued = await materials.requeueFailed();
-    if (requeued) logger.info({ requeued }, 'Knowledge procedure materials requeued after start');
-  };
-  return { repository, assets, documents, worker, intake: new KnowledgeIntakeService(repository, assets, inference, runtime),
-    procedures, materials, backfillLegacyMaterials,
-    procedureWorker: new ProcedureWorker({ materials, procedures, inference: new ProcedureInference(text),
-      logError: error => logger.warn({ err: error }, 'Knowledge procedure building failed') }) };
+  const procedureWorker = new ProcedureWorker({ triage, materials, procedures, inference: new ProcedureInference(text),
+    workTypes: activeWorkTypes,
+    scannedPartNumber: async intakeId => (await repository.byIds([intakeId]))[0]?.scannedPartNumber ?? null,
+    logError: error => logger.warn({ err: error }, 'Knowledge procedure building failed') });
+  return { repository, assets, documents, worker, procedures, materials, triage, procedureWorker, workTypes: activeWorkTypes,
+    ensureReferenceData: () => ensureKnowledgeReferenceData(prisma, triage),
+    intake: new KnowledgeIntakeService(repository, assets, resolvePoster),
+    triageService: new KnowledgeTriageService({ triage, intakes: repository, resolvePoster }) };
 }
 
 let runtime: ReturnType<typeof createKnowledgeRuntime> | undefined;

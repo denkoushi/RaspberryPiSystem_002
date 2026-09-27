@@ -1,7 +1,8 @@
 import type { KnowledgeProcedureReviewTier, KnowledgeProcedureSource, KnowledgeProcedureStep } from '@raspi-system/shared-types';
 
 import type { ProcedureMaterial } from './procedure-material.port.js';
-import { procedureContentSchema, procedureHeaderSchema, type ProcedureContent, type ProcedureHeader } from './procedure-content.js';
+import { composeTitle, procedureContentSchema, titlePartsSchema, type ProcedureContent, type ProcedureHeader, type TitleParts } from './procedure-content.js';
+import type { ProcedureIdentifiers, TriageSuggestions } from './triage.port.js';
 
 /** What the model sees of one material. Built by code; the model never sees storage keys. */
 export type MaterialDigest = {
@@ -14,12 +15,12 @@ export type MaterialDigest = {
   photos: { id: string; description: string }[];
 };
 
-export type ProcedureTopic = { procedureId: string; header: ProcedureHeader };
+export type ProcedureTopic = { procedureId: string; header: ProcedureHeader; parts: TitleParts | null };
 
-export type RawAssignment = {
-  action: 'existing' | 'new' | 'none';
-  procedureId?: string;
-  header?: unknown;
+/** Model output for one post; validated into `TriageSuggestions` by code. */
+export type RawSuggestion = {
+  candidates: { procedureId: string; reason?: string }[];
+  proposal: { target?: unknown; workType?: unknown; detail?: unknown; identifiers?: unknown; reviewTier?: unknown; reason?: unknown } | null;
   confidence: number;
 };
 
@@ -28,12 +29,18 @@ export type RawStep = {
   photoIds: string[]; sources: { materialId: string; quote?: string }[];
 };
 
+export type SuggestionInput = {
+  materials: MaterialDigest[];
+  /** Part number read from a routing-slip barcode, if any. */
+  scannedPartNumber: string | null;
+  topics: ProcedureTopic[];
+  workTypes: string[];
+};
+
 export interface ProcedureInferencePort {
-  assign(material: MaterialDigest, topics: ProcedureTopic[], signal: AbortSignal): Promise<RawAssignment>;
+  suggest(input: SuggestionInput, signal: AbortSignal): Promise<RawSuggestion>;
   compose(header: ProcedureHeader, materials: MaterialDigest[], signal: AbortSignal): Promise<RawStep[]>;
 }
-
-export type Assignment = { kind: 'existing'; topic: ProcedureTopic } | { kind: 'new'; header: ProcedureHeader } | { kind: 'none' };
 
 /** Words that mark shop-floor work whose mistakes reach product quality. */
 const QUALITY_CRITICAL = /切削|段取|検査|測定|組立|組付|加工|研削|旋盤|フライス|トルク|締付|治具|寸法|公差/;
@@ -60,32 +67,53 @@ export function enforceReviewTier(header: ProcedureHeader, confidence: number): 
   return 'auto_publish';
 }
 
-export function validateAssignment(raw: RawAssignment, topics: ProcedureTopic[]): Assignment {
-  if (raw.action === 'none') return { kind: 'none' };
-  if (raw.action === 'existing') {
-    const topic = topics.find(candidate => candidate.procedureId === raw.procedureId);
-    if (!topic) throw new Error('UNKNOWN_PROCEDURE_TOPIC');
-    return { kind: 'existing', topic };
-  }
-  const header = procedureHeaderSchema.parse(normalizeHeader(raw.header));
-  return { kind: 'new', header: { ...header, reviewTier: enforceReviewTier(header, raw.confidence) } };
-}
-
 const IDENTIFIER_KEYS = ['partNumber', 'drawingNumber', 'processName'] as const;
+const MAX_CANDIDATES = 3;
+
+const trimmed = (value: unknown, max: number) => typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined;
 
 /**
  * Models omit empty objects, send empty strings or add unrequested keys. Only the known
- * identifier keys with non-empty text survive; a missing tier falls back to the safe side.
+ * identifier keys with non-empty text survive.
  */
-export function normalizeHeader(raw: unknown): unknown {
-  if (!raw || typeof raw !== 'object') return raw;
-  const header = raw as Record<string, unknown>;
-  const given = header.identifiers && typeof header.identifiers === 'object' ? header.identifiers as Record<string, unknown> : {};
-  const identifiers = Object.fromEntries(IDENTIFIER_KEYS.flatMap(key => {
-    const value = given[key];
-    return typeof value === 'string' && value.trim() ? [[key, value.trim()]] : [];
+export function normalizeIdentifiers(raw: unknown): ProcedureIdentifiers {
+  const given = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  return Object.fromEntries(IDENTIFIER_KEYS.flatMap(key => {
+    const value = trimmed(given[key], 200);
+    return value ? [[key, value]] : [];
   }));
-  return { title: header.title, category: header.category, identifiers, reviewTier: header.reviewTier ?? 'approval_required' };
+}
+
+/**
+ * Keeps only candidates that exist, fits the proposal to the managed work types and the
+ * three-part title, and decides the review tier in code.
+ */
+export function validateSuggestions(raw: RawSuggestion, input: SuggestionInput): TriageSuggestions {
+  const confidence = Math.min(1, Math.max(0, Number.isFinite(raw.confidence) ? raw.confidence : 0));
+  const topics = new Map(input.topics.map(topic => [topic.procedureId, topic]));
+  const seen = new Set<string>();
+  const candidates = raw.candidates.flatMap(candidate => {
+    const topic = topics.get(candidate.procedureId);
+    if (!topic || seen.has(topic.procedureId)) return [];
+    seen.add(topic.procedureId);
+    return [{ procedureId: topic.procedureId, title: topic.header.title, reason: trimmed(candidate.reason, 200) ?? '' }];
+  }).slice(0, MAX_CANDIDATES);
+
+  let proposal: TriageSuggestions['proposal'] = null;
+  const target = trimmed(raw.proposal?.target, 80);
+  if (raw.proposal && target) {
+    const requested = trimmed(raw.proposal.workType, 30);
+    const workType = requested && input.workTypes.includes(requested) ? requested : 'その他';
+    const detail = trimmed(raw.proposal.detail, 40);
+    const identifiers = normalizeIdentifiers(raw.proposal.identifiers);
+    if (input.scannedPartNumber && !identifiers.partNumber) identifiers.partNumber = input.scannedPartNumber;
+    const parts = titlePartsSchema.parse({ target, workType, ...(detail ? { detail } : {}) });
+    const title = composeTitle(parts);
+    const requestedTier = raw.proposal.reviewTier === 'auto_publish' ? 'auto_publish' : 'approval_required';
+    const reviewTier = enforceReviewTier({ title, category: workType, identifiers, reviewTier: requestedTier }, confidence);
+    proposal = { parts, title, identifiers, reviewTier, reason: trimmed(raw.proposal.reason, 200) ?? '' };
+  }
+  return { candidates, proposal, confidence };
 }
 
 function sourceOf(material: ProcedureMaterial, quote: string | undefined): KnowledgeProcedureSource {
