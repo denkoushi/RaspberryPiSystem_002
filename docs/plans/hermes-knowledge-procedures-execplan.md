@@ -22,8 +22,10 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-09-27) 見本の用意。オーナーが自動モードに読み取り専用コピーの許可を追加し、`scripts/hermes-knowledge/pull-pi5-document-samples.sh` で `~/RaspiKnowledgeSamples`（Git 外）へ写した。PDF 19 件、図面 37 件（1 件は Pi5 側の権限で読めず）、組立手順書画像 3 件、作業要領の画像 3,474 件、メタデータ CSV 4 種。
 - [x] (2026-09-27) DocJev を `c7abe276` で手元に導入し、34 件の分類と 51 頁の束の分割を測った。
 - [x] (2026-09-27) オーナーと要件を決めた（確認は種類で分ける、写真への書き込みは段階的、手動編集は修正用に残す、投入は全員）。本計画を「AI が仕立てる」方針に書き直した。
-- [ ] オーナーが本計画と DocJev の採否（文字のある PDF の分類・分割にだけ採用）を確認する。
-- [ ] マイルストーン1: 手順書のデータ形と、決まった型の表示ページ。
+- [x] (2026-09-27) オーナーが本計画と DocJev の採用範囲（文字のある PDF の分類・分割だけ）を承認し、PR #1514 で main へ統合した（merge `449725443fa27d2c8b586c8c242b946bd5dfdbd7`）。
+- [x] (2026-09-27) マイルストーン1: 表示の静的デザイン案（`docs/design-previews/knowledge-procedure-view-preview.html`、架空データ）をオーナーが承認した。
+- [x] (2026-09-27) マイルストーン1: 手順書のデータ形（`KnowledgeProcedure`/`KnowledgeProcedureRevision`、加算 migration `20260927100000_add_knowledge_procedures`、内容の検証 `procedure-content.ts`）、公開済みの一覧・詳細・写真の読み取り API、表示部品 `KnowledgeProcedureView`/`KnowledgeProcedureDialog` を実装した。承認が要る手順書は、この段階の仕組みでは公開できない（`publishAutomatic` が拒否する）。
+- [ ] マイルストーン1: PR、CI、main 統合。Chat からの入口はマイルストーン4で付ける。
 - [ ] マイルストーン2: 素材を主題へ集め、手順書の下書きを作る処理。
 - [ ] マイルストーン3: 確認の区分（承認が要るもの／自動公開）と、承認・誤り報告・修正の流れ。
 - [ ] マイルストーン4: Chat からの閲覧（主題名での直接表示）。
@@ -129,7 +131,22 @@ DocJev の評価は、セッションのスクラッチ領域で次のように�
     cd docjev && uv sync && uv run docjev doctor --smoke
     TYPESAFE_API_KEY="$(security find-generic-password -s typesafe-api-key -w)" uv run docjev classify <見本フォルダ> --rules <rules.yaml> --output <結果>.jsonl
 
-マイルストーン1以降の具体的なコマンドは、各マイルストーンに着手するときに追記する。
+マイルストーン1の検証は、ワークツリーのルートで依存を入れてから行った（`pnpm install --frozen-lockfile --offline`、`pnpm -r --filter "./packages/**" build`、`apps/api` で `pnpm exec prisma generate`）。
+
+    cd apps/api && pnpm exec vitest run src/services/knowledge/__tests__/procedure-content.test.ts src/routes/__tests__/hermes-knowledge.test.ts
+    cd apps/web && pnpm exec vitest run src/features/hermes-knowledge/
+    scripts/ci/pnpm-exact.sh lint --max-warnings=0
+
+データベースの検証は、使い捨ての PostgreSQL を 127.0.0.1:25433 に立て、全 migration を当ててから行い、終わったらコンテナを消す。本番の DATABASE_URL は使わない。
+
+    docker run -d --rm --name knowledge-proc-test -e POSTGRES_PASSWORD=disposable-test -e POSTGRES_DB=knowledge_test -p 127.0.0.1:25433:5432 pgvector/pgvector:pg15
+    cd apps/api && DATABASE_URL=postgresql://postgres:disposable-test@127.0.0.1:25433/knowledge_test pnpm exec prisma migrate deploy
+    KNOWLEDGE_DATABASE_TEST=1 pnpm exec vitest run src/services/knowledge/__tests__/knowledge-procedure-repository.local.test.ts
+    docker stop knowledge-proc-test
+
+2026-09-27 の結果は、API の集中テスト 12 件、Web 11 件、データベース 3 件がすべて成功し、全 migration が新しいデータベースに適用できた。
+
+マイルストーン2以降の具体的なコマンドは、着手するときに追記する。
 
 ## Validation and Acceptance
 
@@ -149,7 +166,7 @@ DocJev の評価は、セッションのスクラッチ領域で次のように�
 
 ## Interfaces and Dependencies
 
-既存の依存として、TypeSafe/JEV（社外、承認済み）、DGX の LLM と画像説明（ナレッジ試作の整理と回答）、`exceljs`、Poppler、既存の画像 OCR、既存の手動編集のデータ形（`AssemblyProcedureOverlayElement`、`WorkInstructionEditOverlay`）を使う。新規の依存は DocJev（Python、固定コミット、文字のある PDF の分類・分割だけ）である。DocJev は Node の API から直接呼べないため、既存の `services/hermes-answer-cache` と同じく Python の小さなサービスとして置くか、ナレッジ worker から呼ぶ CLI とするかを、マイルストーン2で決めて本節に追記する。手順書の型、API、MCP ツールの形は、マイルストーン1で決めて本節に追記する。
+既存の依存として、TypeSafe/JEV（社外、承認済み）、DGX の LLM と画像説明（ナレッジ試作の整理と回答）、`exceljs`、Poppler、既存の画像 OCR、既存の手動編集のデータ形（`AssemblyProcedureOverlayElement`、`WorkInstructionEditOverlay`）を使う。新規の依存は DocJev（Python、固定コミット、文字のある PDF の分類・分割だけ）である。DocJev は Node の API から直接呼べないため、既存の `services/hermes-answer-cache` と同じく Python の小さなサービスとして置くか、ナレッジ worker から呼ぶ CLI とするかを、マイルストーン2で決めて本節に追記する。手順書の型は `packages/shared-types/src/knowledge/index.ts` の `KnowledgeProcedureDocument`（版ごとの表示用文書）、`KnowledgeProcedureStep`（手順。出典 1 件以上が必須）、`KnowledgeProcedureSummary`（一覧用）である。保存形は `apps/api/src/services/knowledge/procedure-content.ts` の `procedureContentSchema`（順序付き手順）と `procedureHeaderSchema`（題名、分類、品番・図番・工程、確認区分）で検証し、未知の項目は拒否する。書き込みの窓口は `KnowledgeProcedureRepositoryPort`（`createDraft`、`publishAutomatic`、`listPublished`、`getPublished`）で、実装は `PrismaKnowledgeProcedureRepository`。読み取り API は `GET /hermes-knowledge/procedures`、`GET /hermes-knowledge/procedures/:procedureId`、`GET /hermes-knowledge/procedures/:procedureId/images/:imageId`（公開版が参照する写真だけ）で、既存のナレッジ API と同じくユーザー JWT か端末キーが必要。MCP ツールの形はマイルストーン6で決める。
 
 Revision note (2026-09-27): 初版。オーナーの方針決定（横断検索への合流、社外送信承認、既製品の援用）と、既存の構造化手順データの発見を受けて作成した。
 Revision note (2026-09-27): オーナーとの要件議論を受けて全面改訂した。手作業の編集は続かないという判断から、「AI とシステムが素材から手順書を仕立て、人は確認と修正だけ」に方針を変えた。確認は種類で分ける、写真への書き込みは段階的、手動編集は修正用に残す、投入は全員、という決定を反映し、マイルストーンを仕立て・確認・閲覧・書き込み・検索の順に組み直した。DocJev の評価結果から、採用範囲を文字のある PDF に絞る案を記録した。
