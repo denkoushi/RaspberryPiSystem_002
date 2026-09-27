@@ -37,7 +37,16 @@ Do not release this feature branch. The order is: pull request, merge to `main`,
 
 The offline Grok experiment kept the `aliases` field. Terms that are not in the record are dropped, and alternatives that already appear in the record are dropped. At least two of the three to five queries must use a kept alternative.
 
-The next validation is to run the same 1,000-record subset through the business LLM on the Pi 5 and compare that output with the Grok stores offline. That run waits until the merged revision is on the Pi 5 through the normal release.
+The business LLM output was compared with the Grok stores on 2026-09-27. The comparison used the private 50-case stage set, hybrid retrieval with DGX Qwen3-Embedding-0.6B through the owner's tunnel, `--now 2026-09-24`, and `stage-score.mjs`. Grok was also cut to the same 930 records (c930), so the DGX-to-Grok difference is the enrichment quality alone. Re-running the 2026-09-25 Grok arm gave the same scores.
+
+| Arm | Enrichment | Paraphrase status | Paraphrase r15 | Paraphrase r50 | Paraphrase hit | All status | All r15 | p95 ms |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| a lexical | none | 0.38 | 0.06 | 0.19 | 0.00 | 0.80 | 0.62 | 700 |
+| b hybrid | none | 0.63 | 0.25 | 0.44 | 0.19 | 0.88 | 0.69 | 1330 |
+| c930 hybrid | Grok, 930 records | 0.69 | 0.44 | 0.69 | 0.31 | 0.90 | 0.76 | 942 |
+| d hybrid | DGX business LLM, 930 records | 0.69 | 0.50 | 0.56 | 0.38 | 0.90 | 0.78 | 885 |
+
+The paraphrase set has 16 cases, so a 0.06 difference is one case. DGX enrichment matches Grok within that noise, although only 134 of its 930 rows kept aliases against 957 of 1,000 for Grok. The summary and queries carry most of the gain. The business LLM is therefore good enough to produce enrichment on the Pi 5. Extending it past the 1,000-record pilot is a separate decision. At about 20 s per record, the rest of the corpus takes about a week of overnight windows.
 
 ## Open Items
 
