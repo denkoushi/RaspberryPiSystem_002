@@ -244,6 +244,28 @@ describe('HermesSearchTrialService retrieval switch', () => {
     service.close();
   });
 
+  it('starts the retrieval worker at API start only while enrichment is on', async () => {
+    const previousEnrichment = process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED;
+    try {
+      const gate = holdingChild();
+      spawnMock.mockImplementation(() => gate.child);
+      delete process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED;
+      const idle = new HermesSearchTrialService(v2Settings());
+      idle.warmForEnrichment();
+      expect(spawnMock).not.toHaveBeenCalled();
+      idle.close();
+      process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED = 'true';
+      const service = new HermesSearchTrialService(v2Settings());
+      service.warmForEnrichment();
+      expect(spawnMock.mock.calls[0]?.[1]?.[1]).toBe(V2_ENTRY);
+      await vi.waitFor(() => expect(gate.corpus).toHaveLength(1));
+      service.close();
+    } finally {
+      if (previousEnrichment === undefined) delete process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED;
+      else process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED = previousEnrichment;
+    }
+  });
+
   it('sends an initial corpus and then an incremental merge without dropping the previous load', async () => {
     const gate = holdingChild();
     spawnMock.mockImplementation(() => gate.child);

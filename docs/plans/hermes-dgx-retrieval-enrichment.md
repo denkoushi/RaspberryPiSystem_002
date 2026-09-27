@@ -23,7 +23,9 @@ When the aliases fail the two-expanded-queries rule, the runner keeps the summar
 
 The second overnight pilot (2026-09-26) stored 930 of 1,000 records. All 78 content failures were `truncated` at the 800-token cap, so the cap is now 1,200 tokens. Of the stored rows, 134 kept aliases (schema v2) and 796 had none (schema v1). Rows now record `metrics.aliasesRejected`, so later runs can tell a rejected alias set from a model that returned no aliases.
 
-The runner starts only after the retrieval worker is ready, and the worker starts on the first Chat request after an API restart. After a release, one Chat question is needed before the overnight window.
+The runner starts only after the retrieval worker is ready. When `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true`, the API now starts that worker when it starts, so a release no longer needs a Chat question before the overnight window. Before this, a release by another task on 2026-09-27 left the runner idle until a Chat request.
+
+The third night (2026-09-27) stored 997 of 1,000 records; 3 were still `truncated` at 1,200 tokens and were set aside. It also showed that rows with aliases (schema v2) were treated as stale and enriched again on every pass, which dropped v2 rows from 134 to 4. Both schema versions are now current. The full corpus (8,242 records) runs next with concurrency 2, through an allowlist file of every record id.
 
 The retrieval worker, when that file exists, sets `record.enrichment = { summary, queries, tags }`. `tags` are the flattened facet values plus any kept alias alternatives.
 
