@@ -2,6 +2,8 @@ import type { KnowledgeProcedureDocument, KnowledgeProcedureSummary } from '@ras
 
 import type { ProcedureContent, ProcedureHeader } from './procedure-content.js';
 
+export type ProcedureTopicRecord = { procedureId: string; header: ProcedureHeader };
+
 export type NewProcedureRevision = {
   /** Omit to create a new procedure topic. */
   procedureId?: string;
@@ -18,6 +20,8 @@ export interface KnowledgeProcedureRepositoryPort {
    * approval_required procedures are published only through the approval flow (milestone 3).
    */
   publishAutomatic(revisionId: string): Promise<void>;
+  /** Every topic, published or not, for assigning new materials. */
+  listTopics(): Promise<ProcedureTopicRecord[]>;
   listPublished(): Promise<KnowledgeProcedureSummary[]>;
   getPublished(procedureId: string): Promise<KnowledgeProcedureDocument | null>;
 }

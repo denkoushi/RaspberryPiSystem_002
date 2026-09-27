@@ -26,7 +26,8 @@ export type KnowledgeSource = z.infer<typeof knowledgeSourceSchema>;
 export const organizedNoteSchema = z.object({
   title: z.string().min(1).max(120),
   summary: z.string().min(1).max(3000),
-  category: z.enum(['申込み', '実技準備', '学科準備', 'その他']),
+  // Formerly a fixed pilot list (申込み/実技準備/学科準備/その他); stored notes keep parsing.
+  category: z.string().trim().min(1).max(40),
   // Original quotations are verified separately; generated statements are never certified as originals.
   quotes: z.array(z.string().min(1).max(2000)).max(8),
   photos: z.array(z.object({ id: z.string(), description: z.string().min(1).max(1000) }).strict()).max(4),
