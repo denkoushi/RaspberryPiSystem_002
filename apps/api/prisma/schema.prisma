@@ -4824,3 +4824,41 @@ model KnowledgeTopic {
   leaseToken     String?
   leaseUntil     DateTime?
 }
+
+/// A procedure topic (e.g. one part's setup) built by the system from knowledge materials.
+model KnowledgeProcedure {
+  id                  String                       @id
+  title               String
+  category            String
+  partNumber          String?
+  drawingNumber       String?
+  processName         String?
+  /// approval_required | auto_publish (DB CHECK)
+  reviewTier          String
+  publishedRevisionId String?                      @unique
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+  revisions           KnowledgeProcedureRevision[] @relation("KnowledgeProcedureRevisions")
+  publishedRevision   KnowledgeProcedureRevision?  @relation("KnowledgeProcedurePublishedRevision", fields: [publishedRevisionId], references: [id], onDelete: Restrict)
+
+  @@index([partNumber])
+  @@index([drawingNumber])
+}
+
+/// Immutable procedure content per revision; state moves draft -> pending_approval -> published (DB CHECK).
+model KnowledgeProcedureRevision {
+  id               String              @id
+  procedureId      String
+  revisionNumber   Int
+  state            String
+  /// Validated steps (`procedure-content.ts`), rendered by a fixed template.
+  content          Json
+  createdByKey     String
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  procedure        KnowledgeProcedure  @relation("KnowledgeProcedureRevisions", fields: [procedureId], references: [id], onDelete: Cascade)
+  publishedFor     KnowledgeProcedure? @relation("KnowledgeProcedurePublishedRevision")
+
+  @@unique([procedureId, revisionNumber])
+  @@index([state, createdAt])
+}

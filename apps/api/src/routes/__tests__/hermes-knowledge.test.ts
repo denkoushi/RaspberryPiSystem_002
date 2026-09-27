@@ -5,7 +5,7 @@ import { registerHermesKnowledgeRoutes } from '../hermes-knowledge.js';
 
 const mocks = vi.hoisted(() => ({
   receive: vi.fn(), choose: vi.fn(), readySources: vi.fn(), get: vi.fn(), kick: vi.fn(),
-  readDisplay: vi.fn(),
+  readDisplay: vi.fn(), listPublished: vi.fn(), getPublished: vi.fn(),
 }));
 vi.mock('../../services/clients/client-device-auth.service.js', () => ({
   parseKioskApiClientKeyHeader: (value: unknown) => typeof value === 'string' ? value : undefined,
@@ -13,7 +13,8 @@ vi.mock('../../services/clients/client-device-auth.service.js', () => ({
 }));
 vi.mock('../../services/knowledge/knowledge-runtime.js', () => ({
   getKnowledgeRuntime: () => ({ intake: { receive: mocks.receive }, repository: { choose: mocks.choose, readySources: mocks.readySources, get: mocks.get },
-    assets: { readDisplay: mocks.readDisplay }, worker: { kick: mocks.kick, stop: async () => {} }, documents: { initialize: async () => {} } }),
+    assets: { readDisplay: mocks.readDisplay }, worker: { kick: mocks.kick, stop: async () => {} }, documents: { initialize: async () => {} },
+    procedures: { listPublished: mocks.listPublished, getPublished: mocks.getPublished } }),
 }));
 
 describe('Knowledge API authentication boundary', () => {
@@ -44,6 +45,24 @@ describe('Knowledge API authentication boundary', () => {
     expect(ok.statusCode).toBe(200); expect(ok.headers['content-type']).toContain('image/jpeg');
     const hidden = await app.inject({ url: `/hermes-knowledge/sources/${id}/images/${'b'.repeat(64)}`, headers: { 'x-client-key': 'valid-key' } });
     expect(hidden.statusCode).toBe(404); expect(mocks.readDisplay).toHaveBeenCalledTimes(1); await app.close();
+  });
+  it('lists and reads only published procedures behind authentication', async () => {
+    const app = server(); const id = '123e4567-e89b-42d3-a456-426614174000';
+    mocks.listPublished.mockResolvedValue([{ procedureId: id, title: '部品Aの段取り' }]);
+    expect((await app.inject({ url: '/hermes-knowledge/procedures' })).statusCode).toBe(401);
+    const list = await app.inject({ url: '/hermes-knowledge/procedures', headers: { 'x-client-key': 'valid-key' } });
+    expect(list.json()).toEqual({ procedures: [{ procedureId: id, title: '部品Aの段取り' }] });
+    mocks.getPublished.mockResolvedValue(null);
+    expect((await app.inject({ url: `/hermes-knowledge/procedures/${id}`, headers: { 'x-client-key': 'valid-key' } })).statusCode).toBe(404);
+    await app.close();
+  });
+  it('serves only photos referenced by the published procedure revision', async () => {
+    const app = server(); const id = '123e4567-e89b-42d3-a456-426614174000'; const image = 'c'.repeat(64);
+    mocks.getPublished.mockResolvedValue({ procedureId: id, steps: [{ photos: [{ imageId: image, caption: '' }] }] }); mocks.readDisplay.mockResolvedValue(Buffer.from('jpeg'));
+    const ok = await app.inject({ url: `/hermes-knowledge/procedures/${id}/images/${image}`, headers: { 'x-client-key': 'valid-key' } });
+    expect(ok.statusCode).toBe(200); expect(ok.headers['content-type']).toContain('image/jpeg');
+    const other = await app.inject({ url: `/hermes-knowledge/procedures/${id}/images/${'d'.repeat(64)}`, headers: { 'x-client-key': 'valid-key' } });
+    expect(other.statusCode).toBe(404); expect(mocks.readDisplay).toHaveBeenCalledTimes(1); await app.close();
   });
   it('does not expose ingestion routes when the feature is disabled', async () => {
     vi.stubEnv('HERMES_KNOWLEDGE_ENABLED', 'false'); const app = Fastify(); registerHermesKnowledgeRoutes(app);

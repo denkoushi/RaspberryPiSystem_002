@@ -8,6 +8,7 @@ import { getImageOcrPort } from '../ocr/image-ocr-runtime.js';
 import { logger } from '../../lib/logger.js';
 
 import { PrismaKnowledgeIntakeRepository } from './prisma-knowledge-intake.repository.js';
+import { PrismaKnowledgeProcedureRepository } from './prisma-knowledge-procedure.repository.js';
 import { GitKnowledgeDocumentStore } from './git-knowledge-document-store.js';
 import { KnowledgeAssetStore } from './knowledge-asset-store.js';
 import { KnowledgeInference, KnowledgePhotoDescriber } from './knowledge-inference.js';
@@ -31,7 +32,8 @@ function createKnowledgeRuntime() {
   const worker = new KnowledgeWorker({ repository, documents, organizer, inference, assets, pdf, runtime,
     logError: error => logger.warn({ err: error }, 'Knowledge background processing failed'),
   });
-  return { repository, assets, documents, worker, intake: new KnowledgeIntakeService(repository, assets, inference, runtime) };
+  return { repository, assets, documents, worker, intake: new KnowledgeIntakeService(repository, assets, inference, runtime),
+    procedures: new PrismaKnowledgeProcedureRepository(prisma) };
 }
 
 let runtime: ReturnType<typeof createKnowledgeRuntime> | undefined;
