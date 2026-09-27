@@ -61,6 +61,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: 2026-09-27 の Pi5 ログで、主題の振り分け結果の `header.identifiers` が欠けて `ZodError`（`identifiers` Required）になった。品番などが無いメモで、AI は空の `identifiers` を丸ごと省いた。修正では、既知の 3 項目だけを取り出して空文字や余分な項目を捨て、欠けた確認区分は承認が要る側に倒す正規化を入れ、手順の出典欠落は組み立て側で捨てる扱いにした。あわせて、起動のたびに失敗扱いの素材へ再試行の回数を与え直す。
   Evidence: この失敗の前に、業務用 LLM が他の作業で止まっており、受付の用途判定と振り分けは LLM の復帰（準備に約 235 秒）まで待った。素材は失われず、自動で再開した。
 
+- Observation: 本番 migration は「追加だけ」の検査（`scripts/deploy/validate-expand-only-migrations.py`）を通る必要があり、既存表への複数列の一括追加、初期値付き・NOT NULL の列、データの INSERT は禁止されている。マイルストーン2c の最初の migration が CI の `deploy-contract` で落ちた。
+  Evidence: `disallowed statement ... ALTER TABLE "KnowledgeIntake" ADD COLUMN "posterEmployeeId" TEXT, ADD COLUMN ...`。列の追加を 1 列ずつの空欄可にし、`buildAttempts` を空欄可（空欄は 0 回）にし、作業の種類の初期登録と仕分け前の素材の補完は起動時の `ensureKnowledgeReferenceData` に移した。マイルストーン1と2a の migration（新規表への `ALTER TABLE ... ADD CONSTRAINT`）もこの検査に合わないが、当時の変更分類では `deploy-contract` が選ばれず検査されていなかった。両方とも本番適用済みで、以後は適用済みとして再検査されない。
+
 ## Decision Log
 
 - Decision: 「探す」部分は、横断検索のフェーズ1完了後に、手順書を情報源として載せる形にする。

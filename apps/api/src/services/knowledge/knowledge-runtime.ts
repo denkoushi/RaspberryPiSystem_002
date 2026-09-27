@@ -21,6 +21,7 @@ import { PopplerPdfPagesAdapter } from './poppler-pdf-pages.adapter.js';
 import { KnowledgeWorker } from './knowledge-worker.js';
 import { KnowledgeIntakeService, type Poster } from './knowledge-intake.service.js';
 import { KnowledgeTriageService } from './knowledge-triage.service.js';
+import { ensureKnowledgeReferenceData } from './knowledge-reference-data.js';
 import { PrismaTriageRepository } from './prisma-triage.repository.js';
 
 async function resolvePoster(tagUid: string): Promise<Poster | null> {
@@ -54,6 +55,7 @@ function createKnowledgeRuntime() {
     scannedPartNumber: async intakeId => (await repository.byIds([intakeId]))[0]?.scannedPartNumber ?? null,
     logError: error => logger.warn({ err: error }, 'Knowledge procedure building failed') });
   return { repository, assets, documents, worker, procedures, materials, triage, procedureWorker, workTypes: activeWorkTypes,
+    ensureReferenceData: () => ensureKnowledgeReferenceData(prisma, triage),
     intake: new KnowledgeIntakeService(repository, assets, resolvePoster),
     triageService: new KnowledgeTriageService({ triage, intakes: repository, resolvePoster }) };
 }

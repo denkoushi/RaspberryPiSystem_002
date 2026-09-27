@@ -4848,7 +4848,8 @@ model KnowledgeProcedure {
   buildRequestedAt    DateTime?
   buildLeaseToken     String?
   buildLeaseUntil     DateTime?
-  buildAttempts       Int                          @default(0)
+  /// Null means no attempt yet (expand-only migrations cannot add defaulted columns).
+  buildAttempts       Int?
   buildRetryAt        DateTime?
   buildErrorCode      String?
   publishedRevisionId String?                      @unique

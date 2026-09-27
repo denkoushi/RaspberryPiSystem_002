@@ -102,7 +102,7 @@ export class PrismaKnowledgeProcedureRepository implements KnowledgeProcedureRep
       if (!row?.buildRequestedAt) return null;
       const won = await tx.knowledgeProcedure.updateMany({
         where: { id: row.id, buildLeaseUntil: row.buildLeaseUntil },
-        data: { buildLeaseToken: token, buildLeaseUntil: new Date(now.getTime() + BUILD_LEASE_MS), buildAttempts: { increment: 1 } },
+        data: { buildLeaseToken: token, buildLeaseUntil: new Date(now.getTime() + BUILD_LEASE_MS), buildAttempts: (row.buildAttempts ?? 0) + 1 },
       });
       return won.count ? { procedureId: row.id, header: topicRecord(row).header, requestedAt: row.buildRequestedAt } : null;
     });
@@ -119,11 +119,13 @@ export class PrismaKnowledgeProcedureRepository implements KnowledgeProcedureRep
     const row = await this.db.knowledgeProcedure.findUnique({ where: { id: procedureId } });
     if (!row || row.buildLeaseToken !== token) return;
     // Exhausted builds stop retrying but keep the request so the next decision or release retries.
-    const exhausted = !deferred && row.buildAttempts >= MAX_BUILD_ATTEMPTS;
+    const attempts = row.buildAttempts ?? 0;
+    const exhausted = !deferred && attempts >= MAX_BUILD_ATTEMPTS;
     await this.db.knowledgeProcedure.updateMany({ where: { id: procedureId, buildLeaseToken: token }, data: {
       buildErrorCode: errorCode, buildLeaseToken: null, buildLeaseUntil: null,
-      ...(deferred ? { buildAttempts: { decrement: 1 } } : {}),
-      buildRetryAt: new Date(Date.now() + (exhausted ? 24 * 3_600_000 : deferred ? 60_000 : Math.min(300_000, 15_000 * 2 ** row.buildAttempts))),
+      // Admission refusal is not the topic's fault and must not exhaust its attempts.
+      ...(deferred ? { buildAttempts: Math.max(0, attempts - 1) } : {}),
+      buildRetryAt: new Date(Date.now() + (exhausted ? 24 * 3_600_000 : deferred ? 60_000 : Math.min(300_000, 15_000 * 2 ** attempts))),
     } });
   }
 
