@@ -4839,10 +4839,35 @@ model KnowledgeProcedure {
   createdAt           DateTime                     @default(now())
   updatedAt           DateTime                     @updatedAt
   revisions           KnowledgeProcedureRevision[] @relation("KnowledgeProcedureRevisions")
+  materials           KnowledgeProcedureMaterial[]
   publishedRevision   KnowledgeProcedureRevision?  @relation("KnowledgeProcedurePublishedRevision", fields: [publishedRevisionId], references: [id], onDelete: Restrict)
 
   @@index([partNumber])
   @@index([drawingNumber])
+}
+
+/// One organized knowledge source waiting to be assigned to a procedure topic (durable build queue).
+model KnowledgeProcedureMaterial {
+  id          String              @id
+  intakeId    String
+  /// KnowledgeSource.id; one material per source.
+  sourceId    String              @unique
+  source      Json
+  organized   Json
+  /// pending | assigned | unassigned | failed (DB CHECK)
+  state       String              @default("pending")
+  procedureId String?
+  attempts    Int                 @default(0)
+  retryAt     DateTime            @default(now())
+  leaseToken  String?
+  leaseUntil  DateTime?
+  errorCode   String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  procedure   KnowledgeProcedure? @relation(fields: [procedureId], references: [id], onDelete: SetNull)
+
+  @@index([state, retryAt, createdAt])
+  @@index([procedureId, createdAt])
 }
 
 /// Immutable procedure content per revision; state moves draft -> pending_approval -> published (DB CHECK).

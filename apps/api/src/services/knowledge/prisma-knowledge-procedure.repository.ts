@@ -64,6 +64,13 @@ export class PrismaKnowledgeProcedureRepository implements KnowledgeProcedureRep
     });
   }
 
+  async listTopics() {
+    const rows = await this.db.knowledgeProcedure.findMany({ orderBy: { createdAt: 'asc' } });
+    return rows.map(row => ({ procedureId: row.id, header: {
+      title: row.title, category: row.category, identifiers: identifiers(row), reviewTier: reviewTier(row),
+    } }));
+  }
+
   async listPublished(): Promise<KnowledgeProcedureSummary[]> {
     const rows = await this.db.knowledgeProcedure.findMany({
       where: { publishedRevisionId: { not: null } }, include: { publishedRevision: true }, orderBy: { title: 'asc' },

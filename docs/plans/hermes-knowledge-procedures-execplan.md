@@ -25,8 +25,10 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-09-27) オーナーが本計画と DocJev の採用範囲（文字のある PDF の分類・分割だけ）を承認し、PR #1514 で main へ統合した（merge `449725443fa27d2c8b586c8c242b946bd5dfdbd7`）。
 - [x] (2026-09-27) マイルストーン1: 表示の静的デザイン案（`docs/design-previews/knowledge-procedure-view-preview.html`、架空データ）をオーナーが承認した。
 - [x] (2026-09-27) マイルストーン1: 手順書のデータ形（`KnowledgeProcedure`/`KnowledgeProcedureRevision`、加算 migration `20260927100000_add_knowledge_procedures`、内容の検証 `procedure-content.ts`）、公開済みの一覧・詳細・写真の読み取り API、表示部品 `KnowledgeProcedureView`/`KnowledgeProcedureDialog` を実装した。承認が要る手順書は、この段階の仕組みでは公開できない（`publishAutomatic` が拒否する）。
-- [ ] マイルストーン1: PR、CI、main 統合。Chat からの入口はマイルストーン4で付ける。
-- [ ] マイルストーン2: 素材を主題へ集め、手順書の下書きを作る処理。
+- [x] (2026-09-27) マイルストーン1: PR #1515 を main へ統合し（merge `72bf05aa94523d6bf9d09768ba3ace18cbb61e05`）、Pi5 へ標準ローリング更新で反映した（run `20260927-010628-f0b65c`、`SubState=exited`/`Result=success`/`ExecMainStatus=0`、recap `ok=263 changed=31 unreachable=0 failed=0`）。反映後、API/Web が同 SHA のイメージで `healthy`、migration 適用済み、`/api/system/health` 200、`/api/hermes-knowledge/procedures` が未認証で 401 を確認した。Chat からの入口はマイルストーン4で付ける。
+- [x] (2026-09-27) マイルストーン2a: 素材キュー（`KnowledgeProcedureMaterial`、migration `20260927140000_add_knowledge_procedure_materials`）、主題の振り分けと手順の組み立て（`procedure-builder.ts`、`procedure-inference.ts`、`procedure-worker.ts`）、試作の保存経路のキュー投入への切り替え、既存の保存済み素材の取り込みを実装した。
+- [ ] マイルストーン2a: PR、CI、main 統合、Pi5 反映、実際の素材での品質確認。
+- [ ] マイルストーン2b: 文字のある PDF の束を DocJev で分割・分類してから取り込む処理と、Excel の取り込み。
 - [ ] マイルストーン3: 確認の区分（承認が要るもの／自動公開）と、承認・誤り報告・修正の流れ。
 - [ ] マイルストーン4: Chat からの閲覧（主題名での直接表示）。
 - [ ] マイルストーン5: 写真への丸数字・チェック・切り抜きの自動付与（精度評価の後）。
@@ -81,6 +83,22 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Decision: 説明の仕方（順に説明する、出典を必ず添える、不明は不明と言う）は Hermes 標準の Skills に置き、公開済み手順書の取得は読み取り専用 MCP ツールで渡す。手順書そのものを Hermes の自動生成 Skill や Memory に置かない。「次へ」は画面側で処理し、LLM を通さない。
   Rationale: 業務用 Hermes は Skills と `business_api` MCP を標準経路で有効にしている（[business-hermes-butler-phase1-execplan.md](./business-hermes-butler-phase1-execplan.md)）。自動生成 Skill は出典追跡と承認ができない。Hermes のネイティブループは 1 回答 20〜60 秒かかった記録があり、1 手順ごとに LLM を呼ぶと遅い。
   Date/Author: 2026-09-27 / Claude（オーナー確認待ち）
+
+- Decision: マイルストーン2を、2a（素材キューと振り分け・組み立て）と 2b（DocJev と Excel の取り込み）に分ける。
+  Rationale: 2a だけで既存の取り込み（メモ・写真・PDF の頁）から手順書が作られるようになり、振り分けと組み立ての品質を実際の素材で先に確かめられる。DocJev は Python の別サービスを足すため、配備の変更が大きく、別の PR にした方が安全である。
+  Date/Author: 2026-09-27 / Claude
+- Decision: 保存（save）の経路は、ナレッジ全体を 1 つの Git 文書へ公開する処理と 20 件上限をやめ、整理済みの各素材を `KnowledgeProcedureMaterial` に積むだけにする。既存の Git 文書は履歴として残し、更新しない。質問（ask/report）への回答は、新しい順に 40 件までの保存済み素材から行う。
+  Rationale: 1 文書にまとめる方式は 20 件で保存自体が失敗し、スケールしない。手順書が主題ごとの成果物になるので、全体文書は不要になる。回答の件数上限は、索引検索（マイルストーン6）までの暫定である。
+  Date/Author: 2026-09-27 / Claude
+- Decision: 主題の振り分けで AI が確認区分を提案しても、コードが上書きする。自信度 0.8 未満、品番・図番を持つ、または題名・分類・工程に品質に直結する語（切削、段取、検査、測定、組立、加工、研削、トルク、治具、寸法など）を含む主題は、承認が要る区分にする。
+  Rationale: 誤って自動公開される危険を、AI の判断だけに任せない。
+  Date/Author: 2026-09-27 / Claude
+- Decision: 手順の組み立ての結果は、コードで検証してから保存する。知らない素材の出典、原文にない引用、引用していない素材の写真は捨て、出典の残らない手順も捨てる。1 つも手順が残らなければ失敗として再試行する。出典の表示名は素材の記録（日時、PDF のファイル名と頁）からコードが作る。1 回の組み立てに使う素材は主題ごとに 40 件まで。
+  Rationale: AI の出力をそのまま信じず、根拠のある手順だけを手順書にする。
+  Date/Author: 2026-09-27 / Claude
+- Decision: 試作の整理で使っていた固定の分類（申込み／実技準備／学科準備／その他）を、AI が付ける短い分類名に変える。保存済みの素材はそのまま読める。
+  Rationale: 計画どおり、試作題材の名残を外す。
+  Date/Author: 2026-09-27 / Claude
 
 ## Outcomes & Retrospective
 
@@ -146,7 +164,9 @@ DocJev の評価は、セッションのスクラッチ領域で次のように�
 
 2026-09-27 の結果は、API の集中テスト 12 件、Web 11 件、データベース 3 件がすべて成功し、全 migration が新しいデータベースに適用できた。
 
-マイルストーン2以降の具体的なコマンドは、着手するときに追記する。
+マイルストーン2a の検証も同じ手順で行った。API の集中テストは `src/services/knowledge`、`src/routes/__tests__/hermes-knowledge.test.ts`、`src/bootstrap/__tests__/start-post-listen-schedulers.test.ts` を対象にし、データベースのテストは `src/services/knowledge/__tests__/*.local.test.ts` をまとめて実行した。2026-09-27 の結果は、集中テスト 56 件と、データベースのテスト 11 件がすべて成功した（Poppler の実物テスト 1 件は環境変数を付けていないため対象外）。実際の DGX での振り分けと組み立ての品質は、Pi5 反映後に実際の素材で確かめる。
+
+マイルストーン2b 以降の具体的なコマンドは、着手するときに追記する。
 
 ## Validation and Acceptance
 
@@ -171,3 +191,4 @@ DocJev の評価は、セッションのスクラッチ領域で次のように�
 Revision note (2026-09-27): 初版。オーナーの方針決定（横断検索への合流、社外送信承認、既製品の援用）と、既存の構造化手順データの発見を受けて作成した。
 Revision note (2026-09-27): オーナーとの要件議論を受けて全面改訂した。手作業の編集は続かないという判断から、「AI とシステムが素材から手順書を仕立て、人は確認と修正だけ」に方針を変えた。確認は種類で分ける、写真への書き込みは段階的、手動編集は修正用に残す、投入は全員、という決定を反映し、マイルストーンを仕立て・確認・閲覧・書き込み・検索の順に組み直した。DocJev の評価結果から、採用範囲を文字のある PDF に絞る案を記録した。
 Revision note (2026-09-27): 承認者を「社員タグをスキャンした、職位が班長相当以上の人」に決めた。職位の段階（一般／班長相当／係長相当／課長相当）と、職位名から段階への対応表、名簿 CSV への職位列の追加をマイルストーン3に加えた。
+Revision note (2026-09-27): マイルストーン1の反映結果を記録し、マイルストーン2を 2a（素材キューと振り分け・組み立て）と 2b（DocJev と Excel）に分けた。保存経路の変更、確認区分の上書き、組み立て結果の検証、分類の自由化の決定を記録した。
