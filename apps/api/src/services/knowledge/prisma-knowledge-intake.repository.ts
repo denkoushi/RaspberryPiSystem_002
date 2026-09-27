@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient, type KnowledgeIntake } from '@prisma/client'
 
 import { KNOWLEDGE_TOPIC, knowledgeSourceSchema, organizedNoteSchema } from './knowledge-source.js';
 import type { KnowledgeSource, OrganizedNote } from './knowledge-source.js';
-import type { Intake, IntakeResult, KnowledgeAction, KnowledgeIntakeRepositoryPort } from './knowledge-intake.port.js';
+import type { Intake, IntakeReceipt, IntakeResult, KnowledgeAction, KnowledgeIntakeRepositoryPort } from './knowledge-intake.port.js';
 
 const asJson = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 const decode = (row: KnowledgeIntake): Intake => ({ ...row,
@@ -16,7 +16,7 @@ const decode = (row: KnowledgeIntake): Intake => ({ ...row,
 export class PrismaKnowledgeIntakeRepository implements KnowledgeIntakeRepositoryPort {
   constructor(private readonly db: PrismaClient) {}
 
-  async receive(input: Pick<Intake, 'id' | 'ownerKey' | 'conversationId' | 'inputHash' | 'text' | 'files'>): Promise<Intake> {
+  async receive(input: IntakeReceipt): Promise<Intake> {
     const row = await this.db.knowledgeIntake.upsert({ where: { id: input.id }, update: {}, create: { ...input, files: asJson(input.files) } });
     if (row.ownerKey !== input.ownerKey || row.inputHash !== input.inputHash || row.conversationId !== input.conversationId) throw new Error('INTAKE_CONFLICT');
     return decode(row);
@@ -47,6 +47,11 @@ export class PrismaKnowledgeIntakeRepository implements KnowledgeIntakeRepositor
       } });
       return (await tx.knowledgeIntake.findUniqueOrThrow({ where: { id } })).action as KnowledgeAction;
     });
+  }
+
+  async byIds(ids: string[]) {
+    if (!ids.length) return [];
+    return (await this.db.knowledgeIntake.findMany({ where: { id: { in: ids } }, orderBy: { sequence: 'asc' } })).map(decode);
   }
 
   async history(owner: string, conversationId: string) {

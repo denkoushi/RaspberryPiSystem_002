@@ -10,12 +10,16 @@ export type Intake = {
   sources: KnowledgeSource[] | null; organized: OrganizedNote[] | null;
   state: string; action: KnowledgeAction | null; version: number; attempts: number;
   result: IntakeResult | null; errorCode: string | null; createdAt: Date;
+  posterEmployeeId: string | null; posterNameSnapshot: string | null; scannedPartNumber: string | null;
 };
+export type IntakeReceipt = Pick<Intake, 'id' | 'ownerKey' | 'conversationId' | 'inputHash' | 'text' | 'files' | 'posterEmployeeId' | 'posterNameSnapshot' | 'scannedPartNumber'>;
 export interface KnowledgeIntakeRepositoryPort {
-  receive(input: Pick<Intake, 'id' | 'ownerKey' | 'conversationId' | 'inputHash' | 'text' | 'files'>): Promise<Intake>;
+  receive(input: IntakeReceipt): Promise<Intake>;
   accepted(id: string, owner: string): Promise<void>;
   route(id: string, owner: string, action: KnowledgeAction): Promise<KnowledgeAction>;
   get(id: string, owner: string): Promise<Intake | null>;
+  /** Intakes by id regardless of owner; used where the caller authorized access another way (the poster's tag). */
+  byIds(ids: string[]): Promise<Intake[]>;
   history(owner: string, conversationId: string): Promise<Intake[]>;
   choose(id: string, owner: string, version: number, action: KnowledgeAction): Promise<boolean>;
   retry(id: string, owner: string, version: number): Promise<boolean>;

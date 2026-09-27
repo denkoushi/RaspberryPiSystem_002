@@ -100,7 +100,7 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
   const definitions: SchedulerStepDefinition[] = [];
   if (process.env.HERMES_KNOWLEDGE_ENABLED === 'true') {
     definitions.push({ name: 'hermes-knowledge',
-      start: async () => { const runtime = getKnowledgeRuntime(); await runtime.documents.initialize(); runtime.worker.start(); await runtime.backfillLegacyMaterials(); runtime.procedureWorker.start(); },
+      start: async () => { const runtime = getKnowledgeRuntime(); await runtime.documents.initialize(); runtime.worker.start(); runtime.procedureWorker.start(); },
       stop: async () => { const runtime = getKnowledgeRuntime(); await Promise.all([runtime.worker.stop(), runtime.procedureWorker.stop()]); },
     });
   }

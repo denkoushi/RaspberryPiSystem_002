@@ -4810,6 +4810,11 @@ model KnowledgeIntake {
   retryAt        DateTime @default(now())
   result         Json?
   errorCode      String?
+  /// Employee who scanned their NFC tag before posting (null for posts made before triage existed).
+  posterEmployeeId      String?
+  posterNameSnapshot    String?
+  /// Part number read from a routing-slip barcode at posting time (optional hint).
+  scannedPartNumber     String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -4835,6 +4840,17 @@ model KnowledgeProcedure {
   processName         String?
   /// approval_required | auto_publish (DB CHECK)
   reviewTier          String
+  /// Title parts: 〈target〉｜〈workType〉｜〈detail〉. Null only for topics created before titles had parts.
+  target              String?
+  workType            String?
+  detail              String?
+  /// Set when materials changed; the builder rebuilds the draft and clears it.
+  buildRequestedAt    DateTime?
+  buildLeaseToken     String?
+  buildLeaseUntil     DateTime?
+  buildAttempts       Int                          @default(0)
+  buildRetryAt        DateTime?
+  buildErrorCode      String?
   publishedRevisionId String?                      @unique
   createdAt           DateTime                     @default(now())
   updatedAt           DateTime                     @updatedAt
@@ -4844,6 +4860,36 @@ model KnowledgeProcedure {
 
   @@index([partNumber])
   @@index([drawingNumber])
+  @@index([buildRequestedAt])
+}
+
+/// Triage of one post (intake): AI suggests destinations, the poster decides.
+model KnowledgeTriage {
+  intakeId            String    @id
+  posterEmployeeId    String?
+  /// suggesting | awaiting | decided (DB CHECK)
+  state               String    @default("suggesting")
+  suggestions         Json?
+  decidedProcedureId  String?
+  decidedAt           DateTime?
+  attempts            Int       @default(0)
+  retryAt             DateTime  @default(now())
+  leaseToken          String?
+  leaseUntil          DateTime?
+  errorCode           String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([state, retryAt, createdAt])
+  @@index([posterEmployeeId, state, createdAt])
+}
+
+/// Managed list of work types used as the middle title part.
+model KnowledgeWorkType {
+  name      String   @id
+  sortOrder Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
 }
 
 /// One organized knowledge source waiting to be assigned to a procedure topic (durable build queue).

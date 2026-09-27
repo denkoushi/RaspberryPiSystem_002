@@ -1,8 +1,12 @@
 import type { KnowledgeProcedureDocument, KnowledgeProcedureSummary } from '@raspi-system/shared-types';
 
-import type { ProcedureContent, ProcedureHeader } from './procedure-content.js';
+import type { ProcedureContent, ProcedureHeader, TitleParts } from './procedure-content.js';
 
-export type ProcedureTopicRecord = { procedureId: string; header: ProcedureHeader };
+/** `parts` is null only for topics created before titles had parts. */
+export type ProcedureTopicRecord = { procedureId: string; header: ProcedureHeader; parts: TitleParts | null };
+
+/** A topic whose materials changed and whose draft must be rebuilt. */
+export type ProcedureBuildJob = { procedureId: string; header: ProcedureHeader; requestedAt: Date };
 
 export type NewProcedureRevision = {
   /** Omit to create a new procedure topic. */
@@ -22,6 +26,12 @@ export interface KnowledgeProcedureRepositoryPort {
   publishAutomatic(revisionId: string): Promise<void>;
   /** Every topic, published or not, for assigning new materials. */
   listTopics(): Promise<ProcedureTopicRecord[]>;
+  /** Topics whose title or identifiers contain the query, newest first. */
+  searchTopics(query: string, limit: number): Promise<ProcedureTopicRecord[]>;
+  claimBuild(token: string): Promise<ProcedureBuildJob | null>;
+  /** Clears the request only if no newer material arrived since `requestedAt`. */
+  completeBuild(procedureId: string, token: string, requestedAt: Date): Promise<void>;
+  failBuild(procedureId: string, token: string, errorCode: string, deferred: boolean): Promise<void>;
   listPublished(): Promise<KnowledgeProcedureSummary[]>;
   getPublished(procedureId: string): Promise<KnowledgeProcedureDocument | null>;
 }

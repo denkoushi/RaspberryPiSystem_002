@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Knowledge Triage Chat Preview</title>
+  <!-- Static preview for ExecPlan hermes-knowledge-procedures milestone 2c. All content is fictional. -->
+  <style>
+    :root {
+      --ink: #0f172a; --muted: #475569; --line: #e2e8f0; --soft: #f8fafc;
+      --accent: #1d4ed8; --accent-soft: #dbeafe; --ok: #15803d; --ok-soft: #dcfce7;
+      --warn: #b45309; --warn-soft: #fef3c7; --ai: #7c3aed; --ai-soft: #ede9fe;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Segoe UI", sans-serif; color: var(--ink); background: #334155; }
+    .bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px; background: #0f172a; color: #fff; font-size: 13px; align-items: center; }
+    .bar button { border: 1px solid #94a3b8; background: transparent; color: #fff; border-radius: 6px; padding: 5px 9px; font-size: 13px; cursor: pointer; }
+    .bar button[aria-pressed="true"] { background: #fff; color: #0f172a; }
+    .kiosk { position: relative; height: calc(100dvh - 48px); min-height: 640px; background: repeating-linear-gradient(0deg, #e2e8f0 0 38px, #f1f5f9 38px 76px); }
+    .kiosk::before { content: "（キオスク画面・サンプル）"; position: absolute; left: 24px; top: 20px; color: #64748b; font-size: 18px; }
+    .chat { position: absolute; right: 16px; bottom: 16px; width: min(380px, calc(100vw - 24px)); max-height: calc(100% - 32px); background: #fff; border-radius: 12px; box-shadow: 0 12px 32px rgba(15,23,42,.35); display: flex; flex-direction: column; overflow: hidden; }
+    .chat-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+    .chat-head strong { font-size: 15px; }
+    .chat { transition: none; }
+    .chat.wide { width: min(760px, calc(100vw - 32px)); height: calc(100% - 32px); }
+    .chat.wide .body { flex: 1; }
+    .chat.wide .thumbs span { width: 96px; height: 72px; }
+    .chat.wide [data-view~="triage"].stack, .chat.wide [data-view~="search"].stack { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .chat.wide [data-view~="triage"].stack > div:first-child, .chat.wide [data-view~="search"].stack > .search,
+    .chat.wide [data-view~="search"].stack > .group, .chat.wide [data-view~="triage"].stack > .row { grid-column: 1 / -1; }
+    .head-actions { display: flex; gap: 6px; }
+    .icon-btn { width: 36px; height: 36px; border: 1px solid #94a3b8; background: #fff; border-radius: 8px; font-size: 18px; line-height: 1; cursor: pointer; }
+    .modes { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+    .modes span { border: 1px solid #cbd5e1; border-radius: 999px; padding: 3px 10px; font-size: 13px; }
+    .modes span.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .body { overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .card { border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 14px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .tagwait { text-align: center; padding: 22px 10px; border: 2px dashed #93c5fd; border-radius: 12px; background: #eff6ff; }
+    .tagwait .icon { font-size: 34px; }
+    .tagwait p { margin: 6px 0 0; font-size: 15px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 13px; background: var(--soft); border: 1px solid var(--line); }
+    .chip.who { background: var(--ok-soft); border-color: #86efac; color: var(--ok); }
+    .chip.part { background: var(--accent-soft); border-color: #93c5fd; color: var(--accent); }
+    .chip button { border: 0; background: transparent; color: inherit; font-size: 14px; padding: 0 2px; cursor: pointer; }
+    button.btn { border: 1px solid #94a3b8; background: #fff; border-radius: 8px; padding: 9px 12px; font-size: 14px; cursor: pointer; text-align: left; }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    button.wide { width: 100%; }
+    .composer { border-top: 1px solid var(--line); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+    textarea { width: 100%; min-height: 64px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px; font: inherit; font-size: 14px; resize: none; }
+    textarea:disabled { background: #f1f5f9; }
+    .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+    .thumbs { display: flex; gap: 6px; margin-top: 6px; }
+    .thumbs span { width: 52px; height: 40px; border-radius: 6px; background: #cbd5e1; display: grid; place-items: center; font-size: 10px; color: #475569; }
+    .candidate { display: flex; flex-direction: column; gap: 2px; width: 100%; }
+    .candidate .t { font-weight: 600; }
+    .candidate .r { font-size: 12px; color: var(--muted); }
+    .ai-tag { font-size: 11px; color: var(--ai); background: var(--ai-soft); border-radius: 4px; padding: 1px 5px; margin-left: 6px; }
+    .stack { display: flex; flex-direction: column; gap: 6px; }
+    .newform { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--soft); display: grid; gap: 6px; }
+    .newform label { font-size: 12px; color: var(--muted); display: grid; gap: 3px; }
+    .newform input, .newform select { font: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; }
+    .preview-title { font-size: 13px; background: #fff; border: 1px dashed #94a3b8; border-radius: 6px; padding: 6px 8px; }
+    .banner { background: var(--warn-soft); color: #78350f; border-radius: 8px; padding: 8px 10px; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .search { width: 100%; font: inherit; font-size: 14px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+    .group { font-size: 12px; color: var(--muted); margin: 6px 0 2px; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="bar" role="toolbar" aria-label="画面の状態">
+    <span>状態:</span>
+    <button type="button" data-state="tag" aria-pressed="true">① タグ待ち</button>
+    <button type="button" data-state="compose" aria-pressed="false">② 投稿を書く</button>
+    <button type="button" data-state="triage" aria-pressed="false">③ 送信後の仕分け</button>
+    <button type="button" data-state="new" aria-pressed="false">④ 新しい案件</button>
+    <button type="button" data-state="search" aria-pressed="false">⑤ 他の案件を探す</button>
+    <button type="button" data-state="pending" aria-pressed="false">⑥ 未仕分けの通知</button>
+  </div>
+
+  <div class="kiosk">
+    <section class="chat" aria-label="Chat">
+      <div class="chat-head"><strong>Chat</strong><div class="head-actions"><button type="button" class="icon-btn" id="size" aria-label="Chatを広げる" aria-pressed="false" title="広げる">⤢</button><button type="button" class="icon-btn" aria-label="閉じる">✕</button></div></div>
+      <div class="modes"><span>検索</span><span class="on">ナレッジ</span><span>JEV記録</span></div>
+
+      <div class="body">
+        <!-- ① tag wait -->
+        <div data-view="tag" class="tagwait">
+          <div class="icon" aria-hidden="true">🪪</div>
+          <p><strong>社員タグをかざしてください</strong></p>
+          <p class="muted">投稿はかざした人のものとして記録されます。投稿ごとに毎回かざします。</p>
+        </div>
+
+        <!-- ⑥ pending reminder (shown right after the tag scan) -->
+        <div data-view="pending" class="banner hidden" role="status">
+          <span>仕分けが済んでいない投稿が <strong>2件</strong> あります</span>
+          <button type="button" class="btn">仕分ける</button>
+        </div>
+        <div data-view="pending" class="card hidden">
+          <div class="muted">9/26 14:10 の投稿</div>
+          <div>ワークの基準面を治具側に向けて置く…</div>
+          <div class="thumbs"><span>写真</span></div>
+        </div>
+        <div data-view="pending" class="card hidden">
+          <div class="muted">9/26 15:32 の投稿</div>
+          <div>砥石のドレス間隔は…</div>
+        </div>
+
+        <!-- ③ triage after sending -->
+        <div data-view="triage new search" class="card hidden">
+          <div class="muted">田中（0123）の投稿・たった今</div>
+          <div>クランプは対角の順に締める。締付トルクは25N·m…</div>
+          <div class="thumbs"><span>写真</span><span>写真</span></div>
+          <div class="chips" style="margin-top:6px"><span class="chip part">品番 SAMPLE-0001（バーコード）</span></div>
+        </div>
+        <div data-view="triage" class="stack hidden" role="group" aria-label="追加先">
+          <div style="font-size:14px"><strong>どの案件に追加しますか？</strong></div>
+          <button type="button" class="btn wide"><span class="candidate"><span class="t">SAMPLE-0001 テーブル｜段取り<span class="ai-tag">AIのおすすめ</span></span><span class="r">同じ品番。クランプと治具の話題が既存の素材と一致</span></span></button>
+          <button type="button" class="btn wide"><span class="candidate"><span class="t">SAMPLE-0001 テーブル｜切削条件</span><span class="r">同じ品番</span></span></button>
+          <button type="button" class="btn wide"><span class="candidate"><span class="t">＋ 新しい案件として追加</span><span class="r">AIの案：SAMPLE-0001 テーブル｜段取り｜クランプ</span></span></button>
+          <div class="row">
+            <button type="button" class="btn">🔍 他の案件を探す</button>
+            <button type="button" class="btn">あとで仕分ける</button>
+          </div>
+        </div>
+
+        <!-- ④ new case form -->
+        <div data-view="new" class="newform hidden">
+          <div style="font-size:14px"><strong>新しい案件</strong><span class="ai-tag">AIの案を修正できます</span></div>
+          <label>対象（品番・部品名、または事柄）<input value="SAMPLE-0001 テーブル" /></label>
+          <label>作業の種類
+            <select>
+              <option>段取り</option><option>切削条件</option><option>加工手順</option><option>検査・測定</option><option>組立</option>
+              <option>治具・工具</option><option>保全・点検</option><option>安全</option><option>申し込み・手続き</option><option>教育・技能</option><option>その他</option>
+            </select>
+          </label>
+          <label>補足（任意）<input value="クランプ" /></label>
+          <div class="preview-title">タイトル：SAMPLE-0001 テーブル｜段取り｜クランプ</div>
+          <div class="row"><button type="button" class="btn">戻る</button><button type="button" class="btn primary">この案件を作って追加</button></div>
+        </div>
+
+        <!-- ⑤ search -->
+        <div data-view="search" class="stack hidden">
+          <input class="search" value="テーブル" aria-label="案件を探す" />
+          <div class="group">SAMPLE-0001 テーブル（3件）</div>
+          <button type="button" class="btn wide">SAMPLE-0001 テーブル｜段取り</button>
+          <button type="button" class="btn wide">SAMPLE-0001 テーブル｜切削条件</button>
+          <button type="button" class="btn wide">SAMPLE-0001 テーブル｜検査・測定</button>
+          <div class="group">SAMPLE-0002 テーブル脚（1件）</div>
+          <button type="button" class="btn wide">SAMPLE-0002 テーブル脚｜段取り</button>
+          <button type="button" class="btn">戻る</button>
+        </div>
+      </div>
+
+      <!-- composer -->
+      <div class="composer">
+        <div data-view="compose pending" class="chips hidden">
+          <span class="chip who">👤 田中（0123）</span>
+          <span data-view="compose" class="chip part hidden">品番 SAMPLE-0001 <button type="button" aria-label="品番を外す">✕</button></span>
+        </div>
+        <textarea data-compose placeholder="作業のメモを書く（写真・PDFも添付できます）" disabled></textarea>
+        <div class="row">
+          <button type="button" class="btn" data-compose disabled>📷 写真・PDF</button>
+          <button type="button" class="btn" data-compose disabled>▦ 移動票を読む（任意）</button>
+          <button type="button" class="btn primary" data-compose disabled>送信</button>
+        </div>
+        <div class="muted" data-view="compose">送信すると、次の投稿の前にもう一度タグが必要です。</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const views = [...document.querySelectorAll('[data-view]')];
+    const composeControls = [...document.querySelectorAll('[data-compose]')];
+    function show(state) {
+      document.querySelectorAll('[data-state]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === state)));
+      views.forEach(v => v.classList.toggle('hidden', !v.dataset.view.split(' ').includes(state)));
+      composeControls.forEach(c => { c.disabled = !['compose', 'pending'].includes(state); });
+      const text = document.querySelector('textarea');
+      text.value = state === 'compose' ? 'クランプは対角の順に締める。締付トルクは25N·m。' : '';
+      text.placeholder = ['compose', 'pending'].includes(state) ? '作業のメモを書く（写真・PDFも添付できます）' : '次の投稿は、社員タグをかざすと書けます';
+    }
+    document.querySelectorAll('[data-state]').forEach(b => b.addEventListener('click', () => show(b.dataset.state)));
+    const chat = document.querySelector('.chat');
+    const size = document.getElementById('size');
+    size.addEventListener('click', () => {
+      const wide = chat.classList.toggle('wide');
+      size.textContent = wide ? '⤡' : '⤢';
+      size.setAttribute('aria-pressed', String(wide));
+      size.setAttribute('aria-label', wide ? 'Chatを元の大きさに戻す' : 'Chatを広げる');
+      size.title = wide ? '元に戻す' : '広げる';
+    });
+    show('tag');
+  </script>
+</body>
+</html>

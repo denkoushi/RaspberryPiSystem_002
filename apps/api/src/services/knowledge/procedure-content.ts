@@ -48,6 +48,19 @@ export const procedureHeaderSchema = z.object({
 
 export type ProcedureHeader = z.infer<typeof procedureHeaderSchema>;
 
+/** Title parts: 〈target〉｜〈workType〉｜〈detail〉. The work type comes from the managed list. */
+export const titlePartsSchema = z.object({
+  target: text(80),
+  workType: text(30),
+  detail: text(40).optional(),
+}).strict();
+
+export type TitleParts = z.infer<typeof titlePartsSchema>;
+
+export function composeTitle(parts: TitleParts): string {
+  return [parts.target, parts.workType, parts.detail].filter(Boolean).join('｜');
+}
+
 export function procedureImageIds(document: Pick<KnowledgeProcedureDocument, 'steps'>): Set<string> {
   return new Set(document.steps.flatMap(step => step.photos.map(photo => photo.imageId)));
 }

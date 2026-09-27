@@ -3,13 +3,17 @@ import { useEffect, useRef, useState } from 'react';
 import { getApiErrorMessage } from '../../api/errors';
 import { api } from '../../api/http';
 
+import type { TriageView } from './knowledgeTriageApi';
 import type { KnowledgeReport } from '@raspi-system/shared-types';
 
 export type KnowledgeIntakeView = {
   id: string; text: string; state: string; version: number; message: string; errorCode: string | null;
   files: { filename: string; kind: 'image' | 'pdf' }[];
   choices: { id: string; label: string }[]; report?: KnowledgeReport;
+  posterName?: string | null; scannedPartNumber?: string | null; triage?: TriageView;
 };
+
+export type KnowledgePostAuthor = { tagUid: string; partNumber: string | null };
 
 function conversationKey() {
   // The server scopes this opaque conversation ID to its authenticated owner.
@@ -38,9 +42,14 @@ export function useKnowledgeIntake(identity: string, consultationId: string | nu
   const active = useRef({ identity, conversationId }); active.current = { identity, conversationId };
   const submission = useRef<{ signature: string; id: string } | null>(null);
   const operation = useRef(false);
+  // Tags stay in memory only, so the poster can triage what they just sent without another scan.
+  const tagByIntake = useRef(new Map<string, string>());
+  const [decided, setDecided] = useState<Record<string, string>>({});
+  const [later, setLater] = useState<string[]>([]);
 
   useEffect(() => {
     setEnabled(false); setFiles([]); setItems([]); setError(null); setLocalId(conversationKey()); submission.current = null;
+    tagByIntake.current.clear(); setDecided({}); setLater([]);
   }, [identity]);
 
   useEffect(() => {
@@ -68,8 +77,10 @@ export function useKnowledgeIntake(identity: string, consultationId: string | nu
     return () => { clearInterval(timer); controller.abort(); };
   }, [enabled, open, conversationId, identity]);
 
-  const receive = async (text: string): Promise<boolean | null> => {
+  const receive = async (text: string, author: KnowledgePostAuthor | null, onSent?: () => void): Promise<boolean | null> => {
     if (!enabled) return false;
+    // null keeps the caller's draft: nothing was sent.
+    if (!author) { setError('先に社員タグをかざしてください。'); return null; }
     if (operation.current) return true;
     operation.current = true; setBusy(true); setError(null);
     const scope = active.current;
@@ -79,11 +90,14 @@ export function useKnowledgeIntake(identity: string, consultationId: string | nu
         const pdf = file.type === 'application/pdf';
         if ((!pdf && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) || file.size > (pdf ? 20_000_000 : 10_000_000)) throw new Error('画像はJPEG・PNG・WebPの10 MBまで、PDFは20 MBまでです。');
       }
-      const signature = JSON.stringify({ text, conversationId, files: files.map(file => [file.name, file.size, file.lastModified]) });
+      const signature = JSON.stringify({ text, conversationId, author, files: files.map(file => [file.name, file.size, file.lastModified]) });
       if (submission.current?.signature !== signature) submission.current = { signature, id: crypto.randomUUID() };
       const encoded = [];
       for (const file of files) encoded.push({ filename: file.name, kind: file.type === 'application/pdf' ? 'pdf' : 'image', base64: await encodeFile(file) });
-      const { data } = await api.post<KnowledgeIntakeView>('/hermes-knowledge/intakes', { id: submission.current.id, conversationId, text, files: encoded });
+      const { data } = await api.post<KnowledgeIntakeView>('/hermes-knowledge/intakes', { id: submission.current.id, conversationId, text, files: encoded,
+        posterTagUid: author.tagUid, ...(author.partNumber ? { scannedPartNumber: author.partNumber } : {}) });
+      tagByIntake.current.set(data.id, author.tagUid);
+      onSent?.();
       if (active.current.identity !== scope.identity || active.current.conversationId !== scope.conversationId) return null;
       submission.current = null; setFiles([]);
       setItems(current => [...current.filter(item => item.id !== data.id), data]);
@@ -104,8 +118,11 @@ export function useKnowledgeIntake(identity: string, consultationId: string | nu
     } catch (failure) { if (active.current.identity === scope.identity && active.current.conversationId === scope.conversationId) setError(getApiErrorMessage(failure, '選択を保存できませんでした。最新の確認を選んでください。')); }
     finally { operation.current = false; setBusy(false); }
   };
+  const markDecided = (intakeId: string, title: string) => setDecided(current => ({ ...current, [intakeId]: title }));
+  const markLater = (intakeId: string) => setLater(current => [...current, intakeId]);
+  const tagFor = (intakeId: string) => tagByIntake.current.get(intakeId) ?? null;
   const reset = () => { const id = crypto.randomUUID(); setLocalId(id); setFiles([]); setItems([]); setError(null); submission.current = null;
     try { sessionStorage.setItem('hermes-knowledge-conversation', id); } catch { /* memory-only continuation */ }
   };
-  return { enabled, files, setFiles, items, busy, error, receive, choose, reset };
+  return { enabled, files, setFiles, items, busy, error, receive, choose, reset, tagFor, decided, markDecided, later, markLater };
 }

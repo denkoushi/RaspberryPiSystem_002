@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildProcedureContent, enforceReviewTier, validateAssignment, type RawStep } from '../procedure-builder.js';
+import { buildProcedureContent, enforceReviewTier, validateSuggestions, type RawStep, type SuggestionInput } from '../procedure-builder.js';
 import type { ProcedureMaterial } from '../procedure-material.port.js';
 
 const photo = 'a'.repeat(64);
@@ -30,22 +30,39 @@ describe('procedure review tier', () => {
   });
 });
 
-describe('procedure topic assignment', () => {
-  const topics = [{ procedureId: 'p1', header }];
-  it('accepts only known topics and validates new headers', () => {
-    expect(validateAssignment({ action: 'existing', procedureId: 'p1', confidence: 0.9 }, topics)).toEqual({ kind: 'existing', topic: topics[0] });
-    expect(() => validateAssignment({ action: 'existing', procedureId: 'invented', confidence: 0.9 }, topics)).toThrow('UNKNOWN_PROCEDURE_TOPIC');
-    expect(validateAssignment({ action: 'none', confidence: 0.9 }, topics)).toEqual({ kind: 'none' });
-    const created = validateAssignment({ action: 'new', header: { ...header, title: '部品Aの切削' }, confidence: 0.99 }, topics);
-    expect(created).toMatchObject({ kind: 'new', header: { reviewTier: 'approval_required' } });
-    expect(() => validateAssignment({ action: 'new', header: { title: '' }, confidence: 0.9 }, topics)).toThrow();
+describe('triage suggestions', () => {
+  const input = (overrides: Partial<SuggestionInput> = {}): SuggestionInput => ({
+    materials: [], scannedPartNumber: null, workTypes: ['段取り', '申し込み・手続き', 'その他'],
+    topics: [{ procedureId: 'p1', header: { ...header, title: '技能検定｜申し込み・手続き' }, parts: { target: '技能検定', workType: '申し込み・手続き' } }],
+    ...overrides,
   });
 
-  it('normalizes model headers that omit identifiers, send empty values or extra keys', () => {
-    const omitted = validateAssignment({ action: 'new', header: { title: '技能検定の申し込み', category: '事務手続き', reviewTier: 'auto_publish' }, confidence: 0.95 }, topics);
-    expect(omitted).toEqual({ kind: 'new', header: { title: '技能検定の申し込み', category: '事務手続き', identifiers: {}, reviewTier: 'auto_publish' } });
-    const noisy = validateAssignment({ action: 'new', header: { title: '部品Aの段取り', category: '段取り', identifiers: { partNumber: ' P-1 ', drawingNumber: '', machine: 'M1' } }, confidence: 0.95 }, topics);
-    expect(noisy).toMatchObject({ kind: 'new', header: { identifiers: { partNumber: 'P-1' }, reviewTier: 'approval_required' } });
+  it('keeps only existing, distinct candidates with their stored titles', () => {
+    const result = validateSuggestions({ candidates: [{ procedureId: 'p1', reason: '同じ手続き' }, { procedureId: 'p1' }, { procedureId: 'invented' }], proposal: null, confidence: 0.9 }, input());
+    expect(result.candidates).toEqual([{ procedureId: 'p1', title: '技能検定｜申し込み・手続き', reason: '同じ手続き' }]);
+    expect(result.proposal).toBeNull();
+  });
+
+  it('fits the proposal to the managed work types and the three-part title', () => {
+    const result = validateSuggestions({ candidates: [], confidence: 0.95, proposal: {
+      target: ' 技能検定 ', workType: '申し込み・手続き', detail: '', identifiers: undefined, reviewTier: 'auto_publish', reason: '新しい事柄',
+    } }, input());
+    expect(result.proposal).toEqual({ parts: { target: '技能検定', workType: '申し込み・手続き' }, title: '技能検定｜申し込み・手続き',
+      identifiers: {}, reviewTier: 'auto_publish', reason: '新しい事柄' });
+    const unknownType = validateSuggestions({ candidates: [], confidence: 0.95, proposal: { target: '部品A', workType: '発明した種類' } }, input());
+    expect(unknownType.proposal?.parts.workType).toBe('その他');
+  });
+
+  it('adds the scanned part number and keeps quality-critical proposals behind approval', () => {
+    const result = validateSuggestions({ candidates: [], confidence: 0.99, proposal: {
+      target: 'SAMPLE-0001 テーブル', workType: '段取り', identifiers: { partNumber: '', machine: 'M1' }, reviewTier: 'auto_publish',
+    } }, input({ scannedPartNumber: 'SAMPLE-0001' }));
+    expect(result.proposal).toMatchObject({ identifiers: { partNumber: 'SAMPLE-0001' }, reviewTier: 'approval_required', title: 'SAMPLE-0001 テーブル｜段取り' });
+  });
+
+  it('drops a proposal without a target and clamps a malformed confidence', () => {
+    const result = validateSuggestions({ candidates: [], confidence: Number.NaN, proposal: { target: '  ', workType: '段取り' } }, input());
+    expect(result).toEqual({ candidates: [], proposal: null, confidence: 0 });
   });
 });
 
