@@ -26,8 +26,9 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - [x] (2026-09-26) Milestone 4 merged as PR #1509 (merge SHA 1992470e).
 - [x] (2026-09-26) Milestone 5: Kiosk setup アイテム編集 tab (move to a free drawer, add another drawer with a held tag and count, photo order and delete, item delete with confirm). Item tag swap lives in the NFCタグ tab. The kiosk no longer imports `RaspiInventoryPage`, whose NFC listener is now limited to the admin route. Related web tests 143 files / 737 tests pass.
 - [x] (2026-09-26) Milestone 5 merged as PR #1510 (merge SHA ec299635).
-- [ ] Deploy of Milestones 3–5 (run 20260926-112811-48762d failed safely: PR #1510 was merged right after the run started, so Pi5 fetched a SHA different from the plan and exited before changes; redeploy after main CI for ec299635).
-- [ ] Milestone 6 (completed: KB-409 knowledge record; remaining: visual check on a kiosk-sized viewport).
+- [x] (2026-09-26) Deploy of Milestones 3–5: first run 20260926-112811-48762d failed safely (PR #1510 merged right after start); redeploy run 20260926-113848-d3ec92 succeeded (recap failed=0 unreachable=0, health ok, new setup text present in the served bundle).
+- [x] (2026-09-28) Milestone 6 real-kiosk check done by the user; findings listed on the task board.
+- [ ] Feedback round 2026-09-28 (completed in code: daily screen photo pane left 2/3 and information pane right 1/3 at full width, tap-to-enlarge inside the photo pane, location as separate エリア/棚/引出し values; setup photos doubled, enlarged photo closes on tap, registration on one screen with a done/remaining checklist; remaining: PR, deploy, re-check on a kiosk).
 
 ## Surprises & Discoveries
 
@@ -86,6 +87,12 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - Decision: The history table and cancelling another terminal's transaction stay on the admin PC page only.
   Rationale: On the kiosk, the daily screen already undoes the terminal's own last action. Cross-terminal cancellation is an administrative correction that needs the full history table, which does not fit a touch screen.
   Date/Author: 2026-09-26 / Claude.
+- Decision: After the 2026-09-28 kiosk check, registration becomes one scrolling screen with a sticky done/remaining checklist and the 登録する button, replacing the page-by-page wizard. Tag reading starts automatically once a drawer is chosen.
+  Rationale: The user asked to minimise screen transitions and always see what is done and what is left; the user chose this option over a setup-wide to-do overview.
+  Date/Author: 2026-09-28 / user, recorded by Claude.
+- Decision: The daily screen's photo enlarges inside its own left pane instead of a full-screen dialog, and the information pane stays visible.
+  Rationale: User request from the kiosk check; workers keep seeing stock and place while looking at the photo.
+  Date/Author: 2026-09-28 / user, recorded by Claude.
 - Decision (was open; user approved 2026-09-26): In the kiosk registration flow, the 名前など step is optional. It is prefilled with the current default (`ItemlistRaspi <sourceItemId>`), and model and usage are left blank. The step offers the ordinary text input, which works on terminals with a keyboard and IBus. Japanese renaming on keyboard-less terminals is done later on the admin PC page.
   Rationale: The on-screen keyboard cannot type Japanese, and building a kana keyboard is outside this scope. Ask the user before Milestone 4 whether this default is acceptable.
   Date/Author: 2026-09-26 / Claude.

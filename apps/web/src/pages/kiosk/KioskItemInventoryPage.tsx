@@ -2,21 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import {
-  inventoryThumbnailUrl,
   resolveInventoryTag,
   type InventoryCompartment,
   type InventoryHistoryEntry,
   type InventoryTag,
 } from '../../api/client';
 import { useInventoryItems, useInventoryMutations } from '../../api/hooks';
-import { InventoryPhotoDialog } from '../../components/kiosk/InventoryPhotoDialog';
 import { InventoryCorrectionPanel } from '../../features/kiosk/inventory/InventoryCorrectionPanel';
 import {
-  compartmentLocationText,
   correctionResultMessage,
   pickedCompartmentTag,
 } from '../../features/kiosk/inventory/inventoryDailyFlow';
+import { InventoryLocationBlocks } from '../../features/kiosk/inventory/InventoryLocationBlocks';
 import { InventoryLocationPicker } from '../../features/kiosk/inventory/InventoryLocationPicker';
+import { InventoryPhotoPane } from '../../features/kiosk/inventory/InventoryPhotoPane';
 import { InventoryRecentHistory } from '../../features/kiosk/inventory/InventoryRecentHistory';
 import {
   kioskButtonDangerClassName,
@@ -68,7 +67,6 @@ export function KioskItemInventoryPage() {
   const [messageKind, setMessageKind] = useState<'info' | 'success' | 'error'>('info');
   const [lastTransaction, setLastTransaction] = useState<InventoryHistoryEntry | null>(null);
   const [busy, setBusy] = useState(false);
-  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
   const [panel, setPanel] = useState<'none' | 'correct' | 'pick'>('none');
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const itemsQuery = useInventoryItems(panel === 'pick');
@@ -301,14 +299,25 @@ export function KioskItemInventoryPage() {
     }
   };
 
-  const locationText = selectedTag?.compartment ? compartmentLocationText(selectedTag.compartment) : null;
   const selectedPhotos = selectedTag?.compartment?.item.photos ?? [];
   const panelClass = messageKind === 'success' ? kioskSuccessPanelClassName : messageKind === 'error' ? kioskErrorPanelClassName : kioskInfoPanelClassName;
 
   const selectedCompartment = selectedTag?.compartment ?? null;
+  const statusPanel = (
+    <div className={`${panelClass} p-5`} role="status" aria-live="polite">
+      <p className={messageKind === 'info' ? 'text-center text-2xl font-bold tracking-wide text-white' : 'text-center text-3xl font-bold tracking-wide'}>{message}</p>
+      {!selectedCompartment && messageKind === 'info' ? (
+        <div className="mt-4 flex flex-wrap justify-center gap-3 text-base text-white/70">
+          <span className="rounded-lg bg-slate-950/50 px-4 py-2">持ち出し：アイテムタグ → 数量タグ</span>
+          <span className="rounded-lg bg-slate-950/50 px-4 py-2">補充：補充タグ → アイテムタグ → 数量タグ</span>
+        </div>
+      ) : null}
+      {restockTagUid ? <p className="mt-3 text-center text-sm text-white/60">補充タグ: {restockTagUid}</p> : null}
+    </div>
+  );
 
   return (
-    <section className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+    <section className="flex w-full flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className={kioskPageTitleClassName}>在庫操作</h1>
         {restockMode ? <span className="rounded-full bg-amber-400 px-4 py-2 text-base font-bold text-slate-950">補充モード</span> : null}
@@ -330,47 +339,28 @@ export function KioskItemInventoryPage() {
           onPick={pickCompartment}
           onClose={() => setPanel('none')}
         />
-      ) : (
-        <div className={`${panelClass} p-5`} role="status" aria-live="polite">
-          <p className={messageKind === 'info' ? 'text-center text-2xl font-bold tracking-wide text-white' : 'text-center text-3xl font-bold tracking-wide'}>{message}</p>
-          {!selectedCompartment && messageKind === 'info' ? (
-            <div className="mt-4 flex flex-wrap justify-center gap-3 text-base text-white/70">
-              <span className="rounded-lg bg-slate-950/50 px-4 py-2">持ち出し：アイテムタグ → 数量タグ</span>
-              <span className="rounded-lg bg-slate-950/50 px-4 py-2">補充：補充タグ → アイテムタグ → 数量タグ</span>
+      ) : selectedCompartment ? (
+        // Photo pane (left 2/3) and information pane (right 1/3) stay on screen together.
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="h-[calc(100dvh-15rem)] min-h-[24rem]">
+            <InventoryPhotoPane key={selectedCompartment.id} photos={selectedPhotos} />
+          </div>
+          <div className="flex min-w-0 flex-col gap-3">
+            {statusPanel}
+            <div>
+              <p className="text-2xl font-bold text-white">{selectedCompartment.item.name}</p>
+              <p className="text-sm text-white/60">{selectedCompartment.item.itemCode}</p>
             </div>
-          ) : null}
-          {selectedCompartment ? (
-            <div className="mt-5 grid gap-5 text-left lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-              <div className="flex flex-wrap content-start gap-2" aria-label="品物写真">
-                {selectedPhotos.length === 0 ? <div className="flex h-40 w-full items-center justify-center rounded bg-slate-950/50 text-white/40">写真なし</div> : null}
-                {selectedPhotos.map((photo) => <button key={photo.id} type="button" className="shrink-0 rounded focus:outline-none focus:ring-2 focus:ring-sky-300" aria-label={`${photo.originalFilename}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.originalFilename })}>
-                  <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-40 w-40 rounded object-cover" />
-                </button>)}
-              </div>
-              <div className="flex min-w-0 flex-col gap-4">
-                <div>
-                  <p className="text-2xl font-bold text-white">{selectedCompartment.item.name}</p>
-                  <p className="text-sm text-white/60">{selectedCompartment.item.itemCode}</p>
-                </div>
-                <dl className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg bg-slate-950/50 p-3">
-                    <dt className="text-sm text-white/60">現在庫</dt>
-                    <dd className="text-4xl font-bold text-white">{selectedCompartment.stockQuantity}個</dd>
-                  </div>
-                  <div className="rounded-lg bg-slate-950/50 p-3">
-                    <dt className="text-sm text-white/60">保管場所</dt>
-                    <dd className="text-xl font-bold text-white">{locationText}</dd>
-                  </div>
-                </dl>
-                <InventoryRecentHistory compartmentId={selectedCompartment.id} />
-                <button type="button" className={`${kioskButtonSecondaryClassName} min-h-14 text-lg`} disabled={busy} onClick={() => { setCorrectionError(null); setPanel('correct'); }}>数が合わないときは直す</button>
-              </div>
-            </div>
-          ) : null}
-          {restockTagUid ? <p className="mt-3 text-center text-sm text-white/60">補充タグ: {restockTagUid}</p> : null}
+            <dl className="rounded-lg bg-slate-950/50 px-3 py-2">
+              <dt className="text-sm text-white/60">現在庫</dt>
+              <dd className="text-5xl font-bold text-white">{selectedCompartment.stockQuantity}個</dd>
+            </dl>
+            <InventoryLocationBlocks compartment={selectedCompartment} />
+            <InventoryRecentHistory compartmentId={selectedCompartment.id} />
+            <button type="button" className={`${kioskButtonSecondaryClassName} min-h-14 text-lg`} disabled={busy} onClick={() => { setCorrectionError(null); setPanel('correct'); }}>数が合わないときは直す</button>
+          </div>
         </div>
-      )}
-      <InventoryPhotoDialog photoUrl={selectedPhoto?.url ?? null} alt={selectedPhoto?.alt ?? ''} onClose={() => setSelectedPhoto(null)} />
+      ) : statusPanel}
       <div className={`${kioskPanelClassName} flex flex-wrap justify-center gap-3 p-4`}>
         {panel === 'none' ? <button type="button" className={`${kioskButtonSecondaryClassName} min-h-14 text-lg`} onClick={() => setPanel('pick')} disabled={busy}>タグが無いとき：置き場所から選ぶ</button> : null}
         <button type="button" className={`${kioskButtonSecondaryClassName} min-h-14 text-lg`} onClick={reset} disabled={busy}>選択をリセット</button>
