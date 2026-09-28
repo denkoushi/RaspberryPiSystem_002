@@ -132,9 +132,9 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
         {item.photos.length === 0 ? <p className="text-white/60">写真はありません</p> : null}
         <div className="flex flex-wrap gap-3">
           {item.photos.map((photo, index) => (
-            <figure key={photo.id} className="w-40 rounded-lg border border-white/15 bg-slate-950/40 p-2">
+            <figure key={photo.id} className="w-80 rounded-lg border border-white/15 bg-slate-950/40 p-2">
               <button type="button" className="block w-full" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.originalFilename })}>
-                <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-32 w-full rounded object-cover" />
+                <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-64 w-full rounded object-cover" />
               </button>
               {confirmPhotoId === photo.id ? (
                 <div className="mt-2 flex flex-col gap-1">

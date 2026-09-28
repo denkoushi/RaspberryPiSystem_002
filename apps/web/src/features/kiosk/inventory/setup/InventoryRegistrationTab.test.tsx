@@ -56,23 +56,26 @@ describe('InventoryRegistrationTab', () => {
     } as never);
   });
 
-  it('registers a new item with touch, a held tag and the keypad only', async () => {
+  it('registers a new item on one screen, ticking the checklist as each part is done', async () => {
     const view = render(<InventoryRegistrationTab accessPassword="2520" />);
+    const register = screen.getByRole('button', { name: '登録する' });
+    expect(register).toBeDisabled();
+    expect(screen.getByText('あと 5 つ')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+    fireEvent.click(screen.getByRole('button', { name: '写真を確認した' }));
     fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
     expect(screen.getByLabelText('アイテム名')).toHaveValue('ItemlistRaspi 2');
-    fireEvent.click(screen.getByRole('button', { name: '次へ：置き場所' }));
     fireEvent.click(screen.getByRole('button', { name: '棚1' }));
     expect(screen.getByRole('button', { name: '引出し1 使用中' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '引出し2' }));
-    fireEvent.click(screen.getByRole('button', { name: '次へ：タグをかざす' }));
-    expect(screen.getByText('新しいタグをリーダーにかざしてください')).toBeInTheDocument();
+    expect(screen.getByText('この引き出しに付けるタグをかざしてください')).toBeInTheDocument();
+    expect(screen.getByText('あと 2 つ')).toBeInTheDocument();
 
     nfc.event = { uid: 'new-item-tag', eventId: 1, timestamp: new Date().toISOString() } as NfcEvent;
     view.rerender(<InventoryRegistrationTab accessPassword="2520" />);
     expect(await screen.findByText('タグ new-item-tag を読み取りました')).toBeInTheDocument();
     press('最初の数のテンキー', '7');
+    expect(screen.getByText('登録できます')).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '登録する' })); });
 
     expect(registerImport).toHaveBeenCalledWith({
@@ -92,6 +95,13 @@ describe('InventoryRegistrationTab', () => {
     await waitFor(() => expect(screen.getByText('候補 #2 を登録しました')).toBeInTheDocument());
   });
 
+  it('does not start reading a tag before a drawer is chosen', () => {
+    render(<InventoryRegistrationTab accessPassword="2520" />);
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    expect(screen.getByText('置き場所を選ぶと、タグの読み取りを始めます。')).toBeInTheDocument();
+    expect(screen.queryByText('この引き出しに付けるタグをかざしてください')).not.toBeInTheDocument();
+  });
+
   it('adds photos to an existing item without a place, tag or quantity', async () => {
     vi.mocked(useInventoryItems).mockReturnValue({
       data: [{ id: 'item-9', itemCode: 'RI-9', name: '既存治具', model: 'M-1', usage: '検査', category: null, area: null, note: null, photos: [], compartments: [] }],
@@ -99,11 +109,12 @@ describe('InventoryRegistrationTab', () => {
     } as never);
     render(<InventoryRegistrationTab accessPassword="2520" />);
 
-    fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+    fireEvent.click(screen.getByRole('button', { name: '写真を確認した' }));
     fireEvent.click(screen.getByRole('button', { name: '既存のアイテムに写真を追加' }));
     fireEvent.click(screen.getByRole('button', { name: /既存治具/ }));
     expect(screen.getByLabelText('型式')).toHaveValue('M-1');
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '写真を追加して登録する' })); });
+    expect(screen.queryByRole('region', { name: '置き場所' })).not.toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '登録する' })); });
 
     expect(registerImport).toHaveBeenCalledWith({
       id: 'import-1',
