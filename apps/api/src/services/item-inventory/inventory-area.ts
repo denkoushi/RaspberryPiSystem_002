@@ -7,3 +7,6 @@
 export function normalizeInventoryArea(value: string): string {
   return value.normalize('NFKC').trim().replace(/\s+/g, ' ');
 }
+
+/** Unit names (個, ケース, ...) follow the same spelling rules as areas. */
+export const normalizeInventoryUnit = normalizeInventoryArea;

@@ -555,3 +555,32 @@ describe('inventory area normalization', () => {
     });
   });
 });
+
+describe('inventory units', () => {
+  it('adds a unit under its normalized name and ignores a duplicate', async () => {
+    const upsert = vi.fn().mockResolvedValue({ id: 'unit-1', name: 'ケース' });
+    const service = new ItemInventoryService({ inventoryUnit: { upsert } } as never);
+
+    await service.createUnit(' ケース ');
+
+    expect(upsert).toHaveBeenCalledWith({ where: { name: 'ケース' }, create: { name: 'ケース' }, update: {} });
+    await expect(service.createUnit('   ')).rejects.toMatchObject({ statusCode: 400 });
+    await expect(service.createUnit('あ'.repeat(21))).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('sets an item unit only to an offered unit, and null returns it to 個', async () => {
+    const update = vi.fn().mockResolvedValue({ id: 'item-1' });
+    const db = {
+      inventoryUnit: { findUnique: vi.fn(async ({ where }: { where: { name: string } }) => (where.name === 'ケース' ? { id: 'u', name: 'ケース' } : null)) },
+      inventoryItem: { findUnique: vi.fn().mockResolvedValue({ id: 'item-1', deletedAt: null }), update },
+    };
+    const service = new ItemInventoryService(db as never);
+
+    await service.setItemUnit('item-1', 'ケース');
+    await service.setItemUnit('item-1', null);
+
+    expect(update).toHaveBeenNthCalledWith(1, { where: { id: 'item-1' }, data: { unit: 'ケース' } });
+    expect(update).toHaveBeenNthCalledWith(2, { where: { id: 'item-1' }, data: { unit: null } });
+    await expect(service.setItemUnit('item-1', '箱')).rejects.toMatchObject({ statusCode: 400 });
+  });
+});

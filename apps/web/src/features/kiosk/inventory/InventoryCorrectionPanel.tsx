@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { KioskDigitTenkey } from '../KioskDigitTenkey';
 import { kioskButtonPrimaryClassName, kioskButtonSecondaryClassName, kioskPanelClassName } from '../kioskTheme';
 
-import { compartmentLocationText, correctionSummary } from './inventoryDailyFlow';
+import { compartmentLocationText, correctionSummary, unitLabel } from './inventoryDailyFlow';
 
 import type { InventoryCompartment } from '../../../api/client';
 
@@ -23,6 +23,7 @@ const resetClassName =
 export function InventoryCorrectionPanel({ compartment, pending, error, onConfirm, onCancel }: Props) {
   const [value, setValue] = useState('');
   const current = compartment.stockQuantity;
+  const unit = unitLabel(compartment.item);
   const counted = value === '' ? null : Number(value);
   const ready = counted !== null && Number.isSafeInteger(counted) && counted !== current && !pending;
 
@@ -45,7 +46,7 @@ export function InventoryCorrectionPanel({ compartment, pending, error, onConfir
           </div>
         </div>
         <p className="text-center text-xl font-semibold text-white" aria-live="polite">
-          {counted === null ? '数えた数をテンキーで入れてください' : correctionSummary(current, counted)}
+          {counted === null ? '数えた数をテンキーで入れてください' : correctionSummary(current, counted, unit)}
         </p>
         {error ? <p className="rounded border border-red-400/50 bg-red-950/60 p-3 text-base text-red-100" role="alert">{error}</p> : null}
         <p className="text-sm text-white/60">直した内容は履歴に残ります。間違えたら「直前の取引を取消」で戻せます。</p>
@@ -62,7 +63,7 @@ export function InventoryCorrectionPanel({ compartment, pending, error, onConfir
           disabled={pending}
         />
         <button type="button" className={`${kioskButtonPrimaryClassName} min-h-16 text-xl`} disabled={!ready} onClick={() => counted !== null && onConfirm(counted)}>
-          {pending ? '記録中…' : counted === null ? '数を入れてください' : `${counted}個に直す`}
+          {pending ? '記録中…' : counted === null ? '数を入れてください' : `${counted}${unit}に直す`}
         </button>
         <button type="button" className={`${kioskButtonSecondaryClassName} min-h-12 text-lg`} disabled={pending} onClick={onCancel}>やめる</button>
       </div>

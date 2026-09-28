@@ -29,6 +29,7 @@ vi.mock('../../../../api/hooks', () => ({
       ],
     }],
   })),
+  useInventoryUnits: vi.fn(() => ({ data: [{ id: 'u1', name: '個' }, { id: 'u2', name: 'ケース' }] })),
   useInventoryMutations: vi.fn(),
 }));
 vi.mock('../../../../hooks/useNfcStream', () => ({
@@ -46,6 +47,7 @@ describe('InventoryItemEditTab', () => {
     nfc.event = null;
     mutations = {
       move: mutation(), bindCompartment: mutation(), deleteItemPhoto: mutation(), reorderItemPhotos: mutation(), deleteItem: mutation(),
+      setItemUnit: mutation(), createUnit: mutation(),
     };
     vi.mocked(useInventoryMutations).mockReturnValue(mutations as never);
   });
@@ -76,6 +78,17 @@ describe('InventoryItemEditTab', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'この引き出しを追加する' })); });
 
     expect(mutations.bindCompartment.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', shelfId: 'shelf-1', drawerId: 'drawer-2', itemTagUid: 'new-tag', initialQuantity: 4 });
+  });
+
+  it('changes the unit the item is counted in', async () => {
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(screen.getByRole('button', { name: /治具A/ }));
+    expect(screen.getByRole('button', { name: '個' })).toHaveAttribute('aria-pressed', 'true');
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'ケース' })); });
+
+    expect(mutations.setItemUnit.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', unit: 'ケース' });
+    expect(screen.getByText('単位を「ケース」にしました')).toBeInTheDocument();
   });
 
   it('asks before deleting the item', async () => {

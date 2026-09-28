@@ -57,7 +57,7 @@ export function InventoryTagsTab({ accessPassword }: { accessPassword: string })
     try {
       if (mode.kind === 'quantity-scan') {
         await mutations.quantityTag.mutateAsync({ uid, quantity: mode.quantity });
-        setDone(`数量タグ「${mode.quantity}個」を登録しました`);
+        setDone(`数量タグ「${mode.quantity}」を登録しました`);
       } else if (mode.kind === 'restock-scan') {
         await mutations.restockTag.mutateAsync(uid);
         setDone('補充タグを登録しました');
@@ -98,7 +98,7 @@ export function InventoryTagsTab({ accessPassword }: { accessPassword: string })
   }
 
   const scanTitle = mode.kind === 'quantity-scan'
-    ? `数量タグ「${mode.quantity}個」を登録中`
+    ? `数量タグ「${mode.quantity}」を登録中`
     : mode.kind === 'restock-scan'
       ? '補充タグを登録中'
       : mode.kind === 'swap-scan'
@@ -113,7 +113,7 @@ export function InventoryTagsTab({ accessPassword }: { accessPassword: string })
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-bold text-white">数量タグ</h2>
-              <p className="text-sm text-white/60">持ち出す数を決めるタグ</p>
+              <p className="text-sm text-white/60">持ち出す数を決めるタグ（単位はアイテムごと：個・ケースなど）</p>
             </div>
             <button type="button" className={`${kioskButtonSecondaryClassName} min-h-12 text-lg`} disabled={scanning} onClick={() => start({ kind: 'quantity-number', value: '' })}>＋ タグを追加</button>
           </div>
@@ -121,7 +121,7 @@ export function InventoryTagsTab({ accessPassword }: { accessPassword: string })
             <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
               {quantityCounts.map(([quantity, count]) => (
                 <li key={quantity} className="rounded-lg bg-slate-950/50 p-3 text-center text-white">
-                  <span className="text-3xl font-bold">{quantity}</span><span className="text-base">個</span>
+                  <span className="text-3xl font-bold">{quantity}</span>
                   <span className="block text-sm text-white/60">{count}枚</span>
                 </li>
               ))}

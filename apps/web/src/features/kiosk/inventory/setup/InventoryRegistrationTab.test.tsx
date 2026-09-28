@@ -29,6 +29,7 @@ vi.mock('../../../../api/hooks', () => ({
     }],
   })),
   useInventoryItems: vi.fn(() => ({ data: [], isLoading: false })),
+  useInventoryUnits: vi.fn(() => ({ data: [{ id: 'u1', name: '個' }, { id: 'u2', name: 'ケース' }] })),
   useInventoryMutations: vi.fn(),
 }));
 vi.mock('../../../../hooks/useNfcStream', () => ({
@@ -59,6 +60,7 @@ describe('InventoryRegistrationTab', () => {
       retryImport: { mutateAsync: vi.fn(), isPending: false },
       createShelf: { mutateAsync: createShelf, isPending: false },
       createDrawer: { mutateAsync: createDrawer, isPending: false },
+      createUnit: { mutateAsync: vi.fn(), isPending: false },
     } as never);
   });
 
@@ -96,6 +98,7 @@ describe('InventoryRegistrationTab', () => {
         drawerId: 'drawer-2',
         itemTagUid: 'new-item-tag',
         initialQuantity: 7,
+        unit: null,
       },
     });
     await waitFor(() => expect(screen.getByText('候補 #2 を登録しました')).toBeInTheDocument());
@@ -110,7 +113,7 @@ describe('InventoryRegistrationTab', () => {
 
   it('adds photos to an existing item without a place, tag or quantity', async () => {
     vi.mocked(useInventoryItems).mockReturnValue({
-      data: [{ id: 'item-9', itemCode: 'RI-9', name: '既存治具', model: 'M-1', usage: '検査', category: null, area: null, note: null, photos: [], compartments: [] }],
+      data: [{ id: 'item-9', itemCode: 'RI-9', name: '既存治具', model: 'M-1', usage: '検査', category: null, area: null, note: null, unit: 'ケース', photos: [], compartments: [] }],
       isLoading: false,
     } as never);
     render(<InventoryRegistrationTab accessPassword="2520" />);
@@ -134,6 +137,7 @@ describe('InventoryRegistrationTab', () => {
         drawerId: undefined,
         itemTagUid: undefined,
         initialQuantity: undefined,
+        unit: 'ケース',
       },
     });
   });
@@ -161,6 +165,23 @@ describe('InventoryRegistrationTab', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '＋ 引出し3を作る' })); });
 
     expect(createDrawer).toHaveBeenCalledWith({ shelfId: 'shelf-1', drawerNumber: 3 });
+  });
+
+  it('registers a new item counted in cases when ケース is chosen', async () => {
+    const view = render(<InventoryRegistrationTab accessPassword="2520" />);
+    fireEvent.click(screen.getByRole('button', { name: '写真を確認した' }));
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ケース' }));
+    fireEvent.click(screen.getByRole('button', { name: '棚1' }));
+    fireEvent.click(screen.getByRole('button', { name: '引出し2' }));
+    nfc.event = { uid: 'case-tag', eventId: 9, timestamp: new Date().toISOString() } as NfcEvent;
+    view.rerender(<InventoryRegistrationTab accessPassword="2520" />);
+    await screen.findByText('タグ case-tag を読み取りました');
+    press('最初の数のテンキー', '3');
+    expect(screen.getByText('3ケース')).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '登録する' })); });
+
+    expect(registerImport.mock.calls[0][0].input).toMatchObject({ unit: 'ケース', initialQuantity: 3 });
   });
 
   it('asks before deleting a candidate photo', () => {
