@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:20-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY apps/web/package.json apps/web/
@@ -73,7 +73,7 @@ RUN if [ -n "$VITE_RELEASE_SHA" ] && ! printf '%s' "$VITE_RELEASE_SHA" | grep -E
     && cd apps/web \
     && GOMAXPROCS=1 VITE_RELEASE_SHA="$VITE_RELEASE_SHA" nice -n 10 pnpm run build
 
-FROM golang:1.26.6-alpine AS caddy-build
+FROM golang:1.27.1-alpine AS caddy-build
 WORKDIR /src
 ARG TARGETOS=linux
 ARG TARGETARCH
@@ -120,7 +120,7 @@ RUN --mount=type=cache,id=raspi-caddy-go-mod,target=/go/pkg/mod,sharing=locked \
   CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOMAXPROCS=1 \
   nice -n 10 go build -p 1 -mod=mod -trimpath -ldflags="-s -w" -o /usr/bin/caddy main.go
 
-FROM alpine:3.23
+FROM alpine:3.24
 WORKDIR /srv
 # envsubst を導入し、CI の Trivy が検出した Alpine の修正版パッケージへ追従する
 RUN apk add --no-cache ca-certificates gettext \
