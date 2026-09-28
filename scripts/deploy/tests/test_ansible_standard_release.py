@@ -2314,8 +2314,30 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         apply = prepare[apply_index]
         self.assertEqual(apply["environment"], "{{ release_pi5_compose_environment }}")
         apply_argv = apply["ansible.builtin.command"]["argv"]
-        for required in ("--no-deps", "--wait", "business-hermes-egress", "--force-recreate", "business_hermes_remote_preparation_enabled"):
+        for required in ("--no-deps", "--wait", "business-hermes-egress", "--force-recreate"):
             self.assertIn(required, apply_argv)
+        self.assertNotIn("business_hermes_remote_preparation_enabled", apply_argv)
+        self.assertIn("release_pi5_business_hermes_egress_transition_required | bool", apply["when"])
+
+        isolate_index = prepare_names.index("Isolate egress runtime files from deployment checkouts")
+        candidate_hash_index = prepare_names.index("Compute the candidate Business Hermes egress Compose configuration hash")
+        existing_hash_index = prepare_names.index("Read the existing Business Hermes egress Compose configuration hash")
+        hash_gate_index = prepare_names.index("Require a Business Hermes egress transition when its Compose configuration changed")
+        self.assertLess(isolate_index, candidate_hash_index)
+        self.assertLess(candidate_hash_index, hash_gate_index)
+        self.assertLess(existing_hash_index, hash_gate_index)
+        self.assertLess(hash_gate_index, marker_index)
+        candidate_hash = prepare[candidate_hash_index]
+        self.assertEqual(candidate_hash["environment"], "{{ release_pi5_compose_environment }}")
+        for required in ("'--profile', 'business-hermes'", "'config', '--hash', 'business-hermes-egress'"):
+            self.assertIn(required, candidate_hash["ansible.builtin.command"]["argv"])
+        self.assertIn(
+            "com.docker.compose.config-hash",
+            str(prepare[existing_hash_index]["ansible.builtin.command"]["argv"]),
+        )
+
+        egress_prepare = yaml.safe_load(self.task_text("business-hermes-egress-prepare"))
+        self.assertNotIn("release_pi5_business_hermes_egress_transition_required", str(egress_prepare))
 
         runtime = yaml.safe_load(
             (ANSIBLE / "tasks/business-hermes-runtime.yml").read_text(encoding="utf-8")
@@ -2394,7 +2416,8 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
             (["BUSINESS_HERMES_TIMEOUT_MS=60000"], 60000, 60000, False, True, False),
             (["BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, False, False),
             (["BUSINESS_HERMES_TIMEOUT_MS=60000", "BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, False, False),
-            (["BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, True, True),
+            # Remote preparation no longer forces a recreate; the Compose hash gate decides.
+            (["BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, False, True),
         ):
             plays.append(
                 {
@@ -2482,6 +2505,71 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
                 check=False,
             )
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_pi5_egress_is_recreated_only_when_its_compose_hash_changes(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        gate = next(
+            task
+            for task in prepare
+            if task["name"] == "Require a Business Hermes egress transition when its Compose configuration changed"
+        )
+        current = "a" * 64
+        skipped = {"skipped": True}
+        cases = (
+            # (already required, candidate hash result, existing hash result, expected)
+            (False, {"rc": 0, "stdout": f"business-hermes-egress {current}"}, {"rc": 0, "stdout": f"{current}\n"}, False),
+            (True, {"rc": 0, "stdout": f"business-hermes-egress {current}"}, {"rc": 0, "stdout": current}, True),
+            (False, {"rc": 0, "stdout": f"business-hermes-egress {'b' * 64}"}, {"rc": 0, "stdout": current}, True),
+            (False, {"rc": 1, "stdout": ""}, {"rc": 0, "stdout": current}, True),
+            (False, {"rc": 0, "stdout": f"business-hermes-egress {current}"}, {"rc": 1, "stdout": ""}, True),
+            (False, {"rc": 0, "stdout": f"business-hermes-egress {current}"}, {"rc": 0, "stdout": "\n"}, True),
+            (False, {"rc": 0, "stdout": f"business-hermes {current}"}, {"rc": 0, "stdout": current}, True),
+            (False, {"rc": 0, "stdout": ""}, {"rc": 0, "stdout": current}, True),
+            (False, skipped, skipped, True),
+        )
+        plays = [
+            {
+                "hosts": "localhost",
+                "connection": "local",
+                "gather_facts": False,
+                "vars": {
+                    "release_pi5_route": "fresh",
+                    "release_pi5_business_hermes_enabled": True,
+                    "release_pi5_business_hermes_egress_candidate_hash": candidate,
+                    "release_pi5_business_hermes_egress_existing_hash": existing,
+                },
+                "tasks": [
+                    # Facts outlive a play, so reset the prior decision as a fact.
+                    {
+                        "ansible.builtin.set_fact": {
+                            "release_pi5_business_hermes_egress_transition_required": already_required
+                        }
+                    },
+                    {"ansible.builtin.set_fact": gate["ansible.builtin.set_fact"]},
+                    {
+                        "ansible.builtin.assert": {
+                            "that": [
+                                "release_pi5_business_hermes_egress_transition_required | bool == "
+                                + str(expected).lower()
+                            ]
+                        }
+                    },
+                ],
+            }
+            for already_required, candidate, existing, expected in cases
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            playbook = Path(directory) / "egress-hash-gate.yml"
+            playbook.write_text(yaml.safe_dump(plays, sort_keys=False), encoding="utf-8")
+            result = subprocess.run(
+                ["ansible-playbook", str(playbook)],
+                cwd=ROOT,
+                env={key: value for key, value in os.environ.items() if key != "ANSIBLE_CONFIG"},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_pre_switch_fresh_failure_removes_only_inactive_services(self) -> None:
         prepare = yaml.safe_load(self.task_text("prepare"))
