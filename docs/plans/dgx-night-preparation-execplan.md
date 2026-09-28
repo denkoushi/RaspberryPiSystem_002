@@ -14,8 +14,8 @@ After this plan, the DGX does the heavy work at night and stays fast in the day.
 
 - [x] (2026-09-28) Measured the problem. Query embedding from the Pi 5 took 0.89 to 5.2 s (10 calls), and 1.5 to 5.4 s directly on the DGX while the Pi 5 re-embedded changed records. The embedding process used about 16 of 20 CPU cores. Receipts showed 3 of 4 meaning-based questions timed out at 800 ms.
 - [x] (2026-09-28) Read the DGX side. The embedding service is CPU-only on purpose (see Context).
-- [ ] Owner decisions D1 to D3 in the Decision Log.
-- [ ] Milestone 1: day-time protection on the Pi 5.
+- [x] (2026-09-28) Owner accepted decisions D1 to D3 as proposed.
+- [ ] Milestone 1: day-time protection on the Pi 5 (started 2026-09-28).
 - [ ] Milestone 2: GPU query embedding on the DGX.
 - [ ] Milestone 3: one night flow for every source.
 - [ ] Milestone 4: links between sources.
@@ -36,9 +36,9 @@ After this plan, the DGX does the heavy work at night and stays fast in the day.
 - Decision: write this plan before changing the DGX.
   Rationale: the embedding service is CPU-only because GPU memory safety was not proven, and another task was changing the DGX at the time.
   Date/Author: 2026-09-28, Claude.
-- Open D1 (owner): GPU memory for query embedding. Proposal: reserve about 1.5 GB for the embedding model on the GPU at all times, and if the GPU cannot give it, fall back to the current CPU process instead of failing. The reserve is small next to the 65 percent business pool and the Private models, but it is permanent.
-- Open D2 (owner): which links matter first. Proposal: nonconformity to production schedule by order number (製番) and part number, then nonconformity to knowledge procedures by part and process.
-- Open D3 (owner): night time split. Proposal: 22:00 to 04:00 enrichment, 04:00 to 06:00 embedding catch-up and linking, so the morning starts with a finished index. Private tasks that need the DGX at night (video, roleplay) take priority through the existing lease and pause the night flow.
+- Decision D1 (accepted 2026-09-28 by the owner): GPU memory for query embedding. Reserve about 1.5 GB for the embedding model on the GPU at all times, and if the GPU cannot give it, fall back to the current CPU process instead of failing. The reserve is small next to the 65 percent business pool and the Private models, but it is permanent.
+- Decision D2 (accepted 2026-09-28 by the owner): the first links are nonconformity to production schedule by order number (製番) and part number, then nonconformity to knowledge procedures by part and process.
+- Decision D3 (accepted 2026-09-28 by the owner): night time split. 22:00 to 04:00 enrichment, 04:00 to 06:00 embedding catch-up and linking, so the morning starts with a finished index. Private tasks that need the DGX at night (video, roleplay) take priority through the existing lease and pause the night flow.
 
 ## Outcomes & Retrospective
 
