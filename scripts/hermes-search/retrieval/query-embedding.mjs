@@ -1,7 +1,10 @@
 // Query-embedding port. Production uses `none`. `local-onnx` is evaluation only.
 // A remote DGX text-embedding adapter belongs here once its contract exists.
 
-export const DEFAULT_EMBED_BUDGET_MS = 800;
+// The DGX embeds a question in about 20 to 60 ms, but the path from the Pi 5 (egress proxy and the
+// DGX business gateway) adds about 300 ms and sometimes jumps to 1.8 to 3.8 s (2026-09-29). The
+// answer target is 5 s, so the budget allows a short jump before falling back to word matching.
+export const DEFAULT_EMBED_BUDGET_MS = 1500;
 
 export function createNoneQueryEmbedding() {
   return {

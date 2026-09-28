@@ -25,7 +25,7 @@ export const DGX_INDEX_TIMEOUT_MS = 10_000;
 export const DGX_MAX_INPUT_CHARS = 700;
 export const DEFAULT_DENSE_STORE = '/app/storage/hermes-search/runtime/retrieval-dense-dgx.bin';
 // The DGX embedding service is CPU-only with 2 slots, and a large re-embed fills it so a Chat
-// question misses its 800 ms budget. It also took about 15 of 20 DGX cores on 2026-09-28 at night
+// question misses its embedding budget. It also took about 15 of 20 DGX cores on 2026-09-28 at night
 // while the GPU business LLM, which enriches records, sat near 22 W. Bulk embedding therefore runs
 // only in DENSE_BULK_WINDOW, after the enrichment hours (docs/plans/dgx-night-preparation-execplan.md,
 // decision D3). At other times each refresh embeds a few records in small, paused requests.
