@@ -68,7 +68,7 @@ describe('InventoryRegistrationTab', () => {
     fireEvent.click(screen.getByRole('button', { name: '棚1' }));
     expect(screen.getByRole('button', { name: '引出し1 使用中' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '引出し2' }));
-    expect(screen.getByText('この引き出しに付けるタグをかざしてください')).toBeInTheDocument();
+    expect(screen.getByText('棚1・引出し2 に付けるタグをかざしてください')).toBeInTheDocument();
     expect(screen.getByText('あと 2 つ')).toBeInTheDocument();
 
     nfc.event = { uid: 'new-item-tag', eventId: 1, timestamp: new Date().toISOString() } as NfcEvent;
@@ -99,7 +99,7 @@ describe('InventoryRegistrationTab', () => {
     render(<InventoryRegistrationTab accessPassword="2520" />);
     fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
     expect(screen.getByText('置き場所を選ぶと、タグの読み取りを始めます。')).toBeInTheDocument();
-    expect(screen.queryByText('この引き出しに付けるタグをかざしてください')).not.toBeInTheDocument();
+    expect(screen.queryByText(/に付けるタグをかざしてください/)).not.toBeInTheDocument();
   });
 
   it('adds photos to an existing item without a place, tag or quantity', async () => {

@@ -6,7 +6,6 @@ import { InventoryPinPad } from '../../features/kiosk/inventory/setup/InventoryP
 import { InventoryRegistrationTab } from '../../features/kiosk/inventory/setup/InventoryRegistrationTab';
 import { InventoryShelvesTab } from '../../features/kiosk/inventory/setup/InventoryShelvesTab';
 import { InventoryTagsTab } from '../../features/kiosk/inventory/setup/InventoryTagsTab';
-import { kioskButtonSecondaryClassName } from '../../features/kiosk/kioskTheme';
 
 type SetupTab = 'review' | 'shelves' | 'tags' | 'items';
 
@@ -25,27 +24,28 @@ export function KioskItemInventorySettingsPage() {
   if (!accessPassword) return <InventoryPinPad onUnlocked={setAccessPassword} />;
 
   return (
-    <section className="flex w-full flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold text-white">在庫の準備</h1>
-        <span className="rounded-full bg-amber-900/70 px-3 py-1 text-sm font-bold text-amber-100">解除中</span>
-        <Link to="/kiosk/inventory" className={`${kioskButtonSecondaryClassName} ml-auto inline-flex items-center`}>在庫操作に戻る</Link>
-      </div>
-      <div role="tablist" aria-label="在庫の準備" className="flex flex-wrap gap-1 border-b border-white/15">
-        {TABS.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            role="tab"
-            aria-selected={entry.id === tab}
-            className={entry.id === tab
-              ? 'min-h-12 border-b-4 border-sky-400 px-5 text-lg font-bold text-white'
-              : 'min-h-12 border-b-4 border-transparent px-5 text-lg text-white/60 hover:text-white'}
-            onClick={() => setTab(entry.id)}
-          >
-            {entry.label}
-          </button>
-        ))}
+    <section className="flex w-full flex-col gap-3">
+      {/* Title, tabs and the way back share one row so the tab content gets the height. */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-white/15">
+        <h1 className="text-xl font-bold text-white">在庫の準備</h1>
+        <span className="rounded-full bg-amber-900/70 px-2.5 py-0.5 text-xs font-bold text-amber-100">解除中</span>
+        <div role="tablist" aria-label="在庫の準備" className="ml-4 flex gap-1">
+          {TABS.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              aria-selected={entry.id === tab}
+              className={entry.id === tab
+                ? 'h-11 border-b-[3px] border-sky-400 px-4 text-base font-bold text-white'
+                : 'h-11 border-b-[3px] border-transparent px-4 text-base text-white/60 hover:text-white'}
+              onClick={() => setTab(entry.id)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+        <Link to="/kiosk/inventory" className="ml-auto inline-flex h-9 items-center rounded-md border border-white/20 px-3 text-sm text-white hover:bg-white/10">在庫操作に戻る</Link>
       </div>
       <div role="tabpanel" aria-label={TABS.find((entry) => entry.id === tab)?.label}>
         {tab === 'review' ? <InventoryRegistrationTab accessPassword={accessPassword} /> : null}

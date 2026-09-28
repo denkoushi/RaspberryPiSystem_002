@@ -93,6 +93,9 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - Decision: The daily screen's photo enlarges inside its own left pane instead of a full-screen dialog, and the information pane stays visible.
   Rationale: User request from the kiosk check; workers keep seeing stock and place while looking at the photo.
   Date/Author: 2026-09-28 / user, recorded by Claude.
+- Decision: The registration screen is laid out for the kiosk's 21.5-inch 1920×1080 monitor with no page scroll: photos (692px) | compact rows | checklist (340px). Controls have fixed, content-sized dimensions (44px high buttons, 64×44 shelf/drawer buttons, 360/240px text inputs, a 6-digit quantity field) instead of widths derived from the screen.
+  Rationale: The 2026-09-28 follow-up found oversized buttons, wasted space and screen-divided input widths; the user approved mockup board ⑨ before implementation.
+  Date/Author: 2026-09-28 / user, recorded by Claude.
 - Decision (was open; user approved 2026-09-26): In the kiosk registration flow, the 名前など step is optional. It is prefilled with the current default (`ItemlistRaspi <sourceItemId>`), and model and usage are left blank. The step offers the ordinary text input, which works on terminals with a keyboard and IBus. Japanese renaming on keyboard-less terminals is done later on the admin PC page.
   Rationale: The on-screen keyboard cannot type Japanese, and building a kana keyboard is outside this scope. Ask the user before Milestone 4 whether this default is acceptable.
   Date/Author: 2026-09-26 / Claude.
