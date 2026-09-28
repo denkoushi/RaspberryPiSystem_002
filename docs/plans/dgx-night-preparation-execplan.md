@@ -17,7 +17,9 @@ After this plan, the DGX does the heavy work at night and stays fast in the day.
 - [x] (2026-09-28) Owner accepted decisions D1 to D3 as proposed.
 - [x] (2026-09-28) Milestone 1: day-time protection on the Pi 5 (#1525, deployed 623018de). Query embedding from the Pi 5 measured 0.33 to 0.38 s afterwards.
 - [ ] (2026-09-28) Milestone 1 follow-up: bulk embedding only from 04:00 to 06:00 (decision D3). The first night showed the CPU embedding competing with enrichment.
-- [ ] Milestone 2: GPU query embedding on the DGX.
+- [x] (2026-09-29) Milestone 1 follow-up deployed (#1533, 548ab640).
+- [ ] Milestone 2: GPU query embedding on the DGX (deferred 2026-09-29, see Decision Log).
+- [ ] Milestone 2b: find and fix the slow request path from the Pi 5 to the DGX; query budget raised to 1,500 ms (2026-09-29).
 - [ ] Milestone 3: one night flow for every source.
 - [ ] Milestone 4: links between sources.
 - [ ] Milestone 5: adding a source without new night code.
@@ -31,6 +33,8 @@ After this plan, the DGX does the heavy work at night and stays fast in the day.
 
 - Observation: at night, bulk document embedding slowed enrichment. On 2026-09-28 at 22:35 the DGX load average was 15 to 16 on 20 cores, the GPU drew about 22 W at 68 C with no thermal slowdown, and enrichment with concurrency 2 stored about 3 records per minute, the same rate as concurrency 1 on the first night. The business LLM runs on the GPU but needs the CPU to prepare requests, and the CPU was taken by embedding.
 
+- Observation: with the CPU free, the DGX embeds a question in 17 to 56 ms directly on the DGX (2026-09-29, 08:20). From the Pi 5, through the egress proxy and the DGX business gateway, the same request took about 0.3 to 0.4 s and sometimes 1.8 to 3.8 s. The remaining delay is the request path, not the embedding service.
+
 ## Decision Log
 
 - Decision: day and night have different jobs. Night does enrichment, document embedding, and linking; day does only question embedding and answering.
@@ -43,6 +47,10 @@ After this plan, the DGX does the heavy work at night and stays fast in the day.
 - Decision D2 (accepted 2026-09-28 by the owner): the first links are nonconformity to production schedule by order number (製番) and part number, then nonconformity to knowledge procedures by part and process.
 - Decision D3 (accepted 2026-09-28 by the owner): night time split. 22:00 to 04:00 enrichment, 04:00 to 06:00 embedding catch-up and linking, so the morning starts with a finished index. Private tasks that need the DGX at night (video, roleplay) take priority through the existing lease and pause the night flow.
 
+- Decision: defer Milestone 2 (GPU query embedding) and add Milestone 2b (the request path). Raise the query budget from 800 ms to 1,500 ms.
+  Rationale: the CPU embedding service answers in tens of milliseconds once bulk embedding is kept to 04:00 to 06:00, so a permanent GPU reserve buys little and costs memory when the owner switches DGX models in the day. The measured delay sits in the path, and a 1,500 ms budget still fits the 5 s answer target.
+  Date/Author: 2026-09-29, owner and Claude.
+
 ## Outcomes & Retrospective
 
 Not started.
@@ -53,7 +61,7 @@ The DGX Spark is one machine with 20 CPU cores and about 121 GB of memory that t
 
 Enrichment is produced by `scripts/hermes-search/retrieval/enrichment-runner.mjs`, started by the API process on the Pi 5 (`apps/api/src/services/assembly/hermes-search-trial.service.ts`) every 5 minutes inside the window in `HERMES_RETRIEVAL_ENRICHMENT_WINDOW` (now `22-6`). It calls the business LLM on the DGX and writes `retrieval-enrichment.jsonl` on the Pi 5. Details and history are in `docs/plans/hermes-dgx-retrieval-enrichment.md`.
 
-The meaning-based search keeps one vector per record in `retrieval-dense-dgx.bin` on the Pi 5. `createDenseRuntime` in `scripts/hermes-search/retrieval/dense-dgx.mjs` refreshes it after each corpus reload by sending changed records in batches of 8 to the DGX, and embeds each question with an 800 ms budget (`DEFAULT_EMBED_BUDGET_MS` in `scripts/hermes-search/retrieval/query-embedding.mjs`). On a timeout the answer uses word matching only and the receipt log line `Hermes search receipt` records `vectorStatus: timeout`.
+The meaning-based search keeps one vector per record in `retrieval-dense-dgx.bin` on the Pi 5. `createDenseRuntime` in `scripts/hermes-search/retrieval/dense-dgx.mjs` refreshes it after each corpus reload by sending changed records in batches of 8 to the DGX, and embeds each question within a time budget (`DEFAULT_EMBED_BUDGET_MS` in `scripts/hermes-search/retrieval/query-embedding.mjs`, 800 ms until 2026-09-29 and 1,500 ms after). On a timeout the answer uses word matching only and the receipt log line `Hermes search receipt` records `vectorStatus: timeout`.
 
 On the DGX, the embedding service is `dgx-control-business-text-embedding.service`, a llama.cpp server on port 38110 with the Qwen3-Embedding-0.6B model. `agents/dgx/dgx_control/text_embedding.py` in the Control Plane sets `GPU_LAYERS = 0` and `--parallel 2`, and its header explains why: the Control Plane cannot prove that a second GPU-resident model is safe beside the business LLM budget and the Private models, so the service takes no GPU memory. The model weights are about 0.64 GB.
 
@@ -68,6 +76,10 @@ Keep question embedding usable even before the DGX changes. In `createDenseRunti
 ### Milestone 2: GPU query embedding on the DGX
 
 In the Control Plane, make the embedding service use the GPU when decision D1 allows it: load the model with all layers on the GPU, check at start that the memory is available, and fall back to the current CPU command when it is not. Then measure question embedding from the Pi 5 while document embedding runs; the target is under 100 ms. Raise the Pi 5 budget only if the measurement needs it. This milestone is a Control Plane pull request first and a Pi 5 setting change second, as the boundary requires.
+
+### Milestone 2b: the request path from the Pi 5 to the DGX
+
+A question embedding leaves the Pi 5 API container through the egress proxy (`HERMES_INFERENCE_EGRESS`, the `business-hermes-chat-egress` container) and reaches the DGX business gateway (`dgx-control-business-proxy.service`, `HERMES_INFERENCE_ORIGIN`), which forwards it to the embedding service on port 38110. Measure each hop separately, find where the 300 ms overhead and the multi-second jumps come from, and fix it on the side that owns it (egress in this repository, gateway in the Control Plane). At the end, question embedding from the Pi 5 stays under 150 ms for twenty calls in a row.
 
 ### Milestone 3: one night flow for every source
 
