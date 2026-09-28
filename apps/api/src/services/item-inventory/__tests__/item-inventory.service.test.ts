@@ -584,3 +584,32 @@ describe('inventory units', () => {
     await expect(service.setItemUnit('item-1', '箱')).rejects.toMatchObject({ statusCode: 400 });
   });
 });
+
+describe('inventory area rename', () => {
+  function areaDb(targetClash: { shelfNumber: number } | null) {
+    const tx = {
+      inventoryShelf: {
+        findMany: vi.fn().mockResolvedValue([{ shelfNumber: 1 }, { shelfNumber: 2 }]),
+        findFirst: vi.fn().mockResolvedValue(targetClash),
+        updateMany: vi.fn().mockResolvedValue({ count: 2 }),
+      },
+    };
+    return { tx, db: { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) } };
+  }
+
+  it('renames every shelf of an area to the normalized new name', async () => {
+    const { tx, db } = areaDb(null);
+    const service = new ItemInventoryService(db as never);
+
+    await expect(service.renameArea('30041R_2MF-P', '30041R_2ＭＦ-Ｐ 北')).resolves.toEqual({ renamed: 2, area: '30041R_2MF-P 北' });
+    expect(tx.inventoryShelf.updateMany).toHaveBeenCalledWith({ where: { area: '30041R_2MF-P' }, data: { area: '30041R_2MF-P 北' } });
+  });
+
+  it('refuses when the new area already has a shelf with the same number', async () => {
+    const { tx, db } = areaDb({ shelfNumber: 2 });
+    const service = new ItemInventoryService(db as never);
+
+    await expect(service.renameArea('A', 'B 北')).rejects.toThrow('同じ番号の棚');
+    expect(tx.inventoryShelf.updateMany).not.toHaveBeenCalled();
+  });
+});
