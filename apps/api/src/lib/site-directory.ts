@@ -1,3 +1,4 @@
+import { ApiError } from './errors.js';
 import { resolveDeviceScopeKey, resolveSiteKeyFromScopeKey, siteNotAssignedError } from './location-scope-resolver.js';
 
 /**
@@ -33,6 +34,19 @@ let registeredSiteKeys: ReadonlySet<string> = new Set();
 let registeredDeviceScopeKeys: ReadonlySet<string> = new Set();
 let lastAttemptAt = 0;
 let inflight: Promise<void> | null = null;
+/** 一度でも読み込みに成功したか */
+let loaded = false;
+/** API サーバーでは、未読込のまま文字列から推測しない（unit test やスクリプトは従来どおり） */
+let failClosedUntilLoaded = false;
+
+/** API サーバー起動時に呼ぶ。対応表を読み込むまで、拠点の解決を 503 で止める。 */
+export function enableSiteDirectoryFailClosed(): void {
+  failClosedUntilLoaded = true;
+}
+
+export function isSiteDirectoryLoaded(): boolean {
+  return loaded;
+}
 
 /**
  * 同じ deviceScopeKey に異なる明示拠点が付いた端末がある場合は曖昧なので登録しない
@@ -67,13 +81,15 @@ export async function refreshSiteDirectory(client: SiteDirectoryClient, now: num
   explicitSiteByDeviceScopeKey = buildExplicitSiteMap(rows);
   registeredSiteKeys = new Set(sites.map((site) => site.key));
   registeredDeviceScopeKeys = new Set(rows.map((row) => resolveDeviceScopeKey(row)));
+  loaded = true;
 }
 
 /**
  * TTL 切れなら読み直す。失敗しても前回の対応表を維持し、TTL 経過まで再試行しない。
+ * まだ一度も読み込めていない間は、TTL を待たずに毎回読み直す。
  */
 export async function ensureSiteDirectoryFresh(client: SiteDirectoryClient, now: number = Date.now()): Promise<void> {
-  if (now - lastAttemptAt < SITE_DIRECTORY_TTL_MS) return;
+  if (loaded && now - lastAttemptAt < SITE_DIRECTORY_TTL_MS) return;
   if (!inflight) {
     inflight = refreshSiteDirectory(client, now).finally(() => {
       inflight = null;
@@ -94,6 +110,15 @@ export function invalidateSiteDirectory(): void {
  * それを、なければ従来の推測を返す。
  */
 export function resolveSiteKeyForScopeKey(scopeKey: string): string {
+  if (failClosedUntilLoaded && !loaded) {
+    // 未読込の空の対応表で推測すると、拠点未設定の端末を別拠点として扱ってしまう。
+    throw new ApiError(
+      503,
+      '拠点情報を読み込めていません。しばらくしてから再度お試しください',
+      undefined,
+      'SITE_DIRECTORY_UNAVAILABLE'
+    );
+  }
   const trimmed = scopeKey.trim();
   if (registeredSiteKeys.has(trimmed)) return trimmed;
   const explicit = explicitSiteByDeviceScopeKey.get(trimmed);
@@ -110,4 +135,6 @@ export function resetSiteDirectoryForTest(): void {
   registeredDeviceScopeKeys = new Set();
   lastAttemptAt = 0;
   inflight = null;
+  loaded = false;
+  failClosedUntilLoaded = false;
 }

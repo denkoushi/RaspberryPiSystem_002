@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   SITE_DIRECTORY_TTL_MS,
   buildExplicitSiteMap,
+  enableSiteDirectoryFailClosed,
   ensureSiteDirectoryFresh,
   invalidateSiteDirectory,
   refreshSiteDirectory,
@@ -89,6 +90,21 @@ describe('site-directory', () => {
     ]);
     expect(map.has('shared-key')).toBe(false);
     expect(map.get('same-key')).toBe('第2工場');
+  });
+
+  it('fails closed in the API server until the directory has loaded, retrying without waiting for the TTL', async () => {
+    enableSiteDirectoryFailClosed();
+    const { client, findMany } = clientReturning(new Error('db down'), [
+      { name: 'raspi4', location: '第2工場 - X', siteKey: null }
+    ]);
+    await expect(ensureSiteDirectoryFresh(client, 1_000)).rejects.toThrow('db down');
+    // 未読込の空の表では推測しない（未設定端末を第2工場扱いにしない）。
+    expect(() => resolveSiteKeyForScopeKey('第2工場 - X')).toThrow(
+      expect.objectContaining({ code: 'SITE_DIRECTORY_UNAVAILABLE', statusCode: 503 })
+    );
+    await ensureSiteDirectoryFresh(client, 1_001);
+    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(() => resolveSiteKeyForScopeKey('第2工場 - X')).toThrow(expect.objectContaining({ code: 'SITE_NOT_ASSIGNED' }));
   });
 
   it('reloads only after the TTL and keeps the previous directory on failure', async () => {
