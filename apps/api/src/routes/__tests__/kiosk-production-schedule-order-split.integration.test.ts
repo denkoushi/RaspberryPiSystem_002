@@ -83,24 +83,36 @@ describe('Kiosk Production Schedule Order Split API (integration)', () => {
     await cleanupSplitRouteFixtures();
     resetProductionScheduleOrderSplitPilotRuntimeEnabledForTest();
 
+    // 拠点は明示設定だけで決まる（Milestone 5）。以前 location から推測していた拠点を明示する。
+    for (const key of ['SplitRouteTest', 'Mac', 'SplitRouteSite']) {
+      await prisma.site.upsert({ where: { key }, update: {}, create: { key, displayName: key } });
+    }
     await prisma.clientDevice.upsert({
       where: { apiKey: CLIENT_KEY },
-      update: { name: 'Split Route Client', location: 'SplitRouteTest', defaultMode: 'TAG' },
-      create: { apiKey: CLIENT_KEY, name: 'Split Route Client', location: 'SplitRouteTest', defaultMode: 'TAG' }
+      update: { name: 'Split Route Client', location: 'SplitRouteTest', defaultMode: 'TAG', siteKey: 'SplitRouteTest' },
+      create: { apiKey: CLIENT_KEY, name: 'Split Route Client', location: 'SplitRouteTest', defaultMode: 'TAG', siteKey: 'SplitRouteTest' }
     });
     await prisma.clientDevice.upsert({
       where: { apiKey: MAC_CLIENT_KEY },
-      update: { name: 'Split Route Mac Client', location: 'Mac', defaultMode: 'TAG', canProxyOtherDevices: true },
-      create: { apiKey: MAC_CLIENT_KEY, name: 'Split Route Mac Client', location: 'Mac', defaultMode: 'TAG', canProxyOtherDevices: true }
+      update: { name: 'Split Route Mac Client', location: 'Mac', defaultMode: 'TAG', canProxyOtherDevices: true, siteKey: 'Mac' },
+      create: {
+        apiKey: MAC_CLIENT_KEY,
+        name: 'Split Route Mac Client',
+        location: 'Mac',
+        defaultMode: 'TAG',
+        canProxyOtherDevices: true,
+        siteKey: 'Mac'
+      }
     });
     await prisma.clientDevice.upsert({
       where: { apiKey: 'client-split-route-target-key' },
-      update: { name: 'Split Route Target Client', location: TARGET_DEVICE_SCOPE_KEY, defaultMode: 'TAG' },
+      update: { name: 'Split Route Target Client', location: TARGET_DEVICE_SCOPE_KEY, defaultMode: 'TAG', siteKey: 'SplitRouteSite' },
       create: {
         apiKey: 'client-split-route-target-key',
         name: 'Split Route Target Client',
         location: TARGET_DEVICE_SCOPE_KEY,
-        defaultMode: 'TAG'
+        defaultMode: 'TAG',
+        siteKey: 'SplitRouteSite'
       }
     });
 

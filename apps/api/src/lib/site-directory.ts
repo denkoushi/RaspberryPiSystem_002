@@ -1,4 +1,4 @@
-import { resolveDeviceScopeKey, resolveSiteKeyFromScopeKey } from './location-scope-resolver.js';
+import { resolveDeviceScopeKey, resolveSiteKeyFromScopeKey, siteNotAssignedError } from './location-scope-resolver.js';
 
 /**
  * 端末スコープキー（deviceScopeKey）→ 明示拠点（ClientDevice.siteKey）の対応表。
@@ -30,6 +30,7 @@ export const SITE_DIRECTORY_TTL_MS = 30_000;
 
 let explicitSiteByDeviceScopeKey: ReadonlyMap<string, string> = new Map();
 let registeredSiteKeys: ReadonlySet<string> = new Set();
+let registeredDeviceScopeKeys: ReadonlySet<string> = new Set();
 let lastAttemptAt = 0;
 let inflight: Promise<void> | null = null;
 
@@ -65,6 +66,7 @@ export async function refreshSiteDirectory(client: SiteDirectoryClient, now: num
   ]);
   explicitSiteByDeviceScopeKey = buildExplicitSiteMap(rows);
   registeredSiteKeys = new Set(sites.map((site) => site.key));
+  registeredDeviceScopeKeys = new Set(rows.map((row) => resolveDeviceScopeKey(row)));
 }
 
 /**
@@ -94,12 +96,18 @@ export function invalidateSiteDirectory(): void {
 export function resolveSiteKeyForScopeKey(scopeKey: string): string {
   const trimmed = scopeKey.trim();
   if (registeredSiteKeys.has(trimmed)) return trimmed;
-  return explicitSiteByDeviceScopeKey.get(trimmed) ?? resolveSiteKeyFromScopeKey(trimmed);
+  const explicit = explicitSiteByDeviceScopeKey.get(trimmed);
+  if (explicit !== undefined) return explicit;
+  // 登録端末のキーなのに明示拠点がない（または端末間で食い違う）場合は推測しない（Milestone 5）。
+  if (registeredDeviceScopeKeys.has(trimmed)) throw siteNotAssignedError(trimmed);
+  // 端末以外の値（shared 系の共有キーや過去データ）だけ、従来どおり文字列から求める。
+  return resolveSiteKeyFromScopeKey(trimmed);
 }
 
 export function resetSiteDirectoryForTest(): void {
   explicitSiteByDeviceScopeKey = new Map();
   registeredSiteKeys = new Set();
+  registeredDeviceScopeKeys = new Set();
   lastAttemptAt = 0;
   inflight = null;
 }

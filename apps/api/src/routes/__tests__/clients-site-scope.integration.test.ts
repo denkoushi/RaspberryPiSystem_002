@@ -146,6 +146,33 @@ describe('site assignment administration', () => {
     expect(response.json().errorCode ?? response.json().code).toBe('UNKNOWN_SITE');
   });
 
+  it('assigns a registered site to a new device from its location prefix, and nothing otherwise', async () => {
+    const headers = { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' };
+    const onSite = `site-scope-new-${Date.now()}`;
+    const unknown = `site-scope-new-unknown-${Date.now()}`;
+    await app.inject({ method: 'POST', url: '/api/clients', headers, payload: { apiKey: onSite, name: 'n1', location: '第2工場 - New01' } });
+    await app.inject({ method: 'POST', url: '/api/clients', headers, payload: { apiKey: unknown, name: 'n2', location: '未登録工場 - New02' } });
+    expect((await prisma.clientDevice.findUnique({ where: { apiKey: onSite } }))?.siteKey).toBe('第2工場');
+    expect((await prisma.clientDevice.findUnique({ where: { apiKey: unknown } }))?.siteKey).toBeNull();
+    await prisma.clientDevice.deleteMany({ where: { apiKey: { in: [onSite, unknown] } } });
+  });
+
+  it('rejects site-scoped kiosk screens for a device without a site but keeps other screens working', async () => {
+    const device = await prisma.clientDevice.create({
+      data: { apiKey: `site-scope-unassigned-${Date.now()}`, name: 'unassigned', location: '第2工場 - Unassigned' }
+    });
+    const siteScoped = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/grinding-planning-board?category=grinding&view=seiban',
+      headers: { 'x-client-key': device.apiKey }
+    });
+    expect(siteScoped.statusCode).toBe(409);
+    expect(siteScoped.json().errorCode ?? siteScoped.json().code).toBe('SITE_NOT_ASSIGNED');
+    const sites = await app.inject({ method: 'GET', url: '/api/kiosk/sites', headers: { 'x-client-key': device.apiKey } });
+    expect(sites.statusCode).toBe(200);
+    await prisma.clientDevice.delete({ where: { id: device.id } });
+  });
+
   it('keeps an existing location when registration or heartbeat sends an empty location', async () => {
     const apiKey = `site-scope-register-${Date.now()}`;
     const headers = { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' };

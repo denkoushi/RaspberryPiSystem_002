@@ -181,6 +181,8 @@ export async function createTestClientDevice(apiKey?: string): Promise<ClientDev
     data: {
       name: `Test Client ${new Date().toISOString()}`,
       apiKey: generatedKey,
+      // 拠点は明示設定だけで決まる（location からは推測しない）。第2工場はマイグレーションで登録済み。
+      siteKey: '第2工場',
     },
   });
   return client;

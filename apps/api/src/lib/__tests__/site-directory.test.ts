@@ -28,16 +28,25 @@ function clientWithSites(siteKeys: string[], ...batches: Array<SiteDirectoryDevi
 describe('site-directory', () => {
   afterEach(() => resetSiteDirectoryForTest());
 
-  it('falls back to the location text guess when no device has an explicit site', async () => {
+  it('refuses to guess the site of a registered device without an explicit site', async () => {
     const { client } = clientReturning([
       { name: 'Mac', location: null, siteKey: null },
       { name: 'raspi4', location: '第2工場 - Sessaku-01', siteKey: null }
     ]);
     await refreshSiteDirectory(client, 1_000);
-    expect(resolveSiteKeyForScopeKey('Mac')).toBe('Mac');
-    expect(resolveSiteKeyForScopeKey(' 第2工場 - Sessaku-01 ')).toBe('第2工場');
+    const notAssigned = expect.objectContaining({ code: 'SITE_NOT_ASSIGNED', statusCode: 409 });
+    expect(() => resolveSiteKeyForScopeKey('Mac')).toThrow(notAssigned);
+    expect(() => resolveSiteKeyForScopeKey(' 第2工場 - Sessaku-01 ')).toThrow(notAssigned);
     expect(resolveSiteKeyForScopeKey('第2工場')).toBe('第2工場');
+  });
+
+  it('keeps the text rule only for values that are not device keys (shared keys, old rows)', async () => {
+    const { client } = clientReturning([{ name: 'raspi4', location: '第2工場 - A', siteKey: '第2工場' }]);
+    await refreshSiteDirectory(client, 1_000);
+    expect(resolveSiteKeyForScopeKey('shared')).toBe('shared');
+    expect(resolveSiteKeyForScopeKey('shared-global-rank')).toBe('shared-global-rank');
     expect(resolveSiteKeyForScopeKey('')).toBe('default');
+    expect(resolveSiteKeyForScopeKey('旧工場 - 退役端末')).toBe('旧工場');
   });
 
   it('returns the explicit site of the device that owns the scope key', async () => {
@@ -49,7 +58,10 @@ describe('site-directory', () => {
     await refreshSiteDirectory(client, 1_000);
     expect(resolveSiteKeyForScopeKey('Mac')).toBe('第2工場');
     expect(resolveSiteKeyForScopeKey('factory')).toBe('第2工場');
-    expect(resolveSiteKeyForScopeKey('第2工場 - Sessaku-01')).toBe('第2工場');
+    // 明示拠点のない登録端末は推測しない（Milestone 5）。
+    expect(() => resolveSiteKeyForScopeKey('第2工場 - Sessaku-01')).toThrow(
+      expect.objectContaining({ code: 'SITE_NOT_ASSIGNED' })
+    );
   });
 
   it('never re-resolves a registered site key, so resolution is idempotent', async () => {
@@ -98,6 +110,6 @@ describe('site-directory', () => {
     invalidateSiteDirectory();
     await ensureSiteDirectoryFresh(client, SITE_DIRECTORY_TTL_MS * 2 + 2);
     expect(findMany).toHaveBeenCalledTimes(3);
-    expect(resolveSiteKeyForScopeKey('Mac')).toBe('Mac');
+    expect(() => resolveSiteKeyForScopeKey('Mac')).toThrow(expect.objectContaining({ code: 'SITE_NOT_ASSIGNED' }));
   });
 });
