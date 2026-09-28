@@ -20,7 +20,7 @@ describe('location-scope-resolver', () => {
   });
 
   it('resolves site and device names from segmented location', () => {
-    const input = { location: '第2工場 - RoboDrill01', name: 'raspi4-robodrill01' };
+    const input = { location: '第2工場 - RoboDrill01', name: 'raspi4-robodrill01', siteKey: '第2工場' };
     expect(resolveDeviceScopeKey(input)).toBe('第2工場 - RoboDrill01');
     expect(resolveSiteKey(input)).toBe('第2工場');
     expect(resolveDeviceName(input)).toBe('RoboDrill01');
@@ -29,7 +29,7 @@ describe('location-scope-resolver', () => {
   it('falls back to single-token names when separator is absent', () => {
     const input = { location: null, name: 'raspberrypi4' };
     expect(resolveDeviceScopeKey(input)).toBe('raspberrypi4');
-    expect(resolveSiteKey(input)).toBe('raspberrypi4');
+    expect(() => resolveSiteKey(input)).toThrow(expect.objectContaining({ code: 'SITE_NOT_ASSIGNED', statusCode: 409 }));
     expect(resolveDeviceName(input)).toBe('raspberrypi4');
   });
 
@@ -48,7 +48,8 @@ describe('location-scope-resolver', () => {
       apiKey: 'client-key-raspberrypi4-kiosk1',
       statusClientId: 'raspberrypi4-kiosk1',
       location: '第2工場 - kensakuMain',
-      name: 'raspberrypi4'
+      name: 'raspberrypi4',
+      siteKey: '第2工場'
     });
 
     expect(context.deviceScopeKey).toBe('第2工場 - kensakuMain');
@@ -82,9 +83,17 @@ describe('location-scope-resolver', () => {
     expect(context.deviceScopeKey).toBe('Mac');
   });
 
-  it('keeps the location text guess when no explicit site is set', () => {
-    expect(resolveSiteKey({ location: '第2工場 - Sessaku-01', name: 'raspi4', siteKey: null })).toBe('第2工場');
-    expect(resolveSiteKey({ location: null, name: 'Mac', siteKey: '  ' })).toBe('Mac');
+  it('never guesses a device site from its location text', () => {
+    const notAssigned = expect.objectContaining({ code: 'SITE_NOT_ASSIGNED', statusCode: 409 });
+    expect(() => resolveSiteKey({ location: '第2工場 - Sessaku-01', name: 'raspi4', siteKey: null })).toThrow(notAssigned);
+    expect(() => resolveSiteKey({ location: null, name: 'Mac', siteKey: '  ' })).toThrow(notAssigned);
+  });
+
+  it('lets an unassigned device use screens that do not read the site', () => {
+    const context = resolveLocationScopeContext({ id: 'kiosk', apiKey: 'k', location: '第2工場 - A', name: 'raspi4' });
+    expect(context.deviceScopeKey).toBe('第2工場 - A');
+    expect(context.canProxyOtherDevices).toBe(false);
+    expect(() => context.siteKey).toThrow(expect.objectContaining({ code: 'SITE_NOT_ASSIGNED' }));
   });
 
   it('exposes the proxy capability only when the device flag is true', () => {
@@ -103,7 +112,8 @@ describe('location-scope-resolver', () => {
       apiKey: 'client-key-raspberrypi4-kiosk1',
       statusClientId: 'raspberrypi4-kiosk1',
       location: '第2工場 - kensakuMain',
-      name: 'raspberrypi4'
+      name: 'raspberrypi4',
+      siteKey: '第2工場'
     });
     expect(context.deviceScopeKey).toBe('第2工場 - kensakuMain');
     expect(context.siteKey).toBe('第2工場');

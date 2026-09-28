@@ -51,13 +51,16 @@ describeIntegration('site directory on PostgreSQL', () => {
     await directory!.refreshSiteDirectory(prisma!);
     expect(directory!.resolveSiteKeyForScopeKey(`${PREFIX}-Mac`)).toBe('第2工場');
     expect(directory!.resolveSiteKeyForScopeKey(`${PREFIX}-factory`)).toBe('第2工場');
-    expect(directory!.resolveSiteKeyForScopeKey(`${PREFIX}工場 - A`)).toBe(`${PREFIX}工場`);
+    // 明示拠点のない登録端末は推測しない（Milestone 5）。
+    expect(() => directory!.resolveSiteKeyForScopeKey(`${PREFIX}工場 - A`)).toThrow(
+      expect.objectContaining({ code: 'SITE_NOT_ASSIGNED' })
+    );
   });
 
-  it('lists devices by explicit site and still lists location-guessed devices', async () => {
+  it('lists only devices whose explicit site matches', async () => {
     const onSite = await deviceScope!.listRegisteredDeviceScopeKeysForSite('第2工場');
     expect(onSite).toContain(`${PREFIX}-factory`);
     expect(onSite).not.toContain(`${PREFIX}-Mac`);
-    expect(await deviceScope!.listRegisteredDeviceScopeKeysForSite(`${PREFIX}工場`)).toEqual([`${PREFIX}工場 - A`]);
+    expect(await deviceScope!.listRegisteredDeviceScopeKeysForSite(`${PREFIX}工場`)).toEqual([]);
   });
 });

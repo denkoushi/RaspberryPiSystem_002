@@ -50,7 +50,8 @@ After this plan is complete, an administrator can open 管理画面 > クライ�
 - [x] (2026-09-26) Milestone 4b implemented on `feat/explicit-site-scope-m4b`: `apps/api/scripts/site-scope-merge.mjs` (dry run by default; `--apply` writes a backup first and applies in one transaction; `--restore` undoes from the backup). Verified on a disposable PostgreSQL: dry run, apply, idempotent re-run, refusal to overwrite an existing backup, and full restore.
 - [x] (2026-09-26) Milestone 4b merged as PR #1504 (merge `d257598f`, including Codex-reported fixes: backup under the writable `/opt/backups` mount, version-guarded restore, and undo of a merge-created target state) and deployed to Pi5 with run `20260926-072631-8a38c1` (`Result=success`, recap `failed=0 rescued=0`).
 - [x] (2026-09-26 16:45:17 JST, backup `createdAt` 2026-09-26T07:45:17.892Z) Milestone 4b production. The `--source=Mac` dry run showed 10 seibans to append and 21 overrides to move; the user then clarified that the Mac 製番ボード data must not be merged at all. Ran a devices-only assignment instead (`--source=__devices_only__ --target=第2工場 --assign-devices`, dry run then `--apply --backup=/opt/backups/site-scope-merge-backup-20260926.json`): 0 seibans, 0 overrides, 14 devices set to 第2工場. The read-only report afterwards showed every device with explicit site 第2工場; the Mac board rows (1 state, 26 overrides) remain in the database, unused. The user confirmed on the real kiosks that the Mac now shows the same 製番ボード as the Pi4.
-- [ ] Milestone 5: remove the text-guess fallback once every device has an explicit site.
+- [x] (2026-09-28) Milestone 5 implemented on `feat/explicit-site-scope-m5` after two days without issues: a device site comes only from `ClientDevice.siteKey`. The scope context resolves `siteKey` lazily, so screens that do not use a site keep working for an unassigned device while site-scoped screens return 409 `SITE_NOT_ASSIGNED` with a message pointing to 管理画面. The site directory throws the same error for a registered device key without a site, the Mac proxy target list uses only explicit sites, and `POST /api/clients` sets the site of a new device when its location prefix is a registered site. The text rule stays only for values that are not device keys (shared sentinels such as `shared`, `shared-global-rank`, and old stored rows). The admin page shows unassigned devices in red instead of a guessed site. Evidence: lib tests, production-schedule/order-search/order-split/clients/site-scope integration tests (22 files / 218 tests, then 42 clients tests) on a disposable PostgreSQL; web admin tests 17 passed.
+- [ ] Milestone 5 PR, CI, merge, Pi5 deploy (check first that every production device still has an explicit site).
 
 ## Surprises & Discoveries
 
@@ -79,7 +80,7 @@ As of 2026-09-26 Milestones 1 to 4 are in production. Every device has an explic
 
 Lessons: ask about each data set separately and restate the exact rows before a production data change; the numbered question about global rankings was read by the user as being about the 製番ボード seibans, which the dry run exposed before anything was written. Codex review caught real defects in every pull request (backfill whitespace, idempotent site resolution, key-namespace collisions, stale directory after renames, picker refresh, backup location and restore safety).
 
-Open follow-ups: Milestone 5; make `scripts/register-clients.sh` omit an empty location (separate PR); optionally delete the unused Mac 製番ボード rows once the user confirms they are not needed.
+Open follow-ups: make `scripts/register-clients.sh` omit an empty location (separate PR); optionally delete the unused Mac 製番ボード rows once the user confirms they are not needed.
 
 ## Context and Orientation
 

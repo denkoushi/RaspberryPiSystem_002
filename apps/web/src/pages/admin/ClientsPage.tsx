@@ -8,7 +8,6 @@ import {
 import clsx from 'clsx';
 import { useMemo, useState } from 'react';
 
-import { guessLegacySiteKey } from '../../api/client';
 import {
   useClients,
   useClientMutations,
@@ -398,7 +397,7 @@ export function ClientsPage() {
                               className="rounded-md border-2 border-slate-500 bg-white px-2 py-1 text-sm font-semibold text-slate-900"
                               aria-label="拠点"
                             >
-                              <option value="">未設定（場所から推測: {guessLegacySiteKey(client)}）</option>
+                              <option value="">未設定</option>
                               {(sitesQuery.data ?? []).map((site) => (
                                 <option key={site.key} value={site.key}>
                                   {site.displayName}
@@ -412,8 +411,8 @@ export function ClientsPage() {
                         ) : client.siteKey ? (
                           <span className="text-sm font-semibold text-slate-900">{client.siteKey}</span>
                         ) : (
-                          <span className="text-sm font-semibold text-slate-500">
-                            未設定（推測: {guessLegacySiteKey(client)}）
+                          <span className="text-sm font-semibold text-red-600">
+                            未設定（製番ボードなど拠点を使う画面は使えません）
                           </span>
                         )}
                       </td>
@@ -599,7 +598,7 @@ export function ClientsPage() {
           </div>
           {siteError ? <p className="text-xs font-semibold text-red-600">{siteError}</p> : null}
           <p className="text-xs text-slate-600">
-            端末ごとの拠点は下の「クライアント端末管理」で設定します。未設定の端末は、場所の「 - 」より前の文字を拠点として扱います。
+            端末ごとの拠点は下の「クライアント端末管理」で設定します。新しく登録した端末は、場所が「拠点名 - 端末名」で拠点名が登録済みなら自動で設定されます。未設定の端末は、拠点を使う画面を開けません。
           </p>
         </div>
       </Card>

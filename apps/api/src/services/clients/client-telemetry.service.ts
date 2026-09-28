@@ -81,21 +81,38 @@ function normalizeOptionalLocation(location: string | null | undefined): string 
   return trimmed ? trimmed : undefined;
 }
 
+/**
+ * 新規登録時だけ、location の「拠点 - 端末」の拠点部分が登録済み拠点なら明示拠点として保存する。
+ * 実行時には推測しないため、ここで一度だけ明示値にして管理画面で見える・直せる形にする。
+ */
+async function resolveRegisteredSiteKeyForNewDevice(location: string | undefined): Promise<string | undefined> {
+  if (!location) return undefined;
+  const delimiterIndex = location.indexOf(' - ');
+  if (delimiterIndex <= 0) return undefined;
+  const candidate = location.slice(0, delimiterIndex).trim();
+  if (!candidate) return undefined;
+  const site = await prisma.site.findUnique({ where: { key: candidate }, select: { key: true } });
+  return site?.key;
+}
+
 export async function registerClientDeviceAdmin(params: {
   apiKey: string;
   name: string;
   location?: string | null;
 }) {
   const now = new Date();
+  const location = normalizeOptionalLocation(params.location);
+  const siteKeyForNewDevice = await resolveRegisteredSiteKeyForNewDevice(location);
   const device = await prisma.clientDevice.upsert({
     where: { apiKey: params.apiKey },
     update: {
-      location: normalizeOptionalLocation(params.location),
+      location,
       lastSeenAt: now,
     },
     create: {
       name: params.name,
-      location: normalizeOptionalLocation(params.location),
+      location,
+      siteKey: siteKeyForNewDevice,
       apiKey: params.apiKey,
       lastSeenAt: now,
     },

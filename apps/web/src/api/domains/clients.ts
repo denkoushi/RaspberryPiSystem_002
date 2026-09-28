@@ -60,14 +60,6 @@ export async function createSite(payload: { key: string }) {
   return data.site;
 }
 
-/** サーバー（location-scope-resolver.ts）と同じ、location 文字列からの旧来の拠点推測。表示専用。 */
-export function guessLegacySiteKey(client: Pick<ClientDevice, 'location' | 'name'>): string {
-  const scopeKey = client.location?.trim() || client.name.trim() || 'default';
-  const delimiterIndex = scopeKey.indexOf(' - ');
-  if (delimiterIndex < 0) return scopeKey;
-  return scopeKey.slice(0, delimiterIndex).trim() || scopeKey;
-}
-
 export type ClientLogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
 export interface KioskSite {

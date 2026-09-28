@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   SITE_DIRECTORY_TTL_MS,
   buildExplicitSiteMap,
+  enableSiteDirectoryFailClosed,
   ensureSiteDirectoryFresh,
   invalidateSiteDirectory,
   refreshSiteDirectory,
@@ -28,16 +29,25 @@ function clientWithSites(siteKeys: string[], ...batches: Array<SiteDirectoryDevi
 describe('site-directory', () => {
   afterEach(() => resetSiteDirectoryForTest());
 
-  it('falls back to the location text guess when no device has an explicit site', async () => {
+  it('refuses to guess the site of a registered device without an explicit site', async () => {
     const { client } = clientReturning([
       { name: 'Mac', location: null, siteKey: null },
       { name: 'raspi4', location: '第2工場 - Sessaku-01', siteKey: null }
     ]);
     await refreshSiteDirectory(client, 1_000);
-    expect(resolveSiteKeyForScopeKey('Mac')).toBe('Mac');
-    expect(resolveSiteKeyForScopeKey(' 第2工場 - Sessaku-01 ')).toBe('第2工場');
+    const notAssigned = expect.objectContaining({ code: 'SITE_NOT_ASSIGNED', statusCode: 409 });
+    expect(() => resolveSiteKeyForScopeKey('Mac')).toThrow(notAssigned);
+    expect(() => resolveSiteKeyForScopeKey(' 第2工場 - Sessaku-01 ')).toThrow(notAssigned);
     expect(resolveSiteKeyForScopeKey('第2工場')).toBe('第2工場');
+  });
+
+  it('keeps the text rule only for values that are not device keys (shared keys, old rows)', async () => {
+    const { client } = clientReturning([{ name: 'raspi4', location: '第2工場 - A', siteKey: '第2工場' }]);
+    await refreshSiteDirectory(client, 1_000);
+    expect(resolveSiteKeyForScopeKey('shared')).toBe('shared');
+    expect(resolveSiteKeyForScopeKey('shared-global-rank')).toBe('shared-global-rank');
     expect(resolveSiteKeyForScopeKey('')).toBe('default');
+    expect(resolveSiteKeyForScopeKey('旧工場 - 退役端末')).toBe('旧工場');
   });
 
   it('returns the explicit site of the device that owns the scope key', async () => {
@@ -49,7 +59,10 @@ describe('site-directory', () => {
     await refreshSiteDirectory(client, 1_000);
     expect(resolveSiteKeyForScopeKey('Mac')).toBe('第2工場');
     expect(resolveSiteKeyForScopeKey('factory')).toBe('第2工場');
-    expect(resolveSiteKeyForScopeKey('第2工場 - Sessaku-01')).toBe('第2工場');
+    // 明示拠点のない登録端末は推測しない（Milestone 5）。
+    expect(() => resolveSiteKeyForScopeKey('第2工場 - Sessaku-01')).toThrow(
+      expect.objectContaining({ code: 'SITE_NOT_ASSIGNED' })
+    );
   });
 
   it('never re-resolves a registered site key, so resolution is idempotent', async () => {
@@ -79,6 +92,21 @@ describe('site-directory', () => {
     expect(map.get('same-key')).toBe('第2工場');
   });
 
+  it('fails closed in the API server until the directory has loaded, retrying without waiting for the TTL', async () => {
+    enableSiteDirectoryFailClosed();
+    const { client, findMany } = clientReturning(new Error('db down'), [
+      { name: 'raspi4', location: '第2工場 - X', siteKey: null }
+    ]);
+    await expect(ensureSiteDirectoryFresh(client, 1_000)).rejects.toThrow('db down');
+    // 未読込の空の表では推測しない（未設定端末を第2工場扱いにしない）。
+    expect(() => resolveSiteKeyForScopeKey('第2工場 - X')).toThrow(
+      expect.objectContaining({ code: 'SITE_DIRECTORY_UNAVAILABLE', statusCode: 503 })
+    );
+    await ensureSiteDirectoryFresh(client, 1_001);
+    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(() => resolveSiteKeyForScopeKey('第2工場 - X')).toThrow(expect.objectContaining({ code: 'SITE_NOT_ASSIGNED' }));
+  });
+
   it('reloads only after the TTL and keeps the previous directory on failure', async () => {
     const { client, findMany } = clientReturning(
       [{ name: 'Mac', location: null, siteKey: '第2工場' }],
@@ -98,6 +126,6 @@ describe('site-directory', () => {
     invalidateSiteDirectory();
     await ensureSiteDirectoryFresh(client, SITE_DIRECTORY_TTL_MS * 2 + 2);
     expect(findMany).toHaveBeenCalledTimes(3);
-    expect(resolveSiteKeyForScopeKey('Mac')).toBe('Mac');
+    expect(() => resolveSiteKeyForScopeKey('Mac')).toThrow(expect.objectContaining({ code: 'SITE_NOT_ASSIGNED' }));
   });
 });

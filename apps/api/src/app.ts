@@ -23,7 +23,7 @@ import { isCandidateValidationMode } from './bootstrap/candidate-validation.js';
 import { createSchedulerRuntimeState } from './bootstrap/scheduler-runtime-state.js';
 import { createDeployReadinessObservability } from './services/system/deploy-readiness-observability.js';
 import { prisma } from './lib/prisma.js';
-import { ensureSiteDirectoryFresh, refreshSiteDirectory } from './lib/site-directory.js';
+import { enableSiteDirectoryFailClosed, ensureSiteDirectoryFresh, refreshSiteDirectory } from './lib/site-directory.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
@@ -123,11 +123,12 @@ export async function buildServer(): Promise<FastifyInstance> {
   }
   
   // 端末の明示拠点の対応表（docs/plans/explicit-site-scope-execplan.md）。
-  // 読み込みに失敗しても従来の location 推測で動くため、起動・リクエストは止めない。
+  // 読み込むまでは拠点の解決だけを 503 で止める（拠点を使わない処理・ヘルスチェックは止めない）。
+  enableSiteDirectoryFailClosed();
   try {
     await refreshSiteDirectory(prisma);
   } catch (err) {
-    app.log.warn({ err }, 'Site directory could not be loaded; falling back to location-derived sites');
+    app.log.warn({ err }, 'Site directory could not be loaded yet; site resolution returns 503 until a request-time reload succeeds');
   }
   app.addHook('onRequest', async (request) => {
     try {

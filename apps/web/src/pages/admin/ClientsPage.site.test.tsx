@@ -47,9 +47,9 @@ describe('ClientsPage site assignment', () => {
     createSiteAsync.mockClear();
   });
 
-  it('shows the explicit site or the location-derived guess and the proxy capability', () => {
+  it('shows the explicit site or a clear unassigned warning and the proxy capability', () => {
     render(<ClientsPage />);
-    expect(screen.getByText('未設定（推測: Mac）')).toBeInTheDocument();
+    expect(screen.getByText('未設定（製番ボードなど拠点を使う画面は使えません）')).toBeInTheDocument();
     expect(screen.getAllByText('第2工場').length).toBeGreaterThan(0);
   });
 
