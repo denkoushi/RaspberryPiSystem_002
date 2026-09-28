@@ -3,6 +3,7 @@
 - 端末の拠点を明示設定へ移行（Mac代理操作の設定化・誤拠点データの統合）: [ExecPlan](./plans/explicit-site-scope-execplan.md)
 - Hermes横断レコード検索（ソースカタログ・検索計画・手元評価・5秒目標）: [ADR](./decisions/ADR-20260923-hermes-cross-source-retrieval.md) / [ExecPlan](./plans/hermes-cross-source-retrieval-execplan.md)
 - Hermes検索のオフラインDGXエンリッチメント（既定OFF、照会時は呼ばない）: [Plan](./plans/hermes-dgx-retrieval-enrichment.md)
+- Hermes検索の精度改善の履歴（採用・不採用とも数値つき）: [Log](./plans/hermes-retrieval-accuracy-log.md)
 - Hermes retrieval hybrid and enrichment aliases: [ADR-20260924](./decisions/ADR-20260924-hermes-retrieval-hybrid-enrichment.md)
 - Hermes/JEV不適合検索の引き継ぎ・達成範囲・未検証事項: [Handoff Plan](./plans/hermes-jev-search-handoff-20260923.md)
 - 生産日程スナップショットの所有境界: [ExecPlan](./plans/production-schedule-snapshot-boundary-execplan.md)
