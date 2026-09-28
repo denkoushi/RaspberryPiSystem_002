@@ -15,7 +15,8 @@ After this plan, the DGX does the heavy work at night and stays fast in the day.
 - [x] (2026-09-28) Measured the problem. Query embedding from the Pi 5 took 0.89 to 5.2 s (10 calls), and 1.5 to 5.4 s directly on the DGX while the Pi 5 re-embedded changed records. The embedding process used about 16 of 20 CPU cores. Receipts showed 3 of 4 meaning-based questions timed out at 800 ms.
 - [x] (2026-09-28) Read the DGX side. The embedding service is CPU-only on purpose (see Context).
 - [x] (2026-09-28) Owner accepted decisions D1 to D3 as proposed.
-- [ ] Milestone 1: day-time protection on the Pi 5 (started 2026-09-28).
+- [x] (2026-09-28) Milestone 1: day-time protection on the Pi 5 (#1525, deployed 623018de). Query embedding from the Pi 5 measured 0.33 to 0.38 s afterwards.
+- [ ] (2026-09-28) Milestone 1 follow-up: bulk embedding only from 04:00 to 06:00 (decision D3). The first night showed the CPU embedding competing with enrichment.
 - [ ] Milestone 2: GPU query embedding on the DGX.
 - [ ] Milestone 3: one night flow for every source.
 - [ ] Milestone 4: links between sources.
@@ -27,6 +28,8 @@ After this plan, the DGX does the heavy work at night and stays fast in the day.
   Evidence: `refreshDenseIndex` in `scripts/hermes-search/retrieval/dense-dgx.mjs` compares a SHA-256 of the document text; the vector file grew about one record per second on 2026-09-28 after about 1,000 records changed.
 - Observation: the full-corpus enrichment started 2026-09-28 will change about 7,200 more records, so without a change the morning after each night would lose meaning-based search for hours.
 - Observation: GPU memory is shared and busy. On 2026-09-28 at 10:30, with the business LLM stopped, the GPU held Private ComfyUI (about 20 GB), a Private llama-server (about 25 GB), and Irodori speech (about 5 GB); the host had 121 GB with 59 GB available. The business LLM reserves 65 percent of GPU memory when it runs (`scripts/dgx-local-llm-system/model-registry.examples/business_qwen36_27b_nvfp4/manifest.json`, `gpuMemoryUtilization: 0.65`, `maxNumSeqs: 4`).
+
+- Observation: at night, bulk document embedding slowed enrichment. On 2026-09-28 at 22:35 the DGX load average was 15 to 16 on 20 cores, the GPU drew about 22 W at 68 C with no thermal slowdown, and enrichment with concurrency 2 stored about 3 records per minute, the same rate as concurrency 1 on the first night. The business LLM runs on the GPU but needs the CPU to prepare requests, and the CPU was taken by embedding.
 
 ## Decision Log
 

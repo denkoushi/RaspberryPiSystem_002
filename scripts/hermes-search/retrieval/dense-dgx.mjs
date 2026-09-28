@@ -25,8 +25,11 @@ export const DGX_INDEX_TIMEOUT_MS = 10_000;
 export const DGX_MAX_INPUT_CHARS = 700;
 export const DEFAULT_DENSE_STORE = '/app/storage/hermes-search/runtime/retrieval-dense-dgx.bin';
 // The DGX embedding service is CPU-only with 2 slots, and a large re-embed fills it so a Chat
-// question misses its 800 ms budget. Outside the night window each refresh embeds a few records
-// in small requests with a pause between them; the rest waits for the night.
+// question misses its 800 ms budget. It also took about 15 of 20 DGX cores on 2026-09-28 at night
+// while the GPU business LLM, which enriches records, sat near 22 W. Bulk embedding therefore runs
+// only in DENSE_BULK_WINDOW, after the enrichment hours (docs/plans/dgx-night-preparation-execplan.md,
+// decision D3). At other times each refresh embeds a few records in small, paused requests.
+export const DENSE_BULK_WINDOW = '4-6';
 export const DAY_MAX_EMBED = 16;
 export const DAY_EMBED_BATCH = 2;
 export const DAY_PAUSE_MS = 5_000;
@@ -55,7 +58,7 @@ export function denseSettings(env = process.env) {
     token: env.HERMES_INFERENCE_TOKEN || '',
     egress: env.HERMES_RETRIEVAL_DENSE_BASE_URL ? '' : (env.HERMES_INFERENCE_EGRESS || ''),
     storePath: env.HERMES_RETRIEVAL_DENSE_STORE || DEFAULT_DENSE_STORE,
-    // The enrichment night window is also the window for bulk document embedding.
+    // With no enrichment window, embedding is not limited, as before the night plan.
     window: env.HERMES_RETRIEVAL_ENRICHMENT_WINDOW || '',
   };
 }
@@ -196,9 +199,9 @@ export async function writeDenseStore(storePath, entries) {
   await rename(temporary, storePath);
 }
 
-// Night or no window: no limits. Day: a few small requests with pauses.
+// No window, or the bulk hours: no limits. Otherwise a few small requests with pauses.
 export function denseRefreshLimits(windowSpec, date = new Date()) {
-  if (!windowSpec || withinWindow(windowSpec, date)) return {};
+  if (!windowSpec || withinWindow(DENSE_BULK_WINDOW, date)) return {};
   return { maxEmbed: DAY_MAX_EMBED, batchSize: DAY_EMBED_BATCH, pauseMs: DAY_PAUSE_MS };
 }
 
