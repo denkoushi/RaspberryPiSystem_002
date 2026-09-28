@@ -16,6 +16,8 @@ type InventoryItemFields = {
   category: string | null;
   area: string | null;
   note: string | null;
+  /** Unit the item is counted in; null means 個. */
+  unit: string | null;
   photos: InventoryPhoto[];
 };
 export type InventoryItemSummary = InventoryItemFields;
@@ -87,6 +89,27 @@ export async function getInventoryItems() {
 export async function getInventoryLocations() {
   const { data } = await api.get<{ locations: InventoryShelf[] }>('/item-inventory/locations');
   return data.locations;
+}
+
+export type InventoryUnit = { id: string; name: string };
+
+export async function getInventoryUnits() {
+  const { data } = await api.get<{ units: InventoryUnit[] }>('/item-inventory/units');
+  return data.units;
+}
+
+export async function createInventoryUnit(name: string, accessPassword?: string) {
+  const { data } = await api.post<{ unit: InventoryUnit }>('/item-inventory/units', { name }, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.unit;
+}
+
+export async function setInventoryItemUnit(itemId: string, unit: string | null, accessPassword?: string) {
+  const { data } = await api.put(`/item-inventory/items/${itemId}/unit`, { unit }, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data;
 }
 
 export async function getInventoryTags() {
@@ -173,6 +196,7 @@ export async function registerInventoryImport(id: string, input: {
   itemTagUid?: string;
   initialQuantity?: number;
   reviewNote?: string;
+  unit?: string | null;
 }, accessPassword?: string) {
   const { data } = await api.post<{ result: unknown }>(`/item-inventory/imports/${id}/register`, input, {
     headers: inventorySettingsHeaders(accessPassword)

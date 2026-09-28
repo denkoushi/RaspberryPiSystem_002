@@ -5,6 +5,7 @@ import {
   bindInventoryCompartment,
   correctInventoryStock,
   createInventoryDrawer,
+  createInventoryUnit,
   createInventoryShelf,
   deleteInventoryItem,
   deleteInventoryImportPhoto,
@@ -15,6 +16,7 @@ import {
   getInventoryItems,
   getInventoryLocations,
   getInventoryTags,
+  getInventoryUnits,
   ingestInventoryMail,
   moveInventoryCompartment,
   processInventoryTransaction,
@@ -26,6 +28,7 @@ import {
   retryInventoryImportMessage,
   replaceInventoryItemTag,
   resolveInventoryTag,
+  setInventoryItemUnit,
   type InventoryImport,
   type InventoryItem,
 } from '../client';
@@ -37,10 +40,12 @@ const inventoryKeys = {
   imports: ['inventory-imports'],
   history: ['inventory-history'],
   importMessages: ['inventory-import-messages'],
+  units: ['inventory-units'],
 };
 
 export function useInventoryItems(enabled = true) { return useQuery({ queryKey: inventoryKeys.items, queryFn: getInventoryItems, enabled }); }
 export function useInventoryLocations() { return useQuery({ queryKey: inventoryKeys.locations, queryFn: getInventoryLocations }); }
+export function useInventoryUnits() { return useQuery({ queryKey: inventoryKeys.units, queryFn: getInventoryUnits }); }
 export function useInventoryTags() { return useQuery({ queryKey: inventoryKeys.tags, queryFn: getInventoryTags }); }
 export function useInventoryImports(accessPassword?: string) {
   return useQuery({
@@ -153,6 +158,8 @@ export function useInventoryMutations(accessPassword?: string) {
     cancel: useMutation({ mutationFn: (id: string) => cancelInventoryTransaction(id, accessPassword), onSuccess: invalidate }),
     correction: useMutation({ mutationFn: (input: Parameters<typeof correctInventoryStock>[0]) => correctInventoryStock(input, accessPassword), onSuccess: invalidate }),
     move: useMutation({ mutationFn: ({ id, drawerId }: { id: string; drawerId: string }) => moveInventoryCompartment(id, drawerId, accessPassword), onSuccess: invalidate }),
+    createUnit: useMutation({ mutationFn: (name: string) => createInventoryUnit(name, accessPassword), onSuccess: invalidate }),
+    setItemUnit: useMutation({ mutationFn: ({ itemId, unit }: { itemId: string; unit: string | null }) => setInventoryItemUnit(itemId, unit, accessPassword), onSuccess: invalidate }),
     replaceTag: useMutation({ mutationFn: ({ id, uid }: { id: string; uid: string }) => replaceInventoryItemTag(id, uid, accessPassword), onSuccess: invalidate }),
   };
 }

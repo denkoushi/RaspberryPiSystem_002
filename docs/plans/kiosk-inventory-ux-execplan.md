@@ -28,7 +28,9 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - [x] (2026-09-26) Milestone 5 merged as PR #1510 (merge SHA ec299635).
 - [x] (2026-09-26) Deploy of Milestones 3–5: first run 20260926-112811-48762d failed safely (PR #1510 merged right after start); redeploy run 20260926-113848-d3ec92 succeeded (recap failed=0 unreachable=0, health ok, new setup text present in the served bundle).
 - [x] (2026-09-28) Milestone 6 real-kiosk check done by the user; findings listed on the task board.
-- [ ] Feedback round 2026-09-28 (completed in code: daily screen photo pane left 2/3 and information pane right 1/3 at full width, tap-to-enlarge inside the photo pane, location as separate エリア/棚/引出し values; setup photos doubled, enlarged photo closes on tap, registration on one screen with a done/remaining checklist; remaining: PR, deploy, re-check on a kiosk).
+- [x] (2026-09-28) Feedback round 2026-09-28: fixes deployed (PR #1523, a6762c71); compact 1920×1080 registration deployed (PR #1527, 134e1b74); area normalization and touch shelf creation deployed (PR #1528, 426eca64, run 20260928-060636-3a0fae).
+- [x] (2026-09-28 15:33 JST) Existing areas normalized on Pi5 after user approval: dry run listed 4 rows (2 shelves, 1 candidate, 1 item: `30041R_2ＭＦ-Ｐ` → `30041R_2MF-P`, no shelf conflicts); `--apply` with backup `/opt/backups/inventory-area-normalize-20260928.json` (763 bytes); a second dry run reported nothing to change.
+- [ ] Units (個, ケース, …): implemented on `feat/kiosk-inventory-units`; remaining: PR, deploy, kiosk check.
 
 ## Surprises & Discoveries
 
@@ -37,6 +39,8 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 
 - Observation: The kiosk has a touch panel and no physical keyboard. The shared on-screen keyboard only types A to Z and 0 to 9, so it cannot enter Japanese item names.
   Evidence: `apps/web/src/components/kiosk/KioskKeyboardModal.tsx` defines `NUMBER_KEYS` and `LETTER_ROWS` only. `docs/knowledge-base/frontend.md` records that touch-panel kiosks lack a keyboard. Some Pi4 kiosks do run IBus and mozc for Japanese input (`docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md`), but that needs a keyboard.
+- Observation (correction, 2026-09-28): The user confirmed that the Pi4 kiosks and the Mac both have a physical keyboard (21.5-inch 1920×1080 monitors). The earlier "no keyboard" reading came from a knowledge-base note about touch panels. Touch-only flows stay, but typing on the kiosk (unit names, area names) is acceptable.
+  Evidence: user statement on 2026-09-28.
 - Observation: Every setup and correction endpoint currently requires the 4-digit password header `x-kiosk-access-password`. Only transactions and the terminal's own last cancel work without it.
   Evidence: `apps/api/src/routes/item-inventory/index.ts`. `POST /item-inventory/corrections` uses `authorizeManageOrKiosk`. `POST /item-inventory/transactions` uses `writeOrKiosk`. `cancelWrite` falls back to `writeOrKiosk` when no password header is present.
 - Observation: The history API cannot filter by item or compartment. It only returns the newest N rows overall.
@@ -101,6 +105,9 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
   Date/Author: 2026-09-28 / user, recorded by Claude.
 - Decision: When a candidate's area has no shelf, registration offers "＋ 棚N を作る" and "＋ 引出しN を作る" in place, and 棚・引き出し lists candidate areas, so no area name has to be typed on a keyboard-less kiosk.
   Rationale: Candidate #4 (`50013_540AP`) could not be registered from the kiosk because its area had no shelf and a new area name needed a keyboard.
+  Date/Author: 2026-09-28 / user, recorded by Claude.
+- Decision: Each item has one unit (`InventoryItem.unit`, null means 個) and there is no conversion between units. The offered units live in `InventoryUnit` (seeded with 個 and ケース). Units are chosen and added in 在庫の準備 (registration 名前・単位 row and アイテム編集). Quantity tags carry only a number, meaning "that many of the item's unit". Adding a unit requires the setup password; unit names are normalized like areas.
+  Rationale: User request on 2026-09-28 (個 and ケース today, more later; no conversion; the kiosks have keyboards).
   Date/Author: 2026-09-28 / user, recorded by Claude.
 - Decision (was open; user approved 2026-09-26): In the kiosk registration flow, the 名前など step is optional. It is prefilled with the current default (`ItemlistRaspi <sourceItemId>`), and model and usage are left blank. The step offers the ordinary text input, which works on terminals with a keyboard and IBus. Japanese renaming on keyboard-less terminals is done later on the admin PC page.
   Rationale: The on-screen keyboard cannot type Japanese, and building a kana keyboard is outside this scope. Ask the user before Milestone 4 whether this default is acceptable.
@@ -270,17 +277,17 @@ On a local web build at 1280×800 with a kiosk client key:
 
 ## Area normalization of existing data
 
-Run on Pi5 after the release that contains the script, inside the API container, from the repository checkout `/opt/RaspberryPiSystem_002`. The dry run only reads:
+Run on Pi5 inside the running API container. Pi5 uses blue/green slots, so find the container name first (for example `bluegreen-api-green-1`) with `docker ps --format '{{.Names}}' | grep api`; `docker compose ... exec api` does not work there. The dry run only reads:
 
-    docker compose -f infrastructure/docker/docker-compose.server.yml exec -T -w /app/apps/api api node scripts/inventory-area-normalize.mjs
+    docker exec -w /app/apps/api <running API container> node scripts/inventory-area-normalize.mjs
 
 After the user approves the printed `changes` (and `shelfConflicts` is empty), apply with a backup that does not exist yet:
 
-    docker compose -f infrastructure/docker/docker-compose.server.yml exec -T -w /app/apps/api api node scripts/inventory-area-normalize.mjs --apply --backup=/opt/backups/inventory-area-normalize-YYYYMMDD.json
+    docker exec -w /app/apps/api <running API container> node scripts/inventory-area-normalize.mjs --apply --backup=/opt/backups/inventory-area-normalize-YYYYMMDD.json
 
 To undo:
 
-    docker compose -f infrastructure/docker/docker-compose.server.yml exec -T -w /app/apps/api api node scripts/inventory-area-normalize.mjs --restore=/opt/backups/inventory-area-normalize-YYYYMMDD.json
+    docker exec -w /app/apps/api <running API container> node scripts/inventory-area-normalize.mjs --restore=/opt/backups/inventory-area-normalize-YYYYMMDD.json
 
 ## Idempotence and Recovery
 

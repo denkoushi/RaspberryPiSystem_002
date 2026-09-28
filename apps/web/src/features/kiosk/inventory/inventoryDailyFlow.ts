@@ -11,6 +11,11 @@ export function inventoryActionLabel(action: string): string {
   return ACTION_LABELS[action] ?? action;
 }
 
+/** The unit an item is counted in; items without one are counted in 個. */
+export function unitLabel(item: { unit?: string | null } | null | undefined): string {
+  return item?.unit || '個';
+}
+
 export function formatSignedDelta(delta: number): string {
   return delta > 0 ? `+${delta}` : `${delta}`;
 }
@@ -30,18 +35,18 @@ export function pickedCompartmentTag(compartment: InventoryCompartment): Invento
   };
 }
 
-export function correctionSummary(before: number, after: number): string {
+export function correctionSummary(before: number, after: number, unit = '個'): string {
   const delta = after - before;
   if (delta === 0) return '記録と同じ数です';
-  return delta < 0 ? `記録を ${-delta}個 減らします` : `記録を ${delta}個 増やします`;
+  return delta < 0 ? `記録を ${-delta}${unit} 減らします` : `記録を ${delta}${unit} 増やします`;
 }
 
-export function correctionResultMessage(before: number, after: number): string {
+export function correctionResultMessage(before: number, after: number, unit = '個'): string {
   const delta = after - before;
-  if (delta === 0) return `在庫を ${after}個 のまま記録しました`;
+  if (delta === 0) return `在庫を ${after}${unit} のまま記録しました`;
   return delta < 0
-    ? `在庫を ${-delta}個 減らしました（${before} → ${after}個）`
-    : `在庫を ${delta}個 増やしました（${before} → ${after}個）`;
+    ? `在庫を ${-delta}${unit} 減らしました（${before} → ${after}${unit}）`
+    : `在庫を ${delta}${unit} 増やしました（${before} → ${after}${unit}）`;
 }
 
 export type InventoryShelfGroup = {

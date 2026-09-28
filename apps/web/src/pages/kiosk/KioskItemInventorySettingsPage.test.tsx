@@ -130,6 +130,6 @@ describe('KioskItemInventorySettingsPage', () => {
 
     await waitFor(() => expect(quantityTag).toHaveBeenCalledWith({ uid: 'new-tag', quantity: 3 }));
     expect(quantityTag).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText('数量タグ「3個」を登録しました')).toBeInTheDocument();
+    expect(await screen.findByText('数量タグ「3」を登録しました')).toBeInTheDocument();
   });
 });

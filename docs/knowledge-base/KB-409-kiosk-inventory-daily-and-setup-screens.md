@@ -57,3 +57,9 @@ All setup endpoints still require the password.
 Run `20260926-112811-48762d` failed after 3 seconds. The PR for the next milestone was merged right after the Pi5 release unit started, and the unit fetched `origin/main` a few seconds later. The unit then saw a SHA different from the planned `releaseSha` and exited before changing anything; Pi5 kept the previous release.
 
 Do not merge to `main` until a standard release run has finished. The next run must re-check CI for the new SHA and re-run `--print-plan`.
+
+## Updates (2026-09-28)
+
+- The kiosks are 21.5-inch 1920×1080 monitors and have a physical keyboard (Pi4 and Mac). Typing on the kiosk is acceptable; flows stay touch-first.
+- Areas are normalized (NFKC, trimmed) on intake, shelf creation and registration; existing rows were normalized once with `apps/api/scripts/inventory-area-normalize.mjs` (backup `/opt/backups/inventory-area-normalize-20260928.json`). Run scripts in the running blue/green API container (`docker ps | grep api`), not with `docker compose exec api`.
+- Each item has one unit (null means 個; no conversion). Units are chosen or added in 在庫の準備; quantity tags carry only a number.

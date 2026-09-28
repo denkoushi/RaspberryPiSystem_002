@@ -351,3 +351,24 @@ describe('KioskItemInventoryPage stock correction and tag-less picking', () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 });
+
+describe('KioskItemInventoryPage units', () => {
+  it('shows stock and results in the item unit', async () => {
+    const correction = vi.fn().mockResolvedValue({ transaction: historyEntry({ id: 'correction-case', beforeQuantity: 10, afterQuantity: 8, delta: -2 }) });
+    vi.mocked(useInventoryMutations).mockReturnValue({
+      transaction: { mutateAsync: vi.fn(), isPending: false },
+      cancel: { mutateAsync: vi.fn(), isPending: false },
+      correction: { mutateAsync: correction, isPending: false },
+    } as never);
+    const caseTag = { ...itemTag, compartment: { ...itemTag.compartment!, item: { ...itemTag.compartment!.item, unit: 'ケース' } } } as InventoryTag;
+    const scan = renderWithNfc();
+    await scan(caseTag);
+
+    expect(screen.getByText('10ケース')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '数が合わないときは直す' }));
+    pressDigits('8');
+    expect(screen.getByText('記録を 2ケース 減らします')).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '8ケースに直す' })); });
+    expect(screen.getByText('在庫を 2ケース 減らしました（10 → 8ケース）')).toBeInTheDocument();
+  });
+});

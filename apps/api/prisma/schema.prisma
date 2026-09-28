@@ -957,6 +957,8 @@ model InventoryItem {
   category       String?
   area           String?
   note           String?
+  /// Unit name the item is counted in; null means 個.
+  unit           String?
   deletedAt      DateTime?
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
@@ -968,6 +970,13 @@ model InventoryItem {
   @@index([name])
   @@index([category])
   @@index([deletedAt])
+}
+
+/// Units offered when setting an item's unit (個, ケース, ...). Items store the name.
+model InventoryUnit {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
 }
 
 model InventoryItemPhoto {

@@ -10,6 +10,7 @@ import {
 } from '../../../../api/hooks';
 import { InventoryPhotoDialog } from '../../../../components/kiosk/InventoryPhotoDialog';
 
+import { InventoryUnitPicker } from './InventoryUnitPicker';
 import { useArmedNfcRead } from './useArmedNfcRead';
 
 import type { NfcEvent } from '../../../../hooks/useNfcStream';
@@ -22,6 +23,7 @@ type Draft = {
   name: string;
   model: string;
   usage: string;
+  unit: string | null;
   shelfId: string;
   drawerId: string;
   drawerLabel: string;
@@ -42,6 +44,7 @@ function emptyDraft(candidate: InventoryImport | null): Draft {
     name: candidate ? `ItemlistRaspi ${candidate.sourceItemId}` : '',
     model: '',
     usage: '',
+    unit: null,
     shelfId: '',
     drawerId: '',
     drawerLabel: '',
@@ -60,14 +63,14 @@ export function registrationChecklist(draft: Draft, photoCount: number): CheckIt
       done: draft.mode === 'NEW_ITEM' || (draft.mode === 'EXISTING_ITEM' && Boolean(draft.itemId)),
       detail: draft.mode === 'NEW_ITEM' ? '新規' : draft.mode === 'EXISTING_ITEM' ? (draft.itemId ? draft.itemName : '追加先を選ぶ') : 'まだ',
     },
-    { id: 'names', label: '名前など', done: true, optional: true, detail: '省略可' },
+    { id: 'names', label: '名前・単位', done: true, optional: true, detail: `単位 ${draft.unit || '個'}` },
   ];
   if (draft.mode === 'EXISTING_ITEM') return items;
   return [
     ...items,
     { id: 'place', label: '置き場所', done: Boolean(draft.drawerId), detail: draft.drawerId ? draft.drawerLabel : 'まだ' },
     { id: 'tag', label: 'アイテムタグ', done: Boolean(draft.itemTagUid), detail: draft.itemTagUid ? '読み取り済み' : 'まだ' },
-    { id: 'quantity', label: '最初の数', done: draft.quantity !== '', detail: draft.quantity !== '' ? `${draft.quantity}個` : 'まだ' },
+    { id: 'quantity', label: '最初の数', done: draft.quantity !== '', detail: draft.quantity !== '' ? `${draft.quantity}${draft.unit || '個'}` : 'まだ' },
   ];
 }
 
@@ -230,7 +233,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
     void mutations.deleteImportPhoto.mutateAsync({ payloadId: candidate.id, photoId }).catch((caught) => setError(errorText(caught)));
   };
   const chooseExisting = (item: InventoryItem) => {
-    update({ itemId: item.id, itemName: item.name, name: item.name, model: item.model ?? '', usage: item.usage ?? '' });
+    update({ itemId: item.id, itemName: item.name, name: item.name, model: item.model ?? '', usage: item.usage ?? '', unit: item.unit });
   };
 
   const register = async () => {
@@ -250,6 +253,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
           drawerId: isNew ? draft.drawerId || undefined : undefined,
           itemTagUid: isNew ? draft.itemTagUid || undefined : undefined,
           initialQuantity: isNew ? Number(draft.quantity || '0') : undefined,
+          unit: draft.unit,
         },
       });
       setDone(`候補 #${candidate.sourceItemId} を登録しました`);
@@ -347,7 +351,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
             ) : null}
           </Row>
 
-          <Row id="names" number={next()} title="名前など" done={isDone('names')} current={false} alignTop>
+          <Row id="names" number={next()} title="名前・単位" done={isDone('names')} current={false} alignTop>
             <div className="grid grid-cols-[64px_auto] items-center justify-start gap-2">
               <label htmlFor="registration-name" className="text-sm text-white/60">名前</label>
               <input id="registration-name" aria-label="アイテム名" className={`${inputClass} w-[360px]`} value={draft.name} onChange={(event) => update({ name: event.target.value })} />
@@ -355,6 +359,8 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
               <input id="registration-model" aria-label="型式" placeholder="省略可" className={`${inputClass} w-60`} value={draft.model} onChange={(event) => update({ model: event.target.value })} />
               <label htmlFor="registration-usage" className="text-sm text-white/60">用途</label>
               <input id="registration-usage" aria-label="用途" placeholder="省略可" className={`${inputClass} w-[360px]`} value={draft.usage} onChange={(event) => update({ usage: event.target.value })} />
+              <span className="text-sm text-white/60">単位</span>
+              <InventoryUnitPicker value={draft.unit} onChange={(unit) => update({ unit })} accessPassword={accessPassword} />
             </div>
           </Row>
 
@@ -414,7 +420,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
                 <div className="flex items-start gap-4">
                   <div className="flex items-center gap-1.5">
                     <output aria-label="最初の数" className="flex h-11 w-28 items-center justify-end rounded-md border border-white/25 bg-slate-950 px-2.5 text-xl font-bold text-white">{draft.quantity === '' ? '—' : draft.quantity}</output>
-                    <span className="text-white/60">個</span>
+                    <span className="text-white/60">{draft.unit || '個'}</span>
                   </div>
                   <QuantityKeypad value={draft.quantity} onChange={(value) => update({ quantity: value })} />
                 </div>

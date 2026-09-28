@@ -6,7 +6,9 @@ import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { PhotoStorage } from '../../lib/photo-storage.js';
 
-import { normalizeInventoryArea } from './inventory-area.js';
+import { normalizeInventoryArea, normalizeInventoryUnit } from './inventory-area.js';
+
+const UNIT_NAME_MAX_LENGTH = 20;
 
 export class InventoryInsufficientStockError extends Error {
   constructor() {
@@ -46,7 +48,7 @@ function locationDto(compartment: {
   stockQuantity: number;
   drawer: { drawerNumber: number; shelf: { area: string; shelfNumber: number } };
   itemTag: { uid: string } | null;
-  inventoryItem: { id: string; itemCode: string; name: string; model: string | null; usage: string | null; category: string | null; area: string | null; note: string | null; photos?: Array<{ id: string; photoIndex: number; photoUrl: string; originalFilename: string }> };
+  inventoryItem: { id: string; itemCode: string; name: string; model: string | null; usage: string | null; category: string | null; area: string | null; note: string | null; unit?: string | null; photos?: Array<{ id: string; photoIndex: number; photoUrl: string; originalFilename: string }> };
 }) {
   return {
     id: compartment.id,
@@ -64,6 +66,7 @@ function locationDto(compartment: {
       category: compartment.inventoryItem.category,
       area: compartment.inventoryItem.area,
       note: compartment.inventoryItem.note,
+      unit: compartment.inventoryItem.unit ?? null,
       photos: compartment.inventoryItem.photos ?? [],
     },
   };
@@ -350,6 +353,34 @@ export class ItemInventoryService {
     });
   }
 
+  async listUnits() {
+    return this.db.inventoryUnit.findMany({ orderBy: [{ createdAt: 'asc' }, { name: 'asc' }] });
+  }
+
+  async createUnit(name: string) {
+    const clean = normalizeInventoryUnit(name);
+    if (!clean) throw new ApiError(400, '単位を入力してください');
+    if (clean.length > UNIT_NAME_MAX_LENGTH) throw new ApiError(400, `単位は${UNIT_NAME_MAX_LENGTH}文字以内で入力してください`);
+    return this.db.inventoryUnit.upsert({ where: { name: clean }, create: { name: clean }, update: {} });
+  }
+
+  /** A unit must be one of the offered units; null returns the item to 個. */
+  private async resolveUnit(unit: string | null): Promise<string | null> {
+    if (unit === null) return null;
+    const clean = normalizeInventoryUnit(unit);
+    if (!clean) return null;
+    const known = await this.db.inventoryUnit.findUnique({ where: { name: clean } });
+    if (!known) throw new ApiError(400, `単位「${clean}」は登録されていません`);
+    return clean;
+  }
+
+  async setItemUnit(itemId: string, unit: string | null) {
+    const clean = await this.resolveUnit(unit);
+    const item = await this.db.inventoryItem.findUnique({ where: { id: itemId } });
+    if (!item || item.deletedAt) throw new ApiError(404, 'アイテムが見つかりません');
+    return this.db.inventoryItem.update({ where: { id: itemId }, data: { unit: clean } });
+  }
+
   async createShelf(area: string, shelfNumber: number) {
     const trimmedArea = normalizeInventoryArea(area);
     if (!trimmedArea) throw new ApiError(400, 'エリアを指定してください');
@@ -417,6 +448,7 @@ export class ItemInventoryService {
     itemTagUid?: string;
     initialQuantity?: number;
     reviewNote?: string;
+    unit?: string | null;
     actor?: InventoryActor;
   }) {
     if (!input.shelfId || !input.drawerId || !input.itemTagUid) {
@@ -427,6 +459,7 @@ export class ItemInventoryService {
     }
     const initialQuantity = input.mode === 'NEW_ITEM' ? nonNegativeInteger(input.initialQuantity ?? 0, '初期数量') : 0;
     const cleanUid = input.mode === 'NEW_ITEM' ? input.itemTagUid!.trim() : '';
+    const unit = input.unit === undefined ? undefined : await this.resolveUnit(input.unit);
     if (input.mode === 'NEW_ITEM' && !cleanUid) throw new ApiError(400, 'アイテムNFC UIDを指定してください');
 
     return this.serializable(async (tx) => {
@@ -463,6 +496,7 @@ export class ItemInventoryService {
             ...(input.usage !== undefined ? { usage: input.usage.trim() || null } : {}),
             ...(currentPayload.category !== null ? { category: currentPayload.category } : {}),
             ...(currentPayload.note !== null ? { note: currentPayload.note } : {}),
+            ...(unit !== undefined ? { unit } : {}),
           },
         });
         for (const photo of currentPayload.photos) {
@@ -511,6 +545,7 @@ export class ItemInventoryService {
           category: currentPayload.category,
           area: currentPayload.area,
           note: currentPayload.note,
+          unit: unit ?? null,
           photos: {
             create: currentPayload.photos.map((photo, index) => ({
               photoUrl: photo.photoUrl,

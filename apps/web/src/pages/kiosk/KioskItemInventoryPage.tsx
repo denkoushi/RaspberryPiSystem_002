@@ -12,6 +12,7 @@ import { InventoryCorrectionPanel } from '../../features/kiosk/inventory/Invento
 import {
   correctionResultMessage,
   pickedCompartmentTag,
+  unitLabel,
 } from '../../features/kiosk/inventory/inventoryDailyFlow';
 import { InventoryLocationBlocks } from '../../features/kiosk/inventory/InventoryLocationBlocks';
 import { InventoryLocationPicker } from '../../features/kiosk/inventory/InventoryLocationPicker';
@@ -178,7 +179,8 @@ export function KioskItemInventoryPage() {
             });
             setLastTransaction(result.transaction);
             updateDisplayedStock(result.transaction);
-            setMessage(restock ? `補充しました（${result.transaction.delta}個）` : `払い出しました（${Math.abs(result.transaction.delta)}個）`);
+            const unit = unitLabel(flow.selectedTag?.compartment?.item);
+            setMessage(restock ? `補充しました（${result.transaction.delta}${unit}）` : `払い出しました（${Math.abs(result.transaction.delta)}${unit}）`);
             setMessageKind('success');
             playInventoryTone(restock ? 'restock' : 'success');
             flow.restockMode = false;
@@ -279,7 +281,7 @@ export function KioskItemInventoryPage() {
       setLastTransaction(result.transaction);
       updateDisplayedStock(result.transaction);
       setPanel('none');
-      setMessage(correctionResultMessage(result.transaction.beforeQuantity, result.transaction.afterQuantity));
+      setMessage(correctionResultMessage(result.transaction.beforeQuantity, result.transaction.afterQuantity, unitLabel(compartment.item)));
       setMessageKind('success');
       playInventoryTone('success');
     } catch (error) {
@@ -353,7 +355,7 @@ export function KioskItemInventoryPage() {
             </div>
             <dl className="rounded-lg bg-slate-950/50 px-3 py-2">
               <dt className="text-sm text-white/60">現在庫</dt>
-              <dd className="text-5xl font-bold text-white">{selectedCompartment.stockQuantity}個</dd>
+              <dd className="text-5xl font-bold text-white">{selectedCompartment.stockQuantity}{unitLabel(selectedCompartment.item)}</dd>
             </dl>
             <InventoryLocationBlocks compartment={selectedCompartment} />
             <InventoryRecentHistory compartmentId={selectedCompartment.id} />

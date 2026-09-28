@@ -10,8 +10,9 @@ import {
   kioskButtonSecondaryClassName,
   kioskPanelClassName,
 } from '../../kioskTheme';
-import { compartmentLocationText } from '../inventoryDailyFlow';
+import { compartmentLocationText, unitLabel } from '../inventoryDailyFlow';
 
+import { InventoryUnitPicker } from './InventoryUnitPicker';
 import { NfcScanPanel } from './NfcScanPanel';
 import { useArmedNfcRead } from './useArmedNfcRead';
 
@@ -56,7 +57,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
   const read = useArmedNfcRead(panel.kind === 'add-tag');
   const handledRef = useRef<NfcEvent | null>(null);
-  const pending = mutations.move.isPending || mutations.bindCompartment.isPending || mutations.deleteItemPhoto.isPending
+  const pending = mutations.setItemUnit.isPending || mutations.move.isPending || mutations.bindCompartment.isPending || mutations.deleteItemPhoto.isPending
     || mutations.reorderItemPhotos.isPending || mutations.deleteItem.isPending;
 
   useEffect(() => {
@@ -156,6 +157,16 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
         </div>
       </section>
 
+      <section className={`${kioskPanelClassName} flex flex-wrap items-center gap-3 p-4`} aria-label="単位の設定">
+        <h3 className="text-xl font-bold text-white">単位</h3>
+        <InventoryUnitPicker
+          value={item.unit}
+          accessPassword={accessPassword}
+          disabled={mutations.setItemUnit.isPending}
+          onChange={(unit) => { if (unit !== unitLabel(item)) void run(() => mutations.setItemUnit.mutateAsync({ itemId: item.id, unit }), `単位を「${unit}」にしました`); }}
+        />
+      </section>
+
       <section className={`${kioskPanelClassName} flex flex-col gap-3 p-4`} aria-label="置き場所">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-xl font-bold text-white">置き場所</h3>
@@ -165,7 +176,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
         {item.compartments.map((compartment) => (
           <div key={compartment.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-slate-950/40 p-3 text-white">
             <span className="text-lg font-bold">{compartmentLocationText(compartment)}</span>
-            <span className="text-white/70">在庫 {compartment.stockQuantity}個 ・ タグ{compartment.itemTagUid ? 'あり' : 'なし'}</span>
+            <span className="text-white/70">在庫 {compartment.stockQuantity}{unitLabel(item)} ・ タグ{compartment.itemTagUid ? 'あり' : 'なし'}</span>
             <button type="button" className={`${kioskButtonSecondaryClassName} ml-auto min-h-12`} disabled={pending} onClick={() => setPanel({ kind: 'move', compartment })}>別の引き出しへ移す</button>
           </div>
         ))}

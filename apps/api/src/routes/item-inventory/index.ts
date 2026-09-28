@@ -146,6 +146,7 @@ const registerBody = z.object({
   itemTagUid: z.string().max(256).optional(),
   initialQuantity: z.number().int().min(0).optional(),
   reviewNote: z.string().max(1000).optional(),
+  unit: z.string().max(40).nullable().optional(),
 });
 
 const transactionBody = z.object({
@@ -176,6 +177,16 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { tag: await services.inventory.resolveTag(query.uid) };
   });
 
+  app.get('/item-inventory/units', { preHandler: [read] }, async () => ({ units: await services.inventory.listUnits() }));
+  app.post('/item-inventory/units', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const body = z.object({ name: z.string().max(40) }).parse(request.body ?? {});
+    return { unit: await services.inventory.createUnit(body.name) };
+  });
+  app.put('/item-inventory/items/:id/unit', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = idParams.parse(request.params);
+    const body = z.object({ unit: z.string().max(40).nullable() }).parse(request.body ?? {});
+    return { item: await services.inventory.setItemUnit(id, body.unit) };
+  });
   app.get('/item-inventory/tags', { preHandler: [read] }, async () => ({ tags: await services.inventory.listTags() }));
   app.get('/item-inventory/locations', { preHandler: [read] }, async () => ({ locations: await services.inventory.listLocations() }));
   app.get('/item-inventory/items', { preHandler: [read] }, async () => ({ items: await services.inventory.listItems() }));
