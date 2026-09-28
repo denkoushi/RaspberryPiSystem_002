@@ -18,7 +18,12 @@ import {
   createDgxEmbedder,
   refreshDenseIndex,
   createDenseQueryRanker,
+  createDenseRuntime,
   readDenseStore,
+  denseRefreshLimits,
+  DAY_MAX_EMBED,
+  DAY_EMBED_BATCH,
+  DAY_PAUSE_MS,
 } from './dense-dgx.mjs';
 
 const catalog = loadNonconformityCatalog();
@@ -230,4 +235,65 @@ test('document text is capped below the DGX per-slot token limit', () => {
   const text = denseDocumentText({ id: 'long', condition: '寸'.repeat(DGX_MAX_INPUT_CHARS + 500) }, bodyFields);
   assert.equal(text.length <= DGX_MAX_INPUT_CHARS, true);
   assert.equal(DGX_MAX_INPUT_CHARS < 800, true);
+});
+
+test('outside the night window a refresh embeds a few records in small paused requests', () => {
+  const day = new Date('2026-01-15T03:30:00Z');
+  const night = new Date('2026-01-15T15:30:00Z');
+  assert.deepEqual(denseRefreshLimits('', day), {});
+  assert.deepEqual(denseRefreshLimits('22-6', night), {});
+  assert.deepEqual(denseRefreshLimits('22-6', day), { maxEmbed: DAY_MAX_EMBED, batchSize: DAY_EMBED_BATCH, pauseMs: DAY_PAUSE_MS });
+});
+
+test('a deferred or failed record keeps its previous vector and the day pauses between requests', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'dense-day-'));
+  const storePath = path.join(directory, 'retrieval-dense-dgx.bin');
+  const records = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, condition: `${id} note` }));
+  await refreshDenseIndex({ records, bodyFields, storePath, embed: async (texts) => texts.map(() => vector(1)) });
+  const changed = records.map((record) => ({ ...record, condition: `${record.id} note enriched` }));
+  const batches = [];
+  const pauses = [];
+  const result = await refreshDenseIndex({
+    records: changed,
+    bodyFields,
+    storePath,
+    maxEmbed: 3,
+    batchSize: 2,
+    pauseMs: 5,
+    sleep: async (ms) => { pauses.push(ms); },
+    embed: async (texts) => {
+      batches.push(texts.length);
+      if (texts.some((text) => text.startsWith('c '))) throw new Error('rejected');
+      return texts.map(() => vector(2));
+    },
+  });
+  assert.deepEqual(batches, [2, 1]);
+  assert.deepEqual(pauses, [5]);
+  assert.equal(result.embedded, 2);
+  assert.equal(result.failed, 1);
+  assert.equal(result.deferred, 2);
+  const stored = await readDenseStore(storePath);
+  assert.deepEqual(stored.map((entry) => entry.id).sort(), ['a', 'b', 'c', 'd', 'e']);
+  const fresh = new Set(stored.filter((entry) => entry.vector[0] === 2).map((entry) => entry.id));
+  assert.deepEqual([...fresh].sort(), ['a', 'b']);
+});
+
+test('the dense runtime applies day limits from the enrichment window', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'dense-runtime-'));
+  const records = Array.from({ length: DAY_MAX_EMBED + 4 }, (_, index) => ({ id: `r${index}`, condition: `note ${index}` }));
+  const sizes = [];
+  const pauses = [];
+  const runtime = createDenseRuntime({
+    settings: { indexEnabled: true, origin: 'http://127.0.0.1:9', storePath: path.join(directory, 'store.bin'), window: '22-6' },
+    embed: async (texts) => { sizes.push(texts.length); return texts.map(() => vector(1)); },
+    now: () => new Date('2026-01-15T03:30:00Z'),
+    sleep: async (ms) => { pauses.push(ms); },
+  });
+  runtime.schedule(records, bodyFields);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(sizes.reduce((sum, size) => sum + size, 0), DAY_MAX_EMBED);
+  assert.ok(sizes.every((size) => size <= DAY_EMBED_BATCH));
+  assert.equal(pauses.length, sizes.length - 1);
+  assert.ok(pauses.every((ms) => ms === DAY_PAUSE_MS));
+  assert.equal(runtime.entries().length, records.length - 4);
 });
