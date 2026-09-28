@@ -634,8 +634,7 @@
   ansible.builtin.set_fact:
     release_pi5_business_hermes_egress_transition_required: >-
       {{
-        (business_hermes_remote_preparation_enabled | default(false) | bool)
-        or release_pi5_business_hermes_egress_existing_id | length == 0
+        release_pi5_business_hermes_egress_existing_id | length == 0
         or not (release_pi5_business_hermes_egress_existing_running | bool)
         or release_pi5_business_hermes_egress_existing_health != 'healthy'
         or not (release_pi5_business_hermes_egress_existing_timeout_key_present | bool)
@@ -837,6 +836,53 @@
     - release_pi5_route == 'fresh'
     - (release_pi5_business_hermes_enabled | bool) or (business_hermes_chat_enabled | default(false) | bool)
 
+# Compose recreates a service when this hash differs from the container label.
+# The proxy program path is content-addressed, so a program change is a hash
+# change. An unreadable or malformed hash keeps the recreate path.
+- name: Compute the candidate Business Hermes egress Compose configuration hash
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['--profile', 'business-hermes', 'config', '--hash', 'business-hermes-egress'] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  register: release_pi5_business_hermes_egress_candidate_hash
+  changed_when: false
+  failed_when: false
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+    - release_pi5_business_hermes_egress_existing_id | length > 0
+
+- name: Read the existing Business Hermes egress Compose configuration hash
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{index .Config.Labels \"com.docker.compose.config-hash\"}}' }}"
+      - "{{ release_pi5_business_hermes_egress_existing_id }}"
+  register: release_pi5_business_hermes_egress_existing_hash
+  changed_when: false
+  failed_when: false
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+    - release_pi5_business_hermes_egress_existing_id | length > 0
+
+- name: Require a Business Hermes egress transition when its Compose configuration changed
+  ansible.builtin.set_fact:
+    release_pi5_business_hermes_egress_transition_required: >-
+      {{
+        (release_pi5_business_hermes_egress_transition_required | bool)
+        or (release_pi5_business_hermes_egress_candidate_hash.rc | default(1)) != 0
+        or (release_pi5_business_hermes_egress_existing_hash.rc | default(1)) != 0
+        or (release_pi5_business_hermes_egress_candidate_hash.stdout | default('')).split() | length != 2
+        or (release_pi5_business_hermes_egress_candidate_hash.stdout | default('')).split()[0] != 'business-hermes-egress'
+        or (release_pi5_business_hermes_egress_existing_hash.stdout | default('') | trim) is not match('^[0-9a-f]{64}$')
+        or (release_pi5_business_hermes_egress_candidate_hash.stdout | default('')).split()[1] != (release_pi5_business_hermes_egress_existing_hash.stdout | default('') | trim)
+      }}
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
 - name: Mark the Business Hermes egress transition boundary
   ansible.builtin.set_fact:
     release_pi5_business_hermes_egress_transition_attempted: true
@@ -847,7 +893,7 @@
 
 - name: Apply the Business Hermes egress timeout before candidate traffic
   ansible.builtin.command:
-    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string] + (['--force-recreate'] if (business_hermes_remote_preparation_enabled | default(false) | bool) else []) + ['business-hermes-egress'] }}"
+    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, '--force-recreate', 'business-hermes-egress'] }}"
   environment: "{{ release_pi5_compose_environment }}"
   changed_when: true
   when:
