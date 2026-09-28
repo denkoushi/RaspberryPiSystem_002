@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 
-import { useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
+import { useInventoryImports, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
 import { kioskButtonSecondaryClassName, kioskInputClassName, kioskPanelClassName } from '../../kioskTheme';
 
 const choiceClassName = 'min-h-14 min-w-24 rounded-lg border px-5 text-lg font-bold';
@@ -22,7 +22,13 @@ export function InventoryShelvesTab({ accessPassword }: { accessPassword: string
   const locationsQuery = useInventoryLocations();
   const mutations = useInventoryMutations(accessPassword);
   const shelves = useMemo(() => locationsQuery.data ?? [], [locationsQuery.data]);
-  const areas = useMemo(() => [...new Set(shelves.map((shelf) => shelf.area))].sort((a, b) => a.localeCompare(b, 'ja')), [shelves]);
+  const importsQuery = useInventoryImports(accessPassword);
+  // Areas of mailed candidates are offered too, so a shelf can be made without typing the area name.
+  const areas = useMemo(
+    () => [...new Set([...shelves.map((shelf) => shelf.area), ...(importsQuery.data ?? []).map((entry) => entry.area)])].sort((a, b) => a.localeCompare(b, 'ja')),
+    [importsQuery.data, shelves],
+  );
+  const shelfAreas = useMemo(() => new Set(shelves.map((shelf) => shelf.area)), [shelves]);
   const [areaName, setAreaName] = useState<string | null>(null);
   const [shelfId, setShelfId] = useState<string | null>(null);
   const [newArea, setNewArea] = useState('');
@@ -58,7 +64,7 @@ export function InventoryShelvesTab({ accessPassword }: { accessPassword: string
         <h2 className="text-xl font-bold text-white">エリア</h2>
         <div className="flex flex-wrap gap-2">
           {areas.map((entry) => (
-            <button key={entry} type="button" aria-pressed={entry === area} className={entry === area ? selectedChoiceClassName : idleChoiceClassName} onClick={() => { setAreaName(entry); setShelfId(null); }}>{entry}</button>
+            <button key={entry} type="button" aria-pressed={entry === area} className={entry === area ? selectedChoiceClassName : idleChoiceClassName} onClick={() => { setAreaName(entry); setShelfId(null); }}>{entry}{shelfAreas.has(entry) ? '' : '（棚なし）'}</button>
           ))}
           {areas.length === 0 ? <p className="text-white/60">まだ棚がありません。下で最初のエリアを追加してください。</p> : null}
         </div>
