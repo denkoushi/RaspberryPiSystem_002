@@ -392,6 +392,22 @@ export class ItemInventoryService {
     });
   }
 
+  /** Rename an area (every shelf in it). Drawers, compartments, stock and tags stay attached. */
+  async renameArea(from: string, to: string) {
+    const source = normalizeInventoryArea(from);
+    const target = normalizeInventoryArea(to);
+    if (!source || !target) throw new ApiError(400, 'エリアを指定してください');
+    if (source === target) return { renamed: 0, area: target };
+    return this.db.$transaction(async (tx) => {
+      const shelves = await tx.inventoryShelf.findMany({ where: { area: source }, select: { shelfNumber: true } });
+      if (shelves.length === 0) throw new ApiError(404, 'エリアが見つかりません');
+      const clash = await tx.inventoryShelf.findFirst({ where: { area: target, shelfNumber: { in: shelves.map((shelf) => shelf.shelfNumber) } } });
+      if (clash) throw new InventoryConflictError(`「${target}」には同じ番号の棚があります（棚${clash.shelfNumber}）`);
+      const result = await tx.inventoryShelf.updateMany({ where: { area: source }, data: { area: target } });
+      return { renamed: result.count, area: target };
+    });
+  }
+
   async createDrawer(shelfId: string, drawerNumber: number) {
     positiveInteger(drawerNumber, '引き出し番号');
     const shelf = await this.db.inventoryShelf.findUnique({ where: { id: shelfId } });
@@ -530,7 +546,8 @@ export class ItemInventoryService {
       const cleanName = input.name?.trim() || `ItemlistRaspi ${currentPayload.sourceItemId}`;
       const drawer = await tx.inventoryDrawer.findUnique({ where: { id: input.drawerId }, include: { shelf: true } });
       if (!drawer || drawer.shelfId !== input.shelfId) throw new ApiError(400, '棚と引き出しの組み合わせが不正です');
-      if (normalizeInventoryArea(drawer.shelf.area) !== normalizeInventoryArea(currentPayload.area)) throw new ApiError(400, 'JSONのエリアと棚のエリアが一致しません');
+      // The mail location names the machine; shelves are named by machine + direction and may
+      // serve other machines too, so any shelf may be chosen. The item keeps the machine in `area`.
       await this.assertNfcUidAvailable(cleanUid, tx);
       const existingTag = await tx.inventoryNfcTag.findUnique({ where: { uid: cleanUid } });
       if (existingTag && (existingTag.kind !== InventoryNfcTagKind.ITEM || existingTag.compartmentId)) {

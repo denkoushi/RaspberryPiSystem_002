@@ -21,10 +21,10 @@ vi.mock('../../../../api/hooks', () => ({
   useInventoryImportMessages: vi.fn(() => ({ data: [] })),
   useInventoryLocations: vi.fn(() => ({
     data: [{
-      id: 'shelf-1', area: '30007_KSJP-55', shelfNumber: 1,
+      id: 'shelf-1', area: '30007_KSJP-55 北', shelfNumber: 1,
       drawers: [
-        { id: 'drawer-1', drawerNumber: 1, shelf: { area: '30007_KSJP-55', shelfNumber: 1 }, compartments: [{ id: 'c1' }] },
-        { id: 'drawer-2', drawerNumber: 2, shelf: { area: '30007_KSJP-55', shelfNumber: 1 }, compartments: [] },
+        { id: 'drawer-1', drawerNumber: 1, shelf: { area: '30007_KSJP-55 北', shelfNumber: 1 }, compartments: [{ id: 'c1' }] },
+        { id: 'drawer-2', drawerNumber: 2, shelf: { area: '30007_KSJP-55 北', shelfNumber: 1 }, compartments: [] },
       ],
     }],
   })),
@@ -76,7 +76,7 @@ describe('InventoryRegistrationTab', () => {
     fireEvent.click(screen.getByRole('button', { name: '棚1' }));
     expect(screen.getByRole('button', { name: '引出し1 使用中' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '引出し2' }));
-    expect(screen.getByText('棚1・引出し2 に付けるタグをかざしてください')).toBeInTheDocument();
+    expect(screen.getByText('30007_KSJP-55 北・棚1・引出し2 に付けるタグをかざしてください')).toBeInTheDocument();
     expect(screen.getByText('あと 2 つ')).toBeInTheDocument();
 
     nfc.event = { uid: 'new-item-tag', eventId: 1, timestamp: new Date().toISOString() } as NfcEvent;
@@ -149,10 +149,10 @@ describe('InventoryRegistrationTab', () => {
       render(<InventoryRegistrationTab accessPassword="2520" />);
       fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
 
-      expect(screen.getByText('30007_KSJP-55 の棚はまだありません')).toBeInTheDocument();
+      expect(screen.getByText('このエリアの棚はまだありません')).toBeInTheDocument();
       await act(async () => { fireEvent.click(screen.getByRole('button', { name: '＋ 棚1を作る' })); });
 
-      expect(createShelf).toHaveBeenCalledWith({ area: '30007_KSJP-55', shelfNumber: 1 });
+      expect(createShelf).toHaveBeenCalledWith({ area: '30007_KSJP-55 北', shelfNumber: 1 });
     } finally {
       vi.mocked(useInventoryLocations).mockImplementation(locations!);
     }
@@ -182,6 +182,43 @@ describe('InventoryRegistrationTab', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '登録する' })); });
 
     expect(registerImport.mock.calls[0][0].input).toMatchObject({ unit: 'ケース', initialQuantity: 3 });
+  });
+
+  it('names the area by machine and direction, and can use another machine\'s shelf', async () => {
+    const locations = vi.mocked(useInventoryLocations).getMockImplementation();
+    vi.mocked(useInventoryLocations).mockReturnValue({
+      data: [
+        { id: 'shelf-9', area: '30041R_2MF-P 北', shelfNumber: 1, drawers: [] },
+      ],
+    } as never);
+    try {
+      render(<InventoryRegistrationTab accessPassword="2520" />);
+      fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+      expect(await screen.findByRole('button', { name: '30007_KSJP-55 北' })).toHaveAttribute('aria-pressed', 'true');
+
+      fireEvent.click(screen.getByRole('button', { name: '30007_KSJP-55 東' }));
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '＋ 棚1を作る' })); });
+      expect(createShelf).toHaveBeenLastCalledWith({ area: '30007_KSJP-55 東', shelfNumber: 1 });
+
+      fireEvent.click(screen.getByRole('button', { name: '30041R_2MF-P 北' }));
+      expect(screen.getByRole('button', { name: '30041R_2MF-P 北' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: '棚1' })).toBeInTheDocument();
+    } finally {
+      vi.mocked(useInventoryLocations).mockImplementation(locations!);
+    }
+  });
+
+  it('starts from the area used last time for the same machine', async () => {
+    vi.mocked(useInventoryItems).mockReturnValue({
+      data: [{ id: 'old', itemCode: 'RI-1', name: '前の治具', model: null, usage: null, category: null, area: '30007_KSJP-55', note: null, unit: null, photos: [],
+        compartments: [{ id: 'c', stockQuantity: 1, area: '30007_KSJP-55 南', shelfNumber: 1, drawerNumber: 1, itemTagUid: 't', item: {} }] }],
+      isLoading: false,
+    } as never);
+    render(<InventoryRegistrationTab accessPassword="2520" />);
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+
+    expect(await screen.findByRole('button', { name: '30007_KSJP-55 南' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('前回この加工機で使った場所')).toBeInTheDocument();
   });
 
   it('asks before deleting a candidate photo', () => {

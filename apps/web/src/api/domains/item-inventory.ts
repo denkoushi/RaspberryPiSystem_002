@@ -224,6 +224,13 @@ export async function createInventoryShelf(input: { area: string; shelfNumber: n
   return data;
 }
 
+export async function renameInventoryArea(from: string, to: string, accessPassword?: string) {
+  const { data } = await api.put<{ renamed: number; area: string }>('/item-inventory/locations/areas', { from, to }, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data;
+}
+
 export async function createInventoryDrawer(input: { shelfId: string; drawerNumber: number }, accessPassword?: string) {
   const { data } = await api.post('/item-inventory/locations/drawers', input, {
     headers: inventorySettingsHeaders(accessPassword)

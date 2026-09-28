@@ -9,6 +9,7 @@ import {
   useInventoryMutations,
 } from '../../../../api/hooks';
 import { InventoryPhotoDialog } from '../../../../components/kiosk/InventoryPhotoDialog';
+import { AREA_DIRECTIONS, composeArea, DEFAULT_AREA_DIRECTION, splitArea } from '../areaNaming';
 
 import { InventoryUnitPicker } from './InventoryUnitPicker';
 import { useArmedNfcRead } from './useArmedNfcRead';
@@ -24,6 +25,8 @@ type Draft = {
   model: string;
   usage: string;
   unit: string | null;
+  /** Shelf area chosen for this item, "<machine> <direction>". */
+  area: string;
   shelfId: string;
   drawerId: string;
   drawerLabel: string;
@@ -45,6 +48,7 @@ function emptyDraft(candidate: InventoryImport | null): Draft {
     model: '',
     usage: '',
     unit: null,
+    area: '',
     shelfId: '',
     drawerId: '',
     drawerLabel: '',
@@ -86,6 +90,8 @@ const choiceOn = `${choiceBase} border-2 border-sky-400 bg-sky-950/60 text-white
 const choiceOff = `${choiceBase} border border-white/25 bg-slate-800 text-white/90 hover:bg-slate-700`;
 const numberOn = 'h-11 w-16 rounded-lg border-2 border-sky-400 bg-sky-950/60 text-base font-bold text-white';
 const numberOff = 'h-11 w-16 rounded-lg border border-white/25 bg-slate-800 text-base font-bold text-white/90 hover:bg-slate-700 disabled:border-slate-800 disabled:bg-slate-950 disabled:text-sm disabled:font-normal disabled:text-white/30';
+const directionOn = 'h-11 w-14 rounded-lg border-2 border-sky-400 bg-sky-950/60 text-base font-bold text-white';
+const directionOff = 'h-11 w-14 rounded-lg border border-white/25 bg-slate-800 text-base font-bold text-white/90 hover:bg-slate-700';
 const addClass = 'h-11 rounded-lg border border-dashed border-white/40 px-3 text-sm text-white/85 hover:bg-slate-800 disabled:opacity-40';
 const smallButton = 'h-9 rounded-md border border-white/25 bg-slate-800 px-3 text-sm text-white hover:bg-slate-700 disabled:opacity-40';
 const inputClass = 'h-10 rounded-md border border-white/25 bg-slate-950 px-2.5 text-base text-white focus:border-sky-400 focus:outline-none';
@@ -143,7 +149,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualUid, setManualUid] = useState('');
-  const itemsQuery = useInventoryItems(draft.mode === 'EXISTING_ITEM');
+  const itemsQuery = useInventoryItems(draft.mode !== null);
   const waitingForTag = draft.mode === 'NEW_ITEM' && Boolean(draft.drawerId) && !draft.itemTagUid;
   const read = useArmedNfcRead(waitingForTag);
   const handledRef = useRef<NfcEvent | null>(null);
@@ -167,10 +173,28 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
     setDraft((current) => ({ ...current, itemTagUid: read.uid }));
   }, [read]);
 
-  const areaShelves = useMemo(
-    () => (locationsQuery.data ?? []).filter((shelf) => shelf.area === candidate?.area).sort((a, b) => a.shelfNumber - b.shelfNumber),
-    [candidate?.area, locationsQuery.data],
+  // The mail location is the machine; the shelf area is "<machine> <direction>" or another machine's area.
+  const machine = candidate?.area ?? '';
+  const previousArea = useMemo(() => {
+    const earlier = (itemsQuery.data ?? []).find((item) => item.area === machine && item.compartments.length > 0);
+    return earlier?.compartments[0]?.area ?? null;
+  }, [itemsQuery.data, machine]);
+  const defaultArea = previousArea ?? (machine ? composeArea(machine, DEFAULT_AREA_DIRECTION) : '');
+  useEffect(() => {
+    if (draft.mode !== 'NEW_ITEM' || draft.area || !defaultArea || itemsQuery.isLoading) return;
+    setDraft((current) => (current.area ? current : { ...current, area: defaultArea }));
+  }, [defaultArea, draft.area, draft.mode, itemsQuery.isLoading]);
+  const selectedSplit = splitArea(draft.area);
+  const selectedDirection = selectedSplit.machine === machine ? selectedSplit.direction : null;
+  const otherAreas = useMemo(
+    () => [...new Set((locationsQuery.data ?? []).map((shelf) => shelf.area))].filter((area) => splitArea(area).machine !== machine).sort((a, b) => a.localeCompare(b, 'ja')),
+    [locationsQuery.data, machine],
   );
+  const areaShelves = useMemo(
+    () => (locationsQuery.data ?? []).filter((shelf) => shelf.area === draft.area).sort((a, b) => a.shelfNumber - b.shelfNumber),
+    [draft.area, locationsQuery.data],
+  );
+  const chooseArea = (area: string) => update({ area, shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '' });
   const shelf = areaShelves.find((entry) => entry.id === draft.shelfId) ?? null;
   const nextShelfNumber = areaShelves.length === 0 ? 1 : Math.max(...areaShelves.map((entry) => entry.shelfNumber)) + 1;
   const nextDrawerNumber = !shelf || shelf.drawers.length === 0 ? 1 : Math.max(...shelf.drawers.map((drawer) => drawer.drawerNumber)) + 1;
@@ -187,7 +211,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
       const parent = areaShelves.find((entry) => entry.id === autoSelect.shelfId);
       const created = parent?.drawers.find((drawer) => drawer.drawerNumber === autoSelect.drawerNumber);
       if (!parent || !created) return;
-      setDraft((current) => ({ ...current, drawerId: created.id, drawerLabel: `棚${parent.shelfNumber}・引出し${created.drawerNumber}`, itemTagUid: '' }));
+      setDraft((current) => ({ ...current, drawerId: created.id, drawerLabel: `${parent.area}・棚${parent.shelfNumber}・引出し${created.drawerNumber}`, itemTagUid: '' }));
     }
     setAutoSelect(null);
   }, [areaShelves, autoSelect]);
@@ -195,7 +219,8 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
     if (!candidate) return;
     setError(null);
     try {
-      await mutations.createShelf.mutateAsync({ area: candidate.area, shelfNumber: nextShelfNumber });
+      if (!draft.area) return;
+      await mutations.createShelf.mutateAsync({ area: draft.area, shelfNumber: nextShelfNumber });
       setAutoSelect({ kind: 'shelf', shelfNumber: nextShelfNumber });
     } catch (caught) {
       setError(errorText(caught));
@@ -298,7 +323,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
           <div className="flex items-center gap-2">
             <StepMark number={1} done={isDone('photos')} current={currentId === 'photos'} />
             <h3 className="text-base font-bold text-white">写真の確認</h3>
-            <span className="truncate text-sm text-white/60">エリア {candidate.area} ・ 分類 {candidate.category ?? '-'} ・ メモ {candidate.note ?? '-'}</span>
+            <span className="truncate text-sm text-white/60">加工機 {candidate.area} ・ 分類 {candidate.category ?? '-'} ・ メモ {candidate.note ?? '-'}</span>
           </div>
           {candidate.photos.length === 0 ? <p className="text-sm text-white/60">写真はありません</p> : null}
           <div className="grid min-h-0 grid-cols-2 content-start gap-2.5 overflow-y-auto">
@@ -335,7 +360,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
         <div className="flex min-h-0 flex-col overflow-y-auto rounded-lg border border-slate-700 bg-slate-900/70 px-4 py-1.5">
           <Row id="mode" number={next()} title="新規か既存か" done={isDone('mode')} current={currentId === 'mode'}>
             <div className="flex flex-wrap gap-2">
-              <button type="button" aria-pressed={draft.mode === 'NEW_ITEM'} className={draft.mode === 'NEW_ITEM' ? choiceOn : choiceOff} onClick={() => update({ mode: 'NEW_ITEM', itemId: '', itemName: '', name: `ItemlistRaspi ${candidate.sourceItemId}`, model: '', usage: '' })}>新規登録</button>
+              <button type="button" aria-pressed={draft.mode === 'NEW_ITEM'} className={draft.mode === 'NEW_ITEM' ? choiceOn : choiceOff} onClick={() => update({ mode: 'NEW_ITEM', area: '', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', itemId: '', itemName: '', name: `ItemlistRaspi ${candidate.sourceItemId}`, model: '', usage: '' })}>新規登録</button>
               <button type="button" aria-pressed={draft.mode === 'EXISTING_ITEM'} className={draft.mode === 'EXISTING_ITEM' ? choiceOn : choiceOff} onClick={() => update({ mode: 'EXISTING_ITEM', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', quantity: '' })}>既存のアイテムに写真を追加</button>
             </div>
             {draft.mode === 'EXISTING_ITEM' ? (
@@ -368,13 +393,35 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
             <>
               <Row id="place" number={next()} title="置き場所" done={isDone('place')} current={currentId === 'place'} alignTop>
                 <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="加工機と向き">
+                    <span className="w-14 text-sm text-white/60">加工機</span>
+                    <span className="flex h-11 items-center rounded-lg border border-slate-700 bg-slate-950 px-3 font-bold text-white">{machine}</span>
+                    <span className="w-3" />
+                    {AREA_DIRECTIONS.map((direction) => (
+                      <button key={direction} type="button" aria-label={`${machine} ${direction}`} aria-pressed={direction === selectedDirection} className={direction === selectedDirection ? directionOn : directionOff} onClick={() => chooseArea(composeArea(machine, direction))}>{direction}</button>
+                    ))}
+                    {previousArea && draft.area === previousArea ? <span className="ml-2 text-sm text-white/60">前回この加工機で使った場所</span> : null}
+                  </div>
+                  {otherAreas.length > 0 ? (
+                    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="ほかの加工機の棚">
+                      <span className="w-14 text-sm text-white/60">ほか</span>
+                      <span className="text-sm text-white/60">ほかの加工機の棚に置く:</span>
+                      {otherAreas.map((area) => (
+                        <button key={area} type="button" aria-pressed={area === draft.area} className={`h-9 rounded-lg px-2.5 text-sm ${area === draft.area ? 'border-2 border-sky-400 bg-sky-950/60 font-bold text-white' : 'border border-white/25 bg-slate-800 text-white/90 hover:bg-slate-700'}`} onClick={() => chooseArea(area)}>{area}</button>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="flex items-center gap-2 rounded-md bg-slate-950 px-2.5 py-1.5">
+                    <span className="text-sm text-white/60">エリア</span>
+                    <span className="font-bold text-white">{draft.area || '—'}</span>
+                    {draft.area && areaShelves.length === 0 ? <span className="ml-2 text-sm text-amber-100">このエリアの棚はまだありません</span> : null}
+                  </div>
                   <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="棚">
                     <span className="w-14 text-sm text-white/60">棚</span>
                     {areaShelves.map((entry) => (
                       <button key={entry.id} type="button" aria-label={`棚${entry.shelfNumber}`} aria-pressed={entry.id === draft.shelfId} className={entry.id === draft.shelfId ? numberOn : numberOff} onClick={() => update({ shelfId: entry.id, drawerId: '', drawerLabel: '', itemTagUid: '' })}>{entry.shelfNumber}</button>
                     ))}
-                    {areaShelves.length === 0 ? <span className="text-sm text-amber-100">{candidate.area} の棚はまだありません</span> : null}
-                    <button type="button" className={addClass} disabled={creating} onClick={() => void createShelf()}>＋ 棚{nextShelfNumber}を作る</button>
+                    <button type="button" className={addClass} disabled={creating || !draft.area} onClick={() => void createShelf()}>＋ 棚{nextShelfNumber}を作る</button>
                   </div>
                   {shelf ? (
                     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="引き出し">
@@ -382,7 +429,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
                       {shelf.drawers.map((drawer) => {
                         const used = drawer.compartments.length > 0;
                         return (
-                          <button key={drawer.id} type="button" disabled={used} aria-label={`引出し${drawer.drawerNumber}${used ? ' 使用中' : ''}`} aria-pressed={drawer.id === draft.drawerId} className={drawer.id === draft.drawerId ? numberOn : numberOff} onClick={() => update({ drawerId: drawer.id, drawerLabel: `棚${shelf.shelfNumber}・引出し${drawer.drawerNumber}`, itemTagUid: '' })}>
+                          <button key={drawer.id} type="button" disabled={used} aria-label={`引出し${drawer.drawerNumber}${used ? ' 使用中' : ''}`} aria-pressed={drawer.id === draft.drawerId} className={drawer.id === draft.drawerId ? numberOn : numberOff} onClick={() => update({ drawerId: drawer.id, drawerLabel: `${shelf.area}・棚${shelf.shelfNumber}・引出し${drawer.drawerNumber}`, itemTagUid: '' })}>
                             {drawer.drawerNumber}{used ? ' 使用' : ''}
                           </button>
                         );

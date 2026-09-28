@@ -245,6 +245,14 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     const body = z.object({ area: z.string().trim().min(1).max(200), shelfNumber: z.number().int().min(1) }).parse(request.body ?? {});
     return { shelf: await services.inventory.createShelf(body.area, body.shelfNumber) };
   });
+  app.put('/item-inventory/locations/areas', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const body = z.object({ from: z.string().trim().min(1).max(200), to: z.string().trim().min(1).max(200) }).parse(request.body ?? {});
+    try {
+      return await services.inventory.renameArea(body.from, body.to);
+    } catch (error) {
+      mapMutationError(error);
+    }
+  });
   app.post('/item-inventory/locations/drawers', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({ shelfId: z.string().uuid(), drawerNumber: z.number().int().min(1) }).parse(request.body ?? {});
     return { drawer: await services.inventory.createDrawer(body.shelfId, body.drawerNumber) };
