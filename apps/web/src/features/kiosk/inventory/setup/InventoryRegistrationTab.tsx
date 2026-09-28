@@ -83,6 +83,7 @@ const choiceOn = `${choiceBase} border-2 border-sky-400 bg-sky-950/60 text-white
 const choiceOff = `${choiceBase} border border-white/25 bg-slate-800 text-white/90 hover:bg-slate-700`;
 const numberOn = 'h-11 w-16 rounded-lg border-2 border-sky-400 bg-sky-950/60 text-base font-bold text-white';
 const numberOff = 'h-11 w-16 rounded-lg border border-white/25 bg-slate-800 text-base font-bold text-white/90 hover:bg-slate-700 disabled:border-slate-800 disabled:bg-slate-950 disabled:text-sm disabled:font-normal disabled:text-white/30';
+const addClass = 'h-11 rounded-lg border border-dashed border-white/40 px-3 text-sm text-white/85 hover:bg-slate-800 disabled:opacity-40';
 const smallButton = 'h-9 rounded-md border border-white/25 bg-slate-800 px-3 text-sm text-white hover:bg-slate-700 disabled:opacity-40';
 const inputClass = 'h-10 rounded-md border border-white/25 bg-slate-950 px-2.5 text-base text-white focus:border-sky-400 focus:outline-none';
 const keyClass = 'h-11 w-[60px] rounded-md border border-white/15 bg-slate-800 text-lg font-bold text-white hover:bg-slate-700';
@@ -168,6 +169,45 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
     [candidate?.area, locationsQuery.data],
   );
   const shelf = areaShelves.find((entry) => entry.id === draft.shelfId) ?? null;
+  const nextShelfNumber = areaShelves.length === 0 ? 1 : Math.max(...areaShelves.map((entry) => entry.shelfNumber)) + 1;
+  const nextDrawerNumber = !shelf || shelf.drawers.length === 0 ? 1 : Math.max(...shelf.drawers.map((drawer) => drawer.drawerNumber)) + 1;
+  const creating = mutations.createShelf.isPending || mutations.createDrawer.isPending;
+  // A shelf or drawer created here is selected as soon as it appears in the refreshed list.
+  const [autoSelect, setAutoSelect] = useState<{ kind: 'shelf'; shelfNumber: number } | { kind: 'drawer'; shelfId: string; drawerNumber: number } | null>(null);
+  useEffect(() => {
+    if (!autoSelect) return;
+    if (autoSelect.kind === 'shelf') {
+      const created = areaShelves.find((entry) => entry.shelfNumber === autoSelect.shelfNumber);
+      if (!created) return;
+      setDraft((current) => ({ ...current, shelfId: created.id, drawerId: '', drawerLabel: '', itemTagUid: '' }));
+    } else {
+      const parent = areaShelves.find((entry) => entry.id === autoSelect.shelfId);
+      const created = parent?.drawers.find((drawer) => drawer.drawerNumber === autoSelect.drawerNumber);
+      if (!parent || !created) return;
+      setDraft((current) => ({ ...current, drawerId: created.id, drawerLabel: `棚${parent.shelfNumber}・引出し${created.drawerNumber}`, itemTagUid: '' }));
+    }
+    setAutoSelect(null);
+  }, [areaShelves, autoSelect]);
+  const createShelf = async () => {
+    if (!candidate) return;
+    setError(null);
+    try {
+      await mutations.createShelf.mutateAsync({ area: candidate.area, shelfNumber: nextShelfNumber });
+      setAutoSelect({ kind: 'shelf', shelfNumber: nextShelfNumber });
+    } catch (caught) {
+      setError(errorText(caught));
+    }
+  };
+  const createDrawer = async () => {
+    if (!shelf) return;
+    setError(null);
+    try {
+      await mutations.createDrawer.mutateAsync({ shelfId: shelf.id, drawerNumber: nextDrawerNumber });
+      setAutoSelect({ kind: 'drawer', shelfId: shelf.id, drawerNumber: nextDrawerNumber });
+    } catch (caught) {
+      setError(errorText(caught));
+    }
+  };
   const update = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }));
   const checklist = registrationChecklist(draft, candidate?.photos.length ?? 0);
   const remaining = checklist.filter((entry) => !entry.done).length;
@@ -321,13 +361,14 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
           {draft.mode !== 'EXISTING_ITEM' ? (
             <>
               <Row id="place" number={next()} title="置き場所" done={isDone('place')} current={currentId === 'place'} alignTop>
-                {areaShelves.length === 0 ? <p className="py-2 text-sm text-amber-100">このエリアの棚がまだありません。「棚・引き出し」タブで追加してください。</p> : null}
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="棚">
                     <span className="w-14 text-sm text-white/60">棚</span>
                     {areaShelves.map((entry) => (
                       <button key={entry.id} type="button" aria-label={`棚${entry.shelfNumber}`} aria-pressed={entry.id === draft.shelfId} className={entry.id === draft.shelfId ? numberOn : numberOff} onClick={() => update({ shelfId: entry.id, drawerId: '', drawerLabel: '', itemTagUid: '' })}>{entry.shelfNumber}</button>
                     ))}
+                    {areaShelves.length === 0 ? <span className="text-sm text-amber-100">{candidate.area} の棚はまだありません</span> : null}
+                    <button type="button" className={addClass} disabled={creating} onClick={() => void createShelf()}>＋ 棚{nextShelfNumber}を作る</button>
                   </div>
                   {shelf ? (
                     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="引き出し">
@@ -340,7 +381,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
                           </button>
                         );
                       })}
-                      {shelf.drawers.length === 0 ? <span className="text-sm text-white/60">引き出しがありません（「棚・引き出し」タブで追加）</span> : null}
+                      <button type="button" className={addClass} disabled={creating} onClick={() => void createDrawer()}>＋ 引出し{nextDrawerNumber}を作る</button>
                     </div>
                   ) : null}
                 </div>

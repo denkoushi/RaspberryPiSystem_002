@@ -6,6 +6,8 @@ import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { PhotoStorage } from '../../lib/photo-storage.js';
 
+import { normalizeInventoryArea } from './inventory-area.js';
+
 export class InventoryInsufficientStockError extends Error {
   constructor() {
     super('在庫が不足しています');
@@ -349,7 +351,7 @@ export class ItemInventoryService {
   }
 
   async createShelf(area: string, shelfNumber: number) {
-    const trimmedArea = area.trim();
+    const trimmedArea = normalizeInventoryArea(area);
     if (!trimmedArea) throw new ApiError(400, 'エリアを指定してください');
     positiveInteger(shelfNumber, '棚番号');
     return this.db.inventoryShelf.upsert({
@@ -494,7 +496,7 @@ export class ItemInventoryService {
       const cleanName = input.name?.trim() || `ItemlistRaspi ${currentPayload.sourceItemId}`;
       const drawer = await tx.inventoryDrawer.findUnique({ where: { id: input.drawerId }, include: { shelf: true } });
       if (!drawer || drawer.shelfId !== input.shelfId) throw new ApiError(400, '棚と引き出しの組み合わせが不正です');
-      if (drawer.shelf.area !== currentPayload.area) throw new ApiError(400, 'JSONのエリアと棚のエリアが一致しません');
+      if (normalizeInventoryArea(drawer.shelf.area) !== normalizeInventoryArea(currentPayload.area)) throw new ApiError(400, 'JSONのエリアと棚のエリアが一致しません');
       await this.assertNfcUidAvailable(cleanUid, tx);
       const existingTag = await tx.inventoryNfcTag.findUnique({ where: { uid: cleanUid } });
       if (existingTag && (existingTag.kind !== InventoryNfcTagKind.ITEM || existingTag.compartmentId)) {

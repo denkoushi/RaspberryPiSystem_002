@@ -10,6 +10,7 @@ import { isItemInventoryGmailSubject } from '../gmail/gmail-subject-reservation.
 import { getGmailMessageFrom, ItemInventoryManifestError, resolveItemInventoryGmailPacket } from './item-inventory-gmail-packet-resolver.js';
 import { buildItemInventoryGmailSearchQuery, extractEmail, ITEM_INVENTORY_BATCH_LIMIT, ITEM_INVENTORY_RETRY_DELAY_MS } from './item-inventory-ingestion.policy.js';
 import type { ItemInventoryAttachmentClient } from './item-inventory-gmail-packet-resolver.js';
+import { normalizeInventoryArea } from './inventory-area.js';
 
 export type ItemInventoryGmailPort = ItemInventoryAttachmentClient & {
   searchMessagesAll: (query: string) => Promise<string[]>;
@@ -209,7 +210,8 @@ export class ItemInventoryGmailIngestionService {
           sourceList: packet.manifest.source.list,
           sourceItemId: packet.manifest.source.item_id,
           sourceModified: new Date(packet.manifest.source.modified),
-          area: packet.manifest.location,
+          // The content hash stays on the raw manifest; only the stored area is normalized.
+          area: normalizeInventoryArea(packet.manifest.location),
           category: packet.manifest.category,
           note: packet.manifest.note,
           manifest: packet.manifest as unknown as Prisma.InputJsonValue,

@@ -96,6 +96,12 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - Decision: The registration screen is laid out for the kiosk's 21.5-inch 1920×1080 monitor with no page scroll: photos (692px) | compact rows | checklist (340px). Controls have fixed, content-sized dimensions (44px high buttons, 64×44 shelf/drawer buttons, 360/240px text inputs, a 6-digit quantity field) instead of widths derived from the screen.
   Rationale: The 2026-09-28 follow-up found oversized buttons, wasted space and screen-divided input widths; the user approved mockup board ⑨ before implementation.
   Date/Author: 2026-09-28 / user, recorded by Claude.
+- Decision: Inventory areas are normalized with NFKC, trimmed, and inner whitespace collapsed (`apps/api/src/services/item-inventory/inventory-area.ts`) when mail is ingested, when a shelf is created, and when registration compares the shelf's area with the candidate's. The mail content hash stays on the raw manifest, so a re-sent mail is still recognised as a duplicate. Existing rows are normalized once by `apps/api/scripts/inventory-area-normalize.mjs` (dry run first, then `--apply` with a backup; `--restore` undoes).
+  Rationale: On 2026-09-28 production had a shelf area `30041R_2ＭＦ-Ｐ` typed in full-width; the user asked that full-width and other variants be treated as the same area from the moment they arrive.
+  Date/Author: 2026-09-28 / user, recorded by Claude.
+- Decision: When a candidate's area has no shelf, registration offers "＋ 棚N を作る" and "＋ 引出しN を作る" in place, and 棚・引き出し lists candidate areas, so no area name has to be typed on a keyboard-less kiosk.
+  Rationale: Candidate #4 (`50013_540AP`) could not be registered from the kiosk because its area had no shelf and a new area name needed a keyboard.
+  Date/Author: 2026-09-28 / user, recorded by Claude.
 - Decision (was open; user approved 2026-09-26): In the kiosk registration flow, the 名前など step is optional. It is prefilled with the current default (`ItemlistRaspi <sourceItemId>`), and model and usage are left blank. The step offers the ordinary text input, which works on terminals with a keyboard and IBus. Japanese renaming on keyboard-less terminals is done later on the admin PC page.
   Rationale: The on-screen keyboard cannot type Japanese, and building a kana keyboard is outside this scope. Ask the user before Milestone 4 whether this default is acceptable.
   Date/Author: 2026-09-26 / Claude.
@@ -261,6 +267,20 @@ On a local web build at 1280×800 with a kiosk client key:
 6. In NFCタグ, add a quantity tag of 3 by touching 追加, entering 3, and holding a new tag. No 読み取り button press is needed.
 7. Complete one candidate in 登録待ち using only touch and tags, apart from the optional 名前など step.
 8. `/admin/tools/raspi-inventory` behaves exactly as before, and its tests pass.
+
+## Area normalization of existing data
+
+Run on Pi5 after the release that contains the script, inside the API container, from the repository checkout `/opt/RaspberryPiSystem_002`. The dry run only reads:
+
+    docker compose -f infrastructure/docker/docker-compose.server.yml exec -T -w /app/apps/api api node scripts/inventory-area-normalize.mjs
+
+After the user approves the printed `changes` (and `shelfConflicts` is empty), apply with a backup that does not exist yet:
+
+    docker compose -f infrastructure/docker/docker-compose.server.yml exec -T -w /app/apps/api api node scripts/inventory-area-normalize.mjs --apply --backup=/opt/backups/inventory-area-normalize-YYYYMMDD.json
+
+To undo:
+
+    docker compose -f infrastructure/docker/docker-compose.server.yml exec -T -w /app/apps/api api node scripts/inventory-area-normalize.mjs --restore=/opt/backups/inventory-area-normalize-YYYYMMDD.json
 
 ## Idempotence and Recovery
 

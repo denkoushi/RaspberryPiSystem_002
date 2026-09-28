@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../lib/photo-storage.js', () => ({ PhotoStorage: { deletePhoto: vi.fn().mockResolvedValue(undefined) } }));
 
+import { normalizeInventoryArea } from '../inventory-area.js';
 import { ItemInventoryService } from '../item-inventory.service.js';
 import { PhotoStorage } from '../../../lib/photo-storage.js';
 
@@ -530,5 +531,27 @@ describe('ItemInventoryService history', () => {
 
     expect(findMany.mock.calls[0][0]).toMatchObject({ where: { compartmentId: 'compartment-1' }, take: 3 });
     expect(findMany.mock.calls[1][0].where).toBeUndefined();
+  });
+});
+
+describe('inventory area normalization', () => {
+  it('treats full-width and half-width spellings as one area', () => {
+    expect(normalizeInventoryArea('30041R_2ＭＦ-Ｐ')).toBe('30041R_2MF-P');
+    expect(normalizeInventoryArea('  ５００１３_５４０ＡＰ  ')).toBe('50013_540AP');
+    expect(normalizeInventoryArea('A　 B')).toBe('A B');
+    expect(normalizeInventoryArea('30007_KSJP-55')).toBe('30007_KSJP-55');
+  });
+
+  it('creates shelves under the normalized area', async () => {
+    const upsert = vi.fn().mockResolvedValue({ id: 'shelf-1' });
+    const service = new ItemInventoryService({ inventoryShelf: { upsert } } as never);
+
+    await service.createShelf('30041R_2ＭＦ-Ｐ', 1);
+
+    expect(upsert).toHaveBeenCalledWith({
+      where: { area_shelfNumber: { area: '30041R_2MF-P', shelfNumber: 1 } },
+      create: { area: '30041R_2MF-P', shelfNumber: 1 },
+      update: {},
+    });
   });
 });

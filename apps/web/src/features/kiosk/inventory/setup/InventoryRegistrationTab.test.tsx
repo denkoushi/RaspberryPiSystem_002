@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useInventoryItems, useInventoryMutations } from '../../../../api/hooks';
+import { useInventoryItems, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
 
 import { InventoryRegistrationTab } from './InventoryRegistrationTab';
 
@@ -44,15 +44,21 @@ function press(groupName: string, digits: string) {
 
 describe('InventoryRegistrationTab', () => {
   const registerImport = vi.fn();
+  const createShelf = vi.fn();
+  const createDrawer = vi.fn();
 
   beforeEach(() => {
     nfc.event = null;
     registerImport.mockReset().mockResolvedValue({});
+    createShelf.mockReset().mockResolvedValue({});
+    createDrawer.mockReset().mockResolvedValue({});
     vi.mocked(useInventoryMutations).mockReturnValue({
       registerImport: { mutateAsync: registerImport, isPending: false },
       reorderImportPhotos: { mutateAsync: vi.fn(), isPending: false },
       deleteImportPhoto: { mutateAsync: vi.fn(), isPending: false },
       retryImport: { mutateAsync: vi.fn(), isPending: false },
+      createShelf: { mutateAsync: createShelf, isPending: false },
+      createDrawer: { mutateAsync: createDrawer, isPending: false },
     } as never);
   });
 
@@ -130,6 +136,31 @@ describe('InventoryRegistrationTab', () => {
         initialQuantity: undefined,
       },
     });
+  });
+
+  it('makes the first shelf of a new area by touch when the area has no shelves', async () => {
+    const locations = vi.mocked(useInventoryLocations).getMockImplementation();
+    vi.mocked(useInventoryLocations).mockReturnValue({ data: [] } as never);
+    try {
+      render(<InventoryRegistrationTab accessPassword="2520" />);
+      fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+
+      expect(screen.getByText('30007_KSJP-55 の棚はまだありません')).toBeInTheDocument();
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '＋ 棚1を作る' })); });
+
+      expect(createShelf).toHaveBeenCalledWith({ area: '30007_KSJP-55', shelfNumber: 1 });
+    } finally {
+      vi.mocked(useInventoryLocations).mockImplementation(locations!);
+    }
+  });
+
+  it('makes the next drawer of the chosen shelf by touch', async () => {
+    render(<InventoryRegistrationTab accessPassword="2520" />);
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    fireEvent.click(screen.getByRole('button', { name: '棚1' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '＋ 引出し3を作る' })); });
+
+    expect(createDrawer).toHaveBeenCalledWith({ shelfId: 'shelf-1', drawerNumber: 3 });
   });
 
   it('asks before deleting a candidate photo', () => {

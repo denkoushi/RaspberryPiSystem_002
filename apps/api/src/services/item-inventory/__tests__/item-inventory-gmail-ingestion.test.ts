@@ -109,6 +109,28 @@ describe('ItemInventoryGmailIngestionService', () => {
     expect(gmail.trashMessage).toHaveBeenCalledWith('processing-message');
   });
 
+  it('stores a full-width location as the half-width area but keeps the raw manifest', async () => {
+    const records = new Map([['full-width-message', { gmailMessageId: 'full-width-message', outcome: 'PROCESSING', nextRetryAt: null, updatedAt: new Date() }]]);
+    const { db, payloadCreate } = createFakeDb(records);
+    const jpeg = await sharp({ create: { width: 1, height: 1, channels: 3, background: 'white' } }).jpeg().toBuffer();
+    const manifest = { ...validPacket.manifest, location: ' 30041R_2ＭＦ-Ｐ ' };
+    resolvePacketMock.mockResolvedValue({ ...validPacket, manifest, photos: [{ ...validPacket.photos[0], buffer: jpeg }] });
+    savePhotoMock.mockResolvedValue({ relativePath: '/api/storage/photos/2026/09/photo.jpg' });
+    const gmail = {
+      searchMessagesAll: vi.fn(),
+      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
+      getAttachment: vi.fn(),
+      markAsRead: vi.fn().mockResolvedValue(undefined),
+      trashMessage: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = new ItemInventoryGmailIngestionService(vi.fn().mockResolvedValue(gmail), db as never);
+
+    await service.retryRecord('full-width-message', { config: config(), allowWait: true });
+
+    expect(payloadCreate.mock.calls[0][0].data.area).toBe('30041R_2MF-P');
+    expect(payloadCreate.mock.calls[0][0].data.manifest.location).toBe(' 30041R_2ＭＦ-Ｐ ');
+  });
+
   it('does not trash a message whose manifest cannot be ingested', async () => {
     const { db } = createFakeDb(new Map());
     resolvePacketMock.mockRejectedValueOnce(new Error('manifest is invalid'));
