@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { contentQuery, isParticleFragment } from './structural-text.mjs';
+import { contentQuery, isParticleFragment, relevanceQuery } from './structural-text.mjs';
 
 function assertNoParticleFragments(text) {
   for (const fragment of text.split(/\s+/u).filter(Boolean)) {
@@ -38,4 +38,12 @@ test('contentQuery drops a period expression so it is not a content token', () =
 test('contentQuery keeps a content token that merely contains a particle', () => {
   assert.equal(contentQuery('abcやdef'), 'abcやdef');
   assert.equal(contentQuery('surface scratch'), 'surface scratch');
+});
+
+test('the relevance query keeps only the content condition', () => {
+  assert.equal(relevanceQuery('ハンディライトが対策の不適合３件'), 'ハンディライトが対策');
+  assert.equal(relevanceQuery('最近の塗装不良の不適合5件を教えて'), '塗装不良');
+  assert.equal(relevanceQuery('寸法不適合の記録'), '寸法不適合');
+  assert.equal(relevanceQuery('不適合'), '');
+  assert.equal(relevanceQuery('今年の三島工場組立課の不適合は？', ['三島工場組立課']), '');
 });

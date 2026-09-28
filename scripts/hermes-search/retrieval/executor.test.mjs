@@ -565,3 +565,16 @@ test('coverage stays inexact when a deadline stops before the pool is judged', a
   assert.equal(executed.returned, 1);
   assert.deepEqual(executed.coverage, { known: false, total: null, floor: null, shown: 1, order: 'date_desc' });
 });
+
+test('the relevance judge receives the content condition without counts or the source name', async () => {
+  const seen = [];
+  await execute(plan({ semanticQuery: 'surface scratchの不適合３件', limit: 3 }), {
+    records,
+    catalog,
+    relevance: async ({ semanticQuery, candidates }) => {
+      seen.push(semanticQuery);
+      return { ok: true, ranked: candidates.map((candidate) => ({ id: candidate.id, probability: 0.9 })) };
+    },
+  });
+  assert.deepEqual(seen, ['surface scratch']);
+});
