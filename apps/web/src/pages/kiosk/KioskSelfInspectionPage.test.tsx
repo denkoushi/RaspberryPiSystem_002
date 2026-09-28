@@ -319,6 +319,28 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     expect(await screen.findByRole('dialog', { name: '検査方法を選択' })).toBeInTheDocument();
   });
 
+  it('drops scanner symbols around the 10-digit manufacturing order before searching', async () => {
+    renderPage();
+
+    await scanHidText('0002178005*');
+
+    await waitFor(() => {
+      expect(lastScheduleParams()).toEqual(expect.objectContaining({ productNos: '0002178005' }));
+    });
+    expect(await screen.findByText('移動票: 0002178005')).toBeInTheDocument();
+  });
+
+  it('rejects a movement scan that is not 10 digits', async () => {
+    renderPage();
+
+    await scanHidText('000217800*');
+
+    expect(
+      await screen.findByText('製造order番号は数字10桁です（読取値: 000217800*）。移動票を読み取り直してください。')
+    ).toBeInTheDocument();
+    expect(lastScheduleParams()?.productNos).toBeUndefined();
+  });
+
   it('keeps manual text input on q search instead of productNos search', async () => {
     renderPage();
 
