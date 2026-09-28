@@ -12,6 +12,7 @@ import { throughEgress } from '../hermes-remote-inference.mjs';
 import { recordPassage } from './executor.mjs';
 import { rankByCosine } from './dense-index.mjs';
 import { DEFAULT_EMBED_BUDGET_MS } from './query-embedding.mjs';
+import { withinWindow } from './enrichment-dgx.mjs';
 
 export const DGX_EMBED_MODEL = 'Qwen/Qwen3-Embedding-0.6B';
 export const DGX_EMBED_DIM = 1024;
@@ -23,6 +24,12 @@ export const DGX_INDEX_TIMEOUT_MS = 10_000;
 // passed at 800 characters and failed at 1000, so documents keep a margin below that.
 export const DGX_MAX_INPUT_CHARS = 700;
 export const DEFAULT_DENSE_STORE = '/app/storage/hermes-search/runtime/retrieval-dense-dgx.bin';
+// The DGX embedding service is CPU-only with 2 slots, and a large re-embed fills it so a Chat
+// question misses its 800 ms budget. Outside the night window each refresh embeds a few records
+// in small requests with a pause between them; the rest waits for the night.
+export const DAY_MAX_EMBED = 16;
+export const DAY_EMBED_BATCH = 2;
+export const DAY_PAUSE_MS = 5_000;
 const MAGIC = Buffer.from('HDG1');
 const VERSION = 1;
 
@@ -48,6 +55,8 @@ export function denseSettings(env = process.env) {
     token: env.HERMES_INFERENCE_TOKEN || '',
     egress: env.HERMES_RETRIEVAL_DENSE_BASE_URL ? '' : (env.HERMES_INFERENCE_EGRESS || ''),
     storePath: env.HERMES_RETRIEVAL_DENSE_STORE || DEFAULT_DENSE_STORE,
+    // The enrichment night window is also the window for bulk document embedding.
+    window: env.HERMES_RETRIEVAL_ENRICHMENT_WINDOW || '',
   };
 }
 
@@ -187,12 +196,22 @@ export async function writeDenseStore(storePath, entries) {
   await rename(temporary, storePath);
 }
 
+// Night or no window: no limits. Day: a few small requests with pauses.
+export function denseRefreshLimits(windowSpec, date = new Date()) {
+  if (!windowSpec || withinWindow(windowSpec, date)) return {};
+  return { maxEmbed: DAY_MAX_EMBED, batchSize: DAY_EMBED_BATCH, pauseMs: DAY_PAUSE_MS };
+}
+
 export async function refreshDenseIndex({
   records,
   bodyFields,
   storePath,
   embed,
   onProgress,
+  maxEmbed = Infinity,
+  batchSize = DGX_EMBED_BATCH,
+  pauseMs = 0,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 }) {
   const started = Date.now();
   const previous = await readDenseStore(storePath);
@@ -200,6 +219,7 @@ export async function refreshDenseIndex({
   const done = [];
   const pending = [];
   let skipped = 0;
+  let deferred = 0;
   for (const record of records) {
     const id = record?.id;
     if (typeof id !== 'string' || !id) continue;
@@ -212,11 +232,21 @@ export async function refreshDenseIndex({
       skipped += 1;
       continue;
     }
-    pending.push({ id, text, hash });
+    pending.push({ id, text, hash, cached });
+  }
+  // A changed record keeps its previous vector until the new one is stored: a slightly stale
+  // vector still finds the record, while a missing one drops it from meaning-based search.
+  const current = pending.slice(0, maxEmbed);
+  for (const item of pending.slice(maxEmbed)) {
+    deferred += 1;
+    if (item.cached) done.push(item.cached);
   }
   let embedded = 0;
   let failed = 0;
-  if (pending.length) await writeDenseStore(storePath, done);
+  const keepPrevious = (item) => {
+    if (item.cached) done.push(item.cached);
+  };
+  if (current.length) await writeDenseStore(storePath, [...done, ...current.filter((item) => item.cached).map((item) => item.cached)]);
   const embedBatch = async (batch) => {
     const vectors = await embed(batch.map((item) => item.text), { role: 'document' });
     if (!Array.isArray(vectors) || vectors.length !== batch.length) throw new Error('embedding count mismatch');
@@ -226,14 +256,17 @@ export async function refreshDenseIndex({
     });
     embedded += batch.length;
   };
-  for (let offset = 0; offset < pending.length; offset += DGX_EMBED_BATCH) {
-    const batch = pending.slice(offset, offset + DGX_EMBED_BATCH);
+  const size = Math.max(1, Math.min(batchSize, DGX_EMBED_BATCH));
+  for (let offset = 0; offset < current.length; offset += size) {
+    if (offset > 0 && pauseMs > 0) await sleep(pauseMs);
+    const batch = current.slice(offset, offset + size);
     try {
       await embedBatch(batch);
     } catch {
       // One rejected record must not drop the rest of its batch, so retry each record alone.
       if (batch.length === 1) {
         failed += 1;
+        keepPrevious(batch[0]);
         continue;
       }
       for (const item of batch) {
@@ -241,17 +274,19 @@ export async function refreshDenseIndex({
           await embedBatch([item]);
         } catch {
           failed += 1;
+          keepPrevious(item);
         }
       }
     }
-    await writeDenseStore(storePath, done);
+    const waiting = current.slice(offset + size).filter((item) => item.cached).map((item) => item.cached);
+    await writeDenseStore(storePath, [...done, ...waiting]);
   }
   const finalEntries = done;
-  if (!pending.length) await writeDenseStore(storePath, finalEntries);
+  if (!current.length) await writeDenseStore(storePath, finalEntries);
   const timingMs = Date.now() - started;
-  console.info(`hermes retrieval dense index embedded=${embedded} skipped=${skipped} failed=${failed} stored=${finalEntries.length} ms=${timingMs}`);
+  console.info(`hermes retrieval dense index embedded=${embedded} skipped=${skipped} failed=${failed} deferred=${deferred} stored=${finalEntries.length} ms=${timingMs}`);
   if (onProgress) onProgress(finalEntries);
-  return { embedded, skipped, failed, stored: finalEntries.length, ms: timingMs, entries: finalEntries };
+  return { embedded, skipped, failed, deferred, stored: finalEntries.length, ms: timingMs, entries: finalEntries };
 }
 
 export function createDenseQueryRanker(getEntries, embedQuery) {
@@ -276,6 +311,8 @@ export function createDenseRuntime({
   settings,
   embed,
   embedQuery,
+  now = () => new Date(),
+  sleep,
 } = {}) {
   let entries = [];
   let chain = Promise.resolve();
@@ -298,6 +335,8 @@ export function createDenseRuntime({
           return;
         }
         const result = await refreshDenseIndex({
+          ...denseRefreshLimits(settings.window, now()),
+          ...(sleep ? { sleep } : {}),
           records,
           bodyFields,
           storePath: settings.storePath,
