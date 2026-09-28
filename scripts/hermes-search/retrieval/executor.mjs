@@ -2,7 +2,7 @@ import { performance } from 'node:perf_hooks';
 import { catalogEntries, fieldsWithRole } from './catalog.mjs';
 import { RELEVANCE_CANDIDATE_LIMIT } from './relevance-jev.mjs';
 import { DEFAULT_EMBED_BUDGET_MS, withEmbeddingBudget } from './query-embedding.mjs';
-import { contentQuery, contentTokens } from './structural-text.mjs';
+import { contentQuery, contentTokens, relevanceQuery } from './structural-text.mjs';
 import { hasAppliedHardFilter } from './query-plan.mjs';
 import { normalizeForMatch } from './value-index.mjs';
 
@@ -646,9 +646,10 @@ export async function execute(plan, options = {}) {
       .filter((item) => item.record);
   }
   let relevanceMs = semanticQuery ? 0 : null;
+  const judgeQuery = semanticQuery ? relevanceQuery(semanticQuery, filterValueTexts(filters)) : '';
   let rerankMs = null;
   const limit = planLimit(plan);
-  if (recentContent && typeof options.relevance === 'function' && options.rerankMode !== 'replace') {
+  if (recentContent && judgeQuery && typeof options.relevance === 'function' && options.rerankMode !== 'replace') {
     const clock = typeof options.now === 'function' ? options.now : () => performance.now();
     const requestStartedAt = Number.isFinite(options.requestStartedAt) ? options.requestStartedAt : started;
     const maxBatches = Number.isInteger(options.recentContentMaxBatches)
@@ -671,7 +672,7 @@ export async function execute(plan, options = {}) {
         const batchStarted = clock();
         batches += 1;
         const judged = await options.relevance({
-          semanticQuery,
+          semanticQuery: judgeQuery,
           candidates: batch.map((item) => ({ id: item.record.id, record: item.record })),
           bodyFields,
         });
@@ -717,11 +718,11 @@ export async function execute(plan, options = {}) {
       relevanceMs = null;
     }
   }
-  if (!recentContent && semanticQuery && typeof options.relevance === 'function' && options.rerankMode !== 'replace') {
+  if (!recentContent && judgeQuery && typeof options.relevance === 'function' && options.rerankMode !== 'replace') {
     const relevanceStarted = performance.now();
     try {
       const judged = await options.relevance({
-        semanticQuery,
+        semanticQuery: judgeQuery,
         candidates: ranked.map((item) => ({ id: item.record.id, record: item.record })),
         bodyFields,
       });

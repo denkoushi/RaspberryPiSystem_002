@@ -12,6 +12,9 @@ if (!Array.isArray(rawParticles) || rawParticles.some((word) => typeof word !== 
 }
 
 export const structuralWords = Object.freeze([...rawWords].sort((left, right) => right.length - left.length));
+const sourceLabels = JSON.parse(readFileSync(new URL('./source-labels.json', import.meta.url), 'utf8'));
+// Source names such as 不適合 appear in every record of that source, so they never narrow a search.
+export const sourceLabelWords = Object.freeze(Object.values(sourceLabels).filter((label) => typeof label === 'string' && label));
 export const functionParticles = Object.freeze([...rawParticles].sort((left, right) => right.length - left.length));
 
 const COUNT_EXPRESSION = /[0-9０-９]+件|[〇零一二三四五六七八九十百千万]+件/gu;
@@ -92,4 +95,46 @@ export function contentQuery(text) {
     kept.push(trimmed);
   }
   return kept.join(' ');
+}
+
+// The relevance judge sees only the content condition. Counts, period words, structural words, and
+// source names are applied by the plan; a judge that sees 「の不適合３件」 rejects records that match.
+// A source name is dropped only as a word of its own (「塗装不良の不適合」), not inside a compound
+// such as 「寸法不適合」, which still names the condition.
+const STANDALONE_EDGE = '[\\sのはがをにへでとやも]';
+
+function stripStandaloneLabels(text) {
+  let result = String(text ?? '').normalize('NFKC');
+  for (const label of sourceLabelWords) {
+    const escaped = label.normalize('NFKC').replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    result = result.replace(new RegExp(`(^|${STANDALONE_EDGE})${escaped}(?=$|${STANDALONE_EDGE}|[0-9０-９〇零一二三四五六七八九十百千万])`, 'gu'), '$1 ');
+  }
+  return result;
+}
+
+const QUERY_PUNCTUATION = /[?？!！。、,，.．・「」『』()（）]/gu;
+
+// Returns '' when nothing but structure, the source name, or applied filter values is left; the caller
+// then skips the judge, because organization and dates are not judged and nothing else remains.
+// A written filter value is often shorter than the stored one (三島工場組立課 for
+// 三島工場製造部組立課（製造）), so a token counts as the filter when most of its character pairs occur in it.
+const FILTER_OVERLAP_MIN = 0.6;
+
+function isFilterToken(token, filterValues) {
+  const folded = token.normalize('NFKC').toLowerCase();
+  const pairs = [];
+  for (let index = 0; index < folded.length - 1; index += 1) pairs.push(folded.slice(index, index + 2));
+  if (!pairs.length) return false;
+  return filterValues.some((value) => {
+    const target = String(value ?? '').normalize('NFKC').toLowerCase();
+    return target && pairs.filter((pair) => target.includes(pair)).length / pairs.length >= FILTER_OVERLAP_MIN;
+  });
+}
+
+export function relevanceQuery(text, filterValues = []) {
+  const query = contentQuery(stripStandaloneLabels(text).replace(QUERY_PUNCTUATION, ' '));
+  if (!query || !filterValues.length) return query;
+  const tokens = query.split(TOKEN_GAP).filter(Boolean);
+  const kept = tokens.filter((token) => !isFilterToken(token, filterValues));
+  return kept.length === tokens.length ? query : kept.join(' ');
 }
