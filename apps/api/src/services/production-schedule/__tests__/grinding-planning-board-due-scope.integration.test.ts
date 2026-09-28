@@ -144,8 +144,18 @@ async function createFixture(options: { fseiban?: string; originalSeibanDue?: st
       { resourceCd: '10', resourceName: fixture.resourceNames[3]!, resourceClassCd: 'M02', resourceGroupCd: 'IT' }
     ]
   });
+  // 拠点は明示設定だけで決まる（explicit-site-scope Milestone 5）ので、端末に拠点を登録・設定する。
+  for (const device of fixture.devices) {
+    await db().site.upsert({ where: { key: device.siteKey }, update: {}, create: { key: device.siteKey, displayName: device.siteKey } });
+  }
   await db().clientDevice.createMany({
-    data: fixture.devices.map((device) => ({ name: `${device.siteKey} - terminal`, location: device.location, apiKey: device.apiKey, defaultMode: 'TAG' }))
+    data: fixture.devices.map((device) => ({
+      name: `${device.siteKey} - terminal`,
+      location: device.location,
+      apiKey: device.apiKey,
+      defaultMode: 'TAG',
+      siteKey: device.siteKey
+    }))
   });
   for (const device of fixture.devices) {
     await db().productionScheduleGrindingPlanningBoardState.create({
