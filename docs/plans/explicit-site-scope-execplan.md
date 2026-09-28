@@ -1,6 +1,6 @@
 ---
 id: explicit-site-scope-execplan
-status: in_progress
+status: completed
 scope: kiosk client device site assignment, Mac proxy capability, site-scoped data consolidation
 date: 2026-09-26
 source_of_truth: true
@@ -51,7 +51,7 @@ After this plan is complete, an administrator can open 管理画面 > クライ�
 - [x] (2026-09-26) Milestone 4b merged as PR #1504 (merge `d257598f`, including Codex-reported fixes: backup under the writable `/opt/backups` mount, version-guarded restore, and undo of a merge-created target state) and deployed to Pi5 with run `20260926-072631-8a38c1` (`Result=success`, recap `failed=0 rescued=0`).
 - [x] (2026-09-26 16:45:17 JST, backup `createdAt` 2026-09-26T07:45:17.892Z) Milestone 4b production. The `--source=Mac` dry run showed 10 seibans to append and 21 overrides to move; the user then clarified that the Mac 製番ボード data must not be merged at all. Ran a devices-only assignment instead (`--source=__devices_only__ --target=第2工場 --assign-devices`, dry run then `--apply --backup=/opt/backups/site-scope-merge-backup-20260926.json`): 0 seibans, 0 overrides, 14 devices set to 第2工場. The read-only report afterwards showed every device with explicit site 第2工場; the Mac board rows (1 state, 26 overrides) remain in the database, unused. The user confirmed on the real kiosks that the Mac now shows the same 製番ボード as the Pi4.
 - [x] (2026-09-28) Milestone 5 implemented on `feat/explicit-site-scope-m5` after two days without issues: a device site comes only from `ClientDevice.siteKey`. The scope context resolves `siteKey` lazily, so screens that do not use a site keep working for an unassigned device while site-scoped screens return 409 `SITE_NOT_ASSIGNED` with a message pointing to 管理画面. The site directory throws the same error for a registered device key without a site, the Mac proxy target list uses only explicit sites, and `POST /api/clients` sets the site of a new device when its location prefix is a registered site. The text rule stays only for values that are not device keys (shared sentinels such as `shared`, `shared-global-rank`, and old stored rows). The admin page shows unassigned devices in red instead of a guessed site. Evidence: lib tests, production-schedule/order-search/order-split/clients/site-scope integration tests (22 files / 218 tests, then 42 clients tests) on a disposable PostgreSQL; web admin tests 17 passed.
-- [ ] Milestone 5 PR, CI, merge, Pi5 deploy (check first that every production device still has an explicit site).
+- [x] (2026-09-28) Milestone 5 merged as PR #1521 (merge `7095cd2b`), including a fixture fix for the due-scope integration test and the Codex-reported fix that fails closed with 503 `SITE_DIRECTORY_UNAVAILABLE` until the site directory has loaded. The read-only report before deploy showed every device with an explicit site. Deployed to Pi5 only with run `20260928-030728-499d5b` (`Result=success`, recap `ok=263 changed=31 unreachable=0 failed=0 skipped=38 rescued=0`); the new API (`bluegreen-api-green-1`) logged no directory load failure, no `SITE_DIRECTORY_UNAVAILABLE` and no `SITE_NOT_ASSIGNED`, the report again showed every device assigned, and the user confirmed the Mac and Pi4 screens on the real kiosks.
 
 ## Surprises & Discoveries
 
@@ -76,7 +76,7 @@ After this plan is complete, an administrator can open 管理画面 > クライ�
 
 ## Outcomes & Retrospective
 
-As of 2026-09-26 Milestones 1 to 4 are in production. Every device has an explicit site (第2工場), so all kiosks, the Mac and the Pi5 share one 製番ボード and the other site-scoped data, and the Mac proxy privilege is an explicit setting. New sites can be added in 管理画面 and assigned per device. The location-text guess still exists but is no longer reached for any registered device; Milestone 5 removes it after a few days of observation.
+As of 2026-09-28 all five milestones are in production. Every device has an explicit site (第2工場), so all kiosks, the Mac and the Pi5 share one 製番ボード and the other site-scoped data, and the Mac proxy privilege is an explicit setting. New sites can be added in 管理画面 and assigned per device; a newly registered device whose location starts with a registered site gets that site automatically. A device site is never guessed from location text any more: an unassigned device gets a clear `SITE_NOT_ASSIGNED` error on site-scoped screens only. The text rule remains only for values that are not device keys (shared sentinels and old stored rows).
 
 Lessons: ask about each data set separately and restate the exact rows before a production data change; the numbered question about global rankings was read by the user as being about the 製番ボード seibans, which the dry run exposed before anything was written. Codex review caught real defects in every pull request (backfill whitespace, idempotent site resolution, key-namespace collisions, stale directory after renames, picker refresh, backup location and restore safety).
 
