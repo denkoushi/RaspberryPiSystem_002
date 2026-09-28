@@ -22,7 +22,10 @@ import {
   kioskPanelClassName
 } from '../../features/kiosk/kioskTheme';
 import { kioskInspectionDrawingPaperReportPrintPath } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
-import { normalizeManufacturingOrderScanText } from '../../features/part-measurement/manufacturingOrderScan';
+import {
+  MANUFACTURING_ORDER_DIGIT_LENGTH,
+  normalizeManufacturingOrderScanText
+} from '../../features/part-measurement/manufacturingOrderScan';
 import { SelfInspectionFilterCombobox } from '../../features/part-measurement/SelfInspectionFilterCombobox';
 import { SelfInspectionItemInvalidationDialog } from '../../features/part-measurement/SelfInspectionItemInvalidationDialog';
 import { KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH } from '../../features/part-measurement/selfInspectionRoutes';
@@ -353,7 +356,13 @@ export function KioskSelfInspectionPage() {
     autoOpenedScanKeyRef.current = null;
 
     if (!normalized) {
-      setScanStatus({ kind: 'error', message: 'スキャン値が空です。移動票を読み取り直してください。' });
+      const raw = rawText.trim();
+      setScanStatus({
+        kind: 'error',
+        message: raw
+          ? `製造order番号は数字${MANUFACTURING_ORDER_DIGIT_LENGTH}桁です（読取値: ${raw}）。移動票を読み取り直してください。`
+          : 'スキャン値が空です。移動票を読み取り直してください。'
+      });
       return;
     }
     setProductNo(normalized);
