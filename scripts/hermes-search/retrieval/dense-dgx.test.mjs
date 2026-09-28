@@ -21,6 +21,7 @@ import {
   createDenseRuntime,
   readDenseStore,
   denseRefreshLimits,
+  DENSE_BULK_WINDOW,
   DAY_MAX_EMBED,
   DAY_EMBED_BATCH,
   DAY_PAUSE_MS,
@@ -237,12 +238,16 @@ test('document text is capped below the DGX per-slot token limit', () => {
   assert.equal(DGX_MAX_INPUT_CHARS < 800, true);
 });
 
-test('outside the night window a refresh embeds a few records in small paused requests', () => {
+test('bulk embedding runs only in the 4-6 hours and is limited while enrichment runs', () => {
   const day = new Date('2026-01-15T03:30:00Z');
-  const night = new Date('2026-01-15T15:30:00Z');
+  const enrichmentHours = new Date('2026-01-15T15:30:00Z');
+  const bulkHours = new Date('2026-01-15T19:30:00Z');
+  const limited = { maxEmbed: DAY_MAX_EMBED, batchSize: DAY_EMBED_BATCH, pauseMs: DAY_PAUSE_MS };
+  assert.equal(DENSE_BULK_WINDOW, '4-6');
   assert.deepEqual(denseRefreshLimits('', day), {});
-  assert.deepEqual(denseRefreshLimits('22-6', night), {});
-  assert.deepEqual(denseRefreshLimits('22-6', day), { maxEmbed: DAY_MAX_EMBED, batchSize: DAY_EMBED_BATCH, pauseMs: DAY_PAUSE_MS });
+  assert.deepEqual(denseRefreshLimits('22-6', bulkHours), {});
+  assert.deepEqual(denseRefreshLimits('22-6', enrichmentHours), limited);
+  assert.deepEqual(denseRefreshLimits('22-6', day), limited);
 });
 
 test('a deferred or failed record keeps its previous vector and the day pauses between requests', async () => {
