@@ -38,7 +38,6 @@ import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
 import { SignagePreviewPage } from './pages/admin/SignagePreviewPage';
 import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
 import { VisualizationDashboardsPage } from './pages/admin/VisualizationDashboardsPage';
-import { LoadBalancingOverviewChartPreviewPage } from './pages/dev/LoadBalancingOverviewChartPreviewPage';
 import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
 import { KioskAssemblyPage } from './pages/kiosk/KioskAssemblyPage';
 import { KioskAssemblyRecordApprovalPage } from './pages/kiosk/KioskAssemblyRecordApprovalPage';
@@ -309,7 +308,6 @@ function App() {
       </Route>
       {isDevelopment ? (
         <>
-          <Route path="/dev/load-balancing-overview-chart" element={<LoadBalancingOverviewChartPreviewPage />} />
           <Route
             path="/dev/kiosk-inspection-drawing-print"
             element={lazyRouteElement(<KioskInspectionDrawingPrintPreviewPage />)}

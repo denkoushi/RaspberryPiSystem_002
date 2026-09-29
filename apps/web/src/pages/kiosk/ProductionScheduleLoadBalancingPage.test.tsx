@@ -1,41 +1,29 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ProductionScheduleLoadBalancingPage } from './ProductionScheduleLoadBalancingPage';
 
-const mockUseOverview = vi.fn();
-const mockUseMachineMonthly = vi.fn();
-const mockUseStartDateLeveling = vi.fn();
-const mockUseStartDateLevelingSimulate = vi.fn();
-const mockUseSiteDevices = vi.fn();
-const mockUseSuggestions = vi.fn();
-const mockUseOutsourcingCandidates = vi.fn();
-const mockUseOutsourcingSimulate = vi.fn();
-const mockUseOutsourcingPlan = vi.fn();
-const mockUseOutsourcingReplacements = vi.fn();
+import type { ProductionScheduleLoadBalancingWorkspaceResponse } from '../../api/client';
+
+const mockUseWorkspace = vi.fn();
+const mockUseWorkspaceDay = vi.fn();
 const mockUseResources = vi.fn();
+const mockUseSiteDevices = vi.fn();
+const mockCapacityMutate = vi.fn();
 const mockIsMacEnvironment = vi.fn();
 
 vi.mock('../../api/hooks', () => ({
   useKioskSites: () => ({ data: undefined }),
-  useKioskProductionScheduleLoadBalancingOverview: (...args: unknown[]) => mockUseOverview(...args),
+  useKioskProductionScheduleLoadBalancingWorkspace: (...args: unknown[]) => mockUseWorkspace(...args),
+  useKioskProductionScheduleLoadBalancingWorkspaceDay: (...args: unknown[]) => mockUseWorkspaceDay(...args),
   useKioskProductionScheduleResources: (...args: unknown[]) => mockUseResources(...args),
-  useKioskProductionScheduleLoadBalancingMachineMonthlyLoad: (...args: unknown[]) =>
-    mockUseMachineMonthly(...args),
-  useKioskProductionScheduleLoadBalancingStartDateLeveling: (...args: unknown[]) =>
-    mockUseStartDateLeveling(...args),
-  usePostKioskProductionScheduleLoadBalancingStartDateLevelingSimulate: (...args: unknown[]) =>
-    mockUseStartDateLevelingSimulate(...args),
   useKioskProductionScheduleManualOrderSiteDevices: (...args: unknown[]) => mockUseSiteDevices(...args),
-  usePostKioskProductionScheduleLoadBalancingSuggestions: (...args: unknown[]) => mockUseSuggestions(...args),
-  usePostKioskProductionScheduleLoadBalancingOutsourcingCandidates: (...args: unknown[]) =>
-    mockUseOutsourcingCandidates(...args),
-  usePostKioskProductionScheduleLoadBalancingOutsourcingSimulate: (...args: unknown[]) =>
-    mockUseOutsourcingSimulate(...args),
-  usePostKioskProductionScheduleLoadBalancingOutsourcingPlan: (...args: unknown[]) =>
-    mockUseOutsourcingPlan(...args),
-  usePostKioskProductionScheduleLoadBalancingOutsourcingReplacements: (...args: unknown[]) =>
-    mockUseOutsourcingReplacements(...args)
+  usePutKioskProductionScheduleLoadBalancingCapacityBase: () => ({
+    mutate: mockCapacityMutate,
+    reset: vi.fn(),
+    isPending: false,
+    error: null
+  })
 }));
 
 vi.mock('../../lib/client-key/resolver', () => ({
@@ -45,700 +33,147 @@ vi.mock('../../lib/client-key/resolver', () => ({
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: { children?: unknown }) => <div>{children as never}</div>,
   BarChart: ({ children }: { children?: unknown }) => <div>{children as never}</div>,
-  CartesianGrid: () => null,
   XAxis: () => null,
   YAxis: () => null,
   Tooltip: () => null,
-  Legend: () => null,
+  ReferenceLine: () => null,
   Bar: () => null,
-  Cell: () => null,
-  LabelList: () => null
+  Cell: () => null
 }));
+
+const H = 60;
+
+function workspace(): ProductionScheduleLoadBalancingWorkspaceResponse {
+  const months = ['2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02'];
+  const capacity = (minutes: number | null) => Object.fromEntries(months.map((month) => [month, minutes]));
+  const row = (rowId: string, resourceCd: string, bucket: string, hours: number, machineName = 'NVD-5000') => ({
+    rowId,
+    fseiban: `S-${rowId}`,
+    productNo: '1',
+    fhincd: `P-${rowId}`,
+    fhinmei: `部品${rowId}`,
+    machineName,
+    resourceCd,
+    totalMinutes: hours * H,
+    plannedStartDate: '2026-10-05',
+    effectiveDueDate: bucket === 'late' ? '2026-09-10' : '2026-10-20',
+    late: bucket === 'late',
+    allocations: [{ bucket, minutes: hours * H }]
+  });
+  return {
+    siteKey: '第2工場',
+    today: '2026-09-30',
+    fromMonth: '2026-09',
+    toMonth: '2027-02',
+    months,
+    resources: [
+      { resourceCd: '033', classCode: 'H', workCalendarMode: 'weekdays', baseCapacityMinutes: 100 * H, capacityByMonth: capacity(100 * H) },
+      { resourceCd: '034', classCode: 'H', workCalendarMode: 'weekdays', baseCapacityMinutes: 100 * H, capacityByMonth: capacity(100 * H) },
+      { resourceCd: '091', classCode: null, workCalendarMode: 'weekdays', baseCapacityMinutes: null, capacityByMonth: capacity(null) }
+    ],
+    rows: [
+      row('a', '033', '2026-10', 80),
+      row('b', '033', '2026-10', 30, 'HX-630'),
+      row('c', '034', '2026-10', 40),
+      row('d', '091', '2026-10', 50),
+      row('e', '033', 'late', 12)
+    ],
+    unallocatedRows: [
+      {
+        rowId: 'u1',
+        fseiban: 'S-u1',
+        productNo: '1',
+        fhincd: 'P-u1',
+        fkojun: '10',
+        resourceCd: '033',
+        reason: 'missing_planned_start_date',
+        requiredMinutes: 120
+      }
+    ],
+    transferRules: [{ fromClassCode: 'H', toClassCode: 'H', priority: 1, efficiencyRatio: 1 }]
+  };
+}
 
 describe('ProductionScheduleLoadBalancingPage', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-04-30T12:00:00+09:00'));
+    vi.setSystemTime(new Date('2026-09-30T12:00:00+09:00'));
     mockIsMacEnvironment.mockReturnValue(false);
     mockUseSiteDevices.mockReturnValue({ data: { deviceScopeKeys: [] } });
-    mockUseMachineMonthly.mockReturnValue({
+    mockUseResources.mockReturnValue({ data: { resourceNameMap: { '033': ['横型N7'] } } });
+    mockUseWorkspace.mockReturnValue({ data: workspace(), isFetching: false, error: null });
+    mockUseWorkspaceDay.mockReturnValue({
       data: {
         siteKey: '第2工場',
-        fromMonth: '2026-04',
-        toMonth: '2026-09',
-        months: ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'],
-        machines: [{ machineName: 'DFD6362', fseibanCount: 2, requiredMinutes: 300 }],
-        selectedMachineName: null,
-        selectedFhincd: null,
-        parts: [],
-        resourceMonths: [],
-        partRows: []
-      },
-      isFetching: false,
-      error: null
-    });
-    mockUseStartDateLeveling.mockReturnValue({
-      data: {
-        siteKey: '第2工場',
-        fromMonth: '2026-04',
-        toMonth: '2026-09',
-        bucket: 'month',
-        focusMonth: null,
-        months: ['2026-04', '2026-05'],
-        days: [],
-        resources: [{ resourceCd: '021', workCalendarMode: 'weekdays', requiredMinutes: 100, availableMinutes: 80, overMinutes: 20 }],
-        cells: [],
-        allocatedRows: [],
-        unallocatedRows: [],
-        calendarSettings: [],
-        simulatedMoves: []
-      },
-      isFetching: false,
-      error: null
-    });
-    mockUseStartDateLevelingSimulate.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseOutsourcingCandidates.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseOutsourcingSimulate.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseOutsourcingPlan.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseOutsourcingReplacements.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseResources.mockReturnValue({
-      data: { resourceNameMap: { A01: ['FJV50/80'] } },
-      isFetching: false,
-      error: null
-    });
-  });
-
-  it('概要を表示してサジェスト計算を実行できる', async () => {
-    const mutateAsync = vi.fn().mockResolvedValue(undefined);
-    const reset = vi.fn();
-
-    mockUseOverview.mockReturnValue({
-      data: {
-        siteKey: '第2工場',
-        yearMonth: '2026-04',
-        resources: [
-          {
-            resourceCd: 'A01',
-            requiredMinutes: 240,
-            availableMinutes: 180,
-            overMinutes: 60,
-            classCode: 'LINE-A'
-          }
+        month: '2026-10',
+        resourceCd: '033',
+        capacityMinutesPerDay: (100 * H) / 22,
+        days: [{ date: '2026-10-05', requiredMinutes: 110 * H }],
+        rowDays: [
+          { rowId: 'a', date: '2026-10-05', minutes: 80 * H },
+          { rowId: 'b', date: '2026-10-05', minutes: 30 * H }
         ]
       },
-      isFetching: false,
-      error: null
+      isFetching: false
     });
-    mockUseSuggestions.mockReturnValue({
-      mutateAsync,
-      reset,
-      isPending: false,
-      isError: false,
-      error: null,
-      data: {
-        suggestions: [
-          {
-            rowId: 'row-1',
-            fseiban: 'ABC12345',
-            productNo: '123456',
-            fhincd: 'P-001',
-            fkojun: '10',
-            resourceCdFrom: 'A01',
-            resourceCdTo: 'B02',
-            rowMinutes: 60,
-            estimatedReductionMinutesOnSource: 60,
-            estimatedBurdenMinutesOnDestination: 60,
-            simulatedSourceOverAfter: 0,
-            simulatedDestinationOverAfter: 0,
-            rulePriority: 1,
-            fromClassCode: 'LINE-A',
-            toClassCode: 'LINE-B',
-            efficiencyRatio: 1
-          }
-        ]
-      }
-    });
-
-    render(<ProductionScheduleLoadBalancingPage />);
-
-    expect(screen.getByText('負荷調整（山崩し支援）')).toBeInTheDocument();
-    expect(screen.getByRole('tablist', { name: '負荷調整ビュー' })).toBeInTheDocument();
-    expect(screen.getByText('A01')).toBeInTheDocument();
-    expect(screen.getByText('ABC12345')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: '社内移管サジェスト' }));
-
-    expect(mutateAsync).toHaveBeenCalledWith({
-      month: '2026-04',
-      maxSuggestions: 40,
-      overResourceCds: ['A01']
-    });
-    expect(reset).toHaveBeenCalled();
+    mockCapacityMutate.mockReset();
   });
 
-  it('外注候補取得と累積シミュを実行できる', async () => {
-    const loadCandidates = vi.fn().mockResolvedValue({
-      siteKey: '第2工場',
-      yearMonth: '2026-04',
-      mode: 'outsourcing',
-      resources: [],
-      candidates: [
-        {
-          rowId: 'row-1',
-          fseiban: 'ABC12345',
-          productNo: '123456',
-          fhincd: 'P-001',
-          fkojun: '10',
-          resourceCd: 'A01',
-          rowMinutes: 60,
-          overReductionMinutes: 60
-        }
-      ],
-      externalizationCandidates: []
-    });
-    const simulate = vi.fn().mockResolvedValue({
-      siteKey: '第2工場',
-      yearMonth: '2026-04',
-      mode: 'outsourcing',
-      beforeResources: [],
-      afterResources: [],
-      appliedRows: [],
-      skippedRows: [],
-      summary: {
-        selectedCount: 1,
-        appliedCount: 1,
-        skippedCount: 0,
-        totalReducedMinutes: 60,
-        remainingOverMinutes: 0
-      }
-    });
-
-    mockUseOverview.mockReturnValue({
-      data: {
-        siteKey: '第2工場',
-        yearMonth: '2026-04',
-        resources: [
-          {
-            resourceCd: 'A01',
-            requiredMinutes: 240,
-            availableMinutes: 180,
-            overMinutes: 60,
-            classCode: 'LINE-A'
-          }
-        ]
-      },
-      isFetching: false,
-      error: null
-    });
-    mockUseSuggestions.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseOutsourcingCandidates.mockReturnValue({
-      mutateAsync: loadCandidates,
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseOutsourcingSimulate.mockReturnValue({
-      mutateAsync: simulate,
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-
+  it('requests six months from the current month and shows the KPIs without counting unset capacity as over', () => {
     render(<ProductionScheduleLoadBalancingPage />);
 
-    fireEvent.click(screen.getByText(/工程行単位の外注候補（従来・折りたたみ）/));
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '外注候補を取得' }));
-    });
-    expect(loadCandidates).toHaveBeenCalledWith({
-      month: '2026-04',
-      maxCandidates: 100,
-      overResourceCds: ['A01']
-    });
-
-    expect(screen.getByRole('checkbox', { name: 'ABC12345 P-001 を外注候補に選択' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'ABC12345 P-001 を外注候補に選択' }));
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '選択行で累積シミュ' }));
-    });
-
-    expect(simulate).toHaveBeenCalledWith({
-      month: '2026-04',
-      overResourceCds: ['A01'],
-      selectedRowIds: ['row-1']
-    });
+    expect(mockUseWorkspace).toHaveBeenCalledWith({ fromMonth: '2026-09', toMonth: '2027-02' }, { enabled: true });
+    // 033 だけ超過（110H / 100H）。能力未設定の 091 は超過に数えない
+    expect(screen.getByText('超過資源').nextSibling).toHaveTextContent('1');
+    expect(screen.getByText('超過計').nextSibling).toHaveTextContent('10');
+    expect(screen.getByText('遅れ残').nextSibling).toHaveTextContent('12');
+    expect(screen.getByRole('button', { name: /能力未設定/ })).toHaveTextContent('1');
   });
 
-  it('推奨セット自動選定で plan と candidates を呼び simulate は省略する', async () => {
-    const plan = vi.fn().mockResolvedValue({
-      siteKey: '第2工場',
-      yearMonth: '2026-04',
-      mode: 'outsourcing',
-      strategy: 'max_over_reduction',
-      selectedCandidateIds: ['S001\u001fP001\u001fH001'],
-      beforeResources: [],
-      afterResources: [],
-      resolved: true,
-      remainingOverMinutes: 0,
-      totalReducedMinutes: 120,
-      totalOverReductionMinutes: 60
-    });
-    const loadCandidates = vi.fn().mockResolvedValue({
-      siteKey: '第2工場',
-      yearMonth: '2026-04',
-      mode: 'outsourcing',
-      resources: [],
-      candidates: [],
-      externalizationCandidates: [
-        {
-          candidateId: 'S001\u001fP001\u001fH001',
-          fseiban: 'S001',
-          productNo: 'P001',
-          fhincd: 'H001',
-          fhinmei: '部品A',
-          operations: [],
-          impactByResource: [],
-          totalReducedMinutes: 120,
-          totalOverReductionMinutes: 60,
-          resolvesOverResourceCds: ['A01']
-        }
-      ]
-    });
-    const simulate = vi.fn().mockResolvedValue({
-      siteKey: '第2工場',
-      yearMonth: '2026-04',
-      mode: 'outsourcing',
-      beforeResources: [],
-      afterResources: [],
-      appliedRows: [],
-      skippedRows: [],
-      summary: {
-        selectedCount: 1,
-        appliedCount: 1,
-        skippedCount: 0,
-        totalReducedMinutes: 120,
-        remainingOverMinutes: 0
-      }
-    });
-
-    mockUseOverview.mockReturnValue({
-      data: {
-        siteKey: '第2工場',
-        yearMonth: '2026-04',
-        resources: [
-          {
-            resourceCd: 'A01',
-            requiredMinutes: 240,
-            availableMinutes: 180,
-            overMinutes: 60,
-            classCode: 'LINE-A'
-          }
-        ]
-      },
-      isFetching: false,
-      error: null
-    });
-    mockUseSuggestions.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseOutsourcingPlan.mockReturnValue({
-      mutateAsync: plan,
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseOutsourcingCandidates.mockReturnValue({
-      mutateAsync: loadCandidates,
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseOutsourcingSimulate.mockReturnValue({
-      mutateAsync: simulate,
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-
+  it('opens the worst cell and levels it automatically by transferring to a resource with room', () => {
     render(<ProductionScheduleLoadBalancingPage />);
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '推奨セットを自動選定' }));
-    });
+    const detail = screen.getByTestId('load-balancing-cell-detail');
+    expect(within(detail).getByRole('heading')).toHaveTextContent('033');
+    expect(within(detail).getByRole('heading')).toHaveTextContent('2026/10');
 
-    expect(plan).toHaveBeenCalledWith({
-      month: '2026-04',
-      overResourceCds: ['A01'],
-      strategy: 'max_over_reduction'
-    });
-    expect(loadCandidates).toHaveBeenCalledWith({
-      month: '2026-04',
-      maxCandidates: 200,
-      overResourceCds: ['A01']
-    });
-    expect(simulate).not.toHaveBeenCalled();
-    expect(screen.getByText(/超過解消見込み/)).toBeInTheDocument();
+    fireEvent.click(within(detail).getByRole('button', { name: /超過分を自動で崩す/ }));
+
+    // 超過 10H に一番近い 30H の行 b を 034（余力 60H）へ移管
+    expect(within(detail).getByText('→ 034')).toBeInTheDocument();
+    const bar = screen.getByTestId('load-balancing-scenario-bar');
+    expect(bar).toHaveTextContent('移管 1 · 30H');
+    expect(bar).toHaveTextContent('10 → 0H');
   });
 
-  it('自動選定後に overview の同値再評価が入っても plan 表示を維持する', async () => {
-    const overviewState = {
-      data: {
-        siteKey: '第2工場',
-        yearMonth: '2026-04',
-        resources: [
-          {
-            resourceCd: 'A01',
-            requiredMinutes: 240,
-            availableMinutes: 180,
-            overMinutes: 60,
-            classCode: 'LINE-A'
-          }
-        ]
-      },
-      isFetching: false,
-      error: null
-    };
-    const plan = vi.fn().mockResolvedValue({
-      siteKey: '第2工場',
-      yearMonth: '2026-04',
-      mode: 'outsourcing',
-      strategy: 'max_over_reduction',
-      selectedCandidateIds: ['S001\u001fP001\u001fH001'],
-      beforeResources: [
-        { resourceCd: 'A01', requiredMinutes: 240, availableMinutes: 180, overMinutes: 60, classCode: 'LINE-A' }
-      ],
-      afterResources: [
-        { resourceCd: 'A01', requiredMinutes: 180, availableMinutes: 180, overMinutes: 0, classCode: 'LINE-A' }
-      ],
-      resolved: true,
-      remainingOverMinutes: 0,
-      totalReducedMinutes: 60,
-      totalOverReductionMinutes: 60
-    });
-    const loadCandidates = vi.fn().mockResolvedValue({
-      siteKey: '第2工場',
-      yearMonth: '2026-04',
-      mode: 'outsourcing',
-      resources: [],
-      candidates: [],
-      externalizationCandidates: [
-        {
-          candidateId: 'S001\u001fP001\u001fH001',
-          fseiban: 'S001',
-          productNo: 'P001',
-          fhincd: 'H001',
-          fhinmei: '部品A',
-          operations: [],
-          impactByResource: [],
-          totalReducedMinutes: 60,
-          totalOverReductionMinutes: 60,
-          resolvesOverResourceCds: ['A01']
-        }
-      ]
-    });
-
-    mockUseOverview.mockImplementation(() => overviewState);
-    mockUseSuggestions.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseOutsourcingPlan.mockReturnValue({
-      mutateAsync: plan,
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseOutsourcingCandidates.mockReturnValue({
-      mutateAsync: loadCandidates,
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseOutsourcingSimulate.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-
-    const { rerender } = render(<ProductionScheduleLoadBalancingPage />);
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '推奨セットを自動選定' }));
-    });
-
-    expect(screen.getByText(/超過解消見込み/)).toBeInTheDocument();
-    expect(screen.getByText('（外注シミュ結果）')).toBeInTheDocument();
-
-    overviewState.data = {
-      ...overviewState.data,
-      resources: [
-        {
-          resourceCd: 'A01',
-          requiredMinutes: 240,
-          availableMinutes: 180,
-          overMinutes: 60,
-          classCode: 'LINE-A'
-        }
-      ]
-    };
-
-    rerender(<ProductionScheduleLoadBalancingPage />);
-
-    expect(screen.getByText(/超過解消見込み/)).toBeInTheDocument();
-    expect(screen.getByText('（外注シミュ結果）')).toBeInTheDocument();
-  });
-
-  it('対象月変更時に既存サジェストをリセットする', () => {
-    const reset = vi.fn();
-
-    mockUseOverview.mockReturnValue({
-      data: { siteKey: '第2工場', yearMonth: '2026-04', resources: [] },
-      isFetching: false,
-      error: null
-    });
-    mockUseSuggestions.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset,
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-
+  it('removes an outsourced row from the cell and can undo it', () => {
     render(<ProductionScheduleLoadBalancingPage />);
-    expect(reset).toHaveBeenCalledTimes(1);
+    const detail = screen.getByTestId('load-balancing-cell-detail');
 
-    fireEvent.change(screen.getByLabelText('対象月'), { target: { value: '2026-05' } });
+    fireEvent.click(within(detail).getAllByRole('button', { name: '外注' })[0]!);
+    expect(screen.getByTestId('load-balancing-scenario-bar')).toHaveTextContent('外注 1 · 80H');
 
-    expect(reset).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button', { name: /1つ戻す/ }));
+    expect(screen.getByTestId('load-balancing-scenario-bar')).not.toHaveTextContent('外注');
   });
 
-  it('機種別月次負荷タブで machine-monthly-load を呼ぶ', () => {
-    mockUseOverview.mockReturnValue({
-      data: { siteKey: '第2工場', yearMonth: '2026-04', resources: [] },
-      isFetching: false,
-      error: null
-    });
-    mockUseSuggestions.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-
-    render(<ProductionScheduleLoadBalancingPage />);
-    fireEvent.click(screen.getByRole('tab', { name: '機種別月次負荷' }));
-
-    expect(screen.getByText('機種を選択するとグラフを表示します。')).toBeInTheDocument();
-    expect(mockUseMachineMonthly).toHaveBeenCalled();
-    const lastCall = mockUseMachineMonthly.mock.calls.at(-1);
-    expect(lastCall?.[0]).toMatchObject({
-      fromMonth: '2026-04',
-      toMonth: '2026-09'
-    });
-  });
-
-  it('着手日・平準化タブで start-date-leveling を呼ぶ', () => {
-    mockUseOverview.mockReturnValue({
-      data: { siteKey: '第2工場', yearMonth: '2026-04', resources: [] },
-      isFetching: false,
-      error: null
-    });
-    mockUseSuggestions.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-
-    render(<ProductionScheduleLoadBalancingPage />);
-    fireEvent.click(screen.getByRole('tab', { name: '着手日・平準化' }));
-
-    expect(screen.getByText(/行総分/)).toBeInTheDocument();
-    expect(mockUseStartDateLeveling).toHaveBeenCalled();
-    const lastCall = mockUseStartDateLeveling.mock.calls.at(-1);
-    expect(lastCall?.[0]).toMatchObject({
-      fromMonth: '2026-04',
-      toMonth: '2026-09',
-      bucket: 'month'
-    });
-  });
-
-  it('資源CD俯瞰タブに生産システム非一致の注記を表示する', () => {
-    mockUseOverview.mockReturnValue({
-      data: { siteKey: '第2工場', yearMonth: '2026-04', resources: [] },
-      isFetching: false,
-      error: null
-    });
-    mockUseSuggestions.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-
+  it('saves a capacity entered in hours as minutes for a resource without capacity', () => {
     render(<ProductionScheduleLoadBalancingPage />);
 
-    expect(screen.getByTestId('load-balancing-production-system-note')).toHaveTextContent(
-      /FSIGENSHOYOYMD軸/
+    fireEvent.click(screen.getAllByRole('button', { name: '091 の能力を編集' })[0]!);
+    const input = screen.getByRole('textbox', { name: '091 の月あたり能力（時間）' });
+    fireEvent.change(input, { target: { value: '120' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    expect(mockCapacityMutate).toHaveBeenCalledWith(
+      { resourceCd: '091', baseAvailableMinutes: 7200 },
+      expect.objectContaining({ onSuccess: expect.any(Function) })
     );
   });
 
-  it('機種別月次負荷タブに生産システム非一致の注記を表示する', () => {
-    mockUseOverview.mockReturnValue({
-      data: { siteKey: '第2工場', yearMonth: '2026-04', resources: [] },
-      isFetching: false,
-      error: null
-    });
-    mockUseSuggestions.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-
-    render(<ProductionScheduleLoadBalancingPage />);
-    fireEvent.click(screen.getByRole('tab', { name: '機種別月次負荷' }));
-
-    expect(screen.getByTestId('load-balancing-production-system-note')).toHaveTextContent(
-      /数値は一致しません/
-    );
-  });
-
-  it('機種別月次負荷タブの初回ロード中はスケルトンと注記を表示する', () => {
-    mockUseOverview.mockReturnValue({
-      data: { siteKey: '第2工場', yearMonth: '2026-04', resources: [] },
-      isFetching: false,
-      error: null
-    });
-    mockUseSuggestions.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-    mockUseMachineMonthly.mockReturnValue({
-      data: undefined,
-      isFetching: true,
-      error: null
-    });
-
-    render(<ProductionScheduleLoadBalancingPage />);
-    fireEvent.click(screen.getByRole('tab', { name: '機種別月次負荷' }));
-
-    expect(screen.getByText('集計を読み込み中…')).toBeInTheDocument();
-    expect(screen.getByText('初回集計には時間がかかる場合があります。')).toBeInTheDocument();
-  });
-
-  it('Mac代理時は targetDeviceScopeKey を overview と machine-monthly に渡す', () => {
-    mockIsMacEnvironment.mockReturnValue(true);
-    mockUseSiteDevices.mockReturnValue({
-      data: { deviceScopeKeys: ['pi4-kiosk-1'] }
-    });
-    mockUseOverview.mockReturnValue({
-      data: { siteKey: '第2工場', yearMonth: '2026-04', resources: [] },
-      isFetching: false,
-      error: null
-    });
-    mockUseSuggestions.mockReturnValue({
-      mutateAsync: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null
-    });
-
+  it('lists rows that could not be placed on any month', () => {
     render(<ProductionScheduleLoadBalancingPage />);
 
-    expect(mockUseOverview).toHaveBeenCalledWith(
-      expect.objectContaining({ targetDeviceScopeKey: 'pi4-kiosk-1' }),
-      expect.objectContaining({ enabled: true })
-    );
-
-    fireEvent.click(screen.getByRole('tab', { name: '機種別月次負荷' }));
-
-    expect(mockUseMachineMonthly).toHaveBeenCalledWith(
-      expect.objectContaining({ targetDeviceScopeKey: 'pi4-kiosk-1' }),
-      expect.objectContaining({ enabled: true })
-    );
+    fireEvent.click(screen.getByRole('button', { name: /未配分/ }));
+    expect(screen.getByTestId('load-balancing-unallocated')).toHaveTextContent('着手日なし');
   });
 });
