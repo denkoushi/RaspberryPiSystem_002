@@ -30,6 +30,7 @@ vi.mock('../../../../api/hooks', () => ({
   })),
   useInventoryItems: vi.fn(() => ({ data: [], isLoading: false })),
   useInventoryUnits: vi.fn(() => ({ data: [{ id: 'u1', name: '個' }, { id: 'u2', name: 'ケース' }] })),
+  useInventoryToolFieldOptions: vi.fn(() => ({ data: { maker: ['OSG', '京セラ'], toolName: ['エンドミル'], workMaterial: ['S45C'], toolSize: [] } })),
   useInventoryMutations: vi.fn(),
 }));
 vi.mock('../../../../hooks/useNfcStream', () => ({
@@ -99,6 +100,10 @@ describe('InventoryRegistrationTab', () => {
         itemTagUid: 'new-item-tag',
         initialQuantity: 7,
         unit: null,
+        maker: '',
+        toolName: '',
+        workMaterial: '',
+        toolSize: '',
       },
     });
     await waitFor(() => expect(screen.getByText('候補 #2 を登録しました')).toBeInTheDocument());
@@ -137,6 +142,10 @@ describe('InventoryRegistrationTab', () => {
         itemTagUid: undefined,
         initialQuantity: undefined,
         unit: 'ケース',
+        maker: '',
+        toolName: '',
+        workMaterial: '',
+        toolSize: '',
       },
     });
   });
@@ -218,6 +227,21 @@ describe('InventoryRegistrationTab', () => {
 
     expect(await screen.findByRole('button', { name: '30007_KSJP-55 南' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('前回この加工機で使った場所')).toBeInTheDocument();
+  });
+
+  it('fills tool fields by typing or from values already used', async () => {
+    render(<InventoryRegistrationTab accessPassword="2520" />);
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '工具寸法' }), { target: { value: 'φ10' } });
+
+    fireEvent.click(screen.getByRole('button', { name: '▼ 登録済みから選ぶ' }));
+    const popup = screen.getByRole('dialog', { name: '登録済みの値から選ぶ' });
+    fireEvent.click(within(within(popup).getByRole('group', { name: 'メーカー' })).getByRole('button', { name: 'OSG' }));
+    fireEvent.click(within(within(popup).getByRole('group', { name: '被削材' })).getByRole('button', { name: 'S45C' }));
+
+    expect(screen.getByRole('textbox', { name: 'メーカー' })).toHaveValue('OSG');
+    expect(screen.getByRole('textbox', { name: '被削材' })).toHaveValue('S45C');
+    expect(screen.getByRole('textbox', { name: '工具寸法' })).toHaveValue('φ10');
   });
 
   it('asks before deleting a candidate photo', () => {

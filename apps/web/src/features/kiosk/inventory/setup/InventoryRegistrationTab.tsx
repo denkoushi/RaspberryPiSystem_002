@@ -7,6 +7,7 @@ import {
   useInventoryItems,
   useInventoryLocations,
   useInventoryMutations,
+  useInventoryToolFieldOptions,
 } from '../../../../api/hooks';
 import { InventoryPhotoDialog } from '../../../../components/kiosk/InventoryPhotoDialog';
 import { AREA_DIRECTIONS, composeArea, DEFAULT_AREA_DIRECTION, splitArea } from '../areaNaming';
@@ -26,6 +27,10 @@ type Draft = {
   model: string;
   usage: string;
   unit: string | null;
+  maker: string;
+  toolName: string;
+  workMaterial: string;
+  toolSize: string;
   /** Shelf area chosen for this item, "<machine> <direction>". */
   area: string;
   shelfId: string;
@@ -49,6 +54,10 @@ function emptyDraft(candidate: InventoryImport | null): Draft {
     model: '',
     usage: '',
     unit: null,
+    maker: '',
+    toolName: '',
+    workMaterial: '',
+    toolSize: '',
     area: '',
     shelfId: '',
     drawerId: '',
@@ -68,7 +77,7 @@ export function registrationChecklist(draft: Draft, photoCount: number): CheckIt
       done: draft.mode === 'NEW_ITEM' || (draft.mode === 'EXISTING_ITEM' && Boolean(draft.itemId)),
       detail: draft.mode === 'NEW_ITEM' ? '新規' : draft.mode === 'EXISTING_ITEM' ? (draft.itemId ? draft.itemName : '追加先を選ぶ') : 'まだ',
     },
-    { id: 'names', label: '名前・単位', done: true, optional: true, detail: `単位 ${draft.unit || '個'}` },
+    { id: 'names', label: '名前・工具情報・単位', done: true, optional: true, detail: `単位 ${draft.unit || '個'}` },
   ];
   if (draft.mode === 'EXISTING_ITEM') return items;
   return [
@@ -107,12 +116,15 @@ function StepMark({ number, done, current }: { number: number; done: boolean; cu
   );
 }
 
-function Row({ id, number, title, done, current, alignTop, children }: { id: string; number: number; title: string; done: boolean; current: boolean; alignTop?: boolean; children: ReactNode }) {
+function Row({ id, number, title, done, current, alignTop, aside, children }: { id: string; number: number; title: string; done: boolean; current: boolean; alignTop?: boolean; aside?: ReactNode; children: ReactNode }) {
   return (
     <section id={`registration-${id}`} aria-label={title} className={`grid grid-cols-[150px_minmax(0,1fr)] gap-3 border-b border-slate-800 py-3 last:border-b-0 ${alignTop ? 'items-start' : 'items-center'}`}>
-      <div className={`flex items-center gap-2 ${alignTop ? 'pt-2.5' : ''}`}>
-        <StepMark number={number} done={done} current={current} />
-        <h3 className="text-base font-bold text-white">{title}</h3>
+      <div className={`flex flex-col gap-2 ${alignTop ? 'pt-2.5' : ''}`}>
+        <div className="flex items-center gap-2">
+          <StepMark number={number} done={done} current={current} />
+          <h3 className="text-base font-bold text-white">{title}</h3>
+        </div>
+        {aside}
       </div>
       <div className="min-w-0">{children}</div>
     </section>
@@ -135,6 +147,23 @@ function QuantityKeypad({ value, onChange }: { value: string; onChange: (next: s
   );
 }
 
+type TextFieldKey = 'name' | 'model' | 'usage' | 'maker' | 'toolName' | 'workMaterial' | 'toolSize';
+const TEXT_FIELDS: Array<{ key: TextFieldKey; label: string; aria?: string; wide: boolean }> = [
+  { key: 'name', label: '名前', aria: 'アイテム名', wide: true },
+  { key: 'model', label: '型式', wide: false },
+  { key: 'maker', label: 'メーカー', wide: true },
+  { key: 'toolName', label: '工具名', wide: false },
+  { key: 'workMaterial', label: '被削材', wide: true },
+  { key: 'toolSize', label: '工具寸法', wide: false },
+  { key: 'usage', label: '用途', wide: true },
+];
+const TOOL_OPTION_COLUMNS: Array<{ key: 'maker' | 'toolName' | 'workMaterial' | 'toolSize'; label: string }> = [
+  { key: 'maker', label: 'メーカー' },
+  { key: 'toolName', label: '工具名' },
+  { key: 'workMaterial', label: '被削材' },
+  { key: 'toolSize', label: '工具寸法' },
+];
+
 export function InventoryRegistrationTab({ accessPassword }: { accessPassword: string }) {
   const importsQuery = useInventoryImports(accessPassword);
   const messagesQuery = useInventoryImportMessages(accessPassword);
@@ -149,6 +178,8 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
   const [confirmDeletePhotoId, setConfirmDeletePhotoId] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const toolOptions = useInventoryToolFieldOptions(optionsOpen);
   const [manualUid, setManualUid] = useState('');
   const itemsQuery = useInventoryItems(draft.mode !== null);
   const waitingForTag = draft.mode === 'NEW_ITEM' && Boolean(draft.drawerId) && !draft.itemTagUid;
@@ -259,7 +290,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
     void mutations.deleteImportPhoto.mutateAsync({ payloadId: candidate.id, photoId }).catch((caught) => setError(errorText(caught)));
   };
   const chooseExisting = (item: InventoryItem) => {
-    update({ itemId: item.id, itemName: item.name, name: item.name, model: item.model ?? '', usage: item.usage ?? '', unit: item.unit });
+    update({ itemId: item.id, itemName: item.name, name: item.name, model: item.model ?? '', usage: item.usage ?? '', unit: item.unit, maker: item.maker ?? '', toolName: item.toolName ?? '', workMaterial: item.workMaterial ?? '', toolSize: item.toolSize ?? '' });
   };
 
   const register = async () => {
@@ -280,6 +311,10 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
           itemTagUid: isNew ? draft.itemTagUid || undefined : undefined,
           initialQuantity: isNew ? Number(draft.quantity || '0') : undefined,
           unit: draft.unit,
+          maker: draft.maker,
+          toolName: draft.toolName,
+          workMaterial: draft.workMaterial,
+          toolSize: draft.toolSize,
         },
       });
       setDone(`候補 #${candidate.sourceItemId} を登録しました`);
@@ -358,7 +393,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
           </div>
         </section>
 
-        <div className="flex min-h-0 flex-col overflow-y-auto rounded-lg border border-slate-700 bg-slate-900/70 px-4 py-1.5">
+        <div className="relative flex min-h-0 flex-col overflow-y-auto rounded-lg border border-slate-700 bg-slate-900/70 px-4 py-1.5">
           <Row id="mode" number={next()} title="新規か既存か" done={isDone('mode')} current={currentId === 'mode'}>
             <div className="flex flex-wrap gap-2">
               <button type="button" aria-pressed={draft.mode === 'NEW_ITEM'} className={draft.mode === 'NEW_ITEM' ? choiceOn : choiceOff} onClick={() => update({ mode: 'NEW_ITEM', area: '', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', itemId: '', itemName: '', name: `ItemlistRaspi ${candidate.sourceItemId}`, model: '', usage: '' })}>新規登録</button>
@@ -377,17 +412,51 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
             ) : null}
           </Row>
 
-          <Row id="names" number={next()} title="名前・単位" done={isDone('names')} current={false} alignTop>
-            <div className="grid grid-cols-[64px_auto] items-center justify-start gap-2">
-              <label htmlFor="registration-name" className="text-sm text-white/60">名前</label>
-              <input id="registration-name" aria-label="アイテム名" className={`${inputClass} w-[360px]`} value={draft.name} onChange={(event) => update({ name: event.target.value })} />
-              <label htmlFor="registration-model" className="text-sm text-white/60">型式</label>
-              <input id="registration-model" aria-label="型式" placeholder="省略可" className={`${inputClass} w-60`} value={draft.model} onChange={(event) => update({ model: event.target.value })} />
-              <label htmlFor="registration-usage" className="text-sm text-white/60">用途</label>
-              <input id="registration-usage" aria-label="用途" placeholder="省略可" className={`${inputClass} w-[360px]`} value={draft.usage} onChange={(event) => update({ usage: event.target.value })} />
-              <span className="text-sm text-white/60">単位</span>
-              <InventoryUnitPicker value={draft.unit} onChange={(unit) => update({ unit })} accessPassword={accessPassword} />
+          <Row
+            id="names"
+            number={next()}
+            title="名前・工具情報"
+            done={isDone('names')}
+            current={false}
+            alignTop
+            aside={<button type="button" aria-expanded={optionsOpen} className="h-9 self-start rounded-md border-2 border-sky-400 bg-sky-950/60 px-2.5 text-[13px] font-bold text-sky-100" onClick={() => setOptionsOpen((open) => !open)}>▼ 登録済みから選ぶ</button>}
+          >
+            <div className="grid grid-cols-[repeat(2,max-content)] gap-x-4 gap-y-2">
+              {TEXT_FIELDS.map((field) => (
+                <label key={field.key} className="flex items-center gap-1.5">
+                  <span className="w-16 text-sm text-white/60">{field.label}</span>
+                  <input aria-label={field.aria ?? field.label} placeholder={field.key === 'name' ? undefined : '省略可'} className={`${inputClass} ${field.wide ? 'w-[300px]' : 'w-[220px]'}`} value={draft[field.key]} onChange={(event) => update({ [field.key]: event.target.value } as Partial<Draft>)} />
+                </label>
+              ))}
             </div>
+            {optionsOpen ? (
+              <div role="dialog" aria-label="登録済みの値から選ぶ" className="absolute left-[150px] top-[120px] z-10 flex w-[760px] flex-col gap-2.5 rounded-xl border-2 border-sky-400 bg-slate-900 p-3.5 shadow-2xl">
+                <div className="flex items-center gap-2">
+                  <strong className="text-white">登録済みの値から選ぶ</strong>
+                  <span className="text-[13px] text-white/60">押した値がその欄に入ります</span>
+                  <span className="flex-1" />
+                  <button type="button" className="h-9 rounded-md border border-white/25 px-3 text-sm text-white" onClick={() => setOptionsOpen(false)}>閉じる</button>
+                </div>
+                <div className="flex gap-3">
+                  {TOOL_OPTION_COLUMNS.map((column) => {
+                    const values = toolOptions.data?.[column.key] ?? [];
+                    return (
+                      <div key={column.key} className="flex max-h-72 w-[170px] flex-col gap-1.5 overflow-y-auto" role="group" aria-label={column.label}>
+                        <span className="text-[13px] font-bold text-white/80">{column.label}</span>
+                        {values.length === 0 ? <span className="text-sm text-white/40">まだありません</span> : null}
+                        {values.map((value) => (
+                          <button key={value} type="button" aria-pressed={draft[column.key] === value} className={`h-9 rounded-md px-2.5 text-left text-sm text-white ${draft[column.key] === value ? 'border-2 border-sky-400 bg-sky-950/60' : 'border border-slate-700 bg-slate-950 hover:bg-slate-800'}`} onClick={() => update({ [column.key]: value } as Partial<Draft>)}>{value}</button>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </Row>
+
+          <Row id="unit" number={next()} title="単位" done current={false}>
+            <InventoryUnitPicker value={draft.unit} onChange={(unit) => update({ unit })} accessPassword={accessPassword} />
           </Row>
 
           {draft.mode !== 'EXISTING_ITEM' ? (

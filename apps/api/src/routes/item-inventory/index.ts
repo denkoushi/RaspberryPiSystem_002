@@ -147,6 +147,10 @@ const registerBody = z.object({
   initialQuantity: z.number().int().min(0).optional(),
   reviewNote: z.string().max(1000).optional(),
   unit: z.string().max(40).nullable().optional(),
+  maker: z.string().max(100).optional(),
+  toolName: z.string().max(100).optional(),
+  workMaterial: z.string().max(100).optional(),
+  toolSize: z.string().max(100).optional(),
 });
 
 const transactionBody = z.object({
@@ -177,6 +181,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { tag: await services.inventory.resolveTag(query.uid) };
   });
 
+  app.get('/item-inventory/tool-field-options', { preHandler: [read] }, async () => ({ options: await services.inventory.listToolFieldOptions() }));
   app.get('/item-inventory/units', { preHandler: [read] }, async () => ({ units: await services.inventory.listUnits() }));
   app.post('/item-inventory/units', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({ name: z.string().max(40) }).parse(request.body ?? {});

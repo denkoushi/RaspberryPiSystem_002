@@ -18,6 +18,10 @@ type InventoryItemFields = {
   note: string | null;
   /** Unit the item is counted in; null means 個. */
   unit: string | null;
+  maker?: string | null;
+  toolName?: string | null;
+  workMaterial?: string | null;
+  toolSize?: string | null;
   photos: InventoryPhoto[];
 };
 export type InventoryItemSummary = InventoryItemFields;
@@ -92,6 +96,15 @@ export async function getInventoryLocations() {
 }
 
 export type InventoryUnit = { id: string; name: string };
+
+export const INVENTORY_TOOL_FIELDS = ['maker', 'toolName', 'workMaterial', 'toolSize'] as const;
+export type InventoryToolField = (typeof INVENTORY_TOOL_FIELDS)[number];
+export type InventoryToolFieldOptions = Record<InventoryToolField, string[]>;
+
+export async function getInventoryToolFieldOptions() {
+  const { data } = await api.get<{ options: InventoryToolFieldOptions }>('/item-inventory/tool-field-options');
+  return data.options;
+}
 
 export async function getInventoryUnits() {
   const { data } = await api.get<{ units: InventoryUnit[] }>('/item-inventory/units');
@@ -197,6 +210,10 @@ export async function registerInventoryImport(id: string, input: {
   initialQuantity?: number;
   reviewNote?: string;
   unit?: string | null;
+  maker?: string;
+  toolName?: string;
+  workMaterial?: string;
+  toolSize?: string;
 }, accessPassword?: string) {
   const { data } = await api.post<{ result: unknown }>(`/item-inventory/imports/${id}/register`, input, {
     headers: inventorySettingsHeaders(accessPassword)

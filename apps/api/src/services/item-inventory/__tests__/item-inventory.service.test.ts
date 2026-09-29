@@ -613,3 +613,16 @@ describe('inventory area rename', () => {
     expect(tx.inventoryShelf.updateMany).not.toHaveBeenCalled();
   });
 });
+
+describe('inventory tool field options', () => {
+  it('lists distinct used values per tool field', async () => {
+    const findMany = vi.fn(async ({ select }: { select: Record<string, boolean> }) => {
+      const field = Object.keys(select)[0];
+      return field === 'maker' ? [{ maker: 'OSG' }, { maker: '京セラ' }] : [];
+    });
+    const service = new ItemInventoryService({ inventoryItem: { findMany } } as never);
+
+    await expect(service.listToolFieldOptions()).resolves.toEqual({ maker: ['OSG', '京セラ'], toolName: [], workMaterial: [], toolSize: [] });
+    expect(findMany.mock.calls[0][0]).toMatchObject({ where: { deletedAt: null, maker: { not: null } }, distinct: ['maker'] });
+  });
+});
