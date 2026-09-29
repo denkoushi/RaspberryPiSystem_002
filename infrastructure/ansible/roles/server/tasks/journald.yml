@@ -1,0 +1,24 @@
+---
+# The Pi 5 restarted at about 03:36 on 2026-09-30 and the journal of the previous boot was gone,
+# so the cause could not be read. Keep the system journal across reboots, capped so it cannot
+# crowd the disk. Runs in every release mode, because the standard release uses host-config-only.
+- name: Ensure the journald drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Keep the system journal across reboots
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/50-raspi-persistent.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (roles/server/tasks/journald.yml).
+      [Journal]
+      Storage=persistent
+      SystemMaxUse=200M
+  notify: restart journald
