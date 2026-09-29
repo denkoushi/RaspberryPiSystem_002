@@ -170,6 +170,32 @@ export async function replaceLoadBalancingCapacityBase(params: {
   return listLoadBalancingCapacityBase(siteKey);
 }
 
+/** キオスクから 1 資源だけ基準能力を保存する（他資源の行は触らない） */
+export async function upsertLoadBalancingCapacityBaseItem(params: {
+  siteKeyInput: string;
+  resourceCd: string;
+  baseAvailableMinutes: number;
+}): Promise<{ siteKey: string; items: LoadBalancingCapacityBaseItem[] }> {
+  const siteKey = normalizeSiteKey(params.siteKeyInput);
+  const resourceCd = normalizeResourceCd(params.resourceCd);
+  if (!resourceCd) {
+    throw new Error('資源CDを指定してください');
+  }
+  const key = {
+    csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+    siteKey,
+    resourceCd
+  };
+  const baseAvailableMinutes = Math.max(0, Math.floor(params.baseAvailableMinutes));
+  await prisma.productionScheduleResourceCapacityBase.upsert({
+    where: { csvDashboardId_siteKey_resourceCd: key },
+    create: { id: randomUUID(), ...key, baseAvailableMinutes },
+    update: { baseAvailableMinutes }
+  });
+
+  return listLoadBalancingCapacityBaseResolved(siteKey);
+}
+
 async function fetchLoadBalancingMonthlyCapacityItems(
   siteKey: string,
   yearMonth: string
