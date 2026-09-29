@@ -308,6 +308,8 @@ export function KioskItemInventoryPage() {
     <NfcPrompt label="アイテムタグ" tone={restockMode ? 'green' : 'sky'} sub={restockMode ? '補充' : undefined} />
   );
 
+  // The waiting screen keeps its prompt in the title row so the item cards get the space.
+  const waiting = panel === 'none' && !selectedCompartment;
   const headerButton = 'inline-flex h-11 items-center rounded-lg border border-white/25 bg-slate-800 px-4 text-[15px] font-bold text-white hover:bg-slate-700 disabled:opacity-40';
 
   return (
@@ -315,6 +317,17 @@ export function KioskItemInventoryPage() {
       <div className="flex flex-wrap items-center gap-2.5">
         <h1 className={kioskPageTitleClassName}>在庫操作</h1>
         {restockMode ? <span className="rounded-full bg-emerald-400 px-3 py-1 text-sm font-bold text-slate-950">補充モード</span> : null}
+        {waiting ? (
+          <>
+            <span className="w-2" />
+            {messageKind === 'info'
+              ? <NfcPrompt size="small" label="アイテムタグ" tone={restockMode ? 'green' : 'sky'} sub={restockMode ? '補充' : undefined} />
+              : <p role="status" aria-live="polite" className={`inline-flex h-11 items-center rounded-lg border-2 px-3.5 text-base font-bold ${messageKind === 'success' ? 'border-emerald-400 bg-emerald-900/70 text-white' : 'border-red-400 bg-red-950/70 text-red-100'}`}>{message}</p>}
+            <span className="rounded-md bg-slate-900/70 px-2 py-1 text-[13px] text-white/60">持出：アイテム→数量</span>
+            <span className="rounded-md bg-slate-900/70 px-2 py-1 text-[13px] text-white/60">補充：補充→アイテム→数量</span>
+            <span className="text-[13px] text-white/60">登録済み {itemCompartments.length}件・最近持ち出した順</span>
+          </>
+        ) : null}
         <span className="flex-1" />
         {panel === 'none' ? <button type="button" className={headerButton} onClick={() => setPanel('pick')} disabled={busy}>置き場所から選ぶ</button> : null}
         <button type="button" className={headerButton} onClick={reset} disabled={busy}>選択をリセット</button>
@@ -362,18 +375,7 @@ export function KioskItemInventoryPage() {
           </div>
         </div>
       ) : (
-        <>
-          <div className="flex flex-wrap items-center gap-4">
-            {prompt}
-            <div className="flex gap-2 text-sm text-white/60">
-              <span className="rounded-lg bg-slate-900/70 px-2.5 py-1.5">持出：アイテム → 数量</span>
-              <span className="rounded-lg bg-slate-900/70 px-2.5 py-1.5">補充：補充 → アイテム → 数量</span>
-            </div>
-            <span className="flex-1" />
-            <span className="text-sm text-white/60">登録済み {itemCompartments.length}件</span>
-          </div>
-          <InventoryItemGrid compartments={itemCompartments} onPick={pickCompartment} />
-        </>
+        <InventoryItemGrid compartments={itemCompartments} onPick={pickCompartment} />
       )}
     </section>
   );
