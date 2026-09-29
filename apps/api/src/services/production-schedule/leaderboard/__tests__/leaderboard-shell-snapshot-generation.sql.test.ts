@@ -14,22 +14,22 @@ describe('leaderboard-shell-snapshot-generation SQL', () => {
     expect(source).not.toContain('string_agg');
     expect(source).not.toContain('md5("rowData"::text)');
     expect(source).not.toContain('sum(hashtext("rowData"::text))');
+    expect(source).not.toContain('COUNT(*)');
+    expect(source).toContain('fetchFkojunstStatusMailGenerationRevision');
   });
 
-  it('keeps lightweight raw mail revision fields only for deriving the shell snapshot revision', () => {
+  it('reads the persisted raw mail revision instead of aggregating raw mail rows', () => {
     const source = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), '../leaderboard-shell-snapshot-generation.ts'),
       'utf8'
     );
 
-    expect(source).toContain('fkojunstStatusMailRowsLatestUpdatedAt');
     expect(source).toContain('rowsLatestUpdatedAt');
-    expect(source).toContain('SET LOCAL jit = off');
     expect(source).toContain('MAX(COALESCE("updatedAt", "createdAt"))');
     expect(source).toContain('fkojunstStatusMailRowsRevision');
-    expect(source).toContain('MAX(COALESCE(r."updatedAt", r."createdAt"))');
-    expect(source).toContain('ir."status" = \'COMPLETED\'::"ImportStatus"');
-    expect(source).toContain('ir."completedAt" IS NOT NULL');
+    expect(source).toContain('fetchFkojunstStatusMailGenerationRevision(prisma)');
+    expect(source).not.toContain('fkojunstStatusMailRowsCount');
+    expect(source).not.toContain('"CsvDashboardIngestRun"');
     const tokenObject = source.slice(
       source.indexOf('return JSON.stringify({'),
       source.indexOf('  });', source.indexOf('return JSON.stringify({'))

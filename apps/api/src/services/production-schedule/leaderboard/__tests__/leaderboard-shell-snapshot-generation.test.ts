@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../../lib/prisma.js', () => ({
   prisma: (() => {
@@ -15,7 +15,6 @@ import { prisma } from '../../../../lib/prisma.js';
 import {
   readGrindingPlanningBoardSnapshotGenerationTokenDetails,
   readLeaderboardShellSnapshotGenerationTokenDetails,
-  resetLeaderboardFkojunstStatusMailGenerationCache,
   resolveLeaderboardShellSnapshotGenerationToken
 } from '../leaderboard-shell-snapshot-generation.js';
 
@@ -89,13 +88,7 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
           resourceCodeMappingUpdatedAt: null
         }
       ] as never)
-      .mockResolvedValueOnce([
-        {
-          fkojunstStatusMailRowsCount: 0n,
-          fkojunstStatusMailRowsLatestCreatedAt: null,
-          fkojunstStatusMailRowsLatestUpdatedAt: null
-        }
-      ] as never);
+      .mockResolvedValueOnce([{ revision: 9214n }] as never);
 
     const details = await readLeaderboardShellSnapshotGenerationTokenDetails();
     const token = JSON.parse(details.generationToken) as Record<string, unknown>;
@@ -103,11 +96,9 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
     expect(token.orderSplitCount).toBe('2');
     expect(token.orderSplitAssignmentCount).toBe('3');
     expect(token.orderSplitUpdatedAt).toBe('2026-06-19T00:01:00.000Z');
-    expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything());
-    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
-      maxWait: 15_000,
-      timeout: 60_000
-    });
+    expect(details.fkojunstStatusMailRowsRevision).toBe('9214');
+    expect(token.fkojunstStatusMailRowsRevision).toBe('9214');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('invalidates when a CSV row changes in place without changing count or createdAt', async () => {
@@ -134,9 +125,9 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
 
     vi.mocked(prisma.$queryRaw)
       .mockResolvedValueOnce([{ ...row, rowsLatestUpdatedAt: new Date('2026-06-19T00:01:00.000Z') }] as never)
-      .mockResolvedValueOnce([{ fkojunstStatusMailRowsCount: 0n, fkojunstStatusMailRowsLatestCreatedAt: null, fkojunstStatusMailRowsLatestUpdatedAt: null }] as never)
+      .mockResolvedValueOnce([{ revision: 1n }] as never)
       .mockResolvedValueOnce([{ ...row, rowsLatestUpdatedAt: new Date('2026-06-19T00:02:00.000Z') }] as never)
-      .mockResolvedValueOnce([{ fkojunstStatusMailRowsCount: 0n, fkojunstStatusMailRowsLatestCreatedAt: null, fkojunstStatusMailRowsLatestUpdatedAt: null }] as never);
+      .mockResolvedValueOnce([{ revision: 1n }] as never);
 
     const before = await readLeaderboardShellSnapshotGenerationTokenDetails();
     const after = await readLeaderboardShellSnapshotGenerationTokenDetails();
@@ -186,95 +177,5 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
     expect(details.fkojunstStatusMailRowsRevision).toBe('37');
     expect(token.fkojunstStatusMailRowsRevision).toBe('37');
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('raw mail generation cache', () => {
-  const mainRow = {
-    rowsCount: 1n,
-    rowsLatestCreatedAt: null,
-    rowsLatestUpdatedAt: null,
-    orderAssignmentUpdatedAt: null,
-    orderSplitCount: 0n,
-    orderSplitUpdatedAt: null,
-    orderSplitAssignmentCount: 0n,
-    orderSplitAssignmentUpdatedAt: null,
-    globalRowRankUpdatedAt: null,
-    rowNoteUpdatedAt: null,
-    progressUpdatedAt: null,
-    externalCompletionUpdatedAt: null,
-    fkstUpdatedAt: null,
-    fkmailUpdatedAt: null,
-    orderSupplementUpdatedAt: null,
-    seibanDueDateUpdatedAt: null,
-    seibanProcessingDueDateUpdatedAt: null,
-    resourceCategoryUpdatedAt: null,
-    resourceCodeMappingUpdatedAt: null
-  };
-  const mailRow = (count: bigint) => ({
-    fkojunstStatusMailRowsCount: count,
-    fkojunstStatusMailRowsLatestCreatedAt: null,
-    fkojunstStatusMailRowsLatestUpdatedAt: null
-  });
-  let previousTtl: string | undefined;
-
-  beforeEach(() => {
-    previousTtl = process.env.LEADERBOARD_MAIL_REVISION_CACHE_TTL_MS;
-    process.env.LEADERBOARD_MAIL_REVISION_CACHE_TTL_MS = '60000';
-    resetLeaderboardFkojunstStatusMailGenerationCache();
-    vi.mocked(prisma.$queryRaw).mockReset();
-    vi.mocked(prisma.$transaction).mockClear();
-  });
-
-  afterEach(() => {
-    if (previousTtl === undefined) delete process.env.LEADERBOARD_MAIL_REVISION_CACHE_TTL_MS;
-    else process.env.LEADERBOARD_MAIL_REVISION_CACHE_TTL_MS = previousTtl;
-    resetLeaderboardFkojunstStatusMailGenerationCache();
-  });
-
-  it('reads the heavy raw mail stats once within the TTL but main stats every time', async () => {
-    vi.mocked(prisma.$queryRaw)
-      .mockResolvedValueOnce([mainRow] as never)
-      .mockResolvedValueOnce([mailRow(5n)] as never)
-      .mockResolvedValueOnce([{ ...mainRow, orderAssignmentUpdatedAt: new Date('2026-09-29T00:00:00.000Z') }] as never);
-
-    const first = await readLeaderboardShellSnapshotGenerationTokenDetails();
-    const second = await readLeaderboardShellSnapshotGenerationTokenDetails();
-
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
-    expect(second.fkojunstStatusMailRowsRevision).toBe(first.fkojunstStatusMailRowsRevision);
-    expect(second.generationToken).not.toBe(first.generationToken);
-  });
-
-  it('shares one raw mail query between concurrent callers', async () => {
-    vi.mocked(prisma.$queryRaw).mockImplementation((async (query: { strings?: readonly string[] }) => {
-      const text = query.strings?.join('') ?? '';
-      return text.includes('fkojunstStatusMailRowsCount') ? [mailRow(7n)] : [mainRow];
-    }) as never);
-
-    const [a, b] = await Promise.all([
-      readLeaderboardShellSnapshotGenerationTokenDetails(),
-      readLeaderboardShellSnapshotGenerationTokenDetails()
-    ]);
-
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(a.fkojunstStatusMailRowsRevision).toBe(b.fkojunstStatusMailRowsRevision);
-  });
-
-  it('re-reads raw mail stats after the ingest reset', async () => {
-    vi.mocked(prisma.$queryRaw)
-      .mockResolvedValueOnce([mainRow] as never)
-      .mockResolvedValueOnce([mailRow(5n)] as never)
-      .mockResolvedValueOnce([mainRow] as never)
-      .mockResolvedValueOnce([mailRow(6n)] as never);
-
-    const before = await readLeaderboardShellSnapshotGenerationTokenDetails();
-    resetLeaderboardFkojunstStatusMailGenerationCache();
-    const after = await readLeaderboardShellSnapshotGenerationTokenDetails();
-
-    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
-    expect(before.fkojunstStatusMailRowsRevision).toBe('5::');
-    expect(after.fkojunstStatusMailRowsRevision).toBe('6::');
   });
 });
