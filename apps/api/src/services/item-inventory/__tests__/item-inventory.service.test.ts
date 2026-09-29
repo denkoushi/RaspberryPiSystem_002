@@ -73,6 +73,7 @@ describe('ItemInventoryService safety boundaries', () => {
     };
     const db = {
       inventoryItem: { findMany: vi.fn().mockResolvedValue([{ ...item, compartments: [compartment] }]) },
+      inventoryTransaction: { groupBy: vi.fn().mockResolvedValue([]) },
       inventoryShelf: {
         findMany: vi.fn().mockResolvedValue([{
           id: 'shelf-1',
@@ -624,5 +625,28 @@ describe('inventory tool field options', () => {
 
     await expect(service.listToolFieldOptions()).resolves.toEqual({ maker: ['OSG', '京セラ'], toolName: [], workMaterial: [], toolSize: [] });
     expect(findMany.mock.calls[0][0]).toMatchObject({ where: { deletedAt: null, maker: { not: null } }, distinct: ['maker'] });
+  });
+});
+
+describe('inventory item list order data', () => {
+  it('adds when each drawer was last issued', async () => {
+    const db = {
+      inventoryItem: {
+        findMany: vi.fn().mockResolvedValue([{
+          id: 'item-1', itemCode: 'RI-1', name: 'A', model: null, usage: null, category: null, area: null, note: null, unit: null, photos: [],
+          compartments: [
+            { id: 'c-1', stockQuantity: 1, drawer: { drawerNumber: 1, shelf: { area: 'X 北', shelfNumber: 1 } }, itemTag: null },
+            { id: 'c-2', stockQuantity: 2, drawer: { drawerNumber: 2, shelf: { area: 'X 北', shelfNumber: 1 } }, itemTag: null },
+          ],
+        }]),
+      },
+      inventoryTransaction: { groupBy: vi.fn().mockResolvedValue([{ compartmentId: 'c-2', _max: { createdAt: new Date('2026-09-29T01:00:00Z') } }]) },
+    };
+    const service = new ItemInventoryService(db as never);
+
+    const [item] = await service.listItems();
+
+    expect(item.compartments.map((compartment) => compartment.lastIssuedAt)).toEqual([null, '2026-09-29T01:00:00.000Z']);
+    expect(db.inventoryTransaction.groupBy.mock.calls[0][0].where.action).toBe('ISSUE');
   });
 });

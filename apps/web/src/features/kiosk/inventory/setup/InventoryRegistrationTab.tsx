@@ -105,7 +105,7 @@ const directionOff = 'h-11 w-14 rounded-lg border border-white/25 bg-slate-800 t
 const addClass = 'h-11 rounded-lg border border-dashed border-white/40 px-3 text-sm text-white/85 hover:bg-slate-800 disabled:opacity-40';
 const smallButton = 'h-9 rounded-md border border-white/25 bg-slate-800 px-3 text-sm text-white hover:bg-slate-700 disabled:opacity-40';
 const inputClass = 'h-10 rounded-md border border-white/25 bg-slate-950 px-2.5 text-base text-white focus:border-sky-400 focus:outline-none';
-const keyClass = 'h-11 w-[60px] rounded-md border border-white/15 bg-slate-800 text-lg font-bold text-white hover:bg-slate-700';
+const keyClass = 'h-10 w-[52px] rounded-md border border-white/15 bg-slate-800 text-lg font-bold text-white hover:bg-slate-700';
 
 function StepMark({ number, done, current }: { number: number; done: boolean; current: boolean }) {
   if (done) return <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-sm font-bold text-white" aria-hidden="true">✓</span>;
@@ -137,7 +137,7 @@ function QuantityKeypad({ value, onChange }: { value: string; onChange: (next: s
     onChange(`${value}${digit}`.replace(/^0+(?=\d)/, ''));
   };
   return (
-    <div role="group" aria-label="最初の数のテンキー" className="grid grid-cols-[repeat(3,60px)] gap-1.5">
+    <div role="group" aria-label="最初の数のテンキー" className="grid grid-cols-[repeat(6,52px)] gap-1.5">
       {['7', '8', '9', '4', '5', '6', '1', '2', '3', '0'].map((digit) => (
         <button key={digit} type="button" className={keyClass} onClick={() => press(digit)}>{digit}</button>
       ))}
@@ -359,14 +359,18 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
           <div className="flex items-center gap-2">
             <StepMark number={1} done={isDone('photos')} current={currentId === 'photos'} />
             <h3 className="text-base font-bold text-white">写真の確認</h3>
-            <span className="truncate text-sm text-white/60">加工機 {candidate.area} ・ 分類 {candidate.category ?? '-'} ・ メモ {candidate.note ?? '-'}</span>
+            <span className="min-w-0 flex-1 truncate text-sm text-white/60">加工機 {candidate.area} ・ 分類 {candidate.category ?? '-'} ・ メモ {candidate.note ?? '-'}</span>
+            <button type="button" aria-pressed={draft.photosChecked} className={draft.photosChecked ? 'h-10 shrink-0 rounded-lg border-2 border-emerald-500 bg-emerald-950 px-3.5 text-[15px] font-bold text-emerald-100' : 'h-10 shrink-0 rounded-lg border border-white/25 bg-slate-800 px-3.5 text-[15px] font-bold text-white hover:bg-slate-700'} onClick={() => update({ photosChecked: !draft.photosChecked })}>
+              {draft.photosChecked ? '✓ 写真を確認した' : '写真を確認した'}
+            </button>
           </div>
           {candidate.photos.length === 0 ? <p className="text-sm text-white/60">写真はありません</p> : null}
-          <div className="grid min-h-0 grid-cols-2 content-start gap-2.5 overflow-y-auto">
+          {/* Two rows fill the pane; more than four photos scroll inside it. */}
+          <div className="grid min-h-0 flex-1 auto-rows-[calc(50%-0.3125rem)] grid-cols-2 gap-2.5 overflow-y-auto">
             {candidate.photos.map((photo, index) => (
-              <figure key={photo.id} className="rounded-lg border border-slate-700 bg-slate-950 p-1.5">
-                <button type="button" className="block w-full" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.filename })}>
-                  <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-60 w-full rounded object-cover" />
+              <figure key={photo.id} className="flex min-h-0 flex-col rounded-lg border border-slate-700 bg-slate-950 p-1.5">
+                <button type="button" className="block min-h-0 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.filename })}>
+                  <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-full w-full rounded object-cover" />
                 </button>
                 {confirmDeletePhotoId === photo.id ? (
                   <div className="mt-1.5 flex items-center gap-1.5">
@@ -384,12 +388,6 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
                 )}
               </figure>
             ))}
-          </div>
-          <div className="mt-auto flex items-center gap-2.5">
-            <button type="button" aria-pressed={draft.photosChecked} className={draft.photosChecked ? `${choiceBase} border-2 border-emerald-500 bg-emerald-950 text-emerald-100` : choiceOff} onClick={() => update({ photosChecked: !draft.photosChecked })}>
-              {draft.photosChecked ? '✓ 写真を確認した' : '写真を確認した'}
-            </button>
-            <span className="text-sm text-white/60">写真タップで拡大、拡大した写真をタップで戻る</span>
           </div>
         </section>
 

@@ -198,9 +198,19 @@ export class ItemInventoryService {
         },
       },
     });
+    // The kiosk lists drawers most recently issued first.
+    const lastIssues = await this.db.inventoryTransaction.groupBy({
+      by: ['compartmentId'],
+      where: { action: InventoryTransactionAction.ISSUE, compartmentId: { not: null } },
+      _max: { createdAt: true },
+    });
+    const lastIssuedAt = new Map(lastIssues.map((row) => [row.compartmentId, row._max.createdAt]));
     return items.map(({ compartments, ...item }) => ({
       ...item,
-      compartments: compartments.map((compartment) => locationDto({ ...compartment, inventoryItem: item })),
+      compartments: compartments.map((compartment) => ({
+        ...locationDto({ ...compartment, inventoryItem: item }),
+        lastIssuedAt: lastIssuedAt.get(compartment.id)?.toISOString() ?? null,
+      })),
     }));
   }
 
