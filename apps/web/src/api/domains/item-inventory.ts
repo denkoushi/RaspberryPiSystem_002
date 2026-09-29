@@ -32,6 +32,8 @@ export type InventoryCompartment = {
   drawerNumber: number;
   itemTagUid: string | null;
   item: InventoryItemSummary;
+  /** When this drawer was last issued (item list only); null if never. */
+  lastIssuedAt?: string | null;
 };
 export type InventoryTag = {
   id: string;
