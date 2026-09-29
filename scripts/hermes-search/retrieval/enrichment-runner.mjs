@@ -77,10 +77,13 @@ export async function runEnrichmentBatch({
   const started = performance.now();
   const loaded = selectRecords(records);
   const allowlist = settings.idAllowlist ? await readIdAllowlist(settings.idAllowlist) : null;
-  const selected = allowlist ? loaded.filter((record) => allowlist.has(record.id)) : loaded;
+  // The id list sets the order, not the scope: listed records (the pilot subset) go first and every
+  // other record follows, so records added after the list was written are enriched too.
+  const listed = allowlist ? loaded.filter((record) => allowlist.has(record.id)) : [];
+  const selected = allowlist ? [...listed, ...loaded.filter((record) => !allowlist.has(record.id))] : loaded;
   const status = emptyStatus(settings, selected.length);
   status.allowlistCount = allowlist ? allowlist.size : 0;
-  status.allowlistMatched = allowlist ? selected.length : 0;
+  status.allowlistMatched = allowlist ? listed.length : 0;
   if (!settings.enabled) {
     status.reason = 'disabled';
     await publish(statusPath, status);
