@@ -5,7 +5,7 @@ set -euo pipefail
 # download and first-launch PLE generation are separate from the normal blue
 # start path so a profile start can remain fail-fast and never fetch weights.
 
-readonly DEFAULT_UPSTREAM_REVISION="d03809008834124e80223c3482f2ddb59577a48f"
+readonly DEFAULT_UPSTREAM_REVISION="b8439110eec0230facbe4ddf0dffe01b8f769be0"
 readonly DEFAULT_MODEL_REVISION="925d7be6c14c6c9442ef83e8f05b5a3c39304f69"
 readonly MODEL_ID="Mia-AiLab/Qwen3.8-Flash-Next-NVFP4"
 readonly MODEL_SIZE_GIB="99"
@@ -173,6 +173,7 @@ if [[ "${ACTION}" == "prepare-ple" ]]; then
     cd "${RECIPE_DIR}"
     env \
     ABLIT="0" \
+    BIND="127.0.0.1" \
     HF_HOME="${HF_CACHE_DIR}" \
     TP1_MODEL_ID="${MODEL_ID}" \
     IMAGE="${IMAGE}" \
@@ -187,6 +188,8 @@ if [[ "${ACTION}" == "prepare-ple" ]]; then
     MTP_NUM_SPECULATIVE_TOKENS="3" \
     MAMBA_SSM_CACHE_DTYPE="bfloat16" \
     MTP_DRAFT_VOCAB="files/draft_vocab_en_code_47k.txt" \
+    MTP_DISABLE_BLOCK_DROP="1" \
+    CHAT_TEMPLATE="" \
     PLE_OFFLOAD="true" \
     HOST_RESERVE_GIB="26" \
     KV_TARGET_GIB="16" \

@@ -7,7 +7,7 @@ set -euo pipefail
 # the system-prod blue endpoint and cache paths.
 
 readonly UPSTREAM_REPO_URL="https://github.com/MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark"
-readonly DEFAULT_UPSTREAM_REVISION="d03809008834124e80223c3482f2ddb59577a48f"
+readonly DEFAULT_UPSTREAM_REVISION="b8439110eec0230facbe4ddf0dffe01b8f769be0"
 readonly DEFAULT_MODEL_REVISION="925d7be6c14c6c9442ef83e8f05b5a3c39304f69"
 readonly DEFAULT_IMAGE="vllm/vllm-openai:qwen38-flash-next@sha256:3b0e188ffceb3d07e09c3cb5215433a0020eacf02d7f882ed3a8bfd15454477e"
 readonly MODEL_ID="Mia-AiLab/Qwen3.8-Flash-Next-NVFP4"
@@ -110,9 +110,10 @@ fi
 PLE_CACHE_DIR="${HOME}/.cache/vllm/ple_cache/Mia-AiLab--Qwen3.8-Flash-Next-NVFP4"
 echo "Qwen3.8 Flash adapter: local model cache=${MODEL_DIR} persistent PLE cache=${PLE_CACHE_DIR}" >&2
 
-# The pinned upstream launcher uses host networking and binds 0.0.0.0. Keep
-# its model/PLE/container/watchdog behavior while adapting only that fixed bind
-# line to the existing localhost-only blue endpoint; readiness returns through
+# The pinned upstream launcher uses host networking and binds $BIND (default
+# 0.0.0.0). Keep its model/PLE/container/watchdog behavior while fixing only
+# that bind line to the existing localhost-only blue endpoint, independent of
+# BIND in the remote .env; readiness returns through
 # the existing control path. The source is copied into the recipe directory so
 # its SCRIPT_DIR-relative paths still resolve correctly.
 BOUNDARY_START=""
@@ -132,7 +133,7 @@ source_path = Path(sys.argv[1])
 generated_path = Path(sys.argv[2])
 source = source_path.read_text(encoding='utf-8')
 backslash = chr(92)
-old_host = f'    --host 0.0.0.0 {backslash}{backslash}\n'
+old_host = f'    --host $BIND {backslash}{backslash}\n'
 new_host = f'    --host 127.0.0.1 {backslash}{backslash}\n'
 readiness_marker = 'info "Loading weights (~3-4 min). Following logs until ready..."\n'
 if source.count(old_host) != 1:
@@ -158,6 +159,7 @@ EXTRA_DOCKER_ARGS+="-e VLLM_USE_V2_MODEL_RUNNER=1"
 cd "${RECIPE_DIR}"
 if env \
   ABLIT="0" \
+  BIND="127.0.0.1" \
   TP1_MODEL_ID="${MODEL_ID}" \
   TP1_CONTAINER_NAME="${CONTAINER_NAME}" \
   IMAGE="${IMAGE}" \
@@ -172,6 +174,8 @@ if env \
   MTP_NUM_SPECULATIVE_TOKENS="3" \
   MAMBA_SSM_CACHE_DTYPE="bfloat16" \
   MTP_DRAFT_VOCAB="files/draft_vocab_en_code_47k.txt" \
+  MTP_DISABLE_BLOCK_DROP="1" \
+  CHAT_TEMPLATE="" \
   PLE_OFFLOAD="true" \
   HOST_RESERVE_GIB="26" \
   KV_TARGET_GIB="16" \
