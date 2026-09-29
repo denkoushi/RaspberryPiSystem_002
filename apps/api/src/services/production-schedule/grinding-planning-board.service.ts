@@ -18,6 +18,7 @@ import type {
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
+import { createGrindingPlanningBoardPerformance } from './grinding-planning-board-performance.js';
 import type { LeaderboardShellSnapshotStore } from './leaderboard/leaderboard-shell-snapshot.store.js';
 import { createInMemoryLeaderboardShellSnapshotStore } from './leaderboard/leaderboard-shell-snapshot.store.js';
 import { chunkLeaderboardRowIdsForHydrate } from './leaderboard/leaderboard-display-row-scope.js';
@@ -681,8 +682,9 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
   // Capture the state returned by the ensure/read and then compare it with the
   // state fields in the generation token. A final token after the source/load
   // work still rejects CSV, state, or override updates during the request.
-  const stateForRead = await getOrCreateState(params.siteKey, [], prisma);
-  const generationBeforeRead = await readPlanningSnapshotGenerationDetails(params.siteKey);
+  const perf = createGrindingPlanningBoardPerformance('grinding-planning-board');
+  const stateForRead = await perf.measure('state', () => getOrCreateState(params.siteKey, [], prisma));
+  const generationBeforeRead = await perf.measure('generationBefore', () => readPlanningSnapshotGenerationDetails(params.siteKey));
   if (!isPlanningStateAlignedWithGeneration(stateForRead, generationBeforeRead)) {
     throw new ApiError(409, '一覧の元データが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
   }
@@ -714,7 +716,7 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
   if (snapshotId) {
     const snapshot = store.get(snapshotId);
     const sameScope = snapshot != null && snapshot.siteKey === params.siteKey && snapshot.locationKey === params.siteKey && snapshot.filterFingerprint === filterFingerprint;
-    const generation = await readPlanningSnapshotGenerationToken(params.siteKey);
+    const generation = await perf.measure('generationSnapshot', () => readPlanningSnapshotGenerationToken(params.siteKey));
     if (!snapshot || !sameScope || snapshot.generationToken !== generationBeforeRead.generationToken || snapshot.generationToken !== generation || snapshot.partialOrdering || !isPlanningSnapshotPayload(snapshot.payload)) {
       // A binding mismatch may refer to another terminal/site/filter. Do not
       // let one caller delete a valid snapshot owned by that scope.
@@ -724,25 +726,25 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
     orderedIds = snapshot.orderedRowIds;
     payload = snapshot.payload;
   } else {
-    const source = await readPlanningSource({
+    const source = await perf.measure('source', () => readPlanningSource({
       siteKey: params.siteKey,
       category: params.category,
       fseibans: selected,
       leaderboardGenerationToken: generationBeforeRead.leaderboardGenerationToken
-    });
-    const names = await resolveSeibanMachineDisplayNamesBatched(order);
-    const projection = await projectCurrentBoard({ client: prisma, siteKey: params.siteKey, category: params.category, view: params.view, state: stateForRead, selectedFseibans: new Set(selected), machineNames: new Map(Object.entries(names.machineNames)), source });
+    }));
+    const names = await perf.measure('machineNames', () => resolveSeibanMachineDisplayNamesBatched(order));
+    const projection = await perf.measure('projection', () => projectCurrentBoard({ client: prisma, siteKey: params.siteKey, category: params.category, view: params.view, state: stateForRead, selectedFseibans: new Set(selected), machineNames: new Map(Object.entries(names.machineNames)), source }));
     const filtered = completionFilter === 'complete' ? projection.items.filter((item) => item.isCompleted) : completionFilter === 'incomplete' ? projection.items.filter((item) => !item.isCompleted) : projection.items;
-    const loadSummary = await readGrindingPlanningBoardLoadSummary({
+    const loadSummary = await perf.measure('loadSummary', () => readGrindingPlanningBoardLoadSummary({
       client: prisma,
       leaderboardMaterializedBaseWhere: source.baseWhere,
       siteKey: params.siteKey,
       category: params.category,
       splitEnabled: isProductionScheduleOrderSplitEnabled(),
       isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, projection.policy)
-    });
-    const resources = await readPlanningResourceCandidates(prisma, params.category, projection.policy);
-    const generation = await readPlanningSnapshotGenerationToken(params.siteKey);
+    }));
+    const resources = await perf.measure('resources', () => readPlanningResourceCandidates(prisma, params.category, projection.policy));
+    const generation = await perf.measure('generationAfter', () => readPlanningSnapshotGenerationToken(params.siteKey));
     if (generation !== generationBeforeRead.generationToken) {
       throw new ApiError(409, '一覧の元データが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
     }
@@ -770,6 +772,7 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
   const cursor = Math.max(params.cursor ?? 0, 0);
   const pageSize = Math.min(Math.max(params.pageSize ?? DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
   const page = orderedItems.slice(cursor, cursor + pageSize);
+  perf.flush({ snapshotReused: Boolean(params.snapshotId), itemCount: orderedItems.length, fseibanCount: selected.length });
   return {
     siteKey: params.siteKey,
     category: params.category,
