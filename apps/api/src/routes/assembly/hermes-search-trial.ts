@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authorizeKioskClientKeyOrJwtRoles } from '../../lib/kiosk-document-auth.js';
 import { HermesSearchTrialService } from '../../services/assembly/hermes-search-trial.service.js';
+import { createReceiptLog, type ReceiptLog } from '../../services/assembly/hermes-search-receipt-log.js';
 
 const SAFE_DIAGNOSTIC_STAGES = new Set(['jev_query', 'worker_request']);
 const SAFE_DIAGNOSTIC_EXCEPTION_TYPES = new Set(['TypeSafeDirectError', 'AbortError', 'RangeError', 'ReferenceError', 'SyntaxError', 'TypeError', 'Error']);
@@ -35,7 +36,11 @@ function safeWorkerFailureDiagnostic(error: unknown) {
   return { stage: diagnostic.stage, exceptionType: diagnostic.exceptionType, failureCode: 'unclassified' };
 }
 
-export async function registerHermesSearchTrialRoutes(app: FastifyInstance, service = new HermesSearchTrialService()) {
+export async function registerHermesSearchTrialRoutes(
+  app: FastifyInstance,
+  service = new HermesSearchTrialService(),
+  receiptLog: ReceiptLog = createReceiptLog(),
+) {
   const preHandler = async (request: Parameters<typeof authorizeKioskClientKeyOrJwtRoles>[0], reply: Parameters<typeof authorizeKioskClientKeyOrJwtRoles>[1]) => {
     await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN','MANAGER','VIEWER']);
   };
@@ -56,6 +61,12 @@ export async function registerHermesSearchTrialRoutes(app: FastifyInstance, serv
         // is not included; the kiosk response never carries the receipt.
         const requestId = /^[A-Za-z0-9_-]{1,64}$/u.test(request.id) ? request.id : undefined;
         app.log.info({ requestId, hermesReceipt: { ...receipt, question } }, 'Hermes search receipt');
+        void receiptLog.append({
+          requestId: requestId ?? null,
+          sessionId: sessionId ?? null,
+          recordIds: Array.isArray(answer.recordIds) ? answer.recordIds : [],
+          hermesReceipt: { ...receipt, question },
+        });
       }
       return answer;
     }
