@@ -131,6 +131,7 @@ describe('start-post-listen-schedulers naming contract', () => {
       'hermes-knowledge',
       'signage-render',
       'business-hermes-nightly',
+      'fkojunst-mail-superseded-prune',
       'file-storage-integrity-backfill',
       'backup',
       'csv-import',
