@@ -20,6 +20,7 @@ After this plan, the DGX does the heavy work at night and stays fast in the day.
 - [x] (2026-09-29) Milestone 1 follow-up deployed (#1533, 548ab640).
 - [ ] Milestone 2: GPU query embedding on the DGX (deferred 2026-09-29, see Decision Log).
 - [ ] Milestone 2b: find and fix the slow request path from the Pi 5 to the DGX; query budget raised to 1,500 ms (2026-09-29).
+- [x] (2026-09-29) Milestone 3 first step: the enrichment id list became an order, so new records are enriched too.
 - [ ] Milestone 3: one night flow for every source.
 - [ ] Milestone 4: links between sources.
 - [ ] Milestone 5: adding a source without new night code.

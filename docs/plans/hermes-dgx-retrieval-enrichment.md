@@ -27,6 +27,8 @@ The runner starts only after the retrieval worker is ready. When `HERMES_RETRIEV
 
 The third night (2026-09-27) stored 997 of 1,000 records; 3 were still `truncated` at 1,200 tokens and were set aside. It also showed that rows with aliases (schema v2) were treated as stale and enriched again on every pass, which dropped v2 rows from 134 to 4. Both schema versions are now current. The full corpus (8,242 records) runs next with concurrency 2, through an allowlist file of every record id.
 
+Since 2026-09-29 the id list (`HERMES_RETRIEVAL_ENRICHMENT_IDS`) sets the order, not the scope: listed records are enriched first and every other record follows. Before, only listed records were enriched, so records registered after the 8,242-id list of 2026-09-28 would never have been prepared.
+
 The retrieval worker, when that file exists, sets `record.enrichment = { summary, queries, tags }`. `tags` are the flattened facet values plus any kept alias alternatives.
 
 ## Validation
