@@ -12,6 +12,13 @@ const LEADERBOARD_GENERATION_TRANSACTION_OPTIONS = Object.freeze({
   timeout: 60_000
 });
 
+/**
+ * raw mail の COUNT/MAX は全 mail 行を読むため重い（本番で十数秒）。
+ * 取り込み完了時に {@link resetLeaderboardFkojunstStatusMailGenerationCache} で失効させ、
+ * 別プロセス（signage worker 等）向けに TTL でも失効させる。
+ */
+const DEFAULT_FKOJUNST_STATUS_MAIL_GENERATION_CACHE_TTL_MS = 120_000;
+
 type SnapshotMainAndAuxGenerationRow = {
   rowsCount: bigint;
   rowsLatestCreatedAt: Date | null;
@@ -70,6 +77,74 @@ function resolveFkojunstStatusMailRowsRevision(params: {
     normalizeDate(params.row?.fkojunstStatusMailRowsLatestCreatedAt),
     normalizeDate(params.row?.fkojunstStatusMailRowsLatestUpdatedAt)
   ].join(':');
+}
+
+function resolveFkojunstStatusMailGenerationCacheTtlMs(): number {
+  const raw = process.env.LEADERBOARD_MAIL_REVISION_CACHE_TTL_MS?.trim();
+  if (raw == null || raw.length === 0) return DEFAULT_FKOJUNST_STATUS_MAIL_GENERATION_CACHE_TTL_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_FKOJUNST_STATUS_MAIL_GENERATION_CACHE_TTL_MS;
+}
+
+let mailGenerationCache: { rows: SnapshotMailGenerationRow[]; expiresAt: number } | undefined;
+let mailGenerationInFlight: Promise<SnapshotMailGenerationRow[]> | undefined;
+let mailGenerationEpoch = 0;
+
+/** FKOJUNST_Status mail の取り込み・同期完了後に呼ぶ。次回の世代トークンで raw mail を読み直す。 */
+export function resetLeaderboardFkojunstStatusMailGenerationCache(): void {
+  mailGenerationEpoch += 1;
+  mailGenerationCache = undefined;
+  mailGenerationInFlight = undefined;
+}
+
+async function readMailGenerationRows(): Promise<SnapshotMailGenerationRow[]> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw(Prisma.sql`SET LOCAL jit = off`);
+    return tx.$queryRaw<SnapshotMailGenerationRow[]>(Prisma.sql`
+      SELECT
+        COUNT(*)::bigint AS "fkojunstStatusMailRowsCount",
+        MAX(r."createdAt") AS "fkojunstStatusMailRowsLatestCreatedAt",
+        MAX(COALESCE(r."updatedAt", r."createdAt")) AS "fkojunstStatusMailRowsLatestUpdatedAt"
+      FROM "CsvDashboardRow" r
+      WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}
+        AND (
+          r."sourceIngestRunId" IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM "CsvDashboardIngestRun" ir
+            WHERE ir."id" = r."sourceIngestRunId"
+              AND ir."status" = 'COMPLETED'::"ImportStatus"
+              AND ir."completedAt" IS NOT NULL
+          )
+        )
+    `);
+  }, LEADERBOARD_GENERATION_TRANSACTION_OPTIONS);
+}
+
+/** TTL 内は前回結果を再利用し、同時呼び出しは 1 本の SQL にまとめる。 */
+async function readMailGenerationRowsCached(): Promise<SnapshotMailGenerationRow[]> {
+  const ttlMs = resolveFkojunstStatusMailGenerationCacheTtlMs();
+  if (ttlMs === 0) return readMailGenerationRows();
+  if (mailGenerationCache && mailGenerationCache.expiresAt > Date.now()) {
+    return mailGenerationCache.rows;
+  }
+  if (mailGenerationInFlight) return mailGenerationInFlight;
+
+  const epoch = mailGenerationEpoch;
+  const inFlight = readMailGenerationRows().then((rows) => {
+    if (epoch === mailGenerationEpoch) {
+      mailGenerationCache = { rows, expiresAt: Date.now() + ttlMs };
+    }
+    return rows;
+  });
+  mailGenerationInFlight = inFlight;
+  try {
+    return await inFlight;
+  } finally {
+    if (mailGenerationInFlight === inFlight) {
+      mailGenerationInFlight = undefined;
+    }
+  }
 }
 
 async function readMainAndAuxGenerationRow(): Promise<SnapshotMainAndAuxGenerationRow[]> {
@@ -197,27 +272,7 @@ export async function readLeaderboardShellSnapshotGenerationTokenDetails(
   const mailRows =
     explicitMailRevision != null && explicitMailRevision.length > 0
       ? []
-      : await prisma.$transaction(async (tx) => {
-          await tx.$executeRaw(Prisma.sql`SET LOCAL jit = off`);
-          return tx.$queryRaw<SnapshotMailGenerationRow[]>(Prisma.sql`
-            SELECT
-              COUNT(*)::bigint AS "fkojunstStatusMailRowsCount",
-              MAX(r."createdAt") AS "fkojunstStatusMailRowsLatestCreatedAt",
-              MAX(COALESCE(r."updatedAt", r."createdAt")) AS "fkojunstStatusMailRowsLatestUpdatedAt"
-            FROM "CsvDashboardRow" r
-            WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}
-              AND (
-                r."sourceIngestRunId" IS NULL
-                OR EXISTS (
-                  SELECT 1
-                  FROM "CsvDashboardIngestRun" ir
-                  WHERE ir."id" = r."sourceIngestRunId"
-                    AND ir."status" = 'COMPLETED'::"ImportStatus"
-                    AND ir."completedAt" IS NOT NULL
-                )
-              )
-          `);
-        }, LEADERBOARD_GENERATION_TRANSACTION_OPTIONS);
+      : await readMailGenerationRowsCached();
 
   const row = {
     ...mainRows[0],
