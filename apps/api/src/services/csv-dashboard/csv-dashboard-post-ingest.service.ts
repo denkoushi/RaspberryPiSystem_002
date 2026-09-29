@@ -11,7 +11,6 @@ import {
 import { FkojunstExternalCompletionSyncService } from '../production-schedule/external-completion/fkojunst-external-completion-sync.service.js';
 import { ProductionScheduleFkojunstSyncService } from '../production-schedule/fkojunst-sync.service.js';
 import { ProductionScheduleFkojunstMailStatusSyncService } from '../production-schedule/fkojunst-status-mail-sync.service.js';
-import { resetLeaderboardFkojunstStatusMailGenerationCache } from '../production-schedule/leaderboard/leaderboard-shell-snapshot-generation.js';
 import { ProductionScheduleOrderSupplementSyncService } from '../production-schedule/order-supplement-sync.service.js';
 import { ProductionScheduleCustomerScawSyncService } from '../production-schedule/customer-scaw-sync.service.js';
 import { ProductionScheduleSeibanMachineNameSupplementSyncService } from '../production-schedule/seiban-machine-name-supplement-sync.service.js';
@@ -102,7 +101,6 @@ export class CsvDashboardPostIngestService {
         { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: fkojunstMailSync },
         '[CsvDashboardPostIngestService] FKOJUNST_Status mail sync completed'
       );
-      resetLeaderboardFkojunstStatusMailGenerationCache();
       resetSelfInspectionMachineBoardScheduleRowCaches();
     }
 

@@ -74,8 +74,9 @@ category: knowledge-base
 - **Symptoms**: Pi5 の標準デプロイ（run `20260929-021529-37439f`）が `release_pi5` の「post-pull load settle」待ちで失敗（load 4.79 > 3.00）。`docker-db-1` が約 196% CPU。
 - **Investigation（読み取り専用）**: `pg_stat_activity` を 1 秒間隔で 180 回採取すると、世代トークンの raw mail `COUNT(*)/MAX(createdAt)/MAX(updatedAt)` が延べ 202 回写った（常時 1〜2 本が実行中）。同 SQL の `EXPLAIN ANALYZE` は **17.7 秒**（mail 行 約 89 万件を index scan、`CsvDashboardIngestRun` 約 9 万件を seq scan、shared read 約 1GB）。API ログでは `leaderboard-decorations` だけで 5 分 16 回。Hermes コンテナは CPU 1% 未満で無関係。`pg_stat_statements` は未導入。
 - **Root cause**: `readLeaderboardShellSnapshotGenerationTokenDetails()` が明示 revision なしの呼び出しごとに raw mail 全件を集計する。mail 行は 2026-04 以降削除されず増え続けるため、コード変更なしで負荷が上がり続けた。
-- **Fix（段階1）**: raw mail 集計だけをプロセス内で TTL キャッシュ（既定 120 秒、`LEADERBOARD_MAIL_REVISION_CACHE_TTL_MS`）し、同時呼び出しを 1 本にまとめる。FKOJUNST_Status mail の post-ingest 同期完了時に `resetLeaderboardFkojunstStatusMailGenerationCache()` で失効。main 行・割当・進捗などキオスク操作で変わる値は従来どおり毎回読む。テストは既定 TTL 0。
-- **Open**: 段階2は raw mail 集計を永続 revision（`CsvDashboardRawRevision`、製番 planning board で使用中）へ置換し、residual evidence snapshot の revision 契約と整合させる。段階3は FKOJUNST_Status mail 行の保持期間を決めて古い行を削除する。
+- **Fix（段階1・PR #1545）**: raw mail 集計をプロセス内 TTL キャッシュ。本番計測で raw mail 集計の実行は 180 秒あたり 202 回 → 9 回、`docker-db-1` CPU は常時 100% 超 → 0〜7%。
+- **Fix（段階2）**: 世代トークン・residual evidence materialization・メール同期のトランザクション内世代確認を、すべて永続 revision（`CsvDashboardRawRevision`、`CsvDashboardRow`/`CsvDashboardIngestRun` のトリガーで変更ごとに加算）へ統一し、raw mail の COUNT/MAX 集計と段階1のキャッシュを削除。revision は raw rows より先に読むため、rows が revision より古くなることはなく、途中の変更は次回の不一致で再計算になる。切替直後は保存済み evidence snapshot が旧形式 revision のため、各プロセスで 1 回だけ raw 全件の再 materialization が走り、次のメール同期で新形式の snapshot に置き換わる。
+- **Open（段階3）**: FKOJUNST_Status mail 行（約 89 万件）のうちキーの種類は約 70 万件で、上書き済みの旧行は約 20 万件。保持期間・削除範囲は業務判断待ち。
 
 ## Production deploy & verification（2026-06-18 · winner bind limit fix）
 

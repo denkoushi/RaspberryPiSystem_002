@@ -39,6 +39,13 @@ function readGeneration(): Generation['readLeaderboardShellSnapshotGenerationTok
   return generation.readLeaderboardShellSnapshotGenerationTokenDetails;
 }
 
+async function readPersistedMailRevision(): Promise<string> {
+  const rows = await db().$queryRaw<Array<{ revision: bigint }>>(
+    Prisma.sql`SELECT "revision" FROM "CsvDashboardRawRevision" WHERE "csvDashboardId" = 'b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e'`
+  );
+  return String(rows[0]?.revision);
+}
+
 const fixtures: Array<{ rowIds: string[]; ingestRunIds: string[] }> = [];
 
 afterEach(async () => {
@@ -179,9 +186,7 @@ describeIntegration('leaderboard shell snapshot generation against dedicated Pos
     expect(firstToken.rowsCount).toBe('2');
     expect(firstToken.rowsLatestCreatedAt).toBe(mainLatestCreatedAt.toISOString());
     expect(firstToken.rowsLatestUpdatedAt).toBe(mainLatestUpdatedAt.toISOString());
-    expect(first.fkojunstStatusMailRowsRevision).toBe(
-      ['2', completedMailCreatedAt.toISOString(), completedMailUpdatedAt.toISOString()].join(':')
-    );
+    expect(first.fkojunstStatusMailRowsRevision).toBe(await readPersistedMailRevision());
 
     await db().csvDashboardIngestRun.update({
       where: { id: pendingRunId },
@@ -193,9 +198,8 @@ describeIntegration('leaderboard shell snapshot generation against dedicated Pos
 
     expect(afterCompletedRun.generationToken).not.toBe(first.generationToken);
     expect(afterToken.rowsCount).toBe('2');
-    expect(afterCompletedRun.fkojunstStatusMailRowsRevision).toBe(
-      ['3', pendingMailCreatedAt.toISOString(), pendingMailUpdatedAt.toISOString()].join(':')
-    );
+    expect(afterCompletedRun.fkojunstStatusMailRowsRevision).toBe(await readPersistedMailRevision());
+    expect(afterCompletedRun.fkojunstStatusMailRowsRevision).not.toBe(first.fkojunstStatusMailRowsRevision);
     const jitAfter = await db().$queryRaw<Array<{ value: string }>>(Prisma.sql`SELECT current_setting('jit') AS value`);
     expect(jitAfter[0]?.value).toBe(jitBefore[0]?.value);
   });
