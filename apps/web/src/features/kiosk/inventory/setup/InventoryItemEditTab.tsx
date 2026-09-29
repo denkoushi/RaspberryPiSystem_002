@@ -221,8 +221,8 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
 
         {panel.kind === 'add-tag' ? (
           <NfcScanPanel
-            title="新しい引き出しに付けるアイテムタグ"
-            hint="読み取ると次に進みます"
+            label="アイテムタグ"
+            sub="新しい引き出し"
             pending={false}
             error={null}
             onManualUid={(uid) => setPanel({ kind: 'add-quantity', shelfId: panel.shelfId, drawerId: panel.drawerId, uid, quantity: '' })}

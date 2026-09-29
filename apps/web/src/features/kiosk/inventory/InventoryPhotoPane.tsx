@@ -46,7 +46,7 @@ export function InventoryPhotoPane({ photos }: Props) {
               className={`shrink-0 rounded border-2 ${entry.id === photo.id ? 'border-sky-400' : 'border-transparent'}`}
               onClick={() => setIndex(entryIndex)}
             >
-              <img src={inventoryThumbnailUrl(entry.photoUrl)} alt="" className="h-24 w-24 rounded object-cover" />
+              <img src={inventoryThumbnailUrl(entry.photoUrl)} alt="" className="h-[150px] w-[200px] rounded object-cover" />
             </button>
           ))}
         </div>

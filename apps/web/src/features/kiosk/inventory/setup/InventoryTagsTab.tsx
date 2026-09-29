@@ -97,13 +97,12 @@ export function InventoryTagsTab({ accessPassword }: { accessPassword: string })
     );
   }
 
-  const scanTitle = mode.kind === 'quantity-scan'
-    ? `数量タグ「${mode.quantity}」を登録中`
+  const scanLabel = mode.kind === 'quantity-scan'
+    ? `新しい数量タグ「${mode.quantity}」`
     : mode.kind === 'restock-scan'
-      ? '補充タグを登録中'
-      : mode.kind === 'swap-scan'
-        ? `${mode.compartment.item.name}（${compartmentLocationText(mode.compartment)}）の新しいタグ`
-        : '';
+      ? '新しい補充タグ'
+      : 'アイテムタグ';
+  const scanSub = mode.kind === 'swap-scan' ? `${mode.compartment.item.name}（${compartmentLocationText(mode.compartment)}）` : undefined;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_28rem]">
@@ -153,7 +152,7 @@ export function InventoryTagsTab({ accessPassword }: { accessPassword: string })
             <button type="button" className={`${kioskButtonSecondaryClassName} min-h-12`} onClick={cancel}>やめる</button>
           </section>
         ) : scanning ? (
-          <NfcScanPanel title={scanTitle} pending={pending} error={error} onManualUid={(uid) => void register(uid)} onCancel={cancel} />
+          <NfcScanPanel label={scanLabel} sub={scanSub} pending={pending} error={error} onManualUid={(uid) => void register(uid)} onCancel={cancel} />
         ) : null}
       </div>
     </div>
