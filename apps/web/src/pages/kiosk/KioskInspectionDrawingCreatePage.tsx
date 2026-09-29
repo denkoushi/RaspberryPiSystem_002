@@ -63,6 +63,7 @@ import {
   normalizeUniqueInspectionDrawingResourceCds,
   pointUsesGeometricTolerance,
   resolveInspectionDrawingCreateKeyCollisionForResources,
+  resolveInspectionDrawingCreateSaveBlockLabel,
   resolveInspectionDrawingCreateSaveBlockReason,
   resolveInspectionDrawingCreateSaveStatus,
   suggestInspectionDrawingTemplateName,
@@ -75,9 +76,9 @@ import { resolveVisualTemplateById } from '../../features/part-measurement/inspe
 import {
   createInspectionDrawingPoint,
   nextAvailableMarkerNo,
+  resolveInspectionDrawingPointSaveError,
   sortInspectionDrawingPointsByMarkerNo,
-  swapInspectionDrawingMarkerNo,
-  toleranceBoundsFromPoint
+  swapInspectionDrawingMarkerNo
 } from '../../features/part-measurement/inspection-drawing/markerNumbering';
 import { partMeasurementDrawingPreviewConvertingLabel } from '../../features/part-measurement/partMeasurementDrawingLocalPreview';
 import {
@@ -371,16 +372,15 @@ export function KioskInspectionDrawingCreatePage() {
         ? Boolean(saveFile && hasLocalRenderablePreview && !previewError && !previewResolving)
         : Boolean(isEditing && template?.visualTemplateId?.trim());
 
-  const pointsValid = useMemo(
-    () =>
-      points.length > 0 &&
-      points.every(
-        (pt) =>
-          pt.name.trim().length > 0 &&
-          !('error' in toleranceBoundsFromPoint(pt, { measurementLabelSettings }))
-      ),
-    [measurementLabelSettings, points]
-  );
+  const invalidPointMessage = useMemo(() => {
+    for (const pt of sortInspectionDrawingPointsByMarkerNo(points)) {
+      if (!pt.name.trim()) return `${pt.markerNo}番: 名称未入力`;
+      const pointError = resolveInspectionDrawingPointSaveError(pt, { measurementLabelSettings });
+      if (pointError) return `${pt.markerNo}番: ${pointError}`;
+    }
+    return null;
+  }, [measurementLabelSettings, points]);
+  const pointsValid = points.length > 0 && invalidPointMessage === null;
 
   const selfInspectionPayloadPreview = useMemo(
     () => buildSelfInspectionTemplateApiBody(selfInspectionMode, selfInspectionFixedCount),
@@ -399,6 +399,17 @@ export function KioskInspectionDrawingCreatePage() {
     keyCollision,
     saveBlockedByPreview
   });
+
+  const saveBlockLabel = saveBlockReason
+    ? resolveInspectionDrawingCreateSaveBlockLabel(
+        saveBlockReason,
+        saveBlockReason === 'invalid_points'
+          ? invalidPointMessage
+          : 'error' in selfInspectionPayloadPreview
+            ? selfInspectionPayloadPreview.error
+            : null
+      )
+    : null;
 
   const snapshotVisualTemplateId =
     visualSource === 'pickExisting'
@@ -1121,9 +1132,9 @@ export function KioskInspectionDrawingCreatePage() {
         setMessage('すべての測定点に名称を入れてください。');
         return;
       }
-      const bounds = toleranceBoundsFromPoint(pt, { measurementLabelSettings });
-      if ('error' in bounds) {
-        setMessage(`「${pt.name}」: ${bounds.error}`);
+      const pointError = resolveInspectionDrawingPointSaveError(pt, { measurementLabelSettings });
+      if (pointError) {
+        setMessage(`「${pt.name}」: ${pointError}`);
         return;
       }
     }
@@ -1412,6 +1423,7 @@ export function KioskInspectionDrawingCreatePage() {
             saveDisabled={saveDisabled}
             saveBusy={busy}
             saveStatus={saveStatus}
+            saveStatusText={saveStatus === 'blocked' ? saveBlockLabel : null}
             savedPrintPath={
               INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED && isEditing && templateId
                 ? kioskInspectionDrawingTemplatePrintPath(templateId)

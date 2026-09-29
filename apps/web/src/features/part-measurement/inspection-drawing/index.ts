@@ -28,6 +28,7 @@ export {
   normalizeTemplateBusinessKey,
   resolveInspectionDrawingCreateKeyCollision,
   resolveInspectionDrawingCreateKeyCollisionForResources,
+  resolveInspectionDrawingCreateSaveBlockLabel,
   resolveInspectionDrawingCreateSaveBlockReason,
   resolveInspectionDrawingCreateSaveStatus,
   suggestInspectionDrawingTemplateName,

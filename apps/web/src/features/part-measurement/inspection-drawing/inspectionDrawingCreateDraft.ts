@@ -201,6 +201,31 @@ export function inspectionDrawingCreateDirtySnapshotsEqual(
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+const INSPECTION_DRAWING_CREATE_SAVE_BLOCK_LABEL: Record<InspectionDrawingCreateSaveBlockReason, string> = {
+  content_read_only: '閲覧のみ',
+  busy: '保存中',
+  missing_fhincd: '品番未入力',
+  missing_resource: '資源CD未選択',
+  missing_drawing: '図面未選択',
+  missing_points: '測定点なし',
+  invalid_points: '測定点の入力不足',
+  invalid_self_inspection: '検査件数の入力不足',
+  key_collision: '既存テンプレートと重複',
+  preview_pending: '図面の変換待ち'
+};
+
+/** 保存不可のとき、何が欠けているかをツールバーへ短く出す（detail は測定点・検査件数の具体的な不足） */
+export function resolveInspectionDrawingCreateSaveBlockLabel(
+  reason: InspectionDrawingCreateSaveBlockReason,
+  detail?: string | null
+): string {
+  const trimmed = detail?.trim().replace(/。$/, '');
+  if ((reason === 'invalid_points' || reason === 'invalid_self_inspection') && trimmed) {
+    return trimmed;
+  }
+  return INSPECTION_DRAWING_CREATE_SAVE_BLOCK_LABEL[reason];
+}
+
 export function resolveInspectionDrawingCreateSaveStatus(params: {
   contentReadOnly: boolean;
   busy: boolean;
