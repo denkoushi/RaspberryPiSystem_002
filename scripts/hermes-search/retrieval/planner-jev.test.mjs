@@ -18,8 +18,10 @@ function assertChoicesFromCandidates(questions, candidateValues) {
   const allowed = new Set([...candidateValues, ...fixedDescriptions]);
   assert.equal(questions.content?.type, 'noul');
   assert.deepEqual(Object.keys(questions.content.criteria).sort(), ['false', 'true']);
-  for (const question of Object.values(questions)) {
+  for (const [key, question] of Object.entries(questions)) {
     if (question.type === 'noul') continue;
+    // Content span choices are parts of the request itself, cut by code.
+    if (key === 'contentSpan') continue;
     assert.equal(question.type, 'choice');
     for (const description of Object.values(question.criteria)) {
       assert.equal(allowed.has(description), true, description);
@@ -490,4 +492,17 @@ test('the planner asks about records already shown only after an answer showed s
   assert.equal(seen[1].excludeShown.type, 'noul');
   assert.equal(none.plan.diagnostics.excludeShown, undefined);
   assert.equal(some.plan.diagnostics.excludeShown, true);
+});
+
+test('the planner picks the content part of a question and keeps it in the plan', async () => {
+  let seen = null;
+  const evaluate = async (input) => {
+    seen = input.questions;
+    return { answers: { contentSpan: { type: 'choice', choice: 's0' }, content: { type: 'noul', noul: 0.9 }, limit: { type: 'choice', choice: '5' }, sort: { type: 'choice', choice: 'relevance' } } };
+  };
+  const { plan } = await createPlanner({ evaluate }).plan({ question: 'ハンディライトを是正にした案件はほかにある？', previousPlan: null, catalog, candidates: [] });
+  assert.deepEqual(Object.values(seen.contentSpan.criteria), ['ハンディライトを是正にした案件', 'ほかにある', 'ハンディライトを是正にした案件はほかにある']);
+  assert.equal(plan.diagnostics.contentSpan, 'ハンディライトを是正にした案件');
+  const single = await createPlanner({ evaluate }).plan({ question: 'テーブルに傷がついた不適合', previousPlan: null, catalog, candidates: [] });
+  assert.equal(single.plan.diagnostics.contentSpan, undefined);
 });

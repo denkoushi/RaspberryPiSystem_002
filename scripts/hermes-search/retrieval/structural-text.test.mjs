@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { contentQuery, isParticleFragment, relevanceQuery } from './structural-text.mjs';
+import { contentQuery, contentSpans, isParticleFragment, relevanceQuery } from './structural-text.mjs';
 
 function assertNoParticleFragments(text) {
   for (const fragment of text.split(/\s+/u).filter(Boolean)) {
@@ -46,4 +46,10 @@ test('the relevance query keeps only the content condition', () => {
   assert.equal(relevanceQuery('寸法不適合の記録'), '寸法不適合');
   assert.equal(relevanceQuery('不適合'), '');
   assert.equal(relevanceQuery('今年の三島工場組立課の不適合は？', ['三島工場組立課']), '');
+});
+
+test('content spans cut only at the topic particle and punctuation', () => {
+  assert.deepEqual(contentSpans('溶接で割れが出た件はありますか'), ['溶接で割れが出た件', 'ありますか', '溶接で割れが出た件はありますか']);
+  assert.deepEqual(contentSpans('テーブルに傷がついた不適合'), []);
+  assert.deepEqual(contentSpans(''), []);
 });

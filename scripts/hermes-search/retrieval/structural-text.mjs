@@ -138,3 +138,25 @@ export function relevanceQuery(text, filterValues = []) {
   const kept = tokens.filter((token) => !isFilterToken(token, filterValues));
   return kept.length === tokens.length ? query : kept.join(' ');
 }
+
+// Candidate parts of a question for the planner to pick the content condition from. The question is
+// cut only at grammar: the topic particle は, which usually separates the content from the request
+// (「…件はありますか」, 「…案件はほかにある」), and punctuation. が and も are not cut, because they
+// sit inside a condition such as 「割れが出た」. No phrase such as ほかに is listed; JEV picks the part,
+// and the whole question is always one of the choices.
+const CLAUSE_BREAK = /[\s、，,。？?！!は]+/u;
+const SPAN_PUNCTUATION = /[、，,。？?！!]/gu;
+export const MAX_CONTENT_SPANS = 5;
+
+export function contentSpans(text) {
+  const whole = contentQuery(String(text ?? '').normalize('NFKC').replace(SPAN_PUNCTUATION, ' ')).trim();
+  if (!whole) return [];
+  const clauses = [];
+  for (const piece of whole.split(CLAUSE_BREAK)) {
+    const trimmed = trimParticleEdges(piece.normalize('NFKC'));
+    if (trimmed.length < 2 || isParticleFragment(trimmed) || clauses.includes(trimmed)) continue;
+    clauses.push(trimmed);
+  }
+  if (clauses.length < 2) return [];
+  return [...clauses.slice(0, MAX_CONTENT_SPANS), whole];
+}

@@ -127,6 +127,9 @@ export function validateQueryPlan(plan, catalog, valueIndex) {
     : { field: plan.sort.field, direction: plan.sort.direction };
   const contentDecision = copyContentDecision(plan);
   const excludeShown = plan?.diagnostics?.excludeShown === true;
+  const contentSpan = typeof plan?.diagnostics?.contentSpan === 'string' && plan.diagnostics.contentSpan.trim()
+    ? plan.diagnostics.contentSpan.trim().slice(0, 200)
+    : null;
   return {
     ok: true,
     plan: freeze({
@@ -138,13 +141,14 @@ export function validateQueryPlan(plan, catalog, valueIndex) {
       limit: plan.limit,
       display: [...plan.display],
       unresolved: [],
-      ...(contentDecision || excludeShown || plan?.diagnostics?.limitExplicit === true || plan?.diagnostics?.limitExplicit === false ? {
+      ...(contentDecision || contentSpan || excludeShown || plan?.diagnostics?.limitExplicit === true || plan?.diagnostics?.limitExplicit === false ? {
         diagnostics: {
           ...(contentDecision ? { contentDecision } : {}),
           ...(plan?.diagnostics?.limitExplicit === true || plan?.diagnostics?.limitExplicit === false
             ? { limitExplicit: plan.diagnostics.limitExplicit === true }
             : {}),
           ...(excludeShown ? { excludeShown } : {}),
+          ...(contentSpan ? { contentSpan } : {}),
         },
       } : {}),
     }),

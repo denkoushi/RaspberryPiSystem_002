@@ -196,7 +196,7 @@ test('a failed atomic write leaves the previous store intact', async () => {
   assert.equal(names.some((name) => name.includes('.tmp')), false);
 });
 
-test('an id allowlist keeps only listed records and rejects other file text', async () => {
+test('an id list puts listed records first, keeps the others, and rejects other file text', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-ids-'));
   const allowPath = path.join(directory, 'ids.txt');
   const kept = '11111111-1111-4111-8111-111111111111';
@@ -221,8 +221,25 @@ test('an id allowlist keeps only listed records and rejects other file text', as
   assert.equal(status.reason, 'outside_window');
   assert.equal(status.allowlistCount, 1);
   assert.equal(status.allowlistMatched, 1);
-  assert.equal(status.corpusCount, 1);
+  assert.equal(status.corpusCount, 2);
   assert.equal(calls, 0);
+  const order = [];
+  const storePath = path.join(directory, 'order.jsonl');
+  const run = () => runEnrichmentBatch({
+    records: [{ ...records[1], id: dropped }, { ...records[0], id: kept }],
+    catalog, storePath, settings: { ...settings, window: '', maxRecords: 1 },
+    fetchImpl: async (url, options) => {
+      const user = JSON.parse(options.body).messages.at(-1).content;
+      const record = user.includes(records[0].condition.trim()) ? records[0] : records[1];
+      order.push(record === records[0] ? kept : dropped);
+      return chatResponse(record);
+    },
+    sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  await run();
+  await run();
+  assert.deepEqual(order, [kept, dropped]);
 });
 
 test('the enrichment window accepts an overnight range and rejects an open gate by default', () => {

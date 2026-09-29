@@ -646,7 +646,11 @@ export async function execute(plan, options = {}) {
       .filter((item) => item.record);
   }
   let relevanceMs = semanticQuery ? 0 : null;
-  const judgeQuery = semanticQuery ? relevanceQuery(semanticQuery, filterValueTexts(filters)) : '';
+  // The planner's content span, when present, keeps request wording such as 「…はほかにある」 away from the judge.
+  const contentSpan = typeof plan?.diagnostics?.contentSpan === 'string' ? plan.diagnostics.contentSpan : '';
+  const judgeQuery = semanticQuery
+    ? (contentSpan && relevanceQuery(contentSpan, filterValueTexts(filters))) || relevanceQuery(semanticQuery, filterValueTexts(filters))
+    : '';
   let rerankMs = null;
   const limit = planLimit(plan);
   if (recentContent && judgeQuery && typeof options.relevance === 'function' && options.rerankMode !== 'replace') {

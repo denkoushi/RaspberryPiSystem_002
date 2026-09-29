@@ -587,3 +587,14 @@ test('records already shown are hidden after ranking and counted', async () => {
   assert.equal(hidden.excludedMatches, ids.length);
   assert.equal(hidden.results.some((result) => ids.includes(result.recordId)), false);
 });
+
+test('the relevance judge reads the planner content span instead of the whole question', async () => {
+  const seen = [];
+  const relevance = async ({ semanticQuery, candidates }) => {
+    seen.push(semanticQuery);
+    return { ok: true, ranked: candidates.map((candidate) => ({ id: candidate.id, probability: 0.9 })) };
+  };
+  await execute(plan({ semanticQuery: 'surface scratchはほかにある', limit: 3, diagnostics: { contentSpan: 'surface scratch' } }), { records, catalog, relevance });
+  await execute(plan({ semanticQuery: 'surface scratch', limit: 3 }), { records, catalog, relevance });
+  assert.deepEqual(seen, ['surface scratch', 'surface scratch']);
+});
