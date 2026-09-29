@@ -11,6 +11,7 @@ UPSTREAM_HOST_LINE = "    --host $BIND " + ("\\" * 2) + "\n"
 LOCAL_HOST_LINE = "    --host 127.0.0.1 " + ("\\" * 2) + "\n"
 READINESS_MARKER = 'info "Loading weights (~3-4 min). Following logs until ready..."\n'
 LAUNCH_LINE = 'bash "$LAUNCH_SCRIPT"\n'
+JA_VOCAB = MODULE_DIR / "qwen38-draft-vocab-ja-en-code-56k.txt"
 
 
 def create_adapter_fixture(
@@ -148,7 +149,7 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
                 capture.read_text(encoding="utf-8").strip(),
                 "Mia-AiLab/Qwen3.8-Flash-Next-NVFP4|system-prod-trtllm|"
                 "vllm/vllm-openai:qwen38-flash-next|system-prod-primary|"
-                f"{root / 'hf-cache'}|38083|262144|1|2048|fp8|true|0|0.71|--scheduling-policy priority|bfloat16|files/draft_vocab_en_code_47k.txt|--ipc host -v {root / 'home/.cache/vllm/business-patches/qwen38-gdn-meta.py'}:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:ro -e VLLM_USE_V2_MODEL_RUNNER=1 -e TRITON_CACHE_DIR=/root/.cache/vllm/triton",
+                f"{root / 'hf-cache'}|38083|262144|1|2048|fp8|true|0|0.71|--scheduling-policy priority|bfloat16|{JA_VOCAB}|--ipc host -v {root / 'home/.cache/vllm/business-patches/qwen38-gdn-meta.py'}:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:ro -e VLLM_USE_V2_MODEL_RUNNER=1 -e TRITON_CACHE_DIR=/root/.cache/vllm/triton",
             )
             self.assertEqual(args_count_capture.read_text(encoding="utf-8").strip(), "2")
             self.assertEqual(
@@ -353,7 +354,7 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(
                 capture.read_text(encoding="utf-8"),
-                f"0|127.0.0.1|1||bfloat16|files/draft_vocab_en_code_47k.txt|-v {root / 'home/.cache/vllm/business-patches/qwen38-gdn-meta.py'}:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:ro -e VLLM_USE_V2_MODEL_RUNNER=1 -e TRITON_CACHE_DIR=/root/.cache/vllm/triton",
+                f"0|127.0.0.1|1||bfloat16|{JA_VOCAB}|-v {root / 'home/.cache/vllm/business-patches/qwen38-gdn-meta.py'}:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:ro -e VLLM_USE_V2_MODEL_RUNNER=1 -e TRITON_CACHE_DIR=/root/.cache/vllm/triton",
             )
 
 
@@ -445,6 +446,13 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
             result = subprocess.run([str(ADAPTER)], env={**os.environ, **env}, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(capture.read_text(encoding="utf-8"), "/srv/vocab.txt")
+
+    def test_shipped_japanese_draft_vocab_keeps_upstream_floor(self):
+        ids = [int(line) for line in JA_VOCAB.read_text(encoding="utf-8").split()]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(ids, sorted(ids))
+        self.assertEqual(len(ids), 56262)
+        self.assertTrue(set(range(400)).issubset(ids))
 
 if __name__ == "__main__":
     unittest.main()
