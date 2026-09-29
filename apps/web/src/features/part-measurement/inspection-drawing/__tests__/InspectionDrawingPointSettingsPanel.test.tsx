@@ -34,10 +34,47 @@ describe('InspectionDrawingPointSettingsPanel', () => {
     render(<InspectionDrawingPointSettingsPanel point={point} onChange={vi.fn()} />);
 
     expect(screen.queryByRole('group', { name: '測定点の位置調整' })).not.toBeInTheDocument();
-    expect(screen.getByText('測定点の設定（No.1）')).toBeInTheDocument();
+    expect(screen.getByText('測定点')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '番号 1 を入れ替える' })).not.toBeInTheDocument();
     expect(
       screen.queryByText(/合格範囲は「基準値＋下限公差」/)
     ).not.toBeInTheDocument();
+  });
+
+  it('swaps the marker number from the number picker', () => {
+    const onSwapMarkerNo = vi.fn();
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={point}
+        onChange={vi.fn()}
+        markerNos={[1, 2, 5]}
+        onSwapMarkerNo={onSwapMarkerNo}
+      />
+    );
+
+    expect(screen.queryByRole('group', { name: '入れ替える番号' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '番号 1 を入れ替える' }));
+    fireEvent.click(screen.getByRole('button', { name: '番号 1' }));
+    expect(onSwapMarkerNo).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '番号 1 を入れ替える' }));
+    fireEvent.click(screen.getByRole('button', { name: '番号 5' }));
+    expect(onSwapMarkerNo).toHaveBeenCalledWith(5);
+    expect(screen.queryByRole('group', { name: '入れ替える番号' })).not.toBeInTheDocument();
+  });
+
+  it('hides the number picker when disabled', () => {
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={point}
+        disabled
+        onChange={vi.fn()}
+        markerNos={[1, 2]}
+        onSwapMarkerNo={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: '番号 1 を入れ替える' })).not.toBeInTheDocument();
   });
 
   it('renders selected-point delete and all delete actions', () => {

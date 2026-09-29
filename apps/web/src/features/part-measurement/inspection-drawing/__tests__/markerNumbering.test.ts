@@ -7,6 +7,8 @@ import {
   mergeInspectionDrawingPointPatch,
   nextAvailableMarkerNo,
   parseDisplayMarkerAsMarkerNo,
+  sortInspectionDrawingPointsByMarkerNo,
+  swapInspectionDrawingMarkerNo,
   templateItemToDrawingPoint
 } from '../markerNumbering';
 
@@ -14,6 +16,30 @@ describe('markerNumbering', () => {
   it('reuses smallest missing markerNo after delete', () => {
     expect(nextAvailableMarkerNo([{ markerNo: 1 }, { markerNo: 3 }])).toBe(2);
     expect(nextAvailableMarkerNo([{ markerNo: 2 }, { markerNo: 3 }])).toBe(1);
+  });
+
+  it('swaps marker numbers between the selected point and the target owner', () => {
+    const points = [
+      { id: 'a', markerNo: 1 },
+      { id: 'b', markerNo: 2 },
+      { id: 'e', markerNo: 5 }
+    ];
+    expect(swapInspectionDrawingMarkerNo(points, 'a', 5)).toEqual([
+      { id: 'a', markerNo: 5 },
+      { id: 'b', markerNo: 2 },
+      { id: 'e', markerNo: 1 }
+    ]);
+    expect(swapInspectionDrawingMarkerNo(points, 'a', 1)).toEqual(points);
+    expect(swapInspectionDrawingMarkerNo(points, 'missing', 2)).toEqual(points);
+  });
+
+  it('orders points for save by marker number, not placement order', () => {
+    const points = [
+      { id: 'a', markerNo: 1 },
+      { id: 'c', markerNo: 3 },
+      { id: 'b', markerNo: 2 }
+    ];
+    expect(sortInspectionDrawingPointsByMarkerNo(points).map((p) => p.id)).toEqual(['a', 'b', 'c']);
   });
 
   it('parses numeric displayMarker', () => {
