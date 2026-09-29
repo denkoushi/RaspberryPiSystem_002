@@ -110,14 +110,32 @@ export function compactPlan(plan) {
   };
 }
 
-function sessionOf(previousPlan) {
+// Records shown in this conversation, newest last, as public ids (source:id). Kept so a later
+// request for other records can hide them.
+export const SHOWN_IDS_CAP = 200;
+
+function sessionOf(previousPlan, shownIds = []) {
   return {
     pending: null,
     searchRequest: null,
     searchState: null,
     jevDialogue: [],
     previousPlan,
+    shownIds,
   };
+}
+
+function shownIdsOf(session) {
+  return Array.isArray(session?.shownIds) ? session.shownIds.filter((id) => typeof id === 'string' && id) : [];
+}
+
+function withShown(previous, added) {
+  const merged = [...previous.filter((id) => !added.includes(id)), ...added];
+  return merged.slice(-SHOWN_IDS_CAP);
+}
+
+export function noOtherAnswer(shownCount) {
+  return `さきほど示した${shownCount}件のほかに、条件に合う記録は見つかりませんでした。`;
 }
 
 function clarificationAnswer(clarification) {
@@ -181,7 +199,7 @@ function publicRecordId(sourceId, recordId) {
   return sourceId ? `${sourceId}:${id}` : id;
 }
 
-function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previousPlan, dataAsOf, coverage = null, receipt = null }) {
+function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previousPlan, dataAsOf, coverage = null, receipt = null, shownIds = [] }) {
   const stamped = stampAnswer(answer, dataAsOf);
   return {
     status,
@@ -190,7 +208,7 @@ function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previ
     elapsedMs,
     dataAsOf: stamped.dataAsOf,
     confirmationPending: confirmation ?? null,
-    session: sessionOf(previousPlan),
+    session: sessionOf(previousPlan, shownIds),
     ...(coverage ? { coverage } : {}),
     ...(receipt ? { receipt: { ...receipt, elapsedMs } } : {}),
   };
@@ -240,6 +258,7 @@ export function createRetrievalAnswering({
       const started = performance.now();
       const elapsed = () => Math.round((performance.now() - started) * 10) / 10;
       const previousPlan = session?.previousPlan && typeof session.previousPlan === 'object' ? session.previousPlan : null;
+      const previouslyShown = shownIdsOf(session);
       const candidates = findCandidateValues(question, view.valueIndex, catalog);
       const planned = await planner.plan({
         question,
@@ -247,6 +266,7 @@ export function createRetrievalAnswering({
         catalog,
         candidates,
         valueIndex: view.valueIndex,
+        shownCount: previouslyShown.length,
       });
       const compact = compactPlan(planned.plan);
       // One receipt per answer for the API log: the planner decisions and the outcome.
@@ -266,6 +286,7 @@ export function createRetrievalAnswering({
           recordIds: [],
           elapsedMs: elapsed(),
           previousPlan: compact,
+          shownIds: previouslyShown,
           receipt: receiptOf('out_of_scope'),
           dataAsOf: view.dataAsOf,
         });
@@ -280,6 +301,7 @@ export function createRetrievalAnswering({
           elapsedMs: elapsed(),
           confirmation: confirmationPending(question, validation.clarification, answer),
           previousPlan: compact,
+          shownIds: previouslyShown,
           receipt: receiptOf('clarification'),
           dataAsOf: view.dataAsOf,
         });
@@ -292,6 +314,9 @@ export function createRetrievalAnswering({
         vector: dense?.queryEnabled ? (query, filtered) => dense.rank(query, filtered) : (typeof vector === 'function' ? vector : null),
         relevance: (input) => relevance.judge(input),
         requestStartedAt: started,
+        excludeIds: validation.plan.diagnostics?.excludeShown
+          ? new Set(previouslyShown.map((id) => id.slice(id.indexOf(':') + 1)))
+          : undefined,
       });
       if (executed.status === 'unavailable') {
         return trialResult({
@@ -300,7 +325,20 @@ export function createRetrievalAnswering({
           recordIds: [],
           elapsedMs: elapsed(),
           previousPlan: compact,
+          shownIds: previouslyShown,
           receipt: receiptOf('unavailable', { timings: numericTimings(executed.timings) }),
+          dataAsOf: view.dataAsOf,
+        });
+      }
+      if (executed.status === 'no_result' && executed.excludedMatches > 0) {
+        return trialResult({
+          status: 'completed',
+          answer: noOtherAnswer(executed.excludedMatches),
+          recordIds: [],
+          elapsedMs: elapsed(),
+          previousPlan: compact,
+          shownIds: previouslyShown,
+          receipt: receiptOf('no_other', { excludedMatches: executed.excludedMatches, timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
         });
       }
@@ -311,6 +349,7 @@ export function createRetrievalAnswering({
           recordIds: [],
           elapsedMs: elapsed(),
           previousPlan: compact,
+          shownIds: previouslyShown,
           receipt: receiptOf('no_result', { retriever: dense?.queryEnabled ? 'hybrid' : 'lexical', timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
         });
@@ -329,6 +368,7 @@ export function createRetrievalAnswering({
         recordIds: executed.results.map((result) => publicRecordId(result.sourceId ?? sourceId, result.recordId)),
         elapsedMs: elapsed(),
         previousPlan: compact,
+        shownIds: withShown(previouslyShown, executed.results.map((result) => publicRecordId(result.sourceId ?? sourceId, result.recordId))),
         dataAsOf: view.dataAsOf,
         coverage: executed.coverage ?? null,
         receipt: receiptOf('answer', {

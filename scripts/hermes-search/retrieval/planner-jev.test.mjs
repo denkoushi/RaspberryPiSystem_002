@@ -475,3 +475,19 @@ test('a first turn keeps the original question wording and sends no previous pla
   for (const question of Object.values(seen.questions)) assert.doesNotMatch(question.instructions, /`request`/u);
   assert.match(seen.questions.content.instructions, /^質問は、/u);
 });
+
+test('the planner asks about records already shown only after an answer showed some', async () => {
+  const seen = [];
+  const evaluate = async (input) => {
+    seen.push(input.questions);
+    return { answers: { excludeShown: { type: 'noul', noul: 0.9 }, content: { type: 'noul', noul: 0.9 }, limit: { type: 'choice', choice: '5' }, sort: { type: 'choice', choice: 'relevance' }, turn: { type: 'choice', choice: 'new_search' } } };
+  };
+  const planner = createPlanner({ evaluate });
+  const previousPlan = { sources: ['nonconformity'], filters: [], semanticQuery: 'x', sort: 'relevance', limit: 5 };
+  const none = await planner.plan({ question: 'q', previousPlan, catalog, candidates: [], shownCount: 0 });
+  const some = await planner.plan({ question: 'q', previousPlan, catalog, candidates: [], shownCount: 2 });
+  assert.equal('excludeShown' in seen[0], false);
+  assert.equal(seen[1].excludeShown.type, 'noul');
+  assert.equal(none.plan.diagnostics.excludeShown, undefined);
+  assert.equal(some.plan.diagnostics.excludeShown, true);
+});

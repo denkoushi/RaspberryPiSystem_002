@@ -10,6 +10,10 @@ const LIMIT_OPTIONS = ['1', '2', '3', '5', '10', '20'];
 const LIMIT_UNSPECIFIED = 'unspecified';
 const NONE = 'none';
 const NOUL_ACCEPT_AT = 0.6;
+// Hiding records already shown only hides what the person has seen, and an empty result says so,
+// so short requests such as 「他にはある？」 (0.52 on 2026-09-29) are accepted. Scope or count changes
+// scored 0.14 to 0.44.
+const EXCLUDE_SHOWN_ACCEPT_AT = 0.5;
 const VALUE_ACCEPT_AT = 0.4;
 const VALUE_LOW_AT = 0.15;
 const NONE_CLARIFY_BELOW = 0.5;
@@ -82,7 +86,7 @@ function answersOf(result) {
 // Decision receipt: which option each question chose, with its confidence and the top
 // alternatives. Choice ids are mapped to their option text so a field answer reads as the
 // chosen value. The receipt holds no record text.
-export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-09-25';
+export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-09-29';
 
 export function summarizeAnswers(questions, answers) {
   const summary = {};
@@ -116,12 +120,12 @@ export function summarizeAnswers(questions, answers) {
   return summary;
 }
 
-function chosen(answer, allowedIds) {
+function chosen(answer, allowedIds, acceptAt = NOUL_ACCEPT_AT) {
   if (!answer || typeof answer !== 'object') return null;
   if (answer.type === 'choice' && allowedIds.includes(answer.choice)) return answer.choice;
   if (answer.type === 'noul' && allowedIds.includes('true') && allowedIds.includes('false')) {
     if (typeof answer.noul === 'boolean') return answer.noul ? 'true' : 'false';
-    if (typeof answer.noul === 'number' && Number.isFinite(answer.noul)) return answer.noul >= NOUL_ACCEPT_AT ? 'true' : 'false';
+    if (typeof answer.noul === 'number' && Number.isFinite(answer.noul)) return answer.noul >= acceptAt ? 'true' : 'false';
   }
   const probabilities = answer.probabilities;
   if (!probabilities || typeof probabilities !== 'object') return null;
@@ -182,7 +186,7 @@ async function defaultEvaluate(input) {
 export function createPlanner({ evaluate = defaultEvaluate } = {}) {
   if (typeof evaluate !== 'function') throw new TypeError('evaluate must be a function');
   return {
-    async plan({ question, previousPlan = null, catalog, candidates = [], valueIndex = null, choiceGroups = null, now = null }) {
+    async plan({ question, previousPlan = null, catalog, candidates = [], valueIndex = null, choiceGroups = null, now = null, shownCount = 0 }) {
       if (typeof question !== 'string' || !question.trim()) throw new TypeError('question must be a non-empty string');
       if (!Array.isArray(candidates)) throw new TypeError('candidates must be an array');
       const hasPrevious = Boolean(previousPlan && typeof previousPlan === 'object');
@@ -263,6 +267,18 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         fromIndex ? said('発話', '`request`') + 'が件数を明示しているときだけその件数を選ぶ。明示がなければ unspecified。' : said('返す件数の上限を一つ選ぶ。', '`request` に合う件数の上限を一つ選ぶ。'),
         limitOptions,
       );
+      // Asked only when earlier answers showed records. The intent (records other than the ones already
+      // shown) is judged by JEV, so no list of wordings such as ほかに or それ以外 is kept in code.
+      if (hasPrevious && shownCount > 0) {
+        questions.excludeShown = {
+          type: 'noul',
+          instructions: '`request` は、この会話ですでに示した記録そのものを除くように求めているか。範囲や条件を変える・広げる・絞る、件数を変えるだけの依頼では除かない。',
+          criteria: {
+            true: 'すでに示した記録を除いて、残りやまだ示していない記録を求めている。',
+            false: '範囲・条件・件数を変える依頼、または新しい検索で、すでに示した記録を含めてよい。',
+          },
+        };
+      }
       questions.content = {
         type: 'noul',
         instructions: said('質問', '`request`') + 'は、組織・日付の順序・件数とは別に、何が起きたか（現象・不具合・原因・処置）という内容条件を指定しているか。',
@@ -342,6 +358,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const limitExplicit = fromIndex ? Boolean(limitChoice && limitChoice !== LIMIT_UNSPECIFIED) : Boolean(limitChoice);
       if (!fromIndex && !limitChoice) unresolved.push({ term: 'limit', candidates: [...LIMIT_OPTIONS] });
       const contentChoice = chosen(answers.content, ['true', 'false']);
+      const excludeShown = questions.excludeShown ? chosen(answers.excludeShown, ['true', 'false'], EXCLUDE_SHOWN_ACCEPT_AT) === 'true' : false;
       if (!contentChoice) unresolved.push({ term: 'content', candidates: ['true', 'false'] });
 
       const carried = turn === 'refine' && Array.isArray(previousPlan?.filters)
@@ -395,6 +412,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           contentDecision: { jev, residualTokens: [], final: finalContent },
           scope: outOfScope ? 'out_of_scope' : 'records',
           limitExplicit,
+          ...(excludeShown ? { excludeShown: true } : {}),
         },
       };
       return {
