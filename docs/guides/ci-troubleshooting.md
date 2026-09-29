@@ -48,11 +48,11 @@ CI は複数ジョブに分割されている。失敗時は **どのジョブ�
 |----------|------|
 | `repo-policy` | classifierとworkflow契約。docs-only PRではこのjobだけを実行 |
 | `workspace-quality` | lint・共有package build/test・pnpm audit |
-| `api` / `web` | 対象applicationのtestとbuild。APIはPRで非coverage全件、full suiteでcoverage 3 shard |
+| `api` / `api-coverage` / `web` | 対象applicationのtestとbuild。APIは全eventでcoverage付き3 shard、`api-coverage`が合算して閾値判定 |
 | `db-infra` | Prisma migration、backup/restore、monitoring |
 | `deploy-contract` / `client` | deploy・inventory・Ansible・端末agentの隔離契約 |
 | `docker-security` | Trivy（fs + image）とBuildx image build |
-| `e2e-smoke` / `e2e-tests` | Playwright smokeとfull E2E |
+| `e2e-smoke` / `e2e-tests` | Playwright smokeとfull E2E（2 shard）。retryで通ったflaky testはstep summaryに出る |
 | `ci-required` | 選択jobの成功と非選択jobのskipを集約する固定required check |
 
 共通セットアップは [`.github/actions/setup-pnpm-monorepo`](../../.github/actions/setup-pnpm-monorepo/action.yml) に集約。PostgreSQL 待機は [`scripts/ci/wait-for-postgres.sh`](../../scripts/ci/wait-for-postgres.sh)。

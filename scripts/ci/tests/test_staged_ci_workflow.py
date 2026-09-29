@@ -109,6 +109,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "repo-policy",
             "workspace-quality",
             "api",
+            "api-coverage",
             "web",
             "db-infra",
             "deploy-contract",
@@ -148,15 +149,45 @@ class StagedCiWorkflowTests(unittest.TestCase):
                 )
                 self.assertIn("github.event_name != 'push'", line)
 
-    def test_api_uses_one_thresholded_pr_run_and_three_coverage_shards(self) -> None:
+    def test_api_shards_every_event_and_enforces_thresholds_on_merged_coverage(self) -> None:
         api = job_block(CI, "api")
-        self.assertIn('"shard":"all","shard_id":"all","coverage":true', api)
+        self.assertNotIn('shard: "all"', api)
         for shard in ("1/3", "2/3", "3/3"):
-            self.assertIn(f'"shard":"{shard}"', api)
+            self.assertIn(f'shard: "{shard}"', api)
         self.assertIn("Run API tests (coverage shard)", api)
-        self.assertIn('if [ "${{ matrix.shard }}" != "all" ]', api)
-        self.assertIn('pnpm test:coverage "${shard_args[@]}"', api)
-        self.assertIn("COVERAGE_ENFORCE_THRESHOLDS:", api)
+        self.assertIn("pnpm test:coverage --shard=${{ matrix.shard }}", api)
+        self.assertIn("--reporter=blob", api)
+        self.assertIn("COVERAGE_ENFORCE_THRESHOLDS: 'false'", api)
+        self.assertIn("if-no-files-found: error", api)
+
+        coverage = job_block(CI, "api-coverage")
+        self.assertIn("needs: [change-classification, api]", coverage)
+        self.assertIn("github.event_name != 'push'", coverage)
+        self.assertIn("needs.change-classification.outputs.api == 'true'", coverage)
+        self.assertIn("pattern: api-blob-*", coverage)
+        self.assertIn("-eq 3", coverage)
+        self.assertIn("--merge-reports=vitest-blob --coverage", coverage)
+        self.assertIn("COVERAGE_ENFORCE_THRESHOLDS: 'true'", coverage)
+
+    def test_e2e_is_sharded_and_reports_retried_passes(self) -> None:
+        e2e = job_block(CI, "e2e-tests")
+        for shard in ("1/2", "2/2"):
+            self.assertIn(f'shard: "{shard}"', e2e)
+        self.assertIn("pnpm test:e2e --shard=${{ matrix.shard }}", e2e)
+        self.assertIn("if: matrix.shard_id == '1-of-2'", e2e)
+        self.assertIn("name: playwright-report-${{ matrix.shard_id }}", e2e)
+        for block in (e2e, job_block(CI, "e2e-smoke")):
+            self.assertIn("scripts/ci/report_playwright_flaky.py e2e-results/results.json", block)
+        config = (ROOT / "playwright.config.ts").read_text(encoding="utf-8")
+        self.assertIn("outputFile: 'e2e-results/results.json'", config)
+
+    def test_candidate_runtime_rehearsal_reuses_docker_security_layer_cache(self) -> None:
+        rehearsal = job_block(CI, "container-runtime-rehearsal")
+        self.assertIn("cache-from: type=gha,scope=api", rehearsal)
+        self.assertIn("cache-from: type=gha,scope=web", rehearsal)
+        self.assertNotIn("cache-to:", rehearsal)
+        docker = job_block(CI, "docker-security")
+        self.assertIn("cache-to: type=gha,mode=max,scope=${{ matrix.image }}", docker)
 
     def test_fixed_aggregate_requires_success_or_an_exact_skip(self) -> None:
         aggregate = job_block(CI, "ci-required")
@@ -165,6 +196,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "repo-policy",
             "workspace-quality",
             "api",
+            "api-coverage",
             "web",
             "db-infra",
             "deploy-contract",
@@ -184,6 +216,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("uses: actions/checkout@v6", aggregate)
         self.assertIn("scripts/ci/validate_required_results.py", aggregate)
         self.assertIn('"api=$API_SELECTED:$API_RESULT"', aggregate)
+        self.assertIn('"api-coverage=$API_SELECTED:$API_COVERAGE_RESULT"', aggregate)
         self.assertIn(
             '"pi4-agent-image-contract=$PI4_AGENT_SELECTED:$PI4_AGENT_IMAGE_RESULT"',
             aggregate,
@@ -607,6 +640,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         )
         self.assertIn("github.event_name == 'push' ||", codeql)
         self.assertIn("Record intentional analysis skip", codeql)
+        self.assertIn("languages: javascript-typescript,python", codeql)
 
     def test_manual_gitleaks_scans_only_the_cumulative_main_branch_range(self) -> None:
         block = job_block(GITLEAKS, "gitleaks")

@@ -153,7 +153,7 @@ class ClassifyChangesTests(unittest.TestCase):
                     {"repo_policy", "db_infra", "deploy_contract"},
                 )
                 self.assertFalse(result["fullSuite"])
-                self.assertFalse(result["codeql"])
+                self.assertEqual(result["codeql"], path.endswith(".py"))
                 self.assertFalse(result["dockerApi"])
                 self.assertFalse(result["dockerWeb"])
                 self.assertEqual(result["pi4AgentMatrix"], [])
@@ -185,7 +185,8 @@ class ClassifyChangesTests(unittest.TestCase):
                 result = self.classify(Change("M", path))
                 self.assertEqual(self.selected(result), {"repo_policy"})
                 self.assertFalse(result["fullSuite"])
-                self.assertFalse(result["codeql"])
+                # CodeQL analyzes Python as well as JavaScript/TypeScript.
+                self.assertTrue(result["codeql"])
                 self.assertFalse(result["dockerApi"])
                 self.assertFalse(result["dockerWeb"])
                 self.assertFalse(result["releasePair"])
