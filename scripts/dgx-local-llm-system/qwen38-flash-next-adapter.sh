@@ -108,6 +108,25 @@ if [[ "${SCHEDULING_POLICY}" != "priority" ]]; then
   exit 1
 fi
 PLE_CACHE_DIR="${HOME}/.cache/vllm/ple_cache/Mia-AiLab--Qwen3.8-Flash-Next-NVFP4"
+# Fast weight loading (upstream #82): instanttensor staged on the host by
+# prepare-qwen38-flash-next-cache.sh prepare-fast-load.  Without the staged
+# package the recipe's lazy safetensors loader is kept, only slower.
+FAST_LOAD="${BLUE_QWEN38_FAST_LOAD:-1}"
+INSTANTTENSOR_DIR_NAME="instanttensor-0.2.0"
+INSTANTTENSOR_HOST_DIR="${HOME}/.cache/vllm/pylib/${INSTANTTENSOR_DIR_NAME}"
+if [[ "${FAST_LOAD}" != "0" && "${FAST_LOAD}" != "1" ]]; then
+  echo "BLUE_QWEN38_FAST_LOAD must be 0 or 1" >&2
+  exit 1
+fi
+if [[ "${FAST_LOAD}" == "1" && ! -s "${INSTANTTENSOR_HOST_DIR}/.qwen38-instanttensor-ready" ]]; then
+  echo "Qwen3.8 Flash adapter: instanttensor is not staged at ${INSTANTTENSOR_HOST_DIR}; keeping the safetensors loader" >&2
+  FAST_LOAD="0"
+fi
+# Reduced-vocabulary MTP drafting.  "full" drafts over the whole 248k head.
+DRAFT_VOCAB="${BLUE_QWEN38_DRAFT_VOCAB:-files/draft_vocab_en_code_47k.txt}"
+if [[ "${DRAFT_VOCAB}" == "full" ]]; then
+  DRAFT_VOCAB=""
+fi
 echo "Qwen3.8 Flash adapter: local model cache=${MODEL_DIR} persistent PLE cache=${PLE_CACHE_DIR}" >&2
 
 # The pinned upstream launcher uses host networking and binds $BIND (default
@@ -125,12 +144,15 @@ cleanup_boundary_start() {
 trap cleanup_boundary_start EXIT
 
 BOUNDARY_START="$(mktemp "${RECIPE_DIR}/.business-qwen38-boundary-start.XXXXXX")"
-python3 - "${UPSTREAM_START}" "${BOUNDARY_START}" <<'PY'
+python3 - "${UPSTREAM_START}" "${BOUNDARY_START}" "${FAST_LOAD}" "${SCRIPT_DIR}/qwen38_ple_loader_guard.py" <<'PY'
 from pathlib import Path
+import shlex
 import sys
 
 source_path = Path(sys.argv[1])
 generated_path = Path(sys.argv[2])
+fast_load = sys.argv[3] == '1'
+guard_path = sys.argv[4]
 source = source_path.read_text(encoding='utf-8')
 backslash = chr(92)
 old_host = f'    --host $BIND {backslash}{backslash}\n'
@@ -142,6 +164,12 @@ if source.count(readiness_marker) != 1:
     raise SystemExit(f'expected exactly one pinned readiness marker, found {source.count(readiness_marker)}')
 source = source.replace(old_host, new_host, 1)
 source = source.replace(readiness_marker, f'exit 0\n{readiness_marker}', 1)
+launch_line = 'bash "$LAUNCH_SCRIPT"\n'
+if fast_load:
+    if source.count(launch_line) != 1:
+        raise SystemExit(f'expected exactly one pinned launch line, found {source.count(launch_line)}')
+    guard = f'python3 {shlex.quote(guard_path)} "$OFFLOAD_DIR/worker.py" || exit 1\n'
+    source = source.replace(launch_line, guard + launch_line, 1)
 generated_path.write_text(source, encoding='utf-8')
 PY
 chmod 0750 "${BOUNDARY_START}"
@@ -156,6 +184,16 @@ META_PATCH_PATH="${HOME}/.cache/vllm/business-patches/qwen38-gdn-meta.py"
 python3 "${SCRIPT_DIR}/qwen38_meta_patch.py" "${IMAGE}" "${META_PATCH_PATH}"
 EXTRA_DOCKER_ARGS+="-v ${META_PATCH_PATH}:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:ro "
 EXTRA_DOCKER_ARGS+="-e VLLM_USE_V2_MODEL_RUNNER=1"
+# The recipe runs with compilation mode 0, so vLLM never points Triton at a
+# persistent cache; keep its kernels on the host between container restarts.
+install -d "${HOME}/.cache/vllm/triton"
+EXTRA_DOCKER_ARGS+=" -e TRITON_CACHE_DIR=/root/.cache/vllm/triton"
+EXTRA_VLLM_ARGS="--scheduling-policy ${SCHEDULING_POLICY}"
+if [[ "${FAST_LOAD}" == "1" ]]; then
+  EXTRA_DOCKER_ARGS+=" -e PYTHONPATH=/root/.cache/vllm/pylib/${INSTANTTENSOR_DIR_NAME}"
+  EXTRA_VLLM_ARGS+=" --load-format instanttensor"
+fi
+echo "Qwen3.8 Flash adapter: fast_load=${FAST_LOAD} draft_vocab=${DRAFT_VOCAB}" >&2
 cd "${RECIPE_DIR}"
 if env \
   ABLIT="0" \
@@ -173,7 +211,7 @@ if env \
   YARN="0" \
   MTP_NUM_SPECULATIVE_TOKENS="3" \
   MAMBA_SSM_CACHE_DTYPE="bfloat16" \
-  MTP_DRAFT_VOCAB="files/draft_vocab_en_code_47k.txt" \
+  MTP_DRAFT_VOCAB="${DRAFT_VOCAB}" \
   MTP_DISABLE_BLOCK_DROP="1" \
   CHAT_TEMPLATE="" \
   PLE_OFFLOAD="true" \
@@ -182,7 +220,7 @@ if env \
   HOST_SLACK_GIB="5" \
   COMPILATION_MODE="0" \
   GPU_MEMORY_UTILIZATION="${VLLM_GPU_MEMORY_UTILIZATION:-0.71}" \
-  EXTRA_VLLM_ARGS="--scheduling-policy ${SCHEDULING_POLICY}" \
+  EXTRA_VLLM_ARGS="${EXTRA_VLLM_ARGS}" \
   CUDAGRAPH_CAPTURE_SIZES="auto" \
   CUDAGRAPH_MODE="FULL_DECODE_ONLY" \
   REQUIRE_IDLE_GPU="true" \

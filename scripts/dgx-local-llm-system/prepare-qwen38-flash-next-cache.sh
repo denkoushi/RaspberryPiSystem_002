@@ -21,15 +21,22 @@ IMAGE="${BLUE_SERVER_IMAGE:-${TRTLLM_SERVER_IMAGE:-${DEFAULT_IMAGE}}}"
 MODEL_DIR="${HF_CACHE_DIR}/hub/models--Mia-AiLab--Qwen3.8-Flash-Next-NVFP4"
 PLE_CACHE_DIR="${HOME:?HOME must be the persistent execution user home}/.cache/vllm/ple_cache/Mia-AiLab--Qwen3.8-Flash-Next-NVFP4"
 PLE_READY_MARKER="${PLE_CACHE_DIR}/.qwen38-flash-next-ple-ready"
+readonly INSTANTTENSOR_VERSION="0.2.0"
+readonly INSTANTTENSOR_WHEEL="instanttensor-${INSTANTTENSOR_VERSION}-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl"
+readonly INSTANTTENSOR_SHA256="eefde9b121cd3a2699bd079a19cba5c0a74f23cc1fa2dd8e186a12910f89408e"
+INSTANTTENSOR_DIR="${HOME}/.cache/vllm/pylib/instanttensor-${INSTANTTENSOR_VERSION}"
+INSTANTTENSOR_MARKER="${INSTANTTENSOR_DIR}/.qwen38-instanttensor-ready"
 
 usage() {
   cat <<'EOF'
-Usage: prepare-qwen38-flash-next-cache.sh <plan|verify|fetch|prepare-ple>
+Usage: prepare-qwen38-flash-next-cache.sh <plan|verify|fetch|prepare-ple|prepare-fast-load>
 
   plan         print source/cache/disk paths; make no changes
   verify       verify the pinned local model snapshot and recorded PLE preparation
   fetch        download the pinned model revision (resumable, mutating)
   prepare-ple  run pinned start.sh --no-launch (builds patches/PLE cache)
+  prepare-fast-load
+               stage the hash-pinned instanttensor wheel for fast weight loading
 
 The fetch and prepare-ple actions are intentionally explicit.  They must run
 as the same persistent DGX user that will launch the Business container.
@@ -42,7 +49,7 @@ if [[ $# -ne 1 ]]; then
 fi
 ACTION="$1"
 case "${ACTION}" in
-  plan|verify|fetch|prepare-ple) ;;
+  plan|verify|fetch|prepare-ple|prepare-fast-load) ;;
   *) usage >&2; exit 2 ;;
 esac
 
@@ -102,6 +109,35 @@ PY
 }
 
 if [[ "${ACTION}" == "plan" ]]; then
+  exit 0
+fi
+
+if [[ "${ACTION}" == "prepare-fast-load" ]]; then
+  # Download inside the pinned image (its pip and Python 3.12), check the
+  # wheel against the pinned sha256, then install without dependencies
+  # (torch is already in the image) into a host directory that the adapter
+  # puts on PYTHONPATH through the existing ~/.cache/vllm mount.
+  STAGING_DIR="${INSTANTTENSOR_DIR}.tmp"
+  rm -rf -- "${STAGING_DIR}"
+  install -d "${STAGING_DIR}"
+  docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    --env HOME=/tmp \
+    --volume "${STAGING_DIR}:/out" \
+    --entrypoint bash \
+    "${IMAGE}" \
+    -c 'set -euo pipefail
+      pip3 download --quiet --no-deps --only-binary=:all: --dest /tmp/wheel "instanttensor==$1"
+      test -f "/tmp/wheel/$2"
+      echo "$3  /tmp/wheel/$2" | sha256sum -c --quiet -
+      pip3 install --quiet --no-deps --no-index --target /out "/tmp/wheel/$2"
+      PYTHONPATH=/out python3 -c "import instanttensor"' \
+    bash "${INSTANTTENSOR_VERSION}" "${INSTANTTENSOR_WHEEL}" "${INSTANTTENSOR_SHA256}"
+  printf 'wheel=%s\nsha256=%s\nimage=%s\n' "${INSTANTTENSOR_WHEEL}" "${INSTANTTENSOR_SHA256}" "${IMAGE}" \
+    >"${STAGING_DIR}/.qwen38-instanttensor-ready"
+  rm -rf -- "${INSTANTTENSOR_DIR}"
+  mv "${STAGING_DIR}" "${INSTANTTENSOR_DIR}"
+  echo "instanttensor_ready=true path=${INSTANTTENSOR_DIR}"
   exit 0
 fi
 
