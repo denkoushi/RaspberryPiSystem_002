@@ -16,6 +16,7 @@ import {
   verifyEvidence,
 } from './enrichment-contract.mjs';
 import { enrichmentSettings, requestEnrichment, withinWindow } from './enrichment-dgx.mjs';
+import { runLearningPass } from './learning-night.mjs';
 import {
   failuresPathFor,
   readEnrichmentFailures,
@@ -355,6 +356,15 @@ async function readStdin() {
 export async function main() {
   try {
     const records = await readStdin();
+    // Once per night, before enrichment: look again at the day's missed questions (dry run).
+    try {
+      const learned = await runLearningPass({ rows: records });
+      if (learned.reason === 'completed') {
+        console.info(`hermes retrieval learning questions=${learned.questions} judged=${learned.judged} proposals=${learned.proposals}`);
+      }
+    } catch {
+      console.info('hermes retrieval learning reason=failed');
+    }
     const status = await runEnrichmentBatch({
       records,
       storePath: storePathFromEnv(),
