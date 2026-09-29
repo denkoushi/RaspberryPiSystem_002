@@ -11,10 +11,11 @@ export const ingestTuningEnvShape = {
     (v) => (typeof v === 'string' ? v.trim() : v),
     z.string().min(1).default('rps_processed')
   ),
-  // FKOJUNST_Status mail raw の上書き済み旧行を夜間に削除（上限超過時は何もしない）
+  // FKOJUNST_Status mail raw の上書き済み旧行を夜間に削除（上限超過時は何もしない）。
+  // 全 raw 行を API プロセスへ読み込むため、メモリを抑えた作りにするまで既定 OFF（2026-09-29 Pi5 でメモリ枯渇）。
   FKOJUNST_MAIL_PRUNE_ENABLED: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
-    z.enum(['true', 'false']).default('true')
+    z.enum(['true', 'false']).default('false')
   ).transform((v) => v === 'true'),
   FKOJUNST_MAIL_PRUNE_CRON: z.string().default('40 3 * * *'),
   FKOJUNST_MAIL_PRUNE_MAX_DELETE: z.coerce.number().int().min(1).default(20_000),
