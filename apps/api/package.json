@@ -11,6 +11,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage --coverage.provider=v8",
     "design:preview": "tsx scripts/design-preview.ts",
+    "prune:fkojunst-mail-superseded": "tsx src/scripts/prune-fkojunst-status-mail-superseded.ts",
+    "prune:fkojunst-mail-superseded:prod": "node dist/scripts/prune-fkojunst-status-mail-superseded.js",
     "backfill:actual-hours": "tsx src/scripts/backfill-actual-hours-canonical.ts",
     "backfill:actual-hours:prod": "node dist/scripts/backfill-actual-hours-canonical.js",
     "backfill:photo-tool-gallery": "tsx src/scripts/backfill-photo-tool-similarity-gallery.ts",

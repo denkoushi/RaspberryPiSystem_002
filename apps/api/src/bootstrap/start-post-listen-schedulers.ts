@@ -10,6 +10,7 @@ import { getKioskDocumentOcrScheduler } from '../services/kiosk-documents/kiosk-
 import { getWorkInstructionGmailScheduler } from '../services/work-instructions/work-instruction-gmail.scheduler.js';
 import { getGmailTrashCleanupScheduler } from '../services/gmail/gmail-trash-cleanup.scheduler.js';
 import { getDueManagementTuningOrchestrator } from '../services/production-schedule/auto-tuning/tuning-orchestrator.service.js';
+import { getFkojunstMailSupersededPruneScheduler } from '../services/production-schedule/fkojunst-status-mail-superseded-prune.scheduler.js';
 import { getAlertsDispatcher } from '../services/alerts/alerts-dispatcher.js';
 import { getAlertsDbDispatcher } from '../services/alerts/alerts-db-dispatcher.js';
 import { getAlertsIngestor } from '../services/alerts/alerts-ingestor.js';
@@ -126,6 +127,8 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
     ...definitions,
     { name: 'business-hermes-nightly', start: () => getBusinessHermesNightlyScheduler().start(),
       stop: () => getBusinessHermesNightlyScheduler().stop() },
+    { name: 'fkojunst-mail-superseded-prune', start: () => getFkojunstMailSupersededPruneScheduler().start(),
+      stop: () => getFkojunstMailSupersededPruneScheduler().stop() },
     {
       name: 'file-storage-integrity-backfill',
       start: () => {
@@ -264,6 +267,7 @@ export function listPostListenSchedulerNames(): string[] {
     'hermes-knowledge',
     'signage-render',
     'business-hermes-nightly',
+    'fkojunst-mail-superseded-prune',
     'file-storage-integrity-backfill',
     'backup',
     'csv-import',

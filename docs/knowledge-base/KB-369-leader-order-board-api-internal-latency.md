@@ -76,7 +76,7 @@ category: knowledge-base
 - **Root cause**: `readLeaderboardShellSnapshotGenerationTokenDetails()` が明示 revision なしの呼び出しごとに raw mail 全件を集計する。mail 行は 2026-04 以降削除されず増え続けるため、コード変更なしで負荷が上がり続けた。
 - **Fix（段階1・PR #1545）**: raw mail 集計をプロセス内 TTL キャッシュ。本番計測で raw mail 集計の実行は 180 秒あたり 202 回 → 9 回、`docker-db-1` CPU は常時 100% 超 → 0〜7%。
 - **Fix（段階2）**: 世代トークン・residual evidence materialization・メール同期のトランザクション内世代確認を、すべて永続 revision（`CsvDashboardRawRevision`、`CsvDashboardRow`/`CsvDashboardIngestRun` のトリガーで変更ごとに加算）へ統一し、raw mail の COUNT/MAX 集計と段階1のキャッシュを削除。revision は raw rows より先に読むため、rows が revision より古くなることはなく、途中の変更は次回の不一致で再計算になる。切替直後は保存済み evidence snapshot が旧形式 revision のため、各プロセスで 1 回だけ raw 全件の再 materialization が走り、次のメール同期で新形式の snapshot に置き換わる。
-- **Open（段階3）**: FKOJUNST_Status mail 行（約 89 万件）のうちキーの種類は約 70 万件で、上書き済みの旧行は約 20 万件。保持期間・削除範囲は業務判断待ち。
+- **段階3（上書き済み旧行の削除）**: 同じキー（FKOJUN・FKOTEICD・FSEZONO）の最新行に上書き済みの mail raw 行を削除する。dedupe は取り込み順に「現在の勝者」と次の行を比べる畳み込みなので、敗者を消しても現在・将来の勝者は変わらない（削除前に勝者だけで dedupe し直して一致を確認）。キー欠落で正規化できない行は削除しない。削除はメール同期と同じ advisory lock 内で raw revision が計画時と同じことを確認し、`CsvDashboardRow` を参照する外部キーの参照が 0 件の場合だけ行い、削除後にメール同期を 1 回走らせる。初回（約 20 万件）は `pnpm prune:fkojunst-mail-superseded:prod`（既定 dry-run、`--execute` で削除）で手動実施し、以降は夜間 scheduler（`FKOJUNST_MAIL_PRUNE_CRON` 既定 03:40、1 回 `FKOJUNST_MAIL_PRUNE_MAX_DELETE` 既定 2 万件を超える場合は何もしない）。キー自体は新規注文の工程で月 4〜19 万件増えるため、件数の頭打ちには保持期間ルール（未決）が必要。
 
 ## Production deploy & verification（2026-06-18 · winner bind limit fix）
 
