@@ -123,7 +123,9 @@ if [[ "${FAST_LOAD}" == "1" && ! -s "${INSTANTTENSOR_HOST_DIR}/.qwen38-instantte
   FAST_LOAD="0"
 fi
 # Reduced-vocabulary MTP drafting.  "full" drafts over the whole 248k head.
-DRAFT_VOCAB="${BLUE_QWEN38_DRAFT_VOCAB:-files/draft_vocab_en_code_47k.txt}"
+# Default: the upstream 47k English/code floor plus frequent Japanese ids
+# (see README).  "files/draft_vocab_en_code_47k.txt" restores the upstream file.
+DRAFT_VOCAB="${BLUE_QWEN38_DRAFT_VOCAB:-${SCRIPT_DIR}/qwen38-draft-vocab-ja-en-code-56k.txt}"
 if [[ "${DRAFT_VOCAB}" == "full" ]]; then
   DRAFT_VOCAB=""
 fi
