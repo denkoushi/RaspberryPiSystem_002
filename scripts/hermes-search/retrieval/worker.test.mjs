@@ -12,6 +12,7 @@ import {
   encodeWorkerLine,
   failureDiagnostic,
   formatCoverageNotice,
+  noOtherAnswer,
   noResultAnswer,
   readyPayload,
 } from './worker.mjs';
@@ -261,4 +262,39 @@ test('coverage notice follows the known total, the sort, and an unknown floor', 
     formatCoverageNotice({ known: true, total: 4, shown: 2, order: 'date_asc' }),
     '該当4件のうち、古い順に2件を表示しています。',
   );
+});
+
+test('a request for other records hides the ones already shown and says when none are left', async () => {
+  const plannerQuestions = [];
+  const evaluate = async (input) => {
+    if (input.questions.candidate_0) {
+      const answers = {};
+      for (const [key, question] of Object.entries(input.questions)) {
+        const body = String(question.instructions).split('記録本文:\n')[1] ?? '';
+        answers[key] = { type: 'noul', noul: body.includes('surface scratch') ? 0.9 : 0.1 };
+      }
+      return { answers };
+    }
+    plannerQuestions.push(Object.keys(input.questions));
+    const other = String(input.state.request).includes('ほか');
+    const answers = plannerAnswers({ content: true, term: null, sort: 'relevance', limit: 'unspecified', turn: input.questions.turn ? 'new_search' : null }).answers;
+    answers.scope = { type: 'choice', choice: 'nonconformity' };
+    if (input.questions.excludeShown) answers.excludeShown = { type: 'noul', noul: other ? 0.9 : 0.1 };
+    return { answers };
+  };
+  const answering = answeringWith(evaluate);
+  const first = await completeRequest(answering, { type: 'request', requestId: 'r1', question: 'surface scratchの記録' });
+  assert.equal(first.result.recordIds.length, 1);
+  assert.deepEqual(first.result.session.shownIds, first.result.recordIds);
+  assert.equal(plannerQuestions[0].includes('excludeShown'), false);
+
+  const other = await completeRequest(answering, { type: 'request', requestId: 'r2', question: 'surface scratchはほかにある？', session: first.result.session });
+  assert.equal(plannerQuestions[1].includes('excludeShown'), true);
+  assert.deepEqual(other.result.recordIds, []);
+  assert.match(other.result.answer, new RegExp(noOtherAnswer(1)));
+  assert.equal(other.result.receipt.outcome, 'no_other');
+  assert.deepEqual(other.result.session.shownIds, first.result.recordIds);
+
+  const again = await completeRequest(answering, { type: 'request', requestId: 'r3', question: 'surface scratchの記録をもう一度', session: other.result.session });
+  assert.deepEqual(again.result.recordIds, first.result.recordIds);
 });

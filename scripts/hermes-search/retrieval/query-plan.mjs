@@ -126,6 +126,7 @@ export function validateQueryPlan(plan, catalog, valueIndex) {
     ? 'relevance'
     : { field: plan.sort.field, direction: plan.sort.direction };
   const contentDecision = copyContentDecision(plan);
+  const excludeShown = plan?.diagnostics?.excludeShown === true;
   return {
     ok: true,
     plan: freeze({
@@ -137,12 +138,13 @@ export function validateQueryPlan(plan, catalog, valueIndex) {
       limit: plan.limit,
       display: [...plan.display],
       unresolved: [],
-      ...(contentDecision || plan?.diagnostics?.limitExplicit === true || plan?.diagnostics?.limitExplicit === false ? {
+      ...(contentDecision || excludeShown || plan?.diagnostics?.limitExplicit === true || plan?.diagnostics?.limitExplicit === false ? {
         diagnostics: {
           ...(contentDecision ? { contentDecision } : {}),
           ...(plan?.diagnostics?.limitExplicit === true || plan?.diagnostics?.limitExplicit === false
             ? { limitExplicit: plan.diagnostics.limitExplicit === true }
             : {}),
+          ...(excludeShown ? { excludeShown } : {}),
         },
       } : {}),
     }),

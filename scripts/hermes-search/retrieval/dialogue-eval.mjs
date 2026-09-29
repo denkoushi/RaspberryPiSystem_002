@@ -35,6 +35,7 @@ function sortName(sort) {
  * - content: true when semanticQuery must be non-empty, false when it must be empty
  * - sort: 'recent' | 'relevance'
  * - limit: number
+ * - excludeShown: true when the turn asks for records other than the ones already shown
  */
 export function checkTurn(plan, expect = {}) {
   const failures = [];
@@ -55,6 +56,7 @@ export function checkTurn(plan, expect = {}) {
   if (typeof expect.content === 'boolean' && Boolean(plan?.semanticQuery) !== expect.content) failures.push('content');
   if (expect.sort && sortName(plan?.sort) !== expect.sort) failures.push('sort');
   if (Number.isFinite(expect.limit) && plan?.limit !== expect.limit) failures.push('limit');
+  if (typeof expect.excludeShown === 'boolean' && (plan?.diagnostics?.excludeShown === true) !== expect.excludeShown) failures.push('excludeShown');
   return failures;
 }
 
@@ -75,13 +77,17 @@ export async function evaluateDialogues({ dialogues, plan }) {
       const started = performance.now();
       const planned = await plan(turn.question, previousPlan);
       const compact = compactPlan(planned);
-      const scored = index === 0 && turn.setup ? { passed: true, failures: [] } : scoreTurn(compact, turn);
+      // compactPlan keeps what the next turn sees; the exclusion intent is scored from the full plan.
+      const scoredPlan = planned?.diagnostics?.excludeShown === true
+        ? { ...compact, diagnostics: { excludeShown: true } }
+        : compact;
+      const scored = index === 0 && turn.setup ? { passed: true, failures: [] } : scoreTurn(scoredPlan, turn);
       turns.push({
         turn: index + 1,
         setup: Boolean(turn.setup),
         passed: scored.passed,
         failures: scored.failures,
-        plan: compact,
+        plan: scoredPlan,
         planMs: Math.round(performance.now() - started),
       });
       previousPlan = compact;
@@ -138,6 +144,8 @@ async function main() {
     plan: async (question, previousPlan) => (await planner.plan({
       question,
       previousPlan,
+      // Offline turns do not execute, so a follow-up assumes the previous answer showed records.
+      shownCount: previousPlan ? 1 : 0,
       catalog: resources.catalog,
       candidates: findCandidateValues(question, resources.valueIndex, resources.catalog),
       valueIndex: resources.valueIndex,

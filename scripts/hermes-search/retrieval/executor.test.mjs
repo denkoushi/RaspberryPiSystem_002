@@ -578,3 +578,12 @@ test('the relevance judge receives the content condition without counts or the s
   });
   assert.deepEqual(seen, ['surface scratch']);
 });
+
+test('records already shown are hidden after ranking and counted', async () => {
+  const shown = await execute(plan({ semanticQuery: 'surface scratch', limit: 5 }), { records, catalog });
+  const ids = shown.results.map((result) => result.recordId);
+  assert.ok(ids.length >= 1);
+  const hidden = await execute(plan({ semanticQuery: 'surface scratch', limit: 5 }), { records, catalog, excludeIds: new Set(ids) });
+  assert.equal(hidden.excludedMatches, ids.length);
+  assert.equal(hidden.results.some((result) => ids.includes(result.recordId)), false);
+});

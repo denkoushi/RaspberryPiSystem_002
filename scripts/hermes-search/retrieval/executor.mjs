@@ -761,6 +761,17 @@ export async function execute(plan, options = {}) {
     }
     return String(left.record?.id ?? '').localeCompare(String(right.record?.id ?? ''));
   });
+  // Records already shown in this conversation are dropped after ranking and judging, so a request
+  // for other records keeps the same candidates and relevance and only hides what was seen.
+  const excludeIds = options.excludeIds instanceof Set ? options.excludeIds : new Set(options.excludeIds ?? []);
+  let excludedMatches = 0;
+  if (excludeIds.size) {
+    ranked = ranked.filter((item) => {
+      if (!excludeIds.has(item.record.id)) return true;
+      excludedMatches += 1;
+      return false;
+    });
+  }
   const display = Array.isArray(plan?.display) ? plan.display : [];
   const sourceId = Array.isArray(plan?.sources) && plan.sources.length === 1
     ? plan.sources[0]
@@ -778,6 +789,7 @@ export async function execute(plan, options = {}) {
   });
   return {
     status: results.length ? 'answer' : 'no_result',
+    excludedMatches,
     insufficient: plan?.diagnostics?.limitExplicit === false ? false : results.length < limit,
     requested: limit,
     returned: results.length,

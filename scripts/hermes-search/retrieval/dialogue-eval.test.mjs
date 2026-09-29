@@ -46,3 +46,10 @@ test('each turn is planned with the previous compact plan and setup turns are no
   assert.deepEqual(report.summary, { dialogues: 1, dialoguesPassed: 1, turns: 1, turnsPassed: 1, failuresBySlot: {} });
   assert.equal(JSON.stringify(report).includes('first'), false);
 });
+
+test('a turn can require the request for other records', () => {
+  const base = { sources: ['nonconformity'], filters: [], semanticQuery: 'x', sort: 'relevance', limit: 5 };
+  assert.deepEqual(checkTurn({ ...base, diagnostics: { excludeShown: true } }, { excludeShown: true }), []);
+  assert.deepEqual(checkTurn(base, { excludeShown: true }), ['excludeShown']);
+  assert.deepEqual(checkTurn(base, { excludeShown: false }), []);
+});
