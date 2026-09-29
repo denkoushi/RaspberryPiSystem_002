@@ -6,6 +6,7 @@ import type {
 } from '@raspi-system/shared-types';
 
 import { prisma } from '../../lib/prisma.js';
+import { createGrindingPlanningBoardPerformance } from './grinding-planning-board-performance.js';
 import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
   SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
@@ -66,17 +67,18 @@ export async function getGrindingPlanningBoardSeibanCandidates(params: {
   const today = todayJstYmd(params.now);
   const { rangeStart, rangeEnd } = resolveSeibanCandidateDateRange(today);
   const completionFilter = params.completionFilter ?? 'incomplete';
-  const [baseWhere, policy] = await Promise.all([
+  const perf = createGrindingPlanningBoardPerformance('grinding-planning-board/seiban-candidates');
+  const [baseWhere, policy] = await perf.measure('baseWhereAndPolicy', () => Promise.all([
     resolveLeaderboardMaterializedBaseWhere(prisma),
     getResourceCategoryPolicy({ siteKey: params.siteKey })
-  ]);
+  ]));
   const categoryCondition = buildResourceCategoryCondition(params.category, policy);
   const dueExpression = Prisma.sql`COALESCE("seibanDue"."dueDate", "n"."dueDate", "supplement"."plannedEndDate")`;
   const incompleteHaving = completionFilter === 'incomplete'
     ? Prisma.sql`AND SUM(CASE WHEN ${buildProductionScheduleEffectiveCompletedSql()} THEN 1 ELSE 0 END) < COUNT(*)`
     : Prisma.empty;
 
-  const rows = await prisma.$queryRaw<CandidateRow[]>(Prisma.sql`
+  const rows = await perf.measure('candidateQuery', () => prisma.$queryRaw<CandidateRow[]>(Prisma.sql`
     SELECT
       BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN') AS "fseiban",
       MIN(${dueExpression}) AS "dueDate",
@@ -106,9 +108,10 @@ export async function getGrindingPlanningBoardSeibanCandidates(params: {
       AND MIN(${dueExpression}) <= ${dateFromYmd(rangeEnd)}
       ${incompleteHaving}
     ORDER BY MIN(${dueExpression}) ASC, BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC
-  `);
+  `));
 
-  const machineNames = await resolveSeibanMachineDisplayNamesBatched(rows.map((row) => row.fseiban));
+  const machineNames = await perf.measure('machineNames', () => resolveSeibanMachineDisplayNamesBatched(rows.map((row) => row.fseiban)));
+  perf.flush({ candidateCount: rows.length });
   const candidates: GrindingPlanningBoardSeibanCandidate[] = rows.map((row) => {
     const completedProcessCount = Number(row.completedProcessCount);
     const totalProcessCount = Number(row.totalProcessCount);
