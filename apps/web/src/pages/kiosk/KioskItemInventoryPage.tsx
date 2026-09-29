@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import {
@@ -14,18 +14,14 @@ import {
   pickedCompartmentTag,
   unitLabel,
 } from '../../features/kiosk/inventory/inventoryDailyFlow';
+import { InventoryItemGrid } from '../../features/kiosk/inventory/InventoryItemGrid';
 import { InventoryLocationBlocks } from '../../features/kiosk/inventory/InventoryLocationBlocks';
 import { InventoryLocationPicker } from '../../features/kiosk/inventory/InventoryLocationPicker';
 import { InventoryPhotoPane } from '../../features/kiosk/inventory/InventoryPhotoPane';
 import { InventoryRecentHistory } from '../../features/kiosk/inventory/InventoryRecentHistory';
+import { NfcPrompt } from '../../features/kiosk/inventory/NfcPrompt';
 import {
-  kioskButtonDangerClassName,
-  kioskButtonSecondaryClassName,
-  kioskErrorPanelClassName,
-  kioskInfoPanelClassName,
   kioskPageTitleClassName,
-  kioskPanelClassName,
-  kioskSuccessPanelClassName,
 } from '../../features/kiosk/kioskTheme';
 
 import type { NfcEvent } from '../../hooks/useNfcStream';
@@ -62,7 +58,6 @@ export function KioskItemInventoryPage() {
   const mutations = useInventoryMutations();
   const routeState = location.state as InventoryRouteState | null;
   const [restockMode, setRestockMode] = useState(false);
-  const [restockTagUid, setRestockTagUid] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<InventoryTag | null>(null);
   const [message, setMessage] = useState('アイテムNFCタグを読み取ってください');
   const [messageKind, setMessageKind] = useState<'info' | 'success' | 'error'>('info');
@@ -70,7 +65,8 @@ export function KioskItemInventoryPage() {
   const [busy, setBusy] = useState(false);
   const [panel, setPanel] = useState<'none' | 'correct' | 'pick'>('none');
   const [correctionError, setCorrectionError] = useState<string | null>(null);
-  const itemsQuery = useInventoryItems(panel === 'pick');
+  const itemsQuery = useInventoryItems();
+  const itemCompartments = useMemo(() => (itemsQuery.data ?? []).flatMap((item) => item.compartments.map((compartment) => ({ ...compartment, item }))), [itemsQuery.data]);
   const flowRef = useRef({ restockMode: false, restockTagUid: null as string | null, selectedTag: null as InventoryTag | null, processing: false });
   const mountedRef = useRef(true);
   const eventQueueRef = useRef<NfcEvent[]>([]);
@@ -100,7 +96,6 @@ export function KioskItemInventoryPage() {
     flow.restockTagUid = null;
     flow.selectedTag = null;
     setRestockMode(false);
-    setRestockTagUid(null);
     setSelectedTag(null);
     setPanel('none');
     setCorrectionError(null);
@@ -134,7 +129,6 @@ export function KioskItemInventoryPage() {
             flow.restockTagUid = tag.uid;
             flow.selectedTag = null;
             setRestockMode(true);
-            setRestockTagUid(tag.uid);
             setSelectedTag(null);
             setMessage('補充モードです。アイテムNFCタグを読み取ってください');
             setMessageKind('info');
@@ -187,7 +181,6 @@ export function KioskItemInventoryPage() {
             flow.restockTagUid = null;
             flow.selectedTag = null;
             setRestockMode(false);
-            setRestockTagUid(null);
           } catch (error) {
             setMessage(messageFromError(error));
             setMessageKind('error');
@@ -302,28 +295,32 @@ export function KioskItemInventoryPage() {
   };
 
   const selectedPhotos = selectedTag?.compartment?.item.photos ?? [];
-  const panelClass = messageKind === 'success' ? kioskSuccessPanelClassName : messageKind === 'error' ? kioskErrorPanelClassName : kioskInfoPanelClassName;
-
   const selectedCompartment = selectedTag?.compartment ?? null;
-  const statusPanel = (
-    <div className={`${panelClass} p-5`} role="status" aria-live="polite">
-      <p className={messageKind === 'info' ? 'text-center text-2xl font-bold tracking-wide text-white' : 'text-center text-3xl font-bold tracking-wide'}>{message}</p>
-      {!selectedCompartment && messageKind === 'info' ? (
-        <div className="mt-4 flex flex-wrap justify-center gap-3 text-base text-white/70">
-          <span className="rounded-lg bg-slate-950/50 px-4 py-2">持ち出し：アイテムタグ → 数量タグ</span>
-          <span className="rounded-lg bg-slate-950/50 px-4 py-2">補充：補充タグ → アイテムタグ → 数量タグ</span>
-        </div>
-      ) : null}
-      {restockTagUid ? <p className="mt-3 text-center text-sm text-white/60">補充タグ: {restockTagUid}</p> : null}
-    </div>
+
+  // What the worker should do next, as a mark + short word; results replace it for a few seconds.
+  const prompt = messageKind !== 'info' ? (
+    <p role="status" aria-live="polite" className={`inline-flex min-h-[88px] items-center rounded-xl border-2 px-6 text-2xl font-bold ${messageKind === 'success' ? 'border-emerald-400 bg-emerald-900/70 text-white' : 'border-red-400 bg-red-950/70 text-red-100'}`}>{message}</p>
+  ) : selectedCompartment && !selectedTag?.uid ? (
+    <p role="status" className="inline-flex h-11 items-center rounded-lg border border-white/25 px-3.5 text-base text-white/80">タグなし（確認と数の修正のみ）</p>
+  ) : selectedCompartment ? (
+    <NfcPrompt label="数量タグ" tone={restockMode ? 'green' : 'amber'} sub={restockMode ? '補充' : undefined} />
+  ) : (
+    <NfcPrompt label="アイテムタグ" tone={restockMode ? 'green' : 'sky'} sub={restockMode ? '補充' : undefined} />
   );
 
+  const headerButton = 'inline-flex h-11 items-center rounded-lg border border-white/25 bg-slate-800 px-4 text-[15px] font-bold text-white hover:bg-slate-700 disabled:opacity-40';
+
   return (
-    <section className="flex w-full flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
+    <section className="flex w-full flex-col gap-3.5">
+      <div className="flex flex-wrap items-center gap-2.5">
         <h1 className={kioskPageTitleClassName}>在庫操作</h1>
-        {restockMode ? <span className="rounded-full bg-amber-400 px-4 py-2 text-base font-bold text-slate-950">補充モード</span> : null}
-        <Link to="/kiosk/inventory/settings" className={`${kioskButtonSecondaryClassName} ml-auto inline-flex items-center`}>在庫の準備</Link>
+        {restockMode ? <span className="rounded-full bg-emerald-400 px-3 py-1 text-sm font-bold text-slate-950">補充モード</span> : null}
+        <span className="flex-1" />
+        {panel === 'none' ? <button type="button" className={headerButton} onClick={() => setPanel('pick')} disabled={busy}>置き場所から選ぶ</button> : null}
+        <button type="button" className={headerButton} onClick={reset} disabled={busy}>選択をリセット</button>
+        <button type="button" className="inline-flex h-11 items-center rounded-lg border border-red-400 px-4 text-[15px] font-bold text-red-100 hover:bg-red-950 disabled:opacity-40" onClick={() => void cancelLast()} disabled={!lastTransaction || busy}>直前の取引を取消</button>
+        <span className="w-3" />
+        <Link to="/kiosk/inventory/settings" className="inline-flex h-11 items-center rounded-lg border border-white/25 px-4 text-[15px] text-white hover:bg-white/10">在庫の準備</Link>
       </div>
 
       {panel === 'correct' && selectedCompartment ? (
@@ -344,31 +341,40 @@ export function KioskItemInventoryPage() {
       ) : selectedCompartment ? (
         // Photo pane (left 2/3) and information pane (right 1/3) stay on screen together.
         <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-          <div className="h-[calc(100dvh-15rem)] min-h-[24rem]">
+          <div className="h-[calc(100dvh-12rem)] min-h-[24rem]">
             <InventoryPhotoPane key={selectedCompartment.id} photos={selectedPhotos} />
           </div>
           <div className="flex min-w-0 flex-col gap-3">
-            {statusPanel}
+            <div>{prompt}</div>
             <div>
               <p className="text-2xl font-bold text-white">{selectedCompartment.item.name}</p>
               <p className="text-sm text-white/60">{selectedCompartment.item.itemCode}</p>
             </div>
-            <dl className="rounded-lg bg-slate-950/50 px-3 py-2">
+            <dl className="rounded-lg bg-slate-950/50 px-3.5 py-2.5">
               <dt className="text-sm text-white/60">現在庫</dt>
               <dd className="text-5xl font-bold text-white">{selectedCompartment.stockQuantity}{unitLabel(selectedCompartment.item)}</dd>
             </dl>
             <InventoryLocationBlocks compartment={selectedCompartment} />
-            <InventoryRecentHistory compartmentId={selectedCompartment.id} />
-            <button type="button" className={`${kioskButtonSecondaryClassName} min-h-14 text-lg`} disabled={busy} onClick={() => { setCorrectionError(null); setPanel('correct'); }}>数が合わないときは直す</button>
+            <div className="flex items-start gap-3">
+              <InventoryRecentHistory compartmentId={selectedCompartment.id} />
+              <button type="button" className="h-12 rounded-lg border border-white/25 bg-slate-800 px-4 text-base font-bold text-white hover:bg-slate-700 disabled:opacity-40" disabled={busy} onClick={() => { setCorrectionError(null); setPanel('correct'); }}>数を直す</button>
+            </div>
           </div>
         </div>
-      ) : statusPanel}
-      <div className={`${kioskPanelClassName} flex flex-wrap justify-center gap-3 p-4`}>
-        {panel === 'none' ? <button type="button" className={`${kioskButtonSecondaryClassName} min-h-14 text-lg`} onClick={() => setPanel('pick')} disabled={busy}>タグが無いとき：置き場所から選ぶ</button> : null}
-        <button type="button" className={`${kioskButtonSecondaryClassName} min-h-14 text-lg`} onClick={reset} disabled={busy}>選択をリセット</button>
-        <button type="button" className={`${kioskButtonDangerClassName} min-h-14 text-lg`} onClick={() => void cancelLast()} disabled={!lastTransaction || busy}>直前の取引を取消</button>
-      </div>
-      <p className="text-center text-xs text-white/50">30秒操作がない場合、選択中のアイテムと補充モードを自動解除します（数の修正中と置き場所を選んでいる間は解除しません）。</p>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-4">
+            {prompt}
+            <div className="flex gap-2 text-sm text-white/60">
+              <span className="rounded-lg bg-slate-900/70 px-2.5 py-1.5">持出：アイテム → 数量</span>
+              <span className="rounded-lg bg-slate-900/70 px-2.5 py-1.5">補充：補充 → アイテム → 数量</span>
+            </div>
+            <span className="flex-1" />
+            <span className="text-sm text-white/60">登録済み {itemCompartments.length}件</span>
+          </div>
+          <InventoryItemGrid compartments={itemCompartments} onPick={pickCompartment} />
+        </>
+      )}
     </section>
   );
 }

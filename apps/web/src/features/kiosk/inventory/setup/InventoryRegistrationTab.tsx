@@ -10,6 +10,7 @@ import {
 } from '../../../../api/hooks';
 import { InventoryPhotoDialog } from '../../../../components/kiosk/InventoryPhotoDialog';
 import { AREA_DIRECTIONS, composeArea, DEFAULT_AREA_DIRECTION, splitArea } from '../areaNaming';
+import { NfcPrompt } from '../NfcPrompt';
 
 import { InventoryUnitPicker } from './InventoryUnitPicker';
 import { useArmedNfcRead } from './useArmedNfcRead';
@@ -441,10 +442,10 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
               </Row>
 
               <Row id="tag" number={next()} title="アイテムタグ" done={isDone('tag')} current={currentId === 'tag'}>
-                {!draft.drawerId ? <p className="text-sm text-white/60">置き場所を選ぶと、タグの読み取りを始めます。</p> : null}
+                {!draft.drawerId ? <p className="text-sm text-white/60">置き場所のあと</p> : null}
                 {waitingForTag ? (
                   <div className="flex flex-wrap items-center gap-3">
-                    <p role="status" className="flex h-11 items-center rounded-lg border-2 border-amber-400 bg-amber-950/60 px-4 font-bold text-amber-100">{draft.drawerLabel} に付けるタグをかざしてください</p>
+                    <NfcPrompt size="small" tone="amber" label="アイテムタグ" sub={draft.drawerLabel} />
                     {manualOpen ? (
                       <span className="flex items-center gap-2">
                         <input aria-label="タグのID" placeholder="タグのID" className={`${inputClass} w-56`} value={manualUid} onChange={(event) => setManualUid(event.target.value)} />

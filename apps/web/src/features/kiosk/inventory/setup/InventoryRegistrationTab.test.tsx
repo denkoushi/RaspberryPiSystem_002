@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useInventoryItems, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
@@ -76,7 +76,7 @@ describe('InventoryRegistrationTab', () => {
     fireEvent.click(screen.getByRole('button', { name: '棚1' }));
     expect(screen.getByRole('button', { name: '引出し1 使用中' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '引出し2' }));
-    expect(screen.getByText('30007_KSJP-55 北・棚1・引出し2 に付けるタグをかざしてください')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'アイテムタグ' })).getByRole('status')).toHaveTextContent('30007_KSJP-55 北・棚1・引出し2');
     expect(screen.getByText('あと 2 つ')).toBeInTheDocument();
 
     nfc.event = { uid: 'new-item-tag', eventId: 1, timestamp: new Date().toISOString() } as NfcEvent;
@@ -107,8 +107,7 @@ describe('InventoryRegistrationTab', () => {
   it('does not start reading a tag before a drawer is chosen', () => {
     render(<InventoryRegistrationTab accessPassword="2520" />);
     fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
-    expect(screen.getByText('置き場所を選ぶと、タグの読み取りを始めます。')).toBeInTheDocument();
-    expect(screen.queryByText(/に付けるタグをかざしてください/)).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'アイテムタグ' })).queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('adds photos to an existing item without a place, tag or quantity', async () => {

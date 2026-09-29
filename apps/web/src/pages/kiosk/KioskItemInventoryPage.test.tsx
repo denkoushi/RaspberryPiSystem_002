@@ -1,9 +1,9 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import { resolveInventoryTag, type InventoryItem, type InventoryTag } from '../../api/client';
-import { useInventoryItems, useInventoryMutations } from '../../api/hooks';
+import { useInventoryCompartmentHistory, useInventoryItems, useInventoryMutations } from '../../api/hooks';
 
 import { KioskItemInventoryPage } from './KioskItemInventoryPage';
 
@@ -191,7 +191,7 @@ describe('KioskItemInventoryPage', () => {
     expect(screen.getByText('補充モード')).toBeInTheDocument();
     await act(async () => { screen.getByRole('button', { name: '選択をリセット' }).click(); });
     expect(screen.queryByText('補充モード')).not.toBeInTheDocument();
-    expect(screen.getByText('アイテムNFCタグを読み取ってください')).toBeInTheDocument();
+    expect(screen.getByText('アイテムタグ')).toBeInTheDocument();
 
     vi.useFakeTimers();
     try {
@@ -201,7 +201,7 @@ describe('KioskItemInventoryPage', () => {
       expect(screen.getByText('補充モード')).toBeInTheDocument();
       await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
       expect(screen.queryByText('補充モード')).not.toBeInTheDocument();
-      expect(screen.getByText('アイテムNFCタグを読み取ってください')).toBeInTheDocument();
+      expect(screen.getByText('アイテムタグ')).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
@@ -259,7 +259,7 @@ describe('KioskItemInventoryPage stock correction and tag-less picking', () => {
     const scan = renderWithNfc();
     await scan(itemTag);
 
-    fireEvent.click(screen.getByRole('button', { name: '数が合わないときは直す' }));
+    fireEvent.click(screen.getByRole('button', { name: '数を直す' }));
     pressDigits('9');
     expect(screen.getByText('記録を 1個 減らします')).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '9個に直す' })); });
@@ -285,7 +285,7 @@ describe('KioskItemInventoryPage stock correction and tag-less picking', () => {
     const scan = renderWithNfc();
     await scan(itemTag);
 
-    fireEvent.click(screen.getByRole('button', { name: '数が合わないときは直す' }));
+    fireEvent.click(screen.getByRole('button', { name: '数を直す' }));
     pressDigits('7');
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '7個に直す' })); });
 
@@ -302,7 +302,7 @@ describe('KioskItemInventoryPage stock correction and tag-less picking', () => {
     } as never);
     const scan = renderWithNfc();
     await scan(itemTag);
-    fireEvent.click(screen.getByRole('button', { name: '数が合わないときは直す' }));
+    fireEvent.click(screen.getByRole('button', { name: '数を直す' }));
 
     vi.useFakeTimers();
     try {
@@ -324,9 +324,9 @@ describe('KioskItemInventoryPage stock correction and tag-less picking', () => {
     vi.mocked(useInventoryItems).mockReturnValue({ data: [item], isLoading: false } as never);
     const scan = renderWithNfc();
 
-    fireEvent.click(screen.getByRole('button', { name: 'タグが無いとき：置き場所から選ぶ' }));
+    fireEvent.click(screen.getByRole('button', { name: '置き場所から選ぶ' }));
     fireEvent.click(screen.getByRole('button', { name: /引出し2/ }));
-    expect(screen.getByText('数量NFCタグを読み取ってください')).toBeInTheDocument();
+    expect(screen.getByText('数量タグ')).toBeInTheDocument();
     await scan(quantityTag);
 
     await waitFor(() => expect(transaction).toHaveBeenCalledWith(expect.objectContaining({ itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', restock: false })));
@@ -343,7 +343,7 @@ describe('KioskItemInventoryPage stock correction and tag-less picking', () => {
     vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...untagged.item, compartments: [untagged] }], isLoading: false } as never);
     const scan = renderWithNfc();
 
-    fireEvent.click(screen.getByRole('button', { name: 'タグが無いとき：置き場所から選ぶ' }));
+    fireEvent.click(screen.getByRole('button', { name: '置き場所から選ぶ' }));
     fireEvent.click(screen.getByRole('button', { name: /引出し2/ }));
     await scan(quantityTag);
 
@@ -365,10 +365,47 @@ describe('KioskItemInventoryPage units', () => {
     await scan(caseTag);
 
     expect(screen.getByText('10ケース')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '数が合わないときは直す' }));
+    fireEvent.click(screen.getByRole('button', { name: '数を直す' }));
     pressDigits('8');
     expect(screen.getByText('記録を 2ケース 減らします')).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '8ケースに直す' })); });
     expect(screen.getByText('在庫を 2ケース 減らしました（10 → 8ケース）')).toBeInTheDocument();
+  });
+});
+
+describe('KioskItemInventoryPage item list and history', () => {
+  it('lists registered drawers on the waiting screen and opens one by touch', async () => {
+    vi.mocked(useInventoryMutations).mockReturnValue({
+      transaction: { mutateAsync: vi.fn(), isPending: false },
+      cancel: { mutateAsync: vi.fn(), isPending: false },
+      correction: { mutateAsync: vi.fn(), isPending: false },
+    } as never);
+    const item = { ...itemTag.compartment!.item, compartments: [itemTag.compartment!] } as InventoryItem;
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [item], isLoading: false } as never);
+    renderWithNfc();
+
+    expect(screen.getByText('アイテムタグ')).toBeInTheDocument();
+    expect(screen.queryByText(/30秒/)).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByLabelText('登録済みアイテム')).getByRole('button', { name: /治具/ }));
+
+    expect(screen.getByText('数量タグ')).toBeInTheDocument();
+    expect(screen.getByText('10個')).toBeInTheDocument();
+  });
+
+  it('shows the latest three movements and opens the rest in place', async () => {
+    vi.mocked(useInventoryMutations).mockReturnValue({
+      transaction: { mutateAsync: vi.fn(), isPending: false },
+      cancel: { mutateAsync: vi.fn(), isPending: false },
+      correction: { mutateAsync: vi.fn(), isPending: false },
+    } as never);
+    const rows = Array.from({ length: 5 }, (_, index) => historyEntry({ id: `h-${index}`, action: 'ISSUE', delta: -1, beforeQuantity: 20 - index, afterQuantity: 19 - index }));
+    vi.mocked(useInventoryCompartmentHistory).mockReturnValue({ data: rows, isLoading: false } as never);
+    const scan = renderWithNfc();
+    await scan(itemTag);
+
+    const history = screen.getByRole('region', { name: '最近の動き' });
+    expect(within(history).getAllByRole('listitem')).toHaveLength(3);
+    fireEvent.click(within(history).getByRole('button', { name: '▼ あと2件' }));
+    expect(within(history).getAllByRole('listitem')).toHaveLength(5);
   });
 });

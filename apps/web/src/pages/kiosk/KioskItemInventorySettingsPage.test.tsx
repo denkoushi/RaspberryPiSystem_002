@@ -123,7 +123,7 @@ describe('KioskItemInventorySettingsPage', () => {
     press('数量のテンキー', '3');
     page.readTag('tag-already-on-reader', 1);
     fireEvent.click(screen.getByRole('button', { name: '次へ：タグをかざす' }));
-    expect(screen.getByText('新しいタグをリーダーにかざしてください')).toBeInTheDocument();
+    expect(screen.getByText('新しい数量タグ「3」')).toBeInTheDocument();
     expect(quantityTag).not.toHaveBeenCalled();
 
     await act(async () => { page.readTag('new-tag', 2); });
