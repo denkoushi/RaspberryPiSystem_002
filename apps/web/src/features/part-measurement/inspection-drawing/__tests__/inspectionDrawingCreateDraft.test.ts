@@ -6,6 +6,7 @@ import {
   inspectionDrawingCreateDirtySnapshotsEqual,
   resolveInspectionDrawingCreateKeyCollision,
   resolveInspectionDrawingCreateKeyCollisionForResources,
+  resolveInspectionDrawingCreateSaveBlockLabel,
   resolveInspectionDrawingCreateSaveBlockReason,
   resolveInspectionDrawingCreateSaveStatus,
   suggestInspectionDrawingTemplateName,
@@ -263,5 +264,20 @@ describe('inspectionDrawingCreateDraft', () => {
         dirty: true
       })
     ).toBe('read_only');
+  });
+
+  it('labels what is missing when save is blocked', () => {
+    expect(resolveInspectionDrawingCreateSaveBlockLabel('missing_fhincd')).toBe('品番未入力');
+    expect(resolveInspectionDrawingCreateSaveBlockLabel('missing_points')).toBe('測定点なし');
+    expect(
+      resolveInspectionDrawingCreateSaveBlockLabel('invalid_points', '3番: 基準値を入力してください')
+    ).toBe('3番: 基準値を入力してください');
+    expect(resolveInspectionDrawingCreateSaveBlockLabel('invalid_points', null)).toBe('測定点の入力不足');
+    expect(
+      resolveInspectionDrawingCreateSaveBlockLabel(
+        'invalid_self_inspection',
+        '検査件数は 1 以上の整数で入力してください。'
+      )
+    ).toBe('検査件数は 1 以上の整数で入力してください');
   });
 });

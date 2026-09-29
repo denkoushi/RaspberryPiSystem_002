@@ -455,6 +455,16 @@ export function toleranceBoundsFromPoint(
   });
 }
 
+/** テンプレ保存前の測定点チェック: OK/NG判定点は公差を持たないため対象外 */
+export function resolveInspectionDrawingPointSaveError(
+  pt: InspectionDrawingPoint,
+  options: InspectionDrawingPointToleranceOptions = {}
+): string | null {
+  if (isInspectionDrawingJudgementPoint(pt)) return null;
+  const bounds = toleranceBoundsFromPoint(pt, options);
+  return 'error' in bounds ? bounds.error : null;
+}
+
 /** 公差欄の明示編集時に legacy スナップショットを外し、必要なら legacy から offset を seed */
 export function mergeInspectionDrawingPointPatch(
   point: InspectionDrawingPoint,
