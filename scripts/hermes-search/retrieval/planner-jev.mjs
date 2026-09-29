@@ -3,6 +3,7 @@
 import { performance } from 'node:perf_hooks';
 import { catalogEntries } from './catalog.mjs';
 import { QUERY_PLAN_SCHEMA, hasAppliedHardFilter, shouldSkipRelevance } from './query-plan.mjs';
+import { contentSpans } from './structural-text.mjs';
 import { enumeratedChoiceGroups } from './value-index.mjs';
 import { nextIsoDay, parsePeriods, previousIsoDay, referenceDate } from './period-parse.mjs';
 
@@ -279,6 +280,15 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           },
         };
       }
+      // The relevance judge rejects a matching record when the query still carries request wording such
+      // as 「…はほかにある」 (2026-09-29), so JEV picks the part that states the content condition.
+      const spans = contentSpans(question);
+      if (spans.length) {
+        questions.contentSpan = choiceQuestion(
+          said('質問', '`request`') + 'のうち、探したい記録の内容を表している部分を一つ選ぶ。すでに示した記録を除く指示や、依頼・問いかけの言い回しは含めない。',
+          spans.map((span, index) => ({ id: `s${index}`, description: span })),
+        );
+      }
       questions.content = {
         type: 'noul',
         instructions: said('質問', '`request`') + 'は、組織・日付の順序・件数とは別に、何が起きたか（現象・不具合・原因・処置）という内容条件を指定しているか。',
@@ -358,6 +368,8 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const limitExplicit = fromIndex ? Boolean(limitChoice && limitChoice !== LIMIT_UNSPECIFIED) : Boolean(limitChoice);
       if (!fromIndex && !limitChoice) unresolved.push({ term: 'limit', candidates: [...LIMIT_OPTIONS] });
       const contentChoice = chosen(answers.content, ['true', 'false']);
+      const spanChoice = spans.length ? chosen(answers.contentSpan, spans.map((_, index) => `s${index}`)) : null;
+      const contentSpan = spanChoice ? spans[Number(spanChoice.slice(1))] : null;
       const excludeShown = questions.excludeShown ? chosen(answers.excludeShown, ['true', 'false'], EXCLUDE_SHOWN_ACCEPT_AT) === 'true' : false;
       if (!contentChoice) unresolved.push({ term: 'content', candidates: ['true', 'false'] });
 
@@ -412,6 +424,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           contentDecision: { jev, residualTokens: [], final: finalContent },
           scope: outOfScope ? 'out_of_scope' : 'records',
           limitExplicit,
+          ...(contentSpan && !carriedQuery ? { contentSpan } : {}),
           ...(excludeShown ? { excludeShown: true } : {}),
         },
       };
