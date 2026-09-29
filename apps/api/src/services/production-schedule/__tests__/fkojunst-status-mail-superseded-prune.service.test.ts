@@ -112,24 +112,107 @@ describe('runFkojunstMailSupersededPrune', () => {
     expect(syncService.syncFromStatusMailDashboard).toHaveBeenCalledTimes(1);
   });
 
-  it('execute refuses to delete when the raw revision moved after planning', async () => {
+  it('execute stops without deleting when the raw revision moved after planning', async () => {
     const client = clientReturning(projectedRows);
-    let revisionReads = 0;
-    const txQueryRaw = vi.fn(() => {
-      revisionReads += 1;
-      return Promise.resolve([{ revision: 11n }]);
-    });
     const tx = {
       $executeRaw: vi.fn().mockResolvedValue(0),
-      $queryRaw: txQueryRaw,
+      $queryRaw: vi.fn(() => Promise.resolve([{ revision: 11n }])),
       csvDashboardRow: { deleteMany: vi.fn() }
     };
     client.$transaction.mockImplementation(async (work: (t: typeof tx) => Promise<unknown>) => work(tx));
+    const syncService = { syncFromStatusMailDashboard: vi.fn() };
 
-    await expect(
-      runFkojunstMailSupersededPrune({ mode: 'execute', maxDelete: 10, client: client as never, syncService: { syncFromStatusMailDashboard: vi.fn() } })
-    ).rejects.toThrow(/revision changed/);
-    expect(revisionReads).toBe(1);
+    const result = await runFkojunstMailSupersededPrune({ mode: 'execute', maxDelete: 10, client: client as never, syncService });
+
+    expect(result).toMatchObject({ status: 'stopped', deleted: 0 });
     expect(tx.csvDashboardRow.deleteMany).not.toHaveBeenCalled();
+    expect(syncService.syncFromStatusMailDashboard).not.toHaveBeenCalled();
+  });
+
+  it('execute commits one chunk per transaction and follows its own revision bumps', async () => {
+    const rows = [
+      ...projectedRows,
+      { id: 'old2', FKOJUN: '220', FKOTEICD: '1', FSEZONO: 'PCR-1', FKOJUNST: 'S', FUPDTEDT: '2026-09-01T08:00:00.000', createdAt: new Date('2026-08-15T00:00:00.000Z') },
+      { id: 'new2', FKOJUN: '220', FKOTEICD: '1', FSEZONO: 'PCR-1', FKOJUNST: 'C', FUPDTEDT: '2026-09-02T08:00:00.000', createdAt: new Date('2026-09-01T00:00:00.000Z') }
+    ];
+    const client = clientReturning(rows);
+    let revision = 10n;
+    const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(0),
+      $queryRaw: vi.fn((query: { strings?: readonly string[] }) => {
+        const text = query.strings?.join('') ?? '';
+        if (text.includes('pg_constraint')) return Promise.resolve([]);
+        return Promise.resolve([{ revision }]);
+      }),
+      csvDashboardRow: {
+        deleteMany: vi.fn(async (args: { where: { id: { in: string[] } } }) => {
+          revision += 1n;
+          return { count: args.where.id.in.length };
+        })
+      }
+    };
+    client.$transaction.mockImplementation(async (work: (t: typeof tx) => Promise<unknown>) => work(tx));
+    const syncService = { syncFromStatusMailDashboard: vi.fn().mockResolvedValue({}) };
+    const sleep = vi.fn().mockResolvedValue(undefined);
+
+    const result = await runFkojunstMailSupersededPrune({
+      mode: 'execute',
+      maxDelete: 10,
+      client: client as never,
+      syncService,
+      chunkSize: 1,
+      pauseMs: 5,
+      sleep
+    });
+
+    expect(result).toMatchObject({ status: 'deleted', deleted: 2 });
+    expect(client.$transaction).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(syncService.syncFromStatusMailDashboard).toHaveBeenCalledTimes(1);
+  });
+
+  it('execute keeps what it already deleted and re-syncs when a later chunk sees another change', async () => {
+    const rows = [
+      ...projectedRows,
+      { id: 'old2', FKOJUN: '220', FKOTEICD: '1', FSEZONO: 'PCR-1', FKOJUNST: 'S', FUPDTEDT: '2026-09-01T08:00:00.000', createdAt: new Date('2026-08-15T00:00:00.000Z') },
+      { id: 'new2', FKOJUN: '220', FKOTEICD: '1', FSEZONO: 'PCR-1', FKOJUNST: 'C', FUPDTEDT: '2026-09-02T08:00:00.000', createdAt: new Date('2026-09-01T00:00:00.000Z') }
+    ];
+    const client = clientReturning(rows);
+    let revision = 10n;
+    const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(0),
+      $queryRaw: vi.fn((query: { strings?: readonly string[] }) => {
+        const text = query.strings?.join('') ?? '';
+        if (text.includes('pg_constraint')) return Promise.resolve([]);
+        return Promise.resolve([{ revision }]);
+      }),
+      csvDashboardRow: {
+        deleteMany: vi.fn(async (args: { where: { id: { in: string[] } } }) => {
+          revision += 1n;
+          return { count: args.where.id.in.length };
+        })
+      }
+    };
+    // 2 塊目の開始前に revision がさらに進む（別の取り込みが割り込んだ）
+    let calls = 0;
+    client.$transaction.mockImplementation(async (work: (t: typeof tx) => Promise<unknown>) => {
+      calls += 1;
+      if (calls === 2) revision += 1n;
+      return work(tx);
+    });
+    const syncService = { syncFromStatusMailDashboard: vi.fn().mockResolvedValue({}) };
+
+    const result = await runFkojunstMailSupersededPrune({
+      mode: 'execute',
+      maxDelete: 10,
+      client: client as never,
+      syncService,
+      chunkSize: 1,
+      pauseMs: 0
+    });
+
+    expect(result).toMatchObject({ status: 'stopped', deleted: 1 });
+    expect(tx.csvDashboardRow.deleteMany).toHaveBeenCalledTimes(1);
+    expect(syncService.syncFromStatusMailDashboard).toHaveBeenCalledTimes(1);
   });
 });

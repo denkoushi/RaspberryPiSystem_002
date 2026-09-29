@@ -24,9 +24,11 @@ import { ProductionScheduleFkojunstMailStatusSyncService } from './fkojunst-stat
 
 import type { FkojunstStatusMailSourceRow } from './fkojunst-status-mail-source-rows.reader.js';
 
-const DELETE_CHUNK_SIZE = 5_000;
-const PRUNE_TX_TIMEOUT_MS = 600_000;
-const PRUNE_TX_MAX_WAIT_MS = 15_000;
+// 1 塊ずつ確定し、塊の間は待って他のクエリを先に通す（Pi5 本番で 5,000 件の塊は 20 秒前後かかった）。
+const DEFAULT_DELETE_CHUNK_SIZE = 2_000;
+const DEFAULT_PAUSE_BETWEEN_CHUNKS_MS = 1_000;
+const CHUNK_TX_TIMEOUT_MS = 120_000;
+const CHUNK_TX_MAX_WAIT_MS = 15_000;
 
 export type FkojunstMailSupersededPrunePlan = {
   rowsRevision: string;
@@ -42,7 +44,8 @@ export type FkojunstMailSupersededPruneResult =
   | ({ status: 'dry_run'; referencingRows: number } & FkojunstMailSupersededPruneSummary)
   | ({ status: 'nothing_to_delete' } & FkojunstMailSupersededPruneSummary)
   | ({ status: 'over_limit'; maxDelete: number } & FkojunstMailSupersededPruneSummary)
-  | ({ status: 'deleted'; deleted: number } & FkojunstMailSupersededPruneSummary);
+  | ({ status: 'deleted'; deleted: number } & FkojunstMailSupersededPruneSummary)
+  | ({ status: 'stopped'; deleted: number; reason: string } & FkojunstMailSupersededPruneSummary);
 
 export type FkojunstMailSupersededPruneSummary = Omit<FkojunstMailSupersededPrunePlan, 'deleteIds'> & {
   deleteCandidates: number;
@@ -127,38 +130,66 @@ export async function countReferencesToCsvDashboardRows(
   return total;
 }
 
-async function deleteSupersededRows(client: PruneClient, plan: FkojunstMailSupersededPrunePlan): Promise<number> {
+type ChunkDeleteOutcome =
+  | { kind: 'deleted'; deleted: number; revisionAfter: string }
+  | { kind: 'stopped'; reason: string };
+
+/** 1 塊を 1 トランザクションで削除する。revision が期待値でない・参照がある・件数が合わない場合は何も消さない。 */
+async function deleteChunk(
+  client: PruneClient,
+  chunk: readonly string[],
+  expectedRevision: string
+): Promise<ChunkDeleteOutcome> {
   return client.$transaction(
     async (tx) => {
       await acquireFkojunstStatusMailCriticalTransactionLock(tx);
       const { rowsRevision } = await fetchFkojunstStatusMailGenerationSignals(tx);
-      if (rowsRevision !== plan.rowsRevision) {
-        throw new Error(
-          `[FkojunstMailSupersededPrune] raw source revision changed: expected ${plan.rowsRevision}, got ${rowsRevision}`
-        );
+      if (rowsRevision !== expectedRevision) {
+        return { kind: 'stopped', reason: `raw source revision changed: expected ${expectedRevision}, got ${rowsRevision}` };
       }
-      const references = await countReferencesToCsvDashboardRows(tx, plan.deleteIds);
+      const references = await countReferencesToCsvDashboardRows(tx, chunk);
       if (references > 0) {
-        throw new Error(`[FkojunstMailSupersededPrune] ${references} rows still reference the delete candidates`);
+        return { kind: 'stopped', reason: `${references} rows reference the delete candidates` };
       }
-
-      let deleted = 0;
-      for (let i = 0; i < plan.deleteIds.length; i += DELETE_CHUNK_SIZE) {
-        const chunk = plan.deleteIds.slice(i, i + DELETE_CHUNK_SIZE);
-        const result = await tx.csvDashboardRow.deleteMany({
-          where: { id: { in: chunk }, csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID }
-        });
-        deleted += result.count;
-      }
-      if (deleted !== plan.deleteIds.length) {
+      const result = await tx.csvDashboardRow.deleteMany({
+        where: { id: { in: [...chunk] }, csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID }
+      });
+      if (result.count !== chunk.length) {
         throw new Error(
-          `[FkojunstMailSupersededPrune] delete count mismatch: expected ${plan.deleteIds.length}, got ${deleted}`
+          `[FkojunstMailSupersededPrune] delete count mismatch: expected ${chunk.length}, got ${result.count}`
         );
       }
-      return deleted;
+      // 自分の削除でトリガーが revision を進めるので、次の塊はこの値を期待する。
+      const after = await fetchFkojunstStatusMailGenerationSignals(tx);
+      return { kind: 'deleted', deleted: result.count, revisionAfter: after.rowsRevision };
     },
-    { maxWait: PRUNE_TX_MAX_WAIT_MS, timeout: PRUNE_TX_TIMEOUT_MS }
+    { maxWait: CHUNK_TX_MAX_WAIT_MS, timeout: CHUNK_TX_TIMEOUT_MS }
   );
+}
+
+/**
+ * 塊ごとに確定する。途中で他の変更（取り込み等）があれば止める。
+ * 止まっても消した行はすべて計画時点の敗者なので、勝者（計算結果）は変わらない。
+ */
+async function deleteSupersededRows(
+  client: PruneClient,
+  plan: FkojunstMailSupersededPrunePlan,
+  options: { chunkSize: number; pauseMs: number; sleep: (ms: number) => Promise<void> }
+): Promise<{ deleted: number; stoppedReason?: string }> {
+  let expectedRevision = plan.rowsRevision;
+  let deleted = 0;
+  for (let i = 0; i < plan.deleteIds.length; i += options.chunkSize) {
+    if (i > 0 && options.pauseMs > 0) await options.sleep(options.pauseMs);
+    const chunk = plan.deleteIds.slice(i, i + options.chunkSize);
+    const outcome = await deleteChunk(client, chunk, expectedRevision);
+    if (outcome.kind === 'stopped') {
+      logger.warn({ deleted, reason: outcome.reason }, '[FkojunstMailSupersededPrune] stopped before finishing');
+      return { deleted, stoppedReason: outcome.reason };
+    }
+    deleted += outcome.deleted;
+    expectedRevision = outcome.revisionAfter;
+  }
+  return { deleted };
 }
 
 function summarize(plan: FkojunstMailSupersededPrunePlan): FkojunstMailSupersededPruneSummary {
@@ -168,13 +199,16 @@ function summarize(plan: FkojunstMailSupersededPrunePlan): FkojunstMailSupersede
 
 /**
  * dry-run は候補の集計と参照確認だけを行う。execute は maxDelete を超える場合は何もしない。
- * 削除すると raw revision が進むため、削除後にメール同期を 1 回走らせて evidence snapshot を新しい revision に揃える。
+ * 削除すると raw revision が進むため、1 件でも消したらメール同期を 1 回走らせて evidence snapshot を新しい revision に揃える。
  */
 export async function runFkojunstMailSupersededPrune(options: {
   mode: 'dry-run' | 'execute';
   maxDelete?: number;
   client?: PruneClient;
   syncService?: Pick<ProductionScheduleFkojunstMailStatusSyncService, 'syncFromStatusMailDashboard'>;
+  chunkSize?: number;
+  pauseMs?: number;
+  sleep?: (ms: number) => Promise<void>;
 }): Promise<FkojunstMailSupersededPruneResult> {
   const client = options.client ?? (defaultPrisma as unknown as PruneClient);
   const { sourceRows, signals } = await fetchFkojunstStatusMailSourceRowsWithGenerationSignals(client);
@@ -196,9 +230,17 @@ export async function runFkojunstMailSupersededPrune(options: {
     return { status: 'over_limit', maxDelete: options.maxDelete, ...summary };
   }
 
-  const deleted = await deleteSupersededRows(client, plan);
-  const syncService = options.syncService ?? new ProductionScheduleFkojunstMailStatusSyncService();
-  await syncService.syncFromStatusMailDashboard();
-  logger.info({ deleted, winners: plan.winners }, '[FkojunstMailSupersededPrune] superseded mail rows deleted');
-  return { status: 'deleted', deleted, ...summary };
+  const { deleted, stoppedReason } = await deleteSupersededRows(client, plan, {
+    chunkSize: options.chunkSize ?? DEFAULT_DELETE_CHUNK_SIZE,
+    pauseMs: options.pauseMs ?? DEFAULT_PAUSE_BETWEEN_CHUNKS_MS,
+    sleep: options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
+  });
+  if (deleted > 0) {
+    const syncService = options.syncService ?? new ProductionScheduleFkojunstMailStatusSyncService();
+    await syncService.syncFromStatusMailDashboard();
+  }
+  logger.info({ deleted, winners: plan.winners, stoppedReason }, '[FkojunstMailSupersededPrune] superseded mail rows deleted');
+  return stoppedReason != null
+    ? { status: 'stopped', deleted, reason: stoppedReason, ...summary }
+    : { status: 'deleted', deleted, ...summary };
 }
