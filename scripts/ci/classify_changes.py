@@ -400,12 +400,13 @@ def categories_for_path(path: str) -> frozenset[str] | None:
 
 
 def codeql_for_path(path: str) -> bool:
-    """Return whether a known path can change JavaScript/TypeScript analysis."""
+    """Return whether a known path can change JavaScript/TypeScript or Python analysis."""
     normalized = _normalize_path(path)
     if normalized == ".github/workflows/torque-release.yml":
         return False
     return (
-        _has_prefix(normalized, "apps/api")
+        normalized.endswith(".py")
+        or _has_prefix(normalized, "apps/api")
         or _has_prefix(normalized, "apps/web")
         or _has_prefix(normalized, "packages")
         or _has_prefix(normalized, "e2e")

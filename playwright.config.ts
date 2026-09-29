@@ -19,7 +19,11 @@ export default defineConfig({
         return Number.isFinite(n) && n > 0 ? Math.floor(n) : 2;
       })()
     : undefined,
-  reporter: 'html',
+  // CI also writes JSON so scripts/ci/report_playwright_flaky.py can surface
+  // tests that only passed after a retry.
+  reporter: process.env.CI
+    ? [['dot'], ['html', { open: 'never' }], ['json', { outputFile: 'e2e-results/results.json' }]]
+    : 'html',
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:4173',
     trace: 'on-first-retry',
