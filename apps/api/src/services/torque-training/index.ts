@@ -8,3 +8,4 @@ export * from './torque-training-setup.service.js';
 export * from './torque-training-wrench-preparation.service.js';
 export * from './torque-training-kiosk-settings.service.js';
 export * from './torque-training-settings-audit.js';
+export * from './torque-training-team-summary.service.js';

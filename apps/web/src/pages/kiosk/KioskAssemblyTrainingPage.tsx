@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import {
   cancelTorqueTrainingSession,
@@ -9,7 +8,6 @@ import {
   resolveTorqueTrainingOperator,
   startTorqueTrainingSession,
   type TorqueTrainingAttemptApi,
-  type TorqueTrainingMetricApi,
   type TorqueTrainingOperatorContextApi,
   type TorqueTrainingProgramApi,
   type TorqueTrainingSessionApi
@@ -18,17 +16,30 @@ import { getApiErrorMessage } from '../../api/errors';
 import { Button } from '../../components/ui/Button';
 import {
   AssemblySessionStatusNotice,
-  TorqueTrainingAttemptHistory,
-  type TorqueTrainingAttemptHistoryItem,
   requiresFreshAssemblyWrenchConfirmation,
   useTorqueRecordLiveRefresh
 } from '../../features/assembly';
 import { TorqueTrainingAdminDialog } from '../../features/assembly/torque-training/TorqueTrainingAdminDialog';
+import { TorqueTrainingAttemptSlots, type TorqueTrainingSlotItem } from '../../features/assembly/torque-training/TorqueTrainingAttemptSlots';
+import { TorqueTrainingEyeOffIcon, TorqueTrainingNfcIcon, TorqueTrainingWrenchIcon } from '../../features/assembly/torque-training/TorqueTrainingIcons';
+import {
+  formatSignedTrainingPercent,
+  formatTrainingPercent,
+  summarizeTrainingSessionAttempts,
+  trainingTendency
+} from '../../features/assembly/torque-training/torqueTrainingKpiPresentation';
+import { TorqueTrainingPersonalRecord } from '../../features/assembly/torque-training/TorqueTrainingPersonalRecord';
+import { TorqueTrainingProgramMatrix } from '../../features/assembly/torque-training/TorqueTrainingProgramMatrix';
+import { TorqueTrainingRecentSessions } from '../../features/assembly/torque-training/TorqueTrainingRecentSessions';
 import { TorqueTrainingSettingsAccessDialog } from '../../features/assembly/torque-training/TorqueTrainingSettingsAccessDialog';
+import { TorqueTrainingStepper } from '../../features/assembly/torque-training/TorqueTrainingStepper';
+import { TorqueTrainingTargetBand, type TorqueTrainingTargetBandPoint } from '../../features/assembly/torque-training/TorqueTrainingTargetBand';
+import { TENDENCY_TEXT_CLASS, TorqueTrainingTeamKpiBand } from '../../features/assembly/torque-training/TorqueTrainingTeamKpiBand';
 import { presentTorqueTrainingSetupReason } from '../../features/assembly/torque-training/torqueTrainingWrenchPreparation';
 import { TorqueTrainingWrenchPreparationPanel } from '../../features/assembly/torque-training/TorqueTrainingWrenchPreparationPanel';
 import { useTorqueTrainingAdminController } from '../../features/assembly/torque-training/useTorqueTrainingAdminController';
 import { useTorqueTrainingCompletion } from '../../features/assembly/torque-training/useTorqueTrainingCompletion';
+import { useTorqueTrainingTeamOverview } from '../../features/assembly/torque-training/useTorqueTrainingTeamOverview';
 import { useTorqueTrainingWrenchPreparation } from '../../features/assembly/torque-training/useTorqueTrainingWrenchPreparation';
 import {
   TorqueWrenchTakeoverPanel,
@@ -42,47 +53,35 @@ function requestId(prefix: string): string {
 
 const NO_KNOWN_TRAINING_SOURCE_EVENT_KEYS: ReadonlySet<string> = new Set();
 
-function trainingAttemptPresentation(judgement: TorqueTrainingAttemptApi['judgement']): Pick<TorqueTrainingAttemptHistoryItem, 'resultLabel' | 'resultTone'> {
-  if (judgement === 'OK') return { resultLabel: 'OK', resultTone: 'success' };
-  if (judgement === 'UNDER') return { resultLabel: '弱い', resultTone: 'failure' };
-  if (judgement === 'OVER') return { resultLabel: '強い', resultTone: 'failure' };
-  return { resultLabel: '記録外', resultTone: 'neutral' };
+function toTrainingSlotItem(attempt: TorqueTrainingAttemptApi): TorqueTrainingSlotItem {
+  const deviation = attempt.deviationPercent === null ? null : `差 ${formatSignedTrainingPercent(Number(attempt.deviationPercent))}`;
+  const detail = attempt.settingVerificationMode === 'BOLT_CONDITION_ONLY'
+    ? [deviation, '設定照合対象外'].filter(Boolean).join(' / ')
+    : deviation;
+  return { key: attempt.id, valueNm: attempt.valueNm, judgement: attempt.judgement, detail };
 }
 
-function toTrainingAttemptHistoryItem(attempt: TorqueTrainingAttemptApi, attemptNo: number): TorqueTrainingAttemptHistoryItem {
-  return {
-    key: attempt.id,
-    attemptNo,
-    recordedAt: attempt.recordedAt,
-    valueLabel: attempt.valueNm ? `${attempt.valueNm} Nm` : '-',
-    ...trainingAttemptPresentation(attempt.judgement),
-    details: attempt.nominalTorque
-      ? `目標 ${attempt.nominalTorque} Nm / 差 ${attempt.deviationPercent ?? '-'}%${attempt.settingVerificationMode === 'BOLT_CONDITION_ONLY' ? ' / 設定照合対象外' : ''}`
-      : attempt.settingVerificationMode === 'BOLT_CONDITION_ONLY' ? '設定照合対象外' : null
+function toTargetBandPoints(attempts: TorqueTrainingAttemptApi[]): TorqueTrainingTargetBandPoint[] {
+  return attempts
+    .filter((attempt) => attempt.accepted && attempt.attemptNo !== null && attempt.valueNm !== null && attempt.judgement !== 'IGNORED')
+    .map((attempt) => ({
+      key: attempt.id,
+      attemptNo: attempt.attemptNo!,
+      valueNm: Number(attempt.valueNm),
+      judgement: attempt.judgement as TorqueTrainingTargetBandPoint['judgement']
+    }))
+    .filter((point) => Number.isFinite(point.valueNm));
+}
+
+function targetBandLimits(attempts: TorqueTrainingAttemptApi[]) {
+  const reference = attempts.find((attempt) => attempt.lowerLimit !== null && attempt.nominalTorque !== null && attempt.upperLimit !== null);
+  if (!reference) return null;
+  const limits = {
+    lowerNm: Number(reference.lowerLimit),
+    nominalNm: Number(reference.nominalTorque),
+    upperNm: Number(reference.upperLimit)
   };
-}
-
-function passedAttemptCount(attemptCount: number, passRate: number): number {
-  return Math.round(attemptCount * passRate);
-}
-
-function trainingMetricComparison(metric: TorqueTrainingMetricApi): string | null {
-  const latest = metric.sessions[0];
-  const previous = metric.sessions[1];
-  if (
-    !latest
-    || !previous
-    || latest.attemptCount <= 0
-    || previous.attemptCount <= 0
-    || latest.attemptCount !== previous.attemptCount
-  ) return null;
-
-  const change = passedAttemptCount(latest.attemptCount, latest.passRate)
-    - passedAttemptCount(previous.attemptCount, previous.passRate);
-  if (change === 0) return '前回と同じ合格回数です';
-  return change > 0
-    ? `前回より${change}回多く合格しました`
-    : `前回より${Math.abs(change)}回少ない合格でした`;
+  return Object.values(limits).every(Number.isFinite) && limits.lowerNm < limits.upperNm ? limits : null;
 }
 
 export function KioskAssemblyTrainingPage() {
@@ -104,7 +103,8 @@ export function KioskAssemblyTrainingPage() {
   const [settingsGateOpen, setSettingsGateOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('NFCタグを読み取って訓練者を確認してください。');
+  // Only messages the stepper cannot express (retry, takeover, stale state).
+  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const sessionRef = useRef<TorqueTrainingSessionApi | null>(null);
   const operatorRef = useRef<TorqueTrainingOperatorContextApi | null>(null);
@@ -112,6 +112,7 @@ export function KioskAssemblyTrainingPage() {
   const nfcReadGenerationRef = useRef(0);
   const agentRequestIdRef = useRef<string | null>(null);
   const operationInFlightRef = useRef(false);
+  const { overview: teamOverview, refresh: refreshTeamOverview } = useTorqueTrainingTeamOverview();
 
   useEffect(() => { sessionRef.current = session; }, [session]);
   useEffect(() => { operatorRef.current = operator; }, [operator]);
@@ -185,7 +186,7 @@ export function KioskAssemblyTrainingPage() {
         setOperator(context);
         setSession(context.currentSession);
         setWrenchDetectionReason(null);
-        setMessage(`${context.employee.displayName}さんを確認しました。訓練メニューを選択してください。`);
+        setMessage(null);
       })
       .catch((cause) => {
         if (readGeneration === nfcReadGenerationRef.current) {
@@ -226,7 +227,8 @@ export function KioskAssemblyTrainingPage() {
 
   const handleTrainingCompleted = useCallback(() => {
     const completedSessionId = sessionRef.current?.id;
-    setMessage('5回分の結果を確認してください。確認が終わったら「訓練完了」を押してください。');
+    setMessage(null);
+    void refreshTeamOverview();
     const authenticatedUid = operatorUidRef.current;
     const employeeId = operatorRef.current?.employee.id;
     if (!authenticatedUid || !completedSessionId || !employeeId) return;
@@ -246,7 +248,7 @@ export function KioskAssemblyTrainingPage() {
           setError(getApiErrorMessage(cause, '成長度合いを更新できませんでした。'));
         }
       });
-  }, []);
+  }, [refreshTeamOverview]);
 
   useTorqueTrainingCompletion({
     sessionId: session?.id ?? null,
@@ -315,7 +317,7 @@ export function KioskAssemblyTrainingPage() {
     try {
       const next = await startTorqueTrainingSession({ uid: nfcEvent.uid, programVersionId: selectedVersionId, requestId: requestId('training-session') });
       setSession(next);
-      setMessage('レンチを選択し、設定値と適合状態を確認してください。');
+      setMessage(null);
     } catch (cause) {
       setError(getApiErrorMessage(cause, '訓練を開始できませんでした。'));
     } finally {
@@ -361,7 +363,7 @@ export function KioskAssemblyTrainingPage() {
       setSession(await getTorqueTrainingSession(session.id));
       setMessage(agentStatus?.state === 'owned_by_other'
         ? '別端末が使用中です。現物が手元にある場合だけ引継ぎ操作を行ってください。'
-        : 'レンチ接続を確認しました。画面の接続準備状態を確認してください。');
+        : null);
     } catch (cause) {
       if (requiresFreshAssemblyWrenchConfirmation(cause)) {
         // The server/agent fenced this confirmation or detected a changed
@@ -432,7 +434,7 @@ export function KioskAssemblyTrainingPage() {
     agentRequestIdRef.current = null;
     operationInFlightRef.current = false;
     resetPreparation();
-    setMessage('NFCタグを読み取って訓練者を確認してください。');
+    setMessage(null);
   };
 
   const takeoverTrainingWrench = async () => {
@@ -466,178 +468,191 @@ export function KioskAssemblyTrainingPage() {
   };
 
   const visibleError = connectionRetryRequired ? error : torqueConnection.error ?? error;
+  const notice = visibleError ?? message;
   const regularAttemptIds = new Set<string>();
-  const trainingAttemptItems: Array<TorqueTrainingAttemptHistoryItem | null> = session
+  const slotItems: Array<TorqueTrainingSlotItem | null> = session
     ? Array.from({ length: session.targetAttemptCount }, (_, index) => {
         const attempt = session.attempts.find((item) => item.attemptNo === index + 1);
         if (!attempt) return null;
         regularAttemptIds.add(attempt.id);
-        return toTrainingAttemptHistoryItem(attempt, index + 1);
+        return toTrainingSlotItem(attempt);
       })
     : [];
-  const outOfSequenceAttemptItems = session
-    ? session.attempts
-      .filter((attempt) => !regularAttemptIds.has(attempt.id))
-      .map((attempt) => ({ ...toTrainingAttemptHistoryItem(attempt, 0), attemptNo: null }))
+  const outOfSequenceSlotItems = session
+    ? session.attempts.filter((attempt) => !regularAttemptIds.has(attempt.id)).map(toTrainingSlotItem)
     : [];
+  const acceptedCount = session?.attempts.filter((attempt) => attempt.accepted).length ?? 0;
+  const currentStep = !operator
+    ? 0
+    : !session || session.status === 'CANCELLED'
+      ? 1
+      : session.status === 'COMPLETED'
+        ? 4
+        : torqueConnection.leaseOwned ? 3 : 2;
+  const completedSummary = session?.status === 'COMPLETED' ? summarizeTrainingSessionAttempts(session.attempts) : null;
+  const completedTendency = trainingTendency(completedSummary?.meanDeviationPercent);
+  const completedLimits = session?.status === 'COMPLETED' ? targetBandLimits(session.attempts) : null;
+  const focusFingerprint = session?.conditionFingerprint ?? selectedVersion?.conditionFingerprint ?? null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto bg-slate-800 p-3 text-white">
-      <header className="grid min-h-[58px] grid-cols-1 items-center gap-2 rounded border border-white/15 bg-slate-900/80 p-3 sm:grid-cols-[minmax(0,auto)_minmax(10rem,1fr)_auto]">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-cyan-300">Kiosk / Assembly</p>
-          <h1 className="text-2xl font-bold">締付トルク訓練</h1>
-        </div>
-        <AssemblySessionStatusNotice
-          message={visibleError ?? message}
-          tone={visibleError ? 'error' : 'default'}
-        />
+      <header className="grid min-h-16 grid-cols-1 items-center gap-3 rounded border border-white/15 bg-slate-900/80 px-4 py-2 xl:grid-cols-[auto_minmax(0,1fr)_auto]">
+        <h1 className="text-2xl font-bold">締付トルク訓練</h1>
+        <TorqueTrainingStepper current={currentStep} />
         <div className="flex gap-2">
-          <Button variant="ghostOnDark" onClick={openSettings}>設定</Button>
-          <Button variant="ghostOnDark" onClick={() => navigate('/kiosk/assembly')}>組立へ戻る</Button>
+          <Button variant="ghostOnDark" className="h-11" onClick={openSettings}>設定</Button>
+          <Button variant="ghostOnDark" className="h-11" onClick={() => navigate('/kiosk/assembly')}>組立へ戻る</Button>
         </div>
       </header>
 
-      <main className="grid min-h-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,32rem)]">
-        <section className="space-y-3 rounded border border-white/10 bg-slate-900/70 p-4">
-          <div className={session?.status === 'COMPLETED' ? 'w-full space-y-3' : 'w-full max-w-5xl space-y-3'} data-testid="torque-training-preparation">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-bold">{session?.status === 'COMPLETED' ? '訓練結果' : '訓練の準備'}</h2>
-              {operator && (!session || session.status === 'IN_PROGRESS') ? <Button variant="ghostOnDark" onClick={() => void resetOperator()}>別の作業者</Button> : null}
-            </div>
-            {operator ? (
-              <div className="w-full max-w-sm rounded border border-emerald-300/30 bg-emerald-500/10 p-3" data-testid="torque-training-operator-card">
-                <p className="font-semibold">{operator.employee.displayName}</p>
-                <p className="text-sm text-emerald-100/80">社員コード: {operator.employee.employeeCode}</p>
-              </div>
-            ) : (
-              <p className="w-full max-w-md rounded border border-white/10 bg-white/5 p-3 text-sm text-white/70" data-testid="torque-training-nfc-guide">NFCリーダーに本人のタグをかざしてください。</p>
-            )}
+      <TorqueTrainingTeamKpiBand recent={teamOverview?.recent} allTime={teamOverview?.allTime} />
 
-            {!session ? (
-              <div className="w-full max-w-xl space-y-2">
-              <label className="block text-sm font-semibold" htmlFor="training-program">対象ボルト・訓練メニュー</label>
-              <select id="training-program" className="min-h-11 w-full rounded border border-white/20 bg-slate-800 px-3 text-white" value={selectedVersionId} onChange={(event) => setSelectedVersionId(event.target.value)} disabled={!operator || busy}>
-                <option value="">選択してください</option>
-                {programs.flatMap((program) => program.versions.map((version) => (
-                  <option
-                    key={version.id}
-                    value={version.id}
-                    disabled={version.setupState !== 'READY'}
-                  >
-                    {program.code} / {version.displayName}（{version.nominalDiameter}）
-                    {version.setupState !== 'READY' ? `（${presentTorqueTrainingSetupReason(version.setupStateReason) ?? '対応レンチ未登録'}）` : ''}
-                  </option>
-                )))}
-              </select>
-              {selectedVersion ? (
-                <p className="text-sm text-white/70">
-                  対象: {selectedVersion.nominalDiameter} / {selectedVersion.displayName}。
-                  {!selectedVersionReady ? ` ${setupReason ?? '対応レンチ未登録'}。` : '訓練開始後に設定値を表示します。'}
-                </p>
+      <main className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_34rem] 2xl:grid-cols-[minmax(0,1fr)_38rem]">
+        <section className="flex min-w-0 flex-col gap-5 rounded border border-white/10 bg-slate-900/70 p-5" data-testid="torque-training-preparation">
+          {operator ? (
+            <div className="flex flex-wrap items-center gap-4" data-testid="torque-training-operator-card">
+              <span className="grid h-12 w-12 place-items-center rounded-full bg-emerald-400/15 text-xl font-bold text-emerald-300" aria-hidden="true">
+                {operator.employee.displayName.slice(0, 1)}
+              </span>
+              <div>
+                <p className="text-2xl font-bold">{operator.employee.displayName}</p>
+                <p className="text-sm text-white/60">社員コード {operator.employee.employeeCode}</p>
+              </div>
+              {!session || session.status === 'IN_PROGRESS' ? (
+                <Button variant="ghostOnDark" className="ml-auto h-11" onClick={() => void resetOperator()}>別の作業者</Button>
               ) : null}
-              <Button onClick={() => void start()} disabled={!operator || !selectedVersionId || !selectedVersionReady || busy}>{busy ? '処理中...' : '訓練を開始'}</Button>
+            </div>
+          ) : (
+            <div
+              className="flex items-center gap-5 self-start rounded-xl border-2 border-cyan-300 bg-cyan-300/10 py-4 pl-4 pr-7"
+              data-testid="torque-training-nfc-guide"
+            >
+              <span className="grid h-16 w-16 place-items-center rounded-full bg-cyan-300 text-slate-900">
+                <TorqueTrainingNfcIcon className="h-9 w-9" />
+              </span>
+              <span className="text-3xl font-bold text-cyan-300">タグをかざす</span>
+            </div>
+          )}
+
+          {notice ? (
+            <AssemblySessionStatusNotice message={notice} tone={visibleError ? 'error' : 'default'} className="self-start text-base" />
+          ) : null}
+
+          {!session ? (
+            <>
+              <TorqueTrainingProgramMatrix
+                programs={programs}
+                selectedVersionId={selectedVersionId}
+                disabled={!operator || busy}
+                onSelect={setSelectedVersionId}
+              />
+              {operator && selectedVersion ? (
+                <div className="flex flex-wrap items-center gap-5">
+                  <p className="text-2xl font-bold" title={selectedVersion.displayName}>
+                    {selectedVersion.nominalDiameter} {selectedVersion.material}
+                    <span className="ml-3 text-base font-normal text-white/60">首下{selectedVersion.boltLengthMm}mm · {selectedVersion.strengthClass}</span>
+                  </p>
+                  {!selectedVersionReady ? <p className="text-base text-amber-200">{setupReason ?? '対応レンチ未登録'}</p> : null}
+                  <Button className="h-11 px-6 text-lg" onClick={() => void start()} disabled={!selectedVersionReady || busy}>
+                    {busy ? '処理中...' : '訓練を開始'}
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          ) : session.status === 'IN_PROGRESS' ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2" data-testid="torque-training-target-summary">
+                <span className="rounded-full border border-white/10 bg-slate-800 px-4 py-1.5 text-lg font-bold" title={session.program.displayName}>
+                  {session.program.nominalDiameter} {session.program.material} 首下{session.program.boltLengthMm}mm
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-800 px-4 py-1.5 text-base text-white/80">
+                  <TorqueTrainingEyeOffIcon className="h-5 w-5" />
+                  目標値は結果で表示
+                </span>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {session.status === 'IN_PROGRESS' ? (
-                  <>
-                    <div className="w-full max-w-md rounded border border-white/10 bg-white/5 p-3" data-testid="torque-training-target-summary">
-                      <p className="text-sm text-white/70">対象: {session.program.displayName} / {session.program.nominalDiameter}</p>
-                      <p className="text-sm text-white/50">締付中は目標値を隠し、入力後に結果を表示します。</p>
-                    </div>
-                    {!torqueConnection.leaseOwned ? (
-                      torqueConnection.state === 'owned_by_other' && trainingWrenchConfirmation ? (
-                        <TorqueWrenchTakeoverPanel
-                          owner={torqueConnection.status?.owner ?? null}
-                          targetKind="training"
-                          busy={busy || torqueConnection.busy}
-                          onTakeover={takeoverTrainingWrench}
-                        />
-                      ) : (
-                        <div className="w-full max-w-md" data-testid="torque-training-wrench-detection">
-                          <TorqueTrainingWrenchPreparationPanel
-                            target={session.program}
-                            wrenchSerialNumber={agentWrenchSerial}
-                            disabledReason={preparationResult ? null : wrenchDetectionReason}
-                            busy={busy || torqueConnection.busy || preparationStatus === 'registering'}
-                            settingRegistered={preparationStatus === 'registered' && settingVerificationMode === 'REGISTERED_SETTING'}
-                            connectionRetryRequired={connectionRetryRequired}
-                            settingVerificationMode={settingVerificationMode}
-                            onPrepareAndConnect={() => void confirmAndAcquire()}
-                          />
-                        </div>
-                      )
-                    ) : (
-                      <div className="w-full max-w-lg rounded border border-emerald-300/30 bg-emerald-500/10 p-4" data-testid="torque-training-wrench-connection">
-                        <p className="font-bold text-emerald-100">{torqueConnection.ready ? '接続準備完了' : torqueConnection.state === 'handoff_wait' ? '引継ぎ待機中' : 'Bluetooth接続待ち'}</p>
-                        <p className="mt-1 text-sm text-emerald-100/80">{torqueConnection.ready ? '5回締付けてください。結果はdigitalトルクレンチから自動記録されます。' : '青いランプが点灯し、接続準備完了になるまで締付けないでください。'}</p>
-                        <p className="mt-2 text-sm">進捗: {session.attempts.filter((attempt) => attempt.accepted).length} / {session.targetAttemptCount}</p>
-                      </div>
-                    )}
-                  </>
-                ) : session.status === 'COMPLETED' ? (
-                  <div className="w-full rounded border border-emerald-300/30 bg-emerald-500/10 p-4" data-testid="torque-training-completed-result">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="font-bold text-emerald-100">5回の記録が完了しました</p>
-                        <p className="mt-1 text-sm text-emerald-100/80">{session.program.displayName} / 対象ボルト {session.program.nominalDiameter}</p>
-                      </div>
-                      <p className="text-lg font-bold text-emerald-100">
-                        合格 {session.attempts.filter((attempt) => attempt.judgement === 'OK').length} / {session.targetAttemptCount}回
-                      </p>
-                    </div>
-                    <p className="mt-3 text-sm text-white/75">試行履歴と成長度合いを確認して、訓練を終了してください。</p>
-                    <Button className="mt-4" onClick={() => void resetOperator()}>訓練完了</Button>
+              {!torqueConnection.leaseOwned ? (
+                torqueConnection.state === 'owned_by_other' && trainingWrenchConfirmation ? (
+                  <TorqueWrenchTakeoverPanel
+                    owner={torqueConnection.status?.owner ?? null}
+                    targetKind="training"
+                    busy={busy || torqueConnection.busy}
+                    onTakeover={takeoverTrainingWrench}
+                  />
+                ) : (
+                  <div className="w-full max-w-md" data-testid="torque-training-wrench-detection">
+                    <TorqueTrainingWrenchPreparationPanel
+                      target={session.program}
+                      wrenchSerialNumber={agentWrenchSerial}
+                      disabledReason={preparationResult ? null : wrenchDetectionReason}
+                      busy={busy || torqueConnection.busy || preparationStatus === 'registering'}
+                      settingRegistered={preparationStatus === 'registered' && settingVerificationMode === 'REGISTERED_SETTING'}
+                      connectionRetryRequired={connectionRetryRequired}
+                      settingVerificationMode={settingVerificationMode}
+                      onPrepareAndConnect={() => void confirmAndAcquire()}
+                    />
                   </div>
-                ) : null}
-                <TorqueTrainingAttemptHistory
-                  items={trainingAttemptItems}
-                  recordedCount={session.attempts.filter((attempt) => attempt.accepted).length}
-                  outOfSequenceItems={outOfSequenceAttemptItems}
-                  className={session.status === 'COMPLETED' ? 'max-w-none' : undefined}
-                />
+                )
+              ) : (
+                <div className="flex flex-wrap items-center gap-4" data-testid="torque-training-wrench-connection">
+                  <span className={`grid h-16 w-16 place-items-center rounded-xl ${torqueConnection.ready ? 'bg-emerald-300 text-slate-900' : 'bg-slate-700 text-white/70'}`}>
+                    <TorqueTrainingWrenchIcon className="h-9 w-9" />
+                  </span>
+                  {torqueConnection.ready ? (
+                    <p className="text-4xl font-black">
+                      締付 {Math.min(acceptedCount + 1, session.targetAttemptCount)}
+                      <span className="ml-2 text-2xl font-bold text-white/60">/ {session.targetAttemptCount}本目</span>
+                    </p>
+                  ) : (
+                    <div>
+                      <p className="text-2xl font-bold">{torqueConnection.state === 'handoff_wait' ? '引継ぎ待機中' : 'Bluetooth接続待ち'}</p>
+                      <p className="text-base text-amber-200">青ランプ点灯まで締付けない</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              <TorqueTrainingAttemptSlots
+                items={slotItems}
+                highlightNext={torqueConnection.leaseOwned && torqueConnection.ready}
+                outOfSequenceItems={outOfSequenceSlotItems}
+              />
+            </>
+          ) : session.status === 'COMPLETED' ? (
+            <div className="flex flex-col gap-4" data-testid="torque-training-completed-result">
+              <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+                <p className="text-6xl font-black leading-none text-emerald-300">
+                  {completedSummary?.okCount ?? 0}
+                  <span className="ml-2 text-3xl text-white">/ {session.targetAttemptCount}本 合格</span>
+                </p>
+                <p className="text-lg text-white/60" title={session.program.displayName}>
+                  {session.program.nominalDiameter} {session.program.material}
+                  {' · '}平均ずれ <b className="text-white">{formatTrainingPercent(completedSummary?.meanAbsoluteErrorPercent)}%</b>
+                  {' · '}傾向 <b className={TENDENCY_TEXT_CLASS[completedTendency.tone]}>{completedTendency.label} {completedTendency.signedLabel}</b>
+                </p>
               </div>
-            )}
-          </div>
+              {completedLimits ? (
+                <TorqueTrainingTargetBand {...completedLimits} points={toTargetBandPoints(session.attempts)} />
+              ) : null}
+              <TorqueTrainingAttemptSlots items={slotItems} highlightNext={false} outOfSequenceItems={outOfSequenceSlotItems} />
+              <div>
+                <Button className="h-11 px-6 text-lg" onClick={() => void resetOperator()}>訓練完了</Button>
+              </div>
+            </div>
+          ) : (
+            <TorqueTrainingAttemptSlots items={slotItems} highlightNext={false} outOfSequenceItems={outOfSequenceSlotItems} />
+          )}
         </section>
 
-        <aside className="w-full max-w-lg space-y-3 rounded border border-white/10 bg-slate-900/70 p-4 xl:max-w-none">
-          <h2 className="text-lg font-bold">成長度合い</h2>
-          {operator?.metrics.length ? operator.metrics.map((metric) => {
-            const latest = metric.sessions[0];
-            const comparison = trainingMetricComparison(metric);
-            const latestPassedCount = latest ? passedAttemptCount(latest.attemptCount, latest.passRate) : null;
-            const latestIsCurrentSession = session?.status === 'COMPLETED' && latest?.sessionId === session.id;
-            return (
-              <article key={metric.conditionFingerprint} className="rounded border border-white/10 bg-white/5 p-4" data-testid="torque-training-growth-card">
-                <h3 className="font-bold">{metric.trainingName}</h3>
-                <p className="mt-1 text-sm text-white/65">対象ボルト: {metric.targetBolt} / 直近{metric.sessions.length}回</p>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <div className="rounded bg-slate-950/50 p-2">
-                    <p className="text-xs text-white/55">合格した回数</p>
-                    <p className="mt-1 text-lg font-bold">{passedAttemptCount(metric.attemptCount, metric.passRate)} / {metric.attemptCount}回</p>
-                  </div>
-                  <div className="rounded bg-slate-950/50 p-2">
-                    <p className="text-xs text-white/55">{latestIsCurrentSession ? '今回' : '最新の記録'}</p>
-                    <p className="mt-1 text-lg font-bold">{latestPassedCount == null ? '-' : `${latestPassedCount} / ${latest?.attemptCount ?? 0}回`}</p>
-                  </div>
-                </div>
-                <p className="mt-3 text-sm text-emerald-100">{comparison ?? '前回と比べられる同一条件の記録はありません。'}</p>
-                <p className="mt-2 text-xs text-white/55">合格率 {Math.round(metric.passRate * 100)}% / 目標からの平均ずれ {metric.meanAbsoluteErrorPercent.toFixed(1)}%</p>
-                <div className="mt-3 h-28" aria-label={`${metric.trainingName}の合格率の推移`}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={[...metric.sessions].reverse()}>
-                      <XAxis dataKey="completedAt" hide />
-                      <YAxis domain={[0, 1]} hide />
-                      <Tooltip formatter={(value) => `${Math.round(Number(value) * 100)}%`} />
-                      <Line type="monotone" dataKey="passRate" stroke="#6ee7b7" strokeWidth={2} dot={{ r: 2 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </article>
-            );
-          }) : <p className="text-sm text-white/60">完了セッションがまだありません。</p>}
+        <aside className="min-w-0 rounded border border-white/10 bg-slate-900/70 p-5">
+          {operator ? (
+            <TorqueTrainingPersonalRecord
+              metrics={operator.metrics}
+              focusFingerprint={focusFingerprint}
+              completedSessionId={session?.status === 'COMPLETED' ? session.id : null}
+              team={teamOverview?.recent}
+            />
+          ) : (
+            <TorqueTrainingRecentSessions sessions={teamOverview?.recentSessions} />
+          )}
         </aside>
       </main>
 

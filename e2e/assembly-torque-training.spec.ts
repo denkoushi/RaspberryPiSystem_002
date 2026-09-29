@@ -153,6 +153,20 @@ function session(
   };
 }
 
+const teamOverview = {
+  recent: { sessionCount: 10, operatorCount: 6, attemptCount: 50, passRate: 0.84, meanAbsoluteErrorPercent: 5.2, meanDeviationPercent: -1.6 },
+  allTime: { sessionCount: 280, operatorCount: 23, attemptCount: 1400, passRate: 0.78, meanAbsoluteErrorPercent: 6.4, meanDeviationPercent: -2.4 },
+  recentSessions: [{
+    sessionId: 'team-session-1',
+    completedAt: '2026-08-09T00:05:00.000Z',
+    employeeName: '他 作業者',
+    trainingName: 'M6 E2E訓練',
+    targetBolt: 'M6',
+    material: 'SCM435',
+    judgements: ['OK', 'OK', 'UNDER', 'OK', 'OVER']
+  }]
+};
+
 async function installMockNfc(page: Page): Promise<void> {
   await page.addInitScript(() => {
     type MockSocket = {
@@ -265,6 +279,7 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
     if (path === '/api/kiosk/config') return route.fulfill({ json: { kioskInitialRoute: 'assembly', navTabOrder: [] } });
     if (path === '/api/system/deploy-status') return route.fulfill({ json: { isMaintenance: false } });
     if (path === '/api/torque-training/programs' && request.method() === 'GET') return route.fulfill({ json: { programs: [menuProgram] } });
+    if (path === '/api/torque-training/team-summary') return route.fulfill({ json: teamOverview });
     if (path === '/api/torque-training/operator-context') return route.fulfill({ json: {
       employee: { id: employeeId, employeeCode: 'E2E001', displayName: 'E2E 作業者' },
       currentSession: null,
@@ -368,22 +383,29 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
 
   await page.goto('/kiosk/assembly/training', { waitUntil: 'networkidle' });
   await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __trainingNfcReady?: boolean }).__trainingNfcReady))).toBe(true);
-  await expectMaxWidth(page.getByTestId('torque-training-preparation'), 1024);
   await expectMaxWidth(page.getByTestId('torque-training-nfc-guide'), 448);
+  // The team KPI band and the recent list are shown before any tag is read.
+  await expect(page.getByTestId('torque-training-team-kpi-recent')).toContainText('84%');
+  await expect(page.getByTestId('torque-training-team-kpi-recent')).toContainText('▲ 6pt');
+  await expect(page.getByTestId('torque-training-team-kpi-recent')).toContainText('やや弱め');
+  await expect(page.getByTestId('torque-training-team-kpi-all-time')).toContainText('78%');
+  await expect(page.getByTestId('torque-training-recent-sessions')).toContainText('他 作業者');
+  await expect(page.getByTestId('torque-training-stepper').locator('[aria-current="step"]')).toContainText('タグ');
+  const trainingMenu = page.getByTestId('torque-training-program-matrix');
+  await expect(trainingMenu.getByRole('button')).toHaveCount(14);
+  await expect(trainingMenu.getByRole('button', { name: 'M6 E2E訓練', exact: true })).toBeDisabled();
   await emitNfc(page, 'NFC-E2E-TRAINING');
   await expect(page.getByText('E2E 作業者', { exact: true })).toBeVisible();
-  await expectMaxWidth(page.getByTestId('torque-training-operator-card'), 384);
-  const trainingMenu = page.getByLabel('対象ボルト・訓練メニュー');
-  await expectMaxWidth(trainingMenu, 576);
-  await expect(trainingMenu.locator('option')).toHaveCount(15);
-  await expect(trainingMenu.locator('option:disabled')).toHaveCount(13);
-  await expect(trainingMenu).toContainText('対応レンチ未登録');
-  await expect(page.getByTestId('assembly-work-session-status')).toHaveAttribute('role', 'status');
+  await expect(page.getByTestId('torque-training-recent-sessions')).toHaveCount(0);
+  await expect(trainingMenu.locator('button:disabled')).toHaveCount(13);
+  await expect(trainingMenu.getByRole('button', { name: /対応レンチ未登録/ })).toHaveCount(13);
+  await expectMaxWidth(trainingMenu.getByRole('button', { name: 'M6 E2E訓練', exact: true }), 96);
   await expectNoHorizontalOverflow(page);
-  await trainingMenu.selectOption(versionId);
+  await trainingMenu.getByRole('button', { name: 'M6 E2E訓練', exact: true }).click();
+  await expect(trainingMenu.getByRole('button', { name: 'M6 E2E訓練', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expectMaxWidth(page.getByRole('button', { name: '訓練を開始' }), 200);
   await page.getByRole('button', { name: '訓練を開始' }).click();
-  await expect(page.getByText('締付中は目標値を隠し、入力後に結果を表示します。')).toBeVisible();
-  await expectMaxWidth(page.getByTestId('torque-training-target-summary'), 448);
+  await expect(page.getByText('目標値は結果で表示')).toBeVisible();
   await expect(page.getByText(/目標 10 Nm/)).toHaveCount(0);
   await expect(page.getByText('torque-agent自動検出: 702902S')).toBeVisible();
   await expect(page.getByTestId('torque-training-wrench-target-values')).toContainText('M6');
@@ -403,16 +425,16 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
   }));
   expect(preparationPayloads[0]).not.toHaveProperty('lowerLimit');
   await page.getByRole('button', { name: 'レンチ本体を表示値に設定して接続' }).click();
-  await expectMaxWidth(page.getByTestId('torque-training-wrench-connection'), 512);
+  await expect(page.getByTestId('torque-training-wrench-connection')).toBeVisible();
   await expect(page.getByTestId('torque-training-wrench-target-values')).toHaveCount(0);
   const attemptHistory = page.getByRole('region', { name: '訓練試行履歴' });
-  await expectMaxWidth(attemptHistory, 1024);
+  await expectMaxWidth(attemptHistory.getByTestId('torque-training-attempt-1'), 176);
   await expect.poll(() => trainingHeartbeats, { timeout: 15_000 }).toBeGreaterThanOrEqual(5);
   const sessionGetsBeforeFallback = trainingSessionGets;
   await expect.poll(() => trainingSessionGets, { timeout: 3_000 }).toBeGreaterThan(sessionGetsBeforeFallback);
   committedAttemptCount = 1;
   await emitTorqueTrainingCommitted(page, session().id, 'training-source-event-1');
-  await expect(attemptHistory.getByTestId('torque-training-attempt-1')).toContainText('10 Nm', { timeout: 1_000 });
+  await expect(attemptHistory.getByTestId('torque-training-attempt-1')).toContainText('10N·m', { timeout: 1_000 });
   await expect(attemptHistory.getByTestId('torque-training-attempt-1')).toContainText('OK', { timeout: 1_000 });
   expect(trainingHeartbeatPayloads.slice(0, 5)).toHaveLength(5);
   for (const payload of trainingHeartbeatPayloads.slice(0, 5)) {
@@ -432,10 +454,13 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
   await expect(page.getByText('E2E 作業者', { exact: true })).toBeVisible();
   const growthCard = page.getByTestId('torque-training-growth-card');
   await expect(growthCard).toContainText('M6 E2E訓練');
-  await expect(growthCard).toContainText('対象ボルト: M6');
-  await expect(growthCard).toContainText('合格した回数');
   await expect(growthCard).toContainText('今回');
+  await expect(growthCard).toContainText('5/5');
+  await expect(growthCard).toContainText('全体 84%');
   await expect(growthCard).not.toContainText(fingerprint);
+  await expect(page.getByTestId('torque-training-completed-result')).toContainText('5/ 5本 合格');
+  await expect(page.getByTestId('torque-training-target-band')).toBeVisible();
+  await expect(page.getByTestId('torque-training-stepper').locator('[aria-current="step"]')).toContainText('結果');
   await emitNfc(page, 'NFC-E2E-OTHER-OPERATOR');
   await expect(page.getByTestId('torque-training-completed-result')).toBeVisible();
   await expect(page.getByText('E2E 作業者', { exact: true })).toBeVisible();
@@ -494,7 +519,8 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
   await expect(settingsButton).toBeFocused();
 
   await page.setViewportSize({ width: 1366, height: 768 });
-  await expectMaxWidth(page.getByLabel('対象ボルト・訓練メニュー'), 576);
+  await expect(page.getByTestId('torque-training-program-matrix')).toBeVisible();
+  await expectNoHorizontalOverflow(page);
   await settingsButton.click();
   const compactAccessDialog = page.getByRole('dialog', { name: '訓練設定の認証' });
   await compactAccessDialog.getByLabel('操作時パスワード').fill('2520');
@@ -657,7 +683,7 @@ for (const viewport of [
     await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __trainingNfcReady?: boolean }).__trainingNfcReady))).toBe(true);
     await emitNfc(page, 'NFC-E2E-BOLT');
     await expect(page.getByText('BOLT 作業者', { exact: true })).toBeVisible();
-    await page.getByLabel('対象ボルト・訓練メニュー').selectOption(boltVersionId);
+    await page.getByTestId('torque-training-program-matrix').getByRole('button', { name: 'M6 BOLT条件訓練', exact: true }).click();
     await page.getByRole('button', { name: '訓練を開始' }).click();
     await expect(page.getByTestId('torque-training-wrench-target-values')).toBeVisible();
     await expect(page.getByText('設定照合対象外')).toBeVisible();
