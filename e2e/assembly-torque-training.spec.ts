@@ -681,6 +681,9 @@ for (const viewport of [
 
     await page.goto('/kiosk/assembly/training', { waitUntil: 'networkidle' });
     await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __trainingNfcReady?: boolean }).__trainingNfcReady))).toBe(true);
+    // The kiosk-wide inventory NFC subscriber can open the mock socket before
+    // this lazily loaded page subscribes, so wait for the page itself first.
+    await expect(page.getByTestId('torque-training-nfc-guide')).toBeVisible();
     await emitNfc(page, 'NFC-E2E-BOLT');
     await expect(page.getByText('BOLT 作業者', { exact: true })).toBeVisible();
     await page.getByTestId('torque-training-program-matrix').getByRole('button', { name: 'M6 BOLT条件訓練', exact: true }).click();
