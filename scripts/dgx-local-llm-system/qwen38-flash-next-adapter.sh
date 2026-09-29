@@ -122,7 +122,11 @@ if [[ "${FAST_LOAD}" == "1" && ! -s "${INSTANTTENSOR_HOST_DIR}/.qwen38-instantte
   echo "Qwen3.8 Flash adapter: instanttensor is not staged at ${INSTANTTENSOR_HOST_DIR}; keeping the safetensors loader" >&2
   FAST_LOAD="0"
 fi
+# Reduced-vocabulary MTP drafting.  "full" drafts over the whole 248k head.
 DRAFT_VOCAB="${BLUE_QWEN38_DRAFT_VOCAB:-files/draft_vocab_en_code_47k.txt}"
+if [[ "${DRAFT_VOCAB}" == "full" ]]; then
+  DRAFT_VOCAB=""
+fi
 echo "Qwen3.8 Flash adapter: local model cache=${MODEL_DIR} persistent PLE cache=${PLE_CACHE_DIR}" >&2
 
 # The pinned upstream launcher uses host networking and binds $BIND (default
