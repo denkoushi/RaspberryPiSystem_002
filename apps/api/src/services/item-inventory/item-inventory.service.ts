@@ -10,6 +10,24 @@ import { normalizeInventoryArea, normalizeInventoryUnit } from './inventory-area
 
 const UNIT_NAME_MAX_LENGTH = 20;
 
+/** Optional tool information shown and chosen on the kiosk registration screen. */
+export const INVENTORY_TOOL_FIELDS = ['maker', 'toolName', 'workMaterial', 'toolSize'] as const;
+export type InventoryToolField = (typeof INVENTORY_TOOL_FIELDS)[number];
+type InventoryToolInput = Partial<Record<InventoryToolField, string>>;
+
+function toolData(input: InventoryToolInput, keepMissing: boolean): Partial<Record<InventoryToolField, string | null>> {
+  const data: Partial<Record<InventoryToolField, string | null>> = {};
+  for (const field of INVENTORY_TOOL_FIELDS) {
+    const value = input[field];
+    if (value === undefined) {
+      if (!keepMissing) data[field] = null;
+      continue;
+    }
+    data[field] = value.normalize('NFKC').trim() || null;
+  }
+  return data;
+}
+
 export class InventoryInsufficientStockError extends Error {
   constructor() {
     super('在庫が不足しています');
@@ -48,7 +66,7 @@ function locationDto(compartment: {
   stockQuantity: number;
   drawer: { drawerNumber: number; shelf: { area: string; shelfNumber: number } };
   itemTag: { uid: string } | null;
-  inventoryItem: { id: string; itemCode: string; name: string; model: string | null; usage: string | null; category: string | null; area: string | null; note: string | null; unit?: string | null; photos?: Array<{ id: string; photoIndex: number; photoUrl: string; originalFilename: string }> };
+  inventoryItem: { id: string; itemCode: string; name: string; model: string | null; usage: string | null; category: string | null; area: string | null; note: string | null; unit?: string | null; maker?: string | null; toolName?: string | null; workMaterial?: string | null; toolSize?: string | null; photos?: Array<{ id: string; photoIndex: number; photoUrl: string; originalFilename: string }> };
 }) {
   return {
     id: compartment.id,
@@ -67,6 +85,10 @@ function locationDto(compartment: {
       area: compartment.inventoryItem.area,
       note: compartment.inventoryItem.note,
       unit: compartment.inventoryItem.unit ?? null,
+      maker: compartment.inventoryItem.maker ?? null,
+      toolName: compartment.inventoryItem.toolName ?? null,
+      workMaterial: compartment.inventoryItem.workMaterial ?? null,
+      toolSize: compartment.inventoryItem.toolSize ?? null,
       photos: compartment.inventoryItem.photos ?? [],
     },
   };
@@ -363,6 +385,20 @@ export class ItemInventoryService {
     });
   }
 
+  /** Values already used for each tool field, offered as choices when registering. */
+  async listToolFieldOptions(): Promise<Record<InventoryToolField, string[]>> {
+    const entries = await Promise.all(INVENTORY_TOOL_FIELDS.map(async (field) => {
+      const rows = await this.db.inventoryItem.findMany({
+        where: { deletedAt: null, [field]: { not: null } },
+        select: { [field]: true },
+        distinct: [field],
+        orderBy: { [field]: 'asc' },
+      }) as unknown as Array<Record<string, string | null>>;
+      return [field, rows.map((row) => row[field]).filter((value): value is string => Boolean(value))] as const;
+    }));
+    return Object.fromEntries(entries) as Record<InventoryToolField, string[]>;
+  }
+
   async listUnits() {
     return this.db.inventoryUnit.findMany({ orderBy: [{ createdAt: 'asc' }, { name: 'asc' }] });
   }
@@ -475,6 +511,10 @@ export class ItemInventoryService {
     initialQuantity?: number;
     reviewNote?: string;
     unit?: string | null;
+    maker?: string;
+    toolName?: string;
+    workMaterial?: string;
+    toolSize?: string;
     actor?: InventoryActor;
   }) {
     if (!input.shelfId || !input.drawerId || !input.itemTagUid) {
@@ -523,6 +563,7 @@ export class ItemInventoryService {
             ...(currentPayload.category !== null ? { category: currentPayload.category } : {}),
             ...(currentPayload.note !== null ? { note: currentPayload.note } : {}),
             ...(unit !== undefined ? { unit } : {}),
+            ...toolData(input, true),
           },
         });
         for (const photo of currentPayload.photos) {
@@ -573,6 +614,7 @@ export class ItemInventoryService {
           area: currentPayload.area,
           note: currentPayload.note,
           unit: unit ?? null,
+          ...toolData(input, false),
           photos: {
             create: currentPayload.photos.map((photo, index) => ({
               photoUrl: photo.photoUrl,

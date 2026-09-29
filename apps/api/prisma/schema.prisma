@@ -959,6 +959,10 @@ model InventoryItem {
   note           String?
   /// Unit name the item is counted in; null means 個.
   unit           String?
+  maker          String?
+  toolName       String?
+  workMaterial   String?
+  toolSize       String?
   deletedAt      DateTime?
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
