@@ -75,6 +75,8 @@ import { resolveVisualTemplateById } from '../../features/part-measurement/inspe
 import {
   createInspectionDrawingPoint,
   nextAvailableMarkerNo,
+  sortInspectionDrawingPointsByMarkerNo,
+  swapInspectionDrawingMarkerNo,
   toleranceBoundsFromPoint
 } from '../../features/part-measurement/inspection-drawing/markerNumbering';
 import { partMeasurementDrawingPreviewConvertingLabel } from '../../features/part-measurement/partMeasurementDrawingLocalPreview';
@@ -103,6 +105,14 @@ import type {
   PartMeasurementVisualTemplateDto,
   SelfInspectionMode
 } from '../../features/part-measurement/types';
+
+const MARKER_SWAP_UNDO_MS = 6000;
+
+type MarkerSwapUndo = {
+  pointId: string;
+  fromMarkerNo: number;
+  toMarkerNo: number;
+};
 
 function confirmVisualChange(message: string): boolean {
   if (typeof window === 'undefined') return true;
@@ -139,6 +149,7 @@ export function KioskInspectionDrawingCreatePage() {
   const [serverDrawingPath, setServerDrawingPath] = useState<string | null>(null);
   const [points, setPoints] = useState<InspectionDrawingPoint[]>([]);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+  const [markerSwapUndo, setMarkerSwapUndo] = useState<MarkerSwapUndo | null>(null);
   const [ocrCandidatesByPointId, setOcrCandidatesByPointId] = useState<Record<string, DrawingOcrCandidateState>>({});
   const [visualOcrStatus, setVisualOcrStatus] = useState<PartMeasurementDrawingOcrStatusDto | null>(null);
   const [visualOcrLoading, setVisualOcrLoading] = useState(false);
@@ -978,6 +989,26 @@ export function KioskInspectionDrawingCreatePage() {
     requestOcrCandidatesForPoint(selectedPoint);
   }, [ocrCandidatesByPointId, requestOcrCandidatesForPoint, selectedPoint, visualOcrStatus?.status]);
 
+  useEffect(() => {
+    if (!markerSwapUndo) return;
+    const timer = setTimeout(() => setMarkerSwapUndo(null), MARKER_SWAP_UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [markerSwapUndo]);
+
+  const swapSelectedMarkerNo = (targetMarkerNo: number) => {
+    if (contentReadOnly || !selectedPoint || selectedPoint.markerNo === targetMarkerNo) return;
+    const fromMarkerNo = selectedPoint.markerNo;
+    setPoints((prev) => swapInspectionDrawingMarkerNo(prev, selectedPoint.id, targetMarkerNo));
+    setMarkerSwapUndo({ pointId: selectedPoint.id, fromMarkerNo, toMarkerNo: targetMarkerNo });
+  };
+
+  const undoMarkerSwap = () => {
+    if (!markerSwapUndo || contentReadOnly) return;
+    const { pointId, fromMarkerNo } = markerSwapUndo;
+    setPoints((prev) => swapInspectionDrawingMarkerNo(prev, pointId, fromMarkerNo));
+    setMarkerSwapUndo(null);
+  };
+
   const removeSelected = () => {
     if (contentReadOnly || !selectedPointId) return;
     setPoints((prev) => prev.filter((p) => p.id !== selectedPointId));
@@ -1158,7 +1189,7 @@ export function KioskInspectionDrawingCreatePage() {
         return;
       }
 
-      const items = points.map((pt, idx) =>
+      const items = sortInspectionDrawingPointsByMarkerNo(points).map((pt, idx) =>
         drawingPointToTemplateItemInput(pt, idx, { measurementLabelSettings })
       );
       if (isEditing && templateId) {
@@ -1568,6 +1599,7 @@ export function KioskInspectionDrawingCreatePage() {
             }}
             onRemovePoint={contentReadOnly ? undefined : removeSelected}
             onRemoveAllPoints={contentReadOnly ? undefined : removeAllPoints}
+            onSwapMarkerNo={contentReadOnly ? undefined : swapSelectedMarkerNo}
             onTestValueChange={(v) => {
               if (!selectedPoint) return;
               updatePoint(selectedPoint.id, { testValue: v });
@@ -1596,6 +1628,27 @@ export function KioskInspectionDrawingCreatePage() {
           />
         </aside>
       </div>
+      {markerSwapUndo ? (
+        <div
+          role="status"
+          className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-slate-500 bg-slate-800 py-2 pl-4 pr-2 text-[1.1rem] font-bold text-white shadow-lg"
+        >
+          <span className="tabular-nums">
+            {markerSwapUndo.fromMarkerNo} と {markerSwapUndo.toMarkerNo} を入れ替えました
+          </span>
+          <button
+            type="button"
+            className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-amber-300 px-4 text-[1.05rem] font-extrabold text-amber-950"
+            onClick={undoMarkerSwap}
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={3}>
+              <path d="M9 14 4 9l5-5" />
+              <path d="M4 9h11a5 5 0 0 1 0 10h-3" />
+            </svg>
+            元に戻す
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
