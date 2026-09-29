@@ -84,3 +84,16 @@ Change: the conversation now keeps the ids of the records it has shown (session 
 The first wording (「これまでに示した記録とは別の記録を求めているか」) also fired on scope and count changes (「組立課は？」, 「全部門で」, 「新しいのを5件」, 「テーブルの部品のもの」), which would hide records the person still wanted. The kept wording asks whether the request asks to leave out the shown records themselves and says that scope, condition, and count changes do not. Short requests scored just under the usual 0.6 cut (「他にはある？」 0.52, 「ほかには？」 0.56) while scope and count changes scored 0.14 to 0.44, so this question accepts at 0.5; a wrong exclusion only hides records already seen and says so.
 
 Dialogue set (19 dialogues, 39 turns, two runs each, new 8,242-record snapshot): `main` 36/39; kept version 36/39 with exclusion on exactly the three follow-ups that ask for other records (d16 to d18) and on none of the others, including the negative case d19. The three remaining failures (d06, d07, d11) are the same as on `main`. `dialogue-eval.mjs` now scores `excludeShown` from the full plan and assumes a follow-up's previous answer showed records.
+
+### 2026-09-29: the planner picks the content part of a question for the judge (kept)
+
+Trigger: after #1537 was deployed, the kiosk dialogue 「製造課の最近の不適合情報を２けん」 → 「ハンディライトを是正にした案件はほかにある？」 still answered 「一致する記録は見つかりませんでした」. The receipt, now kept on the Pi 5, showed the exclusion intent was chosen (0.65) and meaning-based search worked (520 ms), but the judge query still read 「ハンディライトを是正にした案件はほかにある」, and the judge rejects 00007986 whenever 「…はほかにある」 is attached. Telling the judge to ignore exclusion wording did not change that. (The first turn also picked 仙台工場製造部製造課 at 0.77 because both factories have a 製造課; that is a separate ambiguity.)
+
+Change: code cuts the question at the topic particle は and punctuation (not が or も, which sit inside a condition such as 「割れが出た」). When that gives two or more parts, the planner asks JEV which part states the content condition; the parts and the whole question are the only choices, so no wording list is kept. The chosen part goes to the relevance judge; lexical and meaning-based retrieval still use the whole question.
+
+| Run (same day, lexical, 8,242-record snapshot) | aspect cases answered (of 17) | stage-v1 status | dialogue turns (of 39) |
+| --- | --- | --- | --- |
+| main | 14 | 0.80 | 36 |
+| content part for the judge | 15 | 0.80 | 37 |
+
+The new aspect case a17 is the kiosk question on its own; it now returns 00007986. The other aspect and stage-v1 cases are unchanged. The dialogue difference is d06, which passes and fails between runs on `main` too. TypeSafe connection failures stopped several evaluation runs on this day; each number above is from a complete run.
