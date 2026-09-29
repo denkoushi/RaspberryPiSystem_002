@@ -1,16 +1,9 @@
 // Node 24's test runner glob `retrieval/` resolves to this directory.
-// Loading the directory runs index.js, which registers the synthetic tests.
-import './executor.test.mjs';
-import './structural-text.test.mjs';
-import './period-parse.test.mjs';
-import './query-embedding.test.mjs';
-import './evaluate.test.mjs';
-import './stage-score.test.mjs';
-import './dialogue-eval.test.mjs';
-import './relevance-jev.test.mjs';
-import './planner-jev.test.mjs';
-import './query-plan.test.mjs';
-import './value-index.test.mjs';
-import './worker.test.mjs';
-import './corpus.test.mjs';
-import './dense-dgx.test.mjs';
+// Loading the directory runs index.js, which registers every `*.test.mjs` file here.
+// A hand-kept list missed enrichment, entity-link, and new test files until 2026-09-29.
+import { readdirSync } from 'node:fs';
+
+const directory = new URL('./', import.meta.url);
+for (const name of readdirSync(directory).filter((file) => file.endsWith('.test.mjs')).sort()) {
+  await import(new URL(name, directory));
+}
