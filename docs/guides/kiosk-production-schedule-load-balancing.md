@@ -49,7 +49,7 @@
 - ヒートマップの資源名横（未設定は「能力？」）または明細の「能力 ✎」から、月あたり H を入力して保存。
 - `PUT /kiosk/production-schedule/load-balancing/capacity-base`（`{ resourceCd, baseAvailableMinutes }`）→ 端末の siteKey に **基準能力 1 件だけ upsert**（他資源・shared は触らない）。月次上書きは管理画面のまま。
 
-**旧 API**: `overview` / `suggestions` / `outsourcing-*` / `machine-monthly-load` / `start-date-leveling` はサーバに残しているが、新画面からは呼ばない。
+**旧 API**: `overview` / `suggestions` / `outsourcing-*` / `machine-monthly-load` / `start-date-leveling`（`/simulate` 含む）は、新画面の本番反映後（2026-09-30）にサーバ・Web クライアント・専用サービスごと**削除済み**。キオスクが使う負荷調整 API は上記 `workspace` / `workspace/day` / `capacity-base` の 3 本だけ。
 
 ## UI レイアウト（2026-05-28 · 資源CD俯瞰・旧画面）
 
@@ -95,7 +95,9 @@ API（管理者）: `/production-schedule-settings/load-balancing/*`（`work-cal
 - キオスク向け読み取り（`*Resolved`）は **`siteKey` 行を優先**し、不足分だけ **`shared` を補完**する（資源カテゴリ設定と同趣旨）。**DB 移行は不要**。
 - **移管ルール**のマージキーは DB と同じ **`fromClassCode` + `toClassCode` + `priority`**。site で priority だけ変えても、shared の別 priority 行は残る（from/to 単位の全面置換ではない）。
 
-## キオスク API
+## キオスク API（旧画面・削除済み）
+
+以下は旧画面の API の記録。**2026-09-30 に削除済み**で、現在は呼べない（現行は上記「旧 API」注記を参照）。
 
 - `GET /kiosk/production-schedule/load-balancing/overview?month=YYYY-MM&targetDeviceScopeKey=...`
 - `POST /kiosk/production-schedule/load-balancing/suggestions`

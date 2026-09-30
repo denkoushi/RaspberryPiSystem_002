@@ -89,18 +89,9 @@ import {
   updateProductionScheduleLoadBalancingClasses,
   updateProductionScheduleLoadBalancingTransferRules,
   updateProductionScheduleLoadBalancingWorkCalendars,
-  getKioskProductionScheduleLoadBalancingOverview,
-  getKioskProductionScheduleLoadBalancingMachineMonthlyLoad,
-  getKioskProductionScheduleLoadBalancingStartDateLeveling,
   getKioskProductionScheduleLoadBalancingWorkspace,
   getKioskProductionScheduleLoadBalancingWorkspaceDay,
-  putKioskProductionScheduleLoadBalancingCapacityBase,
-  postKioskProductionScheduleLoadBalancingStartDateLevelingSimulate,
-  postKioskProductionScheduleLoadBalancingOutsourcingCandidates,
-  postKioskProductionScheduleLoadBalancingOutsourcingPlan,
-  postKioskProductionScheduleLoadBalancingOutsourcingReplacements,
-  postKioskProductionScheduleLoadBalancingOutsourcingSimulate,
-  postKioskProductionScheduleLoadBalancingSuggestions
+  putKioskProductionScheduleLoadBalancingCapacityBase
 } from '../client';
 
 import type { KioskProductionScheduleListCache } from '../../features/kiosk/productionSchedule/cache/kioskProductionScheduleListCache';
@@ -1088,13 +1079,6 @@ export function useUpdateProductionScheduleLoadBalancingCapacityBase() {
       void queryClient.invalidateQueries({
         queryKey: ['production-schedule-load-balancing-capacity-base', variables.location]
       });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-load-balancing-overview'] });
-      void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-load-balancing-machine-monthly-load']
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-load-balancing-start-date-leveling']
-      });
     }
   });
 }
@@ -1106,13 +1090,6 @@ export function useUpdateProductionScheduleLoadBalancingMonthlyCapacity() {
     onSuccess: (_settings, variables) => {
       void queryClient.invalidateQueries({
         queryKey: ['production-schedule-load-balancing-monthly-capacity', variables.location, variables.yearMonth]
-      });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-load-balancing-overview'] });
-      void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-load-balancing-machine-monthly-load']
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-load-balancing-start-date-leveling']
       });
     }
   });
@@ -1126,13 +1103,6 @@ export function useUpdateProductionScheduleLoadBalancingClasses() {
       void queryClient.invalidateQueries({
         queryKey: ['production-schedule-load-balancing-classes', variables.location]
       });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-load-balancing-overview'] });
-      void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-load-balancing-machine-monthly-load']
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-load-balancing-start-date-leveling']
-      });
     }
   });
 }
@@ -1144,13 +1114,6 @@ export function useUpdateProductionScheduleLoadBalancingTransferRules() {
     onSuccess: (_settings, variables) => {
       void queryClient.invalidateQueries({
         queryKey: ['production-schedule-load-balancing-transfer-rules', variables.location]
-      });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-load-balancing-overview'] });
-      void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-load-balancing-machine-monthly-load']
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-load-balancing-start-date-leveling']
       });
     }
   });
@@ -1164,104 +1127,7 @@ export function useUpdateProductionScheduleLoadBalancingWorkCalendars() {
       void queryClient.invalidateQueries({
         queryKey: ['production-schedule-load-balancing-work-calendars', variables.location]
       });
-      void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-load-balancing-start-date-leveling']
-      });
     }
-  });
-}
-
-export function useKioskProductionScheduleLoadBalancingOverview(
-  params: { month: string; targetDeviceScopeKey?: string },
-  options?: { enabled?: boolean }
-) {
-  const monthOk = /^\d{4}-\d{2}$/.test(params.month.trim());
-  return useQuery({
-    queryKey: ['kiosk-production-schedule-load-balancing-overview', params],
-    queryFn: () => getKioskProductionScheduleLoadBalancingOverview(params),
-    enabled: (options?.enabled ?? true) && monthOk,
-    staleTime: 60_000,
-    placeholderData: (previousData) => previousData
-  });
-}
-
-export function usePostKioskProductionScheduleLoadBalancingSuggestions() {
-  return useMutation({
-    mutationFn: postKioskProductionScheduleLoadBalancingSuggestions
-  });
-}
-
-export function usePostKioskProductionScheduleLoadBalancingOutsourcingCandidates() {
-  return useMutation({
-    mutationFn: postKioskProductionScheduleLoadBalancingOutsourcingCandidates
-  });
-}
-
-export function usePostKioskProductionScheduleLoadBalancingOutsourcingSimulate() {
-  return useMutation({
-    mutationFn: postKioskProductionScheduleLoadBalancingOutsourcingSimulate
-  });
-}
-
-export function usePostKioskProductionScheduleLoadBalancingOutsourcingPlan() {
-  return useMutation({
-    mutationFn: postKioskProductionScheduleLoadBalancingOutsourcingPlan
-  });
-}
-
-export function usePostKioskProductionScheduleLoadBalancingOutsourcingReplacements() {
-  return useMutation({
-    mutationFn: postKioskProductionScheduleLoadBalancingOutsourcingReplacements
-  });
-}
-
-export function useKioskProductionScheduleLoadBalancingMachineMonthlyLoad(
-  params: {
-    fromMonth: string;
-    toMonth: string;
-    targetDeviceScopeKey?: string;
-    machineName?: string;
-    fhincd?: string;
-  },
-  options?: { enabled?: boolean }
-) {
-  const monthOk = /^\d{4}-\d{2}$/.test(params.fromMonth.trim()) && /^\d{4}-\d{2}$/.test(params.toMonth.trim());
-  return useQuery({
-    queryKey: ['kiosk-production-schedule-load-balancing-machine-monthly-load', params],
-    queryFn: () => getKioskProductionScheduleLoadBalancingMachineMonthlyLoad(params),
-    enabled: (options?.enabled ?? true) && monthOk,
-    staleTime: 120_000,
-    placeholderData: (previousData) => previousData
-  });
-}
-
-export function useKioskProductionScheduleLoadBalancingStartDateLeveling(
-  params: {
-    fromMonth: string;
-    toMonth: string;
-    bucket: 'month' | 'day';
-    focusMonth?: string;
-    targetDeviceScopeKey?: string;
-    resourceCd?: string;
-  },
-  options?: { enabled?: boolean }
-) {
-  const monthOk = /^\d{4}-\d{2}$/.test(params.fromMonth.trim()) && /^\d{4}-\d{2}$/.test(params.toMonth.trim());
-  const focusOk =
-    params.bucket !== 'day' ||
-    (params.focusMonth != null && /^\d{4}-\d{2}$/.test(params.focusMonth.trim()));
-  return useQuery({
-    queryKey: ['kiosk-production-schedule-load-balancing-start-date-leveling', params],
-    queryFn: () => getKioskProductionScheduleLoadBalancingStartDateLeveling(params),
-    enabled: (options?.enabled ?? true) && monthOk && focusOk,
-    staleTime: 120_000,
-    placeholderData: (previousData) => previousData
-  });
-}
-
-export function usePostKioskProductionScheduleLoadBalancingStartDateLevelingSimulate() {
-  return useMutation({
-    mutationFn: postKioskProductionScheduleLoadBalancingStartDateLevelingSimulate
   });
 }
 
