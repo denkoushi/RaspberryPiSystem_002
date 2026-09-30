@@ -23,6 +23,7 @@ import { registerVisualTemplateRoutes } from './visual-templates.js';
 import { registerSheetRoutes } from './sheets.js';
 import { registerProductionTemplateReadRoutes } from './production-templates-read.js';
 import { registerSelfInspectionRoutes } from './self-inspection.js';
+import { registerSelfInspectionReductionRoutes } from './self-inspection-reduction.js';
 import { registerProductionTemplateCreateRoutes } from './production-templates-create.js';
 import { registerInspectionDrawingTemplateRoutes } from './inspection-drawing-templates.js';
 import { registerProductionTemplateLifecycleRoutes } from './production-templates-lifecycle.js';
@@ -152,6 +153,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   registerSheetRoutes(app, deps);
   registerProductionTemplateReadRoutes(app, deps);
   registerSelfInspectionRoutes(app, deps);
+  registerSelfInspectionReductionRoutes(app, deps);
   registerProductionTemplateCreateRoutes(app, deps);
   registerInspectionDrawingMeasurementLabelSettingRoutes(app, deps);
   registerInspectionDrawingTemplateRoutes(app, deps);

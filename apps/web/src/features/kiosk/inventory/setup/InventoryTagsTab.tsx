@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useInventoryItems, useInventoryMutations, useInventoryTags } from '../../../../api/hooks';
 import { KioskDigitTenkey } from '../../KioskDigitTenkey';
-import { kioskButtonPrimaryClassName, kioskButtonSecondaryClassName, kioskPanelClassName } from '../../kioskTheme';
 import { compartmentLocationText } from '../inventoryDailyFlow';
+import { PlusIcon } from '../InventoryIcons';
 import { InventoryLocationPicker } from '../InventoryLocationPicker';
+import { invButton, invButtonGhost, invButtonPrimary, invCard, invKey, invKeyUtil, invPanel, invSuccess } from '../inventoryUi';
 
 import { NfcScanPanel } from './NfcScanPanel';
 import { useArmedNfcRead } from './useArmedNfcRead';
@@ -26,8 +27,6 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : '登録に失敗しました';
 }
 
-const keyClassName =
-  'inline-flex h-14 items-center justify-center rounded-lg border border-white/15 bg-slate-950 text-2xl font-bold text-white hover:bg-slate-800 disabled:opacity-40';
 
 export function InventoryTagsTab({ accessPassword }: { accessPassword: string }) {
   const tagsQuery = useInventoryTags();
@@ -88,12 +87,14 @@ export function InventoryTagsTab({ accessPassword }: { accessPassword: string })
 
   if (mode.kind === 'swap-pick') {
     return (
-      <InventoryLocationPicker
-        items={itemsQuery.data ?? []}
-        loading={itemsQuery.isLoading}
-        onPick={(compartment) => start({ kind: 'swap-scan', compartment })}
-        onClose={cancel}
-      />
+      <div className="flex min-h-0 flex-1 flex-col pt-4">
+        <InventoryLocationPicker
+          items={itemsQuery.data ?? []}
+          loading={itemsQuery.isLoading}
+          onPick={(compartment) => start({ kind: 'swap-scan', compartment })}
+          onClose={cancel}
+        />
+      </div>
     );
   }
 
@@ -103,56 +104,54 @@ export function InventoryTagsTab({ accessPassword }: { accessPassword: string })
       ? '新しい補充タグ'
       : 'アイテムタグ';
   const scanSub = mode.kind === 'swap-scan' ? `${mode.compartment.item.name}（${compartmentLocationText(mode.compartment)}）` : undefined;
+  const sectionClass = `${invPanel} flex items-center gap-3 p-5`;
+  const heading = (title: string, sub: string) => (
+    <div className="min-w-0 flex-1">
+      <h2 className="text-lg font-black">{title}</h2>
+      <p className="text-[13px] text-inv-faint">{sub}</p>
+    </div>
+  );
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_28rem]">
+    <div className="grid grid-cols-[860px_520px] items-start gap-5 pt-4">
       <div className="flex flex-col gap-4">
-        {done ? <p className="rounded-lg border border-emerald-400/60 bg-emerald-900/40 p-3 text-lg font-semibold text-emerald-100" role="status">{done}</p> : null}
-        <section className={`${kioskPanelClassName} flex flex-col gap-3 p-4`} aria-label="数量タグ">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-bold text-white">数量タグ</h2>
-              <p className="text-sm text-white/60">持ち出す数を決めるタグ（単位はアイテムごと：個・ケースなど）</p>
-            </div>
-            <button type="button" className={`${kioskButtonSecondaryClassName} min-h-12 text-lg`} disabled={scanning} onClick={() => start({ kind: 'quantity-number', value: '' })}>＋ タグを追加</button>
+        {done ? <p className={`rounded-xl border px-3 py-2 text-base font-bold ${invSuccess}`} role="status">{done}</p> : null}
+        <section className={`${invPanel} flex flex-col gap-3.5 p-5`} aria-label="数量タグ">
+          <div className="flex items-center gap-3">
+            {heading('数量タグ', '数だけを表すタグ（単位はアイテムごと）')}
+            <button type="button" className={invButton} disabled={scanning} onClick={() => start({ kind: 'quantity-number', value: '' })}><PlusIcon />タグを追加</button>
           </div>
-          {quantityCounts.length === 0 ? <p className="text-white/60">まだありません</p> : (
-            <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {quantityCounts.length === 0 ? <p className="text-inv-faint">まだありません</p> : (
+            <ul className="flex flex-wrap gap-2.5">
               {quantityCounts.map(([quantity, count]) => (
-                <li key={quantity} className="rounded-lg bg-slate-950/50 p-3 text-center text-white">
-                  <span className="text-3xl font-bold">{quantity}</span>
-                  <span className="block text-sm text-white/60">{count}枚</span>
+                <li key={quantity} className={`${invCard} flex h-[92px] w-28 flex-col items-center justify-center`}>
+                  <span className="text-[34px] font-black leading-none tabular-nums">{quantity}</span>
+                  <span className="mt-1 text-[11px] text-inv-faint">{count}枚</span>
                 </li>
               ))}
             </ul>
           )}
         </section>
-        <section className={`${kioskPanelClassName} flex items-center justify-between gap-3 p-4`} aria-label="補充タグ">
-          <div>
-            <h2 className="text-xl font-bold text-white">補充タグ</h2>
-            <p className="text-sm text-white/60">かざすと補充モードになるタグ ・ {restockCount}枚 登録済み</p>
-          </div>
-          <button type="button" className={`${kioskButtonSecondaryClassName} min-h-12 text-lg`} disabled={scanning} onClick={() => start({ kind: 'restock-scan' })}>＋ タグを追加</button>
+        <section className={sectionClass} aria-label="補充タグ">
+          {heading('補充タグ', `かざすと補充モードになるタグ ・ ${restockCount}枚 登録済み`)}
+          <button type="button" className={invButton} disabled={scanning} onClick={() => start({ kind: 'restock-scan' })}><PlusIcon />タグを追加</button>
         </section>
-        <section className={`${kioskPanelClassName} flex items-center justify-between gap-3 p-4`} aria-label="アイテムのタグ交換">
-          <div>
-            <h2 className="text-xl font-bold text-white">アイテムのタグ交換</h2>
-            <p className="text-sm text-white/60">なくした・壊れたタグの付け替え</p>
-          </div>
-          <button type="button" className={`${kioskButtonSecondaryClassName} min-h-12 text-lg`} disabled={scanning} onClick={() => start({ kind: 'swap-pick' })}>アイテムを選ぶ</button>
+        <section className={sectionClass} aria-label="アイテムのタグ交換">
+          {heading('アイテムのタグ交換', 'なくした・壊れたタグの付け替え')}
+          <button type="button" className={invButton} disabled={scanning} onClick={() => start({ kind: 'swap-pick' })}>アイテムを選ぶ</button>
         </section>
       </div>
       <div>
         {mode.kind === 'quantity-number' ? (
-          <section className={`${kioskPanelClassName} flex flex-col gap-3 p-4`} aria-label="数量を選ぶ">
-            <h2 className="text-xl font-bold text-white">このタグで持ち出す数</h2>
-            <output className="rounded bg-slate-950 px-3 py-2 text-right text-4xl font-bold text-white" aria-label="数量">{mode.value || '—'}</output>
-            <KioskDigitTenkey value={mode.value} onChange={(next) => setMode({ kind: 'quantity-number', value: next.replace(/^0+(?=\d)/, '') })} maxLength={4} ariaLabel="数量のテンキー" className="grid grid-cols-3 gap-2" keyClassName={keyClassName} />
-            <button type="button" className={`${kioskButtonPrimaryClassName} min-h-14 text-lg`} disabled={!mode.value || Number(mode.value) < 1} onClick={() => start({ kind: 'quantity-scan', quantity: Number(mode.value) })}>次へ：タグをかざす</button>
-            <button type="button" className={`${kioskButtonSecondaryClassName} min-h-12`} onClick={cancel}>やめる</button>
+          <section className={`${invPanel} flex flex-col gap-3 p-6`} aria-label="数量を選ぶ">
+            <h2 className="text-lg font-black">このタグで持ち出す数</h2>
+            <output className="rounded-xl bg-inv-s2 px-4 py-2 text-right text-[44px] font-black tabular-nums" aria-label="数量">{mode.value || '—'}</output>
+            <KioskDigitTenkey value={mode.value} onChange={(next) => setMode({ kind: 'quantity-number', value: next.replace(/^0+(?=\d)/, '') })} maxLength={4} ariaLabel="数量のテンキー" className="grid grid-cols-3 gap-2.5 [&>button:nth-child(10)]:col-start-2" keyClassName={invKey} resetClassName={invKeyUtil} />
+            <button type="button" className={`${invButtonPrimary} h-14 text-lg`} disabled={!mode.value || Number(mode.value) < 1} onClick={() => start({ kind: 'quantity-scan', quantity: Number(mode.value) })}>次へ：タグをかざす</button>
+            <button type="button" className={invButtonGhost} onClick={cancel}>やめる</button>
           </section>
         ) : scanning ? (
-          <NfcScanPanel label={scanLabel} sub={scanSub} pending={pending} error={error} onManualUid={(uid) => void register(uid)} onCancel={cancel} />
+          <NfcScanPanel large label={scanLabel} sub={scanSub} pending={pending} error={error} onManualUid={(uid) => void register(uid)} onCancel={cancel} />
         ) : null}
       </div>
     </div>

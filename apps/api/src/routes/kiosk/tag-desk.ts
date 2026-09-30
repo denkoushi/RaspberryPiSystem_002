@@ -25,6 +25,8 @@ const { EmployeeStatus } = pkg;
  */
 
 const pinRateLimit = { max: 10, timeWindow: '1 minute' };
+// Binding changes are one person at one reader; this only stops runaway loops.
+const bindingRateLimit = { max: 60, timeWindow: '1 minute' };
 const idParams = z.object({ id: z.string().uuid() });
 const kindQuery = z.object({ kind: z.enum(TAG_DESK_KINDS) });
 const uidParams = z.object({ uid: z.string().trim().min(1).max(256) });
@@ -105,13 +107,13 @@ export async function registerKioskTagDeskRoutes(app: FastifyInstance): Promise<
     return { events: await desk.listEvents(limit) };
   });
 
-  app.post('/kiosk/tag-desk/bindings', async (request) => {
+  app.post('/kiosk/tag-desk/bindings', { config: { rateLimit: bindingRateLimit } }, async (request) => {
     const actor = await clientDeviceId(request);
     const body = linkBody.parse(request.body ?? {});
     return { uid: body.uid, bindings: await desk.link({ ...body, clientDeviceId: actor }) };
   });
 
-  app.delete('/kiosk/tag-desk/bindings', async (request) => {
+  app.delete('/kiosk/tag-desk/bindings', { config: { rateLimit: bindingRateLimit } }, async (request) => {
     const actor = await clientDeviceId(request);
     const body = unlinkBody.parse(request.body ?? {});
     await desk.unlink({ ...body, clientDeviceId: actor });

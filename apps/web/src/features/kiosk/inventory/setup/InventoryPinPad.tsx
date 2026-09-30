@@ -3,13 +3,10 @@ import { Link } from 'react-router-dom';
 
 import { useVerifyKioskDueManagementAccessPassword } from '../../../../api/hooks';
 import { KioskDigitTenkey } from '../../KioskDigitTenkey';
-import { kioskButtonSecondaryClassName, kioskPanelClassName } from '../../kioskTheme';
+import { LockIcon } from '../InventoryIcons';
+import { invButtonGhost, invError, invKey, invKeyUtil, invPanel, invSurface } from '../inventoryUi';
 
 const PIN_LENGTH = 4;
-const keyClassName =
-  'inline-flex h-16 items-center justify-center rounded-lg border border-white/15 bg-slate-950 text-3xl font-bold text-white hover:bg-slate-800 disabled:opacity-40';
-const resetClassName =
-  'inline-flex h-16 items-center justify-center rounded-lg border border-amber-300/30 bg-slate-950 text-lg font-bold text-amber-200 hover:bg-slate-800 disabled:opacity-40';
 
 /** On-screen 4-digit unlock for inventory setup; the verified PIN is handed to the setup screen. */
 export function InventoryPinPad({ onUnlocked }: { onUnlocked: (password: string) => void }) {
@@ -27,13 +24,13 @@ export function InventoryPinPad({ onUnlocked }: { onUnlocked: (password: string)
     try {
       const result = await verify.mutateAsync({ password });
       if (!result.success) {
-        setMessage('パスワードが違います。');
+        setMessage('パスワードが違います');
         setDigits('');
         return;
       }
       onUnlocked(password);
     } catch {
-      setMessage('認証に失敗しました。ネットワーク接続を確認してください。');
+      setMessage('確認できませんでした。ネットワークを確認してください');
       setDigits('');
     }
   };
@@ -46,30 +43,32 @@ export function InventoryPinPad({ onUnlocked }: { onUnlocked: (password: string)
   };
 
   return (
-    <section className={`${kioskPanelClassName} mx-auto flex w-full max-w-md flex-col gap-4 p-6`} aria-label="在庫の準備を開く">
-      <div>
-        <h1 className="text-2xl font-bold text-white">在庫の準備</h1>
-        <p className="mt-1 text-base text-white/70">開くには4桁のパスワードを入れてください</p>
-      </div>
-      <div className="flex justify-center gap-4 py-2" aria-label={`${digits.length}桁入力済み`}>
-        {Array.from({ length: PIN_LENGTH }, (_, index) => (
-          <span key={index} className={index < digits.length ? 'h-5 w-5 rounded-full bg-sky-400' : 'h-5 w-5 rounded-full border-2 border-white/40'} />
-        ))}
-      </div>
-      {message ? <p className="rounded border border-red-400/50 bg-red-950/60 p-3 text-base text-red-100" role="alert">{message}</p> : null}
-      <KioskDigitTenkey
-        value={digits}
-        onChange={change}
-        maxLength={PIN_LENGTH}
-        ariaLabel="パスワードのテンキー"
-        className="grid grid-cols-3 gap-2"
-        keyClassName={keyClassName}
-        resetClassName={resetClassName}
-        disabled={verify.isPending}
-      />
-      {verify.isPending ? <p className="text-center text-white/70">確認中…</p> : null}
-      <Link to="/kiosk/inventory" className={`${kioskButtonSecondaryClassName} inline-flex min-h-12 items-center justify-center text-lg`}>やめる（在庫操作に戻る）</Link>
-      <p className="text-center text-sm text-white/60">在庫操作の画面に戻ると、またロックされます</p>
-    </section>
+    <div className={`${invSurface} items-center justify-center`}>
+      <section className={`${invPanel} flex w-[460px] flex-col gap-5 p-8`} aria-label="在庫の準備を開く">
+        <div className="text-center">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-inv-s2 text-inv-cyan"><LockIcon size={26} /></div>
+          <h1 className="text-[22px] font-black">在庫の準備</h1>
+          <p className="mt-1 text-[13px] text-inv-faint">4桁のパスワード</p>
+        </div>
+        <div className="flex h-7 items-center justify-center gap-[18px]" aria-label={`${digits.length}桁入力済み`}>
+          {Array.from({ length: PIN_LENGTH }, (_, index) => (
+            <span key={index} className={index < digits.length ? 'h-[18px] w-[18px] rounded-full bg-inv-cyan' : 'h-[18px] w-[18px] rounded-full border-2 border-inv-line2'} />
+          ))}
+        </div>
+        {message ? <p className={`rounded-xl border p-3 text-center text-base ${invError}`} role="alert">{message}</p> : null}
+        <KioskDigitTenkey
+          value={digits}
+          onChange={change}
+          maxLength={PIN_LENGTH}
+          ariaLabel="パスワードのテンキー"
+          className="grid grid-cols-3 gap-2.5 [&>button:nth-child(10)]:col-start-2"
+          keyClassName={`${invKey} h-[76px] text-[30px]`}
+          resetClassName={`${invKeyUtil} h-[76px]`}
+          disabled={verify.isPending}
+        />
+        {verify.isPending ? <p className="text-center text-inv-muted">確認中…</p> : null}
+        <Link to="/kiosk/inventory" className={invButtonGhost}>やめる</Link>
+      </section>
+    </div>
   );
 }

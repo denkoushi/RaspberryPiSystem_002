@@ -14,19 +14,37 @@ import {
   pickedCompartmentTag,
   unitLabel,
 } from '../../features/kiosk/inventory/inventoryDailyFlow';
+import { EditIcon, GridIcon, LockIcon, ResetIcon, UndoIcon } from '../../features/kiosk/inventory/InventoryIcons';
 import { InventoryItemGrid } from '../../features/kiosk/inventory/InventoryItemGrid';
 import { InventoryLocationBlocks } from '../../features/kiosk/inventory/InventoryLocationBlocks';
 import { InventoryLocationPicker } from '../../features/kiosk/inventory/InventoryLocationPicker';
 import { InventoryPhotoPane } from '../../features/kiosk/inventory/InventoryPhotoPane';
 import { InventoryRecentHistory } from '../../features/kiosk/inventory/InventoryRecentHistory';
-import { NfcPrompt } from '../../features/kiosk/inventory/NfcPrompt';
 import {
-  kioskPageTitleClassName,
-} from '../../features/kiosk/kioskTheme';
+  invButton,
+  invButtonDanger,
+  invButtonGhost,
+  invCard,
+  invError,
+  invEyebrow,
+  invSuccess,
+  invSurface,
+  invTitle,
+} from '../../features/kiosk/inventory/inventoryUi';
+import { NfcPrompt } from '../../features/kiosk/inventory/NfcPrompt';
 
 import type { NfcEvent } from '../../hooks/useNfcStream';
 
 type InventoryRouteState = { inventoryNfcEvent?: NfcEvent };
+
+const TOOL_INFO = [
+  ['maker', 'メーカー'],
+  ['toolName', '工具名'],
+  ['workMaterial', '被削材'],
+  ['toolSize', '工具寸法'],
+  ['model', '型式'],
+  ['usage', '用途'],
+] as const;
 
 function messageFromError(error: unknown): string {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -298,53 +316,46 @@ export function KioskItemInventoryPage() {
   const selectedCompartment = selectedTag?.compartment ?? null;
 
   // What the worker should do next, as a mark + short word; results replace it for a few seconds.
-  const prompt = messageKind !== 'info' ? (
-    <p role="status" aria-live="polite" className={`inline-flex min-h-[88px] items-center rounded-xl border-2 px-6 text-2xl font-bold ${messageKind === 'success' ? 'border-emerald-400 bg-emerald-900/70 text-white' : 'border-red-400 bg-red-950/70 text-red-100'}`}>{message}</p>
-  ) : selectedCompartment && !selectedTag?.uid ? (
-    <p role="status" className="inline-flex h-11 items-center rounded-lg border border-white/25 px-3.5 text-base text-white/80">タグなし（確認と数の修正のみ）</p>
+  const resultBadge = (
+    <p role="status" aria-live="polite" className={`inline-flex h-11 items-center rounded-full border-[1.5px] px-5 text-base font-bold ${messageKind === 'success' ? invSuccess : invError}`}>{message}</p>
+  );
+  const prompt = messageKind !== 'info' ? resultBadge : selectedCompartment && !selectedTag?.uid ? (
+    <p role="status" className="inline-flex h-11 items-center rounded-full border border-inv-line2 px-4 text-[15px] text-inv-muted">タグなし（確認と数の修正のみ）</p>
   ) : selectedCompartment ? (
-    <NfcPrompt label="数量タグ" tone={restockMode ? 'green' : 'amber'} sub={restockMode ? '補充' : undefined} />
+    <NfcPrompt size="small" label="数量タグ" tone={restockMode ? 'green' : 'amber'} sub={restockMode ? '補充' : undefined} />
   ) : (
-    <NfcPrompt label="アイテムタグ" tone={restockMode ? 'green' : 'sky'} sub={restockMode ? '補充' : undefined} />
+    <NfcPrompt size="small" label="アイテムタグ" tone={restockMode ? 'green' : 'sky'} sub={restockMode ? '補充' : undefined} />
   );
 
   // The waiting screen keeps its prompt in the title row so the item cards get the space.
-  const waiting = panel === 'none' && !selectedCompartment;
-  const headerButton = 'inline-flex h-11 items-center rounded-lg border border-white/25 bg-slate-800 px-4 text-[15px] font-bold text-white hover:bg-slate-700 disabled:opacity-40';
+  const waiting = panel !== 'pick' && !selectedCompartment;
+  const toolInfo = selectedCompartment ? TOOL_INFO.flatMap(([key, label]) => {
+    const value = selectedCompartment.item[key];
+    return value ? [{ label, value }] : [];
+  }) : [];
 
   return (
-    <section className="flex w-full flex-col gap-3.5">
-      <div className="flex flex-wrap items-center gap-2.5">
-        <h1 className={kioskPageTitleClassName}>在庫操作</h1>
-        {restockMode ? <span className="rounded-full bg-emerald-400 px-3 py-1 text-sm font-bold text-slate-950">補充モード</span> : null}
+    <section className={invSurface}>
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
+        <h1 className={invTitle}>在庫操作</h1>
+        {restockMode ? <span className="rounded-full bg-inv-green px-3 py-1 text-sm font-black text-inv-green-ink">補充モード</span> : null}
         {waiting ? (
           <>
             <span className="w-2" />
-            {messageKind === 'info'
-              ? <NfcPrompt size="small" label="アイテムタグ" tone={restockMode ? 'green' : 'sky'} sub={restockMode ? '補充' : undefined} />
-              : <p role="status" aria-live="polite" className={`inline-flex h-11 items-center rounded-lg border-2 px-3.5 text-base font-bold ${messageKind === 'success' ? 'border-emerald-400 bg-emerald-900/70 text-white' : 'border-red-400 bg-red-950/70 text-red-100'}`}>{message}</p>}
-            <span className="rounded-md bg-slate-900/70 px-2 py-1 text-[13px] text-white/60">持出：アイテム→数量</span>
-            <span className="rounded-md bg-slate-900/70 px-2 py-1 text-[13px] text-white/60">補充：補充→アイテム→数量</span>
-            <span className="text-[13px] text-white/60">登録済み {itemCompartments.length}件・最近持ち出した順</span>
+            {prompt}
+            <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-inv-line bg-inv-s1 px-2.5 text-xs text-inv-muted"><b className="text-inv-text">持出</b>アイテム → 数量</span>
+            <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-inv-line bg-inv-s1 px-2.5 text-xs text-inv-muted"><b className="text-inv-text">補充</b>補充 → アイテム → 数量</span>
           </>
         ) : null}
         <span className="flex-1" />
-        {panel === 'none' ? <button type="button" className={headerButton} onClick={() => setPanel('pick')} disabled={busy}>置き場所から選ぶ</button> : null}
-        <button type="button" className={headerButton} onClick={reset} disabled={busy}>選択をリセット</button>
-        <button type="button" className="inline-flex h-11 items-center rounded-lg border border-red-400 px-4 text-[15px] font-bold text-red-100 hover:bg-red-950 disabled:opacity-40" onClick={() => void cancelLast()} disabled={!lastTransaction || busy}>直前の取引を取消</button>
-        <span className="w-3" />
-        <Link to="/kiosk/inventory/settings" className="inline-flex h-11 items-center rounded-lg border border-white/25 px-4 text-[15px] text-white hover:bg-white/10">在庫の準備</Link>
+        {panel === 'none' ? <button type="button" className={invButtonGhost} onClick={() => setPanel('pick')} disabled={busy}><GridIcon />置き場所から選ぶ</button> : null}
+        <button type="button" className={invButtonGhost} onClick={reset} disabled={busy}><ResetIcon />選択をリセット</button>
+        <button type="button" className={invButtonDanger} onClick={() => void cancelLast()} disabled={!lastTransaction || busy}><UndoIcon />直前の取引を取消</button>
+        <span className="mx-1 h-7 w-px bg-inv-line" />
+        <Link to="/kiosk/inventory/settings" className={invButton}><LockIcon />在庫の準備</Link>
       </div>
 
-      {panel === 'correct' && selectedCompartment ? (
-        <InventoryCorrectionPanel
-          compartment={selectedCompartment}
-          pending={busy}
-          error={correctionError}
-          onConfirm={(value) => void submitCorrection(value)}
-          onCancel={() => { setPanel('none'); setCorrectionError(null); }}
-        />
-      ) : panel === 'pick' ? (
+      {panel === 'pick' ? (
         <InventoryLocationPicker
           items={itemsQuery.data ?? []}
           loading={itemsQuery.isLoading}
@@ -353,29 +364,57 @@ export function KioskItemInventoryPage() {
         />
       ) : selectedCompartment ? (
         // Photo pane (left 2/3) and information pane (right 1/3) stay on screen together.
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-          <div className="h-[calc(100dvh-12rem)] min-h-[24rem]">
+        <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-5">
+          <div className="min-h-[24rem]">
             <InventoryPhotoPane key={selectedCompartment.id} photos={selectedPhotos} />
           </div>
-          <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto">
             <div>{prompt}</div>
             <div>
-              <p className="text-2xl font-bold text-white">{selectedCompartment.item.name}</p>
-              <p className="text-sm text-white/60">{selectedCompartment.item.itemCode}</p>
+              <p className={invEyebrow}>ITEM</p>
+              <p className="mt-1 break-all text-[28px] font-black leading-tight">{selectedCompartment.item.name}</p>
+              <p className="font-mono text-[13px] text-inv-faint">{selectedCompartment.item.itemCode}</p>
             </div>
-            <dl className="rounded-lg bg-slate-950/50 px-3.5 py-2.5">
-              <dt className="text-sm text-white/60">現在庫</dt>
-              <dd className="text-5xl font-bold text-white">{selectedCompartment.stockQuantity}{unitLabel(selectedCompartment.item)}</dd>
+            <dl className={`${invCard} flex items-end gap-2.5 px-5 py-4`}>
+              <div>
+                <dt className={invEyebrow}>在庫</dt>
+                <dd aria-label="現在庫" className="flex items-end gap-2.5">
+                  <span className="text-8xl font-black leading-[0.95] tracking-[-0.02em] tabular-nums">{selectedCompartment.stockQuantity}</span>
+                  <span className="pb-2.5 text-[22px] font-bold text-inv-muted">{unitLabel(selectedCompartment.item)}</span>
+                </dd>
+              </div>
+              <dd className="ml-auto self-center">
+                <button type="button" className={invButton} disabled={busy} onClick={() => { setCorrectionError(null); setPanel('correct'); }}><EditIcon />数を直す</button>
+              </dd>
             </dl>
             <InventoryLocationBlocks compartment={selectedCompartment} />
-            <div className="flex items-start gap-3">
-              <InventoryRecentHistory compartmentId={selectedCompartment.id} />
-              <button type="button" className="h-12 rounded-lg border border-white/25 bg-slate-800 px-4 text-base font-bold text-white hover:bg-slate-700 disabled:opacity-40" disabled={busy} onClick={() => { setCorrectionError(null); setPanel('correct'); }}>数を直す</button>
-            </div>
+            {toolInfo.length > 0 ? (
+              <ul className="flex flex-wrap gap-1.5" aria-label="工具情報">
+                {toolInfo.map((entry) => (
+                  <li key={entry.label} className="rounded-md bg-inv-s3 px-2.5 py-1 text-xs"><span className="text-inv-faint">{entry.label}</span>&nbsp;&nbsp;<span className="break-all">{entry.value}</span></li>
+                ))}
+              </ul>
+            ) : null}
+            <InventoryRecentHistory compartmentId={selectedCompartment.id} />
           </div>
+          {panel === 'correct' ? (
+            // Counting happens over the item screen, so the worker never leaves it.
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[18px] bg-[#05080d]/80">
+              <InventoryCorrectionPanel
+                compartment={selectedCompartment}
+                pending={busy}
+                error={correctionError}
+                onConfirm={(value) => void submitCorrection(value)}
+                onCancel={() => { setPanel('none'); setCorrectionError(null); }}
+              />
+            </div>
+          ) : null}
         </div>
       ) : (
-        <InventoryItemGrid compartments={itemCompartments} onPick={pickCompartment} />
+        <>
+          <p className="flex shrink-0 items-baseline gap-2.5"><span className={invEyebrow}>登録済み</span><span className="font-black tabular-nums">{itemCompartments.length}</span><span className="text-[13px] text-inv-faint">件 ・ 最近持ち出した順</span></p>
+          <InventoryItemGrid compartments={itemCompartments} onPick={pickCompartment} />
+        </>
       )}
     </section>
   );

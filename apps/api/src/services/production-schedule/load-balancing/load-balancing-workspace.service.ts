@@ -2,7 +2,7 @@ import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL } from '../constants.js';
 import { createGrindingPlanningBoardPerformance } from '../grinding-planning-board-performance.js';
 import { readGrindingPlanningBoardSnapshotGenerationToken } from '../leaderboard/leaderboard-shell-snapshot-generation.js';
-import { resolveSeibanMachineDisplayNamesBatched } from '../seiban-machine-display-names.service.js';
+import { resolveSeibanMachineDisplayNamesForWinnerRows } from '../seiban-machine-display-names.service.js';
 import {
   buildLoadBalancingWorkspaceSourceKey,
   readLoadBalancingWorkspaceSourceWithCache,
@@ -80,7 +80,7 @@ async function readWorkspaceSource(params: {
       );
       const fseibans = [...new Set(queryRows.map((row) => row.fseiban).filter((value) => value.length > 0))];
       const { machineNames } = await params.perf.measure('machineNames', () =>
-        resolveSeibanMachineDisplayNamesBatched(fseibans)
+        resolveSeibanMachineDisplayNamesForWinnerRows({ fseibans, winnerRowIds })
       );
       return { queryRows, machineNames };
     }
