@@ -14,6 +14,7 @@ import { getFkojunstMailSupersededPruneScheduler } from '../services/production-
 import { getAlertsDispatcher } from '../services/alerts/alerts-dispatcher.js';
 import { getAlertsDbDispatcher } from '../services/alerts/alerts-db-dispatcher.js';
 import { getAlertsIngestor } from '../services/alerts/alerts-ingestor.js';
+import { getClientHeartbeatMonitor } from '../services/clients/client-heartbeat-monitor.js';
 import { loadAlertsDispatcherConfig } from '../services/alerts/alerts-config.js';
 import { getPhotoToolLabelScheduler } from '../services/tools/photo-tool-label/photo-tool-label.scheduler.js';
 import { getPartMeasurementDrawingOcrScheduler } from '../services/part-measurement/part-measurement-drawing-ocr.scheduler.js';
@@ -230,6 +231,19 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       },
     },
     {
+      name: 'client-heartbeat-monitor',
+      start: async () => {
+        // Alerts are only delivered to Slack by the DB dispatcher.
+        const alertsConfig = await loadAlertsDispatcherConfig();
+        if (alertsConfig.mode === 'db') {
+          await getClientHeartbeatMonitor().start();
+        }
+      },
+      stop: async () => {
+        await getClientHeartbeatMonitor().stop();
+      },
+    },
+    {
       name: 'alerts-ingestor',
       start: async () => {
         await getAlertsIngestor().start();
@@ -277,6 +291,7 @@ export function listPostListenSchedulerNames(): string[] {
     'gmail-trash-cleanup',
     'due-management-tuning',
     'alerts-dispatcher',
+    'client-heartbeat-monitor',
     'alerts-ingestor',
     'photo-tool-label',
     'part-measurement-drawing-ocr',
