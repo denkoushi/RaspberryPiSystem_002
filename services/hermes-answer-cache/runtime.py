@@ -1,9 +1,12 @@
 """Request-process owner of atomic, prebuilt maintenance activation."""
 import json
 import logging
+import os
 import re
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from maintenance import atomic_json, digest
 
@@ -23,6 +26,84 @@ def close_retired(resource):
     except Exception as error:
         # Cleanup must never roll back an already committed in-memory version.
         logging.getLogger(__name__).warning('Retired index cleanup failed: %s', type(error).__name__)
+
+
+# Every nightly attempt leaves a job directory with megabytes of candidate,
+# source and input exports. On 2026-09-30 about 11,000 of them held 106 GB of
+# the Pi5 SSD. Once a job has finished, only its result and log are kept; after
+# a month the directory itself goes. Jobs that active.json or
+# previous-active.json point to are never touched, because the live and
+# rollback catalogues are read from them.
+JOB_KEEP_FILES = frozenset({'result.json', 'worker.log', 'cancelled'})
+JOB_TRIM_AFTER_SECONDS = 60 * 60
+JOB_ABANDONED_AFTER_SECONDS = 24 * 60 * 60
+JOB_REMOVE_AFTER_SECONDS = 30 * 24 * 60 * 60
+JOB_PRUNE_LIMIT = 2000
+RUN_ID_PATTERN = re.compile(r'[0-9a-f-]{36}')
+
+
+def referenced_jobs(root):
+    """Job ids the live and rollback pointers read files from."""
+    jobs = set()
+    for name in ('active.json', 'previous-active.json'):
+        pointer = root / name
+        if not pointer.exists():
+            continue
+        try:
+            value = json.loads(pointer.read_text())
+        except (OSError, ValueError):
+            # An unreadable pointer means we cannot tell what is live: prune nothing.
+            return None
+        for relative in (value.get('catalogue'), value.get('sources')):
+            parts = Path(relative or '').parts
+            if len(parts) >= 2 and parts[0] == 'jobs':
+                jobs.add(parts[1])
+    return jobs
+
+
+def prune_jobs(root, protect=(), now=None, limit=JOB_PRUNE_LIMIT):
+    """Trim finished job directories to their result and log; remove month-old ones.
+
+    Returns (trimmed, removed). Never follows symlinks and never touches a job
+    that is protected, referenced by a pointer, or possibly still running.
+    """
+    root = Path(root)
+    jobs_dir = root / 'jobs'
+    keep = referenced_jobs(root)
+    if keep is None or not jobs_dir.is_dir():
+        return 0, 0
+    keep |= {job for job in protect if job}
+    now = time.time() if now is None else now
+    trimmed = removed = 0
+    entries = sorted((e for e in os.scandir(jobs_dir) if e.is_dir(follow_symlinks=False)),
+                     key=lambda e: e.stat(follow_symlinks=False).st_mtime)
+    for entry in entries:
+        if trimmed + removed >= limit:
+            break
+        if entry.name in keep or not RUN_ID_PATTERN.fullmatch(entry.name):
+            continue
+        job = Path(entry.path)
+        age = now - entry.stat(follow_symlinks=False).st_mtime
+        result = job / 'result.json'
+        finished = result.is_file() and now - result.stat().st_mtime >= JOB_TRIM_AFTER_SECONDS
+        if not finished and age < JOB_ABANDONED_AFTER_SECONDS:
+            continue
+        if age >= JOB_REMOVE_AFTER_SECONDS:
+            shutil.rmtree(job)
+            removed += 1
+            continue
+        extra = [f for f in os.scandir(job) if f.name not in JOB_KEEP_FILES]
+        if not extra:
+            continue
+        for item in extra:
+            if item.is_dir(follow_symlinks=False):
+                shutil.rmtree(item.path)
+            else:
+                os.unlink(item.path)
+        # Keep the directory's age: trimming is not a new run.
+        os.utime(job, (entry.stat(follow_symlinks=False).st_atime, entry.stat(follow_symlinks=False).st_mtime))
+        trimmed += 1
+    return trimmed, removed
 
 
 class MaintenanceRuntime:
@@ -55,6 +136,13 @@ class MaintenanceRuntime:
         inside(self.root, str((job / 'sources.json').relative_to(self.root)))
         if (job / 'result.json').exists():
             return {'started': False, 'runId': run_id, 'completed': True}
+        try:
+            trimmed, removed = prune_jobs(self.root, protect=(run_id, self.run_id))
+            if trimmed or removed:
+                logging.getLogger(__name__).info('Pruned %d finished and %d old maintenance jobs', trimmed, removed)
+        except OSError as error:
+            # Housekeeping must never block a maintenance run.
+            logging.getLogger(__name__).warning('Maintenance job pruning failed: %s', type(error).__name__)
         self.run_id = run_id
         self.log = (job / 'worker.log').open('w')
         self.process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('maintenance.py')),
