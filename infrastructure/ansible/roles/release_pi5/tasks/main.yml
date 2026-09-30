@@ -59,3 +59,6 @@
   always:
     - name: Remove only safely retired Pi5 containers and run files
       ansible.builtin.import_tasks: cleanup.yml
+
+- name: Keep the Pi5 system journal across reboots
+  ansible.builtin.import_tasks: host-journald.yml
