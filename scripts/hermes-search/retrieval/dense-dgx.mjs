@@ -331,7 +331,7 @@ export function createDenseRuntime({
       return entries.length;
     },
     schedule(records, bodyFields) {
-      if (!settings.indexEnabled || !Array.isArray(records) || records.length === 0) return;
+      if (!settings.indexEnabled || !Array.isArray(records) || records.length === 0) return chain;
       chain = chain.then(async () => {
         if (!settings.origin) {
           console.info('hermes retrieval dense index embedded=0 skipped=0 failed=1 stored=0 ms=0');
@@ -357,6 +357,7 @@ export function createDenseRuntime({
       }).catch(() => {
         console.info('hermes retrieval dense index embedded=0 skipped=0 failed=1 stored=0 ms=0');
       });
+      return chain;
     },
     rank(query, filtered) {
       const queryEmbed = embedQuery ?? createDgxEmbedder({
