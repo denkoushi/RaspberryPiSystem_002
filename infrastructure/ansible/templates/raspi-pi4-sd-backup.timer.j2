@@ -1,0 +1,12 @@
+[Unit]
+# Sunday midday: the factory is idle, and even an 8h run ends before the 21:30 Pi5 DR snapshot.
+Description=Weekly Pi4 SD-card backup
+
+[Timer]
+Unit={{ pi4_sd_backup_service_name }}
+OnCalendar=Sun *-*-* 12:00:00 Asia/Tokyo
+Persistent=false
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
