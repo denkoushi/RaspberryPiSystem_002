@@ -17,7 +17,8 @@
 - [x] (2026-09-30 06:40Z) 所見整理とユーザー合意（案A：既存ページ撮影ルート、Chat は補助入口のみ、暗色、データボード 1 ページ化）。
 - [x] (2026-09-30 07:10Z) モック 7 画面を作成し、1440×900 で自己確認。`docs/design-previews/signage-admin-unification/` に配置。
 - [x] (2026-09-30 07:20Z) 本 ExecPlan を作成（branch `feat/signage-admin-unification`）。
-- [ ] マイルストーン 0：ページ撮影の実現性プロトタイプ（Pi5 相当の Docker 環境で撮影できるか、ログイン注入、所要時間とメモリ）。
+- [x] (2026-09-30 08:10Z) マイルストーン 0 前半：Web 開発サーバに対し、ログイン注入・非表示指定・1920×1080 撮影を確認（約 2.5 秒/回、Node 側メモリ増 約 25MB）。
+- [ ] マイルストーン 0 後半：撮影ユーザーの役割と、API→Web の到達経路（管理画面の IP 制限と自己署名証明書）をユーザー判断で確定し、API 実機（ローカル Docker）で通し撮影。
 - [ ] マイルストーン 1：API ― ページ撮影コンテンツ（DB、撮影サービス、スロット種別 `web_page`、管理 API、定期撮影）。
 - [ ] マイルストーン 2：API ― サイネージ概況 API（端末ごとの受信・描画・一致状況）と CSV 表のプレビュー画像 API。
 - [ ] マイルストーン 3：Web ― `/admin/signage` 1 画面ハブ（暗色）と旧 4 ページからの転送。
@@ -35,6 +36,15 @@
   Evidence: `CsvDashboardColumnDefinitionsTable.tsx` と `CsvDashboardTableTemplateSection.tsx`。
 - Observation: 管理画面のログイン状態はブラウザの `localStorage` の `factory-auth` キーに `{ token, user, refresh, expiresAt }` の JSON として保存され、起動時に読み込まれる（「ログイン状態を保持」を選んだ場合）。撮影用ブラウザはこのキーを事前に書き込めばログイン済みで開ける見込み。
   Evidence: `apps/web/src/contexts/AuthContext.tsx` 22〜90 行。
+
+- Observation: `localStorage` の `factory-auth` を撮影前に書き込むと、ログイン画面へ飛ばされずに管理画面を開ける。上部メニューは `page.addStyleTag` で消せる。撮影 1 回は開発サーバ相手で約 2.5 秒（ブラウザ起動 0.1〜0.2 秒、ページ表示 2.3〜2.6 秒、画像化 0.03 秒）、Node 側のメモリ増加は約 25MB。
+  Evidence: scratch の試作スクリプト出力 `{"redirectedToLogin": false, "launchMs": 86, "gotoMs": 2313, "screenshotMs": 31, "totalMs": 2479}`。
+- Observation: Web の画面ガード `apps/web/src/components/RequireAuth.tsx` はログイン有無しか見ないが、API は役割で分かれており、`authorizeRoles` のうち VIEWER を含むのは 29 箇所、ADMIN/MANAGER 限定は 58 箇所ある（例：`GET /api/csv-dashboards` は MANAGER 以上）。VIEWER の撮影ユーザーでは多くの管理画面がデータなしで写る。
+  Evidence: `rg -c "authorizeRoles\([^)]*VIEWER" apps/api/src/routes` の合計 29、ADMIN/MANAGER 限定 58。
+- Observation: 本番の Caddy は `/admin*` を `ADMIN_ALLOW_NETS` 以外から遮断し（`infrastructure/docker/Caddyfile.local.template` 30 行付近）、HTTPS は自己署名証明書、`:80` は HTTPS へ転送する。API コンテナから `web` へ普通にアクセスすると遮断される可能性が高い。
+  Evidence: `docker-compose.server.yml` の web は `80:80`、`443:443` を公開し `ADMIN_ALLOW_NETS` 必須。
+- Observation: `networkidle` 待ちだけでは、API が遅い・失敗する場合に「読み込み中...」のまま撮れる。右下の Hermes の丸ボタンも写り込む。
+  Evidence: 試作画像で「読み込み中...」表示と右下の H ボタンが写った。
 
 ## Decision Log
 
@@ -55,6 +65,9 @@
   Date/Author: 2026-09-30 / Claude
 - Decision: 撮影時のログインは、実在する閲覧専用ユーザー（role `VIEWER`）を環境変数 `SIGNAGE_WEB_CAPTURE_USERNAME` で指定し、撮影のたびに API 内で `signAccessToken`（`apps/api/src/lib/auth.ts`）により短命トークンを作って `localStorage` の `factory-auth` に注入する。パスワードは保存しない。ユーザーが見つからない、または `VIEWER` 以外の役割なら撮影を失敗扱いにし、理由を管理画面に出す。
   Rationale: 管理者の資格情報を撮影に流用しない。閲覧専用に限定すれば撮影経路から設定変更はできない。架空のユーザー ID でトークンを作ると、ユーザー実在確認を行う API で失敗する恐れがあるため実在ユーザーにする。マイルストーン 0 で VIEWER で対象ページが見られるかを確認し、見られない場合は Decision Log を更新する。
+  Date/Author: 2026-09-30 / Claude
+- Decision: 撮影は「通信が落ち着く」に加えて「画面に『読み込み中』の文字が 1 つもない」ことを最大 20 秒待つ。既定で Hermes の丸ボタン（`HermesFloatingChat` のルート要素）を隠す。
+  Rationale: マイルストーン 0 で、データ未取得の画面やボタンが写り込むことを確認したため。
   Date/Author: 2026-09-30 / Claude
 - Decision: 予定の追加は、まず「コンテンツを選んで『予定に置く』を押すと編集パネルが開く」方式で実装する。タイムラインへのドラッグ＆ドロップは後続とする。
   Rationale: ドラッグは見栄えは良いが、キーボード操作と誤操作防止の実装コストが高い。モックの「ドラッグしてタイムラインに置く」の文言は「選んで予定に置く」へ置き換える。
