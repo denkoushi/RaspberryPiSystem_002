@@ -46,6 +46,10 @@ class StatusAgentTest(unittest.TestCase):
         self.assertEqual(config["STORAGE_HEALTH_DISK_ERROR_PCT"], "90")
         self.assertEqual(config["STORAGE_HEALTH_INTERVAL_SECONDS"], "3600")
         self.assertEqual(config["STORAGE_HEALTH_STATE_FILE"], "/run/raspi-status-agent/storage-health-last-run")
+        self.assertEqual(
+            config["STORAGE_HEALTH_WEAR_STATE_FILE"], "/run/raspi-status-agent/storage-wear-state.json"
+        )
+        self.assertEqual(config["STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY"], "10")
         self.assertEqual(config["TERMINAL_AGENT_HEALTH_NFC_ENABLED"], "0")
         self.assertEqual(config["TERMINAL_AGENT_HEALTH_BARCODE_ENABLED"], "0")
         self.assertEqual(config["TERMINAL_AGENT_HEALTH_TORQUE_ENABLED"], "0")
@@ -155,6 +159,23 @@ class StatusAgentTest(unittest.TestCase):
             self.assertTrue(log_path.exists())
             content = log_path.read_text(encoding="utf-8")
             self.assertIn("[ERROR] failed to send status: boom", content)
+
+    def test_wear_logs_are_marked_delivered_only_after_post_succeeds(self) -> None:
+        status_agent = load_status_agent()
+        config = {"API_BASE_URL": "https://example.test/api", "CLIENT_ID": "pi4-test", "CLIENT_KEY": "k"}
+        logs = [{"level": "INFO", "message": "m", "context": {"category": "storage_health"}}]
+
+        for post_effect, expected_calls in ((None, 1), (RuntimeError("boom"), 0)):
+            with patch.object(status_agent, "load_config", return_value=config), patch.object(
+                status_agent, "build_payload", return_value={"clientId": "pi4-test", "logs": logs}
+            ), patch.object(status_agent, "post_payload", side_effect=post_effect), patch.object(
+                status_agent.storage_health, "mark_wear_logs_delivered"
+            ) as mark_delivered, patch.object(sys, "argv", ["status-agent.py"]):
+                status_agent.main()
+
+            self.assertEqual(mark_delivered.call_count, expected_calls)
+            if expected_calls:
+                mark_delivered.assert_called_once_with(config, logs)
 
     def test_dry_run_forces_storage_health_collection(self) -> None:
         status_agent = load_status_agent()
