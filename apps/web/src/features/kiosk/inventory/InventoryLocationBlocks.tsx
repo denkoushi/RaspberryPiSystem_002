@@ -1,20 +1,22 @@
+import { invCard, invEyebrow } from './inventoryUi';
+
 import type { InventoryCompartment } from '../../../api/client';
 
 /** Shows area, shelf and drawer as separate labelled values instead of one "/"-joined string. */
 export function InventoryLocationBlocks({ compartment }: { compartment: Pick<InventoryCompartment, 'area' | 'shelfNumber' | 'drawerNumber'> }) {
   return (
-    <dl className="grid grid-cols-[auto_auto] gap-2" aria-label="保管場所">
-      <div className="col-span-2 rounded-lg bg-slate-950/50 px-3 py-2">
-        <dt className="text-sm text-white/60">エリア</dt>
-        <dd className="break-all text-xl font-bold text-white">{compartment.area}</dd>
+    <dl className={`${invCard} grid grid-cols-[minmax(0,1fr)_auto_auto] overflow-hidden`} aria-label="保管場所">
+      <div className="border-r border-inv-line px-4 py-3">
+        <dt className={invEyebrow}>エリア</dt>
+        <dd className="mt-1 break-all text-lg font-black">{compartment.area}</dd>
       </div>
-      <div className="rounded-lg bg-slate-950/50 px-3 py-2">
-        <dt className="text-sm text-white/60">棚</dt>
-        <dd className="text-4xl font-bold text-white">{compartment.shelfNumber}</dd>
+      <div className="border-r border-inv-line px-5 py-3 text-center">
+        <dt className={invEyebrow}>棚</dt>
+        <dd className="text-[34px] font-black leading-tight tabular-nums">{compartment.shelfNumber}</dd>
       </div>
-      <div className="rounded-lg bg-slate-950/50 px-3 py-2">
-        <dt className="text-sm text-white/60">引出し</dt>
-        <dd className="text-4xl font-bold text-white">{compartment.drawerNumber}</dd>
+      <div className="px-5 py-3 text-center">
+        <dt className={invEyebrow}>引出し</dt>
+        <dd className="text-[34px] font-black leading-tight tabular-nums">{compartment.drawerNumber}</dd>
       </div>
     </dl>
   );

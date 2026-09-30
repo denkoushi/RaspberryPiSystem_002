@@ -1,15 +1,10 @@
 import { useMemo, useState } from 'react';
 
 import { useInventoryImports, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
+import { EditIcon, PinIcon, PlusIcon } from '../InventoryIcons';
+import { invButtonSm, invButtonSmGhost, invCard, invError, invEyebrow, invSegAdd, invSuccess } from '../inventoryUi';
 
 import { AreaNameEditor } from './AreaNameEditor';
-
-const chipOn = 'h-10 rounded-lg border-2 border-sky-400 bg-sky-950/60 px-3 text-base font-bold text-white';
-const chipOff = 'h-10 rounded-lg border border-white/25 bg-slate-800 px-3 text-base text-white/90 hover:bg-slate-700';
-const numberOn = 'h-11 w-16 rounded-lg border-2 border-sky-400 bg-sky-950/60 text-base font-bold text-white';
-const numberOff = 'h-11 w-16 rounded-lg border border-white/25 bg-slate-800 text-base font-bold text-white/90 hover:bg-slate-700';
-const addClass = 'h-11 rounded-lg border border-dashed border-white/40 px-3 text-sm text-white/85 hover:bg-slate-800 disabled:opacity-40';
-const panelClass = 'flex flex-col gap-2.5 rounded-lg border border-slate-700 bg-slate-900/70 px-4 py-3.5';
 
 function errorText(error: unknown): string {
   const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -30,7 +25,6 @@ export function InventoryShelvesTab({ accessPassword }: { accessPassword: string
   // Machines of mailed candidates, offered as buttons when naming an area.
   const machineChoices = useMemo(() => [...new Set((importsQuery.data ?? []).map((entry) => entry.area))], [importsQuery.data]);
   const [areaName, setAreaName] = useState<string | null>(null);
-  const [shelfId, setShelfId] = useState<string | null>(null);
   const [editor, setEditor] = useState<'rename' | 'new' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -38,7 +32,6 @@ export function InventoryShelvesTab({ accessPassword }: { accessPassword: string
 
   const area = areaName && areas.includes(areaName) ? areaName : areas[0] ?? null;
   const areaShelves = shelves.filter((shelf) => shelf.area === area).sort((a, b) => a.shelfNumber - b.shelfNumber);
-  const shelf = areaShelves.find((entry) => entry.id === shelfId) ?? areaShelves[0] ?? null;
 
   const run = async (work: () => Promise<unknown>, message: string, after?: () => void) => {
     setError(null);
@@ -54,91 +47,112 @@ export function InventoryShelvesTab({ accessPassword }: { accessPassword: string
 
   const addShelf = (targetArea: string) => {
     const shelfNumber = nextNumber(shelves.filter((entry) => entry.area === targetArea).map((entry) => entry.shelfNumber));
-    void run(() => mutations.createShelf.mutateAsync({ area: targetArea, shelfNumber }), `${targetArea} に 棚${shelfNumber} を追加しました`, () => { setAreaName(targetArea); setShelfId(null); setEditor(null); });
+    void run(() => mutations.createShelf.mutateAsync({ area: targetArea, shelfNumber }), `${targetArea} に 棚${shelfNumber} を追加しました`, () => { setAreaName(targetArea); setEditor(null); });
   };
 
+  const drawerCount = (target: string) => shelves.filter((entry) => entry.area === target).reduce((sum, entry) => sum + entry.drawers.length, 0);
+  const shelfCount = (target: string) => shelves.filter((entry) => entry.area === target).length;
+  const nextShelf = nextNumber(areaShelves.map((entry) => entry.shelfNumber));
+
   return (
-    <div className="flex flex-col gap-3">
-      {done ? <p className="rounded-lg border border-emerald-400/60 bg-emerald-900/40 px-3 py-2 text-base font-semibold text-emerald-100" role="status">{done}</p> : null}
-      {error ? <p className="rounded border border-red-400/50 bg-red-950/60 px-3 py-2 text-base text-red-100" role="alert">{error}</p> : null}
+    <div className="flex min-h-0 flex-1 flex-col gap-3 pt-4">
+      {done ? <p className={`rounded-xl border px-3 py-2 text-base font-bold ${invSuccess}`} role="status">{done}</p> : null}
+      {error ? <p className={`rounded-xl border px-3 py-2 text-base ${invError}`} role="alert">{error}</p> : null}
 
-      <section className={panelClass} aria-label="エリア">
-        <div className="flex items-center gap-2">
-          <h2 className="text-base font-bold text-white">エリア</h2>
-          <span className="text-sm text-white/60">加工機 ＋ 東西南北</span>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
+      <div className="grid min-h-0 flex-1 grid-cols-[360px_minmax(0,1fr)] gap-5">
+        <section className="flex min-h-0 flex-col gap-2 overflow-y-auto" aria-label="エリア">
+          <h2 className={invEyebrow}>エリア（加工機 ＋ 方角）</h2>
           {areas.map((entry) => (
-            <button key={entry} type="button" aria-pressed={entry === area} className={entry === area ? chipOn : chipOff} onClick={() => { setAreaName(entry); setShelfId(null); setEditor(null); }}>{entry}</button>
-          ))}
-          {area ? <button type="button" className={addClass} disabled={pending} onClick={() => setEditor('rename')}>名前を変える</button> : null}
-          <button type="button" className={addClass} disabled={pending} onClick={() => setEditor('new')}>＋ 新しいエリア</button>
-        </div>
-        {editor === 'rename' && area ? (
-          <AreaNameEditor
-            key={`rename-${area}`}
-            title={`エリア名を変える：${area} →`}
-            initialArea={area}
-            machineChoices={machineChoices}
-            confirmLabel="名前を変える"
-            pending={pending}
-            onCancel={() => setEditor(null)}
-            onConfirm={(next) => void run(
-              () => mutations.renameArea.mutateAsync({ from: area, to: next }),
-              `「${area}」を「${next}」に変えました（棚・引き出し・在庫はそのまま）`,
-              () => { setAreaName(next); setEditor(null); },
-            )}
-          />
-        ) : null}
-        {editor === 'new' ? (
-          <AreaNameEditor
-            key="new"
-            title="新しいエリア（棚1ができます）"
-            machineChoices={machineChoices}
-            confirmLabel="棚1を作る"
-            pending={pending}
-            onCancel={() => setEditor(null)}
-            onConfirm={(next) => (areas.includes(next) ? setError(`「${next}」はもうあります`) : addShelf(next))}
-          />
-        ) : null}
-      </section>
-
-      {area ? (
-        <section className={panelClass} aria-label="棚">
-          <h2 className="text-base font-bold text-white">{area} の棚</h2>
-          <div className="flex flex-wrap gap-1.5">
-            {areaShelves.map((entry) => (
-              <button key={entry.id} type="button" aria-label={`棚${entry.shelfNumber}`} aria-pressed={entry.id === shelf?.id} className={entry.id === shelf?.id ? numberOn : numberOff} onClick={() => setShelfId(entry.id)}>{entry.shelfNumber}</button>
-            ))}
-            <button type="button" className={addClass} disabled={pending} onClick={() => addShelf(area)}>＋ 棚{nextNumber(areaShelves.map((entry) => entry.shelfNumber))}を追加</button>
-          </div>
-        </section>
-      ) : <p className="text-white/60">まだ棚がありません。「＋ 新しいエリア」から作ってください。</p>}
-
-      {shelf ? (
-        <section className={panelClass} aria-label="引き出し">
-          <h2 className="text-base font-bold text-white">棚{shelf.shelfNumber} の引き出し</h2>
-          <div className="flex flex-wrap gap-1.5">
-            {shelf.drawers.map((drawer) => (
-              <div key={drawer.id} className="w-40 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white">
-                <p className="text-base font-bold">引出し{drawer.drawerNumber}</p>
-                <p className="truncate text-sm text-white/60">{drawer.compartments[0]?.item.name ?? '空き'}</p>
-              </div>
-            ))}
             <button
+              key={entry}
               type="button"
-              className={addClass}
-              disabled={pending}
-              onClick={() => {
-                const drawerNumber = nextNumber(shelf.drawers.map((drawer) => drawer.drawerNumber));
-                void run(() => mutations.createDrawer.mutateAsync({ shelfId: shelf.id, drawerNumber }), `棚${shelf.shelfNumber} に 引出し${drawerNumber} を追加しました`);
-              }}
+              aria-pressed={entry === area}
+              className={`flex h-14 shrink-0 items-center gap-2.5 rounded-xl px-3.5 text-left text-[15px] font-bold ${entry === area ? 'border-2 border-inv-cyan bg-inv-cyan/[0.12]' : 'border border-inv-line bg-inv-s1 hover:bg-inv-s2'}`}
+              onClick={() => { setAreaName(entry); setEditor(null); }}
             >
-              ＋ 引出し{nextNumber(shelf.drawers.map((drawer) => drawer.drawerNumber))}を追加
+              <PinIcon />
+              <span className="min-w-0 flex-1 truncate">{entry}</span>
+              <span className="shrink-0 text-xs font-normal tabular-nums text-inv-faint">棚{shelfCount(entry)}・{drawerCount(entry)}</span>
             </button>
-          </div>
+          ))}
+          <button type="button" className={`${invSegAdd} h-12 shrink-0 justify-start px-3.5`} disabled={pending} onClick={() => setEditor('new')}>＋ 新しいエリア</button>
         </section>
-      ) : null}
+
+        <div className="flex min-h-0 flex-col gap-3.5 overflow-y-auto">
+          {editor === 'new' ? (
+            <AreaNameEditor
+              key="new"
+              title="新しいエリア（棚1ができます）"
+              machineChoices={machineChoices}
+              confirmLabel="棚1を作る"
+              pending={pending}
+              onCancel={() => setEditor(null)}
+              onConfirm={(next) => (areas.includes(next) ? setError(`「${next}」はもうあります`) : addShelf(next))}
+            />
+          ) : null}
+          {area ? (
+            <>
+              <div className="flex items-center gap-3">
+                <h2 className="text-[22px] font-black">{area}</h2>
+                <button type="button" className={invButtonSmGhost} disabled={pending} onClick={() => setEditor('rename')}><EditIcon />名前を変える</button>
+                <span className="flex-1" />
+                <button type="button" className={invButtonSm} aria-label={`棚${nextShelf}を追加`} disabled={pending} onClick={() => addShelf(area)}><PlusIcon />棚{nextShelf}を追加</button>
+              </div>
+              {editor === 'rename' ? (
+                <AreaNameEditor
+                  key={`rename-${area}`}
+                  title={`エリア名を変える：${area} →`}
+                  initialArea={area}
+                  machineChoices={machineChoices}
+                  confirmLabel="名前を変える"
+                  pending={pending}
+                  onCancel={() => setEditor(null)}
+                  onConfirm={(next) => void run(
+                    () => mutations.renameArea.mutateAsync({ from: area, to: next }),
+                    `「${area}」を「${next}」に変えました（棚・引き出し・在庫はそのまま）`,
+                    () => { setAreaName(next); setEditor(null); },
+                  )}
+                />
+              ) : null}
+              {areaShelves.map((entry) => {
+                const used = entry.drawers.filter((drawer) => drawer.compartments.length > 0).length;
+                const nextDrawer = nextNumber(entry.drawers.map((drawer) => drawer.drawerNumber));
+                return (
+                  <section key={entry.id} className={`${invCard} flex w-max max-w-full flex-col gap-2.5 p-3.5`} aria-label={`棚${entry.shelfNumber}`}>
+                    <div className="flex items-center gap-2.5">
+                      <h3 className="text-[17px] font-black">棚 {entry.shelfNumber}</h3>
+                      <span className="text-xs tabular-nums text-inv-faint">{used}/{entry.drawers.length} 使用</span>
+                      <span className="min-w-6 flex-1" />
+                      <button
+                        type="button"
+                        className={invButtonSmGhost}
+                        aria-label={`棚${entry.shelfNumber}に引出し${nextDrawer}を追加`}
+                        disabled={pending}
+                        onClick={() => void run(() => mutations.createDrawer.mutateAsync({ shelfId: entry.id, drawerNumber: nextDrawer }), `棚${entry.shelfNumber} に 引出し${nextDrawer} を追加しました`)}
+                      >
+                        <PlusIcon />引出し
+                      </button>
+                    </div>
+                    {entry.drawers.length > 0 ? (
+                      <ul className="grid grid-cols-[repeat(5,200px)] gap-2">
+                        {entry.drawers.map((drawer) => {
+                          const name = drawer.compartments[0]?.item.name;
+                          return (
+                            <li key={drawer.id} className={`flex h-[78px] flex-col justify-between rounded-[10px] px-2.5 py-2 ${name ? 'border border-inv-line bg-inv-s2' : 'border border-dashed border-inv-line2'}`}>
+                              <span className="text-xs tabular-nums text-inv-faint">引出し {drawer.drawerNumber}</span>
+                              <span className={`truncate text-[13px] ${name ? 'font-bold' : 'text-inv-faint'}`}>{name ?? '空き'}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : <p className="text-sm text-inv-faint">引き出しはまだありません</p>}
+                  </section>
+                );
+              })}
+            </>
+          ) : editor !== 'new' ? <p className="text-inv-muted">まだ棚がありません。「＋ 新しいエリア」から作ってください。</p> : null}
+        </div>
+      </div>
     </div>
   );
 }

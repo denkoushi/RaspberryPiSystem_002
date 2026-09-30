@@ -7,7 +7,7 @@ import { ApiError } from '../../lib/errors.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import { getItemInventoryServices } from '../../services/item-inventory/item-inventory-service.factory.js';
-import { InventoryConflictError, InventoryInsufficientStockError } from '../../services/item-inventory/item-inventory.service.js';
+import { INVENTORY_OPTION_FIELDS, InventoryConflictError, InventoryInsufficientStockError } from '../../services/item-inventory/item-inventory.service.js';
 import {
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
   verifyDueManagementAccessPassword
@@ -182,6 +182,24 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   });
 
   app.get('/item-inventory/tool-field-options', { preHandler: [read] }, async () => ({ options: await services.inventory.listToolFieldOptions() }));
+  const toolFieldValueBody = z.object({ field: z.enum(INVENTORY_OPTION_FIELDS), value: z.string().max(400) });
+  app.get('/item-inventory/tool-field-values', { preHandler: [authorizeManageOrKiosk] }, async () => ({ values: await services.inventory.listToolFieldValues() }));
+  app.post('/item-inventory/tool-field-values', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const body = toolFieldValueBody.parse(request.body ?? {});
+    return await services.inventory.addToolFieldValue(body.field, body.value);
+  });
+  app.put('/item-inventory/tool-field-values', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const body = z.object({ field: z.enum(INVENTORY_OPTION_FIELDS), from: z.string().max(400), to: z.string().max(400) }).parse(request.body ?? {});
+    return await services.inventory.renameToolFieldValue(body.field, body.from, body.to);
+  });
+  app.delete('/item-inventory/tool-field-values', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const query = toolFieldValueBody.parse(request.query ?? {});
+    try {
+      return await services.inventory.deleteToolFieldValue(query.field, query.value);
+    } catch (error) {
+      mapMutationError(error);
+    }
+  });
   app.get('/item-inventory/units', { preHandler: [read] }, async () => ({ units: await services.inventory.listUnits() }));
   app.post('/item-inventory/units', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({ name: z.string().max(40) }).parse(request.body ?? {});
