@@ -31,6 +31,19 @@
         name: systemd-journald
         state: restarted
       when: release_pi5_journald_dropin.changed
+
+    # A restart alone keeps writing to /run until the next boot (2026-09-30: the drop-in was in place
+    # from 10:50, yet the 18:39 reboot lost that boot's journal). Create the persistent directory and
+    # move the runtime journal onto disk now, so the boot that is running is kept too.
+    - name: Create the persistent journal directory
+      ansible.builtin.command: systemd-tmpfiles --create --prefix /var/log/journal
+      when: release_pi5_journald_dropin.changed
+      changed_when: true
+
+    - name: Move the runtime journal onto disk
+      ansible.builtin.command: journalctl --flush
+      when: release_pi5_journald_dropin.changed
+      changed_when: true
   rescue:
     - name: Report that journal persistence was not applied
       ansible.builtin.debug:
