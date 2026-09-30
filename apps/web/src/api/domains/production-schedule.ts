@@ -1756,6 +1756,8 @@ export async function getKioskProductionScheduleLoadBalancingWorkspace(params: {
 export async function getKioskProductionScheduleLoadBalancingWorkspaceDay(params: {
   month: string;
   resourceCd: string;
+  fromMonth?: string;
+  toMonth?: string;
   targetDeviceScopeKey?: string;
 }) {
   const { data } = await api.get<ProductionScheduleLoadBalancingWorkspaceDayResponse>(

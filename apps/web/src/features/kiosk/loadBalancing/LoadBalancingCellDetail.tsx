@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import { LoadBalancingCapacityEditor } from './LoadBalancingCapacityEditor';
 import { LoadBalancingDailyChart } from './LoadBalancingDailyChart';
-import { formatHours, formatYearMonthSlash } from './loadBalancingFormat';
+import { formatHours, formatLoadBalancingMachineName, formatYearMonthSlash } from './loadBalancingFormat';
 import { LoadBalancingActionIcon } from './LoadBalancingIcons';
 import { LATE_BUCKET, type ScenarioAction, type TransferDestination, listCellRows } from './loadBalancingScenario';
 
@@ -133,7 +133,9 @@ export function LoadBalancingCellDetail(props: Props) {
                 className={`border-t border-white/5 ${item.action && !item.movedIn ? '[&>td:not(:last-child)]:opacity-45' : ''}`}
               >
                 <td className="p-1.5">
-                  <span className="rounded-md bg-slate-800 px-2 py-0.5 text-[13px] font-bold">{item.row.machineName}</span>
+                  <span className="inline-block max-w-[11rem] truncate rounded-md bg-slate-800 px-2 py-0.5 align-middle text-[13px] font-bold">
+                    {formatLoadBalancingMachineName(item.row.machineName)}
+                  </span>
                 </td>
                 <td className="p-1.5 font-mono text-sm">{item.row.fseiban}</td>
                 <td className="p-1.5">

@@ -119,6 +119,8 @@ const workspaceQuerySchema = z.object({
 const workspaceDayQuerySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   resourceCd: z.string().trim().min(1).max(20),
+  fromMonth: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  toMonth: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   targetDeviceScopeKey: z.string().min(1).max(200).optional()
 });
 
@@ -484,7 +486,9 @@ export async function registerProductionScheduleLoadBalancingRoutes(
         siteKeyInput: resolvedSiteKey,
         deviceScopeKey: query.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
         month: query.month,
-        resourceCd: query.resourceCd
+        resourceCd: query.resourceCd,
+        fromMonth: query.fromMonth,
+        toMonth: query.toMonth
       });
     } catch (error) {
       throw toWorkspaceApiError(error);

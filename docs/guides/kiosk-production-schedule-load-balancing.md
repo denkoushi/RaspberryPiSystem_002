@@ -34,6 +34,8 @@
 - 着手日・納期欠損、工数 0、稼働日なしの行は **未配分** として件数と一覧を出す。
 - 機種名は製番の MH/SH 行 `FHINMEI`（`resolveSeibanMachineDisplayNamesBatched`）。
 - 実装: `load-balancing-workspace.{types,assembler,service}.ts`。日別は `GET .../workspace/day?month=&resourceCd=`。
+- **速度（2026-09-30）**: 重い元データ（winner 行・工程行クエリ・機種名）を、順位ボード・製番ボードと同じ世代トークン（`readGrindingPlanningBoardSnapshotGenerationToken`）が変わるまで API プロセス内に保存して使い回す（`load-balancing-workspace-source-cache.ts`、5 分・16 件まで）。能力・分類・移管ルールは毎回読むので、能力編集はすぐ反映される。日別（`workspace/day`）は `fromMonth`/`toMonth` を渡すと同じ保存済みデータから作る。段階別の時間は `GRINDING_PLANNING_BOARD_PERF_LOG` 有効時に `route: load-balancing-workspace` / `load-balancing-workspace-day` で記録。
+- 機種名は他のキオスク画面と同じ `normalizeMachineName`（全角英数→半角・大文字）で表示・絞り込みする。
 
 **試算の操作（Web のみ・`loadBalancingScenario.ts`）**
 
