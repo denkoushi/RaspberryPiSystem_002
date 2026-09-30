@@ -11,6 +11,7 @@ The gold sets, stores, and run files are private and stay in `~/Documents/hermes
 
 - `gold/stage-v1.json`: 50 cases (content_same 10, content_para 16, filter 10, mixed 6, out_of_scope 4, owner 4).
 - `gold/stage-aspect-v1.json`: cases that ask for a countermeasure or disposition instead of a phenomenon (8 added 2026-09-28, a09 from a kiosk miss on 2026-09-29).
+- Held-out sets, written on 2026-09-24 by a supervising agent and not read by the implementing agent: `gold/heldout-supervisor.json` (6), `gold/heldout-supervisor-v2.json` (14 since 2026-09-30), `gold/heldout-paraphrase-subset.json` (12), `gold/heldout-paraphrase-hard.json` (12). Report only summary numbers from them. A case the implementing agent has read moves to `gold/dev-seen-heldout-*.json`.
 - `snapshots/nonconformity-snapshot-20260929.json`: all 8,242 records, exported read-only on the Pi 5 with `scripts/hermes-search/hermes-qmd-snapshot-export.mjs` (request line `{"type":"request","requestId":"snap-1"}` on stdin, run in the API container). Keep snapshots in this private folder, not in a worktree: the earlier copy lived in a worktree and was lost when that worktree was cleaned up. Numbers before 2026-09-29 used an 8,209-record snapshot, so compare a change only with a baseline on the same snapshot.
 
 Run from `scripts/hermes-search`:
@@ -26,6 +27,8 @@ Real use is recorded on the Pi 5 since 2026-09-29: every answer appends its rece
     node retrieval/receipt-report.mjs ~/Documents/hermes-retrieval-private/receipts/receipts-*.jsonl
 
 The `review` list holds content questions that returned nothing or lost meaning-based search. Those are the candidates for new gold cases.
+
+A change is kept only if the held-out sets do not get worse on the same day and settings. A development-set gain of one case is within the run-to-run drift; repeat the run or add cases before counting it.
 
 Columns used below: status (answered in the right form), r15 and r50 (a target within the top 15 or 50 candidates), prec (shown records that were targets), hit (a shown record was a target).
 
@@ -97,3 +100,25 @@ Change: code cuts the question at the topic particle „ÅØ and punctuation (not „Å
 | content part for the judge | 15 | 0.80 | 37 |
 
 The new aspect case a17 is the kiosk question on its own; it now returns 00007986. The other aspect and stage-v1 cases are unchanged. The dialogue difference is d06, which passes and fails between runs on `main` too. TypeSafe connection failures stopped several evaluation runs on this day; each number above is from a complete run.
+
+### 2026-09-30: first held-out check since 2026-09-24, and held-out scoring (kept)
+
+Trigger: every kept change from 2026-09-28 on was judged on development sets only (stage-v1, stage-aspect-v1, dialogue-v1), and two of them were fixed on the kiosk question that had been added to the same set (a09, a17). The held-out sets had not been run since 2026-09-24.
+
+Scoring fix: `evaluate.mjs` could not score the held-out forms. It searched the placeholder `__any__` as text, ignored `deptAnyOf`, rejected `clarification_or_answer` and the `{ cases: [...] }` file form, and had no target-id measure. A first lexical run therefore reported seven supervisor-v2 answers as showing unrelated records. All seven showed only records of the requested department. The script now treats `__any__` as any text, requires a listed department in an `organization` field when `deptAnyOf` is set, accepts either form for `clarification_or_answer`, reads `{ cases }`, and reports `targetsShown` per case and `casesTargetShown` for cases with `targetId` or `targetIds`.
+
+`main` at c21d1be9 (retrieval code unchanged at 250bc6a1), 8,242-record snapshot, `--now 2026-09-24`, no enrichment, hybrid with DGX Qwen3-Embedding-0.6B:
+
+| Set | Cases | status | all shown relevant | target shown |
+| --- | --- | --- | --- | --- |
+| stage-v1 (development) | 50 | 0.88 | - | paraphrase hit 3/16 |
+| stage-aspect-v1 (development) | 17 | 17/17 | - | - |
+| heldout-supervisor | 6 | 6/6 | 4/6 | - |
+| heldout-supervisor-v2 | 14 | 12/14 | 12/14 | - |
+| heldout-paraphrase-subset | 12 | 12/12 | - | 6/12 |
+| heldout-paraphrase-hard | 12 | 5/12 | - | 1/12 |
+
+Held-out paraphrase (6/12) is not below the development paraphrase cases (3/16), so the meaning-based search is not fitted to the development set. A lexical run of supervisor-v2 at each merge since 2026-09-24 showed that #1520 (judge the content condition only) turned two department questions from no result into answers with correct records. That change also helps held-out cases.
+
+The two supervisor-v2 cases the implementing agent read to check this (d3, d6) moved to `gold/dev-seen-heldout-20260930.json`. The paraphrase held-out sets carry one target record per case and no keywords, so `all shown relevant` does not apply to them.
+

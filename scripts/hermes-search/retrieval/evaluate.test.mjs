@@ -5,7 +5,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { evenIndexes, localSettings, structuralSample } from './enrichment-cli.mjs';
 import { attachEnrichment, readEnrichmentStores } from './enrichment-attach.mjs';
-import { assertSnapshotIdentity, countKeywordHits, loadDgxDenseRows, parseArgs, percentile } from './evaluate.mjs';
+import {
+  allRelevant, assertSnapshotIdentity, casePrecision, countKeywordHits, countTargetsShown, goldTargetIds, loadDgxDenseRows,
+  parseArgs, percentile, readGold, statusMatches,
+} from './evaluate.mjs';
 import { fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
 import { DGX_EMBED_DIM, DGX_MAX_INPUT_CHARS } from './dense-dgx.mjs';
 
@@ -122,4 +125,41 @@ test('dgx evaluation stores the production-capped text and skips a rejected reco
   assert.equal(seen.every((text) => text.length <= DGX_MAX_INPUT_CHARS), true);
   const again = await loadDgxDenseRows({ records, bodyFields, embed: async () => { throw new Error('unused'); }, storePath });
   assert.deepEqual(again.rows.map((row) => row.id).sort(), ['a', 'c']);
+});
+
+test('held-out judge forms: any text, department lists, target ids, and either-form expectations', () => {
+  const results = [
+    { recordId: 'r1', fields: { condition: 'paint drip', originDepartmentName: 'Dept A' } },
+    { recordId: 'r2', fields: { condition: 'scratch', originDepartmentName: 'Dept B' } },
+  ];
+  const body = ['condition'];
+  const organizationFields = ['originDepartmentName'];
+  // A literal '__any__' used to be searched as text, so every department-only case scored zero hits.
+  assert.equal(countKeywordHits(results, ['__any__'], body), 2);
+  assert.equal(countKeywordHits(results, ['__any__'], body, { departments: ['Dept A'], organizationFields }), 1);
+  assert.equal(countKeywordHits(results, ['scratch'], body, { departments: ['Dept A'], organizationFields }), 0);
+  assert.equal(countKeywordHits(results, ['scratch'], body), 1);
+
+  assert.deepEqual(goldTargetIds({ targetId: 'nonconformity:r2' }), ['r2']);
+  assert.deepEqual(goldTargetIds({ targetIds: ['r1', 'r3'] }), ['r1', 'r3']);
+  assert.deepEqual(goldTargetIds({}), []);
+  assert.equal(countTargetsShown(['nonconformity:r2', 'r1'], ['r2']), 1);
+  assert.equal(countTargetsShown(['r1'], []), null);
+
+  assert.equal(statusMatches('clarification_or_answer', 'clarification'), true);
+  assert.equal(statusMatches('clarification_or_answer', 'answer'), true);
+  assert.equal(statusMatches('clarification_or_answer', 'no_result'), false);
+  assert.equal(statusMatches('answer', 'answer'), true);
+  assert.equal(casePrecision('clarification_or_answer', 0, 0, 'clarification'), 1);
+  assert.equal(casePrecision('clarification_or_answer', 0, 0, 'no_result'), 0);
+  assert.equal(allRelevant('clarification_or_answer', 2, 2, 'answer'), true);
+  assert.equal(allRelevant('clarification_or_answer', 0, 0, 'clarification'), true);
+
+  const directory = mkdtempSync(path.join(tmpdir(), 'eval-gold-'));
+  const wrapped = path.join(directory, 'wrapped.json');
+  writeFileSync(wrapped, JSON.stringify({ schema: 'x', cases: [{ id: 'h1', question: 'q', expect: 'clarification_or_answer', judge: { anyOf: ['__any__'] }, deptAnyOf: ['Dept A'] }] }));
+  assert.equal(readGold(wrapped)[0].id, 'h1');
+  const bad = path.join(directory, 'bad.json');
+  writeFileSync(bad, JSON.stringify([{ id: 'h1', question: 'q', expect: 'answer', judge: { anyOf: ['x'] }, deptAnyOf: [] }]));
+  assert.throws(() => readGold(bad), /deptAnyOf/);
 });
