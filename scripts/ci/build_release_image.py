@@ -43,6 +43,12 @@ class ReleaseImageBuildError(ValueError):
     pass
 
 
+def registry_cache_tag(service: str) -> str:
+    """Mutable cache tag beside the immutable release tags; never deployed."""
+
+    return f"buildcache-{service}-arm64"
+
+
 def build_command(
     *,
     root: Path,
@@ -94,10 +100,17 @@ def build_command(
         "--push",
         "--provenance=mode=min",
         "--sbom=true",
+        # The GitHub Actions cache is capped at 10 GB per repository and was
+        # full (10.7 GB) on 2026-09-30, so the release layers were evicted and
+        # every release rebuilt ~3.4 GB of new layers that the Pi5 had to pull
+        # and store. The public GHCR repository keeps the cache without that cap,
+        # so unchanged layers keep their digests across releases.
+        "--cache-from",
+        f"type=registry,ref={repository}:{registry_cache_tag(service)}",
         "--cache-from",
         f"type=gha,scope=release-{service}-arm64",
         "--cache-to",
-        f"type=gha,mode=max,scope=release-{service}-arm64",
+        f"type=registry,ref={repository}:{registry_cache_tag(service)},mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true",
         "--metadata-file",
         str(metadata_path),
         "--build-arg",
