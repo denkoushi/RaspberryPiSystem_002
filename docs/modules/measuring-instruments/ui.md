@@ -24,9 +24,14 @@
    - 持ち出し成功メッセージ
    - 「続けてスキャンする」ボタンでタグスキャン画面へ戻る
 
+## キオスク「タグ管理」（2026-09-30〜）
+
+- 計測機器の登録/編集/削除、RFIDタグの紐づけ・切り離しは、キオスクの「タグ管理」タブ（`/kiosk/tag-desk`、4桁の操作パスワード）で行う。管理コンソールの `/admin/tools/measuring-instruments` と `/admin/tools/instrument-tags` は案内ページになった。詳細は [kiosk-tag-desk-execplan.md](../../plans/kiosk-tag-desk-execplan.md)。
+- 以下の管理コンソールの記述のうち、計測機器一覧とRFIDタグ紐付け管理は移設前の履歴として残す。
+
 ## 管理コンソール
 
-- 計測機器一覧（登録/編集/削除）: `/admin/tools/measuring-instruments`
+- 計測機器一覧（登録/編集/削除）: `/admin/tools/measuring-instruments`（2026-09-30 キオスクへ移設）
 - トルクレンチ管理（型番、物理製造番号、校正・状態、現在設定／履歴、適合グループ）: `/admin/tools/torque-wrenches`
 - 組立トルク管理者例外入力: `/admin/tools/assembly-torque-override`。有効な現物確認と理由を必須とし、安全条件を迂回しない
 - 計測機器ジャンル管理（名称、画像1〜2枚）: `/admin/tools/measuring-instrument-genres`
@@ -35,7 +40,7 @@
 - **NFCスキャン自動入力を復旧（2025-12-12）**: `useNfcStream`で管理コンソール表示時のみ購読し、スキャンしたUIDを入力欄へ即時反映
 - **UID削除の明示手順（2025-12-12）**: 入力欄を空にして保存するとタグ紐付けを削除（APIは空文字を削除指示として処理）
 - 点検項目管理（ジャンル単位で登録/編集/削除）: `/admin/tools/inspection-items`
-- RFIDタグ紐付け管理（登録/削除）: `/admin/tools/instrument-tags`
+- RFIDタグ紐付け管理（登録/削除）: `/admin/tools/instrument-tags`（2026-09-30 キオスクへ移設）
 - 点検記録の閲覧/手動登録: `/admin/tools/inspection-records`
 - 工具と計測機器の混在一覧・フィルタ（別途実装検討）
 

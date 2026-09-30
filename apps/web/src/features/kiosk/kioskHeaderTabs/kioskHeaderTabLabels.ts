@@ -6,6 +6,7 @@ export const KIOSK_HEADER_TAB_LABELS: Record<KioskReorderableHeaderTabId, string
   self_inspection: '自主検査',
   instruments_borrow: '計測機器 持出',
   rigging_borrow: '吊具 持出',
+  tag_desk: 'タグ管理',
   production_schedule: '生産スケジュール',
   manual_order: '手動順番',
   leader_order_board: '順位ボード',

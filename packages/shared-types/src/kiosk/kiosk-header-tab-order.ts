@@ -12,6 +12,7 @@ export const KIOSK_REORDERABLE_HEADER_TAB_IDS = [
   'self_inspection',
   'instruments_borrow',
   'rigging_borrow',
+  'tag_desk',
   'production_schedule',
   'manual_order',
   'leader_order_board',

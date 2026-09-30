@@ -43,24 +43,12 @@ test.describe('管理画面', () => {
     await expect(page.getByRole('heading', { name: /従業員/i })).toBeVisible({ timeout: 10000 });
   });
 
-  test('従業員管理画面にアクセスできる', async ({ page }) => {
-    await page.getByRole('link', { name: /従業員/i }).click();
-    await expect(page).toHaveURL(/\/admin\/tools\/employees/);
-    // ページが読み込まれるまで待機
-    await page.waitForLoadState('networkidle');
-    // Cardコンポーネントの見出しを確認（「従業員登録 / 編集」または「従業員一覧」）
-    // 複数の見出しがあるため、.first()を使用
-    await expect(page.getByRole('heading', { name: /従業員/i }).first()).toBeVisible();
-  });
-
-  test('アイテム管理画面にアクセスできる', async ({ page }) => {
-    await page.getByRole('link', { name: /アイテム/i }).click();
-    await expect(page).toHaveURL(/\/admin\/tools\/items/);
-    // ページが読み込まれるまで待機
-    await page.waitForLoadState('networkidle');
-    // Cardコンポーネントの見出しを確認（「アイテム登録 / 編集」または「アイテム一覧」）
-    // 複数の見出しがあるため、.first()を使用
-    await expect(page.getByRole('heading', { name: /アイテム/i }).first()).toBeVisible();
+  test('従業員・アイテムの旧画面はキオスクの「タグ管理」を案内する', async ({ page }) => {
+    for (const path of ['/admin/tools/employees', '/admin/tools/items']) {
+      await page.goto(path);
+      await page.waitForLoadState('networkidle');
+      await expect(page.getByRole('heading', { name: /タグ管理/ })).toBeVisible();
+    }
   });
 
   test('履歴画面にアクセスできる', async ({ page }) => {
