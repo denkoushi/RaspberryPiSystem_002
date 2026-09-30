@@ -446,7 +446,7 @@ export class TorqueTrainingService {
           where: { id: { in: recentSessionIds.map((row) => row.id) } },
           include: {
             attempts: true,
-            programVersion: { select: { displayName: true, nominalDiameter: true } }
+            programVersion: { select: { displayName: true, nominalDiameter: true, material: true } }
           }
         });
     const sessionsById = new Map(sessions.map((session) => [session.id, session]));
@@ -464,6 +464,7 @@ export class TorqueTrainingService {
         conditionFingerprint,
         trainingName: latestSession.programVersion.displayName,
         targetBolt: latestSession.programVersion.nominalDiameter,
+        material: latestSession.programVersion.material,
         sessions: rows.map((session) => ({
           sessionId: session.id,
           completedAt: session.completedAt?.toISOString() ?? null,

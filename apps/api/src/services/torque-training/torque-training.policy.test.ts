@@ -33,6 +33,14 @@ describe('torque training policy', () => {
       { accepted: true, judgement: 'OK', deviationPercent: 0, absoluteDeviationPercent: 0 },
       { accepted: true, judgement: 'UNDER', deviationPercent: -10, absoluteDeviationPercent: 10 },
       { accepted: true, judgement: 'OVER', deviationPercent: 10, absoluteDeviationPercent: 10 }
-    ])).toMatchObject({ attemptCount: 3, passRate: 1 / 3, meanAbsoluteErrorPercent: 20 / 3, variationPercent: expect.closeTo(Math.sqrt(200 / 3), 8) });
+    ])).toMatchObject({ attemptCount: 3, passRate: 1 / 3, meanAbsoluteErrorPercent: 20 / 3, meanDeviationPercent: 0, variationPercent: expect.closeTo(Math.sqrt(200 / 3), 8) });
+  });
+
+  it('keeps the tightening direction in the signed mean', () => {
+    expect(summarizeTrainingAttempts([
+      { accepted: true, judgement: 'OK', deviationPercent: -4, absoluteDeviationPercent: 4 },
+      { accepted: true, judgement: 'UNDER', deviationPercent: -12, absoluteDeviationPercent: 12 },
+      { accepted: false, judgement: 'IGNORED', deviationPercent: 30, absoluteDeviationPercent: 30 }
+    ])).toMatchObject({ attemptCount: 2, passRate: 0.5, meanAbsoluteErrorPercent: 8, meanDeviationPercent: -8 });
   });
 });

@@ -87,7 +87,7 @@ export type TrainingMetricRow = {
 export function summarizeTrainingAttempts(rows: TrainingMetricRow[]) {
   const accepted = rows.filter((row) => row.accepted && row.deviationPercent != null);
   if (accepted.length === 0) {
-    return { attemptCount: 0, passRate: 0, meanAbsoluteErrorPercent: 0, variationPercent: 0 };
+    return { attemptCount: 0, passRate: 0, meanAbsoluteErrorPercent: 0, meanDeviationPercent: 0, variationPercent: 0 };
   }
   const signed = accepted.map((row) => Number(row.deviationPercent));
   const absolute = accepted.map((row) => Number(row.absoluteDeviationPercent));
@@ -98,6 +98,8 @@ export function summarizeTrainingAttempts(rows: TrainingMetricRow[]) {
     attemptCount: accepted.length,
     passRate: okCount / accepted.length,
     meanAbsoluteErrorPercent: absolute.reduce((sum, value) => sum + value, 0) / absolute.length,
+    // Signed mean: negative means the operator tends to under-tighten.
+    meanDeviationPercent: mean,
     variationPercent: variation
   };
 }

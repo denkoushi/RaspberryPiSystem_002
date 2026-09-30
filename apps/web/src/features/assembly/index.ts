@@ -30,7 +30,6 @@ export * from './AssemblyWipPane';
 export * from './AssemblyWorkSessionHeader';
 export * from './AssemblySessionStatusNotice';
 export * from './TorqueResultHistoryRow';
-export * from './TorqueTrainingAttemptHistory';
 export * from './AssemblyTemplateHistoryDialog';
 export * from './AssemblyTemplateLibraryTable';
 export * from './assemblyRoutes';

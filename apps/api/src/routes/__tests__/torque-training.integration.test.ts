@@ -647,6 +647,93 @@ describe('torque training API concurrency boundary', () => {
     });
   });
 
+  it('summarizes every operator for the kiosk KPI band, recent ten and all time', async () => {
+    const { employee, client, version } = await fixture();
+    const otherEmployee = await createTestEmployee({ nfcTagUid: `TRAINING_TAG_${randomUUID()}` });
+    const makeSession = async (input: {
+      index: number;
+      employeeId: string;
+      employeeName: string;
+      deviations: number[];
+      status?: 'COMPLETED' | 'IN_PROGRESS';
+      excluded?: boolean;
+    }) => {
+      const completedAt = new Date(Date.now() - input.index * 60_000);
+      return prisma.torqueTrainingSession.create({
+        data: {
+          requestId: `team-${input.index}-${randomUUID()}`,
+          programVersionId: version.id,
+          employeeId: input.employeeId,
+          employeeCodeSnapshot: 'code',
+          employeeNameSnapshot: input.employeeName,
+          clientDeviceId: client.id,
+          clientDeviceNameSnapshot: client.name,
+          conditionFingerprint: version.conditionFingerprint,
+          status: input.status ?? 'COMPLETED',
+          targetAttemptCount: 5,
+          startedAt: new Date(completedAt.getTime() - 5_000),
+          completedAt: input.status === 'IN_PROGRESS' ? null : completedAt,
+          excludedAt: input.excluded ? completedAt : null,
+          attempts: {
+            create: input.deviations.map((deviation, attemptNo) => ({
+              attemptNo: attemptNo + 1,
+              value: 10 + deviation / 10,
+              inputUnit: 'N-m',
+              valueNm: 10 + deviation / 10,
+              nominalTorqueSnapshot: 10,
+              lowerLimitSnapshot: 9,
+              upperLimitSnapshot: 11,
+              deviationNm: deviation / 10,
+              deviationPercent: deviation,
+              absoluteDeviationPercent: Math.abs(deviation),
+              judgement: deviation < -10 ? 'UNDER' as const : deviation > 10 ? 'OVER' as const : 'OK' as const,
+              accepted: true,
+              torqueWrenchProfileId: null,
+              sourceClientDeviceId: client.id,
+              sourceEventKey: `team-${input.index}-${attemptNo}-${randomUUID()}`
+            }))
+          }
+        }
+      });
+    };
+    // Ten newest sessions: all OK and slightly under-tightened.
+    await Promise.all(Array.from({ length: 10 }, (_, index) => makeSession({
+      index,
+      employeeId: index % 2 === 0 ? employee.id : otherEmployee.id,
+      employeeName: index % 2 === 0 ? '訓練 太郎' : '訓練 花子',
+      deviations: [-2, -2, -2, -2, -2]
+    })));
+    // Two older sessions count only in the all-time figures.
+    await makeSession({ index: 20, employeeId: employee.id, employeeName: '訓練 太郎', deviations: [20, 20, 20, 20, 20] });
+    await makeSession({ index: 21, employeeId: employee.id, employeeName: '訓練 太郎', deviations: [20, 20, 20, 20, 20] });
+    // Excluded and unfinished sessions never count.
+    await makeSession({ index: 1, employeeId: employee.id, employeeName: '訓練 太郎', deviations: [50, 50, 50, 50, 50], excluded: true });
+    await makeSession({ index: 0, employeeId: otherEmployee.id, employeeName: '訓練 花子', deviations: [50], status: 'IN_PROGRESS' });
+
+    expect((await app.inject({ method: 'GET', url: '/api/torque-training/team-summary' })).statusCode).toBe(401);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/torque-training/team-summary',
+      headers: { 'x-client-key': client.apiKey }
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.recent).toMatchObject({ sessionCount: 10, operatorCount: 2, attemptCount: 50, passRate: 1 });
+    expect(body.recent.meanAbsoluteErrorPercent).toBeCloseTo(2, 8);
+    expect(body.recent.meanDeviationPercent).toBeCloseTo(-2, 8);
+    expect(body.allTime).toMatchObject({ sessionCount: 12, operatorCount: 2, attemptCount: 60 });
+    expect(body.allTime.passRate).toBeCloseTo(50 / 60, 8);
+    expect(body.allTime.meanAbsoluteErrorPercent).toBeCloseTo((50 * 2 + 10 * 20) / 60, 8);
+    expect(body.allTime.meanDeviationPercent).toBeCloseTo((50 * -2 + 10 * 20) / 60, 8);
+    expect(body.recentSessions).toHaveLength(10);
+    expect(body.recentSessions[0]).toMatchObject({
+      employeeName: '訓練 太郎',
+      targetBolt: version.nominalDiameter,
+      material: version.material,
+      judgements: ['OK', 'OK', 'OK', 'OK', 'OK']
+    });
+  });
+
   it('locks concurrent revisions and enforces ADMIN authorization', async () => {
     const { profile, program, version } = await fixture();
     const viewer = await createTestUser('VIEWER');
