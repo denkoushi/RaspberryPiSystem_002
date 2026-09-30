@@ -3,10 +3,13 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useNfcStream, type NfcEvent } from '../../hooks/useNfcStream';
 
+/** Screens that read inventory tags themselves; scanning one there must not jump to the inventory screen. */
+const INVENTORY_ROUTING_OFF_PATHS = new Set(['/kiosk/inventory/settings', '/kiosk/tag-desk']);
+
 /** Classify inventory tags globally while non-inventory tags fall through. */
 export function InventoryNfcRouter() {
   const location = useLocation();
-  const event = useNfcStream(location.pathname !== '/kiosk/inventory/settings', undefined, { role: 'inventory' });
+  const event = useNfcStream(!INVENTORY_ROUTING_OFF_PATHS.has(location.pathname), undefined, { role: 'inventory' });
   const navigate = useNavigate();
   const lastRoutedEventKeyRef = useRef<string | null>(null);
 

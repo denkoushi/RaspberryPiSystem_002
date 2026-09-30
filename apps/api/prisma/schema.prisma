@@ -182,7 +182,7 @@ model Employee {
   assemblyWorkSessionOperatorAccesses           AssemblyWorkSessionOperatorAccess[]
   torqueTrainingSessions                        TorqueTrainingSession[]
   torqueTrainingConfirmations                   TorqueTrainingWrenchConfirmation[]
-  workInstructionEditorAuthentications         WorkInstructionEditorAuthentication[]
+  workInstructionEditorAuthentications          WorkInstructionEditorAuthentication[]
 }
 
 model Item {
@@ -295,22 +295,22 @@ model MeasuringInstrumentTag {
 
 /// トルクレンチの型番と測定能力。物理資産とは分離して複数台で再利用する。
 model TorqueWrenchModel {
-  id                    String                             @id @default(uuid())
-  manufacturer          String
-  manufacturerKey       String
-  modelNumber           String
-  modelNumberKey        String
-  torqueMinNm           Decimal                            @db.Decimal(18, 6)
-  torqueMaxNm           Decimal                            @db.Decimal(18, 6)
-  resolutionNm          Decimal?                           @db.Decimal(18, 6)
-  communicationType     String                             @default("BLUETOOTH_HOGP")
-  outputProfile         String?
+  id                      String                             @id @default(uuid())
+  manufacturer            String
+  manufacturerKey         String
+  modelNumber             String
+  modelNumberKey          String
+  torqueMinNm             Decimal                            @db.Decimal(18, 6)
+  torqueMaxNm             Decimal                            @db.Decimal(18, 6)
+  resolutionNm            Decimal?                           @db.Decimal(18, 6)
+  communicationType       String                             @default("BLUETOOTH_HOGP")
+  outputProfile           String?
   settingVerificationMode String?
-  isActive              Boolean                            @default(true)
-  createdAt             DateTime                           @default(now())
-  updatedAt             DateTime                           @updatedAt
-  profiles              TorqueWrenchProfile[]
-  capabilityGroupModels TorqueWrenchCapabilityGroupModel[]
+  isActive                Boolean                            @default(true)
+  createdAt               DateTime                           @default(now())
+  updatedAt               DateTime                           @updatedAt
+  profiles                TorqueWrenchProfile[]
+  capabilityGroupModels   TorqueWrenchCapabilityGroupModel[]
 
   @@unique([manufacturerKey, modelNumberKey], map: "TorqueWrenchModel_unique_manufacturer_model_key")
   @@index([isActive, manufacturerKey, modelNumberKey], map: "TorqueWrenchModel_idx_active_keys")
@@ -781,18 +781,18 @@ model BusinessHermesProactiveSuggestion {
 /// Independent business-butler consultation case. This state is intentionally
 /// separate from Hermes Memory/session state and from assembly work sessions.
 model BusinessHermesConsultation {
-  id                  String                            @id @default(uuid())
-  title               String?
-  relatedIdentifiers  Json?
-  confirmedFacts      Json?
-  openQuestions       Json?
-  summary             String?
-  hermesConversationId String?                           @unique
-  createdByUserId     String?
-  assignedUserId      String?
-  createdAt           DateTime                          @default(now())
-  updatedAt           DateTime                          @updatedAt
-  messages            BusinessHermesConsultationMessage[]
+  id                   String                              @id @default(uuid())
+  title                String?
+  relatedIdentifiers   Json?
+  confirmedFacts       Json?
+  openQuestions        Json?
+  summary              String?
+  hermesConversationId String?                             @unique
+  createdByUserId      String?
+  assignedUserId       String?
+  createdAt            DateTime                            @default(now())
+  updatedAt            DateTime                            @updatedAt
+  messages             BusinessHermesConsultationMessage[]
 
   @@index([updatedAt])
   @@index([createdByUserId, updatedAt])
@@ -802,15 +802,15 @@ model BusinessHermesConsultation {
 /// Raw user/assistant history and trusted evidence for one consultation.
 /// Assistant text is model output; evidence is projected separately by the API.
 model BusinessHermesConsultationMessage {
-  id              String                 @id @default(uuid())
-  consultationId  String
-  role            String                 @db.VarChar(16)
-  content         String
-  evidence        Json?
-  confirmation    Json?
+  id                String                     @id @default(uuid())
+  consultationId    String
+  role              String                     @db.VarChar(16)
+  content           String
+  evidence          Json?
+  confirmation      Json?
   searchDiagnostics Json?
-  createdAt       DateTime               @default(now())
-  consultation    BusinessHermesConsultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  createdAt         DateTime                   @default(now())
+  consultation      BusinessHermesConsultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
 
   @@index([consultationId, createdAt])
 }
@@ -1051,17 +1051,17 @@ model InventoryImportPhoto {
 }
 
 model InventoryImportMessage {
-  id             String                  @id @default(uuid())
-  gmailMessageId String                  @unique
-  payloadId      String?
-  outcome        InventoryImportOutcome  @default(PENDING)
-  errorMessage   String?
-  nextRetryAt    DateTime?
-  mailCleanupPending   Boolean               @default(false)
-  mailCleanupCompleted Boolean               @default(false)
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
-  payload        InventoryImportPayload? @relation(fields: [payloadId], references: [id], onDelete: SetNull)
+  id                   String                  @id @default(uuid())
+  gmailMessageId       String                  @unique
+  payloadId            String?
+  outcome              InventoryImportOutcome  @default(PENDING)
+  errorMessage         String?
+  nextRetryAt          DateTime?
+  mailCleanupPending   Boolean                 @default(false)
+  mailCleanupCompleted Boolean                 @default(false)
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  payload              InventoryImportPayload? @relation(fields: [payloadId], references: [id], onDelete: SetNull)
 
   @@index([outcome, nextRetryAt, createdAt])
   @@index([payloadId])
@@ -1119,6 +1119,27 @@ model InventoryNfcTag {
   compartment   InventoryCompartment? @relation(fields: [compartmentId], references: [id], onDelete: SetNull)
 
   @@index([kind])
+}
+
+/// キオスク「タグ管理」でのNFCタグ付け外しの記録。対象は削除されても残す（外部キーなし）。
+model NfcTagBindingEvent {
+  id             String              @id @default(uuid())
+  uid            String
+  action         NfcTagBindingAction
+  /// employee | item | instrument | rigging | inventory
+  targetKind     String
+  targetId       String?
+  targetLabel    String
+  clientDeviceId String?
+  createdAt      DateTime            @default(now())
+
+  @@index([createdAt])
+  @@index([uid])
+}
+
+enum NfcTagBindingAction {
+  LINK
+  UNLINK
 }
 
 model InventoryTransaction {
@@ -1348,30 +1369,30 @@ enum AlertDeliveryStatus {
 }
 
 model CsvDashboard {
-  id                     String                   @id @default(uuid())
-  name                   String // ダッシュボード名
-  description            String? // 説明
-  configType             CsvDashboardConfigType   @default(DASHBOARD) // 設定種別（ダッシュボード/マスター設定）
-  importType             String                   @default("csvDashboards") // インポートタイプ（employees/items/.../csvDashboards）
-  allowedManualImport    Boolean                  @default(true) // 手動取り込みを許可
-  allowedScheduledImport Boolean                  @default(true) // 自動取り込みを許可
-  importStrategy         CsvImportStrategy        @default(UPSERT) // 取り込み戦略（主にマスターデータ用）
-  columnDefinitions      Json // 列定義（列名マッピング、順序、型、表示名など）
-  dateColumnName         String? // 日付列の内部名（表示期間フィルタ用）
-  displayPeriodDays      Int                      @default(1) // 表示期間（日数、デフォルトは当日のみ）
-  emptyMessage           String? // 0件時のメッセージ
-  ingestMode             CsvDashboardIngestMode   @default(APPEND) // 取り込み方式
-  dedupKeyColumns        String[]                 @default([]) // 重複除去キー列（内部名の配列、dedup時のみ使用）
-  gmailScheduleId        String? // Gmail取得スケジュールID（オプション、将来の拡張用）
-  gmailSubjectPattern    String? // Gmail件名パターン（CSV取得用）
-  templateType           CsvDashboardTemplateType @default(TABLE) // 可視化テンプレート種別
-  templateConfig         Json // テンプレート設定（行数、フォントサイズ、表示列など）
-  csvFilePath            String? // 最新のCSVファイルパス（原本保存先）
-  enabled                Boolean                  @default(true)
-  createdAt              DateTime                 @default(now())
-  updatedAt              DateTime                 @updatedAt
-  ingestRuns             CsvDashboardIngestRun[]
-  rows                   CsvDashboardRow[]
+  id                             String                                            @id @default(uuid())
+  name                           String // ダッシュボード名
+  description                    String? // 説明
+  configType                     CsvDashboardConfigType                            @default(DASHBOARD) // 設定種別（ダッシュボード/マスター設定）
+  importType                     String                                            @default("csvDashboards") // インポートタイプ（employees/items/.../csvDashboards）
+  allowedManualImport            Boolean                                           @default(true) // 手動取り込みを許可
+  allowedScheduledImport         Boolean                                           @default(true) // 自動取り込みを許可
+  importStrategy                 CsvImportStrategy                                 @default(UPSERT) // 取り込み戦略（主にマスターデータ用）
+  columnDefinitions              Json // 列定義（列名マッピング、順序、型、表示名など）
+  dateColumnName                 String? // 日付列の内部名（表示期間フィルタ用）
+  displayPeriodDays              Int                                               @default(1) // 表示期間（日数、デフォルトは当日のみ）
+  emptyMessage                   String? // 0件時のメッセージ
+  ingestMode                     CsvDashboardIngestMode                            @default(APPEND) // 取り込み方式
+  dedupKeyColumns                String[]                                          @default([]) // 重複除去キー列（内部名の配列、dedup時のみ使用）
+  gmailScheduleId                String? // Gmail取得スケジュールID（オプション、将来の拡張用）
+  gmailSubjectPattern            String? // Gmail件名パターン（CSV取得用）
+  templateType                   CsvDashboardTemplateType                          @default(TABLE) // 可視化テンプレート種別
+  templateConfig                 Json // テンプレート設定（行数、フォントサイズ、表示列など）
+  csvFilePath                    String? // 最新のCSVファイルパス（原本保存先）
+  enabled                        Boolean                                           @default(true)
+  createdAt                      DateTime                                          @default(now())
+  updatedAt                      DateTime                                          @updatedAt
+  ingestRuns                     CsvDashboardIngestRun[]
+  rows                           CsvDashboardRow[]
   grindingPlanningBoardStates    ProductionScheduleGrindingPlanningBoardState[]
   grindingPlanningBoardOverrides ProductionScheduleGrindingPlanningBoardOverride[]
   grindingPlanningBoardDueScopes ProductionScheduleGrindingPlanningBoardDueScope[]
@@ -1383,21 +1404,21 @@ model CsvDashboard {
 }
 
 model CsvDashboardIngestRun {
-  id             String            @id @default(uuid())
-  csvDashboardId String
-  csvDashboard   CsvDashboard      @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
-  status         ImportStatus      @default(PENDING)
-  messageId      String? // GmailメッセージID
-  messageSubject String? // Gmail件名
-  csvFilePath    String? // 取り込んだCSVファイルパス
-  rowsProcessed  Int               @default(0) // 処理行数
-  rowsAdded      Int               @default(0) // 追加行数（dedup時は重複除外後の数）
-  rowsSkipped    Int               @default(0) // スキップ行数（重複など）
-  errorMessage   String? // エラーメッセージ
-  startedAt      DateTime          @default(now())
-  sourceReceivedAt DateTime?
-  completedAt    DateTime?
-  sourceRows     CsvDashboardRow[] @relation("CsvDashboardRowSourceIngestRun")
+  id                       String                   @id @default(uuid())
+  csvDashboardId           String
+  csvDashboard             CsvDashboard             @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
+  status                   ImportStatus             @default(PENDING)
+  messageId                String? // GmailメッセージID
+  messageSubject           String? // Gmail件名
+  csvFilePath              String? // 取り込んだCSVファイルパス
+  rowsProcessed            Int                      @default(0) // 処理行数
+  rowsAdded                Int                      @default(0) // 追加行数（dedup時は重複除外後の数）
+  rowsSkipped              Int                      @default(0) // スキップ行数（重複など）
+  errorMessage             String? // エラーメッセージ
+  startedAt                DateTime                 @default(now())
+  sourceReceivedAt         DateTime?
+  completedAt              DateTime?
+  sourceRows               CsvDashboardRow[]        @relation("CsvDashboardRowSourceIngestRun")
   scawCurrentRows          ScawStfutekigoCurrent[]  @relation("ScawStfutekigoCurrentSourceIngestRun")
   scawEvaluatedCurrentRows ScawStfutekigoCurrent[]  @relation("ScawStfutekigoCurrentEvaluatedIngestRun")
   scawRevisions            ScawStfutekigoRevision[] @relation("ScawStfutekigoRevisionSourceIngestRun")
@@ -1449,44 +1470,44 @@ model CsvDashboardRawRevision {
 /// Gmail 件名 scawSTFUTEKIGO の正規化済み現在値。
 /// `nonconformityNo` は業務上の一意キーで、消えたキーも行を残したまま inactive にする。
 model ScawStfutekigoCurrent {
-  id                       String                         @id @default(uuid())
-  nonconformityNo          String                         @unique @db.VarChar(120)
-  originDepartmentCode     String?
-  originDepartmentName     String?
-  quantity                 Decimal?                       @db.Decimal(18, 6)
-  remarks                  String?
-  nonconformityContent     String?
-  correctiveContent1       String?
-  correctiveContent2       String?
-  dispositionContent       String?
-  discoveredOn             DateTime?                      @db.Date
-  sourceUpdatedOn          DateTime?                      @db.Date
-  manufacturingOrderNo     String?                        @db.VarChar(64)
-  sourceSeiban             String?                        @db.VarChar(64)
-  resolvedSeiban           String?                        @db.VarChar(64)
-  qaIssueCode              String?                        @db.VarChar(120)
-  dispositionOn            DateTime?                      @db.Date
-  drawingNumber            String?
-  partNumber               String?                        @db.VarChar(120)
-  partName                 String?
-  machineName              String?
-  rawPayload               Json
-  contentHash              String                         @db.VarChar(64)
-  enrichmentStatus         ScawStfutekigoEnrichmentStatus @default(NOT_FOUND)
-  enrichedAt               DateTime?
-  isPresentInLatestSnapshot Boolean                       @default(true)
-  firstSeenAt              DateTime                       @default(now())
-  lastSeenIngestRunId      String?
-  lastEvaluatedIngestRunId String?
-  lastSeenAt               DateTime?
-  lastSnapshotReceivedAt   DateTime?
-  lastAbsentAt             DateTime?
-  sourceRowOrdinal         Int?
-  sourceIngestRun          CsvDashboardIngestRun?         @relation("ScawStfutekigoCurrentSourceIngestRun", fields: [lastSeenIngestRunId], references: [id], onDelete: SetNull)
-  lastEvaluatedIngestRun   CsvDashboardIngestRun?         @relation("ScawStfutekigoCurrentEvaluatedIngestRun", fields: [lastEvaluatedIngestRunId], references: [id], onDelete: SetNull)
-  revisions                ScawStfutekigoRevision[]
-  createdAt                DateTime                       @default(now())
-  updatedAt                DateTime                       @updatedAt
+  id                        String                         @id @default(uuid())
+  nonconformityNo           String                         @unique @db.VarChar(120)
+  originDepartmentCode      String?
+  originDepartmentName      String?
+  quantity                  Decimal?                       @db.Decimal(18, 6)
+  remarks                   String?
+  nonconformityContent      String?
+  correctiveContent1        String?
+  correctiveContent2        String?
+  dispositionContent        String?
+  discoveredOn              DateTime?                      @db.Date
+  sourceUpdatedOn           DateTime?                      @db.Date
+  manufacturingOrderNo      String?                        @db.VarChar(64)
+  sourceSeiban              String?                        @db.VarChar(64)
+  resolvedSeiban            String?                        @db.VarChar(64)
+  qaIssueCode               String?                        @db.VarChar(120)
+  dispositionOn             DateTime?                      @db.Date
+  drawingNumber             String?
+  partNumber                String?                        @db.VarChar(120)
+  partName                  String?
+  machineName               String?
+  rawPayload                Json
+  contentHash               String                         @db.VarChar(64)
+  enrichmentStatus          ScawStfutekigoEnrichmentStatus @default(NOT_FOUND)
+  enrichedAt                DateTime?
+  isPresentInLatestSnapshot Boolean                        @default(true)
+  firstSeenAt               DateTime                       @default(now())
+  lastSeenIngestRunId       String?
+  lastEvaluatedIngestRunId  String?
+  lastSeenAt                DateTime?
+  lastSnapshotReceivedAt    DateTime?
+  lastAbsentAt              DateTime?
+  sourceRowOrdinal          Int?
+  sourceIngestRun           CsvDashboardIngestRun?         @relation("ScawStfutekigoCurrentSourceIngestRun", fields: [lastSeenIngestRunId], references: [id], onDelete: SetNull)
+  lastEvaluatedIngestRun    CsvDashboardIngestRun?         @relation("ScawStfutekigoCurrentEvaluatedIngestRun", fields: [lastEvaluatedIngestRunId], references: [id], onDelete: SetNull)
+  revisions                 ScawStfutekigoRevision[]
+  createdAt                 DateTime                       @default(now())
+  updatedAt                 DateTime                       @updatedAt
 
   @@index([partNumber, isPresentInLatestSnapshot, discoveredOn(sort: Desc), nonconformityNo(sort: Desc)], map: "ScawStfutekigoCurrent_part_active_discovered_idx")
 }
@@ -1822,21 +1843,21 @@ model ProductionScheduleGrindingPlanningBoardState {
 
 /// 研削順位ボードの行/分割片 override。元CSV・元順位は保存せず、常に正本から再解決する。
 model ProductionScheduleGrindingPlanningBoardOverride {
-  id                String    @id @default(uuid())
-  csvDashboardId    String
-  siteKey           String    @db.VarChar(100)
-  itemKey           String    @db.VarChar(1000)
-  overrideResourceCd String?  @db.VarChar(20)
-  overrideDueDate   DateTime? @db.Date
+  id                  String    @id @default(uuid())
+  csvDashboardId      String
+  siteKey             String    @db.VarChar(100)
+  itemKey             String    @db.VarChar(1000)
+  overrideResourceCd  String?   @db.VarChar(20)
+  overrideDueDate     DateTime? @db.Date
   /// null keeps the historical meaning of a missing due override; true means
   /// an explicit processing clear falls back to the CSV planned end date.
-  dueDateCleared    Boolean?
-  alternateRank     Int?
-  specialDueKind    String?   @db.VarChar(20)
+  dueDateCleared      Boolean?
+  alternateRank       Int?
+  specialDueKind      String?   @db.VarChar(20)
   specialDueExpiresAt DateTime?
-  version           Int       @default(1)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
 
@@ -1848,17 +1869,17 @@ model ProductionScheduleGrindingPlanningBoardOverride {
 /// 研削planning boardの製番/表面処理別納期。元CSV・既存順位ボードの納期は変更しない。
 /// dueDate=null は明示クリアを表し、競合検出のため行とversionを保持する。
 model ProductionScheduleGrindingPlanningBoardDueScope {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   csvDashboardId String
-  siteKey        String   @db.VarChar(100)
-  fseiban        String   @db.VarChar(20)
-  scopeKey       String   @db.VarChar(80)
-  scopeKind      String   @db.VarChar(20)
-  processingType String?  @db.VarChar(20)
+  siteKey        String    @db.VarChar(100)
+  fseiban        String    @db.VarChar(20)
+  scopeKey       String    @db.VarChar(80)
+  scopeKind      String    @db.VarChar(20)
+  processingType String?   @db.VarChar(20)
   dueDate        DateTime? @db.Date
-  version        Int      @default(1)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
 
@@ -3033,7 +3054,7 @@ model AssemblyProcedureDocument {
   createdAt              DateTime                               @default(now())
   updatedAt              DateTime                               @updatedAt
   source                 AssemblyProcedureDocumentSourceRecord?
-  ownedAssets            AssemblyProcedureAsset[]              @relation("AssemblyProcedureAssetOwnerDocument")
+  ownedAssets            AssemblyProcedureAsset[]               @relation("AssemblyProcedureAssetOwnerDocument")
   pages                  AssemblyProcedureDocumentPage[]
   overlayElements        AssemblyProcedureOverlayElement[]
   revisionMetadata       AssemblyProcedureDocumentRevision?
@@ -3118,7 +3139,7 @@ model AssemblyProcedureAsset {
   height           Int?
   /// Temporary ownership lease for uploads made while an active DRAFT is edited.
   /// The lease is cleared when an IMAGE overlay references the asset.
-  ownerDocumentId String?
+  ownerDocumentId  String?
   createdAt        DateTime                            @default(now())
   overlayElements  AssemblyProcedureOverlayElement[]
   sourceRevisions  AssemblyProcedureDocumentRevision[]
@@ -3550,24 +3571,24 @@ model AssemblyFormalIdentifierAssignment {
 
 /// 作業者が物理レンチの製造番号と表示設定を確認した履歴。
 model AssemblyTorqueWrenchConfirmation {
-  id                       String                     @id @default(uuid())
-  sessionId                String
-  templateBoltId           String
-  torqueWrenchProfileId    String
-  settingHistoryId         String?
-  settingVerificationMode  String?
-  observedLeaseGeneration  Int?
+  id                            String                      @id @default(uuid())
+  sessionId                     String
+  templateBoltId                String
+  torqueWrenchProfileId         String
+  settingHistoryId              String?
+  settingVerificationMode       String?
+  observedLeaseGeneration       Int?
   observedAdoptedConfirmationId String?
-  conditionFingerprint     String
-  operatorEmployeeId       String?
-  operatorNameSnapshot     String
-  clientDeviceId           String?
-  clientDeviceNameSnapshot String?
-  confirmedAt              DateTime                   @default(now())
-  session                  AssemblyWorkSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  templateBolt             AssemblyTemplateBolt       @relation(fields: [templateBoltId], references: [id], onDelete: Restrict)
-  torqueWrenchProfile      TorqueWrenchProfile        @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
-  settingHistory           TorqueWrenchSettingHistory? @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
+  conditionFingerprint          String
+  operatorEmployeeId            String?
+  operatorNameSnapshot          String
+  clientDeviceId                String?
+  clientDeviceNameSnapshot      String?
+  confirmedAt                   DateTime                    @default(now())
+  session                       AssemblyWorkSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  templateBolt                  AssemblyTemplateBolt        @relation(fields: [templateBoltId], references: [id], onDelete: Restrict)
+  torqueWrenchProfile           TorqueWrenchProfile         @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  settingHistory                TorqueWrenchSettingHistory? @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
 
   @@index([sessionId, conditionFingerprint, confirmedAt(sort: Desc)], map: "AssemblyTorqueWrenchConfirmation_idx_session_condition")
   @@index([torqueWrenchProfileId, confirmedAt(sort: Desc)], map: "AssemblyTorqueWrenchConfirmation_idx_profile_confirmed")
@@ -3723,25 +3744,25 @@ model TorqueTrainingSession {
 
 /// 訓練開始時の物理レンチ確認。
 model TorqueTrainingWrenchConfirmation {
-  id                       String                     @id @default(uuid())
-  sessionId                String
-  torqueWrenchProfileId    String
-  settingHistoryId         String?
-  settingVerificationMode  String?
-  observedLeaseGeneration  Int?
+  id                            String                                  @id @default(uuid())
+  sessionId                     String
+  torqueWrenchProfileId         String
+  settingHistoryId              String?
+  settingVerificationMode       String?
+  observedLeaseGeneration       Int?
   observedAdoptedConfirmationId String?
-  conditionFingerprint     String
-  employeeId               String
-  employeeNameSnapshot     String
-  clientDeviceId           String
-  clientDeviceNameSnapshot String
-  confirmedAt              DateTime                   @default(now())
-  session                  TorqueTrainingSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  torqueWrenchProfile      TorqueWrenchProfile        @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
-  settingHistory           TorqueWrenchSettingHistory? @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
-  employee                 Employee                   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  clientDevice             ClientDevice               @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
-  preparationRequest       TorqueTrainingWrenchPreparationRequest?
+  conditionFingerprint          String
+  employeeId                    String
+  employeeNameSnapshot          String
+  clientDeviceId                String
+  clientDeviceNameSnapshot      String
+  confirmedAt                   DateTime                                @default(now())
+  session                       TorqueTrainingSession                   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  torqueWrenchProfile           TorqueWrenchProfile                     @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  settingHistory                TorqueWrenchSettingHistory?             @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
+  employee                      Employee                                @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  clientDevice                  ClientDevice                            @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+  preparationRequest            TorqueTrainingWrenchPreparationRequest?
 
   @@index([sessionId, confirmedAt(sort: Desc)], map: "TorqueTrainingWrenchConfirmation_idx_session_confirmed")
   @@index([torqueWrenchProfileId, confirmedAt(sort: Desc)], map: "TorqueTrainingWrenchConfirmation_idx_profile_confirmed")
@@ -4467,17 +4488,17 @@ model SelfInspectionLevelDecision {
 
 /// SharePoint作業要領の原本行。常に同一source tupleの最新スナップショットだけを保持する。
 model WorkInstructionRow {
-  id             String                 @id @default(uuid())
-  sourceSystem   String                 @db.VarChar(120)
-  sourceList     String                 @db.VarChar(255)
+  id             String                            @id @default(uuid())
+  sourceSystem   String                            @db.VarChar(120)
+  sourceList     String                            @db.VarChar(255)
   sourceItemId   BigInt
   sourceModified DateTime
-  partNumber     String?                @db.VarChar(200)
-  shootingTarget String?                @db.VarChar(200)
+  partNumber     String?                           @db.VarChar(200)
+  shootingTarget String?                           @db.VarChar(200)
   rawManifest    Json
-  contentHash    String                 @db.VarChar(64)
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  contentHash    String                            @db.VarChar(64)
+  createdAt      DateTime                          @default(now())
+  updatedAt      DateTime                          @updatedAt
   steps          WorkInstructionStep[]
   sourceVersions WorkInstructionSourceVersion[]
   publication    WorkInstructionSourcePublication?
@@ -4504,16 +4525,16 @@ model WorkInstructionPartAlias {
 
 /// SharePoint行の完全スナップショットに含まれる手順。行更新時に全置換する。
 model WorkInstructionStep {
-  id          String                 @id @default(uuid())
-  rowId       String
-  step        BigInt
-  text        String
-  imageName   String?
-  assetId     String?
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
-  row         WorkInstructionRow     @relation(fields: [rowId], references: [id], onDelete: Cascade)
-  asset       WorkInstructionAsset?  @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  id        String                @id @default(uuid())
+  rowId     String
+  step      BigInt
+  text      String
+  imageName String?
+  assetId   String?
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+  row       WorkInstructionRow    @relation(fields: [rowId], references: [id], onDelete: Cascade)
+  asset     WorkInstructionAsset? @relation(fields: [assetId], references: [id], onDelete: Restrict)
 
   @@unique([rowId, step], map: "WorkInstructionStep_unique_row_step")
   @@index([assetId], map: "WorkInstructionStep_idx_asset")
@@ -4607,17 +4628,17 @@ enum WorkInstructionImportOutcome {
 
 /// 作業要領画像のimmutableファイルとDB上の公開状態。
 model WorkInstructionAsset {
-  id             String                    @id @default(uuid())
-  storageKey     String                    @unique @db.VarChar(1024)
-  mimeType       String                    @db.VarChar(64)
-  sizeBytes      Int
-  sha256         String                    @db.VarChar(64)
-  status         WorkInstructionAssetStatus @default(STAGED)
-  createdAt      DateTime                  @default(now())
-  activatedAt    DateTime?
-  deletePendingAt DateTime?
-  updatedAt      DateTime                  @updatedAt
-  steps          WorkInstructionStep[]
+  id                 String                             @id @default(uuid())
+  storageKey         String                             @unique @db.VarChar(1024)
+  mimeType           String                             @db.VarChar(64)
+  sizeBytes          Int
+  sha256             String                             @db.VarChar(64)
+  status             WorkInstructionAssetStatus         @default(STAGED)
+  createdAt          DateTime                           @default(now())
+  activatedAt        DateTime?
+  deletePendingAt    DateTime?
+  updatedAt          DateTime                           @updatedAt
+  steps              WorkInstructionStep[]
   sourceVersionSteps WorkInstructionSourceVersionStep[]
 
   @@index([status, createdAt], map: "WorkInstructionAsset_idx_status_created")
@@ -4626,14 +4647,14 @@ model WorkInstructionAsset {
 
 /// Gmail message単位の重複排除・再試行・処理済みメール掃除状態。
 model WorkInstructionImportMessage {
-  id                 String                        @id @default(uuid())
-  gmailMessageId     String                        @unique @db.VarChar(255)
+  id                 String                       @id @default(uuid())
+  gmailMessageId     String                       @unique @db.VarChar(255)
   outcome            WorkInstructionImportOutcome
   error              String?
   nextRetryAt        DateTime?
-  mailCleanupPending Boolean                       @default(false)
-  createdAt          DateTime                      @default(now())
-  updatedAt          DateTime                      @updatedAt
+  mailCleanupPending Boolean                      @default(false)
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
 
   @@index([outcome, nextRetryAt], map: "WorkInstructionImportMessage_idx_retry")
   @@index([mailCleanupPending, updatedAt], map: "WorkInstructionImportMessage_idx_cleanup")
@@ -4642,22 +4663,22 @@ model WorkInstructionImportMessage {
 /// SharePoint行の受信済みimmutable source snapshot。Rowはlatest cacheとして残し、
 /// 公開表示はWorkInstructionSourcePublicationのpointerで選択する。
 model WorkInstructionSourceVersion {
-  id             String                         @id @default(uuid())
-  rowId          String
-  sourceModified DateTime
-  partNumber     String?                        @db.VarChar(200)
-  shootingTarget String?                        @db.VarChar(200)
-  rawManifest    Json
-  contentHash    String                         @db.VarChar(64)
-  createdAt      DateTime                       @default(now())
-  row            WorkInstructionRow             @relation(fields: [rowId], references: [id], onDelete: Restrict)
-  steps          WorkInstructionSourceVersionStep[]
-  latestPointers WorkInstructionSourcePublication[] @relation("WorkInstructionLatestSourceVersion")
-  publicPointers WorkInstructionSourcePublication[] @relation("WorkInstructionPublishedSourceVersion")
-  revisions      WorkInstructionEditRevision[]
-  deletionAudits WorkInstructionSourceAssetDeletionAudit[]
-  originEditAssets WorkInstructionEditAsset[] @relation("WorkInstructionEditAssetOriginSourceVersion")
-  editAuditLogs  WorkInstructionEditAuditLog[]
+  id               String                                    @id @default(uuid())
+  rowId            String
+  sourceModified   DateTime
+  partNumber       String?                                   @db.VarChar(200)
+  shootingTarget   String?                                   @db.VarChar(200)
+  rawManifest      Json
+  contentHash      String                                    @db.VarChar(64)
+  createdAt        DateTime                                  @default(now())
+  row              WorkInstructionRow                        @relation(fields: [rowId], references: [id], onDelete: Restrict)
+  steps            WorkInstructionSourceVersionStep[]
+  latestPointers   WorkInstructionSourcePublication[]        @relation("WorkInstructionLatestSourceVersion")
+  publicPointers   WorkInstructionSourcePublication[]        @relation("WorkInstructionPublishedSourceVersion")
+  revisions        WorkInstructionEditRevision[]
+  deletionAudits   WorkInstructionSourceAssetDeletionAudit[]
+  originEditAssets WorkInstructionEditAsset[]                @relation("WorkInstructionEditAssetOriginSourceVersion")
+  editAuditLogs    WorkInstructionEditAuditLog[]
 
   @@unique([rowId, sourceModified, contentHash], map: "WorkInstructionSourceVersion_unique_snapshot")
   @@index([rowId, sourceModified], map: "WorkInstructionSourceVersion_idx_row_modified")
@@ -4666,18 +4687,18 @@ model WorkInstructionSourceVersion {
 
 /// Immutable source snapshot内の手順。元assetを参照し、削除時も本文・hashは監査用に残す。
 model WorkInstructionSourceVersionStep {
-  id              String                     @id @default(uuid())
+  id              String                       @id @default(uuid())
   sourceVersionId String
   step            BigInt
   text            String
   imageName       String?
   imageAssetId    String?
-  imageSha256     String?                    @db.VarChar(64)
+  imageSha256     String?                      @db.VarChar(64)
   imageDeletedAt  DateTime?
-  imageDeletedBy  String?                    @db.VarChar(200)
-  createdAt       DateTime                   @default(now())
+  imageDeletedBy  String?                      @db.VarChar(200)
+  createdAt       DateTime                     @default(now())
   sourceVersion   WorkInstructionSourceVersion @relation(fields: [sourceVersionId], references: [id], onDelete: Cascade)
-  imageAsset      WorkInstructionAsset?      @relation(fields: [imageAssetId], references: [id], onDelete: Restrict)
+  imageAsset      WorkInstructionAsset?        @relation(fields: [imageAssetId], references: [id], onDelete: Restrict)
 
   @@unique([sourceVersionId, step], map: "WorkInstructionSourceVersionStep_unique_step")
   @@index([imageAssetId], map: "WorkInstructionSourceVersionStep_idx_asset")
@@ -4685,17 +4706,17 @@ model WorkInstructionSourceVersionStep {
 
 /// source tupleごとのlatest/public pointer。latest取込はpublicを自動変更しない。
 model WorkInstructionSourcePublication {
-  id                   String                         @id @default(uuid())
-  rowId                String                         @unique(map: "WorkInstructionSourcePublication_row_key")
-  latestVersionId      String
-  publishedVersionId   String
-  publishedRevisionId  String?
-  createdAt            DateTime                       @default(now())
-  updatedAt            DateTime                       @updatedAt
-  row                  WorkInstructionRow             @relation(fields: [rowId], references: [id], onDelete: Cascade)
-  latestVersion        WorkInstructionSourceVersion   @relation("WorkInstructionLatestSourceVersion", fields: [latestVersionId], references: [id], onDelete: Restrict)
-  publishedVersion     WorkInstructionSourceVersion   @relation("WorkInstructionPublishedSourceVersion", fields: [publishedVersionId], references: [id], onDelete: Restrict)
-  publishedRevision    WorkInstructionEditRevision?  @relation(fields: [publishedRevisionId], references: [id], onDelete: Restrict)
+  id                  String                       @id @default(uuid())
+  rowId               String                       @unique(map: "WorkInstructionSourcePublication_row_key")
+  latestVersionId     String
+  publishedVersionId  String
+  publishedRevisionId String?
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+  row                 WorkInstructionRow           @relation(fields: [rowId], references: [id], onDelete: Cascade)
+  latestVersion       WorkInstructionSourceVersion @relation("WorkInstructionLatestSourceVersion", fields: [latestVersionId], references: [id], onDelete: Restrict)
+  publishedVersion    WorkInstructionSourceVersion @relation("WorkInstructionPublishedSourceVersion", fields: [publishedVersionId], references: [id], onDelete: Restrict)
+  publishedRevision   WorkInstructionEditRevision? @relation(fields: [publishedRevisionId], references: [id], onDelete: Restrict)
 
   @@index([latestVersionId], map: "WorkInstructionSourcePublication_idx_latest")
   @@index([publishedVersionId], map: "WorkInstructionSourcePublication_idx_published")
@@ -4704,27 +4725,27 @@ model WorkInstructionSourcePublication {
 
 /// source versionに対する編集改版。公開済みrevisionは不変で、新版copyは別revisionになる。
 model WorkInstructionEditRevision {
-  id                 String                            @id @default(uuid())
-  sourceVersionId    String
-  revisionNumber     Int                               @default(1)
+  id                   String                             @id @default(uuid())
+  sourceVersionId      String
+  revisionNumber       Int                                @default(1)
   supersedesRevisionId String?
   copiedFromRevisionId String?
-  isRevisionHead     Boolean                           @default(true)
-  status             WorkInstructionEditRevisionStatus @default(DRAFT)
-  editVersion        Int                               @default(0)
-  baseContentHash    String                            @db.VarChar(64)
-  createdAt          DateTime                          @default(now())
-  updatedAt          DateTime                          @updatedAt
-  sourceVersion      WorkInstructionSourceVersion     @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict)
-  supersedesRevision WorkInstructionEditRevision?     @relation("WorkInstructionEditRevisionSupersedes", fields: [supersedesRevisionId], references: [id], onDelete: Restrict)
-  successorRevisions WorkInstructionEditRevision[]    @relation("WorkInstructionEditRevisionSupersedes")
-  copiedFromRevision WorkInstructionEditRevision?     @relation("WorkInstructionEditRevisionCopiedFrom", fields: [copiedFromRevisionId], references: [id], onDelete: SetNull)
-  copiedRevisions    WorkInstructionEditRevision[]    @relation("WorkInstructionEditRevisionCopiedFrom")
-  overlays           WorkInstructionEditOverlay[]
-  memoOverrides      WorkInstructionEditMemoOverride[]
-  ownedAssets        WorkInstructionEditAsset[]
-  publishedPointers  WorkInstructionSourcePublication[]
-  auditLogs           WorkInstructionEditAuditLog[]
+  isRevisionHead       Boolean                            @default(true)
+  status               WorkInstructionEditRevisionStatus  @default(DRAFT)
+  editVersion          Int                                @default(0)
+  baseContentHash      String                             @db.VarChar(64)
+  createdAt            DateTime                           @default(now())
+  updatedAt            DateTime                           @updatedAt
+  sourceVersion        WorkInstructionSourceVersion       @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict)
+  supersedesRevision   WorkInstructionEditRevision?       @relation("WorkInstructionEditRevisionSupersedes", fields: [supersedesRevisionId], references: [id], onDelete: Restrict)
+  successorRevisions   WorkInstructionEditRevision[]      @relation("WorkInstructionEditRevisionSupersedes")
+  copiedFromRevision   WorkInstructionEditRevision?       @relation("WorkInstructionEditRevisionCopiedFrom", fields: [copiedFromRevisionId], references: [id], onDelete: SetNull)
+  copiedRevisions      WorkInstructionEditRevision[]      @relation("WorkInstructionEditRevisionCopiedFrom")
+  overlays             WorkInstructionEditOverlay[]
+  memoOverrides        WorkInstructionEditMemoOverride[]
+  ownedAssets          WorkInstructionEditAsset[]
+  publishedPointers    WorkInstructionSourcePublication[]
+  auditLogs            WorkInstructionEditAuditLog[]
 
   @@unique([sourceVersionId, revisionNumber], map: "WorkInstructionEditRevision_unique_number")
   @@index([sourceVersionId, isRevisionHead], map: "WorkInstructionEditRevision_idx_head")
@@ -4735,18 +4756,18 @@ model WorkInstructionEditRevision {
 
 /// 社員NFCで開始した作業要領編集セッション。社員・端末・対象グループを固定する。
 model WorkInstructionEditorAuthentication {
-  id                       String   @id @default(uuid())
+  id                       String                        @id @default(uuid())
   employeeId               String?
-  employeeCodeSnapshot     String   @db.VarChar(120)
-  employeeNameSnapshot     String   @db.VarChar(200)
+  employeeCodeSnapshot     String                        @db.VarChar(120)
+  employeeNameSnapshot     String                        @db.VarChar(200)
   clientDeviceId           String?
-  clientDeviceNameSnapshot String   @db.VarChar(200)
-  partNumber               String   @db.VarChar(200)
-  shootingTarget           String   @db.VarChar(200)
-  authenticatedAt          DateTime @default(now())
+  clientDeviceNameSnapshot String                        @db.VarChar(200)
+  partNumber               String                        @db.VarChar(200)
+  shootingTarget           String                        @db.VarChar(200)
+  authenticatedAt          DateTime                      @default(now())
   expiresAt                DateTime
-  employee                 Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  clientDevice             ClientDevice? @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  employee                 Employee?                     @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  clientDevice             ClientDevice?                 @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
   auditLogs                WorkInstructionEditAuditLog[]
 
   @@index([employeeId, authenticatedAt], map: "WorkInstructionEditorAuth_idx_employee_time")
@@ -4756,28 +4777,28 @@ model WorkInstructionEditorAuthentication {
 
 /// 保存・公開等と同じDB transactionで追記する作業要領編集監査。
 model WorkInstructionEditAuditLog {
-  id                       String                         @id @default(uuid())
+  id                       String                              @id @default(uuid())
   authenticationId         String
   action                   WorkInstructionEditAuditAction
-  employeeIdSnapshot       String                         @db.VarChar(120)
-  employeeCodeSnapshot     String                         @db.VarChar(120)
-  employeeNameSnapshot     String                         @db.VarChar(200)
-  clientDeviceIdSnapshot   String                         @db.VarChar(120)
-  clientDeviceNameSnapshot String                         @db.VarChar(200)
-  partNumber               String                         @db.VarChar(200)
-  shootingTarget           String                         @db.VarChar(200)
+  employeeIdSnapshot       String                              @db.VarChar(120)
+  employeeCodeSnapshot     String                              @db.VarChar(120)
+  employeeNameSnapshot     String                              @db.VarChar(200)
+  clientDeviceIdSnapshot   String                              @db.VarChar(120)
+  clientDeviceNameSnapshot String                              @db.VarChar(200)
+  partNumber               String                              @db.VarChar(200)
+  shootingTarget           String                              @db.VarChar(200)
   rowId                    String?
   sourceVersionId          String?
   revisionId               String?
   editVersionBefore        Int?
   editVersionAfter         Int?
-  requestId                String                         @db.VarChar(120)
+  requestId                String                              @db.VarChar(120)
   changeSet                Json?
-  createdAt                DateTime                       @default(now())
+  createdAt                DateTime                            @default(now())
   authentication           WorkInstructionEditorAuthentication @relation(fields: [authenticationId], references: [id], onDelete: Restrict)
-  row                      WorkInstructionRow?            @relation(fields: [rowId], references: [id], onDelete: SetNull)
-  sourceVersion            WorkInstructionSourceVersion?  @relation(fields: [sourceVersionId], references: [id], onDelete: SetNull)
-  revision                 WorkInstructionEditRevision?   @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+  row                      WorkInstructionRow?                 @relation(fields: [rowId], references: [id], onDelete: SetNull)
+  sourceVersion            WorkInstructionSourceVersion?       @relation(fields: [sourceVersionId], references: [id], onDelete: SetNull)
+  revision                 WorkInstructionEditRevision?        @relation(fields: [revisionId], references: [id], onDelete: SetNull)
 
   @@index([partNumber, shootingTarget, createdAt], map: "WorkInstructionEditAudit_idx_group_time")
   @@index([revisionId, createdAt], map: "WorkInstructionEditAudit_idx_revision_time")
@@ -4787,38 +4808,38 @@ model WorkInstructionEditAuditLog {
 
 /// 編集改版に属するTEXT/IMAGE/SHAPE overlay。座標はsource画像の正規化値。
 model WorkInstructionEditOverlay {
-  id               String                           @id @default(uuid())
-  revisionId       String
-  sourceStep       BigInt?
-  migratedFromStep BigInt
-  baseStepFingerprint String                        @db.VarChar(128)
-  targetStepFingerprint String?                     @db.VarChar(128)
-  migrationState   WorkInstructionEditOverlayMigrationState @default(MIGRATED)
-  kind             WorkInstructionEditOverlayKind
-  xRatio           Decimal                          @db.Decimal(10, 8)
-  yRatio           Decimal                          @db.Decimal(10, 8)
-  widthRatio       Decimal                          @db.Decimal(10, 8)
-  heightRatio      Decimal                          @db.Decimal(10, 8)
-  zIndex           Int                              @default(0)
-  opacity          Decimal                          @default(1) @db.Decimal(5, 4)
-  maskEnabled      Boolean                          @default(false)
-  maskColor        String?
-  text             String?
-  textStyle        Json?
-  editAssetId      String?
-  objectFit        String?
-  shapeKind        WorkInstructionEditOverlayShapeKind?
-  strokeColor      String?
-  fillColor        String?
-  strokeWidthRatio Decimal?                         @db.Decimal(10, 8)
-  shapeStartXRatio Decimal?                         @db.Decimal(10, 8)
-  shapeStartYRatio Decimal?                         @db.Decimal(10, 8)
-  shapeEndXRatio   Decimal?                         @db.Decimal(10, 8)
-  shapeEndYRatio   Decimal?                         @db.Decimal(10, 8)
-  createdAt        DateTime                         @default(now())
-  updatedAt        DateTime                         @updatedAt
-  revision         WorkInstructionEditRevision      @relation(fields: [revisionId], references: [id], onDelete: Cascade)
-  editAsset        WorkInstructionEditAsset?       @relation(fields: [editAssetId], references: [id], onDelete: Restrict)
+  id                    String                                   @id @default(uuid())
+  revisionId            String
+  sourceStep            BigInt?
+  migratedFromStep      BigInt
+  baseStepFingerprint   String                                   @db.VarChar(128)
+  targetStepFingerprint String?                                  @db.VarChar(128)
+  migrationState        WorkInstructionEditOverlayMigrationState @default(MIGRATED)
+  kind                  WorkInstructionEditOverlayKind
+  xRatio                Decimal                                  @db.Decimal(10, 8)
+  yRatio                Decimal                                  @db.Decimal(10, 8)
+  widthRatio            Decimal                                  @db.Decimal(10, 8)
+  heightRatio           Decimal                                  @db.Decimal(10, 8)
+  zIndex                Int                                      @default(0)
+  opacity               Decimal                                  @default(1) @db.Decimal(5, 4)
+  maskEnabled           Boolean                                  @default(false)
+  maskColor             String?
+  text                  String?
+  textStyle             Json?
+  editAssetId           String?
+  objectFit             String?
+  shapeKind             WorkInstructionEditOverlayShapeKind?
+  strokeColor           String?
+  fillColor             String?
+  strokeWidthRatio      Decimal?                                 @db.Decimal(10, 8)
+  shapeStartXRatio      Decimal?                                 @db.Decimal(10, 8)
+  shapeStartYRatio      Decimal?                                 @db.Decimal(10, 8)
+  shapeEndXRatio        Decimal?                                 @db.Decimal(10, 8)
+  shapeEndYRatio        Decimal?                                 @db.Decimal(10, 8)
+  createdAt             DateTime                                 @default(now())
+  updatedAt             DateTime                                 @updatedAt
+  revision              WorkInstructionEditRevision              @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  editAsset             WorkInstructionEditAsset?                @relation(fields: [editAssetId], references: [id], onDelete: Restrict)
 
   @@index([revisionId, sourceStep, zIndex], map: "WorkInstructionEditOverlay_idx_revision_step_z")
   @@index([editAssetId], map: "WorkInstructionEditOverlay_idx_asset")
@@ -4827,17 +4848,17 @@ model WorkInstructionEditOverlay {
 
 /// 編集改版に属する原本memoのoverride。原本step.textは更新せず、空文字も有効値として保持する。
 model WorkInstructionEditMemoOverride {
-  id                    String                              @id @default(uuid())
+  id                    String                                @id @default(uuid())
   revisionId            String
   sourceStep            BigInt?
   migratedFromStep      BigInt
-  baseStepFingerprint   String                              @db.VarChar(128)
-  targetStepFingerprint String?                             @db.VarChar(128)
+  baseStepFingerprint   String                                @db.VarChar(128)
+  targetStepFingerprint String?                               @db.VarChar(128)
   migrationState        WorkInstructionEditMemoMigrationState @default(MIGRATED)
   text                  String
-  createdAt             DateTime                            @default(now())
-  updatedAt             DateTime                            @updatedAt
-  revision              WorkInstructionEditRevision        @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  createdAt             DateTime                              @default(now())
+  updatedAt             DateTime                              @updatedAt
+  revision              WorkInstructionEditRevision           @relation(fields: [revisionId], references: [id], onDelete: Cascade)
 
   @@unique([revisionId, sourceStep], map: "WorkInstructionEditMemoOverride_unique_revision_target_step")
   @@index([revisionId, migratedFromStep], map: "WorkInstructionEditMemoOverride_idx_revision_migrated_from_step")
@@ -4847,28 +4868,28 @@ model WorkInstructionEditMemoOverride {
 
 /// 編集で作成した画像asset。取込元WorkInstructionAssetとはnamespace・GC責務を分離する。
 model WorkInstructionEditAsset {
-  id              String                         @id @default(uuid())
-  storageKey      String                         @unique @db.VarChar(1024)
-  mimeType        String                         @db.VarChar(64)
-  sizeBytes       Int
-  sha256          String                         @db.VarChar(64)
-  status          WorkInstructionEditAssetStatus @default(STAGED)
-  origin           WorkInstructionEditAssetOrigin @default(UPLOAD)
+  id                    String                         @id @default(uuid())
+  storageKey            String                         @unique @db.VarChar(1024)
+  mimeType              String                         @db.VarChar(64)
+  sizeBytes             Int
+  sha256                String                         @db.VarChar(64)
+  status                WorkInstructionEditAssetStatus @default(STAGED)
+  origin                WorkInstructionEditAssetOrigin @default(UPLOAD)
   originSourceVersionId String?
-  originSourceStep BigInt?
-  originXRatio     Decimal?                       @db.Decimal(10, 8)
-  originYRatio     Decimal?                       @db.Decimal(10, 8)
-  originWidthRatio Decimal?                       @db.Decimal(10, 8)
-  originHeightRatio Decimal?                      @db.Decimal(10, 8)
-  ownerRevisionId String?
-  createdAt       DateTime                       @default(now())
-  activatedAt     DateTime?
-  deletePendingAt DateTime?
-  lastDeleteError String?
-  updatedAt       DateTime                       @updatedAt
-  ownerRevision   WorkInstructionEditRevision?  @relation(fields: [ownerRevisionId], references: [id], onDelete: SetNull)
-  originSourceVersion WorkInstructionSourceVersion? @relation("WorkInstructionEditAssetOriginSourceVersion", fields: [originSourceVersionId], references: [id], onDelete: Restrict)
-  overlays        WorkInstructionEditOverlay[]
+  originSourceStep      BigInt?
+  originXRatio          Decimal?                       @db.Decimal(10, 8)
+  originYRatio          Decimal?                       @db.Decimal(10, 8)
+  originWidthRatio      Decimal?                       @db.Decimal(10, 8)
+  originHeightRatio     Decimal?                       @db.Decimal(10, 8)
+  ownerRevisionId       String?
+  createdAt             DateTime                       @default(now())
+  activatedAt           DateTime?
+  deletePendingAt       DateTime?
+  lastDeleteError       String?
+  updatedAt             DateTime                       @updatedAt
+  ownerRevision         WorkInstructionEditRevision?   @relation(fields: [ownerRevisionId], references: [id], onDelete: SetNull)
+  originSourceVersion   WorkInstructionSourceVersion?  @relation("WorkInstructionEditAssetOriginSourceVersion", fields: [originSourceVersionId], references: [id], onDelete: Restrict)
+  overlays              WorkInstructionEditOverlay[]
 
   @@index([status, createdAt], map: "WorkInstructionEditAsset_idx_status_created")
   @@index([status, deletePendingAt], map: "WorkInstructionEditAsset_idx_status_delete_pending")
@@ -4878,17 +4899,17 @@ model WorkInstructionEditAsset {
 
 /// 旧source画像の管理者削除をasset row削除後も残す監査台帳。
 model WorkInstructionSourceAssetDeletionAudit {
-  id              String                                 @id @default(uuid())
+  id              String                                   @id @default(uuid())
   assetId         String
   sourceVersionId String
-  storageKey      String                                 @db.VarChar(1024)
-  sha256          String                                 @db.VarChar(64)
-  requestedBy     String                                 @db.VarChar(200)
+  storageKey      String                                   @db.VarChar(1024)
+  sha256          String                                   @db.VarChar(64)
+  requestedBy     String                                   @db.VarChar(200)
   status          WorkInstructionSourceAssetDeletionStatus @default(REQUESTED)
   error           String?
-  requestedAt     DateTime                               @default(now())
+  requestedAt     DateTime                                 @default(now())
   completedAt     DateTime?
-  sourceVersion   WorkInstructionSourceVersion          @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict)
+  sourceVersion   WorkInstructionSourceVersion             @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict)
 
   @@index([assetId, requestedAt], map: "WorkInstructionSourceAssetDeletionAudit_idx_asset")
   @@index([status, requestedAt], map: "WorkInstructionSourceAssetDeletionAudit_idx_status")
@@ -4897,29 +4918,29 @@ model WorkInstructionSourceAssetDeletionAudit {
 
 /// Owner-scoped raw intake and durable knowledge processing state.
 model KnowledgeIntake {
-  id             String   @id
-  sequence       BigInt   @unique @default(autoincrement())
-  ownerKey       String
-  conversationId String
-  inputHash      String
-  text           String
-  files          Json
-  sources        Json?
-  organized      Json?
-  state          String   @default("receiving")
-  action         String?
-  version        Int      @default(1)
-  attempts       Int      @default(0)
-  retryAt        DateTime @default(now())
-  result         Json?
-  errorCode      String?
+  id                 String   @id
+  sequence           BigInt   @unique @default(autoincrement())
+  ownerKey           String
+  conversationId     String
+  inputHash          String
+  text               String
+  files              Json
+  sources            Json?
+  organized          Json?
+  state              String   @default("receiving")
+  action             String?
+  version            Int      @default(1)
+  attempts           Int      @default(0)
+  retryAt            DateTime @default(now())
+  result             Json?
+  errorCode          String?
   /// Employee who scanned their NFC tag before posting (null for posts made before triage existed).
-  posterEmployeeId      String?
-  posterNameSnapshot    String?
+  posterEmployeeId   String?
+  posterNameSnapshot String?
   /// Part number read from a routing-slip barcode at posting time (optional hint).
-  scannedPartNumber     String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  scannedPartNumber  String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@index([state, retryAt, createdAt])
   @@index([ownerKey, conversationId, createdAt])
@@ -4927,10 +4948,10 @@ model KnowledgeIntake {
 
 /// Accepted publication pointer and a lease serializing topic publication.
 model KnowledgeTopic {
-  id             String   @id
-  revision       String?
-  leaseToken     String?
-  leaseUntil     DateTime?
+  id         String    @id
+  revision   String?
+  leaseToken String?
+  leaseUntil DateTime?
 }
 
 /// A procedure topic (e.g. one part's setup) built by the system from knowledge materials.
@@ -4969,20 +4990,20 @@ model KnowledgeProcedure {
 
 /// Triage of one post (intake): AI suggests destinations, the poster decides.
 model KnowledgeTriage {
-  intakeId            String    @id
-  posterEmployeeId    String?
+  intakeId           String    @id
+  posterEmployeeId   String?
   /// suggesting | awaiting | decided (DB CHECK)
-  state               String    @default("suggesting")
-  suggestions         Json?
-  decidedProcedureId  String?
-  decidedAt           DateTime?
-  attempts            Int       @default(0)
-  retryAt             DateTime  @default(now())
-  leaseToken          String?
-  leaseUntil          DateTime?
-  errorCode           String?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  state              String    @default("suggesting")
+  suggestions        Json?
+  decidedProcedureId String?
+  decidedAt          DateTime?
+  attempts           Int       @default(0)
+  retryAt            DateTime  @default(now())
+  leaseToken         String?
+  leaseUntil         DateTime?
+  errorCode          String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([state, retryAt, createdAt])
   @@index([posterEmployeeId, state, createdAt])
@@ -5022,17 +5043,17 @@ model KnowledgeProcedureMaterial {
 
 /// Immutable procedure content per revision; state moves draft -> pending_approval -> published (DB CHECK).
 model KnowledgeProcedureRevision {
-  id               String              @id
-  procedureId      String
-  revisionNumber   Int
-  state            String
+  id             String              @id
+  procedureId    String
+  revisionNumber Int
+  state          String
   /// Validated steps (`procedure-content.ts`), rendered by a fixed template.
-  content          Json
-  createdByKey     String
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-  procedure        KnowledgeProcedure  @relation("KnowledgeProcedureRevisions", fields: [procedureId], references: [id], onDelete: Cascade)
-  publishedFor     KnowledgeProcedure? @relation("KnowledgeProcedurePublishedRevision")
+  content        Json
+  createdByKey   String
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  procedure      KnowledgeProcedure  @relation("KnowledgeProcedureRevisions", fields: [procedureId], references: [id], onDelete: Cascade)
+  publishedFor   KnowledgeProcedure? @relation("KnowledgeProcedurePublishedRevision")
 
   @@unique([procedureId, revisionNumber])
   @@index([state, createdAt])

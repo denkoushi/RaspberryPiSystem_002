@@ -63,6 +63,7 @@ import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
 import { KioskSelfInspectionPage } from './pages/kiosk/KioskSelfInspectionPage';
 import { KioskSelfInspectionRecordApprovalPage } from './pages/kiosk/KioskSelfInspectionRecordApprovalPage';
 import { KioskSelfInspectionReductionPage } from './pages/kiosk/KioskSelfInspectionReductionPage';
+import { KioskTagDeskPage } from './pages/kiosk/KioskTagDeskPage';
 import { MobilePlacementPage } from './pages/kiosk/MobilePlacementPage';
 import { MobilePlacementPartSearchPage } from './pages/kiosk/MobilePlacementPartSearchPage';
 import { ProductionScheduleDueManagementPage } from './pages/kiosk/ProductionScheduleDueManagementPage';
@@ -77,19 +78,14 @@ import { LoginPage } from './pages/LoginPage';
 import { SignageDisplayPage } from './pages/signage/SignageDisplayPage';
 import { SignageLiteDisplayPage } from './pages/signage/SignageLiteDisplayPage';
 import { AssemblyTorqueOverridePage } from './pages/tools/AssemblyTorqueOverridePage';
-import { EmployeesPage } from './pages/tools/EmployeesPage';
 import { HistoryPage } from './pages/tools/HistoryPage';
 import { InspectionItemsPage } from './pages/tools/InspectionItemsPage';
 import { InspectionRecordsPage } from './pages/tools/InspectionRecordsPage';
-import { InstrumentTagsPage } from './pages/tools/InstrumentTagsPage';
-import { ItemsPage } from './pages/tools/ItemsPage';
 import { MachinesPage } from './pages/tools/MachinesPage';
 import { MachinesUninspectedPage } from './pages/tools/MachinesUninspectedPage';
 import { MeasuringInstrumentGenresPage } from './pages/tools/MeasuringInstrumentGenresPage';
-import { MeasuringInstrumentsPage } from './pages/tools/MeasuringInstrumentsPage';
-import { RiggingGearsPage } from './pages/tools/RiggingGearsPage';
+import { MovedToKioskTagDeskPage } from './pages/tools/MovedToKioskTagDeskPage';
 import { TorqueWrenchesPage } from './pages/tools/TorqueWrenchesPage';
-import { UnifiedItemsPage } from './pages/tools/UnifiedItemsPage';
 
 const KioskInspectionDrawingCreatePreviewPage = lazy(() =>
   import('./pages/dev/KioskInspectionDrawingCreatePreviewPage').then((module) => ({
@@ -186,6 +182,7 @@ function App() {
           <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
           <Route path="/kiosk/inventory" element={<KioskItemInventoryPage />} />
           <Route path="/kiosk/inventory/settings" element={<KioskItemInventorySettingsPage />} />
+          <Route path="/kiosk/tag-desk" element={<KioskTagDeskPage />} />
           <Route path="/kiosk/photo" element={<KioskPhotoBorrowPage />} />
           <Route path="/kiosk/instruments/borrow" element={<KioskInstrumentBorrowPage />} />
           <Route path="/kiosk/rigging/borrow" element={<KioskRiggingBorrowPage />} />
@@ -348,15 +345,15 @@ function App() {
         <Route index element={<DashboardPage />} />
         <Route path="tools">
           <Route path="raspi-inventory" element={<RaspiInventoryPage />} />
-          <Route path="employees" element={<EmployeesPage />} />
+          <Route path="employees" element={<MovedToKioskTagDeskPage />} />
           <Route path="dgx-resource" element={<DgxResourceAdminPage />} />
-          <Route path="items" element={<ItemsPage />} />
-          <Route path="unified" element={<UnifiedItemsPage />} />
-          <Route path="rigging-gears" element={<RiggingGearsPage />} />
+          <Route path="items" element={<MovedToKioskTagDeskPage />} />
+          <Route path="unified" element={<MovedToKioskTagDeskPage />} />
+          <Route path="rigging-gears" element={<MovedToKioskTagDeskPage />} />
           <Route path="inspection-items" element={<InspectionItemsPage />} />
-          <Route path="instrument-tags" element={<InstrumentTagsPage />} />
+          <Route path="instrument-tags" element={<MovedToKioskTagDeskPage />} />
           <Route path="inspection-records" element={<InspectionRecordsPage />} />
-          <Route path="measuring-instruments" element={<MeasuringInstrumentsPage />} />
+          <Route path="measuring-instruments" element={<MovedToKioskTagDeskPage />} />
           <Route path="torque-wrenches" element={<TorqueWrenchesPage />} />
           <Route path="assembly-torque-override" element={<AssemblyTorqueOverridePage />} />
           <Route path="measuring-instrument-genres" element={<MeasuringInstrumentGenresPage />} />
@@ -404,16 +401,16 @@ function App() {
           <Route path="preview" element={<SignagePreviewPage />} />
         </Route>
         {/* 後方互換性のため、既存パスも維持 */}
-        <Route path="employees" element={<EmployeesPage />} />
-        <Route path="items" element={<ItemsPage />} />
+        <Route path="employees" element={<MovedToKioskTagDeskPage />} />
+        <Route path="items" element={<MovedToKioskTagDeskPage />} />
         <Route path="inspection-items" element={<InspectionItemsPage />} />
-        <Route path="instrument-tags" element={<InstrumentTagsPage />} />
+        <Route path="instrument-tags" element={<MovedToKioskTagDeskPage />} />
         <Route path="inspection-records" element={<InspectionRecordsPage />} />
-        <Route path="measuring-instruments" element={<MeasuringInstrumentsPage />} />
+        <Route path="measuring-instruments" element={<MovedToKioskTagDeskPage />} />
         <Route path="measuring-instrument-genres" element={<MeasuringInstrumentGenresPage />} />
         <Route path="machines" element={<MachinesPage />} />
         <Route path="machines-uninspected" element={<MachinesUninspectedPage />} />
-        <Route path="rigging-gears" element={<RiggingGearsPage />} />
+        <Route path="rigging-gears" element={<MovedToKioskTagDeskPage />} />
         <Route path="history" element={<HistoryPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/kiosk" replace />} />

@@ -27,20 +27,8 @@ export function AdminLayout() {
             <NavLink to="/admin/tools/dgx-resource" className={linkClass}>
               DGXリソース
             </NavLink>
-            <NavLink to="/admin/tools/employees" className={linkClass}>
-              従業員
-            </NavLink>
-            <NavLink to="/admin/tools/items" className={linkClass}>
-              アイテム
-            </NavLink>
             <NavLink to="/admin/tools/raspi-inventory" className={linkClass}>
               Raspberry Pi在庫
-            </NavLink>
-            <NavLink to="/admin/tools/unified" className={linkClass}>
-              統合一覧
-            </NavLink>
-            <NavLink to="/admin/tools/measuring-instruments" className={linkClass}>
-              計測機器
             </NavLink>
             <NavLink to="/admin/tools/torque-wrenches" className={linkClass}>
               トルクレンチ
@@ -60,9 +48,6 @@ export function AdminLayout() {
             <NavLink to="/admin/tools/inspection-items" className={linkClass}>
               点検項目
             </NavLink>
-            <NavLink to="/admin/tools/instrument-tags" className={linkClass}>
-              RFIDタグ
-            </NavLink>
             <NavLink to="/admin/tools/inspection-records" className={linkClass}>
               点検記録
             </NavLink>
@@ -71,9 +56,6 @@ export function AdminLayout() {
             </NavLink>
             <NavLink to="/admin/tools/machines-uninspected" className={linkClass}>
               未点検（加工機）
-            </NavLink>
-            <NavLink to="/admin/tools/rigging-gears" className={linkClass}>
-              吊具
             </NavLink>
             <NavLink to="/admin/tools/history" className={linkClass}>
               履歴

@@ -87,6 +87,13 @@ export function renderKioskReorderableHeaderTab(
         isActive: pathname.startsWith('/kiosk/rigging/borrow'),
         activeClassName: 'bg-amber-400 text-slate-900'
       });
+    case 'tag_desk':
+      return renderNavLinkTab({
+        to: '/kiosk/tag-desk',
+        label: 'タグ管理',
+        isActive: pathname.startsWith('/kiosk/tag-desk'),
+        activeClassName: 'bg-cyan-400 text-slate-950'
+      });
     case 'production_schedule':
       return renderNavLinkTab({
         to: '/kiosk/production-schedule',
