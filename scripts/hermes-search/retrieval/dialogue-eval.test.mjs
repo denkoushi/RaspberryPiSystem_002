@@ -53,3 +53,16 @@ test('a turn can require the request for other records', () => {
   assert.deepEqual(checkTurn(base, { excludeShown: true }), ['excludeShown']);
   assert.deepEqual(checkTurn(base, { excludeShown: false }), []);
 });
+
+test('contentFrom checks whether a follow-up reuses the previous content condition', () => {
+  const previous = { filters: [], semanticQuery: 'paint peeling', sort: 'relevance', limit: 3 };
+  const reused = { filters: [], semanticQuery: 'paint peeling', sort: 'relevance', limit: 5 };
+  const own = { filters: [], semanticQuery: 'rust on the table', sort: 'relevance', limit: 5 };
+  const empty = { filters: [], semanticQuery: '', sort: 'relevance', limit: 5 };
+  assert.deepEqual(checkTurn(reused, { contentFrom: 'previous' }, previous), []);
+  assert.deepEqual(checkTurn(own, { contentFrom: 'previous' }, previous), ['contentFrom']);
+  assert.deepEqual(checkTurn(empty, { contentFrom: 'previous' }, previous), ['contentFrom']);
+  assert.deepEqual(checkTurn(own, { contentFrom: 'own' }, previous), []);
+  assert.deepEqual(checkTurn(reused, { contentFrom: 'own' }, previous), ['contentFrom']);
+  assert.equal(scoreTurn(reused, { expect: { contentFrom: 'previous' } }, previous).passed, true);
+});

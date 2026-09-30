@@ -36,8 +36,10 @@ function sortName(sort) {
  * - sort: 'recent' | 'relevance'
  * - limit: number
  * - excludeShown: true when the turn asks for records other than the ones already shown
+ * - contentFrom: 'previous' when the turn must reuse the previous turn's content condition,
+ *   'own' when it must state a content condition different from the previous one
  */
-export function checkTurn(plan, expect = {}) {
+export function checkTurn(plan, expect = {}, previousPlan = null) {
   const failures = [];
   const filters = filterMap(plan);
   if (expect.filters) {
@@ -57,13 +59,20 @@ export function checkTurn(plan, expect = {}) {
   if (expect.sort && sortName(plan?.sort) !== expect.sort) failures.push('sort');
   if (Number.isFinite(expect.limit) && plan?.limit !== expect.limit) failures.push('limit');
   if (typeof expect.excludeShown === 'boolean' && (plan?.diagnostics?.excludeShown === true) !== expect.excludeShown) failures.push('excludeShown');
+  if (expect.contentFrom === 'previous' || expect.contentFrom === 'own') {
+    const current = plan?.semanticQuery ?? '';
+    const previous = previousPlan?.semanticQuery ?? '';
+    const same = Boolean(current) && current === previous;
+    const own = Boolean(current) && current !== previous;
+    if (expect.contentFrom === 'previous' ? !same : !own) failures.push('contentFrom');
+  }
   return failures;
 }
 
 /** A turn passes when any listed expectation passes (anyOf) or the single expectation passes. */
-export function scoreTurn(plan, turn) {
+export function scoreTurn(plan, turn, previousPlan = null) {
   const options = Array.isArray(turn.anyOf) && turn.anyOf.length ? turn.anyOf : [turn.expect ?? {}];
-  const results = options.map((expect) => checkTurn(plan, expect));
+  const results = options.map((expect) => checkTurn(plan, expect, previousPlan));
   const passed = results.some((failures) => failures.length === 0);
   return { passed, failures: passed ? [] : results.reduce((best, item) => (item.length < best.length ? item : best)) };
 }
@@ -81,7 +90,7 @@ export async function evaluateDialogues({ dialogues, plan }) {
       const scoredPlan = planned?.diagnostics?.excludeShown === true
         ? { ...compact, diagnostics: { excludeShown: true } }
         : compact;
-      const scored = index === 0 && turn.setup ? { passed: true, failures: [] } : scoreTurn(scoredPlan, turn);
+      const scored = index === 0 && turn.setup ? { passed: true, failures: [] } : scoreTurn(scoredPlan, turn, previousPlan);
       turns.push({
         turn: index + 1,
         setup: Boolean(turn.setup),

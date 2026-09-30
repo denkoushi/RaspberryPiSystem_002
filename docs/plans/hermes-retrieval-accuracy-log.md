@@ -122,3 +122,24 @@ Held-out paraphrase (6/12) is not below the development paraphrase cases (3/16),
 
 The two supervisor-v2 cases the implementing agent read to check this (d3, d6) moved to `gold/dev-seen-heldout-20260930.json`. The paraphrase held-out sets carry one target record per case and no keywords, so `all shown relevant` does not apply to them.
 
+
+### 2026-09-30: follow-up turns decide each previous condition on its own (kept)
+
+Trigger: on the kiosk, 「三島組立課の不適合２件」 → 「組立１課の不適合２件」 searched both departments, and 「塗装が剥がれる類似不適合を３件」 → 「同様の案件が機械課でもあるか調べて」 searched three departments with the literal question as content and returned nothing. The planner labelled a whole follow-up as `new_search` or `refine` (confidence 0.05 to 0.35 on these turns). A refine kept and added every previous filter, and it kept the previous content only when the request had no content of its own.
+
+Change: the `turn` question is gone. For each previous filter, code checks whether the request names a value for the same field. If it does, the previous value is replaced unless JEV says the request adds to it (`add_i`, yes/no). If it does not, the previous condition is kept unless JEV says the request drops it (`drop_i`, yes/no). When the previous plan has content, `contentCarry` asks whether the request states new content or reuses the previous one, which replaces the content yes/no question on that turn. The compact plan now carries `contentSpan`, so reused content is judged on the same text. The receipt `turn` reads `followup`, and the question version is `planner-questions-2026-09-30`.
+
+New private development set `gold/dialogue-slots-dev.json`: 10 dialogues, 11 scored turns, covering replace, add, drop, period replace, content reuse, and new content. It includes the two kiosk dialogues. `dialogue-eval.mjs` gained `contentFrom: previous|own`, which compares a turn's content with the previous turn's. Lexical plans, same day, two runs each:
+
+| Run | dialogue-v1 turns (of 39) | dialogue-slots-dev turns (of 11) |
+| --- | --- | --- |
+| main | 36, 36 | 7, 6 |
+| three-way keep/replace/add choice per condition (rejected) | 33 | 7 |
+| yes/no drop and add, code decides replace (kept) | 36, 36 | 8, 8 |
+| kept version, previous content named in the contentCarry question (rejected) | 36, 35 | 8, 8 |
+
+The three-way choice kept the previous department for 「組立１課の不適合２件」 (keep 0.66) and 「部署を問わずに」 (keep 0.67), and its "no content" option took 「三島工場資材課に限定して」 (0.54), so dialogue-v1 dropped to 33. The kept version fixes both kiosk dialogues and the period replace case. dialogue-v1 dialogues fully passed rose from 16 to 17.
+
+Still failing: 「部署を問わずに」 (drop 0.44, below the 0.6 cut, left unchanged so as not to tune the cut on one case), 「組立課では？」 after a content question (contentCarry chose new at 0.58), and 「同じ部署で傷の不適合」 after 「仙台工場資材課の最近の不適合」, where the first turn already took the department wording as content (the same first-turn miss as dialogue-v1 d07).
+
+Held-out: first turns ask the same questions as before, so the single-turn held-out sets are unaffected by construction. There is no held-out dialogue set yet, so this change is judged on development dialogues only. A held-out dialogue set written by someone other than the implementing agent is the next measurement gap.
