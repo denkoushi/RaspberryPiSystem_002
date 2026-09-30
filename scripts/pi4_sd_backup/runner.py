@@ -19,7 +19,10 @@ from typing import Callable, Mapping, Sequence
 
 from . import plan
 
-DEFAULT_REPOSITORY = "rclone:google-drive:RaspberryPiSystem_002/pi4-sd"
+# The Pi5 SSD holds the working copy so a card can be rebuilt over the LAN in
+# minutes; Google Drive holds an off-site copy for when the Pi5 itself is lost.
+DEFAULT_REPOSITORY = "/var/lib/raspi-pi4-sd-backup/repository"
+DEFAULT_OFFSITE_REPOSITORY = "rclone:google-drive:RaspberryPiSystem_002/pi4-sd"
 DEFAULT_TARGETS_FILE = "/etc/raspi-pi4-sd-backup/targets.json"
 # The Business Pi5 DR lane already keeps these under offline custody; the Pi4
 # lane is a separate repository that reuses them rather than adding new secrets.
@@ -36,6 +39,7 @@ def log(event: str, **fields: object) -> None:
 @dataclass(frozen=True)
 class Settings:
     repository: str
+    offsite_repository: str
     password_file: str
     rclone_config: str
     targets_file: str
@@ -45,13 +49,15 @@ class Settings:
     def from_env(cls, env: Mapping[str, str]) -> "Settings":
         return cls(
             repository=env.get("PI4_SD_BACKUP_REPOSITORY", DEFAULT_REPOSITORY),
+            # An empty value turns the off-site copy off.
+            offsite_repository=env.get("PI4_SD_BACKUP_OFFSITE_REPOSITORY", DEFAULT_OFFSITE_REPOSITORY),
             password_file=env.get("PI4_SD_BACKUP_PASSWORD_FILE", DEFAULT_PASSWORD_FILE),
             rclone_config=env.get("PI4_SD_BACKUP_RCLONE_CONFIG", DEFAULT_RCLONE_CONFIG),
             targets_file=env.get("PI4_SD_BACKUP_TARGETS", DEFAULT_TARGETS_FILE),
             ssh_user=env.get("PI4_SD_BACKUP_PI5_SSH_USER", ""),
         )
 
-    def restic_env(self) -> dict[str, str]:
+    def restic_env(self, repository: str) -> dict[str, str]:
         env = {
             key: value
             for key, value in os.environ.items()
@@ -59,7 +65,7 @@ class Settings:
         }
         env.update(
             {
-                "RESTIC_REPOSITORY": self.repository,
+                "RESTIC_REPOSITORY": repository,
                 "RESTIC_PASSWORD_FILE": self.password_file,
                 "RCLONE_CONFIG": self.rclone_config,
             }
@@ -71,14 +77,18 @@ Run = Callable[..., subprocess.CompletedProcess]
 
 
 class Restic:
-    def __init__(self, settings: Settings, run: Run = subprocess.run) -> None:
+    def __init__(self, settings: Settings, repository: str | None = None, run: Run = subprocess.run) -> None:
         self.settings = settings
+        self.repository = repository or settings.repository
         self.run = run
+
+    def env(self) -> dict[str, str]:
+        return self.settings.restic_env(self.repository)
 
     def __call__(self, args: Sequence[str], *, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess:
         return self.run(
             ["restic", *args],
-            env=self.settings.restic_env(),
+            env=self.env(),
             check=check,
             stdout=subprocess.PIPE if capture else None,
             stderr=subprocess.PIPE if capture else None,
@@ -86,7 +96,7 @@ class Restic:
 
     def ensure_repository(self) -> None:
         if self(["cat", "config"], check=False).returncode != 0:
-            log("repository_init", repository=self.settings.repository)
+            log("repository_init", repository=self.repository)
             self(["init"])
 
     def snapshots(self) -> list[dict[str, object]]:
@@ -99,7 +109,47 @@ def load_targets(settings: Settings) -> list[plan.Target]:
     return plan.load_targets(Path(settings.targets_file).read_text(encoding="utf-8"))
 
 
-def cmd_backup(settings: Settings, restic: Restic, hosts: Sequence[str], now: dt.datetime) -> int:
+def apply_retention(restic: Restic) -> int:
+    forget = plan.snapshots_to_forget(restic.snapshots())
+    if forget:
+        restic(["forget", "--quiet", *forget])
+        restic(["prune", "--quiet"])
+    log("retention", repository=restic.repository, forgotten_snapshots=len(forget))
+    return len(forget)
+
+
+def copy_offsite(settings: Settings, offsite: Restic) -> bool:
+    """Copy snapshots missing off-site; the slow Internet leg never blocks the local backup."""
+
+    try:
+        offsite.ensure_repository()
+        offsite(
+            [
+                "copy",
+                "--quiet",
+                "--from-repo",
+                settings.repository,
+                "--from-password-file",
+                settings.password_file,
+                "--tag",
+                plan.BACKUP_TAG,
+            ]
+        )
+        apply_retention(offsite)
+    except subprocess.CalledProcessError as exc:
+        log("offsite_failed", repository=offsite.repository, exit_code=exc.returncode)
+        return False
+    log("offsite_done", repository=offsite.repository)
+    return True
+
+
+def cmd_backup(
+    settings: Settings,
+    restic: Restic,
+    hosts: Sequence[str],
+    now: dt.datetime,
+    offsite: Restic | None = None,
+) -> int:
     if not settings.ssh_user:
         raise plan.PlanError("PI4_SD_BACKUP_PI5_SSH_USER is not set")
     targets = load_targets(settings)
@@ -126,13 +176,10 @@ def cmd_backup(settings: Settings, restic: Restic, hosts: Sequence[str], now: dt
         else:
             log("host_done", host=target.host, run_id=run_id)
 
-    forget = plan.snapshots_to_forget(restic.snapshots())
-    if forget:
-        restic(["forget", "--quiet", *forget])
-        restic(["prune", "--quiet"])
-    log("retention", forgotten_snapshots=len(forget))
-    log("backup_finished", run_id=run_id, failed_hosts=failed)
-    return 1 if failed else 0
+    apply_retention(restic)
+    offsite_ok = copy_offsite(settings, offsite) if offsite is not None else True
+    log("backup_finished", run_id=run_id, failed_hosts=failed, offsite_ok=offsite_ok)
+    return 1 if failed or not offsite_ok else 0
 
 
 def cmd_list(restic: Restic) -> int:
@@ -190,7 +237,7 @@ def _device_facts(device: str, run: Run) -> plan.DeviceFacts:
 def _dump_into(restic: Restic, snapshot_id: str, filename: str, directory: str) -> None:
     dump = subprocess.Popen(
         ["restic", "dump", snapshot_id, f"/{filename}"],
-        env=restic.settings.restic_env(),
+        env=restic.env(),
         stdout=subprocess.PIPE,
     )
     assert dump.stdout is not None
@@ -262,21 +309,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     backup = sub.add_parser("backup", help="back up every target (or --host) to Google Drive")
     backup.add_argument("--host", action="append", default=[])
-    sub.add_parser("list", help="show the newest complete backup per host")
+    listing = sub.add_parser("list", help="show the newest complete backup per host")
+    listing.add_argument("--offsite", action="store_true", help="read the Google Drive copy")
     restore = sub.add_parser("restore", help="write a host's newest backup onto a new card")
     restore.add_argument("--host", required=True)
     restore.add_argument("--device", required=True, help="whole card device in the USB reader, e.g. /dev/sdb")
     restore.add_argument("--confirm-host", required=True, help="repeat --host to confirm")
+    restore.add_argument(
+        "--offsite", action="store_true", help="restore from the Google Drive copy (slow; when the Pi5 copy is lost)"
+    )
     args = parser.parse_args(argv)
 
     settings = Settings.from_env(os.environ)
-    restic = Restic(settings)
+    local = Restic(settings)
+    offsite = Restic(settings, settings.offsite_repository) if settings.offsite_repository else None
+    use_offsite = bool(getattr(args, "offsite", False))
+    source = offsite if use_offsite and offsite is not None else local
     try:
+        if use_offsite and offsite is None:
+            raise plan.PlanError("--offsite needs PI4_SD_BACKUP_OFFSITE_REPOSITORY")
         if args.command == "backup":
-            return cmd_backup(settings, restic, args.host, dt.datetime.now(dt.timezone.utc))
+            return cmd_backup(settings, local, args.host, dt.datetime.now(dt.timezone.utc), offsite)
         if args.command == "list":
-            return cmd_list(restic)
-        return cmd_restore(settings, restic, args.host, args.device, args.confirm_host, subprocess.run)
+            return cmd_list(source)
+        return cmd_restore(settings, source, args.host, args.device, args.confirm_host, subprocess.run)
     except plan.PlanError as exc:
         log("refused", reason=str(exc))
         return 2

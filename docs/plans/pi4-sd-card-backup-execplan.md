@@ -12,14 +12,14 @@ This ExecPlan is a living document and follows `.agent/PLANS.md`.
 
 ## Purpose / Big Picture
 
-Every Pi4 kiosk boots from a consumer SD card, and cards wear out. Before this work, a dead card meant rebuilding the kiosk by hand. Nothing could turn a blank card back into a working kiosk: the old recovery command was removed on 2026-08-08, and the standard release only updates kiosks that are already set up. After this work, the Business Pi5 keeps a weekly encrypted copy of each kiosk's card on Google Drive. When a card dies, an operator puts a new card in a USB reader on the Pi5 and runs one command. The card is ready to go back into the same kiosk. Success is a drill: a kiosk boots from a restored card and passes the standard health checks.
+Every Pi4 kiosk boots from a consumer SD card, and cards wear out. Before this work, a dead card meant rebuilding the kiosk by hand. Nothing could turn a blank card back into a working kiosk: the old recovery command was removed on 2026-08-08, and the standard release only updates kiosks that are already set up. After this work, the Business Pi5 keeps a weekly encrypted copy of each kiosk's card on its own SSD, and another on Google Drive. When a card dies, an operator puts a new card in a USB reader on the Pi5 and runs one command. The card is ready to go back into the same kiosk. Success is a drill: a kiosk boots from a restored card and passes the standard health checks.
 
 ## Progress
 
 - [x] 2026-09-30: Measured the fleet read-only: seven Pi4 kiosks on Raspberry Pi OS trixie, 9–21 GB used on 29–58 GB cards, 0.8–1.5 GB written per day, two-partition DOS tables with PARTUUID references. Google Drive had 1.65 TiB free; the Pi5 SSD was 84% used; restic 0.18.0 was installed.
-- [x] 2026-09-30: The user chose image backup over provisioning automation. Google Drive is the storage, and restoring a terminal's identity onto its own replacement card is allowed.
-- [x] 2026-09-30: Implemented `scripts/pi4_sd_backup` (plan and runner), the dedicated playbook, the units, the CI classification, 16 unit tests, the ADR, and the Runbook.
-- [ ] Merge, then run the dedicated playbook on the Pi5 (timer disabled) and one manual backup of all kiosks.
+- [x] 2026-09-30: The user chose image backup over provisioning automation, and allowed restoring a terminal's identity onto its own replacement card. At first Google Drive was the only storage. The user then chose the Pi5 SSD as the working copy with a Google Drive copy, because the Internet link is slow. Daily image retention (#1586) frees the SSD.
+- [x] 2026-09-30: Implemented `scripts/pi4_sd_backup` (plan and runner), the dedicated playbook, the units, the CI classification, 18 unit tests, the ADR, and the Runbook.
+- [ ] Merge after #1586 has freed the Pi5 SSD, then run the dedicated playbook on the Pi5 (timer disabled) and one manual backup of all kiosks.
 - [ ] Physical drill on one kiosk with a spare card and a USB reader on the Pi5. Record host, run id, elapsed time, and health results here.
 - [ ] Enable the weekly timer after the drill passes.
 
@@ -30,8 +30,9 @@ Every Pi4 kiosk boots from a consumer SD card, and cards wear out. Before this w
 
 ## Decision Log
 
-- Decision: pull from the Pi5 with `restic backup --stdin-from-command` over SSH as the Pi5 deploy user. Rationale: nothing is staged on the nearly full Pi5 SSD, the Drive token stays on one host, and restic keeps no snapshot when the reading command fails. Date/Author: 2026-09-30 / Claude.
-- Decision: reuse the Business Pi5 DR rclone configuration and restic password, in a separate repository path. Rationale: no new secret to take into offline custody. Date/Author: 2026-09-30 / Claude.
+- Decision: pull from the Pi5 with `restic backup --stdin-from-command` over SSH as the Pi5 deploy user. Rationale: no temporary files are staged, the Drive token stays on one host, and restic keeps no snapshot when the reading command fails. Date/Author: 2026-09-30 / Claude.
+- Decision: keep the working copy on the Pi5 SSD and copy it to Google Drive with `restic copy`. Rationale: a LAN restore takes minutes, while the Internet link is slow; the Drive copy covers loss of the Pi5. Date/Author: 2026-09-30 / user and Claude.
+- Decision: reuse the Business Pi5 DR rclone configuration and restic password, in separate repository paths. Rationale: no new secret to take into offline custody. Date/Author: 2026-09-30 / Claude.
 - Decision: keep the saved `label-id` when repartitioning. Rationale: PARTUUIDs stay valid, so the restored card boots without editing `fstab` or `cmdline.txt`. Date/Author: 2026-09-30 / Claude.
 
 ## Outcomes & Retrospective
@@ -44,7 +45,7 @@ Open until the drill passes.
 
 ## Validation and Acceptance
 
-Run `python3 -m unittest scripts/deploy/tests/test_pi4_sd_backup.py`, and expect 16 passing tests. The deploy-contract CI job runs the same file. Acceptance is the drill in the Runbook. After the first manual backup, `list` shows every kiosk. A spare card restored for one kiosk boots in that kiosk. The kiosk screen, NFC, `status-agent`, and a standard deploy limited to that host all succeed. The original card then goes back in.
+Run `python3 -m unittest scripts/deploy/tests/test_pi4_sd_backup.py`, and expect 18 passing tests. The deploy-contract CI job runs the same file. Acceptance is the drill in the Runbook. After the first manual backup, `list` shows every kiosk. A spare card restored for one kiosk boots in that kiosk. The kiosk screen, NFC, `status-agent`, and a standard deploy limited to that host all succeed. The original card then goes back in.
 
 ## Idempotence and Recovery
 

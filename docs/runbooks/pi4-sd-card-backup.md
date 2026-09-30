@@ -10,7 +10,7 @@ update-frequency: medium
 
 # Pi4 SD-card backup and card replacement Runbook
 
-The Business Pi5 backs up every Pi4 kiosk's SD card to Google Drive once a week. When a card dies, the Pi5 writes that kiosk's latest backup onto a new card, and the card goes back into the same kiosk. The design and the identity rule are in [ADR-20260930](../decisions/ADR-20260930-pi4-sd-card-backup.md).
+Once a week the Business Pi5 backs up every Pi4 kiosk's SD card to its own SSD and then copies the backup to Google Drive. When a card dies, the Pi5 writes that kiosk's latest backup from its SSD onto a new card, which takes minutes over the LAN, and the card goes back into the same kiosk. The Drive copy is used only when the Pi5 itself is lost. The design and the identity rule are in [ADR-20260930](../decisions/ADR-20260930-pi4-sd-card-backup.md).
 
 Warnings that a card is failing come from the status-agent SD health logs (see [status-agent guide](../guides/status-agent.md) section 5). A kiosk that stops reporting entirely triggers the heartbeat alert (section 5.2).
 
@@ -21,16 +21,16 @@ This is not part of the standard fleet deploy. Run it on the Pi5 from a clean ch
     cd /opt/RaspberryPiSystem_002/infrastructure/ansible
     ansible-playbook playbooks/deploy-pi4-sd-backup.yml --limit raspberrypi5
 
-This installs `/opt/raspi-pi4-sd-backup`, writes `/etc/raspi-pi4-sd-backup/targets.json` from the `kiosk` inventory group, and installs a service and timer. The timer stays disabled. Run the playbook again after adding or removing a kiosk in the inventory.
+This installs `/opt/raspi-pi4-sd-backup`, creates the local repository directory `/var/lib/raspi-pi4-sd-backup`, writes `/etc/raspi-pi4-sd-backup/targets.json` from the `kiosk` inventory group, and installs a service and timer. The timer stays disabled. Run the playbook again after adding or removing a kiosk in the inventory.
 
 ## First backup and enabling the weekly timer
 
-Start one backup by hand and follow it. The first run uploads everything, so expect a few hours.
+Start one backup by hand and follow it. The local backup takes a few hours. The first copy to Google Drive uploads everything over the slow link and may take much longer.
 
     sudo systemctl start --no-block raspi-pi4-sd-backup.service
     journalctl -u raspi-pi4-sd-backup.service -f
 
-Each kiosk logs `host_start`, three `part_done` lines (table, boot, root), and `host_done`. The run ends with `backup_finished`, which lists any failed hosts. A failed host keeps no partial snapshot. Check what is stored:
+Each kiosk logs `host_start`, three `part_done` lines (table, boot, root), and `host_done`. Then come `retention`, `offsite_done` (or `offsite_failed`), and `backup_finished` with any failed hosts. A failed host keeps no partial snapshot, and a failed off-site copy leaves the local backup intact. Check what is stored locally (add `--offsite` to check Google Drive):
 
     sudo sh -c 'set -a; . /etc/raspi-pi4-sd-backup/backup.env; cd /opt/raspi-pi4-sd-backup; python3 -m pi4_sd_backup.runner list'
 
@@ -51,7 +51,7 @@ You need a new card at least as large as the kiosk's used space (`list` shows th
 
         sudo sh -c 'set -a; . /etc/raspi-pi4-sd-backup/backup.env; cd /opt/raspi-pi4-sd-backup; python3 -m pi4_sd_backup.runner restore --host raspi4-kensaku-02 --device /dev/sdb --confirm-host raspi4-kensaku-02'
 
-    It ends with `restore_done`. `refused` means a safety check stopped it before anything was written, and the reason is in the log line.
+    It reads the Pi5 copy and ends with `restore_done`. Only if the Pi5 copy is gone (for example, the Pi5 SSD failed and was rebuilt), add `--offsite` to read Google Drive instead; that is much slower. `refused` means a safety check stopped it before anything was written, and the reason is in the log line.
 4. Remove the card, insert it into the kiosk, and power it on. The kiosk comes back with its old address, SSH keys, Tailscale node, and client key. In `/admin/clients` its heartbeat returns, and the heartbeat alert sends a recovery message if it had fired.
 5. Bring the kiosk to the current release with a standard deploy limited to that host (see [deployment guide](../guides/deployment.md)). Anything changed on the kiosk after its last weekly backup is replaced by the deploy.
 

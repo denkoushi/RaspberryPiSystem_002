@@ -170,16 +170,25 @@ class RestoreTest(unittest.TestCase):
 
 
 class FakeRestic(runner.Restic):
-    def __init__(self, snapshots: list[dict[str, object]], fail_hosts: set[str] = frozenset()) -> None:
-        settings = runner.Settings("rclone:google-drive:x", "/pw", "/rc", "/targets", "denkon5sd02")
-        super().__init__(settings)
+    def __init__(
+        self,
+        snapshots: list[dict[str, object]],
+        fail_hosts: set[str] = frozenset(),
+        repository: str = "/local",
+        fail_copy: bool = False,
+    ) -> None:
+        settings = runner.Settings("/local", "rclone:google-drive:x", "/pw", "/rc", "/targets", "denkon5sd02")
+        super().__init__(settings, repository)
         self.calls: list[list[str]] = []
         self.stored = snapshots
         self.fail_hosts = fail_hosts
+        self.fail_copy = fail_copy
 
     def __call__(self, args, *, check=True, capture=True):  # type: ignore[override]
         self.calls.append(list(args))
         code = 0
+        if args[0] == "copy" and self.fail_copy:
+            raise subprocess.CalledProcessError(1, ["restic", *args])
         if args[0] == "backup":
             host = args[args.index("--host") + 1]
             code = 1 if host in self.fail_hosts else 0
@@ -189,7 +198,7 @@ class FakeRestic(runner.Restic):
 
 
 class BackupRunTest(unittest.TestCase):
-    def run_backup(self, restic: FakeRestic, hosts: list[str]) -> int:
+    def run_backup(self, restic: FakeRestic, hosts: list[str], offsite: FakeRestic | None = None) -> int:
         with tempfile.TemporaryDirectory() as directory:
             targets = Path(directory) / "targets.json"
             targets.write_text(
@@ -201,8 +210,9 @@ class BackupRunTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            settings = runner.Settings("rclone:google-drive:x", "/pw", "/rc", str(targets), "denkon5sd02")
-            return runner.cmd_backup(settings, restic, hosts, dt.datetime(2026, 10, 4, 3, 0, tzinfo=dt.timezone.utc))
+            settings = runner.Settings("/local", "rclone:google-drive:x", "/pw", "/rc", str(targets), "denkon5sd02")
+            when = dt.datetime(2026, 10, 4, 3, 0, tzinfo=dt.timezone.utc)
+            return runner.cmd_backup(settings, restic, hosts, when, offsite)
 
     def test_backs_up_three_parts_per_host_and_reports_failures(self) -> None:
         restic = FakeRestic([], fail_hosts={"raspi4-b"})
@@ -224,6 +234,22 @@ class BackupRunTest(unittest.TestCase):
         forget = [call for call in restic.calls if call[0] == "forget"]
         self.assertEqual(forget, [["forget", "--quiet", "orphan"]])
         self.assertIn(["prune", "--quiet"], restic.calls)
+
+    def test_copies_to_google_drive_after_the_local_backup(self) -> None:
+        local = FakeRestic([])
+        offsite = FakeRestic([], repository="rclone:google-drive:x")
+        self.assertEqual(self.run_backup(local, ["raspi4-a"], offsite), 0)
+
+        self.assertTrue(all(call[0] != "copy" for call in local.calls))
+        copy = [call for call in offsite.calls if call[0] == "copy"][0]
+        self.assertEqual(copy[copy.index("--from-repo") + 1], "/local")
+        self.assertIn("pi4-sd", copy)
+
+    def test_offsite_failure_keeps_the_local_backup_but_fails_the_run(self) -> None:
+        local = FakeRestic([])
+        offsite = FakeRestic([], repository="rclone:google-drive:x", fail_copy=True)
+        self.assertEqual(self.run_backup(local, ["raspi4-a"], offsite), 1)
+        self.assertEqual(len([call for call in local.calls if call[0] == "backup"]), 3)
 
     def test_unknown_host_is_refused(self) -> None:
         with self.assertRaises(plan.PlanError):

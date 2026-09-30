@@ -1,6 +1,7 @@
 ---
 # Separate from the standard fleet deployment, like the Business Pi5 DR lane.
-# It only installs a runner on the Pi5; the Pi4 kiosks are read over SSH when
+# It only installs a runner on the Pi5; the Pi4 kiosks are read over SSH into a
+# restic repository on the Pi5 SSD, which is then copied to Google Drive, when
 # the (disabled-by-default) weekly timer or an operator starts a backup.
 - name: Configure the weekly Pi4 SD-card backup on the Business Pi5
   hosts: raspberrypi5
@@ -15,7 +16,9 @@
     # Reuses the Business Pi5 DR credentials, which already have offline custody.
     pi4_sd_backup_rclone_config: /etc/raspi-google-drive-dr/rclone.conf
     pi4_sd_backup_password_file: /etc/raspi-google-drive-dr/restic-password
-    pi4_sd_backup_repository: rclone:google-drive:RaspberryPiSystem_002/pi4-sd
+    # Working copy on the Pi5 SSD for fast LAN restores, plus an off-site copy.
+    pi4_sd_backup_repository: /var/lib/raspi-pi4-sd-backup/repository
+    pi4_sd_backup_offsite_repository: rclone:google-drive:RaspberryPiSystem_002/pi4-sd
     pi4_sd_backup_pi5_ssh_user: "{{ ansible_user }}"
     pi4_sd_backup_timer_enabled: false
     pi4_sd_backup_service_name: raspi-pi4-sd-backup.service
@@ -72,6 +75,7 @@
       loop:
         - { path: "{{ pi4_sd_backup_install_root }}/pi4_sd_backup", mode: '0755' }
         - { path: "{{ pi4_sd_backup_config_root }}", mode: '0700' }
+        - { path: "{{ pi4_sd_backup_repository | dirname }}", mode: '0700' }
 
     - name: Copy the runner package
       ansible.builtin.copy:

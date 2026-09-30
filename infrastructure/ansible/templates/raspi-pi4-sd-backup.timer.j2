@@ -1,5 +1,6 @@
 [Unit]
-# Sunday midday: the factory is idle, and even an 8h run ends before the 21:30 Pi5 DR snapshot.
+# Sunday midday, when the factory is idle. A long first off-site copy may overlap
+# the 21:30 Pi5 DR snapshot; both only share Internet bandwidth.
 Description=Weekly Pi4 SD-card backup
 
 [Timer]
