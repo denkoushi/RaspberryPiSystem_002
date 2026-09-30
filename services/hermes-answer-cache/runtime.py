@@ -54,8 +54,11 @@ def referenced_jobs(root):
         except (OSError, ValueError):
             # An unreadable pointer means we cannot tell what is live: prune nothing.
             return None
-        for relative in (value.get('catalogue'), value.get('sources')):
-            parts = Path(relative or '').parts
+        if not isinstance(value, dict) or not all(
+                isinstance(value.get(key), str) for key in ('catalogue', 'sources')):
+            return None
+        for relative in (value['catalogue'], value['sources']):
+            parts = Path(relative).parts
             if len(parts) >= 2 and parts[0] == 'jobs':
                 jobs.add(parts[1])
     return jobs

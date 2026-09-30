@@ -76,6 +76,13 @@ class JobPruningTests(unittest.TestCase):
         self.assertEqual(prune_jobs(self.root), (0, 0))
         self.assertIn('candidate.json', self.names(job))
 
+    def test_unexpected_pointer_shapes_prune_nothing(self):
+        job = make_job(self.root, run_id('a'), age=2 * DAY)
+        for pointer in ('[]', '{"catalogue": 1, "sources": "sources.json"}', '{"sources": "sources.json"}', 'null'):
+            (self.root / 'previous-active.json').write_text(pointer)
+            self.assertEqual(prune_jobs(self.root), (0, 0), pointer)
+        self.assertIn('candidate.json', self.names(job))
+
     def test_limit_and_foreign_names(self):
         for char in 'abc':
             make_job(self.root, run_id(char), age=2 * DAY)
