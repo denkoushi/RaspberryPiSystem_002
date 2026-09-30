@@ -35,6 +35,7 @@
 - 機種名は製番の MH/SH 行 `FHINMEI`（`resolveSeibanMachineDisplayNamesBatched`）。
 - 実装: `load-balancing-workspace.{types,assembler,service}.ts`。日別は `GET .../workspace/day?month=&resourceCd=`。
 - **速度（2026-09-30）**: 重い元データ（winner 行・工程行クエリ・機種名）を、順位ボード・製番ボードと同じ世代トークン（`readGrindingPlanningBoardSnapshotGenerationToken`）が変わるまで API プロセス内に保存して使い回す（`load-balancing-workspace-source-cache.ts`、5 分・16 件まで）。能力・分類・移管ルールは毎回読むので、能力編集はすぐ反映される。日別（`workspace/day`）は `fromMonth`/`toMonth` を渡すと同じ保存済みデータから作る。段階別の時間は `GRINDING_PLANNING_BOARD_PERF_LOG` 有効時に `route: load-balancing-workspace` / `load-balancing-workspace-day` で記録。
+- **機種名の解決（2026-09-30）**: 本番の段階ログで初回 14.7 秒のうち機種名が 12.2 秒（`resolveSeibanMachineDisplayNamesBatched` が 100 製番ずつ直列に進捗集計ごと引いていた）。負荷調整は既に持っている winner 行 id で機種名だけを 1 クエリで引く `resolveSeibanMachineDisplayNamesForWinnerRows` に替えた（解決順は同じ: MH/SH 行 FHINMEI → 補完テーブル → 機種名未登録）。本番 DB で 1550 製番を約 0.5 秒（読み取りのみで計測）。セルを押したときの日別は 1.4〜2.4 秒 → 0.29〜0.37 秒（保存済み元データの使い回し）。
 - 機種名は他のキオスク画面と同じ `normalizeMachineName`（全角英数→半角・大文字）で表示・絞り込みする。
 
 **試算の操作（Web のみ・`loadBalancingScenario.ts`）**
