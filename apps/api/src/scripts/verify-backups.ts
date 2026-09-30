@@ -2,6 +2,7 @@ import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
 import { BackupVerifier } from '../services/backup/backup-verifier.js';
 import { StorageProviderFactory } from '../services/backup/storage-provider-factory.js';
 import { BackupService } from '../services/backup/backup.service.js';
+import { BACKUP_ENCRYPTION_OVERHEAD_BYTES } from '../services/backup/storage/backup-encryption.js';
 import { prisma } from '../lib/prisma.js';
 import type { BackupConfig } from '../services/backup/backup-config.js';
 import type { BackupTargetInfo } from '../services/backup/backup-types.js';
@@ -160,7 +161,13 @@ const verifyTargetBackup = async (params: {
   }
 
   if (mode === 'quarterly' && exists) {
-    if (latestHistory.sizeBytes && exists.sizeBytes && latestHistory.sizeBytes !== exists.sizeBytes) {
+    // 履歴は平文のサイズ、ストレージは暗号化後のサイズ（固定の増分）になり得る
+    if (
+      latestHistory.sizeBytes &&
+      exists.sizeBytes &&
+      exists.sizeBytes !== latestHistory.sizeBytes &&
+      exists.sizeBytes !== latestHistory.sizeBytes + BACKUP_ENCRYPTION_OVERHEAD_BYTES
+    ) {
       issues.push(`サイズ不一致（履歴=${latestHistory.sizeBytes}, ストレージ=${exists.sizeBytes}）`);
     }
 

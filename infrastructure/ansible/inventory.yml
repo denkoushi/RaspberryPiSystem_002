@@ -18,6 +18,8 @@ all:
           dropbox_app_secret: "{{ vault_dropbox_app_secret | default('') }}"
           dropbox_refresh_token: "{{ vault_dropbox_refresh_token | default('') }}"
           dropbox_access_token: "{{ vault_dropbox_access_token | default('') }}"
+          # Dropboxへ送るバックアップの暗号鍵（32バイトbase64）。Google Drive DRと.vault-passで別途保全される
+          backup_encryption_key: "{{ vault_backup_encryption_key | default('') }}"
           # Alerts Dispatcher設定
           # NOTE: vaultで管理し、Ansibleで /opt/RaspberryPiSystem_002/infrastructure/docker/.env に反映する
           alerts_dispatcher_enabled: "{{ vault_alerts_dispatcher_enabled | default('true') }}"
