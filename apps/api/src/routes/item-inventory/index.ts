@@ -220,6 +220,8 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     }).parse(request.query ?? {});
     return { history: await services.inventory.listHistory(query.limit, { compartmentId: query.compartmentId }) };
   });
+  // The daily screen lists pending candidates without the settings password; registering still needs it.
+  app.get('/item-inventory/import-summaries', { preHandler: [read] }, async () => ({ imports: await services.inventory.listPendingImportSummaries() }));
   app.get('/item-inventory/imports', { preHandler: [authorizeManageOrKiosk] }, async () => ({ imports: await services.inventory.listPendingImports() }));
   app.get('/item-inventory/import-messages', { preHandler: [authorizeManageOrKiosk] }, async () => ({ messages: await services.inventory.listImportMessages() }));
 

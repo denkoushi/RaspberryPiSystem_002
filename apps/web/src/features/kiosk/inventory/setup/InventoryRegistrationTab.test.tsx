@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useInventoryItems, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
+import { useInventoryImports, useInventoryItems, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
 
 import { InventoryRegistrationTab } from './InventoryRegistrationTab';
 
@@ -298,5 +298,25 @@ describe('InventoryRegistrationTab', () => {
 
     expect(screen.getByText('この写真を消しますか？')).toBeInTheDocument();
     expect(vi.mocked(useInventoryMutations).mock.results.at(-1)?.value.deleteImportPhoto.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('lists candidates newest first in the strip below and opens the one chosen on the daily list', () => {
+    const candidate = (id: string, sourceItemId: number, area: string, createdAt: string) => ({
+      id, sourceItemId, area, category: null, note: null, manifest: {}, status: 'PENDING', messages: [], createdAt,
+      photos: [{ id: `${id}-photo`, photoIndex: 1, filename: `${sourceItemId}_photo_1.jpeg`, photoUrl: `/p/${id}.jpg`, sha256: 'x' }],
+    });
+    const defaultImports = vi.mocked(useInventoryImports).getMockImplementation();
+    vi.mocked(useInventoryImports).mockReturnValue({
+      data: [candidate('p4', 4, '50013_540AP', '2026-09-17T05:40:04Z'), candidate('p5', 5, '30042S_FJV50/80', '2026-09-30T05:45:05Z')],
+      isLoading: false,
+    } as never);
+    render(<InventoryRegistrationTab accessPassword="2520" initialImportId="p4" />);
+
+    const strip = screen.getByRole('region', { name: 'メールで届いた候補' });
+    const cards = within(strip).getAllByRole('button');
+    expect(cards.map((card) => card.getAttribute('aria-label'))).toEqual(['候補 #5', '候補 #4']);
+    expect(cards[1]).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('候補 #4')).toBeInTheDocument();
+    vi.mocked(useInventoryImports).mockImplementation(defaultImports!);
   });
 });

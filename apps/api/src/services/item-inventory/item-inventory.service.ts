@@ -263,6 +263,28 @@ export class ItemInventoryService {
     });
   }
 
+  /** Pending candidates for the kiosk item list: newest first, one thumbnail each, no manifest or mail details. */
+  async listPendingImportSummaries() {
+    const payloads = await this.db.inventoryImportPayload.findMany({
+      where: { status: InventoryImportPayloadStatus.PENDING },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        sourceItemId: true,
+        area: true,
+        category: true,
+        createdAt: true,
+        photos: { orderBy: { photoIndex: 'asc' }, take: 1, select: { photoUrl: true } },
+        _count: { select: { photos: true } },
+      },
+    });
+    return payloads.map(({ photos, _count, ...payload }) => ({
+      ...payload,
+      photoUrl: photos[0]?.photoUrl ?? null,
+      photoCount: _count.photos,
+    }));
+  }
+
   async deleteImportPhoto(payloadId: string, photoId: string) {
     const result = await this.serializable(async (tx) => {
       const payload = await tx.inventoryImportPayload.findUnique({ where: { id: payloadId }, select: { status: true } });

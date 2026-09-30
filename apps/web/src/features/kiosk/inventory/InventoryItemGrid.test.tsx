@@ -1,10 +1,10 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { issuedLabel } from './inventoryDailyFlow';
 import { InventoryItemGrid, sortByRecentIssue } from './InventoryItemGrid';
 
-import type { InventoryCompartment } from '../../../api/client';
+import type { InventoryCompartment, InventoryImportSummary } from '../../../api/client';
 
 vi.mock('../../../api/client', () => ({ inventoryThumbnailUrl: (value: string) => value }));
 
@@ -40,5 +40,19 @@ describe('InventoryItemGrid', () => {
     expect(screen.getByText('ケース')).toBeInTheDocument();
     expect(screen.getByText('50013_540AP 北')).toBeInTheDocument();
     expect(screen.getByText('棚2 引4')).toBeInTheDocument();
+  });
+
+  it('leads with unregistered candidates, newest first, and opens setup for the tapped one', () => {
+    const pending = [
+      { id: 'p5', sourceItemId: 5, area: '30042S_FJV50/80', category: '段取工具', createdAt: '2026-09-30T05:45:05Z', photoUrl: null, photoCount: 1 },
+      { id: 'p4', sourceItemId: 4, area: '50013_540AP', category: null, createdAt: '2026-09-17T05:40:04Z', photoUrl: null, photoCount: 1 },
+    ] satisfies InventoryImportSummary[];
+    const onPickPending = vi.fn();
+    render(<InventoryItemGrid compartments={[drawer('a', '治具', null)]} onPick={vi.fn()} pending={pending} onPickPending={onPickPending} />);
+
+    const cards = screen.getAllByRole('button');
+    expect(cards.map((card) => card.getAttribute('aria-label'))).toEqual(['未登録 候補 #5 を登録する', '未登録 候補 #4 を登録する', null]);
+    fireEvent.click(cards[0]);
+    expect(onPickPending).toHaveBeenCalledWith(pending[0]);
   });
 });

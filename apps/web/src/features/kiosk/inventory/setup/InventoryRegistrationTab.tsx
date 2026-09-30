@@ -162,13 +162,14 @@ const TEXT_FIELDS: Array<{ key: TextFieldKey; label: string; aria?: string }> = 
   { key: 'toolSize', label: '工具寸法' },
   { key: 'usage', label: '用途' },
 ];
-export function InventoryRegistrationTab({ accessPassword }: { accessPassword: string }) {
+export function InventoryRegistrationTab({ accessPassword, initialImportId = null }: { accessPassword: string; initialImportId?: string | null }) {
   const importsQuery = useInventoryImports(accessPassword);
   const messagesQuery = useInventoryImportMessages(accessPassword);
   const locationsQuery = useInventoryLocations();
   const mutations = useInventoryMutations(accessPassword);
-  const candidates = useMemo(() => importsQuery.data ?? [], [importsQuery.data]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Newest first, like the unregistered cards on the daily list.
+  const candidates = useMemo(() => [...(importsQuery.data ?? [])].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)), [importsQuery.data]);
+  const [selectedId, setSelectedId] = useState<string | null>(initialImportId);
   const candidate = candidates.find((entry) => entry.id === selectedId) ?? candidates[0] ?? null;
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(candidate));
   const [error, setError] = useState<string | null>(null);
@@ -351,7 +352,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
     <div className="flex min-h-0 flex-1 flex-col gap-3 pt-4">
       {doneBanner}
       {retryPanel}
-      <div className="grid min-h-[640px] flex-1 grid-cols-[680px_minmax(0,1fr)_340px] gap-[18px]">
+      <div className="grid min-h-[560px] flex-1 grid-cols-[680px_minmax(0,1fr)_340px] gap-[18px]">
         <section aria-label="写真の確認" className={`${invPanel} flex min-h-0 flex-col gap-3 p-4`}>
           <div className="flex items-center gap-2">
             <StepMark number={1} done={isDone('photos')} current={currentId === 'photos'} />
@@ -523,15 +524,6 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
         <aside aria-label="登録の進み具合" className={`${invPanel} flex min-h-0 flex-col gap-2 p-[18px]`}>
           <p className={invEyebrow}>候補 #{candidate.sourceItemId}</p>
           <h3 className="mb-1 text-lg font-black">登録の進み具合</h3>
-          {candidates.length > 1 ? (
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="メールで届いた候補">
-              {candidates.map((entry) => (
-                <button key={entry.id} type="button" aria-pressed={entry.id === candidate.id} className={`${invSeg(entry.id === candidate.id)} h-9 px-2.5 text-sm`} onClick={() => { setSelectedId(entry.id); setDone(null); }}>
-                  #{entry.sourceItemId}（写真{entry.photos.length}）
-                </button>
-              ))}
-            </div>
-          ) : null}
           <ul className="flex flex-col gap-1.5">
             {checklist.map((entry, index) => {
               const current = entry.id === currentId;
@@ -552,6 +544,28 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
           </button>
         </aside>
       </div>
+      {/* Candidates sit in their own strip below the panes so any number of them fits. */}
+      <section aria-label="メールで届いた候補" className={`${invPanel} flex shrink-0 items-center gap-3 p-2.5`}>
+        <p className="w-20 shrink-0 text-center leading-tight"><span className={invEyebrow}>登録待ち</span><br /><span className="text-2xl font-black tabular-nums">{candidates.length}</span><span className="text-xs text-inv-faint">件</span></p>
+        <div className="flex min-w-0 gap-2.5 overflow-x-auto">
+          {candidates.map((entry) => {
+            const selected = entry.id === candidate.id;
+            const photo = entry.photos[0];
+            return (
+              <button key={entry.id} type="button" aria-pressed={selected} aria-label={`候補 #${entry.sourceItemId}`} className={`flex w-[220px] shrink-0 items-center gap-2 rounded-xl border p-1.5 text-left ${selected ? 'border-2 border-inv-cyan bg-inv-cyan/[0.1]' : 'border-inv-line bg-inv-s2 hover:bg-inv-s3'}`} onClick={() => { setSelectedId(entry.id); setDone(null); }}>
+                <span className="block h-[88px] w-[88px] shrink-0 overflow-hidden rounded-lg bg-inv-s3">
+                  {photo ? <img src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
+                </span>
+                <span className="min-w-0">
+                  <b className="block">#{entry.sourceItemId}</b>
+                  <span className="block truncate text-xs text-inv-muted">{entry.area}</span>
+                  <span className="block truncate text-xs text-inv-faint">{entry.category ?? '-'}・写真{entry.photos.length}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
       <InventoryPhotoDialog photoUrl={selectedPhoto?.url ?? null} alt={selectedPhoto?.alt ?? ''} onClose={() => setSelectedPhoto(null)} />
     </div>
   );

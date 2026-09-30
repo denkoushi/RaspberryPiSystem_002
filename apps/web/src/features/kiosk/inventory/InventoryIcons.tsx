@@ -17,6 +17,7 @@ export const LockIcon = ({ size }: { size?: number }) => (
 export const PinIcon = ({ size = 13 }: { size?: number }) => (
   <Icon size={size} width={2.4}><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></Icon>
 );
+export const BackIcon = () => <Icon><path d="M15 18l-6-6 6-6" /></Icon>;
 export const UndoIcon = () => <Icon><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></Icon>;
 export const GridIcon = () => (
   <Icon><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></Icon>
