@@ -29,14 +29,46 @@ export function percentile(values, ratio) {
   return sorted[index];
 }
 
-export function countKeywordHits(results, keywords, bodyFields) {
+// Held-out cases written by the supervising agent use two more judge forms: the keyword
+// ANY_KEYWORD accepts any body text, and `departments` (from deptAnyOf) requires one of the
+// record's organization fields to hold a listed department. Both conditions must hold.
+export const ANY_KEYWORD = '__any__';
+
+export function countKeywordHits(results, keywords, bodyFields, { departments = null, organizationFields = [] } = {}) {
   const needles = keywords.filter((keyword) => typeof keyword === 'string' && keyword);
+  const anyText = needles.includes(ANY_KEYWORD);
   let hits = 0;
   for (const result of results ?? []) {
     const text = bodyFields.map((key) => result?.fields?.[key] ?? '').join('\n');
-    if (needles.some((keyword) => text.includes(keyword))) hits += 1;
+    const textOk = anyText || needles.some((keyword) => text.includes(keyword));
+    const departmentOk = !departments || organizationFields.some((key) => departments.includes(result?.fields?.[key]));
+    if (textOk && departmentOk) hits += 1;
   }
   return hits;
+}
+
+function bareId(id) {
+  return String(id).replace(/^[a-z_]+:/u, '');
+}
+
+// Cases that name target records (`targetId` or `targetIds`) also report how many shown
+// records are targets. Other shown records may still be relevant, so this does not
+// replace `hits`.
+export function goldTargetIds(item) {
+  const ids = Array.isArray(item.targetIds) ? item.targetIds : (item.targetId != null ? [item.targetId] : []);
+  return ids.filter((id) => typeof id === 'string' && id).map(bareId);
+}
+
+export function countTargetsShown(resultIds, targets) {
+  if (!targets.length) return null;
+  const wanted = new Set(targets);
+  return (resultIds ?? []).filter((id) => wanted.has(bareId(id))).length;
+}
+
+// `clarification_or_answer` accepts either form; the case is scored as an answer when records are shown.
+export function statusMatches(expect, status) {
+  if (expect === 'clarification_or_answer') return status === 'clarification' || status === 'answer';
+  return status === expect;
 }
 
 export function parseArgs(argv) {
@@ -133,13 +165,17 @@ function relevanceEnabled(flag) {
   return Boolean(process.env.TYPESAFE_API_KEY);
 }
 
-function readGold(file) {
-  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (!Array.isArray(parsed) || !parsed.length) throw new Error('gold file must be a non-empty array');
+export function readGold(file) {
+  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const parsed = Array.isArray(raw) ? raw : raw?.cases;
+  if (!Array.isArray(parsed) || !parsed.length) throw new Error('gold file must be a non-empty array or an object with cases');
   return parsed.map((item, index) => {
     if (!item || typeof item.id !== 'string' || !item.id) throw new Error(`gold case ${index} needs an id`);
     if (typeof item.question !== 'string' || !item.question.trim()) throw new Error(`gold case ${item.id} needs a question`);
-    if (!['answer', 'no_result', 'clarification', 'out_of_scope'].includes(item.expect)) throw new Error(`gold case ${item.id} has an unknown expect`);
+    if (!['answer', 'no_result', 'clarification', 'out_of_scope', 'clarification_or_answer'].includes(item.expect)) throw new Error(`gold case ${item.id} has an unknown expect`);
+    if (item.deptAnyOf != null && (!Array.isArray(item.deptAnyOf) || !item.deptAnyOf.length || item.deptAnyOf.some((name) => typeof name !== 'string' || !name))) {
+      throw new Error(`gold case ${item.id} has a bad deptAnyOf`);
+    }
     if (!Array.isArray(item.judge?.anyOf) || item.judge.anyOf.some((keyword) => typeof keyword !== 'string' || !keyword)) {
       throw new Error(`gold case ${item.id} needs judge.anyOf strings`);
     }
@@ -170,14 +206,18 @@ export function assertSnapshotIdentity(payload) {
   }
 }
 
-function casePrecision(expect, hits, returned) {
-  if (returned === 0) return expect === 'no_result' ? 1 : 0;
+export function casePrecision(expect, hits, returned, status = null) {
+  if (returned === 0) {
+    if (expect === 'clarification_or_answer') return status === 'clarification' ? 1 : 0;
+    return expect === 'no_result' ? 1 : 0;
+  }
   return hits / returned;
 }
 
-function allRelevant(expect, hits, returned) {
+export function allRelevant(expect, hits, returned, status = null) {
   if (hits !== returned) return false;
   if (expect === 'answer') return returned > 0;
+  if (expect === 'clarification_or_answer') return returned > 0 || status === 'clarification';
   return returned === 0;
 }
 
@@ -192,6 +232,7 @@ export async function evaluateGold(options) {
   const catalog = loadNonconformityCatalog();
   const valueIndex = buildValueIndex(payload.records, catalog);
   const bodyFields = fieldsWithRole(catalog, 'body');
+  const organizationFields = fieldsWithRole(catalog, 'organization');
   const variant = options.variant ?? 'a';
   if (!['a', 'b', 'c'].includes(variant)) throw new Error('variant must be a, b, or c');
   const retriever = options.retriever ?? 'lexical';
@@ -379,7 +420,11 @@ export async function evaluateGold(options) {
           executed.timings.vectorReason = vectorPrepareReason;
         }
       }
-      const hits = countKeywordHits(executed.results, item.judge.anyOf, bodyFields);
+      const hits = countKeywordHits(executed.results, item.judge.anyOf, bodyFields, {
+        departments: item.deptAnyOf ?? null,
+        organizationFields,
+      });
+      const targetsShown = countTargetsShown(executed.results.map((result) => result.recordId), goldTargetIds(item));
       const returned = executed.returned ?? executed.results.length;
       const planFilters = validation.ok ? validation.plan.filters : (planned.plan?.filters ?? []);
       const filterBlob = planFilters.flatMap((filter) => filter.values ?? []).join('\n');
@@ -391,21 +436,22 @@ export async function evaluateGold(options) {
         ? (executed.status === 'out_of_scope' && returned === 0 ? 1 : 0)
         : item.expect === 'clarification'
           ? (executed.status === 'clarification' && returned === 0 ? 1 : 0)
-          : casePrecision(item.expect, hits, returned);
+          : casePrecision(item.expect, hits, returned, executed.status);
       if (item.expect === 'answer' && filterIncludesOk && executed.status === 'answer' && returned > 0) precision = 1;
       details.push({
         id: item.id,
         status: executed.status,
         expect: item.expect,
-        statusCorrect: executed.status === item.expect,
+        statusCorrect: statusMatches(item.expect, executed.status),
         hits,
         returned,
+        targetsShown,
         requested: executed.requested ?? null,
         insufficient: Boolean(executed.insufficient),
         precision,
         allRelevant: item.expect === 'out_of_scope'
           ? executed.status === 'out_of_scope' && returned === 0
-          : allRelevant(item.expect, hits, returned),
+          : allRelevant(item.expect, hits, returned, executed.status),
         category: typeof item.category === 'string' ? item.category : null,
         filterField: item.filterField ?? null,
         filterApplied: item.filterField ? planFilters.some((filter) => filter.field === item.filterField) : null,
@@ -440,6 +486,8 @@ export async function evaluateGold(options) {
     precisionAvg: details.length ? details.reduce((sum, item) => sum + item.precision, 0) / details.length : 0,
     casesAllRelevant: details.filter((item) => item.allRelevant).length,
     statusCorrect: details.filter((item) => item.statusCorrect).length,
+    targetCases: details.filter((item) => item.targetsShown != null).length,
+    casesTargetShown: details.filter((item) => item.targetsShown > 0).length,
     latency: {
       plan: latencyPair(details.map((item) => item.planMs)),
       retrieve: latencyPair(details.map((item) => item.retrieveMs)),
@@ -469,6 +517,7 @@ export async function evaluateGold(options) {
       hits: item.hits,
       returned: item.returned,
       ratio: item.returned ? `${item.hits}/${item.returned}` : `${item.hits}/0`,
+      targetsShown: item.targetsShown,
       relevanceMs: item.relevanceMs,
     })),
   };

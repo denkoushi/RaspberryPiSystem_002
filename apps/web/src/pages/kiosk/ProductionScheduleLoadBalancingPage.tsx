@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 
+import { formatLoadBalancingMachineName } from '../../features/kiosk/loadBalancing/loadBalancingFormat';
 import { LoadBalancingPageHeader } from '../../features/kiosk/loadBalancing/LoadBalancingPageHeader';
 import {
   LOAD_BALANCING_MAX_OFFSET,
@@ -25,7 +26,8 @@ export function ProductionScheduleLoadBalancingPage() {
   const machines = useMemo(() => {
     const totals = new Map<string, number>();
     for (const row of data?.rows ?? []) {
-      totals.set(row.machineName, (totals.get(row.machineName) ?? 0) + row.totalMinutes);
+      const name = formatLoadBalancingMachineName(row.machineName);
+      totals.set(name, (totals.get(name) ?? 0) + row.totalMinutes);
     }
     return [...totals.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
   }, [data?.rows]);

@@ -14,6 +14,22 @@ const UNIT_NAME_MAX_LENGTH = 20;
 export const INVENTORY_TOOL_FIELDS = ['maker', 'toolName', 'workMaterial', 'toolSize'] as const;
 export type InventoryToolField = (typeof INVENTORY_TOOL_FIELDS)[number];
 type InventoryToolInput = Partial<Record<InventoryToolField, string>>;
+/** Fields that offer a pick list on the kiosk: the tool fields plus 型式 and 用途. */
+export const INVENTORY_OPTION_FIELDS = [...INVENTORY_TOOL_FIELDS, 'model', 'usage'] as const;
+export type InventoryOptionField = (typeof INVENTORY_OPTION_FIELDS)[number];
+const TOOL_FIELD_VALUE_MAX_LENGTH = 200;
+
+/** Natural order so that φ20 comes before φ100. */
+function compareOptionValues(a: string, b: string): number {
+  return a.localeCompare(b, 'ja', { numeric: true });
+}
+
+function cleanOptionValue(value: string): string {
+  const clean = value.normalize('NFKC').trim();
+  if (!clean) throw new ApiError(400, '値を入力してください');
+  if (clean.length > TOOL_FIELD_VALUE_MAX_LENGTH) throw new ApiError(400, `値は${TOOL_FIELD_VALUE_MAX_LENGTH}文字以内で入力してください`);
+  return clean;
+}
 
 function toolData(input: InventoryToolInput, keepMissing: boolean): Partial<Record<InventoryToolField, string | null>> {
   const data: Partial<Record<InventoryToolField, string | null>> = {};
@@ -385,18 +401,74 @@ export class ItemInventoryService {
     });
   }
 
-  /** Values already used for each tool field, offered as choices when registering. */
-  async listToolFieldOptions(): Promise<Record<InventoryToolField, string[]>> {
-    const entries = await Promise.all(INVENTORY_TOOL_FIELDS.map(async (field) => {
+  /** Pre-registered choices plus values already used, for each field offered in the kiosk pop-up. */
+  async listToolFieldOptions(): Promise<Record<InventoryOptionField, string[]>> {
+    const presets = await this.db.inventoryToolFieldPreset.findMany({ select: { field: true, value: true } });
+    const entries = await Promise.all(INVENTORY_OPTION_FIELDS.map(async (field) => {
       const rows = await this.db.inventoryItem.findMany({
         where: { deletedAt: null, [field]: { not: null } },
         select: { [field]: true },
         distinct: [field],
         orderBy: { [field]: 'asc' },
       }) as unknown as Array<Record<string, string | null>>;
-      return [field, rows.map((row) => row[field]).filter((value): value is string => Boolean(value))] as const;
+      const used = rows.map((row) => row[field]).filter((value): value is string => Boolean(value));
+      const preset = presets.filter((entry) => entry.field === field).map((entry) => entry.value);
+      return [field, [...new Set([...used, ...preset])].sort(compareOptionValues)] as const;
     }));
-    return Object.fromEntries(entries) as Record<InventoryToolField, string[]>;
+    return Object.fromEntries(entries) as Record<InventoryOptionField, string[]>;
+  }
+
+  /** Each field's choices with how many items use them, for the kiosk edit mode. */
+  async listToolFieldValues(): Promise<Record<InventoryOptionField, Array<{ value: string; count: number }>>> {
+    const presets = await this.db.inventoryToolFieldPreset.findMany({ select: { field: true, value: true } });
+    const entries = await Promise.all(INVENTORY_OPTION_FIELDS.map(async (field) => {
+      const groups = await this.db.inventoryItem.groupBy({
+        by: [field],
+        where: { deletedAt: null, [field]: { not: null } },
+        _count: { _all: true },
+      } as never) as unknown as Array<Record<string, unknown> & { _count: { _all: number } }>;
+      const counts = new Map<string, number>();
+      for (const group of groups) {
+        const value = group[field];
+        if (typeof value === 'string' && value) counts.set(value, group._count._all);
+      }
+      for (const preset of presets) {
+        if (preset.field === field && !counts.has(preset.value)) counts.set(preset.value, 0);
+      }
+      const values = [...counts].map(([value, count]) => ({ value, count })).sort((a, b) => compareOptionValues(a.value, b.value));
+      return [field, values] as const;
+    }));
+    return Object.fromEntries(entries) as Record<InventoryOptionField, Array<{ value: string; count: number }>>;
+  }
+
+  async addToolFieldValue(field: InventoryOptionField, value: string) {
+    const clean = cleanOptionValue(value);
+    await this.db.inventoryToolFieldPreset.upsert({ where: { field_value: { field, value: clean } }, create: { field, value: clean }, update: {} });
+    return { field, value: clean };
+  }
+
+  /** Rename a choice and every item that uses it, in one transaction. */
+  async renameToolFieldValue(field: InventoryOptionField, from: string, to: string) {
+    const source = cleanOptionValue(from);
+    const target = cleanOptionValue(to);
+    if (source === target) return { field, value: target, updatedItems: 0 };
+    return this.db.$transaction(async (tx) => {
+      const result = await tx.inventoryItem.updateMany({ where: { deletedAt: null, [field]: source }, data: { [field]: target } });
+      const removed = await tx.inventoryToolFieldPreset.deleteMany({ where: { field, value: source } });
+      if (removed.count > 0) {
+        await tx.inventoryToolFieldPreset.upsert({ where: { field_value: { field, value: target } }, create: { field, value: target }, update: {} });
+      }
+      return { field, value: target, updatedItems: result.count };
+    });
+  }
+
+  /** Only a choice no item uses can be removed; otherwise it would come back from the items. */
+  async deleteToolFieldValue(field: InventoryOptionField, value: string) {
+    const clean = cleanOptionValue(value);
+    const used = await this.db.inventoryItem.count({ where: { deletedAt: null, [field]: clean } });
+    if (used > 0) throw new InventoryConflictError(`「${clean}」は${used}件のアイテムで使っています`);
+    await this.db.inventoryToolFieldPreset.deleteMany({ where: { field, value: clean } });
+    return { field, value: clean };
   }
 
   async listUnits() {

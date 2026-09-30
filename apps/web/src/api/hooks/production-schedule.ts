@@ -1279,7 +1279,7 @@ export function useKioskProductionScheduleLoadBalancingWorkspace(
 }
 
 export function useKioskProductionScheduleLoadBalancingWorkspaceDay(
-  params: { month: string; resourceCd: string; targetDeviceScopeKey?: string },
+  params: { month: string; resourceCd: string; fromMonth?: string; toMonth?: string; targetDeviceScopeKey?: string },
   options?: { enabled?: boolean }
 ) {
   return useQuery({

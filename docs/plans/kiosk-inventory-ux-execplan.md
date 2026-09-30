@@ -31,6 +31,7 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - [x] (2026-09-28) Feedback round 2026-09-28: fixes deployed (PR #1523, a6762c71); compact 1920×1080 registration deployed (PR #1527, 134e1b74); area normalization and touch shelf creation deployed (PR #1528, 426eca64, run 20260928-060636-3a0fae).
 - [x] (2026-09-28 15:33 JST) Existing areas normalized on Pi5 after user approval: dry run listed 4 rows (2 shelves, 1 candidate, 1 item: `30041R_2ＭＦ-Ｐ` → `30041R_2MF-P`, no shelf conflicts); `--apply` with backup `/opt/backups/inventory-area-normalize-20260928.json` (763 bytes); a second dry run reported nothing to change.
 - [ ] Units (個, ケース, …): implemented on `feat/kiosk-inventory-units`; remaining: PR, deploy, kiosk check.
+- [x] (2026-09-30) Brush-up of every inventory screen from the approved canvas boards ㉑〜㉘ (shared `inv` palette and components), pop-up fixes (wider 型式, second tap clears, edit mode with rename-with-items) on `feat/kiosk-inventory-brushup`. Checked at 1920×1080 with a local mock harness; kiosk check pending.
 
 ## Surprises & Discoveries
 
@@ -117,6 +118,8 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
   Date/Author: 2026-09-29 / user, recorded by Claude.
 - Decision: Following the 2026-09-29 13:21 requests (mockups ⑮ ⑯ approved), the 在庫操作 waiting screen keeps the tag prompt, the 持出/補充 hints and the registered count in the title row; cards are two lines (name, count and unit / area・棚・引出し) with 160px photos, ordered by the most recent issue (`lastIssuedAt` per drawer from `GET /item-inventory/items`; never-issued drawers follow by name). Registration moves 写真を確認した to the photo pane's top-right corner, lets two photo rows fill the pane, and lays the quantity keypad out in six 52×40 keys. The tool-information fields (メーカー, 工具名, 被削材, 工具寸法) with the "登録済みから選ぶ" pop-up follow in a separate pull request because they need a migration.
   Date/Author: 2026-09-29 / user, recorded by Claude.
+- Decision: The kiosk check on 2026-09-30 found the tool-information inputs and the pop-up clipped by the centre column (about 630px wide for fields). Inputs are now fixed at 220px in two columns, and the pop-up is fixed to the screen (1000px, six columns: メーカー, 工具名, 被削材, 工具寸法, 型式, 用途). Pick lists combine values in use with pre-registered choices (`InventoryToolFieldPreset`, migration `20260930090000_add_inventory_tool_field_presets`). The supplier list `工具在庫一覧.csv` is loaded once with `apps/api/scripts/inventory-tool-presets-import.mjs` (CSV on stdin; dry run, then `--apply`; `--remove` undoes): 径 → 工具寸法, 材質 → 被削材, 削り方向 → 用途, 型番 → 型式, メーカー → メーカー, with "・"-joined values split (型番 kept whole).
+  Date/Author: 2026-09-30 / user, recorded by Claude.
 - Decision (was open; user approved 2026-09-26): In the kiosk registration flow, the 名前など step is optional. It is prefilled with the current default (`ItemlistRaspi <sourceItemId>`), and model and usage are left blank. The step offers the ordinary text input, which works on terminals with a keyboard and IBus. Japanese renaming on keyboard-less terminals is done later on the admin PC page.
   Rationale: The on-screen keyboard cannot type Japanese, and building a kana keyboard is outside this scope. Ask the user before Milestone 4 whether this default is acceptable.
   Date/Author: 2026-09-26 / Claude.

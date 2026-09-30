@@ -1,3 +1,5 @@
+import { normalizeMachineName } from '../productionSchedule/machineName';
+
 /** 分 → 時間（小数1桁、.0 は省く）。現場の生産システムと同じ H 表示に揃える */
 export function formatHours(minutes: number): string {
   const hours = Math.round((minutes / 60) * 10) / 10;
@@ -33,4 +35,9 @@ export function resolveLoadLevel(loadMinutes: number, capacityMinutes: number): 
   if (ratio <= 1) return 'near';
   if (ratio <= 1.15) return 'over';
   return 'hot';
+}
+
+/** 機種名を他のキオスク画面と同じく半角・大文字にそろえる（絞り込みのキーにも使うので省略しない） */
+export function formatLoadBalancingMachineName(value: string): string {
+  return normalizeMachineName(value, { maxChars: Number.MAX_SAFE_INTEGER });
 }

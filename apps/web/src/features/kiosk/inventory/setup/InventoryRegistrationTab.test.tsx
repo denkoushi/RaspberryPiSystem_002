@@ -30,7 +30,8 @@ vi.mock('../../../../api/hooks', () => ({
   })),
   useInventoryItems: vi.fn(() => ({ data: [], isLoading: false })),
   useInventoryUnits: vi.fn(() => ({ data: [{ id: 'u1', name: '個' }, { id: 'u2', name: 'ケース' }] })),
-  useInventoryToolFieldOptions: vi.fn(() => ({ data: { maker: ['OSG', '京セラ'], toolName: ['エンドミル'], workMaterial: ['S45C'], toolSize: [] } })),
+  useInventoryToolFieldOptions: vi.fn(() => ({ data: { maker: ['OSG', '京セラ'], toolName: ['エンドミル'], workMaterial: ['S45C'], toolSize: [], model: ['SOMT140520ER-GM / PR1525'], usage: ['上面', '側面'] } })),
+  useInventoryToolFieldValues: vi.fn(() => ({ data: { maker: [{ value: 'OSG', count: 0 }, { value: 'ミツビシ', count: 3 }], toolName: [], workMaterial: [], toolSize: [], model: [], usage: [] } })),
   useInventoryMutations: vi.fn(),
 }));
 vi.mock('../../../../hooks/useNfcStream', () => ({
@@ -48,12 +49,16 @@ describe('InventoryRegistrationTab', () => {
   const registerImport = vi.fn();
   const createShelf = vi.fn();
   const createDrawer = vi.fn();
+  const renameToolFieldValue = vi.fn();
+  const deleteToolFieldValue = vi.fn();
 
   beforeEach(() => {
     nfc.event = null;
     registerImport.mockReset().mockResolvedValue({});
     createShelf.mockReset().mockResolvedValue({});
     createDrawer.mockReset().mockResolvedValue({});
+    renameToolFieldValue.mockReset().mockResolvedValue({ field: 'maker', value: 'ミツビシマテリアル', updatedItems: 3 });
+    deleteToolFieldValue.mockReset().mockResolvedValue({});
     vi.mocked(useInventoryMutations).mockReturnValue({
       registerImport: { mutateAsync: registerImport, isPending: false },
       reorderImportPhotos: { mutateAsync: vi.fn(), isPending: false },
@@ -62,6 +67,9 @@ describe('InventoryRegistrationTab', () => {
       createShelf: { mutateAsync: createShelf, isPending: false },
       createDrawer: { mutateAsync: createDrawer, isPending: false },
       createUnit: { mutateAsync: vi.fn(), isPending: false },
+      renameToolFieldValue: { mutateAsync: renameToolFieldValue, isPending: false },
+      addToolFieldValue: { mutateAsync: vi.fn(), isPending: false },
+      deleteToolFieldValue: { mutateAsync: deleteToolFieldValue, isPending: false },
     } as never);
   });
 
@@ -82,7 +90,7 @@ describe('InventoryRegistrationTab', () => {
 
     nfc.event = { uid: 'new-item-tag', eventId: 1, timestamp: new Date().toISOString() } as NfcEvent;
     view.rerender(<InventoryRegistrationTab accessPassword="2520" />);
-    expect(await screen.findByText('タグ new-item-tag を読み取りました')).toBeInTheDocument();
+    expect(await screen.findByText('new-item-tag')).toBeInTheDocument();
     press('最初の数のテンキー', '7');
     expect(screen.getByText('登録できます')).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '登録する' })); });
@@ -157,8 +165,8 @@ describe('InventoryRegistrationTab', () => {
       render(<InventoryRegistrationTab accessPassword="2520" />);
       fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
 
-      expect(screen.getByText('このエリアの棚はまだありません')).toBeInTheDocument();
-      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '＋ 棚1を作る' })); });
+      expect(screen.getByText(/の棚はまだありません/)).toBeInTheDocument();
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '棚1を作る' })); });
 
       expect(createShelf).toHaveBeenCalledWith({ area: '30007_KSJP-55 北', shelfNumber: 1 });
     } finally {
@@ -170,7 +178,7 @@ describe('InventoryRegistrationTab', () => {
     render(<InventoryRegistrationTab accessPassword="2520" />);
     fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
     fireEvent.click(screen.getByRole('button', { name: '棚1' }));
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '＋ 引出し3を作る' })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '引出し3を作る' })); });
 
     expect(createDrawer).toHaveBeenCalledWith({ shelfId: 'shelf-1', drawerNumber: 3 });
   });
@@ -184,7 +192,7 @@ describe('InventoryRegistrationTab', () => {
     fireEvent.click(screen.getByRole('button', { name: '引出し2' }));
     nfc.event = { uid: 'case-tag', eventId: 9, timestamp: new Date().toISOString() } as NfcEvent;
     view.rerender(<InventoryRegistrationTab accessPassword="2520" />);
-    await screen.findByText('タグ case-tag を読み取りました');
+    await screen.findByText('case-tag');
     press('最初の数のテンキー', '3');
     expect(screen.getByText('3ケース')).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '登録する' })); });
@@ -205,7 +213,7 @@ describe('InventoryRegistrationTab', () => {
       expect(await screen.findByRole('button', { name: '30007_KSJP-55 北' })).toHaveAttribute('aria-pressed', 'true');
 
       fireEvent.click(screen.getByRole('button', { name: '30007_KSJP-55 東' }));
-      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '＋ 棚1を作る' })); });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '棚1を作る' })); });
       expect(createShelf).toHaveBeenLastCalledWith({ area: '30007_KSJP-55 東', shelfNumber: 1 });
 
       fireEvent.click(screen.getByRole('button', { name: '30041R_2MF-P 北' }));
@@ -226,7 +234,7 @@ describe('InventoryRegistrationTab', () => {
     fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
 
     expect(await screen.findByRole('button', { name: '30007_KSJP-55 南' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('前回この加工機で使った場所')).toBeInTheDocument();
+    expect(screen.getByText('前回と同じ')).toBeInTheDocument();
   });
 
   it('fills tool fields by typing or from values already used', async () => {
@@ -234,7 +242,7 @@ describe('InventoryRegistrationTab', () => {
     fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
     fireEvent.change(screen.getByRole('textbox', { name: '工具寸法' }), { target: { value: 'φ10' } });
 
-    fireEvent.click(screen.getByRole('button', { name: '▼ 登録済みから選ぶ' }));
+    fireEvent.click(screen.getByRole('button', { name: '登録済みから選ぶ' }));
     const popup = screen.getByRole('dialog', { name: '登録済みの値から選ぶ' });
     fireEvent.click(within(within(popup).getByRole('group', { name: 'メーカー' })).getByRole('button', { name: 'OSG' }));
     fireEvent.click(within(within(popup).getByRole('group', { name: '被削材' })).getByRole('button', { name: 'S45C' }));
@@ -242,6 +250,45 @@ describe('InventoryRegistrationTab', () => {
     expect(screen.getByRole('textbox', { name: 'メーカー' })).toHaveValue('OSG');
     expect(screen.getByRole('textbox', { name: '被削材' })).toHaveValue('S45C');
     expect(screen.getByRole('textbox', { name: '工具寸法' })).toHaveValue('φ10');
+    fireEvent.click(within(within(popup).getByRole('group', { name: '型式' })).getByRole('button', { name: 'SOMT140520ER-GM / PR1525' }));
+    fireEvent.click(within(within(popup).getByRole('group', { name: '用途' })).getByRole('button', { name: '側面' }));
+    expect(screen.getByRole('textbox', { name: '型式' })).toHaveValue('SOMT140520ER-GM / PR1525');
+    expect(screen.getByRole('textbox', { name: '用途' })).toHaveValue('側面');
+
+    // A second tap on the chosen value takes it out again.
+    fireEvent.click(within(within(popup).getByRole('group', { name: 'メーカー' })).getByRole('button', { name: 'OSG' }));
+    expect(screen.getByRole('textbox', { name: 'メーカー' })).toHaveValue('');
+  });
+
+  it('renames a registered value together with the items that use it', async () => {
+    render(<InventoryRegistrationTab accessPassword="2520" />);
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'メーカー' }), { target: { value: 'ミツビシ' } });
+    fireEvent.click(screen.getByRole('button', { name: '登録済みから選ぶ' }));
+    fireEvent.click(screen.getByRole('button', { name: '編集' }));
+    const popup = screen.getByRole('dialog', { name: '登録済みの値を編集' });
+
+    expect(within(popup).queryByRole('button', { name: 'ミツビシを削除' })).not.toBeInTheDocument();
+    fireEvent.click(within(popup).getByRole('button', { name: 'ミツビシの名前を変える' }));
+    expect(within(popup).getByText(/件も変わります/)).toHaveTextContent('アイテム 3件も変わります');
+    fireEvent.change(within(popup).getByRole('textbox', { name: 'ミツビシの新しい名前' }), { target: { value: 'ミツビシマテリアル' } });
+    await act(async () => { fireEvent.click(within(popup).getByRole('button', { name: '変える' })); });
+
+    expect(renameToolFieldValue).toHaveBeenCalledWith({ field: 'maker', from: 'ミツビシ', to: 'ミツビシマテリアル' });
+    expect(screen.getByRole('textbox', { name: 'メーカー' })).toHaveValue('ミツビシマテリアル');
+  });
+
+  it('removes an unused value only after a second confirmation', async () => {
+    render(<InventoryRegistrationTab accessPassword="2520" />);
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    fireEvent.click(screen.getByRole('button', { name: '登録済みから選ぶ' }));
+    fireEvent.click(screen.getByRole('button', { name: '編集' }));
+    const popup = screen.getByRole('dialog', { name: '登録済みの値を編集' });
+
+    fireEvent.click(within(popup).getByRole('button', { name: 'OSGを削除' }));
+    expect(deleteToolFieldValue).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(within(popup).getByRole('button', { name: '消す' })); });
+    expect(deleteToolFieldValue).toHaveBeenCalledWith({ field: 'maker', value: 'OSG' });
   });
 
   it('asks before deleting a candidate photo', () => {

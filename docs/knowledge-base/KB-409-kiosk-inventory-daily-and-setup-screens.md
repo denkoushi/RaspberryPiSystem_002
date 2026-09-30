@@ -63,3 +63,13 @@ Do not merge to `main` until a standard release run has finished. The next run m
 - The kiosks are 21.5-inch 1920×1080 monitors and have a physical keyboard (Pi4 and Mac). Typing on the kiosk is acceptable; flows stay touch-first.
 - Areas are normalized (NFKC, trimmed) on intake, shelf creation and registration; existing rows were normalized once with `apps/api/scripts/inventory-area-normalize.mjs` (backup `/opt/backups/inventory-area-normalize-20260928.json`). Run scripts in the running blue/green API container (`docker ps | grep api`), not with `docker compose exec api`.
 - Each item has one unit (null means 個; no conversion). Units are chosen or added in 在庫の準備; quantity tags carry only a number.
+
+## Updates (2026-09-30)
+
+- All inventory screens (在庫操作 and 在庫の準備) share one look: the `inv` Tailwind palette in `apps/web/tailwind.config.ts`, class constants in `apps/web/src/features/kiosk/inventory/inventoryUi.ts`, and icons in `InventoryIcons.tsx`. The kiosk shell background is covered by `invSurface`. Use these instead of `slate`/`white/` classes on inventory screens.
+- 数を直す opens over the item screen, not as a separate view.
+- The tool-value pop-up (`setup/ToolValuePopup.tsx`) has two modes. 選ぶ: a second tap clears the field. 編集: rename, add, delete.
+  - Renaming a value also rewrites every item that uses it, in one transaction. The screen shows the item count before the rename.
+  - A value can be deleted only when no item uses it. Otherwise it would reappear, because the pick list merges item values with presets.
+  - API: `GET/POST/PUT/DELETE /item-inventory/tool-field-values` (setup PIN).
+- Pick lists sort naturally (`φ20` before `φ100`).

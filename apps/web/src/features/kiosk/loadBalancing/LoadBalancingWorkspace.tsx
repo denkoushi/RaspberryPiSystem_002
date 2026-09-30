@@ -8,7 +8,7 @@ import {
 } from '../../../api/hooks';
 
 import { LoadBalancingCellDetail } from './LoadBalancingCellDetail';
-import { addMonths, currentYearMonth, formatHours, formatYearMonthSlash } from './loadBalancingFormat';
+import { addMonths, currentYearMonth, formatHours, formatLoadBalancingMachineName, formatYearMonthSlash } from './loadBalancingFormat';
 import { LoadBalancingHeatmap, type HeatmapResourceRow, type HeatmapSelection } from './LoadBalancingHeatmap';
 import {
   LATE_BUCKET,
@@ -138,7 +138,7 @@ export function LoadBalancingWorkspaceView({
   const buckets = useMemo(() => [LATE_BUCKET, ...data.months], [data.months]);
   const { baseMatrix, matrix, before, after } = useMemo(() => computeWorkspaceSummary(data, actions), [data, actions]);
   const machineRows = useMemo(
-    () => (machine ? data.rows.filter((row) => row.machineName === machine) : null),
+    () => (machine ? data.rows.filter((row) => formatLoadBalancingMachineName(row.machineName) === machine) : null),
     [data.rows, machine]
   );
   const machineMatrix = useMemo(
@@ -186,6 +186,8 @@ export function LoadBalancingWorkspaceView({
     {
       month: effectiveSelected?.bucket ?? data.months[0]!,
       resourceCd: effectiveSelected?.resourceCd ?? '',
+      fromMonth: data.fromMonth,
+      toMonth: data.toMonth,
       ...scopeParams
     },
     { enabled: dayEnabled }

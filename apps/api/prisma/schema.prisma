@@ -977,6 +977,16 @@ model InventoryItem {
   @@index([deletedAt])
 }
 
+/// Pre-registered choices for tool fields (loaded from a supplier list), offered with the values already in use.
+model InventoryToolFieldPreset {
+  id        String   @id @default(uuid())
+  field     String
+  value     String
+  createdAt DateTime @default(now())
+
+  @@unique([field, value])
+}
+
 /// Units offered when setting an item's unit (個, ケース, ...). Items store the name.
 model InventoryUnit {
   id        String   @id @default(uuid())

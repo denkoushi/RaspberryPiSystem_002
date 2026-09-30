@@ -101,11 +101,47 @@ export type InventoryUnit = { id: string; name: string };
 
 export const INVENTORY_TOOL_FIELDS = ['maker', 'toolName', 'workMaterial', 'toolSize'] as const;
 export type InventoryToolField = (typeof INVENTORY_TOOL_FIELDS)[number];
-export type InventoryToolFieldOptions = Record<InventoryToolField, string[]>;
+/** Fields with a pick list on the kiosk: the tool fields plus 型式 (model) and 用途 (usage). */
+export type InventoryToolFieldOptions = Record<InventoryToolField | 'model' | 'usage', string[]>;
 
 export async function getInventoryToolFieldOptions() {
   const { data } = await api.get<{ options: InventoryToolFieldOptions }>('/item-inventory/tool-field-options');
   return data.options;
+}
+
+export type InventoryOptionField = keyof InventoryToolFieldOptions;
+export type InventoryToolFieldValue = { value: string; count: number };
+export type InventoryToolFieldValues = Record<InventoryOptionField, InventoryToolFieldValue[]>;
+
+/** Choices with how many items use each, for the pop-up edit mode (setup PIN required). */
+export async function getInventoryToolFieldValues(accessPassword?: string) {
+  const { data } = await api.get<{ values: InventoryToolFieldValues }>('/item-inventory/tool-field-values', {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.values;
+}
+
+export async function addInventoryToolFieldValue(field: InventoryOptionField, value: string, accessPassword?: string) {
+  const { data } = await api.post<{ field: InventoryOptionField; value: string }>('/item-inventory/tool-field-values', { field, value }, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data;
+}
+
+/** Renames the choice and every item that uses it. */
+export async function renameInventoryToolFieldValue(field: InventoryOptionField, from: string, to: string, accessPassword?: string) {
+  const { data } = await api.put<{ field: InventoryOptionField; value: string; updatedItems: number }>('/item-inventory/tool-field-values', { field, from, to }, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data;
+}
+
+export async function deleteInventoryToolFieldValue(field: InventoryOptionField, value: string, accessPassword?: string) {
+  const { data } = await api.delete<{ field: InventoryOptionField; value: string }>('/item-inventory/tool-field-values', {
+    params: { field, value },
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data;
 }
 
 export async function getInventoryUnits() {
