@@ -105,6 +105,10 @@ export function compactPlan(plan) {
       values: Array.isArray(filter.values) ? [...filter.values] : [],
     })) : [],
     semanticQuery: typeof plan.semanticQuery === 'string' ? plan.semanticQuery : '',
+    // The content part the judge read, so a follow-up that reuses the content judges the same text.
+    ...(typeof plan.diagnostics?.contentSpan === 'string' && plan.diagnostics.contentSpan
+      ? { contentSpan: plan.diagnostics.contentSpan }
+      : {}),
     sort: plan.sort ?? null,
     limit: plan.limit ?? null,
   };

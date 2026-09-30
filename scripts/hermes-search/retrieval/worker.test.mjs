@@ -21,14 +21,22 @@ const catalog = loadNonconformityCatalog();
 const valueIndex = buildValueIndex(records, catalog);
 const lexicalCorpus = prepareLexicalCorpus(records, fieldsWithRole(catalog, 'body'));
 
-function plannerAnswers({ content = false, term = 'v0', sort = 'recent', limit = '2', turn = null } = {}) {
+// turn 'refine' keeps every previous condition, 'new_search' replaces them; `questions` are the
+// planner's questions for this turn, so follow-up answers match what was asked.
+function plannerAnswers({ content = false, term = 'v0', sort = 'recent', limit = '2', turn = null, questions = {} } = {}) {
   const answers = {
     sort: { type: 'choice', choice: sort },
     limit: { type: 'choice', choice: limit },
     content: { type: 'noul', noul: content ? 0.95 : 0.1 },
   };
   if (term) answers.term_0 = { type: 'choice', choice: term };
-  if (turn) answers.turn = { type: 'choice', choice: turn };
+  for (const key of Object.keys(questions)) {
+    if (key.startsWith('drop_')) answers[key] = { type: 'noul', noul: turn === 'refine' ? 0.1 : 0.9 };
+    if (key.startsWith('add_')) answers[key] = { type: 'noul', noul: 0.1 };
+  }
+  if (questions.contentCarry) {
+    answers.contentCarry = { type: 'choice', choice: content || turn !== 'refine' ? 'new' : 'same' };
+  }
   return { answers };
 }
 
@@ -63,7 +71,8 @@ test('worker protocol returns original field text and keeps the previous plan', 
     const answers = plannerAnswers({
       content,
       limit: content ? 'unspecified' : '2',
-      turn: input.questions.turn ? 'refine' : null,
+      turn: 'refine',
+      questions: input.questions,
     }).answers;
     answers.scope = { type: 'choice', choice: 'nonconformity' };
     for (const [key, question] of Object.entries(input.questions)) {
@@ -277,7 +286,7 @@ test('a request for other records hides the ones already shown and says when non
     }
     plannerQuestions.push(Object.keys(input.questions));
     const other = String(input.state.request).includes('ほか');
-    const answers = plannerAnswers({ content: true, term: null, sort: 'relevance', limit: 'unspecified', turn: input.questions.turn ? 'new_search' : null }).answers;
+    const answers = plannerAnswers({ content: true, term: null, sort: 'relevance', limit: 'unspecified', turn: 'new_search', questions: input.questions }).answers;
     answers.scope = { type: 'choice', choice: 'nonconformity' };
     if (input.questions.excludeShown) answers.excludeShown = { type: 'noul', noul: other ? 0.9 : 0.1 };
     return { answers };

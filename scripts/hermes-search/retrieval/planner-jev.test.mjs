@@ -16,12 +16,16 @@ const fixedDescriptions = new Set([
 
 function assertChoicesFromCandidates(questions, candidateValues) {
   const allowed = new Set([...candidateValues, ...fixedDescriptions]);
-  assert.equal(questions.content?.type, 'noul');
-  assert.deepEqual(Object.keys(questions.content.criteria).sort(), ['false', 'true']);
+  // A follow-up with previous content asks contentCarry instead of the content yes/no question.
+  const contentQuestion = questions.content ?? questions.contentCarry;
+  assert.equal(Boolean(contentQuestion), true);
+  if (questions.content) assert.deepEqual(Object.keys(questions.content.criteria).sort(), ['false', 'true']);
   for (const [key, question] of Object.entries(questions)) {
     if (question.type === 'noul') continue;
     // Content span choices are parts of the request itself, cut by code.
     if (key === 'contentSpan') continue;
+    // Carry questions have fixed keep/replace/add and same/new/none options, not values.
+    if (key.startsWith('carry_') || key === 'contentCarry') continue;
     assert.equal(question.type, 'choice');
     for (const description of Object.values(question.criteria)) {
       assert.equal(allowed.has(description), true, description);
@@ -79,7 +83,12 @@ test('planner can refine a previous plan without a second evaluate call', async 
   let calls = 0;
   const evaluate = async (input) => {
     calls += 1;
-    assert.deepEqual(Object.keys(input.questions.turn.criteria).sort(), ['new_search', 'refine']);
+    assert.equal(input.questions.turn, undefined);
+    assert.equal(input.questions.drop_0.type, 'noul');
+    assert.equal(input.questions.add_0.type, 'noul');
+    assert.match(input.questions.drop_0.instructions, /Lathe-1/u);
+    assert.deepEqual(Object.keys(input.questions.contentCarry.criteria), ['same', 'new']);
+    assert.equal(input.questions.content, undefined);
     assertChoicesFromCandidates(input.questions, ['South Shop']);
     // The current utterance alone is judged; the previous plan is context only.
     assert.equal(input.state.request, 'South Shopも見る');
@@ -90,10 +99,11 @@ test('planner can refine a previous plan without a second evaluate call', async 
     return {
       answers: {
         term_0: { type: 'choice', choice: 'v0' },
-        turn: { type: 'choice', choice: 'refine' },
+        drop_0: { type: 'noul', noul: 0.1 },
+        add_0: { type: 'noul', noul: 0.1 },
+        contentCarry: { type: 'choice', choice: 'same' },
         sort: { type: 'choice', choice: 'relevance' },
         limit: { type: 'choice', choice: '5' },
-        content: { type: 'noul', noul: 0.1 },
       },
     };
   };
@@ -427,38 +437,87 @@ test('a low-confidence department value asks for clarification instead of a cont
 test('the planner receipt maps a field choice to its value and keeps top probabilities', () => {
   const questions = {
     field_0: { type: 'choice', instructions: 'x', criteria: { v0: 'South Shop', none: 'この語は絞り込み条件にしない' } },
-    turn: { type: 'choice', instructions: 'x', criteria: { new_search: 'a', refine: 'b' } },
+    contentCarry: { type: 'choice', instructions: 'x', criteria: { same: 'a', new: 'b' } },
     content: { type: 'noul', instructions: 'x', criteria: { true: 'a', false: 'b' } },
     limit: { type: 'choice', instructions: 'x', criteria: { 2: '2件' } },
   };
   const summary = summarizeAnswers(questions, {
     field_0: { type: 'choice', choice: 'v0', confidence: 0.91234, probabilities: { v0: 0.9, none: 0.1 } },
-    turn: { type: 'choice', choice: 'refine' },
+    contentCarry: { type: 'choice', choice: 'same' },
     content: { type: 'noul', noul: 0.12345 },
   });
   assert.deepEqual(summary.field_0, { choice: 'South Shop', confidence: 0.912, top: [['South Shop', 0.9], ['この語は絞り込み条件にしない', 0.1]] });
-  assert.deepEqual(summary.turn, { choice: 'refine' });
+  assert.deepEqual(summary.contentCarry, { choice: 'same' });
   assert.deepEqual(summary.content, { noul: 0.123 });
   assert.deepEqual(summary.limit, { missing: true });
 });
 
-test('a refine turn without its own content keeps the previous content condition', async () => {
+test('a follow-up that does not restate its content keeps the previous content condition', async () => {
   const evaluate = async () => ({
     answers: {
       term_0: { type: 'choice', choice: 'v0' },
-      turn: { type: 'choice', choice: 'refine' },
+      contentCarry: { type: 'choice', choice: 'same' },
       sort: { type: 'choice', choice: 'relevance' },
       limit: { type: 'choice', choice: '5' },
       content: { type: 'noul', noul: 0.1 },
     },
   });
-  const previousPlan = { sources: ['nonconformity'], filters: [], semanticQuery: 'rust on the table', sort: 'relevance', limit: 5 };
+  const previousPlan = { sources: ['nonconformity'], filters: [], semanticQuery: 'rust on the table please', contentSpan: 'rust on the table', sort: 'relevance', limit: 5 };
   const candidates = [{ term: 'South Shop', source: 'nonconformity', field: 'originDepartmentName', values: ['South Shop'] }];
   const refined = await createPlanner({ evaluate }).plan({ question: 'South Shopだけ', previousPlan, catalog, candidates });
-  assert.equal(refined.plan.semanticQuery, 'rust on the table');
+  assert.equal(refined.plan.semanticQuery, 'rust on the table please');
+  // The judge reads the same content part as on the previous turn.
+  assert.equal(refined.plan.diagnostics.contentSpan, 'rust on the table');
   assert.equal(refined.plan.filters.some((filter) => filter.values[0] === 'South Shop'), true);
   const fresh = await createPlanner({ evaluate }).plan({ question: 'South Shopだけ', previousPlan: null, catalog, candidates });
   assert.equal(fresh.plan.semanticQuery, '');
+});
+
+test('each previous condition is kept, replaced, added to, or dropped on its own', async () => {
+  const previousPlan = {
+    sources: ['nonconformity'],
+    filters: [
+      { source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] },
+      { source: 'nonconformity', field: 'machineName', op: 'eq', values: ['Lathe-1'] },
+    ],
+    semanticQuery: 'paint peeling',
+    sort: 'relevance',
+    limit: 3,
+  };
+  const candidates = [{ term: 'South Shop', source: 'nonconformity', field: 'originDepartmentName', values: ['South Shop'] }];
+  const run = ({ term = 'v0', add0 = 0.1, drop1 = 0.1, content = 'same' }) => createPlanner({
+    evaluate: async (input) => {
+      assert.deepEqual(Object.keys(input.questions).filter((key) => /^(?:drop|add)_/u.test(key)).sort(), ['add_0', 'add_1', 'drop_0', 'drop_1']);
+      return {
+        answers: {
+          term_0: { type: 'choice', choice: term },
+          drop_0: { type: 'noul', noul: 0.1 },
+          add_0: { type: 'noul', noul: add0 },
+          drop_1: { type: 'noul', noul: drop1 },
+          add_1: { type: 'noul', noul: 0.1 },
+          contentCarry: { type: 'choice', choice: content },
+          sort: { type: 'choice', choice: 'relevance' },
+          limit: { type: 'choice', choice: '5' },
+        },
+      };
+    },
+  }).plan({ question: 'South Shopでは', previousPlan, catalog, candidates });
+  const values = (plan, field) => plan.filters.filter((filter) => filter.field === field).flatMap((filter) => filter.values).sort();
+
+  // A new value for the same field replaces the previous one; an untouched condition stays.
+  const replaced = (await run({})).plan;
+  assert.deepEqual(values(replaced, 'originDepartmentName'), ['South Shop']);
+  assert.deepEqual(values(replaced, 'machineName'), ['Lathe-1']);
+  assert.equal(replaced.semanticQuery, 'paint peeling');
+
+  const added = (await run({ add0: 0.9, drop1: 0.9, content: 'new' })).plan;
+  assert.deepEqual(values(added, 'originDepartmentName'), ['North Shop', 'South Shop']);
+  assert.deepEqual(values(added, 'machineName'), []);
+  assert.equal(added.semanticQuery, 'South Shopでは');
+
+  // With no new value, the previous department stays unless the request drops it.
+  const kept = (await run({ term: 'none' })).plan;
+  assert.deepEqual(values(kept, 'originDepartmentName'), ['North Shop']);
 });
 
 test('a first turn keeps the original question wording and sends no previous plan', async () => {
