@@ -4,6 +4,7 @@
 
 | ファイル | 説明 |
 |----------|------|
+| [signage-admin-unification/Main.html](./signage-admin-unification/Main.html) | **サイネージ管理・データボード統合（実装前・静的）** — 暗色の1画面ハブ（端末・放映中・週間予定・素材）、[ページ撮影追加](./signage-admin-unification/WebCapture.html)、[予定編集](./signage-admin-unification/ScheduleEdit.html)、[緊急表示](./signage-admin-unification/Emergency.html)、データボード（[グラフ](./signage-admin-unification/Boards.html)・[CSV表](./signage-admin-unification/BoardsCsv.html)・[新規](./signage-admin-unification/BoardsNew.html)）。1440×900。[ExecPlan](../plans/signage-admin-unification-execplan.md) |
 | [kiosk-self-inspection-work-instruction-viewer-preview.html](./kiosk-self-inspection-work-instruction-viewer-preview.html) | **自主検査・作業要領書閲覧** — 60px上辺のFHINCD独立スキャン、タイトルなし撮影対象チップ、1280px 3列／1920px 4列のカード一覧、画像全面表示＋下部memo。**実装前・クリック可** |
 | [assembly-torque-wrench-traceability-preview.html](./assembly-torque-wrench-traceability-preview.html) | **組立・トルクレンチ締付トレーサビリティ実装前案** — トルクレンチ管理、テンプレート条件引継ぎ／範囲反映、作業確認／未接続／誤レンチ／校正切れ／管理者例外を切替可能。API・DB・実機には非接続。[ExecPlan](../plans/assembly-torque-wrench-traceability-execplan.md)・[ADR](../decisions/ADR-20260717-assembly-torque-wrench-traceability.md) |
 | [manual-order-leader-overview-preview.html](./manual-order-leader-overview-preview.html) | 手動順番プレビュー：上部＝**閲覧（高密度グリッド）**、下部＝**編集モード**（太い行・つかみ・↑↓並べ替えデモ・保存はアラートのみ） |

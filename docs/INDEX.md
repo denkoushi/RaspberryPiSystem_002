@@ -11,6 +11,7 @@
 - 生産日程検索の所有境界と互換性維持: [ExecPlan](./plans/production-schedule-lookup-boundary-execplan.md)
 
 - [Business Hermes signage live data](./plans/business-hermes-signage-live-data.md)
+- [Signage admin unification, web page capture, data boards](./plans/signage-admin-unification-execplan.md)
 
 > **注意**: このINDEX.mdは、各種ドキュメント（docs/）の「入口」として機能します。
 > - プロジェクト管理ドキュメント（EXEC_PLAN.md）は [EXEC_PLAN.md](../EXEC_PLAN.md) を参照してください。
