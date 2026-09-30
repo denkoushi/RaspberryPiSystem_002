@@ -34,6 +34,8 @@ describe('usesKioskImmersiveLayout', () => {
     ['/kiosk/inventory'],
     ['/kiosk/inventory/'],
     ['/kiosk/inventory/settings'],
+    ['/kiosk/tag-desk'],
+    ['/kiosk/tag-desk/'],
     ['/kiosk/assembly'],
     ['/kiosk/assembly/'],
     ['/kiosk/assembly/templates/new'],

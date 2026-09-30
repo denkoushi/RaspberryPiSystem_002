@@ -62,6 +62,8 @@ const IMMERSIVE_PATH_EXACT = new Set<string>([
 export function usesKioskImmersiveLayout(pathname: string): boolean {
   const p = normalizeKioskPathname(pathname);
   if (p === '/kiosk/inventory/settings' || p.startsWith('/kiosk/inventory/settings/')) return true;
+  // The tag desk keeps its reader dock still and scrolls only the list, so it needs a fixed-height page.
+  if (p === '/kiosk/tag-desk') return true;
   if (p.startsWith(KIOSK_MANUAL_ORDER_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_PROGRESS_OVERVIEW_PATH_PREFIX)) return true;
