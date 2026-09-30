@@ -177,6 +177,7 @@ model Employee {
   selfInspectionInspectorEntries                SelfInspectionInspectorEntry[]                 @relation("SelfInspectionInspectorEntryEmployee")
   selfInspectionMeasurementActorAuthentications SelfInspectionMeasurementActorAuthentication[] @relation("SelfInspectionMeasurementActorAuthenticationEmployee")
   selfInspectionRecordApprovals                 SelfInspectionRecordApproval[]                 @relation("SelfInspectionRecordApprover")
+  selfInspectionReductionApprover               SelfInspectionReductionApprover?               @relation("SelfInspectionReductionApproverEmployee")
   assemblyWorkSessionRecordApprovals            AssemblyWorkSessionApproval[]                  @relation("AssemblyWorkSessionRecordApprover")
   assemblyWorkSessionOperatorAccesses           AssemblyWorkSessionOperatorAccess[]
   torqueTrainingSessions                        TorqueTrainingSession[]
@@ -4373,6 +4374,85 @@ model SelfInspectionSessionResetAuditLog {
   @@index([scheduleRowId], map: "SelfInspectionSessionResetAuditLog_idx_schedule_row")
   @@index([createdAt], map: "SelfInspectionSessionResetAuditLog_idx_created_at")
   @@index([actionType], map: "SelfInspectionSessionResetAuditLog_idx_action_type")
+}
+
+/// 減らせる検査の判定設定（単一行）。未作成なら既定値を使う。
+model SelfInspectionReductionPolicyConfig {
+  key                      String   @id @db.VarChar(80)
+  cpkThreshold             Decimal  @default(1.67) @db.Decimal(4, 2)
+  requiredConsecutiveLots  Int      @default(10)
+  minimumSampleCount       Int      @default(30)
+  resetStreakOnChangePoint Boolean  @default(true)
+  updatedBy                String?  @db.VarChar(120)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+}
+
+/// 検査レベル変更を承認できる社員。
+model SelfInspectionReductionApprover {
+  id                   String   @id @default(uuid())
+  employeeId           String   @unique
+  employeeCodeSnapshot String
+  employeeNameSnapshot String
+  addedBy              String?  @db.VarChar(120)
+  createdAt            DateTime @default(now())
+  employee             Employee @relation("SelfInspectionReductionApproverEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+enum SelfInspectionChangePointKind {
+  TOOL_CHANGE
+  SETUP_CHANGE
+  MATERIAL_LOT
+  MACHINE_REPAIR
+  PROGRAM_CHANGE
+  OTHER
+}
+
+/// 品番×工程×資源の変化点（刃具交換など）。監査のため社員と端末は snapshot で残す。
+model SelfInspectionChangePoint {
+  id                             String                        @id @default(uuid())
+  fhincd                         String
+  processGroup                   PartMeasurementProcessGroup
+  resourceCd                     String
+  kind                           SelfInspectionChangePointKind
+  occurredAt                     DateTime                      @default(now())
+  recordedByEmployeeId           String?
+  recordedByEmployeeCodeSnapshot String
+  recordedByEmployeeNameSnapshot String
+  clientDeviceId                 String?
+  createdAt                      DateTime                      @default(now())
+
+  @@index([fhincd, processGroup, resourceCd, occurredAt], map: "SelfInspectionChangePoint_idx_key_occurred")
+}
+
+enum SelfInspectionLevelDecisionDirection {
+  REDUCE
+  RESTORE
+}
+
+/// 検査レベル変更の承認記録。実際のモード変更は管理画面のテンプレート改版で行う。
+model SelfInspectionLevelDecision {
+  id                           String                               @id @default(uuid())
+  fhincd                       String
+  processGroup                 PartMeasurementProcessGroup
+  resourceCd                   String
+  templateIdSnapshot           String?
+  templateVersionSnapshot      Int?
+  direction                    SelfInspectionLevelDecisionDirection
+  fromMode                     SelfInspectionMode
+  fromFixedCount               Int?
+  toMode                       SelfInspectionMode
+  toFixedCount                 Int?
+  cpkThreshold                 Decimal                              @db.Decimal(4, 2)
+  metricsSnapshot              Json
+  approverEmployeeId           String?
+  approverEmployeeCodeSnapshot String
+  approverEmployeeNameSnapshot String
+  clientDeviceId               String?
+  decidedAt                    DateTime                             @default(now())
+  createdAt                    DateTime                             @default(now())
+
+  @@index([fhincd, processGroup, resourceCd, decidedAt], map: "SelfInspectionLevelDecision_idx_key_decided")
 }
 
 /// SharePoint作業要領の原本行。常に同一source tupleの最新スナップショットだけを保持する。
