@@ -621,9 +621,12 @@ describe('inventory tool field options', () => {
       const field = Object.keys(select)[0];
       return field === 'maker' ? [{ maker: 'OSG' }, { maker: '京セラ' }] : [];
     });
-    const service = new ItemInventoryService({ inventoryItem: { findMany } } as never);
+    const presets = vi.fn().mockResolvedValue([{ field: 'maker', value: 'イスカル' }, { field: 'maker', value: 'OSG' }, { field: 'usage', value: '上面' }]);
+    const service = new ItemInventoryService({ inventoryItem: { findMany }, inventoryToolFieldPreset: { findMany: presets } } as never);
 
-    await expect(service.listToolFieldOptions()).resolves.toEqual({ maker: ['OSG', '京セラ'], toolName: [], workMaterial: [], toolSize: [] });
+    await expect(service.listToolFieldOptions()).resolves.toEqual({
+      maker: ['OSG', 'イスカル', '京セラ'], toolName: [], workMaterial: [], toolSize: [], model: [], usage: ['上面'],
+    });
     expect(findMany.mock.calls[0][0]).toMatchObject({ where: { deletedAt: null, maker: { not: null } }, distinct: ['maker'] });
   });
 });

@@ -101,7 +101,8 @@ export type InventoryUnit = { id: string; name: string };
 
 export const INVENTORY_TOOL_FIELDS = ['maker', 'toolName', 'workMaterial', 'toolSize'] as const;
 export type InventoryToolField = (typeof INVENTORY_TOOL_FIELDS)[number];
-export type InventoryToolFieldOptions = Record<InventoryToolField, string[]>;
+/** Fields with a pick list on the kiosk: the tool fields plus 型式 (model) and 用途 (usage). */
+export type InventoryToolFieldOptions = Record<InventoryToolField | 'model' | 'usage', string[]>;
 
 export async function getInventoryToolFieldOptions() {
   const { data } = await api.get<{ options: InventoryToolFieldOptions }>('/item-inventory/tool-field-options');

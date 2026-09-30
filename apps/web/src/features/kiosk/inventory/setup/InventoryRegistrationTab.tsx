@@ -148,20 +148,22 @@ function QuantityKeypad({ value, onChange }: { value: string; onChange: (next: s
 }
 
 type TextFieldKey = 'name' | 'model' | 'usage' | 'maker' | 'toolName' | 'workMaterial' | 'toolSize';
-const TEXT_FIELDS: Array<{ key: TextFieldKey; label: string; aria?: string; wide: boolean }> = [
-  { key: 'name', label: '名前', aria: 'アイテム名', wide: true },
-  { key: 'model', label: '型式', wide: false },
-  { key: 'maker', label: 'メーカー', wide: true },
-  { key: 'toolName', label: '工具名', wide: false },
-  { key: 'workMaterial', label: '被削材', wide: true },
-  { key: 'toolSize', label: '工具寸法', wide: false },
-  { key: 'usage', label: '用途', wide: true },
-];
-const TOOL_OPTION_COLUMNS: Array<{ key: 'maker' | 'toolName' | 'workMaterial' | 'toolSize'; label: string }> = [
+const TEXT_FIELDS: Array<{ key: TextFieldKey; label: string; aria?: string }> = [
+  { key: 'name', label: '名前', aria: 'アイテム名' },
+  { key: 'model', label: '型式' },
   { key: 'maker', label: 'メーカー' },
   { key: 'toolName', label: '工具名' },
   { key: 'workMaterial', label: '被削材' },
   { key: 'toolSize', label: '工具寸法' },
+  { key: 'usage', label: '用途' },
+];
+const TOOL_OPTION_COLUMNS: Array<{ key: 'maker' | 'toolName' | 'workMaterial' | 'toolSize' | 'model' | 'usage'; label: string }> = [
+  { key: 'maker', label: 'メーカー' },
+  { key: 'toolName', label: '工具名' },
+  { key: 'workMaterial', label: '被削材' },
+  { key: 'toolSize', label: '工具寸法' },
+  { key: 'model', label: '型式' },
+  { key: 'usage', label: '用途' },
 ];
 
 export function InventoryRegistrationTab({ accessPassword }: { accessPassword: string }) {
@@ -422,13 +424,14 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
             <div className="grid grid-cols-[repeat(2,max-content)] gap-x-4 gap-y-2">
               {TEXT_FIELDS.map((field) => (
                 <label key={field.key} className="flex items-center gap-1.5">
-                  <span className="w-16 text-sm text-white/60">{field.label}</span>
-                  <input aria-label={field.aria ?? field.label} placeholder={field.key === 'name' ? undefined : '省略可'} className={`${inputClass} ${field.wide ? 'w-[300px]' : 'w-[220px]'}`} value={draft[field.key]} onChange={(event) => update({ [field.key]: event.target.value } as Partial<Draft>)} />
+                  <span className="w-[60px] text-sm text-white/60">{field.label}</span>
+                  <input aria-label={field.aria ?? field.label} placeholder={field.key === 'name' ? undefined : '省略可'} className={`${inputClass} w-[220px]`} value={draft[field.key]} onChange={(event) => update({ [field.key]: event.target.value } as Partial<Draft>)} />
                 </label>
               ))}
             </div>
             {optionsOpen ? (
-              <div role="dialog" aria-label="登録済みの値から選ぶ" className="absolute left-[150px] top-[120px] z-10 flex w-[760px] flex-col gap-2.5 rounded-xl border-2 border-sky-400 bg-slate-900 p-3.5 shadow-2xl">
+              // Fixed to the screen so the scrolling centre column cannot clip it.
+              <div role="dialog" aria-label="登録済みの値から選ぶ" className="fixed left-1/2 top-32 z-50 flex w-[1000px] -translate-x-1/2 flex-col gap-2.5 rounded-xl border-2 border-sky-400 bg-slate-900 p-3.5 shadow-2xl">
                 <div className="flex items-center gap-2">
                   <strong className="text-white">登録済みの値から選ぶ</strong>
                   <span className="text-[13px] text-white/60">押した値がその欄に入ります</span>
@@ -439,7 +442,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
                   {TOOL_OPTION_COLUMNS.map((column) => {
                     const values = toolOptions.data?.[column.key] ?? [];
                     return (
-                      <div key={column.key} className="flex max-h-72 w-[170px] flex-col gap-1.5 overflow-y-auto" role="group" aria-label={column.label}>
+                      <div key={column.key} className="flex max-h-[26rem] w-[150px] flex-col gap-1.5 overflow-y-auto" role="group" aria-label={column.label}>
                         <span className="text-[13px] font-bold text-white/80">{column.label}</span>
                         {values.length === 0 ? <span className="text-sm text-white/40">まだありません</span> : null}
                         {values.map((value) => (

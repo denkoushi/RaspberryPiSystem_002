@@ -84,9 +84,6 @@
     pi5_runtime_uid: "{{ pi5_runtime_uid_probe.stdout }}"
     pi5_runtime_gid: "{{ pi5_runtime_gid_probe.stdout }}"
 
-- name: Keep the system journal across reboots
-  ansible.builtin.import_tasks: journald.yml
-
 - name: Prepare the shared Pi5 durable storage directories
   ansible.builtin.include_role:
     name: pi5_storage
@@ -434,6 +431,22 @@
           (
             (docker_env_slurp.content | b64decode)
             | regex_findall('^DROPBOX_APP_SECRET=(.*)$', multiline=True)
+          )
+          | first
+        )
+        | default('')
+      }}
+  when: docker_env_stat.stat.exists | default(false)
+  no_log: true
+
+- name: Extract existing BACKUP_ENCRYPTION_KEY from Docker Compose .env
+  ansible.builtin.set_fact:
+    existing_backup_encryption_key: >-
+      {{
+        (
+          (
+            (docker_env_slurp.content | b64decode)
+            | regex_findall('^BACKUP_ENCRYPTION_KEY=(.*)$', multiline=True)
           )
           | first
         )

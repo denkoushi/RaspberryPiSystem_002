@@ -19,8 +19,3 @@
   ansible.builtin.systemd:
     name: wayvnc
     state: restarted
-
-- name: restart journald
-  ansible.builtin.systemd:
-    name: systemd-journald
-    state: restarted
