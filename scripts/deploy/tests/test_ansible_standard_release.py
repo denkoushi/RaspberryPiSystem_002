@@ -83,6 +83,8 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         bindings = {item["key"]: item["value"] for item in task["loop"]}
         self.assertIn("api_local_llm_shared_token", bindings["LOCAL_LLM_SHARED_TOKEN"])
         self.assertIn("inference_providers_json", bindings["INFERENCE_PROVIDERS_JSON"])
+        # Dropbox backup encryption key reaches the API from Vault (docker .env is not re-rendered by the release)
+        self.assertIn("backup_encryption_key", bindings["BACKUP_ENCRYPTION_KEY"])
         self.assertTrue(task["no_log"])
         self.assertEqual(task["ansible.builtin.lineinfile"]["mode"], "0600")
 

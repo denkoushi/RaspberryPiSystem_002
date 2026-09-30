@@ -119,6 +119,8 @@
     - { key: BUSINESS_HERMES_CHAT_MODEL, value: "{{ business_hermes_chat_model }}" }
     - { key: BUSINESS_HERMES_MCP_API_KEY, value: "{{ business_hermes_chat_mcp_api_key }}" }
     - { key: BUSINESS_HERMES_CHAT_TIMEOUT_MS, value: "{{ api_business_hermes_chat_timeout_ms }}" }
+    # compose.env は前回の自分をコピーして作るため、Vault の新しい値はここで渡さないと API に届かない
+    - { key: BACKUP_ENCRYPTION_KEY, value: "{{ backup_encryption_key | default('') }}" }
   no_log: true
 
 - name: Bind consultation Compose paths and persistent candidate environment

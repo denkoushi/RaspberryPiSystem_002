@@ -294,8 +294,7 @@ test('the dense runtime applies day limits from the enrichment window', async ()
     now: () => new Date('2026-01-15T03:30:00Z'),
     sleep: async (ms) => { pauses.push(ms); },
   });
-  runtime.schedule(records, bodyFields);
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await runtime.schedule(records, bodyFields);
   assert.equal(sizes.reduce((sum, size) => sum + size, 0), DAY_MAX_EMBED);
   assert.ok(sizes.every((size) => size <= DAY_EMBED_BATCH));
   assert.equal(pauses.length, sizes.length - 1);

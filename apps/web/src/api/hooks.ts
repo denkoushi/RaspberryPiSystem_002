@@ -12,6 +12,7 @@ export * from './hooks/signage';
 export * from './hooks/kiosk-documents';
 export * from './hooks/work-instructions';
 export * from './hooks/self-inspection-nonconformities';
+export * from './hooks/self-inspection-reduction';
 export * from './hooks/csv-visualization';
 export * from './hooks/rigging';
 export * from './hooks/backup';
