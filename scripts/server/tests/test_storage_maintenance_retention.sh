@@ -131,6 +131,8 @@ new_case() {
   chmod +x "${CASE_DIR}/project/scripts/generate-alert.sh"
   : > "${CASE_DIR}/calls.log"
 
+  # Each case starts clean; an override left by an earlier case must not leak.
+  unset STORAGE_MAINTENANCE_RETENTION_HELPER STORAGE_MAINTENANCE_PERIOD
   export STORAGE_MAINTENANCE_PROJECT_ROOT="${CASE_DIR}/project"
   export STORAGE_MAINTENANCE_SIGNAGE_RENDER_DIR="${CASE_DIR}/missing-signage"
   export STORAGE_MAINTENANCE_MONTH='2026-09'
@@ -261,7 +263,8 @@ unset STORAGE_MAINTENANCE_MONTH STORAGE_MAINTENANCE_DAY
 export PATH="${BIN_DIR}:${ORIGINAL_PATH}"
 run_case
 [[ "${CASE_RC}" -eq 0 ]]
-[[ "$({ cat "${IMAGE_RETENTION_MARKER_FILE}"; printf x; } | tr -d x)" == $'2026-09-01\n' ]]
+[[ "$(<"${IMAGE_RETENTION_MARKER_FILE}")" == '2026-09-01' ]]
+[[ "$(wc -c < "${IMAGE_RETENTION_MARKER_FILE}" | tr -d ' ')" -eq 11 ]]
 [[ "$(wc -l < "${FAKE_CORE_CALL_LOG}")" -eq 2 ]]
 grep -Fxq 'builder prune -a --force' "${FAKE_DOCKER_CALL_LOG}"
 
