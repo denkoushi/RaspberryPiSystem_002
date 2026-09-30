@@ -24,6 +24,7 @@ export * from './domains/signage';
 export * from './domains/kiosk-documents';
 export * from './domains/work-instructions';
 export * from './domains/self-inspection-nonconformities';
+export * from './domains/self-inspection-reduction';
 export * from './domains/work-instruction-overlays';
 export * from './domains/csv-visualization';
 export * from './domains/assembly';

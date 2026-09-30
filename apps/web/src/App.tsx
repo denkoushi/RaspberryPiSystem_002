@@ -62,6 +62,7 @@ import { KioskRiggingAnalyticsPage } from './pages/kiosk/KioskRiggingAnalyticsPa
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
 import { KioskSelfInspectionPage } from './pages/kiosk/KioskSelfInspectionPage';
 import { KioskSelfInspectionRecordApprovalPage } from './pages/kiosk/KioskSelfInspectionRecordApprovalPage';
+import { KioskSelfInspectionReductionPage } from './pages/kiosk/KioskSelfInspectionReductionPage';
 import { MobilePlacementPage } from './pages/kiosk/MobilePlacementPage';
 import { MobilePlacementPartSearchPage } from './pages/kiosk/MobilePlacementPartSearchPage';
 import { ProductionScheduleDueManagementPage } from './pages/kiosk/ProductionScheduleDueManagementPage';
@@ -250,6 +251,10 @@ function App() {
           <Route
             path="/kiosk/part-measurement/self-inspection/record-approvals"
             element={<KioskSelfInspectionRecordApprovalPage />}
+          />
+          <Route
+            path="/kiosk/part-measurement/self-inspection/reduction"
+            element={<KioskSelfInspectionReductionPage />}
           />
           <Route
             path="/kiosk/part-measurement/self-inspection/start"
