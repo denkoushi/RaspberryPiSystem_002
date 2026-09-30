@@ -439,6 +439,22 @@
   when: docker_env_stat.stat.exists | default(false)
   no_log: true
 
+- name: Extract existing BACKUP_ENCRYPTION_KEY from Docker Compose .env
+  ansible.builtin.set_fact:
+    existing_backup_encryption_key: >-
+      {{
+        (
+          (
+            (docker_env_slurp.content | b64decode)
+            | regex_findall('^BACKUP_ENCRYPTION_KEY=(.*)$', multiline=True)
+          )
+          | first
+        )
+        | default('')
+      }}
+  when: docker_env_stat.stat.exists | default(false)
+  no_log: true
+
 - name: Extract existing DROPBOX_REFRESH_TOKEN from Docker Compose .env
   ansible.builtin.set_fact:
     existing_dropbox_refresh_token: >-

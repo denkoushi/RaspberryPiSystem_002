@@ -17,7 +17,7 @@ const minimalConfig = (targets: BackupConfig['targets']): BackupConfig => ({
 });
 
 describe('backup-recommended-targets.catalog', () => {
-  it('returns catalog entries for part-measurement drawings and extra Pi4 kiosks', () => {
+  it('returns server storage entries and no kiosk secrets', () => {
     const catalog = getRecommendedBackupTargetCatalog();
     expect(catalog.some((c) => c.id === 'server-directory-part-measurement-drawings')).toBe(true);
     expect(catalog.some((c) => c.id === 'server-directory-assembly-procedure-assets')).toBe(true);
@@ -25,11 +25,10 @@ describe('backup-recommended-targets.catalog', () => {
     expect(catalog.some((c) => c.id === 'server-directory-measuring-instrument-genres')).toBe(true);
     expect(catalog.some((c) => c.id === 'server-directory-pallet-machine-illustrations')).toBe(true);
     expect(catalog.some((c) => c.id === 'server-directory-pdfs')).toBe(false);
-    expect(catalog.some((c) => c.target.source.includes('raspi4-robodrill01:'))).toBe(true);
     expect(catalog.some((c) => c.target.source.includes('/.ssh'))).toBe(false);
-    expect(catalog.some((c) => c.target.source.includes('raspi4-sessaku-01:'))).toBe(true);
-    expect(catalog.some((c) => c.target.source.includes('raspi4-assembly-01:'))).toBe(true);
-    expect(catalog.some((c) => c.target.source.includes('raspi4-kensaku-02:'))).toBe(true);
+    // キオスクの .env・Tailscale 状態・status-agent 設定は秘密情報なので推奨しない
+    expect(catalog.some((c) => c.target.kind === 'client-file' || c.target.kind === 'client-directory')).toBe(false);
+    expect(catalog.some((c) => /\.env$|tailscale|raspi-status-agent\.conf/.test(c.target.source))).toBe(false);
   });
 
   it('findMissing reports all catalog items when targets empty', () => {
