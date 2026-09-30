@@ -119,7 +119,7 @@ describe('KioskItemInventorySettingsPage', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'NFCタグ' }));
     expect(screen.getByText('5')).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole('button', { name: '＋ タグを追加' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'タグを追加' })[0]);
     press('数量のテンキー', '3');
     page.readTag('tag-already-on-reader', 1);
     fireEvent.click(screen.getByRole('button', { name: '次へ：タグをかざす' }));

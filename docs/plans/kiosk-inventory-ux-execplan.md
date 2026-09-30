@@ -31,6 +31,7 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - [x] (2026-09-28) Feedback round 2026-09-28: fixes deployed (PR #1523, a6762c71); compact 1920×1080 registration deployed (PR #1527, 134e1b74); area normalization and touch shelf creation deployed (PR #1528, 426eca64, run 20260928-060636-3a0fae).
 - [x] (2026-09-28 15:33 JST) Existing areas normalized on Pi5 after user approval: dry run listed 4 rows (2 shelves, 1 candidate, 1 item: `30041R_2ＭＦ-Ｐ` → `30041R_2MF-P`, no shelf conflicts); `--apply` with backup `/opt/backups/inventory-area-normalize-20260928.json` (763 bytes); a second dry run reported nothing to change.
 - [ ] Units (個, ケース, …): implemented on `feat/kiosk-inventory-units`; remaining: PR, deploy, kiosk check.
+- [x] (2026-09-30) Brush-up of every inventory screen from the approved canvas boards ㉑〜㉘ (shared `inv` palette and components), pop-up fixes (wider 型式, second tap clears, edit mode with rename-with-items) on `feat/kiosk-inventory-brushup`. Checked at 1920×1080 with a local mock harness; kiosk check pending.
 
 ## Surprises & Discoveries
 

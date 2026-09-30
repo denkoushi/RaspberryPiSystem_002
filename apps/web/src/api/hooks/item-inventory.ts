@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  addInventoryToolFieldValue,
   cancelInventoryTransaction,
   bindInventoryCompartment,
   correctInventoryStock,
@@ -10,6 +11,7 @@ import {
   deleteInventoryItem,
   deleteInventoryImportPhoto,
   deleteInventoryItemPhoto,
+  deleteInventoryToolFieldValue,
   getInventoryHistory,
   getInventoryImports,
   getInventoryImportMessages,
@@ -17,11 +19,13 @@ import {
   getInventoryLocations,
   getInventoryTags,
   getInventoryToolFieldOptions,
+  getInventoryToolFieldValues,
   getInventoryUnits,
   ingestInventoryMail,
   moveInventoryCompartment,
   processInventoryTransaction,
   renameInventoryArea,
+  renameInventoryToolFieldValue,
   registerInventoryImport,
   registerInventoryQuantityTag,
   registerInventoryRestockTag,
@@ -33,6 +37,7 @@ import {
   setInventoryItemUnit,
   type InventoryImport,
   type InventoryItem,
+  type InventoryOptionField,
 } from '../client';
 
 const inventoryKeys = {
@@ -44,11 +49,15 @@ const inventoryKeys = {
   importMessages: ['inventory-import-messages'],
   units: ['inventory-units'],
   toolFieldOptions: ['inventory-tool-field-options'],
+  toolFieldValues: ['inventory-tool-field-values'],
 };
 
 export function useInventoryItems(enabled = true) { return useQuery({ queryKey: inventoryKeys.items, queryFn: getInventoryItems, enabled }); }
 export function useInventoryLocations() { return useQuery({ queryKey: inventoryKeys.locations, queryFn: getInventoryLocations }); }
 export function useInventoryToolFieldOptions(enabled = true) { return useQuery({ queryKey: inventoryKeys.toolFieldOptions, queryFn: getInventoryToolFieldOptions, enabled }); }
+export function useInventoryToolFieldValues(accessPassword: string, enabled = true) {
+  return useQuery({ queryKey: inventoryKeys.toolFieldValues, queryFn: () => getInventoryToolFieldValues(accessPassword), enabled });
+}
 export function useInventoryUnits() { return useQuery({ queryKey: inventoryKeys.units, queryFn: getInventoryUnits }); }
 export function useInventoryTags() { return useQuery({ queryKey: inventoryKeys.tags, queryFn: getInventoryTags }); }
 export function useInventoryImports(accessPassword?: string) {
@@ -163,6 +172,18 @@ export function useInventoryMutations(accessPassword?: string) {
     cancel: useMutation({ mutationFn: (id: string) => cancelInventoryTransaction(id, accessPassword), onSuccess: invalidate }),
     correction: useMutation({ mutationFn: (input: Parameters<typeof correctInventoryStock>[0]) => correctInventoryStock(input, accessPassword), onSuccess: invalidate }),
     move: useMutation({ mutationFn: ({ id, drawerId }: { id: string; drawerId: string }) => moveInventoryCompartment(id, drawerId, accessPassword), onSuccess: invalidate }),
+    addToolFieldValue: useMutation({
+      mutationFn: ({ field, value }: { field: InventoryOptionField; value: string }) => addInventoryToolFieldValue(field, value, accessPassword),
+      onSuccess: invalidate,
+    }),
+    renameToolFieldValue: useMutation({
+      mutationFn: ({ field, from, to }: { field: InventoryOptionField; from: string; to: string }) => renameInventoryToolFieldValue(field, from, to, accessPassword),
+      onSuccess: invalidate,
+    }),
+    deleteToolFieldValue: useMutation({
+      mutationFn: ({ field, value }: { field: InventoryOptionField; value: string }) => deleteInventoryToolFieldValue(field, value, accessPassword),
+      onSuccess: invalidate,
+    }),
     createUnit: useMutation({ mutationFn: (name: string) => createInventoryUnit(name, accessPassword), onSuccess: invalidate }),
     setItemUnit: useMutation({ mutationFn: ({ itemId, unit }: { itemId: string; unit: string | null }) => setInventoryItemUnit(itemId, unit, accessPassword), onSuccess: invalidate }),
     replaceTag: useMutation({ mutationFn: ({ id, uid }: { id: string; uid: string }) => replaceInventoryItemTag(id, uid, accessPassword), onSuccess: invalidate }),

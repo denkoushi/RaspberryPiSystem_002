@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+import { NfcIcon } from '../InventoryIcons';
+import { invButtonSm, invButtonSmGhost, invError, invField, invPanel } from '../inventoryUi';
 import { NfcPrompt } from '../NfcPrompt';
 
 type Props = {
@@ -9,27 +11,48 @@ type Props = {
   error: string | null;
   onManualUid: (uid: string) => void;
   onCancel: () => void;
+  /** Big target with rings, for a screen whose only job is reading one tag. */
+  large?: boolean;
 };
 
 /** One-row "hold the tag" prompt. Reading starts as soon as it is shown; the ID can be typed as a fallback. */
-export function NfcScanPanel({ label, sub, pending, error, onManualUid, onCancel }: Props) {
+export function NfcScanPanel({ label, sub, pending, error, onManualUid, onCancel, large = false }: Props) {
   const [manualOpen, setManualOpen] = useState(false);
   const [manualUid, setManualUid] = useState('');
+  const manual = manualOpen ? (
+    <span className="flex items-center gap-2">
+      <input aria-label="タグのID" placeholder="タグのID" className={`${invField} w-56`} value={manualUid} onChange={(event) => setManualUid(event.target.value)} />
+      <button type="button" className={invButtonSm} disabled={pending || !manualUid.trim()} onClick={() => onManualUid(manualUid.trim())}>使う</button>
+    </span>
+  ) : (
+    <button type="button" className="text-[13px] text-inv-cyan underline underline-offset-2" onClick={() => setManualOpen(true)}>IDを手で入れる</button>
+  );
+  if (large) {
+    return (
+      <section className={`${invPanel} flex flex-col items-center gap-5 border-inv-amber/50 px-7 py-9`} aria-label="タグを読む">
+        <div className="relative flex h-[200px] w-[200px] items-center justify-center" aria-hidden="true">
+          <span className="absolute inset-0 rounded-full border-2 border-inv-amber/20" />
+          <span className="absolute inset-6 rounded-full border-2 border-inv-amber/40" />
+          <span className="flex h-28 w-28 items-center justify-center rounded-full bg-inv-amber text-inv-amber-ink"><NfcIcon size={60} /></span>
+        </div>
+        <p role="status" className="text-center text-[28px] font-black">{pending ? '登録中…' : label}</p>
+        {sub ? <p className="-mt-3 text-center text-sm text-inv-muted">{sub}</p> : null}
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button type="button" className={invButtonSmGhost} disabled={pending} onClick={onCancel}>やめる</button>
+          {manual}
+        </div>
+        {error ? <p className={`rounded-lg border px-3 py-2 text-sm ${invError}`} role="alert">{error}</p> : null}
+      </section>
+    );
+  }
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-3 rounded-lg bg-slate-900/70 px-3 py-2.5">
-        {pending ? <span role="status" className="inline-flex h-11 items-center px-2 text-base font-bold text-white">登録中…</span> : <NfcPrompt size="small" tone="amber" label={label} sub={sub} />}
-        <button type="button" className="h-10 rounded-lg border border-white/25 px-3 text-sm text-white hover:bg-slate-800 disabled:opacity-40" disabled={pending} onClick={onCancel}>やめる</button>
-        {manualOpen ? (
-          <span className="flex items-center gap-2">
-            <input aria-label="タグのID" placeholder="タグのID" className="h-10 w-56 rounded-md border border-white/25 bg-slate-950 px-2.5 text-base text-white focus:border-sky-400 focus:outline-none" value={manualUid} onChange={(event) => setManualUid(event.target.value)} />
-            <button type="button" className="h-10 rounded-lg border border-white/25 bg-slate-800 px-3 text-sm text-white disabled:opacity-40" disabled={pending || !manualUid.trim()} onClick={() => onManualUid(manualUid.trim())}>使う</button>
-          </span>
-        ) : (
-          <button type="button" className="text-sm text-sky-300 underline" onClick={() => setManualOpen(true)}>IDを手で入れる</button>
-        )}
+      <div className="flex flex-wrap items-center gap-3">
+        {pending ? <span role="status" className="inline-flex h-11 items-center px-2 text-base font-bold">登録中…</span> : <NfcPrompt size="small" tone="amber" label={label} sub={sub} />}
+        <button type="button" className={invButtonSmGhost} disabled={pending} onClick={onCancel}>やめる</button>
+        {manual}
       </div>
-      {error ? <p className="rounded border border-red-400/50 bg-red-950/60 px-3 py-2 text-sm text-red-100" role="alert">{error}</p> : null}
+      {error ? <p className={`rounded-lg border px-3 py-2 text-sm ${invError}`} role="alert">{error}</p> : null}
     </div>
   );
 }

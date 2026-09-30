@@ -18,17 +18,17 @@ export function InventoryPhotoPane({ photos }: Props) {
   const { imageUrl } = useInventoryFullPhoto(photo?.photoUrl ?? null);
 
   if (!photo) {
-    return <div className="flex h-full min-h-64 items-center justify-center rounded-lg bg-slate-950/50 text-xl text-white/40">写真なし</div>;
+    return <div className="flex h-full min-h-64 items-center justify-center rounded-[18px] border border-inv-line bg-inv-s1 text-xl text-inv-faint">写真なし</div>;
   }
 
   // Show the thumbnail until the full-size photo arrives, so the pane is never empty.
   const src = imageUrl ?? inventoryThumbnailUrl(photo.photoUrl);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2" aria-label="品物写真">
+    <div className="flex h-full min-h-0 flex-col gap-3.5" aria-label="品物写真">
       <button
         type="button"
-        className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-slate-950/60 focus:outline-none focus:ring-2 focus:ring-sky-300"
+        className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[18px] border border-inv-line bg-inv-s1 focus:outline-none focus-visible:border-inv-cyan"
         aria-label={zoomed ? '写真を元の大きさに戻す' : '写真を拡大'}
         aria-pressed={zoomed}
         onClick={() => setZoomed((current) => !current)}
@@ -36,17 +36,17 @@ export function InventoryPhotoPane({ photos }: Props) {
         <img src={src} alt={photo.originalFilename} className="h-full w-full object-contain" />
       </button>
       {!zoomed && photos.length > 1 ? (
-        <div className="flex shrink-0 gap-2 overflow-x-auto">
+        <div className="flex shrink-0 gap-3 overflow-x-auto">
           {photos.map((entry, entryIndex) => (
             <button
               key={entry.id}
               type="button"
               aria-label={`写真${entryIndex + 1}を表示`}
               aria-pressed={entry.id === photo.id}
-              className={`shrink-0 rounded border-2 ${entry.id === photo.id ? 'border-sky-400' : 'border-transparent'}`}
+              className={`shrink-0 overflow-hidden rounded-xl border-2 ${entry.id === photo.id ? 'border-inv-cyan' : 'border-inv-line'}`}
               onClick={() => setIndex(entryIndex)}
             >
-              <img src={inventoryThumbnailUrl(entry.photoUrl)} alt="" className="h-[150px] w-[200px] rounded object-cover" />
+              <img src={inventoryThumbnailUrl(entry.photoUrl)} alt="" className="h-[150px] w-[200px] object-cover" />
             </button>
           ))}
         </div>
