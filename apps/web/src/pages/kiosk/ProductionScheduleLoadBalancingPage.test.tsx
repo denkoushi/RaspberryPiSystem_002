@@ -170,6 +170,31 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     );
   });
 
+  it('shows machine names in half-width like other kiosk screens and filters by them', () => {
+    const data = workspace();
+    data.rows[0]!.machineName = 'ｎｖｄ－５０００';
+    data.rows[1]!.machineName = 'ＨＸ－６３０';
+    mockUseWorkspace.mockReturnValue({ data, isFetching: false, error: null });
+    render(<ProductionScheduleLoadBalancingPage />);
+
+    const select = screen.getByRole('combobox', { name: '機種' });
+    expect(within(select).getByRole('option', { name: '機種：HX-630' })).toBeInTheDocument();
+    const detail = screen.getByTestId('load-balancing-cell-detail');
+    expect(within(detail).getAllByText('NVD-5000').length).toBeGreaterThan(0);
+
+    fireEvent.change(select, { target: { value: 'HX-630' } });
+    expect(within(detail).queryByText('NVD-5000')).not.toBeInTheDocument();
+    expect(within(detail).getByText('HX-630')).toBeInTheDocument();
+  });
+
+  it('asks the day chart for the same range so the server reuses the loaded rows', () => {
+    render(<ProductionScheduleLoadBalancingPage />);
+    expect(mockUseWorkspaceDay).toHaveBeenCalledWith(
+      expect.objectContaining({ month: '2026-10', resourceCd: '033', fromMonth: '2026-09', toMonth: '2027-02' }),
+      { enabled: true }
+    );
+  });
+
   it('lists rows that could not be placed on any month', () => {
     render(<ProductionScheduleLoadBalancingPage />);
 
