@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useInventoryMutations } from '../../../../api/hooks';
@@ -54,7 +54,7 @@ describe('InventoryItemEditTab', () => {
 
   it('moves a compartment to a free drawer in the same area', async () => {
     render(<InventoryItemEditTab accessPassword="2520" />);
-    fireEvent.click(screen.getByRole('button', { name: /治具A/ }));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
     fireEvent.click(screen.getByRole('button', { name: '別の引き出しへ移す' }));
 
     expect(screen.queryByRole('button', { name: '棚1 引出し1' })).not.toBeInTheDocument();
@@ -66,13 +66,13 @@ describe('InventoryItemEditTab', () => {
 
   it('adds another drawer with a held tag and a keypad count', async () => {
     const view = render(<InventoryItemEditTab accessPassword="2520" />);
-    fireEvent.click(screen.getByRole('button', { name: /治具A/ }));
-    fireEvent.click(screen.getByRole('button', { name: '＋ 別の引き出しにも置く' }));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    fireEvent.click(screen.getByRole('button', { name: '別の引き出しにも置く' }));
     fireEvent.click(screen.getByRole('button', { name: '引出し2' }));
 
     nfc.event = { uid: 'new-tag', eventId: 5, timestamp: new Date().toISOString() } as NfcEvent;
     view.rerender(<InventoryItemEditTab accessPassword="2520" />);
-    expect(await screen.findByText(/タグ new-tag を読み取りました/)).toBeInTheDocument();
+    expect(await screen.findByText('new-tag')).toBeInTheDocument();
     const keypad = screen.getByRole('group', { name: '入っている数のテンキー' });
     fireEvent.click(Array.from(keypad.querySelectorAll('button')).find((button) => button.textContent === '4')!);
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'この引き出しを追加する' })); });
@@ -82,7 +82,7 @@ describe('InventoryItemEditTab', () => {
 
   it('changes the unit the item is counted in', async () => {
     render(<InventoryItemEditTab accessPassword="2520" />);
-    fireEvent.click(screen.getByRole('button', { name: /治具A/ }));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
     expect(screen.getByRole('button', { name: '個' })).toHaveAttribute('aria-pressed', 'true');
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'ケース' })); });
@@ -93,7 +93,7 @@ describe('InventoryItemEditTab', () => {
 
   it('asks before deleting the item', async () => {
     render(<InventoryItemEditTab accessPassword="2520" />);
-    fireEvent.click(screen.getByRole('button', { name: /治具A/ }));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
 
     fireEvent.click(screen.getByRole('button', { name: 'アイテムを削除' }));
     expect(mutations.deleteItem.mutateAsync).not.toHaveBeenCalled();

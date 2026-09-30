@@ -130,16 +130,16 @@ describe('KioskItemInventoryPage', () => {
       restock: false,
     })));
     expect(screen.getByText(/払い出しました/)).toBeInTheDocument();
-    expect(screen.getByText(/8個/)).toBeInTheDocument();
+    expect(screen.getByLabelText('現在庫')).toHaveTextContent('8個');
     expect(screen.getByAltText('item.jpg')).toBeInTheDocument();
 
     await act(async () => {
       navigateToEvent?.({ uid: otherItemTag.uid, timestamp: new Date(Date.now() + 2).toISOString(), inventoryTag: otherItemTag });
     });
-    expect(screen.getByText(/20個/)).toBeInTheDocument();
+    expect(screen.getByLabelText('現在庫')).toHaveTextContent('20個');
     await act(async () => { screen.getByRole('button', { name: '直前の取引を取消' }).click(); });
     await waitFor(() => expect(cancelMutateAsync).toHaveBeenCalledWith('transaction-id'));
-    expect(screen.getByText(/20個/)).toBeInTheDocument();
+    expect(screen.getByLabelText('現在庫')).toHaveTextContent('20個');
   });
 
   it('processes restock order, resets explicitly, and clears the flow after 30 seconds', async () => {
@@ -183,7 +183,7 @@ describe('KioskItemInventoryPage', () => {
     });
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ restock: true, restockTagUid: 'restock-uid' })));
     expect(screen.getByText(/補充しました/)).toBeInTheDocument();
-    expect(screen.getByText(/12個/)).toBeInTheDocument();
+    expect(screen.getByLabelText('現在庫')).toHaveTextContent('12個');
 
     await act(async () => {
       navigateToEvent?.({ uid: 'restock-uid-2', timestamp: new Date(Date.now() + 3).toISOString(), inventoryTag: { id: 'restock-tag-2', uid: 'restock-uid-2', kind: 'RESTOCK', quantity: null, compartment: null } });
@@ -267,11 +267,11 @@ describe('KioskItemInventoryPage stock correction and tag-less picking', () => {
     expect(vi.mocked(useInventoryMutations)).toHaveBeenCalledWith();
     expect(correction).toHaveBeenCalledWith({ compartmentId: 'compartment-id', desiredQuantity: 9, expectedBeforeQuantity: 10 });
     expect(screen.getByText('在庫を 1個 減らしました（10 → 9個）')).toBeInTheDocument();
-    expect(screen.getByText('9個')).toBeInTheDocument();
+    expect(screen.getByLabelText('現在庫')).toHaveTextContent('9個');
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '直前の取引を取消' })); });
     expect(cancel).toHaveBeenCalledWith('correction-id');
-    expect(screen.getByText('10個')).toBeInTheDocument();
+    expect(screen.getByLabelText('現在庫')).toHaveTextContent('10個');
   });
 
   it('shows a refused correction next to the keypad and reloads the current stock', async () => {
@@ -364,7 +364,7 @@ describe('KioskItemInventoryPage units', () => {
     const scan = renderWithNfc();
     await scan(caseTag);
 
-    expect(screen.getByText('10ケース')).toBeInTheDocument();
+    expect(screen.getByLabelText('現在庫')).toHaveTextContent('10ケース');
     fireEvent.click(screen.getByRole('button', { name: '数を直す' }));
     pressDigits('8');
     expect(screen.getByText('記録を 2ケース 減らします')).toBeInTheDocument();
@@ -389,23 +389,23 @@ describe('KioskItemInventoryPage item list and history', () => {
     fireEvent.click(within(screen.getByLabelText('登録済みアイテム')).getByRole('button', { name: /治具/ }));
 
     expect(screen.getByText('数量タグ')).toBeInTheDocument();
-    expect(screen.getByText('10個')).toBeInTheDocument();
+    expect(screen.getByLabelText('現在庫')).toHaveTextContent('10個');
   });
 
-  it('shows the latest three movements and opens the rest in place', async () => {
+  it('shows the latest five movements and opens the rest in place', async () => {
     vi.mocked(useInventoryMutations).mockReturnValue({
       transaction: { mutateAsync: vi.fn(), isPending: false },
       cancel: { mutateAsync: vi.fn(), isPending: false },
       correction: { mutateAsync: vi.fn(), isPending: false },
     } as never);
-    const rows = Array.from({ length: 5 }, (_, index) => historyEntry({ id: `h-${index}`, action: 'ISSUE', delta: -1, beforeQuantity: 20 - index, afterQuantity: 19 - index }));
+    const rows = Array.from({ length: 7 }, (_, index) => historyEntry({ id: `h-${index}`, action: 'ISSUE', delta: -1, beforeQuantity: 20 - index, afterQuantity: 19 - index }));
     vi.mocked(useInventoryCompartmentHistory).mockReturnValue({ data: rows, isLoading: false } as never);
     const scan = renderWithNfc();
     await scan(itemTag);
 
     const history = screen.getByRole('region', { name: '最近の動き' });
-    expect(within(history).getAllByRole('listitem')).toHaveLength(3);
-    fireEvent.click(within(history).getByRole('button', { name: '▼ あと2件' }));
     expect(within(history).getAllByRole('listitem')).toHaveLength(5);
+    fireEvent.click(within(history).getByRole('button', { name: 'あと2件' }));
+    expect(within(history).getAllByRole('listitem')).toHaveLength(7);
   });
 });
