@@ -9,7 +9,7 @@ vi.mock('node-cron', () => ({ default: { schedule: mocks.schedule } }));
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), error: vi.fn() } }));
 vi.mock('./business-hermes-nightly.service.js', () => ({ BusinessHermesNightlyService: class { run = mocks.run; } }));
-import { BusinessHermesNightlyScheduler } from './business-hermes-nightly.scheduler.js';
+import { BusinessHermesNightlyScheduler, failureBackoffMinutes } from './business-hermes-nightly.scheduler.js';
 
 afterEach(() => { vi.clearAllMocks(); mocks.run.mockReset(); });
 describe('Spare-capacity preparation scheduling', () => {
@@ -32,6 +32,42 @@ describe('Spare-capacity preparation scheduling', () => {
       mocks.schedule.mock.calls[0]![1]();
       await vi.waitFor(() => expect(mocks.run).toHaveBeenCalledTimes(1));
       await scheduler.stop();
+    }
+  });
+  it('backs off after repeated failures instead of retrying every minute', async () => {
+    expect([1, 2, 3, 4, 5, 6, 10].map(failureBackoffMinutes)).toEqual([15, 30, 60, 120, 240, 360, 360]);
+    vi.useFakeTimers();
+    try {
+      mocks.schedule.mockClear(); mocks.run.mockReset().mockResolvedValue({ status: 'failed' });
+      const scheduler = new BusinessHermesNightlyScheduler(); scheduler.start();
+      const tick = mocks.schedule.mock.calls[0]![1];
+      tick();
+      await vi.waitFor(() => expect(mocks.run).toHaveBeenCalledTimes(1));
+      await vi.advanceTimersByTimeAsync(14 * 60_000); tick(); await Promise.resolve();
+      expect(mocks.run).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(2 * 60_000); tick();
+      await vi.waitFor(() => expect(mocks.run).toHaveBeenCalledTimes(2));
+      // The second failure waits 30 minutes.
+      await vi.advanceTimersByTimeAsync(20 * 60_000); tick(); await Promise.resolve();
+      expect(mocks.run).toHaveBeenCalledTimes(2);
+      await scheduler.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('backs off when a batch throws', async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.schedule.mockClear(); mocks.run.mockReset().mockRejectedValue(new Error('boom'));
+      const scheduler = new BusinessHermesNightlyScheduler(); scheduler.start();
+      const tick = mocks.schedule.mock.calls[0]![1];
+      tick();
+      await vi.waitFor(() => expect(mocks.run).toHaveBeenCalledTimes(1));
+      await vi.advanceTimersByTimeAsync(5 * 60_000); tick(); await Promise.resolve();
+      expect(mocks.run).toHaveBeenCalledTimes(1);
+      await scheduler.stop();
+    } finally {
+      vi.useRealTimers();
     }
   });
 });
