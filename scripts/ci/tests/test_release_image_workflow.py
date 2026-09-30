@@ -86,6 +86,13 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
         self.assertIn("--provenance=mode=min", command)
         self.assertIn("--sbom=true", command)
         self.assertIn(f"BUILD_COMMIT={SHA}", command)
+        self.assertIn(
+            "type=registry,ref=ghcr.io/denkoushi/raspisys-web:buildcache-web-arm64", command
+        )
+        cache_to = command[command.index("--cache-to") + 1]
+        self.assertTrue(cache_to.startswith("type=registry,ref=ghcr.io/denkoushi/raspisys-web:buildcache-web-arm64,"))
+        self.assertIn("mode=max", cache_to)
+        self.assertNotIn("type=gha", cache_to)
         self.assertIn("VITE_AGENT_WS_MODE=local", command)
         self.assertIn(f"VITE_RELEASE_SHA={SHA}", command)
         self.assertNotIn("TOKEN", joined)
