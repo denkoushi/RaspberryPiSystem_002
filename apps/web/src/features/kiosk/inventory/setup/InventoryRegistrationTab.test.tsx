@@ -30,7 +30,7 @@ vi.mock('../../../../api/hooks', () => ({
   })),
   useInventoryItems: vi.fn(() => ({ data: [], isLoading: false })),
   useInventoryUnits: vi.fn(() => ({ data: [{ id: 'u1', name: '個' }, { id: 'u2', name: 'ケース' }] })),
-  useInventoryToolFieldOptions: vi.fn(() => ({ data: { maker: ['OSG', '京セラ'], toolName: ['エンドミル'], workMaterial: ['S45C'], toolSize: [] } })),
+  useInventoryToolFieldOptions: vi.fn(() => ({ data: { maker: ['OSG', '京セラ'], toolName: ['エンドミル'], workMaterial: ['S45C'], toolSize: [], model: ['SOMT140520ER-GM / PR1525'], usage: ['上面', '側面'] } })),
   useInventoryMutations: vi.fn(),
 }));
 vi.mock('../../../../hooks/useNfcStream', () => ({
@@ -242,6 +242,10 @@ describe('InventoryRegistrationTab', () => {
     expect(screen.getByRole('textbox', { name: 'メーカー' })).toHaveValue('OSG');
     expect(screen.getByRole('textbox', { name: '被削材' })).toHaveValue('S45C');
     expect(screen.getByRole('textbox', { name: '工具寸法' })).toHaveValue('φ10');
+    fireEvent.click(within(within(popup).getByRole('group', { name: '型式' })).getByRole('button', { name: 'SOMT140520ER-GM / PR1525' }));
+    fireEvent.click(within(within(popup).getByRole('group', { name: '用途' })).getByRole('button', { name: '側面' }));
+    expect(screen.getByRole('textbox', { name: '型式' })).toHaveValue('SOMT140520ER-GM / PR1525');
+    expect(screen.getByRole('textbox', { name: '用途' })).toHaveValue('側面');
   });
 
   it('asks before deleting a candidate photo', () => {

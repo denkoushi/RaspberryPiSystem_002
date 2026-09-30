@@ -14,6 +14,9 @@ const UNIT_NAME_MAX_LENGTH = 20;
 export const INVENTORY_TOOL_FIELDS = ['maker', 'toolName', 'workMaterial', 'toolSize'] as const;
 export type InventoryToolField = (typeof INVENTORY_TOOL_FIELDS)[number];
 type InventoryToolInput = Partial<Record<InventoryToolField, string>>;
+/** Fields that offer a pick list on the kiosk: the tool fields plus 型式 and 用途. */
+export const INVENTORY_OPTION_FIELDS = [...INVENTORY_TOOL_FIELDS, 'model', 'usage'] as const;
+export type InventoryOptionField = (typeof INVENTORY_OPTION_FIELDS)[number];
 
 function toolData(input: InventoryToolInput, keepMissing: boolean): Partial<Record<InventoryToolField, string | null>> {
   const data: Partial<Record<InventoryToolField, string | null>> = {};
@@ -385,18 +388,21 @@ export class ItemInventoryService {
     });
   }
 
-  /** Values already used for each tool field, offered as choices when registering. */
-  async listToolFieldOptions(): Promise<Record<InventoryToolField, string[]>> {
-    const entries = await Promise.all(INVENTORY_TOOL_FIELDS.map(async (field) => {
+  /** Pre-registered choices plus values already used, for each field offered in the kiosk pop-up. */
+  async listToolFieldOptions(): Promise<Record<InventoryOptionField, string[]>> {
+    const presets = await this.db.inventoryToolFieldPreset.findMany({ select: { field: true, value: true } });
+    const entries = await Promise.all(INVENTORY_OPTION_FIELDS.map(async (field) => {
       const rows = await this.db.inventoryItem.findMany({
         where: { deletedAt: null, [field]: { not: null } },
         select: { [field]: true },
         distinct: [field],
         orderBy: { [field]: 'asc' },
       }) as unknown as Array<Record<string, string | null>>;
-      return [field, rows.map((row) => row[field]).filter((value): value is string => Boolean(value))] as const;
+      const used = rows.map((row) => row[field]).filter((value): value is string => Boolean(value));
+      const preset = presets.filter((entry) => entry.field === field).map((entry) => entry.value);
+      return [field, [...new Set([...used, ...preset])].sort((a, b) => a.localeCompare(b, 'ja'))] as const;
     }));
-    return Object.fromEntries(entries) as Record<InventoryToolField, string[]>;
+    return Object.fromEntries(entries) as Record<InventoryOptionField, string[]>;
   }
 
   async listUnits() {
