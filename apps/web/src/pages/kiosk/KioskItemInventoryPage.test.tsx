@@ -1,9 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, useNavigate } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import { resolveInventoryTag, type InventoryItem, type InventoryTag } from '../../api/client';
-import { useInventoryCompartmentHistory, useInventoryItems, useInventoryMutations } from '../../api/hooks';
+import { useInventoryCompartmentHistory, useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
 
 import { KioskItemInventoryPage } from './KioskItemInventoryPage';
 
@@ -14,6 +14,7 @@ vi.mock('../../api/client', () => ({ resolveInventoryTag: vi.fn(), inventoryThum
 vi.mock('../../api/hooks', () => ({
   useInventoryMutations: vi.fn(),
   useInventoryItems: vi.fn(() => ({ data: [], isLoading: false })),
+  useInventoryImportSummaries: vi.fn(() => ({ data: [], isLoading: false })),
   useInventoryCompartmentHistory: vi.fn(() => ({ data: [], isLoading: false })),
 }));
 
@@ -407,5 +408,51 @@ describe('KioskItemInventoryPage item list and history', () => {
     expect(within(history).getAllByRole('listitem')).toHaveLength(5);
     fireEvent.click(within(history).getByRole('button', { name: 'あと2件' }));
     expect(within(history).getAllByRole('listitem')).toHaveLength(7);
+  });
+
+  it('goes back to the list from an item by the back button', async () => {
+    vi.mocked(useInventoryMutations).mockReturnValue({
+      transaction: { mutateAsync: vi.fn(), isPending: false },
+      cancel: { mutateAsync: vi.fn(), isPending: false },
+      correction: { mutateAsync: vi.fn(), isPending: false },
+    } as never);
+    const item = { ...itemTag.compartment!.item, compartments: [itemTag.compartment!] } as InventoryItem;
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [item], isLoading: false } as never);
+    renderWithNfc();
+
+    expect(screen.queryByRole('button', { name: '一覧へ' })).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByLabelText('登録済みアイテム')).getByRole('button', { name: /治具/ }));
+    fireEvent.click(screen.getByRole('button', { name: '一覧へ' }));
+
+    expect(screen.getByLabelText('登録済みアイテム')).toBeInTheDocument();
+    expect(screen.queryByLabelText('現在庫')).not.toBeInTheDocument();
+  });
+
+  it('opens setup for an unregistered candidate card', () => {
+    vi.mocked(useInventoryMutations).mockReturnValue({
+      transaction: { mutateAsync: vi.fn(), isPending: false },
+      cancel: { mutateAsync: vi.fn(), isPending: false },
+      correction: { mutateAsync: vi.fn(), isPending: false },
+    } as never);
+    vi.mocked(useInventoryImportSummaries).mockReturnValue({
+      data: [{ id: 'p5', sourceItemId: 5, area: '30042S_FJV50/80', category: '段取工具', createdAt: '2026-09-30T05:45:05Z', photoUrl: null, photoCount: 1 }],
+      isLoading: false,
+    } as never);
+    function SettingsProbe() {
+      const location = useLocation();
+      return <p>setup {(location.state as { importId?: string } | null)?.importId}</p>;
+    }
+    render(
+      <MemoryRouter initialEntries={['/kiosk/inventory']}>
+        <Routes>
+          <Route path="/kiosk/inventory" element={<KioskItemInventoryPage />} />
+          <Route path="/kiosk/inventory/settings" element={<SettingsProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '未登録 候補 #5 を登録する' }));
+    expect(screen.getByText('setup p5')).toBeInTheDocument();
+    vi.mocked(useInventoryImportSummaries).mockReturnValue({ data: [], isLoading: false } as never);
   });
 });

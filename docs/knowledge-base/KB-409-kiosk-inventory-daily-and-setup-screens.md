@@ -73,3 +73,7 @@ Do not merge to `main` until a standard release run has finished. The next run m
   - A value can be deleted only when no item uses it. Otherwise it would reappear, because the pick list merges item values with presets.
   - API: `GET/POST/PUT/DELETE /item-inventory/tool-field-values` (setup PIN).
 - Pick lists sort naturally (`φ20` before `φ100`).
+- Mailed candidates waiting for registration lead the 在庫操作 item list, newest first, with an amber 未登録 badge. Tapping a card opens 在庫の準備 (PIN first) with that candidate selected. The list reads `GET /item-inventory/import-summaries` (kiosk client key, no PIN; thumbnail, number, machine and category only) every minute. Candidate details and registration still need the PIN.
+  - Why: a worker on 2026-09-30 saw a candidate ingested correctly but could not find it, because 登録待ち opened the oldest candidate and the others were small buttons in the right pane.
+- 登録待ち lists candidates newest first in a thumbnail strip under the three panes, not in the right pane.
+- An item screen has a 一覧へ button that returns to the list; the 30-second automatic return stays.

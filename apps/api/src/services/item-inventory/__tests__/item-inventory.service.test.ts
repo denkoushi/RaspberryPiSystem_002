@@ -535,6 +535,23 @@ describe('ItemInventoryService history', () => {
   });
 });
 
+describe('ItemInventoryService pending import summaries', () => {
+  it('returns pending candidates newest first with one thumbnail and the photo count', async () => {
+    const createdAt = new Date('2026-09-30T05:45:05Z');
+    const findMany = vi.fn().mockResolvedValue([
+      { id: 'p5', sourceItemId: 5, area: '30042S_FJV50/80', category: '段取工具', createdAt, photos: [{ photoUrl: '/api/storage/photos/5.jpg' }], _count: { photos: 2 } },
+      { id: 'p4', sourceItemId: 4, area: '50013_540AP', category: null, createdAt, photos: [], _count: { photos: 0 } },
+    ]);
+    const service = new ItemInventoryService({ inventoryImportPayload: { findMany } } as never);
+
+    await expect(service.listPendingImportSummaries()).resolves.toEqual([
+      { id: 'p5', sourceItemId: 5, area: '30042S_FJV50/80', category: '段取工具', createdAt, photoUrl: '/api/storage/photos/5.jpg', photoCount: 2 },
+      { id: 'p4', sourceItemId: 4, area: '50013_540AP', category: null, createdAt, photoUrl: null, photoCount: 0 },
+    ]);
+    expect(findMany.mock.calls[0][0]).toMatchObject({ where: { status: 'PENDING' }, orderBy: { createdAt: 'desc' } });
+  });
+});
+
 describe('inventory area normalization', () => {
   it('treats full-width and half-width spellings as one area', () => {
     expect(normalizeInventoryArea('30041R_2ＭＦ-Ｐ')).toBe('30041R_2MF-P');

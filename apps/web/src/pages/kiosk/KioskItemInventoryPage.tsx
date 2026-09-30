@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import {
   resolveInventoryTag,
@@ -7,14 +7,14 @@ import {
   type InventoryHistoryEntry,
   type InventoryTag,
 } from '../../api/client';
-import { useInventoryItems, useInventoryMutations } from '../../api/hooks';
+import { useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
 import { InventoryCorrectionPanel } from '../../features/kiosk/inventory/InventoryCorrectionPanel';
 import {
   correctionResultMessage,
   pickedCompartmentTag,
   unitLabel,
 } from '../../features/kiosk/inventory/inventoryDailyFlow';
-import { EditIcon, GridIcon, LockIcon, ResetIcon, UndoIcon } from '../../features/kiosk/inventory/InventoryIcons';
+import { BackIcon, EditIcon, GridIcon, LockIcon, ResetIcon, UndoIcon } from '../../features/kiosk/inventory/InventoryIcons';
 import { InventoryItemGrid } from '../../features/kiosk/inventory/InventoryItemGrid';
 import { InventoryLocationBlocks } from '../../features/kiosk/inventory/InventoryLocationBlocks';
 import { InventoryLocationPicker } from '../../features/kiosk/inventory/InventoryLocationPicker';
@@ -73,6 +73,7 @@ function playInventoryTone(kind: 'success' | 'restock' | 'error') {
 
 export function KioskItemInventoryPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const mutations = useInventoryMutations();
   const routeState = location.state as InventoryRouteState | null;
   const [restockMode, setRestockMode] = useState(false);
@@ -84,6 +85,8 @@ export function KioskItemInventoryPage() {
   const [panel, setPanel] = useState<'none' | 'correct' | 'pick'>('none');
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const itemsQuery = useInventoryItems();
+  const pendingQuery = useInventoryImportSummaries();
+  const pendingImports = pendingQuery.data ?? [];
   const itemCompartments = useMemo(() => (itemsQuery.data ?? []).flatMap((item) => item.compartments.map((compartment) => ({ ...compartment, item }))), [itemsQuery.data]);
   const flowRef = useRef({ restockMode: false, restockTagUid: null as string | null, selectedTag: null as InventoryTag | null, processing: false });
   const mountedRef = useRef(true);
@@ -337,6 +340,7 @@ export function KioskItemInventoryPage() {
   return (
     <section className={invSurface}>
       <div className="flex shrink-0 flex-wrap items-center gap-3">
+        {selectedCompartment ? <button type="button" className={invButtonGhost} onClick={reset} disabled={busy}><BackIcon />一覧へ</button> : null}
         <h1 className={invTitle}>在庫操作</h1>
         {restockMode ? <span className="rounded-full bg-inv-green px-3 py-1 text-sm font-black text-inv-green-ink">補充モード</span> : null}
         {waiting ? (
@@ -412,8 +416,15 @@ export function KioskItemInventoryPage() {
         </div>
       ) : (
         <>
-          <p className="flex shrink-0 items-baseline gap-2.5"><span className={invEyebrow}>登録済み</span><span className="font-black tabular-nums">{itemCompartments.length}</span><span className="text-[13px] text-inv-faint">件 ・ 最近持ち出した順</span></p>
-          <InventoryItemGrid compartments={itemCompartments} onPick={pickCompartment} />
+          <p className="flex shrink-0 items-baseline gap-2.5"><span className={invEyebrow}>登録済み</span><span className="font-black tabular-nums">{itemCompartments.length}</span><span className="text-[13px] text-inv-faint">件 ・ 最近持ち出した順</span>
+            {pendingImports.length > 0 ? <><span className={`${invEyebrow} ml-3 text-inv-amber`}>未登録</span><span className="font-black tabular-nums text-inv-amber">{pendingImports.length}</span><span className="text-[13px] text-inv-faint">件</span></> : null}
+          </p>
+          <InventoryItemGrid
+            compartments={itemCompartments}
+            onPick={pickCompartment}
+            pending={pendingImports}
+            onPickPending={(candidate) => navigate('/kiosk/inventory/settings', { state: { importId: candidate.id } })}
+          />
         </>
       )}
     </section>

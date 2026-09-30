@@ -65,8 +65,19 @@ export type InventoryImport = {
   note: string | null;
   manifest: unknown;
   status: string;
+  createdAt: string;
   photos: InventoryImportPhoto[];
   messages: Array<{ gmailMessageId: string; outcome: string; errorMessage: string | null }>;
+};
+/** A pending candidate as the daily item list shows it; details need the settings password. */
+export type InventoryImportSummary = {
+  id: string;
+  sourceItemId: number;
+  area: string;
+  category: string | null;
+  createdAt: string;
+  photoUrl: string | null;
+  photoCount: number;
 };
 export type InventoryHistoryEntry = {
   id: string;
@@ -166,6 +177,11 @@ export async function setInventoryItemUnit(itemId: string, unit: string | null, 
 export async function getInventoryTags() {
   const { data } = await api.get<{ tags: InventoryTag[] }>('/item-inventory/tags');
   return data.tags;
+}
+
+export async function getInventoryImportSummaries() {
+  const { data } = await api.get<{ imports: InventoryImportSummary[] }>('/item-inventory/import-summaries');
+  return data.imports;
 }
 
 export async function getInventoryImports(accessPassword?: string) {

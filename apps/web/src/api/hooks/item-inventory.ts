@@ -14,6 +14,7 @@ import {
   deleteInventoryToolFieldValue,
   getInventoryHistory,
   getInventoryImports,
+  getInventoryImportSummaries,
   getInventoryImportMessages,
   getInventoryItems,
   getInventoryLocations,
@@ -45,6 +46,8 @@ const inventoryKeys = {
   locations: ['inventory-locations'],
   tags: ['inventory-tags'],
   imports: ['inventory-imports'],
+  // Under `imports`, so anything that refreshes the candidates refreshes this list too.
+  importSummaries: ['inventory-imports', 'summaries'],
   history: ['inventory-history'],
   importMessages: ['inventory-import-messages'],
   units: ['inventory-units'],
@@ -60,6 +63,10 @@ export function useInventoryToolFieldValues(accessPassword: string, enabled = tr
 }
 export function useInventoryUnits() { return useQuery({ queryKey: inventoryKeys.units, queryFn: getInventoryUnits }); }
 export function useInventoryTags() { return useQuery({ queryKey: inventoryKeys.tags, queryFn: getInventoryTags }); }
+export function useInventoryImportSummaries() {
+  // Mail is ingested every five minutes; a kiosk left on the list picks new candidates up.
+  return useQuery({ queryKey: inventoryKeys.importSummaries, queryFn: getInventoryImportSummaries, refetchInterval: 60_000 });
+}
 export function useInventoryImports(accessPassword?: string) {
   return useQuery({
     queryKey: inventoryKeys.imports,

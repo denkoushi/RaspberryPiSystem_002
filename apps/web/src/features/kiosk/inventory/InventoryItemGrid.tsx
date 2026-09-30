@@ -1,7 +1,7 @@
-import { inventoryThumbnailUrl, type InventoryCompartment } from '../../../api/client';
+import { inventoryThumbnailUrl, type InventoryCompartment, type InventoryImportSummary } from '../../../api/client';
 
 import { issuedLabel, unitLabel } from './inventoryDailyFlow';
-import { PinIcon } from './InventoryIcons';
+import { LockIcon, PinIcon } from './InventoryIcons';
 
 /** Most recently issued first; never-issued drawers follow in name order. */
 export function sortByRecentIssue(compartments: InventoryCompartment[]): InventoryCompartment[] {
@@ -15,13 +15,35 @@ export function sortByRecentIssue(compartments: InventoryCompartment[]): Invento
   });
 }
 
+type InventoryItemGridProps = {
+  compartments: InventoryCompartment[];
+  onPick: (compartment: InventoryCompartment) => void;
+  /** Mailed candidates not registered yet, newest first; they lead the list. */
+  pending?: InventoryImportSummary[];
+  onPickPending?: (candidate: InventoryImportSummary) => void;
+};
+
 /** Every registered drawer as one photo card; tapping opens it like scanning its item tag. */
-export function InventoryItemGrid({ compartments, onPick }: { compartments: InventoryCompartment[]; onPick: (compartment: InventoryCompartment) => void }) {
+export function InventoryItemGrid({ compartments, onPick, pending = [], onPickPending }: InventoryItemGridProps) {
   const sorted = sortByRecentIssue(compartments);
-  if (sorted.length === 0) return <p className="text-inv-muted">登録済みのアイテムはまだありません</p>;
+  if (sorted.length === 0 && pending.length === 0) return <p className="text-inv-muted">登録済みのアイテムはまだありません</p>;
   const now = new Date();
   return (
     <div className="grid min-h-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3.5 overflow-y-auto pb-1" aria-label="登録済みアイテム">
+      {pending.map((candidate) => (
+        <button key={candidate.id} type="button" aria-label={`未登録 候補 #${candidate.sourceItemId} を登録する`} className="flex flex-col overflow-hidden rounded-[14px] border-2 border-inv-amber bg-inv-s1 text-left text-inv-text hover:brightness-110 focus:outline-none focus-visible:brightness-110" onClick={() => onPickPending?.(candidate)}>
+          <span className="relative block h-[150px] w-full bg-inv-s3">
+            {candidate.photoUrl ? <img src={inventoryThumbnailUrl(candidate.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
+            <span className="absolute left-2 top-2 inline-flex h-8 items-center gap-1.5 rounded-full bg-inv-amber px-3 text-[13px] font-black text-inv-amber-ink"><LockIcon size={14} />未登録</span>
+          </span>
+          <span className="px-3 pt-2.5 text-sm font-bold">候補 #{candidate.sourceItemId}</span>
+          <span className="flex items-center gap-1 px-3 pb-3 pt-0.5 text-xs text-inv-faint">
+            <PinIcon />
+            <span className="min-w-0 truncate">{candidate.area}</span>
+            {candidate.category ? <span className="ml-auto shrink-0 font-bold text-inv-muted">{candidate.category}</span> : null}
+          </span>
+        </button>
+      ))}
       {sorted.map((compartment) => {
         const photo = compartment.item.photos[0];
         const issued = issuedLabel(compartment.lastIssuedAt, now);
