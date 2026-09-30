@@ -72,7 +72,7 @@ else
   log "WARNING: signage-renderedディレクトリが存在しません（${SIGNAGE_RENDER_DIR}）"
 fi
 
-# 2. Docker旧リリースイメージの月次整理（月初に限らず、当月未完了なら日次再試行）
+# 2. Docker旧リリースイメージの日次整理（当日未完了なら翌日再試行。デプロイ中は延期）
 retention_status=0
 if [ ! -x "${RETENTION_HELPER}" ]; then
   retention_status=1
