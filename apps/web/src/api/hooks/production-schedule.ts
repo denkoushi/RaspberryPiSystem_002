@@ -92,6 +92,9 @@ import {
   getKioskProductionScheduleLoadBalancingOverview,
   getKioskProductionScheduleLoadBalancingMachineMonthlyLoad,
   getKioskProductionScheduleLoadBalancingStartDateLeveling,
+  getKioskProductionScheduleLoadBalancingWorkspace,
+  getKioskProductionScheduleLoadBalancingWorkspaceDay,
+  putKioskProductionScheduleLoadBalancingCapacityBase,
   postKioskProductionScheduleLoadBalancingStartDateLevelingSimulate,
   postKioskProductionScheduleLoadBalancingOutsourcingCandidates,
   postKioskProductionScheduleLoadBalancingOutsourcingPlan,
@@ -1259,6 +1262,42 @@ export function useKioskProductionScheduleLoadBalancingStartDateLeveling(
 export function usePostKioskProductionScheduleLoadBalancingStartDateLevelingSimulate() {
   return useMutation({
     mutationFn: postKioskProductionScheduleLoadBalancingStartDateLevelingSimulate
+  });
+}
+
+export function useKioskProductionScheduleLoadBalancingWorkspace(
+  params: { fromMonth: string; toMonth: string; targetDeviceScopeKey?: string },
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-load-balancing-workspace', params],
+    queryFn: () => getKioskProductionScheduleLoadBalancingWorkspace(params),
+    enabled: options?.enabled ?? true,
+    staleTime: 120_000,
+    placeholderData: (previousData) => previousData
+  });
+}
+
+export function useKioskProductionScheduleLoadBalancingWorkspaceDay(
+  params: { month: string; resourceCd: string; targetDeviceScopeKey?: string },
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-load-balancing-workspace-day', params],
+    queryFn: () => getKioskProductionScheduleLoadBalancingWorkspaceDay(params),
+    enabled: options?.enabled ?? true,
+    staleTime: 120_000
+  });
+}
+
+export function usePutKioskProductionScheduleLoadBalancingCapacityBase() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: putKioskProductionScheduleLoadBalancingCapacityBase,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-load-balancing-workspace'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-load-balancing-workspace-day'] });
+    }
   });
 }
 

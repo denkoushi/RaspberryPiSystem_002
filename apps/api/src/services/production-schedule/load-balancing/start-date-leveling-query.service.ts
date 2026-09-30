@@ -17,6 +17,7 @@ type RawRow = {
   fseiban: string | null;
   productNo: string | null;
   fhincd: string | null;
+  fhinmei: string | null;
   fkojun: string | null;
   resourceCd: string | null;
   requiredMinutes: number | null;
@@ -37,6 +38,7 @@ function mapRawRows(rows: RawRow[], policy: ResourceCategoryPolicy): StartDateLe
       fseiban: String(row.fseiban ?? '').trim(),
       productNo: String(row.productNo ?? '').trim(),
       fhincd: String(row.fhincd ?? '').trim(),
+      fhinmei: String(row.fhinmei ?? '').trim(),
       fkojun: fkojunRaw.length > 0 ? fkojunRaw : null,
       resourceCd: normalizedCd,
       requiredMinutes: Number(row.requiredMinutes ?? 0),
@@ -53,6 +55,8 @@ export async function listStartDateLevelingQueryRows(params: {
   rangeStart: Date;
   rangeEndExclusive: Date;
   resourceCdFilter?: string | null;
+  /** 指定時は有効納期がこの日より前の未完了行（納期遅れ）も返す */
+  includeOverdueBefore?: Date;
   winnerRowIds: readonly string[];
 }): Promise<StartDateLevelingQueryRow[]> {
   const policy = await getResourceCategoryPolicy({
@@ -66,6 +70,7 @@ export async function listStartDateLevelingQueryRows(params: {
       COALESCE(("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "fseiban",
       COALESCE(("CsvDashboardRow"."rowData"->>'ProductNo'), '') AS "productNo",
       COALESCE(("CsvDashboardRow"."rowData"->>'FHINCD'), '') AS "fhincd",
+      COALESCE(("CsvDashboardRow"."rowData"->>'FHINMEI'), '') AS "fhinmei",
       COALESCE(("CsvDashboardRow"."rowData"->>'FKOJUN'), '') AS "fkojun",
       UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) AS "resourceCd",
       ${buildCsvDashboardRowRequiredMinutesSql()} AS "requiredMinutes",
@@ -96,7 +101,8 @@ export async function listStartDateLevelingQueryRows(params: {
       AND NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'), '') IS NOT NULL
       ${buildStartDateLevelingQueryWindowWhereSql({
         rangeStart: params.rangeStart,
-        rangeEndExclusive: params.rangeEndExclusive
+        rangeEndExclusive: params.rangeEndExclusive,
+        includeOverdueBefore: params.includeOverdueBefore
       })}
       ${buildLoadBalancingRowEligibilityWhereSql()}
     ORDER BY

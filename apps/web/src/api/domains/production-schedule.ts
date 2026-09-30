@@ -487,6 +487,58 @@ export interface ProductionScheduleLoadBalancingStartDateLevelingResponse {
   simulatedMoves: ProductionScheduleLoadBalancingStartDateLevelingSimulatedMove[];
 }
 
+export type ProductionScheduleLoadBalancingWorkspaceResource = {
+  resourceCd: string;
+  classCode: string | null;
+  workCalendarMode: 'weekdays' | 'calendar_days';
+  baseCapacityMinutes: number | null;
+  capacityByMonth: Record<string, number | null>;
+};
+
+export type ProductionScheduleLoadBalancingWorkspaceRow = {
+  rowId: string;
+  fseiban: string;
+  productNo: string;
+  fhincd: string;
+  fhinmei: string;
+  machineName: string;
+  resourceCd: string;
+  totalMinutes: number;
+  plannedStartDate: string;
+  effectiveDueDate: string;
+  late: boolean;
+  /** bucket は 'YYYY-MM' または 'late' */
+  allocations: Array<{ bucket: string; minutes: number }>;
+};
+
+export type ProductionScheduleLoadBalancingWorkspaceTransferRule = {
+  fromClassCode: string;
+  toClassCode: string;
+  priority: number;
+  efficiencyRatio: number;
+};
+
+export interface ProductionScheduleLoadBalancingWorkspaceResponse {
+  siteKey: string;
+  today: string;
+  fromMonth: string;
+  toMonth: string;
+  months: string[];
+  resources: ProductionScheduleLoadBalancingWorkspaceResource[];
+  rows: ProductionScheduleLoadBalancingWorkspaceRow[];
+  unallocatedRows: ProductionScheduleLoadBalancingStartDateLevelingUnallocatedRow[];
+  transferRules: ProductionScheduleLoadBalancingWorkspaceTransferRule[];
+}
+
+export interface ProductionScheduleLoadBalancingWorkspaceDayResponse {
+  siteKey: string;
+  month: string;
+  resourceCd: string;
+  capacityMinutesPerDay: number | null;
+  days: Array<{ date: string; requiredMinutes: number }>;
+  rowDays: Array<{ rowId: string; date: string; minutes: number }>;
+}
+
 export interface ProductionScheduleDueManagementSummaryItem {
   fseiban: string;
   machineName: string | null;
@@ -1686,6 +1738,42 @@ export async function postKioskProductionScheduleLoadBalancingStartDateLevelingS
     '/kiosk/production-schedule/load-balancing/start-date-leveling/simulate',
     payload
   );
+  return data;
+}
+
+export async function getKioskProductionScheduleLoadBalancingWorkspace(params: {
+  fromMonth: string;
+  toMonth: string;
+  targetDeviceScopeKey?: string;
+}) {
+  const { data } = await api.get<ProductionScheduleLoadBalancingWorkspaceResponse>(
+    '/kiosk/production-schedule/load-balancing/workspace',
+    { params }
+  );
+  return data;
+}
+
+export async function getKioskProductionScheduleLoadBalancingWorkspaceDay(params: {
+  month: string;
+  resourceCd: string;
+  targetDeviceScopeKey?: string;
+}) {
+  const { data } = await api.get<ProductionScheduleLoadBalancingWorkspaceDayResponse>(
+    '/kiosk/production-schedule/load-balancing/workspace/day',
+    { params }
+  );
+  return data;
+}
+
+export async function putKioskProductionScheduleLoadBalancingCapacityBase(payload: {
+  resourceCd: string;
+  baseAvailableMinutes: number;
+  targetDeviceScopeKey?: string;
+}) {
+  const { data } = await api.put<{
+    siteKey: string;
+    items: Array<{ resourceCd: string; baseAvailableMinutes: number }>;
+  }>('/kiosk/production-schedule/load-balancing/capacity-base', payload);
   return data;
 }
 
