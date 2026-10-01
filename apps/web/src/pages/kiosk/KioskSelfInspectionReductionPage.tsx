@@ -22,9 +22,14 @@ import { readApiErrorMessage } from '../../features/part-measurement/selfInspect
 import { ReductionChangePointDialog } from '../../features/part-measurement/selfInspectionReduction/ReductionChangePointDialog';
 import { ReductionStairs } from '../../features/part-measurement/selfInspectionReduction/reductionCharts';
 import { ReductionDetail } from '../../features/part-measurement/selfInspectionReduction/ReductionDetail';
+import {
+  ReductionFindings,
+  type ReductionFindingSlot
+} from '../../features/part-measurement/selfInspectionReduction/ReductionFindings';
 import { ReductionList } from '../../features/part-measurement/selfInspectionReduction/ReductionList';
 import { ReductionSettingsDialog } from '../../features/part-measurement/selfInspectionReduction/ReductionSettingsDialog';
 import { Segmented, kioskButtonClass, kioskInputClass } from '../../features/part-measurement/selfInspectionReduction/reductionUi';
+import { buildReductionFindings } from '../../features/part-measurement/selfInspectionReduction/selfInspectionReductionFindings';
 import {
   buildReductionRows,
   countReductionVerdicts,
@@ -64,6 +69,9 @@ export function KioskSelfInspectionReductionPage() {
   const [process, setProcess] = useState<ReductionProcessFilter>('all');
   const [query, setQuery] = useState('');
   const [verdictFilter, setVerdictFilter] = useState<ReductionVerdictFilter>(null);
+  const [pickedFinding, setPickedFinding] = useState<ReductionFindingSlot | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewCpk, setViewCpk] = useState<SelfInspectionReductionCpkThreshold | null>(null);
 
@@ -85,15 +93,23 @@ export function KioskSelfInspectionReductionPage() {
     () => filterReductionRows(allRows, { verdict: null, process, query }),
     [allRows, process, query]
   );
-  const rows = useMemo(
-    () => filterReductionRows(scopedRows, { verdict: verdictFilter, process: 'all', query: '' }),
-    [scopedRows, verdictFilter]
-  );
   const counts = useMemo(() => countReductionVerdicts(scopedRows), [scopedRows]);
   const savings = useMemo(
     () => estimateMonthlySavings(scopedRows, insightsQuery.data?.secondsPerPiece ?? null),
     [scopedRows, insightsQuery.data?.secondsPerPiece]
   );
+  const findings = useMemo(
+    () => buildReductionFindings(scopedRows, policy, { periodDays, savingsHours: savings.hours }),
+    [scopedRows, policy, periodDays, savings.hours]
+  );
+  // 所見の行を押している間は、その所見が挙げた品番だけを一覧に出す。
+  const findingActive = pickedFinding != null && findings[pickedFinding].rowIds.length > 0;
+  const rows = useMemo(() => {
+    const ids = pickedFinding ? findings[pickedFinding].rowIds : [];
+    return ids.length > 0
+      ? scopedRows.filter((row) => ids.includes(row.id))
+      : filterReductionRows(scopedRows, { verdict: verdictFilter, process: 'all', query: '' });
+  }, [scopedRows, verdictFilter, findings, pickedFinding]);
 
   useEffect(() => {
     if (rows.length === 0) return;
@@ -198,6 +214,25 @@ export function KioskSelfInspectionReductionPage() {
     [disarm, nfcPurpose]
   );
 
+  const pickFinding = useCallback(
+    (slot: ReductionFindingSlot) => {
+      if (pickedFinding === slot) {
+        setPickedFinding(null);
+        return;
+      }
+      setPickedFinding(slot);
+      setVerdictFilter(null);
+      const first = findings[slot].rowIds[0];
+      if (first) selectRow(first);
+    },
+    [findings, pickedFinding, selectRow]
+  );
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+  const searchShown = searchOpen || query !== '';
+
   const closeChangePoint = useCallback(() => {
     setChangePointOpen(false);
     setChangePointKind(null);
@@ -234,21 +269,40 @@ export function KioskSelfInspectionReductionPage() {
           options={SELF_INSPECTION_REDUCTION_CPK_THRESHOLDS.map((value) => ({ value, label: value.toFixed(2) }))}
           onChange={setViewCpk}
         />
-        <span className="flex-1" />
+        <ReductionFindings findings={findings} picked={findingActive ? pickedFinding : null} onPick={pickFinding} />
+        {/* 幅の狭いキオスクでは所見の場所を空けるため、検索欄と判定設定をアイコンだけにする。 */}
+        <button
+          type="button"
+          aria-label="品番・資源CDの検索を開く"
+          onClick={() => setSearchOpen(true)}
+          className={clsx(kioskButtonClass, 'w-11 shrink-0 justify-center px-0 min-[1800px]:hidden', searchShown && 'hidden')}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" className="h-5 w-5" aria-hidden="true">
+            <circle cx="11" cy="11" r="6.5" />
+            <path d="M16 16l4.5 4.5" />
+          </svg>
+        </button>
         <input
+          ref={searchInputRef}
           aria-label="品番・資源CDで探す"
           placeholder="品番・資源CD"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          className={clsx(kioskInputClass, 'w-56')}
+          onBlur={() => setSearchOpen(false)}
+          className={clsx(kioskInputClass, 'w-56 shrink-0', !searchShown && 'hidden min-[1800px]:block')}
         />
-        <button type="button" className={kioskButtonClass} onClick={() => setSettingsOpen(true)}>
+        <button
+          type="button"
+          aria-label="判定設定"
+          className={clsx(kioskButtonClass, 'shrink-0 max-[1799px]:w-11 max-[1799px]:justify-center max-[1799px]:px-0')}
+          onClick={() => setSettingsOpen(true)}
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
             <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
             <circle cx="16" cy="7" r="2.2" />
             <circle cx="10" cy="17" r="2.2" />
           </svg>
-          判定設定
+          <span className="max-[1799px]:hidden">判定設定</span>
         </button>
       </div>
 
@@ -297,8 +351,11 @@ export function KioskSelfInspectionReductionPage() {
           rows={rows}
           counts={counts}
           totalCount={scopedRows.length}
-          verdictFilter={verdictFilter}
-          onVerdictFilterChange={setVerdictFilter}
+          verdictFilter={findingActive ? undefined : verdictFilter}
+          onVerdictFilterChange={(filter) => {
+            setPickedFinding(null);
+            setVerdictFilter(filter);
+          }}
           selectedId={selectedId}
           onSelect={selectRow}
           minimumSampleCount={policy.minimumSampleCount}
