@@ -93,6 +93,11 @@ const KioskInspectionDrawingLibraryPreviewPage = lazy(() =>
     default: module.KioskInspectionDrawingLibraryPreviewPage
   }))
 );
+const KioskAssemblyHomePreviewPage = lazy(() =>
+  import('./pages/dev/KioskAssemblyHomePreviewPage').then((module) => ({
+    default: module.KioskAssemblyHomePreviewPage
+  }))
+);
 const KioskAssemblyLibraryPreviewPage = lazy(() =>
   import('./pages/dev/KioskAssemblyLibraryPreviewPage').then((module) => ({
     default: module.KioskAssemblyLibraryPreviewPage
@@ -291,6 +296,10 @@ function App() {
               <Route
                 path="/dev/kiosk-inspection-drawing-create"
                 element={lazyRouteElement(<KioskInspectionDrawingCreatePreviewPage />)}
+              />
+              <Route
+                path="/dev/kiosk-assembly-home"
+                element={lazyRouteElement(<KioskAssemblyHomePreviewPage />)}
               />
               <Route
                 path="/dev/kiosk-assembly-library"

@@ -199,11 +199,11 @@ describe('KioskAssemblyHomePage', () => {
   it('selects a seiban candidate and registers a lot with exact serial count', async () => {
     renderPage();
 
-    expect(screen.getByRole('link', { name: '手順書ライブラリ' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: '手順書' })).toHaveAttribute(
       'href',
       '/kiosk/assembly/library?focus=procedures'
     );
-    expect(screen.getByRole('link', { name: '組立テンプレート' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: '手順を作る' })).toHaveAttribute(
       'href',
       '/kiosk/assembly/library?focus=templates'
     );
@@ -216,10 +216,9 @@ describe('KioskAssemblyHomePage', () => {
     );
     fireEvent.click(await screen.findByText('ASMTEST-A1'));
     await waitFor(() => expect(screen.getByText('発行予定 2/2')).toBeInTheDocument());
-    expect(screen.getByText('ASMTEST-A1-001')).toBeInTheDocument();
-    expect(screen.getByText('ASMTEST-A1-002')).toBeInTheDocument();
+    expect(screen.getByText('ASMTEST-A1-001 … ASMTEST-A1-002')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'ロット登録' }));
+    fireEvent.click(screen.getByRole('button', { name: '2台 登録' }));
 
     await waitFor(() =>
       expect(mockCreateAssemblyLot).toHaveBeenCalledWith({
@@ -231,7 +230,7 @@ describe('KioskAssemblyHomePage', () => {
         torqueWrenchId: 'CEM20N3X10D-BTLA'
       })
     );
-    expect(await screen.findByText('ロットを登録しました。登録済みロットから作業用IDごとに開始してください。')).toBeInTheDocument();
+    expect(await screen.findByText('ロットを登録しました。')).toBeInTheDocument();
   });
 
   it('omits legacy torque-wrench input and payload for REQUIRED templates', async () => {
@@ -248,7 +247,7 @@ describe('KioskAssemblyHomePage', () => {
     await waitFor(() => expect(screen.getByText('発行予定 2/2')).toBeInTheDocument());
 
     expect(screen.queryByLabelText('トルクレンチ')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'ロット登録' }));
+    fireEvent.click(screen.getByRole('button', { name: '2台 登録' }));
     await waitFor(() =>
       expect(mockCreateAssemblyLot).toHaveBeenCalledWith({
         templateId: 'template-1',
@@ -266,8 +265,7 @@ describe('KioskAssemblyHomePage', () => {
     renderPage();
 
     expect(await screen.findByRole('heading', { name: '着手前' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'ASMTEST-A1・S001 の詳細を開く' }));
-    fireEvent.click(screen.getByRole('button', { name: '開始' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'ASMTEST-A1・S001 を開始' }));
 
     await waitFor(() =>
       expect(mockStartAssemblyLotSerial).toHaveBeenCalledWith(
@@ -283,25 +281,21 @@ describe('KioskAssemblyHomePage', () => {
     mockListAssemblyLotSummaries.mockResolvedValue([registeredLot]);
     renderPage();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'ASMTEST-A1・S001 の詳細を開く' }));
-    fireEvent.click(screen.getByRole('button', { name: '開始' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'ASMTEST-A1・S001 を開始' }));
 
     expect(screen.getByRole('dialog', { name: '作業者確認' })).toBeInTheDocument();
     expect(mockStartAssemblyLotSerial).not.toHaveBeenCalled();
   });
 
-  it('opens the shared invalidation dialog from all three panes and submits password plus reason', async () => {
+  it('opens the shared invalidation dialog for units in every state and submits password plus reason', async () => {
     mockListAssemblyLotSummaries.mockResolvedValue([registeredLot]);
     renderPage();
 
-    const cases = [
-      { toggle: 'ASMTEST-A1・S001 の詳細を開く', detail: 'ASMTEST-A1・S001 の詳細' },
-      { toggle: 'ASM-START-001・S002 の詳細を開く', detail: 'ASM-START-001・S002 の詳細' },
-      { toggle: 'ASM-DONE-001・S002 の詳細を開く', detail: 'ASM-DONE-001・S002 の詳細' }
-    ];
-    for (const [index, item] of cases.entries()) {
-      fireEvent.click(await screen.findByRole('button', { name: item.toggle }));
-      const detail = screen.getByRole('region', { name: item.detail });
+    fireEvent.click(await screen.findByRole('button', { name: 'ASMTEST-A1 の台を選んで操作' }));
+    const cases = ['ASM-DONE-001・S002', 'ASMTEST-A1・S001', 'ASMTEST-A1・S002'];
+    for (const [index, name] of cases.entries()) {
+      fireEvent.click(await screen.findByRole('button', { name: `${name} の操作を開く` }));
+      const detail = screen.getByRole('region', { name: `${name} の操作` });
       fireEvent.click(within(detail).getByRole('button', { name: '削除' }));
       expect(screen.getByRole('dialog', { name: '作業アイテムを削除' })).toBeInTheDocument();
       if (index < cases.length - 1) {
@@ -327,34 +321,30 @@ describe('KioskAssemblyHomePage', () => {
     );
   });
 
-  it('renders in-progress sessions with links back to the work session', async () => {
+  it('renders in-progress units as direct links back to the work session', async () => {
     renderPage();
 
-    expect(await screen.findByRole('heading', { name: '組立状況' })).toBeInTheDocument();
-    expect(screen.getByText('登録ロット 0')).toBeInTheDocument();
-    expect(screen.getByText('仕掛中 1')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '組立' })).toBeInTheDocument();
     expect(screen.getByText('承認待ち 1')).toBeInTheDocument();
 
-    const toggle = await screen.findByRole('button', { name: 'ASM-START-001・S002 の詳細を開く' });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByText('0/1 (0%)')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: '再開' })).not.toBeInTheDocument();
-
-    fireEvent.click(toggle);
-    expect(screen.getByRole('link', { name: '再開' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'ASM-START-001・S002 を再開' })).toHaveAttribute(
       'href',
       '/kiosk/assembly/work-sessions/session-2'
     );
+    expect(within(screen.getByRole('link', { name: 'ASM-START-001・S002 を再開' })).getByText('0/1')).toBeInTheDocument();
 
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('ストッパー取付 ・ 締付位置 #1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'ASM-DONE-001・S002 の操作を開く' }));
+    const detail = screen.getByRole('region', { name: 'ASM-DONE-001・S002 の操作' });
+    expect(within(detail).getByRole('link', { name: '記録確認' })).toHaveAttribute(
+      'href',
+      '/kiosk/assembly/record-approvals?sessionId=session-completed-1'
+    );
   });
 
-  it('keeps independent seiban and serial keypads including BS and CLR', async () => {
+  it('switches the single keypad between seiban and work ID input', async () => {
     renderPage();
 
     const fseibanInput = screen.getByLabelText('製番');
-    const serialInput = screen.getByLabelText('作業用ID追加');
     const fseibanPad = within(screen.getByRole('group', { name: '製番入力パッド' }));
 
     fireEvent.click(fseibanPad.getByRole('button', { name: 'A' }));
@@ -370,14 +360,12 @@ describe('KioskAssemblyHomePage', () => {
     fireEvent.change(fseibanInput, { target: { value: 'asmtest-a' } });
     fireEvent.click(await screen.findByText('ASMTEST-A1'));
     await waitFor(() => expect(screen.getByText('発行予定 2/2')).toBeInTheDocument());
-    expect(screen.getByText('作業用IDを手動修正').closest('details')).not.toHaveAttribute('open');
-    fireEvent.click(screen.getByText('作業用IDを手動修正'));
-    fireEvent.click(screen.getByLabelText('手動修正を使用する'));
-    fireEvent.click(screen.getByText('ソフトウェアキーボードを表示'));
-    expect(screen.getByText('ソフトウェアキーボードを表示').closest('details')).toHaveAttribute('open');
-    for (const removeButton of screen.getAllByRole('button', { name: '削除' })) {
+    expect(screen.queryByLabelText('作業用ID追加')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'ID手入力' }));
+    for (const removeButton of screen.getAllByRole('button', { name: /を削除$/ })) {
       fireEvent.click(removeButton);
     }
+    const serialInput = screen.getByLabelText('作業用ID追加');
     const serialPad = within(screen.getByRole('group', { name: '作業用ID入力パッド' }));
     fireEvent.click(serialPad.getByRole('button', { name: 'S' }));
     fireEvent.click(serialPad.getByRole('button', { name: '2' }));
@@ -399,9 +387,10 @@ describe('KioskAssemblyHomePage', () => {
     );
     fireEvent.click(await screen.findByText('ASMTEST-B1'));
 
-    expect(screen.getByText('テンプレート未登録')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'テンプレート登録' })).toHaveAttribute('href', '/kiosk/assembly/library');
-    expect(screen.getByRole('button', { name: 'ロット登録' })).toBeDisabled();
+    expect(screen.getAllByText('手順なし').length).toBeGreaterThan(0);
+    const rail = within(screen.getByRole('complementary', { name: 'ロット登録' }));
+    expect(rail.getByRole('link', { name: '手順を作る' })).toHaveAttribute('href', '/kiosk/assembly/library?focus=procedures');
+    expect(rail.queryByRole('button', { name: /登録$/ })).not.toBeInTheDocument();
     expect(mockCreateAssemblyLot).not.toHaveBeenCalled();
   });
 
@@ -469,6 +458,24 @@ describe('KioskAssemblyHomePage', () => {
     expect(machineNameSpan).toHaveAttribute('title', longMachineName);
   });
 
+  it('lets the operator register fewer units than the production quantity', async () => {
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
+    fireEvent.click(await screen.findByText('ASMTEST-A1'));
+    await waitFor(() => expect(screen.getByText('発行予定 2/2')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: '台数を減らす' }));
+    expect(screen.getByText('発行予定 1/1')).toBeInTheDocument();
+    expect(screen.getByText('実績 2台')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '台数を減らす' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: '1台 登録' }));
+    await waitFor(() =>
+      expect(mockCreateAssemblyLot).toHaveBeenCalledWith(expect.objectContaining({ expectedQuantity: 1, workIdMode: 'auto' }))
+    );
+  });
+
   it('shows manual lot quantity input and registers a lot when API returns no quantity', async () => {
     mockListAssemblySeibanLotQuantities.mockResolvedValue([]);
     renderPage();
@@ -478,20 +485,12 @@ describe('KioskAssemblyHomePage', () => {
       expect(mockListAssemblySeibanCandidates).toHaveBeenCalledWith({ prefix: 'ASMTEST-A', limit: 20 })
     );
     fireEvent.click(await screen.findByText('ASMTEST-A1'));
-    await waitFor(() =>
-      expect(
-        screen.getByText(
-          '生産実績からロット数を取得できませんでした。順番ボード等で数量を確認し、ロット数を手入力してください。'
-        )
-      ).toBeInTheDocument()
-    );
-    expect(screen.getByLabelText('ロット数（手入力）')).toBeInTheDocument();
+    expect(await screen.findByLabelText('ロット数（手入力）')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('ロット数（手入力）'), { target: { value: '2' } });
     await waitFor(() => expect(screen.getByText('発行予定 2/2')).toBeInTheDocument());
-    expect(screen.getByText('2（手入力）')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'ロット登録' }));
+    fireEvent.click(screen.getByRole('button', { name: '2台 登録' }));
 
     await waitFor(() =>
       expect(mockCreateAssemblyLot).toHaveBeenCalledWith({
@@ -513,7 +512,6 @@ describe('KioskAssemblyHomePage', () => {
     await waitFor(() => expect(screen.getByText('発行予定 2/2')).toBeInTheDocument());
 
     expect(screen.queryByLabelText('ロット数（手入力）')).not.toBeInTheDocument();
-    expect(screen.queryByText('2（手入力）')).not.toBeInTheDocument();
   });
 
   it('looks up lot quantity with normalized product number keys', async () => {
@@ -534,13 +532,13 @@ describe('KioskAssemblyHomePage', () => {
     fireEvent.click(await screen.findByText('ASMTEST-A1'));
     await waitFor(() => expect(screen.getByLabelText('ロット数（手入力）')).toBeInTheDocument());
 
-    expect(screen.getByRole('button', { name: 'ロット登録' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '登録' })).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText('ロット数（手入力）'), { target: { value: '0' } });
-    expect(screen.getByRole('button', { name: 'ロット登録' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '登録' })).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText('ロット数（手入力）'), { target: { value: '' } });
-    expect(screen.getByRole('button', { name: 'ロット登録' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '登録' })).toBeDisabled();
     expect(mockCreateAssemblyLot).not.toHaveBeenCalled();
   });
 });
