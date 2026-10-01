@@ -21,7 +21,8 @@ export type SignageFullSlotKind =
   | 'kiosk_progress_overview'
   | 'kiosk_leader_order_cards'
   | 'mobile_placement_parts_shelf_grid'
-  | 'self_inspection_machine_board';
+  | 'self_inspection_machine_board'
+  | 'web_page';
 
 export type SignageSplitSlotKind = 'loans' | 'pdf' | 'csv_dashboard' | 'visualization';
 
@@ -46,6 +47,8 @@ export interface SignageScheduleEditorState {
   fullPdfId: string | null;
   fullCsvDashboardId: string | null;
   fullVisualizationDashboardId: string | null;
+  /** web_page: ページ撮影コンテンツの ID */
+  fullWebCaptureId: string | null;
   fullKioskDeviceScopeKey: string;
   fullKioskSlideIntervalStr: string;
   fullKioskSeibanPerPageStr: string;
@@ -77,6 +80,7 @@ export function createResetFullSlotSpecificFieldsPatch(): SignageScheduleEditorS
     fullPdfId: null,
     fullCsvDashboardId: null,
     fullVisualizationDashboardId: null,
+    fullWebCaptureId: null,
     fullKioskDeviceScopeKey: '',
     fullKioskSlideIntervalStr: '',
     fullKioskSeibanPerPageStr: '',
@@ -157,6 +161,9 @@ export function parseScheduleToEditorStatePatch(schedule: SignageSchedule): Sign
           patch.fullSlotKind = 'visualization';
           patch.fullVisualizationDashboardId =
             'visualizationDashboardId' in slot.config ? slot.config.visualizationDashboardId ?? null : null;
+        } else if (slot.kind === 'web_page') {
+          patch.fullSlotKind = 'web_page';
+          patch.fullWebCaptureId = 'webCaptureId' in slot.config ? slot.config.webCaptureId ?? null : null;
         } else if (slot.kind === 'kiosk_progress_overview') {
           patch.fullSlotKind = 'kiosk_progress_overview';
           patch.fullKioskDeviceScopeKey =
@@ -299,6 +306,7 @@ export function buildLayoutConfigFromEditorState(
     fullPdfId,
     fullCsvDashboardId,
     fullVisualizationDashboardId,
+    fullWebCaptureId,
     fullKioskDeviceScopeKey,
     fullKioskSlideIntervalStr,
     fullKioskSeibanPerPageStr,
@@ -370,6 +378,11 @@ export function buildLayoutConfigFromEditorState(
             },
           },
         ],
+      };
+    } else if (fullSlotKind === 'web_page' && fullWebCaptureId) {
+      return {
+        layout: 'FULL',
+        slots: [{ position: 'FULL', kind: 'web_page', config: { webCaptureId: fullWebCaptureId } }],
       };
     } else if (fullSlotKind === 'kiosk_progress_overview' && fullKioskDeviceScopeKey.trim()) {
       const config: SignageSlotConfig = {

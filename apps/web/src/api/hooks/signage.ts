@@ -16,6 +16,13 @@ import {
   getSignageEmergency,
   setSignageEmergency,
   getSignageContent,
+  getSignageWebCaptures,
+  createSignageWebCapture,
+  updateSignageWebCapture,
+  deleteSignageWebCapture,
+  captureSignageWebCaptureNow,
+  getSignageManagementOverview,
+  type SignageWebCaptureInput,
   type SignageSchedule,
   type SignagePdf
 } from '../client';
@@ -118,5 +125,37 @@ export function useSignageRenderMutation() {
       // レンダリング成功後、ステータスを更新
       queryClient.invalidateQueries({ queryKey: ['signage-render-status'] });
     }
+  });
+}
+
+export function useSignageWebCaptures() {
+  return useQuery({
+    queryKey: ['signage-web-captures'],
+    queryFn: getSignageWebCaptures,
+    refetchInterval: 60_000
+  });
+}
+
+export function useSignageWebCaptureMutations() {
+  const queryClient = useQueryClient();
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['signage-web-captures'] });
+  };
+  const create = useMutation({ mutationFn: createSignageWebCapture, onSuccess: invalidate });
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<SignageWebCaptureInput> }) =>
+      updateSignageWebCapture(id, payload),
+    onSuccess: invalidate
+  });
+  const remove = useMutation({ mutationFn: (id: string) => deleteSignageWebCapture(id), onSuccess: invalidate });
+  const captureNow = useMutation({ mutationFn: (id: string) => captureSignageWebCaptureNow(id), onSuccess: invalidate });
+  return { create, update, remove, captureNow };
+}
+
+export function useSignageManagementOverview() {
+  return useQuery({
+    queryKey: ['signage-management-overview'],
+    queryFn: getSignageManagementOverview,
+    refetchInterval: 15_000
   });
 }

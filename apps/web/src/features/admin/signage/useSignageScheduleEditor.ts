@@ -9,6 +9,7 @@ import {
   useCsvDashboards,
   useVisualizationDashboards,
   useSignageScheduleEditorClients,
+  useSignageWebCaptures,
 } from '../../../api/hooks';
 
 import {
@@ -45,6 +46,7 @@ function applyEditorStatePatch(
     setFullPdfId: (value: string | null) => void;
     setFullCsvDashboardId: (value: string | null) => void;
     setFullVisualizationDashboardId: (value: string | null) => void;
+    setFullWebCaptureId: (value: string | null) => void;
     setFullKioskDeviceScopeKey: (value: string) => void;
     setFullKioskSlideIntervalStr: (value: string) => void;
     setFullKioskSeibanPerPageStr: (value: string) => void;
@@ -86,6 +88,7 @@ function applyEditorStatePatch(
   if (patch.fullVisualizationDashboardId !== undefined) {
     setters.setFullVisualizationDashboardId(patch.fullVisualizationDashboardId);
   }
+  if (patch.fullWebCaptureId !== undefined) setters.setFullWebCaptureId(patch.fullWebCaptureId);
   if (patch.fullKioskDeviceScopeKey !== undefined) {
     setters.setFullKioskDeviceScopeKey(patch.fullKioskDeviceScopeKey);
   }
@@ -146,6 +149,7 @@ export function useSignageScheduleEditor() {
   const csvDashboardsQuery = useCsvDashboards({ enabled: true });
   /** サイネージ割当用: 無効なダッシュボードも表示（ラベルで区別）。未作成のパレット用は optgroup が空になる。 */
   const visualizationDashboardsQuery = useVisualizationDashboards();
+  const webCapturesQuery = useSignageWebCaptures();
   const { create, update, remove } = useSignageScheduleMutations();
   const renderMutation = useSignageRenderMutation();
   const renderStatusQuery = useSignageRenderStatus();
@@ -174,10 +178,12 @@ export function useSignageScheduleEditor() {
     | 'kiosk_leader_order_cards'
     | 'mobile_placement_parts_shelf_grid'
     | 'self_inspection_machine_board'
+    | 'web_page'
   >('loans'); // 全体スロットの種類
   const [fullPdfId, setFullPdfId] = useState<string | null>(null); // 全体スロットのPDF（kind='pdf'の場合）
   const [fullCsvDashboardId, setFullCsvDashboardId] = useState<string | null>(null); // 全体スロットのCSVダッシュボード（kind='csv_dashboard'の場合）
   const [fullVisualizationDashboardId, setFullVisualizationDashboardId] = useState<string | null>(null); // 全体スロットの可視化（kind='visualization'の場合）
+  const [fullWebCaptureId, setFullWebCaptureId] = useState<string | null>(null); // 全体スロットのページ撮影（kind='web_page'の場合）
   const [fullKioskDeviceScopeKey, setFullKioskDeviceScopeKey] = useState('');
   const [fullKioskSlideIntervalStr, setFullKioskSlideIntervalStr] = useState('');
   const [fullKioskSeibanPerPageStr, setFullKioskSeibanPerPageStr] = useState('');
@@ -216,6 +222,7 @@ export function useSignageScheduleEditor() {
     setFullPdfId,
     setFullCsvDashboardId,
     setFullVisualizationDashboardId,
+    setFullWebCaptureId,
     setFullKioskDeviceScopeKey,
     setFullKioskSlideIntervalStr,
     setFullKioskSeibanPerPageStr,
@@ -260,6 +267,7 @@ export function useSignageScheduleEditor() {
     fullPdfId,
     fullCsvDashboardId,
     fullVisualizationDashboardId,
+    fullWebCaptureId,
     fullKioskDeviceScopeKey,
     fullKioskSlideIntervalStr,
     fullKioskSeibanPerPageStr,
@@ -445,6 +453,9 @@ export function useSignageScheduleEditor() {
     setFullCsvDashboardId,
     fullVisualizationDashboardId,
     setFullVisualizationDashboardId,
+    fullWebCaptureId,
+    setFullWebCaptureId,
+    webCapturesQuery,
     fullKioskDeviceScopeKey,
     setFullKioskDeviceScopeKey,
     fullKioskSlideIntervalStr,

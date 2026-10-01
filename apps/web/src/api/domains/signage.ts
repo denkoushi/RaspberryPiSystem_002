@@ -33,6 +33,8 @@ export interface SignageSlotConfig {
   partsPerPage?: number;
   /** self_inspection_machine_board: 詳細ヒートストリップ対象部品数 */
   detailTopN?: number;
+  /** web_page: 表示するページ撮影コンテンツ（SignageWebCapture）の ID */
+  webCaptureId?: string;
 }
 
 export interface SignageSlot {
@@ -46,6 +48,7 @@ export interface SignageSlot {
     | 'kiosk_leader_order_cards'
     | 'mobile_placement_parts_shelf_grid'
     | 'self_inspection_machine_board'
+    | 'web_page'
     | 'message';
   config: SignageSlotConfig | Record<string, never>;
 }
@@ -337,5 +340,101 @@ export interface SignageRenderStatus {
 
 export async function getSignageRenderStatus() {
   const { data } = await api.get<SignageRenderStatus>('/signage/render/status');
+  return data;
+}
+
+// ページ撮影コンテンツ（管理画面のページを撮ってサイネージに出す）
+export type SignageWebCaptureWaitMode = 'network_idle' | 'fixed_delay';
+
+export interface SignageWebCaptureSettings {
+  path: string;
+  viewportWidth: number;
+  viewportHeight: number;
+  waitMode: SignageWebCaptureWaitMode;
+  waitSeconds: number;
+  hideSelectors: string[];
+  clipSelector: string | null;
+}
+
+export interface SignageWebCaptureInput extends SignageWebCaptureSettings {
+  name: string;
+  refreshIntervalSeconds: 60 | 300 | 900;
+  enabled: boolean;
+}
+
+export interface SignageWebCapture extends SignageWebCaptureInput {
+  id: string;
+  lastCapturedAt: string | null;
+  lastStatus: 'never' | 'success' | 'failed';
+  lastError: string | null;
+  lastDurationMs: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** プレビュー上で「隠す部分」に選べる領域 */
+export interface SignageWebCaptureRegion {
+  selector: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface SignageWebCapturePreview {
+  imageDataUrl: string;
+  regions: SignageWebCaptureRegion[];
+  durationMs: number;
+}
+
+export async function getSignageWebCaptures() {
+  const { data } = await api.get<{ webCaptures: SignageWebCapture[] }>('/signage/web-captures');
+  return data.webCaptures;
+}
+
+export async function createSignageWebCapture(payload: SignageWebCaptureInput) {
+  const { data } = await api.post<{ webCapture: SignageWebCapture }>('/signage/web-captures', payload);
+  return data.webCapture;
+}
+
+export async function updateSignageWebCapture(id: string, payload: Partial<SignageWebCaptureInput>) {
+  const { data } = await api.put<{ webCapture: SignageWebCapture }>(`/signage/web-captures/${id}`, payload);
+  return data.webCapture;
+}
+
+export async function deleteSignageWebCapture(id: string) {
+  await api.delete(`/signage/web-captures/${id}`);
+}
+
+export async function captureSignageWebCaptureNow(id: string) {
+  const { data } = await api.post<{ webCapture: SignageWebCapture }>(`/signage/web-captures/${id}/capture`);
+  return data.webCapture;
+}
+
+export async function previewSignageWebCapture(settings: SignageWebCaptureSettings) {
+  const { data } = await api.post<SignageWebCapturePreview>('/signage/web-captures/capture-preview', settings);
+  return data;
+}
+
+export async function getSignageWebCaptureImage(id: string): Promise<Blob> {
+  const { data } = await api.get<Blob>(`/signage/web-captures/${id}/image`, { responseType: 'blob' });
+  return data;
+}
+
+// サイネージ管理の概況（端末ごとの描画時刻と、端末が最後に画像を取りに来た時刻）
+export interface SignageManagementOverview {
+  generatedAt: string;
+  renderIntervalSeconds: number;
+  clients: Array<{ apiKey: string; renderedAt: string | null; lastFetchedAt: string | null }>;
+}
+
+export async function getSignageManagementOverview() {
+  const { data } = await api.get<SignageManagementOverview>('/signage/management/overview');
+  return data;
+}
+
+export async function getSignageCsvDashboardPreviewImage(id: string): Promise<Blob> {
+  const { data } = await api.get<Blob>(`/signage/preview/csv-dashboard/${id}`, { responseType: 'blob' });
   return data;
 }

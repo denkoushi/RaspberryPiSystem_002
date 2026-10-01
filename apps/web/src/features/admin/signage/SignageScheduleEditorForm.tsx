@@ -33,6 +33,9 @@ export function SignageScheduleEditorForm({ editor }: SignageScheduleEditorFormP
     fullCsvDashboardId,
     setFullCsvDashboardId,
     fullVisualizationDashboardId,
+    fullWebCaptureId,
+    setFullWebCaptureId,
+    webCapturesQuery,
     setFullVisualizationDashboardId,
     fullKioskDeviceScopeKey,
     setFullKioskDeviceScopeKey,
@@ -146,6 +149,7 @@ export function SignageScheduleEditorForm({ editor }: SignageScheduleEditorFormP
                         | 'kiosk_leader_order_cards'
                         | 'mobile_placement_parts_shelf_grid'
                         | 'self_inspection_machine_board'
+                        | 'web_page'
                     );
                   }}
                   className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
@@ -158,6 +162,7 @@ export function SignageScheduleEditorForm({ editor }: SignageScheduleEditorFormP
                   <option value="kiosk_leader_order_cards">キオスク順位ボード・資源CDカード（JPEG）</option>
                   <option value="mobile_placement_parts_shelf_grid">配膳 Android 部品棚 9枠（JPEG）</option>
                   <option value="self_inspection_machine_board">自主検査 部品別進捗（JPEG）</option>
+                  <option value="web_page">ページ撮影（管理画面のページ）</option>
                 </select>
               </div>
               {fullSlotKind === 'pdf' && (
@@ -189,6 +194,27 @@ export function SignageScheduleEditorForm({ editor }: SignageScheduleEditorFormP
                     {csvDashboardsQuery.data?.map((dashboard: CsvDashboard) => (
                       <option key={dashboard.id} value={dashboard.id}>
                         {dashboard.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {fullSlotKind === 'web_page' && (
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700" htmlFor="signage-full-web-capture">
+                    ページ撮影
+                  </label>
+                  <select
+                    id="signage-full-web-capture"
+                    value={fullWebCaptureId || ''}
+                    onChange={(e) => setFullWebCaptureId(e.target.value || null)}
+                    className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                  >
+                    <option value="">選択してください</option>
+                    {webCapturesQuery.data?.map((capture) => (
+                      <option key={capture.id} value={capture.id}>
+                        {capture.name}
+                        {capture.enabled ? '' : '（無効）'}
                       </option>
                     ))}
                   </select>
