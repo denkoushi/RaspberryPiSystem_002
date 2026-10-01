@@ -1,3 +1,4 @@
+import { parseFkojunstStatusMailFupdteDt } from '../csv-dashboard/fkojunst-status-mail-fupdtedt-parse.js';
 import { normalizePurchaseFhinCdForMatching, normalizePurchaseFhinCdForScheduleLookup } from './purchase-fhincd-normalize.js';
 
 const normalizeToken = (value: unknown): string => String(value ?? '').trim();
@@ -14,6 +15,8 @@ export type ParsedPurchaseOrderLookupCsvRow = {
   acceptedQuantity: number;
   /** `FKOBAIST`（大文字化済み）。列が無いCSV・空欄は null */
   purchaseStatus: string | null;
+  /** `FUPDTEDT`（元システムの更新日時、JST 壁時計）。列が無いCSV・空欄・解釈不能は null */
+  sourceUpdatedAt: Date | null;
   lineIndex: number;
 };
 
@@ -52,6 +55,20 @@ export function parsePurchaseOrderLookupRow(
     purchasePartName,
     acceptedQuantity,
     purchaseStatus,
+    sourceUpdatedAt: parseFkojunstStatusMailFupdteDt(rowData.FUPDTEDT),
     lineIndex,
   };
+}
+
+/**
+ * 同じキーの2行のうち `next` を採るか。更新日時が新しい方を採り、同時刻・両方不明なら後の行を採る。
+ * 更新日時が不明な行は、更新日時のある行を置き換えない。
+ */
+export function shouldReplacePurchaseOrderLookupRow(
+  current: Pick<ParsedPurchaseOrderLookupCsvRow, 'sourceUpdatedAt'>,
+  next: Pick<ParsedPurchaseOrderLookupCsvRow, 'sourceUpdatedAt'>
+): boolean {
+  if (current.sourceUpdatedAt == null) return true;
+  if (next.sourceUpdatedAt == null) return false;
+  return next.sourceUpdatedAt.getTime() >= current.sourceUpdatedAt.getTime();
 }

@@ -1723,6 +1723,8 @@ model PurchaseOrderLookupRow {
   acceptedQuantity           Int      @default(0)
   /// 購買CSV `FKOBAIST`（C=全数入荷済 / S=一部入荷済 / R=注文済・納入なし / O・P=未発注 / X=工程削除）。列追加前の取込行は null。
   purchaseStatus             String?  @db.VarChar(8)
+  /// 購買CSV `FUPDTEDT`（元システムの更新日時、JST 壁時計を UTC で保持）。取込順ではなくこの値で新旧を決める。空欄・列追加前の取込行は null。
+  sourceUpdatedAt            DateTime?
   lineIndex                  Int      @default(0)
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
