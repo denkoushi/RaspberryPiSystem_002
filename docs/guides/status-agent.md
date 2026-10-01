@@ -125,6 +125,18 @@ vcgencmd get_throttled
 findmnt -no OPTIONS /
 ```
 
+### 5.2 連絡途絶の通知
+
+SDカードが壊れると端末上のstatus-agentも止まるため、SDヘルスログは届きません。その代わりにPi5 APIが毎分 `ClientStatus.lastSeen` を見回り、工場のPi端末から10分以上heartbeatが来なければ `client-heartbeat-stale`（WARNING）をSlack `ops` に送ります。途絶1回につき1件だけ送り、端末が戻ると途絶Alertを確認済みにして `client-heartbeat-recovered`（INFO）を送ります。通知前に戻った短い途絶は、確認済みにするだけで何も送りません。
+
+| 環境変数（Pi5 API） | 既定値 | 説明 |
+| --- | --- | --- |
+| `CLIENT_HEARTBEAT_ALERT_ENABLED` | `true` | `false` で見回りを止める。`ALERTS_DISPATCHER_MODE=db` の時だけ動く |
+| `CLIENT_HEARTBEAT_STALE_MINUTES` | `10` | 無連絡がこの分数を超えたら通知 |
+| `CLIENT_HEARTBEAT_CLIENT_ID_PATTERN` | `^(raspi\|raspberrypi)` | 対象にする `clientId` の正規表現。開発用Mac（`mac-kiosk-*`）や自宅のZero 2 W（`zero2w-*`）は対象外 |
+
+7日以上無連絡の端末は撤去済みとみなし、見回りの対象から外します。API自身が起動した直後は、端末が再送してくるまで（10分間）判定しません。キオスクの電源オフ操作で止めた端末も通知されます。意図した停止なら対応は不要です。管理画面の「無連絡端末」の集計（12時間）は従来のままです。
+
 ---
 
 ## 6. トラブルシューティング
