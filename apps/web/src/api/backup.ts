@@ -201,6 +201,20 @@ export async function getCsvImportSchedules(): Promise<CsvImportScheduleListResp
   return data;
 }
 
+export interface CsvImportHistoryRun {
+  id: string;
+  scheduleId: string;
+  status: string;
+  startedAt: string;
+  completedAt?: string | null;
+}
+
+/** 直近の取込履歴（所要時間の実績を出すために使う） */
+export async function getRecentCsvImportHistory(limit = 500): Promise<{ histories: CsvImportHistoryRun[] }> {
+  const { data } = await api.get<{ histories: CsvImportHistoryRun[] }>(`/imports/history?limit=${limit}`);
+  return data;
+}
+
 export async function createCsvImportSchedule(schedule: Omit<CsvImportSchedule, 'id'> & { id: string }): Promise<CsvImportScheduleMutationResponse> {
   const { data } = await api.post<CsvImportScheduleMutationResponse>('/imports/schedule', schedule);
   return data;
