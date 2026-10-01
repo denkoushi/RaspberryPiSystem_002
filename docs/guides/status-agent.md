@@ -43,6 +43,8 @@ Pi4 SDカード予防保全:
 | `STORAGE_HEALTH_DISK_WARN_PCT` | `80` | `/` のディスク使用率またはinode使用率がこの値以上なら `WARN` |
 | `STORAGE_HEALTH_DISK_ERROR_PCT` | `90` | `/` のディスク使用率またはinode使用率がこの値以上なら `ERROR` |
 | `STORAGE_HEALTH_STATE_FILE` | `/run/raspi-status-agent/storage-health-last-run` | 最終実行時刻の記録先。`/run` はtmpfsなのでSDカードへ書き込まない |
+| `STORAGE_HEALTH_WEAR_STATE_FILE` | `/run/raspi-status-agent/storage-wear-state.json` | 書込量の標本と「起動後に報告済み」の記録。tmpfsなので再起動で消え、カーネルの書込カウンタや起動後フラグと同じく起動ごとにやり直す |
+| `STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY` | `10` | 直近24時間（最低12時間）の平均書込量がこの値(GB/日)以上なら `WARN`。2026-09-30の実測はPi4 7台で約0.8〜1.5GB/日 |
 | `STATUS_AGENT_LOG_SUCCESS` | `0` | 成功時のローカルログ追記。SDカード書込削減のため既定は無効 |
 
 ---
@@ -104,8 +106,13 @@ Pi4 kiosk groupではAnsibleにより `STORAGE_HEALTH_ENABLED=1` を配布しま
 | `/` のディスク使用率またはinode使用率が閾値以上 | `WARN` / `ERROR` |
 | `vcgencmd get_throttled` の現在低電圧 | `ERROR` |
 | `vcgencmd get_throttled` の現在throttle/温度制限 | `WARN` |
+| `vcgencmd get_throttled` の起動後低電圧フラグ（`0x10000`）。起動ごとに1回だけ送る | `WARN` |
+| `/sys/block/<disk>/stat` の書込量が閾値GB/日以上 | `WARN` |
+| 1日1回の摩耗レポート（書込GB/日、ext4累計書込量、カード容量の何倍か、カード名と製造年月） | `INFO`（Alertにしない） |
 
 kernel logは、既定では実行間隔+5分ぶんを見ます。1時間ごとの運用でも短時間のI/O errorを見逃しにくくするためです。ログは既存の `ClientLog` に保存され、`context` は `{ category: "storage_health", signal, rootSource, raw, observedAt }` 形式です。1回のPOSTで追加するSDヘルスログは最大10件です。
+
+起動後低電圧フラグと摩耗レポートは、APIへの送信が成功した時だけ「送信済み」と記録します。送信失敗や `--dry-run` では次回また送ります。摩耗レポートの `context` には `writeGbPerDay`、`lifetimeWriteGb`、`cardSizeGb`、`cardWriteMultiple`、`cardName`、`cardDate` が追加で入ります。`/admin/clients` の端末ログで、交換時期の目安（書込ペースと累計）を端末ごとに比べられます。
 
 `WARN` / `ERROR` のSDヘルスログは、API側でDB `Alert` と `AlertDelivery(SLACK)` に昇格されます。Slack配送先は既存Alerts Dispatcherの `storage-*` ルートに従い、通常は `ops` です。同じ端末・同じsignalの未確認Alertが残っている間は追加Alertを作らず、通知連打を抑えます。
 
@@ -117,6 +124,18 @@ journalctl -u status-agent.service -n 50
 vcgencmd get_throttled
 findmnt -no OPTIONS /
 ```
+
+### 5.2 連絡途絶の通知
+
+SDカードが壊れると端末上のstatus-agentも止まるため、SDヘルスログは届きません。その代わりにPi5 APIが毎分 `ClientStatus.lastSeen` を見回り、工場のPi端末から10分以上heartbeatが来なければ `client-heartbeat-stale`（WARNING）をSlack `ops` に送ります。途絶1回につき1件だけ送り、端末が戻ると途絶Alertを確認済みにして `client-heartbeat-recovered`（INFO）を送ります。通知前に戻った短い途絶は、確認済みにするだけで何も送りません。
+
+| 環境変数（Pi5 API） | 既定値 | 説明 |
+| --- | --- | --- |
+| `CLIENT_HEARTBEAT_ALERT_ENABLED` | `true` | `false` で見回りを止める。`ALERTS_DISPATCHER_MODE=db` の時だけ動く |
+| `CLIENT_HEARTBEAT_STALE_MINUTES` | `10` | 無連絡がこの分数を超えたら通知 |
+| `CLIENT_HEARTBEAT_CLIENT_ID_PATTERN` | `^(raspi\|raspberrypi)` | 対象にする `clientId` の正規表現。開発用Mac（`mac-kiosk-*`）や自宅のZero 2 W（`zero2w-*`）は対象外 |
+
+7日以上無連絡の端末は撤去済みとみなし、見回りの対象から外します。API自身が起動した直後は、端末が再送してくるまで（10分間）判定しません。キオスクの電源オフ操作で止めた端末も通知されます。意図した停止なら対応は不要です。管理画面の「無連絡端末」の集計（12時間）は従来のままです。
 
 ---
 

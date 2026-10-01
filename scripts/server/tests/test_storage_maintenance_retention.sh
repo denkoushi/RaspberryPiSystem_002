@@ -62,13 +62,13 @@ set -euo pipefail
 
 format="${1:-}"
 case "${format}" in
-  +%Y-%m|+%d)
+  +%Y-%m|+%Y-%m-%d|+%d)
     [[ "${TZ:-}" == 'Asia/Tokyo' ]] || exit 91
-    if [[ "${format}" == '+%Y-%m' ]]; then
-      printf '2026-09\n'
-    else
-      printf '01\n'
-    fi
+    case "${format}" in
+      +%Y-%m) printf '2026-09\n' ;;
+      +%Y-%m-%d) printf '2026-09-01\n' ;;
+      *) printf '01\n' ;;
+    esac
     ;;
   *)
     printf '2026-09-01 00:00:00\n'
@@ -131,6 +131,8 @@ new_case() {
   chmod +x "${CASE_DIR}/project/scripts/generate-alert.sh"
   : > "${CASE_DIR}/calls.log"
 
+  # Each case starts clean; an override left by an earlier case must not leak.
+  unset STORAGE_MAINTENANCE_RETENTION_HELPER STORAGE_MAINTENANCE_PERIOD
   export STORAGE_MAINTENANCE_PROJECT_ROOT="${CASE_DIR}/project"
   export STORAGE_MAINTENANCE_SIGNAGE_RENDER_DIR="${CASE_DIR}/missing-signage"
   export STORAGE_MAINTENANCE_MONTH='2026-09'
@@ -251,15 +253,35 @@ grep -Fxq 'builder prune -a --force' "${FAKE_DOCKER_CALL_LOG}"
 grep -Fq '現在のディスク使用量:' "${CASE_DIR}/output.log"
 [[ "$(wc -l < "${CASE_DIR}/alerts.log")" -eq 1 ]]
 
-# Production schedule boundaries are fixed to JST.  The fake date command
-# exits unless both the month and day queries carry TZ=Asia/Tokyo.
+# Production schedule boundaries are fixed to JST, and the default period is
+# one day.  The fake date command exits unless the queries carry
+# TZ=Asia/Tokyo.  A marker left in the old monthly format is still valid and
+# simply belongs to an earlier period, so the upgrade runs retention once.
 new_case
-printf '2026-08\n' > "${IMAGE_RETENTION_MARKER_FILE}"
+printf '2026-09\n' > "${IMAGE_RETENTION_MARKER_FILE}"
 unset STORAGE_MAINTENANCE_MONTH STORAGE_MAINTENANCE_DAY
 export PATH="${BIN_DIR}:${ORIGINAL_PATH}"
 run_case
 [[ "${CASE_RC}" -eq 0 ]]
-[[ "$({ cat "${IMAGE_RETENTION_MARKER_FILE}"; printf x; } | tr -d x)" == '2026-09' ]]
+[[ "$(<"${IMAGE_RETENTION_MARKER_FILE}")" == '2026-09-01' ]]
+[[ "$(wc -c < "${IMAGE_RETENTION_MARKER_FILE}" | tr -d ' ')" -eq 11 ]]
+[[ "$(wc -l < "${FAKE_CORE_CALL_LOG}")" -eq 2 ]]
 grep -Fxq 'builder prune -a --force' "${FAKE_DOCKER_CALL_LOG}"
+
+# A second run on the same JST day is a no-op; the next day runs again.
+: > "${FAKE_CORE_CALL_LOG}"
+run_case
+[[ "${CASE_RC}" -eq 0 ]]
+[[ ! -s "${FAKE_CORE_CALL_LOG}" ]]
+printf '2026-08-31\n' > "${IMAGE_RETENTION_MARKER_FILE}"
+run_case
+[[ "${CASE_RC}" -eq 0 ]]
+[[ "$(wc -l < "${FAKE_CORE_CALL_LOG}")" -eq 2 ]]
+[[ "$(<"${IMAGE_RETENTION_MARKER_FILE}")" == '2026-09-01' ]]
+
+# A day marker with trailing garbage is still corrupt.
+printf '2026-09-01x\n' > "${IMAGE_RETENTION_MARKER_FILE}"
+run_case
+[[ "${CASE_RC}" -ne 0 ]]
 
 echo 'PASS: storage maintenance retention scheduling and locking'

@@ -62,3 +62,6 @@
 
 - name: Keep the Pi5 system journal across reboots
   ansible.builtin.import_tasks: host-journald.yml
+
+- name: Warn before the Pi5 disk fills
+  ansible.builtin.import_tasks: host-status-agent-storage.yml

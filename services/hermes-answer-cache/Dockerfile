@@ -7,7 +7,7 @@ RUN python -c "from fastembed import TextEmbedding; TextEmbedding('sentence-tran
 RUN chmod -R a+rX /opt/models
 ENV HF_HUB_OFFLINE=1
 RUN apt-get update && apt-get install -y --only-upgrade --no-install-recommends \
-    gzip libpcre2-8-0 libsqlite3-0 perl-base \
+    gzip libpcre2-8-0 libsqlite3-0 perl-base libssl3t64 openssl openssl-provider-legacy \
     && rm -rf /var/lib/apt/lists/*
 RUN python -m pip uninstall --yes pip setuptools wheel
 RUN useradd --uid 10001 --create-home cache && mkdir /data && chown cache:cache /data

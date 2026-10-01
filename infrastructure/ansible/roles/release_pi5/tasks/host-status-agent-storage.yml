@@ -1,0 +1,28 @@
+---
+# The Pi5 status-agent configuration is otherwise only written by the retired
+# "full" server mode, so the disk checks were never turned on for the Pi5. On
+# 2026-09-30 its SSD was 84% full with no warning. Turn on the status-agent
+# storage checks (disk 80% WARN / 90% ERROR to Slack ops) in the existing file.
+# Like host-journald.yml, a failure here only reports and never rolls back the API.
+- name: Enable status-agent storage health checks on the Pi5
+  block:
+    - name: Check the Pi5 status-agent configuration
+      ansible.builtin.stat:
+        path: /etc/raspi-status-agent.conf
+      register: release_pi5_status_agent_conf
+
+    - name: Set the Pi5 storage health settings
+      ansible.builtin.lineinfile:
+        path: /etc/raspi-status-agent.conf
+        regexp: "^{{ item.key }}="
+        line: '{{ item.key }}="{{ item.value }}"'
+      loop:
+        - { key: STORAGE_HEALTH_ENABLED, value: "1" }
+        # Image pulls write tens of GB on a deploy day (20.7 GB in the first
+        # 2.6 h after the 2026-09-30 deploy), so only flag a runaway writer.
+        - { key: STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY, value: "300" }
+      when: release_pi5_status_agent_conf.stat.exists
+  rescue:
+    - name: Report that the Pi5 storage health checks were not enabled
+      ansible.builtin.debug:
+        msg: Pi5 status-agent storage health was not enabled; the Pi5 release itself is unaffected.

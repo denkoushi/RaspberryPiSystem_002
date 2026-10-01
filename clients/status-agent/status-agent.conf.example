@@ -31,6 +31,8 @@ STORAGE_HEALTH_INTERVAL_SECONDS=3600
 STORAGE_HEALTH_DISK_WARN_PCT=80
 STORAGE_HEALTH_DISK_ERROR_PCT=90
 STORAGE_HEALTH_STATE_FILE=/run/raspi-status-agent/storage-health-last-run
+STORAGE_HEALTH_WEAR_STATE_FILE=/run/raspi-status-agent/storage-wear-state.json
+STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY=10
 
 # Pi4周辺機器監視。Ansibleはinventoryで有効なAgentだけを1にする。
 # Pi3 signageとserverではすべて0のまま。

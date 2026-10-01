@@ -141,6 +141,7 @@ describe('start-post-listen-schedulers naming contract', () => {
       'gmail-trash-cleanup',
       'due-management-tuning',
       'alerts-dispatcher',
+      'client-heartbeat-monitor',
       'alerts-ingestor',
       'photo-tool-label',
       'part-measurement-drawing-ocr',
