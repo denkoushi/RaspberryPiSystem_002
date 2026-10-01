@@ -80,6 +80,7 @@ bash scripts/deploy/tests/test-single-deploy-entrypoint.sh
 bash scripts/deploy/tests/test-terminal-runtime-manifest-docker.sh
 bash scripts/deploy/tests/test-web-static-routing.sh
 python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
+bash scripts/server/tests/test_storage_maintenance_retention.sh
 python3 scripts/deploy/tests/test-client-agent-lifecycle-selection.py
 bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
 bash scripts/deploy/tests/test-deploy-status-postgres-observability.sh
