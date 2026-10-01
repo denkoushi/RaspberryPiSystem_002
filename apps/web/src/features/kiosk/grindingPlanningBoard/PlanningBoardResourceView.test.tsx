@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { flushSync } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as machineName from '../productionSchedule/machineName';
@@ -353,5 +354,41 @@ describe('PlanningBoardResourceView pane layout', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
     fireEvent.keyDown(handle(), { key: 'ArrowRight', altKey: true });
     expect(order()).toEqual(['584', '305', '999']);
+  });
+});
+
+describe('PlanningBoardResourceView height measurement', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('監視からの再計測が未反映のまま同期の再描画が来ても更新ループにならない', () => {
+    const observerCallbacks: Array<() => void> = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: () => void) { observerCallbacks.push(callback); }
+      observe() {}
+      disconnect() {}
+    });
+    const innerHeight = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(800);
+    const viewProps = {
+      seibanOrder: ['26-1041'],
+      resources: ['305', '584'],
+      resourceNameMap: {},
+      allocation: 'alternate' as const,
+      selectedItemIds: new Set<string>(),
+      onToggleItem: vi.fn(),
+      onResourceClick: vi.fn()
+    };
+    const view = render(<PlanningBoardResourceView {...viewProps} items={[item('a', '305')]} />);
+
+    // A low-priority remeasure stays queued behind the synchronous render below.
+    innerHeight.mockReturnValue(900);
+    observerCallbacks.at(-1)!();
+    innerHeight.mockReturnValue(1000);
+    expect(() => flushSync(() => {
+      view.rerender(<PlanningBoardResourceView {...viewProps} items={[item('a', '305'), item('b', '584')]} />);
+    })).not.toThrow();
+    expect(screen.getByTestId('planning-board-item-b')).toBeInTheDocument();
   });
 });
