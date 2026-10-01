@@ -448,17 +448,7 @@ export class SignageService {
     );
 
 
-    const matchedSchedules: Array<{ schedule: ScheduleSummary; priority: number }> = [];
-    for (const schedule of schedulesForClient) {
-      const matches = this.matchesScheduleWindow(schedule, currentDayOfWeek, currentTime);
-      if (!matches) {
-        continue;
-      }
-      matchedSchedules.push({ schedule, priority: schedule.priority });
-    }
-
-    // マッチしたスケジュールを優先順位順にソート（高い順）
-    matchedSchedules.sort((a, b) => b.priority - a.priority);
+    const matchedSchedules = this.selectMatchedSchedules(schedulesForClient, currentDayOfWeek, currentTime);
 
     // 複数のスケジュールがある場合は順番に切り替える
     if (matchedSchedules.length > 1) {
@@ -508,6 +498,51 @@ export class SignageService {
       displayMode: SignageDisplayMode.SINGLE,
       tools,
       measuringInstruments,
+    };
+  }
+
+  /** いまの時刻に当たる予定を、表示の順番（優先順位の高い順。同じなら取得順）で返す */
+  private selectMatchedSchedules(
+    schedulesForClient: ScheduleSummary[],
+    currentDayOfWeek: number,
+    currentTime: string,
+  ): Array<{ schedule: ScheduleSummary; priority: number }> {
+    const matched = schedulesForClient
+      .filter((schedule) => this.matchesScheduleWindow(schedule, currentDayOfWeek, currentTime))
+      .map((schedule) => ({ schedule, priority: schedule.priority }));
+    // マッチしたスケジュールを優先順位順にソート（高い順）
+    matched.sort((a, b) => b.priority - a.priority);
+    return matched;
+  }
+
+  /**
+   * 管理画面用：端末でいま順番に表示している予定と、切り替えまでの残り秒数。
+   * getContent と同じ選び方（端末で絞る → 時刻で絞る → 優先順位順 → 一定間隔で切り替え）をそのまま使う。
+   */
+  async getRotationForClient(
+    clientKey: string | null,
+    now: Date = new Date(),
+  ): Promise<{ scheduleIds: string[]; currentIndex: number; secondsUntilSwitch: number | null; isFallback: boolean }> {
+    const { currentDayOfWeek, currentTime } = this.getCurrentTimeInfo(now);
+    const schedules = await this.getSchedules();
+    const schedulesForClient = schedules.filter((s) => signageScheduleMatchesClientKey(s.targetClientKeys, clientKey));
+    const matched = this.selectMatchedSchedules(schedulesForClient, currentDayOfWeek, currentTime);
+    if (matched.length === 0) {
+      const fallback =
+        schedulesForClient.find((schedule) => schedule.contentType === SignageContentType.SPLIT) ?? schedulesForClient[0];
+      return { scheduleIds: fallback ? [fallback.id] : [], currentIndex: 0, secondsUntilSwitch: null, isFallback: true };
+    }
+    if (matched.length === 1) {
+      return { scheduleIds: [matched[0].schedule.id], currentIndex: 0, secondsUntilSwitch: null, isFallback: false };
+    }
+    const switchInterval = env.SIGNAGE_SCHEDULE_SWITCH_INTERVAL_SECONDS;
+    const currentSecond = Math.floor(now.getTime() / 1000);
+    const positionInCycle = currentSecond % (matched.length * switchInterval);
+    return {
+      scheduleIds: matched.map((entry) => entry.schedule.id),
+      currentIndex: Math.floor(positionInCycle / switchInterval),
+      secondsUntilSwitch: switchInterval - (positionInCycle % switchInterval),
+      isFallback: false,
     };
   }
 

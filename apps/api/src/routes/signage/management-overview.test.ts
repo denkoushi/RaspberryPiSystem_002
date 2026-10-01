@@ -22,11 +22,13 @@ import {
 } from '../../services/signage/signage-delivery-tracker.js';
 import { registerManagementOverviewRoutes } from './management-overview.js';
 
-const service = { listSignageRenderClientApiKeys: vi.fn() };
+const rotation = { scheduleIds: ['s1', 's2'], currentIndex: 1, secondsUntilSwitch: 12, isFallback: false };
+const service = { listSignageRenderClientApiKeys: vi.fn(), getRotationForClient: vi.fn().mockResolvedValue(rotation) };
 
 describe('signage management overview routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    service.getRotationForClient.mockResolvedValue(rotation);
     resetSignageDeliveryTrackerForTests();
   });
 
@@ -43,8 +45,8 @@ describe('signage management overview routes', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().clients).toEqual([
-      { apiKey: 'key-a', renderedAt: '2026-10-01T05:00:00.000Z', lastFetchedAt: '2026-10-01T05:00:20.000Z' },
-      { apiKey: 'key-b', renderedAt: null, lastFetchedAt: null },
+      { apiKey: 'key-a', renderedAt: '2026-10-01T05:00:00.000Z', lastFetchedAt: '2026-10-01T05:00:20.000Z', rotation },
+      { apiKey: 'key-b', renderedAt: null, lastFetchedAt: null, rotation },
     ]);
     await app.close();
   });

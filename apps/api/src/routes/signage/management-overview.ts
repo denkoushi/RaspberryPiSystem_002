@@ -24,11 +24,13 @@ export function registerManagementOverviewRoutes(app: FastifyInstance, signageSe
         apiKey,
         renderedAt: (await SignageRenderStorage.getCurrentImageRenderedAt(apiKey))?.toISOString() ?? null,
         lastFetchedAt: getSignageImageLastFetchedAt(apiKey)?.toISOString() ?? null,
+        rotation: await signageService.getRotationForClient(apiKey),
       })),
     );
     return {
       generatedAt: new Date().toISOString(),
       renderIntervalSeconds: env.SIGNAGE_RENDER_INTERVAL_SECONDS,
+      scheduleSwitchIntervalSeconds: env.SIGNAGE_SCHEDULE_SWITCH_INTERVAL_SECONDS,
       clients,
     };
   });
