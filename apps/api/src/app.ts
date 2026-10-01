@@ -17,6 +17,7 @@ import { initializeFileStorageRuntime } from './services/file-storage/file-stora
 import { SignageRenderScheduler } from './services/signage/signage-render-scheduler.js';
 import { SignageRenderer } from './services/signage/signage.renderer.js';
 import { SignageService } from './services/signage/index.js';
+import { getSignageWebCaptureService } from './services/signage/web-capture/signage-web-capture.service.js';
 import { probePlaywrightChromiumAvailability } from './services/signage/loan-grid/playwright/playwright-chromium-availability.js';
 import { refreshProductionScheduleOrderSplitPilotGateCache } from './services/production-schedule/order-split/production-schedule-order-split-feature.js';
 import { isCandidateValidationMode } from './bootstrap/candidate-validation.js';
@@ -99,7 +100,9 @@ export async function buildServer(): Promise<FastifyInstance> {
   // サイネージレンダリングスケジューラーを作成（ルートからアクセス可能にするため）
   const signageService = new SignageService();
   const signageRenderer = new SignageRenderer(signageService);
-  const scheduler = new SignageRenderScheduler(signageRenderer, env.SIGNAGE_RENDER_INTERVAL_SECONDS);
+  const scheduler = new SignageRenderScheduler(signageRenderer, env.SIGNAGE_RENDER_INTERVAL_SECONDS, () =>
+    getSignageWebCaptureService().runDueCaptures(),
+  );
   
   // アプリケーションコンテキストにスケジューラーを保存
   app.decorate('signageRenderScheduler', scheduler);
