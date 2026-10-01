@@ -62,7 +62,7 @@ export function AssemblyBoltConditionStrip({ entries, activeKey, selectedMarkerN
       role="group"
       aria-label="締付条件"
       data-testid="assembly-bolt-condition-strip"
-      className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-white/10 px-2 py-1.5"
+      className="flex min-w-0 flex-wrap items-center gap-1.5"
     >
       <span className="shrink-0 text-xs font-bold text-white/60">締付条件</span>
       {entries.map((entry) => {

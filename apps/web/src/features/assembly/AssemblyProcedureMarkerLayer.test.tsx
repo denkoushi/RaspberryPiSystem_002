@@ -197,6 +197,38 @@ describe('AssemblyProcedureMarkerLayer bolt dragging', () => {
     });
   });
 
+  it('shows a callout handle only for the selected marker in the editor and commits the drag target as the tip', () => {
+    const onMoveBoltCallout = vi.fn();
+    const { rerender } = render(
+      <div className="relative h-[200px] w-[400px]">
+        <AssemblyProcedureMarkerLayer bolts={[bolt]} onMoveBoltCallout={onMoveBoltCallout} />
+      </div>
+    );
+    expect(screen.queryByRole('button', { name: '丸数字1の矢視をドラッグで置く' })).not.toBeInTheDocument();
+
+    rerender(
+      <div className="relative h-[200px] w-[400px]">
+        <AssemblyProcedureMarkerLayer bolts={[bolt]} selectedBoltId="bolt-1" />
+      </div>
+    );
+    expect(screen.queryByRole('button', { name: '丸数字1の矢視をドラッグで置く' })).not.toBeInTheDocument();
+
+    rerender(
+      <div className="relative h-[200px] w-[400px]">
+        <AssemblyProcedureMarkerLayer bolts={[bolt]} selectedBoltId="bolt-1" onMoveBoltCallout={onMoveBoltCallout} />
+      </div>
+    );
+    const handle = screen.getByRole('button', { name: '丸数字1の矢視をドラッグで置く' });
+    expect(handle).toHaveStyle({ left: '80%', top: '20%' });
+
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 7, clientX: 330, clientY: 60 });
+    fireEvent.pointerMove(handle, { pointerId: 7, clientX: 210, clientY: 120 });
+    fireEvent.pointerUp(handle, { pointerId: 7, clientX: 210, clientY: 120 });
+
+    expect(onMoveBoltCallout).toHaveBeenCalledTimes(1);
+    expect(onMoveBoltCallout).toHaveBeenCalledWith('bolt-1', { xRatio: 0.5, yRatio: 0.5 });
+  });
+
   it('does not enter drag mode below the shared movement threshold', () => {
     const onMoveBolt = vi.fn();
     render(

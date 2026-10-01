@@ -61,6 +61,9 @@ export type AssemblyProcedureMarkerLayerProps = {
   onMoveBolt?: AssemblyProcedureBoltMoveHandler;
   onSelectCheckItem?: (id: string) => void;
   onMoveCheckItem?: AssemblyProcedureCheckMoveHandler;
+  /** 選択中のマーカーに出す取っ手をドラッグした先を、矢視の先端にする（編集画面のみ）。 */
+  onMoveBoltCallout?: AssemblyProcedureBoltMoveHandler;
+  onMoveCheckItemCallout?: AssemblyProcedureCheckMoveHandler;
   onToggleCheckItem?: (id: string) => void;
   density?: 'default' | 'compact';
   layoutSize?: { width: number; height: number };
@@ -136,6 +139,13 @@ function setMarkerPosition(
   target.style.top = `${point.yRatio * 100}%`;
 }
 
+/** 矢視があればその先端、なければマーカーの右上に取っ手を置く。 */
+function calloutHandleStyle(marker: AssemblyCanvasCallout & AssemblyProcedureMarkerPoint) {
+  return marker.calloutTipXRatio != null && marker.calloutTipYRatio != null
+    ? { left: `${marker.calloutTipXRatio * 100}%`, top: `${marker.calloutTipYRatio * 100}%` }
+    : { left: `calc(${marker.xRatio * 100}% + 2rem)`, top: `calc(${marker.yRatio * 100}% - 2rem)` };
+}
+
 function releasePointerCapture(interaction: MarkerPointerInteraction): void {
   if (!interaction.captureTarget.releasePointerCapture) return;
   try {
@@ -160,6 +170,8 @@ export function AssemblyMarkerOverlay({
   onSelectBolt,
   onMoveBolt,
   onMoveCheckItem,
+  onMoveBoltCallout,
+  onMoveCheckItemCallout,
   onSelectCheckItem,
   onToggleCheckItem,
   density = 'default'
@@ -263,6 +275,16 @@ export function AssemblyMarkerOverlay({
     releasePointerCapture(interaction);
   };
 
+  const selectedBolt = onMoveBoltCallout ? bolts.find((bolt) => bolt.id === selectedBoltId) : undefined;
+  const selectedCheck = onMoveCheckItemCallout
+    ? checkItems.find((item) => item.id === selectedCheckItemId)
+    : undefined;
+  const calloutHandle = selectedBolt
+    ? { marker: selectedBolt, name: `丸数字${selectedBolt.markerNo}`, onMove: onMoveBoltCallout }
+    : selectedCheck
+      ? { marker: selectedCheck, name: `チェック${selectedCheck.markerNo}`, onMove: onMoveCheckItemCallout }
+      : null;
+
   if (density === 'compact') {
     return (
       <div className="pointer-events-none absolute inset-0 z-10" aria-hidden="true">
@@ -355,6 +377,26 @@ export function AssemblyMarkerOverlay({
           ✓{item.markerNo}
         </button>
       ))}
+      {calloutHandle ? (
+        <button
+          key={`callout-handle-${calloutHandle.marker.id}`}
+          type="button"
+          aria-label={`${calloutHandle.name}の矢視をドラッグで置く`}
+          title="ドラッグで矢視"
+          data-callout-handle-for={calloutHandle.marker.id}
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => handleMarkerPointerDown(event, calloutHandle.marker.id, calloutHandle.onMove)}
+          onPointerMove={handleMarkerPointerMove}
+          onPointerUp={(event) => endMarkerPointerInteraction(event, false)}
+          onPointerCancel={(event) => endMarkerPointerInteraction(event, true)}
+          className="absolute z-20 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none items-center justify-center rounded-full border-2 border-dashed border-slate-900 bg-white/90 text-slate-900 shadow-lg"
+          style={calloutHandleStyle(calloutHandle.marker)}
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M6 18L18 6M9 6h9v9" />
+          </svg>
+        </button>
+      ) : null}
     </>
   );
 }
@@ -368,6 +410,8 @@ export function AssemblyProcedureMarkerLayer({
   onSelectBolt,
   onMoveBolt,
   onMoveCheckItem,
+  onMoveBoltCallout,
+  onMoveCheckItemCallout,
   onSelectCheckItem,
   onToggleCheckItem,
   density = 'default',
@@ -426,6 +470,8 @@ export function AssemblyProcedureMarkerLayer({
         onSelectBolt={onSelectBolt}
         onMoveBolt={onMoveBolt}
         onMoveCheckItem={onMoveCheckItem}
+        onMoveBoltCallout={onMoveBoltCallout}
+        onMoveCheckItemCallout={onMoveCheckItemCallout}
         onSelectCheckItem={onSelectCheckItem}
         onToggleCheckItem={onToggleCheckItem}
         density={density}
