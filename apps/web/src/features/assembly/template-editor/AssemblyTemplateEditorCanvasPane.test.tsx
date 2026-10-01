@@ -68,7 +68,11 @@ const crop = {
 
 function createController(overrides: Record<string, unknown> = {}) {
   return {
+    activeBoltConditionKey: null,
     addBoltAt: vi.fn(),
+    addBoltCondition: vi.fn(),
+    boltConditionPalette: [],
+    selectBoltCondition: vi.fn(),
     addCheckItemAt: vi.fn(),
     addCurrentCropStep: vi.fn(),
     canvasZoom: { zoom: 1, fitGeneration: 0 },

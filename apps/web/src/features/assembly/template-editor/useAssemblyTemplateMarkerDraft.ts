@@ -4,6 +4,7 @@ import {
   clearImageMarkerCalloutTip,
   setImageMarkerCalloutTip
 } from '../../kiosk/image-canvas';
+import { assemblyBoltConditionPatch } from '../assemblyBoltConditionPalette';
 import {
   assemblyProcedureViewPointToSourcePoint,
   projectAssemblyProcedureMarkersToCrop
@@ -23,6 +24,8 @@ import {
   templateToDraftAreas,
   templateToDraftCheckItems
 } from '../assemblyTemplateDraft';
+
+import { useAssemblyBoltConditionPalette } from './useAssemblyBoltConditionPalette';
 
 import type { AssemblyProcedureStepDraft } from '../assemblyProcedureStepDraft';
 import type {
@@ -110,6 +113,16 @@ export function useAssemblyTemplateMarkerDraft(input: MarkerDraftInput) {
   const selectedArea = areas.find((area) => area.id === selectedAreaId) ?? areas[0] ?? null;
   const selectedBolt = selectedArea?.bolts.find((bolt) => bolt.id === selectedBoltId) ?? null;
   const selectedCheckItem = checkItems.find((item) => item.id === selectedCheckItemId) ?? null;
+  const boltConditions = useAssemblyBoltConditionPalette({
+    areas,
+    editableBoltId: input.readOnly ? null : selectedBolt?.id ?? null,
+    setAreas,
+    onStartPlacement: () => {
+      setMarkerMode('bolt');
+      setPlacementAction('place');
+    }
+  });
+  const activeBoltCondition = boltConditions.activeBoltCondition;
   const currentPageRef = useMemo(
     () =>
       input.selectedPage
@@ -270,10 +283,13 @@ export function useAssemblyTemplateMarkerDraft(input: MarkerDraftInput) {
 
   const addBoltAt = (xRatio: number, yRatio: number) => {
     if (input.readOnly || !selectedArea || !currentPageRef) return;
-    const next = createAssemblyBoltAt(selectedArea, xRatio, yRatio, currentPageRef, {
+    const created = createAssemblyBoltAt(selectedArea, xRatio, yRatio, currentPageRef, {
       allAreas: areas,
-      inheritFrom: inheritCondition ? selectedBolt : null
+      inheritFrom: !activeBoltCondition && inheritCondition ? selectedBolt : null
     });
+    const next = activeBoltCondition
+      ? { ...created, ...assemblyBoltConditionPatch(activeBoltCondition) }
+      : created;
     setAreas((current) =>
       current.map((area) =>
         area.id === selectedArea.id ? { ...area, bolts: [...area.bolts, next] } : area
@@ -301,7 +317,9 @@ export function useAssemblyTemplateMarkerDraft(input: MarkerDraftInput) {
       setSelectedBoltId(null);
       setSelectedCheckItemId(null);
     },
+    activeBoltConditionKey: boltConditions.activeBoltConditionKey,
     addBoltAt,
+    addBoltCondition: boltConditions.addBoltCondition,
     addCheckItemAt,
     allStepMarkers,
     applySelectedConditionToRange: () => {
@@ -316,6 +334,7 @@ export function useAssemblyTemplateMarkerDraft(input: MarkerDraftInput) {
       input.onMessage(`締付条件を${result.updatedCount}件へ反映しました。欠番は${result.missingCount}件です。`);
     },
     areas,
+    boltConditionPalette: boltConditions.boltConditionPalette,
     checkItems,
     clearSelectedCheckItemCallout: () =>
       selectedCheckItem &&
@@ -458,6 +477,7 @@ export function useAssemblyTemplateMarkerDraft(input: MarkerDraftInput) {
       setSelectedBoltId(null);
       setSelectedCheckItemId(null);
     },
+    selectBoltCondition: boltConditions.selectBoltCondition,
     selectBolt: (id: string) => {
       setMarkerMode('bolt');
       setSelectedBoltId(id);

@@ -1,4 +1,5 @@
 import { clampImageMarkerRatio } from '../../kiosk/image-canvas';
+import { AssemblyBoltConditionStrip } from '../AssemblyBoltConditionStrip';
 import { AssemblyProcedureCanvas } from '../AssemblyProcedureCanvas';
 import { AssemblyProcedureCropView } from '../AssemblyProcedureCropView';
 import {
@@ -13,9 +14,12 @@ import { useAssemblyTemplateEditor } from './AssemblyTemplateEditorContext';
 
 export function AssemblyTemplateEditorCanvasPane() {
   const {
+    activeBoltConditionKey,
     addBoltAt,
+    addBoltCondition,
     addCheckItemAt,
     addCurrentCropStep,
+    boltConditionPalette,
     canvasZoom,
     cropVisibleBolts,
     cropVisibleCheckItems,
@@ -36,6 +40,7 @@ export function AssemblyTemplateEditorCanvasPane() {
     setCheckItemPatch,
     setBoltPatch,
     selectBolt,
+    selectBoltCondition,
     selectCheckItem,
     showSelectedCrop,
     visibleBolts,
@@ -81,6 +86,14 @@ export function AssemblyTemplateEditorCanvasPane() {
     className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0"
   >
     <AssemblyTemplateEditorCanvasToolbar />
+    <AssemblyBoltConditionStrip
+      entries={boltConditionPalette}
+      activeKey={activeBoltConditionKey}
+      selectedMarkerNo={selectedBolt?.markerNo ?? null}
+      readOnly={readOnly}
+      onSelect={selectBoltCondition}
+      onAdd={addBoltCondition}
+    />
     <div className="min-h-0 flex-1">
       {showSelectedCrop && selectedStep?.crop && selectedPage ? (
         <div className="relative h-full w-full bg-slate-950 p-2">
