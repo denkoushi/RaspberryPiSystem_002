@@ -70,6 +70,10 @@ def parse_config_file(path: Path) -> Dict[str, str]:
     config.setdefault("STORAGE_HEALTH_DISK_ERROR_PCT", "90")
     config.setdefault("STORAGE_HEALTH_INTERVAL_SECONDS", str(storage_health.DEFAULT_INTERVAL_SECONDS))
     config.setdefault("STORAGE_HEALTH_STATE_FILE", str(DEFAULT_STORAGE_HEALTH_STATE_FILE))
+    config.setdefault("STORAGE_HEALTH_WEAR_STATE_FILE", str(storage_health.DEFAULT_WEAR_STATE_FILE))
+    config.setdefault(
+        "STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY", f"{storage_health.DEFAULT_WRITE_WARN_GB_PER_DAY:g}"
+    )
     config.setdefault("TERMINAL_AGENT_HEALTH_NFC_ENABLED", "0")
     config.setdefault("TERMINAL_AGENT_HEALTH_BARCODE_ENABLED", "0")
     config.setdefault("TERMINAL_AGENT_HEALTH_TORQUE_ENABLED", "0")
@@ -330,6 +334,7 @@ def main() -> int:
 
         post_payload(config, payload)
         terminal_agent_health.mark_logs_delivered(config, list(payload.get("logs", [])))
+        storage_health.mark_wear_logs_delivered(config, list(payload.get("logs", [])))
         if storage_health.is_truthy(config.get("STATUS_AGENT_LOG_SUCCESS")):
             location = config.get("LOCATION")
             suffix = f" ({location})" if location else ""
