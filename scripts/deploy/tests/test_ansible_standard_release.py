@@ -342,6 +342,13 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         )
         self.assertIn('BROWSER_BIN="/usr/bin/firefox"', rendered)
         self.assertNotIn('BROWSER_BIN="/usr/bin/chromium-browser"', rendered)
+        # KB-412: the automation-only focus pref must be dropped before Firefox starts.
+        guard = "sed -i '/^user_pref(\"focusmanager\\.testmode\"/d' \"${FF_PROFILE}/prefs.js\""
+        self.assertIn(guard, rendered)
+        self.assertLess(
+            rendered.index(guard),
+            rendered.index('exec "${BROWSER_BIN}" "${PROFILE_ARGS[@]}"'),
+        )
 
     def test_display_health_wait_is_bounded_and_fails_after_timeout(self) -> None:
         health = yaml.safe_load(
