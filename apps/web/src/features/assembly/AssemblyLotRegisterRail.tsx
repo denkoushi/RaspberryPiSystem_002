@@ -31,6 +31,7 @@ type Props = {
   onSerialAdd: () => void;
   onSerialRemove: (serialNo: string) => void;
   autoLotQty: number | null;
+  onAdjustLotQty: (delta: -1 | 1) => void;
   manualLotQtyDraft: string;
   onManualLotQtyDraftChange: (value: string) => void;
   lotQtyLoading: boolean;
@@ -41,6 +42,8 @@ type Props = {
 
 const FIELD =
   'w-full rounded-lg border border-[#2c3742] bg-[#0f1317] px-3 font-mono font-semibold text-[#eef3f6] placeholder:font-sans placeholder:text-[#617080] focus:border-[#35d6ae] focus:outline-none disabled:opacity-60';
+const STEP =
+  'inline-flex h-11 w-11 items-center justify-center rounded-lg bg-[#1f2730] text-xl font-bold text-[#eef3f6] hover:bg-[#2a343f] disabled:opacity-40';
 const QUIET = 'inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-bold text-[#97a5b2] hover:bg-[#1f2730] hover:text-[#eef3f6] disabled:opacity-50';
 
 export function AssemblyLotRegisterRail({
@@ -67,6 +70,7 @@ export function AssemblyLotRegisterRail({
   onSerialAdd,
   onSerialRemove,
   autoLotQty,
+  onAdjustLotQty,
   manualLotQtyDraft,
   onManualLotQtyDraftChange,
   lotQtyLoading,
@@ -155,14 +159,24 @@ export function AssemblyLotRegisterRail({
                   onChange={(event) => onManualLotQtyDraftChange(event.target.value)}
                 />
               ) : (
-                <span className="font-mono text-3xl font-semibold tabular-nums">
-                  {expectedLotQuantity}
-                  <span className="ml-1 font-sans text-sm font-bold text-[#97a5b2]">台</span>
-                </span>
+                <div className="flex items-center gap-1">
+                  <button type="button" className={STEP} aria-label="台数を減らす" disabled={busy || (expectedLotQuantity ?? 1) <= 1} onClick={() => onAdjustLotQty(-1)}>
+                    −
+                  </button>
+                  <span className="min-w-14 text-center font-mono text-3xl font-semibold tabular-nums" aria-label="台数">
+                    {expectedLotQuantity}
+                  </span>
+                  <button type="button" className={STEP} aria-label="台数を増やす" disabled={busy || (expectedLotQuantity ?? 500) >= 500} onClick={() => onAdjustLotQty(1)}>
+                    ＋
+                  </button>
+                </div>
               )}
             </div>
             <p className={clsx('truncate text-sm', hasTemplate ? 'text-[#97a5b2]' : 'font-bold text-[#ff7d61]')}>
               {selectedCandidate.activeTemplate?.name ?? '手順なし'}
+              {autoLotQty != null && expectedLotQuantity !== autoLotQty ? (
+                <span className="ml-2 font-bold text-[#f6b93b]">実績 {autoLotQty}台</span>
+              ) : null}
             </p>
           </div>
 

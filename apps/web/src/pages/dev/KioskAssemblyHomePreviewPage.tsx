@@ -59,7 +59,7 @@ export function KioskAssemblyHomePreviewPage() {
   const [fseiban, setFseiban] = useState('DA4');
   const [selected, setSelected] = useState<AssemblySeibanCandidateDto | null>(previewCandidates[0]!);
   const [manual, setManual] = useState(false);
-  const quantity = 6;
+  const [quantity, setQuantity] = useState(6);
   const workIds = selected ? Array.from({ length: quantity }, (_, index) => `${selected.fseiban}-${String(index + 1).padStart(3, '0')}`) : [];
 
   return (
@@ -96,7 +96,8 @@ export function KioskAssemblyHomePreviewPage() {
           onSerialClear={() => undefined}
           onSerialAdd={() => undefined}
           onSerialRemove={() => undefined}
-          autoLotQty={selected ? quantity : null}
+          autoLotQty={selected ? 6 : null}
+          onAdjustLotQty={(delta) => setQuantity((current) => Math.max(1, current + delta))}
           manualLotQtyDraft=""
           onManualLotQtyDraftChange={() => undefined}
           lotQtyLoading={false}

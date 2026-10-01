@@ -458,6 +458,24 @@ describe('KioskAssemblyHomePage', () => {
     expect(machineNameSpan).toHaveAttribute('title', longMachineName);
   });
 
+  it('lets the operator register fewer units than the production quantity', async () => {
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
+    fireEvent.click(await screen.findByText('ASMTEST-A1'));
+    await waitFor(() => expect(screen.getByText('発行予定 2/2')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: '台数を減らす' }));
+    expect(screen.getByText('発行予定 1/1')).toBeInTheDocument();
+    expect(screen.getByText('実績 2台')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '台数を減らす' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: '1台 登録' }));
+    await waitFor(() =>
+      expect(mockCreateAssemblyLot).toHaveBeenCalledWith(expect.objectContaining({ expectedQuantity: 1, workIdMode: 'auto' }))
+    );
+  });
+
   it('shows manual lot quantity input and registers a lot when API returns no quantity', async () => {
     mockListAssemblySeibanLotQuantities.mockResolvedValue([]);
     renderPage();

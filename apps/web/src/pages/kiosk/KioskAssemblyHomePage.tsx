@@ -71,6 +71,7 @@ export function KioskAssemblyHomePage() {
   const [lotQtyByProductNo, setLotQtyByProductNo] = useState<Record<string, number>>({});
   const [lotQtyLoading, setLotQtyLoading] = useState(false);
   const [manualLotQtyDraft, setManualLotQtyDraft] = useState('');
+  const [adjustedLotQty, setAdjustedLotQty] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [busySerialId, setBusySerialId] = useState<string | null>(null);
   const [pendingStart, setPendingStart] = useState<{ lotId: string; lotSerialId: string } | null>(null);
@@ -97,7 +98,7 @@ export function KioskAssemblyHomePage() {
       ? selectedLotQty
       : null;
   const manualLotQty = autoLotQty == null ? parsePositiveIntegerLotQty(manualLotQtyDraft) : null;
-  const expectedLotQuantity = autoLotQty ?? manualLotQty ?? null;
+  const expectedLotQuantity = autoLotQty != null ? (adjustedLotQty ?? autoLotQty) : (manualLotQty ?? null);
   const autoWorkIds = useMemo(() => {
     if (!selectedCandidate || expectedLotQuantity == null) return [];
     try {
@@ -212,6 +213,7 @@ export function KioskAssemblyHomePage() {
     setLotSerialNos([]);
     setWorkIdMode('auto');
     setManualLotQtyDraft('');
+    setAdjustedLotQty(null);
   }, [selectedCandidate]);
 
   useEffect(() => {
@@ -274,11 +276,18 @@ export function KioskAssemblyHomePage() {
     setLotSerialNos([]);
     setWorkIdMode('auto');
     setManualLotQtyDraft('');
+    setAdjustedLotQty(null);
     setMessage(null);
   };
 
   const changeManualLotQtyDraft = (value: string) => {
     setManualLotQtyDraft(normalizeManualLotQtyDraft(value));
+  };
+
+  const adjustLotQty = (delta: -1 | 1) => {
+    if (autoLotQty == null) return;
+    setAdjustedLotQty((current) => Math.min(500, Math.max(1, (current ?? autoLotQty) + delta)));
+    setMessage(null);
   };
 
   const changeWorkIdMode = (mode: 'auto' | 'manual') => {
@@ -473,6 +482,7 @@ export function KioskAssemblyHomePage() {
           onSerialAdd={addSerialToLot}
           onSerialRemove={removeSerialFromLot}
           autoLotQty={autoLotQty}
+          onAdjustLotQty={adjustLotQty}
           manualLotQtyDraft={manualLotQtyDraft}
           onManualLotQtyDraftChange={changeManualLotQtyDraft}
           lotQtyLoading={lotQtyLoading}
