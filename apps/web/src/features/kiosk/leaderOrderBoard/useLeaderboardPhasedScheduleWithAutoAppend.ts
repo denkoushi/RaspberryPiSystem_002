@@ -14,6 +14,7 @@ import {
 } from '../../../api/hooks';
 
 import { LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE } from './constants';
+import { buildLeaderboardPartKeyFromScheduleRow } from './leaderboardDecorationStalePolicy';
 
 import type { LeaderboardAppendAcquire } from './leaderboard-append-concurrency';
 import type { SelfInspectionStatus } from '../../part-measurement/types';
@@ -350,10 +351,13 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
       hasFreshTotal && typeof totalQuery.data?.total === 'number'
         ? totalQuery.data.total
         : mergedRows.length;
+    const materialArrivalByPartKey = decorationsQuery.data?.leaderboardMaterialArrivalByPartKey ?? {};
     const rows = mergedRows.map((row): ProductionScheduleRow => {
       if (!includeDecorations) return row;
       const deco = leaderboardDecorationByRowId.get(row.id);
-      return deco ? { ...row, ...deco } : row;
+      const materialArrivalStatus = materialArrivalByPartKey[buildLeaderboardPartKeyFromScheduleRow(row)] ?? null;
+      if (!deco && materialArrivalStatus == null) return row;
+      return { ...row, ...deco, materialArrivalStatus };
     });
     return {
       page: shellQuery.data.page,
@@ -364,6 +368,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     };
   }, [
     decorationsQuery.data?.leaderboardFooterChipsByPartKey,
+    decorationsQuery.data?.leaderboardMaterialArrivalByPartKey,
     includeDecorations,
     leaderboardDecorationByRowId,
     mergedRows,

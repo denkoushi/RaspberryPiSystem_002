@@ -36,6 +36,13 @@ describe('parsePurchaseOrderLookupRow', () => {
     expect(p?.purchasePartCodeMatchKey).toBe('MD000552918');
   });
 
+  it('reads FKOBAIST as purchaseStatus and keeps null when the column is absent', () => {
+    const base = { FKOBAINO: '0005507676', FHINCD: 'MD000552918-001', FSEIBAN: 'CA1QAS09', FKOBAIHINMEI: '品名' };
+    expect(parsePurchaseOrderLookupRow({ ...base, FKOBAIST: ' c ' }, 0)?.purchaseStatus).toBe('C');
+    expect(parsePurchaseOrderLookupRow({ ...base, FKOBAIST: '' }, 0)?.purchaseStatus).toBeNull();
+    expect(parsePurchaseOrderLookupRow(base, 0)?.purchaseStatus).toBeNull();
+  });
+
   it('returns null when FKOBAINO is not 10 digits', () => {
     expect(parsePurchaseOrderLookupRow({ FKOBAINO: '123' }, 0)).toBeNull();
   });

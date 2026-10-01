@@ -81,6 +81,7 @@ export class PurchaseOrderLookupSyncService {
                 seiban: p.seiban,
                 purchasePartName: p.purchasePartName,
                 acceptedQuantity: p.acceptedQuantity,
+                purchaseStatus: p.purchaseStatus,
                 lineIndex: p.lineIndex,
               },
               update: {
@@ -88,6 +89,8 @@ export class PurchaseOrderLookupSyncService {
                 purchasePartCodeNormalized: p.purchasePartCodeNormalized,
                 purchasePartName: p.purchasePartName,
                 acceptedQuantity: p.acceptedQuantity,
+                // FKOBAIST 列が無いCSVで既存ステイタスを消さない
+                ...(p.purchaseStatus != null ? { purchaseStatus: p.purchaseStatus } : {}),
                 lineIndex: p.lineIndex,
               },
             });

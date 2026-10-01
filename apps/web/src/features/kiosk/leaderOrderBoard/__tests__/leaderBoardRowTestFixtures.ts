@@ -27,6 +27,7 @@ export function mkLeaderBoardRow(partial: Partial<LeaderBoardRow> & Pick<LeaderB
     selfInspectionTemplateId: null,
     selfInspectionStatus: null,
     selfInspectionEntryPath: null,
+    materialArrivalStatus: null,
     sourceRowId: partial.sourceRowId ?? partial.id,
     splitId: null,
     splitNo: null,

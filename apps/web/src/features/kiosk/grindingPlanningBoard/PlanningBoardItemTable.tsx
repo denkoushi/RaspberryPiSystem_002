@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { memo, useId, useRef, useState } from 'react';
 
+import { MaterialArrivalBadge } from '../../../components/kiosk/MaterialArrivalBadge';
 import { LeaderBoardRankPickerDropdown } from '../leaderOrderBoard/LeaderBoardRankPickerDropdown';
 import { normalizeMachineName } from '../productionSchedule/machineName';
 
@@ -139,6 +140,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
             <div className="mt-0.5 break-words font-mono text-[10px] text-white [overflow-wrap:anywhere]">
               {item.fseiban} · {machineName || '機種名未登録'}
             </div>
+            <MaterialArrivalBadge status={item.materialArrivalStatus} className="mt-0.5" />
           </div>
         ) : (
           <>
@@ -147,9 +149,12 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
             </span>
             <span className="mt-0.5 block break-words font-mono text-[10px] text-slate-400 [overflow-wrap:anywhere]">{item.fhincd || item.productNo}</span>
             {showRank ? (
-              <span className="mt-0.5 block break-words text-[10px] leading-tight text-slate-400 [overflow-wrap:anywhere]">
-                {plannedQuantity} · {requiredTime}
-              </span>
+              <>
+                <span className="mt-0.5 block break-words text-[10px] leading-tight text-slate-400 [overflow-wrap:anywhere]">
+                  {plannedQuantity} · {requiredTime}
+                </span>
+                <MaterialArrivalBadge status={item.materialArrivalStatus} className="mt-0.5" />
+              </>
             ) : null}
           </>
         )}
@@ -216,6 +221,11 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
               <span className="whitespace-nowrap text-[10px] text-slate-400">
                 {requiredTime}
               </span>
+              {item.materialArrivalStatus ? (
+                <span className="basis-full">
+                  <MaterialArrivalBadge status={item.materialArrivalStatus} />
+                </span>
+              ) : null}
             </>
           ) : null}
           {showRank ? (

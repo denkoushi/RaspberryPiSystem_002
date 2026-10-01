@@ -25,6 +25,7 @@ import { chunkLeaderboardRowIdsForHydrate } from './leaderboard/leaderboard-disp
 import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard/leaderboard-shell-hydrate.service.js';
 import type { LeaderboardScheduleRowSql } from './leaderboard/leaderboard-schedule-row.types.js';
 import { loadLeaderboardCanonicalRows } from './leaderboard/leaderboard-canonical-row-cache.js';
+import { findMaterialArrivalStatusByPart, materialArrivalLookupKey } from '../purchase-order-lookup/material-arrival-status.service.js';
 import { readGrindingPlanningBoardSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
 import { prepareProductionScheduleDashboardFilters } from './production-schedule-query/filters.js';
 import { fetchLeaderboardPlanningScopedParentRowIds } from './leaderboard/leaderboard-row-selection.service.js';
@@ -772,6 +773,12 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
   const cursor = Math.max(params.cursor ?? 0, 0);
   const pageSize = Math.min(Math.max(params.pageSize ?? DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
   const page = orderedItems.slice(cursor, cursor + pageSize);
+  // 材料の入荷状況は購買CSVの取込で変わるため、スナップショットや itemRevision に含めず応答のたびに付ける。
+  const materialArrivalByPart = await perf.measure('materialArrival', () => findMaterialArrivalStatusByPart(page));
+  const pageWithMaterialArrival = page.map((item) => {
+    const materialArrivalStatus = materialArrivalByPart.get(materialArrivalLookupKey(item.fseiban, item.fhincd));
+    return materialArrivalStatus ? { ...item, materialArrivalStatus } : item;
+  });
   perf.flush({ snapshotReused: Boolean(params.snapshotId), itemCount: orderedItems.length, fseibanCount: selected.length });
   return {
     siteKey: params.siteKey,
@@ -782,7 +789,7 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
     registeredFseibans: order,
     seibanOrder: selected,
     resources: payload.resources,
-    items: page,
+    items: pageWithMaterialArrival,
     load: payload.load,
     unknownRequiredMinutesCount: payload.unknownRequiredMinutesCount,
     seibanProgress: payload.seibanProgress,

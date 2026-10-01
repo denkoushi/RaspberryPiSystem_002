@@ -17,3 +17,9 @@ export {
   findMasterFhinmeisByNormalizedFhinCd,
 } from './purchase-order-lookup-master-part.service.js';
 export { queryPurchaseOrderLookup, type PurchaseOrderLookupResponse } from './purchase-order-lookup-query.service.js';
+export {
+  findMaterialArrivalStatusByPart,
+  isMaterialPurchasePartCode,
+  materialArrivalLookupKey,
+  resolveMaterialArrivalStatus,
+} from './material-arrival-status.service.js';
