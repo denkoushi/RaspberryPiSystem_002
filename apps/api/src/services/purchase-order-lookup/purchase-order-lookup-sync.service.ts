@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
+import { Prisma } from '@prisma/client';
 import { parse } from 'csv-parse/sync';
 
 import { ApiError } from '../../lib/errors.js';
@@ -10,11 +12,8 @@ import {
   parsePurchaseOrderLookupRow,
 } from './purchase-order-lookup-sync.pipeline.js';
 
-const REPLACEMENT_TX_TIMEOUT_MS = 60_000;
-const REPLACEMENT_TX_MAX_WAIT_MS = 15_000;
-
-/** 1 トランザクション内の upsert バッチサイズ（行数が多いCSVでもタイムアウトしにくい粒度） */
-const UPSERT_CHUNK_SIZE = 100;
+/** 1 文でまとめて upsert する行数（1 行 11 パラメータ。Postgres のバインド上限 65535 に十分収まる粒度） */
+const UPSERT_CHUNK_SIZE = 500;
 
 export type PurchaseOrderLookupSyncResult = {
   scanned: number;
@@ -58,47 +57,45 @@ export class PurchaseOrderLookupSyncService {
       }
     }
 
-    await prisma.$transaction(
-      async (tx) => {
-        for (let i = 0; i < parsed.length; i += UPSERT_CHUNK_SIZE) {
-          const chunk = parsed.slice(i, i + UPSERT_CHUNK_SIZE);
-          for (const p of chunk) {
-            await tx.purchaseOrderLookupRow.upsert({
-              where: {
-                sourceCsvDashboardId_purchaseOrderNo_seiban_purchasePartCodeMatchKey: {
-                  sourceCsvDashboardId,
-                  purchaseOrderNo: p.purchaseOrderNo,
-                  seiban: p.seiban,
-                  purchasePartCodeMatchKey: p.purchasePartCodeMatchKey,
-                },
-              },
-              create: {
-                sourceCsvDashboardId,
-                purchaseOrderNo: p.purchaseOrderNo,
-                purchasePartCodeRaw: p.purchasePartCodeRaw,
-                purchasePartCodeNormalized: p.purchasePartCodeNormalized,
-                purchasePartCodeMatchKey: p.purchasePartCodeMatchKey,
-                seiban: p.seiban,
-                purchasePartName: p.purchasePartName,
-                acceptedQuantity: p.acceptedQuantity,
-                purchaseStatus: p.purchaseStatus,
-                lineIndex: p.lineIndex,
-              },
-              update: {
-                purchasePartCodeRaw: p.purchasePartCodeRaw,
-                purchasePartCodeNormalized: p.purchasePartCodeNormalized,
-                purchasePartName: p.purchasePartName,
-                acceptedQuantity: p.acceptedQuantity,
-                // FKOBAIST 列が無いCSVで既存ステイタスを消さない
-                ...(p.purchaseStatus != null ? { purchaseStatus: p.purchaseStatus } : {}),
-                lineIndex: p.lineIndex,
-              },
-            });
-          }
-        }
-      },
-      { timeout: REPLACEMENT_TX_TIMEOUT_MS, maxWait: REPLACEMENT_TX_MAX_WAIT_MS }
-    );
+    // 同一キーが CSV 内に複数あれば最後の行を採用する（1 文の ON CONFLICT は同じ行を二度更新できない）。
+    const lastByKey = new Map<string, ParsedPurchaseOrderLookupCsvRow>();
+    for (const p of parsed) {
+      lastByKey.set(`${p.purchaseOrderNo}\u0000${p.seiban}\u0000${p.purchasePartCodeMatchKey}`, p);
+    }
+    const rows = [...lastByKey.values()];
+
+    // upsert は冪等なので全体を 1 トランザクションにしない。数万行の CSV でも時間切れにならないよう、
+    // チャンクごとに 1 文でまとめて書く。途中で失敗しても、同じ CSV を取り込み直せば揃う。
+    // FKOBAIST 列が無いCSVで既存ステイタスを消さないよう、purchaseStatus は COALESCE で残す。
+    for (let i = 0; i < rows.length; i += UPSERT_CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + UPSERT_CHUNK_SIZE);
+      await prisma.$executeRaw`
+        INSERT INTO "PurchaseOrderLookupRow" (
+          "id", "sourceCsvDashboardId", "purchaseOrderNo", "purchasePartCodeRaw", "purchasePartCodeNormalized",
+          "purchasePartCodeMatchKey", "seiban", "purchasePartName", "acceptedQuantity", "purchaseStatus",
+          "lineIndex", "createdAt", "updatedAt"
+        )
+        VALUES ${Prisma.join(
+          chunk.map(
+            (p) => Prisma.sql`(
+              ${randomUUID()}, ${sourceCsvDashboardId}, ${p.purchaseOrderNo}, ${p.purchasePartCodeRaw},
+              ${p.purchasePartCodeNormalized}, ${p.purchasePartCodeMatchKey}, ${p.seiban}, ${p.purchasePartName},
+              ${p.acceptedQuantity}, ${p.purchaseStatus}, ${p.lineIndex}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            )`
+          ),
+          ','
+        )}
+        ON CONFLICT ("sourceCsvDashboardId", "purchaseOrderNo", "seiban", "purchasePartCodeMatchKey")
+        DO UPDATE SET
+          "purchasePartCodeRaw" = EXCLUDED."purchasePartCodeRaw",
+          "purchasePartCodeNormalized" = EXCLUDED."purchasePartCodeNormalized",
+          "purchasePartName" = EXCLUDED."purchasePartName",
+          "acceptedQuantity" = EXCLUDED."acceptedQuantity",
+          "purchaseStatus" = COALESCE(EXCLUDED."purchaseStatus", "PurchaseOrderLookupRow"."purchaseStatus"),
+          "lineIndex" = EXCLUDED."lineIndex",
+          "updatedAt" = CURRENT_TIMESTAMP
+      `;
+    }
 
     return { scanned: records.length, inserted: parsed.length, upserted: parsed.length };
   }
