@@ -123,6 +123,10 @@ PI4_KIOSK_RELEASE_FILES = frozenset(
     {
         "infrastructure/ansible/templates/kiosk-launch.sh.j2",
         "infrastructure/ansible/templates/kiosk-browser.service.j2",
+        # Inputs the launcher is rendered from: release_kiosk includes the
+        # resolver, and the role defaults carry the browser flags.
+        "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
+        "infrastructure/ansible/roles/kiosk/defaults/main.yml",
         "infrastructure/ansible/templates/status-agent.conf.j2",
         "infrastructure/ansible/templates/nfc-agent.env.j2",
         "infrastructure/ansible/templates/barcode-agent.env.j2",
