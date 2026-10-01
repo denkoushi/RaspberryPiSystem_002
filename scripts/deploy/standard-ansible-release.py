@@ -538,6 +538,9 @@ def ansible_argv(
     return command
 
 
+PLAN_IMAGE_REGISTRY = "ghcr.io"
+
+
 def unpublished_plan_images(document: Mapping[str, Any]) -> list[str]:
     """Return planned registry images that do not exist yet.
 
@@ -550,7 +553,10 @@ def unpublished_plan_images(document: Mapping[str, Any]) -> list[str]:
     missing: list[str] = []
     for entry in document.get("executionOrder", []):
         for reference in entry.get("images", []):
-            if not str(reference).startswith("ghcr.io/"):
+            # Compare the registry host exactly; a torque cutover plan carries
+            # a "release-set-v2:..." placeholder that is not a registry image.
+            registry, separator, _repository = str(reference).partition("/")
+            if not separator or registry != PLAN_IMAGE_REGISTRY:
                 continue
             if run(["docker", "manifest", "inspect", str(reference)], check=False).returncode:
                 missing.append(str(reference))
