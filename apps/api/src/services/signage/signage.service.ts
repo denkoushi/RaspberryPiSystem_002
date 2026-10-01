@@ -504,6 +504,11 @@ export class SignageService {
     };
   }
 
+  /** 管理画面のプレビュー用：サイネージに映すのと同じ CSV ダッシュボードのデータを返す */
+  async loadCsvDashboardForPreview(csvDashboardId: string) {
+    return this.getCsvDashboardData(csvDashboardId);
+  }
+
   private async getCsvDashboardData(
     csvDashboardId: string
   ): Promise<{ id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> } | null> {

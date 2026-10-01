@@ -232,6 +232,15 @@ export class SignageRenderer {
   }
 
   /** 業務Hermesの承認前プレビュー用。保存やスケジュール変更は行わない。 */
+  /** CSV ダッシュボードをサイネージと同じ描画で JPEG にする（管理画面のプレビュー用） */
+  async renderCsvDashboardToBuffer(dashboardId: string): Promise<Buffer> {
+    const data = await this.signageService.loadCsvDashboardForPreview(dashboardId);
+    if (!data) {
+      return await this.renderMessage('CSVダッシュボードが見つかりません');
+    }
+    return await this.renderCsvDashboard(dashboardId, data);
+  }
+
   async renderCanvasPreviewToBuffer(layout: SignageCanvasLayoutConfig): Promise<Buffer> {
     return await this.renderCanvasLayout(layout, { failOnVisualizationError: true });
   }
