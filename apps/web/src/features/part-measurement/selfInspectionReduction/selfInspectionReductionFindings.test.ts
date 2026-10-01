@@ -79,30 +79,41 @@ describe('buildReductionFindings', () => {
       part('B-NEAR', { sampleCount: 22 }),
       part('C-ENOUGH', { worstCpk: 1.45 })
     ]);
-    expect(result.overall).toMatchObject({ kind: 'shortage', text: '3件中2件がデータ不足。傾向はまだ言えない' });
+    expect(result.overall).toMatchObject({ kind: 'shortage', text: '3品番中2品番は測定数が足りず判定前' });
     expect(result.overall.rowIds).toHaveLength(2);
     // 22個を90日で測ったので、あと8個は約33日。
     expect(result.focus).toMatchObject({
       kind: 'almost',
       fhincd: 'B-NEAR',
-      text: 'あと8個で減らせる'
+      text: 'あと8個測ると検査を減らせる'
     });
   });
 
   it('falls back to the data shortage line when no part is one step away', () => {
     const result = findings([part('A-FAR', { sampleCount: 6, worstCpk: 1.2 }), part('B-NEAR', { sampleCount: 22, worstCpk: 1.2 })]);
-    expect(result.focus).toMatchObject({ kind: 'shortage', fhincd: 'B-NEAR', text: '：あと8個（約5週間）', moreCount: 1 });
+    expect(result.focus).toMatchObject({ kind: 'shortage', fhincd: 'B-NEAR', text: 'あと8個測ると判定できる（約5週間）', moreCount: 1 });
     expect(result.focus.rowIds[0]).toBe('B-NEAR/cutting/581');
   });
 
-  it('puts a part to restore before everything else', () => {
-    const result = findings([
-      part('A-REDUCE'),
-      part('B-ALMOST', { consecutivePassLots: 8 }),
-      part('C-RESTORE', { outOfToleranceCount: 2 })
+  it('uses both lines for a part whose inspection must increase: the reason, then the action', () => {
+    const others = [part('A-REDUCE'), part('B-ALMOST', { consecutivePassLots: 8 })];
+    const atFull = findings([...others, part('C-OUT', { outOfToleranceCount: 2 })]);
+    expect(atFull.overall).toMatchObject({ kind: 'restore', fhincd: 'C-OUT', text: 'で規格外が2件出た', moreCount: 0 });
+    // すでに全数なので、増やす先がない。
+    expect(atFull.focus).toMatchObject({ kind: 'restore', fhincd: null, text: '全数のまま続け、原因を確認' });
+    expect(atFull.focus.rowIds).toEqual(atFull.overall.rowIds);
+
+    const lighter = findings([
+      ...others,
+      part('C-NC', { nonconformityCount: 1, level: { mode: 'fixed_count', fixedCount: 5 } })
     ]);
-    expect(result.focus).toMatchObject({ kind: 'restore', fhincd: 'C-RESTORE', text: '規格外2件。原因を確認', moreCount: 0 });
-    expect(result.overall).toMatchObject({ kind: 'trend', text: '減らせる1件、承認で月 −4.2時間' });
+    expect(lighter.overall.text).toBe('の後工程で不適合が1件出た');
+    expect(lighter.focus).toMatchObject({ icon: 'raise', text: '検査を増やす（指定数 5 → 全数）' });
+  });
+
+  it('shows the whole picture when no part is urgent', () => {
+    const result = findings([part('A-REDUCE'), part('B-ALMOST', { consecutivePassLots: 8 })]);
+    expect(result.overall).toMatchObject({ kind: 'trend', text: '検査を減らせる1品番、承認で月 −4.2時間' });
   });
 
   it('names the part with the fewest lots left when nothing is wrong', () => {
@@ -112,7 +123,7 @@ describe('buildReductionFindings', () => {
       part('C-CPK', { worstCpk: 1.45 }),
       part('D-SINGLE', { consecutivePassLots: 8, level: { mode: 'single', fixedCount: null } })
     ]);
-    expect(result.focus).toMatchObject({ kind: 'almost', fhincd: 'B-LOTS', text: 'あと2ロットで減らせる', moreCount: 1 });
+    expect(result.focus).toMatchObject({ kind: 'almost', fhincd: 'B-LOTS', text: 'あと2ロット合格で検査を減らせる', moreCount: 1 });
   });
 
   it('flags a passing part only when two signs agree', () => {
@@ -122,18 +133,19 @@ describe('buildReductionFindings', () => {
     const oneSign = findings([
       part('A-FALLING', { worstCpk: 1.7 }, { items: [falling], worstItemKey: falling.key })
     ]);
-    expect(oneSign.focus.kind).not.toBe('suspicious');
+    expect(oneSign.overall.kind).not.toBe('suspicious');
 
     const twoSigns = findings([
       part('A-FALLING', { worstCpk: 1.7, drift: true }, { items: [falling], worstItemKey: falling.key })
     ]);
-    expect(twoSigns.focus).toMatchObject({ kind: 'suspicious', fhincd: 'A-FALLING' });
-    expect(twoSigns.focus.text).toMatch(/^合格だがCpk \d\.\d→\d\.\d$/);
+    expect(twoSigns.overall).toMatchObject({ kind: 'suspicious', fhincd: 'A-FALLING' });
+    expect(twoSigns.overall.text).toMatch(/^は合格だがCpkが\d\.\d→\d\.\dに低下$/);
+    expect(twoSigns.focus.text).toBe('刃具・補正を確認。検査はまだ減らさない');
   });
 
   it('does not flag a part with fewer than 20 values', () => {
     const result = findings([part('A-FEW', { sampleCount: 19, drift: true, measurementGapRatio: 0.2 })]);
-    expect(result.focus.kind).not.toBe('suspicious');
+    expect(result.overall.kind).not.toBe('suspicious');
   });
 
   it('tells the overall trend only with three comparable parts', () => {
@@ -149,7 +161,7 @@ describe('buildReductionFindings', () => {
       part('B', { worstCpk: 1.8, drift: true }, { previousPeriod: previous }),
       part('C', { worstCpk: 1.8, measurementGapRatio: null }, { previousPeriod: previous })
     ]);
-    expect(three.overall).toMatchObject({ kind: 'trend', icon: 'up', text: '全体は上向き。足止めの最多はずれの傾向 2件' });
+    expect(three.overall).toMatchObject({ kind: 'trend', icon: 'up', text: '全体は上向き。足止めの最多はずれの傾向 2品番' });
     expect(three.overall.rowIds).toHaveLength(2);
   });
 
@@ -165,7 +177,7 @@ describe('buildReductionFindings', () => {
   it('has a quiet line when nothing needs attention', () => {
     const result = findings([part('A', {}, { latestDecision: { id: 'd', direction: 'reduce', toLevel: { mode: 'fixed_count', fixedCount: 5 }, decidedAt: '2026-09-30T00:00:00.000Z', approverName: '社員A', awaitingRevision: true } })]);
     expect(result.focus).toMatchObject({ kind: 'calm', rowIds: [] });
-    expect(result.overall.text).toBe('承認済み1件が改版待ち');
+    expect(result.overall.text).toBe('承認済み1品番が管理画面の改版待ち');
     expect(findings([]).overall.kind).toBe('empty');
   });
 });

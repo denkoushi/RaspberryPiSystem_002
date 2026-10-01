@@ -131,7 +131,7 @@ export function ReductionSettingsDialog({
         </fieldset>
 
         <fieldset className="grid gap-3 rounded-xl border border-[#243347] bg-[#141e2b] px-4 py-3.5">
-          <legend className="px-1 text-[15px] font-bold text-[#aab8ca]">1段下げる条件</legend>
+          <legend className="px-1 text-[15px] font-bold text-[#aab8ca]">検査を1段減らす条件</legend>
           <Stepper
             label="連続合格"
             unit="ロット"

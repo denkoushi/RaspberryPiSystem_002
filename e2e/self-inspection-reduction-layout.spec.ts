@@ -184,8 +184,8 @@ test.describe('減らせる検査のキオスクレイアウト', () => {
 
       // 上辺の所見2行。狭い幅では検索欄をボタンにたたんで場所を空ける。
       const findings = page.getByRole('group', { name: '所見' });
-      await expect(findings.getByRole('button', { name: /減らせる3件/ })).toBeVisible();
-      await expect(findings.getByRole('button', { name: /戻す：MK02230007 不適合1件/ })).toBeVisible();
+      await expect(findings.getByRole('button', { name: /MK02230007 の後工程で不適合が1件出た/ })).toBeVisible();
+      await expect(findings.getByRole('button', { name: '検査を増やす（指定数 5 → 全数）' })).toBeVisible();
       // 2行とも「…」で切れずに収まる。
       const clipped = await findings
         .locator('span.truncate')
@@ -225,7 +225,7 @@ test.describe('減らせる検査のキオスクレイアウト', () => {
   test('所見の行を押すと挙げた品番に絞り、もう一度押すと戻る', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await openReductionPage(page);
-    const focus = page.getByRole('group', { name: '所見' }).getByRole('button', { name: /戻す：/ });
+    const focus = page.getByRole('group', { name: '所見' }).getByRole('button', { name: /検査を増やす/ });
     await focus.click();
     await expect(focus).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('option')).toHaveCount(2);
@@ -242,7 +242,7 @@ test.describe('減らせる検査のキオスクレイアウト', () => {
     for (const title of ['データ量', '公差の余裕', '連続合格', 'ずれの傾向', '測り方の差', '規格外・後工程']) {
       await expect(detail.getByText(title, { exact: true })).toBeVisible();
     }
-    await detail.getByRole('button', { name: '1段下げる' }).click();
+    await detail.getByRole('button', { name: '1段減らす' }).click();
     await expect(detail.getByText('承認者の社員タグをタッチ')).toBeVisible();
 
     const screenshotDir = process.env.SELF_INSPECTION_E2E_SCREENSHOT_DIR?.replace(/\/$/, '');
