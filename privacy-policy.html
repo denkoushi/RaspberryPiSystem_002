@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>プライバシーポリシー - Pi5 Gmail Integration</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+      line-height: 1.8;
+      color: #333;
+      background-color: #f5f5f5;
+      padding: 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background-color: #fff;
+      padding: 40px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 30px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #4285f4;
+      color: #1a1a1a;
+    }
+    h2 {
+      font-size: 1.3rem;
+      margin-top: 30px;
+      margin-bottom: 15px;
+      color: #1a1a1a;
+    }
+    p {
+      margin-bottom: 15px;
+    }
+    ul {
+      margin-left: 25px;
+      margin-bottom: 15px;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+    .app-name {
+      font-weight: bold;
+      color: #4285f4;
+    }
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #e0e0e0;
+      font-size: 0.9rem;
+      color: #666;
+    }
+    .update-date {
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>プライバシーポリシー</h1>
+    
+    <p>
+      本プライバシーポリシーは、<span class="app-name">Pi5 Gmail Integration</span>（以下「本アプリケーション」）における
+      個人情報およびデータの取り扱いについて説明します。
+    </p>
+
+    <h2>1. 収集するデータ</h2>
+    <p>本アプリケーションは、以下の目的でGmailデータにアクセスします：</p>
+    <ul>
+      <li>CSVファイルが添付されたメールの検索および取得</li>
+      <li>添付ファイル（CSVファイル）のダウンロード</li>
+      <li>処理済みメールのアーカイブ（受信トレイから移動）</li>
+    </ul>
+
+    <h2>2. データの使用目的</h2>
+    <p>取得したデータは、以下の目的にのみ使用されます：</p>
+    <ul>
+      <li>社内システム（Raspberry Pi上で動作）へのCSVデータのインポート</li>
+      <li>従業員情報、アイテム情報、生産スケジュール等のマスターデータ更新</li>
+    </ul>
+
+    <h2>3. データの保存場所</h2>
+    <p>
+      取得したデータは、社内ネットワーク上のRaspberry Piデバイスにのみ保存されます。
+      クラウドサービスや外部サーバーへのデータ転送は行いません。
+    </p>
+
+    <h2>4. データの第三者提供</h2>
+    <p>
+      本アプリケーションで取得したデータは、第三者に提供されることはありません。
+      データは社内利用のみに限定されます。
+    </p>
+
+    <h2>5. データの保護</h2>
+    <p>本アプリケーションでは、以下のセキュリティ対策を実施しています：</p>
+    <ul>
+      <li>OAuth 2.0による安全な認証</li>
+      <li>HTTPS通信による暗号化</li>
+      <li>アクセストークンの安全な管理</li>
+      <li>社内ネットワーク内でのみ動作（外部からのアクセス不可）</li>
+    </ul>
+
+    <h2>6. ユーザーの権利</h2>
+    <p>ユーザーは以下の権利を有します：</p>
+    <ul>
+      <li>Google アカウント設定からいつでもアクセス権限を取り消すことができます</li>
+      <li>保存されているデータの削除を要求することができます</li>
+    </ul>
+
+    <h2>7. お問い合わせ</h2>
+    <p>
+      本プライバシーポリシーに関するお問い合わせは、システム管理者までご連絡ください。
+    </p>
+
+    <div class="footer">
+      <p class="update-date">最終更新日: 2026年1月29日</p>
+      <p>Pi5 Gmail Integration</p>
+    </div>
+  </div>
+</body>
+</html>
