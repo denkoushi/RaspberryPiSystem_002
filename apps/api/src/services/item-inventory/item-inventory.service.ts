@@ -14,9 +14,20 @@ const UNIT_NAME_MAX_LENGTH = 20;
 export const INVENTORY_TOOL_FIELDS = ['maker', 'toolName', 'workMaterial', 'toolSize'] as const;
 export type InventoryToolField = (typeof INVENTORY_TOOL_FIELDS)[number];
 type InventoryToolInput = Partial<Record<InventoryToolField, string>>;
-/** Fields that offer a pick list on the kiosk: the tool fields plus 型式 and 用途. */
-export const INVENTORY_OPTION_FIELDS = [...INVENTORY_TOOL_FIELDS, 'model', 'usage'] as const;
+/** Fields that offer a pick list on the kiosk: 名前, the tool fields, 型式 and 用途. */
+export const INVENTORY_OPTION_FIELDS = ['name', ...INVENTORY_TOOL_FIELDS, 'model', 'usage'] as const;
 export type InventoryOptionField = (typeof INVENTORY_OPTION_FIELDS)[number];
+/** The name an item gets when none was typed at registration; it is never offered as a choice. */
+const PROVISIONAL_NAME = /^ItemlistRaspi \d+$/;
+
+/** 名前 is a required column, so it has no null rows to leave out. */
+function usedValueWhere(field: InventoryOptionField) {
+  return field === 'name' ? { deletedAt: null } : { deletedAt: null, [field]: { not: null } };
+}
+
+function isOfferedValue(field: InventoryOptionField, value: unknown): value is string {
+  return typeof value === 'string' && value !== '' && !(field === 'name' && PROVISIONAL_NAME.test(value));
+}
 const TOOL_FIELD_VALUE_MAX_LENGTH = 200;
 
 /** Natural order so that φ20 comes before φ100. */
@@ -428,12 +439,12 @@ export class ItemInventoryService {
     const presets = await this.db.inventoryToolFieldPreset.findMany({ select: { field: true, value: true } });
     const entries = await Promise.all(INVENTORY_OPTION_FIELDS.map(async (field) => {
       const rows = await this.db.inventoryItem.findMany({
-        where: { deletedAt: null, [field]: { not: null } },
+        where: usedValueWhere(field),
         select: { [field]: true },
         distinct: [field],
         orderBy: { [field]: 'asc' },
       }) as unknown as Array<Record<string, string | null>>;
-      const used = rows.map((row) => row[field]).filter((value): value is string => Boolean(value));
+      const used = rows.map((row) => row[field]).filter((value): value is string => isOfferedValue(field, value));
       const preset = presets.filter((entry) => entry.field === field).map((entry) => entry.value);
       return [field, [...new Set([...used, ...preset])].sort(compareOptionValues)] as const;
     }));
@@ -446,13 +457,13 @@ export class ItemInventoryService {
     const entries = await Promise.all(INVENTORY_OPTION_FIELDS.map(async (field) => {
       const groups = await this.db.inventoryItem.groupBy({
         by: [field],
-        where: { deletedAt: null, [field]: { not: null } },
+        where: usedValueWhere(field),
         _count: { _all: true },
       } as never) as unknown as Array<Record<string, unknown> & { _count: { _all: number } }>;
       const counts = new Map<string, number>();
       for (const group of groups) {
         const value = group[field];
-        if (typeof value === 'string' && value) counts.set(value, group._count._all);
+        if (isOfferedValue(field, value)) counts.set(value, group._count._all);
       }
       for (const preset of presets) {
         if (preset.field === field && !counts.has(preset.value)) counts.set(preset.value, 0);
@@ -519,6 +530,23 @@ export class ItemInventoryService {
     const item = await this.db.inventoryItem.findUnique({ where: { id: itemId } });
     if (!item || item.deletedAt) throw new ApiError(404, 'アイテムが見つかりません');
     return this.db.inventoryItem.update({ where: { id: itemId }, data: { unit: clean } });
+  }
+
+  /** Change one item's name and tool information; fields left out stay as they are. */
+  async updateItemDetails(itemId: string, input: Partial<Record<InventoryOptionField, string>>) {
+    const data: Partial<Record<InventoryOptionField, string | null>> = {};
+    for (const field of INVENTORY_OPTION_FIELDS) {
+      const value = input[field];
+      if (value === undefined) continue;
+      const clean = value.normalize('NFKC').trim();
+      if (clean.length > TOOL_FIELD_VALUE_MAX_LENGTH) throw new ApiError(400, `値は${TOOL_FIELD_VALUE_MAX_LENGTH}文字以内で入力してください`);
+      if (field === 'name' && !clean) throw new ApiError(400, '名前を入力してください');
+      data[field] = clean || null;
+    }
+    const item = await this.db.inventoryItem.findUnique({ where: { id: itemId } });
+    if (!item || item.deletedAt) throw new ApiError(404, 'アイテムが見つかりません');
+    if (Object.keys(data).length === 0) return item;
+    return this.db.inventoryItem.update({ where: { id: itemId }, data: data as never });
   }
 
   async createShelf(area: string, shelfNumber: number) {

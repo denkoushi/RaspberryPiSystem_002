@@ -36,6 +36,7 @@ import {
   replaceInventoryItemTag,
   resolveInventoryTag,
   setInventoryItemUnit,
+  updateInventoryItemDetails,
   type InventoryImport,
   type InventoryItem,
   type InventoryOptionField,
@@ -193,6 +194,10 @@ export function useInventoryMutations(accessPassword?: string) {
     }),
     createUnit: useMutation({ mutationFn: (name: string) => createInventoryUnit(name, accessPassword), onSuccess: invalidate }),
     setItemUnit: useMutation({ mutationFn: ({ itemId, unit }: { itemId: string; unit: string | null }) => setInventoryItemUnit(itemId, unit, accessPassword), onSuccess: invalidate }),
+    updateItemDetails: useMutation({
+      mutationFn: ({ itemId, details }: { itemId: string; details: Partial<Record<InventoryOptionField, string>> }) => updateInventoryItemDetails(itemId, details, accessPassword),
+      onSuccess: invalidate,
+    }),
     replaceTag: useMutation({ mutationFn: ({ id, uid }: { id: string; uid: string }) => replaceInventoryItemTag(id, uid, accessPassword), onSuccess: invalidate }),
   };
 }

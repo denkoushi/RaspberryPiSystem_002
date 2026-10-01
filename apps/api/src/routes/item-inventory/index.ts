@@ -210,6 +210,20 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     const body = z.object({ unit: z.string().max(40).nullable() }).parse(request.body ?? {});
     return { item: await services.inventory.setItemUnit(id, body.unit) };
   });
+  const itemDetailsBody = z.object({
+    name: z.string().max(400).optional(),
+    maker: z.string().max(400).optional(),
+    toolName: z.string().max(400).optional(),
+    workMaterial: z.string().max(400).optional(),
+    toolSize: z.string().max(400).optional(),
+    model: z.string().max(400).optional(),
+    usage: z.string().max(400).optional(),
+  });
+  app.put('/item-inventory/items/:id/details', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = idParams.parse(request.params);
+    const body = itemDetailsBody.parse(request.body ?? {});
+    return { item: await services.inventory.updateItemDetails(id, body) };
+  });
   app.get('/item-inventory/tags', { preHandler: [read] }, async () => ({ tags: await services.inventory.listTags() }));
   app.get('/item-inventory/locations', { preHandler: [read] }, async () => ({ locations: await services.inventory.listLocations() }));
   app.get('/item-inventory/items', { preHandler: [read] }, async () => ({ items: await services.inventory.listItems() }));
