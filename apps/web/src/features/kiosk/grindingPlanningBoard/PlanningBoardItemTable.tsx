@@ -137,10 +137,12 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
               <span className="ml-1 break-words font-semibold [overflow-wrap:anywhere]">{item.fhinmei || '部品名未登録'}</span>
               <span className="ml-1 whitespace-nowrap text-[10px] text-white">{plannedQuantity} · {requiredTime}</span>
             </div>
-            <div className="mt-0.5 break-words font-mono text-[10px] text-white [overflow-wrap:anywhere]">
-              {item.fseiban} · {machineName || '機種名未登録'}
+            <div className="mt-0.5 flex min-w-0 items-center gap-1">
+              <span className="min-w-0 break-words font-mono text-[10px] text-white [overflow-wrap:anywhere]">
+                {item.fseiban} · {machineName || '機種名未登録'}
+              </span>
+              <MaterialArrivalBadge status={item.materialArrivalStatus} />
             </div>
-            <MaterialArrivalBadge status={item.materialArrivalStatus} className="mt-0.5" />
           </div>
         ) : (
           <>
