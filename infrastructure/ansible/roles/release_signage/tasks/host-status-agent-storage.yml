@@ -1,0 +1,26 @@
+---
+# The Pi3 Signage terminal also boots from an SD card, but its status-agent
+# config was written once by a retired role with the storage checks off. The
+# signage artifact already ships storage_health.py, so only the switch is set
+# here: root read-only, kernel mmc/I-O errors, disk and inode usage,
+# under-voltage (also "since boot") and the write rate go to Slack ops, and a
+# daily wear report is logged. Measured on 2026-10-01: 64 GB card, 11% used,
+# about 0.7 GB written per day. A failure here only reports; it never rolls
+# back the Signage release.
+- name: Enable status-agent storage health checks on the Pi3
+  block:
+    - name: Check the Pi3 status-agent configuration
+      ansible.builtin.stat:
+        path: /etc/raspi-status-agent.conf
+      register: release_signage_status_agent_conf
+
+    - name: Turn on the Pi3 storage health checks
+      ansible.builtin.lineinfile:
+        path: /etc/raspi-status-agent.conf
+        regexp: "^STORAGE_HEALTH_ENABLED="
+        line: 'STORAGE_HEALTH_ENABLED="1"'
+      when: release_signage_status_agent_conf.stat.exists
+  rescue:
+    - name: Report that the Pi3 storage health checks were not enabled
+      ansible.builtin.debug:
+        msg: Pi3 status-agent storage health was not enabled; the Signage release itself is unaffected.
