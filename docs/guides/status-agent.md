@@ -95,7 +95,7 @@ journalctl -u status-agent.service -n 20
 
 ### 5.1 SDカード予防保全ログ
 
-Pi4 kiosk groupではAnsibleにより `STORAGE_HEALTH_ENABLED=1` を配布します。Pi5/Pi3/TalkPlazaではv1時点では無効です。通常実行では `STORAGE_HEALTH_INTERVAL_SECONDS=3600` により1時間ごとに確認し、`--dry-run` では現場確認のため毎回確認します。
+Pi4 kiosk groupではAnsibleにより `STORAGE_HEALTH_ENABLED=1` を配布します。Pi5（2026-10-01、`release_pi5/tasks/host-status-agent-storage.yml`）とPi3 Signage（`release_signage/tasks/host-status-agent-storage.yml`）は、標準リリースのたびに既存の `/etc/raspi-status-agent.conf` の同じ行を `1` にします。TalkPlazaでは無効です。Pi3は毎日03:00に再起動するため、書込ペースと摩耗レポートは起動から12時間後（15時以降）に出ます。通常実行では `STORAGE_HEALTH_INTERVAL_SECONDS=3600` により1時間ごとに確認し、`--dry-run` では現場確認のため毎回確認します。
 
 検出対象:
 
