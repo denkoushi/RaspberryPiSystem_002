@@ -16,9 +16,9 @@ import { BackupHistoryPage } from './pages/admin/BackupHistoryPage';
 import { BackupRestorePage } from './pages/admin/BackupRestorePage';
 import { BackupTargetsPage } from './pages/admin/BackupTargetsPage';
 import { ClientsPage } from './pages/admin/ClientsPage';
-import { CsvDashboardsPage } from './pages/admin/CsvDashboardsPage';
 import { CsvImportPage } from './pages/admin/CsvImportPage';
 import { DashboardPage } from './pages/admin/DashboardPage';
+import { DataBoardsPage } from './pages/admin/DataBoardsPage';
 import { DgxResourceAdminPage } from './pages/admin/DgxResourceAdminPage';
 import { GmailConfigPage } from './pages/admin/GmailConfigPage';
 import { KioskDocumentsAdminPage } from './pages/admin/KioskDocumentsAdminPage';
@@ -34,7 +34,6 @@ import { RaspiInventoryPage } from './pages/admin/RaspiInventoryPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
 import { SelfInspectionOutOfToleranceReviewsPage } from './pages/admin/SelfInspectionOutOfToleranceReviewsPage';
 import { SignageHubPage } from './pages/admin/SignageHubPage';
-import { VisualizationDashboardsPage } from './pages/admin/VisualizationDashboardsPage';
 import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
 import { KioskAssemblyPage } from './pages/kiosk/KioskAssemblyPage';
 import { KioskAssemblyRecordApprovalPage } from './pages/kiosk/KioskAssemblyRecordApprovalPage';
@@ -372,13 +371,15 @@ function App() {
         <Route path="imports">
           <Route path="schedule" element={<Navigate to="/admin/import" replace />} />
         </Route>
-        <Route path="csv-dashboards" element={<CsvDashboardsPage />} />
+        {/* 旧 2 ページ（可視化・CSV ダッシュボード）はデータボードへ転送する */}
+        <Route path="data-boards" element={<DataBoardsPage />} />
+        <Route path="csv-dashboards" element={<Navigate to="/admin/data-boards?type=table" replace />} />
         <Route path="production-schedule-settings" element={<ProductionScheduleSettingsPage />} />
         <Route
           path="part-measurement/self-inspection-reviews"
           element={<SelfInspectionOutOfToleranceReviewsPage />}
         />
-        <Route path="visualization-dashboards" element={<VisualizationDashboardsPage />} />
+        <Route path="visualization-dashboards" element={<Navigate to="/admin/data-boards?type=graph" replace />} />
         <Route path="pallet-machine-illustrations" element={<PalletMachineIllustrationsPage />} />
         <Route path="gmail">
           <Route path="config" element={<GmailConfigPage />} />

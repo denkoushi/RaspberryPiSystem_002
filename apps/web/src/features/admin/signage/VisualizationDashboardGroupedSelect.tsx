@@ -33,7 +33,7 @@ export function VisualizationDashboardGroupedSelect({
           role="status"
         >
           <strong className="font-semibold">パレット可視化</strong>が一覧にありません。先に{' '}
-          <Link to="/admin/visualization-dashboards" className="font-semibold text-amber-900 underline hover:text-amber-950">
+          <Link to="/admin/data-boards?type=graph" className="font-semibold text-amber-900 underline hover:text-amber-950">
             可視化ダッシュボード
           </Link>
           を開き、<strong className="font-semibold">パレット可視化プリセットを適用</strong>→保存してください。保存後、下のプルダウンに「
@@ -83,7 +83,7 @@ export function VisualizationDashboardSelectHelp() {
   return (
     <p className="mt-1 text-xs text-slate-600">
       「（無効）」のダッシュボードをサイネージで使う場合は、
-      <Link to="/admin/visualization-dashboards" className="font-semibold text-sky-700 underline hover:text-sky-900">
+      <Link to="/admin/data-boards?type=graph" className="font-semibold text-sky-700 underline hover:text-sky-900">
         可視化ダッシュボード
       </Link>
       で<strong className="font-semibold text-slate-800">有効</strong>にしてください。

@@ -663,6 +663,8 @@
 .signage-hub .sh-legacy > div,
 .signage-hub .sh-legacy form,
 .signage-hub .sh-legacy [class*='bg-slate-100'],
+.signage-hub .sh-legacy [class*='bg-slate-50'],
+.signage-hub .sh-legacy [class*='bg-amber-50'],
 .signage-hub .sh-legacy [class*='bg-white']:not(input):not(select):not(textarea) {
   background: transparent;
   border-color: var(--sh-line);
@@ -696,4 +698,115 @@
 }
 .signage-hub .sh-legacy button[class*='text-slate-800']:hover {
   background: #23272d;
+}
+
+/* ---- データボード（/admin/data-boards） ---- */
+.signage-hub.sh-boards .sh-body {
+  grid-template-columns: 288px minmax(0, 1fr) 420px;
+}
+.signage-hub .sh-board-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1.5px solid transparent;
+  background: transparent;
+  color: var(--sh-text);
+  text-align: left;
+  cursor: pointer;
+}
+.signage-hub .sh-board-item:hover {
+  background: var(--sh-raised);
+}
+.signage-hub .sh-board-item[aria-pressed='true'] {
+  background: var(--sh-raised);
+  border-color: var(--sh-accent);
+}
+.signage-hub .sh-kind {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.signage-hub .sh-kind-graph {
+  background: #2a1c14;
+  color: #ffb08a;
+}
+.signage-hub .sh-kind-table {
+  background: #1c2214;
+  color: #d6f59a;
+}
+.signage-hub .sh-usage {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--sh-text);
+  text-decoration: none;
+}
+.signage-hub .sh-usage:hover {
+  text-decoration: underline;
+}
+.signage-hub .sh-templates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.signage-hub .sh-template {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--sh-line-strong);
+  background: var(--sh-raised);
+  color: var(--sh-text);
+  text-align: left;
+  cursor: pointer;
+}
+.signage-hub .sh-template:hover:not(:disabled) {
+  border-color: var(--sh-accent);
+}
+.signage-hub .sh-template-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+/* Dialog は body 直下に描かれるので、暗色の入れ物として最小限の上書きをする */
+.signage-hub.sh-dialog {
+  display: block;
+  min-height: 0;
+  margin: 16px 0;
+  padding: 24px;
+  background: var(--sh-panel);
+  color: var(--sh-text);
+  border-radius: 18px;
+  border: 1px solid var(--sh-line-strong);
+}
+.signage-hub.sh-dialog h2 {
+  margin: 0 0 16px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--sh-text);
+}
+
+/* 既存フォーム内の強調ボタン（青・緑の塗り）は、暗色でも読める輪郭ボタンにそろえる */
+.signage-hub .sh-legacy button[class*='bg-blue-'],
+.signage-hub .sh-legacy button[class*='bg-emerald-'] {
+  background: var(--sh-raised);
+  border: 1px solid var(--sh-line-strong);
+  color: var(--sh-text);
+}
+.signage-hub .sh-legacy button[class*='bg-emerald-'] {
+  background: var(--sh-accent);
+  border-color: var(--sh-accent);
+  color: #0b0c0e;
+}
+.signage-hub .sh-legacy a {
+  color: #ff8a55;
 }
