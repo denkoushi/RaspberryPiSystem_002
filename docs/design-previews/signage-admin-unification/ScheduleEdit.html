@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>サイネージ 予定の編集</title>
+
+</head>
+<body>
+
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+JP:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0C0E;font-family:"IBM Plex Sans JP",system-ui,sans-serif;color:#EDEEF0;-webkit-font-smoothing:antialiased}
+a{color:#FF8A55;text-decoration:none}a:hover{color:#FFB08A}
+button{font-family:inherit}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-feature-settings:"tnum"}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#A3A9B1}
+.btn{height:40px;padding:0 16px;border-radius:10px;border:1px solid #2C3037;background:#1B1E23;color:#EDEEF0;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.btn:hover{background:#23272D}
+.btn-primary{background:#FF6A2B;border-color:#FF6A2B;color:#0B0C0E}
+.btn-primary:hover{background:#FF7E45}
+.btn-danger{background:transparent;border-color:#6B2A2A;color:#FF8A8A}
+.chip{height:28px;padding:0 12px;border-radius:999px;border:1px solid #2C3037;background:transparent;color:#A3A9B1;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.chip-on{background:#EDEEF0;color:#0B0C0E;border-color:#EDEEF0}
+.nav a{color:#A3A9B1;font-size:13px;font-weight:500;padding:6px 10px;border-radius:8px}
+.nav a:hover{color:#EDEEF0}
+.blk{position:absolute;top:4px;height:20px;border-radius:5px;font-size:11px;font-weight:600;color:#0B0C0E;display:flex;align-items:center;padding:0 7px;overflow:hidden;white-space:nowrap;box-sizing:border-box}
+.row{position:relative;height:28px;border-top:1px solid #1E2126}
+.item{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:10px;cursor:grab}
+.item:hover{background:#1B1E23}
+.fld{display:flex;flex-direction:column;gap:8px}
+.flbl{font-size:12px;font-weight:600;color:#A3A9B1}
+.inp{height:42px;border-radius:10px;border:1px solid #2C3037;background:#0F1114;display:flex;align-items:center;padding:0 12px;box-sizing:border-box}
+.seg{display:flex;padding:3px;border-radius:10px;background:#0F1114;border:1px solid #2C3037;gap:3px}
+.seg button{flex:1 1 0;min-width:0;height:34px;border:0;border-radius:7px;background:transparent;color:#A3A9B1;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;padding:0 8px}
+.seg .seg-on{background:#EDEEF0;color:#0B0C0E}
+.tag{height:30px;display:inline-flex;align-items:center;gap:4px;padding:0 4px 0 10px;border-radius:8px;background:#1C2214;color:#E4F8B8;font-size:12px;font-weight:600}
+.tagx{width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:#E4F8B8;cursor:pointer;font-size:14px}
+.day{height:40px;border-radius:9px;border:1px solid #2C3037;background:transparent;color:#A3A9B1;font-size:14px;font-weight:600;cursor:pointer}
+.day-on{background:#EDEEF0;border-color:#EDEEF0;color:#0B0C0E}
+.bitem{display:flex;align-items:center;gap:12px;padding:10px;border-radius:12px;border:1.5px solid transparent;background:transparent;color:#EDEEF0;text-align:left;cursor:pointer;font-family:inherit}
+.bitem:hover{background:#1B1E23}
+.bthumb{width:56px;height:34px;border-radius:6px;flex-shrink:0;box-sizing:border-box}
+.bname{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bmeta{display:flex;align-items:center;gap:8px;font-size:12px;color:#A3A9B1;margin-top:3px}
+.kind{height:18px;padding:0 6px;border-radius:4px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;flex-shrink:0}
+.kg{background:#2A1C14;color:#FFB08A}.kt{background:#1C2214;color:#D6F59A}
+.mt{border-radius:8px;background:#1B1E23;border:1px solid #2C3037;display:flex;flex-direction:column;justify-content:space-between;padding:8px 10px;font-size:12px;font-weight:600;color:#EDEEF0}
+.mt span{font-size:11px;color:#7FE3A8;font-weight:500}
+.mt-ng{background:#3A1414;border-color:#FF4D4D}.mt-ng span{color:#FF9A9A;font-weight:700}
+.use{display:flex;align-items:center;gap:10px;font-size:13px;color:#EDEEF0}
+.sw{width:38px;height:22px;border-radius:999px;background:#2C3037;position:relative;display:inline-block;flex-shrink:0}
+.sw span{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#7C838C}
+.sw-on{background:#FF6A2B}.sw-on span{left:19px;background:#0B0C0E}
+.tb{width:100%;border-collapse:collapse;font-size:14px}
+.tb th{text-align:left;font-size:12px;font-weight:600;color:#A3A9B1;padding:8px 10px;border-bottom:1px solid #2C3037}
+.tb td{padding:9px 10px;border-bottom:1px solid #1E2126;color:#EDEEF0}
+.tb tbody tr:nth-child(odd) td{background:#13161A}
+.hist{display:flex;align-items:center;gap:14px;font-size:13px;padding:6px 0;border-top:1px solid #1E2126}
+.col{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:#0F1114;border:1px solid #23262C}
+.grip{color:#5A6069;font-size:12px;letter-spacing:-2px;cursor:grab}
+.cn{display:block;font-size:14px;font-weight:600}
+.ch{display:block;font-size:11px;color:#8A9099;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ty{font-size:11px;color:#A3A9B1;border:1px solid #2C3037;border-radius:5px;padding:2px 6px}
+.tpl{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:14px;border:1.5px solid #2C3037;background:#1B1E23;color:#EDEEF0;text-align:left;cursor:pointer;font-family:inherit}
+.tpl-on{border-color:#FF6A2B;background:#221812}
+.tplimg{height:88px;border-radius:8px;background:#0E1013;box-sizing:border-box}
+.tplname{font-size:14px;font-weight:700;margin-top:4px}
+.tpldesc{font-size:12px;color:#A3A9B1}
+</style>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#0B0C0E;overflow:hidden">
+
+  <!-- admin top bar -->
+  <header style="height:52px;flex-shrink:0;display:flex;align-items:center;gap:24px;padding:0 24px;border-bottom:1px solid #1E2126">
+    <div style="display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;letter-spacing:.02em">
+      <span style="width:10px;height:10px;border-radius:3px;background:#FF6A2B"></span>管理コンソール
+    </div>
+    <nav class="nav" style="display:flex;gap:2px;flex-grow:1">
+      <a href="#">ダッシュボード</a><a href="#">工具</a><a href="#">計測機器</a><a href="#">生産日程</a><a href="#">可視化ダッシュボード</a>
+      <a href="#" style="color:#EDEEF0;background:#1B1E23">サイネージ</a>
+      <a href="#">クライアント</a><a href="#">セキュリティ</a>
+    </nav>
+    <span style="font-size:13px;color:#A3A9B1">admin</span>
+  </header>
+
+  <!-- page head -->
+  <div style="height:80px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 24px">
+    <div style="display:flex;align-items:baseline;gap:20px">
+      <h1 style="margin:0;font-size:30px;font-weight:700;letter-spacing:-.01em">サイネージ</h1>
+      <div class="mono" style="font-size:13px;color:#A3A9B1">3 端末　·　本日 5 枠　·　最終描画 14:31:52</div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-danger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"></path></svg>緊急表示
+      </button>
+      <button class="btn" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>今すぐ再描画
+      </button>
+    </div>
+  </div>
+
+  <!-- body -->
+  <div style="flex-grow:1;min-height:0;display:grid;grid-template-columns:264px minmax(0,1fr) 384px;gap:20px;padding:0 24px 24px">
+
+    <!-- LEFT: screens -->
+    <section aria-label="端末" style="display:flex;flex-direction:column;gap:12px;min-height:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;height:28px">
+        <span class="eyebrow">端末</span><span class="mono" style="font-size:12px;color:#A3A9B1">2 / 3 オンライン</span>
+      </div>
+
+      <button type="button" style="text-align:left;padding:12px;border-radius:14px;background:#14161A;border:1.5px solid #FF6A2B;color:inherit;display:flex;flex-direction:column;gap:10px;cursor:pointer">
+        <div style="width:100%;aspect-ratio:16/9;border-radius:8px;background:#F4F2EE;padding:8px;box-sizing:border-box;display:flex;flex-direction:column;gap:5px">
+          <div style="height:6px;width:40%;background:#1C1D20;border-radius:2px"></div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px">
+            <div style="height:18px;background:#fff;border-radius:3px;border:1px solid #E2DFD8"></div><div style="height:18px;background:#fff;border-radius:3px;border:1px solid #E2DFD8"></div><div style="height:18px;background:#fff;border-radius:3px;border:1px solid #E2DFD8"></div><div style="height:18px;background:#fff;border-radius:3px;border:1px solid #E2DFD8"></div>
+          </div>
+          <div style="flex-grow:1;display:flex;align-items:flex-end;gap:4px;padding-top:4px">
+            <div style="flex-grow:1;height:40%;background:#2F6FEB;border-radius:2px"></div><div style="flex-grow:1;height:65%;background:#2F6FEB;border-radius:2px"></div><div style="flex-grow:1;height:52%;background:#2F6FEB;border-radius:2px"></div><div style="flex-grow:1;height:80%;background:#2F6FEB;border-radius:2px"></div><div style="flex-grow:1;height:72%;background:#2F6FEB;border-radius:2px"></div><div style="flex-grow:1;height:90%;background:#E4572E;border-radius:2px"></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <span style="font-size:15px;font-weight:700">現場 Pi3</span><span class="mono" style="font-size:11px;color:#A3A9B1">raspberrypi-2</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#7FE3A8"><span style="width:7px;height:7px;border-radius:50%;background:#3DDC97"></span>放映中 · 30秒前に受信</div>
+      </button>
+
+      <button type="button" style="text-align:left;padding:12px;border-radius:14px;background:#14161A;border:1.5px solid #23262C;color:inherit;display:flex;gap:12px;align-items:center;cursor:pointer">
+        <div style="width:84px;flex-shrink:0;aspect-ratio:16/9;border-radius:6px;background:#101114;padding:5px;box-sizing:border-box;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px">
+          <div style="background:#FF9A5C;border-radius:2px"></div><div style="background:#3A3E45;border-radius:2px"></div><div style="background:#3A3E45;border-radius:2px"></div><div style="background:#3A3E45;border-radius:2px"></div><div style="background:#3A3E45;border-radius:2px"></div><div style="background:#FF9A5C;border-radius:2px"></div><div style="background:#3A3E45;border-radius:2px"></div><div style="background:#3A3E45;border-radius:2px"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+          <span style="font-size:14px;font-weight:700">事務所 Android</span>
+          <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#7FE3A8"><span style="width:7px;height:7px;border-radius:50%;background:#3DDC97"></span>順位ボード</span>
+        </div>
+      </button>
+
+      <button type="button" style="text-align:left;padding:12px;border-radius:14px;background:#14161A;border:1.5px dashed #5A3A2A;color:inherit;display:flex;gap:12px;align-items:center;cursor:pointer">
+        <div style="width:84px;flex-shrink:0;aspect-ratio:16/9;border-radius:6px;background:repeating-linear-gradient(135deg,#17191D 0 6px,#1C1F24 6px 12px);display:flex;align-items:center;justify-content:center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7C838C" stroke-width="2" stroke-linecap="round"><path d="M2 2l20 20"></path><path d="M8.5 16.5a5 5 0 0 1 7 0"></path><path d="M5 12.9a10 10 0 0 1 5.2-2.8"></path><path d="M12 20h.01"></path></svg>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+          <span style="font-size:14px;font-weight:700">[端末名]</span>
+          <span style="font-size:12px;color:#FFB08A">応答なし · 12分前</span>
+        </div>
+      </button>
+
+      <div style="flex-grow:1"></div>
+      <div style="border-radius:14px;background:#14161A;border:1px solid #23262C;padding:14px;display:flex;flex-direction:column;gap:10px">
+        <span class="eyebrow">配信チェック · 現場 Pi3</span>
+        <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:#A3A9B1">サーバ描画</span><span class="mono" style="color:#7FE3A8">OK 1.8s</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:#A3A9B1">端末の受信</span><span class="mono" style="color:#7FE3A8">30秒前</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:#A3A9B1">プレビューと実機</span><span class="mono" style="color:#7FE3A8">一致</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:#A3A9B1">ページ撮影</span><span class="mono">14:30 成功</span></div>
+      </div>
+      <a href="#" style="font-size:12px;color:#A3A9B1">端末の登録・APIキー → クライアント管理</a>
+    </section>
+
+    <!-- CENTER: on air + timeline -->
+    <section aria-label="放映中と予定" style="display:flex;flex-direction:column;gap:16px;min-width:0;min-height:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;height:28px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:6px;background:#EDEEF0;color:#0B0C0E;font-size:11px;font-weight:700;letter-spacing:.12em">編集中</span>
+          <span style="font-size:15px;font-weight:600">月〜土 13:00–17:00 ／ 自主検査KPI</span>
+        </div>
+        <div style="font-size:12px;color:#A3A9B1">保存するまで端末には出ません</div>
+      </div>
+
+      <!-- preview -->
+      <div style="position:relative;width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#F4F2EE;box-shadow:0 0 0 1px #2C3037,0 30px 60px -30px rgba(255,106,43,.35);color:#1C1D20">
+        <div style="position:absolute;inset:0;padding:26px 30px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <div style="font-size:22px;font-weight:700">自主検査 KPI</div>
+            <div class="mono" style="font-size:12px;color:#5E6168">2026/09/30 14:30 時点</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
+            <div style="background:#fff;border:1px solid #E2DFD8;border-radius:10px;padding:12px"><div style="font-size:11px;color:#5E6168">検査完了率</div><div class="mono" style="font-size:28px;font-weight:600">[00]%</div></div>
+            <div style="background:#fff;border:1px solid #E2DFD8;border-radius:10px;padding:12px"><div style="font-size:11px;color:#5E6168">本日の検査件数</div><div class="mono" style="font-size:28px;font-weight:600">[000]</div></div>
+            <div style="background:#fff;border:1px solid #E2DFD8;border-radius:10px;padding:12px"><div style="font-size:11px;color:#5E6168">未承認</div><div class="mono" style="font-size:28px;font-weight:600">[00]</div></div>
+            <div style="background:#fff;border:1px solid #E2DFD8;border-radius:10px;padding:12px"><div style="font-size:11px;color:#5E6168">不適合</div><div class="mono" style="font-size:28px;font-weight:600;color:#C2410C">[0]</div></div>
+          </div>
+          <div style="flex-grow:1;background:#fff;border:1px solid #E2DFD8;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:11px;color:#5E6168">加工機別 完了率</div>
+            <div style="flex-grow:1;display:flex;align-items:flex-end;gap:10px">
+              <div style="flex-grow:1;height:55%;background:#2F6FEB;border-radius:3px"></div><div style="flex-grow:1;height:78%;background:#2F6FEB;border-radius:3px"></div><div style="flex-grow:1;height:64%;background:#2F6FEB;border-radius:3px"></div><div style="flex-grow:1;height:92%;background:#2F6FEB;border-radius:3px"></div><div style="flex-grow:1;height:40%;background:#E4572E;border-radius:3px"></div><div style="flex-grow:1;height:83%;background:#2F6FEB;border-radius:3px"></div><div style="flex-grow:1;height:70%;background:#2F6FEB;border-radius:3px"></div><div style="flex-grow:1;height:88%;background:#2F6FEB;border-radius:3px"></div>
+            </div>
+          </div>
+        </div>
+        <div class="mono" style="position:absolute;right:12px;bottom:10px;height:24px;padding:0 10px;border-radius:6px;background:rgba(11,12,14,.78);color:#EDEEF0;font-size:11px;display:flex;align-items:center;gap:8px">撮影 14:30 · 次回 14:35 · 1920×1080</div>
+      </div>
+
+      <!-- timeline -->
+      <div style="flex-grow:1;min-height:0;overflow:hidden;background:#14161A;border:1px solid #23262C;border-radius:14px;padding:12px 16px 10px;display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span class="eyebrow">週間スケジュール · 現場 Pi3</span>
+          <div style="display:flex;gap:14px;font-size:11px;color:#A3A9B1">
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:#C8F26A"></span>ページ撮影</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:#FF9A5C"></span>データ</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:#7DB2FF"></span>PDF</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:#C3A4FF"></span>Chat</span>
+          </div>
+        </div>
+        <div style="display:flex">
+          <div style="width:32px"></div>
+          <div class="mono" style="position:relative;flex-grow:1;height:16px;font-size:10px;color:#7C838C">
+            <span style="position:absolute;left:0">6</span><span style="position:absolute;left:80px">8</span><span style="position:absolute;left:160px">10</span><span style="position:absolute;left:240px">12</span><span style="position:absolute;left:320px">14</span><span style="position:absolute;left:400px">16</span><span style="position:absolute;left:480px">18</span><span style="position:absolute;left:560px">20</span><span style="position:absolute;left:630px">22</span><span style="position:absolute;left:322px;top:-2px;height:16px;padding:0 5px;border-radius:4px;background:#FF6A2B;color:#0B0C0E;font-weight:700;line-height:16px">14:32</span>
+          </div>
+        </div>
+        <div style="display:flex">
+          <div style="width:32px;display:flex;flex-direction:column;font-size:12px;color:#A3A9B1">
+            <span style="height:28px;line-height:28px">月</span><span style="height:28px;line-height:28px">火</span><span style="height:28px;line-height:28px;color:#FF8A55;font-weight:700">水</span><span style="height:28px;line-height:28px">木</span><span style="height:28px;line-height:28px">金</span><span style="height:28px;line-height:28px">土</span><span style="height:28px;line-height:28px">日</span>
+          </div>
+          <div style="position:relative;flex-grow:1">
+            <div class="row"><div class="blk" style="left:60px;width:58px;background:#FF9A5C;opacity:.28">持出</div><div class="blk" style="left:120px;width:118px;background:#FF9A5C;opacity:.28">部品別進捗</div><div class="blk" style="left:240px;width:38px;background:#7DB2FF;opacity:.28">PDF</div><div class="blk" style="left:280px;width:158px;background:#C8F26A;box-shadow:0 0 0 2px #14161A,0 0 0 3.5px #EDEEF0"><span style="flex-grow:1">自主検査KPI</span><span style="width:3px;height:10px;border-radius:2px;background:#0B0C0E;opacity:.5"></span></div><div class="blk" style="left:440px;width:118px;background:#FF9A5C;opacity:.28">順位ボード</div></div>
+            <div class="row"><div class="blk" style="left:60px;width:58px;background:#FF9A5C;opacity:.28">持出</div><div class="blk" style="left:120px;width:118px;background:#FF9A5C;opacity:.28">部品別進捗</div><div class="blk" style="left:240px;width:38px;background:#7DB2FF;opacity:.28">PDF</div><div class="blk" style="left:280px;width:158px;background:#C8F26A;box-shadow:0 0 0 2px #14161A,0 0 0 3.5px #EDEEF0"><span style="flex-grow:1">自主検査KPI</span><span style="width:3px;height:10px;border-radius:2px;background:#0B0C0E;opacity:.5"></span></div><div class="blk" style="left:440px;width:118px;background:#FF9A5C;opacity:.28">順位ボード</div></div>
+            <div class="row" style="background:rgba(255,106,43,.06)"><div class="blk" style="left:60px;width:58px;background:#FF9A5C;opacity:.28">持出</div><div class="blk" style="left:120px;width:118px;background:#FF9A5C;opacity:.28">部品別進捗</div><div class="blk" style="left:240px;width:38px;background:#7DB2FF;opacity:.28">PDF</div><div class="blk" style="left:280px;width:158px;background:#C8F26A;box-shadow:0 0 0 2px #14161A,0 0 0 3.5px #EDEEF0"><span style="flex-grow:1">自主検査KPI</span><span style="width:3px;height:10px;border-radius:2px;background:#0B0C0E;opacity:.5"></span></div><div class="blk" style="left:440px;width:118px;background:#FF9A5C;opacity:.28">順位ボード</div></div>
+            <div class="row"><div class="blk" style="left:60px;width:58px;background:#FF9A5C;opacity:.28">持出</div><div class="blk" style="left:120px;width:118px;background:#FF9A5C;opacity:.28">部品別進捗</div><div class="blk" style="left:240px;width:38px;background:#7DB2FF;opacity:.28">PDF</div><div class="blk" style="left:280px;width:158px;background:#C8F26A;box-shadow:0 0 0 2px #14161A,0 0 0 3.5px #EDEEF0"><span style="flex-grow:1">自主検査KPI</span><span style="width:3px;height:10px;border-radius:2px;background:#0B0C0E;opacity:.5"></span></div><div class="blk" style="left:440px;width:118px;background:#FF9A5C;opacity:.28">順位ボード</div></div>
+            <div class="row"><div class="blk" style="left:60px;width:58px;background:#FF9A5C;opacity:.28">持出</div><div class="blk" style="left:120px;width:118px;background:#FF9A5C;opacity:.28">部品別進捗</div><div class="blk" style="left:240px;width:38px;background:#7DB2FF;opacity:.28">PDF</div><div class="blk" style="left:280px;width:158px;background:#C8F26A;box-shadow:0 0 0 2px #14161A,0 0 0 3.5px #EDEEF0"><span style="flex-grow:1">自主検査KPI</span><span style="width:3px;height:10px;border-radius:2px;background:#0B0C0E;opacity:.5"></span></div><div class="blk" style="left:400px;width:40px;background:#C3A4FF;box-shadow:0 0 0 2px #14161A;opacity:.28">Chat</div><div class="blk" style="left:440px;width:118px;background:#FF9A5C;opacity:.28">順位ボード</div></div>
+            <div class="row"><div class="blk" style="left:120px;width:118px;background:#FF9A5C;opacity:.28">部品別進捗</div><div class="blk" style="left:280px;width:158px;background:#C8F26A;box-shadow:0 0 0 2px #14161A,0 0 0 3.5px #EDEEF0"><span style="flex-grow:1">自主検査KPI</span><span style="width:3px;height:10px;border-radius:2px;background:#0B0C0E;opacity:.5"></span></div></div>
+            <div class="row" style="border-bottom:1px solid #1E2126"><span style="position:absolute;left:8px;top:5px;font-size:11px;color:#7C838C">予定なし — 待機画面</span></div>
+            <div style="position:absolute;left:341px;top:-4px;width:2px;height:200px;background:#FF6A2B;border-radius:1px;opacity:.9"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: schedule inspector -->
+    <section aria-label="予定を編集" style="background:#14161A;border:1px solid #EDEEF0;border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:16px;min-height:0">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:10px">
+          <a href="#" aria-label="コンテンツ一覧へ戻る" style="width:32px;height:32px;border-radius:8px;background:#1B1E23;display:flex;align-items:center;justify-content:center;color:#EDEEF0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></a>
+          <div style="font-size:17px;font-weight:700">予定を編集</div>
+        </div>
+        <button type="button" aria-label="この予定を削除" style="width:36px;height:36px;border-radius:9px;border:1px solid #3A2626;background:transparent;color:#FF8A8A;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M6 6l1 14h10l1-14"></path></svg></button>
+      </div>
+
+      <div class="fld">
+        <span class="flbl">表示するもの</span>
+        <button type="button" class="inp" style="height:56px;justify-content:space-between;cursor:pointer;color:inherit;text-align:left">
+          <span style="display:flex;align-items:center;gap:12px"><span style="width:48px;height:27px;border-radius:5px;background:#C8F26A"></span><span><span style="display:block;font-size:14px;font-weight:600">自主検査KPI</span><span style="display:block;font-size:12px;color:#A3A9B1">ページ撮影</span></span></span>
+          <span style="font-size:12px;color:#A3A9B1">変更</span>
+        </button>
+      </div>
+
+      <div class="fld">
+        <span class="flbl">画面の分け方</span>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+          <button type="button" style="height:64px;border-radius:10px;border:1.5px solid #EDEEF0;background:#1B1E23;color:#EDEEF0;display:flex;align-items:center;gap:10px;padding:0 12px;cursor:pointer;font-size:13px;font-weight:600"><span style="width:44px;height:25px;border-radius:4px;background:#C8F26A"></span>全体</button>
+          <button type="button" style="height:64px;border-radius:10px;border:1px solid #2C3037;background:transparent;color:#A3A9B1;display:flex;align-items:center;gap:10px;padding:0 12px;cursor:pointer;font-size:13px;font-weight:600"><span style="width:44px;height:25px;display:flex;gap:2px"><span style="flex-grow:1;border-radius:4px 0 0 4px;background:#3A3E45"></span><span style="flex-grow:1;border-radius:0 4px 4px 0;background:#3A3E45"></span></span>左右に分割</button>
+        </div>
+      </div>
+
+      <div class="fld">
+        <span class="flbl">曜日</span>
+        <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px">
+          <button type="button" class="day day-on" aria-pressed="true">月</button><button type="button" class="day day-on" aria-pressed="true">火</button><button type="button" class="day day-on" aria-pressed="true">水</button><button type="button" class="day day-on" aria-pressed="true">木</button><button type="button" class="day day-on" aria-pressed="true">金</button><button type="button" class="day day-on" aria-pressed="true">土</button><button type="button" class="day" aria-pressed="false">日</button>
+        </div>
+      </div>
+
+      <div class="fld">
+        <span class="flbl">時間</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="inp mono" style="flex-grow:1;justify-content:center;font-size:18px;font-weight:600">13:00</div>
+          <span style="color:#7C838C">→</span>
+          <div class="inp mono" style="flex-grow:1;justify-content:center;font-size:18px;font-weight:600">17:00</div>
+        </div>
+      </div>
+
+      <div class="fld">
+        <span class="flbl">重なったとき</span>
+        <div class="seg"><button type="button" class="seg-on">ふだん通り</button><button type="button">こちらを優先</button></div>
+      </div>
+
+      <div class="fld">
+        <span class="flbl">表示する端末</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button type="button" class="chip chip-on" aria-pressed="true" style="height:32px">✓ 現場 Pi3</button><button type="button" class="chip" aria-pressed="false" style="height:32px">事務所 Android</button><button type="button" class="chip" aria-pressed="false" style="height:32px">[端末名]</button>
+        </div>
+      </div>
+
+      <div style="margin-top:auto;display:flex;gap:10px">
+        <button class="btn" type="button" style="flex-grow:1;justify-content:center">取り消す</button>
+        <button class="btn" type="button" style="flex-grow:2;justify-content:center;background:#EDEEF0;border-color:#EDEEF0;color:#0B0C0E">保存</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+
+</body>
+</html>

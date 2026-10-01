@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>データボード CSV表</title>
+
+</head>
+<body>
+
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+JP:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0C0E;font-family:"IBM Plex Sans JP",system-ui,sans-serif;color:#EDEEF0;-webkit-font-smoothing:antialiased}
+a{color:#FF8A55;text-decoration:none}a:hover{color:#FFB08A}
+button{font-family:inherit}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-feature-settings:"tnum"}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#A3A9B1}
+.btn{height:40px;padding:0 16px;border-radius:10px;border:1px solid #2C3037;background:#1B1E23;color:#EDEEF0;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.btn:hover{background:#23272D}
+.btn-primary{background:#FF6A2B;border-color:#FF6A2B;color:#0B0C0E}
+.btn-primary:hover{background:#FF7E45}
+.btn-danger{background:transparent;border-color:#6B2A2A;color:#FF8A8A}
+.chip{height:28px;padding:0 12px;border-radius:999px;border:1px solid #2C3037;background:transparent;color:#A3A9B1;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.chip-on{background:#EDEEF0;color:#0B0C0E;border-color:#EDEEF0}
+.nav a{color:#A3A9B1;font-size:13px;font-weight:500;padding:6px 10px;border-radius:8px}
+.nav a:hover{color:#EDEEF0}
+.blk{position:absolute;top:4px;height:20px;border-radius:5px;font-size:11px;font-weight:600;color:#0B0C0E;display:flex;align-items:center;padding:0 7px;overflow:hidden;white-space:nowrap;box-sizing:border-box}
+.row{position:relative;height:28px;border-top:1px solid #1E2126}
+.item{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:10px;cursor:grab}
+.item:hover{background:#1B1E23}
+.fld{display:flex;flex-direction:column;gap:8px}
+.flbl{font-size:12px;font-weight:600;color:#A3A9B1}
+.inp{height:42px;border-radius:10px;border:1px solid #2C3037;background:#0F1114;display:flex;align-items:center;padding:0 12px;box-sizing:border-box}
+.seg{display:flex;padding:3px;border-radius:10px;background:#0F1114;border:1px solid #2C3037;gap:3px}
+.seg button{flex:1 1 0;min-width:0;height:34px;border:0;border-radius:7px;background:transparent;color:#A3A9B1;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;padding:0 8px}
+.seg .seg-on{background:#EDEEF0;color:#0B0C0E}
+.tag{height:30px;display:inline-flex;align-items:center;gap:4px;padding:0 4px 0 10px;border-radius:8px;background:#1C2214;color:#E4F8B8;font-size:12px;font-weight:600}
+.tagx{width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:#E4F8B8;cursor:pointer;font-size:14px}
+.day{height:40px;border-radius:9px;border:1px solid #2C3037;background:transparent;color:#A3A9B1;font-size:14px;font-weight:600;cursor:pointer}
+.day-on{background:#EDEEF0;border-color:#EDEEF0;color:#0B0C0E}
+.bitem{display:flex;align-items:center;gap:12px;padding:10px;border-radius:12px;border:1.5px solid transparent;background:transparent;color:#EDEEF0;text-align:left;cursor:pointer;font-family:inherit}
+.bitem:hover{background:#1B1E23}
+.bthumb{width:56px;height:34px;border-radius:6px;flex-shrink:0;box-sizing:border-box}
+.bname{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bmeta{display:flex;align-items:center;gap:8px;font-size:12px;color:#A3A9B1;margin-top:3px}
+.kind{height:18px;padding:0 6px;border-radius:4px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;flex-shrink:0}
+.kg{background:#2A1C14;color:#FFB08A}.kt{background:#1C2214;color:#D6F59A}
+.mt{border-radius:8px;background:#1B1E23;border:1px solid #2C3037;display:flex;flex-direction:column;justify-content:space-between;padding:8px 10px;font-size:12px;font-weight:600;color:#EDEEF0}
+.mt span{font-size:11px;color:#7FE3A8;font-weight:500}
+.mt-ng{background:#3A1414;border-color:#FF4D4D}.mt-ng span{color:#FF9A9A;font-weight:700}
+.use{display:flex;align-items:center;gap:10px;font-size:13px;color:#EDEEF0}
+.sw{width:38px;height:22px;border-radius:999px;background:#2C3037;position:relative;display:inline-block;flex-shrink:0}
+.sw span{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#7C838C}
+.sw-on{background:#FF6A2B}.sw-on span{left:19px;background:#0B0C0E}
+.tb{width:100%;border-collapse:collapse;font-size:14px}
+.tb th{text-align:left;font-size:12px;font-weight:600;color:#A3A9B1;padding:8px 10px;border-bottom:1px solid #2C3037}
+.tb td{padding:9px 10px;border-bottom:1px solid #1E2126;color:#EDEEF0}
+.tb tbody tr:nth-child(odd) td{background:#13161A}
+.hist{display:flex;align-items:center;gap:14px;font-size:13px;padding:6px 0;border-top:1px solid #1E2126}
+.col{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:#0F1114;border:1px solid #23262C}
+.grip{color:#5A6069;font-size:12px;letter-spacing:-2px;cursor:grab}
+.cn{display:block;font-size:14px;font-weight:600}
+.ch{display:block;font-size:11px;color:#8A9099;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ty{font-size:11px;color:#A3A9B1;border:1px solid #2C3037;border-radius:5px;padding:2px 6px}
+.tpl{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:14px;border:1.5px solid #2C3037;background:#1B1E23;color:#EDEEF0;text-align:left;cursor:pointer;font-family:inherit}
+.tpl-on{border-color:#FF6A2B;background:#221812}
+.tplimg{height:88px;border-radius:8px;background:#0E1013;box-sizing:border-box}
+.tplname{font-size:14px;font-weight:700;margin-top:4px}
+.tpldesc{font-size:12px;color:#A3A9B1}
+</style>
+
+<div style="position:relative;width:1440px;height:900px;display:flex;flex-direction:column;background:#0B0C0E;overflow:hidden">
+
+  <!-- admin top bar -->
+  <header style="height:52px;flex-shrink:0;display:flex;align-items:center;gap:24px;padding:0 24px;border-bottom:1px solid #1E2126">
+    <div style="display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;letter-spacing:.02em">
+      <span style="width:10px;height:10px;border-radius:3px;background:#FF6A2B"></span>管理コンソール
+    </div>
+    <nav class="nav" style="display:flex;gap:2px;flex-grow:1">
+      <a href="#">ダッシュボード</a><a href="#">工具</a><a href="#">計測機器</a><a href="#">生産日程</a><a href="#" style="color:#EDEEF0;background:#1B1E23">データボード</a>
+      <a href="#">サイネージ</a>
+      <a href="#">クライアント</a><a href="#">セキュリティ</a>
+    </nav>
+    <span style="font-size:13px;color:#A3A9B1">admin</span>
+  </header>
+
+  <!-- page head -->
+  <div style="height:80px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 24px">
+    <div style="display:flex;align-items:baseline;gap:20px">
+      <h1 style="margin:0;font-size:30px;font-weight:700;letter-spacing:-.01em">データボード</h1>
+      <div style="font-size:13px;color:#A3A9B1">サイネージやキオスクに出すグラフと表</div>
+    </div>
+    <button class="btn btn-primary" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>新しいボード</button>
+  </div>
+  <div style="flex-grow:1;min-height:0;display:grid;grid-template-columns:288px minmax(0,1fr) 392px;gap:20px;padding:0 24px 24px">
+    <!-- LEFT: board list -->
+    <section aria-label="ボード一覧" style="display:flex;flex-direction:column;gap:12px;min-height:0">
+      <label style="height:38px;border-radius:10px;border:1px solid #2C3037;background:#0F1114;display:flex;align-items:center;gap:8px;padding:0 10px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7C838C" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+        <input type="search" placeholder="ボードを検索" aria-label="ボードを検索" style="all:unset;flex-grow:1;font-size:13px;color:#EDEEF0">
+      </label>
+      <div class="seg"><button type="button" class="seg-on">すべて</button><button type="button">グラフ</button><button type="button">表（CSV）</button></div>
+
+      <div style="display:flex;flex-direction:column;gap:4px;margin:0 -6px">
+        <!--ITEM_VIZ-->
+        <button type="button" class="bitem">
+          <span class="bthumb" style="background:#101114;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px;padding:4px"><span style="background:#FF4D4D;border-radius:1px"></span><span style="background:#3A3E45;border-radius:1px"></span><span style="background:#3A3E45;border-radius:1px"></span><span style="background:#FF4D4D;border-radius:1px"></span><span style="background:#3A3E45;border-radius:1px"></span><span style="background:#3A3E45;border-radius:1px"></span><span style="background:#3A3E45;border-radius:1px"></span><span style="background:#3A3E45;border-radius:1px"></span></span>
+          <span style="flex-grow:1;min-width:0"><span class="bname">未点検加工機</span><span class="bmeta"><span class="kind kg">グラフ</span>サイネージ 5枠</span></span>
+        </button>
+        <button type="button" class="bitem">
+          <span class="bthumb" style="background:#101114;display:flex;align-items:flex-end;gap:2px;padding:5px"><span style="flex-grow:1;height:50%;background:#FF9A5C"></span><span style="flex-grow:1;height:80%;background:#FF9A5C"></span><span style="flex-grow:1;height:65%;background:#FF9A5C"></span><span style="flex-grow:1;height:95%;background:#FF9A5C"></span></span>
+          <span style="flex-grow:1;min-width:0"><span class="bname">計測機器 点検状況</span><span class="bmeta"><span class="kind kg">グラフ</span>サイネージ 2枠</span></span>
+        </button>
+        <button type="button" class="bitem">
+          <span class="bthumb" style="background:#101114;display:flex;align-items:flex-end;gap:2px;padding:5px"><span style="flex-grow:1;height:70%;background:#FF9A5C"></span><span style="flex-grow:1;height:40%;background:#FF9A5C"></span><span style="flex-grow:1;height:90%;background:#FF9A5C"></span><span style="flex-grow:1;height:55%;background:#FF9A5C"></span></span>
+          <span style="flex-grow:1;min-width:0"><span class="bname">吊具 点検状況</span><span class="bmeta"><span class="kind kg">グラフ</span>未使用</span></span>
+        </button>
+        <button type="button" class="bitem">
+          <span class="bthumb" style="background:#101114;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px;padding:4px"><span style="background:#7DB2FF;border-radius:1px"></span><span style="background:#3A3E45;border-radius:1px"></span><span style="background:#7DB2FF;border-radius:1px"></span><span style="background:#3A3E45;border-radius:1px"></span><span style="background:#7DB2FF;border-radius:1px"></span><span style="background:#3A3E45;border-radius:1px"></span></span>
+          <span style="flex-grow:1;min-width:0"><span class="bname">パレット現在状態</span><span class="bmeta"><span class="kind kg">グラフ</span>未使用</span></span>
+        </button>
+        <!--ITEM_CSV-->
+        <button type="button" class="bitem" style="background:#1B1E23;border-color:#FF6A2B">
+          <span class="bthumb" style="background:#101114;display:flex;flex-direction:column;gap:3px;padding:5px"><span style="height:3px;background:#C8F26A"></span><span style="height:3px;background:#3A3E45"></span><span style="height:3px;background:#3A3E45"></span><span style="height:3px;background:#3A3E45"></span><span style="height:3px;background:#3A3E45"></span></span>
+          <span style="flex-grow:1;min-width:0"><span class="bname">生産日程 研削工程</span><span class="bmeta"><span class="kind kt">表</span>取り込み 09:12</span></span>
+        </button>
+        <button type="button" class="bitem">
+          <span class="bthumb" style="background:#101114;display:flex;flex-direction:column;gap:3px;padding:5px"><span style="height:3px;background:#C8F26A"></span><span style="height:3px;background:#3A3E45"></span><span style="height:3px;background:#3A3E45"></span><span style="height:3px;background:#3A3E45"></span><span style="height:3px;background:#3A3E45"></span></span>
+          <span style="flex-grow:1;min-width:0"><span class="bname">[点検記録CSV]</span><span class="bmeta"><span class="kind kt">表</span><span style="color:#FFB08A">取り込み失敗 · 2日前</span></span></span>
+        </button>
+      </div>
+    </section>
+    <!-- CENTER: preview (table) -->
+    <section aria-label="プレビュー" style="display:flex;flex-direction:column;gap:16px;min-width:0;min-height:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;height:28px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="eyebrow">サイネージでの見え方</span>
+          <span class="mono" style="font-size:12px;color:#A3A9B1">1 / 3 ページ</span>
+        </div>
+        <div class="mono" style="font-size:12px;color:#A3A9B1">124 行 · 09:12 取り込み</div>
+      </div>
+
+      <div style="position:relative;width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#0E1013;box-shadow:0 0 0 1px #2C3037,0 30px 60px -30px rgba(200,242,106,.25)">
+        <div style="position:absolute;inset:0;padding:22px 26px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:22px;font-weight:700">生産日程 研削工程</div><div class="mono" style="font-size:12px;color:#A3A9B1">09/30</div></div>
+          <table class="tb">
+            <thead><tr><th style="width:18%">製番</th><th style="width:22%">品番</th><th>工程</th><th style="width:14%">納期</th><th style="width:10%;text-align:right">数量</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">[製番]</td><td class="mono">[品番]</td><td>[工程名]</td><td class="mono">10/02</td><td class="mono" style="text-align:right">[00]</td></tr>
+              <tr><td class="mono">[製番]</td><td class="mono">[品番]</td><td>[工程名]</td><td class="mono">10/02</td><td class="mono" style="text-align:right">[00]</td></tr>
+              <tr><td class="mono">[製番]</td><td class="mono">[品番]</td><td>[工程名]</td><td class="mono">10/03</td><td class="mono" style="text-align:right">[00]</td></tr>
+              <tr><td class="mono">[製番]</td><td class="mono">[品番]</td><td>[工程名]</td><td class="mono">10/03</td><td class="mono" style="text-align:right">[00]</td></tr>
+              <tr><td class="mono">[製番]</td><td class="mono">[品番]</td><td>[工程名]</td><td class="mono">10/06</td><td class="mono" style="text-align:right">[00]</td></tr>
+              <tr><td class="mono">[製番]</td><td class="mono">[品番]</td><td>[工程名]</td><td class="mono">10/06</td><td class="mono" style="text-align:right">[00]</td></tr>
+              <tr><td class="mono">[製番]</td><td class="mono">[品番]</td><td>[工程名]</td><td class="mono">10/07</td><td class="mono" style="text-align:right">[00]</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="flex-grow:1;min-height:0;background:#14161A;border:1px solid #23262C;border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span class="eyebrow">取り込み履歴</span><button class="btn" type="button" style="height:32px;font-size:13px">CSV を手動で取り込む</button></div>
+        <div class="hist"><span style="color:#7FE3A8">成功</span><span class="mono">09/30 09:12</span><span style="flex-grow:1">Gmail「生産日程_三島_研削工程」</span><span class="mono">124 行</span></div>
+        <div class="hist"><span style="color:#7FE3A8">成功</span><span class="mono">09/29 09:10</span><span style="flex-grow:1">Gmail「生産日程_三島_研削工程」</span><span class="mono">118 行</span></div>
+        <div class="hist"><span style="color:#FFB08A">見出し不一致</span><span class="mono">09/28 09:11</span><span style="flex-grow:1">「数量」列が見つかりません</span><a href="#">直す</a></div>
+      </div>
+    </section>
+    <!-- RIGHT: editor (csv table) -->
+    <section aria-label="ボードの設定" style="background:#14161A;border:1px solid #23262C;border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:14px;min-height:0">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:17px;font-weight:700">設定</div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#A3A9B1">有効<span class="sw sw-on"><span></span></span></label>
+      </div>
+
+      <div role="tablist" class="seg"><button type="button" role="tab" aria-selected="false">取り込み</button><button type="button" role="tab" aria-selected="true" class="seg-on">列</button><button type="button" role="tab" aria-selected="false">見た目</button></div>
+
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:#A3A9B1;padding:0 4px"><span>表示名 ／ CSVの見出し</span><span>表示</span></div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="col"><span class="grip" aria-hidden="true">⋮⋮</span><span style="flex-grow:1;min-width:0"><span class="cn">製番</span><span class="ch">製番, 製造番号</span></span><span class="ty">文字</span><span class="sw sw-on"><span></span></span></div>
+        <div class="col"><span class="grip" aria-hidden="true">⋮⋮</span><span style="flex-grow:1;min-width:0"><span class="cn">品番</span><span class="ch">品番</span></span><span class="ty">文字</span><span class="sw sw-on"><span></span></span></div>
+        <div class="col"><span class="grip" aria-hidden="true">⋮⋮</span><span style="flex-grow:1;min-width:0"><span class="cn">工程</span><span class="ch">工程名, 工程</span></span><span class="ty">文字</span><span class="sw sw-on"><span></span></span></div>
+        <div class="col"><span class="grip" aria-hidden="true">⋮⋮</span><span style="flex-grow:1;min-width:0"><span class="cn">納期 <span style="font-size:11px;color:#C8F26A">日付の基準</span></span><span class="ch">納期, 完了予定日</span></span><span class="ty">日付</span><span class="sw sw-on"><span></span></span></div>
+        <div class="col" style="border-color:#6B3A2A"><span class="grip" aria-hidden="true">⋮⋮</span><span style="flex-grow:1;min-width:0"><span class="cn">数量</span><span class="ch" style="color:#FFB08A">最新の CSV に見つからない</span></span><span class="ty">数値</span><span class="sw sw-on"><span></span></span></div>
+        <div class="col" style="opacity:.6"><span class="grip" aria-hidden="true">⋮⋮</span><span style="flex-grow:1;min-width:0"><span class="cn">備考</span><span class="ch">備考</span></span><span class="ty">文字</span><span class="sw"><span></span></span></div>
+      </div>
+      <button type="button" class="chip" style="height:32px;border-style:dashed;align-self:flex-start">＋ 列を追加</button>
+
+      <div style="margin-top:auto;display:flex;gap:10px">
+        <button class="btn" type="button" style="flex-grow:1;justify-content:center">取り消す</button>
+        <button class="btn btn-primary" type="button" style="flex-grow:2;justify-content:center">保存</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+
+</body>
+</html>
