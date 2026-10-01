@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { inventoryThumbnailUrl, type InventoryCompartment, type InventoryShelf } from '../../../../api/client';
+import { inventoryThumbnailUrl, type InventoryCompartment, type InventoryOptionField, type InventoryShelf } from '../../../../api/client';
 import { useInventoryItems, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
 import { InventoryPhotoDialog } from '../../../../components/kiosk/InventoryPhotoDialog';
 import { KioskDigitTenkey } from '../../KioskDigitTenkey';
 import { compartmentLocationText, unitLabel } from '../inventoryDailyFlow';
-import { ArrowLeftIcon, ArrowRightIcon, PinIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, PinIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
 import {
   invButtonDanger,
   invButtonGhost,
@@ -24,6 +24,7 @@ import {
 
 import { InventoryUnitPicker } from './InventoryUnitPicker';
 import { NfcScanPanel } from './NfcScanPanel';
+import { isProvisionalInventoryName, TOOL_BOARD_COLUMNS, ToolValueBoard } from './ToolValueBoard';
 import { useArmedNfcRead } from './useArmedNfcRead';
 
 import type { NfcEvent } from '../../../../hooks/useNfcStream';
@@ -42,14 +43,8 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : '処理に失敗しました';
 }
 
-const TOOL_INFO = [
-  ['maker', 'メーカー'],
-  ['toolName', '工具名'],
-  ['workMaterial', '被削材'],
-  ['toolSize', '工具寸法'],
-  ['model', '型式'],
-  ['usage', '用途'],
-] as const;
+const DETAIL_LABEL = Object.fromEntries(TOOL_BOARD_COLUMNS.map((column) => [column.key, column.label])) as Record<InventoryOptionField, string>;
+const provisionalTag = 'shrink-0 rounded-[5px] bg-inv-amber/[0.12] px-1.5 text-[10.5px] font-bold tracking-[0.08em] text-inv-amber';
 const iconSm = `${invButtonSm} w-9 px-0`;
 
 function freeDrawers(shelf: InventoryShelf) {
@@ -70,6 +65,9 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   const [done, setDone] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
   const [filter, setFilter] = useState('');
+  const [provisionalOnly, setProvisionalOnly] = useState(false);
+  // The last name or tool-information change, shown on the board with a way back.
+  const [detail, setDetail] = useState<{ text: string; undo: { field: InventoryOptionField; value: string } | null } | { error: string } | null>(null);
   const read = useArmedNfcRead(panel.kind === 'add-tag');
   const handledRef = useRef<NfcEvent | null>(null);
   const pending = mutations.setItemUnit.isPending || mutations.move.isPending || mutations.bindCompartment.isPending || mutations.deleteItemPhoto.isPending
@@ -99,12 +97,16 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
     setConfirmPhotoId(null);
     setError(null);
     setDone(null);
+    setDetail(null);
   };
 
   const needle = filter.normalize('NFKC').trim().toLowerCase();
-  const shown = needle
-    ? items.filter((entry) => [entry.name, entry.itemCode, entry.model ?? ''].some((text) => text.normalize('NFKC').toLowerCase().includes(needle)))
-    : items;
+  const provisionalCount = items.filter((entry) => isProvisionalInventoryName(entry.name)).length;
+  const shown = items.filter((entry) => {
+    // The open item stays listed after it gets a real name.
+    if (provisionalOnly && !isProvisionalInventoryName(entry.name) && entry.id !== itemId) return false;
+    return !needle || [entry.name, entry.itemCode, entry.model ?? ''].some((text) => text.normalize('NFKC').toLowerCase().includes(needle));
+  });
   const banner = (
     <>
       {done ? <p className={`rounded-xl border px-3 py-2 text-base font-bold ${invSuccess}`} role="status">{done}</p> : null}
@@ -113,7 +115,14 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   );
   const list = (
     <nav className="flex min-h-0 flex-col gap-1.5" aria-label="アイテム一覧">
-      <input aria-label="品名・型式で絞り込む" placeholder="品名・型式で絞り込む" className={`${invField} mb-1 h-11 shrink-0`} value={filter} onChange={(event) => setFilter(event.target.value)} />
+      <div className="mb-1 flex shrink-0 gap-1.5">
+        <input aria-label="品名・型式で絞り込む" placeholder="品名・型式で絞り込む" className={`${invField} h-11 min-w-0 flex-1`} value={filter} onChange={(event) => setFilter(event.target.value)} />
+        {provisionalCount > 0 || provisionalOnly ? (
+          <button type="button" aria-pressed={provisionalOnly} aria-label={`仮名だけ ${provisionalCount}件`} className={`inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[10px] border px-3 text-[13px] font-bold ${provisionalOnly ? 'border-inv-amber bg-inv-amber/[0.12] text-[#ffe8bf]' : 'border-inv-line2 bg-inv-s2 text-inv-muted hover:bg-inv-s3'}`} onClick={() => setProvisionalOnly((on) => !on)}>
+            仮名 <b className="tabular-nums text-inv-amber">{provisionalCount}</b>
+          </button>
+        ) : null}
+      </div>
       {itemsQuery.isLoading ? <p className="text-inv-faint">読み込み中…</p> : null}
       {!itemsQuery.isLoading && items.length === 0 ? <p className="text-inv-faint">登録済みのアイテムはありません</p> : null}
       <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto">
@@ -124,7 +133,9 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
             <button key={entry.id} type="button" aria-pressed={on} className={`flex h-[60px] shrink-0 items-center gap-2.5 rounded-xl px-2.5 text-left text-sm font-bold ${on ? 'border-2 border-inv-cyan bg-inv-cyan/[0.12]' : 'border border-inv-line bg-inv-s1 hover:bg-inv-s2'}`} onClick={() => open(entry.id)}>
               {entry.photos[0] ? <img src={inventoryThumbnailUrl(entry.photos[0].photoUrl)} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" /> : <span className="h-10 w-10 shrink-0 rounded-lg bg-inv-s3" aria-hidden="true" />}
               <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-              <span className="shrink-0 text-xs font-normal tabular-nums text-inv-faint">{entry.compartments.length === 0 ? '置き場所なし' : `${stock}${unitLabel(entry)}`}</span>
+              {isProvisionalInventoryName(entry.name)
+                ? <span className={provisionalTag}>仮名</span>
+                : <span className="shrink-0 text-xs font-normal tabular-nums text-inv-faint">{entry.compartments.length === 0 ? '置き場所なし' : `${stock}${unitLabel(entry)}`}</span>}
             </button>
           );
         })}
@@ -136,7 +147,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-3 pt-4">
         {banner}
-        <div className="grid min-h-0 flex-1 grid-cols-[360px_minmax(0,1fr)] gap-5">
+        <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)] gap-5">
           {list}
           <p className="self-center justify-self-center text-inv-faint">左の一覧からアイテムを選んでください</p>
         </div>
@@ -153,22 +164,44 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   };
 
   const areas = [...new Set(shelves.map((shelf) => shelf.area))].sort((a, b) => a.localeCompare(b, 'ja'));
-  const toolInfo = TOOL_INFO.map(([key, label]) => ({ label, value: item[key] || '—' }));
+  const details = Object.fromEntries(TOOL_BOARD_COLUMNS.map((column) => [column.key, item[column.key] ?? ''])) as Record<InventoryOptionField, string>;
+  const changeDetail = async (field: InventoryOptionField, value: string, undoable = true) => {
+    const previous = details[field];
+    setDetail(null);
+    try {
+      await mutations.updateItemDetails.mutateAsync({ itemId: item.id, details: { [field]: value } });
+      setDetail({ text: value ? `${DETAIL_LABEL[field]}を「${value}」にしました` : `${DETAIL_LABEL[field]}を空にしました`, undo: undoable ? { field, value: previous } : null });
+    } catch (caught) {
+      setDetail({ error: errorText(caught) });
+    }
+  };
+  const detailStatus = !detail ? null : 'error' in detail
+    ? <p className={`min-w-0 truncate rounded-lg border px-2.5 py-1 text-[13px] ${invError}`} role="alert">{detail.error}</p>
+    : (
+      <p className="flex min-w-0 items-center gap-2 text-[13px] font-bold text-[#d7fbe9]" role="status">
+        <span className="text-inv-green"><CheckIcon /></span>
+        <span className="truncate">{detail.text}</span>
+        {detail.undo ? <button type="button" className="inline-flex h-7 shrink-0 items-center rounded-lg border border-inv-line2 px-2.5 text-xs font-bold text-inv-muted hover:bg-inv-s2 hover:text-inv-text" onClick={() => void changeDetail(detail.undo!.field, detail.undo!.value, false)}>元に戻す</button> : null}
+      </p>
+    );
   const subPanel = 'flex flex-col gap-2.5 rounded-xl border border-inv-cyan/40 bg-inv-bg p-3';
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 pt-4">
       {banner}
-      <div className="grid min-h-0 flex-1 grid-cols-[360px_minmax(0,1.1fr)_minmax(0,1fr)] gap-5">
+      <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)] gap-5">
         {list}
 
+        <div className="flex min-h-0 min-w-0 flex-col gap-3.5">
+        <div className="grid h-[440px] shrink-0 grid-cols-[minmax(0,1fr)_560px] gap-3.5">
         <section className={`${invPanel} flex min-h-0 flex-col gap-3 p-[18px]`} aria-label="写真">
           <div className="flex items-baseline gap-3">
             <h2 className="min-w-0 flex-1 truncate text-[22px] font-black">{item.name}</h2>
+            {isProvisionalInventoryName(item.name) ? <span className={provisionalTag}>仮名</span> : null}
             <span className="font-mono text-[13px] text-inv-faint">{item.itemCode}</span>
           </div>
           {item.photos.length === 0 ? <p className="text-inv-faint">写真はありません</p> : null}
-          <div className="grid min-h-0 flex-1 auto-rows-[calc(50%-0.375rem)] grid-cols-2 gap-3 overflow-y-auto">
+          <div className="grid min-h-0 flex-1 auto-rows-[100%] grid-cols-3 gap-3 overflow-y-auto">
             {item.photos.map((photo, index) => (
               <figure key={photo.id} className="flex min-h-0 flex-col gap-2">
                 <button type="button" className="block min-h-0 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.originalFilename })}>
@@ -194,18 +227,6 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
         </section>
 
         <div className="flex min-h-0 flex-col gap-3.5 overflow-y-auto">
-          <section className={`${invPanel} flex flex-col gap-2.5 p-[18px]`} aria-label="工具情報">
-            <h3 className={invEyebrow}>工具情報</h3>
-            <dl className="grid grid-cols-2 gap-2">
-              {toolInfo.map((entry) => (
-                <div key={entry.label} className="rounded-[10px] bg-inv-s2 px-3.5 py-2.5">
-                  <dt className={invEyebrow}>{entry.label}</dt>
-                  <dd className="mt-0.5 break-all text-sm font-bold">{entry.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-
           <section className={`${invPanel} flex flex-col gap-2.5 p-[18px]`} aria-label="単位の設定">
             <h3 className={invEyebrow}>単位</h3>
             <InventoryUnitPicker
@@ -286,7 +307,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
                 <div className="flex flex-col gap-2">
                   <p className="text-sm text-inv-muted">タグ <span className="font-mono text-inv-text">{panel.uid}</span> を読み取りました。いま入っている数は？</p>
                   <output className="rounded-xl bg-inv-s2 px-4 py-2 text-right text-[40px] font-black tabular-nums" aria-label="入っている数">{panel.quantity || '0'}</output>
-                  <div className="mt-auto flex gap-2">
+                  <div className="mt-auto flex flex-wrap gap-2">
                     <button type="button" className={invButtonGhost} onClick={() => setPanel({ kind: 'none' })}>やめる</button>
                     <button
                       type="button"
@@ -315,6 +336,10 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
               <button type="button" className={invButtonDanger} disabled={pending} onClick={() => setPanel({ kind: 'delete-item' })}><TrashIcon />アイテムを削除</button>
             )}
           </section>
+        </div>
+        </div>
+        {/* Keyed by item so typed text and the mode never carry over to another item. */}
+        <ToolValueBoard key={item.id} accessPassword={accessPassword} current={details} onChange={(field, value) => void changeDetail(field, value)} status={detailStatus} className="flex-1" />
         </div>
       </div>
       <InventoryPhotoDialog photoUrl={selectedPhoto?.url ?? null} alt={selectedPhoto?.alt ?? ''} onClose={() => setSelectedPhoto(null)} />

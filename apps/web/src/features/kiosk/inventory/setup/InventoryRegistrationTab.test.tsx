@@ -30,8 +30,8 @@ vi.mock('../../../../api/hooks', () => ({
   })),
   useInventoryItems: vi.fn(() => ({ data: [], isLoading: false })),
   useInventoryUnits: vi.fn(() => ({ data: [{ id: 'u1', name: '個' }, { id: 'u2', name: 'ケース' }] })),
-  useInventoryToolFieldOptions: vi.fn(() => ({ data: { maker: ['OSG', '京セラ'], toolName: ['エンドミル'], workMaterial: ['S45C'], toolSize: [], model: ['SOMT140520ER-GM / PR1525'], usage: ['上面', '側面'] } })),
-  useInventoryToolFieldValues: vi.fn(() => ({ data: { maker: [{ value: 'OSG', count: 0 }, { value: 'ミツビシ', count: 3 }], toolName: [], workMaterial: [], toolSize: [], model: [], usage: [] } })),
+  useInventoryToolFieldOptions: vi.fn(() => ({ data: { name: ['チップ', 'ドリル'], maker: ['OSG', '京セラ'], toolName: ['エンドミル'], workMaterial: ['S45C'], toolSize: [], model: ['SOMT140520ER-GM / PR1525'], usage: ['上面', '側面'] } })),
+  useInventoryToolFieldValues: vi.fn(() => ({ data: { name: [{ value: 'チップ', count: 23 }], maker: [{ value: 'OSG', count: 0 }, { value: 'ミツビシ', count: 3 }], toolName: [], workMaterial: [], toolSize: [], model: [], usage: [] } })),
   useInventoryMutations: vi.fn(),
 }));
 vi.mock('../../../../hooks/useNfcStream', () => ({
@@ -243,7 +243,7 @@ describe('InventoryRegistrationTab', () => {
     fireEvent.change(screen.getByRole('textbox', { name: '工具寸法' }), { target: { value: 'φ10' } });
 
     fireEvent.click(screen.getByRole('button', { name: '登録済みから選ぶ' }));
-    const popup = screen.getByRole('dialog', { name: '登録済みの値から選ぶ' });
+    const popup = screen.getByRole('dialog', { name: '名前・工具情報' });
     fireEvent.click(within(within(popup).getByRole('group', { name: 'メーカー' })).getByRole('button', { name: 'OSG' }));
     fireEvent.click(within(within(popup).getByRole('group', { name: '被削材' })).getByRole('button', { name: 'S45C' }));
 
@@ -260,17 +260,40 @@ describe('InventoryRegistrationTab', () => {
     expect(screen.getByRole('textbox', { name: 'メーカー' })).toHaveValue('');
   });
 
+  it('picks the name from the board, hides the provisional one, and goes back to it on a second tap', async () => {
+    render(<InventoryRegistrationTab accessPassword="2520" />);
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    expect(screen.getByRole('textbox', { name: 'アイテム名' })).toHaveValue('ItemlistRaspi 2');
+
+    fireEvent.click(screen.getByRole('button', { name: '登録済みから選ぶ' }));
+    const names = within(within(screen.getByRole('dialog', { name: '名前・工具情報' })).getByRole('group', { name: '名前' }));
+    expect(names.getByText('仮名')).toBeInTheDocument();
+    expect(names.getByRole('textbox', { name: '名前の値' })).toHaveValue('');
+
+    fireEvent.click(names.getByRole('button', { name: 'チップ' }));
+    expect(screen.getByRole('textbox', { name: 'アイテム名' })).toHaveValue('チップ');
+    expect(names.queryByText('仮名')).not.toBeInTheDocument();
+
+    fireEvent.click(names.getByRole('button', { name: 'チップ' }));
+    expect(screen.getByRole('textbox', { name: 'アイテム名' })).toHaveValue('ItemlistRaspi 2');
+
+    // Typed straight into the lane, the text is taken on leaving the field.
+    fireEvent.change(names.getByRole('textbox', { name: '名前の値' }), { target: { value: ' リーマ ' } });
+    fireEvent.blur(names.getByRole('textbox', { name: '名前の値' }));
+    expect(screen.getByRole('textbox', { name: 'アイテム名' })).toHaveValue('リーマ');
+  });
+
   it('renames a registered value together with the items that use it', async () => {
     render(<InventoryRegistrationTab accessPassword="2520" />);
     fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'メーカー' }), { target: { value: 'ミツビシ' } });
     fireEvent.click(screen.getByRole('button', { name: '登録済みから選ぶ' }));
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-    const popup = screen.getByRole('dialog', { name: '登録済みの値を編集' });
+    fireEvent.click(screen.getByRole('button', { name: 'まとめて直す' }));
+    const popup = screen.getByRole('dialog', { name: '名前・工具情報' });
 
     expect(within(popup).queryByRole('button', { name: 'ミツビシを削除' })).not.toBeInTheDocument();
     fireEvent.click(within(popup).getByRole('button', { name: 'ミツビシの名前を変える' }));
-    expect(within(popup).getByText(/件も変わります/)).toHaveTextContent('アイテム 3件も変わります');
+    expect(within(popup).getByText(/件が変わります/)).toHaveTextContent('3件が変わります');
     fireEvent.change(within(popup).getByRole('textbox', { name: 'ミツビシの新しい名前' }), { target: { value: 'ミツビシマテリアル' } });
     await act(async () => { fireEvent.click(within(popup).getByRole('button', { name: '変える' })); });
 
@@ -282,8 +305,8 @@ describe('InventoryRegistrationTab', () => {
     render(<InventoryRegistrationTab accessPassword="2520" />);
     fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
     fireEvent.click(screen.getByRole('button', { name: '登録済みから選ぶ' }));
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-    const popup = screen.getByRole('dialog', { name: '登録済みの値を編集' });
+    fireEvent.click(screen.getByRole('button', { name: 'まとめて直す' }));
+    const popup = screen.getByRole('dialog', { name: '名前・工具情報' });
 
     fireEvent.click(within(popup).getByRole('button', { name: 'OSGを削除' }));
     expect(deleteToolFieldValue).not.toHaveBeenCalled();

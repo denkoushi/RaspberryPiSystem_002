@@ -27,7 +27,7 @@ import {
 import { NfcPrompt } from '../NfcPrompt';
 
 import { InventoryUnitPicker } from './InventoryUnitPicker';
-import { ToolValuePopup } from './ToolValuePopup';
+import { ToolValueBoard } from './ToolValueBoard';
 import { useArmedNfcRead } from './useArmedNfcRead';
 
 import type { NfcEvent } from '../../../../hooks/useNfcStream';
@@ -352,8 +352,9 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
     <div className="flex min-h-0 flex-1 flex-col gap-3 pt-4">
       {doneBanner}
       {retryPanel}
-      <div className="grid min-h-[560px] flex-1 grid-cols-[680px_minmax(0,1fr)_340px] gap-[18px]">
-        <section aria-label="写真の確認" className={`${invPanel} flex min-h-0 flex-col gap-3 p-4`}>
+      <div className="relative grid min-h-[560px] flex-1 grid-cols-[680px_minmax(0,1fr)_340px] gap-[18px]">
+        {/* The photos stay in front of the shade so the name can be chosen while looking at them. */}
+        <section aria-label="写真の確認" className={`${invPanel} flex min-h-0 flex-col gap-3 p-4 ${optionsOpen ? 'relative z-[45]' : ''}`}>
           <div className="flex items-center gap-2">
             <StepMark number={1} done={isDone('photos')} current={currentId === 'photos'} />
             <h3 className="text-[15px] font-black">写真の確認</h3>
@@ -425,14 +426,6 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
                 </label>
               ))}
             </div>
-            {optionsOpen ? (
-              <ToolValuePopup
-                accessPassword={accessPassword}
-                current={{ maker: draft.maker, toolName: draft.toolName, workMaterial: draft.workMaterial, toolSize: draft.toolSize, model: draft.model, usage: draft.usage }}
-                onChange={(field, value) => update({ [field]: value } as Partial<Draft>)}
-                onClose={() => setOptionsOpen(false)}
-              />
-            ) : null}
           </Row>
 
           <Row id="unit" number={next()} title="単位" done current={false}>
@@ -543,6 +536,20 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
             {mutations.registerImport.isPending ? '登録中…' : '登録する'}
           </button>
         </aside>
+        {optionsOpen ? (
+          <>
+            <div className="fixed inset-0 z-40 bg-[#05080d]/60" aria-hidden="true" onClick={() => setOptionsOpen(false)} />
+            <ToolValueBoard
+              accessPassword={accessPassword}
+              current={{ name: draft.name, maker: draft.maker, toolName: draft.toolName, workMaterial: draft.workMaterial, toolSize: draft.toolSize, model: draft.model, usage: draft.usage }}
+              onChange={(field, value) => update({ [field]: value } as Partial<Draft>)}
+              onRenamed={(field, from, to) => setDraft((current) => (current[field] === from ? { ...current, [field]: to } : current))}
+              provisionalName={draft.mode === 'EXISTING_ITEM' ? undefined : `ItemlistRaspi ${candidate.sourceItemId}`}
+              onClose={() => setOptionsOpen(false)}
+              className="absolute inset-y-0 left-[698px] right-0 z-50 shadow-[0_30px_80px_rgba(0,0,0,0.6),0_0_0_1px_rgba(57,208,240,0.25)]"
+            />
+          </>
+        ) : null}
       </div>
       {/* Candidates sit in their own strip below the panes so any number of them fits. */}
       <section aria-label="メールで届いた候補" className={`${invPanel} flex shrink-0 items-center gap-3 p-2.5`}>

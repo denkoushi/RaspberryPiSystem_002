@@ -64,6 +64,13 @@ Do not merge to `main` until a standard release run has finished. The next run m
 - Areas are normalized (NFKC, trimmed) on intake, shelf creation and registration; existing rows were normalized once with `apps/api/scripts/inventory-area-normalize.mjs` (backup `/opt/backups/inventory-area-normalize-20260928.json`). Run scripts in the running blue/green API container (`docker ps | grep api`), not with `docker compose exec api`.
 - Each item has one unit (null means 個; no conversion). Units are chosen or added in 在庫の準備; quantity tags carry only a number.
 
+## Updates (2026-10-01)
+
+- The tool-value pop-up became a board (`setup/ToolValueBoard.tsx`) with one lane per field: 名前, メーカー, 工具名, 被削材, 工具寸法, 型式, 用途. Each lane has the item's value on top (typing is taken on Enter or on leaving the field) and the registered values below it. The notes on `ToolValuePopup.tsx` under 2026-09-30 describe the old pop-up; rename, add and delete still work the same way.
+  - A tap changes this one item. まとめて直す switches to the registered values themselves (amber frame): renaming changes every item that uses the value.
+  - アイテム編集 shows the board on the screen and saves each change at once through `PUT /item-inventory/items/:id/details` (setup PIN), with 元に戻す. 登録待ち opens the same board beside the photos.
+  - 名前 is now a pick-list field. Names matching `ItemlistRaspi <number>` (given when PowerApps sends an item without a name) are provisional: they are not offered as choices, the board shows 仮名, and アイテム編集 can list only those. A registered item's name cannot be emptied.
+
 ## Updates (2026-09-30)
 
 - All inventory screens (在庫操作 and 在庫の準備) share one look: the `inv` Tailwind palette in `apps/web/tailwind.config.ts`, class constants in `apps/web/src/features/kiosk/inventory/inventoryUi.ts`, and icons in `InventoryIcons.tsx`. The kiosk shell background is covered by `invSurface`. Use these instead of `slate`/`white/` classes on inventory screens.
