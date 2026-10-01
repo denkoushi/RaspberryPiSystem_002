@@ -74,6 +74,11 @@ elif [[ "${BROWSER_ENGINE}" == "firefox" ]]; then
   PROFILE_ARGS=()
   if [[ "${KIOSK_FF_MINIMIZE}" == "1" ]] && [[ -d "${FF_PROFILE}" ]]; then
     PROFILE_ARGS=(--profile "${FF_PROFILE}")
+    # KB-412: WebDriver/Marionette 起動が prefs.js に残す focusmanager.testmode=true は
+    # キー入力が IBus へ渡らなくなる（日本語入力不可）。Firefox 起動前に除去する。
+    if [[ -f "${FF_PROFILE}/prefs.js" ]]; then
+      sed -i '/^user_pref("focusmanager\.testmode"/d' "${FF_PROFILE}/prefs.js" 2>/dev/null || true
+    fi
   fi
   exec "${BROWSER_BIN}" "${PROFILE_ARGS[@]}" "${FIREFOX_FLAGS[@]}" "${KIOSK_TARGET_URL}"
 else
