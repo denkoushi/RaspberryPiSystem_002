@@ -18,7 +18,8 @@
 - [x] (2026-09-30 07:10Z) モック 7 画面を作成し、1440×900 で自己確認。`docs/design-previews/signage-admin-unification/` に配置。
 - [x] (2026-09-30 07:20Z) 本 ExecPlan を作成（branch `feat/signage-admin-unification`）。
 - [x] (2026-09-30 08:10Z) マイルストーン 0 前半：Web 開発サーバに対し、ログイン注入・非表示指定・1920×1080 撮影を確認（約 2.5 秒/回、Node 側メモリ増 約 25MB）。
-- [ ] マイルストーン 0 後半：撮影ユーザーの役割と、API→Web の到達経路（管理画面の IP 制限と自己署名証明書）をユーザー判断で確定し、API 実機（ローカル Docker）で通し撮影。
+- [x] (2026-10-01 01:10Z) マイルストーン 0 後半（判断）：撮影ユーザーは MANAGER＋読み取り専用化、到達経路は Docker 内部専用の入口、とユーザーが決定。
+- [ ] マイルストーン 0 後半（実測）：ローカル Docker で API→Web 内部入口の通し撮影。
 - [ ] マイルストーン 1：API ― ページ撮影コンテンツ（DB、撮影サービス、スロット種別 `web_page`、管理 API、定期撮影）。
 - [ ] マイルストーン 2：API ― サイネージ概況 API（端末ごとの受信・描画・一致状況）と CSV 表のプレビュー画像 API。
 - [ ] マイルストーン 3：Web ― `/admin/signage` 1 画面ハブ（暗色）と旧 4 ページからの転送。
@@ -63,9 +64,12 @@
 - Decision: ページ撮影の対象 URL は、同じ管理 Web のパス（`/` で始まる相対パス）に限定する。撮影時の起点 URL は新しい環境変数 `SIGNAGE_WEB_CAPTURE_BASE_URL` で与える。外部 URL、`//` 始まり、スキーム付きは保存時に拒否する。
   Rationale: 任意 URL を API サーバーから開けると、社内ネットワークの他サービスへ API 経由でアクセスさせる穴（SSRF：サーバー側リクエスト偽造）になる。用途は既存の管理画面の撮影だけである。
   Date/Author: 2026-09-30 / Claude
-- Decision: 撮影時のログインは、実在する閲覧専用ユーザー（role `VIEWER`）を環境変数 `SIGNAGE_WEB_CAPTURE_USERNAME` で指定し、撮影のたびに API 内で `signAccessToken`（`apps/api/src/lib/auth.ts`）により短命トークンを作って `localStorage` の `factory-auth` に注入する。パスワードは保存しない。ユーザーが見つからない、または `VIEWER` 以外の役割なら撮影を失敗扱いにし、理由を管理画面に出す。
-  Rationale: 管理者の資格情報を撮影に流用しない。閲覧専用に限定すれば撮影経路から設定変更はできない。架空のユーザー ID でトークンを作ると、ユーザー実在確認を行う API で失敗する恐れがあるため実在ユーザーにする。マイルストーン 0 で VIEWER で対象ページが見られるかを確認し、見られない場合は Decision Log を更新する。
-  Date/Author: 2026-09-30 / Claude
+- Decision: 撮影時のログインは、実在する撮影専用ユーザー（role `MANAGER`）を環境変数 `SIGNAGE_WEB_CAPTURE_USERNAME` で指定し、撮影のたびに API 内で `signAccessToken`（`apps/api/src/lib/auth.ts`）により短命トークンを作って `localStorage` の `factory-auth` に注入する。パスワードは保存しない。撮影ブラウザでは `page.route` により GET・HEAD・OPTIONS 以外のリクエスト（保存・削除など）をすべて中断し、読み取り専用にする。ユーザーが見つからない、または役割が `MANAGER` でない（`ADMIN` も不可）なら撮影を失敗扱いにし、理由を管理画面に出す。
+  Rationale: マイルストーン 0 で、API の約 3 分の 2 が ADMIN/MANAGER 限定で、VIEWER では多くの管理画面がデータなしで写ると分かった。ユーザーは 2026-10-01 に「管理者権限＋閲覧だけに制限」を選んだ。トークンは API プロセスの外へ出ず、書き込み系の通信をブラウザ側で止めるので、撮影経路から設定が変わることはない。ADMIN を不可にするのは必要以上の権限を避けるため。
+  Date/Author: 2026-10-01 / ユーザー決定、Claude 記録
+- Decision: 撮影ブラウザから管理 Web へは、Docker の内部ネットワークだけで届く専用の入口（Web コンテナの Caddy に、ホストへ公開しないポート `8081` の HTTP サイトを追加）を使う。この入口は静的サイトと `/api` 転送だけを持ち、`/admin*` の IP 制限を掛けない。`ADMIN_ALLOW_NETS` と公開ポート 80/443 の設定は変えない。`SIGNAGE_WEB_CAPTURE_BASE_URL` の本番既定値は `http://web:8081` とする。
+  Rationale: 本番の Caddy は `/admin*` を `ADMIN_ALLOW_NETS` 以外から遮断し、HTTPS は自己署名である。許可ネットワークに Docker 内部の範囲を足す案はセキュリティ設定を触るため、ユーザーは 2026-10-01 に「サーバ内部だけの入口を追加」を選んだ。`ports:` に載せないポートはホスト外から届かない。
+  Date/Author: 2026-10-01 / ユーザー決定、Claude 記録
 - Decision: 撮影は「通信が落ち着く」に加えて「画面に『読み込み中』の文字が 1 つもない」ことを最大 20 秒待つ。既定で Hermes の丸ボタン（`HermesFloatingChat` のルート要素）を隠す。
   Rationale: マイルストーン 0 で、データ未取得の画面やボタンが写り込むことを確認したため。
   Date/Author: 2026-09-30 / Claude
@@ -106,7 +110,7 @@ Playwright（ヘッドレス Chromium を操作するライブラリ）は API �
 
 `apps/api/src/services/signage/web-capture/` を新設し、まず試作関数 `captureAdminPage({ baseUrl, path, token, viewport })` を作る。処理は、`getSharedChromium()` で得たブラウザから `newContext({ viewport })` を作り、`context.addInitScript` で `localStorage.setItem('factory-auth', JSON.stringify({ token, user, expiresAt }))` を事前に書き込み、`page.goto(baseUrl + path, { waitUntil: 'networkidle', timeout: 20000 })` で開き、`page.screenshot({ type: 'jpeg', quality: 85 })` を返す。`user` には `{ id, username, role }` を入れる（`AuthContext` が読む形）。
 
-ローカルでは `infrastructure/docker/docker-compose.mac-local.override.yml` を使った開発環境、または `pnpm --filter @raspi-system/api dev` と `pnpm --filter @raspi-system/web dev` で起動し、試作用の一時スクリプト（コミットしない。scratch に置く）から `/admin/visualization-dashboards` などを撮影する。確認することは 4 点である。VIEWER ユーザーのトークンで対象ページが表示されるか（ログイン画面に飛ばされないか）。`networkidle` 待ちでグラフが描き終わった状態が撮れるか。1 回の撮影にかかる時間。撮影中の API プロセスのメモリ増加量。Pi5 実機での計測はデプロイ後のマイルストーン 5 で行い、ここでは Mac 上の値を記録する。
+ローカルでは `infrastructure/docker/docker-compose.mac-local.override.yml` を使った開発環境、または `pnpm --filter @raspi-system/api dev` と `pnpm --filter @raspi-system/web dev` で起動し、試作用の一時スクリプト（コミットしない。scratch に置く）から `/admin/visualization-dashboards` などを撮影する。確認することは 4 点である。撮影ユーザーのトークンで対象ページが表示されるか（ログイン画面に飛ばされないか）。`networkidle` 待ちでグラフが描き終わった状態が撮れるか。1 回の撮影にかかる時間。撮影中の API プロセスのメモリ増加量。Pi5 実機での計測はデプロイ後のマイルストーン 5 で行い、ここでは Mac 上の値を記録する。
 
 同時に、API コンテナから Web へ届く URL を決める。`docker-compose.server.yml` の `web` サービス名で内部から届くか（例 `http://web:80`）、Caddy 経由にする必要があるかを確認し、`SIGNAGE_WEB_CAPTURE_BASE_URL` の既定値を Decision Log に記録する。
 
@@ -116,7 +120,7 @@ Playwright（ヘッドレス Chromium を操作するライブラリ）は API �
 
 DB に新モデル `SignageWebCapture` を追加する。フィールドは `id`（uuid）、`name`、`path`（`/` 始まりの相対パス）、`viewportWidth`（既定 1920）、`viewportHeight`（既定 1080）、`waitMode`（`network_idle` または `fixed_delay`）、`waitSeconds`（既定 3）、`hideSelectors`（文字列配列。撮影前に `display:none` にする CSS セレクタ）、`clipSelector`（任意。指定時はその要素の範囲だけを切り出す）、`refreshIntervalSeconds`（60、300、900 のいずれか。既定 300）、`enabled`、`lastCapturedAt`、`lastStatus`（`success`、`failed`、`never`）、`lastError`、`lastDurationMs`、`imagePath`、`createdAt`、`updatedAt` とする。マイグレーションは追加のみで、既存テーブルに触れない。コマンドは `apps/api` で `pnpm prisma migrate dev --name signage_web_capture` とする。
 
-撮影サービス `SignageWebCaptureService`（`apps/api/src/services/signage/web-capture/signage-web-capture.service.ts`）を作る。責務は、パスの検証（`/` で始まり、`//` で始まらず、`:` を含まない。`new URL(path, baseUrl).origin === new URL(baseUrl).origin` を必ず確認）、撮影用トークンの発行（`SIGNAGE_WEB_CAPTURE_USERNAME` のユーザーを DB から引き、役割が `VIEWER` であることを確認して `signAccessToken`）、撮影（マイルストーン 0 の関数に `hideSelectors` の `page.addStyleTag`、`waitMode`、`clipSelector` を加える）、画像保存（既存の `signage-rendered-storage` ボリューム配下に `web-captures/<id>.jpg` として保存）、結果の記録（`last*` フィールド）である。撮影は同時に 1 件だけ実行するよう、サービス内に直列キューを持つ。Pi5 の負荷を抑えるためである。
+撮影サービス `SignageWebCaptureService`（`apps/api/src/services/signage/web-capture/signage-web-capture.service.ts`）を作る。責務は、パスの検証（`/` で始まり、`//` で始まらず、`:` を含まない。`new URL(path, baseUrl).origin === new URL(baseUrl).origin` を必ず確認）、撮影用トークンの発行（`SIGNAGE_WEB_CAPTURE_USERNAME` のユーザーを DB から引き、役割が `MANAGER` であることを確認して `signAccessToken`）、撮影（マイルストーン 0 の関数に `hideSelectors` の `page.addStyleTag`、`waitMode`、`clipSelector` を加える）、画像保存（既存の `signage-rendered-storage` ボリューム配下に `web-captures/<id>.jpg` として保存）、結果の記録（`last*` フィールド）である。撮影は同時に 1 件だけ実行するよう、サービス内に直列キューを持つ。Pi5 の負荷を抑えるためである。
 
 プレビュー用に、撮影時に画面上の主要な領域の候補も返す。`header`、`nav`、`aside`、`[role=banner]`、`[role=navigation]`、`[role=complementary]`、`main`、見出しを持つ `section` について、`getBoundingClientRect()` と一意なセレクタ（id があれば `#id`、なければタグ名と `nth-of-type` の組み合わせ）を集める。画面のプレビュー上でこれらの枠をクリックすると `hideSelectors` に加わる（モック `WebCapture.html` の「＋ プレビューで選ぶ」）。
 
@@ -126,7 +130,7 @@ DB に新モデル `SignageWebCapture` を追加する。フィールドは `id`
 
 管理 API は `apps/api/src/routes/signage/web-captures.ts` に置き、`apps/api/src/routes/signage/index.ts` に登録する。`GET /api/signage/web-captures`（一覧、閲覧権限）、`POST`（作成、管理権限）、`PUT /:id`、`DELETE /:id`（スケジュールから参照中なら 409 を返し、参照している予定名を本文に入れる）、`POST /:id/capture`（今すぐ撮影し、画像の URL と領域候補を返す。管理権限）、`POST /capture-preview`（保存前の設定で撮影してプレビューを返す。管理権限）、`GET /:id/image`（最新画像。閲覧権限）を作る。
 
-テストは `apps/api/src/services/signage/web-capture/__tests__/` に置く。パス検証（外部 URL、`//evil`、`javascript:`、`/admin/..%2f` の拒否と、`/admin/self-inspection/kpi` の許可）、撮影ユーザーが VIEWER でないときの拒否、直列キュー、定期撮影の対象選別（参照あり・期限切れのみ）を単体テストにする。Playwright 本体は差し替え可能な関数として注入し、テストではダミーを使う。スキーマの `web_page` 受理と不正 config の拒否は既存の `schemas` テストに追加する。レンダラーの `web_page` 分岐は画像あり・なしの 2 通りをテストする。
+テストは `apps/api/src/services/signage/web-capture/__tests__/` に置く。パス検証（外部 URL、`//evil`、`javascript:`、`/admin/..%2f` の拒否と、`/admin/self-inspection/kpi` の許可）、撮影ユーザーが MANAGER でないときの拒否、GET 以外のリクエストの中断、直列キュー、定期撮影の対象選別（参照あり・期限切れのみ）を単体テストにする。Playwright 本体は差し替え可能な関数として注入し、テストではダミーを使う。スキーマの `web_page` 受理と不正 config の拒否は既存の `schemas` テストに追加する。レンダラーの `web_page` 分岐は画像あり・なしの 2 通りをテストする。
 
 受け入れ条件は、ローカルで撮影コンテンツを作成し、`web_page` スロットのスケジュールを保存すると、次の描画周期以降に `GET /api/signage/current-image` の画像にそのページが写ることである。
 
@@ -174,7 +178,7 @@ CSV 表の設定は `useCsvDashboardEditor.ts` と `csvDashboardFormModel.ts` �
 
 `AdminLayout.tsx` のメニューから「可視化ダッシュボード」「サイネージプレビュー」を外し、「データボード」「サイネージ」の 2 つにする。
 
-ドキュメントは、サイネージの正本 `docs/modules/signage/README.md` に新ハブ、ページ撮影コンテンツ、新しい環境変数（`SIGNAGE_WEB_CAPTURE_BASE_URL`、`SIGNAGE_WEB_CAPTURE_USERNAME`）、旧 URL の転送を追記する。KB は `docs/knowledge-base/infrastructure/signage.md` に 1 件追加する。環境変数は `apps/api/src/config/env/signage.ts` に定義し、`infrastructure/docker/docker-compose.server.yml` と Ansible の API 環境変数テンプレート（`rg -n SIGNAGE_LOAN_GRID_ENGINE infrastructure/ansible` で場所を特定）に配線する。撮影用 VIEWER ユーザーの作成手順（管理画面のユーザー管理から作る）を README に書く。ユーザーが未設定でも API は起動し、撮影だけが「撮影用ユーザー未設定」で失敗する設計にする。
+ドキュメントは、サイネージの正本 `docs/modules/signage/README.md` に新ハブ、ページ撮影コンテンツ、新しい環境変数（`SIGNAGE_WEB_CAPTURE_BASE_URL`、`SIGNAGE_WEB_CAPTURE_USERNAME`）、旧 URL の転送を追記する。KB は `docs/knowledge-base/infrastructure/signage.md` に 1 件追加する。環境変数は `apps/api/src/config/env/signage.ts` に定義し、`infrastructure/docker/docker-compose.server.yml` と Ansible の API 環境変数テンプレート（`rg -n SIGNAGE_LOAN_GRID_ENGINE infrastructure/ansible` で場所を特定）に配線する。撮影用 MANAGER ユーザーの作成手順（管理画面のユーザー管理から作る）を README に書く。ユーザーが未設定でも API は起動し、撮影だけが「撮影用ユーザー未設定」で失敗する設計にする。
 
 最後にローカルで通し確認を行う（Validation and Acceptance 参照）。
 
