@@ -271,6 +271,11 @@ const webCaptureSettingsShape = {
 
 export const webCaptureSettingsSchema = z.object(webCaptureSettingsShape).strict();
 
+/** 試し撮り用：設定に加えて「ページ全体の枠を自動で隠す」を指定できる */
+export const webCapturePreviewSchema = z
+  .object({ ...webCaptureSettingsShape, autoHideLandmarks: z.boolean().default(false) })
+  .strict();
+
 export const webCaptureSchema = z
   .object({
     ...webCaptureSettingsShape,

@@ -242,3 +242,34 @@ export function parseCsvHeaderCandidatesInput(input: string): string[] {
     )
   );
 }
+
+/** 列の定義と「表に出すか・出す順」を 1 行にまとめた表示用の形 */
+export type UnifiedColumn = CsvDashboard['columnDefinitions'][number] & {
+  /** columnDefinitions 内の位置（表示名などの変更に使う） */
+  definitionIndex: number;
+  /** 表に出している場合の、表示順での位置。出していなければ null */
+  displayIndex: number | null;
+};
+
+/**
+ * 列定義と表示列を 1 つのリストにまとめる（純関数）。
+ * 表に出している列を表示順で先に、出していない列を定義順で後ろに並べる。
+ * 表示列に定義のない名前が混ざっていても無視する（保存内容は変えない）。
+ */
+export function toUnifiedColumns(
+  columnDefinitions: CsvDashboard['columnDefinitions'],
+  tableDisplayColumns: string[]
+): UnifiedColumn[] {
+  const withIndex = columnDefinitions.map((column, definitionIndex) => ({ column, definitionIndex }));
+  const shown: UnifiedColumn[] = [];
+  tableDisplayColumns.forEach((internalName, displayIndex) => {
+    const found = withIndex.find((entry) => entry.column.internalName === internalName);
+    if (found && !shown.some((entry) => entry.internalName === internalName)) {
+      shown.push({ ...found.column, definitionIndex: found.definitionIndex, displayIndex });
+    }
+  });
+  const hidden: UnifiedColumn[] = withIndex
+    .filter((entry) => !tableDisplayColumns.includes(entry.column.internalName))
+    .map((entry) => ({ ...entry.column, definitionIndex: entry.definitionIndex, displayIndex: null }));
+  return [...shown, ...hidden];
+}

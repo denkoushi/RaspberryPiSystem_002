@@ -17,6 +17,8 @@
     "@chatscope/chat-ui-kit-react": "^2.0.3",
     "@chatscope/chat-ui-kit-styles": "^1.4.0",
     "@digital-go-jp/design-tokens": "1.1.9",
+    "@fontsource/ibm-plex-mono": "5.2.7",
+    "@fontsource/ibm-plex-sans": "5.2.8",
     "@raspi-system/kiosk-sop-core": "workspace:*",
     "@raspi-system/part-search-core": "workspace:*",
     "@raspi-system/shared-types": "workspace:*",

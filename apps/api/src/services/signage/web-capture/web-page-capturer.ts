@@ -20,6 +20,11 @@ export interface WebPageCaptureRequest {
   hideSelectors: string[];
   clipSelector: string | null;
   auth: WebCaptureAuth;
+  /**
+   * ページ全体の枠（上部メニューなど、本文の外にある header / nav / aside / footer）を
+   * 見つけて自動で隠す。隠したセレクタは結果の autoHiddenSelectors で返す。
+   */
+  autoHideLandmarks?: boolean;
 }
 
 /** プレビュー上で「隠す部分」に選べる領域の候補 */
@@ -36,6 +41,10 @@ export interface WebPageCaptureResult {
   jpeg: Buffer;
   regions: WebCaptureRegion[];
   durationMs: number;
+  /** autoHideLandmarks で自動的に隠したセレクタ */
+  autoHiddenSelectors: string[];
+  /** ページの最初の見出し（名前の初期値に使う）。見つからなければ null */
+  pageTitle: string | null;
 }
 
 export interface WebPageCapturer {
@@ -116,7 +125,15 @@ export class PlaywrightWebPageCapturer implements WebPageCapturer {
           });
       }
 
-      const regions = (await page.evaluate(COLLECT_REGIONS_EXPRESSION)) as WebCaptureRegion[];
+      let regions = (await page.evaluate(COLLECT_REGIONS_EXPRESSION)) as WebCaptureRegion[];
+      let autoHiddenSelectors: string[] = [];
+      if (request.autoHideLandmarks && regions.length > 0) {
+        autoHiddenSelectors = regions.map((region) => region.selector).filter(isSafeHideSelector);
+        await page.addStyleTag({ content: buildHideStyle(autoHiddenSelectors) });
+        regions = [];
+      }
+      const rawTitle = (await page.evaluate(PAGE_TITLE_EXPRESSION)) as string | null;
+      const pageTitle = typeof rawTitle === 'string' && rawTitle.trim() !== '' ? rawTitle.trim().slice(0, 80) : null;
 
       let jpeg: Buffer;
       if (request.clipSelector) {
@@ -125,12 +142,18 @@ export class PlaywrightWebPageCapturer implements WebPageCapturer {
       } else {
         jpeg = await page.screenshot({ type: 'jpeg', quality: 88 });
       }
-      return { jpeg, regions, durationMs: Date.now() - startedAt };
+      return { jpeg, regions, durationMs: Date.now() - startedAt, autoHiddenSelectors, pageTitle };
     } finally {
       await context.close().catch(() => undefined);
     }
   }
 }
+
+/** ブラウザ内で実行する式。本文の最初の見出しを返す（文字列で渡す理由は下の式と同じ） */
+const PAGE_TITLE_EXPRESSION = `(() => {
+  const heading = document.querySelector('main h1, main h2, h1, h2');
+  return heading ? heading.textContent : null;
+})()`;
 
 /**
  * ブラウザ内で実行する式。主要な領域の位置と、その要素を一意に指すセレクタを集める。
@@ -154,11 +177,16 @@ const COLLECT_REGIONS_EXPRESSION = `(() => {
     return 'body > ' + parts.join(' > ');
   };
   const regions = [];
+  const picked = [];
   document
     .querySelectorAll('header,nav,aside,footer,[role=banner],[role=navigation],[role=complementary]')
     .forEach((el) => {
+      // ページ全体の枠だけを候補にする：本文（main）の中や、すでに候補にした要素の中は除く
+      if (el.closest('main')) return;
+      if (picked.some((parent) => parent !== el && parent.contains(el))) return;
       const rect = el.getBoundingClientRect();
       if (rect.width < 40 || rect.height < 16) return;
+      picked.push(el);
       regions.push({
         selector: selectorOf(el),
         label: labels[el.tagName.toLowerCase()] || '領域',

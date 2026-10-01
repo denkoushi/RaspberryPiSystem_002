@@ -6,6 +6,7 @@ import { SignageService } from '../../services/signage/index.js';
 import { SignageRenderStorage } from '../../lib/signage-render-storage.js';
 import { ApiError } from '../../lib/errors.js';
 import { env } from '../../config/env.js';
+import { recordSignageImageFetch } from '../../services/signage/signage-delivery-tracker.js';
 
 export function registerRenderRoutes(app: FastifyInstance, signageService: SignageService): void {
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
@@ -64,6 +65,10 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
       if (!client) {
         throw new ApiError(401, 'クライアント API キーが不正です');
       }
+    }
+    // 端末自身の取得だけを「受信」として記録する。管理画面のプレビューは JWT 付きで来るので除外する。
+    if (keyValue && !request.headers.authorization) {
+      recordSignageImageFetch(keyValue);
     }
     let imageBuffer: Buffer | null = keyValue
       ? await SignageRenderStorage.readCurrentImage(keyValue)

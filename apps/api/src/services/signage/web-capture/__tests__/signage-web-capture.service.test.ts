@@ -50,7 +50,7 @@ const row = (overrides: Record<string, unknown> = {}) => ({
 const webPageLayout = (id: string) => ({ layout: 'FULL', slots: [{ position: 'FULL', kind: 'web_page', config: { webCaptureId: id } }] });
 
 function buildService(overrides: Partial<SignageWebCaptureServiceDeps> = {}) {
-  const capturer = { capture: vi.fn().mockResolvedValue({ jpeg: Buffer.from('jpeg'), regions: [], durationMs: 1200 }) };
+  const capturer = { capture: vi.fn().mockResolvedValue({ jpeg: Buffer.from('jpeg'), regions: [], durationMs: 1200, autoHiddenSelectors: [], pageTitle: null }) };
   const storage = { save: vi.fn().mockResolvedValue(undefined), read: vi.fn(), remove: vi.fn().mockResolvedValue(undefined) };
   const deps: SignageWebCaptureServiceDeps = {
     capturer,
@@ -151,7 +151,7 @@ describe('SignageWebCaptureService', () => {
         maxActive = Math.max(maxActive, active);
         await new Promise((resolve) => setTimeout(resolve, 5));
         active -= 1;
-        return { jpeg: Buffer.from('x'), regions: [], durationMs: 5 };
+        return { jpeg: Buffer.from('x'), regions: [], durationMs: 5, autoHiddenSelectors: [], pageTitle: null };
       }),
     };
     const { service } = buildService({ capturer });

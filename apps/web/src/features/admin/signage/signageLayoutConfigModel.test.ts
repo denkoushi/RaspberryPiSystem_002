@@ -491,4 +491,15 @@ describe('signageLayoutConfigModel', () => {
       });
     });
   });
+
+  it('round-trips a FULL web_page slot', () => {
+    const layoutConfig: SignageLayoutConfig = {
+      layout: 'FULL',
+      slots: [{ position: 'FULL', kind: 'web_page', config: { webCaptureId: 'capture-1' } }],
+    };
+    const state = editorStateFromSchedule(baseSchedule({ layoutConfig }));
+    expect(state.fullSlotKind).toBe('web_page');
+    expect(state.fullWebCaptureId).toBe('capture-1');
+    expect(buildLayoutConfigFromEditorState(state, SAMPLE_PDFS)).toEqual(layoutConfig);
+  });
 });

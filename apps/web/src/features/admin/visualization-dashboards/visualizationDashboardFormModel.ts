@@ -46,7 +46,6 @@ export function setCsvDashboardId(dataSourceConfig: string, csvDashboardId: stri
     return JSON.stringify(
       {
         csvDashboardId: csvDashboardId || '',
-        date: '',
         maxRows: 30,
       },
       null,

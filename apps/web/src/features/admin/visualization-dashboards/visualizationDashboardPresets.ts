@@ -21,7 +21,6 @@ export const PALLET_VIZ_RENDERER_TEMPLATE = JSON.stringify(
 export const UNINSPECTED_DATA_SOURCE_TEMPLATE = JSON.stringify(
   {
     csvDashboardId: '',
-    date: '',
     maxRows: 30,
   },
   null,

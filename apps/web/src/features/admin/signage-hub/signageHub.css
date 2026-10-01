@@ -1,0 +1,1518 @@
+/*
+ * サイネージハブ（/admin/signage）専用の暗色テーマ。
+ * 管理コンソール全体の配色は変えず、.signage-hub の内側だけに適用する。
+ * 見た目の正本: docs/design-previews/signage-admin-unification/
+ */
+.signage-hub {
+  --sh-bg: #0b0c0e;
+  --sh-panel: #14161a;
+  --sh-raised: #1b1e23;
+  --sh-field: #0f1114;
+  --sh-line: #23262c;
+  --sh-line-strong: #2c3037;
+  --sh-text: #edeef0;
+  --sh-muted: #a3a9b1;
+  --sh-faint: #7c838c;
+  --sh-accent: #ff6a2b;
+  --sh-ok: #7fe3a8;
+  --sh-warn: #ffb08a;
+  --sh-danger: #ff4d4d;
+  --sh-kind-web_page: #c8f26a;
+  --sh-kind-data: #ff9a5c;
+  --sh-kind-pdf: #7db2ff;
+  --sh-kind-chat: #c3a4ff;
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: -16px -16px 0;
+  padding: 0 24px 24px;
+  min-height: calc(100dvh - 64px);
+  background: var(--sh-bg);
+  color: var(--sh-text);
+  font-family: 'IBM Plex Sans', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Noto Sans JP', system-ui, sans-serif;
+  font-feature-settings: 'palt';
+  -webkit-font-smoothing: antialiased;
+}
+.signage-hub :is(button, input, select, textarea) {
+  font-family: inherit;
+}
+
+.signage-hub .sh-mono {
+  font-family: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.signage-hub .sh-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--sh-muted);
+}
+
+/* ---- 緊急表示の帯 ---- */
+.signage-hub .sh-emergency-band {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 0 -24px;
+  min-height: 44px;
+  background: var(--sh-danger);
+  color: #0b0c0e;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ---- 見出し行 ---- */
+.signage-hub .sh-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+}
+.signage-hub .sh-head h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.signage-hub .sh-head-meta {
+  font-size: 13px;
+  color: var(--sh-muted);
+}
+
+/* ---- ボタン ---- */
+.signage-hub .sh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid var(--sh-line-strong);
+  background: var(--sh-raised);
+  color: var(--sh-text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.signage-hub .sh-btn:hover:not(:disabled) {
+  background: #23272d;
+}
+.signage-hub .sh-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.signage-hub .sh-btn-primary {
+  background: var(--sh-accent);
+  border-color: var(--sh-accent);
+  color: #0b0c0e;
+}
+.signage-hub .sh-btn-primary:hover:not(:disabled) {
+  background: #ff7e45;
+}
+.signage-hub .sh-btn-danger-outline {
+  background: transparent;
+  border-color: #6b2a2a;
+  color: #ff8a8a;
+}
+.signage-hub .sh-btn-danger {
+  background: var(--sh-danger);
+  border-color: var(--sh-danger);
+  color: #0b0c0e;
+}
+.signage-hub .sh-btn-lime {
+  background: var(--sh-kind-web_page);
+  border-color: var(--sh-kind-web_page);
+  color: #0b0c0e;
+}
+.signage-hub .sh-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: 1px solid var(--sh-line-strong);
+  background: var(--sh-raised);
+  color: var(--sh-text);
+  cursor: pointer;
+}
+.signage-hub :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--sh-text);
+  outline-offset: 2px;
+}
+
+/* ---- 3 列 ---- */
+.signage-hub .sh-body {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr) 384px;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+}
+@media (max-width: 1180px) {
+  .signage-hub .sh-body {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .signage-hub .sh-right {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 760px) {
+  .signage-hub .sh-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.signage-hub .sh-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.signage-hub .sh-panel {
+  background: var(--sh-panel);
+  border: 1px solid var(--sh-line);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+.signage-hub .sh-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* ---- 端末 ---- */
+.signage-hub .sh-screen {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--sh-panel);
+  border: 1.5px solid var(--sh-line);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.signage-hub .sh-screen[aria-pressed='true'] {
+  flex-direction: column;
+  align-items: stretch;
+  border-color: var(--sh-accent);
+}
+.signage-hub .sh-screen-thumb {
+  width: 84px;
+  flex-shrink: 0;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  background: #101114;
+  object-fit: cover;
+}
+.signage-hub .sh-screen[aria-pressed='true'] .sh-screen-thumb {
+  width: 100%;
+  border-radius: 8px;
+}
+.signage-hub .sh-screen-name {
+  font-size: 14px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.signage-hub .sh-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.signage-hub .sh-status::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.signage-hub .sh-status-ok {
+  color: var(--sh-ok);
+}
+.signage-hub .sh-status-stale,
+.signage-hub .sh-status-never {
+  color: var(--sh-warn);
+}
+.signage-hub .sh-check-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.signage-hub .sh-check-row span:first-child {
+  color: var(--sh-muted);
+}
+
+/* ---- 放映中 ---- */
+.signage-hub .sh-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.signage-hub .sh-chip-onair {
+  background: #3a1414;
+  color: #ff8a8a;
+}
+.signage-hub .sh-chip-onair::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sh-danger);
+}
+.signage-hub .sh-chip-capture {
+  background: #1c2214;
+  color: var(--sh-kind-web_page);
+}
+.signage-hub .sh-chip-edit {
+  background: var(--sh-text);
+  color: #0b0c0e;
+}
+.signage-hub .sh-chip-emergency {
+  background: var(--sh-danger);
+  color: #0b0c0e;
+}
+.signage-hub .sh-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #101114;
+  box-shadow: 0 0 0 1px var(--sh-line-strong), 0 30px 60px -30px rgba(255, 106, 43, 0.35);
+}
+.signage-hub .sh-stage img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.signage-hub .sh-stage-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--sh-muted);
+}
+.signage-hub .sh-stage-note {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(11, 12, 14, 0.78);
+  color: var(--sh-text);
+  font-size: 11px;
+}
+.signage-hub .sh-region {
+  position: absolute;
+  border: 2px dashed var(--sh-kind-web_page);
+  background: rgba(200, 242, 106, 0.12);
+  color: #0b0c0e;
+  cursor: pointer;
+  padding: 0;
+}
+.signage-hub .sh-region span {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: var(--sh-kind-web_page);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---- 週間スケジュール ---- */
+.signage-hub .sh-timeline {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  row-gap: 0;
+}
+.signage-hub .sh-axis {
+  position: relative;
+  height: 18px;
+  font-size: 10px;
+  color: var(--sh-faint);
+}
+.signage-hub .sh-axis span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+.signage-hub .sh-axis span:first-child {
+  transform: none;
+}
+.signage-hub .sh-now-label {
+  top: -1px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--sh-accent);
+  color: #0b0c0e;
+  font-weight: 700;
+  line-height: 16px;
+}
+.signage-hub .sh-day-label {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--sh-muted);
+}
+.signage-hub .sh-day-label[data-today='true'] {
+  color: #ff8a55;
+  font-weight: 700;
+}
+.signage-hub .sh-day-track {
+  position: relative;
+  min-height: 26px;
+  border-top: 1px solid #1e2126;
+}
+.signage-hub .sh-day-track[data-today='true'] {
+  background: rgba(255, 106, 43, 0.06);
+}
+.signage-hub .sh-day-empty {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  font-size: 11px;
+  color: var(--sh-faint);
+}
+.signage-hub .sh-block {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 5px;
+  color: #0b0c0e;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.signage-hub .sh-block[data-kind='web_page'] { background: var(--sh-kind-web_page); }
+.signage-hub .sh-block[data-kind='data'] { background: var(--sh-kind-data); }
+.signage-hub .sh-block[data-kind='pdf'] { background: var(--sh-kind-pdf); }
+.signage-hub .sh-block[data-kind='chat'] { background: var(--sh-kind-chat); }
+.signage-hub .sh-block[data-past='true'] { opacity: 0.45; }
+.signage-hub .sh-block[data-dimmed='true'] { opacity: 0.28; }
+.signage-hub .sh-block[data-onair='true'],
+.signage-hub .sh-block[data-selected='true'] {
+  box-shadow: 0 0 0 2px var(--sh-panel), 0 0 0 3.5px var(--sh-text);
+  z-index: 1;
+}
+.signage-hub .sh-now-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--sh-accent);
+  pointer-events: none;
+  z-index: 2;
+}
+.signage-hub .sh-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--sh-muted);
+}
+.signage-hub .sh-legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.signage-hub .sh-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+/* ---- コンテンツ一覧 ---- */
+.signage-hub .sh-add-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.signage-hub .sh-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 76px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--sh-line-strong);
+  background: var(--sh-raised);
+  color: var(--sh-text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.signage-hub .sh-tile-web {
+  border-color: var(--sh-kind-web_page);
+  background: #1c2214;
+  color: #e4f8b8;
+}
+.signage-hub .sh-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--sh-line-strong);
+  background: var(--sh-field);
+}
+.signage-hub .sh-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sh-text);
+  font-size: 13px;
+  outline: none;
+}
+.signage-hub .sh-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.signage-hub .sh-pill {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--sh-line-strong);
+  background: transparent;
+  color: var(--sh-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.signage-hub .sh-pill[aria-pressed='true'] {
+  background: var(--sh-text);
+  border-color: var(--sh-text);
+  color: #0b0c0e;
+}
+.signage-hub .sh-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 -6px;
+  overflow-y: auto;
+  flex: 1 1 0;
+  min-height: 120px;
+}
+.signage-hub .sh-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+.signage-hub .sh-item:hover {
+  background: var(--sh-raised);
+}
+.signage-hub .sh-item-swatch {
+  width: 44px;
+  height: 26px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+.signage-hub .sh-item-swatch[data-unused='true'] {
+  background: transparent !important;
+  border: 1.5px dashed currentColor;
+}
+.signage-hub .sh-item-name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.signage-hub .sh-item-meta {
+  font-size: 12px;
+  color: var(--sh-muted);
+}
+.signage-hub .sh-item-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.signage-hub .sh-mini-btn {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--sh-line-strong);
+  background: transparent;
+  color: var(--sh-text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.signage-hub .sh-mini-btn:hover {
+  background: #23272d;
+}
+
+/* ---- 右パネルの入力 ---- */
+.signage-hub .sh-fld {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.signage-hub .sh-flbl {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sh-muted);
+}
+.signage-hub .sh-input,
+.signage-hub .sh-textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--sh-line-strong);
+  background: var(--sh-field);
+  color: var(--sh-text);
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.signage-hub .sh-textarea {
+  padding: 12px;
+  line-height: 1.5;
+  resize: none;
+  font-weight: 600;
+}
+.signage-hub .sh-seg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid var(--sh-line-strong);
+  background: var(--sh-field);
+}
+.signage-hub .sh-seg button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--sh-muted);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.signage-hub .sh-seg button[aria-pressed='true'] {
+  background: var(--sh-text);
+  color: #0b0c0e;
+}
+.signage-hub .sh-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 4px 0 10px;
+  border-radius: 8px;
+  background: #1c2214;
+  color: #e4f8b8;
+  font-size: 12px;
+  font-weight: 600;
+}
+.signage-hub .sh-tag button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.signage-hub .sh-error {
+  font-size: 12px;
+  color: #ff9a9a;
+}
+.signage-hub .sh-hint {
+  font-size: 12px;
+  color: var(--sh-muted);
+  line-height: 1.6;
+}
+
+/* ---- 既存フォーム部品（明色前提）を暗色パネルに合わせる ---- */
+.signage-hub .sh-legacy > div,
+.signage-hub .sh-legacy form,
+.signage-hub .sh-legacy [class*='bg-slate-100'],
+.signage-hub .sh-legacy [class*='bg-slate-50'],
+.signage-hub .sh-legacy [class*='bg-amber-50'],
+.signage-hub .sh-legacy [class*='bg-white']:not(input):not(select):not(textarea) {
+  background: transparent;
+  border-color: var(--sh-line);
+  box-shadow: none;
+}
+.signage-hub .sh-legacy > div {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.signage-hub .sh-legacy :is(label, p, span, h2, h3, h4, th, td, li, legend) {
+  color: var(--sh-muted);
+}
+.signage-hub .sh-legacy :is(input, select, textarea) {
+  background: var(--sh-field);
+  border: 1px solid var(--sh-line-strong);
+  color: var(--sh-text);
+}
+.signage-hub .sh-legacy :is(input[type='checkbox'], input[type='radio']) {
+  accent-color: var(--sh-accent);
+}
+.signage-hub .sh-legacy table {
+  border-color: var(--sh-line);
+}
+.signage-hub .sh-legacy :is(th, td) {
+  border-color: var(--sh-line);
+  background: transparent;
+}
+.signage-hub .sh-legacy button[class*='text-slate-800'] {
+  color: var(--sh-text);
+}
+.signage-hub .sh-legacy button[class*='text-slate-800']:hover {
+  background: #23272d;
+}
+
+/* ---- データボード（/admin/data-boards） ---- */
+.signage-hub.sh-boards .sh-body {
+  grid-template-columns: 288px minmax(0, 1fr) 420px;
+}
+.signage-hub .sh-board-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1.5px solid transparent;
+  background: transparent;
+  color: var(--sh-text);
+  text-align: left;
+  cursor: pointer;
+}
+.signage-hub .sh-board-item:hover {
+  background: var(--sh-raised);
+}
+.signage-hub .sh-board-item[aria-pressed='true'] {
+  background: var(--sh-raised);
+  border-color: var(--sh-accent);
+}
+.signage-hub .sh-kind {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.signage-hub .sh-kind-graph {
+  background: #2a1c14;
+  color: #ffb08a;
+}
+.signage-hub .sh-kind-table {
+  background: #1c2214;
+  color: #d6f59a;
+}
+.signage-hub .sh-usage {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--sh-text);
+  text-decoration: none;
+}
+.signage-hub .sh-usage:hover {
+  text-decoration: underline;
+}
+.signage-hub .sh-templates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.signage-hub .sh-template {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--sh-line-strong);
+  background: var(--sh-raised);
+  color: var(--sh-text);
+  text-align: left;
+  cursor: pointer;
+}
+.signage-hub .sh-template:hover:not(:disabled) {
+  border-color: var(--sh-accent);
+}
+.signage-hub .sh-template-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+/* Dialog は body 直下に描かれるので、暗色の入れ物として最小限の上書きをする */
+.signage-hub.sh-dialog {
+  display: block;
+  min-height: 0;
+  margin: 16px 0;
+  padding: 24px;
+  background: var(--sh-panel);
+  color: var(--sh-text);
+  border-radius: 18px;
+  border: 1px solid var(--sh-line-strong);
+}
+.signage-hub.sh-dialog h2 {
+  margin: 0 0 16px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--sh-text);
+}
+
+/* 既存フォーム内の強調ボタン（青・緑の塗り）は、暗色でも読める輪郭ボタンにそろえる */
+.signage-hub .sh-legacy button[class*='bg-blue-'],
+.signage-hub .sh-legacy button[class*='bg-emerald-'] {
+  background: var(--sh-raised);
+  border: 1px solid var(--sh-line-strong);
+  color: var(--sh-text);
+}
+.signage-hub .sh-legacy button[class*='bg-emerald-'] {
+  background: var(--sh-accent);
+  border-color: var(--sh-accent);
+  color: #0b0c0e;
+}
+.signage-hub .sh-legacy a {
+  color: #ff8a55;
+}
+
+/* ---- 予定パネルの入力部品 ---- */
+.signage-hub .sh-btn-light {
+  background: var(--sh-text);
+  border-color: var(--sh-text);
+  color: #0b0c0e;
+}
+.signage-hub .sh-btn-light:hover:not(:disabled) {
+  background: #ffffff;
+}
+.signage-hub .sh-select {
+  appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23a3a9b1' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  font-weight: 600;
+  cursor: pointer;
+}
+.signage-hub .sh-select option,
+.signage-hub .sh-select optgroup {
+  background: #14161a;
+  color: var(--sh-text);
+}
+.signage-hub .sh-input:hover,
+.signage-hub .sh-textarea:hover {
+  border-color: #3a3f47;
+}
+.signage-hub .sh-input:focus,
+.signage-hub .sh-textarea:focus {
+  outline: none;
+  border-color: var(--sh-text);
+}
+.signage-hub .sh-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sh-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.signage-hub .sh-switch-track {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--sh-line-strong);
+  transition: background 0.12s ease;
+}
+.signage-hub .sh-switch-track span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--sh-faint);
+  transition: transform 0.12s ease;
+}
+.signage-hub .sh-switch[aria-checked='true'] .sh-switch-track {
+  background: var(--sh-accent);
+}
+.signage-hub .sh-switch[aria-checked='true'] .sh-switch-track span {
+  transform: translateX(16px);
+  background: #0b0c0e;
+}
+.signage-hub .sh-layouts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.signage-hub .sh-layout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--sh-line-strong);
+  background: transparent;
+  color: var(--sh-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.signage-hub .sh-layout[aria-pressed='true'] {
+  border-color: var(--sh-text);
+  background: var(--sh-raised);
+  color: var(--sh-text);
+}
+.signage-hub .sh-layout-icon {
+  display: flex;
+  gap: 2px;
+  width: 40px;
+  height: 23px;
+}
+.signage-hub .sh-layout-icon i {
+  flex: 1;
+  border-radius: 3px;
+  background: #3a3e45;
+}
+.signage-hub .sh-layout[aria-pressed='true'] .sh-layout-icon i {
+  background: var(--sh-accent);
+}
+.signage-hub .sh-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.signage-hub .sh-day {
+  height: 40px;
+  border-radius: 9px;
+  border: 1px solid var(--sh-line-strong);
+  background: transparent;
+  color: var(--sh-muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.signage-hub .sh-day:hover {
+  border-color: #4a5059;
+}
+.signage-hub .sh-day[aria-pressed='true'] {
+  background: var(--sh-text);
+  border-color: var(--sh-text);
+  color: #0b0c0e;
+}
+.signage-hub .sh-time {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  color-scheme: dark;
+}
+.signage-hub .sh-pill-sm {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+.signage-hub .sh-pill:hover {
+  border-color: #4a5059;
+}
+.signage-hub .sh-details {
+  border-top: 1px solid var(--sh-line);
+  padding-top: 12px;
+}
+.signage-hub .sh-details summary {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sh-muted);
+  cursor: pointer;
+}
+.signage-hub .sh-details summary:hover {
+  color: var(--sh-text);
+}
+.signage-hub input[type='number'].sh-input {
+  color-scheme: dark;
+}
+/* 細部：反応と余白 */
+.signage-hub :is(.sh-btn, .sh-tile, .sh-mini-btn, .sh-screen, .sh-block, .sh-board-item, .sh-template, .sh-pill, .sh-day, .sh-layout, .sh-icon-btn) {
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, opacity 0.12s ease;
+}
+.signage-hub .sh-screen:hover {
+  border-color: #3a3f47;
+}
+.signage-hub .sh-screen[aria-pressed='true']:hover {
+  border-color: var(--sh-accent);
+}
+.signage-hub .sh-tile:hover {
+  border-color: #4a5059;
+}
+.signage-hub .sh-tile-web:hover {
+  border-color: var(--sh-kind-web_page);
+  background: #222a17;
+}
+.signage-hub .sh-block:hover {
+  filter: brightness(1.08);
+}
+.signage-hub .sh-icon-btn:hover {
+  background: #23272d;
+}
+@media (prefers-reduced-motion: reduce) {
+  .signage-hub * {
+    transition: none !important;
+  }
+}
+
+/* ---- データボード：列リストとコード欄 ---- */
+.signage-hub .sh-code {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.55;
+  resize: vertical;
+}
+.signage-hub .sh-colrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--sh-line);
+  background: var(--sh-field);
+}
+.signage-hub .sh-colrow[data-hidden='true'] {
+  background: transparent;
+  border-style: dashed;
+}
+.signage-hub .sh-colrow[data-hidden='true'] .sh-colrow-name {
+  color: var(--sh-muted);
+}
+.signage-hub .sh-colrow-move {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.signage-hub .sh-colrow-move button {
+  width: 22px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--sh-muted);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+.signage-hub .sh-colrow-move button:hover:not(:disabled) {
+  background: var(--sh-raised);
+  color: var(--sh-text);
+}
+.signage-hub .sh-colrow-move button:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.signage-hub .sh-colrow-name,
+.signage-hub .sh-colrow-headers,
+.signage-hub .sh-colrow-width {
+  width: 100%;
+  min-width: 0;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sh-text);
+  box-sizing: border-box;
+}
+.signage-hub .sh-colrow-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.signage-hub .sh-colrow-headers {
+  font-size: 11px;
+  color: var(--sh-muted);
+}
+.signage-hub .sh-colrow-width {
+  width: 58px;
+  margin-left: 0;
+  flex-shrink: 0;
+  border-color: var(--sh-line-strong);
+  font-size: 12px;
+  text-align: right;
+}
+.signage-hub :is(.sh-colrow-name, .sh-colrow-headers):hover {
+  border-color: var(--sh-line-strong);
+}
+.signage-hub :is(.sh-colrow-name, .sh-colrow-headers, .sh-colrow-width):focus {
+  outline: none;
+  border-color: var(--sh-text);
+  background: var(--sh-panel);
+}
+.signage-hub .sh-colrow-type {
+  padding: 1px 6px;
+  border: 1px solid var(--sh-line-strong);
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--sh-muted);
+}
+.signage-hub .sh-colrow-required {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--sh-muted);
+  cursor: pointer;
+}
+.signage-hub .sh-colrow-required input {
+  accent-color: var(--sh-accent);
+}
+
+/* ---- 自己チェックでの調整 ---- */
+.signage-hub,
+.signage-hub * {
+  scrollbar-width: thin;
+  scrollbar-color: #2c3037 transparent;
+}
+.signage-hub .sh-icon-btn-sm {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: transparent;
+}
+.signage-hub .sh-icon-btn-place {
+  border-color: #4a5059;
+}
+.signage-hub .sh-icon-btn-place:hover {
+  background: var(--sh-text);
+  border-color: var(--sh-text);
+  color: #0b0c0e;
+}
+.signage-hub .sh-items-hint {
+  margin: 0;
+  padding: 0 10px 4px;
+  font-size: 11px;
+  color: var(--sh-faint);
+}
+.signage-hub .sh-item-meta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.signage-hub .sh-btn:disabled.sh-btn-primary {
+  opacity: 0.55;
+}
+
+/* 右の編集パネルは画面内に収め、下部の操作（保存など）を常に見せる。中身だけがスクロールする */
+.signage-hub .sh-panel-frame {
+  height: 100%;
+  max-height: calc(100dvh - 150px);
+  box-sizing: border-box;
+}
+
+/* ---- 3 手で映す：前面の画面 ---- */
+.signage-hub .sh-go {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 28px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--sh-accent);
+  color: #0b0c0e;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.12s ease, opacity 0.12s ease;
+}
+.signage-hub .sh-go:hover:not(:disabled) {
+  background: #ff7e45;
+}
+.signage-hub .sh-go:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.signage-hub .sh-screen-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1.5px solid var(--sh-line);
+  background: var(--sh-panel);
+  color: var(--sh-muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.signage-hub .sh-screen-tab[aria-selected='true'] {
+  border-color: var(--sh-accent);
+  color: var(--sh-text);
+}
+.signage-hub .sh-screen-tab i,
+.signage-hub .sh-quiet i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sh-warn);
+}
+.signage-hub .sh-screen-tab[data-state='ok'] i,
+.signage-hub .sh-quiet[data-state='ok'] i {
+  background: #3ddc97;
+}
+.signage-hub .sh-quick-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 460px;
+  gap: 24px;
+  flex: 1;
+  min-height: 0;
+}
+@media (max-width: 1100px) {
+  .signage-hub .sh-quick-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.signage-hub .sh-quiet-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+}
+.signage-hub .sh-quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--sh-line);
+  background: transparent;
+  color: var(--sh-muted);
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.signage-hub :is(button, a).sh-quiet:hover:not(:disabled) {
+  border-color: #4a5059;
+  color: var(--sh-text);
+}
+.signage-hub span.sh-quiet {
+  cursor: default;
+}
+.signage-hub .sh-quiet[data-state='stale'],
+.signage-hub .sh-quiet[data-state='never'] {
+  color: var(--sh-warn);
+  border-color: #5a3a2a;
+}
+.signage-hub .sh-playlist {
+  gap: 12px;
+  padding: 18px;
+  border-radius: 16px;
+  max-height: calc(100dvh - 190px);
+  box-sizing: border-box;
+}
+.signage-hub .sh-playlist-rows {
+  gap: 6px;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+.signage-hub .sh-pl-row {
+  border-radius: 14px;
+  border: 1.5px solid transparent;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.signage-hub .sh-pl-row:hover {
+  background: var(--sh-raised);
+}
+.signage-hub .sh-pl-row[data-onair='true'] {
+  background: var(--sh-raised);
+  border-color: var(--sh-text);
+}
+.signage-hub .sh-pl-row[data-open='true'] {
+  background: var(--sh-raised);
+  border-color: var(--sh-line-strong);
+}
+.signage-hub .sh-pl-row[data-new='true'] {
+  background: #1c2214;
+  border-color: var(--sh-kind-web_page);
+}
+.signage-hub .sh-pl-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 6px;
+}
+.signage-hub .sh-pl-open {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 6px 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--sh-text);
+  text-align: left;
+  cursor: pointer;
+}
+.signage-hub .sh-pl-thumb {
+  width: 72px;
+  height: 40px;
+  border-radius: 7px;
+  flex-shrink: 0;
+}
+.signage-hub .sh-pl-name {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.signage-hub .sh-pl-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--sh-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.signage-hub .sh-when {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--sh-line-strong);
+  color: var(--sh-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.signage-hub .sh-when[data-limited='true'] {
+  border-color: #6b5a2a;
+  color: #ffd28a;
+}
+.signage-hub .sh-pl-remove {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--sh-faint);
+  font-size: 17px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.signage-hub .sh-pl-remove:hover {
+  background: #3a1414;
+  color: #ff8a8a;
+}
+.signage-hub .sh-pl-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 12px 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--sh-line-strong);
+}
+.signage-hub .sh-pl-add {
+  min-height: 56px;
+  border-radius: 14px;
+  border: 1.5px dashed #4a5059;
+  background: transparent;
+  color: var(--sh-text);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.signage-hub .sh-pl-add:hover {
+  border-color: var(--sh-text);
+  background: var(--sh-raised);
+}
+.signage-hub .sh-pill-lg {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+/* 「映す」ダイアログ */
+.signage-hub.sh-dialog.sh-quick {
+  width: min(1080px, calc(100vw - 32px));
+  max-width: none;
+  padding: 30px;
+  border-radius: 22px;
+}
+.signage-hub .sh-quick-sources {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.signage-hub .sh-quick-source {
+  min-height: 64px;
+  border-radius: 14px;
+  border: 1.5px solid var(--sh-line-strong);
+  background: var(--sh-panel);
+  color: var(--sh-muted);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.signage-hub .sh-quick-source:hover {
+  border-color: #4a5059;
+  color: var(--sh-text);
+}
+.signage-hub .sh-quick-source[aria-pressed='true'] {
+  border-color: var(--sh-kind-web_page);
+  background: #1c2214;
+  color: #e4f8b8;
+}
+.signage-hub .sh-quick-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+}
+@media (max-width: 900px) {
+  .signage-hub .sh-quick-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.signage-hub .sh-quick-url {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 8px 0 16px;
+  border-radius: 14px;
+  border: 1.5px solid var(--sh-kind-web_page);
+  background: var(--sh-field);
+}
+.signage-hub .sh-quick-url input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sh-text);
+  font-size: 16px;
+  outline: none;
+}
+.signage-hub .sh-quick-stage {
+  box-shadow: 0 0 0 1px var(--sh-line-strong);
+  border-radius: 12px;
+}
+.signage-hub .sh-quick-file {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1.5px dashed #4a5059;
+  background: var(--sh-field);
+  color: var(--sh-text);
+  font-size: 14px;
+}
+.signage-hub .sh-quick-boards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.signage-hub .sh-quick-board {
+  min-height: 52px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--sh-line-strong);
+  background: var(--sh-panel);
+  color: var(--sh-text);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.signage-hub .sh-quick-board:hover {
+  border-color: #4a5059;
+}
+.signage-hub .sh-quick-board[aria-pressed='true'] {
+  border-color: var(--sh-text);
+  background: var(--sh-raised);
+}
+/* 2 番手の機能を入れるダイアログ：中のパネルの枠は外して、ダイアログ自体を枠にする */
+.signage-hub.sh-dialog.sh-dialog-panel {
+  padding: 8px;
+}
+.signage-hub.sh-dialog.sh-dialog-panel > .sh-panel {
+  border: 0;
+  max-height: calc(100dvh - 120px);
+}
+.signage-hub .sh-capture-sheet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 20px;
+  align-items: start;
+}
+
+.signage-hub .sh-quick-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}

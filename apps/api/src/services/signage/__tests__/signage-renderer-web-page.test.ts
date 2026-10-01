@@ -37,8 +37,8 @@ describe('SignageRenderer web_page slot', () => {
     expect(WebCaptureStorage.read).toHaveBeenCalledWith(ID);
     expect(meta.format).toBe('jpeg');
     expect([meta.width, meta.height]).toEqual([1920, 1080]);
-    const { dominant } = await sharp(output).stats();
-    expect(dominant.r).toBeGreaterThan(200);
+    const center = await sharp(output).extract({ left: 940, top: 520, width: 40, height: 40 }).png().toBuffer();
+    expect((await sharp(center).stats()).channels[0].mean).toBeGreaterThan(200);
   });
 
   it('shows a waiting message while nothing has been captured yet', async () => {

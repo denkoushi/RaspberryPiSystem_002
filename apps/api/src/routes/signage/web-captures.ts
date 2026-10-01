@@ -9,7 +9,7 @@ import {
 import {
   webCaptureParamsSchema,
   webCaptureSchema,
-  webCaptureSettingsSchema,
+  webCapturePreviewSchema,
   webCaptureUpdateSchema,
 } from './schemas.js';
 
@@ -34,12 +34,14 @@ export function registerWebCaptureRoutes(
 
   // 保存前の設定で撮影し、プレビュー画像（data URL）と「隠す部分」の候補を返す
   app.post('/web-captures/capture-preview', { preHandler: canManage }, async (request) => {
-    const body = webCaptureSettingsSchema.parse(request.body);
-    const result = await service.captureOnce(body);
+    const { autoHideLandmarks, ...settings } = webCapturePreviewSchema.parse(request.body);
+    const result = await service.captureOnce(settings, { autoHideLandmarks });
     return {
       imageDataUrl: `data:image/jpeg;base64,${result.jpeg.toString('base64')}`,
       regions: result.regions,
       durationMs: result.durationMs,
+      autoHiddenSelectors: result.autoHiddenSelectors,
+      pageTitle: result.pageTitle,
     };
   });
 

@@ -167,10 +167,13 @@ export class SignageWebCaptureService {
     return this.deps.storage.read(id);
   }
 
-  /** 保存せずに撮影する（追加・編集パネルのプレビュー用） */
-  async captureOnce(settings: WebCaptureSettings): Promise<WebPageCaptureResult> {
+  /**
+   * 保存せずに撮影する（追加・編集のプレビュー用）。
+   * autoHideLandmarks を付けると、ページ全体の枠を自動で隠し、隠したセレクタを結果で返す。
+   */
+  async captureOnce(settings: WebCaptureSettings, options: { autoHideLandmarks?: boolean } = {}): Promise<WebPageCaptureResult> {
     this.assertSettings(settings);
-    return this.enqueue(() => this.runCapture(settings));
+    return this.enqueue(() => this.runCapture(settings, options.autoHideLandmarks ?? false));
   }
 
   /** 撮影して最新画像と結果を保存する。失敗しても例外にせず、結果を記録して返す。 */
@@ -249,7 +252,7 @@ export class SignageWebCaptureService {
     }
   }
 
-  private async runCapture(settings: WebCaptureSettings): Promise<WebPageCaptureResult> {
+  private async runCapture(settings: WebCaptureSettings, autoHideLandmarks = false): Promise<WebPageCaptureResult> {
     const baseUrl = this.deps.getBaseUrl();
     if (!baseUrl) {
       throw new ApiError(503, '撮影先（SIGNAGE_WEB_CAPTURE_BASE_URL）が未設定です', undefined, 'SIGNAGE_WEB_CAPTURE_NOT_CONFIGURED');
@@ -266,6 +269,7 @@ export class SignageWebCaptureService {
       hideSelectors: settings.hideSelectors,
       clipSelector: settings.clipSelector,
       auth,
+      autoHideLandmarks,
     });
   }
 

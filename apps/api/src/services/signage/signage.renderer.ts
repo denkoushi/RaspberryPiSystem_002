@@ -24,6 +24,7 @@ import type {
 import { signageCanvasLayoutSchema } from './signage-canvas.js';
 import type { RenderablePane } from './signage-pane-resolver.js';
 import { resolveSplitPanes } from './signage-pane-resolver.js';
+import { buildEmergencyBandSvg, buildEmergencyMessageSvg } from './signage-emergency-screen.js';
 import { WebCaptureStorage } from './web-capture/web-capture-storage.js';
 import { CsvDashboardTemplateRenderer } from '../csv-dashboard/csv-dashboard-template-renderer.js';
 import { CsvDashboardService } from '../csv-dashboard/index.js';
@@ -232,11 +233,40 @@ export class SignageRenderer {
   }
 
   /** 業務Hermesの承認前プレビュー用。保存やスケジュール変更は行わない。 */
+  /** CSV ダッシュボードをサイネージと同じ描画で JPEG にする（管理画面のプレビュー用） */
+  async renderCsvDashboardToBuffer(dashboardId: string): Promise<Buffer> {
+    const data = await this.signageService.loadCsvDashboardForPreview(dashboardId);
+    if (!data) {
+      return await this.renderMessage('CSVダッシュボードが見つかりません');
+    }
+    return await this.renderCsvDashboard(dashboardId, data);
+  }
+
   async renderCanvasPreviewToBuffer(layout: SignageCanvasLayoutConfig): Promise<Buffer> {
     return await this.renderCanvasLayout(layout, { failOnVisualizationError: true });
   }
 
   private async renderContent(content: SignageContentResponse): Promise<Buffer> {
+    const emergencyMessage = content.emergency?.message?.trim();
+    if (!emergencyMessage) {
+      return await this.renderContentBody(content);
+    }
+    if (content.emergency?.messageOnly) {
+      return await sharp(Buffer.from(buildEmergencyMessageSvg(emergencyMessage, WIDTH, HEIGHT)))
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer();
+    }
+    // PDF・持出一覧と一緒に出すときは、上部に赤い帯でメッセージを重ねる
+    const body = await this.renderContentBody(content);
+    const band = await sharp(Buffer.from(buildEmergencyBandSvg(emergencyMessage, WIDTH, HEIGHT))).png().toBuffer();
+    return await sharp(body)
+      .resize(WIDTH, HEIGHT, { fit: 'contain', background: BACKGROUND })
+      .composite([{ input: band, top: 0, left: 0 }])
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toBuffer();
+  }
+
+  private async renderContentBody(content: SignageContentResponse): Promise<Buffer> {
     // layoutConfigを優先し、nullの場合は旧形式（contentType）から処理
     if (content.layoutConfig) {
       return await this.renderWithLayoutConfig(content);

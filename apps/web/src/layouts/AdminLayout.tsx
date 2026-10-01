@@ -72,14 +72,11 @@ export function AdminLayout() {
             <NavLink to="/admin/import" className={linkClass}>
               CSV取り込み
             </NavLink>
-            <NavLink to="/admin/csv-dashboards" className={linkClass}>
-              CSVダッシュボード
-            </NavLink>
             <NavLink to="/admin/production-schedule-settings" className={linkClass}>
               生産スケジュール設定
             </NavLink>
-            <NavLink to="/admin/visualization-dashboards" className={linkClass}>
-              可視化ダッシュボード
+            <NavLink to="/admin/data-boards" className={linkClass}>
+              データボード
             </NavLink>
             <NavLink to="/admin/pallet-machine-illustrations" className={linkClass}>
               パレット加工機イラスト
@@ -102,11 +99,8 @@ export function AdminLayout() {
             <NavLink to="/admin/backup/targets" className={linkClass}>
               バックアップ
             </NavLink>
-            <NavLink to="/admin/signage/schedules" className={linkClass}>
+            <NavLink to="/admin/signage" className={linkClass}>
               サイネージ
-            </NavLink>
-            <NavLink to="/admin/signage/preview" className={linkClass}>
-              サイネージプレビュー
             </NavLink>
             <NavLink to="/admin/security" className={linkClass}>
               セキュリティ

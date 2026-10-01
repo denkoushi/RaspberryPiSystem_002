@@ -21,10 +21,13 @@
 - [x] (2026-10-01 01:10Z) マイルストーン 0 後半（判断）：撮影ユーザーは MANAGER＋読み取り専用化、到達経路は Docker 内部専用の入口、とユーザーが決定。
 - [x] (2026-10-01 03:00Z) マイルストーン 1：API 実装を PR #1598（branch `feat/signage-web-capture`）で提出。実 Chromium で撮影処理を確認（ログイン注入、書き込み通信の遮断、読み込み待ち、非表示指定）。
 - [ ] マイルストーン 0 後半（実測）：Pi5 実機での撮影時間とメモリの計測（#1598 のデプロイと撮影用ユーザー設定の後）。
-- [ ] マイルストーン 2：API ― サイネージ概況 API（端末ごとの受信・描画・一致状況）と CSV 表のプレビュー画像 API。
-- [ ] マイルストーン 3：Web ― `/admin/signage` 1 画面ハブ（暗色）と旧 4 ページからの転送。
-- [ ] マイルストーン 4：Web ― `/admin/data-boards` 統合ページと旧 2 ページからの転送。
-- [ ] マイルストーン 5：メニュー整理、ドキュメント更新、ローカル通し確認、CI。
+- [x] (2026-10-01 05:00Z) マイルストーン 2：概況 API（`GET /api/signage/management/overview`）と CSV 表プレビュー API を実装（branch `feat/signage-hub`）。
+- [x] (2026-10-01 05:00Z) マイルストーン 3：`/admin/signage` ハブを実装し、ローカル（DB＋API＋Web）で通し確認。旧 4 ページは削除して転送に置換。緊急メッセージの画像描画を追加。
+- [x] (2026-10-01 05:00Z) マイルストーン 4a：`/admin/data-boards` を実装（一覧・サイネージと同じプレビュー・使われている場所・ひな形からの新規作成・既存フォームを暗色パネルに収容）。旧 2 ページは削除して転送に置換。
+- [x] (2026-10-01 05:40Z) マイルストーン 4b：グラフは JSON を見せない入力欄（`graphFieldModel.ts`、ひな形ごとの項目。JSON は「詳しい設定」に畳む）、CSV 表は列定義と表示列を 1 つのリストに一本化（`toUnifiedColumns`）。予定の編集パネルもモックどおりの部品に作り直した（`scheduleDraftModel.ts`、`SchedulePanel.tsx`）。取り込み履歴は API に取得手段がないため未実装のまま。
+- [x] (2026-10-01 06:10Z) 前面の作り直し「3 手で映す」：ユーザーが「2 画面とも機能が多すぎて操作が大変。いろんなコンテンツを最短で映したい」と指摘。モック（QuickNow / QuickAdd / QuickDone）を承認のうえ、`/admin/signage` を「いま映っているもの＋順番に映すもの＋映す」に作り替えた。週間スケジュール・素材一覧・配信チェック・予定の編集は 2 番手（必要なときだけ開く）へ。API に切り替え順（`getRotationForClient`）、画像アップロード（JPEG・PNG）、撮影の自動非表示を追加。ローカルで「映す → URL → 映す」の通しと PNG の表示を確認。
+- [ ] マイルストーン 5：ドキュメント（`docs/modules/signage/README.md` は更新済み）、KB、Pi5 実機での撮影時間・メモリ計測、撮影用ユーザーの設定。
+- [x] (2026-10-01 04:40Z) PR #1581（計画）と PR #1598（撮影 API）を main へ squash merge（ユーザー実施）。
 - [ ] （ユーザー承認後のみ）commit、push、PR、merge、Pi5 デプロイ。
 
 ## Surprises & Discoveries
@@ -50,6 +53,16 @@
   Evidence: `docker-compose.phase3.yml` の `web-blue` は `SLOT_API_UPSTREAM: api-blue:8080`、`ports` を持つのは `gateway` のみ。
 - Observation: tsx / vitest（esbuild）は `page.evaluate` に渡す関数へ補助コード `__name` を差し込み、ページ側で `ReferenceError: __name is not defined` になる。本番ビルド（tsc）では起きない。ブラウザ内で実行する処理は文字列で渡すことにした。
   Evidence: scratch の実 Chromium 確認で `page.evaluate: ReferenceError: __name is not defined`、文字列化後は成功（撮影 約 1.0 秒）。
+- Observation: 同じ時間に複数の予定が当たると、サーバーは優先順位で 1 つを選ぶのではなく、`SIGNAGE_SCHEDULE_SWITCH_INTERVAL_SECONDS`（既定 30 秒）ごとに順番に切り替える。予定がない時間は、優先順位のいちばん高い予定を表示する。モックの「重なったとき：こちらを優先」は実際の動きと合わないため採用しなかった。
+  Evidence: `apps/api/src/services/signage/signage.service.ts` の `getContent`、ローカル API ログ `No signage schedule matched current window; falling back to highest-priority schedule`。
+- Observation: 緊急表示のメッセージは保存されるだけで、配信画像には描かれていなかった。ローカルで緊急表示を出すと持出一覧の画面になった。
+  Evidence: 修正前は `signage.renderer.ts` に `emergency` や `message` の参照がなかった。修正後は赤い全面表示（メッセージのみ）と上部の帯（他コンテンツ併用）を描く。
+- Observation: ローカル通し確認で、ページ撮影の定期実行は 1 回 約 6.7 秒（Vite 開発サーバ相手）、試し撮りは 4〜9 秒。端末向け `current-image` に撮影ページが写ることを確認した。
+  Evidence: `SignageWebCapture.lastStatus=success, lastDurationMs=6675`、`current-image` の JPEG に可視化ダッシュボード画面。
+- Observation: sharp の `stats()` は `extract()` 後ではなく入力画像全体を測る。画像の一部を検証するテストは、切り出してバッファ化してから `stats()` を呼ぶ必要がある。
+  Evidence: 帯の合成テストが最初は青のままに見えた（合成自体は正しかった）。
+- Observation: 可視化ダッシュボードの「未点検加工機」ひな形は `date: ""` を含み、API の入力チェック（`YYYY-MM-DD` か未指定）に必ず失敗していた。ひな形から空の日付を外し、日付欄は日付入力にした。
+  Evidence: `POST /api/visualizations` → 400 `{"path":["dataSourceConfig","date"],"message":"Invalid"}`。修正後は作成でき、プレビューが出る。
 
 ## Decision Log
 
@@ -89,6 +102,21 @@
 - Decision: 「プレビューと実機が一致」の判定は、API が `current-image` を端末へ返したときの描画 ID（またはファイルの更新時刻）を端末キーごとにメモリに記録し、最新描画と比べて行う。DB には保存しない。
   Rationale: 追加の DB 変更なしに「端末が最新の画像を受け取ったか」を示せる。API 再起動で記録は消えるが、30 秒以内に再取得で回復するので実害はない。
   Date/Author: 2026-09-30 / Claude
+- Decision: 欧文と数字は IBM Plex Sans / IBM Plex Mono を `@fontsource` で同梱する（latin サブセットのみ）。和文は端末のゴシック体（Hiragino Sans、Yu Gothic UI、Noto Sans JP の順）を使う。
+  Rationale: 本番はオフライン運用があり Google Fonts に依存できない。和文まで同梱するとパッケージが 37MB と大きいが、欧文・数字だけなら数百 KB で済み、時刻や件数の表示がモックの締まった印象になる。当初は「追加しない」としていたが、ユーザーの品質基準（モック水準）に届かないため 2026-10-01 に変更した。
+  Date/Author: 2026-10-01 / Claude
+- Decision: データボードは 2 段階にする。4a は 1 ページ化（一覧・プレビュー・使用箇所・ひな形作成）で、設定の入力欄は既存フォームを暗色パネルに収める。JSON なし入力欄と列リストの一本化は 4b に分ける。
+  Rationale: 既存フォームをそのまま使えば設定項目を失わず、ページ統合の価値を先に届けられる。入力欄の作り直しは保存形式の往復テストが要るため、別の変更にしてリスクを分ける。
+  Date/Author: 2026-10-01 / Claude
+- Decision: 「プレビューと実機が一致」の表示はやめ、「端末の受信：N 秒前」と「サーバ描画：N 秒前」を出す。受信は描画間隔の 3 倍（最低 90 秒）以内を正常とする。
+  Rationale: 端末は約 30 秒ごとに取りに来るため、描画 ID の一致は常に 1 周期ずれて点滅する。最終取得からの経過時間のほうが、止まっている端末を確実に示せる。
+  Date/Author: 2026-10-01 / Claude
+- Decision: サイネージ画面の中心を「週間の予定表」から「画面ごとの、順番に映すもの（再生リスト）」に変える。「映す」の既定は「全部の画面に、いつも」。時間指定は必要なものにだけ後から付ける。
+  Rationale: ユーザーの目的は「いろんなコンテンツを最短で映す」こと。1 画面に機能を集めただけでは「探しづらい」は直っても「操作が大変」は直らなかった。サーバーは元々、同じ時間に当たる予定を一定間隔で順番に映すので、再生リストは既存の予定（全曜日 00:00–23:59）でそのまま表せ、API とデータの形を変えずに済む。ユーザーは 2026-10-01 にモックと既定を承認した。
+  Date/Author: 2026-10-01 / ユーザー決定、Claude 記録
+- Decision: 画像（JPEG・PNG）は、既存の「PDF」コンテンツ（`SignagePdf`）の 1 ページとして扱う。新しいモデルや種類は作らない。
+  Rationale: 表示・予定・緊急表示での扱いが PDF とまったく同じで済み、変更はアップロード時の形式判定と、ページ画像化の分岐だけになる。
+  Date/Author: 2026-10-01 / Claude（ユーザーが画像対応を指示）
 
 ## Outcomes & Retrospective
 
