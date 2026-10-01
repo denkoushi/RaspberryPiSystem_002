@@ -34,6 +34,13 @@ web:
     ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:?ADMIN_ALLOW_NETS is required}
 ```
 
+**Blue/Green（本番の標準リリース）**:
+- 制限は gateway（`Caddyfile.gateway.template` / `Caddyfile.gateway.http.template`）だけに置く。gateway は外向きの最前段なので、`remote_ip` が実際の接続元になる。
+- 許可リストは gateway 設定に埋め込まず、`release_pi5` ロールが `admin_allow_nets` から `logs/deploy/bluegreen/admin-allow-nets.caddy` を書き、gateway が `import /srv/bluegreen/admin-allow-nets.caddy` で読む。リストを変えても Blue/Green のスロット判定（設定ファイルの完全一致）は変わらない。変更は次の gateway reload（次回リリースの切替）で効く。
+- ファイルが無い場合は Caddy の検証が失敗し、切替前に止まる。
+- web スロット（`Caddyfile.slot.template`）には制限を置かない。接続元が常に gateway になるため判定できず、API が同じ色のスロットを直接開く内部経路（サイネージのページ撮影）も塞いでしまうため。
+- web サービスの `ADMIN_ALLOW_NETS` は Blue/Green では参照されない（旧構成との共通契約として必須のまま残している）。
+
 **通常工場で明示する許可ネットワーク**:
 - `192.168.10.0/24`: ローカルネットワーク（オフィス）
 - `192.168.128.0/24`: 自宅ネットワーク（VNC用）

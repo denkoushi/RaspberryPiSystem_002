@@ -68,9 +68,16 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 
 ## C-7. Admin IP allowlist on local TLS (High)
 
-- Repository preparation complete: local/production/Blue-Green Caddy use the same
+- Repository preparation complete: local/production Caddy use the same
   `@admin_protect`, Compose has no fallback, and standard preflight verifies the
   current management source before mutation.
+- Blue/Green correction (2026-10-01): the gateway and slot templates never had
+  `@admin_protect`, so production served `/admin` to every source reaching 443
+  (confirmed on the live gateway Caddyfile). The gateway now denies `/admin*`
+  outside the allowlist; see
+  [phase9-10-specifications.md](../security/phase9-10-specifications.md) for the
+  mechanism. Remove the `pre-admin-allowlist` legacy route fixture after the
+  first verified production release.
 - Operational action still gated: run the separately approved
   `prepare-pi5-admin-network-policy.yml` once before deploying the new contract.
 - Risk: wrong CIDR locks admins out of `/admin`; the preparer rejects a list that

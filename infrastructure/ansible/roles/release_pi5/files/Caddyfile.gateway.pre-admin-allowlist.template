@@ -12,17 +12,10 @@
   @api {
     path /api/* /ws/*
   }
-  # /admin is limited to the administrator networks. The allowlist lives in a
-  # separate file so changing it never alters the canonical slot route.
-  @admin_protect {
-    path /admin*
-    import /srv/bluegreen/admin-allow-nets.caddy
-  }
 
   route {
     respond @internal_backup_api 404
     respond @internal_deploy_readiness 404
-    respond @admin_protect "Forbidden" 403
     reverse_proxy @api __BLUE_GREEN_API_UPSTREAM__ {
       transport http {
         versions 1.1
