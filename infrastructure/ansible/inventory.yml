@@ -305,7 +305,8 @@ all:
               # NOTE: Pi5 から LAN 直が無い場合は新 Pi4 で Tailscale 参加後、group_vars/all.yml の tailscale_network に 100.x を追加
               ansible_host: "{{ current_network.raspi4_kensaku_stonebase01_ip | default(local_network.raspi4_kensaku_stonebase01_ip) }}"
               ansible_user: raspi4-kensaku-stonebase01
-              kiosk_browser_engine: "firefox"
+              # Chromium 先行検証（表示速度改善）。戻す場合は "firefox" にして標準 release を流す
+              kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
               ibus_disable_competing_autostart: true
