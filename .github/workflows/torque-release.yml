@@ -80,7 +80,7 @@ jobs:
         run: |
           set +e
           git diff --exit-code \
-            c7dcf0e2e310a3417387e1e14aae91d0a62a95c6 \
+            97e7979ce9ae2eb899d29db04b1d38b65e98e992 \
             "$TARGET_SHA" -- \
             clients/torque-agent \
             infrastructure/docker/Dockerfile.torque-agent \
@@ -220,7 +220,7 @@ jobs:
       - name: Seal the passed combination rehearsal evidence
         id: evidence
         env:
-          BASELINE_SHA: c7dcf0e2e310a3417387e1e14aae91d0a62a95c6
+          BASELINE_SHA: 97e7979ce9ae2eb899d29db04b1d38b65e98e992
           SOURCE_CLOSURE_UNCHANGED: ${{ steps.source_closure.outputs.source_closure_unchanged }}
         run: |
           python3 - <<'PY'
@@ -345,7 +345,7 @@ jobs:
 
       - name: Resolve the immutable existing torque-agent index
         env:
-          TORQUE_REFERENCE: ghcr.io/denkoushi/raspisys-torque-agent@sha256:c0f33a05ed6c2aa2491bc921882db6ecfbf5dffe0fedb96e020f97ff6c13f4cf
+          TORQUE_REFERENCE: ghcr.io/denkoushi/raspisys-torque-agent@sha256:c168025cc9dc58a35a3164b8a1a9560998c57446bf863fb0164bde0aabcb1641
         run: docker buildx imagetools inspect --raw "$TORQUE_REFERENCE" > torque-agent-index.json
 
       - name: Re-scan adopted torque-agent ARM64 digest under the required policy
@@ -354,7 +354,7 @@ jobs:
           TRIVY_PLATFORM: linux/arm64
         with:
           scan-type: image
-          image-ref: ghcr.io/denkoushi/raspisys-torque-agent@sha256:c0f33a05ed6c2aa2491bc921882db6ecfbf5dffe0fedb96e020f97ff6c13f4cf
+          image-ref: ghcr.io/denkoushi/raspisys-torque-agent@sha256:c168025cc9dc58a35a3164b8a1a9560998c57446bf863fb0164bde0aabcb1641
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           exit-code: '1'
@@ -367,7 +367,7 @@ jobs:
           TRIVY_PLATFORM: linux/arm/v7
         with:
           scan-type: image
-          image-ref: ghcr.io/denkoushi/raspisys-torque-agent@sha256:c0f33a05ed6c2aa2491bc921882db6ecfbf5dffe0fedb96e020f97ff6c13f4cf
+          image-ref: ghcr.io/denkoushi/raspisys-torque-agent@sha256:c168025cc9dc58a35a3164b8a1a9560998c57446bf863fb0164bde0aabcb1641
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           exit-code: '1'
@@ -387,14 +387,14 @@ jobs:
             > torque-agent-adoption.json
           {
             echo 'repository=ghcr.io/denkoushi/raspisys-torque-agent'
-            echo 'index_digest=sha256:c0f33a05ed6c2aa2491bc921882db6ecfbf5dffe0fedb96e020f97ff6c13f4cf'
-            echo 'source_sha=c7dcf0e2e310a3417387e1e14aae91d0a62a95c6'
-            echo 'arm64_digest=sha256:3a3d83088cde91e309eb7d05ae3a22a5102d0c2e336088addeaa7b9b357bec0f'
-            echo 'armv7_digest=sha256:ecfe6cd1dd78375292deee06099331cc7a8e6c2acd2c5d693fbda1a2bd86e3ea'
+            echo 'index_digest=sha256:c168025cc9dc58a35a3164b8a1a9560998c57446bf863fb0164bde0aabcb1641'
+            echo 'source_sha=97e7979ce9ae2eb899d29db04b1d38b65e98e992'
+            echo 'arm64_digest=sha256:c72eeabf237dd68ea12c6b08c454b3093e29f45fd02ea831ece2b665d510ed0f'
+            echo 'armv7_digest=sha256:72c154c1b1ae3791988fb78ca1fea21da9b0638660b2451065979245c8f6fb96'
             echo 'predicate_type=https://github.com/denkoushi/RaspberryPiSystem_002/attestations/torque-agent-component-adoption/v1'
             echo 'origin_workflow=.github/workflows/ci.yml'
-            echo 'origin_run_id=34741865715'
-            echo 'origin_job_id=103683501494'
+            echo 'origin_run_id=36796039374'
+            echo 'origin_job_id=110166897602'
           } >> "$GITHUB_OUTPUT"
 
       - name: Sign adoption of the existing immutable torque-agent digest
