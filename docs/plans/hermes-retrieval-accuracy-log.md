@@ -143,3 +143,26 @@ The three-way choice kept the previous department for 「組立１課の不適�
 Still failing: 「部署を問わずに」 (drop 0.44, below the 0.6 cut, left unchanged so as not to tune the cut on one case), 「組立課では？」 after a content question (contentCarry chose new at 0.58), and 「同じ部署で傷の不適合」 after 「仙台工場資材課の最近の不適合」, where the first turn already took the department wording as content (the same first-turn miss as dialogue-v1 d07).
 
 Held-out: first turns ask the same questions as before, so the single-turn held-out sets are unaffected by construction. There is no held-out dialogue set yet, so this change is judged on development dialogues only. A held-out dialogue set written by someone other than the implementing agent is the next measurement gap.
+
+### 2026-10-02: full-corpus DGX enrichment measured against no enrichment (no gain; production unchanged)
+
+Trigger: the overnight enrichment reached 8,248 of 8,252 records on 2026-10-01 (2,286 rows with aliases). Earlier enrichment numbers came from a 1,000-record subset that contained the targets, so they were biased upward (see 2026-09-24).
+
+Method: the store and the production dense store (`retrieval-dense-dgx.bin`) were copied read-only from the Pi 5 to the private folder with the owner's approval. `evaluate.mjs` reused 8,230 of 8,242 stored vectors, so the DGX embedded only 12 records during the day. `main` at 0659ead2, hybrid, 8,242-record snapshot, `--now 2026-09-24`, same day.
+
+| Set | No enrichment | Full enrichment |
+| --- | --- | --- |
+| stage-v1 (development, 50): status / r15 / hit | 0.88 / 0.64 / 0.60 | 0.90 / 0.69 / 0.58 |
+| stage-v1 paraphrase (16): r15 / hit | 0.25 / 0.19 | 0.31 / 0.19 |
+| stage-aspect-v1 (development, 17): r15 / hit | 0.94 / 0.76 | 0.82 / 0.71 |
+| heldout-supervisor (6): status / all shown relevant | 5 / 4 | 5 / 4 |
+| heldout-supervisor-v2 (14): status / all shown relevant | 12 / 12 | 12 / 12 |
+| heldout-paraphrase-subset (12): target shown | 6 | 4, 4 |
+| heldout-paraphrase-hard (12): target shown | 1 | 1, 1 |
+| stage-v1 total p95 | 1,619 ms | 2,067 ms |
+
+Full enrichment does not improve paraphrase questions. It loses two held-out paraphrase cases in both runs, and adds about 0.4 s at p95. The 0.69 paraphrase r15 of 2026-09-24 does not hold when every record is enriched.
+
+Where the held-out paraphrase cases are lost (target rank among candidates, 12 cases): without enrichment 6 targets are in the top 15 and 9 in the top 50. With enrichment 4 are in the top 15 and 9 in the top 50. Every target in the top 15 was shown in both arms, so the judge is not the loss. Enrichment text on every record moved two targets from ranks 13 and 6 to 27 and 17, outside the 15 candidates the judge reads. In both arms, five more targets sit between ranks 16 and 30.
+
+Not changed: production still attaches enrichment. Next measurements, each against both arms on the same day: let the judge read 30 candidates instead of 15 (cost: more JEV judgments per question), and decide after that whether enrichment stays attached. The rank positions above were read from the held-out paraphrase subset, so that set now counts as seen for ranking-window tuning; the window change must be judged on other held-out cases as well.
