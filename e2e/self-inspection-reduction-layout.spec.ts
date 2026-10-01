@@ -182,6 +182,25 @@ test.describe('減らせる検査のキオスクレイアウト', () => {
       const filters = page.getByRole('group', { name: '判定で絞り込み' });
       await expect(filters.getByRole('button', { name: /減らせる\s*3/ })).toBeVisible();
 
+      // 上辺の所見2行。狭い幅では検索欄をボタンにたたんで場所を空ける。
+      const findings = page.getByRole('group', { name: '所見' });
+      await expect(findings.getByRole('button', { name: /減らせる3件/ })).toBeVisible();
+      await expect(findings.getByRole('button', { name: /戻す：MK02230007 不適合1件/ })).toBeVisible();
+      // 2行とも「…」で切れずに収まる。
+      const clipped = await findings
+        .locator('span.truncate')
+        .evaluateAll((spans) => spans.filter((span) => span.scrollWidth > span.clientWidth).length);
+      expect(clipped).toBe(0);
+      if (viewport.width < 1800) {
+        await expect(page.getByRole('textbox', { name: '品番・資源CDで探す' })).toBeHidden();
+        await page.getByRole('button', { name: '品番・資源CDの検索を開く' }).click();
+        await expect(page.getByRole('textbox', { name: '品番・資源CDで探す' })).toBeFocused();
+        await page.getByRole('heading', { name: '減らせる検査', exact: true }).click();
+        await expect(page.getByRole('textbox', { name: '品番・資源CDで探す' })).toBeHidden();
+      } else {
+        await expect(page.getByRole('textbox', { name: '品番・資源CDで探す' })).toBeVisible();
+      }
+
       const shell = await page.locator('body').evaluate((element) => ({
         clientWidth: element.clientWidth,
         scrollWidth: element.scrollWidth
@@ -201,6 +220,18 @@ test.describe('減らせる検査のキオスクレイアウト', () => {
     const filters = page.getByRole('group', { name: '判定で絞り込み' });
     await page.getByRole('group', { name: '工程能力の基準' }).getByRole('button', { name: '1.33' }).click();
     await expect(filters.getByRole('button', { name: /減らせる\s*4/ })).toBeVisible();
+  });
+
+  test('所見の行を押すと挙げた品番に絞り、もう一度押すと戻る', async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await openReductionPage(page);
+    const focus = page.getByRole('group', { name: '所見' }).getByRole('button', { name: /戻す：/ });
+    await focus.click();
+    await expect(focus).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('option')).toHaveCount(2);
+    await expect(page.getByRole('option', { name: /MK02230007/ })).toHaveAttribute('aria-selected', 'true');
+    await focus.click();
+    await expect(page.getByRole('option')).toHaveCount(10);
   });
 
   test('品番を選ぶと6つの条件と承認ボタンが出る', async ({ page }) => {

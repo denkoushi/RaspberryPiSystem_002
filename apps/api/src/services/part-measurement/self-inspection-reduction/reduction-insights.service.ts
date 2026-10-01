@@ -53,11 +53,15 @@ const templateLevelSelect = {
   selfInspectionSampleSize: true
 } as const;
 
-async function loadSessions(since: Date, key?: ReductionPartKeyFilter): Promise<ReductionSessionRow[]> {
+async function loadSessions(
+  since: Date,
+  key?: ReductionPartKeyFilter,
+  until?: Date
+): Promise<ReductionSessionRow[]> {
   const rows = await prisma.selfInspectionSession.findMany({
     where: {
       invalidatedAt: null,
-      completedAt: { gte: since },
+      completedAt: until ? { gte: since, lt: until } : { gte: since },
       processGroup: { in: PROCESS_GROUPS },
       ...(key ? { fhincd: key.fhincd, processGroup: key.processGroup, resourceCd: key.resourceCd } : {})
     },
@@ -246,6 +250,17 @@ async function loadSecondsPerPiece(since: Date): Promise<number | null> {
   return medianSecondsPerPiece(rows);
 }
 
+function groupSessionsByKey(sessions: readonly ReductionSessionRow[]): Map<string, ReductionSessionRow[]> {
+  const map = new Map<string, ReductionSessionRow[]>();
+  for (const session of sessions) {
+    const key = partKeyString(session);
+    const list = map.get(key) ?? [];
+    list.push(session);
+    map.set(key, list);
+  }
+  return map;
+}
+
 export async function getSelfInspectionReductionInsights(input: {
   periodDays: number;
   now?: Date;
@@ -254,27 +269,25 @@ export async function getSelfInspectionReductionInsights(input: {
   const now = input.now ?? new Date();
   const since = new Date(now.getTime() - input.periodDays * 24 * 60 * 60 * 1000);
   const sessions = await loadSessions(since, input.key);
-
-  const sessionsByKey = new Map<string, ReductionSessionRow[]>();
-  for (const session of sessions) {
-    const key = partKeyString(session);
-    const list = sessionsByKey.get(key) ?? [];
-    list.push(session);
-    sessionsByKey.set(key, list);
-  }
+  const sessionsByKey = groupSessionsByKey(sessions);
   const fhincds = [...new Set(sessions.map((session) => session.fhincd))];
 
-  const [templates, changePoints, decisions, nonconformities, secondsPerPiece] = await Promise.all([
+  // 前の期間は画面の所見（全体の傾向）だけが使う。承認前の再判定（key 指定）では読まない。
+  const previousSince = new Date(since.getTime() - input.periodDays * 24 * 60 * 60 * 1000);
+  const [templates, changePoints, decisions, nonconformities, secondsPerPiece, previousSessions] = await Promise.all([
     loadActiveTemplates(fhincds),
     loadChangePoints(fhincds),
     loadLatestDecisions(fhincds),
     loadNonconformityCounts(fhincds, since),
-    input.key ? Promise.resolve(null) : loadSecondsPerPiece(since)
+    input.key ? Promise.resolve(null) : loadSecondsPerPiece(since),
+    input.key || sessions.length === 0 ? Promise.resolve([]) : loadSessions(previousSince, undefined, since)
   ]);
+  const previousSessionsByKey = groupSessionsByKey(previousSessions);
 
   const parts = [...sessionsByKey.entries()].map(([key, partSessions]) =>
     buildReductionPartInsight({
       sessions: partSessions,
+      previousSessions: previousSessionsByKey.get(key),
       activeTemplate: templates.get(key) ?? null,
       changePoints: changePoints.get(key) ?? [],
       latestDecision: decisions.get(key) ?? null,

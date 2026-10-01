@@ -128,6 +128,8 @@ export type ReductionPartInsightDto = {
   items: ReductionItemDto[];
   worstItemKey: string | null;
   judgementFailCount: number;
+  /** ひとつ前の同じ長さの期間の指標。全体の傾向を比べるために使う。記録がなければ null。 */
+  previousPeriod: { worstCpk: number | null; sampleCount: number; lotCount: number } | null;
   changePoints: Array<{ id: string; kind: string; occurredAt: string; recordedByName: string }>;
   latestDecision: {
     id: string;
@@ -171,6 +173,8 @@ type ItemAccumulator = {
  */
 export function buildReductionPartInsight(input: {
   sessions: readonly ReductionSessionRow[];
+  /** ひとつ前の期間の完了ロット（古い順）。渡さなければ previousPeriod は null。 */
+  previousSessions?: readonly ReductionSessionRow[];
   activeTemplate: ReductionActiveTemplateRow | null;
   changePoints: readonly ReductionChangePointRow[];
   latestDecision: ReductionDecisionRow | null;
@@ -296,6 +300,17 @@ export function buildReductionPartInsight(input: {
     nonconformityCount: input.nonconformityCount
   };
 
+  const previous = input.previousSessions?.length
+    ? buildReductionPartInsight({
+        sessions: input.previousSessions,
+        activeTemplate: null,
+        changePoints: [],
+        latestDecision: null,
+        nonconformityCount: 0,
+        periodDays: input.periodDays
+      })
+    : null;
+
   const decision = input.latestDecision;
   return {
     key: {
@@ -316,6 +331,13 @@ export function buildReductionPartInsight(input: {
     items,
     worstItemKey: worst?.key ?? null,
     judgementFailCount,
+    previousPeriod: previous
+      ? {
+          worstCpk: previous.metrics.worstCpk,
+          sampleCount: previous.metrics.sampleCount,
+          lotCount: previous.lotCount
+        }
+      : null,
     changePoints: changePoints.map((point) => ({
       id: point.id,
       kind: point.kind,

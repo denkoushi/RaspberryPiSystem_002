@@ -134,6 +134,20 @@ describe('buildReductionPartInsight', () => {
     expect(insight.items[0]).toMatchObject({ lower: 9.95, upper: 10.05, valueCount: 2 });
   });
 
+  it('summarizes the previous period only when its sessions are given', () => {
+    const sessions = [session(3, [10.0, 10.01, 9.99])];
+    expect(buildReductionPartInsight({ ...base, sessions }).previousPeriod).toBeNull();
+    expect(buildReductionPartInsight({ ...base, sessions, previousSessions: [] }).previousPeriod).toBeNull();
+
+    const previous = buildReductionPartInsight({
+      ...base,
+      sessions,
+      previousSessions: [session(0, [10.0, 10.04]), session(1, [9.96, 10.0])]
+    }).previousPeriod!;
+    expect(previous).toMatchObject({ sampleCount: 4, lotCount: 2 });
+    expect(previous.worstCpk).toBeCloseTo(computeCpk([10.0, 10.04, 9.96, 10.0], limits)!);
+  });
+
   it('counts the streak from the latest change point', () => {
     const insight = buildReductionPartInsight({
       ...base,

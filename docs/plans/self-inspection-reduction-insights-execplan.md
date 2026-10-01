@@ -25,6 +25,17 @@ Other user decisions (2026-09-30):
 - [x] (2026-09-30) Focused tests, lint, typecheck; E2E `e2e/self-inspection-reduction-layout.spec.ts` at 1920/1536 with mocked API.
 - [ ] PR, CI, merge, deploy (not started).
 
+## Findings line (2026-10-01)
+
+User request: the charts show the data, so the page should also say, from a higher viewpoint, where to look. The top bar now shows two lines to the right of the Cpk threshold buttons, rebuilt on every refetch (60 s) and on every period, process, or threshold change. Pressing a line narrows the list to the parts it names; pressing it again clears the narrowing. Mock: https://claude.ai/artifact/T7QkzjMxqdoJVCgkeEGqgT.
+
+- Line 1 is the whole picture: data shortage when half or more of the parts lack samples; otherwise the trend against the previous period of the same length (median worst Cpk of parts comparable in both periods, at least 3 parts, ±0.1), followed by the most useful fact: a resource whose parts all fell, parts waiting for approval with the monthly saving, approved parts waiting for a template revision, or the check that holds back the most parts.
+- Line 2 is the one part to look at first, in this order: restore, suspicious, almost, data shortage.
+- "Suspicious" is strict on purpose because the line is always visible: at least 20 values and two signs out of falling Cpk (first half against second half of the recent values, or the previous period), drift, recent values near a limit, and an operator/inspector gap.
+- The lines are built by rules in `selfInspectionReductionFindings.ts` from the insights response. No LLM is called. The API adds `previousPeriod` per part; the approval re-check (`key` given) does not load it.
+- Below 1800 px the search box and the settings button show only their icons so both lines fit at 1536 px without being cut.
+- Not changed: nonconformities are still counted by part number only. Whether to limit them by originating department is decided together with the planned second step, which adds nonconformity trends from the DGX overnight enrichment.
+
 ## Surprises & Discoveries
 
 - Observation: changing a template's self-inspection mode creates a new template version, and template items get new ids per version.
