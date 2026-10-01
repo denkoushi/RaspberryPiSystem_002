@@ -69,4 +69,10 @@ describe('PlanningBoardItemTable material arrival badge', () => {
     const dueCell = cells[cells.length - 1];
     expect(dueCell).toHaveTextContent('10/082個120分材料入荷済');
   });
+
+  it('keeps the badge on the seiban and machine line in the resource view', () => {
+    renderTable({ showRank: true, showSeiban: true });
+    const badge = within(screen.getByTestId('planning-board-item-a')).getByText('材料入荷済');
+    expect(badge.parentElement).toHaveTextContent('CA1S1M11 · MX-520材料入荷済');
+  });
 });
