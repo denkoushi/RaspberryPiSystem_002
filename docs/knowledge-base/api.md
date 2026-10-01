@@ -3610,11 +3610,29 @@ const saveNote = (rowId: string) => {
 - `docs/index.html`: アプリケーションのホームページ（プライバシーポリシーへのリンク含む）
 - `docs/privacy-policy.html`: プライバシーポリシーページ
 
-**GitHub Pagesの設定手順**:
-1. GitHubリポジトリ → **Settings** → **Pages**
-2. **Source**: `main` ブランチ、`/docs` フォルダを選択
-3. **Save** をクリック
-4. 数分後、`https://denkoushi.github.io/RaspberryPiSystem_002/` でアクセス可能
+**GitHub Pagesの公開元（2026-10-01変更）**:
+- 公開元は `gh-pages` ブランチのルート（**Settings** → **Pages** → **Source**: `gh-pages` / `/ (root)`）。`main` の `/docs` フォルダは公開元ではない
+- `gh-pages` は `index.html`、`privacy-policy.html`、`.nojekyll` だけを持つ独立ブランチで、Pagesで公開されるのはこの2ページだけ
+- 変更理由: 2026-01頃から2026-10-01まで `main` の `/docs` 全体がPagesで公開され、Jekyllが変換したKBやAPI文書も閲覧できる状態だった。公開範囲をOAuth審査に必要な2ページへ絞った
+- この2つのURLは、Gmail連携アプリと「DGXSparkControlPlane Backup」アプリのGoogle OAuth設定（ホームページ、プライバシーポリシー、承認済みドメイン `denkoushi.github.io`）で使用中のため、URLとファイル名を変えない
+- 注意: リポジトリ自体は公開のため、`docs/` 配下はGitHub上では引き続き閲覧できる。Pagesの公開元変更は文書を非公開にするものではない
+
+**2ページを変更する手順**:
+
+原稿は `main` の `docs/index.html` と `docs/privacy-policy.html` とする。`main` を直しただけでは公開ページは変わらないため、`main` へのマージ後に `gh-pages` へ複写する。`gh-pages` へのpushは公開内容の変更なので、明示承認を得てから行う。
+
+```bash
+git fetch origin main gh-pages
+git switch --detach origin/gh-pages
+git show origin/main:docs/index.html > index.html
+git show origin/main:docs/privacy-policy.html > privacy-policy.html
+git add index.html privacy-policy.html
+git commit -m "docs: sync OAuth pages from main"
+git push origin HEAD:gh-pages
+```
+
+- 未コミット変更のない作業ツリーで実行する。`gh-pages` へ上記以外のファイルを追加しない
+- 反映後、`/` と `/privacy-policy.html` が200を返し、それ以外（例: `/INDEX.html`）が404を返すことを確認する
 
 **検証リクエスト時の注意点**:
 - 「ウェブサイトが登録されていません」エラー: GitHub Pagesのドメイン所有権確認が求められる場合がある
@@ -3637,8 +3655,8 @@ const saveNote = (rowId: string) => {
 - GitHub Pagesで簡易的なプライバシーポリシーページを公開することで検証要件を満たせる
 
 **関連ファイル**:
-- `docs/index.html`（GitHub Pages用ホームページ）
-- `docs/privacy-policy.html`（GitHub Pages用プライバシーポリシー）
+- `docs/index.html`（GitHub Pages用ホームページの原稿。公開されるのは `gh-pages` の複写）
+- `docs/privacy-policy.html`（GitHub Pages用プライバシーポリシーの原稿。公開されるのは `gh-pages` の複写）
 - `apps/api/src/services/backup/gmail-oauth.service.ts`（Gmail OAuth実装）
 - `apps/api/src/routes/gmail/oauth.ts`（Gmail OAuthルート）
 

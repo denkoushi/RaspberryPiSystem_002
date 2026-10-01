@@ -1,6 +1,6 @@
 # デジタルサイネージモジュール
 
-最終更新: 2026-04-23（管理コンソール サイネージ**スケジュール**の可視化ダッシュボード選択・`pallet_visualization_board` を **optgroup「パレット可視化」**で分離・欠落時は **`/admin/visualization-dashboards` 誘導**／[KB-355](../../knowledge-base/api.md) 追補）／2026-04-17（管理コンソール サイネージプレビュー 端末選択・`key=` 付き取得／[KB-348](../../knowledge-base/frontend.md#kb-348-管理コンソールサイネージプレビューが端末別レンダ結果とずれるjwtのみでレガシーglobalキャッシュを参照)）／2026-04-16（可視化データの業務日切替: JST 9:00・自動表示のみ／[KB-347](../../knowledge-base/api.md#kb-347-サイネージ可視化の業務日切替jst-翌900自動表示のみ)）
+最終更新: 2026-10-01（ページ撮影コンテンツ `web_page` を追加・API のみ）／2026-04-23（管理コンソール サイネージ**スケジュール**の可視化ダッシュボード選択・`pallet_visualization_board` を **optgroup「パレット可視化」**で分離・欠落時は **`/admin/visualization-dashboards` 誘導**／[KB-355](../../knowledge-base/api.md) 追補）／2026-04-17（管理コンソール サイネージプレビュー 端末選択・`key=` 付き取得／[KB-348](../../knowledge-base/frontend.md#kb-348-管理コンソールサイネージプレビューが端末別レンダ結果とずれるjwtのみでレガシーglobalキャッシュを参照)）／2026-04-16（可視化データの業務日切替: JST 9:00・自動表示のみ／[KB-347](../../knowledge-base/api.md#kb-347-サイネージ可視化の業務日切替jst-翌900自動表示のみ)）
 
 ## 概要
 
@@ -36,6 +36,24 @@
     - 左に可視化ダッシュボード、右にPDF/工具/CSV
     - 左にPDF/工具/CSV、右に可視化ダッシュボード
     - 各スロットのコンテンツは管理コンソールで自由に選択可能
+
+### ページ撮影コンテンツ（`web_page`・2026-10-01追加・API のみ）
+
+管理 Web のページを Pi5 の API 内のヘッドレス Chromium で定期撮影し、その画像を **FULL** スロットに表示する。既存ページ側にはサイネージ向けの改修を入れない。管理画面（追加・編集 UI）は後続の変更で提供する。
+
+- **データ**: `SignageWebCapture`（名前、`path`、画面サイズ、待ち方、隠す CSS セレクタ、更新間隔 60/300/900 秒、最終撮影結果）。画像は `signage-rendered/web-captures/<id>.jpg`（最新 1 枚のみ）。
+- **スロット**: `{ position: "FULL", kind: "web_page", config: { webCaptureId } }`。SPLIT は不可。未撮影の間は「ページ撮影待ち」を表示する。
+- **API**（`/api/signage/web-captures`、すべて ADMIN/MANAGER）: 一覧、作成、更新、削除（予定が参照中なら 409）、`POST /capture-preview`（保存前の試し撮り。画像と「隠す部分」の候補を返す）、`POST /:id/capture`（今すぐ撮影）、`GET /:id/image`。
+- **定期撮影**: サイネージ描画スケジューラが描画の直前に、有効な予定・緊急表示から参照され更新間隔を過ぎたものだけを 1 件ずつ撮る。失敗しても描画は続き、前回の画像を表示する。
+- **安全策**:
+  - 撮れるのは管理 Web 自身のパスだけ（`/` 始まり。外部 URL、`//`、`/api/*` は拒否）。
+  - ログインは撮影専用ユーザー（**role MANAGER の実在ユーザー**。ADMIN・VIEWER は不可）の短命トークンをブラウザの `localStorage` に注入する。パスワードは保存しない。
+  - 撮影ブラウザは GET/HEAD/OPTIONS 以外の通信をすべて中断する（撮影経路からデータは変わらない）。
+  - 右下の Hermes ボタンは常に隠す。「読み込み中」の表示が消えるまで最大 20 秒待つ。
+- **設定**:
+  - `SIGNAGE_WEB_CAPTURE_BASE_URL`: 撮影の起点。本番（Blue/Green）は `docker-compose.phase3.yml` が API スロットごとに同じ色の Web スロット（`http://web-blue` / `http://web-green`）を設定する。この入口は Docker 内部ネットワーク専用で、ホストへ公開されない。
+  - `SIGNAGE_WEB_CAPTURE_USERNAME`: 撮影専用ユーザー名。Ansible 変数 `api_signage_web_capture_username`（既定は空）。空の間、撮影は「未設定」で失敗扱いになり、他のサイネージ描画には影響しない。
+- **有効化の手順**: 管理画面のユーザー管理で MANAGER の撮影専用ユーザーを作る → `api_signage_web_capture_username` にその名前を設定して Pi5 を標準デプロイ。
 
 ### 可視化ダッシュボード表示（2026-01-31追加）
 

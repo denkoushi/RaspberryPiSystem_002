@@ -19,10 +19,12 @@ import type {
   KioskLeaderOrderCardsSlotConfig,
   MobilePlacementPartsShelfGridSlotConfig,
   SelfInspectionMachineBoardSlotConfig,
+  WebPageSlotConfig,
 } from './signage-layout.types.js';
 import { signageCanvasLayoutSchema } from './signage-canvas.js';
 import type { RenderablePane } from './signage-pane-resolver.js';
 import { resolveSplitPanes } from './signage-pane-resolver.js';
+import { WebCaptureStorage } from './web-capture/web-capture-storage.js';
 import { CsvDashboardTemplateRenderer } from '../csv-dashboard/csv-dashboard-template-renderer.js';
 import { CsvDashboardService } from '../csv-dashboard/index.js';
 import { VisualizationService } from '../visualization/index.js';
@@ -419,6 +421,8 @@ export class SignageRenderer {
           );
         }
         return await this.renderSelfInspectionMachineBoardFull(boardCfg, slideSec, partsPerPage, detailTopN);
+      } else if (slot.kind === 'web_page') {
+        return await this.renderWebPageCapture((slot.config as WebPageSlotConfig).webCaptureId);
       }
     } else if (layoutConfig.layout === 'SPLIT') {
       // SignagePaneResolver でペイン解決（loans=0件も有効）
@@ -592,6 +596,23 @@ export class SignageRenderer {
 
     return await sharp(Buffer.from(svg), { density: 240 })
       .jpeg({ quality: 92, mozjpeg: true })
+      .toBuffer();
+  }
+
+  /** ページ撮影コンテンツ（SignageWebCapture）の最新画像を全面に収める。未撮影なら案内を出す。 */
+  private async renderWebPageCapture(webCaptureId: string): Promise<Buffer> {
+    let image: Buffer | null = null;
+    try {
+      image = await WebCaptureStorage.read(webCaptureId);
+    } catch (error) {
+      logger.warn({ err: error, webCaptureId }, 'Failed to read signage web capture image');
+    }
+    if (!image) {
+      return await this.renderMessage('ページ撮影待ち');
+    }
+    return await sharp(image)
+      .resize(WIDTH, HEIGHT, { fit: 'contain', background: BACKGROUND })
+      .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
   }
 

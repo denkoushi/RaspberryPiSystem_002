@@ -169,6 +169,11 @@ const slotSchema = z.discriminatedUnion('kind', [
     kind: z.literal('self_inspection_machine_board'),
     config: selfInspectionMachineBoardSlotConfigSchema,
   }),
+  z.object({
+    position: z.literal('FULL'),
+    kind: z.literal('web_page'),
+    config: z.object({ webCaptureId: z.string().uuid() }).strict(),
+  }),
 ]);
 
 const legacyLayoutConfigSchema = z
@@ -251,3 +256,44 @@ export const emergencySchema = z.object({
   enabled: z.boolean().optional(),
   expiresAt: z.coerce.date().optional().nullable(),
 });
+
+const webCaptureSelectorSchema = z.string().trim().min(1).max(200).regex(/^[^{}<;@\\]+$/u);
+
+const webCaptureSettingsShape = {
+  path: z.string().trim().min(1).max(500),
+  viewportWidth: z.number().int().min(640).max(3840).default(1920),
+  viewportHeight: z.number().int().min(360).max(2160).default(1080),
+  waitMode: z.enum(['network_idle', 'fixed_delay']).default('network_idle'),
+  waitSeconds: z.number().int().min(0).max(20).default(3),
+  hideSelectors: z.array(webCaptureSelectorSchema).max(12).default([]),
+  clipSelector: webCaptureSelectorSchema.nullable().default(null),
+};
+
+export const webCaptureSettingsSchema = z.object(webCaptureSettingsShape).strict();
+
+export const webCaptureSchema = z
+  .object({
+    ...webCaptureSettingsShape,
+    name: z.string().trim().min(1).max(80),
+    refreshIntervalSeconds: z.union([z.literal(60), z.literal(300), z.literal(900)]).default(300),
+    enabled: z.boolean().default(true),
+  })
+  .strict();
+
+export const webCaptureUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    path: webCaptureSettingsShape.path,
+    viewportWidth: z.number().int().min(640).max(3840),
+    viewportHeight: z.number().int().min(360).max(2160),
+    waitMode: z.enum(['network_idle', 'fixed_delay']),
+    waitSeconds: z.number().int().min(0).max(20),
+    hideSelectors: z.array(webCaptureSelectorSchema).max(12),
+    clipSelector: webCaptureSelectorSchema.nullable(),
+    refreshIntervalSeconds: z.union([z.literal(60), z.literal(300), z.literal(900)]),
+    enabled: z.boolean(),
+  })
+  .partial()
+  .strict();
+
+export const webCaptureParamsSchema = z.object({ id: z.string().uuid() });

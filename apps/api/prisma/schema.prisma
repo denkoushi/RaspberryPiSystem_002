@@ -1295,6 +1295,29 @@ model SignagePdf {
   @@index([enabled])
 }
 
+/// 管理Webのページを撮影してサイネージに出すコンテンツ。画像本体は file storage の signage-rendered/web-captures/<id>.jpg。
+model SignageWebCapture {
+  id                     String    @id @default(uuid())
+  name                   String
+  path                   String // 管理Web内の相対パス（"/" 始まり。外部URL不可）
+  viewportWidth          Int       @default(1920)
+  viewportHeight         Int       @default(1080)
+  waitMode               String    @default("network_idle") @db.VarChar(16) // network_idle | fixed_delay
+  waitSeconds            Int       @default(3)
+  hideSelectors          String[]  @default([])
+  clipSelector           String?
+  refreshIntervalSeconds Int       @default(300)
+  enabled                Boolean   @default(true)
+  lastCapturedAt         DateTime?
+  lastStatus             String    @default("never") @db.VarChar(16) // never | success | failed
+  lastError              String?
+  lastDurationMs         Int?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([enabled])
+}
+
 model SignageEmergency {
   id           String              @id @default(uuid())
   message      String?

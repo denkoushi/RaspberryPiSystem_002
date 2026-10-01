@@ -55,6 +55,8 @@ export type SelfInspectionReductionPart = {
   items: SelfInspectionReductionItem[];
   worstItemKey: string | null;
   judgementFailCount: number;
+  /** ひとつ前の同じ長さの期間の指標。古い API からは届かない。 */
+  previousPeriod?: { worstCpk: number | null; sampleCount: number; lotCount: number } | null;
   changePoints: Array<{ id: string; kind: SelfInspectionChangePointKind; occurredAt: string; recordedByName: string }>;
   latestDecision: {
     id: string;

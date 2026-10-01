@@ -33,7 +33,8 @@ export function ReductionList({
   rows: readonly ReductionRow[];
   counts: Record<SelfInspectionReductionVerdict, number>;
   totalCount: number;
-  verdictFilter: ReductionVerdictFilter;
+  /** undefined は、所見で絞り込み中でどの判定ボタンも選ばれていない状態。 */
+  verdictFilter: ReductionVerdictFilter | undefined;
   onVerdictFilterChange: (filter: ReductionVerdictFilter) => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
