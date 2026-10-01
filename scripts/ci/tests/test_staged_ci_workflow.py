@@ -171,10 +171,10 @@ class StagedCiWorkflowTests(unittest.TestCase):
 
     def test_e2e_is_sharded_and_reports_retried_passes(self) -> None:
         e2e = job_block(CI, "e2e-tests")
-        for shard in ("1/2", "2/2"):
+        for shard in ("1/3", "2/3", "3/3"):
             self.assertIn(f'shard: "{shard}"', e2e)
         self.assertIn("pnpm test:e2e --shard=${{ matrix.shard }}", e2e)
-        self.assertIn("if: matrix.shard_id == '1-of-2'", e2e)
+        self.assertIn("if: matrix.shard_id == '1-of-3'", e2e)
         self.assertIn("name: playwright-report-${{ matrix.shard_id }}", e2e)
         for block in (e2e, job_block(CI, "e2e-smoke")):
             self.assertIn("scripts/ci/report_playwright_flaky.py e2e-results/results.json", block)

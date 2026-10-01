@@ -64,6 +64,7 @@ ssh tools04@<PI4_IP> "bash /tmp/diagnose-ime.sh"
 | gsettings panel show-im-name | `false` | `true`→エンジン名表示有効 |
 | XDG_SESSION_TYPE | `x11`（対話セッション） | `wayland`→X11強制の要確認 |
 | ozone-platform | `含まれる` | 含まれない→Chromium 135+ 対策未適用 |
+| focusmanager.testmode | `なし` | `true`→Firefox がキーを IBus へ渡さない（[KB-412](../knowledge-base/KB-412-kiosk-firefox-focus-testmode-blocks-ime.md)） |
 
 補足:
 - Ansible の `script` 実行では `XDG_SESSION_TYPE=tty` と出ることがある。これは非対話実行のためで、単体では異常と断定しない。
@@ -102,5 +103,6 @@ health checksを再実行する。inventoryのengine選択を意図的に戻す�
 ## 関連ドキュメント
 
 - [KB-investigation-kiosk-schedule-regression-20260301.md](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md): 調査対象の不具合と診断結果記録
+- [KB-412](../knowledge-base/KB-412-kiosk-firefox-focus-testmode-blocks-ime.md): IBus は正常なのに半角/全角が効かない場合（Firefox プロファイルの自動操作用設定、IME ログの取り方）
 - [frontend.md#KB-276](../knowledge-base/frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善): IBus 設定の過去履歴
 - [kiosk-ime-remark-field-execplan.md](../plans/kiosk-ime-remark-field-execplan.md): 実行計画

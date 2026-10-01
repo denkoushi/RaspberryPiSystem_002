@@ -56,6 +56,10 @@ def classify_event(
         result["pi4AgentMatrix"] = pi4_agent_matrix_for_services(
             PI4_AGENT_SERVICE_NAMES
         )
+        # The release set takes its agent list from pi4AgentServices. Leaving
+        # it empty here published every agent image but named none of them, so
+        # a release of this SHA would have staged no Pi4 file at all.
+        result["pi4AgentServices"] = sorted(PI4_AGENT_SERVICE_NAMES)
     return result
 
 

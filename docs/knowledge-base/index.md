@@ -61,6 +61,7 @@ update-frequency: high
 | StackChan（コミュニティ AI_StackChan_Ex・供給鎖・private Pi5 bridge） | [KB-stackchan-community-firmware-supply-chain.md](./KB-stackchan-community-firmware-supply-chain.md) | 1件 | 詳細はリンク先を参照。 |
 | キオスク順位ボード（API 内部レイテンシ・プロトコル・board 集約） | [KB-369-leader-order-board-api-internal-latency.md](./KB-369-leader-order-board-api-internal-latency.md) | 1件 | 表示契約を守る API 性能改善と board 集約の正本。現仕様値の読み分けは [KB-392](./KB-392-kiosk-leaderboard-spec-source-of-truth.md)。 |
 | キオスク（図面表示・順位ボード装飾の速度改善） | [KB-394](./KB-394-kiosk-drawing-display-and-leaderboard-decoration-speedup.md) | 1件 | **2026-07-02**: 図面 HTTP キャッシュ + フロント LRU + decorations winner 世代キャッシュ。**関連**: [KB-369](./KB-369-leader-order-board-api-internal-latency.md) |
+| キオスク日本語入力不可（Firefoxプロファイルに自動操作用設定が残留） | [KB-412](./KB-412-kiosk-firefox-focus-testmode-blocks-ime.md) | 1件 | 2026-10-01: StoneBase01で半角/全角が効かない。`focusmanager.testmode=true`が`prefs.js`に残りIBusへキーが渡らない。ランチャーで起動前に除去 |
 | キオスク製番ボード（資源CD表示×切削の更新ループ） | [KB-411](./KB-411-planning-board-resource-view-update-loop.md) | 1件 | 2026-10-01: 資源CD表示で切削に切り替えるとReact #185でエラー画面。高さ計測のeffect依存を数値に変更 |
 | キオスク在庫（毎日のNFC画面と準備画面の分離） | [KB-409](./KB-409-kiosk-inventory-daily-and-setup-screens.md) | 1件 | 2026-09-26: 在庫操作でパスワードなし修正・置き場所選択、在庫の準備はテンキー解除とタブ化。デプロイ中のmainマージ禁止の教訓 |
 | キオスク順位ボード（左ツールスタック背景不透明化リグレッション） | [KB-396](./KB-396-leader-board-left-panel-opacity-regression.md) | 1件 | **`0c57d5a0`**·`kioskPanelClassName` 半透明リグレッション修正·実機未確認 |

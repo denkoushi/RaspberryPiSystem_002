@@ -1,4 +1,8 @@
-import { lighterSelfInspectionLevel, type SelfInspectionReductionPolicy } from '@raspi-system/shared-types';
+import {
+  lighterSelfInspectionLevel,
+  selfInspectionReductionLevelLabel,
+  type SelfInspectionReductionPolicy
+} from '@raspi-system/shared-types';
 
 import {
   REDUCTION_PROCESS_LABELS,
@@ -8,8 +12,10 @@ import {
 } from './selfInspectionReductionViewModel';
 
 /**
- * 上辺に出す2行の所見。1行目は全体、2行目はいま一番見てほしい1件。
- * 品番ごとの数字の言い換えではなく、どこを見るべきかを示す。
+ * 上辺に出す2行の所見。品番ごとの数字の言い換えではなく、どこを見るべきかを示す。
+ * 急ぎの品番（検査を増やす・怪しい）があれば、1行目に理由、2行目に行動を出す。
+ * なければ1行目は全体、2行目は次に検査を減らせそうな1件。
+ * 「戻す」は増やすのか減らすのか分からないので、方向は「増やす」「減らす」で書く。
  */
 
 /** 「怪しい」は測定がこの個数以上あり、兆しが2つ以上そろったときだけ挙げる。 */
@@ -137,7 +143,7 @@ function buildOverall(
         kind: 'shortage',
         tone: 'muted',
         icon: 'wait',
-        text: `${rows.length}件中${shortage.length}件がデータ不足。傾向はまだ言えない`
+        text: `${rows.length}品番中${shortage.length}品番は測定数が足りず判定前`
       },
       { rowIds: shortage.map((row) => row.id) }
     );
@@ -197,13 +203,13 @@ function buildOverall(
   if (awaitingApproval.length > 0) {
     const saving = options.savingsHours == null ? '承認待ち' : `承認で月 −${options.savingsHours.toFixed(1)}時間`;
     return finding(
-      { kind: 'trend', tone: 'good', icon, text: join(`減らせる${awaitingApproval.length}件、${saving}`) },
+      { kind: 'trend', tone: 'good', icon, text: join(`検査を減らせる${awaitingApproval.length}品番、${saving}`) },
       { rowIds: awaitingApproval.map((row) => row.id) }
     );
   }
   if (reduce.length > 0) {
     return finding(
-      { kind: 'trend', tone, icon, text: join(`承認済み${reduce.length}件が改版待ち`) },
+      { kind: 'trend', tone, icon, text: join(`承認済み${reduce.length}品番が管理画面の改版待ち`) },
       { rowIds: reduce.map((row) => row.id) }
     );
   }
@@ -217,7 +223,7 @@ function buildOverall(
   const top = [...stuck.entries()].sort((a, b) => b[1].length - a[1].length)[0];
   if (top && top[1].length >= FINDING_MIN_GROUP) {
     return finding(
-      { kind: 'trend', tone, icon, text: join(`足止めの最多は${BLOCKER_LABELS[top[0]]} ${top[1].length}件`) },
+      { kind: 'trend', tone, icon, text: join(`足止めの最多は${BLOCKER_LABELS[top[0]]} ${top[1].length}品番`) },
       { rowIds: top[1].map((row) => row.id) }
     );
   }
@@ -234,9 +240,12 @@ function buildOverall(
   return finding({ kind: 'trend', tone: 'muted', icon: 'flat', text: '前の期間と比べる記録がまだ少ない' });
 }
 
-// ---------- 2行目：いま一番見てほしい1件 ----------
+// ---------- 急ぎの1件（2行使う）と、2行目に出す1件 ----------
 
-function restoreCandidates(rows: readonly ReductionRow[]): Array<{ row: ReductionRow; text: string }> {
+type UrgentCandidate = { row: ReductionRow; reason: string; action: Pick<ReductionFinding, 'icon' | 'tone' | 'text'> };
+
+/** 検査を増やす（1段重い段に戻す）品番。すでに全数なら、増やす先がないので原因確認を促す。 */
+function increaseCandidates(rows: readonly ReductionRow[]): UrgentCandidate[] {
   const weight = (row: ReductionRow) => row.part.metrics.outOfToleranceCount + row.part.metrics.nonconformityCount;
   const approved = (row: ReductionRow) =>
     row.part.latestDecision?.direction === 'restore' && row.part.latestDecision.awaitingRevision;
@@ -245,23 +254,33 @@ function restoreCandidates(rows: readonly ReductionRow[]): Array<{ row: Reductio
     // 同点は一覧の並びのままにする（一覧の先頭と所見の品番をそろえる）。
     .sort((a, b) => Number(approved(a)) - Number(approved(b)) || weight(b) - weight(a))
     .map((row) => {
-      const { outOfToleranceCount, nonconformityCount, worstCpk } = row.part.metrics;
+      const { outOfToleranceCount, nonconformityCount, worstCpk, level } = row.part.metrics;
       const reason =
         outOfToleranceCount > 0
-          ? `規格外${outOfToleranceCount}件`
+          ? `で規格外が${outOfToleranceCount}件出た`
           : nonconformityCount > 0
-            ? `不適合${nonconformityCount}件`
-            : `Cpk ${formatCpk(worstCpk)}`;
-      const action = approved(row) ? '改版待ち' : row.judgement.target ? '1段上げる' : '原因を確認';
-      return { row, text: `${reason}。${action}` };
+            ? `の後工程で不適合が${nonconformityCount}件出た`
+            : `のCpkが${formatCpk(worstCpk)}で余裕なし`;
+      const target = row.judgement.target;
+      let action: UrgentCandidate['action'];
+      if (approved(row)) {
+        const to = selfInspectionReductionLevelLabel(row.part.latestDecision!.toLevel);
+        action = { icon: 'flat', tone: 'muted', text: `承認済み。管理画面で${to}に改版` };
+      } else if (target) {
+        const labels = `${selfInspectionReductionLevelLabel(level)} → ${selfInspectionReductionLevelLabel(target)}`;
+        action = { icon: 'raise', tone: 'bad', text: `検査を増やす（${labels}）` };
+      } else {
+        action = { icon: 'flat', tone: 'bad', text: '全数のまま続け、原因を確認' };
+      }
+      return { row, reason, action };
     });
 }
 
 function suspiciousCandidates(
   rows: readonly ReductionRow[],
   policy: SelfInspectionReductionPolicy
-): Array<{ row: ReductionRow; text: string }> {
-  const list: Array<{ row: ReductionRow; text: string; signs: number; drop: number }> = [];
+): UrgentCandidate[] {
+  const list: Array<UrgentCandidate & { signs: number; drop: number }> = [];
   for (const row of rows) {
     const { verdict, checks } = row.judgement;
     const { metrics, previousPeriod } = row.part;
@@ -300,12 +319,13 @@ function suspiciousCandidates(
 
     const signs = [cpkFalling, metrics.drift, nearLimit, checks.gap === 'ng'].filter(Boolean).length;
     if (signs < FINDING_SUSPICIOUS_MIN_SIGNS) continue;
-    const text = cpkFalling
-      ? `合格だがCpk ${cpkPair!.from.toFixed(1)}→${cpkPair!.to.toFixed(1)}`
+    const reason = cpkFalling
+      ? `は合格だがCpkが${cpkPair!.from.toFixed(1)}→${cpkPair!.to.toFixed(1)}に低下`
       : metrics.drift
-        ? '合格だが上限・下限へ寄ってきた'
-        : '合格だが公差の端に近い値が続く';
-    list.push({ row, text, signs, drop: cpkFalling ? cpkPair!.from - cpkPair!.to : 0 });
+        ? 'は合格だが上下限へ寄ってきた'
+        : 'は合格だが公差の端に近い';
+    const action: UrgentCandidate['action'] = { icon: 'flat', tone: 'warn', text: '刃具・補正を確認。検査はまだ減らさない' };
+    list.push({ row, reason, action, signs, drop: cpkFalling ? cpkPair!.from - cpkPair!.to : 0 });
   }
   return list.sort((a, b) => b.signs - a.signs || b.drop - a.drop || a.row.id.localeCompare(b.row.id, 'ja'));
 }
@@ -326,22 +346,22 @@ function almostCandidates(
       case 'streak': {
         const lots = policy.requiredConsecutiveLots - row.judgement.effectiveConsecutivePassLots;
         const days = lotsPerMonth > 0 ? (lots / lotsPerMonth) * 30 : Number.POSITIVE_INFINITY;
-        list.push({ row, text: `あと${lots}ロットで減らせる`, days });
+        list.push({ row, text: `あと${lots}ロット合格で検査を減らせる`, days });
         break;
       }
       case 'sample': {
         const pieces = policy.minimumSampleCount - metrics.sampleCount;
         const days = metrics.sampleCount > 0 ? (pieces / metrics.sampleCount) * periodDays : Number.POSITIVE_INFINITY;
-        list.push({ row, text: `あと${pieces}個で減らせる`, days });
+        list.push({ row, text: `あと${pieces}個測ると検査を減らせる`, days });
         break;
       }
       case 'noRecheck':
-        list.push({ row, text: '検査員の再測定で減らせる', days: 0 });
+        list.push({ row, text: '検査員の再測定で検査を減らせる', days: 0 });
         break;
       case 'cpk':
         if (metrics.worstCpk != null) {
           const gap = (policy.cpkThreshold - metrics.worstCpk).toFixed(2);
-          list.push({ row, text: `Cpk基準まであと${gap}`, days: Number.MAX_VALUE });
+          list.push({ row, text: `Cpkあと${gap}で検査を減らせる`, days: Number.MAX_VALUE });
         }
         break;
       default:
@@ -362,9 +382,32 @@ function shortageCandidates(
       const { sampleCount } = row.part.metrics;
       const pieces = policy.minimumSampleCount - sampleCount;
       const days = sampleCount > 0 ? (pieces / sampleCount) * periodDays : Number.POSITIVE_INFINITY;
-      return { row, text: `あと${pieces}個${formatEta(days)}`, days };
+      return { row, text: `あと${pieces}個測ると判定できる${formatEta(days)}`, days };
     })
     .sort((a, b) => a.days - b.days || a.row.id.localeCompare(b.row.id, 'ja'));
+}
+
+/** 急ぎの1件。1行目に理由、2行目に行動を出す。どちらを押しても同じ品番に絞る。 */
+function buildUrgent(
+  kind: 'restore' | 'suspicious',
+  candidates: readonly UrgentCandidate[]
+): ReductionFindings | null {
+  const first = candidates[0];
+  if (!first) return null;
+  const rowIds = candidates.map((entry) => entry.row.id);
+  return {
+    overall: {
+      kind,
+      tone: kind === 'restore' ? 'bad' : 'warn',
+      icon: 'warn',
+      lead: '',
+      fhincd: first.row.part.key.fhincd,
+      text: first.reason,
+      moreCount: candidates.length - 1,
+      rowIds
+    },
+    focus: { kind, ...first.action, lead: '', fhincd: null, moreCount: 0, rowIds }
+  };
 }
 
 function buildFocus(
@@ -372,31 +415,17 @@ function buildFocus(
   policy: SelfInspectionReductionPolicy,
   periodDays: number
 ): ReductionFinding {
-  const restore = restoreCandidates(rows);
-  if (restore.length > 0) {
-    return focusOn(
-      { kind: 'restore', tone: 'bad', icon: 'raise', lead: '戻す：', text: restore[0]!.text },
-      restore.map((entry) => entry.row)
-    );
-  }
-  const suspicious = suspiciousCandidates(rows, policy);
-  if (suspicious.length > 0) {
-    return focusOn(
-      { kind: 'suspicious', tone: 'warn', icon: 'warn', lead: '怪しい：', text: suspicious[0]!.text },
-      suspicious.map((entry) => entry.row)
-    );
-  }
   const almost = almostCandidates(rows, policy, periodDays);
   if (almost.length > 0) {
     return focusOn(
-      { kind: 'almost', tone: 'good', icon: 'flag', lead: 'もう少し：', text: almost[0]!.text },
+      { kind: 'almost', tone: 'good', icon: 'flag', lead: '', text: almost[0]!.text },
       almost.map((entry) => entry.row)
     );
   }
   const shortage = shortageCandidates(rows, policy, periodDays);
   if (shortage.length > 0) {
     return focusOn(
-      { kind: 'shortage', tone: 'info', icon: 'wait', lead: 'いちばん近いのは ', text: `：${shortage[0]!.text}` },
+      { kind: 'shortage', tone: 'info', icon: 'wait', lead: '', text: shortage[0]!.text },
       shortage.map((entry) => entry.row)
     );
   }
@@ -408,8 +437,11 @@ export function buildReductionFindings(
   policy: SelfInspectionReductionPolicy,
   options: { periodDays: number; savingsHours: number | null }
 ): ReductionFindings {
-  return {
-    overall: buildOverall(rows, policy, options),
-    focus: buildFocus(rows, policy, options.periodDays)
-  };
+  return (
+    buildUrgent('restore', increaseCandidates(rows)) ??
+    buildUrgent('suspicious', suspiciousCandidates(rows, policy)) ?? {
+      overall: buildOverall(rows, policy, options),
+      focus: buildFocus(rows, policy, options.periodDays)
+    }
+  );
 }

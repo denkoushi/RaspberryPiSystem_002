@@ -17,7 +17,7 @@ export type SelfInspectionReductionLevel = {
 export const SELF_INSPECTION_REDUCTION_CPK_THRESHOLDS = [1.33, 1.67] as const;
 export type SelfInspectionReductionCpkThreshold = (typeof SELF_INSPECTION_REDUCTION_CPK_THRESHOLDS)[number];
 
-/** これ未満の Cpk は公差からはみ出すおそれがあるため「戻す」。 */
+/** これ未満の Cpk は公差からはみ出すおそれがあるため、検査を増やす（restore）。 */
 export const SELF_INSPECTION_REDUCTION_CPK_RESTORE_BELOW = 1.0;
 /** 1.67 基準のとき、1.33 以上は「もう少し」として扱う。 */
 export const SELF_INSPECTION_REDUCTION_CPK_ALMOST_FROM = 1.33;
@@ -165,7 +165,8 @@ export const SELF_INSPECTION_REDUCTION_VERDICT_LABELS: Record<SelfInspectionRedu
   reduce: '減らせる',
   almost: 'もう少し',
   keep: 'このまま',
-  restore: '戻す',
+  // 「戻す」では増やすのか減らすのか分からないため、方向で書く。
+  restore: '増やす',
   unjudgeable: '判定できない'
 };
 

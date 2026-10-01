@@ -242,6 +242,14 @@ category: knowledge-base
 - **配信**: 順位ボードは工程チップと同じ部品キー単位の `leaderboardMaterialArrivalByPartKey`（装飾 API）。製番ボードは `items[].materialArrivalStatus` を応答のたびに付け、スナップショットと `itemRevision` には含めない。
 - **制約**: `FKOBAIST` は列追加（migration `20261001120000_purchase_order_lookup_purchase_status`）以降に取り込んだ行だけに入る。それ以前の行は次に同じ注番が CSV に載るまでバッジが出ない。突合対象は MD 品番のみ（MH/SD/SH などは購買行が無い）。`(A)` 行の多くは生産日程に無い製番で発注されており当たらない。MD 部品の約 15% は同じ製番の購買行が無く、バッジは出ない。
 
+### FKOBAINO 取込が大きい CSV で失敗する（2026-10-01） {#fkobaino-sync-large-csv-timeout-2026-10-01}
+
+- **Symptoms**: 定期 CSV の抽出範囲を「更新日が直近 6 日」から「直近 60 日」に広げたところ（42,319 行）、手動実行が毎回失敗し、メールが未読のまま残った。管理コンソールで連続して実行すると `インポートは既に実行中です`（409）になる。
+- **Evidence**: Pi5 API ログ `Invalid prisma.purchaseOrderLookupRow.upsert() invocation: Transaction already closed ... The timeout for this transaction was 60000 ms`。`CsvDashboardIngestRun.errorMessage` は `[ingest-audit] postProcessState=failed`。`CsvDashboardRow` への取込自体は 42,319 行で完了していた。
+- **Root cause**: `PurchaseOrderLookupSyncService` が全行の upsert を 1 行ずつ、1 つの 60 秒トランザクションで実行していた。6 千行程度なら収まるが、数万行で時間切れになり、全体がロールバックされた。
+- **Fix**: トランザクションをやめ、500 行ごとに 1 文の `INSERT ... ON CONFLICT DO UPDATE` で書く。upsert は冪等で、CSV に無い過去行は消さないので、途中で失敗しても同じ CSV の再取込で揃う。CSV 内の同一キーは最後の行を採用する。`FKOBAIST` 列が無い CSV では既存の `purchaseStatus` を残す。
+- **Prevention**: DB 統合テスト `purchase-order-lookup-sync.integration.test.ts`（チャンクをまたぐ 1,200 行と同一キーの再登場）。
+
 ## 表示用納期 effectiveDueDate・計画列 UI（2026-04-01）
 
 - **Context**: 部品納期個数 CSV の **`plannedEndDate`** を、行の **`dueDate`（手動・writeback 含む）が無いときの表示用納期**として扱いたい。一覧・納期詳細で意味を混在させず、API で「実効日付」とソースを明示したい。
