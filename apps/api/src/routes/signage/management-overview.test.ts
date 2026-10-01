@@ -1,9 +1,5 @@
-import { mkdtemp, rm, utimes, writeFile } from 'fs/promises';
-import os from 'os';
-import path from 'path';
-
 import Fastify from 'fastify';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const renderCsvDashboardToBufferMock = vi.hoisted(() => vi.fn());
 
@@ -20,37 +16,19 @@ import {
   recordSignageImageFetch,
   resetSignageDeliveryTrackerForTests,
 } from '../../services/signage/signage-delivery-tracker.js';
-import { readLastRenderedAt, registerManagementOverviewRoutes } from './management-overview.js';
+import { registerManagementOverviewRoutes } from './management-overview.js';
 
 const rotation = { scheduleIds: ['s1', 's2'], currentIndex: 1, secondsUntilSwitch: 12, isFallback: false };
 const service = { listSignageRenderClientApiKeys: vi.fn(), getRotationForClient: vi.fn() };
 
 describe('signage management overview routes', () => {
-  let renderDir: string;
-  const previousRenderDir = process.env.SIGNAGE_RENDER_DIR;
-
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
     service.getRotationForClient.mockResolvedValue(rotation);
     resetSignageDeliveryTrackerForTests();
-    renderDir = await mkdtemp(path.join(os.tmpdir(), 'signage-overview-'));
-    process.env.SIGNAGE_RENDER_DIR = renderDir;
   });
 
-  afterEach(async () => {
-    if (previousRenderDir === undefined) delete process.env.SIGNAGE_RENDER_DIR;
-    else process.env.SIGNAGE_RENDER_DIR = previousRenderDir;
-    await rm(renderDir, { recursive: true, force: true });
-  });
-
-  it('reports the latest render time, and the last device fetch and rotation per client', async () => {
-    const older = path.join(renderDir, `current-${'a'.repeat(64)}.jpg`);
-    const newer = path.join(renderDir, `current-${'b'.repeat(64)}.jpg`);
-    await writeFile(older, 'x');
-    await writeFile(newer, 'x');
-    await writeFile(path.join(renderDir, 'notes.txt'), 'ignored');
-    await utimes(older, new Date('2026-10-01T04:59:00.000Z'), new Date('2026-10-01T04:59:00.000Z'));
-    await utimes(newer, new Date('2026-10-01T05:00:00.000Z'), new Date('2026-10-01T05:00:00.000Z'));
+  it('reports the last device fetch and rotation per client', async () => {
     service.listSignageRenderClientApiKeys.mockResolvedValue(['key-a', 'key-b']);
     recordSignageImageFetch('key-a', new Date('2026-10-01T05:00:20.000Z'));
     const app = Fastify();
@@ -59,17 +37,12 @@ describe('signage management overview routes', () => {
     const response = await app.inject({ method: 'GET', url: '/management/overview' });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json().lastRenderedAt).toBe('2026-10-01T05:00:00.000Z');
     expect(response.json().clients).toEqual([
       { apiKey: 'key-a', lastFetchedAt: '2026-10-01T05:00:20.000Z', rotation },
       { apiKey: 'key-b', lastFetchedAt: null, rotation },
     ]);
+    expect(response.json().scheduleSwitchIntervalSeconds).toBeGreaterThan(0);
     await app.close();
-  });
-
-  it('returns null for the render time when nothing has been rendered or the folder is missing', async () => {
-    await expect(readLastRenderedAt(renderDir)).resolves.toBeNull();
-    await expect(readLastRenderedAt(path.join(renderDir, 'missing'))).resolves.toBeNull();
   });
 
   it('returns the CSV dashboard preview as a JPEG and rejects a non-uuid id', async () => {

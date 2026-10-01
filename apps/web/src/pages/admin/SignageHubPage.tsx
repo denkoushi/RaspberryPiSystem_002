@@ -252,7 +252,7 @@ export function SignageHubPage() {
 
           <div className="sh-quiet-row">
             {delivery && (
-              <span className="sh-quiet" data-state={delivery.state} title={`サーバの描画: ${formatClock(overview?.lastRenderedAt)}`}>
+              <span className="sh-quiet" data-state={delivery.state}>
                 <i aria-hidden="true" />
                 {DELIVERY_TEXT[delivery.state]}
                 {delivery.secondsAgo !== null ? ` · ${formatAgo(delivery.secondsAgo)}` : ''}
