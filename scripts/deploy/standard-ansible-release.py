@@ -14,7 +14,7 @@ import socket
 import subprocess
 import sys
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -536,6 +536,25 @@ def ansible_argv(
     if listing:
         command.append(listing)
     return command
+
+
+def unpublished_plan_images(document: Mapping[str, Any]) -> list[str]:
+    """Return planned registry images that do not exist yet.
+
+    The plan only derives tag names from the release SHA. On 2026-10-01 a plan
+    listed ``raspisys-pi3-signage:<sha>`` for a commit whose CI had published
+    no Signage artifact, and the release failed at resolution time. Checking
+    here keeps that failure in the read-only step.
+    """
+
+    missing: list[str] = []
+    for entry in document.get("executionOrder", []):
+        for reference in entry.get("images", []):
+            if not str(reference).startswith("ghcr.io/"):
+                continue
+            if run(["docker", "manifest", "inspect", str(reference)], check=False).returncode:
+                missing.append(str(reference))
+    return missing
 
 
 def plan(
@@ -1266,6 +1285,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             ).agent_services
         args.agent_services = plan_agent_services
         document = plan(args, sha, inventory, relative, selection, remote_root, plan_agent_services)
+        missing_images = unpublished_plan_images(document)
+        if missing_images:
+            raise RuntimeError(
+                "release artifacts are not published for this SHA: "
+                + ", ".join(missing_images)
+                + ". Use a commit whose main CI published them, or narrow --limit."
+            )
+        if "pi4" in {profile for profile, _hosts in selection} and not getattr(args, "torque_cutover", False):
+            # release_kiosk stages the launcher, browser unit and status-agent
+            # files only together with an agent, so say so before the operator
+            # assumes a kiosk-file change will be delivered.
+            document["pi4ReleaseFiles"] = (
+                "staged with the listed agents"
+                if plan_agent_services
+                else "skipped: this release set names no Pi4 agent, so the launcher, browser unit and status-agent files are not updated"
+            )
         if 'HERMES_SEARCH_TRIAL_ENABLED' in hermes_environment:
             document["hermesSearchTrial"] = {"enabled": hermes_environment["HERMES_SEARCH_TRIAL_ENABLED"] == "true",
                 "staging": ("four checksum-verified private files on Pi5 SSD; real current records are classified incrementally"

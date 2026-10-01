@@ -113,6 +113,35 @@ PI4_AGENT_DOCKERFILES = frozenset(
     artifact.dockerfile for artifact in PI4_AGENT_ARTIFACTS
 )
 PI4_AGENT_SHARED_INPUTS = frozenset({".dockerignore", ".trivyignore"})
+# Files the release_kiosk role copies onto every Pi4 kiosk. The role stages
+# them only when the release set names at least one agent, and a Pi4 release
+# needs the signed release set of its exact SHA. A change to any of them must
+# therefore publish every agent image and the API/Web pair for that SHA.
+# Otherwise it is never delivered: on 2026-10-01 a launcher fix (#1608) reached
+# no kiosk because the deployed commit named no agent.
+PI4_KIOSK_RELEASE_FILES = frozenset(
+    {
+        "infrastructure/ansible/templates/kiosk-launch.sh.j2",
+        "infrastructure/ansible/templates/kiosk-browser.service.j2",
+        "infrastructure/ansible/templates/status-agent.conf.j2",
+        "infrastructure/ansible/templates/nfc-agent.env.j2",
+        "infrastructure/ansible/templates/barcode-agent.env.j2",
+        "infrastructure/ansible/templates/torque-agent.env.j2",
+        "scripts/deploy/rolling_release/terminal_device_maintenance.py",
+        "clients/status-agent/status-agent.py",
+        "clients/status-agent/storage_health.py",
+        "clients/status-agent/terminal_agent_health.py",
+        "clients/status-agent/status-agent.timer",
+    }
+)
+PI4_KIOSK_RELEASE_PREFIXES = ("infrastructure/ansible/roles/release_kiosk",)
+
+
+def is_pi4_kiosk_release_file(path: str) -> bool:
+    normalized = _normalize_path(path)
+    return normalized in PI4_KIOSK_RELEASE_FILES or any(
+        _has_prefix(normalized, prefix) for prefix in PI4_KIOSK_RELEASE_PREFIXES
+    )
 POLICY_PATHS = frozenset({".gitleaksignore"})
 PI4_AGENT_NON_BUILD_GLOBAL_PATHS = frozenset(
     {
@@ -211,7 +240,7 @@ def pi4_agent_services_for_path(path: str) -> frozenset[str]:
     normalized = _normalize_path(path)
     if normalized == ".github/workflows/torque-release.yml":
         return frozenset({"torque-agent"})
-    if normalized in PI4_AGENT_SHARED_INPUTS:
+    if normalized in PI4_AGENT_SHARED_INPUTS or is_pi4_kiosk_release_file(normalized):
         return PI4_AGENT_SERVICE_NAMES
 
     return frozenset(
@@ -482,6 +511,8 @@ def release_pair_for_path(path: str) -> bool:
         # A new torque composition still needs an API/Web pair for its exact,
         # rehearsal-bound three-component tuple. Unrelated Pi4 agents remain
         # independent of the normal v1 release pair.
+        return True
+    if is_pi4_kiosk_release_file(normalized):
         return True
     if normalized in PI4_AGENT_DOCKERFILES:
         return False

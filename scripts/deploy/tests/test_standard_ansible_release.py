@@ -12,7 +12,7 @@ import sys
 import tempfile
 import types
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -1098,6 +1098,81 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             images,
             {"pi4": [f"ghcr.io/denkoushi/raspisys-barcode-agent:{SHA}"]},
         )
+
+    def test_unpublished_plan_images_reports_only_missing_registry_tags(self) -> None:
+        document = {
+            "executionOrder": [
+                {"profile": "pi5", "images": [f"ghcr.io/denkoushi/raspisys-api:{SHA}-abc"]},
+                {"profile": "pi4", "images": ["release-set-v2:x:torque-agent"]},
+                {"profile": "pi3", "images": [f"ghcr.io/denkoushi/raspisys-pi3-signage:{SHA}"]},
+            ]
+        }
+        inspected: list[str] = []
+
+        def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            inspected.append(command[-1])
+            return completed(command, returncode=1 if "pi3-signage" in command[-1] else 0)
+
+        with mock.patch.object(MODULE, "run", side_effect=fake_run):
+            missing = MODULE.unpublished_plan_images(document)
+
+        self.assertEqual(missing, [f"ghcr.io/denkoushi/raspisys-pi3-signage:{SHA}"])
+        # The torque cutover placeholder is not a registry reference.
+        self.assertEqual(len(inspected), 2)
+
+    def _print_plan(self, artifacts: object, fake_run: object, limit: str) -> tuple[int, str]:
+        inventory = {
+            "server": {"hosts": ["pi5"]},
+            "kiosk": {"hosts": ["pi4-a"]},
+            "_meta": {"hostvars": {"pi5": {}, "pi4-a": {}}},
+        }
+        selected_inventory = {
+            "kiosk": {"hosts": ["pi4-a"]},
+            "_meta": {"hostvars": {"pi4-a": {}}},
+        }
+        with mock.patch.object(MODULE, "resolve_sha", return_value=SHA), mock.patch.object(
+            MODULE,
+            "inventory_path",
+            return_value=(Path("infrastructure/ansible/inventory.yml"), MODULE.DEFAULT_INVENTORY),
+        ), mock.patch.object(
+            MODULE, "inventory_document", side_effect=[inventory, selected_inventory]
+        ), mock.patch.object(
+            MODULE, "release_set_artifacts", return_value=artifacts
+        ), mock.patch.object(MODULE, "run", side_effect=fake_run), redirect_stdout(
+            io.StringIO()
+        ) as output, redirect_stderr(io.StringIO()) as errors:
+            code = MODULE.main(
+                ["--branch", "main", "--inventory", MODULE.DEFAULT_INVENTORY, "--limit", limit, "--print-plan"]
+            )
+        return code, output.getvalue() + errors.getvalue()
+
+    def test_print_plan_fails_before_any_release_when_an_agent_tag_is_missing(self) -> None:
+        artifacts = MODULE.ReleaseArtifacts("api", "web", None, None, ("nfc-agent",))
+
+        def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            return completed(command, returncode=1 if command[:3] == ["docker", "manifest", "inspect"] else 0)
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            f"release artifacts are not published for this SHA: ghcr.io/denkoushi/raspisys-nfc-agent:{SHA}",
+        ):
+            self._print_plan(artifacts, fake_run, "pi4-a")
+
+    def test_print_plan_says_when_kiosk_files_will_not_be_delivered(self) -> None:
+        def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            return completed(command)
+
+        code, text = self._print_plan(
+            MODULE.ReleaseArtifacts("api", "web", None, None, ()), fake_run, "pi4-a"
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(json.loads(text)["pi4ReleaseFiles"].startswith("skipped:"))
+
+        code, text = self._print_plan(
+            MODULE.ReleaseArtifacts("api", "web", None, None, ("nfc-agent",)), fake_run, "pi4-a"
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(text)["pi4ReleaseFiles"], "staged with the listed agents")
 
     def test_pi4_only_print_plan_uses_signed_empty_agent_services_authority(self) -> None:
         inventory = {

@@ -117,7 +117,7 @@ scripts/update-all-clients.sh
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
 ```
 
-`--print-plan` はinventoryとAnsibleのlist-hosts/list-tasksを確認し、必要な場合は公開署名済みrelease-setをローカル検証するだけで、remote host、service、database、inventory、stateを変更しない。対象を限定する場合は `--limit PATTERN`、全fleetを明示する場合だけ `--full-fleet` を使う。
+`--print-plan` はinventoryとAnsibleのlist-hosts/list-tasksを確認し、必要な場合は公開署名済みrelease-setをローカル検証するだけで、remote host、service、database、inventory、stateを変更しない。planに出たイメージ（API/Web、Pi4 agent、Pi3 Signage）がレジストリに存在するかも確認し、無ければ実行前にエラーで止まる。対象にPi4が含まれる場合は `pi4ReleaseFiles` を出力する。`skipped:` のときは、そのrelease setがPi4 agentを1つも含まないため、ランチャー、ブラウザunit、status-agentのファイルはPi4へ配られない（`release_kiosk` はagentと一緒の時だけこれらをstageする）。対象を限定する場合は `--limit PATTERN`、全fleetを明示する場合だけ `--full-fleet` を使う。
 
 ## 標準実行
 
