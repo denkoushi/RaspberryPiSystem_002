@@ -454,6 +454,7 @@ export function PlanningBoardResourceView({
     };
   }, [groups]);
 
+  const { normal: normalHeight, expanded: expandedHeight } = heights;
   useLayoutEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
@@ -461,11 +462,12 @@ export function PlanningBoardResourceView({
     const overflow = [...grid.children].reduce((space, slot) => {
       const resource = (slot as HTMLElement).dataset.resourceSlot;
       return resource && expanded.has(resource)
-        ? Math.max(space, slot.getBoundingClientRect().top - gridRect.bottom + Math.max(heights.normal, Math.min(expanded.get(resource)!.height, heights.expanded)))
+        ? Math.max(space, slot.getBoundingClientRect().top - gridRect.bottom + Math.max(normalHeight, Math.min(expanded.get(resource)!.height, expandedHeight)))
         : space;
     }, 0);
     setBottomSpace(Math.ceil(overflow));
-  }, [expanded, heights, paneOrder.order]);
+  // Depend on the numbers: a queued remeasure makes `heights` a new object on every synchronous render.
+  }, [expanded, normalHeight, expandedHeight, paneOrder.order]);
 
   const toggleExpanded = (resource: string, button: HTMLButtonElement) => {
     const opening = !expanded.has(resource);
