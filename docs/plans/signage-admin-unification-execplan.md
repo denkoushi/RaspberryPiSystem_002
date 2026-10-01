@@ -19,8 +19,8 @@
 - [x] (2026-09-30 07:20Z) 本 ExecPlan を作成（branch `feat/signage-admin-unification`）。
 - [x] (2026-09-30 08:10Z) マイルストーン 0 前半：Web 開発サーバに対し、ログイン注入・非表示指定・1920×1080 撮影を確認（約 2.5 秒/回、Node 側メモリ増 約 25MB）。
 - [x] (2026-10-01 01:10Z) マイルストーン 0 後半（判断）：撮影ユーザーは MANAGER＋読み取り専用化、到達経路は Docker 内部専用の入口、とユーザーが決定。
-- [ ] マイルストーン 0 後半（実測）：ローカル Docker で API→Web 内部入口の通し撮影。
-- [ ] マイルストーン 1：API ― ページ撮影コンテンツ（DB、撮影サービス、スロット種別 `web_page`、管理 API、定期撮影）。
+- [x] (2026-10-01 03:00Z) マイルストーン 1：API 実装を PR #1598（branch `feat/signage-web-capture`）で提出。実 Chromium で撮影処理を確認（ログイン注入、書き込み通信の遮断、読み込み待ち、非表示指定）。
+- [ ] マイルストーン 0 後半（実測）：Pi5 実機での撮影時間とメモリの計測（#1598 のデプロイと撮影用ユーザー設定の後）。
 - [ ] マイルストーン 2：API ― サイネージ概況 API（端末ごとの受信・描画・一致状況）と CSV 表のプレビュー画像 API。
 - [ ] マイルストーン 3：Web ― `/admin/signage` 1 画面ハブ（暗色）と旧 4 ページからの転送。
 - [ ] マイルストーン 4：Web ― `/admin/data-boards` 統合ページと旧 2 ページからの転送。
@@ -46,6 +46,10 @@
   Evidence: `docker-compose.server.yml` の web は `80:80`、`443:443` を公開し `ADMIN_ALLOW_NETS` 必須。
 - Observation: `networkidle` 待ちだけでは、API が遅い・失敗する場合に「読み込み中...」のまま撮れる。右下の Hermes の丸ボタンも写り込む。
   Evidence: 試作画像で「読み込み中...」表示と右下の H ボタンが写った。
+- Observation: 本番の標準リリースは Blue/Green 構成（`infrastructure/docker/docker-compose.phase3.yml`、`release_pi5` ロール）で、Web の各スロット（`web-blue`、`web-green`）は Docker 内部ネットワーク `pi5` 上で HTTP の :80 を待ち受ける（`Caddyfile.slot.template`）。ホストへ公開するのは `gateway` だけである。したがって「内部専用の入口」は既に存在し、Caddy への追加は不要だった。
+  Evidence: `docker-compose.phase3.yml` の `web-blue` は `SLOT_API_UPSTREAM: api-blue:8080`、`ports` を持つのは `gateway` のみ。
+- Observation: tsx / vitest（esbuild）は `page.evaluate` に渡す関数へ補助コード `__name` を差し込み、ページ側で `ReferenceError: __name is not defined` になる。本番ビルド（tsc）では起きない。ブラウザ内で実行する処理は文字列で渡すことにした。
+  Evidence: scratch の実 Chromium 確認で `page.evaluate: ReferenceError: __name is not defined`、文字列化後は成功（撮影 約 1.0 秒）。
 
 ## Decision Log
 
@@ -67,9 +71,15 @@
 - Decision: 撮影時のログインは、実在する撮影専用ユーザー（role `MANAGER`）を環境変数 `SIGNAGE_WEB_CAPTURE_USERNAME` で指定し、撮影のたびに API 内で `signAccessToken`（`apps/api/src/lib/auth.ts`）により短命トークンを作って `localStorage` の `factory-auth` に注入する。パスワードは保存しない。撮影ブラウザでは `page.route` により GET・HEAD・OPTIONS 以外のリクエスト（保存・削除など）をすべて中断し、読み取り専用にする。ユーザーが見つからない、または役割が `MANAGER` でない（`ADMIN` も不可）なら撮影を失敗扱いにし、理由を管理画面に出す。
   Rationale: マイルストーン 0 で、API の約 3 分の 2 が ADMIN/MANAGER 限定で、VIEWER では多くの管理画面がデータなしで写ると分かった。ユーザーは 2026-10-01 に「管理者権限＋閲覧だけに制限」を選んだ。トークンは API プロセスの外へ出ず、書き込み系の通信をブラウザ側で止めるので、撮影経路から設定が変わることはない。ADMIN を不可にするのは必要以上の権限を避けるため。
   Date/Author: 2026-10-01 / ユーザー決定、Claude 記録
-- Decision: 撮影ブラウザから管理 Web へは、Docker の内部ネットワークだけで届く専用の入口（Web コンテナの Caddy に、ホストへ公開しないポート `8081` の HTTP サイトを追加）を使う。この入口は静的サイトと `/api` 転送だけを持ち、`/admin*` の IP 制限を掛けない。`ADMIN_ALLOW_NETS` と公開ポート 80/443 の設定は変えない。`SIGNAGE_WEB_CAPTURE_BASE_URL` の本番既定値は `http://web:8081` とする。
-  Rationale: 本番の Caddy は `/admin*` を `ADMIN_ALLOW_NETS` 以外から遮断し、HTTPS は自己署名である。許可ネットワークに Docker 内部の範囲を足す案はセキュリティ設定を触るため、ユーザーは 2026-10-01 に「サーバ内部だけの入口を追加」を選んだ。`ports:` に載せないポートはホスト外から届かない。
-  Date/Author: 2026-10-01 / ユーザー決定、Claude 記録
+- Decision: 撮影ブラウザから管理 Web へは、Blue/Green の同じ色の Web スロットの内部入口を使う。`docker-compose.phase3.yml` で `api-blue` に `SIGNAGE_WEB_CAPTURE_BASE_URL=http://web-blue`、`api-green` に `http://web-green` を設定する。Caddy、公開ポート、`ADMIN_ALLOW_NETS` は変更しない。旧構成（`docker-compose.server.yml`）には設定せず、そこでは撮影は「未設定」で無効になる。
+  Rationale: ユーザーは 2026-10-01 に「サーバ内部だけの入口を使う」を選んだ。調べると Web スロットは最初から内部ネットワーク専用の HTTP 入口だったため、新しい入口（当初案のポート 8081）を足す必要がなく、より小さい変更で同じ目的を満たせる。同じ色同士にするのは、画面と API の版を揃えるため。
+  Date/Author: 2026-10-01 / ユーザー決定、Claude 記録・具体化
+- Decision: `web_page` スロットは FULL のみとし、SPLIT（左右分割）は受け付けない。
+  Rationale: 1920×1080 で撮ったページを半分の幅に縮めると読めない。既存の JPEG 系コンテンツ（キオスク進捗など）と同じ扱いにする。
+  Date/Author: 2026-10-01 / Claude
+- Decision: 定期撮影は独立したジョブにせず、既存のサイネージ描画スケジューラの「描画の直前」に同じ排他区間で実行する（`SignageRenderScheduler` の `preRenderTask`）。
+  Rationale: 描画は本番では別プロセス（worker）で動き、デプロイ時の一時停止や重複実行の防止がすでに組み込まれている。同じ場所で実行すれば、それらをそのまま使え、Chromium も worker 側の 1 つを共有できる。
+  Date/Author: 2026-10-01 / Claude
 - Decision: 撮影は「通信が落ち着く」に加えて「画面に『読み込み中』の文字が 1 つもない」ことを最大 20 秒待つ。既定で Hermes の丸ボタン（`HermesFloatingChat` のルート要素）を隠す。
   Rationale: マイルストーン 0 で、データ未取得の画面やボタンが写り込むことを確認したため。
   Date/Author: 2026-09-30 / Claude
@@ -124,9 +134,9 @@ DB に新モデル `SignageWebCapture` を追加する。フィールドは `id`
 
 プレビュー用に、撮影時に画面上の主要な領域の候補も返す。`header`、`nav`、`aside`、`[role=banner]`、`[role=navigation]`、`[role=complementary]`、`main`、見出しを持つ `section` について、`getBoundingClientRect()` と一意なセレクタ（id があれば `#id`、なければタグ名と `nth-of-type` の組み合わせ）を集める。画面のプレビュー上でこれらの枠をクリックすると `hideSelectors` に加わる（モック `WebCapture.html` の「＋ プレビューで選ぶ」）。
 
-定期撮影は、既存のサイネージ描画スケジューラとは別の軽いジョブ（`node-cron` で 1 分ごと）にする。有効なスケジュールまたは緊急表示から参照されている `SignageWebCapture` だけを対象にし、`lastCapturedAt + refreshIntervalSeconds` を過ぎたものを撮る。参照されていない撮影コンテンツは定期撮影しない。
+定期撮影は、既存のサイネージ描画スケジューラの描画直前に実行する（Decision Log 参照）。有効なスケジュールまたは緊急表示から参照されている `SignageWebCapture` だけを対象にし、`lastCapturedAt + refreshIntervalSeconds` を過ぎたものを撮る。参照されていない撮影コンテンツは定期撮影しない。
 
-スロット種別 `web_page` を追加する。`signage-layout.types.ts` に `WebPageSlotConfig { webCaptureId: string }` を加え、`SignageSlotKind` と `SignageSlot['config']` の共用体に足す。`schemas.ts` に `kind: z.literal('web_page')`、`config: z.object({ webCaptureId: z.string().uuid() })` を加える（位置は `FULL`、`LEFT`、`RIGHT` を許可）。`signage.renderer.ts` の `FULL` 分岐に `web_page` を足し、保存済み画像があればそれを 1920×1080 に収めて返し、なければ `renderMessage('ページ撮影待ち')` を返す。`SPLIT` の左右にも同様に追加する（`pdf`、`csv_dashboard`、`visualization` と同じく画像を半面に収める既存処理に合わせる）。`signage-pane-resolver.ts` にも種類を追加する。
+スロット種別 `web_page` を追加する。`signage-layout.types.ts` に `WebPageSlotConfig { webCaptureId: string }` を加え、`SignageSlotKind` と `SignageSlot['config']` の共用体に足す。`schemas.ts` に `kind: z.literal('web_page')`、`config: z.object({ webCaptureId: z.string().uuid() })` を加える（位置は `FULL`、`LEFT`、`RIGHT` を許可）。`signage.renderer.ts` の `FULL` 分岐に `web_page` を足し、保存済み画像があればそれを 1920×1080 に収めて返し、なければ `renderMessage('ページ撮影待ち')` を返す。`SPLIT` には対応しない（Decision Log 参照）。`signage-pane-resolver.ts` にも種類を追加する。
 
 管理 API は `apps/api/src/routes/signage/web-captures.ts` に置き、`apps/api/src/routes/signage/index.ts` に登録する。`GET /api/signage/web-captures`（一覧、閲覧権限）、`POST`（作成、管理権限）、`PUT /:id`、`DELETE /:id`（スケジュールから参照中なら 409 を返し、参照している予定名を本文に入れる）、`POST /:id/capture`（今すぐ撮影し、画像の URL と領域候補を返す。管理権限）、`POST /capture-preview`（保存前の設定で撮影してプレビューを返す。管理権限）、`GET /:id/image`（最新画像。閲覧権限）を作る。
 
