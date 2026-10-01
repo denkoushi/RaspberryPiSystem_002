@@ -1,52 +1,49 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { getApiErrorMessage } from '../../api/errors';
 import { useSignageEmergency, useSignageManagementOverview } from '../../api/hooks';
+import { Dialog } from '../../components/ui/Dialog';
 import { DEFAULT_SCHEDULE_FORM_DATA } from '../../features/admin/signage/signageScheduleDisplay';
 import { useSignageScheduleEditor } from '../../features/admin/signage/useSignageScheduleEditor';
 import { ContentLibrary } from '../../features/admin/signage-hub/ContentLibrary';
 import { EmergencyPanel } from '../../features/admin/signage-hub/EmergencyPanel';
-import { buildContentLibrary, type LibraryItem } from '../../features/admin/signage-hub/hubModel';
+import { buildContentLibrary, formatAgo, judgeDelivery, type LibraryItem } from '../../features/admin/signage-hub/hubModel';
 import { HubStage } from '../../features/admin/signage-hub/HubStage';
 import { PdfPanel } from '../../features/admin/signage-hub/PdfPanel';
+import { buildPlaylist, nextInRotation } from '../../features/admin/signage-hub/playlistModel';
+import { PlaylistPanel } from '../../features/admin/signage-hub/PlaylistPanel';
+import { QuickAddDialog } from '../../features/admin/signage-hub/QuickAddDialog';
 import { SchedulePanel } from '../../features/admin/signage-hub/SchedulePanel';
-import { ScreensColumn } from '../../features/admin/signage-hub/ScreensColumn';
 import { useSignageClientImage } from '../../features/admin/signage-hub/useSignageClientImage';
 import { useWebCaptureEditor } from '../../features/admin/signage-hub/useWebCaptureEditor';
 import { WebCapturePanel } from '../../features/admin/signage-hub/WebCapturePanel';
-import {
-  buildWeekTimelineBlocks,
-  formatMinute,
-  listOffTimelineSchedules,
-  summarizeToday,
-} from '../../features/admin/signage-hub/weekTimelineModel';
+import { buildWeekTimelineBlocks, listOffTimelineSchedules } from '../../features/admin/signage-hub/weekTimelineModel';
 import { WeekTimelineView } from '../../features/admin/signage-hub/WeekTimelineView';
 import { listSignageDisplayClientDevicesSorted } from '../../lib/signageTargetClientDevices';
 
 import '../../features/admin/signage-hub/theme';
 
-type SidePanel = 'library' | 'web-capture' | 'pdf' | 'emergency';
+/** ふだんは閉じている、2 番手の機能 */
+type Sheet = 'none' | 'quick' | 'week' | 'emergency' | 'library' | 'web-capture' | 'pdf';
 
-function panelFromQuery(value: string | null): SidePanel {
+function sheetFromQuery(value: string | null): Sheet {
   if (value === 'emergency') return 'emergency';
   if (value === 'pdf-upload') return 'pdf';
-  return 'library';
+  return 'none';
 }
 
-function formatClockWithSeconds(iso: string | null | undefined): string {
+function formatClock(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString('ja-JP', { hour12: false });
+  return new Date(iso).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-/** 右下の Hermes チャットを開く（既存の丸ボタンを押すのと同じ） */
-function openHermesChat() {
-  document.querySelector<HTMLButtonElement>('.hermes-floating-trigger')?.click();
-}
+const DELIVERY_TEXT = { ok: '端末は受信中', stale: '端末が応答なし', never: '端末の受信記録なし' } as const;
 
 /**
- * サイネージ管理の 1 画面ハブ。端末・放映中・週間予定・コンテンツを同時に見て、
- * 予定の追加と変更、ページ撮影、PDF、緊急表示までをページ遷移なしで行う。
+ * サイネージ: 「映すものを選ぶ → 画面 → 映す」を前面に置いた 1 画面。
+ * ふだん見えるのは、いま映っているものと、その画面で順番に映すものだけ。
+ * 週間の見え方・素材の整理・緊急表示・細かい設定は、必要なときだけ開く。
  */
 export function SignageHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -54,11 +51,12 @@ export function SignageHubPage() {
   const webEditor = useWebCaptureEditor();
   const overviewQuery = useSignageManagementOverview();
   const emergencyQuery = useSignageEmergency();
-  const [panel, setPanel] = useState<SidePanel>(() => panelFromQuery(searchParams.get('panel')));
+  const [sheet, setSheet] = useState<Sheet>(() => sheetFromQuery(searchParams.get('panel')));
   const [selectedClientKey, setSelectedClientKey] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [imageRefreshToken, setImageRefreshToken] = useState(0);
-  const [renderNotice, setRenderNotice] = useState<string | null>(null);
+  const [justAddedId, setJustAddedId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 15_000);
@@ -78,11 +76,26 @@ export function SignageHubPage() {
   const selectedClient = clients.find((client) => client.apiKey === selectedClientKey) ?? null;
 
   const schedules = useMemo(() => editor.schedulesQuery.data ?? [], [editor.schedulesQuery.data]);
-  const timeline = useMemo(
-    () => buildWeekTimelineBlocks(schedules, selectedClientKey, now),
-    [schedules, selectedClientKey, now],
+  const overview = overviewQuery.data;
+  const overviewEntry = overview?.clients.find((entry) => entry.apiKey === selectedClientKey);
+  const interval = overview?.renderIntervalSeconds ?? 30;
+  const switchSeconds = overview?.scheduleSwitchIntervalSeconds ?? 30;
+  const playlist = useMemo(
+    () => buildPlaylist(schedules, selectedClientKey, overviewEntry?.rotation),
+    [schedules, selectedClientKey, overviewEntry?.rotation],
   );
-  const today = useMemo(() => summarizeToday(timeline), [timeline]);
+  const onAir = playlist.find((item) => item.isOnAir) ?? null;
+  const next = nextInRotation(overviewEntry?.rotation);
+  const nextName = next ? (schedules.find((schedule) => schedule.id === next.scheduleId)?.name ?? null) : null;
+
+  const { imageUrl, error: imageError } = useSignageClientImage(selectedClientKey, 30_000, imageRefreshToken);
+  const emergencyActive = emergencyQuery.data?.enabled ?? false;
+  const isAdvancedEditing = editor.isCreating || editor.editingId !== null;
+  const deliveryOf = (apiKey: string) =>
+    judgeDelivery(overview?.clients.find((entry) => entry.apiKey === apiKey)?.lastFetchedAt ?? null, now, interval);
+  const delivery = selectedClientKey ? deliveryOf(selectedClientKey) : null;
+
+  const timeline = useMemo(() => buildWeekTimelineBlocks(schedules, selectedClientKey, now), [schedules, selectedClientKey, now]);
   const offTimeline = useMemo(() => listOffTimelineSchedules(schedules, selectedClientKey), [schedules, selectedClientKey]);
   const libraryItems = useMemo(
     () =>
@@ -93,22 +106,11 @@ export function SignageHubPage() {
         csvDashboards: editor.csvDashboardsQuery.data ?? [],
         visualizationDashboards: editor.visualizationDashboardsQuery.data ?? [],
       }),
-    [
-      schedules,
-      editor.webCapturesQuery.data,
-      editor.pdfsQuery.data,
-      editor.csvDashboardsQuery.data,
-      editor.visualizationDashboardsQuery.data,
-    ],
+    [schedules, editor.webCapturesQuery.data, editor.pdfsQuery.data, editor.csvDashboardsQuery.data, editor.visualizationDashboardsQuery.data],
   );
 
-  const { imageUrl, error: imageError } = useSignageClientImage(selectedClientKey, 30_000, imageRefreshToken);
-  const overviewEntry = overviewQuery.data?.clients.find((entry) => entry.apiKey === selectedClientKey);
-  const emergencyActive = emergencyQuery.data?.enabled ?? false;
-  const isEditingSchedule = editor.isCreating || editor.editingId !== null;
-
-  const showPanel = (next: SidePanel) => {
-    setPanel(next);
+  const openSheet = (nextSheet: Sheet) => {
+    setSheet(nextSheet);
     if (searchParams.has('panel')) {
       const params = new URLSearchParams(searchParams);
       params.delete('panel');
@@ -116,12 +118,14 @@ export function SignageHubPage() {
     }
   };
 
-  const handlePlace = (item: LibraryItem) => {
-    const source = item.source;
-    if (source.type === 'chat') return;
+  /** 細かい設定つきの新規作成（左右分割や、追加の設定が要る種類） */
+  const startAdvancedCreate = (item?: LibraryItem) => {
+    setSheet('none');
     editor.handleCreate();
     editor.setUseNewLayout(true);
     editor.setLayoutType('FULL');
+    if (!item || item.source.type === 'chat') return;
+    const source = item.source;
     editor.setFormData({ ...DEFAULT_SCHEDULE_FORM_DATA, name: item.name });
     if (source.type === 'web_page') {
       editor.setFullSlotKind('web_page');
@@ -143,212 +147,238 @@ export function SignageHubPage() {
   const handleEditItem = (item: LibraryItem) => {
     const source = item.source;
     if (source.type === 'web_page') {
-      const capture = editor.webCapturesQuery.data?.find((entry) => entry.id === source.webCaptureId) ?? null;
-      webEditor.start(capture);
-      showPanel('web-capture');
+      webEditor.start(editor.webCapturesQuery.data?.find((entry) => entry.id === source.webCaptureId) ?? null);
+      setSheet('web-capture');
     } else if (source.type === 'pdf') {
-      showPanel('pdf');
+      setSheet('pdf');
     } else if (source.type === 'chat') {
       const schedule = schedules.find((entry) => entry.id === source.scheduleId);
-      if (schedule) editor.handleEdit(schedule);
+      if (schedule) {
+        setSheet('none');
+        editor.handleEdit(schedule);
+      }
     }
   };
 
-  const handleSelectSchedule = (scheduleId: string) => {
-    const schedule = schedules.find((entry) => entry.id === scheduleId);
-    if (schedule) editor.handleEdit(schedule);
-  };
-
   const handleRender = async () => {
-    setRenderNotice(null);
+    setNotice(null);
     try {
       await editor.renderMutation.mutateAsync();
       setImageRefreshToken((value) => value + 1);
       void overviewQuery.refetch();
-      setRenderNotice('再描画しました');
+      setNotice('映し直しました');
     } catch (err) {
-      setRenderNotice(getApiErrorMessage(err, '再描画に失敗しました'));
+      setNotice(getApiErrorMessage(err, '映し直せませんでした'));
     }
   };
 
   const captureStage =
-    !isEditingSchedule && panel === 'web-capture' && webEditor.preview
-      ? {
-          preview: webEditor.preview,
-          viewportWidth: webEditor.draft.viewportWidth,
-          viewportHeight: webEditor.draft.viewportHeight,
-        }
+    sheet === 'web-capture' && webEditor.preview
+      ? { preview: webEditor.preview, viewportWidth: webEditor.draft.viewportWidth, viewportHeight: webEditor.draft.viewportHeight }
       : null;
 
   return (
-    <div className="signage-hub">
+    <div className="signage-hub sh-quick-hub">
       {emergencyActive && (
         <div className="sh-emergency-band" role="status">
           <span>緊急表示中</span>
           <span>全端末</span>
-          {emergencyQuery.data?.expiresAt && (
-            <span className="sh-mono">
-              {formatClockWithSeconds(emergencyQuery.data.expiresAt).slice(0, 5)} に自動解除
-            </span>
-          )}
+          {emergencyQuery.data?.expiresAt && <span className="sh-mono">{formatClock(emergencyQuery.data.expiresAt)} に自動解除</span>}
         </div>
       )}
 
-      <div className="sh-head">
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 20, flexWrap: 'wrap' }}>
+      <div className="sh-head" style={{ minHeight: 76 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
           <h1>サイネージ</h1>
-          <div className="sh-head-meta sh-mono">
-            {clients.length} 端末 · 本日 {today.todayBlockCount} 枠 · 最終描画 {formatClockWithSeconds(overviewEntry?.renderedAt)}
+          <div role="tablist" aria-label="画面" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {clients.map((client) => (
+              <button
+                key={client.id}
+                type="button"
+                role="tab"
+                className="sh-screen-tab"
+                aria-selected={client.apiKey === selectedClientKey}
+                data-state={deliveryOf(client.apiKey).state}
+                onClick={() => setSelectedClientKey(client.apiKey)}
+              >
+                <i aria-hidden="true" />
+                {client.name}
+              </button>
+            ))}
+            {!editor.clientsForSignageQuery.isLoading && clients.length === 0 && (
+              <span className="sh-hint">サイネージ用の端末がありません。クライアント管理で登録してください。</span>
+            )}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          {renderNotice && (
-            <span className="sh-hint" role="status">
-              {renderNotice}
-            </span>
-          )}
-          <button
-            type="button"
-            className={emergencyActive ? 'sh-btn sh-btn-danger' : 'sh-btn sh-btn-danger-outline'}
-            onClick={() => showPanel('emergency')}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z" />
-            </svg>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button type="button" className={emergencyActive ? 'sh-btn sh-btn-danger' : 'sh-btn sh-btn-danger-outline'} onClick={() => openSheet('emergency')}>
             {emergencyActive ? '緊急表示中' : '緊急表示'}
           </button>
-          <button type="button" className="sh-btn" onClick={() => void handleRender()} disabled={editor.renderMutation.isPending}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
-              <path d="M21 3v5h-5" />
+          <button type="button" className="sh-go" onClick={() => openSheet('quick')}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
             </svg>
-            {editor.renderMutation.isPending ? '再描画中…' : '今すぐ再描画'}
+            映す
           </button>
         </div>
       </div>
 
-      <div className="sh-body">
-        <ScreensColumn
-          clients={clients}
-          overview={overviewQuery.data}
-          now={now}
-          selectedClientKey={selectedClientKey}
-          onSelect={setSelectedClientKey}
-          isLoading={editor.clientsForSignageQuery.isLoading}
-        />
-
-        <section aria-label="放映中と予定" className="sh-col" style={{ gap: 16 }}>
+      <div className="sh-quick-grid">
+        <section aria-label="いま映っているもの" className="sh-col" style={{ gap: 14 }}>
           <div className="sh-row-between" style={{ minHeight: 28, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              {isEditingSchedule ? (
-                <>
-                  <span className="sh-chip sh-chip-edit">編集中</span>
-                  <span style={{ fontSize: 15, fontWeight: 600 }}>{editor.formData.name || '新しい予定'}</span>
-                </>
-              ) : panel === 'web-capture' ? (
-                <>
-                  <span className="sh-chip sh-chip-capture">撮影プレビュー</span>
-                  <span style={{ fontSize: 15, fontWeight: 600 }}>{webEditor.draft.name || webEditor.draft.path}</span>
-                </>
-              ) : emergencyActive ? (
-                <>
-                  <span className="sh-chip sh-chip-emergency">緊急</span>
-                  <span style={{ fontSize: 15, fontWeight: 600 }}>全端末に割り込み中</span>
-                </>
-              ) : (
-                <>
-                  <span className="sh-chip sh-chip-onair">ON AIR</span>
-                  <span style={{ fontSize: 15, fontWeight: 600 }}>
-                    {selectedClient ? selectedClient.name : '端末を選んでください'}
-                    {today.onAirNames.length > 0
-                      ? ` ／ ${today.onAirNames.join('・')}`
-                      : schedules.some((schedule) => schedule.enabled)
-                        ? ' ／ 予定の時間外（優先順位の高い予定を表示）'
-                        : ''}
-                  </span>
-                </>
-              )}
+              <span className={emergencyActive ? 'sh-chip sh-chip-emergency' : 'sh-chip sh-chip-onair'}>{emergencyActive ? '緊急' : 'ON AIR'}</span>
+              <span style={{ fontSize: 15, fontWeight: 600 }}>
+                {selectedClient ? selectedClient.name : '画面を選んでください'}
+                {emergencyActive ? ' ／ 緊急表示' : onAir ? ` ／ ${onAir.name}` : ''}
+              </span>
             </div>
-            <div className="sh-mono" style={{ fontSize: 12, color: 'var(--sh-muted)' }}>
-              {captureStage
-                ? `撮影 ${(captureStage.preview.durationMs / 1000).toFixed(1)}s`
-                : today.next
-                  ? `次 ${formatMinute(today.next.startMinute)} ${today.next.name}`
-                  : '本日はこのあと予定なし'}
-            </div>
+            <span className="sh-mono" style={{ fontSize: 12, color: 'var(--sh-muted)' }}>
+              {emergencyActive
+                ? '解除すると、順番の表示に戻ります'
+                : next && nextName
+                  ? `次は ${nextName} · あと ${next.secondsUntilSwitch}秒`
+                  : overviewEntry?.rotation.isFallback
+                    ? 'いまの時間に映すものがないため、代わりを表示中'
+                    : ''}
+            </span>
           </div>
 
           <HubStage
-            imageUrl={panel === 'web-capture' && !isEditingSchedule ? null : imageUrl}
-            alt={selectedClient ? `${selectedClient.name} に配信中の画像` : '配信中の画像'}
-            emptyText={
-              panel === 'web-capture' && !isEditingSchedule
-                ? webEditor.isPreviewing
-                  ? '撮影中…'
-                  : '「試し撮り」を押すと、ここにページが表示されます。'
-                : (imageError ?? (selectedClient ? '画像を読み込み中…' : '端末がありません'))
-            }
-            capture={captureStage}
-            onToggleRegion={webEditor.toggleHideSelector}
-            note={
-              panel === 'web-capture' && !isEditingSchedule && !captureStage
-                ? null
-                : captureStage
-                  ? `${captureStage.viewportWidth}×${captureStage.viewportHeight}`
-                  : null
-            }
+            imageUrl={imageUrl}
+            alt={selectedClient ? `${selectedClient.name} に映っている画面` : '映っている画面'}
+            emptyText={imageError ?? (selectedClient ? '画面を読み込み中…' : '端末がありません')}
           />
 
-          <WeekTimelineView
-            timeline={timeline}
-            clientName={selectedClient?.name ?? null}
-            selectedScheduleId={editor.editingId}
-            onSelectSchedule={handleSelectSchedule}
-            offTimeline={offTimeline}
-          />
+          <div className="sh-quiet-row">
+            {delivery && (
+              <span className="sh-quiet" data-state={delivery.state} title={`サーバの描画: ${formatClock(overviewEntry?.renderedAt)}`}>
+                <i aria-hidden="true" />
+                {DELIVERY_TEXT[delivery.state]}
+                {delivery.secondsAgo !== null ? ` · ${formatAgo(delivery.secondsAgo)}` : ''}
+              </span>
+            )}
+            <button type="button" className="sh-quiet" onClick={() => openSheet('week')}>
+              週間の見え方
+            </button>
+            <button type="button" className="sh-quiet" onClick={() => openSheet('library')}>
+              素材を整理
+            </button>
+            <Link to="/admin/data-boards" className="sh-quiet">
+              データボード
+            </Link>
+            <button type="button" className="sh-quiet" onClick={() => void handleRender()} disabled={editor.renderMutation.isPending}>
+              {editor.renderMutation.isPending ? '映し直し中…' : '今すぐ映し直す'}
+            </button>
+            {notice && (
+              <span className="sh-hint" role="status">
+                {notice}
+              </span>
+            )}
+          </div>
         </section>
 
-        <div className="sh-right" style={{ minWidth: 0 }}>
-          {isEditingSchedule ? (
-            <SchedulePanel editor={editor} />
-          ) : panel === 'web-capture' ? (
+        <PlaylistPanel
+          items={playlist}
+          schedules={schedules}
+          clientKey={selectedClientKey}
+          clientName={selectedClient?.name ?? null}
+          switchSeconds={switchSeconds}
+          justAddedId={justAddedId}
+          onAdd={() => openSheet('quick')}
+          onAdvanced={(schedule) => editor.handleEdit(schedule)}
+        />
+      </div>
+
+      <QuickAddDialog
+        isOpen={sheet === 'quick'}
+        onClose={() => setSheet('none')}
+        onDone={(scheduleId) => {
+          setSheet('none');
+          setJustAddedId(scheduleId);
+          void overviewQuery.refetch();
+        }}
+        onAdvanced={() => startAdvancedCreate()}
+        clients={clients}
+        defaultClientKey={selectedClientKey}
+        visualizationDashboards={editor.visualizationDashboardsQuery.data ?? []}
+        csvDashboards={editor.csvDashboardsQuery.data ?? []}
+      />
+
+      <Dialog isOpen={isAdvancedEditing} onClose={editor.handleCancel} ariaLabel="予定の詳しい設定" size="md" className="signage-hub sh-dialog sh-dialog-panel">
+        {isAdvancedEditing && <SchedulePanel editor={editor} />}
+      </Dialog>
+
+      <Dialog isOpen={sheet === 'emergency'} onClose={() => setSheet('none')} ariaLabel="緊急表示" size="md" className="signage-hub sh-dialog sh-dialog-panel">
+        {sheet === 'emergency' && <EmergencyPanel onBack={() => setSheet('none')} />}
+      </Dialog>
+
+      <Dialog isOpen={sheet === 'week'} onClose={() => setSheet('none')} title="週間の見え方" size="full" className="signage-hub sh-dialog">
+        <WeekTimelineView
+          timeline={timeline}
+          clientName={selectedClient?.name ?? null}
+          selectedScheduleId={null}
+          onSelectSchedule={(scheduleId) => {
+            const schedule = schedules.find((entry) => entry.id === scheduleId);
+            if (schedule) {
+              setSheet('none');
+              editor.handleEdit(schedule);
+            }
+          }}
+          offTimeline={offTimeline}
+        />
+        <p className="sh-hint" style={{ margin: '12px 0 0' }}>
+          枠を押すと、その予定の詳しい設定を開きます。同じ時間に重なるものは、{switchSeconds}秒ずつ順番に映ります。
+        </p>
+      </Dialog>
+
+      <Dialog isOpen={sheet === 'library'} onClose={() => setSheet('none')} ariaLabel="素材を整理" size="md" className="signage-hub sh-dialog sh-dialog-panel">
+        {sheet === 'library' && (
+          <ContentLibrary
+            items={libraryItems}
+            onAddWebCapture={() => {
+              webEditor.start(null);
+              setSheet('web-capture');
+            }}
+            onAddPdf={() => setSheet('pdf')}
+            onOpenChat={() => {
+              setSheet('none');
+              document.querySelector<HTMLButtonElement>('.hermes-floating-trigger')?.click();
+            }}
+            onPlace={(item) => startAdvancedCreate(item)}
+            onEditItem={handleEditItem}
+          />
+        )}
+      </Dialog>
+
+      <Dialog isOpen={sheet === 'web-capture'} onClose={() => setSheet('library')} ariaLabel="ページ撮影の設定" size="full" className="signage-hub sh-dialog">
+        {sheet === 'web-capture' && (
+          <div className="sh-capture-sheet">
+            <HubStage
+              imageUrl={null}
+              alt="撮影したページ"
+              emptyText={webEditor.isPreviewing ? '撮影中…' : '「試し撮り」を押すと、ここにページが表示されます。'}
+              capture={captureStage}
+              onToggleRegion={webEditor.toggleHideSelector}
+            />
             <WebCapturePanel
               editor={webEditor}
-              onBack={() => showPanel('library')}
+              onBack={() => setSheet('library')}
               onSaved={(webCaptureId, name, place) => {
-                showPanel('library');
                 if (place) {
-                  handlePlace({
-                    key: `web_page:${webCaptureId}`,
-                    kind: 'web_page',
-                    name,
-                    meta: '',
-                    usedCount: 0,
-                    warning: null,
-                    source: { type: 'web_page', webCaptureId },
-                  });
+                  startAdvancedCreate({ key: `web_page:${webCaptureId}`, kind: 'web_page', name, meta: '', usedCount: 0, warning: null, source: { type: 'web_page', webCaptureId } });
+                } else {
+                  setSheet('library');
                 }
               }}
             />
-          ) : panel === 'pdf' ? (
-            <PdfPanel onBack={() => showPanel('library')} />
-          ) : panel === 'emergency' ? (
-            <EmergencyPanel onBack={() => showPanel('library')} />
-          ) : (
-            <ContentLibrary
-              items={libraryItems}
-              onAddWebCapture={() => {
-                webEditor.start(null);
-                showPanel('web-capture');
-              }}
-              onAddPdf={() => showPanel('pdf')}
-              onOpenChat={openHermesChat}
-              onPlace={handlePlace}
-              onEditItem={handleEditItem}
-            />
-          )}
-        </div>
-      </div>
+          </div>
+        )}
+      </Dialog>
+
+      <Dialog isOpen={sheet === 'pdf'} onClose={() => setSheet('library')} ariaLabel="ファイルの管理" size="md" className="signage-hub sh-dialog sh-dialog-panel">
+        {sheet === 'pdf' && <PdfPanel onBack={() => setSheet('library')} />}
+      </Dialog>
     </div>
   );
 }

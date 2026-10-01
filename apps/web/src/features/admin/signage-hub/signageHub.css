@@ -1155,3 +1155,357 @@
   max-height: calc(100dvh - 150px);
   box-sizing: border-box;
 }
+
+/* ---- 3 手で映す：前面の画面 ---- */
+.signage-hub .sh-go {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 28px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--sh-accent);
+  color: #0b0c0e;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.12s ease, opacity 0.12s ease;
+}
+.signage-hub .sh-go:hover:not(:disabled) {
+  background: #ff7e45;
+}
+.signage-hub .sh-go:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.signage-hub .sh-screen-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1.5px solid var(--sh-line);
+  background: var(--sh-panel);
+  color: var(--sh-muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.signage-hub .sh-screen-tab[aria-selected='true'] {
+  border-color: var(--sh-accent);
+  color: var(--sh-text);
+}
+.signage-hub .sh-screen-tab i,
+.signage-hub .sh-quiet i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sh-warn);
+}
+.signage-hub .sh-screen-tab[data-state='ok'] i,
+.signage-hub .sh-quiet[data-state='ok'] i {
+  background: #3ddc97;
+}
+.signage-hub .sh-quick-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 460px;
+  gap: 24px;
+  flex: 1;
+  min-height: 0;
+}
+@media (max-width: 1100px) {
+  .signage-hub .sh-quick-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.signage-hub .sh-quiet-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+}
+.signage-hub .sh-quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--sh-line);
+  background: transparent;
+  color: var(--sh-muted);
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.signage-hub :is(button, a).sh-quiet:hover:not(:disabled) {
+  border-color: #4a5059;
+  color: var(--sh-text);
+}
+.signage-hub span.sh-quiet {
+  cursor: default;
+}
+.signage-hub .sh-quiet[data-state='stale'],
+.signage-hub .sh-quiet[data-state='never'] {
+  color: var(--sh-warn);
+  border-color: #5a3a2a;
+}
+.signage-hub .sh-playlist {
+  gap: 12px;
+  padding: 18px;
+  border-radius: 16px;
+  max-height: calc(100dvh - 190px);
+  box-sizing: border-box;
+}
+.signage-hub .sh-playlist-rows {
+  gap: 6px;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+.signage-hub .sh-pl-row {
+  border-radius: 14px;
+  border: 1.5px solid transparent;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.signage-hub .sh-pl-row:hover {
+  background: var(--sh-raised);
+}
+.signage-hub .sh-pl-row[data-onair='true'] {
+  background: var(--sh-raised);
+  border-color: var(--sh-text);
+}
+.signage-hub .sh-pl-row[data-open='true'] {
+  background: var(--sh-raised);
+  border-color: var(--sh-line-strong);
+}
+.signage-hub .sh-pl-row[data-new='true'] {
+  background: #1c2214;
+  border-color: var(--sh-kind-web_page);
+}
+.signage-hub .sh-pl-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 6px;
+}
+.signage-hub .sh-pl-open {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 6px 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--sh-text);
+  text-align: left;
+  cursor: pointer;
+}
+.signage-hub .sh-pl-thumb {
+  width: 72px;
+  height: 40px;
+  border-radius: 7px;
+  flex-shrink: 0;
+}
+.signage-hub .sh-pl-name {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.signage-hub .sh-pl-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--sh-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.signage-hub .sh-when {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--sh-line-strong);
+  color: var(--sh-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.signage-hub .sh-when[data-limited='true'] {
+  border-color: #6b5a2a;
+  color: #ffd28a;
+}
+.signage-hub .sh-pl-remove {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--sh-faint);
+  font-size: 17px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.signage-hub .sh-pl-remove:hover {
+  background: #3a1414;
+  color: #ff8a8a;
+}
+.signage-hub .sh-pl-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 12px 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--sh-line-strong);
+}
+.signage-hub .sh-pl-add {
+  min-height: 56px;
+  border-radius: 14px;
+  border: 1.5px dashed #4a5059;
+  background: transparent;
+  color: var(--sh-text);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.signage-hub .sh-pl-add:hover {
+  border-color: var(--sh-text);
+  background: var(--sh-raised);
+}
+.signage-hub .sh-pill-lg {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+/* 「映す」ダイアログ */
+.signage-hub.sh-dialog.sh-quick {
+  width: min(1080px, calc(100vw - 32px));
+  max-width: none;
+  padding: 30px;
+  border-radius: 22px;
+}
+.signage-hub .sh-quick-sources {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.signage-hub .sh-quick-source {
+  min-height: 64px;
+  border-radius: 14px;
+  border: 1.5px solid var(--sh-line-strong);
+  background: var(--sh-panel);
+  color: var(--sh-muted);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.signage-hub .sh-quick-source:hover {
+  border-color: #4a5059;
+  color: var(--sh-text);
+}
+.signage-hub .sh-quick-source[aria-pressed='true'] {
+  border-color: var(--sh-kind-web_page);
+  background: #1c2214;
+  color: #e4f8b8;
+}
+.signage-hub .sh-quick-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+}
+@media (max-width: 900px) {
+  .signage-hub .sh-quick-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.signage-hub .sh-quick-url {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 8px 0 16px;
+  border-radius: 14px;
+  border: 1.5px solid var(--sh-kind-web_page);
+  background: var(--sh-field);
+}
+.signage-hub .sh-quick-url input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sh-text);
+  font-size: 16px;
+  outline: none;
+}
+.signage-hub .sh-quick-stage {
+  box-shadow: 0 0 0 1px var(--sh-line-strong);
+  border-radius: 12px;
+}
+.signage-hub .sh-quick-file {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1.5px dashed #4a5059;
+  background: var(--sh-field);
+  color: var(--sh-text);
+  font-size: 14px;
+}
+.signage-hub .sh-quick-boards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.signage-hub .sh-quick-board {
+  min-height: 52px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--sh-line-strong);
+  background: var(--sh-panel);
+  color: var(--sh-text);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.signage-hub .sh-quick-board:hover {
+  border-color: #4a5059;
+}
+.signage-hub .sh-quick-board[aria-pressed='true'] {
+  border-color: var(--sh-text);
+  background: var(--sh-raised);
+}
+/* 2 番手の機能を入れるダイアログ：中のパネルの枠は外して、ダイアログ自体を枠にする */
+.signage-hub.sh-dialog.sh-dialog-panel {
+  padding: 8px;
+}
+.signage-hub.sh-dialog.sh-dialog-panel > .sh-panel {
+  border: 0;
+  max-height: calc(100dvh - 120px);
+}
+.signage-hub .sh-capture-sheet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 20px;
+  align-items: start;
+}

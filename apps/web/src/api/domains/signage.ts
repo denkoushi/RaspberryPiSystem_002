@@ -386,6 +386,10 @@ export interface SignageWebCapturePreview {
   imageDataUrl: string;
   regions: SignageWebCaptureRegion[];
   durationMs: number;
+  /** autoHideLandmarks で自動的に隠したセレクタ */
+  autoHiddenSelectors: string[];
+  /** ページの最初の見出し（名前の初期値に使う） */
+  pageTitle: string | null;
 }
 
 export async function getSignageWebCaptures() {
@@ -412,8 +416,11 @@ export async function captureSignageWebCaptureNow(id: string) {
   return data.webCapture;
 }
 
-export async function previewSignageWebCapture(settings: SignageWebCaptureSettings) {
-  const { data } = await api.post<SignageWebCapturePreview>('/signage/web-captures/capture-preview', settings);
+export async function previewSignageWebCapture(settings: SignageWebCaptureSettings, options: { autoHideLandmarks?: boolean } = {}) {
+  const { data } = await api.post<SignageWebCapturePreview>('/signage/web-captures/capture-preview', {
+    ...settings,
+    autoHideLandmarks: options.autoHideLandmarks ?? false,
+  });
   return data;
 }
 
@@ -426,7 +433,23 @@ export async function getSignageWebCaptureImage(id: string): Promise<Blob> {
 export interface SignageManagementOverview {
   generatedAt: string;
   renderIntervalSeconds: number;
-  clients: Array<{ apiKey: string; renderedAt: string | null; lastFetchedAt: string | null }>;
+  /** 同じ時間に複数の予定があるとき、1 件を映す秒数 */
+  scheduleSwitchIntervalSeconds: number;
+  clients: Array<{
+    apiKey: string;
+    renderedAt: string | null;
+    lastFetchedAt: string | null;
+    rotation: SignageRotation;
+  }>;
+}
+
+/** 端末でいま順番に映している予定 */
+export interface SignageRotation {
+  scheduleIds: string[];
+  currentIndex: number;
+  secondsUntilSwitch: number | null;
+  /** いまの時刻に当たる予定がなく、代わりの予定を映している */
+  isFallback: boolean;
 }
 
 export async function getSignageManagementOverview() {
