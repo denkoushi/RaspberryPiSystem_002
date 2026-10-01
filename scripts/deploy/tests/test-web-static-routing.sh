@@ -65,6 +65,72 @@ sed 's|${SLOT_API_UPSTREAM}|api-slot:8080|g' \
   | docker run --rm --interactive --label "$RUN_LABEL" \
       "$CADDY_IMAGE" caddy adapt --config - >/dev/null
 
+# Blue/Green: only the gateway limits /admin. The slot stays open because the
+# API opens its own slot directly on the private Docker network.
+wait_for_status() {
+  local url="$1" status=''
+  for _attempt in $(seq 1 40); do
+    status="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 2 "$url" || true)"
+    [[ "$status" != 000 ]] && break
+    sleep 0.25
+  done
+  printf '%s' "$status"
+}
+
+published_port() {
+  docker port "$CONTAINER_NAME" 80/tcp | sed -nE 's/.*:([0-9]+)$/\1/p' | head -n 1
+}
+
+sed -e 's|__BLUE_GREEN_API_UPSTREAM__|api-slot.invalid:8080|g' \
+  -e 's|__BLUE_GREEN_WEB_UPSTREAM__|web-slot.invalid:80|g' \
+  "$ROOT/infrastructure/docker/Caddyfile.gateway.http.template" >"$TEMP_DIR/Caddyfile.gateway"
+if docker run --rm --label "$RUN_LABEL" \
+  --volume "$TEMP_DIR/Caddyfile.gateway:/srv/bluegreen/Caddyfile:ro" \
+  "$CADDY_IMAGE" caddy adapt --config /srv/bluegreen/Caddyfile >/dev/null 2>&1; then
+  fail 'gateway accepted a route without its administrator allowlist file'
+fi
+
+# 192.0.2.0/24 is documentation-only, so this client is always outside it.
+for policy in outside inside; do
+  if [[ "$policy" == outside ]]; then
+    printf 'not remote_ip 192.0.2.0/24\n' >"$TEMP_DIR/admin-allow-nets.caddy"
+  else
+    printf 'not remote_ip 0.0.0.0/0 ::/0\n' >"$TEMP_DIR/admin-allow-nets.caddy"
+  fi
+  docker run --detach --rm \
+    --name "$CONTAINER_NAME" \
+    --label "$RUN_LABEL" \
+    --publish 127.0.0.1::80 \
+    --volume "$TEMP_DIR/Caddyfile.gateway:/srv/bluegreen/Caddyfile:ro" \
+    --volume "$TEMP_DIR/admin-allow-nets.caddy:/srv/bluegreen/admin-allow-nets.caddy:ro" \
+    "$CADDY_IMAGE" caddy run --config /srv/bluegreen/Caddyfile >/dev/null
+  gateway_url="http://127.0.0.1:$(published_port)"
+  admin_status="$(wait_for_status "$gateway_url/admin/signage")"
+  kiosk_status="$(wait_for_status "$gateway_url/kiosk")"
+  [[ "$kiosk_status" != 403 && "$kiosk_status" != 000 ]] \
+    || fail "gateway returned HTTP $kiosk_status for a non-admin route ($policy)"
+  if [[ "$policy" == outside ]]; then
+    [[ "$admin_status" == 403 ]] || fail "gateway returned HTTP $admin_status for /admin outside the allowlist"
+  else
+    [[ "$admin_status" != 403 && "$admin_status" != 000 ]] \
+      || fail "gateway returned HTTP $admin_status for /admin inside the allowlist"
+  fi
+  docker rm -f "$CONTAINER_NAME" >/dev/null
+done
+
+sed 's|${SLOT_API_UPSTREAM}|api-slot.invalid:8080|g' \
+  "$ROOT/infrastructure/docker/Caddyfile.slot.template" >"$TEMP_DIR/Caddyfile.slot"
+docker run --detach --rm \
+  --name "$CONTAINER_NAME" \
+  --label "$RUN_LABEL" \
+  --publish 127.0.0.1::80 \
+  --volume "$DIST_DIR:/srv/site:ro" \
+  --volume "$TEMP_DIR/Caddyfile.slot:/etc/caddy/Caddyfile:ro" \
+  "$CADDY_IMAGE" >/dev/null
+slot_admin_status="$(wait_for_status "http://127.0.0.1:$(published_port)/admin/signage")"
+[[ "$slot_admin_status" == 200 ]] || fail "private Web slot returned HTTP $slot_admin_status for /admin"
+docker rm -f "$CONTAINER_NAME" >/dev/null
+
 docker run --detach --rm \
   --name "$CONTAINER_NAME" \
   --label "$RUN_LABEL" \

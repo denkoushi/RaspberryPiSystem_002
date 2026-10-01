@@ -19,6 +19,11 @@ ADMIN_POLICY_MIGRATION = (
 ).read_text()
 LOCAL_CADDY = (ROOT / "infrastructure/docker/Caddyfile.local.template").read_text()
 PRODUCTION_CADDY = (ROOT / "infrastructure/docker/Caddyfile.production").read_text()
+GATEWAY_CADDY = (ROOT / "infrastructure/docker/Caddyfile.gateway.template").read_text()
+GATEWAY_HTTP_CADDY = (
+    ROOT / "infrastructure/docker/Caddyfile.gateway.http.template"
+).read_text()
+SLOT_CADDY = (ROOT / "infrastructure/docker/Caddyfile.slot.template").read_text()
 
 
 def service(compose: str, name: str) -> str:
@@ -120,6 +125,25 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
             self.assertIn("not remote_ip {$ADMIN_ALLOW_NETS}", caddy)
             self.assertIn('respond @admin_protect "Forbidden" 403', caddy)
             self.assertNotIn("{$ADMIN_ALLOW_NETS:", caddy)
+
+    def test_blue_green_admin_routes_are_limited_at_the_gateway_only(self):
+        matcher = (
+            "  @admin_protect {\n"
+            "    path /admin*\n"
+            "    import /srv/bluegreen/admin-allow-nets.caddy\n"
+            "  }\n"
+        )
+        deny = '    respond @admin_protect "Forbidden" 403\n'
+        for caddy in (GATEWAY_CADDY, GATEWAY_HTTP_CADDY):
+            self.assertEqual(caddy.count(matcher), 1)
+            self.assertEqual(caddy.count(deny), 1)
+            self.assertLess(caddy.index(deny), caddy.index("reverse_proxy"))
+            self.assertNotIn("trusted_proxies", caddy)
+            self.assertNotIn("client_ip", caddy)
+        # The slot sees the gateway as its peer, and the API opens the same-color
+        # slot directly for signage page captures, so it must stay unrestricted.
+        for directive in ("admin_protect", "remote_ip", "client_ip", "/admin"):
+            self.assertNotIn(directive, SLOT_CADDY)
 
     def test_admin_policy_bootstrap_is_separately_approved_and_rollback_safe(self):
         self.assertIn(

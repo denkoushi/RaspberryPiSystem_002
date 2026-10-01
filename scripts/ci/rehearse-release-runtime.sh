@@ -340,6 +340,9 @@ pathlib.Path(destination).write_text(value, encoding='utf-8')
 PY
 }
 render_gateway blue
+# The rehearsal client is never inside this documentation-only network, so the
+# gateway must refuse /admin while every other route keeps working.
+printf 'not remote_ip 192.0.2.0/24\n' >"$TEMP_DIR/admin-allow-nets.caddy"
 docker run -d --platform "$PLATFORM" --name "$GATEWAY" --network "$NETWORK" --label "$LABEL" --label "$RUN_LABEL" \
   --read-only --cap-drop ALL --security-opt no-new-privileges:true \
   --sysctl net.ipv4.ip_unprivileged_port_start=80 \
@@ -347,6 +350,7 @@ docker run -d --platform "$PLATFORM" --name "$GATEWAY" --network "$NETWORK" --la
   --tmpfs "/config:rw,nosuid,nodev,mode=0700,size=16m,uid=${WEB_UID},gid=${WEB_GID}" \
   --tmpfs "/data:rw,nosuid,nodev,mode=0700,size=64m,uid=${WEB_UID},gid=${WEB_GID}" \
   -v "$CADDY_LOG:/var/log/caddy" -v "$TEMP_DIR/Caddyfile:/srv/bluegreen/Caddyfile:ro" \
+  -v "$TEMP_DIR/admin-allow-nets.caddy:/srv/bluegreen/admin-allow-nets.caddy:ro" \
   -e GATEWAY_CONFIG_FILE=/srv/bluegreen/Caddyfile -p '127.0.0.1::80' "$WEB_IMAGE" >/dev/null
 PORT_RECORD="$(docker port "$GATEWAY" 80/tcp)"
 [[ "$PORT_RECORD" =~ ^127\.0\.0\.1:([0-9]+)$ ]] || { echo '[ERROR] gateway port is invalid' >&2; exit 1; }
@@ -357,6 +361,8 @@ for _ in $(seq 1 60); do
 done
 curl -fsS --max-time 5 "http://127.0.0.1:${GATEWAY_PORT}/api/system/health" >/dev/null
 curl -fsS --max-time 5 "http://127.0.0.1:${GATEWAY_PORT}/" >/dev/null
+ADMIN_STATUS="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${GATEWAY_PORT}/admin")"
+[[ "$ADMIN_STATUS" == 403 ]] || { echo "[ERROR] gateway served /admin outside the allowlist: ${ADMIN_STATUS}" >&2; exit 1; }
 
 render_gateway green
 docker exec "$GATEWAY" caddy reload --config /srv/bluegreen/Caddyfile >/dev/null
