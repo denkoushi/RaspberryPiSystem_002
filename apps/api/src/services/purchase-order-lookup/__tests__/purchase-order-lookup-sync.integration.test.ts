@@ -82,4 +82,47 @@ describe('PurchaseOrderLookupSyncService', () => {
     expect(after.updatedAt.getTime()).toBeGreaterThanOrEqual(before.updatedAt.getTime());
     expect(await prisma.purchaseOrderLookupRow.count({ where: { seiban: SEIBAN } })).toBe(ROW_COUNT);
   });
+
+  it('decides old and new by FUPDTEDT, not by import order', async () => {
+    const header = 'FKOBAINO,FHINCD,FSEIBAN,FKOBAIHINMEI,FUPDTEDT,FKENSAOKSU,FSEZONO,FKOBAIST';
+    const line = (i: number, name: string, updatedAt: string, qty: number, status: string) =>
+      `${orderNo(i)},MD9${String(i).padStart(8, '0')}-001,${SEIBAN},${name},${updatedAt},${qty},,${status}`;
+    const sync = async (...lines: string[]) =>
+      new PurchaseOrderLookupSyncService().syncFromFkobainoDashboard({
+        ingestRunId: await ingestRunFor([header, ...lines].join('\n')),
+      });
+    const row = (i: number) =>
+      prisma.purchaseOrderLookupRow.findFirstOrThrow({ where: { seiban: SEIBAN, purchaseOrderNo: orderNo(i) } });
+
+    // 更新日時の無い既存行は、更新日時のある行で上書きできる。CSV 内の重複は行順ではなく新しい方を採る。
+    const first = await sync(
+      line(2, '入荷済', '2026-09-20T10:00:00', 5, 'C'),
+      line(2, '注文済', '2026-09-10T10:00:00', 0, 'R'),
+      line(3, '入荷済', '2026-09-20T10:00:00', 5, 'C')
+    );
+    expect(first.skippedStale).toBe(0);
+    expect(await row(2)).toMatchObject({
+      purchaseStatus: 'C',
+      purchasePartName: '入荷済',
+      sourceUpdatedAt: new Date('2026-09-20T01:00:00.000Z'),
+    });
+
+    // 後から取り込んだ古いCSV・更新日時の無いCSVでは戻らない。
+    const stale = await sync(line(2, '注文済', '2026-09-10T10:00:00', 0, 'R'), line(3, '日付なし', '', 0, 'R'));
+    expect(stale.skippedStale).toBe(2);
+    expect(await row(2)).toMatchObject({ purchaseStatus: 'C', purchasePartName: '入荷済', acceptedQuantity: 5 });
+    expect(await row(3)).toMatchObject({ purchaseStatus: 'C', purchasePartName: '入荷済', acceptedQuantity: 5 });
+
+    // 同時刻と、より新しい行は反映する。
+    const fresh = await sync(
+      line(2, '同時刻', '2026-09-20T10:00:00', 6, 'C'),
+      line(3, '一部入荷', '2026-09-21T08:30:00', 2, 'S')
+    );
+    expect(fresh.skippedStale).toBe(0);
+    expect(await row(2)).toMatchObject({ purchasePartName: '同時刻', acceptedQuantity: 6 });
+    expect(await row(3)).toMatchObject({
+      purchaseStatus: 'S',
+      sourceUpdatedAt: new Date('2026-09-20T23:30:00.000Z'),
+    });
+  });
 });

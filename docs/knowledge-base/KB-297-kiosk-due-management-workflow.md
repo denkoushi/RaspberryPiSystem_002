@@ -250,6 +250,14 @@ category: knowledge-base
 - **Fix**: トランザクションをやめ、500 行ごとに 1 文の `INSERT ... ON CONFLICT DO UPDATE` で書く。upsert は冪等で、CSV に無い過去行は消さないので、途中で失敗しても同じ CSV の再取込で揃う。CSV 内の同一キーは最後の行を採用する。`FKOBAIST` 列が無い CSV では既存の `purchaseStatus` を残す。
 - **Prevention**: DB 統合テスト `purchase-order-lookup-sync.integration.test.ts`（チャンクをまたぐ 1,200 行と同一キーの再登場）。
 
+### FKOBAINO の新旧を更新日時で決める（2026-10-01） {#fkobaino-source-updated-guard-2026-10-01}
+
+- **Context**: 60 日より前の行も取り込んでバッジの対象を広げる。それまでの upsert は無条件上書きで、新旧は取込順だけで決まっていた。古い時点の CSV を後から取り込むと（過去メールの再取込、範囲が重なる CSV の順序違い）、入荷済が注文済へ戻る。
+- **Evidence**: 本番の `FUPDTEDT` は `2026-08-03T07:38:10` 形式（時差表記なし・JST）。2026-10-01 の取込 42,319 行すべてに値があり、それ以前の 183,822 行は空欄。`FUPDTEDT` は `FKOBAIST` が変わると更新される（ユーザー確認）。
+- **Fix**: `PurchaseOrderLookupRow.sourceUpdatedAt`（migration `20261001150000_purchase_order_lookup_source_updated_at`）に `FUPDTEDT` を保持する。上書きは「既存行の更新日時が空」または「取込行の更新日時が既存以上」のときだけ。更新日時の無い行は、更新日時のある既存行を上書きしない。CSV 内の同一キーは更新日時が最新の行（同時刻・不明なら最後の行）を採用する。書き込まなかった行数は同期結果の `skippedStale` としてログに出る。
+- **制約**: 既存行の `sourceUpdatedAt` は埋め戻さない。更新日時付きの CSV に次に載った時点で入り、それまでは従来どおり取込順で上書きされる。`FUPDTEDT` が空の CSV だけを流し続けると、更新日時のある行は更新されなくなる。
+- **取消行の扱い（本番 2026-10-01 で確認）**: 取消・発注し直しの行は CSV から消えず `X` で残る（`X` 955 件）。材料行が複数あって状態が食い違う 37 組のうち 30 組は `X` との組合せで、`X` は判定から外れるためバッジは止まらない。材料行の 6,209 組中 6,159 組は 1 行だけ。
+
 ## 表示用納期 effectiveDueDate・計画列 UI（2026-04-01）
 
 - **Context**: 部品納期個数 CSV の **`plannedEndDate`** を、行の **`dueDate`（手動・writeback 含む）が無いときの表示用納期**として扱いたい。一覧・納期詳細で意味を混在させず、API で「実効日付」とソースを明示したい。
