@@ -435,9 +435,10 @@ export interface SignageManagementOverview {
   renderIntervalSeconds: number;
   /** 同じ時間に複数の予定があるとき、1 件を映す秒数 */
   scheduleSwitchIntervalSeconds: number;
+  /** サーバーが最後に画像を描いた時刻（全端末で共通） */
+  lastRenderedAt: string | null;
   clients: Array<{
     apiKey: string;
-    renderedAt: string | null;
     lastFetchedAt: string | null;
     rotation: SignageRotation;
   }>;

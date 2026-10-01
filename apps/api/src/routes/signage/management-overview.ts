@@ -1,25 +1,45 @@
 import { promises as fs } from 'fs';
+import path from 'path';
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { env } from '../../config/env.js';
 import { authorizeRoles } from '../../lib/auth.js';
-import { SignageRenderStorage } from '../../lib/signage-render-storage.js';
+import { getFileStorageRoot } from '../../services/file-storage/file-storage-config.js';
 import { SignageService } from '../../services/signage/index.js';
 import { getSignageImageLastFetchedAt } from '../../services/signage/signage-delivery-tracker.js';
 import { SignageRenderer } from '../../services/signage/signage.renderer.js';
 
 const csvPreviewParamsSchema = z.object({ id: z.string().uuid() });
 
-/** 端末用の最新画像がいつ描画されたか（ファイルの更新時刻）。未描画なら null。 */
-async function readRenderedAt(clientKey: string): Promise<Date | null> {
+function getRenderDir(): string {
+  return process.env.SIGNAGE_RENDER_DIR || path.join(getFileStorageRoot(), 'signage-rendered');
+}
+
+/**
+ * サーバーが最後に画像を描いた時刻（描画フォルダ内の端末用画像のうち、いちばん新しい更新時刻）。
+ * 端末キーからファイル名を求める処理を通さず、フォルダの一覧だけで求める。未描画なら null。
+ */
+export async function readLastRenderedAt(renderDir: string = getRenderDir()): Promise<Date | null> {
+  let names: string[];
   try {
-    return (await fs.stat(SignageRenderStorage.getCurrentImagePathForClient(clientKey))).mtime;
+    names = await fs.readdir(renderDir);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
   }
+  let latest: Date | null = null;
+  for (const name of names) {
+    if (!/^current(-[0-9a-f]{64})?\.jpg$/.test(name)) continue;
+    try {
+      const { mtime } = await fs.stat(path.join(renderDir, name));
+      if (!latest || mtime > latest) latest = mtime;
+    } catch {
+      // 描画の入れ替え中に消えたファイルは無視する
+    }
+  }
+  return latest;
 }
 
 /**
@@ -28,13 +48,12 @@ async function readRenderedAt(clientKey: string): Promise<Date | null> {
 export function registerManagementOverviewRoutes(app: FastifyInstance, signageService: SignageService): void {
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
 
-  // 端末ごとの「サーバが描画した時刻」と「端末が最後に取りに来た時刻」
+  // サーバーが最後に描画した時刻と、端末ごとの「最後に取りに来た時刻」「いま順番に映している予定」
   app.get('/management/overview', { preHandler: canManage }, async () => {
     const clientKeys = await signageService.listSignageRenderClientApiKeys();
     const clients = await Promise.all(
       clientKeys.map(async (apiKey) => ({
         apiKey,
-        renderedAt: (await readRenderedAt(apiKey))?.toISOString() ?? null,
         lastFetchedAt: getSignageImageLastFetchedAt(apiKey)?.toISOString() ?? null,
         rotation: await signageService.getRotationForClient(apiKey),
       })),
@@ -43,6 +62,7 @@ export function registerManagementOverviewRoutes(app: FastifyInstance, signageSe
       generatedAt: new Date().toISOString(),
       renderIntervalSeconds: env.SIGNAGE_RENDER_INTERVAL_SECONDS,
       scheduleSwitchIntervalSeconds: env.SIGNAGE_SCHEDULE_SWITCH_INTERVAL_SECONDS,
+      lastRenderedAt: (await readLastRenderedAt())?.toISOString() ?? null,
       clients,
     };
   });
