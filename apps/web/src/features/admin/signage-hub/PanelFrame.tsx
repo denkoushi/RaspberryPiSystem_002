@@ -19,8 +19,8 @@ export function PanelFrame({
   return (
     <section
       aria-label={title}
-      className="sh-panel sh-col"
-      style={{ gap: 16, height: '100%', borderColor: accent ?? 'var(--sh-text)' }}
+      className="sh-panel sh-col sh-panel-frame"
+      style={{ gap: 16, borderColor: accent ?? 'var(--sh-text)' }}
     >
       <div className="sh-row-between">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

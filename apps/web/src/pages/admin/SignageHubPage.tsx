@@ -24,7 +24,7 @@ import {
 import { WeekTimelineView } from '../../features/admin/signage-hub/WeekTimelineView';
 import { listSignageDisplayClientDevicesSorted } from '../../lib/signageTargetClientDevices';
 
-import '../../features/admin/signage-hub/signageHub.css';
+import '../../features/admin/signage-hub/theme';
 
 type SidePanel = 'library' | 'web-capture' | 'pdf' | 'emergency';
 

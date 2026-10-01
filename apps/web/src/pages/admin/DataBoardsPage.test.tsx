@@ -30,6 +30,14 @@ vi.mock('../../features/admin/csv-dashboards/useCsvDashboardEditor', () => ({
       }),
     },
     columnDefinitionError: null,
+    templateConfigError: null,
+    enabled: true,
+    setEnabled: vi.fn(),
+    normalizedColumnDefinitions: [],
+    tableDisplayColumns: [],
+    tableColumnWidths: {},
+    manualColumnWidths: false,
+    handleResetDisplayColumns: vi.fn(),
   }),
 }));
 vi.mock('../../features/admin/visualization-dashboards/useVisualizationDashboardEditor', () => ({
@@ -69,23 +77,11 @@ vi.mock('../../api/hooks', () => ({
 vi.mock('../../features/admin/data-boards/useBoardPreviewImage', () => ({
   useBoardPreviewImage: () => ({ imageUrl: null, error: null, isLoading: false }),
 }));
-vi.mock('../../features/admin/csv-dashboards/CsvDashboardBasicSettingsFields', () => ({
-  CsvDashboardBasicSettingsFields: () => null,
-}));
-vi.mock('../../features/admin/csv-dashboards/CsvDashboardColumnDefinitionsTable', () => ({
-  CsvDashboardColumnDefinitionsTable: () => null,
-}));
 vi.mock('../../features/admin/csv-dashboards/CsvDashboardPreviewSection', () => ({
   CsvDashboardPreviewSection: () => null,
 }));
-vi.mock('../../features/admin/csv-dashboards/CsvDashboardTableTemplateSection', () => ({
-  CsvDashboardTableTemplateSection: () => null,
-}));
 vi.mock('../../features/admin/csv-dashboards/CsvDashboardUploadSection', () => ({
   CsvDashboardUploadSection: () => null,
-}));
-vi.mock('../../features/admin/visualization-dashboards/VisualizationDashboardEditorForm', () => ({
-  VisualizationDashboardEditorForm: () => null,
 }));
 
 import { DataBoardsPage } from './DataBoardsPage';

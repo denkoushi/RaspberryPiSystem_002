@@ -1,13 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
-import { getApiErrorMessage } from '../../api/errors';
 import { useSignageSchedulesForManagement } from '../../api/hooks';
-import { CsvDashboardBasicSettingsFields } from '../../features/admin/csv-dashboards/CsvDashboardBasicSettingsFields';
-import { CsvDashboardColumnDefinitionsTable } from '../../features/admin/csv-dashboards/CsvDashboardColumnDefinitionsTable';
-import { CsvDashboardPreviewSection } from '../../features/admin/csv-dashboards/CsvDashboardPreviewSection';
-import { CsvDashboardTableTemplateSection } from '../../features/admin/csv-dashboards/CsvDashboardTableTemplateSection';
-import { CsvDashboardUploadSection } from '../../features/admin/csv-dashboards/CsvDashboardUploadSection';
 import { useCsvDashboardEditor } from '../../features/admin/csv-dashboards/useCsvDashboardEditor';
 import {
   buildBoardList,
@@ -15,16 +9,16 @@ import {
   type BoardSelection,
   type BoardType,
 } from '../../features/admin/data-boards/boardModel';
+import { GraphBoardForm } from '../../features/admin/data-boards/GraphBoardForm';
 import { NewBoardDialog, type BoardTemplate } from '../../features/admin/data-boards/NewBoardDialog';
+import { TableBoardForm } from '../../features/admin/data-boards/TableBoardForm';
 import { useBoardPreviewImage } from '../../features/admin/data-boards/useBoardPreviewImage';
 import { HubStage } from '../../features/admin/signage-hub/HubStage';
 import { useVisualizationDashboardEditor } from '../../features/admin/visualization-dashboards/useVisualizationDashboardEditor';
-import { VisualizationDashboardEditorForm } from '../../features/admin/visualization-dashboards/VisualizationDashboardEditorForm';
 
-import '../../features/admin/signage-hub/signageHub.css';
+import '../../features/admin/signage-hub/theme';
 
 type Filter = 'all' | BoardType;
-type TableTab = 'look' | 'columns' | 'import';
 
 const KIND_LABEL: Record<BoardType, string> = { graph: 'グラフ', table: '表' };
 
@@ -44,7 +38,6 @@ export function DataBoardsPage() {
   const [filter, setFilter] = useState<Filter>(() => filterFromQuery(searchParams.get('type')));
   const [query, setQuery] = useState('');
   const [selection, setSelection] = useState<BoardSelection | null>(null);
-  const [tableTab, setTableTab] = useState<TableTab>('look');
   const [isNewOpen, setIsNewOpen] = useState(false);
   const [pendingTemplate, setPendingTemplate] = useState<BoardTemplate | null>(null);
   const [previewToken, setPreviewToken] = useState(0);
@@ -247,70 +240,10 @@ export function DataBoardsPage() {
             </p>
           )}
 
-          {showGraphForm && (
-            <div className="sh-legacy">
-              <VisualizationDashboardEditorForm editor={graphEditor} />
-            </div>
-          )}
+          {showGraphForm && <GraphBoardForm editor={graphEditor} onSaved={() => setPreviewToken((value) => value + 1)} />}
 
           {selectedTable && (
-            <>
-              <div role="tablist" aria-label="表の設定" className="sh-seg">
-                {(
-                  [
-                    ['look', '見た目'],
-                    ['columns', '列'],
-                    ['import', '取り込み'],
-                  ] as Array<[TableTab, string]>
-                ).map(([value, label]) => (
-                  <button key={value} type="button" role="tab" aria-selected={tableTab === value} aria-pressed={tableTab === value} onClick={() => setTableTab(value)}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="sh-legacy sh-col" style={{ gap: 14 }}>
-                {tableTab === 'look' && (
-                  <>
-                    <CsvDashboardBasicSettingsFields editor={tableEditor} selected={selectedTable} />
-                    {selectedTable.templateType === 'TABLE' && <CsvDashboardTableTemplateSection editor={tableEditor} />}
-                  </>
-                )}
-                {tableTab === 'columns' && (
-                  <>
-                    <CsvDashboardColumnDefinitionsTable editor={tableEditor} />
-                    <CsvDashboardPreviewSection editor={tableEditor} />
-                  </>
-                )}
-                {tableTab === 'import' && <CsvDashboardUploadSection editor={tableEditor} />}
-              </div>
-              {tableTab !== 'import' && (
-                <div className="sh-col" style={{ gap: 8 }}>
-                  <button
-                    type="button"
-                    className="sh-btn sh-btn-primary"
-                    onClick={() => tableEditor.updateMutation.mutate(undefined, { onSuccess: () => setPreviewToken((value) => value + 1) })}
-                    disabled={tableEditor.updateMutation.isPending}
-                  >
-                    {tableEditor.updateMutation.isPending ? '保存中…' : '設定を保存'}
-                  </button>
-                  {tableEditor.updateMutation.isError && (
-                    <p className="sh-error" role="alert" style={{ margin: 0 }}>
-                      {getApiErrorMessage(tableEditor.updateMutation.error, '保存に失敗しました。')}
-                    </p>
-                  )}
-                  {tableEditor.columnDefinitionError && (
-                    <p className="sh-error" role="alert" style={{ margin: 0 }}>
-                      {tableEditor.columnDefinitionError}
-                    </p>
-                  )}
-                  {tableEditor.updateMutation.isSuccess && (
-                    <p className="sh-hint" role="status" style={{ margin: 0, color: 'var(--sh-ok)' }}>
-                      保存しました。
-                    </p>
-                  )}
-                </div>
-              )}
-            </>
+            <TableBoardForm editor={tableEditor} selected={selectedTable} onSaved={() => setPreviewToken((value) => value + 1)} />
           )}
         </section>
       </div>

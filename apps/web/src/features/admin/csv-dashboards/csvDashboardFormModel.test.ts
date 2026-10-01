@@ -7,6 +7,7 @@ import {
   parseCsvHeaderCandidatesInput,
   syncFormFromDashboard,
   validateColumnDefinitions,
+  toUnifiedColumns,
 } from './csvDashboardFormModel';
 import { buildMachineDailyInspectionPreset } from './csvDashboardPresets';
 
@@ -231,5 +232,36 @@ describe('csvDashboardPresets', () => {
     expect(preset.templateConfig?.rowsPerPage).toBe(50);
     expect(preset.columnDefinitions).toHaveLength(9);
     expect(preset.dateColumnName).toBe('inspectionAt');
+  });
+});
+
+describe('toUnifiedColumns', () => {
+  const column = (internalName: string) => ({
+    internalName,
+    displayName: internalName.toUpperCase(),
+    csvHeaderCandidates: [internalName],
+    dataType: 'string' as const,
+    order: 0,
+  });
+  const definitions = [column('a'), column('b'), column('c'), column('d')];
+
+  it('lists shown columns in display order first, then hidden ones in definition order', () => {
+    const unified = toUnifiedColumns(definitions, ['c', 'a']);
+    expect(unified.map((entry) => [entry.internalName, entry.definitionIndex, entry.displayIndex])).toEqual([
+      ['c', 2, 0],
+      ['a', 0, 1],
+      ['b', 1, null],
+      ['d', 3, null],
+    ]);
+  });
+
+  it('ignores display names without a definition and duplicate entries', () => {
+    const unified = toUnifiedColumns(definitions, ['ghost', 'b', 'b']);
+    expect(unified.map((entry) => [entry.internalName, entry.displayIndex])).toEqual([
+      ['b', 1],
+      ['a', null],
+      ['c', null],
+      ['d', null],
+    ]);
   });
 });

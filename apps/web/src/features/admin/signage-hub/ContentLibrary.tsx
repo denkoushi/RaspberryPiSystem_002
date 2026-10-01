@@ -92,6 +92,7 @@ export function ContentLibrary({
 
       <div className="sh-items">
         {visible.length === 0 && <p className="sh-hint" style={{ padding: '0 6px' }}>該当するコンテンツがありません。</p>}
+        {visible.length > 0 && <p className="sh-hint sh-items-hint">＋ を押すと、その内容で予定を作れます。</p>}
         {visible.map((item) => {
           const editable = item.source.type === 'web_page' || item.source.type === 'pdf' || item.source.type === 'chat';
           return (
@@ -107,19 +108,24 @@ export function ContentLibrary({
                   {item.name}
                 </div>
                 <div className="sh-item-meta">
-                  {item.meta} · {item.usedCount > 0 ? `${item.usedCount}件の予定で使用` : '未使用'}
+                  {item.meta} · {item.usedCount > 0 ? `予定 ${item.usedCount}件` : '未使用'}
                   {item.warning && <span style={{ color: 'var(--sh-warn)' }}> · {item.warning}</span>}
                 </div>
               </div>
               <div className="sh-item-actions">
                 {editable && (
-                  <button type="button" className="sh-mini-btn" onClick={() => onEditItem(item)} aria-label={`${item.name} を編集`}>
-                    編集
+                  <button type="button" className="sh-icon-btn sh-icon-btn-sm" onClick={() => onEditItem(item)} aria-label={`${item.name} を編集`} title="編集">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M12 20h9" />
+                      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+                    </svg>
                   </button>
                 )}
                 {item.source.type !== 'chat' && (
-                  <button type="button" className="sh-mini-btn" onClick={() => onPlace(item)} aria-label={`${item.name} を予定に置く`}>
-                    予定に置く
+                  <button type="button" className="sh-icon-btn sh-icon-btn-sm sh-icon-btn-place" onClick={() => onPlace(item)} aria-label={`${item.name} を予定に置く`} title="予定に置く">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
                   </button>
                 )}
               </div>

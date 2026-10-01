@@ -24,7 +24,7 @@
 - [x] (2026-10-01 05:00Z) マイルストーン 2：概況 API（`GET /api/signage/management/overview`）と CSV 表プレビュー API を実装（branch `feat/signage-hub`）。
 - [x] (2026-10-01 05:00Z) マイルストーン 3：`/admin/signage` ハブを実装し、ローカル（DB＋API＋Web）で通し確認。旧 4 ページは削除して転送に置換。緊急メッセージの画像描画を追加。
 - [x] (2026-10-01 05:00Z) マイルストーン 4a：`/admin/data-boards` を実装（一覧・サイネージと同じプレビュー・使われている場所・ひな形からの新規作成・既存フォームを暗色パネルに収容）。旧 2 ページは削除して転送に置換。
-- [ ] マイルストーン 4b：グラフの JSON なし入力欄（ひな形ごとの項目化）と、CSV 表の列リスト一本化（`toUnifiedColumns` / `fromUnifiedColumns`）。取り込み履歴の表示（API に取り込み結果の取得がないため別途追加が必要）。
+- [x] (2026-10-01 05:40Z) マイルストーン 4b：グラフは JSON を見せない入力欄（`graphFieldModel.ts`、ひな形ごとの項目。JSON は「詳しい設定」に畳む）、CSV 表は列定義と表示列を 1 つのリストに一本化（`toUnifiedColumns`）。予定の編集パネルもモックどおりの部品に作り直した（`scheduleDraftModel.ts`、`SchedulePanel.tsx`）。取り込み履歴は API に取得手段がないため未実装のまま。
 - [ ] マイルストーン 5：ドキュメント（`docs/modules/signage/README.md` は更新済み）、KB、Pi5 実機での撮影時間・メモリ計測、撮影用ユーザーの設定。
 - [x] (2026-10-01 04:40Z) PR #1581（計画）と PR #1598（撮影 API）を main へ squash merge（ユーザー実施）。
 - [ ] （ユーザー承認後のみ）commit、push、PR、merge、Pi5 デプロイ。
@@ -60,6 +60,8 @@
   Evidence: `SignageWebCapture.lastStatus=success, lastDurationMs=6675`、`current-image` の JPEG に可視化ダッシュボード画面。
 - Observation: sharp の `stats()` は `extract()` 後ではなく入力画像全体を測る。画像の一部を検証するテストは、切り出してバッファ化してから `stats()` を呼ぶ必要がある。
   Evidence: 帯の合成テストが最初は青のままに見えた（合成自体は正しかった）。
+- Observation: 可視化ダッシュボードの「未点検加工機」ひな形は `date: ""` を含み、API の入力チェック（`YYYY-MM-DD` か未指定）に必ず失敗していた。ひな形から空の日付を外し、日付欄は日付入力にした。
+  Evidence: `POST /api/visualizations` → 400 `{"path":["dataSourceConfig","date"],"message":"Invalid"}`。修正後は作成でき、プレビューが出る。
 
 ## Decision Log
 
@@ -99,8 +101,8 @@
 - Decision: 「プレビューと実機が一致」の判定は、API が `current-image` を端末へ返したときの描画 ID（またはファイルの更新時刻）を端末キーごとにメモリに記録し、最新描画と比べて行う。DB には保存しない。
   Rationale: 追加の DB 変更なしに「端末が最新の画像を受け取ったか」を示せる。API 再起動で記録は消えるが、30 秒以内に再取得で回復するので実害はない。
   Date/Author: 2026-09-30 / Claude
-- Decision: 書体は既存（Noto Sans JP、等幅は端末の既定）のままにし、IBM Plex は追加しない。
-  Rationale: 本番はオフライン運用があり、Google Fonts に依存できない。新しいパッケージを足さずに済む。
+- Decision: 欧文と数字は IBM Plex Sans / IBM Plex Mono を `@fontsource` で同梱する（latin サブセットのみ）。和文は端末のゴシック体（Hiragino Sans、Yu Gothic UI、Noto Sans JP の順）を使う。
+  Rationale: 本番はオフライン運用があり Google Fonts に依存できない。和文まで同梱するとパッケージが 37MB と大きいが、欧文・数字だけなら数百 KB で済み、時刻や件数の表示がモックの締まった印象になる。当初は「追加しない」としていたが、ユーザーの品質基準（モック水準）に届かないため 2026-10-01 に変更した。
   Date/Author: 2026-10-01 / Claude
 - Decision: データボードは 2 段階にする。4a は 1 ページ化（一覧・プレビュー・使用箇所・ひな形作成）で、設定の入力欄は既存フォームを暗色パネルに収める。JSON なし入力欄と列リストの一本化は 4b に分ける。
   Rationale: 既存フォームをそのまま使えば設定項目を失わず、ページ統合の価値を先に届けられる。入力欄の作り直しは保存形式の往復テストが要るため、別の変更にしてリスクを分ける。

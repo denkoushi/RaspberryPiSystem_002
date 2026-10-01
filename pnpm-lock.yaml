@@ -236,6 +236,12 @@ importers:
       '@digital-go-jp/design-tokens':
         specifier: 1.1.9
         version: 1.1.9
+      '@fontsource/ibm-plex-mono':
+        specifier: 5.2.7
+        version: 5.2.7
+      '@fontsource/ibm-plex-sans':
+        specifier: 5.2.8
+        version: 5.2.8
       '@raspi-system/kiosk-sop-core':
         specifier: workspace:*
         version: link:../../packages/kiosk-sop-core
@@ -888,6 +894,12 @@ packages:
 
   '@fastify/websocket@11.2.0':
     resolution: {integrity: sha512-3HrDPbAG1CzUCqnslgJxppvzaAZffieOVbLp1DAy1huCSynUWPifSvfdEDUR8HlJLp3sp1A36uOM2tJogADS8w==}
+
+  '@fontsource/ibm-plex-mono@5.2.7':
+    resolution: {integrity: sha512-MKAb8qV+CaiMQn2B0dIi1OV3565NYzp3WN5b4oT6LTkk+F0jR6j0ZN+5BKJiIhffDC3rtBULsYZE65+0018z9w==}
+
+  '@fontsource/ibm-plex-sans@5.2.8':
+    resolution: {integrity: sha512-eztSXjDhPhcpxNIiGTgMebdLP9qS4rWkysuE1V7c+DjOR0qiezaiDaTwQE7bTnG5HxAY/8M43XKDvs3cYq6ZYQ==}
 
   '@fortawesome/fontawesome-common-types@6.7.2':
     resolution: {integrity: sha512-Zs+YeHUC5fkt7Mg1l6XTniei3k4bwG/yo3iFUtZWd/pMx9g3fdvkSK9E0FOC+++phXOka78uJcYb8JaFkW52Xg==}
@@ -4899,6 +4911,10 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@fontsource/ibm-plex-mono@5.2.7': {}
+
+  '@fontsource/ibm-plex-sans@5.2.8': {}
+
   '@fortawesome/fontawesome-common-types@6.7.2': {}
 
   '@fortawesome/fontawesome-free@6.7.2': {}
@@ -5527,7 +5543,7 @@ snapshots:
       magicast: 0.5.3
       obug: 2.1.1
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@types/node@20.19.25)(@vitest/coverage-istanbul@4.1.8)(@vitest/coverage-v8@4.1.8)(@vitest/ui@4.1.8)(jsdom@27.4.0)(vite@6.4.3(@types/node@20.19.25)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.20.6)(yaml@2.8.1))
+      vitest: 4.1.8(@types/node@25.0.1)(@vitest/coverage-istanbul@4.1.8)(@vitest/coverage-v8@4.1.8)(@vitest/ui@4.1.8)(jsdom@24.0.0)(vite@6.4.3(@types/node@25.0.1)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.20.6)(yaml@2.8.1))
     transitivePeerDependencies:
       - supports-color
     optional: true
@@ -5544,7 +5560,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@types/node@20.19.25)(@vitest/coverage-istanbul@4.1.8)(@vitest/coverage-v8@4.1.8)(@vitest/ui@4.1.8)(jsdom@27.4.0)(vite@6.4.3(@types/node@20.19.25)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.20.6)(yaml@2.8.1))
+      vitest: 4.1.8(@types/node@25.0.1)(@vitest/coverage-istanbul@4.1.8)(@vitest/coverage-v8@4.1.8)(@vitest/ui@4.1.8)(jsdom@24.0.0)(vite@6.4.3(@types/node@25.0.1)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.20.6)(yaml@2.8.1))
 
   '@vitest/expect@4.1.8':
     dependencies:
@@ -5598,7 +5614,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.15
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@types/node@20.19.25)(@vitest/coverage-istanbul@4.1.8)(@vitest/coverage-v8@4.1.8)(@vitest/ui@4.1.8)(jsdom@27.4.0)(vite@6.4.3(@types/node@20.19.25)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.20.6)(yaml@2.8.1))
+      vitest: 4.1.8(@types/node@25.0.1)(@vitest/coverage-istanbul@4.1.8)(@vitest/coverage-v8@4.1.8)(@vitest/ui@4.1.8)(jsdom@24.0.0)(vite@6.4.3(@types/node@25.0.1)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.20.6)(yaml@2.8.1))
 
   '@vitest/utils@4.1.8':
     dependencies:
