@@ -48,6 +48,8 @@ services:
       PI5_SCHEDULER_LEADER_ENABLED: "1"
       PI5_SCHEDULER_LEASE_FILE: /app/alerts/.pi5-scheduler-leader
       PI5_SCHEDULER_LEASE_INTERVAL_MS: "2000"
+      # ページ撮影（サイネージ）は同じスロットの Web の内部入口を開く。ホストへは公開されない。
+      SIGNAGE_WEB_CAPTURE_BASE_URL: http://web-blue
     volumes: &api-volumes
       - photo-storage:/app/storage/photos
       - thumbnail-storage:/app/storage/thumbnails
@@ -123,7 +125,9 @@ services:
     env_file:
       - ../../apps/api/.env.example
       - ${PI5_ENV_FILE:-.env}
-    environment: *api-environment
+    environment:
+      <<: *api-environment
+      SIGNAGE_WEB_CAPTURE_BASE_URL: http://web-green
     volumes: *api-volumes
     networks: [pi5, business-hermes]
 
