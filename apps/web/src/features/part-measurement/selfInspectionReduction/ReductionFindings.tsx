@@ -56,7 +56,7 @@ function Line({
       <span className="min-w-0 truncate">
         {finding.lead}
         {finding.fhincd ? <b className="font-mono font-semibold">{finding.fhincd}</b> : null}
-        {finding.fhincd && !finding.text.startsWith('：') ? ' ' : ''}
+        {finding.fhincd ? ' ' : ''}
         {finding.text}
       </span>
       {finding.moreCount > 0 ? (
@@ -68,7 +68,7 @@ function Line({
   );
   const className = clsx(
     'flex h-[26px] min-w-0 max-w-full items-center gap-1.5 rounded-md px-1.5 text-left text-[15px] font-bold',
-    slot === 'overall' ? 'text-[#aab8ca]' : 'text-[#e8eef6]'
+    slot === 'overall' && finding.fhincd == null ? 'text-[#aab8ca]' : 'text-[#e8eef6]'
   );
   if (finding.rowIds.length === 0) return <p className={className}>{body}</p>;
   return (

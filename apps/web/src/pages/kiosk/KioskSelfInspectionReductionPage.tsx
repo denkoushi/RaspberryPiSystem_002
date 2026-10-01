@@ -319,16 +319,16 @@ export function KioskSelfInspectionReductionPage() {
             検査の階段
             <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#72849b]">
               <i className="block h-2.5 w-2.5 rounded-full bg-emerald-400" />
-              1段下へ
+              減らす
             </span>
             <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#72849b]">
               <i className="block h-2.5 w-2.5 rounded-full bg-rose-400" />
-              1段上へ
+              増やす
             </span>
           </div>
         </div>
         <div className="grid grid-cols-[auto_1fr] grid-rows-[auto_1fr_auto] gap-x-9 gap-y-1.5 rounded-xl border border-[#23503f] bg-gradient-to-br from-[#0f2a26] to-[#12202f] px-6 py-[18px]">
-          <span className="col-span-2 text-[15px] font-bold text-[#9fe3c6]">「減らせる」{counts.reduce}品番を1段下げると</span>
+          <span className="col-span-2 text-[15px] font-bold text-[#9fe3c6]">「減らせる」{counts.reduce}品番を1段減らすと</span>
           <span className="self-center font-mono text-[52px] font-semibold leading-none text-emerald-400">
             {savings.hours == null ? '—' : `−${savings.hours.toFixed(1)}`}
             <small className="ml-1.5 font-sans text-[17px] font-medium text-[#bfeedd]">時間 / 月</small>

@@ -168,7 +168,7 @@ export function ReductionDetail({
                   : 'border-rose-400 bg-transparent text-[#ffb3c0]'
               )}
             >
-              {judgement.verdict === 'reduce' ? '1段下げる' : '1段上げる'}
+              {judgement.verdict === 'reduce' ? '1段減らす' : '1段増やす'}
             </button>
           ) : (
             <VerdictPill verdict={judgement.verdict} size="lg" />
