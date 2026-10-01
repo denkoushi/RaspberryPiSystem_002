@@ -76,6 +76,23 @@ class ClassifyEventChangesTests(unittest.TestCase):
         self.assertTrue(result["codeql"])
         self.assertFalse(result["fullSuite"])
 
+    def test_main_push_of_a_kiosk_file_publishes_every_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = self.new_repo(directory)
+            base = self.commit_file(repo, "README.md", "base\n", "base")
+            head = self.commit_file(
+                repo, "infrastructure/ansible/templates/kiosk-launch.sh.j2", "changed\n", "change"
+            )
+
+            main_push = classify_event(repo, "push", base, head)
+
+            self.assertTrue(main_push["releasePair"])
+            self.assertTrue(main_push["categories"]["signage_artifact"])
+            self.assertEqual(len(main_push["pi4AgentMatrix"]), 6)
+            self.assertEqual(
+                main_push["pi4AgentServices"], ["barcode-agent", "nfc-agent", "torque-agent"]
+            )
+
     def test_main_push_completes_artifacts_without_expanding_pr_checks(self) -> None:
         cases = (
             "scripts/deploy/standard-ansible-release.py",
@@ -94,6 +111,13 @@ class ClassifyEventChangesTests(unittest.TestCase):
                 self.assertEqual(pull_request["pi4AgentMatrix"], [])
                 self.assertTrue(main_push["categories"]["signage_artifact"])
                 self.assertEqual(len(main_push["pi4AgentMatrix"]), 6)
+                # The release set names agents from this list, so it must
+                # match the images the push publishes.
+                self.assertEqual(
+                    main_push["pi4AgentServices"],
+                    ["barcode-agent", "nfc-agent", "torque-agent"],
+                )
+                self.assertEqual(pull_request["pi4AgentServices"], [])
                 self.assertFalse(main_push["fullSuite"])
 
     def test_signage_release_control_publishes_only_the_pi3_artifact(self) -> None:

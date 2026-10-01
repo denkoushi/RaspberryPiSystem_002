@@ -232,7 +232,12 @@ def _normalize_path(path: str) -> str:
 
 def requires_complete_fleet_artifacts(path: str) -> bool:
     """Return whether main must publish one exact-SHA artifact set for every profile."""
-    return _normalize_path(path) in COMPLETE_FLEET_ARTIFACT_PATHS
+    normalized = _normalize_path(path)
+    # A kiosk-file change is rolled out with --full-fleet like any other
+    # release, so the Pi3 artifact of that SHA has to exist as well.
+    return normalized in COMPLETE_FLEET_ARTIFACT_PATHS or is_pi4_kiosk_release_file(
+        normalized
+    )
 
 
 def pi4_agent_services_for_path(path: str) -> frozenset[str]:
