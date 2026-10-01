@@ -234,9 +234,44 @@ class ClassifyChangesTests(unittest.TestCase):
                     {"linux/arm64", "linux/arm/v7"},
                 )
 
-        status = self.classify(Change("M", "clients/status-agent/status-agent.py"))
+        # Tests and docs of the status agent are not copied to a kiosk.
+        status = self.classify(Change("M", "clients/status-agent/tests/test_status_agent.py"))
         self.assertTrue(status["categories"]["client"])
         self.assertEqual(status["pi4AgentMatrix"], [])
+
+    def test_files_copied_to_pi4_kiosks_publish_a_deployable_release(self) -> None:
+        """release_kiosk stages these only with an agent and a signed release set."""
+
+        for path in (
+            "infrastructure/ansible/templates/kiosk-launch.sh.j2",
+            "infrastructure/ansible/templates/kiosk-browser.service.j2",
+            "infrastructure/ansible/templates/status-agent.conf.j2",
+            "infrastructure/ansible/templates/nfc-agent.env.j2",
+            "infrastructure/ansible/roles/release_kiosk/tasks/prepare.yml",
+            "infrastructure/ansible/roles/release_kiosk/templates/client-compose.yml.j2",
+            "scripts/deploy/rolling_release/terminal_device_maintenance.py",
+            "clients/status-agent/status-agent.py",
+            "clients/status-agent/storage_health.py",
+            "clients/status-agent/terminal_agent_health.py",
+            "clients/status-agent/status-agent.timer",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(
+                    result["pi4AgentServices"],
+                    ["barcode-agent", "nfc-agent", "torque-agent"],
+                )
+                self.assertTrue(result["releasePair"])
+                self.assertFalse(result["fullSuite"])
+
+        # The kiosk role and its Firefox profile are not part of a release.
+        for path in (
+            "infrastructure/ansible/roles/kiosk/templates/firefox-user.js.j2",
+            "infrastructure/ansible/templates/signage-lite.tmpfiles.conf.j2",
+            "apps/api/src/app.ts",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(self.classify(Change("M", path))["pi4AgentServices"], [])
 
     def test_signage_artifact_inputs_select_only_the_focused_contract(self) -> None:
         for path in (
@@ -256,7 +291,12 @@ class ClassifyChangesTests(unittest.TestCase):
             with self.subTest(path=path):
                 result = self.classify(Change("M", path))
                 self.assertTrue(result["categories"]["signage_artifact"])
-                if path != "scripts/deploy/rolling_release/terminal_device_maintenance.py":
+                if path not in (
+                    "scripts/deploy/rolling_release/terminal_device_maintenance.py",
+                    "clients/status-agent/status-agent.py",
+                    "clients/status-agent/storage_health.py",
+                    "clients/status-agent/terminal_agent_health.py",
+                ):
                     self.assertFalse(result["releasePair"])
                     self.assertFalse(result["dockerApi"])
                     self.assertFalse(result["dockerWeb"])
