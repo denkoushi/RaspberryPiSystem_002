@@ -6,6 +6,7 @@ import {
   restoreFromDropbox,
   restoreDryRun,
   getCsvImportSchedules,
+  getRecentCsvImportHistory,
   createCsvImportSchedule,
   updateCsvImportSchedule,
   deleteCsvImportSchedule,
@@ -83,6 +84,14 @@ export function useCsvImportSchedules() {
   return useQuery({
     queryKey: ['csv-import-schedules'],
     queryFn: getCsvImportSchedules
+  });
+}
+
+export function useRecentCsvImportHistory() {
+  return useQuery({
+    queryKey: ['import-history', 'recent'],
+    queryFn: () => getRecentCsvImportHistory(),
+    staleTime: 60_000
   });
 }
 
