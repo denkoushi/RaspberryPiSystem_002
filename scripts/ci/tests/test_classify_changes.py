@@ -143,6 +143,11 @@ class ClassifyChangesTests(unittest.TestCase):
             "infrastructure/ansible/templates/raspi-google-drive-dr.env.j2",
             "infrastructure/ansible/templates/raspi-google-drive-dr.service.j2",
             "infrastructure/ansible/templates/raspi-google-drive-dr.timer.j2",
+            "scripts/pi4_sd_backup/runner.py",
+            "infrastructure/ansible/playbooks/deploy-pi4-sd-backup.yml",
+            "infrastructure/ansible/templates/raspi-pi4-sd-backup.env.j2",
+            "infrastructure/ansible/templates/raspi-pi4-sd-backup.service.j2",
+            "infrastructure/ansible/templates/raspi-pi4-sd-backup.timer.j2",
         )
 
         for path in paths:

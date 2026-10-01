@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as tagDeskApi from '../../api/domains/tag-desk';
+import { useKioskNavLocked } from '../../features/kiosk/kioskNavLock';
 
 import { KioskTagDeskPage } from './KioskTagDeskPage';
 
@@ -51,9 +52,14 @@ function scan(uid: string, eventId: number) {
   });
 }
 
+function NavProbe() {
+  return <output aria-label="kiosk-nav">{useKioskNavLocked() ? 'held' : 'free'}</output>;
+}
+
 async function unlock() {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <NavProbe />
       <KioskTagDeskPage />
     </QueryClientProvider>
   );
@@ -89,6 +95,15 @@ describe('KioskTagDeskPage', () => {
     for (const digit of ['1', '1', '1', '1']) fireEvent.click(within(pad).getByRole('button', { name: digit }));
     expect(await screen.findByRole('alert')).toHaveTextContent('パスワードが違います');
     expect(api.getTagDeskRegistry).not.toHaveBeenCalled();
+  });
+
+  it('holds the kiosk navigation while unlocked and frees it on lock', async () => {
+    await unlock();
+    expect(screen.getByLabelText('kiosk-nav')).toHaveTextContent('held');
+
+    fireEvent.click(screen.getByRole('button', { name: 'ロック' }));
+    expect(screen.getByLabelText('パスワードのテンキー')).toBeInTheDocument();
+    expect(screen.getByLabelText('kiosk-nav')).toHaveTextContent('free');
   });
 
   it('shows where a read tag is bound and releases it only after the second press', async () => {
