@@ -2,13 +2,14 @@ import Fastify from 'fastify';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const renderCsvDashboardToBufferMock = vi.hoisted(() => vi.fn());
-const getCurrentImageRenderedAtMock = vi.hoisted(() => vi.fn());
+const statMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../lib/auth.js', () => ({
   authorizeRoles: () => async () => undefined,
 }));
+vi.mock('fs', () => ({ promises: { stat: statMock } }));
 vi.mock('../../lib/signage-render-storage.js', () => ({
-  SignageRenderStorage: { getCurrentImageRenderedAt: getCurrentImageRenderedAtMock },
+  SignageRenderStorage: { getCurrentImagePathForClient: (key: string) => `/render/current-${key}.jpg` },
 }));
 vi.mock('../../services/signage/signage.renderer.js', () => ({
   SignageRenderer: class {
@@ -34,9 +35,10 @@ describe('signage management overview routes', () => {
 
   it('reports render time and last device fetch per client, null when unknown', async () => {
     service.listSignageRenderClientApiKeys.mockResolvedValue(['key-a', 'key-b']);
-    getCurrentImageRenderedAtMock.mockImplementation(async (key: string) =>
-      key === 'key-a' ? new Date('2026-10-01T05:00:00.000Z') : null,
-    );
+    statMock.mockImplementation(async (file: string) => {
+      if (file === '/render/current-key-a.jpg') return { mtime: new Date('2026-10-01T05:00:00.000Z') };
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    });
     recordSignageImageFetch('key-a', new Date('2026-10-01T05:00:20.000Z'));
     const app = Fastify();
     registerManagementOverviewRoutes(app, service as never);

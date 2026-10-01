@@ -76,7 +76,7 @@ export function QuickAddDialog({
   const [isCapturing, setIsCapturing] = useState(false);
 
   const [file, setFile] = useState<File | null>(null);
-  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+  const fileCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const [board, setBoard] = useState<{ content: QuickContent; name: string } | null>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
@@ -98,15 +98,25 @@ export function QuickAddDialog({
     setBoard(null);
   }, [isOpen]);
 
+  // 選んだ画像は URL を作らず、キャンバスへ直接描いて確認用に見せる
+  const isImageFile = file !== null && file.type.startsWith('image/');
   useEffect(() => {
-    if (!file || !file.type.startsWith('image/')) {
-      setFilePreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setFilePreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+    const canvas = fileCanvasRef.current;
+    if (!file || !isImageFile || !canvas || typeof createImageBitmap !== 'function') return;
+    let cancelled = false;
+    void createImageBitmap(file)
+      .then((bitmap) => {
+        if (cancelled) return;
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        canvas.getContext('2d')?.drawImage(bitmap, 0, 0);
+        bitmap.close();
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [file, isImageFile]);
 
   const suggestName = (value: string) => {
     if (!nameTouched) setName(value);
@@ -299,8 +309,8 @@ export function QuickAddDialog({
                 }}
               />
               <div className="sh-stage sh-quick-stage">
-                {filePreviewUrl ? (
-                  <img src={filePreviewUrl} alt="選んだ画像" />
+                {isImageFile ? (
+                  <canvas ref={fileCanvasRef} className="sh-quick-canvas" role="img" aria-label="選んだ画像" />
                 ) : (
                   <div className="sh-stage-empty">{file ? `${file.name}（PDF は 20 秒ごとにページを送ります）` : 'ファイルを選ぶと、ここに出ます。'}</div>
                 )}

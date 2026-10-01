@@ -1509,3 +1509,10 @@
   gap: 20px;
   align-items: start;
 }
+
+.signage-hub .sh-quick-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}

@@ -1,3 +1,5 @@
+import { promises as fs } from 'fs';
+
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -9,6 +11,16 @@ import { getSignageImageLastFetchedAt } from '../../services/signage/signage-del
 import { SignageRenderer } from '../../services/signage/signage.renderer.js';
 
 const csvPreviewParamsSchema = z.object({ id: z.string().uuid() });
+
+/** 端末用の最新画像がいつ描画されたか（ファイルの更新時刻）。未描画なら null。 */
+async function readRenderedAt(clientKey: string): Promise<Date | null> {
+  try {
+    return (await fs.stat(SignageRenderStorage.getCurrentImagePathForClient(clientKey))).mtime;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
 
 /**
  * 管理画面（サイネージハブ・データボード）用の読み取り専用 API。
@@ -22,7 +34,7 @@ export function registerManagementOverviewRoutes(app: FastifyInstance, signageSe
     const clients = await Promise.all(
       clientKeys.map(async (apiKey) => ({
         apiKey,
-        renderedAt: (await SignageRenderStorage.getCurrentImageRenderedAt(apiKey))?.toISOString() ?? null,
+        renderedAt: (await readRenderedAt(apiKey))?.toISOString() ?? null,
         lastFetchedAt: getSignageImageLastFetchedAt(apiKey)?.toISOString() ?? null,
         rotation: await signageService.getRotationForClient(apiKey),
       })),

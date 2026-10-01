@@ -94,18 +94,6 @@ export class SignageRenderStorage {
     }
   }
 
-  /** 端末用の最新画像がいつ描画されたか（ファイルの更新時刻）。未描画なら null。 */
-  static async getCurrentImageRenderedAt(clientKey: string): Promise<Date | null> {
-    try {
-      return (await fs.stat(pathForClientCurrentImage(clientKey))).mtime;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return null;
-      }
-      throw error;
-    }
-  }
-
   static getCurrentImagePathForClient(clientKey: string): string {
     return pathForClientCurrentImage(clientKey);
   }
