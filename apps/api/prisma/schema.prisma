@@ -1721,11 +1721,14 @@ model PurchaseOrderLookupRow {
   seiban                     String   @db.VarChar(64)
   purchasePartName           String   @db.VarChar(500)
   acceptedQuantity           Int      @default(0)
+  /// 購買CSV `FKOBAIST`（C=全数入荷済 / S=一部入荷済 / R=注文済・納入なし / O・P=未発注 / X=工程削除）。列追加前の取込行は null。
+  purchaseStatus             String?  @db.VarChar(8)
   lineIndex                  Int      @default(0)
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 
   @@unique([sourceCsvDashboardId, purchaseOrderNo, seiban, purchasePartCodeMatchKey], map: "POLookup_unique_src_po_seiban_matchkey")
+  @@index([seiban, purchasePartCodeMatchKey], map: "POLookup_idx_seiban_matchkey")
   @@index([purchaseOrderNo], map: "POLookup_idx_purchaseOrderNo")
   @@index([sourceCsvDashboardId], map: "POLookup_idx_sourceDashboard")
 }

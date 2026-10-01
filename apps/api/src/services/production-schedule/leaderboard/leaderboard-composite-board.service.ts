@@ -2,6 +2,7 @@
  * 順位ボード（複数資源スロット）向け集約取得。
  * 単一資源の shell / continue / COUNT / 装飾を既存サービスに委譲し、HTTP 層とクエリ実装の間に置くオーケストレーションのみを担当する。
  */
+import type { MaterialArrivalStatus } from '@raspi-system/shared-types';
 import { performance } from 'node:perf_hooks';
 import {
   countProductionScheduleDashboardVisibleRowsFromListFilters,
@@ -299,6 +300,7 @@ export type LeaderboardBoardReadResult = {
   resources: LeaderboardBoardResourceState[];
   snapshotExpired?: boolean;
   leaderboardFooterChipsByPartKey?: Record<string, unknown>;
+  leaderboardMaterialArrivalByPartKey?: Record<string, MaterialArrivalStatus>;
   processChangeResidualTotal?: number;
   processChangeResidualRows?: Array<
     LightShellRow & {
@@ -617,7 +619,7 @@ export async function fetchLeaderboardCompositeBoardShell(
     };
   }
 
-  const { rowsWithDeco, leaderboardFooterChipsByPartKey } = await measureLeaderboardBoardPhase(
+  const { rowsWithDeco, leaderboardFooterChipsByPartKey, leaderboardMaterialArrivalByPartKey } = await measureLeaderboardBoardPhase(
     sink,
     {
       endpoint: 'shell',
@@ -658,6 +660,7 @@ export async function fetchLeaderboardCompositeBoardShell(
     resources,
     ...(totalsDeferred ? { totalsDeferred: true } : {}),
     leaderboardFooterChipsByPartKey,
+    leaderboardMaterialArrivalByPartKey,
     ...processChangeResidualPayload
   };
 }
@@ -1013,7 +1016,7 @@ export async function continueLeaderboardCompositeBoard(
     };
   }
 
-  const { rowsWithDeco, deltaRowsWithDeco, leaderboardFooterChipsByPartKey } =
+  const { rowsWithDeco, deltaRowsWithDeco, leaderboardFooterChipsByPartKey, leaderboardMaterialArrivalByPartKey } =
     await measureLeaderboardBoardPhase(
       sink,
       {
@@ -1062,6 +1065,7 @@ export async function continueLeaderboardCompositeBoard(
     ...(deltaRowsWithDeco !== undefined ? { deltaRows: deltaRowsWithDeco } : {}),
     resources,
     ...processChangeResidualPayload,
-    leaderboardFooterChipsByPartKey
+    leaderboardFooterChipsByPartKey,
+    leaderboardMaterialArrivalByPartKey
   };
 }

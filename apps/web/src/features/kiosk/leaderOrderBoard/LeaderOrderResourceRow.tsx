@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { memo } from 'react';
 
 import { KioskPencilGlyph } from '../../../components/kiosk/KioskPencilGlyph';
+import { MaterialArrivalBadge } from '../../../components/kiosk/MaterialArrivalBadge';
 import {
   KioskResourceProcessChips,
   type KioskResourceProgressProcessChip
@@ -261,9 +262,12 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
           {pres.machineTypeNameLine}
         </div>
       ) : null}
-      {footerResourceChips.length > 0 ? (
-        <div className="mt-1 overflow-x-auto overflow-y-hidden border-t border-white/10 pt-1">
-          <KioskResourceProcessChips processes={footerResourceChips} className="flex-nowrap" />
+      {footerResourceChips.length > 0 || row.materialArrivalStatus ? (
+        <div className="mt-1 flex items-center gap-1 border-t border-white/10 pt-1">
+          <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+            <KioskResourceProcessChips processes={footerResourceChips} className="flex-nowrap" />
+          </div>
+          <MaterialArrivalBadge status={row.materialArrivalStatus} />
         </div>
       ) : null}
     </div>

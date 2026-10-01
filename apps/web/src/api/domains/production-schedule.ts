@@ -2,6 +2,7 @@ import { api } from '../http';
 
 import type { SelfInspectionStatus } from '../../features/part-measurement/types';
 import type {
+  MaterialArrivalStatus,
   GrindingPlanningBoardCategory,
   GrindingPlanningBoardOverridesResponse,
   GrindingPlanningBoardResponse,
@@ -44,6 +45,8 @@ export interface ProductionScheduleRow {
   selfInspectionEntryPath?: string | null;
   selfInspectionResourceCds?: string[];
   selfInspectionResourceCd?: string | null;
+  /** 順位ボード: 材料の入荷状況（Web が部品キーのマップから行へ付与）。材料の購買行が無い部品は null / 省略 */
+  materialArrivalStatus?: MaterialArrivalStatus | null;
   /** 順位ボード: 機械行の FSIGENSHOYORYO（分）。`+人` OFF 時の表示基準。 */
   machineRequiredMinutes?: number;
   /** 順位ボード: 同一 ProductNo + FKOJUN の FSIGENCD=10 人工数（分）。 */
@@ -92,6 +95,8 @@ export interface ProductionScheduleListResponse {
       isCompleted: boolean;
     }>
   >;
+  /** `responseProfile=leaderboard` のときのみ。部品キー → 材料の入荷状況（材料の購買行が無い部品は含まれない）。 */
+  leaderboardMaterialArrivalByPartKey?: Record<string, MaterialArrivalStatus>;
   /** キオスク順位ボード: 工程変更残骸疑い（通常 rows には含めない） */
   processChangeResidualTotal?: number;
   processChangeResidualRows?: ProductionScheduleRow[];
@@ -122,6 +127,7 @@ export type ProductionScheduleLeaderboardDecorationsResponse = {
     selfInspectionResourceCd: string | null;
   }>;
   leaderboardFooterChipsByPartKey?: ProductionScheduleListResponse['leaderboardFooterChipsByPartKey'];
+  leaderboardMaterialArrivalByPartKey?: ProductionScheduleListResponse['leaderboardMaterialArrivalByPartKey'];
 };
 
 export type ProductionScheduleCompletionFilter = 'all' | 'complete' | 'incomplete';

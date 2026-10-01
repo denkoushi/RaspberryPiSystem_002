@@ -74,6 +74,12 @@ export interface GrindingPlanningBoardSpecialDue {
 
 export type GrindingPlanningBoardItemKind = 'row' | 'split';
 
+/**
+ * 材料（鋳物・鋼材など）の入荷状況。購買CSV `FKOBAIST` 由来。
+ * received=全数入荷済 / partial=一部入荷済 / ordered=注文済・未入荷 / unordered=未発注。
+ */
+export type MaterialArrivalStatus = 'received' | 'partial' | 'ordered' | 'unordered';
+
 export interface GrindingPlanningBoardItem {
   itemId: string;
   kind: GrindingPlanningBoardItemKind;
@@ -98,6 +104,8 @@ export interface GrindingPlanningBoardItem {
   requiredMinutesKnown: boolean;
   isCompleted: boolean;
   progress: { completed: number; total: number; quantityKnown: boolean };
+  /** 材料の購買行が無い部品は null / 省略 */
+  materialArrivalStatus?: MaterialArrivalStatus | null;
 }
 
 export interface GrindingPlanningBoardLoad {

@@ -12,6 +12,8 @@ export type ParsedPurchaseOrderLookupCsvRow = {
   seiban: string;
   purchasePartName: string;
   acceptedQuantity: number;
+  /** `FKOBAIST`（大文字化済み）。列が無いCSV・空欄は null */
+  purchaseStatus: string | null;
   lineIndex: number;
 };
 
@@ -40,6 +42,7 @@ export function parsePurchaseOrderLookupRow(
     const n = Number.parseInt(qtyRaw, 10);
     acceptedQuantity = Number.isFinite(n) ? n : 0;
   }
+  const purchaseStatus = normalizeToken(rowData.FKOBAIST).toUpperCase().slice(0, 8) || null;
   return {
     purchaseOrderNo,
     purchasePartCodeRaw,
@@ -48,6 +51,7 @@ export function parsePurchaseOrderLookupRow(
     seiban,
     purchasePartName,
     acceptedQuantity,
+    purchaseStatus,
     lineIndex,
   };
 }

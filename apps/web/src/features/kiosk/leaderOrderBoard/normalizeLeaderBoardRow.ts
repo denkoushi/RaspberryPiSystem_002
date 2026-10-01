@@ -102,7 +102,8 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     selfInspectionResourceCds:
       (row as ProductionScheduleRow & { selfInspectionResourceCds?: string[] }).selfInspectionResourceCds ?? [],
     selfInspectionResourceCd:
-      (row as ProductionScheduleRow & { selfInspectionResourceCd?: string | null }).selfInspectionResourceCd ?? null
+      (row as ProductionScheduleRow & { selfInspectionResourceCd?: string | null }).selfInspectionResourceCd ?? null,
+    materialArrivalStatus: row.materialArrivalStatus ?? null
   };
 }
 
