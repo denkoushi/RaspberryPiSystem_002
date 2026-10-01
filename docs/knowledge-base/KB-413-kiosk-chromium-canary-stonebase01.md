@@ -59,4 +59,6 @@ Not measured yet. Fill in after the canary deploy.
 
 ## Rollback
 
-Set `kiosk_browser_engine: "firefox"` for `raspi4-kensaku-stonebase01` in `infrastructure/ansible/inventory.yml` and run the standard release for that host (`scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspi4-kensaku-stonebase01`, after `--print-plan`). The Firefox profile `kiosk-system` is left untouched by this change.
+Revert this change's commit (PR #1621) and run the standard release for the host (`scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspi4-kensaku-stonebase01`, after `--print-plan` shows `pi4ReleaseFiles: staged`). The Firefox profile `kiosk-system` is left untouched by this change.
+
+Do not roll back by editing only `inventory.yml`: an inventory-only commit names no Pi4 agent, so the release would not stage the launcher and the kiosk would stay on Chromium. The revert touches `resolve-browser.yml` and the role defaults, which the change classifier treats as Pi4 kiosk release files.
