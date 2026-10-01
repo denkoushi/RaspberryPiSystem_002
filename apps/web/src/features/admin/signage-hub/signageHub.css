@@ -1,0 +1,699 @@
+/*
+ * サイネージハブ（/admin/signage）専用の暗色テーマ。
+ * 管理コンソール全体の配色は変えず、.signage-hub の内側だけに適用する。
+ * 見た目の正本: docs/design-previews/signage-admin-unification/
+ */
+.signage-hub {
+  --sh-bg: #0b0c0e;
+  --sh-panel: #14161a;
+  --sh-raised: #1b1e23;
+  --sh-field: #0f1114;
+  --sh-line: #23262c;
+  --sh-line-strong: #2c3037;
+  --sh-text: #edeef0;
+  --sh-muted: #a3a9b1;
+  --sh-faint: #7c838c;
+  --sh-accent: #ff6a2b;
+  --sh-ok: #7fe3a8;
+  --sh-warn: #ffb08a;
+  --sh-danger: #ff4d4d;
+  --sh-kind-web_page: #c8f26a;
+  --sh-kind-data: #ff9a5c;
+  --sh-kind-pdf: #7db2ff;
+  --sh-kind-chat: #c3a4ff;
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: -16px -16px 0;
+  padding: 0 24px 24px;
+  min-height: calc(100dvh - 64px);
+  background: var(--sh-bg);
+  color: var(--sh-text);
+}
+
+.signage-hub .sh-mono {
+  font-family: ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.signage-hub .sh-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--sh-muted);
+}
+
+/* ---- 緊急表示の帯 ---- */
+.signage-hub .sh-emergency-band {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 0 -24px;
+  min-height: 44px;
+  background: var(--sh-danger);
+  color: #0b0c0e;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ---- 見出し行 ---- */
+.signage-hub .sh-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+}
+.signage-hub .sh-head h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.signage-hub .sh-head-meta {
+  font-size: 13px;
+  color: var(--sh-muted);
+}
+
+/* ---- ボタン ---- */
+.signage-hub .sh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid var(--sh-line-strong);
+  background: var(--sh-raised);
+  color: var(--sh-text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.signage-hub .sh-btn:hover:not(:disabled) {
+  background: #23272d;
+}
+.signage-hub .sh-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.signage-hub .sh-btn-primary {
+  background: var(--sh-accent);
+  border-color: var(--sh-accent);
+  color: #0b0c0e;
+}
+.signage-hub .sh-btn-primary:hover:not(:disabled) {
+  background: #ff7e45;
+}
+.signage-hub .sh-btn-danger-outline {
+  background: transparent;
+  border-color: #6b2a2a;
+  color: #ff8a8a;
+}
+.signage-hub .sh-btn-danger {
+  background: var(--sh-danger);
+  border-color: var(--sh-danger);
+  color: #0b0c0e;
+}
+.signage-hub .sh-btn-lime {
+  background: var(--sh-kind-web_page);
+  border-color: var(--sh-kind-web_page);
+  color: #0b0c0e;
+}
+.signage-hub .sh-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: 1px solid var(--sh-line-strong);
+  background: var(--sh-raised);
+  color: var(--sh-text);
+  cursor: pointer;
+}
+.signage-hub :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--sh-text);
+  outline-offset: 2px;
+}
+
+/* ---- 3 列 ---- */
+.signage-hub .sh-body {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr) 384px;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+}
+@media (max-width: 1180px) {
+  .signage-hub .sh-body {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .signage-hub .sh-right {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 760px) {
+  .signage-hub .sh-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.signage-hub .sh-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.signage-hub .sh-panel {
+  background: var(--sh-panel);
+  border: 1px solid var(--sh-line);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+.signage-hub .sh-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* ---- 端末 ---- */
+.signage-hub .sh-screen {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--sh-panel);
+  border: 1.5px solid var(--sh-line);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.signage-hub .sh-screen[aria-pressed='true'] {
+  flex-direction: column;
+  align-items: stretch;
+  border-color: var(--sh-accent);
+}
+.signage-hub .sh-screen-thumb {
+  width: 84px;
+  flex-shrink: 0;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  background: #101114;
+  object-fit: cover;
+}
+.signage-hub .sh-screen[aria-pressed='true'] .sh-screen-thumb {
+  width: 100%;
+  border-radius: 8px;
+}
+.signage-hub .sh-screen-name {
+  font-size: 14px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.signage-hub .sh-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.signage-hub .sh-status::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.signage-hub .sh-status-ok {
+  color: var(--sh-ok);
+}
+.signage-hub .sh-status-stale,
+.signage-hub .sh-status-never {
+  color: var(--sh-warn);
+}
+.signage-hub .sh-check-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.signage-hub .sh-check-row span:first-child {
+  color: var(--sh-muted);
+}
+
+/* ---- 放映中 ---- */
+.signage-hub .sh-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.signage-hub .sh-chip-onair {
+  background: #3a1414;
+  color: #ff8a8a;
+}
+.signage-hub .sh-chip-onair::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sh-danger);
+}
+.signage-hub .sh-chip-capture {
+  background: #1c2214;
+  color: var(--sh-kind-web_page);
+}
+.signage-hub .sh-chip-edit {
+  background: var(--sh-text);
+  color: #0b0c0e;
+}
+.signage-hub .sh-chip-emergency {
+  background: var(--sh-danger);
+  color: #0b0c0e;
+}
+.signage-hub .sh-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #101114;
+  box-shadow: 0 0 0 1px var(--sh-line-strong), 0 30px 60px -30px rgba(255, 106, 43, 0.35);
+}
+.signage-hub .sh-stage img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.signage-hub .sh-stage-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--sh-muted);
+}
+.signage-hub .sh-stage-note {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(11, 12, 14, 0.78);
+  color: var(--sh-text);
+  font-size: 11px;
+}
+.signage-hub .sh-region {
+  position: absolute;
+  border: 2px dashed var(--sh-kind-web_page);
+  background: rgba(200, 242, 106, 0.12);
+  color: #0b0c0e;
+  cursor: pointer;
+  padding: 0;
+}
+.signage-hub .sh-region span {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: var(--sh-kind-web_page);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---- 週間スケジュール ---- */
+.signage-hub .sh-timeline {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  row-gap: 0;
+}
+.signage-hub .sh-axis {
+  position: relative;
+  height: 18px;
+  font-size: 10px;
+  color: var(--sh-faint);
+}
+.signage-hub .sh-axis span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+.signage-hub .sh-axis span:first-child {
+  transform: none;
+}
+.signage-hub .sh-now-label {
+  top: -1px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--sh-accent);
+  color: #0b0c0e;
+  font-weight: 700;
+  line-height: 16px;
+}
+.signage-hub .sh-day-label {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--sh-muted);
+}
+.signage-hub .sh-day-label[data-today='true'] {
+  color: #ff8a55;
+  font-weight: 700;
+}
+.signage-hub .sh-day-track {
+  position: relative;
+  min-height: 26px;
+  border-top: 1px solid #1e2126;
+}
+.signage-hub .sh-day-track[data-today='true'] {
+  background: rgba(255, 106, 43, 0.06);
+}
+.signage-hub .sh-day-empty {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  font-size: 11px;
+  color: var(--sh-faint);
+}
+.signage-hub .sh-block {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 5px;
+  color: #0b0c0e;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.signage-hub .sh-block[data-kind='web_page'] { background: var(--sh-kind-web_page); }
+.signage-hub .sh-block[data-kind='data'] { background: var(--sh-kind-data); }
+.signage-hub .sh-block[data-kind='pdf'] { background: var(--sh-kind-pdf); }
+.signage-hub .sh-block[data-kind='chat'] { background: var(--sh-kind-chat); }
+.signage-hub .sh-block[data-past='true'] { opacity: 0.45; }
+.signage-hub .sh-block[data-dimmed='true'] { opacity: 0.28; }
+.signage-hub .sh-block[data-onair='true'],
+.signage-hub .sh-block[data-selected='true'] {
+  box-shadow: 0 0 0 2px var(--sh-panel), 0 0 0 3.5px var(--sh-text);
+  z-index: 1;
+}
+.signage-hub .sh-now-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--sh-accent);
+  pointer-events: none;
+  z-index: 2;
+}
+.signage-hub .sh-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--sh-muted);
+}
+.signage-hub .sh-legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.signage-hub .sh-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+/* ---- コンテンツ一覧 ---- */
+.signage-hub .sh-add-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.signage-hub .sh-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 76px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--sh-line-strong);
+  background: var(--sh-raised);
+  color: var(--sh-text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.signage-hub .sh-tile-web {
+  border-color: var(--sh-kind-web_page);
+  background: #1c2214;
+  color: #e4f8b8;
+}
+.signage-hub .sh-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--sh-line-strong);
+  background: var(--sh-field);
+}
+.signage-hub .sh-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sh-text);
+  font-size: 13px;
+  outline: none;
+}
+.signage-hub .sh-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.signage-hub .sh-pill {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--sh-line-strong);
+  background: transparent;
+  color: var(--sh-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.signage-hub .sh-pill[aria-pressed='true'] {
+  background: var(--sh-text);
+  border-color: var(--sh-text);
+  color: #0b0c0e;
+}
+.signage-hub .sh-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 -6px;
+  overflow-y: auto;
+  max-height: 380px;
+}
+.signage-hub .sh-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+.signage-hub .sh-item:hover {
+  background: var(--sh-raised);
+}
+.signage-hub .sh-item-swatch {
+  width: 44px;
+  height: 26px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+.signage-hub .sh-item-swatch[data-unused='true'] {
+  background: transparent !important;
+  border: 1.5px dashed currentColor;
+}
+.signage-hub .sh-item-name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.signage-hub .sh-item-meta {
+  font-size: 12px;
+  color: var(--sh-muted);
+}
+.signage-hub .sh-item-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.signage-hub .sh-mini-btn {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--sh-line-strong);
+  background: transparent;
+  color: var(--sh-text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.signage-hub .sh-mini-btn:hover {
+  background: #23272d;
+}
+
+/* ---- 右パネルの入力 ---- */
+.signage-hub .sh-fld {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.signage-hub .sh-flbl {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sh-muted);
+}
+.signage-hub .sh-input,
+.signage-hub .sh-textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--sh-line-strong);
+  background: var(--sh-field);
+  color: var(--sh-text);
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.signage-hub .sh-textarea {
+  padding: 12px;
+  line-height: 1.5;
+  resize: none;
+  font-weight: 600;
+}
+.signage-hub .sh-seg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid var(--sh-line-strong);
+  background: var(--sh-field);
+}
+.signage-hub .sh-seg button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--sh-muted);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.signage-hub .sh-seg button[aria-pressed='true'] {
+  background: var(--sh-text);
+  color: #0b0c0e;
+}
+.signage-hub .sh-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 4px 0 10px;
+  border-radius: 8px;
+  background: #1c2214;
+  color: #e4f8b8;
+  font-size: 12px;
+  font-weight: 600;
+}
+.signage-hub .sh-tag button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.signage-hub .sh-error {
+  font-size: 12px;
+  color: #ff9a9a;
+}
+.signage-hub .sh-hint {
+  font-size: 12px;
+  color: var(--sh-muted);
+  line-height: 1.6;
+}
+
+/* ---- 既存フォーム部品（明色前提）を暗色パネルに合わせる ---- */
+.signage-hub .sh-legacy > div,
+.signage-hub .sh-legacy form,
+.signage-hub .sh-legacy [class*='bg-slate-100'],
+.signage-hub .sh-legacy [class*='bg-white']:not(input):not(select):not(textarea) {
+  background: transparent;
+  border-color: var(--sh-line);
+  box-shadow: none;
+}
+.signage-hub .sh-legacy > div {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.signage-hub .sh-legacy :is(label, p, span, h2, h3, h4, th, td, li, legend) {
+  color: var(--sh-muted);
+}
+.signage-hub .sh-legacy :is(input, select, textarea) {
+  background: var(--sh-field);
+  border: 1px solid var(--sh-line-strong);
+  color: var(--sh-text);
+}
+.signage-hub .sh-legacy :is(input[type='checkbox'], input[type='radio']) {
+  accent-color: var(--sh-accent);
+}
+.signage-hub .sh-legacy table {
+  border-color: var(--sh-line);
+}
+.signage-hub .sh-legacy :is(th, td) {
+  border-color: var(--sh-line);
+  background: transparent;
+}
+.signage-hub .sh-legacy button[class*='text-slate-800'] {
+  color: var(--sh-text);
+}
+.signage-hub .sh-legacy button[class*='text-slate-800']:hover {
+  background: #23272d;
+}

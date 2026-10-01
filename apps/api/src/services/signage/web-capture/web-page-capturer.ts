@@ -154,11 +154,16 @@ const COLLECT_REGIONS_EXPRESSION = `(() => {
     return 'body > ' + parts.join(' > ');
   };
   const regions = [];
+  const picked = [];
   document
     .querySelectorAll('header,nav,aside,footer,[role=banner],[role=navigation],[role=complementary]')
     .forEach((el) => {
+      // ページ全体の枠だけを候補にする：本文（main）の中や、すでに候補にした要素の中は除く
+      if (el.closest('main')) return;
+      if (picked.some((parent) => parent !== el && parent.contains(el))) return;
       const rect = el.getBoundingClientRect();
       if (rect.width < 40 || rect.height < 16) return;
+      picked.push(el);
       regions.push({
         selector: selectorOf(el),
         label: labels[el.tagName.toLowerCase()] || '領域',

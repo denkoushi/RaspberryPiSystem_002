@@ -102,11 +102,8 @@ export function AdminLayout() {
             <NavLink to="/admin/backup/targets" className={linkClass}>
               バックアップ
             </NavLink>
-            <NavLink to="/admin/signage/schedules" className={linkClass}>
+            <NavLink to="/admin/signage" className={linkClass}>
               サイネージ
-            </NavLink>
-            <NavLink to="/admin/signage/preview" className={linkClass}>
-              サイネージプレビュー
             </NavLink>
             <NavLink to="/admin/security" className={linkClass}>
               セキュリティ

@@ -172,3 +172,17 @@ export function formatMinute(minute: number): string {
   const minutes = minute % 60;
   return `${hours}:${String(minutes).padStart(2, '0')}`;
 }
+
+/** 週間スケジュールの表に出ない予定（無効、または選択中の端末向けでない）を理由つきで返す */
+export function listOffTimelineSchedules(
+  schedules: SignageSchedule[],
+  clientKey: string | null,
+): Array<{ scheduleId: string; name: string; reason: string }> {
+  return schedules
+    .filter((schedule) => !schedule.enabled || !scheduleTargetsClient(schedule, clientKey))
+    .map((schedule) => ({
+      scheduleId: schedule.id,
+      name: schedule.name,
+      reason: schedule.enabled ? '他の端末' : '無効',
+    }));
+}

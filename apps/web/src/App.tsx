@@ -33,10 +33,7 @@ import { ProductionScheduleSettingsPage } from './pages/admin/ProductionSchedule
 import { RaspiInventoryPage } from './pages/admin/RaspiInventoryPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
 import { SelfInspectionOutOfToleranceReviewsPage } from './pages/admin/SelfInspectionOutOfToleranceReviewsPage';
-import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
-import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
-import { SignagePreviewPage } from './pages/admin/SignagePreviewPage';
-import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
+import { SignageHubPage } from './pages/admin/SignageHubPage';
 import { VisualizationDashboardsPage } from './pages/admin/VisualizationDashboardsPage';
 import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
 import { KioskAssemblyPage } from './pages/kiosk/KioskAssemblyPage';
@@ -395,10 +392,12 @@ function App() {
         <Route path="photo-gallery-seed" element={<PhotoGallerySeedPage />} />
         <Route path="kiosk-documents" element={<KioskDocumentsAdminPage />} />
         <Route path="signage">
-          <Route path="schedules" element={<SignageSchedulesPage />} />
-          <Route path="pdfs" element={<SignagePdfsPage />} />
-          <Route path="emergency" element={<SignageEmergencyPage />} />
-          <Route path="preview" element={<SignagePreviewPage />} />
+          <Route index element={<SignageHubPage />} />
+          {/* 旧 4 ページの URL は 1 画面ハブへ転送する */}
+          <Route path="schedules" element={<Navigate to="/admin/signage" replace />} />
+          <Route path="preview" element={<Navigate to="/admin/signage" replace />} />
+          <Route path="pdfs" element={<Navigate to="/admin/signage?panel=pdf-upload" replace />} />
+          <Route path="emergency" element={<Navigate to="/admin/signage?panel=emergency" replace />} />
         </Route>
         {/* 後方互換性のため、既存パスも維持 */}
         <Route path="employees" element={<MovedToKioskTagDeskPage />} />

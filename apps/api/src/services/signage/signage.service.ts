@@ -144,6 +144,8 @@ export interface SignageContentResponse {
     totalPages: number;
     rows: Array<Record<string, unknown>>;
   }>; // CSVダッシュボードデータ（複数対応）
+  /** 緊急表示が有効なときだけ入る。メッセージは描画側で画像に入れる。 */
+  emergency?: { message: string | null; messageOnly: boolean };
 }
 
 export class SignageService {
@@ -431,6 +433,11 @@ export class SignageService {
         pdf: pdfPayload,
         pdfsById: Object.keys(pdfsById).length > 0 ? pdfsById : undefined,
         csvDashboardsById: Object.keys(csvDashboardsById).length > 0 ? csvDashboardsById : undefined,
+        emergency: {
+          message: emergency.message,
+          // 「メッセージのみ」= 一緒に出すコンテンツの指定がない
+          messageOnly: !emergency.contentType && !(emergency.layoutConfig && typeof emergency.layoutConfig === 'object'),
+        },
       };
     }
 

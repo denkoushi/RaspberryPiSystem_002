@@ -5,6 +5,7 @@ import {
   classifyScheduleContent,
   formatMinute,
   getSignageNow,
+  listOffTimelineSchedules,
   scheduleTargetsClient,
   summarizeToday,
 } from './weekTimelineModel';
@@ -140,5 +141,23 @@ describe('summarizeToday', () => {
       next: { startMinute: 17 * 60, name: '順位ボード' },
     });
     expect(formatMinute(17 * 60)).toBe('17:00');
+  });
+});
+
+describe('listOffTimelineSchedules', () => {
+  it('lists disabled schedules and schedules for other devices so they stay editable', () => {
+    expect(
+      listOffTimelineSchedules(
+        [
+          schedule({ id: 'shown' }),
+          schedule({ id: 'off', name: '休止中', enabled: false }),
+          schedule({ id: 'other', name: '事務所用', targetClientKeys: ['key-b'] }),
+        ],
+        'key-a',
+      ),
+    ).toEqual([
+      { scheduleId: 'off', name: '休止中', reason: '無効' },
+      { scheduleId: 'other', name: '事務所用', reason: '他の端末' },
+    ]);
   });
 });
