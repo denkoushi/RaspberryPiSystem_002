@@ -25,7 +25,6 @@ import {
   KIOSK_IMMERSIVE_HEADER_VISIBLE_TRANSFORM_CLASS
 } from '../features/kiosk/kioskImmersiveHeaderChrome';
 import { usesKioskImmersiveLayout } from '../features/kiosk/kioskImmersiveLayoutPolicy';
-import { useKioskNavLocked } from '../features/kiosk/kioskNavLock';
 import { resolveKioskReadyChallenge } from '../features/kiosk/kioskReleaseIdentity';
 import {
   advanceKioskWebActivation,
@@ -58,9 +57,7 @@ export function KioskLayout() {
   const [noticeScheduledAt, setNoticeScheduledAt] = useState<{ runId: string; scheduledAt: string } | null>(null);
   const immersiveKioskLayout = usesKioskImmersiveLayout(location.pathname);
   const planningBoardRoute = location.pathname.replace(/\/$/, '') === '/kiosk/production-schedule/planning-board';
-  // An unlocked password-protected screen keeps people in it until they lock it again.
-  const navLocked = useKioskNavLocked();
-  const headerReveal = useKioskBottomRightHeaderReveal(immersiveKioskLayout && !navLocked);
+  const headerReveal = useKioskBottomRightHeaderReveal(immersiveKioskLayout);
   const navTabOrder = normalizeKioskHeaderTabOrder(
     kioskConfig?.navTabOrder ?? DEFAULT_KIOSK_HEADER_TAB_ORDER
   );
@@ -229,7 +226,7 @@ export function KioskLayout() {
       {deployStatus?.preNotice ? (
         <KioskDeployPreNotice runId={preNoticeRunId} scheduledAt={preNoticeScheduledAt} />
       ) : null}
-      {immersiveKioskLayout && !navLocked ? (
+      {immersiveKioskLayout ? (
         <div
           className={KIOSK_IMMERSIVE_HEADER_HOT_ZONE_CLASS}
           onMouseEnter={headerReveal.onHotZoneEnter}
@@ -239,7 +236,6 @@ export function KioskLayout() {
       <header
         className={clsx(
           'shrink-0 bg-slate-900/80 px-4 py-3 backdrop-blur',
-          navLocked && 'invisible',
           !immersiveKioskLayout && 'border-b border-white/10',
           immersiveKioskLayout && KIOSK_IMMERSIVE_HEADER_BORDER_CLASS,
           immersiveKioskLayout && KIOSK_IMMERSIVE_HEADER_FIXED_CLASS,
