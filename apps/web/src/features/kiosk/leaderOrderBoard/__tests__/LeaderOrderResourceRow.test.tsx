@@ -110,4 +110,37 @@ describe('LeaderOrderResourceRow', () => {
 
     expect(screen.getByRole('button', { name: '備考を編集。ホバーで全文を表示' })).toHaveAttribute('title', note);
   });
+
+  it('shows the material arrival badge in the footer row, with or without process chips', () => {
+    const renderRow = (
+      row: ReturnType<typeof mkLeaderBoardRow>,
+      chips: { rowId: string; resourceCd: string; isCompleted: boolean }[] = []
+    ) =>
+      render(
+        <LeaderOrderResourceRow
+          resourceCd="305"
+          row={row}
+          orderUsageNumbers={undefined}
+          onOrderChange={noop}
+          onCompleteRow={noop}
+          completePending={false}
+          orderPending={false}
+          footerResourceChips={chips}
+        />
+      );
+
+    const withChips = renderRow(mkLeaderBoardRow({ id: 'row-mat-1', materialArrivalStatus: 'partial' }), [
+      { rowId: 'p1', resourceCd: '581', isCompleted: false }
+    ]);
+    expect(withChips.getByText('材料一部入荷済')).toBeInTheDocument();
+    expect(withChips.getByText('581')).toBeInTheDocument();
+    withChips.unmount();
+
+    const withoutChips = renderRow(mkLeaderBoardRow({ id: 'row-mat-2', materialArrivalStatus: 'unordered' }));
+    expect(withoutChips.getByText('材料未発注')).toBeInTheDocument();
+    withoutChips.unmount();
+
+    const noMaterial = renderRow(mkLeaderBoardRow({ id: 'row-mat-3' }));
+    expect(noMaterial.queryByText(/^材料/)).toBeNull();
+  });
 });

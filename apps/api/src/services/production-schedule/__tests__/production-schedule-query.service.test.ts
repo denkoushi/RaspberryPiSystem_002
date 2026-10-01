@@ -71,6 +71,10 @@ vi.mock('../production-schedule-machine-name-enrichment.service.js', () => ({
   ),
 }));
 
+vi.mock('../leaderboard/leaderboard-part-material-arrival.service.js', () => ({
+  buildLeaderboardMaterialArrivalByPartKeyForScheduleRows: vi.fn(async () => ({})),
+}));
+
 vi.mock('../production-schedule-customer-name-enrichment.service.js', () => ({
   enrichProductionScheduleRowsWithCustomerName: vi.fn(async (rows: Array<Record<string, unknown>>) =>
     rows.map((row) => ({

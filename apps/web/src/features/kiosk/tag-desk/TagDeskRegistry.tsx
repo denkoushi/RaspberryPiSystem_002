@@ -1,6 +1,6 @@
 
 
-import { KindIcon, LockIcon, NfcIcon, PlusIcon, SearchIcon } from './TagDeskIcons';
+import { KindIcon, NfcIcon, PlusIcon, SearchIcon } from './TagDeskIcons';
 import { KIND_META, TAG_DESK_KINDS, shortUid, statusLabel, statusTone } from './tagDeskModel';
 import { tagDesk } from './tagDeskTheme';
 
@@ -18,11 +18,9 @@ type Props = {
   hitIds: Set<string>;
   releasing: boolean;
   listRef: Ref<HTMLDivElement>;
-  /** Back to the PIN pad; the only way out while the desk is unlocked. */
-  onLock: () => void;
 };
 
-export function TagDeskRegistry({ state, hitKinds, hitIds, releasing, listRef, onLock }: Props) {
+export function TagDeskRegistry({ state, hitKinds, hitIds, releasing, listRef }: Props) {
   const meta = KIND_META[state.kind];
   const tagged = state.rows.filter((row) => row.tags.length > 0).length;
   const untagged = state.rows.length - tagged;
@@ -49,7 +47,7 @@ export function TagDeskRegistry({ state, hitKinds, hitIds, releasing, listRef, o
             );
           })}
         </div>
-        <label className="flex h-11 w-[240px] items-center gap-2 rounded-[10px] border border-[#223043] bg-[#070b12] px-3 text-[#8494a8] focus-within:border-[#4cc9f0]">
+        <label className="flex h-11 w-[300px] items-center gap-2 rounded-[10px] border border-[#223043] bg-[#070b12] px-3 text-[#8494a8] focus-within:border-[#4cc9f0]">
           <SearchIcon className="h-[18px] w-[18px] flex-none" />
           <input
             id="tag-desk-search"
@@ -72,10 +70,6 @@ export function TagDeskRegistry({ state, hitKinds, hitIds, releasing, listRef, o
         <button type="button" className={`${tagDesk.btn} ${tagDesk.ghost} ml-auto`} onClick={() => state.openForm({ kind: state.kind, id: null })}>
           <PlusIcon />
           {meta.label}を追加
-        </button>
-        <button type="button" className={`${tagDesk.btn} border-[#5a4520] bg-[#3a2a12] text-[#ffb547] hover:bg-[#4a3617]`} onClick={onLock}>
-          <LockIcon />
-          ロック
         </button>
       </div>
       <div className={`${COLUMNS} h-10 border-b border-[#223043] text-xs font-bold tracking-[0.1em] text-[#5c6d83]`}>
