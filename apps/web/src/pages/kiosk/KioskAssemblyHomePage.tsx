@@ -10,14 +10,11 @@ import {
   listAssemblyWorkSessionSummaries,
   startAssemblyLotSerial
 } from '../../api/client';
-import { buttonClassName } from '../../components/ui/Button';
 import {
-  AssemblyCompletedPane,
-  AssemblyLotPane,
+  AssemblyHomeBoard,
+  AssemblyLotRegisterRail,
   AssemblyOperatorNfcDialog,
-  AssemblyStartPane,
   AssemblyWorkUnitInvalidationDialog,
-  AssemblyWipPane,
   buildAssemblyLotWorkIds,
   createAssemblyRequestId,
   KIOSK_ASSEMBLY_TRAINING_PATH,
@@ -26,6 +23,7 @@ import {
   kioskAssemblyTraceabilityPath,
   kioskAssemblyWorkSessionPath,
   normalizeAssemblyUpperIdentifier,
+  presentAssemblyHomeBoard,
   readAssemblyApiErrorMessage,
   toHalfWidthAscii
 } from '../../features/assembly';
@@ -86,6 +84,10 @@ export function KioskAssemblyHomePage() {
   const normalizedSerialDraft = useMemo(() => normalizeSerialIdentifier(serialDraft), [serialDraft]);
   const selectedProductNoKey = selectedCandidate ? normalizeAssemblyUpperIdentifier(selectedCandidate.fseiban) : null;
   const selectedLotQty = selectedProductNoKey ? (lotQtyByProductNo[selectedProductNoKey] ?? null) : null;
+  const boardRows = useMemo(
+    () => presentAssemblyHomeBoard(lots, sessions, completedSessions),
+    [lots, sessions, completedSessions]
+  );
   const pendingApprovalCount = useMemo(
     () => completedSessions.filter((session) => session.approval == null).length,
     [completedSessions]
@@ -152,6 +154,13 @@ export function KioskAssemblyHomePage() {
       setCompletedLoading(false);
     }
   }, []);
+
+  const boardLoading = lotLoading || sessionLoading || completedLoading;
+  const reloadBoard = useCallback(() => {
+    void reloadLots();
+    void reloadSessions();
+    void reloadCompletedSessions();
+  }, [reloadLots, reloadSessions, reloadCompletedSessions]);
 
   useEffect(() => {
     void reloadLots();
@@ -287,8 +296,8 @@ export function KioskAssemblyHomePage() {
     if (expectedLotQuantity == null) {
       setMessage(
         lotQtyLoading
-          ? 'ロット数を取得中です。しばらくお待ちください。'
-          : '生産実績からロット数を取得できませんでした。ロット数を手入力してください。'
+          ? 'ロット数を取得中です。'
+          : 'ロット数を取得できません。台数を手入力してください。'
       );
       return;
     }
@@ -314,8 +323,8 @@ export function KioskAssemblyHomePage() {
     if (expectedLotQuantity == null) {
       setMessage(
         lotQtyLoading
-          ? 'ロット数を取得中です。しばらくお待ちください。'
-          : '生産実績からロット数を取得できませんでした。ロット数を手入力してください。'
+          ? 'ロット数を取得中です。'
+          : 'ロット数を取得できません。台数を手入力してください。'
       );
       return;
     }
@@ -336,7 +345,7 @@ export function KioskAssemblyHomePage() {
       setLotSerialNos([]);
       setWorkIdMode('auto');
       setSerialDraft('');
-      setMessage('ロットを登録しました。登録済みロットから作業用IDごとに開始してください。');
+      setMessage('ロットを登録しました。');
       await reloadLots();
     } catch (e: unknown) {
       setMessage(readAssemblyApiErrorMessage(e, 'ロット登録に失敗しました。'));
@@ -381,7 +390,7 @@ export function KioskAssemblyHomePage() {
         requestId: createAssemblyRequestId()
       });
       setInvalidationTarget(null);
-      setMessage('作業アイテムを削除しました。作業用IDと履歴は監査用に保持されます。');
+      setMessage('削除しました。履歴は残ります。');
       await Promise.all([reloadLots(), reloadSessions(), reloadCompletedSessions()]);
     } catch (error: unknown) {
       setInvalidationError(readAssemblyApiErrorMessage(error, '作業アイテムを削除できませんでした。'));
@@ -390,92 +399,57 @@ export function KioskAssemblyHomePage() {
     }
   };
 
+  const openInvalidation = (target: AssemblyWorkUnitInvalidationTarget) => {
+    setInvalidationTarget(target);
+    setInvalidationError(null);
+  };
+  const navLinkClassName =
+    'inline-flex min-h-11 items-center gap-2 rounded-lg px-3.5 text-base font-bold text-[#97a5b2] hover:bg-[#1f2730] hover:text-[#eef3f6]';
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 p-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h1 className="text-[1.35rem] font-bold leading-tight">組立状況</h1>
-          <div className="flex flex-wrap items-center gap-1.5" aria-label="組立状況のKPI">
-            <span className="inline-flex min-h-8 items-center rounded border border-cyan-300/30 bg-cyan-500/10 px-2 text-xs font-bold text-cyan-100">
-              登録ロット {lots.length}
-            </span>
-            <span className="inline-flex min-h-8 items-center rounded border border-emerald-300/30 bg-emerald-500/10 px-2 text-xs font-bold text-emerald-100">
-              仕掛中 {sessions.length}
-            </span>
-            <span className="inline-flex min-h-8 items-center rounded border border-amber-300/30 bg-amber-500/10 px-2 text-xs font-bold text-amber-100">
-              承認待ち {pendingApprovalCount}
-            </span>
-          </div>
-        </div>
-        <nav className="flex flex-wrap items-center gap-2" aria-label="組立メニュー">
-          <Link
-            to={KIOSK_ASSEMBLY_TRAINING_PATH}
-            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
-          >
+    <div className="flex min-h-0 flex-1 flex-col bg-[#0f1317] text-[#eef3f6]">
+      <div className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#2c3742] bg-[#161c22] px-5">
+        <h1 className="text-[1.6rem] font-black tracking-widest">組立</h1>
+        <nav className="flex flex-wrap items-center gap-1" aria-label="組立メニュー">
+          <Link to={KIOSK_ASSEMBLY_TRAINING_PATH} className={navLinkClassName}>
             訓練
           </Link>
-          <Link
-            to={kioskAssemblyLibraryPath({ focus: 'procedures' })}
-            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
-          >
-            手順書ライブラリ
+          <Link to={kioskAssemblyLibraryPath({ focus: 'procedures' })} className={navLinkClassName}>
+            手順書
           </Link>
-          <Link
-            to={kioskAssemblyLibraryPath({ focus: 'templates' })}
-            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
-          >
-            組立テンプレート
+          <Link to={kioskAssemblyLibraryPath({ focus: 'templates' })} className={navLinkClassName}>
+            手順を作る
           </Link>
-          <Link
-            to={kioskAssemblyRecordApprovalPath()}
-            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
-          >
+          <Link to={kioskAssemblyRecordApprovalPath()} className={navLinkClassName} aria-label="記録確認">
             記録確認
+            {pendingApprovalCount > 0 ? (
+              <span className="rounded-full bg-[#ff7d61] px-2 font-mono text-sm font-semibold text-[#2a0a02]" aria-hidden="true">
+                {pendingApprovalCount}
+              </span>
+            ) : null}
           </Link>
-          <Link
-            to={kioskAssemblyTraceabilityPath()}
-            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
-          >
-            製品構成・正式ID
+          <Link to={kioskAssemblyTraceabilityPath()} className={navLinkClassName}>
+            製品構成
           </Link>
         </nav>
       </div>
 
-      {message ? <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">{message}</p> : null}
+      {message ? (
+        <p role="status" className="shrink-0 border-b border-[#2c3742] bg-[#161c22] px-5 py-2 text-sm font-bold text-[#f6b93b]">
+          {message}
+        </p>
+      ) : null}
 
-      <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(0,1fr)_24rem] xl:overflow-hidden 2xl:grid-cols-[minmax(0,1fr)_24.5rem]">
-        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-2 xl:grid-cols-3 xl:overflow-hidden">
-          <AssemblyLotPane
-            lots={lots}
-            loading={lotLoading}
-            busySerialId={busySerialId}
-            onReload={() => void reloadLots()}
-            onStartSerial={openStartNfcGate}
-            onInvalidate={(target) => {
-              setInvalidationTarget(target);
-              setInvalidationError(null);
-            }}
-          />
-          <AssemblyWipPane
-            sessions={sessions}
-            loading={sessionLoading}
-            onReload={() => void reloadSessions()}
-            onInvalidate={(target) => {
-              setInvalidationTarget(target);
-              setInvalidationError(null);
-            }}
-          />
-          <AssemblyCompletedPane
-            sessions={completedSessions}
-            loading={completedLoading}
-            onReload={() => void reloadCompletedSessions()}
-            onInvalidate={(target) => {
-              setInvalidationTarget(target);
-              setInvalidationError(null);
-            }}
-          />
-        </div>
-        <AssemblyStartPane
+      <main className="grid min-h-0 flex-1 grid-cols-1 overflow-auto xl:grid-cols-[minmax(0,1fr)_27rem] xl:overflow-hidden">
+        <AssemblyHomeBoard
+          rows={boardRows}
+          loading={boardLoading}
+          busySerialId={busySerialId}
+          onReload={reloadBoard}
+          onStartSerial={openStartNfcGate}
+          onInvalidate={openInvalidation}
+        />
+        <AssemblyLotRegisterRail
           fseibanInput={fseibanInput}
           normalizedFseiban={normalizedFseiban}
           onFseibanInputChange={changeFseibanInput}
@@ -498,7 +472,6 @@ export function KioskAssemblyHomePage() {
           onSerialClear={() => setSerialDraft('')}
           onSerialAdd={addSerialToLot}
           onSerialRemove={removeSerialFromLot}
-          selectedLotQty={selectedLotQty}
           autoLotQty={autoLotQty}
           manualLotQtyDraft={manualLotQtyDraft}
           onManualLotQtyDraftChange={changeManualLotQtyDraft}

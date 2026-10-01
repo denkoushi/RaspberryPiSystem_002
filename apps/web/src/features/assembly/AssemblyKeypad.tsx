@@ -46,23 +46,23 @@ type Props = {
 };
 
 const keyClassName =
-  'min-h-7 rounded border border-white/15 bg-slate-950 text-[0.76rem] font-bold text-white hover:bg-slate-800 disabled:opacity-50';
+  'h-11 rounded-md bg-[#1f2730] font-mono text-lg font-semibold text-[#eef3f6] hover:bg-[#2a343f] active:bg-[#35d6ae] active:text-[#04221b] disabled:opacity-50';
 const actionKeyClassName =
-  'min-h-7 rounded border border-amber-300/25 bg-slate-950 text-[0.68rem] font-bold text-amber-200 hover:bg-slate-800 disabled:opacity-50';
+  'col-span-2 h-11 rounded-md bg-[#1f2730] text-sm font-bold text-[#97a5b2] hover:bg-[#2a343f] disabled:opacity-50';
 
 export function AssemblyKeypad({ ariaLabel, disabled = false, onKey, onBackspace, onClear }: Props) {
   return (
-    <div role="group" aria-label={ariaLabel} className="grid grid-cols-8 gap-1">
+    <div role="group" aria-label={ariaLabel} className="grid grid-cols-10 gap-1.5">
       {ASSEMBLY_IDENTIFIER_KEYS.map((key) => (
         <button key={key} type="button" className={keyClassName} disabled={disabled} onClick={() => onKey(key)}>
           {key}
         </button>
       ))}
-      <button type="button" className={actionKeyClassName} disabled={disabled} onClick={onBackspace}>
-        BS
+      <button type="button" className={actionKeyClassName} disabled={disabled} aria-label="BS" onClick={onBackspace}>
+        1字消す
       </button>
-      <button type="button" className={actionKeyClassName} disabled={disabled} onClick={onClear}>
-        CLR
+      <button type="button" className={actionKeyClassName} disabled={disabled} aria-label="CLR" onClick={onClear}>
+        全消し
       </button>
     </div>
   );
