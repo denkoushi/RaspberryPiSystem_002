@@ -287,6 +287,16 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
     setError(null);
     void mutations.deleteImportPhoto.mutateAsync({ payloadId: candidate.id, photoId }).catch((caught) => setError(errorText(caught)));
   };
+  // Only coming back from an existing item clears what that item filled in; a name or tool
+  // information entered before this button is pressed must survive it.
+  const chooseNew = () => {
+    if (draft.mode === 'NEW_ITEM') return;
+    if (draft.mode === 'EXISTING_ITEM' && draft.itemId) {
+      update({ mode: 'NEW_ITEM', area: '', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', itemId: '', itemName: '', name: `ItemlistRaspi ${candidate?.sourceItemId ?? ''}`, model: '', usage: '', unit: null, maker: '', toolName: '', workMaterial: '', toolSize: '' });
+      return;
+    }
+    update({ mode: 'NEW_ITEM', itemId: '', itemName: '' });
+  };
   const chooseExisting = (item: InventoryItem) => {
     update({ itemId: item.id, itemName: item.name, name: item.name, model: item.model ?? '', usage: item.usage ?? '', unit: item.unit, maker: item.maker ?? '', toolName: item.toolName ?? '', workMaterial: item.workMaterial ?? '', toolSize: item.toolSize ?? '' });
   };
@@ -393,7 +403,7 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
         <div className={`${invPanel} relative flex min-h-0 flex-col overflow-y-auto px-[18px] py-1`}>
           <Row id="mode" number={next()} title="新規か既存か" done={isDone('mode')} current={currentId === 'mode'}>
             <div className="flex flex-wrap gap-1.5">
-              <button type="button" aria-pressed={draft.mode === 'NEW_ITEM'} className={invSeg(draft.mode === 'NEW_ITEM')} onClick={() => update({ mode: 'NEW_ITEM', area: '', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', itemId: '', itemName: '', name: `ItemlistRaspi ${candidate.sourceItemId}`, model: '', usage: '' })}>新規登録</button>
+              <button type="button" aria-pressed={draft.mode === 'NEW_ITEM'} className={invSeg(draft.mode === 'NEW_ITEM')} onClick={chooseNew}>新規登録</button>
               <button type="button" aria-pressed={draft.mode === 'EXISTING_ITEM'} className={invSeg(draft.mode === 'EXISTING_ITEM')} onClick={() => update({ mode: 'EXISTING_ITEM', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', quantity: '' })}>既存のアイテムに写真を追加</button>
             </div>
             {draft.mode === 'EXISTING_ITEM' ? (

@@ -17,13 +17,17 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - [x] (2026-09-30) Web: キオスク「タグ管理」画面（PIN、タグ面、一覧、編集パネル、吊具の点検記録、IDの手入力）
 - [x] (2026-09-30) 管理コンソールの6画面を案内ページへ置き換え、ナビから外した
 - [x] (2026-09-30) ローカル検証: Web全テスト 2236件、API関連統合テスト 177件、lint、型検査、実画面での付け外し・登録
-- [ ] PR、CI、マージ、デプロイ（integrationPending）
+- [x] (2026-09-30) PR #1576 を main へ squash merge（2a38b0de）、Pi5 標準デプロイ（run 20260930-112056-35f804、本番 da271ffc）。本番でマイグレーション適用と API 応答を確認
+- [x] (2026-10-01) 実機指摘の修正 #1591（8ad7664e、run 20261001-042514-82851d）と #1602（9b2c7f58、run 20261001-055232-1e44e2）
+- [x] (2026-10-02) Pi4 実機確認: 4桁で入れる、右下でタブ列が出て他のタブへ移れる、一覧をスクロールしても左パネルが動かない
 
 ## Surprises & Discoveries
 
 - 社員・工具の更新APIは `nfcTagUid: ''` を「変更なし」に変換する（`apps/api/src/routes/tools/employees/schemas.ts` の `z.literal('').transform(() => undefined)`）。管理画面では紐づけを外せなかった。
 - 計測機器と吊具は1台に複数タグを持てる（`MeasuringInstrumentTag` / `RiggingGearTag` は別テーブル）。社員と工具は1件に1タグ。
 - どのタグ行も他テーブルから外部キーで参照されていない。外してもマスターや履歴（貸出、点検、承認スナップショット）は消えない。
+- キオスクの通常レイアウトは中身に合わせて縦に伸び、上部にタブ列を出したままにする。1画面で完結させる画面は `apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts` の対象に入れないと、一覧の行数だけページ全体がスクロールし、現場からは「管理コンソールの中」に見える。
+- `apps/web/src/layouts/KioskLayout.tsx` はキオスク要領書（SOP）生成物の入力ソースで、変更すると `sourceSha256` が古くなり CI の kiosk-sop が失敗する。`pnpm kiosk-sop:generate` で作り直す（Docker 内。`page.goto` の30秒タイムアウトで1回目だけ失敗することがあった）。
 - 在庫の4桁PIN検証は `apps/api/src/routes/item-inventory/index.ts` の中にだけある。ヘッダー `x-kiosk-access-password` で渡す方式。
 
 ## Decision Log
@@ -46,9 +50,11 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 ## Outcomes & Retrospective
 
-ローカルでは、1920×1080 の実画面で、PIN→二重登録タグの表示→片方を外す→未使用タグを一覧の相手に付ける→工具の登録→吊具の点検記録パネルまでを確認した。Mac ではNFCが無効なため、読み取り面に「IDを手で入れる」を加えた（実機のリーダー不調時の予備にもなる）。在庫タグをかざすと在庫画面へ飛ぶ全体ルーターは、`/kiosk/tag-desk` では止めた。
+完了。キオスクの「タグ管理」タブ（`/kiosk/tag-desk`）は、他のキオスク画面と同じ全画面の画面で、入るときに共通の4桁を求める。タグの照会・切り離し・紐づけと、社員・工具・計測機器・吊具のマスター編集、吊具の点検記録ができる。管理コンソールの6画面は案内ページになった。Mac ではNFCが無効なため、読み取り面に「IDを手で入れる」を加えた。在庫タグをかざすと在庫画面へ飛ぶ全体ルーターは `/kiosk/tag-desk` では止めた。
 
-未完了: PR、main CI、マージ、Pi5 標準デプロイ、実機（Pi4 + NFCリーダー）での確認。
+実機で2回の手戻りがあった。1回目（#1591）は、この画面だけ通常レイアウトのままで、タブ列が出たままになり左右が一緒にスクロールした点を直した。その際「4桁で入ると他のタブにもアクセスできるのはだめ」という指摘を、解除中の移動制限の要望と読み違え、タブ列を出さない制限とロックボタンを足した。結果、どこにも移動できない画面になり、2回目（#1602）で制限を外した。依頼は「キオスクへ移し、入るときに4桁を求めるだけ」だった。画面の見え方についての指摘は、制限を足す前に、どの画面で何が見えているかを確かめる。
+
+残っている小さな点: `/api/kiosk/tag-desk/verify-access-password` は、本文の形式チェックをクライアントキーの確認より先に行う（形式が正しい要求は必ず端末確認を通るので、安全上の問題はない）。
 
 ## Context and Orientation
 
