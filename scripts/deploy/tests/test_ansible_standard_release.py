@@ -403,6 +403,55 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         for flag in flags + defaults["kiosk_browser_flags_common"]:
             self.assertIn(f"  {flag}\n", rendered)
 
+    def test_chromium_launcher_pins_the_server_certificate_key(self) -> None:
+        import yaml
+
+        launcher = (ANSIBLE / "templates/kiosk-launch.sh.j2").read_text(encoding="utf-8")
+        defaults = yaml.safe_load(
+            (ANSIBLE / "roles/kiosk/defaults/main.yml").read_text(encoding="utf-8")
+        )
+        prepare_text = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+            encoding="utf-8"
+        )
+        names = [task.get("name") for task in yaml.safe_load(prepare_text)]
+
+        # The blanket switch must come only from the template's no-pin branch.
+        self.assertNotIn("--ignore-certificate-errors", defaults["kiosk_browser_flags_chromium"])
+        self.assertEqual(defaults["kiosk_server_cert_spki_sha256"], "")
+        read = names.index("Read the server key the kiosk sees for the Chromium certificate pin")
+        guard = names.index(
+            "Refuse to stage a Chromium launcher whose certificate pin does not match the server"
+        )
+        self.assertLess(read, guard)
+        self.assertLess(guard, names.index("Stage the SHA-bound kiosk launcher"))
+
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {"1", "true", "yes", "on"}
+        environment.filters["regex_replace"] = lambda value, pattern, replacement: re.sub(
+            pattern, replacement, value
+        )
+
+        def render(**extra: object) -> str:
+            return environment.from_string(launcher).render(
+                ansible_user="kiosk",
+                kiosk_url="https://server.example/kiosk?clientKey=k",
+                kiosk_browser_engine="chromium",
+                kiosk_browser_exec_path="/usr/bin/chromium",
+                kiosk_browser_flags_chromium=defaults["kiosk_browser_flags_chromium"],
+                kiosk_release_sha="a" * 40,
+                **extra,
+            )
+
+        pinned = render(kiosk_server_cert_spki_sha256="abc123=")
+        self.assertIn("    --ignore-certificate-errors-spki-list=abc123=\n", pinned)
+        self.assertIn("    --user-data-dir=/home/kiosk/.config/chromium\n", pinned)
+        self.assertNotIn("    --ignore-certificate-errors\n", pinned)
+
+        for unpinned in (render(), render(kiosk_server_cert_spki_sha256="")):
+            self.assertIn("    --ignore-certificate-errors\n", unpinned)
+            self.assertNotIn("--ignore-certificate-errors-spki-list", unpinned)
+            self.assertNotIn("--user-data-dir", unpinned)
+
     def test_release_launcher_uses_shared_firefox_resolution(self) -> None:
         prepare = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
             encoding="utf-8"

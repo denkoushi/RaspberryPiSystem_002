@@ -97,6 +97,38 @@
     - manage_kiosk_browser | default(false) | bool
     - kiosk_browser_engine_resolved | default('') == 'chromium'
 
+# A wrong pin leaves the kiosk on a certificate error page while the browser
+# unit stays active, so compare it with the key the server presents first.
+- name: Read the server key the kiosk sees for the Chromium certificate pin
+  ansible.builtin.shell: |
+    set -o pipefail
+    openssl s_client -connect {{ (kiosk_url | urlsplit('hostname')) | quote }}:{{ kiosk_url | urlsplit('port') | default(443, true) }} </dev/null 2>/dev/null \
+      | openssl x509 -pubkey -noout \
+      | openssl pkey -pubin -outform der \
+      | openssl dgst -sha256 -binary \
+      | base64
+  args:
+    executable: /bin/bash
+  register: release_kiosk_server_spki
+  changed_when: false
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved | default('') == 'chromium'
+    - kiosk_server_cert_spki_sha256 | default('') | length > 0
+
+- name: Refuse to stage a Chromium launcher whose certificate pin does not match the server
+  ansible.builtin.assert:
+    that:
+      - release_kiosk_server_spki.stdout | trim == kiosk_server_cert_spki_sha256
+    fail_msg: >-
+      kiosk_server_cert_spki_sha256 does not match the key {{ kiosk_url | urlsplit('hostname') }}
+      presents ({{ release_kiosk_server_spki.stdout | default('') | trim }}). The kiosk would
+      show a certificate error. Update the pin before releasing.
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved | default('') == 'chromium'
+    - kiosk_server_cert_spki_sha256 | default('') | length > 0
+
 - name: Define files required by rollback runtime
   ansible.builtin.set_fact:
     release_kiosk_rollback_prerequisites: >-

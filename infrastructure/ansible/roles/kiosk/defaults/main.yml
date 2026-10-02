@@ -28,8 +28,9 @@ kiosk_browser_flags_chromium:
   - "--use-fake-ui-for-media-stream"
   - "--allow-insecure-localhost"
   - "--allow-running-insecure-content"
-  - "--ignore-certificate-errors"
-  # 警告バーを非表示にする（--ignore-certificate-errorsの警告も抑制）
+  # 証明書の扱いは kiosk-launch.sh.j2 が kiosk_server_cert_spki_sha256 から決める
+  # （指定あり: その公開鍵だけ許可 / 指定なし: 従来どおり --ignore-certificate-errors）
+  # 警告バーを非表示にする（証明書関連フラグの警告も抑制）
   - "--disable-infobars"
   # テストモードとして実行（コマンドラインフラグの警告を抑制）
   - "--test-type"
@@ -37,6 +38,9 @@ kiosk_browser_flags_chromium:
   - "--password-store=basic"
   # アクセシビリティヒント（「tabキーで選択」など）を無効化
   - "--disable-features=AccessibilityFocusHighlight,AccessibilityFocusAlert"
+# Pi5 の自己署名証明書の公開鍵（SPKI）の SHA-256（base64）。指定すると Chromium は
+# その鍵の証明書だけ証明書エラーを無視する。取得方法は KB-413 を参照。
+kiosk_server_cert_spki_sha256: ""
 kiosk_browser_flags_firefox_app_like:
   - "--new-window"
 kiosk_browser_flags_firefox_kiosk:
