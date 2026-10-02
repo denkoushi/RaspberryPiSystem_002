@@ -140,7 +140,7 @@ export type MachineSignalAdminOverview = {
   latestReportDate: string | null;
   latestReportCount: number;
   coverage: Array<{ date: string; count: number }>;
-  gmailSchedule: { schedule: string; enabled: boolean } | null;
+  gmailSchedule: { schedule: string; enabled: boolean };
 };
 
 export type MachineSignalImportFailure = { fileName: string; reason: string };

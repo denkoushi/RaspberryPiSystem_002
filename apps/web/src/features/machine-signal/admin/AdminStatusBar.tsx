@@ -17,7 +17,7 @@ export function AdminStatusBar({
   onOpenImport: () => void;
 }) {
   const gmail = describeGmailSchedule(overview?.gmailSchedule?.schedule ?? null, new Date());
-  const gmailOff = overview?.gmailSchedule?.enabled === false;
+  const gmailOff = overview?.gmailSchedule.enabled === false;
   const coverage = overview?.coverage ?? [];
 
   return (

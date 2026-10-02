@@ -1,6 +1,8 @@
 import { prisma } from '../../lib/prisma.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
-import { MACHINE_SIGNAL_GMAIL_CSV_IMPORT_SCHEDULE_ID } from '../imports/machine-signal-import-schedule.policy.js';
+import { findMachineSignalGmailCsvImportSchedule } from '../imports/machine-signal-import-schedule.policy.js';
+import { hasGmailCredentials } from './machine-signal-gmail-ingestion.service.js';
+import { MACHINE_SIGNAL_GMAIL_CRON } from './machine-signal-gmail.scheduler.js';
 
 const DAY_MS = 86_400_000;
 const JST_OFFSET_MS = 9 * 3_600_000;
@@ -11,8 +13,8 @@ export type MachineSignalAdminOverviewDto = {
   latestReportCount: number;
   /** 直近の日ごとの取り込み済み件数（古い順、今日まで）。抜けている日は 0 */
   coverage: Array<{ date: string; count: number }>;
-  /** CSV取込の一覧にある設備稼働の行。無ければ null */
-  gmailSchedule: { schedule: string; enabled: boolean } | null;
+  /** Gmail の自動取り込みの時刻。CSV取込の一覧に設備稼働の行があればその設定、無ければ専用スケジューラの設定 */
+  gmailSchedule: { schedule: string; enabled: boolean };
 };
 
 const toDateKey = (date: Date) => date.toISOString().slice(0, 10);
@@ -38,12 +40,14 @@ export async function getMachineSignalAdminOverview(now: Date = new Date()): Pro
   const latestReportCount = latest
     ? await prisma.machineSignalDailyReport.count({ where: { reportDate: latest.reportDate } })
     : 0;
-  const row = (config.csvImports ?? []).find((schedule) => schedule.id === MACHINE_SIGNAL_GMAIL_CSV_IMPORT_SCHEDULE_ID);
+  const row = findMachineSignalGmailCsvImportSchedule(config);
 
   return {
     latestReportDate: latest ? toDateKey(latest.reportDate) : null,
     latestReportCount,
     coverage,
-    gmailSchedule: row ? { schedule: row.schedule, enabled: row.enabled !== false } : null,
+    gmailSchedule: row
+      ? { schedule: row.schedule, enabled: row.enabled !== false }
+      : { schedule: MACHINE_SIGNAL_GMAIL_CRON, enabled: hasGmailCredentials(config) },
   };
 }

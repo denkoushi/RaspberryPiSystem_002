@@ -15,6 +15,11 @@ vi.mock('../../../lib/prisma.js', () => ({
   },
 }));
 vi.mock('../../backup/backup-config.loader.js', () => ({ BackupConfigLoader: { load: mocks.loadConfig } }));
+vi.mock('../machine-signal-gmail.scheduler.js', () => ({ MACHINE_SIGNAL_GMAIL_CRON: '47 * * * *' }));
+vi.mock('../machine-signal-gmail-ingestion.service.js', () => ({
+  hasGmailCredentials: (config: { storage?: { options?: { gmail?: { refreshToken?: string } } } }) =>
+    Boolean(config.storage?.options?.gmail?.refreshToken),
+}));
 
 import { getMachineSignalAdminOverview } from '../machine-signal-admin.service.js';
 import { updateMachineSignalSensorsBulk } from '../machine-signal-settings.service.js';
@@ -32,7 +37,7 @@ describe('getMachineSignalAdminOverview', () => {
     ]);
     mocks.count.mockResolvedValue(50);
     mocks.loadConfig.mockResolvedValue({
-      csvImports: [{ id: 'machine-signal-gmail', schedule: '47 * * * *', enabled: true }],
+      csvImports: [{ id: 'machine-signal-gmail', schedule: '17 6 * * *', enabled: false }],
     });
 
     // 2026-10-01 16:30 UTC は、日本では 10/02 01:30。
@@ -46,18 +51,23 @@ describe('getMachineSignalAdminOverview', () => {
     expect(overview).toMatchObject({
       latestReportDate: '2026-10-01',
       latestReportCount: 50,
-      gmailSchedule: { schedule: '47 * * * *', enabled: true },
+      // CSV取込の一覧に行があれば、その時刻と有効・無効を出す。
+      gmailSchedule: { schedule: '17 6 * * *', enabled: false },
     });
   });
 
-  it('reports no schedule and no report before anything is set up', async () => {
+  it('shows the built-in hourly check while the CSV import list has no row, off where Gmail is not connected', async () => {
     mocks.findFirst.mockResolvedValue(null);
     mocks.groupBy.mockResolvedValue([]);
-    mocks.loadConfig.mockResolvedValue({ csvImports: [] });
+    mocks.loadConfig.mockResolvedValue({ csvImports: [], storage: { options: {} } });
 
     const overview = await getMachineSignalAdminOverview(new Date('2026-10-02T03:00:00.000Z'));
 
-    expect(overview).toMatchObject({ latestReportDate: null, latestReportCount: 0, gmailSchedule: null });
+    expect(overview).toMatchObject({
+      latestReportDate: null,
+      latestReportCount: 0,
+      gmailSchedule: { schedule: '47 * * * *', enabled: false },
+    });
     expect(mocks.count).not.toHaveBeenCalled();
   });
 });
