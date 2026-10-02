@@ -40,6 +40,21 @@ class StorageHealthTest(unittest.TestCase):
         self.assertEqual(context["signal"], "kernel_storage_error")
         self.assertIn("mmc0", context["raw"])
 
+    def test_boot_time_write_protect_notice_is_not_a_storage_error(self) -> None:
+        # Seen on the Pi3 at its daily 03:00 reboot on 2026-10-02.
+        kernel_log = (
+            "10月 02 03:00:17 raspberrypi kernel: mmc0: host does not support reading "
+            "read-only switch, assuming write-enable\n"
+            "10月 02 09:27:58 raspberrypi kernel: mmc1: Controller never released inhibit bit(s).\n"
+        )
+        self.assertEqual(storage_health.evaluate_kernel_log(kernel_log, "journalctl -k", OBSERVED_AT), [])
+
+        remount = "Oct 02 03:10:00 pi kernel: EXT4-fs (mmcblk0p2): Remounting filesystem read-only\n"
+        logs = storage_health.evaluate_kernel_log(kernel_log + remount, "journalctl -k", OBSERVED_AT)
+        self.assertEqual(len(logs), 1)
+        self.assertIn("Remounting filesystem read-only", logs[0]["context"]["raw"])
+        self.assertNotIn("read-only switch", logs[0]["context"]["raw"])
+
     def test_kernel_log_since_follows_storage_health_interval(self) -> None:
         calls = []
 
