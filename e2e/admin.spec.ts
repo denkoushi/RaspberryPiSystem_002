@@ -1,5 +1,11 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { clickByRoleSafe, login, setAuthToken } from './helpers';
+
+/** ヘッダーのメニュー（全画面の一覧）を開いて、画面名のリンクで移動する */
+async function openAdminScreen(page: Page, name: string): Promise<void> {
+  await page.getByRole('button', { name: '画面を検索', exact: true }).click();
+  await page.getByRole('navigation', { name: 'すべての管理画面' }).getByRole('link', { name, exact: true }).click();
+}
 
 test.describe('管理画面', () => {
   let authToken: string | null = null;
@@ -52,7 +58,7 @@ test.describe('管理画面', () => {
   });
 
   test('履歴画面にアクセスできる', async ({ page }) => {
-    await page.getByRole('link', { name: /履歴/i }).click();
+    await openAdminScreen(page, '履歴');
     await expect(page).toHaveURL(/\/admin\/tools\/history/);
     // ページが読み込まれるまで待機
     await page.waitForLoadState('networkidle');
@@ -62,7 +68,7 @@ test.describe('管理画面', () => {
 
   test.describe('バックアップ対象管理', () => {
     test('バックアップ対象管理画面にアクセスできる', async ({ page }) => {
-      await page.getByRole('link', { name: /バックアップ/i }).click();
+      await openAdminScreen(page, 'バックアップ');
       await expect(page).toHaveURL(/\/admin\/backup\/targets/);
       await page.waitForLoadState('networkidle');
       await expect(page.getByRole('heading', { name: /バックアップ対象管理/i })).toBeVisible();
@@ -181,7 +187,7 @@ test.describe('管理画面', () => {
 
   test.describe('Gmail設定管理', () => {
     test('Gmail設定画面にアクセスできる', async ({ page }) => {
-      await page.getByRole('link', { name: /Gmail設定/i }).click();
+      await openAdminScreen(page, 'Gmail設定');
       await expect(page).toHaveURL(/\/admin\/gmail\/config/);
       await page.waitForLoadState('networkidle');
       await expect(page.getByRole('heading', { name: /Gmail設定/i })).toBeVisible();

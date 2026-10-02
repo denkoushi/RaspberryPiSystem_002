@@ -1,6 +1,7 @@
 import { resolveKioskDefaultModePath } from '@raspi-system/shared-types';
 import { NavLink } from 'react-router-dom';
 
+import { KIOSK_MACHINE_SIGNAL_PATH } from '../../machine-signal/machineSignalRoutes';
 import {
   isKioskInspectionDrawingPath,
   isKioskPartMeasurementHubPath,
@@ -196,6 +197,13 @@ export function renderKioskReorderableHeaderTab(
         style: isActive ? { backgroundColor: 'var(--color-primitive-blue-900)' } : undefined
       });
     }
+    case 'machine_signal':
+      return renderNavLinkTab({
+        to: KIOSK_MACHINE_SIGNAL_PATH,
+        label: '設備稼働',
+        isActive: pathname.startsWith(KIOSK_MACHINE_SIGNAL_PATH),
+        activeClassName: 'bg-emerald-700 text-white'
+      });
     case 'due_management':
       return (
         <button

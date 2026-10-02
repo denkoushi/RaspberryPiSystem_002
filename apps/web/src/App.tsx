@@ -25,6 +25,7 @@ import { KioskDocumentsAdminPage } from './pages/admin/KioskDocumentsAdminPage';
 import { KioskSettingsPage } from './pages/admin/KioskSettingsPage';
 import { LoanReportPage } from './pages/admin/LoanReportPage';
 import { LocalLlmAdminPage } from './pages/admin/LocalLlmAdminPage';
+import { MachineSignalAdminPage } from './pages/admin/MachineSignalAdminPage';
 import { PalletMachineIllustrationsPage } from './pages/admin/PalletMachineIllustrationsPage';
 import { PartMeasurementTemplatesPage } from './pages/admin/PartMeasurementTemplatesPage';
 import { PhotoGallerySeedPage } from './pages/admin/PhotoGallerySeedPage';
@@ -44,6 +45,7 @@ import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
 import { KioskItemInventoryPage } from './pages/kiosk/KioskItemInventoryPage';
 import { KioskItemInventorySettingsPage } from './pages/kiosk/KioskItemInventorySettingsPage';
+import { KioskMachineSignalPage } from './pages/kiosk/KioskMachineSignalPage';
 import { KioskMobilePalletVisualizationPage } from './pages/kiosk/KioskMobilePalletVisualizationPage';
 import { KioskMobileShelfMasterPage } from './pages/kiosk/KioskMobileShelfMasterPage';
 import { KioskMobileZero2wStatusPage } from './pages/kiosk/KioskMobileZero2wStatusPage';
@@ -287,6 +289,7 @@ function App() {
             element={lazyRouteElement(<KioskInspectionDrawingEditPage />)}
           />
           <Route path="/kiosk/rigging-analytics" element={<KioskRiggingAnalyticsPage />} />
+          <Route path="/kiosk/machine-signal" element={<KioskMachineSignalPage />} />
           {isDevelopment ? (
             <>
               <Route
@@ -390,6 +393,7 @@ function App() {
         />
         <Route path="visualization-dashboards" element={<Navigate to="/admin/data-boards?type=graph" replace />} />
         <Route path="pallet-machine-illustrations" element={<PalletMachineIllustrationsPage />} />
+        <Route path="machine-signal" element={<MachineSignalAdminPage />} />
         <Route path="gmail">
           <Route path="config" element={<GmailConfigPage />} />
         </Route>
