@@ -63,7 +63,13 @@ validation:
 - Fix: `release_kiosk` reads the `kiosk` role defaults for the two flag lists (a host override still wins) and refuses to stage a Chromium launcher that lacks `--ozone-platform=x11`, `--gtk-version=3` or `--password-store=basic`. The common flags are applied for Chromium only, so the Firefox kiosks keep starting exactly as before.
 - Lesson: the template tests rendered the launcher with flags passed in by hand. Check a launcher change by rendering it through the role that ships it (a local `ansible-playbook` run of the `release_kiosk` tasks did reproduce the empty flags and confirm the fix).
 
-Speed and Japanese input: not measured yet.
+### 2026-10-02 second deploy: Chromium works on the device
+
+- Run `20261002-045820-77189a` (release `1d7a49ed`). Read on the device: the running Chromium has `--ozone-platform=x11 --gtk-version=3 --password-store=basic --ignore-certificate-errors --start-maximized`, no `gcr-prompter`, one `ibus-daemon`, `diagnose-ime.sh` passes, three agents on the new SHA.
+- Checked on the device by the user: screen shown, Japanese input with the physical keyboard (toggle, candidates, commit), NFC and power buttons all work. Screens feel much faster than on Firefox. No timing numbers were taken (not required).
+- One remaining complaint: typing Japanese in the 順位ボード note dialog lags slightly.
+  - The dialog keeps its draft in local state, so the board is not re-rendered per keystroke.
+  - Raspberry Pi OS adds `--force-renderer-accessibility` to every Chromium start (`/etc/chromium.d/00-rpi-vars`). With it, each keystroke updates the accessibility tree of the whole page, which is costly on a large board. `--disable-renderer-accessibility` was added to the kiosk flags to cancel it. Whether this removes the lag is to be confirmed on the device; if it does not, look at the IBus preedit path next.
 
 ## Rollback
 
