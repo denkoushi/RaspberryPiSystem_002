@@ -69,6 +69,11 @@ const crop = {
 function createController(overrides: Record<string, unknown> = {}) {
   return {
     activeBoltConditionKey: null,
+    addArea: vi.fn(),
+    areas: [],
+    incompleteAreaIds: new Set<string>(),
+    selectArea: vi.fn(),
+    selectedAreaId: '',
     addBoltAt: vi.fn(),
     addBoltCondition: vi.fn(),
     boltConditionPalette: [],

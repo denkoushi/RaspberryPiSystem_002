@@ -33,6 +33,8 @@ type Props = {
   onSelectBolt?: (id: string) => void;
   onMoveBolt?: AssemblyProcedureBoltMoveHandler;
   onMoveCheckItem?: AssemblyProcedureBoltMoveHandler;
+  onMoveBoltCallout?: AssemblyProcedureBoltMoveHandler;
+  onMoveCheckItemCallout?: AssemblyProcedureBoltMoveHandler;
   onSelectCheckItem?: (id: string) => void;
   onToggleCheckItem?: (id: string) => void;
   onAddBolt?: (xRatio: number, yRatio: number) => void;
@@ -87,6 +89,8 @@ export function AssemblyProcedureCanvas({
   onSelectBolt,
   onMoveBolt,
   onMoveCheckItem,
+  onMoveBoltCallout,
+  onMoveCheckItemCallout,
   onSelectCheckItem,
   onToggleCheckItem,
   onAddBolt,
@@ -334,6 +338,8 @@ export function AssemblyProcedureCanvas({
                 onSelectBolt={onSelectBolt}
                 onMoveBolt={onMoveBolt}
                 onMoveCheckItem={onMoveCheckItem}
+                onMoveBoltCallout={onMoveBoltCallout}
+                onMoveCheckItemCallout={onMoveCheckItemCallout}
                 onSelectCheckItem={onSelectCheckItem}
                 onToggleCheckItem={onToggleCheckItem}
               />

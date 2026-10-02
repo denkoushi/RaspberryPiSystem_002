@@ -10,9 +10,11 @@ import { useDismissOnOutside } from '../hooks/useDismissOnOutside';
 
 import { ADMIN_HOME, ADMIN_NAV_GROUPS, filterAdminNavGroups, findActiveAdminNav } from './adminNavigation';
 
-const tabClass =
-  'flex h-[34px] items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[13px] font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white';
-const tabActiveClass = 'bg-white text-slate-950 hover:bg-white hover:text-slate-950';
+const tabClass = 'flex h-[34px] items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[13px] font-semibold transition-colors';
+// 文字色は状態ごとに1つだけ付ける。重ねると後勝ちになり、選択中の白地に白文字が出る。
+const tabIdleClass = 'text-white/70 hover:bg-white/10 hover:text-white';
+const tabHotClass = 'bg-white/10 text-white';
+const tabActiveClass = 'bg-white text-slate-950';
 
 type MenuState = { hotGroupId: string | null; focusSearch: boolean } | null;
 
@@ -94,7 +96,7 @@ export function AdminLayout() {
               <NavLink
                 to={ADMIN_HOME.to}
                 end
-                className={({ isActive }) => clsx(tabClass, isActive && tabActiveClass)}
+                className={({ isActive }) => clsx(tabClass, isActive ? tabActiveClass : tabIdleClass)}
                 onClick={closeMenu}
               >
                 {ADMIN_HOME.label}
@@ -106,7 +108,7 @@ export function AdminLayout() {
                   <button
                     key={group.id}
                     type="button"
-                    className={clsx(tabClass, isCurrent ? tabActiveClass : isHot && 'bg-white/10 text-white')}
+                    className={clsx(tabClass, isCurrent ? tabActiveClass : isHot ? tabHotClass : tabIdleClass)}
                     aria-expanded={isHot}
                     aria-controls="admin-menu"
                     onClick={() => toggleGroup(group.id)}
