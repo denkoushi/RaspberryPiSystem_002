@@ -1,4 +1,5 @@
-// One JEV call judges up to 15 retrieved candidates. evaluate is injectable.
+// One JEV call judges up to 15 retrieved candidates; a larger pool is judged in parallel calls
+// of 15, so each call keeps the same size. evaluate is injectable.
 import { performance } from 'node:perf_hooks';
 
 export const RELEVANCE_ACCEPT_AT = 0.5;
@@ -42,11 +43,30 @@ async function defaultEvaluate(input) {
 export function createRelevanceJudge({ evaluate = defaultEvaluate } = {}) {
   if (typeof evaluate !== 'function') throw new TypeError('evaluate must be a function');
   return {
-    async judge({ semanticQuery, candidates, bodyFields }) {
+    async judge({ semanticQuery, candidates, bodyFields, poolLimit = RELEVANCE_CANDIDATE_LIMIT }) {
       const query = String(semanticQuery ?? '').trim();
       if (!query) return { ok: true, ranked: [], relevanceMs: 0 };
-      const selected = (Array.isArray(candidates) ? candidates : []).slice(0, RELEVANCE_CANDIDATE_LIMIT);
-      if (!selected.length) return { ok: true, ranked: [], relevanceMs: 0 };
+      const pool = (Array.isArray(candidates) ? candidates : []).slice(0, Math.max(poolLimit, RELEVANCE_CANDIDATE_LIMIT));
+      if (!pool.length) return { ok: true, ranked: [], relevanceMs: 0 };
+      const started = performance.now();
+      const batches = [];
+      for (let index = 0; index < pool.length; index += RELEVANCE_CANDIDATE_LIMIT) {
+        batches.push(pool.slice(index, index + RELEVANCE_CANDIDATE_LIMIT));
+      }
+      let judged;
+      try {
+        judged = await Promise.all(batches.map((batch) => judgeBatch(query, batch, bodyFields)));
+      } catch (error) {
+        error.relevanceMs = Math.round(performance.now() - started);
+        throw error;
+      }
+      const ranked = judged.flat();
+      ranked.sort((left, right) => right.probability - left.probability || String(left.id).localeCompare(String(right.id)));
+      return { ok: true, ranked, relevanceMs: Math.round(performance.now() - started) };
+    },
+  };
+
+  async function judgeBatch(query, selected, bodyFields) {
       const questions = {};
       const ids = [];
       selected.forEach((candidate, index) => {
@@ -93,8 +113,6 @@ export function createRelevanceJudge({ evaluate = defaultEvaluate } = {}) {
         if (probability == null || probability < RELEVANCE_ACCEPT_AT) return;
         ranked.push({ id, probability });
       });
-      ranked.sort((left, right) => right.probability - left.probability || String(left.id).localeCompare(String(right.id)));
-      return { ok: true, ranked, relevanceMs };
-    },
-  };
+      return ranked;
+  }
 }

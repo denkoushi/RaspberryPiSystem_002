@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execute } from './executor.mjs';
+import { RELEVANCE_POOL_DEFAULT, RELEVANCE_POOL_MAX, execute, relevancePoolLimit } from './executor.mjs';
 import { records } from './fixtures/synthetic-records.mjs';
 import { QUERY_PLAN_SCHEMA } from './query-plan.mjs';
 import { RELEVANCE_ACCEPT_AT, RELEVANCE_CANDIDATE_LIMIT, candidateBody, createRelevanceJudge } from './relevance-jev.mjs';
@@ -103,4 +103,38 @@ test('a failed relevance judgment returns unavailable instead of unjudged rows',
   assert.equal(executed.status, 'unavailable');
   assert.match(executed.reason, /relevance down/);
   assert.deepEqual(executed.results, []);
+});
+
+test('a pool wider than one call is judged in parallel calls of the same size', async () => {
+  const candidates = Array.from({ length: 32 }, (_, index) => ({ id: `r${index}`, record: { condition: index === 20 ? 'surface scratch' : 'other' } }));
+  const calls = [];
+  const judge = createRelevanceJudge({
+    evaluate: async (input) => {
+      const keys = Object.keys(input.questions);
+      calls.push(keys.length);
+      return {
+        answers: Object.fromEntries(keys.map((key) => [key, {
+          type: 'noul',
+          noul: input.questions[key].instructions.includes('surface scratch\n\n記録本文:\nsurface scratch') ? 0.9 : 0.1,
+        }])),
+      };
+    },
+  });
+  // Without a pool limit the judge reads one call; candidates past it are not judged.
+  const narrow = await judge.judge({ semanticQuery: 'surface scratch', candidates, bodyFields: ['condition'] });
+  assert.deepEqual(calls, [RELEVANCE_CANDIDATE_LIMIT]);
+  assert.deepEqual(narrow.ranked, []);
+  calls.length = 0;
+  const wide = await judge.judge({ semanticQuery: 'surface scratch', candidates, bodyFields: ['condition'], poolLimit: 30 });
+  assert.deepEqual(calls, [RELEVANCE_CANDIDATE_LIMIT, RELEVANCE_CANDIDATE_LIMIT]);
+  assert.deepEqual(wide.ranked.map((item) => item.id), ['r20']);
+
+  assert.equal(relevancePoolLimit({}, {}), RELEVANCE_POOL_DEFAULT);
+  assert.equal(RELEVANCE_POOL_DEFAULT, 30);
+  assert.equal(relevancePoolLimit({}, { HERMES_RETRIEVAL_RELEVANCE_POOL: '15' }), RELEVANCE_CANDIDATE_LIMIT);
+  assert.equal(relevancePoolLimit({}, { HERMES_RETRIEVAL_RELEVANCE_POOL: '30' }), 30);
+  assert.equal(relevancePoolLimit({ relevancePool: 45 }, { HERMES_RETRIEVAL_RELEVANCE_POOL: '30' }), 45);
+  assert.equal(relevancePoolLimit({}, { HERMES_RETRIEVAL_RELEVANCE_POOL: '5' }), RELEVANCE_CANDIDATE_LIMIT);
+  assert.equal(relevancePoolLimit({}, { HERMES_RETRIEVAL_RELEVANCE_POOL: '999' }), RELEVANCE_POOL_MAX);
+  assert.equal(relevancePoolLimit({}, { HERMES_RETRIEVAL_RELEVANCE_POOL: 'abc' }), RELEVANCE_POOL_DEFAULT);
 });

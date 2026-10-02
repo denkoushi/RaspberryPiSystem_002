@@ -520,8 +520,8 @@ test('coverage is omitted when every match is shown', async () => {
   assert.equal(executed.coverage, undefined);
 });
 
-test('coverage stays inexact when relevance only judged the top candidate batch', async () => {
-  const dated = Array.from({ length: 20 }, (_, index) => bodyRecord(
+test('coverage stays inexact when relevance only judged the top candidate pool', async () => {
+  const dated = Array.from({ length: 40 }, (_, index) => bodyRecord(
     `cand-${String(index).padStart(2, '0')}`,
     `2026-03-${String((index % 28) + 1).padStart(2, '0')}`,
     'qxrare once',
@@ -540,9 +540,9 @@ test('coverage stays inexact when relevance only judged the top candidate batch'
       return { ok: true, ranked: candidates.map((item) => ({ id: item.id, probability: 0.9 })) };
     },
   });
-  assert.equal(judged, 15);
+  assert.equal(judged, 30);
   assert.equal(executed.returned, 5);
-  assert.deepEqual(executed.coverage, { known: false, total: null, floor: 15, shown: 5, order: 'relevance' });
+  assert.deepEqual(executed.coverage, { known: false, total: null, floor: 30, shown: 5, order: 'relevance' });
 });
 
 test('coverage stays inexact when a deadline stops before the pool is judged', async () => {

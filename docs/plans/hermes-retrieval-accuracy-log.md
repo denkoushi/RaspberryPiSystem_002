@@ -166,3 +166,28 @@ Full enrichment does not improve paraphrase questions. It loses two held-out par
 Where the held-out paraphrase cases are lost (target rank among candidates, 12 cases): without enrichment 6 targets are in the top 15 and 9 in the top 50. With enrichment 4 are in the top 15 and 9 in the top 50. Every target in the top 15 was shown in both arms, so the judge is not the loss. Enrichment text on every record moved two targets from ranks 13 and 6 to 27 and 17, outside the 15 candidates the judge reads. In both arms, five more targets sit between ranks 16 and 30.
 
 Not changed: production still attaches enrichment. Next measurements, each against both arms on the same day: let the judge read 30 candidates instead of 15 (cost: more JEV judgments per question), and decide after that whether enrichment stays attached. The rank positions above were read from the held-out paraphrase subset, so that set now counts as seen for ranking-window tuning; the window change must be judged on other held-out cases as well.
+
+### 2026-10-02: the judge reads 30 candidates instead of 15 (kept)
+
+Trigger: the entry above. Targets of paraphrase questions sit between ranks 16 and 30, and the judge accepted every target it saw.
+
+Change: `executor.mjs` takes the top `RELEVANCE_POOL_DEFAULT` (30) ranked candidates for relevance-sorted content questions (lexical, dense, and hybrid). `relevance-jev.mjs` judges them in parallel JEV calls of 15, so each call is the same size as before. `HERMES_RETRIEVAL_RELEVANCE_POOL` (15 to 60) overrides the default. The recent-content path and the reranker path are unchanged.
+
+Hybrid, same day as the entry above, 8,242-record snapshot:
+
+| Set | 15, no enrichment | 15, enrichment | 30, no enrichment | 30, enrichment |
+| --- | --- | --- | --- | --- |
+| heldout-paraphrase-subset (12): target shown | 6 | 4 | 9 | 9 |
+| heldout-paraphrase-hard (12): target shown | 1 | 1 | 3 | 3 |
+| stage-v1 paraphrase (16): hit | 0.19 | 0.19 | 0.31 | 0.25 |
+| stage-v1 (50): hit / prec | 0.60 / 0.59 | 0.58 / 0.62 | 0.64 / 0.59 | 0.62 / 0.61 |
+| stage-aspect-v1 (17): hit | 0.76 | 0.71 | 0.76 | 0.82 |
+| heldout-supervisor-v2 (14): status / all shown relevant | 12 / 12 | 12 / 12 | 12 / 12 | 12 / 12 |
+| heldout-supervisor (6): all shown relevant | 4 | 4 | 3 | 3 |
+| stage-v1 total p95 | 1,619 ms | 2,067 ms | 2,222 ms | 2,516 ms |
+
+Kept because the held-out paraphrase gain (3 to 5 cases) is larger than the run-to-run drift, and it also appears on the hard set, whose ranks were not inspected beforehand. Costs: about 0.5 s more at p95, and one held-out supervisor case gained a shown record without the keyword.
+
+Enrichment makes no difference at 30 candidates either (9 against 9, 3 against 3) and costs about 0.3 s. Whether it stays attached is decided after the next step.
+
+This widens what the judge sees; it does not improve ranking. Next: measure first-stage recall at 15, 30, and 50 per stage with graded labels on pooled candidates, then compare a Japanese embedding model (ruri-v3-310m, JMTEB retrieval 81.89 against 72.81 reported for Qwen3-Embedding-0.6B) and morphological tokens with normalization against the current character bigrams.
