@@ -1,3 +1,5 @@
+import { KIOSK_MACHINE_SIGNAL_PATH } from '../machine-signal/machineSignalRoutes';
+
 import { KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX } from './leaderOrderBoard/kioskLeaderOrderBoardRoutes';
 import { KIOSK_MANUAL_ORDER_PATH_PREFIX } from './manualOrder/kioskManualOrderRoutes';
 
@@ -64,6 +66,8 @@ export function usesKioskImmersiveLayout(pathname: string): boolean {
   if (p === '/kiosk/inventory/settings' || p.startsWith('/kiosk/inventory/settings/')) return true;
   // The tag desk keeps its reader dock still and scrolls only the list, so it needs a fixed-height page.
   if (p === '/kiosk/tag-desk') return true;
+  // 設備稼働は一覧と詳細を画面の高さに収め、それぞれの中だけをスクロールさせる。
+  if (p === KIOSK_MACHINE_SIGNAL_PATH) return true;
   if (p.startsWith(KIOSK_MANUAL_ORDER_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_PROGRESS_OVERVIEW_PATH_PREFIX)) return true;

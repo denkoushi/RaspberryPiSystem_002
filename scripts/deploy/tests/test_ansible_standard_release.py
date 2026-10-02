@@ -353,6 +353,56 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn('--app="${KIOSK_TARGET_URL}"', rendered)
         self.assertIn("&_appRef=${APP_REF}", rendered)
 
+    def test_release_launcher_gets_kiosk_role_chromium_flags(self) -> None:
+        """Role defaults are out of scope in release_kiosk; it must load them itself."""
+
+        import yaml
+
+        prepare = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+            encoding="utf-8"
+        )
+        tasks = yaml.safe_load(prepare)
+        names = [task.get("name") for task in tasks]
+        read = names.index("Read the kiosk role browser flag defaults for the launcher")
+        chromium = names.index(
+            "Apply the kiosk role Chromium flags unless the host overrides them"
+        )
+        guard = names.index("Refuse to stage a Chromium launcher without its required flags")
+        stage = names.index("Stage the SHA-bound kiosk launcher")
+        self.assertLess(names.index("Reuse kiosk role browser executable resolution for release staging"), guard)
+        self.assertLess(read, chromium)
+        self.assertLess(chromium, guard)
+        self.assertLess(guard, stage)
+        self.assertIn("/../kiosk/defaults/main.yml", tasks[read]["ansible.builtin.set_fact"]["release_kiosk_browser_defaults"])
+        self.assertIn("kiosk_browser_flags_chromium is not defined", tasks[chromium]["when"])
+
+        defaults = yaml.safe_load(
+            (ANSIBLE / "roles/kiosk/defaults/main.yml").read_text(encoding="utf-8")
+        )
+        flags = defaults["kiosk_browser_flags_chromium"]
+        for required in ("--ozone-platform=x11", "--gtk-version=3", "--password-store=basic"):
+            self.assertIn(required, flags)
+            self.assertIn(f"'{required}' in kiosk_browser_flags_chromium", prepare)
+
+        # Rendered the way the release does once the defaults are applied.
+        launcher = (ANSIBLE / "templates/kiosk-launch.sh.j2").read_text(encoding="utf-8")
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {"1", "true", "yes", "on"}
+        environment.filters["regex_replace"] = lambda value, pattern, replacement: re.sub(
+            pattern, replacement, value
+        )
+        rendered = environment.from_string(launcher).render(
+            ansible_user="kiosk",
+            kiosk_url="https://server.example/kiosk?clientKey=k",
+            kiosk_browser_engine="chromium",
+            kiosk_browser_exec_path="/usr/bin/chromium",
+            kiosk_browser_flags_chromium=flags,
+            kiosk_browser_flags_common=defaults["kiosk_browser_flags_common"],
+            kiosk_release_sha="a" * 40,
+        )
+        for flag in flags + defaults["kiosk_browser_flags_common"]:
+            self.assertIn(f"  {flag}\n", rendered)
+
     def test_release_launcher_uses_shared_firefox_resolution(self) -> None:
         prepare = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
             encoding="utf-8"

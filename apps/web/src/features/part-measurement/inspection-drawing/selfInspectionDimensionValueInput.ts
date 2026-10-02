@@ -1,4 +1,5 @@
 import { toleranceBoundsFromPoint } from './markerNumbering';
+import { decimalPlacesInRaw } from './selfInspectionMeasurementValueOptions';
 
 import type { InspectionDrawingPoint } from './types';
 
@@ -32,8 +33,8 @@ function formatTenthsValue(tenths: number): string {
   return (tenths / 10).toFixed(1);
 }
 
-function scaleToleranceHundredths(value: number, direction: 'lower' | 'upper'): number {
-  const scaled = value * 100;
+function scaleToleranceToKeypadUnit(value: number, unitsPerOne: number, direction: 'lower' | 'upper'): number {
+  const scaled = value * unitsPerOne;
   return direction === 'lower'
     ? Math.ceil(scaled - 1e-9)
     : Math.floor(scaled + 1e-9);
@@ -47,6 +48,16 @@ export function resolveSelfInspectionMeasurementValueInputKind(
     : 'standard_options';
 }
 
+/** テンキーで入れる小数桁数。公差・基準が千分台まで書かれた点だけ 2（百分台→千分台）。 */
+export function resolveSelfInspectionDimensionKeypadDigitCount(point: InspectionDrawingPoint): 1 | 2 {
+  const places = Math.max(
+    decimalPlacesInRaw(point.nominalRaw),
+    decimalPlacesInRaw(point.lowerToleranceRaw),
+    decimalPlacesInRaw(point.upperToleranceRaw)
+  );
+  return places >= 3 ? 2 : 1;
+}
+
 export function buildSelfInspectionDimensionTenthsOptions(
   point: InspectionDrawingPoint
 ): SelfInspectionDimensionTenthsOptionsResult {
@@ -57,17 +68,18 @@ export function buildSelfInspectionDimensionTenthsOptions(
 
   const lower = Math.min(bounds.lowerLimit, bounds.upperLimit);
   const upper = Math.max(bounds.lowerLimit, bounds.upperLimit);
-  const lowerHundredths = scaleToleranceHundredths(lower, 'lower');
-  const upperHundredths = scaleToleranceHundredths(upper, 'upper');
-  if (lowerHundredths > upperHundredths) {
+  const unitsPerTenth = resolveSelfInspectionDimensionKeypadDigitCount(point) === 2 ? 100 : 10;
+  const lowerUnits = scaleToleranceToKeypadUnit(lower, unitsPerTenth * 10, 'lower');
+  const upperUnits = scaleToleranceToKeypadUnit(upper, unitsPerTenth * 10, 'upper');
+  if (lowerUnits > upperUnits) {
     return {
       mode: 'free_only',
       reason: '刻みに合う候補がありません。直接入力してください。'
     };
   }
 
-  const startTenths = Math.floor(lowerHundredths / 10);
-  const endTenths = Math.floor(upperHundredths / 10);
+  const startTenths = Math.floor(lowerUnits / unitsPerTenth);
+  const endTenths = Math.floor(upperUnits / unitsPerTenth);
   const options: string[] = [];
   for (let tenths = startTenths; tenths <= endTenths; tenths += 1) {
     options.push(formatTenthsValue(tenths));
@@ -93,4 +105,14 @@ export function applyHundredthsDigitToDimensionValue(
   const fractionalPart = match[3] ?? '';
   const tenthsDigit = fractionalPart[0] ?? '0';
   return `${sign}${integerPart}.${tenthsDigit}${digit}`;
+}
+
+export function applyThousandthsDigitToDimensionValue(
+  baseOrCurrentValue: string,
+  hundredthsDigit: number,
+  thousandthsDigit: number
+): string | null {
+  if (!Number.isInteger(thousandthsDigit) || thousandthsDigit < 0 || thousandthsDigit > 9) return null;
+  const hundredthsValue = applyHundredthsDigitToDimensionValue(baseOrCurrentValue, hundredthsDigit);
+  return hundredthsValue === null ? null : `${hundredthsValue}${thousandthsDigit}`;
 }

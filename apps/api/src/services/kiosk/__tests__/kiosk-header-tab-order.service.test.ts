@@ -25,6 +25,7 @@ describe('kiosk-header-tab-order normalization', () => {
       'part_measurement',
       'inspection_drawing',
       'rigging_analytics',
+      'machine_signal',
       'due_management',
       'call'
     ]);
@@ -54,6 +55,7 @@ describe('kiosk-header-tab-order normalization', () => {
       'part_measurement',
       'inspection_drawing',
       'rigging_analytics',
+      'machine_signal',
       'due_management',
       'call'
     ]);

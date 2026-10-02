@@ -17,8 +17,9 @@ import {
 import { formatInspectionDrawingPointDisplayName } from './measurementPointSupplement';
 import {
   applyHundredthsDigitToDimensionValue,
+  applyThousandthsDigitToDimensionValue,
   buildSelfInspectionDimensionTenthsOptions,
-  formatDimensionTenthsProvisionalValue,
+  resolveSelfInspectionDimensionKeypadDigitCount,
   resolveSelfInspectionMeasurementValueInputKind
 } from './selfInspectionDimensionValueInput';
 import { buildSelfInspectionMeasurementValueOptions } from './selfInspectionMeasurementValueOptions';
@@ -58,6 +59,13 @@ const STATUS_CLASS: Record<string, string> = {
   invalid: 'text-amber-300'
 };
 
+function dimensionDigitSlotClassName(active: boolean): string {
+  return clsx(
+    'inline-flex h-6 w-5 items-center justify-center rounded border bg-slate-800 p-0 leading-none',
+    active ? 'border-amber-300' : 'border-white/20'
+  );
+}
+
 export function InspectionDrawingValuePanel({
   point,
   readOnly,
@@ -74,10 +82,13 @@ export function InspectionDrawingValuePanel({
     value: string;
   } | null>(null);
   const [dimensionTenthsBase, setDimensionTenthsBase] = useState<string | null>(null);
+  /** 千分台まで入れる点で、百分台だけ押された未確定の桁 */
+  const [pendingHundredthsDigit, setPendingHundredthsDigit] = useState<number | null>(null);
 
   useEffect(() => {
     lastBlurCommitRef.current = null;
     setDimensionTenthsBase(null);
+    setPendingHundredthsDigit(null);
   }, [point?.id, valueCommitScopeKey]);
 
   const measurementValueInputKind = useMemo(() => {
@@ -184,9 +195,15 @@ export function InspectionDrawingValuePanel({
     optionResult?.mode === 'dropdown_and_free' && optionResult.options.length > 0;
   const showDimensionHundredths =
     isSelfInspectionOptions && measurementValueInputKind === 'dimension_hundredths' && showDropdown;
-  const dimensionProvisionalDisplay = dimensionTenthsBase
-    ? formatDimensionTenthsProvisionalValue(dimensionTenthsBase)
-    : null;
+  const dimensionKeypadDigitCount = showDimensionHundredths
+    ? resolveSelfInspectionDimensionKeypadDigitCount(point)
+    : 1;
+  const dimensionKeypadSource = dimensionTenthsBase ?? point.testValue;
+  const dimensionEntryInProgress = dimensionTenthsBase !== null || pendingHundredthsDigit !== null;
+  const dimensionTenthsPrefix = dimensionEntryInProgress
+    ? (applyHundredthsDigitToDimensionValue(dimensionKeypadSource, 0)?.slice(0, -1) ?? '')
+    : '';
+  const dimensionActiveSlot = pendingHundredthsDigit === null ? 0 : 1;
   const dropdownHint =
     optionResult?.mode === 'free_only' && optionResult.reason && valueInputMode === 'self_inspection_options'
       ? optionResult.reason
@@ -199,6 +216,7 @@ export function InspectionDrawingValuePanel({
       value={point.testValue}
       onChange={(e) => {
         setDimensionTenthsBase(null);
+        setPendingHundredthsDigit(null);
         onValueChange(e.target.value);
       }}
       onKeyDown={(e) => {
@@ -229,12 +247,18 @@ export function InspectionDrawingValuePanel({
 
   const handleDimensionHundredthsClick = (digit: number) => {
     if (!point || readOnly) return;
-    const value = applyHundredthsDigitToDimensionValue(
-      dimensionTenthsBase ?? point.testValue,
-      digit
-    );
+    if (dimensionKeypadDigitCount === 2 && pendingHundredthsDigit === null) {
+      if (!applyHundredthsDigitToDimensionValue(dimensionKeypadSource, digit)) return;
+      setPendingHundredthsDigit(digit);
+      return;
+    }
+    const value =
+      pendingHundredthsDigit === null
+        ? applyHundredthsDigitToDimensionValue(dimensionKeypadSource, digit)
+        : applyThousandthsDigitToDimensionValue(dimensionKeypadSource, pendingHundredthsDigit, digit);
     if (!value) return;
     setDimensionTenthsBase(null);
+    setPendingHundredthsDigit(null);
     onValueChange(value);
     emitCommit(value, 'hundredths_button');
   };
@@ -265,6 +289,7 @@ export function InspectionDrawingValuePanel({
                   if (!v) return;
                   if (showDimensionHundredths) {
                     setDimensionTenthsBase(v);
+                    setPendingHundredthsDigit(null);
                     return;
                   }
                   setDimensionTenthsBase(null);
@@ -288,10 +313,31 @@ export function InspectionDrawingValuePanel({
           {showDimensionHundredths ? (
             <div className="col-span-2 grid gap-2 rounded border border-white/10 bg-slate-950/40 p-2">
               <div className="flex items-center justify-between gap-2 text-sm">
-                <span className="font-semibold text-white/75">百分台</span>
-                <span className="min-h-6 rounded bg-slate-800 px-2 py-1 font-mono text-base text-amber-200">
-                  {dimensionProvisionalDisplay ?? ''}
+                <span className="font-semibold text-white/75">
+                  {dimensionKeypadDigitCount === 2 ? '百分台・千分台' : '百分台'}
                 </span>
+                <div
+                  className="flex items-center gap-0.5 font-mono text-base text-amber-200"
+                  data-testid="inspection-drawing-dimension-digit-slots"
+                >
+                  <span>{dimensionTenthsPrefix}</span>
+                  {dimensionKeypadDigitCount === 2 ? (
+                    <button
+                      type="button"
+                      aria-label="百分台を入れ直す"
+                      disabled={readOnly}
+                      className={dimensionDigitSlotClassName(dimensionEntryInProgress && dimensionActiveSlot === 0)}
+                      onClick={() => setPendingHundredthsDigit(null)}
+                    >
+                      {pendingHundredthsDigit ?? ''}
+                    </button>
+                  ) : (
+                    <span className={dimensionDigitSlotClassName(dimensionEntryInProgress)} />
+                  )}
+                  {dimensionKeypadDigitCount === 2 ? (
+                    <span className={dimensionDigitSlotClassName(dimensionActiveSlot === 1)} />
+                  ) : null}
+                </div>
               </div>
               <div
                 className={clsx(
