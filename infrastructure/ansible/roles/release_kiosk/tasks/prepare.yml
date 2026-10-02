@@ -57,6 +57,46 @@
     tasks_from: resolve-browser
   when: manage_kiosk_browser | default(false) | bool
 
+# The launcher template reads the kiosk role's browser flag defaults, but role
+# defaults are only in scope inside that role. Without this the release rendered
+# a Chromium launcher with no flags at all (2026-10-02, StoneBase01).
+- name: Read the kiosk role browser flag defaults for the launcher
+  ansible.builtin.set_fact:
+    release_kiosk_browser_defaults: >-
+      {{ lookup('ansible.builtin.file', role_path ~ '/../kiosk/defaults/main.yml') | from_yaml }}
+  when: manage_kiosk_browser | default(false) | bool
+
+# Chromium only: the Firefox kiosks have been released without the common
+# flags, and this fix must not change what they start with.
+- name: Apply the kiosk role common browser flags unless the host overrides them
+  ansible.builtin.set_fact:
+    kiosk_browser_flags_common: "{{ release_kiosk_browser_defaults.kiosk_browser_flags_common }}"
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved | default('') == 'chromium'
+    - kiosk_browser_flags_common is not defined
+
+- name: Apply the kiosk role Chromium flags unless the host overrides them
+  ansible.builtin.set_fact:
+    kiosk_browser_flags_chromium: "{{ release_kiosk_browser_defaults.kiosk_browser_flags_chromium }}"
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_flags_chromium is not defined
+
+- name: Refuse to stage a Chromium launcher without its required flags
+  ansible.builtin.assert:
+    that:
+      - "'--ozone-platform=x11' in kiosk_browser_flags_chromium"
+      - "'--gtk-version=3' in kiosk_browser_flags_chromium"
+      - "'--password-store=basic' in kiosk_browser_flags_chromium"
+    fail_msg: >-
+      The Chromium kiosk launcher would be rendered without the flags Japanese
+      input and the keyring-free start depend on. Fix kiosk_browser_flags_chromium
+      before releasing.
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved | default('') == 'chromium'
+
 - name: Define files required by rollback runtime
   ansible.builtin.set_fact:
     release_kiosk_rollback_prerequisites: >-

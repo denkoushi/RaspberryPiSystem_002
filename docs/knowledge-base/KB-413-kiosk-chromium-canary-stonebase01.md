@@ -55,7 +55,15 @@ validation:
 
 ## Results
 
-Not measured yet. Fill in after the canary deploy.
+### 2026-10-02 first deploy: Chromium started with no flags
+
+- Run `20261002-042206-50585c` (release `a9224655`) switched StoneBase01 to Chromium at 13:36 JST. Firefox closed and a password window appeared.
+- Read on the device: the launcher had `BROWSER_ENGINE="chromium"` and `BROWSER_BIN="/usr/bin/chromium"`, but `CHROMIUM_FLAGS` held only `--app` and `--unsafely-treat-insecure-origin-as-secure`. `COMMON_FLAGS` was empty. `gnome-keyring-daemon` and `gcr-prompter` were running (the password window). `kiosk-browser.service` stayed active, so the release health check passed.
+- Root cause: `kiosk_browser_flags_chromium` and `kiosk_browser_flags_common` are defaults of the `kiosk` role. `release_kiosk` renders the launcher itself and only includes `resolve-browser` from that role, so the defaults were out of scope and the template fell back to empty lists. Firefox was unaffected because its flags have defaults inside the template.
+- Fix: `release_kiosk` reads the `kiosk` role defaults for the two flag lists (a host override still wins) and refuses to stage a Chromium launcher that lacks `--ozone-platform=x11`, `--gtk-version=3` or `--password-store=basic`. The common flags are applied for Chromium only, so the Firefox kiosks keep starting exactly as before.
+- Lesson: the template tests rendered the launcher with flags passed in by hand. Check a launcher change by rendering it through the role that ships it (a local `ansible-playbook` run of the `release_kiosk` tasks did reproduce the empty flags and confirm the fix).
+
+Speed and Japanese input: not measured yet.
 
 ## Rollback
 
