@@ -1685,6 +1685,8 @@ test('assembly editor drags a crop bolt marker and saves its source-page positio
   );
   const marker = cropView.getByRole('button', { name: '丸数字1' });
   await expect(marker).toBeVisible();
+  // 選択中のマーカーには矢視の取っ手が出る。取っ手はマーカー名を名乗らない（名前検索が二重に当たらない）。
+  await expect(cropView.getByRole('button', { name: '矢視をドラッグで置く' })).toBeVisible();
   await fillSelectedAssemblyBolt(page);
 
   const targetLocalPoint = { x: 0.75, y: 0.5 };
