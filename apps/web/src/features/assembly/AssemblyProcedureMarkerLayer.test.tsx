@@ -222,21 +222,23 @@ describe('AssemblyProcedureMarkerLayer bolt dragging', () => {
         <AssemblyProcedureMarkerLayer bolts={[bolt]} onMoveBoltCallout={onMoveBoltCallout} />
       </div>
     );
-    expect(screen.queryByRole('button', { name: '丸数字1の矢視をドラッグで置く' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '矢視をドラッグで置く' })).not.toBeInTheDocument();
 
     rerender(
       <div className="relative h-[200px] w-[400px]">
         <AssemblyProcedureMarkerLayer bolts={[bolt]} selectedBoltId="bolt-1" />
       </div>
     );
-    expect(screen.queryByRole('button', { name: '丸数字1の矢視をドラッグで置く' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '矢視をドラッグで置く' })).not.toBeInTheDocument();
 
     rerender(
       <div className="relative h-[200px] w-[400px]">
         <AssemblyProcedureMarkerLayer bolts={[bolt]} selectedBoltId="bolt-1" onMoveBoltCallout={onMoveBoltCallout} />
       </div>
     );
-    const handle = screen.getByRole('button', { name: '丸数字1の矢視をドラッグで置く' });
+    const handle = screen.getByRole('button', { name: '矢視をドラッグで置く' });
+    // マーカー名での検索（部分一致）が取っ手に当たらないこと。
+    expect(screen.getAllByRole('button', { name: /締付点1|丸数字1/ })).toHaveLength(1);
     expect(handle).toHaveStyle({ left: '80%', top: '20%' });
 
     fireEvent.pointerDown(handle, { button: 0, pointerId: 7, clientX: 330, clientY: 60 });

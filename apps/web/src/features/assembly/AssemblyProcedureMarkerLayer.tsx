@@ -282,10 +282,11 @@ export function AssemblyMarkerOverlay({
   const selectedCheck = onMoveCheckItemCallout
     ? checkItems.find((item) => item.id === selectedCheckItemId)
     : undefined;
+  // 取っ手の名前にマーカー名を入れない。「丸数字1」で探したときにマーカー本体と取っ手の2つに当たるため。
   const calloutHandle = selectedBolt
-    ? { marker: selectedBolt, name: `丸数字${selectedBolt.markerNo}`, onMove: onMoveBoltCallout }
+    ? { marker: selectedBolt, onMove: onMoveBoltCallout }
     : selectedCheck
-      ? { marker: selectedCheck, name: `チェック${selectedCheck.markerNo}`, onMove: onMoveCheckItemCallout }
+      ? { marker: selectedCheck, onMove: onMoveCheckItemCallout }
       : null;
 
   if (density === 'compact') {
@@ -384,7 +385,7 @@ export function AssemblyMarkerOverlay({
         <button
           key={`callout-handle-${calloutHandle.marker.id}`}
           type="button"
-          aria-label={`${calloutHandle.name}の矢視をドラッグで置く`}
+          aria-label="矢視をドラッグで置く"
           title="ドラッグで矢視"
           data-callout-handle-for={calloutHandle.marker.id}
           onClick={(event) => event.stopPropagation()}
