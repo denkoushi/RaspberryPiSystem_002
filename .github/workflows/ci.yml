@@ -1187,6 +1187,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Fails in seconds on a stale manifest digest, before the Docker build and generation.
+      - name: Check committed source digests
+        run: |
+          node --test scripts/kiosk-sop/source-digest.test.mjs
+          node scripts/kiosk-sop/source-digest.mjs check
+
       - name: Verify semantic freshness, integrity, geometry, and visual contract
         env:
           KIOSK_SOP_DIAGNOSTICS_DIR: ${{ runner.temp }}/kiosk-sop-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}

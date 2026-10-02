@@ -680,6 +680,10 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("KIOSK_SOP_DIAGNOSTICS_DIR", kiosk)
         self.assertIn("path: ${{ runner.temp }}/kiosk-sop-diagnostics-", kiosk)
         self.assertIn("run-kiosk-sop-artifact-contract.sh", kiosk)
+        self.assertLess(
+            kiosk.index("node scripts/kiosk-sop/source-digest.mjs check"),
+            kiosk.index("run-kiosk-sop-artifact-contract.sh"),
+        )
         self.assertIn("artifact-tree-diff.txt", KIOSK_SOP_CONTRACT_RUNNER)
         self.assertLess(
             KIOSK_SOP_CONTRACT_RUNNER.index('mkdir -p "$diagnostics_dir/candidate"'),
