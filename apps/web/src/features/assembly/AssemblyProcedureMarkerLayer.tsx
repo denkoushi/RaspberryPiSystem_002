@@ -27,6 +27,8 @@ export type AssemblyCanvasBolt = AssemblyCanvasCallout & {
   yRatio: number;
   label: string;
   status?: 'pending' | 'current' | 'ok' | 'ng' | 'ignored';
+  /** 編集画面が条件別の色を渡すときだけ使う。未指定なら状態の色。 */
+  accentClass?: string;
 };
 
 export type AssemblyCanvasCheckItem = AssemblyCanvasCallout & {
@@ -69,8 +71,9 @@ export type AssemblyProcedureMarkerLayerProps = {
   layoutSize?: { width: number; height: number };
 };
 
-function boltMarkerClass(status: AssemblyCanvasBolt['status'], selected: boolean): string {
+function boltMarkerClass(status: AssemblyCanvasBolt['status'], selected: boolean, accentClass?: string): string {
   if (selected) return 'bg-cyan-300 text-slate-950 ring-4 ring-cyan-100';
+  if (accentClass) return accentClass;
   const markerStatus: KioskMarkerStatus =
     status === 'ok' ? 'ok' : status === 'ng' ? 'ng' : 'pending';
   return KIOSK_MARKER_STATUS_CLASS[markerStatus];
@@ -295,7 +298,7 @@ export function AssemblyMarkerOverlay({
             data-marker-id={bolt.id}
             className={clsx(
               'absolute flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[0.48rem] font-bold shadow',
-              boltMarkerClass(bolt.status, false),
+              boltMarkerClass(bolt.status, false, bolt.accentClass),
               inputTargetBoltId === bolt.id &&
                 'outline outline-2 outline-offset-1 outline-sky-400'
             )}
@@ -340,7 +343,7 @@ export function AssemblyMarkerOverlay({
           onPointerCancel={onMoveBolt ? (event) => endMarkerPointerInteraction(event, true) : undefined}
           className={clsx(
             'absolute z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-sm font-bold shadow-lg',
-            boltMarkerClass(bolt.status, selectedBoltId === bolt.id),
+            boltMarkerClass(bolt.status, selectedBoltId === bolt.id, bolt.accentClass),
             kioskMarkerInputTargetOutlineClass(inputTargetBoltId === bolt.id),
             onMoveBolt && 'touch-none cursor-move'
           )}

@@ -7,6 +7,7 @@ import { Dialog } from '../../components/ui/Dialog';
 
 import {
   assemblyBoltConditionKey,
+  assemblyBoltConditionTone,
   assemblyBoltConditionsFromTrainingPrograms,
   formatAssemblyBoltConditionSpec,
   formatAssemblyBoltConditionTorque
@@ -65,7 +66,7 @@ export function AssemblyBoltConditionStrip({ entries, activeKey, selectedMarkerN
       className="flex min-w-0 flex-wrap items-center gap-1.5"
     >
       <span className="shrink-0 text-xs font-bold text-white/60">締付条件</span>
-      {entries.map((entry) => {
+      {entries.map((entry, index) => {
         const active = entry.key === activeKey;
         const spec = formatAssemblyBoltConditionSpec(entry.condition);
         return (
@@ -80,16 +81,17 @@ export function AssemblyBoltConditionStrip({ entries, activeKey, selectedMarkerN
             }
             disabled={readOnly}
             className={clsx(
-              'grid min-h-11 grid-cols-[auto_auto] items-center gap-x-2 rounded border px-2 text-left disabled:opacity-60',
+              'grid min-h-11 grid-cols-[auto_auto_auto] items-center gap-x-2 rounded border px-2 text-left disabled:opacity-60',
               active
                 ? 'border-cyan-300 bg-cyan-900/45 text-white'
                 : 'border-white/15 bg-slate-950/60 text-white/85 hover:bg-slate-800'
             )}
             onClick={() => onSelect(entry.key)}
           >
+            <span aria-hidden="true" className={clsx('row-span-2 h-4 w-4 rounded-full', assemblyBoltConditionTone(index).dot)} />
             <span className="text-sm font-bold tabular-nums">{spec}</span>
             <span className="row-span-2 text-xs font-bold tabular-nums text-white/60">{entry.markerNos.length}か所</span>
-            <span className="text-[0.7rem] tabular-nums text-white/60">
+            <span className="col-start-2 text-[0.7rem] tabular-nums text-white/60">
               {formatAssemblyBoltConditionTorque(entry.condition)}
             </span>
           </button>
