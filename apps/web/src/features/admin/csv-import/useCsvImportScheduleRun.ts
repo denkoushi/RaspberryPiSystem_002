@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useCsvImportScheduleMutations } from '../../../api/hooks';
 
@@ -15,6 +15,16 @@ export function useCsvImportScheduleRun({ schedules, refetch }: UseCsvImportSche
   const runningScheduleIdRef = useRef<string | null>(null);
   const [runError, setRunError] = useState<Record<string, Error | null>>({});
   const [runMessage, setRunMessage] = useState<Record<string, string>>({});
+  const messageTimersRef = useRef(new Set<ReturnType<typeof setTimeout>>());
+
+  // 画面を離れた後に、完了メッセージを消すタイマーが残らないようにする
+  useEffect(() => {
+    const timers = messageTimersRef.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
 
   const handleRun = async (id: string) => {
     if (runningScheduleIdRef.current !== null) {
@@ -99,13 +109,15 @@ export function useCsvImportScheduleRun({ schedules, refetch }: UseCsvImportSche
         ...prev,
         [id]: acceptedInBackground ? '実行を開始しました。完了はインポート履歴で確認してください。' : '実行しました'
       }));
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        messageTimersRef.current.delete(timer);
         setRunMessage(prev => {
           const next = { ...prev };
           delete next[id];
           return next;
         });
       }, acceptedInBackground ? 8000 : 3000);
+      messageTimersRef.current.add(timer);
 
       refetch();
     } catch (error) {
