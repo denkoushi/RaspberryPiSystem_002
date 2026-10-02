@@ -452,6 +452,30 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             self.assertNotIn("--ignore-certificate-errors-spki-list", unpinned)
             self.assertNotIn("--user-data-dir", unpinned)
 
+    def test_pi4_image_pull_retries_and_cleanup_targets_the_candidate(self) -> None:
+        import yaml
+
+        prepare = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(encoding="utf-8")
+        )
+        pull = next(
+            task
+            for task in prepare
+            if task.get("name") == "Pull enabled Pi4 images while the normal kiosk remains active"
+        )
+        self.assertGreaterEqual(pull["retries"], 3)
+        self.assertEqual(pull["until"], "release_kiosk_pull.rc == 0")
+
+        cleanup = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/cleanup.yml").read_text(encoding="utf-8")
+        )
+        remove = cleanup[0]
+        self.assertEqual(
+            remove["ansible.builtin.command"]["argv"][-1],
+            "{{ release_kiosk_candidate_images[item.item] }}",
+        )
+        self.assertIn("item.rc | default(1) == 0", remove["when"])
+
     def test_release_launcher_uses_shared_firefox_resolution(self) -> None:
         prepare = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
             encoding="utf-8"

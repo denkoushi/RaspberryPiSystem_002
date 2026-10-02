@@ -5,6 +5,7 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import { assertKioskApiClientKeyValid } from '../../services/clients/client-device-auth.service.js';
+import { getMachineSignalAdminOverview } from '../../services/machine-signal/machine-signal-admin.service.js';
 import {
   getMachineSignalGmailIngestionService,
   hasGmailCredentials,
@@ -18,6 +19,7 @@ import {
   getMachineSignalSettings,
   MACHINE_SIGNAL_SENSOR_KINDS,
   updateMachineSignalSensor,
+  updateMachineSignalSensorsBulk,
   updateMachineSignalSettings,
 } from '../../services/machine-signal/machine-signal-settings.service.js';
 import {
@@ -80,6 +82,16 @@ const sensorBodySchema = z.object({
   categoryOverrides: z.record(z.string().regex(/^[0124]{3}$/), z.enum(SIGNAL_CATEGORIES)),
 });
 
+const sensorBulkBodySchema = z.object({
+  signalNos: z.array(z.number().int().min(0).max(100_000)).min(1).max(500),
+  patch: z.object({
+    site: z.string().trim().max(80).nullable().optional(),
+    kind: z.enum(MACHINE_SIGNAL_SENSOR_KINDS).optional(),
+    hidden: z.boolean().optional(),
+    planned: z.object({ startMinute: minuteSchema, endMinute: minuteSchema }).nullable().optional(),
+  }),
+});
+
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export type MachineSignalRouteDeps = { allowView: PreHandler; canManage: PreHandler };
@@ -127,6 +139,15 @@ export function registerMachineSignalRoutes(app: FastifyInstance, deps: MachineS
   app.get(`${BASE}/sensors`, { preHandler: canManage }, async () => ({
     sensors: await listMachineSignalSensorsForAdmin(),
   }));
+
+  app.get(`${BASE}/admin/overview`, { preHandler: canManage }, async () => ({
+    overview: await getMachineSignalAdminOverview(),
+  }));
+
+  app.put(`${BASE}/sensors/bulk`, { preHandler: canManage }, async (request) => {
+    const body = sensorBulkBodySchema.parse(request.body);
+    return { updated: await updateMachineSignalSensorsBulk(body.signalNos, body.patch) };
+  });
 
   app.put(`${BASE}/sensors/:signalNo`, { preHandler: canManage }, async (request) => {
     const { signalNo } = signalNoParamsSchema.parse(request.params);
