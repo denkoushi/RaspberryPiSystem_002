@@ -18,25 +18,20 @@ import { assertNoManualTarget, resolveSingleVisibleTarget } from './capture-cont
 import { chromiumLaunchOptions, generatorVersion } from './capture-runtime.mjs';
 import { resolveAssemblyCaptureAdapter } from './assembly-capture-adapter.mjs';
 import { resolveInspectionDrawingCaptureAdapter } from './inspection-drawing-capture-adapter.mjs';
+import { manualSources, sourceDigest } from './source-digest.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, '../..');
-const generatorRuntimeInputs = Object.freeze([
-  'infrastructure/docker/Dockerfile.kiosk-sop-generator',
-  'package.json',
-  'pnpm-lock.yaml',
-  'pnpm-workspace.yaml'
-]);
 const manualDescriptors = Object.freeze({
   'inspection-drawing': Object.freeze({
-    sourceDefinitionPath: join(repoRoot, 'apps/web/src/features/part-measurement/inspection-drawing/inspection-drawing-sop.definition.json'),
-    committedRoot: join(repoRoot, 'apps/web/src/generated/kiosk-sop/inspection-drawing'),
+    sourceDefinitionPath: join(repoRoot, manualSources['inspection-drawing'].definitionPath),
+    committedRoot: join(repoRoot, manualSources['inspection-drawing'].committedRoot),
     docsPreviewPath: join(repoRoot, 'docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html'),
     resolveAdapter: resolveInspectionDrawingCaptureAdapter
   }),
   'assembly-procedure-template': Object.freeze({
-    sourceDefinitionPath: join(repoRoot, 'apps/web/src/features/assembly/assembly-procedure-template-sop.definition.json'),
-    committedRoot: join(repoRoot, 'apps/web/src/generated/kiosk-sop/assembly-procedure-template'),
+    sourceDefinitionPath: join(repoRoot, manualSources['assembly-procedure-template'].definitionPath),
+    committedRoot: join(repoRoot, manualSources['assembly-procedure-template'].committedRoot),
     docsPreviewPath: join(repoRoot, 'docs/design-previews/kiosk-assembly-procedure-template-sop.html'),
     resolveAdapter: resolveAssemblyCaptureAdapter
   })
@@ -190,11 +185,6 @@ async function captureScreens(definition, targetRoot, resolveAdapter) {
   }
 }
 
-function globRegex(pattern) {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '§§').replace(/\*/g, '[^/]*').replace(/§§/g, '.*');
-  return new RegExp(`^${escaped}$`);
-}
-
 async function listFiles(root, prefix = '') {
   const result = [];
   for (const name of await readdir(join(root, prefix))) {
@@ -203,26 +193,6 @@ async function listFiles(root, prefix = '') {
     if (entry.isDirectory()) result.push(...await listFiles(root, path)); else result.push(path);
   }
   return result;
-}
-
-async function sourceDigest(definition) {
-  const roots = new Set();
-  for (const pattern of definition.supplementalWatchGlobs) {
-    const wildcardAt = pattern.search(/[?*]/);
-    const prefix = wildcardAt < 0 ? pattern : pattern.slice(0, wildcardAt);
-    roots.add(prefix.endsWith('/') ? prefix.replace(/\/$/, '') : dirname(prefix));
-  }
-  const files = [];
-  for (const root of roots) {
-    const entry = await stat(join(repoRoot, root));
-    if (entry.isDirectory()) files.push(...await listFiles(repoRoot, root)); else files.push(root);
-  }
-  const patterns = definition.supplementalWatchGlobs.map(globRegex);
-  const selected = new Set([...definition.entrySources, ...generatorRuntimeInputs]);
-  for (const file of files) if (patterns.some((pattern) => pattern.test(file))) selected.add(file);
-  const chunks = [];
-  for (const file of [...selected].sort()) chunks.push(`${file}\0${await readFile(join(repoRoot, file), 'utf8')}\0`);
-  return sha256(chunks.join(''));
 }
 
 async function composeSheets(html, definition, targetRoot) {
@@ -284,7 +254,7 @@ async function generateManual(manual, targetRoot) {
     generatorVersion,
     browserVersion,
     definitionSha256: sha256(stableJson(source)),
-    sourceSha256: await sourceDigest(source),
+    sourceSha256: await sourceDigest(source, repoRoot),
     htmlSha256: sha256(html),
     geometry: Object.fromEntries(validated.scenarios.flatMap(({ sheets }) => sheets).map((sheet) => [sheet.id, sheet.steps.map(({ id, targetId, target }) => ({
       id,
