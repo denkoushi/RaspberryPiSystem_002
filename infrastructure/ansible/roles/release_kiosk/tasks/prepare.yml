@@ -246,6 +246,11 @@
       - "{{ release_kiosk_candidate_images[item] }}"
   loop: "{{ release_kiosk_services }}"
   register: release_kiosk_pull
+  # A reset connection to the registry is transient; without a retry it fails
+  # the kiosk and, with serial rollout, skips every kiosk after it.
+  retries: 3
+  delay: 15
+  until: release_kiosk_pull.rc == 0
   changed_when: >-
     'Downloaded newer image' in release_kiosk_pull.stdout
     or 'Pull complete' in release_kiosk_pull.stdout
