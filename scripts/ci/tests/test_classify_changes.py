@@ -294,6 +294,7 @@ class ClassifyChangesTests(unittest.TestCase):
             "infrastructure/ansible/templates/kiosk-browser.service.j2",
             "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
             "infrastructure/ansible/roles/kiosk/defaults/main.yml",
+            "infrastructure/ansible/inventory.yml",
             "infrastructure/ansible/templates/status-agent.conf.j2",
             "infrastructure/ansible/templates/nfc-agent.env.j2",
             "infrastructure/ansible/roles/release_kiosk/tasks/prepare.yml",
