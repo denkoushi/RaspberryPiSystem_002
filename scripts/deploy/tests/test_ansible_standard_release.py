@@ -307,6 +307,52 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         if server is not None:
             self.assertTrue(StatusHandler.received)
 
+    def test_release_launcher_resolves_chromium_without_compat_symlink(self) -> None:
+        resolver = (ANSIBLE / "roles/kiosk/tasks/resolve-browser.yml").read_text(
+            encoding="utf-8"
+        )
+        defaults = (ANSIBLE / "roles/kiosk/defaults/main.yml").read_text(
+            encoding="utf-8"
+        )
+        launcher = (ANSIBLE / "templates/kiosk-launch.sh.j2").read_text(
+            encoding="utf-8"
+        )
+
+        # Debian trixie kiosks only ship /usr/bin/chromium; the release path must not
+        # bake the missing compatibility path into the launcher.
+        self.assertIn("chromium_configured_binary_stat", resolver)
+        self.assertIn("kiosk_browser_exec_path: /usr/bin/chromium\n", resolver)
+        self.assertLess(
+            resolver.index("Resolve chromium executable path"),
+            resolver.index("Fall back to the chromium binary"),
+        )
+        # IME on Chromium 135+ needs both X11 and the GTK3 IM module.
+        self.assertIn('- "--ozone-platform=x11"', defaults)
+        self.assertIn('- "--gtk-version=3"', defaults)
+
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        environment.filters["regex_replace"] = lambda value, pattern, replacement: re.sub(
+            pattern, replacement, value
+        )
+        rendered = environment.from_string(launcher).render(
+            ansible_user="kiosk",
+            kiosk_url="https://server.example/kiosk?clientKey=k",
+            kiosk_browser_engine="chromium",
+            kiosk_browser_exec_path="/usr/bin/chromium",
+            kiosk_browser_flags_chromium=["--ozone-platform=x11", "--gtk-version=3"],
+            kiosk_release_sha="a" * 40,
+        )
+        self.assertIn('BROWSER_BIN="/usr/bin/chromium"', rendered)
+        self.assertIn("    --gtk-version=3\n", rendered)
+        self.assertIn('--app="${KIOSK_TARGET_URL}"', rendered)
+        self.assertIn("&_appRef=${APP_REF}", rendered)
+
     def test_release_launcher_uses_shared_firefox_resolution(self) -> None:
         prepare = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
             encoding="utf-8"

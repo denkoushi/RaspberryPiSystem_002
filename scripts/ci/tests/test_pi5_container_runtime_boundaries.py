@@ -55,7 +55,7 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
         self.assertRegex(runtime, r"apt-get install -y --only-upgrade[^\n]* libexpat1")
         self.assertIn("dpkg-query -W -f='${Version}' libexpat1", runtime)
         self.assertIn(
-            'dpkg --compare-versions "${expat_version}" ge \'2.5.0-1+deb12u3\'',
+            'dpkg --compare-versions "${expat_version}" ge \'2.5.0-1+deb12u4\'',
             runtime,
         )
         self.assertIn(

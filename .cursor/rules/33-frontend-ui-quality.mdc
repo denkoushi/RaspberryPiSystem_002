@@ -42,6 +42,11 @@ alwaysApply: false
 - `will-change` は常用しない（必要な範囲・期間に限定）
 - `useEffect` で書かなくてよい処理は、レンダリング/派生値として表現する
 
+## キオスク取説（kiosk-sop）の鮮度
+
+- キオスク画面や共通UI（`apps/web/src/features/assembly/**`、`features/part-measurement/inspection-drawing/**`、`components/ui/**` など）を変えたら、push前に `pnpm kiosk-sop:source-check` を実行する（約1秒、Docker不要）
+- staleと出たら、取説の画面が変わっていなければ `pnpm kiosk-sop:source-refresh`、変わっていれば `pnpm kiosk-sop:generate` を実行し、結果をコミットする
+
 ## Tailwindを使っている場合（導入済み前提）
 
 - `h-screen` ではなく `h-dvh` を優先する
