@@ -1,5 +1,6 @@
 import { clampImageMarkerRatio, setImageMarkerCalloutTip } from '../../kiosk/image-canvas';
 import { AssemblyAreaTabs } from '../AssemblyAreaTabs';
+import { tintAssemblyBoltsByCondition } from '../assemblyBoltConditionPalette';
 import { AssemblyBoltConditionStrip } from '../AssemblyBoltConditionStrip';
 import { AssemblyProcedureCanvas } from '../AssemblyProcedureCanvas';
 import { AssemblyProcedureCropView } from '../AssemblyProcedureCropView';
@@ -138,7 +139,7 @@ export function AssemblyTemplateEditorCanvasPane() {
                   assets={selectedDocument?.assets}
                 />
                 <AssemblyProcedureMarkerLayer
-                  bolts={cropVisibleBolts}
+                  bolts={tintAssemblyBoltsByCondition(cropVisibleBolts, areas, boltConditionPalette)}
                   checkItems={cropVisibleCheckItems}
                   selectedBoltId={selectedBoltId}
                   selectedCheckItemId={selectedCheckItemId}
@@ -163,7 +164,7 @@ export function AssemblyTemplateEditorCanvasPane() {
       ) : (
       <AssemblyProcedureCanvas
         imageRelativePath={selectedPage?.imageRelativePath ?? selectedDocument?.imageRelativePath}
-        bolts={visibleBolts}
+        bolts={tintAssemblyBoltsByCondition(visibleBolts, areas, boltConditionPalette)}
         checkItems={visibleCheckItems}
         selectedBoltId={selectedBoltId}
         selectedCheckItemId={selectedCheckItemId}

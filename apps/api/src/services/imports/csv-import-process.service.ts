@@ -27,6 +27,9 @@ export async function processCsvImportFromTargets(
     if (target.type === 'itemInventoryGmail') {
       throw new ApiError(400, 'itemInventoryGmail target must be executed by the inventory intake service');
     }
+    if (target.type === 'machineSignalGmail') {
+      throw new ApiError(400, 'machineSignalGmail target must be executed by the machine signal intake service');
+    }
     const buffer = files.get(target.type);
     if (!buffer) {
       continue; // ファイルが存在しない場合はスキップ
@@ -72,7 +75,7 @@ export async function processCsvImportFromTargets(
   try {
     // 各タイプを順次インポート（トランザクションは各インポータ内で処理）
     for (const target of targets) {
-      if (target.type === 'itemInventoryGmail') {
+      if (target.type === 'itemInventoryGmail' || target.type === 'machineSignalGmail') {
         continue;
       }
       const rows = parsedData.get(target.type);

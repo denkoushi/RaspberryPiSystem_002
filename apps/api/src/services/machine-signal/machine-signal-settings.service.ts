@@ -121,6 +121,34 @@ export async function listMachineSignalSensors(): Promise<MachineSignalSensorDto
   return rows.map(toMachineSignalSensorDto);
 }
 
+export type MachineSignalSensorBulkPatch = {
+  site?: string | null;
+  kind?: MachineSignalSensorKind;
+  hidden?: boolean;
+  /** 稼働予定。null は終日。開始と終了は必ず組で渡す */
+  planned?: { startMinute: number; endMinute: number } | null;
+};
+
+/** 複数のセンサーへ、渡された項目だけをまとめて設定する。表示名・電力・ランプの読み替えは1台ずつ変える。 */
+export async function updateMachineSignalSensorsBulk(
+  signalNos: number[],
+  patch: MachineSignalSensorBulkPatch
+): Promise<number> {
+  const data: Prisma.MachineSignalSensorUpdateManyMutationInput = {};
+  if (patch.site !== undefined) data.site = patch.site?.trim() || null;
+  if (patch.kind !== undefined) data.kind = patch.kind;
+  if (patch.hidden !== undefined) data.hidden = patch.hidden;
+  if (patch.planned !== undefined) {
+    data.plannedStartMinute = patch.planned?.startMinute ?? null;
+    data.plannedEndMinute = patch.planned?.endMinute ?? null;
+  }
+  if (Object.keys(data).length === 0) {
+    throw new ApiError(400, '変更する項目を選んでください', undefined, 'MACHINE_SIGNAL_BULK_EMPTY');
+  }
+  const result = await prisma.machineSignalSensor.updateMany({ where: { signalNo: { in: signalNos } }, data });
+  return result.count;
+}
+
 export async function updateMachineSignalSensor(
   signalNo: number,
   input: MachineSignalSensorUpdate

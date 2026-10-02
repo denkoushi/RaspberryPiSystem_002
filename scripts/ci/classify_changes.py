@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -147,6 +148,8 @@ def is_pi4_kiosk_release_file(path: str) -> bool:
         _has_prefix(normalized, prefix) for prefix in PI4_KIOSK_RELEASE_PREFIXES
     )
 POLICY_PATHS = frozenset({".gitleaksignore"})
+WEB_UNIT_TEST_FILE = re.compile(r"\.test\.[cm]?[jt]sx?$")
+HERMES_SEARCH_PREFIX = "scripts/hermes-search"
 PI4_AGENT_NON_BUILD_GLOBAL_PATHS = frozenset(
     {
         "package.json",
@@ -336,12 +339,26 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
     if _has_prefix(normalized, "apps/api"):
         return frozenset({"repo_policy", "workspace_quality", "api"})
     if _has_prefix(normalized, "apps/web"):
-        return frozenset({"repo_policy", "workspace_quality", "web", "kiosk_sop"})
+        web = frozenset({"repo_policy", "workspace_quality", "web", "kiosk_sop"})
+        # Web-only PRs used to skip E2E, so a broken spec surfaced only on the
+        # next full-suite PR: #1632 and #1620 both broke main this way on 2026-10-02.
+        # Unit test files and generated SOP artifacts cannot change what E2E sees.
+        if WEB_UNIT_TEST_FILE.search(normalized) or _has_prefix(
+            normalized, "apps/web/src/generated/kiosk-sop"
+        ):
+            return web
+        return web | {"e2e"}
     if _has_prefix(normalized, "packages"):
         return frozenset({"repo_policy", "workspace_quality", "api", "web", "kiosk_sop"})
 
     if _has_prefix(normalized, "scripts/kiosk-sop"):
         return frozenset({"repo_policy", "kiosk_sop"})
+
+    # Dockerfile.api is the only image that copies this tree, and the API tests
+    # and the runtime rehearsal exercise it. The hermes-retrieval job runs its
+    # own tests on every event.
+    if _has_prefix(normalized, HERMES_SEARCH_PREFIX):
+        return frozenset({"repo_policy", "api", "docker_security"})
 
     if _has_prefix(normalized, "clients") or _has_prefix(normalized, "scripts/client"):
         return frozenset({"repo_policy", "client"})
@@ -453,6 +470,7 @@ def codeql_for_path(path: str) -> bool:
         or _has_prefix(normalized, "apps/web")
         or _has_prefix(normalized, "packages")
         or _has_prefix(normalized, "e2e")
+        or _has_prefix(normalized, HERMES_SEARCH_PREFIX)
         or normalized in {"playwright.config.ts", "playwright.kiosk-sop.config.ts"}
         or normalized in {
             "package.json",
@@ -488,7 +506,9 @@ def docker_images_for_path(path: str) -> frozenset[str]:
         and PurePosixPath(normalized).name.startswith("Caddyfile")
     ):
         return frozenset({"web"})
-    if normalized == "infrastructure/docker/Dockerfile.api":
+    if normalized == "infrastructure/docker/Dockerfile.api" or _has_prefix(
+        normalized, HERMES_SEARCH_PREFIX
+    ):
         return frozenset({"api"})
     if _has_prefix(normalized, "infrastructure/docker") or normalized in GLOBAL_PATHS:
         return frozenset({"api", "web"})

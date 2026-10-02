@@ -1,17 +1,24 @@
 # syntax=docker/dockerfile:1
+# Poetry runs on the build host, never under emulation: its own dependencies
+# have no linux/arm/v7 wheels, and compiling them under QEMU took 23-37 minutes
+# of every uncached Pi4 agent build. The target stage installs only what
+# poetry.lock names, and pip verifies each file against the lock's hashes.
+FROM --platform=$BUILDPLATFORM python:3.11-slim AS lock-export
+WORKDIR /export
+RUN pip install --no-cache-dir poetry==2.4.1 poetry-plugin-export==1.10.1
+COPY clients/nfc-agent/pyproject.toml clients/nfc-agent/poetry.lock ./
+RUN poetry export --only main --format requirements.txt --output requirements.txt
 FROM python:3.11-slim AS builder
 WORKDIR /build
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpcsclite-dev libffi-dev build-essential swig && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir poetry
 RUN python -m venv /opt/venv
 ENV VIRTUAL_ENV="/opt/venv"
 ENV PATH="/opt/venv/bin:$PATH"
-COPY clients/nfc-agent/pyproject.toml clients/nfc-agent/poetry.lock ./
-RUN poetry config virtualenvs.create false \
-    && poetry install --only main --no-root --no-interaction \
+COPY --from=lock-export /export/requirements.txt ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.txt \
     && python -m pip uninstall --yes pip setuptools wheel
 
 FROM python:3.11-slim AS runtime

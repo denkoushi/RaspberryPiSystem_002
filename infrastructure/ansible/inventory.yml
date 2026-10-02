@@ -307,6 +307,8 @@ all:
               ansible_user: raspi4-kensaku-stonebase01
               # Chromium 先行検証（表示速度改善）。戻し方は KB-413（この行だけ戻しても launcher は配られない）
               kiosk_browser_engine: "chromium"
+              # Pi5 証明書の公開鍵だけを許可する（KB-413）。証明書を作り直したら更新する
+              kiosk_server_cert_spki_sha256: "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE="
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
               ibus_disable_competing_autostart: true

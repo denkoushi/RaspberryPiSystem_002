@@ -130,3 +130,41 @@ export function formatAssemblyBoltConditionTorque(condition: AssemblyBoltConditi
   const value = (raw: number | null) => (raw == null ? '-' : String(raw));
   return `${value(condition.lowerLimit)} – ${value(condition.nominalTorque)} – ${value(condition.upperLimit)} ${condition.unit}`.trim();
 }
+
+/**
+ * 編集画面で条件ごとに丸数字を塗り分ける色。条件が6種を超えたら先頭へ戻る。
+ * 作業画面の丸数字は合否を色で示すため、この色は使わない。
+ */
+const ASSEMBLY_BOLT_CONDITION_TONES = [
+  { marker: 'bg-rose-400 text-slate-950 ring-2 ring-rose-200', dot: 'bg-rose-400' },
+  { marker: 'bg-sky-400 text-slate-950 ring-2 ring-sky-200', dot: 'bg-sky-400' },
+  { marker: 'bg-amber-400 text-slate-950 ring-2 ring-amber-200', dot: 'bg-amber-400' },
+  { marker: 'bg-violet-400 text-slate-950 ring-2 ring-violet-200', dot: 'bg-violet-400' },
+  { marker: 'bg-teal-400 text-slate-950 ring-2 ring-teal-200', dot: 'bg-teal-400' },
+  { marker: 'bg-fuchsia-400 text-slate-950 ring-2 ring-fuchsia-200', dot: 'bg-fuchsia-400' }
+] as const;
+
+export function assemblyBoltConditionTone(index: number): { marker: string; dot: string } {
+  return ASSEMBLY_BOLT_CONDITION_TONES[index % ASSEMBLY_BOLT_CONDITION_TONES.length]!;
+}
+
+/** 一覧の並び順で決まる色を、条件の入っている丸数字へ付ける（図面上の丸数字は id で対応づける）。 */
+export function tintAssemblyBoltsByCondition<T extends { id: string }>(
+  bolts: readonly T[],
+  areas: readonly AssemblyDraftArea[],
+  palette: readonly AssemblyBoltConditionPaletteEntry[]
+): Array<T & { accentClass?: string }> {
+  const markerClassByKey = new Map(
+    palette.map((entry, index) => [entry.key, assemblyBoltConditionTone(index).marker])
+  );
+  const accentClassById = new Map<string, string>();
+  for (const bolt of areas.flatMap((area) => area.bolts)) {
+    const condition = assemblyBoltConditionFromBolt(bolt);
+    const accentClass = condition ? markerClassByKey.get(assemblyBoltConditionKey(condition)) : undefined;
+    if (accentClass) accentClassById.set(bolt.id, accentClass);
+  }
+  return bolts.map((bolt) => {
+    const accentClass = accentClassById.get(bolt.id);
+    return accentClass ? { ...bolt, accentClass } : bolt;
+  });
+}

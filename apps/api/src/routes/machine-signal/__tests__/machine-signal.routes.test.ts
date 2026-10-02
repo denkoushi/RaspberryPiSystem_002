@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
   updateSensor: vi.fn(),
+  updateSensorsBulk: vi.fn(),
+  getOverview: vi.fn(),
   importFiles: vi.fn(),
   listRuns: vi.fn(),
   loadConfig: vi.fn(),
@@ -27,6 +29,10 @@ vi.mock('../../../services/machine-signal/machine-signal-settings.service.js', (
   getMachineSignalSettings: mocks.getSettings,
   updateMachineSignalSettings: mocks.updateSettings,
   updateMachineSignalSensor: mocks.updateSensor,
+  updateMachineSignalSensorsBulk: mocks.updateSensorsBulk,
+}));
+vi.mock('../../../services/machine-signal/machine-signal-admin.service.js', () => ({
+  getMachineSignalAdminOverview: mocks.getOverview,
 }));
 vi.mock('../../../services/machine-signal/signal-report-import.service.js', () => ({
   importSignalReportFiles: mocks.importFiles,
@@ -133,6 +139,8 @@ describe('machine signal routes', () => {
       ['PUT', '/machine-signal/settings'],
       ['GET', '/machine-signal/sensors'],
       ['PUT', '/machine-signal/sensors/8'],
+      ['PUT', '/machine-signal/sensors/bulk'],
+      ['GET', '/machine-signal/admin/overview'],
       ['GET', '/machine-signal/import-runs'],
       ['POST', '/machine-signal/import'],
       ['POST', '/machine-signal/gmail-import/run'],
@@ -188,6 +196,36 @@ describe('machine signal routes', () => {
     expect(mocks.updateSensor).toHaveBeenCalledWith(8, SENSOR_BODY);
     expect(badPattern.statusCode).toBe(400);
     expect(badCategory.statusCode).toBe(400);
+  });
+
+  it('sets only the given fields on many sensors at once', async () => {
+    mocks.updateSensorsBulk.mockResolvedValue(3);
+    const { app } = await createApp();
+
+    const ok = await app.inject({
+      method: 'PUT',
+      url: '/machine-signal/sensors/bulk',
+      payload: { signalNos: [3, 6, 46], patch: { site: '三島工場', planned: null } },
+    });
+    const empty = await app.inject({
+      method: 'PUT',
+      url: '/machine-signal/sensors/bulk',
+      payload: { signalNos: [], patch: { site: '三島工場' } },
+    });
+
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toEqual({ updated: 3 });
+    // 「bulk」がセンサー番号として解釈されないこと。
+    expect(mocks.updateSensor).not.toHaveBeenCalled();
+    expect(mocks.updateSensorsBulk).toHaveBeenCalledWith([3, 6, 46], { site: '三島工場', planned: null });
+    expect(empty.statusCode).toBe(400);
+  });
+
+  it('returns the import overview for the admin page', async () => {
+    mocks.getOverview.mockResolvedValue({ latestReportDate: '2026-10-01', latestReportCount: 50, coverage: [], gmailSchedule: null });
+    const { app } = await createApp();
+    const response = await app.inject({ method: 'GET', url: '/machine-signal/admin/overview' });
+    expect(response.json().overview.latestReportCount).toBe(50);
   });
 
   it('imports more files in one upload than the app-wide default of ten', async () => {

@@ -1,0 +1,48 @@
+name: PR cache cleanup
+
+# GitHub keeps a pull request's Actions caches for up to seven days after the
+# pull request is closed, and nothing can read them any more: caches are scoped
+# by ref, so main never restores from refs/pull/<n>/merge. One pull request
+# that builds every image holds about 2 GB of the 10 GB quota. Left alone, the
+# dead caches push the still-useful main caches out.
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+
+concurrency:
+  group: pr-cache-cleanup-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  delete-pr-caches:
+    name: delete-pr-caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # No checkout: this job never runs code from the pull request.
+      - name: Delete the caches scoped to the closed pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: |
+          set -euo pipefail
+          deleted=0
+          failed=0
+          while read -r cache_id; do
+            [ -n "$cache_id" ] || continue
+            if gh api -X DELETE "repos/$GH_REPO/actions/caches/$cache_id" >/dev/null; then
+              deleted=$((deleted + 1))
+            else
+              failed=$((failed + 1))
+            fi
+          done < <(
+            gh api --paginate \
+              "repos/$GH_REPO/actions/caches?per_page=100&ref=$PR_REF" \
+              --jq '.actions_caches[].id'
+          )
+          echo "Deleted $deleted caches for $PR_REF ($failed failed)." | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$failed" -eq 0 ]
