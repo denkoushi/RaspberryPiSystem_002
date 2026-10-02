@@ -175,6 +175,8 @@ export type MachineSignalSensorAdminDto = MachineSignalSensorDto & {
   latestReportDate: string | null;
   /** 最新の日報に出てきたランプの組み合わせ。読み替え設定の選択肢になる */
   lampPatterns: MachineSignalLampPattern[];
+  /** 最新の日報の状態遷移。[開始秒, 継続秒, lampPatterns の index]。読み替えの効果を画面で確かめるために返す */
+  latestSegments: Array<[number, number, number]>;
 };
 
 /** 管理画面用。センサーごとに、最新の日報で使われたランプの組み合わせを添える。 */
@@ -202,10 +204,16 @@ export async function listMachineSignalSensorsForAdmin(): Promise<MachineSignalS
       if (name && !entry.stateNames.includes(name)) entry.stateNames.push(name);
       patterns.set(pattern, entry);
     }
-    return {
-      ...sensor,
-      latestReportDate: report?.reportDate ?? null,
-      lampPatterns: [...patterns.values()].sort((a, b) => a.pattern.localeCompare(b.pattern)),
-    };
+    const lampPatterns = [...patterns.values()].sort((a, b) => a.pattern.localeCompare(b.pattern));
+    const indexOf = new Map(lampPatterns.map((entry, index) => [entry.pattern, index]));
+    const latestSegments: Array<[number, number, number]> = [];
+    for (const [start, duration, red, yellow, green] of report?.segments ?? []) {
+      const index = indexOf.get(lampPatternKey(red, yellow, green)) ?? 0;
+      const last = latestSegments[latestSegments.length - 1];
+      // 同じランプの組み合わせが続く区間はまとめて、応答を小さくする。
+      if (last && last[2] === index && last[0] + last[1] === start) last[1] += duration;
+      else latestSegments.push([start, duration, index]);
+    }
+    return { ...sensor, latestReportDate: report?.reportDate ?? null, lampPatterns, latestSegments };
   });
 }
