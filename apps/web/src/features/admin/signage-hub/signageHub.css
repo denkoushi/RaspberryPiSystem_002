@@ -8,8 +8,8 @@
   --sh-panel: #14161a;
   --sh-raised: #1b1e23;
   --sh-field: #0f1114;
-  --sh-line: #23262c;
-  --sh-line-strong: #2c3037;
+  --sh-line: #2b2f37;
+  --sh-line-strong: #3a3f49;
   --sh-text: #edeef0;
   --sh-muted: #a3a9b1;
   --sh-faint: #7c838c;
@@ -790,10 +790,17 @@
   min-height: 0;
   margin: 16px 0;
   padding: 24px;
+  /* 背景のページより一段明るい面にして、ポップアップを浮かせる */
+  --sh-panel: #20242b;
+  --sh-raised: #2b3039;
+  --sh-field: #14171c;
+  --sh-line: #363c47;
+  --sh-line-strong: #4a515e;
   background: var(--sh-panel);
   color: var(--sh-text);
   border-radius: 18px;
   border: 1px solid var(--sh-line-strong);
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.3), 0 32px 80px -12px rgba(0, 0, 0, 0.85);
 }
 .signage-hub.sh-dialog h2 {
   margin: 0 0 16px;

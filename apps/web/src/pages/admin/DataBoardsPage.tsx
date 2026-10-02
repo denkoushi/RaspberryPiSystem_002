@@ -116,12 +116,17 @@ export function DataBoardsPage() {
           <h1>データボード</h1>
           <div className="sh-head-meta">サイネージやキオスクに出すグラフと表</div>
         </div>
-        <button type="button" className="sh-btn sh-btn-primary" onClick={() => setIsNewOpen(true)}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <Link to="/admin/signage" className="sh-quiet">
+            サイネージ
+          </Link>
+          <button type="button" className="sh-btn sh-btn-primary" onClick={() => setIsNewOpen(true)}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
             <path d="M12 5v14M5 12h14" />
           </svg>
           新しいボード
         </button>
+        </div>
       </div>
 
       <div className="sh-body">
