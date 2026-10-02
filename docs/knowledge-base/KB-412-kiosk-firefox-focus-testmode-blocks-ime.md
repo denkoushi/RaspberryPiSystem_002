@@ -55,12 +55,15 @@ On StoneBase01, with `kiosk-browser.service` stopped (Firefox rewrites `prefs.js
 
 - `python3 -m unittest scripts.deploy.tests.test_ansible_standard_release` covers the launcher guard and its position before the Firefox `exec`.
 - On-device after the fix: `prefs.js` no longer contains either pref after a browser start; the user typed Japanese in the 順位ボード 備考欄.
+- After the release: on all seven Pi4 kiosks `/usr/local/bin/kiosk-launch.sh` has the guard line before the Firefox `exec`, `kiosk-browser.service` is active, and `focusmanager.testmode` is absent from `prefs.js`.
 - All seven Pi4 kiosk profiles were checked read-only on 2026-10-01; only StoneBase01 had the prefs.
 
 ## Open Items
 
-- StoneBase01 still carries 89 other automation prefs in `prefs.js` (for example `browser.safebrowsing.malware.enabled = false`, `extensions.update.enabled = false`, `security.fileuri.strict_origin_policy = false`). They match Firefox's own `RecommendedPreferences` list and are absent from the other kiosks. They do not affect IME; removal is pending.
-- The launcher guard reaches the terminals only with the next standard release.
+- None. Closed on 2026-10-02:
+  - The 89 other automation prefs on StoneBase01 were removed from `prefs.js` on 2026-10-01 (browser stopped, backup taken, names matched against Firefox's own `RecommendedPreferences` list). The profile now has 210 prefs, in line with the other kiosks (203–210).
+  - The launcher guard reached all seven Pi4 kiosks with run `20261001-092737-9d674b` (SHA `706d7b06`). The earlier run `20261001-080054-dbfade` reported success but skipped the launcher on every Pi4, because the release set for an API-only head commit had no Pi4 agent services; #1611 fixed that classification. Verify Pi4 files on the device, not from the run result.
+  - The user confirmed normal display and Japanese input on StoneBase01 on 2026-10-02.
 
 ## References
 
