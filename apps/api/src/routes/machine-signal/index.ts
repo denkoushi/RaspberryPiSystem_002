@@ -31,6 +31,10 @@ const BASE = '/machine-signal';
 /** 過去分の一括取り込みは日付フォルダごとに多数のCSVを送るので、既定（10ファイル）より広げる。 */
 const IMPORT_MAX_FILES = 200;
 const IMPORT_MAX_FILE_BYTES = 2 * 1024 * 1024;
+/** 過去分は50ファイルずつ続けて送られる（2年分で700回ほど）。止めない範囲で上限を置く。 */
+const importRateLimit = { max: 600, timeWindow: '1 minute' };
+/** Gmail の手動確認は1回で添付の数だけ Gmail を呼ぶので、連打させない。 */
+const gmailRunRateLimit = { max: 6, timeWindow: '1 minute' };
 export const MACHINE_SIGNAL_TREND_DAYS = [30, 90] as const;
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -131,7 +135,7 @@ export function registerMachineSignalRoutes(app: FastifyInstance, deps: MachineS
 
   app.get(`${BASE}/import-runs`, { preHandler: canManage }, async () => ({ runs: await listSignalImportRuns() }));
 
-  app.post(`${BASE}/import`, { preHandler: canManage, config: { rateLimit: false } }, async (request) => {
+  app.post(`${BASE}/import`, { preHandler: canManage, config: { rateLimit: importRateLimit } }, async (request) => {
     if (!request.isMultipart()) {
       throw new ApiError(400, 'multipart/form-data で送信してください', undefined, 'MACHINE_SIGNAL_IMPORT_NOT_MULTIPART');
     }
@@ -146,7 +150,7 @@ export function registerMachineSignalRoutes(app: FastifyInstance, deps: MachineS
     return { run: await importSignalReportFiles(files, { source: 'UPLOAD' }) };
   });
 
-  app.post(`${BASE}/gmail-import/run`, { preHandler: canManage, config: { rateLimit: false } }, async () => {
+  app.post(`${BASE}/gmail-import/run`, { preHandler: canManage, config: { rateLimit: gmailRunRateLimit } }, async () => {
     const config = await BackupConfigLoader.load();
     if (!hasGmailCredentials(config)) {
       throw new ApiError(409, 'Gmail の連携が未設定です', undefined, 'MACHINE_SIGNAL_GMAIL_NOT_CONFIGURED');
