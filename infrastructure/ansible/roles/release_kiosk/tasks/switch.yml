@@ -72,3 +72,10 @@
     state: restarted
     enabled: true
   when: release_kiosk_services | length > 0
+
+- name: Ensure the Pi4 storage maintenance timer is scheduled
+  ansible.builtin.systemd:
+    name: pi4-storage-maintenance.timer
+    state: started
+    enabled: true
+  when: release_kiosk_services | length > 0
