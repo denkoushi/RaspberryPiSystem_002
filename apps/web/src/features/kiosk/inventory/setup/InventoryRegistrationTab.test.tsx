@@ -51,6 +51,7 @@ describe('InventoryRegistrationTab', () => {
   const createDrawer = vi.fn();
   const renameToolFieldValue = vi.fn();
   const deleteToolFieldValue = vi.fn();
+  const addToolFieldValue = vi.fn();
 
   beforeEach(() => {
     nfc.event = null;
@@ -59,6 +60,7 @@ describe('InventoryRegistrationTab', () => {
     createDrawer.mockReset().mockResolvedValue({});
     renameToolFieldValue.mockReset().mockResolvedValue({ field: 'maker', value: 'ミツビシマテリアル', updatedItems: 3 });
     deleteToolFieldValue.mockReset().mockResolvedValue({});
+    addToolFieldValue.mockReset().mockResolvedValue({});
     vi.mocked(useInventoryMutations).mockReturnValue({
       registerImport: { mutateAsync: registerImport, isPending: false },
       reorderImportPhotos: { mutateAsync: vi.fn(), isPending: false },
@@ -68,7 +70,7 @@ describe('InventoryRegistrationTab', () => {
       createDrawer: { mutateAsync: createDrawer, isPending: false },
       createUnit: { mutateAsync: vi.fn(), isPending: false },
       renameToolFieldValue: { mutateAsync: renameToolFieldValue, isPending: false },
-      addToolFieldValue: { mutateAsync: vi.fn(), isPending: false },
+      addToolFieldValue: { mutateAsync: addToolFieldValue, isPending: false },
       deleteToolFieldValue: { mutateAsync: deleteToolFieldValue, isPending: false },
     } as never);
   });
@@ -277,10 +279,29 @@ describe('InventoryRegistrationTab', () => {
     fireEvent.click(names.getByRole('button', { name: 'チップ' }));
     expect(screen.getByRole('textbox', { name: 'アイテム名' })).toHaveValue('ItemlistRaspi 2');
 
-    // Typed straight into the lane, the text is taken on leaving the field.
-    fireEvent.change(names.getByRole('textbox', { name: '名前の値' }), { target: { value: ' リーマ ' } });
-    fireEvent.blur(names.getByRole('textbox', { name: '名前の値' }));
+    // Typed straight into the lane, the text is taken on leaving the field and kept as a choice.
+    fireEvent.change(names.getByRole('textbox', { name: '名前の値' }), { target: { value: ' ﾘｰﾏ ' } });
+    expect(names.getByRole('button', { name: '名前を確定' })).toBeInTheDocument();
+    await act(async () => { fireEvent.blur(names.getByRole('textbox', { name: '名前の値' })); });
     expect(screen.getByRole('textbox', { name: 'アイテム名' })).toHaveValue('リーマ');
+    expect(addToolFieldValue).toHaveBeenCalledWith({ field: 'name', value: 'リーマ' });
+  });
+
+  it('keeps a name and tool information entered before 新規登録 is pressed', async () => {
+    render(<InventoryRegistrationTab accessPassword="2520" />);
+    fireEvent.click(screen.getByRole('button', { name: '登録済みから選ぶ' }));
+    const board = within(screen.getByRole('dialog', { name: '名前・工具情報' }));
+    fireEvent.click(within(board.getByRole('group', { name: '名前' })).getByRole('button', { name: 'チップ' }));
+    fireEvent.click(within(board.getByRole('group', { name: 'メーカー' })).getByRole('button', { name: 'OSG' }));
+    fireEvent.click(board.getByRole('button', { name: '閉じる' }));
+
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    expect(screen.getByRole('textbox', { name: 'アイテム名' })).toHaveValue('チップ');
+    expect(screen.getByRole('textbox', { name: 'メーカー' })).toHaveValue('OSG');
+
+    // Pressing it again changes nothing either.
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    expect(screen.getByRole('textbox', { name: 'アイテム名' })).toHaveValue('チップ');
   });
 
   it('renames a registered value together with the items that use it', async () => {
