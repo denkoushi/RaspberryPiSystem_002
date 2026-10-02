@@ -74,6 +74,13 @@ validation:
   - The dialog keeps its draft in local state, so the board is not re-rendered per keystroke.
   - Raspberry Pi OS adds `--force-renderer-accessibility` to every Chromium start (`/etc/chromium.d/00-rpi-vars`). With it, each keystroke updates the accessibility tree of the whole page, which is costly on a large board. `--disable-renderer-accessibility` was added to the kiosk flags to cancel it. Whether this removes the lag is to be confirmed on the device; if it does not, look at the IBus preedit path next.
 
+## Fleet rollout (2026-10-02 21:00 JST)
+
+- All seven Pi4 kiosks are set to `kiosk_browser_engine: "chromium"`; the certificate pin moved to the `kiosk` group vars. Read before the change: every kiosk has `/usr/bin/chromium` (142 on raspberrypi4, raspi4-robodrill01, raspi4-fjv60-80 and StoneBase01; 147 on raspi4-sessaku-01; 149 on raspi4-assembly-01 and raspi4-kensaku-02), `openssl`, and one `ibus-daemon`.
+- The change is inventory-only, which the classifier does not treat as a Pi4 kiosk release file. After the merge, run CI on `main` by hand (`workflow_dispatch` runs the full suite and names the three agents) so the plan shows `pi4ReleaseFiles: staged`.
+- Japanese input on Chromium 147 and 149 was not tested before the rollout; check each kiosk with its physical keyboard.
+- To take one kiosk back to Firefox, set its `kiosk_browser_engine` to `"firefox"`, merge, run CI on `main` by hand again, and release with `--limit <host>`.
+
 ## Rollback
 
 Revert this change's commit (PR #1621) and run the standard release for the host (`scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspi4-kensaku-stonebase01`, after `--print-plan` shows `pi4ReleaseFiles: staged`). The Firefox profile `kiosk-system` is left untouched by this change.
