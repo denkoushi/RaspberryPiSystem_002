@@ -38,8 +38,8 @@ function renderAt(path: string) {
 describe('adminNavigation', () => {
   it('keeps every admin screen reachable from one group', () => {
     const targets = ADMIN_NAV_GROUPS.flatMap((group) => group.items.map((item) => item.to));
-    expect(targets).toHaveLength(27);
-    expect(new Set(targets).size).toBe(27);
+    expect(targets).toHaveLength(28);
+    expect(new Set(targets).size).toBe(28);
   });
 
   it('picks the longest matching item for the current path', () => {

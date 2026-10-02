@@ -26,6 +26,20 @@ describe('gmail-subject-reservation.policy', () => {
     );
   });
 
+  it.each(['AirGridFlexSignal', 'airgridflexsignal', 'FlexSignal'])(
+    'rejects a CSV pattern that can match the machine signal subject: %s',
+    (pattern) => {
+      expect(() => assertCsvGmailSubjectPatternAllowed(pattern)).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: 'GMAIL_SUBJECT_PATTERN_RESERVED',
+          details: { pattern, reservedSubject: 'AirGridFlexSignal' },
+          message: expect.stringContaining('設備稼働ログ専用'),
+        })
+      );
+    }
+  );
+
   it.each([
     '計測機器持出状況',
     '加工機日常点検結果',

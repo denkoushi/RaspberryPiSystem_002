@@ -71,6 +71,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     label: 'システム',
     items: [
       { label: 'CSV取り込み', to: '/admin/import' },
+      { label: '設備稼働', to: '/admin/machine-signal' },
       { label: '生産スケジュール設定', to: '/admin/production-schedule-settings' },
       { label: 'Gmail設定', to: '/admin/gmail/config', matchPrefix: '/admin/gmail' },
       { label: 'バックアップ', to: '/admin/backup/targets', matchPrefix: '/admin/backup' },
