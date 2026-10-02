@@ -70,7 +70,7 @@ ENV HERMES_QMD_ROOT=/opt/hermes-runtime/node_modules/@tobilu/qmd
 ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
 # Bump the date to invalidate the cached apt layer; otherwise the CI build
 # cache keeps stale OS packages and Trivy fails on already-fixed Debian CVEs.
-ARG APT_CACHE_BUST=2026-09-13
+ARG APT_CACHE_BUST=2026-10-02
 
 RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && apt-get update \
@@ -90,7 +90,7 @@ RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && dpkg --compare-versions "${httplib2_version}" ge '0.20.4-3+deb12u1' \
     || { echo "python3-httplib2 is below the required fixed version: ${httplib2_version}" >&2; exit 1; } \
   && expat_version="$(dpkg-query -W -f='${Version}' libexpat1)" \
-  && dpkg --compare-versions "${expat_version}" ge '2.5.0-1+deb12u3' \
+  && dpkg --compare-versions "${expat_version}" ge '2.5.0-1+deb12u4' \
     || { echo "libexpat1 is below the required fixed version: ${expat_version}" >&2; exit 1; } \
   && python3 -m pip install --no-cache-dir --break-system-packages \
   "git+https://github.com/ndl-lab/ndlocr-lite.git@${NDLOCR_LITE_COMMIT}" \
