@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 
 import { useInventoryMutations, useInventoryToolFieldOptions, useInventoryToolFieldValues } from '../../../../api/hooks';
 import { CheckIcon, CloseIcon, EditIcon, GridIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
@@ -52,29 +52,51 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : '処理に失敗しました';
 }
 
-/** Typed text is kept here and handed over on Enter or when leaving the field. */
-function Slot({ label, value, required, disabled, onCommit }: { label: string; value: string; required: boolean; disabled: boolean; onCommit: (next: string) => void }) {
+/**
+ * Typed text is kept here and handed over when the field is left: by Enter, by the ✓ shown while the
+ * text differs, or by going elsewhere. `onClear` gives the × shown while the text is the saved value.
+ */
+function Slot({ label, value, required, disabled, onCommit, onClear }: { label: string; value: string; required: boolean; disabled: boolean; onCommit: (next: string) => void; onClear?: () => void }) {
   const [text, setText] = useState(value);
+  const input = useRef<HTMLInputElement>(null);
   const commit = () => {
-    const next = text.trim();
-    if (next === value) return;
+    // Read the field itself: with a Japanese IME the last conversion may not have reached state yet.
+    const next = (input.current?.value ?? text).normalize('NFKC').trim();
+    if (next === value) {
+      setText(value);
+      return;
+    }
     if (!next && required) {
       setText(value);
       return;
     }
     onCommit(next);
   };
+  const dirty = text.trim() !== value;
   return (
-    <input
-      aria-label={`${label}の値`}
-      placeholder="—"
-      className={`${field} h-10 w-full border-inv-line2 pl-3 pr-8 text-[15px] font-bold focus:border-inv-cyan`}
-      value={text}
-      disabled={disabled}
-      onChange={(event) => setText(event.target.value)}
-      onBlur={commit}
-      onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }}
-    />
+    <>
+      <input
+        ref={input}
+        aria-label={`${label}の値`}
+        placeholder="—"
+        className={`${field} h-10 w-full border-inv-line2 pl-3 pr-9 text-[15px] font-bold focus:border-inv-cyan`}
+        value={text}
+        disabled={disabled}
+        onChange={(event) => setText(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          // Enter that only confirms an IME conversion must not leave the field.
+          if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.keyCode !== 229) event.currentTarget.blur();
+        }}
+      />
+      {dirty && !disabled ? (
+        // Leaving the field is what saves; preventDefault keeps that the only path on browsers that do not focus buttons.
+        <button type="button" tabIndex={-1} className={`${button} absolute right-1 top-1 h-8 w-8 border-inv-cyan bg-inv-cyan text-inv-cyan-ink`} aria-label={`${label}を確定`} onMouseDown={(event) => { event.preventDefault(); input.current?.blur(); }}><CheckIcon /></button>
+      ) : null}
+      {!dirty && !disabled && value && onClear ? (
+        <button type="button" className={`${iconButton} absolute right-1 top-1 w-8`} aria-label={`${label}を空にする`} onClick={onClear}><CloseIcon /></button>
+      ) : null}
+    </>
   );
 }
 
@@ -98,6 +120,17 @@ export function ToolValueBoard({ accessPassword, current, onChange, onRenamed, p
   const clear = (field: InventoryOptionField) => {
     if (field !== 'name') onChange(field, '');
     else if (provisionalName) onChange(field, provisionalName);
+  };
+  /** Typed text becomes this item's value and stays as a choice, so it can be picked next time. */
+  const typed = async (field: InventoryOptionField, value: string) => {
+    onChange(field, value);
+    if (field === 'name' && isProvisionalInventoryName(value)) return;
+    setError(null);
+    try {
+      await mutations.addToolFieldValue.mutateAsync({ field, value });
+    } catch (caught) {
+      setError(errorText(caught));
+    }
   };
   const rename = async () => {
     if (!renaming) return;
@@ -180,11 +213,9 @@ export function ToolValueBoard({ accessPassword, current, onChange, onRenamed, p
                   value={shown}
                   required={column.key === 'name' && !provisionalName}
                   disabled={organizing}
-                  onCommit={(next) => (next ? onChange(column.key, next) : clear(column.key))}
+                  onCommit={(next) => (next ? void typed(column.key, next) : clear(column.key))}
+                  onClear={column.key !== 'name' || provisionalName ? () => clear(column.key) : undefined}
                 />
-                {shown && !organizing && (column.key !== 'name' || provisionalName) ? (
-                  <button type="button" className={`${iconButton} absolute right-1 top-1 w-8`} aria-label={`${column.label}を空にする`} onClick={() => clear(column.key)}><CloseIcon /></button>
-                ) : null}
               </div>
               <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto border-t border-dashed border-inv-line pt-1.5">
                 {organizing ? (

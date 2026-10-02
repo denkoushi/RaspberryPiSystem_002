@@ -64,6 +64,11 @@ Do not merge to `main` until a standard release run has finished. The next run m
 - Areas are normalized (NFKC, trimmed) on intake, shelf creation and registration; existing rows were normalized once with `apps/api/scripts/inventory-area-normalize.mjs` (backup `/opt/backups/inventory-area-normalize-20260928.json`). Run scripts in the running blue/green API container (`docker ps | grep api`), not with `docker compose exec api`.
 - Each item has one unit (null means 個; no conversion). Units are chosen or added in 在庫の準備; quantity tags carry only a number.
 
+## Updates (2026-10-02)
+
+- 登録待ち lost a name entered before 新規登録 was pressed: the button reset 名前, 型式 and 用途 every time (an item registered on 2026-10-02 kept its メーカー but stayed `ItemlistRaspi 4`). It now resets only when coming back from a chosen existing item, and then clears everything that item filled in.
+- Text typed into a lane of the board is saved as a choice (`POST /item-inventory/tool-field-values`) as well as set on the item, so it is listed at once, also in 登録待ち before the item is registered. Typed text is NFKC-normalized. While the text differs from the saved value the field shows a ✓; Enter that only confirms an IME conversion does not leave the field.
+
 ## Updates (2026-10-01)
 
 - The tool-value pop-up became a board (`setup/ToolValueBoard.tsx`) with one lane per field: 名前, メーカー, 工具名, 被削材, 工具寸法, 型式, 用途. Each lane has the item's value on top (typing is taken on Enter or on leaving the field) and the registered values below it. The notes on `ToolValuePopup.tsx` under 2026-09-30 describe the old pop-up; rename, add and delete still work the same way.
