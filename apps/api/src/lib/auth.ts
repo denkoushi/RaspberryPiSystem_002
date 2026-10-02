@@ -32,13 +32,7 @@ export function signRefreshToken(user: User): string {
   return jwt.sign(payload, secret, options);
 }
 
-/**
- * Throws when the token is missing or invalid and leaves the reply untouched: callers such as the
- * kiosk inventory routes fall back to the client key, and a status set here would stay on their
- * successful response.
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept so preHandler-style callers need no change
-export async function authenticate(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
+export async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const header = request.headers['authorization'];
   if (!header) {
     throw new ApiError(401, '認証トークンが必要です', undefined, 'AUTH_TOKEN_REQUIRED');
@@ -48,6 +42,7 @@ export async function authenticate(request: FastifyRequest, _reply: FastifyReply
     const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as JwtPayload;
     request.user = { id: payload.sub, username: payload.username, role: payload.role };
   } catch (error) {
+    reply.code(401);
     throw new ApiError(401, 'トークンが無効です', undefined, 'AUTH_TOKEN_INVALID');
   }
 }

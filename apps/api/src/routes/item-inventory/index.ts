@@ -72,6 +72,9 @@ async function writeOrKiosk(request: FastifyRequest, reply: FastifyReply): Promi
     }
   }
   await requireClientDevice(request.headers['x-client-key']);
+  // A stale token makes `authenticate` set 401 on the reply before it throws. The request is
+  // authorized by the client key now, so the response must not keep that status.
+  if (reply.statusCode === 401) reply.code(200);
 }
 
 async function cancelWrite(request: FastifyRequest, reply: FastifyReply): Promise<void> {
