@@ -88,7 +88,8 @@ export class ImportScheduleAdminService {
 
     for (const target of schedule.targets ?? []) {
       // csvDashboards targets store a dashboard UUID, not a Gmail subject.
-      if (target.type !== 'csvDashboards') {
+      // machineSignalGmail は予約済みの件名そのものを使う専用の取り込みなので、予約チェックの対象外。
+      if (target.type !== 'csvDashboards' && target.type !== 'machineSignalGmail') {
         assertCsvGmailSubjectPatternAllowed(target.source);
       }
     }

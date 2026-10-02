@@ -190,11 +190,13 @@ all:
         kiosk:
           vars:
             status_agent_storage_health_enabled: "1"
+            # Chromium は Pi5 証明書の公開鍵だけを許可する（KB-413）。証明書を作り直したら先に更新する
+            kiosk_server_cert_spki_sha256: "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE="
           hosts:
             raspberrypi4:
               ansible_host: "{{ kiosk_ip }}"
               ansible_user: tools03
-              kiosk_browser_engine: "firefox"
+              kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               # IBus 単一オーナー化（KB-287: 日本語入力不安定の解消。robodrill01 で有効だった設定を kensakuMain にも適用）
               ibus_owner_mode: "single-owner"
@@ -233,7 +235,7 @@ all:
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_robodrill01_ip を追加済み
               ansible_host: "{{ current_network.raspi4_robodrill01_ip | default(local_network.raspi4_robodrill01_ip) }}"
               ansible_user: tools04
-              kiosk_browser_engine: "firefox"
+              kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               # IBus 単一オーナー化は robodrill 先行で段階導入する
               ibus_owner_mode: "single-owner"
@@ -270,7 +272,7 @@ all:
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_fjv60_80_ip を定義
               ansible_host: "{{ current_network.raspi4_fjv60_80_ip | default(local_network.raspi4_fjv60_80_ip) }}"
               ansible_user: raspi4-fjv60-80
-              kiosk_browser_engine: "firefox"
+              kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
               ibus_disable_competing_autostart: true
@@ -305,7 +307,6 @@ all:
               # NOTE: Pi5 から LAN 直が無い場合は新 Pi4 で Tailscale 参加後、group_vars/all.yml の tailscale_network に 100.x を追加
               ansible_host: "{{ current_network.raspi4_kensaku_stonebase01_ip | default(local_network.raspi4_kensaku_stonebase01_ip) }}"
               ansible_user: raspi4-kensaku-stonebase01
-              # Chromium 先行検証（表示速度改善）。戻し方は KB-413（この行だけ戻しても launcher は配られない）
               kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
@@ -375,7 +376,7 @@ all:
               # NOTE: 通常運用は Tailscale、初期セットアップ時のみ local_network にフォールバックする
               ansible_host: "{{ current_network.raspi4_sessaku_01_ip | default(local_network.raspi4_sessaku_01_ip) }}"
               ansible_user: raspi4-sessaku-01
-              kiosk_browser_engine: "firefox"
+              kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
               ibus_disable_competing_autostart: true
@@ -410,7 +411,7 @@ all:
               # NOTE: Tailscale IP 登録前は local_network にフォールバックする
               ansible_host: "{{ current_network.raspi4_assembly_01_ip | default(local_network.raspi4_assembly_01_ip) }}"
               ansible_user: raspi4-assembly-01
-              kiosk_browser_engine: "firefox"
+              kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
               ibus_disable_competing_autostart: true
@@ -468,7 +469,7 @@ all:
               # Kensaku-02 キオスク（Pi4 7台目）
               ansible_host: "{{ current_network.raspi4_kensaku_02_ip | default(local_network.raspi4_kensaku_02_ip) }}"
               ansible_user: raspi4-kensaku-02
-              kiosk_browser_engine: "firefox"
+              kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
               ibus_disable_competing_autostart: true

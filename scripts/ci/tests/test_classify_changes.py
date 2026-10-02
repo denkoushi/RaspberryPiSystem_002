@@ -85,7 +85,10 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertTrue(api["releasePair"])
 
         web = self.classify(Change("M", "apps/web/src/main.tsx"))
-        self.assertEqual(self.selected(web), {"repo_policy", "workspace_quality", "web", "kiosk_sop"})
+        self.assertEqual(
+            self.selected(web),
+            {"repo_policy", "workspace_quality", "web", "kiosk_sop", "e2e"},
+        )
         self.assertTrue(web["codeql"])
         self.assertTrue(web["releasePair"])
         self.assertEqual(web["pi4AgentServices"], [])
@@ -103,6 +106,50 @@ class ClassifyChangesTests(unittest.TestCase):
             self.selected(migration),
             {"repo_policy", "workspace_quality", "api", "db_infra"},
         )
+
+    def test_web_source_selects_e2e_but_unit_tests_and_generated_sop_do_not(self) -> None:
+        web_only = {"repo_policy", "workspace_quality", "web", "kiosk_sop"}
+        # The two changes that broke E2E on main without running it (#1632, #1620).
+        for path in (
+            "apps/web/src/layouts/AdminLayout.tsx",
+            "apps/web/src/features/assembly/AssemblyProcedureLibrarySection.tsx",
+            "apps/web/src/index.css",
+            "apps/web/vite.config.ts",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(self.selected(result), web_only | {"e2e"})
+                self.assertFalse(result["fullSuite"])
+                self.assertEqual(result["pi4AgentMatrix"], [])
+
+        for path in (
+            "apps/web/src/layouts/AdminLayout.test.tsx",
+            "apps/web/src/features/assembly/assemblyRowExpansion.test.ts",
+            "apps/web/src/generated/kiosk-sop/inspection-drawing/manifest.json",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(self.selected(result), web_only)
+
+    def test_hermes_search_is_an_api_image_input_not_an_unknown_path(self) -> None:
+        for path in (
+            "scripts/hermes-search/retrieval/rank.mjs",
+            "scripts/hermes-search/hermes-answer-extract.mjs",
+            "scripts/hermes-search/package-lock.json",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(
+                    self.selected(result), {"repo_policy", "api", "docker_security"}
+                )
+                self.assertFalse(result["fullSuite"])
+                self.assertEqual(result["failClosedReasons"], [])
+                self.assertTrue(result["codeql"])
+                self.assertTrue(result["dockerApi"])
+                self.assertFalse(result["dockerWeb"])
+                self.assertTrue(result["releasePair"])
+                self.assertTrue(result["runtimeRehearsal"])
+                self.assertEqual(result["pi4AgentMatrix"], [])
 
     def test_deploy_client_docker_and_e2e_paths(self) -> None:
         deploy = self.classify(

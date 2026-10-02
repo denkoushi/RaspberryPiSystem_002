@@ -3,6 +3,7 @@ import cron from 'node-cron';
 import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
 import { GmailRateLimitedDeferredError } from '../backup/gmail-request-gate.service.js';
+import { findMachineSignalGmailCsvImportSchedule } from '../imports/machine-signal-import-schedule.policy.js';
 import {
   getMachineSignalGmailIngestionService,
   hasGmailCredentials,
@@ -38,6 +39,8 @@ export class MachineSignalGmailScheduler {
     try {
       const config = await BackupConfigLoader.load();
       if (!hasGmailCredentials(config)) return;
+      // CSV取込の一覧に設備稼働の行があれば、取り込みはそちらの時刻で動く。二重に取りに行かない。
+      if (findMachineSignalGmailCsvImportSchedule(config)) return;
       const summary = await this.ingestion.runOnce({ config, allowWait: false });
       if (summary.processed > 0) {
         logger?.info(

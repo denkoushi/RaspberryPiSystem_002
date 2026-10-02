@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  getMachineSignalAdminOverview,
   getMachineSignalDay,
   getMachineSignalImportRuns,
   getMachineSignalSensors,
@@ -8,6 +9,7 @@ import {
   getMachineSignalTrend,
   runMachineSignalGmailImport,
   updateMachineSignalSensor,
+  updateMachineSignalSensorsBulk,
   updateMachineSignalSettings,
   type MachineSignalTrendDays
 } from '../client';
@@ -65,6 +67,22 @@ export function useUpdateMachineSignalSensor() {
   return useMutation({
     mutationFn: updateMachineSignalSensor,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ROOT_KEY })
+  });
+}
+
+export function useUpdateMachineSignalSensorsBulk() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updateMachineSignalSensorsBulk,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ROOT_KEY })
+  });
+}
+
+export function useMachineSignalAdminOverview() {
+  return useQuery({
+    queryKey: [...ROOT_KEY, 'admin-overview'],
+    queryFn: getMachineSignalAdminOverview,
+    refetchOnWindowFocus: false
   });
 }
 

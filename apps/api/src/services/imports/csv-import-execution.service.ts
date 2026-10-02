@@ -16,7 +16,12 @@ import type {
   ItemInventoryCycleSummary,
   ItemInventoryGmailIngestionService,
 } from '../item-inventory/item-inventory-gmail-ingestion.service.js';
-import { ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
+import { ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS, MACHINE_SIGNAL_GMAIL_SUBJECT } from '../gmail/gmail-subject-reservation.policy.js';
+import {
+  getMachineSignalGmailIngestionService,
+  type MachineSignalGmailCycleSummary,
+  type MachineSignalGmailIngestionService,
+} from '../machine-signal/machine-signal-gmail-ingestion.service.js';
 
 export type CsvImportExecutionSummary = {
   employees?: { processed: number; created: number; updated: number };
@@ -42,6 +47,7 @@ export type CsvImportExecutionSummary = {
     featureKeyCount: number;
   };
   itemInventoryGmail?: ItemInventoryCycleSummary;
+  machineSignalGmail?: MachineSignalGmailCycleSummary;
 };
 
 type LoggerLike = {
@@ -85,6 +91,7 @@ type CsvImportExecutionDeps = {
   createCsvDashboardImportService: () => CsvDashboardImportService;
   createCsvImportConfigService: () => CsvImportConfigService;
   createItemInventoryGmailIngestionService: () => ItemInventoryGmailIngestionService;
+  createMachineSignalGmailIngestionService: () => Pick<MachineSignalGmailIngestionService, 'runOnce'>;
   processCsvImportFromTargets: ProcessCsvImportFromTargetsFn;
   logger: LoggerLike;
 };
@@ -111,6 +118,7 @@ export class CsvImportExecutionService {
       createCsvDashboardImportService: () => new CsvDashboardImportService(),
       createCsvImportConfigService: () => new CsvImportConfigService(),
       createItemInventoryGmailIngestionService: () => getItemInventoryServices().ingestion,
+      createMachineSignalGmailIngestionService: getMachineSignalGmailIngestionService,
       processCsvImportFromTargets,
       logger,
       ...overrides,
@@ -242,7 +250,11 @@ export class CsvImportExecutionService {
     const configService = this.deps.createCsvImportConfigService();
     const filteredTargets: CsvImportTarget[] = [];
     for (const target of targets) {
-      if (target.type === 'csvDashboards' || target.type === 'itemInventoryGmail') {
+      if (
+        target.type === 'csvDashboards' ||
+        target.type === 'itemInventoryGmail' ||
+        target.type === 'machineSignalGmail'
+      ) {
         filteredTargets.push(target);
         continue;
       }
@@ -268,18 +280,28 @@ export class CsvImportExecutionService {
     const csvDashboardTargets = targets.filter((t) => t.type === 'csvDashboards');
     const productionActualHoursTargets = targets.filter((t) => t.type === 'productionActualHours');
     const itemInventoryTargets = targets.filter((t) => t.type === 'itemInventoryGmail');
+    const machineSignalTargets = targets.filter((t) => t.type === 'machineSignalGmail');
     const importTargets = targets.filter(
-      (t) => t.type !== 'csvDashboards' && t.type !== 'productionActualHours' && t.type !== 'itemInventoryGmail'
+      (t) =>
+        t.type !== 'csvDashboards' &&
+        t.type !== 'productionActualHours' &&
+        t.type !== 'itemInventoryGmail' &&
+        t.type !== 'machineSignalGmail'
     );
 
     if (itemInventoryTargets.length > 0 && provider !== 'gmail') {
       throw new Error('itemInventoryGmail import requires Gmail storage provider');
     }
+    if (machineSignalTargets.length > 0 && provider !== 'gmail') {
+      throw new Error('machineSignalGmail import requires Gmail storage provider');
+    }
 
     // The JSON+JPEG intake uses its Gmail client directly. Do not create a
     // CSV storage provider, or pass the special target to the CSV parser, when
     // this schedule contains only the inventory intake target.
-    const storageProvider = targets.some((target) => target.type !== 'itemInventoryGmail')
+    const storageProvider = targets.some(
+      (target) => target.type !== 'itemInventoryGmail' && target.type !== 'machineSignalGmail'
+    )
       ? await this.deps.storageProviderFactory.createFromConfig(
         {
           ...config,
@@ -323,6 +345,18 @@ export class CsvImportExecutionService {
         },
         allowWait: opts.gmailAllowWait,
         manual: opts.manual,
+      });
+    }
+
+    // 設備稼働ログは1通に全センサー分の日報が添付される。専用の取り込みが Gmail から全添付を読む。
+    let machineSignalResult: MachineSignalGmailCycleSummary | undefined;
+    if (machineSignalTargets.length > 0) {
+      if (machineSignalTargets.some((target) => target.source.trim() !== MACHINE_SIGNAL_GMAIL_SUBJECT)) {
+        throw new Error(`設備稼働ログの件名は${MACHINE_SIGNAL_GMAIL_SUBJECT}で固定です`);
+      }
+      machineSignalResult = await this.deps.createMachineSignalGmailIngestionService().runOnce({
+        config,
+        allowWait: opts.gmailAllowWait,
       });
     }
 
@@ -448,6 +482,7 @@ export class CsvImportExecutionService {
         csvDashboards: csvDashboardResults,
         productionActualHours: productionActualHoursResult,
         ...(itemInventoryResult ? { itemInventoryGmail: itemInventoryResult } : {}),
+        ...(machineSignalResult ? { machineSignalGmail: machineSignalResult } : {}),
       };
     }
 
@@ -456,6 +491,7 @@ export class CsvImportExecutionService {
       csvDashboards: csvDashboardResults,
       productionActualHours: productionActualHoursResult,
       ...(itemInventoryResult ? { itemInventoryGmail: itemInventoryResult } : {}),
+      ...(machineSignalResult ? { machineSignalGmail: machineSignalResult } : {}),
     };
   }
 }

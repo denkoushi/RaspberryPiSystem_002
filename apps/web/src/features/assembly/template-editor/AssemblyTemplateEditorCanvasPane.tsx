@@ -1,4 +1,6 @@
-import { clampImageMarkerRatio } from '../../kiosk/image-canvas';
+import { clampImageMarkerRatio, setImageMarkerCalloutTip } from '../../kiosk/image-canvas';
+import { AssemblyAreaTabs } from '../AssemblyAreaTabs';
+import { tintAssemblyBoltsByCondition } from '../assemblyBoltConditionPalette';
 import { AssemblyBoltConditionStrip } from '../AssemblyBoltConditionStrip';
 import { AssemblyProcedureCanvas } from '../AssemblyProcedureCanvas';
 import { AssemblyProcedureCropView } from '../AssemblyProcedureCropView';
@@ -15,11 +17,14 @@ import { useAssemblyTemplateEditor } from './AssemblyTemplateEditorContext';
 export function AssemblyTemplateEditorCanvasPane() {
   const {
     activeBoltConditionKey,
+    addArea,
     addBoltAt,
     addBoltCondition,
     addCheckItemAt,
     addCurrentCropStep,
+    areas,
     boltConditionPalette,
+    incompleteAreaIds,
     canvasZoom,
     cropVisibleBolts,
     cropVisibleCheckItems,
@@ -30,6 +35,7 @@ export function AssemblyTemplateEditorCanvasPane() {
     placeSelectedCalloutAt,
     readOnly,
     selectedBolt,
+    selectedAreaId,
     selectedBoltId,
     selectedCheckItem,
     selectedCheckItemId,
@@ -39,6 +45,7 @@ export function AssemblyTemplateEditorCanvasPane() {
     selectedStepPage,
     setCheckItemPatch,
     setBoltPatch,
+    selectArea,
     selectBolt,
     selectBoltCondition,
     selectCheckItem,
@@ -52,6 +59,19 @@ export function AssemblyTemplateEditorCanvasPane() {
       ? selectedDocument.pages.find((page) => page.pageIndex === selectedPage.pageIndex)
       : null;
   const procedureOverlay = selectedProcedurePage?.overlays ?? [];
+  // 取っ手のドラッグ先を矢視の先端にする。矩形表示では元ページの座標へ戻す。
+  const calloutPatch = (point: AssemblyProcedureMarkerPoint) => {
+    const source = showSelectedCrop && selectedStep?.crop
+      ? assemblyProcedureViewPointToSourcePoint(point, selectedStep.crop)
+      : point;
+    return setImageMarkerCalloutTip(clampImageMarkerRatio(source.xRatio), clampImageMarkerRatio(source.yRatio));
+  };
+  const moveBoltCallout = readOnly
+    ? undefined
+    : (id: string, point: AssemblyProcedureMarkerPoint) => setBoltPatch(id, calloutPatch(point));
+  const moveCheckItemCallout = readOnly
+    ? undefined
+    : (id: string, point: AssemblyProcedureMarkerPoint) => setCheckItemPatch(id, calloutPatch(point));
   const moveBoltOnFullPage = readOnly
     ? undefined
     : (id: string, point: AssemblyProcedureMarkerPoint) => {
@@ -86,14 +106,24 @@ export function AssemblyTemplateEditorCanvasPane() {
     className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0"
   >
     <AssemblyTemplateEditorCanvasToolbar />
-    <AssemblyBoltConditionStrip
-      entries={boltConditionPalette}
-      activeKey={activeBoltConditionKey}
-      selectedMarkerNo={selectedBolt?.markerNo ?? null}
-      readOnly={readOnly}
-      onSelect={selectBoltCondition}
-      onAdd={addBoltCondition}
-    />
+    <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-white/10 px-2 py-1.5">
+      <AssemblyAreaTabs
+        areas={areas}
+        selectedAreaId={selectedAreaId}
+        incompleteAreaIds={incompleteAreaIds}
+        readOnly={readOnly}
+        onSelect={selectArea}
+        onAdd={addArea}
+      />
+      <AssemblyBoltConditionStrip
+        entries={boltConditionPalette}
+        activeKey={activeBoltConditionKey}
+        selectedMarkerNo={selectedBolt?.markerNo ?? null}
+        readOnly={readOnly}
+        onSelect={selectBoltCondition}
+        onAdd={addBoltCondition}
+      />
+    </div>
     <div className="min-h-0 flex-1">
       {showSelectedCrop && selectedStep?.crop && selectedPage ? (
         <div className="relative h-full w-full bg-slate-950 p-2">
@@ -109,13 +139,15 @@ export function AssemblyTemplateEditorCanvasPane() {
                   assets={selectedDocument?.assets}
                 />
                 <AssemblyProcedureMarkerLayer
-                  bolts={cropVisibleBolts}
+                  bolts={tintAssemblyBoltsByCondition(cropVisibleBolts, areas, boltConditionPalette)}
                   checkItems={cropVisibleCheckItems}
                   selectedBoltId={selectedBoltId}
                   selectedCheckItemId={selectedCheckItemId}
                   onSelectBolt={selectBolt}
                   onMoveBolt={moveBoltInCrop}
                   onMoveCheckItem={moveCheckItemInCrop}
+                  onMoveBoltCallout={moveBoltCallout}
+                  onMoveCheckItemCallout={moveCheckItemCallout}
                   onSelectCheckItem={selectCheckItem}
                 />
               </>
@@ -132,7 +164,7 @@ export function AssemblyTemplateEditorCanvasPane() {
       ) : (
       <AssemblyProcedureCanvas
         imageRelativePath={selectedPage?.imageRelativePath ?? selectedDocument?.imageRelativePath}
-        bolts={visibleBolts}
+        bolts={tintAssemblyBoltsByCondition(visibleBolts, areas, boltConditionPalette)}
         checkItems={visibleCheckItems}
         selectedBoltId={selectedBoltId}
         selectedCheckItemId={selectedCheckItemId}
@@ -140,6 +172,8 @@ export function AssemblyTemplateEditorCanvasPane() {
         onSelectCheckItem={selectCheckItem}
         onMoveBolt={moveBoltOnFullPage}
         onMoveCheckItem={moveCheckItemOnFullPage}
+        onMoveBoltCallout={moveBoltCallout}
+        onMoveCheckItemCallout={moveCheckItemCallout}
         onAddBolt={readOnly || markerMode !== 'bolt' || placementAction !== 'place' ? undefined : addBoltAt}
         onAddCheckItem={readOnly || markerMode !== 'check' || placementAction !== 'place' ? undefined : addCheckItemAt}
         onPlaceCallout={

@@ -1,4 +1,4 @@
-import { ITEM_INVENTORY_GMAIL_SUBJECT_TOKEN, type CsvImportSchedule, type CsvImportSubjectPattern, type CsvImportSubjectPatternType, type CsvImportTarget } from '../../../api/backup';
+import { FIXED_GMAIL_SUBJECT_BY_TARGET_TYPE, type CsvImportSchedule, type CsvImportSubjectPattern, type CsvImportSubjectPatternType, type CsvImportTarget } from '../../../api/backup';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 
@@ -46,7 +46,7 @@ export function CsvImportTargetsEditor({
                 newTargets[index] = {
                   ...target,
                   type,
-                  source: type === 'itemInventoryGmail' ? ITEM_INVENTORY_GMAIL_SUBJECT_TOKEN : '',
+                  source: FIXED_GMAIL_SUBJECT_BY_TARGET_TYPE[type] ?? '',
                 };
                 setFormData({ ...formData, targets: newTargets });
               }}
@@ -58,6 +58,8 @@ export function CsvImportTargetsEditor({
               <option value="machines">加工機</option>
               <option value="csvDashboards">CSVダッシュボード</option>
               <option value="itemInventoryGmail">Raspberry Pi在庫写真メール</option>
+              {/* 設備稼働ログの行は、次の版でシステムが自動で足す。それまでは既にある行の表示だけに使う。 */}
+              {target.type === 'machineSignalGmail' ? <option value="machineSignalGmail">設備稼働ログ（信号灯の日報）</option> : null}
             </select>
             {target.type === 'csvDashboards' ? (
               <select
@@ -102,12 +104,12 @@ export function CsvImportTargetsEditor({
                   </option>
                 ))}
               </select>
-            ) : target.type === 'itemInventoryGmail' ? (
+            ) : FIXED_GMAIL_SUBJECT_BY_TARGET_TYPE[target.type] ? (
               <Input
                 className={compact ? 'min-w-[220px] flex-1 text-xs' : 'flex-1'}
-                value={ITEM_INVENTORY_GMAIL_SUBJECT_TOKEN}
+                value={FIXED_GMAIL_SUBJECT_BY_TARGET_TYPE[target.type]}
                 readOnly
-                aria-label="Raspberry Pi在庫写真メールの固定件名"
+                aria-label={target.type === 'itemInventoryGmail' ? 'Raspberry Pi在庫写真メールの固定件名' : '設備稼働ログの固定件名'}
               />
             ) : provider === 'gmail' ? (
               <select

@@ -37,7 +37,10 @@ validation:
 
 ## Known Limits (decide before any wider rollout)
 
-- The server certificate is self-signed. Firefox trusts it through a per-profile exception; Chromium still depends on `--ignore-certificate-errors`. Replace it (import the certificate into the kiosk user's NSS store, or pin it with `--ignore-certificate-errors-spki-list`) before moving more kiosks.
+- The server certificate is self-signed (CN is the Tailscale host name, no SAN, valid to 2035) and the kiosks connect by IP, so importing it as trusted would still fail on the name. Chromium therefore pins the server key: with `kiosk_server_cert_spki_sha256` set, the launcher passes `--ignore-certificate-errors-spki-list=<pin> --user-data-dir=~/.config/chromium` instead of `--ignore-certificate-errors`. Set for StoneBase01 only; a host without the variable keeps the blanket switch. The release compares the pin with the key the server presents and stops before the switch when they differ. Recreating the server certificate with a new key means updating the pin first.
+- Pin value: `openssl s_client -connect <pi5>:443 </dev/null 2>/dev/null | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64`.
+- Verified off the device (Debian 13 Chromium in a container against the Pi5): the right pin loads the kiosk page, a wrong pin and no flag both fail with `ERR_CERT_AUTHORITY_INVALID`. Google Chrome on macOS ignores the pin list, so do not use it to test this.
+- Do not start a test browser on a kiosk that is in use: a headless probe on StoneBase01 made gnome-keyring show its password window on the real screen (2026-10-02).
 - `--remote-debugging-port=9222` stays bound to 127.0.0.1.
 - The standard release only stages the launcher when the release carries Pi4 agent services. A release with an empty agent set restarts the browser without changing the engine; read `/usr/local/bin/kiosk-launch.sh` on the device to confirm.
 - IBus settings and the Firefox profile are owned by the `kiosk` role (full provisioning), not by the standard release. This change does not touch them.
@@ -63,7 +66,20 @@ validation:
 - Fix: `release_kiosk` reads the `kiosk` role defaults for the two flag lists (a host override still wins) and refuses to stage a Chromium launcher that lacks `--ozone-platform=x11`, `--gtk-version=3` or `--password-store=basic`. The common flags are applied for Chromium only, so the Firefox kiosks keep starting exactly as before.
 - Lesson: the template tests rendered the launcher with flags passed in by hand. Check a launcher change by rendering it through the role that ships it (a local `ansible-playbook` run of the `release_kiosk` tasks did reproduce the empty flags and confirm the fix).
 
-Speed and Japanese input: not measured yet.
+### 2026-10-02 second deploy: Chromium works on the device
+
+- Run `20261002-045820-77189a` (release `1d7a49ed`). Read on the device: the running Chromium has `--ozone-platform=x11 --gtk-version=3 --password-store=basic --ignore-certificate-errors --start-maximized`, no `gcr-prompter`, one `ibus-daemon`, `diagnose-ime.sh` passes, three agents on the new SHA.
+- Checked on the device by the user: screen shown, Japanese input with the physical keyboard (toggle, candidates, commit), NFC and power buttons all work. Screens feel much faster than on Firefox. No timing numbers were taken (not required).
+- One remaining complaint: typing Japanese in the 順位ボード note dialog lags slightly.
+  - The dialog keeps its draft in local state, so the board is not re-rendered per keystroke.
+  - Raspberry Pi OS adds `--force-renderer-accessibility` to every Chromium start (`/etc/chromium.d/00-rpi-vars`). With it, each keystroke updates the accessibility tree of the whole page, which is costly on a large board. `--disable-renderer-accessibility` was added to the kiosk flags to cancel it. Whether this removes the lag is to be confirmed on the device; if it does not, look at the IBus preedit path next.
+
+## Fleet rollout (2026-10-02 21:00 JST)
+
+- All seven Pi4 kiosks are set to `kiosk_browser_engine: "chromium"`; the certificate pin moved to the `kiosk` group vars. Read before the change: every kiosk has `/usr/bin/chromium` (142 on raspberrypi4, raspi4-robodrill01, raspi4-fjv60-80 and StoneBase01; 147 on raspi4-sessaku-01; 149 on raspi4-assembly-01 and raspi4-kensaku-02), `openssl`, and one `ibus-daemon`.
+- The change is inventory-only, which the classifier does not treat as a Pi4 kiosk release file. After the merge, run CI on `main` by hand (`workflow_dispatch` runs the full suite and names the three agents) so the plan shows `pi4ReleaseFiles: staged`.
+- Japanese input on Chromium 147 and 149 was not tested before the rollout; check each kiosk with its physical keyboard.
+- To take one kiosk back to Firefox, set its `kiosk_browser_engine` to `"firefox"`, merge, run CI on `main` by hand again, and release with `--limit <host>`.
 
 ## Rollback
 

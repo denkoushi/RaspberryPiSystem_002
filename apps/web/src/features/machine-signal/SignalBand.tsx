@@ -6,7 +6,14 @@ import { buildSignalAxisTicks, SIGNAL_CATEGORY_COLORS, SIGNAL_DAY_SECONDS } from
 const ALARM_CATEGORY_INDEXES = new Set([1, 3]);
 const NO_RECORD_INDEX = 5;
 
-function paint(canvas: HTMLCanvasElement, timeline: ReadonlyArray<readonly [number, number, number]>) {
+/** 明るい地に置くときの6区分の色。待機と記録なしを、地に合わせて薄くする。 */
+const LIGHT_CATEGORY_COLORS = ['#2fb170', '#f58a3c', '#e3c53a', '#e5484d', '#93a1b3', '#e3e8ee'] as const;
+
+function paint(
+  canvas: HTMLCanvasElement,
+  timeline: ReadonlyArray<readonly [number, number, number]>,
+  colors: ReadonlyArray<string>
+) {
   const rect = canvas.getBoundingClientRect();
   const ratio = window.devicePixelRatio || 1;
   const width = Math.max(1, Math.round(rect.width * ratio));
@@ -20,7 +27,7 @@ function paint(canvas: HTMLCanvasElement, timeline: ReadonlyArray<readonly [numb
     for (const [start, duration, category] of timeline) {
       const isAlarm = ALARM_CATEGORY_INDEXES.has(category);
       if (category === NO_RECORD_INDEX || isAlarm !== alarmPass) continue;
-      context.fillStyle = SIGNAL_CATEGORY_COLORS[category];
+      context.fillStyle = colors[category];
       context.fillRect(
         (start / SIGNAL_DAY_SECONDS) * width,
         0,
@@ -35,25 +42,29 @@ function paint(canvas: HTMLCanvasElement, timeline: ReadonlyArray<readonly [numb
 export function SignalBand({
   timeline,
   className,
-  label
+  label,
+  tone = 'dark'
 }: {
   timeline: ReadonlyArray<readonly [number, number, number]>;
   className?: string;
   label: string;
+  /** 帯の地の色。キオスクは暗い地、管理画面は明るい地 */
+  tone?: 'dark' | 'light';
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
-    paint(canvas, timeline);
+    const colors = tone === 'dark' ? SIGNAL_CATEGORY_COLORS : LIGHT_CATEGORY_COLORS;
+    paint(canvas, timeline, colors);
     if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => paint(canvas, timeline));
+    const observer = new ResizeObserver(() => paint(canvas, timeline, colors));
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [timeline]);
+  }, [timeline, tone]);
 
-  return <canvas ref={ref} role="img" aria-label={label} className={clsx('block w-full rounded-[3px] bg-[#1a2533]', className)} />;
+  return <canvas ref={ref} role="img" aria-label={label} className={clsx('block w-full rounded-[3px]', tone === 'dark' ? 'bg-[#1a2533]' : 'bg-[#e3e8ee]', className)} />;
 }
 
 /** 帯と同じ幅で並べる時間軸（4時間ごと）。 */
