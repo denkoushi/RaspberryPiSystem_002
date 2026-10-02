@@ -59,8 +59,8 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Rationale: 再送や取り込み直しで重複させないため。解析結果は状態ごとの合計を除いてすべて保存しており、合計はログから再計算できる。
   Date/Author: 2026-10-02 / Claude
 
-- Decision: Gmail の取り込みは専用スケジューラ（毎時25分、`MACHINE_SIGNAL_GMAIL_CRON` で変更可）にし、件名 `AirGridFlexSignal` を専用として予約する。
-  Rationale: 届く時刻が決まっていない。メールが無い時の負荷は検索1回だけ。予約しないと、汎用のCSV取り込みに同じ件名を登録した場合に先に既読・ゴミ箱へ移され、添付1つしか読まれない。
+- Decision: Gmail の取り込みは専用スケジューラ（毎時50分、`MACHINE_SIGNAL_GMAIL_CRON` で変更可）にし、件名 `AirGridFlexSignal` を専用として予約する。
+  Rationale: 届く時刻が決まっていない。CSV取り込みのスケジューラとは排他（重なるとスキップ）を共有しないが、Gmail のリクエスト直列化と 429 の冷却は共有するので、定時のCSV取り込み（毎時12分・42分、06:25）と分をずらした。メールが無い時の負荷は検索1回だけ。予約しないと、汎用のCSV取り込みに同じ件名を登録した場合に先に既読・ゴミ箱へ移され、添付1つしか読まれない。
   Date/Author: 2026-10-02 / Claude
 
 - Decision: 過去分は、管理コンソールでフォルダを選んでアップロードする（50ファイルずつ送信）。zip は使わない。

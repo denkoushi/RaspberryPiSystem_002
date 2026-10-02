@@ -9,8 +9,12 @@ import {
   type MachineSignalGmailIngestionService,
 } from './machine-signal-gmail-ingestion.service.js';
 
-/** 日報メールは1日1通。届く時刻が決まっていないので毎時確認する（メールが無ければ検索1回だけ）。 */
-export const MACHINE_SIGNAL_GMAIL_CRON = process.env.MACHINE_SIGNAL_GMAIL_CRON?.trim() || '25 * * * *';
+/**
+ * 日報メールは1日1通。届く時刻が決まっていないので毎時確認する（メールが無ければ検索1回だけ）。
+ * CSV取り込みとは排他を共有しないが、Gmail の利用枠と冷却は共有するので、
+ * 定時のCSV取り込み（毎時12分・42分、06:25 など）と重ならない50分に置く。
+ */
+export const MACHINE_SIGNAL_GMAIL_CRON = process.env.MACHINE_SIGNAL_GMAIL_CRON?.trim() || '50 * * * *';
 
 export class MachineSignalGmailScheduler {
   private task: cron.ScheduledTask | null = null;
