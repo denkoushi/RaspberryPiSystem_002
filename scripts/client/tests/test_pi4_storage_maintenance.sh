@@ -17,6 +17,7 @@ TORQUE="ghcr.io/denkoushi/raspisys-torque-agent"
 cat > "${TMP_DIR}/images.tsv" <<EOF
 sha256:nfc-current	${NFC}	current	2026-10-02T07:00:00Z	2026-10-02 11:00:00.5 +0000 UTC
 sha256:nfc-previous	${NFC}	previous	2026-10-01T07:00:00Z	2026-10-01 11:00:00.5 +0000 UTC
+sha256:nfc-built-later	${NFC}	built-later	2026-10-02T06:00:00Z	2026-09-20 11:00:00.5 +0000 UTC
 sha256:nfc-old	${NFC}	old	2026-08-01T07:00:00Z	2026-08-01 11:00:00.5 +0000 UTC
 sha256:nfc-old	raspi-standard-rollback	20260818-045543-f6be69-nfc-agent	2026-08-01T07:00:00Z	2026-08-01 11:00:00.5 +0000 UTC
 sha256:nfc-untagged	${NFC}	<none>	2026-07-01T07:00:00Z	2026-07-01 11:00:00.5 +0000 UTC
@@ -55,7 +56,6 @@ case "$1 ${2:-}" in
     ;;
   'image inspect')
     case "$4" in
-      '{{.Created}}') field "$5" 4 ;;
       '{{.Metadata.LastTagTime}}') field "$5" 5 ;;
       *) exit 64 ;;
     esac
@@ -120,9 +120,11 @@ assert_removed() {
 }
 
 # 1. Keeps the running image, one previous image per repository and the image
-#    behind a rollback tag made within the last day; removes the rest.
+#    behind a rollback tag made within the last day; removes the rest. "Previous"
+#    is the image tagged last on this device, not the one built last.
 run_maintenance PI4_STORAGE_REMOVE_FIREFOX=0
-assert_removed "${NFC}:old
+assert_removed "${NFC}:built-later
+${NFC}:old
 raspi-standard-rollback:20260818-045543-f6be69-nfc-agent
 sha256:nfc-untagged
 docker-nfc-agent:latest
@@ -153,6 +155,6 @@ grep -q "DRY-RUN: 削除対象 ${NFC}:old" "${TMP_DIR}/output.log" || { echo "FA
 
 # 5. Keeping two previous images spares the next older one as well.
 run_maintenance PI4_STORAGE_REMOVE_FIREFOX=0 PI4_STORAGE_KEEP_PREVIOUS=2
-if grep -Fxq "${NFC}:old" "${TMP_DIR}/removed.log"; then echo "FAIL: second previous image removed" >&2; exit 1; fi
+if grep -Fxq "${NFC}:built-later" "${TMP_DIR}/removed.log"; then echo "FAIL: second previous image removed" >&2; exit 1; fi
 
 echo "pi4 storage maintenance tests passed"

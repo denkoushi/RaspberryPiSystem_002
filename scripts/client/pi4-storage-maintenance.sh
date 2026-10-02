@@ -75,13 +75,18 @@ else
     keep_ids+=("$("${DOCKER_BIN}" inspect --format '{{.Image}}' "${container_id}")")
   done < <("${DOCKER_BIN}" ps -aq)
 
-  # 全イメージ: "<作成epoch> <ID> <repository> <tag>"（新しい順）
+  # 全イメージ: "<タグ付けepoch> <ID> <repository> <tag>"（新しい順）
+  # 並び順はビルド日時ではなく、この端末でイメージへ最後にタグを付けた時刻
+  # （pull や rollback タグ付け、"2026-10-02 09:04:49.839 +0000 UTC"）で決める。
+  # ビルドは新しいが配布は古いイメージを「直前」と見なさないため。
+  # 読めない場合は残す側に倒す。
   images=()
   while IFS=$'\t' read -r image_id repository tag; do
     [ -n "${image_id}" ] || continue
-    created="$("${DOCKER_BIN}" image inspect --format '{{.Created}}' "${image_id}")"
-    created_epoch="$(date -d "${created}" +%s)"
-    images+=("${created_epoch} ${image_id} ${repository} ${tag}")
+    last_tag_time="$("${DOCKER_BIN}" image inspect --format '{{.Metadata.LastTagTime}}' "${image_id}")"
+    read -r tag_date tag_clock tag_zone _ <<<"${last_tag_time}"
+    tag_epoch="$(date -d "${tag_date} ${tag_clock} ${tag_zone}" +%s 2>/dev/null || echo "${NOW_EPOCH}")"
+    images+=("${tag_epoch} ${image_id} ${repository} ${tag}")
   done < <("${DOCKER_BIN}" images --no-trunc --format '{{.ID}}\t{{.Repository}}\t{{.Tag}}')
   sorted_images=()
   if [ "${#images[@]}" -gt 0 ]; then
@@ -94,13 +99,8 @@ else
   rollback_cutoff=$((NOW_EPOCH - ROLLBACK_TAG_KEEP_HOURS * 3600))
   fresh_rollback_references=()
   for line in "${sorted_images[@]}"; do
-    read -r _ image_id repository tag <<<"${line}"
+    read -r tag_epoch image_id repository tag <<<"${line}"
     [[ "${repository}" =~ ${ROLLBACK_REPOSITORY_PATTERN} ]] || continue
-    # イメージへ最後にタグを付けた時刻（"2026-10-02 09:04:49.839 +0000 UTC"）で新旧を判定する。
-    # 読めない場合は残す側に倒す。
-    last_tag_time="$("${DOCKER_BIN}" image inspect --format '{{.Metadata.LastTagTime}}' "${image_id}")"
-    read -r tag_date tag_clock tag_zone _ <<<"${last_tag_time}"
-    tag_epoch="$(date -d "${tag_date} ${tag_clock} ${tag_zone}" +%s 2>/dev/null || echo "${NOW_EPOCH}")"
     if [ "${tag_epoch}" -ge "${rollback_cutoff}" ]; then
       keep_ids+=("${image_id}")
       fresh_rollback_references+=("${repository}:${tag}")
