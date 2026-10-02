@@ -191,3 +191,26 @@ Kept because the held-out paraphrase gain (3 to 5 cases) is larger than the run-
 Enrichment makes no difference at 30 candidates either (9 against 9, 3 against 3) and costs about 0.3 s. Whether it stays attached is decided after the next step.
 
 This widens what the judge sees; it does not improve ranking. Next: measure first-stage recall at 15, 30, and 50 per stage with graded labels on pooled candidates, then compare a Japanese embedding model (ruri-v3-310m, JMTEB retrieval 81.89 against 72.81 reported for Qwen3-Embedding-0.6B) and morphological tokens with normalization against the current character bigrams.
+
+### 2026-10-02: first-stage comparison of embedding models and tokenizers (no change)
+
+Trigger: a survey of established practice. JMTEB reports retrieval 81.89 for ruri-v3-310m against 72.81 for Qwen3-Embedding-0.6B, and Japanese BM25 is usually built on morphological tokens with normalization (Sudachi), not character bigrams.
+
+Method: offline on the owner's Mac, no production change. 73 content questions with targets (stage-v1 content_same, content_para, mixed; stage-aspect-v1; both held-out paraphrase sets) against 7,864 records, whole corpus, no filters, the question as the query. Qwen3 used the stored production vectors and query embeddings from the DGX. ruri-v3-310m ran locally with its 検索クエリ/検索文書 prefixes and 512 tokens. BM25 used the same parameters for character bigrams and for Sudachi normalized content words. Fusion is RRF with k=60. The count is cases with a target in the top 15 / 30 / 50.
+
+| Arm | All (73) | Paraphrase-type (40) | stage-aspect-v1 (17) |
+| --- | --- | --- | --- |
+| Qwen3 only | 36 / 49 / 53 | 13 / 23 / 26 | 9 / 11 / 12 |
+| ruri-v3-310m only | 39 / 42 / 51 | 20 / 22 / 27 | 6 / 6 / 9 |
+| BM25 bigram only | 38 / 43 / 45 | 6 / 11 / 12 | 17 / 17 / 17 |
+| BM25 Sudachi only | 36 / 41 / 43 | 7 / 10 / 11 | 15 / 16 / 16 |
+| bigram + Qwen3 (current) | 48 / 53 / 57 | 17 / 22 / 25 | 16 / 16 / 17 |
+| bigram + ruri-v3-310m | 52 / 55 / 60 | 21 / 24 / 27 | 16 / 16 / 17 |
+| Sudachi + Qwen3 | 41 / 48 / 52 | 12 / 18 / 21 | 14 / 15 / 16 |
+| Sudachi + ruri-v3-310m | 45 / 53 / 57 | 16 / 22 / 26 | 14 / 16 / 16 |
+
+ruri-v3-310m ranks paraphrase targets higher inside the top 15 (20 against 13 alone) but reaches the same number by rank 30 and 50, and it is weaker on the aspect questions. Fused with bigrams it gains 4 / 2 / 3 cases of 73 over the current pair. With the judge reading 30 candidates that is 55 against 53, inside the noise of these sets. The benchmark gap does not carry over to these records.
+
+Sudachi tokens are worse than character bigrams in every pairing (rejected). Part names and technical compounds in short records match better as bigrams.
+
+In every arm, 13 of the 40 paraphrase-type cases have no target in the top 50. Those sets carry one target record per case, so other valid records may be counted as misses. Next: graded relevance labels on the pooled top candidates of all arms, so recall and precision are measured against every relevant record. Model and tokenizer swaps are judged again on that basis. No swap of the DGX embedding model is proposed from this run.
