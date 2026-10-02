@@ -5,7 +5,8 @@ import {
   assemblyBoltConditionsFromTrainingPrograms,
   buildAssemblyBoltConditionPalette,
   formatAssemblyBoltConditionSpec,
-  formatAssemblyBoltConditionTorque
+  formatAssemblyBoltConditionTorque,
+  tintAssemblyBoltsByCondition
 } from './assemblyBoltConditionPalette';
 import { createAssemblyBoltAt, emptyAssemblyArea } from './assemblyTemplateDraft';
 
@@ -75,5 +76,21 @@ describe('assembly bolt condition palette', () => {
       ['M6×16 SCM435 12.9', []]
     ]);
     expect(formatAssemblyBoltConditionTorque(m8)).toBe('32 – 35.5 – 39.1 N·m');
+  });
+
+  it('tints bolts by their condition and leaves bolts without a condition untouched', () => {
+    const area = emptyAssemblyArea();
+    const first = { ...createAssemblyBoltAt(area, 0.1, 0.1), markerNo: 1, ...assemblyBoltConditionPatch(m8) };
+    const second = { ...createAssemblyBoltAt(area, 0.2, 0.2), markerNo: 2, ...assemblyBoltConditionPatch({ ...m8, nominalDiameter: 'M6' }) };
+    const blank = { ...createAssemblyBoltAt(area, 0.3, 0.3), markerNo: 3 };
+    const areas = [{ ...area, bolts: [first, second, blank] }];
+    const palette = buildAssemblyBoltConditionPalette(areas);
+    const canvasBolts = [first, second, blank].map((bolt) => ({ id: bolt.id, markerNo: bolt.markerNo }));
+
+    const tinted = tintAssemblyBoltsByCondition(canvasBolts, areas, palette);
+
+    expect(tinted[0]!.accentClass).toContain('bg-rose-400');
+    expect(tinted[1]!.accentClass).toContain('bg-sky-400');
+    expect(tinted[2]).toBe(canvasBolts[2]);
   });
 });

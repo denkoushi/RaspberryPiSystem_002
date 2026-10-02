@@ -197,6 +197,24 @@ describe('AssemblyProcedureMarkerLayer bolt dragging', () => {
     });
   });
 
+  it('paints a bolt with the editor-supplied accent unless it is selected', () => {
+    const tinted = { ...bolt, accentClass: 'bg-sky-400 text-slate-950 ring-2 ring-sky-200' };
+    const { rerender } = render(
+      <div className="relative h-[200px] w-[400px]">
+        <AssemblyProcedureMarkerLayer bolts={[tinted]} />
+      </div>
+    );
+    expect(screen.getByRole('button', { name: '締付点1' })).toHaveClass('bg-sky-400');
+
+    rerender(
+      <div className="relative h-[200px] w-[400px]">
+        <AssemblyProcedureMarkerLayer bolts={[tinted]} selectedBoltId="bolt-1" />
+      </div>
+    );
+    expect(screen.getByRole('button', { name: '締付点1' })).toHaveClass('bg-cyan-300');
+    expect(screen.getByRole('button', { name: '締付点1' })).not.toHaveClass('bg-sky-400');
+  });
+
   it('shows a callout handle only for the selected marker in the editor and commits the drag target as the tip', () => {
     const onMoveBoltCallout = vi.fn();
     const { rerender } = render(
