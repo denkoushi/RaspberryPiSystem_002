@@ -214,3 +214,45 @@ ruri-v3-310m ranks paraphrase targets higher inside the top 15 (20 against 13 al
 Sudachi tokens are worse than character bigrams in every pairing (rejected). Part names and technical compounds in short records match better as bigrams.
 
 In every arm, 13 of the 40 paraphrase-type cases have no target in the top 50. Those sets carry one target record per case, so other valid records may be counted as misses. Next: graded relevance labels on the pooled top candidates of all arms, so recall and precision are measured against every relevant record. Model and tokenizer swaps are judged again on that basis. No swap of the DGX embedding model is proposed from this run.
+
+### 2026-10-02: graded relevance labels on pooled candidates (measurement basis)
+
+Trigger: the entry above. Single-target gold cases count other valid records as misses.
+
+Method: for the same 73 questions, the top 20 of each single arm, the top 30 of the two bigram fusions, and the gold targets were pooled (5,389 question-record pairs, median 74 per question). JEV graded each pair with a rubric worded differently from the production judge: 3 the event asked for, 2 the same kind of event with a different part or situation, 1 shared words only, 0 unrelated. Labels hold ids and grades and stay in the private folder.
+
+Checks on the labels: the 99 gold targets got grade 3 (91) or 2 (8), none lower. The implementing agent graded 34 development pairs blind: 23 exact, 32 within one grade. Of 14 pairs JEV graded 3, the blind grade was 2 or more for 13. Of 10 pairs JEV graded 2, the blind grade was 2 or more for 5. Grade 3 is therefore used as "relevant"; grade 2 is too noisy. Grade 3 is lenient: it includes similar cases, not only the exact event.
+
+Relevant records per question (grade 3): 7 to 21 on average by set. The paraphrase sets with one target per case were far from complete.
+
+First stage against grade 3, cases with a relevant record in the top 15 / 30 (73 cases):
+
+| Arm | All (73) | Held-out paraphrase (24) | nDCG@10 (all) |
+| --- | --- | --- | --- |
+| bigram + Qwen3 (current) | 65 / 68 | 22 / 23 | 0.469 |
+| bigram + ruri-v3-310m | 68 / 70 | 22 / 23 | 0.476 |
+| Qwen3 only | 59 / 63 | 20 / 22 | 0.394 |
+| BM25 bigram only | 59 / 62 | 17 / 19 | 0.389 |
+
+The first stage is not the weak part: the current pair puts a relevant record in the top 30 for 68 of 73 questions. The earlier reading ("paraphrase targets are outside the top 15") came from the single-target gold.
+
+Shown records of the same-day hybrid runs, scored with the labels:
+
+| Run | Dev content (49): answered / with a relevant record / no result | Held-out paraphrase (24): answered / with a relevant record / no result | Shown records graded 3 / 2 / lower / unjudged (all 73) |
+| --- | --- | --- | --- |
+| 15 candidates, no enrichment | 43 / 42 / 6 | 16 / 16 / 8 | 171 / 10 / 1 / 10 |
+| 15 candidates, enrichment | 44 / 42 / 5 | 18 / 16 / 6 | 175 / 7 / 1 / 32 |
+| 30 candidates, no enrichment | 43 / 42 / 6 | 20 / 20 / 4 | 192 / 14 / 1 / 15 |
+| 30 candidates, enrichment | 44 / 42 / 5 | 21 / 19 / 3 | 190 / 7 / 1 / 42 |
+
+Caveat: the production judge and the labels both come from JEV, so the share of shown records graded 3 partly measures JEV against itself. The blind check above is the independent part.
+
+The 30-candidate change halves no-result answers on the held-out paraphrase cases (8 to 4). The ten remaining no-result cases at 30 candidates split into: no relevant record in the judged 30 (5, one of them with no relevant record in the pool at all, so no result is right), the judge rejected the only relevant candidate (3), and the planner asked back (2).
+
+### 2026-10-02: enrichment turned off (kept: off)
+
+Full-corpus enrichment did not add relevant records in three measurements (target counts, first-stage ranks, graded labels), costs about 0.3 s at p95, and needs overnight DGX time for every new record. This matches reports that appending generated queries to documents adds noise to dense retrieval (Doc2Query--, Doc2Query++).
+
+Change: the retrieval worker attaches the stored enrichment only while `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true`. Before, it attached the store whenever the file existed, so the flag stopped only the overnight runner. The release for this change passes `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=false`. The store file stays on the Pi 5, and `true` restores the previous behaviour.
+
+After the release, record text no longer includes enrichment, so every dense vector is recomputed in the next bulk window. Until a record is recomputed its previous vector is used.

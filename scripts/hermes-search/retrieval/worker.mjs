@@ -187,9 +187,17 @@ function applyEnrichment(view, enrichmentById) {
   return { ...view, records: attachEnrichment(view.records, enrichmentById) };
 }
 
-async function loadEnrichmentById() {
+// The stored enrichment is attached only while HERMES_RETRIEVAL_ENRICHMENT_ENABLED is true, the
+// same flag that runs the overnight enrichment. Full-corpus enrichment showed no retrieval gain
+// (2026-10-02), so turning the flag off stops both; the store stays on disk.
+export function enrichmentAttachEnabled(env = process.env) {
+  return env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED === 'true';
+}
+
+export async function loadEnrichmentById(env = process.env) {
+  if (!enrichmentAttachEnabled(env)) return null;
   try {
-    return await readEnrichmentStore(storePathFromEnv());
+    return await readEnrichmentStore(storePathFromEnv(env));
   } catch {
     console.warn('hermes retrieval enrichment store unreadable');
     return null;
@@ -248,8 +256,7 @@ export function createRetrievalAnswering({
     async replaceCorpus(message) {
       const count = current.snapshotCount;
       try {
-        const enrichmentById = await readEnrichmentStore(storePathFromEnv()).catch(() => null);
-        current = applyEnrichment(replaceCorpus(current, catalog, message), enrichmentById);
+        current = applyEnrichment(replaceCorpus(current, catalog, message), await loadEnrichmentById());
         dense?.schedule?.(current.records, fieldsWithRole(catalog, 'body'));
         return { ok: true, count: current.snapshotCount };
       } catch {
