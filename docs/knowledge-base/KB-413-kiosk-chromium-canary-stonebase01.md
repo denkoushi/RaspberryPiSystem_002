@@ -77,12 +77,12 @@ validation:
 ## Fleet rollout (2026-10-02 21:00 JST)
 
 - All seven Pi4 kiosks are set to `kiosk_browser_engine: "chromium"`; the certificate pin moved to the `kiosk` group vars. Read before the change: every kiosk has `/usr/bin/chromium` (142 on raspberrypi4, raspi4-robodrill01, raspi4-fjv60-80 and StoneBase01; 147 on raspi4-sessaku-01; 149 on raspi4-assembly-01 and raspi4-kensaku-02), `openssl`, and one `ibus-daemon`.
-- The change is inventory-only, which the classifier does not treat as a Pi4 kiosk release file. After the merge, run CI on `main` by hand (`workflow_dispatch` runs the full suite and names the three agents) so the plan shows `pi4ReleaseFiles: staged`.
+- The change (#1650) was inventory-only, which the classifier did not treat as a Pi4 kiosk release file, so its release set named no agent and the plan showed `pi4ReleaseFiles: skipped`. Running CI on `main` by hand does not help: a `workflow_dispatch` run builds the agent images but the publish and release-set jobs only run on push. `inventory.yml` is now classified as a Pi4 kiosk release file, so an inventory change publishes the three agents and stages the kiosk files.
 - Japanese input on Chromium 147 and 149 was not tested before the rollout; check each kiosk with its physical keyboard.
-- To take one kiosk back to Firefox, set its `kiosk_browser_engine` to `"firefox"`, merge, run CI on `main` by hand again, and release with `--limit <host>`.
+- To take one kiosk back to Firefox, set its `kiosk_browser_engine` to `"firefox"`, merge, and release with `--limit <host>` once the plan shows `pi4ReleaseFiles: staged`.
 
 ## Rollback
 
 Revert this change's commit (PR #1621) and run the standard release for the host (`scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspi4-kensaku-stonebase01`, after `--print-plan` shows `pi4ReleaseFiles: staged`). The Firefox profile `kiosk-system` is left untouched by this change.
 
-Do not roll back by editing only `inventory.yml`: an inventory-only commit names no Pi4 agent, so the release would not stage the launcher and the kiosk would stay on Chromium. The revert touches `resolve-browser.yml` and the role defaults, which the change classifier treats as Pi4 kiosk release files.
+Since 2026-10-02 an `inventory.yml` change is classified as a Pi4 kiosk release file, so setting a kiosk's `kiosk_browser_engine` back to `"firefox"` is delivered by the standard release as well. Always confirm `pi4ReleaseFiles: staged` in the plan and read the launcher on the device afterwards.
