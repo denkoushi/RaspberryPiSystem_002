@@ -366,6 +366,27 @@
     mode: '0644'
   when: release_kiosk_services | length > 0
 
+- name: Stage the Pi4 storage maintenance script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../scripts/client/pi4-storage-maintenance.sh"
+    dest: "{{ release_kiosk_stage_dir }}/pi4-storage-maintenance.sh"
+    owner: root
+    group: root
+    mode: '0755'
+  when: release_kiosk_services | length > 0
+
+- name: Stage the Pi4 storage maintenance units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ release_kiosk_stage_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - pi4-storage-maintenance.service
+    - pi4-storage-maintenance.timer
+  when: release_kiosk_services | length > 0
+
 - name: Stage the SHA-bound kiosk launcher
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/kiosk-launch.sh.j2"
@@ -429,6 +450,9 @@
             {'src': release_kiosk_stage_dir ~ '/terminal_device_maintenance.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_device_maintenance.py', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/status-agent.service', 'dest': '/etc/systemd/system/status-agent.service', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/status-agent.timer', 'dest': '/etc/systemd/system/status-agent.timer', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/pi4-storage-maintenance.sh', 'dest': '/usr/local/sbin/pi4-storage-maintenance.sh', 'mode': '0755'},
+            {'src': release_kiosk_stage_dir ~ '/pi4-storage-maintenance.service', 'dest': '/etc/systemd/system/pi4-storage-maintenance.service', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/pi4-storage-maintenance.timer', 'dest': '/etc/systemd/system/pi4-storage-maintenance.timer', 'mode': '0644'},
           ] if release_kiosk_services | length > 0 else []
         )
         + ([

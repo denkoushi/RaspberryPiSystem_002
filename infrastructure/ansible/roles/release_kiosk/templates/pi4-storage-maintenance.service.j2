@@ -1,0 +1,13 @@
+[Unit]
+Description=Pi4 storage maintenance (old release images, Docker build cache, apt cache)
+After=docker.service
+
+[Service]
+Type=oneshot
+# Firefox is removed only on kiosks released with Chromium.
+Environment=PI4_STORAGE_REMOVE_FIREFOX={{ '1' if (kiosk_browser_engine | default('chromium') | lower) == 'chromium' else '0' }}
+ExecStart=/usr/local/sbin/pi4-storage-maintenance.sh
+Nice=10
+IOSchedulingClass=idle
+StandardOutput=journal
+StandardError=journal
