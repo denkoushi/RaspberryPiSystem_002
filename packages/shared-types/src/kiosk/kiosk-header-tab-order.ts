@@ -27,6 +27,7 @@ export const KIOSK_REORDERABLE_HEADER_TAB_IDS = [
   'part_measurement',
   'inspection_drawing',
   'rigging_analytics',
+  'machine_signal',
   'due_management',
   'call'
 ] as const;
