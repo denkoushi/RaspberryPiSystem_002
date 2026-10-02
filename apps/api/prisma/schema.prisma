@@ -5086,3 +5086,76 @@ model KnowledgeProcedureRevision {
   @@unique([procedureId, revisionNumber])
   @@index([state, createdAt])
 }
+
+/// 信号灯センサー（設備稼働ログの取得元）1台の設定。signalNo は日報ファイル名の Signal 番号。
+/// 機械名は拠点が違えば重複するので、識別には使わない。
+model MachineSignalSensor {
+  signalNo           Int      @id
+  /// 日報1行目の機械名（最後に取り込んだ値）
+  sourceMachineName  String   @db.VarChar(200)
+  displayName        String?  @db.VarChar(200)
+  site               String?  @db.VarChar(80)
+  /// MACHINE | ROBOT | LINE | OTHER
+  kind               String   @default("MACHINE") @db.VarChar(16)
+  hidden             Boolean  @default(false)
+  /// 稼働予定の開始・終了（0時からの分）。両方 null なら終日
+  plannedStartMinute Int?
+  plannedEndMinute   Int?
+  runningKw          Float?
+  idleKw             Float?
+  /// ランプの組み合わせ（赤黄緑のコード3桁）→共通区分の上書き
+  categoryOverrides  Json     @default("{}")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+/// 信号灯センサーの日報（1センサー×1日）。状態遷移ログは segments にまとめて持つ。
+/// 同じセンサー・同じ日付を取り込み直すと上書きする。
+model MachineSignalDailyReport {
+  id             String   @id @default(uuid())
+  signalNo       Int
+  reportDate     DateTime @db.Date
+  machineName    String   @db.VarChar(200)
+  dayStartMinute Int      @default(480)
+  summary        Json
+  stateNames     Json
+  /// [開始秒, 継続秒, 赤, 黄, 緑, 状態名index] の配列
+  segments       Json
+  contentHash    String   @db.VarChar(64)
+  /// GMAIL | UPLOAD
+  source         String   @db.VarChar(16)
+  sourceFileName String   @db.VarChar(255)
+  importedAt     DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([signalNo, reportDate], map: "MachineSignalDailyReport_signal_date_key")
+  @@index([reportDate], map: "MachineSignalDailyReport_idx_date")
+}
+
+/// 設備稼働の画面全体の設定（単一行）。昼夜の境界と気づきのしきい値。
+model MachineSignalSettingsConfig {
+  key              String   @id @db.VarChar(80)
+  nightStartMinute Int      @default(1200)
+  thresholds       Json
+  updatedBy        String?  @db.VarChar(120)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+/// 設備稼働ログの取り込み1回の記録。Gmail の同じメールを繰り返し処理しないための台帳を兼ねる。
+model MachineSignalImportRun {
+  id             String   @id @default(uuid())
+  /// GMAIL | UPLOAD
+  source         String   @db.VarChar(16)
+  gmailMessageId String?  @db.VarChar(120)
+  /// SUCCESS | PARTIAL | FAILED
+  status         String   @db.VarChar(16)
+  fileCount      Int      @default(0)
+  importedCount  Int      @default(0)
+  failedCount    Int      @default(0)
+  errors         Json     @default("[]")
+  startedAt      DateTime @default(now())
+
+  @@index([gmailMessageId], map: "MachineSignalImportRun_idx_message")
+  @@index([startedAt], map: "MachineSignalImportRun_idx_started")
+}

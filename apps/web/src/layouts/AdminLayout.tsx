@@ -81,6 +81,9 @@ export function AdminLayout() {
             <NavLink to="/admin/pallet-machine-illustrations" className={linkClass}>
               パレット加工機イラスト
             </NavLink>
+            <NavLink to="/admin/machine-signal" className={linkClass}>
+              設備稼働
+            </NavLink>
             <NavLink to="/admin/gmail/config" className={linkClass}>
               Gmail設定
             </NavLink>

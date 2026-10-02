@@ -29,6 +29,7 @@ import { registerTorqueTrainingRoutes } from './torque-training/index.js';
 import { registerWorkInstructionRoutes } from './work-instructions/index.js';
 import { registerHermesKnowledgeRoutes } from './hermes-knowledge.js';
 import { registerItemInventoryRoutes } from './item-inventory/index.js';
+import { registerMachineSignalRoutes } from './machine-signal/index.js';
 import { registerKioskTagDeskRoutes } from './kiosk/tag-desk.js';
 
 /**
@@ -86,6 +87,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       // SharePoint作業要領の取り込み・参照
       registerWorkInstructionRoutes(subApp);
       registerItemInventoryRoutes(subApp);
+      // 設備稼働ログ（信号灯センサーの日報）の可視化と設定
+      registerMachineSignalRoutes(subApp);
       // キオスク「タグ管理」（NFCタグの付け外しとマスター編集）
       await registerKioskTagDeskRoutes(subApp);
     },
