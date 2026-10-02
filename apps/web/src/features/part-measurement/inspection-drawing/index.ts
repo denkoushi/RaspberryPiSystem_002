@@ -181,8 +181,10 @@ export {
 } from './selfInspectionMeasurementValueOptions';
 export {
   applyHundredthsDigitToDimensionValue,
+  applyThousandthsDigitToDimensionValue,
   buildSelfInspectionDimensionTenthsOptions,
   formatDimensionTenthsProvisionalValue,
+  resolveSelfInspectionDimensionKeypadDigitCount,
   resolveSelfInspectionMeasurementValueInputKind,
   SELF_INSPECTION_DIMENSION_MEASUREMENT_LABELS,
   type SelfInspectionMeasurementValueInputKind

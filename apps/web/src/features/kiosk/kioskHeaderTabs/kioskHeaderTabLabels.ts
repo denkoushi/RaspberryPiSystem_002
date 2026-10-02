@@ -21,6 +21,7 @@ export const KIOSK_HEADER_TAB_LABELS: Record<KioskReorderableHeaderTabId, string
   part_measurement: '部品測定',
   inspection_drawing: '検査図面',
   rigging_analytics: '集計',
+  machine_signal: '設備稼働',
   due_management: '納期管理',
   call: '通話'
 };
