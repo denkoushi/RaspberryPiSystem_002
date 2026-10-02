@@ -273,6 +273,19 @@ function scoreDocument(recordId, index) {
  * RELEVANCE_CANDIDATE_LIMIT. VECTOR_COSINE_MIN is not applied.
  * Date sort, the relevance judgment, and limit happen after this list.
  */
+// How many ranked candidates the relevance judge reads, in parallel calls of
+// RELEVANCE_CANDIDATE_LIMIT. 30 showed held-out paraphrase targets in 9 of 12 cases against 6
+// with 15 (2026-10-02), for about 0.5 s more at p95. HERMES_RETRIEVAL_RELEVANCE_POOL or
+// options.relevancePool overrides it.
+export const RELEVANCE_POOL_DEFAULT = 30;
+export const RELEVANCE_POOL_MAX = 60;
+
+export function relevancePoolLimit(options = {}, env = process.env) {
+  const requested = Number.isInteger(options.relevancePool) ? options.relevancePool : Number(env.HERMES_RETRIEVAL_RELEVANCE_POOL);
+  if (!Number.isInteger(requested)) return RELEVANCE_POOL_DEFAULT;
+  return Math.min(RELEVANCE_POOL_MAX, Math.max(RELEVANCE_CANDIDATE_LIMIT, requested));
+}
+
 export function fuseRankings(lexicalOrdered, vectorOrdered) {
   const lexicalRank = new Map();
   const contentScore = new Map();
@@ -606,6 +619,7 @@ export async function execute(plan, options = {}) {
     .filter((item) => item.record);
   const recentContent = isRecentContentPlan(plan, options.catalog);
   let candidatePoolTruncated = false;
+  const poolLimit = relevancePoolLimit(options);
   let relevanceCut = false;
   if (recentContent) {
     const dateField = dateRoleField(plan, options.catalog);
@@ -623,13 +637,13 @@ export async function execute(plan, options = {}) {
     ranked = [];
   } else if (retriever === 'dense') {
     candidateIds = vectorOrdered.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.id);
-    candidatePoolTruncated = vectorOrdered.length > RELEVANCE_CANDIDATE_LIMIT;
-    ranked = rowsOf(vectorOrdered.slice(0, RELEVANCE_CANDIDATE_LIMIT));
+    candidatePoolTruncated = vectorOrdered.length > poolLimit;
+    ranked = rowsOf(vectorOrdered.slice(0, poolLimit));
   } else if (retriever === 'hybrid') {
     const fused = rrfCombine(lexicalRows.filter((item) => item.contentTokenScore > 0), vectorOrdered);
     candidateIds = fused.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.id);
-    candidatePoolTruncated = fused.length > RELEVANCE_CANDIDATE_LIMIT;
-    ranked = rowsOf(fused.slice(0, RELEVANCE_CANDIDATE_LIMIT));
+    candidatePoolTruncated = fused.length > poolLimit;
+    ranked = rowsOf(fused.slice(0, poolLimit));
   } else if (vectorOrdered.length) {
     const fused = fuseRankings(lexicalRows.filter((item) => item.contentTokenScore > 0), vectorOrdered);
     candidatePoolTruncated = fused.truncated === true;
@@ -639,8 +653,8 @@ export async function execute(plan, options = {}) {
     candidateIds = ranked.map((item) => item.record.id);
   } else {
     candidateIds = lexicalRows.slice(0, STAGE_CANDIDATE_LIMIT).map((item) => item.id);
-    candidatePoolTruncated = lexicalRows.length > RELEVANCE_CANDIDATE_LIMIT;
-    const pool = filtered.length <= RELEVANCE_CANDIDATE_LIMIT ? lexicalRows : lexicalRows.slice(0, RELEVANCE_CANDIDATE_LIMIT);
+    candidatePoolTruncated = lexicalRows.length > poolLimit;
+    const pool = filtered.length <= poolLimit ? lexicalRows : lexicalRows.slice(0, poolLimit);
     ranked = pool
       .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
       .filter((item) => item.record);
@@ -729,6 +743,7 @@ export async function execute(plan, options = {}) {
         semanticQuery: judgeQuery,
         candidates: ranked.map((item) => ({ id: item.record.id, record: item.record })),
         bodyFields,
+        poolLimit,
       });
       relevanceMs = Number.isFinite(judged?.relevanceMs)
         ? judged.relevanceMs

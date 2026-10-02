@@ -10,8 +10,10 @@ import {
   createRetrievalAnswering,
   dispatchWorkerRequest,
   encodeWorkerLine,
+  enrichmentAttachEnabled,
   failureDiagnostic,
   formatCoverageNotice,
+  loadEnrichmentById,
   noOtherAnswer,
   noResultAnswer,
   readyPayload,
@@ -306,4 +308,26 @@ test('a request for other records hides the ones already shown and says when non
 
   const again = await completeRequest(answering, { type: 'request', requestId: 'r3', question: 'surface scratchの記録をもう一度', session: other.result.session });
   assert.deepEqual(again.result.recordIds, first.result.recordIds);
+});
+
+test('stored enrichment is attached only while enrichment is enabled', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const store = path.join(mkdtempSync(path.join(tmpdir(), 'enrichment-gate-')), 'store.jsonl');
+  writeFileSync(store, `${JSON.stringify({
+    schema: 'hermes-retrieval-enrichment/v1',
+    recordId: 'rec-alpha',
+    summary: 'note',
+    queries: [],
+    facets: { phenomenon: [], cause: [], process: [], part: [], treatment: [] },
+  })}\n`);
+  assert.equal(enrichmentAttachEnabled({}), false);
+  assert.equal(enrichmentAttachEnabled({ HERMES_RETRIEVAL_ENRICHMENT_ENABLED: 'false' }), false);
+  assert.equal(enrichmentAttachEnabled({ HERMES_RETRIEVAL_ENRICHMENT_ENABLED: 'true' }), true);
+  // The store stays on disk when the flag is off; it is just not read.
+  assert.equal(await loadEnrichmentById({ HERMES_RETRIEVAL_ENRICHMENT_STORE: store }), null);
+  assert.equal(await loadEnrichmentById({ HERMES_RETRIEVAL_ENRICHMENT_ENABLED: 'false', HERMES_RETRIEVAL_ENRICHMENT_STORE: store }), null);
+  const loaded = await loadEnrichmentById({ HERMES_RETRIEVAL_ENRICHMENT_ENABLED: 'true', HERMES_RETRIEVAL_ENRICHMENT_STORE: store });
+  assert.equal(loaded.get('rec-alpha').summary, 'note');
 });

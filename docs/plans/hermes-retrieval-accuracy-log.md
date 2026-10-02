@@ -152,3 +152,127 @@ The three-way choice kept the previous department for 「組立１課の不適�
 Still failing: 「部署を問わずに」 (drop 0.44, below the 0.6 cut, left unchanged so as not to tune the cut on one case), 「組立課では？」 after a content question (contentCarry chose new at 0.58), and 「同じ部署で傷の不適合」 after 「仙台工場資材課の最近の不適合」, where the first turn already took the department wording as content (the same first-turn miss as dialogue-v1 d07).
 
 Held-out: first turns ask the same questions as before, so the single-turn held-out sets are unaffected by construction. There is no held-out dialogue set yet, so this change is judged on development dialogues only. A held-out dialogue set written by someone other than the implementing agent is the next measurement gap.
+
+### 2026-10-02: full-corpus DGX enrichment measured against no enrichment (no gain; production unchanged)
+
+Trigger: the overnight enrichment reached 8,248 of 8,252 records on 2026-10-01 (2,286 rows with aliases). Earlier enrichment numbers came from a 1,000-record subset that contained the targets, so they were biased upward (see 2026-09-24).
+
+Method: the store and the production dense store (`retrieval-dense-dgx.bin`) were copied read-only from the Pi 5 to the private folder with the owner's approval. `evaluate.mjs` reused 8,230 of 8,242 stored vectors, so the DGX embedded only 12 records during the day. `main` at 0659ead2, hybrid, 8,242-record snapshot, `--now 2026-09-24`, same day.
+
+| Set | No enrichment | Full enrichment |
+| --- | --- | --- |
+| stage-v1 (development, 50): status / r15 / hit | 0.88 / 0.64 / 0.60 | 0.90 / 0.69 / 0.58 |
+| stage-v1 paraphrase (16): r15 / hit | 0.25 / 0.19 | 0.31 / 0.19 |
+| stage-aspect-v1 (development, 17): r15 / hit | 0.94 / 0.76 | 0.82 / 0.71 |
+| heldout-supervisor (6): status / all shown relevant | 5 / 4 | 5 / 4 |
+| heldout-supervisor-v2 (14): status / all shown relevant | 12 / 12 | 12 / 12 |
+| heldout-paraphrase-subset (12): target shown | 6 | 4, 4 |
+| heldout-paraphrase-hard (12): target shown | 1 | 1, 1 |
+| stage-v1 total p95 | 1,619 ms | 2,067 ms |
+
+Full enrichment does not improve paraphrase questions. It loses two held-out paraphrase cases in both runs, and adds about 0.4 s at p95. The 0.69 paraphrase r15 of 2026-09-24 does not hold when every record is enriched.
+
+Where the held-out paraphrase cases are lost (target rank among candidates, 12 cases): without enrichment 6 targets are in the top 15 and 9 in the top 50. With enrichment 4 are in the top 15 and 9 in the top 50. Every target in the top 15 was shown in both arms, so the judge is not the loss. Enrichment text on every record moved two targets from ranks 13 and 6 to 27 and 17, outside the 15 candidates the judge reads. In both arms, five more targets sit between ranks 16 and 30.
+
+Not changed: production still attaches enrichment. Next measurements, each against both arms on the same day: let the judge read 30 candidates instead of 15 (cost: more JEV judgments per question), and decide after that whether enrichment stays attached. The rank positions above were read from the held-out paraphrase subset, so that set now counts as seen for ranking-window tuning; the window change must be judged on other held-out cases as well.
+
+### 2026-10-02: the judge reads 30 candidates instead of 15 (kept)
+
+Trigger: the entry above. Targets of paraphrase questions sit between ranks 16 and 30, and the judge accepted every target it saw.
+
+Change: `executor.mjs` takes the top `RELEVANCE_POOL_DEFAULT` (30) ranked candidates for relevance-sorted content questions (lexical, dense, and hybrid). `relevance-jev.mjs` judges them in parallel JEV calls of 15, so each call is the same size as before. `HERMES_RETRIEVAL_RELEVANCE_POOL` (15 to 60) overrides the default. The recent-content path and the reranker path are unchanged.
+
+Hybrid, same day as the entry above, 8,242-record snapshot:
+
+| Set | 15, no enrichment | 15, enrichment | 30, no enrichment | 30, enrichment |
+| --- | --- | --- | --- | --- |
+| heldout-paraphrase-subset (12): target shown | 6 | 4 | 9 | 9 |
+| heldout-paraphrase-hard (12): target shown | 1 | 1 | 3 | 3 |
+| stage-v1 paraphrase (16): hit | 0.19 | 0.19 | 0.31 | 0.25 |
+| stage-v1 (50): hit / prec | 0.60 / 0.59 | 0.58 / 0.62 | 0.64 / 0.59 | 0.62 / 0.61 |
+| stage-aspect-v1 (17): hit | 0.76 | 0.71 | 0.76 | 0.82 |
+| heldout-supervisor-v2 (14): status / all shown relevant | 12 / 12 | 12 / 12 | 12 / 12 | 12 / 12 |
+| heldout-supervisor (6): all shown relevant | 4 | 4 | 3 | 3 |
+| stage-v1 total p95 | 1,619 ms | 2,067 ms | 2,222 ms | 2,516 ms |
+
+Kept because the held-out paraphrase gain (3 to 5 cases) is larger than the run-to-run drift, and it also appears on the hard set, whose ranks were not inspected beforehand. Costs: about 0.5 s more at p95, and one held-out supervisor case gained a shown record without the keyword.
+
+Enrichment makes no difference at 30 candidates either (9 against 9, 3 against 3) and costs about 0.3 s. Whether it stays attached is decided after the next step.
+
+This widens what the judge sees; it does not improve ranking. Next: measure first-stage recall at 15, 30, and 50 per stage with graded labels on pooled candidates, then compare a Japanese embedding model (ruri-v3-310m, JMTEB retrieval 81.89 against 72.81 reported for Qwen3-Embedding-0.6B) and morphological tokens with normalization against the current character bigrams.
+
+### 2026-10-02: first-stage comparison of embedding models and tokenizers (no change)
+
+Trigger: a survey of established practice. JMTEB reports retrieval 81.89 for ruri-v3-310m against 72.81 for Qwen3-Embedding-0.6B, and Japanese BM25 is usually built on morphological tokens with normalization (Sudachi), not character bigrams.
+
+Method: offline on the owner's Mac, no production change. 73 content questions with targets (stage-v1 content_same, content_para, mixed; stage-aspect-v1; both held-out paraphrase sets) against 7,864 records, whole corpus, no filters, the question as the query. Qwen3 used the stored production vectors and query embeddings from the DGX. ruri-v3-310m ran locally with its 検索クエリ/検索文書 prefixes and 512 tokens. BM25 used the same parameters for character bigrams and for Sudachi normalized content words. Fusion is RRF with k=60. The count is cases with a target in the top 15 / 30 / 50.
+
+| Arm | All (73) | Paraphrase-type (40) | stage-aspect-v1 (17) |
+| --- | --- | --- | --- |
+| Qwen3 only | 36 / 49 / 53 | 13 / 23 / 26 | 9 / 11 / 12 |
+| ruri-v3-310m only | 39 / 42 / 51 | 20 / 22 / 27 | 6 / 6 / 9 |
+| BM25 bigram only | 38 / 43 / 45 | 6 / 11 / 12 | 17 / 17 / 17 |
+| BM25 Sudachi only | 36 / 41 / 43 | 7 / 10 / 11 | 15 / 16 / 16 |
+| bigram + Qwen3 (current) | 48 / 53 / 57 | 17 / 22 / 25 | 16 / 16 / 17 |
+| bigram + ruri-v3-310m | 52 / 55 / 60 | 21 / 24 / 27 | 16 / 16 / 17 |
+| Sudachi + Qwen3 | 41 / 48 / 52 | 12 / 18 / 21 | 14 / 15 / 16 |
+| Sudachi + ruri-v3-310m | 45 / 53 / 57 | 16 / 22 / 26 | 14 / 16 / 16 |
+
+ruri-v3-310m ranks paraphrase targets higher inside the top 15 (20 against 13 alone) but reaches the same number by rank 30 and 50, and it is weaker on the aspect questions. Fused with bigrams it gains 4 / 2 / 3 cases of 73 over the current pair. With the judge reading 30 candidates that is 55 against 53, inside the noise of these sets. The benchmark gap does not carry over to these records.
+
+Sudachi tokens are worse than character bigrams in every pairing (rejected). Part names and technical compounds in short records match better as bigrams.
+
+In every arm, 13 of the 40 paraphrase-type cases have no target in the top 50. Those sets carry one target record per case, so other valid records may be counted as misses. Next: graded relevance labels on the pooled top candidates of all arms, so recall and precision are measured against every relevant record. Model and tokenizer swaps are judged again on that basis. No swap of the DGX embedding model is proposed from this run.
+
+### 2026-10-02: graded relevance labels on pooled candidates (measurement basis)
+
+Trigger: the entry above. Single-target gold cases count other valid records as misses.
+
+Method: for the same 73 questions, the top 20 of each single arm, the top 30 of the two bigram fusions, and the gold targets were pooled (5,389 question-record pairs, median 74 per question). JEV graded each pair with a rubric worded differently from the production judge: 3 the event asked for, 2 the same kind of event with a different part or situation, 1 shared words only, 0 unrelated. Labels hold ids and grades and stay in the private folder.
+
+Checks on the labels: the 99 gold targets got grade 3 (91) or 2 (8), none lower. The implementing agent graded 34 development pairs blind: 23 exact, 32 within one grade. Of 14 pairs JEV graded 3, the blind grade was 2 or more for 13. Of 10 pairs JEV graded 2, the blind grade was 2 or more for 5. Grade 3 is therefore used as "relevant"; grade 2 is too noisy. Grade 3 is lenient: it includes similar cases, not only the exact event.
+
+Relevant records per question (grade 3): 7 to 21 on average by set. The paraphrase sets with one target per case were far from complete.
+
+First stage against grade 3, cases with a relevant record in the top 15 / 30 (73 cases):
+
+| Arm | All (73) | Held-out paraphrase (24) | nDCG@10 (all) |
+| --- | --- | --- | --- |
+| bigram + Qwen3 (current) | 65 / 68 | 22 / 23 | 0.469 |
+| bigram + ruri-v3-310m | 68 / 70 | 22 / 23 | 0.476 |
+| Qwen3 only | 59 / 63 | 20 / 22 | 0.394 |
+| BM25 bigram only | 59 / 62 | 17 / 19 | 0.389 |
+
+The first stage is not the weak part: the current pair puts a relevant record in the top 30 for 68 of 73 questions. The earlier reading ("paraphrase targets are outside the top 15") came from the single-target gold.
+
+Shown records of the same-day hybrid runs, scored with the labels:
+
+| Run | Dev content (49): answered / with a relevant record / no result | Held-out paraphrase (24): answered / with a relevant record / no result | Shown records graded 3 / 2 / lower / unjudged (all 73) |
+| --- | --- | --- | --- |
+| 15 candidates, no enrichment | 43 / 42 / 6 | 16 / 16 / 8 | 171 / 10 / 1 / 10 |
+| 15 candidates, enrichment | 44 / 42 / 5 | 18 / 16 / 6 | 175 / 7 / 1 / 32 |
+| 30 candidates, no enrichment | 43 / 42 / 6 | 20 / 20 / 4 | 192 / 14 / 1 / 15 |
+| 30 candidates, enrichment | 44 / 42 / 5 | 21 / 19 / 3 | 190 / 7 / 1 / 42 |
+
+Caveat: the production judge and the labels both come from JEV, so the share of shown records graded 3 partly measures JEV against itself. The blind check above is the independent part.
+
+The 30-candidate change halves no-result answers on the held-out paraphrase cases (8 to 4). The ten remaining no-result cases at 30 candidates split into: no relevant record in the judged 30 (5, one of them with no relevant record in the pool at all, so no result is right), the judge rejected the only relevant candidate (3), and the planner asked back (2).
+
+### 2026-10-02: enrichment turned off (kept: off)
+
+Correction first: the entries above read "enrichment makes no difference" from target counts and from label counts that left many shown records of the enrichment runs unjudged. With every shown record labelled (`graded-score.mjs`, 86 answer cases, hybrid, 30 candidates):
+
+| Run | A relevant record shown | Nothing shown | Relevant records shown | Relevant among the top 15 candidates (average) |
+| --- | --- | --- | --- | --- |
+| No enrichment | 72 | 10 | 247 | 5.1 |
+| Full enrichment | 73 | 8 | 266 | 5.6 |
+
+Enrichment has a small positive effect: about 8% more relevant records shown and one or two more answered cases, which is inside the noise of these sets. It costs about 0.3 s at p95 and overnight DGX time for every new record.
+
+A dual index was tested offline with the existing store (ruri-v3-310m embeddings on the owner's Mac, 73 questions, graded labels): generated queries embedded on their own and fused as a third list, as in Doc2Query++. nDCG@10 was 0.456 with no enrichment, 0.536 with enrichment appended to the record, and 0.537 with the dual index; the average number of relevant records in the top 15 was 4.3, 5.5, and 5.2. The dual index avoids the drop in single-target ranks that appending causes (target in the top 15: 52 none, 47 appended, 49 dual) but is not better on graded relevance, and it needs about 39,000 more vectors on the Pi 5 and five times the overnight embedding. Not adopted. Dropping the 30% of generated queries least similar to their own record (Doc2Query--) did not help (nDCG@10 0.476).
+
+Decision (owner, 2026-10-02): turn enrichment off. The gain is too small to notice in answered questions, and the simpler path is faster and leaves the night for other work.
+
+Change: the retrieval worker attaches the stored enrichment only while `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true`. Before, it attached the store whenever the file existed, so the flag stopped only the overnight runner. The release for this change passes `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=false`. The store file stays on the Pi 5, and `true` restores the previous behaviour.
+
+After the release, record text no longer includes enrichment, so every dense vector is recomputed in the next bulk window. Until a record is recomputed its previous vector is used.
