@@ -8,10 +8,13 @@ import {
   extractIntervalMinutes,
   MIN_CSV_IMPORT_INTERVAL_MINUTES,
 } from '../../services/imports/import-schedule-policy.js';
-import { ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS } from '../../services/gmail/gmail-subject-reservation.policy.js';
+import {
+  ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS,
+  MACHINE_SIGNAL_GMAIL_SUBJECT,
+} from '../../services/gmail/gmail-subject-reservation.policy.js';
 
 const csvImportTargetSchema = z.object({
-  type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines', 'csvDashboards', 'productionActualHours', 'itemInventoryGmail']),
+  type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines', 'csvDashboards', 'productionActualHours', 'itemInventoryGmail', 'machineSignalGmail']),
   source: z.string().min(1, 'sourceは必須です'),
 }).superRefine((target, ctx) => {
   if (target.type === 'itemInventoryGmail' && target.source !== ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS[0]) {
@@ -19,6 +22,13 @@ const csvImportTargetSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['source'],
       message: `Raspberry Pi在庫写真メールの件名は${ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS[0]}で固定です`,
+    });
+  }
+  if (target.type === 'machineSignalGmail' && target.source !== MACHINE_SIGNAL_GMAIL_SUBJECT) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['source'],
+      message: `設備稼働ログの件名は${MACHINE_SIGNAL_GMAIL_SUBJECT}で固定です`,
     });
   }
 });

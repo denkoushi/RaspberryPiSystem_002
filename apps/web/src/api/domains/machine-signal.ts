@@ -125,6 +125,22 @@ export type MachineSignalSensor = MachineSignalSensorInput & {
   sourceMachineName: string;
   latestReportDate: string | null;
   lampPatterns: Array<{ pattern: string; stateNames: string[]; autoCategory: MachineSignalCategory }>;
+  /** 最新の日報の状態遷移。[開始秒, 継続秒, lampPatterns の index] */
+  latestSegments: Array<[number, number, number]>;
+};
+
+export type MachineSignalSensorBulkPatch = {
+  site?: string | null;
+  kind?: MachineSignalSensorKind;
+  hidden?: boolean;
+  planned?: { startMinute: number; endMinute: number } | null;
+};
+
+export type MachineSignalAdminOverview = {
+  latestReportDate: string | null;
+  latestReportCount: number;
+  coverage: Array<{ date: string; count: number }>;
+  gmailSchedule: { schedule: string; enabled: boolean } | null;
 };
 
 export type MachineSignalImportFailure = { fileName: string; reason: string };
@@ -197,6 +213,19 @@ export async function updateMachineSignalSensor(payload: {
   input: MachineSignalSensorInput;
 }): Promise<void> {
   await api.put(`/machine-signal/sensors/${payload.signalNo}`, payload.input);
+}
+
+export async function updateMachineSignalSensorsBulk(payload: {
+  signalNos: number[];
+  patch: MachineSignalSensorBulkPatch;
+}): Promise<number> {
+  const { data } = await api.put<{ updated: number }>('/machine-signal/sensors/bulk', payload);
+  return data.updated;
+}
+
+export async function getMachineSignalAdminOverview(): Promise<MachineSignalAdminOverview> {
+  const { data } = await api.get<{ overview: MachineSignalAdminOverview }>('/machine-signal/admin/overview');
+  return data.overview;
 }
 
 export async function getMachineSignalImportRuns(): Promise<MachineSignalImportRun[]> {
