@@ -58,8 +58,7 @@ export function CsvImportTargetsEditor({
               <option value="machines">加工機</option>
               <option value="csvDashboards">CSVダッシュボード</option>
               <option value="itemInventoryGmail">Raspberry Pi在庫写真メール</option>
-              {/* 設備稼働ログの行は、次の版でシステムが自動で足す。それまでは既にある行の表示だけに使う。 */}
-              {target.type === 'machineSignalGmail' ? <option value="machineSignalGmail">設備稼働ログ（信号灯の日報）</option> : null}
+              <option value="machineSignalGmail">設備稼働ログ（信号灯の日報）</option>
             </select>
             {target.type === 'csvDashboards' ? (
               <select

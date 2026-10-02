@@ -15,11 +15,7 @@ vi.mock('../../../lib/prisma.js', () => ({
   },
 }));
 vi.mock('../../backup/backup-config.loader.js', () => ({ BackupConfigLoader: { load: mocks.loadConfig } }));
-vi.mock('../machine-signal-gmail.scheduler.js', () => ({ MACHINE_SIGNAL_GMAIL_CRON: '47 * * * *' }));
-vi.mock('../machine-signal-gmail-ingestion.service.js', () => ({
-  hasGmailCredentials: (config: { storage?: { options?: { gmail?: { refreshToken?: string } } } }) =>
-    Boolean(config.storage?.options?.gmail?.refreshToken),
-}));
+
 
 import { getMachineSignalAdminOverview } from '../machine-signal-admin.service.js';
 import { updateMachineSignalSensorsBulk } from '../machine-signal-settings.service.js';
@@ -56,7 +52,7 @@ describe('getMachineSignalAdminOverview', () => {
     });
   });
 
-  it('shows the built-in hourly check while the CSV import list has no row, off where Gmail is not connected', async () => {
+  it('shows the default time as stopped until the CSV import list has the row', async () => {
     mocks.findFirst.mockResolvedValue(null);
     mocks.groupBy.mockResolvedValue([]);
     mocks.loadConfig.mockResolvedValue({ csvImports: [], storage: { options: {} } });

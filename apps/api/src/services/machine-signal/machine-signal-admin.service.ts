@@ -1,8 +1,9 @@
 import { prisma } from '../../lib/prisma.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
-import { findMachineSignalGmailCsvImportSchedule } from '../imports/machine-signal-import-schedule.policy.js';
-import { hasGmailCredentials } from './machine-signal-gmail-ingestion.service.js';
-import { MACHINE_SIGNAL_GMAIL_CRON } from './machine-signal-gmail.scheduler.js';
+import {
+  findMachineSignalGmailCsvImportSchedule,
+  MACHINE_SIGNAL_GMAIL_CSV_IMPORT_SCHEDULE_CRON,
+} from '../imports/machine-signal-import-schedule.policy.js';
 
 const DAY_MS = 86_400_000;
 const JST_OFFSET_MS = 9 * 3_600_000;
@@ -13,7 +14,7 @@ export type MachineSignalAdminOverviewDto = {
   latestReportCount: number;
   /** 直近の日ごとの取り込み済み件数（古い順、今日まで）。抜けている日は 0 */
   coverage: Array<{ date: string; count: number }>;
-  /** Gmail の自動取り込みの時刻。CSV取込の一覧に設備稼働の行があればその設定、無ければ専用スケジューラの設定 */
+  /** Gmail の自動取り込みの時刻。CSV取込の一覧にある設備稼働の行の設定。行がまだ無ければ既定の時刻で停止中 */
   gmailSchedule: { schedule: string; enabled: boolean };
 };
 
@@ -48,6 +49,6 @@ export async function getMachineSignalAdminOverview(now: Date = new Date()): Pro
     coverage,
     gmailSchedule: row
       ? { schedule: row.schedule, enabled: row.enabled !== false }
-      : { schedule: MACHINE_SIGNAL_GMAIL_CRON, enabled: hasGmailCredentials(config) },
+      : { schedule: MACHINE_SIGNAL_GMAIL_CSV_IMPORT_SCHEDULE_CRON, enabled: false },
   };
 }
