@@ -251,7 +251,18 @@ The 30-candidate change halves no-result answers on the held-out paraphrase case
 
 ### 2026-10-02: enrichment turned off (kept: off)
 
-Full-corpus enrichment did not add relevant records in three measurements (target counts, first-stage ranks, graded labels), costs about 0.3 s at p95, and needs overnight DGX time for every new record. This matches reports that appending generated queries to documents adds noise to dense retrieval (Doc2Query--, Doc2Query++).
+Correction first: the entries above read "enrichment makes no difference" from target counts and from label counts that left many shown records of the enrichment runs unjudged. With every shown record labelled (`graded-score.mjs`, 86 answer cases, hybrid, 30 candidates):
+
+| Run | A relevant record shown | Nothing shown | Relevant records shown | Relevant among the top 15 candidates (average) |
+| --- | --- | --- | --- | --- |
+| No enrichment | 72 | 10 | 247 | 5.1 |
+| Full enrichment | 73 | 8 | 266 | 5.6 |
+
+Enrichment has a small positive effect: about 8% more relevant records shown and one or two more answered cases, which is inside the noise of these sets. It costs about 0.3 s at p95 and overnight DGX time for every new record.
+
+A dual index was tested offline with the existing store (ruri-v3-310m embeddings on the owner's Mac, 73 questions, graded labels): generated queries embedded on their own and fused as a third list, as in Doc2Query++. nDCG@10 was 0.456 with no enrichment, 0.536 with enrichment appended to the record, and 0.537 with the dual index; the average number of relevant records in the top 15 was 4.3, 5.5, and 5.2. The dual index avoids the drop in single-target ranks that appending causes (target in the top 15: 52 none, 47 appended, 49 dual) but is not better on graded relevance, and it needs about 39,000 more vectors on the Pi 5 and five times the overnight embedding. Not adopted. Dropping the 30% of generated queries least similar to their own record (Doc2Query--) did not help (nDCG@10 0.476).
+
+Decision (owner, 2026-10-02): turn enrichment off. The gain is too small to notice in answered questions, and the simpler path is faster and leaves the night for other work.
 
 Change: the retrieval worker attaches the stored enrichment only while `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true`. Before, it attached the store whenever the file existed, so the flag stopped only the overnight runner. The release for this change passes `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=false`. The store file stays on the Pi 5, and `true` restores the previous behaviour.
 

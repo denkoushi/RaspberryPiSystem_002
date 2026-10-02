@@ -188,7 +188,7 @@ function applyEnrichment(view, enrichmentById) {
 }
 
 // The stored enrichment is attached only while HERMES_RETRIEVAL_ENRICHMENT_ENABLED is true, the
-// same flag that runs the overnight enrichment. Full-corpus enrichment showed no retrieval gain
+// same flag that runs the overnight enrichment. Full-corpus enrichment showed only a small gain
 // (2026-10-02), so turning the flag off stops both; the store stays on disk.
 export function enrichmentAttachEnabled(env = process.env) {
   return env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED === 'true';

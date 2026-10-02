@@ -1,6 +1,6 @@
 # Hermes DGX retrieval enrichment
 
-- Status: released 2026-09-25, full corpus enriched by 2026-10-01, turned off 2026-10-02 (no measured retrieval gain; see `hermes-retrieval-accuracy-log.md`). The store stays on the Pi 5. Since 2026-10-02 the retrieval worker attaches it only while `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true`.
+- Status: released 2026-09-25, full corpus enriched by 2026-10-01, turned off 2026-10-02 (a small gain, about 8% more relevant records shown, judged not worth 0.3 s and the overnight work; see `hermes-retrieval-accuracy-log.md`). The store stays on the Pi 5. Since 2026-10-02 the retrieval worker attaches it only while `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true`.
 - Scope: offline per-record enrichment for Hermes retrieval on the business Pi 5
 
 ## Context
