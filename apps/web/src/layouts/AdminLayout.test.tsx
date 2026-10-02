@@ -70,6 +70,20 @@ describe('AdminLayout header', () => {
     expect(screen.queryByRole('link', { name: 'セキュリティ' })).toBeNull();
   });
 
+  it('gives each tab exactly one text colour, so the current tab stays readable on white', () => {
+    renderAt('/admin/import');
+    const nav = within(screen.getByRole('navigation', { name: '管理ナビゲーション' }));
+    const textColours = (element: HTMLElement) => element.className.split(/\s+/).filter((name) => /^text-(white|slate)/.test(name));
+
+    expect(textColours(nav.getByRole('button', { name: /^システム/ }))).toEqual(['text-slate-950']);
+    expect(textColours(nav.getByRole('button', { name: /^点検/ }))).toEqual(['text-white/70']);
+    expect(textColours(nav.getByRole('link', { name: 'ダッシュボード' }))).toEqual(['text-white/70']);
+
+    fireEvent.click(nav.getByRole('button', { name: /^点検/ }));
+    expect(textColours(nav.getByRole('button', { name: /^点検/ }))).toEqual(['text-white']);
+    expect(textColours(nav.getByRole('button', { name: /^システム/ }))).toEqual(['text-slate-950']);
+  });
+
   it('opens search with "/" and narrows the list', () => {
     renderAt('/admin');
 
