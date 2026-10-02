@@ -30,6 +30,15 @@ The `review` list holds content questions that returned nothing or lost meaning-
 
 A change is kept only if the held-out sets do not get worse on the same day and settings. A development-set gain of one case is within the run-to-run drift; repeat the run or add cases before counting it.
 
+Graded relevance labels (since 2026-10-02) score a run against every relevant record, not only the gold targets. Run `evaluate.mjs` with `--stage-dump`, then pool and grade the candidates, then score:
+
+    node retrieval/graded-labels.mjs --set <name:gold:run[,run]> [--set ...] --snapshot <snapshot> --labels ~/Documents/hermes-retrieval-private/labels/graded-v1.json
+    node retrieval/graded-score.mjs --set <name:gold:run[,run]> [--set ...] --labels <labels> --judged <15|30>
+
+`graded-labels.mjs` pools the gold targets, the shown records, and the top 30 candidates of each run. JEV grades each question-record pair from 0 to 3 with a rubric worded differently from the production judge. Pairs already in the label file are skipped, so a new run only adds its new candidates. Grade 3 counts as relevant. `graded-score.mjs` reports the shown records by grade and, for each answer case that showed nothing, the stage that lost it: answered in another form, no relevant record labelled, relevant records outside the judged candidates, or rejected by the judge. Pass `--judged` the number of candidates the judge read in that run.
+
+The production judge and the grader are both JEV, so the grades of shown records partly measure JEV against itself. Read a sample blind after a rubric or model change. On 2026-10-02 a blind reading of 34 pairs agreed within one grade on 32.
+
 Columns used below: status (answered in the right form), r15 and r50 (a target within the top 15 or 50 candidates), prec (shown records that were targets), hit (a shown record was a target).
 
 ## Entries
