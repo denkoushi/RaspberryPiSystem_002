@@ -53,6 +53,13 @@ if [[ "${BROWSER_ENGINE}" == "chromium" ]]; then
 {% for flag in kiosk_browser_flags_chromium | default([]) %}
     {{ flag }}
 {% endfor %}
+{% if kiosk_server_cert_spki_sha256 | default('') | length > 0 %}
+    # Trust only the pinned server key; Chromium honours the list only with an explicit profile dir.
+    --ignore-certificate-errors-spki-list={{ kiosk_server_cert_spki_sha256 }}
+    --user-data-dir=/home/{{ ansible_user }}/.config/chromium
+{% else %}
+    --ignore-certificate-errors
+{% endif %}
     --app="${KIOSK_TARGET_URL}"
     --unsafely-treat-insecure-origin-as-secure={{ kiosk_origin }},http://localhost:7071
     "${COMMON_FLAGS[@]}"

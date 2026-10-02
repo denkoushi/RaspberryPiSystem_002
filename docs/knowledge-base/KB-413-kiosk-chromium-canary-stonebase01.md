@@ -37,7 +37,10 @@ validation:
 
 ## Known Limits (decide before any wider rollout)
 
-- The server certificate is self-signed. Firefox trusts it through a per-profile exception; Chromium still depends on `--ignore-certificate-errors`. Replace it (import the certificate into the kiosk user's NSS store, or pin it with `--ignore-certificate-errors-spki-list`) before moving more kiosks.
+- The server certificate is self-signed (CN is the Tailscale host name, no SAN, valid to 2035) and the kiosks connect by IP, so importing it as trusted would still fail on the name. Chromium therefore pins the server key: with `kiosk_server_cert_spki_sha256` set, the launcher passes `--ignore-certificate-errors-spki-list=<pin> --user-data-dir=~/.config/chromium` instead of `--ignore-certificate-errors`. Set for StoneBase01 only; a host without the variable keeps the blanket switch. The release compares the pin with the key the server presents and stops before the switch when they differ. Recreating the server certificate with a new key means updating the pin first.
+- Pin value: `openssl s_client -connect <pi5>:443 </dev/null 2>/dev/null | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64`.
+- Verified off the device (Debian 13 Chromium in a container against the Pi5): the right pin loads the kiosk page, a wrong pin and no flag both fail with `ERR_CERT_AUTHORITY_INVALID`. Google Chrome on macOS ignores the pin list, so do not use it to test this.
+- Do not start a test browser on a kiosk that is in use: a headless probe on StoneBase01 made gnome-keyring show its password window on the real screen (2026-10-02).
 - `--remote-debugging-port=9222` stays bound to 127.0.0.1.
 - The standard release only stages the launcher when the release carries Pi4 agent services. A release with an empty agent set restarts the browser without changing the engine; read `/usr/local/bin/kiosk-launch.sh` on the device to confirm.
 - IBus settings and the Firefox profile are owned by the `kiosk` role (full provisioning), not by the standard release. This change does not touch them.
