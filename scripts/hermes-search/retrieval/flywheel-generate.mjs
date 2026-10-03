@@ -43,6 +43,16 @@ export function recordFacts(record) {
     .join('\n');
 }
 
+// Words separated by spaces or punctuation are checked one by one. A terse question such as
+// 「スケールカバー 取付忘れ 不適合」 joins the record's own terms, as people type them; joined
+// together they would look like a copied run (trial of 2026-10-03, 69 pairs). Only a token
+// written as a sentence (SENTENCE_CHARS or longer) is also held to the bigram share.
+export const SENTENCE_CHARS = 15;
+
+function tokens(value) {
+  return String(value ?? '').normalize('NFKC').split(/[\s、。，,・!?！？]+/u).filter(Boolean);
+}
+
 function bigrams(value) {
   const textValue = normalize(value);
   const grams = [];
@@ -52,13 +62,13 @@ function bigrams(value) {
 
 /** Why a question copies the anchor record too closely, or null when it does not. */
 export function copyViolation(question, anchorBody) {
-  const q = normalize(question);
   const body = normalize(anchorBody);
-  for (let index = 0; index + COPY_RUN_CHARS <= q.length; index += 1) {
-    if (body.includes(q.slice(index, index + COPY_RUN_CHARS))) return 'copied_run';
-  }
-  const grams = bigrams(q);
-  if (grams.length >= 4) {
+  for (const token of tokens(question)) {
+    for (let index = 0; index + COPY_RUN_CHARS <= token.length; index += 1) {
+      if (body.includes(token.slice(index, index + COPY_RUN_CHARS))) return 'copied_run';
+    }
+    if (token.length < SENTENCE_CHARS) continue;
+    const grams = bigrams(token);
     const shared = grams.filter((gram) => body.includes(gram)).length;
     if (shared / grams.length > COPY_BIGRAM_SHARE) return 'copied_words';
   }
@@ -173,4 +183,29 @@ export async function generateForPairs({ pairs, recordsById, random, chat, sampl
     rows.push({ ...pair, seed, ...result });
   }
   return rows;
+}
+
+// The business LLM also answers daytime consultations. On 2026-10-03 a trial slowed from about
+// ten questions a minute to one and seven calls timed out in a row, so a night run stops calling
+// the model once calls stay slow or failing, and leaves the rest for the next night.
+export const SLOW_CALL_MS = 15_000;
+export const MAX_STRIKES = 3;
+
+/**
+ * Wraps a chat function. A call that fails or takes longer than slowMs is a strike; a fast
+ * success clears them. After maxStrikes strikes in a row every later call returns
+ * { ok: false, reason: 'dgx_busy' } without calling the model.
+ */
+export function guardChat(chat, { slowMs = SLOW_CALL_MS, maxStrikes = MAX_STRIKES, now = () => Date.now() } = {}) {
+  let strikes = 0;
+  const guarded = async function guardedChat(request) {
+    if (strikes >= maxStrikes) return { ok: false, reason: 'dgx_busy' };
+    const started = now();
+    const reply = await chat(request);
+    const slow = now() - started > slowMs;
+    strikes = !reply?.ok || slow ? strikes + 1 : 0;
+    return reply;
+  };
+  guarded.tripped = () => strikes >= maxStrikes;
+  return guarded;
 }

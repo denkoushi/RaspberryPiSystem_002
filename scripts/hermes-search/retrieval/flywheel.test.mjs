@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { STYLES, createRandom, pickWeighted, sampleSeed, sampleSeeds } from './flywheel-seeds.mjs';
 import { PAIR_MAX_SIMILARITY, PAIR_MAX_TEXT_OVERLAP, answerableIntents, bodyText, samplePairs, textOverlap } from './flywheel-pairs.mjs';
 import {
-  QUESTION_MAX_CHARS, buildMessages, copyViolation, createDgxChat, generateForPairs, generateQuestion, recordFacts, validateQuestion,
+  QUESTION_MAX_CHARS, buildMessages, copyViolation, createDgxChat, generateForPairs, generateQuestion, guardChat, recordFacts, validateQuestion,
 } from './flywheel-generate.mjs';
+import { createDgxGrader, createJevPairGrader, filterAndLabel, gradeSystemPrompt, keepDecision } from './flywheel-filter.mjs';
 import { parseArgs } from './flywheel-cli.mjs';
 
 function unit(values) {
@@ -78,6 +79,12 @@ test('facts are short field phrases and copied questions are rejected', () => {
   const body = 'テーブル上面に傷がついた。クランプが緩んでいた。';
   assert.equal(copyViolation('テーブル上面に傷がついた件', body), 'copied_run');
   assert.equal(copyViolation('テーブルのキズ 前にもあった？', body), null);
+  // Terse questions name the record's own terms one by one; joined, they would match a long run.
+  const scaleBody = 'スケールカバー取付忘れのため再組立した。';
+  assert.equal(copyViolation('スケールカバー 取付忘れ 不適合', scaleBody), null);
+  assert.equal(copyViolation('スケールカバー取付忘れ 不適合', scaleBody), 'copied_run');
+  // A sentence-length token that reuses most of the record's bigrams is still a copy.
+  assert.equal(copyViolation('加工中にワークが動いて削りすぎた件', 'ワークが加工中に動いてしまい削りすぎた。'), 'copied_words');
   assert.equal(validateQuestion('', body), 'empty');
   assert.equal(validateQuestion('あ'.repeat(QUESTION_MAX_CHARS + 1), body), 'too_long');
   assert.equal(validateQuestion('00008226 の件', body), 'record_number');
@@ -96,7 +103,8 @@ test('generation keeps valid questions and reports why others were dropped', asy
   const recordsById = new Map(records.map((record) => [record.id, record]));
   const replies = [
     { ok: true, content: JSON.stringify({ question: 'テーブル キズ クランプ' }) },
-    { ok: true, content: JSON.stringify({ question: 'surface scratch on the table top again?' }) },
+    // 'tabletop' is an 8-character run of the anchor body once spaces are removed inside the record.
+    { ok: true, content: JSON.stringify({ question: 'tabletop scratch?' }) },
     { ok: true, content: 'not json' },
     { ok: false, reason: 'timeout' },
   ];
@@ -153,4 +161,60 @@ test('the offline CLI accepts only the pairs mode with its inputs', () => {
   });
   assert.throws(() => parseArgs(['pairs', '--snapshot', 's.json']), /Usage/u);
   assert.throws(() => parseArgs(['generate']), /Usage/u);
+});
+
+test('the guard stops calling the model after slow or failed calls in a row', async () => {
+  let clock = 0;
+  let calls = 0;
+  const replies = [{ ok: true, slow: true }, { ok: false }, { ok: true }, { ok: false }, { ok: false }, { ok: true, slow: true }];
+  const chat = guardChat(async () => {
+    const reply = replies[calls++];
+    clock += reply.slow ? 20_000 : 1_000;
+    return { ok: reply.ok, content: '{}' };
+  }, { now: () => clock });
+  for (let index = 0; index < 6; index += 1) await chat({});
+  // slow, fail (2 strikes), fast success clears, then fail, fail, slow: three strikes in a row.
+  assert.equal(chat.tripped(), true);
+  assert.equal(calls, 6);
+  assert.deepEqual(await chat({}), { ok: false, reason: 'dgx_busy' });
+  assert.equal(calls, 6);
+});
+
+test('a question is kept when both graders confirm the anchor; the near miss is only recorded', async () => {
+  assert.deepEqual(keepDecision({ dgx: { a: 3, b: 3 }, jev: { a: 3, b: 2 } }), { kept: true, reason: null });
+  assert.deepEqual(keepDecision({ dgx: { a: 2, b: 0 }, jev: { a: 3, b: 0 } }), { kept: false, reason: 'anchor_not_confirmed' });
+  assert.deepEqual(keepDecision({ dgx: { a: null, b: 0 }, jev: { a: 3, b: 0 } }), { kept: false, reason: 'ungraded' });
+  assert.match(gradeSystemPrompt(), /0 から 3/u);
+
+  const dgxGrades = { A: 3, B: 1 };
+  const dgxChat = async ({ messages, schema }) => {
+    assert.deepEqual(schema.required, ['grade']);
+    const grade = messages[1].content.includes('table top') ? dgxGrades.A : dgxGrades.B;
+    return { ok: true, content: JSON.stringify({ grade }) };
+  };
+  const gradeDgx = createDgxGrader(dgxChat);
+  assert.equal(await gradeDgx('q', 'surface scratch on the table top'), 3);
+  assert.equal(await createDgxGrader(async () => ({ ok: true, content: 'oops' }))('q', 't'), null);
+  const gradeJevPair = createJevPairGrader(async (input) => ({
+    answers: {
+      c0: { type: 'choice', choice: input.questions.c0.instructions.includes('table top') ? 'g3' : 'g1' },
+      c1: { type: 'choice', choice: 'g2' },
+    },
+  }));
+  const recordsById = new Map(records.map((record) => [record.id, record]));
+  const rows = await filterAndLabel({
+    rows: [{ a: 'a1', b: 'b1', ok: true, question: 'テーブル キズ' }, { a: 'b1', b: 'a1', ok: true, question: 'へこみ' }, { a: 'a1', b: 'b1', ok: false, reason: 'timeout' }],
+    recordsById,
+    bodyFields: ['condition', 'remarks', 'correctiveContent', 'disposition'],
+    gradeDgx,
+    gradeJevPair,
+  });
+  assert.deepEqual(rows[0].grades, { dgx: { a: 3, b: 1 }, jev: { a: 3, b: 2 } });
+  assert.equal(rows[0].kept, true);
+  assert.equal(rows[1].kept, false);
+  assert.equal(rows[1].reason, 'anchor_not_confirmed');
+  assert.deepEqual(rows[2], { a: 'a1', b: 'b1', ok: false, reason: 'timeout' });
+  assert.equal(JSON.stringify(rows).includes('surface scratch'), false);
+  const failing = createJevPairGrader(async () => { throw new Error('connection failed'); });
+  assert.deepEqual(await failing('q', 'a', 'b'), [null, null]);
 });
