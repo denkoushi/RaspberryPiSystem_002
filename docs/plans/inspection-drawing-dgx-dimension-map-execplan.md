@@ -25,7 +25,8 @@ open_items:
   - Linking structured dimensions to OCR coordinates is not measured yet (next experiment)
   - Exact thread-size thresholds of the depth limit rule are not tabulated yet
   - Hit rate of route B (drawings without a sibling) is not measured yet
-  - 7161 and 3351 drawings were imported before source retention and need a separate path
+  - Decide whether PP-OCRv5 is needed in production (image-only position experiment running)
+  - Confirm whether the DGX compatible API passes response_format (DGXSparkControlPlane boundary)
 ---
 
 ```md
@@ -129,8 +130,14 @@ open_items:
 - 決定: 図面にない計算値（直列寸法の和など）は自動の候補に混ぜない。
   理由: 混ぜても上位 3 件は上がらなかった（85.2% → 84.5%）。人が寸法を 2 つ選んで和を基準値にする操作を画面に用意するかは、利用者と相談する。
   日付: 2026-10-03
-- 決定（案、利用者の確認待ち）: 経路 B（兄弟のない図面）では丸数字を自動で置かない。人が丸数字を置く操作を Milestone 4 の候補（上位 3 件 85.2%）で支える形にとどめる。
-  理由: 分類ごとの割合で案を置く方式は、案の正しさ 23〜26%、人の項目のカバー 24.5% で、消す手間と足す手間の両方が残る。
+- 決定: 経路 B（兄弟のない図面）では丸数字を自動で置かない。人が丸数字を置く操作を Milestone 4 の候補（上位 3 件 85.2%）で支える形にとどめる。
+  理由: 分類ごとの割合で案を置く方式は、案の正しさ 23〜26%、人の項目のカバー 24.5% で、消す手間と足す手間の両方が残る。利用者が承認した。
+  日付: 2026-10-03
+- 決定: Milestone 4 に、寸法を 2 つ選んで和を基準値にする操作を加える。
+  理由: 長さ・ピッチの項目で外した候補の多くが図面にない計算値だった。利用者が承認した。
+  日付: 2026-10-03
+- 決定: 既存の 7161 と 3351 の図面も、原本の代わりに保存済みの表示用画像で寸法マップを作る。
+  理由: 表示用画像は大半が幅 3,000〜13,000px あり、30 図面の実験はすべて表示用画像で行って上位 3 件 85.2% を得た。原本がある図面は原本から描き直した画像を使う。
   日付: 2026-10-03
 - 決定: 見直した Milestone 3〜5 の設計（読む・結ぶ・AI 案を置く・人が承認する）で進める。
   理由: 利用者が承認した。
@@ -168,7 +175,7 @@ Milestone 2 は精度実験であり、本番コードは変えない。今う�
 
 Milestone 3（図面を読む）では、図面ごとに次の三つを夜間に作って保存する。一つ目は寸法マップで、図面全体を既存 OCR と PP-OCRv5（DGX の CPU）の両方で読み、数字のかけらをつなぎ直し、座標付きの文字の一覧にする。二つ目は寸法の組み立てで、画像 AI に区画ごとの画像と文字の一覧を渡し、基準値・上下公差・種類（長さ、穴径、ねじと深さ、角度、幾何公差、参考寸法）を一組にさせる。座標は OCR の値を使い、画像 AI と OCR の読みが食い違う寸法は「未確認」にする。三つ目は図面全体の情報で、普通公差表、注記、表題欄（材質、図番、品名）を読む。注記に出てくる他の図番は兄弟図面の手がかりとして残す。保存先は `PartMeasurementDrawingOcrCache` と同じ考え方の別テーブル（図面 ID、原本指紋、解析版、状態、圧縮 JSON、再試行情報）で、夜間だけ動く scheduler が処理する。DGX の呼び出しは `VisionCompletionPort` を `background: true` で使い、DGX が使えない夜はキューに残して翌晩に回す。Pi 側の表示や既存 OCR には影響させない。組み立ての精度は脚（R）と脚（L）で測り、十分だった（Artifacts and Notes）。残る課題は、画像 AI が座標を返さないため、組み立てた寸法を OCR のどの読みに結び付けるかで、これを次に測る。区画の重なりで同じ寸法が二度挙がるので、座標で一つにまとめる。
 
-Milestone 4（丸数字と寸法を結ぶ）では、人が丸数字を置き項目名を選んだとき、寸法マップから丸数字の近くの候補を出し、項目名を添えて画像 AI に順位を付けさせ、上位数件を提示する。応答待ちを避けるため、画像 AI は丸数字を置いた時点で呼ぶのではなく、夜間に作った候補の中から選ぶ軽い処理にするか、候補の距離順だけを即時に出して AI の順位は後から差し替える。あわせて上下限の案を出す。普通公差表と明記された公差から導き、深さは社内ルール（下限は基準値、上限は +0・+3・+5）に従い、導けないものは空欄にする。UI は従来どおり候補提示のみで、自動確定しない。
+Milestone 4（丸数字と寸法を結ぶ）では、人が丸数字を置き項目名を選んだとき、寸法マップのうち項目名に合う種類（深さの項目ならねじ・穴の深さ、穴径なら穴、幾何公差なら幾何公差の枠、それ以外は長さ）の寸法を、丸数字からの距離順に上位 3 件出す。この並べ方は画像 AI を呼ばないので応答待ちが無く、30 図面 330 項目で上位 3 件 85.2% だった。寸法マップが無い図面は従来の OCR 候補を出す。あわせて上下限の案を出す。普通公差表と明記された公差から導き、深さは社内ルール（下限は基準値、上限は +0・+3・+5）に従い、導けないものは空欄にする。UI は従来どおり候補提示のみで、自動確定しない。
 
 Milestone 5（案を先に置き、人が承認する）は二つの経路に分ける。
 
@@ -177,6 +184,19 @@ Milestone 5（案を先に置き、人が承認する）は二つの経路に分
 経路 B は兄弟のない新しい図面。承認済みテンプレートから「どの種類の寸法が項目になりやすいか」（公差が明記された穴径、全長、幾何公差など）を集計し、該当する寸法へ丸数字の案を置く。ピッチのように人が計算して決める項目や、どれを選ぶか人によって違う項目は、当面は人が追加する。経路 B の当たり率は未測定で、承認済みテンプレートを使った試算を先に行う。
 
 どちらの経路でも丸数字は「AI 案」の状態で表示し、人が一件ずつ（またはまとめて）承認すると通常の項目になる。案のまま保存された項目は検査には使わない。この状態を持たせるには `PartMeasurementTemplateItem` への列追加か下書き用の別テーブルが要り、どちらにするかは Milestone 5 の着手時に決める。指差し先端は自動で作らない。
+
+同日の追加決定: 経路 B は丸数字を自動で置かず、Milestone 4 の候補で人の配置を支える。Milestone 4 には、寸法を 2 つ選んで和を基準値にする操作を加える。
+
+Milestone 3 の実装計画（このリポジトリだけを変える。DGX 側の変更が要る点は「要確認」と書く）:
+
+1. 保存先。`apps/api/prisma/schema.prisma` に `PartMeasurementDrawingDimensionMap` を追加する。列は `visualTemplateId`、`analysisVersion`、`inputFingerprint`（原本または表示用画像の指紋）、`status`（PENDING / RUNNING / DONE / DEFERRED / FAILED）、`payloadCompressed`、`payloadEncoding`、`dimensionCount`、`tileCount`、`tileFailedCount`、`attemptCount`、`lastAttemptAt`、`nextAttemptAt`、`failureReason`、作成・更新日時で、`(visualTemplateId, analysisVersion, inputFingerprint)` を一意にする。テーブル追加だけの migration なので既存の行と画面には影響しない。
+2. 寸法 1 件の型。原文、基準値、上の許容差、下の許容差、種類（len / ref / basic / angle / radius / hole / thread / gdt）、深さ、位置比率（x, y）、OCR に結び付いたか、区画名、確認状態（OCR と一致 / OCR と食い違い / OCR なし）を持つ。圧縮 JSON の版は `analysisVersion` で区別する。
+3. 区画分け。入力は原本があれば原本から描き直した画像、無ければ表示用画像。列数 = max(3, ceil(幅 / 3200))、行数 = max(2, ceil(高さ / 3300))、重なり 60px、各区画は幅 1,400px の JPEG にする。
+4. 画像 AI の呼び出し。`InferenceUseCase` に寸法マップ用の用途を追加し、`VisionCompletionPort` を `background: true` で呼ぶ。DGX が混んでいる（429 / 503）ときは `DEFERRED` にして翌晩に回す。出力形式を固定するため `VisionCompletionInput` に任意の `responseFormat`（JSON スキーマ）を足す。DGX の互換 API が `response_format` を通すかは要確認（`DGXSparkControlPlane` の責任分界）。通らない場合も、配列形式と項目名付き形式の両方を読む寛容な読み込みで受ける（実験で 31 区画がこの形式だった）。
+5. 後処理。表面粗さ（Ra）と面取り（0.5C 等）を除く。値の一致する OCR の読みが 0.03W 以内にあれば座標をそこへ合わせる。同じ値で 0.01W 以内の重複（区画の重なり）を一つにまとめる。画像 AI の値に小数点があり、同じ位置の OCR の読みに無い（「3.5」と「35」）ときは「OCR と食い違い」にする。
+6. 夜間処理。既存 OCR の scheduler と同じ形で、夜間の時間帯だけキューを処理する scheduler を足す。新しい図面の取込時にキューへ入れ、既存の図面は少しずつ後追いで入れる。1 図面は区画数ぶん（3×2 で 6 回、大きい図面で最大 15 回）の呼び出しになり、実験では 1 区画約 25 秒（3 並列）だった。
+7. OCR の手がかり。実験では PP-OCRv5 の読みを画像 AI に添え、その座標に合わせた。本番で PP-OCRv5 を入れるか、既存 OCR のキャッシュで足りるかは、画像だけで位置を答えさせる比較実験の結果で決める（実施中）。PP-OCRv5 を入れる場合は、Pi5 の API コンテナにある RapidOCR ワーカー（`scripts/part-measurement/drawing-local-rapidocr-worker.py`）で夜間だけ動かす案を第一候補にする。
+8. 画面は変えない。Milestone 4 が寸法マップを読む。
 
 この設計は 2026-10-03 に利用者が承認した。あわせて、候補の合格基準を「上位 3 件に正解がある割合」とし、深さの上限をねじの太さで決まる社内ルールとして扱うことが決まった。
 
