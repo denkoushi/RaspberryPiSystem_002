@@ -314,6 +314,8 @@ async function calloutLineGeometry(line: Locator) {
 }
 
 async function selectAssemblyMachineName(page: Page, machineName = 'L300KP'): Promise<void> {
+  // 認証直後は編集画面がまだ描画されていないことがある。描画前に数えると誤って文書/工程を閉じてしまう。
+  await expect(page.getByTestId('assembly-unified-editor-workspace')).toBeVisible();
   const machinePicker = page.getByRole('button', { name: '機種名を選ぶ' });
   if (await machinePicker.count() === 0) {
     const panelToggle = page.getByRole('button', { name: /文書[\/・]工程/ }).first();
@@ -833,7 +835,9 @@ for (const viewport of paneFitViewports) {
     await expect(right).toBeVisible();
     if (viewport.width >= 1280) {
       expect((await left.locator('xpath=ancestor::aside').boundingBox())!.width).toBe(256);
-      expect((await right.boundingBox())!.width).toBe(320);
+      // 1536px 以上では右の列（締付条件＋設定）が常に出ており、設定はその中に入る。
+      const rightColumn = viewport.width >= 1536 ? page.getByTestId('assembly-editor-side-column') : right;
+      expect((await rightColumn.boundingBox())!.width).toBe(320);
     }
     const centralWidth = (await page.getByTestId('assembly-unified-editor-canvas-pane').boundingBox())!.width;
     let shortGroupHeight = 0;
@@ -958,7 +962,9 @@ for (const viewport of viewports) {
       const canvas = element.querySelector<HTMLElement>('[data-testid="assembly-unified-editor-canvas-pane"]');
       return canvas ? canvas.getBoundingClientRect().width / element.getBoundingClientRect().width : 0;
     });
-    expect(initialRatio).toBeGreaterThanOrEqual(0.75);
+    // 1536px 以上では右の列が常に出るため、文書・工程を開いた初期状態の中央は約 69%。
+    // 1080p では手順書のページは高さで決まるので、ページの表示サイズは変わらない。
+    expect(initialRatio).toBeGreaterThanOrEqual(viewport.width >= 1536 ? 0.68 : 0.75);
 
     const image = canvasPane.locator('img').last();
     await expect(image).toBeVisible();
@@ -1320,7 +1326,7 @@ test('assembly editor restores and discards debounced browser recovery', async (
   await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some((key) => key.includes('assembly-template-editor-recovery:v1')))).toBe(false);
 });
 
-test('unified assembly editor stacks panels and keeps touch targets usable on a narrow viewport', async ({ page }) => {
+test('unified assembly editor stacks panels and keeps controls usable on a narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 900 });
   await mockKioskApis(page);
   await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', {
@@ -1365,7 +1371,8 @@ test('unified assembly editor stacks panels and keeps touch targets usable on a 
     await expect(button).toBeVisible();
     const box = await button.boundingBox();
     expect(box).not.toBeNull();
-    expect(box!.height).toBeGreaterThanOrEqual(40);
+    // キオスクはマウス操作のみ（2026-10-03 ユーザー確認）。操作部は 32px に詰めている。
+    expect(box!.height).toBeGreaterThanOrEqual(32);
   }
 });
 

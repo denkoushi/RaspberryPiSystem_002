@@ -123,24 +123,24 @@ export function AssemblyTemplateEditorLeftPane() {
   return procedurePaneOpen ? (
     <aside
       data-testid="assembly-template-editor-left-pane"
-      className="flex min-h-[32rem] min-w-0 flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0"
+      className="flex min-h-[32rem] min-w-0 flex-col overflow-hidden rounded border border-[#27313b] bg-[#161c22] xl:min-h-0"
     >
       <div className="hidden shrink-0 items-center gap-1 border-b border-white/10 p-1 xl:flex">
         <Button
           type="button"
           variant={leftPaneTab === 'documents' ? 'primary' : 'ghostOnDark'}
-          className="min-h-10 flex-1 !px-1 text-xs"
+          className="min-h-8 flex-1 whitespace-nowrap !px-1 text-xs"
           aria-expanded={leftPaneTab === 'documents'}
           aria-controls="assembly-procedure-pane"
           aria-label="文書・工程"
           onClick={() => setLeftPaneTab(leftPaneTab === 'documents' ? 'steps' : 'documents')}
         >
-          文書・工程 {leftPaneTab === 'documents' ? 'を閉じる' : 'を開く'}
+          文書・工程 <span aria-hidden="true">{leftPaneTab === 'documents' ? '▴' : '▾'}</span>
         </Button>
         <Button
           type="button"
           variant={leftPaneTab === 'steps' ? 'primary' : 'ghostOnDark'}
-          className="min-h-10 flex-1 !px-1 text-xs"
+          className="min-h-8 flex-1 !px-1 text-xs"
           aria-controls="assembly-step-storyboard"
           onClick={() => setLeftPaneTab('steps')}
         >
@@ -152,7 +152,7 @@ export function AssemblyTemplateEditorLeftPane() {
           <Button
             type="button"
             variant={leftPaneTab === 'steps' ? 'primary' : 'ghostOnDark'}
-            className="min-h-10 !px-1 text-xs"
+            className="min-h-8 !px-1 text-xs"
             onClick={() => setLeftPaneTab('steps')}
           >
             手順
@@ -160,7 +160,7 @@ export function AssemblyTemplateEditorLeftPane() {
           <Button
             type="button"
             variant={leftPaneTab === 'documents' ? 'primary' : 'ghostOnDark'}
-            className="min-h-10 !px-1 text-xs"
+            className="min-h-8 !px-1 text-xs"
             onClick={() => setLeftPaneTab('documents')}
           >
             文書・工程

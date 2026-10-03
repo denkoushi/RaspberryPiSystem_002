@@ -41,7 +41,7 @@ export function AssemblyAreaTabs({ areas, selectedAreaId, incompleteAreaIds, rea
             aria-label={`${label}（締付 ${area.bolts.length}か所${incomplete ? '・未完了' : ''}）`}
             title={label}
             className={clsx(
-              'flex min-h-11 max-w-[14rem] items-center gap-2 rounded border px-2 text-sm font-bold',
+              'flex min-h-8 max-w-[14rem] items-center gap-2 rounded border px-2 text-sm font-bold',
               selected
                 ? 'border-cyan-300 bg-cyan-900/45 text-white'
                 : 'border-white/15 bg-slate-950/60 text-white/85 hover:bg-slate-800'
@@ -64,7 +64,7 @@ export function AssemblyAreaTabs({ areas, selectedAreaId, incompleteAreaIds, rea
         type="button"
         variant="ghostOnDark"
         aria-label="工程を追加"
-        className="min-h-11 shrink-0 !px-3 text-sm"
+        className="min-h-8 shrink-0 !px-3 text-sm"
         disabled={readOnly}
         onClick={onAdd}
       >

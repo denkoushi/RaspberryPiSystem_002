@@ -282,7 +282,7 @@ export function AssemblyTorqueWrenchSettingAssistant({
               <Button
                 type="button"
                 variant="ghostOnDark"
-                className="min-h-9 !px-2 text-xs"
+                className="min-h-8 !px-2 text-xs"
                 disabled={disabled}
                 onClick={onRetryTorqueWrenchProfiles}
               >
@@ -295,7 +295,7 @@ export function AssemblyTorqueWrenchSettingAssistant({
             <Button
               type="button"
               variant="ghostOnDark"
-              className="min-h-9 w-full !px-2 text-xs"
+              className="min-h-8 w-full !px-2 text-xs"
               disabled={disabled}
               onClick={reviewPendingGroup}
             >
@@ -324,7 +324,7 @@ export function AssemblyTorqueWrenchSettingAssistant({
                     key={candidate.key}
                     type="button"
                     variant={selectedCandidateKey === candidate.key ? 'primary' : 'ghostOnDark'}
-                    className="grid min-h-10 min-w-0 justify-items-start !px-2 !py-1 text-left text-xs"
+                    className="grid min-h-8 min-w-0 justify-items-start !px-2 !py-1 text-left text-xs"
                     disabled={disabled}
                     onClick={() => requestCandidate(candidate, selectedGroup)}
                   >

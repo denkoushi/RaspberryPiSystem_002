@@ -21,6 +21,8 @@ type Props = {
   /** 丸数字を選択中は、条件を押すとその丸数字へ付け替える。 */
   selectedMarkerNo: number | null;
   readOnly: boolean;
+  /** column は右の列に縦に並べる。row は手順書のページの上に横に並べる。 */
+  orientation?: 'row' | 'column';
   onSelect: (key: string) => void;
   onAdd: (condition: AssemblyBoltCondition) => void;
 };
@@ -29,7 +31,8 @@ type CatalogState =
   | { status: 'idle' | 'loading' | 'error' }
   | { status: 'ready'; conditions: AssemblyBoltCondition[] };
 
-export function AssemblyBoltConditionStrip({ entries, activeKey, selectedMarkerNo, readOnly, onSelect, onAdd }: Props) {
+export function AssemblyBoltConditionStrip({ entries, activeKey, selectedMarkerNo, readOnly, orientation = 'row', onSelect, onAdd }: Props) {
+  const column = orientation === 'column';
   const [pickerOpen, setPickerOpen] = useState(false);
   const [catalog, setCatalog] = useState<CatalogState>({ status: 'idle' });
   const [catalogGeneration, setCatalogGeneration] = useState(0);
@@ -63,7 +66,7 @@ export function AssemblyBoltConditionStrip({ entries, activeKey, selectedMarkerN
       role="group"
       aria-label="締付条件"
       data-testid="assembly-bolt-condition-strip"
-      className="flex min-w-0 flex-wrap items-center gap-1.5"
+      className={clsx('flex min-w-0 gap-1.5', column ? 'flex-col' : 'flex-wrap items-center')}
     >
       <span className="shrink-0 text-xs font-bold text-white/60">締付条件</span>
       {entries.map((entry, index) => {
@@ -81,7 +84,8 @@ export function AssemblyBoltConditionStrip({ entries, activeKey, selectedMarkerN
             }
             disabled={readOnly}
             className={clsx(
-              'grid min-h-11 grid-cols-[auto_auto_auto] items-center gap-x-2 rounded border px-2 text-left disabled:opacity-60',
+              'grid min-h-9 items-center gap-x-2 rounded border px-2 text-left disabled:opacity-60',
+              column ? 'grid-cols-[auto_minmax(0,1fr)_auto]' : 'grid-cols-[auto_auto_auto]',
               active
                 ? 'border-cyan-300 bg-cyan-900/45 text-white'
                 : 'border-white/15 bg-slate-950/60 text-white/85 hover:bg-slate-800'
@@ -100,7 +104,7 @@ export function AssemblyBoltConditionStrip({ entries, activeKey, selectedMarkerN
       <Button
         type="button"
         variant="ghostOnDark"
-        className="min-h-11 shrink-0 whitespace-nowrap !px-3 text-xs"
+        className="min-h-8 shrink-0 whitespace-nowrap !px-3 text-xs"
         disabled={readOnly}
         onClick={() => setPickerOpen(true)}
       >

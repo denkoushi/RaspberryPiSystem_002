@@ -101,7 +101,7 @@ export function AssemblyTemplateHeaderGuide({
               key={stage.id}
               type="button"
               className={clsx(
-                'flex min-h-10 shrink-0 items-center gap-1 rounded border px-1.5 text-left',
+                'flex min-h-8 shrink-0 items-center gap-1 rounded border px-1.5 text-left',
                 status === 'complete'
                   ? 'border-emerald-300/35 bg-emerald-950/35'
                   : status === 'checking'
@@ -136,7 +136,7 @@ export function AssemblyTemplateHeaderGuide({
             ref={triggerRef}
             type="button"
             variant={readiness.isReady ? 'secondary' : 'ghostOnDark'}
-            className="min-h-10 shrink-0 whitespace-nowrap !px-2 !py-1 text-xs"
+            className="min-h-8 shrink-0 whitespace-nowrap !px-2 !py-1 text-xs"
             aria-haspopup="dialog"
             aria-controls={panelId}
             aria-expanded={isOpen}
@@ -171,7 +171,7 @@ export function AssemblyTemplateHeaderGuide({
                 <li key={`${issue.code}:${issue.target.id ?? ''}:${index}`}>
                   <button
                     type="button"
-                    className="min-h-10 w-full rounded border border-white/10 bg-white/5 px-2 py-1 text-left text-xs font-semibold text-amber-100 hover:bg-white/10"
+                    className="min-h-8 w-full rounded border border-white/10 bg-white/5 px-2 py-1 text-left text-xs font-semibold text-amber-100 hover:bg-white/10"
                     onClick={() => handleIssueClick(issue)}
                   >
                     {issue.message}
@@ -184,7 +184,7 @@ export function AssemblyTemplateHeaderGuide({
             <Button
               type="button"
               variant="ghostOnDark"
-              className="mt-2 min-h-10"
+              className="mt-2 min-h-8"
               onClick={onRetryCapabilityCatalog}
             >
               適合グループを再読込
