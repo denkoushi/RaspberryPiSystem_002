@@ -13,8 +13,10 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 ## Progress
 
 - [x] (2026-10-03) Research of established practice and owner decision to build the flywheel (see Context and Decision Log).
-- [ ] Milestone 1: seeds and contrastive question generator, offline, with unit tests.
-- [ ] Milestone 2: two-model filter and labels for generated questions, offline, checked against the hand-written development sets.
+- [x] (2026-10-03) Milestone 1: seeds and contrastive question generator, offline, with unit tests (#1662, merged as f4854ed7 and released to the Pi 5 with no behaviour change).
+- [x] (2026-10-03) Milestone 2 trial: 69 pairs generated and graded on the Pi 5 through the existing routes, run by the owner (see Surprises).
+- [x] (2026-10-03) Milestone 2 code: per-token copy guard, keep rule on the anchor only, graders, and a busy guard for the business LLM (this change).
+- [ ] Milestone 2 remainder: pooled top-30 labels for kept questions; moved into the Milestone 3 runner, which has the live pipeline in the same process.
 - [ ] Milestone 3: nightly runner on the Pi 5 behind a flag, with a per-night report.
 - [ ] Milestone 4: acceptance gate for retrieval changes on the rolling set, with held-out rotation and real-question mixing.
 
@@ -22,6 +24,12 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 
 - Observation: the production relevance judge (JEV) is lenient. Grading the same 419 question-record pairs with the DGX business LLM (Qwen3.8 Flash-Next) agreed within one grade on 94% (Cohen's kappa 0.78 on "relevant"), but of 1,715 pairs JEV called relevant, Qwen agreed on 58%. A blind reading of 118 disputed development pairs sided with Qwen in 67% of them.
   Evidence: `docs/plans/hermes-retrieval-accuracy-log.md`, entries of 2026-10-02 and 2026-10-03.
+- Observation: the contrastive keep rule ("B must be grade 1 or lower") kept 5 of 37 valid questions, although both graders confirmed A for 36. Near misses are usually relevant too: among kept questions under the new rule, B was grade 3 for both graders in 17, split in 23, and low for both in 5.
+  Evidence: trial of 2026-10-03, 69 pairs, private file `work/flywheel/m2-results.jsonl`.
+- Observation: the copy guard rejected 25 of 62 questions. Most copied a phrase, but terse questions that listed the record's own terms (「スケールカバー 取付忘れ 不適合」) failed only because the check joined the words. Checked word by word, 16 were rejected and 45 of 62 generated questions were kept (73%), 30 of them terse.
+  Evidence: same trial. Kept questions had a median length of 16 characters, the same as the real kiosk questions seen so far.
+- Observation: the business LLM slowed from about ten questions a minute to one during the day trial, and seven generation calls in a row timed out. The owner stopped the run; ending the local ssh session did not stop the process in the container, which was stopped from the Pi 5 host with kill by process id.
+  Evidence: 2026-10-03 17:40 to 18:00 JST.
 - Observation: questions that name only a department or a period ("三島工場機械課の最近の不適合を教えて") have no content condition, so relevance grading does not apply to them. They caused many grader disagreements and must be scored on filters instead.
 
 ## Decision Log
@@ -45,6 +53,16 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
   Rationale: the session that writes this plan cannot run code in production; only released code that the standard release delivers may run there. Record text may go to TypeSafe (approved) and to the in-house DGX.
   Date/Author: 2026-10-03, Claude.
 
+- Decision: keep a question when both graders give the anchor A grade 3; record B's grades instead of requiring them to be low.
+  Rationale: see Surprises. B stays useful as a labelled hard candidate.
+  Date/Author: 2026-10-03, owner and Claude.
+- Decision: the copy guard checks runs inside each word separated by spaces or punctuation, and applies the bigram share only to sentence-length words (15 characters or more).
+  Rationale: people type the record's own terms in short queries; the curse-of-knowledge risk is copied phrases, not shared nouns.
+  Date/Author: 2026-10-03, Claude.
+- Decision: wrap the business LLM call in a guard that stops after three slow (over 15 s) or failed calls in a row, and leaves the rest for the next night.
+  Rationale: the business LLM also serves daytime consultations; the day trial slowed tenfold.
+  Date/Author: 2026-10-03, Claude.
+
 ## Outcomes & Retrospective
 
 None yet.
@@ -63,7 +81,7 @@ Terms used here: a "seed" is a small instruction that fixes the intent, style, a
 
 Milestone 1 builds the generator offline. Add `scripts/hermes-search/retrieval/flywheel-seeds.mjs` with a pure function that, given the catalog and a seeded random generator, returns seeds as `{ intent, style, role }`, with the style mix weighted 50% terse, 20% colloquial, 15% kana, 15% typo. Add `flywheel-pairs.mjs` that picks record A at random among records with non-empty body text and finds B as the nearest neighbour by cosine in the dense store among records that share A's department or part name, skipping exact duplicates. Add `flywheel-facts.mjs` that turns a record into short field facts (phenomenon, cause, countermeasure, disposition, part, department) without copying long spans. Add `flywheel-generate.mjs` that builds one chat request per pair and seed, asks for JSON `{ "question": string }`, and rejects a question that copies four or more consecutive characters from A's body, names a record number, or is longer than 60 characters. The DGX call reuses the request shape of `enrichment-dgx.mjs` (temperature 0.7 for diversity, thinking off, JSON schema). Unit tests in `flywheel.test.mjs` use a fake model and a synthetic corpus and check seed weights, pair selection, the copy guard, and determinism for a fixed random seed.
 
-Milestone 2 adds the filter and labels. `flywheel-filter.mjs` grades A and B for each generated question with JEV (reusing `gradeBatch` from `graded-labels.mjs`) and with the DGX business LLM (the grading prompt used on 2026-10-02, moved into `grade-dgx.mjs`). It keeps a question only when both graders give A grade 3 and B grade 1 or lower. For kept questions it runs the live pipeline once, pools the top 30 candidates, and grades the pool with both graders, so every kept question carries consensus labels for later scoring. Offline acceptance compares a few hundred generated questions with the hand-written development sets: their length distribution (KL divergence against the real kiosk questions in the receipts), the share kept, and the loss-stage counts.
+Milestone 2 adds the filter and labels. `flywheel-filter.mjs` grades A and B for each generated question with JEV (`createJevPairGrader`, reusing `gradeBatch` from `graded-labels.mjs`) and with the DGX business LLM (`createDgxGrader`, the grading prompt used on 2026-10-02). It keeps a question when both graders give A grade 3, and records B's grades. For kept questions it runs the live pipeline once, pools the top 30 candidates, and grades the pool with both graders, so every kept question carries consensus labels for later scoring. Offline acceptance compares a few hundred generated questions with the hand-written development sets: their length distribution (KL divergence against the real kiosk questions in the receipts), the share kept, and the loss-stage counts.
 
 Milestone 3 runs it nightly. `flywheel-runner.mjs` is started by the API process like the enrichment runner when `HERMES_FLYWHEEL_ENABLED=true`, inside the existing night window, with a nightly budget `HERMES_FLYWHEEL_MAX_QUESTIONS` (default 100) and concurrency 1. It writes `runtime/flywheel/questions-YYYY-MM-DD.jsonl` (question, seed, A and B ids, consensus labels, live result ids, loss stage, no record text) and `flywheel-status.json`. The release path forwards the two variables the same way `standard-ansible-release.py` forwards the enrichment ones. `flywheel-report.mjs` reads a copied night file on the Mac and prints the summary shown in the Purpose section.
 
