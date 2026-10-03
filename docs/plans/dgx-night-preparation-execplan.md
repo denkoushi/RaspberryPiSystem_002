@@ -21,7 +21,8 @@ After this plan, the DGX does the heavy work at night and stays fast in the day.
 - [ ] Milestone 2: GPU query embedding on the DGX (deferred 2026-09-29, see Decision Log).
 - [ ] Milestone 2b: find and fix the slow request path from the Pi 5 to the DGX; query budget raised to 1,500 ms (2026-09-29).
 - [x] (2026-09-29) Milestone 3 first step: the enrichment id list became an order, so new records are enriched too.
-- [ ] (2026-09-29) Learning loop, dry run: each night, missed Chat questions are searched again deeper and judged; accepted pairs are written as proposals only. Review for about a week before any write.
+- [x] (2026-09-29) Learning loop, dry run: each night, missed Chat questions were searched again deeper and judged; accepted pairs were written as proposals only.
+- [x] (2026-10-03) Learning loop removed (see Decision Log). The synthetic question flywheel (`hermes-synthetic-question-flywheel-execplan.md`) replaces it.
 - [ ] Milestone 3: one night flow for every source.
 - [ ] Milestone 4: links between sources.
 - [ ] Milestone 5: adding a source without new night code.
@@ -52,6 +53,10 @@ After this plan, the DGX does the heavy work at night and stays fast in the day.
 - Decision: defer Milestone 2 (GPU query embedding) and add Milestone 2b (the request path). Raise the query budget from 800 ms to 1,500 ms.
   Rationale: the CPU embedding service answers in tens of milliseconds once bulk embedding is kept to 04:00 to 06:00, so a permanent GPU reserve buys little and costs memory when the owner switches DGX models in the day. The measured delay sits in the path, and a 1,500 ms budget still fits the 5 s answer target.
   Date/Author: 2026-09-29, owner and Claude.
+
+- Decision: remove the dry-run learning loop.
+  Rationale: it needs floor workers to ask and fail first, and the owner rejected improvement that depends on user effort (2026-10-03). Nothing consumed its proposals. It assumed the day judge reads 15 candidates, which became 30 in #1642. The pass of 2026-10-02 found 0 questions. The synthetic question flywheel generates questions from the records instead.
+  Date/Author: 2026-10-03, owner and Claude.
 
 ## Outcomes & Retrospective
 
@@ -85,15 +90,9 @@ A question embedding leaves the Pi 5 API container through the egress proxy (`HE
 
 Findings on 2026-09-29: the Pi 5 reaches the DGX over Tailscale through a public address (`tailscale status` shows `direct 1.73.131.208`), with a round trip of 76 to 108 ms. The egress proxy (`infrastructure/docker/business-hermes-egress/proxy.mjs`) sends `connection: close` upstream, and the DGX gateway (`agents/dgx/dgx_control/business_proxy.py` in the Control Plane) is a Python `BaseHTTPRequestHandler` that answers with HTTP/1.0 and closes each connection. Every question therefore opens a new TCP connection across the internet, which explains the steady 0.3 s, and a lost connection setup packet waits the TCP retry interval of 1 s and then 2 s, which matches the 1.8 to 3.8 s jumps. Keep-alive on the Pi 5 side alone would not help, because the gateway closes the connection and a Chat question sends only one embedding request. A real fix needs HTTP/1.1 keep-alive on the gateway, keep-alive in the egress proxy, and a small periodic request that keeps one connection warm. That is deferred until receipts from a few days show how often the 1,500 ms budget is still exceeded.
 
-### Learning loop from missed questions (dry run first)
+### Learning loop from missed questions (removed 2026-10-03)
 
-Chat answers leave receipts on the Pi 5 (`/app/storage/hermes-search/runtime/receipts/`, one file per Tokyo day). Once per night, at the start of the enrichment window, `scripts/hermes-search/retrieval/learning-night.mjs` reads the receipts of the previous and the current day, takes content questions that returned no result and are newer than the last pass (up to 20), and searches each again with the day's retrieval (lexical and, when available, meaning-based) but judges the top 45 candidates instead of the top 15, with a stricter cut (0.7). Accepted question-and-record pairs are appended to `retrieval-learning-proposals.jsonl`; `retrieval-learning-state.json` records the night, the last receipt time, and counts. Nothing in the enrichment store or the search changes. `HERMES_RETRIEVAL_LEARNING=off` turns the pass off.
-
-Review the proposals from the Mac:
-
-    ssh denkon5sd02@100.106.158.2 'c=$(docker ps --format "{{.Names}}" | grep -E "^bluegreen-api-(blue|green)-1$" | head -1); docker exec "$c" cat /app/storage/hermes-search/runtime/retrieval-learning-proposals.jsonl'
-
-After about a week, if the accepted pairs are right, the next step appends the question wording to the record's enrichment queries (a separate field so it can be removed), and the dense index re-embeds that record in the 04:00 to 06:00 window. The next day the same wording finds the record.
+From 2026-09-29 to 2026-10-03, the enrichment runner started a dry-run pass each night. The pass searched the day's missed Chat questions again and wrote proposals to `retrieval-learning-proposals.jsonl`. It was removed; the Decision Log gives the reasons. `retrieval-learning-state.json` and any proposals file on the Pi 5 are no longer read and can be deleted.
 
 ### Milestone 3: one night flow for every source
 
