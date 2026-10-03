@@ -242,9 +242,19 @@ KERNEL_STORAGE_PATTERNS = (
 )
 
 
+# Printed on every boot by the Raspberry Pi SD host driver. It only says the
+# slot has no write-protect switch; "read-only" in it is not a remount. The
+# Pi3 reboots daily, so it raised a false ERROR alert each morning.
+KERNEL_BENIGN_PATTERNS = (
+    re.compile(r"host does not support reading read-only switch", re.IGNORECASE),
+)
+
+
 def kernel_storage_error_lines(kernel_log: str) -> List[str]:
     matches: List[str] = []
     for line in kernel_log.splitlines():
+        if any(pattern.search(line) for pattern in KERNEL_BENIGN_PATTERNS):
+            continue
         if any(pattern.search(line) for pattern in KERNEL_STORAGE_PATTERNS):
             matches.append(line.strip())
     return matches
