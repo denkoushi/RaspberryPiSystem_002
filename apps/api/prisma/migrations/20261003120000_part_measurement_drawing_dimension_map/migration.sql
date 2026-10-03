@@ -22,7 +22,9 @@ CREATE TABLE "PartMeasurementDrawingDimensionMap" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
 
-  CONSTRAINT "PartMeasurementDrawingDimensionMap_pkey" PRIMARY KEY ("id")
+  CONSTRAINT "PartMeasurementDrawingDimensionMap_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "PartMeasurementDrawingDimensionMap_visualTemplateId_fkey"
+    FOREIGN KEY ("visualTemplateId") REFERENCES "PartMeasurementVisualTemplate"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE UNIQUE INDEX "PMDrawingDimMap_unique_visual_version_hash"
@@ -33,10 +35,3 @@ CREATE INDEX "PMDrawingDimMap_idx_visual_status"
 
 CREATE INDEX "PMDrawingDimMap_idx_claim"
   ON "PartMeasurementDrawingDimensionMap"("status", "nextAttemptAt", "createdAt");
-
-ALTER TABLE "PartMeasurementDrawingDimensionMap"
-  ADD CONSTRAINT "PartMeasurementDrawingDimensionMap_visualTemplateId_fkey"
-  FOREIGN KEY ("visualTemplateId")
-  REFERENCES "PartMeasurementVisualTemplate"("id")
-  ON DELETE CASCADE
-  ON UPDATE CASCADE;
