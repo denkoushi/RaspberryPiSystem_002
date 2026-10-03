@@ -98,7 +98,15 @@ export class PartMeasurementDrawingDimensionMapService {
     if (!row?.payloadCompressed || row.payloadEncoding !== PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_ENCODING) {
       return null;
     }
-    return decodePartMeasurementDrawingDimensionMapPayload(row.payloadCompressed);
+    try {
+      const payload = await decodePartMeasurementDrawingDimensionMapPayload(row.payloadCompressed);
+      if (!Array.isArray(payload.dimensions) || !payload.image) return null;
+      return payload;
+    } catch (error) {
+      // 壊れた寸法マップは無いものとして扱い、呼び出し側は OCR 候補に落とす。
+      log.warn({ visualTemplateId, err: error }, 'drawing dimension map payload unreadable');
+      return null;
+    }
   }
 
   private completedWhere(

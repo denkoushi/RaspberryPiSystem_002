@@ -656,7 +656,8 @@ describe('part-measurement templates API', () => {
     expect(hole.statusCode).toBe(200);
     expect(hole.json().status).toBe('completed');
     expect(hole.json().source).toBe('dimensionMap');
-    expect(hole.json().candidates.map((c: { valueText: string }) => c.valueText)).toEqual(['20', '55', '12']);
+    // 穴径: φ 付きを先頭に、残りは距離順（M6深12 は基準値 6）
+    expect(hole.json().candidates.map((c: { valueText: string }) => c.valueText)).toEqual(['20', '55', '6']);
     expect(hole.json().candidates[0]).toMatchObject({
       dimensionText: 'φ20H7',
       suggestedUpperTolerance: '+0.021',

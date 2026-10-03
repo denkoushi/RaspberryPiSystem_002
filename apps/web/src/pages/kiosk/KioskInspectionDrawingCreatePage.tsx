@@ -1,5 +1,6 @@
 import {
   buildDefaultInspectionDrawingMeasurementLabelSettings,
+  isInspectionDrawingDepthLabel,
   resolveInspectionDrawingGeneralToleranceForNominal,
   type InspectionDrawingMeasurementLabelSetting
 } from '@raspi-system/shared-types';
@@ -275,14 +276,18 @@ export function KioskInspectionDrawingCreatePage() {
       : null;
   const visualOcrPending =
     visualOcrLoading || visualOcrStatus?.status === 'pending' || visualOcrStatus?.status === 'processing';
+  // 寸法マップがあれば候補はそこから出るので、OCR の準備状況は案内しない。
+  const visualDimensionMapReady = visualOcrStatus?.dimensionMap?.status === 'completed';
   const visualOcrNotice =
-    visualTemplateIdForOcr && visualOcrPending
-      ? 'OCR準備中'
-      : visualTemplateIdForOcr && visualOcrStatus?.status === 'failed'
-        ? 'OCR準備失敗（手入力は可能です）'
-        : visualTemplateIdForOcr && visualOcrError
-          ? visualOcrError
-          : null;
+    !visualTemplateIdForOcr || visualDimensionMapReady
+      ? null
+      : visualOcrPending
+        ? 'OCR準備中'
+        : visualOcrStatus?.status === 'failed'
+          ? 'OCR準備失敗（手入力は可能です）'
+          : visualOcrError
+            ? visualOcrError
+            : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -1651,6 +1656,9 @@ export function KioskInspectionDrawingCreatePage() {
                 if (candidate?.source === 'dimensionMap' && (upper !== null || lower !== null)) {
                   if (upper !== null) patch.upperToleranceRaw = upper;
                   if (lower !== null) patch.lowerToleranceRaw = lower;
+                } else if (isInspectionDrawingDepthLabel(selectedPoint.name)) {
+                  // 深さは下限 0 だけ。上限（+0・+3・+5）はねじの太さで決まるので空けておく
+                  patch.lowerToleranceRaw = '0';
                 } else {
                   const general = resolveInspectionDrawingGeneralToleranceForNominal(Number(valueText));
                   if (general !== null) {
