@@ -17,10 +17,13 @@ related_docs:
   - docs/plans/inspection-drawing-ocr-local-candidates.md
   - docs/plans/inspection-drawing-ocr-rapidocr-local.md
 validation: >
-  Milestone 1 only: API unit tests for drawing import/source storage, API typecheck and lint.
+  Milestone 1: API unit tests for drawing import/source storage, API typecheck and lint.
   Integration test assertion added for PDF source retention (runs in CI with pdftoppm and Postgres).
+  Milestone 2 (first round, 2026-10-03): offline experiment on 30 drawings / 330 items, no production change.
 open_items:
-  - Milestone 2 onward waits for DGX Spark availability
+  - Milestone 2 continues: give the whole-drawing dimension list and item label to the image AI and re-measure
+  - Ranking weights were tuned on the same data and must be re-checked on held-out drawings
+  - Milestone 5 cannot rely on matching nominal values across similar parts (see Decision Log)
   - 7161 and 3351 drawings were imported before source retention and need a separate path
 ---
 
@@ -40,7 +43,9 @@ open_items:
 ## Progress
 
 - [x] (2026-10-03) Milestone 1: PDF/TIFF 取込時に原本を保持する。表示用画像と既存の丸数字座標は変えない。
-- [ ] Milestone 2: DGX で丸数字周辺の切り出しを読ませる精度実験（DGX 空き待ち）。
+- [ ] Milestone 2: DGX で丸数字周辺の切り出しを読ませる精度実験。
+  - [x] (2026-10-03) 1 回目: 30 図面 330 項目で、画像 AI・PP-OCRv5・既存 OCR を比較し、組み合わせと「指定値の図面全体探索」を採点した（結果は Artifacts and Notes）。
+  - [ ] 2 回目: 図面全体の寸法一覧と項目名を画像 AI に渡して選ばせる。重みを別の図面で確かめ直す。
 - [ ] Milestone 3: 寸法マップの保存先と夜間キュー。
 - [ ] Milestone 4: 丸数字を置いたときに寸法マップから候補を出す。
 - [ ] Milestone 5: 似た部品の既存検査図面から丸数字を先回り配置する。
@@ -53,6 +58,11 @@ open_items:
 - 観察: OCR の前処理で長い線を白く塗りつぶしており、線に接した数字の一部まで消えることがある。交差箇所で弱い一因と考える。
   証拠: `part-measurement-drawing-ocr-engine.ts` の `suppressLongDrawingLines`。
 - 観察: 画像を DGX の画像 AI に渡す境界 `VisionCompletionPort` と、DGX を空き時間だけ使う `background` 指定（モデル別名 `dgx-background-preparation`）は既にある。現在の利用は写真持出ラベルのみ。
+- 観察: 7161 と 3351 の保存画像は大半が幅 3,000〜13,000px あり、切り出しを拡大しても文字は鮮明だった。外れの主因は解像度ではなく、正解の寸法が丸数字から離れていること、または候補にあるのに別の寸法を選ぶことだった。AI 超解像は数字の書き換え（3→8 など）の危険があり採らない。
+  証拠: 切り出し `148695d7_02`（厚み 51.5 が範囲外）、`7b31d2ce_04`（「25」が鮮明なのに該当なしと回答）。
+- 観察: PP-OCRv5 大型モデルは、切り出し単位では丸数字に最も近い数字を選ぶと弱い（一位 22.7%）が、図面全体をタイルで読ませると既存 OCR より多く拾う（丸数字の近くで正解値を拾えた割合 66.7%、既存 OCR は 60.0%）。両方を合わせると 73.0%。
+- 観察: 同じ種類の部品の別図面で「項目名と基準値が同じ項目」があるのは 308 件中 42 件だけだった。部品が似ていても寸法値と配置は違う。
+- 観察: 正解値 0 で登録された項目が 3 件あり、「3-M4深8」のように深さがねじ表記の中にある項目は数字の取り出し方で採点が変わる。
 
 ## Decision Log
 
@@ -70,10 +80,21 @@ open_items:
   日付: 2026-10-03
 - 決定: 既存の 7161 と 3351 は原本を持たないため、この計画の対象外とし、別手段で扱う。
   日付: 2026-10-03
+- 決定: 候補は一つの読み取り方式に頼らず、画像 AI の判定、既存 OCR、PP-OCRv5 を合算して順位付けする方向で進める。
+  理由: 1 回目の実験で、一位一致は画像 AI 単独 42.1%、多数決 47.6%、重み付き合算 54.8% だった。三方式のどれかが一位で当てた割合は 60.0% で、方式ごとに当たる項目が違う。
+  日付: 2026-10-03
+- 決定: 寸法マップの読み取りには、図面全体を既存 OCR と PP-OCRv5（DGX の CPU で可）の両方で読ませる。
+  理由: 図面全体での拾い漏れが両方式で補い合う（丸数字の近くで正解値を拾えた割合 60.0% → 73.0%）。
+  日付: 2026-10-03
+- 決定: Milestone 5 の「基準値が一致する寸法を新図面から探す」方式は主手段にしない。既存テンプレートの「丸数字位置と指定値」は、丸数字と寸法の対応を学ぶ正解データとして使う。
+  理由: 似た部品間で項目名と基準値が一致するのは 308 件中 42 件で、試した配置は 42 件中 7 件（16.7%）しか合わなかった。先回り配置には、項目の種類と図の形・位置関係から探す仕組みが要る（方式は未定）。
+  日付: 2026-10-03
 
 ## Outcomes & Retrospective
 
-Milestone 1 完了時点: 新しく取り込む PDF/TIFF 図面は原本が残るようになった。既存の表示、丸数字、OCR キャッシュの動作は変わらない。Milestone 2 以降は DGX Spark が空くまで保留する。
+Milestone 1 完了時点: 新しく取り込む PDF/TIFF 図面は原本が残るようになった。既存の表示、丸数字、OCR キャッシュの動作は変わらない。
+
+Milestone 2 の 1 回目（2026-10-03）: 組み合わせで一位一致が既存 OCR の 24.8% から約 55% まで上がる見込みを得たが、実用水準には届かない。残りの約 3 割は、正解の寸法が切り出しの外にあるか図面に書かれていない項目で、切り出し単位の改良では取れない。2 回目は図面全体の寸法一覧を使って選ばせる。
 
 ## Context and Orientation
 
@@ -93,7 +114,7 @@ Milestone 3 では、寸法マップを `PartMeasurementDrawingOcrCache` と同�
 
 Milestone 4 では、丸数字の候補取得で寸法マップがあればそれを優先し、なければ従来の OCR 候補を返す。UI は従来どおり候補提示のみで、自動確定しない。
 
-Milestone 5 では、似た部品の既存検査図面（品番・品名照合の既存ルール `template-candidate-rules.ts` で選ぶ）の各項目について、基準値と公差が一致する寸法を新図面の寸法マップから探し、丸数字位置を移した下書きを作る。見つからない項目は元の位置のまま「未確認」とする。指差し先端は自動で作らない。
+Milestone 5 では、似た部品の既存検査図面（品番・品名照合の既存ルール `template-candidate-rules.ts` で選ぶ）の各項目について、基準値と公差が一致する寸法を新図面の寸法マップから探し、丸数字位置を移した下書きを作る。見つからない項目は元の位置のまま「未確認」とする。指差し先端は自動で作らない。ただし Milestone 2 の 1 回目で、基準値の一致だけでは似た部品間で対応する項目がほとんど取れないと分かったため（Decision Log 参照）、主手段は項目の種類と位置関係による探索に見直す。方式は Milestone 2 の 2 回目以降に決める。
 
 ## Concrete Steps
 
@@ -111,13 +132,40 @@ Milestone 1 の受入: PDF を取り込むと `drawingSourceStorageKey` が `par
 
 Milestone 2 の受入目安: 対象の丸数字のうち、基準値と上下公差が完全一致する割合が既存 OCR の一位候補を明確に上回ること。数値目標は実験結果を見て決め、この節に記録する。
 
+1 回目の結果: 基準値の一位一致は既存 OCR 24.8% に対し、重み付き合算 54.8%（同じデータで重みを決めたため甘め、重みなしの目安 52.4%）。上下公差は図面に明記されたものが少なく（多くは普通公差）、比較できる件数が足りないため、基準値を主指標とする。数値目標は 2 回目の結果を見て決める。
+
 ## Idempotence and Recovery
 
 Milestone 1 の migration は nullable 列の追加だけで、既存行は null のまま動く。戻す場合は列を使うコードを戻せば足り、列は残しても害がない。原本ファイルは図面と同じ寿命で、未参照時だけ消す。
 
 ## Artifacts and Notes
 
-なし（Milestone 2 の実験結果をここに要約する）。
+Milestone 2 の 1 回目（2026-10-03、本番コード変更なし）:
+
+- 対象: 7161 と 3351 の 30 図面、333 項目（正解値 0 の 3 件を除き 330 項目で採点）。正解は Pi5 DB の既存テンプレートを読み取り専用で取得した。原本がないため、保存済みの表示用画像から丸数字中心に幅 14% 相当を切り出し、幅 1,400px に拡大して丸数字位置に赤い小円を描いた。
+- 画像 AI: DGX の `system-prod-primary`（推論思考なし、温度 0、4 並列）に、切り出し内の寸法をすべて位置付き JSON で挙げさせ、赤丸の寸法の番号を答えさせた。1 件平均 31 秒（4 並列時）。
+- PP-OCRv5: RapidOCR 3.8.4 に PP-OCRv5 server の検出・認識モデルを指定し、DGX の CPU で 0°・左右 90° の 3 方向を読ませた。図面全体は 1,600px のタイル（重なり 240px）で読み、30 図面に約 1 時間かかった。
+
+基準値の一位一致（330 項目）:
+
+    既存 OCR（本番キャッシュの一位）     24.8%
+    PP-OCRv5（切り出し内で丸数字に最も近い数字、深さ項目はねじ表記の深さを優先）  22.7%
+    画像 AI                              42.1%
+    3 方式の多数決                       47.6%
+    3 方式の重み付き合算                 54.8%（重みなし目安 52.4%）
+    3 方式のどれかが一位で当てた割合     60.0%
+
+指定値を図面全体から探す（330 項目、丸数字の近く = 図面幅の 7% 以内）:
+
+    既存 OCR のみ        図面内で発見 87.6%   丸数字の近くで発見 60.0%
+    PP-OCRv5 のみ        図面内で発見 90.0%   丸数字の近くで発見 66.7%
+    両方                 図面内で発見 92.1%   丸数字の近くで発見 73.0%
+
+「図面内で発見」は「5」のように何度も出る小さな数字も含むため、正しい位置の発見率ではない。
+
+似た部品の別図面への配置（同じ部品名の図面どうし、6 種類 18 図面）: 試した項目 308 件のうち、相手の図面に同じ項目名・基準値の項目があったのは 42 件、正しい位置（図面幅の 5% 以内）に置けたのは 7 件。
+
+実験ファイルは開発端末の `/tmp/pm-exp/` と DGX の `/tmp/pm-exp-20261003/` にあり、リポジトリには含めない（図面画像と正解データを含むため）。
 
 ## Interfaces and Dependencies
 
@@ -136,3 +184,4 @@ Milestone 3 以降で寸法マップの型（寸法 1 件 = 原文、基準値�
 ```
 
 改訂メモ: 2026-10-03 初版。Milestone 1 を実装し、以降を DGX 空き待ちとして記録した。
+改訂メモ: 2026-10-03 Milestone 2 の 1 回目の実験結果を記録し、候補の合算方針、寸法マップの読み取り方式、Milestone 5 の方式見直しを Decision Log に追加した。
