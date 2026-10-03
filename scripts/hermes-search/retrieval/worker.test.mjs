@@ -331,3 +331,27 @@ test('stored enrichment is attached only while enrichment is enabled', async () 
   const loaded = await loadEnrichmentById({ HERMES_RETRIEVAL_ENRICHMENT_ENABLED: 'true', HERMES_RETRIEVAL_ENRICHMENT_STORE: store });
   assert.equal(loaded.get('rec-alpha').summary, 'note');
 });
+
+test('answer returns the judged candidate ids only when stageDump is requested', async () => {
+  const evaluate = async (input) => {
+    if (input.questions.candidate_0) {
+      const answers = {};
+      for (const [key, question] of Object.entries(input.questions)) {
+        const body = String(question.instructions).split('記録本文:\n')[1] ?? '';
+        answers[key] = { type: 'noul', noul: body.includes('surface scratch') ? 0.9 : 0.1 };
+      }
+      return { answers };
+    }
+    const answers = plannerAnswers({ content: true, limit: 'unspecified', questions: input.questions }).answers;
+    answers.scope = { type: 'choice', choice: 'nonconformity' };
+    for (const key of Object.keys(input.questions)) if (key.startsWith('field_')) answers[key] = { type: 'choice', choice: 'none' };
+    return { answers };
+  };
+  const answering = answeringWith(evaluate);
+  const plain = await answering.answer('surface scratchの記録', null);
+  assert.equal('candidateIds' in plain, false);
+  const dumped = await answering.answer('surface scratchの記録', null, { stageDump: true });
+  assert.equal(dumped.receipt.outcome, 'answer');
+  assert.ok(Array.isArray(dumped.candidateIds) && dumped.candidateIds.length >= 1);
+  assert.ok(dumped.recordIds.every((id) => dumped.candidateIds.includes(id.slice(id.indexOf(':') + 1))));
+});

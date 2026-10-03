@@ -211,7 +211,7 @@ function publicRecordId(sourceId, recordId) {
   return sourceId ? `${sourceId}:${id}` : id;
 }
 
-function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previousPlan, dataAsOf, coverage = null, receipt = null, shownIds = [] }) {
+function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previousPlan, dataAsOf, coverage = null, receipt = null, shownIds = [], candidateIds = null }) {
   const stamped = stampAnswer(answer, dataAsOf);
   return {
     status,
@@ -222,6 +222,7 @@ function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previ
     confirmationPending: confirmation ?? null,
     session: sessionOf(previousPlan, shownIds),
     ...(coverage ? { coverage } : {}),
+    ...(Array.isArray(candidateIds) ? { candidateIds } : {}),
     ...(receipt ? { receipt: { ...receipt, elapsedMs } } : {}),
   };
 }
@@ -264,8 +265,10 @@ export function createRetrievalAnswering({
         return { ok: false, count };
       }
     },
-    async answer(question, session) {
+    // `options.stageDump` adds the ranked candidate ids to the result; the kiosk never asks for it.
+    async answer(question, session, options = {}) {
       const view = current;
+      const stageDump = options.stageDump === true;
       const started = performance.now();
       const elapsed = () => Math.round((performance.now() - started) * 10) / 10;
       const previousPlan = session?.previousPlan && typeof session.previousPlan === 'object' ? session.previousPlan : null;
@@ -325,6 +328,7 @@ export function createRetrievalAnswering({
         vector: dense?.queryEnabled ? (query, filtered) => dense.rank(query, filtered) : (typeof vector === 'function' ? vector : null),
         relevance: (input) => relevance.judge(input),
         requestStartedAt: started,
+        stageDump,
         excludeIds: validation.plan.diagnostics?.excludeShown
           ? new Set(previouslyShown.map((id) => id.slice(id.indexOf(':') + 1)))
           : undefined,
@@ -351,6 +355,7 @@ export function createRetrievalAnswering({
           shownIds: previouslyShown,
           receipt: receiptOf('no_other', { excludedMatches: executed.excludedMatches, timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
+          candidateIds: stageDump ? executed.candidateIds ?? [] : null,
         });
       }
       if (executed.status === 'no_result') {
@@ -363,6 +368,7 @@ export function createRetrievalAnswering({
           shownIds: previouslyShown,
           receipt: receiptOf('no_result', { retriever: dense?.queryEnabled ? 'hybrid' : 'lexical', timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
+          candidateIds: stageDump ? executed.candidateIds ?? [] : null,
         });
       }
       const vectorStatus = executed.timings?.vectorStatus;
@@ -382,6 +388,7 @@ export function createRetrievalAnswering({
         shownIds: withShown(previouslyShown, executed.results.map((result) => publicRecordId(result.sourceId ?? sourceId, result.recordId))),
         dataAsOf: view.dataAsOf,
         coverage: executed.coverage ?? null,
+        candidateIds: stageDump ? executed.candidateIds ?? [] : null,
         receipt: receiptOf('answer', {
           resultCount: executed.results.length,
           retriever: dense?.queryEnabled ? 'hybrid' : 'lexical',

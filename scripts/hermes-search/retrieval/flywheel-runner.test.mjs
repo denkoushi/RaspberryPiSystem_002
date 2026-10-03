@@ -42,6 +42,9 @@ const jevEvaluate = async (input) => ({
   answers: Object.fromEntries(Object.keys(input.questions).map((key) => [key, { type: 'choice', choice: 'g3' }])),
 });
 
+// Live scorer that always shows the anchor; tests of the stages inject their own.
+const liveShown = async (row) => ({ outcome: 'answer', shown: [row.a], candidates: [row.a, row.b], judged: 30, loss: null, vectorStatus: 'ok', ms: 1 });
+
 test('settings default to off, cap the nightly budget, and follow the enrichment window', () => {
   const off = flywheelSettings({});
   assert.equal(off.enabled, false);
@@ -71,7 +74,7 @@ test('the runner stays idle when disabled, outside the window, or without an inf
 test('a night writes one text-free line per pair, keeps confirmed anchors, and respects the budget', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
   const status = await runFlywheelNight({
-    records, settings: settings(dir, { maxQuestions: 2 }), now: night, readDense: async () => dense, chat: fakeChat(), jevEvaluate, seed: 7, log: () => {},
+    records, settings: settings(dir, { maxQuestions: 2 }), now: night, readDense: async () => dense, chat: fakeChat(), jevEvaluate, live: liveShown, seed: 7, log: () => {},
   });
   assert.equal(status.reason, 'completed');
   assert.equal(status.night, '2026-10-03');
@@ -82,10 +85,13 @@ test('a night writes one text-free line per pair, keeps confirmed anchors, and r
     assert.deepEqual(Object.keys(row.grades), ['dgx', 'jev']);
     assert.equal(row.kept, true);
     assert.equal(JSON.stringify(row).includes('surface scratch'), false);
+    assert.equal(row.live.loss, null);
+    assert.deepEqual(row.live.shown, [row.a]);
   }
   assert.equal(status.kept, 2);
+  assert.equal(status.shown, 2);
   // The budget is spent for this night; a second start does nothing.
-  const again = await runFlywheelNight({ records, settings: settings(dir, { maxQuestions: 2 }), now: night, readDense: async () => dense, chat: fakeChat(), jevEvaluate, log: () => {} });
+  const again = await runFlywheelNight({ records, settings: settings(dir, { maxQuestions: 2 }), now: night, readDense: async () => dense, chat: fakeChat(), jevEvaluate, live: liveShown, log: () => {} });
   assert.equal(again.reason, 'budget_reached');
   // Anchors used on earlier nights are not used again.
   const used = await usedAnchors(dir);
@@ -95,7 +101,7 @@ test('a night writes one text-free line per pair, keeps confirmed anchors, and r
 test('the runner stops for the night when the business LLM stays slow or failing', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
   const status = await runFlywheelNight({
-    records, settings: settings(dir), now: night, readDense: async () => dense, chat: fakeChat({ slowAfter: 1 }), jevEvaluate, seed: 7, log: () => {},
+    records, settings: settings(dir), now: night, readDense: async () => dense, chat: fakeChat({ slowAfter: 1 }), jevEvaluate, live: liveShown, seed: 7, log: () => {},
   });
   assert.equal(status.reason, 'dgx_busy');
   assert.ok(status.dropped >= 1);
@@ -114,4 +120,27 @@ test('a missing dense store ends the night without calling the model', async () 
   assert.equal(called, false);
   writeFileSync(path.join(dir, 'questions-2026-10-02.jsonl'), '{"a":"x1"}\nnot json\n');
   assert.equal((await usedAnchors(dir)).size, 0);
+});
+
+test('kept questions are scored against the live pipeline and the loss stage is counted', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  let calls = 0;
+  const live = async (row) => {
+    calls += 1;
+    return calls === 1
+      ? { outcome: 'no_result', shown: [], candidates: ['zz', row.a], judged: 30, loss: 'judge_rejected', vectorStatus: 'timeout', ms: 5 }
+      : { outcome: 'clarification', shown: [], candidates: [], judged: 30, loss: 'status', vectorStatus: null, ms: 2 };
+  };
+  const status = await runFlywheelNight({
+    records, settings: settings(dir, { maxQuestions: 2 }), now: night, readDense: async () => dense, chat: fakeChat(), jevEvaluate, live, seed: 7, log: () => {},
+  });
+  assert.equal(status.kept, 2);
+  assert.equal(status.shown, 0);
+  assert.deepEqual(status.lossStages, { judge_rejected: 1, status: 1 });
+  const rows = readFileSync(questionsPath(dir, '2026-10-03'), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(rows[0].live.loss, 'judge_rejected');
+  assert.deepEqual(rows[0].live.candidates, ['zz', rows[0].a]);
+  assert.equal(rows[1].live.outcome, 'clarification');
+  // Dropped questions are not scored.
+  assert.equal(calls, 2);
 });
