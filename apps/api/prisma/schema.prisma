@@ -2524,6 +2524,13 @@ enum PartMeasurementDrawingOcrStatus {
   FAILED
 }
 
+enum PartMeasurementDrawingDimensionMapStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 /// キオスク「要領書」用PDF（手動アップロード / Gmail取り込み）
 model KioskDocument {
   id                             String                          @id @default(uuid())
@@ -2864,6 +2871,7 @@ model PartMeasurementVisualTemplate {
   updatedAt                DateTime                         @updatedAt
   businessTemplates        PartMeasurementTemplate[]
   ocrCaches                PartMeasurementDrawingOcrCache[]
+  dimensionMaps            PartMeasurementDrawingDimensionMap[]
 
   @@index([isActive, name])
   @@index([searchDigits(ops: raw("gin_trgm_ops"))], type: Gin, map: "PartMeasurementVisualTemplate_searchDigits_trgm_idx")
@@ -2901,6 +2909,36 @@ model PartMeasurementDrawingOcrCache {
   @@index([status, updatedAt], map: "PMDrawingOcrCache_idx_status_updated")
   @@index([status, createdAt], map: "PMDrawingOcrCache_idx_claim")
   @@index([status, queuePriority, lastQueuedAt, createdAt], map: "PMDrawingOcrCache_idx_claim_priority")
+}
+
+/// 検査図面の寸法マップ（DGX VLM の夜間読取結果）。図面画像の版ごとに1件。
+/// payload は gzip JSON（寸法の表記・基準値・公差・種類・深さ・図面座標）。
+model PartMeasurementDrawingDimensionMap {
+  id                      String                                   @id @default(uuid())
+  visualTemplateId        String
+  analysisVersion         String
+  drawingImageFingerprint String
+  status                  PartMeasurementDrawingDimensionMapStatus @default(PENDING)
+  payloadCompressed       Bytes?
+  payloadEncoding         String?
+  imageWidth              Int?
+  imageHeight             Int?
+  dimensionCount          Int                                      @default(0)
+  tileCount               Int                                      @default(0)
+  tileFailedCount         Int                                      @default(0)
+  attemptCount            Int                                      @default(0)
+  startedAt               DateTime?
+  finishedAt              DateTime?
+  lastAttemptAt           DateTime?
+  nextAttemptAt           DateTime?
+  failureReason           String?
+  createdAt               DateTime                                 @default(now())
+  updatedAt               DateTime                                 @updatedAt
+  visualTemplate          PartMeasurementVisualTemplate            @relation(fields: [visualTemplateId], references: [id], onDelete: Cascade)
+
+  @@unique([visualTemplateId, analysisVersion, drawingImageFingerprint], map: "PMDrawingDimMap_unique_visual_version_hash")
+  @@index([visualTemplateId, status], map: "PMDrawingDimMap_idx_visual_status")
+  @@index([status, nextAttemptAt, createdAt], map: "PMDrawingDimMap_idx_claim")
 }
 
 /// 検査図面の同時作成・まとめて改版単位。

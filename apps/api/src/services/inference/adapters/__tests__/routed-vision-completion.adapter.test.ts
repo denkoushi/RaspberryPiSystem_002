@@ -38,6 +38,16 @@ describe('RoutedVisionCompletionAdapter', () => {
     controller.abort();
     expect(fetchImpl.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
   });
+  it('sends response_format only when jsonOutput is requested', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: '{"dimensions": []}' } }] }), { status: 200 })
+    );
+    const adapter = new RoutedVisionCompletionAdapter({ router: baseRouter(), fetchImpl, useCase: 'photo_label', getMaxTokens: () => 100, getTemperature: () => 0 });
+    await adapter.complete({ userText: '図面', imageBytes: Buffer.from('jpeg'), mimeType: 'image/jpeg', jsonOutput: true, timeoutMs: 115_000 });
+    await adapter.complete({ userText: '写真', imageBytes: Buffer.from('jpeg'), mimeType: 'image/jpeg' });
+    expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body)).response_format).toEqual({ type: 'json_object' });
+    expect(JSON.parse(String(fetchImpl.mock.calls[1]?.[1]?.body))).not.toHaveProperty('response_format');
+  });
   it('returns assistant text on 200', async () => {
     const fetchImpl = vi.fn(async () => ({
       ok: true,
