@@ -22,8 +22,10 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - [x] (2026-10-02) ローカル検証: API 関連テスト 96件＋取り込み保存 5件、Web 関連テスト、lint、型検査、実DBへの migration 適用と実データ50件の取り込み、実画面の表示
 - [x] (2026-10-02) PR #1637 を main へ squash merge（655b6596）、Pi5 標準デプロイ（run 20261002-055008-ba0a6b、failed=0）。本番で migration の適用、キーなしの 401、画面の 200、スケジューラの起動ログを確認（追跡セッションが読み取りで確認）
 - [x] (2026-10-02) 追加（1段目）: CSV取込が取込種別 `machineSignalGmail` を受け付けて専用の取り込みへ振り分けるようにした（行はまだ足さない）。管理コンソール「設備稼働」を1画面の構成に作り直した（モック https://claude.ai/artifact/D6zvMk3pUxx4ZC2n8YKDUP、ユーザー承認）
-- [ ] 追加分（1段目、PR #1651）の CI、main への統合、Pi5 デプロイ
-- [ ] 追加（2段目）: 1段目が本番で安定してから、CSV取込の一覧へ設備稼働の行を自動で足し、専用スケジューラを外す
+- [x] (2026-10-02) 追加分（1段目）の PR #1651 を main へ squash merge（1d755105）、Pi5 標準デプロイ（run 20261002-092631-6805e7、failed=0）。ユーザーが本番で、管理コンソールの新しい画面と工場・種別の設定を確認
+- [x] (2026-10-02) ヘッダーで選択中のグループ名が白地に白文字になる不具合を修正（PR #1646、43febc37、run 20261002-064538-8f7a11）。Mac と Pi4 での見え方の確認は 2026-10-05（ユーザー）
+- [x] (2026-10-02) 追加（2段目）を実装: 起動時に CSV取込の一覧へ設備稼働の行（名前「設備稼働」、毎時47分）を足し、専用スケジューラを外した
+- [ ] 2段目の PR、CI、main への統合、Pi5 デプロイ。本番の CSV取込 に「設備稼働」が毎時47分・有効で出ることを確認
 - [ ] 本番で Signal 番号ごとの工場・種別を設定する（ユーザー）
 - [ ] OneDrive の2024年からの過去分を管理コンソールから取り込む（ユーザー）
 - [ ] 実機（キオスク）での見え方の確認（ユーザー）
@@ -62,7 +64,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Date/Author: 2026-10-02 / Claude
 
 - Decision: Gmail の取り込みは、CSV取込の一覧の1行（id `machine-signal-gmail`、取込種別 `machineSignalGmail`、既定は毎時47分）へ移す。ただし2段階で行う。1段目は種別を受け付けて専用の取り込みへ振り分けるだけにし、行は足さず、専用スケジューラ（毎時47分）を残す。2段目で行を自動で足し、専用スケジューラを外す。
-  Rationale: 本番で使い始めたユーザーから「CSV取込の一覧に無い」と指摘を受けた。一覧に載せれば、時刻の変更・停止・履歴をほかの取込と同じ画面で扱え、時刻の重なりにも気づける。一方、`BackupConfigLoader` は backup.json の検証に失敗すると既定の設定を返す。新しい取込種別の行を書いた直後に前の版へ戻すと、古い版は行を検証できず、CSV取込・バックアップ・Gmail 連携がすべて既定に落ちる。先に「読める版」を本番に置いてから「書く版」を出せば、どの時点で戻しても読めない行は存在しない。専用スケジューラは、一覧に設備稼働の行があれば何もしないので、2段目で二重に取りに行くことはない。
+  Rationale: 本番で使い始めたユーザーから「CSV取込の一覧に無い」と指摘を受けた。一覧に載せれば、時刻の変更・停止・履歴をほかの取込と同じ画面で扱え、時刻の重なりにも気づける。一方、`BackupConfigLoader` は backup.json の検証に失敗すると既定の設定を返す。新しい取込種別の行を書いた直後に前の版へ戻すと、古い版は行を検証できず、CSV取込・バックアップ・Gmail 連携がすべて既定に落ちる。先に「読める版」を本番に置いてから「書く版」を出せば、どの時点で戻しても読めない行は存在しない。1段目の専用スケジューラは、一覧に設備稼働の行があれば何もしないので、2段目から1段目へ戻しても二重に取りに行くことはない。2段目を、種別を読めない版（1d755105 より前）まで戻してはならない。
   Date/Author: 2026-10-02 / Claude（ユーザー指示。段階分けは Claude）
 
 - Decision: 過去分は、管理コンソールでフォルダを選んでアップロードする（50ファイルずつ送信）。zip は使わない。
@@ -83,7 +85,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 ## Outcomes & Retrospective
 
-2026-10-02 に最初の版（PR #1637、655b6596）を本番へ反映した。同日、本番で使い始めたユーザーの指摘を受けて、CSV取込の一覧への組み込みと管理コンソールの作り直しを追加した（別 PR、統合とデプロイは未完了）。
+2026-10-02 に最初の版（PR #1637、655b6596）を本番へ反映した。同日、本番で使い始めたユーザーの指摘を受けて、管理コンソールの作り直しと CSV取込の一覧への組み込みを追加した。作り直しと組み込みの1段目（PR #1651、1d755105）は本番へ反映済み。行を足す2段目は別 PR で、統合とデプロイは未完了。
 
 10/01 の実データでは、50台×24時間のうち稼働は30.5%、最大のロスは3時間超の停止（431時間、36%）だった。予兆（悪化の検知）は直近7日とその前の28日を比べるため、過去分を取り込むまで何も出ない。
 
@@ -93,7 +95,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 用語を先に定める。「センサー」は信号灯を読む装置1台で、日報ファイル名の Signal 番号で識別する。「日報」は1センサー×1日のCSV。「集計日」は日報1行目の日付で、既定では 08:00 から翌 08:00 まで。「区分」は共通6区分のこと。「気づき」は一覧で機械に付ける短い判定（異常 多、チョコ停 多、長時間停止、ほぼ停止、記録なし、良好）。「チョコ停」は短い停止（既定で5分以下）のこと。
 
-API 側の中心は `apps/api/src/services/machine-signal/` である。`signal-daily-report.parser.ts` が日報を解析し（行位置ではなく内容でブロックを見分け、UTF-8 で読めなければ Shift_JIS とみなす）、`signal-metrics.ts` が区分の決定と1日分の指標の計算を行う。どちらもDBに触れない純関数である。`signal-report-import.service.ts` が保存、`machine-signal-settings.service.ts` が設定、`machine-signal-insights.aggregate.ts` と `machine-signal-insights.service.ts` が画面用の集計、`machine-signal-gmail-ingestion.service.ts` が Gmail からの取り込みを担い、`machine-signal-admin.service.ts` が管理画面の上段に出す取り込みの状況を返す。定期実行は、いまは専用の `machine-signal-gmail.scheduler.ts`（毎時47分）が行う。CSV取込の一覧に設備稼働の行（`apps/api/src/services/imports/machine-signal-import-schedule.policy.ts` が見分ける）があれば、CSV取込のスケジューラがその時刻で動かし、専用スケジューラは何もしない。ルートは `apps/api/src/routes/machine-signal/index.ts` で、`/api/machine-signal` 配下に置く。
+API 側の中心は `apps/api/src/services/machine-signal/` である。`signal-daily-report.parser.ts` が日報を解析し（行位置ではなく内容でブロックを見分け、UTF-8 で読めなければ Shift_JIS とみなす）、`signal-metrics.ts` が区分の決定と1日分の指標の計算を行う。どちらもDBに触れない純関数である。`signal-report-import.service.ts` が保存、`machine-signal-settings.service.ts` が設定、`machine-signal-insights.aggregate.ts` と `machine-signal-insights.service.ts` が画面用の集計、`machine-signal-gmail-ingestion.service.ts` が Gmail からの取り込みを担い、`machine-signal-admin.service.ts` が管理画面の上段に出す取り込みの状況を返す。定期実行は CSV取込のスケジューラ（`apps/api/src/services/imports/`）が行う。起動時に `apps/api/src/services/imports/machine-signal-import-schedule.policy.ts` が、一覧に設備稼働の行（id `machine-signal-gmail`、名前「設備稼働」、毎時47分）が無ければ足す。管理者が時刻や有効・無効を変えた行には触らない。ルートは `apps/api/src/routes/machine-signal/index.ts` で、`/api/machine-signal` 配下に置く。
 
 DB のモデルは `apps/api/prisma/schema.prisma` の末尾にある `MachineSignalSensor`（センサーの設定。主キーは Signal 番号）、`MachineSignalDailyReport`（日報。Signal 番号と集計日で一意）、`MachineSignalSettingsConfig`（全体設定の単一行。キーは `shared`）、`MachineSignalImportRun`（取り込みの記録）の4つである。
 

@@ -136,7 +136,6 @@ describe('start-post-listen-schedulers naming contract', () => {
       'backup',
       'csv-import',
       'kiosk-document-gmail',
-      'machine-signal-gmail',
       'kiosk-document-ocr',
       'work-instruction-gmail',
       'gmail-trash-cleanup',
