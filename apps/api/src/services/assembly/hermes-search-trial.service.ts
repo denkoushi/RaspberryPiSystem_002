@@ -104,6 +104,7 @@ export class HermesSearchTrialService {
   private corpusReady = false;
   private lastCorpusCount = 0;
   private enrichmentChild: ChildProcessByStdio<Writable, null, null> | null = null;
+  private flywheelChild: ChildProcessByStdio<Writable, null, null> | null = null;
 
   private readonly settings: TrialSettings;
 
@@ -113,11 +114,11 @@ export class HermesSearchTrialService {
 
   isEnabled() { return this.settings.enabled; }
 
-  // Enrichment runs from the corpus refresh, which starts with the worker. Without this, an API
-  // restart leaves the overnight enrichment idle until the first Chat request.
+  // Enrichment and the synthetic question flywheel run from the corpus refresh, which starts with
+  // the worker. Without this, an API restart leaves the night jobs idle until the first Chat request.
   warmForEnrichment() {
     if (!this.settings.enabled || !this.settings.retrievalV2) return;
-    if (process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED !== 'true') return;
+    if (process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED !== 'true' && process.env.HERMES_FLYWHEEL_ENABLED !== 'true') return;
     this.start().catch(() => { console.warn('hermes retrieval warm start failed'); });
   }
 
@@ -396,6 +397,7 @@ export class HermesSearchTrialService {
       this.corpusReady = true;
       this.child?.stdin.write(`${JSON.stringify({ type: 'corpus', mode, records, asOf: new Date().toISOString() })}\n`);
       this.kickEnrichment(records);
+      this.kickFlywheel(records);
     } catch {
       console.warn(`hermes retrieval refresh failed count=${this.lastCorpusCount}`);
     }
@@ -422,10 +424,34 @@ export class HermesSearchTrialService {
     child.stdin.end();
   }
 
+  // The synthetic question flywheel (hermes-synthetic-question-flywheel-execplan.md) gets the same
+  // corpus. The runner checks its night window and budget itself and exits at once outside them.
+  private kickFlywheel(records: Array<Record<string, unknown>>) {
+    if (process.env.HERMES_FLYWHEEL_ENABLED !== 'true' || this.flywheelChild || records.length === 0) return;
+    const entry = process.env.HERMES_FLYWHEEL_ENTRY
+      ?? '/app/scripts/hermes-search/retrieval/flywheel-runner.mjs';
+    let child: ChildProcessByStdio<Writable, null, null>;
+    try {
+      child = spawn(this.settings.node, [entry], { env: process.env, stdio: ['pipe', 'ignore', 'ignore'] });
+    } catch {
+      console.warn('hermes retrieval flywheel start failed');
+      return;
+    }
+    this.flywheelChild = child;
+    const clear = () => { if (this.flywheelChild === child) this.flywheelChild = null; };
+    child.once('spawn', () => { if (child.pid) try { setPriority(child.pid, 19); } catch { /* OS may reject the priority. */ } });
+    child.once('error', () => { clear(); console.warn('hermes retrieval flywheel start failed'); });
+    child.once('exit', clear);
+    child.stdin.on('error', clear);
+    child.stdin.write(JSON.stringify({ records }));
+    child.stdin.end();
+  }
+
   close() {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     this.sessions.clear();
     this.child?.kill('SIGTERM');
     this.enrichmentChild?.kill('SIGTERM');
+    this.flywheelChild?.kill('SIGTERM');
   }
 }

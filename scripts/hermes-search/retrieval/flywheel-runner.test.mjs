@@ -1,0 +1,117 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { DEFAULT_MAX_QUESTIONS, MAX_QUESTIONS_CAP, flywheelSettings, nightOf, questionsPath, runFlywheelNight, usedAnchors } from './flywheel-runner.mjs';
+
+function unit(values) {
+  const norm = Math.hypot(...values);
+  return Float32Array.from(values.map((value) => value / norm));
+}
+
+const records = [
+  { id: 'nonconformity:a1', originDepartmentName: 'North Shop', partName: 'Table', condition: 'clamp was loose', remarks: 'surface scratch on the table top', disposition: 'repolished' },
+  { id: 'nonconformity:b1', originDepartmentName: 'North Shop', partName: 'Column', condition: 'tool hit the part', remarks: 'dent on the column face', disposition: 'remade' },
+  { id: 'nonconformity:c1', originDepartmentName: 'North Shop', partName: 'Base', condition: 'paint was thin', remarks: 'paint peeled off the base', disposition: 'repainted' },
+];
+const dense = [
+  { id: 'nonconformity:a1', vector: unit([1, 0.2, 0]) },
+  { id: 'nonconformity:b1', vector: unit([1, 0.6, 0]) },
+  { id: 'nonconformity:c1', vector: unit([0.9, 0.1, 0.3]) },
+];
+// 23:30 Tokyo on 2026-10-03.
+const night = () => new Date('2026-10-03T14:30:00Z');
+
+function settings(dir, extra = {}) {
+  return { enabled: true, maxQuestions: 10, window: '22-6', dir, denseStore: 'unused', origin: 'http://dgx', token: 't', egress: '', model: 'm', ...extra };
+}
+
+function fakeChat({ slowAfter = Infinity } = {}) {
+  let calls = 0;
+  return async ({ messages, schema }) => {
+    calls += 1;
+    if (calls > slowAfter) return { ok: false, reason: 'timeout' };
+    if (schema.required[0] === 'question') return { ok: true, content: JSON.stringify({ question: `キズ ${calls}` }) };
+    const grade = messages[1].content.includes('scratch') || messages[1].content.includes('dent') || messages[1].content.includes('peeled') ? 3 : 1;
+    return { ok: true, content: JSON.stringify({ grade }) };
+  };
+}
+
+const jevEvaluate = async (input) => ({
+  answers: Object.fromEntries(Object.keys(input.questions).map((key) => [key, { type: 'choice', choice: 'g3' }])),
+});
+
+test('settings default to off, cap the nightly budget, and follow the enrichment window', () => {
+  const off = flywheelSettings({});
+  assert.equal(off.enabled, false);
+  assert.equal(off.maxQuestions, DEFAULT_MAX_QUESTIONS);
+  const on = flywheelSettings({ HERMES_FLYWHEEL_ENABLED: 'true', HERMES_FLYWHEEL_MAX_QUESTIONS: '9999', HERMES_RETRIEVAL_ENRICHMENT_WINDOW: '22-6' });
+  assert.equal(on.enabled, true);
+  assert.equal(on.maxQuestions, MAX_QUESTIONS_CAP);
+  assert.equal(on.window, '22-6');
+  assert.equal(flywheelSettings({ HERMES_FLYWHEEL_MAX_QUESTIONS: 'x' }).maxQuestions, DEFAULT_MAX_QUESTIONS);
+  // A night that runs past midnight keeps the date it started on.
+  assert.equal(nightOf(new Date('2026-10-03T14:30:00Z')), '2026-10-03');
+  assert.equal(nightOf(new Date('2026-10-03T19:30:00Z')), '2026-10-03');
+});
+
+test('the runner stays idle when disabled, outside the window, or without an inference route', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const lines = [];
+  const log = (line) => lines.push(line);
+  assert.equal((await runFlywheelNight({ records, settings: settings(dir, { enabled: false }), now: night, log })).reason, 'disabled');
+  assert.equal((await runFlywheelNight({ records, settings: settings(dir), now: () => new Date('2026-10-03T03:00:00Z'), log })).reason, 'outside_window');
+  assert.equal((await runFlywheelNight({ records, settings: settings(dir, { origin: '', token: '' }), now: night, log })).reason, 'not_configured');
+  assert.match(lines[0], /^hermes retrieval flywheel reason=disabled /u);
+  const status = JSON.parse(readFileSync(path.join(dir, 'flywheel-status.json'), 'utf8'));
+  assert.equal(status.reason, 'not_configured');
+});
+
+test('a night writes one text-free line per pair, keeps confirmed anchors, and respects the budget', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const status = await runFlywheelNight({
+    records, settings: settings(dir, { maxQuestions: 2 }), now: night, readDense: async () => dense, chat: fakeChat(), jevEvaluate, seed: 7, log: () => {},
+  });
+  assert.equal(status.reason, 'completed');
+  assert.equal(status.night, '2026-10-03');
+  const rows = readFileSync(questionsPath(dir, '2026-10-03'), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(rows.length, 2);
+  for (const row of rows) {
+    assert.ok(row.question.startsWith('キズ'));
+    assert.deepEqual(Object.keys(row.grades), ['dgx', 'jev']);
+    assert.equal(row.kept, true);
+    assert.equal(JSON.stringify(row).includes('surface scratch'), false);
+  }
+  assert.equal(status.kept, 2);
+  // The budget is spent for this night; a second start does nothing.
+  const again = await runFlywheelNight({ records, settings: settings(dir, { maxQuestions: 2 }), now: night, readDense: async () => dense, chat: fakeChat(), jevEvaluate, log: () => {} });
+  assert.equal(again.reason, 'budget_reached');
+  // Anchors used on earlier nights are not used again.
+  const used = await usedAnchors(dir);
+  assert.equal(used.size, 2);
+});
+
+test('the runner stops for the night when the business LLM stays slow or failing', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const status = await runFlywheelNight({
+    records, settings: settings(dir), now: night, readDense: async () => dense, chat: fakeChat({ slowAfter: 1 }), jevEvaluate, seed: 7, log: () => {},
+  });
+  assert.equal(status.reason, 'dgx_busy');
+  assert.ok(status.dropped >= 1);
+  const rows = readFileSync(questionsPath(dir, '2026-10-03'), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+  assert.ok(rows.length < 3);
+});
+
+test('a missing dense store ends the night without calling the model', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  let called = false;
+  const status = await runFlywheelNight({
+    records, settings: settings(dir), now: night, readDense: async () => { throw new Error('missing'); },
+    chat: async () => { called = true; return { ok: false }; }, jevEvaluate, log: () => {},
+  });
+  assert.equal(status.reason, 'dense_unavailable');
+  assert.equal(called, false);
+  writeFileSync(path.join(dir, 'questions-2026-10-02.jsonl'), '{"a":"x1"}\nnot json\n');
+  assert.equal((await usedAnchors(dir)).size, 0);
+});

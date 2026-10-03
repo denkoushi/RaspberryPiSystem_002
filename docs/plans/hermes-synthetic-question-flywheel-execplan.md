@@ -15,9 +15,10 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 - [x] (2026-10-03) Research of established practice and owner decision to build the flywheel (see Context and Decision Log).
 - [x] (2026-10-03) Milestone 1: seeds and contrastive question generator, offline, with unit tests (#1662, merged as f4854ed7 and released to the Pi 5 with no behaviour change).
 - [x] (2026-10-03) Milestone 2 trial: 69 pairs generated and graded on the Pi 5 through the existing routes, run by the owner (see Surprises).
-- [x] (2026-10-03) Milestone 2 code: per-token copy guard, keep rule on the anchor only, graders, and a busy guard for the business LLM (this change).
+- [x] (2026-10-03) Milestone 2 code: per-token copy guard, keep rule on the anchor only, graders, and a busy guard for the business LLM (#1664).
 - [ ] Milestone 2 remainder: pooled top-30 labels for kept questions; moved into the Milestone 3 runner, which has the live pipeline in the same process.
-- [ ] Milestone 3: nightly runner on the Pi 5 behind a flag, with a per-night report.
+- [x] (2026-10-03) Milestone 3 code: `flywheel-runner.mjs` started by the API after each corpus refresh when `HERMES_FLYWHEEL_ENABLED=true`, inside the enrichment night window, with a nightly budget and the busy guard; it writes the night file and `flywheel-status.json`. The release path forwards `HERMES_FLYWHEEL_ENABLED` and `HERMES_FLYWHEEL_MAX_QUESTIONS` without defaulting them (this change). The flag stays off until a release sets it.
+- [ ] Milestone 3 remainder: live result ids, pooled top-30 labels and the loss stage per question, and `flywheel-report.mjs`.
 - [ ] Milestone 4: acceptance gate for retrieval changes on the rolling set, with held-out rotation and real-question mixing.
 
 ## Surprises & Discoveries

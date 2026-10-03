@@ -266,6 +266,40 @@ describe('HermesSearchTrialService retrieval switch', () => {
     }
   });
 
+  it('starts the flywheel runner with the corpus only while the flywheel is on', async () => {
+    const previous = { flywheel: process.env.HERMES_FLYWHEEL_ENABLED, enrichment: process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED };
+    try {
+      const gate = holdingChild();
+      const written: string[] = [];
+      const runnerStdin = new EventEmitter() as EventEmitter & { write: (line: string) => boolean; end: () => void };
+      runnerStdin.write = (line: string) => { written.push(String(line)); return true; };
+      runnerStdin.end = vi.fn();
+      const runner = new EventEmitter() as EventEmitter & { stdin: typeof runnerStdin; pid: number; kill: ReturnType<typeof vi.fn> };
+      runner.stdin = runnerStdin;
+      runner.pid = 43;
+      runner.kill = vi.fn();
+      spawnMock.mockImplementation((_node: string, args: string[]) => (String(args[0]).endsWith('flywheel-runner.mjs') ? runner : gate.child));
+      delete process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED;
+      process.env.HERMES_FLYWHEEL_ENABLED = 'true';
+      // The runner is started only with a non-empty corpus.
+      const service = new HermesSearchTrialService(v2Settings({ loadRecords: async () => [{ id: 'rec-1', condition: 'scratch' }] }));
+      service.warmForEnrichment();
+      await vi.waitFor(() => expect(gate.corpus).toHaveLength(1));
+      await vi.waitFor(() => expect(written).toHaveLength(1));
+      const runnerCall = spawnMock.mock.calls.find((call) => String(call[1]?.[0]).endsWith('flywheel-runner.mjs'));
+      expect(runnerCall?.[1]?.[0]).toBe('/app/scripts/hermes-search/retrieval/flywheel-runner.mjs');
+      expect(Array.isArray(JSON.parse(written[0] ?? '{}').records)).toBe(true);
+      expect(runnerStdin.end).toHaveBeenCalled();
+      service.close();
+      expect(runner.kill).toHaveBeenCalledWith('SIGTERM');
+    } finally {
+      if (previous.flywheel === undefined) delete process.env.HERMES_FLYWHEEL_ENABLED;
+      else process.env.HERMES_FLYWHEEL_ENABLED = previous.flywheel;
+      if (previous.enrichment === undefined) delete process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED;
+      else process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED = previous.enrichment;
+    }
+  });
+
   it('sends an initial corpus and then an incremental merge without dropping the previous load', async () => {
     const gate = holdingChild();
     spawnMock.mockImplementation(() => gate.child);
