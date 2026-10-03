@@ -276,3 +276,25 @@ Decision (owner, 2026-10-02): turn enrichment off. The gain is too small to noti
 Change: the retrieval worker attaches the stored enrichment only while `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true`. Before, it attached the store whenever the file existed, so the flag stopped only the overnight runner. The release for this change passes `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=false`. The store file stays on the Pi 5, and `true` restores the previous behaviour.
 
 After the release, record text no longer includes enrichment, so every dense vector is recomputed in the next bulk window. Until a record is recomputed its previous vector is used.
+
+### 2026-10-03: a second grader (DGX business LLM) and consensus labels (measurement basis)
+
+Trigger: the production judge and the graded labels were both JEV, which research on LLM relevance judgments calls circular and lenient.
+
+Method: the DGX business LLM (Qwen3.8 Flash-Next) graded question-record pairs with the same 0 to 3 rubric, called once per pair from the Pi 5 API container through the consultation egress, the route the enrichment runner uses. The owner ran the prepared commands; nothing was written in the container. First 419 pairs (the 99 gold targets plus 80 pairs for each JEV grade), then every remaining pair JEV graded 3 (1,544 pairs).
+
+Agreement on 419 pairs: exact 71%, within one grade 94%, Cohen's kappa 0.78 on "grade 3". Gold targets got 3 from Qwen in 85 of 99 and 2 in 11. Qwen is stricter: of 1,715 pairs JEV graded 3, Qwen gave 3 to 1,003 (58%), 2 to 406, and 1 or 0 to 306. A blind reading by the implementing agent of 150 disputed development pairs (118 after removing questions with no content condition) sided with Qwen on grade 3 in 67% of them; where Qwen gave 2, the reading gave 3 in 44%. The true relevant share of JEV's grade 3 is therefore about 70%, between the two labels.
+
+Consensus labels (both graders give 3) on the same-day runs of 2026-10-02, 86 answer cases:
+
+| Run | A relevant record shown (JEV only, consensus) | Nothing shown | Consensus share of shown records |
+| --- | --- | --- | --- |
+| 15 candidates, enrichment (production before #1642) | 70, 63 | 11 | 71% |
+| 30 candidates, no enrichment | 72, 65 | 10 | 70% |
+| 30 candidates, enrichment (production after #1642) | 73, 68 | 8 | 72% |
+
+Paired comparisons on consensus labels (cases gained / lost, two-sided sign test): 15 to 30 candidates with enrichment 5 / 0 (p = 0.06); enrichment on at 30 candidates 3 / 0 (p = 0.25); the planned "30, enrichment off" against production 4 / 2 (p = 0.69). No difference is significant with 86 cases. Enrichment was kept on: it lost nothing against production, and turning it off gave up three cases.
+
+Questions that name only a department or a period have no content condition; relevance grading does not apply to them and they produced many grader disagreements. They are to be scored on filters.
+
+Next: `hermes-synthetic-question-flywheel-execplan.md`, which builds a larger, realistic test set from the records every night so that differences of this size can be tested.
