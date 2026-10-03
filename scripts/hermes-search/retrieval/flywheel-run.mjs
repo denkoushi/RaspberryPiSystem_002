@@ -47,6 +47,9 @@ export function scorerEnv(options, base = process.env) {
   };
   if (options.dense !== 'off') {
     env.HERMES_RETRIEVAL_DENSE_STORE = options.dense;
+    // A tunnel to the embedding service (HERMES_RETRIEVAL_DENSE_BASE_URL) takes precedence over the
+    // gateway, as in denseSettings; the Mac usually reaches the DGX that way.
+    if (base.HERMES_RETRIEVAL_DENSE_BASE_URL) env.HERMES_RETRIEVAL_DENSE_BASE_URL = base.HERMES_RETRIEVAL_DENSE_BASE_URL;
     env.HERMES_INFERENCE_ORIGIN = base.HERMES_INFERENCE_ORIGIN ?? '';
     env.HERMES_INFERENCE_TOKEN = base.HERMES_INFERENCE_TOKEN ?? '';
   }

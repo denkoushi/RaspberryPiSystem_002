@@ -102,5 +102,7 @@ test('the offline run answers one split, skips anchors missing from the snapshot
     HERMES_RETRIEVAL_RELEVANCE_POOL: '15',
   });
   assert.equal(scorerEnv(parseRunArgs(['--snapshot', 's', '--questions', 'a', '--out', 'o'])).HERMES_RETRIEVAL_DENSE_PROVIDER, 'off');
+  assert.equal(scorerEnv(options, { HERMES_RETRIEVAL_DENSE_BASE_URL: 'http://127.0.0.1:38110' }).HERMES_RETRIEVAL_DENSE_BASE_URL, 'http://127.0.0.1:38110');
+  assert.equal('HERMES_RETRIEVAL_DENSE_BASE_URL' in env, false);
   assert.throws(() => parseRunArgs(['--snapshot', 's', '--questions', 'a', '--out', 'o', '--split', 'x']), /--split/u);
 });
