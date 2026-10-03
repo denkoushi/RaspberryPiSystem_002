@@ -10,6 +10,7 @@ import {
 import { convertDrawingUploadToPreviewBuffer } from '../../lib/part-measurement-drawing-preview.js';
 
 import { getPartMeasurementDrawingOcrScheduler } from '../../services/part-measurement/part-measurement-drawing-ocr.scheduler.js';
+import { rankPartMeasurementDrawingDimensionMapCandidates } from '../../services/part-measurement/part-measurement-drawing-dimension-map-candidates.js';
 import {
   assertVisualCleanupToken,
   signVisualCleanupToken
@@ -29,6 +30,7 @@ import {
   serializeVisualTemplate,
   serializeDrawingOcrStatus,
   serializeDrawingOcrCandidate,
+  serializeDrawingDimensionMapCandidate,
   readMultipartFile,
   type PartMeasurementRouteDeps
 } from './shared.js';
@@ -39,6 +41,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
     allowWriteKiosk,
     visualTemplateService,
     drawingOcrService,
+    drawingDimensionMapService,
     enqueueDrawingOcrAndWake
   } = deps;
 
@@ -95,7 +98,11 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
         if (status.status === 'PENDING') {
           getPartMeasurementDrawingOcrScheduler().wake();
         }
-        return { ocr: serializeDrawingOcrStatus(status) };
+        const dimensionMap = await drawingDimensionMapService.getCompletedSummary(
+          params.id,
+          status.drawingImageFingerprint
+        );
+        return { ocr: serializeDrawingOcrStatus(status), dimensionMap };
       }
     );
 
@@ -105,16 +112,41 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       async (request) => {
         const params = z.object({ id: z.string().uuid() }).parse(request.params);
         const body = drawingOcrCandidateBodySchema.parse(request.body);
+        const limit = body.limit ?? 5;
+        // 夜間に作った寸法マップがあればそれを使う（画像 AI も OCR も呼ばない）。無い図面は従来の OCR 候補。
+        const ocrStatus = await drawingOcrService.getCurrentStatus(params.id);
+        const dimensionMap = await drawingDimensionMapService.getCompletedPayload(
+          params.id,
+          ocrStatus.drawingImageFingerprint
+        );
+        if (dimensionMap) {
+          const candidates = rankPartMeasurementDrawingDimensionMapCandidates(dimensionMap, {
+            xRatio: body.xRatio,
+            yRatio: body.yRatio,
+            calloutTipXRatio: body.calloutTipXRatio,
+            calloutTipYRatio: body.calloutTipYRatio,
+            measurementLabel: body.measurementLabel,
+            depthMode: body.depthMode,
+            limit
+          });
+          return {
+            status: 'completed',
+            source: 'dimensionMap',
+            candidates: candidates.map(serializeDrawingDimensionMapCandidate),
+            cache: serializeDrawingOcrStatus(ocrStatus)
+          };
+        }
         const result = await drawingOcrService.getCandidates(params.id, {
           xRatio: body.xRatio,
           yRatio: body.yRatio,
           markerNo: body.markerNo,
-          limit: body.limit ?? 5,
+          limit,
           measurementLabel: body.measurementLabel,
           depthMode: body.depthMode
         });
         return {
           status: result.status.toLowerCase(),
+          source: 'ocr',
           candidates: result.candidates.map(serializeDrawingOcrCandidate),
           cache: serializeDrawingOcrStatus(result.cache)
         };

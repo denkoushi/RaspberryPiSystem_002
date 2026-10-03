@@ -15,6 +15,12 @@ import {
   PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_SCHEMA_VERSION,
   PART_MEASUREMENT_DRAWING_OCR_VERSION
 } from '../../services/part-measurement/part-measurement-drawing-ocr-payload.js';
+import {
+  encodePartMeasurementDrawingDimensionMapPayload,
+  PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_ENCODING,
+  PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_SCHEMA_VERSION,
+  PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION
+} from '../../services/part-measurement/part-measurement-drawing-dimension-map-payload.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
 import { SelfInspectionService } from '../../services/part-measurement/self-inspection.service.js';
 import { getPartMeasurementDrawingOcrService } from '../../services/part-measurement/part-measurement-drawing-ocr.service.js';
@@ -583,6 +589,93 @@ describe('part-measurement templates API', () => {
       if (previousLocalOcr === undefined) delete process.env.PART_MEASUREMENT_DRAWING_OCR_LOCAL_ENABLED;
       else process.env.PART_MEASUREMENT_DRAWING_OCR_LOCAL_ENABLED = previousLocalOcr;
     }
+  });
+
+  it('prefers the completed dimension map over OCR for marker candidates', async () => {
+    const { body, contentType } = buildMultipartPng('dimmap-completed-visual', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    const vid = up.json().visualTemplate.id as string;
+
+    const before = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/visual-templates/${vid}/ocr`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(before.statusCode).toBe(200);
+    expect(before.json().dimensionMap).toEqual({ status: 'none', dimensionCount: 0, finishedAt: null });
+    const fingerprint = before.json().ocr.drawingImageFingerprint as string;
+
+    const compressed = await encodePartMeasurementDrawingDimensionMapPayload({
+      schemaVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_SCHEMA_VERSION,
+      analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION,
+      createdAt: new Date().toISOString(),
+      image: { width: 1000, height: 1000 },
+      tiles: [{ id: 'r0c0', box: { x0: 0, y0: 0, x1: 1, y1: 1 }, status: 'ok', dimensionCount: 3 }],
+      dimensions: [
+        { text: 'φ20H7', nominal: 20, upperTolerance: 0.021, lowerTolerance: 0, kind: 'hole', depth: null, xRatio: 0.3, yRatio: 0.3, tileId: 'r0c0' },
+        { text: '55', nominal: 55, upperTolerance: null, lowerTolerance: null, kind: 'len', depth: null, xRatio: 0.21, yRatio: 0.3, tileId: 'r0c0' },
+        { text: 'M6深12', nominal: 6, upperTolerance: null, lowerTolerance: null, kind: 'thread', depth: 12, xRatio: 0.25, yRatio: 0.32, tileId: 'r0c0' }
+      ]
+    });
+    await prisma.partMeasurementDrawingDimensionMap.create({
+      data: {
+        visualTemplateId: vid,
+        analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION,
+        drawingImageFingerprint: fingerprint,
+        status: 'COMPLETED',
+        payloadCompressed: compressed,
+        payloadEncoding: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_ENCODING,
+        imageWidth: 1000,
+        imageHeight: 1000,
+        dimensionCount: 3,
+        tileCount: 1,
+        finishedAt: new Date()
+      }
+    });
+
+    const after = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/visual-templates/${vid}/ocr`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(after.json().dimensionMap.status).toBe('completed');
+    expect(after.json().dimensionMap.dimensionCount).toBe(3);
+
+    const hole = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/visual-templates/${vid}/ocr/candidates`,
+      headers: { ...createAuthHeader(viewerToken), 'content-type': 'application/json' },
+      payload: { xRatio: 0.2, yRatio: 0.3, markerNo: 1, limit: 5, measurementLabel: '穴径', depthMode: 'measured' }
+    });
+    expect(hole.statusCode).toBe(200);
+    expect(hole.json().status).toBe('completed');
+    expect(hole.json().source).toBe('dimensionMap');
+    expect(hole.json().candidates.map((c: { valueText: string }) => c.valueText)).toEqual(['20', '55', '12']);
+    expect(hole.json().candidates[0]).toMatchObject({
+      dimensionText: 'φ20H7',
+      suggestedUpperTolerance: '+0.021',
+      suggestedLowerTolerance: '0'
+    });
+    expect(hole.json().cache.drawingImageFingerprint).toBe(fingerprint);
+
+    const depth = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/visual-templates/${vid}/ocr/candidates`,
+      headers: { ...createAuthHeader(viewerToken), 'content-type': 'application/json' },
+      payload: { xRatio: 0.2, yRatio: 0.3, limit: 5, measurementLabel: 'ネジ穴深さ', depthMode: 'measured' }
+    });
+    expect(depth.json().candidates[0]).toMatchObject({
+      valueText: '12',
+      dimensionText: 'M6深12',
+      suggestedUpperTolerance: null,
+      suggestedLowerTolerance: '0'
+    });
   });
 
   it('treats includeInactive=false as false and only returns inactive visual when true', async () => {

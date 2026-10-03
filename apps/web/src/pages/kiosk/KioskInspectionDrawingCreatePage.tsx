@@ -1,5 +1,6 @@
 import {
   buildDefaultInspectionDrawingMeasurementLabelSettings,
+  resolveInspectionDrawingGeneralToleranceForNominal,
   type InspectionDrawingMeasurementLabelSetting
 } from '@raspi-system/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -906,11 +907,15 @@ export function KioskInspectionDrawingCreatePage() {
     });
   }, []);
 
+  // 候補は、夜間に作った寸法マップがあればそこから、無ければ OCR から出す（判断は API 側）。
+  const candidateSourceReady =
+    visualOcrStatus?.status === 'completed' || visualOcrStatus?.dimensionMap?.status === 'completed';
+
   const requestOcrCandidatesForPoint = useCallback(
     (point: InspectionDrawingPoint) => {
       const visualId = visualTemplateIdForOcr;
       if (!visualId) return;
-      if (visualOcrStatus?.status !== 'completed') return;
+      if (!candidateSourceReady) return;
       const requestId = ++ocrCandidateRequestSeqRef.current;
       setOcrCandidatesByPointId((prev) => ({
         ...prev,
@@ -932,7 +937,9 @@ export function KioskInspectionDrawingCreatePage() {
               markerNo: point.markerNo,
               limit: 5,
               measurementLabel: point.name.trim() || null,
-              depthMode: point.depthMode ?? 'measured'
+              depthMode: point.depthMode ?? 'measured',
+              calloutTipXRatio: point.calloutTipXRatio ?? null,
+              calloutTipYRatio: point.calloutTipYRatio ?? null
             },
             clientKey
           );
@@ -968,7 +975,7 @@ export function KioskInspectionDrawingCreatePage() {
         }
       })();
     },
-    [clientKey, visualOcrStatus?.status, visualTemplateIdForOcr]
+    [candidateSourceReady, clientKey, visualTemplateIdForOcr]
   );
 
   const handlePointChange = (
@@ -993,12 +1000,12 @@ export function KioskInspectionDrawingCreatePage() {
   };
 
   useEffect(() => {
-    if (visualOcrStatus?.status !== 'completed') return;
+    if (!candidateSourceReady) return;
     if (!selectedPoint) return;
     const current = ocrCandidatesByPointId[selectedPoint.id];
     if (current?.loading || current?.candidates.length || current?.status === 'completed') return;
     requestOcrCandidatesForPoint(selectedPoint);
-  }, [ocrCandidatesByPointId, requestOcrCandidatesForPoint, selectedPoint, visualOcrStatus?.status]);
+  }, [candidateSourceReady, ocrCandidatesByPointId, requestOcrCandidatesForPoint, selectedPoint]);
 
   useEffect(() => {
     if (!markerSwapUndo) return;
@@ -1628,14 +1635,31 @@ export function KioskInspectionDrawingCreatePage() {
             ocrCandidateLoading={selectedPointOcrState?.loading ?? false}
             ocrCandidateError={selectedPointOcrState?.error ?? null}
             measurementLabelSettings={measurementLabelSettings}
-            onApplyOcrCandidate={(valueText) => {
+            onApplyOcrCandidate={(valueText, candidate) => {
               if (!selectedPoint) return;
-              updatePoint(
-                selectedPoint.id,
-                pointUsesGeometricTolerance(selectedPoint, { measurementLabelSettings })
-                  ? buildGeometricTolerancePointPatch(valueText)
-                  : { nominalRaw: valueText }
-              );
+              if (pointUsesGeometricTolerance(selectedPoint, { measurementLabelSettings })) {
+                updatePoint(selectedPoint.id, buildGeometricTolerancePointPatch(valueText));
+                return;
+              }
+              const patch: Partial<InspectionDrawingPoint> = { nominalRaw: valueText };
+              // 公差欄が両方空のときだけ案を入れる。図面の明記公差 → 普通公差表 の順（深さは下限 0 だけ）。
+              const toleranceEmpty =
+                selectedPoint.upperToleranceRaw.trim() === '' && selectedPoint.lowerToleranceRaw.trim() === '';
+              if (toleranceEmpty) {
+                const upper = candidate?.suggestedUpperTolerance ?? null;
+                const lower = candidate?.suggestedLowerTolerance ?? null;
+                if (candidate?.source === 'dimensionMap' && (upper !== null || lower !== null)) {
+                  if (upper !== null) patch.upperToleranceRaw = upper;
+                  if (lower !== null) patch.lowerToleranceRaw = lower;
+                } else {
+                  const general = resolveInspectionDrawingGeneralToleranceForNominal(Number(valueText));
+                  if (general !== null) {
+                    patch.upperToleranceRaw = `+${general}`;
+                    patch.lowerToleranceRaw = `-${general}`;
+                  }
+                }
+              }
+              updatePoint(selectedPoint.id, patch);
             }}
           />
         </aside>

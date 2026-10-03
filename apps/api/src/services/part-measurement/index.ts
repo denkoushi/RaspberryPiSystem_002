@@ -16,6 +16,10 @@ export {
   type PartMeasurementDrawingOcrCandidateResult,
   type PartMeasurementDrawingOcrStatusSummary
 } from './part-measurement-drawing-ocr.service.js';
+export {
+  PartMeasurementDrawingDimensionMapService,
+  getPartMeasurementDrawingDimensionMapService
+} from './part-measurement-drawing-dimension-map.service.js';
 export { SelfInspectionService } from './self-inspection.service.js';
 export { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 export {
