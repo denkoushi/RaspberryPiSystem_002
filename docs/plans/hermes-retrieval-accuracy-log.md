@@ -298,3 +298,22 @@ Paired comparisons on consensus labels (cases gained / lost, two-sided sign test
 Questions that name only a department or a period have no content condition; relevance grading does not apply to them and they produced many grader disagreements. They are to be scored on filters.
 
 Next: `hermes-synthetic-question-flywheel-execplan.md`, which builds a larger, realistic test set from the records every night so that differences of this size can be tested.
+
+### 2026-10-04: first synthetic night set and the acceptance gate's first use (measurement basis)
+
+The flywheel's first night on the Pi 5 (2026-10-03, 22:05 to 22:28) tried 100 contrastive pairs, produced 80 valid questions, and kept 78 (both graders gave the anchor grade 3): terse 50, colloquial 14, typo 8, kana 6; median length 17 characters. Twenty were dropped as copies of the record text, which hit the colloquial and kana styles hardest (keep rates 64% and 40% against 94% for terse); the graders were not the reason. Questions that the seed asked to write in kana came out as ordinary Japanese, so the kana style is not yet exercised.
+
+The 78 questions were split 70/30 by a hash of the anchor id (development 52, held-out 26) and answered on the Mac with the kiosk pipeline (`flywheel-run.mjs`, snapshot and stores copied from the Pi 5 on 2026-10-04, JEV through TypeSafe, embedding through a tunnel to the DGX) in two configurations. A question counts when the anchor, or the near miss when both graders also gave it grade 3, is shown.
+
+| Configuration | Development: relevant shown / 52 | Held-out: relevant shown / 26 | Development loss stages |
+| --- | --- | --- | --- |
+| Production (hybrid, enrichment, judge 30) | 37 | 20 | other records shown 8, asked back 3, outside judged candidates 3, rejected by judge 1 |
+| Dense off (lexical, enrichment, judge 30) | 37 | 18 | other records shown 6, outside judged candidates 6, asked back 2, rejected by judge 1 |
+
+Paired: production against dense off gains 2 and loses 2 on development (p = 1.0) and gains 3 and loses 1 on held-out (p = 0.63). The gate (`flywheel-gate.mjs`) rejects both directions, because neither shows a development gain. This is the mechanics working, but the known-good change did not pass, so the acceptance criterion of Milestone 4 is not met yet.
+
+Why: the synthetic questions share much wording with their anchor. The median share of a kept question's character bigrams found in the anchor body is 0.44 (terse 0.56, colloquial 0.32). Questions with a share of 0.5 or more were answered 30 of 36 times, those below 0.5 only 26 of 42. Lexical search alone finds most of them, so this set under-detects the gain from dense retrieval that the hand-written paraphrase sets showed on 2026-09-24 and 2026-10-02. The set must get harder before it can gate retrieval changes: more paraphrase pressure in the generator (reject questions whose bigram share with the anchor exceeds a bound, keep the styles that lower it), and real kiosk questions from the receipts mixed in with the same two-grader labels. About 0.6 s per question, so a full two-configuration comparison of a night takes under five minutes.
+
+Also noted: the planner asked back on 3 development questions in one run and 2 in the other, with the same questions and the same planner; JEV answers vary between runs, which adds noise of about one question per 50 to any paired comparison.
+
+Private files: `runs/flywheel/*-20261004.json` and `.log` (ids and stages, no record text), `work/flywheel/questions-2026-10-03.jsonl`, `snapshots/nonconformity-snapshot-pi5-20261004.json`, `stores/dense-pi5-20261004.bin`, `stores/enrichment-pi5-20261004.jsonl`.

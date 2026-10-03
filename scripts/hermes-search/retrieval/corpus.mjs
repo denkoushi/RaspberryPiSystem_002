@@ -63,10 +63,15 @@ export function buildCorpusView(records, catalog, dataAsOf) {
   };
 }
 
-export function replaceCorpus(current, catalog, message) {
-  const incoming = (Array.isArray(message?.records) ? message.records : [])
+/** Records from API rows: authorized rows are reduced to their text fields, other rows pass through. */
+export function authorizedRecords(rows) {
+  return (Array.isArray(rows) ? rows : [])
     .map((row) => (row?.kind === 'nonconformity' ? recordFromAuthorizedRow(row) : row))
     .filter((row) => row && typeof row.id === 'string');
+}
+
+export function replaceCorpus(current, catalog, message) {
+  const incoming = authorizedRecords(message?.records);
   const records = message?.mode === 'incremental' ? mergeRecords(current?.records ?? [], incoming) : incoming;
   return buildCorpusView(records, catalog, message?.asOf ?? new Date().toISOString());
 }
