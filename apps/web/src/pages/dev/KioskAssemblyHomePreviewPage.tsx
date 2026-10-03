@@ -39,24 +39,46 @@ function row(productNo: string, machineName: string, seeds: UnitSeed[]): Assembl
   };
 }
 
+const B: UnitSeed = ['before'];
+const D: UnitSeed = ['done', '佐藤'];
+const P: UnitSeed = ['pending', '田中'];
 const previewRows: AssemblyHomeLotRowView[] = [
-  row('DA4K0312', 'DX-200 主軸ユニット', [['done', '佐藤'], ['done', '佐藤'], ['pending', '田中'], ['wip', '佐藤', 9, 12], ['wip', '田中', 3, 12], ['before'], ['before'], ['before']]),
-  row('DA4K0298', 'DX-200 送り軸ブラケット', [['pending', '鈴木'], ['pending', '鈴木'], ['wip', '鈴木', 5, 6], ['before']]),
-  row('GB2M1175', 'GR-80 砥石軸ハウジング', [['before'], ['before'], ['before'], ['before'], ['before'], ['before']]),
-  row('GB2M1160', 'GR-80 テーブルベース', [['done', '高橋'], ['done', '高橋'], ['done', '高橋'], ['wip', '高橋', 14, 18]]),
-  row('HC7P0044', 'HM-500 ATCアーム', [['done', '伊藤'], ['pending', '伊藤']])
+  row('B260401', 'MH-2200 搬送装置', [D, D, P, ['wip', '佐藤', 9, 12], ['wip', '田中', 3, 12], B, B, B]),
+  row('B260402', 'MH-2200 搬送装置 昇降ユニット', [P, P, ['wip', '鈴木', 5, 6], B]),
+  row('A260312', '小型治具ユニット', [B, B, B, B, B, B]),
+  row('A260315', '小型治具ユニット 左勝手', [D, D, D, ['wip', '高橋', 14, 18]]),
+  row('C260118', 'GR-80 砥石軸ハウジング', [D, P]),
+  row('C260121', 'GR-80 テーブルベース', [D, D, ['wip', '伊藤', 2, 8], B, B]),
+  row('C260122', 'GR-80 ドレッサーブラケット', [B, B, B]),
+  row('D260044', 'DX-200 主軸ユニット', [D, D, D, D]),
+  row('D260047', 'DX-200 送り軸ブラケット（Z軸・カバー付）', [['wip', '佐藤', 1, 10], B, B, B]),
+  row('D260051', 'DX-200 クーラントマニホールド', [B, B]),
+  row('D260052', 'DX-350 主軸ユニット', [P, ['wip', '田中', 7, 24], B]),
+  row('E260203', 'HM-500 ATCアーム', [D, P, P]),
+  row('E260207', 'HM-500 パレットクランプ', [D, D, ['wip', '鈴木', 2, 8], B, B]),
+  row('E260210', 'HM-500 マガジンベース', [B, B, B, B]),
+  row('F260009', 'LT-40 刃物台ベース', [B, B, B]),
+  row('F260011', 'LT-40 心押台', [D, D, D, D]),
+  row('F260014', 'LT-40 主軸台カバー', [P]),
+  row('G260330', 'SP-12 スピンドルカートリッジ', [['wip', '高橋', 20, 22], B]),
+  row('G260331', 'SP-12 冷却ジャケット', [B, B]),
+  row('H260071', '治具プレート A（溶接後加工品）', [D, P]),
+  row('H260072', '治具プレート B', [B]),
+  row('J260415', 'CV-7 コンベヤ駆動部', [D, D, B, B]),
+  row('J260416', 'CV-7 テンションユニット', [['wip', '伊藤', 4, 6]]),
+  row('K260002', '検査台 フレーム組立', [B, B])
 ];
 
 const template = { id: 't1', modelCode: 'DX-200', procedurePattern: '標準', name: 'DX-200 主軸ユニット 標準', version: 2 };
 const previewCandidates: AssemblySeibanCandidateDto[] = [
-  { fseiban: 'DA4K0320', machineName: 'DX-200 主軸ユニット', machineNameSource: 'production_schedule', activeTemplate: template },
-  { fseiban: 'DA4K0327', machineName: 'DX-200 クーラントマニホールド', machineNameSource: 'production_schedule', activeTemplate: template },
-  { fseiban: 'DA4M0051', machineName: 'DX-350 主軸ユニット', machineNameSource: 'production_schedule', activeTemplate: null }
+  { fseiban: 'B260403', machineName: 'MH-2200 搬送装置', machineNameSource: 'production_schedule', activeTemplate: template },
+  { fseiban: 'B260404', machineName: 'MH-2200 搬送装置 昇降ユニット', machineNameSource: 'production_schedule', activeTemplate: template },
+  { fseiban: 'B260405', machineName: 'MH-3000 搬送装置', machineNameSource: 'production_schedule', activeTemplate: null }
 ];
 
 /** 組立ホームの見た目確認用（APIなし・例データ）。 */
 export function KioskAssemblyHomePreviewPage() {
-  const [fseiban, setFseiban] = useState('DA4');
+  const [fseiban, setFseiban] = useState('B2604');
   const [selected, setSelected] = useState<AssemblySeibanCandidateDto | null>(previewCandidates[0]!);
   const [manual, setManual] = useState(false);
   const [quantity, setQuantity] = useState(6);
@@ -64,7 +86,7 @@ export function KioskAssemblyHomePreviewPage() {
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-[#0f1317] text-[#eef3f6]">
-      <main className="grid min-h-0 flex-1 grid-cols-1 overflow-auto xl:grid-cols-[minmax(0,1fr)_27rem] xl:overflow-hidden">
+      <main className="grid min-h-0 flex-1 grid-cols-1 overflow-auto xl:grid-cols-[minmax(0,1fr)_22rem] xl:overflow-hidden">
         <AssemblyHomeBoard
           rows={previewRows}
           loading={false}
