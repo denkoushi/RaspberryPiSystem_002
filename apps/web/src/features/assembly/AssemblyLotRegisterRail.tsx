@@ -43,8 +43,8 @@ type Props = {
 const FIELD =
   'w-full rounded-lg border border-[#2c3742] bg-[#0f1317] px-3 font-mono font-semibold text-[#eef3f6] placeholder:font-sans placeholder:text-[#617080] focus:border-[#35d6ae] focus:outline-none disabled:opacity-60';
 const STEP =
-  'inline-flex h-11 w-11 items-center justify-center rounded-lg bg-[#1f2730] text-xl font-bold text-[#eef3f6] hover:bg-[#2a343f] disabled:opacity-40';
-const QUIET = 'inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-bold text-[#97a5b2] hover:bg-[#1f2730] hover:text-[#eef3f6] disabled:opacity-50';
+  'inline-flex h-9 w-9 items-center justify-center rounded-md bg-[#1f2730] text-lg font-bold text-[#eef3f6] hover:bg-[#2a343f] disabled:opacity-40';
+const QUIET = 'inline-flex min-h-9 items-center rounded-md px-2.5 text-[0.8125rem] font-bold text-[#97a5b2] hover:bg-[#1f2730] hover:text-[#eef3f6] disabled:opacity-50';
 
 export function AssemblyLotRegisterRail({
   fseibanInput,
@@ -90,9 +90,9 @@ export function AssemblyLotRegisterRail({
   return (
     <aside
       aria-labelledby="assembly-lot-register-heading"
-      className="flex min-h-[34rem] min-w-0 flex-col gap-3 overflow-hidden border-l border-[#2c3742] bg-[#161c22] p-4 text-[#eef3f6] xl:min-h-0 xl:pb-20"
+      className="flex min-h-[30rem] min-w-0 flex-col gap-2.5 overflow-hidden border-l border-[#27313b] bg-[#161c22] px-3.5 py-3 text-[0.9375rem] leading-tight text-[#eef3f6] xl:min-h-0 xl:pb-[4.5rem]"
     >
-      <h2 id="assembly-lot-register-heading" className="shrink-0 text-lg font-black tracking-widest">
+      <h2 id="assembly-lot-register-heading" className="shrink-0 text-sm font-black tracking-widest text-[#9fadb9]">
         ロット登録
       </h2>
 
@@ -101,12 +101,12 @@ export function AssemblyLotRegisterRail({
         value={fseibanInput}
         placeholder="製番"
         disabled={busy}
-        className={clsx(FIELD, 'h-16 shrink-0 text-3xl tracking-wide')}
+        className={clsx(FIELD, 'h-11 shrink-0 text-[1.375rem] tracking-wide')}
         onFocus={() => setPadTarget('fseiban')}
         onChange={(event) => onFseibanInputChange(event.target.value)}
       />
 
-      <div className="flex min-h-0 shrink flex-col gap-1.5 overflow-y-auto" aria-label="製番候補">
+      <div className="flex min-h-0 shrink flex-col gap-1 overflow-y-auto" aria-label="製番候補">
         {normalizedFseiban.length === 0 ? null : candidateLoading && candidates.length === 0 ? (
           <p className="text-sm text-[#617080]">検索中</p>
         ) : candidates.length === 0 ? (
@@ -121,18 +121,18 @@ export function AssemblyLotRegisterRail({
                 disabled={busy}
                 aria-pressed={selected}
                 className={clsx(
-                  'grid shrink-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 rounded-lg border px-3 py-2 text-left',
+                  'grid min-h-10 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 rounded-md border px-2.5 py-1 text-left',
                   selected ? 'border-[#35d6ae] bg-[#35d6ae]/10' : 'border-transparent bg-[#1f2730] hover:border-[#2c3742]'
                 )}
                 onClick={() => onSelectCandidate(candidate)}
               >
-                <span className="truncate font-mono text-lg font-semibold tabular-nums">{candidate.fseiban}</span>
-                {candidate.activeTemplate ? null : (
-                  <span className="row-span-2 self-center text-sm font-bold text-[#ff7d61]">手順なし</span>
-                )}
-                <span className="col-start-1 truncate text-sm text-[#97a5b2]" title={candidate.machineName}>
+                <span className="font-mono text-sm font-semibold tabular-nums">{candidate.fseiban}</span>
+                <span className="min-w-0 break-words text-sm font-bold" title={candidate.machineName}>
                   {candidate.machineName}
                 </span>
+                {candidate.activeTemplate ? <span aria-hidden="true" /> : (
+                  <span className="text-xs font-bold text-[#ff7d61]">手順なし</span>
+                )}
               </button>
             );
           })
@@ -140,9 +140,9 @@ export function AssemblyLotRegisterRail({
       </div>
 
       {selectedCandidate ? (
-        <div className="grid shrink-0 gap-3 border-t border-[#2c3742] pt-3">
+        <div className="grid shrink-0 gap-2 border-t border-[#27313b] pt-2.5">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3">
-            <p className="truncate text-base font-bold" title={selectedCandidate.machineName}>
+            <p className="min-w-0 break-words text-[0.9375rem] font-bold" title={selectedCandidate.machineName}>
               {selectedCandidate.machineName}
             </p>
             <div className="row-span-2 text-right">
@@ -155,7 +155,7 @@ export function AssemblyLotRegisterRail({
                   inputMode="numeric"
                   placeholder="台数"
                   disabled={busy}
-                  className={clsx(FIELD, 'h-12 w-24 text-center text-2xl')}
+                  className={clsx(FIELD, 'h-10 w-20 text-center text-xl')}
                   onChange={(event) => onManualLotQtyDraftChange(event.target.value)}
                 />
               ) : (
@@ -163,7 +163,7 @@ export function AssemblyLotRegisterRail({
                   <button type="button" className={STEP} aria-label="台数を減らす" disabled={busy || (expectedLotQuantity ?? 1) <= 1} onClick={() => onAdjustLotQty(-1)}>
                     −
                   </button>
-                  <span className="min-w-14 text-center font-mono text-3xl font-semibold tabular-nums" aria-label="台数">
+                  <span className="min-w-11 text-center font-mono text-xl font-semibold tabular-nums" aria-label="台数">
                     {expectedLotQuantity}
                   </span>
                   <button type="button" className={STEP} aria-label="台数を増やす" disabled={busy || (expectedLotQuantity ?? 500) >= 500} onClick={() => onAdjustLotQty(1)}>
@@ -172,7 +172,7 @@ export function AssemblyLotRegisterRail({
                 </div>
               )}
             </div>
-            <p className={clsx('truncate text-sm', hasTemplate ? 'text-[#97a5b2]' : 'font-bold text-[#ff7d61]')}>
+            <p className={clsx('truncate text-[0.8125rem]', hasTemplate ? 'text-[#97a5b2]' : 'font-bold text-[#ff7d61]')}>
               {selectedCandidate.activeTemplate?.name ?? '手順なし'}
               {autoLotQty != null && expectedLotQuantity !== autoLotQty ? (
                 <span className="ml-2 font-bold text-[#f6b93b]">実績 {autoLotQty}台</span>
@@ -183,7 +183,7 @@ export function AssemblyLotRegisterRail({
           {hasTemplate ? (
             <>
               <div className="flex items-center justify-between gap-2">
-                <div className="flex min-w-0 items-baseline gap-3 font-mono text-sm tabular-nums text-[#97a5b2]">
+                <div className="flex min-w-0 items-baseline gap-2.5 font-mono text-[0.8125rem] tabular-nums text-[#97a5b2]">
                   <span className="shrink-0">
                     {manual ? '入力済み' : '発行予定'} {serialNos.length}/{expectedLotQuantity ?? '-'}
                   </span>
@@ -216,7 +216,7 @@ export function AssemblyLotRegisterRail({
                       value={serialDraft}
                       placeholder="作業用ID"
                       disabled={serialInputLocked}
-                      className={clsx(FIELD, 'h-11 text-lg')}
+                      className={clsx(FIELD, 'h-9 text-base')}
                       onFocus={() => setPadTarget('serial')}
                       onChange={(event) => onSerialDraftChange(event.target.value)}
                       onKeyDown={(event) => {
@@ -252,7 +252,7 @@ export function AssemblyLotRegisterRail({
 
               <button
                 type="button"
-                className="h-14 rounded-lg bg-[#35d6ae] text-lg font-black tracking-widest text-[#04221b] hover:bg-[#5fe3c2] disabled:cursor-not-allowed disabled:bg-[#1f2730] disabled:text-[#617080]"
+                className="h-11 rounded-md bg-[#35d6ae] text-base font-black tracking-widest text-[#04221b] hover:bg-[#5fe3c2] disabled:cursor-not-allowed disabled:bg-[#1f2730] disabled:text-[#617080]"
                 disabled={!canRegisterLot || busy}
                 onClick={onRegisterLot}
               >
@@ -262,7 +262,7 @@ export function AssemblyLotRegisterRail({
           ) : (
             <Link
               to={kioskAssemblyLibraryPath({ focus: 'procedures' })}
-              className="inline-flex h-14 items-center justify-center rounded-lg border border-[#2c3742] bg-[#1f2730] text-lg font-bold hover:bg-[#2a343f]"
+              className="inline-flex h-11 items-center justify-center rounded-md border border-[#2c3742] bg-[#1f2730] text-base font-bold hover:bg-[#2a343f]"
             >
               手順を作る
             </Link>

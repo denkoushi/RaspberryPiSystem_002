@@ -413,12 +413,12 @@ export function KioskAssemblyHomePage() {
     setInvalidationError(null);
   };
   const navLinkClassName =
-    'inline-flex min-h-11 items-center gap-2 rounded-lg px-3.5 text-base font-bold text-[#97a5b2] hover:bg-[#1f2730] hover:text-[#eef3f6]';
+    'inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-bold text-[#9fadb9] hover:bg-[#1f2730] hover:text-[#eef3f6]';
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#0f1317] text-[#eef3f6]">
-      <div className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#2c3742] bg-[#161c22] px-5">
-        <h1 className="text-[1.6rem] font-black tracking-widest">組立</h1>
+      <div className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#27313b] bg-[#161c22] px-3.5">
+        <h1 className="text-lg font-black tracking-widest">組立</h1>
         <nav className="flex flex-wrap items-center gap-1" aria-label="組立メニュー">
           <Link to={KIOSK_ASSEMBLY_TRAINING_PATH} className={navLinkClassName}>
             訓練
@@ -432,7 +432,7 @@ export function KioskAssemblyHomePage() {
           <Link to={kioskAssemblyRecordApprovalPath()} className={navLinkClassName} aria-label="記録確認">
             記録確認
             {pendingApprovalCount > 0 ? (
-              <span className="rounded-full bg-[#ff7d61] px-2 font-mono text-sm font-semibold text-[#2a0a02]" aria-hidden="true">
+              <span className="rounded-full bg-[#ff7d61] px-1.5 font-mono text-xs font-semibold text-[#2a0a02]" aria-hidden="true">
                 {pendingApprovalCount}
               </span>
             ) : null}
@@ -444,12 +444,12 @@ export function KioskAssemblyHomePage() {
       </div>
 
       {message ? (
-        <p role="status" className="shrink-0 border-b border-[#2c3742] bg-[#161c22] px-5 py-2 text-sm font-bold text-[#f6b93b]">
+        <p role="status" className="shrink-0 border-b border-[#27313b] bg-[#161c22] px-3.5 py-1.5 text-sm font-bold text-[#f6b93b]">
           {message}
         </p>
       ) : null}
 
-      <main className="grid min-h-0 flex-1 grid-cols-1 overflow-auto xl:grid-cols-[minmax(0,1fr)_27rem] xl:overflow-hidden">
+      <main className="grid min-h-0 flex-1 grid-cols-1 overflow-auto xl:grid-cols-[minmax(0,1fr)_22rem] xl:overflow-hidden">
         <AssemblyHomeBoard
           rows={boardRows}
           loading={boardLoading}

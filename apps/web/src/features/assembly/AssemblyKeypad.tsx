@@ -46,13 +46,13 @@ type Props = {
 };
 
 const keyClassName =
-  'h-11 rounded-md bg-[#1f2730] font-mono text-lg font-semibold text-[#eef3f6] hover:bg-[#2a343f] active:bg-[#35d6ae] active:text-[#04221b] disabled:opacity-50';
+  'h-9 rounded bg-[#1f2730] font-mono text-[0.9375rem] font-semibold text-[#eef3f6] hover:bg-[#2a343f] active:bg-[#35d6ae] active:text-[#04221b] disabled:opacity-50';
 const actionKeyClassName =
-  'col-span-2 h-11 rounded-md bg-[#1f2730] text-sm font-bold text-[#97a5b2] hover:bg-[#2a343f] disabled:opacity-50';
+  'col-span-2 h-9 rounded bg-[#1f2730] text-xs font-bold text-[#97a5b2] hover:bg-[#2a343f] disabled:opacity-50';
 
 export function AssemblyKeypad({ ariaLabel, disabled = false, onKey, onBackspace, onClear }: Props) {
   return (
-    <div role="group" aria-label={ariaLabel} className="grid grid-cols-10 gap-1.5">
+    <div role="group" aria-label={ariaLabel} className="grid grid-cols-10 gap-1">
       {ASSEMBLY_IDENTIFIER_KEYS.map((key) => (
         <button key={key} type="button" className={keyClassName} disabled={disabled} onClick={() => onKey(key)}>
           {key}
