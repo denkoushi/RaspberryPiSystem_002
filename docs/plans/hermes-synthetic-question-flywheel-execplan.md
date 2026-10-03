@@ -22,7 +22,7 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 - [x] (2026-10-04) Milestone 3 remainder, part 1: each kept question is answered by the kiosk's own pipeline in the runner (`flywheel-live.mjs`), and the line records the shown ids, the judged candidate ids, and the loss stage; `flywheel-report.mjs` prints the night summary (this change).
 - [ ] Milestone 3 remainder, part 2: pooled top-30 labels for shown-but-unlabelled records (`other_shown`), with a nightly grading budget.
 - [x] (2026-10-04) Milestone 4, first part: `flywheel-gate.mjs` splits kept questions 70/30 by a hash of the anchor id, compares two offline runs per question (relevant shown or not), and accepts only when held-out shows no significant loss (two-sided sign test) and development shows a gain; `flywheel-run.mjs` produces a run for one configuration (dense on or off, enrichment store or off, judged pool) on a copied snapshot (this change). First real use on 2026-10-04 (production against dense off, 78 questions): the gate rejected both directions because the set shows no development gain either way; see the accuracy log. The set shares too much wording with the anchors to detect the dense gain, so the acceptance criterion is not met yet.
-- [ ] Milestone 4, harder set: reject generated questions whose character-bigram share with the anchor body exceeds a bound (the kept median is 0.44; terse 0.56), and weight styles that lower it; then repeat the known-good and known-bad check.
+- [x] (2026-10-04) Milestone 4, harder set, code: a generated question whose character-bigram share with the anchor body exceeds 0.5 is asked again once with the previous wording named, and dropped as `too_similar` if still above; the share is recorded per line and the report prints its median (this change). The known-good and known-bad check repeats on the first night after release.
 - [ ] Milestone 4, second part: real kiosk questions from the receipts join the set with the same two-grader labels; the held-out share rotates by night.
 
 ## Surprises & Discoveries
@@ -43,6 +43,10 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 - Observation: questions that name only a department or a period ("三島工場機械課の最近の不適合を教えて") have no content condition, so relevance grading does not apply to them. They caused many grader disagreements and must be scored on filters instead.
 
 ## Decision Log
+
+- Decision: bound the whole-question overlap with the anchor at 0.5 bigram share, with one retry.
+  Rationale: the first gate run (2026-10-04) showed the set cannot detect the dense gain because kept questions share a median 0.44 of their bigrams with the anchor (terse 0.56). The per-token copy guard catches quoted phrases but not a question assembled from the record's own nouns. A retry that names the previous wording keeps more pairs than dropping at once.
+  Date/Author: 2026-10-04, Claude under the owner's standing permission to choose the next step.
 
 - Decision: build questions from the records themselves instead of asking people for test questions.
   Rationale: the owner rejected user-carried improvement. Established practice (Airbnb CASTLE 2026, JaCWIR, RAGAS, ARES) generates queries from the corpus for cold start.

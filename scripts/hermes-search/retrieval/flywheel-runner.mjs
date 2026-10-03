@@ -173,6 +173,7 @@ export async function runFlywheelNight({
       grades: row.grades ?? null,
       kept: row.kept === true,
       reason: row.ok ? row.reason ?? null : row.reason,
+      overlap: row.overlap ?? null,
     };
     if (line.kept) {
       line.live = await score(row);
