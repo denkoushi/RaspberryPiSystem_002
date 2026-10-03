@@ -840,6 +840,36 @@ def hermes_trial_maintenance_configuration(
     return environment
 
 
+HERMES_FLAG_SETTINGS = (
+    "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED",
+    "HERMES_RETRIEVAL_V2_ENABLED",
+    "HERMES_RETRIEVAL_ENRICHMENT_ENABLED",
+    "HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS",
+    "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY",
+    "HERMES_RETRIEVAL_ENRICHMENT_WINDOW",
+    "HERMES_RETRIEVAL_ENRICHMENT_IDS",
+    "HERMES_FLYWHEEL_ENABLED",
+    "HERMES_FLYWHEEL_MAX_QUESTIONS",
+    "HERMES_RETRIEVAL_DENSE_PROVIDER",
+    "HERMES_RETRIEVAL_DENSE_INDEX_ENABLED",
+)
+
+
+def reject_unforwarded_hermes_flags(args: argparse.Namespace) -> None:
+    # These flags reach the Pi5 only through the trial staging or trial
+    # maintenance path. Without either, a release would succeed and silently
+    # leave the API environment unchanged.
+    if getattr(args, "hermes_search_trial_maintenance", None) or os.environ.get("HERMES_SEARCH_TRIAL_ENABLED"):
+        return
+    ignored = [name for name in HERMES_FLAG_SETTINGS if os.environ.get(name)]
+    if ignored:
+        raise UsageError(
+            ", ".join(ignored)
+            + " would not be forwarded by this release; add --hermes-search-trial-maintenance on"
+            " to change flags on a running trial, or unset them"
+        )
+
+
 def stage_hermes_trial_artifact(inventory: Path, source: Path, destination: str, user: str) -> None:
     # The canonical launcher runs on Mac; the Ansible release controller runs
     # on Pi5. Stage only the four sealed files, then pass the Pi5-local path.
@@ -1283,6 +1313,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return execute_standard_route(args)
     if args.status:
         return status(args)
+    reject_unforwarded_hermes_flags(args)
     inventory, relative = inventory_path(args.inventory)
     sha = resolve_sha(args.branch)
     complete = inventory_document(inventory)

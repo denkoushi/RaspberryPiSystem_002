@@ -260,6 +260,45 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(MODULE.UsageError, "HERMES_FLYWHEEL_MAX_QUESTIONS must be a positive integer"):
                 MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
 
+    def test_hermes_flags_without_a_forwarding_path_fail_before_plan_or_mutation(self) -> None:
+        # Run 20261003-093810-c3d634 set HERMES_FLYWHEEL_ENABLED on a plain
+        # Pi5 release: it succeeded and the flag never reached the API.
+        plain = ["main", MODULE.DEFAULT_INVENTORY, "--limit", "raspberrypi5"]
+        for name, value in (
+            ("HERMES_FLYWHEEL_ENABLED", "true"),
+            ("HERMES_FLYWHEEL_MAX_QUESTIONS", "100"),
+            ("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", "true"),
+            ("HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS", "10"),
+            ("HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY", "1"),
+            ("HERMES_RETRIEVAL_ENRICHMENT_WINDOW", "0-6"),
+            ("HERMES_RETRIEVAL_ENRICHMENT_IDS", "/private/ids.txt"),
+            ("HERMES_RETRIEVAL_DENSE_PROVIDER", "dgx"),
+            ("HERMES_RETRIEVAL_DENSE_INDEX_ENABLED", "true"),
+            ("HERMES_RETRIEVAL_V2_ENABLED", "true"),
+            ("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED", "false"),
+        ):
+            for mode in (["--detach"], ["--print-plan"], []):
+                with self.subTest(name=name, mode=mode), mock.patch.dict(
+                    os.environ, {name: value}, clear=True
+                ), mock.patch.object(MODULE, "inventory_path") as inventory_path, mock.patch.object(
+                    MODULE, "run"
+                ) as run:
+                    with self.assertRaisesRegex(
+                        MODULE.UsageError, f"{name} would not be forwarded.*--hermes-search-trial-maintenance on"
+                    ):
+                        MODULE.main(plain + mode)
+                    inventory_path.assert_not_called()
+                    run.assert_not_called()
+
+        environment = {"HERMES_FLYWHEEL_ENABLED": "true"}
+        with mock.patch.dict(os.environ, environment, clear=True):
+            MODULE.reject_unforwarded_hermes_flags(MODULE.parse_arguments(plain + ["--hermes-search-trial-maintenance", "on"]))
+            MODULE.reject_unforwarded_hermes_flags(MODULE.parse_arguments(plain + ["--hermes-search-trial-maintenance", "off"]))
+        with mock.patch.dict(os.environ, {**environment, "HERMES_SEARCH_TRIAL_ENABLED": "false"}, clear=True):
+            MODULE.reject_unforwarded_hermes_flags(MODULE.parse_arguments(plain))
+        with mock.patch.dict(os.environ, {}, clear=True):
+            MODULE.reject_unforwarded_hermes_flags(MODULE.parse_arguments(plain))
+
     def test_maintenance_dense_provider_reaches_systemd_without_defaulting(self) -> None:
         args = argparse.Namespace(hermes_search_trial_maintenance="on", branch="main",
                                   limit="raspberrypi5", full_fleet=False, detach=True,
