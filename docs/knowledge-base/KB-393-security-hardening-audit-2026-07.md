@@ -69,6 +69,16 @@ Design goal: legitimate kiosk (client-key) and admin (JWT) flows keep working; o
 - **Production deploy (2026-07-02)**: `./scripts/update-all-clients.sh main ... --detach --follow`, Run ID `20260702-205710-10848`. PLAY RECAP `failed=0 / unreachable=0` on all 7 hosts (Pi5 + Pi4×5 + Pi3); summary success true; Pi5 repo → `b1172baf`; `docker-api-1` healthy.
 - **Real-device verify**: `scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**. Targeted checks against prod API: unauthenticated `return`/`cancel`/`delete`/`active?clientId=` → **401**; valid client-key `active` → **200**; storage path-traversal (raw `%2e%2e` / `..%2f`, both with valid key) → **500 with no `/etc/passwd` leak** (containment error, file access blocked). Kiosk/admin flows unaffected.
 
+## Public signage schedule DTO — local correction (2026-10-03)
+
+- Base: `ee424d21412614baae39b405364ed1eb65524316` (PR準備時の最新 `origin/main`、Pi5配備済み版と一致)。開始時の基点 `38aac71fba22f9c27e00b58fcd27d187f7952b16` からfast-forwardで取り込み、専用 branch `fix/signage-public-schedule-dto-20261003` を維持した。
+- 匿名 `GET /api/signage/schedules` は表示に使うフィールドだけを明示的に返す公開DTOへ変更した。`targetClientKeys` と、将来追加される認証用フィールドは公開レスポンスへ自動的に混入しない。
+- 内部の取得・端末照合・ローテーション、および認証済み `/schedules/management` の割当情報は維持した。端末ID移行、認証キー交換、他APIの認証変更は対象外。
+- 回帰再現: 修正前は新しい匿名レスポンス検査だけが失敗し、残り4件は成功。修正後の公開DTO・管理権限・空一覧の回帰テストは5件成功。
+- ローカル検証: 既存schema 17件、ローテーション・管理・画像配信6件、専用DBの一覧・作成・端末別content/JPEG統合11件が成功（計39件）。統合テストの他16件は `-t` の対象外。変更ファイルのESLint、API TypeScript build、`git diff --check` も成功。テスト専用 `LOG_LEVEL=silent` が許可値外で初回起動に失敗したため、`error` に訂正して失敗対象を1回再実行した。
+- DBはローカルDockerのloopbackに限定した専用コンテナ、合成データ、tmpfsを使用。既存DB/volumeは変更せず、検証後に専用コンテナを停止・自動削除した。保存先も今回専用の一時ディレクトリとした。
+- この節のテスト結果はローカル検証の証拠であり、本番反映の証拠ではない。配備の成否は後続の標準release runのsystemd/Ansible結果と非破壊post-checkで確認する。過去に露出した認証キーの失効・交換は本修正に含めず、本修正だけでは過去の露出を解消しない。
+
 ## Open Items
 
 Operator-side (require secret rotation and/or Pi redeploy; not executed here per safety policy): see [security-hardening-remediation Runbook](../runbooks/security-hardening-remediation.md). Design-level items (per-resource storage ACL, JWT revocation, cookie-based session, query-string key removal, metrics/backup-health auth) tracked as future work.

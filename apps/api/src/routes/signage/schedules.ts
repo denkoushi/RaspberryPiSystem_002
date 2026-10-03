@@ -9,7 +9,21 @@ export function registerScheduleRoutes(app: FastifyInstance, signageService: Sig
   // GET /api/signage/schedules - スケジュール一覧取得（認証不要、サイネージ用）
   app.get('/schedules', { config: { rateLimit: false } }, async () => {
     const schedules = await signageService.getSchedules();
-    return { schedules };
+    // 公開DTOは許可した表示項目だけを返し、端末の認証情報を含めない。
+    return {
+      schedules: schedules.map((schedule) => ({
+        id: schedule.id,
+        name: schedule.name,
+        contentType: schedule.contentType,
+        pdfId: schedule.pdfId,
+        layoutConfig: schedule.layoutConfig,
+        dayOfWeek: schedule.dayOfWeek,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        priority: schedule.priority,
+        enabled: schedule.enabled,
+      })),
+    };
   });
 
   // GET /api/signage/schedules/management - 管理画面用（有効/無効を含む全件）
