@@ -60,7 +60,7 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
 
     const reencode = this.deps.reencodeImageBufferForVlmFallback ?? reencodeImageBufferForVlmFallback;
 
-    const { signal, cleanup } = createTimeoutSignal(provider.timeoutMs);
+    const { signal, cleanup } = createTimeoutSignal(input.timeoutMs ?? provider.timeoutMs);
 
     const postChat = (imageBytes: Buffer, mimeType: string) =>
       this.deps.fetchImpl(new URL('/v1/chat/completions', provider.baseUrl), {
@@ -86,6 +86,7 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
           max_tokens: input.maxTokens ?? this.deps.getMaxTokens(),
           temperature: input.temperature ?? this.deps.getTemperature(),
           chat_template_kwargs: { enable_thinking: false },
+          ...(input.jsonOutput ? { response_format: { type: 'json_object' } } : {}),
         }),
         signal: input.signal ? AbortSignal.any([signal, input.signal]) : signal,
       });

@@ -18,6 +18,8 @@ import { getClientHeartbeatMonitor } from '../services/clients/client-heartbeat-
 import { loadAlertsDispatcherConfig } from '../services/alerts/alerts-config.js';
 import { getPhotoToolLabelScheduler } from '../services/tools/photo-tool-label/photo-tool-label.scheduler.js';
 import { getPartMeasurementDrawingOcrScheduler } from '../services/part-measurement/part-measurement-drawing-ocr.scheduler.js';
+import { getPartMeasurementDrawingDimensionMapScheduler } from '../services/part-measurement/part-measurement-drawing-dimension-map.scheduler.js';
+import { isPartMeasurementDrawingDimensionMapEnabled } from '../services/part-measurement/part-measurement-drawing-dimension-map.service.js';
 import {
   FileStorageIntegrityBackfillService,
   getFileStorageIntegrityBackfillScheduler,
@@ -122,6 +124,18 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
     });
   } else {
     logger.info('Signage render scheduler is disabled by environment');
+  }
+  if (isPartMeasurementDrawingDimensionMapEnabled()) {
+    definitions.push({
+      name: 'part-measurement-drawing-dimension-map',
+      start: () => {
+        getPartMeasurementDrawingDimensionMapScheduler().start();
+        logger.info('Part measurement drawing dimension map scheduler started');
+      },
+      stop: () => {
+        getPartMeasurementDrawingDimensionMapScheduler().stop();
+      },
+    });
   }
 
   return [
@@ -280,6 +294,7 @@ export function listPostListenSchedulerNames(): string[] {
   return [
     'hermes-knowledge',
     'signage-render',
+    'part-measurement-drawing-dimension-map',
     'business-hermes-nightly',
     'fkojunst-mail-superseded-prune',
     'file-storage-integrity-backfill',

@@ -130,6 +130,7 @@ describe('start-post-listen-schedulers naming contract', () => {
     expect(listPostListenSchedulerNames()).toEqual([
       'hermes-knowledge',
       'signage-render',
+      'part-measurement-drawing-dimension-map',
       'business-hermes-nightly',
       'fkojunst-mail-superseded-prune',
       'file-storage-integrity-backfill',

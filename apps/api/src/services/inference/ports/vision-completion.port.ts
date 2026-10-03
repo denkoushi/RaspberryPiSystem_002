@@ -16,6 +16,10 @@ export type VisionCompletionInput = {
   temperature?: number;
   signal?: AbortSignal;
   background?: boolean;
+  /** OpenAI 互換 `response_format: json_object` を付ける（応答は JSON オブジェクトに限られる）。 */
+  jsonOutput?: boolean;
+  /** 未指定時はプロバイダの timeoutMs。DGX ゲートウェイ側の上限（120 秒）を超えないこと。 */
+  timeoutMs?: number;
 };
 
 export type VisionCompletionResult = {
