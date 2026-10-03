@@ -36,7 +36,7 @@ export function AssemblyTemplateEditorHeader() {
   return (
   <header
     data-testid="assembly-template-editor-header"
-    className="grid min-h-12 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded border border-white/15 bg-slate-900/70 px-2 py-1 xl:min-h-14 xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:gap-2"
+    className="grid min-h-10 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded border border-[#27313b] bg-[#161c22] px-2 py-1 xl:min-h-11 xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:gap-2"
   >
     <div className="col-start-1 row-start-1 flex min-w-0 flex-wrap items-center gap-2">
       <h1 className="text-[1.12rem] font-bold leading-tight">
@@ -72,13 +72,13 @@ export function AssemblyTemplateEditorHeader() {
       <KioskSopLauncher
         manualId="assembly-procedure-template"
         initialSheetId={templateId ? 'assembly-revision' : 'assembly-template-auth-basics'}
-        className="min-h-10"
+        className="min-h-8"
       />
       <Button
         type="button"
         data-kiosk-sop-target="assembly-editor-help"
         variant="ghostOnDark"
-        className="min-h-10 whitespace-nowrap !px-2 text-xs"
+        className="min-h-8 whitespace-nowrap !px-2 text-xs"
         aria-expanded={procedurePaneOpen}
         aria-controls="assembly-procedure-pane"
         onClick={() =>
@@ -95,7 +95,7 @@ export function AssemblyTemplateEditorHeader() {
       <Button
         type="button"
         variant={inspectorMode === 'step' ? 'primary' : 'ghostOnDark'}
-        className="min-h-10 whitespace-nowrap !px-2 text-xs"
+        className="min-h-8 whitespace-nowrap !px-2 text-xs"
         disabled={!selectedStep}
         aria-expanded={settingsPaneOpen}
         aria-controls="assembly-editor-settings-pane"
@@ -110,7 +110,7 @@ export function AssemblyTemplateEditorHeader() {
         to: KIOSK_ASSEMBLY_LIBRARY_PATH,
         className: buttonClassName(
           'ghostOnDark',
-          'inline-flex min-h-10 items-center whitespace-nowrap !px-2 text-xs'
+          'inline-flex min-h-8 items-center whitespace-nowrap !px-2 text-xs'
         ),
         children: '一覧へ'
       })}
@@ -119,7 +119,7 @@ export function AssemblyTemplateEditorHeader() {
           to: kioskAssemblyTemplateNewPath({ sourceTemplateId: loadedTemplate.id }),
           className: buttonClassName(
             'ghostOnDark',
-            'inline-flex min-h-10 items-center whitespace-nowrap !px-2 text-xs'
+            'inline-flex min-h-8 items-center whitespace-nowrap !px-2 text-xs'
           ),
           children: '複製して新規'
         })
@@ -127,7 +127,7 @@ export function AssemblyTemplateEditorHeader() {
       <Button
         type="button"
         variant="primary"
-        className="min-h-10 whitespace-nowrap !px-2 text-sm"
+        className="min-h-8 whitespace-nowrap !px-2 text-sm"
         data-kiosk-sop-target="assembly-editor-save"
         disabled={busy || readOnly || !readiness.isReady}
         onClick={() => void saveTemplate()}

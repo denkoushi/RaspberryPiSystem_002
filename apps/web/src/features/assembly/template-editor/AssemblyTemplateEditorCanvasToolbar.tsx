@@ -32,12 +32,12 @@ export function AssemblyTemplateEditorCanvasToolbar() {
   return (
   <div
     data-testid="assembly-editor-toolbar"
-    className="flex shrink-0 flex-wrap items-center gap-1 border-b border-white/10 px-2 py-2 xl:flex-nowrap xl:whitespace-nowrap"
+    className="flex shrink-0 flex-wrap items-center gap-1 border-b border-white/10 px-2 py-1 xl:flex-nowrap xl:whitespace-nowrap"
   >
     <h2 className="shrink-0 text-[1.02rem] font-bold">手順書</h2>
     <select
       aria-label="ページ"
-      className="min-h-9 min-w-36 flex-1 rounded border border-white/10 bg-slate-950 px-2 text-sm text-white xl:min-w-0"
+      className="min-h-8 min-w-36 flex-1 rounded border border-white/10 bg-slate-950 px-2 text-sm text-white xl:min-w-0"
       value={selectedPageKey}
       disabled={pageOptions.length === 0}
       onChange={(event) => setSelectedPageKey(event.target.value)}
@@ -53,7 +53,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
       <Button
         type="button"
         variant="ghostOnDark"
-        className="min-h-10 !px-2 !py-1 text-xs"
+        className="min-h-8 !px-2 !py-1 text-xs"
         disabled={selectedPageIndex <= 0}
         onClick={() => setSelectedPageKey(pageOptions[selectedPageIndex - 1]!.key)}
       >
@@ -62,7 +62,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
       <Button
         type="button"
         variant="ghostOnDark"
-        className="min-h-10 !px-2 !py-1 text-xs"
+        className="min-h-8 !px-2 !py-1 text-xs"
         disabled={
           selectedPageIndex < 0 || selectedPageIndex >= pageOptions.length - 1
         }
@@ -75,7 +75,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
       <Button
         type="button"
         variant="ghostOnDark"
-        className="min-h-10 !px-2 !py-1 text-xs"
+        className="min-h-8 !px-2 !py-1 text-xs"
         data-kiosk-sop-target="assembly-editor-step-add-full"
         disabled={readOnly || !selectedPage || procedureSteps.length >= 300}
         onClick={addCurrentFullPageStep}
@@ -85,7 +85,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
       <Button
         type="button"
         variant={placementAction === 'crop' ? 'primary' : 'ghostOnDark'}
-        className="min-h-10 !px-2 !py-1 text-xs"
+        className="min-h-8 !px-2 !py-1 text-xs"
         data-kiosk-sop-target="assembly-editor-step-add-crop"
         disabled={readOnly || !selectedPage || procedureSteps.length >= 300}
         aria-pressed={placementAction === 'crop'}
@@ -99,7 +99,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
       <Button
         type="button"
         variant="ghostOnDark"
-        className="min-h-10 !px-2 !py-1 text-xs"
+        className="min-h-8 !px-2 !py-1 text-xs"
         disabled={readOnly || selectedStep?.viewMode !== 'crop'}
         onClick={() => {
           if (!selectedStep || !selectedStepPage) return;
@@ -119,7 +119,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
         data-kiosk-sop-target="assembly-editor-marker-bolt"
         aria-pressed={markerMode === 'bolt'}
         variant={markerMode === 'bolt' ? 'primary' : 'ghostOnDark'}
-        className="min-h-9 !px-2 !py-1 text-xs"
+        className="min-h-8 !px-2 !py-1 text-xs"
         disabled={readOnly}
         onClick={() => {
           setMarkerMode('bolt');
@@ -134,7 +134,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
         data-kiosk-sop-target="assembly-editor-marker-check"
         aria-pressed={markerMode === 'check'}
         variant={markerMode === 'check' ? 'primary' : 'ghostOnDark'}
-        className="min-h-9 !px-2 !py-1 text-xs"
+        className="min-h-8 !px-2 !py-1 text-xs"
         disabled={readOnly}
         onClick={() => {
           setMarkerMode('check');
@@ -148,7 +148,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
       <Button
         type="button"
         variant={placementAction === 'place' ? 'primary' : 'ghostOnDark'}
-        className="min-h-9 !px-2 !py-1 text-xs"
+        className="min-h-8 !px-2 !py-1 text-xs"
         disabled={readOnly}
         aria-pressed={placementAction === 'place'}
         onClick={() => setPlacementAction('place')}
@@ -158,7 +158,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
       <Button
         type="button"
         variant={placementAction === 'callout' ? 'primary' : 'ghostOnDark'}
-        className="min-h-9 !px-2 !py-1 text-xs"
+        className="min-h-8 !px-2 !py-1 text-xs"
         disabled={readOnly || (markerMode === 'bolt' ? !selectedBolt : !selectedCheckItem)}
         aria-pressed={placementAction === 'callout'}
         onClick={() => setPlacementAction('callout')}

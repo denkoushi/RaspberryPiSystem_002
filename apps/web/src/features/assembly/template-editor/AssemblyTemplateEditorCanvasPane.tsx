@@ -13,6 +13,7 @@ import { AssemblyProcedureOverlayLayer } from '../AssemblyProcedureOverlayLayer'
 
 import { AssemblyTemplateEditorCanvasToolbar } from './AssemblyTemplateEditorCanvasToolbar';
 import { useAssemblyTemplateEditor } from './AssemblyTemplateEditorContext';
+import { useAssemblyEditorWideLayout } from './useAssemblyEditorWideLayout';
 
 export function AssemblyTemplateEditorCanvasPane() {
   const {
@@ -53,6 +54,7 @@ export function AssemblyTemplateEditorCanvasPane() {
     visibleBolts,
     visibleCheckItems
   } = useAssemblyTemplateEditor();
+  const wide = useAssemblyEditorWideLayout();
   const selectedProcedurePage =
     selectedPage?.source === 'assembly_procedure_document' &&
     selectedPage.documentId === selectedDocument?.id
@@ -103,10 +105,10 @@ export function AssemblyTemplateEditorCanvasPane() {
   return (
   <section
     data-testid="assembly-unified-editor-canvas-pane"
-    className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0"
+    className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-[#27313b] bg-[#161c22] xl:min-h-0"
   >
     <AssemblyTemplateEditorCanvasToolbar />
-    <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-white/10 px-2 py-1.5">
+    <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-white/10 px-2 py-1">
       <AssemblyAreaTabs
         areas={areas}
         selectedAreaId={selectedAreaId}
@@ -115,14 +117,16 @@ export function AssemblyTemplateEditorCanvasPane() {
         onSelect={selectArea}
         onAdd={addArea}
       />
-      <AssemblyBoltConditionStrip
-        entries={boltConditionPalette}
-        activeKey={activeBoltConditionKey}
-        selectedMarkerNo={selectedBolt?.markerNo ?? null}
-        readOnly={readOnly}
-        onSelect={selectBoltCondition}
-        onAdd={addBoltCondition}
-      />
+      {wide ? null : (
+        <AssemblyBoltConditionStrip
+          entries={boltConditionPalette}
+          activeKey={activeBoltConditionKey}
+          selectedMarkerNo={selectedBolt?.markerNo ?? null}
+          readOnly={readOnly}
+          onSelect={selectBoltCondition}
+          onAdd={addBoltCondition}
+        />
+      )}
     </div>
     <div className="min-h-0 flex-1">
       {showSelectedCrop && selectedStep?.crop && selectedPage ? (
