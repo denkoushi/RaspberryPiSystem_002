@@ -3,12 +3,11 @@ import type { MultipartFile } from '@fastify/multipart';
 import { z } from 'zod';
 import { ApiError } from '../../lib/errors.js';
 import {
+  deleteImportedDrawing,
   importDrawingAndSave,
   resolveDrawingMultipartReadLimit
 } from '../../lib/part-measurement-drawing-import.js';
 import { convertDrawingUploadToPreviewBuffer } from '../../lib/part-measurement-drawing-preview.js';
-import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
-
 
 import { getPartMeasurementDrawingOcrScheduler } from '../../services/part-measurement/part-measurement-drawing-ocr.scheduler.js';
 import {
@@ -172,7 +171,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
           name = filename.replace(/\.[^.]+$/, '') || '図面テンプレート';
         }
 
-        const { relativeUrl } = await importDrawingAndSave({
+        const imported = await importDrawingAndSave({
           buffer: fileBuffer,
           mimetype,
           filename
@@ -182,10 +181,11 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
         try {
           created = await visualTemplateService.create({
             name: name.slice(0, 200),
-            drawingImageRelativePath: relativeUrl
+            drawingImageRelativePath: imported.relativeUrl,
+            drawingSourceStorageKey: imported.sourceStorageKey
           });
         } catch (error) {
-          await PartMeasurementDrawingStorage.deleteDrawing(relativeUrl).catch(() => undefined);
+          await deleteImportedDrawing(imported);
           throw error;
         }
         await enqueueDrawingOcrAndWake(created.id, 'visual_template_create');

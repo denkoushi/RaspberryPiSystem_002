@@ -20,6 +20,27 @@ const MAX_BYTES = 12 * 1024 * 1024;
 
 const DRAWING_URL_PREFIX = '/api/storage/part-measurement-drawings/';
 
+/**
+ * 取込元の PDF/TIFF 原本。配信 URL を持たせないため、配信ルートが拒否する下位ディレクトリに置く。
+ */
+const DRAWING_SOURCE_KEY_PREFIX = 'part-measurement-drawings/sources/';
+const DRAWING_SOURCE_KEY_PATTERN =
+  /^part-measurement-drawings\/sources\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(pdf|tif)$/;
+
+export type DrawingSourceKind = 'pdf' | 'tiff';
+
+const DRAWING_SOURCE_EXT: Record<DrawingSourceKind, string> = {
+  pdf: '.pdf',
+  tiff: '.tif'
+};
+
+function assertDrawingSourceKey(storageKey: string): string {
+  if (!DRAWING_SOURCE_KEY_PATTERN.test(storageKey)) {
+    throw new Error('Invalid drawing source key');
+  }
+  return storageKey;
+}
+
 export const ALLOWED_DERIVATIVE_WIDTHS = [1280, 1920, 2560] as const;
 export type DerivativeWidth = (typeof ALLOWED_DERIVATIVE_WIDTHS)[number];
 
@@ -234,6 +255,39 @@ export class PartMeasurementDrawingStorage {
     );
     const [buffer, stat] = await Promise.all([fs.readFile(derivativeFullPath), fs.stat(derivativeFullPath)]);
     return { buffer, contentType: 'image/webp', stat };
+  }
+
+  /**
+   * 取込元の PDF/TIFF 原本を保存し、ストレージキーを返す。
+   * 表示用画像とは別に、後段の高解像度解析で再描画するために保持する。
+   */
+  static async saveDrawingSource(buffer: Buffer, kind: DrawingSourceKind): Promise<{ storageKey: string }> {
+    if (buffer.length === 0) {
+      throw new Error('図面原本が空です');
+    }
+    const storageKey = `${DRAWING_SOURCE_KEY_PREFIX}${randomUUID()}${DRAWING_SOURCE_EXT[kind]}`;
+    await getFileStorageRuntime().store.write({
+      key: storageKey,
+      data: buffer,
+      mode: 'create',
+      integrity: true,
+    });
+    return { storageKey };
+  }
+
+  static async readDrawingSource(storageKey: string): Promise<Buffer> {
+    return getFileStorageRuntime().store.read(assertDrawingSourceKey(storageKey), {
+      verifyIntegrity: true,
+    });
+  }
+
+  /** 未参照になった図面原本の回収用 */
+  static async deleteDrawingSource(storageKey: string): Promise<void> {
+    try {
+      await getFileStorageRuntime().store.delete(assertDrawingSourceKey(storageKey), { integrity: true });
+    } catch {
+      return;
+    }
   }
 
   /** 保存に失敗した図面ファイルのロールバック用（未参照時のみ呼ぶ） */
