@@ -1010,7 +1010,7 @@ export class PartMeasurementTemplateService {
     items: TemplateItemInput[];
     visualTemplateId?: string | null;
     /** 取込済み図面 URL と表示名（multipart 経路では importDrawingAndSave 済み） */
-    drawingUpload?: { relativeUrl: string; displayName: string };
+    drawingUpload?: { relativeUrl: string; sourceStorageKey?: string | null; displayName: string };
   }) {
     const referenceFhincd = params.referenceFhincd.trim();
     const referenceResourceCd = normalizeResourceCd(params.referenceResourceCd);
@@ -1052,6 +1052,7 @@ export class PartMeasurementTemplateService {
             name: params.drawingUpload.displayName.slice(0, 200),
             searchDigits: extractInspectionDrawingAsciiDigits(params.drawingUpload.displayName.slice(0, 200)),
             drawingImageRelativePath: relativeUrl,
+            drawingSourceStorageKey: params.drawingUpload.sourceStorageKey ?? null,
             isActive: true
           }
         });
@@ -1111,6 +1112,9 @@ export class PartMeasurementTemplateService {
     const drawingPath = mayDeleteVisual
       ? (template.visualTemplate?.drawingImageRelativePath ?? null)
       : null;
+    const drawingSourceKey = mayDeleteVisual
+      ? (template.visualTemplate?.drawingSourceStorageKey ?? null)
+      : null;
 
     await prisma.$transaction(async (tx) => {
       await tx.partMeasurementSheet.deleteMany({ where: { templateId } });
@@ -1127,6 +1131,9 @@ export class PartMeasurementTemplateService {
 
     if (drawingPath) {
       await PartMeasurementDrawingStorage.deleteDrawing(drawingPath).catch(() => undefined);
+    }
+    if (drawingSourceKey) {
+      await PartMeasurementDrawingStorage.deleteDrawingSource(drawingSourceKey);
     }
   }
 

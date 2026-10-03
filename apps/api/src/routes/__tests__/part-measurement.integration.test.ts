@@ -6,6 +6,7 @@ import { promisify } from 'util';
 import { buildServer } from '../../app.js';
 import { buildMinimalValidPdfBuffer } from '../../lib/__tests__/fixtures/minimal-pdf.js';
 import * as drawingImport from '../../lib/part-measurement-drawing-import.js';
+import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { prisma } from '../../lib/prisma.js';
 import { PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD } from '../../services/part-measurement/part-measurement-constants.js';
 import {
@@ -5144,6 +5145,12 @@ describe('part-measurement drawing PDF import', () => {
     });
     expect(img.statusCode).toBe(200);
     expect(img.headers['content-type']).toMatch(/image\/jpeg/);
+
+    const saved = await prisma.partMeasurementVisualTemplate.findUniqueOrThrow({
+      where: { id: up.json().visualTemplate.id as string }
+    });
+    expect(saved.drawingSourceStorageKey).toMatch(/^part-measurement-drawings\/sources\/[0-9a-f-]{36}\.pdf$/);
+    expect(await PartMeasurementDrawingStorage.readDrawingSource(saved.drawingSourceStorageKey!)).toEqual(MIN_PDF);
   });
 
   it('accepts application/octet-stream with .pdf filename', async (ctx) => {

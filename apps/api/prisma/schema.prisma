@@ -2856,6 +2856,9 @@ model PartMeasurementVisualTemplate {
   searchDigits             String
   /// 例: /api/storage/part-measurement-drawings/{uuid}.png
   drawingImageRelativePath String
+  /// PDF/TIFF 取込時の原本ストレージキー（例: part-measurement-drawings/sources/{uuid}.pdf）。配信しない。
+  /// 画像を直接取り込んだ図面と、保持開始前に取り込んだ図面は null。
+  drawingSourceStorageKey  String?
   isActive                 Boolean                          @default(true)
   createdAt                DateTime                         @default(now())
   updatedAt                DateTime                         @updatedAt
