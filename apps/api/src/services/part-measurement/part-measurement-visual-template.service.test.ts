@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PartMeasurementVisualTemplateService } from './part-measurement-visual-template.service.js';
 
-const { prismaMock, deleteDrawingMock } = vi.hoisted(() => ({
+const { prismaMock, deleteDrawingMock, deleteDrawingSourceMock } = vi.hoisted(() => ({
   prismaMock: {
     partMeasurementVisualTemplate: {
       create: vi.fn(),
@@ -17,7 +17,8 @@ const { prismaMock, deleteDrawingMock } = vi.hoisted(() => ({
     $transaction: vi.fn(),
     $queryRaw: vi.fn()
   },
-  deleteDrawingMock: vi.fn()
+  deleteDrawingMock: vi.fn(),
+  deleteDrawingSourceMock: vi.fn()
 }));
 
 vi.mock('../../lib/prisma.js', () => ({
@@ -26,7 +27,8 @@ vi.mock('../../lib/prisma.js', () => ({
 
 vi.mock('../../lib/part-measurement-drawing-storage.js', () => ({
   PartMeasurementDrawingStorage: {
-    deleteDrawing: deleteDrawingMock
+    deleteDrawing: deleteDrawingMock,
+    deleteDrawingSource: deleteDrawingSourceMock
   }
 }));
 
@@ -181,6 +183,7 @@ describe('PartMeasurementVisualTemplateService.create', () => {
         name: '図面71-A61',
         searchDigits: '7161',
         drawingImageRelativePath: '/api/storage/part-measurement-drawings/a.png',
+        drawingSourceStorageKey: null,
         isActive: true
       }
     });
@@ -223,5 +226,20 @@ describe('PartMeasurementVisualTemplateService.deleteIfUnused', () => {
       where: { id: 'vt-2' }
     });
     expect(deleteDrawingMock).toHaveBeenCalledWith('/api/storage/part-measurement-drawings/b.png');
+    expect(deleteDrawingSourceMock).not.toHaveBeenCalled();
+  });
+
+  it('deletes the retained drawing source when unused', async () => {
+    const sourceKey = 'part-measurement-drawings/sources/00000000-0000-4000-8000-000000000000.pdf';
+    prismaMock.partMeasurementVisualTemplate.findUnique.mockResolvedValue({
+      drawingImageRelativePath: '/api/storage/part-measurement-drawings/c.jpg',
+      drawingSourceStorageKey: sourceKey
+    });
+    prismaMock.partMeasurementTemplate.count.mockResolvedValue(0);
+    prismaMock.partMeasurementVisualTemplate.delete.mockResolvedValue({});
+
+    await expect(service.deleteIfUnused('vt-3')).resolves.toBe('deleted');
+    expect(deleteDrawingSourceMock).toHaveBeenCalledWith(sourceKey);
+    expect(deleteDrawingMock).toHaveBeenCalledWith('/api/storage/part-measurement-drawings/c.jpg');
   });
 });
