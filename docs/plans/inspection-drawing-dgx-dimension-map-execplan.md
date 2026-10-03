@@ -21,12 +21,11 @@ validation: >
   Integration test assertion added for PDF source retention (runs in CI with pdftoppm and Postgres).
   Milestone 2 (first round, 2026-10-03): offline experiment on 30 drawings / 330 items, no production change.
   Milestone 2 (second round and full-drawing ground truth, 2026-10-03): offline, no production change.
+  Milestone 2 (dimension map on 30 drawings / 330 items, 2026-10-03): top-3 85.2% vs current OCR 61.5%, offline.
 open_items:
-  - Linking structured dimensions to OCR coordinates is not measured yet (next experiment)
-  - Exact thread-size thresholds of the depth limit rule are not tabulated yet
-  - Hit rate of route B (drawings without a sibling) is not measured yet
-  - Decide whether PP-OCRv5 is needed in production (image-only position experiment running)
   - Confirm whether the DGX compatible API passes response_format (DGXSparkControlPlane boundary)
+  - Exact thread-size thresholds of the depth limit rule are not tabulated yet
+  - Route A (sibling transfer) was tried on one pair only (脚R / 脚L)
 ---
 
 ```md
@@ -45,7 +44,7 @@ open_items:
 ## Progress
 
 - [x] (2026-10-03) Milestone 1: PDF/TIFF 取込時に原本を保持する。表示用画像と既存の丸数字座標は変えない。
-- [ ] Milestone 2: DGX で丸数字周辺の切り出しを読ませる精度実験。
+- [x] (2026-10-03) Milestone 2: DGX で図面を読ませる精度実験。
   - [x] (2026-10-03) 1 回目: 30 図面 330 項目で、画像 AI・PP-OCRv5・既存 OCR を比較し、組み合わせと「指定値の図面全体探索」を採点した（結果は Artifacts and Notes）。
   - [x] (2026-10-03) 2 回目: 丸数字の周辺の候補に番号を振った画像を画像 AI に見せ、項目名を添えて選ばせた。重みは別の部品群で確かめ直した。
   - [x] (2026-10-03) 図面そのものの読み取り精度: 脚（R）と脚（L）の 2 図面で、図面上の全寸法の正解（109 件と 71 件）を人手で作り、OCR の拾い漏れを測った。
@@ -136,6 +135,9 @@ open_items:
 - 決定: Milestone 4 に、寸法を 2 つ選んで和を基準値にする操作を加える。
   理由: 長さ・ピッチの項目で外した候補の多くが図面にない計算値だった。利用者が承認した。
   日付: 2026-10-03
+- 決定: 本番に PP-OCRv5 は入れない。寸法マップは区画画像だけを画像 AI に渡して作り、既存 OCR のキャッシュがあれば位置の確認（値の食い違いの検出）に使う。
+  理由: 画像だけでも上位 3 件 84.5% で、PP-OCRv5 の読みを添えた 85.2% との差は 330 項目中 2 件。Pi5 に新しい OCR を入れる負荷と保守に見合わない。
+  日付: 2026-10-03
 - 決定: 既存の 7161 と 3351 の図面も、原本の代わりに保存済みの表示用画像で寸法マップを作る。
   理由: 表示用画像は大半が幅 3,000〜13,000px あり、30 図面の実験はすべて表示用画像で行って上位 3 件 85.2% を得た。原本がある図面は原本から描き直した画像を使う。
   日付: 2026-10-03
@@ -193,9 +195,9 @@ Milestone 3 の実装計画（このリポジトリだけを変える。DGX 側�
 2. 寸法 1 件の型。原文、基準値、上の許容差、下の許容差、種類（len / ref / basic / angle / radius / hole / thread / gdt）、深さ、位置比率（x, y）、OCR に結び付いたか、区画名、確認状態（OCR と一致 / OCR と食い違い / OCR なし）を持つ。圧縮 JSON の版は `analysisVersion` で区別する。
 3. 区画分け。入力は原本があれば原本から描き直した画像、無ければ表示用画像。列数 = max(3, ceil(幅 / 3200))、行数 = max(2, ceil(高さ / 3300))、重なり 60px、各区画は幅 1,400px の JPEG にする。
 4. 画像 AI の呼び出し。`InferenceUseCase` に寸法マップ用の用途を追加し、`VisionCompletionPort` を `background: true` で呼ぶ。DGX が混んでいる（429 / 503）ときは `DEFERRED` にして翌晩に回す。出力形式を固定するため `VisionCompletionInput` に任意の `responseFormat`（JSON スキーマ）を足す。DGX の互換 API が `response_format` を通すかは要確認（`DGXSparkControlPlane` の責任分界）。通らない場合も、配列形式と項目名付き形式の両方を読む寛容な読み込みで受ける（実験で 31 区画がこの形式だった）。
-5. 後処理。表面粗さ（Ra）と面取り（0.5C 等）を除く。値の一致する OCR の読みが 0.03W 以内にあれば座標をそこへ合わせる。同じ値で 0.01W 以内の重複（区画の重なり）を一つにまとめる。画像 AI の値に小数点があり、同じ位置の OCR の読みに無い（「3.5」と「35」）ときは「OCR と食い違い」にする。
+5. 後処理。表面粗さ（Ra）と面取り（0.5C 等）を除く。同じ値で 0.01W 以内の重複（区画の重なり）を一つにまとめる。画像 AI の値に小数点があり、同じ位置の OCR の読みに無い（「3.5」と「35」）ときは「OCR と食い違い」にする。
 6. 夜間処理。既存 OCR の scheduler と同じ形で、夜間の時間帯だけキューを処理する scheduler を足す。新しい図面の取込時にキューへ入れ、既存の図面は少しずつ後追いで入れる。1 図面は区画数ぶん（3×2 で 6 回、大きい図面で最大 15 回）の呼び出しになり、実験では 1 区画約 25 秒（3 並列）だった。
-7. OCR の手がかり。実験では PP-OCRv5 の読みを画像 AI に添え、その座標に合わせた。本番で PP-OCRv5 を入れるか、既存 OCR のキャッシュで足りるかは、画像だけで位置を答えさせる比較実験の結果で決める（実施中）。PP-OCRv5 を入れる場合は、Pi5 の API コンテナにある RapidOCR ワーカー（`scripts/part-measurement/drawing-local-rapidocr-worker.py`）で夜間だけ動かす案を第一候補にする。
+7. OCR の手がかり。PP-OCRv5 は入れない（Decision Log）。画像 AI には区画画像だけを渡し、返った位置をそのまま使う。既存 OCR のキャッシュがある図面では、5 の食い違い検出にだけ使う。
 8. 画面は変えない。Milestone 4 が寸法マップを読む。
 
 この設計は 2026-10-03 に利用者が承認した。あわせて、候補の合格基準を「上位 3 件に正解がある割合」とし、深さの上限をねじの太さで決まる社内ルールとして扱うことが決まった。
@@ -300,6 +302,14 @@ Milestone 2 の 2 回目（2026-10-03、本番コード変更なし）:
 
 図面の寸法線（文字が乗っている線を、交差する補助線で区切った範囲）を使い、丸数字から線までの距離で並べる方式も試したが、上位 3 件は 82.4%（線の両端までの距離では 80.9%）に下がり、文字の距離だけで外した項目を線で救えた例は 0 件だった。外した長さ・ピッチの項目は、図面にない計算値（近くの寸法 2〜3 個の和や差、21 件）が多く、位置の問題はわずかだった。
 
+OCR の手がかりの要否（30 図面 330 項目、上位 3 件、種類で絞って距離順）:
+
+    画像 AI への入力            位置合わせなし   今の OCR で合わせる   PP-OCRv5 で合わせる
+    画像 + PP-OCRv5 の読み      85.2%            84.8%                 85.2%
+    画像だけ                    84.5%            84.2%                 84.2%
+
+画像だけでも、画像 AI が返した位置の 93.0% は PP-OCRv5 の読みから 0.03W 以内にあった。差は最大 1 ポイント（330 項目中 3 件）で、OCR の手がかりも位置合わせも上位 3 件にはほとんど効かない。
+
 計算値の候補（同じ線上で端がつながる直列寸法 2 個の和、30 図面で 569 組）を候補に混ぜる試験: 順位を文字の距離と同じに扱うと上位 3 件は 85.2% → 84.5%（救えた 3 件、失った 5 件）、順位を下げると変化なし。自動で混ぜる効果は無い。
 
 経路 B の試算（兄弟のない図面。1 図面ずつ外し、残りの図面で「その分類の寸法を人が項目にした割合」を学び、割合が閾値以上の分類の寸法すべてに案を置く）:
@@ -333,4 +343,5 @@ Milestone 3 以降で寸法マップの型（寸法 1 件 = 原文、基準値�
 
 改訂メモ: 2026-10-03 初版。Milestone 1 を実装し、以降を DGX 空き待ちとして記録した。
 改訂メモ: 2026-10-03 Milestone 2 の 1 回目の実験結果を記録し、候補の合算方針、寸法マップの読み取り方式、Milestone 5 の方式見直しを Decision Log に追加した。
+改訂メモ: 2026-10-03 寸法マップで上位 3 件 85.2% を確認し、計算値・寸法線・経路 B・OCR の手がかりの試験結果と、Milestone 3 の実装計画を記録した。PP-OCRv5 は本番に入れないと決めた。
 改訂メモ: 2026-10-03 2 回目、図面全体の正解による読み取り精度、上下限の決まり方、左右違いの写し替えを記録した。Milestone 3〜5 を「読む・結ぶ・案を置く・人が承認する」の構成に書き直した。同日、利用者が設計、候補の合格基準（上位 3 件）、深さルールの扱いを承認したので Decision Log に記録した。
