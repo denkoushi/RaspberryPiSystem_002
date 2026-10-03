@@ -131,6 +131,20 @@
     - hermes_search_trial_enabled | bool
     - item.value | length > 0
 
+- name: Apply synthetic question flywheel settings when explicitly configured
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+    mode: '0600'
+  loop:
+    - { key: HERMES_FLYWHEEL_ENABLED, value: "{{ hermes_flywheel_enabled | default('') }}" }
+    - { key: HERMES_FLYWHEEL_MAX_QUESTIONS, value: "{{ hermes_flywheel_max_questions | default('') }}" }
+  when:
+    - hermes_search_trial_enabled | bool
+    - item.value | length > 0
+
 - name: Apply dense retrieval provider when explicitly configured
   ansible.builtin.lineinfile:
     path: "{{ release_pi5_chat_env_file }}"
@@ -204,6 +218,15 @@
     path: "{{ release_pi5_chat_env_file }}"
     regexp: '^HERMES_RETRIEVAL_ENRICHMENT_ENABLED='
     line: HERMES_RETRIEVAL_ENRICHMENT_ENABLED=false
+    create: false
+    mode: '0600'
+  when: not (hermes_search_trial_enabled | bool)
+
+- name: Disable the synthetic question flywheel when the search trial is disabled
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: '^HERMES_FLYWHEEL_ENABLED='
+    line: HERMES_FLYWHEEL_ENABLED=false
     create: false
     mode: '0600'
   when: not (hermes_search_trial_enabled | bool)

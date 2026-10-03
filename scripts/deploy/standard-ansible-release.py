@@ -737,6 +737,19 @@ def enrichment_environment() -> dict[str, str]:
     return environment
 
 
+def flywheel_environment() -> dict[str, str]:
+    # Nightly synthetic question flywheel (docs/plans/hermes-synthetic-question-flywheel-execplan.md).
+    # Omitted values keep the current line on the Pi 5; the runner defaults to off.
+    environment: dict[str, str] = {}
+    enabled = optional_bool_setting("HERMES_FLYWHEEL_ENABLED")
+    max_questions = optional_cap_setting("HERMES_FLYWHEEL_MAX_QUESTIONS")
+    if enabled:
+        environment["HERMES_FLYWHEEL_ENABLED"] = enabled
+    if max_questions:
+        environment["HERMES_FLYWHEEL_MAX_QUESTIONS"] = max_questions
+    return environment
+
+
 def hermes_trial_configuration(
     args: argparse.Namespace,
     selection: tuple[tuple[str, tuple[str, ...]], ...],
@@ -768,6 +781,7 @@ def hermes_trial_configuration(
     if retrieval_v2_enabled:
         environment["HERMES_RETRIEVAL_V2_ENABLED"] = retrieval_v2_enabled
     environment.update(enrichment)
+    environment.update(flywheel_environment())
     environment.update(dense_environment())
     if enabled == "false":
         return None, environment
@@ -821,6 +835,7 @@ def hermes_trial_maintenance_configuration(
             raise UsageError("HERMES_RETRIEVAL_V2_ENABLED must be true or false")
         environment["HERMES_RETRIEVAL_V2_ENABLED"] = retrieval_v2_enabled
     environment.update(enrichment_environment())
+    environment.update(flywheel_environment())
     environment.update(dense_environment())
     return environment
 
@@ -913,6 +928,8 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
                        "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY",
                        "HERMES_RETRIEVAL_ENRICHMENT_WINDOW",
                        "HERMES_RETRIEVAL_ENRICHMENT_IDS",
+                       "HERMES_FLYWHEEL_ENABLED",
+                       "HERMES_FLYWHEEL_MAX_QUESTIONS",
                        "HERMES_RETRIEVAL_DENSE_PROVIDER",
                        "HERMES_RETRIEVAL_DENSE_INDEX_ENABLED",
                        "HERMES_JEV_PROVIDER",

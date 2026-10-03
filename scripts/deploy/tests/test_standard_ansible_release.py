@@ -233,6 +233,33 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
                 with self.assertRaisesRegex(MODULE.UsageError, "only record ids"):
                     MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
 
+    def test_maintenance_flywheel_settings_reach_systemd_without_defaulting(self) -> None:
+        args = argparse.Namespace(hermes_search_trial_maintenance="on", branch="main",
+                                  limit="raspberrypi5", full_fleet=False, detach=True,
+                                  torque_cutover=False)
+        for value in (None, "false", "true"):
+            with self.subTest(value=value), mock.patch.dict(os.environ, {} if value is None else {"HERMES_FLYWHEEL_ENABLED": value}, clear=True):
+                environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+                command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
+                                             ("pi5",), "pi", hermes_environment=environment)
+                if value is None:
+                    self.assertNotIn("HERMES_FLYWHEEL_ENABLED", environment)
+                    self.assertFalse(any("HERMES_FLYWHEEL_ENABLED" in item for item in command))
+                else:
+                    self.assertEqual(environment["HERMES_FLYWHEEL_ENABLED"], value)
+                    self.assertIn(f"--setenv=HERMES_FLYWHEEL_ENABLED={value}", command)
+        with mock.patch.dict(os.environ, {"HERMES_FLYWHEEL_ENABLED": "true", "HERMES_FLYWHEEL_MAX_QUESTIONS": "100"}, clear=True):
+            environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+            command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
+                                         ("pi5",), "pi", hermes_environment=environment)
+            self.assertIn("--setenv=HERMES_FLYWHEEL_MAX_QUESTIONS=100", command)
+        with mock.patch.dict(os.environ, {"HERMES_FLYWHEEL_ENABLED": "yes"}, clear=True):
+            with self.assertRaisesRegex(MODULE.UsageError, "HERMES_FLYWHEEL_ENABLED must be true or false"):
+                MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+        with mock.patch.dict(os.environ, {"HERMES_FLYWHEEL_MAX_QUESTIONS": "0"}, clear=True):
+            with self.assertRaisesRegex(MODULE.UsageError, "HERMES_FLYWHEEL_MAX_QUESTIONS must be a positive integer"):
+                MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+
     def test_maintenance_dense_provider_reaches_systemd_without_defaulting(self) -> None:
         args = argparse.Namespace(hermes_search_trial_maintenance="on", branch="main",
                                   limit="raspberrypi5", full_fleet=False, detach=True,
