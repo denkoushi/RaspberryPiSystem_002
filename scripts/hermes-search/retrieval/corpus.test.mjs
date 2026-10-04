@@ -30,6 +30,9 @@ test('mixed authorized rows use only catalog fields and reject disabled or unkno
   assert.equal('secret' in records[1], false);
   assert.equal(authorizedRecords(rows, loadCatalog(['nonconformity'])).length, 1);
   const view = buildCorpusView(records, catalog, '2026-10-04');
+  assert.equal(view.lexicalCorpus, null);
+  assert.ok(view.bySource.nonconformity.lexicalCorpus);
+  assert.ok(view.bySource.knowledge_procedure.lexicalCorpus);
   assert.deepEqual(view.bySource.knowledge_procedure.records, [records[1]]);
   assert.deepEqual(view.valueIndex.values.nonconformity.partNumber, ['N']);
   assert.deepEqual(view.valueIndex.values.knowledge_procedure.partNumber, ['P']);
@@ -37,6 +40,12 @@ test('mixed authorized rows use only catalog fields and reject disabled or unkno
   assert.equal(refreshed.snapshotCount, 2);
   const full = replaceCorpus(refreshed, catalog, { mode: 'full', records: [rows[0]] });
   assert.equal(full.bySource.knowledge_procedure.records.length, 0);
+});
+
+test('single-source corpus reuses the source lexical corpus reference', () => {
+  const catalog = loadCatalog(['nonconformity']);
+  const view = buildCorpusView([{ id: 'n1', condition: 'original' }], catalog, null);
+  assert.equal(view.lexicalCorpus, view.bySource.nonconformity.lexicalCorpus);
 });
 
 test('merge keeps an updated row and a new row', () => {

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authorizeKioskClientKeyOrJwtRoles } from '../../lib/kiosk-document-auth.js';
-import { HermesSearchTrialService } from '../../services/assembly/hermes-search-trial.service.js';
+import { HermesSearchTrialService, type HermesPrincipal } from '../../services/assembly/hermes-search-trial.service.js';
 import { createReceiptLog, type ReceiptLog } from '../../services/assembly/hermes-search-receipt-log.js';
 
 const SAFE_DIAGNOSTIC_STAGES = new Set(['jev_query', 'worker_request']);
@@ -62,7 +62,9 @@ export async function registerHermesSearchTrialRoutes(
     }).strict().parse(request.body);
     if (!service.isEnabled()) return reply.code(503).send({code:'HERMES_SEARCH_DISABLED',message:'JEV記録検索は無効です。'});
     try {
-      const { receipt, ...answer } = await (pageContext ? service.answer(question, sessionId, pageContext) : service.answer(question, sessionId));
+      // The authorizer gives a registered kiosk key precedence over JWT, including when both are sent.
+      const kind = request.headers['x-client-key'] ? 'kiosk' : request.user!.role.toLowerCase() as HermesPrincipal['kind'];
+      const { receipt, ...answer } = await service.answer(question, sessionId, pageContext, { principal: { kind } });
       if (receipt) {
         // One line per answer with the question text and the planner decisions. Record text
         // is not included; the kiosk response never carries the receipt.

@@ -15,6 +15,11 @@ export function validateSourceDefinition(value,expectedId) {
   if(!expectedId || value?.schema!=='hermes-source-definition/v1' || value.id!==expectedId) {
     throw new Error('source definition does not match its ingestion adapter');
   }
+  if(!Array.isArray(value.visibility) || !value.visibility.length
+    || value.visibility.some(kind=>!['kiosk','viewer','manager','admin'].includes(kind))
+    || new Set(value.visibility).size!==value.visibility.length) {
+    throw new Error('invalid visibility');
+  }
   for(const name of ['bodyFields','organizedLabels',...(value.metadataFields===undefined?[]:['metadataFields'])]) {
     const entries=Object.entries(value[name]??{});
     if(!entries.length || entries.some(([key,label])=>!key || typeof label!=='string' || !label)) {

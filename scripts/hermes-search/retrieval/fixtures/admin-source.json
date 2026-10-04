@@ -1,0 +1,15 @@
+{
+  "schema": "hermes-source-definition/v1",
+  "id": "synthetic_admin",
+  "label": "管理者限定合成ソース",
+  "description": "権限テスト専用の合成記録",
+  "visibility": ["admin"],
+  "recordNumberField": "title",
+  "metadataFields": { "title": "合成記録名", "partNumber": "品番" },
+  "bodyFields": { "stepsText": "合成本文" },
+  "contextAttributes": ["title", "partNumber"],
+  "searchMetadataFields": ["title", "partNumber"],
+  "lexicalFields": ["title", "partNumber", "stepsText"],
+  "organizedLabels": { "step": "合成本文" },
+  "organizedContextClasses": ["step"]
+}
