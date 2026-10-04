@@ -34,3 +34,6 @@ CVE-2026-39826
 CVE-2026-28390
 # Debian libcap2 in api image (bookworm base); fixed version availability depends on base image refresh timing
 CVE-2026-4878
+
+# Debian pcre2 (libpcre2-8-0) in the API image; fixed in 10.42-1+deb12u2, picked up by the next uncached build (2026-10-05)
+CVE-2026-103111
