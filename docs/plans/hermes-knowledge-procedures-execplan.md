@@ -35,12 +35,18 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [ ] マイルストーン2c: PR、CI、main 統合、Pi5 反映、実際の投稿での確認。
 - [ ] 素材の付け替えによる統合・分割の操作（仕分け済みの素材を別の案件へ移す）は、班長の画面（マイルストーン3）で行う。
 - [ ] マイルストーン2b: 文字のある PDF の束を DocJev で分割・分類してから取り込む処理と、Excel の取り込み。
+- [x] (2026-10-04) マイルストーン3a: API・DB のローカル実装。職位名・段階対応表、NFC 承認と差し戻し、誤り報告、worker 起動時の既存 draft の承認待ち移行、CSV の職位取り込みを追加した。実装は Codex（gpt-6.1-sol）、検証は Claude。集中テスト 199 件と、使い捨て PostgreSQL での全 migration 適用・DB テスト 25 件が成功した。自動公開の新しい版が出たとき、誤り報告で承認待ちに戻っていた古い版を取り下げる修正を検証時に加えた。
+- [x] (2026-10-04) マイルストーン3b・4: デザイン案（`docs/design-previews/knowledge-review-chat-preview.html`、架空データ）をオーナーが承認した。名簿 CSV の職位の列名は「職位」とオーナーが決めた。
+- [x] (2026-10-04) マイルストーン3b・4の画面をローカル実装: 承認待ち、承認・差し戻し、公開済み一覧の名前・品番・図番フィルタ、1手順ずつの閲覧、誤り報告、職位の対応表。実装は Codex（gpt-6.1-sol）、検証は Claude。検証結果は Concrete Steps 参照。実機での見た目の確認は Pi5 反映後に行う。
 - [ ] マイルストーン3: 確認の区分（承認が要るもの／自動公開）と、承認・誤り報告・修正の流れ。
 - [ ] マイルストーン4: Chat からの閲覧（主題名での直接表示）。
 - [ ] マイルストーン5: 写真への丸数字・チェック・切り抜きの自動付与（精度評価の後）。
 - [ ] マイルストーン6: 横断検索フェーズ1完了後、手順書を情報源として登録し、自然文の質問から探せるようにする。
 
 ## Surprises & Discoveries
+
+- Observation: 指定の `tsc --noEmit -p .` は既存の rootDir/include 不一致で TS6059 になり、`--rootDir .` の補助検査でも既存テスト等の型エラーが残る。今回の変更ファイルに型診断はなかった。
+  Evidence: ローカルの共有パッケージを build 後、`tsc --noEmit -p tsconfig.build.json` は成功した。Prisma 生成はホームキャッシュの書き込み制限を、既存エンジンの一時領域コピーで回避し、ネットワーク取得なしで成功した。
 
 - Observation: 手動編集機能は、切り抜き・丸数字・チェック・コメントを「ページ上の位置（割合）と種類」のデータとして持つ。
   Evidence: `apps/api/prisma/schema.prisma` の `AssemblyProcedureOverlayElement`（`xRatio`/`yRatio`/`widthRatio`/`heightRatio`、`kind`、`text`、`shapeKind`、画像 `assetId`）と、作業要領側の `WorkInstructionEditOverlay`。AI が同じ形のデータを出せば、表示と人による修正に既存の仕組みを使える。
@@ -65,6 +71,16 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: `disallowed statement ... ALTER TABLE "KnowledgeIntake" ADD COLUMN "posterEmployeeId" TEXT, ADD COLUMN ...`。列の追加を 1 列ずつの空欄可にし、`buildAttempts` を空欄可（空欄は 0 回）にし、作業の種類の初期登録と仕分け前の素材の補完は起動時の `ensureKnowledgeReferenceData` に移した。マイルストーン1と2a の migration（新規表への `ALTER TABLE ... ADD CONSTRAINT`）もこの検査に合わないが、当時の変更分類では `deploy-contract` が選ばれず検査されていなかった。両方とも本番適用済みで、以後は適用済みとして再検査されない。
 
 ## Decision Log
+
+- Decision: マイルストーン3a は `KnowledgePositionRank` と `KnowledgeProcedureReview` を追加する。社員 ID は監査用のスカラ値とし、社員コード・氏名・タグ・職位名・段階は操作時の写しを保存する。新しい表の FK と CHECK は CREATE TABLE 内で定義し、既存表は nullable な職位列だけを加える。
+  Rationale: expand-only の制約を守り、名簿 CSV の置換で社員が再作成されても過去の承認記録を保持するため。
+  Date/Author: 2026-10-04 / Codex
+- Decision: 公開・承認・差し戻し・誤り報告・承認待ち投入は手順書行のロックで直列化し、状態競合を `PROCEDURE_REVIEW_CONFLICT` で拒否する。承認操作では在籍状態・タグ重複・対応表をトランザクション内でも再確認する。承認用 port は既存 port を拡張し、検索側の契約を変更しない。
+  Rationale: 二重承認と複数の承認待ちを防ぎ、ユーザーのロールではなく現在の社員情報で判断するため。
+  Date/Author: 2026-10-04 / Codex
+- Decision: CSV の内部列名を `positionName`、日本語の別名を `職位` とし、列定義が既に設定されていても任意列を補う。列なしは既存値を保持し、置換モードでの再作成時も保持する。空欄は null とする。
+  Rationale: 既存 CSV と管理済みの列定義を使った取り込みを継続できるため。
+  Date/Author: 2026-10-04 / Codex
 
 - Decision: 「探す」部分は、横断検索のフェーズ1完了後に、手順書を情報源として載せる形にする。
   Rationale: 「不適合情報と同じように取り出す」をそのまま満たし、試作の 20 件上限（質問ごとに全件を LLM へ渡す方式）を索引検索で解消できる。
@@ -135,7 +151,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Outcomes & Retrospective
 
-まだ実装していない。
+マイルストーン3a の API・DB をローカルで実装した。承認を要する新しい下書きと既存の停止した下書きは承認待ちへ進み、在籍中の班長相当以上の社員タグで承認・差し戻しできる。誤り報告は公開を取り下げ、承認待ちの最新版を残す。対応表の管理は ADMIN/MANAGER の JWT だけに限る。その後、マイルストーン3b・4の画面として承認・閲覧・誤り報告 UI と職位の管理 UI をローカル実装した。承認待ちにはその版への最新の誤り報告の理由を出し、タグ UID は POST 本文だけで送る。職位の人数は既存の社員一覧から集計する。修正操作、自然文からの検索、commit・統合・deploy は今回の画面実装に含めない。
 
 ## Context and Orientation
 
@@ -199,7 +215,27 @@ DocJev の評価は、セッションのスクラッチ領域で次のように�
 
 マイルストーン2a の検証も同じ手順で行った。API の集中テストは `src/services/knowledge`、`src/routes/__tests__/hermes-knowledge.test.ts`、`src/bootstrap/__tests__/start-post-listen-schedulers.test.ts` を対象にし、データベースのテストは `src/services/knowledge/__tests__/*.local.test.ts` をまとめて実行した。2026-09-27 の結果は、集中テスト 56 件と、データベースのテスト 11 件がすべて成功した（Poppler の実物テスト 1 件は環境変数を付けていないため対象外）。実際の DGX での振り分けと組み立ての品質は、Pi5 反映後に実際の素材で確かめる。
 
-マイルストーン2b 以降の具体的なコマンドは、着手するときに追記する。
+マイルストーン3a の集中検証は API ディレクトリで次を実行した。
+
+    pnpm exec prisma generate
+    pnpm exec vitest run src/services/knowledge src/routes/__tests__/hermes-knowledge.test.ts src/bootstrap/__tests__/start-post-listen-schedulers.test.ts src/services/imports
+    pnpm exec tsc --noEmit -p .
+
+Prisma 生成はホームキャッシュの書き込み権限で失敗した後、既存の `darwin-arm64` と `linux-arm64-openssl-3.0.x` エンジンキャッシュを `/tmp/prisma-download/master/605197351a3c8bdd595af2d2a9bc3025bca48ea2/` にコピーし、`AWS_LAMBDA_FUNCTION_VERSION=knowledge-validation pnpm exec prisma generate` で成功した。この環境変数は Prisma の一時キャッシュ経路を選ぶため、検証コマンドだけに付けた。共有型の build もローカルの既存依存だけで実行した。
+
+集中検証は 197 件成功、25 件スキップ（DB と Poppler の条件付きテスト）、約 15 秒だった。起動時の呼び出し確認と CSV 置換時の職位保持を追加した後、その変更を含む単体テストは 21 件成功し、ルートの再検証は 31 件成功した。DB のテストは Codex の環境では実行できなかったため、Claude が使い捨て PostgreSQL で実行し、25 件すべて成功した。指定の tsc は既存 TS6059 で失敗し、`--rootDir .` の補助検査でも既存テスト等のエラーが残った。API が参照する `part-search-core` と `shelf-layout-core` のローカル build 後、本番コードに絞った `pnpm exec tsc --noEmit -p tsconfig.build.json` は成功した。
+
+リポジトリのルートで `COREPACK_ENABLE_NETWORK=0 scripts/ci/pnpm-exact.sh --filter @raspi-system/api --filter @raspi-system/shared-types lint --max-warnings=0` が成功し、後続の変更ファイルにも eslint を実行して成功した。新 migration の SQL は既存の `validate-expand-only-migrations.py` の `validate_sql` で `EXPAND_ONLY_VALIDATION_OK` となった。Docker が使える環境では、上記の使い捨て PostgreSQL 手順で全 migration を適用し、`KNOWLEDGE_DATABASE_TEST=1 pnpm exec vitest run src/services/knowledge/__tests__/knowledge-procedure-repository.local.test.ts`（14 件）を再実行する。
+
+マイルストーン3b・4の画面実装のローカル検証（2026-10-04）:
+
+- `pnpm --filter @raspi-system/shared-types build`: 成功。
+- Web: `pnpm exec vitest run src/features/hermes-knowledge/ src/components/hermes/ src/pages/admin/KnowledgePositionRanksPage.test.tsx`: 11 ファイル・94 件成功。初回は投稿用モックが承認待ち取得まで受けて 4 件失敗し、エンドポイントごとにモックを分けた後に成功した。
+- Web: `pnpm exec tsc --noEmit -p .`: 成功。
+- API: `pnpm exec vitest run src/services/knowledge src/routes/__tests__/hermes-knowledge.test.ts`: 94 件成功、27 件スキップ（DB 26 件・Poppler 1 件）。
+- API: `pnpm exec tsc --noEmit -p tsconfig.build.json`: 成功。
+- ルート: `COREPACK_ENABLE_NETWORK=0 scripts/ci/pnpm-exact.sh lint --max-warnings=0`: 成功。最後の変更ファイルにも eslint を実行した。
+- 新しい DB テストを含む `*.local.test.ts` は Codex の環境では実行できなかったため、Claude が使い捨て PostgreSQL で実行し、26 件すべて成功した（Poppler の 1 件は対象外）。API の集中テストは 200 件成功。本番 DB は使用していない。
 
 ## Validation and Acceptance
 
@@ -227,3 +263,5 @@ Revision note (2026-09-27): 承認者を「社員タグをスキャンした、�
 Revision note (2026-09-27): マイルストーン1の反映結果を記録し、マイルストーン2を 2a（素材キューと振り分け・組み立て）と 2b（DocJev と Excel）に分けた。保存経路の変更、確認区分の上書き、組み立て結果の検証、分類の自由化の決定を記録した。
 Revision note (2026-09-27): 実運用を想定した議論から、AI の単独振り分けをやめて投稿者が仕分けを決める方針に変え、マイルストーン2c（仕分け）を 2b より先に置いた。投稿ごとの社員タグ、任意のバーコード、保留と通知、3 部品のタイトルと作業の種類の一覧、付け替えによる統合・分割を記録した。
 Revision note (2026-09-27): マイルストーン2a の修正の反映結果と、マイルストーン2c（仕分け）の実装内容、タグ付き投稿で用途判定を省く決定、仕分けの単位と作り直しの決定を記録した。
+
+Revision note (2026-10-04): マイルストーン3a の API・DB のローカル実装、CSV の職位保持、競合制御、検証結果と Docker・既存型検査の制約を記録した。UI、commit、統合、deploy は後続の作業として残した。

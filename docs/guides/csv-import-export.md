@@ -414,6 +414,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 | 列名 | 形式 | 説明 | 例 |
 |------|------|------|-----|
 | `department` | 文字列 | 所属部署 | `製造部` |
+| `positionName`（別名: `職位`） | 文字列 | 人事データの職位名。列なしは既存値を保持、空欄は削除 | `主任` |
 | `nfcTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `04C362E1330289` |
 | `status` | 文字列 | ステータス（`ACTIVE` / `INACTIVE` / `SUSPENDED`、未指定時は`ACTIVE`） | `ACTIVE` |
 

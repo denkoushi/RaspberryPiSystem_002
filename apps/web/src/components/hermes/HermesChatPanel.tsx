@@ -41,6 +41,7 @@ export type HermesKnowledgeMode = 'search' | 'knowledge' | 'record-pilot';
 
 export type HermesChatPanelProps = {
   conversationExtension?: ReactNode;
+  conversationContent?: ReactNode;
   attachmentControl?: ReactNode;
   knowledgeMode?: HermesKnowledgeMode;
   recordPilotAvailable?: boolean;
@@ -434,6 +435,7 @@ function SignageProposalPreview({
 
 export default function HermesChatPanel({
   conversationExtension,
+  conversationContent,
   attachmentControl,
   knowledgeMode = 'search',
   recordPilotAvailable = false,
@@ -563,6 +565,7 @@ export default function HermesChatPanel({
       </header>
 
       {authRequired ? <p className="hermes-chat-panel__status" role="status">{authRequired}</p> : null}
+      {conversationContent ?? <>
       {conversationExtension}
       {error ? <p className="hermes-chat-panel__status hermes-chat-panel__status--error" role="alert">{error}</p> : null}
       {consultationError ? <p className="hermes-chat-panel__status hermes-chat-panel__status--error" role="alert">{consultationError}</p> : null}
@@ -682,6 +685,7 @@ export default function HermesChatPanel({
         </>
       )}
       {attachmentControl}
+      </>}
     </section>
   );
 }

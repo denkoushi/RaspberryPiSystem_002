@@ -63,3 +63,26 @@ export interface KnowledgeProcedureSummary {
   revisionNumber: number;
   publishedAt: string;
 }
+
+export type KnowledgePositionRank = 'general' | 'leader' | 'section_chief' | 'manager';
+export interface KnowledgePositionRankEntry { positionName: string; rank: KnowledgePositionRank }
+export interface KnowledgePositionRanksResponse {
+  ranks: KnowledgePositionRankEntry[];
+  unmappedPositions: { positionName: string; employeeCount: number }[];
+}
+export interface KnowledgePositionRanksRequest { ranks: KnowledgePositionRankEntry[] }
+export interface KnowledgeReviewer { displayName: string; positionName: string | null; rank: KnowledgePositionRank }
+export interface KnowledgePendingReview extends Omit<KnowledgeProcedureSummary, 'publishedAt'> {
+  revisionId: string;
+  stepCount: number;
+  createdAt: string;
+  publishedRevisionNumber: number | null;
+  reportComment: string | null;
+}
+export interface KnowledgeReviewRequest { reviewerTagUid: string }
+export interface KnowledgeApproveRequest extends KnowledgeReviewRequest { comment?: string }
+export interface KnowledgeReturnRequest extends KnowledgeReviewRequest { comment: string }
+export interface KnowledgeErrorReportRequest { reporterTagUid: string; comment: string }
+export interface KnowledgePendingReviewsResponse { reviewer: KnowledgeReviewer; reviews: KnowledgePendingReview[] }
+export interface KnowledgeReviewDetailResponse { procedure: KnowledgeProcedureDocument }
+export interface KnowledgeReviewMutationResponse { ok: true }

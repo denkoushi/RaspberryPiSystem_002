@@ -24,7 +24,7 @@ const content = { formatVersion: 1 as const, steps: [{ id: 's1', title: 't', bod
 
 describe.skipIf(!enabled)('Knowledge triage PostgreSQL contract', () => {
   beforeEach(async () => {
-    if (await db.knowledgeWorkType.count() === 0) await ensureKnowledgeReferenceData(db, triage);
+    if (await db.knowledgeWorkType.count() === 0) await ensureKnowledgeReferenceData(db, triage, procedures);
     await db.knowledgeTriage.deleteMany(); await db.knowledgeProcedureMaterial.deleteMany();
     await db.knowledgeProcedure.updateMany({ data: { publishedRevisionId: null } });
     await db.knowledgeProcedureRevision.deleteMany(); await db.knowledgeProcedure.deleteMany();
@@ -34,9 +34,9 @@ describe.skipIf(!enabled)('Knowledge triage PostgreSQL contract', () => {
   it('seeds work types once and opens poster-less triage for posts that predate triage', async () => {
     await db.knowledgeWorkType.deleteMany();
     await materials.enqueue('old-post', [item('古い素材')]);
-    await ensureKnowledgeReferenceData(db, triage);
+    await ensureKnowledgeReferenceData(db, triage, procedures);
     await db.knowledgeWorkType.update({ where: { name: '安全' }, data: { active: false } });
-    await ensureKnowledgeReferenceData(db, triage);
+    await ensureKnowledgeReferenceData(db, triage, procedures);
     const names = (await db.knowledgeWorkType.findMany({ orderBy: { sortOrder: 'asc' } })).map(row => row.name);
     expect(names[0]).toBe('段取り'); expect(names).toContain('申し込み・手続き'); expect(names.at(-1)).toBe('その他');
     expect((await db.knowledgeWorkType.findUniqueOrThrow({ where: { name: '安全' } })).active).toBe(false);

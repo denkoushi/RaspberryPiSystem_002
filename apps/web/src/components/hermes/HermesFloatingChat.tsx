@@ -29,8 +29,10 @@ import {
 } from '../../features/barcode-scan/useKeyboardWedgeScan';
 import { KnowledgeAttachments, KnowledgeIntakePanel } from '../../features/hermes-knowledge/KnowledgeIntakePanel';
 import { KnowledgePosterBar } from '../../features/hermes-knowledge/KnowledgePosterBar';
+import { KnowledgeWorkspace, KnowledgeWorkspaceChips } from '../../features/hermes-knowledge/KnowledgeWorkspace';
 import { useKnowledgeIntake } from '../../features/hermes-knowledge/useKnowledgeIntake';
 import { useKnowledgePoster } from '../../features/hermes-knowledge/useKnowledgePoster';
+import { useKnowledgeWorkspace } from '../../features/hermes-knowledge/useKnowledgeWorkspace';
 
 import { useHermesPageContext } from './HermesPageContext';
 
@@ -195,6 +197,7 @@ export function HermesFloatingChat() {
   );
   const knowledge = useKnowledgeIntake(identity, activeConsultation?.id ?? null, open && knowledgeMode === 'knowledge');
   const knowledgePoster = useKnowledgePoster(open && knowledgeMode === 'knowledge' && knowledge.enabled);
+  const knowledgeWorkspace = useKnowledgeWorkspace(open && knowledgeMode === 'knowledge' && knowledge.enabled, knowledgePoster.poster?.tagUid ?? null, identity);
 
   const invalidateChatRequest = useCallback(() => {
     abortRef.current?.abort();
@@ -882,14 +885,15 @@ export function HermesFloatingChat() {
     });
   }, []);
 
-  const panelScale = isPanelExpanded ? 2 : 1;
-  const panelWidth = isPanelExpanded
+  const panelExpanded = isPanelExpanded || knowledgeWorkspace.expanded;
+  const panelScale = panelExpanded ? 2 : 1;
+  const panelWidth = panelExpanded
     ? Math.min(PANEL_STANDARD_WIDTH * panelScale, Math.max(1, viewport.width - VIEWPORT_GUTTER * 2))
     : Math.min(PANEL_STANDARD_WIDTH, Math.max(280, viewport.width - VIEWPORT_GUTTER * 2));
   const spaceAboveIcon = Math.max(180, position.top - VIEWPORT_GUTTER * 2);
   const spaceBelowIcon = Math.max(180, viewport.height - position.top - ICON_SIZE - VIEWPORT_GUTTER * 2);
   const opensAbove = position.top > viewport.height / 2 || spaceAboveIcon >= spaceBelowIcon;
-  const panelHeight = isPanelExpanded
+  const panelHeight = panelExpanded
     ? Math.min(PANEL_STANDARD_HEIGHT * panelScale, Math.max(1, viewport.height - VIEWPORT_GUTTER * 2))
     : Math.min(
       PANEL_STANDARD_HEIGHT,
@@ -900,7 +904,7 @@ export function HermesFloatingChat() {
     Math.max(VIEWPORT_GUTTER, position.left + ICON_SIZE / 2 - panelWidth / 2),
     Math.max(VIEWPORT_GUTTER, viewport.width - panelWidth - VIEWPORT_GUTTER)
   );
-  const panelTop = isPanelExpanded
+  const panelTop = panelExpanded
     ? (() => {
       const preferredPanelTop = opensAbove
         ? position.top - panelHeight - 12
@@ -939,10 +943,11 @@ export function HermesFloatingChat() {
     knowledgeMode,
     recordPilotAvailable: recordPilotScope.enabled,
     onKnowledgeModeChange: handleKnowledgeModeChange,
+    conversationContent: knowledgeWorkspace.isOpen ? <KnowledgeWorkspace workspace={knowledgeWorkspace} posterName={knowledgePoster.poster?.name ?? null} /> : undefined,
     conversationExtension: knowledgeMode === 'record-pilot' ? <p className="hermes-chat-panel__status" role="note">
       JEV記録検索：取り込み済みの実際の不適合記録が対象です。工程・現象・処置・原因など、知りたい条件を自然文で入力してください。記録の原文をそのまま表示します。条件を特定できない質問には確認を返します。
     </p> : knowledgeMode === 'knowledge' && knowledge.enabled ? <>
-      <KnowledgePosterBar poster={knowledgePoster.poster} verifying={knowledgePoster.verifying} error={knowledgePoster.error}
+      <KnowledgePosterBar actions={<KnowledgeWorkspaceChips workspace={knowledgeWorkspace} />} poster={knowledgePoster.poster} verifying={knowledgePoster.verifying} error={knowledgePoster.error}
         partNumber={knowledgePoster.partNumber} pending={knowledgePoster.pending} onClearPartNumber={() => knowledgePoster.setPartNumber(null)}
         onPendingDecided={(intakeId, title) => { knowledgePoster.removePending(intakeId); knowledge.markDecided(intakeId, title); }} />
       <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
@@ -970,7 +975,7 @@ export function HermesFloatingChat() {
     onReset: () => { knowledge.reset(); resetActiveConversation(); },
     onClose: closePanel,
     onStop: knowledgeMode === 'knowledge' && knowledge.busy ? undefined : stopRequest,
-    isExpanded: isPanelExpanded,
+    isExpanded: panelExpanded,
     onToggleSize: togglePanelSize,
     onNewConsultation: () => { knowledge.reset(); void createConsultation(); },
     onScan: () => void openScanner(),

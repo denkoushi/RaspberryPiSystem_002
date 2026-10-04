@@ -67,6 +67,19 @@ describe('HermesChatPanel evidence cards', () => {
     expect(screen.getByRole('button', { name: 'チャットを標準サイズに戻す' })).toBeInTheDocument();
   });
 
+  it('replaces the chat body and composer with the knowledge workspace while keeping modes', () => {
+    render(<HermesChatPanel knowledgeMode="knowledge" conversationContent={<p>承認待ち画面</p>}
+      conversationExtension={<p>投稿者バー</p>} attachmentControl={<p>添付操作</p>}
+      messages={[{ id: 'old', role: 'assistant', content: '通常の会話' }]} draft="" isBusy={false} error={null} authRequired={null}
+      onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} onKnowledgeModeChange={vi.fn()} />);
+    expect(screen.getByText('承認待ち画面')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ナレッジ' })).toBeInTheDocument();
+    expect(screen.queryByText('投稿者バー')).not.toBeInTheDocument();
+    expect(screen.queryByText('添付操作')).not.toBeInTheDocument();
+    expect(screen.queryByText('通常の会話')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument();
+  });
+
   it('records feedback on the corresponding answer and shows persisted selection', () => {
     const onFeedback = vi.fn();
     render(<HermesChatPanel messages={[{ id: 'answer-1', role: 'assistant', content: '回答', feedback: 'helpful' }]}

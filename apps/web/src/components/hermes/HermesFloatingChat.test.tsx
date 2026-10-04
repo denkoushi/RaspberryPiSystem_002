@@ -16,7 +16,8 @@ const mocks = vi.hoisted(() => ({
   updateConsultation: vi.fn(),
   cancelConsultation: vi.fn(),
   knowledgeGet: vi.fn(),
-  knowledgePost: vi.fn()
+  knowledgePost: vi.fn(),
+  pendingReviews: vi.fn()
 }));
 
 vi.mock('../../api/client', () => ({
@@ -38,6 +39,10 @@ vi.mock('../../contexts/AuthContext', () => ({
 
 // Legacy behavior is exercised with the new capability explicitly disabled.
 vi.mock('../../api/http', () => ({ api: { get: mocks.knowledgeGet, post: mocks.knowledgePost } }));
+vi.mock('../../features/hermes-knowledge/knowledgeReviewApi', async importOriginal => ({
+  ...await importOriginal<typeof import('../../features/hermes-knowledge/knowledgeReviewApi')>(),
+  listKnowledgePendingReviews: mocks.pendingReviews,
+}));
 // Tag scanning is covered by useKnowledgePoster; here an employee has already scanned.
 vi.mock('../../features/hermes-knowledge/useKnowledgePoster', () => ({
   useKnowledgePoster: () => ({ poster: { tagUid: 'tag-1', name: '田中' }, pending: [], partNumber: null, setPartNumber: () => undefined,
@@ -61,6 +66,7 @@ vi.mock('./HermesChatPanel', () => ({
     recordPilotAvailable?: boolean;
     onKnowledgeModeChange?: (mode: 'search' | 'knowledge' | 'record-pilot') => void;
     conversationExtension?: ReactNode;
+    conversationContent?: ReactNode;
     attachmentControl?: ReactNode;
     onDraftChange: (value: string) => void;
     onSend: () => void;
@@ -129,6 +135,7 @@ vi.mock('./HermesChatPanel', () => ({
       ))}
       {props.error ? <p role="alert">{props.error}</p> : null}
       {props.consultationError ? <p role="alert">{props.consultationError}</p> : null}
+      {props.conversationContent ?? <>
       {props.conversationExtension}
       {props.attachmentControl}
       <input
@@ -137,6 +144,7 @@ vi.mock('./HermesChatPanel', () => ({
         onChange={(event) => props.onDraftChange(event.target.value)}
       />
       <button type="button" onClick={props.onSend} disabled={props.isBusy}>送信</button>
+      </>}
       {props.isBusy && props.onStop ? <button type="button" onClick={props.onStop}>停止</button> : null}
       <button type="button" onClick={props.onReset}>{props.activeConsultation ? '相談一覧に戻る' : 'リセット'}</button>
       <button type="button" onClick={props.onClose}>閉じる</button>
@@ -231,6 +239,7 @@ describe('HermesFloatingChat', () => {
     mocks.cancelConsultation.mockReset().mockResolvedValue(undefined);
     mocks.knowledgeGet.mockReset().mockImplementation(async (url: string) => ({ data: url.endsWith('capabilities') ? { enabled: false } : { intakes: [] } }));
     mocks.knowledgePost.mockReset();
+    mocks.pendingReviews.mockReset().mockResolvedValue({ reviewer: { rank: 'leader' }, reviews: [] });
   });
 
   afterEach(() => {
@@ -309,6 +318,28 @@ describe('HermesFloatingChat', () => {
     await waitFor(() => expect(panel.style.width).toBe('380px'));
     expect(panel.style.height).toBe('560px');
     expect(input).toHaveValue('入力中の質問');
+  });
+
+  it('mounts approval chips beside the poster and expands the opened review', async () => {
+    mocks.knowledgeGet.mockResolvedValue({ data: { enabled: true, intakes: [] } });
+    mocks.pendingReviews.mockResolvedValue({ reviewer: { rank: 'leader' }, reviews: [{
+      procedureId: 'p1', revisionId: 'r1', title: '部品Aの段取り', stepCount: 1, createdAt: '2026-10-04',
+      publishedRevisionNumber: null, reportComment: null,
+    }] });
+    mocks.knowledgePost.mockResolvedValue({ data: { procedure: {
+      formatVersion: 1, procedureId: 'p1', revisionId: 'r1', revisionNumber: 1, title: '部品Aの段取り', category: '段取り',
+      identifiers: {}, reviewTier: 'approval_required', state: 'pending_approval', createdAt: '2026-10-04', steps: [],
+    } } });
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: '業務Hermesチャットを開く。ドラッグで移動できます' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    expect(await screen.findByText('👤 田中')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: '✅ 承認待ち 1' }));
+    fireEvent.click(await screen.findByRole('button', { name: /部品Aの段取り/ }));
+    expect(await screen.findByRole('button', { name: '承認して公開' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '標準' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '送信' })).not.toBeInTheDocument();
+    expect(mocks.knowledgePost).toHaveBeenCalledWith('/hermes-knowledge/reviews/r1/detail', { reviewerTagUid: 'tag-1' });
   });
 
   it('routes the default search request through Chat without knowledge intake', async () => {

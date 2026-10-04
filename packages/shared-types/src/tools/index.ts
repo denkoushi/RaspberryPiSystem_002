@@ -33,6 +33,7 @@ export interface Employee {
   nfcTagUid?: string | null;
   department?: string | null; // 部署（例: 製造担当部門）
   section?: string | null; // セクション（例: 加工担当部署）
+  positionName?: string | null;
   contact?: string | null;
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   createdAt: string;

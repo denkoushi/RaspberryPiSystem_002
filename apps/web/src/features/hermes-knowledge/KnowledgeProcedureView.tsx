@@ -8,48 +8,39 @@ export type KnowledgeProcedureViewProps = {
   procedure: KnowledgeProcedureDocument;
   /** Resolves authorized local routes, never a URL supplied by the model. */
   imagePathFor: (imageId: string) => string | null;
-  /** Shown on AI-created (auto_publish) procedures once error reports exist. */
+  /** Reading uses one step at a time; reviewing shows all steps. */
+  singleStep?: boolean;
   onReportError?: () => void;
 };
 
-type Mode = 'all' | 'single';
-
 function StatusBanner({ procedure, onReportError }: Pick<KnowledgeProcedureViewProps, 'procedure' | 'onReportError'>) {
   if (procedure.state !== 'published') {
-    return (
-      <div role="status" className="mt-3 rounded-lg bg-slate-200 px-4 py-2.5 text-[15px] text-slate-700">
-        <strong className="mr-2">下書き・承認待ち</strong>品質に直結する手順のため、班長相当以上の承認後に公開されます。
-      </div>
-    );
+    return <div role="status" className="mt-2 rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800"><strong>承認待ち</strong></div>;
   }
-  if (procedure.reviewTier === 'approval_required') {
-    return <div className="mt-3 rounded-lg bg-green-100 px-4 py-2.5 text-[15px] text-green-700"><strong>承認済み</strong></div>;
-  }
+  const automatic = procedure.reviewTier === 'auto_publish';
   return (
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-violet-100 px-4 py-2.5 text-[15px] text-violet-700">
-      <span><strong className="mr-2">AI作成</strong>AIが素材から作成しました。出典と照らし合わせて使ってください。</span>
-      {onReportError ? (
-        <button type="button" onClick={onReportError} className="rounded-md border border-current bg-white px-3 py-1.5 text-sm">誤りを報告</button>
-      ) : null}
+    <div className={`mt-2 flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-sm ${automatic ? 'bg-violet-100 text-violet-700' : 'bg-green-100 text-green-700'}`}>
+      <strong>{automatic ? 'AI作成' : '承認済み'}</strong>
+      {onReportError ? <button type="button" onClick={onReportError} className="h-11 rounded-md border border-current bg-white px-3 text-sm">誤りを報告</button> : null}
     </div>
   );
 }
 
 function Step({ step, number, imagePathFor }: { step: KnowledgeProcedureStep; number: number; imagePathFor: KnowledgeProcedureViewProps['imagePathFor'] }) {
   return (
-    <li className="grid grid-cols-[56px_1fr] gap-4 border-b border-slate-200 py-5 last:border-b-0">
-      <div aria-hidden="true" className="grid h-12 w-12 place-items-center rounded-full bg-sky-700 text-[22px] font-bold text-white">{number}</div>
+    <li className="grid grid-cols-[32px_1fr] gap-2 border-b border-slate-200 py-3 last:border-b-0">
+      <div aria-hidden="true" className="grid h-8 w-8 place-items-center rounded-full bg-sky-700 text-base font-bold text-white">{number}</div>
       <div className="min-w-0">
-        <h3 className="mb-2 mt-1 text-xl font-semibold"><span className="sr-only">手順{number} </span>{step.title}</h3>
-        <p className="whitespace-pre-wrap break-words text-[17px] leading-8">{step.body}</p>
+        <h3 className="mb-2 mt-1 text-base font-semibold"><span className="sr-only">手順{number} </span>{step.title}</h3>
+        <p className="whitespace-pre-wrap break-words text-sm leading-6">{step.body}</p>
         {step.cautions.map(caution => (
-          <p key={caution} className="mt-2.5 border-l-4 border-amber-700 bg-amber-100 px-3 py-2 text-[15px] text-amber-900">注意：{caution}</p>
+          <p key={caution} className="mt-2.5 border-l-4 border-amber-700 bg-amber-100 px-3 py-2 text-sm text-amber-900">注意：{caution}</p>
         ))}
         {step.needsReview.map(issue => (
-          <p key={issue} className="mt-2.5 rounded-md border border-dashed border-amber-700 bg-amber-50 px-3 py-2 text-[15px] text-amber-700">要確認：{issue}</p>
+          <p key={issue} className="mt-2.5 rounded-md border border-dashed border-amber-700 bg-amber-50 px-3 py-2 text-sm text-amber-700">要確認：{issue}</p>
         ))}
         {step.photos.length ? (
-          <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
+          <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
             {step.photos.map(photo => (
               <figure key={photo.imageId} className="overflow-hidden rounded-md border border-slate-200">
                 <ProtectedImage imagePath={imagePathFor(photo.imageId)} alt={photo.caption || `手順${number}の写真`}
@@ -75,49 +66,39 @@ function Step({ step, number, imagePathFor }: { step: KnowledgeProcedureStep; nu
 }
 
 /** Fixed template with React text escaping; no model-generated HTML is executed. */
-export function KnowledgeProcedureView({ procedure, imagePathFor, onReportError }: KnowledgeProcedureViewProps) {
-  const [mode, setMode] = useState<Mode>('all');
+export function KnowledgeProcedureView({ procedure, imagePathFor, onReportError, singleStep = false }: KnowledgeProcedureViewProps) {
   const [index, setIndex] = useState(0);
   const total = procedure.steps.length;
-  const current = Math.min(index, total - 1);
+  const current = Math.max(0, Math.min(index, total - 1));
   const { partNumber, drawingNumber, processName } = procedure.identifiers;
   const chips = [
     partNumber ? `品番 ${partNumber}` : null, drawingNumber ? `図番 ${drawingNumber}` : null, processName ? `工程 ${processName}` : null,
     `第${procedure.revisionNumber}版・${new Date(procedure.createdAt).toLocaleDateString('ja-JP')}`,
   ].filter((chip): chip is string => chip !== null);
-  const visible = mode === 'all' ? procedure.steps.map((step, i) => ({ step, number: i + 1 })) : [{ step: procedure.steps[current]!, number: current + 1 }];
+  const visible = !singleStep ? procedure.steps.map((step, i) => ({ step, number: i + 1 })) : procedure.steps[current] ? [{ step: procedure.steps[current]!, number: current + 1 }] : [];
 
   return (
-    <article className="text-slate-900" aria-label="手順書">
-      <header className="border-b border-slate-200 pb-4">
+    <article className="break-words text-slate-900" aria-label="手順書">
+      <header className="border-b border-slate-200 pb-2">
         <p className="text-sm text-slate-600">{procedure.category}</p>
-        <h1 className="mb-2.5 mt-1.5 text-[26px] font-bold">{procedure.title}</h1>
+        <h1 className="mb-2.5 mt-1.5 text-xl font-bold">{procedure.title}</h1>
         <div className="flex flex-wrap gap-1.5">
           {chips.map(chip => <span key={chip} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[13px]">{chip}</span>)}
         </div>
         <StatusBanner procedure={procedure} onReportError={onReportError} />
       </header>
 
-      <div role="group" aria-label="表示方法" className="mb-1.5 mt-4 flex gap-1.5">
-        {(['all', 'single'] as const).map(value => (
-          <button key={value} type="button" aria-pressed={mode === value} onClick={() => setMode(value)}
-            className={`rounded-md border border-sky-700 px-3.5 py-2 text-[15px] ${mode === value ? 'bg-sky-700 text-white' : 'bg-white text-sky-700'}`}>
-            {value === 'all' ? '全体を表示' : '1手順ずつ'}
-          </button>
-        ))}
-      </div>
-
       <ol className="list-none p-0">
         {visible.map(({ step, number }) => <Step key={step.id} step={step} number={number} imagePathFor={imagePathFor} />)}
       </ol>
 
-      {mode === 'single' ? (
+      {singleStep && total > 0 ? (
         <div className="mt-2 flex items-center justify-between gap-3">
           <button type="button" disabled={current === 0} onClick={() => setIndex(current - 1)}
-            className="min-w-40 rounded-lg border border-sky-700 bg-white px-5 py-3.5 text-lg text-sky-700 disabled:opacity-40">◀ 前へ</button>
-          <span aria-live="polite" className="text-base text-slate-600">手順 {current + 1} / {total}</span>
+            className="h-11 rounded-lg border border-sky-700 bg-white px-3 text-sm text-sky-700 disabled:opacity-40">前へ</button>
+          <span aria-live="polite" className="text-base text-slate-600">{current + 1} / {total}</span>
           <button type="button" disabled={current === total - 1} onClick={() => setIndex(current + 1)}
-            className="min-w-40 rounded-lg border border-sky-700 bg-sky-700 px-5 py-3.5 text-lg text-white disabled:opacity-40">次へ ▶</button>
+            className="h-11 rounded-lg border border-sky-700 bg-sky-700 px-3 text-sm text-white disabled:opacity-40">次へ</button>
         </div>
       ) : null}
     </article>
