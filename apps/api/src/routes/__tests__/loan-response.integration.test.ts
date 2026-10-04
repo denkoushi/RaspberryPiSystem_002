@@ -20,8 +20,8 @@ describe('loan and history response credential boundaries', () => {
     const payload = { employeeTagUid: employee.nfcTagUid, itemTagUid: item.nfcTagUid, note: 'Fixture display note' };
     const ownerHeaders = { 'x-client-key': owner.apiKey };
     const assertSafe = (body: string) => {
-      for (const secret of [viewer.apiKey, owner.apiKey, operator.user.passwordHash, 'FIXTUREONLYTOTP', 'fixture-only-backup']) expect(body).not.toContain(secret);
-      for (const field of ['apiKey', 'passwordHash', 'totpSecret', 'mfaBackupCodes']) expect(body).not.toContain('"' + field + '"');
+      for (const secret of [viewer.apiKey, owner.apiKey, operator.user.passwordHash, 'FIXTUREONLYTOTP', 'fixture-only-backup', employee.nfcTagUid!, item.nfcTagUid!]) expect(body).not.toContain(secret);
+      for (const field of ['apiKey', 'passwordHash', 'totpSecret', 'mfaBackupCodes', 'nfcTagUid']) expect(body).not.toContain('"' + field + '"');
     };
 
     const borrowed = await app.inject({ method: 'POST', url: '/api/tools/loans/borrow', headers: ownerHeaders, payload });
@@ -45,6 +45,12 @@ describe('loan and history response credential boundaries', () => {
     const history = await app.inject({ method: 'GET', url: '/api/tools/transactions?clientId=' + owner.id, headers: createAuthHeader(operator.token) });
     expect(history.statusCode).toBe(200);
     expect(history.json().transactions.some((row: { performedByUser?: { username: string } }) => row.performedByUser?.username === operator.user.username)).toBe(true);
+    expect(history.json().transactions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'BORROW', details: expect.objectContaining({
+        itemSnapshot: { id: item.id, code: item.itemCode, name: item.name },
+        employeeSnapshot: { id: employee.id, code: employee.employeeCode, name: employee.displayName },
+      }) }),
+    ]));
     assertSafe(history.body);
     const historyViewer = await app.inject({ method: 'GET', url: '/api/tools/transactions?clientId=' + owner.id, headers: createAuthHeader(reader.token) });
     expect(historyViewer.statusCode).toBe(200);
@@ -56,5 +62,11 @@ describe('loan and history response credential boundaries', () => {
     expect(cancelled.statusCode).toBe(200);
     expect(cancelled.json().loan.cancelledAt).not.toBeNull();
     assertSafe(cancelled.body);
+    const cancelledHistory = await app.inject({ method: 'GET', url: '/api/tools/transactions?clientId=' + owner.id, headers: createAuthHeader(reader.token) });
+    expect(cancelledHistory.statusCode).toBe(200);
+    expect(cancelledHistory.json().transactions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'CANCEL', details: expect.objectContaining({ reason: '誤スキャンによる取消', itemSnapshot: { id: item.id, code: item.itemCode, name: item.name } }) }),
+    ]));
+    assertSafe(cancelledHistory.body);
   });
 });

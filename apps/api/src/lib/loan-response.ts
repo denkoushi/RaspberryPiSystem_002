@@ -1,4 +1,4 @@
-import type { ClientDevice, Employee, Item, Loan, MeasuringInstrument, RiggingGear, Transaction, User } from '@prisma/client';
+import type { ClientDevice, Employee, Item, Loan, MeasuringInstrument, Prisma, RiggingGear, Transaction, User } from '@prisma/client';
 
 type DisplaySource<T, K extends keyof T> = Pick<T, K> & Partial<T>;
 
@@ -57,12 +57,48 @@ type TransactionResponseSource = Transaction & {
   client?: DisplaySource<ClientDevice, 'id' | 'name'> | null;
 };
 
+function isJsonObject(value: Prisma.JsonValue | undefined): value is Prisma.JsonObject {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function pickDetailScalars(source: Prisma.JsonObject, fields: readonly string[]): Prisma.JsonObject {
+  const result: Prisma.JsonObject = {};
+  for (const field of fields) {
+    const value = source[field];
+    if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      result[field] = value;
+    }
+  }
+  return result;
+}
+
+/** Historical snapshots also contain NFC identifiers; allow only their display fields. */
+function toTransactionDetailsResponse(details: Prisma.JsonValue): Prisma.JsonObject | null {
+  if (!isJsonObject(details)) return null;
+  const result = pickDetailScalars(details, [
+    'note', 'reason', 'previousClientId', 'newClientId', 'photoUrl', 'photoTakenAt', 'source',
+  ]);
+  const snapshots = {
+    itemSnapshot: ['id', 'code', 'name'],
+    employeeSnapshot: ['id', 'code', 'name'],
+    instrumentSnapshot: ['id', 'managementNumber', 'name'],
+    riggingSnapshot: ['id', 'managementNumber', 'name'],
+  } as const;
+  for (const [field, fields] of Object.entries(snapshots)) {
+    const snapshot = details[field];
+    if (snapshot === null) result[field] = null;
+    else if (isJsonObject(snapshot)) result[field] = pickDetailScalars(snapshot, fields);
+  }
+  return result;
+}
+
 /** History embeds the same Loan DTO and must not serialize full ClientDevice/User rows. */
 export function toTransactionResponse(transaction: TransactionResponseSource) {
   return {
     ...pickFields(transaction, [
-      'id', 'loanId', 'action', 'actorEmployeeId', 'performedByUserId', 'clientId', 'details', 'createdAt',
+      'id', 'loanId', 'action', 'actorEmployeeId', 'performedByUserId', 'clientId', 'createdAt',
     ] as const),
+    details: toTransactionDetailsResponse(transaction.details),
     loan: transaction.loan == null ? transaction.loan : toLoanResponse(transaction.loan),
     actorEmployee: displayRelation(transaction.actorEmployee, ['id', 'employeeCode', 'displayName'] as const),
     performedByUser: displayRelation(transaction.performedByUser, ['id', 'username'] as const),

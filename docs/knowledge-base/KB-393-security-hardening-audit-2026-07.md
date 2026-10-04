@@ -87,10 +87,17 @@ Design goal: legitimate kiosk (client-key) and admin (JWT) flows keep working; o
 - APIとWebは同じ修正を含むreleaseで配備し、キャッシュ済みの旧Webを再読み込みする必要がある。旧Webのキー指定PUTは受理するが、レスポンスにキーは返さない。旧APIへのrollbackは新ID参照を解釈できずキー露出も再開するため、通常の互換rollbackとは扱えない。
 - 後続の承認済みキー交換では、旧キーが有効な間に残存するpreview参照をIDへ移行し、schedule割当のキー参照も整合させる必要がある。候補判定は従来のサーバー側キーに `signage` を含む規約を継続するため、交換でもその規約を維持するか、役割情報を別途設計する。
 - 共通の明示的allowlist DTOをtoolsのactive・borrow・photo-borrow・return・cancel・assign-client、履歴内Loan、measuring-instrumentsとriggingの借用・返却へ適用。表示・操作用フィールドを維持し、ClientDeviceの認証キー、Userのpassword/MFA/backup codes、NFC認証識別子、内部idempotencyフィールドを返さない。User表示はID/usernameに限定する。
-- 最終検証は61件成功（API unit 26、Web関連14、専用DB統合21）。統合の他39件は指定した対象外。API/Web ESLint・TypeScriptを含むbuild、`git diff --check` は成功。認可、旧参照互換、保存、表示消費側、共通DTO適用箇所を手動レビューした。
+- 初回ローカル検証は61件成功（API unit 26、Web関連14、専用DB統合21）。統合の他39件は指定した対象外。API/Web ESLint・TypeScriptを含むbuild、`git diff --check` は成功。認可、旧参照互換、保存、表示消費側、共通DTO適用箇所を手動レビューした。
 - 初回の古い生成Prisma/shared-types、コピー済み依存の欠けたfont asset、vector拡張のないテストDBは、専用worktree内の再生成・lockfile固定offline依存準備・標準pgvectorテストDBへの切替で解決した。業務sourceや既存DBの環境依存問題を追加修正したものではない。
 - DBはloopback限定・tmpfs・専用ラベル付きコンテナと合成fixtureのみを使用し、検証後にID/ラベルを照合して今回の2コンテナだけを停止・削除した。実在のキーや業務データをテストへ持ち込まず、本番DB・設定・運用状態は変更していない。
-- commit/push/PR/CI/main統合/release/deployとキー発行・交換・失効は未実施。全体E2E・全suite・本番動作検証は今回の完了証拠に含めない。既に露出したキーは後続の失効・交換が必要であり、ローカル修正の成功を本番の安全性の証明として扱わない。
+- 初回ローカル検証終了時点ではcommit/push/PR/CI/main統合/release/deployとキー発行・交換・失効は未実施。全体E2E・全suite・本番動作検証はその完了証拠に含めない。既に露出したキーは後続の失効・交換が必要であり、ローカル修正の成功を本番の安全性の証明として扱わない。
+
+### PR #1679 review follow-up (2026-10-04)
+
+- 最新main `907d1e5024b94f89143d27bd03bf1fb809a2bf29`（busboy 3.2.2を含む）を履歴改変なしで取り込み、PR #1679を作成した。initial head `4bfde908` の必須check `ci-required`、`codeql`、`gitleaks`、`torque-release-required` は成功し、API全shard・E2E全shard・coverage・runtime rehearsalも成功した。
+- Codexレビューで履歴の `details.itemSnapshot.nfcTagUid` / `employeeSnapshot.nfcTagUid` が残ることを確認した。認証済み履歴readerへNFC識別子が返る経路であり、同じHTTP境界の修正としてdetails自体も表示用allowlistへ変更した。snapshotのID/code/name、資産のmanagementNumber、note/reason、photo、端末再割当、使用前点検のsourceは維持し、未知のnested fieldも除外する。DB内の監査snapshotは変更しない。
+- 合成unitの追加検査は修正前に2件失敗して再現した。DB統合でもADMIN/VIEWERの履歴レスポンスからNFC値・フィールドを除外し、借用・返却・取消後の表示名を維持する検査を追加した。修正後の最終commitに対するhosted CIとレビュー完了をmerge前の証拠とする。
+- 追加の非required `CodeQL` checkは既存alert #1 (`js/insufficient-password-hash`) を報告した。同じ位置・同じflowは既存main `d2549924` にもopenで存在する（初検出2026-04-21）。SHA256は `signage-render-storage.ts:20` の端末別cache filename生成に使われ、パスワード認証用の保存/照合ではない。処理・filename互換を変えず、alertのdismiss、source suppression、required check/rulesの変更は行っていない。この追加checkを成功と報告しない。
 
 ## Open Items
 

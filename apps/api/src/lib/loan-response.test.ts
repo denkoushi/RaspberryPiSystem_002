@@ -24,7 +24,7 @@ function expectNoCredentials(value: unknown) {
   for (const secret of [client.apiKey, client.signagePreviewTargetApiKey, client.futureSecret, user.passwordHash, user.totpSecret, user.mfaBackupCodes[0], loan.photoBorrowIdempotencyKey!, loan.photoBorrowRequestFingerprint!, loan.item!.nfcTagUid!, loan.employee!.nfcTagUid!]) {
     expect(text).not.toContain(secret);
   }
-  for (const field of ['apiKey', 'passwordHash', 'totpSecret', 'mfaBackupCodes', 'signagePreviewTargetApiKey', 'futureSecret']) expect(text).not.toContain('"' + field + '"');
+  for (const field of ['apiKey', 'passwordHash', 'totpSecret', 'mfaBackupCodes', 'signagePreviewTargetApiKey', 'futureSecret', 'nfcTagUid']) expect(text).not.toContain('"' + field + '"');
 }
 
 describe('loan HTTP response allowlist', () => {
@@ -51,12 +51,43 @@ describe('loan HTTP response allowlist', () => {
   it('applies the same boundary to nested loans and client/user relations in history', () => {
     const transaction: Transaction & { loan: typeof loan; client: typeof client; performedByUser: typeof user } = {
       id: 'fixture-transaction', loanId: loan.id, action: 'RETURN', actorEmployeeId: loan.employeeId,
-      performedByUserId: user.id, clientId: client.id, details: { reason: 'TEST' }, createdAt: date,
+      performedByUserId: user.id, clientId: client.id, details: {
+        reason: 'TEST', note: 'History display note',
+        itemSnapshot: { id: loan.itemId, code: loan.item!.itemCode, name: loan.item!.name, nfcTagUid: loan.item!.nfcTagUid },
+        employeeSnapshot: { id: loan.employeeId, code: loan.employee!.employeeCode, name: loan.employee!.displayName, nfcTagUid: loan.employee!.nfcTagUid, futureSecret: client.futureSecret },
+        futureSecret: client.futureSecret,
+      }, createdAt: date,
       loan, client, performedByUser: user,
     };
     const response = toTransactionResponse(transaction);
-    expect(response).toMatchObject({ action: 'RETURN', details: { reason: 'TEST' }, performedByUser: { id: user.id, username: user.username }, loan: { id: loan.id, employee: { displayName: 'Test employee' } }, client: { name: client.name } });
+    expect(response).toMatchObject({ action: 'RETURN', details: { reason: 'TEST', note: 'History display note', itemSnapshot: { id: loan.itemId, code: 'TO0001', name: 'Test tool' }, employeeSnapshot: { id: loan.employeeId, code: '0001', name: 'Test employee' } }, performedByUser: { id: user.id, username: user.username }, loan: { id: loan.id, employee: { displayName: 'Test employee' } }, client: { name: client.name } });
     expectNoCredentials(response);
+    expect(transaction.details).toHaveProperty('itemSnapshot.nfcTagUid', loan.item!.nfcTagUid);
     expect(toTransactionResponse({ ...transaction, loan: null }).loan).toBeNull();
+  });
+
+  it('keeps asset/photo/reassignment detail fields and rejects unknown or nested credential fields', () => {
+    const transaction: Transaction = {
+      id: 'fixture-asset-transaction', loanId: loan.id, action: 'RETURN', actorEmployeeId: loan.employeeId,
+      performedByUserId: null, clientId: client.id, createdAt: date,
+      details: {
+        note: null, reason: 'MANUAL_CLIENT_ASSIGNMENT', previousClientId: null, newClientId: client.id,
+        photoUrl: loan.photoUrl, photoTakenAt: date.toISOString(), source: 'self_inspection_pre_use_inspection',
+        itemSnapshot: null,
+        instrumentSnapshot: { id: 'fixture-instrument', managementNumber: 'M0001', name: 'Test gauge', futureSecret: client.futureSecret },
+        riggingSnapshot: { id: 'fixture-rigging', managementNumber: 'R0001', name: 'Test sling', apiKey: client.apiKey },
+        futureSecret: client.futureSecret,
+      },
+    };
+    expect(toTransactionResponse(transaction).details).toEqual({
+      note: null, reason: 'MANUAL_CLIENT_ASSIGNMENT', previousClientId: null, newClientId: client.id,
+      photoUrl: loan.photoUrl, photoTakenAt: date.toISOString(), source: 'self_inspection_pre_use_inspection',
+      itemSnapshot: null,
+      instrumentSnapshot: { id: 'fixture-instrument', managementNumber: 'M0001', name: 'Test gauge' },
+      riggingSnapshot: { id: 'fixture-rigging', managementNumber: 'R0001', name: 'Test sling' },
+    });
+    expectNoCredentials(toTransactionResponse(transaction));
+    expect(toTransactionResponse({ ...transaction, details: null }).details).toBeNull();
+    expect(toTransactionResponse({ ...transaction, details: { note: { apiKey: client.apiKey } } }).details).toEqual({});
   });
 });
