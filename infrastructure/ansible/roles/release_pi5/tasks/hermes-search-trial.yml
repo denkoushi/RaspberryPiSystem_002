@@ -113,7 +113,7 @@
     mode: '0600'
   when:
     - hermes_search_trial_enabled | bool
-    - hermes_retrieval_sources is defined
+    - hermes_retrieval_sources | default('') | length > 0
 
 - name: Apply retrieval enrichment gate when explicitly configured
   ansible.builtin.lineinfile:

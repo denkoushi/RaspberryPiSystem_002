@@ -1034,6 +1034,7 @@
     hermes_search_trial_artifact: "{{ lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ARTIFACT') }}"
     hermes_search_record_classification_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED') | lower }}"
     hermes_retrieval_v2_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_V2_ENABLED') | lower }}"
+    hermes_retrieval_sources: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_SOURCES') }}"
     hermes_retrieval_enrichment_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_ENABLED') | lower }}"
     hermes_retrieval_enrichment_max_records: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS') }}"
     hermes_retrieval_enrichment_concurrency: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY') }}"
@@ -1173,6 +1174,13 @@
         select('match', '^HERMES_RETRIEVAL_V2_ENABLED=') | list | length) == 0
         or (release_pi5_candidate_search_env.stdout | from_json |
         select('match', '^HERMES_RETRIEVAL_V2_ENABLED=(true|false)$') | list | length) == 1
+      - >-
+        (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_RETRIEVAL_SOURCES=') | list | length) in [0, 1]
+      - >-
+        lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_SOURCES') == ''
+        or (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_RETRIEVAL_SOURCES=[a-z_,]+$') | list | length) == 1
       - >-
         (release_pi5_candidate_search_env.stdout | from_json |
         select('match', '^HERMES_RETRIEVAL_ENRICHMENT_ENABLED=') | list | length) == 0

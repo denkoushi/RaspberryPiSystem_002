@@ -275,6 +275,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             ("HERMES_RETRIEVAL_DENSE_PROVIDER", "dgx"),
             ("HERMES_RETRIEVAL_DENSE_INDEX_ENABLED", "true"),
             ("HERMES_RETRIEVAL_V2_ENABLED", "true"),
+            ("HERMES_RETRIEVAL_SOURCES", "nonconformity,knowledge_procedure"),
             ("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED", "false"),
         ):
             for mode in (["--detach"], ["--print-plan"], []):
@@ -298,6 +299,34 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             MODULE.reject_unforwarded_hermes_flags(MODULE.parse_arguments(plain))
         with mock.patch.dict(os.environ, {}, clear=True):
             MODULE.reject_unforwarded_hermes_flags(MODULE.parse_arguments(plain))
+
+    def test_maintenance_retrieval_sources_reach_systemd_without_defaulting(self) -> None:
+        args = argparse.Namespace(hermes_search_trial_maintenance="on", branch="main",
+                                  limit="raspberrypi5", full_fleet=False, detach=True,
+                                  torque_cutover=False)
+        key = "HERMES_RETRIEVAL_SOURCES"
+        for value, expected in (
+            (None, None),
+            ("", None),
+            (" , , ", None),
+            ("nonconformity,knowledge_procedure", "nonconformity,knowledge_procedure"),
+            (" knowledge_procedure , nonconformity , knowledge_procedure ", "knowledge_procedure,nonconformity"),
+        ):
+            with self.subTest(value=value), mock.patch.dict(
+                os.environ, {"HERMES_SEARCH_TRIAL_JEV_ENABLED": "false", **({} if value is None else {key: value})}, clear=True
+            ):
+                environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+                command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
+                                             ("pi5",), "pi", hermes_environment=environment)
+                if expected is None:
+                    self.assertNotIn(key, environment)
+                    self.assertFalse(any(key in item for item in command))
+                else:
+                    self.assertEqual(environment[key], expected)
+                    self.assertIn(f"--setenv={key}={expected}", command)
+        with mock.patch.dict(os.environ, {key: "knowledge_procedure,unknown"}, clear=True):
+            with self.assertRaisesRegex(MODULE.UsageError, "^HERMES_RETRIEVAL_SOURCES contains an unknown source: unknown$"):
+                MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
 
     def test_maintenance_dense_provider_reaches_systemd_without_defaulting(self) -> None:
         args = argparse.Namespace(hermes_search_trial_maintenance="on", branch="main",

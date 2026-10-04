@@ -111,6 +111,7 @@
   loop:
     - { key: HERMES_FLYWHEEL_ENABLED, value: "{{ release_pi5_trial_flywheel_enabled | default('') }}" }
     - { key: HERMES_FLYWHEEL_MAX_QUESTIONS, value: "{{ release_pi5_trial_flywheel_max_questions | default('') }}" }
+    - { key: HERMES_RETRIEVAL_SOURCES, value: "{{ release_pi5_trial_retrieval_sources | default('') }}" }
   when: item.value | length > 0
 
 - name: Apply the explicitly requested dense retrieval provider for maintenance
