@@ -313,6 +313,17 @@ async function calloutLineGeometry(line: Locator) {
   }));
 }
 
+/** 選択中のマーカーに出る取っ手をドラッグして、矢視の先端を置く（矢視モードのボタンは廃止）。 */
+async function dragCalloutHandleTo(page: Page, scope: Locator, x: number, y: number): Promise<void> {
+  const handle = scope.getByRole('button', { name: '矢視をドラッグで置く' });
+  await expect(handle).toBeVisible();
+  const box = (await handle.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(x, y, { steps: 6 });
+  await page.mouse.up();
+}
+
 async function selectAssemblyMachineName(page: Page, machineName = 'L300KP'): Promise<void> {
   // 認証直後は編集画面がまだ描画されていないことがある。描画前に数えると誤って文書/工程を閉じてしまう。
   await expect(page.getByTestId('assembly-unified-editor-workspace')).toBeVisible();
@@ -901,7 +912,6 @@ for (const viewport of paneFitViewports) {
     await right.getByRole('button', { name: '全体を一時表示' }).click();
     await right.getByRole('button', { name: '矩形へ戻る' }).click();
     await page.getByRole('button', { name: 'チェックマーカー', exact: true }).click();
-    await page.getByRole('button', { name: '丸数字', exact: true }).click();
     const crop = page.getByTestId('assembly-unified-editor-canvas-pane').getByTestId('assembly-procedure-crop-view');
     await crop.scrollIntoViewIfNeeded();
     box = (await crop.boundingBox())!;
@@ -1424,8 +1434,9 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   await expect(sharedBolt).toBeVisible();
   const resizedImageBox = await sourceImage.boundingBox();
   expect(resizedImageBox).not.toBeNull();
-  await page.getByRole('button', { name: '矢視', exact: true }).click();
-  await page.mouse.click(
+  await dragCalloutHandleTo(
+    page,
+    canvas,
     resizedImageBox!.x + resizedImageBox!.width * 0.7,
     resizedImageBox!.y + resizedImageBox!.height * 0.5
   );
@@ -1468,22 +1479,21 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   const cropBox = await cropView.boundingBox();
   expect(cropBox).not.toBeNull();
   await page.getByRole('button', { name: 'チェックマーカー' }).click();
-  await page.getByRole('button', { name: '丸数字', exact: true }).click();
   await page.mouse.click(
     cropBox!.x + cropBox!.width * 0.25,
     cropBox!.y + cropBox!.height * 0.25
   );
   await expect(cropView.getByRole('button', { name: 'チェック1' })).toBeVisible();
-  await page.getByRole('button', { name: '矢視', exact: true }).click();
   const checkCalloutCropBox = await cropView.boundingBox();
   expect(checkCalloutCropBox).not.toBeNull();
-  await page.mouse.click(
+  await dragCalloutHandleTo(
+    page,
+    cropView,
     checkCalloutCropBox!.x + checkCalloutCropBox!.width * 0.45,
     checkCalloutCropBox!.y + checkCalloutCropBox!.height * 0.25
   );
 
   await page.getByRole('button', { name: '締結マーカー' }).click();
-  await page.getByRole('button', { name: '丸数字', exact: true }).click();
   const boltMarkerCropBox = await cropView.boundingBox();
   expect(boltMarkerCropBox).not.toBeNull();
   await page.mouse.click(
@@ -1491,16 +1501,16 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
     boltMarkerCropBox!.y + boltMarkerCropBox!.height * 0.6
   );
   await expect(cropView.getByRole('button', { name: /^丸数字/ })).toHaveCount(2);
-  await page.getByRole('button', { name: '矢視', exact: true }).click();
   const boltCalloutCropBox = await cropView.boundingBox();
   expect(boltCalloutCropBox).not.toBeNull();
-  await page.mouse.click(
+  await dragCalloutHandleTo(
+    page,
+    cropView,
     boltCalloutCropBox!.x + boltCalloutCropBox!.width * 0.75,
     boltCalloutCropBox!.y + boltCalloutCropBox!.height * 0.6
   );
   await expect(cropView.locator('svg line')).toHaveCount(3);
 
-  await page.getByRole('button', { name: '丸数字', exact: true }).click();
   const removableMarkerCropBox = await cropView.boundingBox();
   expect(removableMarkerCropBox).not.toBeNull();
   await page.mouse.click(
@@ -1682,7 +1692,6 @@ test('assembly editor drags a crop bolt marker and saves its source-page positio
   await page.getByLabel('タイトル', { exact: true }).fill('ドラッグ確認');
   await page.getByRole('textbox', { name: /^指示文/ }).fill('丸数字位置を確認');
   await page.getByRole('button', { name: '締結マーカー', exact: true }).click();
-  await page.getByRole('button', { name: '丸数字', exact: true }).click();
   const cropBox = await cropView.boundingBox();
   expect(cropBox).not.toBeNull();
   const initialLocalPoint = { x: 0.25, y: 0.25 };
@@ -1761,7 +1770,6 @@ test('assembly editor drags check markers in full and crop views and saves one f
   await fillSelectedAssemblyBolt(page);
 
   await page.getByRole('button', { name: 'チェックマーカー', exact: true }).click();
-  await page.getByRole('button', { name: '丸数字', exact: true }).click();
   await page.mouse.click(imageBox.x + imageBox.width * 0.35, imageBox.y + imageBox.height * 0.35);
   const fullMarker = canvas.getByRole('button', { name: 'チェック1' });
   await expect(fullMarker).toBeVisible();
