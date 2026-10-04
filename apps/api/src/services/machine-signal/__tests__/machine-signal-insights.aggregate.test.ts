@@ -122,7 +122,8 @@ describe('buildSignalFleetDay', () => {
   });
 
   it('lists the machines to look at first and counts the hints', () => {
-    expect(fleet).not.toHaveProperty('worsening');
+    // 開いたままの古い画面のために、空の配列だけ残している。
+    expect(fleet.worsening).toEqual([]);
     expect(fleet.topAlarm).toEqual([2]);
     expect(fleet.topLongStop).toEqual([2]);
     expect(fleet.topShortStops).toEqual([]);

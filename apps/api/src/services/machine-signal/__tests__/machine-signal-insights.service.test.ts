@@ -91,7 +91,7 @@ describe('getMachineSignalDay', () => {
       dayStartMinute: 420, sites: ['第1工場', '第2工場'], fleet: { machineCount: 1, runRatio: 1 },
       machines: [{ signalNo: 1, runSeconds: 86_400 }],
     });
-    expect(result.fleet).not.toHaveProperty('worsening');
+    expect(result.fleet?.worsening).toEqual([]);
     expect(mocks.summaries).not.toHaveBeenCalled();
   });
 });

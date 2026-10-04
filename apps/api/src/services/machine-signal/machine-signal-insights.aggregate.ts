@@ -85,6 +85,11 @@ export type SignalFleetDay = {
   topAlarm: number[];
   topShortStops: number[];
   topLongStop: number[];
+  /**
+   * 常に空。「悪くなってきた機械」は GET /machine-signal/worsening へ移した。
+   * 開いたままの古い画面がこの配列を読むので、古い画面が残らなくなるまで項目だけ残す。
+   */
+  worsening: SignalWorsening[];
 };
 
 export type SignalTrendPoint = {
@@ -282,6 +287,7 @@ export function buildSignalFleetDay(
     topLongStop: topBy(machines, (machine) =>
       machine.runSeconds >= options.thresholds.barelyRanMaxSeconds ? (machine.longestStops[0]?.durationSeconds ?? 0) : 0
     ),
+    worsening: [],
   };
 }
 
