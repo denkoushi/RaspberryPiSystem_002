@@ -1208,13 +1208,13 @@ export async function getPartMeasurementVisualTemplateOcrStatus(
   visualTemplateId: string,
   clientKey?: string
 ): Promise<PartMeasurementDrawingOcrStatusDto> {
-  const { data } = await api.get<{ ocr: PartMeasurementDrawingOcrStatusDto }>(
-    `/part-measurement/visual-templates/${visualTemplateId}/ocr`,
-    {
-      headers: clientKey ? { 'x-client-key': clientKey } : undefined
-    }
-  );
-  return data.ocr;
+  const { data } = await api.get<{
+    ocr: PartMeasurementDrawingOcrStatusDto;
+    dimensionMap?: PartMeasurementDrawingOcrStatusDto['dimensionMap'];
+  }>(`/part-measurement/visual-templates/${visualTemplateId}/ocr`, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return { ...data.ocr, dimensionMap: data.dimensionMap };
 }
 
 export async function listPartMeasurementDrawingOcrCandidates(
@@ -1226,6 +1226,8 @@ export async function listPartMeasurementDrawingOcrCandidates(
     limit?: number;
     measurementLabel?: string | null;
     depthMode?: 'measured' | 'through' | null;
+    calloutTipXRatio?: number | null;
+    calloutTipYRatio?: number | null;
   },
   clientKey?: string
 ): Promise<PartMeasurementDrawingOcrCandidateResponseDto> {
