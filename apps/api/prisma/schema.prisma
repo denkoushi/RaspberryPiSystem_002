@@ -162,6 +162,7 @@ model Employee {
   nfcTagUid                                     String?                                        @unique
   department                                    String? // 部署（例: 製造担当部門）
   section                                       String? // セクション（例: 加工担当部署）
+  positionName                                  String?
   contact                                       String?
   status                                        EmployeeStatus                                 @default(ACTIVE)
   createdAt                                     DateTime                                       @default(now())
@@ -5048,6 +5049,7 @@ model KnowledgeProcedure {
   publishedRevisionId String?                      @unique
   createdAt           DateTime                     @default(now())
   updatedAt           DateTime                     @updatedAt
+  reviews             KnowledgeProcedureReview[]
   revisions           KnowledgeProcedureRevision[] @relation("KnowledgeProcedureRevisions")
   materials           KnowledgeProcedureMaterial[]
   publishedRevision   KnowledgeProcedureRevision?  @relation("KnowledgeProcedurePublishedRevision", fields: [publishedRevisionId], references: [id], onDelete: Restrict)
@@ -5122,6 +5124,7 @@ model KnowledgeProcedureRevision {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   procedure      KnowledgeProcedure  @relation("KnowledgeProcedureRevisions", fields: [procedureId], references: [id], onDelete: Cascade)
+  reviews        KnowledgeProcedureReview[]
   publishedFor   KnowledgeProcedure? @relation("KnowledgeProcedurePublishedRevision")
 
   @@unique([procedureId, revisionNumber])
@@ -5199,4 +5202,33 @@ model MachineSignalImportRun {
 
   @@index([gmailMessageId], map: "MachineSignalImportRun_idx_message")
   @@index([startedAt], map: "MachineSignalImportRun_idx_started")
+}
+
+model KnowledgePositionRank {
+  positionName String   @id
+  /// general | leader | section_chief | manager (DB CHECK)
+  rank         String
+  updatedAt    DateTime @updatedAt
+}
+
+model KnowledgeProcedureReview {
+  id                         String                     @id @default(uuid())
+  procedureId                String
+  revisionId                 String
+  /// approved | returned | error_reported (DB CHECK)
+  action                     String
+  employeeId                 String
+  employeeCodeSnapshot       String
+  employeeNameSnapshot       String
+  employeeNfcTagUidSnapshot  String
+  employeePositionSnapshot   String?
+  employeeRankSnapshot       String
+  comment                    String?
+  actorKey                   String
+  createdAt                  DateTime                   @default(now())
+  procedure                  KnowledgeProcedure         @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  revision                   KnowledgeProcedureRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@index([procedureId, createdAt])
+  @@index([revisionId, createdAt])
 }

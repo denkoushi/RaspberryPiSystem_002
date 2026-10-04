@@ -19,6 +19,7 @@ const employeeCsvSchema = z.object({
   nfcTagUid: z.string().optional(),
   department: z.string().optional(),
   section: z.string().optional(),
+  positionName: z.string().optional(),
   status: z.string().optional()
 });
 
@@ -64,7 +65,11 @@ export class EmployeeCsvImporter implements CsvImporter {
   async parse(buffer: Buffer): Promise<EmployeeCsvRow[]> {
     const config = await this.configService.getEffectiveConfig(this.type);
     if (config?.columnDefinitions?.length) {
-      const mappedRows = this.rowMapper.mapBuffer(buffer, config.columnDefinitions);
+      const mappedRows = this.rowMapper.mapBuffer(buffer, config.columnDefinitions.some(col => col.internalName === 'positionName') ? config.columnDefinitions : [
+        ...config.columnDefinitions,
+        { internalName: 'positionName', displayName: '職位', csvHeaderCandidates: ['positionName', '職位'], dataType: 'string', required: false,
+          order: Math.max(...config.columnDefinitions.map(col => col.order)) + 1 },
+      ]);
       return mappedRows.map((row, index) => {
         try {
           return employeeCsvSchema.parse(row);
@@ -74,7 +79,7 @@ export class EmployeeCsvImporter implements CsvImporter {
       });
     }
 
-    const parsedRows = parseCsvRows(buffer);
+    const parsedRows = parseCsvRows(buffer).map(row => ({ ...row, ...(row.positionName === undefined && row['職位'] !== undefined ? { positionName: row['職位'] } : {}) }));
     return parsedRows.map((row, index) => {
       try {
         return employeeCsvSchema.parse(row);
@@ -100,6 +105,12 @@ export class EmployeeCsvImporter implements CsvImporter {
       created: 0,
       updated: 0
     };
+
+    // Replacement recreates unreferenced employees; preserve omitted HR positions across that deletion.
+    const missingPositions = employeeRows.filter(row => row.positionName === undefined).map(row => row.employeeCode);
+    const preservedPositions = new Map(replaceExisting && missingPositions.length ? (await prisma.employee.findMany({
+      where: { employeeCode: { in: missingPositions } }, select: { employeeCode: true, positionName: true },
+    })).map(row => [row.employeeCode, row.positionName]) : []);
 
     // replaceExisting=trueの場合: Loanレコードが存在しない従業員を削除
     if (replaceExisting) {
@@ -157,6 +168,8 @@ export class EmployeeCsvImporter implements CsvImporter {
           firstName: row.firstName,
           department: row.department || null,
           section: row.section || null,
+          ...(row.positionName !== undefined ? { positionName: row.positionName.trim() || null }
+            : preservedPositions.has(row.employeeCode) ? { positionName: preservedPositions.get(row.employeeCode)! } : {}),
           nfcTagUid: row.nfcTagUid || null,
           status: normalizeEmployeeStatus(row.status)
         };

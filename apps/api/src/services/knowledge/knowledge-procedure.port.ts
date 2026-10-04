@@ -1,4 +1,6 @@
-import type { KnowledgeProcedureDocument, KnowledgeProcedureSummary } from '@raspi-system/shared-types';
+import type { KnowledgePendingReview, KnowledgeProcedureDocument, KnowledgeProcedureSummary } from '@raspi-system/shared-types';
+
+import type { KnowledgeReviewEmployee } from './knowledge-position-rank.js';
 
 import type { ProcedureContent, ProcedureHeader, TitleParts } from './procedure-content.js';
 
@@ -34,4 +36,14 @@ export interface KnowledgeProcedureRepositoryPort {
   failBuild(procedureId: string, token: string, errorCode: string, deferred: boolean): Promise<void>;
   listPublished(): Promise<KnowledgeProcedureSummary[]>;
   getPublished(procedureId: string): Promise<KnowledgeProcedureDocument | null>;
+}
+
+export interface KnowledgeProcedureReviewRepositoryPort extends KnowledgeProcedureRepositoryPort {
+  submitForApproval(revisionId: string): Promise<void>;
+  submitStoppedDraftsForApproval(): Promise<void>;
+  listPendingApproval(): Promise<KnowledgePendingReview[]>;
+  getForReview(revisionId: string): Promise<KnowledgeProcedureDocument | null>;
+  approve(revisionId: string, reviewer: KnowledgeReviewEmployee, actorKey: string, comment?: string): Promise<void>;
+  returnRevision(revisionId: string, reviewer: KnowledgeReviewEmployee, actorKey: string, comment: string): Promise<void>;
+  reportError(procedureId: string, reporter: KnowledgeReviewEmployee, actorKey: string, comment: string): Promise<void>;
 }

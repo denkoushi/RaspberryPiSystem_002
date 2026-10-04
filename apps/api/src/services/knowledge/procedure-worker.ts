@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { InferenceDeferredError } from '../inference/ports/text-completion.port.js';
 
-import type { KnowledgeProcedureRepositoryPort } from './knowledge-procedure.port.js';
+import type { KnowledgeProcedureReviewRepositoryPort } from './knowledge-procedure.port.js';
 import type { ProcedureMaterialRepositoryPort } from './procedure-material.port.js';
 import type { TriageRepositoryPort } from './triage.port.js';
 import {
@@ -16,7 +16,7 @@ export const SUGGESTION_TOPIC_LIMIT = 60;
 const SUGGESTION_MATERIAL_LIMIT = 5;
 
 export type ProcedureWorkerDeps = {
-  triage: TriageRepositoryPort; materials: ProcedureMaterialRepositoryPort; procedures: KnowledgeProcedureRepositoryPort;
+  triage: TriageRepositoryPort; materials: ProcedureMaterialRepositoryPort; procedures: KnowledgeProcedureReviewRepositoryPort;
   inference: ProcedureInferencePort; workTypes: () => Promise<string[]>;
   scannedPartNumber: (intakeId: string) => Promise<string | null>;
   logError: (error: unknown) => void;
@@ -95,6 +95,7 @@ export class ProcedureWorker {
       signal.throwIfAborted();
       const draft = await procedures.createDraft({ procedureId: job.procedureId, header: job.header, content, createdByKey: 'system:procedure-builder' });
       if (job.header.reviewTier === 'auto_publish') await procedures.publishAutomatic(draft.revisionId);
+      else await procedures.submitForApproval(draft.revisionId);
       await procedures.completeBuild(job.procedureId, token, job.requestedAt);
     }, (code, deferred) => procedures.failBuild(job.procedureId, token, code, deferred));
   }

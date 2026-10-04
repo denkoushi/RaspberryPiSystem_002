@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { InferenceDeferredError } from '../../inference/ports/text-completion.port.js';
-import type { KnowledgeProcedureRepositoryPort } from '../knowledge-procedure.port.js';
+import type { KnowledgeProcedureReviewRepositoryPort } from '../knowledge-procedure.port.js';
 import type { ProcedureInferencePort } from '../procedure-builder.js';
 import type { ProcedureMaterial, ProcedureMaterialRepositoryPort } from '../procedure-material.port.js';
 import { ProcedureWorker } from '../procedure-worker.js';
@@ -27,12 +27,14 @@ function harness(options: { triage?: Triage | null; build?: { procedureId: strin
   } satisfies ProcedureMaterialRepositoryPort;
   const procedures = {
     createDraft: vi.fn().mockResolvedValue({ procedureId: options.build?.procedureId ?? 'p', revisionId: 'r1', revisionNumber: 1 }),
+    submitForApproval: vi.fn(), submitStoppedDraftsForApproval: vi.fn(), listPendingApproval: vi.fn(), getForReview: vi.fn(),
+    approve: vi.fn(), returnRevision: vi.fn(), reportError: vi.fn(),
     publishAutomatic: vi.fn(), listTopics: vi.fn().mockResolvedValue([
       { procedureId: 'old', header: generalHeader, parts: null }, { procedureId: 'same-part', header: setupHeader, parts: null },
     ]), listPublished: vi.fn(), getPublished: vi.fn(), searchTopics: vi.fn(),
     claimBuild: vi.fn().mockResolvedValue(options.build ? { ...options.build, requestedAt } : null),
     completeBuild: vi.fn(), failBuild: vi.fn().mockResolvedValue(undefined),
-  } satisfies KnowledgeProcedureRepositoryPort;
+  } satisfies KnowledgeProcedureReviewRepositoryPort;
   const inference = { suggest: vi.fn(), compose: vi.fn() } satisfies ProcedureInferencePort;
   const logError = vi.fn();
   const worker = new ProcedureWorker({ triage, materials, procedures, inference, logError,
@@ -64,12 +66,13 @@ describe('procedure worker', () => {
     expect(h.procedures.completeBuild).toHaveBeenCalledWith('p-general', expect.any(String), h.requestedAt);
   });
 
-  it('rebuilds a quality-critical topic as an unpublished draft', async () => {
+  it('rebuilds a quality-critical topic and submits it for approval', async () => {
     const h = harness({ build: { procedureId: 'p-setup', header: setupHeader }, materials: [material('m1', 'クランプを締める')] });
     h.inference.compose.mockResolvedValue([{ title: '固定', body: 'クランプを締める。', cautions: [], needsReview: [], photoIds: [], sources: [{ materialId: 'm1' }] }]);
     await h.worker.tick();
     expect(h.procedures.createDraft).toHaveBeenCalled();
     expect(h.procedures.publishAutomatic).not.toHaveBeenCalled();
+    expect(h.procedures.submitForApproval).toHaveBeenCalledWith('r1');
   });
 
   it('defers on admission refusal and records invalid composition output', async () => {

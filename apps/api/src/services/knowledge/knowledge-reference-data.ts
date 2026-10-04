@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 
+import type { KnowledgeProcedureReviewRepositoryPort } from './knowledge-procedure.port.js';
 import type { TriageRepositoryPort } from './triage.port.js';
 
 /** Owner-approved initial work types (2026-09-27). Seeded only into an empty list; people curate it afterwards. */
@@ -11,7 +12,7 @@ export const INITIAL_WORK_TYPES = [
  * Idempotent start-up data that expand-only migrations may not insert: the initial work types,
  * and triage rows (without a poster) for queued posts that predate triage.
  */
-export async function ensureKnowledgeReferenceData(db: PrismaClient, triage: TriageRepositoryPort): Promise<void> {
+export async function ensureKnowledgeReferenceData(db: PrismaClient, triage: TriageRepositoryPort, procedures: Pick<KnowledgeProcedureReviewRepositoryPort, 'submitStoppedDraftsForApproval'>): Promise<void> {
   if (await db.knowledgeWorkType.count() === 0) {
     await db.knowledgeWorkType.createMany({
       data: INITIAL_WORK_TYPES.map((name, index) => ({ name, sortOrder: name === 'その他' ? 1000 : (index + 1) * 10 })),
@@ -22,4 +23,5 @@ export async function ensureKnowledgeReferenceData(db: PrismaClient, triage: Tri
     where: { state: { in: ['pending', 'failed'] }, intakeId: { not: 'legacy-ready' } }, select: { intakeId: true }, distinct: ['intakeId'],
   });
   for (const { intakeId } of waiting) await triage.open(intakeId, null);
+  await procedures.submitStoppedDraftsForApproval();
 }
