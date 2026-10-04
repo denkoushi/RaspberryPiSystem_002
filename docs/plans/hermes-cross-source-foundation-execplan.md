@@ -22,11 +22,12 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 - [x] (2026-10-04 02:30Z) 現状調査と所見。不適合1ソースの検索は実用域、横断の土台（共通アダプタ、外部索引、ページ文脈）は未着手と判定。ユーザーが3段階の提案を承認。
 - [x] (2026-10-04 02:45Z) branch `feat/hermes-cross-source-foundation` と worktree を `python3 -m scripts.git_lifecycle.cli start` で作成。
-- [ ] Milestone 1: ソース定義の複数化と2つ目のソース（公開済み手順書）。
+- [x] (2026-10-04 05:01Z) Milestone 1: ソース定義の複数化と2つ目のソース（#1680、Pi5 配布 run 20261004-033605-802983）。配布経路の修正 #1683 の後、維持経路 run 20261004-045601-6a2031 で `HERMES_RETRIEVAL_SOURCES=nonconformity,knowledge_procedure` を有効化。手順書の読込 1 件（本番の公開済み手順書は 1 件で一致）。
 - [x] (2026-10-04 04:00Z) Milestone 2 の2つの試作: pg_trgm の候補再現率（移行保留、#1681）と worker のメモリ内訳（本文は小さく、ベクトルと下ごしらえが大きい）。
-- [ ] Milestone 2（改訂）: worker のメモリ報告、ソース別の見える範囲、索引の二重保持の解消。
-- [ ] Milestone 3: フローティングChatから現在ページの文脈（パスと主キー）を送り、計画器がそれを使う。
-- [ ] 各マイルストーンごとに PR → CI → merge → Pi5 デプロイ → キオスク確認。
+- [x] (2026-10-04 05:01Z) Milestone 2（改訂）: worker のメモリ報告、ソース別の見える範囲、索引の二重保持の解消（#1685、Pi5 配布 run 20261004-044836-c11c1c）。
+- [x] (2026-10-04 05:30Z) Milestone 3: 自主検査画面の品番を Chat に渡す（#1682、Pi5 配布 run 20261004-035811-a39a70）。キオスク実機でユーザーが確認: 不適合質問は従来どおり、「この品番の不適合」は画面の品番で絞られる。
+- [x] (2026-10-04 05:30Z) 各マイルストーンの PR → CI → merge → Pi5 デプロイを完了（#1680、#1681、#1682、#1683、#1685）。残る実機確認は、有効化後に手順書の質問が【手順書】付きで返ること。
+- [ ] 有効化後のキオスク確認（手順書の質問）と、Pi5 のメモリ値を 1 週間追った上での次の判断（ベクトル量子化、下ごしらえストア縮小）。
 
 - [x] (2026-10-04 03:07Z) Milestone 1 の許可されたローカル実装。ソース登録、公開済み手順書の変換・読み出し、ソース別の検索・表示・値索引、未知ソースの起動拒否、明示設定時だけのリリース変数書き込みを追加。既定の1ソース、1引数の authorizedRecords、answer の引数、bare string[] の candidateIds を維持。
 - [x] (2026-10-04 03:07Z) 対象 Node テスト24/24、ソース定義5/5が成功。依存パッケージを既存worktreeから参照する一時コピーで、API対象22/22とlint（エラー0件）が成功。元worktreeには依存リンクを作らず、install・lockfile変更はしていない。
@@ -115,8 +116,10 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 ## Outcomes & Retrospective
 
 - Milestone 1（2026-10-04、#1680）: ソースを足す手順は4点に収まった。定義 JSON（`hermes-sources/<id>.json`）、`hermes-source-definition.mjs` の登録表、API の読み出し関数（`hermes-search-sources.ts` の登録表）、`source-labels.json` のラベル。配布後の Pi5 は health 200、既定では挙動不変。
-- Milestone 3（2026-10-04、#1682）: 最初の対象は自主検査画面（品番）。配布後の実機確認は未記録。
-- Milestone 2 の試作（2026-10-04、#1681 と本 PR）: 上記 Milestone 2 の冒頭に数字を記した。
+- Milestone 3（2026-10-04、#1682）: 最初の対象は自主検査画面（品番）。キオスク実機でユーザーが確認済み（不適合質問は従来どおり、「この品番の不適合」は画面の品番で絞られる）。
+- Milestone 2 の試作（2026-10-04、#1681 と #1685）: 上記 Milestone 2 の冒頭に数字を記した。
+- Milestone 2（2026-10-04、#1685）: Pi5 実機の worker メモリ（API ログ `hermes retrieval memory`）。配布直後、不適合のみ 8,265 件: heapUsed 134MB、rss 391.2MB、external 129.4MB、arrayBuffers 93.6MB。手順書を有効化して API を作り直した直後、8,266 件: heapUsed 165MB、rss 400.8MB、external 97.7MB、arrayBuffers 94.1MB。Mac の計測（heap 47MB、ArrayBuffer 32.5MB）より heap が約 3 倍、ArrayBuffer が約 3 倍大きい。差分の候補は DGX 埋め込みの実行時バッファ（Mac では `.bin` を読んだだけ）と、質問処理のごみ。rss は `--max-old-space-size=384` の近傍にあり、V8 が上限まで回収を遅らせていると見られる。10 倍への外挿は、この heap 165MB と ArrayBuffer 94MB を基準にすると約 2.6GB で、Pi5 の 8GB（可用 4.7GB）に対して余裕が小さい。次の判断材料として、1 週間分の値を集めてから、ベクトルの Int8 量子化（94MB → 約 24MB）と下ごしらえストアの縮小を別マイルストーンで検討する。
+- 手順書ソースの有効化（2026-10-04、維持経路 run 20261004-045601-6a2031）: API env に `HERMES_RETRIEVAL_SOURCES=nonconformity,knowledge_procedure` が 1 行加わり、他の Hermes 設定は不変。手順書の読込 1 件は本番の公開済み手順書 1 件（事務手続き）と一致。
 
 ## Context and Orientation
 
