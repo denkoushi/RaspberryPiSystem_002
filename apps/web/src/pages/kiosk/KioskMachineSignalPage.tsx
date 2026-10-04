@@ -1,18 +1,25 @@
 import clsx from 'clsx';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
-import { useMachineSignalDay } from '../../api/hooks';
+import { useMachineSignalDay, useMachineSignalRange, useMachineSignalReportDates, useMachineSignalWorsening } from '../../api/hooks';
 import { MachineSignalMachines } from '../../features/machine-signal/MachineSignalMachines';
 import { MachineSignalOverview } from '../../features/machine-signal/MachineSignalOverview';
+import { MachineSignalRangeMachines } from '../../features/machine-signal/MachineSignalRangeMachines';
+import { MachineSignalRangeOverview } from '../../features/machine-signal/MachineSignalRangeOverview';
+import { sortSignalPinnedMachines } from '../../features/machine-signal/machineSignalRangeViewModel';
 import {
-  formatSignalDate,
   SIGNAL_FILTER_HINTS,
   SIGNAL_HINT_LABELS,
   sortSignalMachinesByAttention
 } from '../../features/machine-signal/machineSignalViewModel';
+import { SignalDatePicker } from '../../features/machine-signal/SignalDatePicker';
+import { formatSignalPickerDay, formatSignalPickerRange } from '../../features/machine-signal/signalDatePickerModel';
+import { useSignalPins } from '../../features/machine-signal/signalPins';
+import { SignalPinIcon } from '../../features/machine-signal/signalUi';
 import { kioskButtonClass, Segmented } from '../../features/part-measurement/selfInspectionReduction/reductionUi';
 
 import type { MachineSignalHint } from '../../api/client';
+import type { SignalDateSelection } from '../../features/machine-signal/signalDatePickerModel';
 
 type View = 'overview' | 'machines';
 const VIEW_OPTIONS = [
@@ -31,16 +38,44 @@ function Arrow({ direction }: { direction: 'left' | 'right' }) {
 
 /** キオスク「設備稼働」。信号灯センサーの日報から、どの機械をどう長く動かせるかを見る。 */
 export function KioskMachineSignalPage() {
-  const [date, setDate] = useState<string | undefined>(undefined);
+  const [selection, setSelection] = useState<SignalDateSelection>({ mode: 'latest' });
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const closePicker = useCallback(() => setPickerOpen(false), []);
   const [site, setSite] = useState(ALL_SITES);
   const [view, setView] = useState<View>('overview');
   const [selected, setSelected] = useState<number | null>(null);
-  const [hint, setHint] = useState<MachineSignalHint | null>(null);
+  const [hint, setHint] = useState<MachineSignalHint | 'pins' | null>(null);
 
+  const { pins, toggle } = useSignalPins();
+  const date = selection.mode === 'day' ? selection.date : undefined;
+  const isRange = selection.mode === 'range';
   const dayQuery = useMachineSignalDay({ date, site: site || undefined });
+  const rangeQuery = useMachineSignalRange(isRange ? { from: selection.from, to: selection.to, site: site || undefined } : null);
+  const datesQuery = useMachineSignalReportDates();
   const day = dayQuery.data;
-  const sorted = useMemo(() => sortSignalMachinesByAttention(day?.machines ?? []), [day?.machines]);
-  const shown = hint ? sorted.filter((machine) => machine.hint === hint) : sorted;
+  const range = rangeQuery.data;
+  const worseningQuery = useMachineSignalWorsening({ date: isRange ? null : day?.reportDate ?? null, site: site || undefined });
+  const sorted = useMemo(() => sortSignalPinnedMachines(sortSignalMachinesByAttention(day?.machines ?? []), pins), [day?.machines, pins]);
+  const shown = hint === 'pins' ? sorted.filter((machine) => pins.has(machine.signalNo)) : hint ? sorted.filter((machine) => machine.hint === hint) : sorted;
+  const rangeSorted = sortSignalPinnedMachines(range?.machines ?? [], pins);
+  const rangeShown = hint === 'pins' ? rangeSorted.filter((machine) => pins.has(machine.signalNo)) : rangeSorted;
+  const current = isRange ? range : day;
+  const pinCount = (current?.machines ?? []).filter((machine) => pins.has(machine.signalNo)).length;
+  const emptyMessage = hint === 'pins' ? 'ピン留めした機械がありません' : undefined;
+  const activeQuery = isRange ? rangeQuery : dayQuery;
+
+  const chooseDate = (value: SignalDateSelection) => {
+    setSelection(value);
+    setHint(null);
+    setPickerOpen(false);
+  };
+  const togglePin = (signalNo: number) => {
+    const machines = isRange ? rangeShown : shown;
+    const active = machines.find((machine) => machine.signalNo === selected) ?? machines[0];
+    // 先頭行を暗黙に選んでいた場合も、ピンによる並べ替えで詳細を変えない。
+    if (active) setSelected(active.signalNo);
+    toggle(signalNo);
+  };
 
   const openMachine = (signalNo: number) => {
     setSelected(signalNo);
@@ -56,37 +91,42 @@ export function KioskMachineSignalPage() {
           <button
             type="button"
             aria-label="前の日"
-            disabled={!day?.previousDate}
-            onClick={() => setDate(day?.previousDate ?? undefined)}
-            className={clsx(kioskButtonClass, 'w-11 justify-center px-0')}
+            disabled={isRange || !day?.previousDate}
+            onClick={() => day?.previousDate && chooseDate({ mode: 'day', date: day.previousDate })}
+            className={clsx(kioskButtonClass.replace('px-4', 'px-0'), 'w-11 justify-center')}
           >
             <Arrow direction="left" />
           </button>
-          <span className="min-w-[104px] text-center font-mono text-lg font-semibold">
-            {day?.reportDate ? formatSignalDate(day.reportDate) : '–'}
-          </span>
+          <div className="relative">
+            <button type="button" aria-haspopup="dialog" aria-expanded={pickerOpen} onClick={() => setPickerOpen(!pickerOpen)} className={clsx(kioskButtonClass.replace('text-base', 'text-[17px]'), 'font-mono', pickerOpen && 'ring-1 ring-[#4b8fd6]')}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" /></svg>
+              {isRange ? formatSignalPickerRange(selection.from, selection.to) : (date ?? day?.reportDate) ? formatSignalPickerDay((date ?? day?.reportDate)!) : '–'}
+            </button>
+            {pickerOpen ? <SignalDatePicker dates={datesQuery.data ?? []} selection={selection} onSelect={chooseDate} onClose={closePicker} /> : null}
+          </div>
           <button
             type="button"
             aria-label="次の日"
-            disabled={!day?.nextDate}
-            onClick={() => setDate(day?.nextDate ?? undefined)}
-            className={clsx(kioskButtonClass, 'w-11 justify-center px-0')}
+            disabled={isRange || !day?.nextDate}
+            onClick={() => day?.nextDate && chooseDate({ mode: 'day', date: day.nextDate })}
+            className={clsx(kioskButtonClass.replace('px-4', 'px-0'), 'w-11 justify-center')}
           >
             <Arrow direction="right" />
           </button>
         </div>
+        {selection.mode !== 'latest' ? <button type="button" onClick={() => chooseDate({ mode: 'latest' })} className="inline-flex h-11 items-center rounded-[9px] border border-[#2c6a4f] bg-[#12301f] px-3.5 text-[15px] font-bold text-[#8be0b4]">最新</button> : null}
         <Segmented label="表示" value={view} options={VIEW_OPTIONS} onChange={setView} />
-        {day && day.sites.length > 0 ? (
+        {current && current.sites.length > 0 ? (
           <Segmented
             label="工場"
             value={site}
-            options={[{ value: ALL_SITES, label: 'すべて' }, ...day.sites.map((name) => ({ value: name, label: name }))]}
+            options={[{ value: ALL_SITES, label: 'すべて' }, ...current.sites.map((name) => ({ value: name, label: name }))]}
             onChange={setSite}
           />
         ) : null}
-        {view === 'machines' && day?.fleet ? (
+        {view === 'machines' && current?.fleet ? (
           <div role="group" aria-label="気づきで絞り込み" className="flex flex-wrap gap-1.5">
-            {[null, ...SIGNAL_FILTER_HINTS].map((candidate) => (
+            {([null, 'pins', ...(isRange ? [] : SIGNAL_FILTER_HINTS)] as const).map((candidate) => (
               <button
                 key={candidate ?? 'all'}
                 type="button"
@@ -97,26 +137,29 @@ export function KioskMachineSignalPage() {
                   hint === candidate ? 'border-[#4b8fd6] bg-[#1d2b3d] text-[#e6edf5]' : 'border-[#243347] bg-[#141e2b] text-[#8b9cb2]'
                 )}
               >
-                {candidate ? SIGNAL_HINT_LABELS[candidate] : 'すべて'}
-                <b className="font-mono text-[#e6edf5]">{candidate ? day.fleet?.hintCounts[candidate] : day.machines.length}</b>
+                {candidate === 'pins' ? <span className="text-[#f2c94c]"><SignalPinIcon /></span> : null}
+                {candidate === 'pins' ? 'ピン留め' : candidate ? SIGNAL_HINT_LABELS[candidate] : 'すべて'}
+                <b className="font-mono text-[#e6edf5]">{candidate === 'pins' ? pinCount : candidate ? day?.fleet?.hintCounts[candidate] : current.machines.length}</b>
               </button>
             ))}
           </div>
         ) : null}
       </div>
 
-      {dayQuery.isError ? (
+      {activeQuery.isError ? (
         <p role="alert" className="text-[#ff9c99]">
           読み込めませんでした
         </p>
-      ) : !day ? (
+      ) : !current ? (
         <p className="text-[#8b9cb2]">読み込み中…</p>
-      ) : !day.reportDate || !day.fleet ? (
+      ) : isRange && range ? (
+        view === 'overview' ? <MachineSignalRangeOverview range={range} onSelect={openMachine} /> : <MachineSignalRangeMachines range={range} machines={rangeShown} selected={selected} onSelect={setSelected} pins={pins} onTogglePin={togglePin} emptyMessage={emptyMessage} />
+      ) : !day?.reportDate || !day.fleet ? (
         <p className="text-[#8b9cb2]">日報がまだありません</p>
       ) : view === 'overview' ? (
-        <MachineSignalOverview day={day} onSelect={openMachine} />
+        <MachineSignalOverview day={day} worsening={worseningQuery.data ?? []} onSelect={openMachine} />
       ) : (
-        <MachineSignalMachines day={day} machines={shown} selected={selected} onSelect={setSelected} />
+        <MachineSignalMachines pins={pins} onTogglePin={togglePin} emptyMessage={emptyMessage} day={day} machines={shown} selected={selected} onSelect={setSelected} />
       )}
     </div>
   );

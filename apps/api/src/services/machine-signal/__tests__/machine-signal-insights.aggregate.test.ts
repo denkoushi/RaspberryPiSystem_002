@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildSignalFleetDay,
+  buildSignalDaySummary,
+  buildSignalRange,
   buildSignalMachineDay,
   detectSignalWorsening,
   toPlannedWindows,
   type SignalReportRow,
   type SignalTrendPoint,
 } from '../machine-signal-insights.aggregate.js';
+import type { SignalDaySummary } from '../machine-signal-day-summary.cache.js';
 import type { MachineSignalSensorDto } from '../machine-signal-settings.service.js';
 import { DEFAULT_SIGNAL_THRESHOLDS } from '../signal-metrics.js';
 
@@ -102,7 +105,6 @@ describe('buildSignalFleetDay', () => {
   const fleet = buildSignalFleetDay(machines, {
     dayStartMinute: 480,
     nightStartMinute: 20 * 60,
-    worsening: [],
     thresholds: DEFAULT_SIGNAL_THRESHOLDS,
   });
 
@@ -120,6 +122,8 @@ describe('buildSignalFleetDay', () => {
   });
 
   it('lists the machines to look at first and counts the hints', () => {
+    // 開いたままの古い画面のために、空の配列だけ残している。
+    expect(fleet.worsening).toEqual([]);
     expect(fleet.topAlarm).toEqual([2]);
     expect(fleet.topLongStop).toEqual([2]);
     expect(fleet.topShortStops).toEqual([]);
@@ -166,5 +170,130 @@ describe('detectSignalWorsening', () => {
   it('needs enough days on both sides before judging', () => {
     const recent = [28, 29, 30].map((day) => point(day, { averageRunSeconds: 600 }));
     expect(detectSignalWorsening(7, [...baseline.slice(0, 3), ...recent], recentDates, DEFAULT_SIGNAL_THRESHOLDS)).toBeNull();
+  });
+});
+
+describe('buildSignalDaySummary', () => {
+  it('keeps the daily metrics and longest stop without a timeline', () => {
+    const summary = buildSignalDaySummary(sensor({ runningKw: 2, idleKw: 1 }), report([
+      [0, HOUR, 1, 1, 2, 0],
+      [HOUR, 120, 1, 2, 1, 1],
+      [HOUR + 120, HOUR, 2, 1, 2, 0],
+      [2 * HOUR + 120, 24 * HOUR - 2 * HOUR - 120, 1, 2, 1, 1],
+    ]), DEFAULT_SIGNAL_THRESHOLDS);
+
+    expect(summary).toMatchObject({
+      signalNo: 1, reportDate: '2026-10-01', hasRecord: true, hint: 'ALARM',
+      runSeconds: 2 * HOUR, runBlockCount: 2, averageRunSeconds: HOUR, longestRunSeconds: HOUR,
+      stopCount: 2, shortStopCount: 1, alarmCount: 1, alarmSeconds: HOUR,
+      longestStop: { startSecond: 2 * HOUR + 120, durationSeconds: 22 * HOUR - 120, stateName: '一時停止' },
+      estimatedKwh: 26,
+    });
+    expect(summary.loss).toEqual({
+      normalRunSeconds: HOUR, runAlarmSeconds: HOUR, shortStopSeconds: 120,
+      midStopSeconds: 0, longStopSeconds: 22 * HOUR - 120,
+      notStartedSeconds: 0, outsidePlanSeconds: 0, noRecordSeconds: 0,
+    });
+    expect(summary).not.toHaveProperty('timeline');
+  });
+
+  it('uses overrides, planned windows and thresholds for the summary', () => {
+    const configured = sensor({
+      categoryOverrides: { '122': 'STOP' }, plannedStartMinute: 480, plannedEndMinute: 600,
+    });
+    const summary = buildSignalDaySummary(configured, report([
+      [0, HOUR, 1, 1, 2, 0],
+      [HOUR, 120, 1, 2, 2, 1],
+      [HOUR + 120, HOUR - 120, 1, 1, 2, 0],
+      [2 * HOUR, 22 * HOUR, 1, 2, 1, 1],
+    ]), { ...DEFAULT_SIGNAL_THRESHOLDS, shortStopMaxSeconds: 60, goodRunMinSeconds: 6_000 });
+    expect(summary).toMatchObject({
+      runSeconds: 2 * HOUR - 120, stopCount: 1, shortStopCount: 0, hint: 'GOOD', estimatedKwh: null,
+      loss: { midStopSeconds: 120, outsidePlanSeconds: 22 * HOUR },
+    });
+  });
+
+  it('returns no record, no stop and no power estimate for an empty report', () => {
+    expect(buildSignalDaySummary(sensor({ runningKw: 2 }), report([]), DEFAULT_SIGNAL_THRESHOLDS)).toMatchObject({
+      hasRecord: false, hint: 'NO_RECORD', runSeconds: 0, longestStop: null,
+      loss: { noRecordSeconds: 24 * HOUR }, estimatedKwh: null,
+    });
+  });
+});
+
+describe('buildSignalRange', () => {
+  const build = (sensors: MachineSignalSensorDto[], summaries: SignalDaySummary[], from = '2026-10-01', to = '2026-10-03') =>
+    buildSignalRange({ from, to, sensors, summaries, thresholds: DEFAULT_SIGNAL_THRESHOLDS, sites: ['第1工場'] });
+
+  it('sums days and includes missing dates and empty reports in the denominator', () => {
+    const first = sensor({ displayName: '1号機', site: '第1工場', runningKw: 2, idleKw: 1 });
+    const second = sensor({ signalNo: 2 });
+    const summaries = [
+      buildSignalDaySummary(first, report([[0, HOUR, 1, 1, 2, 0], [HOUR, 23 * HOUR, 1, 2, 1, 1]]), DEFAULT_SIGNAL_THRESHOLDS),
+      buildSignalDaySummary(first, { ...report([[0, 24 * HOUR, 1, 1, 2, 0]]), reportDate: '2026-10-03' }, DEFAULT_SIGNAL_THRESHOLDS),
+      buildSignalDaySummary(second, report([], 2), DEFAULT_SIGNAL_THRESHOLDS),
+    ];
+    const result = build([second, first], summaries);
+    expect(result.dates).toEqual(['2026-10-01', '2026-10-02', '2026-10-03']);
+    expect(result.machines.map((machine) => machine.signalNo)).toEqual([1, 2]);
+    expect(result.machines[0]).toMatchObject({
+      name: '1号機', sourceMachineName: 'HCN4000', site: '第1工場', kind: 'MACHINE',
+      recordDays: 2, runSeconds: 25 * HOUR, averageRunSecondsPerDay: 30_000,
+      stopCount: 1, shortStopCount: 0, alarmCount: 0, alarmSeconds: 0,
+      longestStop: { startSecond: HOUR, durationSeconds: 23 * HOUR, stateName: '一時停止', reportDate: '2026-10-01' },
+      loss: { normalRunSeconds: 25 * HOUR, longStopSeconds: 23 * HOUR, noRecordSeconds: 24 * HOUR },
+      estimatedKwh: 73,
+      days: [{ runSeconds: HOUR, hint: 'LONG_STOP' }, null, { runSeconds: 24 * HOUR, hint: 'GOOD' }],
+    });
+    expect(result.machines[1]).toMatchObject({
+      name: 'HCN4000', recordDays: 0, estimatedKwh: null, longestStop: null,
+      loss: { noRecordSeconds: 72 * HOUR }, days: [{ runSeconds: 0, hint: 'NO_RECORD' }, null, null],
+    });
+    expect(result.fleet).toMatchObject({
+      machineCount: 2, dayCount: 3, hintDayCounts: { NO_RECORD: 4, LONG_STOP: 1, GOOD: 1 }, estimatedKwh: 73,
+      loss: { normalRunSeconds: 25 * HOUR, longStopSeconds: 23 * HOUR, noRecordSeconds: 96 * HOUR },
+    });
+    expect(result.fleet.runRatio).toBeCloseTo(25 / 144);
+    expect(result.fleet.dailyRunRatio).toEqual([1 / 48, 0, 1 / 2]);
+    expect(Object.values(result.fleet.loss).reduce((sum, seconds) => sum + seconds, 0)).toBe(144 * HOUR);
+  });
+
+  it('orders and caps top lists, excludes zero values and barely running machines', () => {
+    const sensors = Array.from({ length: 7 }, (_, index) => sensor({ signalNo: index + 1 }));
+    const summaries = sensors.map((entry, index) => ({
+      ...buildSignalDaySummary(entry, report([[0, 24 * HOUR, 1, 1, 2, 0]], entry.signalNo), DEFAULT_SIGNAL_THRESHOLDS),
+      runSeconds: index === 6 ? 2 * HOUR - 1 : 2 * HOUR,
+      alarmSeconds: index === 0 ? 0 : index * 60,
+      shortStopCount: index === 0 ? 0 : 7 - index,
+      longestStop: index === 0 ? null : { startSecond: 100, durationSeconds: index * HOUR, stateName: '停止' },
+    }));
+    const result = build(sensors, summaries, '2026-10-01', '2026-10-02');
+    expect(result.fleet.topAlarm).toEqual([7, 6, 5, 4]);
+    expect(result.fleet.topShortStops).toEqual([2, 3, 4, 5]);
+    expect(result.fleet.topLongStop).toEqual([6, 5, 4, 3]);
+    expect(result.machines[0].averageRunSecondsPerDay).toBe(HOUR);
+    expect(result.fleet.estimatedKwh).toBeNull();
+  });
+
+  it('sums counters and power including a zero estimate and selects the longest stop across days', () => {
+    const base = buildSignalDaySummary(sensor(), report([]), DEFAULT_SIGNAL_THRESHOLDS);
+    const result = build([sensor()], [
+      { ...base, hasRecord: true, stopCount: 3, shortStopCount: 2, alarmCount: 1, alarmSeconds: 60,
+        estimatedKwh: 0, longestStop: { startSecond: 10, durationSeconds: 120, stateName: '停止' } },
+      { ...base, reportDate: '2026-10-03', hasRecord: true, stopCount: 4, shortStopCount: 3,
+        alarmCount: 2, alarmSeconds: 120, longestStop: { startSecond: 20, durationSeconds: 180, stateName: '異常停止' } },
+    ]);
+    expect(result.machines[0]).toMatchObject({
+      recordDays: 2, stopCount: 7, shortStopCount: 5, alarmCount: 3, alarmSeconds: 180, estimatedKwh: 0,
+      longestStop: { reportDate: '2026-10-03', startSecond: 20, durationSeconds: 180, stateName: '異常停止' },
+    });
+    expect(result.fleet.estimatedKwh).toBe(0);
+  });
+
+  it('returns null estimates and zero ratios for an empty fleet', () => {
+    const result = build([], []);
+    expect(result.fleet).toMatchObject({ machineCount: 0, dayCount: 3, runRatio: 0,
+      dailyRunRatio: [0, 0, 0], estimatedKwh: null, topAlarm: [], topShortStops: [], topLongStop: [] });
+    expect(result.fleet.hintDayCounts.NO_RECORD).toBe(0);
   });
 });

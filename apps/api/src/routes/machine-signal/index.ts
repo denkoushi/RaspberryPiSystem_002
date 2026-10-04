@@ -12,6 +12,9 @@ import {
 } from '../../services/machine-signal/machine-signal-gmail-ingestion.service.js';
 import {
   getMachineSignalDay,
+  getMachineSignalWorsening,
+  getMachineSignalRange,
+  listMachineSignalReportDates,
   getMachineSignalTrend,
   listMachineSignalSensorsForAdmin,
 } from '../../services/machine-signal/machine-signal-insights.service.js';
@@ -45,6 +48,8 @@ const secondsSchema = z.number().int().min(0).max(86_400);
 const kwSchema = z.number().min(0).max(10_000).nullable();
 
 const dayQuerySchema = z.object({ date: dateSchema.optional(), site: z.string().trim().min(1).max(80).optional() });
+const worseningQuerySchema = dayQuerySchema.extend({ date: dateSchema });
+const rangeQuerySchema = z.object({ from: dateSchema, to: dateSchema, site: dayQuerySchema.shape.site });
 const trendQuerySchema = z.object({
   endDate: dateSchema,
   days: z.coerce
@@ -123,6 +128,16 @@ export function registerMachineSignalRoutes(app: FastifyInstance, deps: MachineS
   app.get(`${BASE}/day`, { preHandler: allowView }, async (request) =>
     getMachineSignalDay(dayQuerySchema.parse(request.query))
   );
+
+  app.get(`${BASE}/worsening`, { preHandler: allowView }, async (request) => ({
+    worsening: await getMachineSignalWorsening(worseningQuerySchema.parse(request.query)),
+  }));
+
+  app.get(`${BASE}/range`, { preHandler: allowView }, async (request) =>
+    getMachineSignalRange(rangeQuerySchema.parse(request.query))
+  );
+
+  app.get(`${BASE}/dates`, { preHandler: allowView }, async () => ({ dates: await listMachineSignalReportDates() }));
 
   app.get(`${BASE}/sensors/:signalNo/trend`, { preHandler: allowView }, async (request) => {
     const { signalNo } = signalNoParamsSchema.parse(request.params);

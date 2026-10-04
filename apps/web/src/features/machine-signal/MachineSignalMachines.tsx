@@ -11,24 +11,30 @@ import {
   SIGNAL_CATEGORY_LABELS
 } from './machineSignalViewModel';
 import { SignalAxis, SignalBand } from './SignalBand';
-import { DurationQuantity, HintTag, Quantity, signalPanelClass } from './signalUi';
+import { DurationQuantity, HintTag, Quantity, SignalPinButton, signalPanelClass } from './signalUi';
 
 import type { MachineSignalDay, MachineSignalMachineDay, MachineSignalTrendPoint } from '../../api/client';
 
-const ROW_GRID = 'grid grid-cols-[172px_minmax(0,1fr)_62px_58px_66px_96px] items-center gap-2.5 px-3';
+const ROW_GRID = 'grid grid-cols-[30px_minmax(0,1fr)] items-center gap-2.5 px-3';
 
 function MachineList({
   machines,
   dayStartMinute,
   selected,
-  onSelect
+  onSelect,
+  pins,
+  onTogglePin,
+  emptyMessage
 }: {
   machines: MachineSignalMachineDay[];
   dayStartMinute: number;
+  pins: ReadonlySet<number>;
+  onTogglePin: (signalNo: number) => void;
+  emptyMessage?: string;
   selected: number | null;
   onSelect: (signalNo: number) => void;
 }) {
-  const selectedRow = useRef<HTMLButtonElement>(null);
+  const selectedRow = useRef<HTMLDivElement>(null);
   useEffect(() => {
     selectedRow.current?.scrollIntoView?.({ block: 'nearest' });
   }, [selected]);
@@ -36,29 +42,28 @@ function MachineList({
   return (
     <section className={clsx(signalPanelClass, 'flex min-h-0 flex-col')}>
       <div className={clsx(ROW_GRID, 'h-[34px] shrink-0 border-b border-[#243347] text-[13px] text-[#8b9cb2]')}>
+        <span />
+        <div className="grid grid-cols-[172px_minmax(0,1fr)_62px_58px_66px_96px] items-center gap-2.5">
         <span>機械</span>
         <SignalAxis dayStartMinute={dayStartMinute} className="h-4" />
         <span className="text-right">稼働</span>
         <span className="text-right">停止</span>
         <span className="text-right">連続平均</span>
         <span>気づき</span>
+        </div>
       </div>
       <div className="min-h-0 overflow-y-auto">
+        {machines.length === 0 && emptyMessage ? <p className="p-4 text-[#8b9cb2]">{emptyMessage}</p> : null}
         {machines.map((machine) => {
           const isSelected = machine.signalNo === selected;
           return (
-            <button
+            <div
               key={machine.signalNo}
               ref={isSelected ? selectedRow : undefined}
-              type="button"
-              aria-current={isSelected}
-              onClick={() => onSelect(machine.signalNo)}
-              className={clsx(
-                ROW_GRID,
-                'h-[30px] w-full border-b border-[#1b2736] text-left text-[15px] hover:bg-[#18232f]',
-                isSelected && 'bg-[#1d2b3d]'
-              )}
+              className={clsx(ROW_GRID, 'h-[30px] border-b border-[#1b2736] text-[15px] hover:bg-[#18232f]', isSelected && 'bg-[#1d2b3d]')}
             >
+              <SignalPinButton name={machine.name} pinned={pins.has(machine.signalNo)} onToggle={() => onTogglePin(machine.signalNo)} />
+              <button type="button" aria-current={isSelected} onClick={() => onSelect(machine.signalNo)} className="grid h-full min-w-0 grid-cols-[172px_minmax(0,1fr)_62px_58px_66px_96px] items-center gap-2.5 text-left">
               <span className="truncate font-semibold">
                 <span className="mr-1.5 font-mono text-xs font-normal text-[#5d6e84]">{machine.signalNo}</span>
                 {machine.name}
@@ -76,7 +81,8 @@ function MachineList({
               <span>
                 <HintTag hint={machine.hint} />
               </span>
-            </button>
+              </button>
+            </div>
           );
         })}
       </div>
@@ -247,9 +253,15 @@ export function MachineSignalMachines({
   day,
   machines,
   selected,
-  onSelect
+  onSelect,
+  pins,
+  onTogglePin,
+  emptyMessage
 }: {
   day: MachineSignalDay;
+  pins: ReadonlySet<number>;
+  onTogglePin: (signalNo: number) => void;
+  emptyMessage?: string;
   machines: MachineSignalMachineDay[];
   selected: number | null;
   onSelect: (signalNo: number) => void;
@@ -257,7 +269,7 @@ export function MachineSignalMachines({
   const machine = machines.find((candidate) => candidate.signalNo === selected) ?? machines[0];
   return (
     <div className="grid min-h-0 flex-1 gap-2.5 min-[1100px]:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-      <MachineList machines={machines} dayStartMinute={day.dayStartMinute} selected={machine?.signalNo ?? null} onSelect={onSelect} />
+      <MachineList pins={pins} onTogglePin={onTogglePin} emptyMessage={emptyMessage} machines={machines} dayStartMinute={day.dayStartMinute} selected={machine?.signalNo ?? null} onSelect={onSelect} />
       {machine ? <MachineDetail machine={machine} day={day} /> : <section className={signalPanelClass} />}
     </div>
   );

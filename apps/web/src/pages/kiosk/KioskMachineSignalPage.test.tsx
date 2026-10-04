@@ -3,13 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { KioskMachineSignalPage } from './KioskMachineSignalPage';
 
-import type { MachineSignalDay, MachineSignalMachineDay } from '../../api/client';
+import type { MachineSignalDay, MachineSignalMachineDay, MachineSignalRange } from '../../api/client';
 
-const mocks = vi.hoisted(() => ({ useDay: vi.fn(), useTrend: vi.fn() }));
+const mocks = vi.hoisted(() => ({ useDay: vi.fn(), useTrend: vi.fn(), useRange: vi.fn(), useDates: vi.fn(), useWorsening: vi.fn() }));
 
 vi.mock('../../api/hooks', () => ({
   useMachineSignalDay: mocks.useDay,
-  useMachineSignalTrend: mocks.useTrend
+  useMachineSignalTrend: mocks.useTrend,
+  useMachineSignalRange: mocks.useRange,
+  useMachineSignalReportDates: mocks.useDates,
+  useMachineSignalWorsening: mocks.useWorsening
 }));
 
 const HOUR = 3_600;
@@ -102,16 +105,38 @@ const day = (overrides: Partial<MachineSignalDay> = {}): MachineSignalDay => ({
     estimatedKwh: null,
     topAlarm: [2],
     topShortStops: [],
-    topLongStop: [2],
-    worsening: [{ signalNo: 2, kind: 'RUN_SHORTER', baseline: 12 * HOUR, recent: 8 * HOUR }]
+    topLongStop: [2]
   },
   machines: [machine({}), stopped],
   ...overrides
 });
 
+const range = (): MachineSignalRange => ({
+  from: '2026-09-29', to: '2026-10-01', dates: ['2026-09-29', '2026-09-30', '2026-10-01'],
+  thresholds: day().thresholds, sites: day().sites,
+  fleet: {
+    machineCount: 2, dayCount: 3, runRatio: 0.25, loss: { ...LOSS, normalRunSeconds: 36 * HOUR },
+    dailyRunRatio: [0, 0.25, 0.5], hintDayCounts: day().fleet!.hintCounts, estimatedKwh: 100,
+    topAlarm: [2], topShortStops: [2], topLongStop: [2]
+  },
+  machines: day().machines.map((item) => ({
+    signalNo: item.signalNo, name: item.name, sourceMachineName: item.sourceMachineName, site: item.site, kind: item.kind,
+    recordDays: 2, runSeconds: item.runSeconds * 2, averageRunSecondsPerDay: item.runSeconds * 2 / 3,
+    stopCount: item.stopCount * 2, shortStopCount: item.shortStopCount * 2,
+    alarmCount: item.alarmCount * 2, alarmSeconds: item.alarmSeconds * 2,
+    longestStop: item.longestStops[0] ? { ...item.longestStops[0], reportDate: '2026-09-30' } : null,
+    loss: item.loss, estimatedKwh: null,
+    days: [null, { runSeconds: item.runSeconds, hint: item.hint }, { runSeconds: item.runSeconds, hint: item.hint }]
+  }))
+});
+
 describe('KioskMachineSignalPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    mocks.useRange.mockReturnValue({ data: range(), isError: false });
+    mocks.useDates.mockReturnValue({ data: ['2026-09-29', '2026-09-30', '2026-10-01'] });
+    mocks.useWorsening.mockReturnValue({ data: [{ signalNo: 2, kind: 'RUN_SHORTER', baseline: 12 * HOUR, recent: 8 * HOUR }] });
     // jsdom には canvas の描画が無い。帯の描画は対象外なので、取得だけ空で返す。
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
     mocks.useTrend.mockReturnValue({ data: [] });
@@ -122,7 +147,7 @@ describe('KioskMachineSignalPage', () => {
     render(<KioskMachineSignalPage />);
 
     expect(screen.getByRole('heading', { name: '設備稼働' })).toBeInTheDocument();
-    expect(screen.getByText('10/1（木）')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '10/01（木）' })).toBeInTheDocument();
     expect(screen.getByText('67')).toBeInTheDocument();
     expect(screen.getByText('3時間超の停止')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '赤ランプが長い' })).toBeInTheDocument();
@@ -178,4 +203,147 @@ describe('KioskMachineSignalPage', () => {
     render(<KioskMachineSignalPage />);
     expect(screen.getByRole('alert')).toHaveTextContent('読み込めませんでした');
   });
+  it('selects a reported day from the calendar and returns to latest', () => {
+    mocks.useDay.mockReturnValue({ data: day(), isError: false });
+    render(<KioskMachineSignalPage />);
+    expect(screen.queryByRole('button', { name: '最新' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '10/01（木）' }));
+    const calendar = screen.getByRole('dialog', { name: '日付を選ぶ' });
+    expect(within(calendar).getByRole('button', { name: '10月2日（日報なし）' })).toBeDisabled();
+    fireEvent.click(within(calendar).getByRole('button', { name: '前の月' }));
+    fireEvent.click(within(calendar).getByRole('button', { name: '9月30日' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mocks.useDay).toHaveBeenLastCalledWith({ date: '2026-09-30', site: undefined });
+    fireEvent.click(screen.getByRole('button', { name: '最新' }));
+    expect(mocks.useDay).toHaveBeenLastCalledWith({ date: undefined, site: undefined });
+    expect(mocks.useRange).toHaveBeenLastCalledWith(null);
+    expect(screen.queryByRole('button', { name: '最新' })).not.toBeInTheDocument();
+  });
+
+  it('selects a reverse range and disables day navigation while rendering range data', () => {
+    mocks.useDay.mockReturnValue({ data: day(), isError: false });
+    render(<KioskMachineSignalPage />);
+    fireEvent.click(screen.getByRole('button', { name: '10/01（木）' }));
+    const calendar = screen.getByRole('dialog');
+    fireEvent.click(within(calendar).getByRole('button', { name: '期間' }));
+    expect(screen.getByText('始まりの日を選ぶ')).toBeInTheDocument();
+    fireEvent.click(within(calendar).getByRole('button', { name: '10月1日' }));
+    expect(screen.getByText('終わりの日を選ぶ')).toBeInTheDocument();
+    fireEvent.click(within(calendar).getByRole('button', { name: '前の月' }));
+    fireEvent.click(within(calendar).getByRole('button', { name: '9月29日' }));
+    expect(mocks.useRange).toHaveBeenLastCalledWith({ from: '2026-09-29', to: '2026-10-01', site: undefined });
+    expect(screen.getByRole('button', { name: '9/29〜10/1（3日）' })).toBeInTheDocument();
+    expect(screen.getByText('2台 × 3日のうち稼働 ・ 推定 100 kWh')).toBeInTheDocument();
+    expect(screen.getByText('25')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '日ごとの稼働' }).firstElementChild).toHaveStyle({ height: '0%' });
+    expect(screen.getByRole('button', { name: '前の日' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '次の日' })).toBeDisabled();
+    expect(mocks.useWorsening).toHaveBeenLastCalledWith({ date: null, site: undefined });
+    fireEvent.click(screen.getByRole('button', { name: '機械別' }));
+    const filters = screen.getByRole('group', { name: '気づきで絞り込み' });
+    expect(within(filters).getAllByRole('button')).toHaveLength(2);
+    expect(screen.getByRole('heading', { name: '最長の停止' })).toBeInTheDocument();
+    expect(screen.getByText('記録のある日')).toBeInTheDocument();
+    expect(screen.getAllByRole('img', { name: /の日ごとの稼働/ })).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: '第2工場' }));
+    expect(mocks.useRange).toHaveBeenLastCalledWith({ from: '2026-09-29', to: '2026-10-01', site: '第2工場' });
+    fireEvent.click(screen.getByRole('button', { name: '最新' }));
+    expect(screen.queryByRole('heading', { name: '最長の停止' })).not.toBeInTheDocument();
+    expect(screen.getByText('長い停止')).toBeInTheDocument();
+  });
+
+  it('selects presets using the last reported day and treats equal endpoints as a day', () => {
+    mocks.useDay.mockReturnValue({ data: day(), isError: false });
+    render(<KioskMachineSignalPage />);
+    fireEvent.click(screen.getByRole('button', { name: '10/01（木）' }));
+    fireEvent.click(screen.getByRole('button', { name: '直近30日' }));
+    expect(mocks.useRange).toHaveBeenLastCalledWith({ from: '2026-09-02', to: '2026-10-01', site: undefined });
+    fireEvent.click(screen.getByRole('button', { name: '9/2〜10/1（30日）' }));
+    fireEvent.click(screen.getByRole('button', { name: '今月' }));
+    expect(mocks.useDay).toHaveBeenLastCalledWith({ date: '2026-10-01', site: undefined });
+    expect(mocks.useRange).toHaveBeenLastCalledWith(null);
+  });
+
+  it('discards a pending range on Escape or an outside click', () => {
+    mocks.useDay.mockReturnValue({ data: day(), isError: false });
+    render(<KioskMachineSignalPage />);
+    const open = () => fireEvent.click(screen.getByRole('button', { name: '10/01（木）' }));
+    open();
+    fireEvent.click(screen.getByRole('button', { name: '期間' }));
+    fireEvent.click(screen.getByRole('button', { name: '10月1日' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    open();
+    fireEvent.click(screen.getByRole('button', { name: '期間' }));
+    expect(screen.getByText('始まりの日を選ぶ')).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole('heading', { name: '設備稼働' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mocks.useDay).toHaveBeenLastCalledWith({ date: undefined, site: undefined });
+  });
+
+  it('disables reported endpoints more than 92 days from the first click', () => {
+    mocks.useDay.mockReturnValue({ data: day(), isError: false });
+    mocks.useDates.mockReturnValue({ data: ['2026-07-01', '2026-07-02', '2026-10-01'] });
+    render(<KioskMachineSignalPage />);
+    fireEvent.click(screen.getByRole('button', { name: '10/01（木）' }));
+    fireEvent.click(screen.getByRole('button', { name: '期間' }));
+    fireEvent.click(screen.getByRole('button', { name: '10月1日' }));
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole('button', { name: '前の月' }));
+    expect(screen.getByRole('button', { name: '7月1日' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '7月2日' })).toBeEnabled();
+  });
+
+  it('toggles pins without selecting another detail, sorts them first and filters exclusively', () => {
+    mocks.useDay.mockReturnValue({ data: day(), isError: false });
+    render(<KioskMachineSignalPage />);
+    fireEvent.click(screen.getByRole('button', { name: '機械別' }));
+    fireEvent.click(screen.getByRole('button', { name: /HCN4000.*の24時間/ }));
+    expect(screen.getByRole('heading', { name: /HCN4000/, level: 2 })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'NHX5000 をピン留めする' }));
+    expect(screen.getByRole('heading', { name: /HCN4000/, level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'NHX5000 をピン留めから外す' })).toHaveAttribute('aria-pressed', 'true');
+    expect(localStorage.getItem('machine-signal-pins')).toBe('[2]');
+    fireEvent.click(screen.getByRole('button', { name: 'HCN4000 をピン留めする' }));
+    fireEvent.click(screen.getByRole('button', { name: 'NHX5000 をピン留めから外す' }));
+    expect(screen.getAllByRole('button', { name: /をピン留め/ })[0]).toHaveAccessibleName('HCN4000 をピン留めから外す');
+    const filters = screen.getByRole('group', { name: '気づきで絞り込み' });
+    fireEvent.click(within(filters).getByRole('button', { name: /ピン留め 1/ }));
+    expect(screen.queryByRole('button', { name: 'NHX5000 をピン留めする' })).not.toBeInTheDocument();
+    expect(within(filters).getAllByRole('button', { pressed: true })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'HCN4000 をピン留めから外す' }));
+    expect(screen.getByText('ピン留めした機械がありません')).toBeInTheDocument();
+    fireEvent.click(within(filters).getByRole('button', { name: /すべて/ }));
+    expect(screen.getByRole('button', { name: 'NHX5000 をピン留めする' })).toBeInTheDocument();
+    fireEvent.click(within(filters).getByRole('button', { name: /良好/ }));
+    expect(within(filters).getByRole('button', { name: /ピン留め/ })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('filters and toggles range pins without changing the fleet aggregation', () => {
+    mocks.useDay.mockReturnValue({ data: day(), isError: false });
+    render(<KioskMachineSignalPage />);
+    fireEvent.click(screen.getByRole('button', { name: '10/01（木）' }));
+    fireEvent.click(screen.getByRole('button', { name: '直近7日' }));
+    fireEvent.click(screen.getByRole('button', { name: '機械別' }));
+    fireEvent.click(screen.getByRole('button', { name: 'NHX5000 をピン留めする' }));
+    expect(screen.getByRole('heading', { name: 'HCN4000' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /ピン留め 1/ }));
+    expect(screen.getByRole('heading', { name: 'NHX5000' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'HCN4000 をピン留めする' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'NHX5000 をピン留めから外す' }));
+    expect(screen.getByText('ピン留めした機械がありません')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '全体' }));
+    expect(screen.getByText('2台 × 3日のうち稼働 ・ 推定 100 kWh')).toBeInTheDocument();
+  });
+
+  it('requests worsening separately for the displayed report and hides empty or loading results', () => {
+    mocks.useDay.mockReturnValue({ data: day(), isError: false });
+    mocks.useWorsening.mockReturnValue({ data: undefined });
+    const { rerender } = render(<KioskMachineSignalPage />);
+    expect(mocks.useWorsening).toHaveBeenLastCalledWith({ date: '2026-10-01', site: undefined });
+    expect(screen.queryByRole('heading', { name: '悪くなってきた機械' })).not.toBeInTheDocument();
+    mocks.useWorsening.mockReturnValue({ data: [] });
+    rerender(<KioskMachineSignalPage />);
+    expect(screen.queryByRole('heading', { name: '悪くなってきた機械' })).not.toBeInTheDocument();
+  });
+
 });

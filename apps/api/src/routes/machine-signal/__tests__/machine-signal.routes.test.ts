@@ -5,6 +5,9 @@ import { ZodError } from 'zod';
 
 const mocks = vi.hoisted(() => ({
   getDay: vi.fn(),
+  getWorsening: vi.fn(),
+  getRange: vi.fn(),
+  listDates: vi.fn(),
   getTrend: vi.fn(),
   listSensorsForAdmin: vi.fn(),
   getSettings: vi.fn(),
@@ -21,6 +24,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../../services/machine-signal/machine-signal-insights.service.js', () => ({
   getMachineSignalDay: mocks.getDay,
+  getMachineSignalWorsening: mocks.getWorsening,
+  getMachineSignalRange: mocks.getRange,
+  listMachineSignalReportDates: mocks.listDates,
   getMachineSignalTrend: mocks.getTrend,
   listMachineSignalSensorsForAdmin: mocks.listSensorsForAdmin,
 }));
@@ -130,6 +136,58 @@ describe('machine signal routes', () => {
     expect(ok.statusCode).toBe(200);
     expect(mocks.getTrend).toHaveBeenCalledWith({ signalNo: 8, endDate: '2026-10-01', days: 90 });
     expect(bad.statusCode).toBe(400);
+  });
+
+  it('returns worsening for a date and site through allowView', async () => {
+    const worsening = [{ signalNo: 1, kind: 'RUN_SHORTER', recent: 1_800, baseline: 3_600 }];
+    mocks.getWorsening.mockResolvedValue(worsening);
+    const { app, allowView, canManage } = await createApp();
+    const response = await app.inject({ method: 'GET', url: '/machine-signal/worsening?date=2026-10-01&site=factory' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ worsening });
+    expect(mocks.getWorsening).toHaveBeenCalledWith({ date: '2026-10-01', site: 'factory' });
+    expect(allowView).toHaveBeenCalledOnce();
+    expect(canManage).not.toHaveBeenCalled();
+  });
+
+  it('returns a range for required dates and optional site through allowView', async () => {
+    const range = { from: '2026-09-01', to: '2026-10-01', dates: [], machines: [], fleet: {} };
+    mocks.getRange.mockResolvedValue(range);
+    const { app, allowView, canManage } = await createApp();
+    const response = await app.inject({ method: 'GET', url: '/machine-signal/range?from=2026-09-01&to=2026-10-01&site=factory' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(range);
+    expect(mocks.getRange).toHaveBeenCalledWith({ from: '2026-09-01', to: '2026-10-01', site: 'factory' });
+    expect(allowView).toHaveBeenCalledOnce();
+    expect(canManage).not.toHaveBeenCalled();
+  });
+
+  it('returns report dates through allowView', async () => {
+    mocks.listDates.mockResolvedValue(['2026-09-01', '2026-10-01']);
+    const { app, allowView, canManage } = await createApp();
+    const response = await app.inject({ method: 'GET', url: '/machine-signal/dates' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ dates: ['2026-09-01', '2026-10-01'] });
+    expect(mocks.listDates).toHaveBeenCalledExactlyOnceWith();
+    expect(allowView).toHaveBeenCalledOnce();
+    expect(canManage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    '/machine-signal/worsening',
+    '/machine-signal/worsening?date=2026-1-1',
+    '/machine-signal/range',
+    '/machine-signal/range?from=2026-10-01',
+    '/machine-signal/range?to=2026-10-01',
+    '/machine-signal/range?from=2026-1-1&to=2026-10-01',
+    '/machine-signal/range?from=2026-10-01&to=invalid',
+  ])('rejects missing or malformed required dates: %s', async (url) => {
+    const { app, allowView } = await createApp();
+    const response = await app.inject({ method: 'GET', url });
+    expect(response.statusCode).toBe(400);
+    expect(mocks.getWorsening).not.toHaveBeenCalled();
+    expect(mocks.getRange).not.toHaveBeenCalled();
+    expect(allowView).toHaveBeenCalledOnce();
   });
 
   it('keeps settings and sensors behind the manager role', async () => {
