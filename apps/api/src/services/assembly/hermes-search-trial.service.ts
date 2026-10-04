@@ -3,6 +3,8 @@ import type { Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import {setPriority} from 'node:os';
 import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
+import type { KnowledgeProcedureRepositoryPort } from '../knowledge/knowledge-procedure.port.js';
+import { knowledgeProcedureRow, retrievalSourceIdsFromEnv, type RetrievalSourceId, type RetrievalSourceReader } from './hermes-search-sources.js';
 
 type SearchState = Record<string, unknown>;
 type SearchDiagnostics = {
@@ -63,6 +65,7 @@ type TrialSettings = {
   queueWaitMs: number;
   refreshSec: number;
   loadRecords?: () => Promise<Array<Record<string, unknown>>>;
+  procedures?: KnowledgeProcedureRepositoryPort;
 };
 
 const BUSY_ANSWER = '検索が混み合っています。少し待ってからもう一度送信してください。';
@@ -102,6 +105,8 @@ export class HermesSearchTrialService {
   private sourceSearch: BusinessHermesMcpService | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private corpusReady = false;
+  private retrievalSources: RetrievalSourceId[] = ['nonconformity'];
+  private procedures: KnowledgeProcedureRepositoryPort | null = null;
   private lastCorpusCount = 0;
   private enrichmentChild: ChildProcessByStdio<Writable, null, null> | null = null;
   private flywheelChild: ChildProcessByStdio<Writable, null, null> | null = null;
@@ -126,6 +131,10 @@ export class HermesSearchTrialService {
     if (!this.settings.enabled) return Promise.reject(new Error('JEV記録検索は無効です。'));
     if (this.failure) return Promise.reject(this.failure);
     if (this.ready) return this.ready;
+    if (this.settings.retrievalV2) {
+      try { this.retrievalSources = retrievalSourceIdsFromEnv(process.env); }
+      catch (error) { return Promise.reject(error); }
+    }
     if ((!process.env.HERMES_INFERENCE_ORIGIN || !process.env.HERMES_INFERENCE_TOKEN) && !this.settings.recordSource) {
       return Promise.reject(new Error('JEV記録検索の接続設定がありません。'));
     }
@@ -366,6 +375,35 @@ export class HermesSearchTrialService {
 
   private async loadAuthorizedRecords() {
     if (this.settings.loadRecords) return this.settings.loadRecords();
+    const readers: Record<RetrievalSourceId, RetrievalSourceReader> = {
+      nonconformity: () => this.loadNonconformityRecords(),
+      knowledge_procedure: () => this.loadProcedureRecords(),
+    };
+    const records: Array<Record<string, unknown>> = [];
+    for (const id of this.retrievalSources) records.push(...await readers[id]());
+    return records;
+  }
+
+  private async loadProcedureRecords() {
+    if (!this.procedures) {
+      if (this.settings.procedures) this.procedures = this.settings.procedures;
+      else {
+        const { prisma } = await import('../../lib/prisma.js');
+        const { PrismaKnowledgeProcedureRepository } = await import('../knowledge/prisma-knowledge-procedure.repository.js');
+        this.procedures = new PrismaKnowledgeProcedureRepository(prisma);
+      }
+    }
+    const records: Array<Record<string, unknown>> = [];
+    for (const summary of await this.procedures.listPublished()) {
+      const document = await this.procedures.getPublished(summary.procedureId);
+      if (document?.state === 'published' && document.revisionNumber === summary.revisionNumber) {
+        records.push(knowledgeProcedureRow({ ...document, publishedAt: summary.publishedAt }));
+      }
+    }
+    return records;
+  }
+
+  private async loadNonconformityRecords() {
     this.sourceSearch ??= new BusinessHermesMcpService();
     const records: Array<Record<string, unknown>> = [];
     let offset = 0;
@@ -393,11 +431,13 @@ export class HermesSearchTrialService {
     try {
       const records = await this.loadAuthorizedRecords();
       this.lastCorpusCount = records.length;
-      const mode = this.corpusReady ? 'incremental' : 'full';
+      // A removed publication must disappear on refresh; preserve the existing NC-only merge.
+      const mode = this.corpusReady && this.retrievalSources.length === 1 && this.retrievalSources[0] === 'nonconformity' ? 'incremental' : 'full';
       this.corpusReady = true;
       this.child?.stdin.write(`${JSON.stringify({ type: 'corpus', mode, records, asOf: new Date().toISOString() })}\n`);
-      this.kickEnrichment(records);
-      this.kickFlywheel(records);
+      const nonconformity = records.filter(row => (!row.kind || row.kind === 'nonconformity') && (!row.sourceId || row.sourceId === 'nonconformity'));
+      this.kickEnrichment(nonconformity);
+      this.kickFlywheel(nonconformity);
     } catch {
       console.warn(`hermes retrieval refresh failed count=${this.lastCorpusCount}`);
     }

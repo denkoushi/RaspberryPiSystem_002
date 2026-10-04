@@ -1,0 +1,184 @@
+---
+title: Hermes横断検索の土台（ソース追加の共通口・DB索引・ページ文脈）
+tags: [hermes, retrieval, cross-source, knowledge, floating-chat, execplan]
+audience: [ai-agent, developer]
+last-verified: 2026-10-04
+related: [../decisions/ADR-20260923-hermes-cross-source-retrieval.md, ./hermes-cross-source-retrieval-execplan.md, ./hermes-knowledge-procedures-execplan.md, ./hermes-retrieval-accuracy-log.md]
+category: plans
+update-frequency: high
+---
+
+# Hermes横断検索の土台（ソース追加の共通口・DB索引・ページ文脈）
+
+This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds. この文書はリポジトリ直下の `.agent/PLANS.md` に従って保守する。
+
+## Purpose / Big Picture
+
+いまフローティングChatの「JEV記録」モードは不適合記録1種類だけを検索できる。この計画が終わると、同じChatに「○○の手順書はある？」と聞けば公開済みの手順書が返り、「この品番の不適合と手順書」と聞けば2種類の記録が出典名つきで並ぶ。さらに、組立の作業画面を開いているときにChatへ「この品番の不適合」と聞くだけで、画面上の品番を自動で使って答える。
+
+同時に、3つ目以降のソース（図面、測定、設備稼働）を足すときの手順を「定義ファイル1枚とAPI側の読み出し1本を足すだけ」に固定し、記録件数が今の10倍になっても検索workerのメモリに収まらない事態を避けるために索引をPostgreSQLへ移す。
+
+## Progress
+
+- [x] (2026-10-04 02:30Z) 現状調査と所見。不適合1ソースの検索は実用域、横断の土台（共通アダプタ、外部索引、ページ文脈）は未着手と判定。ユーザーが3段階の提案を承認。
+- [x] (2026-10-04 02:45Z) branch `feat/hermes-cross-source-foundation` と worktree を `python3 -m scripts.git_lifecycle.cli start` で作成。
+- [ ] Milestone 1: ソース定義の複数化と2つ目のソース（公開済み手順書）。
+- [ ] Milestone 2: 索引をworkerメモリからPostgreSQL（pg_trgm + pgvector）へ出し、ソース別・ロール別の見える範囲を付ける。
+- [ ] Milestone 3: フローティングChatから現在ページの文脈（パスと主キー）を送り、計画器がそれを使う。
+- [ ] 各マイルストーンごとに PR → CI → merge → Pi5 デプロイ → キオスク確認。
+
+- [x] (2026-10-04 03:07Z) Milestone 1 の許可されたローカル実装。ソース登録、公開済み手順書の変換・読み出し、ソース別の検索・表示・値索引、未知ソースの起動拒否、明示設定時だけのリリース変数書き込みを追加。既定の1ソース、1引数の authorizedRecords、answer の引数、bare string[] の candidateIds を維持。
+- [x] (2026-10-04 03:07Z) 対象 Node テスト24/24、ソース定義5/5が成功。依存パッケージを既存worktreeから参照する一時コピーで、API対象22/22とlint（エラー0件）が成功。元worktreeには依存リンクを作らず、install・lockfile変更はしていない。
+- [x] (2026-10-04 03:30Z) 調整役が依存を入れた worktree で再検証: `node --test retrieval/` 160/160、ソース定義 5/5、API vitest（hermes-search）22/22、API lint エラー0、`tsc -p tsconfig.build.json` のエラー11件はすべて未ビルドの他パッケージ由来で変更ファイルには無し、`git diff --check` 指摘0。Codex 実行時の失敗（listen EPERM、Node 異常終了）はサンドボックス起因で、通常環境では再現しない。
+- [ ] (2026-10-04 03:07Z) integrationPending: PR、hermes-retrieval / ci-required のCI、main統合、Pi5デプロイ、キオスク確認、翌朝の夜間実行確認は未実施。複数ソースを自然文から同時選択する計画器の拡張も未実施（今回の変更禁止ファイル）。Milestone 1 全体の完了チェックは残す。
+
+## Surprises & Discoveries
+
+- Observation: 2026-10-04 時点で `hermes-source-catalog/v1` は複数エントリを受け付ける形（`catalogEntries`）になっているが、呼び出し側は `loadNonconformityCatalog()` の1件固定で、記録行の変換 `recordFromAuthorizedRow` は不適合の列名を直書きしている。
+  Evidence: `scripts/hermes-search/retrieval/corpus.mjs` の `TEXT_FIELDS` と `row.kind !== 'nonconformity'`、`worker.mjs` の `loadNonconformityCatalog()` 呼び出し2か所。
+- Observation: 計画器（`planner-jev.mjs`）と値索引（`value-index.mjs`）はすでに複数エントリを前提に書かれている。2つ目のソースで実際に壊れるのは corpus、worker の答え整形、API の読み出しの3か所に限られる見込み。
+
+- Observation: KnowledgeProcedureDocumentにはpublishedAtが無く、listPublishedの要約だけが公開日時を持つ。公開日時はrevision.updatedAt由来で、createdAtは公開日ではない。
+  Evidence: knowledge-procedure.port.ts、prisma-knowledge-procedure.repository.tsのlistPublished / toDocument。API読み出しで要約のpublishedAtを文書に添え、revisionNumberが変わった行は次回更新へ回す。
+- Observation: 現行計画器はvalueIndexを使う通常経路でsourcesを1件に限定する。またdisplayには全ソースの欄、sortにはカタログ先頭の日付欄が入り、手順書だけの計画はそのままだと検証に落ちる。
+  Evidence: planner-jev.mjsのplannedSources / display / recentField。実計画器を使う手順書テストで再現し、worker側で選択外の既知表示欄を除き、日付sortを選択ソースの日付欄に合わせた。未知の欄は検証エラーとして残す。
+- Observation: 元worktreeにはAPIの依存パッケージが無く、サンドボックスではlocalhost待受けが許可されていない。依存を参照する一時コピーでも指定tsconfigのrootDir設定と既存の型エラーが必須検証を妨げる。
+  Evidence: vitest / tsc / eslintの起動エラー、dense-dgx.test.mjsのlisten EPERM、補助型検査と変更前コピーの756件一致。検証ログは/private/tmp側だけに置いた。
+
+## Decision Log
+
+- Decision: 2つ目のソースは「公開済みの手順書」（`KnowledgeProcedure` の `publishedRevision`）にする。作業指示（`work_instruction`）ではない。
+  Rationale: 手順書はChatのナレッジ機能の成果物で、利用者が「手順書を探す」需要がすでにある（手順書計画の Milestone 6 がこの登録を待っている）。公開済みに限ることで承認待ちの草稿が検索に出ることを防ぐ。手順書の本文を社外のJEV（TypeSafe）へ送ることは 2026-09-27 に承認済み。
+  Date/Author: 2026-10-04 / Claude（ユーザー承認済みの提案に基づく）
+- Decision: 有効なソースの一覧は環境変数 `HERMES_RETRIEVAL_SOURCES`（カンマ区切り、既定は `nonconformity`）で与え、API と worker が同じ値を読む。知らないソース名は起動時にエラーにして止める。
+  Rationale: 既定を不適合だけにすれば、デプロイしても設定を変えるまで本番の挙動は変わらない。黙って無視されるフラグは事故になる（T48 の教訓）ので、未知の値は即エラー。
+  Date/Author: 2026-10-04 / Claude
+- Decision: Milestone 1 では意味検索（DGX埋め込み）は不適合だけに限り、手順書は語句一致だけで検索する。
+  Rationale: 埋め込みの一括計算は夜間2時間枠に限られ、手順書の件数は少ない。横断の口を先に固めることが目的で、意味検索の拡張は Milestone 2 の索引移行と一緒に扱う方が二重作業にならない。
+  Date/Author: 2026-10-04 / Claude
+- Decision: `corpus.mjs` の `authorizedRecords(rows)` は名前と「API行 → 記録」の役割を残し、第2引数（カタログ）を省略したときは従来どおり不適合だけとして動く。
+  Rationale: 合成質問の実行器（`flywheel-live.mjs`、精度改善タスク T10 が継続中）がこの関数を1引数で使っている。無変更で動かし続ける。
+  Date/Author: 2026-10-04 / Claude（T10 セッションとの合意）
+
+- Decision: 1引数のauthorizedRecordsでは、不適合以外の文字列id行を通過させる従来の契約も保護する。カタログを明示したAPI/worker経路では、無効・未知ソースを除く。結合・会話中の除外はsourceIdとidの組で扱う。
+  Rationale: sourceIdの追加以外の1引数互換と、同じidを持つ異なるソースの独立性を両立するため。
+  Date/Author: 2026-10-04 / Codex
+- Decision: 公開手順書を含む設定では各更新をfull置換とし、既定の不適合のみでは従来のincrementalを維持する。DGX、enrichment付与、APIのenrichment/flywheel夜間入力は不適合だけに限定する。
+  Rationale: 公開一覧から消えた手順書を検索結果に残さず、既存の不適合向け処理へ別ソースを渡さないため。
+  Date/Author: 2026-10-04 / Codex
+- Decision: workerのcreateRetrievalAnsweringに任意のplanner注入を加え、2ソース計画の実行・出典ラベル・bare candidateIdsをテストする。既存のevaluate注入とanswer(question, session, {stageDump})は維持する。
+  Rationale: 実計画器は1ソースしか選ばず、planner-jev.mjsは今回変更禁止。手順書1ソースは実計画器のevaluate偽物で確認し、自然文の同時選択は完了扱いにしない。
+  Date/Author: 2026-10-04 / Codex
+- Decision: ソース追加の4点は、定義JSON、JS登録表、API読取関数とそのソースid登録、表示ラベルとする。Outcomes & Retrospectiveには追記しない。
+  Rationale: 今回の文書編集許可はProgress、Surprises & Discoveries、Decision Logの追記だけであり、Outcomesへの4点記載という計画規定よりユーザーの編集境界を優先する。
+  Date/Author: 2026-10-04 / Codex
+
+## Outcomes & Retrospective
+
+（未記入。各マイルストーン完了時に追記する。）
+
+## Context and Orientation
+
+この節は、このリポジトリを初めて読む人向けに現状を説明する。
+
+「Hermes」は業務Pi5（Raspberry Pi 5）で動く社内アシスタントの名前で、Webアプリの全ページに浮かぶチャット窓（フローティングChat、`apps/web/src/components/hermes/HermesFloatingChat.tsx`、`apps/web/src/App.tsx` の末尾でルートの外に置かれている）から使う。Chatには複数のモードがあり、本計画が扱うのは「JEV記録」モードである。このモードは `POST /assembly/hermes-search-trial/answer` に `{question, sessionId}` を送り、答えの文字列と `recordIds`（`不適合:ID` 形式の文字列の配列）を受け取って表示する。ルートは `apps/api/src/routes/assembly/hermes-search-trial.ts` にあり、キオスク端末の共有鍵か、ADMIN/MANAGER/VIEWER のいずれかのJWTで通る。
+
+APIサーバー（Fastify、`apps/api`）は検索の本体を自分では持たず、`apps/api/src/services/assembly/hermes-search-trial.service.ts` の `HermesSearchTrialService` が別プロセスの Node worker を `--max-old-space-size=384` で起動する。worker の入口は `scripts/hermes-search/retrieval/worker.mjs` で、標準入出力で1行JSONをやりとりする。API は 300 秒ごとに「認可済みの読み出し」で全記録を取り、`{type:'corpus', mode:'full'|'incremental', records, asOf}` を worker に流し込む（`refreshCorpus`）。worker は記録を全部メモリに持ち、文字2-gramのBM25索引（`executor.mjs` の `prepareLexicalCorpus`）と、任意でDGXの埋め込みによるベクトル索引を作る。
+
+質問が来ると worker は次の順で動く。まず計画器 `planner-jev.mjs` が JEV（社外LLM、TypeSafe）に質問とカタログと値の候補を渡し、`{sources:[...], filters:[...], semanticQuery, sort, limit, display}` という「検索計画」を得る。次に `executor.mjs` の `execute(plan, {records, lexicalCorpus, vector, ...})` が、計画の filters で記録を絞り、semanticQuery で語句一致（と任意でベクトル）順位をつけ、`relevance-jev.mjs` が上位候補の関連度を JEV に判定させて、最終結果 `results:[{sourceId, recordId, fields}]` を返す。worker の `formatRecords` がそれを「ラベル: 値」の行に整形して答えにする。
+
+「カタログ」はソースごとの欄の宣言である。元データは `scripts/hermes-search/hermes-sources/nonconformity.json`（schema `hermes-source-definition/v1`）で、`scripts/hermes-search/hermes-source-definition.mjs` の `validateSourceDefinition` が検証して `nonconformityDefinition` として export する。`scripts/hermes-search/retrieval/catalog.mjs` の `deriveCatalog(definition)` がそれを `hermes-source-catalog/v1` のエントリ `{id, label, description, valueChoiceCap, fields:[{key,label,role,filterable,enumerated}]}` に変換する。`role` は `identifier`、`date`、`organization`、`facet`、`body` のどれかで、欄名とラベルの形から機械的に決まる（`traitsFor`）。`catalogEntries(catalog)` は1エントリでも配列でも受け付けて配列を返す。計画器と値索引（`value-index.mjs` の `buildValueIndex`）はこの配列を前提に書かれているが、呼び出し側（worker、corpus）は `loadNonconformityCatalog()` の1件固定である。
+
+API 側で記録を読む経路は `apps/api/src/services/assembly/business-hermes-mcp.service.ts` の `readSourcePage(kind, offset)` で、`kind` は `nonconformity` か `work_instruction`、1ページ200行を返す。`HermesSearchTrialService.loadAuthorizedRecords()` はこれを `nonconformity` 固定で回し、`kind:'nonconformity'` の行だけ集める。worker 側の `corpus.mjs` は `recordFromAuthorizedRow(row)` で `row.kind === 'nonconformity'` の行を、直書きの `TEXT_FIELDS` 10個だけ写した記録 `{id, ...}` にする。`authorizedRecords(rows)` はその一括版で、`replaceCorpus` と合成質問の実行器 `flywheel-live.mjs` が使う。
+
+「手順書」は Chat のナレッジ機能が作る文書で、Prisma モデル `KnowledgeProcedure`（`apps/api/prisma/schema.prisma`、`title`、`category`、`partNumber`、`drawingNumber`、`processName`、`publishedRevisionId` を持つ）と `KnowledgeProcedureRevision`（`content` JSON、`state`）からなる。公開済みの手順書は `publishedRevisionId` が非 null の行で、本文の形は `apps/api/src/services/knowledge/procedure-content.ts` の `procedureContentSchema`（`steps:[{id,title,body,cautions,needsReview,photos,sources}]`）に固定されている。読み出しは `apps/api/src/services/knowledge/knowledge-procedure.port.ts` の `KnowledgeProcedureRepositoryPort` の `listPublished()`（要約の一覧）と `getPublished(procedureId)`（1件の全文 `KnowledgeProcedureDocument`）で、実装は `prisma-knowledge-procedure.repository.ts` にある。
+
+本番の切替は環境変数で行う。Pi5 の release 役 `infrastructure/ansible/roles/release_pi5/tasks/hermes-search-trial.yml` が `.env` に `HERMES_RETRIEVAL_V2_ENABLED` などを書き込む。渡されなかった変数は書き換えないので、新しい変数を足すときは同じファイルに書き込み処理を加え、`--print-plan` と実機の `.env` で確認する。
+
+PostgreSQL は `infrastructure/docker/docker-compose.server.yml` のとおり `pgvector/pgvector:pg15` イメージで、`vector` 拡張が使える。日本語の全文検索には標準の `to_tsvector` は使えない（分かち書きしない）ので、文字3-gramの `pg_trgm` 拡張（contrib、同イメージに同梱）を使う。
+
+## Plan of Work
+
+### Milestone 1: ソース定義の複数化と2つ目のソース（公開済み手順書）
+
+このマイルストーンが終わると、`HERMES_RETRIEVAL_SOURCES=nonconformity,knowledge_procedure` を設定したPi5で、Chatの「JEV記録」モードに「ブラケット溶接の手順書」と聞くと公開済み手順書が「手順書名: …」「手順: …」の形で返り、`recordIds` に `knowledge_procedure:<id>` が入る。設定を省いた端末では今までと完全に同じ動きをする。3つ目のソースを足す手順は「定義JSONを1枚置く、`hermes-source-definition.mjs` の登録表に1行足す、API側の読み出しを1本書く、ラベルを1行足す」の4点に限られる。
+
+作業は次のとおり。
+
+ソース定義。`scripts/hermes-search/hermes-sources/knowledge-procedure.json` を `hermes-source-definition/v1` で書く。`id` は `knowledge_procedure`、`description` は「Chatのナレッジ機能で公開された作業手順書」。`metadataFields` は `title`（手順書名）、`category`（分類）、`partNumber`（品番）、`drawingNumber`（図番）、`processName`（工程）、`publishedOn`（公開日）。`bodyFields` は `stepsText`（手順）と `cautionsText`（注意事項）。`recordNumberField` は `title`（手順書に業務番号はないので手順書名を識別子の役にする）。`contextAttributes` は metadata の全キー、`searchMetadataFields` は `title`、`partNumber`、`drawingNumber`、`processName`、`lexicalFields` は metadata と body の全キー。`organizedLabels` は `{step:"手順", caution:"注意事項"}`、`organizedContextClasses` は `["step"]`。`offlineExtraction` は付けない（構造化済みのため）。`hermes-source-definition.mjs` に `knowledgeProcedureDefinition` を同じ検証で export し、`sourceDefinitions`（id → definition の凍結オブジェクト）と `sourceIdsFromEnv(env)`（`HERMES_RETRIEVAL_SOURCES` をカンマで割り、空なら `['nonconformity']`、登録表にない id があれば `Error('unknown retrieval source: <id>')` を投げる）を足す。`retrieval/source-labels.json` に `"knowledge_procedure": "手順書"` を足す。
+
+カタログ。`catalog.mjs` に `loadCatalog(sourceIds)` を足し、登録表から順に `deriveCatalog` した配列を返す。`loadNonconformityCatalog()` は `loadCatalog(['nonconformity'])[0]` を返す互換関数として残す。`traitsFor` の役決めは変えない（`title` は `recordNumberField` なので identifier になる。`publishedOn` は `On` で終わるので date になる）。
+
+記録の変換。`corpus.mjs` の `recordFromAuthorizedRow(row, catalog = loadNonconformityCatalog())` は、`row.kind` と一致する id のカタログエントリを探し、無ければ null、有ればそのエントリの `fields` のキーだけを写し、`{id, sourceId: entry.id, ...}` を返す。`TEXT_FIELDS` の直書きは消す。`authorizedRecords(rows, catalog = loadNonconformityCatalog())` と `replaceCorpus(current, catalog, message)` は同じカタログを渡す。1引数で呼ばれたときの結果が今と同じ（`sourceId` が増える以外）であることをテストで固定する。
+
+worker。`worker.mjs` の `loadRetrievalResources` と `main` は `loadCatalog(sourceIdsFromEnv(env))` を使う。記録に `sourceId` が付くので、`execute` に渡す `records` と `lexicalCorpus` は計画の `plan.sources` に含まれるソースの記録だけに絞る。`buildCorpusView` は `records` 全体に加えて `bySource`（sourceId → `{records, lexicalCorpus}`）を持ち、`valueIndex` は全記録から `buildValueIndex(records, catalog)` で作る（`buildValueIndex` はエントリごとに値を集めるので、`distinctValues` にソースの絞りを足して、他ソースの同名欄の値が混ざらないようにする）。計画の `sources` が2つ以上なら、ソースごとに `execute` を呼び、結果を `sourceId` を付けたまま連結する（順位の融合は Milestone 2 以降。ここでは計画の `sources` の順に並べる）。`formatRecords(results, catalog)` は結果ごとに `result.sourceId` のエントリの欄ラベルを使い、有効なソースが2つ以上のときだけ各記録の先頭に `【手順書】` のように出典ラベルを付ける。`OUT_OF_SCOPE_ANSWER` は有効ソースのラベルを並べた文（例「不適合・手順書の検索に関する質問として解釈できませんでした。」）に変える。`publicRecordId` はすでに `sourceId:recordId` を作るので、`catalogEntries(catalog)[0]?.id` への依存を結果側の `sourceId` に置き換える。DGX 埋め込み（`dense.schedule`、`openOptionalVector`）には不適合の記録だけを渡す。`createRetrievalAnswering(...).answer(question, session, { stageDump })` の引数と `candidateIds` の形は変えない。
+
+API。`hermes-search-trial.service.ts` に、ソース id → 読み出し関数 の登録表を置く。`nonconformity` は今の `readSourcePage('nonconformity', offset)` のページ送り、`knowledge_procedure` は `KnowledgeProcedureRepositoryPort` の `listPublished()` で id を集めて `getPublished(id)` を順に読み、1件を `{kind:'knowledge_procedure', id, title, category, partNumber, drawingNumber, processName, publishedOn, stepsText, cautionsText}` の行にする。`stepsText` は手順を `1. <title>\n<body>` の形で改行2つ区切りに連結し、`cautionsText` は全手順の `cautions` を改行区切りに連結する（空なら空文字）。`publishedOn` は `publishedAt` を `Asia/Tokyo` の `YYYY-MM-DD` にする。この変換は純関数 `knowledgeProcedureRow(document)` として `apps/api/src/services/assembly/hermes-search-sources.ts`（新規）に置き、単体テストを書く。`loadAuthorizedRecords()` は `sourceIdsFromEnv` と同じ規則（API 側に TypeScript で同じ関数を書き、既定と未知 id のエラー文を揃える）で有効ソースを決め、各読み出しの行を連結して返す。未知の id は `start()` が reject し、ルートが 503 とそのメッセージを返す。`searchExactNonconformity` と V2 以外の経路は触らない。
+
+リリース。`hermes-search-trial.yml` に `HERMES_RETRIEVAL_SOURCES` の書き込み（変数 `hermes_retrieval_sources` が渡されたときだけ）を、`HERMES_RETRIEVAL_V2_ENABLED` と同じ形で足す。無効化側（184行付近の `false` 書き込み群）には足さない（ソース一覧は機能の無効化とは独立）。
+
+テスト。`scripts/hermes-search` で `node --test retrieval/` が通ること。追加するのは、`catalog.test.mjs`（新規。2ソースの `loadCatalog`、未知 id のエラー、`loadNonconformityCatalog` の互換）、`corpus.test.mjs`（混在行の変換、1引数呼び出しの互換）、`worker` 相当のテスト（`createRetrievalAnswering` に `evaluate` の偽物を渡し、計画が `sources:['knowledge_procedure']` を返したとき手順書の記録だけが答えに出ること、`sources` が2つのとき両方の記録が出典ラベル付きで出ること）。`apps/api` では `pnpm --filter @raspi-system/api test -- hermes-search` で `knowledgeProcedureRow` と `loadAuthorizedRecords` の2ソース連結（`KnowledgeProcedureRepositoryPort` の偽物を注入）が通ること。
+
+受け入れ。上のテストに加え、PR の CI（`hermes-retrieval`、`ci-required`）が成功し、Pi5 に `HERMES_RETRIEVAL_SOURCES=nonconformity,knowledge_procedure` でデプロイした後、キオスクの Chat で手順書の質問に手順書が返り、不適合の質問は今までどおり返ること。設定を省いた状態では `node --test` の互換テストと、既存の合成質問の夜間実行がエラーなく回ることを翌朝の記録で確認する。
+
+### Milestone 2: 索引を PostgreSQL（pg_trgm + pgvector）へ出す
+
+このマイルストーンが終わると、worker は全記録をメモリに持たず、質問ごとに PostgreSQL から候補を取る。手順書のPDFページのような大きなソースを足しても worker の 384MB ヒープは増えない。ソースごと・ロールごとの「見える範囲」が索引の層にあり、キオスク鍵と VIEWER には公開済みのものだけが返る。
+
+先に試作で確かめることが1つある。いまの文字2-gram BM25 と、PostgreSQL の `pg_trgm`（文字3-gram、`similarity` と GIN 索引）とで、候補30件・200件の中に正解が入る割合が同じかを、精度ログで使っている採点済み質問（`docs/plans/hermes-retrieval-accuracy-log.md` の 73〜86 問、ラベルは Git 外）で測る。差が 73 問中 2 問以内なら pg_trgm に置き換える。差が大きければ、候補の生成だけを PostgreSQL の2-gram（`pg_bigm` は同梱されないので、2-gram を自前で列に展開して `tsvector` に入れる方式）で行う案に切り替える。この判定は Decision Log に数字つきで残す。
+
+本体の設計は次のとおり。新しいテーブル `HermesRetrievalDocument`（`sourceId`、`recordId`、`segmentNo`、`text`、`facets` JSONB、`visibility` 文字列配列、`embedding` `vector(1024)` null 可、`updatedAt`、主キーは `sourceId, recordId, segmentNo`）を Prisma のマイグレーションで足し、`text` に GIN（`gin_trgm_ops`）、`embedding` に HNSW（コサイン）の索引を付ける。記録は700文字を上限に段落で区切って `segmentNo` を振る。更新は API 側の取り込みジョブが、各ソースの `updatedAt`（不適合は `sourceVersionDate`、手順書は revision の `updatedAt`）より新しい行だけを差分で書き直す（今の300秒の全件再読込を置き換える）。`visibility` はソースの定義で決め、不適合は `['kiosk','viewer','manager','admin']`、手順書は公開済みのみ同じ、将来のロール限定ソースはここで絞る。worker は候補の取得を API に頼む（`{type:'candidates', sourceIds, filters, query, limit}` を標準出力で返し、API が SQL を実行して結果を標準入力で返す）か、worker 自身が読み取り専用の接続文字列で `pg` を使う。前者は worker にDB資格情報を渡さずに済むので前者を採る。計画器と関連度判定は変えない。
+
+受け入れは、試作の数字が基準を満たすこと、Pi5 の温まった状態の p95 が今の 2.5 秒を超えないこと（キオスクで 20 問を測る）、worker の RSS が記録件数に比例しないこと（不適合 8 千件と手順書を入れた状態と、手順書を外した状態で RSS の差が 30MB 以内）、VIEWER の JWT で非公開の手順書が返らないことのテスト。
+
+### Milestone 3: ページ文脈の受け渡し
+
+このマイルストーンが終わると、組立の作業画面 `/kiosk/assembly/work-sessions/:sessionId` を開いたまま Chat に「この品番の不適合」と聞くと、画面の品番を使って答える。Chat の送信に `context: {path, entity: {kind:'partNumber', value:'...'}}` を付け、API は zod で `path`（200文字まで）と `entity`（`kind` は `partNumber`、`drawingNumber`、`nonconformityNo`、`procedureId` のいずれか、`value` は 200 文字まで）を厳密に検証し、worker の計画器に「現在の画面: 品番 ○○」という1行の補助情報として渡す。計画器は質問に「この」「現在の」「いまの」が含まれるときだけその値を filters に使う。文脈は答えの `receipt` に記録して、使われたかどうかを後から確かめられるようにする。ページ側は、作業画面がすでに持っている品番を `HermesFloatingChat` に渡すために、`apps/web/src/components/hermes/` に `HermesPageContextProvider`（React context、`setPageContext({path, entity})` と `clearPageContext()`）を足し、作業画面がマウント時に設定し、アンマウント時に消す。他の画面は何も渡さないので挙動は変わらない。
+
+受け入れは、API のテスト（文脈つき質問が `filters` に品番を含む計画になること、「この」を含まない質問では文脈が無視されること、不正な `kind` が 400 になること）、Web のテスト（作業画面を開くと文脈が設定され、離れると消えること）、キオスクでの実機確認（作業画面で「この品番の不適合」→該当記録、ホーム画面で同じ質問→聞き返し）。
+
+## Concrete Steps
+
+作業ディレクトリは `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-cross-source-foundation`。
+
+検索 worker のテスト:
+
+    cd scripts/hermes-search && node --test retrieval/
+
+API のテスト（対象を絞る）:
+
+    pnpm --filter @raspi-system/api test -- hermes-search
+
+型と lint:
+
+    pnpm --filter @raspi-system/shared-types build && pnpm --filter @raspi-system/api exec prisma generate
+    pnpm --filter @raspi-system/api exec tsc --noEmit -p tsconfig.build.json && pnpm --filter @raspi-system/api lint
+
+（worktree を新しく作った直後は `pnpm install --frozen-lockfile` と上の build/generate が要る。tsc は未ビルドの他パッケージ由来のエラーが残るので、変更ファイルにエラーが無いことを確認する。）
+
+Pi5 への反映は `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan` で対象を確認してから、`--limit raspberrypi5` で行う。Milestone 1 ではソース一覧の変数を渡さない（既定のまま）デプロイを先に行い、動作が変わらないことを確かめてから `hermes_retrieval_sources=nonconformity,knowledge_procedure` を渡す2回目のデプロイで有効化する。
+
+## Validation and Acceptance
+
+各マイルストーンの受け入れは本文に書いた。全体としては、Milestone 1 完了時に「ソースを足す手順」を `docs/guides/` ではなく本計画の Outcomes に4点で書き、Milestone 2 完了時に RSS と p95 の数字を、Milestone 3 完了時にキオスクの確認結果を同じ節に残す。
+
+## Idempotence and Recovery
+
+すべての変更はフラグの既定値で無効（`HERMES_RETRIEVAL_SOURCES` 未設定＝不適合のみ、ページ文脈は送らなければ無視）なので、デプロイ後に問題が出たら Pi5 の `.env` から変数を外して API を再起動すれば前の挙動に戻る。Milestone 2 のテーブルは追加のみで、既存テーブルは変えない。失敗した取り込みは次回の差分更新で上書きされる。
+
+## Artifacts and Notes
+
+- 精度の測定結果は `docs/plans/hermes-retrieval-accuracy-log.md` に追記する（T10 の規則に従う）。
+- 本計画の進捗の一行要約はタスクボード T50 に置く。
+
+## Interfaces and Dependencies
+
+`scripts/hermes-search/hermes-source-definition.mjs`: `export const sourceDefinitions`（id → 検証済み定義）、`export function sourceIdsFromEnv(env = process.env): string[]`。
+
+`scripts/hermes-search/retrieval/catalog.mjs`: `export function loadCatalog(sourceIds): CatalogEntry[]`、既存の `loadNonconformityCatalog()`、`catalogEntries()`、`fieldsWithRole()` は互換を保つ。
+
+`scripts/hermes-search/retrieval/corpus.mjs`: `recordFromAuthorizedRow(row, catalog?)`、`authorizedRecords(rows, catalog?)`、`buildCorpusView(records, catalog, dataAsOf)` は `bySource` を追加して返す。
+
+`apps/api/src/services/assembly/hermes-search-sources.ts`（新規）: `export function knowledgeProcedureRow(document: KnowledgeProcedureDocument): Record<string, string>`、`export function retrievalSourceIdsFromEnv(env): string[]`、`export type RetrievalSourceReader = (deps) => Promise<Array<Record<string, unknown>>>`。
+
+`HermesSearchTrialService` のコンストラクタ `overrides` に `procedures?: KnowledgeProcedureRepositoryPort` を足し、テストから偽物を注入できるようにする。
