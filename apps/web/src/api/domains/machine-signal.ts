@@ -65,7 +65,6 @@ export type MachineSignalFleetDay = {
   topAlarm: number[];
   topShortStops: number[];
   topLongStop: number[];
-  worsening: MachineSignalWorsening[];
 };
 
 export type MachineSignalDay = {
@@ -78,6 +77,48 @@ export type MachineSignalDay = {
   sites: string[];
   fleet: MachineSignalFleetDay | null;
   machines: MachineSignalMachineDay[];
+};
+
+export type MachineSignalRangeMachine = {
+  signalNo: number;
+  name: string;
+  sourceMachineName: string;
+  site: string | null;
+  kind: string;
+  recordDays: number;
+  runSeconds: number;
+  averageRunSecondsPerDay: number;
+  stopCount: number;
+  shortStopCount: number;
+  alarmCount: number;
+  alarmSeconds: number;
+  longestStop: (MachineSignalStop & { reportDate: string }) | null;
+  loss: MachineSignalLoss;
+  estimatedKwh: number | null;
+  days: Array<{ runSeconds: number; hint: MachineSignalHint } | null>;
+};
+
+export type MachineSignalRangeFleet = {
+  machineCount: number;
+  dayCount: number;
+  runRatio: number;
+  loss: MachineSignalLoss;
+  dailyRunRatio: number[];
+  hintDayCounts: Record<MachineSignalHint, number>;
+  estimatedKwh: number | null;
+  topAlarm: number[];
+  topShortStops: number[];
+  topLongStop: number[];
+};
+
+export type MachineSignalRange = {
+  from: string;
+  to: string;
+  dates: string[];
+  thresholds: MachineSignalThresholds;
+  sites: string[];
+  fleet: MachineSignalRangeFleet;
+  machines: MachineSignalRangeMachine[];
 };
 
 export type MachineSignalTrendPoint = {
@@ -245,4 +286,19 @@ export async function uploadMachineSignalReports(files: File[]): Promise<Machine
 export async function runMachineSignalGmailImport(): Promise<MachineSignalGmailSummary> {
   const { data } = await api.post<{ summary: MachineSignalGmailSummary }>('/machine-signal/gmail-import/run');
   return data.summary;
+}
+
+export async function getMachineSignalRange(params: { from: string; to: string; site?: string }): Promise<MachineSignalRange> {
+  const { data } = await api.get<MachineSignalRange>('/machine-signal/range', { params });
+  return data;
+}
+
+export async function getMachineSignalReportDates(): Promise<string[]> {
+  const { data } = await api.get<{ dates: string[] }>('/machine-signal/dates');
+  return data.dates;
+}
+
+export async function getMachineSignalWorsening(params: { date: string; site?: string }): Promise<MachineSignalWorsening[]> {
+  const { data } = await api.get<{ worsening: MachineSignalWorsening[] }>('/machine-signal/worsening', { params });
+  return data.worsening;
 }

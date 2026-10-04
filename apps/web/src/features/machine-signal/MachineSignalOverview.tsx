@@ -14,7 +14,7 @@ import {
 } from './machineSignalViewModel';
 import { signalPanelClass } from './signalUi';
 
-import type { MachineSignalDay, MachineSignalFleetDay, MachineSignalMachineDay } from '../../api/client';
+import type { MachineSignalDay, MachineSignalFleetDay, MachineSignalMachineDay, MachineSignalWorsening } from '../../api/client';
 
 const CHART_WIDTH = 600;
 const CHART_HEIGHT = 190;
@@ -62,9 +62,9 @@ function RunningCountChart({ fleet, dayStartMinute }: { fleet: MachineSignalFlee
   );
 }
 
-type Pick = { machine: MachineSignalMachineDay; amount: number; value: string; detail: string };
+type Pick = { machine: { signalNo: number; name: string }; amount: number; value: string; detail: string };
 
-function PickPanel({
+export function PickPanel({
   title,
   note,
   picks,
@@ -105,7 +105,7 @@ function PickPanel({
 }
 
 /** 全体ページ。1日の結論（時間の行き先、稼働台数、手を打つ機械）を1画面に出す。 */
-export function MachineSignalOverview({ day, onSelect }: { day: MachineSignalDay; onSelect: (signalNo: number) => void }) {
+export function MachineSignalOverview({ day, worsening, onSelect }: { day: MachineSignalDay; worsening: MachineSignalWorsening[]; onSelect: (signalNo: number) => void }) {
   const fleet = day.fleet;
   if (!fleet) return null;
   const byNo = new Map(day.machines.map((machine) => [machine.signalNo, machine]));
@@ -215,14 +215,14 @@ export function MachineSignalOverview({ day, onSelect }: { day: MachineSignalDay
         />
       </div>
 
-      {fleet.worsening.length > 0 ? (
+      {worsening.length > 0 ? (
         <section className={clsx(signalPanelClass, 'px-4 py-3')}>
           <div className="mb-2 flex items-baseline justify-between gap-2.5">
             <h2 className="text-base font-bold">悪くなってきた機械</h2>
             <span className="text-sm text-[#8b9cb2]">直近7日と、その前の28日</span>
           </div>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-1.5">
-            {fleet.worsening.map((worsening) => {
+            {worsening.map((worsening) => {
               const machine = byNo.get(worsening.signalNo);
               if (!machine) return null;
               const text = describeSignalWorsening(worsening);

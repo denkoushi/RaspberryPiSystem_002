@@ -1,12 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
 import {
   getMachineSignalAdminOverview,
   getMachineSignalDay,
   getMachineSignalImportRuns,
+  getMachineSignalRange,
+  getMachineSignalReportDates,
   getMachineSignalSensors,
   getMachineSignalSettings,
   getMachineSignalTrend,
+  getMachineSignalWorsening,
   runMachineSignalGmailImport,
   updateMachineSignalSensor,
   updateMachineSignalSensorsBulk,
@@ -23,13 +27,50 @@ const RUNS_KEY = [...ROOT_KEY, 'import-runs'] as const;
 /** 日報は1日1回届くので、開いたままのキオスクでも10分ごとに読み直せば足りる。 */
 const DAY_REFETCH_MS = 600_000;
 
+const HISTORY_STALE_MS = 30 * 60_000;
+
 export function useMachineSignalDay(params: { date?: string; site?: string }) {
-  return useQuery({
+  const queryClient = useQueryClient();
+  const query = useQuery({
     queryKey: [...DAY_KEY, params.date ?? 'latest', params.site ?? 'all'],
     queryFn: () => getMachineSignalDay(params),
-    refetchInterval: DAY_REFETCH_MS,
+    staleTime: params.date ? HISTORY_STALE_MS : 0,
+    refetchInterval: params.date ? false : DAY_REFETCH_MS,
     refetchOnWindowFocus: false,
     placeholderData: (previous) => previous
+  });
+  const previousDate = query.data?.previousDate;
+  useEffect(() => {
+    if (!previousDate || query.isPlaceholderData) return;
+    void queryClient.prefetchQuery({
+      queryKey: [...DAY_KEY, previousDate, params.site ?? 'all'],
+      queryFn: () => getMachineSignalDay({ date: previousDate, site: params.site }),
+      staleTime: HISTORY_STALE_MS
+    });
+  }, [previousDate, params.site, query.isPlaceholderData, queryClient]);
+  return query;
+}
+
+export function useMachineSignalRange(params: { from: string; to: string; site?: string } | null) {
+  return useQuery({
+    queryKey: [...ROOT_KEY, 'range', params?.from, params?.to, params?.site ?? 'all'],
+    queryFn: () => getMachineSignalRange(params!),
+    enabled: params !== null,
+    placeholderData: (previous) => previous,
+    refetchOnWindowFocus: false
+  });
+}
+
+export function useMachineSignalReportDates() {
+  return useQuery({ queryKey: [...ROOT_KEY, 'dates'], queryFn: getMachineSignalReportDates, refetchOnWindowFocus: false });
+}
+
+export function useMachineSignalWorsening(params: { date: string | null; site?: string }) {
+  return useQuery({
+    queryKey: [...ROOT_KEY, 'worsening', params.date, params.site ?? 'all'],
+    queryFn: () => getMachineSignalWorsening({ date: params.date!, site: params.site }),
+    enabled: params.date !== null,
+    refetchOnWindowFocus: false
   });
 }
 
