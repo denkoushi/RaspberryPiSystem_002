@@ -287,6 +287,28 @@ describe('HermesSearchTrialService retrieval switch', () => {
     }
   });
 
+
+  it('forwards pageContext per request without storing it in the session', async () => {
+    const gate = holdingChild();
+    spawnMock.mockImplementation(() => gate.child);
+    const service = new HermesSearchTrialService(v2Settings());
+    const pageContext = { path: '/kiosk/part-measurement/self-inspection', entity: { kind: 'partNumber' as const, value: 'FH001' } };
+    const receipt = { pageContext: { used: true, ...pageContext.entity } };
+    try {
+      const first = service.answer('この品番の不適合', 'session-a', pageContext);
+      await vi.waitFor(() => expect(gate.held).toHaveLength(1));
+      expect(gate.held[0].request).toMatchObject({ type: 'request', question: 'この品番の不適合', pageContext });
+      gate.held[0].release({ ...workerResult, receipt, session: { previousPlan: { filters: [] } } });
+      await expect(first).resolves.toMatchObject({ receipt });
+      const second = service.answer('最近の不適合', 'session-a');
+      await vi.waitFor(() => expect(gate.held).toHaveLength(2));
+      expect(gate.held[1].request).not.toHaveProperty('pageContext');
+      expect(gate.held[1].request.session).not.toHaveProperty('pageContext');
+      gate.held[1].release(workerResult);
+      await second;
+    } finally { service.close(); }
+  });
+
   it('runs four retrieval requests and queues the next two', async () => {
     const gate = holdingChild();
     spawnMock.mockImplementation(() => gate.child);

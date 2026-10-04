@@ -32,6 +32,8 @@ import { KnowledgePosterBar } from '../../features/hermes-knowledge/KnowledgePos
 import { useKnowledgeIntake } from '../../features/hermes-knowledge/useKnowledgeIntake';
 import { useKnowledgePoster } from '../../features/hermes-knowledge/useKnowledgePoster';
 
+import { useHermesPageContext } from './HermesPageContext';
+
 import type { HermesChatPanelProps, HermesPanelMessage, HermesConsultationSuggestion, HermesKnowledgeMode } from './HermesChatPanel';
 import type { BusinessHermesChatEvidence } from '../../api/domains/assembly';
 
@@ -123,6 +125,7 @@ function responseText(response: BusinessHermesChatResponse | BusinessHermesConsu
 export function HermesFloatingChat() {
   const { user, token } = useAuth();
   const location = useLocation();
+  const { pageContext } = useHermesPageContext();
   const isPlanningBoardRoute = location.pathname.replace(/\/$/, '') === '/kiosk/production-schedule/planning-board';
   const [viewport, setViewport] = useState(getViewport);
   const [position, setPosition] = useState(() => {
@@ -716,7 +719,8 @@ export function HermesFloatingChat() {
       if (knowledgeMode === 'record-pilot') {
         const response = await sendHermesSearchTrialAnswer({
           question: content,
-          sessionId: recordPilotSessionIdRef.current
+          sessionId: recordPilotSessionIdRef.current,
+          ...(pageContext ? { pageContext } : {})
         }, controller.signal);
         if (controller.signal.aborted || requestId !== requestIdRef.current || identityRef.current !== requestIdentity) return;
         setMessages((current) => [...current, {
@@ -833,7 +837,7 @@ export function HermesFloatingChat() {
         setActivityStatus(null);
       }
     }
-  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, knowledge, knowledgeMode, knowledgePoster, messages, replaceConsultationInList, resetConversation]);
+  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, knowledge, knowledgeMode, knowledgePoster, messages, pageContext, replaceConsultationInList, resetConversation]);
 
   const handleScanSuccess = useCallback((value: string) => {
     closeScanner();

@@ -217,9 +217,10 @@ async function defaultEvaluate(input) {
 export function createPlanner({ evaluate = defaultEvaluate } = {}) {
   if (typeof evaluate !== 'function') throw new TypeError('evaluate must be a function');
   return {
-    async plan({ question, previousPlan = null, catalog, candidates = [], valueIndex = null, choiceGroups = null, now = null, shownCount = 0 }) {
+    async plan({ question, previousPlan = null, catalog, candidates = [], valueIndex = null, choiceGroups = null, now = null, shownCount = 0, pageContext = null }) {
       if (typeof question !== 'string' || !question.trim()) throw new TypeError('question must be a non-empty string');
       if (!Array.isArray(candidates)) throw new TypeError('candidates must be an array');
+      const currentEntity = /この|現在の|いまの|今の/u.test(question) ? pageContext?.entity : null;
       const hasPrevious = Boolean(previousPlan && typeof previousPlan === 'object');
       // With a previous plan in state, name `request` so each judgment reads the current
       // utterance. First turns keep the original wording.
@@ -356,6 +357,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         model: 'typesafe-ai/jev',
         state: {
           request: question,
+          ...(currentEntity ? { page_context: { kind: currentEntity.kind, value: currentEntity.value } } : {}),
           ...(hasPrevious ? { previous_plan: previousPlanSummary(previousPlan) } : {}),
           relatedHistory: [],
           confirmationPending: null,
@@ -427,7 +429,29 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const excludeShown = questions.excludeShown ? chosen(answers.excludeShown, ['true', 'false'], EXCLUDE_SHOWN_ACCEPT_AT) === 'true' : false;
       if (!contentChoice) unresolved.push({ term: 'content', candidates: ['true', 'false'] });
 
-      const plannedSources = outOfScope ? [] : (fromIndex && scopeIds.includes(scopeChoice) ? [scopeChoice] : entries.map((entry) => entry.id));
+      let plannedSources = outOfScope ? [] : (fromIndex && scopeIds.includes(scopeChoice) ? [scopeChoice] : entries.map((entry) => entry.id));
+      // Page identifiers are already known by the screen; their use is gated in code,
+      // rather than depending on a model's choice of candidate values.
+      const pageFilters = [];
+      let pageContextUsed = false;
+      if (currentEntity && !outOfScope) {
+        if (currentEntity.kind === 'procedureId') {
+          if (entries.some((entry) => entry.id === 'knowledge_procedure')) {
+            plannedSources = ['knowledge_procedure'];
+            pageContextUsed = true;
+          }
+        } else {
+          const owners = entries.filter((entry) => entry.fields.some((field) => field.key === currentEntity.kind && field.filterable)
+            && (currentEntity.kind !== 'drawingNumber' || entry.id === 'knowledge_procedure'));
+          const selectedOwners = owners.filter((entry) => plannedSources.includes(entry.id));
+          const targets = selectedOwners.length ? selectedOwners : owners.slice(0, 1);
+          if (targets.length) {
+            plannedSources = targets.map((entry) => entry.id);
+            pageFilters.push(...targets.map((entry) => ({ source: entry.id, field: currentEntity.kind, op: 'eq', values: [currentEntity.value] })));
+            pageContextUsed = true;
+          }
+        }
+      }
       const dateOwner = entries.find((entry) => plannedSources.includes(entry.id) && entry.fields.some((field) => field.role === 'date'));
       const dateKey = dateOwner?.fields.find((field) => field.role === 'date')?.key ?? null;
       const dated = [];
@@ -454,7 +478,11 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           : chosen(answers[`drop_${index}`], ['true', 'false']) !== 'true';
         return decision ? [{ source: filter.source, field: filter.field, op: filter.op, values: [...filter.values] }] : [];
       });
-      const filters = mergeFilters([...carried, ...selected, ...dated]);
+      const pageFields = new Set(pageFilters.map((filter) => `${filter.source}\u0000${filter.field}`));
+      const filters = mergeFilters([
+        ...[...carried, ...selected, ...dated].filter((filter) => (!pageContextUsed || plannedSources.includes(filter.source)) && !pageFields.has(`${filter.source}\u0000${filter.field}`)),
+        ...pageFilters,
+      ]);
       const judged = contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;
       // A follow-up that does not restate its content keeps the previous content condition,
       // for example "そのうち三島工場資材課の" after "錆の不適合".
@@ -490,6 +518,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         plan,
         timings: { planMs },
         receipt: {
+          ...(pageContext ? { pageContext: { used: pageContextUsed, kind: pageContext.entity.kind, value: pageContext.entity.value } } : {}),
           model: typeof evaluated?.model === 'string' ? evaluated.model : null,
           questionVersion: PLANNER_QUESTION_VERSION,
           turn: hasPrevious ? 'followup' : 'first',

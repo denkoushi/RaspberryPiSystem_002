@@ -831,8 +831,16 @@ export async function getHermesSearchTrialScope(signal?: AbortSignal): Promise<H
   return data;
 }
 
+export type HermesPageContext = {
+  path: string;
+  entity: {
+    kind: 'partNumber' | 'drawingNumber' | 'nonconformityNo' | 'procedureId';
+    value: string;
+  };
+};
+
 export async function sendHermesSearchTrialAnswer(
-  payload: { question: string; sessionId: string },
+  payload: { question: string; sessionId: string; pageContext?: HermesPageContext },
   signal?: AbortSignal
 ): Promise<HermesSearchTrialAnswer> {
   const { data } = await api.post<HermesSearchTrialAnswer>(

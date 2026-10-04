@@ -1,12 +1,15 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { HermesPageContextProvider, useHermesPageContext } from '../../components/hermes/HermesPageContext';
 
 import { KioskSelfInspectionPage } from './KioskSelfInspectionPage';
 
 import type { ProductionScheduleRow } from '../../api/client';
 import type { SelfInspectionSessionSummaryDto } from '../../features/part-measurement/types';
 import type { NfcEvent } from '../../hooks/useNfcStream';
+import type { ReactNode } from 'react';
 
 const mockUseKioskProductionSchedule = vi.fn();
 const mockUseKioskProductionScheduleResources = vi.fn();
@@ -76,10 +79,13 @@ function buildScheduleRow(overrides: Partial<ProductionScheduleRow> = {}): Produ
   };
 }
 
-function pageTree(initialEntry = '/kiosk/part-measurement/self-inspection') {
+function pageTree(initialEntry = '/kiosk/part-measurement/self-inspection', observer?: ReactNode) {
   return (
     <MemoryRouter initialEntries={[initialEntry]}>
+      <HermesPageContextProvider>
+      {observer}
       <Routes>
+        <Route path="/kiosk" element={<div>home</div>} />
         <Route path="/kiosk/part-measurement/self-inspection" element={<KioskSelfInspectionPage />} />
         <Route path="/kiosk/part-measurement/self-inspection/start" element={<div>digital input opened</div>} />
         <Route
@@ -87,8 +93,18 @@ function pageTree(initialEntry = '/kiosk/part-measurement/self-inspection') {
           element={<div>paper print opened</div>}
         />
       </Routes>
+      </HermesPageContextProvider>
     </MemoryRouter>
   );
+}
+
+function PageContextObserver() {
+  const { pageContext } = useHermesPageContext();
+  const navigate = useNavigate();
+  return <>
+    <output data-testid="page-context">{JSON.stringify(pageContext)}</output>
+    <button onClick={() => navigate('/kiosk')}>leave page</button>
+  </>;
 }
 
 function renderPage(initialEntry?: string) {
@@ -354,6 +370,23 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
         })
       );
     });
+  });
+
+  it('registers scanned FHINCD, updates it, and clears it on clear and navigation', async () => {
+    render(pageTree(undefined, <PageContextObserver />));
+    const current = () => JSON.parse(screen.getByTestId('page-context').textContent ?? 'null');
+    expect(current()).toBeNull();
+    await scanPartHidText('mh001');
+    await waitFor(() => expect(current()).toEqual({ path: '/kiosk/part-measurement/self-inspection', entity: { kind: 'partNumber', value: 'MH001' } }));
+    await scanPartHidText('mh002');
+    await waitFor(() => expect(current()?.entity.value).toBe('MH002'));
+    fireEvent.click(screen.getByRole('button', { name: 'クリア' }));
+    await waitFor(() => expect(current()).toBeNull());
+    await scanPartHidText('mh001');
+    await waitFor(() => expect(current()?.entity.value).toBe('MH001'));
+    fireEvent.click(screen.getByText('leave page'));
+    await screen.findByText('home');
+    expect(current()).toBeNull();
   });
 
   it('scans FHINCD independently, shows titleless target chips, and opens instructions only after chip selection', async () => {
