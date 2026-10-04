@@ -13,6 +13,7 @@ import {
   useSelfInspectionNonconformities,
   useSelfInspectionSessions
 } from '../../api/hooks';
+import { useHermesPageContext } from '../../components/hermes/HermesPageContext';
 import { Button } from '../../components/ui/Button';
 import { useKeyboardWedgeScan } from '../../features/barcode-scan';
 import {
@@ -122,6 +123,7 @@ function nfcResolveErrorMessage(kind: 'duplicate' | 'instrument' | 'instrument_u
 export function KioskSelfInspectionPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { setPageContext, clearPageContext } = useHermesPageContext();
   const [productNo, setProductNo] = useState('');
   const [resourceCd, setResourceCd] = useState('');
   const [debouncedProductNo, setDebouncedProductNo] = useState('');
@@ -165,6 +167,16 @@ export function KioskSelfInspectionPage() {
     closeCandidateDialog: closeInstructionCandidateDialog,
     candidatePageSize: instructionCandidatePageSize
   } = useSelfInspectionWorkInstructions();
+  useEffect(() => {
+    const value = instructionPartNumber.trim();
+    if (value) {
+      setPageContext({ path: location.pathname, entity: { kind: 'partNumber', value } });
+    } else {
+      clearPageContext();
+    }
+    return clearPageContext;
+  }, [instructionPartNumber, location.pathname, setPageContext, clearPageContext]);
+
   const restoredWorkInstructionSearchRef = useRef<string | null>(null);
   const movementScanArmed = hidScanTarget === 'movement';
   const partScanArmed = hidScanTarget === 'part';

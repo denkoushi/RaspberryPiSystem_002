@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useEffect } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -152,13 +153,24 @@ const dispatchWedgeScan = (value: string, target: EventTarget = document.activeE
 };
 
 import { HermesFloatingChat } from './HermesFloatingChat';
+import { HermesPageContextProvider, useHermesPageContext } from './HermesPageContext';
 
+import type { HermesPageContext } from '../../api/domains/assembly';
 import type { CSSProperties, ReactNode } from 'react';
 
-function renderChat(path = '/kiosk/assembly') {
+function ContextControls({ value }: { value: HermesPageContext }) {
+  const { setPageContext, clearPageContext } = useHermesPageContext();
+  useEffect(() => { setPageContext(value); return clearPageContext; }, [value, setPageContext, clearPageContext]);
+  return <button onClick={clearPageContext}>clear page context</button>;
+}
+
+function renderChat(path = '/kiosk/assembly', pageContext?: HermesPageContext) {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <HermesFloatingChat />
+      <HermesPageContextProvider>
+        {pageContext ? <ContextControls value={pageContext} /> : null}
+        <HermesFloatingChat />
+      </HermesPageContextProvider>
     </MemoryRouter>
   );
 }
@@ -346,9 +358,36 @@ describe('HermesFloatingChat', () => {
     await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce());
     expect(mocks.sendTrialAnswer.mock.calls[0][0]).toMatchObject({ question: '旋盤加工で外径が大きい記録を探して' });
     expect(mocks.sendTrialAnswer.mock.calls[0][0].sessionId).toEqual(expect.any(String));
+    expect(mocks.sendTrialAnswer.mock.calls[0][0]).not.toHaveProperty('pageContext');
     expect(await screen.findByText('工程：旋盤加工。現象：外径が規格上限を0.12 mm超過。処置：再加工を実施。原因は記載なし。')).toBeInTheDocument();
     expect(mocks.send).not.toHaveBeenCalled();
     expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+  });
+
+  it('sends the latest page context only in JEV record mode and omits it after clearing', async () => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: 'trial answer', recordIds: [], elapsedMs: 1 });
+    const pageContext = { path: '/kiosk/part-measurement/self-inspection', entity: { kind: 'partNumber' as const, value: 'FH001' } };
+    renderChat(pageContext.path, pageContext);
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    const pilotButton = await screen.findByRole('button', { name: 'JEV記録' });
+    const input = screen.getByRole('textbox', { name: 'Hermesへの質問' });
+    fireEvent.change(input, { target: { value: '通常検索' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.send).toHaveBeenCalledOnce());
+    expect(mocks.send.mock.calls[0][0]).not.toHaveProperty('pageContext');
+    await waitFor(() => expect(screen.getByRole('button', { name: '送信' })).not.toBeDisabled());
+    fireEvent.click(pilotButton);
+    fireEvent.change(input, { target: { value: 'この品番の不適合' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce());
+    expect(mocks.sendTrialAnswer.mock.calls[0][0]).toMatchObject({ question: 'この品番の不適合', pageContext });
+    await waitFor(() => expect(screen.getByRole('button', { name: '送信' })).not.toBeDisabled());
+    fireEvent.click(screen.getByText('clear page context'));
+    fireEvent.change(input, { target: { value: '最近の不適合' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledTimes(2));
+    expect(mocks.sendTrialAnswer.mock.calls[1][0]).not.toHaveProperty('pageContext');
   });
 
   it('keeps the record-pilot confirmation round trip on one session', async () => {
@@ -1033,7 +1072,7 @@ describe('HermesFloatingChat', () => {
     mocks.auth.token = 'token-next';
     view.rerender(
       <MemoryRouter initialEntries={['/kiosk/assembly']}>
-        <HermesFloatingChat />
+        <HermesPageContextProvider><HermesFloatingChat /></HermesPageContextProvider>
       </MemoryRouter>
     );
     await waitFor(() => expect(screen.queryByText('相談内容を読み込んでいます…')).not.toBeInTheDocument());

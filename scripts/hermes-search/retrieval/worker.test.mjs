@@ -475,3 +475,36 @@ test('answer returns the judged candidate ids only when stageDump is requested',
   assert.ok(Array.isArray(dumped.candidateIds) && dumped.candidateIds.length >= 1);
   assert.ok(dumped.recordIds.every((id) => dumped.candidateIds.includes(id.slice(id.indexOf(':') + 1))));
 });
+
+test('worker forwards page context, records its use, and does not carry its filter to unrelated turns', async () => {
+  const pageContext = { path: '/kiosk/part-measurement/self-inspection', entity: { kind: 'partNumber', value: 'N' } };
+  const states = [];
+  const answering = createRetrievalAnswering({ records: mixedRecords, catalog: mixedCatalog, evaluate: async (input) => {
+    states.push(input.state);
+    const result = await mixedEvaluate(input);
+    result.answers.scope = { type: 'choice', choice: 'nonconformity' };
+    result.answers.content = { type: 'noul', noul: false };
+    return result;
+  } });
+  const first = await completeRequest(answering, { type: 'request', requestId: 'page-1', question: 'この品番の不適合', pageContext });
+  assert.deepEqual(first.result.recordIds, ['nonconformity:shared']);
+  assert.deepEqual(first.result.receipt.plan.filters, [{ source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['N'] }]);
+  assert.deepEqual(first.result.receipt.pageContext, { used: true, ...pageContext.entity });
+  const next = await answering.answer('最近の不適合', first.result.session, { stageDump: true, pageContext });
+  assert.deepEqual(next.receipt.pageContext, { used: false, ...pageContext.entity });
+  assert.equal(states.at(-1).page_context, undefined);
+  assert.deepEqual(states.at(-1).previous_plan.filters, []);
+  assert.deepEqual(next.receipt.plan.filters, []);
+  assert.deepEqual(next.candidateIds, ['shared']);
+  const plain = await answering.answer('最近の不適合');
+  assert.equal('pageContext' in plain.receipt, false);
+});
+
+test('completeRequest keeps the omitted third argument and forwards context in the options object', async () => {
+  const calls = [];
+  const answering = { answer: async (...args) => { calls.push(args); return { elapsedMs: 1 }; } };
+  const pageContext = { path: '/page', entity: { kind: 'partNumber', value: 'P' } };
+  await completeRequest(answering, { type: 'request', requestId: 'a', question: 'q' });
+  await completeRequest(answering, { type: 'request', requestId: 'b', question: 'q', pageContext });
+  assert.deepEqual(calls, [['q', null], ['q', null, { pageContext }]]);
+});

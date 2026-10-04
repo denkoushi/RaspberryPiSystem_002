@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadNonconformityCatalog } from './catalog.mjs';
+import { loadCatalog, loadNonconformityCatalog } from './catalog.mjs';
 import { summarizeAnswers, createPlanner } from './planner-jev.mjs';
 import { buildValueIndex } from './value-index.mjs';
 
@@ -564,4 +564,39 @@ test('the planner picks the content part of a question and keeps it in the plan'
   assert.equal(plan.diagnostics.contentSpan, 'ハンディライトを是正にした案件');
   const single = await createPlanner({ evaluate }).plan({ question: 'テーブルに傷がついた不適合', previousPlan: null, catalog, candidates: [] });
   assert.equal(single.plan.diagnostics.contentSpan, undefined);
+});
+
+for (const pointer of ['この', '現在の', 'いまの', '今の']) {
+  test(`page context supplies a part filter only for ${pointer}`, async () => {
+    let state;
+    const planner = createPlanner({ evaluate: async (input) => {
+      state = input.state;
+      return { answers: { scope: { type: 'choice', choice: 'nonconformity' }, content: { type: 'noul', noul: false }, limit: { type: 'choice', choice: 'unspecified' } } };
+    } });
+    const pageContext = { path: '/kiosk/part-measurement/self-inspection', entity: { kind: 'partNumber', value: 'FH001' } };
+    const { plan, receipt } = await planner.plan({ question: `${pointer}品番の不適合`, catalog, valueIndex: buildValueIndex([], catalog), pageContext });
+    assert.deepEqual(state.page_context, pageContext.entity);
+    assert.equal(JSON.stringify(state).includes(pageContext.path), false);
+    assert.deepEqual(plan.filters, [{ source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['FH001'] }]);
+    assert.deepEqual(receipt.pageContext, { used: true, ...pageContext.entity });
+    const ignored = await planner.plan({ question: '溶接の不適合', catalog, valueIndex: buildValueIndex([], catalog), pageContext });
+    assert.equal('page_context' in state, false);
+    assert.deepEqual(ignored.plan.filters, []);
+    assert.deepEqual(ignored.receipt.pageContext, { used: false, ...pageContext.entity });
+  });
+}
+
+test('page context maps record numbers and drawing numbers, and procedure ids only hint the source', async () => {
+  const allCatalog = loadCatalog(['nonconformity', 'knowledge_procedure']);
+  const planner = createPlanner({ evaluate: async () => ({ answers: {
+    scope: { type: 'choice', choice: 'nonconformity' }, content: { type: 'noul', noul: false }, limit: { type: 'choice', choice: 'unspecified' },
+  } }) });
+  for (const [kind, source] of [['nonconformityNo', 'nonconformity'], ['drawingNumber', 'knowledge_procedure'], ['procedureId', 'knowledge_procedure']]) {
+    const { plan, receipt } = await planner.plan({ question: 'この記録', catalog: allCatalog, valueIndex: buildValueIndex([], allCatalog), pageContext: { path: '/page', entity: { kind, value: 'screen-value' } } });
+    assert.deepEqual(plan.sources, [source]);
+    assert.deepEqual(plan.filters, kind === 'procedureId' ? [] : [{ source, field: kind, op: 'eq', values: ['screen-value'] }]);
+    assert.equal(receipt.pageContext.used, true);
+  }
+  const unavailable = await planner.plan({ question: 'この手順書', catalog, valueIndex: buildValueIndex([], catalog), pageContext: { path: '/page', entity: { kind: 'procedureId', value: 'id' } } });
+  assert.equal(unavailable.receipt.pageContext.used, false);
 });

@@ -2,6 +2,7 @@ import { Suspense, lazy, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { HermesFloatingChat } from './components/hermes/HermesFloatingChat';
+import { HermesPageContextProvider } from './components/hermes/HermesPageContext';
 import { KioskRedirect } from './components/KioskRedirect';
 import { RequireAuth } from './components/RequireAuth';
 import { RouteLoadingScreen } from './components/RouteLoadingScreen';
@@ -173,7 +174,7 @@ function lazyRouteElement(element: ReactNode) {
 function App() {
   const { isDevelopment } = readProductionBuildConfig();
   return (
-    <>
+    <HermesPageContextProvider>
       <Routes>
       <Route path="/" element={<KioskRedirect />} />
       <Route path="/login" element={<LoginPage />} />
@@ -429,7 +430,7 @@ function App() {
       <Route path="*" element={<Navigate to="/kiosk" replace />} />
       </Routes>
       <HermesFloatingChat />
-    </>
+    </HermesPageContextProvider>
   );
 }
 

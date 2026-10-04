@@ -32,6 +32,12 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - [x] (2026-10-04 03:30Z) 調整役が依存を入れた worktree で再検証: `node --test retrieval/` 160/160、ソース定義 5/5、API vitest（hermes-search）22/22、API lint エラー0、`tsc -p tsconfig.build.json` のエラー11件はすべて未ビルドの他パッケージ由来で変更ファイルには無し、`git diff --check` 指摘0。Codex 実行時の失敗（listen EPERM、Node 異常終了）はサンドボックス起因で、通常環境では再現しない。
 - [ ] (2026-10-04 03:07Z) integrationPending: PR、hermes-retrieval / ci-required のCI、main統合、Pi5デプロイ、キオスク確認、翌朝の夜間実行確認は未実施。複数ソースを自然文から同時選択する計画器の拡張も未実施（今回の変更禁止ファイル）。Milestone 1 全体の完了チェックは残す。
 
+- [x] (2026-10-04 03:35Z) Milestone 3 の許可されたローカル実装。自主検査画面の非空 `instructionPartNumber` を React Provider に登録し、空・アンマウントで消去。JEV記録モードだけが任意 `pageContext` を送信し、API の入れ子の strict zod 検証、service、worker、計画器まで接続。4種類の指示語をコードで判定し、フィルタ／手順書ソースヒントとログ専用 receipt を追加。文脈なしの呼び出しと bare `candidateIds` は維持。
+- [x] (2026-10-04 03:35Z) API 対象24/24、Web 対象63/63、Node の計画器・worker 対象40/40が成功。API 型検査は指定の既知11件だけで変更ファイルのエラー0件。待受けを使わない Node テスト139/139も成功。
+- [x] (2026-10-04 03:50Z) 調整役が依存入りの worktree で再検証: `node --test retrieval/` 167/167、API vitest（hermes-search）24/24、API lint 0、Web vitest（HermesFloatingChat / HermesPageContext / KioskSelfInspectionPage）63/63、Web lint 0、API/Web の tsc は変更ファイルにエラー無し（既知の未ビルド依存由来のみ）。Codex 実行時の 2 失敗はサンドボックス起因。
+- [x] (2026-10-04 03:38Z) API lint / Web lint はエラー0件（Web の import 順序8件を修正後の1回再実行）。git diff --check は指摘0件。変更は指定の17ファイルのみで、開始時の未コミット WIP は無し。
+- [ ] (2026-10-04 03:35Z) Milestone 3 の commit、push、PR、main統合、deploy、キオスク実機確認は未実施（今回の依頼はローカル実装のみ）。
+
 ## Surprises & Discoveries
 
 - Observation: 2026-10-04 時点で `hermes-source-catalog/v1` は複数エントリを受け付ける形（`catalogEntries`）になっているが、呼び出し側は `loadNonconformityCatalog()` の1件固定で、記録行の変換 `recordFromAuthorizedRow` は不適合の列名を直書きしている。
@@ -44,6 +50,11 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Evidence: planner-jev.mjsのplannedSources / display / recentField。実計画器を使う手順書テストで再現し、worker側で選択外の既知表示欄を除き、日付sortを選択ソースの日付欄に合わせた。未知の欄は検証エラーとして残す。
 - Observation: 元worktreeにはAPIの依存パッケージが無く、サンドボックスではlocalhost待受けが許可されていない。依存を参照する一時コピーでも指定tsconfigのrootDir設定と既存の型エラーが必須検証を妨げる。
   Evidence: vitest / tsc / eslintの起動エラー、dense-dgx.test.mjsのlisten EPERM、補助型検査と変更前コピーの756件一致。検証ログは/private/tmp側だけに置いた。
+
+- Observation: 自主検査画面は `instructionPartNumber` を持ち、移動票の FHINCD バーコードを「部品番号スキャン」で受け取る。一方、「移動票スキャン」ボタンの既存ハンドラは製造order番号を設定する。
+  Evidence: KioskSelfInspectionPage.tsx の handlePartScan / acceptPartScan と handleMovementScan。今回の文脈は依頼どおり instructionPartNumber だけに連動し、既存のスキャン動作は変更しない。
+- Observation: ページ由来フィルタを previousPlan に保存すると、指示語のない次の質問でも JEV に画面の値が送られ得る。
+  Evidence: worker.mjs の sessionOf / compactPlan と planner-jev.mjs の previous_plan / carried。ページ由来フィルタを次ターン用 plan から外し、同一 session での無指示語テストで値の持ち越しがないことを確認。
 
 ## Decision Log
 
@@ -71,6 +82,16 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Date/Author: 2026-10-04 / Codex
 - Decision: ソース追加の4点は、定義JSON、JS登録表、API読取関数とそのソースid登録、表示ラベルとする。Outcomes & Retrospectiveには追記しない。
   Rationale: 今回の文書編集許可はProgress、Surprises & Discoveries、Decision Logの追記だけであり、Outcomesへの4点記載という計画規定よりユーザーの編集境界を優先する。
+  Date/Author: 2026-10-04 / Codex
+
+- Decision: Milestone 3 の最初の対象を組立作業画面から自主検査画面 `/kiosk/part-measurement/self-inspection` に変更する。
+  Rationale: 組立作業画面は品番を持っていない。自主検査画面には移動票の FHINCD を受け取る instructionPartNumber があり、既存の値でページ文脈を設定・消去できる。ユーザー指定の対象変更を採用し、他画面は変更しない。
+  Date/Author: 2026-10-04 / Codex
+- Decision: Web → API → worker の任意項目は `pageContext: { path, entity: { kind, value } }` に固定し、計画器へは質問が `/この|現在の|いまの|今の/u` に合致するときだけ `page_context: { kind, value }` を渡す。
+  Rationale: 曖昧な context 契約を避け、path は JEV に送らず、文脈使用の判定をモデルに任せない。partNumber / nonconformityNo は対応欄、drawingNumber は手順書欄に使用し、procedureId は手順書ソースの選択ヒントだけにする。receipt.pageContext の used / kind / value は API ログへ残し、キオスク応答から除く。
+  Date/Author: 2026-10-04 / Codex
+- Decision: ページ由来フィルタは、その質問の receipt.plan に記録し、次ターンの session.previousPlan には持ち越さない。
+  Rationale: 指示語がない質問では文脈を JEV にも渡さないという契約を、会話中でも維持する。指示語がある次ターンは現在のページ値を改めて適用する。
   Date/Author: 2026-10-04 / Codex
 
 ## Outcomes & Retrospective

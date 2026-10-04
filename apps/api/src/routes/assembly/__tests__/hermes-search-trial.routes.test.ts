@@ -84,7 +84,7 @@ describe('Hermes search trial authorization',()=>{
     const output:Array<Record<string, unknown>>=[];
     const logger=pino({level:'info'},{write:line=>output.push(JSON.parse(line) as Record<string, unknown>)});
     const app=Fastify({loggerInstance:logger});
-    const receipt={schema:'hermes-search-receipt/v1',outcome:'answer',plan:{filters:[],semanticQuery:'q',sort:'relevance',limit:5},jev:{model:'jev-1.13.0',turn:'first',answers:{content:{noul:0.9}}},resultCount:1};
+    const receipt={pageContext:{used:true,kind:'partNumber',value:'P'},schema:'hermes-search-receipt/v1',outcome:'answer',plan:{filters:[],semanticQuery:'q',sort:'relevance',limit:5},jev:{model:'jev-1.13.0',turn:'first',answers:{content:{noul:0.9}}},resultCount:1};
     const answer=vi.fn().mockResolvedValue({status:'completed',answer:'処置:\n再製作。',recordIds:['synthetic'],elapsedMs:2,receipt});
     const append=vi.fn().mockResolvedValue(undefined);
     await registerHermesSearchTrialRoutes(app,{isEnabled:()=>true,scope:async()=>({enabled:true}),answer,close:vi.fn()} as never,{append});
@@ -100,4 +100,32 @@ describe('Hermes search trial authorization',()=>{
     expect(JSON.stringify(append.mock.calls[0]?.[0])).not.toContain('再製作');
     await app.close();
   });
+  it('strictly validates optional pageContext and forwards only valid values', async () => {
+    const app = Fastify();
+    app.setErrorHandler((_error, _request, reply) => reply.code(400).send({ code: 'REJECTED' }));
+    const answer = vi.fn().mockResolvedValue({ status: 'completed', answer: 'A', recordIds: [], elapsedMs: 1 });
+    await registerHermesSearchTrialRoutes(app, { isEnabled: () => true, scope: async () => ({ enabled: true }), answer, close: vi.fn() } as never);
+    const token = jwt.sign({ sub: 'reader', username: 'reader', role: 'VIEWER' }, env.JWT_ACCESS_SECRET);
+    const request = { method: 'POST' as const, url: '/assembly/hermes-search-trial/answer', headers: { authorization: `Bearer ${token}` } };
+    for (const kind of ['partNumber', 'drawingNumber', 'nonconformityNo', 'procedureId']) {
+      const pageContext = { path: '/'.repeat(200), entity: { kind, value: 'P'.repeat(200) } };
+      expect((await app.inject({ ...request, payload: { question: 'この記録', pageContext } })).statusCode).toBe(200);
+      expect(answer).toHaveBeenLastCalledWith('この記録', undefined, pageContext);
+    }
+    const valid = { path: '/page', entity: { kind: 'partNumber', value: 'P' } };
+    for (const pageContext of [
+      null, { ...valid, path: '/'.repeat(201) }, { ...valid, path: 123 },
+      { ...valid, entity: { ...valid.entity, kind: 'invalid' } },
+      { ...valid, entity: { ...valid.entity, value: '' } },
+      { ...valid, entity: { ...valid.entity, value: 'P'.repeat(201) } },
+      { ...valid, entity: { ...valid.entity, value: 123 } },
+      { ...valid, entity: { ...valid.entity, extra: true } }, { ...valid, extra: true },
+      { entity: valid.entity }, { path: '/page' }
+    ]) {
+      expect((await app.inject({ ...request, payload: { question: 'この記録', pageContext } })).statusCode).toBe(400);
+    }
+    expect(answer).toHaveBeenCalledTimes(4);
+    await app.close();
+  });
+
 });

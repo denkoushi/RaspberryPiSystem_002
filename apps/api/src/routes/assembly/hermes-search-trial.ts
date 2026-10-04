@@ -49,13 +49,20 @@ export async function registerHermesSearchTrialRoutes(
     catch { return reply.code(503).send({code:'HERMES_SEARCH_UNAVAILABLE',message:'JEV記録検索を利用できません。'}); }
   });
   app.post('/assembly/hermes-search-trial/answer', {preHandler,config:{rateLimit:{max:12,timeWindow:'1 minute'}}}, async (request,reply) => {
-    const {question, sessionId} = z.object({
+    const {question, sessionId, pageContext} = z.object({
       question: z.string().trim().min(1).max(4000),
-      sessionId: z.string().uuid().optional()
+      sessionId: z.string().uuid().optional(),
+      pageContext: z.object({
+        path: z.string().max(200),
+        entity: z.object({
+          kind: z.enum(['partNumber', 'drawingNumber', 'nonconformityNo', 'procedureId']),
+          value: z.string().min(1).max(200)
+        }).strict()
+      }).strict().optional()
     }).strict().parse(request.body);
     if (!service.isEnabled()) return reply.code(503).send({code:'HERMES_SEARCH_DISABLED',message:'JEV記録検索は無効です。'});
     try {
-      const { receipt, ...answer } = await service.answer(question, sessionId);
+      const { receipt, ...answer } = await (pageContext ? service.answer(question, sessionId, pageContext) : service.answer(question, sessionId));
       if (receipt) {
         // One line per answer with the question text and the planner decisions. Record text
         // is not included; the kiosk response never carries the receipt.

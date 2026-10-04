@@ -6,6 +6,11 @@ import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
 import type { KnowledgeProcedureRepositoryPort } from '../knowledge/knowledge-procedure.port.js';
 import { knowledgeProcedureRow, retrievalSourceIdsFromEnv, type RetrievalSourceId, type RetrievalSourceReader } from './hermes-search-sources.js';
 
+export type HermesPageContext = {
+  path: string;
+  entity: { kind: 'partNumber' | 'drawingNumber' | 'nonconformityNo' | 'procedureId'; value: string };
+};
+
 type SearchState = Record<string, unknown>;
 type SearchDiagnostics = {
   before: string;
@@ -220,8 +225,8 @@ export class HermesSearchTrialService {
       organizedCount: this.runtime?.organized?.count, snapshotId: this.runtime?.snapshot?.snapshotId };
   }
 
-  async answer(question: string, sessionId?: string): Promise<HermesTrialAnswer> {
-    if (this.settings.retrievalV2) return this.answerRetrievalV2(question, sessionId);
+  async answer(question: string, sessionId?: string, pageContext?: HermesPageContext): Promise<HermesTrialAnswer> {
+    if (this.settings.retrievalV2) return this.answerRetrievalV2(question, sessionId, pageContext);
     await this.start();
     if (this.pending) throw new Error('別の検索を処理中です。少し待って再送してください。');
     const activeSessionId = sessionId ?? randomUUID();
@@ -302,7 +307,7 @@ export class HermesSearchTrialService {
     else this.inflight = Math.max(0, this.inflight - 1);
   }
 
-  private async answerRetrievalV2(question: string, sessionId?: string): Promise<HermesTrialAnswer> {
+  private async answerRetrievalV2(question: string, sessionId?: string, pageContext?: HermesPageContext): Promise<HermesTrialAnswer> {
     await this.start();
     try {
       await this.acquireSlot();
@@ -326,7 +331,7 @@ export class HermesSearchTrialService {
           resolve: value => { clearTimeout(timeout); resolve(value); },
           reject: error => { clearTimeout(timeout); reject(error); },
         });
-        this.child!.stdin.write(JSON.stringify({ type: 'request', requestId: id, question, session }) + '\n');
+        this.child!.stdin.write(JSON.stringify({ type: 'request', requestId: id, question, session, ...(pageContext ? { pageContext } : {}) }) + '\n');
         written = true;
       });
       const workerSession = (result as HermesTrialAnswer & { session?: Omit<TrialSession, 'expiresAt'> }).session;

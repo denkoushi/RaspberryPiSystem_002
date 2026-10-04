@@ -346,9 +346,16 @@ export function createRetrievalAnswering({
         candidates,
         valueIndex: view.valueIndex,
         shownCount: previouslyShown.length,
+        ...(options.pageContext ? { pageContext: options.pageContext } : {}),
       });
       const searchPlan = selectedSourcePlan(planned.plan, entries);
       const compact = compactPlan(searchPlan);
+      // A screen-derived condition belongs to this turn only. Do not carry its
+      // value into the next question through previous_plan when no pointer is used.
+      const entity = options.pageContext?.entity;
+      const sessionPlan = planned.receipt?.pageContext?.used && entity && compact
+        ? { ...compact, filters: compact.filters.filter((filter) => !(filter.field === entity.kind && filter.values.includes(entity.value))) }
+        : compact;
       // One receipt per answer for the API log: the planner decisions and the outcome.
       const receiptOf = (outcome, extra = {}) => ({
         schema: 'hermes-search-receipt/v1',
@@ -357,6 +364,7 @@ export function createRetrievalAnswering({
         unresolved: Array.isArray(planned.plan?.unresolved) ? planned.plan.unresolved.map((item) => item?.term ?? null) : [],
         jev: planned.receipt ?? null,
         planMs: planned.timings?.planMs ?? null,
+        ...(options.pageContext ? { pageContext: planned.receipt?.pageContext ?? { used: false, ...options.pageContext.entity } } : {}),
         ...extra,
       });
       if (planned.plan?.diagnostics?.scope === 'out_of_scope') {
@@ -365,7 +373,7 @@ export function createRetrievalAnswering({
           answer: outOfScopeAnswer,
           recordIds: [],
           elapsedMs: elapsed(),
-          previousPlan: compact,
+          previousPlan: sessionPlan,
           shownIds: previouslyShown,
           receipt: receiptOf('out_of_scope'),
           dataAsOf: view.dataAsOf,
@@ -380,7 +388,7 @@ export function createRetrievalAnswering({
           recordIds: [],
           elapsedMs: elapsed(),
           confirmation: confirmationPending(question, validation.clarification, answer),
-          previousPlan: compact,
+          previousPlan: sessionPlan,
           shownIds: previouslyShown,
           receipt: receiptOf('clarification'),
           dataAsOf: view.dataAsOf,
@@ -416,7 +424,7 @@ export function createRetrievalAnswering({
           answer: UNAVAILABLE_ANSWER,
           recordIds: [],
           elapsedMs: elapsed(),
-          previousPlan: compact,
+          previousPlan: sessionPlan,
           shownIds: previouslyShown,
           receipt: receiptOf('unavailable', { timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
@@ -428,7 +436,7 @@ export function createRetrievalAnswering({
           answer: noOtherAnswer(executed.excludedMatches),
           recordIds: [],
           elapsedMs: elapsed(),
-          previousPlan: compact,
+          previousPlan: sessionPlan,
           shownIds: previouslyShown,
           receipt: receiptOf('no_other', { excludedMatches: executed.excludedMatches, timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
@@ -441,7 +449,7 @@ export function createRetrievalAnswering({
           answer: noResultAnswer(view.snapshotCount),
           recordIds: [],
           elapsedMs: elapsed(),
-          previousPlan: compact,
+          previousPlan: sessionPlan,
           shownIds: previouslyShown,
           receipt: receiptOf('no_result', { retriever: usesDense ? 'hybrid' : 'lexical', timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
@@ -461,7 +469,7 @@ export function createRetrievalAnswering({
         answer,
         recordIds: executed.results.map((result) => publicRecordId(result.sourceId, result.recordId)),
         elapsedMs: elapsed(),
-        previousPlan: compact,
+        previousPlan: sessionPlan,
         shownIds: withShown(previouslyShown, executed.results.map((result) => publicRecordId(result.sourceId, result.recordId))),
         dataAsOf: view.dataAsOf,
         coverage: executed.coverage ?? null,
@@ -532,7 +540,7 @@ export async function completeRequest(answering, request) {
     if (!request || request.type !== 'request' || !requestId || typeof request.question !== 'string') {
       throw new Error('request type, requestId, and question are required');
     }
-    const result = await answering.answer(request.question, request.session ?? null);
+    const result = await answering.answer(request.question, request.session ?? null, ...(request.pageContext ? [{ pageContext: request.pageContext }] : []));
     return { workerRequestId: requestId, stage: 'completed', result, elapsedMs: result.elapsedMs };
   } catch (error) {
     return {
