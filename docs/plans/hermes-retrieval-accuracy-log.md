@@ -317,3 +317,23 @@ Why: the synthetic questions share much wording with their anchor. The median sh
 Also noted: the planner asked back on 3 development questions in one run and 2 in the other, with the same questions and the same planner; JEV answers vary between runs, which adds noise of about one question per 50 to any paired comparison.
 
 Private files: `runs/flywheel/*-20261004.json` and `.log` (ids and stages, no record text), `work/flywheel/questions-2026-10-03.jsonl`, `snapshots/nonconformity-snapshot-pi5-20261004.json`, `stores/dense-pi5-20261004.bin`, `stores/enrichment-pi5-20261004.jsonl`.
+
+### 2026-10-04: candidate recall of PostgreSQL pg_trgm against the in-process bigram BM25 (measurement basis, migration held)
+
+Trigger: the cross-source foundation plan (`hermes-cross-source-foundation-execplan.md`, Milestone 2) proposed moving the lexical index out of the 384 MB worker into PostgreSQL. Before designing that, the first-stage candidate recall of `pg_trgm` had to be shown equal to the current character-bigram BM25.
+
+Method: `scripts/hermes-search/retrieval/prototypes/pg-trgm-recall.mjs` (Codex gpt-6.1-sol wrote it; Claude ran and reviewed). Questions: stage-v1 (50) and stage-aspect-v1 (17), question text as the query, no planner, no filters, no enrichment, no JEV. Records: the 2026-10-04 Pi 5 snapshot, 8,209 nonconformities, body fields only. PostgreSQL 15 (`pgvector/pgvector:pg15`, pg_trgm 1.6) in a throwaway container on the Mac, `ORDER BY similarity(body, $1)` and `word_similarity` with LIMIT 200 and a GIN `gin_trgm_ops` index. Relevant = grade 3 in `labels/graded-v1.json`; unlabeled candidates are counted separately, not as hits or misses.
+
+| Method | relevant in top 30 / 67 | relevant in top 200 / 67 | unlabeled in top 200 (sum) | p50 ms | p95 ms |
+| --- | --- | --- | --- | --- | --- |
+| current bigram BM25 | 42 (62.7%) | 50 (74.6%) | 10,958 | 43.5 | 53.2 |
+| pg_trgm similarity | 44 (65.7%) | 53 (79.1%) | 11,770 | 96.2 | 105.3 |
+| pg_trgm word_similarity | 47 (70.1%) | 51 (76.1%) | 11,898 | 106.0 | 123.1 |
+
+Paired against BM25 at top 30: word_similarity gains 10 and loses 5; similarity at top 200 gains 4 and loses 1. Seven questions have no grade-3 record in the labels and cannot be judged by this comparison. 82 to 89 percent of the top-200 candidates are unlabeled, so neither recall nor equivalence is established; the labels only cover records that earlier configurations put in their top 30.
+
+Latency: both PostgreSQL orderings ran as a sequential scan with sort (`Aggregate > Limit > Sort > Seq Scan`); the GIN index is not used by an unthresholded `ORDER BY similarity`, as the PostgreSQL 15 documentation states. p95 was 2.0 to 2.3 times the in-process BM25.
+
+Decision: the pg_trgm replacement is held. Recall is not worse, possibly slightly better, but it is not shown equal on labeled data, and it is slower without an index path. Milestone 2 is re-planned so that candidate generation stays in process and the memory problem is solved by not holding record bodies in the worker (bodies fetched by id from the API after ranking) and by per-source loading. Re-measurement is only worth doing after the shown-but-unlabeled candidates are graded (the flywheel plan's pooled top-30 labelling).
+
+Private files: `/tmp/hermes-pg-trgm-recall-20261004.json` on the Mac at run time (per-question hits, unlabeled counts, timings, plan shapes; no record text). Rerun: `scripts/hermes-search/retrieval/prototypes/README.md`.
