@@ -128,7 +128,7 @@ test('generation keeps valid questions and reports why others were dropped', asy
     seed: { intent: 'phenomenon', style: 'kana', role: 'worker' }, recordA: records[0], recordB: records[1], anchorBody: bodyText(records[0]),
     chat: async () => ({ ok: true, content: JSON.stringify({ question: 'キズ' }) }),
   });
-  assert.deepEqual(single, { ok: true, question: 'キズ' });
+  assert.deepEqual(single, { ok: true, question: 'キズ', overlap: 0, retried: false });
 });
 
 test('the DGX adapter posts the consultation route and maps failures', async () => {
@@ -217,4 +217,33 @@ test('a question is kept when both graders confirm the anchor; the near miss is 
   assert.equal(JSON.stringify(rows).includes('surface scratch'), false);
   const failing = createJevPairGrader(async () => { throw new Error('connection failed'); });
   assert.deepEqual(await failing('q', 'a', 'b'), [null, null]);
+});
+
+test('a question that keeps too much of the record wording is asked again, then dropped', async () => {
+  const { anchorOverlap, generateQuestion, QUESTION_OVERLAP_MAX } = await import('./flywheel-generate.mjs');
+  const anchorBody = 'テーブル上面に傷がついた。クランプが緩んでいた。';
+  assert.ok(anchorOverlap('テーブル上面 傷 クランプ緩み', anchorBody) > QUESTION_OVERLAP_MAX);
+  assert.ok(anchorOverlap('天板のキズの件', anchorBody) < QUESTION_OVERLAP_MAX);
+  const recordA = { id: 'a', condition: 'テーブル上面に傷がついた', remarks: 'クランプが緩んでいた' };
+  const recordB = { id: 'b', condition: 'コラムに打痕', remarks: '工具が当たった' };
+  const seed = { intent: 'phenomenon', style: 'terse', role: 'worker' };
+  const prompts = [];
+  const chat = (answers) => async ({ messages, temperature }) => {
+    prompts.push({ system: messages[0].content, temperature });
+    return { ok: true, content: JSON.stringify({ question: answers.shift() }) };
+  };
+  const retried = await generateQuestion({ seed, recordA, recordB, anchorBody, chat: chat(['テーブル上面 傷 クランプ緩み', '天板のキズの件']) });
+  assert.equal(retried.ok, true);
+  assert.equal(retried.retried, true);
+  assert.ok(retried.overlap <= QUESTION_OVERLAP_MAX);
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1].system, /前の案「テーブル上面 傷 クランプ緩み」/u);
+  assert.equal(prompts[1].temperature, 0.9);
+  const dropped = await generateQuestion({ seed, recordA, recordB, anchorBody, chat: chat(['テーブル上面 傷 クランプ緩み', 'テーブル上面の傷 クランプ']) });
+  assert.equal(dropped.ok, false);
+  assert.equal(dropped.reason, 'too_similar');
+  assert.ok(dropped.overlap > QUESTION_OVERLAP_MAX);
+  const direct = await generateQuestion({ seed, recordA, recordB, anchorBody, chat: chat(['天板のキズの件']) });
+  assert.equal(direct.retried, false);
+  assert.equal(typeof direct.overlap, 'number');
 });

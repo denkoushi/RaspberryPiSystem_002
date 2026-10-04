@@ -33,9 +33,11 @@ export function summarizeNight(rows) {
     dropped: {},
     styles: {},
     medianLength: null,
+    medianOverlap: null,
     live: { scored: 0, shown: 0, otherShown: 0, notInPool: 0, judgeRejected: 0, status: 0, failed: 0, notRun: 0, denseFallbacks: 0 },
   };
   const lengths = [];
+  const overlaps = [];
   for (const row of rows) {
     if (typeof row.question === 'string' && row.question) summary.generated += 1;
     if (row.kept !== true) {
@@ -45,6 +47,7 @@ export function summarizeNight(rows) {
     }
     summary.kept += 1;
     lengths.push(row.question.length);
+    if (typeof row.overlap === 'number') overlaps.push(row.overlap);
     const style = row.seed?.style ?? 'unknown';
     summary.styles[style] = (summary.styles[style] ?? 0) + 1;
     const live = row.live;
@@ -63,6 +66,8 @@ export function summarizeNight(rows) {
   }
   lengths.sort((left, right) => left - right);
   summary.medianLength = lengths.length ? lengths[lengths.length >> 1] : null;
+  overlaps.sort((left, right) => left - right);
+  summary.medianOverlap = overlaps.length ? overlaps[overlaps.length >> 1] : null;
   return summary;
 }
 
@@ -74,7 +79,8 @@ export function formatReport(night, summary) {
   const live = summary.live;
   const nothing = live.notInPool + live.judgeRejected + live.status;
   const lines = [
-    `night ${night}: pairs ${summary.rows}, generated ${summary.generated}, kept ${summary.kept}` + (summary.medianLength == null ? '' : ` (median ${summary.medianLength} chars)`),
+    `night ${night}: pairs ${summary.rows}, generated ${summary.generated}, kept ${summary.kept}` + (summary.medianLength == null ? '' : ` (median ${summary.medianLength} chars`
+      + (summary.medianOverlap == null ? ')' : `, anchor overlap ${summary.medianOverlap.toFixed(2)})`)),
     `  dropped: ${Object.keys(summary.dropped).length ? counts(summary.dropped) : 'none'}`,
     `  styles: ${Object.keys(summary.styles).length ? counts(summary.styles) : 'none'}`,
   ];

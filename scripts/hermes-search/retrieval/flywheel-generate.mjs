@@ -11,6 +11,11 @@ export const QUESTION_MAX_CHARS = 60;
 export const COPY_RUN_CHARS = 8;
 // Share of the question's character bigrams that may also appear in A's body.
 export const COPY_BIGRAM_SHARE = 0.6;
+// Whole-question bound: the share of the question's character bigrams found in the anchor body.
+// On the first night (2026-10-03) the kept median was 0.44 and terse questions 0.56; questions
+// above 0.5 were found by lexical search alone, so the set could not show the dense gain. One
+// retry asks for other wording before the pair is dropped.
+export const QUESTION_OVERLAP_MAX = 0.5;
 const FACT_CHARS = 60;
 
 const FACT_FIELDS = [
@@ -75,6 +80,14 @@ export function copyViolation(question, anchorBody) {
   return null;
 }
 
+/** Share of the question's character bigrams that appear in the anchor body, 0 to 1. */
+export function anchorOverlap(question, anchorBody) {
+  const body = normalize(anchorBody);
+  const grams = bigrams(tokens(question).join(''));
+  if (!grams.length) return 0;
+  return Math.round((grams.filter((gram) => body.includes(gram)).length / grams.length) * 100) / 100;
+}
+
 export function validateQuestion(question, anchorBody) {
   const textValue = typeof question === 'string' ? question.trim() : '';
   if (!textValue) return 'empty';
@@ -83,7 +96,7 @@ export function validateQuestion(question, anchorBody) {
   return copyViolation(textValue, anchorBody);
 }
 
-export function buildMessages({ seed, factsA, factsB }) {
+export function buildMessages({ seed, factsA, factsB, previous = null }) {
   const intent = INTENTS.find((item) => item.id === seed.intent);
   const style = STYLES.find((item) => item.id === seed.style);
   const role = ROLES.find((item) => item.id === seed.role);
@@ -95,6 +108,7 @@ export function buildMessages({ seed, factsA, factsB }) {
     `尋ねる人: ${role.label}。知りたいこと: ${intent.label}。`,
     `書き方: ${style.instruction}`,
     `${QUESTION_MAX_CHARS}文字以内。JSON で {"question": "..."} だけを返す。`,
+    ...(previous ? [`前の案「${previous}」は記録の語句と重なりすぎた。記録に出てくる言葉をそのまま使わず、現場で使う別の言い方に置き換える。`] : []),
   ].join('\n');
   const user = `記録A:\n${factsA}\n\n記録B:\n${factsB}`;
   return [{ role: 'system', content: system }, { role: 'user', content: user }];
@@ -112,18 +126,25 @@ export const QUESTION_SCHEMA = {
  * `{ ok: true, content } | { ok: false, reason }`.
  */
 export async function generateQuestion({ seed, recordA, recordB, anchorBody, chat }) {
-  const messages = buildMessages({ seed, factsA: recordFacts(recordA), factsB: recordFacts(recordB) });
-  const reply = await chat({ messages, schema: QUESTION_SCHEMA, temperature: 0.7 });
-  if (!reply?.ok) return { ok: false, reason: reply?.reason ?? 'chat_failed' };
-  let question = null;
-  try {
-    question = JSON.parse(reply.content)?.question;
-  } catch {
-    return { ok: false, reason: 'invalid_json' };
+  const facts = { factsA: recordFacts(recordA), factsB: recordFacts(recordB) };
+  let previous = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const messages = buildMessages({ seed, ...facts, previous });
+    const reply = await chat({ messages, schema: QUESTION_SCHEMA, temperature: previous ? 0.9 : 0.7 });
+    if (!reply?.ok) return { ok: false, reason: reply?.reason ?? 'chat_failed' };
+    let question = null;
+    try {
+      question = JSON.parse(reply.content)?.question;
+    } catch {
+      return { ok: false, reason: 'invalid_json' };
+    }
+    const violation = validateQuestion(question, anchorBody);
+    if (violation) return { ok: false, reason: violation };
+    const overlap = anchorOverlap(question, anchorBody);
+    if (overlap <= QUESTION_OVERLAP_MAX) return { ok: true, question: question.trim(), overlap, retried: attempt > 0 };
+    previous = question.trim();
   }
-  const violation = validateQuestion(question, anchorBody);
-  if (violation) return { ok: false, reason: violation };
-  return { ok: true, question: question.trim() };
+  return { ok: false, reason: 'too_similar', overlap: anchorOverlap(previous, anchorBody) };
 }
 
 /**
