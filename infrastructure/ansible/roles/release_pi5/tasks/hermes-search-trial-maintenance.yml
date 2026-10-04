@@ -62,6 +62,7 @@
     release_pi5_trial_enrichment_ids: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_IDS') }}"
     release_pi5_trial_flywheel_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_FLYWHEEL_ENABLED') }}"
     release_pi5_trial_flywheel_max_questions: "{{ lookup('ansible.builtin.env', 'HERMES_FLYWHEEL_MAX_QUESTIONS') }}"
+    release_pi5_trial_retrieval_sources: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_SOURCES') }}"
     release_pi5_trial_dense_provider_requested: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_DENSE_PROVIDER') }}"
     release_pi5_trial_dense_provider_before: >-
       {{ (release_pi5_trial_maintenance_env_before.content | b64decode).splitlines()

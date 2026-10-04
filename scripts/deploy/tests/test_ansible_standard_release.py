@@ -2119,6 +2119,17 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         self.assertIn("hermes_retrieval_v2_enabled", prepare)
         self.assertIn("Apply retrieval v2 gate when explicitly configured", trial_prepare)
         self.assertIn("hermes_retrieval_v2_enabled in ['true', 'false']", trial_prepare)
+        self.assertIn("HERMES_RETRIEVAL_SOURCES", launcher)
+        self.assertIn("HERMES_RETRIEVAL_SOURCES", trial_prepare)
+        self.assertIn("hermes_retrieval_sources: \"{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_SOURCES') }}\"", prepare)
+        sources_task = next(task for task in yaml.safe_load(trial_prepare)
+                            if task["name"] == "Apply retrieval sources when explicitly configured")
+        condition = sources_task["when"][1]
+        self.assertEqual(condition, "hermes_retrieval_sources | default('') | length > 0")
+        check = Environment(undefined=StrictUndefined).compile_expression(condition)
+        self.assertFalse(check())
+        self.assertFalse(check(hermes_retrieval_sources=""))
+        self.assertTrue(check(hermes_retrieval_sources="nonconformity,knowledge_procedure"))
         self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", launcher)
         self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", trial_prepare)
         self.assertIn("hermes_retrieval_enrichment_enabled", prepare)
@@ -2133,12 +2144,17 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_IDS", chat_prepare)
         self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_IDS", maintenance)
         mutate = (ANSIBLE / "roles/release_pi5/tasks/hermes-search-trial-maintenance-mutate.yml").read_text(encoding="utf-8")
-        for name in ("HERMES_FLYWHEEL_ENABLED", "HERMES_FLYWHEEL_MAX_QUESTIONS"):
+        for name in ("HERMES_FLYWHEEL_ENABLED", "HERMES_FLYWHEEL_MAX_QUESTIONS", "HERMES_RETRIEVAL_SOURCES"):
             self.assertIn(name, launcher)
             self.assertIn(name, trial_prepare)
             self.assertIn(name, chat_prepare)
             self.assertIn(name, maintenance)
             self.assertIn(name, mutate)
+        self.assertIn("release_pi5_trial_retrieval_sources: \"{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_SOURCES') }}\"", maintenance)
+        self.assertIn("{ key: HERMES_RETRIEVAL_SOURCES, value: \"{{ release_pi5_trial_retrieval_sources | default('') }}\" }", mutate)
+        sources_maintenance_task = next(task for task in yaml.safe_load(mutate)
+                                        if task["name"] == "Apply synthetic question flywheel settings for maintenance")
+        self.assertEqual(sources_maintenance_task["when"], "item.value | length > 0")
         self.assertIn("hermes_flywheel_enabled", prepare)
         self.assertIn("Disable the synthetic question flywheel when the search trial is disabled", trial_prepare)
         self.assertIn("HERMES_RETRIEVAL_DENSE_PROVIDER", launcher)
@@ -2152,6 +2168,37 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         mutate = (ANSIBLE / "roles/release_pi5/tasks/hermes-search-trial-maintenance-mutate.yml").read_text(encoding="utf-8")
         self.assertIn("HERMES_RETRIEVAL_DENSE_PROVIDER", mutate)
         self.assertIn("HERMES_RETRIEVAL_DENSE_INDEX_ENABLED", mutate)
+
+    def test_candidate_retrieval_sources_allow_preservation_and_require_explicit_values(self) -> None:
+        prepare = yaml.safe_load(
+            (ANSIBLE / "roles/release_pi5/tasks/prepare.yml").read_text(encoding="utf-8")
+        )
+        task = next(task for task in prepare
+                    if task["name"] == "Require the candidate API to receive the finalized Hermes search environment")
+        conditions = [condition for condition in task["ansible.builtin.assert"]["that"]
+                      if "HERMES_RETRIEVAL_SOURCES" in condition]
+        self.assertEqual(len(conditions), 2)
+        self.assertIn("^HERMES_RETRIEVAL_SOURCES=[a-z_,]+$", conditions[1])
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["from_json"] = json.loads
+        environment.tests["match"] = lambda value, pattern: re.match(pattern, value) is not None
+        checks = [environment.compile_expression(condition) for condition in conditions]
+        valid = "HERMES_RETRIEVAL_SOURCES=nonconformity,knowledge_procedure"
+        for requested, lines, expected in (
+            ("", [], True),
+            ("", [valid], True),
+            ("", [valid, valid], False),
+            ("nonconformity,knowledge_procedure", [], False),
+            ("nonconformity,knowledge_procedure", [valid], True),
+            ("nonconformity,knowledge_procedure", ["HERMES_RETRIEVAL_SOURCES=INVALID"], False),
+            ("nonconformity,knowledge_procedure", [valid, valid], False),
+        ):
+            with self.subTest(requested=requested, lines=lines):
+                result = all(check(
+                    lookup=lambda plugin, name: requested,
+                    release_pi5_candidate_search_env={"stdout": json.dumps(lines)},
+                ) for check in checks)
+                self.assertEqual(result, expected)
 
     def test_explicit_trial_rebinds_the_candidate_api_to_the_finalized_chat_env(self) -> None:
         prepare_tasks = yaml.safe_load(
@@ -2325,6 +2372,59 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
                 "HERMES_RETRIEVAL_V2_ENABLED": "yes",
             }, clear=True):
                 with self.assertRaisesRegex(STANDARD_RELEASE["UsageError"], "HERMES_RETRIEVAL_V2_ENABLED must be true or false"):
+                    STANDARD_RELEASE["hermes_trial_configuration"](
+                        SimpleNamespace(full_fleet=False),
+                        (("pi5", ("raspberrypi5",)),),
+                        Path("/opt/RaspberryPiSystem_002"),
+                        "test-run",
+                    )
+
+    def test_trial_retrieval_sources_are_optional_and_normalized(self) -> None:
+        key = "HERMES_RETRIEVAL_SOURCES"
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory)
+            files = {}
+            for name in ("qmd-index.sqlite", "snapshot.json", "reviewed.json"):
+                data = ("sealed:" + name).encode()
+                (artifact / name).write_bytes(data)
+                files[name] = hashlib.sha256(data).hexdigest()
+            (artifact / "artifact.json").write_text(
+                json.dumps({"schema": "hermes-device-index/v1", "files": files}),
+                encoding="utf-8",
+            )
+            trial_environment = {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+            }
+            for value, expected in (
+                (None, None),
+                ("", None),
+                (" , , ", None),
+                ("nonconformity,knowledge_procedure", "nonconformity,knowledge_procedure"),
+                (" knowledge_procedure , nonconformity ", "knowledge_procedure,nonconformity"),
+                ("nonconformity,,knowledge_procedure,nonconformity,", "nonconformity,knowledge_procedure"),
+            ):
+                overrides = {} if value is None else {key: value}
+                with self.subTest(value=value), mock.patch.dict(
+                    os.environ, {**trial_environment, **overrides}, clear=True
+                ):
+                    _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                        SimpleNamespace(full_fleet=False),
+                        (("pi5", ("raspberrypi5",)),),
+                        Path("/opt/RaspberryPiSystem_002"),
+                        "test-run",
+                    )
+                    if expected is None:
+                        self.assertNotIn(key, environment)
+                    else:
+                        self.assertEqual(environment[key], expected)
+            with mock.patch.dict(os.environ, {
+                **trial_environment, key: "nonconformity, unknown "
+            }, clear=True):
+                with self.assertRaisesRegex(
+                    STANDARD_RELEASE["UsageError"],
+                    "^HERMES_RETRIEVAL_SOURCES contains an unknown source: unknown$",
+                ):
                     STANDARD_RELEASE["hermes_trial_configuration"](
                         SimpleNamespace(full_fleet=False),
                         (("pi5", ("raspberrypi5",)),),

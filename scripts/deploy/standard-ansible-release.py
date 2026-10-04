@@ -700,6 +700,24 @@ def enrichment_id_source() -> Path | None:
     return source.resolve()
 
 
+def optional_retrieval_sources_setting(name: str = "HERMES_RETRIEVAL_SOURCES") -> str:
+    sources = list(dict.fromkeys(
+        source.strip() for source in os.environ.get(name, "").split(",") if source.strip()
+    ))
+    for source in sources:
+        if source not in {"nonconformity", "knowledge_procedure"}:
+            raise UsageError(f"{name} contains an unknown source: {source}")
+    return ",".join(sources)
+
+
+def retrieval_sources_environment() -> dict[str, str]:
+    environment: dict[str, str] = {}
+    sources = optional_retrieval_sources_setting()
+    if sources:
+        environment["HERMES_RETRIEVAL_SOURCES"] = sources
+    return environment
+
+
 def optional_dense_provider_setting(name: str = "HERMES_RETRIEVAL_DENSE_PROVIDER") -> str:
     value = os.environ.get(name, "")
     if value and value not in {"off", "dgx"}:
@@ -783,6 +801,7 @@ def hermes_trial_configuration(
     environment.update(enrichment)
     environment.update(flywheel_environment())
     environment.update(dense_environment())
+    environment.update(retrieval_sources_environment())
     if enabled == "false":
         return None, environment
     value = os.environ.get("HERMES_SEARCH_TRIAL_ARTIFACT", "")
@@ -837,12 +856,14 @@ def hermes_trial_maintenance_configuration(
     environment.update(enrichment_environment())
     environment.update(flywheel_environment())
     environment.update(dense_environment())
+    environment.update(retrieval_sources_environment())
     return environment
 
 
 HERMES_FLAG_SETTINGS = (
     "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED",
     "HERMES_RETRIEVAL_V2_ENABLED",
+    "HERMES_RETRIEVAL_SOURCES",
     "HERMES_RETRIEVAL_ENRICHMENT_ENABLED",
     "HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS",
     "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY",
@@ -953,6 +974,7 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
         if key not in {"HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_JEV_ENABLED",
                        "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED",
                        "HERMES_RETRIEVAL_V2_ENABLED",
+                       "HERMES_RETRIEVAL_SOURCES",
                        "HERMES_RETRIEVAL_ENRICHMENT_ENABLED",
                        "HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS",
                        "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY",
