@@ -12,8 +12,6 @@ export function AssemblyTemplateEditorCanvasToolbar() {
     placementAction,
     procedureSteps,
     readOnly,
-    selectedBolt,
-    selectedCheckItem,
     selectedDocument,
     selectedPage,
     selectedPageIndex,
@@ -118,11 +116,12 @@ export function AssemblyTemplateEditorCanvasToolbar() {
         aria-label="締結マーカー"
         data-kiosk-sop-target="assembly-editor-marker-bolt"
         aria-pressed={markerMode === 'bolt'}
-        variant={markerMode === 'bolt' ? 'primary' : 'ghostOnDark'}
+        variant={markerMode === 'bolt' && placementAction === 'place' ? 'primary' : 'ghostOnDark'}
         className="min-h-8 !px-2 !py-1 text-xs"
         disabled={readOnly}
         onClick={() => {
           setMarkerMode('bolt');
+          setPlacementAction('place');
           setSelectedCheckItemId(null);
         }}
       >
@@ -133,37 +132,16 @@ export function AssemblyTemplateEditorCanvasToolbar() {
         aria-label="チェックマーカー"
         data-kiosk-sop-target="assembly-editor-marker-check"
         aria-pressed={markerMode === 'check'}
-        variant={markerMode === 'check' ? 'primary' : 'ghostOnDark'}
+        variant={markerMode === 'check' && placementAction === 'place' ? 'primary' : 'ghostOnDark'}
         className="min-h-8 !px-2 !py-1 text-xs"
         disabled={readOnly}
         onClick={() => {
           setMarkerMode('check');
+          setPlacementAction('place');
           setSelectedBoltId(null);
         }}
       >
         チェック
-      </Button>
-    </div>
-    <div className="flex shrink-0 gap-1" role="group" aria-label="マーカー操作">
-      <Button
-        type="button"
-        variant={placementAction === 'place' ? 'primary' : 'ghostOnDark'}
-        className="min-h-8 !px-2 !py-1 text-xs"
-        disabled={readOnly}
-        aria-pressed={placementAction === 'place'}
-        onClick={() => setPlacementAction('place')}
-      >
-        丸数字
-      </Button>
-      <Button
-        type="button"
-        variant={placementAction === 'callout' ? 'primary' : 'ghostOnDark'}
-        className="min-h-8 !px-2 !py-1 text-xs"
-        disabled={readOnly || (markerMode === 'bolt' ? !selectedBolt : !selectedCheckItem)}
-        aria-pressed={placementAction === 'callout'}
-        onClick={() => setPlacementAction('callout')}
-      >
-        矢視
       </Button>
     </div>
     <ImageCanvasZoomControls

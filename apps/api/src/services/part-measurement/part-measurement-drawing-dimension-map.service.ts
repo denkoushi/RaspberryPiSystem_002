@@ -16,6 +16,7 @@ import {
   toDrawingDimensions
 } from './part-measurement-drawing-dimension-map-parse.js';
 import {
+  decodePartMeasurementDrawingDimensionMapPayload,
   encodePartMeasurementDrawingDimensionMapPayload,
   PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_ENCODING,
   PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_SCHEMA_VERSION,
@@ -63,8 +64,62 @@ const defaultDeps: PartMeasurementDrawingDimensionMapDeps = {
   isVisionConfigured: () => getInferenceRuntime().isPhotoLabelInferenceConfigured()
 };
 
+export type PartMeasurementDrawingDimensionMapSummary = {
+  status: 'completed' | 'none';
+  dimensionCount: number;
+  finishedAt: string | null;
+};
+
 export class PartMeasurementDrawingDimensionMapService {
   constructor(private readonly deps: PartMeasurementDrawingDimensionMapDeps = defaultDeps) {}
+
+  /** 現行の図面画像（指紋一致）で完成している寸法マップの要約。無ければ none。 */
+  async getCompletedSummary(
+    visualTemplateId: string,
+    drawingImageFingerprint: string
+  ): Promise<PartMeasurementDrawingDimensionMapSummary> {
+    const row = await prisma.partMeasurementDrawingDimensionMap.findFirst({
+      where: this.completedWhere(visualTemplateId, drawingImageFingerprint),
+      select: { dimensionCount: true, finishedAt: true }
+    });
+    if (!row) return { status: 'none', dimensionCount: 0, finishedAt: null };
+    return { status: 'completed', dimensionCount: row.dimensionCount, finishedAt: row.finishedAt?.toISOString() ?? null };
+  }
+
+  /** 現行の図面画像で完成している寸法マップの中身。無ければ null。 */
+  async getCompletedPayload(
+    visualTemplateId: string,
+    drawingImageFingerprint: string
+  ): Promise<PartMeasurementDrawingDimensionMapPayload | null> {
+    const row = await prisma.partMeasurementDrawingDimensionMap.findFirst({
+      where: this.completedWhere(visualTemplateId, drawingImageFingerprint),
+      select: { payloadCompressed: true, payloadEncoding: true }
+    });
+    if (!row?.payloadCompressed || row.payloadEncoding !== PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_ENCODING) {
+      return null;
+    }
+    try {
+      const payload = await decodePartMeasurementDrawingDimensionMapPayload(row.payloadCompressed);
+      if (!Array.isArray(payload.dimensions) || !payload.image) return null;
+      return payload;
+    } catch (error) {
+      // 壊れた寸法マップは無いものとして扱い、呼び出し側は OCR 候補に落とす。
+      log.warn({ visualTemplateId, err: error }, 'drawing dimension map payload unreadable');
+      return null;
+    }
+  }
+
+  private completedWhere(
+    visualTemplateId: string,
+    drawingImageFingerprint: string
+  ): Prisma.PartMeasurementDrawingDimensionMapWhereInput {
+    return {
+      visualTemplateId,
+      analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION,
+      drawingImageFingerprint,
+      status: 'COMPLETED'
+    };
+  }
 
   /** 現行の図面画像に対する寸法マップ行を用意する（既にあれば何もしない）。 */
   async enqueueVisualTemplate(visualTemplateId: string): Promise<PartMeasurementDrawingDimensionMap | null> {

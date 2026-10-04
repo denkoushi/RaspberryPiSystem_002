@@ -3,6 +3,7 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { logger } from '../../lib/logger.js';
 import { assertKioskApiClientKeyValid } from '../../services/clients/client-device-auth.service.js';
 import {
+  getPartMeasurementDrawingDimensionMapService,
   getPartMeasurementDrawingOcrService,
   PART_MEASUREMENT_DRAWING_OCR_QUEUE_PRIORITY,
   PartMeasurementResolveService,
@@ -91,6 +92,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     const visualTemplateService = new PartMeasurementVisualTemplateService();
     const measurementLabelSettingsService = new InspectionDrawingMeasurementLabelSettingsService();
     const drawingOcrService = getPartMeasurementDrawingOcrService();
+    const drawingDimensionMapService = getPartMeasurementDrawingDimensionMapService();
 
     const enqueueDrawingOcrAndWake = async (
       visualTemplateId: string | null | undefined,
@@ -145,6 +147,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     visualTemplateService,
     measurementLabelSettingsService,
     drawingOcrService,
+    drawingDimensionMapService,
     enqueueDrawingOcrAndWake,
     createInspectionDrawingEvaluationSetup
   };

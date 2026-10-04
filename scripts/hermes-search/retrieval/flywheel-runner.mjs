@@ -4,6 +4,8 @@
 // write one question per pair, grades each question with the DGX business LLM and with JEV, and
 // appends one line per question to runtime/flywheel/questions-YYYY-MM-DD.jsonl (Tokyo date).
 // Lines hold record ids, the seed, the question, grades, and the keep decision; no record text.
+// Each kept question is then answered by the kiosk's own pipeline, and the line records the shown
+// and judged ids and the loss stage (flywheel-live.mjs).
 // A nightly budget caps the questions, and a busy guard stops calling the model when it is slow.
 import { appendFile, mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -13,6 +15,7 @@ import { denseSettings, readDenseStore } from './dense-dgx.mjs';
 import { enrichmentSettings, withinWindow } from './enrichment-dgx.mjs';
 import { createDgxGrader, createJevPairGrader, filterAndLabel } from './flywheel-filter.mjs';
 import { createDgxChat, generateForPairs, guardChat } from './flywheel-generate.mjs';
+import { createLiveScorer } from './flywheel-live.mjs';
 import { answerableIntents, bareId, bodyText, samplePairs } from './flywheel-pairs.mjs';
 import { createRandom, sampleSeed } from './flywheel-seeds.mjs';
 
@@ -89,13 +92,15 @@ function countLine(status) {
     `night=${status.night ?? 'na'}`,
     `generated=${status.generated}`,
     `kept=${status.kept}`,
+    `shown=${status.shown}`,
     `dropped=${status.dropped}`,
   ].join(' ');
 }
 
 /**
- * One night pass. Injectable: now, readDense, chat (the raw DGX chat), jevEvaluate, and the
- * random seed. Returns the status that is also written to flywheel-status.json.
+ * One night pass. Injectable: now, readDense, chat (the raw DGX chat), jevEvaluate, live (the
+ * scorer from createLiveScorer), and the random seed. Returns the status that is also written to
+ * flywheel-status.json.
  */
 export async function runFlywheelNight({
   records,
@@ -104,10 +109,11 @@ export async function runFlywheelNight({
   readDense = readDenseStore,
   chat = null,
   jevEvaluate = null,
+  live = null,
   seed = null,
   log = (line) => console.info(line),
 }) {
-  const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, dropped: 0, dropReasons: {}, updatedAt: null };
+  const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, updatedAt: null };
   const finish = async (reason) => {
     status.reason = reason;
     status.updatedAt = now().toISOString();
@@ -151,6 +157,7 @@ export async function runFlywheelNight({
   }
   const gradeDgx = createDgxGrader(guarded);
   const gradeJevPair = createJevPairGrader(evaluate);
+  const score = live ?? await createLiveScorer({ records, catalog, evaluate });
   for (const pair of pairs) {
     if (!withinWindow(settings.window, now())) return finish('outside_window');
     if (guarded.tripped()) return finish('dgx_busy');
@@ -166,7 +173,13 @@ export async function runFlywheelNight({
       grades: row.grades ?? null,
       kept: row.kept === true,
       reason: row.ok ? row.reason ?? null : row.reason,
+      overlap: row.overlap ?? null,
     };
+    if (line.kept) {
+      line.live = await score(row);
+      if (line.live.loss == null) status.shown += 1;
+      else status.lossStages[line.live.loss] = (status.lossStages[line.live.loss] ?? 0) + 1;
+    }
     await appendFile(filePath, `${JSON.stringify(line)}\n`, { mode: 0o600 });
     if (row.ok) status.generated += 1;
     if (line.kept) status.kept += 1;

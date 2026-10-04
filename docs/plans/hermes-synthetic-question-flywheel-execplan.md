@@ -18,10 +18,19 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 - [x] (2026-10-03) Milestone 2 code: per-token copy guard, keep rule on the anchor only, graders, and a busy guard for the business LLM (#1664).
 - [ ] Milestone 2 remainder: pooled top-30 labels for kept questions; moved into the Milestone 3 runner, which has the live pipeline in the same process.
 - [x] (2026-10-03) Milestone 3 code: `flywheel-runner.mjs` started by the API after each corpus refresh when `HERMES_FLYWHEEL_ENABLED=true`, inside the enrichment night window, with a nightly budget and the busy guard; it writes the night file and `flywheel-status.json`. The release path forwards `HERMES_FLYWHEEL_ENABLED` and `HERMES_FLYWHEEL_MAX_QUESTIONS` without defaulting them (this change). The flag stays off until a release sets it.
-- [ ] Milestone 3 remainder: live result ids, pooled top-30 labels and the loss stage per question, and `flywheel-report.mjs`.
-- [ ] Milestone 4: acceptance gate for retrieval changes on the rolling set, with held-out rotation and real-question mixing.
+- [x] (2026-10-04) Milestone 3, first night on the Pi 5: 100 pairs tried between 22:05 and 22:28, 80 valid questions, 78 kept, 20 dropped as copies of the record text, 2 ungraded or unconfirmed; median 17 characters. The business LLM was slow for the first minutes (one `dgx_busy` stop per question), then fast.
+- [x] (2026-10-04) Milestone 3 remainder, part 1: each kept question is answered by the kiosk's own pipeline in the runner (`flywheel-live.mjs`), and the line records the shown ids, the judged candidate ids, and the loss stage; `flywheel-report.mjs` prints the night summary (this change).
+- [ ] Milestone 3 remainder, part 2: pooled top-30 labels for shown-but-unlabelled records (`other_shown`), with a nightly grading budget.
+- [x] (2026-10-04) Milestone 4, first part: `flywheel-gate.mjs` splits kept questions 70/30 by a hash of the anchor id, compares two offline runs per question (relevant shown or not), and accepts only when held-out shows no significant loss (two-sided sign test) and development shows a gain; `flywheel-run.mjs` produces a run for one configuration (dense on or off, enrichment store or off, judged pool) on a copied snapshot (this change). First real use on 2026-10-04 (production against dense off, 78 questions): the gate rejected both directions because the set shows no development gain either way; see the accuracy log. The set shares too much wording with the anchors to detect the dense gain, so the acceptance criterion is not met yet.
+- [x] (2026-10-04) Milestone 4, harder set, code: a generated question whose character-bigram share with the anchor body exceeds 0.5 is asked again once with the previous wording named, and dropped as `too_similar` if still above; the share is recorded per line and the report prints its median (this change). The known-good and known-bad check repeats on the first night after release.
+- [ ] Milestone 4, second part: real kiosk questions from the receipts join the set with the same two-grader labels; the held-out share rotates by night.
 
 ## Surprises & Discoveries
+
+- (2026-10-04) The first gate run found that dense retrieval on or off makes no net difference on the synthetic set (development 37 and 37 of 52, held-out 20 and 18 of 26), while hand-written paraphrases showed a clear dense gain. The generated questions keep too much of the record's wording (median bigram share 0.44). Questions with a share below 0.5 were answered 26 of 42 times, above 0.5 30 of 36.
+
+- (2026-10-03) A normal Pi 5 release ignores Hermes flags. `HERMES_FLYWHEEL_ENABLED=true` on `update-all-clients.sh --limit raspberrypi5` succeeded and delivered nothing; the flag reaches the API only through the trial or `--hermes-search-trial-maintenance on` paths. The maintenance path with `on` added the one line and kept every other value. A fail-fast for this is tracked separately.
+
 
 - Observation: the production relevance judge (JEV) is lenient. Grading the same 419 question-record pairs with the DGX business LLM (Qwen3.8 Flash-Next) agreed within one grade on 94% (Cohen's kappa 0.78 on "relevant"), but of 1,715 pairs JEV called relevant, Qwen agreed on 58%. A blind reading of 118 disputed development pairs sided with Qwen in 67% of them.
   Evidence: `docs/plans/hermes-retrieval-accuracy-log.md`, entries of 2026-10-02 and 2026-10-03.
@@ -34,6 +43,10 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 - Observation: questions that name only a department or a period ("三島工場機械課の最近の不適合を教えて") have no content condition, so relevance grading does not apply to them. They caused many grader disagreements and must be scored on filters instead.
 
 ## Decision Log
+
+- Decision: bound the whole-question overlap with the anchor at 0.5 bigram share, with one retry.
+  Rationale: the first gate run (2026-10-04) showed the set cannot detect the dense gain because kept questions share a median 0.44 of their bigrams with the anchor (terse 0.56). The per-token copy guard catches quoted phrases but not a question assembled from the record's own nouns. A retry that names the previous wording keeps more pairs than dropping at once.
+  Date/Author: 2026-10-04, Claude under the owner's standing permission to choose the next step.
 
 - Decision: build questions from the records themselves instead of asking people for test questions.
   Rationale: the owner rejected user-carried improvement. Established practice (Airbnb CASTLE 2026, JaCWIR, RAGAS, ARES) generates queries from the corpus for cold start.
@@ -86,7 +99,7 @@ Milestone 2 adds the filter and labels. `flywheel-filter.mjs` grades A and B for
 
 Milestone 3 runs it nightly. `flywheel-runner.mjs` is started by the API process like the enrichment runner when `HERMES_FLYWHEEL_ENABLED=true`, inside the existing night window, with a nightly budget `HERMES_FLYWHEEL_MAX_QUESTIONS` (default 100) and concurrency 1. It writes `runtime/flywheel/questions-YYYY-MM-DD.jsonl` (question, seed, A and B ids, consensus labels, live result ids, loss stage, no record text) and `flywheel-status.json`. The release path forwards the two variables the same way `standard-ansible-release.py` forwards the enrichment ones. `flywheel-report.mjs` reads a copied night file on the Mac and prints the summary shown in the Purpose section.
 
-Milestone 4 turns the set into a gate. Questions are assigned to development or held-out by a hash of their id (70/30), so the implementing agent reads only development questions. A retrieval change is accepted only when, on the same night's held-out questions, the paired sign test over questions where the two configurations differ does not show a loss and the development set shows a gain. Real kiosk questions from the receipts join the set with the same two-grader labels; synthetic questions are down-weighted as real ones accumulate (CASTLE moved from 10:1 toward parity).
+Milestone 4 turns the set into a gate. The offline run (`flywheel-run.mjs`) reuses the runner's live scorer, so a configuration is expressed by the same environment the Pi 5 uses: dense provider and store, enrichment flag and store, and the judged pool; the gate (`flywheel-gate.mjs`) reads two run files and prints development and held-out counts, the paired changes, and the decision. Questions are assigned to development or held-out by a hash of their id (70/30), so the implementing agent reads only development questions. A retrieval change is accepted only when, on the same night's held-out questions, the paired sign test over questions where the two configurations differ does not show a loss and the development set shows a gain. Real kiosk questions from the receipts join the set with the same two-grader labels; synthetic questions are down-weighted as real ones accumulate (CASTLE moved from 10:1 toward parity).
 
 ## Concrete Steps
 
@@ -98,7 +111,7 @@ Expected after Milestone 1: the previous count plus the new flywheel tests, all 
 
 ## Validation and Acceptance
 
-Milestone 1 is accepted when the unit tests pass and a fixed random seed yields the same seeds and pairs twice. Milestone 2 is accepted when, on 200 generated questions, at least half are kept, the length distribution of kept questions is closer to the real kiosk questions than the hand-written paraphrase sets are, and a blind reading of 30 kept development questions finds A relevant in at least 25. Milestone 3 is accepted when a released Pi 5 with the flag on writes a night file and a status file, the report prints the summary, kiosk answers during the day are unaffected (receipt latency unchanged), and no request goes to any host other than the DGX gateway and TypeSafe. Milestone 4 is accepted when a known-good change (the 2026-10-02 move from 15 to 30 candidates) passes the gate and a known-bad change (judge reading 5 candidates) fails it.
+Milestone 1 is accepted when the unit tests pass and a fixed random seed yields the same seeds and pairs twice. Milestone 2 is accepted when, on 200 generated questions, at least half are kept, the length distribution of kept questions is closer to the real kiosk questions than the hand-written paraphrase sets are, and a blind reading of 30 kept development questions finds A relevant in at least 25. Milestone 3 is accepted when a released Pi 5 with the flag on writes a night file and a status file, the report prints the summary, kiosk answers during the day are unaffected (receipt latency unchanged), and no request goes to any host other than the DGX gateway and TypeSafe. Milestone 4 is accepted when a known-good change (the 2026-10-02 move from 15 to 30 candidates) passes the gate and a known-bad change (dense retrieval off, which the 2026-09-24 measurement showed to lose paraphrased questions) fails it.
 
 ## Idempotence and Recovery
 

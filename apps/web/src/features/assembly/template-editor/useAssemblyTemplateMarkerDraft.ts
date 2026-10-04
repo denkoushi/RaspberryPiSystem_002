@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import {
-  clearImageMarkerCalloutTip,
-  setImageMarkerCalloutTip
-} from '../../kiosk/image-canvas';
+import { clearImageMarkerCalloutTip } from '../../kiosk/image-canvas';
 import { assemblyBoltConditionPatch } from '../assemblyBoltConditionPalette';
 import {
   assemblyProcedureViewPointToSourcePoint,
@@ -68,7 +65,7 @@ export function useAssemblyTemplateMarkerDraft(input: MarkerDraftInput) {
   const [selectedCheckItemId, setSelectedCheckItemId] = useState<string | null>(null);
   const [markerMode, setMarkerMode] = useState<'bolt' | 'check'>('bolt');
   const [placementAction, setPlacementAction] =
-    useState<'place' | 'callout' | 'crop'>('place');
+    useState<'place' | 'crop'>('place');
   const [pendingMarkerDelete, setPendingMarkerDelete] =
     useState<PendingMarkerDelete | null>(null);
   const [pendingAreaDelete, setPendingAreaDelete] = useState<PendingAreaDelete | null>(null);
@@ -416,24 +413,11 @@ export function useAssemblyTemplateMarkerDraft(input: MarkerDraftInput) {
         { xRatio, yRatio },
         input.selectedStep.crop
       );
-      if (placementAction === 'place') {
-        markerMode === 'bolt'
-          ? addBoltAt(point.xRatio, point.yRatio)
-          : addCheckItemAt(point.xRatio, point.yRatio);
-      } else if (placementAction === 'callout') {
-        const patch = setImageMarkerCalloutTip(point.xRatio, point.yRatio);
-        if (markerMode === 'bolt' && selectedBolt) setBoltPatch(selectedBolt.id, patch);
-        if (markerMode === 'check' && selectedCheckItem) {
-          setCheckItemPatch(selectedCheckItem.id, patch);
-        }
-      }
-    },
-    placeSelectedCalloutAt: (xRatio: number, yRatio: number) => {
-      const patch = setImageMarkerCalloutTip(xRatio, yRatio);
-      if (markerMode === 'bolt' && selectedBolt) setBoltPatch(selectedBolt.id, patch);
-      if (markerMode === 'check' && selectedCheckItem) {
-        setCheckItemPatch(selectedCheckItem.id, patch);
-      }
+      // 矢視は選択中のマーカーの取っ手で置く（モード切替はない）。
+      if (placementAction !== 'place') return;
+      markerMode === 'bolt'
+        ? addBoltAt(point.xRatio, point.yRatio)
+        : addCheckItemAt(point.xRatio, point.yRatio);
     },
     rangeEnd,
     rangeStart,
