@@ -26,7 +26,8 @@
     { "id": "CVE-2026-39825", "owner": "platform-maintainers", "reason": "Bundled Go standard library fix requires a Caddy image refresh.", "expiresOn": "2026-10-31" },
     { "id": "CVE-2026-39826", "owner": "platform-maintainers", "reason": "Bundled Go standard library fix requires a Caddy image refresh.", "expiresOn": "2026-10-31" },
     { "id": "CVE-2026-28390", "owner": "platform-maintainers", "reason": "Alpine OpenSSL fix requires the production Web base image refresh.", "expiresOn": "2026-10-31" },
-    { "id": "CVE-2026-4878", "owner": "platform-maintainers", "reason": "Debian libcap2 fix requires the production API base image refresh.", "expiresOn": "2026-10-31" }
+    { "id": "CVE-2026-4878", "owner": "platform-maintainers", "reason": "Debian libcap2 fix requires the production API base image refresh.", "expiresOn": "2026-10-31" },
+    { "id": "CVE-2026-103111", "owner": "platform-maintainers", "reason": "Debian pcre2 fix requires the production API base image refresh; the Dockerfile already upgrades libpcre2-8-0 and picks it up on the next uncached build.", "expiresOn": "2026-10-31" }
   ],
   "pnpmOverrides": [
     { "id": "glob", "owner": "platform-maintainers", "reason": "Security-pinned transitive dependency until direct dependents catch up.", "expiresOn": "2026-10-31" },
