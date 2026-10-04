@@ -30,7 +30,8 @@ export function AssemblyTemplateEditorHeader() {
     setLeftPaneTab,
     setProcedurePaneOpen,
     settingsPaneOpen,
-    templateId
+    templateId,
+    templateName
   } = useAssemblyTemplateEditor();
   const { renderLink } = useAssemblyTemplateEditorNavigation();
   return (
@@ -42,6 +43,15 @@ export function AssemblyTemplateEditorHeader() {
       <h1 className="text-[1.12rem] font-bold leading-tight">
         {templateId ? '組立テンプレート編集' : '組立テンプレート新規'}
       </h1>
+      {templateName.trim() ? (
+        <span
+          data-testid="assembly-template-editor-header-name"
+          className="hidden min-w-0 max-w-[24rem] truncate text-sm font-bold text-white/85 2xl:block"
+          title={templateName.trim()}
+        >
+          {templateName.trim()}
+        </span>
+      ) : null}
       {loadedTemplate ? (
         <span className="rounded border border-white/15 bg-slate-950/60 px-2 py-1 text-xs font-bold text-white/70">
           v{loadedTemplate.version} {loadedTemplate.isActive ? '有効' : '旧版'}
