@@ -33,12 +33,10 @@ export function AssemblyTemplateEditorCanvasPane() {
     patchProcedureStep,
     placementAction,
     placeOnSelectedCropAt,
-    placeSelectedCalloutAt,
     readOnly,
     selectedBolt,
     selectedAreaId,
     selectedBoltId,
-    selectedCheckItem,
     selectedCheckItemId,
     selectedDocument,
     selectedPage,
@@ -156,13 +154,7 @@ export function AssemblyTemplateEditorCanvasPane() {
                 />
               </>
             }
-            onPlacementClick={
-              readOnly ||
-              (placementAction === 'callout' &&
-                (markerMode === 'bolt' ? !selectedBolt : !selectedCheckItem))
-                ? undefined
-                : placeOnSelectedCropAt
-            }
+            onPlacementClick={readOnly ? undefined : placeOnSelectedCropAt}
           />
         </div>
       ) : (
@@ -180,11 +172,6 @@ export function AssemblyTemplateEditorCanvasPane() {
         onMoveCheckItemCallout={moveCheckItemCallout}
         onAddBolt={readOnly || markerMode !== 'bolt' || placementAction !== 'place' ? undefined : addBoltAt}
         onAddCheckItem={readOnly || markerMode !== 'check' || placementAction !== 'place' ? undefined : addCheckItemAt}
-        onPlaceCallout={
-          readOnly || placementAction !== 'callout' || (markerMode === 'bolt' ? !selectedBolt : !selectedCheckItem)
-            ? undefined
-            : placeSelectedCalloutAt
-        }
         onCreateCrop={
           readOnly || placementAction !== 'crop' ? undefined : addCurrentCropStep
         }
