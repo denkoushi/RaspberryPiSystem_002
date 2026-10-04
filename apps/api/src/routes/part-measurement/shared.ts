@@ -29,6 +29,8 @@ import type {
   getPartMeasurementDrawingOcrService,
   PartMeasurementDrawingOcrQueuePriority
 } from '../../services/part-measurement/part-measurement-drawing-ocr.service.js';
+import type { PartMeasurementDrawingDimensionMapService } from '../../services/part-measurement/part-measurement-drawing-dimension-map.service.js';
+import type { PartMeasurementDrawingDimensionMapCandidate } from '../../services/part-measurement/part-measurement-drawing-dimension-map-candidates.js';
 
 export const processGroupSchema = z.enum(['cutting', 'grinding']);
 export const authOnlyErrorCodes = new Set(['AUTH_TOKEN_REQUIRED', 'AUTH_TOKEN_INVALID', 'AUTH_TOKEN_EXPIRED']);
@@ -335,7 +337,10 @@ export const drawingOcrCandidateBodySchema = z.object({
   markerNo: z.number().int().min(1).max(999).optional().nullable(),
   limit: z.number().int().min(1).max(20).optional(),
   measurementLabel: z.string().max(120).optional().nullable(),
-  depthMode: z.enum(['measured', 'through']).optional().nullable()
+  depthMode: z.enum(['measured', 'through']).optional().nullable(),
+  /** 指差し先端。寸法マップの候補はここからの距離も使う */
+  calloutTipXRatio: z.number().min(0).max(1).optional().nullable(),
+  calloutTipYRatio: z.number().min(0).max(1).optional().nullable()
 });
 
 export const listTemplateCandidatesQuerySchema = z.object({
@@ -695,6 +700,29 @@ export function serializeDrawingOcrCandidate(candidate: {
   rotation: number;
 }) {
   return candidate;
+}
+
+/** 寸法マップの候補を OCR 候補と同じ形で返す（画面は 1 つの候補行で扱う）。 */
+export function serializeDrawingDimensionMapCandidate(candidate: PartMeasurementDrawingDimensionMapCandidate) {
+  return {
+    valueText: candidate.valueText,
+    rawText: candidate.dimensionText,
+    confidence: null,
+    score: candidate.distanceRatio,
+    distanceRatio: candidate.distanceRatio,
+    xRatio: candidate.xRatio,
+    yRatio: candidate.yRatio,
+    widthRatio: 0,
+    heightRatio: 0,
+    passKind: 'full' as const,
+    preprocessKind: 'raw' as const,
+    rotation: 0,
+    source: 'dimensionMap' as const,
+    dimensionText: candidate.dimensionText,
+    dimensionKind: candidate.kind,
+    suggestedUpperTolerance: candidate.suggestedUpperTolerance,
+    suggestedLowerTolerance: candidate.suggestedLowerTolerance
+  };
 }
 
 export function serializeTemplateScope(scope: string): 'three_key' | 'fhincd_resource' | 'fhinmei_only' {
@@ -1064,6 +1092,7 @@ export type PartMeasurementRouteDeps = {
   visualTemplateService: PartMeasurementVisualTemplateService;
   measurementLabelSettingsService: InspectionDrawingMeasurementLabelSettingsService;
   drawingOcrService: ReturnType<typeof getPartMeasurementDrawingOcrService>;
+  drawingDimensionMapService: PartMeasurementDrawingDimensionMapService;
   enqueueDrawingOcrAndWake: (
     visualTemplateId: string | null | undefined,
     context: string,

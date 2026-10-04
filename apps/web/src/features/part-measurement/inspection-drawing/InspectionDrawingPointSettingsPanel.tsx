@@ -54,7 +54,8 @@ type Props = {
   ocrCandidateStatus?: PartMeasurementDrawingOcrStatus | null;
   ocrCandidateLoading?: boolean;
   ocrCandidateError?: string | null;
-  onApplyOcrCandidate?: (valueText: string) => void;
+  /** 候補を押したとき。2 つの和のときは candidate を渡さない */
+  onApplyOcrCandidate?: (valueText: string, candidate?: PartMeasurementDrawingOcrCandidateDto) => void;
   measurementLabelSettings?: readonly InspectionDrawingMeasurementLabelSetting[];
   /** 丸数字/矢視モード行（Sidebar が組み立てる） */
   modeChrome?: ReactNode;
@@ -68,6 +69,11 @@ const DEFAULT_MEASUREMENT_LABEL_SETTINGS = buildDefaultInspectionDrawingMeasurem
 
 const toleranceCandidateChipClassName =
   'min-h-7 rounded border border-cyan-300/40 bg-cyan-950/70 px-2 text-cyan-50 disabled:opacity-50';
+
+/** 候補 2 つの和。浮動小数の誤差（0.1+0.2）を落とす */
+export function formatCandidateSum(sum: number): string {
+  return String(Number(sum.toFixed(4)));
+}
 
 type ToleranceCandidateInputProps = {
   value: string;
@@ -154,6 +160,14 @@ export function InspectionDrawingPointSettingsPanel({
   onSwapMarkerNo
 }: Props) {
   const [markerPickerPointId, setMarkerPickerPointId] = useState<string | null>(null);
+  /** 「＋」: 候補を 2 つ押して和を基準値にする（ピッチなど図面に無い寸法用）。先に押した値を持つ */
+  const [sumMode, setSumMode] = useState(false);
+  const [sumFirstValue, setSumFirstValue] = useState<string | null>(null);
+  const candidateSignature = ocrCandidates.map((candidate) => candidate.valueText).join('|');
+  useEffect(() => {
+    setSumMode(false);
+    setSumFirstValue(null);
+  }, [point.id, candidateSignature]);
   const markerPickerOpen = markerPickerPointId === point.id;
   const setMarkerPickerOpen = (open: boolean) => setMarkerPickerPointId(open ? point.id : null);
   const canSwapMarkerNo = Boolean(onSwapMarkerNo) && !disabled && markerNos.length > 1;
@@ -485,13 +499,55 @@ export function InspectionDrawingPointSettingsPanel({
                   key={`${candidate.valueText}-${candidate.xRatio}-${candidate.yRatio}`}
                   type="button"
                   disabled={disabled || !onApplyOcrCandidate}
-                  className={toleranceCandidateChipClassName}
-                  onClick={() => onApplyOcrCandidate?.(candidate.valueText)}
+                  className={clsx(
+                    toleranceCandidateChipClassName,
+                    sumMode && sumFirstValue === candidate.valueText && 'ring-2 ring-amber-300'
+                  )}
+                  aria-pressed={sumMode && sumFirstValue === candidate.valueText ? true : undefined}
+                  onClick={() => {
+                    if (!onApplyOcrCandidate) return;
+                    if (!sumMode) {
+                      onApplyOcrCandidate(candidate.valueText, candidate);
+                      return;
+                    }
+                    if (sumFirstValue === null) {
+                      setSumFirstValue(candidate.valueText);
+                      return;
+                    }
+                    const sum = Number(sumFirstValue) + Number(candidate.valueText);
+                    setSumMode(false);
+                    setSumFirstValue(null);
+                    if (!Number.isFinite(sum)) return;
+                    onApplyOcrCandidate(formatCandidateSum(sum));
+                  }}
                   title={`raw: ${candidate.rawText}`}
                 >
                   {candidate.valueText}
                 </button>
               ))}
+              {ocrCandidates.length >= 2 ? (
+                <button
+                  type="button"
+                  disabled={disabled || !onApplyOcrCandidate}
+                  aria-label="2つの和"
+                  aria-pressed={sumMode}
+                  className={clsx(
+                    toleranceCandidateChipClassName,
+                    'min-w-8 px-2',
+                    sumMode && 'bg-amber-400/25 ring-2 ring-amber-300'
+                  )}
+                  onClick={() => {
+                    setSumMode((prev) => !prev);
+                    setSumFirstValue(null);
+                  }}
+                  title="候補を2つ押して、その和を基準値にする"
+                >
+                  ＋
+                </button>
+              ) : null}
+              {sumMode ? (
+                <span className="text-amber-200">{sumFirstValue === null ? '1つ目' : `${sumFirstValue}＋`}</span>
+              ) : null}
             </div>
           ) : null}
         </div>
