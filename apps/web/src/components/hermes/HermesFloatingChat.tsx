@@ -27,9 +27,11 @@ import {
   releaseKeyboardWedgeScanOwner,
   useKeyboardWedgeScan
 } from '../../features/barcode-scan/useKeyboardWedgeScan';
+import { KnowledgeDestinationChip, KnowledgeDestinationPicker } from '../../features/hermes-knowledge/KnowledgeDestinationPicker';
 import { KnowledgeAttachments, KnowledgeIntakePanel } from '../../features/hermes-knowledge/KnowledgeIntakePanel';
 import { KnowledgePosterBar } from '../../features/hermes-knowledge/KnowledgePosterBar';
 import { KnowledgeWorkspace, KnowledgeWorkspaceChips } from '../../features/hermes-knowledge/KnowledgeWorkspace';
+import { useKnowledgeDestination } from '../../features/hermes-knowledge/useKnowledgeDestination';
 import { useKnowledgeIntake } from '../../features/hermes-knowledge/useKnowledgeIntake';
 import { useKnowledgePoster } from '../../features/hermes-knowledge/useKnowledgePoster';
 import { useKnowledgeWorkspace } from '../../features/hermes-knowledge/useKnowledgeWorkspace';
@@ -197,6 +199,7 @@ export function HermesFloatingChat() {
   );
   const knowledge = useKnowledgeIntake(identity, activeConsultation?.id ?? null, open && knowledgeMode === 'knowledge');
   const knowledgePoster = useKnowledgePoster(open && knowledgeMode === 'knowledge' && knowledge.enabled);
+  const knowledgeDestination = useKnowledgeDestination(knowledgePoster.poster, knowledgePoster.partNumber, pageContext);
   const knowledgeWorkspace = useKnowledgeWorkspace(open && knowledgeMode === 'knowledge' && knowledge.enabled, knowledgePoster.poster?.tagUid ?? null, identity);
 
   const invalidateChatRequest = useCallback(() => {
@@ -660,7 +663,7 @@ export function HermesFloatingChat() {
       const draftRevision = draftRevisionRef.current;
       const knowledgeModeRevision = knowledgeModeRevisionRef.current;
       try {
-        const author = knowledgePoster.poster ? { tagUid: knowledgePoster.poster.tagUid, partNumber: knowledgePoster.partNumber } : null;
+        const author = knowledgePoster.poster && knowledgeDestination.ready ? { tagUid: knowledgePoster.poster.tagUid, partNumber: knowledgePoster.partNumber, destination: knowledgeDestination.destination } : null;
         // Each post needs its own tag scan; the sent post keeps its tag for triage in memory.
         const handled = await knowledge.receive(content, author, knowledgePoster.consume);
         const canClearDraft = draftRevisionRef.current === draftRevision
@@ -840,7 +843,7 @@ export function HermesFloatingChat() {
         setActivityStatus(null);
       }
     }
-  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, knowledge, knowledgeMode, knowledgePoster, messages, pageContext, replaceConsultationInList, resetConversation]);
+  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, knowledge, knowledgeMode, knowledgePoster, knowledgeDestination, messages, pageContext, replaceConsultationInList, resetConversation]);
 
   const handleScanSuccess = useCallback((value: string) => {
     closeScanner();
@@ -947,14 +950,16 @@ export function HermesFloatingChat() {
     conversationExtension: knowledgeMode === 'record-pilot' ? <p className="hermes-chat-panel__status" role="note">
       JEV記録検索：取り込み済みの実際の不適合記録が対象です。工程・現象・処置・原因など、知りたい条件を自然文で入力してください。記録の原文をそのまま表示します。条件を特定できない質問には確認を返します。
     </p> : knowledgeMode === 'knowledge' && knowledge.enabled ? <>
-      <KnowledgePosterBar actions={<KnowledgeWorkspaceChips workspace={knowledgeWorkspace} />} poster={knowledgePoster.poster} verifying={knowledgePoster.verifying} error={knowledgePoster.error}
+      <KnowledgePosterBar destinationChip={<KnowledgeDestinationChip destination={knowledgeDestination} />} actions={<KnowledgeWorkspaceChips workspace={knowledgeWorkspace} />} poster={knowledgePoster.poster} verifying={knowledgePoster.verifying} error={knowledgePoster.error}
         partNumber={knowledgePoster.partNumber} pending={knowledgePoster.pending} onClearPartNumber={() => knowledgePoster.setPartNumber(null)}
         onPendingDecided={(intakeId, title) => { knowledgePoster.removePending(intakeId); knowledge.markDecided(intakeId, title); }} />
+      {knowledgePoster.poster ? <KnowledgeDestinationPicker key={knowledgePoster.poster.tagUid} destination={knowledgeDestination} partNumber={knowledgePoster.partNumber} onScan={openScanner} /> : null}
       <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
         onChoose={(item, action) => void knowledge.choose(item, action)} onDelegate={text => void sendMessage(text, { skipKnowledge: true })}
         triage={{ tagFor: knowledge.tagFor, decided: knowledge.decided, later: knowledge.later, onDecided: knowledge.markDecided, onLater: knowledge.markLater }} />
     </> : null,
-    attachmentControl: knowledgeMode === 'knowledge' && knowledge.enabled ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,
+    composerVisible: knowledgeMode !== 'knowledge' || !knowledge.enabled || knowledgeDestination.ready,
+    attachmentControl: knowledgeMode === 'knowledge' && knowledge.enabled && knowledgeDestination.ready ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,
     mode: knowledgeMode === 'record-pilot' || consultationMode === 'legacy' ? 'legacy' : 'consultations',
     messages,
     draft,

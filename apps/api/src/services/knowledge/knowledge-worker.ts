@@ -103,6 +103,7 @@ export class KnowledgeWorker {
     // Each organized source becomes a material; the poster decides which topic the post joins.
     await materials.enqueue(intake.id, sources.map((source, index) => ({ source, organized: organized[index]! })));
     await triage.open(intake.id, intake.posterEmployeeId);
-    await repository.finish(intake.id, token, 'ready', 'save', { message: 'ナレッジに取り込みました。追加先を選んでください。' });
+    const [destination] = await triage.get([intake.id]);
+    await repository.finish(intake.id, token, 'ready', 'save', { message: destination?.state === 'decided' ? '追加しました' : 'ナレッジに取り込みました。追加先を選んでください。' });
   }
 }

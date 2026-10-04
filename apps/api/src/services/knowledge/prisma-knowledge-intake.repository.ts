@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient, type KnowledgeIntake } from '@prisma/client';
 
+import { resolveDestination } from './knowledge-destination.js';
 import { KNOWLEDGE_TOPIC, knowledgeSourceSchema, organizedNoteSchema } from './knowledge-source.js';
 import type { KnowledgeSource, OrganizedNote } from './knowledge-source.js';
 import type { Intake, IntakeReceipt, IntakeResult, KnowledgeAction, KnowledgeIntakeRepositoryPort } from './knowledge-intake.port.js';
@@ -17,9 +18,21 @@ export class PrismaKnowledgeIntakeRepository implements KnowledgeIntakeRepositor
   constructor(private readonly db: PrismaClient) {}
 
   async receive(input: IntakeReceipt): Promise<Intake> {
-    const row = await this.db.knowledgeIntake.upsert({ where: { id: input.id }, update: {}, create: { ...input, files: asJson(input.files) } });
-    if (row.ownerKey !== input.ownerKey || row.inputHash !== input.inputHash || row.conversationId !== input.conversationId) throw new Error('INTAKE_CONFLICT');
-    return decode(row);
+    return this.db.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`knowledge-intake:${input.id}`}, 0))`;
+      const { destination, ...receipt } = input;
+      const row = await tx.knowledgeIntake.upsert({ where: { id: input.id }, update: {}, create: { ...receipt, files: asJson(input.files) } });
+      if (row.ownerKey !== input.ownerKey || row.inputHash !== input.inputHash || row.conversationId !== input.conversationId) throw new Error('INTAKE_CONFLICT');
+      if (destination) {
+        const triage = await tx.knowledgeTriage.findUnique({ where: { intakeId: row.id } });
+        if (!triage) {
+          const procedureId = await resolveDestination(tx, destination);
+          await tx.knowledgeTriage.create({ data: { intakeId: row.id, posterEmployeeId: row.posterEmployeeId,
+            state: 'decided', presetProcedureId: procedureId, decidedProcedureId: procedureId, decidedAt: new Date() } });
+        }
+      }
+      return decode(row);
+    });
   }
 
   async accepted(id: string, owner: string) {

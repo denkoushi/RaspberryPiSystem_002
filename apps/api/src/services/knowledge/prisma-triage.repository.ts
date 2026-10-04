@@ -1,8 +1,6 @@
-import { randomUUID } from 'node:crypto';
-
 import type { Prisma, PrismaClient, KnowledgeTriage } from '@prisma/client';
 
-import { composeTitle } from './procedure-content.js';
+import { resolveDestination, validateDestination } from './knowledge-destination.js';
 import { TRIAGE_STATES, type Triage, type TriageDestination, type TriageRepositoryPort, type TriageSuggestions } from './triage.port.js';
 
 const LEASE_MS = 60_000;
@@ -20,6 +18,8 @@ function decode(row: KnowledgeTriage): Triage {
 
 export class PrismaTriageRepository implements TriageRepositoryPort {
   constructor(private readonly db: PrismaClient) {}
+
+  async validateDestination(destination: TriageDestination) { await validateDestination(this.db, destination); }
 
   async open(intakeId: string, posterEmployeeId: string | null) {
     await this.db.knowledgeTriage.upsert({ where: { intakeId }, update: {}, create: { intakeId, posterEmployeeId } });
@@ -77,22 +77,7 @@ export class PrismaTriageRepository implements TriageRepositoryPort {
       const triage = await tx.knowledgeTriage.findUnique({ where: { intakeId } });
       if (!triage || triage.posterEmployeeId !== employeeId) throw new Error('TRIAGE_NOT_YOURS');
       if (triage.state === 'decided') throw new Error('TRIAGE_ALREADY_DECIDED');
-      let procedureId: string;
-      if ('procedureId' in destination) {
-        const topic = await tx.knowledgeProcedure.findUnique({ where: { id: destination.procedureId } });
-        if (!topic) throw new Error('UNKNOWN_PROCEDURE_TOPIC');
-        procedureId = topic.id;
-      } else {
-        const { parts, identifiers, reviewTier } = destination.newTopic;
-        const workType = await tx.knowledgeWorkType.findFirst({ where: { name: parts.workType, active: true } });
-        if (!workType) throw new Error('UNKNOWN_WORK_TYPE');
-        procedureId = randomUUID();
-        await tx.knowledgeProcedure.create({ data: {
-          id: procedureId, title: composeTitle(parts), category: parts.workType, target: parts.target, workType: parts.workType,
-          detail: parts.detail ?? null, reviewTier, partNumber: identifiers.partNumber ?? null,
-          drawingNumber: identifiers.drawingNumber ?? null, processName: identifiers.processName ?? null,
-        } });
-      }
+      const procedureId = await resolveDestination(tx, destination);
       // Compare-and-set on the state so a concurrent second decision cannot also assign.
       const decided = await tx.knowledgeTriage.updateMany({
         where: { intakeId, state: { in: ['suggesting', 'awaiting'] } },

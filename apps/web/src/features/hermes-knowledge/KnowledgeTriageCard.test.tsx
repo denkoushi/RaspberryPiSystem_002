@@ -1,10 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { decideTriage, fetchWorkTypes, searchProcedureTopics } from './knowledgeTriageApi';
+import { decideTriage, fetchFields, searchProcedureTopics } from './knowledgeTriageApi';
 import { KnowledgeTriageCard, type KnowledgeTriageCardProps } from './KnowledgeTriageCard';
 
-vi.mock('./knowledgeTriageApi', () => ({ decideTriage: vi.fn(), fetchWorkTypes: vi.fn(), searchProcedureTopics: vi.fn() }));
+vi.mock('./knowledgeTriageApi', () => ({ decideTriage: vi.fn(), fetchFields: vi.fn(), searchProcedureTopics: vi.fn() }));
 
 const props = (overrides: Partial<KnowledgeTriageCardProps> = {}): KnowledgeTriageCardProps => ({
   intakeId: 'post-1', text: 'クランプは対角の順に締める', files: [], scannedPartNumber: 'P-1', header: '田中さんの投稿', state: 'awaiting', tagUid: 'tag-1',
@@ -15,7 +15,7 @@ const props = (overrides: Partial<KnowledgeTriageCardProps> = {}): KnowledgeTria
 
 beforeEach(() => {
   vi.mocked(decideTriage).mockReset().mockResolvedValue({ procedureId: 'p1' });
-  vi.mocked(fetchWorkTypes).mockReset().mockResolvedValue(['段取り', '切削条件', 'その他']);
+  vi.mocked(fetchFields).mockReset().mockResolvedValue([{ id: '1', name: '段取り', aliases: [], children: [] }, { id: '2', name: '切削条件', aliases: [], children: [] }, { id: '3', name: 'その他', aliases: [], children: [] }]);
   vi.mocked(searchProcedureTopics).mockReset().mockResolvedValue([]);
 });
 
@@ -32,7 +32,7 @@ describe('knowledge triage card', () => {
   it('creates a new topic from the editable AI proposal', async () => {
     render(<KnowledgeTriageCard {...props()} />);
     fireEvent.click(screen.getByRole('button', { name: /新しい案件として追加/ }));
-    await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('段取り'));
+    await screen.findByText('種類：段取り');
     fireEvent.change(screen.getByLabelText('補足（任意）'), { target: { value: '' } });
     expect(screen.getByText('タイトル：P-1 テーブル｜段取り')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'この案件を作って追加' }));

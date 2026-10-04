@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 
 import type { KnowledgeProcedureReviewRepositoryPort } from './knowledge-procedure.port.js';
+import { seedKnowledgeFields } from './knowledge-fields.js';
 import type { TriageRepositoryPort } from './triage.port.js';
 
 /** Owner-approved initial work types (2026-09-27). Seeded only into an empty list; people curate it afterwards. */
@@ -19,6 +20,7 @@ export async function ensureKnowledgeReferenceData(db: PrismaClient, triage: Tri
       skipDuplicates: true,
     });
   }
+  await seedKnowledgeFields(db);
   const waiting = await db.knowledgeProcedureMaterial.findMany({
     where: { state: { in: ['pending', 'failed'] }, intakeId: { not: 'legacy-ready' } }, select: { intakeId: true }, distinct: ['intakeId'],
   });

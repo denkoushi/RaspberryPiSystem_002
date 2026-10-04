@@ -8,6 +8,7 @@ import type { ReactNode } from 'react';
 export type KnowledgePosterBarProps = {
   poster: KnowledgePoster | null;
   actions?: ReactNode;
+  destinationChip?: ReactNode;
   verifying: boolean;
   error: string | null;
   partNumber: string | null;
@@ -34,6 +35,7 @@ export function KnowledgePosterBar(props: KnowledgePosterBarProps) {
     <div className="space-y-2 border-b border-slate-200 p-3 text-sm">
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="rounded-full border border-green-300 bg-green-50 px-2.5 py-0.5 text-green-800">👤 {poster.name}</span>
+        {props.destinationChip}
         {props.actions}
         {props.partNumber ? <span className="inline-flex items-center gap-1 rounded-full border border-blue-300 bg-blue-50 px-2.5 py-0.5 text-blue-800">品番 {props.partNumber}
           <button type="button" aria-label="品番を外す" onClick={props.onClearPartNumber} className="px-1">✕</button></span> : null}

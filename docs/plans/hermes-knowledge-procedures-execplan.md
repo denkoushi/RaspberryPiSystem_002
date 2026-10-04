@@ -16,6 +16,12 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-04) 投稿前の行き先選択をローカル実装: 対象検索・最近の対象 → 対象別の案件／新しい案件 → 入力。分野の3段階選択を投稿前と既存仕分けフォームで共用し、行き先付き受付・全素材の自動割り当て・案件の作り直し要求・正規化した題名の同時作成防止を追加した。「おまかせ」は従来のAI候補と投稿後の仕分けを維持する。JEVによる候補出しは次のPRで行う。
+- [x] (2026-10-04) マイルストーン3a・3b・4 を PR #1688 で main へ統合し（merge `59fd917c27aaa77f6e8e60716fded218f44067e4`）、Pi5 へ標準ローリング更新で反映した（run `20261004-071005-139f6d`、`Result=success`、`ExecMainStatus=0`、recap `ok=268 changed=31 unreachable=0 failed=0`）。反映後、API/Web が同 SHA のイメージで起動、`/api/system/health` 200、migration `20261004100000_add_knowledge_procedure_reviews` 適用済み、新しいルートが未認証で 401 を確認した。本番の手順書は公開済み 1 件だけで、止まっていた下書きは無かった。職位の入った社員は 0 人、対応表は 0 件で、設定されるまで承認できる人はいない。オーナーが実機で「手順書」の閲覧を確認した。
+- [x] (2026-10-04) 投稿前の行き先選択の検証（Claude）: 使い捨て PostgreSQL で全 migration を適用し DB テスト 31 件、API の集中テスト 218 件、Web の全テスト、型検査、lint が成功した。検証時に 3 点を直した。承認なしで公開できる分野を最上位「事務・教育」だけに絞った（迷う場合は承認が要る側という決定に合わせる）。末端の分野は 1 回押すだけで選べるようにした。同じ題名の既存案件を探す処理を、識別行のない古い案件だけに限った。
+- [ ] 投稿前の行き先選択: PR、CI、main 統合、Pi5 反映、実機確認。
+- [ ] 入力後に JEV が行き先の候補を出す（DGX と比べてから切り替える）。分野の管理画面。
+
 - [x] (2026-09-26) 現状調査。ナレッジ試作の範囲、JEV の役割、横断検索の進捗を確認した。
 - [x] (2026-09-27) オーナー決定を記録した。本命は横断検索への合流、ナレッジ資料を TypeSafe/JEV（社外）へ送ってよい、DocJev と Hermes 標準機能の援用を評価する。
 - [x] (2026-09-27) 既存の手順データ（作業要領、組立手順書、キオスク要領書 PDF、自主検査図面）と手動編集機能を調査し、Context に記録した。
@@ -71,6 +77,19 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: `disallowed statement ... ALTER TABLE "KnowledgeIntake" ADD COLUMN "posterEmployeeId" TEXT, ADD COLUMN ...`。列の追加を 1 列ずつの空欄可にし、`buildAttempts` を空欄可（空欄は 0 回）にし、作業の種類の初期登録と仕分け前の素材の補完は起動時の `ensureKnowledgeReferenceData` に移した。マイルストーン1と2a の migration（新規表への `ALTER TABLE ... ADD CONSTRAINT`）もこの検査に合わないが、当時の変更分類では `deploy-contract` が選ばれず検査されていなかった。両方とも本番適用済みで、以後は適用済みとして再検査されない。
 
 ## Decision Log
+
+- Decision: 分野の初期データは 3 段・110 語とし、公開されている加工用語を土台に、本番の設備マスタと作業要領（切削・研削が中心）に出てくる枝だけを残す。各語に言い換えを持たせる。既存の作業の種類 11 個の名前はすべて含める。
+  Rationale: 履歴のない最初の投稿でも選べる入口を用意しつつ、選ぶ画面が重くならないようにする。言い換えは後の JEV の候補出しと検索に使う。
+  Date/Author: 2026-10-04 / オーナー（用語の案は Claude、オーナーが承認）
+- Decision: 人が先に行き先を決めた新しい案件は、分野の最上位が「事務・教育」で、品番・図番がなく、題名に品質に関わる語がない場合だけ自動公開にする。それ以外は承認が要る。
+  Rationale: 設備の操作や安全の手順も、誤りがそのまま使われると危険である。迷う場合は承認が要る側に倒す既存の決定に合わせる。
+  Date/Author: 2026-10-04 / Claude
+- Decision: 投稿前に対象と案件を選び、平らな作業の種類を共通の3段階の分野に置き換える。どの段でも選択でき、行き先が分からない投稿者には「おまかせ」を残す。入力後のJEV候補出しは次のPRに分ける。
+  Rationale: 案件が数千件になっても、対象で絞った数件の選択肢で投稿できるため。分野ごとの専用画面は作らない。
+  Date/Author: 2026-10-04 / オーナー
+- Decision: `KnowledgeField`、nullableな`KnowledgeProcedure.fieldId`と`KnowledgeTriage.presetProcedureId`、正規化した3部品題名の`KnowledgeTopicIdentity`を加算migrationで追加する。既存列へのFK追加はexpand-onlyで許されないため、分野と先決定案件の参照はコードで検証する。受付と先決定の保存、素材追加と割り当て・作り直し要求をそれぞれ同じトランザクションに入れる。新しい案件は題名ごとのロックと識別表で既存案件を再利用する。
+  Rationale: 既存データや制約を変更せず、再送・途中停止・同時作成でも投稿と素材を取りこぼさないため。
+  Date/Author: 2026-10-04 / Codex
 
 - Decision: マイルストーン3a は `KnowledgePositionRank` と `KnowledgeProcedureReview` を追加する。社員 ID は監査用のスカラ値とし、社員コード・氏名・タグ・職位名・段階は操作時の写しを保存する。新しい表の FK と CHECK は CREATE TABLE 内で定義し、既存表は nullable な職位列だけを加える。
   Rationale: expand-only の制約を守り、名簿 CSV の置換で社員が再作成されても過去の承認記録を保持するため。

@@ -6,6 +6,7 @@ import { ApiError } from '../lib/errors.js';
 import { findClientDeviceByApiKey, parseKioskApiClientKeyHeader } from '../services/clients/client-device-auth.service.js';
 import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js';
 import type { Intake } from '../services/knowledge/knowledge-intake.port.js';
+import { triagePendingSchema } from '../services/knowledge/knowledge-triage.service.js';
 import { intakeResponse } from '../services/knowledge/knowledge-intake.service.js';
 import { approveRequestSchema, errorReportRequestSchema, positionRanksRequestSchema, returnRequestSchema, reviewRequestSchema } from '../services/knowledge/procedure-review-input.js';
 import { procedureImageIds } from '../services/knowledge/procedure-content.js';
@@ -53,6 +54,8 @@ export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
     } catch (error) {
       if (error instanceof Error && error.message === 'UNKNOWN_POSTER') throw new ApiError(400, '社員タグを確認できません。もう一度かざしてください。');
       if (error instanceof Error && error.message === 'INTAKE_CONFLICT') throw new ApiError(409, '送信IDが別の内容に使用されています。');
+      if (error instanceof Error && error.message === 'UNKNOWN_PROCEDURE_TOPIC') throw new ApiError(404, '案件が見つかりません。');
+      if (error instanceof Error && error.message === 'UNKNOWN_KNOWLEDGE_FIELD') throw new ApiError(400, '分野を選んでください。');
       if (error instanceof Error && error.message === 'INVALID_ATTACHMENT') throw new ApiError(400, '添付の形式・サイズを確認してください。画像は10 MB、PDFは20 MBまでです。');
       throw error;
     }
@@ -90,15 +93,31 @@ export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
       if (error instanceof Error && error.message === 'TRIAGE_NOT_YOURS') throw new ApiError(403, '自分の投稿だけ仕分けできます。');
       if (error instanceof Error && error.message === 'TRIAGE_ALREADY_DECIDED') throw new ApiError(409, 'この投稿は仕分け済みです。');
       if (error instanceof Error && error.message === 'UNKNOWN_PROCEDURE_TOPIC') throw new ApiError(404, '案件が見つかりません。');
-      if (error instanceof Error && error.message === 'UNKNOWN_WORK_TYPE') throw new ApiError(400, '作業の種類を一覧から選んでください。');
+      if (error instanceof Error && error.message === 'UNKNOWN_KNOWLEDGE_FIELD') throw new ApiError(400, '分野を選んでください。');
       return posterError(error);
     }
   });
   app.get('/hermes-knowledge/procedure-topics', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     await knowledgeActor(request, reply);
-    const { q } = z.object({ q: z.string().max(80).default('') }).parse(request.query);
-    const topics = await runtime.procedures.searchTopics(q, 30);
+    const { q, target } = z.object({ q: z.string().max(80).default(''), target: z.string().min(1).max(80).optional() }).parse(request.query);
+    const topics = target === undefined ? await runtime.procedures.searchTopics(q, 30) : await runtime.procedures.searchTopics(q, 30, target);
     return { topics: topics.map(({ procedureId, header, parts }) => ({ procedureId, title: header.title, parts, identifiers: header.identifiers })) };
+  });
+  app.get('/hermes-knowledge/fields', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
+    await knowledgeActor(request, reply);
+    return { fields: await runtime.fields() };
+  });
+  app.get('/hermes-knowledge/subjects', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
+    await knowledgeActor(request, reply);
+    const { q } = z.object({ q: z.string().max(80).default('') }).parse(request.query);
+    return { subjects: await runtime.subjects.search(q) };
+  });
+  app.post('/hermes-knowledge/subjects/recent', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
+    await knowledgeActor(request, reply);
+    const { posterTagUid } = triagePendingSchema.parse(request.body);
+    const poster = await runtime.resolvePoster(posterTagUid);
+    if (!poster) throw new ApiError(400, '社員タグを確認できません。もう一度かざしてください。');
+    return { subjects: await runtime.subjects.recent(poster.id) };
   });
   app.get('/hermes-knowledge/work-types', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     await knowledgeActor(request, reply);

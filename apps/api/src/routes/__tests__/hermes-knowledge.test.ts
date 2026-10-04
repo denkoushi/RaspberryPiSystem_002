@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   readDisplay: vi.fn(), listPublished: vi.fn(), getPublished: vi.fn(), triageGet: vi.fn().mockResolvedValue([]),
   resolveReviewer: vi.fn(), listRanks: vi.fn(), replaceRanks: vi.fn(),
   listPendingApproval: vi.fn(), getForReview: vi.fn(), approve: vi.fn(), returnRevision: vi.fn(), reportError: vi.fn(),
+  fields: vi.fn(), subjects: vi.fn(), recentSubjects: vi.fn(), resolvePoster: vi.fn(),
   pending: vi.fn(), decide: vi.fn(), searchTopics: vi.fn(), procedureKick: vi.fn(),
 }));
 vi.mock('../../services/clients/client-device-auth.service.js', () => ({
@@ -16,7 +17,7 @@ vi.mock('../../services/clients/client-device-auth.service.js', () => ({
   findClientDeviceByApiKey: async (key: string) => key === 'valid-key' ? { id: 'device-one' } : null,
 }));
 vi.mock('../../services/knowledge/knowledge-runtime.js', () => ({
-  getKnowledgeRuntime: () => ({ intake: { receive: mocks.receive }, repository: { choose: mocks.choose, readySources: mocks.readySources, get: mocks.get },
+  getKnowledgeRuntime: () => ({ fields: mocks.fields, subjects: { search: mocks.subjects, recent: mocks.recentSubjects }, resolvePoster: mocks.resolvePoster, intake: { receive: mocks.receive }, repository: { choose: mocks.choose, readySources: mocks.readySources, get: mocks.get },
     assets: { readDisplay: mocks.readDisplay }, worker: { kick: mocks.kick, stop: async () => {} }, documents: { initialize: async () => {} },
     procedures: { listPublished: mocks.listPublished, getPublished: mocks.getPublished, searchTopics: mocks.searchTopics, listPendingApproval: mocks.listPendingApproval, getForReview: mocks.getForReview,
       approve: mocks.approve, returnRevision: mocks.returnRevision, reportError: mocks.reportError },
@@ -92,6 +93,31 @@ describe('Knowledge API authentication boundary', () => {
     mocks.decide.mockRejectedValue(new Error('TRIAGE_ALREADY_DECIDED'));
     expect((await app.inject({ method: 'POST', url: `/hermes-knowledge/triage/${id}/decide`, headers: { 'x-client-key': 'valid-key' }, payload: {} })).statusCode).toBe(409);
     await app.close();
+  });
+  it('authenticates fields and subject endpoints, keeps recent tags in the body and filters topics by exact target', async () => {
+    const app = server(); const headers = { 'x-client-key': 'valid-key' };
+    mocks.fields.mockResolvedValue([{ id: 'f1', name: '加工', aliases: [], children: [] }]);
+    mocks.subjects.mockResolvedValue([{ target: 'P-A', topicCount: 2 }]);
+    mocks.resolvePoster.mockResolvedValue({ id: 'e1', displayName: '田中' });
+    mocks.recentSubjects.mockResolvedValue([{ target: 'P-B', topicCount: 1 }]);
+    for (const url of ['/hermes-knowledge/fields', '/hermes-knowledge/subjects?q=p-a']) expect((await app.inject({ url })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/hermes-knowledge/subjects/recent', payload: { posterTagUid: 'tag-1' } })).statusCode).toBe(401);
+    expect((await app.inject({ url: '/hermes-knowledge/fields', headers })).json()).toEqual({ fields: [{ id: 'f1', name: '加工', aliases: [], children: [] }] });
+    expect((await app.inject({ url: '/hermes-knowledge/subjects?q=p-a', headers })).json()).toEqual({ subjects: [{ target: 'P-A', topicCount: 2 }] });
+    expect(mocks.subjects).toHaveBeenCalledWith('p-a');
+    expect((await app.inject({ method: 'POST', url: '/hermes-knowledge/subjects/recent', headers, payload: { posterTagUid: 'tag-1' } })).json()).toEqual({ subjects: [{ target: 'P-B', topicCount: 1 }] });
+    expect(mocks.resolvePoster).toHaveBeenCalledWith('tag-1'); expect(mocks.recentSubjects).toHaveBeenCalledWith('e1');
+    mocks.searchTopics.mockResolvedValue([]);
+    await app.inject({ url: '/hermes-knowledge/procedure-topics?target=P-A&q=abc', headers });
+    expect(mocks.searchTopics).toHaveBeenCalledWith('abc', 30, 'P-A');
+    mocks.resolvePoster.mockResolvedValue(null);
+    expect((await app.inject({ method: 'POST', url: '/hermes-knowledge/subjects/recent', headers, payload: { posterTagUid: 'stranger' } })).statusCode).toBe(400);
+    await app.close();
+  });
+  it.each([['UNKNOWN_PROCEDURE_TOPIC', 404], ['UNKNOWN_KNOWLEDGE_FIELD', 400], ['INTAKE_CONFLICT', 409]])('rejects intake destination error %s with %s', async (code, status) => {
+    const app = server(); mocks.receive.mockRejectedValue(new Error(code));
+    const result = await app.inject({ method: 'POST', url: '/hermes-knowledge/intakes', headers: { 'x-client-key': 'valid-key' }, payload: {} });
+    expect(result.statusCode).toBe(status); expect(mocks.kick).not.toHaveBeenCalled(); await app.close();
   });
   it('searches topics and lists work types behind authentication', async () => {
     const app = server();

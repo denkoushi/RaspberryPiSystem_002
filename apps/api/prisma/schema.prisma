@@ -5038,6 +5038,9 @@ model KnowledgeProcedure {
   target              String?
   workType            String?
   detail              String?
+  /// Code-checked reference: expand-only does not add constraints to existing tables.
+  fieldId             String?
+  topicIdentity       KnowledgeTopicIdentity?
   /// Set when materials changed; the builder rebuilds the draft and clears it.
   buildRequestedAt    DateTime?
   buildLeaseToken     String?
@@ -5057,6 +5060,7 @@ model KnowledgeProcedure {
   @@index([partNumber])
   @@index([drawingNumber])
   @@index([buildRequestedAt])
+  @@index([fieldId])
 }
 
 /// Triage of one post (intake): AI suggests destinations, the poster decides.
@@ -5067,6 +5071,8 @@ model KnowledgeTriage {
   state              String    @default("suggesting")
   suggestions        Json?
   decidedProcedureId String?
+  /// Destination chosen at intake receipt, before any materials exist.
+  presetProcedureId  String?
   decidedAt          DateTime?
   attempts           Int       @default(0)
   retryAt            DateTime  @default(now())
@@ -5078,6 +5084,28 @@ model KnowledgeTriage {
 
   @@index([state, retryAt, createdAt])
   @@index([posterEmployeeId, state, createdAt])
+}
+
+/// Three-level field tree; depth is validated in application code.
+model KnowledgeField {
+  id        String   @id
+  parentId  String?
+  name      String   @unique
+  aliases   String[]
+  sortOrder Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  parent    KnowledgeField?  @relation("KnowledgeFieldTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  KnowledgeField[] @relation("KnowledgeFieldTree")
+
+  @@index([parentId, sortOrder])
+}
+
+/// Normalized title identity without changing constraints or backfilling existing topics.
+model KnowledgeTopicIdentity {
+  key         String @id
+  procedureId String @unique
+  procedure   KnowledgeProcedure @relation(fields: [procedureId], references: [id], onDelete: Cascade)
 }
 
 /// Managed list of work types used as the middle title part.

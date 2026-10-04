@@ -24,7 +24,7 @@ const content = { formatVersion: 1 as const, steps: [{ id: 's1', title: 't', bod
 
 describe.skipIf(!enabled)('Knowledge triage PostgreSQL contract', () => {
   beforeEach(async () => {
-    if (await db.knowledgeWorkType.count() === 0) await ensureKnowledgeReferenceData(db, triage, procedures);
+    if (await db.knowledgeField.count() === 0) await ensureKnowledgeReferenceData(db, triage, procedures);
     await db.knowledgeTriage.deleteMany(); await db.knowledgeProcedureMaterial.deleteMany();
     await db.knowledgeProcedure.updateMany({ data: { publishedRevisionId: null } });
     await db.knowledgeProcedureRevision.deleteMany(); await db.knowledgeProcedure.deleteMany();
@@ -54,7 +54,7 @@ describe.skipIf(!enabled)('Knowledge triage PostgreSQL contract', () => {
     await expect(triage.decide('post-1', 'employee-2', { newTopic: { parts: { target: 'A', workType: '段取り' }, identifiers: {}, reviewTier: 'approval_required' } }))
       .rejects.toThrow('TRIAGE_NOT_YOURS');
     await expect(triage.decide('post-1', 'employee-1', { newTopic: { parts: { target: 'A', workType: '発明' }, identifiers: {}, reviewTier: 'approval_required' } }))
-      .rejects.toThrow('UNKNOWN_WORK_TYPE');
+      .rejects.toThrow('UNKNOWN_KNOWLEDGE_FIELD');
     const { procedureId } = await triage.decide('post-1', 'employee-1', { newTopic: { parts: { target: 'A テーブル', workType: '段取り', detail: 'クランプ' }, identifiers: { partNumber: 'P-1' }, reviewTier: 'approval_required' } });
     await expect(triage.decide('post-1', 'employee-1', { procedureId })).rejects.toThrow('TRIAGE_ALREADY_DECIDED');
 

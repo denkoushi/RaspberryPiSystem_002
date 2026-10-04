@@ -18,7 +18,7 @@ function TriageFor({ item, triage }: { item: KnowledgeIntakeView; triage: Knowle
   const title = triage.decided[item.id];
   if (title) return <p role="status" className="mt-2 rounded bg-green-50 px-2 py-1.5 text-green-800">「{title}」に追加しました。手順書を作り直しています。</p>;
   if (!item.triage) return null;
-  if (item.triage.state === 'decided') return <p className="mt-2 text-green-800">追加先を決めました。</p>;
+  if (item.triage.state === 'decided') return null;
   if (triage.later.includes(item.id)) return <p className="mt-2 text-slate-600">あとで仕分けます。次に社員タグをかざしたときにお知らせします。</p>;
   return <div className="mt-2"><KnowledgeTriageCard intakeId={item.id} text="" files={[]} scannedPartNumber={item.scannedPartNumber ?? null}
     header={item.posterName ? `${item.posterName}さんの投稿` : '投稿'} state={item.triage.state} suggestions={item.triage.suggestions}
@@ -40,7 +40,7 @@ export function KnowledgeIntakePanel({ items, error, busy, onChoose, onDelegate,
         <p className="mt-2 whitespace-pre-wrap" role={['working', 'pending'].includes(item.state) ? 'status' : undefined}>
           {item.state === 'failed' ? '整理に失敗しました。元の入力は保存されています。添付内容を確認し、再処理または修正して再送してください。'
             : item.state === 'superseded' ? 'この確認は古くなりました。最新の入力から選択してください。'
-              : ['pending', 'working'].includes(item.state) ? (item.errorCode ? '処理待ちです。入力は保存済みで、自動的に再試行します。' : '内容を確認・整理しています。画面を閉じても処理は続きます。') : item.message}
+              : item.triage?.state === 'decided' ? '追加しました' : ['pending', 'working'].includes(item.state) ? (item.errorCode ? '処理待ちです。入力は保存済みで、自動的に再試行します。' : '内容を確認・整理しています。画面を閉じても処理は続きます。') : item.message}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           {item.choices.map(choice => <button key={choice.id} type="button" disabled={busy} onClick={() => onChoose(item, choice.id)} className="rounded border border-slate-400 px-3 py-2 disabled:opacity-50">{choice.label}</button>)}
