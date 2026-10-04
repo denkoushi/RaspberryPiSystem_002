@@ -1,3 +1,4 @@
+import { toLoanResponse } from '../../../lib/loan-response.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { LoanService } from '../../../services/tools/loan.service.js';
@@ -21,6 +22,6 @@ export function registerPhotoBorrowRoute(app: FastifyInstance, loanService: Loan
       : idempotencyKeySchema.parse(Array.isArray(rawIdempotencyKey) ? rawIdempotencyKey[0] : rawIdempotencyKey);
 
     const loan = await loanService.photoBorrow({ ...body, idempotencyKey }, resolvedClientId);
-    return { loan };
+    return { loan: toLoanResponse(loan) };
   });
 }
