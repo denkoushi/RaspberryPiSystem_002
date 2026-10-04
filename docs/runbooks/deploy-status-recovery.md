@@ -25,6 +25,8 @@ scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible
 
 torque cutoverではjournalの最終到達境界を確認する。`PREPARED`失敗は全serviceが変更前のままなので、候補清掃結果を確認してから新しいcanonical runで再試行できる。`QUIESCED`以降の失敗は、選択Pi4すべてでbrowser、agent、BluetoothがOFFであり、切替を試みたimageが捕捉済みprevious imageへ戻ったことを確認する。片側だけを手動再開しない。Pi5がhealthyなら対称性だけを理由に戻さず、exact main release-setを用いる次のcanonical runで復旧する。
 
+Pi5の`release_pi5`がCompose環境の捕捉前（例: `prepare.yml`のpost-pull load待ち）に失敗した場合、rollbackはCompose環境の復元と切替系stepをskipし、`Preserve the original Pi5 candidate failure after rollback`で元の失敗を報告する。traffic切替は未実施で本番は変更前のままなので、原因（負荷など）を解消してから新しいcanonical runで再試行する（run `20260929-021529-37439f` で観測した`release_pi5_compose_environment is undefined`は修正済み）。
+
 実行中のrunへ別のmutationを重ねない。既存runの終了結果を確認してから次を判断する。
 
 ## 2. 失敗後の再実行
