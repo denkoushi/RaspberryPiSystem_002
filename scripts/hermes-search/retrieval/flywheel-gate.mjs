@@ -4,17 +4,19 @@
 // files are split into development and held-out by a hash of the anchor id, so the split is fixed
 // before anyone reads a question. Two offline runs (flywheel-run.mjs) are compared per question:
 // a question counts when a relevant record (the anchor, or the confirmed near miss) is shown.
-// A change is accepted when the held-out set shows no significant loss (two-sided sign test over
-// the questions where the runs differ) and the development set shows a gain.
+// A change is accepted when held-out has no net loss and development gains at least MIN_DEV_NET.
+// The two-sided sign test over questions where the runs differ is retained for reporting.
 // Usage: node retrieval/flywheel-gate.mjs --questions night.jsonl [more] --baseline a.json --candidate b.json
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { relevantIds } from './flywheel-live.mjs';
 import { bareId } from './flywheel-pairs.mjs';
 import { readNightRows } from './flywheel-report.mjs';
+import { readShownLabels, relevantWithLabels } from './flywheel-shown-labels.mjs';
 
 export const DEV_SHARE = 70;
 export const ALPHA = 0.05;
+export const MIN_DEV_NET = 3;
 export const RUN_SCHEMA = 'hermes-flywheel-run/v1';
 
 export function fnv1a(text) {
@@ -69,7 +71,7 @@ function relevantShown(entry, relevant) {
 }
 
 /** Per split: how many questions each run answered with a relevant record, and the paired changes. */
-export function compareRuns({ questions, baseline, candidate }) {
+export function compareRuns({ questions, baseline, candidate, labels = null }) {
   const base = casesById(baseline);
   const cand = casesById(candidate);
   const splits = {};
@@ -78,8 +80,9 @@ export function compareRuns({ questions, baseline, candidate }) {
   }
   for (const question of questions) {
     const result = splits[question.split];
-    const before = relevantShown(base.get(question.id), question.relevant);
-    const after = relevantShown(cand.get(question.id), question.relevant);
+    const relevant = labels == null ? question.relevant : relevantWithLabels(question, labels);
+    const before = relevantShown(base.get(question.id), relevant);
+    const after = relevantShown(cand.get(question.id), relevant);
     if (before == null || after == null) {
       result.skipped += 1;
       continue;
@@ -99,23 +102,25 @@ export function compareRuns({ questions, baseline, candidate }) {
   return splits;
 }
 
-/** The rule: held-out shows no significant loss, development shows a gain. */
-export function decide(comparison, { alpha = ALPHA } = {}) {
+/** The rule: held-out has no net loss, development gains at least minDevNet. */
+export function decide(comparison, { alpha = ALPHA, minDevNet = MIN_DEV_NET } = {}) {
   const reasons = [];
   const heldout = comparison.heldout;
   const dev = comparison.dev;
-  if (heldout.lost > heldout.gained && heldout.p < alpha) {
-    reasons.push(`held-out lost ${heldout.lost} and gained ${heldout.gained} (p = ${heldout.p.toFixed(3)})`);
+  if (heldout.lost > heldout.gained) {
+    reasons.push(`held-out lost ${heldout.lost} and gained ${heldout.gained}`);
   }
-  if (dev.gained <= dev.lost) reasons.push(`development gained ${dev.gained} and lost ${dev.lost}`);
+  const net = dev.gained - dev.lost;
+  if (net < minDevNet) reasons.push(`development net gain ${net} is below ${minDevNet}`);
   if (dev.n + heldout.n === 0) reasons.push('no question was answered by both runs');
   return { accept: reasons.length === 0, reasons };
 }
 
-export function formatGate(comparison, decision) {
+export function formatGate(comparison, decision, { note } = {}) {
   const line = (name, result) => `  ${name}: n ${result.n}, relevant shown ${result.baselineShown} -> ${result.candidateShown}, gained ${result.gained}, lost ${result.lost}, p ${result.p.toFixed(3)}`
     + (result.skipped ? `, skipped ${result.skipped}` : '');
   const lines = [line('development', comparison.dev), line('held-out', comparison.heldout)];
+  if (note) lines.unshift(note);
   if (comparison.dev.gainedIds.length) lines.push(`  development gained: ${comparison.dev.gainedIds.join(', ')}`);
   if (comparison.dev.lostIds.length) lines.push(`  development lost: ${comparison.dev.lostIds.join(', ')}`);
   lines.push(decision.accept ? '  gate: accept' : `  gate: reject (${decision.reasons.join('; ')})`);
@@ -123,17 +128,21 @@ export function formatGate(comparison, decision) {
 }
 
 export function parseGateArgs(argv) {
-  const options = { questions: [], baseline: null, candidate: null };
+  const options = { questions: [], baseline: null, candidate: null, labels: null };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--questions') {
       while (argv[index + 1] && !argv[index + 1].startsWith('--')) options.questions.push(argv[(index += 1)]);
     } else if (arg === '--baseline') options.baseline = argv[(index += 1)];
     else if (arg === '--candidate') options.candidate = argv[(index += 1)];
+    else if (arg === '--labels') {
+      options.labels = argv[(index += 1)];
+      if (!options.labels || options.labels.startsWith('--')) throw new Error('--labels needs a path');
+    }
     else throw new Error(`unknown argument ${arg}`);
   }
   if (!options.questions.length || !options.baseline || !options.candidate) {
-    throw new Error('usage: flywheel-gate.mjs --questions night.jsonl [more] --baseline run.json --candidate run.json');
+    throw new Error('usage: flywheel-gate.mjs --questions night.jsonl [more] --baseline run.json --candidate run.json [--labels labels.json]');
   }
   return options;
 }
@@ -144,11 +153,13 @@ export function main(argv = process.argv.slice(2)) {
   const questions = questionSet(rows);
   const baseline = JSON.parse(readFileSync(options.baseline, 'utf8'));
   const candidate = JSON.parse(readFileSync(options.candidate, 'utf8'));
-  const comparison = compareRuns({ questions, baseline, candidate });
+  const labels = options.labels ? readShownLabels(options.labels) : null;
+  const comparison = compareRuns({ questions, baseline, candidate, labels });
   const decision = decide(comparison);
   console.log(`questions ${questions.length} (development ${questions.filter((item) => item.split === 'dev').length}, held-out ${questions.filter((item) => item.split === 'heldout').length})`);
   console.log(`baseline ${baseline.config?.label ?? options.baseline} -> candidate ${candidate.config?.label ?? options.candidate}`);
-  console.log(formatGate(comparison, decision));
+  const note = labels == null ? undefined : `labels: ${options.labels} (${Object.keys(labels).length} questions)`;
+  console.log(formatGate(comparison, decision, { note }));
   process.exitCode = decision.accept ? 0 : 1;
 }
 

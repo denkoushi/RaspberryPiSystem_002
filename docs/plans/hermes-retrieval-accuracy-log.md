@@ -337,3 +337,24 @@ Latency: both PostgreSQL orderings ran as a sequential scan with sort (`Aggregat
 Decision: the pg_trgm replacement is held. Recall is not worse, possibly slightly better, but it is not shown equal on labeled data, and it is slower without an index path. Milestone 2 is re-planned so that candidate generation stays in process and the memory problem is solved by not holding record bodies in the worker (bodies fetched by id from the API after ranking) and by per-source loading. Re-measurement is only worth doing after the shown-but-unlabeled candidates are graded (the flywheel plan's pooled top-30 labelling).
 
 Private files: `/tmp/hermes-pg-trgm-recall-20261004.json` on the Mac at run time (per-question hits, unlabeled counts, timings, plan shapes; no record text). Rerun: `scripts/hermes-search/retrieval/prototypes/README.md`.
+
+### 2026-10-05: second night, the gate with labels for shown records, and a stricter rule (measurement basis; gate accepted)
+
+Second night (2026-10-04, with #1673 and #1677): 100 pairs, 76 valid questions, 64 kept, median anchor overlap 0.36 (first night 0.44). Dropped: 20 copies, 12 anchors the graders did not confirm, 4 still too similar after the retry. The night's live scoring is not usable as a day measurement: 48 of 64 live runs fell back to lexical because the query embedding timed out while the business LLM generated questions on the same DGX (#1690 moves scoring after generation).
+
+Offline, on the Mac, the 64 questions were answered in both configurations (development 47, held-out 17). Counting only the anchor and the confirmed near miss as relevant, dense on and off were level again (development 27 and 28, held-out 9 and 8), and the gate's old rule accepted dense off with 3 gained and 2 lost on development.
+
+Then the shown records outside each question's known relevant set were graded with JEV (`flywheel-shown-labels.mjs`, same rubric as the pooled labels; 495 pairs over both nights, grade 3 for 414, grade 2 for 78). With these labels:
+
+| Set | Configuration | Development: relevant shown | Held-out: relevant shown | Paired (dense on against dense off) |
+| --- | --- | --- | --- | --- |
+| 2026-10-04 (64) | dense off | 36 / 47 | 14 / 17 | development gained 3, lost 0 (p = 0.25); held-out gained 1, lost 0 |
+| 2026-10-04 (64) | dense on (production) | 39 / 47 | 15 / 17 | gate: accept |
+| 2026-10-03 (78) | dense off | 43 / 52 | 24 / 26 | development gained 3, lost 1 (p = 0.63); held-out 0 and 0 |
+| 2026-10-03 (78) | dense on (production) | 45 / 52 | 24 / 26 | gate: reject, net gain 2 below 3 |
+
+The known-good change passes the gate on the harder set and the known-bad change (the reverse) is rejected, so the Milestone 4 criterion is met there. The 2026-10-03 set points the same way but below the margin. Most "other records shown" were relevant: production shows a relevant record for 39 of 47 development questions, not 27.
+
+Rule change: accept only a development net gain of at least 3 with no held-out net loss. The sign test is printed but not required; at 50 to 80 questions it cannot reach significance for real gains of this size.
+
+Caveats: the shown-record labels come from JEV alone (the production judge is also JEV), so the second grader is still to be added for these; the planner varies by about one question per 50 between runs. Private files: `labels/flywheel-shown-v1.json`, `runs/flywheel/n1004-*.json`, `work/flywheel/questions-2026-10-04.jsonl`.
