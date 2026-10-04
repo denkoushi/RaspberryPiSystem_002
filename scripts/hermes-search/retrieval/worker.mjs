@@ -5,14 +5,15 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
-import { catalogEntries, fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
+import { catalogEntries, fieldsWithRole, loadCatalog } from './catalog.mjs';
+import { sourceIdsFromEnv } from '../hermes-source-definition.mjs';
 import { createDenseRuntime, denseSettings } from './dense-dgx.mjs';
 import { execute, openQmdVectorRanker, prepareLexicalCorpus } from './executor.mjs';
 import { createPlanner } from './planner-jev.mjs';
 import { createRelevanceJudge } from './relevance-jev.mjs';
 import { validateQueryPlan } from './query-plan.mjs';
 import { buildValueIndex, findCandidateValues } from './value-index.mjs';
-import { buildCorpusView, replaceCorpus, stampAnswer } from './corpus.mjs';
+import { authorizedRecords, buildCorpusView, replaceCorpus, stampAnswer } from './corpus.mjs';
 import { attachEnrichment } from './enrichment-attach.mjs';
 import { readEnrichmentStore, storePathFromEnv } from './enrichment-store.mjs';
 
@@ -29,6 +30,7 @@ const COVERAGE_ORDER = {
   date_desc: '新しい順',
   date_asc: '古い順',
   relevance: '関連度の高い順',
+  source_order: 'ソース順',
 };
 const OUT_OF_SCOPE_ANSWER = '不適合情報の検索に関する質問として解釈できませんでした。';
 const UNAVAILABLE_ANSWER = '検索に失敗しました。該当なしとは判断していません。';
@@ -88,10 +90,6 @@ export function snapshotPathFromEnv(env = process.env) {
   const raw = env.HERMES_SEARCH_RECORD_SOURCE || env.HERMES_TRIAL_SNAPSHOT_PATH;
   if (!raw || typeof raw !== 'string') throw new Error('snapshot path is not set');
   return raw;
-}
-
-function catalogFields(catalog) {
-  return catalogEntries(catalog).flatMap((entry) => entry.fields);
 }
 
 export function compactPlan(plan) {
@@ -170,9 +168,12 @@ function confirmationPending(question, clarification, answer) {
 }
 
 function formatRecords(results, catalog) {
-  const fields = catalogFields(catalog).filter((field) => ANSWER_ROLES.has(field.role));
+  const entries = catalogEntries(catalog);
   return (results ?? []).map((result) => {
-    const lines = [];
+    const entry = entries.find((entry) => entry.id === result.sourceId);
+    if (!entry) return '';
+    const fields = entry.fields.filter((field) => ANSWER_ROLES.has(field.role));
+    const lines = entries.length > 1 ? [`【${entry.label}】`] : [];
     for (const field of fields) {
       const value = result?.fields?.[field.key];
       if (typeof value !== 'string') continue;
@@ -184,7 +185,64 @@ function formatRecords(results, catalog) {
 
 function applyEnrichment(view, enrichmentById) {
   if (!enrichmentById || enrichmentById.size === 0) return view;
-  return { ...view, records: attachEnrichment(view.records, enrichmentById) };
+  const nonconformity = view.bySource.nonconformity;
+  if (!nonconformity) return view;
+  const records = attachEnrichment(nonconformity.records, enrichmentById);
+  const enriched = new Map(records.map((record) => [record.id, record]));
+  return {
+    ...view,
+    records: view.records.map((record) => (record.sourceId ?? 'nonconformity') === 'nonconformity' ? enriched.get(record.id) : record),
+    bySource: { ...view.bySource, nonconformity: { ...nonconformity, records } },
+  };
+}
+
+function combineExecutions(executions) {
+  if (executions.length === 1) return executions[0];
+  const unavailable = executions.find((execution) => execution.status === 'unavailable');
+  if (unavailable) return unavailable;
+  const results = executions.flatMap((execution) => execution.results);
+  const coverages = executions.map((execution) => execution.coverage ?? { known: true, total: execution.results.length });
+  const known = coverages.every((coverage) => coverage?.known === true);
+  const timings = {};
+  for (const execution of executions) {
+    for (const [key, value] of Object.entries(execution.timings ?? {})) {
+      if (typeof value === 'number') timings[key] = (timings[key] ?? 0) + value;
+      else if (!(key in timings) || key === 'vectorStatus' && ['failed', 'timeout', 'ok'].includes(value)) timings[key] = value;
+    }
+  }
+  return {
+    status: results.length ? 'answer' : 'no_result',
+    results,
+    excludedMatches: executions.reduce((sum, execution) => sum + (execution.excludedMatches ?? 0), 0),
+    insufficient: executions.some((execution) => execution.insufficient),
+    candidateIds: executions.flatMap((execution) => execution.candidateIds ?? []),
+    coverage: {
+      known,
+      total: known ? coverages.reduce((sum, coverage) => sum + coverage.total, 0) : null,
+      floor: known ? null : coverages.reduce((sum, coverage) => sum + (coverage?.total ?? coverage?.floor ?? 0), 0),
+      shown: results.length,
+      order: 'source_order',
+    },
+    timings,
+  };
+}
+
+function selectedSourcePlan(plan, entries) {
+  if (!plan || !Array.isArray(plan.sources)) return plan;
+  const selected = entries.filter((entry) => plan.sources.includes(entry.id));
+  const hasField = (list, key) => list.some((entry) => entry.fields.some((field) => field.key === key));
+  // The existing planner emits the whole catalog's display keys and its first date field.
+  const display = Array.isArray(plan.display)
+    ? plan.display.filter((key) => hasField(selected, key) || !hasField(entries, key)) : plan.display;
+  const sort = plan.sort;
+  const date = selected.flatMap((entry) => entry.fields).find((field) => field.role === 'date');
+  const catalogDate = entries.some((entry) => entry.fields.some((field) => field.key === sort?.field && field.role === 'date'));
+  return {
+    ...plan,
+    display,
+    sort: sort && sort !== 'relevance' && !hasField(selected, sort.field) && catalogDate && date
+      ? { ...sort, field: date.key } : sort,
+  };
 }
 
 // The stored enrichment is attached only while HERMES_RETRIEVAL_ENRICHMENT_ENABLED is true, the
@@ -242,23 +300,30 @@ export function createRetrievalAnswering({
   valueIndex,
   lexicalCorpus = null,
   evaluate,
+  planner: suppliedPlanner = null,
   vector = null,
   dense = null,
   enrichmentById = null,
   snapshotCount = Array.isArray(records) ? records.length : 0,
 } = {}) {
   if (!Array.isArray(records)) throw new TypeError('records must be an array');
-  const planner = createPlanner(typeof evaluate === 'function' ? { evaluate } : {});
+  const planner = suppliedPlanner ?? createPlanner(typeof evaluate === 'function' ? { evaluate } : {});
   const relevance = createRelevanceJudge(typeof evaluate === 'function' ? { evaluate } : {});
-  const sourceId = catalogEntries(catalog)[0]?.id ?? null;
+  const entries = catalogEntries(catalog);
+  const nonconformity = entries.find((entry) => entry.id === 'nonconformity');
+  const outOfScopeAnswer = entries.length === 1 && nonconformity ? OUT_OF_SCOPE_ANSWER
+    : `${entries.map((entry) => entry.label).join('・')}の検索に関する質問として解釈できませんでした。`;
   let current = applyEnrichment(buildCorpusView(records, catalog, null), enrichmentById);
-  if (valueIndex) current = { ...current, valueIndex, lexicalCorpus, snapshotCount };
+  if (valueIndex) {
+    current = { ...current, valueIndex, lexicalCorpus, snapshotCount };
+    if (entries.length === 1 && lexicalCorpus) current.bySource[entries[0].id].lexicalCorpus = lexicalCorpus;
+  }
   return {
     async replaceCorpus(message) {
       const count = current.snapshotCount;
       try {
         current = applyEnrichment(replaceCorpus(current, catalog, message), await loadEnrichmentById());
-        dense?.schedule?.(current.records, fieldsWithRole(catalog, 'body'));
+        if (nonconformity) dense?.schedule?.(current.bySource.nonconformity.records, fieldsWithRole(nonconformity, 'body'));
         return { ok: true, count: current.snapshotCount };
       } catch {
         console.warn(`hermes retrieval corpus refresh failed count=${count}`);
@@ -282,7 +347,8 @@ export function createRetrievalAnswering({
         valueIndex: view.valueIndex,
         shownCount: previouslyShown.length,
       });
-      const compact = compactPlan(planned.plan);
+      const searchPlan = selectedSourcePlan(planned.plan, entries);
+      const compact = compactPlan(searchPlan);
       // One receipt per answer for the API log: the planner decisions and the outcome.
       const receiptOf = (outcome, extra = {}) => ({
         schema: 'hermes-search-receipt/v1',
@@ -296,7 +362,7 @@ export function createRetrievalAnswering({
       if (planned.plan?.diagnostics?.scope === 'out_of_scope') {
         return trialResult({
           status: 'completed',
-          answer: OUT_OF_SCOPE_ANSWER,
+          answer: outOfScopeAnswer,
           recordIds: [],
           elapsedMs: elapsed(),
           previousPlan: compact,
@@ -305,7 +371,7 @@ export function createRetrievalAnswering({
           dataAsOf: view.dataAsOf,
         });
       }
-      const validation = validateQueryPlan(planned.plan, catalog, view.valueIndex);
+      const validation = validateQueryPlan(searchPlan, catalog, view.valueIndex);
       if (!validation.ok) {
         const answer = clarificationAnswer(validation.clarification);
         return trialResult({
@@ -320,19 +386,30 @@ export function createRetrievalAnswering({
           dataAsOf: view.dataAsOf,
         });
       }
-      const executed = await execute(validation.plan, {
-        records: view.records,
-        catalog,
-        lexicalCorpus: view.lexicalCorpus,
-        retriever: dense?.queryEnabled ? 'hybrid' : 'lexical',
-        vector: dense?.queryEnabled ? (query, filtered) => dense.rank(query, filtered) : (typeof vector === 'function' ? vector : null),
-        relevance: (input) => relevance.judge(input),
-        requestStartedAt: started,
-        stageDump,
-        excludeIds: validation.plan.diagnostics?.excludeShown
-          ? new Set(previouslyShown.map((id) => id.slice(id.indexOf(':') + 1)))
-          : undefined,
-      });
+      const executions = [];
+      const usesDense = validation.plan.sources.includes('nonconformity') && dense?.queryEnabled;
+      for (const sourceId of validation.plan.sources) {
+        const entry = entries.find((entry) => entry.id === sourceId);
+        const sourceView = view.bySource[sourceId];
+        const plan = validation.plan;
+        const dateField = entry.fields.find((field) => field.role === 'date');
+        const sort = plan.sort !== 'relevance' && !entry.fields.some((field) => field.key === plan.sort.field)
+          ? (dateField ? { ...plan.sort, field: dateField.key } : 'relevance') : plan.sort;
+        executions.push(await execute({ ...plan, sources: [sourceId], filters: plan.filters.filter((filter) => filter.source === sourceId), sort }, {
+          records: sourceView.records,
+          catalog: entry,
+          lexicalCorpus: sourceView.lexicalCorpus,
+          retriever: sourceId === 'nonconformity' && dense?.queryEnabled ? 'hybrid' : 'lexical',
+          vector: sourceId !== 'nonconformity' ? null : dense?.queryEnabled ? (query, filtered) => dense.rank(query, filtered) : (typeof vector === 'function' ? vector : null),
+          relevance: (input) => relevance.judge(input),
+          requestStartedAt: started,
+          stageDump,
+          excludeIds: validation.plan.diagnostics?.excludeShown
+            ? new Set(previouslyShown.filter((id) => id.startsWith(`${sourceId}:`)).map((id) => id.slice(sourceId.length + 1)))
+            : undefined,
+        }));
+      }
+      const executed = combineExecutions(executions);
       if (executed.status === 'unavailable') {
         return trialResult({
           status: 'unavailable',
@@ -366,7 +443,7 @@ export function createRetrievalAnswering({
           elapsedMs: elapsed(),
           previousPlan: compact,
           shownIds: previouslyShown,
-          receipt: receiptOf('no_result', { retriever: dense?.queryEnabled ? 'hybrid' : 'lexical', timings: numericTimings(executed.timings) }),
+          receipt: receiptOf('no_result', { retriever: usesDense ? 'hybrid' : 'lexical', timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
           candidateIds: stageDump ? executed.candidateIds ?? [] : null,
         });
@@ -382,16 +459,16 @@ export function createRetrievalAnswering({
       return trialResult({
         status: 'completed',
         answer,
-        recordIds: executed.results.map((result) => publicRecordId(result.sourceId ?? sourceId, result.recordId)),
+        recordIds: executed.results.map((result) => publicRecordId(result.sourceId, result.recordId)),
         elapsedMs: elapsed(),
         previousPlan: compact,
-        shownIds: withShown(previouslyShown, executed.results.map((result) => publicRecordId(result.sourceId ?? sourceId, result.recordId))),
+        shownIds: withShown(previouslyShown, executed.results.map((result) => publicRecordId(result.sourceId, result.recordId))),
         dataAsOf: view.dataAsOf,
         coverage: executed.coverage ?? null,
         candidateIds: stageDump ? executed.candidateIds ?? [] : null,
         receipt: receiptOf('answer', {
           resultCount: executed.results.length,
-          retriever: dense?.queryEnabled ? 'hybrid' : 'lexical',
+          retriever: usesDense ? 'hybrid' : 'lexical',
           timings: numericTimings(executed.timings),
         }),
       });
@@ -400,10 +477,10 @@ export function createRetrievalAnswering({
 }
 
 export async function loadRetrievalResources(env = process.env) {
+  const catalog = loadCatalog(sourceIdsFromEnv(env));
   const payload = JSON.parse(await readFile(snapshotPathFromEnv(env), 'utf8'));
   if (!Array.isArray(payload?.records)) throw new Error('snapshot records must be an array');
-  const catalog = loadNonconformityCatalog();
-  const records = payload.records;
+  const records = authorizedRecords(payload.records, catalog);
   const valueIndex = buildValueIndex(records, catalog);
   const lexicalCorpus = prepareLexicalCorpus(records, fieldsWithRole(catalog, 'body'));
   const snapshotId = typeof payload.snapshotId === 'string' && payload.snapshotId
@@ -487,16 +564,16 @@ export async function main() {
   let ranker = null;
   let answering;
   try {
+    const catalog = loadCatalog(sourceIdsFromEnv(process.env));
     let resources;
     try {
       resources = await loadRetrievalResources();
     } catch {
-      const catalog = loadNonconformityCatalog();
       const view = buildCorpusView([], catalog, null);
       resources = { ...view, catalog, snapshotId: 'pending-refresh' };
     }
     try {
-      ranker = await openOptionalVector(process.env, resources.catalog?.id ?? null);
+      ranker = catalog.some((entry) => entry.id === 'nonconformity') ? await openOptionalVector(process.env, 'nonconformity') : null;
     } catch {
       ranker = null;
     }
@@ -506,7 +583,8 @@ export async function main() {
       : null;
     if (dense) {
       await dense.load().catch(() => 0);
-      dense.schedule(resources.records, fieldsWithRole(resources.catalog, 'body'));
+      const entry = catalog.find((entry) => entry.id === 'nonconformity');
+      if (entry) dense.schedule(resources.records.filter((record) => (record.sourceId ?? 'nonconformity') === entry.id), fieldsWithRole(entry, 'body'));
     }
     answering = createRetrievalAnswering({
       ...resources,

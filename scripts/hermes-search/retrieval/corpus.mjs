@@ -1,17 +1,14 @@
 // Authorized rows become catalog records. Merge and stamp stay free of log text.
-import { fieldsWithRole } from './catalog.mjs';
+import { catalogEntries, fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
 import { prepareLexicalCorpus } from './executor.mjs';
 import { buildValueIndex } from './value-index.mjs';
 
-const TEXT_FIELDS = [
-  'nonconformityNo', 'partNumber', 'partName', 'machineName', 'originDepartmentName',
-  'discoveredOn', 'condition', 'remarks', 'correctiveContent', 'disposition',
-];
-
-export function recordFromAuthorizedRow(row) {
-  if (!row || row.kind !== 'nonconformity' || typeof row.id !== 'string' || !row.id) return null;
-  const record = { id: row.id };
-  for (const key of TEXT_FIELDS) {
+export function recordFromAuthorizedRow(row, catalog = loadNonconformityCatalog()) {
+  if (!row || typeof row.id !== 'string' || !row.id) return null;
+  const entry = catalogEntries(catalog).find((entry) => entry.id === row.kind);
+  if (!entry) return null;
+  const record = { id: row.id, sourceId: entry.id };
+  for (const { key } of entry.fields) {
     const value = row[key];
     if (typeof value === 'string') record[key] = value;
     else if (value == null) record[key] = '';
@@ -21,11 +18,12 @@ export function recordFromAuthorizedRow(row) {
 
 export function mergeRecords(previous, incoming) {
   const byId = new Map();
+  const key = (record) => `${record.sourceId ?? 'nonconformity'}\0${record.id}`;
   for (const record of previous ?? []) {
-    if (record && typeof record.id === 'string') byId.set(record.id, record);
+    if (record && typeof record.id === 'string') byId.set(key(record), record);
   }
   for (const record of incoming ?? []) {
-    if (record && typeof record.id === 'string') byId.set(record.id, record);
+    if (record && typeof record.id === 'string') byId.set(key(record), record);
   }
   return [...byId.values()];
 }
@@ -54,24 +52,39 @@ export function stampAnswer(answer, dataAsOf) {
 }
 
 export function buildCorpusView(records, catalog, dataAsOf) {
+  const entries = catalogEntries(catalog);
+  const bySource = Object.fromEntries(entries.map((entry) => {
+    const sourceRecords = records.filter((record) => (record.sourceId ?? 'nonconformity') === entry.id);
+    return [entry.id, {
+      records: sourceRecords,
+      lexicalCorpus: prepareLexicalCorpus(sourceRecords, fieldsWithRole(entry, 'body')),
+    }];
+  }));
   return {
     records,
+    bySource,
     valueIndex: buildValueIndex(records, catalog),
-    lexicalCorpus: prepareLexicalCorpus(records, fieldsWithRole(catalog, 'body')),
+    lexicalCorpus: entries.length === 1 && bySource[entries[0].id].records.length === records.length
+      ? bySource[entries[0].id].lexicalCorpus
+      : prepareLexicalCorpus(records, fieldsWithRole(catalog, 'body')),
     snapshotCount: records.length,
     dataAsOf: dataAsOf ?? null,
   };
 }
 
 /** Records from API rows: authorized rows are reduced to their text fields, other rows pass through. */
-export function authorizedRecords(rows) {
+export function authorizedRecords(rows, catalog = loadNonconformityCatalog()) {
+  // The one-argument flywheel contract also preserves rows already in record form.
+  const explicitCatalog = arguments.length > 1 && arguments[1] !== undefined;
+  const enabled = new Set(catalogEntries(catalog).map(entry => entry.id));
   return (Array.isArray(rows) ? rows : [])
-    .map((row) => (row?.kind === 'nonconformity' ? recordFromAuthorizedRow(row) : row))
-    .filter((row) => row && typeof row.id === 'string');
+    .map((row) => (row?.kind && (explicitCatalog || row.kind === 'nonconformity') ? recordFromAuthorizedRow(row, catalog) : row))
+    .filter((row) => row && typeof row.id === 'string'
+      && (!explicitCatalog || !row.sourceId || enabled.has(row.sourceId)));
 }
 
 export function replaceCorpus(current, catalog, message) {
-  const incoming = authorizedRecords(message?.records);
+  const incoming = authorizedRecords(message?.records, catalog);
   const records = message?.mode === 'incremental' ? mergeRecords(current?.records ?? [], incoming) : incoming;
   return buildCorpusView(records, catalog, message?.asOf ?? new Date().toISOString());
 }

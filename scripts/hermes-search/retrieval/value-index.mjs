@@ -8,9 +8,10 @@ export function normalizeForMatch(value) {
   return String(value ?? '').normalize('NFKC').trim().toLowerCase();
 }
 
-function distinctValues(records, key) {
+function distinctValues(records, key, sourceId) {
   const seen = new Map();
   for (const record of records) {
+    if ((record?.sourceId ?? 'nonconformity') !== sourceId) continue;
     const raw = record?.[key];
     if (typeof raw !== 'string' || !raw.trim()) continue;
     const norm = normalizeForMatch(raw);
@@ -27,7 +28,7 @@ export function buildValueIndex(records, catalog) {
     const byField = {};
     for (const field of entry.fields) {
       if (!field.filterable || !field.enumerated) continue;
-      byField[field.key] = distinctValues(records, field.key);
+      byField[field.key] = distinctValues(records, field.key, entry.id);
     }
     values[entry.id] = byField;
   }

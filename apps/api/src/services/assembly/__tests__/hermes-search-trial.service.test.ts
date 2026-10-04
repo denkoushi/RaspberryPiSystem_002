@@ -1,13 +1,16 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { KnowledgeProcedureDocument } from '@raspi-system/shared-types';
 
 const spawnMock = vi.hoisted(() => vi.fn());
 const mcpCalls = vi.hoisted(() => [] as unknown[]);
+const readSourcePage = vi.hoisted(() => vi.fn());
 
 vi.mock('node:child_process', () => ({ spawn: spawnMock }));
 vi.mock('node:os', () => ({ setPriority: () => {} }));
 vi.mock('../business-hermes-mcp.service.js', () => ({
   BusinessHermesMcpService: class {
+    readSourcePage = readSourcePage;
     async call(...args: unknown[]) {
       mcpCalls.push(args);
       return {
@@ -22,6 +25,7 @@ vi.mock('../business-hermes-mcp.service.js', () => ({
 }));
 
 import { HermesSearchTrialService } from '../hermes-search-trial.service.js';
+import type { KnowledgeProcedureRepositoryPort } from '../../knowledge/knowledge-procedure.port.js';
 
 const FROZEN_ENTRY = '/app/scripts/hermes-search/hermes-qmd-prefetch-worker.mjs';
 const V2_ENTRY = '/app/scripts/hermes-search/retrieval/worker.mjs';
@@ -79,6 +83,7 @@ describe('HermesSearchTrialService retrieval switch', () => {
     v2: process.env.HERMES_RETRIEVAL_V2_ENABLED,
     source: process.env.HERMES_SEARCH_RECORD_SOURCE,
     entry: process.env.HERMES_SEARCH_ENTRY,
+    sources: process.env.HERMES_RETRIEVAL_SOURCES,
   };
 
   afterEach(() => {
@@ -90,6 +95,9 @@ describe('HermesSearchTrialService retrieval switch', () => {
     if (previous.entry === undefined) delete process.env.HERMES_SEARCH_ENTRY;
     else process.env.HERMES_SEARCH_ENTRY = previous.entry;
     spawnMock.mockReset();
+    readSourcePage.mockReset();
+    if (previous.sources === undefined) delete process.env.HERMES_RETRIEVAL_SOURCES;
+    else process.env.HERMES_RETRIEVAL_SOURCES = previous.sources;
     mcpCalls.length = 0;
   });
 
@@ -177,6 +185,107 @@ describe('HermesSearchTrialService retrieval switch', () => {
     });
     return { child, held, corpus };
   }
+
+  function procedureRepository() {
+    const published: KnowledgeProcedureDocument = {
+      formatVersion: 1, procedureId: 'p1', revisionId: 'r1', revisionNumber: 1,
+      title: 'ブラケット溶接', category: '組立', identifiers: {}, reviewTier: 'auto_publish', state: 'published',
+      createdAt: '2026-09-01T00:00:00Z', steps: [{ id: 's1', title: '準備', body: '固定する', cautions: [], needsReview: [], photos: [], sources: [{ kind: 'note', ref: 'n1', label: '原資料' }] }],
+    };
+    const summary = { procedureId: 'p1', title: published.title, category: published.category, identifiers: {}, reviewTier: published.reviewTier, revisionNumber: 1, publishedAt: '2026-10-03T15:00:00Z' };
+    const repository = {
+      createDraft: vi.fn(), publishAutomatic: vi.fn(), listTopics: vi.fn(), searchTopics: vi.fn(),
+      claimBuild: vi.fn(), completeBuild: vi.fn(), failBuild: vi.fn(),
+      listPublished: vi.fn().mockResolvedValue([summary, { ...summary, procedureId: 'removed' }, { ...summary, procedureId: 'draft' }, { ...summary, procedureId: 'changed' }]),
+      getPublished: vi.fn(async (id: string): Promise<KnowledgeProcedureDocument | null> => id === 'p1' ? published : id === 'draft' ? { ...published, state: 'draft' } : id === 'changed' ? { ...published, revisionNumber: 2 } : null),
+    } satisfies KnowledgeProcedureRepositoryPort;
+    return repository;
+  }
+
+  it('reads both authorized sources, pages nonconformities and replaces removed publications', async () => {
+    process.env.HERMES_RETRIEVAL_SOURCES = 'nonconformity,knowledge_procedure';
+    const gate = holdingChild();
+    spawnMock.mockImplementation(() => gate.child);
+    readSourcePage.mockImplementation(async (_kind: string, offset: number) => ({
+      content: [{ type: 'text', text: JSON.stringify({
+        results: offset === 0 ? [{ kind: 'nonconformity', id: 'n1', condition: '溶接不適合' }, { kind: 'work_instruction', id: 'skip' }] : [{ kind: 'nonconformity', id: 'n2' }],
+        hasMore: { nonconformity: offset === 0 }, nextCursor: { nonconformityOffset: offset === 0 ? 200 : null },
+      }) }],
+    }));
+    const procedures = procedureRepository();
+    const service = new HermesSearchTrialService({ ...v2Settings(), loadRecords: undefined, procedures, refreshSec: 1 });
+    try {
+      await service.scope();
+      await vi.waitFor(() => expect(gate.corpus).toHaveLength(1));
+      expect(readSourcePage.mock.calls.slice(0, 2)).toEqual([['nonconformity', 0], ['nonconformity', 200]]);
+      expect(gate.corpus[0]?.records).toEqual([
+        { kind: 'nonconformity', id: 'n1', condition: '溶接不適合' }, { kind: 'nonconformity', id: 'n2' },
+        { kind: 'knowledge_procedure', id: 'p1', title: 'ブラケット溶接', category: '組立', partNumber: '', drawingNumber: '', processName: '', publishedOn: '2026-10-04', stepsText: '1. 準備\n固定する', cautionsText: '' },
+      ]);
+      expect(procedures.getPublished.mock.calls).toEqual([['p1'], ['removed'], ['draft'], ['changed']]);
+      procedures.listPublished.mockResolvedValue([]);
+      await vi.waitFor(() => expect(gate.corpus).toHaveLength(2), { timeout: 2500 });
+      expect(gate.corpus[1]?.mode).toBe('full');
+      expect(gate.corpus[1]?.records).toHaveLength(2);
+    } finally { service.close(); }
+  });
+
+  it('keeps the default authorized reader on nonconformity without reading procedures', async () => {
+    delete process.env.HERMES_RETRIEVAL_SOURCES;
+    const gate = holdingChild();
+    spawnMock.mockImplementation(() => gate.child);
+    readSourcePage.mockResolvedValue({ content: [{ type: 'text', text: JSON.stringify({ results: [{ kind: 'nonconformity', id: 'n1' }] }) }] });
+    const procedures = procedureRepository();
+    const service = new HermesSearchTrialService({ ...v2Settings(), loadRecords: undefined, procedures });
+    try {
+      await service.scope();
+      await vi.waitFor(() => expect(gate.corpus).toHaveLength(1));
+      expect(gate.corpus[0]?.records).toEqual([{ kind: 'nonconformity', id: 'n1' }]);
+      expect(procedures.listPublished).not.toHaveBeenCalled();
+    } finally { service.close(); }
+  });
+
+  it('rejects unknown sources before spawning with the error used by the existing 503 route', async () => {
+    process.env.HERMES_RETRIEVAL_SOURCES = 'nonconformity,missing';
+    const service = new HermesSearchTrialService(v2Settings());
+    await expect(service.scope()).rejects.toThrow('unknown retrieval source: missing');
+    await expect(service.answer('溶接手順書')).rejects.toThrow('unknown retrieval source: missing');
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps procedure rows out of both nonconformity night jobs', async () => {
+    const previous = { enrichment: process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED, flywheel: process.env.HERMES_FLYWHEEL_ENABLED };
+    const gate = holdingChild();
+    const written: Array<{ records: unknown[] }> = [];
+    const rows = [
+      { kind: 'nonconformity', id: 'n1', condition: 'mark' },
+      { kind: 'knowledge_procedure', id: 'p1', stepsText: 'procedure' },
+      { sourceId: 'knowledge_procedure', id: 'p2', stepsText: 'converted procedure' },
+      { id: 'legacy', condition: 'legacy record' },
+    ];
+    spawnMock.mockImplementation((_node: string, args: string[]) => {
+      if (args.includes('--hermes-ui-prefetch-worker')) return gate.child;
+      const stdin = new EventEmitter() as EventEmitter & { write: (line: string) => boolean; end: () => void };
+      stdin.write = (line: string) => { written.push(JSON.parse(line)); return true; };
+      stdin.end = vi.fn();
+      return Object.assign(new EventEmitter(), { stdin, pid: 43, kill: vi.fn() });
+    });
+    process.env.HERMES_RETRIEVAL_SOURCES = 'nonconformity,knowledge_procedure';
+    process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED = 'true';
+    process.env.HERMES_FLYWHEEL_ENABLED = 'true';
+    const service = new HermesSearchTrialService(v2Settings({ loadRecords: async () => rows }));
+    try {
+      await service.scope();
+      await vi.waitFor(() => expect(written).toHaveLength(2));
+      expect(written.map(input => input.records)).toEqual([[rows[0], rows[3]], [rows[0], rows[3]]]);
+    } finally {
+      service.close();
+      if (previous.enrichment === undefined) delete process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED;
+      else process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED = previous.enrichment;
+      if (previous.flywheel === undefined) delete process.env.HERMES_FLYWHEEL_ENABLED;
+      else process.env.HERMES_FLYWHEEL_ENABLED = previous.flywheel;
+    }
+  });
 
   it('runs four retrieval requests and queues the next two', async () => {
     const gate = holdingChild();

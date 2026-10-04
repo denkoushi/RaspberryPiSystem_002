@@ -49,3 +49,21 @@ export const nonconformityDefinitionPath=new URL('./hermes-sources/nonconformity
 const raw=fs.readFileSync(nonconformityDefinitionPath,'utf8');
 export const nonconformityDefinition=validateSourceDefinition(JSON.parse(raw),'nonconformity');
 export const nonconformityDefinitionDigest=createHash('sha256').update(raw).digest('hex');
+
+export const knowledgeProcedureDefinition=validateSourceDefinition(
+  JSON.parse(fs.readFileSync(new URL('./hermes-sources/knowledge-procedure.json',import.meta.url),'utf8')),
+  'knowledge_procedure',
+);
+export const sourceDefinitions=Object.freeze({
+  nonconformity:nonconformityDefinition,
+  knowledge_procedure:knowledgeProcedureDefinition,
+});
+
+export function sourceIdsFromEnv(env=process.env) {
+  const ids=[...new Set((env.HERMES_RETRIEVAL_SOURCES??'').split(',').map(id=>id.trim()).filter(Boolean))];
+  if(!ids.length)return ['nonconformity'];
+  for(const id of ids) {
+    if(!Object.hasOwn(sourceDefinitions,id))throw new Error(`unknown retrieval source: ${id}`);
+  }
+  return ids;
+}

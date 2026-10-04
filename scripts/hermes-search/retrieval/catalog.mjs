@@ -2,7 +2,7 @@
 // document. Role rules are structural (key and label shape). Source-specific
 // names stay in the definition data, not in the planner or executor.
 import { readFileSync } from 'node:fs';
-import { nonconformityDefinition } from '../hermes-source-definition.mjs';
+import { sourceDefinitions } from '../hermes-source-definition.mjs';
 
 const sourceLabels = JSON.parse(readFileSync(new URL('./source-labels.json', import.meta.url), 'utf8'));
 
@@ -64,7 +64,14 @@ export function deriveCatalog(definition) {
 }
 
 export function loadNonconformityCatalog() {
-  return deriveCatalog(nonconformityDefinition);
+  return loadCatalog(['nonconformity'])[0];
+}
+
+export function loadCatalog(sourceIds) {
+  return sourceIds.map((id) => {
+    if (!Object.hasOwn(sourceDefinitions, id)) throw new Error(`unknown retrieval source: ${id}`);
+    return deriveCatalog(sourceDefinitions[id]);
+  });
 }
 
 export function catalogEntries(catalog) {

@@ -104,6 +104,17 @@
     - hermes_search_trial_enabled | bool
     - hermes_retrieval_v2_enabled in ['true', 'false']
 
+- name: Apply retrieval sources when explicitly configured
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_SOURCES='
+    line: "HERMES_RETRIEVAL_SOURCES={{ hermes_retrieval_sources }}"
+    create: false
+    mode: '0600'
+  when:
+    - hermes_search_trial_enabled | bool
+    - hermes_retrieval_sources is defined
+
 - name: Apply retrieval enrichment gate when explicitly configured
   ansible.builtin.lineinfile:
     path: "{{ release_pi5_chat_env_file }}"

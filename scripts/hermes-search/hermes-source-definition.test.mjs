@@ -1,9 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {validateSourceDefinition,nonconformityDefinition} from './hermes-source-definition.mjs';
+import {validateSourceDefinition,nonconformityDefinition,knowledgeProcedureDefinition,sourceDefinitions,sourceIdsFromEnv} from './hermes-source-definition.mjs';
 import {projectOrganized,validateOrganizedRow} from './hermes-organized-records.mjs';
 import {HermesQmdLocal} from './hermes-qmd-local.mjs';
+
+test('registered procedure definition is validated, structured and frozen',()=>{
+  assert.equal(sourceDefinitions.knowledge_procedure,knowledgeProcedureDefinition);
+  assert.equal(sourceDefinitions.nonconformity,nonconformityDefinition);
+  assert.ok(Object.isFrozen(sourceDefinitions));
+  assert.ok(Object.isFrozen(knowledgeProcedureDefinition.metadataFields));
+  assert.equal(knowledgeProcedureDefinition.offlineExtraction,undefined);
+  assert.equal(knowledgeProcedureDefinition.recordNumberField,'title');
+  assert.deepEqual(knowledgeProcedureDefinition.contextAttributes,Object.keys(knowledgeProcedureDefinition.metadataFields));
+  assert.deepEqual(knowledgeProcedureDefinition.lexicalFields,[...Object.keys(knowledgeProcedureDefinition.metadataFields),...Object.keys(knowledgeProcedureDefinition.bodyFields)]);
+});
+
+test('retrieval source selection defaults, trims, deduplicates and rejects unknown ids',()=>{
+  for(const value of [undefined,'',' , '])assert.deepEqual(sourceIdsFromEnv({HERMES_RETRIEVAL_SOURCES:value}),['nonconformity']);
+  assert.deepEqual(sourceIdsFromEnv({HERMES_RETRIEVAL_SOURCES:' knowledge_procedure,nonconformity,knowledge_procedure '}),['knowledge_procedure','nonconformity']);
+  for(const id of ['missing','constructor'])assert.throws(()=>sourceIdsFromEnv({HERMES_RETRIEVAL_SOURCES:`nonconformity,${id}`}),{message:`unknown retrieval source: ${id}`});
+});
 
 test('disposition requests preserve the original field or explicitly show same-record actions when it is empty',()=>{
  const record={evidenceKey:'nonconformity:synthetic',nonconformityNo:'123',remarks:'左側でずれた。',correctiveContent:'クランプを追加した。',disposition:null};

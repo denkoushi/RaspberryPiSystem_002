@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { records } from './fixtures/synthetic-records.mjs';
-import { loadNonconformityCatalog, fieldsWithRole } from './catalog.mjs';
+import { loadCatalog, loadNonconformityCatalog, fieldsWithRole } from './catalog.mjs';
+import { authorizedRecords } from './corpus.mjs';
 import { prepareLexicalCorpus } from './executor.mjs';
 import { buildValueIndex } from './value-index.mjs';
 import {
@@ -14,6 +15,7 @@ import {
   failureDiagnostic,
   formatCoverageNotice,
   loadEnrichmentById,
+  loadRetrievalResources,
   noOtherAnswer,
   noResultAnswer,
   readyPayload,
@@ -22,6 +24,124 @@ import {
 const catalog = loadNonconformityCatalog();
 const valueIndex = buildValueIndex(records, catalog);
 const lexicalCorpus = prepareLexicalCorpus(records, fieldsWithRole(catalog, 'body'));
+
+const mixedCatalog = loadCatalog(['nonconformity', 'knowledge_procedure']);
+const mixedRecords = authorizedRecords([
+  { kind: 'nonconformity', id: 'shared', nonconformityNo: 'N1', partNumber: 'N', condition: 'ブラケット溶接の不適合', discoveredOn: '2026-10-01' },
+  { kind: 'knowledge_procedure', id: 'shared', title: 'ブラケット溶接', partNumber: 'P', stepsText: 'ブラケット溶接の手順原文', cautionsText: '保護具を着用', publishedOn: '2026-10-02' },
+], mixedCatalog);
+
+function mixedEvaluate(input) {
+  const answers = {};
+  for (const key of Object.keys(input.questions)) {
+    if (key.startsWith('candidate_')) answers[key] = { type: 'noul', noul: 0.95 };
+    else if (key.startsWith('field_')) answers[key] = { type: 'choice', choice: 'none' };
+  }
+  answers.scope = { type: 'choice', choice: 'knowledge_procedure' };
+  answers.content = { type: 'noul', noul: 0.95 };
+  answers.sort = { type: 'choice', choice: 'relevance' };
+  answers.limit = { type: 'choice', choice: 'unspecified' };
+  return Promise.resolve({ answers });
+}
+
+function fixedPlanner(sources, overrides = {}) {
+  return { plan: async () => ({ plan: {
+    schema: 'hermes-query-plan/v1', sources, filters: [], semanticQuery: 'ブラケット溶接',
+    sort: 'relevance', limit: 2, display: mixedCatalog.flatMap(entry => entry.fields.map(field => field.key)),
+    unresolved: [], diagnostics: { limitExplicit: false }, ...overrides,
+  } }) };
+}
+
+test('the real planner searches only published procedures with lexical retrieval', async () => {
+  let vectorCalls = 0;
+  const answering = createRetrievalAnswering({
+    records: mixedRecords, catalog: mixedCatalog, evaluate: mixedEvaluate,
+    dense: { queryEnabled: true, rank: () => { vectorCalls += 1; throw new Error('procedure must stay lexical'); } },
+  });
+  const result = await answering.answer('ブラケット溶接の手順書', null, { stageDump: true });
+  assert.deepEqual(result.session.previousPlan.sources, ['knowledge_procedure']);
+  assert.deepEqual(result.recordIds, ['knowledge_procedure:shared']);
+  assert.deepEqual(result.candidateIds, ['shared']);
+  assert.match(result.answer, /【手順書】\n手順書名: ブラケット溶接/u);
+  assert.match(result.answer, /手順: ブラケット溶接の手順原文/u);
+  assert.doesNotMatch(result.answer, /不適合内容/u);
+  assert.equal(result.receipt.retriever, 'lexical');
+  assert.equal(vectorCalls, 0);
+  const recent = await answering.answer('最近のブラケット溶接の手順書');
+  assert.deepEqual(recent.recordIds, ['knowledge_procedure:shared']);
+  assert.deepEqual(recent.session.previousPlan.sort, { field: 'publishedOn', direction: 'desc' });
+});
+
+test('two-source plans concatenate source-labelled answers in plan order and keep bare candidateIds', async () => {
+  const vectorSources = [];
+  const answering = createRetrievalAnswering({
+    records: mixedRecords, catalog: mixedCatalog, evaluate: mixedEvaluate,
+    planner: fixedPlanner(['knowledge_procedure', 'nonconformity']),
+    vector: async (_query, rows) => { vectorSources.push(rows.map(row => row.sourceId)); return { ok: true, orderedIds: [], scores: {} }; },
+  });
+  const result = await answering.answer('both', null, { stageDump: true });
+  assert.deepEqual(result.recordIds, ['knowledge_procedure:shared', 'nonconformity:shared']);
+  assert.deepEqual(result.candidateIds, ['shared', 'shared']);
+  assert.match(result.answer, /【手順書】[\s\S]*手順: ブラケット溶接の手順原文[\s\S]*【不適合】[\s\S]*不適合内容: ブラケット溶接の不適合/u);
+  assert.doesNotMatch(result.answer, /ほかにも該当する可能性/u);
+  assert.deepEqual(vectorSources, [['nonconformity']]);
+  const plain = await answering.answer('both');
+  assert.equal('candidateIds' in plain, false);
+});
+
+test('source filters, date sorting and previously shown ids stay scoped to their source', async () => {
+  const answering = createRetrievalAnswering({
+    records: [...mixedRecords, { ...mixedRecords[1], id: 'p-new', publishedOn: '2026-10-03' }],
+    catalog: mixedCatalog, evaluate: mixedEvaluate,
+    planner: fixedPlanner(['knowledge_procedure', 'nonconformity'], {
+      filters: [
+        { source: 'knowledge_procedure', field: 'partNumber', op: 'eq', values: ['P'] },
+        { source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['N'] },
+      ],
+      semanticQuery: '', sort: { field: 'discoveredOn', direction: 'desc' },
+      diagnostics: { excludeShown: true, contentDecision: { jev: false } },
+    }),
+  });
+  const result = await answering.answer('other', { shownIds: ['nonconformity:shared'] }, { stageDump: true });
+  assert.deepEqual(result.recordIds, ['knowledge_procedure:p-new', 'knowledge_procedure:shared']);
+  assert.deepEqual(result.candidateIds, ['shared', 'p-new', 'shared']);
+});
+
+test('corpus refresh schedules only nonconformity vectors and single-source formatting stays plain', async () => {
+  const schedules = [];
+  const answering = createRetrievalAnswering({
+    records: [], catalog: mixedCatalog, evaluate: mixedEvaluate,
+    dense: { schedule: (rows, fields) => schedules.push({ rows, fields }) },
+  });
+  await answering.replaceCorpus({ mode: 'full', records: mixedRecords });
+  assert.deepEqual(schedules[0].rows.map(row => row.sourceId), ['nonconformity']);
+  assert.ok(schedules[0].fields.includes('condition'));
+  assert.equal(schedules[0].fields.includes('stepsText'), false);
+  const single = createRetrievalAnswering({ records: [mixedRecords[1]], catalog: loadCatalog(['knowledge_procedure']), evaluate: mixedEvaluate });
+  assert.doesNotMatch((await single.answer('ブラケット溶接')).answer, /【/u);
+  const outside = createRetrievalAnswering({ records: [], catalog: mixedCatalog, planner: fixedPlanner([], { diagnostics: { scope: 'out_of_scope' } }) });
+  assert.equal((await outside.answer('weather')).answer, '不適合・手順書の検索に関する質問として解釈できませんでした。');
+});
+
+test('resource loading honors the default, configured sources and unknown-source startup failure', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const snapshot = path.join(mkdtempSync(path.join(tmpdir(), 'hermes-sources-')), 'snapshot.json');
+  writeFileSync(snapshot, JSON.stringify({ records: mixedRecords }));
+  const legacy = await loadRetrievalResources({ HERMES_SEARCH_RECORD_SOURCE: snapshot });
+  assert.deepEqual(legacy.catalog.map(entry => entry.id), ['nonconformity']);
+  const mixed = await loadRetrievalResources({ HERMES_SEARCH_RECORD_SOURCE: snapshot, HERMES_RETRIEVAL_SOURCES: 'nonconformity,knowledge_procedure' });
+  assert.deepEqual(mixed.catalog, mixedCatalog);
+  await assert.rejects(loadRetrievalResources({ HERMES_RETRIEVAL_SOURCES: 'missing' }), { message: 'unknown retrieval source: missing' });
+  const startup = spawnSync(process.execPath, [new URL('./worker.mjs', import.meta.url).pathname], {
+    env: { ...process.env, HERMES_RETRIEVAL_SOURCES: 'missing' }, encoding: 'utf8', timeout: 10000,
+  });
+  assert.equal(startup.status, 1);
+  assert.doesNotMatch(startup.stdout, /workerReady/u);
+  assert.match(startup.stdout, /trial worker startup failed/u);
+});
 
 // turn 'refine' keeps every previous condition, 'new_search' replaces them; `questions` are the
 // planner's questions for this turn, so follow-up answers match what was asked.
