@@ -23,7 +23,8 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - [x] (2026-10-04 02:30Z) 現状調査と所見。不適合1ソースの検索は実用域、横断の土台（共通アダプタ、外部索引、ページ文脈）は未着手と判定。ユーザーが3段階の提案を承認。
 - [x] (2026-10-04 02:45Z) branch `feat/hermes-cross-source-foundation` と worktree を `python3 -m scripts.git_lifecycle.cli start` で作成。
 - [ ] Milestone 1: ソース定義の複数化と2つ目のソース（公開済み手順書）。
-- [ ] Milestone 2: 索引をworkerメモリからPostgreSQL（pg_trgm + pgvector）へ出し、ソース別・ロール別の見える範囲を付ける。
+- [x] (2026-10-04 04:00Z) Milestone 2 の2つの試作: pg_trgm の候補再現率（移行保留、#1681）と worker のメモリ内訳（本文は小さく、ベクトルと下ごしらえが大きい）。
+- [ ] Milestone 2（改訂）: worker のメモリ報告、ソース別の見える範囲、索引の二重保持の解消。
 - [ ] Milestone 3: フローティングChatから現在ページの文脈（パスと主キー）を送り、計画器がそれを使う。
 - [ ] 各マイルストーンごとに PR → CI → merge → Pi5 デプロイ → キオスク確認。
 
@@ -37,6 +38,10 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - [x] (2026-10-04 03:50Z) 調整役が依存入りの worktree で再検証: `node --test retrieval/` 167/167、API vitest（hermes-search）24/24、API lint 0、Web vitest（HermesFloatingChat / HermesPageContext / KioskSelfInspectionPage）63/63、Web lint 0、API/Web の tsc は変更ファイルにエラー無し（既知の未ビルド依存由来のみ）。Codex 実行時の 2 失敗はサンドボックス起因。
 - [x] (2026-10-04 03:38Z) API lint / Web lint はエラー0件（Web の import 順序8件を修正後の1回再実行）。git diff --check は指摘0件。変更は指定の17ファイルのみで、開始時の未コミット WIP は無し。
 - [ ] (2026-10-04 03:35Z) Milestone 3 の commit、push、PR、main統合、deploy、キオスク実機確認は未実施（今回の依頼はローカル実装のみ）。
+
+- [x] (2026-10-04 04:13Z) Milestone 2（改訂）のローカル実装: worker の起動・corpus 更新応答に小数1桁のメモリとソース別件数を追加し、API の runtime.memory・数値ログ・scope に接続。visibility の必須検証と主体別の計画器入力・検索・表示制限を追加。複数ソースの全体語句索引を生成しない。既存 pageContext 第3引数、principal 無しの全ソース検索、authorizedRecords の1引数、bare candidateIds を維持。
+- [x] (2026-10-04 04:13Z) 検証: 対象 Node 29/29、待受けを使う2ファイルを除く retrieval 145/145、ソース定義6/6、API hermes-search 27/27が成功。API lint 指摘0件。API tsc は既知の未ビルド依存由来11件のみで、hermes の変更ファイルにエラー0件。
+- [ ] (2026-10-04 04:13Z) Milestone 2 の全体検証・本番確認: 指定の node --test retrieval/ は既存 dense-dgx の localhost listen EPERM 2件と Node 24.3.0 の異常終了で未完了。待受け2ファイルの対象を絞った確認も同じ環境制約で停止。commit / push / PR / merge / deploy は未実施。Pi5 のログ・scope・RSS / p95 と10倍外挿は配布後の確認として残す。既存 prototypes と本計画の先行更新は保持。
 
 ## Surprises & Discoveries
 
@@ -55,6 +60,11 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Evidence: KioskSelfInspectionPage.tsx の handlePartScan / acceptPartScan と handleMovementScan。今回の文脈は依頼どおり instructionPartNumber だけに連動し、既存のスキャン動作は変更しない。
 - Observation: ページ由来フィルタを previousPlan に保存すると、指示語のない次の質問でも JEV に画面の値が送られ得る。
   Evidence: worker.mjs の sessionOf / compactPlan と planner-jev.mjs の previous_plan / carried。ページ由来フィルタを次ターン用 plan から外し、同一 session での無指示語テストで値の持ち越しがないことを確認。
+
+- Observation: loadEnrichmentById は既に HERMES_RETRIEVAL_ENRICHMENT_ENABLED が文字列 true のときだけストアを読む。applyEnrichment 自体はストアを読まず、起動・更新経路の呼び出しはこのゲートを通る。
+  Evidence: worker.mjs の enrichmentAttachEnabled / loadEnrichmentById / main / replaceCorpus と既存ストア保持テスト。enrichment の実装変更は不要だった。
+- Observation: corpus 更新は worker 内で完結し、応答を stdout に送っていなかった。また起動用 loadRetrievalResources も複数ソース全体の語句索引を作っていた。
+  Evidence: worker.mjs の main の corpus 分岐と loadRetrievalResources。更新応答の JSON-lines 出力を追加し、起動時の複数ソース全体索引も生成しないことをテストした。
 
 ## Decision Log
 
@@ -94,9 +104,19 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Rationale: 指示語がない質問では文脈を JEV にも渡さないという契約を、会話中でも維持する。指示語がある次ターンは現在のページ値を改めて適用する。
   Date/Author: 2026-10-04 / Codex
 
+- Decision: Milestone 2 を「索引を PostgreSQL へ」から「メモリ報告と見える範囲」に改める。本文を持たない設計も採らない。
+  Rationale: pg_trgm の再現率は同等と証明できず p95 が約2倍。メモリ計測では本文 2.3MB・正規化本文 4MB に対しベクトル 32MB・下ごしらえ 24MB で、本文除去は 10 倍時でも 23MB しか効かない。まず実機の数字を継続的に取り、ベクトル量子化や下ごしらえ縮小はその数字で判断する。
+  Date/Author: 2026-10-04 / Claude
+
+- Decision: service.answer の既存第3引数 pageContext を保ち、第4引数に { principal } を受け取る。worker は要求ごとの可視カタログと値索引を計画器へ渡し、見えないソースを含む保存済み計画は再利用しない。
+  Rationale: 既存呼び出しとの互換を保ち、管理者の会話状態が viewer の次の質問へ持ち込まれてもソースの値・出典・表示済み件数を漏らさない。主体なしは既存 CLI とテストの全ソース検索を維持する。
+  Date/Author: 2026-10-04 / Codex
+
 ## Outcomes & Retrospective
 
-（未記入。各マイルストーン完了時に追記する。）
+- Milestone 1（2026-10-04、#1680）: ソースを足す手順は4点に収まった。定義 JSON（`hermes-sources/<id>.json`）、`hermes-source-definition.mjs` の登録表、API の読み出し関数（`hermes-search-sources.ts` の登録表）、`source-labels.json` のラベル。配布後の Pi5 は health 200、既定では挙動不変。
+- Milestone 3（2026-10-04、#1682）: 最初の対象は自主検査画面（品番）。配布後の実機確認は未記録。
+- Milestone 2 の試作（2026-10-04、#1681 と本 PR）: 上記 Milestone 2 の冒頭に数字を記した。
 
 ## Context and Orientation
 
@@ -142,15 +162,21 @@ API。`hermes-search-trial.service.ts` に、ソース id → 読み出し関数
 
 受け入れ。上のテストに加え、PR の CI（`hermes-retrieval`、`ci-required`）が成功し、Pi5 に `HERMES_RETRIEVAL_SOURCES=nonconformity,knowledge_procedure` でデプロイした後、キオスクの Chat で手順書の質問に手順書が返り、不適合の質問は今までどおり返ること。設定を省いた状態では `node --test` の互換テストと、既存の合成質問の夜間実行がエラーなく回ることを翌朝の記録で確認する。
 
-### Milestone 2: 索引を PostgreSQL（pg_trgm + pgvector）へ出す
+### Milestone 2: worker のメモリを測れるようにし、ソース別の見える範囲を付ける（改訂）
 
-このマイルストーンが終わると、worker は全記録をメモリに持たず、質問ごとに PostgreSQL から候補を取る。手順書のPDFページのような大きなソースを足しても worker の 384MB ヒープは増えない。ソースごと・ロールごとの「見える範囲」が索引の層にあり、キオスク鍵と VIEWER には公開済みのものだけが返る。
+当初の案は索引を PostgreSQL（pg_trgm + pgvector）へ出すことだった。2026-10-04 の2つの試作でこの案は保留にした。第一に、`pg_trgm` の候補再現率は現行の文字2-gram と同等以上の傾向だがラベル付きデータでは同等と証明できず、閾値なしの `ORDER BY similarity` では GIN 索引が使われないため p95 が約2倍になった（`docs/plans/hermes-retrieval-accuracy-log.md` 2026-10-04 の項）。第二に、worker のメモリ内訳を測ったところ（`scripts/hermes-search/retrieval/prototypes/worker-memory-20261004.md`）、不適合 8,209 件で記録本文は 2.3MB、語句一致用の正規化済み本文は 4MB、値索引は 0.1MB しかなく、大きいのは DGX 埋め込みベクトル 32MB（ヒープ外の ArrayBuffer）と下ごしらえ（enrichment）ストア 24MB だった。生きているヒープは 50MB 弱で、Pi5 の RSS 371MB の大半は V8 が上限 384MB まで回収を遅らせている分と見られる。「本文を持たない」設計は 10 倍の件数でも 23MB しか減らないので採らない。
 
-先に試作で確かめることが1つある。いまの文字2-gram BM25 と、PostgreSQL の `pg_trgm`（文字3-gram、`similarity` と GIN 索引）とで、候補30件・200件の中に正解が入る割合が同じかを、精度ログで使っている採点済み質問（`docs/plans/hermes-retrieval-accuracy-log.md` の 73〜86 問、ラベルは Git 外）で測る。差が 73 問中 2 問以内なら pg_trgm に置き換える。差が大きければ、候補の生成だけを PostgreSQL の2-gram（`pg_bigm` は同梱されないので、2-gram を自前で列に展開して `tsvector` に入れる方式）で行う案に切り替える。この判定は Decision Log に数字つきで残す。
+このマイルストーンが終わると、worker が自分のメモリ（heapUsed、rss、external、arrayBuffers、記録件数、ソース別件数）を起動時と記録更新ごとに API へ報告し、API がそれをログと `GET /assembly/hermes-search-trial/scope` の応答に載せる。これで「あと何倍まで入るか」を推測ではなく数字で判断できる。あわせて、ソース定義に `visibility`（そのソースを見てよい主体の一覧。値は `kiosk`、`viewer`、`manager`、`admin`）を持たせ、API が呼び出し主体の種類を worker に渡し、worker は見てよいソースだけを計画器に見せ、結果からも除く。不適合と手順書はどちらも全主体に見せるので今の挙動は変わらないが、ロールを限るソースを足す道ができる。
 
-本体の設計は次のとおり。新しいテーブル `HermesRetrievalDocument`（`sourceId`、`recordId`、`segmentNo`、`text`、`facets` JSONB、`visibility` 文字列配列、`embedding` `vector(1024)` null 可、`updatedAt`、主キーは `sourceId, recordId, segmentNo`）を Prisma のマイグレーションで足し、`text` に GIN（`gin_trgm_ops`）、`embedding` に HNSW（コサイン）の索引を付ける。記録は700文字を上限に段落で区切って `segmentNo` を振る。更新は API 側の取り込みジョブが、各ソースの `updatedAt`（不適合は `sourceVersionDate`、手順書は revision の `updatedAt`）より新しい行だけを差分で書き直す（今の300秒の全件再読込を置き換える）。`visibility` はソースの定義で決め、不適合は `['kiosk','viewer','manager','admin']`、手順書は公開済みのみ同じ、将来のロール限定ソースはここで絞る。worker は候補の取得を API に頼む（`{type:'candidates', sourceIds, filters, query, limit}` を標準出力で返し、API が SQL を実行して結果を標準入力で返す）か、worker 自身が読み取り専用の接続文字列で `pg` を使う。前者は worker にDB資格情報を渡さずに済むので前者を採る。計画器と関連度判定は変えない。
+作業は次のとおり。
 
-受け入れは、試作の数字が基準を満たすこと、Pi5 の温まった状態の p95 が今の 2.5 秒を超えないこと（キオスクで 20 問を測る）、worker の RSS が記録件数に比例しないこと（不適合 8 千件と手順書を入れた状態と、手順書を外した状態で RSS の差が 30MB 以内）、VIEWER の JWT で非公開の手順書が返らないことのテスト。
+メモリ報告。`worker.mjs` の `readyPayload` と `replaceCorpus` の応答に `memory: { heapUsedMb, rssMb, externalMb, arrayBuffersMb, records, bySource: { <sourceId>: count } }` を足す（`process.memoryUsage()` を小数1桁の MB に丸める）。API の `HermesSearchTrialService` はこれを `runtime.memory` に保存し、更新ごとに `console.info('hermes retrieval memory ...')` を1行出す（数値だけ、本文なし）。`scope()` の応答に `memory` を足す。
+
+見える範囲。`hermes-sources/*.json` に `visibility: ["kiosk","viewer","manager","admin"]` を足し、`validateSourceDefinition` で必須・既知の値だけに検証する。`deriveCatalog` はエントリに `visibility` を写す。API のルートは認可の結果から主体の種類を決め（キオスク鍵なら `kiosk`、JWT ならそのロールを小文字に）、worker への `request` に `principal: { kind }` を付ける。worker は `catalogEntries(catalog).filter(entry => entry.visibility.includes(principal.kind))` を計画器のカタログと実行対象に使い、見えないソースは `OUT_OF_SCOPE` の文言にも含めない。`principal` が無い要求（既存のテストや CLI）は全ソースを見る。`fixtures/` に `visibility: ["admin"]` の合成ソースを置き、`viewer` では結果に出ず `admin` では出るテストを書く。
+
+メモリの衛生。複数ソースのとき `buildCorpusView` が全体の `lexicalCorpus` とソース別の `lexicalCorpus` を二重に持つのをやめ、全体用は作らない（実行はソース別に行うので不要）。`applyEnrichment` で下ごしらえが無効（`HERMES_RETRIEVAL_ENRICHMENT_ENABLED` が true でない）のときはストアを読み込まない（既にそうなっているか確認し、違えば直す）。
+
+受け入れ。`node --test retrieval/` と API の vitest が通ること。Pi5 配布後に API ログに `hermes retrieval memory` の行が出て、`scope` の応答に `memory` があること。その数字を Outcomes に記録し、10 倍への外挿を書き直す。ベクトルの量子化（Float32 → Int8 で 32MB → 8MB）と下ごしらえストアの縮小は、数字を見てから別のマイルストーンとして判断する。
 
 ### Milestone 3: ページ文脈の受け渡し
 

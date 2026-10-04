@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { records } from './fixtures/synthetic-records.mjs';
-import { loadCatalog, loadNonconformityCatalog, fieldsWithRole } from './catalog.mjs';
+import { deriveCatalog, loadCatalog, loadNonconformityCatalog, fieldsWithRole } from './catalog.mjs';
+import { validateSourceDefinition, sourceDefinitions } from '../hermes-source-definition.mjs';
 import { authorizedRecords } from './corpus.mjs';
 import { prepareLexicalCorpus } from './executor.mjs';
 import { buildValueIndex } from './value-index.mjs';
@@ -51,6 +53,103 @@ function fixedPlanner(sources, overrides = {}) {
     unresolved: [], diagnostics: { limitExplicit: false }, ...overrides,
   } }) };
 }
+
+const adminDefinition = validateSourceDefinition(JSON.parse(readFileSync(new URL('./fixtures/admin-source.json', import.meta.url), 'utf8')), 'synthetic_admin');
+const restrictedCatalog = [...mixedCatalog, deriveCatalog(adminDefinition)];
+const restrictedRecords = [...mixedRecords, { id: 'private', sourceId: adminDefinition.id,
+  title: '管理専用記録', partNumber: 'SECRET-FACET', stepsText: 'ブラケット溶接: 管理者だけの合成本文' }];
+
+test('viewer and admin see only their sources in planner inputs, execution and stage dumps', async () => {
+  const inputs = [];
+  const planner = { plan: async (input) => {
+    inputs.push(input);
+    return { plan: { schema: 'hermes-query-plan/v1', sources: input.catalog.map(entry => entry.id),
+      filters: [], semanticQuery: 'ブラケット溶接', sort: 'relevance', limit: 5,
+      display: input.catalog.flatMap(entry => entry.fields.map(field => field.key)), unresolved: [] } };
+  } };
+  assert.equal(Object.hasOwn(sourceDefinitions, adminDefinition.id), false);
+  const answering = createRetrievalAnswering({ records: restrictedRecords, catalog: restrictedCatalog, planner, evaluate: mixedEvaluate });
+  const [viewer, admin] = await Promise.all([
+    answering.answer('SECRET-FACET', null, { stageDump: true, principal: { kind: 'viewer' } }),
+    answering.answer('all', null, { stageDump: true, principal: { kind: 'admin' } }),
+  ]);
+  assert.deepEqual(viewer.recordIds, ['nonconformity:shared', 'knowledge_procedure:shared']);
+  assert.deepEqual(viewer.candidateIds, ['shared', 'shared']);
+  assert.doesNotMatch(JSON.stringify(viewer), /private|管理専用|管理者だけ|管理者限定/u);
+  assert.deepEqual(inputs[0].catalog, mixedCatalog);
+  assert.deepEqual(Object.keys(inputs[0].valueIndex.values), ['nonconformity', 'knowledge_procedure']);
+  assert.doesNotMatch(JSON.stringify(inputs[0].candidates), /SECRET-FACET/u);
+  assert.deepEqual(admin.recordIds, ['nonconformity:shared', 'knowledge_procedure:shared', 'synthetic_admin:private']);
+  assert.deepEqual(admin.candidateIds, ['shared', 'shared', 'private']);
+  assert.match(admin.answer, /【管理者限定合成ソース】[\s\S]*管理者だけの合成本文/u);
+  assert.deepEqual(inputs[1].valueIndex.values.synthetic_admin.partNumber, ['SECRET-FACET']);
+  const follow = await answering.answer('all', admin.session, { principal: { kind: 'viewer' } });
+  assert.equal(inputs.at(-1).previousPlan, null);
+  assert.equal(inputs.at(-1).shownCount, 2);
+  assert.doesNotMatch(JSON.stringify(follow), /private|SECRET-FACET/u);
+  const legacy = await answering.answer('all', null, { stageDump: true });
+  assert.deepEqual(legacy.recordIds, admin.recordIds);
+  assert.deepEqual(legacy.candidateIds, admin.candidateIds);
+});
+
+test('visibility limits out-of-scope wording, no-result counts and planner-selected sources', async () => {
+  const outside = createRetrievalAnswering({ records: restrictedRecords, catalog: restrictedCatalog,
+    planner: fixedPlanner([], { diagnostics: { scope: 'out_of_scope' } }) });
+  assert.equal((await outside.answer('weather', null, { principal: { kind: 'viewer' } })).answer,
+    '不適合・手順書の検索に関する質問として解釈できませんでした。');
+  assert.match((await outside.answer('weather', null, { principal: { kind: 'admin' } })).answer, /管理者限定合成ソース/u);
+  const hidden = createRetrievalAnswering({ records: restrictedRecords, catalog: restrictedCatalog,
+    planner: fixedPlanner(['synthetic_admin']) });
+  const blocked = await hidden.answer('secret', null, { stageDump: true, principal: { kind: 'viewer' } });
+  assert.deepEqual(blocked.recordIds, []);
+  assert.equal(blocked.session.previousPlan, null);
+  assert.doesNotMatch(JSON.stringify(blocked), /synthetic_admin|private|管理者/u);
+  const noVisible = createRetrievalAnswering({ records: [restrictedRecords[2]], catalog: [restrictedCatalog[2]],
+    planner: { plan: () => { throw new Error('empty catalog must not reach planner'); } } });
+  const empty = await noVisible.answer('q', null, { principal: { kind: 'viewer' } });
+  assert.deepEqual(empty.recordIds, []);
+  assert.equal(empty.answer, '検索に関する質問として解釈できませんでした。');
+  const miss = createRetrievalAnswering({ records: restrictedRecords, catalog: restrictedCatalog,
+    planner: fixedPlanner(['nonconformity', 'knowledge_procedure']), evaluate: async () => ({ answers: {} }) });
+  assert.match((await miss.answer('q', null, { principal: { kind: 'viewer' } })).answer, /検索対象2件/u);
+});
+
+test('ready and corpus updates report rounded worker memory and per-source counts', async (t) => {
+  const mb = 1024 * 1024;
+  t.mock.method(process, 'memoryUsage', () => ({ heapUsed: 12.34 * mb, rss: 56.78 * mb,
+    external: 9.86 * mb, arrayBuffers: 3.21 * mb }));
+  const ready = readyPayload({ records: mixedRecords, catalog: mixedCatalog, snapshotCount: 2, snapshotId: 'synthetic' });
+  assert.deepEqual(ready.runtime.memory, { heapUsedMb: 12.3, rssMb: 56.8, externalMb: 9.9, arrayBuffersMb: 3.2,
+    records: 2, bySource: { nonconformity: 1, knowledge_procedure: 1 } });
+  const answering = createRetrievalAnswering({ records: [], catalog: mixedCatalog });
+  const full = await answering.replaceCorpus({ mode: 'full', records: mixedRecords });
+  assert.deepEqual(full.memory, ready.runtime.memory);
+  const incremental = await answering.replaceCorpus({ mode: 'incremental', records: [{ ...mixedRecords[1], id: 'new' }] });
+  assert.equal(incremental.memory.records, 3);
+  assert.deepEqual(incremental.memory.bySource, { nonconformity: 1, knowledge_procedure: 2 });
+  const removed = await answering.replaceCorpus({ mode: 'full', records: [mixedRecords[0]] });
+  assert.deepEqual(removed.memory.bySource, { nonconformity: 1, knowledge_procedure: 0 });
+});
+
+test('worker emits memory at startup and after corpus updates over JSON lines', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const worker = spawnSync(process.execPath, [new URL('./worker.mjs', import.meta.url).pathname], {
+    env: { ...process.env, HERMES_RETRIEVAL_SOURCES: 'nonconformity,knowledge_procedure',
+      HERMES_SEARCH_RECORD_SOURCE: '', HERMES_TRIAL_SNAPSHOT_PATH: '', HERMES_RETRIEVAL_ENRICHMENT_ENABLED: 'false',
+      HERMES_RETRIEVAL_VECTOR_ENABLED: 'false', HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_RETRIEVAL_DENSE_INDEX_ENABLED: 'false' },
+    input: `${JSON.stringify({ type: 'corpus', mode: 'full', records: mixedRecords })}\n`, encoding: 'utf8', timeout: 10000,
+  });
+  assert.equal(worker.status, 0, worker.stderr);
+  const lines = worker.stdout.trim().split('\n').filter(line => line.startsWith(WORKER_PREFIX)).map(line => JSON.parse(line.slice(WORKER_PREFIX.length)));
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0].workerReady, true);
+  assert.equal(lines[0].runtime.memory.records, 0);
+  assert.equal(lines[1].type, 'corpus');
+  assert.equal(lines[1].ok, true);
+  assert.equal(lines[1].memory.records, 2);
+  assert.deepEqual(lines[1].memory.bySource, { nonconformity: 1, knowledge_procedure: 1 });
+  assert.doesNotMatch(JSON.stringify(lines), /ブラケット|手順原文/u);
+});
 
 test('the real planner searches only published procedures with lexical retrieval', async () => {
   let vectorCalls = 0;
@@ -134,6 +233,8 @@ test('resource loading honors the default, configured sources and unknown-source
   assert.deepEqual(legacy.catalog.map(entry => entry.id), ['nonconformity']);
   const mixed = await loadRetrievalResources({ HERMES_SEARCH_RECORD_SOURCE: snapshot, HERMES_RETRIEVAL_SOURCES: 'nonconformity,knowledge_procedure' });
   assert.deepEqual(mixed.catalog, mixedCatalog);
+  assert.equal(mixed.lexicalCorpus, null);
+  assert.ok(legacy.lexicalCorpus);
   await assert.rejects(loadRetrievalResources({ HERMES_RETRIEVAL_SOURCES: 'missing' }), { message: 'unknown retrieval source: missing' });
   const startup = spawnSync(process.execPath, [new URL('./worker.mjs', import.meta.url).pathname], {
     env: { ...process.env, HERMES_RETRIEVAL_SOURCES: 'missing' }, encoding: 'utf8', timeout: 10000,
@@ -257,7 +358,7 @@ test('worker protocol returns original field text and keeps the previous plan', 
   const line = encodeWorkerLine(content);
   assert.equal(line.startsWith(WORKER_PREFIX), true);
   assert.equal(line.endsWith('\n'), true);
-  const ready = readyPayload({ snapshotCount: records.length, snapshotId: 'synthetic' });
+  const ready = readyPayload({ records, catalog, snapshotCount: records.length, snapshotId: 'synthetic' });
   assert.equal(ready.workerReady, true);
   assert.equal(ready.runtime.snapshot.count, records.length);
 });
@@ -364,6 +465,7 @@ test('incremental corpus swaps the index and a failed refresh keeps the last dat
   console.warn = original;
   assert.equal(failed.ok, false);
   assert.equal(failed.count, records.length + 1);
+  assert.equal(failed.memory.records, records.length + 1);
   assert.match(warn[0], /count=\d+/);
   assert.equal(warn[0].includes('surface'), false);
   const again = await answering.answer('何件ですか');
@@ -506,5 +608,8 @@ test('completeRequest keeps the omitted third argument and forwards context in t
   const pageContext = { path: '/page', entity: { kind: 'partNumber', value: 'P' } };
   await completeRequest(answering, { type: 'request', requestId: 'a', question: 'q' });
   await completeRequest(answering, { type: 'request', requestId: 'b', question: 'q', pageContext });
-  assert.deepEqual(calls, [['q', null], ['q', null, { pageContext }]]);
+  const principal = { kind: 'viewer' };
+  await completeRequest(answering, { type: 'request', requestId: 'c', question: 'q', principal });
+  await completeRequest(answering, { type: 'request', requestId: 'd', question: 'q', pageContext, principal });
+  assert.deepEqual(calls, [['q', null], ['q', null, { pageContext }], ['q', null, { principal }], ['q', null, { pageContext, principal }]]);
 });

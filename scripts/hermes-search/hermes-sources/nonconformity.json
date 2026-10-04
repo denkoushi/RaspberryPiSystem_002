@@ -1,6 +1,7 @@
 {
   "schema": "hermes-source-definition/v1",
   "id": "nonconformity",
+  "visibility": ["kiosk", "viewer", "manager", "admin"],
   "description": "不適合として記録された事象",
   "valueChoiceCap": 300,
   "recordNumberField": "nonconformityNo",

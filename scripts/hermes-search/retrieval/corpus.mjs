@@ -66,7 +66,7 @@ export function buildCorpusView(records, catalog, dataAsOf) {
     valueIndex: buildValueIndex(records, catalog),
     lexicalCorpus: entries.length === 1 && bySource[entries[0].id].records.length === records.length
       ? bySource[entries[0].id].lexicalCorpus
-      : prepareLexicalCorpus(records, fieldsWithRole(catalog, 'body')),
+      : null,
     snapshotCount: records.length,
     dataAsOf: dataAsOf ?? null,
   };

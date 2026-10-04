@@ -1,6 +1,7 @@
 {
   "schema": "hermes-source-definition/v1",
   "id": "knowledge_procedure",
+  "visibility": ["kiosk", "viewer", "manager", "admin"],
   "description": "Chatのナレッジ機能で公開された作業手順書",
   "recordNumberField": "title",
   "metadataFields": {

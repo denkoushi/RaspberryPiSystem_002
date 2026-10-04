@@ -39,3 +39,21 @@ node scripts/hermes-search/retrieval/prototypes/pg-trgm-recall.mjs \
 入力は読み取りのみ。heldout gold と private ディレクトリへの出力は拒否する。
 JSON に質問文・記録本文・接続文字列は含めない。
 今回の結果下書き: [pg-trgm-recall-20261004.md](pg-trgm-recall-20261004.md)。
+
+## Worker memory 計測
+
+リポジトリルートで実行（`--dense` / `--enrichment` / `--out` は任意）:
+
+```sh
+node --expose-gc --max-old-space-size=384 scripts/hermes-search/retrieval/prototypes/worker-memory.mjs \
+  --snapshot "$HOME/Documents/hermes-retrieval-private/snapshots/nonconformity-snapshot-pi5-20261004.json" \
+  --dense "$HOME/Documents/hermes-retrieval-private/stores/dense-pi5-20261004.bin" \
+  --enrichment "$HOME/Documents/hermes-retrieval-private/stores/enrichment-pi5-20261004.jsonl" \
+  --out /tmp/hermes-worker-memory-new.json
+```
+
+入力は読み取りのみ。出力は Markdown と集計 JSON（新規ファイル、private 外、本文なし）。
+各段階の GC 前後ではなく、各段階の前後に GC して保持量を比較する。
+子 worker は dense / vector を無効化し検索要求を送らず、`workerReady` 直後の RSS を読む。
+Mac の `ps` が EPERM / EACCES なら RSS は `null` として他の計測を保存する。
+結果と外挿・制約: [worker-memory-20261004.md](worker-memory-20261004.md)。

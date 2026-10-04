@@ -49,6 +49,7 @@ test('a definition cannot change an adapter identity or introduce unmapped field
 
 test('another source can use its own labels and projection with the same original-span guard',()=>{
   const definition=validateSourceDefinition({schema:'hermes-source-definition/v1',id:'inventory',
+    visibility:['admin'],
     bodyFields:{location:'保管場所'},contextAttributes:[],searchMetadataFields:[],lexicalFields:['location'],
     organizedLabels:{location:'保管場所'},organizedContextClasses:['location']},'inventory');
   const record={evidenceKey:'inventory:1',location:'棚B-4'};
@@ -63,4 +64,15 @@ test('another source can use its own labels and projection with the same origina
   assert.equal(projectOrganized('保管場所は？',[row],new Map([[row.recordId,record]]),source).answer,'保管場所: 棚B-4');
   assert.throws(()=>projectOrganized('保管場所は？',[row],new Map([[row.recordId,{...record,location:'棚A-4'}]]),source),/span/);
   assert.throws(()=>validateOrganizedRow(row,{...record,evidenceKey:'nonconformity:1'},definition),/source record/);
+});
+
+test('visibility is required, non-empty and limited to known unique principal kinds',()=>{
+  for(const visibility of [undefined,null,'admin',[],['unknown'],['ADMIN'],['viewer',1],['admin','admin']]) {
+    assert.throws(()=>validateSourceDefinition({...structuredClone(nonconformityDefinition),visibility},'nonconformity'),/visibility/);
+  }
+  for(const definition of [nonconformityDefinition,knowledgeProcedureDefinition]) {
+    assert.deepEqual(definition.visibility,['kiosk','viewer','manager','admin']);
+    assert.ok(Object.isFrozen(definition.visibility));
+  }
+  assert.deepEqual(validateSourceDefinition({...structuredClone(nonconformityDefinition),visibility:['admin']},'nonconformity').visibility,['admin']);
 });

@@ -11,6 +11,17 @@ test('loadCatalog preserves source order and derives procedure roles and labels'
   assert.equal(entries[0].fields.find((field) => field.key === 'publishedOn').role, 'date');
   assert.deepEqual(entries[0].fields.filter((field) => field.role === 'body').map((field) => field.key), ['stepsText', 'cautionsText']);
   assert.ok(Object.isFrozen(entries[0].fields));
+  assert.deepEqual(entries[0].visibility, ['kiosk', 'viewer', 'manager', 'admin']);
+  assert.ok(Object.isFrozen(entries[0].visibility));
+});
+
+test('deriveCatalog copies source visibility independently of the definition', () => {
+  const definition = { ...nonconformityDefinition, visibility: ['admin'] };
+  const entry = deriveCatalog(definition);
+  assert.deepEqual(entry.visibility, ['admin']);
+  assert.notEqual(entry.visibility, definition.visibility);
+  definition.visibility.push('viewer');
+  assert.deepEqual(entry.visibility, ['admin']);
 });
 
 test('the nonconformity loader stays compatible and unknown source ids fail', () => {

@@ -86,6 +86,24 @@ export function encodeWorkerLine(value) {
   return `${WORKER_PREFIX}${JSON.stringify(value)}\n`;
 }
 
+function memoryReport(records, catalog) {
+  const usage = process.memoryUsage();
+  const mb = (bytes) => Math.round(bytes / (1024 * 1024) * 10) / 10;
+  const bySource = Object.fromEntries(catalogEntries(catalog).map((entry) => [entry.id, 0]));
+  for (const record of records) {
+    const sourceId = record.sourceId ?? 'nonconformity';
+    bySource[sourceId] = (bySource[sourceId] ?? 0) + 1;
+  }
+  return {
+    heapUsedMb: mb(usage.heapUsed),
+    rssMb: mb(usage.rss),
+    externalMb: mb(usage.external),
+    arrayBuffersMb: mb(usage.arrayBuffers),
+    records: records.length,
+    bySource,
+  };
+}
+
 export function snapshotPathFromEnv(env = process.env) {
   const raw = env.HERMES_SEARCH_RECORD_SOURCE || env.HERMES_TRIAL_SNAPSHOT_PATH;
   if (!raw || typeof raw !== 'string') throw new Error('snapshot path is not set');
@@ -311,8 +329,6 @@ export function createRetrievalAnswering({
   const relevance = createRelevanceJudge(typeof evaluate === 'function' ? { evaluate } : {});
   const entries = catalogEntries(catalog);
   const nonconformity = entries.find((entry) => entry.id === 'nonconformity');
-  const outOfScopeAnswer = entries.length === 1 && nonconformity ? OUT_OF_SCOPE_ANSWER
-    : `${entries.map((entry) => entry.label).join('・')}の検索に関する質問として解釈できませんでした。`;
   let current = applyEnrichment(buildCorpusView(records, catalog, null), enrichmentById);
   if (valueIndex) {
     current = { ...current, valueIndex, lexicalCorpus, snapshotCount };
@@ -324,31 +340,57 @@ export function createRetrievalAnswering({
       try {
         current = applyEnrichment(replaceCorpus(current, catalog, message), await loadEnrichmentById());
         if (nonconformity) dense?.schedule?.(current.bySource.nonconformity.records, fieldsWithRole(nonconformity, 'body'));
-        return { ok: true, count: current.snapshotCount };
+        return { ok: true, count: current.snapshotCount, memory: memoryReport(current.records, catalog) };
       } catch {
         console.warn(`hermes retrieval corpus refresh failed count=${count}`);
-        return { ok: false, count };
+        return { ok: false, count, memory: memoryReport(current.records, catalog) };
       }
     },
     // `options.stageDump` adds the ranked candidate ids to the result; the kiosk never asks for it.
     async answer(question, session, options = {}) {
       const view = current;
+      const visibleEntries = options.principal
+        ? entries.filter((entry) => entry.visibility.includes(options.principal.kind)) : entries;
+      const visibleSources = new Set(visibleEntries.map((entry) => entry.id));
+      const visibleCatalog = options.principal ? visibleEntries : catalog;
+      const visibleValueIndex = options.principal
+        ? { values: Object.fromEntries(visibleEntries.map((entry) => [entry.id, view.valueIndex.values[entry.id]])) }
+        : view.valueIndex;
+      const visibleCount = options.principal
+        ? visibleEntries.reduce((count, entry) => count + view.bySource[entry.id].records.length, 0) : view.snapshotCount;
+      const outOfScopeAnswer = visibleEntries.length === 1 && visibleEntries[0].id === 'nonconformity' ? OUT_OF_SCOPE_ANSWER
+        : `${visibleEntries.length ? `${visibleEntries.map((entry) => entry.label).join('・')}の` : ''}検索に関する質問として解釈できませんでした。`;
       const stageDump = options.stageDump === true;
       const started = performance.now();
       const elapsed = () => Math.round((performance.now() - started) * 10) / 10;
-      const previousPlan = session?.previousPlan && typeof session.previousPlan === 'object' ? session.previousPlan : null;
-      const previouslyShown = shownIdsOf(session);
-      const candidates = findCandidateValues(question, view.valueIndex, catalog);
+      const storedPlan = session?.previousPlan && typeof session.previousPlan === 'object' ? session.previousPlan : null;
+      // A session carried from a wider role must not expose its source values to the planner.
+      const previousPlan = options.principal && storedPlan
+        && (storedPlan.sources?.some((source) => !visibleSources.has(source))
+          || storedPlan.filters?.some((filter) => !visibleSources.has(filter.source))) ? null : storedPlan;
+      const previouslyShown = options.principal
+        ? shownIdsOf(session).filter((id) => visibleEntries.some((entry) => id.startsWith(`${entry.id}:`))) : shownIdsOf(session);
+      if (!visibleEntries.length) {
+        return trialResult({ status: 'completed', answer: outOfScopeAnswer, recordIds: [], elapsedMs: elapsed(),
+          previousPlan: null, shownIds: [], dataAsOf: view.dataAsOf });
+      }
+      const candidates = findCandidateValues(question, visibleValueIndex, visibleCatalog);
       const planned = await planner.plan({
         question,
         previousPlan,
-        catalog,
+        catalog: visibleCatalog,
         candidates,
-        valueIndex: view.valueIndex,
+        valueIndex: visibleValueIndex,
         shownCount: previouslyShown.length,
         ...(options.pageContext ? { pageContext: options.pageContext } : {}),
       });
-      const searchPlan = selectedSourcePlan(planned.plan, entries);
+      // Reject an unauthorized source even if a supplied planner attempts to select it.
+      if (options.principal && (planned.plan?.sources?.some((source) => !visibleSources.has(source))
+        || planned.plan?.filters?.some((filter) => !visibleSources.has(filter.source)))) {
+        return trialResult({ status: 'completed', answer: outOfScopeAnswer, recordIds: [], elapsedMs: elapsed(),
+          previousPlan: null, shownIds: previouslyShown, dataAsOf: view.dataAsOf });
+      }
+      const searchPlan = selectedSourcePlan(planned.plan, visibleEntries);
       const compact = compactPlan(searchPlan);
       // A screen-derived condition belongs to this turn only. Do not carry its
       // value into the next question through previous_plan when no pointer is used.
@@ -379,7 +421,7 @@ export function createRetrievalAnswering({
           dataAsOf: view.dataAsOf,
         });
       }
-      const validation = validateQueryPlan(searchPlan, catalog, view.valueIndex);
+      const validation = validateQueryPlan(searchPlan, visibleCatalog, visibleValueIndex);
       if (!validation.ok) {
         const answer = clarificationAnswer(validation.clarification);
         return trialResult({
@@ -397,7 +439,7 @@ export function createRetrievalAnswering({
       const executions = [];
       const usesDense = validation.plan.sources.includes('nonconformity') && dense?.queryEnabled;
       for (const sourceId of validation.plan.sources) {
-        const entry = entries.find((entry) => entry.id === sourceId);
+        const entry = visibleEntries.find((entry) => entry.id === sourceId);
         const sourceView = view.bySource[sourceId];
         const plan = validation.plan;
         const dateField = entry.fields.find((field) => field.role === 'date');
@@ -446,7 +488,7 @@ export function createRetrievalAnswering({
       if (executed.status === 'no_result') {
         return trialResult({
           status: 'completed',
-          answer: noResultAnswer(view.snapshotCount),
+          answer: noResultAnswer(visibleCount),
           recordIds: [],
           elapsedMs: elapsed(),
           previousPlan: sessionPlan,
@@ -460,7 +502,7 @@ export function createRetrievalAnswering({
       if (dense?.queryEnabled && (vectorStatus === 'timeout' || vectorStatus === 'failed')) {
         noteDenseFallback(vectorStatus);
       }
-      const body = formatRecords(executed.results, catalog);
+      const body = formatRecords(executed.results, visibleCatalog);
       const notice = formatCoverageNotice(executed.coverage);
       let answer = executed.insufficient && body ? `${body}\n\n${INSUFFICIENT_NOTICE}` : body;
       if (notice) answer = answer ? `${answer}\n\n${notice}` : notice;
@@ -490,7 +532,7 @@ export async function loadRetrievalResources(env = process.env) {
   if (!Array.isArray(payload?.records)) throw new Error('snapshot records must be an array');
   const records = authorizedRecords(payload.records, catalog);
   const valueIndex = buildValueIndex(records, catalog);
-  const lexicalCorpus = prepareLexicalCorpus(records, fieldsWithRole(catalog, 'body'));
+  const lexicalCorpus = catalog.length === 1 ? prepareLexicalCorpus(records, fieldsWithRole(catalog, 'body')) : null;
   const snapshotId = typeof payload.snapshotId === 'string' && payload.snapshotId
     ? payload.snapshotId
     : typeof payload.id === 'string' && payload.id
@@ -511,6 +553,7 @@ export function readyPayload(resources) {
     workerReady: true,
     runtime: {
       protocol: 'hermes-retrieval/v2',
+      memory: memoryReport(resources.records, resources.catalog),
       snapshot: {
         count: resources.snapshotCount,
         snapshotId: resources.snapshotId,
@@ -540,7 +583,11 @@ export async function completeRequest(answering, request) {
     if (!request || request.type !== 'request' || !requestId || typeof request.question !== 'string') {
       throw new Error('request type, requestId, and question are required');
     }
-    const result = await answering.answer(request.question, request.session ?? null, ...(request.pageContext ? [{ pageContext: request.pageContext }] : []));
+    const options = {
+      ...(request.pageContext ? { pageContext: request.pageContext } : {}),
+      ...(request.principal ? { principal: request.principal } : {}),
+    };
+    const result = await answering.answer(request.question, request.session ?? null, ...(Object.keys(options).length ? [options] : []));
     return { workerRequestId: requestId, stage: 'completed', result, elapsedMs: result.elapsedMs };
   } catch (error) {
     return {
@@ -623,7 +670,7 @@ export async function main() {
     }
     if (request?.type === 'cancel') continue;
     if (request?.type === 'corpus') {
-      pending.push(Promise.resolve(answering.replaceCorpus(request)));
+      pending.push(answering.replaceCorpus(request).then((response) => emit({ type: 'corpus', ...response })));
       continue;
     }
     pending.push(dispatchWorkerRequest(answering, request));

@@ -56,6 +56,7 @@ export function deriveCatalog(definition) {
   return freeze({
     schema: 'hermes-source-catalog/v1',
     id: definition.id,
+    visibility: [...(definition.visibility ?? [])],
     label: typeof labeled === 'string' && labeled ? labeled : definition.id,
     description,
     valueChoiceCap,

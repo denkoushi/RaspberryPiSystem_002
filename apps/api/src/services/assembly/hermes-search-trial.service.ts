@@ -11,6 +11,17 @@ export type HermesPageContext = {
   entity: { kind: 'partNumber' | 'drawingNumber' | 'nonconformityNo' | 'procedureId'; value: string };
 };
 
+export type HermesPrincipal = { kind: 'kiosk' | 'viewer' | 'manager' | 'admin' };
+type HermesAnswerOptions = { principal?: HermesPrincipal };
+type WorkerMemory = {
+  heapUsedMb: number;
+  rssMb: number;
+  externalMb: number;
+  arrayBuffersMb: number;
+  records: number;
+  bySource: Record<string, number>;
+};
+
 type SearchState = Record<string, unknown>;
 type SearchDiagnostics = {
   before: string;
@@ -55,8 +66,9 @@ type TrialSession = {
   expiresAt: number;
 };
 
-type WorkerResponse = { workerReady?: boolean; workerRequestId?: string; workerError?: string; failureDiagnostic?: unknown; runtime?: {
+type WorkerResponse = { workerReady?: boolean; workerRequestId?: string; workerError?: string; failureDiagnostic?: unknown; memory?: WorkerMemory; runtime?: {
   snapshot?: { count: number; snapshotId: string }; organized?: { count: number };
+  memory?: WorkerMemory;
 }; result?: HermesTrialAnswer };
 
 type TrialSettings = {
@@ -184,9 +196,21 @@ export class HermesSearchTrialService {
           if (!line.startsWith('__HERMES_UI_PREFETCH__')) continue;
           try {
             const row = JSON.parse(line.slice('__HERMES_UI_PREFETCH__'.length)) as WorkerResponse;
+            if (row.workerReady) this.runtime = row.runtime;
+            if (row.memory || row.runtime?.memory) {
+              const memory = (row.memory ?? row.runtime?.memory)!;
+              if (![memory.heapUsedMb, memory.rssMb, memory.externalMb, memory.arrayBuffersMb, memory.records]
+                .every(value => typeof value === 'number' && Number.isFinite(value) && value >= 0)) throw new Error('invalid worker memory');
+              // Pick only numeric telemetry: worker diagnostics and record text never enter this log.
+              const bySource = Object.fromEntries(Object.entries(memory.bySource).filter(([, count]) => typeof count === 'number' && Number.isFinite(count)));
+              this.runtime = { ...this.runtime, memory: {
+                heapUsedMb: memory.heapUsedMb, rssMb: memory.rssMb, externalMb: memory.externalMb,
+                arrayBuffersMb: memory.arrayBuffersMb, records: memory.records, bySource,
+              } };
+              console.info(`hermes retrieval memory heapUsedMb=${memory.heapUsedMb} rssMb=${memory.rssMb} externalMb=${memory.externalMb} arrayBuffersMb=${memory.arrayBuffersMb} records=${memory.records} bySource=${JSON.stringify(bySource)}`);
+            }
             if (row.workerReady) {
               clearTimeout(timeout);
-              this.runtime = row.runtime;
               resolve();
               if (this.settings.retrievalV2) this.scheduleRefresh();
             }
@@ -222,11 +246,12 @@ export class HermesSearchTrialService {
     if (!this.settings.enabled) return { enabled: false };
     await this.start();
     return { enabled: true, snapshotCount: this.runtime?.snapshot?.count,
-      organizedCount: this.runtime?.organized?.count, snapshotId: this.runtime?.snapshot?.snapshotId };
+      organizedCount: this.runtime?.organized?.count, snapshotId: this.runtime?.snapshot?.snapshotId,
+      memory: this.runtime?.memory };
   }
 
-  async answer(question: string, sessionId?: string, pageContext?: HermesPageContext): Promise<HermesTrialAnswer> {
-    if (this.settings.retrievalV2) return this.answerRetrievalV2(question, sessionId, pageContext);
+  async answer(question: string, sessionId?: string, pageContext?: HermesPageContext, options: HermesAnswerOptions = {}): Promise<HermesTrialAnswer> {
+    if (this.settings.retrievalV2) return this.answerRetrievalV2(question, sessionId, pageContext, options);
     await this.start();
     if (this.pending) throw new Error('別の検索を処理中です。少し待って再送してください。');
     const activeSessionId = sessionId ?? randomUUID();
@@ -241,7 +266,7 @@ export class HermesSearchTrialService {
         reject(new Error('検索の待ち時間を超えました。該当なしとは判断していません。'));
       }, 30000);
       this.pending = { id, resolve: value => { clearTimeout(timeout); resolve(value); }, reject: error => { clearTimeout(timeout); reject(error); } };
-      this.child!.stdin.write(JSON.stringify({ type:'request', requestId:id, question, session })+'\n');
+      this.child!.stdin.write(JSON.stringify({ type:'request', requestId:id, question, session, ...(options.principal ? { principal: options.principal } : {}) })+'\n');
     });
     const workerSession = (result as HermesTrialAnswer & {session?: Omit<TrialSession, 'expiresAt'>}).session;
     // Keep the bounded conversation target after a successful search as well:
@@ -307,7 +332,7 @@ export class HermesSearchTrialService {
     else this.inflight = Math.max(0, this.inflight - 1);
   }
 
-  private async answerRetrievalV2(question: string, sessionId?: string, pageContext?: HermesPageContext): Promise<HermesTrialAnswer> {
+  private async answerRetrievalV2(question: string, sessionId?: string, pageContext?: HermesPageContext, options: HermesAnswerOptions = {}): Promise<HermesTrialAnswer> {
     await this.start();
     try {
       await this.acquireSlot();
@@ -331,7 +356,8 @@ export class HermesSearchTrialService {
           resolve: value => { clearTimeout(timeout); resolve(value); },
           reject: error => { clearTimeout(timeout); reject(error); },
         });
-        this.child!.stdin.write(JSON.stringify({ type: 'request', requestId: id, question, session, ...(pageContext ? { pageContext } : {}) }) + '\n');
+        this.child!.stdin.write(JSON.stringify({ type: 'request', requestId: id, question, session,
+          ...(pageContext ? { pageContext } : {}), ...(options.principal ? { principal: options.principal } : {}) }) + '\n');
         written = true;
       });
       const workerSession = (result as HermesTrialAnswer & { session?: Omit<TrialSession, 'expiresAt'> }).session;

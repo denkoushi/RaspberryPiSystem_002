@@ -146,7 +146,7 @@ describe('HermesSearchTrialService retrieval switch', () => {
     };
   }
 
-  function holdingChild() {
+  function holdingChild(memory?: Record<string, unknown>) {
     const stdout = new EventEmitter() as EventEmitter & { setEncoding: (encoding: string) => void };
     stdout.setEncoding = () => {};
     const stderr = new EventEmitter() as EventEmitter & { resume: () => void };
@@ -180,7 +180,7 @@ describe('HermesSearchTrialService retrieval switch', () => {
       child.emit('spawn');
       stdout.emit('data', `__HERMES_UI_PREFETCH__${JSON.stringify({
         workerReady: true,
-        runtime: { snapshot: { count: 4, snapshotId: 'synthetic' } },
+        runtime: { snapshot: { count: 4, snapshotId: 'synthetic' }, ...(memory ? { memory } : {}) },
       })}\n`);
     });
     return { child, held, corpus };
@@ -307,6 +307,59 @@ describe('HermesSearchTrialService retrieval switch', () => {
       gate.held[1].release(workerResult);
       await second;
     } finally { service.close(); }
+  });
+
+  it('forwards principal alongside pageContext without changing calls that omit either', async () => {
+    const gate = holdingChild();
+    spawnMock.mockImplementation(() => gate.child);
+    const service = new HermesSearchTrialService(v2Settings());
+    const pageContext = { path: '/page', entity: { kind: 'partNumber' as const, value: 'P' } };
+    try {
+      const first = service.answer('q', 'session-a', pageContext, { principal: { kind: 'viewer' } });
+      await vi.waitFor(() => expect(gate.held).toHaveLength(1));
+      expect(gate.held[0].request).toMatchObject({ pageContext, principal: { kind: 'viewer' } });
+      gate.held[0].release({ ...workerResult, session: { previousPlan: { sources: ['nonconformity'] } } });
+      await first;
+      const second = service.answer('q', 'session-a', undefined, { principal: { kind: 'admin' } });
+      await vi.waitFor(() => expect(gate.held).toHaveLength(2));
+      expect(gate.held[1].request).toMatchObject({ principal: { kind: 'admin' } });
+      expect(gate.held[1].request).not.toHaveProperty('pageContext');
+      expect(gate.held[1].request.session).not.toHaveProperty('principal');
+      gate.held[1].release(workerResult);
+      await second;
+      const legacy = service.answer('q');
+      await vi.waitFor(() => expect(gate.held).toHaveLength(3));
+      expect(gate.held[2].request).not.toHaveProperty('principal');
+      expect(gate.held[2].request).not.toHaveProperty('pageContext');
+      gate.held[2].release(workerResult);
+      await legacy;
+    } finally { service.close(); }
+  });
+
+  it('stores ready and corpus memory in scope and logs one numeric line per report', async () => {
+    const memory = { heapUsedMb: 12.3, rssMb: 56.8, externalMb: 9.9, arrayBuffersMb: 3.2,
+      records: 4, bySource: { nonconformity: 4, knowledge_procedure: 0 } };
+    const gate = holdingChild({ ...memory, body: 'PRIVATE_RECORD_TEXT' });
+    spawnMock.mockImplementation(() => gate.child);
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const service = new HermesSearchTrialService(v2Settings());
+    const emit = (row: Record<string, unknown>) => gate.child.stdout.emit('data', `__HERMES_UI_PREFETCH__${JSON.stringify(row)}\n`);
+    try {
+      expect(await service.scope()).toMatchObject({ snapshotCount: 4, snapshotId: 'synthetic', memory });
+      expect((await service.scope()).memory).not.toHaveProperty('body');
+      const updated = { ...memory, heapUsedMb: 23.4, records: 5, bySource: { nonconformity: 4, knowledge_procedure: 1 } };
+      emit({ type: 'corpus', ok: true, count: 5, memory: updated });
+      expect(await service.scope()).toMatchObject({ snapshotId: 'synthetic', memory: updated });
+      const pending = service.answer('PRIVATE_QUESTION');
+      await vi.waitFor(() => expect(gate.held).toHaveLength(1));
+      emit({ type: 'corpus', ok: false, count: 5, memory: updated });
+      gate.held[0].release(workerResult);
+      await expect(pending).resolves.toMatchObject({ answer: 'WORKER_TEXT' });
+      expect(info).toHaveBeenCalledTimes(3);
+      expect(info.mock.calls[0]).toEqual(['hermes retrieval memory heapUsedMb=12.3 rssMb=56.8 externalMb=9.9 arrayBuffersMb=3.2 records=4 bySource={"nonconformity":4,"knowledge_procedure":0}']);
+      expect(info.mock.calls.every(call => call.length === 1 && !String(call[0]).includes('\n'))).toBe(true);
+      expect(JSON.stringify(info.mock.calls)).not.toMatch(/PRIVATE|WORKER_TEXT/);
+    } finally { service.close(); info.mockRestore(); }
   });
 
   it('runs four retrieval requests and queues the next two', async () => {
