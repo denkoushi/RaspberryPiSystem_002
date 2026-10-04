@@ -4,8 +4,8 @@
 // write one question per pair, grades each question with the DGX business LLM and with JEV, and
 // appends one line per question to runtime/flywheel/questions-YYYY-MM-DD.jsonl (Tokyo date).
 // Lines hold record ids, the seed, the question, grades, and the keep decision; no record text.
-// Each kept question is then answered by the kiosk's own pipeline, and the line records the shown
-// and judged ids and the loss stage (flywheel-live.mjs).
+// After generation and grading finish, kept questions without live results are answered by the
+// kiosk's own pipeline, recording the shown and judged ids and the loss stage (flywheel-live.mjs).
 // A nightly budget caps the questions, and a busy guard stops calling the model when it is slow.
 import { appendFile, mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -58,7 +58,14 @@ export function nightOf(date) {
 
 async function readLines(filePath) {
   try {
-    return (await readFile(filePath, 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line));
+    return (await readFile(filePath, 'utf8')).split('\n').filter(Boolean).flatMap((line) => {
+      try {
+        return [JSON.parse(line)];
+      } catch {
+        // Unparseable lines are omitted, including when live results rewrite the night file.
+        return [];
+      }
+    });
   } catch {
     return [];
   }
@@ -94,6 +101,7 @@ function countLine(status) {
     `kept=${status.kept}`,
     `shown=${status.shown}`,
     `dropped=${status.dropped}`,
+    `pending=${status.pendingLive}`,
   ].join(' ');
 }
 
@@ -113,7 +121,7 @@ export async function runFlywheelNight({
   seed = null,
   log = (line) => console.info(line),
 }) {
-  const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, updatedAt: null };
+  const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, pendingLive: 0, updatedAt: null };
   const finish = async (reason) => {
     status.reason = reason;
     status.updatedAt = now().toISOString();
@@ -132,7 +140,6 @@ export async function runFlywheelNight({
   const filePath = questionsPath(settings.dir, status.night);
   const done = (await readLines(filePath)).length;
   const budget = settings.maxQuestions - done;
-  if (budget <= 0) return finish('budget_reached');
 
   const catalog = loadNonconformityCatalog();
   const bodyFields = fieldsWithRole(catalog, 'body');
@@ -145,51 +152,81 @@ export async function runFlywheelNight({
   } catch {
     return finish('dense_unavailable');
   }
-  const random = createRandom(seed ?? Number(status.night.replaceAll('-', '')) + done);
-  const pairs = samplePairs({ records: corpus, denseEntries, count: budget, random, exclude: await usedAnchors(settings.dir) });
-  if (!pairs.length) return finish('no_pairs');
-
-  const guarded = guardChat(chat ?? createDgxChat({ origin: settings.origin, token: settings.token, egress: settings.egress, model: settings.model }));
   let evaluate = jevEvaluate;
   if (!evaluate) {
     const { createTypesafeDirectEvaluate } = await import('../hermes-jev-record-pilot.mjs');
     evaluate = createTypesafeDirectEvaluate();
   }
-  const gradeDgx = createDgxGrader(guarded);
-  const gradeJevPair = createJevPairGrader(evaluate);
-  const score = live ?? await createLiveScorer({ records, catalog, evaluate });
-  for (const pair of pairs) {
-    if (!withinWindow(settings.window, now())) return finish('outside_window');
-    if (guarded.tripped()) return finish('dgx_busy');
-    const [generated] = await generateForPairs({ pairs: [pair], recordsById, random, chat: guarded, sampleSeed, answerableIntents, bodyText });
-    const [row] = await filterAndLabel({ rows: [generated], recordsById, bodyFields, fieldLabels, gradeDgx, gradeJevPair });
-    const line = {
-      at: now().toISOString(),
-      a: row.a,
-      b: row.b,
-      similarity: row.similarity,
-      seed: row.seed,
-      question: row.ok ? row.question : null,
-      grades: row.grades ?? null,
-      kept: row.kept === true,
-      reason: row.ok ? row.reason ?? null : row.reason,
-      overlap: row.overlap ?? null,
-    };
-    if (line.kept) {
-      line.live = await score(row);
-      if (line.live.loss == null) status.shown += 1;
-      else status.lossStages[line.live.loss] = (status.lossStages[line.live.loss] ?? 0) + 1;
-    }
-    await appendFile(filePath, `${JSON.stringify(line)}\n`, { mode: 0o600 });
-    if (row.ok) status.generated += 1;
-    if (line.kept) status.kept += 1;
+  let reason = budget <= 0 ? 'budget_reached' : 'completed';
+  if (budget > 0) {
+    const random = createRandom(seed ?? Number(status.night.replaceAll('-', '')) + done);
+    const pairs = samplePairs({ records: corpus, denseEntries, count: budget, random, exclude: await usedAnchors(settings.dir) });
+    if (!pairs.length) reason = 'no_pairs';
     else {
-      status.dropped += 1;
-      const key = line.reason ?? 'unknown';
-      status.dropReasons[key] = (status.dropReasons[key] ?? 0) + 1;
+      const guarded = guardChat(chat ?? createDgxChat({ origin: settings.origin, token: settings.token, egress: settings.egress, model: settings.model }));
+      const gradeDgx = createDgxGrader(guarded);
+      const gradeJevPair = createJevPairGrader(evaluate);
+      for (const pair of pairs) {
+        if (!withinWindow(settings.window, now())) {
+          reason = 'outside_window';
+          break;
+        }
+        if (guarded.tripped()) {
+          reason = 'dgx_busy';
+          break;
+        }
+        const [generated] = await generateForPairs({ pairs: [pair], recordsById, random, chat: guarded, sampleSeed, answerableIntents, bodyText });
+        const [row] = await filterAndLabel({ rows: [generated], recordsById, bodyFields, fieldLabels, gradeDgx, gradeJevPair });
+        const line = {
+          at: now().toISOString(),
+          a: row.a,
+          b: row.b,
+          similarity: row.similarity,
+          seed: row.seed,
+          question: row.ok ? row.question : null,
+          grades: row.grades ?? null,
+          kept: row.kept === true,
+          reason: row.ok ? row.reason ?? null : row.reason,
+          overlap: row.overlap ?? null,
+          retried: row.retried === true,
+        };
+        await appendFile(filePath, `${JSON.stringify(line)}\n`, { mode: 0o600 });
+        if (row.ok) status.generated += 1;
+        if (line.kept) status.kept += 1;
+        else {
+          status.dropped += 1;
+          const key = line.reason ?? 'unknown';
+          status.dropReasons[key] = (status.dropReasons[key] ?? 0) + 1;
+        }
+      }
+      if (reason === 'completed' && guarded.tripped()) reason = 'dgx_busy';
     }
   }
-  return finish(guarded.tripped() ? 'dgx_busy' : 'completed');
+
+  // The scorer builds the kiosk's index over the whole corpus, so it is created only when a kept
+  // row still lacks a live result; most five-minute starts inside the window have none.
+  let score = live;
+  const rows = await readLines(filePath);
+  let scored = false;
+  for (const row of rows) {
+    if (row.kept !== true || !row.question || row.live) continue;
+    if (!withinWindow(settings.window, now())) break;
+    score ??= await createLiveScorer({ records, catalog, evaluate });
+    row.live = await score(row);
+    scored = true;
+  }
+  if (scored) {
+    const temporary = `${filePath}.${process.pid}.tmp`;
+    await writeFile(temporary, `${rows.map((row) => JSON.stringify(row)).join('\n')}\n`, { mode: 0o600 });
+    await rename(temporary, filePath);
+  }
+  for (const row of rows) {
+    if (row.kept !== true) continue;
+    if (!row.live) status.pendingLive += 1;
+    else if (row.live.loss == null) status.shown += 1;
+    else status.lossStages[row.live.loss] = (status.lossStages[row.live.loss] ?? 0) + 1;
+  }
+  return finish(reason);
 }
 
 async function readStdin() {
