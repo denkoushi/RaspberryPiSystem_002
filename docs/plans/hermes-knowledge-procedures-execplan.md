@@ -37,6 +37,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [ ] マイルストーン2b: 文字のある PDF の束を DocJev で分割・分類してから取り込む処理と、Excel の取り込み。
 - [x] (2026-10-04) マイルストーン3a: API・DB のローカル実装。職位名・段階対応表、NFC 承認と差し戻し、誤り報告、worker 起動時の既存 draft の承認待ち移行、CSV の職位取り込みを追加した。実装は Codex（gpt-6.1-sol）、検証は Claude。集中テスト 199 件と、使い捨て PostgreSQL での全 migration 適用・DB テスト 25 件が成功した。自動公開の新しい版が出たとき、誤り報告で承認待ちに戻っていた古い版を取り下げる修正を検証時に加えた。
 - [x] (2026-10-04) マイルストーン3b・4: デザイン案（`docs/design-previews/knowledge-review-chat-preview.html`、架空データ）をオーナーが承認した。名簿 CSV の職位の列名は「職位」とオーナーが決めた。
+- [x] (2026-10-04) マイルストーン3b・4の画面をローカル実装: 承認待ち、承認・差し戻し、公開済み一覧の名前・品番・図番フィルタ、1手順ずつの閲覧、誤り報告、職位の対応表。実装は Codex（gpt-6.1-sol）、検証は Claude。検証結果は Concrete Steps 参照。実機での見た目の確認は Pi5 反映後に行う。
 - [ ] マイルストーン3: 確認の区分（承認が要るもの／自動公開）と、承認・誤り報告・修正の流れ。
 - [ ] マイルストーン4: Chat からの閲覧（主題名での直接表示）。
 - [ ] マイルストーン5: 写真への丸数字・チェック・切り抜きの自動付与（精度評価の後）。
@@ -150,7 +151,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Outcomes & Retrospective
 
-マイルストーン3a の API・DB をローカルで実装した。承認を要する新しい下書きと既存の停止した下書きは承認待ちへ進み、在籍中の班長相当以上の社員タグで承認・差し戻しできる。誤り報告は公開を取り下げ、承認待ちの最新版を残す。対応表の管理は ADMIN/MANAGER の JWT だけに限る。承認 UI・管理 UI・修正操作は後続の作業であり、本変更では扱わない。
+マイルストーン3a の API・DB をローカルで実装した。承認を要する新しい下書きと既存の停止した下書きは承認待ちへ進み、在籍中の班長相当以上の社員タグで承認・差し戻しできる。誤り報告は公開を取り下げ、承認待ちの最新版を残す。対応表の管理は ADMIN/MANAGER の JWT だけに限る。その後、マイルストーン3b・4の画面として承認・閲覧・誤り報告 UI と職位の管理 UI をローカル実装した。承認待ちにはその版への最新の誤り報告の理由を出し、タグ UID は POST 本文だけで送る。職位の人数は既存の社員一覧から集計する。修正操作、自然文からの検索、commit・統合・deploy は今回の画面実装に含めない。
 
 ## Context and Orientation
 
@@ -225,6 +226,16 @@ Prisma 生成はホームキャッシュの書き込み権限で失敗した後�
 集中検証は 197 件成功、25 件スキップ（DB と Poppler の条件付きテスト）、約 15 秒だった。起動時の呼び出し確認と CSV 置換時の職位保持を追加した後、その変更を含む単体テストは 21 件成功し、ルートの再検証は 31 件成功した。DB のテストは Codex の環境では実行できなかったため、Claude が使い捨て PostgreSQL で実行し、25 件すべて成功した。指定の tsc は既存 TS6059 で失敗し、`--rootDir .` の補助検査でも既存テスト等のエラーが残った。API が参照する `part-search-core` と `shelf-layout-core` のローカル build 後、本番コードに絞った `pnpm exec tsc --noEmit -p tsconfig.build.json` は成功した。
 
 リポジトリのルートで `COREPACK_ENABLE_NETWORK=0 scripts/ci/pnpm-exact.sh --filter @raspi-system/api --filter @raspi-system/shared-types lint --max-warnings=0` が成功し、後続の変更ファイルにも eslint を実行して成功した。新 migration の SQL は既存の `validate-expand-only-migrations.py` の `validate_sql` で `EXPAND_ONLY_VALIDATION_OK` となった。Docker が使える環境では、上記の使い捨て PostgreSQL 手順で全 migration を適用し、`KNOWLEDGE_DATABASE_TEST=1 pnpm exec vitest run src/services/knowledge/__tests__/knowledge-procedure-repository.local.test.ts`（14 件）を再実行する。
+
+マイルストーン3b・4の画面実装のローカル検証（2026-10-04）:
+
+- `pnpm --filter @raspi-system/shared-types build`: 成功。
+- Web: `pnpm exec vitest run src/features/hermes-knowledge/ src/components/hermes/ src/pages/admin/KnowledgePositionRanksPage.test.tsx`: 11 ファイル・94 件成功。初回は投稿用モックが承認待ち取得まで受けて 4 件失敗し、エンドポイントごとにモックを分けた後に成功した。
+- Web: `pnpm exec tsc --noEmit -p .`: 成功。
+- API: `pnpm exec vitest run src/services/knowledge src/routes/__tests__/hermes-knowledge.test.ts`: 94 件成功、27 件スキップ（DB 26 件・Poppler 1 件）。
+- API: `pnpm exec tsc --noEmit -p tsconfig.build.json`: 成功。
+- ルート: `COREPACK_ENABLE_NETWORK=0 scripts/ci/pnpm-exact.sh lint --max-warnings=0`: 成功。最後の変更ファイルにも eslint を実行した。
+- 新しい DB テストを含む `*.local.test.ts` は Codex の環境では実行できなかったため、Claude が使い捨て PostgreSQL で実行し、26 件すべて成功した（Poppler の 1 件は対象外）。API の集中テストは 200 件成功。本番 DB は使用していない。
 
 ## Validation and Acceptance
 

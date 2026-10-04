@@ -126,6 +126,19 @@ describe.skipIf(!enabled)('Knowledge procedure PostgreSQL contract', () => {
     await repository.approve(automatic.revisionId, reviewer, 'client:test'); expect(await repository.getPublished(automatic.procedureId)).toMatchObject({ state: 'published' });
   });
 
+  it('lists only the latest error report for that revision, or null', async () => {
+    const reviewer = await employee(); const first = await draft(); await repository.submitForApproval(first.revisionId);
+    expect((await repository.listPendingApproval())[0]).toMatchObject({ revisionId: first.revisionId, reportComment: null });
+    await repository.approve(first.revisionId, reviewer, 'client:test');
+    await repository.reportError(first.procedureId, reviewer, 'client:test', '最初の報告');
+    await db.knowledgeProcedureReview.updateMany({ where: { revisionId: first.revisionId, action: 'error_reported' }, data: { createdAt: new Date('2026-01-01') } });
+    await repository.approve(first.revisionId, reviewer, 'client:test');
+    await repository.reportError(first.procedureId, reviewer, 'client:test', '最新の報告');
+    expect((await repository.listPendingApproval())[0]).toMatchObject({ revisionId: first.revisionId, reportComment: '最新の報告' });
+    const second = await draft(first.procedureId); await repository.submitForApproval(second.revisionId);
+    expect((await repository.listPendingApproval()).find(row => row.revisionId === second.revisionId)?.reportComment).toBeNull();
+  });
+
   it('keeps a newer pending revision when an older publication is reported erroneous', async () => {
     const reviewer = await employee(); const first = await draft(); await repository.submitForApproval(first.revisionId); await repository.approve(first.revisionId, reviewer, 'client:test');
     const second = await draft(first.procedureId); await repository.submitForApproval(second.revisionId);

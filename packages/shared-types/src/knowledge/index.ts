@@ -77,6 +77,7 @@ export interface KnowledgePendingReview extends Omit<KnowledgeProcedureSummary, 
   stepCount: number;
   createdAt: string;
   publishedRevisionNumber: number | null;
+  reportComment: string | null;
 }
 export interface KnowledgeReviewRequest { reviewerTagUid: string }
 export interface KnowledgeApproveRequest extends KnowledgeReviewRequest { comment?: string }

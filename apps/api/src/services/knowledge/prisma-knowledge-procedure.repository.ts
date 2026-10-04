@@ -129,11 +129,18 @@ export class PrismaKnowledgeProcedureRepository implements KnowledgeProcedureRev
   async listPendingApproval() {
     const rows = await this.db.knowledgeProcedureRevision.findMany({ where: { state: 'pending_approval' },
       include: { procedure: { include: { publishedRevision: true } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+    const reports = await this.db.knowledgeProcedureReview.findMany({
+      where: { revisionId: { in: rows.map(row => row.id) }, action: 'error_reported' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], distinct: ['revisionId'],
+      select: { revisionId: true, comment: true },
+    });
+    const comments = new Map(reports.map(report => [report.revisionId, report.comment]));
     return rows.map(row => ({
       procedureId: row.procedureId, revisionId: row.id, revisionNumber: row.revisionNumber,
       title: row.procedure.title, category: row.procedure.category, identifiers: identifiers(row.procedure), reviewTier: reviewTier(row.procedure),
       stepCount: procedureContentSchema.parse(row.content).steps.length, createdAt: row.createdAt.toISOString(),
       publishedRevisionNumber: row.procedure.publishedRevision?.revisionNumber ?? null,
+      reportComment: comments.get(row.id) ?? null,
     }));
   }
 

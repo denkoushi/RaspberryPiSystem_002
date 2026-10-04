@@ -148,6 +148,14 @@ describe('Knowledge review API', () => {
     expect((await app.inject({ method: 'POST', url: `/hermes-knowledge/reviews/${id}/return`, headers, payload: { reviewerTagUid: 'tag', comment: ' 再確認 ' } })).statusCode).toBe(200);
     expect(mocks.returnRevision).toHaveBeenCalledWith(id, employee, 'client:device-one', '再確認'); await app.close();
   });
+  it('returns the latest error-report comment in the pending list', async () => {
+    const app = server(); mocks.resolveReviewer.mockResolvedValue(reviewer);
+    mocks.listPendingApproval.mockResolvedValue([{ revisionId: id, reportComment: '締切を再確認' }]);
+    const response = await app.inject({ method: 'POST', url: '/hermes-knowledge/reviews/pending', headers, payload: { reviewerTagUid: 'tag' } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().reviews).toEqual([{ revisionId: id, reportComment: '締切を再確認' }]);
+    await app.close();
+  });
   it('rejects missing/blank/oversized comments and extra fields', async () => {
     const app = server(); mocks.resolveReviewer.mockResolvedValue(reviewer);
     for (const body of [{ reviewerTagUid: 'tag' }, { reviewerTagUid: 'tag', comment: ' ' }, { reviewerTagUid: 'tag', comment: 'a'.repeat(501) }, { reviewerTagUid: 'tag', comment: 'ok', rank: 'manager' }]) {
