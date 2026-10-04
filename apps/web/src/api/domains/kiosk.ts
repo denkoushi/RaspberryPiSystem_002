@@ -81,13 +81,12 @@ export type KioskSignagePreviewCandidate = {
   id: string;
   name: string;
   location: string | null;
-  apiKey: string;
 };
 
 export type KioskSignagePreviewOptionsResponse = {
   candidates: KioskSignagePreviewCandidate[];
-  selectedApiKey: string | null;
-  effectivePreviewApiKey: string;
+  selectedClientDeviceId: string | null;
+  effectivePreviewClientDeviceId: string;
 };
 
 export async function getKioskSignagePreviewOptions(): Promise<KioskSignagePreviewOptionsResponse> {
@@ -99,10 +98,10 @@ export async function getKioskSignagePreviewOptions(): Promise<KioskSignagePrevi
 }
 
 export async function putKioskSignagePreviewSelection(payload: {
-  signagePreviewTargetApiKey: string | null;
-}): Promise<{ ok: true; signagePreviewTargetApiKey: string | null }> {
+  signagePreviewTargetClientDeviceId: string | null;
+}): Promise<{ ok: true; signagePreviewTargetClientDeviceId: string | null }> {
   const key = resolveClientKey({ allowDefaultFallback: true }).key;
-  const { data } = await api.put<{ ok: true; signagePreviewTargetApiKey: string | null }>(
+  const { data } = await api.put<{ ok: true; signagePreviewTargetClientDeviceId: string | null }>(
     '/kiosk/signage-preview/selection',
     payload,
     { headers: { 'x-client-key': key } }

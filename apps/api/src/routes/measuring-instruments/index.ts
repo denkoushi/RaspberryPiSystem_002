@@ -1,3 +1,4 @@
+import { toLoanResponse } from '../../lib/loan-response.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { z } from 'zod';
@@ -319,14 +320,14 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
     const headerKey = request.headers['x-client-key'];
     const resolvedClientId = await resolveClientDeviceId(body.clientId, headerKey);
     const loan = await instrumentLoanService.borrow({ ...body, clientId: resolvedClientId });
-    return { loan };
+    return { loan: toLoanResponse(loan) };
   });
 
   // 計測機器返却
   app.post('/measuring-instruments/return', { preHandler: allowWrite }, async (request) => {
     const body = instrumentReturnSchema.parse(request.body);
     const loan = await instrumentLoanService.return(body);
-    return { loan };
+    return { loan: toLoanResponse(loan) };
   });
 
 }

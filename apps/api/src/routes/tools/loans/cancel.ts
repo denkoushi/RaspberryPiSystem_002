@@ -1,3 +1,4 @@
+import { toLoanResponse } from '../../../lib/loan-response.js';
 import type { FastifyInstance } from 'fastify';
 import { LoanService } from '../../../services/tools/loan.service.js';
 import { requireLoanClientOrJwt } from './require-loan-auth.js';
@@ -23,7 +24,7 @@ export function registerLoanCancelRoute(app: FastifyInstance, loanService: LoanS
 
       const loan = await loanService.cancel(body.loanId, resolvedClientId, performedByUserId);
       app.log.info({ loanId: loan.id }, 'Loan cancelled');
-      return { loan };
+      return { loan: toLoanResponse(loan) };
     } catch (error) {
       app.log.error({ error, body: request.body }, 'Loan cancel request failed');
       throw error;

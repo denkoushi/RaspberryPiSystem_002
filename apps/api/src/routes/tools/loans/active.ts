@@ -1,3 +1,4 @@
+import { toLoanResponse } from '../../../lib/loan-response.js';
 import type { FastifyInstance } from 'fastify';
 import { authorizeRoles } from '../../../lib/auth.js';
 import { LoanService } from '../../../services/tools/loan.service.js';
@@ -31,7 +32,7 @@ export function registerActiveLoansRoute(app: FastifyInstance, loanService: Loan
     const filterClientId = query.clientId && query.clientId.trim() !== '' ? query.clientId : undefined;
     const loans = await loanService.findActive({ clientId: filterClientId });
 
-    return { loans };
+    return { loans: loans.map(toLoanResponse) };
   });
 }
 

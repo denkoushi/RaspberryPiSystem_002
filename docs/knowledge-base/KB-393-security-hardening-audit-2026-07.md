@@ -79,6 +79,19 @@ Design goal: legitimate kiosk (client-key) and admin (JWT) flows keep working; o
 - DBはローカルDockerのloopbackに限定した専用コンテナ、合成データ、tmpfsを使用。既存DB/volumeは変更せず、検証後に専用コンテナを停止・自動削除した。保存先も今回専用の一時ディレクトリとした。
 - この節のテスト結果はローカル検証の証拠であり、本番反映の証拠ではない。配備の成否は後続の標準release runのsystemd/Ansible結果と非破壊post-checkで確認する。過去に露出した認証キーの失効・交換は本修正に含めず、本修正だけでは過去の露出を解消しない。
 
+## Kiosk signage preview and loan response DTOs — local correction (2026-10-04)
+
+- 専用 branch `fix/kiosk-preview-and-loan-secret-dto-20261004`、基点 `b515dd18632a5feb2cf047742c0d3c4b5a9c1aff` でローカル修正・検証を実施。開始時の未コミット変更はなく、他作業のbranch/worktreeは変更していない。
+- Kiosk previewの候補・選択・レスポンスは端末IDと表示用フィールドのみ。画像は利用中端末自身の `x-client-key` で新しい `/api/kiosk/signage-preview/image` を呼び、サーバー側で自端末または登録済みsignage候補への参照を認可する。他端末のキーをブラウザへ返さず、画像ルートには標準rate limitを適用し、配信実績は更新しない。
+- 既存String列 `signagePreviewTargetApiKey` は互換アダプター内で旧キー値と新ID値を解決する。GETはDBを書き換えず、新しい選択保存はIDを格納する。schema/migration変更なし。元の画像配信・管理画面および公開schedule DTOは維持した。
+- APIとWebは同じ修正を含むreleaseで配備し、キャッシュ済みの旧Webを再読み込みする必要がある。旧Webのキー指定PUTは受理するが、レスポンスにキーは返さない。旧APIへのrollbackは新ID参照を解釈できずキー露出も再開するため、通常の互換rollbackとは扱えない。
+- 後続の承認済みキー交換では、旧キーが有効な間に残存するpreview参照をIDへ移行し、schedule割当のキー参照も整合させる必要がある。候補判定は従来のサーバー側キーに `signage` を含む規約を継続するため、交換でもその規約を維持するか、役割情報を別途設計する。
+- 共通の明示的allowlist DTOをtoolsのactive・borrow・photo-borrow・return・cancel・assign-client、履歴内Loan、measuring-instrumentsとriggingの借用・返却へ適用。表示・操作用フィールドを維持し、ClientDeviceの認証キー、Userのpassword/MFA/backup codes、NFC認証識別子、内部idempotencyフィールドを返さない。User表示はID/usernameに限定する。
+- 最終検証は61件成功（API unit 26、Web関連14、専用DB統合21）。統合の他39件は指定した対象外。API/Web ESLint・TypeScriptを含むbuild、`git diff --check` は成功。認可、旧参照互換、保存、表示消費側、共通DTO適用箇所を手動レビューした。
+- 初回の古い生成Prisma/shared-types、コピー済み依存の欠けたfont asset、vector拡張のないテストDBは、専用worktree内の再生成・lockfile固定offline依存準備・標準pgvectorテストDBへの切替で解決した。業務sourceや既存DBの環境依存問題を追加修正したものではない。
+- DBはloopback限定・tmpfs・専用ラベル付きコンテナと合成fixtureのみを使用し、検証後にID/ラベルを照合して今回の2コンテナだけを停止・削除した。実在のキーや業務データをテストへ持ち込まず、本番DB・設定・運用状態は変更していない。
+- commit/push/PR/CI/main統合/release/deployとキー発行・交換・失効は未実施。全体E2E・全suite・本番動作検証は今回の完了証拠に含めない。既に露出したキーは後続の失効・交換が必要であり、ローカル修正の成功を本番の安全性の証明として扱わない。
+
 ## Open Items
 
 Operator-side (require secret rotation and/or Pi redeploy; not executed here per safety policy): see [security-hardening-remediation Runbook](../runbooks/security-hardening-remediation.md). Design-level items (per-resource storage ACL, JWT revocation, cookie-based session, query-string key removal, metrics/backup-health auth) tracked as future work.
