@@ -4,7 +4,8 @@ import { z } from 'zod';
 
 import type { KnowledgeAssetStore } from './knowledge-asset-store.js';
 import type { Intake, KnowledgeIntakeRepositoryPort } from './knowledge-intake.port.js';
-import type { Triage } from './triage.port.js';
+import { knowledgeDestinationSchema, personDestination } from './knowledge-destination.js';
+import type { Triage, TriageRepositoryPort } from './triage.port.js';
 
 /** An active employee identified by the NFC tag scanned before posting. */
 export type Poster = { id: string; displayName: string };
@@ -15,6 +16,7 @@ export const intakeRequestSchema = z.object({
   files: z.array(z.object({ kind: z.enum(['image', 'pdf']), filename: z.string().min(1).max(200), base64: z.string().max(27_000_000) }).strict()).max(4),
   // Every post is made by an employee who scanned their NFC tag just before sending.
   posterTagUid: z.string().trim().min(1).max(64),
+  destination: knowledgeDestinationSchema.optional(),
   scannedPartNumber: z.string().trim().min(1).max(64).optional(),
 }).strict().refine(value => value.text.trim() || value.files.length, 'メモまたは添付が必要です')
   .refine(value => !value.files.some(file => file.kind === 'pdf') || value.files.length === 1, 'PDFは一度に1件ずつ送信してください');
@@ -38,12 +40,13 @@ export function intakeResponse(row: Intake, triage?: Triage) {
 
 export class KnowledgeIntakeService {
   constructor(private readonly repository: KnowledgeIntakeRepositoryPort, private readonly assets: KnowledgeAssetStore,
-    private readonly resolvePoster: PosterResolver) {}
+    private readonly resolvePoster: PosterResolver, private readonly triage: TriageRepositoryPort) {}
 
   async receive(ownerKey: string, raw: unknown) {
     const input = intakeRequestSchema.parse(raw);
     const poster = await this.resolvePoster(input.posterTagUid);
     if (!poster) throw new Error('UNKNOWN_POSTER');
+    const destination = input.destination ? personDestination(input.destination) : undefined;
     const files = input.files.map(file => {
       const bytes = Buffer.from(file.base64, 'base64');
       if (bytes.toString('base64') !== file.base64) throw new Error('INVALID_ATTACHMENT');
@@ -54,9 +57,12 @@ export class KnowledgeIntakeService {
     });
     const references = files.map(file => file.reference);
     const scannedPartNumber = input.scannedPartNumber ?? null;
-    const inputHash = createHash('sha256').update(JSON.stringify({ text: input.text, files: references, poster: poster.id, scannedPartNumber })).digest('hex');
+    const inputHash = createHash('sha256').update(JSON.stringify({ text: input.text, files: references, poster: poster.id, scannedPartNumber, ...(input.destination ? { destination: input.destination } : {}) })).digest('hex');
+    const previous = await this.repository.get(input.id, ownerKey);
+    if (previous && (previous.inputHash !== inputHash || previous.conversationId !== input.conversationId)) throw new Error('INTAKE_CONFLICT');
+    if (destination && !previous) await this.triage.validateDestination(destination);
     let row = await this.repository.receive({ id: input.id, ownerKey, conversationId: input.conversationId, inputHash, text: input.text, files: references,
-      posterEmployeeId: poster.id, posterNameSnapshot: poster.displayName, scannedPartNumber });
+      posterEmployeeId: poster.id, posterNameSnapshot: poster.displayName, scannedPartNumber, ...(destination ? { destination } : {}) });
     if (row.state === 'receiving') {
       for (const file of files) await this.assets.save(file.bytes, 'original');
       await this.repository.accepted(row.id, ownerKey);

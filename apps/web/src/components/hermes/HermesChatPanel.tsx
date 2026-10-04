@@ -43,6 +43,7 @@ export type HermesChatPanelProps = {
   conversationExtension?: ReactNode;
   conversationContent?: ReactNode;
   attachmentControl?: ReactNode;
+  composerVisible?: boolean;
   knowledgeMode?: HermesKnowledgeMode;
   recordPilotAvailable?: boolean;
   onKnowledgeModeChange?: (mode: HermesKnowledgeMode) => void;
@@ -437,6 +438,7 @@ export default function HermesChatPanel({
   conversationExtension,
   conversationContent,
   attachmentControl,
+  composerVisible = true,
   knowledgeMode = 'search',
   recordPilotAvailable = false,
   onKnowledgeModeChange,
@@ -484,7 +486,7 @@ export default function HermesChatPanel({
     editor?.setAttribute('aria-label', 'Hermesへの質問');
   });
 
-  const messageInput = (
+  const messageInput = composerVisible ? (
     <MessageInput
       value={escapeInputHtml(draft)}
       disabled={isBusy || isConsultationDetailLoading || isMessageHistoryLoading || (mode === 'consultations' && isConsultationsLoading)}
@@ -495,7 +497,7 @@ export default function HermesChatPanel({
       onChange={(_innerHtml, textContent) => onDraftChange(textContent)}
       onSend={() => onSend()}
     />
-  );
+  ) : null;
 
   return (
     <section ref={panelRef} className="hermes-chat-panel" style={style} aria-label="Hermesチャット" role="region">
@@ -598,7 +600,7 @@ export default function HermesChatPanel({
               </button>
             ))}
           </div>
-          <div className="hermes-chat-panel__consultation-composer">{messageInput}</div>
+          {composerVisible ? <div className="hermes-chat-panel__consultation-composer">{messageInput}</div> : null}
         </>
       ) : (
         <>

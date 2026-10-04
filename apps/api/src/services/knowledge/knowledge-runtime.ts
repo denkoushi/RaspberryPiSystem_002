@@ -23,6 +23,8 @@ import { KnowledgeIntakeService, type Poster } from './knowledge-intake.service.
 import { KnowledgeTriageService } from './knowledge-triage.service.js';
 import { ensureKnowledgeReferenceData } from './knowledge-reference-data.js';
 import { PrismaKnowledgeReviewerRepository } from './prisma-knowledge-reviewer.repository.js';
+import { fieldTree } from './knowledge-fields.js';
+import { PrismaKnowledgeSubjectRepository } from './prisma-knowledge-subject.repository.js';
 import { PrismaTriageRepository } from './prisma-triage.repository.js';
 
 async function resolvePoster(tagUid: string): Promise<Poster | null> {
@@ -31,7 +33,15 @@ async function resolvePoster(tagUid: string): Promise<Poster | null> {
 }
 
 async function activeWorkTypes(): Promise<string[]> {
-  return (await prisma.knowledgeWorkType.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' }, select: { name: true } })).map(row => row.name);
+  return (await prisma.knowledgeField.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' }, select: { name: true } })).map(row => row.name);
+}
+
+async function activeFieldRoots(): Promise<Record<string, string>> {
+  const tree = fieldTree(await prisma.knowledgeField.findMany({ where: { active: true } }));
+  const roots: Record<string, string> = {};
+  const add = (nodes: typeof tree, root: string) => { for (const node of nodes) { roots[node.name] = root; add(node.children, root); } };
+  for (const root of tree) add([root], root.name);
+  return roots;
 }
 
 function createKnowledgeRuntime() {
@@ -52,12 +62,13 @@ function createKnowledgeRuntime() {
     logError: error => logger.warn({ err: error }, 'Knowledge background processing failed'),
   });
   const procedureWorker = new ProcedureWorker({ triage, materials, procedures, inference: new ProcedureInference(text),
-    workTypes: activeWorkTypes,
+    workTypes: activeWorkTypes, fieldRoots: activeFieldRoots,
     scannedPartNumber: async intakeId => (await repository.byIds([intakeId]))[0]?.scannedPartNumber ?? null,
     logError: error => logger.warn({ err: error }, 'Knowledge procedure building failed') });
-  return { reviewers: new PrismaKnowledgeReviewerRepository(prisma), repository, assets, documents, worker, procedures, materials, triage, procedureWorker, workTypes: activeWorkTypes,
+  return { fields: async () => fieldTree(await prisma.knowledgeField.findMany({ where: { active: true } })),
+    subjects: new PrismaKnowledgeSubjectRepository(prisma), resolvePoster, reviewers: new PrismaKnowledgeReviewerRepository(prisma), repository, assets, documents, worker, procedures, materials, triage, procedureWorker, workTypes: activeWorkTypes,
     ensureReferenceData: () => ensureKnowledgeReferenceData(prisma, triage, procedures),
-    intake: new KnowledgeIntakeService(repository, assets, resolvePoster),
+    intake: new KnowledgeIntakeService(repository, assets, resolvePoster, triage),
     triageService: new KnowledgeTriageService({ triage, intakes: repository, resolvePoster }) };
 }
 

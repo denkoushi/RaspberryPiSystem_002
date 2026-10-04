@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   clientKey: 'client-key-test',
+  poster: { tagUid: 'tag-1', name: '田中' },
   auth: { user: null, token: null },
   send: vi.fn(),
   getTrialScope: vi.fn(),
@@ -38,14 +39,17 @@ vi.mock('../../contexts/AuthContext', () => ({
 }));
 
 // Legacy behavior is exercised with the new capability explicitly disabled.
-vi.mock('../../api/http', () => ({ api: { get: mocks.knowledgeGet, post: mocks.knowledgePost } }));
+vi.mock('../../api/http', () => ({ api: {
+  get: (url: string, ...args: unknown[]) => url.endsWith('/subjects') ? Promise.resolve({ data: { subjects: [] } }) : mocks.knowledgeGet(url, ...args),
+  post: (url: string, ...args: unknown[]) => url.endsWith('/subjects/recent') ? Promise.resolve({ data: { subjects: [] } }) : mocks.knowledgePost(url, ...args),
+} }));
 vi.mock('../../features/hermes-knowledge/knowledgeReviewApi', async importOriginal => ({
   ...await importOriginal<typeof import('../../features/hermes-knowledge/knowledgeReviewApi')>(),
   listKnowledgePendingReviews: mocks.pendingReviews,
 }));
 // Tag scanning is covered by useKnowledgePoster; here an employee has already scanned.
 vi.mock('../../features/hermes-knowledge/useKnowledgePoster', () => ({
-  useKnowledgePoster: () => ({ poster: { tagUid: 'tag-1', name: '田中' }, pending: [], partNumber: null, setPartNumber: () => undefined,
+  useKnowledgePoster: (active: boolean) => ({ poster: active ? mocks.poster : null, pending: [], partNumber: null, setPartNumber: () => undefined,
     error: null, verifying: false, consume: () => null, clear: () => undefined, removePending: () => undefined }),
 }));
 
@@ -68,6 +72,7 @@ vi.mock('./HermesChatPanel', () => ({
     conversationExtension?: ReactNode;
     conversationContent?: ReactNode;
     attachmentControl?: ReactNode;
+    composerVisible?: boolean;
     onDraftChange: (value: string) => void;
     onSend: () => void;
     onReset: () => void;
@@ -138,12 +143,12 @@ vi.mock('./HermesChatPanel', () => ({
       {props.conversationContent ?? <>
       {props.conversationExtension}
       {props.attachmentControl}
-      <input
+      {props.composerVisible !== false ? <><input
         aria-label="Hermesへの質問"
         value={props.draft}
         onChange={(event) => props.onDraftChange(event.target.value)}
       />
-      <button type="button" onClick={props.onSend} disabled={props.isBusy}>送信</button>
+      <button type="button" onClick={props.onSend} disabled={props.isBusy}>送信</button></> : null}
       </>}
       {props.isBusy && props.onStop ? <button type="button" onClick={props.onStop}>停止</button> : null}
       <button type="button" onClick={props.onReset}>{props.activeConsultation ? '相談一覧に戻る' : 'リセット'}</button>
@@ -475,6 +480,7 @@ describe('HermesFloatingChat', () => {
     renderChat();
     fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
     fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'おまかせ' }));
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     const attachment = await screen.findByLabelText('写真・PDFを添付');
     const file = new File(['image'], '点検.jpg', { type: 'image/jpeg' });
@@ -493,6 +499,7 @@ describe('HermesFloatingChat', () => {
     });
     expect(mocks.knowledgePost).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'おまかせ' }));
     expect(await screen.findByLabelText('写真・PDFを添付')).toBeInTheDocument();
     expect(screen.getByText('点検.jpg')).toBeInTheDocument();
 
@@ -518,6 +525,7 @@ describe('HermesFloatingChat', () => {
     renderChat();
     fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
     fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'おまかせ' }));
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: 'ナレッジ登録を待つ入力' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -551,6 +559,7 @@ describe('HermesFloatingChat', () => {
     renderChat();
     fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
     fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'おまかせ' }));
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '処理中のナレッジ入力' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -583,6 +592,7 @@ describe('HermesFloatingChat', () => {
     renderChat();
     fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
     fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'おまかせ' }));
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '別業務の確認' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));

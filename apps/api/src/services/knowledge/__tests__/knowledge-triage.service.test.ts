@@ -8,7 +8,7 @@ const procedureId = '123e4567-e89b-42d3-a456-426614174000';
 const triageRow = (suggestions: Triage['suggestions']): Triage => ({ intakeId: 'post-1', posterEmployeeId: 'e1', state: 'awaiting', suggestions, decidedProcedureId: null, createdAt: new Date() });
 
 function service(suggestions: Triage['suggestions'] = null) {
-  const triage = { open: vi.fn(), claimSuggesting: vi.fn(), saveSuggestions: vi.fn(), failSuggesting: vi.fn(),
+  const triage = { validateDestination: vi.fn(), open: vi.fn(), claimSuggesting: vi.fn(), saveSuggestions: vi.fn(), failSuggesting: vi.fn(),
     get: vi.fn().mockResolvedValue([triageRow(suggestions)]), awaitingFor: vi.fn().mockResolvedValue([triageRow(suggestions)]),
     decide: vi.fn().mockResolvedValue({ procedureId }) } satisfies TriageRepositoryPort;
   const intakes = { byIds: vi.fn().mockResolvedValue([{ id: 'post-1', text: 'メモ', createdAt: new Date('2026-09-27T00:00:00Z'), scannedPartNumber: null,

@@ -17,7 +17,7 @@ const SUGGESTION_MATERIAL_LIMIT = 5;
 
 export type ProcedureWorkerDeps = {
   triage: TriageRepositoryPort; materials: ProcedureMaterialRepositoryPort; procedures: KnowledgeProcedureReviewRepositoryPort;
-  inference: ProcedureInferencePort; workTypes: () => Promise<string[]>;
+  inference: ProcedureInferencePort; workTypes: () => Promise<string[]>; fieldRoots: () => Promise<Record<string, string>>;
   scannedPartNumber: (intakeId: string) => Promise<string | null>;
   logError: (error: unknown) => void;
 };
@@ -75,7 +75,7 @@ export class ProcedureWorker {
       const all = await procedures.listTopics();
       const samePart = scannedPartNumber ? all.filter(topic => topic.header.identifiers.partNumber === scannedPartNumber) : [];
       const topics = [...samePart, ...all.filter(topic => !samePart.includes(topic)).reverse()].slice(0, SUGGESTION_TOPIC_LIMIT);
-      const input = { materials: items.map(digestMaterial), scannedPartNumber, topics, workTypes: await this.deps.workTypes() };
+      const input = { materials: items.map(digestMaterial), scannedPartNumber, topics, workTypes: await this.deps.workTypes(), fieldRoots: await this.deps.fieldRoots() };
       const suggestions = validateSuggestions(await inference.suggest(input, signal), input);
       signal.throwIfAborted();
       await triage.saveSuggestions(job.intakeId, token, suggestions);

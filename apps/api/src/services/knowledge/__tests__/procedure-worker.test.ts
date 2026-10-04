@@ -18,7 +18,7 @@ const triageJob: Triage = { intakeId: 'intake-1', posterEmployeeId: 'e1', state:
 
 function harness(options: { triage?: Triage | null; build?: { procedureId: string; header: typeof generalHeader | typeof setupHeader } | null; materials?: ProcedureMaterial[] } = {}) {
   const requestedAt = new Date('2026-09-27T00:00:00Z');
-  const triage = {
+  const triage = { validateDestination: vi.fn(),
     open: vi.fn(), claimSuggesting: vi.fn().mockResolvedValue(options.triage ?? null), saveSuggestions: vi.fn(),
     failSuggesting: vi.fn().mockResolvedValue(undefined), get: vi.fn(), awaitingFor: vi.fn(), decide: vi.fn(),
   } satisfies TriageRepositoryPort;
@@ -38,7 +38,7 @@ function harness(options: { triage?: Triage | null; build?: { procedureId: strin
   const inference = { suggest: vi.fn(), compose: vi.fn() } satisfies ProcedureInferencePort;
   const logError = vi.fn();
   const worker = new ProcedureWorker({ triage, materials, procedures, inference, logError,
-    workTypes: async () => ['段取り', '申し込み・手続き', 'その他'], scannedPartNumber: async () => 'P-1' });
+    fieldRoots: async () => ({ 段取り: '段取り', '申し込み・手続き': '事務・教育', その他: 'その他' }), workTypes: async () => ['段取り', '申し込み・手続き', 'その他'], scannedPartNumber: async () => 'P-1' });
   return { triage, materials, procedures, inference, logError, worker, requestedAt };
 }
 

@@ -29,7 +29,7 @@ export interface KnowledgeProcedureRepositoryPort {
   /** Every topic, published or not, for assigning new materials. */
   listTopics(): Promise<ProcedureTopicRecord[]>;
   /** Topics whose title or identifiers contain the query, newest first. */
-  searchTopics(query: string, limit: number): Promise<ProcedureTopicRecord[]>;
+  searchTopics(query: string, limit: number, target?: string): Promise<ProcedureTopicRecord[]>;
   claimBuild(token: string): Promise<ProcedureBuildJob | null>;
   /** Clears the request only if no newer material arrived since `requestedAt`. */
   completeBuild(procedureId: string, token: string, requestedAt: Date): Promise<void>;

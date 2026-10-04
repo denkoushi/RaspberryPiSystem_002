@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { knowledgeDestinationSchema } from './knowledge-destination.js';
 import type { KnowledgeIntakeRepositoryPort } from './knowledge-intake.port.js';
 import type { PosterResolver } from './knowledge-intake.service.js';
 import { enforceReviewTier, normalizeIdentifiers } from './procedure-builder.js';
@@ -8,13 +9,7 @@ import type { TriageRepositoryPort } from './triage.port.js';
 
 export const triageDecisionSchema = z.object({
   posterTagUid: z.string().trim().min(1).max(64),
-  destination: z.union([
-    z.object({ procedureId: z.string().uuid() }).strict(),
-    z.object({ newTopic: z.object({
-      target: z.string(), workType: z.string(), detail: z.string().optional(),
-      partNumber: z.string().optional(), drawingNumber: z.string().optional(),
-    }).strict() }).strict(),
-  ]),
+  destination: knowledgeDestinationSchema,
 }).strict();
 
 export const triagePendingSchema = z.object({ posterTagUid: z.string().trim().min(1).max(64) }).strict();

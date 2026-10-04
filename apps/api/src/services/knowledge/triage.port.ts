@@ -29,6 +29,7 @@ export type TriageDestination =
   | { newTopic: { parts: TitleParts; identifiers: ProcedureIdentifiers; reviewTier: KnowledgeProcedureReviewTier } };
 
 export interface TriageRepositoryPort {
+  validateDestination(destination: TriageDestination): Promise<void>;
   /** Idempotent: one triage per post. */
   open(intakeId: string, posterEmployeeId: string | null): Promise<void>;
   claimSuggesting(token: string): Promise<Triage | null>;

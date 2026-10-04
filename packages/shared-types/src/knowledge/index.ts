@@ -86,3 +86,12 @@ export interface KnowledgeErrorReportRequest { reporterTagUid: string; comment: 
 export interface KnowledgePendingReviewsResponse { reviewer: KnowledgeReviewer; reviews: KnowledgePendingReview[] }
 export interface KnowledgeReviewDetailResponse { procedure: KnowledgeProcedureDocument }
 export interface KnowledgeReviewMutationResponse { ok: true }
+
+export interface KnowledgeFieldNode { id: string; name: string; aliases: string[]; children: KnowledgeFieldNode[] }
+export interface KnowledgeFieldsResponse { fields: KnowledgeFieldNode[] }
+export interface KnowledgeSubject { target: string; topicCount: number }
+export interface KnowledgeSubjectsResponse { subjects: KnowledgeSubject[] }
+export interface KnowledgeRecentSubjectsRequest { posterTagUid: string }
+export type KnowledgeDestination =
+  | { procedureId: string }
+  | { newTopic: { target: string; workType: string; detail?: string; partNumber?: string; drawingNumber?: string } };

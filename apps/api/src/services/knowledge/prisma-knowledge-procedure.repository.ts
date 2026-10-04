@@ -204,13 +204,13 @@ export class PrismaKnowledgeProcedureRepository implements KnowledgeProcedureRev
     return (await this.db.knowledgeProcedure.findMany({ orderBy: { createdAt: 'asc' } })).map(topicRecord);
   }
 
-  async searchTopics(query: string, limit: number) {
+  async searchTopics(query: string, limit: number, target?: string) {
     const q = query.trim();
     const rows = await this.db.knowledgeProcedure.findMany({
-      where: q ? { OR: [
+      where: { ...(target !== undefined ? { target } : {}), ...(q ? { OR: [
         { title: { contains: q, mode: 'insensitive' } }, { partNumber: { contains: q, mode: 'insensitive' } },
         { drawingNumber: { contains: q, mode: 'insensitive' } },
-      ] } : {},
+      ] } : {}) },
       orderBy: { updatedAt: 'desc' }, take: limit,
     });
     return rows.map(topicRecord);
