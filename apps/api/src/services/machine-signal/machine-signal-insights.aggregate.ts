@@ -6,8 +6,10 @@ import {
   type SignalDayMetrics,
   type SignalHint,
   type SignalPlannedWindow,
+  type SignalStop,
   type SignalThresholds,
 } from './signal-metrics.js';
+import type { SignalDaySummary } from './machine-signal-day-summary.cache.js';
 import type { MachineSignalSensorDto } from './machine-signal-settings.service.js';
 import {
   SIGNAL_CATEGORIES,
@@ -83,7 +85,6 @@ export type SignalFleetDay = {
   topAlarm: number[];
   topShortStops: number[];
   topLongStop: number[];
-  worsening: SignalWorsening[];
 };
 
 export type SignalTrendPoint = {
@@ -232,7 +233,7 @@ function topBy(machines: SignalMachineDay[], valueOf: (machine: SignalMachineDay
 /** 1日分の全機械から、全体ページに出す結論（時間の行き先、稼働台数、手を打つ機械）を作る。 */
 export function buildSignalFleetDay(
   machines: SignalMachineDay[],
-  options: { dayStartMinute: number; nightStartMinute: number; worsening: SignalWorsening[]; thresholds: SignalThresholds }
+  options: { dayStartMinute: number; nightStartMinute: number; thresholds: SignalThresholds }
 ): SignalFleetDay {
   const loss: SignalDayMetrics['loss'] = {
     normalRunSeconds: 0,
@@ -281,6 +282,186 @@ export function buildSignalFleetDay(
     topLongStop: topBy(machines, (machine) =>
       machine.runSeconds >= options.thresholds.barelyRanMaxSeconds ? (machine.longestStops[0]?.durationSeconds ?? 0) : 0
     ),
-    worsening: options.worsening,
+  };
+}
+
+export function buildSignalDaySummary(
+  sensor: MachineSignalSensorDto,
+  report: SignalReportRow,
+  thresholds: SignalThresholds
+): SignalDaySummary {
+  const metrics = metricsOf(sensor, report, thresholds);
+  return {
+    signalNo: sensor.signalNo,
+    reportDate: report.reportDate,
+    hasRecord: metrics.hasRecord,
+    hint: decideSignalHint(metrics, thresholds),
+    runSeconds: metrics.runSeconds,
+    runBlockCount: metrics.runBlockCount,
+    averageRunSeconds: metrics.averageRunSeconds,
+    longestRunSeconds: metrics.longestRunSeconds,
+    stopCount: metrics.stopCount,
+    shortStopCount: metrics.shortStopCount,
+    alarmCount: metrics.alarmCount,
+    alarmSeconds: metrics.alarmSeconds,
+    loss: metrics.loss,
+    longestStop: metrics.longestStops[0] ?? null,
+    estimatedKwh: metrics.estimatedKwh,
+  };
+}
+
+export type SignalRangeMachine = {
+  signalNo: number;
+  name: string;
+  sourceMachineName: string;
+  site: string | null;
+  kind: string;
+  recordDays: number;
+  runSeconds: number;
+  averageRunSecondsPerDay: number;
+  stopCount: number;
+  shortStopCount: number;
+  alarmCount: number;
+  alarmSeconds: number;
+  longestStop: (SignalStop & { reportDate: string }) | null;
+  loss: SignalDayMetrics['loss'];
+  estimatedKwh: number | null;
+  days: Array<{ runSeconds: number; hint: SignalHint } | null>;
+};
+
+export type SignalRangeFleet = {
+  machineCount: number;
+  dayCount: number;
+  runRatio: number;
+  loss: SignalDayMetrics['loss'];
+  dailyRunRatio: number[];
+  hintDayCounts: Record<SignalHint, number>;
+  estimatedKwh: number | null;
+  topAlarm: number[];
+  topShortStops: number[];
+  topLongStop: number[];
+};
+
+export type MachineSignalRangeDto = {
+  from: string;
+  to: string;
+  dates: string[];
+  thresholds: SignalThresholds;
+  sites: string[];
+  fleet: SignalRangeFleet;
+  machines: SignalRangeMachine[];
+};
+
+/** 日報のない日も分母に含め、機械ごと・日ごとの稼働を同じ期間で比べる。 */
+export function buildSignalRange(input: {
+  from: string;
+  to: string;
+  sensors: MachineSignalSensorDto[];
+  summaries: SignalDaySummary[];
+  thresholds: SignalThresholds;
+  sites: string[];
+}): MachineSignalRangeDto {
+  const dates: string[] = [];
+  const end = new Date(`${input.to}T00:00:00.000Z`).getTime();
+  for (let at = new Date(`${input.from}T00:00:00.000Z`).getTime(); at <= end; at += 86_400_000) {
+    dates.push(new Date(at).toISOString().slice(0, 10));
+  }
+  const emptyLoss = (): SignalDayMetrics['loss'] => ({
+    normalRunSeconds: 0,
+    runAlarmSeconds: 0,
+    shortStopSeconds: 0,
+    midStopSeconds: 0,
+    longStopSeconds: 0,
+    notStartedSeconds: 0,
+    outsidePlanSeconds: 0,
+    noRecordSeconds: 0,
+  });
+  const bySensor = new Map<number, Map<string, SignalDaySummary>>();
+  for (const summary of input.summaries) {
+    const days = bySensor.get(summary.signalNo) ?? new Map<string, SignalDaySummary>();
+    days.set(summary.reportDate, summary);
+    bySensor.set(summary.signalNo, days);
+  }
+  const hintDayCounts = Object.fromEntries(SIGNAL_HINTS.map((hint) => [hint, 0])) as Record<SignalHint, number>;
+  const dailyRunSeconds = dates.map(() => 0);
+  const machines = [...input.sensors].sort((a, b) => a.signalNo - b.signalNo).map((sensor): SignalRangeMachine => {
+    const machine: SignalRangeMachine = {
+      signalNo: sensor.signalNo,
+      name: sensor.displayName ?? sensor.sourceMachineName,
+      sourceMachineName: sensor.sourceMachineName,
+      site: sensor.site,
+      kind: sensor.kind,
+      recordDays: 0,
+      runSeconds: 0,
+      averageRunSecondsPerDay: 0,
+      stopCount: 0,
+      shortStopCount: 0,
+      alarmCount: 0,
+      alarmSeconds: 0,
+      longestStop: null,
+      loss: emptyLoss(),
+      estimatedKwh: null,
+      days: [],
+    };
+    for (const [index, date] of dates.entries()) {
+      const summary = bySensor.get(sensor.signalNo)?.get(date);
+      machine.days.push(summary ? { runSeconds: summary.runSeconds, hint: summary.hint } : null);
+      hintDayCounts[summary?.hint ?? 'NO_RECORD'] += 1;
+      if (!summary) {
+        machine.loss.noRecordSeconds += SIGNAL_DAY_SECONDS;
+        continue;
+      }
+      if (summary.hasRecord) machine.recordDays += 1;
+      machine.runSeconds += summary.runSeconds;
+      machine.stopCount += summary.stopCount;
+      machine.shortStopCount += summary.shortStopCount;
+      machine.alarmCount += summary.alarmCount;
+      machine.alarmSeconds += summary.alarmSeconds;
+      dailyRunSeconds[index] += summary.runSeconds;
+      for (const key of Object.keys(machine.loss) as Array<keyof SignalDayMetrics['loss']>) {
+        machine.loss[key] += summary.loss[key];
+      }
+      if (summary.longestStop && summary.longestStop.durationSeconds > (machine.longestStop?.durationSeconds ?? 0)) {
+        machine.longestStop = { ...summary.longestStop, reportDate: date };
+      }
+      if (summary.estimatedKwh !== null) machine.estimatedKwh = (machine.estimatedKwh ?? 0) + summary.estimatedKwh;
+    }
+    machine.averageRunSecondsPerDay = dates.length > 0 ? Math.round(machine.runSeconds / dates.length) : 0;
+    return machine;
+  });
+  const loss = emptyLoss();
+  let estimatedKwh: number | null = null;
+  for (const machine of machines) {
+    for (const key of Object.keys(loss) as Array<keyof typeof loss>) loss[key] += machine.loss[key];
+    if (machine.estimatedKwh !== null) estimatedKwh = (estimatedKwh ?? 0) + machine.estimatedKwh;
+  }
+  const top = (valueOf: (machine: SignalRangeMachine) => number) => machines
+    .map((machine) => ({ signalNo: machine.signalNo, value: valueOf(machine) }))
+    .filter((entry) => entry.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, TOP_LIST_SIZE)
+    .map((entry) => entry.signalNo);
+  const dailyTotal = machines.length * SIGNAL_DAY_SECONDS;
+  const total = dailyTotal * dates.length;
+  return {
+    from: input.from,
+    to: input.to,
+    dates,
+    thresholds: input.thresholds,
+    sites: input.sites,
+    machines,
+    fleet: {
+      machineCount: machines.length,
+      dayCount: dates.length,
+      runRatio: total > 0 ? machines.reduce((sum, machine) => sum + machine.runSeconds, 0) / total : 0,
+      loss,
+      dailyRunRatio: dailyRunSeconds.map((seconds) => dailyTotal > 0 ? seconds / dailyTotal : 0),
+      hintDayCounts,
+      estimatedKwh,
+      topAlarm: top((machine) => machine.alarmSeconds),
+      topShortStops: top((machine) => machine.shortStopCount),
+      topLongStop: top((machine) => machine.runSeconds >= input.thresholds.barelyRanMaxSeconds * dates.length
+        ? (machine.longestStop?.durationSeconds ?? 0) : 0),
+    },
   };
 }

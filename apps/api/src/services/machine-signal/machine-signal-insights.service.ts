@@ -1,8 +1,10 @@
+import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import {
   buildSignalFleetDay,
   buildSignalMachineDay,
-  buildSignalTrendPoint,
+  buildSignalRange,
+  type MachineSignalRangeDto,
   detectSignalWorsening,
   SIGNAL_TREND_BASELINE_DAYS,
   SIGNAL_TREND_RECENT_DAYS,
@@ -12,6 +14,7 @@ import {
   type SignalTrendPoint,
   type SignalWorsening,
 } from './machine-signal-insights.aggregate.js';
+import { loadSignalDaySummaries, type SignalDaySummary } from './machine-signal-day-summary.cache.js';
 import {
   getMachineSignalSettings,
   listMachineSignalSensors,
@@ -20,6 +23,9 @@ import {
 import { classifySignalLamps, lampPatternKey, type SignalThresholds } from './signal-metrics.js';
 import type { SignalCategory, SignalSegmentTuple } from './signal-report.types.js';
 
+export type { MachineSignalRangeDto, SignalRangeMachine, SignalRangeFleet } from './machine-signal-insights.aggregate.js';
+
+export const MACHINE_SIGNAL_RANGE_MAX_DAYS = 92;
 const DAY_MS = 86_400_000;
 const toDateKey = (date: Date) => date.toISOString().slice(0, 10);
 const toDate = (dateKey: string) => new Date(`${dateKey}T00:00:00.000Z`);
@@ -82,7 +88,6 @@ export async function getMachineSignalDay(input: { date?: string; site?: string 
 
   const reportDate = input.date ?? toDateKey(latest.reportDate);
   const day = toDate(reportDate);
-  const windowStart = new Date(day.getTime() - (SIGNAL_TREND_RECENT_DAYS + SIGNAL_TREND_BASELINE_DAYS - 1) * DAY_MS);
   const [previous, next, rows] = await Promise.all([
     prisma.machineSignalDailyReport.findFirst({
       where: { reportDate: { lt: day } },
@@ -95,37 +100,19 @@ export async function getMachineSignalDay(input: { date?: string; site?: string 
       select: { reportDate: true },
     }),
     prisma.machineSignalDailyReport.findMany({
-      where: { reportDate: { gte: windowStart, lte: day }, signalNo: { in: sensors.map((sensor) => sensor.signalNo) } },
+      where: { reportDate: day, signalNo: { in: sensors.map((sensor) => sensor.signalNo) } },
       orderBy: { reportDate: 'asc' },
       select: REPORT_SELECT,
     }),
   ]);
 
-  const bySensor = new Map<number, SignalReportRow[]>();
-  for (const row of rows.map(toReportRow)) {
-    const list = bySensor.get(row.signalNo) ?? [];
-    list.push(row);
-    bySensor.set(row.signalNo, list);
-  }
-  const recentDates = new Set(
-    Array.from({ length: SIGNAL_TREND_RECENT_DAYS }, (_, index) => toDateKey(new Date(day.getTime() - index * DAY_MS)))
-  );
-
+  const bySensor = new Map(rows.map((row) => [row.signalNo, toReportRow(row)]));
   const machines: SignalMachineDay[] = [];
-  const worsening: SignalWorsening[] = [];
   let dayStartMinute = 480;
   for (const sensor of sensors) {
-    const reports = bySensor.get(sensor.signalNo) ?? [];
-    const today = reports.find((report) => report.reportDate === reportDate);
+    const today = bySensor.get(sensor.signalNo);
     if (today) dayStartMinute = today.dayStartMinute;
     machines.push(buildSignalMachineDay(sensor, today, settings.thresholds));
-    const found = detectSignalWorsening(
-      sensor.signalNo,
-      reports.map((report) => buildSignalTrendPoint(sensor, report, settings.thresholds)),
-      recentDates,
-      settings.thresholds
-    );
-    if (found) worsening.push(found);
   }
 
   return {
@@ -139,7 +126,6 @@ export async function getMachineSignalDay(input: { date?: string; site?: string 
     fleet: buildSignalFleetDay(machines, {
       dayStartMinute,
       nightStartMinute: settings.nightStartMinute,
-      worsening,
       thresholds: settings.thresholds,
     }),
     machines,
@@ -156,12 +142,13 @@ export async function getMachineSignalTrend(input: {
   const sensor = sensors.find((candidate) => candidate.signalNo === input.signalNo);
   if (!sensor) return [];
   const end = toDate(input.endDate);
-  const rows = await prisma.machineSignalDailyReport.findMany({
-    where: { signalNo: input.signalNo, reportDate: { gte: new Date(end.getTime() - (input.days - 1) * DAY_MS), lte: end } },
-    orderBy: { reportDate: 'asc' },
-    select: REPORT_SELECT,
+  const summaries = await loadSignalDaySummaries({
+    sensors: [sensor],
+    thresholds: settings.thresholds,
+    from: toDateKey(new Date(end.getTime() - (input.days - 1) * DAY_MS)),
+    to: input.endDate,
   });
-  return rows.map((row) => buildSignalTrendPoint(sensor, toReportRow(row), settings.thresholds));
+  return summaries.map(toTrendPoint);
 }
 
 export type MachineSignalLampPattern = {
@@ -181,14 +168,14 @@ export type MachineSignalSensorAdminDto = MachineSignalSensorDto & {
 
 /** 管理画面用。センサーごとに、最新の日報で使われたランプの組み合わせを添える。 */
 export async function listMachineSignalSensorsForAdmin(): Promise<MachineSignalSensorAdminDto[]> {
-  const [sensors, latestRows] = await Promise.all([
+  const [sensors, latestDates] = await Promise.all([
     listMachineSignalSensors(),
-    prisma.machineSignalDailyReport.findMany({
-      distinct: ['signalNo'],
-      orderBy: [{ signalNo: 'asc' }, { reportDate: 'desc' }],
-      select: REPORT_SELECT,
-    }),
+    prisma.machineSignalDailyReport.groupBy({ by: ['signalNo'], _max: { reportDate: true } }),
   ]);
+  const pairs = latestDates.flatMap((row) => row._max.reportDate
+    ? [{ signalNo: row.signalNo, reportDate: row._max.reportDate }] : []);
+  const latestRows = pairs.length > 0
+    ? await prisma.machineSignalDailyReport.findMany({ where: { OR: pairs }, select: REPORT_SELECT }) : [];
   const latest = new Map(latestRows.map((row) => [row.signalNo, toReportRow(row)]));
   return sensors.map((sensor) => {
     const report = latest.get(sensor.signalNo);
@@ -216,4 +203,57 @@ export async function listMachineSignalSensorsForAdmin(): Promise<MachineSignalS
     }
     return { ...sensor, latestReportDate: report?.reportDate ?? null, lampPatterns, latestSegments };
   });
+}
+
+const toTrendPoint = (summary: SignalDaySummary): SignalTrendPoint => ({
+  reportDate: summary.reportDate,
+  runSeconds: summary.runSeconds,
+  averageRunSeconds: summary.averageRunSeconds,
+  stopCount: summary.stopCount,
+  shortStopCount: summary.shortStopCount,
+  alarmCount: summary.alarmCount,
+  alarmSeconds: summary.alarmSeconds,
+});
+
+export async function getMachineSignalWorsening(input: { date: string; site?: string }): Promise<SignalWorsening[]> {
+  const [settings, allSensors] = await Promise.all([getMachineSignalSettings(), listMachineSignalSensors()]);
+  const sensors = allSensors.filter((sensor) => !sensor.hidden && (!input.site || sensor.site === input.site));
+  const day = toDate(input.date);
+  const from = toDateKey(new Date(day.getTime() - (SIGNAL_TREND_RECENT_DAYS + SIGNAL_TREND_BASELINE_DAYS - 1) * DAY_MS));
+  const summaries = await loadSignalDaySummaries({ sensors, thresholds: settings.thresholds, from, to: input.date });
+  const bySensor = new Map<number, SignalTrendPoint[]>();
+  for (const summary of summaries) {
+    const points = bySensor.get(summary.signalNo) ?? [];
+    points.push(toTrendPoint(summary));
+    bySensor.set(summary.signalNo, points);
+  }
+  const recentDates = new Set(Array.from({ length: SIGNAL_TREND_RECENT_DAYS }, (_, index) =>
+    toDateKey(new Date(day.getTime() - index * DAY_MS))));
+  const worsening: SignalWorsening[] = [];
+  for (const sensor of sensors) {
+    const found = detectSignalWorsening(sensor.signalNo, bySensor.get(sensor.signalNo) ?? [], recentDates, settings.thresholds);
+    if (found) worsening.push(found);
+  }
+  return worsening;
+}
+
+export async function getMachineSignalRange(input: { from: string; to: string; site?: string }): Promise<MachineSignalRangeDto> {
+  if (input.from > input.to) {
+    throw new ApiError(400, '期間の始まりは終わりより前にしてください', undefined, 'MACHINE_SIGNAL_RANGE_INVALID');
+  }
+  const dayCount = (toDate(input.to).getTime() - toDate(input.from).getTime()) / DAY_MS + 1;
+  if (dayCount > MACHINE_SIGNAL_RANGE_MAX_DAYS) {
+    throw new ApiError(400, '期間は92日までにしてください', undefined, 'MACHINE_SIGNAL_RANGE_TOO_LONG');
+  }
+  const [settings, allSensors] = await Promise.all([getMachineSignalSettings(), listMachineSignalSensors()]);
+  const visible = allSensors.filter((sensor) => !sensor.hidden);
+  const sites = [...new Set(visible.map((sensor) => sensor.site).filter((site): site is string => !!site))].sort();
+  const sensors = input.site ? visible.filter((sensor) => sensor.site === input.site) : visible;
+  const summaries = await loadSignalDaySummaries({ sensors, thresholds: settings.thresholds, from: input.from, to: input.to });
+  return buildSignalRange({ from: input.from, to: input.to, sensors, summaries, thresholds: settings.thresholds, sites });
+}
+
+export async function listMachineSignalReportDates(): Promise<string[]> {
+  const rows = await prisma.machineSignalDailyReport.groupBy({ by: ['reportDate'] });
+  return rows.map((row) => toDateKey(row.reportDate)).sort();
 }
