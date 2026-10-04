@@ -18,10 +18,15 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 - [x] (2026-10-03) Milestone 2 code: per-token copy guard, keep rule on the anchor only, graders, and a busy guard for the business LLM (#1664).
 - [ ] Milestone 2 remainder: pooled top-30 labels for kept questions; moved into the Milestone 3 runner, which has the live pipeline in the same process.
 - [x] (2026-10-03) Milestone 3 code: `flywheel-runner.mjs` started by the API after each corpus refresh when `HERMES_FLYWHEEL_ENABLED=true`, inside the enrichment night window, with a nightly budget and the busy guard; it writes the night file and `flywheel-status.json`. The release path forwards `HERMES_FLYWHEEL_ENABLED` and `HERMES_FLYWHEEL_MAX_QUESTIONS` without defaulting them (this change). The flag stays off until a release sets it.
-- [ ] Milestone 3 remainder: live result ids, pooled top-30 labels and the loss stage per question, and `flywheel-report.mjs`.
+- [x] (2026-10-04) Milestone 3, first night on the Pi 5: 100 pairs tried between 22:05 and 22:28, 80 valid questions, 78 kept, 20 dropped as copies of the record text, 2 ungraded or unconfirmed; median 17 characters. The business LLM was slow for the first minutes (one `dgx_busy` stop per question), then fast.
+- [x] (2026-10-04) Milestone 3 remainder, part 1: each kept question is answered by the kiosk's own pipeline in the runner (`flywheel-live.mjs`), and the line records the shown ids, the judged candidate ids, and the loss stage; `flywheel-report.mjs` prints the night summary (this change).
+- [ ] Milestone 3 remainder, part 2: pooled top-30 labels for shown-but-unlabelled records (`other_shown`), with a nightly grading budget.
 - [ ] Milestone 4: acceptance gate for retrieval changes on the rolling set, with held-out rotation and real-question mixing.
 
 ## Surprises & Discoveries
+
+- (2026-10-03) A normal Pi 5 release ignores Hermes flags. `HERMES_FLYWHEEL_ENABLED=true` on `update-all-clients.sh --limit raspberrypi5` succeeded and delivered nothing; the flag reaches the API only through the trial or `--hermes-search-trial-maintenance on` paths. The maintenance path with `on` added the one line and kept every other value. A fail-fast for this is tracked separately.
+
 
 - Observation: the production relevance judge (JEV) is lenient. Grading the same 419 question-record pairs with the DGX business LLM (Qwen3.8 Flash-Next) agreed within one grade on 94% (Cohen's kappa 0.78 on "relevant"), but of 1,715 pairs JEV called relevant, Qwen agreed on 58%. A blind reading of 118 disputed development pairs sided with Qwen in 67% of them.
   Evidence: `docs/plans/hermes-retrieval-accuracy-log.md`, entries of 2026-10-02 and 2026-10-03.
