@@ -346,7 +346,8 @@ export function createRetrievalAnswering({
         return { ok: false, count, memory: memoryReport(current.records, catalog) };
       }
     },
-    // `options.stageDump` adds the ranked candidate ids to the result; the kiosk never asks for it.
+    // `options.stageDump` adds the ranked candidate ids to the result, and `options.vectorBudgetMs`
+    // replaces the day's embedding budget; the kiosk never passes either.
     async answer(question, session, options = {}) {
       const view = current;
       const visibleEntries = options.principal
@@ -361,6 +362,7 @@ export function createRetrievalAnswering({
       const outOfScopeAnswer = visibleEntries.length === 1 && visibleEntries[0].id === 'nonconformity' ? OUT_OF_SCOPE_ANSWER
         : `${visibleEntries.length ? `${visibleEntries.map((entry) => entry.label).join('・')}の` : ''}検索に関する質問として解釈できませんでした。`;
       const stageDump = options.stageDump === true;
+      const vectorBudgetMs = Number.isFinite(options.vectorBudgetMs) && options.vectorBudgetMs > 0 ? options.vectorBudgetMs : undefined;
       const started = performance.now();
       const elapsed = () => Math.round((performance.now() - started) * 10) / 10;
       const storedPlan = session?.previousPlan && typeof session.previousPlan === 'object' ? session.previousPlan : null;
@@ -454,6 +456,7 @@ export function createRetrievalAnswering({
           relevance: (input) => relevance.judge(input),
           requestStartedAt: started,
           stageDump,
+          ...(vectorBudgetMs ? { vectorBudgetMs } : {}),
           excludeIds: validation.plan.diagnostics?.excludeShown
             ? new Set(previouslyShown.filter((id) => id.startsWith(`${sourceId}:`)).map((id) => id.slice(sourceId.length + 1)))
             : undefined,
