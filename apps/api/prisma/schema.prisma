@@ -5397,6 +5397,9 @@ model ProcedureVideo {
   sha256            String?
   byteSize          Int?
   durationSeconds   Float?
+  trimRequest       Json?
+  trimmedAt         DateTime?
+  sourceDurationSeconds Float?
   width             Int?
   height            Int?
   attempts          Int @default(0)
@@ -5407,6 +5410,7 @@ model ProcedureVideo {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   links             ProcedureVideoLink[]
+  comments          ProcedureVideoComment[]
 
   @@index([status, updatedAt])
   @@index([discardedAt, receivedAt])
@@ -5424,4 +5428,16 @@ model ProcedureVideoLink {
 
   @@unique([assemblyProcedureDocumentId, pageIndex, sortOrder])
   @@index([videoId])
+}
+
+model ProcedureVideoComment {
+  id        String @id @default(uuid())
+  videoId   String
+  atSeconds Float
+  text      String
+  sortOrder Int
+  createdAt DateTime @default(now())
+  video     ProcedureVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([videoId, sortOrder])
 }

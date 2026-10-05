@@ -11,10 +11,11 @@ import { ProcedureVideoThumbnail } from './ProcedureVideoThumbnail';
 import type { ProcedureVideoDto } from './procedure-video-types';
 import type { AssemblyProcedureSequenceDto, AssemblyProcedureSequencePageDto } from '../types';
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), file: vi.fn(), poster: vi.fn(), retry: vi.fn(), discard: vi.fn(), restore: vi.fn(), page: vi.fn(), save: vi.fn(), detail: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), file: vi.fn(), poster: vi.fn(), retry: vi.fn(), discard: vi.fn(), restore: vi.fn(), page: vi.fn(), save: vi.fn(), detail: vi.fn(), trim: vi.fn(), comments: vi.fn(), saveComments: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   listProcedureVideos: mocks.list, getProcedureVideoFile: mocks.file, getProcedureVideoPoster: mocks.poster,
   retryProcedureVideo: mocks.retry, discardProcedureVideo: mocks.discard, restoreProcedureVideo: mocks.restore,
+  trimProcedureVideo: mocks.trim, getProcedureVideoComments: mocks.comments, replaceProcedureVideoComments: mocks.saveComments,
   getProcedurePageVideos: mocks.page, replaceProcedurePageVideos: mocks.save,
   listProcedureManualModels: async () => [{ modelCode: 'DFD1', modelCodeKey: 'DFD1' }],
   listProcedureManualProcesses: async () => [{ id: 'root', name: '組立工程', parentId: null }, { id: 'p', name: '検査工程', parentId: 'root' }],
@@ -33,6 +34,7 @@ const pending: ProcedureVideoDto = { ...failed, id: 'pending', title: '受付動
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.list.mockResolvedValue([ready, failed, pending]); mocks.page.mockResolvedValue([]); mocks.save.mockResolvedValue([]);
+  mocks.comments.mockResolvedValue([]); mocks.trim.mockResolvedValue(undefined); mocks.saveComments.mockResolvedValue([]);
   mocks.file.mockResolvedValue(new Blob(['mp4'], { type: 'video/mp4' })); mocks.poster.mockResolvedValue(new Blob(['jpeg'], { type: 'image/jpeg' }));
   vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => blob.type === 'video/mp4' ? 'blob:video' : 'blob:poster');
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
@@ -112,4 +114,102 @@ describe('procedure-manuals videos', () => {
     view.unmount(); expect(mocks.file.mock.calls[0][1].aborted).toBe(true);
     await act(async () => { resolve(new Blob(['mp4'])); }); expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
+  it('moves both trim handles by drag/arrows/Shift and shows over-ten-second selections in red', async () => {
+    render(<ProcedureVideoShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'トリミング' }));
+    const start = screen.getByRole('slider', { name: '開始秒' });
+    const end = screen.getByRole('slider', { name: '終了秒' });
+    expect(screen.getByRole('status', { name: '選択長さ' })).toHaveTextContent('10.0秒');
+    fireEvent.change(end, { target: { value: '12' } });
+    expect(screen.getByRole('status', { name: '選択長さ' })).toHaveTextContent('12.0秒');
+    expect(screen.getByRole('status', { name: '選択長さ' })).toHaveClass('text-red-700');
+    fireEvent.keyDown(start, { key: 'ArrowRight' });
+    expect(start).toHaveValue('0.1');
+    expect(start).toHaveAttribute('aria-valuenow', '0.1');
+    fireEvent.keyDown(start, { key: 'ArrowRight', shiftKey: true });
+    expect(start).toHaveValue('1.1');
+    expect(start).toHaveAttribute('aria-valuenow', '1.1');
+    fireEvent.keyDown(end, { key: 'ArrowLeft' });
+    expect(end).toHaveAttribute('aria-valuenow', '11.9');
+    fireEvent.keyDown(end, { key: 'ArrowLeft', shiftKey: true });
+    expect(end).toHaveAttribute('aria-valuenow', '10.9');
+    fireEvent.change(end, { target: { value: '12' } });
+    fireEvent.change(start, { target: { value: '3' } });
+    expect(screen.getByRole('status', { name: '選択長さ' })).toHaveTextContent('9.0秒');
+    expect(screen.getByRole('status', { name: '選択長さ' })).not.toHaveClass('text-red-700');
+    const player = await screen.findByLabelText('締付動画', { selector: 'video' }) as HTMLVideoElement;
+    player.currentTime = 4.2; fireEvent.click(screen.getByRole('button', { name: '開始を現在位置に' }));
+    expect(start).toHaveValue('4.2');
+    player.currentTime = 8.3; fireEvent.click(screen.getByRole('button', { name: '終了を現在位置に' }));
+    expect(end).toHaveValue('8.3');
+  });
+  it('lets each overlapping 44px thumb be selected and brings the focused handle to the front', async () => {
+    render(<ProcedureVideoShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'トリミング' }));
+    const start = screen.getByRole('slider', { name: '開始秒' });
+    const end = screen.getByRole('slider', { name: '終了秒' });
+    for (const handle of [start, end]) {
+      expect(handle).toHaveClass('[&::-webkit-slider-thumb]:h-11', '[&::-webkit-slider-thumb]:w-11', '[&::-moz-range-thumb]:h-11', '[&::-moz-range-thumb]:w-11');
+    }
+    fireEvent.change(start, { target: { value: '9.5' } });
+    fireEvent.click(screen.getByRole('button', { name: '開始つまみを操作' }));
+    expect(start).toHaveFocus(); expect(start).toHaveStyle({ zIndex: '2' }); expect(end).toHaveStyle({ zIndex: '1' });
+    fireEvent.keyDown(start, { key: 'ArrowLeft' });
+    expect(start).toHaveAttribute('aria-valuenow', '9.4');
+    fireEvent.click(screen.getByRole('button', { name: '終了つまみを操作' }));
+    expect(end).toHaveFocus(); expect(end).toHaveStyle({ zIndex: '2' }); expect(start).toHaveStyle({ zIndex: '1' });
+    fireEvent.keyDown(end, { key: 'ArrowRight', shiftKey: true });
+    expect(end).toHaveAttribute('aria-valuenow', '11');
+  });
+  it('confirms irreversible trim before submission and returns to the processing shelf', async () => {
+    render(<ProcedureVideoShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'トリミング' }));
+    fireEvent.click(screen.getByRole('button', { name: 'この範囲で切り出す' }));
+    expect(mocks.trim).not.toHaveBeenCalled();
+    const confirm = screen.getByRole('dialog', { name: 'この範囲で切り出しますか' });
+    expect(within(confirm).getByText(/元に戻す機能はありません/)).toBeInTheDocument();
+    fireEvent.click(within(confirm).getByRole('button', { name: 'キャンセル' }));
+    expect(mocks.trim).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'この範囲で切り出す' }));
+    mocks.list.mockResolvedValue([{ ...ready, status: 'PENDING' }]);
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'この範囲で切り出しますか' })).getByRole('button', { name: '切り出す' }));
+    await waitFor(() => expect(mocks.trim).toHaveBeenCalledExactlyOnceWith('ready', 0, 10));
+    expect(await screen.findByText('12.0秒 · 処理中')).toBeInTheDocument();
+  });
+  it('adds a comment at the current position, edits/removes rows and saves at most five comments', async () => {
+    mocks.comments.mockResolvedValue([{ atSeconds: 1, text: '既存' }]);
+    render(<ProcedureVideoShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'コメント' }));
+    await screen.findByDisplayValue('既存');
+    const player = await screen.findByLabelText('締付動画', { selector: 'video' }) as HTMLVideoElement;
+    player.currentTime = 3.2;
+    fireEvent.click(screen.getByRole('button', { name: '現在位置に追加' }));
+    expect(screen.getByLabelText('コメント2の秒数')).toHaveValue(3.2);
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('コメント2の文'), { target: { value: 'ここで押す' } });
+    expect(screen.getByLabelText('コメント2の文')).toHaveAttribute('maxlength', '80');
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole('button', { name: '現在位置に追加' }));
+    expect(screen.getByRole('button', { name: '現在位置に追加' })).toBeDisabled();
+    for (let i = 5; i >= 3; i--) fireEvent.click(screen.getByRole('button', { name: `コメント${i}を削除` }));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mocks.saveComments).toHaveBeenCalledWith('ready', [{ atSeconds: 1, text: '既存' }, { atSeconds: 3.2, text: 'ここで押す' }]));
+    expect(await screen.findByRole('dialog', { name: '動画' })).toBeInTheDocument();
+  });
+  it('shows captions from their time to the next comment or four seconds and seeks from the list', async () => {
+    mocks.comments.mockResolvedValue([{ atSeconds: 1, text: '最初の場面' }, { atSeconds: 3, text: '次の場面' }]);
+    render(<ProcedureVideoPlaybackDialog video={ready} onClose={vi.fn()} />);
+    const player = await screen.findByLabelText('締付動画', { selector: 'video' }) as HTMLVideoElement;
+    await screen.findByRole('button', { name: '0:01 最初の場面' });
+    expect(screen.queryByTestId('video-caption')).not.toBeInTheDocument();
+    player.currentTime = 1; fireEvent.timeUpdate(player);
+    expect(screen.getByTestId('video-caption')).toHaveTextContent('最初の場面');
+    player.currentTime = 3; fireEvent.timeUpdate(player);
+    expect(screen.getByTestId('video-caption')).toHaveTextContent('次の場面');
+    player.currentTime = 7; fireEvent.timeUpdate(player);
+    expect(screen.queryByTestId('video-caption')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '0:01 最初の場面' }));
+    expect(player.currentTime).toBe(1);
+    expect(screen.getByTestId('video-caption')).toHaveTextContent('最初の場面');
+  });
+
 });

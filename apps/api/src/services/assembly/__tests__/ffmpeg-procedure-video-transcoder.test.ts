@@ -84,4 +84,12 @@ describe('ffmpeg procedure-video transcoder', () => {
     execute.mockReturnValue(Object.assign(new Error('missing'), { code: 'ENOENT' }));
     await expect(new FfmpegProcedureVideoTranscoderAdapter().probe('in')).rejects.toMatchObject({ code: 'FFMPEG_UNAVAILABLE' });
   });
+  it('accurately re-encodes the requested range with two threads and creates a poster', async () => {
+    conversion('8');
+    await new FfmpegProcedureVideoTranscoderAdapter().trim('sd.mp4', 'new.mp4', 'new.jpg', 2, 10);
+    expect(execute.mock.calls[0][1]).toEqual(['-nostdin', '-y', '-i', 'sd.mp4', '-ss', '2', '-to', '10', '-an', '-threads', '2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-r', '30', 'new.mp4']);
+    expect(execute.mock.calls[0][2]).toMatchObject({ timeout: 120_000, killSignal: 'SIGKILL' });
+    expect(execute.mock.calls[2][1]).toEqual(expect.arrayContaining(['-ss', '1', 'new.mp4', 'new.jpg']));
+  });
+
 });

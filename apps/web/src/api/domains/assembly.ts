@@ -1109,3 +1109,15 @@ export async function replaceProcedurePageVideos(id: string, pageIndex: number, 
   const { data } = await api.put<{ videos: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoSummaryDto[] }>(`/assembly/procedure-documents/${encodeURIComponent(id)}/pages/${pageIndex}/videos`, { videoIds, accessPassword }, procedureEditHeaders(holderToken));
   return data.videos;
 }
+
+export async function trimProcedureVideo(id: string, startSeconds: number, endSeconds: number) {
+  await api.post(`/assembly/procedure-videos/${encodeURIComponent(id)}/trim`, { startSeconds, endSeconds });
+}
+export async function getProcedureVideoComments(id: string) {
+  const { data } = await api.get<{ comments: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoCommentDto[] }>(`/assembly/procedure-videos/${encodeURIComponent(id)}/comments`);
+  return data.comments;
+}
+export async function replaceProcedureVideoComments(id: string, comments: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoCommentDto[]) {
+  const { data } = await api.put<{ comments: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoCommentDto[] }>(`/assembly/procedure-videos/${encodeURIComponent(id)}/comments`, { comments: comments.map(({ atSeconds, text }) => ({ atSeconds, text })) });
+  return data.comments;
+}

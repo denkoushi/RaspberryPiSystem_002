@@ -37,6 +37,15 @@ export class FfmpegProcedureVideoTranscoderAdapter implements ProcedureVideoTran
   async transcode(input: string, output: string, poster: string): Promise<void> {
     // ffmpeg's default autorotation applies before scale; do not use -noautorotate.
     await this.run('ffmpeg', ['-nostdin', '-y', '-i', input, '-an', '-threads', '2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-vf', SCALE, '-r', '30', output], 120_000);
+    await this.createPoster(output, poster);
+  }
+
+  async trim(input: string, output: string, poster: string, startSeconds: number, endSeconds: number): Promise<void> {
+    await this.run('ffmpeg', ['-nostdin', '-y', '-i', input, '-ss', String(startSeconds), '-to', String(endSeconds), '-an', '-threads', '2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-r', '30', output], 120_000);
+    await this.createPoster(output, poster);
+  }
+
+  private async createPoster(output: string, poster: string): Promise<void> {
     const probe = await this.probe(output);
     const createPoster = (seek: string) => this.run('ffmpeg', ['-nostdin', '-y', '-ss', seek, '-i', output, '-an', '-threads', '2', '-frames:v', '1', '-vf', SCALE, poster], 30_000);
     const hasPoster = async () => {

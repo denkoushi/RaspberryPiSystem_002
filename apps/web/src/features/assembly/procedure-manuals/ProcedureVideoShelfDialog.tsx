@@ -7,8 +7,10 @@ import { Dialog } from '../../../components/ui/Dialog';
 import { Input } from '../../../components/ui/Input';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
+import { ProcedureVideoCommentsDialog } from './ProcedureVideoCommentsDialog';
 import { ProcedureVideoPlaybackDialog } from './ProcedureVideoPlaybackDialog';
 import { ProcedureVideoThumbnail } from './ProcedureVideoThumbnail';
+import { ProcedureVideoTrimDialog } from './ProcedureVideoTrimDialog';
 
 import type { ProcedureVideoDto, ProcedureVideoState, ProcedureVideoSummaryDto } from './procedure-video-types';
 
@@ -26,6 +28,7 @@ export function ProcedureVideoShelfDialog({ onClose, link }: { onClose: () => vo
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playing, setPlaying] = useState<ProcedureVideoSummaryDto | null>(null);
+  const [editing, setEditing] = useState<{ video: ProcedureVideoDto; mode: 'trim' | 'comments' } | null>(null);
   const [discarding, setDiscarding] = useState<ProcedureVideoDto | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -35,6 +38,12 @@ export function ProcedureVideoShelfDialog({ onClose, link }: { onClose: () => vo
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [state, q, version, selectionMode]);
+  const processing = videos.some((video) => video.status === 'PENDING' || video.status === 'PROCESSING');
+  useEffect(() => {
+    if (!processing || playing || editing) return;
+    const timer = window.setInterval(() => setVersion((v) => v + 1), 5000);
+    return () => window.clearInterval(timer);
+  }, [processing, playing, editing]);
   const documentId = link?.documentId;
   const pageIndex = link?.pageIndex;
   useEffect(() => {
@@ -54,6 +63,9 @@ export function ProcedureVideoShelfDialog({ onClose, link }: { onClose: () => vo
   const reorder = (index: number, offset: number) => {
     setSelected((items) => { const next = [...items]; [next[index], next[index + offset]] = [next[index + offset], next[index]]; return next; });
   };
+  const edited = () => { setEditing(null); setVersion((v) => v + 1); };
+  if (editing?.mode === 'trim') return <ProcedureVideoTrimDialog video={editing.video} onClose={() => setEditing(null)} onSaved={edited} />;
+  if (editing?.mode === 'comments') return <ProcedureVideoCommentsDialog video={editing.video} onClose={() => setEditing(null)} onSaved={edited} />;
   if (playing) return <ProcedureVideoPlaybackDialog video={playing} onClose={() => setPlaying(null)} />;
   return <Dialog isOpen onClose={() => { if (!busy) onClose(); }} closeOnEsc={!discarding} trapFocus={!discarding} title={link ? `${(link.pageIndex + 1)}ページの動画` : '動画'} size="lg" className="flex flex-col overflow-hidden">
     <div className="mt-3 flex shrink-0 flex-wrap gap-2">
@@ -73,9 +85,13 @@ export function ProcedureVideoShelfDialog({ onClose, link }: { onClose: () => vo
     <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-auto">
       {loading ? <p role="status">読込中…</p> : !videos.length ? <p>動画がありません</p> : null}
       {videos.map((video) => <article key={video.id} className="flex flex-wrap items-center gap-3 rounded border p-2">
-        {video.hasPoster ? <ProcedureVideoThumbnail id={video.id} title={video.title} /> : null}
-        <div className="min-w-0 flex-1"><p className="break-words font-semibold">{video.title}</p><p className="text-sm">{procedureVideoLength(video.durationSeconds)} · {video.status === 'READY' ? '完了' : video.status === 'FAILED' ? `失敗: ${video.errorMessage || video.errorCode || '変換失敗'}` : '処理中'}</p><p className="text-xs">紐づけ {video.linkCount}件</p></div>
+        {video.hasPoster ? <ProcedureVideoThumbnail id={video.id} title={video.title} durationSeconds={video.durationSeconds} /> : null}
+        <div className="min-w-0 flex-1"><p className="break-words font-semibold">{video.title}</p><p className="text-sm">{procedureVideoLength(video.durationSeconds)} · {video.status === 'READY' ? '完了' : video.status === 'FAILED' ? `失敗: ${video.errorMessage || video.errorCode || '変換失敗'}` : '処理中'}</p>{video.durationSeconds != null && video.durationSeconds > 10.5 ? <p className="font-semibold text-red-700">10 秒以内にしてください</p> : null}{video.errorCode === 'TRIM_FAILED' ? <p role="alert" className="text-sm text-red-700">トリミング失敗: {video.errorMessage}（元の動画を保持しています）</p> : null}<p className="text-xs">紐づけ {video.linkCount}件</p></div>
         {video.status === 'READY' ? <Button className="min-h-11" onClick={() => setPlaying(video)}>再生</Button> : null}
+        {video.status === 'READY' ? <>
+          <Button className="min-h-11" disabled={busy || video.linkCount > 0} title={video.linkCount > 0 ? '紐づけを外してからトリミングしてください' : undefined} onClick={() => setEditing({ video, mode: 'trim' })}>トリミング</Button>
+          <Button className="min-h-11" disabled={busy} onClick={() => setEditing({ video, mode: 'comments' })}>コメント</Button>
+        </> : null}
         {link ? <Button className="min-h-11" disabled={busy || selectionLoading || selectionFailed || selected.some((v) => v.id === video.id) || selected.length >= 50} onClick={() => setSelected((items) => [...items, video])}>選ぶ</Button> : <>
           {video.status === 'FAILED' ? <Button className="min-h-11" disabled={busy} onClick={() => void act(() => retryProcedureVideo(video.id))}>再試行</Button> : null}
           <Button className="min-h-11" disabled={busy || (!video.discardedAt && video.linkCount > 0)} onClick={() => video.discardedAt ? void act(() => restoreProcedureVideo(video.id)) : setDiscarding(video)}>{video.discardedAt ? '戻す' : '捨てる'}</Button>

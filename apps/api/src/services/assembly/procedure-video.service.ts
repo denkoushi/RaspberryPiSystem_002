@@ -1,4 +1,3 @@
-import { runAssemblyTransaction } from './assembly-transaction.js';
 import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { Prisma } from '@prisma/client';
 
@@ -8,6 +7,7 @@ import type { DurableFileStorePort } from '../file-storage/durable-file-store.po
 import { getFileStorageRuntime } from '../file-storage/file-storage-runtime.js';
 import { FileStorageAlreadyExistsError } from '../file-storage/file-storage-errors.js';
 import type { ProcedureMaterialVideo } from './procedure-material-gmail-packet-resolver.js';
+import { runAssemblyTransaction } from './assembly-transaction.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
 
 export const procedureVideoLinksInclude = {
@@ -30,7 +30,7 @@ export class ProcedureVideoService {
   async ingest(video: ProcedureMaterialVideo, common: { gmailMessageId: string; fromEmail: string | null; subjectHint: string | null; receivedAt: Date }): Promise<boolean> {
     const sourceStorageKey = `procedure-videos/incoming/${video.sha256}/original`;
     try {
-      return await this.db.$transaction(async (tx) => {
+      return await runAssemblyTransaction(async (tx) => {
         await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${sourceStorageKey}))`;
         if (await tx.procedureVideo.findUnique({ where: { gmailDedupeKey: video.gmailDedupeKey } })) return false;
         try { await this.store.write({ key: sourceStorageKey, data: video.buffer, mode: 'create', integrity: true }); }
@@ -40,7 +40,7 @@ export class ProcedureVideoService {
         }
         await tx.procedureVideo.create({ data: { ...common, status: 'PENDING', title: common.subjectHint || video.filename, gmailDedupeKey: video.gmailDedupeKey, sourceStorageKey, sourceFileName: video.filename, sourceContentType: video.contentType, sourceByteSize: video.buffer.length } });
         return true;
-      });
+      }, this.db);
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error;
       if (!await this.db.procedureVideo.findUnique({ where: { gmailDedupeKey: video.gmailDedupeKey } })) throw error;
@@ -68,13 +68,48 @@ export class ProcedureVideoService {
     if (!changed.count) throw new ApiError(409, '原本のある失敗動画だけ再試行できます');
   }
 
+  async requestTrim(id: string, startSeconds: number, endSeconds: number) {
+    await runAssemblyTransaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ProcedureVideo" WHERE "id" = ${id} FOR UPDATE`;
+      const video = await tx.procedureVideo.findUnique({ where: { id } });
+      if (!video) throw new ApiError(404, '動画がありません');
+      if (video.status !== 'READY') throw new ApiError(409, '完了した動画だけトリミングできます');
+      if (video.durationSeconds == null || !Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) || startSeconds < 0 || endSeconds > video.durationSeconds || endSeconds < startSeconds + 0.5) {
+        throw new ApiError(400, '開始・終了は動画の範囲内で、長さは0.5秒以上にしてください');
+      }
+      if (await tx.procedureVideoLink.count({ where: { videoId: id } })) throw new ApiError(409, '紐づけを外してからトリミングしてください');
+      await tx.procedureVideo.update({ where: { id }, data: { trimRequest: { startSeconds, endSeconds, requestedAt: new Date().toISOString() }, status: 'PENDING', attempts: 0, errorCode: null, errorMessage: null } });
+    }, this.db);
+  }
+
+  async listComments(id: string) {
+    if (!await this.db.procedureVideo.findUnique({ where: { id }, select: { id: true } })) throw new ApiError(404, '動画がありません');
+    return this.db.procedureVideoComment.findMany({ where: { videoId: id }, orderBy: { sortOrder: 'asc' } });
+  }
+
+  async replaceComments(id: string, comments: Array<{ atSeconds: number; text: string }>) {
+    return runAssemblyTransaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ProcedureVideo" WHERE "id" = ${id} FOR UPDATE`;
+      const video = await tx.procedureVideo.findUnique({ where: { id } });
+      if (!video) throw new ApiError(404, '動画がありません');
+      if (video.status !== 'READY') throw new ApiError(409, '完了した動画だけコメントを編集できます');
+      const normalized = comments.map((comment) => ({ ...comment, text: comment.text.trim() })).sort((a, b) => a.atSeconds - b.atSeconds);
+      if (normalized.length > 5 || normalized.some((comment) => !Number.isFinite(comment.atSeconds) || comment.atSeconds < 0 || video.durationSeconds == null || comment.atSeconds > video.durationSeconds || comment.text.length < 1 || comment.text.length > 80)) {
+        throw new ApiError(400, 'コメントは5件まで、動画の範囲内の時刻と1〜80文字で入力してください');
+      }
+      await tx.procedureVideoComment.deleteMany({ where: { videoId: id } });
+      if (normalized.length) await tx.procedureVideoComment.createMany({ data: normalized.map((comment, sortOrder) => ({ videoId: id, ...comment, sortOrder })) });
+      return tx.procedureVideoComment.findMany({ where: { videoId: id }, orderBy: { sortOrder: 'asc' } });
+    }, this.db);
+  }
+
   async setDiscarded(id: string, discarded: boolean) {
-    await this.db.$transaction(async (tx) => {
+    await runAssemblyTransaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "ProcedureVideo" WHERE "id" = ${id} FOR UPDATE`;
       if (!await tx.procedureVideo.findUnique({ where: { id } })) throw new ApiError(404, '動画がありません');
       if (discarded && await tx.procedureVideoLink.count({ where: { videoId: id } })) throw new ApiError(409, '紐づいている動画は捨てられません');
       await tx.procedureVideo.update({ where: { id }, data: { discardedAt: discarded ? new Date() : null } });
-    });
+    }, this.db);
   }
 
   async listPage(documentId: string, pageIndex: number) {
@@ -101,9 +136,16 @@ export class ProcedureVideoService {
         await tx.$queryRaw`SELECT "id" FROM "ProcedureVideo" WHERE "id" = ${id} FOR UPDATE`;
       }
       if (await tx.procedureVideo.count({ where: { id: { in: ids }, discardedAt: null } }) !== ids.length) throw new ApiError(409, '動画がないか、捨てられています');
+      const unfinished = await tx.procedureVideo.findFirst({ where: { id: { in: ids }, OR: [{ status: { not: 'READY' } }, { durationSeconds: null }] } });
+      if (unfinished) throw new ApiError(409, '変換が終わってから紐づけてください');
+      const tooLong = await tx.procedureVideo.findFirst({ where: { id: { in: ids }, durationSeconds: { gt: 10.5 } } });
+      if (tooLong) throw new ApiError(400, `10 秒以内にトリミングしてください(いま ${tooLong.durationSeconds?.toFixed(1)} 秒)`);
+      // A trim may have entered PENDING while a page editor held an old shelf snapshot.
+      const trimming = await tx.procedureVideo.findFirst({ where: { id: { in: ids }, trimRequest: { not: Prisma.DbNull } } });
+      if (trimming) throw new ApiError(409, 'トリミング処理中の動画は紐づけできません');
       await tx.procedureVideoLink.deleteMany({ where: { assemblyProcedureDocumentId: params.documentId, pageIndex: params.pageIndex } });
       if (ids.length) await tx.procedureVideoLink.createMany({ data: ids.map((videoId, sortOrder) => ({ videoId, sortOrder, assemblyProcedureDocumentId: params.documentId, pageIndex: params.pageIndex })) });
-    });
+    }, this.db);
     return this.listPage(params.documentId, params.pageIndex);
   }
 }
