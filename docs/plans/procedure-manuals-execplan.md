@@ -38,6 +38,8 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) Phase 2c: 使い捨て PostgreSQL で migration 適用を確認。Codex レビューの 2 指摘(ロック待ち中に別要求が公開した場合の 409 維持、アーム中の NFC 読み取りが在庫分類の URL に社員タグ UID を残す点)を修正。CI では e2e(公開ダイアログの既定がタグ承認に変わった)と kiosk-sop(ダイアログの見た目変更)が失敗し、e2e のパスワード経路選択と取説の再生成で解消。
 - [x] (2026-10-05) PR #1702 を main へ squash merge(merge `e0ee5fca83b0ce93d2c2e202b764e922befdefd6`)、main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-060455-41a4ce`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`)、`/api/system/health` 200。
 - [ ] 実機確認(オーナー): エディタの「公開」で「社員タグで承認して公開」が既定で出る、班長以上のタグで承認者名が表示され公開できる、一般職のタグは拒否される、要領書ページに承認の 1 行が出る。
+- [x] (2026-10-05) 素材 Gmail の許可送信元ドメインをローカル実装。`allowedSenderDomains` は既定 `thkintechs.co.jp`、正規化・重複除去・形式検証を行い、空配列は全拒否。管理カードで追加・削除を即時保存し、最後の1件の削除は確認する。取込のドメイン完全一致と既存 `fromEmail` の併用、未読・5分待機を維持。commit / push / PR / merge / deploy は未実施。
+- [x] (2026-10-05) 許可送信元ドメインの指定検証: API lint / `vitest run procedure-material backup-config` 6ファイル86件 / build用tsc、Web lint / `vitest run procedure-manuals-gmail CsvImport` 5ファイル33件 / build が全て成功。依存がないworktreeのため既存checkoutから独立コピーし、共有パッケージbuildとPrisma Client生成を実施。WebテストのReact Queryコンテキスト引数に合わせた検証修正、およびlockfileと同じフォント依存のローカル補完後に成功。統合・本番反映は未実施。
 - [ ] Phase 3: ナレッジ素材・承認済み手順の片方向連携。
 - [ ] 後日: 動画素材(形式未定)。
 
@@ -140,6 +142,13 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Date/Author: 2026-10-05 / Codex。
 - Decision: 未登録タグは Phase 2c の明示受入条件どおり404、在籍外・承認職位未満は403、タグ重複は既存同様409とする。認証なしは401。ナレッジ側の未登録タグ400の契約は変更しない。
   Rationale: 「ナレッジと同じ」と「未登録404」の差は、具体的な受入条件を優先して解消した。エラーコードは既存ナレッジのものを再利用する。
+  Date/Author: 2026-10-05 / Codex。
+
+- Decision: 許可ドメインは DNS ラベルの英数字と内部ハイフン、ドット区切り2ラベル以上を許可し、大文字・前後空白・先頭 `@` を正規化する。サブドメインの暗黙許可は行わず、空配列と送信元不明は拒否する。
+  Rationale: 送信元の範囲を明示的に管理し、既存設定には `thkintechs.co.jp` の既定を適用する。`fromEmail` とスケジュール metadata の上書きは追加の完全一致条件として保持する。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: 管理カードのドメイン追加・削除は即時保存とし、既存 `PUT /backup/config` と設定更新hookを使う。保存直前に最新設定を取得し、`allowedSenderDomains` だけを変えて送信する。スケジュール・設定・health のキャッシュを無効化する。
+  Rationale: 既存PUTは設定全体の置換であるため、他の設定とスケジュールの編集を保持する。自動取込ON/OFFは既存のスケジュール部分更新を継続する。
   Date/Author: 2026-10-05 / Codex。
 
 ## Context and Orientation

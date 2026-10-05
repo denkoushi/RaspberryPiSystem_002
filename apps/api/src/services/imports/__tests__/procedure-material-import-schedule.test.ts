@@ -17,13 +17,13 @@ describe('procedure-material builtin schedule', () => {
     expect(ensureProductionScheduleCsvImportSchedules(defaultBackupConfig).config.csvImports?.some((r) => r.id === 'procedure-material-gmail')).toBe(true);
   });
   it('carries the enabled setting and sender into the new builtin row', () => {
-    const config = { ...defaultBackupConfig, procedureMaterialGmailIngest: { enabled: true, subjectTokens: ['[Procedure-material]'], fromEmail: 'sender@example.com' } };
+    const config = { ...defaultBackupConfig, procedureMaterialGmailIngest: { ...defaultBackupConfig.procedureMaterialGmailIngest, enabled: true, subjectTokens: ['[Procedure-material]'], fromEmail: 'sender@example.com' } };
     expect(ensureProcedureMaterialGmailCsvImportSchedule(config).config.csvImports?.find((row) => row.id === 'procedure-material-gmail')).toMatchObject({ enabled: true, metadata: { procedureMaterialFromEmail: 'sender@example.com' } });
   });
   it.each([false, true])('reloads the scheduler when toggling the material row from %s without overwriting other schedules/settings', async (enabled) => {
     const ensured = ensureProductionScheduleCsvImportSchedules(defaultBackupConfig).config;
     const config = { ...ensured, csvImports: ensured.csvImports!.map((row) => row.id === 'procedure-material-gmail' ? { ...row, enabled } : row),
-      procedureMaterialGmailIngest: { enabled: false, subjectTokens: ['[Procedure-material]'], fromEmail: 'sender@example.com' } };
+      procedureMaterialGmailIngest: { ...defaultBackupConfig.procedureMaterialGmailIngest, enabled: false, subjectTokens: ['[Procedure-material]'], fromEmail: 'sender@example.com' } };
     const unrelated = config.csvImports!.filter((row) => row.id !== 'procedure-material-gmail');
     const store = { load: vi.fn().mockResolvedValue(config), save: vi.fn().mockResolvedValue(undefined) };
     const scheduler = { reload: vi.fn().mockResolvedValue(undefined), runImport: vi.fn() };
@@ -36,7 +36,7 @@ describe('procedure-material builtin schedule', () => {
     expect(config.csvImports!.filter((row) => row.id !== 'procedure-material-gmail')).toEqual(unrelated);
     expect(config.procedureMaterialGmailIngest.fromEmail).toBe('sender@example.com');
   });
-  it('routes builtin execution directly to material ingestion without parsing CSV or creating a provider', async () => {
+  it.each([undefined, 'override@example.com'])('routes builtin execution directly to material ingestion without parsing CSV or creating a provider (sender override: %s)', async (override) => {
     const createFromConfig = vi.fn(); const processCsvImportFromTargets = vi.fn();
     const runOnce = vi.fn().mockResolvedValue({ saved: 2, processed: 1, messages: [] });
     const service = new CsvImportExecutionService({
@@ -44,9 +44,9 @@ describe('procedure-material builtin schedule', () => {
       createProcedureMaterialGmailIngestionService: () => ({ runOnce }), processCsvImportFromTargets,
     });
     const row = resolveSystemCsvImportDefaultBuilder('procedure-material-gmail')!();
-    const summary = await service.execute({ config: defaultBackupConfig, importSchedule: { ...row, enabled: true }, skipRetry: true });
+    const summary = await service.execute({ config: defaultBackupConfig, importSchedule: { ...row, enabled: true, metadata: override ? { procedureMaterialFromEmail: override } : undefined }, skipRetry: true });
     expect(summary.procedureMaterialGmail).toEqual({ saved: 2, processed: 1, messages: [] });
-    expect(runOnce).toHaveBeenCalledWith(expect.objectContaining({ manual: true, allowWait: true, config: expect.objectContaining({ procedureMaterialGmailIngest: { enabled: true, subjectTokens: ['[Procedure-material]'], fromEmail: undefined } }) }));
+    expect(runOnce).toHaveBeenCalledWith(expect.objectContaining({ manual: true, allowWait: true, config: expect.objectContaining({ procedureMaterialGmailIngest: { ...defaultBackupConfig.procedureMaterialGmailIngest, enabled: true, subjectTokens: ['[Procedure-material]'], fromEmail: override } }) }));
     expect(createFromConfig).not.toHaveBeenCalled(); expect(processCsvImportFromTargets).not.toHaveBeenCalled();
   });
 });
