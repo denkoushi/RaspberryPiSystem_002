@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bareId } from './flywheel-pairs.mjs';
 
 export function nightOfFile(filePath) {
   const match = /questions-(\d{4}-\d{2}-\d{2})\.jsonl$/u.exec(path.basename(filePath));
@@ -25,7 +26,7 @@ export function readNightRows(text) {
   return rows;
 }
 
-export function summarizeNight(rows) {
+export function summarizeNight(rows, { labels = null } = {}) {
   const summary = {
     rows: rows.length,
     generated: 0,
@@ -34,8 +35,9 @@ export function summarizeNight(rows) {
     styles: {},
     medianLength: null,
     medianOverlap: null,
-    live: { scored: 0, shown: 0, otherShown: 0, notInPool: 0, judgeRejected: 0, status: 0, failed: 0, notRun: 0, denseFallbacks: 0 },
+    live: { scored: 0, shown: 0, otherShown: 0, notInPool: 0, judgeRejected: 0, status: 0, failed: 0, notRun: 0, denseFallbacks: 0, labelled: 0 },
   };
+  if (labels != null) summary.live.shownAfterLabels = 0;
   const lengths = [];
   const overlaps = [];
   for (const row of rows) {
@@ -56,8 +58,15 @@ export function summarizeNight(rows) {
       continue;
     }
     summary.live.scored += 1;
+    const shownAfterLabels = labels != null && live.loss === 'other_shown'
+      && (live.shown ?? []).some((id) => labels[bareId(row.a)]?.[bareId(id)]?.g === 3);
+    if (live.labelled === true) summary.live.labelled += 1;
+    else if (shownAfterLabels) {
+      summary.live.shownAfterLabels += 1;
+      summary.live.labelled += 1;
+    }
     if (live.vectorStatus === 'timeout' || live.vectorStatus === 'failed') summary.live.denseFallbacks += 1;
-    if (live.loss == null) summary.live.shown += 1;
+    if (live.loss == null || shownAfterLabels) summary.live.shown += 1;
     else if (live.loss === 'other_shown') summary.live.otherShown += 1;
     else if (live.loss === 'not_in_pool') summary.live.notInPool += 1;
     else if (live.loss === 'judge_rejected') summary.live.judgeRejected += 1;
@@ -89,7 +98,9 @@ export function formatReport(night, summary) {
     return lines.join('\n');
   }
   lines.push(
-    `  live (${live.scored} scored): relevant shown ${live.shown}, other records shown ${live.otherShown}, nothing shown ${nothing}`
+    `  live (${live.scored} scored): relevant shown ${live.shown}`
+      + (live.shownAfterLabels == null ? '' : `, labelled relevant ${live.labelled}`)
+      + `, other records shown ${live.otherShown}, nothing shown ${nothing}`
       + ` (outside judged candidates ${live.notInPool}, rejected by judge ${live.judgeRejected}, asked back or out of scope ${live.status})`
       + (live.failed ? `, failed ${live.failed}` : '')
       + (live.notRun ? `, not run ${live.notRun}` : ''),
@@ -99,14 +110,26 @@ export function formatReport(night, summary) {
 }
 
 export function main(argv = process.argv.slice(2)) {
-  if (!argv.length) {
-    console.error('usage: flywheel-report.mjs questions-YYYY-MM-DD.jsonl [more files]');
+  const files = [];
+  let labels = null;
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] !== '--labels') {
+      files.push(argv[index]);
+      continue;
+    }
+    const file = argv[++index];
+    if (!file || file.startsWith('--')) throw new Error('--labels needs a path');
+    const stored = JSON.parse(readFileSync(file, 'utf8'));
+    labels = stored.schema === 'hermes-flywheel-labels/v1' ? stored.labels : stored;
+  }
+  if (!files.length) {
+    console.error('usage: flywheel-report.mjs questions-YYYY-MM-DD.jsonl [more files] [--labels labels.json]');
     process.exitCode = 2;
     return;
   }
-  for (const file of argv) {
+  for (const file of files) {
     const rows = readNightRows(readFileSync(file, 'utf8'));
-    console.log(formatReport(nightOfFile(file), summarizeNight(rows)));
+    console.log(formatReport(nightOfFile(file), summarizeNight(rows, { labels })));
   }
 }
 

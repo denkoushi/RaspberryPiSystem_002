@@ -133,6 +133,10 @@ test('shown labels round-trip with private permissions and no temporary files le
   assert.deepEqual(readShownLabels(file), { b: { r3: grade(2) } });
   assert.equal(statSync(file).mode & 0o777, 0o600);
   assert.deepEqual(readdirSync(path.dirname(file)), ['labels.json']);
+  const nightly = { a: { r1: { g: 3, dgx: 3, jev: 3, night: '2026-10-03' }, r2: { g: null, dgx: null, jev: 3, night: '2026-10-03' } } };
+  writeFileSync(file, JSON.stringify({ schema: 'hermes-flywheel-labels/v1', labels: nightly }));
+  assert.deepEqual(readShownLabels(file), nightly);
+  assert.deepEqual(relevantWithLabels({ id: 'a', relevant: ['a'] }, readShownLabels(file)), ['a', 'r1']);
   writeFileSync(file, '{invalid');
   assert.throws(() => readShownLabels(file), SyntaxError);
 });

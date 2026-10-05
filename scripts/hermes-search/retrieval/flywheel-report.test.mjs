@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { formatReport, nightOfFile, readNightRows, summarizeNight } from './flywheel-report.mjs';
 
 const live = (loss, extra = {}) => ({ outcome: loss == null ? 'answer' : 'no_result', shown: [], candidates: [], judged: 30, loss, vectorStatus: 'ok', ms: 10, ...extra });
@@ -22,7 +26,44 @@ test('a night summary counts generation, keep decisions, and live loss stages', 
   assert.deepEqual(summary.styles, { terse: 4, colloquial: 1, kana: 1 });
   assert.equal(summary.medianLength, 6);
   assert.equal(summary.medianOverlap, 0.3);
-  assert.deepEqual(summary.live, { scored: 5, shown: 1, otherShown: 1, notInPool: 1, judgeRejected: 1, status: 1, failed: 0, notRun: 1, denseFallbacks: 1 });
+  assert.deepEqual(summary.live, { scored: 5, shown: 1, otherShown: 1, notInPool: 1, judgeRejected: 1, status: 1, failed: 0, notRun: 1, denseFallbacks: 1, labelled: 0 });
+});
+
+test('labels count relevant shown records alongside rows already corrected by the runner', () => {
+  const labelledRows = [
+    { a: 'nonconformity:a1', question: '質問', kept: true, live: live('other_shown', { shown: ['nonconformity:r1', 'r2'] }) },
+    { a: 'a2', question: '質問', kept: true, live: live(null, { shown: ['r3'], labelled: true }) },
+    { a: 'a3', question: '質問', kept: true, live: live('other_shown', { shown: ['r4'] }) },
+  ];
+  const labels = { a1: { r1: { g: 3 }, r2: { g: 3 } }, a2: { r3: { g: 3 } }, a3: { r4: { g: 2 } } };
+  const summary = summarizeNight(labelledRows, { labels });
+  assert.equal(summary.live.shown, 2);
+  assert.equal(summary.live.otherShown, 1);
+  assert.equal(summary.live.shownAfterLabels, 1);
+  assert.equal(summary.live.labelled, 2);
+  assert.match(formatReport('2026-10-03', summary), /relevant shown 2, labelled relevant 2/u);
+  const without = summarizeNight(labelledRows);
+  assert.equal(without.live.labelled, 1);
+  assert.equal(Object.hasOwn(without.live, 'shownAfterLabels'), false);
+  assert.doesNotMatch(formatReport('2026-10-03', without), /labelled relevant/u);
+  assert.equal(labelledRows[0].live.loss, 'other_shown');
+});
+
+test('report CLI applies one label file to multiple nights and retains positional files', (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-report-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const files = ['2026-10-03', '2026-10-04'].map((day) => path.join(dir, `questions-${day}.jsonl`));
+  const row = { a: 'a1', question: '質問', kept: true, live: live('other_shown', { shown: ['r1'] }) };
+  for (const file of files) writeFileSync(file, `${JSON.stringify(row)}\n`);
+  const labels = path.join(dir, 'labels.json');
+  writeFileSync(labels, JSON.stringify({ schema: 'hermes-flywheel-labels/v1', labels: { a1: { r1: { g: 3 } } } }));
+  const cli = new URL('./flywheel-report.mjs', import.meta.url);
+  const labelled = spawnSync(process.execPath, [cli.pathname, files[0], '--labels', labels, files[1]], { encoding: 'utf8' });
+  assert.equal(labelled.status, 0, labelled.stderr);
+  assert.equal(labelled.stdout.match(/labelled relevant 1/gu).length, 2);
+  const original = spawnSync(process.execPath, [cli.pathname, ...files], { encoding: 'utf8' });
+  assert.equal(original.status, 0, original.stderr);
+  assert.doesNotMatch(original.stdout, /labelled relevant/u);
 });
 
 test('the report prints the night in one block and names the file night', () => {

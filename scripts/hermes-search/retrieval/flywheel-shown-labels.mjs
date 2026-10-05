@@ -35,7 +35,8 @@ export function collectShownPairs({ questions, runs, labels = {} }) {
 
 export function readShownLabels(filePath) {
   try {
-    return JSON.parse(readFileSync(filePath, 'utf8'));
+    const stored = JSON.parse(readFileSync(filePath, 'utf8'));
+    return stored.schema === 'hermes-flywheel-labels/v1' ? stored.labels : stored;
   } catch (error) {
     if (error.code === 'ENOENT') return {};
     throw error;
