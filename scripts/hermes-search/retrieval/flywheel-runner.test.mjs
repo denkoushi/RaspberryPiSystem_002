@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DEFAULT_MAX_QUESTIONS, MAX_QUESTIONS_CAP, flywheelSettings, nightOf, questionsPath, runFlywheelNight, usedAnchors } from './flywheel-runner.mjs';
@@ -49,6 +49,12 @@ test('settings default to off, cap the nightly budget, and follow the enrichment
   const off = flywheelSettings({});
   assert.equal(off.enabled, false);
   assert.equal(off.maxQuestions, DEFAULT_MAX_QUESTIONS);
+  assert.equal(off.labelBudget, 60);
+  assert.equal(flywheelSettings({ HERMES_FLYWHEEL_LABEL_BUDGET: '9999' }).labelBudget, 300);
+  assert.equal(flywheelSettings({ HERMES_FLYWHEEL_LABEL_BUDGET: '0' }).labelBudget, 0);
+  for (const value of ['x', '', '-1', '1.5', '60junk']) {
+    assert.equal(flywheelSettings({ HERMES_FLYWHEEL_LABEL_BUDGET: value }).labelBudget, 60);
+  }
   const on = flywheelSettings({ HERMES_FLYWHEEL_ENABLED: 'true', HERMES_FLYWHEEL_MAX_QUESTIONS: '9999', HERMES_RETRIEVAL_ENRICHMENT_WINDOW: '22-6' });
   assert.equal(on.enabled, true);
   assert.equal(on.maxQuestions, MAX_QUESTIONS_CAP);
@@ -184,7 +190,7 @@ test('a spent budget backfills kept questions in file order and retains nightly 
   assert.equal(status.shown, 1);
   assert.deepEqual(status.lossStages, { judge_rejected: 1 });
   assert.equal(status.pendingLive, 0);
-  assert.match(logs[0], / pending=0$/u);
+  assert.match(logs[0], / pending=0 labelled=0 labelPending=0$/u);
   const raw = readFileSync(filePath, 'utf8');
   assert.ok(raw.endsWith('\n'));
   const rows = raw.trim().split('\n').map((line) => JSON.parse(line));
@@ -200,6 +206,134 @@ test('a spent budget backfills kept questions in file order and retains nightly 
   assert.deepEqual(again.lossStages, { judge_rejected: 1 });
   assert.equal(again.pendingLive, 0);
   assert.equal(readFileSync(filePath, 'utf8'), raw);
+});
+
+test('a spent generation budget still labels other shown records and rewrites live totals', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const file = questionsPath(dir, '2026-10-03');
+  const initial = { a: 'nonconformity:a1', b: 'c1', question: 'へこみの記録', kept: true };
+  writeFileSync(file, `${JSON.stringify(initial)}\n`);
+  let dgxCalls = 0;
+  let jevCalls = 0;
+  const input = {
+    records, settings: settings(dir, { maxQuestions: 1 }), now: night, readDense: async () => dense,
+    chat: async (request) => {
+      dgxCalls += 1;
+      assert.equal(request.schema.required[0], 'grade');
+      assert.match(request.messages[1].content, /へこみの記録/u);
+      assert.match(request.messages[1].content, /dent on the column face/u);
+      return { ok: true, content: '{"grade":3}' };
+    },
+    jevEvaluate: async (input) => { jevCalls += 1; return jevEvaluate(input); },
+    live: async (row) => ({ ...await liveShown(row), shown: ['nonconformity:b1'], loss: 'other_shown' }),
+    log: () => {},
+  };
+  const status = await runFlywheelNight(input);
+  const labelsFile = path.join(dir, 'labels.json');
+  assert.deepEqual(JSON.parse(readFileSync(labelsFile, 'utf8')), {
+    schema: 'hermes-flywheel-labels/v1',
+    labels: { a1: { b1: { g: 3, dgx: 3, jev: 3, night: '2026-10-03' } } },
+  });
+  assert.equal(statSync(labelsFile).mode & 0o777, 0o600);
+  assert.equal(readFileSync(labelsFile, 'utf8').includes('dent'), false);
+  const row = JSON.parse(readFileSync(file, 'utf8'));
+  assert.deepEqual(row, { ...initial, live: { ...await input.live(initial), loss: null, labelled: true } });
+  assert.equal(status.reason, 'budget_reached');
+  assert.equal(status.shown, 1);
+  assert.deepEqual(status.lossStages, {});
+  assert.equal(status.labelled, 1);
+  assert.equal(status.labelPending, 0);
+  const again = await runFlywheelNight(input);
+  assert.equal(again.shown, 1);
+  assert.equal(again.labelled, 0);
+  assert.equal(again.labelPending, 0);
+  assert.equal(dgxCalls, 1);
+  assert.equal(jevCalls, 1);
+});
+
+test('zero label budget leaves shown pairs pending without calling either grader', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const file = questionsPath(dir, '2026-10-03');
+  writeFileSync(file, `${JSON.stringify({ a: 'a1', question: 'へこみ', kept: true })}\n`);
+  const status = await runFlywheelNight({
+    records, settings: settings(dir, { maxQuestions: 1, labelBudget: 0 }), now: night, readDense: async () => dense,
+    chat: async () => assert.fail('zero budget must not call DGX'),
+    jevEvaluate: async () => assert.fail('zero budget must not call JEV'),
+    live: async (row) => ({ ...await liveShown(row), loss: 'other_shown', shown: ['nonconformity:b1'] }), log: () => {},
+  });
+  assert.equal(status.labelled, 0);
+  assert.equal(status.labelPending, 1);
+  assert.equal(status.shown, 0);
+  assert.deepEqual(status.lossStages, { other_shown: 1 });
+});
+
+test('label budgets are cumulative per night, batch by question, and resume with existing labels', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const file = questionsPath(dir, '2026-10-03');
+  const row = { a: 'a1', b: 'c1', grades: { dgx: { b: 3 }, jev: { b: 3 } }, question: '質問', kept: true,
+    live: { loss: 'other_shown', shown: ['nonconformity:b1', 'b1', 'd1', 'e1'] } };
+  writeFileSync(file, `${JSON.stringify(row)}\n`);
+  writeFileSync(path.join(dir, 'labels.json'), JSON.stringify({ schema: 'hermes-flywheel-labels/v1', labels: {
+    previous: { r: { g: 0, dgx: 0, jev: 0, night: '2026-10-03' }, s: { g: 0, night: '2026-10-02' } },
+  } }));
+  const batches = [];
+  const input = {
+    records: [...records, ...['d1', 'e1'].map((id) => ({ id, condition: id }))],
+    settings: settings(dir, { maxQuestions: 1, labelBudget: 3 }), now: night, readDense: async () => dense,
+    chat: async () => ({ ok: true, content: '{"grade":2}' }),
+    jevEvaluate: async (input) => { batches.push(Object.keys(input.questions).length); return jevEvaluate(input); }, log: () => {},
+  };
+  const status = await runFlywheelNight(input);
+  assert.equal(status.labelled, 2);
+  assert.equal(status.labelPending, 1);
+  assert.deepEqual(batches, [2]);
+  const stored = JSON.parse(readFileSync(path.join(dir, 'labels.json'), 'utf8'));
+  assert.deepEqual(Object.keys(stored.labels.a1), ['b1', 'd1']);
+  assert.equal(stored.labels.a1.b1.g, 2);
+  const again = await runFlywheelNight(input);
+  assert.equal(again.labelled, 0);
+  assert.equal(again.labelPending, 1);
+  const resumed = await runFlywheelNight({ ...input, settings: settings(dir, { maxQuestions: 1, labelBudget: 4 }) });
+  assert.equal(resumed.labelled, 1);
+  assert.equal(resumed.labelPending, 0);
+  assert.deepEqual(batches, [2, 1]);
+});
+
+test('the DGX busy guard saves attempted labels and leaves the rest pending', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const file = questionsPath(dir, '2026-10-03');
+  const ids = ['b1', 'c1', 'd1', 'e1', 'f1'];
+  writeFileSync(file, `${JSON.stringify({ a: 'a1', question: '質問', kept: true, live: { loss: 'other_shown', shown: ids } })}\n`);
+  const status = await runFlywheelNight({
+    records: [...records, ...ids.slice(2).map((id) => ({ id, condition: id }))],
+    settings: settings(dir, { maxQuestions: 1 }), now: night, readDense: async () => dense,
+    chat: fakeChat({ slowAfter: 0 }), jevEvaluate, log: () => {},
+  });
+  assert.equal(status.reason, 'dgx_busy');
+  assert.equal(status.labelled, 3);
+  assert.equal(status.labelPending, 2);
+  assert.equal(status.shown, 0);
+  const labels = JSON.parse(readFileSync(path.join(dir, 'labels.json'), 'utf8')).labels.a1;
+  assert.deepEqual(Object.keys(labels), ids.slice(0, 3));
+  assert.deepEqual(labels.b1, { g: null, dgx: null, jev: 3, night: '2026-10-03' });
+});
+
+test('labelling checks the window before each pair and persists null JEV grades', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const file = questionsPath(dir, '2026-10-03');
+  writeFileSync(file, `${JSON.stringify({ a: 'a1', question: '質問', kept: true, live: { loss: 'other_shown', shown: ['b1', 'c1'] } })}\n`);
+  let calls = 0;
+  const status = await runFlywheelNight({
+    records, settings: settings(dir, { maxQuestions: 1 }),
+    now: () => calls === 0 ? night() : new Date('2026-10-03T21:00:00Z'), readDense: async () => dense,
+    chat: async () => { calls += 1; return { ok: true, content: '{"grade":3}' }; },
+    jevEvaluate: async () => { throw new Error('unavailable'); }, log: () => {},
+  });
+  assert.equal(calls, 1);
+  assert.equal(status.labelled, 1);
+  assert.equal(status.labelPending, 1);
+  assert.deepEqual(JSON.parse(readFileSync(path.join(dir, 'labels.json'), 'utf8')).labels.a1.b1,
+    { g: null, dgx: 3, jev: null, night: '2026-10-03' });
 });
 
 test('live backfill stops outside the window, preserves the generation reason, and resumes next time', async () => {
