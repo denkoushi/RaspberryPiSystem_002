@@ -1,0 +1,344 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>要領書 UX モック</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one dark kiosk screen (1920×1080) scaled to fit; three mock tabs above it. */
+:root{
+  --bg:#0f1317; --bar:#161c22; --panel:#1b222a; --line:#27313b; --line-2:#344252;
+  --fg:#eef3f6; --muted:#9fadb9; --accent:#3ba776; --accent-fg:#0b1a12; --warn:#f6b93b; --focus:#7cc4ff;
+  --font:"Noto Sans JP",system-ui,-apple-system,"Hiragino Sans",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);padding-block:16px;padding-inline:16px}
+.wrap{max-width:1600px;margin:0 auto;display:grid;gap:14px}
+h1{font-size:18px;margin:0;font-weight:900;letter-spacing:.04em}
+.lead{color:var(--muted);font-size:13px;margin:0;max-width:70ch}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{min-height:44px;padding:0 16px;border:1px solid var(--line);background:var(--bar);color:var(--fg);border-radius:8px;font:inherit;font-weight:700;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.tab:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.note{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+.note b{color:var(--fg)}
+/* scaled 1920×1080 screen */
+.stage{position:relative;width:100%;aspect-ratio:16/9;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;background:var(--bg)}
+.screen{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;display:flex;flex-direction:column;font-size:22px}
+.scr{display:none;flex-direction:column;height:100%}
+.scr[data-active="true"]{display:flex}
+/* --- A. manuals page, thin bar --- */
+.bar{height:56px;display:flex;align-items:center;gap:18px;padding:0 20px;background:var(--bar);border-bottom:1px solid var(--line);flex:none}
+.bar h2{font-size:24px;font-weight:900;letter-spacing:.1em;margin:0 12px 0 0}
+.crumb{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:20px;min-width:0}
+.crumb b{color:var(--fg);font-weight:700}
+.crumb .sep{opacity:.5}
+.spacer{flex:1}
+.ib{height:44px;display:inline-flex;align-items:center;gap:8px;padding:0 14px;border:1px solid var(--line-2);border-radius:8px;background:transparent;color:var(--fg);font:inherit;font-size:19px;font-weight:700;cursor:pointer;white-space:nowrap}
+.ib svg{width:22px;height:22px;flex:none}
+.ib.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.ib.quiet{border-color:transparent;color:var(--muted)}
+.body{flex:1;min-height:0;display:grid;grid-template-columns:300px 300px minmax(0,1fr)}
+.col{border-right:1px solid var(--line);padding:14px;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto}
+.col h3{margin:0 0 4px;font-size:16px;color:var(--muted);font-weight:700;letter-spacing:.08em}
+.search{height:44px;border:1px solid var(--line-2);border-radius:8px;background:#fff;color:#0f1317;padding:0 12px;font:inherit;font-size:20px}
+.row{min-height:48px;display:flex;align-items:center;padding:0 12px;border-radius:8px;font-weight:700;font-size:21px}
+.row[aria-current="true"]{background:var(--line)}
+.row .n{margin-left:auto;color:var(--muted);font-weight:400;font-size:17px;font-family:var(--mono)}
+.viewer{min-width:0;display:flex;flex-direction:column}
+.vbar{height:52px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line);font-size:19px;color:var(--muted)}
+.vbar b{color:var(--fg);font-size:21px}
+.prog{width:220px;height:10px;border-radius:5px;background:var(--line);overflow:hidden;margin-left:8px}
+.prog i{display:block;height:100%;width:9%;background:#5fc3e8}
+.page{flex:1;min-height:0;display:grid;place-items:center;background:#0a0d10}
+.sheet{background:#fff;color:#111;width:700px;aspect-ratio:1/1.414;border:1px solid #777;padding:28px;font-size:14px;display:grid;grid-template-rows:auto 1fr;gap:12px}
+.sheet .hd{display:grid;grid-template-columns:1fr 2fr 1fr 3fr;border:1px solid #333}
+.sheet .hd span{padding:4px 6px;border-right:1px solid #333}
+.sheet .grid{border:1px solid #333;background:repeating-linear-gradient(to bottom,transparent 0 44px,#333 44px 45px)}
+.thumbs{height:96px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 16px;color:var(--muted);font-size:17px}
+.thumb{width:112px;height:70px;border-radius:6px;background:linear-gradient(135deg,#2a3744,#1b222a);border:1px solid var(--line-2);display:grid;place-items:center;color:var(--fg);font-size:14px;position:relative}
+.thumb::after{content:"▶";position:absolute;right:6px;bottom:4px;font-size:12px;opacity:.8}
+/* --- B. blank dialog --- */
+.dim{position:absolute;inset:0;background:rgba(5,8,11,.72);display:grid;place-items:center}
+.dlg{background:var(--bar);border:1px solid var(--line-2);border-radius:14px;padding:24px 26px;display:grid;gap:18px;color:var(--fg)}
+.dlg h4{margin:0;font-size:24px;font-weight:900}
+.dlg-b{width:1180px}
+.steps{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.step{display:grid;gap:8px}
+.step .lbl{font-size:16px;color:var(--muted);letter-spacing:.08em;font-weight:700}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:48px;padding:0 16px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel);color:var(--fg);font:inherit;font-size:20px;font-weight:700;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.chip.ghost{border-style:dashed;color:var(--muted)}
+.mlist{display:grid;gap:6px;max-height:220px;overflow:auto;padding-right:4px}
+.mlist .row{min-height:46px;font-family:var(--mono);font-size:20px}
+.preview{display:grid;grid-template-columns:1fr auto;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.preview .name{font-size:26px;font-weight:900;letter-spacing:.02em;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.preview .name span{padding:2px 10px;border-radius:6px;background:var(--line)}
+.preview .name span.free{background:transparent;border:1px dashed var(--line-2);color:var(--muted);font-weight:400}
+.preview small{color:var(--muted);font-size:15px;display:block;margin-top:4px}
+.actions{display:flex;justify-content:flex-end;gap:10px}
+.bigbtn{min-height:52px;padding:0 22px;border-radius:10px;border:1px solid var(--line-2);background:transparent;color:var(--fg);font:inherit;font-size:21px;font-weight:700;cursor:pointer}
+.bigbtn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.inline-in{height:48px;border:1px solid var(--line-2);border-radius:8px;background:#fff;color:#0f1317;padding:0 12px;font:inherit;font-size:20px;width:100%}
+/* --- C. shelf --- */
+.dlg-c{width:1760px;height:980px;grid-template-rows:auto auto 1fr}
+.shelf-top{display:flex;align-items:center;gap:12px}
+.shelf-top .tabrow{display:flex;gap:4px;margin-left:8px}
+.stab{min-height:44px;padding:0 16px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--muted);font:inherit;font-size:19px;font-weight:700}
+.stab[aria-selected="true"]{background:var(--line);color:var(--fg)}
+.size{display:flex;gap:4px;margin-left:auto;align-items:center;color:var(--muted);font-size:17px}
+.size button{width:44px;height:44px;border-radius:8px;border:1px solid var(--line-2);background:transparent;color:var(--fg);font:inherit;font-size:16px;font-weight:700}
+.size button[aria-pressed="true"]{background:var(--line)}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;overflow:auto;align-content:start;padding-right:4px}
+.card{border:1px solid var(--line-2);border-radius:12px;background:var(--panel);overflow:hidden;display:grid;grid-template-rows:auto auto;cursor:pointer;position:relative}
+.card[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:-3px}
+.card .img{aspect-ratio:4/3;background:linear-gradient(160deg,#30404f,#1b222a);display:grid;place-items:center;color:var(--muted);font-size:18px;position:relative}
+.card .img.text{background:#fdfcf7;color:#1a1a1a;padding:16px;font-size:19px;line-height:1.5;align-items:start;justify-items:start;overflow:hidden;font-family:var(--font)}
+.card .meta{display:flex;align-items:center;gap:10px;padding:10px 12px;font-size:17px;color:var(--muted);min-height:48px}
+.card .meta b{color:var(--fg);font-size:19px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.src{font-size:14px;padding:2px 8px;border-radius:999px;border:1px solid var(--line-2);flex:none}
+.chk{position:absolute;top:10px;left:10px;width:34px;height:34px;border-radius:8px;border:2px solid #fff;background:rgba(0,0,0,.35);display:grid;place-items:center;color:#fff;font-weight:900;font-size:20px}
+.card[aria-pressed="true"] .chk{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.zoom{position:absolute;right:10px;bottom:10px;width:40px;height:40px;border-radius:8px;border:1px solid rgba(255,255,255,.5);background:rgba(0,0,0,.45);color:#fff;font-size:18px;display:grid;place-items:center}
+.shelf-foot{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:19px}
+.shelf-foot .cnt{font-family:var(--mono);color:var(--fg)}
+
+/* A (revised): full-height viewer, controls on the left half */
+.split{display:grid;grid-template-columns:600px minmax(0,1fr);height:100%}
+.left{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);background:var(--bar)}
+.tools{display:grid;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.tools-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tools h2{font-size:24px;font-weight:900;letter-spacing:.1em;margin:0 10px 0 0}
+.where{color:var(--muted);font-size:18px}
+.where b{color:var(--fg)}
+.cols{display:grid;grid-template-columns:1fr 1fr;flex:1;min-height:0}
+.cols .col{border-right:1px solid var(--line)}
+.cols .col:last-child{border-right:0}
+.side-meta{font-size:17px;color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 0}
+.viewer.full{position:relative;height:100%;background:#0a0d10}
+.viewer.full .page{height:100%;overflow:auto;align-content:start}
+.viewer.full .page.fitw .sheet.tall{height:auto;width:calc(100% - 48px);margin:24px 0}
+.sheet.tall{width:auto;height:1040px;aspect-ratio:1/1.414}
+.float-nav{position:absolute;right:28px;bottom:24px;display:flex;align-items:center;gap:8px;padding:8px;border-radius:12px;background:rgba(15,19,23,.78);border:1px solid var(--line-2);backdrop-filter:blur(4px)}
+.seg{display:inline-flex;gap:0;border:1px solid var(--line-2);border-radius:8px;overflow:hidden}
+.seg .ib{border:0;border-radius:0;height:42px}
+.seg .ib[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+.pill{font-family:var(--mono);font-size:19px;color:var(--fg);padding:0 8px}
+/* annotations */
+.ann{position:absolute;background:var(--warn);color:#1a1200;font-size:16px;font-weight:700;padding:4px 10px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:none}
+.ann::before{content:"";position:absolute;width:10px;height:10px;background:var(--warn);transform:rotate(45deg);left:14px;top:-5px}
+@media (max-width:900px){.steps{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}}
+@media (prefers-reduced-motion:no-preference){.tab,.chip,.card{transition:background .12s,outline-color .12s}}
+</style>
+
+<div class="wrap">
+  <div>
+    <h1>要領書 UX モック</h1>
+    <p class="lead">実機の 1920×1080 を縮小表示。3 つの改善を切り替えて確認できます。文言と寸法は実装時にそのまま使う前提です。</p>
+  </div>
+  <div class="tabs" role="tablist" aria-label="モック切替">
+    <button class="tab" role="tab" id="t-a" aria-selected="true" aria-controls="s-a">A 表示領域を全高に</button>
+    <button class="tab" role="tab" id="t-b" aria-selected="false" aria-controls="s-b">B 白紙から作る(名前の組み立て)</button>
+    <button class="tab" role="tab" id="t-c" aria-selected="false" aria-controls="s-c">C 素材棚(大きなサムネイル)</button>
+  </div>
+  <div class="note" id="note"></div>
+
+  <div class="stage" id="stage">
+    <div class="screen" id="screen">
+
+      <!-- A: manuals page: viewer takes the full height, controls live at the top of the left half -->
+      <section class="scr" id="s-a" data-active="true" aria-labelledby="t-a">
+        <div class="split">
+          <div class="left">
+            <div class="tools">
+              <div class="tools-row">
+                <h2>要領書</h2>
+                <button class="ib primary" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>白紙から作る</button>
+                <button class="ib" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/></svg>素材 <span style="font-family:var(--mono);font-weight:500">12</span></button>
+                <button class="ib" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2"/></svg>動画</button>
+              </div>
+              <div class="tools-row">
+                <button class="ib quiet" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg>割り当て</button>
+                <button class="ib quiet" type="button">組立へ戻る</button>
+                <div class="spacer"></div>
+                <span class="where"><b>6362</b> › 組立工程 › 組立工程</span>
+              </div>
+            </div>
+            <div class="cols">
+              <aside class="col" aria-label="機種">
+                <h3>機種</h3>
+                <input class="search" type="search" placeholder="型番で検索" aria-label="型番で検索" id="a-search">
+                <div class="row" aria-current="true">6362 <span class="n">3</span></div>
+                <div class="row">DFD6362XYZ-3943173 <span class="n">1</span></div>
+                <div class="row">MD005189371 <span class="n">2</span></div>
+              </aside>
+              <aside class="col" aria-label="工程">
+                <h3>工程</h3>
+                <div class="row" aria-current="true">組立工程 › 組立工程 <span class="n">2</span></div>
+                <div class="row">組立工程 › 検査工程 <span class="n">1</span></div>
+                <h3 style="margin-top:14px">このページ</h3>
+                <div class="side-meta">手順 1/21 ・ 産1-G291AMK<span class="prog"><i></i></span></div>
+                <div class="side-meta">承認: 承認太郎(班長) 10/05 15:12</div>
+                <div class="side-meta">動画</div>
+                <div style="display:flex;gap:8px"><div class="thumb">0:08</div><div class="thumb">0:10</div></div>
+              </aside>
+            </div>
+          </div>
+          <main class="viewer full">
+            <div class="page">
+              <div class="sheet tall">
+                <div class="hd"><span>機械課</span><span>文書番号 産1-G291AMK-0</span><span>表題</span><span>8000番台ベアリングホルダー</span></div>
+                <div class="grid"></div>
+              </div>
+            </div>
+            <div class="float-nav">
+              <div class="seg" role="group" aria-label="表示サイズ">
+                <button class="ib" type="button" id="a-fit-all" aria-pressed="true">全体</button>
+                <button class="ib" type="button" id="a-fit-w" aria-pressed="false">幅いっぱい</button>
+              </div>
+              <button class="ib" type="button">全手順</button>
+              <button class="ib" type="button">前手順</button>
+              <span class="pill">1 / 21</span>
+              <button class="ib primary" type="button">次手順</button>
+            </div>
+          </main>
+        </div>
+        <div class="ann" style="left:16px;top:116px">操作は左半分の上 2 行にまとめる(内容幅)。ページ名・パンくずもここ</div>
+        <div class="ann" style="left:700px;top:40px">表示領域は高さ 1080px 全部。送りボタンは紙の上に浮かせる(半透明)</div>
+      </section>
+
+      <!-- B: blank dialog with name builder -->
+      <section class="scr" id="s-b" aria-labelledby="t-b">
+        <header class="bar"><h2>要領書</h2><div class="crumb">6362 › 組立工程 › 組立工程</div><div class="spacer"></div><button class="ib primary" type="button">白紙から作る</button></header>
+        <div class="dim">
+          <div class="dlg dlg-b" role="dialog" aria-labelledby="b-title">
+            <h4 id="b-title">白紙から作る</h4>
+            <div class="steps">
+              <div class="step">
+                <div class="lbl">機種</div>
+                <input class="inline-in" type="search" placeholder="型番で検索" aria-label="型番で検索" id="b-model" value="6362">
+                <div class="mlist">
+                  <div class="row" aria-current="true">6362</div>
+                  <div class="row">DFD6362XYZ-3943173</div>
+                  <div class="row">MD005189371</div>
+                </div>
+              </div>
+              <div class="step">
+                <div class="lbl">工程</div>
+                <div class="chips" id="b-proc">
+                  <button class="chip" type="button" aria-pressed="false">加工</button>
+                  <button class="chip" type="button" aria-pressed="true">組立</button>
+                </div>
+                <div class="lbl" style="margin-top:8px">細分</div>
+                <div class="chips" id="b-sub">
+                  <button class="chip" type="button" aria-pressed="true">組立</button>
+                  <button class="chip" type="button" aria-pressed="false">検査</button>
+                  <button class="chip" type="button" aria-pressed="false">切削</button>
+                  <button class="chip" type="button" aria-pressed="false">研削</button>
+                </div>
+              </div>
+              <div class="step">
+                <div class="lbl">補足(任意)</div>
+                <input class="inline-in" type="text" placeholder="例: ベアリング圧入" aria-label="補足" id="b-free">
+                <div class="lbl" style="margin-top:8px">よく使う</div>
+                <div class="chips">
+                  <button class="chip ghost" type="button">圧入</button>
+                  <button class="chip ghost" type="button">配線</button>
+                  <button class="chip ghost" type="button">最終確認</button>
+                </div>
+              </div>
+            </div>
+            <div class="preview">
+              <div>
+                <div class="name" id="b-name"><span>6362</span><span>組立</span><span>組立</span><span class="free">補足</span></div>
+                <small>保存名: 6362_組立_組立 ・ 同名があれば末尾に -2</small>
+              </div>
+              <button class="bigbtn" type="button" id="b-edit">名前を直接入力</button>
+            </div>
+            <div class="actions">
+              <button class="bigbtn" type="button">閉じる</button>
+              <button class="bigbtn primary" type="button">作成してエディタへ</button>
+            </div>
+          </div>
+        </div>
+        <div class="ann" style="left:380px;top:120px">左から順に選ぶだけで名前が決まる。自由入力は「名前を直接入力」に退避</div>
+      </section>
+
+      <!-- C: large shelf -->
+      <section class="scr" id="s-c" aria-labelledby="t-c">
+        <header class="bar"><h2>要領書</h2><div class="crumb">6362 › 組立工程 › 組立工程</div><div class="spacer"></div><button class="ib primary" type="button">素材</button></header>
+        <div class="dim">
+          <div class="dlg dlg-c" role="dialog" aria-labelledby="c-title">
+            <div class="shelf-top">
+              <h4 id="c-title">素材</h4>
+              <div class="tabrow" role="tablist">
+                <button class="stab" role="tab" aria-selected="true">未配置 <span style="font-family:var(--mono)">12</span></button>
+                <button class="stab" role="tab" aria-selected="false">配置済み</button>
+                <button class="stab" role="tab" aria-selected="false">ナレッジから</button>
+              </div>
+              <input class="search" type="search" placeholder="ヒントで絞り込み" aria-label="ヒントで絞り込み" id="c-search" style="width:320px;margin-left:16px">
+              <div class="size">表示 <button type="button" aria-pressed="false" id="c-s">小</button><button type="button" aria-pressed="true" id="c-m">中</button><button type="button" aria-pressed="false" id="c-l">大</button></div>
+              <button class="ib quiet" type="button">今すぐ取り込む</button>
+              <button class="ib quiet" type="button">閉じる</button>
+            </div>
+            <div class="shelf-foot"><span class="cnt" id="c-cnt">2</span> 件を選択中<div class="spacer"></div><button class="bigbtn" type="button">捨てる</button><button class="bigbtn primary" type="button">現在ページに配置</button></div>
+            <div class="grid" id="c-grid">
+              <div class="card" role="button" aria-pressed="true" tabindex="0"><div class="img">写真 1600×1200<span class="chk">✓</span><span class="zoom">⤢</span></div><div class="meta"><b>6362 圧入前</b><span class="src">メール</span>10/05 14:02</div></div>
+              <div class="card" role="button" aria-pressed="true" tabindex="0"><div class="img">写真 1200×1600<span class="chk">✓</span><span class="zoom">⤢</span></div><div class="meta"><b>6362 圧入後</b><span class="src">メール</span>10/05 14:02</div></div>
+              <div class="card" role="button" aria-pressed="false" tabindex="0"><div class="img text">圧入はプレスの目盛 12.5 で止める。ベアリング外輪に傷が無いことを確認してから次へ。<span class="chk"></span></div><div class="meta"><b>6362 圧入メモ</b><span class="src">メール</span>10/05 14:02</div></div>
+              <div class="card" role="button" aria-pressed="false" tabindex="0"><div class="img">写真 1600×1200<span class="chk"></span><span class="zoom">⤢</span></div><div class="meta"><b>配線の取り回し</b><span class="src">ナレッジ</span>10/04</div></div>
+              <div class="card" role="button" aria-pressed="false" tabindex="0"><div class="img">写真 1600×1200<span class="chk"></span><span class="zoom">⤢</span></div><div class="meta"><b>検査治具セット</b><span class="src">メール</span>10/03</div></div>
+              <div class="card" role="button" aria-pressed="false" tabindex="0"><div class="img text">最終確認はトルク値を記録し、銘板の向きを写真で残す。<span class="chk"></span></div><div class="meta"><b>最終確認メモ</b><span class="src">ナレッジ</span>10/03</div></div>
+              <div class="card" role="button" aria-pressed="false" tabindex="0"><div class="img">写真 1200×1600<span class="chk"></span><span class="zoom">⤢</span></div><div class="meta"><b>銘板の向き</b><span class="src">メール</span>10/02</div></div>
+              <div class="card" role="button" aria-pressed="false" tabindex="0"><div class="img">写真 1600×1200<span class="chk"></span><span class="zoom">⤢</span></div><div class="meta"><b>梱包前</b><span class="src">メール</span>10/02</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="ann" style="left:1180px;top:118px">サムネイルは 中=約 400px 幅、大=約 560px。右下の ⤢ で原寸を重ねて表示</div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var notes={
+    'a':['<b>A 表示領域を全高に</b>: 右側のビューアは高さ 1080px を全部使う(A4 縦なら約 735×1040px、現状より約 300px 大きい)。送りボタンは紙の上に半透明で浮かせ、「幅いっぱい」で紙をペインの幅まで拡大して上下スクロールで読む(縦長は既定「全体」、横長は既定「幅いっぱい」)。','操作(白紙から作る、素材、動画、割り当て、組立へ戻る)とページ名・パンくずは左半分(600px)の上 2 行にまとめる。機種・工程の列はその下。承認と動画のサムネイルも左側に移す。'],
+    'b':['<b>B 白紙から作る</b>: 機種(検索付き一覧)→ 工程(加工/組立)→ 細分(組立/検査/切削/研削)→ 補足(任意)の順に選ぶと、下に名前が組み上がる。','自由入力は「名前を直接入力」でいつでも切り替え可能。工程と細分の候補は Phase 1 の工程マスタから出す。保存名は `型番_工程_細分(_補足)`。'],
+    'c':['<b>C 素材棚</b>: ダイアログを画面の 92% に広げ、4 列のカードで写真を約 400px 幅で見せる。表示 小/中/大 で 6 列/4 列/3 列に切替。','カードは複数選択してまとめて配置。写真の ⤢ で原寸を重ねて確認。文の素材は冒頭を白地に大きめの文字で表示。由来(メール/ナレッジ)を小さく表示。']
+  };
+  var tabs=document.querySelectorAll('.tab');
+  function show(id){
+    tabs.forEach(function(t){t.setAttribute('aria-selected',String(t.id==='t-'+id));});
+    document.querySelectorAll('.scr').forEach(function(s){s.dataset.active=String(s.id==='s-'+id);});
+    document.getElementById('note').innerHTML=notes[id].map(function(n){return '<div>'+n+'</div>';}).join('');
+    try{localStorage.setItem('manual-ux-mock-tab',id);}catch(e){}
+  }
+  tabs.forEach(function(t){t.addEventListener('click',function(){show(t.id.slice(2));});});
+  var initial='a'; try{initial=localStorage.getItem('manual-ux-mock-tab')||'a';}catch(e){}
+  show(initial);
+  var fa=document.getElementById('a-fit-all'),fw=document.getElementById('a-fit-w');function setFit(on){fa.setAttribute('aria-pressed',String(!on));fw.setAttribute('aria-pressed',String(on));document.querySelector('#s-a .page').classList.toggle('fitw',on);}if(fa&&fw){fa.addEventListener('click',function(){setFit(false);});fw.addEventListener('click',function(){setFit(true);});}
+  function fit(){var st=document.getElementById('stage');var s=st.clientWidth/1920;document.getElementById('screen').style.transform='scale('+s+')';}
+  window.addEventListener('resize',fit); fit();
+  /* B: chips drive the name preview */
+  function single(groupId,cb){var g=document.getElementById(groupId);g.addEventListener('click',function(e){var b=e.target.closest('.chip');if(!b)return;g.querySelectorAll('.chip').forEach(function(c){c.setAttribute('aria-pressed','false');});b.setAttribute('aria-pressed','true');cb();});}
+  function renderName(){
+    var model=document.getElementById('b-model').value.trim()||'機種';
+    var proc=document.querySelector('#b-proc .chip[aria-pressed="true"]');
+    var sub=document.querySelector('#b-sub .chip[aria-pressed="true"]');
+    var free=document.getElementById('b-free').value.trim();
+    var parts=[model,proc?proc.textContent:'工程',sub?sub.textContent:'細分'];
+    var html=parts.map(function(p){return '<span>'+p+'</span>';}).join('')+(free?'<span>'+free+'</span>':'<span class="free">補足</span>');
+    document.getElementById('b-name').innerHTML=html;
+    document.querySelector('.preview small').textContent='保存名: '+parts.concat(free?[free]:[]).join('_')+' ・ 同名があれば末尾に -2';
+  }
+  single('b-proc',renderName); single('b-sub',renderName);
+  document.getElementById('b-free').addEventListener('input',renderName);
+  document.getElementById('b-model').addEventListener('input',renderName);
+  /* C: card selection + size */
+  var grid=document.getElementById('c-grid');
+  grid.addEventListener('click',function(e){var c=e.target.closest('.card');if(!c)return;c.setAttribute('aria-pressed',String(c.getAttribute('aria-pressed')!=='true'));document.getElementById('c-cnt').textContent=grid.querySelectorAll('.card[aria-pressed="true"]').length;});
+  [['c-s',6],['c-m',4],['c-l',3]].forEach(function(p){document.getElementById(p[0]).addEventListener('click',function(){['c-s','c-m','c-l'].forEach(function(i){document.getElementById(i).setAttribute('aria-pressed','false');});this.setAttribute('aria-pressed','true');grid.style.gridTemplateColumns='repeat('+p[1]+',1fr)';});});
+})();
+</script>

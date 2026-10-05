@@ -52,6 +52,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) Pi5 へ標準ローリング更新(run `20261005-093506-d09ffd`、releaseSha `a25fe544`、`Result=success`、recap `ok=269 changed=33 unreachable=0 failed=0`、約 14 分)。health 200、API コンテナで `ffmpeg version 5.1.9-0+deb12u1`、`/app/storage/procedure-videos` あり、migration `20261006000000_add_procedure_videos` 適用済み。追跡セッションの報告による。
 - [ ] 実機確認(オーナー): 動画付きの `[Procedure-material]` メールを送ると「動画」一覧に出て数十秒で完了になり再生できる、縦動画の向きが正しい、エディタでページに紐づけると閲覧ページにサムネイルが出る。
 - [ ] 後日: 動画 V2/V3(トリミング、コメント、接続)。
+- [x] (2026-10-05) UX 改善(1 回目) A/C ローカル実装: モックの左600px・操作2行・全高ビューア、閲覧専用layoutと縦横比による表示サイズ、左側の手順/承認/動画、1760×980相当の素材棚・6/4/3列・複数選択・順次配置・原寸表示を追加。APIのgetAssignmentsは承認とページ別動画を既に返すため変更不要。
+- [x] (2026-10-05) UX 改善(1 回目) 検証: Web lint、対象範囲とKioskLayoutの72ファイル384件(既存作業セッション回帰を含む)、build、API lint・要領書3ファイル28件・build用tscが成功。Safariで実コンポーネントとダミーデータを1920×1080に描画し、全体/幅表示と素材棚4列を目視確認。commit/push/PR/merge/deployと取説再生成は未実施。
+
 
 ## Surprises & Discoveries
 
@@ -185,6 +188,15 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Decision: 改版下書きへページ動画リンクを複製し、下書き破棄ではその下書きのリンクだけを同じ文書transactionで除去する。1秒以下の動画のposterは中間フレームを使う。
   Rationale: 公開版のリンクを保持しつつ従来の改版・破棄を継続する。短い動画でもposter生成が空出力にならないようにする。
   Date/Author: 2026-10-05 / Codex。
+- Decision: UX 改善(1 回目) のビューアはlayout="manuals"だけで浮遊操作と幅表示を有効にし、画像のnaturalWidth/naturalHeightで既定を決める。切抜きでは従来の表示を維持し、ページ送り時に幅表示のスクロールを先頭へ戻す。
+  Rationale: PDFを含む実際のページ画像の形に従い、共用ビューアの作業セッション側を維持するため。手順情報と未公開通知は左側へ置き、右側の全高を確保する。
+- Decision: UX 改善(1 回目) の素材棚はモックどおり操作/選択行/カードの順に置く。既存の捨てた素材の復元と配置済みの取り消しを残し、エディタ文脈では既存どおり未配置とナレッジを扱う。
+  Rationale: モックの寸法と配置を守りながら、既存の復元経路とPhase 3の明示取込を維持するため。
+- Decision: UX 改善(1 回目) の配置はチェックした順に既存APIへ送る。成功分は棚と選択から外し、失敗時は残りだけ再試行できるようにする。エディタでは連続配置時の重なり順も保持する。原寸表示は取得済みBlobを再利用し、表示サイズはlocalStorageが使えなくても切り替えられる。
+  Rationale: 部分成功の二重配置、画像の再取得、端末の保存制限による操作停止を避けるため。
+- Decision: UX 改善(1 回目) の素材一覧/未配置件数は既存APIの上限500件を使い、上限に達した場合は500+と表示する。
+  Rationale: 件数APIの新設を今回の小さなAPI確認へ混ぜず、取得上限を総件数として断定しないため。
+
 
 ## Context and Orientation
 

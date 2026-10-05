@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 
 import {
   placeProcedureMaterial,
@@ -52,6 +52,9 @@ export type AssemblyProcedureDocumentOverlayCommandSession = {
 export function useAssemblyProcedureDocumentOverlayCommands(
   session: AssemblyProcedureDocumentOverlayCommandSession
 ) {
+  // A shelf batch reuses one callback across sequential placement requests.
+  const materialElementsRef = useRef(session.elements);
+  materialElementsRef.current = session.elements;
   const addCreatedOverlay = useCallback((
     kind: OverlayCreationKind,
     bbox: AssemblyProcedureOverlayBBox,
@@ -272,8 +275,10 @@ export function useAssemblyProcedureDocumentOverlayCommands(
     try {
       const { element, asset } = await placeProcedureMaterial({ id: session.document.id, materialId: material.id, pageIndex: session.selectedPage.pageIndex, accessPassword: session.passwordInput });
       if (asset) session.setDocument((current) => current ? { ...current, assets: { ...current.assets, [asset.assetId]: asset } } : current);
-      const zIndex = Math.max(element.zIndex, ...session.elements.filter((item) => item.pageIndex === element.pageIndex).map((item) => item.zIndex + 1));
-      addCreatedOverlay(element.kind, element.bbox, { element: { ...element, zIndex } }, element.pageIndex);
+      const zIndex = Math.max(element.zIndex, ...materialElementsRef.current.filter((item) => item.pageIndex === element.pageIndex).map((item) => item.zIndex + 1));
+      const placed = { ...element, zIndex };
+      materialElementsRef.current = [...materialElementsRef.current, placed];
+      addCreatedOverlay(element.kind, element.bbox, { element: placed }, element.pageIndex);
       session.setMessage('素材を配置しました。内容を編集して保存してください。');
     } finally { session.setBusy(false); }
   }, [addCreatedOverlay, session]);

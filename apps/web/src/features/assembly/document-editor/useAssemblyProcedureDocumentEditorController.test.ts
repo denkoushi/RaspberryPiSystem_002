@@ -106,6 +106,21 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.document?.assets?.asset).toMatchObject({ assetId: 'asset' });
     expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
   });
+  it('appends sequential shelf selections to the draft with distinct assets and increasing z-order', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    const place = hook.result.current.placeMaterial;
+    const first = { id: 'first-overlay', kind: 'IMAGE', assetId: 'first', pageIndex: 0, zIndex: 0, bbox: range, objectFit: 'contain' };
+    const second = { ...first, id: 'second-overlay', assetId: 'second' };
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: first, asset: { assetId: 'first', relativeUrl: '/first.png' } })
+      .mockResolvedValueOnce({ element: second, asset: { assetId: 'second', relativeUrl: '/second.png' } });
+    await act(async () => { await place({ id: 'first' }); await place({ id: 'second' }); });
+    expect(apiMocks.placeMaterial.mock.calls.map(([params]) => params.materialId)).toEqual(['first', 'second']);
+    expect(hook.result.current.elements).toEqual([expect.objectContaining({ id: 'first-overlay', zIndex: 0 }), expect.objectContaining({ id: 'second-overlay', zIndex: 1 })]);
+    expect(hook.result.current.document?.assets).toMatchObject({ first: { assetId: 'first' }, second: { assetId: 'second' } });
+    expect(hook.result.current.isDirty).toBe(true);
+    expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+  });
   it('updates recovery to the new version immediately after adding a blank page', async () => {
     const document = makeDocument();
     const hook = renderEditor(document);

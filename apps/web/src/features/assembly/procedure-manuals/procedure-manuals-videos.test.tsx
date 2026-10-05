@@ -19,10 +19,11 @@ vi.mock('../../../api/client', () => ({
   listProcedureManualModels: async () => [{ modelCode: 'DFD1', modelCodeKey: 'DFD1' }],
   listProcedureManualProcesses: async () => [{ id: 'root', name: '組立工程', parentId: null }, { id: 'p', name: '検査工程', parentId: 'root' }],
   getProcedureManualAssignments: mocks.detail,
+  listProcedureMaterials: async () => [],
 }));
 vi.mock('../AssemblyProcedureSequenceViewer', () => ({
-  AssemblyProcedureSequenceViewer: ({ sequence, onCurrentPageChange }: { sequence: AssemblyProcedureSequenceDto; onCurrentPageChange?: (page: AssemblyProcedureSequencePageDto | null) => void }) => {
-    useEffect(() => { onCurrentPageChange?.(sequence.documents[0].pages?.[0] ?? null); }, [sequence, onCurrentPageChange]);
+  AssemblyProcedureSequenceViewer: ({ sequence, onCurrentPageChange, onCurrentStepChange }: { onCurrentStepChange?: (step: null, index: number, total: number) => void; sequence: AssemblyProcedureSequenceDto; onCurrentPageChange?: (page: AssemblyProcedureSequencePageDto | null) => void }) => {
+    useEffect(() => { onCurrentPageChange?.(sequence.documents[0].pages?.[0] ?? null); onCurrentStepChange?.(null, 0, 2); }, [sequence, onCurrentPageChange, onCurrentStepChange]);
     return <button onClick={() => onCurrentPageChange?.(sequence.documents[0].pages?.[1] ?? null)}>次のページ</button>;
   }
 }));
@@ -81,9 +82,9 @@ describe('procedure-manuals videos', () => {
     mocks.detail.mockResolvedValue({ assignments: [], sequence: { documents: [{ assemblyProcedureDocumentId: 'doc', pages }] } });
     render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
     fireEvent.click(await screen.findByRole('button', { name: 'DFD1' }));
-    fireEvent.click(screen.getByRole('button', { name: '組立工程 > 検査工程' }));
+    fireEvent.click(screen.getByRole('button', { name: '組立工程 › 検査工程' }));
     const strip = await screen.findByRole('region', { name: 'このページの動画' });
-    expect(within(strip).getByText('締付動画')).toBeInTheDocument(); expect(within(strip).queryByText('受付動画')).not.toBeInTheDocument();
+    expect(within(strip).getByRole('button', { name: '締付動画' })).toBeInTheDocument(); expect(within(strip).queryByText('受付動画')).not.toBeInTheDocument();
     fireEvent.click(within(strip).getByRole('button', { name: /締付動画/ }));
     await waitFor(() => expect(screen.getByLabelText('締付動画', { selector: 'video' })).toHaveAttribute('src', 'blob:video'));
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
