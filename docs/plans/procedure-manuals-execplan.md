@@ -51,7 +51,10 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) PR #1706 を main へ squash merge(merge `b8cafa6b5660324d7ae77944e07c1724397d6e30`、追跡セッションが実施)。main の push CI で API イメージが圧縮上限 1.0 GB を超過(1,063,981,159 バイト。Debian の ffmpeg が約 88 MB)。配布を通すため #1708(merge `e93b28ac`)で ffmpeg を一時的に外し、オーナー判断で #1709(merge `a25fe544a7c6bcc40400a20141da17fb67daad41`)で上限を 1.1 GB に引き上げて ffmpeg を戻した(静的ビルドは arm64 で約 113 MB 圧縮と Debian 版より大きく不採用)。
 - [x] (2026-10-05) Pi5 へ標準ローリング更新(run `20261005-093506-d09ffd`、releaseSha `a25fe544`、`Result=success`、recap `ok=269 changed=33 unreachable=0 failed=0`、約 14 分)。health 200、API コンテナで `ffmpeg version 5.1.9-0+deb12u1`、`/app/storage/procedure-videos` あり、migration `20261006000000_add_procedure_videos` 適用済み。追跡セッションの報告による。
 - [ ] 実機確認(オーナー): 動画付きの `[Procedure-material]` メールを送ると「動画」一覧に出て数十秒で完了になり再生できる、縦動画の向きが正しい、エディタでページに紐づけると閲覧ページにサムネイルが出る。
-- [ ] 後日: 動画 V2/V3(トリミング、コメント、接続)。
+- [x] (2026-10-05) 動画 V2実装: SD動画からの不可逆トリミング要求・再試行・元動画保持、コメント全置換とトリミング時刻補正、紐づけ時10.5秒上限、共通字幕プレイヤー・範囲バー・コメント編集・長さ/要トリミング表示を追加。
+- [x] (2026-10-05) 動画 V2指定検証: API lint / procedure-video 5ファイル87件 / build用tsc、Web lint / procedure-manuals 4ファイル39件 / build成功。組立transaction回帰4件も成功(合わせて6ファイル91件)。expand-only SQLの5文成功、Prisma差分と手書きDDLの列/表/索引/FK一致を確認。依存準備を含め約10分。
+- [ ] 動画 V2 integrationPending: commit・push・PR・main統合・本番反映・実機受入は未依頼、未実施。
+- [ ] 後日: 動画 V3(接続)。
 
 ## Surprises & Discoveries
 
@@ -186,6 +189,19 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Rationale: 公開版のリンクを保持しつつ従来の改版・破棄を継続する。短い動画でもposter生成が空出力にならないようにする。
   Date/Author: 2026-10-05 / Codex。
 
+- Decision: 動画 V2は現存するSD MP4だけを入力に再エンコードし、トリミング要求でattemptsを0へ戻す。V1と同じ3回の再試行後(4回目)、またはffmpeg無しで元のMP4をREADYへ復帰させ、TRIM_FAILEDと理由を残す。元に戻す操作は提供しない。
+  Rationale: 捨てた原本に依存せず、変換失敗によって使用可能な動画が消えることを防ぐ。再試行中はPENDINGのまま要求を保持する。
+  Date/Author: 2026-10-05 / Codex
+- Decision: 動画行のFOR UPDATEをトリミング要求・コメント全置換・ページ紐づけで共有する。トリミング要求のある動画は紐づけを409で拒否し、コメント編集はREADYだけとする。
+  Rationale: 棚の古い状態からの紐づけやコメント上書きが、トリミング時の排他と時刻補正を破ることを防ぐ。従来の初回PENDING動画の紐づけは維持する。
+  Date/Author: 2026-10-05 / Codex
+- Decision: 出力ハッシュの保存・READY更新と旧出力削除は同じ保存キーのadvisory lockを共有し、再エンコードはtransaction外で行う。READYをcommitした後に旧キーの参照数を確認し、削除完了まで短いロックを保持する。
+  Rationale: 同一ハッシュを別行が再保存する瞬間の参照チェックと削除の競合を防ぐ。削除失敗はREADYを巻き戻さずログに残す。
+  Date/Author: 2026-10-05 / Codex
+- Decision: コメントは開始・終了境界を含めて保持し、開始秒を引いて時刻とsortOrderを補正する。最終コメントの字幕は4秒未満の区間まで表示する。範囲バーの初期選択は先頭10秒(短い動画は全長)、0.1秒刻みとする。
+  Rationale: APIの0〜durationSecondsの範囲と整合させ、現場で短い動画と字幕を作る初期操作を減らす。トリミング自体は10秒超も受け付けるが、赤で警告し、紐づけ時は10.5秒を超えると拒否する。
+  Date/Author: 2026-10-05 / Codex
+
 ## Context and Orientation
 
 このリポジトリは pnpm ワークスペースで、`apps/api` が Fastify + Prisma(PostgreSQL)の API、`apps/web` が React(Vite)の Web、`packages/shared-types` が共有の型である。キオスク画面は `apps/web/src/pages/kiosk/` にあり、ルートは `apps/web/src/App.tsx` に列挙されている。組立キオスクのホームは `apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx` で、ナビゲーションのリンク群(`aria-label="組立メニュー"`)から各画面へ飛ぶ。
@@ -250,7 +266,9 @@ Pi5のffprobeで60秒以下を確認し、音声なし・長辺640・縦横比�
 
 Webは上部の「動画」棚、可視範囲だけのposter取得、タイトル・長さ・状態・再試行・確認付きdiscard・restore、認証Blobによる再生を提供する。エディタの現在ページから選択・並び替え・PUT保存し、閲覧では現在ページのREADYサムネイル列から再生する。ボタンはmin-h-11、再生はcontrols/playsInline/muted/preload=metadata、終了時にObject URLを解放する。
 
-V2はトリミング等の編集、V3はコメント・接続等の拡張を後日扱う。本依頼では両者を実装しない。infrastructure/CIのffmpeg導入とprocedure-videos永続マウントはClaudeの担当で、Codexは変更しない。
+V2は`POST /assembly/procedure-videos/:id/trim`でREADYかつ未紐づけの動画の0.5秒以上の範囲を受け付ける。nullableのtrimRequest/trimmedAt/sourceDurationSecondsとProcedureVideoCommentをexpand-only migration `20261006100000_add_procedure_video_trim_and_comments`で追加する。処理workerはSD MP4から音声なし・H.264・30fps・threads 2で再エンコードし、新しいsha256のMP4とposterを保存、コメント補正とREADYを同じrunAssemblyTransactionでcommitしてから未参照の旧出力を削除する。初回の長さはsourceDurationSecondsへ保存し、既存READY行のnullは変更しない。コメントのGET/PUTは閲覧/書込権限を使い、PUTは5件・trim後1〜80文字・0〜durationSecondsに制限して時刻順に全置換する。紐づけPUTは10.5秒超を400で拒否するが、既存リンクの読み出しは維持する。
+
+Webの棚からプレビュー付き二つのハンドルで範囲を指定し、不可逆の確認後に要求する。← →で0.1秒、Shiftで1秒、現在位置ボタンにも対応する。棚は処理中に5秒間隔で更新し、READYのトリミング失敗には元動画を保持した旨を表示する。コメント編集は時刻/文/削除と現在位置での追加、PUT保存を提供する。共通ProcedureVideoPlayerで字幕とコメントへのシークを全ての再生画面へ適用する。棚と閲覧サムネイルは0:08形式の長さと10.5秒超の「要トリミング」を表示する。V3の接続は実装しない。infrastructure/CIのffmpeg導入とprocedure-videos永続マウントはClaudeの担当で、Codexは変更しない。
 
 指定検証:
 
@@ -374,6 +392,8 @@ Gmail利用可能な検証環境で件名 `[Procedure-material] DFD1 組立`、�
 
 ## Outcomes & Retrospective
 
+動画 V2(2026-10-05)はローカル実装と指定検証まで完了した。範囲の検証、紐づけ済み409、10.5秒超の紐づけ拒否、コメント全置換の件数/文字数/時刻/順序、変換成功時の新キーとコメント補正、共有旧ファイルの保持、最終失敗時のREADY+TRIM_FAILED、範囲バー/確認/コメント編集/字幕シークをモックで確認した。実DBへのmigration適用、実ffmpeg/Pi5の切り出し、実機受入は未実施。commit・push・PR・main統合・deployは今回の依頼の範囲外で、integrationPendingを維持する。Web buildのブラウザ互換データ鮮度とbundleサイズの警告は別スコープとして変更しない。
+
 Phase 1 のローカル実装と指定の検証を完了した。文書は改版ルートで保存し、閲覧時には最新の active PUBLISHED 版へ解決する。公開版のない項目は個別に「公開版なし」と表示し、正常な項目は既存ビューアで閲覧できる。機種が 0 件でも編集入口から割り当てを作成できる。
 
 実行結果: `apps/api` の `pnpm lint`、`pnpm exec vitest run procedure-manual`（2 ファイル・12 件）、`pnpm exec tsc -p tsconfig.build.json --noEmit` は成功。`apps/web` の `pnpm lint`、`pnpm exec vitest run procedure-manuals`（1 ファイル・4 件）、`pnpm build` は成功。変更境界の既存回帰テストは API 3 ファイル・4 件、Web ビューア 1 ファイル・4 件が成功した。必要な生成物の準備に `packages/shared-types`、`shelf-layout-core`、`part-search-core`、`kiosk-sop-core` の build を実行した。検証の実行・準備は約 7 分（待機・並列実行を含む）。
@@ -403,3 +423,5 @@ Phase 3 の変更記録(2026-10-05): 指定された片方向コピーを既存�
 - Web入口・型: apps/web/src/api/domains/assembly.ts、features/assembly/types.ts、features/assembly/document-editor/AssemblyProcedureDocumentEditorPageList.tsx、AssemblyProcedureDocumentEditorScreen.tsx。
 - Web棚・閲覧(すべてapps/web/src/features/assembly/procedure-manuals): ProcedureManualBrowser.tsx、ProcedureVideoShelfDialog.tsx、ProcedureVideoPlaybackDialog.tsx、ProcedureVideoThumbnail.tsx、ProcedurePageVideoStrip.tsx、procedure-video-types.ts、procedure-manuals-videos.test.tsx。
 - 正本: docs/plans/procedure-manuals-execplan.md。
+
+動画 V2追記(2026-10-05): 今回の正本はこのPlanに集約し、Progress/Decision Log/動画節/OutcomesをV2のローカル実装と検証結果へ更新した。main統合・本番反映は別段階として未実施を維持する。

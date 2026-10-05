@@ -37,6 +37,16 @@ export function registerProcedureVideoRoutes(app: FastifyInstance, options: {
       return { saved: true };
     });
   }
+  app.post(`${path}/:id/trim`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const { startSeconds, endSeconds } = z.object({ startSeconds: z.number().finite().min(0), endSeconds: z.number().finite().min(0) }).strict().parse(request.body);
+    await service.requestTrim(idParams.parse(request.params).id, startSeconds, endSeconds);
+    return { saved: true };
+  });
+  app.get(`${path}/:id/comments`, { preHandler: options.allowView }, async (request) => ({ comments: await service.listComments(idParams.parse(request.params).id) }));
+  app.put(`${path}/:id/comments`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const { comments } = z.object({ comments: z.array(z.object({ atSeconds: z.number().finite().min(0), text: z.string().trim().min(1).max(80) }).strict()).max(5) }).strict().parse(request.body);
+    return { comments: await service.replaceComments(idParams.parse(request.params).id, comments) };
+  });
   const pagesPath = '/assembly/procedure-documents/:id/pages/:pageIndex/videos';
   app.get(pagesPath, { preHandler: options.allowView }, async (request) => {
     const { id, pageIndex } = pageParams.parse(request.params);

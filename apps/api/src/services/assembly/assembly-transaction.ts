@@ -23,8 +23,8 @@ export const ASSEMBLY_TRANSACTION_OPTIONS = Object.freeze({
 export type AssemblyTransactionWork<T> = (tx: Prisma.TransactionClient) => Promise<T>;
 
 /** 組立ドメインの interactive transaction を共通予算で実行する。 */
-export function runAssemblyTransaction<T>(work: AssemblyTransactionWork<T>): Promise<T> {
-  return prisma.$transaction(work, ASSEMBLY_TRANSACTION_OPTIONS);
+export function runAssemblyTransaction<T>(work: AssemblyTransactionWork<T>, db: Pick<typeof prisma, '$transaction'> = prisma): Promise<T> {
+  return db.$transaction(work, ASSEMBLY_TRANSACTION_OPTIONS);
 }
 
 /**
