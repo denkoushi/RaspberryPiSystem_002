@@ -26,6 +26,27 @@ export function readNightRows(text) {
   return rows;
 }
 
+export function summarizeLearned(rows) {
+  const summary = { candidates: 0, active: 0, rejected: 0, lastDecision: null };
+  for (const row of rows) {
+    if (row?.state === 'candidate') summary.candidates += 1;
+    else if (row?.state === 'active' || row?.state === 'rejected') {
+      summary[row.state] += 1;
+      if (!summary.lastDecision || (row.decidedAt ?? row.at ?? '') >= (summary.lastDecision.decidedAt ?? '')) {
+        summary.lastDecision = { state: row.state, check: row.check ?? null, decidedAt: row.decidedAt ?? row.at ?? null };
+      }
+    }
+  }
+  return summary;
+}
+
+function formatLearnedReport(summary) {
+  const last = summary.lastDecision;
+  const check = last?.check;
+  return `learned: candidates ${summary.candidates}, active ${summary.active}, rejected ${summary.rejected}, last decision ${last?.state ?? 'none'}`
+    + ` (heldout ${check?.heldout?.gained ?? 0}/${check?.heldout?.lost ?? 0}, real ${check?.real?.gained ?? 0}/${check?.real?.lost ?? 0})`;
+}
+
 export function summarizeNight(rows, { labels = null } = {}) {
   const summary = {
     rows: rows.length,
@@ -140,7 +161,14 @@ export function formatReport(night, summary) {
 export function main(argv = process.argv.slice(2)) {
   const files = [];
   let labels = null;
+  let learned = null;
   for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === '--learned') {
+      const file = argv[++index];
+      if (!file || file.startsWith('--')) throw new Error('--learned needs a path');
+      learned = summarizeLearned(readNightRows(readFileSync(file, 'utf8')));
+      continue;
+    }
     if (argv[index] !== '--labels') {
       files.push(argv[index]);
       continue;
@@ -150,8 +178,8 @@ export function main(argv = process.argv.slice(2)) {
     const stored = JSON.parse(readFileSync(file, 'utf8'));
     labels = stored.schema === 'hermes-flywheel-labels/v1' ? stored.labels : stored;
   }
-  if (!files.length) {
-    console.error('usage: flywheel-report.mjs questions-YYYY-MM-DD.jsonl [more files] [--labels labels.json]');
+  if (!files.length && !learned) {
+    console.error('usage: flywheel-report.mjs questions-YYYY-MM-DD.jsonl [more files] [--labels labels.json] [--learned learned-queries.jsonl]');
     process.exitCode = 2;
     return;
   }
@@ -161,6 +189,7 @@ export function main(argv = process.argv.slice(2)) {
       ? formatRealReport(nightOfFile(file), summarizeReal(rows))
       : formatReport(nightOfFile(file), summarizeNight(rows, { labels })));
   }
+  if (learned) console.log(formatLearnedReport(learned));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
