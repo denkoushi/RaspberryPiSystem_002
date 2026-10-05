@@ -15,7 +15,9 @@ import { denseSettings, readDenseStore } from './dense-dgx.mjs';
 import { enrichmentSettings, withinWindow } from './enrichment-dgx.mjs';
 import { createDgxGrader, createJevPairGrader, filterAndLabel } from './flywheel-filter.mjs';
 import { createDgxChat, generateForPairs, guardChat } from './flywheel-generate.mjs';
-import { createLiveScorer, relevantIds } from './flywheel-live.mjs';
+import { createLiveScorer, lossStage, relevantIds } from './flywheel-live.mjs';
+import { splitOf } from './flywheel-gate.mjs';
+import { existingRealIds, readReceiptQuestions, realPath } from './flywheel-real.mjs';
 import { answerableIntents, bareId, bodyText, samplePairs } from './flywheel-pairs.mjs';
 import { createRandom, sampleSeed } from './flywheel-seeds.mjs';
 import { GRADE_BATCH, gradeBatch, recordText } from './graded-labels.mjs';
@@ -25,15 +27,20 @@ export const DEFAULT_MAX_QUESTIONS = 100;
 export const MAX_QUESTIONS_CAP = 500;
 export const DEFAULT_LABEL_BUDGET = 60;
 export const LABEL_BUDGET_CAP = 300;
+export const DEFAULT_REAL_BUDGET = 20;
+export const REAL_BUDGET_CAP = 100;
+export const REAL_LABEL_DEPTH = 5;
 
 export function flywheelSettings(env = process.env) {
   const requested = Number.parseInt(env.HERMES_FLYWHEEL_MAX_QUESTIONS ?? '', 10);
   const labelBudget = Number(env.HERMES_FLYWHEEL_LABEL_BUDGET ?? NaN);
+  const realBudget = Number(env.HERMES_FLYWHEEL_REAL_BUDGET ?? NaN);
   const inference = enrichmentSettings(env);
   return {
     enabled: env.HERMES_FLYWHEEL_ENABLED === 'true',
     maxQuestions: Number.isInteger(requested) && requested > 0 ? Math.min(requested, MAX_QUESTIONS_CAP) : DEFAULT_MAX_QUESTIONS,
     labelBudget: Number.isInteger(labelBudget) && labelBudget >= 0 && env.HERMES_FLYWHEEL_LABEL_BUDGET?.trim() !== '' ? Math.min(labelBudget, LABEL_BUDGET_CAP) : DEFAULT_LABEL_BUDGET,
+    realBudget: Number.isInteger(realBudget) && realBudget >= 0 && env.HERMES_FLYWHEEL_REAL_BUDGET?.trim() !== '' ? Math.min(realBudget, REAL_BUDGET_CAP) : DEFAULT_REAL_BUDGET,
     window: env.HERMES_RETRIEVAL_ENRICHMENT_WINDOW || '',
     dir: env.HERMES_FLYWHEEL_DIR || DEFAULT_FLYWHEEL_DIR,
     denseStore: denseSettings(env).storePath,
@@ -109,6 +116,7 @@ function countLine(status) {
     `pending=${status.pendingLive}`,
     `labelled=${status.labelled}`,
     `labelPending=${status.labelPending}`,
+    `real=${status.real}`,
   ].join(' ');
 }
 
@@ -148,7 +156,7 @@ export async function runFlywheelNight({
   seed = null,
   log = (line) => console.info(line),
 }) {
-  const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, pendingLive: 0, labelled: 0, labelPending: 0, updatedAt: null };
+  const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, pendingLive: 0, labelled: 0, labelPending: 0, real: 0, realPending: 0, updatedAt: null };
   const finish = async (reason) => {
     status.reason = reason;
     status.updatedAt = now().toISOString();
@@ -187,6 +195,41 @@ export async function runFlywheelNight({
   let reason = budget <= 0 ? 'budget_reached' : 'completed';
   const guarded = guardChat(chat ?? createDgxChat({ origin: settings.origin, token: settings.token, egress: settings.egress, model: settings.model }));
   const gradeDgx = createDgxGrader(guarded);
+
+  // Both phases use the same consensus rule and persist each finished JEV batch.
+  async function gradeIdsForQuestion({ question, ids, budget = Infinity, onBatch }) {
+    const entries = {};
+    for (let index = 0; index < ids.length;) {
+      const items = [];
+      const dgxGrades = new Map();
+      while (index < ids.length && items.length < GRADE_BATCH && Object.keys(entries).length + items.length < budget) {
+        if (!withinWindow(settings.window, now()) || guarded.tripped()) break;
+        const id = ids[index++];
+        if (!recordsById.has(id)) continue;
+        const text = recordText(recordsById.get(id), bodyFields, fieldLabels);
+        dgxGrades.set(id, await gradeDgx(question, text));
+        items.push({ id, text });
+      }
+      if (!items.length) break;
+      let graded = {};
+      try {
+        graded = await gradeBatch({ evaluate, question, items });
+      } catch {
+        // Failed or unanswered JEV grades are persisted as null, never as relevant.
+      }
+      const batch = {};
+      for (const { id } of items) {
+        const dgx = dgxGrades.get(id);
+        const jev = graded[id]?.g ?? null;
+        const g = dgx === 3 && jev === 3 ? 3 : dgx == null || jev == null ? null : Math.min(dgx, jev);
+        batch[id] = { g, dgx, jev, night: status.night };
+      }
+      Object.assign(entries, batch);
+      await onBatch(batch);
+      if (guarded.tripped()) break;
+    }
+    return entries;
+  }
   if (budget > 0) {
     const random = createRandom(seed ?? Number(status.night.replaceAll('-', '')) + done);
     const pairs = samplePairs({ records: corpus, denseEntries, count: budget, random, exclude: await usedAnchors(settings.dir) });
@@ -259,45 +302,25 @@ export async function runFlywheelNight({
     if (error.code !== 'ENOENT') log('hermes retrieval flywheel labels unreadable, starting empty');
     labels = {};
   }
-  const spent = Object.values(labels).reduce((sum, entries) => sum + Object.values(entries).filter((label) => label.night === status.night).length, 0);
+  // Real-question labels have their own question budget, including partially graded questions.
+  const spent = Object.entries(labels).filter(([id]) => !/^r-[0-9a-f]{16}$/u.test(id))
+    .reduce((sum, [, entries]) => sum + Object.values(entries).filter((label) => label.night === status.night).length, 0);
   const remaining = Math.max(0, (settings.labelBudget ?? DEFAULT_LABEL_BUDGET) - spent);
   const groups = unlabelledShownPairs(rows, labels);
-  labelGroups: for (const [anchor, group] of groups) {
-    const ids = [...group.ids];
-    for (let index = 0; index < ids.length;) {
-      const items = [];
-      const dgxGrades = new Map();
-      while (index < ids.length && items.length < GRADE_BATCH && status.labelled + items.length < remaining) {
-        if (!withinWindow(settings.window, now()) || guarded.tripped()) break;
-        const id = ids[index++];
-        if (!recordsById.has(id)) continue;
-        const text = recordText(recordsById.get(id), bodyFields, fieldLabels);
-        dgxGrades.set(id, await gradeDgx(group.question, text));
-        items.push({ id, text });
-      }
-      if (!items.length) {
-        if (index === ids.length) break;
-        break labelGroups;
-      }
-      let graded = {};
-      try {
-        graded = await gradeBatch({ evaluate, question: group.question, items });
-      } catch {
-        // Failed or unanswered JEV grades are persisted as null, never as relevant.
-      }
-      labels[anchor] ??= {};
-      for (const { id } of items) {
-        const dgx = dgxGrades.get(id);
-        const jev = graded[id]?.g ?? null;
-        const g = dgx === 3 && jev === 3 ? 3 : dgx == null || jev == null ? null : Math.min(dgx, jev);
-        labels[anchor][id] = { g, dgx, jev, night: status.night };
-        status.labelled += 1;
-      }
-      await writeJson(labelsPath, { schema: 'hermes-flywheel-labels/v1', labels });
-      if (guarded.tripped()) {
-        reason = 'dgx_busy';
-        break labelGroups;
-      }
+  for (const [anchor, group] of groups) {
+    if (status.labelled >= remaining || !withinWindow(settings.window, now()) || guarded.tripped()) break;
+    await gradeIdsForQuestion({
+      question: group.question, ids: [...group.ids], budget: remaining - status.labelled,
+      onBatch: async (batch) => {
+        labels[anchor] ??= {};
+        Object.assign(labels[anchor], batch);
+        status.labelled += Object.keys(batch).length;
+        await writeJson(labelsPath, { schema: 'hermes-flywheel-labels/v1', labels });
+      },
+    });
+    if (guarded.tripped()) {
+      reason = 'dgx_busy';
+      break;
     }
   }
   for (const [anchor, group] of groups) {
@@ -321,6 +344,51 @@ export async function runFlywheelNight({
     else if (row.live.loss == null) status.shown += 1;
     else status.lossStages[row.live.loss] = (status.lossStages[row.live.loss] ?? 0) + 1;
   }
+  const realFile = realPath(settings.dir, status.night);
+  const realDone = (await readLines(realFile)).length;
+  const realRemaining = Math.max(0, (settings.realBudget ?? DEFAULT_REAL_BUDGET) - realDone);
+  const usedReal = await existingRealIds(settings.dir);
+  const receiptQuestions = (await readReceiptQuestions({
+    receiptsDir: path.join(path.dirname(settings.dir), 'receipts'),
+    days: [status.night, tokyoDay(new Date(now().getTime() - 24 * 3600 * 1000))],
+  })).filter((question) => !usedReal.has(question.id));
+  status.realPending = receiptQuestions.length;
+  for (const question of receiptQuestions.slice(0, realRemaining)) {
+    if (guarded.tripped()) {
+      reason = 'dgx_busy';
+      break;
+    }
+    if (!withinWindow(settings.window, now())) break;
+    score ??= await createLiveScorer({ records, catalog, evaluate });
+    const live = await score({ a: null, b: null, question: question.question, grades: null });
+    const ids = [...new Set([
+      ...(live.candidates ?? []).slice(0, REAL_LABEL_DEPTH), ...(live.shown ?? []), ...question.dayShown,
+    ].map(bareId))].filter((id) => recordsById.has(id));
+    labels[question.id] ??= {};
+    await gradeIdsForQuestion({
+      question: question.question, ids: ids.filter((id) => labels[question.id][id] == null),
+      onBatch: async (batch) => {
+        Object.assign(labels[question.id], batch);
+        await writeJson(labelsPath, { schema: 'hermes-flywheel-labels/v1', labels });
+      },
+    });
+    if (guarded.tripped()) reason = 'dgx_busy';
+    // A partially graded question stays pending; its saved labels are reused next time.
+    if (ids.some((id) => labels[question.id][id] == null)) break;
+    const questionLabels = Object.fromEntries(ids.map((id) => {
+      const { g, dgx, jev } = labels[question.id][id];
+      return [id, { g, dgx, jev }];
+    }));
+    const relevant = ids.filter((id) => questionLabels[id].g === 3);
+    live.loss = lossStage({ relevant, outcome: live.outcome, shown: live.shown, candidates: live.candidates, judged: live.judged });
+    await writeJson(labelsPath, { schema: 'hermes-flywheel-labels/v1', labels });
+    await appendFile(realFile, `${JSON.stringify({
+      at: now().toISOString(), source: 'real', ...question, split: splitOf(question.id), relevant, labels: questionLabels, live,
+    })}\n`, { mode: 0o600 });
+    status.real += 1;
+    status.realPending -= 1;
+  }
+  if (guarded.tripped()) reason = 'dgx_busy';
   return finish(reason);
 }
 

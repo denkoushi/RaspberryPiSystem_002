@@ -358,3 +358,13 @@ The known-good change passes the gate on the harder set and the known-bad change
 Rule change: accept only a development net gain of at least 3 with no held-out net loss. The sign test is printed but not required; at 50 to 80 questions it cannot reach significance for real gains of this size.
 
 Caveats: the shown-record labels come from JEV alone (the production judge is also JEV), so the second grader is still to be added for these; the planner varies by about one question per 50 between runs. Private files: `labels/flywheel-shown-v1.json`, `runs/flywheel/n1004-*.json`, `work/flywheel/questions-2026-10-04.jsonl`.
+
+### 2026-10-06: third night, the second grader in production, and a real failure explained (measurement basis)
+
+Third night (2026-10-05, with #1690 and #1677): 100 pairs, 67 valid, 60 kept, median anchor overlap 0.36, 21 retries. Live scoring still fell back to lexical on 47 of 60 (the two-phase runner did not help): measured at 22:37, the embedding on the DGX takes 0.03 s but the Pi 5 to DGX request 1.7 to 4.3 s while `dgx-control-backup.timer` uploads from 21:30; #1716 gives the night scorer a 10 s budget from the next night.
+
+The second grader (#1717) ran for the first time at 23:25 after the release: 52 shown records outside the relevant sets graded by the DGX business LLM and JEV, 38 relevant by both. The night's relevant shown rose from 36 to 47 of 60 (78%); the remaining losses were outside judged candidates 7, asked back 4, rejected by judge 1, other record 1.
+
+A real kiosk exchange the same evening (22:44, two turns about 切粉) returned nothing twice. Receipts show the dense query timed out at the day budget and the lexical top 30 held none of the 36 records mentioning 切粉, because the whole question (両工場, ２件, 起因) is the lexical query. Offline with dense on, both turns show two relevant records. The failure is the backup congestion plus a weak lexical fallback, not the judge.
+
+Private files: `work/flywheel/questions-2026-10-05.jsonl`, `work/flywheel/labels-pi5.json`.

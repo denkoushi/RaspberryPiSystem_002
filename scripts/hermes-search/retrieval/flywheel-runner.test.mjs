@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { DEFAULT_MAX_QUESTIONS, MAX_QUESTIONS_CAP, flywheelSettings, nightOf, questionsPath, runFlywheelNight, usedAnchors } from './flywheel-runner.mjs';
+import { DEFAULT_MAX_QUESTIONS, MAX_QUESTIONS_CAP, REAL_LABEL_DEPTH, flywheelSettings, nightOf, questionsPath, runFlywheelNight, usedAnchors } from './flywheel-runner.mjs';
+import { readRealRows, realId, realPath } from './flywheel-real.mjs';
+import { splitOf } from './flywheel-gate.mjs';
 
 function unit(values) {
   const norm = Math.hypot(...values);
@@ -50,6 +52,13 @@ test('settings default to off, cap the nightly budget, and follow the enrichment
   assert.equal(off.enabled, false);
   assert.equal(off.maxQuestions, DEFAULT_MAX_QUESTIONS);
   assert.equal(off.labelBudget, 60);
+  assert.equal(off.realBudget, 20);
+  assert.equal(REAL_LABEL_DEPTH, 5);
+  assert.equal(flywheelSettings({ HERMES_FLYWHEEL_REAL_BUDGET: '9999' }).realBudget, 100);
+  assert.equal(flywheelSettings({ HERMES_FLYWHEEL_REAL_BUDGET: '0' }).realBudget, 0);
+  for (const value of ['x', '', ' ', '-1', '1.5', '20junk']) {
+    assert.equal(flywheelSettings({ HERMES_FLYWHEEL_REAL_BUDGET: value }).realBudget, 20);
+  }
   assert.equal(flywheelSettings({ HERMES_FLYWHEEL_LABEL_BUDGET: '9999' }).labelBudget, 300);
   assert.equal(flywheelSettings({ HERMES_FLYWHEEL_LABEL_BUDGET: '0' }).labelBudget, 0);
   for (const value of ['x', '', '-1', '1.5', '60junk']) {
@@ -190,7 +199,7 @@ test('a spent budget backfills kept questions in file order and retains nightly 
   assert.equal(status.shown, 1);
   assert.deepEqual(status.lossStages, { judge_rejected: 1 });
   assert.equal(status.pendingLive, 0);
-  assert.match(logs[0], / pending=0 labelled=0 labelPending=0$/u);
+  assert.match(logs[0], / pending=0 labelled=0 labelPending=0 real=0$/u);
   const raw = readFileSync(filePath, 'utf8');
   assert.ok(raw.endsWith('\n'));
   const rows = raw.trim().split('\n').map((line) => JSON.parse(line));
@@ -405,4 +414,139 @@ test('the busy guard stops generation but still backfills kept rows with failed 
     assert.equal(row.retried, false);
     assert.equal(Object.hasOwn(row, 'live'), false);
   }
+});
+
+function realFixture(extra = {}) {
+  const root = mkdtempSync(path.join(tmpdir(), 'flywheel-real-runner-'));
+  const dir = path.join(root, 'flywheel');
+  const receiptsDir = path.join(root, 'receipts');
+  mkdirSync(dir);
+  mkdirSync(receiptsDir);
+  const receipt = (question, semanticQuery = question, recordIds = ['nonconformity:a1']) => ({
+    at: '2026-10-03T03:00:00Z', recordIds,
+    hermesReceipt: { question, outcome: 'answer', plan: { semanticQuery } },
+  });
+  writeFileSync(path.join(receiptsDir, 'receipts-2026-10-03.jsonl'), [receipt('傷はある？'), receipt('North Shopだけ', '')].map(JSON.stringify).join('\n') + '\n');
+  return { dir, receiptsDir, receipt, input: {
+    records, settings: settings(dir, { maxQuestions: 0, labelBudget: 0, ...extra }), now: night,
+    readDense: async () => dense, chat: async () => ({ ok: true, content: '{"grade":3}' }), jevEvaluate,
+    live: async (row) => {
+      assert.deepEqual(row, { a: null, b: null, question: '傷はある？', grades: null });
+      return { outcome: 'answer', shown: ['nonconformity:a1'], candidates: ['a1', 'b1'], judged: 30, loss: 'other_shown', vectorStatus: 'ok', ms: 1 };
+    }, log: () => {},
+  } };
+}
+
+test('real content questions get consensus labels and corrected loss once across starts and nights', async () => {
+  const { dir, input } = realFixture();
+  const logs = [];
+  const status = await runFlywheelNight({ ...input, log: (line) => logs.push(line) });
+  const file = realPath(dir, '2026-10-03');
+  const rows = readRealRows(readFileSync(file, 'utf8'));
+  assert.equal(rows.length, 1);
+  const row = rows[0];
+  assert.equal(row.source, 'real');
+  assert.equal(row.id, realId('傷はある？'));
+  assert.equal(row.split, splitOf(row.id));
+  assert.equal(row.receiptAt, '2026-10-03T03:00:00Z');
+  assert.equal(row.dayOutcome, 'answer');
+  assert.deepEqual(row.dayShown, ['a1']);
+  assert.deepEqual(row.relevant, ['a1', 'b1']);
+  assert.equal(row.live.loss, null);
+  assert.deepEqual(row.labels, { a1: { g: 3, dgx: 3, jev: 3 }, b1: { g: 3, dgx: 3, jev: 3 } });
+  assert.deepEqual(JSON.parse(readFileSync(path.join(dir, 'labels.json'), 'utf8')).labels[row.id], {
+    a1: { g: 3, dgx: 3, jev: 3, night: '2026-10-03' }, b1: { g: 3, dgx: 3, jev: 3, night: '2026-10-03' },
+  });
+  assert.equal(status.real, 1);
+  assert.equal(status.realPending, 0);
+  assert.equal(status.labelled, 0);
+  assert.match(logs[0], / real=1$/u);
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.equal(readFileSync(file, 'utf8').includes('surface scratch'), false);
+  const again = await runFlywheelNight({ ...input, live: async () => assert.fail('already processed') });
+  assert.equal(again.real, 0);
+  assert.equal(again.realPending, 0);
+  assert.equal(readRealRows(readFileSync(file, 'utf8')).length, 1);
+  const next = await runFlywheelNight({ ...input, now: () => new Date('2026-10-04T14:30:00Z'), live: async () => assert.fail('previously processed night') });
+  assert.equal(next.real, 0);
+});
+
+test('zero real budget leaves receipt questions pending without scoring or grading', async () => {
+  const { dir, input } = realFixture({ realBudget: 0 });
+  const status = await runFlywheelNight({ ...input,
+    live: async () => assert.fail('zero real budget'), chat: async () => assert.fail('zero real budget'), jevEvaluate: async () => assert.fail('zero real budget'),
+  });
+  assert.equal(status.real, 0);
+  assert.equal(status.realPending, 1);
+  assert.equal(existsSync(realPath(dir, '2026-10-03')), false);
+});
+
+test('the real budget subtracts existing night rows and includes previous-day receipts', async () => {
+  const { dir, input, receiptsDir, receipt } = realFixture({ realBudget: 2 });
+  writeFileSync(realPath(dir, '2026-10-03'), '{"source":"real","id":"previous"}\n');
+  writeFileSync(path.join(receiptsDir, 'receipts-2026-10-02.jsonl'), JSON.stringify(receipt('へこみはある？')) + '\n');
+  const status = await runFlywheelNight(input);
+  assert.equal(status.real, 1);
+  assert.equal(status.realPending, 1);
+  const again = await runFlywheelNight(input);
+  assert.equal(again.real, 0);
+  assert.equal(again.realPending, 1);
+  assert.equal(readRealRows(readFileSync(realPath(dir, '2026-10-03'), 'utf8')).length, 2);
+});
+
+test('real labels cover top candidates, shown and day-shown ids once and retain unknown relevance', async () => {
+  const { dir, input, receiptsDir, receipt } = realFixture();
+  writeFileSync(path.join(receiptsDir, 'receipts-2026-10-03.jsonl'), JSON.stringify(receipt('傷はある？', '傷', ['nonconformity:d1'])) + '\n');
+  const ids = ['a1', 'b1', 'c1', 'e1', 'f1', 'g1'];
+  await runFlywheelNight({ ...input, records: [...records, ...['d1', 'e1', 'f1', 'g1', 'h1'].map((id) => ({ id, condition: id }))],
+    live: async () => ({ outcome: 'no_result', shown: ['nonconformity:h1', 'h1', 'missing'], candidates: ids, judged: 30, loss: null }),
+    chat: async () => ({ ok: true, content: '{"grade":2}' }),
+  });
+  const row = readRealRows(readFileSync(realPath(dir, '2026-10-03'), 'utf8'))[0];
+  assert.deepEqual(Object.keys(row.labels), ['a1', 'b1', 'c1', 'e1', 'f1', 'h1', 'd1']);
+  assert.deepEqual(row.relevant, []);
+  assert.equal(row.live.loss, 'not_in_pool');
+});
+
+test('real grading stops on DGX busy and resumes partially saved labels', async () => {
+  const { dir, input } = realFixture();
+  const ids = ['a1', 'b1', 'c1', 'd1', 'e1'];
+  const run = { ...input, records: [...records, ...ids.slice(3).map((id) => ({ id, condition: id }))],
+    live: async () => ({ outcome: 'no_result', shown: [], candidates: ids, judged: 30, loss: null }),
+  };
+  const status = await runFlywheelNight({ ...run, chat: fakeChat({ slowAfter: 0 }) });
+  assert.equal(status.reason, 'dgx_busy');
+  assert.equal(status.real, 0);
+  assert.equal(status.realPending, 1);
+  assert.equal(existsSync(realPath(dir, '2026-10-03')), false);
+  assert.equal(Object.keys(JSON.parse(readFileSync(path.join(dir, 'labels.json'), 'utf8')).labels[realId('傷はある？')]).length, 3);
+  let graded = 0;
+  const resumed = await runFlywheelNight({ ...run, chat: async () => { graded += 1; return { ok: true, content: '{"grade":3}' }; } });
+  assert.equal(resumed.real, 1);
+  assert.equal(resumed.realPending, 0);
+  assert.equal(graded, 2);
+});
+
+test('real grading checks the window and preserves pending questions for the next start', async () => {
+  const { dir, input } = realFixture();
+  let calls = 0;
+  const status = await runFlywheelNight({ ...input,
+    now: () => calls === 0 ? night() : new Date('2026-10-03T21:00:00Z'),
+    chat: async () => { calls += 1; return { ok: true, content: '{"grade":3}' }; },
+  });
+  assert.equal(status.real, 0);
+  assert.equal(status.realPending, 1);
+  assert.equal(existsSync(realPath(dir, '2026-10-03')), false);
+  const resumed = await runFlywheelNight(input);
+  assert.equal(resumed.real, 1);
+});
+
+test('saved real labels do not consume the synthetic label budget', async () => {
+  const { dir, input } = realFixture();
+  await runFlywheelNight(input);
+  writeFileSync(questionsPath(dir, '2026-10-03'), JSON.stringify({ a: 'a1', question: '合成', kept: true, live: { loss: 'other_shown', shown: ['b1'] } }) + '\n');
+  const status = await runFlywheelNight({ ...input, settings: settings(dir, { maxQuestions: 1, labelBudget: 1 }) });
+  assert.equal(status.labelled, 1);
+  assert.equal(status.labelPending, 0);
+  assert.equal(status.real, 0);
 });
