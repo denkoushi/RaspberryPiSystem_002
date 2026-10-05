@@ -55,7 +55,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
   it('returns error metadata for unsupported period', async () => {
     const source = new MeasuringInstrumentLoanInspectionDataSource();
     const result = await source.fetchData({
-      sectionEquals: '加工担当部署',
+      sectionEquals: '機械課',
       period: 'weekly',
     });
 
@@ -72,14 +72,14 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
 
       const source = new MeasuringInstrumentLoanInspectionDataSource();
       const result = await source.fetchData({
-        sectionEquals: '加工担当部署',
+        sectionEquals: '機械課',
         period: 'today_jst',
       });
 
       expect(prisma.employee.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
-            section: '加工担当部署',
+            section: '機械課',
             status: EmployeeStatus.ACTIVE,
           },
         }),
@@ -126,7 +126,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
 
       const source = new MeasuringInstrumentLoanInspectionDataSource();
       const result = await source.fetchData({
-        sectionEquals: '加工担当部署',
+        sectionEquals: '機械課',
         period: 'today_jst',
       });
 
@@ -152,7 +152,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
               '[{"kind":"active","managementNumber":"AG1003","name":"トルクレンチ"}]',
           },
         ]);
-        expect(result.metadata?.sectionEquals).toBe('加工担当部署');
+        expect(result.metadata?.sectionEquals).toBe('機械課');
         expect(result.metadata?.totalUsers).toBe(2);
         expect(result.metadata?.inspectedUsers).toBe(1);
         expect(result.metadata?.targetDate).toBe('2026-02-25');
@@ -190,7 +190,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
 
       const source = new MeasuringInstrumentLoanInspectionDataSource();
       const result = await source.fetchData({
-        sectionEquals: '加工担当部署',
+        sectionEquals: '機械課',
         period: 'today_jst',
       });
 
@@ -246,7 +246,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
 
       const source = new MeasuringInstrumentLoanInspectionDataSource();
       const result = await source.fetchData({
-        sectionEquals: '加工担当部署',
+        sectionEquals: '機械課',
         period: 'today_jst',
       });
 
@@ -301,7 +301,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
 
       const source = new MeasuringInstrumentLoanInspectionDataSource();
       const result = await source.fetchData({
-        sectionEquals: '加工担当部署',
+        sectionEquals: '機械課',
         period: 'today_jst',
       });
 
@@ -348,7 +348,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
 
       const source = new MeasuringInstrumentLoanInspectionDataSource();
       const result = await source.fetchData({
-        sectionEquals: '加工担当部署',
+        sectionEquals: '機械課',
         period: 'today_jst',
       });
 
