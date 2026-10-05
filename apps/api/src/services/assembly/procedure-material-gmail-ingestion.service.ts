@@ -87,12 +87,13 @@ export class ProcedureMaterialGmailIngestionService {
       result.warnings = packet.warnings;
       const common = { gmailMessageId: messageId, fromEmail, subjectHint: getProcedureMaterialSubjectHint(subject), receivedAt: new Date(message.internalDateMs) };
       const save = async (data: Prisma.ProcedureMaterialCreateInput) => {
-        try { await this.db.procedureMaterial.create({ data }); result.saved++; }
+        try { await this.db.procedureMaterial.create({ data }); result.saved++; return true; }
         catch (error) {
           if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error;
           const raced = await this.db.procedureMaterial.findUnique({ where: { gmailDedupeKey: data.gmailDedupeKey } });
           if (!raced) throw error;
           result.duplicate++;
+          return false;
         }
       };
       if (packet.text) await save({ ...common, kind: 'TEXT', text: packet.text, gmailDedupeKey: `${messageId}:body` });
@@ -108,7 +109,26 @@ export class ProcedureMaterialGmailIngestionService {
           if (!bytes.equals(photo.buffer)) throw new Error('Procedure material identity conflict');
         }
         // eslint-disable-next-line no-await-in-loop
-        await save({ ...common, kind: 'PHOTO', gmailDedupeKey: photo.gmailDedupeKey, storageKey, sha256: photo.sha256, contentType: photo.contentType, byteSize: photo.buffer.length, originalFileName: photo.filename, width: photo.width, height: photo.height });
+        const created = await save({ ...common, kind: 'PHOTO', gmailDedupeKey: photo.gmailDedupeKey, storageKey, sha256: photo.sha256, contentType: photo.contentType, byteSize: photo.buffer.length, originalFileName: photo.filename, width: photo.width, height: photo.height });
+        if (created) {
+          // GC may have removed an unreferenced original before this row existed.
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            await this.store.stat(storageKey);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+            try {
+              // eslint-disable-next-line no-await-in-loop
+              await this.store.write({ key: storageKey, data: photo.buffer, mode: 'create', integrity: true });
+            } catch (writeError) {
+              if (!(writeError instanceof FileStorageAlreadyExistsError)) throw writeError;
+              // Another ingestion may have restored the shared original first.
+              // eslint-disable-next-line no-await-in-loop
+              const bytes = await this.store.read(storageKey, { verifyIntegrity: true });
+              if (!bytes.equals(photo.buffer)) throw new Error('Procedure material identity conflict');
+            }
+          }
+        }
       }
       if (result.saved + result.duplicate === 0) return { ...result, reason: '本文が空で、対応する写真がありません' };
       // Never mark as read: cleanup failures must remain searchable after a restart.

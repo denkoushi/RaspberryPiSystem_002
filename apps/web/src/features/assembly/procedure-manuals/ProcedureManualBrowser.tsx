@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-import { getProcedureManualAssignments, listProcedureManualModels, listProcedureManualProcesses } from '../../../api/client';
+import { createBlankAssemblyProcedureDocument, getProcedureManualAssignments, listProcedureManualModels, listProcedureManualProcesses } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
+import { Dialog } from '../../../components/ui/Dialog';
 import { Input } from '../../../components/ui/Input';
 import { AssemblyProcedureSequenceViewer } from '../AssemblyProcedureSequenceViewer';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
@@ -12,6 +14,20 @@ import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 import type { ProcedureManualDetailDto, ProcedureManualModelDto, ProcedureManualProcessDto } from '../types';
 
 export function ProcedureManualBrowser() {
+  const navigate = useNavigate();
+  const [blankOpen, setBlankOpen] = useState(false);
+  const [blankName, setBlankName] = useState('');
+  const [blankBusy, setBlankBusy] = useState(false);
+  const [blankError, setBlankError] = useState<string | null>(null);
+  const createBlank = async () => {
+    if (blankBusy || !blankName.trim()) return;
+    setBlankBusy(true); setBlankError(null);
+    try {
+      const document = await createBlankAssemblyProcedureDocument(blankName.trim());
+      navigate(`/kiosk/assembly/procedure-documents/${document.id}/edit`);
+    } catch (e) { setBlankError(readAssemblyApiErrorMessage(e, '白紙の要領書を作成できません')); }
+    finally { setBlankBusy(false); }
+  };
   const [models, setModels] = useState<ProcedureManualModelDto[]>([]);
   const [processes, setProcesses] = useState<ProcedureManualProcessDto[]>([]);
   const [modelCodeKey, setModelCodeKey] = useState('');
@@ -47,7 +63,8 @@ export function ProcedureManualBrowser() {
   const navButtonClass = 'min-h-11 w-full rounded-md px-3 py-2 text-left text-sm font-bold hover:bg-[#27313b]';
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 justify-end gap-2 border-b border-[#27313b] px-3 py-2">
+      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-b border-[#27313b] px-3 py-2">
+        <Button variant="ghostOnDark" className="min-h-11 text-sm" onClick={() => { setBlankName(''); setBlankError(null); setBlankOpen(true); }}>白紙から作る</Button>
         <Button variant="ghostOnDark" className="min-h-11 text-sm" onClick={() => setShelfOpen(true)}>素材</Button>
         <Button variant="ghostOnDark" className="min-h-11 text-sm" disabled={loading || processes.length === 0} onClick={() => setEditing(true)}>割り当てを編集</Button>
       </div>
@@ -69,6 +86,13 @@ export function ProcedureManualBrowser() {
           {detail && detail.sequence.documents.length > 0 ? <AssemblyProcedureSequenceViewer key={`${modelCodeKey}:${processId}:${version}`} sequence={detail.sequence} className="min-h-0 flex-1" /> : detail ? <p className="p-2 text-sm text-[#9fadb9]">表示できる文書がありません</p> : null}
         </section>
       </div>
+      {blankOpen ? <Dialog isOpen onClose={() => { if (!blankBusy) setBlankOpen(false); }} title="白紙から作る">
+        <form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void createBlank(); }}>
+          <label className="block text-sm">要領書名<Input aria-label="要領書名" autoFocus maxLength={200} value={blankName} onChange={(event) => setBlankName(event.target.value)} /></label>
+          {blankError ? <p role="alert" className="text-sm text-red-700">{blankError}</p> : null}
+          <Button type="submit" className="min-h-11" disabled={blankBusy || !blankName.trim()}>{blankBusy ? '作成中…' : '作成'}</Button>
+        </form>
+      </Dialog> : null}
       {shelfOpen ? <ProcedureMaterialShelfDialog onClose={() => setShelfOpen(false)} /> : null}
       {editing ? <ProcedureManualAssignmentDialog modelCode={models.find((m) => m.modelCodeKey === modelCodeKey)?.modelCode ?? ''} processId={processId} processes={processes} onClose={() => setEditing(false)} onSaved={(key, id) => { setEditing(false); setModelCodeKey(key); setProcessId(id); setVersion((v) => v + 1); }} /> : null}
     </div>

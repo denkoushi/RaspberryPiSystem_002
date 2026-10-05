@@ -13,6 +13,7 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({
   canDiscard,
   onBack,
   onToggleSelection,
+  onPlaceMaterial,
   onSave,
   onPublish,
   onDiscard
@@ -29,6 +30,7 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({
   canDiscard: boolean;
   onBack: () => void;
   onToggleSelection: () => void;
+  onPlaceMaterial: () => void;
   onSave: () => void;
   onPublish: () => void;
   onDiscard: () => void;
@@ -42,6 +44,7 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({
         </p>
       </div>
       <div className="flex flex-wrap justify-end gap-1">
+        <Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" disabled={readOnly || busy} onClick={onPlaceMaterial}>素材から配置</Button>
         <Button
           type="button"
           data-kiosk-sop-target="assembly-document-editor-range-add"

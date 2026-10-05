@@ -27,12 +27,18 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) Phase 2a: `procedure-materials` の永続マウントを同じ PR で追加(Pi5 保存先契約、Compose server/phase3、API イメージ、ローカル override、リリース演習・volume materializer・Drive DR の各一覧)。使い捨て PostgreSQL で migration 適用を確認。Codex レビューの 3 指摘(管理カードの保存経路、スキップ再試行、写真の遅延取得)を修正。CodeQL の指摘でメール HTML のテキスト化を正規表現から前方走査に書き換えた。
 - [x] (2026-10-05) PR #1696 を main へ squash merge(merge `424c848fddd71202880e17e46d4a42042f3425d7`)、main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-032317-829f58`、`Result=success`、recap `ok=269 changed=33 unreachable=0 failed=0`)、`/api/system/health` 200(fileStorage ok)。取込は既定 無効のまま。
 - [ ] 実機確認(オーナー): 管理画面 CSV 取込の「要領書の素材(Gmail)」カードで有効化し、件名 `[Procedure-material]` のメール(本文と写真)を送って、要領書ページの「素材」に出ること。実 Gmail での取込は未確認。
-- [ ] Phase 2b: 白紙ページ追加と素材の配置。
+- [x] (2026-10-05) Phase 2b ローカル実装: 白紙文書・末尾白紙ページ、PHOTO/TEXT の下書き配置、配置取消、配置済み棚、未参照原本の手動 GC とテストを追加。commit / push / PR / merge / deploy は未実施。
+- [x] (2026-10-05) Phase 2b 指定検証: API lint / vitest 9成功ファイル69件(実DB1件skip) / build用tsc、Web lint / vitest 11ファイル49件 / build が成功。白紙追加後の未保存IMAGE資産保持の最終変更はcontroller7件・対象lint・Web tscで再確認した。
+- [x] (2026-10-05) Phase 2b 限定レビュー修正3件: 原本GCと取込の競合、所有リース中PHOTOの復元、白紙追加成功直後の復旧記録更新を修正。最終指定検証はAPI 74件成功・実DB1件skip、Web 51件成功、両lint / API tsc / Web build成功。既存WIPを保持し、commit / push等は未実施。
+- [ ] Phase 2b 実機確認・統合: 名前付き白紙を作成し、末尾白紙へ写真・本文を配置して保存・再読込、配置済み棚から取消を確認する。integrationPending。
 - [ ] Phase 2c: NFC 承認による公開。
 - [ ] Phase 3: ナレッジ素材・承認済み手順の片方向連携。
 - [ ] 後日: 動画素材(形式未定)。
 
 ## Surprises & Discoveries
+
+- Observation: 白紙追加の応答喪失時はサーバーの editVersion とローカル復旧記録がずれる可能性がある。今回の限定修正では成功応答直後の即時更新のみ対応し、応答喪失時の救済は未実装。
+- Observation: 既存 `assembly-procedure-asset-gc.service.ts` の SQL は、所有文書が active DRAFT のアセットを経過時間にかかわらず保護する。未参照でも PHOTO 配置の所有リース中は削除されず、所有文書が非active・非DRAFT・不存在または所有解除後は、参照0と経過時間の条件を満たすと削除対象になる。
 
 - Observation: 素材原本の保存後に DB 保存が失敗すると未参照ファイルが残るため、2b の GC で回収経路を設ける。
 
@@ -102,6 +108,22 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Date/Author: 2026-10-05 / Codex。
 - Decision: 5分ごとの組込みスケジュールを実装し、管理カードは専用設定と該当スケジュールの enabled を一緒に保存する。
   Rationale: 既存の execution 分岐を追加する小さい変更で対応できる。設定カードと実際の起動状態のずれを避ける。
+  Date/Author: 2026-10-05 / Codex。
+
+- Decision: Phase 2b の白紙 PNG は既存 `AssemblyProcedureImageStorage.saveImage` に保存し、SOURCE アセットは登録しない。
+  Rationale: `AssemblyProcedureDocumentService.create` は SOURCE が任意で、未指定でも改版サイドカー・`sourceAssetId:null`・`editVersion:0` を作る。白紙には抽出元の原本がなく、同じ PNG の二重保存は不要。既存のページ画像から表示・切抜き・OCR・改版を行える。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: 白紙追加は既存 overlay 保存と同じ文書行ロックと expectedEditVersion 検証を用い、最大 pageIndex + 1 だけ追加する。
+  Rationale: 既存ページ番号と先頭の imageRelativePath 互換列を保ち、締結・切抜き・チェック参照を壊さない。Web は未保存 overlay と IMAGE 資産を保持してページと editVersion を更新する。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: 素材配置は文書・素材をロックし、既存 IMAGE upload に同じ transaction client を渡して所有リースと配置フラグを一緒に確定する。overlay は直接保存せずエディタの addCreatedOverlay に返す。
+  Rationale: 二重配置と公開・破棄との競合を防ぎ、失敗時は新しい資産ファイルを削除する。既存 upload に独立した派生物生成処理はないため、その検証・保存・リース契約をそのまま再利用する。TEXT は既存の10,000文字上限を超えると未消費のまま400、極端に縦長の PHOTO は縦横比を保ってページ内へ縮小する。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: discardRevision は素材の配置状態を明示更新しない。配置済み棚の「配置を取り消す」で documentId / placedAt を null に戻す。
+  Rationale: 配置要素は未保存の下書きにも存在し得て、改版破棄と素材の利用意図は一致しない。文書削除時の既存 FK SetNull により documentId が null になっても placedAt は残るため、配置済み棚から取り消せる。取消は overlay を削除しない。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: 素材原本 GC は allowWriteKiosk の手動 POST /assembly/procedure-materials/gc のみとする。
+  Rationale: 既存 assembly-procedure-asset-gc は保存・破棄・削除後の呼び出しだけで定期スケジューラーはない。新しいスケジューラーは今回追加しない。sha256/original だけを走査し、24時間より古く storageKey 一致の参照が0件の場合だけ integrity:true で削除する。配置済み・破棄済みを含む全素材の参照と共有原本を保持する。
   Date/Author: 2026-10-05 / Codex。
 
 ## Context and Orientation
@@ -184,6 +206,37 @@ API `/assembly/procedure-materials` は Phase 1 と同じ `allowView` / `allowWr
 API は4ファイル80件、Webは4ファイル13件の成功を確認した。追加回帰は `apps/api` で `pnpm exec vitest run item-inventory-gmail csv-import-execution.service import-schedule-admin.service gmail-storage.provider csv-dashboard-import.service.ingest-behavior kiosk-document-gmail-ingestion.query` を実行し、7ファイル71件が成功した。Webの import順序、スケジュールテストの行順の前提、素材棚の403表示を修正して対象検証を再実行した。最後の組込み行削除ガードと管理カードの表示状態変更には対象 lint / テスト / API tsc を追加して確認した。
 
 実 DB migration と実メールの検証、本番永続マウントの準備、端末操作確認は次の統合段階で行う。commit / push / PR / merge / deploy は実行していない。kiosk-sop digest の更新はユーザー指示により Claude 側で行う。
+
+## Concrete Steps and Validation (Phase 2b)
+
+既存タスクの worktree `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--procedure-manuals-phase2b-placement` でローカル実装だけを行った。Prisma スキーマ・migration・共有 overlay 型・Gmail 取込・公開・NFC・infrastructure は変更していない。白紙作成/追加/素材配置は既存の revision route module、unplace/GC は素材 route module に追加した。ページ追加と配置は既存編集パスワードも検証する。
+
+指定検証を実行した。
+
+    cd apps/api && pnpm lint && pnpm exec vitest run procedure-material procedure-document assembly-procedure-document && pnpm exec tsc -p tsconfig.build.json --noEmit
+    cd apps/web && pnpm lint && pnpm exec vitest run procedure-manuals document-editor && pnpm build
+
+API は9ファイル69件成功、既存の実 PostgreSQL integration 1件は `TEST_DATABASE_URL` 未設定によりskip。Webは11ファイル49件成功。lint / API tsc / Web build は成功し、最終的な白紙追加後の未保存資産保持はcontroller7件・対象lint・Web tscで再確認した。実 DB・実端末での受入、commit / push / PR / merge / deploy は未実施。検証と環境準備は約10分。
+
+環境準備: worktreeに依存がなく、offline install はキャッシュ不足、通常 install は DNS 解決不可で失敗した。main worktree の既存 node_modules を今回のworktreeへコピーし、workspace4パッケージをbuild、ローカル engine を指定して Prisma Client を生成した。Web buildで不足した Fontsource Sans 5.2.8 / Mono 5.2.7 は同版の既存 worktree キャッシュからコピーして解決した。依存定義・lockfile・元worktreeは変更していない。初回テストの不足distとWebのimport順序、選択モードのエラー文言assertionを修正して再確認した。
+
+範囲外の観測: baseline-browser-mapping / Browserslist の古いデータとViteの大きなchunk警告は既存同様に残る。kiosk-sop の鮮度チェックと生成物更新は push 前の統合段階で行う。今回の変更禁止対象 `apps/web/src/generated/**` は触っていない。
+
+### Phase 2b limited review fixes (2026-10-05)
+
+指摘3件だけを修正。素材取込は PHOTO 行 create 成功直後に stat し、原本が消えていれば手元の buffer を create モードで再保存する。GC は削除直前に参照数を再確認する。通常文書取得・改版取得は ownedAssets を取得し、既存参照アセットと同じ DTO で assets に追加する。白紙追加成功時は未保存 overlay の復旧記録を新しい editVersion / updatedAt で即時保存し、同じ画面には自分の即時保存の復元確認を表示しない。
+
+今回の変更ファイル(開始時点の未コミット差分からの追加修正のみ):
+
+- 原本競合: `apps/api/src/services/assembly/procedure-material-gc.service.ts`、`procedure-material-gmail-ingestion.service.ts`。
+- 文書取得: `apps/api/src/services/assembly/assembly-procedure-document.service.ts`、`assembly-procedure-document-revision.service.ts`、`assembly-procedure-document-revision.serializer.ts`、`apps/api/src/routes/assembly/procedure-documents.ts`。
+- API テスト: `apps/api/src/services/assembly/__tests__/procedure-material-gc.service.test.ts`、`procedure-material-gmail.test.ts`、`procedure-document-placement.service.test.ts`、`assembly-procedure-document-revision.serializer.test.ts`、`apps/api/src/routes/assembly/__tests__/procedure-documents.routes.test.ts`。
+- Web: `apps/web/src/features/assembly/document-editor/useAssemblyProcedureDocumentEditorController.ts`、`useAssemblyDocumentEditorRecovery.ts`、`useAssemblyProcedureDocumentEditorController.test.ts`。
+- 正本: 本計画 `docs/plans/procedure-manuals-execplan.md`。
+
+回帰テストは「候補選択後に参照登録」「再利用/新規保存直後にGC削除」「PHOTO配置→未保存→再読込→復元の表示URL」「白紙追加成功直後(750ms待機なし)の新版復旧記録」を確認する。既存アセットGCは active DRAFT の所有リースを保護するため変更していない。
+
+最終変更後に上記の指定2コマンドを実行し、API lint / 9成功ファイル74件・1ファイル1件skip / build用tsc、Web lint / 11ファイル51件 / build が成功。実DB integration は `TEST_DATABASE_URL` 未設定のためskip。別途、既存アセットGCの所有リース保護テスト3件も成功した。検証は約4分。初回の追加テストで不足した findFirst モックとWeb import順序を修正し、白紙追加直後に自分の下書きの復元確認を出さないことも最終controllerテストで確認した。既存のBrowserslist / baseline-browser-mapping / chunkサイズ警告は残る。
 
 ## Validation and Acceptance (Phase 2a)
 

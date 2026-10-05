@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   assemblyDocumentEditorRecoveryKey,
   clearAssemblyDocumentEditorRecovery,
   readAssemblyDocumentEditorRecovery,
   writeAssemblyDocumentEditorRecovery,
+  type AssemblyDocumentEditorRecoveryMatch,
   type AssemblyDocumentEditorRecoveryRecord
 } from './assemblyDocumentEditorRecovery';
 
@@ -30,9 +31,16 @@ export function useAssemblyDocumentEditorRecovery(input: {
   } = input;
   const [pending, setPending] = useState<AssemblyDocumentEditorRecoveryRecord | null>(null);
   const storageErrorShown = useRef(false);
+  const lastImmediateSave = useRef<AssemblyDocumentEditorRecoveryMatch | null>(null);
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
+    const saved = lastImmediateSave.current;
+    if (saved?.documentId === documentId && saved.baseUpdatedAt === baseUpdatedAt && saved.editVersion === editVersion) {
+      // This session just saved the draft; offer recovery only after a reload.
+      setPending(null);
+      return;
+    }
     try {
       setPending(
         readAssemblyDocumentEditorRecovery(window.localStorage, documentId, {
@@ -78,6 +86,25 @@ export function useAssemblyDocumentEditorRecovery(input: {
     onStorageError
   ]);
 
+  const saveImmediately = useCallback((next: Pick<AssemblyDocumentEditorRecoveryMatch, 'baseUpdatedAt' | 'editVersion'>) => {
+    if (typeof window === 'undefined') return;
+    try {
+      writeAssemblyDocumentEditorRecovery(window.localStorage, {
+        version: 1,
+        documentId,
+        ...next,
+        savedAt: new Date().toISOString(),
+        elements
+      });
+      lastImmediateSave.current = { documentId, ...next };
+    } catch {
+      if (!storageErrorShown.current) {
+        storageErrorShown.current = true;
+        onStorageError?.();
+      }
+    }
+  }, [documentId, elements, onStorageError]);
+
   const clear = () => {
     if (typeof window === 'undefined') return;
     try {
@@ -103,6 +130,7 @@ export function useAssemblyDocumentEditorRecovery(input: {
     restore,
     discard,
     clear,
+    saveImmediately,
     storageKey: assemblyDocumentEditorRecoveryKey(documentId)
   };
 }

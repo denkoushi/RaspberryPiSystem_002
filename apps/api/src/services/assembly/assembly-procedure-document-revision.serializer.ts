@@ -5,6 +5,7 @@ import {
 } from '@raspi-system/shared-types';
 
 import type { AssemblyProcedureOverlayElementRow } from './assembly-procedure-overlay.persistence.js';
+import type { AssemblyProcedureAsset } from '@prisma/client';
 
 type AssemblyProcedureDocumentRevisionSerializationInput = {
   id: string;
@@ -20,6 +21,7 @@ type AssemblyProcedureDocumentRevisionSerializationInput = {
     imageRelativePath: string;
   }>;
   overlayElements: AssemblyProcedureOverlayElementRow[];
+  ownedAssets?: Array<Pick<AssemblyProcedureAsset, 'id' | 'storageKey' | 'contentType' | 'byteSize'>>;
   revisionMetadata: {
     revisionRootId: string;
     revisionNumber: number;
@@ -125,6 +127,15 @@ export function serializeAssemblyProcedureDocumentRevision(
   doc: AssemblyProcedureDocumentRevisionSerializationInput
 ): AssemblyProcedureDocumentRevisionDto {
   const assets: AssemblyProcedureDocumentRevisionDto['assets'] = {};
+  for (const asset of doc.ownedAssets ?? []) {
+    assets[asset.id] = {
+      assetId: asset.id,
+      storageKey: asset.storageKey,
+      contentType: asset.contentType,
+      byteSize: asset.byteSize,
+      url: assemblyProcedureAssetUrl(asset.id, asset.storageKey)
+    };
+  }
   const overlaysByPage = new Map<number, AssemblyProcedureOverlayElement[]>();
   for (const overlay of doc.overlayElements) {
     if (overlay.asset) {

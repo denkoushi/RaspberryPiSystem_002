@@ -1,3 +1,4 @@
+import { Button } from '../../../components/ui/Button';
 import { AssemblyProcedureOverlayLayer } from '../AssemblyProcedureOverlayLayer';
 import { KioskDocumentPageImage } from '../KioskDocumentPageImage';
 
@@ -7,16 +8,23 @@ export function AssemblyProcedureDocumentEditorPageList({
   pages,
   assets,
   selectedPageIndex,
-  onSelect
+  onSelect,
+  onAddBlankPage,
+  disabled
 }: {
   pages: AssemblyProcedureDocumentPageDto[];
   assets?: Record<string, AssemblyProcedureOverlayAssetDto>;
   selectedPageIndex: number;
   onSelect: (pageIndex: number) => void;
+  onAddBlankPage: () => void;
+  disabled: boolean;
 }) {
   return (
     <aside className="flex min-h-0 w-full flex-row gap-2 overflow-hidden border-r border-white/10 bg-slate-900/75 p-2 xl:w-52 xl:flex-col xl:shrink-0" aria-label="手順書ページ一覧">
-      <h2 className="shrink-0 text-sm font-bold">ページ</h2>
+      <div className="shrink-0">
+        <h2 className="text-sm font-bold">ページ</h2>
+        <Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" disabled={disabled} onClick={onAddBlankPage}>白紙ページを追加</Button>
+      </div>
       <div className="flex min-h-0 min-w-0 flex-1 gap-1.5 overflow-x-auto overflow-y-hidden xl:block xl:space-y-1.5 xl:overflow-auto">
         {pages.map((page) => {
           const selected = page.pageIndex === selectedPageIndex;

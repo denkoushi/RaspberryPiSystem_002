@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureDocumentEditorProvider } from './AssemblyProcedureDocumentEditorContext';
@@ -10,8 +10,9 @@ import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types
 vi.mock('./AssemblyProcedureDocumentEditorCanvas', () => ({
   AssemblyProcedureDocumentEditorCanvas: () => <div aria-label="手順書キャンバス" data-testid="editor-canvas" />
 }));
-vi.mock('./AssemblyProcedureDocumentEditorPageList', () => ({
-  AssemblyProcedureDocumentEditorPageList: () => <aside aria-label="手順書ページ一覧" data-testid="editor-page-list" />
+vi.mock('../KioskDocumentPageImage', () => ({ KioskDocumentPageImage: () => <span /> }));
+vi.mock('../procedure-manuals/ProcedureMaterialShelfDialog', () => ({
+  ProcedureMaterialShelfDialog: ({ onSelect }: { onSelect: (material: { id: string }) => Promise<void> }) => <div role="dialog" aria-label="素材"><button onClick={() => void onSelect({ id: 'material' })}>配置</button></div>
 }));
 vi.mock('./AssemblyProcedureDocumentEditorInspector', () => ({
   AssemblyProcedureDocumentEditorInspector: ({
@@ -48,6 +49,8 @@ function makeController(
 ): AssemblyProcedureDocumentEditorController {
   const selectedPage = editorDocument.pages[0]!;
   return {
+    addBlankPage: vi.fn(async () => undefined),
+    placeMaterial: vi.fn(async () => undefined),
     document: editorDocument,
     pages: editorDocument.pages,
     loading: false,
@@ -112,6 +115,21 @@ function renderScreen(controller: AssemblyProcedureDocumentEditorController) {
 }
 
 describe('AssemblyProcedureDocumentEditorScreen', () => {
+  it('runs blank-page addition from the page list', () => {
+    const addBlankPage = vi.fn(async () => undefined);
+    renderScreen(makeController({ addBlankPage }));
+    fireEvent.click(screen.getByRole('button', { name: '白紙ページを追加' }));
+    expect(addBlankPage).toHaveBeenCalledOnce();
+  });
+  it('opens the material selector and places the selected material', async () => {
+    const placeMaterial = vi.fn(async () => undefined);
+    renderScreen(makeController({ placeMaterial }));
+    fireEvent.click(screen.getByRole('button', { name: '素材から配置' }));
+    expect(screen.getByRole('dialog', { name: '素材' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '配置' }));
+    await waitFor(() => expect(placeMaterial).toHaveBeenCalledWith({ id: 'material' }));
+  });
+
   it('keeps the canvas row usable below xl and prevents the editor shell from overflowing', () => {
     window.innerWidth = 900;
     renderScreen(makeController());

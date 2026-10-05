@@ -1,4 +1,5 @@
 import type { MultipartFile } from '@fastify/multipart';
+import type { AssemblyProcedureAsset } from '@prisma/client';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
 
@@ -44,6 +45,7 @@ type ProcedureDocumentLike = {
     imageRelativePath: string;
   }>;
   overlayElements?: Parameters<typeof serializeAssemblyProcedureOverlayElement>[0][];
+  ownedAssets?: Array<Pick<AssemblyProcedureAsset, 'id' | 'storageKey' | 'contentType' | 'byteSize'>>;
 };
 
 export type AssemblyProcedureDocumentRouteOptions = {
@@ -62,6 +64,15 @@ export function serializeProcedureDocument(doc: ProcedureDocumentLike) {
     byteSize: number;
     url: string;
   }> = {};
+  for (const asset of doc.ownedAssets ?? []) {
+    assets[asset.id] = {
+      assetId: asset.id,
+      storageKey: asset.storageKey,
+      contentType: asset.contentType,
+      byteSize: asset.byteSize,
+      url: assemblyProcedureAssetUrl(asset.id, asset.storageKey)
+    };
+  }
   const overlaysByPage = new Map<number, ReturnType<typeof serializeAssemblyProcedureOverlayElement>[]>();
   for (const overlay of doc.overlayElements ?? []) {
     if (overlay.asset) {

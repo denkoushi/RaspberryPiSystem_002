@@ -107,4 +107,21 @@ describe('assembly procedure document routes', () => {
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({ message: '手順書が見つかりません' });
   });
+  it('returns display URLs for owned assets before an IMAGE overlay is saved', async () => {
+    const asset = { id: 'pending-photo', storageKey: 'assembly-procedure-assets/photo.png', contentType: 'image/png', byteSize: 42 };
+    app = Fastify();
+    registerAssemblyProcedureDocumentRoutes(app, {
+      allowView: async () => undefined,
+      allowWriteKiosk: async () => undefined,
+      procedureService: { getById: vi.fn().mockResolvedValue({ ...buildDocument(), ownedAssets: [asset] }) },
+      procedureDraftImportService: {},
+      procedureGmailImportService: {}
+    } as unknown as AssemblyProcedureDocumentRouteOptions);
+    const response = await app.inject({ method: 'GET', url: `/assembly/procedure-documents/${documentId}` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().document).toMatchObject({
+      pages: [{ overlays: [] }],
+      assets: { 'pending-photo': { assetId: asset.id, storageKey: asset.storageKey, contentType: asset.contentType, byteSize: 42, url: '/api/storage/assembly-procedure-assets/photo.png' } }
+    });
+  });
 });

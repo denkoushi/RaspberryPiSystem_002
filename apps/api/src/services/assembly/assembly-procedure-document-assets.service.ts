@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import sharp from 'sharp';
+import type { Prisma } from '@prisma/client';
 
 import {
   cropAssemblyProcedureAssetRoi,
@@ -118,9 +119,9 @@ export class AssemblyProcedureDocumentAssetsService {
     this.accessService = deps.accessService ?? new AssemblyTemplateAccessService();
   }
 
-  private async assertEditable(documentId: string, accessPassword: string | undefined) {
+  private async assertEditable(documentId: string, accessPassword: string | undefined, db: Prisma.TransactionClient = prisma) {
     await this.accessService.requireAccessPassword(accessPassword);
-    const document = await prisma.assemblyProcedureDocument.findUnique({
+    const document = await db.assemblyProcedureDocument.findUnique({
       where: { id: documentId },
       select: {
         id: true,
@@ -178,8 +179,8 @@ export class AssemblyProcedureDocumentAssetsService {
     bytes: Buffer;
     contentType: string;
     originalFileName?: string | null;
-  }): Promise<AssemblyProcedureOverlayAssetDto> {
-    await this.assertEditable(params.documentId, params.accessPassword);
+  }, db: Prisma.TransactionClient = prisma): Promise<AssemblyProcedureOverlayAssetDto> {
+    await this.assertEditable(params.documentId, params.accessPassword, db);
     assertBytes(params.bytes);
     const contentType = params.contentType.trim().toLowerCase();
     const saved = await this.storage.save({
@@ -188,7 +189,7 @@ export class AssemblyProcedureDocumentAssetsService {
       extension: extensionForContentType(contentType)
     });
     try {
-      await prisma.assemblyProcedureAsset.create({
+      await db.assemblyProcedureAsset.create({
         data: {
           id: saved.assetId,
           kind: 'OVERLAY_IMAGE',

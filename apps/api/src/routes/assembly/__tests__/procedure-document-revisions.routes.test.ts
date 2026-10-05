@@ -2,6 +2,9 @@ import multipart from '@fastify/multipart';
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { AssemblyProcedureDocumentBlankService } from '../../../services/assembly/assembly-procedure-document-blank.service.js';
+import { ProcedureMaterialPlacementService } from '../../../services/assembly/procedure-material-placement.service.js';
+
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import {
@@ -76,6 +79,7 @@ function buildMultipartBody(params: {
 
 function buildHarness() {
   const service = {
+    addBlankPage: vi.fn(async () => makeRevision()),
     listHistory: vi.fn(async () => [makeRevision()]),
     createRevision: vi.fn(async () => makeRevision()),
     saveOverlays: vi.fn(async () => makeRevision()),
@@ -114,6 +118,30 @@ describe('assembly procedure revision routes', () => {
   afterEach(async () => {
     if (app) await app.close();
     app = null;
+    vi.restoreAllMocks();
+  });
+
+  it('creates blank documents, appends pages and returns material draft elements', async () => {
+    const harness = buildHarness(); app = harness.app;
+    const blank = vi.spyOn(AssemblyProcedureDocumentBlankService.prototype, 'create').mockResolvedValue(makeRevision() as never);
+    const element = { id: 'text', kind: 'TEXT' as const, text: '本文', pageIndex: 0, zIndex: 0, bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.8, heightRatio: 0.2 } };
+    const place = vi.spyOn(ProcedureMaterialPlacementService.prototype, 'place').mockResolvedValue({ element });
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const created = await app.inject({ method: 'POST', url: '/assembly/procedure-documents/blank', payload: { name: '白紙' } });
+    expect(created.statusCode).toBe(200); expect(created.json().document.status).toBe('draft');
+    expect(blank).toHaveBeenCalledWith('白紙');
+    expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/blank`, payload: { expectedEditVersion: 4, accessPassword: '1234' } })).statusCode).toBe(200);
+    expect(harness.service.addBlankPage).toHaveBeenCalledWith({ documentId, expectedEditVersion: 4, accessPassword: '1234' });
+    const placed = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/materials/${documentId}/place`, payload: { pageIndex: 0, accessPassword: '1234' } });
+    expect(placed.json().element).toEqual(element);
+    expect(place).toHaveBeenCalledWith({ documentId, materialId: documentId, pageIndex: 0, accessPassword: '1234' });
+  });
+
+  it.each(['/blank', `/${documentId}/pages/blank`, `/${documentId}/materials/${documentId}/place`])('requires kiosk write permission for %s', async (suffix) => {
+    const harness = buildHarness(); app = harness.app;
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => { throw new ApiError(403, '権限がありません'); } }, harness.service as never, harness.assetsService as never);
+    expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents${suffix}`, payload: { name: '白紙', pageIndex: 0, expectedEditVersion: 0 } })).statusCode).toBe(403);
+    expect(harness.service.addBlankPage).not.toHaveBeenCalled();
   });
 
   it('registers history/create/save/discard routes and forwards passwords and edit versions', async () => {

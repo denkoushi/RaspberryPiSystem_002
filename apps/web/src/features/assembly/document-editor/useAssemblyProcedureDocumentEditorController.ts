@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 
+import { addBlankAssemblyProcedurePage } from '../../../api/client';
 import { useUnsavedChangesGuard } from '../../navigation/useUnsavedChangesGuard';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
@@ -9,6 +10,7 @@ import {
   overlayDraftSnapshot,
   updateOverlayBBox
 } from './assemblyDocumentEditorDraft';
+import { readDocumentEditorConflict } from './documentEditorConflict';
 import {
   selectDocumentElement,
   selectDocumentPage,
@@ -78,6 +80,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     dirty: isDirty,
     onStorageError
   });
+  const { saveImmediately: saveRecoveryImmediately } = recovery;
   const revisionSession = useMemo(() => ({
     document,
     elements,
@@ -114,6 +117,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const { loadDocument } = revisionCommands;
   const overlaySession = useMemo(() => ({
     document,
+    elements,
     passwordInput,
     busy,
     pendingRange,
@@ -138,7 +142,8 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     readOnly,
     selectedElement,
     selectedPage,
-    textCandidateRange
+    textCandidateRange,
+    elements
   ]);
   const overlayCommands = useAssemblyProcedureDocumentOverlayCommands(overlaySession);
   useEffect(() => {
@@ -217,7 +222,28 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setSelectedOverlayId(null);
   }, [readOnly, selectedOverlayId]);
 
+  const addBlankPage = useCallback(async () => {
+    if (!document || readOnly || busy || conflict) return;
+    setBusy(true);
+    try {
+      const next = await addBlankAssemblyProcedurePage({ id: document.id, accessPassword: passwordInput, expectedEditVersion: document.editVersion ?? 0 });
+      // Keep the unsaved overlay reducer and its baseline; only update pages/version.
+      setDocument((current) => ({ ...next, assets: { ...next.assets, ...current?.assets } }));
+      setSelectedPage(Math.max(...next.pages.map((page) => page.pageIndex)));
+      setMessage('白紙ページを追加しました。');
+      if (isDirty) {
+        saveRecoveryImmediately({ baseUpdatedAt: next.updatedAt, editVersion: next.editVersion ?? 0 });
+      }
+    } catch (error) {
+      const nextConflict = readDocumentEditorConflict(error);
+      if (nextConflict) { setConflict(true); setConflictEditVersion(nextConflict.currentEditVersion); }
+      setMessage(readAssemblyApiErrorMessage(error, '白紙ページを追加できませんでした。'));
+    } finally { setBusy(false); }
+  }, [busy, conflict, document, isDirty, passwordInput, readOnly, saveRecoveryImmediately, setSelectedPage]);
+
   return {
+    addBlankPage,
+    placeMaterial: overlayCommands.placeMaterial,
     document,
     pages: selectDocumentPages(document),
     loading,

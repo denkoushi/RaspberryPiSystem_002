@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 
 import {
+  placeProcedureMaterial,
   createAssemblyProcedureImageRegion,
   findAssemblyProcedureTextCandidates,
   uploadAssemblyProcedureOverlayImage
@@ -29,6 +30,7 @@ type TextCandidateRange = {
 
 export type AssemblyProcedureDocumentOverlayCommandSession = {
   document: AssemblyProcedureDocumentDto | null;
+  elements: AssemblyProcedureOverlayElement[];
   passwordInput: string;
   busy: boolean;
   pendingRange: AssemblyProcedureOverlayBBox | null;
@@ -53,16 +55,16 @@ export function useAssemblyProcedureDocumentOverlayCommands(
   const addCreatedOverlay = useCallback((
     kind: OverlayCreationKind,
     bbox: AssemblyProcedureOverlayBBox,
-    options?: { text?: string; assetId?: string },
+    options?: { text?: string; assetId?: string; element?: AssemblyProcedureOverlayElement },
     pageIndex = session.selectedPage?.pageIndex
   ) => {
     if (pageIndex == null || session.readOnly) return null;
     const created = createOverlayForRange(kind, pageIndex, bbox);
-    const element = options?.text != null && created.kind === 'TEXT'
+    const element = options?.element ?? (options?.text != null && created.kind === 'TEXT'
       ? { ...created, text: options.text }
       : options?.assetId != null && created.kind === 'IMAGE'
         ? { ...created, assetId: options.assetId }
-        : created;
+        : created);
     session.dispatch({ type: 'add', element });
     session.setSelectedOverlayId(element.id);
     return element;
@@ -264,7 +266,20 @@ export function useAssemblyProcedureDocumentOverlayCommands(
     }
   }, [session]);
 
+  const placeMaterial = useCallback(async (material: { id: string }) => {
+    if (session.busy || session.readOnly || !session.document || !session.selectedPage) throw new Error('現在は素材を配置できません');
+    session.setBusy(true);
+    try {
+      const { element, asset } = await placeProcedureMaterial({ id: session.document.id, materialId: material.id, pageIndex: session.selectedPage.pageIndex, accessPassword: session.passwordInput });
+      if (asset) session.setDocument((current) => current ? { ...current, assets: { ...current.assets, [asset.assetId]: asset } } : current);
+      const zIndex = Math.max(element.zIndex, ...session.elements.filter((item) => item.pageIndex === element.pageIndex).map((item) => item.zIndex + 1));
+      addCreatedOverlay(element.kind, element.bbox, { element: { ...element, zIndex } }, element.pageIndex);
+      session.setMessage('素材を配置しました。内容を編集して保存してください。');
+    } finally { session.setBusy(false); }
+  }, [addCreatedOverlay, session]);
+
   return {
+    placeMaterial,
     createOverlay,
     chooseTextCandidate,
     cancelTextCandidates,

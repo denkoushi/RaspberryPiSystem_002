@@ -10,10 +10,14 @@ const apiMocks = vi.hoisted(() => ({
   uploadImage: vi.fn(),
   saveOverlays: vi.fn(),
   publishDocument: vi.fn(),
-  discardRevision: vi.fn()
+  discardRevision: vi.fn(),
+  addBlankPage: vi.fn(),
+  placeMaterial: vi.fn()
 }));
 
 vi.mock('../../../api/client', () => ({
+  addBlankAssemblyProcedurePage: apiMocks.addBlankPage,
+  placeProcedureMaterial: apiMocks.placeMaterial,
   verifyAssemblyTemplateAccessPassword: apiMocks.verifyPassword,
   getAssemblyProcedureDocument: apiMocks.getDocument,
   createAssemblyProcedureDocumentRevision: apiMocks.createRevision,
@@ -25,6 +29,7 @@ vi.mock('../../../api/client', () => ({
   discardAssemblyProcedureDocumentRevision: apiMocks.discardRevision
 }));
 
+import { readAssemblyDocumentEditorRecovery } from './assemblyDocumentEditorRecovery';
 import { useAssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 
 import type { AssemblyProcedureDocumentDto } from '../types';
@@ -68,6 +73,96 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+  });
+
+  it('appends a blank page and retains unsaved overlays while advancing editVersion', async () => {
+    const document = makeDocument({ assets: { pending: { assetId: 'pending', relativeUrl: '/pending.png', storageKey: 'pending', sha256: 'a', byteSize: 3, contentType: 'image/png', kind: 'OVERLAY_IMAGE' } } });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    act(() => hook.result.current.handleRangeSelected(range));
+    await act(async () => { await hook.result.current.createOverlay('SHAPE'); });
+    const draft = hook.result.current.elements;
+    apiMocks.addBlankPage.mockResolvedValue({ ...document, assets: {}, editVersion: 1, pages: [...document.pages, { pageIndex: 3, imageRelativePath: '/pages/blank.png', overlays: [] }] });
+    await act(async () => { await hook.result.current.addBlankPage(); });
+    expect(apiMocks.addBlankPage).toHaveBeenCalledWith({ id: document.id, accessPassword: '1234', expectedEditVersion: 0 });
+    expect(hook.result.current.selectedPageIndex).toBe(3);
+    expect(hook.result.current.elements).toEqual(draft);
+    expect(hook.result.current.document?.editVersion).toBe(1);
+    expect(hook.result.current.document?.assets?.pending).toMatchObject({ assetId: 'pending' });
+    expect(hook.result.current.isDirty).toBe(true);
+  });
+
+  it('adds a material IMAGE draft, selects it and keeps it after unsaved elements in z-order', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    act(() => hook.result.current.handleRangeSelected(range));
+    await act(async () => { await hook.result.current.createOverlay('SHAPE'); });
+    const element = { id: 'placed-overlay', kind: 'IMAGE', assetId: 'asset', pageIndex: 0, zIndex: 0, bbox: range, objectFit: 'contain' };
+    apiMocks.placeMaterial.mockResolvedValue({ element, asset: { assetId: 'asset', relativeUrl: '/asset.png' } });
+    await act(async () => { await hook.result.current.placeMaterial({ id: 'material' }); });
+    expect(apiMocks.placeMaterial).toHaveBeenCalledWith({ id: 'source-draft', materialId: 'material', pageIndex: 0, accessPassword: '1234' });
+    expect(hook.result.current.selectedOverlayId).toBe('placed-overlay');
+    expect(hook.result.current.elements[1]).toMatchObject({ ...element, zIndex: 1 });
+    expect(hook.result.current.document?.assets?.asset).toMatchObject({ assetId: 'asset' });
+    expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+  });
+  it('updates recovery to the new version immediately after adding a blank page', async () => {
+    const document = makeDocument();
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    vi.useFakeTimers();
+    let draft;
+    const next = { ...document, editVersion: 1, updatedAt: '2026-10-05T00:00:00.000Z', pages: [...document.pages, { pageIndex: 1, imageRelativePath: '/blank.png', overlays: [] }] };
+    try {
+      act(() => hook.result.current.handleRangeSelected(range));
+      await act(async () => { await hook.result.current.createOverlay('SHAPE'); });
+      draft = hook.result.current.elements;
+      act(() => vi.advanceTimersByTime(750));
+      expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)?.editVersion).toBe(0);
+      apiMocks.addBlankPage.mockResolvedValue(next);
+      await act(async () => { await hook.result.current.addBlankPage(); });
+      // No debounce timer has run since the API response.
+      expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id, { baseUpdatedAt: next.updatedAt, editVersion: 1 })).toMatchObject({ elements: draft });
+      expect(hook.result.current.recoveryPending).toBeNull();
+    } finally {
+      hook.unmount();
+      vi.useRealTimers();
+    }
+    const reloaded = renderEditor(next);
+    await authenticate(reloaded.result);
+    expect(reloaded.result.current.recoveryPending?.editVersion).toBe(1);
+    act(() => reloaded.result.current.restoreRecovery());
+    expect(reloaded.result.current.elements).toEqual(draft);
+    reloaded.unmount();
+  });
+
+  it('restores an unsaved placed PHOTO after reload with a display URL from the document lease', async () => {
+    const document = makeDocument();
+    const asset = { assetId: 'photo-asset', storageKey: 'assembly-procedure-assets/photo.png', contentType: 'image/png', byteSize: 42, url: '/api/storage/assembly-procedure-assets/photo.png' };
+    const element = { id: 'placed-photo', kind: 'IMAGE', assetId: asset.assetId, pageIndex: 0, zIndex: 0, bbox: range, objectFit: 'contain' };
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    vi.useFakeTimers();
+    try {
+      apiMocks.placeMaterial.mockResolvedValue({ element, asset });
+      await act(async () => { await hook.result.current.placeMaterial({ id: 'material-photo' }); });
+      act(() => vi.advanceTimersByTime(750));
+      expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+    } finally {
+      hook.unmount();
+      vi.useRealTimers();
+    }
+    // The API returns no persisted overlay, but includes the ownerDocumentId lease.
+    const reloaded = renderEditor({ ...document, assets: { [asset.assetId]: asset } });
+    await authenticate(reloaded.result);
+    expect(reloaded.result.current.elements).toEqual([]);
+    expect(reloaded.result.current.recoveryPending?.elements).toContainEqual(expect.objectContaining({ id: element.id }));
+    act(() => reloaded.result.current.restoreRecovery());
+    const restored = reloaded.result.current.elements[0];
+    expect(restored).toMatchObject(element);
+    expect(restored?.kind === 'IMAGE' && reloaded.result.current.document?.assets?.[restored.assetId]?.url).toBe(asset.url);
+    expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+    reloaded.unmount();
   });
 
   it('authenticates and uses create-or-get for a root draft, then handles text candidates and manual fallback', async () => {
