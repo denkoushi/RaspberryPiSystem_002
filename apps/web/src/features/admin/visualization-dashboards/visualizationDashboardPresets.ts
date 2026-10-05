@@ -35,7 +35,7 @@ export const UNINSPECTED_RENDERER_TEMPLATE = JSON.stringify(
 );
 export const MI_LOAN_INSPECTION_DATA_SOURCE_TEMPLATE = JSON.stringify(
   {
-    sectionEquals: '加工担当部署',
+    sectionEquals: '機械課',
     period: 'today_jst',
   },
   null,
@@ -50,7 +50,7 @@ export const MI_LOAN_INSPECTION_RENDERER_TEMPLATE = JSON.stringify(
 );
 export const RIGGING_LOAN_INSPECTION_DATA_SOURCE_TEMPLATE = JSON.stringify(
   {
-    sectionEquals: '加工担当部署',
+    sectionEquals: '機械課',
     period: 'today_jst',
   },
   null,
@@ -111,7 +111,7 @@ export function buildMeasuringInspectionPresetFields(name: string, description: 
     MI_LOAN_INSPECTION_DATA_SOURCE_TEMPLATE,
     MI_LOAN_INSPECTION_RENDERER_TEMPLATE,
     '計測機器持出状況（点検可視化）',
-    '加工担当部署の従業員ごとにJST当日の点検有無・貸出中計測機器数・返却件数（返却はカード上グレー）を表示',
+    '機械課の従業員ごとにJST当日の点検有無・貸出中計測機器数・返却件数（返却はカード上グレー）を表示',
     name,
     description,
   );
@@ -124,7 +124,7 @@ export function buildRiggingInspectionPresetFields(name: string, description: st
     RIGGING_LOAN_INSPECTION_DATA_SOURCE_TEMPLATE,
     RIGGING_LOAN_INSPECTION_RENDERER_TEMPLATE,
     '吊具持出状況（点検可視化）',
-    '加工担当部署の従業員ごとにJST当日の点検有無・貸出中吊具数・返却件数（返却はカード上グレー）を表示',
+    '機械課の従業員ごとにJST当日の点検有無・貸出中吊具数・返却件数（返却はカード上グレー）を表示',
     name,
     description,
   );

@@ -36,7 +36,7 @@ export function detectGraphTemplate(dataSourceType: string): GraphTemplate {
 }
 
 const LOAN_INSPECTION_FIELDS: GraphField[] = [
-  { key: 'sectionEquals', target: 'dataSource', label: '対象の部署', kind: 'text', placeholder: '加工担当部署' },
+  { key: 'sectionEquals', target: 'dataSource', label: '対象の部署', kind: 'text', placeholder: '機械課' },
   { key: 'maxRows', target: 'renderer', label: '1画面の表示人数', kind: 'number', placeholder: '24', min: 1, max: 200 },
 ];
 

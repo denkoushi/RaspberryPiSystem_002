@@ -70,7 +70,7 @@ describe('RiggingLoanInspectionDataSource', () => {
       },
     ] as never);
 
-    const result = await dataSource.fetchData({ sectionEquals: '加工担当部署', period: 'today_jst' });
+    const result = await dataSource.fetchData({ sectionEquals: '機械課', period: 'today_jst' });
     expect(result.kind).toBe('table');
     if (result.kind === 'table') {
       expect(result.rows).toHaveLength(1);
@@ -97,7 +97,7 @@ describe('RiggingLoanInspectionDataSource', () => {
     ] as never);
     vi.mocked(prisma.loan.findMany).mockResolvedValue([] as never);
 
-    const result = await dataSource.fetchData({ sectionEquals: '加工担当部署', period: 'today_jst' });
+    const result = await dataSource.fetchData({ sectionEquals: '機械課', period: 'today_jst' });
     expect(result.kind).toBe('table');
     if (result.kind === 'table') {
       expect(result.rows[0]?.['点検件数']).toBe(1);
@@ -132,7 +132,7 @@ describe('RiggingLoanInspectionDataSource', () => {
       },
     ] as never);
 
-    const result = await dataSource.fetchData({ sectionEquals: '加工担当部署', period: 'today_jst' });
+    const result = await dataSource.fetchData({ sectionEquals: '機械課', period: 'today_jst' });
     expect(result.kind).toBe('table');
     if (result.kind === 'table') {
       const details = JSON.parse(String(result.rows[0]?.[RIGGING_INSTRUMENT_DETAIL_COLUMN]));
@@ -168,7 +168,7 @@ describe('RiggingLoanInspectionDataSource', () => {
       },
     ] as never);
 
-    const result = await dataSource.fetchData({ sectionEquals: '加工担当部署', period: 'today_jst' });
+    const result = await dataSource.fetchData({ sectionEquals: '機械課', period: 'today_jst' });
     expect(result.kind).toBe('table');
     if (result.kind === 'table') {
       const details = JSON.parse(String(result.rows[0]?.[RIGGING_INSTRUMENT_DETAIL_COLUMN]));
