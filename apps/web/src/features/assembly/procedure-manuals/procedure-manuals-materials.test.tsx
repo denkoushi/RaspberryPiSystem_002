@@ -6,22 +6,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProcedureManualBrowser } from './ProcedureManualBrowser';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   listProcedureManualModels: async () => [], listProcedureManualProcesses: async () => [],
   getProcedureManualAssignments: vi.fn(), listAssemblyProcedureDocumentSummaries: vi.fn(),
   getAssemblyProcedureDocumentRevisions: vi.fn(), getKioskDocuments: vi.fn(), replaceProcedureManualAssignments: vi.fn(),
   listProcedureMaterials: mocks.list, ingestProcedureMaterialsGmail: mocks.ingest, getProcedureMaterialFile: mocks.file,
+  listProcedureKnowledgeCandidates: mocks.knowledge, getProcedureKnowledgeImage: mocks.knowledgeImage, importProcedureKnowledge: mocks.importKnowledge,
   discardProcedureMaterial: mocks.discard, restoreProcedureMaterial: mocks.restore, unplaceProcedureMaterial: mocks.unplace,
 }));
 vi.mock('../AssemblyProcedureSequenceViewer', () => ({ AssemblyProcedureSequenceViewer: () => null }));
-const text = { id: 'text', kind: 'TEXT', text: '締付手順\n二行目\n三行目', subjectHint: 'DFD1 組立', fromEmail: 'sender@example.com', receivedAt: '2026-10-05T03:00:00Z', discardedAt: null, placedAt: null, documentId: null };
+const text = { origin: 'GMAIL', id: 'text', kind: 'TEXT', text: '締付手順\n二行目\n三行目', subjectHint: 'DFD1 組立', fromEmail: 'sender@example.com', receivedAt: '2026-10-05T03:00:00Z', discardedAt: null, placedAt: null, documentId: null };
 const photo = { ...text, id: 'photo', kind: 'PHOTO', text: null, originalFileName: '手順.png' };
 
 describe('procedure-manuals material shelf', () => {
   beforeEach(() => {
     vi.resetAllMocks(); mocks.list.mockResolvedValue([text, photo]); mocks.file.mockResolvedValue(new Blob(['photo'], { type: 'image/png' }));
     mocks.ingest.mockResolvedValue({ saved: 2, duplicate: 0, skipped: 1, retryable: 0, skippedAttachments: 1, messages: [{ messageId: 'unsupported', reason: '本文が空で、対応する写真がありません' }] });
+    mocks.knowledge.mockResolvedValue({ enabled: false, items: [] });
+    mocks.knowledgeImage.mockResolvedValue(new Blob(['knowledge']));
+    mocks.importKnowledge.mockResolvedValue({ imported: 2, duplicate: 0, failed: [] });
     mocks.discard.mockResolvedValue(undefined); mocks.restore.mockResolvedValue(undefined);
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:photo'); vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   });
@@ -109,6 +113,67 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.click(await screen.findByRole('button', { name: '配置を取り消す' }));
     await waitFor(() => expect(mocks.unplace).toHaveBeenCalledWith('text'));
     expect(mocks.list).toHaveBeenCalledWith({ state: 'placed', q: '', limit: 40 });
+  });
+  it('lists, searches, selects knowledge text/photo and imports them into unplaced materials', async () => {
+    const candidates = [
+      { candidateKey: 'knowledge:text', kind: 'TEXT', title: 'Chat 素材', summary: '整理した要約', preview: '投稿本文', sourceLabel: 'Chat 投稿', alreadyImported: false },
+      { candidateKey: 'knowledge:photo', kind: 'PHOTO', imageId: 'image-1', title: '手順写真', preview: '写真の説明', sourceLabel: '手順書: 組立', alreadyImported: false },
+      { candidateKey: 'knowledge:old', kind: 'TEXT', title: '古い素材', preview: '保存済み', sourceLabel: 'Chat 投稿', alreadyImported: true },
+    ];
+    mocks.knowledge.mockResolvedValue({ enabled: true, items: candidates });
+    mocks.list.mockResolvedValueOnce([]).mockResolvedValue([{ ...text, origin: 'KNOWLEDGE', text: '取り込んだ本文' }]);
+    const onSelect = vi.fn();
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} onSelect={onSelect} />);
+    await screen.findByText('素材がありません');
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジから' }));
+    expect(await screen.findByText('投稿本文')).toBeInTheDocument();
+    expect(screen.getByText('整理した要約')).toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: '手順写真' })).toBeInTheDocument();
+    expect(mocks.knowledgeImage).toHaveBeenCalledWith('image-1');
+    expect(screen.getByText('手順書: 組立')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '古い素材' })).toBeDisabled();
+    expect(screen.getByText(/取込済み/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '棚に取り込む' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('ナレッジ検索'), { target: { value: 'DFD1' } });
+    await waitFor(() => expect(mocks.knowledge).toHaveBeenLastCalledWith({ q: 'DFD1', limit: 100 }));
+    await screen.findByRole('checkbox', { name: 'Chat 素材' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Chat 素材' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '手順写真' }));
+    fireEvent.click(screen.getByRole('button', { name: '棚に取り込む' }));
+    expect(await screen.findByText('取り込んだ本文')).toBeInTheDocument();
+    expect(mocks.importKnowledge).toHaveBeenCalledExactlyOnceWith(['knowledge:text', 'knowledge:photo']);
+    expect(screen.getByRole('button', { name: '未配置' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('ナレッジ')).toBeInTheDocument();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '配置' })).toBeInTheDocument();
+  });
+  it('shows a short disabled message in the knowledge tab without image requests', async () => {
+    mocks.list.mockResolvedValue([]);
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジから' }));
+    expect(await screen.findByText('ナレッジ機能は無効です')).toBeInTheDocument();
+    expect(mocks.knowledgeImage).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '棚に取り込む' })).toBeDisabled();
+  });
+  it('fetches only visible knowledge photos and releases their URLs on tab switch', async () => {
+    const observers: Array<{ notify: () => void }> = [];
+    vi.stubGlobal('IntersectionObserver', class {
+      observe = vi.fn(); disconnect = vi.fn();
+      constructor(callback: IntersectionObserverCallback) {
+        observers.push({ notify: () => callback([{ isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver) });
+      }
+    });
+    mocks.list.mockResolvedValue([]);
+    mocks.knowledge.mockResolvedValue({ enabled: true, items: ['first', 'offscreen'].map((id) => ({ candidateKey: id, kind: 'PHOTO', imageId: id, title: id, preview: '', sourceLabel: 'Chat 投稿', alreadyImported: false })) });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジから' }));
+    await waitFor(() => expect(observers).toHaveLength(2));
+    expect(mocks.knowledgeImage).not.toHaveBeenCalled();
+    act(() => observers[0]!.notify());
+    await screen.findByRole('img', { name: 'first' });
+    expect(mocks.knowledgeImage).toHaveBeenCalledExactlyOnceWith('first');
+    fireEvent.click(screen.getByRole('button', { name: '未配置' }));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:photo');
   });
   it('shows write permission errors near the action controls', async () => {
     mocks.ingest.mockRejectedValue({ isAxiosError: true, response: { status: 403 } });

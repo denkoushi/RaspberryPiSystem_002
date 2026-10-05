@@ -14,7 +14,7 @@ const textPart = (text: string, mimeType = 'text/plain'): GmailMessagePart => ({
 const photoPart = (name = 'photo.png', overrides: Partial<GmailMessagePart> = {}): GmailMessagePart => ({ filename: name, mimeType: 'image/png', body: { attachmentId: name }, ...overrides });
 function message(parts: GmailMessagePart[], subject = '[Procedure-material] DFD1 組立'): GmailMessage {
   return { id: 'mail-1', threadId: 'thread', labelIds: ['INBOX', 'UNREAD'], snippet: '', internalDateMs: Date.parse('2026-10-05T03:00:00Z'), payload: {
-    mimeType: 'multipart/mixed', headers: [{ name: 'Subject', value: subject }, { name: 'From', value: '送信者 <sender@example.com>' }], parts,
+    mimeType: 'multipart/mixed', headers: [{ name: 'Subject', value: subject }, { name: 'From', value: '送信者 <sender@thkintechs.co.jp>' }], parts,
   } };
 }
 const client = () => ({ getAttachment: vi.fn().mockImplementation(async () => image) });
@@ -72,7 +72,7 @@ function harness(parts: GmailMessagePart[] = [textPart('手順'), photoPart()]) 
   const store = { write: vi.fn().mockResolvedValue(undefined), read: vi.fn().mockResolvedValue(image), stat: vi.fn().mockResolvedValue({ isFile: () => true }) };
   const factory = vi.fn().mockResolvedValue(gmail);
   const service = new ProcedureMaterialGmailIngestionService(factory, db as never, store as never);
-  const config = { ...defaultBackupConfig, procedureMaterialGmailIngest: { enabled: true, subjectTokens: ['[Procedure-material]'] } };
+  const config = { ...defaultBackupConfig, procedureMaterialGmailIngest: { ...defaultBackupConfig.procedureMaterialGmailIngest, enabled: true } };
   return { rows, db, gmail, store, factory, service, config };
 }
 
@@ -86,7 +86,33 @@ describe('procedure-material Gmail ingestion', () => {
     expect(h.rows).toHaveLength(2); expect(h.gmail.trashMessage).toHaveBeenCalledTimes(2);
     expect(h.gmail.getAttachment).toHaveBeenCalledTimes(1); expect(h.store.write).toHaveBeenCalledTimes(1);
     expect(h.store.write).toHaveBeenCalledWith(expect.objectContaining({ key: `procedure-materials/${createHash('sha256').update(image).digest('hex')}/original`, mode: 'create', integrity: true }));
-    expect(h.rows[0]).toMatchObject({ kind: 'TEXT', text: '手順', subjectHint: 'DFD1 組立', fromEmail: 'sender@example.com', gmailDedupeKey: 'mail-1:body', receivedAt: new Date('2026-10-05T03:00:00Z') });
+    expect(h.rows[0]).toMatchObject({ kind: 'TEXT', text: '手順', subjectHint: 'DFD1 組立', fromEmail: 'sender@thkintechs.co.jp', gmailDedupeKey: 'mail-1:body', receivedAt: new Date('2026-10-05T03:00:00Z') });
+  });
+  it.each([
+    ['sender@THKINTECHS.CO.JP', ['thkintechs.co.jp'], undefined, true],
+    ['sender@example.com', ['thkintechs.co.jp'], undefined, false],
+    ['sender@mail.thkintechs.co.jp', ['thkintechs.co.jp'], undefined, false],
+    [undefined, ['thkintechs.co.jp'], undefined, false],
+    ['sender@thkintechs.co.jp', [], undefined, false],
+    ['sender@example.com', ['thkintechs.co.jp', 'example.com'], undefined, true],
+    ['sender@thkintechs.co.jp', ['thkintechs.co.jp'], 'sender@thkintechs.co.jp', true],
+    ['sender@thkintechs.co.jp', ['thkintechs.co.jp'], 'other@thkintechs.co.jp', false],
+    ['sender@example.com', ['thkintechs.co.jp'], 'sender@example.com', false],
+  ] as const)('checks domain and optional exact sender: %s / %j / %s', async (sender, domains, fromEmail, allowed) => {
+    const h = harness();
+    const mail = message([textPart('手順'), photoPart()]);
+    mail.payload.headers = [{ name: 'Subject', value: '[Procedure-material]' }, ...(sender ? [{ name: 'From', value: `送信者 <${sender}>` }] : [])];
+    h.gmail.getMessage.mockResolvedValue(mail);
+    const config = { ...h.config, procedureMaterialGmailIngest: { ...h.config.procedureMaterialGmailIngest, allowedSenderDomains: [...domains], fromEmail } };
+    const result = await h.service.runOnce({ config, allowWait: false });
+    expect(result).toMatchObject(allowed ? { saved: 2, skipped: 0 } : { saved: 0, skipped: 1, messages: [{ trashed: false, reason: fromEmail === 'other@thkintechs.co.jp' ? '送信元が設定と一致しません' : '送信元のドメインが許可されていません' }] });
+    if (!allowed) {
+      expect(h.gmail.trashMessage).not.toHaveBeenCalled();
+      expect(h.gmail.getAttachment).not.toHaveBeenCalled();
+      expect(h.db.procedureMaterial.findMany).not.toHaveBeenCalled();
+      expect(mail.labelIds).toEqual(['INBOX', 'UNREAD']);
+      expect(await h.service.runOnce({ config, allowWait: false })).toMatchObject({ processed: 0 });
+    }
   });
   it('does not trash an empty body with only unsupported attachments', async () => {
     const h = harness([textPart('  \n '), photoPart('video.mp4', { mimeType: 'video/mp4' })]);
@@ -95,13 +121,13 @@ describe('procedure-material Gmail ingestion', () => {
   });
   it('skips mismatching senders and non-leading subjects before attachments or DB writes', async () => {
     const h = harness();
-    const config = { ...h.config, procedureMaterialGmailIngest: { ...h.config.procedureMaterialGmailIngest, fromEmail: 'other@example.com' } };
+    const config = { ...h.config, procedureMaterialGmailIngest: { ...h.config.procedureMaterialGmailIngest, fromEmail: 'other@thkintechs.co.jp' } };
     expect((await h.service.runOnce({ config, allowWait: true })).messages[0]?.reason).toContain('送信元');
     h.gmail.getMessage.mockResolvedValue(message([photoPart()], 'Re: [Procedure-material] DFD1'));
     expect((await h.service.runOnce({ config: h.config, allowWait: true, messageId: 'mail-1', forceRetry: true })).messages[0]?.reason).toContain('件名');
     expect(h.gmail.getAttachment).not.toHaveBeenCalled(); expect(h.db.procedureMaterial.create).not.toHaveBeenCalled(); expect(h.gmail.trashMessage).not.toHaveBeenCalled();
   });
-  it.each(['sender', 'empty', 'subject'])('defers 20 skipped %s messages so the valid 21st message can be ingested', async (skip) => {
+  it.each(['sender', 'domain', 'empty', 'subject'])('defers 20 skipped %s messages so the valid 21st message can be ingested', async (skip) => {
     const h = harness();
     const ids = Array.from({ length: 21 }, (_, i) => `mail-${i + 1}`);
     h.gmail.searchMessagesAll.mockResolvedValue(ids);
@@ -111,14 +137,14 @@ describe('procedure-material Gmail ingestion', () => {
       id,
     }));
     const config = skip === 'sender'
-      ? { ...h.config, procedureMaterialGmailIngest: { ...h.config.procedureMaterialGmailIngest, fromEmail: 'allowed@example.com' } }
+      ? { ...h.config, procedureMaterialGmailIngest: { ...h.config.procedureMaterialGmailIngest, fromEmail: 'allowed@thkintechs.co.jp' } }
       : h.config;
-    if (skip === 'sender') {
+    if (skip === 'sender' || skip === 'domain') {
       h.gmail.getMessage.mockImplementation(async (id: string) => ({
         ...message([textPart('手順')]), id,
         payload: { ...message([]).payload, parts: [textPart('手順')], headers: [
           { name: 'Subject', value: '[Procedure-material]' },
-          { name: 'From', value: id === 'mail-21' ? 'allowed@example.com' : 'other@example.com' },
+          { name: 'From', value: id === 'mail-21' ? 'allowed@thkintechs.co.jp' : skip === 'domain' ? 'other@example.com' : 'other@thkintechs.co.jp' },
         ] },
       }));
     }
@@ -159,8 +185,8 @@ describe('procedure-material Gmail ingestion', () => {
     const config = { ...h.config, procedureMaterialGmailIngest: { ...h.config.procedureMaterialGmailIngest, enabled: false } };
     expect(await h.service.runOnce({ config, allowWait: false })).toMatchObject({ processed: 0 }); expect(h.factory).not.toHaveBeenCalled();
     await h.service.runOnce({ config, allowWait: false, manual: true }); expect(h.factory).toHaveBeenCalledWith(config, { allowWait: false });
-    expect(buildProcedureMaterialGmailSearchQuery({ enabled: true, subjectTokens: ['invalid'], fromEmail: 'someone@example.com' })).toBe('(subject:"[Procedure-material]") in:inbox is:unread');
-    expect(BackupConfigSchema.parse({ storage: { provider: 'local' }, targets: [] }).procedureMaterialGmailIngest).toEqual({ enabled: false, subjectTokens: ['[Procedure-material]'] });
+    expect(buildProcedureMaterialGmailSearchQuery({ ...defaultBackupConfig.procedureMaterialGmailIngest, enabled: true, subjectTokens: ['invalid'], fromEmail: 'someone@thkintechs.co.jp' })).toBe('(subject:"[Procedure-material]") in:inbox is:unread');
+    expect(BackupConfigSchema.parse({ storage: { provider: 'local' }, targets: [] }).procedureMaterialGmailIngest).toEqual({ enabled: false, subjectTokens: ['[Procedure-material]'], allowedSenderDomains: ['thkintechs.co.jp'] });
   });
   it.each([true, false])('restores an original removed by GC before row registration (reused: %s)', async (reused) => {
     const h = harness([photoPart()]);

@@ -333,7 +333,7 @@ export class CsvImportExecutionService {
       if (procedureMaterialTargets.some((target) => target.source !== PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS[0])) {
         throw new Error('要領書の素材の件名は[Procedure-material]で固定です');
       }
-      const settings = config.procedureMaterialGmailIngest ?? { enabled: false, subjectTokens: [...PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS] };
+      const settings = config.procedureMaterialGmailIngest ?? { enabled: false, subjectTokens: [...PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS], allowedSenderDomains: ['thkintechs.co.jp'] };
       const fromEmail = typeof importSchedule.metadata?.procedureMaterialFromEmail === 'string'
         ? importSchedule.metadata.procedureMaterialFromEmail : settings.fromEmail;
       procedureMaterialResult = await this.deps.createProcedureMaterialGmailIngestionService().runOnce({

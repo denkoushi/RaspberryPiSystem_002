@@ -5307,8 +5307,15 @@ enum ProcedureMaterialKind {
   PHOTO
 }
 
+enum ProcedureMaterialOrigin {
+  GMAIL
+  KNOWLEDGE
+}
+
 model ProcedureMaterial {
   id               String @id @default(uuid())
+  origin           ProcedureMaterialOrigin @default(GMAIL)
+  knowledgeRef     Json?
   kind             ProcedureMaterialKind
   text             String?
   storageKey       String?
@@ -5320,7 +5327,7 @@ model ProcedureMaterial {
   height           Int?
   subjectHint      String?
   fromEmail        String?
-  gmailMessageId   String
+  gmailMessageId   String?
   gmailDedupeKey    String @unique
   receivedAt       DateTime
   documentId       String?

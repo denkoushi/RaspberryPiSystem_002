@@ -38,10 +38,16 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) Phase 2c: 使い捨て PostgreSQL で migration 適用を確認。Codex レビューの 2 指摘(ロック待ち中に別要求が公開した場合の 409 維持、アーム中の NFC 読み取りが在庫分類の URL に社員タグ UID を残す点)を修正。CI では e2e(公開ダイアログの既定がタグ承認に変わった)と kiosk-sop(ダイアログの見た目変更)が失敗し、e2e のパスワード経路選択と取説の再生成で解消。
 - [x] (2026-10-05) PR #1702 を main へ squash merge(merge `e0ee5fca83b0ce93d2c2e202b764e922befdefd6`)、main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-060455-41a4ce`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`)、`/api/system/health` 200。
 - [ ] 実機確認(オーナー): エディタの「公開」で「社員タグで承認して公開」が既定で出る、班長以上のタグで承認者名が表示され公開できる、一般職のタグは拒否される、要領書ページに承認の 1 行が出る。
-- [ ] Phase 3: ナレッジ素材・承認済み手順の片方向連携。
+- [x] (2026-10-05) 素材 Gmail の許可送信元ドメインをローカル実装。`allowedSenderDomains` は既定 `thkintechs.co.jp`、正規化・重複除去・形式検証を行い、空配列は全拒否。管理カードで追加・削除を即時保存し、最後の1件の削除は確認する。取込のドメイン完全一致と既存 `fromEmail` の併用、未読・5分待機を維持。commit / push / PR / merge / deploy は未実施。
+- [x] (2026-10-05) 許可送信元ドメインの指定検証: API lint / `vitest run procedure-material backup-config` 6ファイル86件 / build用tsc、Web lint / `vitest run procedure-manuals-gmail CsvImport` 5ファイル33件 / build が全て成功。依存がないworktreeのため既存checkoutから独立コピーし、共有パッケージbuildとPrisma Client生成を実施。WebテストのReact Queryコンテキスト引数に合わせた検証修正、およびlockfileと同じフォント依存のローカル補完後に成功。統合・本番反映は未実施。
+- [x] (2026-10-05) Phase 3 ローカル実装: 由来・出典のexpand-only追加、整理済みChat素材と公開ステップの候補一覧・画像配信・明示選択取込、素材棚のナレッジタブと由来表示を追加。ナレッジ側は読み取り専用。
+- [x] (2026-10-05) Phase 3 指定検証: API lint / 6ファイル96件 / build用tsc、Web lint / 3ファイル29件 / buildが成功。Prisma Client生成と差分の空白確認も成功。
+- [ ] Phase 3 統合・受入: 実DB migration・実端末・commit / push / PR / merge / deployは未実施。kiosk-sop鮮度確認とgenerated更新はpush前の統合段階。
 - [ ] 後日: 動画素材(形式未定)。
 
 ## Surprises & Discoveries
+
+- Observation: 管理カードの設定は在庫カードと同じく GET と PUT の間の別更新と競合し得る既知の制約があり、Phase 3 の限定修正では対応しない。
 
 - Observation: 白紙追加の応答喪失時はサーバーの editVersion とローカル復旧記録がずれる可能性がある。今回の限定修正では成功応答直後の即時更新のみ対応し、応答喪失時の救済は未実装。
 - Observation: 既存 `assembly-procedure-asset-gc.service.ts` の SQL は、所有文書が active DRAFT のアセットを経過時間にかかわらず保護する。未参照でも PHOTO 配置の所有リース中は削除されず、所有文書が非active・非DRAFT・不存在または所有解除後は、参照0と経過時間の条件を満たすと削除対象になる。
@@ -140,6 +146,23 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Date/Author: 2026-10-05 / Codex。
 - Decision: 未登録タグは Phase 2c の明示受入条件どおり404、在籍外・承認職位未満は403、タグ重複は既存同様409とする。認証なしは401。ナレッジ側の未登録タグ400の契約は変更しない。
   Rationale: 「ナレッジと同じ」と「未登録404」の差は、具体的な受入条件を優先して解消した。エラーコードは既存ナレッジのものを再利用する。
+  Date/Author: 2026-10-05 / Codex。
+
+- Decision: 許可ドメインは DNS ラベルの英数字と内部ハイフン、ドット区切り2ラベル以上を許可し、大文字・前後空白・先頭 `@` を正規化する。サブドメインの暗黙許可は行わず、空配列と送信元不明は拒否する。
+  Rationale: 送信元の範囲を明示的に管理し、既存設定には `thkintechs.co.jp` の既定を適用する。`fromEmail` とスケジュール metadata の上書きは追加の完全一致条件として保持する。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: 管理カードのドメイン追加・削除は即時保存とし、既存 `PUT /backup/config` と設定更新hookを使う。保存直前に最新設定を取得し、`allowedSenderDomains` だけを変えて送信する。スケジュール・設定・health のキャッシュを無効化する。
+  Rationale: 既存PUTは設定全体の置換であるため、他の設定とスケジュールの編集を保持する。自動取込ON/OFFは既存のスケジュール部分更新を継続する。
+  Date/Author: 2026-10-05 / Codex。
+
+- Decision: Phase 3 のChat文候補は整理タイトル・要約と元本文の冒頭を表示し、取込本文は元の `source.text` を保持する。手順ステップはtitle/body/cautionsを改行で連結し、公開版の番号を安定キーと出典へ入れる。
+  Rationale: 整理した説明を見て選びつつ、Chat原文と承認済み版の出典を失わず、別版の明示取込を区別できる。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: sourceの関連品番・工程・targetはKnowledgeProcedureMaterialから関連ヘッダーを読み、公開手順のtargetはKnowledgeProcedureを読み取り専用で補う。取込と画像配信にも機能フラグと現在の候補参照を適用し、原本欠落(ENOENT)だけdisplayへフォールバックする。
+  Rationale: runtime DTOにはtargetと素材の関連先がない。未公開・無関係画像の配信を避け、整合性エラーを代替画像で隠さない。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: UIは棚閲覧と配置モードの両方からナレッジタブを開ける。最大50件を選び、全件成功なら検索をクリアして未配置へ移動する。一部失敗では結果と理由を表示し、候補を再取得する。
+  Rationale: 新しく取り込んだ素材を元の棚検索で隠さず、失敗を確認して再選択できる。配置・Gmailの保存経路は変えない。
   Date/Author: 2026-10-05 / Codex。
 
 ## Context and Orientation
@@ -273,6 +296,21 @@ API は9ファイル69件成功、既存の実 PostgreSQL integration 1件は `T
 
 環境準備: 既存main worktreeの依存を今回のworktree内へコピーし、shared-typesをbuild、`pnpm exec prisma generate`で新Clientを生成した。コピー元のshared-types distが古かったため再buildして解消した。初回APIテストはserializerテストの状態初期化漏れ、Webの対象lintは追加testのimport順を修正した。初回Web buildはFontsource不足で停止したため、既存worktreeからpackage.jsonで指定されたSans 5.2.8 / Mono 5.2.7のキャッシュをコピーした。依存定義・lockfile・コピー元は変更していない。
 
+## Concrete Steps and Validation (Phase 3)
+
+既存worktree `feat--procedure-material-sender-domains` でローカル実装だけを行った。`ProcedureMaterial` に既定GMAILのoriginとnullableなknowledgeRefを追加し、gmailMessageIdだけNOT NULLを解除する手書きmigration `20261005210000_add_procedure_material_knowledge_origin` を置いた。既存行のUPDATE/DELETEやKnowledge/WorkInstructionの変更はない。Prisma Clientは通常の `pnpm exec prisma generate` で生成できた。
+
+新サービス `apps/api/src/services/assembly/procedure-material-knowledge.service.ts` はruntimeのreadySources/listPublished/getPublishedとassetsの読み取りだけを使用する。候補一覧はqで絞ってから既定100件(最大500件)へ制限し、棚のgmailDedupeKeyで取込済みを判定する。取込は1〜50件のキーだけを受け、サーバーが現在の候補を再解決する。写真はSHA256キー・整合性検証・衝突確認・GC後の原本復旧を既存Gmail方式に合わせる。取込後の配置は既存2bの経路を使用する。
+
+指定検証を実行し、すべて成功した(約2分)。
+
+    cd apps/api && pnpm lint && pnpm exec vitest run procedure-material && pnpm exec tsc -p tsconfig.build.json --noEmit
+    cd apps/web && pnpm lint && pnpm exec vitest run procedure-manuals && pnpm build
+
+APIは6ファイル96件成功(新規20件)、Webは3ファイル29件成功(追加3件)。APIはPrismaとknowledge runtimeをモックし、無効フラグ・検索・limit・取込済み・原文/ステップ/写真の保存・原本欠落fallback・衝突・GC競合・重複・消えた公開候補・画像404・認可・ナレッジ書込なしを確認した。Webは一覧/検索/複数選択/取込/未配置への移動/由来/配置モードと、無効表示、可視範囲だけの画像取得/URL解放を確認した。既存Gmail・素材棚・スケジュール・設定の対象回帰も成功した。
+
+実DBのmigration適用・実端末受入・統合以降は未実施。画面が変わるためkiosk-sopの鮮度確認と生成物更新をpush前の統合段階に残す。変更禁止のgeneratedは触っていない。既存のbaseline-browser-mapping / Browserslist鮮度・Vite chunkサイズの警告は別スコープとして残る。開始時点のworktreeはcleanで、終了時には今回の10ファイルだけが変更・追加されている。
+
 ## Validation and Acceptance (Phase 2a)
 
 Gmail利用可能な検証環境で件名 `[Procedure-material] DFD1 組立`、本文とJPEG/PNG/WebP写真を送信し、要領書の「素材」から手動取込を実行する。本文1件と各写真が新しい順に現れ、ヒント・日時・送信元が表示される。ヒントで絞り込み、捨てた素材から戻せる。素材の原本が保存されたメールだけゴミ箱へ移動し、同じメールを再取込しても素材は増えない。本文空・PDF/動画のみのメールは未読の受信箱に残り、スキップ理由が返る。送信元不一致も保存せず残す。閲覧専用端末の書込は403になる。自動取込を有効化すると組込み行が起動し、無効化すると停止する。これらのローカル契約は上記モックテストで確認済みで、実 Gmail・実端末での受入は未実施である。
@@ -307,3 +345,5 @@ Phase 1 のローカル実装と指定の検証を完了した。文書は改版
 Phase 2a の変更記録(2026-10-05): 上記 Plan of Work を2a/2b/2cへ分割し、素材取込・棚・管理カード・組込みスケジュールのローカル実装を追加した。指定検証は API 80件・Web 13件、lint / tsc / build がすべて成功し、既存境界の回帰71件も成功した。検証と環境準備は約7分。本番用の永続マウント、実 DB migration、実メール・端末確認、commit以降の統合段階は未実施。
 
 Phase 2c の変更記録(2026-10-05): NFC承認公開と承認履歴の直近1件表示、公開方法選択、割り当ての文言・候補選択、閲覧専用の丸数字移動非表示をローカル実装した。指定検証はAPI55件成功・実DB1件skip、Web62件成功、両lint / API tsc / Web build成功。開始時点に既存WIPはなく、今回の24ファイルの変更だけを残した。実DB・実端末、commit / push / PR / merge / deployは未実施。kiosk-sop鮮度チェックと生成物更新はpush前の統合段階に残し、変更禁止の `apps/web/src/generated/**` は変更していない。
+
+Phase 3 の変更記録(2026-10-05): 指定された片方向コピーを既存素材棚と原本保存方式に追加し、全指定検証(API96件・Web29件、両lint / API tsc / Web build)を完了した。ナレッジ・共有型・generated・infrastructureは変更していない。実DB・実端末と統合以降を残した。

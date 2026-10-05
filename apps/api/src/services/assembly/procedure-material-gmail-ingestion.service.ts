@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
-import type { BackupConfig } from '../backup/backup-config.js';
+import { defaultBackupConfig, type BackupConfig } from '../backup/backup-config.js';
 import type { GmailMessage } from '../backup/gmail-api-client.js';
 import type { DurableFileStorePort } from '../file-storage/durable-file-store.port.js';
 import { FileStorageAlreadyExistsError } from '../file-storage/file-storage-errors.js';
@@ -78,6 +78,11 @@ export class ProcedureMaterialGmailIngestionService {
       const subject = materialMessageHeader(message, 'subject');
       if (!isProcedureMaterialGmailSubject(subject)) return { ...result, reason: '件名トークンが一致しません' };
       const fromEmail = extractEmail(materialMessageHeader(message, 'from')) ?? null;
+      const senderDomain = fromEmail?.split('@');
+      const allowedDomains = config.procedureMaterialGmailIngest?.allowedSenderDomains ?? defaultBackupConfig.procedureMaterialGmailIngest.allowedSenderDomains;
+      if (!senderDomain || senderDomain.length !== 2 || !senderDomain[0] || !allowedDomains.includes(senderDomain[1]!)) {
+        return { ...result, reason: '送信元のドメインが許可されていません' };
+      }
       const expectedFrom = extractEmail(config.procedureMaterialGmailIngest?.fromEmail);
       if (expectedFrom && fromEmail !== expectedFrom) return { ...result, reason: '送信元が設定と一致しません' };
       const existing = await this.db.procedureMaterial.findMany({ where: { gmailMessageId: messageId }, select: { gmailDedupeKey: true } });

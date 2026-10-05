@@ -216,11 +216,18 @@ export const BackupConfigSchema = z.object({
         .array(z.literal('[Procedure-material]'))
         .default(['[Procedure-material]']),
       fromEmail: z.string().optional(),
+      allowedSenderDomains: z
+        .array(z.string().trim().toLowerCase().transform((domain) => domain.replace(/^@/, '')).pipe(
+          z.string().regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/, 'ドメインの形式が不正です'),
+        ))
+        .transform((domains) => [...new Set(domains)])
+        .default(['thkintechs.co.jp']),
     })
     .optional()
     .default({
       enabled: false,
       subjectTokens: ['[Procedure-material]'],
+      allowedSenderDomains: ['thkintechs.co.jp'],
     }),
 });
 
@@ -408,6 +415,7 @@ export const defaultBackupConfig: BackupConfig = {
   procedureMaterialGmailIngest: {
     enabled: false,
     subjectTokens: ['[Procedure-material]'],
+    allowedSenderDomains: ['thkintechs.co.jp'],
   },
   itemInventoryGmailIngest: {
     enabled: false,

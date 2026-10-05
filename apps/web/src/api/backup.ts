@@ -423,7 +423,7 @@ export interface BackupConfig {
   kioskDocumentGmailIngest?: KioskDocumentGmailIngestSchedule[];
   /** Raspberry Pi 在庫: Gmail から写真付きマニフェストを取り込む設定 */
   itemInventoryGmailIngest?: ItemInventoryGmailIngestConfig;
-  procedureMaterialGmailIngest?: { enabled: boolean; subjectTokens: string[]; fromEmail?: string };
+  procedureMaterialGmailIngest?: { enabled: boolean; subjectTokens: string[]; fromEmail?: string; allowedSenderDomains: string[] };
 }
 
 // バックアップ設定API
