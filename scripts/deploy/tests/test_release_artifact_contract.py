@@ -84,8 +84,8 @@ def valid_release_set_v2() -> dict[str, object]:
                 "predicateType": TORQUE_ADOPTION_PREDICATE_TYPE,
                 "originalWorkflow": {
                     "path": WORKFLOW,
-                    "runId": 36976118250,
-                    "jobId": 110741499459,
+                    "runId": 37298689300,
+                    "jobId": 111728137953,
                 },
             },
         }
@@ -334,9 +334,9 @@ class ReleaseArtifactContractTests(unittest.TestCase):
             "--torque-origin-workflow",
             WORKFLOW,
             "--torque-origin-run-id",
-            "36976118250",
+            "37298689300",
             "--torque-origin-job-id",
-            "110741499459",
+            "111728137953",
             "--torque-rehearsal-job",
             "torque-release-compatibility",
             "--torque-rehearsal-evidence-digest",
