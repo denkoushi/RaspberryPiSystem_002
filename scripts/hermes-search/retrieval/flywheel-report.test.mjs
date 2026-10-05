@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { formatReport, nightOfFile, readNightRows, summarizeNight } from './flywheel-report.mjs';
+import { formatRealReport, formatReport, nightOfFile, readNightRows, summarizeNight, summarizeReal } from './flywheel-report.mjs';
 
 const live = (loss, extra = {}) => ({ outcome: loss == null ? 'answer' : 'no_result', shown: [], candidates: [], judged: 30, loss, vectorStatus: 'ok', ms: 10, ...extra });
 const rows = [
@@ -76,4 +76,36 @@ test('the report prints the night in one block and names the file night', () => 
   assert.equal(readNightRows('{"a":1}\nbroken\n\n{"a":2}\n').length, 2);
   const unscored = formatReport('2026-10-02', summarizeNight(rows.filter((row) => !row.live)));
   assert.match(unscored, /live: not run for 1 kept questions/u);
+});
+
+test('real summaries count only known relevance in shown and loss totals', () => {
+  const realRows = [
+    { source: 'real', relevant: ['a1'], dayOutcome: 'answer', live: live(null) },
+    { source: 'real', relevant: ['b1'], dayOutcome: 'no_result', live: live('not_in_pool') },
+    { source: 'real', relevant: ['c1'], dayOutcome: 'no_other', live: live('judge_rejected') },
+    { source: 'real', relevant: ['d1'], dayOutcome: 'answer', live: live('other_shown') },
+    { source: 'real', relevant: [], dayOutcome: 'no_result', live: live('not_in_pool') },
+    { source: 'real', relevant: [], dayOutcome: 'answer', live: live(null) },
+    ...rows,
+  ];
+  assert.deepEqual(summarizeReal(realRows), {
+    questions: 6, withRelevant: 4, shown: 1, lossStages: { not_in_pool: 1, judge_rejected: 1, other_shown: 1 },
+    dayOutcomes: { answer: 3, no_result: 2, no_other: 1 },
+  });
+  const formatted = formatRealReport('2026-10-03', summarizeReal(realRows));
+  assert.match(formatted, /^real 2026-10-03: questions 6, with relevant 4, relevant shown 1, nothing shown 2 \(outside judged candidates 1, rejected by judge 1, asked back or out of scope 0\), other records shown 1, day outcomes answer 3, no_result 2, no_other 1$/u);
+  assert.match(formatRealReport('2026-10-03', summarizeReal([])), /questions 0, with relevant 0, relevant shown 0.*day outcomes none/u);
+});
+
+test('real report CLI chooses the real summary alongside synthetic files', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-report-real-'));
+  const realFile = path.join(dir, 'real-2026-10-03.jsonl');
+  const syntheticFile = path.join(dir, 'questions-2026-10-03.jsonl');
+  writeFileSync(realFile, JSON.stringify({ source: 'real', relevant: ['a1'], dayOutcome: 'answer', live: live(null) }) + '\n');
+  writeFileSync(syntheticFile, JSON.stringify(rows[0]) + '\n');
+  const cli = spawnSync(process.execPath, [new URL('./flywheel-report.mjs', import.meta.url).pathname, syntheticFile, realFile], { encoding: 'utf8' });
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.match(cli.stdout, /^night 2026-10-03:/u);
+  assert.match(cli.stdout, /\nreal 2026-10-03: questions 1, with relevant 1, relevant shown 1/u);
+  assert.equal(nightOfFile(realFile), '2026-10-03');
 });

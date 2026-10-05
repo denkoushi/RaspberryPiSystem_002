@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { ALPHA, DEV_SHARE, MIN_DEV_NET, compareRuns, decide, formatGate, parseGateArgs, questionSet, signTest, splitOf } from './flywheel-gate.mjs';
 import { parseRunArgs, runCases, scorerEnv } from './flywheel-run.mjs';
 
@@ -146,15 +150,16 @@ test('the offline run answers one split, skips anchors missing from the snapshot
     { id: 'h1', split: 'heldout', question: 'q3', relevant: ['h1'] },
   ];
   const records = [{ id: 'nonconformity:d1' }, { id: 'h1' }];
+  const real = { id: 'r-abc', split: 'dev', question: 'real q', relevant: ['d1'], source: 'real' };
   const asked = [];
   const score = async (row) => {
     asked.push(row.question);
     return { outcome: 'answer', shown: [row.a], candidates: [row.a], judged: 30, loss: null, vectorStatus: 'ok', ms: 3 };
   };
-  const dev = await runCases({ questions, records, score, split: 'dev' });
-  assert.deepEqual(asked, ['q1']);
+  const dev = await runCases({ questions: [...questions, real], records, score, split: 'dev' });
+  assert.deepEqual(asked, ['q1', 'real q']);
   assert.equal(dev.skipped, 1);
-  assert.deepEqual(dev.cases.map((entry) => [entry.id, entry.loss]), [['d1', null]]);
+  assert.deepEqual(dev.cases.map((entry) => [entry.id, entry.loss]), [['d1', null], ['r-abc', null]]);
   const all = await runCases({ questions, records, score, split: 'all', limit: 1 });
   assert.equal(all.cases.length, 1);
 
@@ -174,4 +179,61 @@ test('the offline run answers one split, skips anchors missing from the snapshot
   assert.equal(scorerEnv(options, { HERMES_RETRIEVAL_DENSE_BASE_URL: 'http://127.0.0.1:38110' }).HERMES_RETRIEVAL_DENSE_BASE_URL, 'http://127.0.0.1:38110');
   assert.equal('HERMES_RETRIEVAL_DENSE_BASE_URL' in env, false);
   assert.throws(() => parseRunArgs(['--snapshot', 's', '--questions', 'a', '--out', 'o', '--split', 'x']), /--split/u);
+});
+
+test('real questions join synthetic rows, preserve stored splits, and exclude unknown relevance', () => {
+  const real = { source: 'real', id: 'r-abc', question: '現場の質問', split: 'heldout', relevant: ['a1'] };
+  const questions = questionSet([kept('a1', 'b1'), real, { ...real, question: 'duplicate' }, { ...real, id: 'r-empty', relevant: [] }]);
+  assert.equal(questions.length, 2);
+  assert.equal(questions[0].source, 'synthetic');
+  assert.deepEqual(questions[1], { id: 'r-abc', question: '現場の質問', split: 'heldout', relevant: ['a1'], seed: null, source: 'real' });
+});
+
+test('real comparison combines splits, counts skips, uses labels, and reports no held-out ids', () => {
+  const questions = [
+    { id: 'r-d', source: 'real', split: 'dev', relevant: ['a1'] },
+    { id: 'r-h', source: 'real', split: 'heldout', relevant: ['b1'] },
+    { id: 'r-skip', source: 'real', split: 'heldout', relevant: ['c1'] },
+    { id: 'synthetic', source: 'synthetic', split: 'dev', relevant: ['s1'] },
+  ];
+  const comparison = compareRuns({ questions,
+    baseline: { cases: [{ id: 'r-d', shown: [] }, { id: 'r-h', shown: ['nonconformity:b1'] }, { id: 'synthetic', shown: [] }] },
+    candidate: { cases: [{ id: 'r-d', shown: ['labelled'] }, { id: 'r-h', shown: [] }, { id: 'r-skip', shown: [] }, { id: 'synthetic', shown: ['s1'] }] },
+    labels: { 'r-d': { labelled: { g: 3 } } },
+  });
+  assert.deepEqual(comparison.real, { n: 2, skipped: 1, baselineShown: 1, candidateShown: 1, gained: 1, lost: 1, p: 1 });
+  assert.equal(comparison.dev.n, 2);
+  assert.equal(comparison.dev.gained, 2);
+  assert.equal(comparison.heldout.n, 1);
+  assert.equal(comparison.heldout.lost, 1);
+  assert.equal(comparison.heldout.skipped, 1);
+  const formatted = formatGate(comparison, decide(comparison));
+  assert.match(formatted, /held-out:.*\n  real: n 2, relevant shown 1 -> 1, gained 1, lost 1, p 1\.000, skipped 1/u);
+  assert.doesNotMatch(formatted, /r-h|r-skip/u);
+});
+
+test('a real net loss rejects otherwise passing splits; real ties and empty sets pass', () => {
+  const comparison = { dev: { n: 5, gained: 4, lost: 1 }, heldout: { n: 3, gained: 1, lost: 1 }, real: { n: 2, gained: 0, lost: 1 } };
+  assert.deepEqual(decide(comparison), { accept: false, reasons: ['real questions lost 1 and gained 0'] });
+  comparison.real.gained = 1;
+  assert.equal(decide(comparison).accept, true);
+  comparison.real = { n: 0, gained: 0, lost: 1 };
+  assert.equal(decide(comparison).accept, true);
+  delete comparison.real;
+  assert.equal(decide(comparison).accept, true);
+});
+
+test('gate CLI accepts real and synthetic JSONL files together', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-gate-real-'));
+  const realFile = path.join(dir, 'real-2026-10-03.jsonl');
+  const syntheticFile = path.join(dir, 'questions-2026-10-03.jsonl');
+  writeFileSync(realFile, JSON.stringify({ source: 'real', id: 'r-real', question: '傷', split: 'heldout', relevant: ['a1'] }) + '\nbroken\n');
+  writeFileSync(syntheticFile, JSON.stringify(kept('a1', 'b1')) + '\n');
+  const baseline = path.join(dir, 'baseline.json');
+  const candidate = path.join(dir, 'candidate.json');
+  for (const file of [baseline, candidate]) writeFileSync(file, JSON.stringify({ cases: [{ id: 'r-real', shown: ['a1'] }, { id: 'a1', shown: ['a1'] }] }));
+  const cli = spawnSync(process.execPath, [new URL('./flywheel-gate.mjs', import.meta.url).pathname, '--questions', syntheticFile, realFile, '--baseline', baseline, '--candidate', candidate], { encoding: 'utf8' });
+  assert.equal(cli.status, 1, cli.stderr);
+  assert.match(cli.stdout, /questions 2 /u);
+  assert.match(cli.stdout, /real: n 1, relevant shown 1 -> 1/u);
 });

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { bareId } from './flywheel-pairs.mjs';
 
 export function nightOfFile(filePath) {
-  const match = /questions-(\d{4}-\d{2}-\d{2})\.jsonl$/u.exec(path.basename(filePath));
+  const match = /(?:questions|real)-(\d{4}-\d{2}-\d{2})\.jsonl$/u.exec(path.basename(filePath));
   return match ? match[1] : path.basename(filePath);
 }
 
@@ -84,6 +84,34 @@ function counts(record) {
   return Object.entries(record).sort((left, right) => right[1] - left[1]).map(([key, value]) => `${key} ${value}`).join(', ');
 }
 
+export function summarizeReal(rows) {
+  const summary = { questions: 0, withRelevant: 0, shown: 0, lossStages: {}, dayOutcomes: {} };
+  for (const row of rows) {
+    if (row?.source !== 'real') continue;
+    summary.questions += 1;
+    const outcome = row.dayOutcome;
+    summary.dayOutcomes[outcome] = (summary.dayOutcomes[outcome] ?? 0) + 1;
+    if (!row.relevant?.length) continue;
+    summary.withRelevant += 1;
+    if (row.live && row.live.loss == null) summary.shown += 1;
+    else if (row.live?.loss != null) {
+      const loss = row.live.loss;
+      summary.lossStages[loss] = (summary.lossStages[loss] ?? 0) + 1;
+    }
+  }
+  return summary;
+}
+
+export function formatRealReport(night, summary) {
+  const losses = summary.lossStages;
+  const nothing = (losses.not_in_pool ?? 0) + (losses.judge_rejected ?? 0) + (losses.status ?? 0);
+  return `real ${night}: questions ${summary.questions}, with relevant ${summary.withRelevant}, relevant shown ${summary.shown}, nothing shown ${nothing}`
+    + ` (outside judged candidates ${losses.not_in_pool ?? 0}, rejected by judge ${losses.judge_rejected ?? 0}, asked back or out of scope ${losses.status ?? 0})`
+    + (losses.other_shown ? `, other records shown ${losses.other_shown}` : '')
+    + (losses.failed ? `, failed ${losses.failed}` : '')
+    + `, day outcomes ${Object.keys(summary.dayOutcomes).length ? counts(summary.dayOutcomes) : 'none'}`;
+}
+
 export function formatReport(night, summary) {
   const live = summary.live;
   const nothing = live.notInPool + live.judgeRejected + live.status;
@@ -129,7 +157,9 @@ export function main(argv = process.argv.slice(2)) {
   }
   for (const file of files) {
     const rows = readNightRows(readFileSync(file, 'utf8'));
-    console.log(formatReport(nightOfFile(file), summarizeNight(rows, { labels })));
+    console.log(/^real-\d{4}-\d{2}-\d{2}\.jsonl$/u.test(path.basename(file))
+      ? formatRealReport(nightOfFile(file), summarizeReal(rows))
+      : formatReport(nightOfFile(file), summarizeNight(rows, { labels })));
   }
 }
 

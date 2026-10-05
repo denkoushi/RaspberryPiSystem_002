@@ -64,7 +64,8 @@ export function scorerEnv(options, base = process.env) {
  */
 export async function runCases({ questions, records, score, split = 'dev', limit = null, log = () => {} }) {
   const known = new Set(records.map((record) => bareId(record.id)));
-  const selected = questions.filter((question) => (split === 'all' || question.split === split) && known.has(question.id));
+  // Real kiosk questions carry a hashed id, not a record id; their relevant records were labelled already.
+  const selected = questions.filter((question) => (split === 'all' || question.split === split) && (question.source === 'real' || known.has(question.id)));
   const skipped = questions.filter((question) => (split === 'all' || question.split === split)).length - selected.length;
   const picked = Number.isInteger(limit) && limit > 0 ? selected.slice(0, limit) : selected;
   const cases = [];

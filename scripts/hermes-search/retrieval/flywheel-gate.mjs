@@ -37,10 +37,15 @@ export function splitOf(anchorId) {
 export function questionSet(rows) {
   const byAnchor = new Map();
   for (const row of rows) {
+    if (row?.source === 'real') {
+      if (typeof row.question !== 'string' || !row.question || !row.id || !row.relevant?.length || byAnchor.has(row.id)) continue;
+      byAnchor.set(row.id, { id: row.id, question: row.question, split: row.split, relevant: row.relevant, seed: null, source: 'real' });
+      continue;
+    }
     if (row?.kept !== true || typeof row.question !== 'string' || !row.question) continue;
     const id = bareId(row.a);
     if (byAnchor.has(id)) continue;
-    byAnchor.set(id, { id, question: row.question, split: splitOf(id), relevant: relevantIds(row), seed: row.seed ?? null });
+    byAnchor.set(id, { id, question: row.question, split: splitOf(id), relevant: relevantIds(row), seed: row.seed ?? null, source: 'synthetic' });
   }
   return [...byAnchor.values()];
 }
@@ -78,23 +83,27 @@ export function compareRuns({ questions, baseline, candidate, labels = null }) {
   for (const split of ['dev', 'heldout']) {
     splits[split] = { n: 0, skipped: 0, baselineShown: 0, candidateShown: 0, gained: 0, lost: 0, p: 1, gainedIds: [], lostIds: [] };
   }
+  splits.real = { n: 0, skipped: 0, baselineShown: 0, candidateShown: 0, gained: 0, lost: 0, p: 1 };
   for (const question of questions) {
     const result = splits[question.split];
+    const results = question.source === 'real' ? [result, splits.real] : [result];
     const relevant = labels == null ? question.relevant : relevantWithLabels(question, labels);
     const before = relevantShown(base.get(question.id), relevant);
     const after = relevantShown(cand.get(question.id), relevant);
     if (before == null || after == null) {
-      result.skipped += 1;
+      for (const entry of results) entry.skipped += 1;
       continue;
     }
-    result.n += 1;
-    if (before) result.baselineShown += 1;
-    if (after) result.candidateShown += 1;
+    for (const entry of results) {
+      entry.n += 1;
+      if (before) entry.baselineShown += 1;
+      if (after) entry.candidateShown += 1;
+      if (!before && after) entry.gained += 1;
+      else if (before && !after) entry.lost += 1;
+    }
     if (!before && after) {
-      result.gained += 1;
       if (question.split === 'dev') result.gainedIds.push(question.id);
     } else if (before && !after) {
-      result.lost += 1;
       if (question.split === 'dev') result.lostIds.push(question.id);
     }
   }
@@ -113,6 +122,9 @@ export function decide(comparison, { alpha = ALPHA, minDevNet = MIN_DEV_NET } = 
   const net = dev.gained - dev.lost;
   if (net < minDevNet) reasons.push(`development net gain ${net} is below ${minDevNet}`);
   if (dev.n + heldout.n === 0) reasons.push('no question was answered by both runs');
+  if (comparison.real?.n > 0 && comparison.real.lost > comparison.real.gained) {
+    reasons.push(`real questions lost ${comparison.real.lost} and gained ${comparison.real.gained}`);
+  }
   return { accept: reasons.length === 0, reasons };
 }
 
@@ -120,6 +132,7 @@ export function formatGate(comparison, decision, { note } = {}) {
   const line = (name, result) => `  ${name}: n ${result.n}, relevant shown ${result.baselineShown} -> ${result.candidateShown}, gained ${result.gained}, lost ${result.lost}, p ${result.p.toFixed(3)}`
     + (result.skipped ? `, skipped ${result.skipped}` : '');
   const lines = [line('development', comparison.dev), line('held-out', comparison.heldout)];
+  if (comparison.real) lines.push(line('real', comparison.real));
   if (note) lines.unshift(note);
   if (comparison.dev.gainedIds.length) lines.push(`  development gained: ${comparison.dev.gainedIds.join(', ')}`);
   if (comparison.dev.lostIds.length) lines.push(`  development lost: ${comparison.dev.lostIds.join(', ')}`);
