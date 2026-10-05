@@ -47,7 +47,10 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [ ] 実機確認(オーナー): 管理画面のカードに許可ドメイン `thkintechs.co.jp` が出る、他ドメインからの `[Procedure-material]` メールが取り込まれない、素材棚の「ナレッジから」に候補が出て取り込める。
 - [x] (2026-10-05) 動画 V1のローカル実装: メール動画取込、Pi5変換Port/adapter/排他worker、Range配信・棚・再試行・破棄復元、DRAFTページ紐づけと改版継承、READYサムネイル閲覧を追加。
 - [x] (2026-10-05) 動画 V1指定検証: API lint / 16ファイル186件成功・実DB1件skip / build用tsc、Web lint / 12ファイル75件 / build成功。スケジューラー登録7件・要領書サービス回帰7件も成功。Prisma Client生成と手書きDDLのschema一致を確認。
-- [ ] 動画 V1実機受入・integrationPending: 実DB migration適用、実Gmail、Pi5 ffmpegの速度・回転・再生、実端末、CI、main統合と本番反映は未実施。commit / push / PR / merge / deployの実行は依頼外。
+- [x] (2026-10-05) 動画 V1: 使い捨て PostgreSQL で migration 適用を確認。Codex レビューの 3 指摘(READY commit 前の原本削除、1 フレーム動画のポスター、ffmpeg の強制終了)と長いトランザクション保持を修正。CI では「追加のみ」検証が `ALTER TABLE ... ADD CONSTRAINT` を拒否したため外部キーを `CREATE TABLE` 内に移し、エディタの取説を再生成。
+- [x] (2026-10-05) PR #1706 を main へ squash merge(merge `b8cafa6b5660324d7ae77944e07c1724397d6e30`、追跡セッションが実施)。main の push CI で API イメージが圧縮上限 1.0 GB を超過(1,063,981,159 バイト。Debian の ffmpeg が約 88 MB)。配布を通すため #1708(merge `e93b28ac`)で ffmpeg を一時的に外し、オーナー判断で #1709(merge `a25fe544a7c6bcc40400a20141da17fb67daad41`)で上限を 1.1 GB に引き上げて ffmpeg を戻した(静的ビルドは arm64 で約 113 MB 圧縮と Debian 版より大きく不採用)。
+- [x] (2026-10-05) Pi5 へ標準ローリング更新(run `20261005-093506-d09ffd`、releaseSha `a25fe544`、`Result=success`、recap `ok=269 changed=33 unreachable=0 failed=0`、約 14 分)。health 200、API コンテナで `ffmpeg version 5.1.9-0+deb12u1`、`/app/storage/procedure-videos` あり、migration `20261006000000_add_procedure_videos` 適用済み。追跡セッションの報告による。
+- [ ] 実機確認(オーナー): 動画付きの `[Procedure-material]` メールを送ると「動画」一覧に出て数十秒で完了になり再生できる、縦動画の向きが正しい、エディタでページに紐づけると閲覧ページにサムネイルが出る。
 - [ ] 後日: 動画 V2/V3(トリミング、コメント、接続)。
 
 ## Surprises & Discoveries
