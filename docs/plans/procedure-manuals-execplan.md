@@ -65,7 +65,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) 動画 V2: Codex レビューの 3 指摘(長さ未確定の動画の紐づけ拒否、claim の `updatedAt` 条件付き更新、つまみの 44px)を修正。`origin/main`(UX 改善 #1713)を取り込み、4 ファイルの競合を両立で解消。使い捨て PostgreSQL で migration 適用を確認。
 - [x] (2026-10-05) PR #1714 を main へ squash merge(merge `66355f8f191590053544cf6f4dd21e092ddb20ad`)。件名を指定しなかったため main のコミット名が作業用の「wip: video V2 (to be squashed) (#1714)」になった(履歴は直さない。次回から `--subject` を指定する)。main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-131419-00281b`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`、追跡セッションが実施)、health 200、migration `20261006100000_add_procedure_video_trim_and_comments` 適用済み。
 - [ ] 実機確認(オーナー): 動画一覧で 10.5 秒超に「要トリミング」が出てトリミングすると新しい長さになる、10 秒以内の動画だけページに紐づく、コメントを付けると再生中に字幕として出る。
-- [ ] 後日: 動画 V3(接続)。
+- [x] (2026-10-05) 動画 V3ローカル実装: nullable concatRequest/originの追加、2〜5本(重複可)から独立したPENDING動画を作る接続API、向き/寸法の統一とconcat demuxer再エンコード、先頭poster、開始オフセット付きコメント複製(先頭5件)、元動画再確認、失敗/再試行、棚のチェック選択/並べ替え/合計/題名/接続バッジを追加。
+- [x] (2026-10-05) 動画 V3指定検証: API lint / procedure-video 5ファイル119件 / build用tsc、Web lint / procedure-manuals 4ファイル47件 / build成功。expand-only SQLの2文も成功。環境準備を含め約11分。共有型の禁止パスへ出力しないため、一時領域へ共有型をビルドし、Web buildは同一ソース/設定の隔離コピーで実行した。Prisma Clientとエンジンはworktreeのnode_modules内に準備した。
+- [ ] 動画 V3 integrationPending: commit・push・PR・main統合・deployは未依頼。実DB migration適用と実ffmpeg/Pi5での向き混在・接続再生、元動画破棄後の独立性、トリミング後の紐づけを統合段階で確認する。
 
 ## Surprises & Discoveries
 
@@ -106,6 +108,16 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: `infrastructure/docker/docker-compose.server.yml` の API volumes と named volumes。今回の infrastructure 変更禁止により未修正。本番反映前に別依頼で永続マウントを追加する必要がある。
 
 ## Decision Log
+
+- Decision: 動画 V3は元動画の行・ファイルを更新せず、新しいorigin=CONCAT行と独立したsha256出力を作る。既存origin=nullはAPIでGMAILへ正規化し、Gmail新規取込はGMAILを明示する。
+  Rationale: 接続後も元動画を独立して捨てる/戻すことができ、既存データのUPDATEや列DEFAULTをmigrationに含めずに由来を表示できる。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: 各接続元を先頭動画の縦横比に沿った偶数寸法・長辺640の枠へscale/pad(黒帯)/setsarで正規化し、30fpsとtime baseを揃えてからconcat demuxerで再エンコードする。posterは接続結果の0秒フレームとする。
+  Rationale: [FFmpeg concat demuxerの契約](https://www.ffmpeg.org/ffmpeg-all.html)は同じストリーム条件を要求する。向き/寸法が違うSD動画を安全に扱うため、接続前の正規化を追加した。ffmpeg起動の上限時間とthreads 2はV1と同じにし、V1/V2の変換引数やposter時刻は維持する。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: 接続の要求時とREADY commit前に元動画をID順の行ロックで再確認し、処理前後のstorageKeyも比較する。一般失敗はV1同様3回までPENDINGへ戻し4回目でFAILED(CONCAT_FAILED)、元動画消失/破棄/差し替えは即FAILED。要求は最終失敗後も手動再試行用に保持する。
+  Rationale: エンコード中のdiscardやtrimが古いSD動画と新しいコメントを混在させない。コメント複製とREADY/concatRequest消去は同じrunAssemblyTransactionで確定し、途中失敗の二重複製を防ぐ。重複IDの順序はそのまま保持し、コメントは元動画内の時刻順・接続順で先頭5件を引き継ぐ。
+  Date/Author: 2026-10-05 / Codex。
 
 - Decision: 文書の正本は `AssemblyProcedureDocument`。新しい文書モデルは作らない。
   Rationale: 自由配置、改版、公開、Gmail 取込、キオスク閲覧がそろっており、締付テンプレートが同じ ID を参照するので「1 と組み合わせる」が自動で満たされる。
@@ -312,7 +324,15 @@ Webは上部の「動画」棚、可視範囲だけのposter取得、タイト�
 
 V2は`POST /assembly/procedure-videos/:id/trim`でREADYかつ未紐づけの動画の0.5秒以上の範囲を受け付ける。nullableのtrimRequest/trimmedAt/sourceDurationSecondsとProcedureVideoCommentをexpand-only migration `20261006100000_add_procedure_video_trim_and_comments`で追加する。処理workerはSD MP4から音声なし・H.264・30fps・threads 2で再エンコードし、新しいsha256のMP4とposterを保存、コメント補正とREADYを同じrunAssemblyTransactionでcommitしてから未参照の旧出力を削除する。初回の長さはsourceDurationSecondsへ保存し、既存READY行のnullは変更しない。コメントのGET/PUTは閲覧/書込権限を使い、PUTは5件・trim後1〜80文字・0〜durationSecondsに制限して時刻順に全置換する。紐づけPUTはREADYでない動画または長さ未確定の動画を409「変換が終わってから紐づけてください」、10.5秒超を400で拒否し、既存リンクの読み出しは維持する。claimはid・PENDING・取得時updatedAtで条件付き更新し、成功後の行をtrimRequestごと再取得して処理する。範囲バーの開始/終了つまみは44×44pxの操作領域と前面切替を持ち、← →の0.1秒・Shiftの1秒操作を維持する。
 
-Webの棚からプレビュー付き二つのハンドルで範囲を指定し、不可逆の確認後に要求する。← →で0.1秒、Shiftで1秒、現在位置ボタンにも対応する。棚は処理中に5秒間隔で更新し、READYのトリミング失敗には元動画を保持した旨を表示する。コメント編集は時刻/文/削除と現在位置での追加、PUT保存を提供する。共通ProcedureVideoPlayerで字幕とコメントへのシークを全ての再生画面へ適用する。棚と閲覧サムネイルは0:08形式の長さと10.5秒超の「要トリミング」を表示する。V3の接続は実装しない。infrastructure/CIのffmpeg導入とprocedure-videos永続マウントはClaudeの担当で、Codexは変更しない。
+Webの棚からプレビュー付き二つのハンドルで範囲を指定し、不可逆の確認後に要求する。← →で0.1秒、Shiftで1秒、現在位置ボタンにも対応する。棚は処理中に5秒間隔で更新し、READYのトリミング失敗には元動画を保持した旨を表示する。コメント編集は時刻/文/削除と現在位置での追加、PUT保存を提供する。共通ProcedureVideoPlayerで字幕とコメントへのシークを全ての再生画面へ適用する。棚と閲覧サムネイルは0:08形式の長さと10.5秒超の「要トリミング」を表示する。infrastructure/CIのffmpeg導入とprocedure-videos永続マウントはClaudeの担当で、Codexは変更しない。
+
+V3はmigration `20261006120000_add_procedure_video_concat`でProcedureVideoへnullableなconcatRequest JSONBとorigin TEXTだけを追加する。`POST /assembly/procedure-videos/concat`はallowWriteKioskで2〜5本のUUID配列(重複可)と任意の題名(前後空白除去、200文字まで)を受け、全てREADYかつ未破棄でなければ409「完了した動画だけ接続できます」を返す。新規行はPENDING、origin=CONCAT、gmailDedupeKey=concat:<uuid>、gmailMessageId=null、receivedAt=作成時刻、sourceFileName=concat.mp4、sourceContentType=video/mp4、sourceByteSize=0とする。未指定/空欄の題名は「<先頭の題名> ほか N 本」。合計の長さは制限せず、紐づけの10.5秒ルールはV2を維持する。
+
+workerはclaim後のconcatRequestからSD MP4を順に一時領域へ読み出す。transcoder portのconcat(inputs, output, poster)は上記Decisionの正規化後、`-f concat -safe 0 -i list.txt`で音声なし・H.264・threads 2・veryfast・CRF28・yuv420p・faststart・30fpsへ再エンコードし、先頭フレームのposterを作る。出力とposterのsha256キー/衝突処理はV1を再利用し、READY時にdurationSeconds等を更新してconcatRequestを消す。元動画コメントの時刻へ各SD動画のprobeで得た開始オフセットを加え、時刻順・接続順で先頭5件だけ新しいIDで複製する。元動画の破棄/削除/差し替えをcommit前に検出した場合はCONCAT_FAILEDと理由を記録する。接続結果は通常の動画と同じ再生・捨てる/戻す・トリミング・コメント・紐づけを利用する。
+
+Webの動画棚は未破棄READY動画のチェック選択を5本まで受け、2本以上で「接続」を有効にする。ProcedureVideoConcatDialogでは↑↓による順序、各長さと合計、10秒超の赤字「紐づけにはトリミングが必要」、任意題名(先頭変更時に既定値も更新)を表示する。送信後は検索を解除してactive一覧を更新し、「処理中」とorigin=CONCATの「接続」バッジを表示する。処理中は既存の5秒ポーリングで更新する。
+
+V3の指定検証は `cd apps/api && pnpm lint && pnpm exec vitest run procedure-video && pnpm exec tsc -p tsconfig.build.json --noEmit` と `cd apps/web && pnpm lint && pnpm exec vitest run procedure-manuals && pnpm build`。禁止パスpackages/shared-typesへbuild生成物を置かず検証する場合は、その出力とWeb build用の同一ソースコピーを一時領域に作る。ffmpegはモックで順序/正規化/先頭poster/後始末を確認する。APIは本数/READY/破棄/権限/重複/既定origin、処理は60秒超・コメントのオフセットと5件制限・元動画消失/処理中の変更・再試行を検証し、Webは選択→接続→並べ替え/長さ/題名→送信→処理中/由来を1本のテストで確認する。
 
 指定検証:
 
@@ -436,6 +456,8 @@ Gmail利用可能な検証環境で件名 `[Procedure-material] DFD1 組立`、�
 
 ## Outcomes & Retrospective
 
+動画 V3(2026-10-05)はローカル実装と指定検証まで完了。API5ファイル119件、Web4ファイル47件、両lint、API build用tsc、隔離コピーでのWeb build、expand-only SQL2文が成功した。最初の環境不足(未ビルドのworkspace package、Prismaキャッシュ権限/エンジン)をローカル依存と一時領域で解消した。実DB・実ffmpeg・Pi5確認とmain統合・deployは未実施でintegrationPending。ブラウザ互換データの鮮度と大きいbundleの既存警告は別スコープとする。
+
 動画 V2(2026-10-05)はローカル実装と指定検証まで完了した。範囲の検証、紐づけ済み409、10.5秒超の紐づけ拒否、コメント全置換の件数/文字数/時刻/順序、変換成功時の新キーとコメント補正、共有旧ファイルの保持、最終失敗時のREADY+TRIM_FAILED、範囲バー/確認/コメント編集/字幕シークをモックで確認した。実DBへのmigration適用、実ffmpeg/Pi5の切り出し、実機受入は未実施。commit・push・PR・main統合・deployは今回の依頼の範囲外で、integrationPendingを維持する。Web buildのブラウザ互換データ鮮度とbundleサイズの警告は別スコープとして変更しない。
 
 Phase 1 のローカル実装と指定の検証を完了した。文書は改版ルートで保存し、閲覧時には最新の active PUBLISHED 版へ解決する。公開版のない項目は個別に「公開版なし」と表示し、正常な項目は既存ビューアで閲覧できる。機種が 0 件でも編集入口から割り当てを作成できる。
@@ -485,3 +507,5 @@ UX 改善(2 回目)の変更・追加ファイル一覧(34ファイル。各migr
 - 正本: `docs/plans/procedure-manuals-execplan.md`。
 
 動画 V2追記(2026-10-05): 今回の正本はこのPlanに集約し、Progress/Decision Log/動画節/OutcomesをV2のローカル実装と検証結果へ更新した。main統合・本番反映は別段階として未実施を維持する。
+
+動画 V3追記(2026-10-05): 接続を独立した動画として扱う実装と検証の正本をこのPlanへ追加した。Progress/Decision Log/動画節/Outcomesへ、入力正規化の理由、元動画の競合防止、コメントの先頭5件、隔離buildの証拠とintegrationPendingを記録した。gitの変更操作・禁止パスの編集・本番反映は行っていない。

@@ -12,6 +12,10 @@ export function registerProcedureVideoRoutes(app: FastifyInstance, options: {
 }) {
   const service = options.service ?? new ProcedureVideoService();
   const path = '/assembly/procedure-videos';
+  app.post(`${path}/concat`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const { sourceVideoIds, title } = z.object({ sourceVideoIds: z.array(z.string().uuid()).min(2).max(5), title: z.string().trim().max(200).optional() }).strict().parse(request.body);
+    return service.requestConcat(sourceVideoIds, title);
+  });
   app.get(path, { preHandler: options.allowView }, async (request) => ({ videos: await service.list(z.object({ state: z.enum(['active', 'discarded', 'all']).default('active'), q: z.string().trim().max(200).optional(), limit: z.coerce.number().int().min(1).max(500).default(100) }).parse(request.query)) }));
   for (const type of ['file', 'poster'] as const) {
     app.get(`${path}/:id/${type}`, { preHandler: options.allowView, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {

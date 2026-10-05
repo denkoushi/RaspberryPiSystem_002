@@ -1,5 +1,6 @@
 import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
@@ -38,7 +39,7 @@ export class ProcedureVideoService {
           if (!(error instanceof FileStorageAlreadyExistsError)) throw error;
           if (!(await this.store.read(sourceStorageKey, { verifyIntegrity: true })).equals(video.buffer)) throw new Error('Procedure video identity conflict');
         }
-        await tx.procedureVideo.create({ data: { ...common, status: 'PENDING', title: common.subjectHint || video.filename, gmailDedupeKey: video.gmailDedupeKey, sourceStorageKey, sourceFileName: video.filename, sourceContentType: video.contentType, sourceByteSize: video.buffer.length } });
+        await tx.procedureVideo.create({ data: { ...common, origin: 'GMAIL', status: 'PENDING', title: common.subjectHint || video.filename, gmailDedupeKey: video.gmailDedupeKey, sourceStorageKey, sourceFileName: video.filename, sourceContentType: video.contentType, sourceByteSize: video.buffer.length } });
         return true;
       }, this.db);
     } catch (error) {
@@ -53,7 +54,27 @@ export class ProcedureVideoService {
       where: { ...(params.state === 'active' ? { discardedAt: null } : params.state === 'discarded' ? { discardedAt: { not: null } } : {}), ...(params.q ? { OR: [{ title: { contains: params.q, mode: 'insensitive' as const } }, { subjectHint: { contains: params.q, mode: 'insensitive' as const } }] } : {}) },
       orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }], take: params.limit, include: { _count: { select: { links: true } } }
     });
-    return rows.map((row) => ({ id: row.id, title: row.title, status: row.status, durationSeconds: row.durationSeconds, hasPoster: Boolean(row.posterStorageKey), linkCount: row._count.links, errorCode: row.errorCode, errorMessage: row.errorMessage, discardedAt: row.discardedAt?.toISOString() ?? null }));
+    return rows.map((row) => ({ id: row.id, title: row.title, origin: row.origin ?? 'GMAIL', status: row.status, durationSeconds: row.durationSeconds, hasPoster: Boolean(row.posterStorageKey), linkCount: row._count.links, errorCode: row.errorCode, errorMessage: row.errorMessage, discardedAt: row.discardedAt?.toISOString() ?? null }));
+  }
+
+  async requestConcat(sourceVideoIds: string[], title?: string) {
+    if (sourceVideoIds.length < 2 || sourceVideoIds.length > 5) throw new ApiError(400, '動画は2〜5本選んでください');
+    return runAssemblyTransaction(async (tx) => {
+      for (const id of [...new Set(sourceVideoIds)].sort()) {
+        // eslint-disable-next-line no-await-in-loop
+        await tx.$queryRaw`SELECT "id" FROM "ProcedureVideo" WHERE "id" = ${id} FOR UPDATE`;
+      }
+      const sources = await tx.procedureVideo.findMany({ where: { id: { in: sourceVideoIds } } });
+      const ordered = sourceVideoIds.map((id) => sources.find((source) => source.id === id));
+      if (ordered.some((source) => !source || source.status !== 'READY' || source.discardedAt)) throw new ApiError(409, '完了した動画だけ接続できます');
+      const receivedAt = new Date();
+      return tx.procedureVideo.create({ data: {
+        status: 'PENDING', origin: 'CONCAT', title: title?.trim() || `${ordered[0]!.title} ほか ${sourceVideoIds.length - 1} 本`,
+        gmailDedupeKey: `concat:${randomUUID()}`, gmailMessageId: null, receivedAt,
+        sourceFileName: 'concat.mp4', sourceContentType: 'video/mp4', sourceByteSize: 0,
+        concatRequest: { sourceVideoIds, requestedAt: receivedAt.toISOString() },
+      } });
+    }, this.db);
   }
 
   async readFile(id: string, poster = false) {
@@ -64,7 +85,7 @@ export class ProcedureVideoService {
   }
 
   async retry(id: string) {
-    const changed = await this.db.procedureVideo.updateMany({ where: { id, status: 'FAILED', sourceStorageKey: { not: null } }, data: { status: 'PENDING', attempts: 0, errorCode: null, errorMessage: null } });
+    const changed = await this.db.procedureVideo.updateMany({ where: { id, status: 'FAILED', OR: [{ sourceStorageKey: { not: null } }, { concatRequest: { not: Prisma.DbNull } }] }, data: { status: 'PENDING', attempts: 0, errorCode: null, errorMessage: null } });
     if (!changed.count) throw new ApiError(409, '原本のある失敗動画だけ再試行できます');
   }
 

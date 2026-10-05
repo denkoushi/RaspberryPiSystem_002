@@ -5398,6 +5398,9 @@ model ProcedureVideo {
   byteSize          Int?
   durationSeconds   Float?
   trimRequest       Json?
+  processingToken   String?
+  concatRequest     Json?
+  origin            String?
   trimmedAt         DateTime?
   sourceDurationSeconds Float?
   width             Int?

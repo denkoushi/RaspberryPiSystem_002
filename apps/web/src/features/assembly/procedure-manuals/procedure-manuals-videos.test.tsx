@@ -11,11 +11,12 @@ import { ProcedureVideoThumbnail } from './ProcedureVideoThumbnail';
 import type { ProcedureVideoDto } from './procedure-video-types';
 import type { AssemblyProcedureSequenceDto, AssemblyProcedureSequencePageDto } from '../types';
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), file: vi.fn(), poster: vi.fn(), retry: vi.fn(), discard: vi.fn(), restore: vi.fn(), page: vi.fn(), save: vi.fn(), detail: vi.fn(), trim: vi.fn(), comments: vi.fn(), saveComments: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), file: vi.fn(), poster: vi.fn(), retry: vi.fn(), discard: vi.fn(), restore: vi.fn(), page: vi.fn(), save: vi.fn(), detail: vi.fn(), trim: vi.fn(), comments: vi.fn(), saveComments: vi.fn(), concat: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   listProcedureVideos: mocks.list, getProcedureVideoFile: mocks.file, getProcedureVideoPoster: mocks.poster,
   retryProcedureVideo: mocks.retry, discardProcedureVideo: mocks.discard, restoreProcedureVideo: mocks.restore,
   trimProcedureVideo: mocks.trim, getProcedureVideoComments: mocks.comments, replaceProcedureVideoComments: mocks.saveComments,
+  concatProcedureVideos: mocks.concat,
   getProcedurePageVideos: mocks.page, replaceProcedurePageVideos: mocks.save,
   listProcedureManualModels: async () => [{ modelCode: 'DFD1', modelCodeKey: 'DFD1' }],
   listProcedureManualProcesses: async () => [{ id: 'root', name: '組立工程', parentId: null }, { id: 'p', name: '検査工程', parentId: 'root' }],
@@ -28,7 +29,7 @@ vi.mock('../AssemblyProcedureSequenceViewer', () => ({
     return <button onClick={() => onCurrentPageChange?.(sequence.documents[0].pages?.[1] ?? null)}>次のページ</button>;
   }
 }));
-const ready: ProcedureVideoDto = { id: 'ready', title: '締付動画', durationSeconds: 12, status: 'READY', hasPoster: true, linkCount: 0, errorCode: null, errorMessage: null, discardedAt: null };
+const ready: ProcedureVideoDto = { id: 'ready', title: '締付動画', origin: 'GMAIL', durationSeconds: 12, status: 'READY', hasPoster: true, linkCount: 0, errorCode: null, errorMessage: null, discardedAt: null };
 const failed: ProcedureVideoDto = { ...ready, id: 'failed', title: '失敗動画', hasPoster: false, durationSeconds: null, status: 'FAILED', errorCode: 'TOO_LONG', errorMessage: '動画は60秒までです' };
 const pending: ProcedureVideoDto = { ...failed, id: 'pending', title: '受付動画', status: 'PENDING', errorCode: null, errorMessage: null };
 beforeEach(() => {
@@ -42,6 +43,69 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('procedure-manuals videos', () => {
+  it('selects READY videos, opens concat, reorders lengths/default title and submits before showing the pending result and origin badge', async () => {
+    const second = { ...ready, id: 'second', title: '確認動画', durationSeconds: 3 };
+    const discarded = { ...ready, id: 'discarded', title: '破棄動画', discardedAt: '2026-10-05' };
+    mocks.list.mockResolvedValue([ready, second, failed, pending, discarded]);
+    render(<ProcedureVideoShelfDialog onClose={vi.fn()} />);
+    const button = await screen.findByRole('button', { name: '接続', exact: true });
+    expect(button).toBeDisabled();
+    await screen.findByText('締付動画');
+    expect(screen.queryByRole('checkbox', { name: '失敗動画を接続用に選択' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: '受付動画を接続用に選択' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: '破棄動画を接続用に選択' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: '締付動画を接続用に選択' })); expect(button).toBeDisabled();
+    fireEvent.click(screen.getByRole('checkbox', { name: '確認動画を接続用に選択' })); expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(screen.getByRole('dialog', { name: '動画の接続' })).toBeInTheDocument();
+    expect(screen.getByText('1. 締付動画（12.0秒）')).toBeInTheDocument();
+    expect(screen.getByText('2. 確認動画（3.0秒）')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: '合計の長さ' })).toHaveTextContent('合計 15.0秒');
+    expect(screen.getByText('紐づけにはトリミングが必要')).toHaveClass('text-red-700');
+    expect(screen.getByRole('textbox', { name: '接続動画の題名' })).toHaveValue('締付動画 ほか 1 本');
+    fireEvent.click(screen.getByRole('button', { name: '確認動画を上へ' }));
+    expect(screen.getByText('1. 確認動画（3.0秒）')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '接続動画の題名' })).toHaveValue('確認動画 ほか 1 本');
+    fireEvent.click(screen.getByRole('button', { name: '確認動画を下へ' }));
+    fireEvent.click(screen.getByRole('button', { name: '確認動画を上へ' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '接続動画の題名' }), { target: { value: ' 接続結果 ' } });
+    mocks.list.mockResolvedValue([{ ...pending, id: 'concat', title: '接続結果', origin: 'CONCAT' }, ready, second]);
+    mocks.concat.mockResolvedValue({ id: 'concat', status: 'PENDING', origin: 'CONCAT' });
+    fireEvent.click(screen.getByRole('button', { name: '接続する' }));
+    await waitFor(() => expect(mocks.concat).toHaveBeenCalledExactlyOnceWith(['second', 'ready'], '接続結果'));
+    const result = (await screen.findByText('接続結果')).closest('article')!;
+    expect(within(result).getByText('接続')).toBeInTheDocument();
+    expect(within(result).getByText('長さ未確認 · 処理中')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '接続', exact: true })).toBeDisabled();
+  });
+  it('keeps A selected across a search, selects B and sends both in selection order', async () => {
+    const second = { ...ready, id: 'second', title: '確認動画', durationSeconds: 3 };
+    mocks.list.mockImplementation(async ({ q }) => q ? [second] : [ready]);
+    mocks.concat.mockResolvedValue({ id: 'concat', status: 'PENDING', origin: 'CONCAT' });
+    render(<ProcedureVideoShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('checkbox', { name: '締付動画を接続用に選択' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '動画検索' }), { target: { value: '確認' } });
+    fireEvent.click(await screen.findByRole('checkbox', { name: '確認動画を接続用に選択' }));
+    expect(screen.queryByRole('checkbox', { name: '締付動画を接続用に選択' })).not.toBeInTheDocument();
+    expect(screen.getByText('2 本を選択中')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '接続', exact: true }));
+    expect(screen.getByText('1. 締付動画（12.0秒）')).toBeInTheDocument();
+    expect(screen.getByText('2. 確認動画（3.0秒）')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '接続する' }));
+    await waitFor(() => expect(mocks.concat).toHaveBeenCalledExactlyOnceWith(['ready', 'second'], undefined));
+  });
+  it('clears hidden selections with the button beside search', async () => {
+    mocks.list.mockImplementation(async ({ q }) => q ? [] : [ready]);
+    render(<ProcedureVideoShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('checkbox', { name: '締付動画を接続用に選択' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '動画検索' }), { target: { value: '別の動画' } });
+    await screen.findByText('動画がありません');
+    expect(screen.getByText('1 本を選択中')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '選択を解除' }));
+    expect(screen.getByText('0 本を選択中')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '選択を解除' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '接続', exact: true })).toBeDisabled();
+  });
   it('shows video title/length/status, retries failure, confirms discard, and restores discarded videos', async () => {
     render(<ProcedureVideoShelfDialog onClose={vi.fn()} />);
     expect(await screen.findByText('締付動画')).toBeInTheDocument(); expect(screen.getByText('12.0秒 · 完了')).toBeInTheDocument();
