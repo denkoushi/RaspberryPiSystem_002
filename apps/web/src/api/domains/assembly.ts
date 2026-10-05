@@ -1056,3 +1056,18 @@ export async function placeProcedureMaterial(input: { id: string; materialId: st
 export async function unplaceProcedureMaterial(id: string) {
   await api.post(`/assembly/procedure-materials/${encodeURIComponent(id)}/unplace`);
 }
+
+export async function listProcedureKnowledgeCandidates(params: { q?: string; limit?: number } = {}) {
+  const { data } = await api.get<import('../../features/assembly/procedure-manuals/procedure-material-types').ProcedureKnowledgeCandidatesResult>('/assembly/procedure-materials/knowledge-candidates', { params });
+  return data;
+}
+
+export async function getProcedureKnowledgeImage(imageId: string) {
+  const { data } = await api.get<Blob>(`/assembly/procedure-materials/knowledge-candidates/images/${encodeURIComponent(imageId)}`, { responseType: 'blob' });
+  return data;
+}
+
+export async function importProcedureKnowledge(candidateKeys: string[]) {
+  const { data } = await api.post<import('../../features/assembly/procedure-manuals/procedure-material-types').ProcedureKnowledgeImportResult>('/assembly/procedure-materials/import-knowledge', { candidateKeys });
+  return data;
+}

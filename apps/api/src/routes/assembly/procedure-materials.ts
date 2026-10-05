@@ -6,6 +6,8 @@ import type { BackupConfig } from '../../services/backup/backup-config.js';
 import { ProcedureMaterialService } from '../../services/assembly/procedure-material.service.js';
 import { getProcedureMaterialGmailIngestionService, type ProcedureMaterialGmailIngestionService } from '../../services/assembly/procedure-material-gmail-ingestion.service.js';
 
+import { ProcedureMaterialKnowledgeService } from '../../services/assembly/procedure-material-knowledge.service.js';
+
 import { ProcedureMaterialGcService } from '../../services/assembly/procedure-material-gc.service.js';
 
 const querySchema = z.object({
@@ -20,11 +22,23 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   allowView: preHandlerHookHandler; allowWriteKiosk: preHandlerHookHandler;
   service?: ProcedureMaterialService;
   gc?: ProcedureMaterialGcService;
+  knowledge?: ProcedureMaterialKnowledgeService;
   ingestion?: Pick<ProcedureMaterialGmailIngestionService, 'runOnce'>;
   loadConfig?: () => Promise<BackupConfig>;
 }) {
   const service = options.service ?? new ProcedureMaterialService();
   const path = '/assembly/procedure-materials';
+  const knowledge = options.knowledge ?? new ProcedureMaterialKnowledgeService();
+  app.get(`${path}/knowledge-candidates`, { preHandler: options.allowView }, async (request) =>
+    knowledge.list(querySchema.pick({ q: true, limit: true }).extend({ limit: z.coerce.number().int().min(1).max(300).default(100) }).parse(request.query)));
+  app.get(`${path}/knowledge-candidates/images/:imageId`, { preHandler: options.allowView, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const { imageId } = z.object({ imageId: z.string().regex(/^[a-f0-9]{64}$/) }).parse(request.params);
+    return reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff').type('image/jpeg').send(await knowledge.readImage(imageId));
+  });
+  app.post(`${path}/import-knowledge`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const { candidateKeys } = z.object({ candidateKeys: z.array(z.string().min(1).max(500)).min(1).max(50) }).strict().parse(request.body);
+    return knowledge.import(candidateKeys);
+  });
   app.get(path, { preHandler: options.allowView }, async (request) => ({ materials: await service.list(querySchema.parse(request.query)) }));
   app.get(`${path}/:id/file`, { preHandler: options.allowView, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     const file = await service.readFile(paramsSchema.parse(request.params).id);
