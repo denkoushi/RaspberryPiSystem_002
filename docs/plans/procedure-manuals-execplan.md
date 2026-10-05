@@ -30,7 +30,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) Phase 2b ローカル実装: 白紙文書・末尾白紙ページ、PHOTO/TEXT の下書き配置、配置取消、配置済み棚、未参照原本の手動 GC とテストを追加。commit / push / PR / merge / deploy は未実施。
 - [x] (2026-10-05) Phase 2b 指定検証: API lint / vitest 9成功ファイル69件(実DB1件skip) / build用tsc、Web lint / vitest 11ファイル49件 / build が成功。白紙追加後の未保存IMAGE資産保持の最終変更はcontroller7件・対象lint・Web tscで再確認した。
 - [x] (2026-10-05) Phase 2b 限定レビュー修正3件: 原本GCと取込の競合、所有リース中PHOTOの復元、白紙追加成功直後の復旧記録更新を修正。最終指定検証はAPI 74件成功・実DB1件skip、Web 51件成功、両lint / API tsc / Web build成功。既存WIPを保持し、commit / push等は未実施。
-- [ ] Phase 2b 実機確認・統合: 名前付き白紙を作成し、末尾白紙へ写真・本文を配置して保存・再読込、配置済み棚から取消を確認する。integrationPending。
+- [x] (2026-10-05) Phase 2b: Codex レビューの 3 指摘(GC と取込の競合、未保存の配置写真の復元、白紙追加後の復旧記録)を修正。CodeQL の指摘で写真原本と GC のルートに rateLimit を追加。エディタ画面にボタンが増えたため `pnpm kiosk-sop:generate` で取説を再生成して commit。
+- [x] (2026-10-05) PR #1698 を main へ squash merge(merge `0f60a906d233171c9098ce9a3d679725b09a4c01`)、main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-045743-a6c83b`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`)、`/api/system/health` 200。
+- [ ] 実機確認(オーナー): 要領書ページの「白紙から作る」で名前を入れてエディタが開く、「白紙ページを追加」で末尾に増える、「素材から配置」で写真・本文を現在ページに置いて保存・再読込できる、素材棚の「配置済み」から取り消せる。
 - [ ] Phase 2c: NFC 承認による公開。
 - [ ] Phase 3: ナレッジ素材・承認済み手順の片方向連携。
 - [ ] 後日: 動画素材(形式未定)。
