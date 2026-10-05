@@ -18,21 +18,6 @@ export function formatPeriodLabelJa(period: string): string {
   return formatYearMonthJa(period);
 }
 
-export function formatDateTimeJa(iso: string | null): string {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString('ja-JP', {
-      timeZone: 'Asia/Tokyo',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  } catch {
-    return iso;
-  }
-}
-
 export function toMonthInputValue(date = new Date()): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -84,4 +69,36 @@ export function periodRangeToIso(periodValue: string): { periodFrom: string; per
   end.setMilliseconds(end.getMilliseconds() - 1);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
   return { periodFrom: start.toISOString(), periodTo: end.toISOString() };
+}
+
+/** UTC のカレンダー演算で、月/日をホストの DST に依存せず移動する。 */
+export function shiftPeriod(period: string, delta: number): string {
+  const value = period.trim();
+  const match = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(value);
+  if (!match || !Number.isInteger(delta) || !periodRangeToIso(value)) return period;
+  const date = new Date(`${match[1]}-${match[2]}-${match[3] ?? '01'}T00:00:00Z`);
+  if (match[3]) date.setUTCDate(date.getUTCDate() + delta);
+  else date.setUTCMonth(date.getUTCMonth() + delta);
+  return date.toISOString().slice(0, match[3] ? 10 : 7);
+}
+
+/** 今月/今日以降はステッパーを進めない。 */
+export function isLatestPeriod(period: string, now: Date): boolean {
+  if (!periodRangeToIso(period)) return true;
+  // 端末のタイムゾーンによらず、日本時間の今日/今月と比べる。
+  const todayJst = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(now);
+  return period.trim() >= (period.trim().length === 10 ? todayJst : todayJst.slice(0, 7));
+}
+
+export function formatShortPeriodLabel(period: string): string {
+  const [, month, day] = period.split('-').map(Number);
+  return day ? `${month}/${day}` : `${month}月`;
+}
+
+export function formatTimeJa(iso: string): string {
+  return new Date(iso).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+}
+
+export function formatDueDateJa(iso: string): string {
+  return new Date(iso).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', month: '2-digit', day: '2-digit' });
 }

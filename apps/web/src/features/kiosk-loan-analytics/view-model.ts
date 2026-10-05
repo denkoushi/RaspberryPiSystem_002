@@ -38,15 +38,14 @@ export type PeriodEventRow = {
 };
 
 export type ViewModel = {
-  periodFrom: string;
-  periodTo: string;
   openLoanCount: number;
   overdueOpenCount: number;
   totalMasterCount: number;
   periodBorrowCount: number;
   periodReturnCount: number;
   assetFilterLabel: string;
-  emptyAssetMessage: string;
+  datasetLabel: string;
+  monthlyTrend: { yearMonth: string; borrowCount: number; returnCount: number }[];
   assets: AssetRow[];
   employees: EmployeeRow[];
   periodEvents: PeriodEventRow[];
@@ -54,15 +53,14 @@ export type ViewModel = {
 
 function mapRigging(data: RiggingLoanAnalyticsResponse): ViewModel {
   return {
-    periodFrom: data.meta.periodFrom,
-    periodTo: data.meta.periodTo,
     openLoanCount: data.summary.openLoanCount,
     overdueOpenCount: data.summary.overdueOpenCount,
     totalMasterCount: data.summary.totalRiggingGearsActive,
     periodBorrowCount: data.summary.periodBorrowCount,
     periodReturnCount: data.summary.periodReturnCount,
     assetFilterLabel: '吊具',
-    emptyAssetMessage: '吊具データがありません。',
+    datasetLabel: '吊具',
+    monthlyTrend: data.monthlyTrend.map(({ yearMonth, borrowCount, returnCount }) => ({ yearMonth, borrowCount, returnCount })),
     assets: data.byGear.map((row) => ({
       id: row.gearId,
       code: row.managementNumber,
@@ -89,15 +87,14 @@ function mapRigging(data: RiggingLoanAnalyticsResponse): ViewModel {
 
 function mapItems(data: ItemLoanAnalyticsResponse): ViewModel {
   return {
-    periodFrom: data.meta.periodFrom,
-    periodTo: data.meta.periodTo,
     openLoanCount: data.summary.openLoanCount,
     overdueOpenCount: data.summary.overdueOpenCount,
     totalMasterCount: data.summary.totalItemsActive,
     periodBorrowCount: data.summary.periodBorrowCount,
     periodReturnCount: data.summary.periodReturnCount,
     assetFilterLabel: '表示名',
-    emptyAssetMessage: '写真持出の集計データがありません。',
+    datasetLabel: 'アイテム',
+    monthlyTrend: data.monthlyTrend.map(({ yearMonth, borrowCount, returnCount }) => ({ yearMonth, borrowCount, returnCount })),
     assets: data.byItem.map((row) => ({
       id: row.itemId,
       code: row.itemCode || row.itemId,
@@ -124,15 +121,14 @@ function mapItems(data: ItemLoanAnalyticsResponse): ViewModel {
 
 function mapInstruments(data: MeasuringInstrumentLoanAnalyticsResponse): ViewModel {
   return {
-    periodFrom: data.meta.periodFrom,
-    periodTo: data.meta.periodTo,
     openLoanCount: data.summary.openLoanCount,
     overdueOpenCount: data.summary.overdueOpenCount,
     totalMasterCount: data.summary.totalInstrumentsActive,
     periodBorrowCount: data.summary.periodBorrowCount,
     periodReturnCount: data.summary.periodReturnCount,
     assetFilterLabel: '計測機器',
-    emptyAssetMessage: '計測機器の集計データがありません。',
+    datasetLabel: '計測機器',
+    monthlyTrend: data.monthlyTrend.map(({ yearMonth, borrowCount, returnCount }) => ({ yearMonth, borrowCount, returnCount })),
     assets: data.byInstrument.map((row) => ({
       id: row.instrumentId,
       code: row.managementNumber,
