@@ -15,24 +15,44 @@ export function materialMessageHeader(message: GmailMessage, name: string): stri
   return message.payload?.headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
 }
 
+const BLOCK_END_TAGS = new Set(['p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'tr']);
+const HTML_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+
+function decodeHtmlEntities(text: string): string {
+  return text.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (match, entity: string) => {
+    if (!entity.startsWith('#')) return HTML_ENTITIES[entity.toLowerCase()] ?? match;
+    const code = entity[1]?.toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1));
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+  });
+}
+
+/** Single forward scan: tags, comments and script/style bodies never reach the output. */
 function htmlToText(html: string): string {
-  const entities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
-  // Strip markup to a fixed point so nested or split tags cannot survive one pass.
-  let stripped = html;
-  for (;;) {
-    const next = stripped
-      .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .replace(/<br\b[^>]*>|<\/(?:p|div|li|h[1-6]|tr)>/gi, '\n')
-      .replace(/<[^>]*>/g, '');
-    if (next === stripped) break;
-    stripped = next;
+  const lower = html.toLowerCase();
+  let out = '';
+  let i = 0;
+  while (i < html.length) {
+    if (html[i] !== '<') { out += html[i]; i += 1; continue; }
+    if (lower.startsWith('<!--', i)) {
+      const commentEnd = lower.indexOf('-->', i + 4);
+      i = commentEnd < 0 ? html.length : commentEnd + 3;
+      continue;
+    }
+    const tagEnd = html.indexOf('>', i);
+    const rawTag = (tagEnd < 0 ? html.slice(i + 1) : html.slice(i + 1, tagEnd)).trim().toLowerCase();
+    const closing = rawTag.startsWith('/');
+    const name = (closing ? rawTag.slice(1) : rawTag).split(/[\s/]/, 1)[0] ?? '';
+    i = tagEnd < 0 ? html.length : tagEnd + 1;
+    if (!closing && (name === 'script' || name === 'style')) {
+      const bodyEnd = lower.indexOf(`</${name}`, i);
+      if (bodyEnd < 0) { i = html.length; continue; }
+      const closeEnd = lower.indexOf('>', bodyEnd);
+      i = closeEnd < 0 ? html.length : closeEnd + 1;
+      continue;
+    }
+    if (name === 'br' || (closing && BLOCK_END_TAGS.has(name))) out += '\n';
   }
-  return stripped.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (match, entity: string) => {
-      if (!entity.startsWith('#')) return entities[entity.toLowerCase()] ?? match;
-      const code = entity[1]?.toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1));
-      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
-    }).trim();
+  return decodeHtmlEntities(out).trim();
 }
 
 /** MIME bodies and actual attachments are separate; inline images never enter the shelf. */
