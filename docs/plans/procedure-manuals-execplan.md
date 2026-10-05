@@ -22,11 +22,17 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) PR #1693 を main へ squash merge(merge `c5ed099daea5db373f376a575e04327a90c74695`)。main の CI、CodeQL、Secret scan、Torque Release Composition が同 SHA で success。worktree は `git_lifecycle.cli finish` で削除し `main_sync=updated`。
 - [x] (2026-10-05) Pi5 へ標準ローリング更新(`--limit raspberrypi5 --detach`、run `20261005-015725-1df4cb`、`Result=success`、`ExecMainStatus=0`、recap `ok=268 changed=31 unreachable=0 failed=0`)。反映後 `/api/system/health` が 200(database ok)。
 - [ ] 実機確認(オーナー): 組立ホームの「要領書」入口、割り当て編集で型番×工程に公開済み手順書を置いて閲覧できること。実 PostgreSQL 上での並び置換は本番操作で確認する。
-- [ ] Phase 2: 専用件名の Gmail 素材取込、素材棚、白紙ページ追加、NFC 承認による公開。
+- [x] (2026-10-05) Phase 2a ローカル実装: 専用件名の Gmail 本文・写真素材取込、素材棚、手動 API、管理カード、5分ごとの組込みスケジュールを追加。commit / push / PR / merge / deploy は未実施。
+- [x] (2026-10-05) Phase 2a 指定検証: API lint / vitest 4ファイル80件 / build用 tsc、Web lint / vitest 4ファイル13件 / build が成功。追加の既存取込・スケジュール回帰は7ファイル71件が成功。Prisma Client 生成成功。
+- [ ] Phase 2a 本番反映前: `procedure-materials` の永続マウントを infrastructure の別依頼で追加する。新 migration の実 DB 適用と実メール・端末確認は未実施。
+- [ ] Phase 2b: 白紙ページ追加と素材の配置。
+- [ ] Phase 2c: NFC 承認による公開。
 - [ ] Phase 3: ナレッジ素材・承認済み手順の片方向連携。
 - [ ] 後日: 動画素材(形式未定)。
 
 ## Surprises & Discoveries
+
+- Observation: 素材原本の保存後に DB 保存が失敗すると未参照ファイルが残るため、2b の GC で回収経路を設ける。
 
 - Observation: 既存の「機種名ごとの閲覧順」(`AssemblyProcedureOrderSet`/`AssemblyProcedureOrderItem`)は、旧テンプレート向けの読み取り専用互換層で、公開 API から変更できない。
   Evidence: `apps/api/src/services/assembly/assembly-legacy-procedure-order.service.ts` 冒頭のコメント「Read-only compatibility adapter … No public API may mutate this data.」。ここに機種×工程を足さず、新モデルにする。
@@ -48,6 +54,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: Codex のレビュー指摘(2026-10-05)。`apps/api/src/routes/kiosk-documents.ts` の削除ルートが同サービスを呼ぶ。
 - Observation: 旧形式(改版サイドカーなし)の文書では、公開取消の参照確認と割り当て保存が同じ行をロックしないため、理論上は「確認 → 保存 → 公開取消」の順で割り当て先の公開版が消え得る。実測していない競合で、Phase 1 では放置し、Phase 2 の公開経路を作るときに同じ文書行のロックで直す。
 - Observation: `apps/web/src/features/assembly/**` と組立ホームはキオスク取説(kiosk-sop)の監視対象で、変更すると pre-commit が digest の更新を求める。画面が変わらない変更では `pnpm kiosk-sop:source-refresh` で manifest を更新して一緒に commit する。
+
+- Observation: 本番 `docker-compose.server.yml` は namespace ごとの永続マウントで、`procedure-materials` は未定義。
+  Evidence: `infrastructure/docker/docker-compose.server.yml` の API volumes と named volumes。今回の infrastructure 変更禁止により未修正。本番反映前に別依頼で永続マウントを追加する必要がある。
 
 ## Decision Log
 
@@ -80,6 +89,19 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Rationale: 文書全体を展開する既存ビューア・直列化関数を流用し、既存の共有文書列契約やオーバーレイ型を変更しない。
   Date/Author: 2026-10-05 / Codex。
 
+- Decision: Phase 2 を 2a(素材取込・素材棚)、2b(白紙ページ・配置)、2c(NFC 公開)に分割し、この worktree は2aだけを実装する。
+  Rationale: ユーザー依頼の境界。先にメール素材を安全に蓄積できる入口を独立して検証する。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: 素材取込は未読の受信箱を再試行元として残し、追加の履歴テーブルを作らない。保存済み素材は dedupe key で検出し、ゴミ箱移動失敗後も再取込で復旧する。
+  Rationale: この段階で必要な永続状態は素材自身と Gmail が持つ。既読化しないことでプロセス再起動後にも検索される。保存途中の失敗では残りの対応素材が揃うまでメールを残す。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: 添付の重複キーには添付名とパート ID(なければ MIME ツリー位置)のハッシュを使い、先頭トークンの直後にも任意のヒントを許可する。
+  Rationale: 同名添付を落とさず、ユーザーの「後ろの任意文字列」の契約を満たす。在庫・作業要領のトークン境界規則は変更しない。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: 5分ごとの組込みスケジュールを実装し、管理カードは専用設定と該当スケジュールの enabled を一緒に保存する。
+  Rationale: 既存の execution 分岐を追加する小さい変更で対応できる。設定カードと実際の起動状態のずれを避ける。
+  Date/Author: 2026-10-05 / Codex。
+
 ## Context and Orientation
 
 このリポジトリは pnpm ワークスペースで、`apps/api` が Fastify + Prisma(PostgreSQL)の API、`apps/web` が React(Vite)の Web、`packages/shared-types` が共有の型である。キオスク画面は `apps/web/src/pages/kiosk/` にあり、ルートは `apps/web/src/App.tsx` に列挙されている。組立キオスクのホームは `apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx` で、ナビゲーションのリンク群(`aria-label="組立メニュー"`)から各画面へ飛ぶ。
@@ -108,11 +130,27 @@ Web は `/kiosk/assembly/manuals` に閲覧ページを追加し、`KioskAssembl
 
 テストは、API のルート/サービスに vitest を追加し、割り当て置換の一意制約、改版ルートの公開版解決(下書きが先頭でも旧公開版が返る、公開版なしの項目が他を止めない)、`getReferenceUsage` が割り当てを検出すること、Web の 3 段構成の表示と編集ダイアログの保存をテストする。
 
-### Phase 2: 素材取込と作成
+### Phase 2a: 専用 Gmail 素材取込と素材棚
 
-専用件名(仮 `[Procedure-material]`。`gmail-subject-reservation.policy.ts` に予約し、CSV 件名パターン登録の拒否と、他の Gmail 消費者の除外にも加える)で届いたメールの本文と複数の写真を、`ProcedureMaterial`(素材棚。文・写真、取込元メール ID、保存先、配置先文書)として保存し、保存成功後にメールをゴミ箱へ移す。検索ポリシー、先頭トークン照合、送信元照合、冪等・再試行、ack は在庫取込(`apps/api/src/services/item-inventory/`)を模倣し、在庫の固定 JSON 契約は流用しない。設定は `backup-config.ts` に専用項目を足す。
+件名の先頭トークン `[Procedure-material]` を `gmail-subject-reservation.policy.ts` に予約し、後続の任意文字列をヒントとして保存する。CSV 件名パターンの登録拒否と、CSV ダッシュボード・Gmail storage provider・キオスク文書のメール除外に追加する。設定 `procedureMaterialGmailIngest` は既定で無効、トークンはこの1種類、任意の `fromEmail` で送信元を制限する。管理画面の CSV 取込に「要領書の素材(Gmail)」カードを追加し、有効化と手動実行を行えるようにする。
 
-編集側は、既存の文書エディタ(`apps/web/src/features/assembly/document-editor/`)に「白紙ページを追加」と「素材棚から配置」を足す。素材の写真は IMAGE オーバーレイとして置き、文は TEXT オーバーレイとして置く。未配置の素材が GC で消えないよう、`assembly-procedure-asset-gc.service.ts` の保持判定に素材参照を加える。公開は、ナレッジの承認(`apps/api/src/services/knowledge/knowledge-position-rank.ts` の `canApprove`、社員タグ照合、`KnowledgeProcedureReview` 相当の記録)と同じ規則を、要領書向けの承認記録として実装する。既存のパスワード公開は締付テンプレート向けに残す。
+`ProcedureMaterial` は TEXT / PHOTO、本文または原本の保存キー・sha256・MIME・サイズ・添付名・寸法、ヒント・送信元・メール ID・一意な `gmailDedupeKey`・受信日時、将来の配置先 `documentId`・`placedAt`、`discardedAt`、作成更新日時を持つ。新テーブルと enum だけを `20261005150000_add_procedure_materials` の expand-only SQL で追加する。文書への外部キーは `onDelete: SetNull` とし、既存文書モデルには Prisma が要求する逆参照だけを追加する。
+
+`apps/api/src/services/assembly/procedure-material-gmail-ingestion.service.ts` の `runOnce({ config, allowWait, manual?, messageId?, forceRetry? })` は、在庫取込と同じ実行入口・単一実行ガード・20通のバッチ上限を持つ。検索は正規トークンの `subject:"…" in:inbox is:unread` とし、取得後に件名・送信元を検証する。resolver は text/plain を優先し、なければ HTML をテキスト化する。inline を除いた JPEG / PNG / WebP の10 MB以下の原本を DurableFileStorePort に `procedure-materials/<sha256>/original` として整合性検証付きで保存する。本文は `messageId:body`、添付は添付名と MIME パート識別子のハッシュを使う。同じ名前の複数写真も区別し、同じメールの再実行では増えない。PDF・動画・超過サイズ・不正画像は除外件数と理由へ入れる。
+
+対応素材をすべて保存したメールだけ `trashMessage` を実行する。本文空・対応写真なしの場合と、取込・保存・ゴミ箱移動の失敗時は既読にせず受信箱に残す。未読受信箱を永続的な再試行元とし、同一プロセスでは失敗後5分待つ。特定 `messageId` の `forceRetry` は待機を解除する。保存済みの dedupe key は原本を再取得せず、ゴミ箱移動を再試行する。追加の取込履歴テーブルは作らない。
+
+API `/assembly/procedure-materials` は Phase 1 と同じ `allowView` / `allowWriteKiosk` を使う。一覧は state / ヒント部分一致 / 既定100件で新しい順、PHOTO原本は private, no-store、TEXTや素材なしは404、手動取込は件数と各メールの状態を返す。discard / restore は配置済みを409で拒否し、未配置の `discardedAt` を設定・解除する。`procedure-material-gmail` の組込み行を5分ごと・既定無効で保証し、CSV execution から素材取込へ直接分岐する。
+
+要領書ブラウザ上部の「素材」でダイアログを開き、本文冒頭2行・写真サムネイル・ヒント・受信日時・送信元を表示する。ヒント検索、「今すぐ取り込む」、未配置 / 捨てた素材の切替、「捨てる」 / 「戻す」を提供する。操作部は縮まない構造、ボタンは `min-h-11` とし、配置ボタンは置かない。原本は認証付き Blob で取得して object URL を解放する。テストは件名排他、resolver、保存・ゴミ箱移動の冪等性と失敗、API状態・404・403・破棄復元、スケジュールと管理設定、素材棚の一覧・手動取込を Prisma モックで確認する。
+
+### Phase 2b: 白紙ページと素材の配置
+
+既存の文書エディタ(`apps/web/src/features/assembly/document-editor/`)に「白紙ページを追加」と「素材棚から配置」を足す。写真は IMAGE、本文は TEXT オーバーレイとして置き、`documentId` / `placedAt` を更新する。配置先のライフサイクルと素材原本の保持を確認する。素材は組立文書の asset namespace とは独立して保存するため、配置後に文書資産へコピーする場合はその資産の GC 保持判定を既存規則に合わせる。公開経路・共通オーバーレイ型はこの段階で変更しない。
+
+### Phase 2c: NFC 承認による公開
+
+ナレッジの承認(`apps/api/src/services/knowledge/knowledge-position-rank.ts` の `canApprove`、社員タグ照合、`KnowledgeProcedureReview` 相当の記録)と同じ規則を、要領書向けの承認記録として実装する。既存のパスワード公開は締付テンプレート向けに残す。Phase 1 で観測した公開取消と割り当ての競合は、この公開経路の実装時に同じ文書行のロックで扱う。Phase 2a では公開・NFC・白紙ページ・配置を実装しない。
 
 ### Phase 3: ナレッジ連携
 
@@ -131,6 +169,23 @@ Web は `/kiosk/assembly/manuals` に閲覧ページを追加し、`KioskAssembl
 
        cd apps/api && pnpm lint && pnpm test -- procedure-manual
        cd apps/web && pnpm lint && pnpm test -- procedure-manuals && pnpm build
+
+## Concrete Steps (Phase 2a)
+
+既存タスクの worktree `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--procedure-manuals-phase2a-materials` でローカル実装と検証だけを行う。Git の mutation と infrastructure 変更は今回の依頼外である。依存関係は `pnpm install --offline --frozen-lockfile`、ワークスペースの shared-types / shelf-layout-core / part-search-core / kiosk-sop-core の build、`apps/api` の `pnpm exec prisma generate` で準備した。Prisma の通常生成はユーザーキャッシュの utime が EPERM になったため、worktree内の既存 engine バイナリを `PRISMA_QUERY_ENGINE_LIBRARY` / `PRISMA_SCHEMA_ENGINE_BINARY` で指定して成功した。
+
+指定検証は次のとおり。
+
+    cd apps/api && pnpm lint && pnpm exec vitest run procedure-material gmail-subject-reservation && pnpm exec tsc -p tsconfig.build.json --noEmit
+    cd apps/web && pnpm lint && pnpm exec vitest run procedure-manuals ItemInventoryGmailScheduleCard && pnpm build
+
+API は4ファイル80件、Webは4ファイル13件の成功を確認した。追加回帰は `apps/api` で `pnpm exec vitest run item-inventory-gmail csv-import-execution.service import-schedule-admin.service gmail-storage.provider csv-dashboard-import.service.ingest-behavior kiosk-document-gmail-ingestion.query` を実行し、7ファイル71件が成功した。Webの import順序、スケジュールテストの行順の前提、素材棚の403表示を修正して対象検証を再実行した。最後の組込み行削除ガードと管理カードの表示状態変更には対象 lint / テスト / API tsc を追加して確認した。
+
+実 DB migration と実メールの検証、本番永続マウントの準備、端末操作確認は次の統合段階で行う。commit / push / PR / merge / deploy は実行していない。kiosk-sop digest の更新はユーザー指示により Claude 側で行う。
+
+## Validation and Acceptance (Phase 2a)
+
+Gmail利用可能な検証環境で件名 `[Procedure-material] DFD1 組立`、本文とJPEG/PNG/WebP写真を送信し、要領書の「素材」から手動取込を実行する。本文1件と各写真が新しい順に現れ、ヒント・日時・送信元が表示される。ヒントで絞り込み、捨てた素材から戻せる。素材の原本が保存されたメールだけゴミ箱へ移動し、同じメールを再取込しても素材は増えない。本文空・PDF/動画のみのメールは未読の受信箱に残り、スキップ理由が返る。送信元不一致も保存せず残す。閲覧専用端末の書込は403になる。自動取込を有効化すると組込み行が起動し、無効化すると停止する。これらのローカル契約は上記モックテストで確認済みで、実 Gmail・実端末での受入は未実施である。
 
 ## Validation and Acceptance (Phase 1)
 
@@ -158,3 +213,5 @@ Phase 1 のローカル実装と指定の検証を完了した。文書は改版
 (上の段落は Codex のローカル実装時点の記録。)その後、使い捨て PostgreSQL で全 migration の適用と CHECK 制約を確認し、Codex の読み取り専用レビューがキオスク PDF 削除経路の抜けを捕まえたので修正した。PR #1693 は CI 全通過後に squash merge(`c5ed099d`)し、Pi5 へ run `20261005-015725-1df4cb` で反映、health 200 を確認した。Phase 1 は本番反映まで完了。残りはオーナーの実機確認と、Phase 2(素材取込・白紙ページ・NFC 承認)、Phase 3(ナレッジ連携)、動画。実装は Codex、レビューも Codex(read-only)、検証と統合は Claude という分担で進めた。
 
 範囲外の観測: Web 検証で baseline-browser-mapping / Browserslist のデータ更新警告と Vite の大きな chunk の警告が出た。今回の依頼では依存更新や既存 bundle の分割を行っていない。
+
+Phase 2a の変更記録(2026-10-05): 上記 Plan of Work を2a/2b/2cへ分割し、素材取込・棚・管理カード・組込みスケジュールのローカル実装を追加した。指定検証は API 80件・Web 13件、lint / tsc / build がすべて成功し、既存境界の回帰71件も成功した。検証と環境準備は約7分。本番用の永続マウント、実 DB migration、実メール・端末確認、commit以降の統合段階は未実施。

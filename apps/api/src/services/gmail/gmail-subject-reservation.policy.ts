@@ -18,7 +18,10 @@ export const ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS = [
   '[ItemlistRaspi-photo]',
 ] as const;
 
+export const PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS = ['[Procedure-material]'] as const;
+
 const RESERVED_GMAIL_SUBJECTS = [
+  { subject: PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS[0], owner: '要領書の素材' },
   { subject: ASSEMBLY_PROCEDURE_GMAIL_SUBJECT, owner: '組立手順書' },
   { subject: MACHINE_SIGNAL_GMAIL_SUBJECT, owner: '設備稼働ログ' },
 ] as const;
@@ -80,4 +83,14 @@ export function isItemInventoryGmailSubject(subject: string): boolean {
   return ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS.some((token) =>
     normalized === token || normalized.startsWith(`${token} `) || normalized.startsWith(`${token}\t`)
   );
+}
+
+/** The leading token owns the message; any following text is a material hint. */
+export function isProcedureMaterialGmailSubject(subject: string): boolean {
+  return subject.normalize('NFC').trim().startsWith(PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS[0]);
+}
+
+export function getProcedureMaterialSubjectHint(subject: string): string | null {
+  if (!isProcedureMaterialGmailSubject(subject)) return null;
+  return subject.normalize('NFC').trim().slice(PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS[0].length).trim() || null;
 }

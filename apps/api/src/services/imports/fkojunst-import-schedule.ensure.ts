@@ -8,6 +8,7 @@ import { ensureSeibanMachineNameSupplementCsvImportSchedule } from './seiban-mac
 import { ensureRiggingSlingsInspectionCsvImportSchedule } from './slings-inspection-import-schedule.policy.js';
 import { ensureScawStfutekigoCsvImportSchedule } from './scaw-stfutekigo-import-schedule.policy.js';
 import { ensureItemInventoryGmailCsvImportSchedule } from './item-inventory-import-schedule.policy.js';
+import { ensureProcedureMaterialGmailCsvImportSchedule } from './procedure-material-import-schedule.policy.js';
 import { ensureMachineSignalGmailCsvImportSchedule } from './machine-signal-import-schedule.policy.js';
 
 export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig): {
@@ -23,8 +24,9 @@ export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig)
   const scawStfutekigoEnsured = ensureScawStfutekigoCsvImportSchedule(riggingSlingsEnsured.config);
   const itemInventoryEnsured = ensureItemInventoryGmailCsvImportSchedule(scawStfutekigoEnsured.config);
   const machineSignalEnsured = ensureMachineSignalGmailCsvImportSchedule(itemInventoryEnsured.config);
+  const procedureMaterialEnsured = ensureProcedureMaterialGmailCsvImportSchedule(machineSignalEnsured.config);
   return {
-    config: machineSignalEnsured.config,
+    config: procedureMaterialEnsured.config,
     repaired:
       fkojunstEnsured.repaired ||
       fkojunstStatusMailEnsured.repaired ||
@@ -34,7 +36,8 @@ export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig)
       riggingSlingsEnsured.repaired ||
       scawStfutekigoEnsured.repaired ||
       itemInventoryEnsured.repaired ||
-      machineSignalEnsured.repaired,
+      machineSignalEnsured.repaired ||
+      procedureMaterialEnsured.repaired,
   };
 }
 

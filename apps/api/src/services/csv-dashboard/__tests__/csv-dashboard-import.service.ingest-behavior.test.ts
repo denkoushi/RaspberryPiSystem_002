@@ -227,7 +227,7 @@ describe('CsvDashboardImportService ingest behavior', () => {
     );
   });
 
-  it('skips item-inventory messages before CSV parsing and Gmail post-processing', async () => {
+  it.each(['[ItemlistRaspi-photo] 2', '[Procedure-material] DFD1'])('skips dedicated mail %s before other ingestion', async (ownedSubject) => {
     const service = new CsvDashboardImportService() as any;
     service.subjectPatternProvider = {
       listEnabledPatterns: vi.fn().mockResolvedValue(['CSV Import']),
@@ -237,7 +237,7 @@ describe('CsvDashboardImportService ingest behavior', () => {
         'CSV Import': [{
           buffer: Buffer.from('{"schema_version":1}'),
           messageId: 'inventory-message',
-          messageSubject: '[ItemlistRaspi-photo] 2',
+          messageSubject: ownedSubject,
         }],
       }),
     };
