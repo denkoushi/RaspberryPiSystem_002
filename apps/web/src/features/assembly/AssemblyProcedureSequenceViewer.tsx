@@ -32,6 +32,8 @@ type Props = {
   sequence: AssemblyProcedureSequenceDto;
   className?: string;
   showCurrentMarkerButton?: boolean;
+  layout?: 'session' | 'manuals';
+  onCurrentStepChange?: (step: AssemblyProcedureSequenceStepDto | null, index: number, total: number) => void;
   boltMarkers?: AssemblyCanvasBolt[];
   checkMarkers?: AssemblyCanvasCheckItem[];
   selectedBoltId?: string | null;
@@ -220,7 +222,9 @@ export function AssemblyProcedureSequenceViewer({
   currentMarker,
   onToggleCheckItem,
   onCurrentPageChange,
-  showCurrentMarkerButton = true
+  showCurrentMarkerButton = true,
+  layout = 'session',
+  onCurrentStepChange
 }: Props) {
   const steps = useMemo(
     () => (sequence.steps && sequence.steps.length > 0 ? sequence.steps : fallbackSteps(sequence)),
@@ -228,11 +232,17 @@ export function AssemblyProcedureSequenceViewer({
   );
   const [stepIndex, setStepIndex] = useState(0);
   const [storyboardOpen, setStoryboardOpen] = useState(
-    () => typeof window !== 'undefined' && window.innerWidth >= 1366
+    () => layout !== 'manuals' && typeof window !== 'undefined' && window.innerWidth >= 1366
   );
   const [showFullPage, setShowFullPage] = useState(false);
+  const [pageShape, setPageShape] = useState<{ url: string; landscape: boolean } | null>(null);
+  const [fitChoice, setFitChoice] = useState<{ url: string; mode: 'contain' | 'width' } | null>(null);
   const currentStep = steps[Math.max(0, Math.min(steps.length - 1, stepIndex))] ?? null;
   const crop = currentStep ? stepCrop(currentStep) : null;
+  const manuals = layout === 'manuals';
+  const fitMode = fitChoice?.url === currentStep?.pageUrl ? fitChoice?.mode
+    : pageShape?.url === currentStep?.pageUrl && pageShape?.landscape ? 'width' : 'contain';
+  const fitWidth = manuals && fitMode === 'width';
   const findSequenceDocument = useCallback((step: AssemblyProcedureSequenceStepDto) =>
     sequence.documents.find((document) =>
       step.kioskDocumentId
@@ -317,6 +327,10 @@ export function AssemblyProcedureSequenceViewer({
     onCurrentPageChange?.(currentPage);
   }, [currentPage, onCurrentPageChange]);
 
+  useEffect(() => {
+    onCurrentStepChange?.(currentStep, stepIndex, steps.length);
+  }, [currentStep, stepIndex, steps.length, onCurrentStepChange]);
+
   const jumpToCurrentMarker = () => {
     if (!currentMarker) return;
     const nextIndex = steps.findIndex((step) => stepMatchesMarker(step, currentMarker));
@@ -341,8 +355,8 @@ export function AssemblyProcedureSequenceViewer({
         : 'border-cyan-300/25 bg-cyan-950/35 text-cyan-50';
 
   return (
-    <div className={clsx('flex min-h-0 flex-col bg-slate-950', className)}>
-      <header className="shrink-0 border-b border-white/10 bg-slate-900/90 px-2 py-1">
+    <div className={clsx('relative flex min-h-0 flex-col', manuals ? 'bg-[#0a0d10]' : 'bg-slate-950', className)}>
+      {!manuals ? <header className="shrink-0 border-b border-white/10 bg-slate-900/90 px-2 py-1">
         <div
           className="grid min-h-12 grid-cols-[minmax(10rem,1fr)_minmax(4rem,0.45fr)_auto] items-center gap-2"
           data-testid="assembly-procedure-sequence-toolbar"
@@ -428,7 +442,7 @@ export function AssemblyProcedureSequenceViewer({
             ) : null}
           </div>
         ) : null}
-      </header>
+      </header> : null}
       <div className="flex min-h-0 flex-1">
         {storyboardOpen ? (
           <aside className="flex w-48 shrink-0 flex-col border-r border-white/10 bg-slate-900/75">
@@ -446,7 +460,7 @@ export function AssemblyProcedureSequenceViewer({
           </aside>
         ) : null}
         <div
-          className="relative min-h-0 flex-1 overflow-hidden p-2"
+          className={clsx("relative min-h-0 min-w-0 flex-1 overflow-hidden", manuals ? "p-5" : "p-2")}
           data-testid="assembly-work-step-canvas"
         >
           {crop && !showFullPage ? (
@@ -472,14 +486,19 @@ export function AssemblyProcedureSequenceViewer({
               }
             />
           ) : (
+            <div key={manuals ? currentStep.pageUrl : undefined} className={clsx("h-full w-full", fitWidth ? "overflow-y-auto" : "overflow-hidden")} data-testid="procedure-page-viewport" data-fit-mode={manuals ? fitMode : undefined}>
             <AssemblyProcedureImageWithMarkers
-              fitToParent
-              className="h-full w-full"
+              fitToParent={!fitWidth}
+              className={fitWidth ? "!block w-full" : "h-full w-full"}
               imageContent={
                 <KioskDocumentPageImage
                   pageUrl={currentStep.pageUrl}
                   alt=""
-                  className="h-full w-full object-contain"
+                  className={fitWidth ? "block h-auto w-full" : "h-full w-full object-contain"}
+                  onLoad={manuals ? (event) => {
+                    const image = event.currentTarget;
+                    if (image.naturalWidth && image.naturalHeight) setPageShape({ url: currentStep.pageUrl, landscape: image.naturalWidth > image.naturalHeight });
+                  } : undefined}
                 />
               }
               bolts={boltMarkers}
@@ -494,9 +513,10 @@ export function AssemblyProcedureSequenceViewer({
                 />
               }
             />
+            </div>
           )}
           {crop ? (
-            <div className="absolute bottom-3 right-3 grid w-32 gap-1">
+            <div className={clsx("absolute right-3 grid w-32 gap-1", manuals ? "bottom-24" : "bottom-3")}>
               <AssemblyProcedureCropMinimap
                 pageUrl={currentStep.pageUrl}
                 crop={crop}
@@ -519,6 +539,15 @@ export function AssemblyProcedureSequenceViewer({
           ) : null}
         </div>
       </div>
+      {manuals ? <nav aria-label="手順の操作" className="absolute bottom-6 right-7 flex items-center gap-2 rounded-xl border border-[#344252] bg-[#0f1317]/80 p-2 text-[19px] font-bold">
+        {!crop || showFullPage ? <div role="group" aria-label="表示サイズ" className="inline-flex overflow-hidden rounded-lg border border-[#344252]">
+          {([['contain', '全体'], ['width', '幅いっぱい']] as const).map(([mode, label]) => <button key={mode} className={clsx("min-h-11 min-w-11 whitespace-nowrap px-3.5", fitMode === mode && "bg-[#3ba776] text-[#0b1a12]")} aria-pressed={fitMode === mode} onClick={() => setFitChoice({ url: currentStep.pageUrl, mode })}>{label}</button>)}
+        </div> : null}
+        <button className="h-11 rounded-lg border border-[#344252] px-3.5" aria-pressed={storyboardOpen} onClick={() => setStoryboardOpen((open) => !open)}>全手順</button>
+        <button className="h-11 rounded-lg border border-[#344252] px-3.5 disabled:opacity-40" disabled={stepIndex === 0} onClick={() => setStepIndex((index) => index - 1)}>前手順</button>
+        <span className="px-2 font-mono font-medium">{stepIndex + 1} / {steps.length}</span>
+        <button className="h-11 rounded-lg bg-[#3ba776] px-3.5 text-[#0b1a12] disabled:opacity-40" disabled={stepIndex === steps.length - 1} onClick={() => setStepIndex((index) => index + 1)}>次手順</button>
+      </nav> : null}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureSequenceViewer } from './AssemblyProcedureSequenceViewer';
@@ -192,6 +192,57 @@ describe('AssemblyProcedureSequenceViewer', () => {
       'data-marker-id',
       'check-1'
     );
+  });
+
+  it.each([[700, 1000, '全体', 'contain'], [1000, 700, '幅いっぱい', 'width']])('defaults to the page image aspect ratio (%s × %s) and allows switching', (width, height, label, mode) => {
+    const onStep = vi.fn();
+    render(<AssemblyProcedureSequenceViewer sequence={assemblySequence} layout="manuals" showCurrentMarkerButton={false} onCurrentStepChange={onStep} />);
+    const canvas = screen.getByTestId('assembly-work-step-canvas');
+    const image = within(canvas).getByRole('img');
+    Object.defineProperties(image, { naturalWidth: { value: width }, naturalHeight: { value: height } });
+    fireEvent.load(image);
+    expect(screen.queryByTestId('assembly-procedure-sequence-toolbar')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '現在の丸数字へ' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('procedure-page-viewport')).toHaveAttribute('data-fit-mode', mode);
+    expect(onStep).toHaveBeenLastCalledWith(expect.objectContaining({ pageIndex: 0 }), 0, 1);
+    fireEvent.click(screen.getByRole('button', { name: label === '全体' ? '幅いっぱい' : '全体' }));
+    expect(screen.getByTestId('procedure-page-viewport')).toHaveAttribute('data-fit-mode', mode === 'width' ? 'contain' : 'width');
+    if (mode === 'contain') {
+      expect(screen.getByTestId('procedure-page-viewport')).toHaveClass('overflow-y-auto');
+      expect(within(canvas).getByRole('img')).toHaveClass('h-auto');
+    }
+  });
+  it('resets width scrolling and determines the next page default independently', () => {
+    const sequence = { ...assemblySequence, documents: [{ ...baseDocument, pageUrls: [...baseDocument.pageUrls, '/api/storage/assembly-procedure-images/landscape.png'] }] };
+    render(<AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" />);
+    const first = within(screen.getByTestId('assembly-work-step-canvas')).getByRole('img');
+    Object.defineProperties(first, { naturalWidth: { value: 700 }, naturalHeight: { value: 1000 } });
+    fireEvent.load(first);
+    fireEvent.click(screen.getByRole('button', { name: '幅いっぱい' }));
+    screen.getByTestId('procedure-page-viewport').scrollTop = 300;
+    fireEvent.click(screen.getByRole('button', { name: '次手順' }));
+    expect(screen.getByTestId('procedure-page-viewport').scrollTop).toBe(0);
+    const second = within(screen.getByTestId('assembly-work-step-canvas')).getByRole('img');
+    Object.defineProperties(second, { naturalWidth: { value: 1000 }, naturalHeight: { value: 700 } });
+    fireEvent.load(second);
+    expect(screen.getByRole('button', { name: '幅いっぱい' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('2 / 2')).toBeInTheDocument();
+  });
+  it('keeps crop viewing and temporary full page navigation in manuals layout', () => {
+    const sequence: AssemblyProcedureSequenceDto = { ...assemblySequence, steps: [{
+      id: 'crop', sortOrder: 0, kioskDocumentId: null, assemblyProcedureDocumentId: 'doc-1', pageIndex: 0,
+      viewMode: 'crop', cropXRatio: 0, cropYRatio: 0, cropWidthRatio: 0.5, cropHeightRatio: 0.5,
+      title: '切抜き', instructionText: null, emphasis: 'normal', documentType: 'assembly_procedure_document',
+      documentTitle: '文書', pageUrl: baseDocument.pageUrls[0]
+    }] };
+    render(<AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" />);
+    expect(screen.getByTestId('assembly-procedure-crop-minimap')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '表示サイズ' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '全体を一時表示' }));
+    expect(screen.getByRole('group', { name: '表示サイズ' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '矩形へ戻る' }));
+    expect(screen.queryByRole('group', { name: '表示サイズ' })).not.toBeInTheDocument();
   });
 
   it('keeps the open storyboard virtualized for 300 steps', async () => {

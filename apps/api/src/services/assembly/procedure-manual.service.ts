@@ -44,10 +44,12 @@ export class ProcedureManualService {
   constructor(private readonly render = new PdfStorageRenderAdapter()) {}
 
   async listProcesses() {
-    return prisma.procedureManualProcess.findMany({
+    const processes = await prisma.procedureManualProcess.findMany({
       where: { active: true, OR: [{ parentId: null }, { parent: { active: true } }] },
       orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }]
     });
+    // Keep the existing assembly children first in the browsing list.
+    return processes.sort((a, b) => Number(b.parentId === 'procedure-manual-assembly') - Number(a.parentId === 'procedure-manual-assembly'));
   }
 
   async listModels() {
@@ -122,6 +124,24 @@ export class ProcedureManualService {
     return { assignments: resolved.map(({ assignment }) => assignment), sequence };
   }
 
+  async appendDraftAssignment(modelCode: string, processId: string, documentId: string) {
+    const modelCodeKey = modelKey(modelCode);
+    await runAssemblyTransaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "ProcedureManualProcess" WHERE id = ${processId} FOR UPDATE`;
+      const process = await tx.procedureManualProcess.findFirst({ where: { id: processId, active: true, parent: { active: true, parentId: null } } });
+      if (!process) throw new ApiError(400, '工程が見つかりません');
+      await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${documentId} FOR UPDATE`;
+      const document = await tx.assemblyProcedureDocument.findUnique({ where: { id: documentId }, include: { revisionMetadata: true } });
+      if (!document || !document.isActive) throw new ApiError(400, '手順書が見つかりません');
+      const existing = await tx.procedureManualAssignment.findMany({ where: { modelCodeKey, processId }, orderBy: { sortOrder: 'desc' }, take: 1 });
+      await tx.procedureManualAssignment.create({ data: {
+        modelCode, modelCodeKey, processId,
+        assemblyProcedureDocumentId: document.revisionMetadata?.revisionRootId ?? document.id,
+        sortOrder: (existing[0]?.sortOrder ?? -1) + 1
+      } });
+    });
+  }
+
   async replaceAssignments(modelCode: string, processId: string, items: ProcedureManualAssignmentInput[]) {
     const modelCodeKey = modelKey(modelCode);
     if (new Set(items.map((item) => item.sortOrder)).size !== items.length) {
@@ -143,6 +163,8 @@ export class ProcedureManualService {
       // Use a stable order when a replacement references multiple documents.
       const ids = [...new Set(items.flatMap(item => item.assemblyProcedureDocumentId ? [item.assemblyProcedureDocumentId] : []))].sort();
       for (const id of ids) await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
+      const existing = await tx.procedureManualAssignment.findMany({ where: { modelCodeKey, processId }, select: { assemblyProcedureDocumentId: true } });
+      const existingRoots = new Set(existing.map((row) => row.assemblyProcedureDocumentId));
       const data = await Promise.all(items.map(async (item) => {
         let rootId: string | null = null;
         if (item.assemblyProcedureDocumentId) {
@@ -151,7 +173,7 @@ export class ProcedureManualService {
           });
           if (!document) throw new ApiError(400, '手順書が見つかりません');
           rootId = document.revisionMetadata?.revisionRootId ?? document.id;
-          if (!await this.resolvePublished(rootId, tx)) throw new ApiError(400, '公開版がありません');
+          if (!existingRoots.has(rootId) && !await this.resolvePublished(rootId, tx)) throw new ApiError(400, '公開版がありません');
         } else {
           const document = await tx.kioskDocument.findFirst({ where: { id: item.kioskDocumentId!, enabled: true } });
           if (!document) throw new ApiError(400, 'キオスク文書が見つかりません');

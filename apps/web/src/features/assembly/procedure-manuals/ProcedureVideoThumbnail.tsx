@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { getProcedureVideoPoster } from '../../../api/client';
 
-export function ProcedureVideoThumbnail({ id, title }: { id: string; title: string }) {
+export function ProcedureVideoThumbnail({ id, title, className }: { id: string; title: string; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -26,5 +26,5 @@ export function ProcedureVideoThumbnail({ id, title }: { id: string; title: stri
     }
     return () => { cancelled = true; observer?.disconnect(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [id]);
-  return <div ref={ref} className="flex h-16 w-24 shrink-0 items-center justify-center rounded bg-slate-200 text-xs text-slate-600">{url ? <img src={url} alt={title} className="h-full w-full object-contain" /> : failed ? '画像なし' : '読込中…'}</div>;
+  return <div ref={ref} className={`flex ${className ?? 'h-16 w-24'} shrink-0 items-center justify-center rounded bg-slate-200 text-xs text-slate-600`}>{url ? <img src={url} alt={title} className="h-full w-full object-contain" /> : failed ? '画像なし' : '読込中…'}</div>;
 }

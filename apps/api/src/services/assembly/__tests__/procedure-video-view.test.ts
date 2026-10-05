@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
 import { AssemblyProcedureDocumentRevisionService } from '../assembly-procedure-document-revision.service.js';
@@ -9,6 +9,7 @@ import { ProcedureManualService } from '../procedure-manual.service.js';
 const now = new Date();
 const links = ['READY', 'PENDING', 'PROCESSING', 'FAILED'].map((status, index) => ({ pageIndex: 0, sortOrder: index, video: { id: status, title: status, durationSeconds: 3, status, discardedAt: null } }));
 const doc = { id: 'doc', name: '手順', imageRelativePath: 'image', status: 'PUBLISHED', isActive: true, publishedAt: now, createdAt: now, updatedAt: now, pages: [{ pageIndex: 0, imageRelativePath: 'image' }], overlayElements: [], revisionMetadata: null, procedureVideoLinks: links };
+beforeEach(() => { vi.spyOn(prisma.assemblyProcedureDocumentEditLease, 'findUnique').mockResolvedValue(null); });
 afterEach(() => vi.restoreAllMocks());
 describe('procedure-video document viewing', () => {
   it('serializes only READY active videos on the matching page', () => {

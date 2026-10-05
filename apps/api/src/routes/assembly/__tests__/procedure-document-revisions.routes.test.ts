@@ -1,10 +1,11 @@
 import multipart from '@fastify/multipart';
 import Fastify from 'fastify';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureDocumentBlankService } from '../../../services/assembly/assembly-procedure-document-blank.service.js';
 import { ProcedureMaterialPlacementService } from '../../../services/assembly/procedure-material-placement.service.js';
 
+import { AssemblyProcedureDocumentEditLeaseService } from '../../../services/assembly/assembly-procedure-document-edit-lease.service.js';
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import {
@@ -113,6 +114,7 @@ function buildHarness() {
 }
 
 describe('assembly procedure revision routes', () => {
+  beforeEach(() => { vi.spyOn(AssemblyProcedureDocumentEditLeaseService.prototype, 'assertCanWrite').mockResolvedValue(undefined); });
   let app: ReturnType<typeof Fastify> | null = null;
 
   afterEach(async () => {
@@ -130,11 +132,16 @@ describe('assembly procedure revision routes', () => {
     const created = await app.inject({ method: 'POST', url: '/assembly/procedure-documents/blank', payload: { name: '白紙' } });
     expect(created.statusCode).toBe(200); expect(created.json().document.status).toBe('draft');
     expect(blank).toHaveBeenCalledWith('白紙');
+    const withAssignment = vi.spyOn(AssemblyProcedureDocumentBlankService.prototype, 'createWithAssignment').mockResolvedValue({ document: makeRevision(), assignmentError: '割り当てに失敗しました' } as never);
+    const assigned = await app.inject({ method: 'POST', url: '/assembly/procedure-documents/blank', payload: { name: '白紙2', assignment: { modelCode: 'DFD1', processId: 'cutting' } } });
+    expect(assigned.statusCode).toBe(200);
+    expect(assigned.json().assignmentError).toContain('割り当てに失敗');
+    expect(withAssignment).toHaveBeenCalledWith('白紙2', { modelCode: 'DFD1', processId: 'cutting' });
     expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/blank`, payload: { expectedEditVersion: 4, accessPassword: '1234' } })).statusCode).toBe(200);
-    expect(harness.service.addBlankPage).toHaveBeenCalledWith({ documentId, expectedEditVersion: 4, accessPassword: '1234' });
+    expect(harness.service.addBlankPage).toHaveBeenCalledWith({ holderKey: null, holderToken: null, documentId, expectedEditVersion: 4, accessPassword: '1234' });
     const placed = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/materials/${documentId}/place`, payload: { pageIndex: 0, accessPassword: '1234' } });
     expect(placed.json().element).toEqual(element);
-    expect(place).toHaveBeenCalledWith({ documentId, materialId: documentId, pageIndex: 0, accessPassword: '1234' });
+    expect(place).toHaveBeenCalledWith({ holderKey: null, holderToken: null, documentId, materialId: documentId, pageIndex: 0, accessPassword: '1234' });
   });
 
   it.each(['/blank', `/${documentId}/pages/blank`, `/${documentId}/materials/${documentId}/place`])('requires kiosk write permission for %s', async (suffix) => {
@@ -213,7 +220,7 @@ describe('assembly procedure revision routes', () => {
       payload: { accessPassword: '2520', expectedEditVersion: 4 }
     });
     expect(discarded.statusCode).toBe(200);
-    expect(harness.service.discardRevision).toHaveBeenCalledWith({
+    expect(harness.service.discardRevision).toHaveBeenCalledWith({ holderKey: null, holderToken: null,
       documentId,
       accessPassword: '2520',
       expectedEditVersion: 4
@@ -248,7 +255,7 @@ describe('assembly procedure revision routes', () => {
       payload: multipartPayload.body
     });
     expect(uploaded.statusCode).toBe(200);
-    expect(harness.assetsService.uploadOverlayImage).toHaveBeenCalledWith({
+    expect(harness.assetsService.uploadOverlayImage).toHaveBeenCalledWith({ holderKey: null, holderToken: null,
       documentId,
       accessPassword: '2520',
       bytes: Buffer.from('png'),
@@ -268,7 +275,7 @@ describe('assembly procedure revision routes', () => {
       payload: region
     });
     expect(imageRegion.statusCode).toBe(200);
-    expect(harness.assetsService.createImageRegion).toHaveBeenCalledWith({
+    expect(harness.assetsService.createImageRegion).toHaveBeenCalledWith({ holderKey: null, holderToken: null,
       documentId,
       ...region
     });

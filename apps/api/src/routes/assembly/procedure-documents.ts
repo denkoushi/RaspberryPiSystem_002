@@ -1,10 +1,10 @@
 import { videosForPage, type ProcedureVideoSummary } from '../../services/assembly/procedure-video.service.js';
 import { serializeLastProcedureManualApproval, type ProcedureManualApprovalSnapshot } from '../../services/assembly/assembly-procedure-document-revision.serializer.js';
-import { findClientDeviceByApiKey, parseKioskApiClientKeyHeader } from '../../services/clients/client-device-auth.service.js';
 import type { MultipartFile } from '@fastify/multipart';
 import type { AssemblyProcedureAsset } from '@prisma/client';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
+import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter } from './procedure-document-edit-leases.js';
 
 import { ApiError } from '../../lib/errors.js';
 import {
@@ -252,7 +252,7 @@ export function registerAssemblyProcedureDocumentRoutes(
     };
   });
 
-  app.post('/assembly/procedure-documents/:id/publish', { preHandler: allowWriteKiosk }, async (request) => {
+  app.post('/assembly/procedure-documents/:id/publish', { preHandler: [allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const body = z
       .object({
@@ -260,7 +260,7 @@ export function registerAssemblyProcedureDocumentRoutes(
         expectedEditVersion: z.coerce.number().int().min(0).optional()
       })
       .parse(request.body ?? {});
-    const doc = await procedureService.publish(params.id, body);
+    const doc = await procedureService.publish(params.id, { ...body, ...await resolveAssemblyProcedureEditWriter(request) });
     return { document: serializeProcedureDocument(doc) };
   });
 
@@ -270,18 +270,17 @@ export function registerAssemblyProcedureDocumentRoutes(
     return { reviewer: { displayName: reviewer.displayName, positionName: reviewer.positionName, rank: reviewer.rank } };
   });
 
-  app.post('/assembly/procedure-documents/:id/approve-publish', { preHandler: allowWriteKiosk, config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request) => {
+  app.post('/assembly/procedure-documents/:id/approve-publish', { preHandler: [allowWriteKiosk, enforceAssemblyProcedureEditLease], config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const body = z.object({
       reviewerTagUid: z.string().trim().min(1).max(128),
       expectedEditVersion: z.number().int().min(0),
       comment: z.string().trim().min(1).max(500).optional()
     }).strict().parse(request.body);
-    const key = parseKioskApiClientKeyHeader(request.headers['x-client-key']);
-    const client = request.user ? null : key ? await findClientDeviceByApiKey(key) : null;
-    const actorKey = request.user ? `user:${request.user.id}` : client ? `client:${client.id}` : null;
+    const writer = await resolveAssemblyProcedureEditWriter(request);
+    const actorKey = writer.holderKey;
     if (!actorKey) throw new ApiError(401, '認証が必要です');
-    const doc = await procedureService.approvePublish(params.id, { ...body, actorKey });
+    const doc = await procedureService.approvePublish(params.id, { ...body, actorKey, ...writer });
     return { document: serializeProcedureDocument(doc) };
   });
 
@@ -291,14 +290,14 @@ export function registerAssemblyProcedureDocumentRoutes(
     return { document: serializeProcedureDocument(doc) };
   });
 
-  app.patch('/assembly/procedure-documents/:id', { preHandler: allowWriteKiosk }, async (request) => {
+  app.patch('/assembly/procedure-documents/:id', { preHandler: [allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const body = z.object({ name: z.string().trim().min(1).max(200) }).parse(request.body);
-    const doc = await procedureService.rename(params.id, body.name);
+    const doc = await procedureService.rename(params.id, body.name, await resolveAssemblyProcedureEditWriter(request));
     return { document: serializeProcedureDocument(doc) };
   });
 
-  app.delete('/assembly/procedure-documents/:id', { preHandler: allowWriteKiosk }, async (request, reply) => {
+  app.delete('/assembly/procedure-documents/:id', { preHandler: [allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request, reply) => {
     const params = idParamSchema.parse(request.params);
     const usage = await procedureService.getReferenceUsage(params.id);
     if (usage.inProcedureManualAssignment) {
@@ -307,7 +306,7 @@ export function registerAssemblyProcedureDocumentRoutes(
     if (usage.inBoltPageRef || usage.inCheckPageRef) {
       return reply.status(409).send({ message: 'マーカー参照で使用中の手順書は削除できません' });
     }
-    const result = await procedureService.deleteIfUnused(params.id);
+    const result = await procedureService.deleteIfUnused(params.id, await resolveAssemblyProcedureEditWriter(request));
     if (result === 'not_found') return reply.status(404).send({ message: '手順書が見つかりません' });
     if (result === 'in_use') return reply.status(409).send({ message: 'テンプレートで使用中の手順書は削除できません' });
     return reply.status(204).send();

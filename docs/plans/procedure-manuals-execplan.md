@@ -52,8 +52,19 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) Pi5 へ標準ローリング更新(run `20261005-093506-d09ffd`、releaseSha `a25fe544`、`Result=success`、recap `ok=269 changed=33 unreachable=0 failed=0`、約 14 分)。health 200、API コンテナで `ffmpeg version 5.1.9-0+deb12u1`、`/app/storage/procedure-videos` あり、migration `20261006000000_add_procedure_videos` 適用済み。追跡セッションの報告による。
 - [ ] 実機確認(オーナー): 動画付きの `[Procedure-material]` メールを送ると「動画」一覧に出て数十秒で完了になり再生できる、縦動画の向きが正しい、エディタでページに紐づけると閲覧ページにサムネイルが出る。
 - [ ] 後日: 動画 V2/V3(トリミング、コメント、接続)。
+- [x] (2026-10-05) UX 改善(1 回目) A/C ローカル実装: モックの左600px・操作2行・全高ビューア、閲覧専用layoutと縦横比による表示サイズ、左側の手順/承認/動画、1760×980相当の素材棚・6/4/3列・複数選択・順次配置・原寸表示を追加。APIのgetAssignmentsは承認とページ別動画を既に返すため変更不要。
+- [x] (2026-10-05) UX 改善(1 回目) 検証: Web lint、対象範囲とKioskLayoutの72ファイル384件(既存作業セッション回帰を含む)、build、API lint・要領書3ファイル28件・build用tscが成功。Safariで実コンポーネントとダミーデータを1920×1080に描画し、全体/幅表示と素材棚4列を目視確認。commit/push/PR/merge/deployと取説再生成は未実施。
+
+- [x] (2026-10-05) UX 改善(2 回目) B/D ローカル実装: 加工・切削・研削の初期行、モックBの1180px・3列の名前組み立て・直接入力・重複採番、作成時の末尾自動割り当てと失敗表示、端末/ユーザー単位の5分編集予約・引き継ぎ・30秒生存確認・離脱時keepalive解放を追加。A/Cの表示・素材棚の挙動は維持。
+- [x] (2026-10-05) UX 改善(2 回目) 指定検証: API lint / vitest 10ファイル81件成功・既存実DB1件skip / build用tsc、Web lint / vitest 14ファイル94件 / build成功。Prisma Client生成、差分の空白・禁止パス変更なしを確認。開始時WIPはなく、今回の34ファイルのみ変更。commit / push / PR / merge / deploy、実DB migration適用・実端末確認は未実施。
+
 
 ## Surprises & Discoveries
+
+- Observation: UX 改善(2 回目)の自動割り当ては、従来の置換 API の公開版チェックをそのまま呼ぶと新規 DRAFT が拒否される。
+  Evidence: `ProcedureManualService.replaceAssignments` の `resolvePublished` 検証。新規作成専用の末尾追加は同じ工程行ロックを取得し、既存行を変更せず DRAFT の正本 ID を参照する。
+- Observation: UX 改善(2 回目)の heartbeat テストでは、仮想タイマー中の認証 `waitFor` が停滞していた。
+  Evidence: controller 新テストの timeout を、認証ロード・コマンド完了を `act` で待つ手順へ変更して解消。timeout 延長やテスト除外は行っていない。
 
 - Observation: 管理カードの設定は在庫カードと同じく GET と PUT の間の別更新と競合し得る既知の制約があり、Phase 3 の限定修正では対応しない。
 
@@ -87,6 +98,25 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: `infrastructure/docker/docker-compose.server.yml` の API volumes と named volumes。今回の infrastructure 変更禁止により未修正。本番反映前に別依頼で永続マウントを追加する必要がある。
 
 ## Decision Log
+
+- Decision: 工程「加工 › 切削/研削」の初期データは、追加のみ検証が INSERT を許可しないため、ナレッジと同じ起動時の冪等な投入にした。
+
+- Decision: UX 改善(2 回目)では予約取得・解放の Promise を effect 間で直列化し、離脱後の遅い取得応答の解放を、再認証後の新しい取得より先に完了させる。通信失敗時は読み取り専用とし、予約の再取得を表示する。
+  Rationale: 遅い解放が新しい自分の予約を削除する競合を防ぎ、保持者不明の間に変更しない。BFCache からの復帰も再取得する。
+  Date/Author: 2026-10-05 / Codex
+
+- Decision: UX 改善(2 回目)では白紙作成の名前採番を文書作成トランザクション内の advisory lock で直列化し、既存名と重なる場合だけ `-2`、`-3` を付ける。200文字上限に合わせ、接尾辞分を元の名前から短縮する。
+  Rationale: 複数端末の同時作成でも同名を避け、改版の同名使用を制約で妨げない。
+  Date/Author: 2026-10-05 / Codex
+- Decision: UX 改善(2 回目)の自動割り当ては既存 `ProcedureManualService` に DRAFT の末尾追加を設け、工程行のロックを割り当て置換と共用する。作成と割り当ては別トランザクションで、失敗は成功応答の `assignmentError` とエディタ上の短い表示にする。
+  Rationale: 既存の置換 API は公開版を要求する。既存の割り当てには公開版なしの DRAFT も含まれるため、読み取り後の全置換で消失・競合させず、既存行を保持して追加する必要がある。文書作成後の再試行で重複文書を増やさず、作成した文書を編集できる。
+  Date/Author: 2026-10-05 / Codex
+- Decision: UX 改善(2 回目)の自由入力は組み立て状態を保持して切り替え、機種と細分が選択済みなら自由入力した名前にも自動割り当てする。機種未選択の自由入力は従来どおり文書のみ作成する。
+  Rationale: 既存の自由入力の操作を維持し、選択済みの分類を失わない。
+  Date/Author: 2026-10-05 / Codex
+- Decision: UX 改善(2 回目)の予約保持者は `user:<id>` / `client:<id>`。ユーザーの表示用列は `username`、端末は `ClientDevice.name` を使う。認証で編集対象の DRAFT 改版が確定した直後にその ID の予約を取得する。
+  Rationale: 既存認可とユーザーモデルに合わせ、予約前は読み取り専用とし、引き継がれた側の未保存要素は既存の端末復旧記録に保持する。
+  Date/Author: 2026-10-05 / Codex
 
 - Decision: 文書の正本は `AssemblyProcedureDocument`。新しい文書モデルは作らない。
   Rationale: 自由配置、改版、公開、Gmail 取込、キオスク閲覧がそろっており、締付テンプレートが同じ ID を参照するので「1 と組み合わせる」が自動で満たされる。
@@ -185,6 +215,15 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Decision: 改版下書きへページ動画リンクを複製し、下書き破棄ではその下書きのリンクだけを同じ文書transactionで除去する。1秒以下の動画のposterは中間フレームを使う。
   Rationale: 公開版のリンクを保持しつつ従来の改版・破棄を継続する。短い動画でもposter生成が空出力にならないようにする。
   Date/Author: 2026-10-05 / Codex。
+- Decision: UX 改善(1 回目) のビューアはlayout="manuals"だけで浮遊操作と幅表示を有効にし、画像のnaturalWidth/naturalHeightで既定を決める。切抜きでは従来の表示を維持し、ページ送り時に幅表示のスクロールを先頭へ戻す。
+  Rationale: PDFを含む実際のページ画像の形に従い、共用ビューアの作業セッション側を維持するため。手順情報と未公開通知は左側へ置き、右側の全高を確保する。
+- Decision: UX 改善(1 回目) の素材棚はモックどおり操作/選択行/カードの順に置く。既存の捨てた素材の復元と配置済みの取り消しを残し、エディタ文脈では既存どおり未配置とナレッジを扱う。
+  Rationale: モックの寸法と配置を守りながら、既存の復元経路とPhase 3の明示取込を維持するため。
+- Decision: UX 改善(1 回目) の配置はチェックした順に既存APIへ送る。成功分は棚と選択から外し、失敗時は残りだけ再試行できるようにする。エディタでは連続配置時の重なり順も保持する。原寸表示は取得済みBlobを再利用し、表示サイズはlocalStorageが使えなくても切り替えられる。
+  Rationale: 部分成功の二重配置、画像の再取得、端末の保存制限による操作停止を避けるため。
+- Decision: UX 改善(1 回目) の素材一覧/未配置件数は既存APIの上限500件を使い、上限に達した場合は500+と表示する。
+  Rationale: 件数APIの新設を今回の小さなAPI確認へ混ぜず、取得上限を総件数として断定しないため。
+
 
 ## Context and Orientation
 
@@ -403,3 +442,19 @@ Phase 3 の変更記録(2026-10-05): 指定された片方向コピーを既存�
 - Web入口・型: apps/web/src/api/domains/assembly.ts、features/assembly/types.ts、features/assembly/document-editor/AssemblyProcedureDocumentEditorPageList.tsx、AssemblyProcedureDocumentEditorScreen.tsx。
 - Web棚・閲覧(すべてapps/web/src/features/assembly/procedure-manuals): ProcedureManualBrowser.tsx、ProcedureVideoShelfDialog.tsx、ProcedureVideoPlaybackDialog.tsx、ProcedureVideoThumbnail.tsx、ProcedurePageVideoStrip.tsx、procedure-video-types.ts、procedure-manuals-videos.test.tsx。
 - 正本: docs/plans/procedure-manuals-execplan.md。
+
+
+UX 改善(2 回目)の変更記録(2026-10-05): B/Dを既存の文書・割り当て・端末復旧機構に追加した。検証は `apps/api` で `pnpm lint && pnpm exec vitest run procedure-manual procedure-document assembly-procedure-document && pnpm exec tsc -p tsconfig.build.json --noEmit`、`apps/web` で `pnpm lint`、`pnpm exec vitest run procedure-manuals document-editor && pnpm build` が成功した(静的検査・対象検証と関連失敗の修正を含め約5分)。Web lint初回のimport区切りを修正し、heartbeat追加テストの仮想タイマー待ちを修正して対象テストだけ1回再実行した。最終確認で、advisory lock の戻り値 void を読み取らない既存パターンに合わせて `$executeRaw` に修正し、対象APIテスト・lint・tscを再確認した。APIの実DB1件はTEST_DATABASE_URL未設定でskip。migrationの初期固定ID・ON CONFLICTと追加DDLのテストは成功したが、実DBへの適用は未確認。buildのBrowserslist/baseline-browser-mapping鮮度と大きなchunk警告は既存範囲外。kiosk-sop生成物の更新はpush前の統合段階に残し、指定禁止のgenerated/共有型/lockfile/infrastructure/CIには変更を加えていない。既存WIPはなく、34ファイルすべて今回の変更である。
+
+UX 改善(2 回目)の変更・追加ファイル一覧(34ファイル。各migrationは`migration.sql`):
+
+- DB: `apps/api/prisma/schema.prisma`、`apps/api/prisma/migrations/20261006030000_add_machining_process_rows/migration.sql`、`apps/api/prisma/migrations/20261006040000_add_procedure_document_edit_leases/migration.sql`。
+- API routes (`apps/api/src/routes/assembly/`): `index.ts`、`procedure-document-revisions.ts`、`procedure-documents.ts`、`procedure-document-edit-leases.ts`。
+- API services (`apps/api/src/services/assembly/`): `assembly-procedure-document-blank.service.ts`、`assembly-procedure-document.service.ts`、`procedure-manual.service.ts`、`assembly-procedure-document-edit-lease.service.ts`。
+- API route tests (`apps/api/src/routes/assembly/__tests__/`): `procedure-document-revisions.routes.test.ts`、`procedure-document-edit-leases.routes.test.ts`。
+- API service tests (`apps/api/src/services/assembly/__tests__/`): `procedure-document-placement.service.test.ts`、`procedure-manual-approval.test.ts`、`procedure-manual.service.test.ts`、`assembly-procedure-document-edit-lease.service.test.ts`。
+- Web API (`apps/web/src/api/domains/`): `assembly.ts`、`assembly-edit-lease.ts`、`assembly-document-editor-edit-lease.test.ts`。
+- Web B (`apps/web/src/features/assembly/procedure-manuals/`): `ProcedureManualBrowser.tsx`、`ProcedureManualBlankDialog.tsx`、`procedure-manuals.test.tsx`。
+- Web D (`apps/web/src/features/assembly/document-editor/`): `AssemblyProcedureDocumentEditorFeature.tsx`、`AssemblyProcedureDocumentEditorScreen.tsx`、`documentEditorConflict.ts`、`useAssemblyProcedureDocumentEditorController.ts`、`useAssemblyProcedureDocumentOverlayCommands.ts`、`useAssemblyProcedureDocumentRevisionCommands.ts`、`useAssemblyProcedureDocumentEditLease.ts`。
+- Web D tests (同directory): `AssemblyProcedureDocumentEditorScreen.test.tsx`、`useAssemblyProcedureDocumentEditorController.test.ts`、`useAssemblyProcedureDocumentEditLease.test.ts`。
+- 正本: `docs/plans/procedure-manuals-execplan.md`。

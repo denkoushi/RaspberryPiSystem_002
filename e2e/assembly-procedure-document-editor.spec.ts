@@ -319,6 +319,20 @@ async function installEditorApiMocks(
       await route.fulfill({ json: { document: clone(latestDocument) } });
       return;
     }
+    if (path === `/api/assembly/procedure-documents/${REVISION_DOCUMENT_ID}/edit-lease`) {
+      if (method === 'POST') {
+        await route.fulfill({ json: {
+          lease: { holderLabel: '編集端末', acquiredAt: NOW, heartbeatAt: NOW },
+          mine: true,
+          holderToken: 'editor-fixture'
+        } });
+        return;
+      }
+      if (method === 'DELETE') {
+        await route.fulfill({ status: 204 });
+        return;
+      }
+    }
     if (path.endsWith('/regions/text') && method === 'POST') {
       const body = (request.postDataJSON() ?? {}) as Record<string, unknown>;
       evidence.textRegionBodies.push(body);
@@ -420,9 +434,14 @@ async function installEditorApiMocks(
 async function authenticateDocumentEditor(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: '手順書オーバーレイ編集' })).toBeVisible();
   await page.getByTestId('assembly-document-editor-password').fill(EDITOR_PASSWORD);
+  const leaseAcquired = page.waitForResponse((response) =>
+    response.url().endsWith(`/procedure-documents/${REVISION_DOCUMENT_ID}/edit-lease`) && response.request().method() === 'POST'
+  );
   await page.getByRole('button', { name: '認証' }).click();
+  expect((await leaseAcquired).status()).toBe(200);
   await expect(page.getByTestId('assembly-document-editor-layout')).toBeVisible();
   await expect(page.getByRole('region', { name: '手順書キャンバス' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '範囲を追加' })).toBeEnabled();
 }
 
 async function drawRange(page: Page, start = { x: 0.12, y: 0.16 }, end = { x: 0.38, y: 0.3 }): Promise<void> {
