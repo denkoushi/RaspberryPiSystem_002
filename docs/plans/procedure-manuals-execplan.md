@@ -67,7 +67,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [ ] 実機確認(オーナー): 動画一覧で 10.5 秒超に「要トリミング」が出てトリミングすると新しい長さになる、10 秒以内の動画だけページに紐づく、コメントを付けると再生中に字幕として出る。
 - [x] (2026-10-05) 動画 V3ローカル実装: nullable concatRequest/originの追加、2〜5本(重複可)から独立したPENDING動画を作る接続API、向き/寸法の統一とconcat demuxer再エンコード、先頭poster、開始オフセット付きコメント複製(先頭5件)、元動画再確認、失敗/再試行、棚のチェック選択/並べ替え/合計/題名/接続バッジを追加。
 - [x] (2026-10-05) 動画 V3指定検証: API lint / procedure-video 5ファイル119件 / build用tsc、Web lint / procedure-manuals 4ファイル47件 / build成功。expand-only SQLの2文も成功。環境準備を含め約11分。共有型の禁止パスへ出力しないため、一時領域へ共有型をビルドし、Web buildは同一ソース/設定の隔離コピーで実行した。Prisma Clientとエンジンはworktreeのnode_modules内に準備した。
-- [ ] 動画 V3 integrationPending: commit・push・PR・main統合・deployは未依頼。実DB migration適用と実ffmpeg/Pi5での向き混在・接続再生、元動画破棄後の独立性、トリミング後の紐づけを統合段階で確認する。
+- [x] (2026-10-05) 動画 V3: Codex レビューの 3 指摘(長い処理の回収競合 → claim トークンと各ステップ後の生存更新、非正方形ピクセル → SAR を考慮した正規化、検索をまたぐ選択の保持)を修正。使い捨て PostgreSQL で migration 適用を確認。
+- [x] (2026-10-05) PR #1718 を main へ squash merge(merge `481f0af86b69a75fdb339ee5c4bbf253eef5645c`、件名は PR 題名を指定)。main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-142032-01dac9`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`、追跡セッションが実施。Hermes の #1716/#1717 も同じ配布に乗った)、health 200、migration `20261006120000_add_procedure_video_concat` 適用済み。
+- [ ] 実機確認(オーナー): 動画一覧で 2 本を選んで接続すると由来「接続」の動画が処理中として現れ、数十秒〜数分で完了して再生できる、向きの違う動画を混ぜても黒帯で揃う、コメントが引き継がれる、元の動画は残る。
 
 ## Surprises & Discoveries
 
