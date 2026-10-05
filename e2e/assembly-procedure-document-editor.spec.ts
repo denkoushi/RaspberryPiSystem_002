@@ -551,7 +551,9 @@ test('published source authenticates into a draft, edits TEXT/ROI IMAGE/ARROW, s
   await page.getByRole('button', { name: '公開', exact: true }).click();
   const publishDialog = page.getByRole('dialog', { name: '手順書を公開' });
   await expect(publishDialog).toBeVisible();
-  await publishDialog.getByRole('button', { name: '公開する' }).click();
+  // Tag approval is the default; this scenario exercises the password path.
+  await publishDialog.getByRole('radio', { name: 'パスワードで公開(締付テンプレート向け)' }).check();
+  await publishDialog.getByRole('button', { name: '公開する', exact: true }).click();
   await expect.poll(() => evidence.publishBodies.length).toBe(1);
   expect(evidence.publishBodies[0]).toMatchObject({
     accessPassword: EDITOR_PASSWORD,

@@ -36,7 +36,10 @@ export type AssemblyProcedureDocumentPageDto = {
   overlays?: AssemblyProcedureOverlayElement[];
 };
 
+export type ProcedureManualLastApprovalDto = { employeeName: string; positionName: string | null; approvedAt: string };
+
 export type AssemblyProcedureDocumentDto = {
+  lastApproval?: ProcedureManualLastApprovalDto | null;
   id: string;
   name: string;
   imageRelativePath: string;
@@ -452,6 +455,7 @@ export type AssemblyProcedureSequenceStepDto = AssemblyTemplateProcedureStepDto 
 };
 
 export type AssemblyProcedureSequenceDocumentDto = {
+  lastApproval?: ProcedureManualLastApprovalDto | null;
   orderItemId: string;
   sortOrder: number;
   label: string | null;

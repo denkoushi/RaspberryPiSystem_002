@@ -3139,6 +3139,7 @@ model AssemblyProcedureDocument {
   templateCheckItems     AssemblyTemplateCheckItem[]
   procedureManualAssignments ProcedureManualAssignment[]
 
+  procedureManualApprovals ProcedureManualApproval[]
   procedureMaterials     ProcedureMaterial[]
 
   @@index([isActive, name], map: "AssemblyProcedureDocument_idx_active_name")
@@ -5331,4 +5332,21 @@ model ProcedureMaterial {
 
   @@index([documentId, discardedAt, receivedAt])
   @@index([gmailMessageId])
+}
+
+model ProcedureManualApproval {
+  id                        String                    @id @default(uuid())
+  documentId                String
+  employeeId                String
+  employeeCodeSnapshot      String
+  employeeNameSnapshot      String
+  employeeNfcTagUidSnapshot String
+  employeePositionSnapshot  String?
+  employeeRankSnapshot      String
+  comment                   String?
+  actorKey                  String
+  createdAt                 DateTime                  @default(now())
+  document                  AssemblyProcedureDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, createdAt])
 }

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const apiMocks = vi.hoisted(() => ({
   verifyPassword: vi.fn(),
   createRevision: vi.fn(),
+  publish: vi.fn(), approvePublish: vi.fn(),
   saveOverlays: vi.fn()
 }));
 
@@ -12,7 +13,8 @@ vi.mock('../../../api/client', () => ({
   createAssemblyProcedureDocumentRevision: apiMocks.createRevision,
   saveAssemblyProcedureDocumentOverlays: apiMocks.saveOverlays,
   getAssemblyProcedureDocument: vi.fn(),
-  publishAssemblyProcedureDocument: vi.fn(),
+  publishAssemblyProcedureDocument: apiMocks.publish,
+  approvePublishAssemblyProcedureDocument: apiMocks.approvePublish,
   discardAssemblyProcedureDocumentRevision: vi.fn()
 }));
 
@@ -92,6 +94,35 @@ describe('useAssemblyProcedureDocumentRevisionCommands', () => {
     });
     expect(session.recovery.clear).toHaveBeenCalledTimes(1);
     expect(session.setMessage).toHaveBeenCalledWith('オーバーレイを保存しました。');
+  });
+
+  it.each(['password', 'tag'])('publishes via %s with the current edit version', async method => {
+    const published = { ...documentFixture, status: 'published' as const };
+    apiMocks.publish.mockResolvedValue(published);
+    apiMocks.approvePublish.mockResolvedValue(published);
+    const session = makeSession({ isDirty: false });
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => {
+      expect(await hook.result.current.publish(method === 'tag' ? { reviewerTagUid: 'TAG', comment: '確認済み' } : undefined)).toBe(true);
+    });
+    if (method === 'tag') {
+      expect(apiMocks.approvePublish).toHaveBeenCalledExactlyOnceWith({ id: 'document-1', reviewerTagUid: 'TAG', expectedEditVersion: 2, comment: '確認済み' });
+      expect(apiMocks.publish).not.toHaveBeenCalled();
+    } else {
+      expect(apiMocks.publish).toHaveBeenCalledExactlyOnceWith({ id: 'document-1', accessPassword: '2520', expectedEditVersion: 2 });
+      expect(apiMocks.approvePublish).not.toHaveBeenCalled();
+    }
+    expect(session.setDocument).toHaveBeenCalledWith(published);
+    expect(session.recovery.clear).toHaveBeenCalledOnce();
+  });
+
+  it('preserves conflict handling for approval publication', async () => {
+    apiMocks.approvePublish.mockRejectedValue({ isAxiosError: true, response: { status: 409, data: { details: { currentEditVersion: 9 } } } });
+    const session = makeSession({ isDirty: false });
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { expect(await hook.result.current.publish({ reviewerTagUid: 'TAG' })).toBe(false); });
+    expect(session.setConflict).toHaveBeenCalledWith(true);
+    expect(session.setDocument).not.toHaveBeenCalled();
   });
 
   it('turns a 409 into explicit conflict state without replacing local elements', async () => {

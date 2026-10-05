@@ -10,6 +10,7 @@ import { AssemblyProcedureDocumentEditorCanvasToolbar } from './AssemblyProcedur
 import { useAssemblyProcedureDocumentEditor } from './AssemblyProcedureDocumentEditorContext';
 import { AssemblyProcedureDocumentEditorInspector } from './AssemblyProcedureDocumentEditorInspector';
 import { AssemblyProcedureDocumentEditorPageList } from './AssemblyProcedureDocumentEditorPageList';
+import { AssemblyProcedureDocumentPublishDialog } from './AssemblyProcedureDocumentPublishDialog';
 import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTypeDialog';
 import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCandidateDialog';
 
@@ -66,6 +67,10 @@ export function AssemblyProcedureDocumentEditorScreen() {
         onPublish={() => setPublishOpen(true)}
         onDiscard={() => setDiscardOpen(true)}
       />
+
+      {controller.document?.lastApproval ? <p className="shrink-0 px-3 py-1 text-xs text-slate-300">
+        承認: {controller.document.lastApproval.employeeName}{controller.document.lastApproval.positionName ? `(${controller.document.lastApproval.positionName})` : ''} {new Date(controller.document.lastApproval.approvedAt).toLocaleString('ja-JP')}
+      </p> : null}
 
       <div data-testid="assembly-document-editor-layout" className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[8rem_minmax(16rem,1fr)_minmax(10rem,14rem)] overflow-hidden xl:grid-cols-[13rem_minmax(0,1fr)_20rem] xl:grid-rows-1">
         <AssemblyProcedureDocumentEditorPageList
@@ -133,19 +138,12 @@ export function AssemblyProcedureDocumentEditorScreen() {
         onManual={() => controller.chooseTextCandidate(null)}
         onClose={controller.cancelTextCandidates}
       />
-      <ConfirmDialog
-        isOpen={publishOpen}
-        title="手順書を公開"
-        description="公開すると、この内容が使用側に反映され、現在の下書きは編集可能な状態ではなくなります。公開済み文書を編集する場合は、新しい改版を作成します。"
-        confirmLabel="公開する"
-        confirmTarget="assembly-document-editor-publish-confirm"
-        cancelLabel="キャンセル"
-        onConfirm={() => {
-          setPublishOpen(false);
-          void controller.publish();
-        }}
-        onCancel={() => setPublishOpen(false)}
-      />
+      {publishOpen ? <AssemblyProcedureDocumentPublishDialog
+        busy={controller.busy}
+        error={controller.message}
+        onPublish={controller.publish}
+        onClose={() => setPublishOpen(false)}
+      /> : null}
       <ConfirmDialog
         isOpen={conflictReloadOpen}
         title="最新内容を再読込"

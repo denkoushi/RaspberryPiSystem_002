@@ -31,6 +31,7 @@ import type {
 type Props = {
   sequence: AssemblyProcedureSequenceDto;
   className?: string;
+  showCurrentMarkerButton?: boolean;
   boltMarkers?: AssemblyCanvasBolt[];
   checkMarkers?: AssemblyCanvasCheckItem[];
   selectedBoltId?: string | null;
@@ -218,7 +219,8 @@ export function AssemblyProcedureSequenceViewer({
   inputTargetBoltId,
   currentMarker,
   onToggleCheckItem,
-  onCurrentPageChange
+  onCurrentPageChange,
+  showCurrentMarkerButton = true
 }: Props) {
   const steps = useMemo(
     () => (sequence.steps && sequence.steps.length > 0 ? sequence.steps : fallbackSteps(sequence)),
@@ -382,7 +384,7 @@ export function AssemblyProcedureSequenceViewer({
             >
               全手順
             </Button>
-            <Button
+            {showCurrentMarkerButton ? <Button
               type="button"
               variant="ghostOnDark"
               className="min-h-10 !px-2 text-xs"
@@ -390,7 +392,7 @@ export function AssemblyProcedureSequenceViewer({
               onClick={jumpToCurrentMarker}
             >
               現在の丸数字へ
-            </Button>
+            </Button> : null}
             <Button
               type="button"
               variant="ghostOnDark"

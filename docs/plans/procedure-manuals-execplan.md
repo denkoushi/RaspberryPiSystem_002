@@ -21,7 +21,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) Phase 1 を PR #1693 として提出。Codex(`gpt-6.1-sol`/`high`、read-only)のレビューで、キオスク PDF の削除前チェック(`assembly-procedure-reference.service.ts`)に割り当てが入っていない抜けを見つけ、修正とテストを追加した。候補取得で 1 件の改版履歴取得が失敗しても他の候補を出すように直した。
 - [x] (2026-10-05) PR #1693 を main へ squash merge(merge `c5ed099daea5db373f376a575e04327a90c74695`)。main の CI、CodeQL、Secret scan、Torque Release Composition が同 SHA で success。worktree は `git_lifecycle.cli finish` で削除し `main_sync=updated`。
 - [x] (2026-10-05) Pi5 へ標準ローリング更新(`--limit raspberrypi5 --detach`、run `20261005-015725-1df4cb`、`Result=success`、`ExecMainStatus=0`、recap `ok=268 changed=31 unreachable=0 failed=0`)。反映後 `/api/system/health` が 200(database ok)。
-- [ ] 実機確認(オーナー): 組立ホームの「要領書」入口、割り当て編集で型番×工程に公開済み手順書を置いて閲覧できること。実 PostgreSQL 上での並び置換は本番操作で確認する。
+- [x] (2026-10-05) Phase 1 実機確認(オーナー): 要領書の割り当てと閲覧が正常に動作することを確認した(今回の依頼で完了報告)。
 - [x] (2026-10-05) Phase 2a ローカル実装: 専用件名の Gmail 本文・写真素材取込、素材棚、手動 API、管理カード、5分ごとの組込みスケジュールを追加。commit / push / PR / merge / deploy は未実施。
 - [x] (2026-10-05) Phase 2a 指定検証: API lint / vitest 4ファイル80件 / build用 tsc、Web lint / vitest 4ファイル13件 / build が成功。追加の既存取込・スケジュール回帰は7ファイル71件が成功。Prisma Client 生成成功。
 - [x] (2026-10-05) Phase 2a: `procedure-materials` の永続マウントを同じ PR で追加(Pi5 保存先契約、Compose server/phase3、API イメージ、ローカル override、リリース演習・volume materializer・Drive DR の各一覧)。使い捨て PostgreSQL で migration 適用を確認。Codex レビューの 3 指摘(管理カードの保存経路、スキップ再試行、写真の遅延取得)を修正。CodeQL の指摘でメール HTML のテキスト化を正規表現から前方走査に書き換えた。
@@ -33,7 +33,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) Phase 2b: Codex レビューの 3 指摘(GC と取込の競合、未保存の配置写真の復元、白紙追加後の復旧記録)を修正。CodeQL の指摘で写真原本と GC のルートに rateLimit を追加。エディタ画面にボタンが増えたため `pnpm kiosk-sop:generate` で取説を再生成して commit。
 - [x] (2026-10-05) PR #1698 を main へ squash merge(merge `0f60a906d233171c9098ce9a3d679725b09a4c01`)、main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-045743-a6c83b`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`)、`/api/system/health` 200。
 - [ ] 実機確認(オーナー): 要領書ページの「白紙から作る」で名前を入れてエディタが開く、「白紙ページを追加」で末尾に増える、「素材から配置」で写真・本文を現在ページに置いて保存・再読込できる、素材棚の「配置済み」から取り消せる。
-- [ ] Phase 2c: NFC 承認による公開。
+- [x] (2026-10-05) Phase 2c ローカル実装: 社員NFCタグと職位による承認公開、承認スナップショット、直近承認の表示、公開方法選択と割り当てダイアログの小修正を追加。統合・本番反映は未実施。
+- [x] (2026-10-05) Phase 2c 指定検証: API lint / 8ファイル55件成功・実DB1ファイル1件skip / build用tsc、Web lint / 12ファイル62件 / build成功。Prisma Client生成成功。
+- [ ] Phase 2c 統合・受入: 実 PostgreSQL migration・実NFC端末確認、commit / push / PR / merge / deploy。
 - [ ] Phase 3: ナレッジ素材・承認済み手順の片方向連携。
 - [ ] 後日: 動画素材(形式未定)。
 
@@ -126,6 +128,16 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Date/Author: 2026-10-05 / Codex。
 - Decision: 素材原本 GC は allowWriteKiosk の手動 POST /assembly/procedure-materials/gc のみとする。
   Rationale: 既存 assembly-procedure-asset-gc は保存・破棄・削除後の呼び出しだけで定期スケジューラーはない。新しいスケジューラーは今回追加しない。sha256/original だけを走査し、24時間より古く storageKey 一致の参照が0件の場合だけ integrity:true で削除する。配置済み・破棄済みを含む全素材の参照と共有原本を保持する。
+  Date/Author: 2026-10-05 / Codex。
+
+- Decision: Phase 2c の公開条件・expectedEditVersion 検証・文書行ロックは `publishInTransaction` に共通化し、パスワード検証は `publish`、承認者照合と同一transactionでの承認記録作成は `approvePublish` に置く。PUBLISHED済みへの再実行は文書を返し、承認行を追加しない。
+  Rationale: パスワード公開の条件と認証を保持し、承認行の作成失敗・競合では公開と記録を一緒に取り消す。旧形式文書の公開取消と割り当ても同じ文書行をロックし、既知の競合を防ぐ。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: ナレッジと同じ `useArmedNfcRead` を公開ダイアログに使用し、読取後に専用 `POST /assembly/procedure-documents/approval-reviewer` で氏名・職位を確認する。実際の公開APIでも `PrismaKnowledgeReviewerRepository.resolve(tagUid, true)` を再実行する。
+  Rationale: 古いNFCイベントを採用せず、確認と実行の間の職位・在籍変更を再検証する。確認のためにナレッジの承認待ち一覧を取得せず、Hermes機能の有効化にも依存しない。
+  Date/Author: 2026-10-05 / Codex。
+- Decision: 未登録タグは Phase 2c の明示受入条件どおり404、在籍外・承認職位未満は403、タグ重複は既存同様409とする。認証なしは401。ナレッジ側の未登録タグ400の契約は変更しない。
+  Rationale: 「ナレッジと同じ」と「未登録404」の差は、具体的な受入条件を優先して解消した。エラーコードは既存ナレッジのものを再利用する。
   Date/Author: 2026-10-05 / Codex。
 
 ## Context and Orientation
@@ -240,6 +252,25 @@ API は9ファイル69件成功、既存の実 PostgreSQL integration 1件は `T
 
 最終変更後に上記の指定2コマンドを実行し、API lint / 9成功ファイル74件・1ファイル1件skip / build用tsc、Web lint / 11ファイル51件 / build が成功。実DB integration は `TEST_DATABASE_URL` 未設定のためskip。別途、既存アセットGCの所有リース保護テスト3件も成功した。検証は約4分。初回の追加テストで不足した findFirst モックとWeb import順序を修正し、白紙追加直後に自分の下書きの復元確認を出さないことも最終controllerテストで確認した。既存のBrowserslist / baseline-browser-mapping / chunkサイズ警告は残る。
 
+## Concrete Steps and Validation (Phase 2c)
+
+既存 worktree `feat--procedure-manuals-phase2c-approval` でローカル実装を行う。追加するモデルは `ProcedureManualApproval` のみで、migration `20261005180000_add_procedure_manual_approvals` は新テーブル・document FK(Cascade)・documentId/createdAt索引を作るexpand-only SQLである。社員情報は承認時点のスナップショットとして保存し、既存Knowledge/WorkInstructionテーブルの定義・挙動は変更しない。
+
+`approve-publish` は `allowWriteKiosk` の認可後に社員タグを照合し、在籍中かつleader以上の場合だけ既存公開条件で公開する。認証actorは `user:<id>` または `client:<id>`。公開と承認行の作成は同一transactionで、競合・記録失敗時はどちらも残らない。文書取得・summary・改版取得はcreatedAt降順の直近1件を `lastApproval` として返す。要領書のsequenceにも伝播し、閲覧中の文書だけ承認氏名・職位・日時を下部に表示する。
+
+エディタは社員タグ方式を既定とし、氏名・職位を確認後、任意コメントとともに公開する。従来のパスワード公開も選択できる。型番入力前でも割り当て候補を選べるが、追加は型番・工程・既存割り当て取得が揃うまで無効。空状態と表示名placeholderを指定文言に変更した。丸数字への移動ボタンはviewerの既定を維持し、閲覧ページからだけ非表示にした。
+
+指定検証:
+
+    cd apps/api && pnpm lint && pnpm exec vitest run procedure-manual procedure-document assembly-procedure-document && pnpm exec tsc -p tsconfig.build.json --noEmit
+    cd apps/web && pnpm lint && pnpm exec vitest run procedure-manuals document-editor AssemblyProcedureSequenceViewer && pnpm build
+
+結果: API lint・8ファイル55件成功・build用tscは成功(実DBintegration 1ファイル1件は `TEST_DATABASE_URL` 未設定のためskip)。Web lint・12ファイル62件・buildは成功。初回Web buildの依存不足を補った後はbuildだけを再実行した。検証と環境準備は約6分。既存のbaseline-browser-mapping / Browserslistデータ鮮度、Vite chunkサイズの警告が残る。
+
+実DB migration適用と実NFC端末での確認は統合段階に残す。ローカルAPIテストはPrismaモックで、承認可能な3職位・general/未対応職位・在籍外・未登録/重複タグ・版競合・公開済み再実行・承認行保存失敗・パスワード公開・serializerを確認する。Webはタグ読取から氏名/職位確認・公開まで、パスワード方式、承認表示、候補と追加条件、閲覧時の丸数字非表示、既存ビューアの既定表示を確認する。
+
+環境準備: 既存main worktreeの依存を今回のworktree内へコピーし、shared-typesをbuild、`pnpm exec prisma generate`で新Clientを生成した。コピー元のshared-types distが古かったため再buildして解消した。初回APIテストはserializerテストの状態初期化漏れ、Webの対象lintは追加testのimport順を修正した。初回Web buildはFontsource不足で停止したため、既存worktreeからpackage.jsonで指定されたSans 5.2.8 / Mono 5.2.7のキャッシュをコピーした。依存定義・lockfile・コピー元は変更していない。
+
 ## Validation and Acceptance (Phase 2a)
 
 Gmail利用可能な検証環境で件名 `[Procedure-material] DFD1 組立`、本文とJPEG/PNG/WebP写真を送信し、要領書の「素材」から手動取込を実行する。本文1件と各写真が新しい順に現れ、ヒント・日時・送信元が表示される。ヒントで絞り込み、捨てた素材から戻せる。素材の原本が保存されたメールだけゴミ箱へ移動し、同じメールを再取込しても素材は増えない。本文空・PDF/動画のみのメールは未読の受信箱に残り、スキップ理由が返る。送信元不一致も保存せず残す。閲覧専用端末の書込は403になる。自動取込を有効化すると組込み行が起動し、無効化すると停止する。これらのローカル契約は上記モックテストで確認済みで、実 Gmail・実端末での受入は未実施である。
@@ -267,8 +298,10 @@ Phase 1 のローカル実装と指定の検証を完了した。文書は改版
 
 実行結果: `apps/api` の `pnpm lint`、`pnpm exec vitest run procedure-manual`（2 ファイル・12 件）、`pnpm exec tsc -p tsconfig.build.json --noEmit` は成功。`apps/web` の `pnpm lint`、`pnpm exec vitest run procedure-manuals`（1 ファイル・4 件）、`pnpm build` は成功。変更境界の既存回帰テストは API 3 ファイル・4 件、Web ビューア 1 ファイル・4 件が成功した。必要な生成物の準備に `packages/shared-types`、`shelf-layout-core`、`part-search-core`、`kiosk-sop-core` の build を実行した。検証の実行・準備は約 7 分（待機・並列実行を含む）。
 
-(上の段落は Codex のローカル実装時点の記録。)その後、使い捨て PostgreSQL で全 migration の適用と CHECK 制約を確認し、Codex の読み取り専用レビューがキオスク PDF 削除経路の抜けを捕まえたので修正した。PR #1693 は CI 全通過後に squash merge(`c5ed099d`)し、Pi5 へ run `20261005-015725-1df4cb` で反映、health 200 を確認した。Phase 1 は本番反映まで完了。残りはオーナーの実機確認と、Phase 2(素材取込・白紙ページ・NFC 承認)、Phase 3(ナレッジ連携)、動画。実装は Codex、レビューも Codex(read-only)、検証と統合は Claude という分担で進めた。
+(上の段落は Codex のローカル実装時点の記録。)その後、使い捨て PostgreSQL で全 migration の適用と CHECK 制約を確認し、Codex の読み取り専用レビューがキオスク PDF 削除経路の抜けを捕まえたので修正した。PR #1693 は CI 全通過後に squash merge(`c5ed099d`)し、Pi5 へ run `20261005-015725-1df4cb` で反映、health 200 を確認した。Phase 1 は本番反映まで完了。Phase 1のオーナー実機確認は今回の依頼で完了報告を受けた。後続は Phase 2(素材取込・白紙ページ・NFC 承認)、Phase 3(ナレッジ連携)、動画。実装は Codex、レビューも Codex(read-only)、検証と統合は Claude という分担で進めた。
 
 範囲外の観測: Web 検証で baseline-browser-mapping / Browserslist のデータ更新警告と Vite の大きな chunk の警告が出た。今回の依頼では依存更新や既存 bundle の分割を行っていない。
 
 Phase 2a の変更記録(2026-10-05): 上記 Plan of Work を2a/2b/2cへ分割し、素材取込・棚・管理カード・組込みスケジュールのローカル実装を追加した。指定検証は API 80件・Web 13件、lint / tsc / build がすべて成功し、既存境界の回帰71件も成功した。検証と環境準備は約7分。本番用の永続マウント、実 DB migration、実メール・端末確認、commit以降の統合段階は未実施。
+
+Phase 2c の変更記録(2026-10-05): NFC承認公開と承認履歴の直近1件表示、公開方法選択、割り当ての文言・候補選択、閲覧専用の丸数字移動非表示をローカル実装した。指定検証はAPI55件成功・実DB1件skip、Web62件成功、両lint / API tsc / Web build成功。開始時点に既存WIPはなく、今回の24ファイルの変更だけを残した。実DB・実端末、commit / push / PR / merge / deployは未実施。kiosk-sop鮮度チェックと生成物更新はpush前の統合段階に残し、変更禁止の `apps/web/src/generated/**` は変更していない。

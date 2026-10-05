@@ -1,11 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useEffect } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ProcedureManualAssignmentDialog } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualBrowser } from './ProcedureManualBrowser';
 
-import type { ProcedureManualDetailDto, ProcedureManualProcessDto } from '../types';
+import type { AssemblyProcedureSequencePageDto, ProcedureManualDetailDto, ProcedureManualProcessDto } from '../types';
 
 const mocks = vi.hoisted(() => ({
   models: vi.fn(), processes: vi.fn(), detail: vi.fn(), documents: vi.fn(), pdfs: vi.fn(), save: vi.fn(), history: vi.fn(), blank: vi.fn()
@@ -17,7 +18,10 @@ vi.mock('../../../api/client', () => ({
   getAssemblyProcedureDocumentRevisions: mocks.history, getKioskDocuments: mocks.pdfs, replaceProcedureManualAssignments: mocks.save
 }));
 vi.mock('../AssemblyProcedureSequenceViewer', () => ({
-  AssemblyProcedureSequenceViewer: ({ sequence }: { sequence: ProcedureManualDetailDto['sequence'] }) => <div data-testid="sequence-viewer">{sequence.documents.map((d) => <span key={d.orderItemId}>{d.title}</span>)}</div>
+  AssemblyProcedureSequenceViewer: ({ sequence, showCurrentMarkerButton, onCurrentPageChange }: { sequence: ProcedureManualDetailDto['sequence']; showCurrentMarkerButton?: boolean; onCurrentPageChange?: (page: AssemblyProcedureSequencePageDto | null) => void }) => {
+    useEffect(() => { onCurrentPageChange?.({ documentId: sequence.documents[0]?.assemblyProcedureDocumentId } as AssemblyProcedureSequencePageDto); }, [sequence, onCurrentPageChange]);
+    return <div data-testid="sequence-viewer">{sequence.documents.map((d) => <span key={d.orderItemId}>{d.title}</span>)}{showCurrentMarkerButton !== false ? <button>現在の丸数字へ</button> : null}</div>;
+  }
 }));
 
 const processes: ProcedureManualProcessDto[] = [
@@ -64,7 +68,7 @@ describe('procedure-manuals', () => {
     mocks.detail.mockResolvedValue({
       ...emptyDetail,
       assignments: [{ id: 'missing', modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', sortOrder: 1, label: '検査資料', unavailableReason: 'no_published_revision', resolvedDocumentId: null }],
-      sequence: { ...emptyDetail.sequence, documents: [{ orderItemId: 'one', title: '表示手順' }] }
+      sequence: { ...emptyDetail.sequence, documents: [{ orderItemId: 'one', assemblyProcedureDocumentId: 'doc', title: '表示手順', lastApproval: { employeeName: '承認太郎', positionName: '班長', approvedAt: '2026-10-05T09:00:00Z' } }] }
     });
     render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
     expect(await screen.findByRole('button', { name: 'DFD1' })).toBeInTheDocument();
@@ -76,6 +80,8 @@ describe('procedure-manuals', () => {
     expect(await screen.findByTestId('sequence-viewer')).toHaveTextContent('表示手順');
     expect(screen.getByText('検査資料: 公開版なし')).toBeInTheDocument();
     expect(mocks.detail).toHaveBeenCalledWith('DFD1', 'assembly');
+    expect(screen.queryByRole('button', { name: '現在の丸数字へ' })).not.toBeInTheDocument();
+    expect(await screen.findByText(/承認: 承認太郎\(班長\)/)).toBeInTheDocument();
   });
 
   it('shows an empty model list and keeps the creation entry available', async () => {
@@ -83,6 +89,19 @@ describe('procedure-manuals', () => {
     render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
     expect(await screen.findByText('機種がありません')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '割り当てを編集' })).toBeEnabled();
+  });
+
+  it('offers document choices before a model is entered but waits to add until model and process are ready', async () => {
+    render(<ProcedureManualAssignmentDialog modelCode="" processId="assembly" processes={processes} onClose={vi.fn()} onSaved={vi.fn()} />);
+    expect(screen.getByText('まだ割り当てがありません。型番を入れて文書を追加してください')).toBeInTheDocument();
+    await screen.findByRole('option', { name: '公開組立手順' });
+    expect(screen.getByLabelText('文書')).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('文書'), { target: { value: 'assembly:root' } });
+    expect(screen.getByRole('button', { name: '追加' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('型番'), { target: { value: 'DFD1' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: '追加' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '追加' }));
+    expect(screen.getByLabelText('表示名 1')).toHaveAttribute('placeholder', '表示名(任意)');
   });
 
   it('selects published images and PDFs, reorders them, and saves normalized model and root references', async () => {

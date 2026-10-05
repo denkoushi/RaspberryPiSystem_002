@@ -37,6 +37,7 @@ export type AssemblyProcedureSequencePage = {
 export type AssemblyProcedureSequenceAsset = AssemblyProcedureDocumentRevisionDto['assets'][string];
 
 export type AssemblyProcedureSequenceDocument = {
+  lastApproval?: AssemblyProcedureDocumentRevisionDto['lastApproval'];
   orderItemId: string;
   sortOrder: number;
   label: string | null;

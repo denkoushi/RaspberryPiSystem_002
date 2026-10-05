@@ -110,7 +110,7 @@ export function ProcedureManualAssignmentDialog({ modelCode: initialModel, proce
           </select>
         </div>
         <div className="flex gap-2">
-          <select aria-label="文書" className="min-h-11 min-w-0 flex-1 rounded-md border border-white/20 bg-[#1f2730] px-2" value={choiceKey} disabled={!canEdit} onChange={(e) => setChoiceKey(e.target.value)}>
+          <select aria-label="文書" className="min-h-11 min-w-0 flex-1 rounded-md border border-white/20 bg-[#1f2730] px-2" value={choiceKey} disabled={busy} onChange={(e) => setChoiceKey(e.target.value)}>
             <option value="">文書を選択</option>
             {choices.map((choice) => <option key={choice.key} value={choice.key}>{choice.title}{choice.kioskDocumentId ? '（PDF）' : ''}</option>)}
           </select>
@@ -122,13 +122,13 @@ export function ProcedureManualAssignmentDialog({ modelCode: initialModel, proce
         <ol className="max-h-72 space-y-2 overflow-auto" aria-label="文書の並び">
           {items.map((item, index) => <li key={index} className="flex flex-wrap items-center gap-2 rounded border border-white/15 p-2">
             <span className="min-w-0 flex-1 truncate text-sm">{choices.find((c) => item.kioskDocumentId ? c.kioskDocumentId === item.kioskDocumentId : c.assemblyProcedureDocumentId === item.assemblyProcedureDocumentId)?.title || item.label || item.assemblyProcedureDocumentId || item.kioskDocumentId}</span>
-            <Input aria-label={`表示名 ${index + 1}`} placeholder="表示名" className="!w-36" value={item.label ?? ''} disabled={!canEdit} onChange={(e) => setItems(items.map((row, i) => i === index ? { ...row, label: e.target.value || null } : row))} />
+            <Input aria-label={`表示名 ${index + 1}`} placeholder="表示名(任意)" className="!w-36" value={item.label ?? ''} disabled={!canEdit} onChange={(e) => setItems(items.map((row, i) => i === index ? { ...row, label: e.target.value || null } : row))} />
             <Button variant="ghostOnDark" aria-label={`上へ ${index + 1}`} disabled={!canEdit || index === 0} onClick={() => move(index, -1)}>↑</Button>
             <Button variant="ghostOnDark" aria-label={`下へ ${index + 1}`} disabled={!canEdit || index === items.length - 1} onClick={() => move(index, 1)}>↓</Button>
             <Button variant="ghostOnDark" aria-label={`外す ${index + 1}`} disabled={!canEdit} onClick={() => setItems(items.filter((_, i) => i !== index))}>外す</Button>
           </li>)}
         </ol>
-        {loading ? <p role="status">読込中…</p> : items.length === 0 ? <p className="text-sm text-[#9fadb9]">文書がありません</p> : null}
+        {loading ? <p role="status">読込中…</p> : items.length === 0 ? <p className="text-sm text-[#9fadb9]">まだ割り当てがありません。型番を入れて文書を追加してください</p> : null}
         {error ? <p role="alert" className="text-sm text-red-400">{error}</p> : null}
         <div className="flex justify-end gap-2">
           <Button variant="ghostOnDark" disabled={busy} onClick={onClose}>閉じる</Button>

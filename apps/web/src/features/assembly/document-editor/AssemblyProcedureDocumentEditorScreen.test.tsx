@@ -1,11 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureDocumentEditorProvider } from './AssemblyProcedureDocumentEditorContext';
 import { AssemblyProcedureDocumentEditorScreen } from './AssemblyProcedureDocumentEditorScreen';
 
 import type { AssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
+
+const approvalMocks = vi.hoisted(() => ({ read: null as { uid: string } | null, resolve: vi.fn() }));
+vi.mock('../../../api/client', () => ({ resolveProcedureManualApprover: approvalMocks.resolve }));
+vi.mock('../../kiosk/inventory/setup/useArmedNfcRead', () => ({ useArmedNfcRead: (armed: boolean) => armed ? approvalMocks.read : null }));
 
 vi.mock('./AssemblyProcedureDocumentEditorCanvas', () => ({
   AssemblyProcedureDocumentEditorCanvas: () => <div aria-label="手順書キャンバス" data-testid="editor-canvas" />
@@ -115,6 +119,7 @@ function renderScreen(controller: AssemblyProcedureDocumentEditorController) {
 }
 
 describe('AssemblyProcedureDocumentEditorScreen', () => {
+  beforeEach(() => { approvalMocks.read = null; approvalMocks.resolve.mockReset(); });
   it('runs blank-page addition from the page list', () => {
     const addBlankPage = vi.fn(async () => undefined);
     renderScreen(makeController({ addBlankPage }));
@@ -157,8 +162,33 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(screen.getByRole('dialog', { name: '手順書を公開' })).toBeInTheDocument();
     expect(screen.getByText(/公開すると/)).toBeInTheDocument();
     expect(publish).not.toHaveBeenCalled();
+    expect(screen.getByRole('radio', { name: '社員タグで承認して公開' })).toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: 'パスワードで公開(締付テンプレート向け)' }));
     fireEvent.click(screen.getByRole('button', { name: '公開する' }));
     expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads an employee tag, confirms name and position, then publishes with an optional comment', async () => {
+    approvalMocks.resolve.mockResolvedValue({ displayName: '承認太郎', positionName: '班長', rank: 'leader' });
+    const publish = vi.fn(async () => true);
+    const controller = makeController({ publish });
+    const view = renderScreen(controller);
+    fireEvent.click(screen.getByRole('button', { name: '公開' }));
+    expect(screen.getByRole('button', { name: '承認して公開する' })).toBeDisabled();
+    approvalMocks.read = { uid: 'TAG' };
+    view.rerender(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen /></AssemblyProcedureDocumentEditorProvider>);
+    expect(await screen.findByText('承認者: 承認太郎(班長)')).toBeInTheDocument();
+    expect(approvalMocks.resolve).toHaveBeenCalledExactlyOnceWith('TAG');
+    expect(publish).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('コメント(任意)'), { target: { value: ' 確認済み ' } });
+    fireEvent.click(screen.getByRole('button', { name: '承認して公開する' }));
+    await waitFor(() => expect(publish).toHaveBeenCalledExactlyOnceWith({ reviewerTagUid: 'TAG', comment: '確認済み' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '手順書を公開' })).not.toBeInTheDocument());
+  });
+
+  it('shows the last approver in the editor status row', () => {
+    renderScreen(makeController({ document: { ...editorDocument, lastApproval: { employeeName: '承認太郎', positionName: '班長', approvedAt: '2026-10-05T09:00:00Z' } } }));
+    expect(screen.getByText(/承認: 承認太郎\(班長\)/)).toBeInTheDocument();
   });
 
   it('disables editing actions in read-only mode while retaining accessible labels', () => {
