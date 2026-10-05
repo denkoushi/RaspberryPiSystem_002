@@ -715,7 +715,7 @@ export class TorqueTrainingService {
       ) return { attempt: serializeAttempt(await ignored('SETTING_MISMATCH')), duplicate: false };
       const decision = decideTrainingAttempt(input.value, input.unit, condition);
       const acceptedCount = await tx.torqueTrainingAttempt.count({ where: { sessionId: input.sessionId, accepted: true } });
-      if (acceptedCount >= 5) throw new ApiError(409, '訓練試行は5回完了しています');
+      if (acceptedCount >= 5) throw new ApiError(409, '訓練試行は5回完了しています', undefined, 'TRAINING_ATTEMPTS_COMPLETE');
       const attempt = await tx.torqueTrainingAttempt.create({ data: {
         ...base,
         settingHistoryId: nullableSettingHistoryId(mode, setting?.id),
