@@ -200,6 +200,7 @@ targets = sorted(
 required = {
     '/app/storage/photos',
     '/app/storage/knowledge-assets',
+    '/app/storage/procedure-materials',
     '/app/storage/knowledge-git',
     '/app/storage/thumbnails',
     '/app/storage/pdfs',

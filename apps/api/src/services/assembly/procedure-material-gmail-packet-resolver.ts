@@ -17,9 +17,18 @@ export function materialMessageHeader(message: GmailMessage, name: string): stri
 
 function htmlToText(html: string): string {
   const entities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
-  return html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
-    .replace(/<!--[^]*?-->/g, '').replace(/<br\b[^>]*>|<\/(?:p|div|li|h[1-6]|tr)>/gi, '\n')
-    .replace(/<[^>]*>/g, '').replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (match, entity: string) => {
+  // Strip markup to a fixed point so nested or split tags cannot survive one pass.
+  let stripped = html;
+  for (;;) {
+    const next = stripped
+      .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<br\b[^>]*>|<\/(?:p|div|li|h[1-6]|tr)>/gi, '\n')
+      .replace(/<[^>]*>/g, '');
+    if (next === stripped) break;
+    stripped = next;
+  }
+  return stripped.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (match, entity: string) => {
       if (!entity.startsWith('#')) return entities[entity.toLowerCase()] ?? match;
       const code = entity[1]?.toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1));
       return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
