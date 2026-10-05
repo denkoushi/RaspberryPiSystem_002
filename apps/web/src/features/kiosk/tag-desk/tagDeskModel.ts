@@ -6,12 +6,13 @@ export type KindMeta = {
   label: string;
   codeLabel: string;
   subLabel: string;
+  sub2Label?: string;
   /** What the tag is used for; shown before releasing it. */
   uses: string[];
 };
 
 export const KIND_META: Record<TagBindingKind, KindMeta> = {
-  employee: { label: '社員', codeLabel: '社員コード', subLabel: '部署', uses: ['持出・返却', '組立 作業者', '組立 承認', '自主検査 測定者', 'ナレッジ投稿'] },
+  employee: { label: '社員', codeLabel: '社員コード', subLabel: '部門', sub2Label: '部署', uses: ['持出・返却', '組立 作業者', '組立 承認', '自主検査 測定者', 'ナレッジ投稿'] },
   item: { label: '工具', codeLabel: '管理番号', subLabel: '保管場所', uses: ['持出・返却'] },
   instrument: { label: '計測機器', codeLabel: '管理番号', subLabel: '保管場所', uses: ['持出・返却', '自主検査 使用機器', '使用前点検'] },
   rigging: { label: '吊具', codeLabel: '管理番号', subLabel: '保管場所', uses: ['持出・返却', '点検記録'] },
@@ -54,19 +55,32 @@ export type FieldSpec = {
   /** Width in characters-ish; controls are sized to their content. */
   width: 'xs' | 's' | 'm' | 'l';
   placeholder?: string;
-  options?: (opts: TagDeskOptions) => Array<{ value: string; label: string }>;
+  options?: (opts: TagDeskOptions, values: Record<string, string>) => Array<{ value: string; label: string }>;
 };
 
 const assetStatusOptions = () => Object.entries(ASSET_STATUS).map(([value, label]) => ({ value, label }));
 const departmentOptions = (opts: TagDeskOptions) => [{ value: '', label: '未設定' }, ...opts.departments.map((d) => ({ value: d, label: d }))];
+const sectionOptions = (opts: TagDeskOptions, values: Record<string, string>) => [
+  { value: '', label: '未設定' },
+  ...opts.sections.filter((section) => values.department && section.division === values.department).map((section) => ({ value: section.name, label: section.name }))
+];
+
+export function changeRecordField(kind: TagDeskKind, opts: TagDeskOptions, values: Record<string, string>, key: string, value: string): Record<string, string> {
+  const next = { ...values, [key]: value };
+  if (kind === 'employee' && key === 'department' && value !== values.department
+    && !sectionOptions(opts, next).some((option) => option.value === next.section)) {
+    next.section = '';
+  }
+  return next;
+}
 
 export const FORM_FIELDS: Record<TagDeskKind, FieldSpec[]> = {
   employee: [
     { key: 'employeeCode', label: '社員コード', type: 'text', required: true, width: 'xs', placeholder: '0001' },
     { key: 'lastName', label: '苗字', type: 'text', required: true, width: 's' },
     { key: 'firstName', label: '名前', type: 'text', required: true, width: 's' },
-    { key: 'department', label: '部署', type: 'select', width: 'm', options: departmentOptions },
-    { key: 'section', label: 'セクション', type: 'text', width: 'm' },
+    { key: 'department', label: '部門', type: 'select', width: 'm', options: (opts) => [{ value: '', label: '未設定' }, ...opts.divisions.map((division) => ({ value: division, label: division }))] },
+    { key: 'section', label: '部署', type: 'select', width: 'm', options: sectionOptions },
     { key: 'status', label: '状態', type: 'select', width: 's', options: () => Object.entries(EMPLOYEE_STATUS).map(([value, label]) => ({ value, label })) }
   ],
   item: [

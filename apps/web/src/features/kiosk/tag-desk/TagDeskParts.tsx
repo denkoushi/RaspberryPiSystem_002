@@ -25,6 +25,7 @@ export function TargetCard(props: {
   name: string;
   code: string;
   sub: string | null;
+  sub2?: string | null;
   tone: 'target' | 'cutting' | 'gone' | 'plain';
   chips?: ReactNode;
   action?: ReactNode;
@@ -32,6 +33,7 @@ export function TargetCard(props: {
   /** Draw the tether from this card (instead of the reader). */
   tetherSource?: boolean;
 }) {
+  const sub = props.kind === 'employee' ? [props.sub, props.sub2].filter(Boolean).join(' ') : props.sub;
   const border = props.tone === 'target' ? 'border-[#4cc9f0]' : props.tone === 'cutting' ? 'border-[#6b2a2d]' : 'border-[#223043]';
   const body = (
     <>
@@ -43,7 +45,7 @@ export function TargetCard(props: {
         <span className="truncate text-[22px] font-bold leading-tight text-white">{props.name}</span>
         <span className="flex gap-3 text-sm text-[#8494a8]">
           <code className="font-mono text-[#aebbd0]">{props.code}</code>
-          {props.sub ? <span className="truncate">{props.sub}</span> : null}
+          {sub ? <span className="truncate">{sub}</span> : null}
         </span>
         {props.chips ? <div className="mt-1 flex flex-wrap gap-2">{props.chips}</div> : null}
       </div>

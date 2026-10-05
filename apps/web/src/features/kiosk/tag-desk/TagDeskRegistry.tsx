@@ -9,6 +9,7 @@ import type { TagDeskKind, TagDeskRow } from '../../../api/domains/tag-desk';
 import type { Ref } from 'react';
 
 const COLUMNS = 'grid grid-cols-[210px_130px_minmax(0,1.2fr)_minmax(0,1fr)_110px] items-center gap-4 px-[22px]';
+const EMPLOYEE_COLUMNS = 'grid grid-cols-[210px_130px_minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_110px] items-center gap-4 px-[22px]';
 
 type Props = {
   state: TagDeskState;
@@ -72,11 +73,12 @@ export function TagDeskRegistry({ state, hitKinds, hitIds, releasing, listRef }:
           {meta.label}を追加
         </button>
       </div>
-      <div className={`${COLUMNS} h-10 border-b border-[#223043] text-xs font-bold tracking-[0.1em] text-[#5c6d83]`}>
+      <div className={`${state.kind === 'employee' ? EMPLOYEE_COLUMNS : COLUMNS} h-10 border-b border-[#223043] text-xs font-bold tracking-[0.1em] text-[#5c6d83]`}>
         <span>タグ</span>
         <span>{meta.codeLabel}</span>
         <span>{state.kind === 'employee' ? '氏名' : '名称'}</span>
         <span>{meta.subLabel}</span>
+        {state.kind === 'employee' ? <span>{meta.sub2Label}</span> : null}
         <span>状態</span>
       </div>
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto" data-tag-desk-list>
@@ -127,13 +129,14 @@ function RegistryRow({ row, hit, selected, releasing, onSelect }: { row: TagDesk
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className={`${COLUMNS} relative h-14 w-full border-b border-[#172131] text-left text-[17px] hover:bg-[#101824] ${marked ? 'bg-[linear-gradient(90deg,rgba(76,201,240,0.12),rgba(76,201,240,0.03)_60%,transparent)]' : ''}`}
+      className={`${row.kind === 'employee' ? EMPLOYEE_COLUMNS : COLUMNS} relative h-14 w-full border-b border-[#172131] text-left text-[17px] hover:bg-[#101824] ${marked ? 'bg-[linear-gradient(90deg,rgba(76,201,240,0.12),rgba(76,201,240,0.03)_60%,transparent)]' : ''}`}
     >
       {marked ? <span className="absolute bottom-2 left-0 top-2 w-[3px] rounded-[3px] bg-[#4cc9f0]" aria-hidden /> : null}
       <span data-tether={hit ? 'hit' : selected ? 'selected' : undefined} className="justify-self-start">{tagCell}</span>
       <span className="font-mono text-[15px] text-[#aebbd0]">{row.code}</span>
       <span className="truncate font-medium text-white">{row.name}</span>
       <span className="truncate text-[15px] text-[#8494a8]">{row.sub ?? ''}</span>
+      {row.kind === 'employee' ? <span className="truncate text-[15px] text-[#8494a8]">{row.sub2 ?? ''}</span> : null}
       <span className="text-sm">
         {tone ? <span className={tagDesk.chipWarn}>{statusLabel(row.kind, row.status)}</span> : <span className="text-white">{statusLabel(row.kind, row.status)}</span>}
       </span>

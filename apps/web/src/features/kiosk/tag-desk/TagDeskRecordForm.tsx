@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 
 
-import { FORM_FIELDS, KIND_META, emptyRecord, toPayload, type FieldSpec } from './tagDeskModel';
+import { FORM_FIELDS, KIND_META, changeRecordField, emptyRecord, toPayload, type FieldSpec } from './tagDeskModel';
 import { tagDesk } from './tagDeskTheme';
 
 import type { TagDeskKind, TagDeskOptions } from '../../../api/domains/tag-desk';
@@ -48,8 +48,12 @@ export function TagDeskRecordForm({ kind, record, name, options, saving, deletin
             id,
             value: values[field.key] ?? '',
             required: field.required,
-            onChange: (event: { target: { value: string } }) => setValues((prev) => ({ ...prev, [field.key]: event.target.value }))
+            onChange: (event: { target: { value: string } }) => setValues((prev) => changeRecordField(kind, options, prev, field.key, event.target.value))
           };
+          const selectOptions = field.options?.(options, values) ?? [];
+          if (common.value && !selectOptions.some((option) => option.value === common.value)) {
+            selectOptions.push({ value: common.value, label: common.value });
+          }
           return (
             <label key={field.key} htmlFor={id} className={`flex flex-col gap-1 ${field.width === 'l' ? 'w-full' : ''}`}>
               <span className="text-[13px] font-bold text-[#8494a8]">
@@ -58,7 +62,7 @@ export function TagDeskRecordForm({ kind, record, name, options, saving, deletin
               </span>
               {field.type === 'select' ? (
                 <select {...common} className={`${tagDesk.input} ${WIDTH[field.width]}`}>
-                  {(field.options?.(options) ?? []).map((option) => (
+                  {selectOptions.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
