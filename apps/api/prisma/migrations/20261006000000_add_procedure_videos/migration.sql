@@ -15,12 +15,12 @@ CREATE TABLE "ProcedureVideoLink" (
   "id" TEXT NOT NULL, "videoId" TEXT NOT NULL, "assemblyProcedureDocumentId" TEXT NOT NULL,
   "pageIndex" INTEGER NOT NULL, "sortOrder" INTEGER NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT "ProcedureVideoLink_pkey" PRIMARY KEY ("id")
+  CONSTRAINT "ProcedureVideoLink_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "ProcedureVideoLink_videoId_fkey" FOREIGN KEY ("videoId") REFERENCES "ProcedureVideo"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "ProcedureVideoLink_assemblyProcedureDocumentId_fkey" FOREIGN KEY ("assemblyProcedureDocumentId") REFERENCES "AssemblyProcedureDocument"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 CREATE UNIQUE INDEX "ProcedureVideo_gmailDedupeKey_key" ON "ProcedureVideo"("gmailDedupeKey");
 CREATE INDEX "ProcedureVideo_status_updatedAt_idx" ON "ProcedureVideo"("status", "updatedAt");
 CREATE INDEX "ProcedureVideo_discardedAt_receivedAt_idx" ON "ProcedureVideo"("discardedAt", "receivedAt");
 CREATE UNIQUE INDEX "ProcedureVideoLink_assemblyProcedureDocumentId_pageIndex_so_key" ON "ProcedureVideoLink"("assemblyProcedureDocumentId", "pageIndex", "sortOrder");
 CREATE INDEX "ProcedureVideoLink_videoId_idx" ON "ProcedureVideoLink"("videoId");
-ALTER TABLE "ProcedureVideoLink" ADD CONSTRAINT "ProcedureVideoLink_videoId_fkey" FOREIGN KEY ("videoId") REFERENCES "ProcedureVideo"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "ProcedureVideoLink" ADD CONSTRAINT "ProcedureVideoLink_assemblyProcedureDocumentId_fkey" FOREIGN KEY ("assemblyProcedureDocumentId") REFERENCES "AssemblyProcedureDocument"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
