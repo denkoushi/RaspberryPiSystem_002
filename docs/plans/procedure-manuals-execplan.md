@@ -42,7 +42,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) 許可送信元ドメインの指定検証: API lint / `vitest run procedure-material backup-config` 6ファイル86件 / build用tsc、Web lint / `vitest run procedure-manuals-gmail CsvImport` 5ファイル33件 / build が全て成功。依存がないworktreeのため既存checkoutから独立コピーし、共有パッケージbuildとPrisma Client生成を実施。WebテストのReact Queryコンテキスト引数に合わせた検証修正、およびlockfileと同じフォント依存のローカル補完後に成功。統合・本番反映は未実施。
 - [x] (2026-10-05) Phase 3 ローカル実装: 由来・出典のexpand-only追加、整理済みChat素材と公開ステップの候補一覧・画像配信・明示選択取込、素材棚のナレッジタブと由来表示を追加。ナレッジ側は読み取り専用。
 - [x] (2026-10-05) Phase 3 指定検証: API lint / 6ファイル96件 / build用tsc、Web lint / 3ファイル29件 / buildが成功。Prisma Client生成と差分の空白確認も成功。
-- [ ] Phase 3 統合・受入: 実DB migration・実端末・commit / push / PR / merge / deployは未実施。kiosk-sop鮮度確認とgenerated更新はpush前の統合段階。
+- [x] (2026-10-05) 送信元ドメイン制限(既定 `thkintechs.co.jp`、管理画面で追加・削除)と Phase 3 を 1 つの PR にまとめた(オーナー指示)。使い捨て PostgreSQL で migration 適用を確認。Codex レビューの 3 指摘(原本と表示画像の取り違え、10,000 字超の本文分割、候補の再計算)を修正。管理カードの設定競合は在庫カードと同じ既知の制約として残す。
+- [x] (2026-10-05) PR #1704 を main へ squash merge(merge `1f54ba22bb5172868a7b4ad9bc9a68b504638908`)、main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-070906-5007dd`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`)、`/api/system/health` 200。
+- [ ] 実機確認(オーナー): 管理画面のカードに許可ドメイン `thkintechs.co.jp` が出る、他ドメインからの `[Procedure-material]` メールが取り込まれない、素材棚の「ナレッジから」に候補が出て取り込める。
 - [ ] 後日: 動画素材(形式未定)。
 
 ## Surprises & Discoveries
