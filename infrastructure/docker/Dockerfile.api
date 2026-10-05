@@ -74,7 +74,7 @@ ARG APT_CACHE_BUST=2026-10-02
 
 RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && apt-get update \
-  && apt-get install -y --no-install-recommends openssl poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible-core python3 python3-pip git \
+  && apt-get install -y --no-install-recommends openssl ffmpeg poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible-core python3 python3-pip git \
     libgomp1 libgl1 libglib2.0-0 libsm6 libxext6 \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 \
   && apt-get install -y --only-upgrade --no-install-recommends libgnutls30 libpq5 postgresql-client-15 python3-httplib2 libexpat1 libpcre2-8-0 \
