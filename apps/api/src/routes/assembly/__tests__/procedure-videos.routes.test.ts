@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { Prisma } from '@prisma/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
@@ -12,10 +13,10 @@ const secondId = '00000000-0000-4000-8000-000000000002';
 const base = `/assembly/procedure-videos/${id}`;
 const pagePath = `/assembly/procedure-documents/${id}/pages/0/videos`;
 function harness(deny: 'view' | 'write' | null = null) {
-  const video = { id, title: '動画', status: 'READY', durationSeconds: 10.5 as number | null, storageKey: 'video.mp4', posterStorageKey: 'poster.jpg', discardedAt: null, _count: { links: 2 } };
+  const video = { id, title: '動画', origin: null as string | null, status: 'READY', durationSeconds: 10.5 as number | null, storageKey: 'video.mp4', posterStorageKey: 'poster.jpg', discardedAt: null as Date | null, _count: { links: 2 } };
   const db = { $transaction: vi.fn(), $queryRaw: vi.fn().mockResolvedValue([{ status: 'DRAFT', isActive: true, isRevisionHead: true }]),
     assemblyProcedureDocumentEditLease: { findUnique: vi.fn().mockResolvedValue(null) },
-    procedureVideo: { findFirst: vi.fn().mockResolvedValue(null), findUnique: vi.fn().mockResolvedValue(video), findMany: vi.fn().mockResolvedValue([video]), count: vi.fn().mockResolvedValue(2), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    procedureVideo: { create: vi.fn(async ({ data }) => ({ id: secondId, ...data })), findFirst: vi.fn().mockResolvedValue(null), findUnique: vi.fn().mockResolvedValue(video), findMany: vi.fn().mockResolvedValue([video]), count: vi.fn().mockResolvedValue(2), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     procedureVideoLink: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([{ video }]), deleteMany: vi.fn(), createMany: vi.fn() },
     procedureVideoComment: { findMany: vi.fn().mockResolvedValue([]), deleteMany: vi.fn(), createMany: vi.fn() },
     assemblyProcedureDocumentPage: { findUnique: vi.fn().mockResolvedValue({ pageIndex: 0 }) },
@@ -37,9 +38,48 @@ function setup(deny: 'view' | 'write' | null = null) { const h = harness(deny); 
 afterEach(async () => { await Promise.all(apps.splice(0).map((app) => app.close())); vi.restoreAllMocks(); });
 
 describe('procedure-video routes', () => {
+  it('creates a new pending concat in order, allows duplicates and long totals without changing sources', async () => {
+    const h = setup(); h.video.durationSeconds = 40;
+    const response = await h.app.inject({ method: 'POST', url: '/assembly/procedure-videos/concat', payload: { sourceVideoIds: [id, id] } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ id: secondId, status: 'PENDING', origin: 'CONCAT', title: '動画 ほか 1 本', gmailMessageId: null, sourceFileName: 'concat.mp4', sourceContentType: 'video/mp4', sourceByteSize: 0, concatRequest: { sourceVideoIds: [id, id], requestedAt: expect.any(String) } });
+    expect(response.json().gmailDedupeKey).toMatch(/^concat:[a-f0-9-]{36}$/);
+    expect(h.db.procedureVideo.update).not.toHaveBeenCalled(); expect(h.db.procedureVideo.updateMany).not.toHaveBeenCalled();
+    expect(h.store.read).not.toHaveBeenCalled(); expect(h.db.$queryRaw).toHaveBeenCalledOnce();
+  });
+  it('uses the first requested title after ordering, accepts five videos and trims a custom title', async () => {
+    const h = setup(); h.db.procedureVideo.findMany.mockResolvedValue([h.video, { ...h.video, id: secondId, title: '別の動画' }]);
+    const sourceVideoIds = [secondId, id, secondId, id, id];
+    const automatic = await h.app.inject({ method: 'POST', url: '/assembly/procedure-videos/concat', payload: { sourceVideoIds } });
+    expect(automatic.json().title).toBe('別の動画 ほか 4 本');
+    const response = await h.app.inject({ method: 'POST', url: '/assembly/procedure-videos/concat', payload: { sourceVideoIds, title: ' 接続タイトル ' } });
+    expect(response.statusCode).toBe(200); expect(response.json().title).toBe('接続タイトル');
+    expect(h.db.$queryRaw.mock.calls.slice(0, 2).map((call) => call[1])).toEqual([id, secondId]);
+  });
+  it.each([[], [id], Array(6).fill(id), [id, 'invalid-id']])('rejects invalid concat sources %j before a transaction', async (...sourceVideoIds) => {
+    const h = setup();
+    expect((await h.app.inject({ method: 'POST', url: '/assembly/procedure-videos/concat', payload: { sourceVideoIds } })).statusCode).toBe(400);
+    expect(h.db.$transaction).not.toHaveBeenCalled(); expect(h.db.procedureVideo.create).not.toHaveBeenCalled();
+  });
+  it.each(['PENDING', 'PROCESSING', 'FAILED', 'discarded', 'missing'])('refuses %s concat sources', async (state) => {
+    const h = setup();
+    if (state === 'missing') h.db.procedureVideo.findMany.mockResolvedValue([]);
+    else if (state === 'discarded') h.video.discardedAt = new Date();
+    else h.video.status = state;
+    const response = await h.app.inject({ method: 'POST', url: '/assembly/procedure-videos/concat', payload: { sourceVideoIds: [id, id] } });
+    expect(response.statusCode).toBe(409); expect(response.body).toContain('完了した動画だけ接続できます');
+    expect(h.db.procedureVideo.create).not.toHaveBeenCalled();
+  });
+  it('guards concat with write permission and returns CONCAT origin in the shelf', async () => {
+    const denied = setup('write');
+    expect((await denied.app.inject({ method: 'POST', url: '/assembly/procedure-videos/concat', payload: { sourceVideoIds: [id, id] } })).statusCode).toBe(403);
+    expect(denied.db.$transaction).not.toHaveBeenCalled();
+    const h = setup(); h.video.origin = 'CONCAT';
+    expect((await h.app.inject('/assembly/procedure-videos')).json().videos[0].origin).toBe('CONCAT');
+  });
   it('lists active by default with poster presence and link count, and filters discarded/search/limit', async () => {
     const h = setup(); const response = await h.app.inject('/assembly/procedure-videos');
-    expect(response.json().videos[0]).toMatchObject({ status: 'READY', hasPoster: true, linkCount: 2 });
+    expect(response.json().videos[0]).toMatchObject({ status: 'READY', hasPoster: true, linkCount: 2, origin: 'GMAIL' });
     expect(h.db.procedureVideo.findMany.mock.calls[0][0].where).toEqual({ discardedAt: null });
     await h.app.inject('/assembly/procedure-videos?state=discarded&q=手順&limit=8');
     expect(h.db.procedureVideo.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ take: 8, where: { discardedAt: { not: null }, OR: expect.any(Array) } }));
@@ -60,7 +100,7 @@ describe('procedure-video routes', () => {
   });
   it('retries FAILED originals and rejects others; guards discard references and restores', async () => {
     const h = setup(); expect((await h.app.inject({ method: 'POST', url: `${base}/retry` })).statusCode).toBe(200);
-    expect(h.db.procedureVideo.updateMany).toHaveBeenCalledWith({ where: { id, status: 'FAILED', sourceStorageKey: { not: null } }, data: { status: 'PENDING', attempts: 0, errorCode: null, errorMessage: null } });
+    expect(h.db.procedureVideo.updateMany).toHaveBeenCalledWith({ where: { id, status: 'FAILED', OR: [{ sourceStorageKey: { not: null } }, { concatRequest: { not: Prisma.DbNull } }] }, data: { status: 'PENDING', attempts: 0, errorCode: null, errorMessage: null } });
     h.db.procedureVideo.updateMany.mockResolvedValue({ count: 0 }); expect((await h.app.inject({ method: 'POST', url: `${base}/retry` })).statusCode).toBe(409);
     h.db.procedureVideoLink.count.mockResolvedValue(1); expect((await h.app.inject({ method: 'POST', url: `${base}/discard` })).statusCode).toBe(409);
     expect(h.db.procedureVideo.update).not.toHaveBeenCalled();

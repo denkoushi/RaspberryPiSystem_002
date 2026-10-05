@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -12,6 +12,8 @@ import { FileStorageAlreadyExistsError } from '../file-storage/file-storage-erro
 import { runAssemblyTransaction } from './assembly-transaction.js';
 import { FfmpegProcedureVideoTranscoderAdapter } from './ffmpeg-procedure-video-transcoder.adapter.js';
 import { ProcedureVideoTranscodeError, type ProcedureVideoTranscoderPort } from './procedure-video-transcoder.port.js';
+
+class ProcedureVideoClaimLostError extends Error {}
 
 export class ProcedureVideoProcessingService {
   private running = false;
@@ -38,32 +40,90 @@ export class ProcedureVideoProcessingService {
       }
       const candidate = await this.db.procedureVideo.findFirst({ where: { status: 'PENDING', discardedAt: null }, orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }] });
       if (!candidate) return;
-      const claim = await this.db.procedureVideo.updateMany({ where: { id: candidate.id, status: 'PENDING', updatedAt: candidate.updatedAt, discardedAt: null }, data: { status: 'PROCESSING' } });
+      const processingToken = randomUUID();
+      const claim = await this.db.procedureVideo.updateMany({ where: { id: candidate.id, status: 'PENDING', updatedAt: candidate.updatedAt, discardedAt: null }, data: { status: 'PROCESSING', processingToken } });
       if (!claim.count) return;
       const video = await this.db.procedureVideo.findUnique({ where: { id: candidate.id } });
-      if (!video) return;
+      if (!video || video.status !== 'PROCESSING' || video.processingToken !== processingToken) return;
+      const processingWhere = { id: video.id, status: 'PROCESSING' as const, processingToken };
+      const heartbeat = async () => {
+        const result = await this.db.procedureVideo.updateMany({ where: processingWhere, data: { updatedAt: new Date() } });
+        if (!result.count) throw new ProcedureVideoClaimLostError();
+      };
       const trim = video.trimRequest as { startSeconds: number; endSeconds: number } | null;
+      const concat = video.concatRequest as { sourceVideoIds: string[]; requestedAt: string } | null;
       const isTrim = Boolean(trim && video.storageKey);
       let directory: string | undefined;
       try {
-        const inputKey = isTrim ? video.storageKey : video.sourceStorageKey;
-        if (!inputKey) throw new ProcedureVideoTranscodeError('SOURCE_MISSING', '動画の原本がありません');
         directory = await mkdtemp(path.join(tmpdir(), 'procedure-video-'));
         const input = path.join(directory, 'original');
         const output = path.join(directory, 'video.mp4');
         const poster = path.join(directory, 'poster.jpg');
-        await writeFile(input, await this.store.read(inputKey, { verifyIntegrity: true }));
-        const probe = await this.transcoder.probe(input);
-        if (!isTrim && probe.durationSeconds > 60) throw new ProcedureVideoTranscodeError('TOO_LONG', '動画は60秒までです');
-        if (isTrim && trim) await this.transcoder.trim(input, output, poster, trim.startSeconds, trim.endSeconds);
-        else await this.transcoder.transcode(input, output, poster);
-        const converted = await this.transcoder.probe(output);
+        let sourceDurationSeconds: number;
+        const concatSources: Array<{ id: string; storageKey: string; durationSeconds: number }> = [];
+        if (concat) {
+          const sources = await this.db.procedureVideo.findMany({ where: { id: { in: concat.sourceVideoIds } } });
+          const inputs: string[] = [];
+          for (const [index, id] of concat.sourceVideoIds.entries()) {
+            const source = sources.find((row) => row.id === id);
+            if (!source || source.status !== 'READY' || source.discardedAt || !source.storageKey) throw new ProcedureVideoTranscodeError('SOURCE_MISSING', '接続元の動画がないか、完了していないか、捨てられています');
+            const sourceInput = path.join(directory, `${index}.mp4`);
+            // eslint-disable-next-line no-await-in-loop
+            await writeFile(sourceInput, await this.store.read(source.storageKey, { verifyIntegrity: true }));
+            // eslint-disable-next-line no-await-in-loop
+            const probe = await this.transcoder.probe(sourceInput);
+            concatSources.push({ id, storageKey: source.storageKey, durationSeconds: probe.durationSeconds });
+            inputs.push(sourceInput);
+          }
+          await this.transcoder.concat(inputs, output, poster, heartbeat);
+          sourceDurationSeconds = concatSources.reduce((sum, source) => sum + source.durationSeconds, 0);
+        } else {
+          const inputKey = isTrim ? video.storageKey : video.sourceStorageKey;
+          if (!inputKey) throw new ProcedureVideoTranscodeError('SOURCE_MISSING', '動画の原本がありません');
+          await writeFile(input, await this.store.read(inputKey, { verifyIntegrity: true }));
+          const probe = await this.transcoder.probe(input);
+          sourceDurationSeconds = probe.durationSeconds;
+          if (!isTrim && probe.durationSeconds > 60) throw new ProcedureVideoTranscodeError('TOO_LONG', '動画は60秒までです');
+          if (isTrim && trim) await this.transcoder.trim(input, output, poster, trim.startSeconds, trim.endSeconds, heartbeat);
+          else await this.transcoder.transcode(input, output, poster, heartbeat);
+        }
+        const { durationSeconds, width, height } = await this.transcoder.probe(output);
         const bytes = await readFile(output);
         const sha256 = createHash('sha256').update(bytes).digest('hex');
         const storageKey = `procedure-videos/${sha256}/video.mp4`;
         const posterStorageKey = `procedure-videos/${sha256}/poster.jpg`;
         const posterBytes = await readFile(poster);
-        await runAssemblyTransaction(async (tx) => {
+        const published = await runAssemblyTransaction(async (tx) => {
+          const result = await tx.procedureVideo.updateMany({ where: processingWhere, data: {
+            status: 'READY', storageKey, posterStorageKey, sha256, byteSize: bytes.length, durationSeconds, width, height,
+            errorCode: null, errorMessage: null, processedAt: new Date(),
+            ...(isTrim ? { trimmedAt: new Date(), trimRequest: Prisma.DbNull } : { sourceDurationSeconds }),
+            ...(concat ? { concatRequest: Prisma.DbNull } : {}),
+          } });
+          if (!result.count) {
+            logger.info({ videoId: video.id }, 'Procedure video claim was recovered before READY');
+            return false;
+          }
+          if (concat) {
+            for (const id of [...new Set(concat.sourceVideoIds)].sort()) {
+              // eslint-disable-next-line no-await-in-loop
+              await tx.$queryRaw`SELECT "id" FROM "ProcedureVideo" WHERE "id" = ${id} FOR UPDATE`;
+            }
+            const current = await tx.procedureVideo.findMany({ where: { id: { in: concat.sourceVideoIds } }, include: { comments: { orderBy: [{ atSeconds: 'asc' }, { sortOrder: 'asc' }] } } });
+            let offset = 0;
+            const comments: Array<{ videoId: string; atSeconds: number; text: string; sortOrder: number }> = [];
+            for (const source of concatSources) {
+              const row = current.find((item) => item.id === source.id);
+              if (!row || row.status !== 'READY' || row.discardedAt || row.storageKey !== source.storageKey) throw new ProcedureVideoTranscodeError('SOURCE_MISSING', '処理中に接続元の動画が変更・削除・破棄されました');
+              for (const comment of row.comments) {
+                if (comments.length < 5) comments.push({ videoId: video.id, atSeconds: offset + comment.atSeconds, text: comment.text, sortOrder: comments.length });
+              }
+              offset += source.durationSeconds;
+            }
+            // A recovered/retried request publishes comments and READY atomically.
+            await tx.procedureVideoComment.deleteMany({ where: { videoId: video.id } });
+            if (comments.length) await tx.procedureVideoComment.createMany({ data: comments });
+          }
           // Writers and old-output cleanup share the same lock. Keep encoding outside it.
           await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${storageKey}))`;
           await this.save(storageKey, bytes);
@@ -74,19 +134,21 @@ export class ProcedureVideoProcessingService {
             const retained = comments.filter((comment) => comment.atSeconds >= trim.startSeconds && comment.atSeconds <= trim.endSeconds);
             if (retained.length) await tx.procedureVideoComment.createMany({ data: retained.map((comment, sortOrder) => ({ id: comment.id, videoId: video.id, text: comment.text, createdAt: comment.createdAt, atSeconds: comment.atSeconds - trim.startSeconds, sortOrder })) });
           }
-          await tx.procedureVideo.update({ where: { id: video.id }, data: {
-            status: 'READY', storageKey, posterStorageKey, sha256, byteSize: bytes.length, ...converted,
-            errorCode: null, errorMessage: null, processedAt: new Date(),
-            ...(isTrim ? { trimmedAt: new Date(), trimRequest: Prisma.DbNull } : { sourceDurationSeconds: probe.durationSeconds }),
-          } });
+          return true;
         }, this.db);
+        if (!published) return;
         if (isTrim && video.storageKey && video.storageKey !== storageKey) await this.cleanupOutput(video.id, video.storageKey, video.posterStorageKey);
         if (video.sourceStorageKey) await this.cleanupOriginal(video.id, video.sourceStorageKey);
       } catch (error) {
+        if (error instanceof ProcedureVideoClaimLostError) {
+          logger.info({ videoId: video.id }, 'Procedure video claim was recovered during encoding');
+          return;
+        }
         const code = error instanceof ProcedureVideoTranscodeError ? error.code : 'PROCESSING_FAILED';
         const attempts = video.attempts + 1;
         const terminal = ['TOO_LONG', 'FFMPEG_UNAVAILABLE', 'SOURCE_MISSING'].includes(code) || attempts > 3;
-        await this.db.procedureVideo.update({ where: { id: video.id }, data: { status: terminal ? (isTrim ? 'READY' : 'FAILED') : 'PENDING', attempts, errorCode: isTrim ? 'TRIM_FAILED' : code, errorMessage: error instanceof Error ? error.message.slice(0, 500) : '動画処理に失敗しました', ...(isTrim && terminal ? { trimRequest: Prisma.DbNull } : {}) } });
+        const result = await this.db.procedureVideo.updateMany({ where: processingWhere, data: { status: terminal ? (isTrim ? 'READY' : 'FAILED') : 'PENDING', attempts, errorCode: concat ? 'CONCAT_FAILED' : isTrim ? 'TRIM_FAILED' : code, errorMessage: error instanceof Error ? error.message.slice(0, 500) : '動画処理に失敗しました', ...(isTrim && terminal ? { trimRequest: Prisma.DbNull } : {}) } });
+        if (!result.count) logger.info({ videoId: video.id }, 'Procedure video claim was recovered before failure update');
         if (code === 'FFMPEG_UNAVAILABLE') logger.warn({ videoId: video.id, code }, 'Procedure video transcoder unavailable');
       } finally {
         if (directory) await rm(directory, { recursive: true, force: true });

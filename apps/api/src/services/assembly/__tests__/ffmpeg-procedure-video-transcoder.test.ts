@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FfmpegProcedureVideoTranscoderAdapter } from '../ffmpeg-procedure-video-transcoder.adapter.js';
 
-const { execute, stat, childKill } = vi.hoisted(() => ({ execute: vi.fn(), stat: vi.fn(), childKill: vi.fn() }));
-vi.mock('node:fs/promises', () => ({ stat }));
+const { execute, stat, childKill, mkdtemp, rm, writeFile } = vi.hoisted(() => ({ execute: vi.fn(), stat: vi.fn(), childKill: vi.fn(), mkdtemp: vi.fn(), rm: vi.fn(), writeFile: vi.fn() }));
+vi.mock('node:fs/promises', () => ({ stat, mkdtemp, rm, writeFile }));
 vi.mock('node:child_process', () => {
   const execFile = vi.fn();
   Object.defineProperty(execFile, Symbol.for('nodejs.util.promisify.custom'), { value: async (...args: unknown[]) => {
@@ -16,12 +16,55 @@ vi.mock('node:child_process', () => {
 function conversion(duration: string) {
   execute.mockReturnValueOnce('').mockReturnValueOnce(JSON.stringify({ format: { duration }, streams: [{ width: 640, height: 360 }] }));
 }
-beforeEach(() => { execute.mockReset(); stat.mockReset().mockResolvedValue({ size: 64 }); childKill.mockReset(); });
+beforeEach(() => { execute.mockReset(); stat.mockReset().mockResolvedValue({ size: 64 }); childKill.mockReset(); mkdtemp.mockReset().mockResolvedValue('/tmp/concat'); rm.mockReset(); writeFile.mockReset(); });
 afterEach(() => vi.useRealTimers());
 describe('ffmpeg procedure-video transcoder', () => {
+  it.each([[640, 360, '640:360'], [360, 640, '360:640']])('normalizes mixed inputs to first orientation %sx%s, re-encodes with the concat demuxer and creates a first-frame poster', async (width, height, dimensions) => {
+    execute.mockImplementation((binary) => binary === 'ffprobe' ? JSON.stringify({ format: { duration: '80' }, streams: [{ width, height }] }) : '');
+    await new FfmpegProcedureVideoTranscoderAdapter().concat(['first.mp4', 'second.mp4', 'first.mp4'], 'out.mp4', 'poster.jpg');
+    const conversions = execute.mock.calls.filter((call) => call[0] === 'ffmpeg');
+    expect(conversions.slice(0, 3).map((call) => call[1][3])).toEqual(['first.mp4', 'second.mp4', 'first.mp4']);
+    for (const call of conversions.slice(0, 4)) {
+      expect(call[1]).toEqual(expect.arrayContaining(['-an', '-threads', '2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-r', '30']));
+      expect(call[1][call[1].indexOf('-vf') + 1]).toBe(`scale='max(2,round(iw*sar/2)*2)':ih,setsar=1,scale=${dimensions}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${dimensions}:(ow-iw)/2:(oh-ih)/2:black,setsar=1`);
+    }
+    expect(writeFile).toHaveBeenCalledWith('/tmp/concat/list.txt', "file '0.mp4'\nfile '1.mp4'\nfile '2.mp4'\n");
+    expect(conversions[3][1]).toEqual(expect.arrayContaining(['-f', 'concat', '-safe', '0', '-i', '/tmp/concat/list.txt', 'out.mp4']));
+    expect(conversions[4][1]).toEqual(expect.arrayContaining(['-ss', '0', '-i', 'out.mp4', 'poster.jpg']));
+    expect(rm).toHaveBeenCalledWith('/tmp/concat', { recursive: true, force: true });
+  });
+  it.each([[640, 360, undefined, '640:180'], [360, 640, undefined, '640:568'], [640, 360, -90, '180:640']])('uses SAR=2 display dimensions for %sx%s rotation %s', async (width, height, rotation, dimensions) => {
+    execute.mockImplementation((binary) => binary === 'ffprobe' ? JSON.stringify({ format: { duration: '10' }, streams: [{ width, height, sample_aspect_ratio: '2:1', side_data_list: [{ rotation }] }] }) : '');
+    const heartbeat = vi.fn();
+    await new FfmpegProcedureVideoTranscoderAdapter().concat(['first.mp4', 'second.mp4'], 'out.mp4', 'poster.jpg', heartbeat);
+    const filter = execute.mock.calls.find((call) => call[0] === 'ffmpeg')![1];
+    expect(filter[filter.indexOf('-vf') + 1]).toBe(`scale='max(2,round(iw*sar/2)*2)':ih,setsar=1,scale=${dimensions}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${dimensions}:(ow-iw)/2:(oh-ih)/2:black,setsar=1`);
+    expect(execute.mock.calls[0][1]).toContain('format=duration:stream=width,height,sample_aspect_ratio:stream_side_data=rotation');
+    expect(heartbeat).toHaveBeenCalledTimes(4);
+  });
+  it('stops concat immediately when a normalization heartbeat loses ownership and cleans temporary files', async () => {
+    execute.mockImplementation((binary) => binary === 'ffprobe' ? JSON.stringify({ format: { duration: '10' }, streams: [{ width: 640, height: 360 }] }) : '');
+    const lost = new Error('recovered');
+    await expect(new FfmpegProcedureVideoTranscoderAdapter().concat(['first.mp4', 'second.mp4'], 'out.mp4', 'poster.jpg', vi.fn().mockRejectedValue(lost))).rejects.toBe(lost);
+    expect(execute.mock.calls.filter((call) => call[0] === 'ffmpeg')).toHaveLength(1);
+    expect(rm).toHaveBeenCalledWith('/tmp/concat', { recursive: true, force: true });
+  });
+  it.each(['transcode', 'trim'] as const)('heartbeats after %s encoding and poster creation', async (mode) => {
+    conversion('8');
+    const heartbeat = vi.fn();
+    const adapter = new FfmpegProcedureVideoTranscoderAdapter();
+    if (mode === 'trim') await adapter.trim('in', 'out.mp4', 'poster.jpg', 2, 10, heartbeat);
+    else await adapter.transcode('in', 'out.mp4', 'poster.jpg', heartbeat);
+    expect(heartbeat).toHaveBeenCalledTimes(2);
+  });
+  it('cleans normalized concat files after an encoder failure', async () => {
+    execute.mockReturnValueOnce(JSON.stringify({ format: { duration: '10' }, streams: [{ width: 640, height: 360 }] })).mockReturnValueOnce(new Error('encoder failure'));
+    await expect(new FfmpegProcedureVideoTranscoderAdapter().concat(['first.mp4', 'second.mp4'], 'out.mp4', 'poster.jpg')).rejects.toMatchObject({ code: 'TRANSCODE_FAILED' });
+    expect(rm).toHaveBeenCalledWith('/tmp/concat', { recursive: true, force: true });
+  });
   it('reads duration and rotated display dimensions', async () => {
     execute.mockReturnValue(JSON.stringify({ format: { duration: '12.3' }, streams: [{ width: 1920, height: 1080, side_data_list: [{ rotation: -90 }] }] }));
-    expect(await new FfmpegProcedureVideoTranscoderAdapter().probe('/tmp/in')).toEqual({ durationSeconds: 12.3, width: 1080, height: 1920 });
+    expect(await new FfmpegProcedureVideoTranscoderAdapter().probe('/tmp/in')).toEqual({ durationSeconds: 12.3, sampleAspectRatio: 1, width: 1080, height: 1920 });
   });
   it('uses bounded execFile with H264 MP4, two threads, no audio, scaling, default autorotation and a poster', async () => {
     conversion('1.5');

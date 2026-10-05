@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { access, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -5,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProcedureVideoProcessingService } from '../procedure-video-processing.service.js';
 import { ProcedureVideoTranscodeError } from '../procedure-video-transcoder.port.js';
 
-type VideoRow = { id: string; status: string; attempts: number; sourceStorageKey: string | null; discardedAt: null; updatedAt: Date; storageKey?: string | null; posterStorageKey?: string | null; trimRequest?: { startSeconds: number; endSeconds: number; requestedAt: string } | null; sourceDurationSeconds?: number | null };
+type VideoRow = { id: string; status: string; attempts: number; sourceStorageKey: string | null; discardedAt: Date | null; updatedAt: Date; processingToken?: string | null; storageKey?: string | null; posterStorageKey?: string | null; trimRequest?: { startSeconds: number; endSeconds: number; requestedAt: string } | null; concatRequest?: { sourceVideoIds: string[]; requestedAt: string } | null; sourceDurationSeconds?: number | null; comments?: Array<{ atSeconds: number; text: string; sortOrder: number }> };
 function harness() {
   const row: VideoRow = { id: 'video', status: 'PENDING', attempts: 0, sourceStorageKey: 'procedure-videos/incoming/hash/original', discardedAt: null, updatedAt: new Date() };
   const rows = [row];
@@ -25,16 +26,24 @@ function harness() {
       return pending ? { ...pending } : null;
     }),
     findUnique: vi.fn(async ({ where }) => { const video = rows.find((video) => video.id === where.id); return video ? { ...video } : null; }),
-    findMany: vi.fn(async () => rows.filter((video) => video.status === 'READY' && video.sourceStorageKey).map((video) => ({ ...video }))),
+    findMany: vi.fn(async ({ where }) => rows.filter((video) => where.id ? where.id.in.includes(video.id) : video.status === 'READY' && video.sourceStorageKey).map((video) => ({ ...video }))),
     updateMany: vi.fn(async ({ where, data }) => {
-      const matches = rows.filter((video) => video.status === where.status && (!where.id || video.id === where.id) && (!where.updatedAt || (where.updatedAt instanceof Date ? video.updatedAt.getTime() === where.updatedAt.getTime() : video.updatedAt < where.updatedAt.lt)));
-      for (const video of matches) { Object.assign(video, data); states.push(video.status); }
+      const matches = rows.filter((video) => video.status === where.status && (!where.id || video.id === where.id) && (!where.processingToken || video.processingToken === where.processingToken) && (!where.updatedAt || (where.updatedAt instanceof Date ? video.updatedAt.getTime() === where.updatedAt.getTime() : video.updatedAt < where.updatedAt.lt)));
+      for (const video of matches) { Object.assign(video, data); if (data.status) states.push(video.status); }
       return { count: matches.length };
     }), update,
   }, $transaction: vi.fn() };
   const tx = { $queryRaw: vi.fn().mockResolvedValue([]), procedureVideo: {
+    findMany: vi.fn(async ({ where }) => rows.filter((video) => where.id.in.includes(video.id)).map((video) => ({ ...video, comments: video.comments ?? [] }))),
     findUnique: vi.fn(async ({ where }) => rows.find((video) => video.id === where.id)),
     count: vi.fn(async ({ where }) => rows.filter((video) => 'storageKey' in where ? video.storageKey === where.storageKey : video.sourceStorageKey === where.sourceStorageKey).length),
+    updateMany: vi.fn(async (args) => {
+      expect(inTransaction).toBe(true);
+      const target = rows.find((video) => video.id === args.where.id && video.status === args.where.status && video.processingToken === args.where.processingToken);
+      if (!target) return { count: 0 };
+      await update(args);
+      return { count: 1 };
+    }),
     update: vi.fn(async (args) => { expect(inTransaction).toBe(true); return update(args); }),
   }, procedureVideoComment: { findMany: vi.fn().mockResolvedValue([]), deleteMany: vi.fn(), createMany: vi.fn() } };
   db.$transaction.mockImplementation(async (work) => {
@@ -53,11 +62,14 @@ function harness() {
     expect(inTransaction).toBe(!key.includes('/incoming/'));
     events.push('delete');
   }) };
-  const transcoder = { probe: vi.fn().mockResolvedValue({ durationSeconds: 12, width: 640, height: 360 }), transcode: vi.fn(async (input, output, poster) => {
+  const transcoder = { probe: vi.fn().mockResolvedValue({ durationSeconds: 12, width: 640, height: 360 }), transcode: vi.fn(async (input: string, output: string, poster: string, _heartbeat?: () => Promise<void>) => {
     expect(inTransaction).toBe(false);
     expect(await readFile(input, 'utf8')).toBe('original');
     await writeFile(output, 'converted'); await writeFile(poster, 'poster');
-  }), trim: vi.fn(async (input, output, poster) => {
+  }), concat: vi.fn(async (_inputs: string[], output: string, poster: string, _heartbeat?: () => Promise<void>) => {
+    expect(inTransaction).toBe(false);
+    await writeFile(output, 'concatenated'); await writeFile(poster, 'concat-poster');
+  }), trim: vi.fn(async (input: string, output: string, poster: string, _start?: number, _end?: number, _heartbeat?: () => Promise<void>) => {
     expect(inTransaction).toBe(false);
     expect(await readFile(input, 'utf8')).toBe('original');
     await writeFile(output, 'trimmed'); await writeFile(poster, 'trim-poster');
@@ -84,7 +96,7 @@ describe('procedure-video processing', () => {
     expect(h.tx.$queryRaw.mock.calls[1]).toEqual([expect.arrayContaining(['SELECT pg_advisory_xact_lock(hashtext(', '))']), 'procedure-videos/incoming/hash/original']);
     expect(h.tx.procedureVideo.update).toHaveBeenCalledWith({ where: { id: 'video' }, data: { sourceStorageKey: null } });
     expect(h.db.procedureVideo.findFirst).toHaveBeenCalledWith({ where: { status: 'PENDING', discardedAt: null }, orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }] });
-    expect(h.db.procedureVideo.updateMany).toHaveBeenLastCalledWith({ where: { id: 'video', status: 'PENDING', updatedAt: h.row.updatedAt, discardedAt: null }, data: { status: 'PROCESSING' } });
+    expect(h.db.procedureVideo.updateMany).toHaveBeenNthCalledWith(2, { where: { id: 'video', status: 'PENDING', updatedAt: h.row.updatedAt, discardedAt: null }, data: { status: 'PROCESSING', processingToken: expect.stringMatching(/^[0-9a-f-]{36}$/) } });
   });
   it('keeps a shared original for the second row and deletes it only after both rows are READY', async () => {
     const h = harness(); h.rows.push({ ...h.row, id: 'second' });
@@ -107,7 +119,7 @@ describe('procedure-video processing', () => {
     expect(h.states).toEqual(['PROCESSING', 'READY', 'READY']);
   });
   it('recovers READY originals on the next run after a cleanup transaction fails', async () => {
-    const h = harness(); h.tx.procedureVideo.update.mockImplementationOnce(async (args) => h.db.procedureVideo.update(args)).mockRejectedValueOnce(new Error('database failure'));
+    const h = harness(); h.tx.procedureVideo.update.mockRejectedValueOnce(new Error('database failure'));
     await h.service.runOnce();
     expect(h.row).toMatchObject({ status: 'READY', sourceStorageKey: 'procedure-videos/incoming/hash/original', attempts: 0 });
     expect(h.store.delete).not.toHaveBeenCalled();
@@ -117,7 +129,7 @@ describe('procedure-video processing', () => {
     expect(h.transcoder.transcode).toHaveBeenCalledOnce();
   });
   it('never removes an original when the READY update fails', async () => {
-    const h = harness(); h.db.procedureVideo.update.mockRejectedValueOnce(new Error('commit failure'));
+    const h = harness(); h.tx.procedureVideo.updateMany.mockRejectedValueOnce(new Error('commit failure'));
     await h.service.runOnce();
     expect(h.row).toMatchObject({ status: 'PENDING', sourceStorageKey: 'procedure-videos/incoming/hash/original', attempts: 1 });
     expect(h.db.$transaction).toHaveBeenCalledOnce(); expect(h.store.delete).not.toHaveBeenCalled();
@@ -188,7 +200,7 @@ describe('procedure-video processing', () => {
     const h = trimming();
     h.tx.procedureVideoComment.findMany.mockResolvedValue([0, 2, 5, 10, 11].map((atSeconds, index) => ({ id: String(index), videoId: 'video', atSeconds, text: String(atSeconds), sortOrder: index, createdAt: new Date() })));
     await h.service.runOnce();
-    expect(h.transcoder.trim).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.any(String), 2, 10);
+    expect(h.transcoder.trim).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.any(String), 2, 10, expect.any(Function));
     expect(h.transcoder.transcode).not.toHaveBeenCalled();
     expect(h.store.read).toHaveBeenCalledWith('procedure-videos/old/video.mp4', { verifyIntegrity: true });
     expect(h.row).toMatchObject({ status: 'READY', durationSeconds: 8, sourceDurationSeconds: 12, trimmedAt: expect.any(Date), errorCode: null });
@@ -210,18 +222,18 @@ describe('procedure-video processing', () => {
     });
     await h.service.runOnce();
     expect(h.row).toMatchObject({ status: 'PENDING', trimRequest: replacement });
-    expect(h.db.procedureVideo.updateMany).toHaveBeenLastCalledWith({ where: { id: 'video', status: 'PENDING', updatedAt: snapshot.updatedAt, discardedAt: null }, data: { status: 'PROCESSING' } });
+    expect(h.db.procedureVideo.updateMany).toHaveBeenLastCalledWith({ where: { id: 'video', status: 'PENDING', updatedAt: snapshot.updatedAt, discardedAt: null }, data: { status: 'PROCESSING', processingToken: expect.any(String) } });
     expect(h.db.procedureVideo.findUnique).not.toHaveBeenCalled();
     expect(h.transcoder.trim).not.toHaveBeenCalled(); expect(h.store.read).not.toHaveBeenCalled();
     await h.service.runOnce();
-    expect(h.transcoder.trim).toHaveBeenCalledExactlyOnceWith(expect.any(String), expect.any(String), expect.any(String), 1, 6);
+    expect(h.transcoder.trim).toHaveBeenCalledExactlyOnceWith(expect.any(String), expect.any(String), expect.any(String), 1, 6, expect.any(Function));
   });
   it('processes the claimed row reread including trimRequest instead of the candidate snapshot', async () => {
     const h = trimming();
     h.db.procedureVideo.findFirst.mockResolvedValueOnce({ ...h.row, trimRequest: null });
     await h.service.runOnce();
     expect(h.db.procedureVideo.findUnique).toHaveBeenCalledExactlyOnceWith({ where: { id: 'video' } });
-    expect(h.transcoder.trim).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.any(String), 2, 10);
+    expect(h.transcoder.trim).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.any(String), 2, 10, expect.any(Function));
     expect(h.transcoder.transcode).not.toHaveBeenCalled();
   });
   it('preserves old mp4 and poster while another row references their storageKey', async () => {
@@ -255,6 +267,140 @@ describe('procedure-video processing', () => {
     await h.service.runOnce();
     expect(h.row).toMatchObject({ status: 'READY', attempts: 0, durationSeconds: 8, errorCode: null });
     expect(h.row.storageKey).not.toBe('procedure-videos/old/video.mp4');
+  });
+
+  function concatenating(ids = ['second', 'first', 'second']) {
+    const h = harness();
+    Object.assign(h.row, { sourceStorageKey: null, concatRequest: { sourceVideoIds: ids, requestedAt: new Date().toISOString() } });
+    h.rows.push(
+      { ...h.row, id: 'first', status: 'READY', concatRequest: null, storageKey: 'first.mp4', comments: [{ atSeconds: 1, text: '最初', sortOrder: 0 }] },
+      { ...h.row, id: 'second', status: 'READY', concatRequest: null, storageKey: 'second.mp4', comments: [{ atSeconds: 0, text: '次', sortOrder: 0 }, { atSeconds: 2, text: '後', sortOrder: 1 }] },
+    );
+    h.store.read.mockImplementation(async (key) => Buffer.from(key));
+    h.transcoder.probe.mockImplementation(async (input) => ({ durationSeconds: path.basename(input) === 'video.mp4' ? 80 : (await readFile(input, 'utf8')) === 'first.mp4' ? 20 : 30, width: 640, height: 360 }));
+    return h;
+  }
+  it('concatenates SD inputs in request order including duplicates, saves its poster, and copies the first five offset comments atomically', async () => {
+    const h = concatenating(); const originals = h.rows.slice(1).map((row) => ({ ...row }));
+    await h.service.runOnce();
+    expect(h.row).toMatchObject({ status: 'READY', durationSeconds: 80, sourceDurationSeconds: 80, errorCode: null });
+    expect(h.row.concatRequest).toBe(Prisma.DbNull);
+    expect(h.transcoder.concat).toHaveBeenCalledOnce();
+    const [inputs, output, poster] = h.transcoder.concat.mock.calls[0];
+    expect(inputs.map((input) => path.basename(input))).toEqual(['0.mp4', '1.mp4', '2.mp4']);
+    expect(path.basename(output)).toBe('video.mp4'); expect(path.basename(poster)).toBe('poster.jpg');
+    expect(h.store.read.mock.calls.map(([key]) => key)).toEqual(['second.mp4', 'first.mp4', 'second.mp4']);
+    expect(h.store.write.mock.calls[1][0].data.toString()).toBe('concat-poster');
+    expect(h.tx.procedureVideoComment.createMany).toHaveBeenCalledWith({ data: [
+      { videoId: 'video', atSeconds: 0, text: '次', sortOrder: 0 }, { videoId: 'video', atSeconds: 2, text: '後', sortOrder: 1 },
+      { videoId: 'video', atSeconds: 31, text: '最初', sortOrder: 2 }, { videoId: 'video', atSeconds: 50, text: '次', sortOrder: 3 }, { videoId: 'video', atSeconds: 52, text: '後', sortOrder: 4 },
+    ] });
+    expect(h.rows.slice(1)).toEqual(originals); expect(h.store.delete).not.toHaveBeenCalled();
+    expect(h.transcoder.transcode).not.toHaveBeenCalled(); expect(h.transcoder.trim).not.toHaveBeenCalled();
+    await expect(access(path.dirname(output))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each(['transcode', 'trim', 'concat'] as const)('stops %s after a heartbeat detects reclamation and removes temporary files', async (mode) => {
+    const h = mode === 'concat' ? concatenating() : mode === 'trim' ? trimming() : harness();
+    let directory = '';
+    let beforeHeartbeat: VideoRow;
+    h.transcoder[mode].mockImplementationOnce(async (...args: unknown[]) => {
+      directory = path.dirname(args[1] as string);
+      await writeFile(args[1] as string, 'partial');
+      Object.assign(h.row, { status: 'PROCESSING', processingToken: 'new-worker' });
+      beforeHeartbeat = { ...h.row };
+      await (args.at(-1) as () => Promise<void>)();
+      throw new Error('must stop at lost heartbeat');
+    });
+    await h.service.runOnce();
+    expect(h.row).toEqual(beforeHeartbeat!);
+    expect(h.db.$transaction).not.toHaveBeenCalled();
+    expect(h.store.write).not.toHaveBeenCalled();
+    await expect(access(directory)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+  it('extends the recovery deadline with a matching heartbeat', async () => {
+    const h = concatenating();
+    h.transcoder.concat.mockImplementationOnce(async (_inputs, output, poster, heartbeat?: () => Promise<void>) => {
+      h.row.updatedAt = new Date(Date.now() - 11 * 60_000);
+      await heartbeat!();
+      expect(h.row.updatedAt.getTime()).toBeGreaterThan(Date.now() - 1000);
+      const recovery = await h.db.procedureVideo.updateMany({ where: { status: 'PROCESSING', updatedAt: { lt: new Date(Date.now() - 10 * 60_000) } }, data: { status: 'PENDING' } });
+      expect(recovery.count).toBe(0);
+      await writeFile(output, 'concatenated'); await writeFile(poster, 'concat-poster');
+    });
+    await h.service.runOnce();
+    expect(h.row.status).toBe('READY');
+    expect(h.db.procedureVideo.updateMany).toHaveBeenCalledWith({ where: { id: 'video', status: 'PROCESSING', processingToken: h.row.processingToken }, data: { updatedAt: expect.any(Date) } });
+  });
+  it.each(['PENDING', 'PROCESSING'])('refuses an old worker READY and comments after recovery to %s', async (status) => {
+    const h = concatenating();
+    const encode = h.transcoder.concat.getMockImplementation()!;
+    let recovered: VideoRow;
+    h.transcoder.concat.mockImplementationOnce(async (...args) => {
+      await encode(...args);
+      Object.assign(h.row, { status, processingToken: 'replacement' });
+      recovered = { ...h.row };
+    });
+    await h.service.runOnce();
+    expect(h.row).toEqual(recovered!);
+    expect(h.store.write).not.toHaveBeenCalled();
+    expect(h.tx.procedureVideoComment.deleteMany).not.toHaveBeenCalled();
+    expect(h.tx.procedureVideoComment.createMany).not.toHaveBeenCalled();
+    expect(h.store.delete).not.toHaveBeenCalled();
+  });
+  it.each(['PROCESSING_FAILED', 'FFMPEG_UNAVAILABLE'])('refuses an old worker %s failure after a new claim', async (code) => {
+    const h = harness();
+    let recovered: VideoRow;
+    h.transcoder.transcode.mockImplementationOnce(async () => {
+      Object.assign(h.row, { status: 'PROCESSING', processingToken: 'replacement' });
+      recovered = { ...h.row };
+      throw new ProcedureVideoTranscodeError(code, 'old failure');
+    });
+    await h.service.runOnce();
+    expect(h.row).toEqual(recovered!);
+    expect(h.db.procedureVideo.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { id: 'video', status: 'PROCESSING', processingToken: expect.not.stringMatching(/^replacement$/) }, data: expect.objectContaining({ status: code === 'FFMPEG_UNAVAILABLE' ? 'FAILED' : 'PENDING' }) }));
+  });
+
+  it('caps duplicated comments at five in chronological segment order', async () => {
+    const h = concatenating(['second', 'second', 'second']);
+    await h.service.runOnce();
+    expect(h.tx.procedureVideoComment.createMany.mock.calls[0][0].data.map((comment) => comment.atSeconds)).toEqual([0, 2, 30, 32, 60]);
+  });
+  it.each(['missing', 'discarded', 'processing'])('fails concat when a source is %s before processing', async (state) => {
+    const h = concatenating();
+    if (state === 'missing') h.rows.splice(1, 1);
+    else if (state === 'discarded') h.rows[1].discardedAt = new Date();
+    else h.rows[1].status = 'PROCESSING';
+    await h.service.runOnce();
+    expect(h.row).toMatchObject({ status: 'FAILED', attempts: 1, errorCode: 'CONCAT_FAILED' });
+    expect(h.transcoder.concat).not.toHaveBeenCalled(); expect(h.store.write).not.toHaveBeenCalled();
+  });
+  it.each(['deleted', 'discarded', 'replaced'])('rechecks sources under row locks and refuses READY when a source was %s during encoding', async (state) => {
+    const h = concatenating();
+    h.transcoder.concat.mockImplementationOnce(async (_inputs, output, poster) => {
+      await writeFile(output, 'concatenated'); await writeFile(poster, 'concat-poster');
+      if (state === 'deleted') h.rows.splice(1, 1);
+      else if (state === 'discarded') h.rows[1].discardedAt = new Date();
+      else h.rows[1].storageKey = 'replacement.mp4';
+    });
+    await h.service.runOnce();
+    expect(h.row).toMatchObject({ status: 'FAILED', errorCode: 'CONCAT_FAILED', attempts: 1 });
+    expect(h.store.write).not.toHaveBeenCalled(); expect(h.tx.procedureVideoComment.createMany).not.toHaveBeenCalled();
+    expect(h.tx.$queryRaw.mock.calls.map((call) => call[1])).toEqual(['first', 'second']);
+  });
+  it('retries concat three times then fails on the fourth, preserving its request for manual retry', async () => {
+    const h = concatenating(); h.transcoder.concat.mockRejectedValue(new Error('encoder failure'));
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      await h.service.runOnce();
+      expect(h.row).toMatchObject({ attempts: attempt, status: attempt <= 3 ? 'PENDING' : 'FAILED', errorCode: 'CONCAT_FAILED', errorMessage: 'encoder failure', concatRequest: { sourceVideoIds: ['second', 'first', 'second'] } });
+    }
+    expect(h.store.delete).not.toHaveBeenCalled(); expect(h.tx.procedureVideoComment.deleteMany).not.toHaveBeenCalled();
+  });
+  it('retries concat atomically if the READY/comment transaction fails', async () => {
+    const h = concatenating(); h.tx.procedureVideoComment.createMany.mockRejectedValueOnce(new Error('comments failed'));
+    await h.service.runOnce();
+    expect(h.row).toMatchObject({ status: 'PENDING', attempts: 1, errorCode: 'CONCAT_FAILED' });
+    await h.service.runOnce(); expect(h.row.status).toBe('READY');
   });
 
 });

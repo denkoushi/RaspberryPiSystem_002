@@ -1113,6 +1113,10 @@ export async function replaceProcedurePageVideos(id: string, pageIndex: number, 
 export async function trimProcedureVideo(id: string, startSeconds: number, endSeconds: number) {
   await api.post(`/assembly/procedure-videos/${encodeURIComponent(id)}/trim`, { startSeconds, endSeconds });
 }
+export async function concatProcedureVideos(sourceVideoIds: string[], title?: string) {
+  const { data } = await api.post<import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoSummaryDto & { origin: 'CONCAT' }>('/assembly/procedure-videos/concat', { sourceVideoIds, title });
+  return data;
+}
 export async function getProcedureVideoComments(id: string) {
   const { data } = await api.get<{ comments: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoCommentDto[] }>(`/assembly/procedure-videos/${encodeURIComponent(id)}/comments`);
   return data.comments;

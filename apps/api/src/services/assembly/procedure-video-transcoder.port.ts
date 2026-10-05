@@ -1,9 +1,10 @@
-export type ProcedureVideoProbe = { durationSeconds: number; width: number; height: number };
+export type ProcedureVideoProbe = { durationSeconds: number; width: number; height: number; sampleAspectRatio?: number };
 
 export interface ProcedureVideoTranscoderPort {
   probe(input: string): Promise<ProcedureVideoProbe>;
-  trim(input: string, output: string, poster: string, startSeconds: number, endSeconds: number): Promise<void>;
-  transcode(input: string, output: string, poster: string): Promise<void>;
+  trim(input: string, output: string, poster: string, startSeconds: number, endSeconds: number, onStepComplete?: () => Promise<void>): Promise<void>;
+  transcode(input: string, output: string, poster: string, onStepComplete?: () => Promise<void>): Promise<void>;
+  concat(inputs: string[], output: string, poster: string, onStepComplete?: () => Promise<void>): Promise<void>;
 }
 
 export class ProcedureVideoTranscodeError extends Error {

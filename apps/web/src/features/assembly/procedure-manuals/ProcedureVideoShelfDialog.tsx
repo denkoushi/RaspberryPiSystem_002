@@ -8,6 +8,7 @@ import { Input } from '../../../components/ui/Input';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { ProcedureVideoCommentsDialog } from './ProcedureVideoCommentsDialog';
+import { ProcedureVideoConcatDialog } from './ProcedureVideoConcatDialog';
 import { ProcedureVideoPlaybackDialog } from './ProcedureVideoPlaybackDialog';
 import { ProcedureVideoThumbnail } from './ProcedureVideoThumbnail';
 import { ProcedureVideoTrimDialog } from './ProcedureVideoTrimDialog';
@@ -30,6 +31,8 @@ export function ProcedureVideoShelfDialog({ onClose, link }: { onClose: () => vo
   const [playing, setPlaying] = useState<ProcedureVideoSummaryDto | null>(null);
   const [editing, setEditing] = useState<{ video: ProcedureVideoDto; mode: 'trim' | 'comments' } | null>(null);
   const [discarding, setDiscarding] = useState<ProcedureVideoDto | null>(null);
+  const [concatVideos, setConcatVideos] = useState<ProcedureVideoDto[]>([]);
+  const [concatenating, setConcatenating] = useState<ProcedureVideoDto[] | null>(null);
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setVideos([]); setError(null);
@@ -40,10 +43,10 @@ export function ProcedureVideoShelfDialog({ onClose, link }: { onClose: () => vo
   }, [state, q, version, selectionMode]);
   const processing = videos.some((video) => video.status === 'PENDING' || video.status === 'PROCESSING');
   useEffect(() => {
-    if (!processing || playing || editing) return;
+    if (!processing || playing || editing || concatenating) return;
     const timer = window.setInterval(() => setVersion((v) => v + 1), 5000);
     return () => window.clearInterval(timer);
-  }, [processing, playing, editing]);
+  }, [processing, playing, editing, concatenating]);
   const documentId = link?.documentId;
   const pageIndex = link?.pageIndex;
   useEffect(() => {
@@ -64,14 +67,19 @@ export function ProcedureVideoShelfDialog({ onClose, link }: { onClose: () => vo
     setSelected((items) => { const next = [...items]; [next[index], next[index + offset]] = [next[index + offset], next[index]]; return next; });
   };
   const edited = () => { setEditing(null); setVersion((v) => v + 1); };
+  if (concatenating) return <ProcedureVideoConcatDialog videos={concatenating} onClose={() => setConcatenating(null)} onSaved={() => { setConcatenating(null); setConcatVideos([]); setQ(''); setState('active'); setVersion((v) => v + 1); }} />;
   if (editing?.mode === 'trim') return <ProcedureVideoTrimDialog video={editing.video} onClose={() => setEditing(null)} onSaved={edited} />;
   if (editing?.mode === 'comments') return <ProcedureVideoCommentsDialog video={editing.video} onClose={() => setEditing(null)} onSaved={edited} />;
   if (playing) return <ProcedureVideoPlaybackDialog video={playing} onClose={() => setPlaying(null)} />;
   return <Dialog isOpen onClose={() => { if (!busy) onClose(); }} closeOnEsc={!discarding} trapFocus={!discarding} title={link ? `${(link.pageIndex + 1)}ページの動画` : '動画'} size="lg" className="flex flex-col overflow-hidden">
+    <p className="mt-3 shrink-0 text-sm">{concatVideos.length} 本を選択中</p>
     <div className="mt-3 flex shrink-0 flex-wrap gap-2">
       <Input aria-label="動画検索" placeholder="タイトルで検索" value={q} onChange={(e) => setQ(e.target.value)} />
+      <Button className="min-h-11" disabled={busy || !concatVideos.length} onClick={() => setConcatVideos([])}>選択を解除</Button>
       {!link ? <><Button className="min-h-11" variant={state === 'active' ? 'primary' : 'secondary'} onClick={() => setState('active')}>動画</Button><Button className="min-h-11" variant={state === 'discarded' ? 'primary' : 'secondary'} onClick={() => setState('discarded')}>捨てた動画</Button></> : null}
       <Button className="min-h-11" disabled={busy} onClick={() => setVersion((v) => v + 1)}>更新</Button>
+      <Button className="min-h-11" disabled={busy || loading || concatVideos.length < 2 || concatVideos.length > 5} onClick={() => setConcatenating(concatVideos)}>接続</Button>
+      <span className="self-center text-sm">接続用 {concatVideos.length}/5本</span>
       <Button className="min-h-11" disabled={busy} onClick={onClose}>閉じる</Button>
     </div>
     {error ? <p role="alert" className="mt-2 shrink-0 text-sm text-red-700">{error}</p> : null}
@@ -85,6 +93,8 @@ export function ProcedureVideoShelfDialog({ onClose, link }: { onClose: () => vo
     <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-auto">
       {loading ? <p role="status">読込中…</p> : !videos.length ? <p>動画がありません</p> : null}
       {videos.map((video) => <article key={video.id} className="flex flex-wrap items-center gap-3 rounded border p-2">
+        {video.status === 'READY' && !video.discardedAt ? <label className="flex min-h-11 min-w-11 items-center justify-center"><input type="checkbox" aria-label={`${video.title}を接続用に選択`} checked={concatVideos.some((item) => item.id === video.id)} disabled={busy || (!concatVideos.some((item) => item.id === video.id) && concatVideos.length >= 5)} onChange={(e) => setConcatVideos((items) => e.target.checked ? [...items, video] : items.filter((item) => item.id !== video.id))} className="h-6 w-6" /></label> : null}
+        {video.origin === 'CONCAT' ? <span className="rounded bg-blue-100 px-2 py-1 text-xs font-semibold">接続</span> : null}
         {video.hasPoster ? <ProcedureVideoThumbnail id={video.id} title={video.title} durationSeconds={video.durationSeconds} /> : null}
         <div className="min-w-0 flex-1"><p className="break-words font-semibold">{video.title}</p><p className="text-sm">{procedureVideoLength(video.durationSeconds)} · {video.status === 'READY' ? '完了' : video.status === 'FAILED' ? `失敗: ${video.errorMessage || video.errorCode || '変換失敗'}` : '処理中'}</p>{video.durationSeconds != null && video.durationSeconds > 10.5 ? <p className="font-semibold text-red-700">10 秒以内にしてください</p> : null}{video.errorCode === 'TRIM_FAILED' ? <p role="alert" className="text-sm text-red-700">トリミング失敗: {video.errorMessage}（元の動画を保持しています）</p> : null}<p className="text-xs">紐づけ {video.linkCount}件</p></div>
         {video.status === 'READY' ? <Button className="min-h-11" onClick={() => setPlaying(video)}>再生</Button> : null}
