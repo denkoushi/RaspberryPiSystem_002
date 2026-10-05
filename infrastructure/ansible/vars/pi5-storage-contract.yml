@@ -68,6 +68,10 @@ pi5_phase3_storage_contract:
     suffix: procedure-materials
     runtime_path: /app/storage/procedure-materials
     mode: '0755'
+  - logical_key: procedure-videos-storage
+    suffix: procedure-videos
+    runtime_path: /app/storage/procedure-videos
+    mode: '0755'
   - logical_key: knowledge-git-storage
     suffix: knowledge-git
     runtime_path: /app/storage/knowledge-git

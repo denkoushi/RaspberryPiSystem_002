@@ -3141,6 +3141,7 @@ model AssemblyProcedureDocument {
 
   procedureManualApprovals ProcedureManualApproval[]
   procedureMaterials     ProcedureMaterial[]
+  procedureVideoLinks    ProcedureVideoLink[]
 
   @@index([isActive, name], map: "AssemblyProcedureDocument_idx_active_name")
   @@index([isActive, updatedAt], map: "AssemblyProcedureDocument_idx_active_updated")
@@ -5356,4 +5357,59 @@ model ProcedureManualApproval {
   document                  AssemblyProcedureDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([documentId, createdAt])
+}
+
+
+enum ProcedureVideoStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+model ProcedureVideo {
+  id                String @id @default(uuid())
+  status            ProcedureVideoStatus @default(PENDING)
+  title             String
+  subjectHint       String?
+  fromEmail         String?
+  gmailMessageId    String?
+  gmailDedupeKey     String @unique
+  receivedAt        DateTime
+  sourceFileName    String
+  sourceContentType String
+  sourceByteSize    Int
+  sourceStorageKey  String?
+  storageKey        String?
+  posterStorageKey  String?
+  sha256            String?
+  byteSize          Int?
+  durationSeconds   Float?
+  width             Int?
+  height            Int?
+  attempts          Int @default(0)
+  errorCode         String?
+  errorMessage      String?
+  processedAt       DateTime?
+  discardedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  links             ProcedureVideoLink[]
+
+  @@index([status, updatedAt])
+  @@index([discardedAt, receivedAt])
+}
+
+model ProcedureVideoLink {
+  id                          String @id @default(uuid())
+  videoId                     String
+  assemblyProcedureDocumentId String
+  pageIndex                   Int
+  sortOrder                   Int
+  createdAt                   DateTime @default(now())
+  video                       ProcedureVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  document                    AssemblyProcedureDocument @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
+
+  @@unique([assemblyProcedureDocumentId, pageIndex, sortOrder])
+  @@index([videoId])
 }

@@ -1,3 +1,5 @@
+import { ProcedureVideoService } from './procedure-video.service.js';
+import { getProcedureVideoScheduler } from './procedure-video.scheduler.js';
 import { Prisma } from '@prisma/client';
 
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
@@ -86,7 +88,8 @@ export class ProcedureMaterialGmailIngestionService {
       const expectedFrom = extractEmail(config.procedureMaterialGmailIngest?.fromEmail);
       if (expectedFrom && fromEmail !== expectedFrom) return { ...result, reason: '送信元が設定と一致しません' };
       const existing = await this.db.procedureMaterial.findMany({ where: { gmailMessageId: messageId }, select: { gmailDedupeKey: true } });
-      const packet = await resolveProcedureMaterialGmailPacket({ message, client: gmail, savedKeys: new Set(existing.map((row) => row.gmailDedupeKey)) });
+      const existingVideos = await this.db.procedureVideo.findMany({ where: { gmailMessageId: messageId }, select: { gmailDedupeKey: true } });
+      const packet = await resolveProcedureMaterialGmailPacket({ message, client: gmail, savedKeys: new Set([...existing, ...existingVideos].map((row) => row.gmailDedupeKey)) });
       result.duplicate = packet.duplicate;
       result.skippedAttachments = packet.skippedAttachments;
       result.warnings = packet.warnings;
@@ -135,7 +138,13 @@ export class ProcedureMaterialGmailIngestionService {
           }
         }
       }
-      if (result.saved + result.duplicate === 0) return { ...result, reason: '本文が空で、対応する写真がありません' };
+      for (const video of packet.videos) {
+        // eslint-disable-next-line no-await-in-loop
+        const created = await new ProcedureVideoService(this.db, this.store).ingest(video, common);
+        if (created) result.saved++; else result.duplicate++;
+      }
+      if (packet.videos.length || existingVideos.length) getProcedureVideoScheduler().kick();
+      if (result.saved + result.duplicate === 0) return { ...result, reason: '本文が空で、対応する写真・動画がありません' };
       // Never mark as read: cleanup failures must remain searchable after a restart.
       await gmail.trashMessage(messageId);
       result.trashed = true;

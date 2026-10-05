@@ -1,3 +1,4 @@
+import { videosForPage, type ProcedureVideoSummary } from '../../services/assembly/procedure-video.service.js';
 import { serializeLastProcedureManualApproval, type ProcedureManualApprovalSnapshot } from '../../services/assembly/assembly-procedure-document-revision.serializer.js';
 import { findClientDeviceByApiKey, parseKioskApiClientKeyHeader } from '../../services/clients/client-device-auth.service.js';
 import type { MultipartFile } from '@fastify/multipart';
@@ -48,6 +49,7 @@ type ProcedureDocumentLike = {
     imageRelativePath: string;
   }>;
   overlayElements?: Parameters<typeof serializeAssemblyProcedureOverlayElement>[0][];
+  procedureVideoLinks?: Array<{ pageIndex: number; video: ProcedureVideoSummary & { discardedAt?: Date | null } }>;
   ownedAssets?: Array<Pick<AssemblyProcedureAsset, 'id' | 'storageKey' | 'contentType' | 'byteSize'>>;
 };
 
@@ -107,6 +109,7 @@ export function serializeProcedureDocument(doc: ProcedureDocumentLike) {
     sourceAssetId: doc.revisionMetadata?.sourceAssetId ?? null,
     pages: (doc.pages ?? []).map((page) => ({
       pageIndex: page.pageIndex,
+      videos: videosForPage(doc.procedureVideoLinks, page.pageIndex),
       imageRelativePath: page.imageRelativePath,
       assetId: null,
       overlays: overlaysByPage.get(page.pageIndex) ?? []

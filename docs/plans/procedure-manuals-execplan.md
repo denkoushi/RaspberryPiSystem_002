@@ -45,7 +45,10 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) 送信元ドメイン制限(既定 `thkintechs.co.jp`、管理画面で追加・削除)と Phase 3 を 1 つの PR にまとめた(オーナー指示)。使い捨て PostgreSQL で migration 適用を確認。Codex レビューの 3 指摘(原本と表示画像の取り違え、10,000 字超の本文分割、候補の再計算)を修正。管理カードの設定競合は在庫カードと同じ既知の制約として残す。
 - [x] (2026-10-05) PR #1704 を main へ squash merge(merge `1f54ba22bb5172868a7b4ad9bc9a68b504638908`)、main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-070906-5007dd`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`)、`/api/system/health` 200。
 - [ ] 実機確認(オーナー): 管理画面のカードに許可ドメイン `thkintechs.co.jp` が出る、他ドメインからの `[Procedure-material]` メールが取り込まれない、素材棚の「ナレッジから」に候補が出て取り込める。
-- [ ] 後日: 動画素材(形式未定)。
+- [x] (2026-10-05) 動画 V1のローカル実装: メール動画取込、Pi5変換Port/adapter/排他worker、Range配信・棚・再試行・破棄復元、DRAFTページ紐づけと改版継承、READYサムネイル閲覧を追加。
+- [x] (2026-10-05) 動画 V1指定検証: API lint / 16ファイル186件成功・実DB1件skip / build用tsc、Web lint / 12ファイル75件 / build成功。スケジューラー登録7件・要領書サービス回帰7件も成功。Prisma Client生成と手書きDDLのschema一致を確認。
+- [ ] 動画 V1実機受入・integrationPending: 実DB migration適用、実Gmail、Pi5 ffmpegの速度・回転・再生、実端末、CI、main統合と本番反映は未実施。commit / push / PR / merge / deployの実行は依頼外。
+- [ ] 後日: 動画 V2/V3(トリミング、コメント、接続)。
 
 ## Surprises & Discoveries
 
@@ -167,6 +170,19 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Rationale: 新しく取り込んだ素材を元の棚検索で隠さず、失敗を確認して再選択できる。配置・Gmailの保存経路は変えない。
   Date/Author: 2026-10-05 / Codex。
 
+- Decision: 動画は独立した存在として保存し、必要な文書ページへ順序付きで紐づける。音声を落とし、25 MB・60秒まで受け付け、長辺640・縦横比維持・H.264 MP4へ変換する。元動画は変換成功後に捨てる。
+  Rationale: オーナー決定(動画 V1依頼)。ページoverlay型を拡張せず、単独再生と複数ページからの参照を両立する。
+- Decision: 動画 V1レビュー修正ではffmpegに `-threads 2` を指定し、Pi5のAPI応答への負荷を抑える(2026-10-05 / Codex)。
+- Decision: V1はPi5のffmpeg/ffprobeを用い、probe/transcodeのPortだけを差し替え口として置く。DGXは使わない。
+  Rationale: オーナー決定。将来の変換先変更を現行の取込・保存・紐づけから分離する。
+- Decision: Webは既存AxiosのBearer/端末キーヘッダーでMP4をBlob取得し、再生終了でObject URLを解放する。APIは単一bytes Rangeの206/416を提供する。
+  Rationale: ネイティブvideoのsrcは認証ヘッダーを送れない。V1の短いSD動画ではBlob取得が既存の保護画像と同じ認証を保ち、シークは取得済みBlob内で動作する。
+- Decision: 原本を共有する全取込・削除を保存キーのPostgreSQL advisory lockで直列化し、最後の原本参照がなくなってから削除する。READYを先にcommitし、原本後処理の失敗では利用可能な動画を再試行へ戻さない。
+  Rationale: 同じ動画を複数メールで受け取ったときの欠落を防ぐ。変換全体にも共通排他を置き、リーダースケジューラーと取込直後の起動を含め同時1件にする。
+- Decision: 改版下書きへページ動画リンクを複製し、下書き破棄ではその下書きのリンクだけを同じ文書transactionで除去する。1秒以下の動画のposterは中間フレームを使う。
+  Rationale: 公開版のリンクを保持しつつ従来の改版・破棄を継続する。短い動画でもposter生成が空出力にならないようにする。
+  Date/Author: 2026-10-05 / Codex。
+
 ## Context and Orientation
 
 このリポジトリは pnpm ワークスペースで、`apps/api` が Fastify + Prisma(PostgreSQL)の API、`apps/web` が React(Vite)の Web、`packages/shared-types` が共有の型である。キオスク画面は `apps/web/src/pages/kiosk/` にあり、ルートは `apps/web/src/App.tsx` に列挙されている。組立キオスクのホームは `apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx` で、ナビゲーションのリンク群(`aria-label="組立メニュー"`)から各画面へ飛ぶ。
@@ -220,6 +236,25 @@ API `/assembly/procedure-materials` は Phase 1 と同じ `allowView` / `allowWr
 ### Phase 3: ナレッジ連携
 
 機種×工程の閲覧・編集画面から、同じ型番・工程名に関連するナレッジ素材(`KnowledgeProcedureMaterial`)と承認済み手順(`KnowledgeProcedure` の `publishedRevision`)を一覧し、利用者が明示的に選んだものだけを素材棚へコピーして配置できるようにする。出典(ナレッジ側の ID と版)を素材に保持する。ナレッジ側のデータは変更しない。
+
+### 動画: V1 / V2 / V3
+
+V1は専用素材メールからMP4/MOV/3GP/M4V(非inline、25 MB以下)を取り込み、独立したProcedureVideoとしてPENDINGへ保存する。既存素材と同じ添付名・part IDのハッシュによる重複キー、送信元ドメイン、未読再試行を維持する。動画だけ保存できたメールもゴミ箱へ移す。原本はprocedure-videos/incoming/<sha256>/originalを共有する。
+
+Pi5のffprobeで60秒以下を確認し、音声なし・長辺640・縦横比維持・H.264 MP4(30fps、CRF28、faststart)とJPEG posterへ変換する。既定autorotationを維持する。procedure-video-transcoder.port.tsのprobe/transcodeを将来の差し替え口にするが、DGX接続は実装しない。1分間隔の共通リーダースケジューラーと取込直後の起動から最古のPENDINGを1件処理する。条件付きclaimと全worker排他で同時1件、停止したPROCESSINGは排他取得後に回復する。一般失敗は3回までPENDINGへ戻し、4回目にFAILED。TOO_LONGとFFMPEG_UNAVAILABLEは即FAILED、手動retryはattemptsを0へ戻す。出力とposterは変換MP4のsha256ディレクトリへ保存し、最後の参照を終えた原本を削除する。
+
+動画APIはactive/discarded/allの棚、READYのMP4配信(単一Range、206/416、private/no-store、rateLimit)、poster、retry/discard/restoreを提供する。紐づけ済み動画のdiscardは409。ページ動画のGET/PUTを追加し、PUTは既存overlayと同じ編集パスワード、文書行ロック、activeな最新版DRAFTの検証を行う。改版取得・通常文書取得と要領書sequenceのページにはREADYだけ含める。ProcedureVideoLinkの文書FKはRestrict、deleteIfUnusedでは動画が紐づいている旨の409を返す。migration 20261006000000_add_procedure_videosは新enum/テーブル/索引/FKだけのexpand-only SQL。
+
+Webは上部の「動画」棚、可視範囲だけのposter取得、タイトル・長さ・状態・再試行・確認付きdiscard・restore、認証Blobによる再生を提供する。エディタの現在ページから選択・並び替え・PUT保存し、閲覧では現在ページのREADYサムネイル列から再生する。ボタンはmin-h-11、再生はcontrols/playsInline/muted/preload=metadata、終了時にObject URLを解放する。
+
+V2はトリミング等の編集、V3はコメント・接続等の拡張を後日扱う。本依頼では両者を実装しない。infrastructure/CIのffmpeg導入とprocedure-videos永続マウントはClaudeの担当で、Codexは変更しない。
+
+指定検証:
+
+    cd apps/api && pnpm lint && pnpm exec vitest run procedure-video procedure-material procedure-document && pnpm exec tsc -p tsconfig.build.json --noEmit
+    cd apps/web && pnpm lint && pnpm exec vitest run procedure-manuals document-editor && pnpm build
+
+実機受入: 許可ドメインから短い動画だけ送信し、棚で完了・再生できること。DRAFTのページへ紐づけ保存後、公開版閲覧で該当ページだけサムネイルが現れること。61秒の動画はTOO_LONG、非対応形式と25 MB超はスキップされること。ローカルテストはffmpegをモックし、実DB migration適用・実Gmail・Pi5速度と回転動画は統合段階で確認する。
 
 ## Concrete Steps (Phase 1)
 
@@ -349,3 +384,19 @@ Phase 2a の変更記録(2026-10-05): 上記 Plan of Work を2a/2b/2cへ分割�
 Phase 2c の変更記録(2026-10-05): NFC承認公開と承認履歴の直近1件表示、公開方法選択、割り当ての文言・候補選択、閲覧専用の丸数字移動非表示をローカル実装した。指定検証はAPI55件成功・実DB1件skip、Web62件成功、両lint / API tsc / Web build成功。開始時点に既存WIPはなく、今回の24ファイルの変更だけを残した。実DB・実端末、commit / push / PR / merge / deployは未実施。kiosk-sop鮮度チェックと生成物更新はpush前の統合段階に残し、変更禁止の `apps/web/src/generated/**` は変更していない。
 
 Phase 3 の変更記録(2026-10-05): 指定された片方向コピーを既存素材棚と原本保存方式に追加し、全指定検証(API96件・Web29件、両lint / API tsc / Web build)を完了した。ナレッジ・共有型・generated・infrastructureは変更していない。実DB・実端末と統合以降を残した。
+
+
+動画 V1の変更記録(2026-10-05): 指定のAPI/Web検証は上記Progressの件数で成功した(環境準備とfocused checkを含め約10分)。追加の動画テストはAPI47件・Web6件で、添付MIME/容量/重複、状態遷移/共有原本/失敗後のREADY維持、ffmpeg引数と回転寸法、Range/権限/紐づけ、改版継承/破棄、READYだけの閲覧、Blob解放/可視poster取得を確認した。通常の1秒超のposterは1秒時点、1秒以下は中間フレームとする。Prismaの生成DDLと手書きmigrationの10文が一致することも確認した。実DB integration 1件はTEST_DATABASE_URL未設定によりskipで、migrationの実適用は未確認。
+
+依存の準備はmain checkoutのnode_modulesをこのworktreeへ独立コピーし、workspace4パッケージをbuildしてPrisma Clientを生成した。Web buildの初回は既存Fontsourceが不足したため停止し、宣言済みSans5.2.8/Mono5.2.7を別worktreeのキャッシュからローカルnode_modulesへ補い、buildだけ再実行して成功した。package.json/lockfile/コピー元は変更していない。Browserslist/baseline-browser-mapping鮮度とViteの大きなchunk警告は既存の範囲外の問題として残る。kiosk-sopの確認・生成物更新はpush前の統合担当へ残し、変更禁止のgeneratedは触っていない。
+
+今回の変更ファイル(既存WIPのinfrastructure/CI関連9ファイルを除外):
+
+- DB: apps/api/prisma/schema.prisma、apps/api/prisma/migrations/20261006000000_add_procedure_videos/migration.sql。
+- API取込・保存: services/assembly/procedure-material-gmail-ingestion.service.ts、procedure-material-gmail-packet-resolver.ts、procedure-video.service.ts、services/file-storage/file-storage-config.ts(いずれもapps/api/src配下)。
+- API変換・定期実行: services/assembly/procedure-video-transcoder.port.ts、ffmpeg-procedure-video-transcoder.adapter.ts、procedure-video-processing.service.ts、procedure-video.scheduler.ts、bootstrap/start-post-listen-schedulers.ts。
+- API配信・文書: routes/assembly/procedure-videos.ts、index.ts、procedure-documents.ts、services/assembly/assembly-procedure-document.service.ts、assembly-procedure-document-revision.service.ts、assembly-procedure-document-revision.serializer.ts、assembly-procedure-sequence.service.ts、procedure-manual.service.ts。
+- APIテスト: routes/assembly/__tests__/procedure-videos.routes.test.ts、services/assembly/__tests__/ffmpeg-procedure-video-transcoder.test.ts、procedure-video-gmail.test.ts、procedure-video-processing.service.test.ts、procedure-video-view.test.ts、procedure-material-gmail.test.ts、procedure-manual.service.test.ts、bootstrap/__tests__/start-post-listen-schedulers.test.ts。
+- Web入口・型: apps/web/src/api/domains/assembly.ts、features/assembly/types.ts、features/assembly/document-editor/AssemblyProcedureDocumentEditorPageList.tsx、AssemblyProcedureDocumentEditorScreen.tsx。
+- Web棚・閲覧(すべてapps/web/src/features/assembly/procedure-manuals): ProcedureManualBrowser.tsx、ProcedureVideoShelfDialog.tsx、ProcedureVideoPlaybackDialog.tsx、ProcedureVideoThumbnail.tsx、ProcedurePageVideoStrip.tsx、procedure-video-types.ts、procedure-manuals-videos.test.tsx。
+- 正本: docs/plans/procedure-manuals-execplan.md。

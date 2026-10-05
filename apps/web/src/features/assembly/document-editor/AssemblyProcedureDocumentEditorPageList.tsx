@@ -10,6 +10,7 @@ export function AssemblyProcedureDocumentEditorPageList({
   selectedPageIndex,
   onSelect,
   onAddBlankPage,
+  onLinkVideos,
   disabled
 }: {
   pages: AssemblyProcedureDocumentPageDto[];
@@ -17,6 +18,7 @@ export function AssemblyProcedureDocumentEditorPageList({
   selectedPageIndex: number;
   onSelect: (pageIndex: number) => void;
   onAddBlankPage: () => void;
+  onLinkVideos?: () => void;
   disabled: boolean;
 }) {
   return (
@@ -24,6 +26,7 @@ export function AssemblyProcedureDocumentEditorPageList({
       <div className="shrink-0">
         <h2 className="text-sm font-bold">ページ</h2>
         <Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" disabled={disabled} onClick={onAddBlankPage}>白紙ページを追加</Button>
+        {onLinkVideos ? <Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" disabled={disabled} onClick={onLinkVideos}>動画を紐づける</Button> : null}
       </div>
       <div className="flex min-h-0 min-w-0 flex-1 gap-1.5 overflow-x-auto overflow-y-hidden xl:block xl:space-y-1.5 xl:overflow-auto">
         {pages.map((page) => {

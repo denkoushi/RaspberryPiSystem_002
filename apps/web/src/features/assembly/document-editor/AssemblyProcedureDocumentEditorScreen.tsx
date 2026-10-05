@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { ProcedureMaterialShelfDialog } from '../procedure-manuals/ProcedureMaterialShelfDialog';
+import { ProcedureVideoShelfDialog } from '../procedure-manuals/ProcedureVideoShelfDialog';
 
 import { AssemblyProcedureDocumentEditorAuthGate } from './AssemblyProcedureDocumentEditorAuthGate';
 import { AssemblyProcedureDocumentEditorCanvas } from './AssemblyProcedureDocumentEditorCanvas';
@@ -16,6 +17,7 @@ import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCan
 
 export function AssemblyProcedureDocumentEditorScreen() {
   const controller = useAssemblyProcedureDocumentEditor();
+  const [videoLinkOpen, setVideoLinkOpen] = useState(false);
   const [materialShelfOpen, setMaterialShelfOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
@@ -49,6 +51,7 @@ export function AssemblyProcedureDocumentEditorScreen() {
 
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-800 text-white">
+      {videoLinkOpen && controller.document ? <ProcedureVideoShelfDialog key={`${controller.document.id}:${selectedPage.pageIndex}`} link={{ documentId: controller.document.id, pageIndex: selectedPage.pageIndex, accessPassword: controller.passwordInput }} onClose={() => setVideoLinkOpen(false)} /> : null}
       <AssemblyProcedureDocumentEditorCanvasToolbar
         documentName={controller.document?.name ?? '手順書'}
         pageIndex={selectedPage.pageIndex}
@@ -78,6 +81,7 @@ export function AssemblyProcedureDocumentEditorScreen() {
           assets={controller.document?.assets}
           selectedPageIndex={selectedPage.pageIndex}
           onSelect={controller.setSelectedPageIndex}
+          onLinkVideos={() => setVideoLinkOpen(true)}
           onAddBlankPage={() => void controller.addBlankPage()}
           disabled={controller.readOnly || controller.busy || controller.conflict}
         />

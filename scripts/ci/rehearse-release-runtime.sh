@@ -201,6 +201,7 @@ required = {
     '/app/storage/photos',
     '/app/storage/knowledge-assets',
     '/app/storage/procedure-materials',
+    '/app/storage/procedure-videos',
     '/app/storage/knowledge-git',
     '/app/storage/thumbnails',
     '/app/storage/pdfs',
