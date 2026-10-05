@@ -613,3 +613,30 @@ test('completeRequest keeps the omitted third argument and forwards context in t
   await completeRequest(answering, { type: 'request', requestId: 'd', question: 'q', pageContext, principal });
   assert.deepEqual(calls, [['q', null], ['q', null, { pageContext }], ['q', null, { principal }], ['q', null, { pageContext, principal }]]);
 });
+
+test('answer takes a vector budget for night scoring; the day budget still applies by default', async () => {
+  const evaluate = async (input) => {
+    if (input.questions.candidate_0) {
+      const answers = {};
+      for (const [key, question] of Object.entries(input.questions)) {
+        const body = String(question.instructions).split('記録本文:\n')[1] ?? '';
+        answers[key] = { type: 'noul', noul: body.includes('surface scratch') ? 0.9 : 0.1 };
+      }
+      return { answers };
+    }
+    const answers = plannerAnswers({ content: true, limit: 'unspecified', questions: input.questions }).answers;
+    answers.scope = { type: 'choice', choice: 'nonconformity' };
+    for (const key of Object.keys(input.questions)) if (key.startsWith('field_')) answers[key] = { type: 'choice', choice: 'none' };
+    return { answers };
+  };
+  const slowVector = (delayMs) => async (query, filtered) => {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    const ids = filtered.map((record) => record.id);
+    return { ok: true, status: 'ok', orderedIds: ids, cosines: new Map(ids.map((id) => [id, 0.8])) };
+  };
+  const answering = createRetrievalAnswering({ records, catalog, valueIndex, lexicalCorpus, evaluate, vector: slowVector(1700), snapshotCount: records.length });
+  const day = await answering.answer('surface scratchの記録', null, { stageDump: true });
+  assert.equal(day.receipt.timings.vectorStatus, 'timeout');
+  const night = await answering.answer('surface scratchの記録', null, { stageDump: true, vectorBudgetMs: 5000 });
+  assert.equal(night.receipt.timings.vectorStatus, 'ok');
+});

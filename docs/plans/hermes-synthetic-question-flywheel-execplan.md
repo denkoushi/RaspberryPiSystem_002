@@ -30,6 +30,8 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 
 ## Surprises & Discoveries
 
+- (2026-10-05, night) The two-phase runner did not remove the dense fallbacks (47 of 60). The cause is the network, not the business LLM: measured at 22:37, the embedding on the DGX takes 0.03 s, but a request from the Pi 5 to the DGX gateway takes 1.7 to 4.3 s with 0.5 to 1.7 s in the TCP connect alone, while `dgx-control-backup.timer` (restic to Google Drive, started 21:30) uploads from the DGX. The day budget of 1.5 s then fails most queries. The night scorer now waits up to 10 s for the embedding (`NIGHT_VECTOR_BUDGET_MS`), which measures retrieval rather than the backup's bandwidth.
+
 - (2026-10-05) Night-time live scoring interleaved with generation made the DGX query embedding time out on 48 of 64 questions (the day budget is 1.5 s; the day median is 0.3 s), so the first night's live numbers measured a lexical fallback, not the day pipeline. Harder questions (anchor overlap below 0.35) were answered 10 of 29 times, easier ones 24 of 35.
 
 - (2026-10-04) The first gate run found that dense retrieval on or off makes no net difference on the synthetic set (development 37 and 37 of 52, held-out 20 and 18 of 26), while hand-written paraphrases showed a clear dense gain. The generated questions keep too much of the record's wording (median bigram share 0.44). Questions with a share below 0.5 were answered 26 of 42 times, above 0.5 30 of 36.
