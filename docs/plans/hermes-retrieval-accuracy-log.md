@@ -368,3 +368,16 @@ The second grader (#1717) ran for the first time at 23:25 after the release: 52 
 A real kiosk exchange the same evening (22:44, two turns about 切粉) returned nothing twice. Receipts show the dense query timed out at the day budget and the lexical top 30 held none of the 36 records mentioning 切粉, because the whole question (両工場, ２件, 起因) is the lexical query. Offline with dense on, both turns show two relevant records. The failure is the backup congestion plus a weak lexical fallback, not the judge.
 
 Private files: `work/flywheel/questions-2026-10-05.jsonl`, `work/flywheel/labels-pi5.json`.
+
+### 2026-10-06: two candidate changes rejected by the gate (lexical query from the content span; enrichment in the lexical corpus)
+
+Both were answered offline on the Mac with the night scorer (dense on through the tunnel, enrichment store of 2026-10-04, judge 30) on the 2026-10-04 (64) and 2026-10-05 (60) synthetic sets, with the shown-record labels, against the production configuration.
+
+| Candidate | 2026-10-04 development / held-out | 2026-10-05 development / held-out | Gate |
+| --- | --- | --- | --- |
+| Lexical and dense query = planner's content span without count expressions | 39 to 36 (0 gained, 3 lost) / 15 to 15 | 30 to 27 (0, 3) / 18 to 17 (0, 1) | reject |
+| Lexical corpus rebuilt from enriched records (enrichment queries, tags and summary in BM25) | 39 to 37 (0, 2) / 15 to 13 (0, 2) | 30 to 27 (0, 3) / 18 to 17 (0, 1) | reject |
+
+The first was the proposed remedy for the 切粉 failure of 2026-10-05 (the whole question as the lexical query buried 切粉 under 両工場 and ２件); it fixes that case but loses three development questions on each night, so the remedy stays with moving the DGX backup and keeping dense retrieval available.
+
+The second came from a code reading during Milestone 7: `applyEnrichment` in `worker.mjs` attaches the enrichment to the records but keeps the lexical passages prepared before, so in production the enrichment reaches the dense index and the judge, not the BM25 ranking. The offline harness (`evaluate.mjs`) attaches the enrichment before preparing the corpus, so the 2026-10-02 enrichment measurements included a lexical effect that production never had. Putting the enrichment text into BM25 loses questions on both nights; the summaries and tags dilute the record's own terms. Production stays as it is, now on purpose. Consequence for Milestone 7: learned queries must reach the lexical ranking on their own, as a short list per record, not through the enrichment text.

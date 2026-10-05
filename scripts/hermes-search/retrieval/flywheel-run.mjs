@@ -7,17 +7,18 @@
 // HERMES_INFERENCE_TOKEN, usually over a tunnel from the Mac).
 // Usage: node retrieval/flywheel-run.mjs --snapshot snapshot.json --questions night.jsonl [more]
 //   --out run.json [--label name] [--split dev|heldout|all] [--enrichment store.jsonl|off]
-//   [--dense store.bin|off] [--pool 30] [--limit N]
+//   [--dense store.bin|off] [--learned learned-queries.jsonl|off] [--pool 30] [--limit N]
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadNonconformityCatalog } from './catalog.mjs';
 import { RUN_SCHEMA, questionSet } from './flywheel-gate.mjs';
 import { createLiveScorer } from './flywheel-live.mjs';
+import { readLearned } from './flywheel-learn.mjs';
 import { bareId } from './flywheel-pairs.mjs';
 import { readNightRows } from './flywheel-report.mjs';
 
 export function parseRunArgs(argv) {
-  const options = { snapshot: null, questions: [], out: null, label: null, split: 'dev', enrichment: 'off', dense: 'off', pool: null, limit: null };
+  const options = { snapshot: null, questions: [], out: null, label: null, split: 'dev', enrichment: 'off', learned: 'off', dense: 'off', pool: null, limit: null };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--questions') {
@@ -27,7 +28,10 @@ export function parseRunArgs(argv) {
     else if (arg === '--label') options.label = argv[(index += 1)];
     else if (arg === '--split') options.split = argv[(index += 1)];
     else if (arg === '--enrichment') options.enrichment = argv[(index += 1)];
-    else if (arg === '--dense') options.dense = argv[(index += 1)];
+    else if (arg === '--learned') {
+      options.learned = argv[(index += 1)];
+      if (!options.learned || options.learned.startsWith('--')) throw new Error('--learned needs a path or off');
+    } else if (arg === '--dense') options.dense = argv[(index += 1)];
     else if (arg === '--pool') options.pool = Number.parseInt(argv[(index += 1)], 10);
     else if (arg === '--limit') options.limit = Number.parseInt(argv[(index += 1)], 10);
     else throw new Error(`unknown argument ${arg}`);
@@ -44,6 +48,7 @@ export function scorerEnv(options, base = process.env) {
   const env = {
     HERMES_RETRIEVAL_DENSE_PROVIDER: options.dense === 'off' ? 'off' : 'dgx',
     HERMES_RETRIEVAL_ENRICHMENT_ENABLED: options.enrichment === 'off' ? 'false' : 'true',
+    HERMES_FLYWHEEL_LEARNED_ENABLED: 'false',
   };
   if (options.dense !== 'off') {
     env.HERMES_RETRIEVAL_DENSE_STORE = options.dense;
@@ -85,12 +90,13 @@ export async function main(argv = process.argv.slice(2)) {
   const rows = options.questions.flatMap((file) => readNightRows(readFileSync(file, 'utf8')));
   const questions = questionSet(rows);
   const { createTypesafeDirectEvaluate } = await import('../hermes-jev-record-pilot.mjs');
-  const score = await createLiveScorer({ records, catalog: loadNonconformityCatalog(), evaluate: createTypesafeDirectEvaluate(), env: scorerEnv(options) });
+  const learned = options.learned === 'off' ? null : (await readLearned(options.learned)).filter((row) => row.state === 'active');
+  const score = await createLiveScorer({ records, catalog: loadNonconformityCatalog(), evaluate: createTypesafeDirectEvaluate(), env: scorerEnv(options), learned });
   const started = Date.now();
   const { cases, skipped } = await runCases({ questions, records, score, split: options.split, limit: options.limit, log: (line) => console.error(line) });
   const run = {
     schema: RUN_SCHEMA,
-    config: { label: options.label ?? options.out, split: options.split, enrichment: options.enrichment, dense: options.dense, pool: options.pool, snapshot: options.snapshot },
+    config: { label: options.label ?? options.out, split: options.split, enrichment: options.enrichment, learned: options.learned, dense: options.dense, pool: options.pool, snapshot: options.snapshot },
     startedAt: new Date(started).toISOString(),
     elapsedMs: Date.now() - started,
     skipped,

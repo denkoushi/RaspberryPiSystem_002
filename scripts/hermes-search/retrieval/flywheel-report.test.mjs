@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { formatRealReport, formatReport, nightOfFile, readNightRows, summarizeNight, summarizeReal } from './flywheel-report.mjs';
+import { formatRealReport, formatReport, nightOfFile, readNightRows, summarizeLearned, summarizeNight, summarizeReal } from './flywheel-report.mjs';
 
 const live = (loss, extra = {}) => ({ outcome: loss == null ? 'answer' : 'no_result', shown: [], candidates: [], judged: 30, loss, vectorStatus: 'ok', ms: 10, ...extra });
 const rows = [
@@ -108,4 +108,32 @@ test('real report CLI chooses the real summary alongside synthetic files', () =>
   assert.match(cli.stdout, /^night 2026-10-03:/u);
   assert.match(cli.stdout, /\nreal 2026-10-03: questions 1, with relevant 1, relevant shown 1/u);
   assert.equal(nightOfFile(realFile), '2026-10-03');
+});
+
+test('learned summary counts states and chooses the latest decision, independent of row order', () => {
+  const check = { heldout: { n: 4, gained: 1, lost: 2 }, real: { n: 1, gained: 0, lost: 1 } };
+  const rows = [{ state: 'candidate' }, { state: 'rejected', check, decidedAt: '2026-10-04T00:00:00Z' },
+    { state: 'active', check: {}, decidedAt: '2026-10-03T00:00:00Z' }, { state: 'unknown' }, null];
+  assert.deepEqual(summarizeLearned(rows), { candidates: 1, active: 1, rejected: 1, lastDecision: { state: 'rejected', check, decidedAt: '2026-10-04T00:00:00Z' } });
+  assert.deepEqual(summarizeLearned([]), { candidates: 0, active: 0, rejected: 0, lastDecision: null });
+});
+
+test('report CLI accepts learned alongside nights and alone and prints check gains and losses', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-report-learned-'));
+  const file = path.join(dir, 'learned-queries.jsonl');
+  const nightFile = path.join(dir, 'questions-2026-10-03.jsonl');
+  writeFileSync(nightFile, JSON.stringify(rows[0]) + '\n');
+  const cli = new URL('./flywheel-report.mjs', import.meta.url).pathname;
+  writeFileSync(file, [
+    { state: 'candidate' }, { state: 'active', decidedAt: '2026-10-04T00:00:00Z', check: { heldout: { gained: 2, lost: 1 }, real: { gained: 1, lost: 0 } } },
+    { state: 'rejected', decidedAt: '2026-10-03T00:00:00Z' },
+  ].map(JSON.stringify).join('\n') + '\nbroken\n');
+  const result = spawnSync(process.execPath, [cli, '--learned', file, nightFile], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^night 2026-10-03:/u);
+  assert.match(result.stdout, /\nlearned: candidates 1, active 1, rejected 1, last decision active \(heldout 2\/1, real 1\/0\)\n$/u);
+  writeFileSync(file, '');
+  const empty = spawnSync(process.execPath, [cli, '--learned', file], { encoding: 'utf8' });
+  assert.equal(empty.status, 0, empty.stderr);
+  assert.equal(empty.stdout, 'learned: candidates 0, active 0, rejected 0, last decision none (heldout 0/0, real 0/0)\n');
 });
