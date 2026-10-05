@@ -520,6 +520,10 @@ export function KioskAssemblyTrainingPage() {
               </div>
               {!session || session.status === 'IN_PROGRESS' ? (
                 <Button variant="ghostOnDark" className="ml-auto h-11" onClick={() => void resetOperator()}>別の作業者</Button>
+              ) : session.status === 'COMPLETED' || session.status === 'CANCELLED' ? (
+                <Button className="ml-auto h-11 px-6 text-lg" onClick={() => void resetOperator()}>
+                  {session.status === 'COMPLETED' ? '訓練完了' : '最初へ戻る'}
+                </Button>
               ) : null}
             </div>
           ) : (
@@ -633,12 +637,14 @@ export function KioskAssemblyTrainingPage() {
                 <TorqueTrainingTargetBand {...completedLimits} points={toTargetBandPoints(session.attempts)} />
               ) : null}
               <TorqueTrainingAttemptSlots items={slotItems} highlightNext={false} outOfSequenceItems={outOfSequenceSlotItems} />
-              <div>
-                <Button className="h-11 px-6 text-lg" onClick={() => void resetOperator()}>訓練完了</Button>
-              </div>
             </div>
           ) : (
-            <TorqueTrainingAttemptSlots items={slotItems} highlightNext={false} outOfSequenceItems={outOfSequenceSlotItems} />
+            <>
+              {session.status === 'CANCELLED' ? (
+                <AssemblySessionStatusNotice message="訓練は中止されました" className="self-start text-base" />
+              ) : null}
+              <TorqueTrainingAttemptSlots items={slotItems} highlightNext={false} outOfSequenceItems={outOfSequenceSlotItems} />
+            </>
           )}
         </section>
 

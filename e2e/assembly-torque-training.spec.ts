@@ -108,7 +108,7 @@ const adminResult: MockAdminResult = {
 };
 
 function session(
-  status: 'IN_PROGRESS' | 'COMPLETED' = 'IN_PROGRESS',
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' = 'IN_PROGRESS',
   attemptCount = status === 'COMPLETED' ? 5 : 0,
   programVersion = version,
   programCode = program.code
@@ -146,7 +146,7 @@ function session(
     hasWrenchConfirmation: attemptCount > 0 || status !== 'IN_PROGRESS',
     startedAt: '2026-08-09T00:00:00.000Z',
     completedAt: status === 'COMPLETED' ? '2026-08-09T00:05:00.000Z' : null,
-    cancelledAt: null,
+    cancelledAt: status === 'CANCELLED' ? '2026-08-09T00:05:00.000Z' : null,
     cancelReason: null,
     excludedAt: null,
     exclusionReason: null
@@ -252,7 +252,7 @@ async function expectMaxWidth(locator: ReturnType<Page['locator']>, maxWidth: nu
 
 test.use({ userAgent: LINUX_KIOSK_USER_AGENT });
 
-test('NFCから5回完了、本人情報消去、操作パスワード設定復帰を確認する', async ({ page }) => {
+async function verifyTrainingCompletion(page: Page, viewport: { width: number; height: number }): Promise<void> {
   let agentAcquired = false;
   let leaseAcquireCalls = 0;
   const preparationPayloads: Array<Record<string, unknown>> = [];
@@ -264,7 +264,7 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
   const trainingHeartbeatPayloads: Array<Record<string, unknown>> = [];
   let adminResults = [adminResult];
   await installMockNfc(page);
-  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.setViewportSize(viewport);
   await page.addInitScript(() => {
     window.localStorage.setItem('factory-auth', JSON.stringify({
       token: 'existing-viewer-token',
@@ -449,6 +449,10 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
   committedAttemptCount = 5;
   await emitTorqueTrainingCommitted(page, session().id, 'training-source-event-5');
   await expect(page.getByTestId('torque-training-completed-result')).toBeVisible();
+  const finishButton = page.getByRole('button', { name: '訓練完了', exact: true });
+  await expect(finishButton).toHaveCount(1);
+  await expect(page.getByTestId('torque-training-operator-card').getByRole('button', { name: '訓練完了', exact: true })).toBeVisible();
+  await expect(finishButton).toBeInViewport({ ratio: 1 });
   await expect(page.getByTestId('torque-training-wrench-preparation-panel')).toHaveCount(0);
   await expect(page.getByTestId('torque-training-wrench-connection')).toHaveCount(0);
   await expect(page.getByText('E2E 作業者', { exact: true })).toBeVisible();
@@ -534,6 +538,65 @@ test('NFCから5回完了、本人情報消去、操作パスワード設定復�
   await expectNoHorizontalOverflow(page);
   await page.keyboard.press('Escape');
   await expect(compactSettingsDialog).toBeHidden();
+}
+
+for (const viewport of [
+  { width: 1366, height: 768 },
+  { width: 1920, height: 1080 }
+]) {
+  test(`NFCから5回完了、本人情報消去、操作パスワード設定復帰を確認する ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await verifyTrainingCompletion(page, viewport);
+  });
+}
+
+test('ポーリングで訓練中止を受け取ると最初へ戻れる', async ({ page }) => {
+  let cancelled = false;
+  let sessionGets = 0;
+  let cancellationRequests = 0;
+  await installMockNfc(page);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.route('**/api/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/src/api/')) return route.continue();
+    if (path === '/api/kiosk/config') return route.fulfill({ json: { kioskInitialRoute: 'assembly', navTabOrder: [] } });
+    if (path === '/api/system/deploy-status') return route.fulfill({ json: { isMaintenance: false } });
+    if (path === '/api/torque-training/programs') return route.fulfill({ json: { programs: [menuProgram] } });
+    if (path === '/api/torque-training/team-summary') return route.fulfill({ json: teamOverview });
+    if (path === '/api/torque-training/operator-context') return route.fulfill({ json: {
+      employee: { id: employeeId, employeeCode: 'E2E001', displayName: 'E2E 作業者' },
+      currentSession: session(),
+      metrics: []
+    } });
+    if (path.endsWith(`/sessions/${session().id}`) && request.method() === 'GET') {
+      sessionGets += 1;
+      return route.fulfill({ json: { session: session(cancelled ? 'CANCELLED' : 'IN_PROGRESS', 1) } });
+    }
+    if (path.endsWith('/cancel')) cancellationRequests += 1;
+    return route.fulfill({ json: {} });
+  });
+  await page.route('http://127.0.0.1:7073/**', (route) => route.fulfill({
+    headers: { 'access-control-allow-origin': '*' },
+    json: { ok: true, ready: false, leaseOwned: false, state: 'available', wrenchSerialNumbers: ['702902S'] }
+  }));
+
+  await page.goto('/kiosk/assembly/training', { waitUntil: 'networkidle' });
+  await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __trainingNfcReady?: boolean }).__trainingNfcReady))).toBe(true);
+  await expect(page.getByTestId('torque-training-nfc-guide')).toBeVisible();
+  await emitNfc(page, 'NFC-E2E-TRAINING');
+  await expect(page.getByRole('button', { name: '別の作業者', exact: true })).toBeVisible();
+  cancelled = true;
+  const previousSessionGets = sessionGets;
+  await expect.poll(() => sessionGets).toBeGreaterThan(previousSessionGets);
+  await expect(page.getByText('訓練は中止されました', { exact: true })).toBeVisible();
+  const resetButton = page.getByTestId('torque-training-operator-card').getByRole('button', { name: '最初へ戻る', exact: true });
+  await expect(resetButton).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole('button', { name: '別の作業者', exact: true })).toHaveCount(0);
+  await resetButton.click();
+  await expect(page.getByTestId('torque-training-nfc-guide')).toBeVisible();
+  await expect(page.getByTestId('torque-training-operator-card')).toHaveCount(0);
+  await expect(page.getByText('訓練は中止されました', { exact: true })).toHaveCount(0);
+  expect(cancellationRequests).toBe(0);
 });
 
 for (const viewport of [
