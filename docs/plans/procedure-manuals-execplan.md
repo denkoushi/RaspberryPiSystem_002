@@ -19,7 +19,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) Phase 1 指定検証: API lint / vitest 12 件 / build 用 tsc、Web lint / vitest 4 件 / build がすべて成功。既存 API 回帰 4 件とビューア回帰 4 件も成功。
 - [x] (2026-10-05) 使い捨て PostgreSQL(pgvector pg15)で全 migration を適用し、`migrate status` 一致、工程の初期 3 行、文書二者択一の CHECK 制約の動作を確認した。
 - [x] (2026-10-05) Phase 1 を PR #1693 として提出。Codex(`gpt-6.1-sol`/`high`、read-only)のレビューで、キオスク PDF の削除前チェック(`assembly-procedure-reference.service.ts`)に割り当てが入っていない抜けを見つけ、修正とテストを追加した。候補取得で 1 件の改版履歴取得が失敗しても他の候補を出すように直した。
-- [ ] Phase 1 統合と反映: main への統合、Pi5 への標準ローリング更新、実機で「要領書」入口と割り当て編集を確認。実 PostgreSQL 上での並び置換は未実施。
+- [x] (2026-10-05) PR #1693 を main へ squash merge(merge `c5ed099daea5db373f376a575e04327a90c74695`)。main の CI、CodeQL、Secret scan、Torque Release Composition が同 SHA で success。worktree は `git_lifecycle.cli finish` で削除し `main_sync=updated`。
+- [x] (2026-10-05) Pi5 へ標準ローリング更新(`--limit raspberrypi5 --detach`、run `20261005-015725-1df4cb`、`Result=success`、`ExecMainStatus=0`、recap `ok=268 changed=31 unreachable=0 failed=0`)。反映後 `/api/system/health` が 200(database ok)。
+- [ ] 実機確認(オーナー): 組立ホームの「要領書」入口、割り当て編集で型番×工程に公開済み手順書を置いて閲覧できること。実 PostgreSQL 上での並び置換は本番操作で確認する。
 - [ ] Phase 2: 専用件名の Gmail 素材取込、素材棚、白紙ページ追加、NFC 承認による公開。
 - [ ] Phase 3: ナレッジ素材・承認済み手順の片方向連携。
 - [ ] 後日: 動画素材(形式未定)。
@@ -153,6 +155,6 @@ Phase 1 のローカル実装と指定の検証を完了した。文書は改版
 
 実行結果: `apps/api` の `pnpm lint`、`pnpm exec vitest run procedure-manual`（2 ファイル・12 件）、`pnpm exec tsc -p tsconfig.build.json --noEmit` は成功。`apps/web` の `pnpm lint`、`pnpm exec vitest run procedure-manuals`（1 ファイル・4 件）、`pnpm build` は成功。変更境界の既存回帰テストは API 3 ファイル・4 件、Web ビューア 1 ファイル・4 件が成功した。必要な生成物の準備に `packages/shared-types`、`shelf-layout-core`、`part-search-core`、`kiosk-sop-core` の build を実行した。検証の実行・準備は約 7 分（待機・並列実行を含む）。
 
-実 DB への適用と実画面操作は未実施であり、DB 制約・ロールバックの実 PostgreSQL 上の確認は残る。Phase 2 / 3、公開経路、NFC 承認、Gmail 取込は未実装。commit / push / PR / merge / deploy は行わず、差分を作業ツリーに残している。開始時から未追跡だったこの計画ファイルは既存内容を維持して進捗と判断を追記した。
+(上の段落は Codex のローカル実装時点の記録。)その後、使い捨て PostgreSQL で全 migration の適用と CHECK 制約を確認し、Codex の読み取り専用レビューがキオスク PDF 削除経路の抜けを捕まえたので修正した。PR #1693 は CI 全通過後に squash merge(`c5ed099d`)し、Pi5 へ run `20261005-015725-1df4cb` で反映、health 200 を確認した。Phase 1 は本番反映まで完了。残りはオーナーの実機確認と、Phase 2(素材取込・白紙ページ・NFC 承認)、Phase 3(ナレッジ連携)、動画。実装は Codex、レビューも Codex(read-only)、検証と統合は Claude という分担で進めた。
 
 範囲外の観測: Web 検証で baseline-browser-mapping / Browserslist のデータ更新警告と Vite の大きな chunk の警告が出た。今回の依頼では依存更新や既存 bundle の分割を行っていない。
