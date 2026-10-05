@@ -17,7 +17,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) feature branch `feat/procedure-manuals-phase1` と worktree を `scripts.git_lifecycle.cli start` で作成(起点 `origin/main` = `e001c7fa`)。
 - [x] (2026-10-05) Phase 1 ローカル実装: 工程マスタと機種×工程の割り当てモデル、4 本の API、キオスク閲覧・編集、参照使用判定を実装。Prisma Client 生成成功。
 - [x] (2026-10-05) Phase 1 指定検証: API lint / vitest 12 件 / build 用 tsc、Web lint / vitest 4 件 / build がすべて成功。既存 API 回帰 4 件とビューア回帰 4 件も成功。
-- [ ] Phase 1 実 DB・実画面確認: マイグレーション適用、実 PostgreSQL 上での並び置換とロールバック、API/Web を起動したキオスク操作は未実施。今回のテストは既存パターンに合わせた Prisma モックと Testing Library による検証。
+- [x] (2026-10-05) 使い捨て PostgreSQL(pgvector pg15)で全 migration を適用し、`migrate status` 一致、工程の初期 3 行、文書二者択一の CHECK 制約の動作を確認した。
+- [x] (2026-10-05) Phase 1 を PR #1693 として提出。Codex(`gpt-6.1-sol`/`high`、read-only)のレビューで、キオスク PDF の削除前チェック(`assembly-procedure-reference.service.ts`)に割り当てが入っていない抜けを見つけ、修正とテストを追加した。候補取得で 1 件の改版履歴取得が失敗しても他の候補を出すように直した。
+- [ ] Phase 1 統合と反映: main への統合、Pi5 への標準ローリング更新、実機で「要領書」入口と割り当て編集を確認。実 PostgreSQL 上での並び置換は未実施。
 - [ ] Phase 2: 専用件名の Gmail 素材取込、素材棚、白紙ページ追加、NFC 承認による公開。
 - [ ] Phase 3: ナレッジ素材・承認済み手順の片方向連携。
 - [ ] 後日: 動画素材(形式未定)。
@@ -39,6 +41,11 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: `export * from './domains/assembly'`。新 API 関数は既存の `api/domains/assembly.ts` に追加し、client からそのまま利用できる。
 - Observation: worktree には依存パッケージの dist がなく、初回 API tsc は shared-types / shelf-layout-core 等のモジュール解決で失敗した。また Prisma の通常生成はユーザーキャッシュの utime が EPERM となった。
   Evidence: ワークスペース 4 パッケージの build 後の tsc は成功。既存の Prisma query/schema engine を環境変数で明示した generate も成功。追跡対象の依存ファイルや .env は変更していない。
+
+- Observation: キオスク PDF の削除は `AssemblyProcedureReferenceService.countKioskDocumentReferences` で参照を数えてから実体を消す。新しい参照元を足したときは、組立手順書側の `getReferenceUsage` だけでなくこちらにも加えないと、PDF の実体を消した後に外部キーで拒否されて DB 参照だけが残る。
+  Evidence: Codex のレビュー指摘(2026-10-05)。`apps/api/src/routes/kiosk-documents.ts` の削除ルートが同サービスを呼ぶ。
+- Observation: 旧形式(改版サイドカーなし)の文書では、公開取消の参照確認と割り当て保存が同じ行をロックしないため、理論上は「確認 → 保存 → 公開取消」の順で割り当て先の公開版が消え得る。実測していない競合で、Phase 1 では放置し、Phase 2 の公開経路を作るときに同じ文書行のロックで直す。
+- Observation: `apps/web/src/features/assembly/**` と組立ホームはキオスク取説(kiosk-sop)の監視対象で、変更すると pre-commit が digest の更新を求める。画面が変わらない変更では `pnpm kiosk-sop:source-refresh` で manifest を更新して一緒に commit する。
 
 ## Decision Log
 

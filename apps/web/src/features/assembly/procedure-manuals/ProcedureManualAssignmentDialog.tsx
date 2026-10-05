@@ -47,7 +47,8 @@ export function ProcedureManualAssignmentDialog({ modelCode: initialModel, proce
       const publishedDocuments = await Promise.all(documents.map(async (document) => {
         if (document.status === 'published') return document;
         if (!document.revisionRootId) return null;
-        const history = await getAssemblyProcedureDocumentRevisions(document.id);
+        // One failing history lookup must not hide every other candidate.
+        const history = await getAssemblyProcedureDocumentRevisions(document.id).catch(() => []);
         return history.filter((revision) => revision.isActive && revision.status === 'published')
           .sort((a, b) => (b.revisionNumber ?? 1) - (a.revisionNumber ?? 1))[0] ?? null;
       }));
