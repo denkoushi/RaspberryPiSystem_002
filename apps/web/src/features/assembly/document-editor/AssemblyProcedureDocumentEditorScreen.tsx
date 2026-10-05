@@ -52,15 +52,17 @@ export function AssemblyProcedureDocumentEditorScreen() {
 
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-800 text-white">
-      {controller.document?.status === 'draft' && !controller.editLeaseMine ? (
+      {controller.document?.status === 'draft' && (!controller.editLeaseMine || controller.editLeaseUnavailable) ? (
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-amber-400/30 bg-amber-500/15 px-3 py-2" role="status">
           <p className="text-sm font-semibold text-amber-100">
-            {controller.editLease
+            {controller.editLeaseUnavailable
+              ? '編集の予約を取れていません(他端末と同時編集に注意)'
+              : controller.editLease
               ? `${controller.editLease.holderLabel}が編集中(${new Date(controller.editLease.acquiredAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}〜)`
               : controller.editLeasePending ? '編集の予約を確認中…' : '編集の予約を取得できていません。'}
           </p>
-          <Button type="button" variant="ghostOnDark" className="min-h-11" disabled={controller.editLeasePending || controller.busy} onClick={() => controller.editLease ? setTakeoverOpen(true) : void controller.retryEditLease()}>
-            {controller.editLease ? '引き継ぐ' : '予約を再取得'}
+          <Button type="button" variant="ghostOnDark" className="min-h-11" disabled={controller.editLeasePending || controller.busy} onClick={() => controller.editLease && !controller.editLeaseUnavailable ? setTakeoverOpen(true) : void controller.retryEditLease()}>
+            {controller.editLease && !controller.editLeaseUnavailable ? '引き継ぐ' : '予約を再取得'}
           </Button>
         </div>
       ) : null}

@@ -11,12 +11,12 @@ export function useAssemblyProcedureDocumentEditLease(input: {
   documentId: string;
   enabled: boolean;
   onLost: (lease: AssemblyProcedureDocumentEditLease) => void;
-  onError: () => void;
 }) {
   const [lease, setLease] = useState<AssemblyProcedureDocumentEditLease | null>(null);
   const [holderToken, setHolderToken] = useState<string | null>(null);
   const [mine, setMine] = useState(false);
   const [pending, setPending] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const mineRef = useRef(false);
   const callbacks = useRef(input);
   callbacks.current = input;
@@ -30,6 +30,7 @@ export function useAssemblyProcedureDocumentEditLease(input: {
     if (mineRef.current) callbacks.current.onLost(locked);
     mineRef.current = false;
     setMine(false);
+    setUnavailable(false);
     setHolderToken(null);
     setLease(locked);
     return true;
@@ -41,6 +42,7 @@ export function useAssemblyProcedureDocumentEditLease(input: {
     let inFlight = false;
     mineRef.current = false;
     setMine(false);
+    setUnavailable(false);
     setLease(null);
     setHolderToken(null);
     let sessionToken: string | null = null;
@@ -71,12 +73,11 @@ export function useAssemblyProcedureDocumentEditLease(input: {
           mineRef.current = result.mine;
           setMine(result.mine);
           setLease(result.lease);
+          setUnavailable(false);
         } catch (error: unknown) {
           if (cancelled || hidden) return;
           if (!handleError(error)) {
-            mineRef.current = false;
-            setMine(false);
-            callbacks.current.onError();
+            setUnavailable(true);
           }
         } finally {
           inFlight = false;
@@ -114,5 +115,5 @@ export function useAssemblyProcedureDocumentEditLease(input: {
 
   const takeover = useCallback(() => acquireRef.current(true), []);
   const retry = useCallback(() => acquireRef.current(), []);
-  return { lease, holderToken, mine, pending, takeover, retry, handleError };
+  return { lease, holderToken, mine, pending, unavailable, takeover, retry, handleError };
 }

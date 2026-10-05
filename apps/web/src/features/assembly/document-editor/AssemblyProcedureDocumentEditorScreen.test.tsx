@@ -93,6 +93,7 @@ function makeController(
     editLease: null,
     editLeaseMine: true,
     editLeasePending: false,
+    editLeaseUnavailable: false,
     takeoverEditLease: vi.fn(async () => undefined),
     retryEditLease: vi.fn(async () => undefined),
     canSave: false,
@@ -220,6 +221,23 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'この範囲で候補を再取得' }));
     expect(refetchTextCandidates).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])('shows a warning and keeps editing enabled when the lease is unavailable (mine=%s)', (mine) => {
+    const retryEditLease = vi.fn();
+    renderScreen(makeController({
+      editLeaseMine: mine,
+      editLeaseUnavailable: true,
+      editLease: mine ? { holderLabel: '自分の端末', acquiredAt: '2026-10-06T03:00:00Z', heartbeatAt: '2026-10-06T03:00:00Z' } : null,
+      canSave: true,
+      retryEditLease
+    }));
+    expect(screen.getByRole('status')).toHaveTextContent('編集の予約を取れていません(他端末と同時編集に注意)');
+    expect(screen.getByRole('button', { name: '保存' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '白紙ページを追加' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: '引き継ぐ' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '予約を再取得' }));
+    expect(retryEditLease).toHaveBeenCalledOnce();
   });
 
   it('shows the holder in read-only mode and requires confirmation before takeover', async () => {

@@ -16,9 +16,8 @@ const locked = { isAxiosError: true, response: { status: 409, data: { code: 'ASS
 
 function renderLease(enabled = true) {
   const onLost = vi.fn();
-  const onError = vi.fn();
-  const hook = renderHook(() => useAssemblyProcedureDocumentEditLease({ documentId: 'document-1', enabled, onLost, onError }));
-  return { ...hook, onLost, onError };
+  const hook = renderHook(() => useAssemblyProcedureDocumentEditLease({ documentId: 'document-1', enabled, onLost }));
+  return { ...hook, onLost };
 }
 
 describe('document editor edit lease', () => {
@@ -78,6 +77,26 @@ describe('document editor edit lease', () => {
     expect(mocks.release).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['not found', { isAxiosError: true, response: { status: 404 } }],
+    ['server error', { isAxiosError: true, response: { status: 503 } }],
+    ['network error', new Error('offline')]
+  ])('retains ownership and retries heartbeats after %s', async (_label, error) => {
+    const hook = renderLease();
+    await act(async () => undefined);
+    mocks.acquire.mockRejectedValueOnce(error);
+    await act(async () => vi.advanceTimersByTime(30_000));
+    expect(hook.result.current.mine).toBe(true);
+    expect(hook.result.current.unavailable).toBe(true);
+    expect(hook.result.current.holderToken).toBe('session-token');
+    expect(hook.onLost).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(30_000));
+    expect(mocks.acquire).toHaveBeenLastCalledWith('document-1', false, 'session-token');
+    expect(hook.result.current.unavailable).toBe(false);
+    await act(async () => hook.unmount());
+    expect(mocks.release).toHaveBeenCalledExactlyOnceWith('document-1', 'session-token');
+  });
+
   it('releases once on pagehide and reacquires after a restored page', async () => {
     const hook = renderLease();
     await act(async () => undefined);
@@ -107,7 +126,7 @@ describe('document editor edit lease', () => {
     mocks.acquire.mockReturnValueOnce(new Promise((done) => { acquired = done; }));
     mocks.release.mockReturnValueOnce(new Promise<void>((done) => { released = done; }));
     const hook = renderHook(({ enabled }) => useAssemblyProcedureDocumentEditLease({
-      documentId: 'document-1', enabled, onLost: vi.fn(), onError: vi.fn()
+      documentId: 'document-1', enabled, onLost: vi.fn()
     }), { initialProps: { enabled: true } });
     await act(async () => undefined);
     hook.rerender({ enabled: false });
@@ -121,14 +140,20 @@ describe('document editor edit lease', () => {
     await act(async () => hook.unmount());
   });
 
-  it('keeps editing disabled after a network error and supports retry', async () => {
-    mocks.acquire.mockRejectedValueOnce(new Error('offline'));
+  it.each([
+    ['not found', { isAxiosError: true, response: { status: 404 } }],
+    ['server error', { isAxiosError: true, response: { status: 503 } }],
+    ['network error', new Error('offline')]
+  ])('allows editing without a lease after %s and supports retry', async (_label, error) => {
+    mocks.acquire.mockRejectedValueOnce(error);
     const hook = renderLease();
     await act(async () => undefined);
     expect(hook.result.current.mine).toBe(false);
-    expect(hook.onError).toHaveBeenCalledOnce();
+    expect(hook.result.current.unavailable).toBe(true);
+    expect(hook.result.current.lease).toBeNull();
     await act(async () => hook.result.current.retry());
     expect(hook.result.current.mine).toBe(true);
+    expect(hook.result.current.unavailable).toBe(false);
     hook.unmount();
   });
 });

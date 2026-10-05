@@ -96,6 +96,26 @@ describe('assembly procedure editing lease routes', () => {
     expect(saveOverlays).toHaveBeenCalledWith(expect.objectContaining({ holderKey: 'user:operator', holderToken: 'session-token' }));
   });
 
+  it.each([null, 'own-token', 'other-token'])('checks the optional token for a same-key kiosk overlay save (%s)', async (holderToken) => {
+    vi.spyOn(prisma.clientDevice, 'findUnique').mockResolvedValue({ id: 'kiosk', name: '組立端末' } as never);
+    vi.mocked(prisma.assemblyProcedureDocumentEditLease.findUnique).mockResolvedValue({ ...lease, holderKey: 'client:kiosk', holderToken: 'own-token' });
+    const saveOverlays = vi.fn().mockResolvedValue({ id, name: '要領書', imageRelativePath: '/page.png', status: 'DRAFT', publishedAt: null, isActive: true, createdAt: now, updatedAt: now, pages: [], overlayElements: [], revisionMetadata: null });
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: allow, allowWriteKiosk: allow }, { saveOverlays } as never, {} as never);
+    const response = await app.inject({
+      method: 'PUT', url: `/assembly/procedure-documents/${id}/overlays`,
+      headers: { 'x-client-key': 'client-key', ...(holderToken === null ? {} : { 'x-procedure-edit-token': holderToken }) },
+      payload: { accessPassword: '1234', expectedEditVersion: 0, elements: [] }
+    });
+    if (holderToken === 'other-token') {
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ code: ASSEMBLY_PROCEDURE_EDIT_LOCKED });
+      expect(saveOverlays).not.toHaveBeenCalled();
+    } else {
+      expect(response.statusCode).toBe(200);
+      expect(saveOverlays).toHaveBeenCalledWith(expect.objectContaining({ holderKey: 'client:kiosk', holderToken }));
+    }
+  });
+
   it('preserves the existing overlay save for a client without a lease', async () => {
     const saveOverlays = vi.fn().mockResolvedValue({ id, name: '要領書', imageRelativePath: '/page.png', status: 'DRAFT', publishedAt: null, isActive: true, createdAt: now, updatedAt: now, pages: [], overlayElements: [], revisionMetadata: null });
     registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: allow, allowWriteKiosk: allow }, { saveOverlays } as never, {} as never);

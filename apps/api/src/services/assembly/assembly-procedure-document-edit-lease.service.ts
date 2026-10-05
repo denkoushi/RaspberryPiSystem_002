@@ -37,7 +37,7 @@ export class AssemblyProcedureDocumentEditLeaseService {
       const now = new Date();
       const previous = await tx.assemblyProcedureDocumentEditLease.findUnique({ where: { documentId } });
       const active = previous && previous.expiresAt > now;
-      const mine = previous?.holderKey === actor.holderKey && previous?.holderToken === holderToken;
+      const mine = previous?.holderKey === actor.holderKey && (holderToken === null || previous?.holderToken === holderToken);
       if (active && !mine && !takeover) throw lockedError(previous);
       const token = active && mine && !takeover ? previous.holderToken : randomUUID();
       const lease = await tx.assemblyProcedureDocumentEditLease.upsert({
@@ -56,13 +56,12 @@ export class AssemblyProcedureDocumentEditLeaseService {
   }
 
   async release(documentId: string, holderKey: string, holderToken: string | null = null) {
-    if (!holderToken) return;
-    await prisma.assemblyProcedureDocumentEditLease.deleteMany({ where: { documentId, holderKey, holderToken } });
+    await prisma.assemblyProcedureDocumentEditLease.deleteMany({ where: { documentId, holderKey, ...(holderToken === null ? {} : { holderToken }) } });
   }
 
   async assertCanWrite(documentId: string, holderKey: string | null, tx?: Prisma.TransactionClient, holderToken: string | null = null) {
     const lease = await (tx ?? prisma).assemblyProcedureDocumentEditLease.findUnique({ where: { documentId } });
     // Absence of a lease preserves older clients' editing contract.
-    if (lease && lease.expiresAt > new Date() && (lease.holderKey !== holderKey || lease.holderToken !== holderToken)) throw lockedError(lease);
+    if (lease && lease.expiresAt > new Date() && (lease.holderKey !== holderKey || (holderToken !== null && lease.holderToken !== holderToken))) throw lockedError(lease);
   }
 }

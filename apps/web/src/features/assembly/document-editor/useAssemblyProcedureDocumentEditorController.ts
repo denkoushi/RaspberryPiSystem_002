@@ -90,11 +90,10 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
       setPendingRange(null);
       setTextCandidates([]);
       setMessage(`${lease.holderLabel}に引き継がれました。未保存の内容は端末に保持しています`);
-    },
-    onError: () => setMessage('編集の予約を確認できませんでした。予約を再取得してください。')
+    }
   });
   const { handleError: onEditLeaseError } = editLease;
-  const readOnly = !accessGranted || document?.status !== 'draft' || !editLease.mine;
+  const readOnly = !accessGranted || document?.status !== 'draft' || (!editLease.mine && !editLease.unavailable);
   const revisionSession = useMemo(() => ({
     document,
     elements,
@@ -307,6 +306,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     editLeaseToken: editLease.holderToken,
     editLeaseMine: editLease.mine,
     editLeasePending: editLease.pending,
+    editLeaseUnavailable: editLease.unavailable,
     takeoverEditLease: editLease.takeover,
     retryEditLease: editLease.retry,
     canPublish: revisionCommands.canPublish,

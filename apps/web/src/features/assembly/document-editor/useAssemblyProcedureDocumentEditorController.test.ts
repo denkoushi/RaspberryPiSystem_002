@@ -101,6 +101,27 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.isDirty).toBe(true);
   });
 
+  it.each([
+    ['not found', { isAxiosError: true, response: { status: 404 } }],
+    ['server error', { isAxiosError: true, response: { status: 503 } }],
+    ['network error', new Error('offline')]
+  ])('allows edits and saves without a token when lease acquisition fails with %s', async (_label, error) => {
+    leaseMocks.acquire.mockRejectedValueOnce(error);
+    const document = makeDocument();
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    expect(hook.result.current.readOnly).toBe(false);
+    expect(hook.result.current.editLeaseUnavailable).toBe(true);
+    act(() => hook.result.current.handleRangeSelected(range));
+    await act(async () => hook.result.current.createOverlay('SHAPE'));
+    expect(hook.result.current.elements).toHaveLength(1);
+    apiMocks.saveOverlays.mockResolvedValue({ ...document, editVersion: 1 });
+    await act(async () => hook.result.current.save());
+    expect(apiMocks.saveOverlays).toHaveBeenCalledWith(expect.objectContaining({ id: document.id, expectedEditVersion: 0 }));
+    expect(apiMocks.saveOverlays.mock.calls[0]?.[0]).not.toHaveProperty('holderToken');
+    hook.unmount();
+  });
+
   it('retains unsaved content locally and becomes read-only when another holder takes over', async () => {
     vi.useFakeTimers();
     const source = makeDocument();

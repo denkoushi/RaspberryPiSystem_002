@@ -22,7 +22,7 @@ describe('assembly procedure document editing leases', () => {
       return stored;
     });
     vi.spyOn(prisma.assemblyProcedureDocumentEditLease, 'deleteMany').mockImplementation(async args => {
-      if (stored?.holderKey === args?.where?.holderKey && stored?.holderToken === args?.where?.holderToken) { stored = null; return { count: 1 }; }
+      if (stored?.holderKey === args?.where?.holderKey && (args?.where?.holderToken === undefined || stored?.holderToken === args.where.holderToken)) { stored = null; return { count: 1 }; }
       return { count: 0 };
     });
   });
@@ -83,9 +83,10 @@ describe('assembly procedure document editing leases', () => {
 
   it('isolates sessions sharing a holder key and rotates the token on takeover', async () => {
     const first = await service.acquire(documentId, actor);
-    await expect(service.acquire(documentId, actor)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await service.acquire(documentId, actor)).holderToken).toBe(first.holderToken);
     await expect(service.acquire(documentId, actor, false, 'other-session')).rejects.toMatchObject({ statusCode: 409 });
-    await expect(service.assertCanWrite(documentId, actor.holderKey)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service.assertCanWrite(documentId, actor.holderKey)).resolves.toBeUndefined();
+    await expect(service.assertCanWrite(documentId, actor.holderKey, undefined, 'other-session')).rejects.toMatchObject({ statusCode: 409 });
     await service.release(documentId, actor.holderKey, 'other-session');
     expect(stored?.holderToken).toBe(first.holderToken);
     const next = await service.acquire(documentId, actor, true, first.holderToken);
@@ -94,9 +95,20 @@ describe('assembly procedure document editing leases', () => {
     await expect(service.assertCanWrite(documentId, actor.holderKey, undefined, first.holderToken)).rejects.toMatchObject({ statusCode: 409 });
     await service.release(documentId, actor.holderKey, first.holderToken);
     expect(stored?.holderToken).toBe(next.holderToken);
-    await service.release(documentId, actor.holderKey);
-    expect(stored).not.toBeNull();
     await service.release(documentId, actor.holderKey, next.holderToken);
+    expect(stored).toBeNull();
+  });
+
+  it('renews and releases a same-key lease without a token for legacy clients', async () => {
+    const first = await service.acquire(documentId, actor);
+    vi.advanceTimersByTime(30_000);
+    const renewed = await service.acquire(documentId, actor, false, null);
+    expect(renewed.holderToken).toBe(first.holderToken);
+    expect(renewed.lease).toMatchObject({ acquiredAt: now.toISOString(), expiresAt: '2026-10-06T03:05:30.000Z' });
+    await expect(service.assertCanWrite(documentId, actor.holderKey, undefined, null)).resolves.toBeUndefined();
+    await service.release(documentId, 'client:other', null);
+    expect(stored).not.toBeNull();
+    await service.release(documentId, actor.holderKey, null);
     expect(stored).toBeNull();
   });
 
