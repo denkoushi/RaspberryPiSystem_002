@@ -62,7 +62,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) 動画 V2指定検証: API lint / procedure-video 5ファイル87件 / build用tsc、Web lint / procedure-manuals 4ファイル39件 / build成功。組立transaction回帰4件も成功(合わせて6ファイル91件)。expand-only SQLの5文成功、Prisma差分と手書きDDLの列/表/索引/FK一致を確認。依存準備を含め約10分。
 - [x] (2026-10-05) 動画 V2レビュー修正: UX改善側の左ペイン・サムネイル構成とV2の長さ/要トリミング表示を統合。長さ未確定/非READYの新規紐づけを409で拒否し既存リンクの読み出しを保持、取得時updatedAtによるclaimと行の再取得、44×44pxのつまみと重なり時の前面選択・キーボード操作を追加。claim前の要求差し替えとaria-valuenowの回帰テストを追加。マージで重複したtransaction importも除去。
 - [x] (2026-10-05) 動画 V2競合解消・レビュー修正の指定検証: API lint / vitest 9ファイル127件 / build用tsc、Web lint / vitest 15ファイル122件 / buildがすべて成功(環境準備と関連修正の再確認を含め約4分)。main取り込み後のPrisma Clientをローカル再生成し、競合マーカー0件、Web buildのCSSでWebKit/Firefox両方のつまみ44px相当を確認。git操作と禁止パスの編集は行っていない。
-- [ ] 動画 V2 integrationPending: commit・push・PR・main統合・本番反映・実機受入は未依頼、未実施。
+- [x] (2026-10-05) 動画 V2: Codex レビューの 3 指摘(長さ未確定の動画の紐づけ拒否、claim の `updatedAt` 条件付き更新、つまみの 44px)を修正。`origin/main`(UX 改善 #1713)を取り込み、4 ファイルの競合を両立で解消。使い捨て PostgreSQL で migration 適用を確認。
+- [x] (2026-10-05) PR #1714 を main へ squash merge(merge `66355f8f191590053544cf6f4dd21e092ddb20ad`)。件名を指定しなかったため main のコミット名が作業用の「wip: video V2 (to be squashed) (#1714)」になった(履歴は直さない。次回から `--subject` を指定する)。main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-131419-00281b`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`、追跡セッションが実施)、health 200、migration `20261006100000_add_procedure_video_trim_and_comments` 適用済み。
+- [ ] 実機確認(オーナー): 動画一覧で 10.5 秒超に「要トリミング」が出てトリミングすると新しい長さになる、10 秒以内の動画だけページに紐づく、コメントを付けると再生中に字幕として出る。
 - [ ] 後日: 動画 V3(接続)。
 
 ## Surprises & Discoveries
