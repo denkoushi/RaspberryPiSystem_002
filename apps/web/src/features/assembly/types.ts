@@ -672,3 +672,36 @@ export type AssemblyTraceabilityDetailDto = {
   }>;
   genealogy: AssemblyGenealogyNodeDto[];
 };
+
+
+export type ProcedureManualProcessDto = {
+  id: string;
+  parentId: string | null;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+  resourceCd: string | null;
+};
+
+export type ProcedureManualModelDto = { modelCode: string; modelCodeKey: string };
+
+export type ProcedureManualAssignmentInput = {
+  kioskDocumentId?: string | null;
+  assemblyProcedureDocumentId?: string | null;
+  sortOrder: number;
+  label?: string | null;
+};
+
+export type ProcedureManualAssignmentDto = ProcedureManualAssignmentInput & {
+  id: string;
+  modelCode: string;
+  modelCodeKey: string;
+  processId: string;
+  resolvedDocumentId: string | null;
+  unavailableReason: 'no_published_revision' | 'disabled' | null;
+};
+
+export type ProcedureManualDetailDto = {
+  assignments: ProcedureManualAssignmentDto[];
+  sequence: AssemblyProcedureSequenceDto;
+};

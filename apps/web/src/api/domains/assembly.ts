@@ -962,3 +962,38 @@ export async function listBusinessHermesProactiveSuggestions(limit = 50) {
 export async function recordBusinessHermesFeedback(consultationId: string, messageId: string, verdict: 'helpful' | 'unhelpful'): Promise<void> {
   await api.post(`/assembly/business-hermes/consultations/${consultationId}/feedback`, { messageId, verdict });
 }
+
+
+export async function listProcedureManualProcesses() {
+  const { data } = await api.get<{ processes: import('../../features/assembly/types').ProcedureManualProcessDto[] }>('/assembly/procedure-manuals/processes');
+  return data.processes;
+}
+
+export async function listProcedureManualModels() {
+  const { data } = await api.get<{ models: import('../../features/assembly/types').ProcedureManualModelDto[] }>('/assembly/procedure-manuals/models');
+  return data.models;
+}
+
+function procedureManualPath(modelCodeKey: string, processId: string) {
+  return `/assembly/procedure-manuals/models/${encodeURIComponent(modelCodeKey)}/processes/${encodeURIComponent(processId)}`;
+}
+
+export async function getProcedureManualAssignments(modelCodeKey: string, processId: string) {
+  const { data } = await api.get<import('../../features/assembly/types').ProcedureManualDetailDto>(procedureManualPath(modelCodeKey, processId));
+  return data;
+}
+
+export async function replaceProcedureManualAssignments(modelCodeKey: string, processId: string, input: {
+  modelCode: string;
+  assignments: import('../../features/assembly/types').ProcedureManualAssignmentInput[];
+}) {
+  await api.put(procedureManualPath(modelCodeKey, processId), input);
+}
+
+
+export async function getAssemblyProcedureDocumentRevisions(id: string) {
+  const { data } = await api.get<{ revisions: AssemblyProcedureDocumentDto[] }>(
+    `/assembly/procedure-documents/${encodeURIComponent(id)}/revisions`
+  );
+  return data.revisions;
+}

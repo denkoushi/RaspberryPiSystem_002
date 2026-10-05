@@ -420,6 +420,7 @@ export function KioskAssemblyHomePage() {
       <div className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#27313b] bg-[#161c22] px-3.5">
         <h1 className="text-lg font-black tracking-widest">組立</h1>
         <nav className="flex flex-wrap items-center gap-1" aria-label="組立メニュー">
+          <Link to="/kiosk/assembly/manuals" className={navLinkClassName}>要領書</Link>
           <Link to={KIOSK_ASSEMBLY_TRAINING_PATH} className={navLinkClassName}>
             訓練
           </Link>

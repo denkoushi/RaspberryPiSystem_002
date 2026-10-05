@@ -1,4 +1,5 @@
 # ドキュメント索引
+- 機種×工程ごとの要領書（組立手順書を正本に、型番×工程の割り当てと閲覧、Gmail素材取込、ナレッジ連携）: [ExecPlan](./plans/procedure-manuals-execplan.md)
 - Chatに投げ込んだ素材をAIが手順書に仕立てる（種類別の承認・段階的な写真への書き込み・DocJev評価）: [ExecPlan](./plans/hermes-knowledge-procedures-execplan.md)
 - 端末の拠点を明示設定へ移行（Mac代理操作の設定化・誤拠点データの統合）: [ExecPlan](./plans/explicit-site-scope-execplan.md)
 - Hermes横断レコード検索（ソースカタログ・検索計画・手元評価・5秒目標）: [ADR](./decisions/ADR-20260923-hermes-cross-source-retrieval.md) / [ExecPlan](./plans/hermes-cross-source-retrieval-execplan.md)

@@ -262,6 +262,9 @@ export function registerAssemblyProcedureDocumentRoutes(
   app.delete('/assembly/procedure-documents/:id', { preHandler: allowWriteKiosk }, async (request, reply) => {
     const params = idParamSchema.parse(request.params);
     const usage = await procedureService.getReferenceUsage(params.id);
+    if (usage.inProcedureManualAssignment) {
+      return reply.status(409).send({ message: procedureService.buildInUseMessage(usage) });
+    }
     if (usage.inBoltPageRef || usage.inCheckPageRef) {
       return reply.status(409).send({ message: 'マーカー参照で使用中の手順書は削除できません' });
     }
