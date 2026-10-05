@@ -230,6 +230,9 @@ describe('torque training API concurrency boundary', () => {
       }
     })));
     expect(attempts.every((response) => [200, 409].includes(response.statusCode))).toBe(true);
+    const conflicts = attempts.filter((response) => response.statusCode === 409);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].json().errorCode).toBe('TRAINING_SESSION_STATE_CONFLICT');
     expect(await prisma.torqueTrainingAttempt.count({ where: { sessionId: session.id, accepted: true } })).toBe(5);
     expect(await prisma.torqueTrainingAttempt.count({ where: { sessionId: session.id, attemptNo: { not: null } } })).toBe(5);
     expect((await prisma.torqueTrainingSession.findUniqueOrThrow({ where: { id: session.id } })).status).toBe('COMPLETED');
@@ -257,6 +260,35 @@ describe('torque training API concurrency boundary', () => {
     expect(replay.json().duplicate).toBe(true);
     expect(await prisma.torqueWrenchUsageLeaseHistory.findFirst({ where: { torqueWrenchProfileId: profile.id, action: 'RELEASE', reason: 'TRAINING_COMPLETED' } })).toMatchObject({ adoptedConfirmationId: confirmationId });
     expect(await prisma.torqueWrenchUsageLease.findUniqueOrThrow({ where: { torqueWrenchProfileId: profile.id } })).toMatchObject({ releasedAt: expect.any(Date), generation: 1 });
+
+    // Exercise the five-attempt guard independently of the completed-state guard.
+    await prisma.torqueTrainingSession.update({ where: { id: session.id }, data: { status: 'IN_PROGRESS' } });
+    const renewedLeaseResponse = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/usage-lease/acquire`,
+      headers,
+      payload: { sessionId: session.id, confirmationId, requestId: 'training-lease-attempt-limit' }
+    });
+    expect(renewedLeaseResponse.statusCode).toBe(200);
+    const renewedLease = renewedLeaseResponse.json().lease as { leaseId: string; generation: number };
+    const attemptsComplete = await app.inject({
+      method: 'POST',
+      url: `/api/torque-training/sessions/${session.id}/attempts/from-agent`,
+      headers,
+      payload: {
+        sourceEventKey: 'training-attempt-limit',
+        confirmationId,
+        torqueWrenchProfileId: profile.id,
+        serialNumber: profile.serialNumber,
+        value: 10,
+        unit: 'N-m',
+        connectionLeaseId: renewedLease.leaseId,
+        connectionLeaseGeneration: renewedLease.generation
+      }
+    });
+    expect(attemptsComplete.statusCode).toBe(409);
+    expect(attemptsComplete.json().errorCode).toBe('TRAINING_ATTEMPTS_COMPLETE');
+    expect(await prisma.torqueTrainingAttempt.count({ where: { sessionId: session.id, accepted: true } })).toBe(5);
   });
 
   it('acknowledges legacy stale events and accepts new events with the profile ID', async () => {
