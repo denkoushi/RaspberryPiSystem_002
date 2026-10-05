@@ -18,6 +18,7 @@ import {
   selectDocumentPages
 } from './documentEditorSelectors';
 import { useAssemblyDocumentEditorRecovery } from './useAssemblyDocumentEditorRecovery';
+import { useAssemblyProcedureDocumentEditLease } from './useAssemblyProcedureDocumentEditLease';
 import { useAssemblyProcedureDocumentOverlayCommands } from './useAssemblyProcedureDocumentOverlayCommands';
 import { useAssemblyProcedureDocumentRevisionCommands } from './useAssemblyProcedureDocumentRevisionCommands';
 
@@ -54,7 +55,6 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const [conflictEditVersion, setConflictEditVersion] = useState<number | null>(null);
   const snapshot = useMemo(() => overlayDraftSnapshot(elements), [elements]);
   const isDirty = baselineSnapshot != null && baselineSnapshot !== snapshot;
-  const readOnly = !accessGranted || document?.status !== 'draft';
   const selectedPage = useMemo(
     () => selectDocumentPage(document, selectedPageIndex),
     [document, selectedPageIndex]
@@ -81,6 +81,19 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     onStorageError
   });
   const { saveImmediately: saveRecoveryImmediately } = recovery;
+  const editLease = useAssemblyProcedureDocumentEditLease({
+    documentId: document?.id ?? input.documentId,
+    enabled: accessGranted && document?.status === 'draft',
+    onLost: (lease) => {
+      if (isDirty) saveRecoveryImmediately({ baseUpdatedAt: document?.updatedAt ?? null, editVersion: document?.editVersion ?? 0 });
+      setSelectionMode(false);
+      setPendingRange(null);
+      setTextCandidates([]);
+      setMessage(`${lease.holderLabel}に引き継がれました。未保存の内容は端末に保持しています`);
+    }
+  });
+  const { handleError: onEditLeaseError } = editLease;
+  const readOnly = !accessGranted || document?.status !== 'draft' || (!editLease.mine && !editLease.unavailable);
   const revisionSession = useMemo(() => ({
     document,
     elements,
@@ -89,6 +102,8 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     isDirty,
     readOnly,
     conflictEditVersion,
+    onEditLeaseError,
+    holderToken: editLease.holderToken,
     setAccessGranted,
     setBaselineSnapshot,
     setBusy,
@@ -105,6 +120,8 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     busy,
     conflictEditVersion,
     document,
+    onEditLeaseError,
+    editLease.holderToken,
     elements,
     input.onNavigateAfterDiscard,
     input.onNavigateAfterPublish,
@@ -133,10 +150,14 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setTextCandidates,
     setTextCandidateRange,
     dispatch,
-    textCandidateRange
+    textCandidateRange,
+    onEditLeaseError,
+    holderToken: editLease.holderToken
   }), [
     busy,
     document,
+    onEditLeaseError,
+    editLease.holderToken,
     passwordInput,
     pendingRange,
     readOnly,
@@ -226,7 +247,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     if (!document || readOnly || busy || conflict) return;
     setBusy(true);
     try {
-      const next = await addBlankAssemblyProcedurePage({ id: document.id, accessPassword: passwordInput, expectedEditVersion: document.editVersion ?? 0 });
+      const next = await addBlankAssemblyProcedurePage({ id: document.id, holderToken: editLease.holderToken, accessPassword: passwordInput, expectedEditVersion: document.editVersion ?? 0 });
       // Keep the unsaved overlay reducer and its baseline; only update pages/version.
       setDocument((current) => ({ ...next, assets: { ...next.assets, ...current?.assets } }));
       setSelectedPage(Math.max(...next.pages.map((page) => page.pageIndex)));
@@ -235,11 +256,12 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
         saveRecoveryImmediately({ baseUpdatedAt: next.updatedAt, editVersion: next.editVersion ?? 0 });
       }
     } catch (error) {
+      if (onEditLeaseError(error)) return;
       const nextConflict = readDocumentEditorConflict(error);
       if (nextConflict) { setConflict(true); setConflictEditVersion(nextConflict.currentEditVersion); }
       setMessage(readAssemblyApiErrorMessage(error, '白紙ページを追加できませんでした。'));
     } finally { setBusy(false); }
-  }, [busy, conflict, document, isDirty, passwordInput, readOnly, saveRecoveryImmediately, setSelectedPage]);
+  }, [editLease.holderToken, busy, conflict, document, onEditLeaseError, isDirty, passwordInput, readOnly, saveRecoveryImmediately, setSelectedPage]);
 
   return {
     addBlankPage,
@@ -265,7 +287,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setSelectedOverlayId,
     selectedElement,
     elements,
-    selectionMode,
+    selectionMode: selectionMode && !readOnly,
     setSelectionMode,
     pendingRange,
     cancelPendingRange,
@@ -280,6 +302,13 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     isDirty,
     readOnly,
     canSave: isDirty && isOverlayDraftSaveable(elements),
+    editLease: editLease.lease,
+    editLeaseToken: editLease.holderToken,
+    editLeaseMine: editLease.mine,
+    editLeasePending: editLease.pending,
+    editLeaseUnavailable: editLease.unavailable,
+    takeoverEditLease: editLease.takeover,
+    retryEditLease: editLease.retry,
     canPublish: revisionCommands.canPublish,
     canDiscard: revisionCommands.canDiscard,
     textCandidates,

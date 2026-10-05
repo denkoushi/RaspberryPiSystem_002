@@ -1,3 +1,4 @@
+import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter } from './procedure-document-edit-leases.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
 
@@ -52,9 +53,9 @@ export function registerProcedureVideoRoutes(app: FastifyInstance, options: {
     const { id, pageIndex } = pageParams.parse(request.params);
     return { videos: await service.listPage(id, pageIndex) };
   });
-  app.put(pagesPath, { preHandler: options.allowWriteKiosk }, async (request) => {
+  app.put(pagesPath, { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const { id, pageIndex } = pageParams.parse(request.params);
     const body = z.object({ videoIds: z.array(z.string().uuid()).max(50), accessPassword: z.string().max(128).default('') }).strict().parse(request.body);
-    return { videos: await service.replacePage({ documentId: id, pageIndex, ...body }) };
+    return { videos: await service.replacePage({ documentId: id, pageIndex, ...body, ...await resolveAssemblyProcedureEditWriter(request) }) };
   });
 }

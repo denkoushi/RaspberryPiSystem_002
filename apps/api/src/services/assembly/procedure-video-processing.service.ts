@@ -36,10 +36,12 @@ export class ProcedureVideoProcessingService {
       for (const video of originals) {
         if (video.sourceStorageKey) await this.cleanupOriginal(video.id, video.sourceStorageKey);
       }
-      const video = await this.db.procedureVideo.findFirst({ where: { status: 'PENDING', discardedAt: null }, orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }] });
-      if (!video) return;
-      const claim = await this.db.procedureVideo.updateMany({ where: { id: video.id, status: 'PENDING', discardedAt: null }, data: { status: 'PROCESSING' } });
+      const candidate = await this.db.procedureVideo.findFirst({ where: { status: 'PENDING', discardedAt: null }, orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }] });
+      if (!candidate) return;
+      const claim = await this.db.procedureVideo.updateMany({ where: { id: candidate.id, status: 'PENDING', updatedAt: candidate.updatedAt, discardedAt: null }, data: { status: 'PROCESSING' } });
       if (!claim.count) return;
+      const video = await this.db.procedureVideo.findUnique({ where: { id: candidate.id } });
+      if (!video) return;
       const trim = video.trimRequest as { startSeconds: number; endSeconds: number } | null;
       const isTrim = Boolean(trim && video.storageKey);
       let directory: string | undefined;

@@ -1,3 +1,4 @@
+import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { procedureVideoLinksInclude } from './procedure-video.service.js';
 import { procedureManualApprovalInclude } from './assembly-procedure-document-revision.serializer.js';
 import { randomUUID } from 'node:crypto';
@@ -250,7 +251,7 @@ export class AssemblyProcedureDocumentRevisionService {
     });
   }
 
-  async addBlankPage(params: { documentId: string; expectedEditVersion: number; accessPassword?: string }) {
+  async addBlankPage(params: AssemblyProcedureEditActor & { documentId: string; expectedEditVersion: number; accessPassword?: string }) {
     await this.accessService.requireAccessPassword(params.accessPassword);
     if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
       throw new ApiError(400, 'expectedEditVersionが不正です');
@@ -267,6 +268,7 @@ export class AssemblyProcedureDocumentRevisionService {
         `;
         const doc = locked[0];
         if (!doc) throw new ApiError(404, '手順書が見つかりません');
+        await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, tx, params.holderToken ?? null);
         if (!doc.revisionRootId || !doc.isRevisionHead || !doc.isActive || doc.status !== 'DRAFT') {
           throw new ApiError(409, '公開済みまたは旧版の手順書はoverlay編集できません');
         }
@@ -289,7 +291,7 @@ export class AssemblyProcedureDocumentRevisionService {
     }
   }
 
-  async saveOverlays(params: {
+  async saveOverlays(params: AssemblyProcedureEditActor & {
     documentId: string;
     expectedEditVersion: number;
     elements: AssemblyProcedureOverlayElementInput[];
@@ -317,6 +319,7 @@ export class AssemblyProcedureDocumentRevisionService {
       `;
       const doc = locked[0];
       if (!doc) throw new ApiError(404, '手順書が見つかりません');
+      await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, tx, params.holderToken ?? null);
       if (!doc.revisionRootId || !doc.isRevisionHead || !doc.isActive || doc.status !== 'DRAFT') {
         throw new ApiError(409, '公開済みまたは旧版の手順書はoverlay編集できません');
       }
@@ -404,7 +407,7 @@ export class AssemblyProcedureDocumentRevisionService {
     return result;
   }
 
-  async discardRevision(params: {
+  async discardRevision(params: AssemblyProcedureEditActor & {
     documentId: string;
     accessPassword?: string;
     expectedEditVersion?: number;
@@ -423,6 +426,7 @@ export class AssemblyProcedureDocumentRevisionService {
       `;
       const doc = locked[0];
       if (!doc) throw new ApiError(404, '手順書が見つかりません');
+      await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, tx, params.holderToken ?? null);
       if (!doc.revisionRootId || !doc.isRevisionHead || doc.status !== 'DRAFT') {
         throw new ApiError(409, '最新版の改版下書きだけ破棄できます');
       }

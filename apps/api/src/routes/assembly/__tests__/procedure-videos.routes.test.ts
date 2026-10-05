@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import { ProcedureVideoService } from '../../../services/assembly/procedure-video.service.js';
@@ -11,14 +12,17 @@ const secondId = '00000000-0000-4000-8000-000000000002';
 const base = `/assembly/procedure-videos/${id}`;
 const pagePath = `/assembly/procedure-documents/${id}/pages/0/videos`;
 function harness(deny: 'view' | 'write' | null = null) {
-  const video = { id, title: '動画', status: 'READY', durationSeconds: 10.5, storageKey: 'video.mp4', posterStorageKey: 'poster.jpg', discardedAt: null, _count: { links: 2 } };
+  const video = { id, title: '動画', status: 'READY', durationSeconds: 10.5 as number | null, storageKey: 'video.mp4', posterStorageKey: 'poster.jpg', discardedAt: null, _count: { links: 2 } };
   const db = { $transaction: vi.fn(), $queryRaw: vi.fn().mockResolvedValue([{ status: 'DRAFT', isActive: true, isRevisionHead: true }]),
+    assemblyProcedureDocumentEditLease: { findUnique: vi.fn().mockResolvedValue(null) },
     procedureVideo: { findFirst: vi.fn().mockResolvedValue(null), findUnique: vi.fn().mockResolvedValue(video), findMany: vi.fn().mockResolvedValue([video]), count: vi.fn().mockResolvedValue(2), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     procedureVideoLink: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([{ video }]), deleteMany: vi.fn(), createMany: vi.fn() },
     procedureVideoComment: { findMany: vi.fn().mockResolvedValue([]), deleteMany: vi.fn(), createMany: vi.fn() },
     assemblyProcedureDocumentPage: { findUnique: vi.fn().mockResolvedValue({ pageIndex: 0 }) },
   };
   db.$transaction.mockImplementation((work) => work(db));
+  vi.spyOn(prisma.assemblyProcedureDocumentEditLease, 'findUnique').mockResolvedValue(null);
+  vi.spyOn(prisma, '$transaction').mockImplementation((async (work: any) => work(db)) as never);
   const store = { read: vi.fn().mockResolvedValue(Buffer.from('0123456789')) };
   const access = { requireAccessPassword: vi.fn().mockResolvedValue(undefined) };
   const app = Fastify(); registerErrorHandler(app);
@@ -30,7 +34,7 @@ function harness(deny: 'view' | 'write' | null = null) {
 }
 const apps: ReturnType<typeof Fastify>[] = [];
 function setup(deny: 'view' | 'write' | null = null) { const h = harness(deny); apps.push(h.app); return h; }
-afterEach(async () => { await Promise.all(apps.splice(0).map((app) => app.close())); });
+afterEach(async () => { await Promise.all(apps.splice(0).map((app) => app.close())); vi.restoreAllMocks(); });
 
 describe('procedure-video routes', () => {
   it('lists active by default with poster presence and link count, and filters discarded/search/limit', async () => {
@@ -124,15 +128,28 @@ describe('procedure-video routes', () => {
     const h = setup(); h.db.procedureVideo.count.mockResolvedValue(1);
     expect((await h.app.inject({ method: 'PUT', url: pagePath, payload: { videoIds: [id] } })).statusCode).toBe(200);
     h.db.procedureVideoLink.deleteMany.mockClear();
-    h.video.durationSeconds = 10.51; h.db.procedureVideo.findFirst.mockResolvedValue(h.video);
+    h.video.durationSeconds = 10.51; h.db.procedureVideo.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(h.video);
     const response = await h.app.inject({ method: 'PUT', url: pagePath, payload: { videoIds: [id] } });
     expect(response.statusCode).toBe(400); expect(response.body).toContain('10 秒以内にトリミングしてください');
     expect(h.db.procedureVideoLink.deleteMany).not.toHaveBeenCalled();
     expect((await h.app.inject(pagePath)).json().videos[0].durationSeconds).toBe(10.51);
   });
+  it.each([
+    ['PENDING', null], ['PROCESSING', null], ['READY', null], ['PROCESSING', 8], ['FAILED', 8],
+  ])('refuses linking %s with duration %s while preserving existing reads', async (status, durationSeconds) => {
+    const h = setup(); h.db.procedureVideo.count.mockResolvedValue(1);
+    h.video.status = status as string; h.video.durationSeconds = durationSeconds as number | null;
+    h.db.procedureVideo.findFirst.mockResolvedValueOnce(h.video);
+    const response = await h.app.inject({ method: 'PUT', url: pagePath, payload: { videoIds: [id] } });
+    expect(response.statusCode).toBe(409); expect(response.body).toContain('変換が終わってから紐づけてください');
+    expect(h.db.procedureVideo.findFirst).toHaveBeenCalledWith({ where: { id: { in: [id] }, OR: [{ status: { not: 'READY' } }, { durationSeconds: null }] } });
+    expect(h.db.procedureVideoLink.deleteMany).not.toHaveBeenCalled();
+    expect(h.db.procedureVideoLink.createMany).not.toHaveBeenCalled();
+    expect((await h.app.inject(pagePath)).json().videos[0]).toMatchObject({ status, durationSeconds });
+  });
   it('refuses linking a pending trim from a stale shelf', async () => {
     const h = setup(); h.db.procedureVideo.count.mockResolvedValue(1);
-    h.db.procedureVideo.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(h.video);
+    h.db.procedureVideo.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValueOnce(h.video);
     expect((await h.app.inject({ method: 'PUT', url: pagePath, payload: { videoIds: [id] } })).statusCode).toBe(409);
     expect(h.db.procedureVideoLink.deleteMany).not.toHaveBeenCalled();
   });

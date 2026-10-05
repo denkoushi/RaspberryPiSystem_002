@@ -3129,6 +3129,7 @@ model AssemblyProcedureDocument {
   pages                  AssemblyProcedureDocumentPage[]
   overlayElements        AssemblyProcedureOverlayElement[]
   revisionMetadata       AssemblyProcedureDocumentRevision?
+  editLease              AssemblyProcedureDocumentEditLease?
   revisionRoots          AssemblyProcedureDocumentRevision[]    @relation("AssemblyProcedureDocumentRevisionRoot")
   supersededRevisions    AssemblyProcedureDocumentRevision[]    @relation("AssemblyProcedureDocumentRevisionSupersedes")
   templates              AssemblyTemplate[]
@@ -3146,6 +3147,17 @@ model AssemblyProcedureDocument {
   @@index([isActive, name], map: "AssemblyProcedureDocument_idx_active_name")
   @@index([isActive, updatedAt], map: "AssemblyProcedureDocument_idx_active_updated")
   @@index([status, isActive], map: "AssemblyProcedureDocument_idx_status_active")
+}
+
+model AssemblyProcedureDocumentEditLease {
+  documentId  String                    @id
+  holderKey   String
+  holderToken String
+  holderLabel String
+  acquiredAt  DateTime                  @default(now())
+  heartbeatAt DateTime                  @default(now())
+  expiresAt   DateTime
+  document    AssemblyProcedureDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }
 
 /// Revision metadata is kept in a sidecar so legacy AssemblyProcedureDocument

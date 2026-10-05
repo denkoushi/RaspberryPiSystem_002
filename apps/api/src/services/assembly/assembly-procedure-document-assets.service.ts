@@ -1,3 +1,5 @@
+import { runAssemblyTransaction } from './assembly-transaction.js';
+import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { mkdtemp, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -173,13 +175,16 @@ export class AssemblyProcedureDocumentAssetsService {
     return AssemblyProcedureImageStorage.readImage(page.imageRelativePath);
   }
 
-  async uploadOverlayImage(params: {
+  async uploadOverlayImage(params: AssemblyProcedureEditActor & {
     documentId: string;
     accessPassword?: string;
     bytes: Buffer;
     contentType: string;
     originalFileName?: string | null;
-  }, db: Prisma.TransactionClient = prisma): Promise<AssemblyProcedureOverlayAssetDto> {
+  }, db?: Prisma.TransactionClient): Promise<AssemblyProcedureOverlayAssetDto> {
+    if (!db) return runAssemblyTransaction((tx) => this.uploadOverlayImage(params, tx));
+    await db.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${params.documentId} FOR UPDATE`;
+    await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, db, params.holderToken ?? null);
     await this.assertEditable(params.documentId, params.accessPassword, db);
     assertBytes(params.bytes);
     const contentType = params.contentType.trim().toLowerCase();
@@ -208,13 +213,16 @@ export class AssemblyProcedureDocumentAssetsService {
     }
   }
 
-  async createImageRegion(params: {
+  async createImageRegion(params: AssemblyProcedureEditActor & {
     documentId: string;
     accessPassword?: string;
     pageIndex: number;
     bbox: AssemblyProcedureRegionBBox;
-  }): Promise<AssemblyProcedureOverlayAssetDto> {
-    await this.assertEditable(params.documentId, params.accessPassword);
+  }, db?: Prisma.TransactionClient): Promise<AssemblyProcedureOverlayAssetDto> {
+    if (!db) return runAssemblyTransaction((tx) => this.createImageRegion(params, tx));
+    await db.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${params.documentId} FOR UPDATE`;
+    await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, db, params.holderToken ?? null);
+    await this.assertEditable(params.documentId, params.accessPassword, db);
     let roi: ReturnType<typeof normalizeAssemblyProcedureAssetRoi>;
     try {
       roi = normalizeAssemblyProcedureAssetRoi(params.bbox);
@@ -229,7 +237,7 @@ export class AssemblyProcedureDocumentAssetsService {
       extension: '.jpg'
     });
     try {
-      await prisma.assemblyProcedureAsset.create({
+      await db.assemblyProcedureAsset.create({
         data: {
           id: saved.assetId,
           kind: 'OVERLAY_IMAGE',

@@ -15,6 +15,13 @@ const apiMocks = vi.hoisted(() => ({
   placeMaterial: vi.fn()
 }));
 
+const leaseMocks = vi.hoisted(() => ({ acquire: vi.fn(), release: vi.fn() }));
+vi.mock('../../../api/domains/assembly-edit-lease', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../api/domains/assembly-edit-lease')>(),
+  acquireAssemblyProcedureDocumentEditLease: leaseMocks.acquire,
+  releaseAssemblyProcedureDocumentEditLease: leaseMocks.release
+}));
+
 vi.mock('../../../api/client', () => ({
   addBlankAssemblyProcedurePage: apiMocks.addBlankPage,
   placeProcedureMaterial: apiMocks.placeMaterial,
@@ -71,7 +78,9 @@ function renderEditor(document: AssemblyProcedureDocumentDto) {
 
 describe('useAssemblyProcedureDocumentEditorController', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    leaseMocks.acquire.mockResolvedValue({ mine: true, holderToken: 'session-token', lease: { holderLabel: '自分の端末', acquiredAt: '2026-10-06T03:00:00Z', heartbeatAt: '2026-10-06T03:00:00Z' } });
+    leaseMocks.release.mockResolvedValue(undefined);
     window.localStorage.clear();
   });
 
@@ -84,12 +93,80 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     const draft = hook.result.current.elements;
     apiMocks.addBlankPage.mockResolvedValue({ ...document, assets: {}, editVersion: 1, pages: [...document.pages, { pageIndex: 3, imageRelativePath: '/pages/blank.png', overlays: [] }] });
     await act(async () => { await hook.result.current.addBlankPage(); });
-    expect(apiMocks.addBlankPage).toHaveBeenCalledWith({ id: document.id, accessPassword: '1234', expectedEditVersion: 0 });
+    expect(apiMocks.addBlankPage).toHaveBeenCalledWith({ id: document.id, holderToken: 'session-token', accessPassword: '1234', expectedEditVersion: 0 });
     expect(hook.result.current.selectedPageIndex).toBe(3);
     expect(hook.result.current.elements).toEqual(draft);
     expect(hook.result.current.document?.editVersion).toBe(1);
     expect(hook.result.current.document?.assets?.pending).toMatchObject({ assetId: 'pending' });
     expect(hook.result.current.isDirty).toBe(true);
+  });
+
+  it.each([
+    ['not found', { isAxiosError: true, response: { status: 404 } }],
+    ['server error', { isAxiosError: true, response: { status: 503 } }],
+    ['network error', new Error('offline')]
+  ])('allows edits and saves without a token when lease acquisition fails with %s', async (_label, error) => {
+    leaseMocks.acquire.mockRejectedValueOnce(error);
+    const document = makeDocument();
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    expect(hook.result.current.readOnly).toBe(false);
+    expect(hook.result.current.editLeaseUnavailable).toBe(true);
+    act(() => hook.result.current.handleRangeSelected(range));
+    await act(async () => hook.result.current.createOverlay('SHAPE'));
+    expect(hook.result.current.elements).toHaveLength(1);
+    apiMocks.saveOverlays.mockResolvedValue({ ...document, editVersion: 1 });
+    await act(async () => hook.result.current.save());
+    expect(apiMocks.saveOverlays).toHaveBeenCalledWith(expect.objectContaining({ id: document.id, expectedEditVersion: 0 }));
+    expect(apiMocks.saveOverlays.mock.calls[0]?.[0]).not.toHaveProperty('holderToken');
+    hook.unmount();
+  });
+
+  it('retains unsaved content locally and becomes read-only when another holder takes over', async () => {
+    vi.useFakeTimers();
+    const source = makeDocument();
+    const hook = renderEditor(source);
+    await act(async () => undefined);
+    expect(hook.result.current.loading).toBe(false);
+    act(() => hook.result.current.setPasswordInput('1234'));
+    await act(async () => hook.result.current.verifyEditorPassword());
+    expect(hook.result.current.accessGranted).toBe(true);
+    try {
+      act(() => hook.result.current.handleRangeSelected(range));
+      await act(async () => hook.result.current.createOverlay('SHAPE'));
+      const draft = hook.result.current.elements;
+      leaseMocks.acquire.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409, data: {
+        code: 'ASSEMBLY_PROCEDURE_EDIT_LOCKED', lease: { holderLabel: '隣の端末', acquiredAt: '2026-10-06T03:00:00Z', heartbeatAt: '2026-10-06T03:01:00Z' }
+      } } });
+      await act(async () => vi.advanceTimersByTime(30_000));
+      expect(hook.result.current.readOnly).toBe(true);
+      expect(hook.result.current.message).toBe('隣の端末に引き継がれました。未保存の内容は端末に保持しています');
+      expect(hook.result.current.elements).toEqual(draft);
+      expect(readAssemblyDocumentEditorRecovery(window.localStorage, source.id)?.elements).toEqual(draft);
+      await act(async () => hook.result.current.save());
+      expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+      await act(async () => hook.result.current.takeoverEditLease());
+      expect(hook.result.current.readOnly).toBe(false);
+      expect(leaseMocks.acquire).toHaveBeenLastCalledWith(source.id, true, 'session-token');
+    } finally {
+      hook.unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it('handles an edit lock returned by a save separately from version conflict', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    act(() => hook.result.current.handleRangeSelected(range));
+    await act(async () => hook.result.current.createOverlay('SHAPE'));
+    apiMocks.saveOverlays.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409, data: {
+      code: 'ASSEMBLY_PROCEDURE_EDIT_LOCKED', lease: { holderLabel: '別端末', acquiredAt: '2026-10-06T03:00:00Z', heartbeatAt: '2026-10-06T03:01:00Z' }
+    } } });
+    await act(async () => hook.result.current.save());
+    expect(hook.result.current.readOnly).toBe(true);
+    expect(hook.result.current.conflict).toBe(false);
+    expect(hook.result.current.message).toContain('別端末に引き継がれました');
+    hook.unmount();
   });
 
   it('adds a material IMAGE draft, selects it and keeps it after unsaved elements in z-order', async () => {
@@ -100,10 +177,25 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     const element = { id: 'placed-overlay', kind: 'IMAGE', assetId: 'asset', pageIndex: 0, zIndex: 0, bbox: range, objectFit: 'contain' };
     apiMocks.placeMaterial.mockResolvedValue({ element, asset: { assetId: 'asset', relativeUrl: '/asset.png' } });
     await act(async () => { await hook.result.current.placeMaterial({ id: 'material' }); });
-    expect(apiMocks.placeMaterial).toHaveBeenCalledWith({ id: 'source-draft', materialId: 'material', pageIndex: 0, accessPassword: '1234' });
+    expect(apiMocks.placeMaterial).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', materialId: 'material', pageIndex: 0, accessPassword: '1234' });
     expect(hook.result.current.selectedOverlayId).toBe('placed-overlay');
     expect(hook.result.current.elements[1]).toMatchObject({ ...element, zIndex: 1 });
     expect(hook.result.current.document?.assets?.asset).toMatchObject({ assetId: 'asset' });
+    expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+  });
+  it('appends sequential shelf selections to the draft with distinct assets and increasing z-order', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    const place = hook.result.current.placeMaterial;
+    const first = { id: 'first-overlay', kind: 'IMAGE', assetId: 'first', pageIndex: 0, zIndex: 0, bbox: range, objectFit: 'contain' };
+    const second = { ...first, id: 'second-overlay', assetId: 'second' };
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: first, asset: { assetId: 'first', relativeUrl: '/first.png' } })
+      .mockResolvedValueOnce({ element: second, asset: { assetId: 'second', relativeUrl: '/second.png' } });
+    await act(async () => { await place({ id: 'first' }); await place({ id: 'second' }); });
+    expect(apiMocks.placeMaterial.mock.calls.map(([params]) => params.materialId)).toEqual(['first', 'second']);
+    expect(hook.result.current.elements).toEqual([expect.objectContaining({ id: 'first-overlay', zIndex: 0 }), expect.objectContaining({ id: 'second-overlay', zIndex: 1 })]);
+    expect(hook.result.current.document?.assets).toMatchObject({ first: { assetId: 'first' }, second: { assetId: 'second' } });
+    expect(hook.result.current.isDirty).toBe(true);
     expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
   });
   it('updates recovery to the new version immediately after adding a blank page', async () => {
@@ -294,14 +386,14 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     await act(async () => {
       await hook.result.current.createOverlay('IMAGE');
     });
-    expect(apiMocks.createImageRegion).toHaveBeenCalledWith({ id: 'source-draft', accessPassword: '1234', pageIndex: 0, bbox: range });
+    expect(apiMocks.createImageRegion).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '1234', pageIndex: 0, bbox: range });
     expect(hook.result.current.selectedElement).toMatchObject({ kind: 'IMAGE', assetId: 'roi-png', mask: { enabled: true, color: '#ffffff' } });
 
     const file = new File(['image'], 'manual.webp', { type: 'image/webp' });
     await act(async () => {
       await hook.result.current.uploadImage(file);
     });
-    expect(apiMocks.uploadImage).toHaveBeenCalledWith({ id: 'source-draft', accessPassword: '1234', file });
+    expect(apiMocks.uploadImage).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '1234', file });
     expect(hook.result.current.selectedElement).toMatchObject({ kind: 'IMAGE', assetId: 'upload-webp' });
     expect(hook.result.current.document?.assets?.['upload-webp']).toMatchObject({ contentType: 'image/webp' });
   });
@@ -327,7 +419,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     await act(async () => {
       await hook.result.current.publish();
     });
-    expect(apiMocks.publishDocument).toHaveBeenCalledWith({ id: 'source-draft', accessPassword: '1234', expectedEditVersion: 1 });
+    expect(apiMocks.publishDocument).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '1234', expectedEditVersion: 1 });
 
     const revision = makeDocument({ id: 'revision-1', revisionRootId: 'source-draft', supersedesDocumentId: 'source-draft' });
     const revisionHook = renderEditor(revision);
@@ -337,7 +429,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     await act(async () => {
       await revisionHook.result.current.discard();
     });
-    expect(apiMocks.discardRevision).toHaveBeenCalledWith({ id: 'revision-1', accessPassword: '1234', expectedEditVersion: 0 });
+    expect(apiMocks.discardRevision).toHaveBeenCalledWith({ id: 'revision-1', holderToken: 'session-token', accessPassword: '1234', expectedEditVersion: 0 });
   });
 
   it('retains local elements on 409 and offers explicit re-save or latest reload', async () => {

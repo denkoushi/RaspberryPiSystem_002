@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 
 import {
   placeProcedureMaterial,
@@ -47,11 +47,16 @@ export type AssemblyProcedureDocumentOverlayCommandSession = {
   setTextCandidateRange: StateSetter<TextCandidateRange | null>;
   dispatch: Dispatch<OverlayDraftAction>;
   textCandidateRange: TextCandidateRange | null;
+  holderToken?: string | null;
+  onEditLeaseError?: (error: unknown) => boolean;
 };
 
 export function useAssemblyProcedureDocumentOverlayCommands(
   session: AssemblyProcedureDocumentOverlayCommandSession
 ) {
+  // A shelf batch reuses one callback across sequential placement requests.
+  const materialElementsRef = useRef(session.elements);
+  materialElementsRef.current = session.elements;
   const addCreatedOverlay = useCallback((
     kind: OverlayCreationKind,
     bbox: AssemblyProcedureOverlayBBox,
@@ -116,6 +121,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
         }
       } else {
         const asset = await createAssemblyProcedureImageRegion({
+          ...(session.holderToken ? { holderToken: session.holderToken } : {}),
           id: document.id,
           accessPassword: passwordInput,
           pageIndex: selectedPage.pageIndex,
@@ -129,6 +135,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
         setMessage('選択範囲を画像assetとして追加しました。保存してください。');
       }
     } catch (error: unknown) {
+      if (session.onEditLeaseError?.(error)) return;
       if (kind === 'TEXT') {
         addCreatedOverlay(kind, range);
         setMessage(`文章抽出に失敗したため、手入力の文章オーバーレイを追加しました。${readAssemblyApiErrorMessage(error, '')}`);
@@ -226,6 +233,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
         setMessage('文章候補が見つかりません。既存文章を保持しています。');
       }
     } catch (error: unknown) {
+      if (session.onEditLeaseError?.(error)) return;
       setMessage(readAssemblyApiErrorMessage(error, '文章候補の再取得に失敗しました。'));
     } finally {
       setBusy(false);
@@ -249,6 +257,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
     setMessage('画像assetを登録しています…');
     try {
       const asset = await uploadAssemblyProcedureOverlayImage({
+          ...(session.holderToken ? { holderToken: session.holderToken } : {}),
         id: document.id,
         accessPassword: passwordInput,
         file
@@ -260,6 +269,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
       dispatch({ type: 'update', element: { ...selectedElement, assetId: asset.assetId } });
       setMessage('画像assetを登録しました。保存してください。');
     } catch (error: unknown) {
+      if (session.onEditLeaseError?.(error)) return;
       setMessage(readAssemblyApiErrorMessage(error, '画像assetの登録に失敗しました。'));
     } finally {
       setBusy(false);
@@ -270,11 +280,16 @@ export function useAssemblyProcedureDocumentOverlayCommands(
     if (session.busy || session.readOnly || !session.document || !session.selectedPage) throw new Error('現在は素材を配置できません');
     session.setBusy(true);
     try {
-      const { element, asset } = await placeProcedureMaterial({ id: session.document.id, materialId: material.id, pageIndex: session.selectedPage.pageIndex, accessPassword: session.passwordInput });
+      const { element, asset } = await placeProcedureMaterial({ ...(session.holderToken ? { holderToken: session.holderToken } : {}), id: session.document.id, materialId: material.id, pageIndex: session.selectedPage.pageIndex, accessPassword: session.passwordInput });
       if (asset) session.setDocument((current) => current ? { ...current, assets: { ...current.assets, [asset.assetId]: asset } } : current);
-      const zIndex = Math.max(element.zIndex, ...session.elements.filter((item) => item.pageIndex === element.pageIndex).map((item) => item.zIndex + 1));
-      addCreatedOverlay(element.kind, element.bbox, { element: { ...element, zIndex } }, element.pageIndex);
+      const zIndex = Math.max(element.zIndex, ...materialElementsRef.current.filter((item) => item.pageIndex === element.pageIndex).map((item) => item.zIndex + 1));
+      const placed = { ...element, zIndex };
+      materialElementsRef.current = [...materialElementsRef.current, placed];
+      addCreatedOverlay(element.kind, element.bbox, { element: placed }, element.pageIndex);
       session.setMessage('素材を配置しました。内容を編集して保存してください。');
+    } catch (error: unknown) {
+      session.onEditLeaseError?.(error);
+      throw error;
     } finally { session.setBusy(false); }
   }, [addCreatedOverlay, session]);
 

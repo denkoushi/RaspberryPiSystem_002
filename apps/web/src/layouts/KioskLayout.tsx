@@ -259,7 +259,7 @@ export function KioskLayout() {
           navTabOrder={navTabOrder}
         />
       </header>
-      <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-4 py-4">
+      <main className={clsx('flex min-h-0 flex-1 flex-col', location.pathname.replace(/\/$/, '') === '/kiosk/assembly/manuals' ? 'overflow-hidden' : 'gap-4 overflow-auto px-4 py-4')}>
         <h1 className="sr-only">キオスク</h1>
         <Outlet />
       </main>

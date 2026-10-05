@@ -52,6 +52,14 @@ vi.mock('../hooks/useKioskBottomRightHeaderReveal', () => ({
 }));
 
 describe('KioskLayout deploy status handling', () => {
+  it.each([['/kiosk/assembly/manuals', false], ['/kiosk/assembly', true]])('reserves the full height only for manuals (%s)', (path, padded) => {
+    deployStatus = { isMaintenance: false };
+    render(<MemoryRouter initialEntries={[path]}><KioskLayout /></MemoryRouter>);
+    const main = screen.getByRole('main');
+    if (padded) expect(main).toHaveClass('px-4', 'py-4');
+    else { expect(main).toHaveClass('overflow-hidden'); expect(main).not.toHaveClass('px-4', 'py-4'); }
+  });
+
   beforeEach(() => {
     deployStatus = undefined;
     acknowledgeDeployStatus.mockReset();

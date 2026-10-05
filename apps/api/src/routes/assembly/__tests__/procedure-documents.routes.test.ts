@@ -1,10 +1,13 @@
+import { prisma } from '../../../lib/prisma.js';
 import Fastify from 'fastify';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   registerAssemblyProcedureDocumentRoutes,
   type AssemblyProcedureDocumentRouteOptions
 } from '../procedure-documents.js';
+
+beforeEach(() => { vi.spyOn(prisma.assemblyProcedureDocumentEditLease, 'findUnique').mockResolvedValue(null); });
 
 const documentId = '00000000-0000-4000-8000-000000000001';
 const now = new Date('2026-08-21T00:00:00.000Z');
@@ -31,6 +34,7 @@ describe('assembly procedure document routes', () => {
   afterEach(async () => {
     if (app) await app.close();
     app = null;
+    vi.restoreAllMocks();
   });
 
   it('keeps list, summary, detail, rename, and delete URLs registered', async () => {
@@ -78,7 +82,7 @@ describe('assembly procedure document routes', () => {
     const deleteResponse = await app.inject({ method: 'DELETE', url: `/assembly/procedure-documents/${documentId}` });
     expect(deleteResponse.statusCode).toBe(204);
     expect(procedureService.list).toHaveBeenCalledWith({ includeInactive: false, q: '手順書', limit: undefined });
-    expect(procedureService.rename).toHaveBeenCalledWith(documentId, '変更後');
+    expect(procedureService.rename).toHaveBeenCalledWith(documentId, '変更後', { holderKey: null, holderToken: null });
   });
 
   it('returns not found for an unknown document without changing the service contract', async () => {

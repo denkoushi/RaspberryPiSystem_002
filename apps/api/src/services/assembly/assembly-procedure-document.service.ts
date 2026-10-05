@@ -1,3 +1,4 @@
+import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { procedureVideoLinksInclude } from './procedure-video.service.js';
 import { PrismaKnowledgeReviewerRepository } from '../knowledge/prisma-knowledge-reviewer.repository.js';
 import type { KnowledgeReviewEmployee } from '../knowledge/knowledge-position-rank.js';
@@ -207,6 +208,7 @@ export class AssemblyProcedureDocumentService {
 
   async create(params: {
     name: string;
+    avoidDuplicateName?: boolean;
     pages: Array<{ imageRelativePath: string; asset?: Omit<AssemblyProcedureAssetMetadata, 'kind'> & { kind?: 'SOURCE' } }>;
     sourceAsset?: AssemblyProcedureAssetMetadata;
     source?: {
@@ -237,6 +239,17 @@ export class AssemblyProcedureDocumentService {
     }
 
     return runAssemblyTransaction(async (tx) => {
+      let savedName = name.slice(0, 200);
+      if (params.avoidDuplicateName) {
+        // Serialize blank naming across API instances, including the first creation.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('assembly-procedure-blank-name'))`;
+        let suffix = 1;
+        while (await tx.assemblyProcedureDocument.findFirst({ where: { name: savedName }, select: { id: true } })) {
+          suffix += 1;
+          const tail = `-${suffix}`;
+          savedName = `${name.slice(0, 200 - tail.length)}${tail}`;
+        }
+      }
       const sourceAsset = params.sourceAsset
         ? await tx.assemblyProcedureAsset.create({
             data: {
@@ -253,7 +266,7 @@ export class AssemblyProcedureDocumentService {
         : null;
       const document = await tx.assemblyProcedureDocument.create({
         data: {
-          name: name.slice(0, 200),
+          name: savedName,
           imageRelativePath: params.pages[0]!.imageRelativePath,
           status: 'DRAFT',
           ...(params.source
@@ -308,20 +321,19 @@ export class AssemblyProcedureDocumentService {
     return source?.document ?? null;
   }
 
-  async rename(id: string, name: string): Promise<AssemblyProcedureDocumentRecord> {
+  async rename(id: string, name: string, actor: AssemblyProcedureEditActor = {}): Promise<AssemblyProcedureDocumentRecord> {
     const trimmed = name.trim();
     if (!trimmed) {
       throw new ApiError(400, '手順書名が必要です');
     }
-    try {
-      return await prisma.assemblyProcedureDocument.update({
-        where: { id },
-        data: { name: trimmed.slice(0, 200) },
-        include: this.includePages
+    return runAssemblyTransaction(async (tx) => {
+      const documents = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
+      if (!documents.length) throw new ApiError(404, '手順書が見つかりません');
+      await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(id, actor.holderKey ?? null, tx, actor.holderToken ?? null);
+      return tx.assemblyProcedureDocument.update({
+        where: { id }, data: { name: trimmed.slice(0, 200) }, include: this.includePages
       });
-    } catch {
-      throw new ApiError(404, '手順書が見つかりません');
-    }
+    });
   }
 
   async resolveApprover(tagUid: string): Promise<KnowledgeReviewEmployee> {
@@ -339,19 +351,19 @@ export class AssemblyProcedureDocumentService {
 
   async publish(
     id: string,
-    options: { accessPassword?: string; expectedEditVersion?: number } = {}
+    options: AssemblyProcedureEditActor & { accessPassword?: string; expectedEditVersion?: number } = {}
   ): Promise<AssemblyProcedureDocumentRecord> {
     await this.accessService.requireAccessPassword(options.accessPassword);
-    return runAssemblyTransaction(async (tx) => (await this.publishInTransaction(tx, id, options.expectedEditVersion)).document);
+    return runAssemblyTransaction(async (tx) => (await this.publishInTransaction(tx, id, options.expectedEditVersion, options)).document);
   }
 
   async approvePublish(
     id: string,
-    options: { reviewerTagUid: string; expectedEditVersion: number; comment?: string; actorKey: string }
+    options: AssemblyProcedureEditActor & { reviewerTagUid: string; expectedEditVersion: number; comment?: string; actorKey: string }
   ): Promise<AssemblyProcedureDocumentRecord> {
     const reviewer = await this.resolveApprover(options.reviewerTagUid);
     return runAssemblyTransaction(async (tx) => {
-      const result = await this.publishInTransaction(tx, id, options.expectedEditVersion);
+      const result = await this.publishInTransaction(tx, id, options.expectedEditVersion, options);
       // Retrying a completed publish is idempotent, just like password publication.
       if (!result.changed) return result.document;
       await tx.procedureManualApproval.create({ data: {
@@ -364,7 +376,7 @@ export class AssemblyProcedureDocumentService {
     });
   }
 
-  private async publishInTransaction(tx: Prisma.TransactionClient, id: string, expectedEditVersion?: number) {
+  private async publishInTransaction(tx: Prisma.TransactionClient, id: string, expectedEditVersion?: number, actor: AssemblyProcedureEditActor = {}) {
     // A document that was already published before this request is an idempotent
     // re-run (the pre-lock read mirrors the former pre-transaction check).
     const before = await tx.assemblyProcedureDocument.findUnique({ where: { id }, include: this.includePages });
@@ -372,6 +384,7 @@ export class AssemblyProcedureDocumentService {
     if (before.status === 'PUBLISHED') return { document: before, changed: false };
     // All document mutations and assignment checks serialize on the document row.
     await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
+    await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(id, actor.holderKey ?? null, tx, actor.holderToken ?? null);
     const doc = await tx.assemblyProcedureDocument.findUnique({ where: { id }, include: this.includePages });
     if (!doc) throw new ApiError(404, '手順書が見つかりません');
     if (doc.revisionMetadata) {
@@ -520,7 +533,7 @@ export class AssemblyProcedureDocumentService {
     return '使用中の手順書は公開取り消しできません';
   }
 
-  async deleteIfUnused(id: string): Promise<'deleted' | 'not_found' | 'in_use'> {
+  async deleteIfUnused(id: string, actor: AssemblyProcedureEditActor = {}): Promise<'deleted' | 'not_found' | 'in_use'> {
     const imagePaths: string[] = [];
     const assetIds: string[] = [];
     const outcome = await runAssemblyTransaction(async (tx) => {
@@ -530,6 +543,7 @@ export class AssemblyProcedureDocumentService {
         FOR UPDATE
       `;
       if (locked.length === 0) return 'not_found' as const;
+      await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(id, actor.holderKey ?? null, tx, actor.holderToken ?? null);
 
       const doc = await tx.assemblyProcedureDocument.findUnique({
         where: { id },

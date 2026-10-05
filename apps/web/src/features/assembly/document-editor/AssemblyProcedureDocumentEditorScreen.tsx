@@ -23,6 +23,7 @@ export function AssemblyProcedureDocumentEditorScreen() {
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [conflictReloadOpen, setConflictReloadOpen] = useState(false);
+  const [takeoverOpen, setTakeoverOpen] = useState(false);
 
   useEffect(() => {
     if (controller.recoveryPending) setRecoveryOpen(true);
@@ -51,7 +52,21 @@ export function AssemblyProcedureDocumentEditorScreen() {
 
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-800 text-white">
-      {videoLinkOpen && controller.document ? <ProcedureVideoShelfDialog key={`${controller.document.id}:${selectedPage.pageIndex}`} link={{ documentId: controller.document.id, pageIndex: selectedPage.pageIndex, accessPassword: controller.passwordInput }} onClose={() => setVideoLinkOpen(false)} /> : null}
+      {controller.document?.status === 'draft' && (!controller.editLeaseMine || controller.editLeaseUnavailable) ? (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-amber-400/30 bg-amber-500/15 px-3 py-2" role="status">
+          <p className="text-sm font-semibold text-amber-100">
+            {controller.editLeaseUnavailable
+              ? '編集の予約を取れていません(他端末と同時編集に注意)'
+              : controller.editLease
+              ? `${controller.editLease.holderLabel}が編集中(${new Date(controller.editLease.acquiredAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}〜)`
+              : controller.editLeasePending ? '編集の予約を確認中…' : '編集の予約を取得できていません。'}
+          </p>
+          <Button type="button" variant="ghostOnDark" className="min-h-11" disabled={controller.editLeasePending || controller.busy} onClick={() => controller.editLease && !controller.editLeaseUnavailable ? setTakeoverOpen(true) : void controller.retryEditLease()}>
+            {controller.editLease && !controller.editLeaseUnavailable ? '引き継ぐ' : '予約を再取得'}
+          </Button>
+        </div>
+      ) : null}
+      {videoLinkOpen && controller.document ? <ProcedureVideoShelfDialog key={`${controller.document.id}:${selectedPage.pageIndex}`} link={{ documentId: controller.document.id, pageIndex: selectedPage.pageIndex, accessPassword: controller.passwordInput, holderToken: controller.editLeaseToken }} onClose={() => setVideoLinkOpen(false)} /> : null}
       <AssemblyProcedureDocumentEditorCanvasToolbar
         documentName={controller.document?.name ?? '手順書'}
         pageIndex={selectedPage.pageIndex}
@@ -148,6 +163,18 @@ export function AssemblyProcedureDocumentEditorScreen() {
         onPublish={controller.publish}
         onClose={() => setPublishOpen(false)}
       /> : null}
+      <ConfirmDialog
+        isOpen={takeoverOpen}
+        title="編集を引き継ぐ"
+        description={`${controller.editLease?.holderLabel ?? '他の端末'}の編集予約を引き継ぎます。相手の未保存の内容は相手の端末に保持されます。`}
+        confirmLabel="引き継ぐ"
+        cancelLabel="戻る"
+        onConfirm={() => {
+          setTakeoverOpen(false);
+          void controller.takeoverEditLease();
+        }}
+        onCancel={() => setTakeoverOpen(false)}
+      />
       <ConfirmDialog
         isOpen={conflictReloadOpen}
         title="最新内容を再読込"

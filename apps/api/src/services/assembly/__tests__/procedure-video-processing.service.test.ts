@@ -24,9 +24,10 @@ function harness() {
       const pending = rows.find((video) => video.status === 'PENDING');
       return pending ? { ...pending } : null;
     }),
+    findUnique: vi.fn(async ({ where }) => { const video = rows.find((video) => video.id === where.id); return video ? { ...video } : null; }),
     findMany: vi.fn(async () => rows.filter((video) => video.status === 'READY' && video.sourceStorageKey).map((video) => ({ ...video }))),
     updateMany: vi.fn(async ({ where, data }) => {
-      const matches = rows.filter((video) => video.status === where.status && (!where.id || video.id === where.id) && (!where.updatedAt || video.updatedAt < where.updatedAt.lt));
+      const matches = rows.filter((video) => video.status === where.status && (!where.id || video.id === where.id) && (!where.updatedAt || (where.updatedAt instanceof Date ? video.updatedAt.getTime() === where.updatedAt.getTime() : video.updatedAt < where.updatedAt.lt)));
       for (const video of matches) { Object.assign(video, data); states.push(video.status); }
       return { count: matches.length };
     }), update,
@@ -83,7 +84,7 @@ describe('procedure-video processing', () => {
     expect(h.tx.$queryRaw.mock.calls[1]).toEqual([expect.arrayContaining(['SELECT pg_advisory_xact_lock(hashtext(', '))']), 'procedure-videos/incoming/hash/original']);
     expect(h.tx.procedureVideo.update).toHaveBeenCalledWith({ where: { id: 'video' }, data: { sourceStorageKey: null } });
     expect(h.db.procedureVideo.findFirst).toHaveBeenCalledWith({ where: { status: 'PENDING', discardedAt: null }, orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }] });
-    expect(h.db.procedureVideo.updateMany).toHaveBeenLastCalledWith({ where: { id: 'video', status: 'PENDING', discardedAt: null }, data: { status: 'PROCESSING' } });
+    expect(h.db.procedureVideo.updateMany).toHaveBeenLastCalledWith({ where: { id: 'video', status: 'PENDING', updatedAt: h.row.updatedAt, discardedAt: null }, data: { status: 'PROCESSING' } });
   });
   it('keeps a shared original for the second row and deletes it only after both rows are READY', async () => {
     const h = harness(); h.rows.push({ ...h.row, id: 'second' });
@@ -197,6 +198,31 @@ describe('procedure-video processing', () => {
     expect(h.events).toEqual(['READY commit', 'delete', 'delete']);
     expect(h.db.$transaction).toHaveBeenCalledTimes(2);
     expect(h.store.delete.mock.calls.map(([key]) => key)).toEqual(['procedure-videos/old/video.mp4', 'procedure-videos/old/poster.jpg']);
+  });
+  it('does not claim a trim request replaced after the candidate was read', async () => {
+    const h = trimming();
+    const snapshot = { ...h.row };
+    const replacement = { startSeconds: 1, endSeconds: 6, requestedAt: new Date().toISOString() };
+    h.db.procedureVideo.findFirst.mockImplementationOnce(async () => {
+      h.row.trimRequest = replacement;
+      h.row.updatedAt = new Date(snapshot.updatedAt.getTime() + 1);
+      return snapshot;
+    });
+    await h.service.runOnce();
+    expect(h.row).toMatchObject({ status: 'PENDING', trimRequest: replacement });
+    expect(h.db.procedureVideo.updateMany).toHaveBeenLastCalledWith({ where: { id: 'video', status: 'PENDING', updatedAt: snapshot.updatedAt, discardedAt: null }, data: { status: 'PROCESSING' } });
+    expect(h.db.procedureVideo.findUnique).not.toHaveBeenCalled();
+    expect(h.transcoder.trim).not.toHaveBeenCalled(); expect(h.store.read).not.toHaveBeenCalled();
+    await h.service.runOnce();
+    expect(h.transcoder.trim).toHaveBeenCalledExactlyOnceWith(expect.any(String), expect.any(String), expect.any(String), 1, 6);
+  });
+  it('processes the claimed row reread including trimRequest instead of the candidate snapshot', async () => {
+    const h = trimming();
+    h.db.procedureVideo.findFirst.mockResolvedValueOnce({ ...h.row, trimRequest: null });
+    await h.service.runOnce();
+    expect(h.db.procedureVideo.findUnique).toHaveBeenCalledExactlyOnceWith({ where: { id: 'video' } });
+    expect(h.transcoder.trim).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.any(String), 2, 10);
+    expect(h.transcoder.transcode).not.toHaveBeenCalled();
   });
   it('preserves old mp4 and poster while another row references their storageKey', async () => {
     const h = trimming(); h.rows.push({ ...h.row, id: 'shared', status: 'READY', trimRequest: null });

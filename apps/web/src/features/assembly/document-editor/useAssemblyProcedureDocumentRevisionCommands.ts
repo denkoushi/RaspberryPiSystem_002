@@ -44,6 +44,8 @@ export type AssemblyProcedureDocumentRevisionCommandSession = {
   isDirty: boolean;
   readOnly: boolean;
   conflictEditVersion: number | null;
+  holderToken?: string | null;
+  onEditLeaseError?: (error: unknown) => boolean;
   setAccessGranted: StateSetter<boolean>;
   setBaselineSnapshot: StateSetter<string | null>;
   setBusy: StateSetter<boolean>;
@@ -128,6 +130,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     setConflict(false);
     try {
       const saved = await saveAssemblyProcedureDocumentOverlays({
+        ...(session.holderToken ? { holderToken: session.holderToken } : {}),
         id: document.id,
         accessPassword: passwordInput,
         expectedEditVersion: document.editVersion ?? 0,
@@ -140,6 +143,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       recovery.clear();
       setMessage('オーバーレイを保存しました。');
     } catch (error: unknown) {
+      if (session.onEditLeaseError?.(error)) return;
       const conflict = readDocumentEditorConflict(error);
       if (conflict) {
         setConflict(true);
@@ -175,6 +179,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     setMessage('保持中の内容を最新editVersionへ再保存しています…');
     try {
       const saved = await saveAssemblyProcedureDocumentOverlays({
+        ...(session.holderToken ? { holderToken: session.holderToken } : {}),
         id: document.id,
         accessPassword: passwordInput,
         expectedEditVersion: conflictEditVersion,
@@ -189,6 +194,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       recovery.clear();
       setMessage('保持していた内容を再保存しました。');
     } catch (error: unknown) {
+      if (session.onEditLeaseError?.(error)) return;
       const conflict = readDocumentEditorConflict(error);
       if (conflict) {
         setConflict(true);
@@ -263,8 +269,10 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     setMessage(null);
     try {
       const published = approval ? await approvePublishAssemblyProcedureDocument({
+        ...(session.holderToken ? { holderToken: session.holderToken } : {}),
         id: document.id, ...approval, expectedEditVersion: document.editVersion ?? 0
       }) : await publishAssemblyProcedureDocument({
+        ...(session.holderToken ? { holderToken: session.holderToken } : {}),
         id: document.id,
         accessPassword: passwordInput,
         expectedEditVersion: document.editVersion ?? 0
@@ -276,6 +284,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       onNavigateAfterPublish?.(published);
       return true;
     } catch (error: unknown) {
+      if (session.onEditLeaseError?.(error)) return;
       const conflict = readDocumentEditorConflict(error);
       if (conflict) {
         setConflict(true);
@@ -308,6 +317,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     setMessage(null);
     try {
       await discardAssemblyProcedureDocumentRevision({
+        ...(session.holderToken ? { holderToken: session.holderToken } : {}),
         id: document.id,
         accessPassword: passwordInput,
         expectedEditVersion: document.editVersion ?? 0
@@ -315,6 +325,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       recovery.clear();
       onNavigateAfterDiscard?.();
     } catch (error: unknown) {
+      if (session.onEditLeaseError?.(error)) return;
       const conflict = readDocumentEditorConflict(error);
       if (conflict) {
         setConflict(true);

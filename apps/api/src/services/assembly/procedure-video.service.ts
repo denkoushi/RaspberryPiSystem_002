@@ -1,3 +1,4 @@
+import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { Prisma } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
@@ -116,7 +117,7 @@ export class ProcedureVideoService {
     return links.map(({ video }) => ({ id: video.id, title: video.title, durationSeconds: video.durationSeconds, status: video.status }));
   }
 
-  async replacePage(params: { documentId: string; pageIndex: number; videoIds: string[]; accessPassword?: string }) {
+  async replacePage(params: AssemblyProcedureEditActor & { documentId: string; pageIndex: number; videoIds: string[]; accessPassword?: string }) {
     await this.access.requireAccessPassword(params.accessPassword);
     await runAssemblyTransaction(async (tx) => {
       const [document] = await tx.$queryRaw<Array<{ status: string; isActive: boolean; isRevisionHead: boolean | null }>>`
@@ -124,6 +125,7 @@ export class ProcedureVideoService {
         LEFT JOIN "AssemblyProcedureDocumentRevision" r ON r."documentId" = d."id"
         WHERE d."id" = ${params.documentId} FOR UPDATE OF d`;
       if (!document) throw new ApiError(404, '手順書が見つかりません');
+      await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, tx, params.holderToken ?? null);
       if (document.status !== 'DRAFT' || !document.isActive || !document.isRevisionHead) throw new ApiError(409, '最新版の改版下書きだけ編集できます');
       if (!await tx.assemblyProcedureDocumentPage.findUnique({ where: { documentId_pageIndex: { documentId: params.documentId, pageIndex: params.pageIndex } } })) throw new ApiError(400, '指定ページが存在しません');
       const ids = [...new Set(params.videoIds)];
@@ -134,6 +136,8 @@ export class ProcedureVideoService {
         await tx.$queryRaw`SELECT "id" FROM "ProcedureVideo" WHERE "id" = ${id} FOR UPDATE`;
       }
       if (await tx.procedureVideo.count({ where: { id: { in: ids }, discardedAt: null } }) !== ids.length) throw new ApiError(409, '動画がないか、捨てられています');
+      const unfinished = await tx.procedureVideo.findFirst({ where: { id: { in: ids }, OR: [{ status: { not: 'READY' } }, { durationSeconds: null }] } });
+      if (unfinished) throw new ApiError(409, '変換が終わってから紐づけてください');
       const tooLong = await tx.procedureVideo.findFirst({ where: { id: { in: ids }, durationSeconds: { gt: 10.5 } } });
       if (tooLong) throw new ApiError(400, `10 秒以内にトリミングしてください(いま ${tooLong.durationSeconds?.toFixed(1)} 秒)`);
       // A trim may have entered PENDING while a page editor held an old shelf snapshot.

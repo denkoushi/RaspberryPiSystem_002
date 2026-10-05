@@ -122,6 +122,21 @@ async function installApiFixtures(page, sheetId, unexpectedRequests) {
   await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (/^\/api\/assembly\/procedure-documents\/[^/]+\/edit-lease$/.test(path)) {
+      if (request.method() === 'POST') {
+        return json(route, {
+          lease: {
+            holderLabel: '取説生成端末',
+            acquiredAt: '2026-08-21T00:00:00.000Z',
+            heartbeatAt: '2026-08-21T00:00:00.000Z',
+            expiresAt: '2026-08-21T00:05:00.000Z'
+          },
+          mine: true,
+          holderToken: 'sop-fixture'
+        });
+      }
+      if (request.method() === 'DELETE') return route.fulfill({ status: 204 });
+    }
     if (path === '/api/system/deploy-status') return json(route, { isMaintenance: false });
     if (path === '/api/kiosk/config') return json(route, { defaultMode: 'tag', clientStatus: null });
     if (path === '/api/kiosk/call/targets') return json(route, { selfClientId: 'sop-generator', targets: [] });
