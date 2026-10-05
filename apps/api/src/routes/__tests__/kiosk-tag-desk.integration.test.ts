@@ -62,10 +62,21 @@ describe('kiosk tag desk', () => {
   it('shows where a tag is used, releases it, and records the release', async () => {
     const uid = `${TAG_PREFIX}EMP-${run}`;
     const employee = await createTestEmployee({ nfcTagUid: uid, displayName: `タグ机 ${run}` });
+    await prisma.employee.update({ where: { id: employee.id }, data: { department: '製造部', section: '機械課' } });
+
+    const options = await app.inject({ method: 'GET', url: '/api/kiosk/tag-desk/options', headers: headers() });
+    expect(options.statusCode).toBe(200);
+    expect(options.json().divisions).toContain('製造部');
+    expect(options.json().sections).toContainEqual({ division: '製造部', name: '機械課' });
+    expect(options.json().departments).toContain('機械課');
+
+    const registry = await app.inject({ method: 'GET', url: '/api/kiosk/tag-desk/registry?kind=employee', headers: headers() });
+    expect(registry.statusCode).toBe(200);
+    expect(registry.json().rows.find((row: { id: string }) => row.id === employee.id)).toMatchObject({ sub: '製造部', sub2: '機械課' });
 
     const lookup = await app.inject({ method: 'GET', url: `/api/kiosk/tag-desk/tags/${uid}`, headers: headers() });
     expect(lookup.statusCode).toBe(200);
-    expect(lookup.json().bindings).toMatchObject([{ kind: 'employee', bindingId: employee.id, name: `タグ机 ${run}` }]);
+    expect(lookup.json().bindings).toMatchObject([{ kind: 'employee', bindingId: employee.id, name: `タグ机 ${run}`, sub: '製造部', sub2: '機械課' }]);
 
     const release = await app.inject({ method: 'DELETE', url: '/api/kiosk/tag-desk/bindings', headers: headers(), payload: { kind: 'employee', bindingId: employee.id } });
     expect(release.statusCode).toBe(200);
@@ -120,10 +131,12 @@ describe('kiosk tag desk', () => {
   it('creates, edits and deletes master records without touching tags', async () => {
     const created = await app.inject({
       method: 'POST', url: '/api/kiosk/tag-desk/rigging-gears', headers: headers(),
-      payload: { name: `タグ机吊具 ${run}`, managementNumber: `TDR-${run}`, maxLoadTon: 2 }
+      payload: { name: `タグ机吊具 ${run}`, managementNumber: `TDR-${run}`, maxLoadTon: 2, department: '製造課' }
     });
     expect(created.statusCode).toBe(200);
     const gearId = created.json().riggingGear.id as string;
+    const options = await app.inject({ method: 'GET', url: '/api/kiosk/tag-desk/options', headers: headers() });
+    expect(options.json().departments).toContain('製造課');
 
     const edited = await app.inject({
       method: 'PUT', url: `/api/kiosk/tag-desk/rigging-gears/${gearId}`, headers: headers(),

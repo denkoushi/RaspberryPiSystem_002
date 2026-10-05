@@ -40,8 +40,8 @@ vi.mock('../../api/domains/tag-desk', () => ({
 const api = vi.mocked(tagDeskApi);
 
 const employees: tagDeskApi.TagDeskRow[] = [
-  { kind: 'employee', id: 'emp-1', code: '7024', name: '山本 健太', sub: '組立課', status: 'ACTIVE', tags: [{ bindingId: 'emp-1', uid: '04A1B2C3D45E80' }], record: {} },
-  { kind: 'employee', id: 'emp-2', code: '7033', name: '岡本 由香', sub: '生産管理課', status: 'ACTIVE', tags: [], record: {} }
+  { kind: 'employee', id: 'emp-1', code: '7024', name: '山本 健太', sub: '製造部', sub2: '組立課', status: 'ACTIVE', tags: [{ bindingId: 'emp-1', uid: '04A1B2C3D45E80' }], record: {} },
+  { kind: 'employee', id: 'emp-2', code: '7033', name: '岡本 由香', sub: '管理部', sub2: null, status: 'ACTIVE', tags: [], record: {} }
 ];
 
 function scan(uid: string, eventId: number) {
@@ -72,7 +72,7 @@ describe('KioskTagDeskPage', () => {
     nfc.listeners.clear();
     api.verifyTagDeskPin.mockResolvedValue({ success: true });
     api.getTagDeskRegistry.mockResolvedValue(employees);
-    api.getTagDeskOptions.mockResolvedValue({ departments: [], genres: [] });
+    api.getTagDeskOptions.mockResolvedValue({ divisions: [], sections: [], departments: [], genres: [] });
     api.getTagDeskEvents.mockResolvedValue([]);
     api.unlinkTagDeskTag.mockResolvedValue(undefined);
     api.linkTagDeskTag.mockResolvedValue([]);
@@ -93,13 +93,19 @@ describe('KioskTagDeskPage', () => {
 
   it('shows where a read tag is bound and releases it only after the second press', async () => {
     api.resolveTagDeskUid.mockResolvedValue([
-      { kind: 'employee', bindingId: 'emp-1', targetId: 'emp-1', code: '7024', name: '山本 健太', sub: '組立課', status: 'ACTIVE', activeLoans: 0, recent: [] }
+      { kind: 'employee', bindingId: 'emp-1', targetId: 'emp-1', code: '7024', name: '山本 健太', sub: '製造部', sub2: '組立課', status: 'ACTIVE', activeLoans: 0, recent: [] }
     ]);
     await unlock();
+    expect(screen.getByText('部門')).toBeInTheDocument();
+    expect(screen.getByText('部署')).toBeInTheDocument();
+    const row = screen.getByRole('button', { name: /山本 健太/ });
+    expect(within(row).getByText('製造部')).toBeInTheDocument();
+    expect(within(row).getByText('組立課')).toBeInTheDocument();
     scan('04A1B2C3D45E80', 1);
 
     const dock = screen.getByRole('region', { name: '読み取ったタグ' });
     await within(dock).findByText('山本 健太');
+    expect(within(dock).getByText('製造部 組立課')).toBeInTheDocument();
     expect(api.resolveTagDeskUid).toHaveBeenCalledWith('4821', '04A1B2C3D45E80');
 
     fireEvent.click(within(dock).getByRole('button', { name: '外す' }));
@@ -116,6 +122,7 @@ describe('KioskTagDeskPage', () => {
     api.resolveTagDeskUid.mockResolvedValue([]);
     await unlock();
     fireEvent.click(screen.getByRole('button', { name: /岡本 由香/ }));
+    expect(within(screen.getByRole('region', { name: '読み取ったタグ' })).getByText('管理部')).toBeInTheDocument();
     scan('04FFEE00112233', 2);
 
     const dock = screen.getByRole('region', { name: '読み取ったタグ' });

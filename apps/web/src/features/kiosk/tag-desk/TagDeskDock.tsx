@@ -121,7 +121,7 @@ function TagView({ state, bindings, confirming, setConfirming }: { state: TagDes
         </div>
         {row ? (
           <>
-            <TargetCard kind={row.kind} name={row.name} code={row.code} sub={row.sub} tone="target" />
+            <TargetCard kind={row.kind} name={row.name} code={row.code} sub={row.sub} sub2={row.sub2} tone="target" />
             {replacing ? (
               <p className="flex items-center gap-2 text-sm font-bold text-[#ffb547]">
                 <AlertIcon />今のタグ {row.tags[0]?.uid} は外れます
@@ -161,6 +161,7 @@ function TagView({ state, bindings, confirming, setConfirming }: { state: TagDes
           name={binding.name}
           code={binding.code}
           sub={binding.sub}
+          sub2={binding.sub2}
           tone={binding.bindingId === confirming ? 'cutting' : 'target'}
           onOpen={binding.kind !== 'inventory' ? () => state.setKind(binding.kind as Exclude<typeof binding.kind, 'inventory'>) : undefined}
           chips={(
@@ -213,6 +214,7 @@ function RecordView({ pin, state, row, confirming, setConfirming }: { pin: strin
         name={row.name}
         code={row.code}
         sub={row.sub}
+        sub2={row.sub2}
         tone="target"
         tetherSource
         action={(

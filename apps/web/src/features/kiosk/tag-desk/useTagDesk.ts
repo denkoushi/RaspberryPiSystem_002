@@ -144,7 +144,7 @@ export function useTagDesk(pin: string) {
     rows,
     visibleRows,
     registryLoading: registries.isLoading,
-    options: options.data ?? { departments: [], genres: [] },
+    options: options.data ?? { divisions: [], sections: [], departments: [], genres: [] },
     events: events.data ?? [],
     uid,
     clearUid: () => {

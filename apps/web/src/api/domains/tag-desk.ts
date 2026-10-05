@@ -13,6 +13,7 @@ export type TagDeskRow = {
   code: string;
   name: string;
   sub: string | null;
+  sub2?: string | null;
   status: string;
   tags: TagDeskTag[];
   record: Record<string, string | number>;
@@ -27,6 +28,7 @@ export type TagBinding = {
   code: string;
   name: string;
   sub: string | null;
+  sub2?: string | null;
   status: string | null;
   activeLoans: number;
   recent: TagUse[];
@@ -41,7 +43,12 @@ export type TagBindingEvent = {
   createdAt: string;
 };
 
-export type TagDeskOptions = { departments: string[]; genres: Array<{ id: string; name: string }> };
+export type TagDeskOptions = {
+  divisions: string[];
+  sections: Array<{ division: string; name: string }>;
+  departments: string[];
+  genres: Array<{ id: string; name: string }>;
+};
 
 const MASTER_PATHS: Record<TagDeskKind, string> = {
   employee: 'employees',

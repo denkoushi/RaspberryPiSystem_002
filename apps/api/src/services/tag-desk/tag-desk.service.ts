@@ -17,6 +17,7 @@ export type TagDeskRow = {
   code: string;
   name: string;
   sub: string | null;
+  sub2?: string | null;
   status: string;
   tags: TagDeskTag[];
   /** Editable master fields, shaped like the kiosk edit form. */
@@ -32,6 +33,7 @@ export type TagBinding = {
   code: string;
   name: string;
   sub: string | null;
+  sub2?: string | null;
   status: string | null;
   /** Loans not yet returned (for an employee: items they still hold). */
   activeLoans: number;
@@ -94,6 +96,7 @@ export class TagDeskService {
           code: e.employeeCode,
           name: e.displayName,
           sub: e.department,
+          sub2: e.section || null,
           status: e.status,
           tags: e.nfcTagUid ? [{ bindingId: e.id, uid: e.nfcTagUid }] : [],
           record: {
@@ -206,7 +209,7 @@ export class TagDeskService {
       ]);
       bindings.push({
         kind: 'employee', bindingId: employee.id, targetId: employee.id, code: employee.employeeCode,
-        name: employee.displayName, sub: employee.department, status: employee.status, activeLoans,
+        name: employee.displayName, sub: employee.department, sub2: employee.section || null, status: employee.status, activeLoans,
         recent: loanUses(loans.map((l) => ({ ...l, label: assetLabel(l) })))
       });
     }
@@ -359,15 +362,32 @@ export class TagDeskService {
     return rows.map((r) => ({ id: r.id, uid: r.uid, action: r.action, targetKind: r.targetKind, targetLabel: r.targetLabel, createdAt: r.createdAt.toISOString() }));
   }
 
-  async listOptions(): Promise<{ departments: string[]; genres: Array<{ id: string; name: string }> }> {
-    const [employeeDepartments, instrumentDepartments, genres] = await Promise.all([
-      prisma.employee.findMany({ where: { department: { not: null } }, distinct: ['department'], select: { department: true } }),
+  async listOptions(): Promise<{
+    divisions: string[];
+    sections: Array<{ division: string; name: string }>;
+    departments: string[];
+    genres: Array<{ id: string; name: string }>;
+  }> {
+    const [employees, instrumentDepartments, riggingDepartments, genres] = await Promise.all([
+      prisma.employee.findMany({ distinct: ['department', 'section'], select: { department: true, section: true } }),
       prisma.measuringInstrument.findMany({ where: { department: { not: null } }, distinct: ['department'], select: { department: true } }),
+      prisma.riggingGear.findMany({ where: { department: { not: null } }, distinct: ['department'], select: { department: true } }),
       prisma.measuringInstrumentGenre.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } })
     ]);
-    const departments = [...new Set([...employeeDepartments, ...instrumentDepartments].map((d) => d.department?.trim()).filter((d): d is string => Boolean(d)))]
+    const uniqueNames = (values: Array<string | null>) => [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))]
       .sort((a, b) => a.localeCompare(b, 'ja'));
-    return { departments, genres };
+    const divisions = uniqueNames(employees.map((employee) => employee.department));
+    const sections = [...new Map(employees.flatMap((employee) => {
+      const division = employee.department?.trim();
+      const name = employee.section?.trim();
+      return division && name ? [[JSON.stringify([division, name]), { division, name }] as const] : [];
+    })).values()].sort((a, b) => a.division.localeCompare(b.division, 'ja') || a.name.localeCompare(b.name, 'ja'));
+    const departments = uniqueNames([
+      ...employees.map((employee) => employee.section),
+      ...instrumentDepartments.map((instrument) => instrument.department),
+      ...riggingDepartments.map((rigging) => rigging.department)
+    ]);
+    return { divisions, sections, departments, genres };
   }
 
   /** Label of the first record this UID is bound to, or null when it is free. */
