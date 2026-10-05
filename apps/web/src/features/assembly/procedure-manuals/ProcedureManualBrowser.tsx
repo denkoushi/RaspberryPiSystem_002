@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
-import { createBlankAssemblyProcedureDocument, getProcedureManualAssignments, listProcedureManualModels, listProcedureManualProcesses, listProcedureMaterials } from '../../../api/client';
-import { Button } from '../../../components/ui/Button';
-import { Dialog } from '../../../components/ui/Dialog';
+import { getProcedureManualAssignments, listProcedureManualModels, listProcedureManualProcesses, listProcedureMaterials } from '../../../api/client';
 import { Input } from '../../../components/ui/Input';
 import { AssemblyProcedureSequenceViewer } from '../AssemblyProcedureSequenceViewer';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { ProcedureManualAssignmentDialog, procedureManualModelKey } from './ProcedureManualAssignmentDialog';
+import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 import { ProcedurePageVideoStrip } from './ProcedurePageVideoStrip';
 import { ProcedureVideoShelfDialog } from './ProcedureVideoShelfDialog';
@@ -16,20 +15,7 @@ import { ProcedureVideoShelfDialog } from './ProcedureVideoShelfDialog';
 import type { AssemblyProcedureSequencePageDto, ProcedureManualDetailDto, ProcedureManualModelDto, ProcedureManualProcessDto, AssemblyProcedureSequenceStepDto } from '../types';
 
 export function ProcedureManualBrowser() {
-  const navigate = useNavigate();
   const [blankOpen, setBlankOpen] = useState(false);
-  const [blankName, setBlankName] = useState('');
-  const [blankBusy, setBlankBusy] = useState(false);
-  const [blankError, setBlankError] = useState<string | null>(null);
-  const createBlank = async () => {
-    if (blankBusy || !blankName.trim()) return;
-    setBlankBusy(true); setBlankError(null);
-    try {
-      const document = await createBlankAssemblyProcedureDocument(blankName.trim());
-      navigate(`/kiosk/assembly/procedure-documents/${document.id}/edit`);
-    } catch (e) { setBlankError(readAssemblyApiErrorMessage(e, '白紙の要領書を作成できません')); }
-    finally { setBlankBusy(false); }
-  };
   const [models, setModels] = useState<ProcedureManualModelDto[]>([]);
   const [processes, setProcesses] = useState<ProcedureManualProcessDto[]>([]);
   const [modelCodeKey, setModelCodeKey] = useState('');
@@ -85,7 +71,7 @@ export function ProcedureManualBrowser() {
         <header className="grid shrink-0 gap-2 border-b border-[#27313b] px-3.5 py-3">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="mr-2.5 text-2xl font-black tracking-widest">要領書</h1>
-            <button className={`${toolClass} border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`} onClick={() => { setBlankName(''); setBlankError(null); setBlankOpen(true); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>白紙から作る</button>
+            <button className={`${toolClass} border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`} onClick={() => { setBlankOpen(true); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>白紙から作る</button>
             <button className={toolClass} onClick={() => setShelfOpen(true)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 15l5-5 4 4 3-3 6 6" /></svg>素材 <span className="font-mono font-medium">{materialCount}{materialCount === 500 ? '+' : ''}</span></button>
             <button className={toolClass} onClick={() => setVideoShelfOpen(true)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="6" width="14" height="12" rx="2" /><path d="M17 10l4-2v8l-4-2" /></svg>動画</button>
           </div>
@@ -123,13 +109,7 @@ export function ProcedureManualBrowser() {
 
         {detail && detail.sequence.documents.length > 0 ? <AssemblyProcedureSequenceViewer key={`${modelCodeKey}:${processId}:${version}`} sequence={detail.sequence} layout="manuals" showCurrentMarkerButton={false} onCurrentPageChange={onPageChange} onCurrentStepChange={onStepChange} className="min-h-0 flex-1" /> : detail ? <p className="p-2 text-sm text-[#9fadb9]">表示できる文書がありません</p> : null}
       </section>
-      {blankOpen ? <Dialog isOpen onClose={() => { if (!blankBusy) setBlankOpen(false); }} title="白紙から作る">
-        <form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void createBlank(); }}>
-          <label className="block text-sm">要領書名<Input aria-label="要領書名" autoFocus maxLength={200} value={blankName} onChange={(event) => setBlankName(event.target.value)} /></label>
-          {blankError ? <p role="alert" className="text-sm text-red-700">{blankError}</p> : null}
-          <Button type="submit" className="min-h-11" disabled={blankBusy || !blankName.trim()}>{blankBusy ? '作成中…' : '作成'}</Button>
-        </form>
-      </Dialog> : null}
+      {blankOpen ? <ProcedureManualBlankDialog models={models} processes={processes} modelCode={modelCodeKey} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
       {videoShelfOpen ? <ProcedureVideoShelfDialog onClose={() => setVideoShelfOpen(false)} /> : null}
       {shelfOpen ? <ProcedureMaterialShelfDialog onClose={() => setShelfOpen(false)} /> : null}
       {editing ? <ProcedureManualAssignmentDialog modelCode={models.find((m) => m.modelCodeKey === modelCodeKey)?.modelCode ?? ''} processId={processId} processes={processes} onClose={() => setEditing(false)} onSaved={(key, id) => { setEditing(false); setModelCodeKey(key); setProcessId(id); setVersion((v) => v + 1); }} /> : null}

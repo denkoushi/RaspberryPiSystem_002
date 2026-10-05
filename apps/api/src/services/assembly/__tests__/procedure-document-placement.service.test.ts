@@ -3,12 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const db = {
-    $transaction: vi.fn(), $queryRaw: vi.fn(),
+    $transaction: vi.fn(), $queryRaw: vi.fn(), $executeRaw: vi.fn(),
+    assemblyProcedureDocumentEditLease: { findUnique: vi.fn().mockResolvedValue(null) },
     assemblyProcedureDocument: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
     assemblyProcedureDocumentRevision: { create: vi.fn(), update: vi.fn() },
     assemblyProcedureDocumentPage: { aggregate: vi.fn(), create: vi.fn(), findUnique: vi.fn() },
     assemblyProcedureOverlayElement: { aggregate: vi.fn(), createMany: vi.fn() },
     assemblyProcedureAsset: { create: vi.fn(), deleteMany: vi.fn() },
+    procedureManualProcess: { findFirst: vi.fn() },
+    procedureManualAssignment: { findMany: vi.fn(), create: vi.fn() },
     procedureMaterial: { findUnique: vi.fn(), updateMany: vi.fn() },
   };
   return { db, saveImage: vi.fn(), deleteImage: vi.fn(), readImage: vi.fn(), assetSave: vi.fn(), assetDelete: vi.fn() };
@@ -41,6 +44,10 @@ beforeEach(async () => {
   const db = mocks.db;
   db.$transaction.mockImplementation(async (work) => work(db));
   db.$queryRaw.mockResolvedValue([locked]);
+  db.assemblyProcedureDocument.findFirst.mockResolvedValue(null);
+  db.procedureManualProcess.findFirst.mockResolvedValue({ id: 'cutting' });
+  db.procedureManualAssignment.findMany.mockResolvedValue([{ sortOrder: 4 }]);
+  db.procedureManualAssignment.create.mockResolvedValue({ id: 'assigned' });
   db.assemblyProcedureDocument.create.mockResolvedValue({ id: documentId });
   db.assemblyProcedureDocument.findUnique.mockResolvedValue({ ...locked, pages: [{ pageIndex: 0, imageRelativePath: path }], revisionMetadata: { ...locked } });
   db.assemblyProcedureDocumentPage.aggregate.mockResolvedValue({ _max: { pageIndex: 5 } });
@@ -64,6 +71,29 @@ describe('procedure-document blank pages', () => {
     expect(mocks.db.assemblyProcedureDocument.create).toHaveBeenCalledWith({ data: expect.objectContaining({ name: '白紙', status: 'DRAFT', imageRelativePath: path, pages: { create: [{ pageIndex: 0, imageRelativePath: path }] } }) });
     expect(mocks.db.assemblyProcedureDocumentRevision.create).toHaveBeenCalledWith({ data: expect.objectContaining({ editVersion: 0, sourceAssetId: null }) });
     expect(mocks.db.assemblyProcedureAsset.create).not.toHaveBeenCalled();
+  });
+  it('chooses -2 then -3 on the server under the naming transaction lock', async () => {
+    mocks.db.assemblyProcedureDocument.findFirst.mockResolvedValueOnce({ id: 'one' }).mockResolvedValueOnce({ id: 'two' }).mockResolvedValueOnce(null);
+    await new AssemblyProcedureDocumentBlankService().create('DFD1_組立_組立');
+    expect(mocks.db.$executeRaw.mock.calls[0]![0].join('')).toContain('pg_advisory_xact_lock');
+    expect(mocks.db.assemblyProcedureDocument.findFirst.mock.calls.map(call => call[0].where.name)).toEqual(['DFD1_組立_組立', 'DFD1_組立_組立-2', 'DFD1_組立_組立-3']);
+    expect(mocks.db.assemblyProcedureDocument.create).toHaveBeenCalledWith({ data: expect.objectContaining({ name: 'DFD1_組立_組立-3' }) });
+  });
+  it('creates and appends a DRAFT with the normalized model after existing assignments', async () => {
+    const result = await new AssemblyProcedureDocumentBlankService().createWithAssignment('新規', { modelCode: 'ｄｆｄ１', processId: 'cutting' });
+    expect(result.assignmentError).toBeNull();
+    expect(result.document.id).toBe(documentId);
+    expect(mocks.db.procedureManualAssignment.create).toHaveBeenCalledWith({ data: { modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'cutting', assemblyProcedureDocumentId: documentId, sortOrder: 5 } });
+    expect(mocks.db.$transaction).toHaveBeenCalledTimes(2);
+  });
+  it('keeps the created document/image and returns a short error if assignment fails', async () => {
+    mocks.db.procedureManualProcess.findFirst.mockResolvedValueOnce(null);
+    const result = await new AssemblyProcedureDocumentBlankService().createWithAssignment('新規', { modelCode: 'DFD1', processId: 'missing' });
+    expect(result.document.id).toBe(documentId);
+    expect(result.assignmentError).toContain('割り当てに失敗');
+    expect(mocks.db.assemblyProcedureDocument.create).toHaveBeenCalledOnce();
+    expect(mocks.deleteImage).not.toHaveBeenCalled();
+    expect(mocks.db.procedureManualAssignment.create).not.toHaveBeenCalled();
   });
   it('appends at max+1 without updating the compatibility path or existing page numbers', async () => {
     await new AssemblyProcedureDocumentRevisionService(access as never).addBlankPage({ documentId, expectedEditVersion: 3 });

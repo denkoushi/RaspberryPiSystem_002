@@ -541,7 +541,7 @@ export function AssemblyProcedureSequenceViewer({
       </div>
       {manuals ? <nav aria-label="手順の操作" className="absolute bottom-6 right-7 flex items-center gap-2 rounded-xl border border-[#344252] bg-[#0f1317]/80 p-2 text-[19px] font-bold">
         {!crop || showFullPage ? <div role="group" aria-label="表示サイズ" className="inline-flex overflow-hidden rounded-lg border border-[#344252]">
-          {([['contain', '全体'], ['width', '幅いっぱい']] as const).map(([mode, label]) => <button key={mode} className={clsx("h-[42px] whitespace-nowrap px-3.5", fitMode === mode && "bg-[#3ba776] text-[#0b1a12]")} aria-pressed={fitMode === mode} onClick={() => setFitChoice({ url: currentStep.pageUrl, mode })}>{label}</button>)}
+          {([['contain', '全体'], ['width', '幅いっぱい']] as const).map(([mode, label]) => <button key={mode} className={clsx("min-h-11 min-w-11 whitespace-nowrap px-3.5", fitMode === mode && "bg-[#3ba776] text-[#0b1a12]")} aria-pressed={fitMode === mode} onClick={() => setFitChoice({ url: currentStep.pageUrl, mode })}>{label}</button>)}
         </div> : null}
         <button className="h-11 rounded-lg border border-[#344252] px-3.5" aria-pressed={storyboardOpen} onClick={() => setStoryboardOpen((open) => !open)}>全手順</button>
         <button className="h-11 rounded-lg border border-[#344252] px-3.5 disabled:opacity-40" disabled={stepIndex === 0} onClick={() => setStepIndex((index) => index - 1)}>前手順</button>

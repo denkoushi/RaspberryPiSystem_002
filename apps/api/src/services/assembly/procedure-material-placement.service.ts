@@ -1,3 +1,4 @@
+import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
@@ -20,7 +21,7 @@ export class ProcedureMaterialPlacementService {
     private readonly access = new AssemblyTemplateAccessService(),
   ) {}
 
-  async place(params: { documentId: string; materialId: string; pageIndex: number; accessPassword?: string }) {
+  async place(params: AssemblyProcedureEditActor & { documentId: string; materialId: string; pageIndex: number; accessPassword?: string }) {
     await this.access.requireAccessPassword(params.accessPassword);
     let asset: AssemblyProcedureOverlayAssetDto | undefined;
     try {
@@ -35,6 +36,7 @@ export class ProcedureMaterialPlacementService {
         `;
         const document = documents[0];
         if (!document) throw new ApiError(404, '手順書が見つかりません');
+        await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, tx, params.holderToken ?? null);
         if (document.status !== 'DRAFT' || !document.isActive || !document.revisionRootId || !document.isRevisionHead) {
           throw new ApiError(409, '最新版の改版下書きだけ編集できます');
         }
@@ -59,7 +61,7 @@ export class ProcedureMaterialPlacementService {
           let widthRatio = 0.4;
           let heightRatio = widthRatio * photoHeight / photoWidth * pageSize.width / pageSize.height;
           if (heightRatio > 0.9) { widthRatio *= 0.9 / heightRatio; heightRatio = 0.9; }
-          asset = await this.assets.uploadOverlayImage({ documentId: params.documentId, accessPassword: params.accessPassword, bytes, contentType: material.contentType, originalFileName: material.originalFileName }, tx);
+          asset = await this.assets.uploadOverlayImage({ documentId: params.documentId, accessPassword: params.accessPassword, bytes, contentType: material.contentType, originalFileName: material.originalFileName, holderKey: params.holderKey, holderToken: params.holderToken }, tx);
           element = { ...base, kind: 'IMAGE', assetId: asset.assetId, objectFit: 'contain', bbox: { xRatio: (1 - widthRatio) / 2, yRatio: (1 - heightRatio) / 2, widthRatio, heightRatio } };
         } else {
           element = { ...base, kind: 'TEXT', text: material.text ?? '', bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.8, heightRatio: 0.2 }, style: { fontSizeRatio: 0.025, fontWeight: 'bold', color: '#0f172a', align: 'start' } };

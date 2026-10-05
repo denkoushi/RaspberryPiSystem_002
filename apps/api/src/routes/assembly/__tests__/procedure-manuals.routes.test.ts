@@ -1,5 +1,6 @@
+import { prisma } from '../../../lib/prisma.js';
 import Fastify from 'fastify';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
@@ -7,6 +8,8 @@ import { ProcedureManualService } from '../../../services/assembly/procedure-man
 import { serializeProcedureSequence } from '../index.js';
 import { registerAssemblyProcedureDocumentRoutes, type AssemblyProcedureDocumentRouteOptions } from '../procedure-documents.js';
 import { registerProcedureManualRoutes } from '../procedure-manuals.js';
+
+beforeEach(() => { vi.spyOn(prisma.assemblyProcedureDocumentEditLease, 'findUnique').mockResolvedValue(null); });
 
 const documentId = '00000000-0000-4000-8000-000000000001';
 const path = '/assembly/procedure-manuals/models/DFD1/processes/assembly';

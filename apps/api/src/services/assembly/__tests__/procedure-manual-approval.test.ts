@@ -6,6 +6,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import { registerAssemblyProcedureDocumentRoutes, serializeProcedureDocument, serializeProcedureDocumentSummary } from '../../../routes/assembly/procedure-documents.js';
 import { AssemblyProcedureDocumentService } from '../assembly-procedure-document.service.js';
+import { AssemblyProcedureDocumentEditLeaseService } from '../assembly-procedure-document-edit-lease.service.js';
 import { AssemblyTemplateAccessService } from '../assembly-template-access.service.js';
 import { serializeAssemblyProcedureDocumentRevision } from '../assembly-procedure-document-revision.serializer.js';
 
@@ -24,6 +25,7 @@ describe('procedure-manual approval publication', () => {
   let approvals: unknown[];
   let password: ReturnType<typeof vi.spyOn>;
   beforeEach(async () => {
+    vi.spyOn(AssemblyProcedureDocumentEditLeaseService.prototype, 'assertCanWrite').mockResolvedValue(undefined);
     document = draft(); approvals = [];
     vi.spyOn(prisma.employee, 'findUnique').mockResolvedValue(employee as never);
     vi.spyOn(prisma.measuringInstrumentTag, 'findUnique').mockResolvedValue(null);

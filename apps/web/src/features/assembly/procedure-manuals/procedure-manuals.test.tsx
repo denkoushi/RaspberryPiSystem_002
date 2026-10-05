@@ -72,11 +72,39 @@ describe('procedure-manuals', () => {
     mocks.blank.mockResolvedValue({ id: 'new-document' });
     render(<MemoryRouter><Routes><Route path="/" element={<ProcedureManualBrowser />} /><Route path="/kiosk/assembly/procedure-documents/:id/edit" element={<p>新規エディタ</p>} /></Routes></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: '白紙から作る' }));
-    expect(screen.getByRole('button', { name: '作成' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '作成してエディタへ' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '名前を直接入力' }));
     fireEvent.change(screen.getByLabelText('要領書名'), { target: { value: '  新規要領書  ' } });
-    fireEvent.click(screen.getByRole('button', { name: '作成' }));
+    fireEvent.click(screen.getByRole('button', { name: '作成してエディタへ' }));
     expect(await screen.findByText('新規エディタ')).toBeInTheDocument();
-    expect(mocks.blank).toHaveBeenCalledExactlyOnceWith('新規要領書');
+    expect(mocks.blank).toHaveBeenCalledExactlyOnceWith('新規要領書', undefined);
+  });
+
+  it('builds the name from normalized model, master process and supplement, then assigns and opens the editor', async () => {
+    mocks.processes.mockResolvedValue([...processes,
+      { id: 'machining', parentId: null, name: '加工', sortOrder: 2 },
+      { id: 'cutting', parentId: 'machining', name: '切削', sortOrder: 0 },
+      { id: 'grinding', parentId: 'machining', name: '研削', sortOrder: 1 }
+    ]);
+    mocks.blank.mockResolvedValue({ id: 'new-document' });
+    render(<MemoryRouter><Routes><Route path="/" element={<ProcedureManualBrowser />} /><Route path="/kiosk/assembly/procedure-documents/:id/edit" element={<p>新規エディタ</p>} /></Routes></MemoryRouter>);
+    await screen.findByRole('button', { name: 'DFD1' });
+    fireEvent.click(screen.getByRole('button', { name: '白紙から作る' }));
+    const dialog = screen.getByRole('dialog', { name: '白紙から作る' });
+    fireEvent.change(within(dialog).getByLabelText('型番で検索'), { target: { value: 'ｄｆｄ９' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'DFD9' }));
+    expect(within(dialog).getByLabelText('名前のプレビュー')).toHaveTextContent('DFD9_組立_組立');
+    fireEvent.click(within(dialog).getByRole('button', { name: '加工' }));
+    expect(within(dialog).queryByRole('button', { name: '検査' })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: '研削' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '圧入' }));
+    expect(within(dialog).getByLabelText('名前のプレビュー')).toHaveTextContent('DFD9_加工_研削_圧入');
+    fireEvent.click(within(dialog).getByRole('button', { name: '名前を直接入力' }));
+    expect(within(dialog).getByLabelText('要領書名')).toHaveValue('DFD9_加工_研削_圧入');
+    fireEvent.click(within(dialog).getByRole('button', { name: '名前の組み立てに戻る' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '作成してエディタへ' }));
+    expect(await screen.findByText('新規エディタ')).toBeInTheDocument();
+    expect(mocks.blank).toHaveBeenCalledExactlyOnceWith('DFD9_加工_研削_圧入', { modelCode: 'DFD9', processId: 'grinding' });
   });
 
   it('shows model search, then processes, then the assigned sequence and missing-publication notice', async () => {
@@ -144,6 +172,26 @@ describe('procedure-manuals', () => {
       ]
     }));
     expect(saved).toHaveBeenCalledWith('DFD1', 'assembly');
+  });
+
+  it('reorders and renames an automatically assigned unpublished DRAFT alongside a published document', async () => {
+    mocks.detail.mockResolvedValue({ ...emptyDetail, assignments: [
+      { kioskDocumentId: null, assemblyProcedureDocumentId: 'root', sortOrder: 0, label: '公開組立手順' },
+      { kioskDocumentId: null, assemblyProcedureDocumentId: 'draft', sortOrder: 1, label: '自動追加の下書き', unavailableReason: 'no_published_revision' }
+    ] });
+    const saved = vi.fn();
+    render(<ProcedureManualAssignmentDialog modelCode="DFD1" processId="assembly" processes={processes} onClose={vi.fn()} onSaved={saved} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: '上へ 2' })).toBeEnabled());
+    expect(screen.queryByRole('option', { name: '下書き手順' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '上へ 2' }));
+    fireEvent.change(screen.getByLabelText('表示名 1'), { target: { value: '下書きの表示名を変更' } });
+    fireEvent.change(screen.getByLabelText('表示名 2'), { target: { value: '公開手順の表示名を変更' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(saved).toHaveBeenCalledWith('DFD1', 'assembly'));
+    expect(mocks.save).toHaveBeenCalledWith('DFD1', 'assembly', { modelCode: 'DFD1', assignments: [
+      { kioskDocumentId: null, assemblyProcedureDocumentId: 'draft', sortOrder: 0, label: '下書きの表示名を変更' },
+      { kioskDocumentId: null, assemblyProcedureDocumentId: 'root', sortOrder: 1, label: '公開手順の表示名を変更' }
+    ] });
   });
 
   it('keeps the dialog open and displays a permission message after a 403 save', async () => {

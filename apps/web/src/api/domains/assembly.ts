@@ -29,6 +29,10 @@ import type {
 import type { A2uiMessage } from '@a2ui/web_core/v0_9';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
+function procedureEditHeaders(holderToken?: string | null) {
+  return { headers: holderToken ? { 'x-procedure-edit-token': holderToken } : {} };
+}
+
 export async function listAssemblySeibanCandidates(params: { prefix: string; limit?: number }) {
   const qs = new URLSearchParams({ prefix: params.prefix });
   if (params.limit) qs.set('limit', String(params.limit));
@@ -115,6 +119,7 @@ export async function createAssemblyProcedureDocumentRevision(id: string, access
 }
 
 export async function saveAssemblyProcedureDocumentOverlays(input: {
+  holderToken?: string | null;
   id: string;
   accessPassword: string;
   expectedEditVersion: number;
@@ -126,12 +131,14 @@ export async function saveAssemblyProcedureDocumentOverlays(input: {
       accessPassword: input.accessPassword,
       expectedEditVersion: input.expectedEditVersion,
       elements: input.elements
-    }
+    },
+    procedureEditHeaders(input.holderToken)
   );
   return data.document;
 }
 
 export async function uploadAssemblyProcedureOverlayImage(input: {
+  holderToken?: string | null;
   id: string;
   accessPassword: string;
   file: File;
@@ -142,12 +149,13 @@ export async function uploadAssemblyProcedureOverlayImage(input: {
   const { data } = await api.post<{ asset: AssemblyProcedureOverlayAssetDto }>(
     `/assembly/procedure-documents/${encodeURIComponent(input.id)}/assets`,
     formData,
-    { headers: { 'Content-Type': 'multipart/form-data' } }
+    { headers: { 'Content-Type': 'multipart/form-data', ...procedureEditHeaders(input.holderToken).headers } }
   );
   return data.asset;
 }
 
 export async function createAssemblyProcedureImageRegion(input: {
+  holderToken?: string | null;
   id: string;
   accessPassword: string;
   pageIndex: number;
@@ -159,7 +167,8 @@ export async function createAssemblyProcedureImageRegion(input: {
       accessPassword: input.accessPassword,
       pageIndex: input.pageIndex,
       bbox: input.bbox
-    }
+    },
+    procedureEditHeaders(input.holderToken)
   );
   return data.asset;
 }
@@ -182,6 +191,7 @@ export async function findAssemblyProcedureTextCandidates(input: {
 }
 
 export async function discardAssemblyProcedureDocumentRevision(input: {
+  holderToken?: string | null;
   id: string;
   accessPassword: string;
   expectedEditVersion?: number;
@@ -191,7 +201,8 @@ export async function discardAssemblyProcedureDocumentRevision(input: {
     {
       accessPassword: input.accessPassword,
       expectedEditVersion: input.expectedEditVersion
-    }
+    },
+    procedureEditHeaders(input.holderToken)
   );
   return data.document;
 }
@@ -241,16 +252,17 @@ export async function ingestAssemblyProcedureDocumentsFromGmail() {
   return data.result;
 }
 
-export async function renameAssemblyProcedureDocument(id: string, name: string) {
-  const { data } = await api.patch<{ document: AssemblyProcedureDocumentDto }>(`/assembly/procedure-documents/${id}`, { name });
+export async function renameAssemblyProcedureDocument(id: string, name: string, holderToken?: string | null) {
+  const { data } = await api.patch<{ document: AssemblyProcedureDocumentDto }>(`/assembly/procedure-documents/${id}`, { name }, procedureEditHeaders(holderToken));
   return data.document;
 }
 
-export async function deleteAssemblyProcedureDocument(id: string) {
-  await api.delete(`/assembly/procedure-documents/${id}`);
+export async function deleteAssemblyProcedureDocument(id: string, holderToken?: string | null) {
+  await api.delete(`/assembly/procedure-documents/${id}`, procedureEditHeaders(holderToken));
 }
 
 export async function publishAssemblyProcedureDocument(input: {
+  holderToken?: string | null;
   id: string;
   accessPassword: string;
   expectedEditVersion?: number;
@@ -260,7 +272,8 @@ export async function publishAssemblyProcedureDocument(input: {
     {
       accessPassword: input.accessPassword,
       expectedEditVersion: input.expectedEditVersion
-    }
+    },
+    procedureEditHeaders(input.holderToken)
   );
   return data.document;
 }
@@ -273,11 +286,12 @@ export async function resolveProcedureManualApprover(reviewerTagUid: string) {
 }
 
 export async function approvePublishAssemblyProcedureDocument(input: {
+  holderToken?: string | null;
   id: string; reviewerTagUid: string; expectedEditVersion: number; comment?: string;
 }) {
-  const { id, ...body } = input;
+  const { id, holderToken, ...body } = input;
   const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(
-    `/assembly/procedure-documents/${encodeURIComponent(id)}/approve-publish`, body
+    `/assembly/procedure-documents/${encodeURIComponent(id)}/approve-publish`, body, procedureEditHeaders(holderToken)
   );
   return data.document;
 }
@@ -1038,18 +1052,18 @@ export async function restoreProcedureMaterial(id: string) {
   await api.post(`/assembly/procedure-materials/${encodeURIComponent(id)}/restore`);
 }
 
-export async function createBlankAssemblyProcedureDocument(name: string) {
-  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>('/assembly/procedure-documents/blank', { name });
+export async function createBlankAssemblyProcedureDocument(name: string, assignment?: { modelCode: string; processId: string }) {
+  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto; assignmentError?: string | null }>('/assembly/procedure-documents/blank', { name, assignment });
+  return { ...data.document, assignmentError: data.assignmentError };
+}
+
+export async function addBlankAssemblyProcedurePage(input: { holderToken?: string | null; id: string; accessPassword: string; expectedEditVersion: number }) {
+  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/pages/blank`, { accessPassword: input.accessPassword, expectedEditVersion: input.expectedEditVersion }, procedureEditHeaders(input.holderToken));
   return data.document;
 }
 
-export async function addBlankAssemblyProcedurePage(input: { id: string; accessPassword: string; expectedEditVersion: number }) {
-  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/pages/blank`, { accessPassword: input.accessPassword, expectedEditVersion: input.expectedEditVersion });
-  return data.document;
-}
-
-export async function placeProcedureMaterial(input: { id: string; materialId: string; pageIndex: number; accessPassword: string }) {
-  const { data } = await api.post<{ element: AssemblyProcedureOverlayElement; asset?: AssemblyProcedureOverlayAssetDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/materials/${encodeURIComponent(input.materialId)}/place`, { pageIndex: input.pageIndex, accessPassword: input.accessPassword });
+export async function placeProcedureMaterial(input: { holderToken?: string | null; id: string; materialId: string; pageIndex: number; accessPassword: string }) {
+  const { data } = await api.post<{ element: AssemblyProcedureOverlayElement; asset?: AssemblyProcedureOverlayAssetDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/materials/${encodeURIComponent(input.materialId)}/place`, { pageIndex: input.pageIndex, accessPassword: input.accessPassword }, procedureEditHeaders(input.holderToken));
   return data;
 }
 
@@ -1091,7 +1105,7 @@ export async function getProcedurePageVideos(id: string, pageIndex: number) {
   const { data } = await api.get<{ videos: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoSummaryDto[] }>(`/assembly/procedure-documents/${encodeURIComponent(id)}/pages/${pageIndex}/videos`);
   return data.videos;
 }
-export async function replaceProcedurePageVideos(id: string, pageIndex: number, videoIds: string[], accessPassword: string) {
-  const { data } = await api.put<{ videos: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoSummaryDto[] }>(`/assembly/procedure-documents/${encodeURIComponent(id)}/pages/${pageIndex}/videos`, { videoIds, accessPassword });
+export async function replaceProcedurePageVideos(id: string, pageIndex: number, videoIds: string[], accessPassword: string, holderToken?: string | null) {
+  const { data } = await api.put<{ videos: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoSummaryDto[] }>(`/assembly/procedure-documents/${encodeURIComponent(id)}/pages/${pageIndex}/videos`, { videoIds, accessPassword }, procedureEditHeaders(holderToken));
   return data.videos;
 }

@@ -13,7 +13,7 @@ import { ProcedureVideoThumbnail } from './ProcedureVideoThumbnail';
 import type { ProcedureVideoDto, ProcedureVideoState, ProcedureVideoSummaryDto } from './procedure-video-types';
 
 export function procedureVideoLength(duration: number | null) { return duration == null ? '長さ未確認' : `${duration.toFixed(1)}秒`; }
-export function ProcedureVideoShelfDialog({ onClose, link }: { onClose: () => void; link?: { documentId: string; pageIndex: number; accessPassword: string } }) {
+export function ProcedureVideoShelfDialog({ onClose, link }: { onClose: () => void; link?: { documentId: string; pageIndex: number; accessPassword: string; holderToken?: string | null } }) {
   const selectionMode = Boolean(link);
   const [videos, setVideos] = useState<ProcedureVideoDto[]>([]);
   const [q, setQ] = useState('');
@@ -68,7 +68,7 @@ export function ProcedureVideoShelfDialog({ onClose, link }: { onClose: () => vo
         <Button className="min-h-11" aria-label={`${video.title}を上へ`} disabled={busy || index === 0} onClick={() => reorder(index, -1)}>↑</Button>
         <Button className="min-h-11" aria-label={`${video.title}を下へ`} disabled={busy || index === selected.length - 1} onClick={() => reorder(index, 1)}>↓</Button>
         <Button className="min-h-11" disabled={busy} onClick={() => setSelected((items) => items.filter((item) => item.id !== video.id))}>外す</Button></div>)}
-      <Button className="mt-2 min-h-11" disabled={busy || selectionLoading || selectionFailed} onClick={() => void act(async () => { await replaceProcedurePageVideos(link.documentId, link.pageIndex, selected.map((v) => v.id), link.accessPassword); onClose(); })}>紐づけを保存</Button>
+      <Button className="mt-2 min-h-11" disabled={busy || selectionLoading || selectionFailed} onClick={() => void act(async () => { await replaceProcedurePageVideos(link.documentId, link.pageIndex, selected.map((v) => v.id), link.accessPassword, link.holderToken); onClose(); })}>紐づけを保存</Button>
     </section> : null}
     <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-auto">
       {loading ? <p role="status">読込中…</p> : !videos.length ? <p>動画がありません</p> : null}

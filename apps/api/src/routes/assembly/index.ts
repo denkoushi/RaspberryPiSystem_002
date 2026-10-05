@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { registerProcedureMaterialRoutes } from './procedure-materials.js';
 import { registerProcedureManualRoutes } from './procedure-manuals.js';
 import { registerAssemblyProcedureDocumentRevisionRoutes } from './procedure-document-revisions.js';
+import { registerAssemblyProcedureDocumentEditLeaseRoutes } from './procedure-document-edit-leases.js';
 import {
   registerAssemblyProcedureDocumentRoutes,
   serializeProcedureDocument
@@ -768,6 +769,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
     allowView,
     allowWriteKiosk
   });
+  registerAssemblyProcedureDocumentEditLeaseRoutes(app, { allowWriteKiosk });
 
   app.get('/assembly/machine-name-candidates', { preHandler: allowView }, async (request) => {
     const query = machineNameCandidatesQuerySchema.parse(request.query);

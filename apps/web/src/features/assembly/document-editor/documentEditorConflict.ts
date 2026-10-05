@@ -18,9 +18,11 @@ function readConflictPayload(error: unknown): {
   const response = error.response;
   if (response?.status !== 409) return null;
   const data = response.data as {
+    code?: string;
     currentEditVersion?: unknown;
     details?: { currentEditVersion?: unknown };
   } | undefined;
+  if (data?.code === 'ASSEMBLY_PROCEDURE_EDIT_LOCKED') return null;
   return {
     currentEditVersion: data?.details?.currentEditVersion ?? data?.currentEditVersion
   };

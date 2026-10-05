@@ -10,6 +10,7 @@ import {
   AssemblyProcedureDocumentRevisionService,
   serializeAssemblyProcedureDocumentRevision
 } from '../../services/assembly/index.js';
+import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter } from './procedure-document-edit-leases.js';
 import { ApiError } from '../../lib/errors.js';
 import { AssemblyProcedureDocumentBlankService } from '../../services/assembly/assembly-procedure-document-blank.service.js';
 import { ProcedureMaterialPlacementService } from '../../services/assembly/procedure-material-placement.service.js';
@@ -40,18 +41,22 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
   assetsService = new AssemblyProcedureDocumentAssetsService()
 ): void {
   app.post('/assembly/procedure-documents/blank', { preHandler: options.allowWriteKiosk }, async (request) => {
-    const body = z.object({ name: z.string().trim().min(1).max(200) }).parse(request.body);
-    return { document: serializeAssemblyProcedureDocumentRevision(await new AssemblyProcedureDocumentBlankService().create(body.name)) };
+    const body = z.object({
+      name: z.string().trim().min(1).max(200),
+      assignment: z.object({ modelCode: z.string().trim().min(1).max(200), processId: z.string().min(1) }).optional()
+    }).parse(request.body);
+    const result = await new AssemblyProcedureDocumentBlankService().createWithAssignment(body.name, body.assignment);
+    return { document: serializeAssemblyProcedureDocumentRevision(result.document), assignmentError: result.assignmentError };
   });
-  app.post('/assembly/procedure-documents/:id/pages/blank', { preHandler: options.allowWriteKiosk }, async (request) => {
+  app.post('/assembly/procedure-documents/:id/pages/blank', { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const { id } = idParamsSchema.parse(request.params);
     const body = z.object({ accessPassword: accessPasswordSchema, expectedEditVersion: z.coerce.number().int().min(0) }).parse(request.body);
-    return { document: serializeAssemblyProcedureDocumentRevision(await service.addBlankPage({ documentId: id, ...body })) };
+    return { document: serializeAssemblyProcedureDocumentRevision(await service.addBlankPage({ documentId: id, ...body, ...await resolveAssemblyProcedureEditWriter(request) })) };
   });
-  app.post('/assembly/procedure-documents/:id/materials/:materialId/place', { preHandler: options.allowWriteKiosk }, async (request) => {
+  app.post('/assembly/procedure-documents/:id/materials/:materialId/place', { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const { id, materialId } = z.object({ id: z.string().uuid(), materialId: z.string().uuid() }).parse(request.params);
     const body = z.object({ accessPassword: accessPasswordSchema, pageIndex: z.coerce.number().int().min(0) }).parse(request.body);
-    return new ProcedureMaterialPlacementService().place({ documentId: id, materialId, ...body });
+    return new ProcedureMaterialPlacementService().place({ documentId: id, materialId, ...body, ...await resolveAssemblyProcedureEditWriter(request) });
   });
 
   async function readOverlayMultipart(request: FastifyRequest) {
@@ -106,12 +111,13 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
 
   app.post(
     '/assembly/procedure-documents/:id/assets',
-    { preHandler: options.allowWriteKiosk },
+    { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] },
     async (request) => {
       const params = idParamsSchema.parse(request.params);
       const multipart = await readOverlayMultipart(request);
       const asset = await assetsService.uploadOverlayImage({
         documentId: params.id,
+        ...await resolveAssemblyProcedureEditWriter(request),
         accessPassword: multipart.accessPassword,
         bytes: multipart.bytes,
         contentType: multipart.contentType,
@@ -123,12 +129,13 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
 
   app.post(
     '/assembly/procedure-documents/:id/regions/image',
-    { preHandler: options.allowWriteKiosk },
+    { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] },
     async (request) => {
       const params = idParamsSchema.parse(request.params);
       const body = assemblyProcedureOverlayRegionInputSchema.parse(request.body ?? {});
       const asset = await assetsService.createImageRegion({
         documentId: params.id,
+        ...await resolveAssemblyProcedureEditWriter(request),
         accessPassword: body.accessPassword,
         pageIndex: body.pageIndex,
         bbox: body.bbox
@@ -155,12 +162,13 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
 
   app.put(
     '/assembly/procedure-documents/:id/overlays',
-    { preHandler: options.allowWriteKiosk },
+    { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] },
     async (request) => {
       const params = idParamsSchema.parse(request.params);
       const body = assemblyProcedureOverlaySaveInputSchema.parse(request.body ?? {});
       const document = await service.saveOverlays({
         documentId: params.id,
+        ...await resolveAssemblyProcedureEditWriter(request),
         accessPassword: body.accessPassword,
         expectedEditVersion: body.expectedEditVersion,
         elements: body.elements
@@ -171,12 +179,13 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
 
   app.post(
     '/assembly/procedure-documents/:id/discard-revision',
-    { preHandler: options.allowWriteKiosk },
+    { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] },
     async (request) => {
       const params = idParamsSchema.parse(request.params);
       const body = discardRevisionBodySchema.parse(request.body ?? {});
       const document = await service.discardRevision({
         documentId: params.id,
+        ...await resolveAssemblyProcedureEditWriter(request),
         accessPassword: body.accessPassword,
         expectedEditVersion: body.expectedEditVersion
       });

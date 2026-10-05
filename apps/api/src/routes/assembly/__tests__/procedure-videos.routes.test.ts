@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import { ProcedureVideoService } from '../../../services/assembly/procedure-video.service.js';
@@ -13,11 +14,14 @@ const pagePath = `/assembly/procedure-documents/${id}/pages/0/videos`;
 function harness(deny: 'view' | 'write' | null = null) {
   const video = { id, title: '動画', status: 'READY', storageKey: 'video.mp4', posterStorageKey: 'poster.jpg', discardedAt: null, _count: { links: 2 } };
   const db = { $transaction: vi.fn(), $queryRaw: vi.fn().mockResolvedValue([{ status: 'DRAFT', isActive: true, isRevisionHead: true }]),
+    assemblyProcedureDocumentEditLease: { findUnique: vi.fn().mockResolvedValue(null) },
     procedureVideo: { findUnique: vi.fn().mockResolvedValue(video), findMany: vi.fn().mockResolvedValue([video]), count: vi.fn().mockResolvedValue(2), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     procedureVideoLink: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([{ video }]), deleteMany: vi.fn(), createMany: vi.fn() },
     assemblyProcedureDocumentPage: { findUnique: vi.fn().mockResolvedValue({ pageIndex: 0 }) },
   };
   db.$transaction.mockImplementation((work) => work(db));
+  vi.spyOn(prisma.assemblyProcedureDocumentEditLease, 'findUnique').mockResolvedValue(null);
+  vi.spyOn(prisma, '$transaction').mockImplementation((async (work: any) => work(db)) as never);
   const store = { read: vi.fn().mockResolvedValue(Buffer.from('0123456789')) };
   const access = { requireAccessPassword: vi.fn().mockResolvedValue(undefined) };
   const app = Fastify(); registerErrorHandler(app);
@@ -29,7 +33,7 @@ function harness(deny: 'view' | 'write' | null = null) {
 }
 const apps: ReturnType<typeof Fastify>[] = [];
 function setup(deny: 'view' | 'write' | null = null) { const h = harness(deny); apps.push(h.app); return h; }
-afterEach(async () => { await Promise.all(apps.splice(0).map((app) => app.close())); });
+afterEach(async () => { await Promise.all(apps.splice(0).map((app) => app.close())); vi.restoreAllMocks(); });
 
 describe('procedure-video routes', () => {
   it('lists active by default with poster presence and link count, and filters discarded/search/limit', async () => {

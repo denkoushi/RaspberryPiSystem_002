@@ -24,6 +24,7 @@ import { isCandidateValidationMode } from './bootstrap/candidate-validation.js';
 import { createSchedulerRuntimeState } from './bootstrap/scheduler-runtime-state.js';
 import { createDeployReadinessObservability } from './services/system/deploy-readiness-observability.js';
 import { prisma } from './lib/prisma.js';
+import { ensureProcedureManualProcesses } from './services/assembly/procedure-manual-reference-data.js';
 import { enableSiteDirectoryFailClosed, ensureSiteDirectoryFresh, refreshSiteDirectory } from './lib/site-directory.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
@@ -140,6 +141,12 @@ export async function buildServer(): Promise<FastifyInstance> {
       request.log.warn({ err }, 'Site directory refresh failed; keeping the previous directory');
     }
   });
+
+  try {
+    await ensureProcedureManualProcesses(prisma);
+  } catch (err) {
+    app.log.warn({ err }, 'Procedure manual processes could not be initialized');
+  }
 
   // ルートを登録
   await registerRoutes(app);

@@ -46,7 +46,7 @@ function MaterialPhoto({ id, alt, knowledge = false, onZoom }: { id: string; alt
   }, [id, knowledge]);
   return <div ref={cardRef} className="relative flex aspect-[4/3] items-center justify-center bg-gradient-to-br from-[#30404f] to-[#1b222a]">
     {url ? <img src={url} alt={alt} loading="lazy" className="h-full w-full object-contain" /> : <p className="text-lg text-[#9fadb9]">{failed ? '写真を取得できません' : '読込中…'}</p>}
-    <button aria-label={`${alt}を原寸表示`} disabled={!url} className="absolute bottom-2.5 right-2.5 grid h-10 w-10 place-items-center rounded-lg border border-white/50 bg-black/45 text-lg text-white disabled:opacity-40" onClick={() => { if (url) onZoom(url, alt); }}>⤢</button>
+    <button aria-label={`${alt}を原寸表示`} disabled={!url} className="absolute bottom-2.5 right-2.5 grid h-11 w-11 place-items-center rounded-lg border border-white/50 bg-black/45 text-lg text-white disabled:opacity-40" onClick={() => { if (url) onZoom(url, alt); }}>⤢</button>
   </div>;
 }
 

@@ -26,6 +26,13 @@ function assignment(id: string, assemblyProcedureDocumentId: string | null = roo
 describe('procedure-manual service', () => {
   afterEach(() => vi.restoreAllMocks());
 
+  it('lists assembly children before machining children', async () => {
+    const machining = { id: 'cutting', parentId: 'procedure-manual-machining', sortOrder: 0 };
+    const assembly = { id: 'assembly', parentId: 'procedure-manual-assembly', sortOrder: 0 };
+    vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([machining, assembly] as never);
+    expect((await new ProcedureManualService().listProcesses()).map(process => process.id)).toEqual(['assembly', 'cutting']);
+  });
+
   it('resolves an older published revision even when the revision head is a draft', async () => {
     vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([assignment('one')] as never);
     const published = { ...document('published-v2'), procedureManualApprovals: [{ employeeNameSnapshot: '承認太郎', employeePositionSnapshot: '班長', createdAt: now }] };
@@ -85,7 +92,32 @@ describe('procedure-manual service', () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it('saves reordering and labels with a published root and an automatically assigned unpublished DRAFT', async () => {
+    vi.spyOn(prisma, '$transaction').mockImplementation((async (work: (tx: Prisma.TransactionClient) => Promise<unknown>) => work(prisma)) as never);
+    vi.spyOn(prisma, '$queryRaw').mockResolvedValue([{ id: 'assembly' }]);
+    vi.spyOn(prisma.procedureManualProcess, 'findFirst').mockResolvedValue({ id: 'assembly' } as never);
+    vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([assignment('published'), assignment('auto-draft', 'draft-root', 1)] as never);
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockImplementation(async (args) => ({ ...document(args.where.id), revisionMetadata: { revisionRootId: args.where.id } }) as never);
+    vi.spyOn(prisma.assemblyProcedureDocumentRevision, 'findFirst').mockImplementation(async (args) => args?.where?.revisionRootId === rootId ? { document: document() } as never : null);
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findFirst').mockResolvedValue(null);
+    const remove = vi.spyOn(prisma.procedureManualAssignment, 'deleteMany').mockResolvedValue({ count: 2 });
+    const create = vi.spyOn(prisma.procedureManualAssignment, 'createMany').mockResolvedValue({ count: 2 });
+    const service = new ProcedureManualService();
+    await service.replaceAssignments('DFD1', 'assembly', [
+      { assemblyProcedureDocumentId: 'draft-root', sortOrder: 0, label: '新しい下書きの表示名' },
+      { assemblyProcedureDocumentId: rootId, sortOrder: 1, label: '公開手順の表示名' }
+    ]);
+    expect(create).toHaveBeenCalledWith({ data: [
+      expect.objectContaining({ assemblyProcedureDocumentId: 'draft-root', sortOrder: 0, label: '新しい下書きの表示名' }),
+      expect.objectContaining({ assemblyProcedureDocumentId: rootId, sortOrder: 1, label: '公開手順の表示名' })
+    ] });
+    remove.mockClear(); create.mockClear();
+    await expect(service.replaceAssignments('DFD1', 'assembly', [{ assemblyProcedureDocumentId: 'unassigned-draft', sortOrder: 0 }])).rejects.toThrow('公開版がありません');
+    expect(remove).not.toHaveBeenCalled(); expect(create).not.toHaveBeenCalled();
+  });
+
   it('replaces one normalized model/process atomically, canonicalizing a selected revision to its root', async () => {
+    vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([]);
     const query = vi.spyOn(prisma, '$queryRaw').mockResolvedValue([{ id: 'assembly' }]);
     vi.spyOn(prisma, '$transaction').mockImplementation((async (work: (tx: Prisma.TransactionClient) => Promise<unknown>) => work(prisma)) as never);
     vi.spyOn(prisma.procedureManualProcess, 'findFirst').mockResolvedValue({ id: 'assembly' } as never);
@@ -110,6 +142,7 @@ describe('procedure-manual service', () => {
 
 describe('procedure-manual document reference guards', () => {
   beforeEach(() => {
+    vi.spyOn(prisma.assemblyProcedureDocumentEditLease, 'findUnique').mockResolvedValue(null);
     vi.spyOn(prisma.procedureVideoLink, 'count').mockResolvedValue(0);
     vi.spyOn(prisma.assemblyProcedureOrderItem, 'count').mockResolvedValue(0);
     vi.spyOn(prisma.assemblyTemplate, 'count').mockResolvedValue(0);
