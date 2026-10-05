@@ -1,3 +1,4 @@
+import { procedureManualApprovalInclude } from './assembly-procedure-document-revision.serializer.js';
 import { randomUUID } from 'node:crypto';
 
 import type { Prisma } from '@prisma/client';
@@ -46,6 +47,7 @@ const revisionDocumentInclude = {
     }
   },
   ownedAssets: true,
+  procedureManualApprovals: procedureManualApprovalInclude,
   revisionMetadata: true
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
 

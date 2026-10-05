@@ -1,3 +1,6 @@
+import { PrismaKnowledgeReviewerRepository } from '../knowledge/prisma-knowledge-reviewer.repository.js';
+import type { KnowledgeReviewEmployee } from '../knowledge/knowledge-position-rank.js';
+import { procedureManualApprovalInclude } from './assembly-procedure-document-revision.serializer.js';
 import type { AssemblyProcedureDocumentStatus, Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
@@ -24,6 +27,7 @@ const procedureDocumentInclude = {
     include: { asset: true }
   },
   ownedAssets: true,
+  procedureManualApprovals: procedureManualApprovalInclude,
   revisionMetadata: true
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
 
@@ -31,6 +35,7 @@ const procedureDocumentListInclude = {
   pages: {
     orderBy: { pageIndex: 'asc' as const }
   },
+  procedureManualApprovals: procedureManualApprovalInclude,
   revisionMetadata: true
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
 
@@ -317,81 +322,89 @@ export class AssemblyProcedureDocumentService {
     }
   }
 
+  async resolveApprover(tagUid: string): Promise<KnowledgeReviewEmployee> {
+    try {
+      return await new PrismaKnowledgeReviewerRepository(prisma).resolve(tagUid, true);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      if (code === 'KNOWLEDGE_UNKNOWN_EMPLOYEE') throw new ApiError(404, '社員タグが見つかりません', undefined, code);
+      if (code === 'KNOWLEDGE_DUPLICATE_TAG') throw new ApiError(409, '社員と計測機器のタグが重複しています', undefined, code);
+      if (code === 'KNOWLEDGE_INACTIVE_EMPLOYEE') throw new ApiError(403, '在籍中の社員のみ承認できます', undefined, code);
+      if (code === 'KNOWLEDGE_APPROVAL_FORBIDDEN') throw new ApiError(403, 'このタグは承認できません(職位の対応表を確認)', undefined, code);
+      throw error;
+    }
+  }
+
   async publish(
     id: string,
     options: { accessPassword?: string; expectedEditVersion?: number } = {}
   ): Promise<AssemblyProcedureDocumentRecord> {
     await this.accessService.requireAccessPassword(options.accessPassword);
-    const doc = await this.getById(id, { includeInactive: true });
-    if (!doc) throw new ApiError(404, '手順書が見つかりません');
-    if (doc.revisionMetadata) {
-      if (!doc.revisionMetadata.isRevisionHead || !doc.isActive || doc.status !== 'DRAFT') {
-        if (doc.status === 'PUBLISHED') return doc;
-        throw new ApiError(409, '最新版の改版下書きだけ公開できます');
-      }
-      return runAssemblyTransaction(async (tx) => {
-        const locked = await tx.$queryRaw<Array<{ editVersion: number; isRevisionHead: boolean; isActive: boolean; status: 'DRAFT' | 'PUBLISHED' }>>`
-          SELECT r."editVersion", r."isRevisionHead", d."isActive", d."status"
-          FROM "AssemblyProcedureDocument" d
-          JOIN "AssemblyProcedureDocumentRevision" r ON r."documentId" = d."id"
-          WHERE d."id" = ${id}
-          FOR UPDATE
-        `;
-        const current = locked[0];
-        if (!current) throw new ApiError(404, '手順書が見つかりません');
-        if (options.expectedEditVersion != null && options.expectedEditVersion !== current.editVersion) {
-          throw new ApiError(409, '手順書overlayが他の編集で更新されています', { currentEditVersion: current.editVersion }, 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT');
-        }
-        if (!current.isRevisionHead || !current.isActive || current.status !== 'DRAFT') {
-          throw new ApiError(409, '最新版の改版下書きだけ公開できます');
-        }
-        const updated = await tx.assemblyProcedureDocument.update({
-          where: { id },
-          data: { status: 'PUBLISHED', publishedAt: new Date() },
-          include: this.includePages
-        });
-        return updated;
-      });
-    }
-    if (doc.status === 'PUBLISHED') return doc;
-    return prisma.assemblyProcedureDocument.update({
-      where: { id },
-      data: {
-        status: 'PUBLISHED',
-        publishedAt: new Date()
-      },
-      include: this.includePages
+    return runAssemblyTransaction(async (tx) => (await this.publishInTransaction(tx, id, options.expectedEditVersion)).document);
+  }
+
+  async approvePublish(
+    id: string,
+    options: { reviewerTagUid: string; expectedEditVersion: number; comment?: string; actorKey: string }
+  ): Promise<AssemblyProcedureDocumentRecord> {
+    const reviewer = await this.resolveApprover(options.reviewerTagUid);
+    return runAssemblyTransaction(async (tx) => {
+      const result = await this.publishInTransaction(tx, id, options.expectedEditVersion);
+      // Retrying a completed publish is idempotent, just like password publication.
+      if (!result.changed) return result.document;
+      await tx.procedureManualApproval.create({ data: {
+        documentId: id, employeeId: reviewer.id,
+        employeeCodeSnapshot: reviewer.employeeCode, employeeNameSnapshot: reviewer.displayName,
+        employeeNfcTagUidSnapshot: reviewer.nfcTagUid, employeePositionSnapshot: reviewer.positionName,
+        employeeRankSnapshot: reviewer.rank, comment: options.comment ?? null, actorKey: options.actorKey
+      } });
+      return (await tx.assemblyProcedureDocument.findUnique({ where: { id }, include: this.includePages }))!;
     });
   }
 
-  async unpublish(id: string): Promise<AssemblyProcedureDocumentRecord> {
-    const doc = await this.getById(id, { includeInactive: true });
+  private async publishInTransaction(tx: Prisma.TransactionClient, id: string, expectedEditVersion?: number) {
+    // A document that was already published before this request is an idempotent
+    // re-run (the pre-lock read mirrors the former pre-transaction check).
+    const before = await tx.assemblyProcedureDocument.findUnique({ where: { id }, include: this.includePages });
+    if (!before) throw new ApiError(404, '手順書が見つかりません');
+    if (before.status === 'PUBLISHED') return { document: before, changed: false };
+    // All document mutations and assignment checks serialize on the document row.
+    await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
+    const doc = await tx.assemblyProcedureDocument.findUnique({ where: { id }, include: this.includePages });
     if (!doc) throw new ApiError(404, '手順書が見つかりません');
-    if (doc.status === 'DRAFT') return doc;
-
-    // Once a row has revision metadata it is part of the immutable version
-    // history. Turning it back into a DRAFT would let callers edit a
-    // published revision under the same document ID and bypass the revision
-    // flow. Create a new revision instead; legacy rows without metadata keep
-    // the pre-feature unpublish behaviour for compatibility.
-    const usage = await this.getReferenceUsage(id);
-    if (usage.inProcedureManualAssignment) throw new ApiError(409, this.buildInUseMessage(usage));
-
     if (doc.revisionMetadata) {
-      throw new ApiError(409, '版管理対象の公開済み手順書は公開取消できません。改版を作成してください');
+      if (expectedEditVersion != null && expectedEditVersion !== doc.revisionMetadata.editVersion) {
+        throw new ApiError(409, '手順書overlayが他の編集で更新されています', { currentEditVersion: doc.revisionMetadata.editVersion }, 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT');
+      }
+      // A document published by another request while we waited for the lock is a
+      // conflict, exactly as before the approval flow was added.
+      if (!doc.revisionMetadata.isRevisionHead || !doc.isActive || doc.status !== 'DRAFT') {
+        throw new ApiError(409, '最新版の改版下書きだけ公開できます');
+      }
+    } else if (doc.status === 'PUBLISHED') {
+      return { document: doc, changed: false };
     }
+    const document = await tx.assemblyProcedureDocument.update({
+      where: { id }, data: { status: 'PUBLISHED', publishedAt: new Date() }, include: this.includePages
+    });
+    return { document, changed: true };
+  }
 
-    if (this.isReferenced(usage)) {
-      throw new ApiError(409, this.buildInUseMessage(usage));
-    }
-
-    return prisma.assemblyProcedureDocument.update({
-      where: { id },
-      data: {
-        status: 'DRAFT',
-        publishedAt: null
-      },
-      include: this.includePages
+  async unpublish(id: string): Promise<AssemblyProcedureDocumentRecord> {
+    return runAssemblyTransaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
+      const doc = await tx.assemblyProcedureDocument.findUnique({ where: { id }, include: this.includePages });
+      if (!doc) throw new ApiError(404, '手順書が見つかりません');
+      if (doc.status === 'DRAFT') return doc;
+      const usage = await this.getReferenceUsage(id, tx);
+      if (usage.inProcedureManualAssignment) throw new ApiError(409, this.buildInUseMessage(usage));
+      if (doc.revisionMetadata) {
+        throw new ApiError(409, '版管理対象の公開済み手順書は公開取消できません。改版を作成してください');
+      }
+      if (this.isReferenced(usage)) throw new ApiError(409, this.buildInUseMessage(usage));
+      return tx.assemblyProcedureDocument.update({
+        where: { id }, data: { status: 'DRAFT', publishedAt: null }, include: this.includePages
+      });
     });
   }
 

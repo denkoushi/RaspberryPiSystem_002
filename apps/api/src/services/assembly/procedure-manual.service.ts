@@ -1,3 +1,4 @@
+import { procedureManualApprovalInclude, serializeLastProcedureManualApproval } from './assembly-procedure-document-revision.serializer.js';
 import { Prisma } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
@@ -23,6 +24,7 @@ export type ProcedureManualAssignmentInput = {
 };
 
 const assemblyDocumentInclude = {
+  procedureManualApprovals: procedureManualApprovalInclude,
   pages: { orderBy: { pageIndex: 'asc' as const } },
   overlayElements: {
     orderBy: [{ pageIndex: 'asc' as const }, { zIndex: 'asc' as const }, { createdAt: 'asc' as const }],
@@ -103,7 +105,7 @@ export class ProcedureManualService {
         new Map(assemblyDocument ? [[assemblyDocument.id, assemblyDocument.pages]] : []),
         new Map(assemblyDocument ? [[assemblyDocument.id, assemblyDocument.overlayElements]] : [])
       );
-      return { assignment, document };
+      return { assignment, document: document ? { ...document, lastApproval: serializeLastProcedureManualApproval(assemblyDocument?.procedureManualApprovals) } : null };
     }));
     const documents = resolved.flatMap(({ document }) => document ? [document] : []);
     const sequence: AssemblyProcedureSequence = {
@@ -136,6 +138,9 @@ export class ProcedureManualService {
         where: { id: processId, active: true, parent: { active: true, parentId: null } }
       });
       if (!process) throw new ApiError(400, '工程が見つかりません');
+      // Use a stable order when a replacement references multiple documents.
+      const ids = [...new Set(items.flatMap(item => item.assemblyProcedureDocumentId ? [item.assemblyProcedureDocumentId] : []))].sort();
+      for (const id of ids) await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
       const data = await Promise.all(items.map(async (item) => {
         let rootId: string | null = null;
         if (item.assemblyProcedureDocumentId) {

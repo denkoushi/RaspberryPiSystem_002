@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { createBlankAssemblyProcedureDocument, getProcedureManualAssignments, listProcedureManualModels, listProcedureManualProcesses } from '../../../api/client';
@@ -11,7 +11,7 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { ProcedureManualAssignmentDialog, procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 
-import type { ProcedureManualDetailDto, ProcedureManualModelDto, ProcedureManualProcessDto } from '../types';
+import type { AssemblyProcedureSequencePageDto, ProcedureManualDetailDto, ProcedureManualModelDto, ProcedureManualProcessDto } from '../types';
 
 export function ProcedureManualBrowser() {
   const navigate = useNavigate();
@@ -39,6 +39,9 @@ export function ProcedureManualBrowser() {
   const [shelfOpen, setShelfOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [version, setVersion] = useState(0);
+  const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
+  const onPageChange = useCallback((page: AssemblyProcedureSequencePageDto | null) => setCurrentDocumentId(page?.documentId ?? null), []);
+  const approval = detail?.sequence.documents.find(document => (document.assemblyProcedureDocumentId ?? document.kioskDocumentId) === currentDocumentId)?.lastApproval;
 
   useEffect(() => {
     let cancelled = false;
@@ -52,6 +55,7 @@ export function ProcedureManualBrowser() {
   useEffect(() => {
     let cancelled = false;
     setDetail(null);
+    setCurrentDocumentId(null);
     setError(null);
     if (!modelCodeKey || !processId) return;
     void getProcedureManualAssignments(modelCodeKey, processId).then((next) => { if (!cancelled) setDetail(next); })
@@ -83,7 +87,8 @@ export function ProcedureManualBrowser() {
         <section aria-label="要領書" className="flex min-h-80 min-w-0 flex-col overflow-hidden p-2 lg:min-h-0">
           {!processId ? <p className="p-2 text-sm text-[#9fadb9]">工程を選択</p> : !detail && !error ? <p role="status">読込中…</p> : null}
           {detail?.assignments.filter((a) => a.unavailableReason).map((item) => <p key={item.id} role="status" className="p-2 text-sm text-[#f6b93b]">{item.label || `${item.sortOrder + 1}番目の文書`}: {item.unavailableReason === 'no_published_revision' ? '公開版なし' : '文書は無効です'}</p>)}
-          {detail && detail.sequence.documents.length > 0 ? <AssemblyProcedureSequenceViewer key={`${modelCodeKey}:${processId}:${version}`} sequence={detail.sequence} className="min-h-0 flex-1" /> : detail ? <p className="p-2 text-sm text-[#9fadb9]">表示できる文書がありません</p> : null}
+          {detail && detail.sequence.documents.length > 0 ? <AssemblyProcedureSequenceViewer key={`${modelCodeKey}:${processId}:${version}`} sequence={detail.sequence} showCurrentMarkerButton={false} onCurrentPageChange={onPageChange} className="min-h-0 flex-1" /> : detail ? <p className="p-2 text-sm text-[#9fadb9]">表示できる文書がありません</p> : null}
+          {approval ? <p className="shrink-0 px-2 py-1 text-xs text-[#9fadb9]">承認: {approval.employeeName}{approval.positionName ? `(${approval.positionName})` : ''} {new Date(approval.approvedAt).toLocaleString('ja-JP')}</p> : null}
         </section>
       </div>
       {blankOpen ? <Dialog isOpen onClose={() => { if (!blankBusy) setBlankOpen(false); }} title="白紙から作る">

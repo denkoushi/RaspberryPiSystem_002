@@ -28,7 +28,7 @@ describe('procedure-manual service', () => {
 
   it('resolves an older published revision even when the revision head is a draft', async () => {
     vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([assignment('one')] as never);
-    const published = document('published-v2');
+    const published = { ...document('published-v2'), procedureManualApprovals: [{ employeeNameSnapshot: '承認太郎', employeePositionSnapshot: '班長', createdAt: now }] };
     const revisions = [
       { revisionNumber: 3, document: { ...document('draft-v3'), status: 'DRAFT' } },
       { revisionNumber: 2, document: published }
@@ -44,6 +44,7 @@ describe('procedure-manual service', () => {
     }));
     expect(result.assignments[0]).toMatchObject({ assemblyProcedureDocumentId: rootId, resolvedDocumentId: 'published-v2', unavailableReason: null });
     expect(result.sequence.documents[0].assemblyProcedureDocumentId).toBe('published-v2');
+    expect(result.sequence.documents[0].lastApproval).toEqual({ employeeName: '承認太郎', positionName: '班長', approvedAt: now.toISOString() });
     expect(result.sequence.stepSource).toBe('document_expansion');
     expect(result.sequence.steps[0]).toMatchObject({ pageIndex: 0, viewMode: 'FULL_PAGE' });
   });
@@ -126,11 +127,11 @@ describe('procedure-manual document reference guards', () => {
     expect(usage.inProcedureManualAssignment).toBe(true);
     expect(service.isReferenced(usage)).toBe(true);
     expect(service.buildInUseMessage(usage)).toContain('要領書の機種×工程割り当て');
-    vi.spyOn(service, 'getById').mockResolvedValue(document() as never);
-    await expect(service.unpublish(rootId)).rejects.toThrow('要領書の機種×工程割り当て');
     vi.spyOn(prisma, '$transaction').mockImplementation((async (work: (tx: Prisma.TransactionClient) => Promise<unknown>) => work(prisma)) as never);
     vi.spyOn(prisma, '$queryRaw').mockResolvedValue([{ id: rootId }]);
     vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue(document() as never);
+    await expect(service.unpublish(rootId)).rejects.toThrow('要領書の機種×工程割り当て');
+    expect(prisma.$queryRaw).toHaveBeenCalled();
     const deletion = vi.spyOn(prisma.assemblyProcedureDocument, 'delete');
     expect(await service.deleteIfUnused(rootId)).toBe('in_use');
     expect(deletion).not.toHaveBeenCalled();

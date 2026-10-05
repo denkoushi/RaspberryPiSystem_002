@@ -5,9 +5,21 @@ import {
 } from '@raspi-system/shared-types';
 
 import type { AssemblyProcedureOverlayElementRow } from './assembly-procedure-overlay.persistence.js';
-import type { AssemblyProcedureAsset } from '@prisma/client';
+import type { ProcedureManualApproval, AssemblyProcedureAsset } from '@prisma/client';
+
+export const procedureManualApprovalInclude = {
+  orderBy: [{ createdAt: 'desc' as const }, { id: 'desc' as const }],
+  take: 1,
+  select: { employeeNameSnapshot: true, employeePositionSnapshot: true, createdAt: true }
+};
+export type ProcedureManualApprovalSnapshot = Pick<ProcedureManualApproval, 'employeeNameSnapshot' | 'employeePositionSnapshot' | 'createdAt'>;
+export function serializeLastProcedureManualApproval(approvals?: ProcedureManualApprovalSnapshot[]) {
+  const approval = approvals?.[0];
+  return approval ? { employeeName: approval.employeeNameSnapshot, positionName: approval.employeePositionSnapshot, approvedAt: approval.createdAt.toISOString() } : null;
+}
 
 type AssemblyProcedureDocumentRevisionSerializationInput = {
+  procedureManualApprovals?: ProcedureManualApprovalSnapshot[];
   id: string;
   name: string;
   imageRelativePath: string;
@@ -41,6 +53,7 @@ export type AssemblyProcedureDocumentRevisionDto = {
   imageRelativePath: string;
   status: 'draft' | 'published';
   publishedAt: string | null;
+  lastApproval: ReturnType<typeof serializeLastProcedureManualApproval>;
   isActive: boolean;
   revisionRootId: string | null;
   revisionNumber: number;
@@ -152,6 +165,7 @@ export function serializeAssemblyProcedureDocumentRevision(
     overlaysByPage.set(overlay.pageIndex, values);
   }
   return {
+    lastApproval: serializeLastProcedureManualApproval(doc.procedureManualApprovals),
     id: doc.id,
     name: doc.name,
     imageRelativePath: doc.imageRelativePath,

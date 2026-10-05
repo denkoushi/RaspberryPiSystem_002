@@ -16,7 +16,7 @@ export interface NfcEvent {
 }
 
 type NfcSubscriberRole = 'legacy' | 'inventory';
-type NfcSubscriber = { role: NfcSubscriberRole; setEvent: (event: NfcEvent | null) => void };
+type NfcSubscriber = { role: NfcSubscriberRole; suppressInventoryRouting: boolean; setEvent: (event: NfcEvent | null) => void };
 
 const isBrowser = typeof window !== 'undefined';
 const LAST_EVENT_ID_KEY = 'kiosk-last-event-id';
@@ -76,11 +76,13 @@ function notifySubscribers(event: NfcEvent, role: NfcSubscriberRole) {
 }
 
 function enqueueEvent(event: NfcEvent, generation: number) {
+  // Keep a scan private even if its armed reader unmounts before the queue reaches it.
+  const suppressInventoryRouting = [...hub.subscribers].some((subscriber) => subscriber.suppressInventoryRouting);
   hub.classificationQueue = hub.classificationQueue
     .then(async () => {
       if (generation !== hub.generation || hub.subscribers.size === 0) return;
       const hasInventorySubscriber = [...hub.subscribers].some((subscriber) => subscriber.role === 'inventory');
-      if (!hasInventorySubscriber) {
+      if (suppressInventoryRouting || !hasInventorySubscriber) {
         notifySubscribers(event, 'legacy');
         return;
       }
@@ -162,17 +164,18 @@ function startHubSocket(policy?: NfcStreamPolicy) {
 export function useNfcStream(
   enabled = false,
   policy?: NfcStreamPolicy,
-  options: { role?: NfcSubscriberRole } = {},
+  options: { role?: NfcSubscriberRole; suppressInventoryRouting?: boolean } = {},
 ) {
   const [event, setEvent] = useState<NfcEvent | null>(null);
   const role = options.role ?? 'legacy';
+  const suppressInventoryRouting = options.suppressInventoryRouting ?? false;
 
   useEffect(() => {
     if (!enabled) {
       setEvent(null);
       return;
     }
-    const subscriber: NfcSubscriber = { role, setEvent };
+    const subscriber: NfcSubscriber = { role, suppressInventoryRouting, setEvent };
     hub.subscribers.add(subscriber);
     startHubSocket(policy);
     return () => {
@@ -180,7 +183,7 @@ export function useNfcStream(
       setEvent(null);
       if (hub.subscribers.size === 0) closeHubSocket();
     };
-  }, [enabled, policy, role]);
+  }, [enabled, policy, role, suppressInventoryRouting]);
 
   return event;
 }

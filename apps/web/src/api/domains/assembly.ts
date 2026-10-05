@@ -265,6 +265,23 @@ export async function publishAssemblyProcedureDocument(input: {
   return data.document;
 }
 
+export async function resolveProcedureManualApprover(reviewerTagUid: string) {
+  const { data } = await api.post<{ reviewer: { displayName: string; positionName: string | null; rank: string } }>(
+    '/assembly/procedure-documents/approval-reviewer', { reviewerTagUid }
+  );
+  return data.reviewer;
+}
+
+export async function approvePublishAssemblyProcedureDocument(input: {
+  id: string; reviewerTagUid: string; expectedEditVersion: number; comment?: string;
+}) {
+  const { id, ...body } = input;
+  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(
+    `/assembly/procedure-documents/${encodeURIComponent(id)}/approve-publish`, body
+  );
+  return data.document;
+}
+
 export async function unpublishAssemblyProcedureDocument(id: string) {
   const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(
     `/assembly/procedure-documents/${id}/unpublish`

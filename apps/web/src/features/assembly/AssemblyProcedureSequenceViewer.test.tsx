@@ -64,6 +64,13 @@ describe('AssemblyProcedureSequenceViewer', () => {
     expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:sequence-image');
   });
 
+  it('keeps the current-marker button by default and hides it for manual browsing', () => {
+    const view = render(<AssemblyProcedureSequenceViewer sequence={assemblySequence} />);
+    expect(screen.getByRole('button', { name: '現在の丸数字へ' })).toBeInTheDocument();
+    view.rerender(<AssemblyProcedureSequenceViewer sequence={assemblySequence} showCurrentMarkerButton={false} />);
+    expect(screen.queryByRole('button', { name: '現在の丸数字へ' })).not.toBeInTheDocument();
+  });
+
   it('renders pdf page images without protected image fetch', () => {
     const pdfSequence: AssemblyProcedureSequenceDto = {
       ...assemblySequence,

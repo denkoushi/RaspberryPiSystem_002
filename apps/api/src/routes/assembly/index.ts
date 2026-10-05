@@ -338,6 +338,7 @@ export function serializeProcedureSequence(sequence: AssemblyProcedureSequence) 
       emphasis: step.emphasis.toLowerCase()
     })),
     documents: sequence.documents.map((document) => ({
+      ...(document.lastApproval !== undefined ? { lastApproval: document.lastApproval } : {}),
       orderItemId: document.orderItemId,
       sortOrder: document.sortOrder,
       label: document.label,

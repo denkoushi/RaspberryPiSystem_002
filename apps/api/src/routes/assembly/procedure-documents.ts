@@ -1,3 +1,5 @@
+import { serializeLastProcedureManualApproval, type ProcedureManualApprovalSnapshot } from '../../services/assembly/assembly-procedure-document-revision.serializer.js';
+import { findClientDeviceByApiKey, parseKioskApiClientKeyHeader } from '../../services/clients/client-device-auth.service.js';
 import type { MultipartFile } from '@fastify/multipart';
 import type { AssemblyProcedureAsset } from '@prisma/client';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
@@ -24,6 +26,7 @@ const optionalTrueOnlyBooleanSchema = z
   .transform((value) => value === true || value === 'true');
 
 type ProcedureDocumentLike = {
+  procedureManualApprovals?: ProcedureManualApprovalSnapshot[];
   id: string;
   name: string;
   imageRelativePath: string;
@@ -89,6 +92,7 @@ export function serializeProcedureDocument(doc: ProcedureDocumentLike) {
     overlaysByPage.set(overlay.pageIndex, values);
   }
   return {
+    lastApproval: serializeLastProcedureManualApproval(doc.procedureManualApprovals),
     id: doc.id,
     name: doc.name,
     imageRelativePath: doc.imageRelativePath,
@@ -254,6 +258,27 @@ export function registerAssemblyProcedureDocumentRoutes(
       })
       .parse(request.body ?? {});
     const doc = await procedureService.publish(params.id, body);
+    return { document: serializeProcedureDocument(doc) };
+  });
+
+  app.post('/assembly/procedure-documents/approval-reviewer', { preHandler: allowWriteKiosk, config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request) => {
+    const body = z.object({ reviewerTagUid: z.string().trim().min(1).max(128) }).strict().parse(request.body);
+    const reviewer = await procedureService.resolveApprover(body.reviewerTagUid);
+    return { reviewer: { displayName: reviewer.displayName, positionName: reviewer.positionName, rank: reviewer.rank } };
+  });
+
+  app.post('/assembly/procedure-documents/:id/approve-publish', { preHandler: allowWriteKiosk, config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const body = z.object({
+      reviewerTagUid: z.string().trim().min(1).max(128),
+      expectedEditVersion: z.number().int().min(0),
+      comment: z.string().trim().min(1).max(500).optional()
+    }).strict().parse(request.body);
+    const key = parseKioskApiClientKeyHeader(request.headers['x-client-key']);
+    const client = request.user ? null : key ? await findClientDeviceByApiKey(key) : null;
+    const actorKey = request.user ? `user:${request.user.id}` : client ? `client:${client.id}` : null;
+    if (!actorKey) throw new ApiError(401, '認証が必要です');
+    const doc = await procedureService.approvePublish(params.id, { ...body, actorKey });
     return { document: serializeProcedureDocument(doc) };
   });
 

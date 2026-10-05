@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 
 import {
+  approvePublishAssemblyProcedureDocument,
   createAssemblyProcedureDocumentRevision,
   discardAssemblyProcedureDocumentRevision,
   getAssemblyProcedureDocument,
@@ -236,7 +237,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     }
   }, [session]);
 
-  const publish = useCallback(async () => {
+  const publish = useCallback(async (approval?: { reviewerTagUid: string; comment?: string }): Promise<boolean | void> => {
     const {
       busy,
       document,
@@ -253,15 +254,17 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       setDocument,
       setMessage
     } = session;
-    if (!document || readOnly || busy) return;
+    if (!document || readOnly || busy) return false;
     if (isDirty) {
       setMessage('公開前に未保存の変更を保存してください。');
-      return;
+      return false;
     }
     setBusy(true);
     setMessage(null);
     try {
-      const published = await publishAssemblyProcedureDocument({
+      const published = approval ? await approvePublishAssemblyProcedureDocument({
+        id: document.id, ...approval, expectedEditVersion: document.editVersion ?? 0
+      }) : await publishAssemblyProcedureDocument({
         id: document.id,
         accessPassword: passwordInput,
         expectedEditVersion: document.editVersion ?? 0
@@ -271,6 +274,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       recovery.clear();
       setMessage('手順書を公開しました。');
       onNavigateAfterPublish?.(published);
+      return true;
     } catch (error: unknown) {
       const conflict = readDocumentEditorConflict(error);
       if (conflict) {
@@ -280,6 +284,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       } else {
         setMessage(readAssemblyApiErrorMessage(error, '手順書の公開に失敗しました。'));
       }
+      return false;
     } finally {
       setBusy(false);
     }
