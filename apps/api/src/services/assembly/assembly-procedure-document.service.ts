@@ -43,6 +43,7 @@ export type AssemblyProcedureDocumentSummary = Omit<AssemblyProcedureDocumentRec
 };
 
 export type AssemblyProcedureDocumentReferenceUsage = {
+  inProcedureManualAssignment: boolean;
   inProcedureOrder: boolean;
   inTemplatePrimary: boolean;
   inActiveTemplatePrimary: boolean;
@@ -372,11 +373,13 @@ export class AssemblyProcedureDocumentService {
     // published revision under the same document ID and bypass the revision
     // flow. Create a new revision instead; legacy rows without metadata keep
     // the pre-feature unpublish behaviour for compatibility.
+    const usage = await this.getReferenceUsage(id);
+    if (usage.inProcedureManualAssignment) throw new ApiError(409, this.buildInUseMessage(usage));
+
     if (doc.revisionMetadata) {
       throw new ApiError(409, '版管理対象の公開済み手順書は公開取消できません。改版を作成してください');
     }
 
-    const usage = await this.getReferenceUsage(id);
     if (this.isReferenced(usage)) {
       throw new ApiError(409, this.buildInUseMessage(usage));
     }
@@ -406,7 +409,8 @@ export class AssemblyProcedureDocumentService {
       activeTemplateStepCount,
       boltRefCount,
       checkRefCount,
-      revisionChildCount
+      revisionChildCount,
+      manualAssignmentCount
     ] = await Promise.all([
       db.assemblyProcedureOrderItem.count({ where: { assemblyProcedureDocumentId: id } }),
       db.assemblyTemplate.count({ where: { procedureDocumentId: id } }),
@@ -421,9 +425,30 @@ export class AssemblyProcedureDocumentService {
       }),
       db.assemblyTemplateBolt.count({ where: { assemblyProcedureDocumentId: id } }),
       db.assemblyTemplateCheckItem.count({ where: { assemblyProcedureDocumentId: id } }),
-      db.assemblyProcedureDocumentRevision.count({ where: { supersedesDocumentId: id } })
+      db.assemblyProcedureDocumentRevision.count({ where: { supersedesDocumentId: id } }),
+      db.procedureManualAssignment.count({ where: { assemblyProcedureDocumentId: id } })
     ]);
+    // Protect the published revision currently shown by an assigned root, while
+    // allowing older revisions to retain the existing cleanup policy.
+    let inProcedureManualAssignment = manualAssignmentCount > 0;
+    if (!inProcedureManualAssignment) {
+      const revision = await db.assemblyProcedureDocumentRevision.findUnique({
+        where: { documentId: id }, select: { revisionRootId: true }
+      });
+      if (revision && revision.revisionRootId !== id) {
+        const latest = await db.assemblyProcedureDocumentRevision.findFirst({
+          where: { revisionRootId: revision.revisionRootId, document: { status: 'PUBLISHED', isActive: true } },
+          orderBy: { revisionNumber: 'desc' }, select: { documentId: true }
+        });
+        if (latest?.documentId === id) {
+          inProcedureManualAssignment = await db.procedureManualAssignment.count({
+            where: { assemblyProcedureDocumentId: revision.revisionRootId }
+          }) > 0;
+        }
+      }
+    }
     return {
+      inProcedureManualAssignment,
       inProcedureOrder: orderCount > 0,
       inTemplatePrimary: templateCount > 0,
       inActiveTemplatePrimary: activeTemplateCount > 0,
@@ -439,6 +464,7 @@ export class AssemblyProcedureDocumentService {
 
   isReferenced(usage: AssemblyProcedureDocumentReferenceUsage): boolean {
     return (
+      usage.inProcedureManualAssignment ||
       usage.inProcedureOrder ||
       usage.inTemplatePrimary ||
       usage.inActiveTemplatePrimary ||
@@ -453,6 +479,9 @@ export class AssemblyProcedureDocumentService {
   }
 
   buildInUseMessage(usage: AssemblyProcedureDocumentReferenceUsage): string {
+    if (usage.inProcedureManualAssignment) {
+      return '要領書の機種×工程割り当てで使用中の手順書は削除・公開取消できません';
+    }
     if (usage.inProcedureOrder) {
       return '旧形式テンプレートの互換手順書列で使用中の手順書は公開取り消しできません';
     }

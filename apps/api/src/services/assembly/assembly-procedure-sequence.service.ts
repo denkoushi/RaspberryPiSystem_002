@@ -154,7 +154,7 @@ function buildOverlayProjection(rows: AssemblyProcedureOverlayRow[]): {
   return { overlays, overlaysByPage, assets };
 }
 
-async function toSequenceDocument(
+export async function toSequenceDocument(
   item: AssemblyProcedureSequenceItemSummary,
   render: PdfStorageRenderAdapter,
   assemblyPagesByDocumentId: Map<string, Array<{ pageIndex: number; imageRelativePath: string }>>,
@@ -313,7 +313,7 @@ async function buildFallbackSequenceDocuments(
   ];
 }
 
-function buildProcedureSteps(
+export function buildProcedureSteps(
   documents: AssemblyProcedureSequenceDocument[],
   storedSteps: AssemblyTemplateProcedureStepSummary[]
 ): {

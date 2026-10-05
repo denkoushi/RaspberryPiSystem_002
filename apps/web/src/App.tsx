@@ -38,6 +38,7 @@ import { SecurityPage } from './pages/admin/SecurityPage';
 import { SelfInspectionOutOfToleranceReviewsPage } from './pages/admin/SelfInspectionOutOfToleranceReviewsPage';
 import { SignageHubPage } from './pages/admin/SignageHubPage';
 import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
+import { KioskAssemblyManualsPage } from './pages/kiosk/KioskAssemblyManualsPage';
 import { KioskAssemblyPage } from './pages/kiosk/KioskAssemblyPage';
 import { KioskAssemblyRecordApprovalPage } from './pages/kiosk/KioskAssemblyRecordApprovalPage';
 import { KioskAssemblyTraceabilityPage } from './pages/kiosk/KioskAssemblyTraceabilityPage';
@@ -220,6 +221,7 @@ function App() {
           <Route path="/kiosk/pallet-visualization" element={<KioskPalletVisualizationPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
           <Route path="/kiosk/assembly" element={<KioskAssemblyHomePage />} />
+          <Route path="/kiosk/assembly/manuals" element={<KioskAssemblyManualsPage />} />
           <Route path="/kiosk/assembly/training" element={lazyRouteElement(<KioskAssemblyTrainingPage />)} />
           <Route path="/kiosk/assembly/library" element={<KioskAssemblyPage />} />
           <Route

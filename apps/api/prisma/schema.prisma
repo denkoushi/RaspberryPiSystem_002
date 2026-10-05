@@ -2583,6 +2583,7 @@ model KioskDocument {
   enabled                        Boolean                         @default(true)
   createdAt                      DateTime                        @default(now())
   updatedAt                      DateTime                        @updatedAt
+  procedureManualAssignments     ProcedureManualAssignment[]
   metadataHistories              KioskDocumentMetadataHistory[]
   assemblyProcedureOrderItems    AssemblyProcedureOrderItem[]
   assemblyTemplateProcedureItems AssemblyTemplateProcedureItem[]
@@ -3136,6 +3137,7 @@ model AssemblyProcedureDocument {
   templateProcedureSteps AssemblyTemplateProcedureStep[]
   templateBolts          AssemblyTemplateBolt[]
   templateCheckItems     AssemblyTemplateCheckItem[]
+  procedureManualAssignments ProcedureManualAssignment[]
 
   @@index([isActive, name], map: "AssemblyProcedureDocument_idx_active_name")
   @@index([isActive, updatedAt], map: "AssemblyProcedureDocument_idx_active_updated")
@@ -5259,4 +5261,39 @@ model KnowledgeProcedureReview {
 
   @@index([procedureId, createdAt])
   @@index([revisionId, createdAt])
+}
+
+/// Two-level process list for standalone procedure manual browsing.
+model ProcedureManualProcess {
+  id          String                      @id @default(uuid())
+  parentId    String?
+  name        String
+  sortOrder   Int                         @default(0)
+  active      Boolean                     @default(true)
+  resourceCd  String?
+  parent      ProcedureManualProcess?     @relation("ProcedureManualProcessHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children    ProcedureManualProcess[]    @relation("ProcedureManualProcessHierarchy")
+  assignments ProcedureManualAssignment[]
+
+  @@index([parentId, sortOrder])
+}
+
+model ProcedureManualAssignment {
+  id                          String                     @id @default(uuid())
+  modelCode                   String
+  modelCodeKey                String
+  processId                   String
+  kioskDocumentId             String?
+  assemblyProcedureDocumentId String?
+  sortOrder                   Int
+  label                       String?
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
+  process                     ProcedureManualProcess     @relation(fields: [processId], references: [id], onDelete: Restrict)
+  kioskDocument               KioskDocument?             @relation(fields: [kioskDocumentId], references: [id], onDelete: Restrict)
+  assemblyProcedureDocument   AssemblyProcedureDocument? @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
+
+  @@unique([modelCodeKey, processId, sortOrder], map: "ProcedureManualAssignment_unique_order")
+  @@index([kioskDocumentId])
+  @@index([assemblyProcedureDocumentId])
 }
