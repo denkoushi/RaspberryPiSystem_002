@@ -57,6 +57,7 @@ export function CsvImportTargetsEditor({
               <option value="riggingGears">吊具</option>
               <option value="machines">加工機</option>
               <option value="csvDashboards">CSVダッシュボード</option>
+              <option value="procedureMaterialGmail">要領書の素材(Gmail)</option>
               <option value="itemInventoryGmail">Raspberry Pi在庫写真メール</option>
               <option value="machineSignalGmail">設備稼働ログ（信号灯の日報）</option>
             </select>
@@ -108,7 +109,7 @@ export function CsvImportTargetsEditor({
                 className={compact ? 'min-w-[220px] flex-1 text-xs' : 'flex-1'}
                 value={FIXED_GMAIL_SUBJECT_BY_TARGET_TYPE[target.type]}
                 readOnly
-                aria-label={target.type === 'itemInventoryGmail' ? 'Raspberry Pi在庫写真メールの固定件名' : '設備稼働ログの固定件名'}
+                aria-label={target.type === 'procedureMaterialGmail' ? '要領書の素材の固定件名' : target.type === 'itemInventoryGmail' ? 'Raspberry Pi在庫写真メールの固定件名' : '設備稼働ログの固定件名'}
               />
             ) : provider === 'gmail' ? (
               <select

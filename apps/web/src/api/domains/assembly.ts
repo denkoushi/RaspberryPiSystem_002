@@ -997,3 +997,26 @@ export async function getAssemblyProcedureDocumentRevisions(id: string) {
   );
   return data.revisions;
 }
+
+export async function listProcedureMaterials(params: { state?: import('../../features/assembly/procedure-manuals/procedure-material-types').ProcedureMaterialState; q?: string; limit?: number } = {}) {
+  const { data } = await api.get<{ materials: import('../../features/assembly/procedure-manuals/procedure-material-types').ProcedureMaterialDto[] }>('/assembly/procedure-materials', { params });
+  return data.materials;
+}
+
+export async function getProcedureMaterialFile(id: string) {
+  const { data } = await api.get<Blob>(`/assembly/procedure-materials/${encodeURIComponent(id)}/file`, { responseType: 'blob' });
+  return data;
+}
+
+export async function ingestProcedureMaterialsGmail() {
+  const { data } = await api.post<import('../../features/assembly/procedure-manuals/procedure-material-types').ProcedureMaterialIngestResult>('/assembly/procedure-materials/ingest-gmail');
+  return data;
+}
+
+export async function discardProcedureMaterial(id: string) {
+  await api.post(`/assembly/procedure-materials/${encodeURIComponent(id)}/discard`);
+}
+
+export async function restoreProcedureMaterial(id: string) {
+  await api.post(`/assembly/procedure-materials/${encodeURIComponent(id)}/restore`);
+}

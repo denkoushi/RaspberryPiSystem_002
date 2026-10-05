@@ -3139,6 +3139,8 @@ model AssemblyProcedureDocument {
   templateCheckItems     AssemblyTemplateCheckItem[]
   procedureManualAssignments ProcedureManualAssignment[]
 
+  procedureMaterials     ProcedureMaterial[]
+
   @@index([isActive, name], map: "AssemblyProcedureDocument_idx_active_name")
   @@index([isActive, updatedAt], map: "AssemblyProcedureDocument_idx_active_updated")
   @@index([status, isActive], map: "AssemblyProcedureDocument_idx_status_active")
@@ -5296,4 +5298,37 @@ model ProcedureManualAssignment {
   @@unique([modelCodeKey, processId, sortOrder], map: "ProcedureManualAssignment_unique_order")
   @@index([kioskDocumentId])
   @@index([assemblyProcedureDocumentId])
+}
+
+/// Gmail素材は配置・公開から独立し、破棄しても原本を保持する。
+enum ProcedureMaterialKind {
+  TEXT
+  PHOTO
+}
+
+model ProcedureMaterial {
+  id               String @id @default(uuid())
+  kind             ProcedureMaterialKind
+  text             String?
+  storageKey       String?
+  sha256           String?
+  contentType      String?
+  byteSize         Int?
+  originalFileName String?
+  width            Int?
+  height           Int?
+  subjectHint      String?
+  fromEmail        String?
+  gmailMessageId   String
+  gmailDedupeKey    String @unique
+  receivedAt       DateTime
+  documentId       String?
+  document         AssemblyProcedureDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  placedAt         DateTime?
+  discardedAt      DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([documentId, discardedAt, receivedAt])
+  @@index([gmailMessageId])
 }

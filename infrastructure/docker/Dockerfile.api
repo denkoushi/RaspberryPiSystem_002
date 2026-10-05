@@ -146,6 +146,7 @@ RUN mkdir -p /app/storage/photos \
   /app/storage/assembly-procedure-assets \
   /app/storage/work-instruction-assets \
   /app/storage/knowledge-assets \
+  /app/storage/procedure-materials \
   /app/storage/knowledge-git \
   /app/storage/measuring-instrument-genres \
   /app/storage/part-measurement-drawings \

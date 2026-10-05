@@ -17,7 +17,7 @@ export const CsvImportTypeSchema = z.enum([
  * CSVインポートターゲット（スケジュール内の1つの対象）
  */
 export const CsvImportTargetSchema = z.object({
-  type: z.union([CsvImportTypeSchema, z.literal('itemInventoryGmail'), z.literal('machineSignalGmail')]),
+  type: z.union([CsvImportTypeSchema, z.literal('itemInventoryGmail'), z.literal('machineSignalGmail'), z.literal('procedureMaterialGmail')]),
   source: z.string() // Dropbox用: パス、Gmail用: 件名パターン
 });
 
@@ -208,6 +208,20 @@ export const BackupConfigSchema = z.object({
       enabled: false,
       subjectTokens: ['[ItemlistRaspi-photo]'],
     }),
+  /** 要領書の本文・写真素材の専用 Gmail 取込。 */
+  procedureMaterialGmailIngest: z
+    .object({
+      enabled: z.boolean().default(false),
+      subjectTokens: z
+        .array(z.literal('[Procedure-material]'))
+        .default(['[Procedure-material]']),
+      fromEmail: z.string().optional(),
+    })
+    .optional()
+    .default({
+      enabled: false,
+      subjectTokens: ['[Procedure-material]'],
+    }),
 });
 
 export type BackupConfig = z.infer<typeof BackupConfigSchema>;
@@ -390,6 +404,10 @@ export const defaultBackupConfig: BackupConfig = {
   workInstructionGmailIngest: {
     enabled: false,
     subjectTokens: ['[Kakou-Dandori-photo]'],
+  },
+  procedureMaterialGmailIngest: {
+    enabled: false,
+    subjectTokens: ['[Procedure-material]'],
   },
   itemInventoryGmailIngest: {
     enabled: false,

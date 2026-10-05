@@ -52,7 +52,7 @@ describe('findEligibleKioskMessages', () => {
     expect(searchMessagesAll).toHaveBeenCalledTimes(1);
   });
 
-  it('also skips item-inventory messages from a broad kiosk search', async () => {
+  it.each(['[ItemlistRaspi-photo] 2', '[Procedure-material] DFD1'])('skips dedicated mail %s before other ingestion', async (ownedSubject) => {
     const initialIds = ['inventory-owned'];
     const validId = 'kiosk-valid';
     const getMessage = vi.fn(async (messageId: string) => ({
@@ -62,7 +62,7 @@ describe('findEligibleKioskMessages', () => {
       snippet: '',
       internalDateMs: 1,
       payload: {
-        headers: [{ name: 'Subject', value: messageId === validId ? 'DocumentASM' : '[ItemlistRaspi-photo] 2' }],
+        headers: [{ name: 'Subject', value: messageId === validId ? 'DocumentASM' : ownedSubject }],
       },
     }));
     const searchMessagesAll = vi.fn(async () => [...initialIds, validId]);

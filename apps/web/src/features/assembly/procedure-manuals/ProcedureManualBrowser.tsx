@@ -7,6 +7,7 @@ import { AssemblyProcedureSequenceViewer } from '../AssemblyProcedureSequenceVie
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { ProcedureManualAssignmentDialog, procedureManualModelKey } from './ProcedureManualAssignmentDialog';
+import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 
 import type { ProcedureManualDetailDto, ProcedureManualModelDto, ProcedureManualProcessDto } from '../types';
 
@@ -19,6 +20,7 @@ export function ProcedureManualBrowser() {
   const [detail, setDetail] = useState<ProcedureManualDetailDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [shelfOpen, setShelfOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [version, setVersion] = useState(0);
 
@@ -45,7 +47,8 @@ export function ProcedureManualBrowser() {
   const navButtonClass = 'min-h-11 w-full rounded-md px-3 py-2 text-left text-sm font-bold hover:bg-[#27313b]';
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 justify-end border-b border-[#27313b] px-3 py-2">
+      <div className="flex shrink-0 justify-end gap-2 border-b border-[#27313b] px-3 py-2">
+        <Button variant="ghostOnDark" className="min-h-11 text-sm" onClick={() => setShelfOpen(true)}>素材</Button>
         <Button variant="ghostOnDark" className="min-h-11 text-sm" disabled={loading || processes.length === 0} onClick={() => setEditing(true)}>割り当てを編集</Button>
       </div>
       {error ? <p role="alert" className="px-3 py-2 text-sm text-red-400">{error}</p> : null}
@@ -66,6 +69,7 @@ export function ProcedureManualBrowser() {
           {detail && detail.sequence.documents.length > 0 ? <AssemblyProcedureSequenceViewer key={`${modelCodeKey}:${processId}:${version}`} sequence={detail.sequence} className="min-h-0 flex-1" /> : detail ? <p className="p-2 text-sm text-[#9fadb9]">表示できる文書がありません</p> : null}
         </section>
       </div>
+      {shelfOpen ? <ProcedureMaterialShelfDialog onClose={() => setShelfOpen(false)} /> : null}
       {editing ? <ProcedureManualAssignmentDialog modelCode={models.find((m) => m.modelCodeKey === modelCodeKey)?.modelCode ?? ''} processId={processId} processes={processes} onClose={() => setEditing(false)} onSaved={(key, id) => { setEditing(false); setModelCodeKey(key); setProcessId(id); setVersion((v) => v + 1); }} /> : null}
     </div>
   );

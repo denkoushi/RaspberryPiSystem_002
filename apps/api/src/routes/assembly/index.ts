@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { registerProcedureMaterialRoutes } from './procedure-materials.js';
 import { registerProcedureManualRoutes } from './procedure-manuals.js';
 import { registerAssemblyProcedureDocumentRevisionRoutes } from './procedure-document-revisions.js';
 import {
@@ -757,6 +758,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   await registerBusinessHermesMcpRoutes(app);
   await registerHermesSearchTrialRoutes(app);
 
+  registerProcedureMaterialRoutes(app, { allowView, allowWriteKiosk });
   registerProcedureManualRoutes(app, { allowView, allowWriteKiosk, serializeSequence: serializeProcedureSequence });
 
   registerAssemblyProcedureDocumentRevisionRoutes(app, {

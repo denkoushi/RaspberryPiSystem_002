@@ -101,7 +101,7 @@ describe('GmailStorageProvider', () => {
       expect(mockGmailApiClient.archiveMessage).not.toHaveBeenCalled();
     });
 
-    it('skips item-inventory messages before downloading a broad CSV match', async () => {
+    it.each(['[ItemlistRaspi-photo] 2', '[Procedure-material] DFD1'])('skips dedicated mail %s before other ingestion', async (ownedSubject) => {
       const provider = new GmailStorageProvider({
         oauth2Client,
         accessToken: 'test-access-token',
@@ -119,7 +119,7 @@ describe('GmailStorageProvider', () => {
         payload: {
           headers: [{
             name: 'Subject',
-            value: messageId === 'inventory-message' ? '[ItemlistRaspi-photo] 2' : 'CSV Import',
+            value: messageId === 'inventory-message' ? ownedSubject : 'CSV Import',
           }],
           parts: [],
         },

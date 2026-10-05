@@ -29,6 +29,7 @@ import { RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID } from '../rigging/con
 import { ensureRiggingSlingsInspectionPowerappsDashboard } from '../rigging/slings-inspection-powerapps-dashboard.definition.js';
 import {
   isItemInventoryGmailSubject,
+  isProcedureMaterialGmailSubject,
   isWorkInstructionGmailSubject,
 } from '../gmail/gmail-subject-reservation.policy.js';
 import { ensureScawStfutekigoDashboard } from '../scaw-stfutekigo/dashboard.definition.js';
@@ -334,7 +335,7 @@ export class CsvDashboardImportService {
         if (
           provider === 'gmail' &&
           messageSubject &&
-          (isWorkInstructionGmailSubject(messageSubject) || isItemInventoryGmailSubject(messageSubject))
+          (isWorkInstructionGmailSubject(messageSubject) || isItemInventoryGmailSubject(messageSubject) || isProcedureMaterialGmailSubject(messageSubject))
         ) {
           logger?.info(
             { messageId, messageSubject },

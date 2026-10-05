@@ -10,6 +10,7 @@ import { PlaywrightHtmlToPdfAdapter } from './adapters/playwright-html-to-pdf.ad
 import { resolveGmailApiClientFromBackupConfig } from '../gmail/gmail-api-client.factory.js';
 import {
   isItemInventoryGmailSubject,
+  isProcedureMaterialGmailSubject,
   isWorkInstructionGmailSubject,
 } from '../gmail/gmail-subject-reservation.policy.js';
 
@@ -72,7 +73,7 @@ export async function findEligibleKioskMessages(
       const message = await gmailClient.getMessage(messageId);
       scanned += 1;
       const subject = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject')?.value ?? '';
-      if (isWorkInstructionGmailSubject(subject) || isItemInventoryGmailSubject(subject)) {
+      if (isWorkInstructionGmailSubject(subject) || isItemInventoryGmailSubject(subject) || isProcedureMaterialGmailSubject(subject)) {
         ownedSeen = true;
         logger?.info(
           { messageId, messageSubject: subject },
