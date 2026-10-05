@@ -1020,3 +1020,22 @@ export async function discardProcedureMaterial(id: string) {
 export async function restoreProcedureMaterial(id: string) {
   await api.post(`/assembly/procedure-materials/${encodeURIComponent(id)}/restore`);
 }
+
+export async function createBlankAssemblyProcedureDocument(name: string) {
+  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>('/assembly/procedure-documents/blank', { name });
+  return data.document;
+}
+
+export async function addBlankAssemblyProcedurePage(input: { id: string; accessPassword: string; expectedEditVersion: number }) {
+  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/pages/blank`, { accessPassword: input.accessPassword, expectedEditVersion: input.expectedEditVersion });
+  return data.document;
+}
+
+export async function placeProcedureMaterial(input: { id: string; materialId: string; pageIndex: number; accessPassword: string }) {
+  const { data } = await api.post<{ element: AssemblyProcedureOverlayElement; asset?: AssemblyProcedureOverlayAssetDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/materials/${encodeURIComponent(input.materialId)}/place`, { pageIndex: input.pageIndex, accessPassword: input.accessPassword });
+  return data;
+}
+
+export async function unplaceProcedureMaterial(id: string) {
+  await api.post(`/assembly/procedure-materials/${encodeURIComponent(id)}/unplace`);
+}

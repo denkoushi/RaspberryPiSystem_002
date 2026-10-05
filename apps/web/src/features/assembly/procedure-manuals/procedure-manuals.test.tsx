@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ProcedureManualAssignmentDialog } from './ProcedureManualAssignmentDialog';
@@ -7,9 +8,10 @@ import { ProcedureManualBrowser } from './ProcedureManualBrowser';
 import type { ProcedureManualDetailDto, ProcedureManualProcessDto } from '../types';
 
 const mocks = vi.hoisted(() => ({
-  models: vi.fn(), processes: vi.fn(), detail: vi.fn(), documents: vi.fn(), pdfs: vi.fn(), save: vi.fn(), history: vi.fn()
+  models: vi.fn(), processes: vi.fn(), detail: vi.fn(), documents: vi.fn(), pdfs: vi.fn(), save: vi.fn(), history: vi.fn(), blank: vi.fn()
 }));
 vi.mock('../../../api/client', () => ({
+  createBlankAssemblyProcedureDocument: mocks.blank,
   listProcedureManualModels: mocks.models, listProcedureManualProcesses: mocks.processes,
   getProcedureManualAssignments: mocks.detail, listAssemblyProcedureDocumentSummaries: mocks.documents,
   getAssemblyProcedureDocumentRevisions: mocks.history, getKioskDocuments: mocks.pdfs, replaceProcedureManualAssignments: mocks.save
@@ -47,13 +49,24 @@ describe('procedure-manuals', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it('creates a named blank document and navigates to its editor', async () => {
+    mocks.blank.mockResolvedValue({ id: 'new-document' });
+    render(<MemoryRouter><Routes><Route path="/" element={<ProcedureManualBrowser />} /><Route path="/kiosk/assembly/procedure-documents/:id/edit" element={<p>新規エディタ</p>} /></Routes></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: '白紙から作る' }));
+    expect(screen.getByRole('button', { name: '作成' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('要領書名'), { target: { value: '  新規要領書  ' } });
+    fireEvent.click(screen.getByRole('button', { name: '作成' }));
+    expect(await screen.findByText('新規エディタ')).toBeInTheDocument();
+    expect(mocks.blank).toHaveBeenCalledExactlyOnceWith('新規要領書');
+  });
+
   it('shows model search, then processes, then the assigned sequence and missing-publication notice', async () => {
     mocks.detail.mockResolvedValue({
       ...emptyDetail,
       assignments: [{ id: 'missing', modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', sortOrder: 1, label: '検査資料', unavailableReason: 'no_published_revision', resolvedDocumentId: null }],
       sequence: { ...emptyDetail.sequence, documents: [{ orderItemId: 'one', title: '表示手順' }] }
     });
-    render(<ProcedureManualBrowser />);
+    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
     expect(await screen.findByRole('button', { name: 'DFD1' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '組立工程 > 組立工程' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('機種検索'), { target: { value: 'ｄｆｄ１' } });
@@ -67,7 +80,7 @@ describe('procedure-manuals', () => {
 
   it('shows an empty model list and keeps the creation entry available', async () => {
     mocks.models.mockResolvedValue([]);
-    render(<ProcedureManualBrowser />);
+    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
     expect(await screen.findByText('機種がありません')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '割り当てを編集' })).toBeEnabled();
   });

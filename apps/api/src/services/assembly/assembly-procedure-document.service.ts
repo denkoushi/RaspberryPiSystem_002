@@ -23,6 +23,7 @@ const procedureDocumentInclude = {
     ],
     include: { asset: true }
   },
+  ownedAssets: true,
   revisionMetadata: true
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
 
@@ -37,7 +38,7 @@ export type AssemblyProcedureDocumentRecord = Prisma.AssemblyProcedureDocumentGe
   include: typeof procedureDocumentInclude;
 }>;
 
-export type AssemblyProcedureDocumentSummary = Omit<AssemblyProcedureDocumentRecord, 'overlayElements'> & {
+export type AssemblyProcedureDocumentSummary = Omit<AssemblyProcedureDocumentRecord, 'overlayElements' | 'ownedAssets'> & {
   activeTemplateCount: number;
   totalTemplateCount: number;
 };

@@ -11,6 +11,8 @@ import {
   serializeAssemblyProcedureDocumentRevision
 } from '../../services/assembly/index.js';
 import { ApiError } from '../../lib/errors.js';
+import { AssemblyProcedureDocumentBlankService } from '../../services/assembly/assembly-procedure-document-blank.service.js';
+import { ProcedureMaterialPlacementService } from '../../services/assembly/procedure-material-placement.service.js';
 
 const idParamsSchema = z.object({ id: z.string().uuid() });
 const accessPasswordSchema = z.string().max(128).default('');
@@ -37,6 +39,21 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
   service = new AssemblyProcedureDocumentRevisionService(),
   assetsService = new AssemblyProcedureDocumentAssetsService()
 ): void {
+  app.post('/assembly/procedure-documents/blank', { preHandler: options.allowWriteKiosk }, async (request) => {
+    const body = z.object({ name: z.string().trim().min(1).max(200) }).parse(request.body);
+    return { document: serializeAssemblyProcedureDocumentRevision(await new AssemblyProcedureDocumentBlankService().create(body.name)) };
+  });
+  app.post('/assembly/procedure-documents/:id/pages/blank', { preHandler: options.allowWriteKiosk }, async (request) => {
+    const { id } = idParamsSchema.parse(request.params);
+    const body = z.object({ accessPassword: accessPasswordSchema, expectedEditVersion: z.coerce.number().int().min(0) }).parse(request.body);
+    return { document: serializeAssemblyProcedureDocumentRevision(await service.addBlankPage({ documentId: id, ...body })) };
+  });
+  app.post('/assembly/procedure-documents/:id/materials/:materialId/place', { preHandler: options.allowWriteKiosk }, async (request) => {
+    const { id, materialId } = z.object({ id: z.string().uuid(), materialId: z.string().uuid() }).parse(request.params);
+    const body = z.object({ accessPassword: accessPasswordSchema, pageIndex: z.coerce.number().int().min(0) }).parse(request.body);
+    return new ProcedureMaterialPlacementService().place({ documentId: id, materialId, ...body });
+  });
+
   async function readOverlayMultipart(request: FastifyRequest) {
     if (!request.isMultipart()) throw new ApiError(400, 'マルチパートフォームデータが必要です');
     let bytes: Buffer | null = null;

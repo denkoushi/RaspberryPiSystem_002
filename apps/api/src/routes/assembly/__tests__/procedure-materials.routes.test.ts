@@ -19,15 +19,16 @@ describe('procedure-material routes with mocked Prisma', () => {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     } };
     const store = { read: vi.fn().mockResolvedValue(Buffer.from('photo-original')) };
+    const gc = { collect: vi.fn().mockResolvedValue({ scanned: 3, deleted: 1 }) };
     const ingestion = { runOnce: vi.fn().mockResolvedValue({ scanned: 1, saved: 1, messages: [{ messageId: 'gmail-1', status: 'saved', trashed: true }] }) };
     const loadConfig = vi.fn().mockResolvedValue(defaultBackupConfig);
     app = Fastify(); registerErrorHandler(app);
     registerProcedureMaterialRoutes(app, {
-      service: new ProcedureMaterialService(db as never, store as never), ingestion, loadConfig,
+      service: new ProcedureMaterialService(db as never, store as never), ingestion, loadConfig, gc: gc as never,
       allowView: async () => { if (deny === 'view') throw new ApiError(403, '権限がありません'); },
       allowWriteKiosk: async () => { if (deny === 'write') throw new ApiError(403, '権限がありません'); },
     });
-    return { db, store, ingestion, loadConfig, material };
+    return { db, store, ingestion, loadConfig, material, gc };
   }
   it.each([
     ['unplaced', { documentId: null, placedAt: null, discardedAt: null }],
@@ -73,13 +74,27 @@ describe('procedure-material routes with mocked Prisma', () => {
     db.procedureMaterial.findUnique.mockResolvedValue(null);
     expect((await app.inject({ method: 'POST', url: `${base}/${id}/restore` })).statusCode).toBe(404);
   });
+  it('manually collects unreferenced original files', async () => {
+    const { gc } = harness();
+    const response = await app.inject({ method: 'POST', url: `${base}/gc` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ scanned: 3, deleted: 1 });
+    expect(gc.collect).toHaveBeenCalledOnce();
+  });
+  it('returns a material to the shelf and handles missing materials', async () => {
+    const { db } = harness();
+    expect((await app.inject({ method: 'POST', url: `${base}/${id}/unplace` })).statusCode).toBe(200);
+    expect(db.procedureMaterial.updateMany).toHaveBeenCalledWith({ where: { id }, data: { documentId: null, placedAt: null } });
+    db.procedureMaterial.updateMany.mockResolvedValueOnce({ count: 0 });
+    expect((await app.inject({ method: 'POST', url: `${base}/${id}/unplace` })).statusCode).toBe(404);
+  });
   it('manually ingests while disabled and returns per-message status/counts', async () => {
     const { ingestion } = harness();
     const response = await app.inject({ method: 'POST', url: `${base}/ingest-gmail`, payload: { messageId: 'gmail-1', forceRetry: true } });
     expect(response.statusCode).toBe(200); expect(response.json()).toMatchObject({ saved: 1, messages: [{ status: 'saved', trashed: true }] });
     expect(ingestion.runOnce).toHaveBeenCalledWith({ config: defaultBackupConfig, allowWait: true, manual: true, messageId: 'gmail-1', forceRetry: true });
   });
-  it.each([['GET', base], ['GET', `${base}/${id}/file`], ['POST', `${base}/ingest-gmail`], ['POST', `${base}/${id}/discard`], ['POST', `${base}/${id}/restore`]] as const)('rejects unauthorized %s %s before touching materials', async (method, url) => {
+  it.each([['GET', base], ['GET', `${base}/${id}/file`], ['POST', `${base}/ingest-gmail`], ['POST', `${base}/${id}/discard`], ['POST', `${base}/${id}/restore`], ['POST', `${base}/${id}/unplace`], ['POST', `${base}/gc`]] as const)('rejects unauthorized %s %s before touching materials', async (method, url) => {
     const { db, ingestion, loadConfig } = harness(method === 'GET' ? 'view' : 'write');
     expect((await app.inject({ method, url })).statusCode).toBe(403);
     expect(db.procedureMaterial.findMany).not.toHaveBeenCalled(); expect(db.procedureMaterial.findUnique).not.toHaveBeenCalled(); expect(db.procedureMaterial.updateMany).not.toHaveBeenCalled();

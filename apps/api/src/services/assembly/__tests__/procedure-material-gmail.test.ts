@@ -69,7 +69,7 @@ function harness(parts: GmailMessagePart[] = [textPart('手順'), photoPart()]) 
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => { rows.push(data); return data; }),
   } };
   const gmail = { ...client(), getMessage: vi.fn().mockResolvedValue(message(parts)), searchMessagesAll: vi.fn().mockResolvedValue(['mail-1']), trashMessage: vi.fn().mockResolvedValue(undefined) };
-  const store = { write: vi.fn().mockResolvedValue(undefined), read: vi.fn().mockResolvedValue(image) };
+  const store = { write: vi.fn().mockResolvedValue(undefined), read: vi.fn().mockResolvedValue(image), stat: vi.fn().mockResolvedValue({ isFile: () => true }) };
   const factory = vi.fn().mockResolvedValue(gmail);
   const service = new ProcedureMaterialGmailIngestionService(factory, db as never, store as never);
   const config = { ...defaultBackupConfig, procedureMaterialGmailIngest: { enabled: true, subjectTokens: ['[Procedure-material]'] } };
@@ -161,5 +161,40 @@ describe('procedure-material Gmail ingestion', () => {
     await h.service.runOnce({ config, allowWait: false, manual: true }); expect(h.factory).toHaveBeenCalledWith(config, { allowWait: false });
     expect(buildProcedureMaterialGmailSearchQuery({ enabled: true, subjectTokens: ['invalid'], fromEmail: 'someone@example.com' })).toBe('(subject:"[Procedure-material]") in:inbox is:unread');
     expect(BackupConfigSchema.parse({ storage: { provider: 'local' }, targets: [] }).procedureMaterialGmailIngest).toEqual({ enabled: false, subjectTokens: ['[Procedure-material]'] });
+  });
+  it.each([true, false])('restores an original removed by GC before row registration (reused: %s)', async (reused) => {
+    const h = harness([photoPart()]);
+    const key = `procedure-materials/${createHash('sha256').update(image).digest('hex')}/original`;
+    let exists = reused;
+    const order: string[] = [];
+    h.store.write.mockImplementation(async () => {
+      if (exists) throw new FileStorageAlreadyExistsError();
+      exists = true;
+      order.push(h.rows.length ? 'restored' : 'written');
+    });
+    h.store.read.mockImplementation(async () => {
+      expect(exists).toBe(true);
+      order.push('reused');
+      return image;
+    });
+    const gcDelete = vi.fn(async () => { exists = false; order.push('gc-deleted'); });
+    h.db.procedureMaterial.create.mockImplementation(async ({ data }) => {
+      // GC already selected the unreferenced original; delete before INSERT completes.
+      await gcDelete();
+      h.rows.push(data);
+      order.push('registered');
+      return data;
+    });
+    h.store.stat.mockImplementation(async () => {
+      order.push('stat');
+      expect(h.rows).toHaveLength(1);
+      if (!exists) throw Object.assign(new Error('missing original'), { code: 'ENOENT' });
+      return { isFile: () => true };
+    });
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 1, retryable: 0, messages: [{ trashed: true }] });
+    expect(order).toEqual([reused ? 'reused' : 'written', 'gc-deleted', 'registered', 'stat', 'restored']);
+    expect(h.store.stat).toHaveBeenCalledExactlyOnceWith(key);
+    expect(h.store.write).toHaveBeenLastCalledWith({ key, data: image, mode: 'create', integrity: true });
+    expect(exists).toBe(true);
   });
 });

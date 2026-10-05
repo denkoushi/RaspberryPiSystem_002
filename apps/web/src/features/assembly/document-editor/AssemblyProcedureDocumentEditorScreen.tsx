@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
+import { ProcedureMaterialShelfDialog } from '../procedure-manuals/ProcedureMaterialShelfDialog';
 
 import { AssemblyProcedureDocumentEditorAuthGate } from './AssemblyProcedureDocumentEditorAuthGate';
 import { AssemblyProcedureDocumentEditorCanvas } from './AssemblyProcedureDocumentEditorCanvas';
@@ -14,6 +15,7 @@ import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCan
 
 export function AssemblyProcedureDocumentEditorScreen() {
   const controller = useAssemblyProcedureDocumentEditor();
+  const [materialShelfOpen, setMaterialShelfOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -59,6 +61,7 @@ export function AssemblyProcedureDocumentEditorScreen() {
         canDiscard={controller.canDiscard}
         onBack={controller.navigateBack}
         onToggleSelection={() => controller.setSelectionMode(!controller.selectionMode)}
+        onPlaceMaterial={() => setMaterialShelfOpen(true)}
         onSave={() => void controller.save()}
         onPublish={() => setPublishOpen(true)}
         onDiscard={() => setDiscardOpen(true)}
@@ -70,6 +73,8 @@ export function AssemblyProcedureDocumentEditorScreen() {
           assets={controller.document?.assets}
           selectedPageIndex={selectedPage.pageIndex}
           onSelect={controller.setSelectedPageIndex}
+          onAddBlankPage={() => void controller.addBlankPage()}
+          disabled={controller.readOnly || controller.busy || controller.conflict}
         />
         <section className="relative min-h-0 min-w-0 overflow-hidden bg-slate-950 p-2" aria-label="手順書キャンバス">
           <AssemblyProcedureDocumentEditorCanvas
@@ -115,6 +120,7 @@ export function AssemblyProcedureDocumentEditorScreen() {
         />
       </div>
 
+      {materialShelfOpen ? <ProcedureMaterialShelfDialog onClose={() => setMaterialShelfOpen(false)} onSelect={controller.placeMaterial} /> : null}
       <AssemblyProcedureOverlayTypeDialog
         isOpen={controller.pendingRange != null}
         onClose={controller.cancelPendingRange}

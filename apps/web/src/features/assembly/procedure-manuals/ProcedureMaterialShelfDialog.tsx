@@ -1,13 +1,13 @@
 import { isAxiosError } from 'axios';
 import { useEffect, useRef, useState } from 'react';
 
-import { discardProcedureMaterial, getProcedureMaterialFile, ingestProcedureMaterialsGmail, listProcedureMaterials, restoreProcedureMaterial } from '../../../api/client';
+import { discardProcedureMaterial, getProcedureMaterialFile, ingestProcedureMaterialsGmail, listProcedureMaterials, restoreProcedureMaterial, unplaceProcedureMaterial } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
 import { Dialog } from '../../../components/ui/Dialog';
 import { Input } from '../../../components/ui/Input';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
-import type { ProcedureMaterialDto, ProcedureMaterialIngestResult } from './procedure-material-types';
+import type { ProcedureMaterialDto, ProcedureMaterialIngestResult, ProcedureMaterialState } from './procedure-material-types';
 
 function MaterialPhoto({ material }: { material: ProcedureMaterialDto }) {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -47,10 +47,11 @@ function MaterialPhoto({ material }: { material: ProcedureMaterialDto }) {
     : <p className="flex h-24 w-32 items-center text-sm text-slate-600">{failed ? '写真を取得できません' : '読込中…'}</p>}</div>;
 }
 
-export function ProcedureMaterialShelfDialog({ onClose }: { onClose: () => void }) {
+export function ProcedureMaterialShelfDialog({ onClose, onSelect }: { onClose: () => void; onSelect?: (material: ProcedureMaterialDto) => Promise<void> }) {
+  const selectionMode = Boolean(onSelect);
   const [materials, setMaterials] = useState<ProcedureMaterialDto[]>([]);
   const [q, setQ] = useState('');
-  const [discarded, setDiscarded] = useState(false);
+  const [state, setState] = useState<ProcedureMaterialState>('unplaced');
   const [version, setVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -61,11 +62,11 @@ export function ProcedureMaterialShelfDialog({ onClose }: { onClose: () => void 
     setLoading(true);
     setMaterials([]);
     setError(null);
-    void listProcedureMaterials({ state: discarded ? 'discarded' : 'unplaced', q, limit: 40 }).then((next) => { if (!cancelled) setMaterials(next); })
+    void listProcedureMaterials({ state: selectionMode ? 'unplaced' : state, q, limit: 40 }).then((next) => { if (!cancelled) setMaterials(next); })
       .catch((e: unknown) => { if (!cancelled) setError(isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, '素材を取得できません')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [q, discarded, version]);
+  }, [q, state, version, selectionMode]);
 
   const runNow = async () => {
     setBusy(true); setError(null); setResult(null);
@@ -76,10 +77,18 @@ export function ProcedureMaterialShelfDialog({ onClose }: { onClose: () => void 
   const toggleDiscard = async (material: ProcedureMaterialDto) => {
     setBusy(true); setError(null);
     try {
-      if (material.discardedAt) await restoreProcedureMaterial(material.id);
+      if (material.documentId || material.placedAt) await unplaceProcedureMaterial(material.id);
+      else if (material.discardedAt) await restoreProcedureMaterial(material.id);
       else await discardProcedureMaterial(material.id);
       setVersion((v) => v + 1);
     } catch (e) { setError(isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, '素材を変更できません')); }
+    finally { setBusy(false); }
+  };
+  const selectMaterial = async (material: ProcedureMaterialDto) => {
+    if (!onSelect || busy) return;
+    setBusy(true); setError(null);
+    try { await onSelect(material); onClose(); }
+    catch (e) { setError(isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, '素材を配置できません')); }
     finally { setBusy(false); }
   };
   return (
@@ -89,10 +98,10 @@ export function ProcedureMaterialShelfDialog({ onClose }: { onClose: () => void 
         <Button variant="secondary" className="min-h-11 shrink-0" disabled={busy} onClick={() => void runNow()}>{busy ? '処理中…' : '今すぐ取り込む'}</Button>
         <Button variant="ghost" className="min-h-11 shrink-0" onClick={onClose}>閉じる</Button>
       </div>
-      <div className="mt-2 flex shrink-0 gap-2">
-        <Button variant={discarded ? 'ghost' : 'primary'} className="min-h-11" aria-pressed={!discarded} onClick={() => setDiscarded(false)}>未配置</Button>
-        <Button variant={discarded ? 'primary' : 'ghost'} className="min-h-11" aria-pressed={discarded} onClick={() => setDiscarded(true)}>捨てた素材</Button>
-      </div>
+      {!onSelect ? <div className="mt-2 flex shrink-0 flex-wrap gap-2">
+        {([['unplaced', '未配置'], ['placed', '配置済み'], ['discarded', '捨てた素材']] as const).map(([value, label]) =>
+          <Button key={value} variant={state === value ? 'primary' : 'ghost'} className="min-h-11" aria-pressed={state === value} disabled={busy} onClick={() => setState(value)}>{label}</Button>)}
+      </div> : null}
       {error ? <p role="alert" className="mt-2 shrink-0 text-sm text-red-700">{error}</p> : null}
       {result ? <div role="status" className="mt-2 max-h-24 shrink-0 overflow-auto text-sm text-slate-600">
         <p>取込 {result.saved}件・保存済み {result.duplicate}件・スキップ {result.skipped}通・再試行 {result.retryable}通・除外添付 {result.skippedAttachments}件</p>
@@ -107,7 +116,8 @@ export function ProcedureMaterialShelfDialog({ onClose }: { onClose: () => void 
               <p className="mt-2 truncate text-xs text-slate-600" title={material.subjectHint ?? undefined}>{material.subjectHint || 'ヒントなし'}</p>
               <p className="truncate text-xs text-slate-600">{new Date(material.receivedAt).toLocaleString('ja-JP')} · {material.fromEmail || '送信元不明'}</p>
             </div>
-            <Button variant="ghost" className="min-h-11 shrink-0" disabled={busy || Boolean(material.documentId || material.placedAt)} onClick={() => void toggleDiscard(material)}>{material.discardedAt ? '戻す' : '捨てる'}</Button>
+            {onSelect ? <Button className="min-h-11 shrink-0" disabled={busy} onClick={() => void selectMaterial(material)}>配置</Button>
+              : <Button variant="ghost" className="min-h-11 shrink-0" disabled={busy} onClick={() => void toggleDiscard(material)}>{material.documentId || material.placedAt ? '配置を取り消す' : material.discardedAt ? '戻す' : '捨てる'}</Button>}
           </li>)}
         </ul>
       </div>

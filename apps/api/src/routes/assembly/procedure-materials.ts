@@ -6,6 +6,8 @@ import type { BackupConfig } from '../../services/backup/backup-config.js';
 import { ProcedureMaterialService } from '../../services/assembly/procedure-material.service.js';
 import { getProcedureMaterialGmailIngestionService, type ProcedureMaterialGmailIngestionService } from '../../services/assembly/procedure-material-gmail-ingestion.service.js';
 
+import { ProcedureMaterialGcService } from '../../services/assembly/procedure-material-gc.service.js';
+
 const querySchema = z.object({
   state: z.enum(['unplaced', 'placed', 'discarded', 'all']).default('unplaced'),
   q: z.string().trim().max(200).optional(),
@@ -17,6 +19,7 @@ const ingestSchema = z.object({ messageId: z.string().min(1).max(200).optional()
 export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   allowView: preHandlerHookHandler; allowWriteKiosk: preHandlerHookHandler;
   service?: ProcedureMaterialService;
+  gc?: ProcedureMaterialGcService;
   ingestion?: Pick<ProcedureMaterialGmailIngestionService, 'runOnce'>;
   loadConfig?: () => Promise<BackupConfig>;
 }) {
@@ -31,6 +34,11 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
     const body = ingestSchema.parse(request.body ?? {});
     const config = await (options.loadConfig ?? BackupConfigLoader.load)();
     return (options.ingestion ?? getProcedureMaterialGmailIngestionService()).runOnce({ config, allowWait: true, manual: true, ...body });
+  });
+  app.post(`${path}/gc`, { preHandler: options.allowWriteKiosk }, async () => (options.gc ?? new ProcedureMaterialGcService()).collect());
+  app.post(`${path}/:id/unplace`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    await service.unplace(paramsSchema.parse(request.params).id);
+    return { saved: true };
   });
   for (const action of ['discard', 'restore'] as const) {
     app.post(`${path}/:id/${action}`, { preHandler: options.allowWriteKiosk }, async (request) => {

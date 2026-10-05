@@ -98,6 +98,7 @@ describe('assembly procedure document revision serializers', () => {
         }
       ],
       overlayElements: [row],
+      ownedAssets: [{ ...row.asset, id: 'pending-photo', storageKey: 'assembly-procedure-assets/pending.png', ownerDocumentId: 'document-1' }],
       revisionMetadata: {
         id: 'revision-1',
         documentId: 'document-1',
@@ -119,6 +120,12 @@ describe('assembly procedure document revision serializers', () => {
       editVersion: 3,
       pages: [{ pageIndex: 0, overlays: [{ id: 'overlay-image', kind: 'IMAGE' }] }],
       assets: {
+        'pending-photo': {
+          assetId: 'pending-photo',
+          url: '/api/storage/assembly-procedure-assets/pending.png',
+          contentType: 'image/png',
+          byteSize: 42
+        },
         'asset-1': {
           url: '/api/storage/assembly-procedure-assets/image.png',
           storageKey: 'assembly-procedure-assets/nested/image.png'

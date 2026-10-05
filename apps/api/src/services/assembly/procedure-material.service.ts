@@ -25,6 +25,11 @@ export class ProcedureMaterialService {
     return { bytes, contentType: material.contentType ?? 'application/octet-stream' };
   }
 
+  async unplace(id: string) {
+    const updated = await this.db.procedureMaterial.updateMany({ where: { id }, data: { documentId: null, placedAt: null } });
+    if (!updated.count) throw new ApiError(404, '素材がありません');
+  }
+
   async setDiscarded(id: string, discarded: boolean) {
     // The conditional update also guards concurrent placement in Phase 2b.
     const updated = await this.db.procedureMaterial.updateMany({
