@@ -110,6 +110,7 @@ describe('procedure-manual service', () => {
 
 describe('procedure-manual document reference guards', () => {
   beforeEach(() => {
+    vi.spyOn(prisma.procedureVideoLink, 'count').mockResolvedValue(0);
     vi.spyOn(prisma.assemblyProcedureOrderItem, 'count').mockResolvedValue(0);
     vi.spyOn(prisma.assemblyTemplate, 'count').mockResolvedValue(0);
     vi.spyOn(prisma.assemblyTemplateProcedureItem, 'count').mockResolvedValue(0);

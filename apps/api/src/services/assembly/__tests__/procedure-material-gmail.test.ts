@@ -37,10 +37,10 @@ describe('procedure-material Gmail packet', () => {
     expect(packet.text).toBe('手順'); expect(packet.photos).toHaveLength(2);
     expect(packet.photos[0]?.gmailDedupeKey).not.toBe(packet.photos[1]?.gmailDedupeKey);
   });
-  it('skips PDF, video, inline and oversized images without fetching their bytes', async () => {
+  it('skips PDF, unsupported video, inline and oversized images without fetching their bytes', async () => {
     const attachmentClient = client();
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([
-      photoPart('video.mp4', { mimeType: 'video/mp4' }), photoPart('file.pdf', { mimeType: 'application/pdf' }),
+      photoPart('video.avi', { mimeType: 'video/x-msvideo' }), photoPart('file.pdf', { mimeType: 'application/pdf' }),
       photoPart('inline.png', { headers: [{ name: 'Content-Disposition', value: 'inline' }] }),
       photoPart('cid.png', { headers: [{ name: 'Content-ID', value: '<cid>' }] }),
       photoPart('large.png', { body: { attachmentId: 'large', size: 10 * 1024 * 1024 + 1 } }),
@@ -63,7 +63,7 @@ describe('procedure-material Gmail packet', () => {
 
 function harness(parts: GmailMessagePart[] = [textPart('手順'), photoPart()]) {
   const rows: Array<Record<string, unknown>> = [];
-  const db = { procedureMaterial: {
+  const db = { procedureVideo: { findMany: vi.fn().mockResolvedValue([]) }, procedureMaterial: {
     findMany: vi.fn(async () => rows),
     findUnique: vi.fn(async ({ where }: { where: { gmailDedupeKey: string } }) => rows.find((r) => r.gmailDedupeKey === where.gmailDedupeKey)),
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => { rows.push(data); return data; }),
@@ -115,8 +115,8 @@ describe('procedure-material Gmail ingestion', () => {
     }
   });
   it('does not trash an empty body with only unsupported attachments', async () => {
-    const h = harness([textPart('  \n '), photoPart('video.mp4', { mimeType: 'video/mp4' })]);
-    expect(await h.service.runOnce({ config: h.config, allowWait: true })).toMatchObject({ saved: 0, skipped: 1, skippedAttachments: 1, messages: [{ reason: '本文が空で、対応する写真がありません', trashed: false }] });
+    const h = harness([textPart('  \n '), photoPart('video.avi', { mimeType: 'video/x-msvideo' })]);
+    expect(await h.service.runOnce({ config: h.config, allowWait: true })).toMatchObject({ saved: 0, skipped: 1, skippedAttachments: 1, messages: [{ reason: '本文が空で、対応する写真・動画がありません', trashed: false }] });
     expect(h.gmail.trashMessage).not.toHaveBeenCalled(); expect(h.rows).toEqual([]);
   });
   it('skips mismatching senders and non-leading subjects before attachments or DB writes', async () => {

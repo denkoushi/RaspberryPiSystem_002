@@ -1,3 +1,4 @@
+import { registerProcedureVideoRoutes } from './procedure-videos.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { registerProcedureMaterialRoutes } from './procedure-materials.js';
@@ -760,6 +761,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   await registerHermesSearchTrialRoutes(app);
 
   registerProcedureMaterialRoutes(app, { allowView, allowWriteKiosk });
+  registerProcedureVideoRoutes(app, { allowView, allowWriteKiosk });
   registerProcedureManualRoutes(app, { allowView, allowWriteKiosk, serializeSequence: serializeProcedureSequence });
 
   registerAssemblyProcedureDocumentRevisionRoutes(app, {

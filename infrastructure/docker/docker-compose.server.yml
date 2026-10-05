@@ -115,6 +115,8 @@ services:
       - knowledge-assets-storage:/app/storage/knowledge-assets
       # 要領書の Gmail 素材（不変blob。未マウントだと再作成で消失）
       - procedure-materials-storage:/app/storage/procedure-materials
+      # 要領書の動画（SD 変換済み。未マウントだと再作成で消失）
+      - procedure-videos-storage:/app/storage/procedure-videos
       - knowledge-git-storage:/app/storage/knowledge-git
       # 計測機器ジャンル点検画像（未マウントだとコンテナ再作成でファイル消失）
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
@@ -359,6 +361,13 @@ volumes:
       type: none
       o: bind
       device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/procedure-materials
+  procedure-videos-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_procedure-videos-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/procedure-videos
   knowledge-git-storage:
     name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-git-storage
     driver: local

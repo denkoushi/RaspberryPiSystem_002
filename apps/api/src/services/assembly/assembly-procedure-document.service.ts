@@ -1,3 +1,4 @@
+import { procedureVideoLinksInclude } from './procedure-video.service.js';
 import { PrismaKnowledgeReviewerRepository } from '../knowledge/prisma-knowledge-reviewer.repository.js';
 import type { KnowledgeReviewEmployee } from '../knowledge/knowledge-position-rank.js';
 import { procedureManualApprovalInclude } from './assembly-procedure-document-revision.serializer.js';
@@ -27,6 +28,7 @@ const procedureDocumentInclude = {
     include: { asset: true }
   },
   ownedAssets: true,
+  procedureVideoLinks: procedureVideoLinksInclude,
   procedureManualApprovals: procedureManualApprovalInclude,
   revisionMetadata: true
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
@@ -43,7 +45,7 @@ export type AssemblyProcedureDocumentRecord = Prisma.AssemblyProcedureDocumentGe
   include: typeof procedureDocumentInclude;
 }>;
 
-export type AssemblyProcedureDocumentSummary = Omit<AssemblyProcedureDocumentRecord, 'overlayElements' | 'ownedAssets'> & {
+export type AssemblyProcedureDocumentSummary = Omit<AssemblyProcedureDocumentRecord, 'overlayElements' | 'ownedAssets' | 'procedureVideoLinks'> & {
   activeTemplateCount: number;
   totalTemplateCount: number;
 };
@@ -551,6 +553,9 @@ export class AssemblyProcedureDocumentService {
       });
       if (!doc) return 'not_found' as const;
 
+      if (await tx.procedureVideoLink.count({ where: { assemblyProcedureDocumentId: id } })) {
+        throw new ApiError(409, '動画が紐づいている手順書は削除できません');
+      }
       const usage = await this.getReferenceUsage(id, tx);
       if (this.isReferenced(usage)) return 'in_use' as const;
 

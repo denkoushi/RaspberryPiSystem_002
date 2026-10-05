@@ -1,3 +1,4 @@
+import { procedureVideoLinksInclude, videosForPage } from './procedure-video.service.js';
 import { procedureManualApprovalInclude, serializeLastProcedureManualApproval } from './assembly-procedure-document-revision.serializer.js';
 import { Prisma } from '@prisma/client';
 
@@ -25,6 +26,7 @@ export type ProcedureManualAssignmentInput = {
 
 const assemblyDocumentInclude = {
   procedureManualApprovals: procedureManualApprovalInclude,
+  procedureVideoLinks: procedureVideoLinksInclude,
   pages: { orderBy: { pageIndex: 'asc' as const } },
   overlayElements: {
     orderBy: [{ pageIndex: 'asc' as const }, { zIndex: 'asc' as const }, { createdAt: 'asc' as const }],
@@ -105,7 +107,7 @@ export class ProcedureManualService {
         new Map(assemblyDocument ? [[assemblyDocument.id, assemblyDocument.pages]] : []),
         new Map(assemblyDocument ? [[assemblyDocument.id, assemblyDocument.overlayElements]] : [])
       );
-      return { assignment, document: document ? { ...document, lastApproval: serializeLastProcedureManualApproval(assemblyDocument?.procedureManualApprovals) } : null };
+      return { assignment, document: document ? { ...document, pages: document.pages.map((page) => ({ ...page, videos: videosForPage(assemblyDocument?.procedureVideoLinks, page.pageIndex) })), lastApproval: serializeLastProcedureManualApproval(assemblyDocument?.procedureManualApprovals) } : null };
     }));
     const documents = resolved.flatMap(({ document }) => document ? [document] : []);
     const sequence: AssemblyProcedureSequence = {
