@@ -24,7 +24,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [ ] 実機確認(オーナー): 組立ホームの「要領書」入口、割り当て編集で型番×工程に公開済み手順書を置いて閲覧できること。実 PostgreSQL 上での並び置換は本番操作で確認する。
 - [x] (2026-10-05) Phase 2a ローカル実装: 専用件名の Gmail 本文・写真素材取込、素材棚、手動 API、管理カード、5分ごとの組込みスケジュールを追加。commit / push / PR / merge / deploy は未実施。
 - [x] (2026-10-05) Phase 2a 指定検証: API lint / vitest 4ファイル80件 / build用 tsc、Web lint / vitest 4ファイル13件 / build が成功。追加の既存取込・スケジュール回帰は7ファイル71件が成功。Prisma Client 生成成功。
-- [ ] Phase 2a 本番反映前: `procedure-materials` の永続マウントを infrastructure の別依頼で追加する。新 migration の実 DB 適用と実メール・端末確認は未実施。
+- [x] (2026-10-05) Phase 2a: `procedure-materials` の永続マウントを同じ PR で追加(Pi5 保存先契約、Compose server/phase3、API イメージ、ローカル override、リリース演習・volume materializer・Drive DR の各一覧)。使い捨て PostgreSQL で migration 適用を確認。Codex レビューの 3 指摘(管理カードの保存経路、スキップ再試行、写真の遅延取得)を修正。CodeQL の指摘でメール HTML のテキスト化を正規表現から前方走査に書き換えた。
+- [x] (2026-10-05) PR #1696 を main へ squash merge(merge `424c848fddd71202880e17e46d4a42042f3425d7`)、main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-032317-829f58`、`Result=success`、recap `ok=269 changed=33 unreachable=0 failed=0`)、`/api/system/health` 200(fileStorage ok)。取込は既定 無効のまま。
+- [ ] 実機確認(オーナー): 管理画面 CSV 取込の「要領書の素材(Gmail)」カードで有効化し、件名 `[Procedure-material]` のメール(本文と写真)を送って、要領書ページの「素材」に出ること。実 Gmail での取込は未確認。
 - [ ] Phase 2b: 白紙ページ追加と素材の配置。
 - [ ] Phase 2c: NFC 承認による公開。
 - [ ] Phase 3: ナレッジ素材・承認済み手順の片方向連携。
