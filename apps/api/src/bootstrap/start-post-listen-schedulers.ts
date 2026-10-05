@@ -1,3 +1,4 @@
+import { getProcedureVideoScheduler } from '../services/assembly/procedure-video.scheduler.js';
 import type { FastifyInstance } from 'fastify';
 import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js';
 import { logger } from '../lib/logger.js';
@@ -189,6 +190,7 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
         getKioskDocumentGmailScheduler().stop();
       },
     },
+    { name: 'procedure-video', start: () => getProcedureVideoScheduler().start(), stop: () => getProcedureVideoScheduler().stop() },
     {
       name: 'kiosk-document-ocr',
       start: async () => {
@@ -301,6 +303,7 @@ export function listPostListenSchedulerNames(): string[] {
     'backup',
     'csv-import',
     'kiosk-document-gmail',
+    'procedure-video',
     'kiosk-document-ocr',
     'work-instruction-gmail',
     'gmail-trash-cleanup',

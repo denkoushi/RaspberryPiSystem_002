@@ -1071,3 +1071,27 @@ export async function importProcedureKnowledge(candidateKeys: string[]) {
   const { data } = await api.post<import('../../features/assembly/procedure-manuals/procedure-material-types').ProcedureKnowledgeImportResult>('/assembly/procedure-materials/import-knowledge', { candidateKeys });
   return data;
 }
+
+export async function listProcedureVideos(params: { state?: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoState; q?: string; limit?: number } = {}) {
+  const { data } = await api.get<{ videos: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoDto[] }>('/assembly/procedure-videos', { params });
+  return data.videos;
+}
+export async function getProcedureVideoFile(id: string, signal?: AbortSignal) {
+  const { data } = await api.get<Blob>(`/assembly/procedure-videos/${encodeURIComponent(id)}/file`, { responseType: 'blob', signal });
+  return data;
+}
+export async function getProcedureVideoPoster(id: string) {
+  const { data } = await api.get<Blob>(`/assembly/procedure-videos/${encodeURIComponent(id)}/poster`, { responseType: 'blob' });
+  return data;
+}
+export async function retryProcedureVideo(id: string) { await api.post(`/assembly/procedure-videos/${encodeURIComponent(id)}/retry`); }
+export async function discardProcedureVideo(id: string) { await api.post(`/assembly/procedure-videos/${encodeURIComponent(id)}/discard`); }
+export async function restoreProcedureVideo(id: string) { await api.post(`/assembly/procedure-videos/${encodeURIComponent(id)}/restore`); }
+export async function getProcedurePageVideos(id: string, pageIndex: number) {
+  const { data } = await api.get<{ videos: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoSummaryDto[] }>(`/assembly/procedure-documents/${encodeURIComponent(id)}/pages/${pageIndex}/videos`);
+  return data.videos;
+}
+export async function replaceProcedurePageVideos(id: string, pageIndex: number, videoIds: string[], accessPassword: string) {
+  const { data } = await api.put<{ videos: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoSummaryDto[] }>(`/assembly/procedure-documents/${encodeURIComponent(id)}/pages/${pageIndex}/videos`, { videoIds, accessPassword });
+  return data.videos;
+}

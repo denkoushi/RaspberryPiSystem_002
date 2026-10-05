@@ -1,3 +1,4 @@
+import { videosForPage, type ProcedureVideoSummary } from './procedure-video.service.js';
 import {
   type AssemblyProcedureImageObjectFit,
   type AssemblyProcedureOverlayElement,
@@ -20,6 +21,7 @@ export function serializeLastProcedureManualApproval(approvals?: ProcedureManual
 
 type AssemblyProcedureDocumentRevisionSerializationInput = {
   procedureManualApprovals?: ProcedureManualApprovalSnapshot[];
+  procedureVideoLinks?: Array<{ pageIndex: number; video: ProcedureVideoSummary & { discardedAt?: Date | null } }>;
   id: string;
   name: string;
   imageRelativePath: string;
@@ -67,6 +69,7 @@ export type AssemblyProcedureDocumentRevisionDto = {
     imageRelativePath: string;
     assetId: string | null;
     overlays: AssemblyProcedureOverlayElement[];
+    videos: ProcedureVideoSummary[];
   }>;
   assets: Record<string, {
     assetId: string;
@@ -184,6 +187,7 @@ export function serializeAssemblyProcedureDocumentRevision(
       pageIndex: page.pageIndex,
       imageRelativePath: page.imageRelativePath,
       assetId: null,
+      videos: videosForPage(doc.procedureVideoLinks, page.pageIndex),
       overlays: overlaysByPage.get(page.pageIndex) ?? []
     }))
   };

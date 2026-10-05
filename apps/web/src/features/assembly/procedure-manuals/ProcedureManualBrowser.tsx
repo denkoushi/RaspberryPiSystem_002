@@ -10,6 +10,8 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { ProcedureManualAssignmentDialog, procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
+import { ProcedurePageVideoStrip } from './ProcedurePageVideoStrip';
+import { ProcedureVideoShelfDialog } from './ProcedureVideoShelfDialog';
 
 import type { AssemblyProcedureSequencePageDto, ProcedureManualDetailDto, ProcedureManualModelDto, ProcedureManualProcessDto } from '../types';
 
@@ -36,12 +38,13 @@ export function ProcedureManualBrowser() {
   const [detail, setDetail] = useState<ProcedureManualDetailDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [videoShelfOpen, setVideoShelfOpen] = useState(false);
   const [shelfOpen, setShelfOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [version, setVersion] = useState(0);
-  const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
-  const onPageChange = useCallback((page: AssemblyProcedureSequencePageDto | null) => setCurrentDocumentId(page?.documentId ?? null), []);
-  const approval = detail?.sequence.documents.find(document => (document.assemblyProcedureDocumentId ?? document.kioskDocumentId) === currentDocumentId)?.lastApproval;
+  const [currentPage, setCurrentPage] = useState<AssemblyProcedureSequencePageDto | null>(null);
+  const onPageChange = useCallback((page: AssemblyProcedureSequencePageDto | null) => setCurrentPage(page), []);
+  const approval = detail?.sequence.documents.find(document => (document.assemblyProcedureDocumentId ?? document.kioskDocumentId) === currentPage?.documentId)?.lastApproval;
 
   useEffect(() => {
     let cancelled = false;
@@ -55,7 +58,7 @@ export function ProcedureManualBrowser() {
   useEffect(() => {
     let cancelled = false;
     setDetail(null);
-    setCurrentDocumentId(null);
+    setCurrentPage(null);
     setError(null);
     if (!modelCodeKey || !processId) return;
     void getProcedureManualAssignments(modelCodeKey, processId).then((next) => { if (!cancelled) setDetail(next); })
@@ -70,6 +73,7 @@ export function ProcedureManualBrowser() {
       <div className="flex shrink-0 flex-wrap justify-end gap-2 border-b border-[#27313b] px-3 py-2">
         <Button variant="ghostOnDark" className="min-h-11 text-sm" onClick={() => { setBlankName(''); setBlankError(null); setBlankOpen(true); }}>白紙から作る</Button>
         <Button variant="ghostOnDark" className="min-h-11 text-sm" onClick={() => setShelfOpen(true)}>素材</Button>
+        <Button variant="ghostOnDark" className="min-h-11 text-sm" onClick={() => setVideoShelfOpen(true)}>動画</Button>
         <Button variant="ghostOnDark" className="min-h-11 text-sm" disabled={loading || processes.length === 0} onClick={() => setEditing(true)}>割り当てを編集</Button>
       </div>
       {error ? <p role="alert" className="px-3 py-2 text-sm text-red-400">{error}</p> : null}
@@ -88,6 +92,7 @@ export function ProcedureManualBrowser() {
           {!processId ? <p className="p-2 text-sm text-[#9fadb9]">工程を選択</p> : !detail && !error ? <p role="status">読込中…</p> : null}
           {detail?.assignments.filter((a) => a.unavailableReason).map((item) => <p key={item.id} role="status" className="p-2 text-sm text-[#f6b93b]">{item.label || `${item.sortOrder + 1}番目の文書`}: {item.unavailableReason === 'no_published_revision' ? '公開版なし' : '文書は無効です'}</p>)}
           {detail && detail.sequence.documents.length > 0 ? <AssemblyProcedureSequenceViewer key={`${modelCodeKey}:${processId}:${version}`} sequence={detail.sequence} showCurrentMarkerButton={false} onCurrentPageChange={onPageChange} className="min-h-0 flex-1" /> : detail ? <p className="p-2 text-sm text-[#9fadb9]">表示できる文書がありません</p> : null}
+          {currentPage ? <ProcedurePageVideoStrip key={`${currentPage.documentId}:${currentPage.pageIndex}`} videos={currentPage.videos ?? []} /> : null}
           {approval ? <p className="shrink-0 px-2 py-1 text-xs text-[#9fadb9]">承認: {approval.employeeName}{approval.positionName ? `(${approval.positionName})` : ''} {new Date(approval.approvedAt).toLocaleString('ja-JP')}</p> : null}
         </section>
       </div>
@@ -98,6 +103,7 @@ export function ProcedureManualBrowser() {
           <Button type="submit" className="min-h-11" disabled={blankBusy || !blankName.trim()}>{blankBusy ? '作成中…' : '作成'}</Button>
         </form>
       </Dialog> : null}
+      {videoShelfOpen ? <ProcedureVideoShelfDialog onClose={() => setVideoShelfOpen(false)} /> : null}
       {shelfOpen ? <ProcedureMaterialShelfDialog onClose={() => setShelfOpen(false)} /> : null}
       {editing ? <ProcedureManualAssignmentDialog modelCode={models.find((m) => m.modelCodeKey === modelCodeKey)?.modelCode ?? ''} processId={processId} processes={processes} onClose={() => setEditing(false)} onSaved={(key, id) => { setEditing(false); setModelCodeKey(key); setProcessId(id); setVersion((v) => v + 1); }} /> : null}
     </div>

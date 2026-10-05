@@ -1,3 +1,4 @@
+import { procedureVideoLinksInclude } from './procedure-video.service.js';
 import { procedureManualApprovalInclude } from './assembly-procedure-document-revision.serializer.js';
 import { randomUUID } from 'node:crypto';
 
@@ -47,6 +48,7 @@ const revisionDocumentInclude = {
     }
   },
   ownedAssets: true,
+  procedureVideoLinks: procedureVideoLinksInclude,
   procedureManualApprovals: procedureManualApprovalInclude,
   revisionMetadata: true
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
@@ -228,6 +230,9 @@ export class AssemblyProcedureDocumentRevisionService {
           imageRelativePath: page.imageRelativePath
         }))
       });
+      if (sourceRecord.procedureVideoLinks?.length) {
+        await tx.procedureVideoLink.createMany({ data: sourceRecord.procedureVideoLinks.map((link) => ({ videoId: link.videoId, pageIndex: link.pageIndex, sortOrder: link.sortOrder, assemblyProcedureDocumentId: created.id })) });
+      }
       if (sourceRecord.overlayElements.length > 0) {
         await tx.assemblyProcedureOverlayElement.createMany({
           data: sourceRecord.overlayElements.map((overlay) => ({
@@ -450,6 +455,8 @@ export class AssemblyProcedureDocumentRevisionService {
         where: { documentId: previousDocumentId },
         data: { isRevisionHead: true }
       });
+      // Explicitly discard the draft attachments; published-version links remain.
+      await tx.procedureVideoLink.deleteMany({ where: { assemblyProcedureDocumentId: doc.id } });
       try {
         // A discarded DRAFT is not a published history node. Removing it
         // clears its overlay/page references and makes abandoned assets

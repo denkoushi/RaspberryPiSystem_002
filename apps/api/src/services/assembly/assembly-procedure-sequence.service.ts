@@ -1,3 +1,4 @@
+import type { ProcedureVideoSummary } from './procedure-video.service.js';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { PdfStorageRenderAdapter } from '../kiosk-documents/adapters/pdf-storage-render.adapter.js';
@@ -27,6 +28,7 @@ import {
 export type AssemblyProcedureSequenceFallbackReason = 'not_configured' | 'no_enabled_documents' | 'no_page_images';
 
 export type AssemblyProcedureSequencePage = {
+  videos?: ProcedureVideoSummary[];
   source: 'kiosk_document' | 'assembly_procedure_document';
   documentId: string;
   pageIndex: number;

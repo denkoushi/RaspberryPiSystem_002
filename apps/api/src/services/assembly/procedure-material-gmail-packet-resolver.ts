@@ -4,12 +4,15 @@ import sharp from 'sharp';
 import type { GmailMessage, GmailMessagePart } from '../backup/gmail-api-client.js';
 
 export const PROCEDURE_MATERIAL_MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+export const PROCEDURE_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
+const VIDEO_FORMATS = new Set(['video/mp4', 'video/quicktime', 'video/3gpp', 'video/x-m4v']);
 const PHOTO_FORMATS: Record<string, string> = { 'image/jpeg': 'jpeg', 'image/png': 'png', 'image/webp': 'webp' };
 export type ProcedureMaterialAttachmentClient = { getAttachment: (messageId: string, attachmentId: string) => Promise<Buffer> };
 export type ProcedureMaterialPhoto = {
   gmailDedupeKey: string; filename: string; buffer: Buffer; sha256: string; contentType: string; width: number; height: number;
 };
-export type ProcedureMaterialPacket = { text: string | null; photos: ProcedureMaterialPhoto[]; duplicate: number; skippedAttachments: number; warnings: string[] };
+export type ProcedureMaterialVideo = Pick<ProcedureMaterialPhoto, 'gmailDedupeKey' | 'filename' | 'buffer' | 'sha256' | 'contentType'>;
+export type ProcedureMaterialPacket = { text: string | null; photos: ProcedureMaterialPhoto[]; videos: ProcedureMaterialVideo[]; duplicate: number; skippedAttachments: number; warnings: string[] };
 
 export function materialMessageHeader(message: GmailMessage, name: string): string {
   return message.payload?.headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
@@ -59,7 +62,7 @@ function htmlToText(html: string): string {
 export async function resolveProcedureMaterialGmailPacket(params: {
   message: GmailMessage; client: ProcedureMaterialAttachmentClient; savedKeys?: ReadonlySet<string>;
 }): Promise<ProcedureMaterialPacket> {
-  const packet: ProcedureMaterialPacket = { text: null, photos: [], duplicate: 0, skippedAttachments: 0, warnings: [] };
+  const packet: ProcedureMaterialPacket = { text: null, photos: [], videos: [], duplicate: 0, skippedAttachments: 0, warnings: [] };
   const plain: GmailMessagePart[] = [];
   const html: GmailMessagePart[] = [];
   const attachments: Array<{ part: GmailMessagePart; path: string }> = [];
@@ -95,6 +98,19 @@ export async function resolveProcedureMaterialGmailPacket(params: {
     const filename = part.filename?.normalize('NFC').trim() || 'photo';
     const contentType = part.mimeType?.trim().toLowerCase() ?? '';
     const key = `${params.message.id}:${createHash('sha256').update(`${filename}\n${part.partId ?? path}`).digest('hex')}`;
+    if (VIDEO_FORMATS.has(contentType)) {
+      if ((part.body?.size ?? 0) > PROCEDURE_VIDEO_MAX_BYTES) {
+        packet.skippedAttachments++; packet.warnings.push(`${filename}: 25 MB超過`); continue;
+      }
+      if (params.savedKeys?.has(key)) { packet.duplicate++; continue; }
+      // eslint-disable-next-line no-await-in-loop
+      const buffer = await bytes(part);
+      if (buffer.length > PROCEDURE_VIDEO_MAX_BYTES) {
+        packet.skippedAttachments++; packet.warnings.push(`${filename}: 25 MB超過`); continue;
+      }
+      packet.videos.push({ gmailDedupeKey: key, filename, buffer, contentType, sha256: createHash('sha256').update(buffer).digest('hex') });
+      continue;
+    }
     if (!PHOTO_FORMATS[contentType] || (part.body?.size ?? 0) > PROCEDURE_MATERIAL_MAX_PHOTO_BYTES) {
       packet.skippedAttachments++;
       packet.warnings.push(`${filename}: 対応外の添付または10 MB超過`);

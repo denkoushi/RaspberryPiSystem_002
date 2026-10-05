@@ -1,3 +1,4 @@
+import type { ProcedureVideoSummaryDto } from './procedure-manuals/procedure-video-types';
 import type {
   AssemblyProcedureOverlayElement,
   TorqueWrenchSettingVerificationMode
@@ -30,6 +31,7 @@ export type AssemblyProcedureTextCandidateDto = {
 export type AssemblyProcedureDocumentStatusDto = 'draft' | 'published';
 
 export type AssemblyProcedureDocumentPageDto = {
+  videos?: ProcedureVideoSummaryDto[];
   pageIndex: number;
   imageRelativePath: string;
   assetId?: string | null;
@@ -421,6 +423,7 @@ export type AssemblyProcedureSequenceItemDto = {
 };
 
 export type AssemblyProcedureSequencePageDto = {
+  videos?: ProcedureVideoSummaryDto[];
   source: 'kiosk_document' | 'assembly_procedure_document';
   documentId: string;
   pageIndex: number;

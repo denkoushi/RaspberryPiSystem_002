@@ -4,6 +4,7 @@ export const DURABLE_FILE_NAMESPACES = [
   'photos',
   'knowledge-assets',
   'procedure-materials',
+  'procedure-videos',
   'thumbnails',
   'pdfs',
   'part-measurement-drawings',
