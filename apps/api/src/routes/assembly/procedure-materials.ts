@@ -26,7 +26,7 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   const service = options.service ?? new ProcedureMaterialService();
   const path = '/assembly/procedure-materials';
   app.get(path, { preHandler: options.allowView }, async (request) => ({ materials: await service.list(querySchema.parse(request.query)) }));
-  app.get(`${path}/:id/file`, { preHandler: options.allowView }, async (request, reply) => {
+  app.get(`${path}/:id/file`, { preHandler: options.allowView, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     const file = await service.readFile(paramsSchema.parse(request.params).id);
     return reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff').type(file.contentType).send(file.bytes);
   });
@@ -35,7 +35,7 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
     const config = await (options.loadConfig ?? BackupConfigLoader.load)();
     return (options.ingestion ?? getProcedureMaterialGmailIngestionService()).runOnce({ config, allowWait: true, manual: true, ...body });
   });
-  app.post(`${path}/gc`, { preHandler: options.allowWriteKiosk }, async () => (options.gc ?? new ProcedureMaterialGcService()).collect());
+  app.post(`${path}/gc`, { preHandler: options.allowWriteKiosk, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async () => (options.gc ?? new ProcedureMaterialGcService()).collect());
   app.post(`${path}/:id/unplace`, { preHandler: options.allowWriteKiosk }, async (request) => {
     await service.unplace(paramsSchema.parse(request.params).id);
     return { saved: true };
