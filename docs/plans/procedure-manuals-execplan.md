@@ -35,7 +35,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [ ] 実機確認(オーナー): 要領書ページの「白紙から作る」で名前を入れてエディタが開く、「白紙ページを追加」で末尾に増える、「素材から配置」で写真・本文を現在ページに置いて保存・再読込できる、素材棚の「配置済み」から取り消せる。
 - [x] (2026-10-05) Phase 2c ローカル実装: 社員NFCタグと職位による承認公開、承認スナップショット、直近承認の表示、公開方法選択と割り当てダイアログの小修正を追加。統合・本番反映は未実施。
 - [x] (2026-10-05) Phase 2c 指定検証: API lint / 8ファイル55件成功・実DB1ファイル1件skip / build用tsc、Web lint / 12ファイル62件 / build成功。Prisma Client生成成功。
-- [ ] Phase 2c 統合・受入: 実 PostgreSQL migration・実NFC端末確認、commit / push / PR / merge / deploy。
+- [x] (2026-10-05) Phase 2c: 使い捨て PostgreSQL で migration 適用を確認。Codex レビューの 2 指摘(ロック待ち中に別要求が公開した場合の 409 維持、アーム中の NFC 読み取りが在庫分類の URL に社員タグ UID を残す点)を修正。CI では e2e(公開ダイアログの既定がタグ承認に変わった)と kiosk-sop(ダイアログの見た目変更)が失敗し、e2e のパスワード経路選択と取説の再生成で解消。
+- [x] (2026-10-05) PR #1702 を main へ squash merge(merge `e0ee5fca83b0ce93d2c2e202b764e922befdefd6`)、main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-060455-41a4ce`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`)、`/api/system/health` 200。
+- [ ] 実機確認(オーナー): エディタの「公開」で「社員タグで承認して公開」が既定で出る、班長以上のタグで承認者名が表示され公開できる、一般職のタグは拒否される、要領書ページに承認の 1 行が出る。
 - [ ] Phase 3: ナレッジ素材・承認済み手順の片方向連携。
 - [ ] 後日: 動画素材(形式未定)。
 
