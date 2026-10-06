@@ -15,6 +15,7 @@ import {
   readAssemblyApiErrorMessage,
   resolveAssemblyCheckSummary
 } from '../../features/assembly';
+import { KioskPinDialog, kioskPinErrorResult } from '../../features/kiosk/KioskPinDialog';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { AssemblyWorkSessionDto, AssemblyWorkSessionSummaryDto } from '../../features/assembly/types';
@@ -235,9 +236,7 @@ export function KioskAssemblyRecordApprovalPage() {
   const [searchParams] = useSearchParams();
   const initialSessionId = searchParams.get('sessionId');
   const [accessGranted, setAccessGranted] = useState(false);
-  const [accessMessage, setAccessMessage] = useState<string | null>(null);
-  const accessPromptShownRef = useRef(false);
-  const [verifyingPassword, setVerifyingPassword] = useState(false);
+  const [accessDialogOpen, setAccessDialogOpen] = useState(true);
   const isActiveRoute = accessGranted && location.pathname.startsWith('/kiosk/assembly/record-approvals');
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
   const lastProcessedNfcKeyRef = useRef<string | null>(null);
@@ -250,36 +249,6 @@ export function KioskAssemblyRecordApprovalPage() {
   const [approver, setApprover] = useState<{ displayName: string; employeeId: string; nfcTagUid: string } | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
-
-  const requestAccessPassword = useCallback(async () => {
-    const password = typeof window !== 'undefined' ? window.prompt('組立記録確認パスワードを入力してください') : null;
-    if (!password) {
-      setAccessMessage('組立記録確認にはパスワード認証が必要です。');
-      return;
-    }
-    setVerifyingPassword(true);
-    try {
-      const result = await verifyKioskAssemblyRecordApprovalAccessPassword({ password });
-      if (!result.success) {
-        setAccessMessage('パスワードが違います。');
-        window.alert('パスワードが違います');
-        return;
-      }
-      setAccessMessage(null);
-      setAccessGranted(true);
-    } catch {
-      setAccessMessage('認証に失敗しました。ネットワーク接続を確認してください。');
-      window.alert('認証に失敗しました。ネットワーク接続を確認してください。');
-    } finally {
-      setVerifyingPassword(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (accessGranted || accessPromptShownRef.current) return;
-    accessPromptShownRef.current = true;
-    void requestAccessPassword();
-  }, [accessGranted, requestAccessPassword]);
 
   const reloadSessions = useCallback(async () => {
     setListLoading(true);
@@ -388,26 +357,24 @@ export function KioskAssemblyRecordApprovalPage() {
   };
 
   if (!accessGranted) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col gap-3 bg-slate-800 p-3 text-white">
-        <div className="rounded border border-white/15 bg-slate-900/70 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-bold">組立記録確認</h1>
-              <p className="mt-1 text-sm text-white/65">{accessMessage ?? 'パスワード認証中です。'}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" disabled={verifyingPassword} onClick={() => void requestAccessPassword()}>
-                認証する
-              </Button>
-              <Link to={KIOSK_ASSEMBLY_HOME_PATH} className={buttonClassName('ghostOnDark', 'inline-flex items-center justify-center')}>
-                戻る
-              </Link>
-            </div>
-          </div>
+    return <div className="flex min-h-0 flex-1 bg-[#0f1317]">
+      <div className="m-3 rounded border border-white/15 bg-slate-900/70 p-3 text-white">
+        <h1 className="text-2xl font-bold">組立記録確認</h1>
+        <p className="mt-1 text-sm text-white/65">組立記録確認にはパスワード認証が必要です。</p>
+        <div className="mt-3 flex gap-2">
+          <Button type="button" variant="secondary" onClick={() => setAccessDialogOpen(true)}>再認証</Button>
+          <Link to={KIOSK_ASSEMBLY_HOME_PATH} className={buttonClassName('ghostOnDark', 'inline-flex items-center justify-center')}>組立へ戻る</Link>
         </div>
       </div>
-    );
+      {accessDialogOpen ? <KioskPinDialog title="記録確認の暗証番号" onBack={() => setAccessDialogOpen(false)} onSubmit={async pin => {
+        let result;
+        try { result = await verifyKioskAssemblyRecordApprovalAccessPassword({ password: pin }); }
+        catch (error) { return kioskPinErrorResult(error); }
+        if (!result.success) return false;
+        setAccessGranted(true);
+        return true;
+      }} /> : null}
+    </div>;
   }
 
   return (

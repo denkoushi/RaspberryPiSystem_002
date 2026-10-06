@@ -188,6 +188,7 @@ async function installApiFixtures(page, sheetId, unexpectedRequests) {
     if (path.endsWith('/discard-revision') && request.method() === 'POST') {
       return json(route, { document: procedureDocument });
     }
+    if (path === '/api/assembly/procedure-materials' && request.method() === 'GET') return json(route, { materials: [] });
     if (path === '/api/assembly/templates/summary') return json(route, { templates: [templateSummary] });
     if (path === '/api/assembly/library/filter-options') return json(route, { options: [] });
     if (path === '/api/torque-wrench-capability-groups') return json(route, { capabilityGroups: [] });

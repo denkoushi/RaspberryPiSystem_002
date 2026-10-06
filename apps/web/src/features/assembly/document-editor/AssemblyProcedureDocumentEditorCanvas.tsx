@@ -120,6 +120,8 @@ export function AssemblyProcedureDocumentEditorCanvas({
   onSelectOverlay,
   onNudgeOverlay,
   onUpdateOverlayBBox,
+  onInteractionStart,
+  onInteractionEnd,
   onRangeSelected,
   assets,
   className
@@ -133,6 +135,8 @@ export function AssemblyProcedureDocumentEditorCanvas({
   selectedOverlayId: string | null;
   onSelectOverlay: (id: string) => void;
   onNudgeOverlay: (id: string, dxRatio: number, dyRatio: number) => void;
+  onInteractionStart?: () => void;
+  onInteractionEnd?: () => void;
   onUpdateOverlayBBox: (id: string, bbox: AssemblyProcedureOverlayBBox) => void;
   onRangeSelected: (bbox: AssemblyProcedureOverlayBBox) => void;
   assets?: Record<string, AssemblyProcedureOverlayAssetDto>;
@@ -148,6 +152,8 @@ export function AssemblyProcedureDocumentEditorCanvas({
         onSelect={onSelectOverlay}
         onNudge={onNudgeOverlay}
         onUpdateBBox={editable ? onUpdateOverlayBBox : undefined}
+        onInteractionStart={onInteractionStart}
+        onInteractionEnd={onInteractionEnd}
         assets={assets}
       />
       <OverlayRangeSelectionSurface

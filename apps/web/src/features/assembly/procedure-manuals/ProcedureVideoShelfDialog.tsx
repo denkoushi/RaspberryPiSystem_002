@@ -16,7 +16,7 @@ import { ProcedureVideoTrimDialog } from './ProcedureVideoTrimDialog';
 import type { ProcedureVideoDto, ProcedureVideoState, ProcedureVideoSummaryDto } from './procedure-video-types';
 
 export function procedureVideoLength(duration: number | null) { return duration == null ? '長さ未確認' : `${duration.toFixed(1)}秒`; }
-export function ProcedureVideoShelfDialog({ onClose, link }: { onClose: () => void; link?: { documentId: string; pageIndex: number; accessPassword: string; holderToken?: string | null } }) {
+export function ProcedureVideoShelfDialog({ onClose, link, onError }: { onError?: (error: unknown) => boolean; onClose: () => void; link?: { documentId: string; pageIndex: number; accessPassword: string; holderToken?: string | null } }) {
   const selectionMode = Boolean(link);
   const [videos, setVideos] = useState<ProcedureVideoDto[]>([]);
   const [q, setQ] = useState('');
@@ -60,7 +60,7 @@ export function ProcedureVideoShelfDialog({ onClose, link }: { onClose: () => vo
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true); setError(null);
     try { await action(); setVersion((v) => v + 1); }
-    catch (e) { setError(readAssemblyApiErrorMessage(e, '動画を変更できません')); }
+    catch (e) { if (!onError?.(e)) setError(readAssemblyApiErrorMessage(e, '動画を変更できません')); }
     finally { setBusy(false); }
   };
   const reorder = (index: number, offset: number) => {

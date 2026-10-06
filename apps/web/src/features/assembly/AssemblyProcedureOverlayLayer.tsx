@@ -14,6 +14,8 @@ type Props = {
   interactive?: boolean;
   onSelect?: (id: string) => void;
   onNudge?: (id: string, dxRatio: number, dyRatio: number) => void;
+  onInteractionStart?: () => void;
+  onInteractionEnd?: () => void;
   onUpdateBBox?: (id: string, bbox: AssemblyProcedureOverlayBBox) => void;
   assets?: Record<string, AssemblyProcedureOverlayAssetDto>;
   className?: string;

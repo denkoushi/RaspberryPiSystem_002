@@ -441,7 +441,7 @@ async function authenticateDocumentEditor(page: Page): Promise<void> {
   expect((await leaseAcquired).status()).toBe(200);
   await expect(page.getByTestId('assembly-document-editor-layout')).toBeVisible();
   await expect(page.getByRole('region', { name: '手順書キャンバス' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '範囲を追加' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '範囲', exact: true })).toBeEnabled();
 }
 
 async function drawRange(page: Page, start = { x: 0.12, y: 0.16 }, end = { x: 0.38, y: 0.3 }): Promise<void> {
@@ -467,7 +467,7 @@ async function addOverlay(
   start: { x: number; y: number },
   end: { x: number; y: number }
 ): Promise<void> {
-  await page.getByRole('button', { name: '範囲を追加' }).click();
+  await page.getByRole('button', { name: '範囲', exact: true }).click();
   await drawRange(page, start, end);
   await selectOverlayType(page, type);
 }
@@ -598,10 +598,10 @@ for (const viewport of [
 
     const layout = page.getByTestId('assembly-document-editor-layout');
     const canvas = page.getByRole('region', { name: '手順書キャンバス' });
-    const inspector = page.getByRole('complementary', { name: 'オーバーレイ編集' });
+    const rail = page.getByRole('navigation', { name: 'エディタ操作' });
     await expect(layout).toBeVisible();
     await expect(canvas).toBeVisible();
-    await expect(inspector).toBeVisible();
+    await expect(rail).toBeVisible();
     const layoutBox = await layout.boundingBox();
     const canvasBox = await canvas.boundingBox();
     expect(layoutBox).not.toBeNull();

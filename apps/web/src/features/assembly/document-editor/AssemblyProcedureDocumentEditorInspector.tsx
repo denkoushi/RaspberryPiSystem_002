@@ -20,6 +20,8 @@ function numberValue(value: string, fallback: number): number {
 export function AssemblyProcedureDocumentEditorInspector({
   element,
   onUpdate,
+  onDuplicate,
+  onClose,
   onDelete,
   onBringForward,
   onSendBackward,
@@ -29,6 +31,8 @@ export function AssemblyProcedureDocumentEditorInspector({
   busy = false
 }: {
   element: AssemblyProcedureOverlayElement | null;
+  onDuplicate?: () => void;
+  onClose?: () => void;
   onUpdate: (element: AssemblyProcedureOverlayElement) => void;
   onDelete: () => void;
   onBringForward: (id: string) => void;
@@ -39,14 +43,7 @@ export function AssemblyProcedureDocumentEditorInspector({
   busy?: boolean;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
-  if (!element) {
-    return (
-      <aside className="flex min-h-0 w-full flex-col gap-2 border-l border-white/10 bg-slate-900/75 p-3 text-sm text-white/60 xl:w-80 xl:shrink-0" aria-label="オーバーレイ編集">
-        <h2 className="text-sm font-bold text-white">オーバーレイ編集</h2>
-        <p>範囲を追加するか、キャンバス上の要素を選択してください。</p>
-      </aside>
-    );
-  }
+  if (!element) return null;
 
   const patch = (next: Partial<AssemblyProcedureOverlayElement>) => onUpdate({ ...element, ...next } as AssemblyProcedureOverlayElement);
   const patchTextStyle = (next: NonNullable<Extract<AssemblyProcedureOverlayElement, { kind: 'TEXT' }>['style']>) => {
@@ -56,10 +53,14 @@ export function AssemblyProcedureDocumentEditorInspector({
   const bbox = element.bbox;
 
   return (
-    <aside className="flex min-h-0 w-full flex-col gap-2 overflow-auto border-l border-white/10 bg-slate-900/75 p-3 text-sm xl:w-80 xl:shrink-0" aria-label="オーバーレイ編集" aria-disabled={readOnly}>
+    <aside className="flex min-h-0 w-full flex-col gap-3 text-[15px] text-[#eef3f6]" aria-label="オーバーレイ編集" aria-disabled={readOnly}>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xl font-black">{element.kind === 'TEXT' ? '文章' : element.kind === 'IMAGE' ? '画像' : '図形・記号'}</h2>
+        <button type="button" aria-label="属性を閉じる" onClick={onClose} className="h-11 w-11 rounded-lg border border-[#344252] text-[#9fadb9]">✕</button>
+      </div>
       <fieldset disabled={readOnly} className="contents">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-bold">{element.kind === 'TEXT' ? '文章' : element.kind === 'IMAGE' ? '画像' : '図形・記号'}編集</h2>
+        <Button type="button" variant="ghostOnDark" className="min-h-11" onClick={onDuplicate}>複製</Button>
         <Button type="button" variant="danger" className="min-h-11 !px-2 text-xs" onClick={() => setDeleteOpen(true)}>
           削除
         </Button>
@@ -153,7 +154,6 @@ export function AssemblyProcedureDocumentEditorInspector({
               event.currentTarget.value = '';
             }}
           />
-          <span className="text-xs font-normal text-amber-100/75">登録済みasset IDを指定するか、画像ファイルを登録できます。</span>
           <label className="grid gap-0.5 text-xs font-semibold">
             画像の収まり
             <select

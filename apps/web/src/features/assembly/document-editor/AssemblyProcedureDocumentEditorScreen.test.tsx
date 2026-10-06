@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureDocumentEditorProvider } from './AssemblyProcedureDocumentEditorContext';
@@ -7,8 +7,8 @@ import { AssemblyProcedureDocumentEditorScreen } from './AssemblyProcedureDocume
 import type { AssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
-const approvalMocks = vi.hoisted(() => ({ read: null as { uid: string } | null, resolve: vi.fn() }));
-vi.mock('../../../api/client', () => ({ resolveProcedureManualApprover: approvalMocks.resolve }));
+const approvalMocks = vi.hoisted(() => ({ read: null as { uid: string } | null, resolve: vi.fn(), materials: vi.fn(async () => []), videos: vi.fn(async () => []), pageVideos: vi.fn(async () => []), saveVideos: vi.fn() }));
+vi.mock('../../../api/client', () => ({ resolveProcedureManualApprover: approvalMocks.resolve, listProcedureMaterials: approvalMocks.materials, listProcedureVideos: approvalMocks.videos, getProcedurePageVideos: approvalMocks.pageVideos, replaceProcedurePageVideos: approvalMocks.saveVideos }));
 vi.mock('../../kiosk/inventory/setup/useArmedNfcRead', () => ({ useArmedNfcRead: (armed: boolean) => armed ? approvalMocks.read : null }));
 
 vi.mock('./AssemblyProcedureDocumentEditorCanvas', () => ({
@@ -21,12 +21,15 @@ vi.mock('../procedure-manuals/ProcedureMaterialShelfDialog', () => ({
 vi.mock('./AssemblyProcedureDocumentEditorInspector', () => ({
   AssemblyProcedureDocumentEditorInspector: ({
     element,
-    onRefetchTextCandidates
+    onRefetchTextCandidates,
+    onClose
   }: {
     element: AssemblyProcedureOverlayElement | null;
     onRefetchTextCandidates: () => void;
+    onClose: () => void;
   }) => (
     <aside aria-label="オーバーレイ編集" data-testid="editor-inspector">
+      <button onClick={onClose} aria-label="属性を閉じる">✕</button>
       {element?.kind === 'TEXT' ? (
         <button type="button" onClick={onRefetchTextCandidates}>この範囲で候補を再取得</button>
       ) : null}
@@ -53,6 +56,16 @@ function makeController(
 ): AssemblyProcedureDocumentEditorController {
   const selectedPage = editorDocument.pages[0]!;
   return {
+    onEditLeaseError: vi.fn(() => false),
+    beginOverlayDrag: vi.fn(),
+    endOverlayDrag: vi.fn(),
+    canUndo: false,
+    canRedo: false,
+    undo: vi.fn(),
+    redo: vi.fn(),
+    addOverlay: vi.fn(),
+    duplicateSelectedOverlay: vi.fn(),
+    messageIsError: false,
     addBlankPage: vi.fn(async () => undefined),
     placeMaterial: vi.fn(async () => undefined),
     document: editorDocument,
@@ -134,6 +147,17 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(screen.getByText(label)).toHaveClass(color);
   });
 
+  it.each([401, 403])('connects video link save failure %s to controller revocation', async status => {
+    const error = { isAxiosError: true, response: { status } };
+    approvalMocks.saveVideos.mockRejectedValueOnce(error);
+    const onEditLeaseError = vi.fn(() => true);
+    const controller = makeController({ onEditLeaseError });
+    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen /></AssemblyProcedureDocumentEditorProvider>);
+    fireEvent.click(screen.getByRole('button', { name: '動画' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '紐づけを保存' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '紐づけを保存' }));
+    await waitFor(() => expect(onEditLeaseError).toHaveBeenCalledWith(error));
+  });
   it('keeps workshop context and the return action before editor authentication', () => {
     const navigateBack = vi.fn();
     const controller = makeController({ accessGranted: false, navigateBack });
@@ -173,7 +197,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
   it('opens the material selector and places the selected material', async () => {
     const placeMaterial = vi.fn(async () => undefined);
     renderScreen(makeController({ placeMaterial }));
-    fireEvent.click(screen.getByRole('button', { name: '素材から配置' }));
+    fireEvent.click(screen.getByRole('button', { name: '素材' }));
     expect(screen.getByRole('dialog', { name: '素材' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '配置' }));
     await waitFor(() => expect(placeMaterial).toHaveBeenCalledWith({ id: 'material' }));
@@ -184,7 +208,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     renderScreen(makeController());
     const layout = screen.getByTestId('assembly-document-editor-layout');
     expect(layout).toHaveClass(
-      'grid-rows-[8rem_minmax(16rem,1fr)_minmax(10rem,14rem)]',
+      'grid-cols-[120px_minmax(0,1fr)_64px]',
       'overflow-hidden'
     );
     expect(screen.getByTestId('editor-canvas')).toBeVisible();
@@ -237,7 +261,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
 
   it('disables editing actions in read-only mode while retaining accessible labels', () => {
     renderScreen(makeController({ readOnly: true, canPublish: false }));
-    expect(screen.getByRole('button', { name: '範囲を追加' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '範囲' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '公開' })).toBeDisabled();
     expect(screen.getByRole('region', { name: '手順書キャンバス' })).toBeInTheDocument();
@@ -259,6 +283,36 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'この範囲で候補を再取得' }));
     expect(refetchTextCandidates).toHaveBeenCalledTimes(1);
+  });
+
+
+  it('exposes the rail actions, selected tools and floating inspector close action', () => {
+    const c = makeController({ canSave: true, canUndo: true, canRedo: true, selectionMode: true, selectedElement: { id: 'text', kind: 'TEXT', pageIndex: 0, text: '文字', zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 } } });
+    renderScreen(c);
+    for (const label of ['一覧へ', '保存', '公開', '素材', '動画', '文字', '図形', '範囲', '元に戻す', 'やり直す', '削除']) expect(screen.getByRole('button', { name: label })).toHaveAttribute('aria-label', label);
+    expect(screen.getByRole('button', { name: '範囲' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '文字' }));
+    expect(c.addOverlay).toHaveBeenCalledWith('TEXT');
+    fireEvent.click(screen.getByRole('button', { name: '図形' }));
+    expect(c.addOverlay).toHaveBeenCalledWith('SHAPE');
+    fireEvent.click(screen.getByRole('button', { name: '元に戻す' }));
+    fireEvent.click(screen.getByRole('button', { name: 'やり直す' }));
+    expect(c.undo).toHaveBeenCalledOnce(); expect(c.redo).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '属性を閉じる' }));
+    expect(c.setSelectedOverlayId).toHaveBeenCalledWith(null);
+  });
+  it.each([false, true])('expires success notifications but keeps errors (error=%s)', (messageIsError) => {
+    vi.useFakeTimers();
+    try {
+      renderScreen(makeController({ message: '通知', messageIsError }));
+      expect(screen.getByText('通知')).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(4000));
+      expect(Boolean(screen.queryByText('通知'))).toBe(messageIsError);
+    } finally { vi.useRealTimers(); }
+  });
+  it('leaves the inspector closed when no element is selected', () => {
+    renderScreen(makeController());
+    expect(screen.queryByTestId('editor-inspector')).not.toBeInTheDocument();
   });
 
   it.each([false, true])('shows a warning and keeps editing enabled when the lease is unavailable (mine=%s)', (mine) => {

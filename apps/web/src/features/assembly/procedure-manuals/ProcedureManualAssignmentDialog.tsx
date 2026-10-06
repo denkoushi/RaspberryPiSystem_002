@@ -17,6 +17,7 @@ export const procedureManualModelKey = (value: string) => toHalfWidthAscii(value
 
 type Choice = { key: string; title: string; kioskDocumentId?: string; assemblyProcedureDocumentId?: string };
 type Props = {
+  beforeMutation?: () => boolean;
   modelCode: string;
   processId: string;
   processes: ProcedureManualProcessDto[];
@@ -24,7 +25,7 @@ type Props = {
   onSaved: (modelCodeKey: string, processId: string) => void;
 };
 
-export function ProcedureManualAssignmentDialog({ modelCode: initialModel, processId: initialProcess, processes, onClose, onSaved }: Props) {
+export function ProcedureManualAssignmentDialog({ modelCode: initialModel, processId: initialProcess, processes, onClose, onSaved, beforeMutation }: Props) {
   const [modelCode, setModelCode] = useState(initialModel);
   const [processId, setProcessId] = useState(initialProcess || processes.find((p) => p.parentId)?.id || '');
   const [items, setItems] = useState<ProcedureManualAssignmentInput[]>([]);
@@ -81,6 +82,7 @@ export function ProcedureManualAssignmentDialog({ modelCode: initialModel, proce
   }, [modelCodeKey, processId]);
 
   const save = async () => {
+    if (beforeMutation && !beforeMutation()) return;
     setBusy(true);
     setError(null);
     try {
