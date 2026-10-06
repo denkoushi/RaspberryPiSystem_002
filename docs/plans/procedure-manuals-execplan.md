@@ -12,6 +12,17 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-07) 実機要望: 配置済みの素材も選べるように。API は配置の前提を「捨てていない」だけにし、配置のたびに documentId/placedAt を最後の配置先で上書き(画像は毎回新しい asset をコピー、捨てた素材は 409)。エディタから開く素材棚にも「配置済み」タブを出して配置・差し替えに使え、配置済みタブでは「配置を取り消す」を出さない。未配置の件数(貼り忘れの目安)の意味は維持。Codex(gpt-6.1-sol/high)実装。
+- [x] (2026-10-06) 夜 本番反映の記録 2: #1768(画像の「素材から差し替え」とハンドルの重なり修正)を Pi5 へ反映。merge 19ce5861(22:27)、run 20261006-133541-8aa713(22:35→22:41 success、recap ok=268 changed=31 failed=0 unreachable=0)、稼働イメージ api/web 19ce5861、/・/admin・/kiosk・/api/system/health 200、API エラーログ 0 件。実機確認はユーザー待ち(画像の差し替え、ダイアログ上にハンドルが透けないこと)。
+- [x] (2026-10-06) 夜 実機指摘 2: 右ペイン「画像」の asset ID 入力とファイル選択(タッチ端末では使えない)を外し、「素材から差し替え」1 ボタンに(素材棚を差し替えモードで開き、選択中の画像要素の assetId だけを更新、位置・大きさ・重なり順・マスク維持、undo 対応、画像素材のみ・単一選択)。選択中要素のリサイズハンドル(z-index 1,000,000)が素材ダイアログの上に透けていたのを、OverlayLayer の根元に isolate を足して閉じ込め。Codex(gpt-6.1-sol/high)実装、読み取り専用レビュー 3 件(非画像素材の配置済み化、複数選択、無言の失敗)を反映。取説の「画像」手順を差し替えに更新し再生成。
+- [x] (2026-10-06) 夜 本番反映の記録: 追加要望 4 本と右ペイン修正をすべて Pi5 へ反映。#1759 fa6ac722(run 20261006-110604-c1c17f)、#1760 473df6f5(#1764 と同じ run 20261006-113032-20d958、releaseSha 4c9e0df5)、#1762 0c2d2331(run 20261006-115306-10a989、20:58 success)、#1763 42d78881(run 20261006-121854-706567、21:24 success)、#1766 c4dfbbdc(run 20261006-124604-64ebfc、21:51 success、recap ok=268 changed=31 failed=0)。いずれも /・/admin・/kiosk・/api/system/health 200、API エラーログ 0 件。#1763 の最初の head は CI の kiosk-sop で視覚差 10.7%(ローカル撮影の描画不足)となり、該当 1 枚を撮り直して通過。実機確認(5 項目)はユーザー待ち。
+- [x] (2026-10-06) 夜 実機指摘: 直す・下書き画面の右ペイン(属性)の入力欄が白地に白文字で見えない(共通Inputの既定色をTailwindの定義順で上書きできていなかった)、文字が小さい、比率の桁数が多い、を修正。白背景・濃い文字に統一、入力18px・ラベル14px、比率は小数1桁の%表示(内部は比率のまま)。Codex(gpt-6.1-sol/medium)実装、Web lint / 指定vitest 35ファイル387件 / build成功。取説の説明文を%に更新し再生成。
+- [x] (2026-10-06) (B) テンプレート新規/改版の全高配置・左の段階/工程/ページ・64px記号列・重なる設定をWebのみ実装し、取説撮影手順を更新。Web lint / 77ファイル526件(ワーカー2) / build、capture adapter 1件成功。目視確認はlisten EPERMで未実施。既存WIPを保持し、commit等は未実施。 レビュー 4 件と e2e を反映（Web 78ファイル531件・build、adapter 1件、e2e構文33件成功。e2e実行はClaude担当、生成済み取説は未更新）。 左ペインの切替方式に変更（工程・文書・手順、文書ライブラリを1段にし、手順の高さを有界化）。 指定検証: Web lint / Vitest 78ファイル531件 / build、adapter 1件、Playwright一覧取得33件成功。e2e実行はClaude担当。
+- [x] (2026-10-06) 夕 (A): Webの記号列の戻るを最下段へ移動し、工房を460pxの機種列＋一覧の2列、テンキー200px＋工程一覧の横並びへ変更。Web lint / 指定vitest 17ファイル219件 / build成功。Git操作・取説digest更新・本番反映は未実施。
+- [x] (2026-10-06) ブラッシュアップ(D): 記録確認の56px上辺・460px一覧/即時検索・並列実績表・承認札をWebのみ実装（NFC承認処理維持）。Web lint / 指定vitest 76ファイル526件（対象15件、ワーカー2）/ build成功。目視はChromium起動失敗で未実施。 レビュー 3 件を反映（再読込・一覧内の再試行、トルク列見出し、承認札横のNFC照合通知）。 修正後の指定検証: Web lint / `vitest run KioskAssemblyRecordApproval` 1ファイル20件（5件追加）/ build成功。
+- [x] (2026-10-06) 夕 (C): Webの手順書/テンプレート切替、56px表・44px記号操作・可視サムネイルを実装。絞り込みを切替後も保持し、再読込/解除は上辺に配置。取説は改版撮影だけテンプレート側へ切替。Web lint / vitest 77ファイル525件（ワーカー2）/ build、capture adapter 1件成功（最終検証約6分）。目視はlisten EPERM、Git変更操作・本番反映は未実施。 レビュー 3 件を反映（可視ペインのみ描画して撮影見出しを1つに統一、テンプレート上辺の可変幅・折り返し、範囲退出とペイン切替でサムネイル参照を解放）。単体5件追加、Web lint / 指定vitest 77ファイル530件（ワーカー2）/ build、capture adapter 1件成功。
+- [x] (2026-10-06) 実機確認午後 (a): 共通テンキー・8時間アクセス、エディタ全高配置・記号列・浮遊属性・通知をWebのみ実装。Web lint / 255ファイル1569件(ワーカー2、最終対象79件再確認) / build、capture adapter 1件成功。取説生成はClaude担当、実画面確認はlisten EPERMで未実施。レビュー 8 件を反映(Web lint、255 ファイル 1599 件、build、capture adapter 1 件成功)。
+- [x] (2026-10-06) 実機確認 (b) 3・4: 工房を56pxの表形式・状態/名前の即時絞り込み・44px記号操作へ変更し、組立ホーム上辺を文字だけの6項目へ整理。レビュー 3 件を反映（サムネイルの可視範囲での遅延取得、概要APIの公開版承認情報の一括取得と表示、sr-only列見出しとページ数の読み上げ）。Web lint / 指定vitest 76ファイル478件 / build成功、件数バッジ追加確認はホーム17件成功。目視確認は環境の起動権限制限で未実施。Git操作・本番反映は未実施。 レビュー修正後の指定検証: API lint / vitest 4ファイル42件 / tsc、Web lint / vitest 76ファイル482件 / buildすべて成功。
 - [x] (2026-10-05) 既存 5 系統(組立手順書、作業要領 `WorkInstruction`、キオスク文書 `KioskDocument`、ナレッジ `Knowledge`、kiosk-sop)を Codex(`gpt-6.1-sol`/`high`、read-only)で比較分析し、Claude が根拠行を確認した。結論は「組立手順書を正本に、分類を薄く追加」。
 - [x] (2026-10-05) オーナーが設計判断 5 点を決めた(Decision Log 参照)。
 - [x] (2026-10-05) feature branch `feat/procedure-manuals-phase1` と worktree を `scripts.git_lifecycle.cli start` で作成(起点 `origin/main` = `e001c7fa`)。
@@ -69,7 +80,16 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) 動画 V3指定検証: API lint / procedure-video 5ファイル119件 / build用tsc、Web lint / procedure-manuals 4ファイル47件 / build成功。expand-only SQLの2文も成功。環境準備を含め約11分。共有型の禁止パスへ出力しないため、一時領域へ共有型をビルドし、Web buildは同一ソース/設定の隔離コピーで実行した。Prisma Clientとエンジンはworktreeのnode_modules内に準備した。
 - [x] (2026-10-05) 動画 V3: Codex レビューの 3 指摘(長い処理の回収競合 → claim トークンと各ステップ後の生存更新、非正方形ピクセル → SAR を考慮した正規化、検索をまたぐ選択の保持)を修正。使い捨て PostgreSQL で migration 適用を確認。
 - [x] (2026-10-05) PR #1718 を main へ squash merge(merge `481f0af86b69a75fdb339ee5c4bbf253eef5645c`、件名は PR 題名を指定)。main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-142032-01dac9`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`、追跡セッションが実施。Hermes の #1716/#1717 も同じ配布に乗った)、health 200、migration `20261006120000_add_procedure_video_concat` 適用済み。
+- [x] (2026-10-06) UX 改善(実機確認 6 件): 右端 64px の記号列(一覧の開閉、2 ページ表示、全手順、全体、幅いっぱい、前手順、ページ番号、次手順)、左の一覧は既定で閉じ端末ごとに localStorage で記憶(開くと 760px、機種列 440px、型番は等幅 20px で折り返し)、一覧を閉じたときだけ手動の 2 ページ表示(2 手順送り)、機種検索は読み込み済み一覧の即時絞り込み + テンキー + 一致の強調(要領書ページと白紙から作る)、工程/細分チップは状態ごとに配色を明示、「外す(紐づけ解除)」、エディタに DRAFT 初版だけの「削除」(確認 1 回、割り当て中は「先に割り当てを外してください」、他の 409 は API の理由を表示)。「このページ」の手順 n/N と進捗は削除し、承認と動画を残す。API は変更なし。Codex(gpt-6.1-sol / high)が実装。
+- [x] (2026-10-06) 検証: Web lint、`vitest run procedure-manuals document-editor AssemblyProcedureSequenceViewer assembly` 74 ファイル 427 件、build。API lint、tsc。Codex read-only レビューの 4 件(一覧を閉じるとビューアが幅 0 の列に落ちる、改版 DRAFT に削除が出る、409 を全部割り当て扱い、ページ番号の読み上げ)を修正。
+- [x] (2026-10-06) PR #1732 を main へ squash merge(merge `239fe2fbc5f90a083eed923c48b3e626b5f4c2fb`、件名は PR 題名を指定)。main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261006-012031-abf178`、`Result=success`、recap `ok=268 changed=31 failed=0 unreachable=0`、追跡セッションが実施。#1736 も同じ配布に乗った)、`/`・`/admin`・`/kiosk`・`/api/system/health` が 200。実機での 6 件の確認はオーナーが行う。
+- [x] (2026-10-06) 実機確認の追加 2 件: 「白紙から作る」の機種候補を、要領書がある機種の一覧ではなく機種マスタ検索(`/assembly/machine-name-candidates`、テンキーの数字は digitQuery、手入力は q、即時検索、古い応答は破棄、入力文字列は候補にしない)に切り替え。下辺の帯(名前のプレビュー、名前を直接入力、閉じる)の文字色を明示。Codex(gpt-6.1-sol / high)が実装、読み取り専用レビューの低 3 件のうち 120 文字上限と重複排除テストを反映。Web lint、`vitest run procedure-manuals` 59 件、build。スタブ API のブラウザで候補と帯の配色を確認。
+- [x] (2026-10-06) #1744 を main へ squash merge(`324d87cd`)。main CI は Trivy の新 CVE(`@simple-git/argv-parser`)で一度失敗し、別セッションの #1745 で解消。main `69c8ff8d` を Pi5 へ標準ローリング更新(run `20261006-031518-336a91`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`、このセッションが実施)。
+- [x] (2026-10-06) 構造の整理(見る / 作る・直す / 使う): PR #1746 を main へ squash merge(`f37d4bdf`)。main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261006-040231-5bbd67`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`)。実機確認はオーナーが行う。
+- [x] (2026-10-06) 実機確認午後 (b) PR #1753 を main へ(`f5750fad`、#1752 と同じ配布)。Pi5 へ標準ローリング更新(run `20261006-053956-68e484`、`Result=success`、recap `ok=268 changed=31 failed=0 unreachable=0`、health 200、追跡セッションが実施)。
+- [x] (2026-10-06) 実機確認午後 (a) PR #1754 を main へ(`3ade5f8e`、CodeQL #113 は暗証番号のメモリ保持と端末鍵の指紋化で解消、e2e の選択子を記号列に合わせて更新)。Pi5 へ標準ローリング更新(run `20261006-062211-bd7126`、`Result=success`、recap `ok=268 changed=31 failed=0 unreachable=0`、health 200、追跡セッションが実施)。実機確認はオーナーが行う。
 - [ ] 実機確認(オーナー): 動画一覧で 2 本を選んで接続すると由来「接続」の動画が処理中として現れ、数十秒〜数分で完了して再生できる、向きの違う動画を混ぜても黒帯で揃う、コメントが引き継がれる、元の動画は残る。
+- [ ] (2026-10-06) 構造整理をローカル実装(閲覧から作成操作を除去、3列の工房・概要API・検索・割り当て解除・エディタの文脈/戻り先・ホーム2入口)。レビュー 7 件を反映(無効PDFの保持、ID変更検知、戻り先/context検証、初版下書きの解除後削除と409表示、札の文言、確認ボタン44px)。指定検証: API lint/tsc・114件成功/実DB1件skip、Web lint/build・254ファイル1544件成功。PDFの「使う」(既存初期選択は文書のみ)は仕様確認事項として非表示。ブラウザ実画面確認はツールの承認拒否で未実施。Gitの変更操作・禁止対象の編集なし。
 
 ## Surprises & Discoveries
 
@@ -110,6 +130,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: `infrastructure/docker/docker-compose.server.yml` の API volumes と named volumes。今回の infrastructure 変更禁止により未修正。本番反映前に別依頼で永続マウントを追加する必要がある。
 
 ## Decision Log
+
+- Decision (2026-10-06): サーバー発行トークンが無いため、暗証番号はタブのメモリにだけ持ち(最長 8 時間)、保存領域(sessionStorage)には期限と端末鍵の短い指紋(FNV-1a、復元不可)だけを置く(CodeQL js/clear-text-storage-of-sensitive-data #113 への対応。再読み込みすると再入力)。将来は用途限定トークンへ。
+  Rationale: 暗証番号の永続保存を避け、端末認証の変更と期限到達時に破棄する。
 
 - Decision: 動画 V3は元動画の行・ファイルを更新せず、新しいorigin=CONCAT行と独立したsha256出力を作る。既存origin=nullはAPIでGMAILへ正規化し、Gmail新規取込はGMAILを明示する。
   Rationale: 接続後も元動画を独立して捨てる/戻すことができ、既存データのUPDATEや列DEFAULTをmigrationに含めずに由来を表示できる。
@@ -175,6 +198,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Decision: discardRevision は素材の配置状態を明示更新しない。配置済み棚の「配置を取り消す」で documentId / placedAt を null に戻す。
   Rationale: 配置要素は未保存の下書きにも存在し得て、改版破棄と素材の利用意図は一致しない。文書削除時の既存 FK SetNull により documentId が null になっても placedAt は残るため、配置済み棚から取り消せる。取消は overlay を削除しない。
   Date/Author: 2026-10-05 / Codex。
+- Decision (2026-10-07): 素材は配置済みでも何度でも配置・差し替えに使える。documentId / placedAt は「最後に配置した先・日時」を表し、配置のたびに上書きする。捨てた素材だけ配置を拒否する。
+  Rationale: 同じ写真を複数の機種・工程の要領書で使い回す要望(オーナー、2026-10-07)。配置ごとに文書側へ asset をコピーするので素材と文書の結合はなく、未配置タブの件数は「一度も貼っていない素材」の目安として従来どおり使える。「配置を取り消す」は最後の配置の記録を消すだけで、文書の画像には影響しない。
+  Date/Author: 2026-10-07 / Claude(オーナー要望)。
 - Decision: 素材原本 GC は allowWriteKiosk の手動 POST /assembly/procedure-materials/gc のみとする。
   Rationale: 既存 assembly-procedure-asset-gc は保存・破棄・削除後の呼び出しだけで定期スケジューラーはない。新しいスケジューラーは今回追加しない。sha256/original だけを走査し、24時間より古く storageKey 一致の参照が0件の場合だけ integrity:true で削除する。配置済み・破棄済みを含む全素材の参照と共有原本を保持する。
   Date/Author: 2026-10-05 / Codex。
@@ -260,6 +286,16 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Rationale: APIの0〜durationSecondsの範囲と整合させ、現場で短い動画と字幕を作る初期操作を減らす。トリミング自体は10秒超も受け付けるが、赤で警告し、紐づけ時は10.5秒を超えると拒否する。
   Date/Author: 2026-10-05 / Codex
 
+- Observation: 実機確認 6 件(2026-10-06)の工程/細分チップが真っ黒だった原因は、未選択時に文字色を指定しておらず Dialog 既定の `text-slate-900` を継承していたこと(生成 CSS では Dialog の `text-[#eef3f6]` より後に定義される)。`aria-pressed:` バリアントの不動作は未再現。
+  Evidence: 旧 chip クラス文字列と `Dialog.tsx` の既定クラス、build 後 CSS の定義順。チップ自身に状態ごとの枠/背景/文字色を全指定して解消。
+- Decision: 実機確認 6 件の記号列はモックどおり 7 つの操作ボタンと 2 行のページ番号表示(`aria-live` で読み上げ)。機種一覧の件数は取得済みの選択機種×工程の割り当て件数だけ表示し、未取得は「—」(一覧 DTO に件数がなく、API は変更しない)。
+  Rationale: 無意味なボタンを増やさない。API 境界を守る。
+- Decision: 「削除」は DRAFT の初版(`supersedesDocumentId` なし)だけに出す。改版 DRAFT は既存の「改版を破棄」、PUBLISHED は紐づけ解除のみ。参照判定はサーバーの既存 DELETE(409)を正とする。
+  Rationale: 既存 API は改版 DRAFT の削除を拒むため、押せても失敗するボタンを出さない。
+
+- Decision: 構造の整理(2026-10-06)で、組立ホームに「見る/作る・直す/使う」の札の画面を新設せず、ホーム上部の入口を 2 つに整理してホームの作業一覧を「使う」とする。
+  Rationale: ホームの一覧がすでに「使う」の本体で、札の画面を挟むと 1 段増える(1 画面完結の方針に反する)。モックの意図(3 つの仕事を分ける)は、閲覧から作成・編集を取り除き工房へ移すことで満たす。
+
 ## Context and Orientation
 
 このリポジトリは pnpm ワークスペースで、`apps/api` が Fastify + Prisma(PostgreSQL)の API、`apps/web` が React(Vite)の Web、`packages/shared-types` が共有の型である。キオスク画面は `apps/web/src/pages/kiosk/` にあり、ルートは `apps/web/src/App.tsx` に列挙されている。組立キオスクのホームは `apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx` で、ナビゲーションのリンク群(`aria-label="組立メニュー"`)から各画面へ飛ぶ。
@@ -342,6 +378,34 @@ V3の指定検証は `cd apps/api && pnpm lint && pnpm exec vitest run procedure
     cd apps/web && pnpm lint && pnpm exec vitest run procedure-manuals document-editor && pnpm build
 
 実機受入: 許可ドメインから短い動画だけ送信し、棚で完了・再生できること。DRAFTのページへ紐づけ保存後、公開版閲覧で該当ページだけサムネイルが現れること。61秒の動画はTOO_LONG、非対応形式と25 MB超はスキップされること。ローカルテストはffmpegをモックし、実DB migration適用・実Gmail・Pi5速度と回転動画は統合段階で確認する。
+
+## 構造の整理: 見る・作る・直す・使う(2026-10-06 承認)
+
+オーナーの指摘: 「新規で作る」「既存を直す」「丸数字やチェックを付けて検査記録に使う」の 3 つの仕事が同じ画面と言葉に混ざっていて分かりにくい。入口ボタンを足すだけでは解決しない。モック `docs/design-previews/procedure-manuals-structure-mock.html`(承認済み)に沿って、閲覧ページから作成・編集の操作を取り除き、別画面(工房)へ移す。
+
+- **見る**(`/kiosk/assembly/manuals`): 閲覧だけ。左の一覧の上部から「白紙から作る」「素材」「動画」「割り当て」を外す。右端の記号列は送りと表示だけ。上部に「作る・直す」への 1 リンク(同じ機種 × 工程を引き継ぐ)。
+- **作る・直す**(`/kiosk/assembly/manuals/workshop`、新設): 左に機種(既定は要領書がある機種の一覧、テンキーや手入力で機種マスタを即時検索)、中に工程と件数、右にその機種 × 工程の要領書の札(サムネイル、名前、状態の札: 公開 第 n 版 / 下書き / 改版中・保持者、操作: 直す・使う・外す・削除)。上部に「作る」(白紙から作る、機種と工程を引き継ぐ)、「素材」「動画」、「既存の要領書を割り当てる」(割り当てダイアログ)。
+- **使う**: 組立ホームの作業一覧(既存)と組立テンプレート(既存)。工房の公開済みの札の「使う」は既存の `kioskAssemblyTemplateNewPath({ procedureDocumentId })` へ。
+- **組立ホーム**: 上部の入口を「見る(要領書)」「作る・直す(要領書)」に整理。ホームの一覧が「使う」。モックの 3 枚の札の画面は、ホームの一覧がすでに「使う」であり画面を 1 段増やすため採用しない(Decision Log 参照)。
+- **エディタ**: 入口が工房なら、見出しに「機種 › 工程 › 文書名」と「作る/直す」の札を出し、「戻る」「公開」「改版を破棄」「削除」の後は工房の同じ機種 × 工程へ戻る(`location.state.returnTo`)。既存の手順書一覧から入った場合は従来どおり。編集機能そのものは変えない。
+- **API**: 工房の札に必要な状態をまとめて返す `GET /assembly/procedure-manuals/models/:modelCodeKey/overview`(工程ごとの割り当て件数と、各割り当ての文書状態: 公開版の版数、改版の下書きの有無、編集の予約の保持者名と開始時刻、キオスク PDF か文書か、無効理由)を追加。既存 API は変えない。
+
+
+## 実機確認 6 件(2026-10-06 午後、承認済みモック `docs/design-previews/procedure-editor-mock.html`)
+
+1. 暗証番号は「作る・直す」(工房)に入る時点で 1 回だけテンキーで聞き、この端末で 8 時間有効。エディタでは聞き直さない。見る側は不要。
+2. エディタは上辺の帯をなくし、紙を画面上端まで。操作は右端 64px の記号列(戻る、保存、公開、素材、動画、文字、図形、範囲、元に戻す、やり直す、削除/改版を破棄)。左は 120px のページ列。機種 › 工程 › 文書名と「作る/直す」の札は紙の左上に重ねる 1 行。要素を選ぶと浮遊パネル(340px)で属性を編集し、閉じると紙だけ。結果の通知は左下に小さく出して消える。
+3. 工房の右ペインは 1 行 56px の表形式(小さなサムネイル、名前、状態、担当/承認、ページ数、記号ボタン)。上に状態の絞り込み(全て/公開/下書き/改版中)と名前の絞り込み。数百件でも一覧できる。
+4. 組立ホーム上辺はアイコンなしの文字だけ。「手順書」は工房と、「手順を作る」は「使う」と重複するので、並びを「見る | 作る・直す | 使う | 記録確認 | 製品構成 | 訓練」に整理。
+5. 記録確認のブラウザ標準の入力窓(`window.prompt`)を 1 と同じテンキー式に置き換える。キャンセルは同じページに留まり「組立へ戻る」を出す。
+
+PR は 2 本: (a) エディタの全高レイアウト + 工房入口の暗証番号 + 記録確認のテンキー化、(b) 工房の高密度一覧 + 組立ホーム上辺の整理。
+
+
+## 組立画面のブラッシュアップ(2026-10-06 夕、承認済みモック `docs/design-previews/assembly-screens-mock.html`)
+
+オーナーの実機確認で出た追加要望。PR は 4 本: (A) エディタの記号列の「戻る」を最下段へ + 工房のテンキー半幅(工程一覧を横に置き 2 列化)、(B) 組立テンプレート新規の全高レイアウト(上辺の帯を無くし、左ペインに段階・名前・工程・ページ、右端の記号列、紙は全高)、(C) 手順書/テンプレート管理の切替表示と高密度の表、(D) 記録確認の一覧 + 詳細 + 小さな承認札。いずれも機能は変えず配置だけ変える。
+
 
 ## Concrete Steps (Phase 1)
 

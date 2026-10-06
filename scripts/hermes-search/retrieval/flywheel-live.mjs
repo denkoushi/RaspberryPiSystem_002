@@ -7,7 +7,8 @@ import { DGX_INDEX_TIMEOUT_MS, createDenseRuntime, createDgxEmbedder, denseSetti
 import { relevancePoolLimit } from './executor.mjs';
 import { RELEVANT } from './flywheel-filter.mjs';
 import { bareId } from './flywheel-pairs.mjs';
-import { createRetrievalAnswering, loadEnrichmentById } from './worker.mjs';
+import { learnedQueriesById } from './flywheel-learn.mjs';
+import { createRetrievalAnswering, loadEnrichmentById, loadLearnedQueriesById } from './worker.mjs';
 
 export const LOSS_STAGES = ['status', 'not_in_pool', 'judge_rejected', 'other_shown', 'failed'];
 // The day budget (1.5 s) is a kiosk latency limit, not a retrieval-quality one. At night the Pi 5
@@ -45,7 +46,7 @@ export function lossStage({ relevant, outcome, shown, candidates, judged }) {
  * than the day budget; `vectorStatus` in each result shows when the dense path still fell back.
  * The runner never refreshes the dense index; the worker owns that.
  */
-export async function createLiveScorer({ records, catalog, evaluate, env = process.env, vectorBudgetMs = NIGHT_VECTOR_BUDGET_MS }) {
+export async function createLiveScorer({ records, catalog, evaluate, env = process.env, vectorBudgetMs = NIGHT_VECTOR_BUDGET_MS, learned = null }) {
   const settings = denseSettings(env);
   let dense = null;
   if (settings.queryEnabled && settings.origin) {
@@ -55,12 +56,15 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
     });
     await dense.load().catch(() => 0);
   }
+  const enrichmentById = await loadEnrichmentById(env);
+  const learnedById = learned ? learnedQueriesById(learned, { states: null }) : await loadLearnedQueriesById(env);
   const answering = createRetrievalAnswering({
     records: authorizedRecords(records),
     catalog,
     evaluate,
     dense,
-    enrichmentById: await loadEnrichmentById(env),
+    enrichmentById,
+    learnedById,
   });
   const judged = relevancePoolLimit({}, env);
   return async function score(row) {

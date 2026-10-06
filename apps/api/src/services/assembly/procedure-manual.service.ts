@@ -74,6 +74,75 @@ export class ProcedureManualService {
     });
   }
 
+  async getModelOverview(modelCode: string) {
+    const modelCodeKey = modelKey(modelCode);
+    const [processes, rows] = await Promise.all([
+      this.listProcesses(),
+      prisma.procedureManualAssignment.findMany({
+        where: { modelCodeKey },
+        orderBy: [{ processId: 'asc' }, { sortOrder: 'asc' }],
+        include: { kioskDocument: { select: assemblyProcedureSequenceKioskDocumentSelect } }
+      })
+    ]);
+    const rootIds = [...new Set(rows.flatMap(row => row.assemblyProcedureDocumentId ? [row.assemblyProcedureDocumentId] : []))];
+    const documents = rootIds.length ? await prisma.assemblyProcedureDocument.findMany({
+      where: { OR: [{ id: { in: rootIds } }, { revisionMetadata: { is: { revisionRootId: { in: rootIds } } } }] },
+      include: { revisionMetadata: true, editLease: true, pages: { orderBy: { pageIndex: 'asc' } }, procedureManualApprovals: procedureManualApprovalInclude }
+    }) : [];
+    const families = new Map<string, typeof documents>();
+    for (const document of documents) {
+      const rootId = document.revisionMetadata?.revisionRootId ?? document.id;
+      const family = families.get(rootId) ?? [];
+      family.push(document);
+      families.set(rootId, family);
+    }
+    const now = new Date();
+    const itemsByProcess = new Map<string, ReturnType<typeof toItem>[]>();
+    function toItem(row: typeof rows[number]) {
+      const allRevisions = families.get(row.assemblyProcedureDocumentId ?? '') ?? [];
+      const family = allRevisions
+        .filter(document => document.isActive)
+        .sort((a, b) => (b.revisionMetadata?.revisionNumber ?? 1) - (a.revisionMetadata?.revisionNumber ?? 1));
+      const published = family.find(document => document.status === 'PUBLISHED');
+      const initialDraft = family.find(document => document.status === 'DRAFT' && !document.revisionMetadata?.supersedesDocumentId);
+      const draft = family.find(document => document.status === 'DRAFT' && document.revisionMetadata?.supersedesDocumentId && document.revisionMetadata.isRevisionHead);
+      const display = published ?? initialDraft;
+      const pdf = row.kioskDocument;
+      const isPdf = Boolean(row.kioskDocumentId);
+      const available = isPdf ? Boolean(pdf?.enabled) : Boolean(display);
+      return {
+        assignmentId: row.id, sortOrder: row.sortOrder, label: row.label,
+        kind: isPdf ? 'kiosk_document' as const : 'assembly_procedure_document' as const,
+        documentId: isPdf ? row.kioskDocumentId! : display?.id ?? row.assemblyProcedureDocumentId!,
+        title: isPdf ? pdf?.displayTitle || pdf?.title || row.label || '文書' : display?.name ?? allRevisions[0]?.name ?? row.label ?? '文書',
+        status: !available ? 'unavailable' as const : isPdf || published ? 'published' as const : 'draft' as const,
+        publishedRevisionNumber: published ? published.revisionMetadata?.revisionNumber ?? 1 : null,
+        approval: isPdf ? null : serializeLastProcedureManualApproval(published?.procedureManualApprovals),
+        draftRevision: draft ? {
+          documentId: draft.id, revisionNumber: draft.revisionMetadata!.revisionNumber,
+          editLease: draft.editLease && draft.editLease.expiresAt > now ? {
+            holderLabel: draft.editLease.holderLabel, acquiredAt: draft.editLease.acquiredAt.toISOString()
+          } : null
+        } : null,
+        unavailableReason: available ? null : isPdf ? 'disabled' as const : 'no_published_revision' as const,
+        pageCount: isPdf ? pdf?.pageCount ?? null : display ? display.pages.length || 1 : null,
+        thumbnailPageUrl: isPdf || !display ? null : display.pages[0]?.imageRelativePath ?? display.imageRelativePath
+      };
+    }
+    for (const row of rows) {
+      const items = itemsByProcess.get(row.processId) ?? [];
+      items.push(toItem(row));
+      itemsByProcess.set(row.processId, items);
+    }
+    return {
+      modelCode: rows[0]?.modelCode ?? modelCodeKey, modelCodeKey,
+      processes: processes.filter(process => process.parentId).map(process => {
+        const items = itemsByProcess.get(process.id) ?? [];
+        return { processId: process.id, count: items.length, items };
+      })
+    };
+  }
+
   async getAssignments(modelCode: string, processId: string) {
     const modelCodeKey = modelKey(modelCode);
     const rows = await prisma.procedureManualAssignment.findMany({
@@ -163,8 +232,9 @@ export class ProcedureManualService {
       // Use a stable order when a replacement references multiple documents.
       const ids = [...new Set(items.flatMap(item => item.assemblyProcedureDocumentId ? [item.assemblyProcedureDocumentId] : []))].sort();
       for (const id of ids) await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
-      const existing = await tx.procedureManualAssignment.findMany({ where: { modelCodeKey, processId }, select: { assemblyProcedureDocumentId: true } });
+      const existing = await tx.procedureManualAssignment.findMany({ where: { modelCodeKey, processId }, select: { assemblyProcedureDocumentId: true, kioskDocumentId: true } });
       const existingRoots = new Set(existing.map((row) => row.assemblyProcedureDocumentId));
+      const existingPdfs = new Set(existing.map((row) => row.kioskDocumentId));
       const data = await Promise.all(items.map(async (item) => {
         let rootId: string | null = null;
         if (item.assemblyProcedureDocumentId) {
@@ -175,7 +245,7 @@ export class ProcedureManualService {
           rootId = document.revisionMetadata?.revisionRootId ?? document.id;
           if (!existingRoots.has(rootId) && !await this.resolvePublished(rootId, tx)) throw new ApiError(400, '公開版がありません');
         } else {
-          const document = await tx.kioskDocument.findFirst({ where: { id: item.kioskDocumentId!, enabled: true } });
+          const document = await tx.kioskDocument.findFirst({ where: { id: item.kioskDocumentId!, ...(!existingPdfs.has(item.kioskDocumentId!) ? { enabled: true } : {}) } });
           if (!document) throw new ApiError(400, 'キオスク文書が見つかりません');
         }
         return {

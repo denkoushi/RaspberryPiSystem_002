@@ -141,7 +141,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
               <span className="min-w-0 break-words font-mono text-[10px] text-white [overflow-wrap:anywhere]">
                 {item.fseiban} · {machineName || '機種名未登録'}
               </span>
-              <MaterialArrivalBadge status={item.materialArrivalStatus} />
+              <MaterialArrivalBadge status={item.materialArrivalStatus} basis={item.materialArrivalBasis} />
             </div>
           </div>
         ) : (
@@ -155,7 +155,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
                 <span className="mt-0.5 block break-words text-[10px] leading-tight text-slate-400 [overflow-wrap:anywhere]">
                   {plannedQuantity} · {requiredTime}
                 </span>
-                <MaterialArrivalBadge status={item.materialArrivalStatus} className="mt-0.5" />
+                <MaterialArrivalBadge status={item.materialArrivalStatus} basis={item.materialArrivalBasis} className="mt-0.5" />
               </>
             ) : null}
           </>
@@ -225,7 +225,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
               </span>
               {item.materialArrivalStatus ? (
                 <span className="basis-full">
-                  <MaterialArrivalBadge status={item.materialArrivalStatus} />
+                  <MaterialArrivalBadge status={item.materialArrivalStatus} basis={item.materialArrivalBasis} />
                 </span>
               ) : null}
             </>

@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 
+import { requireDueManagementToken } from '../../../lib/auth.js';
+
 import { upsertProductionScheduleDueManagementPartNote } from '../../../services/production-schedule/due-management-command.service.js';
 import {
   resolveDueManagementStorageLocationKey,
@@ -20,6 +22,7 @@ export async function registerProductionScheduleDueManagementNoteRoute(
     { config: { rateLimit: false } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      requireDueManagementToken(request.headers['x-due-management-token'], clientDevice.id);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
       const dueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
       const locationKey = resolveDueManagementStorageLocationKey(dueManagementScope);

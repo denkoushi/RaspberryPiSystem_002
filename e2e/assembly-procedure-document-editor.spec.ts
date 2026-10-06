@@ -441,7 +441,7 @@ async function authenticateDocumentEditor(page: Page): Promise<void> {
   expect((await leaseAcquired).status()).toBe(200);
   await expect(page.getByTestId('assembly-document-editor-layout')).toBeVisible();
   await expect(page.getByRole('region', { name: '手順書キャンバス' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '範囲を追加' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '範囲', exact: true })).toBeEnabled();
 }
 
 async function drawRange(page: Page, start = { x: 0.12, y: 0.16 }, end = { x: 0.38, y: 0.3 }): Promise<void> {
@@ -467,7 +467,7 @@ async function addOverlay(
   start: { x: number; y: number },
   end: { x: number; y: number }
 ): Promise<void> {
-  await page.getByRole('button', { name: '範囲を追加' }).click();
+  await page.getByRole('button', { name: '範囲', exact: true }).click();
   await drawRange(page, start, end);
   await selectOverlayType(page, type);
 }
@@ -598,10 +598,10 @@ for (const viewport of [
 
     const layout = page.getByTestId('assembly-document-editor-layout');
     const canvas = page.getByRole('region', { name: '手順書キャンバス' });
-    const inspector = page.getByRole('complementary', { name: 'オーバーレイ編集' });
+    const rail = page.getByRole('navigation', { name: 'エディタ操作' });
     await expect(layout).toBeVisible();
     await expect(canvas).toBeVisible();
-    await expect(inspector).toBeVisible();
+    await expect(rail).toBeVisible();
     const layoutBox = await layout.boundingBox();
     const canvasBox = await canvas.boundingBox();
     expect(layoutBox).not.toBeNull();
@@ -643,4 +643,26 @@ test('readonly template procedure view renders the source without ROI or OCR req
   expect(regionRequests).toEqual([]);
   expect(evidence.textRegionBodies).toEqual([]);
   expect(evidence.imageRegionBodies).toEqual([]);
+});
+
+test.describe('overlay elements receive taps on the editor canvas', () => {
+  test.use({ hasTouch: true });
+  test('a created overlay is the topmost element at its centre and a touch tap keeps it selected', async ({ page }) => {
+    const evidence = makeEditorEvidence();
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await installEditorApiMocks(page, evidence);
+    await page.goto(`/kiosk/assembly/procedure-documents/${SOURCE_DOCUMENT_ID}/edit`, { waitUntil: 'domcontentloaded' });
+    await authenticateDocumentEditor(page);
+    await addOverlay(page, '文章', { x: 0.08, y: 0.1 }, { x: 0.36, y: 0.25 });
+    await page.getByRole('option', { name: /抽出された手順文章/ }).click();
+    const element = page.getByRole('button', { name: '文章オーバーレイ: 抽出された手順文章', exact: true });
+    await expect(element).toBeVisible();
+    const box = (await element.boundingBox())!;
+    const centre = [box.x + box.width / 2, box.y + box.height / 2] as const;
+    const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('[data-overlay-id]')?.getAttribute('data-overlay-id') ?? null, centre);
+    expect(hit).toBe(await element.getAttribute('data-overlay-id'));
+    await page.touchscreen.tap(centre[0], centre[1]);
+    await expect(element).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('complementary', { name: 'オーバーレイ編集' })).toBeVisible();
+  });
 });

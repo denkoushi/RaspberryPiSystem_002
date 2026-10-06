@@ -35,6 +35,11 @@ describe('AssemblyProcedureOverlayLayer', () => {
     }));
   }
 
+  it('isolates the root stacking context to contain resize handles', () => {
+    render(<AssemblyProcedureOverlayLayer elements={[]} />);
+    expect(screen.getByTestId('assembly-procedure-overlay-layer')).toHaveClass('isolate');
+  });
+
   it('renders asset-map URLs, proportional text sizing, and crop clipping', () => {
     render(
       <div className="relative h-[200px] w-[400px]">
@@ -141,6 +146,7 @@ describe('AssemblyProcedureOverlayLayer', () => {
   it('moves interactive overlays and clamps their source bbox to the page', () => {
     mockLayerRect();
     const onUpdateBBox = vi.fn();
+    const onInteractionStart = vi.fn(); const onInteractionEnd = vi.fn();
     render(
       <AssemblyProcedureOverlayLayer
         interactive
@@ -154,13 +160,18 @@ describe('AssemblyProcedureOverlayLayer', () => {
           zIndex: 0
         }]}
         onUpdateBBox={onUpdateBBox}
+        onInteractionStart={onInteractionStart}
+        onInteractionEnd={onInteractionEnd}
       />
     );
 
     const item = screen.getByTestId('assembly-procedure-overlay-text-1');
     fireEvent.pointerDown(item, { button: 0, pointerId: 1, clientX: 120, clientY: 80 });
+    expect(onInteractionStart).toHaveBeenCalledOnce();
+    expect(onInteractionEnd).not.toHaveBeenCalled();
     fireEvent.pointerMove(item, { pointerId: 1, clientX: 160, clientY: 100 });
     fireEvent.pointerUp(item, { pointerId: 1, clientX: 160, clientY: 100 });
+    expect(onInteractionEnd).toHaveBeenCalledOnce();
     expect(onUpdateBBox.mock.calls.at(-1)?.[0]).toBe('text-1');
     expect(onUpdateBBox.mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({
       xRatio: expect.closeTo(0.3),

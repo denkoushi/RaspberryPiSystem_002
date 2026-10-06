@@ -6,6 +6,7 @@ import path from 'node:path';
 import { DEFAULT_MAX_QUESTIONS, MAX_QUESTIONS_CAP, REAL_LABEL_DEPTH, flywheelSettings, nightOf, questionsPath, runFlywheelNight, usedAnchors } from './flywheel-runner.mjs';
 import { readRealRows, realId, realPath } from './flywheel-real.mjs';
 import { splitOf } from './flywheel-gate.mjs';
+import { learnedPath, readLearned, writeLearned, LEARNED_SCHEMA } from './flywheel-learn.mjs';
 
 function unit(values) {
   const norm = Math.hypot(...values);
@@ -26,7 +27,7 @@ const dense = [
 const night = () => new Date('2026-10-03T14:30:00Z');
 
 function settings(dir, extra = {}) {
-  return { enabled: true, maxQuestions: 10, window: '22-6', dir, denseStore: 'unused', origin: 'http://dgx', token: 't', egress: '', model: 'm', ...extra };
+  return { enabled: true, maxQuestions: 10, learnBudget: 0, window: '22-6', dir, denseStore: 'unused', origin: 'http://dgx', token: 't', egress: '', model: 'm', ...extra };
 }
 
 function fakeChat({ slowAfter = Infinity } = {}) {
@@ -53,6 +54,12 @@ test('settings default to off, cap the nightly budget, and follow the enrichment
   assert.equal(off.maxQuestions, DEFAULT_MAX_QUESTIONS);
   assert.equal(off.labelBudget, 60);
   assert.equal(off.realBudget, 20);
+  assert.equal(off.learnBudget, 30);
+  assert.equal(flywheelSettings({ HERMES_FLYWHEEL_LEARN_BUDGET: '9999' }).learnBudget, 100);
+  assert.equal(flywheelSettings({ HERMES_FLYWHEEL_LEARN_BUDGET: '0' }).learnBudget, 0);
+  for (const value of ['x', '', ' ', '-1', '1.5', '30junk']) {
+    assert.equal(flywheelSettings({ HERMES_FLYWHEEL_LEARN_BUDGET: value }).learnBudget, 30);
+  }
   assert.equal(REAL_LABEL_DEPTH, 5);
   assert.equal(flywheelSettings({ HERMES_FLYWHEEL_REAL_BUDGET: '9999' }).realBudget, 100);
   assert.equal(flywheelSettings({ HERMES_FLYWHEEL_REAL_BUDGET: '0' }).realBudget, 0);
@@ -199,7 +206,7 @@ test('a spent budget backfills kept questions in file order and retains nightly 
   assert.equal(status.shown, 1);
   assert.deepEqual(status.lossStages, { judge_rejected: 1 });
   assert.equal(status.pendingLive, 0);
-  assert.match(logs[0], / pending=0 labelled=0 labelPending=0 real=0$/u);
+  assert.match(logs[0], / pending=0 labelled=0 labelPending=0 real=0 learned=0\/pending$/u);
   const raw = readFileSync(filePath, 'utf8');
   assert.ok(raw.endsWith('\n'));
   const rows = raw.trim().split('\n').map((line) => JSON.parse(line));
@@ -460,7 +467,7 @@ test('real content questions get consensus labels and corrected loss once across
   assert.equal(status.real, 1);
   assert.equal(status.realPending, 0);
   assert.equal(status.labelled, 0);
-  assert.match(logs[0], / real=1$/u);
+  assert.match(logs[0], / real=1 learned=0\/pending$/u);
   assert.equal(statSync(file).mode & 0o777, 0o600);
   assert.equal(readFileSync(file, 'utf8').includes('surface scratch'), false);
   const again = await runFlywheelNight({ ...input, live: async () => assert.fail('already processed') });
@@ -549,4 +556,102 @@ test('saved real labels do not consume the synthetic label budget', async () => 
   assert.equal(status.labelled, 1);
   assert.equal(status.labelPending, 0);
   assert.equal(status.real, 0);
+});
+
+function learnFixture() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-learn-runner-'));
+  const ids = Array.from({ length: 100 }, (_, index) => `rec-${index}`);
+  const dev = ids.find((id) => splitOf(id) === 'dev');
+  const heldout = ids.find((id) => splitOf(id) === 'heldout');
+  const rows = [
+    { a: dev, question: 'dev failure', kept: true, live: { loss: 'not_in_pool', shown: [] } },
+    { a: heldout, question: 'heldout check', kept: true, live: { loss: null, shown: [heldout] } },
+  ];
+  writeFileSync(questionsPath(dir, '2026-10-03'), rows.map(JSON.stringify).join('\n') + '\n');
+  return { dir, dev, heldout, rows, input: {
+    records, settings: settings(dir, { maxQuestions: 2, learnBudget: 30, realBudget: 0 }), now: night,
+    readDense: async () => dense, chat: async () => assert.fail('learning does not call DGX chat'),
+    jevEvaluate: async () => assert.fail('fake learning scorer does not call JEV'), log: () => {},
+  } };
+}
+
+test('stage five activates dev proposals when the injected live scorer gives equal results', async () => {
+  const { dir, dev, heldout, rows, input } = learnFixture();
+  const calls = [];
+  const logs = [];
+  const status = await runFlywheelNight({ ...input, live: async (row) => { calls.push(row.question); return { shown: [heldout] }; }, log: (line) => logs.push(line) });
+  const learned = await readLearned(learnedPath(dir));
+  assert.equal(learned.length, 1);
+  assert.equal(learned[0].recordId, dev);
+  assert.equal(learned[0].state, 'active');
+  assert.equal(learned[0].query, 'dev failure');
+  assert.ok(learned[0].decidedAt);
+  assert.deepEqual(status.learned, { proposed: 1, candidates: 1, decision: 'active', check: { heldout: { n: 1, gained: 0, lost: 0 }, real: { n: 0, gained: 0, lost: 0 } } });
+  assert.deepEqual(calls, ['heldout check', 'heldout check']);
+  assert.match(logs[0], / learned=1\/active$/u);
+  assert.equal(statSync(learnedPath(dir)).mode & 0o777, 0o600);
+  assert.equal(readFileSync(questionsPath(dir, '2026-10-03'), 'utf8'), rows.map(JSON.stringify).join('\n') + '\n');
+  assert.deepEqual(JSON.parse(readFileSync(path.join(dir, 'flywheel-status.json'), 'utf8')).learned, status.learned);
+  const again = await runFlywheelNight({ ...input, live: async () => assert.fail('no candidates should not be scored') });
+  assert.deepEqual(again.learned, { proposed: 0, candidates: 0, decision: null, check: null });
+});
+
+test('stage five rejects the whole candidate batch when heldout loses a relevant result', async () => {
+  const { dir, heldout, input } = learnFixture();
+  const factories = [];
+  const status = await runFlywheelNight({ ...input, liveFactory: async ({ learned }) => {
+    factories.push(learned);
+    return async () => ({ shown: learned ? [] : [heldout] });
+  } });
+  assert.equal(factories.length, 2);
+  assert.equal(factories[0], undefined);
+  assert.equal(factories[1].length, 1);
+  assert.equal(status.learned.decision, 'rejected');
+  assert.deepEqual(status.learned.check.heldout, { n: 1, gained: 0, lost: 1 });
+  assert.equal((await readLearned(learnedPath(dir)))[0].state, 'rejected');
+});
+
+test('stage five reads three nights, learns only dev rows, and checks heldout real losses separately', async () => {
+  const { dir, dev, heldout, input } = learnFixture();
+  const oldHeldout = Array.from({ length: 100 }, (_, index) => `rec-${index}`).find((id) => id !== heldout && splitOf(id) === 'heldout');
+  writeFileSync(questionsPath(dir, '2026-10-01'), JSON.stringify({ a: oldHeldout, question: 'old heldout', kept: true, live: { loss: null } }) + '\n');
+  writeFileSync(realPath(dir, '2026-10-02'), [
+    { source: 'real', id: 'r-dev', split: 'dev', relevant: ['real-dev'], question: 'real dev failure', live: { loss: 'judge_rejected' } },
+    { source: 'real', id: 'r-heldout', split: 'heldout', relevant: ['real-heldout'], question: 'real heldout check', live: { loss: null } },
+  ].map(JSON.stringify).join('\n') + '\n');
+  writeFileSync(realPath(dir, '2026-09-30'), JSON.stringify({ source: 'real', id: 'too-old', split: 'heldout', relevant: [heldout], question: 'too old' }) + '\n');
+  writeFileSync(questionsPath(dir, '2026-09-30'), JSON.stringify({ a: dev, question: 'too old failure', kept: true, live: { loss: 'not_in_pool' } }) + '\n');
+  const calls = [];
+  const status = await runFlywheelNight({ ...input, liveFactory: async ({ learned }) => async ({ question }) => {
+    calls.push(question);
+    return { shown: question === 'real heldout check' ? learned ? [] : ['real-heldout'] : learned ? [heldout, oldHeldout] : [] };
+  } });
+  assert.deepEqual(new Set(calls), new Set(['heldout check', 'real heldout check', 'old heldout']));
+  assert.deepEqual(status.learned.check, { heldout: { n: 3, gained: 2, lost: 1 }, real: { n: 1, gained: 0, lost: 1 } });
+  assert.equal(status.learned.decision, 'rejected');
+  const learned = await readLearned(learnedPath(dir));
+  assert.deepEqual(learned.map((row) => row.recordId), [dev, 'real-dev']);
+  assert.ok(learned.every((row) => row.state === 'rejected'));
+});
+
+test('stage five leaves candidates pending when the window expires and resumes without new proposals', async () => {
+  const { dir, heldout, input } = learnFixture();
+  const previous = { schema: LEARNED_SCHEMA, recordId: 'previous-target', query: 'previous query', from: 'r-previous', source: 'real', night: '2026-10-02', state: 'candidate', at: night().toISOString(), extra: 'preserved' };
+  await writeLearned(learnedPath(dir), [previous]);
+  let calls = 0;
+  const pending = await runFlywheelNight({ ...input, now: () => calls === 0 ? night() : new Date('2026-10-03T21:00:00Z'),
+    liveFactory: async () => async () => { calls += 1; return { shown: [heldout] }; },
+  });
+  assert.equal(calls, 1);
+  assert.equal(pending.learned.decision, null);
+  assert.equal(pending.learned.proposed, 1);
+  assert.ok((await readLearned(learnedPath(dir))).every((row) => row.state === 'candidate' && !row.check && !row.decidedAt));
+  const resumed = await runFlywheelNight({ ...input, liveFactory: async ({ learned }) => {
+    if (learned) assert.equal(learned.length, 2);
+    return async () => ({ shown: [heldout] });
+  } });
+  assert.equal(resumed.learned.proposed, 0);
+  assert.equal(resumed.learned.candidates, 2);
+  assert.equal(resumed.learned.decision, 'active');
+  assert.equal((await readLearned(learnedPath(dir)))[0].extra, 'preserved');
 });

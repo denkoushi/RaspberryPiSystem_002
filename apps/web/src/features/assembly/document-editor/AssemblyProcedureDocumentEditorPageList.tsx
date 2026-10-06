@@ -1,4 +1,3 @@
-import { Button } from '../../../components/ui/Button';
 import { AssemblyProcedureOverlayLayer } from '../AssemblyProcedureOverlayLayer';
 import { KioskDocumentPageImage } from '../KioskDocumentPageImage';
 
@@ -10,7 +9,6 @@ export function AssemblyProcedureDocumentEditorPageList({
   selectedPageIndex,
   onSelect,
   onAddBlankPage,
-  onLinkVideos,
   disabled
 }: {
   pages: AssemblyProcedureDocumentPageDto[];
@@ -18,29 +16,24 @@ export function AssemblyProcedureDocumentEditorPageList({
   selectedPageIndex: number;
   onSelect: (pageIndex: number) => void;
   onAddBlankPage: () => void;
-  onLinkVideos?: () => void;
   disabled: boolean;
 }) {
   return (
-    <aside className="flex min-h-0 w-full flex-row gap-2 overflow-hidden border-r border-white/10 bg-slate-900/75 p-2 xl:w-52 xl:flex-col xl:shrink-0" aria-label="手順書ページ一覧">
-      <div className="shrink-0">
-        <h2 className="text-sm font-bold">ページ</h2>
-        <Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" disabled={disabled} onClick={onAddBlankPage}>白紙ページを追加</Button>
-        {onLinkVideos ? <Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" disabled={disabled} onClick={onLinkVideos}>動画を紐づける</Button> : null}
-      </div>
-      <div className="flex min-h-0 min-w-0 flex-1 gap-1.5 overflow-x-auto overflow-y-hidden xl:block xl:space-y-1.5 xl:overflow-auto">
+    <aside className="flex min-h-0 flex-col items-center gap-2 overflow-auto border-r border-[#27313b] bg-[#161c22] px-2 py-2.5" aria-label="手順書ページ一覧">
+      <div className="flex w-full flex-col items-center gap-2">
         {pages.map((page) => {
           const selected = page.pageIndex === selectedPageIndex;
           return (
             <button
               key={page.pageIndex}
               type="button"
-              className={`relative block min-h-11 min-w-[6rem] rounded border p-1 text-left xl:min-w-0 xl:w-full ${selected ? 'border-cyan-300 bg-cyan-950/70' : 'border-white/10 bg-slate-950/60 hover:bg-white/10'}`}
+              className={`relative block w-[100px] shrink-0 overflow-hidden rounded border-2 bg-white text-left ${selected ? 'border-[#5fc3e8]' : 'border-transparent'}`}
+              aria-current={selected ? 'true' : undefined}
               aria-label={`${page.pageIndex + 1}ページ目${selected ? '（選択中）' : ''}`}
               aria-pressed={selected}
               onClick={() => onSelect(page.pageIndex)}
             >
-              <div className="relative aspect-[4/3] overflow-hidden rounded bg-white">
+              <div className="relative aspect-[1/1.414] overflow-hidden rounded bg-white">
                 <KioskDocumentPageImage
                   pageUrl={page.imageRelativePath}
                   alt=""
@@ -50,11 +43,12 @@ export function AssemblyProcedureDocumentEditorPageList({
                 />
                 <AssemblyProcedureOverlayLayer elements={page.overlays} assets={assets} />
               </div>
-              <span className="mt-1 block truncate text-xs font-semibold">{page.pageIndex + 1}ページ</span>
+              <span className="absolute bottom-1 left-1.5 font-mono text-sm text-[#333]">{page.pageIndex + 1}</span>
             </button>
           );
         })}
       </div>
+      <button type="button" aria-label="白紙ページを追加" className="h-12 w-[100px] shrink-0 rounded-lg border border-dashed border-[#344252] text-[26px] text-[#9fadb9] disabled:opacity-40" disabled={disabled} onClick={onAddBlankPage}>＋</button>
     </aside>
   );
 }

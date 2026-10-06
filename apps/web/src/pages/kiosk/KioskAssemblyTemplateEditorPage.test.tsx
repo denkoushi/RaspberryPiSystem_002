@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { KioskAssemblyTemplateEditorPage } from './KioskAssemblyTemplateEditorPage';
 
@@ -38,12 +38,15 @@ vi.mock('../../api/client', () => ({
 vi.mock('../../features/assembly/AssemblyProcedureCanvas', () => ({
   AssemblyProcedureCanvas: ({
     bolts,
-    onSelectBolt
+    onSelectBolt,
+    onCreateCrop
   }: {
     bolts: Array<{ id: string }>;
     onSelectBolt?: (id: string) => void;
+    onCreateCrop?: (crop: { x: number; y: number; width: number; height: number }) => void;
   }) => (
     <div data-testid="assembly-procedure-canvas">
+      {onCreateCrop ? <button type="button" onClick={() => onCreateCrop({ x: 0.2, y: 0.2, width: 0.6, height: 0.6 })}>テスト矩形手順を作成</button> : null}
       {bolts[0] && onSelectBolt ? (
         <button type="button" onClick={() => onSelectBolt(bolts[0]!.id)}>
           テスト締付マーカーを選択
@@ -252,18 +255,19 @@ async function authenticate() {
 function clickLeftPaneDocuments() {
   const toggle = within(
     screen.getByTestId('assembly-template-editor-left-pane')
-  ).getByLabelText('文書・工程');
-  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
+  ).getByRole('tab', { name: '文書', exact: true });
+  if (toggle.getAttribute('aria-selected') !== 'true') fireEvent.click(toggle);
 }
 
 function clickLeftPaneSteps() {
   const buttons = within(
     screen.getByTestId('assembly-template-editor-left-pane')
-  ).getAllByRole('button', { name: '手順', exact: true });
+  ).getAllByRole('tab', { name: '手順', exact: true });
   fireEvent.click(buttons[0]!);
 }
 
 async function selectMachineName(candidate = 'L300KP') {
+  if (!screen.queryByRole('button', { name: '機種名を選ぶ' })) clickLeftPaneDocuments();
   fireEvent.click(screen.getByRole('button', { name: '機種名を選ぶ' }));
   const dialog = await screen.findByRole('dialog', { name: '機種名を選択' });
   fireEvent.click(
@@ -275,6 +279,8 @@ async function selectMachineName(candidate = 'L300KP') {
 }
 
 describe('KioskAssemblyTemplateEditorPage', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.listDocuments.mockResolvedValue(documents);
@@ -343,6 +349,62 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     expect(mocks.createTemplate).not.toHaveBeenCalled();
   });
 
+  it('shows the full-height layout, four vertical stages, two-line processes and selected page thumbnails', async () => {
+    renderRoute(`/kiosk/assembly/templates/new?procedureDocumentId=${DOCUMENT_ID}`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート新規' });
+    const workspace = screen.getByTestId('assembly-unified-editor-workspace');
+    expect(workspace).toHaveClass('grid-cols-[280px_minmax(0,1fr)_64px]');
+    const left = screen.getByTestId('assembly-template-editor-left-pane');
+    expect(left).toContainElement(screen.getByTestId('assembly-template-editor-header'));
+    const stages = within(screen.getByTestId('assembly-template-header-guide')).getAllByRole('button').slice(0, 4);
+    expect(stages.map((stage) => stage.textContent)).toEqual(['1基本設定未完了', '✓文書・手順完了', '3工程・締付未完了', '4確認・保存未完了']);
+    expect(stages[0]).toHaveAttribute('aria-current', 'step');
+    expect(stages[1]).toHaveTextContent('✓');
+    const process = within(left).getByRole('button', { name: /^工程 1.*締付 0/ });
+    expect(process).toHaveAttribute('aria-current', 'true');
+    expect(process.children).toHaveLength(2);
+    expect(process.children[1]).toHaveClass('font-mono');
+    expect(within(left).getByRole('button', { name: '＋ 工程' })).toHaveClass('border-dashed');
+    const firstPage = within(left).getByRole('button', { name: /1ページ$/ });
+    expect(firstPage).toHaveAttribute('aria-current', 'true');
+    fireEvent.click(within(left).getByRole('button', { name: /2ページ$/ }));
+    await waitFor(() => expect(screen.getByTestId('assembly-template-page-heading')).toHaveTextContent('2 / 2 ページ'));
+    expect(within(left).getByRole('button', { name: /2ページ$/ })).toHaveAttribute('aria-current', 'true');
+    fireEvent.click(stages[0]!);
+    expect(within(left).getByRole('tab', { name: '文書', exact: true })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(within(left).getByRole('tabpanel', { name: '文書' })).toContainElement(
+      screen.getByRole('button', { name: '文書追加', exact: true })
+    );
+    clickLeftPaneSteps();
+    expect(within(left).getByRole('tab', { name: '手順', exact: true })).toHaveAttribute('aria-selected', 'true');
+    expect(left).toContainElement(screen.getByTestId('assembly-step-storyboard'));
+    expect(screen.queryByRole('button', { name: '文書追加', exact: true })).not.toBeInTheDocument();
+    fireEvent.click(within(left).getByRole('tab', { name: '工程', exact: true }));
+    expect(within(left).getByRole('tab', { name: '工程', exact: true })).toHaveAttribute('aria-selected', 'true');
+    expect(within(left).getByRole('button', { name: /2ページ$/ })).toHaveAttribute('aria-current', 'true');
+    expect(screen.queryByTestId('assembly-step-storyboard')).not.toBeInTheDocument();
+  });
+
+  it('shows page-shared checks on the second process line and switches the current process', async () => {
+    const source = templateFixture({
+      areas: [areaFixture(), areaFixture('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 2)],
+      checkItems: [{ id: 'check-1', markerNo: 1, label: '確認', required: true, xRatio: 0.2, yRatio: 0.3, sortOrder: 0, kioskDocumentId: null, assemblyProcedureDocumentId: DOCUMENT_ID, pageIndex: 0 }]
+    });
+    mocks.getTemplate.mockResolvedValue(source);
+    renderRoute(`/kiosk/assembly/templates/${source.id}/edit`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート編集' });
+    const left = screen.getByTestId('assembly-template-editor-left-pane');
+    const first = within(left).getByRole('button', { name: /^10-A1/ });
+    expect(first).toHaveTextContent('締付 1 · チェック 1');
+    fireEvent.click(within(left).getByRole('button', { name: /^20-A2/ }));
+    expect(within(left).getByRole('button', { name: /^20-A2/ })).toHaveAttribute('aria-current', 'true');
+    expect(first).not.toHaveAttribute('aria-current');
+    expect(within(screen.getByTestId('assembly-template-page-heading')).getByRole('button', { name: '20-A2' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('moves from an unfinished guide item to its field', async () => {
     renderRoute('/kiosk/assembly/templates/new');
     await authenticate();
@@ -366,7 +428,6 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     renderRoute(`/kiosk/assembly/templates/${source.id}/edit`);
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート編集' });
-    fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
     clickLeftPaneDocuments();
     const header = screen.getByTestId('assembly-template-editor-header');
     await waitFor(() => expect(within(header).getByText('保存済み')).toBeInTheDocument());
@@ -402,7 +463,6 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     renderRoute(`/kiosk/assembly/templates/${source.id}/edit`);
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート編集' });
-    fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
     clickLeftPaneDocuments();
     fireEvent.click(screen.getByRole('button', { name: /未完了 \d+件/ }));
     fireEvent.click(
@@ -429,7 +489,6 @@ describe('KioskAssemblyTemplateEditorPage', () => {
       renderRoute(`/kiosk/assembly/templates/${source.id}/edit`);
       await authenticate();
       await screen.findByRole('heading', { name: '組立テンプレート編集' });
-      fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
       clickLeftPaneDocuments();
 
       const toggle = screen.getByRole('button', { name: '詳細（任意）' });
@@ -465,16 +524,91 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     renderRoute(`/kiosk/assembly/templates/${source.id}/edit`);
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート編集' });
-    fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
     clickLeftPaneDocuments();
     fireEvent.click(screen.getByRole('button', { name: '詳細（任意）' }));
-    fireEvent.click(screen.getByRole('button', { name: /^20-A2/ }));
+    fireEvent.click(within(screen.getByTestId('assembly-template-editor-left-pane')).getByRole('button', { name: /^20-A2/ }));
     expect(screen.queryByLabelText('工程No.')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^10-A1/ }));
+    fireEvent.click(within(screen.getByTestId('assembly-template-editor-left-pane')).getByRole('button', { name: /^10-A1/ }));
     expect(screen.getByLabelText('工程No.')).toHaveValue('10');
   });
 
-  it('opens the right inspector when the operator requests step notes', async () => {
+  it.each([1366, 1279, 1280])('expands long template names within the scrolling left pane at %ix768 and retains document controls', async (width) => {
+    vi.stubGlobal('innerWidth', width);
+    vi.stubGlobal('innerHeight', 768);
+    const name = '全角の長い機種名を持つ組立設備テンプレート'.repeat(4);
+    const source = templateFixture({ name });
+    mocks.getTemplate.mockResolvedValue(source);
+    renderRoute(`/kiosk/assembly/templates/${source.id}/edit`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート編集' });
+    const input = screen.getByLabelText('テンプレート名');
+    expect(input).toHaveValue(name);
+    expect(input).toHaveClass('break-all', 'overflow-hidden');
+    expect(input).not.toHaveClass('max-h-[88px]', 'overflow-auto');
+    expect(input).toHaveAttribute('rows', '2');
+    const left = screen.getByTestId('assembly-template-editor-left-pane');
+    expect(left).toHaveClass('min-h-0', 'overflow-y-auto');
+    expect(within(left).getByRole('tablist')).toHaveClass('shrink-0');
+    clickLeftPaneDocuments();
+    expect(within(left).getByRole('tabpanel')).toHaveClass('shrink-0');
+    expect(within(left).getByRole('tabpanel')).not.toHaveClass('overflow-auto');
+    expect(document.querySelector('#assembly-procedure-pane #assembly-template-procedure-pattern')).toBeVisible();
+    expect(input).toHaveValue(name);
+  });
+
+  it.each([
+    { width: 900, floating: false },
+    { width: 1279, floating: false },
+    { width: 1280, floating: true },
+    { width: 1366, floating: true }
+  ])('places the selected marker inspector at $width px (floating: $floating)', async ({ width, floating }) => {
+    vi.stubGlobal('innerWidth', width);
+    const source = templateFixture();
+    source.areas[0]!.bolts[0]!.capabilityGroupId = null;
+    mocks.getTemplate.mockResolvedValue(source);
+    renderRoute(`/kiosk/assembly/templates/new?sourceTemplateId=${source.id}`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート新規' });
+    const workspace = screen.getByTestId('assembly-unified-editor-workspace');
+    expect(screen.queryByTestId('assembly-editor-side-column')).not.toBeInTheDocument();
+    expect(workspace).toHaveClass('grid-cols-[280px_minmax(0,1fr)_64px]');
+    fireEvent.click(screen.getByRole('button', { name: 'テスト締付マーカーを選択' }));
+    const inspector = await screen.findByTestId('assembly-editor-side-column');
+    expect(inspector).toContainElement(screen.getByRole('button', { name: '適合グループを選択' }));
+    if (floating) {
+      expect(inspector).toHaveClass('absolute', 'right-20', 'w-80');
+      expect(workspace).toHaveClass('grid-cols-[280px_minmax(0,1fr)_64px]');
+    } else {
+      expect(inspector).not.toHaveClass('absolute');
+      expect(inspector).toHaveClass('w-[320px]');
+      expect(workspace).toHaveClass('grid-cols-[280px_minmax(0,1fr)_320px_64px]');
+      expect(inspector.previousElementSibling).toBe(screen.getByTestId('assembly-unified-editor-canvas-pane'));
+      expect(inspector.nextElementSibling).toBe(screen.getByTestId('assembly-editor-toolbar'));
+    }
+  });
+
+  it('updates docking when an open inspector crosses the 1280px boundary', async () => {
+    vi.stubGlobal('innerWidth', 1366);
+    renderRoute(`/kiosk/assembly/templates/new?procedureDocumentId=${DOCUMENT_ID}`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート新規' });
+    fireEvent.click(screen.getByRole('button', { name: '注意・補足' }));
+    const inspector = await screen.findByTestId('assembly-editor-side-column');
+    expect(inspector).toHaveClass('absolute');
+    act(() => {
+      vi.stubGlobal('innerWidth', 900);
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(inspector).not.toHaveClass('absolute');
+    expect(screen.getByTestId('assembly-unified-editor-workspace')).toHaveClass('grid-cols-[280px_minmax(0,1fr)_320px_64px]');
+    act(() => {
+      vi.stubGlobal('innerWidth', 1280);
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(inspector).toHaveClass('absolute');
+  });
+
+  it.each(['full_page', 'crop'])('opens notes after creating a %s step and toggles only the supplement fields', async (viewMode) => {
     renderRoute(`/kiosk/assembly/templates/new?procedureDocumentId=${DOCUMENT_ID}`);
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート新規' });
@@ -483,13 +617,25 @@ describe('KioskAssemblyTemplateEditorPage', () => {
       expect(screen.getByRole('button', { name: '注意・補足' })).toBeEnabled()
     );
     expect(screen.queryByTestId('assembly-editor-settings-pane')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '注意・補足' }));
+    if (viewMode === 'crop') {
+      fireEvent.click(screen.getByRole('button', { name: '矩形' }));
+      fireEvent.click(screen.getByRole('button', { name: 'テスト矩形手順を作成' }));
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: '全体追加' }));
+    }
     expect(await screen.findByTestId('assembly-editor-settings-pane')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('タイトル'), { target: { value: '重点締付' } });
+    expect(screen.getByLabelText('タイトル')).toHaveValue('重点締付');
+    fireEvent.click(screen.getByRole('button', { name: '注意・補足' }));
+    expect(screen.getByTestId('assembly-editor-settings-pane')).toBeInTheDocument();
+    expect(screen.queryByLabelText('タイトル')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '注意・補足' }));
+    expect(screen.getByLabelText('タイトル')).toHaveValue('重点締付');
     fireEvent.click(screen.getByRole('button', { name: '設定を閉じる' }));
     expect(screen.queryByTestId('assembly-editor-settings-pane')).not.toBeInTheDocument();
   });
 
-  it('keeps the step inspector available when page navigation clears marker selection', async () => {
+  it('keeps the selected step inspector when page navigation clears marker selection and notes are closed', async () => {
     const source = templateFixture();
     mocks.getTemplate.mockResolvedValue(source);
     renderRoute(`/kiosk/assembly/templates/new?sourceTemplateId=${source.id}`);
@@ -501,14 +647,30 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '次頁' }));
 
     await waitFor(() =>
-      expect(screen.getByTestId('assembly-editor-settings-pane')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '適合グループを選択' })).not.toBeInTheDocument()
     );
+    expect(screen.getByTestId('assembly-editor-side-column')).toBeInTheDocument();
+    expect(screen.queryByLabelText('タイトル')).not.toBeInTheDocument();
+  });
+
+  it('keeps explicitly opened notes available after marker selection is cleared', async () => {
+    const source = templateFixture();
+    mocks.getTemplate.mockResolvedValue(source);
+    renderRoute(`/kiosk/assembly/templates/new?sourceTemplateId=${source.id}`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート新規' });
+    fireEvent.click(screen.getByRole('button', { name: '注意・補足' }));
+    fireEvent.click(screen.getByRole('button', { name: 'テスト締付マーカーを選択' }));
+    fireEvent.click(screen.getByRole('button', { name: '次頁' }));
+    expect(screen.getByTestId('assembly-editor-settings-pane')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^この手順の注意・補足/ })).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('suggests a template name, preserves a manual override, and can restore automation', async () => {
     renderRoute('/kiosk/assembly/templates/new');
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート新規' });
+    clickLeftPaneDocuments();
     const initialPattern = document.getElementById(
       'assembly-template-procedure-pattern'
     ) as HTMLInputElement;
@@ -522,8 +684,6 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     const name = document.getElementById('assembly-template-name') as HTMLTextAreaElement;
     expect(pattern).toBeInstanceOf(HTMLInputElement);
     expect(name).toBeInstanceOf(HTMLTextAreaElement);
-    expect(name).toHaveAttribute('rows', '3');
-    expect(name).toHaveClass('break-all');
     fireEvent.change(pattern, { target: { value: '標準' } });
     expect(name).toHaveValue('L300KP 標準 組立');
 
@@ -575,7 +735,6 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     const name = document.getElementById('assembly-template-name') as HTMLTextAreaElement;
     expect(pattern).toBeInstanceOf(HTMLInputElement);
     expect(name).toBeInstanceOf(HTMLTextAreaElement);
-    expect(name).toHaveAttribute('rows', '3');
     expect(pattern).toHaveValue(rawProcedurePattern);
     expect(pattern).toHaveAttribute('title', rawProcedurePattern);
     expect(name).toHaveValue(`${rawTemplateName} 複製`);
@@ -612,7 +771,6 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     renderRoute(`/kiosk/assembly/templates/${source.id}/edit`);
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート編集' });
-    fireEvent.click(screen.getByRole('button', { name: '文書/工程', exact: true }));
     clickLeftPaneDocuments();
 
     const header = screen.getByTestId('assembly-template-editor-header');
@@ -694,8 +852,9 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート新規' });
 
+    clickLeftPaneDocuments();
     fireEvent.click(screen.getByRole('button', { name: '工程1を削除' }));
-    const dialog = screen.getByRole('dialog');
+    const dialog = screen.getByRole('dialog', { name: /を削除$/ });
     expect(
       within(dialog).getByText(/締付点1件も、すべての表示手順から削除/)
     ).toBeInTheDocument();
@@ -732,6 +891,26 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     expect(screen.queryByPlaceholderText('パスワード')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '新しい版で保存' })).toBeDisabled();
     expect(mocks.verifyPassword).not.toHaveBeenCalled();
+  });
+
+  it('preserves multiline existing names when editing and saving a revision', async () => {
+    const original = templateFixture({ name: '既存テンプレート\n組立手順' });
+    mocks.getTemplate.mockResolvedValue(original);
+    mocks.reviseTemplate.mockResolvedValue({ ...original, version: 2 });
+    renderRoute(`/kiosk/assembly/templates/${original.id}/edit`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート編集' });
+    const input = within(screen.getByTestId('assembly-template-editor-left-pane'))
+      .getByRole('textbox', { name: 'テンプレート名', exact: true });
+    expect(input.tagName).toBe('TEXTAREA');
+    expect(input).toHaveAttribute('rows', '2');
+    expect(input).toHaveValue(original.name);
+    const editedName = `${original.name} 改版`;
+    fireEvent.change(input, { target: { value: editedName } });
+    fireEvent.click(screen.getByRole('button', { name: '新しい版で保存', exact: true }));
+    await waitFor(() => expect(mocks.reviseTemplate).toHaveBeenCalledWith(
+      original.id, expect.objectContaining({ name: editedName })
+    ));
   });
 
   it('preserves an existing KioskDocument when revising an imported legacy sequence', async () => {

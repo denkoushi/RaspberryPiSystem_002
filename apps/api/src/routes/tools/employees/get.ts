@@ -9,7 +9,9 @@ export function registerEmployeeGetRoute(app: FastifyInstance, employeeService: 
   app.get('/employees/:id', { preHandler: canView }, async (request) => {
     const params = employeeParamsSchema.parse(request.params);
     const employee = await employeeService.findById(params.id);
-    return { employee };
+    return {
+      employee: request.user?.role === 'VIEWER' ? { ...employee, nfcTagUid: null } : employee
+    };
   });
 }
 

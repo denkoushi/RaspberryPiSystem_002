@@ -1,7 +1,5 @@
 import { clampImageMarkerRatio, setImageMarkerCalloutTip } from '../../kiosk/image-canvas';
-import { AssemblyAreaTabs } from '../AssemblyAreaTabs';
-import { tintAssemblyBoltsByCondition } from '../assemblyBoltConditionPalette';
-import { AssemblyBoltConditionStrip } from '../AssemblyBoltConditionStrip';
+import { tintAssemblyBoltsByCondition, formatAssemblyBoltConditionSpec } from '../assemblyBoltConditionPalette';
 import { AssemblyProcedureCanvas } from '../AssemblyProcedureCanvas';
 import { AssemblyProcedureCropView } from '../AssemblyProcedureCropView';
 import {
@@ -10,22 +8,20 @@ import {
 } from '../AssemblyProcedureMarkerLayer';
 import { assemblyProcedureViewPointToSourcePoint } from '../assemblyProcedureMarkerProjection';
 import { AssemblyProcedureOverlayLayer } from '../AssemblyProcedureOverlayLayer';
+import { assemblyEditorPageName, formatAssemblyEditorName } from '../assemblyTemplateGuidePresentation';
 
-import { AssemblyTemplateEditorCanvasToolbar } from './AssemblyTemplateEditorCanvasToolbar';
 import { useAssemblyTemplateEditor } from './AssemblyTemplateEditorContext';
-import { useAssemblyEditorWideLayout } from './useAssemblyEditorWideLayout';
 
 export function AssemblyTemplateEditorCanvasPane() {
   const {
     activeBoltConditionKey,
-    addArea,
+    pageOptions,
+    setBoltConditionPaneOpen,
     addBoltAt,
-    addBoltCondition,
     addCheckItemAt,
     addCurrentCropStep,
     areas,
     boltConditionPalette,
-    incompleteAreaIds,
     canvasZoom,
     cropVisibleBolts,
     cropVisibleCheckItems,
@@ -34,7 +30,6 @@ export function AssemblyTemplateEditorCanvasPane() {
     placementAction,
     placeOnSelectedCropAt,
     readOnly,
-    selectedBolt,
     selectedAreaId,
     selectedBoltId,
     selectedCheckItemId,
@@ -46,13 +41,13 @@ export function AssemblyTemplateEditorCanvasPane() {
     setBoltPatch,
     selectArea,
     selectBolt,
-    selectBoltCondition,
     selectCheckItem,
     showSelectedCrop,
     visibleBolts,
     visibleCheckItems
   } = useAssemblyTemplateEditor();
-  const wide = useAssemblyEditorWideLayout();
+  const documentPageCount = pageOptions.filter((page) => page.documentId === selectedPage?.documentId && page.source === selectedPage?.source).length;
+  const condition = (boltConditionPalette.find((entry) => entry.key === activeBoltConditionKey) ?? boltConditionPalette[0])?.condition;
   const selectedProcedurePage =
     selectedPage?.source === 'assembly_procedure_document' &&
     selectedPage.documentId === selectedDocument?.id
@@ -103,32 +98,25 @@ export function AssemblyTemplateEditorCanvasPane() {
   return (
   <section
     data-testid="assembly-unified-editor-canvas-pane"
-    className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-[#27313b] bg-[#161c22] xl:min-h-0"
+    className="relative min-h-0 min-w-0 overflow-hidden bg-[#0a0d10]"
   >
-    <AssemblyTemplateEditorCanvasToolbar />
-    <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-white/10 px-2 py-1">
-      <AssemblyAreaTabs
-        areas={areas}
-        selectedAreaId={selectedAreaId}
-        incompleteAreaIds={incompleteAreaIds}
-        readOnly={readOnly}
-        onSelect={selectArea}
-        onAdd={addArea}
-      />
-      {wide ? null : (
-        <AssemblyBoltConditionStrip
-          entries={boltConditionPalette}
-          activeKey={activeBoltConditionKey}
-          selectedMarkerNo={selectedBolt?.markerNo ?? null}
-          readOnly={readOnly}
-          onSelect={selectBoltCondition}
-          onAdd={addBoltCondition}
-        />
-      )}
+    <div className="pointer-events-none absolute left-4 right-4 top-3 z-20 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+      <div className="pointer-events-auto flex min-w-0 items-center gap-1.5 overflow-x-auto" data-testid="assembly-template-page-heading">
+        <span className="flex h-9 min-w-0 max-w-[60%] shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-[#344252] bg-[#161c22]/90 px-3 text-[17px] text-[#9fb0c0]">
+          <b className="min-w-0 truncate text-[#eef3f6]">{selectedPage ? assemblyEditorPageName(selectedPage.label, selectedPage.pageIndex) : '手順書を選択'}</b>
+          {selectedPage ? ` · ${selectedPage.pageIndex + 1} / ${documentPageCount} ページ` : null}
+        </span>
+        {areas.map((area, index) => <button key={area.id} type="button" aria-pressed={area.id === selectedAreaId} className="h-9 shrink-0 rounded-lg border border-[#344252] bg-[#161c22]/90 px-3 text-[17px] aria-pressed:border-white" onClick={() => selectArea(area.id)}>
+          {formatAssemblyEditorName([area.processNo.trim(), area.areaCode.trim()].filter(Boolean).join('-') || area.areaName.trim() || `工程 ${index + 1}`)}
+        </button>)}
+      </div>
+      <button type="button" className="pointer-events-auto flex h-9 items-center gap-2 whitespace-nowrap rounded-lg border border-[#344252] bg-[#161c22]/90 px-3 text-[17px] text-[#9fb0c0]" onClick={() => setBoltConditionPaneOpen(true)}>
+        締付条件 <b className="text-[#f6b93b]">{condition ? `${formatAssemblyBoltConditionSpec(condition)} ${condition.nominalTorque ?? '-'} ${condition.unit}` : '未設定'}</b>
+      </button>
     </div>
-    <div className="min-h-0 flex-1">
+    <div className="h-full min-h-0 p-4">
       {showSelectedCrop && selectedStep?.crop && selectedPage ? (
-        <div className="relative h-full w-full bg-slate-950 p-2">
+        <div className="relative h-full w-full bg-slate-950">
           <AssemblyProcedureCropView
             pageUrl={selectedPage.imageRelativePath}
             crop={selectedStep.crop}

@@ -1489,6 +1489,36 @@ esac
         self.assertIn("dest: \"{{ release_signage_config_root }}/runtime.env\"", after_hash)
         self.assertNotIn(".artifact-sha256", after_hash)
 
+    def test_pi3_renders_the_status_agent_configuration_every_release(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_signage/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        names = [task["name"] for task in prepare_tasks]
+        runtime_index = names.index(
+            "Render Pi3 host settings outside the immutable release tree"
+        )
+        conf_index = names.index(
+            "Render the Pi3 status-agent configuration outside the immutable release tree"
+        )
+        self.assertEqual(conf_index, runtime_index + 1)
+        conf = prepare_tasks[conf_index]
+        template = conf["ansible.builtin.template"]
+        self.assertEqual(
+            template["src"], "{{ playbook_dir }}/../templates/status-agent.conf.j2"
+        )
+        self.assertEqual(template["dest"], "/etc/raspi-status-agent.conf")
+        self.assertEqual(template["mode"], "0600")
+        self.assertTrue(conf["no_log"])
+        inventory = yaml.safe_load(
+            (ANSIBLE / "inventory.yml").read_text(encoding="utf-8")
+        )
+        pi3 = inventory["all"]["children"]["clients"]["children"]["signage"]["hosts"][
+            "raspberrypi3"
+        ]
+        self.assertEqual(pi3["status_agent_storage_health_enabled"], "1")
+
     def test_pi3_publishes_only_a_complete_atomic_candidate(self) -> None:
         prepare = (
             ANSIBLE / "roles/release_signage/tasks/prepare.yml"
@@ -1919,6 +1949,119 @@ esac
 
 
 class Pi5CanonicalStandardRouteTests(unittest.TestCase):
+    def test_pi5_renders_and_runs_status_agent_outside_api_rollback(self) -> None:
+        tasks = yaml.safe_load(self.task_text("main"))
+        names = [task["name"] for task in tasks]
+        conf_index = names.index(
+            "Render the Pi5 status-agent configuration outside the immutable release tree"
+        )
+        self.assertEqual(conf_index, names.index("Keep the Pi5 system journal across reboots") + 1)
+        self.assertEqual(names[conf_index + 1], "Warn before the Pi5 disk fills")
+        self.assertEqual(tasks[conf_index + 1]["ansible.builtin.import_tasks"], "host-status-agent-storage.yml")
+        self.assertEqual(
+            tasks[conf_index]["ansible.builtin.template"],
+            {
+                "src": "{{ playbook_dir }}/../templates/status-agent.conf.j2",
+                "dest": "/etc/raspi-status-agent.conf",
+                "owner": "root",
+                "group": "root",
+                "mode": "0600",
+            },
+        )
+        self.assertTrue(tasks[conf_index]["no_log"])
+        run = tasks[conf_index + 2]
+        self.assertEqual(run["name"], "Run the Pi5 status-agent once with the rendered configuration")
+        self.assertEqual(
+            run["ansible.builtin.systemd"],
+            {"name": "status-agent.service", "state": "restarted"},
+        )
+        for task in (tasks[conf_index], run):
+            for suppressed in ("when", "ignore_errors", "failed_when", "rescue"):
+                self.assertNotIn(suppressed, task)
+        self.assertEqual(tasks[0]["block"][-1]["ansible.builtin.import_tasks"], "commit.yml")
+        self.assertEqual(tasks[0]["always"][0]["ansible.builtin.import_tasks"], "cleanup.yml")
+        self.assertNotIn("status-agent", self.task_text("rollback"))
+        service = (ROOT / "clients/status-agent/status-agent.service").read_text()
+        self.assertIn("Type=oneshot", service)
+        self.assertIn("Environment=STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf", service)
+        self.assertNotIn("RemainAfterExit=yes", service)
+        self.assertIn(
+            "Unit=status-agent.service",
+            (ROOT / "clients/status-agent/status-agent.timer").read_text(),
+        )
+
+    def test_pi5_rendered_status_agent_preserves_existing_settings(self) -> None:
+        inventory = yaml.safe_load((ANSIBLE / "inventory.yml").read_text())
+        pi5 = inventory["all"]["children"]["server"]["hosts"]["raspberrypi5"]
+        self.assertEqual(pi5["status_agent_client_key"], "{{ vault_status_agent_client_key }}")
+        self.assertEqual(pi5["status_agent_api_base_url"], "{{ api_base_url }}")
+        self.assertEqual(pi5["status_agent_storage_health_enabled"], "1")
+        self.assertEqual(pi5["status_agent_storage_health_write_warn_gb_per_day"], "300")
+        variables = {
+            key: value for key, value in pi5.items() if key.startswith("status_agent_")
+        }
+        # Resolve only the non-secret URL dependencies; never load host Vaults.
+        group = yaml.safe_load((ANSIBLE / "group_vars/all.yml").read_text())
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {"1", "true", "yes", "on"}
+        environment.filters["to_json"] = json.dumps
+        network = environment.compile_expression(group["current_network"][3:-3])(**group)
+        url_variables = {**group, "current_network": network}
+        for key in ("server_ip", "server_base_url", "api_base_url"):
+            url_variables[key] = environment.from_string(group[key]).render(**url_variables)
+        variables["status_agent_api_base_url"] = environment.from_string(
+            variables["status_agent_api_base_url"]
+        ).render(**url_variables)
+        variables["status_agent_client_key"] = "fixture-key"
+        rendered = environment.from_string(
+            (ANSIBLE / "templates/status-agent.conf.j2").read_text()
+        ).render(**variables)
+        agent_dir = ROOT / "clients/status-agent"
+        sys.path.insert(0, str(agent_dir))
+        try:
+            agent = runpy.run_path(str(agent_dir / "status-agent.py"))
+        finally:
+            sys.path.remove(str(agent_dir))
+        with tempfile.TemporaryDirectory() as directory:
+            conf = Path(directory) / "status-agent.conf"
+            conf.write_text(rendered)
+            config = agent["parse_config_file"](conf)
+        self.assertEqual(
+            config,
+            {
+                "API_BASE_URL": "https://100.106.158.2/api",
+                "CLIENT_ID": "raspberrypi5-server",
+                "CLIENT_KEY": "fixture-key",
+                "LOCATION": "ラズパイ5 - サーバー",
+                "LOG_FILE": "/var/log/raspi-status-agent.log",
+                "STATUS_AGENT_LOG_SUCCESS": "0",
+                "REQUEST_TIMEOUT": "10",
+                "TLS_SKIP_VERIFY": "1",
+                "STORAGE_HEALTH_ENABLED": "1",
+                "STORAGE_HEALTH_INTERVAL_SECONDS": "3600",
+                "STORAGE_HEALTH_DISK_WARN_PCT": "80",
+                "STORAGE_HEALTH_DISK_ERROR_PCT": "90",
+                "STORAGE_HEALTH_STATE_FILE": "/run/raspi-status-agent/storage-health-last-run",
+                "STORAGE_HEALTH_WEAR_STATE_FILE": "/run/raspi-status-agent/storage-wear-state.json",
+                "STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY": "300",
+                "TERMINAL_AGENT_HEALTH_NFC_ENABLED": "0",
+                "TERMINAL_AGENT_HEALTH_BARCODE_ENABLED": "0",
+                "TERMINAL_AGENT_HEALTH_TORQUE_ENABLED": "0",
+                "TERMINAL_AGENT_MAINTENANCE_LEASES_JSON": "{}",
+                "TERMINAL_AGENT_HEALTH_STATE_FILE": "/run/raspi-status-agent/terminal-agent-health.json",
+            },
+        )
+        self.assertNotIn("TEMPERATURE_FILE", config)
+        self.assertNotIn("STORAGE_HEALTH_KERNEL_LOG_SINCE", config)
+        storage_tasks = yaml.safe_load(self.task_text("host-status-agent-storage"))[0]["block"]
+        self.assertEqual(
+            storage_tasks[1]["loop"],
+            [
+                {"key": "STORAGE_HEALTH_ENABLED", "value": config["STORAGE_HEALTH_ENABLED"]},
+                {"key": "STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY", "value": config["STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY"]},
+            ],
+        )
+
     def test_finalized_search_read_distinguishes_required_reads_from_legitimate_skips(self) -> None:
         production = yaml.safe_load((ANSIBLE / 'roles/release_pi5/tasks/prepare.yml').read_text())
         selected = [task for task in production if task['name'] in {
@@ -2466,128 +2609,12 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         prepare = self.task_text("prepare")
         self.assertIn("Caddyfile.gateway.template", defaults)
-        self.assertIn("Caddyfile.gateway.pre-admin-allowlist.template", defaults)
         self.assertIn("cmp -s", prepare)
-        self.assertIn("must match exactly one known route", prepare)
-        self.assertIn("match_count != 1", prepare)
+        self.assertIn("matches neither known route", prepare)
         self.assertIn("{{.Config.Image}}|{{.Image}}|{{.State.Running}}", prepare)
         self.assertIn("PI5_GATEWAY_IMAGE", prepare)
         self.assertNotIn("reverse_proxy", prepare)
         self.assertNotIn("Caddyfile.gateway.http.template", defaults)
-
-    def test_pi5_accepts_only_exact_new_or_frozen_legacy_routes(self) -> None:
-        prepare_tasks = yaml.safe_load(self.task_text("prepare"))
-        derive = next(
-            task
-            for task in prepare_tasks
-            if task["name"]
-            == "Derive the canonical Pi5 generation and slot from exact known routes"
-        )
-        script = derive["ansible.builtin.shell"]
-        legacy_template = (
-            ANSIBLE
-            / "roles/release_pi5/files/Caddyfile.gateway.pre-admin-allowlist.template"
-        ).read_text(encoding="utf-8")
-        self.assertEqual(
-            hashlib.sha256(legacy_template.encode()).hexdigest(),
-            "b31b5c3c603c9fc6656bfe20d9f083d4346d50e8877082069334d6f5ed73cb74",
-        )
-        new_template = (
-            ROOT / "infrastructure/docker/Caddyfile.gateway.template"
-        ).read_text(encoding="utf-8")
-
-        def render(template: str, slot: str) -> str:
-            return template.replace(
-                "__BLUE_GREEN_API_UPSTREAM__", f"api-{slot}:8080"
-            ).replace("__BLUE_GREEN_WEB_UPSTREAM__", f"web-{slot}:80")
-
-        candidates = {
-            "new|blue": render(new_template, "blue"),
-            "new|green": render(new_template, "green"),
-            "legacy|blue": render(legacy_template, "blue"),
-            "legacy|green": render(legacy_template, "green"),
-        }
-        self.assertEqual(len(set(candidates.values())), 4)
-        expected_order = ["new|blue", "new|green", "legacy|blue", "legacy|green"]
-        self.assertEqual(
-            sorted(expected_order, key=lambda item: script.index(f"match='{item}'")),
-            expected_order,
-        )
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            paths = {name: root / name.replace("|", "-") for name in candidates}
-            for name, content in candidates.items():
-                paths[name].write_text(content, encoding="utf-8")
-            current = root / "Caddyfile"
-            substitutions = {
-                "{{ (release_pi5_gateway_config_dir + '/Caddyfile') | quote }}": current,
-                "{{ release_pi5_blue_config | quote }}": paths["new|blue"],
-                "{{ release_pi5_green_config | quote }}": paths["new|green"],
-                "{{ release_pi5_legacy_blue_config | quote }}": paths["legacy|blue"],
-                "{{ release_pi5_legacy_green_config | quote }}": paths["legacy|green"],
-            }
-            executable = script
-            for expression, path in substitutions.items():
-                executable = executable.replace(expression, shlex.quote(str(path)))
-
-            for expected, content in candidates.items():
-                with self.subTest(expected=expected):
-                    current.write_text(content, encoding="utf-8")
-                    result = subprocess.run(
-                        ["/bin/bash", "-c", executable],
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                    )
-                    self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual(result.stdout, f"{expected}\n")
-
-            current.write_text("unknown\n", encoding="utf-8")
-            unknown = subprocess.run(
-                ["/bin/bash", "-c", executable],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            self.assertNotEqual(unknown.returncode, 0)
-            self.assertEqual(unknown.stdout, "")
-
-            paths["legacy|blue"].write_text(candidates["new|blue"], encoding="utf-8")
-            current.write_text(candidates["new|blue"], encoding="utf-8")
-            ambiguous = subprocess.run(
-                ["/bin/bash", "-c", executable],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            self.assertNotEqual(ambiguous.returncode, 0)
-            self.assertEqual(ambiguous.stdout, "")
-
-    def test_pi5_legacy_route_changes_only_the_known_rollback_source(self) -> None:
-        prepare_tasks = yaml.safe_load(self.task_text("prepare"))
-        names = [task["name"] for task in prepare_tasks]
-        derive_index = names.index(
-            "Derive the canonical Pi5 generation and slot from exact known routes"
-        )
-        compose_index = names.index("Resolve active and opposite Pi5 Compose container IDs")
-        migration_index = names.index("Apply Prisma migrations with the standard production command")
-        self.assertLess(derive_index, compose_index)
-        self.assertLess(derive_index, migration_index)
-
-        select = next(
-            task
-            for task in prepare_tasks
-            if task["name"] == "Select the exact known Pi5 rollback route"
-        )["ansible.builtin.set_fact"]["release_pi5_previous_config"]
-        self.assertIn("release_pi5_canonical_generation == 'legacy'", select)
-        self.assertIn("release_pi5_legacy_blue_config", select)
-        self.assertIn("release_pi5_legacy_green_config", select)
-        self.assertIn("release_pi5_blue_config", select)
-        self.assertIn("release_pi5_green_config", select)
-
-        rollback = self.task_text("rollback")
-        self.assertIn("cp {{ release_pi5_previous_config | quote }}", rollback)
 
     def test_pi5_gateway_admin_allowlist_is_written_before_any_route_is_loaded(self) -> None:
         prepare_tasks = yaml.safe_load(self.task_text("prepare"))

@@ -63,5 +63,23 @@
 - name: Keep the Pi5 system journal across reboots
   ansible.builtin.import_tasks: host-journald.yml
 
+# Host configuration stays outside the API rollback boundary. A render or
+# heartbeat failure must still fail the release rather than hide a bad key.
+- name: Render the Pi5 status-agent configuration outside the immutable release tree
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/status-agent.conf.j2"
+    dest: /etc/raspi-status-agent.conf
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+
 - name: Warn before the Pi5 disk fills
   ansible.builtin.import_tasks: host-status-agent-storage.yml
+
+# The oneshot service reads the file on each invocation. Run it even on an
+# unchanged retry so a previous authentication failure cannot become success.
+- name: Run the Pi5 status-agent once with the rendered configuration
+  ansible.builtin.systemd:
+    name: status-agent.service
+    state: restarted

@@ -4,6 +4,7 @@ import {
   isMaterialPurchasePartCode,
   materialArrivalLookupKey,
   resolveMaterialArrivalStatus,
+  resolveMaterialArrivalByPart,
 } from '../material-arrival-status.service.js';
 
 describe('isMaterialPurchasePartCode', () => {
@@ -50,5 +51,36 @@ describe('resolveMaterialArrivalStatus', () => {
 describe('materialArrivalLookupKey', () => {
   it('joins seiban with the FHINCD match key', () => {
     expect(materialArrivalLookupKey(' CA1S1M11 ', 'MD100024231')).toBe('CA1S1M11\tMD100024231');
+  });
+});
+
+describe('resolveMaterialArrivalByPart', () => {
+  const row = (raw: string, purchaseStatus: string | null) => ({ raw, purchaseStatus, matchKey: 'MD1' });
+
+  it('uses the slowest undecorated part status only when material is deleted', () => {
+    expect(resolveMaterialArrivalByPart([row('MD1(A)', 'X'), row('MD1-001', 'X'), row(' MD1 ', 'C'), row('MD1', 'R')]))
+      .toEqual({ status: 'ordered', basis: 'part' });
+  });
+
+  it('keeps the material basis when any material status resolves', () => {
+    expect(resolveMaterialArrivalByPart([row('MD1-001', 'X'), row('MD1(A)', 'C'), row('MD1', 'R')]))
+      .toEqual({ status: 'received', basis: 'material' });
+  });
+
+  it.each([
+    [row('MD1', 'C')],
+    [row('MD1-001', null), row('MD1', 'C')],
+    [row('MD1-001', 'X')],
+    [row('MD1-001', 'X'), row('MD1', 'X')],
+    [row('MD1-001', 'X'), row('MD1', null)],
+    [row('MD1-001', 'X'), row('MD1-003', 'C')],
+    [row('MD1-001', 'X'), row('MD1(FM)', 'C')]
+  ])('does not resolve ineligible or unresolved substitute rows (%j)', (...rows) => {
+    expect(resolveMaterialArrivalByPart(rows)).toBeNull();
+  });
+
+  it('allows X mixed with null and trims the match key', () => {
+    expect(resolveMaterialArrivalByPart([row('MD1-001', null), row('MD1(A)', ' x '), { ...row(' MD1 ', 'S'), matchKey: ' MD1 ' }]))
+      .toEqual({ status: 'partial', basis: 'part' });
   });
 });

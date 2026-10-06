@@ -19,6 +19,7 @@ import { projectAssemblyProcedureMarkerToCrop } from './assemblyProcedureMarkerP
 import { AssemblyProcedureOverlayLayer } from './AssemblyProcedureOverlayLayer';
 import { getSequenceDocumentPages } from './assemblyTemplateDraft';
 import { KioskDocumentPageImage } from './KioskDocumentPageImage';
+import { ProcedureManualPageRail } from './procedure-manuals/ProcedureManualPageRail';
 
 import type { AssemblyCanvasBolt, AssemblyCanvasCheckItem } from './AssemblyProcedureCanvas';
 import type {
@@ -33,6 +34,10 @@ type Props = {
   className?: string;
   showCurrentMarkerButton?: boolean;
   layout?: 'session' | 'manuals';
+  listOpen?: boolean;
+  onToggleList?: () => void;
+  twoPages?: boolean;
+  onToggleTwoPages?: () => void;
   onCurrentStepChange?: (step: AssemblyProcedureSequenceStepDto | null, index: number, total: number) => void;
   boltMarkers?: AssemblyCanvasBolt[];
   checkMarkers?: AssemblyCanvasCheckItem[];
@@ -224,7 +229,11 @@ export function AssemblyProcedureSequenceViewer({
   onCurrentPageChange,
   showCurrentMarkerButton = true,
   layout = 'session',
-  onCurrentStepChange
+  onCurrentStepChange,
+  listOpen = false,
+  onToggleList,
+  twoPages = false,
+  onToggleTwoPages
 }: Props) {
   const steps = useMemo(
     () => (sequence.steps && sequence.steps.length > 0 ? sequence.steps : fallbackSteps(sequence)),
@@ -240,6 +249,8 @@ export function AssemblyProcedureSequenceViewer({
   const currentStep = steps[Math.max(0, Math.min(steps.length - 1, stepIndex))] ?? null;
   const crop = currentStep ? stepCrop(currentStep) : null;
   const manuals = layout === 'manuals';
+  const spread = manuals && !listOpen && twoPages;
+  const nextStep = spread ? steps[stepIndex + 1] : null;
   const fitMode = fitChoice?.url === currentStep?.pageUrl ? fitChoice?.mode
     : pageShape?.url === currentStep?.pageUrl && pageShape?.landscape ? 'width' : 'contain';
   const fitWidth = manuals && fitMode === 'width';
@@ -339,10 +350,11 @@ export function AssemblyProcedureSequenceViewer({
 
   if (!currentStep || !currentPage) {
     return (
-      <div className={className}>
+      <div className={clsx(className, manuals && "relative pr-16")}>
         <div className="flex h-full min-h-[18rem] items-center justify-center bg-slate-950 text-sm font-semibold text-white/60">
           表示できる要領書ページがありません
         </div>
+        {manuals ? <ProcedureManualPageRail listOpen={listOpen} onToggleList={onToggleList} /> : null}
       </div>
     );
   }
@@ -354,8 +366,45 @@ export function AssemblyProcedureSequenceViewer({
         ? 'border-rose-300/45 bg-rose-950/45 text-rose-50'
         : 'border-cyan-300/25 bg-cyan-950/35 text-cyan-50';
 
+  const renderManualPage = (step: AssemblyProcedureSequenceStepDto, current: boolean) => {
+    const pageCrop = current && showFullPage ? null : stepCrop(step);
+    const elements = getStepOverlays(step);
+    const assets = getStepAssets(step);
+    if (pageCrop) return (
+      <AssemblyProcedureCropView pageUrl={step.pageUrl} crop={pageCrop} className="h-full w-full" overlay={
+        <>
+          <AssemblyProcedureOverlayLayer elements={elements} crop={pageCrop} assets={assets} />
+          {current ? <AssemblyProcedureMarkerLayer bolts={visibleBolts} checkItems={visibleChecks} selectedBoltId={selectedBoltId} inputTargetBoltId={inputTargetBoltId} onToggleCheckItem={onToggleCheckItem} /> : null}
+        </>
+      } />
+    );
+    return (
+      <div key={step.pageUrl} className={clsx('h-full w-full', fitWidth ? 'overflow-y-auto' : 'overflow-hidden')} data-testid={current ? 'procedure-page-viewport' : undefined} data-fit-mode={fitMode}>
+        <AssemblyProcedureImageWithMarkers
+          fitToParent={!fitWidth}
+          className={fitWidth ? '!block w-full' : 'h-full w-full'}
+          imageContent={<KioskDocumentPageImage
+            pageUrl={step.pageUrl}
+            alt={current ? '' : '次ページ'}
+            className={fitWidth ? 'block h-auto w-full' : 'h-full w-full object-contain'}
+            onLoad={current ? event => {
+              const image = event.currentTarget;
+              if (image.naturalWidth && image.naturalHeight) setPageShape({ url: step.pageUrl, landscape: image.naturalWidth > image.naturalHeight });
+            } : undefined}
+          />}
+          bolts={current ? boltMarkers : []}
+          checkItems={current ? checkMarkers : []}
+          selectedBoltId={selectedBoltId}
+          inputTargetBoltId={inputTargetBoltId}
+          onToggleCheckItem={onToggleCheckItem}
+          overlay={<AssemblyProcedureOverlayLayer elements={elements} assets={assets} />}
+        />
+      </div>
+    );
+  };
+
   return (
-    <div className={clsx('relative flex min-h-0 flex-col', manuals ? 'bg-[#0a0d10]' : 'bg-slate-950', className)}>
+    <div className={clsx('relative flex min-h-0 flex-col', manuals ? 'bg-[#0a0d10] pr-16' : 'bg-slate-950', className)}>
       {!manuals ? <header className="shrink-0 border-b border-white/10 bg-slate-900/90 px-2 py-1">
         <div
           className="grid min-h-12 grid-cols-[minmax(10rem,1fr)_minmax(4rem,0.45fr)_auto] items-center gap-2"
@@ -463,7 +512,12 @@ export function AssemblyProcedureSequenceViewer({
           className={clsx("relative min-h-0 min-w-0 flex-1 overflow-hidden", manuals ? "p-5" : "p-2")}
           data-testid="assembly-work-step-canvas"
         >
-          {crop && !showFullPage ? (
+          {manuals ? (
+            <div className="flex h-full min-w-0 gap-4" data-testid="procedure-page-spread" data-pages={spread ? 2 : 1}>
+              <div className="relative h-full min-w-0 flex-1">{renderManualPage(currentStep, true)}</div>
+              {spread ? <div className="h-full min-w-0 flex-1" data-testid="procedure-second-page">{nextStep ? renderManualPage(nextStep, false) : null}</div> : null}
+            </div>
+          ) : crop && !showFullPage ? (
             <AssemblyProcedureCropView
               pageUrl={currentStep.pageUrl}
               crop={crop}
@@ -486,7 +540,7 @@ export function AssemblyProcedureSequenceViewer({
               }
             />
           ) : (
-            <div key={manuals ? currentStep.pageUrl : undefined} className={clsx("h-full w-full", fitWidth ? "overflow-y-auto" : "overflow-hidden")} data-testid="procedure-page-viewport" data-fit-mode={manuals ? fitMode : undefined}>
+            <div className={clsx("h-full w-full", fitWidth ? "overflow-y-auto" : "overflow-hidden")} data-testid="procedure-page-viewport" >
             <AssemblyProcedureImageWithMarkers
               fitToParent={!fitWidth}
               className={fitWidth ? "!block w-full" : "h-full w-full"}
@@ -495,10 +549,7 @@ export function AssemblyProcedureSequenceViewer({
                   pageUrl={currentStep.pageUrl}
                   alt=""
                   className={fitWidth ? "block h-auto w-full" : "h-full w-full object-contain"}
-                  onLoad={manuals ? (event) => {
-                    const image = event.currentTarget;
-                    if (image.naturalWidth && image.naturalHeight) setPageShape({ url: currentStep.pageUrl, landscape: image.naturalWidth > image.naturalHeight });
-                  } : undefined}
+
                 />
               }
               bolts={boltMarkers}
@@ -516,7 +567,7 @@ export function AssemblyProcedureSequenceViewer({
             </div>
           )}
           {crop ? (
-            <div className={clsx("absolute right-3 grid w-32 gap-1", manuals ? "bottom-24" : "bottom-3")}>
+            <div className={clsx("absolute right-3 grid w-32 gap-1", manuals ? "bottom-3" : "bottom-3")}>
               <AssemblyProcedureCropMinimap
                 pageUrl={currentStep.pageUrl}
                 crop={crop}
@@ -539,15 +590,7 @@ export function AssemblyProcedureSequenceViewer({
           ) : null}
         </div>
       </div>
-      {manuals ? <nav aria-label="手順の操作" className="absolute bottom-6 right-7 flex items-center gap-2 rounded-xl border border-[#344252] bg-[#0f1317]/80 p-2 text-[19px] font-bold">
-        {!crop || showFullPage ? <div role="group" aria-label="表示サイズ" className="inline-flex overflow-hidden rounded-lg border border-[#344252]">
-          {([['contain', '全体'], ['width', '幅いっぱい']] as const).map(([mode, label]) => <button key={mode} className={clsx("min-h-11 min-w-11 whitespace-nowrap px-3.5", fitMode === mode && "bg-[#3ba776] text-[#0b1a12]")} aria-pressed={fitMode === mode} onClick={() => setFitChoice({ url: currentStep.pageUrl, mode })}>{label}</button>)}
-        </div> : null}
-        <button className="h-11 rounded-lg border border-[#344252] px-3.5" aria-pressed={storyboardOpen} onClick={() => setStoryboardOpen((open) => !open)}>全手順</button>
-        <button className="h-11 rounded-lg border border-[#344252] px-3.5 disabled:opacity-40" disabled={stepIndex === 0} onClick={() => setStepIndex((index) => index - 1)}>前手順</button>
-        <span className="px-2 font-mono font-medium">{stepIndex + 1} / {steps.length}</span>
-        <button className="h-11 rounded-lg bg-[#3ba776] px-3.5 text-[#0b1a12] disabled:opacity-40" disabled={stepIndex === steps.length - 1} onClick={() => setStepIndex((index) => index + 1)}>次手順</button>
-      </nav> : null}
+      {manuals ? <ProcedureManualPageRail listOpen={listOpen} onToggleList={onToggleList} twoPages={spread} onToggleTwoPages={onToggleTwoPages} storyboardOpen={storyboardOpen} onToggleStoryboard={() => setStoryboardOpen(open => !open)} fitMode={fitMode} fitDisabled={Boolean(crop && !showFullPage)} onFit={mode => setFitChoice({ url: currentStep.pageUrl, mode })} index={stepIndex} total={steps.length} onPrevious={() => setStepIndex(index => Math.max(0, index - (spread ? 2 : 1)))} onNext={() => setStepIndex(index => Math.min(steps.length - 1, index + (spread ? 2 : 1)))} /> : null}
     </div>
   );
 }

@@ -9,7 +9,11 @@ export function registerEmployeeListRoute(app: FastifyInstance, employeeService:
   app.get('/employees', { preHandler: canView, config: { rateLimit: false } }, async (request) => {
     const query = employeeQuerySchema.parse(request.query);
     const employees = await employeeService.findAll(query);
-    return { employees };
+    return {
+      employees: request.user?.role === 'VIEWER'
+        ? employees.map((employee) => ({ ...employee, nfcTagUid: null }))
+        : employees
+    };
   });
 }
 

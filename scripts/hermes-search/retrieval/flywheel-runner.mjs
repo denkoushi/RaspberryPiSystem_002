@@ -16,7 +16,8 @@ import { enrichmentSettings, withinWindow } from './enrichment-dgx.mjs';
 import { createDgxGrader, createJevPairGrader, filterAndLabel } from './flywheel-filter.mjs';
 import { createDgxChat, generateForPairs, guardChat } from './flywheel-generate.mjs';
 import { createLiveScorer, lossStage, relevantIds } from './flywheel-live.mjs';
-import { splitOf } from './flywheel-gate.mjs';
+import { questionSet, splitOf } from './flywheel-gate.mjs';
+import { DEFAULT_LEARN_BUDGET, LEARN_BUDGET_CAP, LEARN_EVAL_NIGHTS, activationDecision, evaluateCandidates, learnedPath, proposeLearnedQueries, readLearned, writeLearned } from './flywheel-learn.mjs';
 import { existingRealIds, readReceiptQuestions, realPath } from './flywheel-real.mjs';
 import { answerableIntents, bareId, bodyText, samplePairs } from './flywheel-pairs.mjs';
 import { createRandom, sampleSeed } from './flywheel-seeds.mjs';
@@ -35,12 +36,14 @@ export function flywheelSettings(env = process.env) {
   const requested = Number.parseInt(env.HERMES_FLYWHEEL_MAX_QUESTIONS ?? '', 10);
   const labelBudget = Number(env.HERMES_FLYWHEEL_LABEL_BUDGET ?? NaN);
   const realBudget = Number(env.HERMES_FLYWHEEL_REAL_BUDGET ?? NaN);
+  const learnBudget = Number(env.HERMES_FLYWHEEL_LEARN_BUDGET ?? NaN);
   const inference = enrichmentSettings(env);
   return {
     enabled: env.HERMES_FLYWHEEL_ENABLED === 'true',
     maxQuestions: Number.isInteger(requested) && requested > 0 ? Math.min(requested, MAX_QUESTIONS_CAP) : DEFAULT_MAX_QUESTIONS,
     labelBudget: Number.isInteger(labelBudget) && labelBudget >= 0 && env.HERMES_FLYWHEEL_LABEL_BUDGET?.trim() !== '' ? Math.min(labelBudget, LABEL_BUDGET_CAP) : DEFAULT_LABEL_BUDGET,
     realBudget: Number.isInteger(realBudget) && realBudget >= 0 && env.HERMES_FLYWHEEL_REAL_BUDGET?.trim() !== '' ? Math.min(realBudget, REAL_BUDGET_CAP) : DEFAULT_REAL_BUDGET,
+    learnBudget: Number.isInteger(learnBudget) && learnBudget >= 0 && env.HERMES_FLYWHEEL_LEARN_BUDGET?.trim() !== '' ? Math.min(learnBudget, LEARN_BUDGET_CAP) : DEFAULT_LEARN_BUDGET,
     window: env.HERMES_RETRIEVAL_ENRICHMENT_WINDOW || '',
     dir: env.HERMES_FLYWHEEL_DIR || DEFAULT_FLYWHEEL_DIR,
     denseStore: denseSettings(env).storePath,
@@ -117,6 +120,7 @@ function countLine(status) {
     `labelled=${status.labelled}`,
     `labelPending=${status.labelPending}`,
     `real=${status.real}`,
+    `learned=${status.learned?.proposed ?? 0}/${status.learned?.decision ?? 'pending'}`,
   ].join(' ');
 }
 
@@ -142,7 +146,7 @@ function unlabelledShownPairs(rows, labels) {
 
 /**
  * One night pass. Injectable: now, readDense, chat (the raw DGX chat), jevEvaluate, live (the
- * scorer from createLiveScorer), and the random seed. Returns the status that is also written to
+ * scorer from createLiveScorer), liveFactory, and the random seed. Returns the status that is also written to
  * flywheel-status.json.
  */
 export async function runFlywheelNight({
@@ -153,6 +157,7 @@ export async function runFlywheelNight({
   chat = null,
   jevEvaluate = null,
   live = null,
+  liveFactory = null,
   seed = null,
   log = (line) => console.info(line),
 }) {
@@ -276,12 +281,13 @@ export async function runFlywheelNight({
   // The scorer builds the kiosk's index over the whole corpus, so it is created only when a kept
   // row still lacks a live result; most five-minute starts inside the window have none.
   let score = live;
+  const makeLive = liveFactory ?? (live ? async () => live : createLiveScorer);
   const rows = await readLines(filePath);
   let scored = false;
   for (const row of rows) {
     if (row.kept !== true || !row.question || row.live) continue;
     if (!withinWindow(settings.window, now())) break;
-    score ??= await createLiveScorer({ records, catalog, evaluate });
+    score ??= await makeLive({ records, catalog, evaluate });
     row.live = await score(row);
     scored = true;
   }
@@ -359,7 +365,7 @@ export async function runFlywheelNight({
       break;
     }
     if (!withinWindow(settings.window, now())) break;
-    score ??= await createLiveScorer({ records, catalog, evaluate });
+    score ??= await makeLive({ records, catalog, evaluate });
     const live = await score({ a: null, b: null, question: question.question, grades: null });
     const ids = [...new Set([
       ...(live.candidates ?? []).slice(0, REAL_LABEL_DEPTH), ...(live.shown ?? []), ...question.dayShown,
@@ -387,6 +393,45 @@ export async function runFlywheelNight({
     })}\n`, { mode: 0o600 });
     status.real += 1;
     status.realPending -= 1;
+  }
+  // Learn only from development failures; all comparisons use held-out questions.
+  const recentRows = [];
+  const nightDate = new Date(`${status.night}T12:00:00+09:00`);
+  for (let offset = 0; offset < LEARN_EVAL_NIGHTS; offset += 1) {
+    const day = tokyoDay(new Date(nightDate.getTime() - offset * 24 * 3600 * 1000));
+    recentRows.push(...await readLines(questionsPath(settings.dir, day)), ...await readLines(realPath(settings.dir, day)));
+  }
+  const learnedFile = learnedPath(settings.dir);
+  const existing = await readLearned(learnedFile);
+  const proposed = proposeLearnedQueries({ rows: recentRows, existing, night: status.night, budget: settings.learnBudget ?? DEFAULT_LEARN_BUDGET });
+  const learned = [...existing, ...proposed];
+  if (proposed.length) await writeLearned(learnedFile, learned);
+  const candidates = learned.filter((row) => row.state === 'candidate');
+  status.learned = { proposed: proposed.length, candidates: candidates.length, decision: null, check: null };
+  // Pending candidates must resume even when deduplication produces no new proposals.
+  if (candidates.length && withinWindow(settings.window, now())) {
+    const questions = questionSet(recentRows).filter((question) => question.split === 'heldout');
+    score ??= await makeLive({ records, catalog, evaluate });
+    const candidateScore = await makeLive({ records, catalog, evaluate, learned: candidates });
+    let expired = false;
+    const inWindow = (scorer) => async (row) => {
+      if (!withinWindow(settings.window, now())) {
+        expired = true;
+        throw new Error('learn_window_expired');
+      }
+      return scorer(row);
+    };
+    try {
+      const check = await evaluateCandidates({ questions, scoreBaseline: inWindow(score), scoreCandidate: inWindow(candidateScore) });
+      if (withinWindow(settings.window, now())) {
+        const decision = activationDecision(check);
+        const decidedAt = now().toISOString();
+        await writeLearned(learnedFile, learned.map((row) => row.state === 'candidate' ? { ...row, state: decision, check, decidedAt } : row));
+        Object.assign(status.learned, { decision, check });
+      }
+    } catch (error) {
+      if (!expired) throw error;
+    }
   }
   if (guarded.tripped()) reason = 'dgx_busy';
   return finish(reason);

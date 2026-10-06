@@ -38,10 +38,6 @@ release_pi5_gateway_config_dir: "{{ release_pi5_project_dir }}/logs/deploy/blueg
 # Reuse the established explicit TLS source. Tests may pass the existing HTTP
 # template explicitly; the role never infers a mode from Caddyfile contents.
 release_pi5_gateway_template: "{{ release_pi5_project_dir }}/infrastructure/docker/Caddyfile.gateway.template"
-# Temporary exact predecessor used only to cross the /admin allowlist Caddy
-# change. Remove this fixture and its prepare.yml compatibility branch after
-# the first verified production migration.
-release_pi5_legacy_gateway_template: "{{ release_pi5_project_dir }}/infrastructure/ansible/roles/release_pi5/files/Caddyfile.gateway.pre-admin-allowlist.template"
 # The gateway imports this file as /srv/bluegreen/admin-allow-nets.caddy.
 release_pi5_admin_allow_file: "{{ release_pi5_gateway_config_dir }}/admin-allow-nets.caddy"
 release_pi5_api_health_url: https://127.0.0.1/api/system/health

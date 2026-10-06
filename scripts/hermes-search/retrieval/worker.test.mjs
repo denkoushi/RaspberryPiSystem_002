@@ -17,6 +17,7 @@ import {
   failureDiagnostic,
   formatCoverageNotice,
   loadEnrichmentById,
+  loadLearnedQueriesById,
   loadRetrievalResources,
   noOtherAnswer,
   noResultAnswer,
@@ -552,6 +553,103 @@ test('stored enrichment is attached only while enrichment is enabled', async () 
   assert.equal(await loadEnrichmentById({ HERMES_RETRIEVAL_ENRICHMENT_ENABLED: 'false', HERMES_RETRIEVAL_ENRICHMENT_STORE: store }), null);
   const loaded = await loadEnrichmentById({ HERMES_RETRIEVAL_ENRICHMENT_ENABLED: 'true', HERMES_RETRIEVAL_ENRICHMENT_STORE: store });
   assert.equal(loaded.get('rec-alpha').summary, 'note');
+});
+
+test('learned queries load separately, normalize ids, select active rows and can be disabled', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const { LEARNED_SCHEMA, learnedPath, writeLearned } = await import('./flywheel-learn.mjs');
+  const dir = mkdtempSync(path.join(tmpdir(), 'worker-learned-'));
+  const store = path.join(dir, 'enrichment.jsonl');
+  writeFileSync(store, JSON.stringify({ schema: 'hermes-retrieval-enrichment/v1', recordId: 'rec-alpha', summary: 'note', queries: ['existing'] }) + '\n');
+  const file = learnedPath(dir);
+  const row = { schema: LEARNED_SCHEMA, recordId: 'rec-alpha', query: 'learned wording', source: 'synthetic', from: 'rec-alpha', night: '2026-10-03', at: '2026-10-03T15:00:00Z' };
+  await writeLearned(file, [{ ...row, state: 'active' }, { ...row, recordId: 'nonconformity:rec-alpha', state: 'active' },
+    { ...row, query: 'pending', state: 'candidate' }, { ...row, query: 'wrong', state: 'rejected' },
+    { ...row, recordId: 'new-record', query: 'new wording', state: 'active' }]);
+  const env = { HERMES_FLYWHEEL_LEARNED_PATH: file, HERMES_RETRIEVAL_ENRICHMENT_ENABLED: 'true', HERMES_RETRIEVAL_ENRICHMENT_STORE: store };
+  const enrichmentById = await loadEnrichmentById(env);
+  assert.deepEqual(enrichmentById.get('rec-alpha').queries, ['existing']);
+  assert.equal(enrichmentById.get('rec-alpha').summary, 'note');
+  assert.equal(enrichmentById.has('new-record'), false);
+  const learnedById = await loadLearnedQueriesById(env);
+  assert.deepEqual(learnedById, new Map([['rec-alpha', ['learned wording']], ['new-record', ['new wording']]]));
+  assert.deepEqual(await loadLearnedQueriesById({ ...env, HERMES_RETRIEVAL_ENRICHMENT_ENABLED: 'false' }), learnedById);
+  assert.equal(await loadEnrichmentById({ ...env, HERMES_RETRIEVAL_ENRICHMENT_ENABLED: 'false' }), null);
+  assert.deepEqual(await loadLearnedQueriesById({ ...env, HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' }), new Map());
+  assert.deepEqual(await loadLearnedQueriesById({ ...env, HERMES_FLYWHEEL_LEARNED_PATH: path.join(dir, 'missing') }), new Map());
+  const answering = createRetrievalAnswering({ records, catalog, valueIndex, lexicalCorpus, evaluate: learnedEvaluate, enrichmentById, learnedById });
+  assert.equal((await answering.answer(row.query, null, { stageDump: true })).candidateIds[0], 'rec-alpha');
+});
+
+function learnedEvaluate(input) {
+  if (input.questions.candidate_0) return { answers: Object.fromEntries(Object.keys(input.questions).map((key) => [key, { type: 'noul', noul: 0.95 }])) };
+  const answers = plannerAnswers({ content: true, term: null, sort: 'relevance', limit: 'unspecified', questions: input.questions }).answers;
+  answers.scope = { type: 'choice', choice: 'nonconformity' };
+  for (const key of Object.keys(input.questions)) if (key.startsWith('field_')) answers[key] = { type: 'choice', choice: 'none' };
+  return { answers };
+}
+
+test('learned queries rank first lexically while full enrichment reaches semantic search only', async () => {
+  const question = '学習専用語';
+  const learnedById = new Map([['rec-gamma', [question]]]);
+  const enrichmentById = new Map([
+    ['rec-gamma', { summary: 'summary', queries: ['existing'], facets: { phenomenon: [{ value: 'tag' }] } }],
+    ['rec-beta', { summary: question.repeat(20), queries: [question], facets: { phenomenon: [{ value: question }] } }],
+  ]);
+  const snapshot = structuredClone({ records, enrichmentById, learnedById, lexicalCorpus });
+  const plain = await createRetrievalAnswering({ records, catalog, valueIndex, lexicalCorpus, evaluate: learnedEvaluate, learnedById })
+    .answer(question, null, { stageDump: true });
+  assert.equal(plain.candidateIds.length, 4);
+  assert.equal(plain.candidateIds[0], 'rec-gamma');
+  let semanticRecords;
+  const answering = createRetrievalAnswering({ records, catalog, valueIndex, lexicalCorpus, evaluate: learnedEvaluate, enrichmentById, learnedById,
+    vector: async (_, rows) => { semanticRecords = rows; return { ok: false, status: 'unavailable' }; },
+  });
+  const result = await answering.answer(question, null, { stageDump: true });
+  assert.deepEqual(result.candidateIds, plain.candidateIds);
+  assert.deepEqual(semanticRecords.find((record) => record.id === 'rec-gamma').enrichment, { summary: 'summary', queries: ['existing', question], tags: ['tag'] });
+  assert.deepEqual({ records, enrichmentById, learnedById, lexicalCorpus }, snapshot);
+});
+
+test('absent or empty learned queries preserve answers and lexical candidate order with enrichment', async () => {
+  const enrichmentById = new Map([['rec-beta', { summary: 'surface scratch'.repeat(20), queries: ['surface scratch'] }]]);
+  const options = { records, catalog, valueIndex, lexicalCorpus, evaluate: learnedEvaluate };
+  const baseline = await createRetrievalAnswering(options).answer('surface scratch', null, { stageDump: true });
+  for (const learnedById of [null, new Map()]) {
+    const result = await createRetrievalAnswering({ ...options, enrichmentById, learnedById }).answer('surface scratch', null, { stageDump: true });
+    assert.deepEqual(result.candidateIds, baseline.candidateIds);
+    assert.deepEqual(result.recordIds, baseline.recordIds);
+    assert.equal(result.answer, baseline.answer);
+    assert.deepEqual(result.session, baseline.session);
+    assert.equal(result.receipt.outcome, baseline.receipt.outcome);
+  }
+});
+
+test('corpus refresh reloads learned queries and schedules enriched semantic records', async (t) => {
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const { LEARNED_SCHEMA, learnedPath, writeLearned } = await import('./flywheel-learn.mjs');
+  const file = learnedPath(await mkdtemp(path.join(tmpdir(), 'worker-learned-refresh-')));
+  const keys = ['HERMES_FLYWHEEL_LEARNED_PATH', 'HERMES_FLYWHEEL_LEARNED_ENABLED', 'HERMES_RETRIEVAL_ENRICHMENT_ENABLED'];
+  const saved = keys.map((key) => process.env[key]);
+  t.after(() => keys.forEach((key, index) => { if (saved[index] === undefined) delete process.env[key]; else process.env[key] = saved[index]; }));
+  process.env.HERMES_FLYWHEEL_LEARNED_PATH = file;
+  process.env.HERMES_FLYWHEEL_LEARNED_ENABLED = 'true';
+  process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED = 'false';
+  const query = '学習専用語';
+  await writeLearned(file, [{ schema: LEARNED_SCHEMA, recordId: 'nonconformity:rec-gamma', query, state: 'active', source: 'synthetic', from: 'rec-gamma', night: '2026-10-03', at: '2026-10-03T15:00:00Z' }]);
+  let scheduled;
+  const answering = createRetrievalAnswering({ records, catalog, valueIndex, lexicalCorpus, evaluate: learnedEvaluate,
+    learnedById: new Map([['rec-alpha', [query]]]), dense: { schedule: (rows) => { scheduled = rows; } },
+  });
+  const refreshed = await answering.replaceCorpus({ mode: 'full', records });
+  assert.equal(refreshed.ok, true);
+  assert.equal((await answering.answer(query, null, { stageDump: true })).candidateIds[0], 'rec-gamma');
+  assert.deepEqual(scheduled.find((record) => record.id === 'rec-gamma').enrichment.queries, [query]);
+  assert.equal(scheduled.find((record) => record.id === 'rec-alpha').enrichment, undefined);
 });
 
 test('answer returns the judged candidate ids only when stageDump is requested', async () => {

@@ -1,8 +1,7 @@
 ---
-# The Pi5 status-agent configuration is otherwise only written by the retired
-# "full" server mode, so the disk checks were never turned on for the Pi5. On
-# 2026-09-30 its SSD was 84% full with no warning. Turn on the status-agent
-# storage checks (disk 80% WARN / 90% ERROR to Slack ops) in the existing file.
+# Keep these storage settings as a fallback after the standard release renders
+# the shared configuration. On 2026-09-30 the Pi5 SSD was 84% full with no warning.
+# Storage checks use disk 80% WARN / 90% ERROR to Slack ops.
 # Like host-journald.yml, a failure here only reports and never rolls back the API.
 - name: Enable status-agent storage health checks on the Pi5
   block:

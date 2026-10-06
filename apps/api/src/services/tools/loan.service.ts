@@ -69,13 +69,14 @@ export class LoanService {
   }
 
   /**
-   * クライアントIDを解決（clientIdまたはx-client-keyヘッダーから）
+   * デバイス認証を必須にしてクライアントIDを解決（JWT認証済みの経路は任意）。
    */
   async resolveClientId(
     clientId: string | undefined,
-    apiKeyHeader: string | string[] | undefined
+    apiKeyHeader: string | string[] | undefined,
+    requireClientKey = true
   ): Promise<string | undefined> {
-    return resolveClientDeviceId(clientId, apiKeyHeader);
+    return resolveClientDeviceId(clientId, apiKeyHeader, requireClientKey);
   }
 
   /**

@@ -3,11 +3,14 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 
-import { ProcedureManualBrowser } from './ProcedureManualBrowser';
+import { saveProcedureEditorAccess } from '../procedureEditorAccess';
+
+import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 
 const mocks = vi.hoisted(() => ({ count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn() }));
 vi.mock('../../../api/client', () => ({
+  listProcedureVideos: async () => [],
   listProcedureManualModels: async () => [], listProcedureManualProcesses: async () => [],
   getProcedureManualAssignments: vi.fn(), listAssemblyProcedureDocumentSummaries: vi.fn(),
   getAssemblyProcedureDocumentRevisions: vi.fn(), getKioskDocuments: vi.fn(), replaceProcedureManualAssignments: vi.fn(),
@@ -21,7 +24,7 @@ const photo = { ...text, id: 'photo', kind: 'PHOTO', text: null, originalFileNam
 
 describe('procedure-manuals material shelf', () => {
   beforeEach(() => {
-    vi.resetAllMocks(); localStorage.clear(); mocks.count.mockResolvedValue([]); mocks.list.mockResolvedValue([text, photo]); mocks.file.mockResolvedValue(new Blob(['photo'], { type: 'image/png' }));
+    vi.resetAllMocks(); localStorage.clear(); saveProcedureEditorAccess('2520'); mocks.count.mockResolvedValue([]); mocks.list.mockResolvedValue([text, photo]); mocks.file.mockResolvedValue(new Blob(['photo'], { type: 'image/png' }));
     mocks.ingest.mockResolvedValue({ saved: 2, duplicate: 0, skipped: 1, retryable: 0, skippedAttachments: 1, messages: [{ messageId: 'unsupported', reason: '本文が空で、対応する写真がありません' }] });
     mocks.knowledge.mockResolvedValue({ enabled: false, items: [] });
     mocks.knowledgeImage.mockResolvedValue(new Blob(['knowledge']));
@@ -30,8 +33,8 @@ describe('procedure-manuals material shelf', () => {
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:photo'); vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   });
   afterEach(() => { vi.unstubAllGlobals(); });
-  it('opens the shelf from the browser, shows text/photo metadata, filters hints, and manually ingests/reloads', async () => {
-    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+  it('opens the shelf from the workshop, shows text/photo metadata, filters hints, and manually ingests/reloads', async () => {
+    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     expect(screen.getByRole('dialog', { name: '素材' })).toBeInTheDocument();
     expect(await screen.findByText(/締付手順/)).toHaveClass('line-clamp-6');
@@ -57,7 +60,7 @@ describe('procedure-manuals material shelf', () => {
       }
     });
     mocks.list.mockResolvedValue([photo, { ...photo, id: 'offscreen', originalFileName: '範囲外.png' }]);
-    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
+    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     await waitFor(() => expect(observers).toHaveLength(2));
     expect(observers[0]!.observe).toHaveBeenCalledOnce();
     expect(mocks.file).not.toHaveBeenCalled();
@@ -74,7 +77,7 @@ describe('procedure-manuals material shelf', () => {
     let resolve: (blob: Blob) => void = () => undefined;
     mocks.file.mockReturnValue(new Promise<Blob>((done) => { resolve = done; }));
     mocks.list.mockResolvedValue([photo]);
-    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
+    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     await waitFor(() => expect(mocks.file).toHaveBeenCalledOnce());
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
     await act(async () => { resolve(new Blob(['photo'])); });
@@ -82,7 +85,7 @@ describe('procedure-manuals material shelf', () => {
   });
   it('discards then lists discarded materials and restores them', async () => {
     mocks.list.mockResolvedValueOnce([text]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...text, discardedAt: '2026-10-05T04:00:00Z' }]).mockResolvedValueOnce([]);
-    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
+    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     fireEvent.click(await screen.findByRole('checkbox', { name: 'DFD1 組立' }));
     fireEvent.click(screen.getByRole('button', { name: '捨てる' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: '素材を捨てる' })).getByRole('button', { name: '捨てる' }));
@@ -92,13 +95,13 @@ describe('procedure-manuals material shelf', () => {
     await waitFor(() => expect(mocks.restore).toHaveBeenCalledWith('text'));
     await screen.findByText('素材がありません'); expect(mocks.list).toHaveBeenLastCalledWith({ state: 'discarded', q: '', limit: 500 });
   });
-  it('selects only unplaced materials with the existing hint filter and keeps placement failures visible', async () => {
+  it('selects unplaced materials with the existing hint filter and keeps placement failures visible', async () => {
     mocks.list.mockResolvedValue([text]);
     const onSelect = vi.fn().mockRejectedValueOnce(new Error('配置エラー')).mockResolvedValueOnce(undefined);
     const onClose = vi.fn();
     render(<ProcedureMaterialShelfDialog onClose={onClose} onSelect={onSelect} />);
     expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: '', limit: 500 });
-    expect(screen.queryByRole('tab', { name: /^配置済み/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^配置済み/ })).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('checkbox', { name: 'DFD1 組立' }));
     fireEvent.click(screen.getByRole('button', { name: '現在ページに配置' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('配置エラー');
@@ -106,16 +109,108 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.click(screen.getByRole('button', { name: '現在ページに配置' }));
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
     expect(onSelect).toHaveBeenCalledWith(text);
+    expect(screen.queryByRole('checkbox', { name: 'DFD1 組立' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^未配置/ })).toHaveTextContent('未配置 (0)');
+  });
+  it('selects placed text/photos without unplace or discard actions and retains them after repeated placement', async () => {
+    const placedText = { ...text, documentId: 'old-document', placedAt: '2026-10-05T04:00:00Z' };
+    const placedPhoto = { ...photo, subjectHint: '配置済み写真', documentId: 'old-document', placedAt: '2026-10-05T04:00:00Z' };
+    mocks.list.mockResolvedValueOnce([]).mockResolvedValueOnce([placedText, placedPhoto]);
+    const onSelect = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    render(<ProcedureMaterialShelfDialog onClose={onClose} onSelect={onSelect} />);
+    await screen.findByText('素材がありません');
+    fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
+    const textCheck = await screen.findByRole('checkbox', { name: 'DFD1 組立' });
+    const photoCheck = screen.getByRole('checkbox', { name: '配置済み写真' });
+    expect(textCheck).toBeEnabled(); expect(photoCheck).toBeEnabled();
+    expect(mocks.list).toHaveBeenLastCalledWith({ state: 'placed', q: '', limit: 500 });
+    expect(screen.queryByRole('button', { name: '配置を取り消す' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '捨てる' })).not.toBeInTheDocument();
+    const place = screen.getByRole('button', { name: '現在ページに配置' });
+    expect(place).toBeDisabled();
+    fireEvent.click(textCheck); fireEvent.click(photoCheck);
+    expect(place).toBeEnabled();
+    fireEvent.click(place);
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(onSelect).toHaveBeenNthCalledWith(1, placedText);
+    expect(onSelect).toHaveBeenNthCalledWith(2, placedPhoto);
+    expect(textCheck).toBeInTheDocument(); expect(textCheck).not.toBeChecked();
+    expect(photoCheck).toBeInTheDocument(); expect(photoCheck).not.toBeChecked();
+    fireEvent.click(photoCheck); fireEvent.click(place);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2));
+    expect(onSelect).toHaveBeenNthCalledWith(3, placedPhoto);
+    expect(mocks.unplace).not.toHaveBeenCalled(); expect(mocks.discard).not.toHaveBeenCalled();
   });
   it('returns placed materials to the shelf through the placed tab', async () => {
     mocks.list.mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...text, documentId: 'document', placedAt: '2026-10-05T04:00:00Z' }]).mockResolvedValueOnce([]);
-    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     await screen.findByText('素材がありません');
     fireEvent.click(screen.getByRole('tab', { name: /^配置済み/ }));
     fireEvent.click(await screen.findByRole('button', { name: '配置を取り消す' }));
     await waitFor(() => expect(mocks.unplace).toHaveBeenCalledWith('text'));
     expect(mocks.list).toHaveBeenCalledWith({ state: 'placed', q: '', limit: 500 });
+  });
+  it.each(['unplaced', 'placed'] as const)('allows only one photo in replacement mode on the %s tab and keeps failed replacement selections visible', async (state) => {
+    const first = { ...photo, subjectHint: '写真1' };
+    const second = { ...photo, id: 'photo-2', subjectHint: '写真2' };
+    const materials = [text, first, second].map((material) => state === 'placed' ? { ...material, documentId: 'old-document', placedAt: '2026-10-05T04:00:00Z' } : material);
+    mocks.list.mockResolvedValue(materials);
+    const onSelect = vi.fn().mockRejectedValueOnce(new Error('現在は画像を差し替えできません')).mockResolvedValueOnce(undefined);
+    const onClose = vi.fn();
+    render(<ProcedureMaterialShelfDialog mode="replace" onClose={onClose} onSelect={onSelect} />);
+    await screen.findByRole('checkbox', { name: 'DFD1 組立' });
+    if (state === 'placed') fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
+    const textCheck = await screen.findByRole('checkbox', { name: 'DFD1 組立' });
+    expect(textCheck).toBeDisabled();
+    expect(screen.getByRole('tab', { name: state === 'placed' ? /^配置済み/ : /^未配置/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('button', { name: '配置を取り消す' })).not.toBeInTheDocument();
+    const button = screen.getByRole('button', { name: 'この素材に差し替え' });
+    expect(button).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
+    const firstCheck = screen.getByRole('checkbox', { name: '写真1' });
+    const secondCheck = screen.getByRole('checkbox', { name: '写真2' });
+    fireEvent.click(firstCheck);
+    expect(firstCheck).toBeChecked();
+    fireEvent.click(secondCheck);
+    expect(firstCheck).not.toBeChecked();
+    expect(secondCheck).toBeChecked();
+    expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('1 件を選択中');
+    fireEvent.click(secondCheck);
+    expect(button).toBeDisabled();
+    fireEvent.click(secondCheck);
+    fireEvent.click(button);
+    expect(await screen.findByRole('alert')).toHaveTextContent('現在は画像を差し替えできません');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(materials[2]);
+    expect(secondCheck).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: '写真1' })).toBeInTheDocument();
+    fireEvent.click(button);
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(onSelect).toHaveBeenCalledTimes(2);
+    expect(onSelect).toHaveBeenLastCalledWith(materials[2]);
+  });
+  it('disables knowledge text and imports only the latest selected photo in replacement mode', async () => {
+    mocks.knowledge.mockResolvedValue({ enabled: true, items: [
+      { candidateKey: 'knowledge:text', kind: 'TEXT', title: '文章候補', preview: '文章', sourceLabel: 'Chat 投稿', alreadyImported: false },
+      { candidateKey: 'knowledge:first', kind: 'PHOTO', imageId: 'first', title: '写真候補1', preview: '', sourceLabel: 'Chat 投稿', alreadyImported: false },
+      { candidateKey: 'knowledge:second', kind: 'PHOTO', imageId: 'second', title: '写真候補2', preview: '', sourceLabel: 'Chat 投稿', alreadyImported: false }
+    ] });
+    render(<ProcedureMaterialShelfDialog mode="replace" onClose={vi.fn()} onSelect={vi.fn()} />);
+    await screen.findAllByRole('checkbox', { name: 'DFD1 組立' });
+    fireEvent.click(screen.getByRole('tab', { name: 'ナレッジから' }));
+    expect(await screen.findByRole('checkbox', { name: '文章候補' })).toBeDisabled();
+    const first = screen.getByRole('checkbox', { name: '写真候補1' });
+    const second = screen.getByRole('checkbox', { name: '写真候補2' });
+    fireEvent.click(first);
+    fireEvent.click(second);
+    expect(first).not.toBeChecked();
+    expect(second).toBeChecked();
+    expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('1 件を選択中');
+    fireEvent.click(screen.getByRole('button', { name: '棚に取り込む' }));
+    await waitFor(() => expect(mocks.importKnowledge).toHaveBeenCalledExactlyOnceWith(['knowledge:second']));
+    await waitFor(() => expect(screen.getByRole('tab', { name: /^未配置/ })).toHaveAttribute('aria-selected', 'true'));
   });
   it('lists, searches, selects knowledge text/photo and imports them into unplaced materials', async () => {
     const candidates = [
@@ -238,7 +333,7 @@ describe('procedure-manuals material shelf', () => {
   });
   it('shows write permission errors near the action controls', async () => {
     mocks.ingest.mockRejectedValue({ isAxiosError: true, response: { status: 403 } });
-    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
+    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     await screen.findByRole('button', { name: '今すぐ取り込む' });
     fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('権限がありません');

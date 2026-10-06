@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureSequenceViewer } from './AssemblyProcedureSequenceViewer';
@@ -194,6 +195,46 @@ describe('AssemblyProcedureSequenceViewer', () => {
     );
   });
 
+  it('places the seven named SVG actions in a 64px rail with a two-line page indicator', () => {
+    render(<AssemblyProcedureSequenceViewer sequence={assemblySequence} layout="manuals" onToggleList={vi.fn()} onToggleTwoPages={vi.fn()} />);
+    const rail = screen.getByRole('toolbar', { name: 'ページ操作' });
+    expect(rail).toHaveClass('w-16', 'bg-[#161c22]', 'border-l');
+    const buttons = within(rail).getAllByRole('button');
+    expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['一覧を開閉', '2 ページ表示', '全手順', '全体', '幅いっぱい', '前手順', '次手順']);
+    buttons.forEach(button => { expect(button).toHaveClass('h-12', 'w-12'); expect(button.querySelector('svg')).toBeInTheDocument(); });
+    expect(rail.parentElement).toHaveClass('pr-16');
+    expect(screen.getByRole('button', { name: '次手順' })).toHaveClass('bg-[#3ba776]');
+    expect(screen.getByRole('button', { name: '前手順' })).toBeDisabled();
+    expect(screen.getByLabelText('ページ番号').querySelector('br')).toBeInTheDocument();
+  });
+
+  it('shows consecutive pages with their own overlays and advances two steps, including the odd last page', () => {
+    const pages = Array.from({ length: 5 }, (_, index) => ({ source: 'assembly_procedure_document' as const, documentId: 'doc-1', pageIndex: index, pageUrl: `/page-${index}`, overlays: [{ id: `text-${index}`, pageIndex: index, kind: 'TEXT' as const, bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.5, heightRatio: 0.1 }, text: `ページ本文${index}`, fontSize: 16, fontWeight: 'normal' as const, color: '#000000', align: 'left' as const, zIndex: 1 }] }));
+    const sequence = { ...assemblySequence, documents: [{ ...baseDocument, pages }] };
+    function Spread() {
+      const [twoPages, setTwoPages] = useState(false);
+      return <AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" twoPages={twoPages} onToggleTwoPages={() => setTwoPages(value => !value)} />;
+    }
+    render(<Spread />);
+    fireEvent.click(screen.getByRole('button', { name: '2 ページ表示' }));
+    expect(screen.getByTestId('procedure-page-spread')).toHaveAttribute('data-pages', '2');
+    expect(within(screen.getByTestId('procedure-second-page')).getByText('ページ本文1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '次手順' }));
+    expect(screen.getByLabelText('ページ番号')).toHaveTextContent('3/5');
+    expect(screen.getByText('ページ本文2')).toBeInTheDocument();
+    expect(within(screen.getByTestId('procedure-second-page')).getByText('ページ本文3')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '次手順' }));
+    expect(screen.getByLabelText('ページ番号')).toHaveTextContent('5/5');
+    expect(screen.getByTestId('procedure-second-page')).toBeEmptyDOMElement();
+    expect(screen.getByRole('button', { name: '次手順' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '前手順' }));
+    expect(screen.getByLabelText('ページ番号')).toHaveTextContent('3/5');
+    fireEvent.click(screen.getByRole('button', { name: '2 ページ表示' }));
+    expect(screen.queryByTestId('procedure-second-page')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '次手順' }));
+    expect(screen.getByLabelText('ページ番号')).toHaveTextContent('4/5');
+  });
+
   it.each([[700, 1000, '全体', 'contain'], [1000, 700, '幅いっぱい', 'width']])('defaults to the page image aspect ratio (%s × %s) and allows switching', (width, height, label, mode) => {
     const onStep = vi.fn();
     render(<AssemblyProcedureSequenceViewer sequence={assemblySequence} layout="manuals" showCurrentMarkerButton={false} onCurrentStepChange={onStep} />);
@@ -227,7 +268,7 @@ describe('AssemblyProcedureSequenceViewer', () => {
     Object.defineProperties(second, { naturalWidth: { value: 1000 }, naturalHeight: { value: 700 } });
     fireEvent.load(second);
     expect(screen.getByRole('button', { name: '幅いっぱい' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('2 / 2')).toBeInTheDocument();
+    expect(screen.getByLabelText('ページ番号')).toHaveTextContent('2/2');
   });
   it('keeps crop viewing and temporary full page navigation in manuals layout', () => {
     const sequence: AssemblyProcedureSequenceDto = { ...assemblySequence, steps: [{
@@ -238,11 +279,11 @@ describe('AssemblyProcedureSequenceViewer', () => {
     }] };
     render(<AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" />);
     expect(screen.getByTestId('assembly-procedure-crop-minimap')).toBeInTheDocument();
-    expect(screen.queryByRole('group', { name: '表示サイズ' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '全体' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '全体を一時表示' }));
-    expect(screen.getByRole('group', { name: '表示サイズ' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '全体' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: '矩形へ戻る' }));
-    expect(screen.queryByRole('group', { name: '表示サイズ' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '全体' })).toBeDisabled();
   });
 
   it('keeps the open storyboard virtualized for 300 steps', async () => {

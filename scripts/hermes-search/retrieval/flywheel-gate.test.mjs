@@ -169,6 +169,7 @@ test('the offline run answers one split, skips anchors missing from the snapshot
   assert.deepEqual(env, {
     HERMES_RETRIEVAL_DENSE_PROVIDER: 'dgx',
     HERMES_RETRIEVAL_ENRICHMENT_ENABLED: 'true',
+    HERMES_FLYWHEEL_LEARNED_ENABLED: 'false',
     HERMES_RETRIEVAL_DENSE_STORE: 'd.bin',
     HERMES_INFERENCE_ORIGIN: 'http://dgx',
     HERMES_INFERENCE_TOKEN: 't',
@@ -179,6 +180,17 @@ test('the offline run answers one split, skips anchors missing from the snapshot
   assert.equal(scorerEnv(options, { HERMES_RETRIEVAL_DENSE_BASE_URL: 'http://127.0.0.1:38110' }).HERMES_RETRIEVAL_DENSE_BASE_URL, 'http://127.0.0.1:38110');
   assert.equal('HERMES_RETRIEVAL_DENSE_BASE_URL' in env, false);
   assert.throws(() => parseRunArgs(['--snapshot', 's', '--questions', 'a', '--out', 'o', '--split', 'x']), /--split/u);
+});
+
+test('offline run parses learned path or off and disables implicit production learned loading', () => {
+  const args = ['--snapshot', 's', '--questions', 'a', '--out', 'o'];
+  assert.equal(parseRunArgs(args).learned, 'off');
+  assert.equal(parseRunArgs([...args, '--learned', 'off']).learned, 'off');
+  const options = parseRunArgs([...args, '--learned', 'learned-queries.jsonl']);
+  assert.equal(options.learned, 'learned-queries.jsonl');
+  assert.equal(scorerEnv(options).HERMES_FLYWHEEL_LEARNED_ENABLED, 'false');
+  assert.throws(() => parseRunArgs([...args, '--learned']), /--learned/u);
+  assert.throws(() => parseRunArgs([...args, '--learned', '--dense', 'off']), /--learned/u);
 });
 
 test('real questions join synthetic rows, preserve stored splits, and exclude unknown relevance', () => {

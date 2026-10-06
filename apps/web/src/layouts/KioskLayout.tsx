@@ -16,6 +16,7 @@ import {
   VIEWPORT_HEIGHT_FULL,
   VIEWPORT_MIN_HEIGHT_FULL
 } from '../constants/viewportLayout';
+import { KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH } from '../features/assembly/assemblyRoutes';
 import { InventoryNfcRouter } from '../features/kiosk/InventoryNfcRouter';
 import {
   KIOSK_IMMERSIVE_HEADER_BORDER_CLASS,
@@ -259,7 +260,7 @@ export function KioskLayout() {
           navTabOrder={navTabOrder}
         />
       </header>
-      <main className={clsx('flex min-h-0 flex-1 flex-col', location.pathname.replace(/\/$/, '') === '/kiosk/assembly/manuals' ? 'overflow-hidden' : 'gap-4 overflow-auto px-4 py-4')}>
+      <main className={clsx('flex min-h-0 flex-1 flex-col', [KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH].includes(location.pathname.replace(/\/$/, '')) ? 'overflow-hidden' : 'gap-4 overflow-auto px-4 py-4')}>
         <h1 className="sr-only">キオスク</h1>
         <Outlet />
       </main>

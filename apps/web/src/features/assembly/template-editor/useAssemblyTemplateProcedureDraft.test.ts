@@ -87,10 +87,10 @@ describe('useAssemblyTemplateProcedureDraft document additions', () => {
     const hook = renderProcedureDraft([document], document.id);
 
     await waitFor(() => expect(hook.result.current.procedureSteps).toHaveLength(2));
-    expect(hook.result.current.leftPaneTab).toBe('documents');
+    expect(hook.result.current.leftPaneTab).toBe('areas');
     const step = hook.result.current.procedureSteps[1]!;
     act(() => hook.result.current.focusStep(step));
-    expect(hook.result.current.leftPaneTab).toBe('documents');
+    expect(hook.result.current.leftPaneTab).toBe('areas');
     expect(hook.result.current.selectedPage?.pageIndex).toBe(1);
     act(() => hook.result.current.addCurrentCropStep({
       xRatio: 0.1,
@@ -99,7 +99,7 @@ describe('useAssemblyTemplateProcedureDraft document additions', () => {
       heightRatio: 0.5
     }));
     await waitFor(() => expect(hook.result.current.selectedStep?.viewMode).toBe('crop'));
-    expect(hook.result.current.leftPaneTab).toBe('documents');
+    expect(hook.result.current.leftPaneTab).toBe('areas');
   });
 
   it('rejects a duplicate all-pages click before it can append duplicate steps', async () => {

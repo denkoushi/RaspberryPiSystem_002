@@ -47,7 +47,7 @@ export async function buildServer(): Promise<FastifyInstance> {
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       // Web側はapi clientで x-client-key をデフォルト付与するため、preflightで許可が必要
-      allowedHeaders: ['Authorization', 'Content-Type', 'x-client-key', 'Idempotency-Key']
+      allowedHeaders: ['Authorization', 'Content-Type', 'x-client-key', 'Idempotency-Key', 'x-due-management-token']
     });
   }
 

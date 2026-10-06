@@ -16,6 +16,8 @@ import { buildValueIndex, findCandidateValues } from './value-index.mjs';
 import { authorizedRecords, buildCorpusView, replaceCorpus, stampAnswer } from './corpus.mjs';
 import { attachEnrichment } from './enrichment-attach.mjs';
 import { readEnrichmentStore, storePathFromEnv } from './enrichment-store.mjs';
+import { learnedPathFromEnv, learnedQueriesById, mergeLearnedQueries, readLearned } from './flywheel-learn.mjs';
+import { bareId } from './flywheel-pairs.mjs';
 
 export const WORKER_PREFIX = '__HERMES_UI_PREFETCH__';
 let denseFallbackCount = 0;
@@ -201,16 +203,25 @@ function formatRecords(results, catalog) {
   }).filter(Boolean).join('\n\n');
 }
 
-function applyEnrichment(view, enrichmentById) {
-  if (!enrichmentById || enrichmentById.size === 0) return view;
+function applyEnrichment(view, enrichmentById, catalog, learnedById) {
+  const hasLearned = learnedById?.size > 0;
+  if ((!enrichmentById || enrichmentById.size === 0) && !hasLearned) return view;
   const nonconformity = view.bySource.nonconformity;
   if (!nonconformity) return view;
-  const records = attachEnrichment(nonconformity.records, enrichmentById);
+  const merged = hasLearned ? mergeLearnedQueries(enrichmentById,
+    [...learnedById].flatMap(([recordId, queries]) => queries.map((query) => ({ recordId, query }))), { states: null }) : enrichmentById;
+  const records = attachEnrichment(nonconformity.records, merged);
+  // Keep summaries and tags out of lexical ranking; only learned queries extend the body.
+  const lexicalCorpus = hasLearned ? prepareLexicalCorpus(records.map((record) => ({
+    ...record,
+    enrichment: { queries: learnedById.get(bareId(record.id)) ?? [], tags: [], summary: '' },
+  })), fieldsWithRole(catalogEntries(catalog).find((entry) => entry.id === 'nonconformity'), 'body')) : nonconformity.lexicalCorpus;
   const enriched = new Map(records.map((record) => [record.id, record]));
   return {
     ...view,
     records: view.records.map((record) => (record.sourceId ?? 'nonconformity') === 'nonconformity' ? enriched.get(record.id) : record),
-    bySource: { ...view.bySource, nonconformity: { ...nonconformity, records } },
+    bySource: { ...view.bySource, nonconformity: { ...nonconformity, records, lexicalCorpus } },
+    ...(hasLearned && catalogEntries(catalog).length === 1 ? { lexicalCorpus } : {}),
   };
 }
 
@@ -271,13 +282,20 @@ export function enrichmentAttachEnabled(env = process.env) {
 }
 
 export async function loadEnrichmentById(env = process.env) {
-  if (!enrichmentAttachEnabled(env)) return null;
-  try {
-    return await readEnrichmentStore(storePathFromEnv(env));
-  } catch {
-    console.warn('hermes retrieval enrichment store unreadable');
-    return null;
+  let enrichmentById = null;
+  if (enrichmentAttachEnabled(env)) {
+    try {
+      enrichmentById = await readEnrichmentStore(storePathFromEnv(env));
+    } catch {
+      console.warn('hermes retrieval enrichment store unreadable');
+    }
   }
+  return enrichmentById;
+}
+
+export async function loadLearnedQueriesById(env = process.env) {
+  if (env.HERMES_FLYWHEEL_LEARNED_ENABLED === 'false') return new Map();
+  return learnedQueriesById(await readLearned(learnedPathFromEnv(env)));
 }
 
 function publicRecordId(sourceId, recordId) {
@@ -322,6 +340,7 @@ export function createRetrievalAnswering({
   vector = null,
   dense = null,
   enrichmentById = null,
+  learnedById = null,
   snapshotCount = Array.isArray(records) ? records.length : 0,
 } = {}) {
   if (!Array.isArray(records)) throw new TypeError('records must be an array');
@@ -329,16 +348,17 @@ export function createRetrievalAnswering({
   const relevance = createRelevanceJudge(typeof evaluate === 'function' ? { evaluate } : {});
   const entries = catalogEntries(catalog);
   const nonconformity = entries.find((entry) => entry.id === 'nonconformity');
-  let current = applyEnrichment(buildCorpusView(records, catalog, null), enrichmentById);
+  let current = buildCorpusView(records, catalog, null);
   if (valueIndex) {
     current = { ...current, valueIndex, lexicalCorpus, snapshotCount };
     if (entries.length === 1 && lexicalCorpus) current.bySource[entries[0].id].lexicalCorpus = lexicalCorpus;
   }
+  current = applyEnrichment(current, enrichmentById, catalog, learnedById);
   return {
     async replaceCorpus(message) {
       const count = current.snapshotCount;
       try {
-        current = applyEnrichment(replaceCorpus(current, catalog, message), await loadEnrichmentById());
+        current = applyEnrichment(replaceCorpus(current, catalog, message), await loadEnrichmentById(), catalog, await loadLearnedQueriesById());
         if (nonconformity) dense?.schedule?.(current.bySource.nonconformity.records, fieldsWithRole(nonconformity, 'body'));
         return { ok: true, count: current.snapshotCount, memory: memoryReport(current.records, catalog) };
       } catch {
@@ -647,6 +667,7 @@ export async function main() {
     answering = createRetrievalAnswering({
       ...resources,
       enrichmentById: await loadEnrichmentById(),
+      learnedById: await loadLearnedQueriesById(),
       dense,
       vector: ranker ? (query, filtered) => ranker.rank(query, filtered) : null,
     });

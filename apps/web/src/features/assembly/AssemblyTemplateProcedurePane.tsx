@@ -9,6 +9,7 @@ import type { AssemblyDraftArea } from './assemblyTemplateDraft';
 import type { AssemblyTemplateProcedureDraftItem } from './assemblyTemplateProcedureDraft';
 
 type Props = {
+  hideTemplateName?: boolean;
   items: Array<{ item: AssemblyTemplateProcedureDraftItem; used: boolean }>;
   selectedPageKey: string;
   selectedDocumentId: string;
@@ -44,6 +45,7 @@ type Props = {
 
 export function AssemblyTemplateProcedurePane({
   items,
+  hideTemplateName = false,
   selectedPageKey,
   selectedDocumentId,
   areas,
@@ -213,6 +215,7 @@ export function AssemblyTemplateProcedurePane({
               onChange={(event) => onProcedurePatternChange(event.target.value)}
             />
           </label>
+          {!hideTemplateName ? (
           <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
             テンプレート名
             <textarea
@@ -243,6 +246,7 @@ export function AssemblyTemplateProcedurePane({
               ) : null}
             </span>
           </label>
+          ) : null}
         </div>
       </section>
       <h2 className="mt-3 text-[1rem] font-bold">工程</h2>
@@ -317,7 +321,7 @@ export function AssemblyTemplateProcedurePane({
           type="button"
           variant="ghostOnDark"
           className="min-h-8 !px-2 !py-1 text-xs"
-          data-kiosk-sop-target="assembly-editor-area-add"
+          data-kiosk-sop-target={hideTemplateName ? undefined : "assembly-editor-area-add"}
           disabled={busy || readOnly}
           onClick={onAddArea}
         >

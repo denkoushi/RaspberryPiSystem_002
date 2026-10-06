@@ -201,6 +201,10 @@ category: knowledge-base
 - **挙動（本システム）**: 最小コンテンツでは **必須列が解決できず** **`CSV_HEADER_MISMATCH`**（`ApiError`）→ エラー分類 **`NON_RETRIABLE`**。ポリシーどおり **Gmail 側でゴミ箱へ移動**し、**再試行の対象にしない**。
 - **Fix（2026-05-06）**: `CsvDashboardImportService.ingestTargets` で **NON_RETRIABLE を廃棄（`trashMessage`）できたメッセージ**は、ループ終了時の **`failedMessageIdSuffixes` 集計から除外**する。これにより **同一ダッシュボード・同一バッチ内に正常なメールが続く場合**、全体が **最後の `lastError` で例外終了しない**。**実装**: [`csv-dashboard-import.service.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts)。**単体**: [`csv-dashboard-import.service.ingest-behavior.test.ts`](../../apps/api/src/services/csv-dashboard/__tests__/csv-dashboard-import.service.ingest-behavior.test.ts)。
 - **PR / マージ（済）**: [PR #259](https://github.com/denkoushi/RaspberryPiSystem_002/pull/259)（**`main` squash**・**`e47ad84c`**）。**本番反映**: **Pi5 API のみ** [deployment.md](../guides/deployment.md) 標準（`./scripts/update-all-clients.sh main … --limit raspberrypi5`・**デプロイ実績は別記**）。
+- **2026-10-06 追記（空の CSV はエラーにしない）**: 計測機器持出（週末 129 通すべて）と吊具点検（平日 51 通中 17 通）でも BOM のみの添付が続き、level 50 のログが本当の異常を埋もれさせていた。`ingestTargets` は保存と取込の前に空を判定し（[`csv-empty-content.ts`](../../apps/api/src/services/csv-dashboard/csv-empty-content.ts)）、空なら列の照合へ進まない。
+  - **空の定義**: BOM と空白・改行を除くと何も残らないもの（0 バイトを含む）。ヘッダー行だけの CSV は空ではなく、列を照合して 0 件の取込になる。ヘッダーが合わない CSV は今までどおり `CSV_HEADER_MISMATCH`。
+  - **記録**: info ログ 1 行（`Empty CSV skipped`）、`CsvDashboardIngestRun` 1 件（`COMPLETED`・0 件・`csvFilePath` なし・`errorMessage` に `[ingest-audit] postProcessState=skipped_empty`）、実行結果の `debug.skippedEmptyMessageIdSuffixes`。raw フォルダには保存しない（中身が無く、履歴で事実を追えるため）。メールは既読にしてゴミ箱へ移す。
+  - **対象外**: 手動アップロードの空ファイルは今までどおり 400 を返す。
 - **トラブルシュート**: **「添付はあるのに取れない」**→ 管理実行の **`debug`**（`downloadedMessageIdSuffixes` / `disposedMessageIdSuffixes` 等）と **保存された raw CSV サイズ**を確認。**開発用 localhost への計測 POST** は **本番に含めない**（調査後はコードから除去する）。
 
 ## FKOBAINO purchase order lookup from Gmail CSV (2026-04-20) {#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20}
@@ -237,9 +241,9 @@ category: knowledge-base
 - **Context**: ボードの各アイテムは外部調達した材料（鋳物・鋼材）が入らないと加工開始できない。購買CSV（Gmail 件名 `FKOBAINO`）に後から追加された列 **`FKOBAIST`** を使い、材料の入荷状況をバッジで出す。
 - **FKOBAIST の値**: `C` 全数入荷済 / `S` 一部入荷済（分納） / `R` 注文済・納入なし / `O` 生産管理課確定済・資材課未発注 / `P` 生産管理課未確定 / `X` 工程削除（その工程が削除、または別工程へ変更）。
 - **材料用の品番ルール（2026-10-01 に本番 22.5 万行と CSV 4,418 行で確認）**: 材料は「加工品の品番 + 付加」で発注される。`-001` はほぼ「材料」、`-002` はほぼ「鋳物」、`(A)` は【素材】【鋳物】。`-003`/`-006`/`-016` は型費、`-048`〜`-050`/`-004` などは再処理・追加工費で材料ではない。付加なしは部品そのものの購買。新列 `FSEZONO` は付加なしの行にだけ入り、材料行は空なので材料の突合には使えない。
-- **判定**: `(FSEIBAN, 照合キーFHINCD)` で `PurchaseOrderLookupRow` を引き、品番が `(A)` / `-001` / `-002` の行だけを材料として扱う（`isMaterialPurchasePartCode`）。`X`・未取込（`purchaseStatus` null）は無視し、複数行は最も遅れているものを表示する（未発注 > 未入荷 > 一部入荷 > 入荷済）。材料行が無い部品はバッジを出さない。正本は [`material-arrival-status.service.ts`](../../apps/api/src/services/purchase-order-lookup/material-arrival-status.service.ts)。
-- **表示**: 「材料入荷済 / 材料一部入荷済 / 材料未入荷 / 材料未発注」。順位ボードは工程チップの行の右端（全工程の行に出る）、製番ボードは納期・個数・時間の下（資源CD表示では製番・機種名と同じ行の右。行を増やさない）。
-- **配信**: 順位ボードは工程チップと同じ部品キー単位の `leaderboardMaterialArrivalByPartKey`（装飾 API）。製番ボードは `items[].materialArrivalStatus` を応答のたびに付け、スナップショットと `itemRevision` には含めない。
+- **判定**: `(FSEIBAN, 照合キーFHINCD)` で `PurchaseOrderLookupRow` を引き、品番が `(A)` / `-001` / `-002` の行だけを材料として扱う（`isMaterialPurchasePartCode`）。`X`・未取込（`purchaseStatus` null）は無視し、複数行は最も遅れているものを表示する（未発注 > 未入荷 > 一部入荷 > 入荷済）。材料行が無い部品はバッジを出さない。正本は [`material-arrival-status.service.ts`](../../apps/api/src/services/purchase-order-lookup/material-arrival-status.service.ts)。 材料行から状態が決まらず `X` が1件以上ある場合に限り、品番の前後空白を除いた値が照合キーと完全一致する付加なしの行で代用し、その行でも状態が決まらなければバッジなしとする（材料行なし・null のみ・`-003` などは代用対象外）。
+- **表示**: 「材料入荷済 / 材料一部入荷済 / 材料未入荷 / 材料未発注」。順位ボードは工程チップの行の右端（全工程の行に出る）、製番ボードは納期・個数・時間の下（資源CD表示では製番・機種名と同じ行の右。行を増やさない）。 部品で代用した場合は、同じ色・形・位置で「部品入荷済 / 部品一部入荷済 / 部品未入荷 / 部品未発注」と表示する。
+- **配信**: 順位ボードは工程チップと同じ部品キー単位の `leaderboardMaterialArrivalByPartKey`（装飾 API）。製番ボードは `items[].materialArrivalStatus` を応答のたびに付け、スナップショットと `itemRevision` には含めない。 既存 status の値は変えず、代用時だけ製番ボードの `items[].materialArrivalBasis` と順位ボードの `leaderboardMaterialArrivalBasisByPartKey` に `part` を追加する（装飾 API・list・composite board で配信）。
 - **制約**: `FKOBAIST` は列追加（migration `20261001120000_purchase_order_lookup_purchase_status`）以降に取り込んだ行だけに入る。それ以前の行は次に同じ注番が CSV に載るまでバッジが出ない。突合対象は MD 品番のみ（MH/SD/SH などは購買行が無い）。`(A)` 行の多くは生産日程に無い製番で発注されており当たらない。MD 部品の約 15% は同じ製番の購買行が無く、バッジは出ない。
 
 ### FKOBAINO 取込が大きい CSV で失敗する（2026-10-01） {#fkobaino-sync-large-csv-timeout-2026-10-01}

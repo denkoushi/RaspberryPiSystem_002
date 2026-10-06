@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const apiMocks = vi.hoisted(() => ({
+  remove: vi.fn(),
   verifyPassword: vi.fn(),
   createRevision: vi.fn(),
   publish: vi.fn(), approvePublish: vi.fn(),
@@ -9,6 +10,7 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../api/client', () => ({
+  deleteAssemblyProcedureDocument: apiMocks.remove,
   verifyAssemblyTemplateAccessPassword: apiMocks.verifyPassword,
   createAssemblyProcedureDocumentRevision: apiMocks.createRevision,
   saveAssemblyProcedureDocumentOverlays: apiMocks.saveOverlays,
@@ -58,6 +60,7 @@ function makeSession(
     setSelectedOverlayId: vi.fn(),
     dispatch: vi.fn() as never,
     recovery: { clear: vi.fn() },
+    onNavigateAfterDelete: vi.fn(),
     onNavigateAfterDiscard: vi.fn(),
     onNavigateAfterPublish: vi.fn(),
     ...overrides
@@ -66,6 +69,41 @@ function makeSession(
 
 describe('useAssemblyProcedureDocumentRevisionCommands', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('deletes an unused DRAFT with the lease token and returns to manuals only on success', async () => {
+    apiMocks.remove.mockResolvedValue(undefined);
+    const session = makeSession({ holderToken: 'lease-token' });
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { await hook.result.current.deleteDocument(); });
+    expect(apiMocks.remove).toHaveBeenCalledExactlyOnceWith('document-1', 'lease-token');
+    expect(session.recovery.clear).toHaveBeenCalledOnce();
+    expect(session.onNavigateAfterDelete).toHaveBeenCalledOnce();
+  });
+
+  it('shows the short unlink message for a 409 and retains recovery and the editor', async () => {
+    apiMocks.remove.mockRejectedValue({ response: { status: 409, data: { message: '要領書の機種×工程割り当てで使用中の手順書は削除・公開取消できません' } } });
+    const session = makeSession();
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { await hook.result.current.deleteDocument(); });
+    expect(session.setMessage).toHaveBeenCalledWith('先に割り当てを外してください');
+    expect(session.onNavigateAfterDelete).not.toHaveBeenCalled();
+    expect(session.recovery.clear).not.toHaveBeenCalled();
+  });
+
+  it('shows the API reason for a 409 that is not an assignment', async () => {
+    apiMocks.remove.mockRejectedValue({ response: { status: 409, data: { message: 'マーカー参照で使用中の手順書は削除できません' } } });
+    const session = makeSession();
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { await hook.result.current.deleteDocument(); });
+    expect(session.setMessage).toHaveBeenCalledWith('マーカー参照で使用中の手順書は削除できません');
+    expect(session.onNavigateAfterDelete).not.toHaveBeenCalled();
+  });
+
+  it.each([{ document: { ...documentFixture, status: 'published' as const } }, { document: { ...documentFixture, supersedesDocumentId: 'root-1' } }, { busy: true }, { readOnly: true }])('guards deletion for %j', async overrides => {
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(makeSession(overrides)));
+    await act(async () => { await hook.result.current.deleteDocument(); });
+    expect(apiMocks.remove).not.toHaveBeenCalled();
+  });
 
   it('orchestrates password revision creation and optimistic-versioned saves', async () => {
     const revision = { ...documentFixture, editVersion: 3 };

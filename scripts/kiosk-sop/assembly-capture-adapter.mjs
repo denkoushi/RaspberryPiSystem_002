@@ -87,6 +87,7 @@ const sheets = new Set([
   'assembly-revision',
   'assembly-procedure-edit',
   'assembly-template-auth-basics',
+  'assembly-template-documents',
   'assembly-template-procedure',
   'assembly-template-markers',
   'assembly-template-save',
@@ -188,6 +189,7 @@ async function installApiFixtures(page, sheetId, unexpectedRequests) {
     if (path.endsWith('/discard-revision') && request.method() === 'POST') {
       return json(route, { document: procedureDocument });
     }
+    if (path === '/api/assembly/procedure-materials' && request.method() === 'GET') return json(route, { materials: [] });
     if (path === '/api/assembly/templates/summary') return json(route, { templates: [templateSummary] });
     if (path === '/api/assembly/library/filter-options') return json(route, { options: [] });
     if (path === '/api/torque-wrench-capability-groups') return json(route, { capabilityGroups: [] });
@@ -294,10 +296,19 @@ async function prepareSheet(page, sheetId) {
   if (sheetId.startsWith('assembly-template-')) {
     await page.locator('[data-kiosk-sop-target="assembly-editor-password"]').fill('0000');
     await page.locator('[data-kiosk-sop-target="assembly-editor-authenticate"]').click();
+    if (sheetId === 'assembly-template-auth-basics' || sheetId === 'assembly-template-documents') {
+      await page.getByTestId('assembly-template-editor-left-pane')
+        .getByRole('tab', { name: '文書', exact: true }).click();
+    } else if (sheetId === 'assembly-template-procedure' || sheetId === 'assembly-template-markers') {
+      await page.getByTestId('assembly-template-editor-left-pane')
+        .getByRole('tab', { name: '工程', exact: true }).click();
+    }
     const target = sheetId === 'assembly-template-auth-basics'
       ? 'assembly-editor-model-code'
-      : sheetId === 'assembly-template-procedure'
+      : sheetId === 'assembly-template-documents'
         ? 'assembly-editor-document-add'
+        : sheetId === 'assembly-template-procedure'
+          ? 'assembly-editor-step-add-full'
         : sheetId === 'assembly-template-markers'
           ? 'assembly-editor-area-add'
           : 'assembly-editor-save';
@@ -314,6 +325,9 @@ const adapter = Object.freeze({
   prepareSheet,
   async waitForPageReady(page, sheetId) {
     assertSupportedSheet(sheetId);
+    if (sheetId === 'assembly-revision') {
+      await page.getByRole('link', { name: 'テンプレート', exact: true }).click();
+    }
     const target = sheetId.startsWith('assembly-document-editor-')
       ? 'assembly-document-editor-authenticate'
       : sheetId.startsWith('assembly-template-')

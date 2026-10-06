@@ -181,6 +181,7 @@ all:
           status_agent_client_id: raspberrypi5-server
           # Also set on every release by release_pi5/tasks/host-status-agent-storage.yml.
           status_agent_storage_health_enabled: "1"
+          status_agent_storage_health_write_warn_gb_per_day: "300"
           status_agent_location: "ラズパイ5 - サーバー"
           status_agent_tls_skip_verify: "1"
           status_agent_client_key: "{{ vault_status_agent_client_key }}"
@@ -194,6 +195,9 @@ all:
             status_agent_storage_health_enabled: "1"
             # Chromium は Pi5 証明書の公開鍵だけを許可する（KB-413）。証明書を作り直したら先に更新する
             kiosk_server_cert_spki_sha256: "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE="
+          # Each kiosk's status agent, NFC agent, torque agent and browser start URL share one
+          # per-device credential from host_vars/<host>/vault.yml. A changed value reaches a
+          # kiosk only through a release of that host (docs/plans/security-client-key-rotation-phase-b.md).
           hosts:
             raspberrypi4:
               ansible_host: "{{ kiosk_ip }}"
@@ -514,6 +518,9 @@ all:
               device_type: "pi3"
               status_agent_client_id: raspberrypi3-signage1
               status_agent_client_key: "{{ vault_status_agent_client_key }}"
+              # Rendered into /etc/raspi-status-agent.conf by release_signage; matches
+              # the value release_signage/tasks/host-status-agent-storage.yml enforces.
+              status_agent_storage_health_enabled: "1"
               status_agent_location: "第2工場 - signageMakoRoom"
               # 低メモリ時のTLS handshake遅延を通常の10秒より長く許容する
               status_agent_request_timeout: "30"

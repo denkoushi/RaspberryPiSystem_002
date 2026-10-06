@@ -712,3 +712,31 @@ export type ProcedureManualDetailDto = {
   assignments: ProcedureManualAssignmentDto[];
   sequence: AssemblyProcedureSequenceDto;
 };
+
+export type ProcedureManualOverviewItemDto = {
+  assignmentId: string;
+  sortOrder: number;
+  label: string | null;
+  kind: 'kiosk_document' | 'assembly_procedure_document';
+  documentId: string;
+  title: string;
+  status: 'published' | 'draft' | 'unavailable';
+  publishedRevisionNumber: number | null;
+  approval: ProcedureManualLastApprovalDto | null;
+  draftRevision: { documentId: string; revisionNumber: number; editLease: { holderLabel: string; acquiredAt: string } | null } | null;
+  unavailableReason: string | null;
+  pageCount: number | null;
+  thumbnailPageUrl: string | null;
+};
+
+export type ProcedureManualModelOverviewDto = ProcedureManualModelDto & {
+  processes: { processId: string; count: number; items: ProcedureManualOverviewItemDto[] }[];
+};
+
+export type ProcedureManualEditorContext = {
+  modelCode: string;
+  modelCodeKey: string;
+  processId: string;
+  processName: string;
+  mode: 'fix' | 'make';
+};

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { listProcedureMaterials } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { ProcedureMaterialShelfDialog } from '../procedure-manuals/ProcedureMaterialShelfDialog';
@@ -15,10 +16,26 @@ import { AssemblyProcedureDocumentPublishDialog } from './AssemblyProcedureDocum
 import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTypeDialog';
 import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCandidateDialog';
 
-export function AssemblyProcedureDocumentEditorScreen() {
+export function AssemblyProcedureDocumentEditorScreen({ context }: { context?: import('../types').ProcedureManualEditorContext }) {
   const controller = useAssemblyProcedureDocumentEditor();
-  const [videoLinkOpen, setVideoLinkOpen] = useState(false);
   const [materialShelfOpen, setMaterialShelfOpen] = useState(false);
+  const [materialShelfMode, setMaterialShelfMode] = useState<'place' | 'replace'>('place');
+  const [materialCount, setMaterialCount] = useState<number | null>(null);
+  const [dismissedMessage, setDismissedMessage] = useState<string | null>(null);
+  useEffect(() => {
+    if (!controller.accessGranted) return;
+    let cancelled = false;
+    void listProcedureMaterials({ state: 'unplaced', limit: 500 }).then(rows => { if (!cancelled) setMaterialCount(rows.length); }).catch(() => { if (!cancelled) setMaterialCount(null); });
+    return () => { cancelled = true; };
+  }, [controller.accessGranted, materialShelfOpen]);
+  useEffect(() => {
+    setDismissedMessage(null);
+    if (!controller.message || controller.messageIsError || controller.conflict || controller.busy) return;
+    const timer = window.setTimeout(() => setDismissedMessage(controller.message), 4000);
+    return () => window.clearTimeout(timer);
+  }, [controller.message, controller.messageIsError, controller.conflict, controller.busy]);
+  const [videoLinkOpen, setVideoLinkOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -39,7 +56,7 @@ export function AssemblyProcedureDocumentEditorScreen() {
   const selectedPage = controller.selectedPage;
 
   if (!controller.accessGranted || controller.loading) {
-    return <AssemblyProcedureDocumentEditorAuthGate />;
+    return <AssemblyProcedureDocumentEditorAuthGate context={context} />;
   }
 
   if (!selectedPage) {
@@ -51,9 +68,9 @@ export function AssemblyProcedureDocumentEditorScreen() {
   }
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-800 text-white">
+    <main className="relative grid min-h-0 flex-1 grid-cols-[120px_minmax(0,1fr)_64px] overflow-hidden bg-[#0a0d10] text-[#eef3f6]" data-testid="assembly-document-editor-layout">
       {controller.document?.status === 'draft' && (!controller.editLeaseMine || controller.editLeaseUnavailable) ? (
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-amber-400/30 bg-amber-500/15 px-3 py-2" role="status">
+        <div className="absolute bottom-16 left-[136px] z-50 flex max-w-[calc(100%-216px)] flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/30 bg-[#161c22] px-3 py-2" role="status">
           <p className="text-sm font-semibold text-amber-100">
             {controller.editLeaseUnavailable
               ? '編集の予約を取れていません(他端末と同時編集に注意)'
@@ -66,41 +83,16 @@ export function AssemblyProcedureDocumentEditorScreen() {
           </Button>
         </div>
       ) : null}
-      {videoLinkOpen && controller.document ? <ProcedureVideoShelfDialog key={`${controller.document.id}:${selectedPage.pageIndex}`} link={{ documentId: controller.document.id, pageIndex: selectedPage.pageIndex, accessPassword: controller.passwordInput, holderToken: controller.editLeaseToken }} onClose={() => setVideoLinkOpen(false)} /> : null}
-      <AssemblyProcedureDocumentEditorCanvasToolbar
-        documentName={controller.document?.name ?? '手順書'}
-        pageIndex={selectedPage.pageIndex}
-        pageCount={controller.pages.length}
-        selectionMode={controller.selectionMode}
-        dirty={controller.isDirty}
-        busy={controller.busy}
-        readOnly={controller.readOnly}
-        canSave={controller.canSave}
-        canPublish={controller.canPublish}
-        canDiscard={controller.canDiscard}
-        onBack={controller.navigateBack}
-        onToggleSelection={() => controller.setSelectionMode(!controller.selectionMode)}
-        onPlaceMaterial={() => setMaterialShelfOpen(true)}
-        onSave={() => void controller.save()}
-        onPublish={() => setPublishOpen(true)}
-        onDiscard={() => setDiscardOpen(true)}
-      />
-
-      {controller.document?.lastApproval ? <p className="shrink-0 px-3 py-1 text-xs text-slate-300">
-        承認: {controller.document.lastApproval.employeeName}{controller.document.lastApproval.positionName ? `(${controller.document.lastApproval.positionName})` : ''} {new Date(controller.document.lastApproval.approvedAt).toLocaleString('ja-JP')}
-      </p> : null}
-
-      <div data-testid="assembly-document-editor-layout" className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[8rem_minmax(16rem,1fr)_minmax(10rem,14rem)] overflow-hidden xl:grid-cols-[13rem_minmax(0,1fr)_20rem] xl:grid-rows-1">
+      {videoLinkOpen && controller.document ? <ProcedureVideoShelfDialog key={`${controller.document.id}:${selectedPage.pageIndex}`} link={{ documentId: controller.document.id, pageIndex: selectedPage.pageIndex, accessPassword: controller.passwordInput, holderToken: controller.editLeaseToken }} onError={controller.onEditLeaseError} onClose={() => setVideoLinkOpen(false)} /> : null}
         <AssemblyProcedureDocumentEditorPageList
           pages={pages}
           assets={controller.document?.assets}
           selectedPageIndex={selectedPage.pageIndex}
           onSelect={controller.setSelectedPageIndex}
-          onLinkVideos={() => setVideoLinkOpen(true)}
           onAddBlankPage={() => void controller.addBlankPage()}
           disabled={controller.readOnly || controller.busy || controller.conflict}
         />
-        <section className="relative min-h-0 min-w-0 overflow-hidden bg-slate-950 p-2" aria-label="手順書キャンバス">
+        <section className="relative min-h-0 min-w-0 overflow-hidden p-4" aria-label="手順書キャンバス">
           <AssemblyProcedureDocumentEditorCanvas
             pageUrl={selectedPage.imageRelativePath}
             pageIndex={selectedPage.pageIndex}
@@ -111,13 +103,24 @@ export function AssemblyProcedureDocumentEditorScreen() {
             onSelectOverlay={controller.setSelectedOverlayId}
             onNudgeOverlay={controller.nudgeElement}
             onUpdateOverlayBBox={controller.updateElementBBox}
+            onInteractionStart={controller.beginOverlayDrag}
+            onInteractionEnd={controller.endOverlayDrag}
             onRangeSelected={controller.handleRangeSelected}
             assets={controller.document?.assets}
-            className="h-full w-full"
+            className="h-full w-full !bg-[#0a0d10]"
           />
-          {controller.message ? (
-            <div className="absolute bottom-3 left-3 right-3 rounded border border-white/20 bg-slate-950/90 px-3 py-2 text-sm font-semibold text-amber-100" role={controller.conflict ? 'alert' : 'status'}>
-              <p>{controller.message}</p>
+          <div className="absolute left-4 top-3 z-40 flex h-9 max-w-[70%] items-center gap-2.5 rounded-lg border border-[#344252] bg-[#161c22d9] px-3 text-lg text-[#9fadb9]">
+            <b className="truncate text-[#eef3f6]">{context ? [context.modelCode, context.processName, controller.document?.name ?? '要領書'].filter(Boolean).join(' › ') : controller.document?.name ?? '手順書'}</b>
+            {context ? <span className={`inline-flex h-[26px] shrink-0 items-center rounded-full border px-2.5 text-[15px] font-bold ${context.mode === 'make' ? 'border-[#3ba776] text-[#3ba776]' : 'border-[#f6b93b] text-[#f6b93b]'}`}>
+              {context.mode === 'make' ? '作る' : '直す'} · {controller.document?.supersedesDocumentId ? '改版の下書き' : '下書き'} 第{controller.document?.revisionNumber ?? 1}版
+            </span> : null}
+          </div>
+          {controller.document?.lastApproval ? <p className="absolute bottom-16 left-4 rounded bg-[#161c22eb] px-3 py-1 text-xs text-[#9fadb9]">
+            承認: {controller.document.lastApproval.employeeName}{controller.document.lastApproval.positionName ? `(${controller.document.lastApproval.positionName})` : ''} {new Date(controller.document.lastApproval.approvedAt).toLocaleString('ja-JP')}
+          </p> : null}
+          {controller.message && controller.message !== dismissedMessage ? (
+            <div className={`absolute bottom-4 left-4 z-40 flex min-h-11 max-w-[calc(100%-32px)] flex-col justify-center rounded-lg border px-3.5 py-2 text-lg ${controller.messageIsError || controller.conflict ? 'border-[#e5484d] bg-[#161c22eb] text-[#e5484d]' : 'border-[#344252] bg-[#161c22eb]'}`} role={controller.messageIsError || controller.conflict ? 'alert' : 'status'}>
+              <p className="flex items-center gap-2.5"><span aria-hidden="true" className={`h-2.5 w-2.5 shrink-0 rounded-full ${controller.messageIsError || controller.conflict ? 'bg-[#e5484d]' : 'bg-[#3ba776]'}`} />{controller.message}</p>
               {controller.conflict ? (
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button type="button" data-kiosk-sop-target="assembly-document-editor-conflict-reload" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" disabled={controller.busy} onClick={() => setConflictReloadOpen(true)}>
@@ -131,20 +134,25 @@ export function AssemblyProcedureDocumentEditorScreen() {
             </div>
           ) : null}
         </section>
+        <AssemblyProcedureDocumentEditorCanvasToolbar controller={controller} workshop={Boolean(context)} materialCount={materialCount} materialOpen={materialShelfOpen} videoOpen={videoLinkOpen}
+          onMaterial={() => { setMaterialShelfMode('place'); setMaterialShelfOpen(true); }} onVideo={() => setVideoLinkOpen(true)} onPublish={() => setPublishOpen(true)} onDelete={() => setDeleteOpen(true)} onDiscard={() => setDiscardOpen(true)} />
+        {controller.selectedElement ? <div className="absolute right-20 top-4 z-50 max-h-[calc(100%-32px)] w-[340px] overflow-auto rounded-[14px] border border-[#344252] bg-[#161c22f5] p-4">
         <AssemblyProcedureDocumentEditorInspector
           element={controller.selectedElement}
+          onClose={() => controller.setSelectedOverlayId(null)}
+          onDuplicate={controller.duplicateSelectedOverlay}
           onUpdate={controller.updateElement}
           onDelete={controller.deleteSelectedOverlay}
           onBringForward={controller.bringForward}
           onSendBackward={controller.sendBackward}
-          onUploadImage={controller.uploadImage}
+          onReplaceImage={() => { setMaterialShelfMode('replace'); setMaterialShelfOpen(true); }}
           onRefetchTextCandidates={() => void controller.refetchTextCandidates()}
           readOnly={controller.readOnly}
           busy={controller.busy}
         />
-      </div>
+        </div> : null}
 
-      {materialShelfOpen ? <ProcedureMaterialShelfDialog onClose={() => setMaterialShelfOpen(false)} onSelect={controller.placeMaterial} /> : null}
+      {materialShelfOpen ? <ProcedureMaterialShelfDialog mode={materialShelfMode} onClose={() => setMaterialShelfOpen(false)} onSelect={materialShelfMode === 'replace' ? controller.replaceSelectedImageMaterial : controller.placeMaterial} /> : null}
       <AssemblyProcedureOverlayTypeDialog
         isOpen={controller.pendingRange != null}
         onClose={controller.cancelPendingRange}
@@ -187,6 +195,16 @@ export function AssemblyProcedureDocumentEditorScreen() {
           void controller.reloadConflict();
         }}
         onCancel={() => setConflictReloadOpen(false)}
+      />
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        title="要領書を削除"
+        description="この要領書を削除します。元に戻せません"
+        confirmLabel="削除する"
+        cancelLabel="キャンセル"
+        tone="danger"
+        onConfirm={() => { setDeleteOpen(false); void controller.deleteDocument(); }}
+        onCancel={() => setDeleteOpen(false)}
       />
       <ConfirmDialog
         isOpen={discardOpen}
