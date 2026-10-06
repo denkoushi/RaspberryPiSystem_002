@@ -59,9 +59,24 @@ export const knowledgeProcedureDefinition=validateSourceDefinition(
   JSON.parse(fs.readFileSync(new URL('./hermes-sources/knowledge-procedure.json',import.meta.url),'utf8')),
   'knowledge_procedure',
 );
+export const torqueTrainingSessionDefinition=validateSourceDefinition(
+  JSON.parse(fs.readFileSync(new URL('./hermes-sources/torque-training-session.json',import.meta.url),'utf8')),
+  'torque_training_session',
+);
+export const torqueTrainingOperatorDefinition=validateSourceDefinition(
+  JSON.parse(fs.readFileSync(new URL('./hermes-sources/torque-training-operator.json',import.meta.url),'utf8')),
+  'torque_training_operator',
+);
+export const torqueTrainingTeamDefinition=validateSourceDefinition(
+  JSON.parse(fs.readFileSync(new URL('./hermes-sources/torque-training-team.json',import.meta.url),'utf8')),
+  'torque_training_team',
+);
 export const sourceDefinitions=Object.freeze({
   nonconformity:nonconformityDefinition,
   knowledge_procedure:knowledgeProcedureDefinition,
+  torque_training_session:torqueTrainingSessionDefinition,
+  torque_training_operator:torqueTrainingOperatorDefinition,
+  torque_training_team:torqueTrainingTeamDefinition,
 });
 
 export function sourceIdsFromEnv(env=process.env) {

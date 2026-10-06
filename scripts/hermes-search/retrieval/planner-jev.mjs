@@ -455,7 +455,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const dateOwner = entries.find((entry) => plannedSources.includes(entry.id) && entry.fields.some((field) => field.role === 'date'));
       const dateKey = dateOwner?.fields.find((field) => field.role === 'date')?.key ?? null;
       const dated = [];
-      const recentField = dateField(entries);
+      const recentField = dateField(entries.filter(entry => plannedSources.includes(entry.id)));
       if (dateOwner && dateKey && periodChoices.length) {
         let picked = periodChoices.length === 1 ? periodChoices[0] : null;
         if (periodAmbiguous) {
@@ -479,8 +479,9 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         return decision ? [{ source: filter.source, field: filter.field, op: filter.op, values: [...filter.values] }] : [];
       });
       const pageFields = new Set(pageFilters.map((filter) => `${filter.source}\u0000${filter.field}`));
+      // Shared facet values can be selected in several sources; only the chosen scope applies.
       const filters = mergeFilters([
-        ...[...carried, ...selected, ...dated].filter((filter) => (!pageContextUsed || plannedSources.includes(filter.source)) && !pageFields.has(`${filter.source}\u0000${filter.field}`)),
+        ...[...carried, ...selected, ...dated].filter((filter) => plannedSources.includes(filter.source) && !pageFields.has(`${filter.source}\u0000${filter.field}`)),
         ...pageFilters,
       ]);
       const judged = contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;

@@ -1,6 +1,6 @@
 import type { KnowledgeProcedureDocument, KnowledgeProcedureSummary } from '@raspi-system/shared-types';
 
-export const RETRIEVAL_SOURCE_IDS = ['nonconformity', 'knowledge_procedure'] as const;
+export const RETRIEVAL_SOURCE_IDS = ['nonconformity', 'knowledge_procedure', 'torque_training_session', 'torque_training_operator', 'torque_training_team'] as const;
 export type RetrievalSourceId = typeof RETRIEVAL_SOURCE_IDS[number];
 export type RetrievalSourceReader = () => Promise<Array<Record<string, unknown>>>;
 

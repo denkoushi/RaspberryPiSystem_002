@@ -29,3 +29,19 @@ test('the nonconformity loader stays compatible and unknown source ids fail', ()
   assert.deepEqual(loadCatalog(['nonconformity'])[0], loadNonconformityCatalog());
   assert.throws(() => loadCatalog(['constructor']), { message: 'unknown retrieval source: constructor' });
 });
+
+
+test('training catalogs derive identifiers, employee facets, completion dates and result bodies', () => {
+  const entries = loadCatalog(['torque_training_session', 'torque_training_operator', 'torque_training_team']);
+  assert.deepEqual(entries.map(entry => entry.label), ['訓練セッション', '従業員の訓練集計', 'チームの訓練集計']);
+  for (const entry of entries) {
+    assert.deepEqual(entry.visibility, ['kiosk', 'viewer', 'manager', 'admin']);
+    assert.equal(entry.fields.find(field => field.key === 'summaryText').role, 'body');
+  }
+  assert.equal(entries[0].fields.find(field => field.key === 'sessionId').role, 'identifier');
+  assert.equal(entries[0].fields.find(field => field.key === 'employeeName').role, 'facet');
+  assert.equal(entries[0].fields.find(field => field.key === 'completedOn').role, 'date');
+  assert.equal(entries[1].fields.find(field => field.key === 'lastTrainingOn').role, 'date');
+  assert.equal(entries[1].fields.find(field => field.key === 'employeeCode').role, 'identifier');
+  assert.equal(entries[2].fields.find(field => field.key === 'teamName').role, 'identifier');
+});

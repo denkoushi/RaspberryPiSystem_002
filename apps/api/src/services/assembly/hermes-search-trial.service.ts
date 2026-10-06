@@ -3,6 +3,7 @@ import type { Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import {setPriority} from 'node:os';
 import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
+import type { TorqueTrainingSourceId, createTorqueTrainingSourceReaders } from '../torque-training/torque-training-hermes-source.service.js';
 import type { KnowledgeProcedureRepositoryPort } from '../knowledge/knowledge-procedure.port.js';
 import { knowledgeProcedureRow, retrievalSourceIdsFromEnv, type RetrievalSourceId, type RetrievalSourceReader } from './hermes-search-sources.js';
 
@@ -406,9 +407,18 @@ export class HermesSearchTrialService {
 
   private async loadAuthorizedRecords() {
     if (this.settings.loadRecords) return this.settings.loadRecords();
+    let trainingReaders: Promise<ReturnType<typeof createTorqueTrainingSourceReaders>> | undefined;
+    const readTraining = async (id: TorqueTrainingSourceId) => {
+      trainingReaders ??= import('../torque-training/torque-training-hermes-source.service.js')
+        .then(module => module.createTorqueTrainingSourceReaders());
+      return (await trainingReaders)[id]();
+    };
     const readers: Record<RetrievalSourceId, RetrievalSourceReader> = {
       nonconformity: () => this.loadNonconformityRecords(),
       knowledge_procedure: () => this.loadProcedureRecords(),
+      torque_training_session: () => readTraining('torque_training_session'),
+      torque_training_operator: () => readTraining('torque_training_operator'),
+      torque_training_team: () => readTraining('torque_training_team'),
     };
     const records: Array<Record<string, unknown>> = [];
     for (const id of this.retrievalSources) records.push(...await readers[id]());

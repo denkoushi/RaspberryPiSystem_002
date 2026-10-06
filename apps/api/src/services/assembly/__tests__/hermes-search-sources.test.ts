@@ -33,6 +33,11 @@ describe('Hermes retrieval source rows', () => {
     expect(retrievalSourceIdsFromEnv({ HERMES_RETRIEVAL_SOURCES: ' knowledge_procedure,nonconformity,knowledge_procedure ' })).toEqual(['knowledge_procedure', 'nonconformity']);
   });
 
+  it('accepts all three opt-in training sources', () => {
+    const ids = ['torque_training_session', 'torque_training_operator', 'torque_training_team'];
+    expect(retrievalSourceIdsFromEnv({ HERMES_RETRIEVAL_SOURCES: ids.join(',') })).toEqual(ids);
+  });
+
   it('rejects unknown ids with the same message as the worker', () => {
     for (const id of ['missing', 'constructor']) expect(() => retrievalSourceIdsFromEnv({ HERMES_RETRIEVAL_SOURCES: `nonconformity,${id}` })).toThrow(`unknown retrieval source: ${id}`);
   });

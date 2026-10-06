@@ -76,3 +76,18 @@ test('visibility is required, non-empty and limited to known unique principal ki
   }
   assert.deepEqual(validateSourceDefinition({...structuredClone(nonconformityDefinition),visibility:['admin']},'nonconformity').visibility,['admin']);
 });
+
+
+test('training sources are opt-in validated structured definitions with public visibility',()=>{
+  const ids=['torque_training_session','torque_training_operator','torque_training_team'];
+  assert.deepEqual(sourceIdsFromEnv({HERMES_RETRIEVAL_SOURCES:ids.join(',')}),ids);
+  for(const id of ids) {
+    const definition=sourceDefinitions[id];
+    assert.equal(validateSourceDefinition(structuredClone(definition),id).id,id);
+    assert.equal(definition.offlineExtraction,undefined);
+    assert.deepEqual(definition.visibility,['kiosk','viewer','manager','admin']);
+    assert.ok(Object.isFrozen(definition.metadataFields));
+    assert.deepEqual(definition.contextAttributes,Object.keys(definition.metadataFields));
+    assert.deepEqual(definition.lexicalFields,[...Object.keys(definition.metadataFields),...Object.keys(definition.bodyFields)]);
+  }
+});

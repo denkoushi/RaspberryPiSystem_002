@@ -1,0 +1,85 @@
+{
+  "schema": "hermes-source-definition/v1",
+  "id": "torque_training_operator",
+  "visibility": [
+    "kiosk",
+    "viewer",
+    "manager",
+    "admin"
+  ],
+  "description": "トルクレンチ締付訓練の従業員別集計。全期間と本人の直近最大10セッションの合格率・誤差・強め弱めの傾向・上達・合格率順位・条件別内訳。最終訓練日は集計の最終日であり、期間内のみの集計ではない。",
+  "recordNumberField": "employeeCode",
+  "metadataFields": {
+    "employeeName": "従業員名",
+    "employeeCode": "社員コード",
+    "sessionCount": "訓練セッション数",
+    "attemptCount": "締付回数",
+    "passRate": "合格率 (%)",
+    "meanAbsoluteErrorPercent": "平均絶対誤差 (%)",
+    "meanDeviationPercent": "平均偏差 (%)",
+    "recentSessionCount": "直近の訓練セッション数",
+    "recentAttemptCount": "直近の締付回数",
+    "recentPassRate": "直近の合格率 (%)",
+    "recentMeanAbsoluteErrorPercent": "直近の平均絶対誤差 (%)",
+    "recentMeanDeviationPercent": "直近の平均偏差 (%)",
+    "lastTrainingOn": "最終訓練日",
+    "passRateRank": "合格率順位",
+    "rankingPopulation": "順位の母数 (締付実績のある従業員数)"
+  },
+  "bodyFields": {
+    "summaryText": "従業員の全期間集計・傾向・順位",
+    "comparisonText": "直近と全期間の比較・上達",
+    "conditionsText": "訓練条件ごとの内訳"
+  },
+  "contextAttributes": [
+    "employeeName",
+    "employeeCode",
+    "sessionCount",
+    "attemptCount",
+    "passRate",
+    "meanAbsoluteErrorPercent",
+    "meanDeviationPercent",
+    "recentSessionCount",
+    "recentAttemptCount",
+    "recentPassRate",
+    "recentMeanAbsoluteErrorPercent",
+    "recentMeanDeviationPercent",
+    "lastTrainingOn",
+    "passRateRank",
+    "rankingPopulation"
+  ],
+  "searchMetadataFields": [
+    "employeeName",
+    "employeeCode",
+    "sessionCount",
+    "lastTrainingOn",
+    "passRateRank",
+    "rankingPopulation"
+  ],
+  "lexicalFields": [
+    "employeeName",
+    "employeeCode",
+    "sessionCount",
+    "attemptCount",
+    "passRate",
+    "meanAbsoluteErrorPercent",
+    "meanDeviationPercent",
+    "recentSessionCount",
+    "recentAttemptCount",
+    "recentPassRate",
+    "recentMeanAbsoluteErrorPercent",
+    "recentMeanDeviationPercent",
+    "lastTrainingOn",
+    "passRateRank",
+    "rankingPopulation",
+    "summaryText",
+    "comparisonText",
+    "conditionsText"
+  ],
+  "organizedLabels": {
+    "result": "訓練結果"
+  },
+  "organizedContextClasses": [
+    "result"
+  ]
+}

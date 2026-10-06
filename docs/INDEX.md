@@ -4,6 +4,7 @@
 - 端末の拠点を明示設定へ移行（Mac代理操作の設定化・誤拠点データの統合）: [ExecPlan](./plans/explicit-site-scope-execplan.md)
 - Hermes横断レコード検索（ソースカタログ・検索計画・手元評価・5秒目標）: [ADR](./decisions/ADR-20260923-hermes-cross-source-retrieval.md) / [ExecPlan](./plans/hermes-cross-source-retrieval-execplan.md)
 - Hermes横断検索の土台（ソース追加の共通口・PostgreSQL索引・ページ文脈。2つ目のソースは公開済み手順書）: [ExecPlan](./plans/hermes-cross-source-foundation-execplan.md)
+- Hermesトルクレンチ訓練の検索ソース（セッション・従業員・チーム集計、既定OFF）: [ExecPlan](./plans/hermes-torque-training-source-execplan.md)
 - Hermes検索のオフラインDGXエンリッチメント（既定OFF、照会時は呼ばない）: [Plan](./plans/hermes-dgx-retrieval-enrichment.md)
 - Hermes検索の精度改善の履歴（採用・不採用とも数値つき）: [Log](./plans/hermes-retrieval-accuracy-log.md)
 - DGX Sparkを夜間の仕込み役にする（夜に下ごしらえ・索引・紐づけ、昼は質問だけ）: [ExecPlan](./plans/dgx-night-preparation-execplan.md)

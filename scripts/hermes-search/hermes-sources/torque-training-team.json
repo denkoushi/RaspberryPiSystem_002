@@ -1,0 +1,75 @@
+{
+  "schema": "hermes-source-definition/v1",
+  "id": "torque_training_team",
+  "visibility": [
+    "kiosk",
+    "viewer",
+    "manager",
+    "admin"
+  ],
+  "description": "トルクレンチ締付訓練のチーム全体集計。訓練画面と同じ全期間とチーム全体の直近最大10セッションの数値を表示する。",
+  "recordNumberField": "teamName",
+  "metadataFields": {
+    "teamName": "チーム名",
+    "sessionCount": "訓練セッション数",
+    "operatorCount": "従業員数",
+    "attemptCount": "締付回数",
+    "passRate": "合格率 (%)",
+    "meanAbsoluteErrorPercent": "平均絶対誤差 (%)",
+    "meanDeviationPercent": "平均偏差 (%)",
+    "recentSessionCount": "直近の訓練セッション数",
+    "recentAttemptCount": "直近の締付回数",
+    "recentPassRate": "直近の合格率 (%)",
+    "recentMeanAbsoluteErrorPercent": "直近の平均絶対誤差 (%)",
+    "recentMeanDeviationPercent": "直近の平均偏差 (%)",
+    "recentOperatorCount": "直近の従業員数"
+  },
+  "bodyFields": {
+    "summaryText": "チーム全体の全期間集計",
+    "recentText": "チーム全体の直近集計"
+  },
+  "contextAttributes": [
+    "teamName",
+    "sessionCount",
+    "operatorCount",
+    "attemptCount",
+    "passRate",
+    "meanAbsoluteErrorPercent",
+    "meanDeviationPercent",
+    "recentSessionCount",
+    "recentAttemptCount",
+    "recentPassRate",
+    "recentMeanAbsoluteErrorPercent",
+    "recentMeanDeviationPercent",
+    "recentOperatorCount"
+  ],
+  "searchMetadataFields": [
+    "teamName",
+    "sessionCount",
+    "operatorCount",
+    "recentOperatorCount"
+  ],
+  "lexicalFields": [
+    "teamName",
+    "sessionCount",
+    "operatorCount",
+    "attemptCount",
+    "passRate",
+    "meanAbsoluteErrorPercent",
+    "meanDeviationPercent",
+    "recentSessionCount",
+    "recentAttemptCount",
+    "recentPassRate",
+    "recentMeanAbsoluteErrorPercent",
+    "recentMeanDeviationPercent",
+    "recentOperatorCount",
+    "summaryText",
+    "recentText"
+  ],
+  "organizedLabels": {
+    "result": "訓練結果"
+  },
+  "organizedContextClasses": [
+    "result"
+  ]
+}
