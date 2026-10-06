@@ -4,7 +4,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ProcedureManualAssignmentDialog } from './ProcedureManualAssignmentDialog';
+import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
 import { ProcedureManualBrowser } from './ProcedureManualBrowser';
+import { ProcedureManualPageRail } from './ProcedureManualPageRail';
 
 import type { AssemblyProcedureSequencePageDto, ProcedureManualDetailDto, ProcedureManualProcessDto } from '../types';
 
@@ -19,9 +21,9 @@ vi.mock('../../../api/client', () => ({
   getAssemblyProcedureDocumentRevisions: mocks.history, getKioskDocuments: mocks.pdfs, replaceProcedureManualAssignments: mocks.save
 }));
 vi.mock('../AssemblyProcedureSequenceViewer', () => ({
-  AssemblyProcedureSequenceViewer: ({ sequence, showCurrentMarkerButton, onCurrentPageChange, onCurrentStepChange, layout }: { layout?: string; onCurrentStepChange?: (step: null, index: number, total: number) => void; sequence: ProcedureManualDetailDto['sequence']; showCurrentMarkerButton?: boolean; onCurrentPageChange?: (page: AssemblyProcedureSequencePageDto | null) => void }) => {
+  AssemblyProcedureSequenceViewer: ({ sequence, showCurrentMarkerButton, onCurrentPageChange, onCurrentStepChange, layout, listOpen, onToggleList, twoPages, onToggleTwoPages }: { listOpen?: boolean; onToggleList?: () => void; twoPages?: boolean; onToggleTwoPages?: () => void; layout?: string; onCurrentStepChange?: (step: null, index: number, total: number) => void; sequence: ProcedureManualDetailDto['sequence']; showCurrentMarkerButton?: boolean; onCurrentPageChange?: (page: AssemblyProcedureSequencePageDto | null) => void }) => {
     useEffect(() => { onCurrentPageChange?.({ documentId: sequence.documents[0]?.assemblyProcedureDocumentId } as AssemblyProcedureSequencePageDto); onCurrentStepChange?.(null, 0, 2); }, [sequence, onCurrentPageChange, onCurrentStepChange]);
-    return <div data-testid="sequence-viewer" data-layout={layout}>{sequence.documents.map((d) => <span key={d.orderItemId}>{d.title}</span>)}{showCurrentMarkerButton !== false ? <button>現在の丸数字へ</button> : null}</div>;
+    return <div data-testid="sequence-viewer" data-layout={layout}><ProcedureManualPageRail listOpen={listOpen} onToggleList={onToggleList} twoPages={twoPages} onToggleTwoPages={onToggleTwoPages} total={2} />{sequence.documents.map((d) => <span key={d.orderItemId}>{d.title}</span>)}{showCurrentMarkerButton !== false ? <button>現在の丸数字へ</button> : null}</div>;
   }
 }));
 
@@ -40,6 +42,7 @@ const emptyDetail: ProcedureManualDetailDto = {
 describe('procedure-manuals', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    localStorage.setItem('procedure-manuals-list-open', 'true');
     mocks.models.mockResolvedValue([{ modelCode: 'ｄｆｄ１', modelCodeKey: 'DFD1' }, { modelCode: 'DFD2', modelCodeKey: 'DFD2' }]);
     mocks.processes.mockResolvedValue(processes);
     mocks.detail.mockResolvedValue(emptyDetail);
@@ -54,10 +57,85 @@ describe('procedure-manuals', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it('defaults to a closed list, remembers the toggle and tolerates unavailable storage', async () => {
+    localStorage.clear();
+    const view = render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    expect(screen.getByTestId('procedure-manuals-left')).not.toBeVisible();
+    expect(screen.getByTestId('procedure-manuals-split').className).toContain('grid-cols-[minmax(0,1fr)]');
+    fireEvent.click(screen.getByRole('button', { name: '一覧を開閉' }));
+    expect(screen.getByTestId('procedure-manuals-left')).toBeVisible();
+    expect(screen.getByTestId('procedure-manuals-split').className).toContain('grid-cols-[760px_minmax(0,1fr)]');
+    expect(localStorage.getItem('procedure-manuals-list-open')).toBe('true');
+    view.unmount();
+    const reopened = render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    expect(screen.getByTestId('procedure-manuals-left')).toBeVisible();
+    reopened.unmount();
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    expect(screen.getByTestId('procedure-manuals-left')).not.toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '一覧を開閉' }));
+    expect(screen.getByTestId('procedure-manuals-left')).toBeVisible();
+    await waitFor(() => expect(mocks.models).toHaveBeenCalled());
+  });
+
+  it('enables two pages only with the list closed and resets them when opening the list', async () => {
+    mocks.detail.mockResolvedValue({ ...emptyDetail, sequence: { ...emptyDetail.sequence, documents: [{ orderItemId: 'one', title: '手順' }] } });
+    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: 'DFD1' }));
+    fireEvent.click(screen.getByRole('button', { name: '組立工程 › 組立工程' }));
+    await screen.findByTestId('sequence-viewer');
+    expect(screen.getByRole('button', { name: '2 ページ表示' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '一覧を開閉' }));
+    const two = screen.getByRole('button', { name: '2 ページ表示' });
+    expect(two).toBeEnabled();
+    fireEvent.click(two);
+    expect(two).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '一覧を開閉' }));
+    expect(two).toHaveAttribute('aria-pressed', 'false');
+    expect(two).toBeDisabled();
+  });
+
+  it('filters loaded models immediately from shared keyboard and tenkey state and marks matches', async () => {
+    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    await screen.findByRole('button', { name: 'DFD1' });
+    fireEvent.click(within(screen.getByRole('group', { name: '機種テンキー' })).getByRole('button', { name: '1' }));
+    expect(screen.getByLabelText('機種検索')).toHaveValue('1');
+    expect(screen.queryByRole('button', { name: 'DFD2' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '機種一覧' }).querySelector('mark')).toHaveTextContent('1');
+    fireEvent.click(screen.getByRole('button', { name: '1文字消す' }));
+    expect(screen.getByRole('button', { name: 'DFD2' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('機種検索'), { target: { value: '2' } });
+    expect(screen.queryByRole('button', { name: 'DFD1' })).not.toBeInTheDocument();
+    expect(mocks.models).toHaveBeenCalledOnce();
+    expect(mocks.detail).not.toHaveBeenCalled();
+  });
+
+  it('filters blank candidates immediately and uses explicit chip colors for both states and common supplements', () => {
+    render(<MemoryRouter><ProcedureManualBlankDialog models={[{ modelCode: '6362', modelCodeKey: '6362' }, { modelCode: '7000', modelCodeKey: '7000' }]} processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: '6' }));
+    expect(screen.getByLabelText('型番で検索')).toHaveValue('6');
+    expect(screen.queryByRole('button', { name: '7000' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '機種の選択' }).querySelector('mark')).toHaveTextContent('6');
+    const chosen = screen.getAllByRole('button', { name: '組立' });
+    chosen.forEach(button => expect(button).toHaveClass('border-[#3ba776]', 'bg-[#3ba776]', 'text-[#0b1a12]'));
+    const inspection = screen.getByRole('button', { name: '検査' });
+    expect(inspection).toHaveClass('border-[#6b7c8d]', 'bg-[#27313b]', 'text-[#eef3f6]');
+    expect(inspection.className).not.toContain('aria-pressed:');
+    fireEvent.click(inspection);
+    expect(inspection).toHaveClass('bg-[#3ba776]');
+    expect(chosen[1]).toHaveClass('bg-[#27313b]');
+    const common = screen.getByRole('button', { name: '圧入' });
+    expect(common).toHaveClass('border-dashed', 'bg-[#27313b]');
+    fireEvent.click(common);
+    expect(common).toHaveAttribute('aria-pressed', 'true');
+    expect(common).toHaveClass('border-dashed', 'bg-[#3ba776]', 'text-[#0b1a12]');
+  });
+
   it('uses two panes with all actions in the left header and a headerless manuals viewer', async () => {
     render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
     const split = screen.getByTestId('procedure-manuals-split');
-    expect(split).toHaveClass('grid-cols-[600px_minmax(0,1fr)]');
+    expect(split).toHaveClass('grid-cols-[760px_minmax(0,1fr)]');
     const left = screen.getByTestId('procedure-manuals-left');
     expect(within(left).getByRole('heading', { name: '要領書' })).toBeInTheDocument();
     expect(within(left).getByRole('button', { name: '白紙から作る' })).toHaveClass('h-11');
@@ -92,7 +170,7 @@ describe('procedure-manuals', () => {
     fireEvent.click(screen.getByRole('button', { name: '白紙から作る' }));
     const dialog = screen.getByRole('dialog', { name: '白紙から作る' });
     fireEvent.change(within(dialog).getByLabelText('型番で検索'), { target: { value: 'ｄｆｄ９' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'DFD9' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /DFD\s*9/ }));
     expect(within(dialog).getByLabelText('名前のプレビュー')).toHaveTextContent('DFD9_組立_組立');
     fireEvent.click(within(dialog).getByRole('button', { name: '加工' }));
     expect(within(dialog).queryByRole('button', { name: '検査' })).not.toBeInTheDocument();
@@ -118,11 +196,12 @@ describe('procedure-manuals', () => {
     expect(screen.queryByRole('button', { name: '組立工程 › 組立工程' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('機種検索'), { target: { value: 'ｄｆｄ１' } });
     expect(screen.queryByRole('button', { name: 'DFD2' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'DFD1' }));
+    fireEvent.click(screen.getByRole('button', { name: /DFD\s*1/ }));
     fireEvent.click(await screen.findByRole('button', { name: '組立工程 › 組立工程' }));
     expect(await screen.findByTestId('sequence-viewer')).toHaveTextContent('表示手順');
     expect(screen.getByTestId('sequence-viewer')).toHaveAttribute('data-layout', 'manuals');
-    expect(within(screen.getByRole('region', { name: 'このページ' })).getByRole('progressbar')).toHaveAttribute('value', '1');
+    expect(screen.getByRole('region', { name: '承認・動画' })).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     expect(screen.getByText('検査資料: 公開版なし')).toBeInTheDocument();
     expect(mocks.detail).toHaveBeenCalledWith('DFD1', 'assembly');
     expect(screen.queryByRole('button', { name: '現在の丸数字へ' })).not.toBeInTheDocument();

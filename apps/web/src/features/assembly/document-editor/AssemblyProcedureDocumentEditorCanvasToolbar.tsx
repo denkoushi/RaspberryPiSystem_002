@@ -11,6 +11,8 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({
   canSave,
   canPublish,
   canDiscard,
+  showDelete,
+  onDelete,
   onBack,
   onToggleSelection,
   onPlaceMaterial,
@@ -28,6 +30,8 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({
   canSave: boolean;
   canPublish: boolean;
   canDiscard: boolean;
+  showDelete: boolean;
+  onDelete: () => void;
   onBack: () => void;
   onToggleSelection: () => void;
   onPlaceMaterial: () => void;
@@ -78,6 +82,7 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({
         </Button>
       </div>
       <div className="flex justify-end gap-1 xl:col-auto">
+        {showDelete ? <Button type="button" variant="secondary" className="min-h-11 !px-2 text-xs" disabled={readOnly || busy} onClick={onDelete}>削除</Button> : null}
         <Button
           type="button"
           variant="secondary"

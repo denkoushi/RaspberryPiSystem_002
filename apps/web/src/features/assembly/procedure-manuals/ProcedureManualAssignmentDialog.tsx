@@ -125,7 +125,7 @@ export function ProcedureManualAssignmentDialog({ modelCode: initialModel, proce
             <Input aria-label={`表示名 ${index + 1}`} placeholder="表示名(任意)" className="!w-36" value={item.label ?? ''} disabled={!canEdit} onChange={(e) => setItems(items.map((row, i) => i === index ? { ...row, label: e.target.value || null } : row))} />
             <Button variant="ghostOnDark" aria-label={`上へ ${index + 1}`} disabled={!canEdit || index === 0} onClick={() => move(index, -1)}>↑</Button>
             <Button variant="ghostOnDark" aria-label={`下へ ${index + 1}`} disabled={!canEdit || index === items.length - 1} onClick={() => move(index, 1)}>↓</Button>
-            <Button variant="ghostOnDark" aria-label={`外す ${index + 1}`} disabled={!canEdit} onClick={() => setItems(items.filter((_, i) => i !== index))}>外す</Button>
+            <Button variant="ghostOnDark" aria-label={`外す(紐づけ解除) ${index + 1}`} disabled={!canEdit} onClick={() => setItems(items.filter((_, i) => i !== index))}>外す(紐づけ解除)</Button>
           </li>)}
         </ol>
         {loading ? <p role="status">読込中…</p> : items.length === 0 ? <p className="text-sm text-[#9fadb9]">まだ割り当てがありません。型番を入れて文書を追加してください</p> : null}

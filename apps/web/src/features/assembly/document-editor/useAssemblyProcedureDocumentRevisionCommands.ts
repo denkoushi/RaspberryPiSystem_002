@@ -4,6 +4,7 @@ import {
   approvePublishAssemblyProcedureDocument,
   createAssemblyProcedureDocumentRevision,
   discardAssemblyProcedureDocumentRevision,
+  deleteAssemblyProcedureDocument,
   getAssemblyProcedureDocument,
   publishAssemblyProcedureDocument,
   saveAssemblyProcedureDocumentOverlays,
@@ -56,6 +57,7 @@ export type AssemblyProcedureDocumentRevisionCommandSession = {
   setSelectedOverlayId: StateSetter<string | null>;
   dispatch: Dispatch<OverlayDraftAction>;
   recovery: { clear: () => void };
+  onNavigateAfterDelete?: () => void;
   onNavigateAfterDiscard?: () => void;
   onNavigateAfterPublish?: (document: AssemblyProcedureDocumentDto) => void;
 };
@@ -339,8 +341,28 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     }
   }, [session]);
 
+  const deleteDocument = useCallback(async () => {
+    if (!session.document || session.document.status !== 'draft' || session.document.supersedesDocumentId || session.readOnly || session.busy) return;
+    session.setBusy(true);
+    session.setMessage(null);
+    try {
+      await deleteAssemblyProcedureDocument(session.document.id, session.holderToken);
+      session.recovery.clear();
+      session.onNavigateAfterDelete?.();
+    } catch (error: unknown) {
+      if (session.onEditLeaseError?.(error)) return;
+      const status = typeof error === 'object' && error !== null && 'response' in error
+        ? (error as { response?: { status?: number } }).response?.status : undefined;
+      const apiMessage = readAssemblyApiErrorMessage(error, '');
+      session.setMessage(status === 409 && (!apiMessage || apiMessage.includes('割り当て')) ? '先に割り当てを外してください' : apiMessage || '要領書を削除できません');
+    } finally {
+      session.setBusy(false);
+    }
+  }, [session]);
+
   return {
     loadDocument,
+    deleteDocument,
     verifyEditorPassword,
     save,
     retryConflictSave,

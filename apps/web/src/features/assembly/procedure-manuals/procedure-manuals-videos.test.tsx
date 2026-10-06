@@ -146,7 +146,7 @@ describe('procedure-manuals videos', () => {
       { source: 'assembly_procedure_document', documentId: 'doc', pageIndex: 1, pageUrl: 'page2', videos: [] }
     ];
     mocks.detail.mockResolvedValue({ assignments: [], sequence: { documents: [{ assemblyProcedureDocumentId: 'doc', pages }] } });
-    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
     fireEvent.click(await screen.findByRole('button', { name: 'DFD1' }));
     fireEvent.click(screen.getByRole('button', { name: '組立工程 › 検査工程' }));
     const strip = await screen.findByRole('region', { name: 'このページの動画' });
