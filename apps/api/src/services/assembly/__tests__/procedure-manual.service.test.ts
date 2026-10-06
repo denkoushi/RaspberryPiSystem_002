@@ -108,17 +108,48 @@ describe('procedure-manual service', () => {
     expect(result.processes[1].items).toEqual([]);
     const items = result.processes[0].items;
     expect(items[0]).toEqual({ assignmentId: 'revision', sortOrder: 0, label: null, kind: 'assembly_procedure_document', documentId: 'v2', title: '公開手順', status: 'published', publishedRevisionNumber: 2,
-      draftRevision: { documentId: 'v3', revisionNumber: 3, editLease: { holderLabel: '佐藤', acquiredAt: now.toISOString() } }, unavailableReason: null, pageCount: 1, thumbnailPageUrl: document().imageRelativePath });
+      approval: null, draftRevision: { documentId: 'v3', revisionNumber: 3, editLease: { holderLabel: '佐藤', acquiredAt: now.toISOString() } }, unavailableReason: null, pageCount: 1, thumbnailPageUrl: document().imageRelativePath });
     expect(items[1]).toMatchObject({ status: 'draft', publishedRevisionNumber: null, draftRevision: null, documentId: 'draft-root' });
     expect(items[2]).toMatchObject({ title: '公開手順', status: 'unavailable', unavailableReason: 'no_published_revision', pageCount: null, thumbnailPageUrl: null });
     expect(items[3]).toMatchObject({ kind: 'kiosk_document', title: 'キオスクPDF', status: 'published', publishedRevisionNumber: null, pageCount: 2, thumbnailPageUrl: null });
     expect(items[4]).toMatchObject({ status: 'unavailable', unavailableReason: 'disabled' });
     expect(items[5]).toMatchObject({ status: 'published', publishedRevisionNumber: 1 });
+    expect(items.map(item => item.approval)).toEqual([null, null, null, null, null, null]);
     expect(query).toHaveBeenCalledOnce();
     expect(query).toHaveBeenCalledWith(expect.objectContaining({ where: { OR: [
       { id: { in: [rootId, 'draft-root', 'disabled', 'legacy'] } },
       { revisionMetadata: { is: { revisionRootId: { in: [rootId, 'draft-root', 'disabled', 'legacy'] } } } }
     ] } }));
+    expect(single).not.toHaveBeenCalled();
+  });
+
+  it.each(['班長', null])('batches the latest approval of the displayed published revision (position=%s)', async positionName => {
+    vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([{ id: 'assembly', parentId: 'parent' }] as never);
+    vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([
+      assignment('one'), assignment('shared-root', rootId, 1), assignment('legacy', 'legacy', 2)
+    ] as never);
+    const approval = (name: string, createdAt = now) => ({ employeeNameSnapshot: name, employeePositionSnapshot: positionName, createdAt });
+    const revision = (revisionNumber: number) => ({ revisionRootId: rootId, revisionNumber, supersedesDocumentId: revisionNumber > 1 ? rootId : null, isRevisionHead: revisionNumber === 3 });
+    const query = vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([
+      { ...document(), revisionMetadata: revision(1), procedureManualApprovals: [approval('旧版承認者')] },
+      { ...document('v3'), status: 'DRAFT', revisionMetadata: revision(3), procedureManualApprovals: [approval('下書き承認者')] },
+      { ...document('v2'), revisionMetadata: revision(2), procedureManualApprovals: [approval('最新承認者'), approval('以前の承認者', new Date('2026-10-04'))] },
+      { ...document('v4'), isActive: false, revisionMetadata: revision(4), procedureManualApprovals: [approval('無効版承認者')] },
+      { ...document('legacy'), procedureManualApprovals: [approval('レガシー承認者')] }
+    ] as never);
+    const single = vi.spyOn(prisma.assemblyProcedureDocumentRevision, 'findFirst');
+    const items = (await new ProcedureManualService().getModelOverview('DFD1')).processes[0].items;
+    const expected = { employeeName: '最新承認者', positionName, approvedAt: now.toISOString() };
+    expect(items[0]).toMatchObject({ documentId: 'v2', approval: expected });
+    expect(items[1].approval).toEqual(expected);
+    expect(items[2].approval).toEqual({ ...expected, employeeName: 'レガシー承認者' });
+    expect(query).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({ include: expect.objectContaining({
+      procedureManualApprovals: {
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1,
+        select: { employeeNameSnapshot: true, employeePositionSnapshot: true, createdAt: true }
+      }
+    }) }));
     expect(single).not.toHaveBeenCalled();
   });
 
