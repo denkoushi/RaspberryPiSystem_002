@@ -514,6 +514,9 @@ all:
               device_type: "pi3"
               status_agent_client_id: raspberrypi3-signage1
               status_agent_client_key: "{{ vault_status_agent_client_key }}"
+              # Rendered into /etc/raspi-status-agent.conf by release_signage; matches
+              # the value release_signage/tasks/host-status-agent-storage.yml enforces.
+              status_agent_storage_health_enabled: "1"
               status_agent_location: "第2工場 - signageMakoRoom"
               # 低メモリ時のTLS handshake遅延を通常の10秒より長く許容する
               status_agent_request_timeout: "30"

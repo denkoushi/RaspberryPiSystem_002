@@ -308,6 +308,19 @@
     mode: '0600'
   no_log: true
 
+# status-agent.py reads /etc/raspi-status-agent.conf (STATUS_AGENT_CONFIG in the
+# artifact unit), not runtime.env. Render it from the shared template on every
+# release so a rotated status_agent_client_key reaches the Pi3; the file was
+# previously written once by a retired role and never refreshed.
+- name: Render the Pi3 status-agent configuration outside the immutable release tree
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/status-agent.conf.j2"
+    dest: /etc/raspi-status-agent.conf
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+
 - name: Create Pi3 systemd drop-in directories outside the release tree
   ansible.builtin.file:
     path: "/etc/systemd/system/{{ item }}.d"

@@ -1489,6 +1489,36 @@ esac
         self.assertIn("dest: \"{{ release_signage_config_root }}/runtime.env\"", after_hash)
         self.assertNotIn(".artifact-sha256", after_hash)
 
+    def test_pi3_renders_the_status_agent_configuration_every_release(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_signage/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        names = [task["name"] for task in prepare_tasks]
+        runtime_index = names.index(
+            "Render Pi3 host settings outside the immutable release tree"
+        )
+        conf_index = names.index(
+            "Render the Pi3 status-agent configuration outside the immutable release tree"
+        )
+        self.assertEqual(conf_index, runtime_index + 1)
+        conf = prepare_tasks[conf_index]
+        template = conf["ansible.builtin.template"]
+        self.assertEqual(
+            template["src"], "{{ playbook_dir }}/../templates/status-agent.conf.j2"
+        )
+        self.assertEqual(template["dest"], "/etc/raspi-status-agent.conf")
+        self.assertEqual(template["mode"], "0600")
+        self.assertTrue(conf["no_log"])
+        inventory = yaml.safe_load(
+            (ANSIBLE / "inventory.yml").read_text(encoding="utf-8")
+        )
+        pi3 = inventory["all"]["children"]["clients"]["children"]["signage"]["hosts"][
+            "raspberrypi3"
+        ]
+        self.assertEqual(pi3["status_agent_storage_health_enabled"], "1")
+
     def test_pi3_publishes_only_a_complete_atomic_candidate(self) -> None:
         prepare = (
             ANSIBLE / "roles/release_signage/tasks/prepare.yml"
