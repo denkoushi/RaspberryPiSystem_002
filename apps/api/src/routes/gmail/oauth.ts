@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import crypto from 'crypto';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
 import { GmailOAuthService, GmailReauthRequiredError, isInvalidGrantMessage } from '../../services/backup/gmail-oauth.service.js';
+import { consumeOAuthState, issueOAuthState } from '../../services/oauth-state.store.js';
 import { gmailOauthCallbackQuerySchema } from './schemas.js';
 
 type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
@@ -63,7 +63,7 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
     });
 
     // CSRF保護用のstateパラメータを生成
-    const state = crypto.randomBytes(32).toString('hex');
+    const state = issueOAuthState(request.user!.id, 'gmail');
     
     // 認証URLを生成
     const authUrl = oauthService.getAuthorizationUrl(state);
@@ -78,8 +78,10 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
 
   // OAuth 2.0コールバック（認証コードを受け取る）
   // 注意: コールバックエンドポイントはGoogleからリダイレクトされるため、認証をスキップする
-  // CSRF保護は`state`パラメータで行う（簡易実装）
+  // CSRF保護はサーバーに保存したstateの照合で行う
   app.get('/gmail/oauth/callback', async (request, reply) => {
+    const { state } = request.query as { state?: unknown };
+    consumeOAuthState(state, 'gmail');
     const query = gmailOauthCallbackQuerySchema.parse(request.query);
     
     if (query.error) {
