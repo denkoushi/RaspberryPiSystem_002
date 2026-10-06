@@ -18,13 +18,32 @@ import type { ProcedureManualModelDto, ProcedureManualModelOverviewDto, Procedur
 
 const action = 'inline-flex min-h-12 items-center justify-center rounded-lg border border-[#344252] px-4 text-xl font-bold disabled:opacity-40';
 const yellowAction = `${action} border-[#f6b93b] bg-[#f6b93b] text-[#0b1a12]`;
-const badge = 'inline-flex min-h-8 items-center rounded-full border px-3 text-[17px] font-bold';
+const badge = 'inline-flex h-[30px] w-max items-center rounded-full border px-2.5 text-base font-bold';
+const symbolAction = 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-transparent text-[#9fadb9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff] disabled:opacity-40';
+const statusFilters = ['全て', '公開', '下書き', '改版中'] as const;
 const shortName = (process?: ProcedureManualProcessDto) => process?.name.replace(/工程/g, '') ?? '';
 
-function ManualThumbnail({ url }: { url: string | null }) {
+function ManualThumbnailImage({ url }: { url: string }) {
   const { blobUrl } = useProtectedImageBlobUrl(url);
-  return <div className="aspect-[1.414/1] w-[150px] overflow-hidden rounded-md border border-[#777] bg-white">
-    {blobUrl ? <img src={blobUrl} alt="1ページ目" className="h-full w-full object-contain" /> : null}
+  return blobUrl ? <img src={blobUrl} alt="1ページ目" className="h-full w-full object-contain" /> : null;
+}
+
+function ManualThumbnail({ url }: { url: string | null }) {
+  const thumbnailRef = useRef<HTMLDivElement>(null);
+  const [requested, setRequested] = useState(() => typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    if (requested || !url) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        setRequested(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: '200px' });
+    if (thumbnailRef.current) observer.observe(thumbnailRef.current);
+    return () => observer.disconnect();
+  }, [requested, url]);
+  return <div ref={thumbnailRef} className="h-[26px] w-9 overflow-hidden rounded-[3px] border border-[#777] bg-white">
+    {requested && url ? <ManualThumbnailImage url={url} /> : null}
   </div>;
 }
 
@@ -34,6 +53,8 @@ export function ProcedureManualWorkshop() {
   const modelCodeKey = procedureManualModelKey(params.get('model') ?? '');
   const processId = params.get('process') ?? '';
   const [search, setSearch] = useState('');
+  const [nameFilter, setNameFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<typeof statusFilters[number]>('全て');
   const [digitQuery, setDigitQuery] = useState('');
   const [models, setModels] = useState<ProcedureManualModelDto[]>([]);
   const [candidates, setCandidates] = useState<ProcedureManualModelDto[]>([]);
@@ -114,6 +135,14 @@ export function ProcedureManualWorkshop() {
   const processName = process ? `${shortName(processes.find(row => row.id === process.parentId))} › ${shortName(process)}` : '';
   const modelCode = overview?.modelCode ?? candidates.find(row => row.modelCodeKey === modelCodeKey)?.modelCode ?? modelCodeKey;
   const selected = overview?.processes.find(row => row.processId === processId);
+  const normalizedNameFilter = nameFilter.normalize('NFKC').trim().toLocaleLowerCase();
+  const filteredItems = selected?.items.filter(item => {
+    const matchesStatus = statusFilter === '全て'
+      || (statusFilter === '公開' && item.status === 'published')
+      || (statusFilter === '下書き' && item.status === 'draft' && !item.draftRevision)
+      || (statusFilter === '改版中' && Boolean(item.draftRevision));
+    return matchesStatus && (item.label || item.title).normalize('NFKC').toLocaleLowerCase().includes(normalizedNameFilter);
+  }) ?? [];
   const fix = (item: ProcedureManualOverviewItemDto) => navigate(kioskAssemblyProcedureDocumentEditPath(item.draftRevision?.documentId ?? item.documentId), {
     state: { returnTo: kioskAssemblyManualsWorkshopPath({ model: modelCodeKey, process: processId }),
       context: { modelCode, modelCodeKey, processId, processName, mode: 'fix' } }
@@ -174,28 +203,42 @@ export function ProcedureManualWorkshop() {
           </button>;
         })}
       </section>
-      <section aria-label="要領書の札" className="grid min-h-0 min-w-0 content-start gap-3.5 overflow-auto px-5 py-4">
+      <section aria-label="要領書一覧" className="grid min-h-0 min-w-0 content-start overflow-auto px-4 py-3">
         {!modelCodeKey ? <p className="text-[#9fadb9]">機種を選択</p> : !process ? <p className="text-[#9fadb9]">工程を選択</p> : <>
-          <div className="flex min-h-12 items-center gap-3.5"><h2 className="min-w-0 text-2xl font-black break-all">{modelCodeKey} › {processName}</h2><button className={`${yellowAction} ml-auto shrink-0`} disabled={busy} onClick={() => setBlankOpen(true)}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button></div>
-          {selected?.items.map(item => <article key={item.assignmentId} aria-label={item.label || item.title} className="grid grid-cols-[150px_minmax(0,1fr)_auto] items-center gap-[18px] rounded-[14px] border border-[#344252] bg-[#1b222a] px-4 py-3.5">
-            <ManualThumbnail url={item.thumbnailPageUrl} />
-            <div className="grid min-w-0 gap-2"><h3 className="truncate text-2xl font-black" title={item.label || item.title}>{item.label || item.title}</h3>
-              <div className="flex flex-wrap items-center gap-2.5 text-lg text-[#9fadb9]">
-                <span className={`${badge} ${item.status === 'published' ? 'border-[#3ba776] text-[#3ba776]' : item.status === 'draft' ? 'border-[#f6b93b] text-[#f6b93b]' : 'border-red-400 text-red-400'}`}>
+          <div className="mb-1.5 flex min-h-[52px] min-w-max items-center gap-3">
+            <h2 className="text-[22px] font-black">{processName}</h2>
+            <span className="font-mono text-lg text-[#9fadb9]">{filteredItems.length} 件</span>
+            <div className="ml-3 flex gap-1.5" role="group" aria-label="状態で絞り込み">
+              {statusFilters.map(filter => <button key={filter} aria-pressed={statusFilter === filter} className={`h-11 rounded-full border border-[#344252] px-3 text-[17px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff] ${statusFilter === filter ? 'bg-[#27313b] text-[#eef3f6]' : 'text-[#9fadb9]'}`} onClick={() => setStatusFilter(filter)}>{filter}</button>)}
+            </div>
+            <input type="search" aria-label="名前で絞り込み" placeholder="名前で絞り込み" value={nameFilter} onChange={event => setNameFilter(event.target.value)} className="h-11 w-[260px] rounded-lg border border-[#344252] bg-white px-3 text-lg text-[#0f1317] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff]" />
+            <button className={`${yellowAction} ml-auto shrink-0`} disabled={busy} onClick={() => setBlankOpen(true)}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button>
+          </div>
+          <div role="table" aria-label={processName} className="min-w-[840px]">
+          <div role="row" className="sr-only">
+            {['サムネイル', '名前', '状態', '担当・承認', 'ページ', '操作'].map(label => <div role="columnheader" key={label}>{label}</div>)}
+          </div>
+          {filteredItems.map(item => <div role="row" key={item.assignmentId} aria-label={item.label || item.title} className="grid h-14 grid-cols-[36px_minmax(0,1fr)_160px_150px_90px_140px] items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
+            <div role="cell"><ManualThumbnail url={item.thumbnailPageUrl} /></div>
+            <div role="cell" className="truncate font-mono text-xl font-bold" title={item.label || item.title}>{item.label || item.title}</div>
+            <div role="cell">
+                <span className={`${badge} ${item.status === 'published' ? 'border-[#3ba776] text-[#3ba776]' : item.status === 'draft' ? 'border-[#f6b93b] text-[#f6b93b]' : 'border-[#e5484d] text-[#e5484d]'}`}>
                   {item.status === 'published' ? item.publishedRevisionNumber == null ? '公開' : `公開 第${item.publishedRevisionNumber}版` : item.status === 'draft' ? '下書き' : '無効'}
                 </span>
-                {item.draftRevision ? <span className={`${badge} border-[#f6b93b] bg-[#f6b93b1f] text-[#f6b93b]`}>改版中{item.draftRevision.editLease ? ` · ${item.draftRevision.editLease.holderLabel} ${new Date(item.draftRevision.editLease.acquiredAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}〜` : ''}</span> : null}
-                {item.pageCount != null ? <span>{item.pageCount} ページ</span> : null}
-              </div>
             </div>
-            <div className="flex gap-2">
-              {item.kind === 'assembly_procedure_document' && item.status !== 'unavailable' ? <button className={yellowAction} disabled={busy} onClick={() => fix(item)}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>直す</button> : null}
-              {item.kind === 'assembly_procedure_document' && item.status === 'published' ? <Link className={action} to={kioskAssemblyTemplateNewPath({ procedureDocumentId: item.documentId })}>使う</Link> : null}
-              <button className={`${action} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => setRemoving(item)}>外す</button>
-              {item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision ? <button className={`${action} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => setDeleting(item)}>削除</button> : null}
+            <div role="cell" className="truncate text-base text-[#9fadb9]">
+              {item.draftRevision ? <span className="rounded-full bg-[#f6b93b1f] px-2.5 py-1 text-[#f6b93b]">改版中{item.draftRevision.editLease ? ` · ${item.draftRevision.editLease.holderLabel} ${new Date(item.draftRevision.editLease.acquiredAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}〜` : ''}</span> : item.approval ? `承認 ${item.approval.employeeName} ${new Date(item.approval.approvedAt).toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' })}` : null}
             </div>
-          </article>)}
-          <button className="min-h-12 rounded-[14px] border border-dashed border-[#344252] p-7 text-[22px] font-bold text-[#9fadb9] disabled:opacity-40" disabled={busy || overviewLoading || !selected} onClick={() => setAssignmentOpen(true)}>＋ 既存の要領書を割り当てる</button>
+            <div role="cell" className="text-right font-mono text-base text-[#9fadb9]">{item.pageCount ?? '—'}{item.pageCount != null ? <span className="sr-only"> ページ</span> : null}</div>
+            <div role="cell" className="flex gap-1">
+              {item.kind === 'assembly_procedure_document' && item.status !== 'unavailable' ? <button aria-label="直す" title="直す" className={`${symbolAction} !border-[#f6b93b] !text-[#f6b93b]`} disabled={busy} onClick={() => fix(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg></button> : null}
+              {item.kind === 'assembly_procedure_document' && item.status === 'published' ? <Link aria-label="使う" title="使う" className={symbolAction} to={kioskAssemblyTemplateNewPath({ procedureDocumentId: item.documentId })}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></svg></Link> : null}
+              <button aria-label="外す" title="外す" className={symbolAction} disabled={busy} onClick={() => setRemoving(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></svg></button>
+              {item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision ? <button aria-label="削除" title="削除" className={symbolAction} disabled={busy} onClick={() => setDeleting(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button> : null}
+            </div>
+          </div>)}
+          </div>
+          <button className="mt-2.5 min-h-12 rounded-[10px] border border-dashed border-[#344252] text-lg text-[#9fadb9] disabled:opacity-40" disabled={busy || overviewLoading || !selected} onClick={() => setAssignmentOpen(true)}>＋ 既存の要領書を割り当てる</button>
         </>}
         {overviewLoading ? <p role="status" className="text-[#9fadb9]">読込中…</p> : null}
         {error ? <p role="alert" className="text-red-400">{error}</p> : null}
