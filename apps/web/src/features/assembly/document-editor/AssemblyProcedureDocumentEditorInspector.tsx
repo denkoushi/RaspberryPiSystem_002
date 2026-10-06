@@ -13,8 +13,21 @@ import {
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
 function numberValue(value: string, fallback: number): number {
+  if (value.trim() === '') return fallback;
   const next = Number(value);
   return Number.isFinite(next) ? next : fallback;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+export function ratioToPercent(ratio: number): number {
+  return Math.round(ratio * 1000) / 10;
+}
+
+export function percentToRatio(percent: number): number {
+  return percent / 100;
 }
 
 export function AssemblyProcedureDocumentEditorInspector({
@@ -73,7 +86,7 @@ export function AssemblyProcedureDocumentEditorInspector({
             data-kiosk-sop-target="assembly-document-editor-text-value"
             value={element.text}
             onChange={(event) => patch({ text: event.target.value })}
-            className="min-h-24 rounded border border-white/20 bg-slate-950 px-2 py-2 text-sm text-white"
+            className="min-h-24 min-w-0 rounded border border-slate-500 bg-white px-2 py-2 text-lg text-slate-900"
           />
           <Button
             type="button"
@@ -85,44 +98,44 @@ export function AssemblyProcedureDocumentEditorInspector({
             この範囲で候補を再取得
           </Button>
           <div className="grid grid-cols-2 gap-1.5">
-            <label className="grid gap-0.5 text-xs font-semibold">
-              文字サイズ比率
+            <label className="grid gap-0.5 text-sm font-semibold">
+              文字サイズ比率 (%)
               <Input
                 type="number"
-                min={0.005}
-                max={0.2}
-                step={0.005}
-                value={element.style?.fontSizeRatio ?? 0.025}
-                className="min-h-11 bg-slate-950 text-white"
-                onChange={(event) => patchTextStyle({ fontSizeRatio: numberValue(event.target.value, element.style?.fontSizeRatio ?? 0.025) })}
+                min={0.5}
+                max={20}
+                step={0.5}
+                value={ratioToPercent(element.style?.fontSizeRatio ?? 0.025)}
+                className="min-h-11 min-w-0 !px-2 text-lg"
+                onChange={(event) => patchTextStyle({ fontSizeRatio: clamp(percentToRatio(numberValue(event.target.value, (element.style?.fontSizeRatio ?? 0.025) * 100)), 0.005, 0.2) })}
               />
             </label>
-            <label className="grid gap-0.5 text-xs font-semibold">
+            <label className="grid gap-0.5 text-sm font-semibold">
               文字色
               <Input
                 type="color"
                 value={element.style?.color ?? '#0f172a'}
-                className="min-h-11 bg-slate-950 p-1"
+                className="min-h-11 min-w-0 !p-1 text-lg"
                 onChange={(event) => patchTextStyle({ color: event.target.value })}
               />
             </label>
-            <label className="grid gap-0.5 text-xs font-semibold">
+            <label className="grid gap-0.5 text-sm font-semibold">
               太さ
               <select
                 value={element.style?.fontWeight ?? 'normal'}
                 onChange={(event) => patchTextStyle({ fontWeight: event.target.value as 'normal' | 'bold' })}
-                className="min-h-11 rounded border border-white/20 bg-slate-950 px-2 text-white"
+                className="min-h-11 min-w-0 rounded border border-slate-500 bg-white px-2 text-lg text-slate-900"
               >
                 <option value="normal">標準</option>
                 <option value="bold">太字</option>
               </select>
             </label>
-            <label className="grid gap-0.5 text-xs font-semibold">
+            <label className="grid gap-0.5 text-sm font-semibold">
               揃え
               <select
                 value={element.style?.align ?? 'start'}
                 onChange={(event) => patchTextStyle({ align: event.target.value as 'start' | 'center' | 'end' })}
-                className="min-h-11 rounded border border-white/20 bg-slate-950 px-2 text-white"
+                className="min-h-11 min-w-0 rounded border border-slate-500 bg-white px-2 text-lg text-slate-900"
               >
                 <option value="start">左</option>
                 <option value="center">中央</option>
@@ -141,12 +154,12 @@ export function AssemblyProcedureDocumentEditorInspector({
             value={element.assetId}
             onChange={(event) => patch({ assetId: event.target.value })}
             placeholder="asset ID"
-            className="min-h-11 bg-slate-950 text-white"
+            className="min-h-11 min-w-0 !px-2 text-lg"
           />
           <input
             type="file"
             accept="image/*"
-            className="min-h-11 w-full rounded border border-white/20 bg-slate-950 px-2 py-2 text-xs text-white"
+            className="min-h-11 w-full min-w-0 rounded border border-slate-500 bg-white px-2 py-2 text-lg text-slate-900"
             aria-label="画像ファイルをアップロード"
             onChange={(event) => {
               const file = event.target.files?.[0];
@@ -154,12 +167,12 @@ export function AssemblyProcedureDocumentEditorInspector({
               event.currentTarget.value = '';
             }}
           />
-          <label className="grid gap-0.5 text-xs font-semibold">
+          <label className="grid gap-0.5 text-sm font-semibold">
             画像の収まり
             <select
               value={element.objectFit ?? 'contain'}
               onChange={(event) => patch({ objectFit: event.target.value as typeof element.objectFit })}
-              className="min-h-11 rounded border border-white/20 bg-slate-950 px-2 text-white"
+              className="min-h-11 min-w-0 rounded border border-slate-500 bg-white px-2 text-lg text-slate-900"
             >
               <option value="contain">全体表示</option>
               <option value="cover">枠いっぱい</option>
@@ -176,7 +189,7 @@ export function AssemblyProcedureDocumentEditorInspector({
             data-kiosk-sop-target="assembly-document-editor-shape-kind"
             value={element.shape}
             onChange={(event) => onUpdate(convertOverlayShapeKind(element, event.target.value as typeof element.shape))}
-            className="min-h-11 rounded border border-white/20 bg-slate-950 px-2 text-white"
+            className="min-h-11 min-w-0 rounded border border-slate-500 bg-white px-2 text-lg text-slate-900"
           >
             <option value="RECTANGLE">矩形</option>
             <option value="ELLIPSE">楕円</option>
@@ -187,18 +200,18 @@ export function AssemblyProcedureDocumentEditorInspector({
             {([
               ['strokeColor', '線色', element.strokeColor ?? '#dc2626'],
               ['fillColor', '塗り色', element.fillColor ?? 'transparent'],
-              ['strokeWidthRatio', '線幅比率', element.strokeWidthRatio ?? 0.008]
+              ['strokeWidthRatio', '線幅比率 (%)', element.strokeWidthRatio ?? 0.008]
             ] as const).map(([key, label, value]) => (
-              <label key={key} className="grid gap-0.5 text-xs font-semibold">
+              <label key={key} className="grid gap-0.5 text-sm font-semibold">
                 {label}
                 <Input
                   type={key === 'strokeWidthRatio' ? 'number' : key === 'fillColor' ? 'text' : 'color'}
-                  min={key === 'strokeWidthRatio' ? 0.001 : undefined}
-                  max={key === 'strokeWidthRatio' ? 0.2 : undefined}
-                  step={key === 'strokeWidthRatio' ? 0.001 : undefined}
-                  value={value}
-                  className="min-h-11 bg-slate-950 text-white"
-                  onChange={(event) => patch({ [key]: key === 'strokeWidthRatio' ? numberValue(event.target.value, Number(value)) : event.target.value })}
+                  min={key === 'strokeWidthRatio' ? 0.1 : undefined}
+                  max={key === 'strokeWidthRatio' ? 20 : undefined}
+                  step={key === 'strokeWidthRatio' ? 0.1 : undefined}
+                  value={key === 'strokeWidthRatio' ? ratioToPercent(Number(value)) : value}
+                  className="min-h-11 min-w-0 !px-2 text-lg"
+                  onChange={(event) => patch({ [key]: key === 'strokeWidthRatio' ? clamp(percentToRatio(numberValue(event.target.value, Number(value) * 100)), 0.001, 0.2) : event.target.value })}
                 />
               </label>
             ))}
@@ -212,16 +225,16 @@ export function AssemblyProcedureDocumentEditorInspector({
                   ['end', '終点', element.end ?? { xRatio: bbox.xRatio + bbox.widthRatio, yRatio: bbox.yRatio + bbox.heightRatio }]
                 ] as const).flatMap(([pointKey, pointLabel, point]) => (
                   (['xRatio', 'yRatio'] as const).map((axis) => (
-                    <label key={`${pointKey}-${axis}`} className="grid gap-0.5 text-xs font-semibold">
-                      {pointLabel} {axis === 'xRatio' ? 'X' : 'Y'}
+                    <label key={`${pointKey}-${axis}`} className="grid gap-0.5 text-sm font-semibold">
+                      {pointLabel} {axis === 'xRatio' ? 'X' : 'Y'} (%)
                       <Input
                         type="number"
                         min={0}
-                        max={1}
-                        step={0.01}
-                        value={point[axis]}
-                        className="min-h-11 bg-slate-950 text-white"
-                        onChange={(event) => patch({ [pointKey]: { ...point, [axis]: Math.max(0, Math.min(1, numberValue(event.target.value, point[axis]))) } })}
+                        max={100}
+                        step={0.5}
+                        value={ratioToPercent(point[axis])}
+                        className="min-h-11 min-w-0 !px-2 text-lg"
+                        onChange={(event) => patch({ [pointKey]: { ...point, [axis]: Math.max(0, Math.min(1, percentToRatio(numberValue(event.target.value, point[axis] * 100)))) } })}
                       />
                     </label>
                   ))
@@ -233,7 +246,7 @@ export function AssemblyProcedureDocumentEditorInspector({
       ) : null}
 
       <fieldset className="grid gap-1 rounded border border-white/10 p-2">
-        <legend className="px-1 text-xs font-bold text-white/70">位置と大きさ（元ページ比率）</legend>
+        <legend className="px-1 text-xs font-bold text-white/70">位置と大きさ（元ページに対する %）</legend>
         <div className="grid grid-cols-2 gap-1.5">
           {([
             ['xRatio', '左'],
@@ -241,33 +254,33 @@ export function AssemblyProcedureDocumentEditorInspector({
             ['widthRatio', '幅'],
             ['heightRatio', '高さ']
           ] as const).map(([key, label]) => (
-            <label key={key} className="grid gap-0.5 text-xs font-semibold">
-              {label}
+            <label key={key} className="grid gap-0.5 text-sm font-semibold">
+              {label} (%)
               <Input
                 type="number"
                 data-kiosk-sop-target={key === 'xRatio' ? 'assembly-document-editor-position-x' : undefined}
                 min={0}
-                max={1}
-                step={0.01}
-                value={bbox[key]}
-                className="min-h-11 bg-slate-950 text-white"
-                onChange={(event) => onUpdate(updateOverlayBBox(element, normalizeOverlayBBox({ ...bbox, [key]: numberValue(event.target.value, bbox[key]) })))}
+                max={100}
+                step={0.5}
+                value={ratioToPercent(bbox[key])}
+                className="min-h-11 min-w-0 !px-2 text-lg"
+                onChange={(event) => onUpdate(updateOverlayBBox(element, normalizeOverlayBBox({ ...bbox, [key]: percentToRatio(numberValue(event.target.value, bbox[key] * 100)) })))}
               />
             </label>
           ))}
         </div>
       </fieldset>
 
-      <label className="grid gap-1 font-semibold">
-        不透明度
+      <label className="grid gap-1 text-sm font-semibold">
+        不透明度 (%)
         <Input
           type="number"
           min={0}
-          max={1}
-          step={0.05}
-          value={element.opacity ?? 1}
-          className="min-h-11 bg-slate-950 text-white"
-          onChange={(event) => patch({ opacity: numberValue(event.target.value, element.opacity ?? 1) })}
+          max={100}
+          step={0.5}
+          value={ratioToPercent(element.opacity ?? 1)}
+          className="min-h-11 min-w-0 !px-2 text-lg"
+          onChange={(event) => patch({ opacity: clamp(percentToRatio(numberValue(event.target.value, (element.opacity ?? 1) * 100)), 0, 1) })}
         />
       </label>
 
@@ -283,7 +296,7 @@ export function AssemblyProcedureDocumentEditorInspector({
         </div>
         {(element.kind === 'TEXT' || element.kind === 'IMAGE') ? (
           <>
-            <label className="flex min-h-11 items-center gap-2 text-xs font-semibold">
+            <label className="flex min-h-11 items-center gap-2 text-sm font-semibold">
               <input
                 type="checkbox"
                 checked={element.mask?.enabled ?? false}
@@ -291,12 +304,12 @@ export function AssemblyProcedureDocumentEditorInspector({
               />
               白マスクを有効化
             </label>
-            <label className="grid min-h-11 grid-cols-[auto_1fr] items-center gap-2 text-xs font-semibold">
+            <label className="grid min-h-11 grid-cols-[auto_1fr] items-center gap-2 text-sm font-semibold">
               <span>マスク色</span>
               <Input
                 type="color"
                 value={element.mask?.color ?? '#ffffff'}
-                className="min-h-11 bg-slate-950 p-1"
+                className="min-h-11 min-w-0 !p-1 text-lg"
                 onChange={(event) => patch({ mask: { enabled: element.mask?.enabled ?? true, color: event.target.value } })}
               />
             </label>
