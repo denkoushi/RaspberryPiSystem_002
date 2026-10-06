@@ -84,32 +84,6 @@ const templates: BackupTargetTemplate[] = [
       storage: { provider: 'dropbox' },
       retention: { days: 14, maxBackups: 4 }
     }
-  },
-  {
-    id: 'procedure-materials-dir',
-    label: '要領書のGmail素材',
-    description: '/app/storage/procedure-materials を日次バックアップ（素材の原本）',
-    target: {
-      kind: 'directory',
-      source: '/app/storage/procedure-materials',
-      schedule: '0 2 * * *',
-      enabled: true,
-      storage: { provider: 'dropbox' },
-      retention: { days: 14, maxBackups: 4 }
-    }
-  },
-  {
-    id: 'procedure-videos-dir',
-    label: '要領書の動画',
-    description: '/app/storage/procedure-videos を日次バックアップ（SD変換済み動画）',
-    target: {
-      kind: 'directory',
-      source: '/app/storage/procedure-videos',
-      schedule: '0 2 * * *',
-      enabled: true,
-      storage: { provider: 'dropbox' },
-      retention: { days: 14, maxBackups: 4 }
-    }
   }
 ];
 

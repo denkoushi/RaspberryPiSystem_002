@@ -93,13 +93,6 @@ export function getRecommendedBackupTargetCatalog(): RecommendedBackupTargetSpec
         retention: DEFAULT_RETENTION,
       },
     },
-    ...[
-      { source: 'procedure-materials', message: '要領書のGmail素材ストレージ（ホスト永続ボリューム）' },
-      { source: 'procedure-videos', message: '要領書の動画ストレージ（ホスト永続ボリューム）' },
-    ].map(({ source, message }) => ({
-      id: `server-directory-${source}`, message,
-      target: { kind: 'directory' as const, source: `/app/storage/${source}`, schedule: DEFAULT_SCHEDULE, enabled: true, storage: DROPBOX, retention: DEFAULT_RETENTION },
-    })),
   ];
 
   return server;
