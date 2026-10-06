@@ -95,13 +95,13 @@ describe('procedure-manuals material shelf', () => {
     await waitFor(() => expect(mocks.restore).toHaveBeenCalledWith('text'));
     await screen.findByText('素材がありません'); expect(mocks.list).toHaveBeenLastCalledWith({ state: 'discarded', q: '', limit: 500 });
   });
-  it('selects only unplaced materials with the existing hint filter and keeps placement failures visible', async () => {
+  it('selects unplaced materials with the existing hint filter and keeps placement failures visible', async () => {
     mocks.list.mockResolvedValue([text]);
     const onSelect = vi.fn().mockRejectedValueOnce(new Error('配置エラー')).mockResolvedValueOnce(undefined);
     const onClose = vi.fn();
     render(<ProcedureMaterialShelfDialog onClose={onClose} onSelect={onSelect} />);
     expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: '', limit: 500 });
-    expect(screen.queryByRole('tab', { name: /^配置済み/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^配置済み/ })).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('checkbox', { name: 'DFD1 組立' }));
     fireEvent.click(screen.getByRole('button', { name: '現在ページに配置' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('配置エラー');
@@ -109,6 +109,38 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.click(screen.getByRole('button', { name: '現在ページに配置' }));
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
     expect(onSelect).toHaveBeenCalledWith(text);
+    expect(screen.queryByRole('checkbox', { name: 'DFD1 組立' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^未配置/ })).toHaveTextContent('未配置 (0)');
+  });
+  it('selects placed text/photos without unplace or discard actions and retains them after repeated placement', async () => {
+    const placedText = { ...text, documentId: 'old-document', placedAt: '2026-10-05T04:00:00Z' };
+    const placedPhoto = { ...photo, subjectHint: '配置済み写真', documentId: 'old-document', placedAt: '2026-10-05T04:00:00Z' };
+    mocks.list.mockResolvedValueOnce([]).mockResolvedValueOnce([placedText, placedPhoto]);
+    const onSelect = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    render(<ProcedureMaterialShelfDialog onClose={onClose} onSelect={onSelect} />);
+    await screen.findByText('素材がありません');
+    fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
+    const textCheck = await screen.findByRole('checkbox', { name: 'DFD1 組立' });
+    const photoCheck = screen.getByRole('checkbox', { name: '配置済み写真' });
+    expect(textCheck).toBeEnabled(); expect(photoCheck).toBeEnabled();
+    expect(mocks.list).toHaveBeenLastCalledWith({ state: 'placed', q: '', limit: 500 });
+    expect(screen.queryByRole('button', { name: '配置を取り消す' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '捨てる' })).not.toBeInTheDocument();
+    const place = screen.getByRole('button', { name: '現在ページに配置' });
+    expect(place).toBeDisabled();
+    fireEvent.click(textCheck); fireEvent.click(photoCheck);
+    expect(place).toBeEnabled();
+    fireEvent.click(place);
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(onSelect).toHaveBeenNthCalledWith(1, placedText);
+    expect(onSelect).toHaveBeenNthCalledWith(2, placedPhoto);
+    expect(textCheck).toBeInTheDocument(); expect(textCheck).not.toBeChecked();
+    expect(photoCheck).toBeInTheDocument(); expect(photoCheck).not.toBeChecked();
+    fireEvent.click(photoCheck); fireEvent.click(place);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2));
+    expect(onSelect).toHaveBeenNthCalledWith(3, placedPhoto);
+    expect(mocks.unplace).not.toHaveBeenCalled(); expect(mocks.discard).not.toHaveBeenCalled();
   });
   it('returns placed materials to the shelf through the placed tab', async () => {
     mocks.list.mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...text, documentId: 'document', placedAt: '2026-10-05T04:00:00Z' }]).mockResolvedValueOnce([]);
@@ -120,16 +152,20 @@ describe('procedure-manuals material shelf', () => {
     await waitFor(() => expect(mocks.unplace).toHaveBeenCalledWith('text'));
     expect(mocks.list).toHaveBeenCalledWith({ state: 'placed', q: '', limit: 500 });
   });
-  it('allows only one photo in replacement mode and keeps failed replacement selections visible', async () => {
+  it.each(['unplaced', 'placed'] as const)('allows only one photo in replacement mode on the %s tab and keeps failed replacement selections visible', async (state) => {
     const first = { ...photo, subjectHint: '写真1' };
     const second = { ...photo, id: 'photo-2', subjectHint: '写真2' };
-    mocks.list.mockResolvedValue([text, first, second]);
+    const materials = [text, first, second].map((material) => state === 'placed' ? { ...material, documentId: 'old-document', placedAt: '2026-10-05T04:00:00Z' } : material);
+    mocks.list.mockResolvedValue(materials);
     const onSelect = vi.fn().mockRejectedValueOnce(new Error('現在は画像を差し替えできません')).mockResolvedValueOnce(undefined);
     const onClose = vi.fn();
     render(<ProcedureMaterialShelfDialog mode="replace" onClose={onClose} onSelect={onSelect} />);
+    await screen.findByRole('checkbox', { name: 'DFD1 組立' });
+    if (state === 'placed') fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
     const textCheck = await screen.findByRole('checkbox', { name: 'DFD1 組立' });
     expect(textCheck).toBeDisabled();
-    expect(screen.getByRole('tab', { name: /^未配置/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: state === 'placed' ? /^配置済み/ : /^未配置/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('button', { name: '配置を取り消す' })).not.toBeInTheDocument();
     const button = screen.getByRole('button', { name: 'この素材に差し替え' });
     expect(button).toBeDisabled();
     expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
@@ -147,13 +183,13 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.click(button);
     expect(await screen.findByRole('alert')).toHaveTextContent('現在は画像を差し替えできません');
     expect(onClose).not.toHaveBeenCalled();
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith(second);
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(materials[2]);
     expect(secondCheck).toBeChecked();
     expect(screen.getByRole('checkbox', { name: '写真1' })).toBeInTheDocument();
     fireEvent.click(button);
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
     expect(onSelect).toHaveBeenCalledTimes(2);
-    expect(onSelect).toHaveBeenLastCalledWith(second);
+    expect(onSelect).toHaveBeenLastCalledWith(materials[2]);
   });
   it('disables knowledge text and imports only the latest selected photo in replacement mode', async () => {
     mocks.knowledge.mockResolvedValue({ enabled: true, items: [

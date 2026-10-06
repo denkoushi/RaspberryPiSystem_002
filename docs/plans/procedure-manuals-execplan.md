@@ -12,6 +12,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-07) 実機要望: 配置済みの素材も選べるように。API は配置の前提を「捨てていない」だけにし、配置のたびに documentId/placedAt を最後の配置先で上書き(画像は毎回新しい asset をコピー、捨てた素材は 409)。エディタから開く素材棚にも「配置済み」タブを出して配置・差し替えに使え、配置済みタブでは「配置を取り消す」を出さない。未配置の件数(貼り忘れの目安)の意味は維持。Codex(gpt-6.1-sol/high)実装。
 - [x] (2026-10-06) 夜 本番反映の記録 2: #1768(画像の「素材から差し替え」とハンドルの重なり修正)を Pi5 へ反映。merge 19ce5861(22:27)、run 20261006-133541-8aa713(22:35→22:41 success、recap ok=268 changed=31 failed=0 unreachable=0)、稼働イメージ api/web 19ce5861、/・/admin・/kiosk・/api/system/health 200、API エラーログ 0 件。実機確認はユーザー待ち(画像の差し替え、ダイアログ上にハンドルが透けないこと)。
 - [x] (2026-10-06) 夜 実機指摘 2: 右ペイン「画像」の asset ID 入力とファイル選択(タッチ端末では使えない)を外し、「素材から差し替え」1 ボタンに(素材棚を差し替えモードで開き、選択中の画像要素の assetId だけを更新、位置・大きさ・重なり順・マスク維持、undo 対応、画像素材のみ・単一選択)。選択中要素のリサイズハンドル(z-index 1,000,000)が素材ダイアログの上に透けていたのを、OverlayLayer の根元に isolate を足して閉じ込め。Codex(gpt-6.1-sol/high)実装、読み取り専用レビュー 3 件(非画像素材の配置済み化、複数選択、無言の失敗)を反映。取説の「画像」手順を差し替えに更新し再生成。
 - [x] (2026-10-06) 夜 本番反映の記録: 追加要望 4 本と右ペイン修正をすべて Pi5 へ反映。#1759 fa6ac722(run 20261006-110604-c1c17f)、#1760 473df6f5(#1764 と同じ run 20261006-113032-20d958、releaseSha 4c9e0df5)、#1762 0c2d2331(run 20261006-115306-10a989、20:58 success)、#1763 42d78881(run 20261006-121854-706567、21:24 success)、#1766 c4dfbbdc(run 20261006-124604-64ebfc、21:51 success、recap ok=268 changed=31 failed=0)。いずれも /・/admin・/kiosk・/api/system/health 200、API エラーログ 0 件。#1763 の最初の head は CI の kiosk-sop で視覚差 10.7%(ローカル撮影の描画不足)となり、該当 1 枚を撮り直して通過。実機確認(5 項目)はユーザー待ち。
@@ -197,6 +198,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Decision: discardRevision は素材の配置状態を明示更新しない。配置済み棚の「配置を取り消す」で documentId / placedAt を null に戻す。
   Rationale: 配置要素は未保存の下書きにも存在し得て、改版破棄と素材の利用意図は一致しない。文書削除時の既存 FK SetNull により documentId が null になっても placedAt は残るため、配置済み棚から取り消せる。取消は overlay を削除しない。
   Date/Author: 2026-10-05 / Codex。
+- Decision (2026-10-07): 素材は配置済みでも何度でも配置・差し替えに使える。documentId / placedAt は「最後に配置した先・日時」を表し、配置のたびに上書きする。捨てた素材だけ配置を拒否する。
+  Rationale: 同じ写真を複数の機種・工程の要領書で使い回す要望(オーナー、2026-10-07)。配置ごとに文書側へ asset をコピーするので素材と文書の結合はなく、未配置タブの件数は「一度も貼っていない素材」の目安として従来どおり使える。「配置を取り消す」は最後の配置の記録を消すだけで、文書の画像には影響しない。
+  Date/Author: 2026-10-07 / Claude(オーナー要望)。
 - Decision: 素材原本 GC は allowWriteKiosk の手動 POST /assembly/procedure-materials/gc のみとする。
   Rationale: 既存 assembly-procedure-asset-gc は保存・破棄・削除後の呼び出しだけで定期スケジューラーはない。新しいスケジューラーは今回追加しない。sha256/original だけを走査し、24時間より古く storageKey 一致の参照が0件の場合だけ integrity:true で削除する。配置済み・破棄済みを含む全素材の参照と共有原本を保持する。
   Date/Author: 2026-10-05 / Codex。

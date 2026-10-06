@@ -27,7 +27,7 @@ export class ProcedureMaterialPlacementService {
     try {
       return await runAssemblyTransaction(async (tx) => {
         // Use the same document lock as overlay saves/publish/discard. Material
-        // row locking also prevents duplicate uploads for concurrent placement.
+        // row locking also serializes placement and discard updates.
         const documents = await tx.$queryRaw<Array<{ id: string; status: string; isActive: boolean; revisionRootId: string | null; isRevisionHead: boolean | null }>>`
           SELECT d."id", d."status", d."isActive", r."revisionRootId", r."isRevisionHead"
           FROM "AssemblyProcedureDocument" d
@@ -43,7 +43,7 @@ export class ProcedureMaterialPlacementService {
         await tx.$queryRaw`SELECT "id" FROM "ProcedureMaterial" WHERE "id" = ${params.materialId} FOR UPDATE`;
         const material = await tx.procedureMaterial.findUnique({ where: { id: params.materialId } });
         if (!material) throw new ApiError(404, '素材がありません');
-        if (material.documentId || material.placedAt || material.discardedAt) throw new ApiError(409, '未配置・未破棄の素材だけ配置できます');
+        if (material.discardedAt) throw new ApiError(409, '捨てた素材は配置できません');
         const page = await tx.assemblyProcedureDocumentPage.findUnique({ where: { documentId_pageIndex: { documentId: params.documentId, pageIndex: params.pageIndex } } });
         if (!page) throw new ApiError(400, '指定ページが存在しません');
         const last = await tx.assemblyProcedureOverlayElement.aggregate({ where: { documentId: params.documentId, pageIndex: params.pageIndex }, _max: { zIndex: true } });
@@ -66,10 +66,10 @@ export class ProcedureMaterialPlacementService {
         } else {
           element = { ...base, kind: 'TEXT', text: material.text ?? '', bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.8, heightRatio: 0.2 }, style: { fontSizeRatio: 0.025, fontWeight: 'bold', color: '#0f172a', align: 'start' } };
         }
-        // Validate the existing persistence contract before consuming the material.
+        // Validate the existing persistence contract before recording placement.
         normalizeElement(element, 0);
-        const updated = await tx.procedureMaterial.updateMany({ where: { id: material.id, documentId: null, placedAt: null, discardedAt: null }, data: { documentId: params.documentId, placedAt: new Date() } });
-        if (!updated.count) throw new ApiError(409, '素材は既に配置または破棄されています');
+        const updated = await tx.procedureMaterial.updateMany({ where: { id: material.id, discardedAt: null }, data: { documentId: params.documentId, placedAt: new Date() } });
+        if (!updated.count) throw new ApiError(409, '捨てた素材は配置できません');
         return { element, ...(asset ? { asset } : {}) };
       });
     } catch (error) {

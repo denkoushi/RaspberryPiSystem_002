@@ -151,6 +151,15 @@ describe('assembly procedure revision routes', () => {
     expect(harness.service.addBlankPage).not.toHaveBeenCalled();
   });
 
+  it('returns 409 and the placement error for discarded materials', async () => {
+    const harness = buildHarness(); app = harness.app;
+    vi.spyOn(ProcedureMaterialPlacementService.prototype, 'place').mockRejectedValue(new ApiError(409, '捨てた素材は配置できません'));
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const response = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/materials/${documentId}/place`, payload: { pageIndex: 0 } });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().message).toBe('捨てた素材は配置できません');
+  });
+
   it('registers history/create/save/discard routes and forwards passwords and edit versions', async () => {
     const harness = buildHarness();
     app = harness.app;
