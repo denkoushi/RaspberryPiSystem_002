@@ -120,7 +120,7 @@ describe('procedure-material placement', () => {
   it('returns a TEXT draft element and conditionally marks placement without persisting an overlay', async () => {
     const result = await service().place({ documentId, materialId: 'material', pageIndex: 0 });
     expect(result.element).toMatchObject({ kind: 'TEXT', text: '本文', pageIndex: 0, zIndex: 8, bbox: { xRatio: 0.1, widthRatio: 0.8 }, style: { fontWeight: 'bold' } });
-    expect(mocks.db.procedureMaterial.updateMany).toHaveBeenCalledWith({ where: { id: 'material', documentId: null, placedAt: null, discardedAt: null }, data: { documentId, placedAt: expect.any(Date) } });
+    expect(mocks.db.procedureMaterial.updateMany).toHaveBeenCalledWith({ where: { id: 'material', discardedAt: null }, data: { documentId, placedAt: expect.any(Date) } });
     expect(mocks.db.assemblyProcedureOverlayElement.createMany).not.toHaveBeenCalled();
   });
   it('uploads PHOTO through the existing IMAGE asset service with ownership and aspect-preserving placement', async () => {
@@ -149,10 +149,37 @@ describe('procedure-material placement', () => {
     expect(serializeAssemblyProcedureDocumentRevision(revision!).assets[assetId]?.url).toBe(placed.asset?.relativeUrl);
     expect(mocks.db.assemblyProcedureOverlayElement.createMany).not.toHaveBeenCalled();
   });
-  it.each([{ documentId }, { placedAt: new Date() }, { discardedAt: new Date() }])('rejects consumed/discarded materials %j', async (state) => {
+  it('reuses a placed PHOTO in another document with a new asset and latest placement metadata each time', async () => {
+    const previousPlacedAt = new Date('2026-10-05T04:00:00Z');
+    const material = { id: 'material', kind: 'PHOTO', storageKey: 'original', contentType: 'image/png', documentId: 'previous-document', placedAt: previousPlacedAt, discardedAt: null };
+    mocks.db.procedureMaterial.findUnique.mockImplementation(async () => ({ ...material }));
+    mocks.db.procedureMaterial.updateMany.mockImplementation(async ({ data }) => {
+      Object.assign(material, data);
+      return { count: 1 };
+    });
+    const savedAsset = { sha256: 'a'.repeat(64), size: 100, contentType: 'image/png' };
+    mocks.assetSave.mockResolvedValueOnce({ ...savedAsset, assetId: 'first-copy', storageKey: 'assets/first.png', relativeUrl: '/assets/first.png' }).mockResolvedValueOnce({ ...savedAsset, assetId: 'second-copy', storageKey: 'assets/second.png', relativeUrl: '/assets/second.png' });
+    const first = await service().place({ documentId, materialId: material.id, pageIndex: 0 });
+    expect(material.documentId).toBe(documentId);
+    expect(material.placedAt.getTime()).toBeGreaterThan(previousPlacedAt.getTime());
+    mocks.db.$queryRaw.mockResolvedValue([{ ...locked, id: 'another-document' }]);
+    const beforeSecond = Date.now();
+    const second = await service().place({ documentId: 'another-document', materialId: material.id, pageIndex: 0 });
+    expect(first.element).toMatchObject({ kind: 'IMAGE', assetId: 'first-copy' });
+    expect(second.element).toMatchObject({ kind: 'IMAGE', assetId: 'second-copy' });
+    expect(second.element.id).not.toBe(first.element.id);
+    expect(mocks.assetSave).toHaveBeenCalledTimes(2);
+    expect(store.read).toHaveBeenCalledTimes(2);
+    expect(mocks.db.assemblyProcedureAsset.create).toHaveBeenNthCalledWith(2, { data: expect.objectContaining({ id: 'second-copy', ownerDocumentId: 'another-document' }) });
+    expect(mocks.db.procedureMaterial.updateMany).toHaveBeenLastCalledWith({ where: { id: material.id, discardedAt: null }, data: { documentId: 'another-document', placedAt: expect.any(Date) } });
+    expect(material).toMatchObject({ documentId: 'another-document', placedAt: expect.any(Date), discardedAt: null });
+    expect(material.placedAt.getTime()).toBeGreaterThanOrEqual(beforeSecond);
+  });
+  it.each([{ discardedAt: new Date() }, { documentId, placedAt: new Date(), discardedAt: new Date() }])('rejects discarded materials %j', async (state) => {
     mocks.db.procedureMaterial.findUnique.mockResolvedValue({ kind: 'TEXT', text: '本文', ...state });
-    await expect(service().place({ documentId, materialId: 'material', pageIndex: 0 })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service().place({ documentId, materialId: 'material', pageIndex: 0 })).rejects.toMatchObject({ statusCode: 409, message: '捨てた素材は配置できません' });
     expect(mocks.db.procedureMaterial.updateMany).not.toHaveBeenCalled();
+    expect(mocks.assetSave).not.toHaveBeenCalled();
   });
   it('rejects PUBLISHED and invalid pages without consuming material', async () => {
     mocks.db.$queryRaw.mockResolvedValueOnce([{ ...locked, status: 'PUBLISHED' }]);
@@ -164,7 +191,7 @@ describe('procedure-material placement', () => {
   it('rejects conditional-update conflicts and removes an unreturned PHOTO asset', async () => {
     mocks.db.procedureMaterial.findUnique.mockResolvedValue({ id: 'material', kind: 'PHOTO', storageKey: 'original', contentType: 'image/png' });
     mocks.db.procedureMaterial.updateMany.mockResolvedValueOnce({ count: 0 });
-    await expect(service().place({ documentId, materialId: 'material', pageIndex: 0 })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service().place({ documentId, materialId: 'material', pageIndex: 0 })).rejects.toMatchObject({ statusCode: 409, message: '捨てた素材は配置できません' });
     expect(mocks.assetDelete).toHaveBeenCalledWith({ storageKey: 'assembly-procedure-assets/asset.png' });
   });
   it('rejects oversized TEXT before placement state changes', async () => {

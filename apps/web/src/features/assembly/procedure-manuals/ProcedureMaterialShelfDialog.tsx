@@ -154,7 +154,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, mode = 'place'
         if (!material) continue;
         await onSelect(material);
         setSelected((ids) => ids.filter((item) => item !== id));
-        setMaterials((items) => items.filter((item) => item.id !== id));
+        if (state === 'unplaced') setMaterials((items) => items.filter((item) => item.id !== id));
       }
       onClose();
     } catch (e) { setError(isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, '素材を配置できません')); }
@@ -179,7 +179,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, mode = 'place'
       <div className="flex shrink-0 flex-wrap items-center gap-3">
         <h2 className="text-2xl font-black">素材</h2>
         <div role="tablist" aria-label="素材の種類" className="ml-2 flex gap-1">
-          {([['unplaced', `未配置${state === 'unplaced' && !loading ? ` (${materials.length}${materials.length === 500 ? '+' : ''})` : ''}`], ...(!selectionMode ? [['placed', '配置済み']] as const : []), ['knowledge', 'ナレッジから']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={state === value} disabled={busy} className={`h-11 whitespace-nowrap rounded-lg px-4 text-[19px] font-bold ${state === value ? 'bg-[#27313b] text-[#eef3f6]' : 'text-[#9fadb9]'}`} onClick={() => setState(value)}>{label}</button>)}
+          {([['unplaced', `未配置${state === 'unplaced' && !loading ? ` (${materials.length}${materials.length === 500 ? '+' : ''})` : ''}`], ['placed', '配置済み'], ['knowledge', 'ナレッジから']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={state === value} disabled={busy} className={`h-11 whitespace-nowrap rounded-lg px-4 text-[19px] font-bold ${state === value ? 'bg-[#27313b] text-[#eef3f6]' : 'text-[#9fadb9]'}`} onClick={() => setState(value)}>{label}</button>)}
         </div>
         <Input type="search" disabled={busy} aria-label={state === 'knowledge' ? 'ナレッジ検索' : '素材のヒント検索'} placeholder="ヒントで絞り込み" className="ml-4 h-11 !w-80 text-xl" maxLength={200} value={state === 'knowledge' ? knowledgeQ : q} onChange={(e) => state === 'knowledge' ? setKnowledgeQ(e.target.value) : setQ(e.target.value)} />
         <div role="group" aria-label="表示サイズ" className="ml-auto flex items-center gap-1 text-[17px] text-[#9fadb9]">表示 {([['small', '小'], ['medium', '中'], ['large', '大']] as const).map(([value, label]) => <button key={value} aria-pressed={size === value} className={`h-11 w-11 rounded-lg border border-[#344252] text-base font-bold text-[#eef3f6] ${size === value ? 'bg-[#27313b]' : ''}`} onClick={() => changeSize(value)}>{label}</button>)}</div>
@@ -190,8 +190,8 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, mode = 'place'
         <span role="status" aria-label="選択中の素材"><b className="font-mono font-medium text-[#eef3f6]">{selected.length}</b> 件を選択中</span>
         <div className="flex-1" />
         {!selectionMode ? <button className={`${toolClass} border-transparent text-[#9fadb9]`} aria-pressed={state === 'discarded'} disabled={busy} onClick={() => setState('discarded')}>捨てた素材</button> : null}
-        {state === 'knowledge' ? <button className={`${toolClass} bg-[#3ba776] text-[#0b1a12]`} disabled={busy || !selected.length} onClick={() => void importSelected()}>棚に取り込む</button> : state === 'unplaced' ? <>
-          <button className={`${toolClass} !h-[52px] !rounded-[10px] !px-[22px] !text-[21px]`} disabled={busy || !selected.length} onClick={() => setDiscardConfirm(true)}>捨てる</button>
+        {state === 'knowledge' ? <button className={`${toolClass} bg-[#3ba776] text-[#0b1a12]`} disabled={busy || !selected.length} onClick={() => void importSelected()}>棚に取り込む</button> : state === 'unplaced' || state === 'placed' ? <>
+          {state === 'unplaced' ? <button className={`${toolClass} !h-[52px] !rounded-[10px] !px-[22px] !text-[21px]`} disabled={busy || !selected.length} onClick={() => setDiscardConfirm(true)}>捨てる</button> : null}
           {onSelect ? <button className={`${toolClass} !h-[52px] !rounded-[10px] bg-[#3ba776] !px-[22px] !text-[21px] text-[#0b1a12]`} disabled={busy || !selected.length} onClick={() => void placeSelected()}>{mode === 'replace' ? 'この素材に差し替え' : '現在ページに配置'}</button> : null}
         </> : null}
       </div>
@@ -209,7 +209,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, mode = 'place'
         <ul className="grid content-start gap-3.5 pr-1" style={{ gridTemplateColumns: `repeat(${shelfColumns[size]}, minmax(0, 1fr))` }}>
           {state === 'knowledge' ? knowledge?.items.map((candidate) => <MaterialCard key={candidate.candidateKey} title={candidate.title} source="ナレッジ" checked={selected.includes(candidate.candidateKey)} disabled={busy || candidate.alreadyImported || (mode === 'replace' && candidate.kind !== 'PHOTO') || (!selected.includes(candidate.candidateKey) && selected.length >= 50)} onChange={(checked) => toggleSelected(candidate.candidateKey, checked)} detail={<>{candidate.summary ? <p className="line-clamp-2">{candidate.summary}</p> : null}<p>{candidate.kind === 'PHOTO' && candidate.preview ? <span className="line-clamp-2">{candidate.preview}</span> : null}{candidate.sourceLabel}{candidate.alreadyImported ? ' · 取込済み' : ''}</p></>}>
             {candidate.kind === 'PHOTO' && candidate.imageId ? <MaterialPhoto id={candidate.imageId} alt={candidate.title} knowledge onZoom={zoom} /> : <div className="aspect-[4/3] overflow-hidden bg-[#fdfcf7] p-4 pt-14 text-[19px] leading-normal text-[#1a1a1a]"><p className="line-clamp-6 whitespace-pre-wrap break-words">{candidate.preview}</p></div>}
-          </MaterialCard>) : materials.map((material) => <MaterialCard key={material.id} title={material.subjectHint || material.originalFileName || 'ヒントなし'} source={material.origin === 'KNOWLEDGE' ? 'ナレッジ' : 'メール'} date={material.receivedAt} checked={selected.includes(material.id)} disabled={busy || state !== 'unplaced' || (mode === 'replace' && material.kind !== 'PHOTO')} onChange={(checked) => toggleSelected(material.id, checked)} detail={state === 'placed' || state === 'discarded' ? <Button variant="ghostOnDark" className="min-h-11" disabled={busy} onClick={() => void toggleDiscard(material)}>{state === 'placed' ? '配置を取り消す' : '戻す'}</Button> : undefined}>
+          </MaterialCard>) : materials.map((material) => <MaterialCard key={material.id} title={material.subjectHint || material.originalFileName || 'ヒントなし'} source={material.origin === 'KNOWLEDGE' ? 'ナレッジ' : 'メール'} date={material.receivedAt} checked={selected.includes(material.id)} disabled={busy || (state !== 'unplaced' && !(selectionMode && state === 'placed')) || (mode === 'replace' && material.kind !== 'PHOTO')} onChange={(checked) => toggleSelected(material.id, checked)} detail={(state === 'placed' && !selectionMode) || state === 'discarded' ? <Button variant="ghostOnDark" className="min-h-11" disabled={busy} onClick={() => void toggleDiscard(material)}>{state === 'placed' ? '配置を取り消す' : '戻す'}</Button> : undefined}>
             {material.kind === 'PHOTO' ? <MaterialPhoto id={material.id} alt={material.originalFileName || '素材の写真'} onZoom={zoom} /> : <div className="aspect-[4/3] overflow-hidden bg-[#fdfcf7] p-4 pt-14 text-[19px] leading-normal text-[#1a1a1a]"><p className="line-clamp-6 whitespace-pre-wrap break-words">{material.text}</p></div>}
           </MaterialCard>)}
         </ul>

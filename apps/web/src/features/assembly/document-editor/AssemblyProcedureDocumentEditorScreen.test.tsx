@@ -16,7 +16,7 @@ vi.mock('./AssemblyProcedureDocumentEditorCanvas', () => ({
 }));
 vi.mock('../KioskDocumentPageImage', () => ({ KioskDocumentPageImage: () => <span /> }));
 vi.mock('../procedure-manuals/ProcedureMaterialShelfDialog', () => ({
-  ProcedureMaterialShelfDialog: ({ onSelect, onClose, mode }: { onSelect: (material: { id: string; kind: 'PHOTO' }) => Promise<void>; onClose: () => void; mode: 'place' | 'replace' }) => <div role="dialog" aria-label="素材"><button onClick={() => void onSelect({ id: 'material', kind: 'PHOTO' })}>{mode === 'replace' ? 'この素材に差し替え' : '配置'}</button><button onClick={onClose}>閉じる</button></div>
+  ProcedureMaterialShelfDialog: ({ onSelect, onClose, mode }: { onSelect: (material: { id: string; kind: 'PHOTO'; documentId?: string; placedAt?: string }) => Promise<void>; onClose: () => void; mode: 'place' | 'replace' }) => <div role="dialog" aria-label="素材"><button onClick={() => void onSelect({ id: 'material', kind: 'PHOTO' })}>{mode === 'replace' ? 'この素材に差し替え' : '配置'}</button><button onClick={() => void onSelect({ id: 'placed-material', kind: 'PHOTO', documentId: 'old-document', placedAt: '2026-10-05T04:00:00Z' })}>配置済み素材を選択</button><button onClick={onClose}>閉じる</button></div>
 }));
 vi.mock('./AssemblyProcedureDocumentEditorInspector', () => ({
   AssemblyProcedureDocumentEditorInspector: ({
@@ -209,6 +209,19 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(screen.getByRole('dialog', { name: '素材' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '配置' }));
     await waitFor(() => expect(placeMaterial).toHaveBeenCalledWith({ id: 'material', kind: 'PHOTO' }));
+  });
+
+  it.each(['place', 'replace'] as const)('forwards a placed material to the controller in %s mode', async (mode) => {
+    const placeMaterial = vi.fn(async () => undefined);
+    const replaceSelectedImageMaterial = vi.fn(async () => undefined);
+    renderScreen(makeController({ placeMaterial, replaceSelectedImageMaterial, selectedElement: {
+      id: 'image', kind: 'IMAGE', assetId: 'old', pageIndex: 0, zIndex: 2,
+      bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.4 }
+    } }));
+    fireEvent.click(screen.getByRole('button', { name: mode === 'replace' ? '素材から差し替え' : '素材' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '素材' })).getByRole('button', { name: '配置済み素材を選択' }));
+    await waitFor(() => expect(mode === 'replace' ? replaceSelectedImageMaterial : placeMaterial).toHaveBeenCalledExactlyOnceWith({ id: 'placed-material', kind: 'PHOTO', documentId: 'old-document', placedAt: '2026-10-05T04:00:00Z' }));
+    expect(mode === 'replace' ? placeMaterial : replaceSelectedImageMaterial).not.toHaveBeenCalled();
   });
 
   it('replaces from the inspector and resets to placement when the toolbar reopens the shelf', async () => {
