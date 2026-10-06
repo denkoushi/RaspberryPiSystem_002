@@ -2,12 +2,15 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { clearProcedureEditorAccess, readProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
+
 import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 
 import type { ProcedureManualModelOverviewDto, ProcedureManualOverviewItemDto } from '../types';
 
-const mocks = vi.hoisted(() => ({ models: vi.fn(), candidates: vi.fn(), processes: vi.fn(), overview: vi.fn(), detail: vi.fn(), replace: vi.fn(), delete: vi.fn(), materials: vi.fn(), videos: vi.fn() }));
+const mocks = vi.hoisted(() => ({ models: vi.fn(), candidates: vi.fn(), processes: vi.fn(), overview: vi.fn(), detail: vi.fn(), replace: vi.fn(), delete: vi.fn(), materials: vi.fn(), videos: vi.fn(), verify: vi.fn() }));
 vi.mock('../../../api/client', () => ({
+  verifyAssemblyTemplateAccessPassword: mocks.verify,
   listProcedureManualModels: mocks.models, listAssemblyMachineNameCandidates: mocks.candidates,
   listProcedureManualProcesses: mocks.processes, getProcedureManualModelOverview: mocks.overview,
   getProcedureManualAssignments: mocks.detail, replaceProcedureManualAssignments: mocks.replace,
@@ -39,6 +42,8 @@ function Location() { const location = useLocation(); return <output data-testid
 function show(query = '?model=DFD1&process=assembly') { return render(<MemoryRouter initialEntries={[`/kiosk/assembly/manuals/workshop${query}`]}><ProcedureManualWorkshop /><Location /></MemoryRouter>); }
 beforeEach(() => {
   vi.resetAllMocks();
+  clearProcedureEditorAccess(); saveProcedureEditorAccess('2520');
+  mocks.verify.mockResolvedValue({ success: true });
   mocks.models.mockResolvedValue([{ modelCode: 'DFD1', modelCodeKey: 'DFD1' }, { modelCode: 'DFD1', modelCodeKey: 'ｄｆｄ１' }]);
   mocks.processes.mockResolvedValue(processes); mocks.overview.mockResolvedValue(overview);
   mocks.candidates.mockResolvedValue({ candidates: ['ｄｆｄ６３', ' DFD63 ', 'DFD63'], hasMore: false });
@@ -53,6 +58,53 @@ beforeEach(() => {
 });
 
 describe('procedure-manuals workshop', () => {
+  it('skips the PIN dialog with valid access', () => {
+    show(); expect(screen.queryByRole('dialog', { name: '暗証番号' })).not.toBeInTheDocument();
+    expect(mocks.verify).not.toHaveBeenCalled();
+  });
+  it('verifies at the entrance, stays on failure, and saves successful access', async () => {
+    clearProcedureEditorAccess(); mocks.verify.mockResolvedValueOnce({ success: false });
+    show(); expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
+    for (const digit of '2520') fireEvent.click(screen.getByRole('button', { name: digit, exact: true }));
+    expect(await screen.findByText('違います')).toBeInTheDocument();
+    expect(readProcedureEditorAccess()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '暗証番号' })).not.toBeInTheDocument());
+    expect(mocks.verify).toHaveBeenCalledWith({ password: '2520' });
+    expect(readProcedureEditorAccess()?.pin).toBe('2520');
+  });
+  it('returns to viewing when access has expired', () => {
+    saveProcedureEditorAccess('2520', Date.now() - 8 * 60 * 60 * 1000);
+    show(); fireEvent.click(screen.getByRole('button', { name: '見るへ戻る' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('"pathname":"/kiosk/assembly/manuals"');
+  });
+  it('shows the PIN gate at the deadline while the workshop stays mounted', async () => {
+    vi.useFakeTimers();
+    try {
+      clearProcedureEditorAccess(); saveProcedureEditorAccess('2520'); show();
+      await act(async () => {});
+      act(() => vi.advanceTimersByTime(8 * 3600000));
+      expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+  });
+  it.each(['visible', 'storage'])('rechecks access on %s', async trigger => {
+    show(); await screen.findByRole('button', { name: '作る' });
+    sessionStorage.removeItem('procedure-editor-access');
+    act(() => {
+      if (trigger === 'visible') {
+        vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+        document.dispatchEvent(new Event('visibilitychange'));
+      } else window.dispatchEvent(new StorageEvent('storage', { key: 'procedure-editor-access', storageArea: sessionStorage }));
+    });
+    expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
+  });
+  it.each(['作る', '＋ 既存の要領書を割り当てる', '外す', '削除'])('rechecks expired access before %s', async action => {
+    show(); await screen.findByRole('button', { name: '作る' });
+    sessionStorage.removeItem('procedure-editor-access');
+    fireEvent.click(screen.getAllByRole('button', { name: action })[0]);
+    expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
+    expect(mocks.replace).not.toHaveBeenCalled(); expect(mocks.delete).not.toHaveBeenCalled();
+  });
   it('uses three columns, default models, process counts, badges and valid actions', async () => {
     show();
     expect(screen.getByTestId('procedure-manuals-workshop')).toHaveClass('grid-rows-[64px_minmax(0,1fr)]');

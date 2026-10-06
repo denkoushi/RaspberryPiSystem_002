@@ -111,14 +111,17 @@ const detail: AssemblyWorkSessionDto = {
   ]
 };
 
-function renderPage(initialEntry = '/kiosk/assembly/record-approvals') {
-  return render(
+function renderPage(initialEntry = '/kiosk/assembly/record-approvals', enterPin = true) {
+  const view = render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route path="/kiosk/assembly/record-approvals" element={<KioskAssemblyRecordApprovalPage />} />
+        <Route path="/kiosk/assembly" element={<h1>組立ホーム</h1>} />
       </Routes>
     </MemoryRouter>
   );
+  if (enterPin) for (const digit of '2520') fireEvent.click(screen.getByRole('button', { name: digit, exact: true }));
+  return view;
 }
 
 describe('KioskAssemblyRecordApprovalPage', () => {
@@ -135,12 +138,36 @@ describe('KioskAssemblyRecordApprovalPage', () => {
     vi.spyOn(window, 'alert').mockImplementation(() => undefined);
   });
 
+  it('closes the PIN dialog on back, retains the URL/session and offers reauthentication', async () => {
+    renderPage('/kiosk/assembly/record-approvals?sessionId=session-1', false);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByRole('dialog', { name: '記録確認の暗証番号' })).toBeInTheDocument();
+    expect(mockVerifyPassword).not.toHaveBeenCalled(); expect(window.prompt).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '組立記録確認' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '再認証' }));
+    for (const digit of '2520') fireEvent.click(screen.getByRole('button', { name: digit, exact: true }));
+    await waitFor(() => expect(mockGetSession).toHaveBeenCalledWith('session-1'));
+  });
+  it('returns home using the in-page link after cancelling authentication', async () => {
+    renderPage('/kiosk/assembly/record-approvals', false);
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    fireEvent.click(screen.getByRole('link', { name: '組立へ戻る' }));
+    expect(await screen.findByRole('heading', { name: '組立ホーム' })).toBeInTheDocument();
+  });
+  it('keeps the PIN gate available after a network failure', async () => {
+    mockVerifyPassword.mockRejectedValue(new Error('offline')); renderPage();
+    expect(await screen.findByRole('alert')).toHaveTextContent('通信できません');
+    expect(screen.getByRole('link', { name: '組立へ戻る' })).toBeInTheDocument();
+    expect(mockListSummaries).not.toHaveBeenCalled(); expect(window.alert).not.toHaveBeenCalled();
+  });
   it('renders completed session detail after password authentication', async () => {
     renderPage();
 
     await waitFor(() => expect(mockVerifyPassword).toHaveBeenCalledWith({ password: '2520' }));
     expect(await screen.findByRole('heading', { name: '組立記録確認' })).toBeInTheDocument();
-    expect(await screen.findByText('ASM-001')).toBeInTheDocument();
+    expect((await screen.findAllByText('ASM-001')).length).toBeGreaterThan(0);
     await waitFor(() => expect(mockGetSession).toHaveBeenCalledWith('session-1'));
     expect(await screen.findByText('ストッパー取付')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '承認して完了' })).toBeDisabled();
@@ -174,8 +201,12 @@ describe('KioskAssemblyRecordApprovalPage', () => {
     mockVerifyPassword.mockResolvedValue({ success: false });
     renderPage();
 
-    expect(await screen.findByText('パスワードが違います。')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '認証する' }));
+    expect(await screen.findByText('違います')).toBeInTheDocument();
+    expect(window.prompt).not.toHaveBeenCalled();
+    expect(window.alert).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: '組立へ戻る' })).toBeInTheDocument();
+    expect(mockListSummaries).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }));
     await waitFor(() => expect(mockVerifyPassword).toHaveBeenCalledTimes(2));
   });
 });

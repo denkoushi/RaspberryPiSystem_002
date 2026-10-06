@@ -40,6 +40,8 @@ export type OverlayLayerProps = {
   interactive?: boolean;
   onSelect?: (id: string) => void;
   onNudge?: (id: string, dxRatio: number, dyRatio: number) => void;
+  onInteractionStart?: () => void;
+  onInteractionEnd?: () => void;
   onUpdateBBox?: (id: string, bbox: OverlayBBox) => void;
   assets?: OverlayAssetMap;
   resolveAssetUrl?: (assetId: string, asset?: OverlayAsset) => string;
@@ -247,6 +249,8 @@ export function OverlayLayer({
   onSelect,
   onNudge,
   onUpdateBBox,
+  onInteractionStart,
+  onInteractionEnd,
   assets,
   resolveAssetUrl = defaultAssetUrl,
   className,
@@ -316,6 +320,7 @@ export function OverlayLayer({
       captureTarget,
       lastSourceBBox: source.bbox
     };
+    onInteractionStart?.();
     onSelect?.(source.id);
   };
 
@@ -324,6 +329,7 @@ export function OverlayLayer({
     if (!interaction || interaction.pointerId !== event.pointerId) return;
     if (!cancelled) applyPointerInteraction(event);
     pointerRef.current = null;
+    onInteractionEnd?.();
     if (interaction.captureTarget.hasPointerCapture?.(interaction.pointerId)) interaction.captureTarget.releasePointerCapture?.(interaction.pointerId);
     event.stopPropagation();
     event.preventDefault();

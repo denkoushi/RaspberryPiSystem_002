@@ -12,6 +12,8 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-06) 実機確認午後 (a): 共通テンキー・8時間アクセス、エディタ全高配置・記号列・浮遊属性・通知をWebのみ実装。Web lint / 255ファイル1569件(ワーカー2、最終対象79件再確認) / build、capture adapter 1件成功。取説生成はClaude担当、実画面確認はlisten EPERMで未実施。レビュー 8 件を反映(Web lint、255 ファイル 1599 件、build、capture adapter 1 件成功)。
+
 - [x] (2026-10-05) 既存 5 系統(組立手順書、作業要領 `WorkInstruction`、キオスク文書 `KioskDocument`、ナレッジ `Knowledge`、kiosk-sop)を Codex(`gpt-6.1-sol`/`high`、read-only)で比較分析し、Claude が根拠行を確認した。結論は「組立手順書を正本に、分類を薄く追加」。
 - [x] (2026-10-05) オーナーが設計判断 5 点を決めた(Decision Log 参照)。
 - [x] (2026-10-05) feature branch `feat/procedure-manuals-phase1` と worktree を `scripts.git_lifecycle.cli start` で作成(起点 `origin/main` = `e001c7fa`)。
@@ -117,6 +119,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: `infrastructure/docker/docker-compose.server.yml` の API volumes と named volumes。今回の infrastructure 変更禁止により未修正。本番反映前に別依頼で永続マウントを追加する必要がある。
 
 ## Decision Log
+
+- Decision (2026-10-06): サーバー発行トークンが無いため sessionStorage + 8 時間に限定。将来は用途限定トークンへ。
+  Rationale: 暗証番号の永続保存を避け、端末認証の変更と期限到達時に破棄する。
 
 - Decision: 動画 V3は元動画の行・ファイルを更新せず、新しいorigin=CONCAT行と独立したsha256出力を作る。既存origin=nullはAPIでGMAILへ正規化し、Gmail新規取込はGMAILを明示する。
   Rationale: 接続後も元動画を独立して捨てる/戻すことができ、既存データのUPDATEや列DEFAULTをmigrationに含めずに由来を表示できる。
@@ -370,6 +375,17 @@ V3の指定検証は `cd apps/api && pnpm lint && pnpm exec vitest run procedure
 - **組立ホーム**: 上部の入口を「見る(要領書)」「作る・直す(要領書)」に整理。ホームの一覧が「使う」。モックの 3 枚の札の画面は、ホームの一覧がすでに「使う」であり画面を 1 段増やすため採用しない(Decision Log 参照)。
 - **エディタ**: 入口が工房なら、見出しに「機種 › 工程 › 文書名」と「作る/直す」の札を出し、「戻る」「公開」「改版を破棄」「削除」の後は工房の同じ機種 × 工程へ戻る(`location.state.returnTo`)。既存の手順書一覧から入った場合は従来どおり。編集機能そのものは変えない。
 - **API**: 工房の札に必要な状態をまとめて返す `GET /assembly/procedure-manuals/models/:modelCodeKey/overview`(工程ごとの割り当て件数と、各割り当ての文書状態: 公開版の版数、改版の下書きの有無、編集の予約の保持者名と開始時刻、キオスク PDF か文書か、無効理由)を追加。既存 API は変えない。
+
+
+## 実機確認 6 件(2026-10-06 午後、承認済みモック `docs/design-previews/procedure-editor-mock.html`)
+
+1. 暗証番号は「作る・直す」(工房)に入る時点で 1 回だけテンキーで聞き、この端末で 8 時間有効。エディタでは聞き直さない。見る側は不要。
+2. エディタは上辺の帯をなくし、紙を画面上端まで。操作は右端 64px の記号列(戻る、保存、公開、素材、動画、文字、図形、範囲、元に戻す、やり直す、削除/改版を破棄)。左は 120px のページ列。機種 › 工程 › 文書名と「作る/直す」の札は紙の左上に重ねる 1 行。要素を選ぶと浮遊パネル(340px)で属性を編集し、閉じると紙だけ。結果の通知は左下に小さく出して消える。
+3. 工房の右ペインは 1 行 56px の表形式(小さなサムネイル、名前、状態、担当/承認、ページ数、記号ボタン)。上に状態の絞り込み(全て/公開/下書き/改版中)と名前の絞り込み。数百件でも一覧できる。
+4. 組立ホーム上辺はアイコンなしの文字だけ。「手順書」は工房と、「手順を作る」は「使う」と重複するので、並びを「見る | 作る・直す | 使う | 記録確認 | 製品構成 | 訓練」に整理。
+5. 記録確認のブラウザ標準の入力窓(`window.prompt`)を 1 と同じテンキー式に置き換える。キャンセルは同じページに留まり「組立へ戻る」を出す。
+
+PR は 2 本: (a) エディタの全高レイアウト + 工房入口の暗証番号 + 記録確認のテンキー化、(b) 工房の高密度一覧 + 組立ホーム上辺の整理。
 
 
 ## Concrete Steps (Phase 1)

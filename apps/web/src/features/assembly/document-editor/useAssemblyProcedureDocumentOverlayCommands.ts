@@ -40,6 +40,7 @@ export type AssemblyProcedureDocumentOverlayCommandSession = {
   setDocument: StateSetter<AssemblyProcedureDocumentDto | null>;
   setBusy: StateSetter<boolean>;
   setMessage: StateSetter<string | null>;
+  setErrorMessage?: StateSetter<string | null>;
   setPendingRange: StateSetter<AssemblyProcedureOverlayBBox | null>;
   setSelectionMode: StateSetter<boolean>;
   setSelectedOverlayId: StateSetter<string | null>;
@@ -138,10 +139,10 @@ export function useAssemblyProcedureDocumentOverlayCommands(
       if (session.onEditLeaseError?.(error)) return;
       if (kind === 'TEXT') {
         addCreatedOverlay(kind, range);
-        setMessage(`文章抽出に失敗したため、手入力の文章オーバーレイを追加しました。${readAssemblyApiErrorMessage(error, '')}`);
+        (session.setErrorMessage ?? setMessage)(`文章抽出に失敗したため、手入力の文章オーバーレイを追加しました。${readAssemblyApiErrorMessage(error, '')}`);
       } else {
         addCreatedOverlay(kind, range);
-        setMessage(`画像切り出しに失敗しました。画像assetを指定して保存してください。${readAssemblyApiErrorMessage(error, '')}`);
+        (session.setErrorMessage ?? setMessage)(`画像切り出しに失敗しました。画像assetを指定して保存してください。${readAssemblyApiErrorMessage(error, '')}`);
       }
     } finally {
       setBusy(false);
@@ -234,7 +235,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
       }
     } catch (error: unknown) {
       if (session.onEditLeaseError?.(error)) return;
-      setMessage(readAssemblyApiErrorMessage(error, '文章候補の再取得に失敗しました。'));
+      (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '文章候補の再取得に失敗しました。'));
     } finally {
       setBusy(false);
     }
@@ -270,7 +271,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
       setMessage('画像assetを登録しました。保存してください。');
     } catch (error: unknown) {
       if (session.onEditLeaseError?.(error)) return;
-      setMessage(readAssemblyApiErrorMessage(error, '画像assetの登録に失敗しました。'));
+      (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '画像assetの登録に失敗しました。'));
     } finally {
       setBusy(false);
     }

@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>要領書エディタ モック</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+:root{
+  --bg:#0f1317; --bar:#161c22; --panel:#1b222a; --line:#27313b; --line-2:#344252;
+  --fg:#eef3f6; --muted:#9fadb9; --accent:#3ba776; --accent-fg:#0b1a12; --warn:#f6b93b; --use:#5fc3e8; --danger:#e5484d; --focus:#7cc4ff;
+  --font:"Noto Sans JP",system-ui,-apple-system,"Hiragino Sans",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);padding:16px}
+.wrap{max-width:1600px;margin:0 auto;display:grid;gap:12px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{min-height:44px;padding:0 16px;border:1px solid var(--line);background:var(--bar);color:var(--fg);border-radius:8px;font:inherit;font-weight:700;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.tab:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.stage{position:relative;width:100%;aspect-ratio:16/9;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;background:var(--bg)}
+.screen{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;font-size:22px}
+.scr{height:100%}
+.scr:not([data-active="true"]){display:none!important}
+svg{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+/* workshop (background for the password frame) */
+.top{height:64px;display:flex;align-items:center;gap:16px;padding:0 20px;background:var(--bar);border-bottom:1px solid var(--line)}
+.top h2{margin:0;font-size:26px;font-weight:900;letter-spacing:.1em}
+.mode{height:40px;display:inline-flex;align-items:center;gap:8px;padding:0 14px;border-radius:999px;font-size:19px;font-weight:700;background:rgba(246,185,59,.16);color:var(--warn)}
+.mode svg{width:22px;height:22px}
+.shop{height:100%;display:grid;grid-template-rows:64px 1fr}
+.shop-body{display:grid;grid-template-columns:440px 300px minmax(0,1fr);min-height:0;filter:blur(2px);opacity:.5}
+.col{border-right:1px solid var(--line);padding:16px;background:var(--bar)}
+.dim{position:absolute;inset:0;background:rgba(5,8,11,.55);display:grid;place-items:center}
+.pin{width:560px;background:var(--bar);border:1px solid var(--line-2);border-radius:18px;padding:26px 28px;display:grid;gap:18px}
+.pin h4{margin:0;font-size:24px;font-weight:900;display:flex;align-items:center;gap:12px}
+.pin h4 svg{width:28px;height:28px;color:var(--warn)}
+.dots{display:flex;gap:16px;justify-content:center;padding:6px 0}
+.dots i{width:22px;height:22px;border-radius:50%;border:2px solid var(--line-2)}
+.dots i.on{background:var(--fg);border-color:var(--fg)}
+.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.keys button{height:60px;border-radius:10px;border:1px solid var(--line-2);background:var(--panel);color:var(--fg);font:inherit;font-size:26px;font-weight:700}
+.keys button.wide{grid-column:span 2}
+.pin .foot{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:17px}
+.pin .foot button{min-height:44px;padding:0 16px;border-radius:8px;border:1px solid var(--line-2);background:transparent;color:var(--fg);font:inherit;font-size:19px;font-weight:700}
+
+/* editor */
+.ed{position:relative;height:100%;display:grid;grid-template-columns:120px minmax(0,1fr) 64px;background:#0a0d10}
+.pages{background:var(--bar);border-right:1px solid var(--line);padding:10px 8px;display:grid;gap:8px;align-content:start;justify-items:center}
+.pages .pg{width:100px;aspect-ratio:1/1.414;background:#fff;border-radius:4px;border:2px solid transparent;position:relative}
+.pages .pg[aria-current="true"]{border-color:var(--use)}
+.pages .pg i{position:absolute;left:6px;bottom:4px;font-style:normal;font-family:var(--mono);font-size:14px;color:#333}
+.pages .add{width:100px;height:48px;border-radius:8px;border:1px dashed var(--line-2);color:var(--muted);display:grid;place-items:center;font-size:26px}
+.canvas{position:relative;display:grid;place-items:center;padding:16px;min-width:0}
+.sheet{background:#fff;color:#111;height:1040px;aspect-ratio:1/1.414;border:1px solid #777;padding:40px;font-size:18px;display:grid;grid-template-rows:auto 1fr;gap:16px;position:relative}
+.sheet .hd{display:grid;grid-template-columns:1fr 2fr 1fr 3fr;border:1px solid #333;font-size:16px}
+.sheet .hd span{padding:6px 8px;border-right:1px solid #333}
+.sheet .grid{border:1px solid #333;background:repeating-linear-gradient(to bottom,transparent 0 56px,#333 56px 57px)}
+.crumb{position:absolute;left:16px;top:12px;height:36px;display:flex;align-items:center;gap:10px;padding:0 12px;border-radius:8px;background:rgba(22,28,34,.85);border:1px solid var(--line-2);font-size:18px;color:var(--muted);max-width:70%}
+.crumb b{color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crumb i{opacity:.5;font-style:normal}
+.crumb .tag{height:26px;display:inline-flex;align-items:center;padding:0 10px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);font-size:15px;font-weight:700;white-space:nowrap}
+.crumb .tag.fix{border-color:var(--warn);color:var(--warn)}
+.toast{position:absolute;left:16px;bottom:16px;height:44px;display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:8px;background:rgba(22,28,34,.92);border:1px solid var(--line-2);font-size:18px}
+.toast i{width:10px;height:10px;border-radius:50%;background:var(--accent);font-style:normal}
+.rail{background:var(--bar);border-left:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0}
+.rb{width:48px;height:48px;border-radius:10px;border:1px solid var(--line-2);background:transparent;color:var(--fg);display:grid;place-items:center;flex:none;position:relative}
+.rb svg{width:26px;height:26px}
+.rb.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.rb.warn{border-color:var(--warn);color:var(--warn)}
+.rb.danger{border-color:transparent;color:var(--danger);margin-top:auto}
+.rb[aria-pressed="true"]{background:var(--line)}
+.rb .n{position:absolute;right:-4px;top:-4px;min-width:20px;height:20px;border-radius:10px;background:var(--warn);color:var(--accent-fg);font-size:13px;font-weight:900;display:grid;place-items:center;padding:0 5px}
+.sep{width:36px;height:1px;background:var(--line-2);margin:4px 0}
+.sel{position:absolute;left:280px;top:260px;width:360px;height:220px;border:2px solid var(--use);background:rgba(95,195,232,.08)}
+.sel b{position:absolute;width:14px;height:14px;background:var(--use);border:2px solid #fff;border-radius:3px}
+.sel b:nth-child(1){left:-8px;top:-8px}.sel b:nth-child(2){right:-8px;top:-8px}.sel b:nth-child(3){left:-8px;bottom:-8px}.sel b:nth-child(4){right:-8px;bottom:-8px}
+.insp{position:absolute;right:80px;top:16px;width:340px;background:rgba(22,28,34,.96);border:1px solid var(--line-2);border-radius:14px;padding:16px;display:grid;gap:12px}
+.insp h5{margin:0;font-size:20px;font-weight:900;display:flex;align-items:center;gap:10px}
+.insp h5 .x{margin-left:auto;width:40px;height:40px;border-radius:8px;border:1px solid var(--line-2);display:grid;place-items:center;color:var(--muted)}
+.insp .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.insp label{display:grid;gap:4px;font-size:15px;color:var(--muted)}
+.insp .in{height:44px;border:1px solid var(--line-2);border-radius:8px;background:var(--panel);display:flex;align-items:center;padding:0 10px;font-family:var(--mono);color:var(--fg);font-size:18px}
+.insp .seg{display:flex;gap:6px}
+.insp .seg span{flex:1;height:44px;display:grid;place-items:center;border:1px solid var(--line-2);border-radius:8px;font-size:17px;font-weight:700}
+.insp .seg span[aria-pressed="true"]{background:var(--line)}
+.insp .acts{display:flex;gap:8px}
+.insp .acts span{flex:1;height:44px;display:grid;place-items:center;border:1px solid var(--line-2);border-radius:8px;font-size:17px;font-weight:700}
+.insp .acts span.danger{color:var(--danger);border-color:transparent}
+
+/* dense workshop list */
+.shop2{height:100%;display:grid;grid-template-rows:64px 1fr}
+.shop2 .body{display:grid;grid-template-columns:440px 300px minmax(0,1fr);min-height:0}
+.shop2 .col{display:grid;gap:8px;align-content:start}
+.shop2 .col h3{margin:0;font-size:16px;color:var(--muted);letter-spacing:.1em}
+.shop2 .row{min-height:48px;display:flex;align-items:center;padding:0 12px;border-radius:8px;font-weight:700;font-size:20px;font-family:var(--mono)}
+.shop2 .row[aria-current="true"]{background:var(--line)}
+.shop2 .prow{font-family:var(--font);font-size:21px}
+.shop2 .prow .c{margin-left:auto;font-family:var(--mono);color:var(--muted);font-weight:400;font-size:17px}
+.list{padding:12px 16px;display:grid;gap:0;align-content:start;overflow:auto}
+.list .head{display:flex;align-items:center;gap:12px;min-height:52px;margin-bottom:6px}
+.list .head h3{margin:0;font-size:22px;font-weight:900}
+.list .head .cnt{font-family:var(--mono);color:var(--muted);font-size:18px}
+.list .head .f{display:flex;gap:6px;margin-left:12px}
+.list .head .f span{height:40px;display:inline-flex;align-items:center;padding:0 12px;border-radius:999px;border:1px solid var(--line-2);font-size:17px;font-weight:700;color:var(--muted)}
+.list .head .f span[aria-pressed="true"]{background:var(--line);color:var(--fg)}
+.list .head .mk{margin-left:auto;height:48px;display:inline-flex;align-items:center;gap:8px;padding:0 16px;border-radius:8px;background:var(--warn);color:var(--accent-fg);font-size:20px;font-weight:900}
+.list .head .mk svg{width:22px;height:22px}
+.list .srch{height:44px;width:260px;border:1px solid var(--line-2);border-radius:8px;background:#fff;color:#0f1317;padding:0 12px;font:inherit;font-size:18px}
+.it{display:grid;grid-template-columns:36px minmax(0,1fr) 160px 150px 90px auto;align-items:center;gap:12px;min-height:56px;padding:0 10px;border-bottom:1px solid var(--line)}
+.it:hover{background:var(--panel)}
+.it .th{width:36px;height:26px;background:#fff;border-radius:3px;border:1px solid #777}
+.it .nm{font-size:20px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)}
+.it .st{height:30px;display:inline-flex;align-items:center;padding:0 10px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);font-size:16px;font-weight:700;width:max-content}
+.it .st.d{border-color:var(--warn);color:var(--warn)}
+.it .st.r{border-color:var(--warn);color:var(--warn);background:rgba(246,185,59,.12)}
+.it .st.x{border-color:var(--danger);color:var(--danger)}
+.it .who{font-size:16px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.it .pg{font-family:var(--mono);color:var(--muted);font-size:16px;text-align:right}
+.it .ac{display:flex;gap:4px}
+.it .ac span{width:44px;height:44px;border-radius:8px;border:1px solid transparent;display:grid;place-items:center;color:var(--muted)}
+.it .ac span svg{width:22px;height:22px}
+.it .ac span.p{color:var(--warn);border-color:var(--line-2)}
+.list .more{min-height:48px;display:grid;place-items:center;color:var(--muted);font-size:18px;border:1px dashed var(--line-2);border-radius:10px;margin-top:10px}
+
+/* home nav */
+.home{height:100%;display:grid;grid-template-rows:64px 1fr}
+.home .nav{display:flex;align-items:center;gap:6px;margin-left:16px}
+.home .nav span{height:44px;display:inline-flex;align-items:center;padding:0 16px;border-radius:8px;border:1px solid var(--line-2);font-size:19px;font-weight:700}
+.home .nav i{width:1px;height:28px;background:var(--line-2);margin:0 8px}
+.home .nav .badge{margin-left:6px;min-width:24px;height:24px;border-radius:12px;background:var(--warn);color:var(--accent-fg);font-size:14px;display:grid;place-items:center;padding:0 6px}
+.home .board{padding:24px;display:grid;gap:10px;align-content:start;opacity:.55}
+.home .board div{height:64px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-for="a">工房に入る(暗証番号)</button>
+    <button class="tab" role="tab" aria-selected="false" data-for="b">エディタ</button>
+    <button class="tab" role="tab" aria-selected="false" data-for="c">要素を選択中</button>
+    <button class="tab" role="tab" aria-selected="false" data-for="d">工房の一覧(高密度)</button>
+    <button class="tab" role="tab" aria-selected="false" data-for="e">組立ホームの上辺</button>
+  </div>
+  <div class="stage"><div class="screen" id="screen">
+
+    <section class="scr shop" data-active="true" id="a">
+      <div class="top"><h2>要領書</h2><span class="mode"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>作る・直す</span></div>
+      <div class="shop-body"><div class="col"></div><div class="col"></div><div></div></div>
+      <div class="dim">
+        <div class="pin" role="dialog" aria-label="暗証番号">
+          <h4><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>暗証番号</h4>
+          <div class="dots"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+          <div class="keys"><button>7</button><button>8</button><button>9</button><button>4</button><button>5</button><button>6</button><button>1</button><button>2</button><button>3</button><button class="wide">0</button><button>⌫</button></div>
+          <div class="foot"><span>この端末で 8 時間有効</span><button>見るへ戻る</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="scr ed" id="b">
+      <div class="pages">
+        <div class="pg" aria-current="true"><i>1</i></div><div class="pg"><i>2</i></div><div class="pg"><i>3</i></div>
+        <div class="add">＋</div>
+      </div>
+      <div class="canvas">
+        <div class="sheet"><div class="hd"><span>型番</span><span>DFD6362XYZ-3943173</span><span>工程</span><span>組立</span></div><div class="grid"></div></div>
+        <div class="crumb"><b>DFD6362XYZ-3943173</b><i>›</i>組立 › 組立<i>›</i><b>DFD6362XYZ-3943173_組立_組立</b><span class="tag">作る · 下書き 第1版</span></div>
+        <div class="toast"><i></i>保存しました 13:02</div>
+      </div>
+      <div class="rail">
+        <button class="rb" aria-label="工房へ戻る"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <button class="rb primary" aria-label="保存"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg></button>
+        <button class="rb warn" aria-label="公開"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 12h10M12 9v6"/></svg></button>
+        <span class="sep"></span>
+        <button class="rb" aria-label="素材"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg><span class="n">12</span></button>
+        <button class="rb" aria-label="動画"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></button>
+        <button class="rb" aria-label="文字"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13"/></svg></button>
+        <button class="rb" aria-label="図形"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7"/><circle cx="16.5" cy="16.5" r="3.5"/></svg></button>
+        <button class="rb" aria-label="範囲"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/></svg></button>
+        <span class="sep"></span>
+        <button class="rb" aria-label="元に戻す"><svg viewBox="0 0 24 24"><path d="M9 14l-4-4 4-4"/><path d="M5 10h9a5 5 0 010 10h-3"/></svg></button>
+        <button class="rb" aria-label="やり直す"><svg viewBox="0 0 24 24"><path d="M15 14l4-4-4-4"/><path d="M19 10h-9a5 5 0 000 10h3"/></svg></button>
+        <button class="rb danger" aria-label="削除"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></svg></button>
+      </div>
+    </section>
+
+    <section class="scr ed" id="c">
+      <div class="pages">
+        <div class="pg" aria-current="true"><i>1</i></div><div class="pg"><i>2</i></div><div class="pg"><i>3</i></div>
+        <div class="add">＋</div>
+      </div>
+      <div class="canvas">
+        <div class="sheet"><div class="hd"><span>型番</span><span>DFD6362XYZ-3943173</span><span>工程</span><span>組立</span></div><div class="grid"></div>
+          <div class="sel"><b></b><b></b><b></b><b></b></div>
+        </div>
+        <div class="crumb"><b>DFD6362XYZ-3943173</b><i>›</i>組立 › 組立<i>›</i><b>DFD6362XYZ-3943173_組立_組立</b><span class="tag fix">直す · 改版の下書き 第4版</span></div>
+        <div class="insp" role="dialog" aria-label="画像">
+          <h5><svg viewBox="0 0 24 24" style="width:22px;height:22px"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/></svg>画像<span class="x">✕</span></h5>
+          <div class="row"><label>左<span class="in">12.0 %</span></label><label>上<span class="in">24.5 %</span></label><label>幅<span class="in">38.0 %</span></label><label>高さ<span class="in">16.2 %</span></label></div>
+          <label>収まり<span class="seg"><span aria-pressed="true">全体</span><span>切り抜き</span></span></label>
+          <label>不透明度<span class="in">100</span></label>
+          <label>重なり<span class="seg"><span>前面へ</span><span>背面へ</span></span></label>
+          <div class="acts"><span>複製</span><span class="danger">削除</span></div>
+        </div>
+      </div>
+      <div class="rail">
+        <button class="rb" aria-label="工房へ戻る"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <button class="rb primary" aria-label="保存"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg></button>
+        <button class="rb warn" aria-label="公開"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 12h10M12 9v6"/></svg></button>
+        <span class="sep"></span>
+        <button class="rb" aria-label="素材"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg><span class="n">12</span></button>
+        <button class="rb" aria-label="動画"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></button>
+        <button class="rb" aria-label="文字"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13"/></svg></button>
+        <button class="rb" aria-label="図形"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7"/><circle cx="16.5" cy="16.5" r="3.5"/></svg></button>
+        <button class="rb" aria-pressed="true" aria-label="範囲"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/></svg></button>
+        <span class="sep"></span>
+        <button class="rb" aria-label="元に戻す"><svg viewBox="0 0 24 24"><path d="M9 14l-4-4 4-4"/><path d="M5 10h9a5 5 0 010 10h-3"/></svg></button>
+        <button class="rb" aria-label="やり直す"><svg viewBox="0 0 24 24"><path d="M15 14l4-4-4-4"/><path d="M19 10h-9a5 5 0 000 10h3"/></svg></button>
+        <button class="rb danger" aria-label="改版を破棄"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></svg></button>
+      </div>
+    </section>
+
+    <section class="scr shop2" id="d">
+      <div class="top"><h2>要領書</h2><span class="mode"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>作る・直す</span></div>
+      <div class="body">
+        <div class="col" style="border-right:1px solid var(--line);padding:16px;background:var(--bar)"><h3>機種</h3><div class="row" aria-current="true">DFD6362XYZ-3943173</div><div class="row">DFD6365XYZ-3943201</div><div class="row">DFD6400ABC-3950001</div></div>
+        <div class="col" style="border-right:1px solid var(--line);padding:16px;background:var(--bar)"><h3>工程</h3><div class="row prow" aria-current="true">組立 › 組立<span class="c">8</span></div><div class="row prow">組立 › 検査<span class="c">3</span></div><div class="row prow">加工 › 切削<span class="c">—</span></div><div class="row prow">加工 › 研削<span class="c">—</span></div></div>
+        <div class="list">
+          <div class="head"><h3>組立 › 組立</h3><span class="cnt">8 件</span><div class="f"><span aria-pressed="true">全て</span><span>公開</span><span>下書き</span><span>改版中</span></div><input class="srch" placeholder="名前で絞り込み"><span class="mk"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>作る</span></div>
+          <div class="it"><div class="th"></div><div class="nm">DFD6362XYZ-3943173_組立_組立</div><span class="st ">公開 第3版</span><div class="who">改版中 · 佐藤 11:11〜</div><div class="pg">21</div><div class="ac"><span class="p" title="直す"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></span><span title="使う"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></span><span title="外す"><svg viewBox="0 0 24 24"><path d="M8 12h8"/><circle cx="12" cy="12" r="9"/></svg></span></div></div>
+          <div class="it"><div class="th"></div><div class="nm">DFD6362XYZ-3943173_組立_組立_圧入</div><span class="st d">下書き</span><div class="who"></div><div class="pg">3</div><div class="ac"><span class="p" title="直す"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></span><span title="外す"><svg viewBox="0 0 24 24"><path d="M8 12h8"/><circle cx="12" cy="12" r="9"/></svg></span><span title="削除"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></svg></span></div></div>
+          <div class="it"><div class="th"></div><div class="nm">DFD6362XYZ-3943173_組立_組立_配線</div><span class="st ">公開 第1版</span><div class="who">承認 山田 10/05</div><div class="pg">8</div><div class="ac"><span class="p" title="直す"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></span><span title="使う"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></span><span title="外す"><svg viewBox="0 0 24 24"><path d="M8 12h8"/><circle cx="12" cy="12" r="9"/></svg></span></div></div>
+          <div class="it"><div class="th"></div><div class="nm">DFD6362XYZ-3943173_組立_組立_最終確認</div><span class="st ">公開 第2版</span><div class="who">承認 山田 10/05</div><div class="pg">5</div><div class="ac"><span class="p" title="直す"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></span><span title="使う"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></span><span title="外す"><svg viewBox="0 0 24 24"><path d="M8 12h8"/><circle cx="12" cy="12" r="9"/></svg></span></div></div>
+          <div class="it"><div class="th"></div><div class="nm">共通_ベアリング圧入要領</div><span class="st ">公開 第5版</span><div class="who">共通 · 12 機種</div><div class="pg">4</div><div class="ac"><span class="p" title="直す"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></span><span title="使う"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></span><span title="外す"><svg viewBox="0 0 24 24"><path d="M8 12h8"/><circle cx="12" cy="12" r="9"/></svg></span></div></div>
+          <div class="it"><div class="th"></div><div class="nm">旧_DFD6362_組立(PDF)</div><span class="st x">無効</span><div class="who">PDF が無効</div><div class="pg">—</div><div class="ac"><span title="外す"><svg viewBox="0 0 24 24"><path d="M8 12h8"/><circle cx="12" cy="12" r="9"/></svg></span></div></div>
+          <div class="it"><div class="th"></div><div class="nm">DFD6362XYZ-3943173_組立_組立_検査前</div><span class="st d">下書き</span><div class="who"></div><div class="pg">2</div><div class="ac"><span class="p" title="直す"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></span><span title="外す"><svg viewBox="0 0 24 24"><path d="M8 12h8"/><circle cx="12" cy="12" r="9"/></svg></span><span title="削除"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></svg></span></div></div>
+          <div class="it"><div class="th"></div><div class="nm">共通_トルク確認手順</div><span class="st ">公開 第2版</span><div class="who">共通 · 30 機種</div><div class="pg">2</div><div class="ac"><span class="p" title="直す"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></span><span title="使う"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></span><span title="外す"><svg viewBox="0 0 24 24"><path d="M8 12h8"/><circle cx="12" cy="12" r="9"/></svg></span></div></div>
+          <div class="more">＋ 既存の要領書を割り当てる</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="scr home" id="e">
+      <div class="top"><h2>組立</h2><div class="nav"><span>見る</span><span>作る・直す</span><i></i><span>使う</span><span>記録確認<b class="badge">3</b></span><i></i><span>製品構成</span><span>訓練</span></div></div>
+      <div class="board"><div></div><div></div><div></div><div></div></div>
+    </section>
+
+  </div></div>
+</div>
+<script>
+const screen = document.getElementById('screen');
+const fit = () => { const w = screen.parentElement.clientWidth; screen.style.transform = `scale(${w / 1920})`; };
+new ResizeObserver(fit).observe(screen.parentElement); fit();
+for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => {
+  for (const t of document.querySelectorAll('.tab')) t.setAttribute('aria-selected', String(t === tab));
+  for (const s of document.querySelectorAll('.scr')) s.dataset.active = String(s.id === tab.dataset.for);
+});
+</script>
+</body>
+</html>

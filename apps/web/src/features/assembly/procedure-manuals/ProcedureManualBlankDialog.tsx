@@ -14,7 +14,8 @@ import type { ProcedureManualModelDto, ProcedureManualProcessDto } from '../type
 
 const shortName = (process?: ProcedureManualProcessDto) => process?.name.replace(/工程/g, '') ?? '';
 
-export function ProcedureManualBlankDialog({ processes, modelCode, processId, onClose }: {
+export function ProcedureManualBlankDialog({ processes, modelCode, processId, onClose, beforeMutation }: {
+  beforeMutation?: () => boolean;
   models: ProcedureManualModelDto[]; processes: ProcedureManualProcessDto[]; modelCode: string; processId: string; onClose: () => void;
 }) {
   const navigate = useNavigate();
@@ -68,6 +69,7 @@ export function ProcedureManualBlankDialog({ processes, modelCode, processId, on
   const action = 'min-h-[52px] rounded-[10px] border px-[22px] text-[21px] font-bold disabled:opacity-40';
   const secondaryAction = `${action} border-[#6b7c8d] text-[#eef3f6]`;
   const create = async () => {
+    if (beforeMutation && !beforeMutation()) return;
     if (busy || !canCreate) return;
     setBusy(true); setError(null);
     try {

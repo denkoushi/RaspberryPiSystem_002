@@ -36,6 +36,8 @@ vi.mock('../../../api/client', () => ({
   discardAssemblyProcedureDocumentRevision: apiMocks.discardRevision
 }));
 
+import { clearProcedureEditorAccess, readProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
+
 import { readAssemblyDocumentEditorRecovery } from './assemblyDocumentEditorRecovery';
 import { useAssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 
@@ -81,7 +83,142 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     vi.resetAllMocks();
     leaseMocks.acquire.mockResolvedValue({ mine: true, holderToken: 'session-token', lease: { holderLabel: '自分の端末', acquiredAt: '2026-10-06T03:00:00Z', heartbeatAt: '2026-10-06T03:00:00Z' } });
     leaseMocks.release.mockResolvedValue(undefined);
-    window.localStorage.clear();
+    window.localStorage.clear(); clearProcedureEditorAccess();
+  });
+
+  it('uses valid entrance access without asking or verifying again', async () => {
+    saveProcedureEditorAccess('2520');
+    const doc = makeDocument(); apiMocks.getDocument.mockResolvedValue(doc); apiMocks.createRevision.mockResolvedValue(doc);
+    const { result } = renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: doc.id }));
+    await waitFor(() => expect(result.current.accessGranted).toBe(true));
+    expect(result.current.passwordInput).toBe('2520');
+    expect(apiMocks.verifyPassword).not.toHaveBeenCalled();
+    expect(apiMocks.createRevision).toHaveBeenCalledWith(doc.id, '2520');
+  });
+  it('falls back to the gate and clears stored access when revision authentication fails', async () => {
+    saveProcedureEditorAccess('2520');
+    apiMocks.getDocument.mockResolvedValue(makeDocument()); apiMocks.createRevision.mockRejectedValue(new Error('認証失敗'));
+    const { result } = renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: 'source-draft' }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.accessGranted).toBe(false); expect(result.current.passwordInput).toBe('');
+    expect(readProcedureEditorAccess()).toBeNull();
+  });
+  it.each([401, 403])('revokes entrance access on an authenticated save returning %s', async status => {
+    saveProcedureEditorAccess('2520');
+    const doc = makeDocument(); apiMocks.getDocument.mockResolvedValue(doc); apiMocks.createRevision.mockResolvedValue(doc);
+    const { result } = renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: doc.id }));
+    await waitFor(() => expect(result.current.accessGranted).toBe(true));
+    await waitFor(() => expect(result.current.readOnly).toBe(false));
+    act(() => result.current.addOverlay('TEXT'));
+    apiMocks.saveOverlays.mockRejectedValue({ isAxiosError: true, response: { status, data: { message: '組立テンプレート編集パスワードが違います' } } });
+    await act(async () => { await result.current.save(); });
+    expect(result.current.accessGranted).toBe(false); expect(result.current.passwordInput).toBe('');
+    expect(readProcedureEditorAccess()).toBeNull();
+  });
+  it('returns to the gate when the eight-hour deadline arrives', async () => {
+    vi.useFakeTimers();
+    try {
+      saveProcedureEditorAccess('2520');
+      const doc = makeDocument(); apiMocks.getDocument.mockResolvedValue(doc); apiMocks.createRevision.mockResolvedValue(doc);
+      const { result } = renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: doc.id }));
+      await act(async () => {});
+      expect(result.current.accessGranted).toBe(true);
+      await act(async () => { vi.advanceTimersByTime(8 * 60 * 60 * 1000); });
+      expect(result.current.accessGranted).toBe(false);
+      expect(readProcedureEditorAccess()).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+  it('saves the last edit immediately before expiry and retains it and the navigation guard after reauthentication', async () => {
+    vi.useFakeTimers();
+    try {
+      saveProcedureEditorAccess('2520');
+      const hook = renderEditor(makeDocument());
+      await act(async () => {});
+      expect(hook.result.current.readOnly).toBe(false);
+      act(() => vi.advanceTimersByTime(8 * 3600000 - 100));
+      act(() => hook.result.current.addOverlay('TEXT'));
+      const element = hook.result.current.elements[0];
+      act(() => hook.result.current.updateElement({ ...element, kind: 'TEXT', text: '失効直前の編集' }));
+      act(() => vi.advanceTimersByTime(100));
+      expect(hook.result.current.accessGranted).toBe(false);
+      expect(readAssemblyDocumentEditorRecovery(localStorage, 'source-draft', { baseUpdatedAt: makeDocument().updatedAt, editVersion: 0 })?.elements).toEqual(hook.result.current.elements);
+      const unload = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(unload);
+      expect(unload.defaultPrevented).toBe(true);
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      expect(hook.result.current.confirmNavigation()).toBe(false);
+      expect(confirm).toHaveBeenCalled(); confirm.mockRestore();
+      act(() => hook.result.current.setPasswordInput('2520'));
+      await act(async () => { await hook.result.current.verifyEditorPassword(); });
+      expect(hook.result.current.accessGranted).toBe(true);
+      expect(hook.result.current.elements[0]).toMatchObject({ text: '失効直前の編集' });
+      expect(hook.result.current.isDirty).toBe(true);
+      expect(hook.result.current.conflict).toBe(false);
+      expect(hook.result.current.recoveryPending).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+  it('keeps edits after reauthentication and enters conflict handling only when the server version changed', async () => {
+    const hook = renderEditor(makeDocument()); await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    act(() => hook.result.current.addOverlay('TEXT'));
+    const localElements = hook.result.current.elements;
+    act(() => { hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 401 } }); });
+    apiMocks.createRevision.mockResolvedValue(makeDocument({ editVersion: 2 }));
+    act(() => hook.result.current.setPasswordInput('2520'));
+    await act(async () => { await hook.result.current.verifyEditorPassword(); });
+    expect(hook.result.current.elements).toEqual(localElements);
+    expect(hook.result.current.conflict).toBe(true);
+    expect(hook.result.current.conflictEditVersion).toBe(2);
+  });
+  it('groups a long drag into one undo operation without recording intermediate positions', async () => {
+    const hook = renderEditor(makeDocument()); await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    act(() => hook.result.current.addOverlay('SHAPE'));
+    const initial = hook.result.current.elements;
+    act(() => hook.result.current.beginOverlayDrag());
+    for (let index = 1; index <= 100; index++) {
+      act(() => hook.result.current.updateElementBBox(initial[0].id, { ...initial[0].bbox, xRatio: 0.25 + index / 1000 }));
+    }
+    act(() => hook.result.current.endOverlayDrag());
+    const dragged = hook.result.current.elements;
+    act(() => hook.result.current.undo()); expect(hook.result.current.elements).toEqual(initial);
+    act(() => hook.result.current.redo()); expect(hook.result.current.elements).toEqual(dragged);
+    act(() => hook.result.current.undo()); act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([]); expect(hook.result.current.canUndo).toBe(false);
+  });
+  it('drops the oldest history entry after 51 operations', async () => {
+    const hook = renderEditor(makeDocument()); await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    for (let index = 0; index < 51; index++) act(() => hook.result.current.addOverlay('SHAPE'));
+    for (let index = 0; index < 50; index++) act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toHaveLength(1);
+    expect(hook.result.current.canUndo).toBe(false);
+  });
+  it('retains history on save and clears it on conflict reload even for identical content', async () => {
+    const hook = renderEditor(makeDocument()); await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    act(() => hook.result.current.addOverlay('SHAPE'));
+    const saved = makeDocument({ editVersion: 1, pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: hook.result.current.elements }] });
+    apiMocks.saveOverlays.mockResolvedValue(saved);
+    await act(async () => { await hook.result.current.save(); });
+    expect(hook.result.current.canUndo).toBe(true);
+    act(() => hook.result.current.undo()); expect(hook.result.current.isDirty).toBe(true);
+    act(() => hook.result.current.redo()); expect(hook.result.current.isDirty).toBe(false);
+    apiMocks.getDocument.mockResolvedValue(saved);
+    await act(async () => { await hook.result.current.reloadConflict(); });
+    expect(hook.result.current.elements).toEqual(saved.pages[0].overlays);
+    expect(hook.result.current.canUndo).toBe(false); expect(hook.result.current.canRedo).toBe(false);
+  });
+  it('creates text and shape, duplicates and restores overlay edits with undo/redo', async () => {
+    const doc = makeDocument(); const { result } = renderEditor(doc);
+    await authenticate(result); await waitFor(() => expect(result.current.readOnly).toBe(false));
+    act(() => result.current.addOverlay('TEXT'));
+    expect(result.current.selectedElement?.kind).toBe('TEXT');
+    act(() => result.current.duplicateSelectedOverlay()); expect(result.current.elements).toHaveLength(2);
+    act(() => result.current.undo()); expect(result.current.elements).toHaveLength(1);
+    act(() => result.current.redo()); expect(result.current.elements).toHaveLength(2);
+    act(() => result.current.addOverlay('SHAPE')); expect(result.current.selectedElement?.kind).toBe('SHAPE');
+    act(() => result.current.undo());
+    act(() => result.current.addOverlay('TEXT')); expect(result.current.canRedo).toBe(false);
   });
 
   it('appends a blank page and retains unsaved overlays while advancing editVersion', async () => {

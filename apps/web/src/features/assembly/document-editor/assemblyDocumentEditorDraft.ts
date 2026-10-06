@@ -7,7 +7,7 @@ import type {
 
 
 export type OverlayDraftAction =
-  | { type: 'replace'; elements: AssemblyProcedureOverlayElement[] }
+  | { type: 'replace'; elements: AssemblyProcedureOverlayElement[]; preserveHistory?: boolean }
   | { type: 'add'; element: AssemblyProcedureOverlayElement }
   | { type: 'update'; element: AssemblyProcedureOverlayElement }
   | { type: 'remove'; id: string }

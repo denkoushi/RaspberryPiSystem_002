@@ -99,9 +99,9 @@
         {
           "id": "assembly-document-editor-range",
           "title": "編集範囲を選ぶ",
-          "summary": "「範囲を追加」を押し、元ページ上で編集する範囲をドラッグします。",
+          "summary": "「範囲」の記号を押し、元ページ上で編集する範囲をドラッグします。",
           "steps": [
-            { "id": "document-editor-range-add", "targetId": "assembly-document-editor-range-add", "necessity": "required", "title": "範囲追加を開始", "description": "「範囲を追加」を押して範囲選択モードに切り替えます。" },
+            { "id": "document-editor-range-add", "targetId": "assembly-document-editor-range-add", "necessity": "required", "title": "範囲追加を開始", "description": "「範囲」の記号を押して範囲選択モードに切り替えます。" },
             { "id": "document-editor-range-surface", "targetId": "assembly-document-editor-range-surface", "necessity": "required", "title": "編集範囲をドラッグ", "description": "元ページ上でテキスト・画像・図形にしたい範囲をドラッグします。" }
           ]
         },

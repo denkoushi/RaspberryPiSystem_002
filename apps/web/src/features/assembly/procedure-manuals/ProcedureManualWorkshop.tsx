@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
-import { deleteAssemblyProcedureDocument, getProcedureManualAssignments, getProcedureManualModelOverview, listAssemblyMachineNameCandidates, listProcedureManualModels, listProcedureManualProcesses, listProcedureMaterials, listProcedureVideos, replaceProcedureManualAssignments } from '../../../api/client';
+import { deleteAssemblyProcedureDocument, getProcedureManualAssignments, getProcedureManualModelOverview, listAssemblyMachineNameCandidates, listProcedureManualModels, listProcedureManualProcesses, listProcedureMaterials, listProcedureVideos, replaceProcedureManualAssignments, verifyAssemblyTemplateAccessPassword } from '../../../api/client';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Input } from '../../../components/ui/Input';
 import { useProtectedImageBlobUrl } from '../../../hooks/useProtectedImageBlobUrl';
-import { kioskAssemblyManualsWorkshopPath, kioskAssemblyProcedureDocumentEditPath, kioskAssemblyTemplateNewPath } from '../assemblyRoutes';
+import { KioskPinDialog, kioskPinErrorResult } from '../../kiosk/KioskPinDialog';
+import { kioskAssemblyManualsPath, kioskAssemblyManualsWorkshopPath, kioskAssemblyProcedureDocumentEditPath, kioskAssemblyTemplateNewPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
+import { PROCEDURE_EDITOR_ACCESS_HOURS, readProcedureEditorAccess, saveProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
 
 import { ProcedureManualAssignmentDialog, procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
@@ -30,6 +32,17 @@ function ManualThumbnail({ url }: { url: string | null }) {
 
 export function ProcedureManualWorkshop() {
   const navigate = useNavigate();
+  const [accessGranted, setAccessGranted] = useState(() => Boolean(readProcedureEditorAccess()));
+  const checkAccess = useCallback(() => {
+    const granted = Boolean(readProcedureEditorAccess());
+    setAccessGranted(granted);
+    return granted;
+  }, []);
+  useEffect(() => {
+    checkAccess();
+    // Access is sessionStorage-based: monitor this tab, not other tabs' sessions.
+    return subscribeProcedureEditorAccess(checkAccess);
+  }, [checkAccess]);
   const [params, setParams] = useSearchParams();
   const modelCodeKey = procedureManualModelKey(params.get('model') ?? '');
   const processId = params.get('process') ?? '';
@@ -114,11 +127,12 @@ export function ProcedureManualWorkshop() {
   const processName = process ? `${shortName(processes.find(row => row.id === process.parentId))} › ${shortName(process)}` : '';
   const modelCode = overview?.modelCode ?? candidates.find(row => row.modelCodeKey === modelCodeKey)?.modelCode ?? modelCodeKey;
   const selected = overview?.processes.find(row => row.processId === processId);
-  const fix = (item: ProcedureManualOverviewItemDto) => navigate(kioskAssemblyProcedureDocumentEditPath(item.draftRevision?.documentId ?? item.documentId), {
+  const fix = (item: ProcedureManualOverviewItemDto) => { if (!checkAccess()) return; navigate(kioskAssemblyProcedureDocumentEditPath(item.draftRevision?.documentId ?? item.documentId), {
     state: { returnTo: kioskAssemblyManualsWorkshopPath({ model: modelCodeKey, process: processId }),
       context: { modelCode, modelCodeKey, processId, processName, mode: 'fix' } }
-  });
+  }); };
   const remove = async (item: ProcedureManualOverviewItemDto, deleteDocument = false) => {
+    if (!checkAccess()) return;
     setBusy(true); setError(null); setOperationMessage(null);
     let unassigned = false;
     try {
@@ -129,13 +143,14 @@ export function ProcedureManualWorkshop() {
         setOperationMessage('割り当てが更新されました。もう一度確認してください');
         return;
       }
+      if (!checkAccess()) return;
       await replaceProcedureManualAssignments(modelCodeKey, processId, {
         modelCode, assignments: detail.assignments.filter(row => row.id !== item.assignmentId).map((row, sortOrder) => ({
           kioskDocumentId: row.kioskDocumentId, assemblyProcedureDocumentId: row.assemblyProcedureDocumentId, label: row.label, sortOrder
         }))
       });
       unassigned = true;
-      if (deleteDocument) await deleteAssemblyProcedureDocument(item.documentId);
+      if (deleteDocument && checkAccess()) await deleteAssemblyProcedureDocument(item.documentId);
       setVersion(value => value + 1);
     } catch (e) {
       if (unassigned && deleteDocument) {
@@ -146,7 +161,7 @@ export function ProcedureManualWorkshop() {
     finally { setBusy(false); }
   };
   return <div className="grid min-h-0 flex-1 grid-rows-[64px_minmax(0,1fr)] bg-[#0f1317] text-[#eef3f6]" data-testid="procedure-manuals-workshop">
-    <header className="flex items-center gap-4 border-b border-[#27313b] bg-[#161c22] px-5">
+    <header aria-hidden={!accessGranted ? true : undefined} {...(!accessGranted ? { inert: '' } : {})} className="flex items-center gap-4 border-b border-[#27313b] bg-[#161c22] px-5">
       <h1 className="text-[26px] font-black tracking-widest">要領書</h1>
       <span className="inline-flex h-10 items-center gap-2 rounded-full bg-[#f6b93b29] px-3.5 text-[19px] font-bold text-[#f6b93b]"><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>作る・直す</span>
       <div className="ml-auto flex gap-4">
@@ -155,7 +170,7 @@ export function ProcedureManualWorkshop() {
         <Link to="/kiosk/assembly" className={`${action} !min-h-11 gap-2 text-[19px]`}>組立へ戻る</Link>
       </div>
     </header>
-    <div className="grid min-h-0 grid-cols-[440px_300px_minmax(0,1fr)]">
+    <div className={`grid min-h-0 grid-cols-[440px_300px_minmax(0,1fr)] ${accessGranted ? '' : 'opacity-50'}`} aria-hidden={!accessGranted ? true : undefined} {...(!accessGranted ? { inert: '' } : {})}>
       <section aria-label="機種一覧" className="flex min-h-0 flex-col gap-2.5 overflow-auto border-r border-[#27313b] bg-[#161c22] p-4">
         <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">機種</h2>
         <Input type="search" aria-label="機種検索" placeholder="型番で検索" maxLength={120} value={search} onChange={event => setSearch(event.target.value)} className="h-12 shrink-0 text-[21px]" />
@@ -176,7 +191,7 @@ export function ProcedureManualWorkshop() {
       </section>
       <section aria-label="要領書の札" className="grid min-h-0 min-w-0 content-start gap-3.5 overflow-auto px-5 py-4">
         {!modelCodeKey ? <p className="text-[#9fadb9]">機種を選択</p> : !process ? <p className="text-[#9fadb9]">工程を選択</p> : <>
-          <div className="flex min-h-12 items-center gap-3.5"><h2 className="min-w-0 text-2xl font-black break-all">{modelCodeKey} › {processName}</h2><button className={`${yellowAction} ml-auto shrink-0`} disabled={busy} onClick={() => setBlankOpen(true)}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button></div>
+          <div className="flex min-h-12 items-center gap-3.5"><h2 className="min-w-0 text-2xl font-black break-all">{modelCodeKey} › {processName}</h2><button className={`${yellowAction} ml-auto shrink-0`} disabled={busy} onClick={() => { if (checkAccess()) setBlankOpen(true); }}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button></div>
           {selected?.items.map(item => <article key={item.assignmentId} aria-label={item.label || item.title} className="grid grid-cols-[150px_minmax(0,1fr)_auto] items-center gap-[18px] rounded-[14px] border border-[#344252] bg-[#1b222a] px-4 py-3.5">
             <ManualThumbnail url={item.thumbnailPageUrl} />
             <div className="grid min-w-0 gap-2"><h3 className="truncate text-2xl font-black" title={item.label || item.title}>{item.label || item.title}</h3>
@@ -191,22 +206,31 @@ export function ProcedureManualWorkshop() {
             <div className="flex gap-2">
               {item.kind === 'assembly_procedure_document' && item.status !== 'unavailable' ? <button className={yellowAction} disabled={busy} onClick={() => fix(item)}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>直す</button> : null}
               {item.kind === 'assembly_procedure_document' && item.status === 'published' ? <Link className={action} to={kioskAssemblyTemplateNewPath({ procedureDocumentId: item.documentId })}>使う</Link> : null}
-              <button className={`${action} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => setRemoving(item)}>外す</button>
-              {item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision ? <button className={`${action} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => setDeleting(item)}>削除</button> : null}
+              <button className={`${action} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => { if (checkAccess()) setRemoving(item); }}>外す</button>
+              {item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision ? <button className={`${action} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => { if (checkAccess()) setDeleting(item); }}>削除</button> : null}
             </div>
           </article>)}
-          <button className="min-h-12 rounded-[14px] border border-dashed border-[#344252] p-7 text-[22px] font-bold text-[#9fadb9] disabled:opacity-40" disabled={busy || overviewLoading || !selected} onClick={() => setAssignmentOpen(true)}>＋ 既存の要領書を割り当てる</button>
+          <button className="min-h-12 rounded-[14px] border border-dashed border-[#344252] p-7 text-[22px] font-bold text-[#9fadb9] disabled:opacity-40" disabled={busy || overviewLoading || !selected} onClick={() => { if (checkAccess()) setAssignmentOpen(true); }}>＋ 既存の要領書を割り当てる</button>
         </>}
         {overviewLoading ? <p role="status" className="text-[#9fadb9]">読込中…</p> : null}
         {error ? <p role="alert" className="text-red-400">{error}</p> : null}
         {operationMessage ? <p role="alert" className="text-amber-300">{operationMessage}</p> : null}
       </section>
     </div>
-    {blankOpen ? <ProcedureManualBlankDialog models={models} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
-    {assignmentOpen ? <ProcedureManualAssignmentDialog modelCode={modelCode} processId={processId} processes={processes} onClose={() => setAssignmentOpen(false)} onSaved={(key, id) => { setAssignmentOpen(false); select(key, id); setVersion(value => value + 1); }} /> : null}
-    {materialOpen ? <ProcedureMaterialShelfDialog onClose={() => setMaterialOpen(false)} /> : null}
-    {videoOpen ? <ProcedureVideoShelfDialog onClose={() => setVideoOpen(false)} /> : null}
-    <ConfirmDialog isOpen={Boolean(removing)} title="割り当てを外す" description={removing?.label || removing?.title} confirmLabel="外す" buttonClassName="min-h-11" onCancel={() => setRemoving(null)} onConfirm={() => { if (removing) void remove(removing); setRemoving(null); }} />
-    <ConfirmDialog isOpen={Boolean(deleting)} title="要領書を削除" description="割り当てを外して削除します。元に戻せません" confirmLabel="削除" tone="danger" buttonClassName="min-h-11" onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void remove(deleting, true); setDeleting(null); }} />
+    {!accessGranted ? <KioskPinDialog validHours={PROCEDURE_EDITOR_ACCESS_HOURS} backLabel="見るへ戻る" onBack={() => navigate(kioskAssemblyManualsPath())} onSubmit={async pin => {
+      let result;
+      try { result = await verifyAssemblyTemplateAccessPassword({ password: pin }); }
+      catch (error) { return kioskPinErrorResult(error); }
+      if (!result.success) return false;
+      saveProcedureEditorAccess(pin);
+      setAccessGranted(true);
+      return true;
+    }} /> : null}
+    {accessGranted && blankOpen ? <ProcedureManualBlankDialog beforeMutation={checkAccess} models={models} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
+    {accessGranted && assignmentOpen ? <ProcedureManualAssignmentDialog beforeMutation={checkAccess} modelCode={modelCode} processId={processId} processes={processes} onClose={() => setAssignmentOpen(false)} onSaved={(key, id) => { setAssignmentOpen(false); select(key, id); setVersion(value => value + 1); }} /> : null}
+    {accessGranted && materialOpen ? <ProcedureMaterialShelfDialog onClose={() => setMaterialOpen(false)} /> : null}
+    {accessGranted && videoOpen ? <ProcedureVideoShelfDialog onClose={() => setVideoOpen(false)} /> : null}
+    <ConfirmDialog isOpen={accessGranted && Boolean(removing)} title="割り当てを外す" description={removing?.label || removing?.title} confirmLabel="外す" buttonClassName="min-h-11" onCancel={() => setRemoving(null)} onConfirm={() => { if (removing) void remove(removing); setRemoving(null); }} />
+    <ConfirmDialog isOpen={accessGranted && Boolean(deleting)} title="要領書を削除" description="割り当てを外して削除します。元に戻せません" confirmLabel="削除" tone="danger" buttonClassName="min-h-11" onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void remove(deleting, true); setDeleting(null); }} />
   </div>;
 }

@@ -3,6 +3,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 
+import { saveProcedureEditorAccess } from '../procedureEditorAccess';
+
 import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 
@@ -22,7 +24,7 @@ const photo = { ...text, id: 'photo', kind: 'PHOTO', text: null, originalFileNam
 
 describe('procedure-manuals material shelf', () => {
   beforeEach(() => {
-    vi.resetAllMocks(); localStorage.clear(); mocks.count.mockResolvedValue([]); mocks.list.mockResolvedValue([text, photo]); mocks.file.mockResolvedValue(new Blob(['photo'], { type: 'image/png' }));
+    vi.resetAllMocks(); localStorage.clear(); saveProcedureEditorAccess('2520'); mocks.count.mockResolvedValue([]); mocks.list.mockResolvedValue([text, photo]); mocks.file.mockResolvedValue(new Blob(['photo'], { type: 'image/png' }));
     mocks.ingest.mockResolvedValue({ saved: 2, duplicate: 0, skipped: 1, retryable: 0, skippedAttachments: 1, messages: [{ messageId: 'unsupported', reason: '本文が空で、対応する写真がありません' }] });
     mocks.knowledge.mockResolvedValue({ enabled: false, items: [] });
     mocks.knowledgeImage.mockResolvedValue(new Blob(['knowledge']));
