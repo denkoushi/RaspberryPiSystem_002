@@ -33,8 +33,7 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, wo
     {options.badge != null && options.badge > 0 ? <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#f6b93b] px-1 text-[13px] font-black text-[#0b1a12]">{options.badge}</span> : null}
   </button>;
   const separator = <span aria-hidden="true" className="my-1 h-px w-9 shrink-0 bg-[#344252]" />;
-  return <nav aria-label="エディタ操作" className="flex min-h-0 flex-col items-center gap-2 overflow-y-auto border-l border-[#27313b] bg-[#161c22] py-2.5">
-    {button(workshop ? '工房へ戻る' : '一覧へ', 'back', c.navigateBack)}
+  return <nav aria-label="エディタ操作" className="flex min-h-0 flex-col items-center gap-2 overflow-y-auto border-l border-[#27313b] bg-[#161c22] pb-[84px] pt-2.5">
     {button('保存', 'save', () => void c.save(), { disabled: disabled || !c.canSave, color: '!border-[#3ba776] !bg-[#3ba776] !text-[#0b1a12]', target: 'assembly-document-editor-save' })}
     {button('公開', 'publish', onPublish, { disabled: disabled || !c.canPublish, color: '!border-[#f6b93b] !text-[#f6b93b]', target: 'assembly-document-editor-publish' })}
     {separator}
@@ -46,6 +45,9 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, wo
     {separator}
     {button('元に戻す', 'undo', c.undo, { disabled: disabled || !c.canUndo })}
     {button('やり直す', 'redo', c.redo, { disabled: disabled || !c.canRedo })}
-    {c.document?.status === 'draft' ? <div className="mt-auto pb-[84px] pt-2">{button(c.document.supersedesDocumentId ? '改版を破棄' : '削除', 'delete', c.document.supersedesDocumentId ? onDiscard : onDelete, { disabled: disabled || (Boolean(c.document.supersedesDocumentId) && !c.canDiscard), color: '!border-transparent !text-[#e5484d]' })}</div> : null}
+    <span aria-hidden="true" className="min-h-2 flex-1" />
+    {c.document?.status === 'draft' ? button(c.document.supersedesDocumentId ? '改版を破棄' : '削除', 'delete', c.document.supersedesDocumentId ? onDiscard : onDelete, { disabled: disabled || (Boolean(c.document.supersedesDocumentId) && !c.canDiscard), color: '!border-transparent !text-[#e5484d]' }) : null}
+    {separator}
+    {button(workshop ? '工房へ戻る' : '一覧へ', 'back', c.navigateBack, { color: '!border-transparent !text-[#9fadb9]' })}
   </nav>;
 }
