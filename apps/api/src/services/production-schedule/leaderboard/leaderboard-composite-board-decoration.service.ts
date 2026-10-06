@@ -10,7 +10,7 @@ import {
 import { enrichProductionScheduleRowsWithResolvedMachineName } from '../production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from '../production-schedule-customer-name-enrichment.service.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
-import type { MaterialArrivalStatus } from '@raspi-system/shared-types';
+import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 
 import { prisma } from '../../../lib/prisma.js';
 import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard-display-row-scope.js';
@@ -55,6 +55,7 @@ export async function decorateLeaderboardCompositeBoardShell(params: {
   rowsWithDeco: LightShellRow[];
   leaderboardFooterChipsByPartKey?: Record<string, unknown>;
   leaderboardMaterialArrivalByPartKey?: Record<string, MaterialArrivalStatus>;
+  leaderboardMaterialArrivalBasisByPartKey?: Record<string, MaterialArrivalBasis>;
 }> {
   const deco = await decorateLeaderboardShellRowsForKiosk({
     orderedRowIds: params.mergedLightRows.map((r) => r.id),
@@ -66,7 +67,8 @@ export async function decorateLeaderboardCompositeBoardShell(params: {
   return {
     rowsWithDeco: applyRowDecorationsToLightRows(params.mergedLightRows, decoMap),
     leaderboardFooterChipsByPartKey: deco.leaderboardFooterChipsByPartKey as Record<string, unknown>,
-    leaderboardMaterialArrivalByPartKey: deco.leaderboardMaterialArrivalByPartKey
+    leaderboardMaterialArrivalByPartKey: deco.leaderboardMaterialArrivalByPartKey,
+    leaderboardMaterialArrivalBasisByPartKey: deco.leaderboardMaterialArrivalBasisByPartKey
   };
 }
 
@@ -83,6 +85,7 @@ export async function decorateLeaderboardCompositeBoardContinue(params: {
   deltaRowsWithDeco?: LightShellRow[];
   leaderboardFooterChipsByPartKey?: Record<string, unknown>;
   leaderboardMaterialArrivalByPartKey?: Record<string, MaterialArrivalStatus>;
+  leaderboardMaterialArrivalBasisByPartKey?: Record<string, MaterialArrivalBasis>;
 }> {
   const preferredDisplayRowIds = normalizeLeaderboardDisplayRowIdScope(
     params.mergedLightRows.map((r) => r.id)
@@ -100,7 +103,8 @@ export async function decorateLeaderboardCompositeBoardContinue(params: {
     return {
       rowsWithDeco,
       leaderboardFooterChipsByPartKey: deco.leaderboardFooterChipsByPartKey as Record<string, unknown>,
-    leaderboardMaterialArrivalByPartKey: deco.leaderboardMaterialArrivalByPartKey
+      leaderboardMaterialArrivalByPartKey: deco.leaderboardMaterialArrivalByPartKey,
+      leaderboardMaterialArrivalBasisByPartKey: deco.leaderboardMaterialArrivalBasisByPartKey
     };
   }
 
@@ -153,7 +157,7 @@ export async function decorateLeaderboardCompositeBoardContinue(params: {
     siteKey: params.siteKey,
     preferredDisplayRowIds
   });
-  const leaderboardMaterialArrivalByPartKey = await buildLeaderboardMaterialArrivalByPartKeyForScheduleRows(
+  const { leaderboardMaterialArrivalByPartKey, leaderboardMaterialArrivalBasisByPartKey } = await buildLeaderboardMaterialArrivalByPartKeyForScheduleRows(
     params.mergedLightRows
   );
 
@@ -168,6 +172,7 @@ export async function decorateLeaderboardCompositeBoardContinue(params: {
     rowsWithDeco,
     ...(deltaRowsWithDeco !== undefined ? { deltaRowsWithDeco } : {}),
     leaderboardFooterChipsByPartKey: leaderboardFooterChipsByPartKey as Record<string, unknown>,
-    leaderboardMaterialArrivalByPartKey
+    leaderboardMaterialArrivalByPartKey,
+    leaderboardMaterialArrivalBasisByPartKey
   };
 }

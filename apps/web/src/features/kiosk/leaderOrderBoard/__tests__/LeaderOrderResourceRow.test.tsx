@@ -140,6 +140,10 @@ describe('LeaderOrderResourceRow', () => {
     expect(withoutChips.getByText('材料未発注')).toBeInTheDocument();
     withoutChips.unmount();
 
+    const substitute = renderRow(mkLeaderBoardRow({ id: 'row-part-1', materialArrivalStatus: 'ordered', materialArrivalBasis: 'part' }));
+    expect(substitute.getByText('部品未入荷')).toBeInTheDocument();
+    substitute.unmount();
+
     const noMaterial = renderRow(mkLeaderBoardRow({ id: 'row-mat-3' }));
     expect(noMaterial.queryByText(/^材料/)).toBeNull();
   });

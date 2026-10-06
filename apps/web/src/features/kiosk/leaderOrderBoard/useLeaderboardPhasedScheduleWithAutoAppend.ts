@@ -352,12 +352,14 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
         ? totalQuery.data.total
         : mergedRows.length;
     const materialArrivalByPartKey = decorationsQuery.data?.leaderboardMaterialArrivalByPartKey ?? {};
+    const materialArrivalBasisByPartKey = decorationsQuery.data?.leaderboardMaterialArrivalBasisByPartKey ?? {};
     const rows = mergedRows.map((row): ProductionScheduleRow => {
       if (!includeDecorations) return row;
       const deco = leaderboardDecorationByRowId.get(row.id);
       const materialArrivalStatus = materialArrivalByPartKey[buildLeaderboardPartKeyFromScheduleRow(row)] ?? null;
+      const materialArrivalBasis = materialArrivalBasisByPartKey[buildLeaderboardPartKeyFromScheduleRow(row)] ?? null;
       if (!deco && materialArrivalStatus == null) return row;
-      return { ...row, ...deco, materialArrivalStatus };
+      return { ...row, ...deco, materialArrivalStatus, materialArrivalBasis };
     });
     return {
       page: shellQuery.data.page,
@@ -369,6 +371,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
   }, [
     decorationsQuery.data?.leaderboardFooterChipsByPartKey,
     decorationsQuery.data?.leaderboardMaterialArrivalByPartKey,
+    decorationsQuery.data?.leaderboardMaterialArrivalBasisByPartKey,
     includeDecorations,
     leaderboardDecorationByRowId,
     mergedRows,
