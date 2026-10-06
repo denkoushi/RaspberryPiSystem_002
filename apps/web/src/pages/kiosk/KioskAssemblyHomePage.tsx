@@ -19,6 +19,8 @@ import {
   createAssemblyRequestId,
   KIOSK_ASSEMBLY_TRAINING_PATH,
   kioskAssemblyLibraryPath,
+  kioskAssemblyManualsPath,
+  kioskAssemblyManualsWorkshopPath,
   kioskAssemblyRecordApprovalPath,
   kioskAssemblyTraceabilityPath,
   kioskAssemblyWorkSessionPath,
@@ -420,7 +422,8 @@ export function KioskAssemblyHomePage() {
       <div className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#27313b] bg-[#161c22] px-3.5">
         <h1 className="text-lg font-black tracking-widest">組立</h1>
         <nav className="flex flex-wrap items-center gap-1" aria-label="組立メニュー">
-          <Link to="/kiosk/assembly/manuals" className={navLinkClassName}>要領書</Link>
+          <Link to={kioskAssemblyManualsPath()} className={navLinkClassName}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12" /><circle cx="12" cy="12" r="3" /></svg>見る</Link>
+          <Link to={kioskAssemblyManualsWorkshopPath()} className={navLinkClassName}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>作る・直す</Link>
           <Link to={KIOSK_ASSEMBLY_TRAINING_PATH} className={navLinkClassName}>
             訓練
           </Link>

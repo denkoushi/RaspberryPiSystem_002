@@ -72,7 +72,11 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-06) UX 改善(実機確認 6 件): 右端 64px の記号列(一覧の開閉、2 ページ表示、全手順、全体、幅いっぱい、前手順、ページ番号、次手順)、左の一覧は既定で閉じ端末ごとに localStorage で記憶(開くと 760px、機種列 440px、型番は等幅 20px で折り返し)、一覧を閉じたときだけ手動の 2 ページ表示(2 手順送り)、機種検索は読み込み済み一覧の即時絞り込み + テンキー + 一致の強調(要領書ページと白紙から作る)、工程/細分チップは状態ごとに配色を明示、「外す(紐づけ解除)」、エディタに DRAFT 初版だけの「削除」(確認 1 回、割り当て中は「先に割り当てを外してください」、他の 409 は API の理由を表示)。「このページ」の手順 n/N と進捗は削除し、承認と動画を残す。API は変更なし。Codex(gpt-6.1-sol / high)が実装。
 - [x] (2026-10-06) 検証: Web lint、`vitest run procedure-manuals document-editor AssemblyProcedureSequenceViewer assembly` 74 ファイル 427 件、build。API lint、tsc。Codex read-only レビューの 4 件(一覧を閉じるとビューアが幅 0 の列に落ちる、改版 DRAFT に削除が出る、409 を全部割り当て扱い、ページ番号の読み上げ)を修正。
 - [x] (2026-10-06) PR #1732 を main へ squash merge(merge `239fe2fbc5f90a083eed923c48b3e626b5f4c2fb`、件名は PR 題名を指定)。main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261006-012031-abf178`、`Result=success`、recap `ok=268 changed=31 failed=0 unreachable=0`、追跡セッションが実施。#1736 も同じ配布に乗った)、`/`・`/admin`・`/kiosk`・`/api/system/health` が 200。実機での 6 件の確認はオーナーが行う。
+- [x] (2026-10-06) 実機確認の追加 2 件: 「白紙から作る」の機種候補を、要領書がある機種の一覧ではなく機種マスタ検索(`/assembly/machine-name-candidates`、テンキーの数字は digitQuery、手入力は q、即時検索、古い応答は破棄、入力文字列は候補にしない)に切り替え。下辺の帯(名前のプレビュー、名前を直接入力、閉じる)の文字色を明示。Codex(gpt-6.1-sol / high)が実装、読み取り専用レビューの低 3 件のうち 120 文字上限と重複排除テストを反映。Web lint、`vitest run procedure-manuals` 59 件、build。スタブ API のブラウザで候補と帯の配色を確認。
+- [x] (2026-10-06) #1744 を main へ squash merge(`324d87cd`)。main CI は Trivy の新 CVE(`@simple-git/argv-parser`)で一度失敗し、別セッションの #1745 で解消。main `69c8ff8d` を Pi5 へ標準ローリング更新(run `20261006-031518-336a91`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`、このセッションが実施)。
+- [x] (2026-10-06) 構造の整理(見る / 作る・直す / 使う): PR #1746 を main へ squash merge(`f37d4bdf`)。main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261006-040231-5bbd67`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`)。実機確認はオーナーが行う。
 - [ ] 実機確認(オーナー): 動画一覧で 2 本を選んで接続すると由来「接続」の動画が処理中として現れ、数十秒〜数分で完了して再生できる、向きの違う動画を混ぜても黒帯で揃う、コメントが引き継がれる、元の動画は残る。
+- [ ] (2026-10-06) 構造整理をローカル実装(閲覧から作成操作を除去、3列の工房・概要API・検索・割り当て解除・エディタの文脈/戻り先・ホーム2入口)。レビュー 7 件を反映(無効PDFの保持、ID変更検知、戻り先/context検証、初版下書きの解除後削除と409表示、札の文言、確認ボタン44px)。指定検証: API lint/tsc・114件成功/実DB1件skip、Web lint/build・254ファイル1544件成功。PDFの「使う」(既存初期選択は文書のみ)は仕様確認事項として非表示。ブラウザ実画面確認はツールの承認拒否で未実施。Gitの変更操作・禁止対象の編集なし。
 
 ## Surprises & Discoveries
 
@@ -270,6 +274,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Decision: 「削除」は DRAFT の初版(`supersedesDocumentId` なし)だけに出す。改版 DRAFT は既存の「改版を破棄」、PUBLISHED は紐づけ解除のみ。参照判定はサーバーの既存 DELETE(409)を正とする。
   Rationale: 既存 API は改版 DRAFT の削除を拒むため、押せても失敗するボタンを出さない。
 
+- Decision: 構造の整理(2026-10-06)で、組立ホームに「見る/作る・直す/使う」の札の画面を新設せず、ホーム上部の入口を 2 つに整理してホームの作業一覧を「使う」とする。
+  Rationale: ホームの一覧がすでに「使う」の本体で、札の画面を挟むと 1 段増える(1 画面完結の方針に反する)。モックの意図(3 つの仕事を分ける)は、閲覧から作成・編集を取り除き工房へ移すことで満たす。
+
 ## Context and Orientation
 
 このリポジトリは pnpm ワークスペースで、`apps/api` が Fastify + Prisma(PostgreSQL)の API、`apps/web` が React(Vite)の Web、`packages/shared-types` が共有の型である。キオスク画面は `apps/web/src/pages/kiosk/` にあり、ルートは `apps/web/src/App.tsx` に列挙されている。組立キオスクのホームは `apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx` で、ナビゲーションのリンク群(`aria-label="組立メニュー"`)から各画面へ飛ぶ。
@@ -352,6 +359,18 @@ V3の指定検証は `cd apps/api && pnpm lint && pnpm exec vitest run procedure
     cd apps/web && pnpm lint && pnpm exec vitest run procedure-manuals document-editor && pnpm build
 
 実機受入: 許可ドメインから短い動画だけ送信し、棚で完了・再生できること。DRAFTのページへ紐づけ保存後、公開版閲覧で該当ページだけサムネイルが現れること。61秒の動画はTOO_LONG、非対応形式と25 MB超はスキップされること。ローカルテストはffmpegをモックし、実DB migration適用・実Gmail・Pi5速度と回転動画は統合段階で確認する。
+
+## 構造の整理: 見る・作る・直す・使う(2026-10-06 承認)
+
+オーナーの指摘: 「新規で作る」「既存を直す」「丸数字やチェックを付けて検査記録に使う」の 3 つの仕事が同じ画面と言葉に混ざっていて分かりにくい。入口ボタンを足すだけでは解決しない。モック `docs/design-previews/procedure-manuals-structure-mock.html`(承認済み)に沿って、閲覧ページから作成・編集の操作を取り除き、別画面(工房)へ移す。
+
+- **見る**(`/kiosk/assembly/manuals`): 閲覧だけ。左の一覧の上部から「白紙から作る」「素材」「動画」「割り当て」を外す。右端の記号列は送りと表示だけ。上部に「作る・直す」への 1 リンク(同じ機種 × 工程を引き継ぐ)。
+- **作る・直す**(`/kiosk/assembly/manuals/workshop`、新設): 左に機種(既定は要領書がある機種の一覧、テンキーや手入力で機種マスタを即時検索)、中に工程と件数、右にその機種 × 工程の要領書の札(サムネイル、名前、状態の札: 公開 第 n 版 / 下書き / 改版中・保持者、操作: 直す・使う・外す・削除)。上部に「作る」(白紙から作る、機種と工程を引き継ぐ)、「素材」「動画」、「既存の要領書を割り当てる」(割り当てダイアログ)。
+- **使う**: 組立ホームの作業一覧(既存)と組立テンプレート(既存)。工房の公開済みの札の「使う」は既存の `kioskAssemblyTemplateNewPath({ procedureDocumentId })` へ。
+- **組立ホーム**: 上部の入口を「見る(要領書)」「作る・直す(要領書)」に整理。ホームの一覧が「使う」。モックの 3 枚の札の画面は、ホームの一覧がすでに「使う」であり画面を 1 段増やすため採用しない(Decision Log 参照)。
+- **エディタ**: 入口が工房なら、見出しに「機種 › 工程 › 文書名」と「作る/直す」の札を出し、「戻る」「公開」「改版を破棄」「削除」の後は工房の同じ機種 × 工程へ戻る(`location.state.returnTo`)。既存の手順書一覧から入った場合は従来どおり。編集機能そのものは変えない。
+- **API**: 工房の札に必要な状態をまとめて返す `GET /assembly/procedure-manuals/models/:modelCodeKey/overview`(工程ごとの割り当て件数と、各割り当ての文書状態: 公開版の版数、改版の下書きの有無、編集の予約の保持者名と開始時刻、キオスク PDF か文書か、無効理由)を追加。既存 API は変えない。
+
 
 ## Concrete Steps (Phase 1)
 

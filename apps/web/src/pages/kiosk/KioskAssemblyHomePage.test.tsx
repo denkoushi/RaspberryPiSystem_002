@@ -199,6 +199,8 @@ describe('KioskAssemblyHomePage', () => {
   it('selects a seiban candidate and registers a lot with exact serial count', async () => {
     renderPage();
 
+    expect(screen.getByRole('link', { name: '見る' })).toHaveAttribute('href', '/kiosk/assembly/manuals');
+    expect(screen.getByRole('link', { name: '作る・直す' })).toHaveAttribute('href', '/kiosk/assembly/manuals/workshop');
     expect(screen.getByRole('link', { name: '手順書' })).toHaveAttribute(
       'href',
       '/kiosk/assembly/library?focus=procedures'

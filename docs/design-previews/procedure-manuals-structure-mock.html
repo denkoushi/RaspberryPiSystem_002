@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>要領書 構造モック</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+:root{
+  --bg:#0f1317; --bar:#161c22; --panel:#1b222a; --line:#27313b; --line-2:#344252;
+  --fg:#eef3f6; --muted:#9fadb9; --accent:#3ba776; --accent-fg:#0b1a12; --warn:#f6b93b; --use:#5fc3e8; --focus:#7cc4ff;
+  --font:"Noto Sans JP",system-ui,-apple-system,"Hiragino Sans",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);padding:16px}
+.wrap{max-width:1600px;margin:0 auto;display:grid;gap:12px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{min-height:44px;padding:0 16px;border:1px solid var(--line);background:var(--bar);color:var(--fg);border-radius:8px;font:inherit;font-weight:700;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.tab:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.stage{position:relative;width:100%;aspect-ratio:16/9;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;background:var(--bg)}
+.screen{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;font-size:22px}
+.scr{height:100%}
+.scr:not([data-active="true"]){display:none!important}
+svg{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+/* top bar shared */
+.top{height:64px;display:flex;align-items:center;gap:16px;padding:0 20px;background:var(--bar);border-bottom:1px solid var(--line)}
+.top h2{margin:0;font-size:26px;font-weight:900;letter-spacing:.1em}
+.top .mode{height:40px;display:inline-flex;align-items:center;gap:8px;padding:0 14px;border-radius:999px;font-size:19px;font-weight:700}
+.top .mode svg{width:22px;height:22px}
+.mode.see{background:rgba(159,173,185,.15);color:var(--fg)}
+.mode.make{background:rgba(246,185,59,.16);color:var(--warn)}
+.mode.use{background:rgba(95,195,232,.16);color:var(--use)}
+.top .sp{flex:1}
+.top .b{height:44px;display:inline-flex;align-items:center;gap:8px;padding:0 16px;border:1px solid var(--line-2);border-radius:8px;background:transparent;color:var(--fg);font:inherit;font-size:19px;font-weight:700}
+.top .b svg{width:22px;height:22px}
+.top .b.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+
+/* A. home tiles */
+.home{height:100%;display:grid;grid-template-rows:64px 1fr}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;padding:48px 80px;align-content:center}
+.tile{display:grid;grid-template-rows:auto auto auto;gap:18px;justify-items:center;align-content:center;height:520px;border-radius:24px;border:1px solid var(--line-2);background:var(--panel);color:var(--fg);font:inherit;cursor:pointer}
+.tile .ic{width:120px;height:120px;border-radius:32px;display:grid;place-items:center}
+.tile .ic svg{width:64px;height:64px}
+.tile h3{margin:0;font-size:48px;font-weight:900;letter-spacing:.12em}
+.tile .sub{font-size:22px;color:var(--muted)}
+.tile.see .ic{background:rgba(159,173,185,.15);color:var(--fg)}
+.tile.make .ic{background:rgba(246,185,59,.16);color:var(--warn)}
+.tile.use .ic{background:rgba(95,195,232,.16);color:var(--use)}
+
+/* B. viewer (read only) */
+.see-page{height:100%}
+.view{position:relative;height:100%;background:#0a0d10;padding-right:64px}
+.page{height:100%;display:grid;place-items:center;padding:20px}
+.sheet{background:#fff;color:#111;height:960px;aspect-ratio:1/1.414;border:1px solid #777;padding:40px;font-size:18px;display:grid;grid-template-rows:auto 1fr;gap:16px}
+.sheet .hd{display:grid;grid-template-columns:1fr 2fr 1fr 3fr;border:1px solid #333;font-size:16px}
+.sheet .hd span{padding:6px 8px;border-right:1px solid #333}
+.sheet .grid{border:1px solid #333;background:repeating-linear-gradient(to bottom,transparent 0 56px,#333 56px 57px)}
+.rail{position:absolute;top:0;right:0;bottom:0;width:64px;background:var(--bar);border-left:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0}
+.rb{width:48px;height:48px;border-radius:10px;border:1px solid var(--line-2);background:transparent;color:var(--fg);display:grid;place-items:center;flex:none}
+.rb svg{width:26px;height:26px}
+.rb[aria-pressed="true"],.rb.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.sep{width:36px;height:1px;background:var(--line-2);margin:4px 0}
+.num{font-family:var(--mono);font-size:17px;line-height:1.1;text-align:center}
+.crumb{display:flex;align-items:center;gap:10px;min-width:0;font-size:21px;color:var(--muted)}
+.crumb b{color:var(--fg)}
+.crumb i{opacity:.5;font-style:normal}
+
+/* C. workshop */
+.shop{height:100%;display:grid;grid-template-rows:64px 1fr}
+.shop-body{display:grid;grid-template-columns:440px 300px minmax(0,1fr);min-height:0}
+.col{border-right:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:10px;min-height:0;overflow:auto;background:var(--bar)}
+.col h3{margin:0;font-size:16px;color:var(--muted);letter-spacing:.1em;font-weight:700}
+.search{height:48px;border:1px solid var(--line-2);border-radius:8px;background:#fff;color:#0f1317;padding:0 12px;font:inherit;font-size:21px}
+.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.keys button{height:52px;border-radius:8px;border:1px solid var(--line-2);background:var(--panel);color:var(--fg);font:inherit;font-size:24px;font-weight:700}
+.keys button.wide{grid-column:span 2}
+.row{min-height:48px;display:flex;align-items:center;padding:0 12px;border-radius:8px;font-weight:700;font-size:20px;font-family:var(--mono)}
+.row[aria-current="true"]{background:var(--line)}
+.prow{min-height:48px;display:flex;align-items:center;padding:0 12px;border-radius:8px;font-weight:700;font-size:21px;font-family:var(--font)}
+.prow[aria-current="true"]{background:var(--line)}
+.prow .cnt{margin-left:auto;font-family:var(--mono);color:var(--muted);font-size:17px;font-weight:400}
+.docs{padding:16px 20px;display:grid;gap:14px;align-content:start;overflow:auto;background:var(--bg)}
+.docs .head{display:flex;align-items:center;gap:14px;min-height:48px}
+.docs .head h3{margin:0;font-size:24px;font-weight:900}
+.docs .head .sp{flex:1}
+.docs .head .b{height:48px;display:inline-flex;align-items:center;gap:8px;padding:0 16px;border:1px solid var(--line-2);border-radius:8px;background:transparent;color:var(--fg);font:inherit;font-size:20px;font-weight:700}
+.docs .head .b svg{width:22px;height:22px}
+.docs .head .b.primary{background:var(--warn);color:var(--accent-fg);border-color:var(--warn)}
+.card{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 16px;border:1px solid var(--line-2);border-radius:14px;background:var(--panel)}
+.card .th{width:150px;aspect-ratio:1.414/1;background:#fff;border-radius:6px;border:1px solid #777}
+.card .t{display:grid;gap:8px;min-width:0}
+.card .t b{font-size:24px;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:18px;color:var(--muted)}
+.badge{height:32px;display:inline-flex;align-items:center;padding:0 12px;border-radius:999px;font-size:17px;font-weight:700;border:1px solid var(--accent);color:var(--accent)}
+.badge.draft{border-color:var(--warn);color:var(--warn)}
+.badge.busy{border-color:var(--warn);color:var(--warn);background:rgba(246,185,59,.12)}
+.card .acts{display:flex;gap:8px}
+.card .acts button{height:48px;min-width:48px;padding:0 16px;border-radius:8px;border:1px solid var(--line-2);background:transparent;color:var(--fg);font:inherit;font-size:20px;font-weight:700;display:inline-flex;align-items:center;gap:8px}
+.card .acts button svg{width:22px;height:22px}
+.card .acts button.primary{background:var(--warn);color:var(--accent-fg);border-color:var(--warn)}
+.card .acts button.quiet{border-color:transparent;color:var(--muted)}
+.card.new{grid-template-columns:1fr;justify-items:center;padding:28px;border-style:dashed;background:transparent;color:var(--muted);font-size:22px;font-weight:700}
+
+/* D. use */
+.use-page{height:100%;display:grid;grid-template-rows:64px 1fr}
+.use-body{display:grid;grid-template-columns:minmax(0,1fr) 420px;min-height:0}
+.use-body .page{background:#0a0d10}
+.marks{position:relative}
+.mk{position:absolute;width:44px;height:44px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;font-weight:900;font-size:22px;border:3px solid #fff}
+.mk.chk{background:var(--use)}
+.side{border-left:1px solid var(--line);background:var(--bar);padding:16px;display:grid;gap:10px;align-content:start}
+.side h3{margin:0;font-size:16px;color:var(--muted);letter-spacing:.1em}
+.side .it{min-height:56px;display:flex;align-items:center;gap:12px;padding:0 12px;border:1px solid var(--line-2);border-radius:10px;font-size:21px;font-weight:700}
+.side .it .n{width:36px;height:36px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;font-size:18px}
+.side .it .n.c{background:var(--use)}
+.side .it .v{margin-left:auto;font-family:var(--mono);color:var(--muted);font-weight:400}
+.side .it .v.ok{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-for="a">組立ホーム</button>
+    <button class="tab" role="tab" aria-selected="false" data-for="b">見る</button>
+    <button class="tab" role="tab" aria-selected="false" data-for="c">作る・直す</button>
+    <button class="tab" role="tab" aria-selected="false" data-for="d">使う</button>
+  </div>
+  <div class="stage"><div class="screen" id="screen">
+
+    <section class="scr home" data-active="true" id="a">
+      <div class="top"><h2>組立</h2></div>
+      <div class="tiles">
+        <button class="tile see"><span class="ic"><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span><h3>見る</h3><span class="sub">要領書</span></button>
+        <button class="tile make"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></span><h3>作る・直す</h3><span class="sub">要領書</span></button>
+        <button class="tile use"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></span><h3>使う</h3><span class="sub">組立作業・検査記録</span></button>
+      </div>
+    </section>
+
+    <section class="scr see-page" id="b">
+      <div class="view">
+        <div class="page"><div class="sheet"><div class="hd"><span>型番</span><span>DFD6362XYZ-3943173</span><span>工程</span><span>組立</span></div><div class="grid"></div></div></div>
+        <div class="rail">
+          <button class="rb" aria-label="一覧"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+          <button class="rb" aria-label="2 ページ"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="8" height="14" rx="1"/><rect x="13" y="5" width="8" height="14" rx="1"/></svg></button>
+          <span class="sep"></span>
+          <button class="rb" aria-label="全手順"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><rect x="14" y="14" width="6" height="6"/></svg></button>
+          <button class="rb" aria-pressed="true" aria-label="全体"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+          <button class="rb" aria-label="幅"><svg viewBox="0 0 24 24"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg></button>
+          <span class="sep"></span>
+          <button class="rb" aria-label="前"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+          <span class="num">3<br>/21</span>
+          <button class="rb primary" aria-label="次"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="scr shop" id="c">
+      <div class="top"><h2>要領書</h2><span class="mode make"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>作る・直す</span><span class="sp"></span><button class="b"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg>素材 12</button><button class="b"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>動画 4</button><button class="b">組立へ戻る</button></div>
+      <div class="shop-body">
+        <div class="col">
+          <h3>機種</h3>
+          <input class="search" value="636" aria-label="型番">
+          <div class="keys"><button>7</button><button>8</button><button>9</button><button>4</button><button>5</button><button>6</button><button>1</button><button>2</button><button>3</button><button class="wide">0</button><button>⌫</button></div>
+          <div class="row" aria-current="true">DFD<mark style="background:rgba(246,185,59,.4);color:inherit">636</mark>2XYZ-3943173</div>
+          <div class="row">DFD<mark style="background:rgba(246,185,59,.4);color:inherit">636</mark>5XYZ-3943201</div>
+        </div>
+        <div class="col">
+          <h3>工程</h3>
+          <div class="prow" aria-current="true">組立 › 組立<span class="cnt">2</span></div>
+          <div class="prow">組立 › 検査<span class="cnt">1</span></div>
+          <div class="prow">加工 › 切削<span class="cnt">—</span></div>
+          <div class="prow">加工 › 研削<span class="cnt">—</span></div>
+        </div>
+        <div class="docs">
+          <div class="head"><h3>DFD6362XYZ-3943173 › 組立 › 組立</h3><span class="sp"></span><button class="b primary"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>作る</button></div>
+          <div class="card">
+            <div class="th"></div>
+            <div class="t"><b>DFD6362XYZ-3943173_組立_組立</b><div class="meta"><span class="badge">公開 第3版</span><span class="badge busy">改版中 · 佐藤 09:12〜</span><span>21 ページ · 承認 山田 10/05</span></div></div>
+            <div class="acts"><button class="primary"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>直す</button><button class="quiet">外す</button></div>
+          </div>
+          <div class="card">
+            <div class="th"></div>
+            <div class="t"><b>DFD6362XYZ-3943173_組立_組立_圧入</b><div class="meta"><span class="badge draft">下書き</span><span>3 ページ · 未公開</span></div></div>
+            <div class="acts"><button class="primary"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>直す</button><button class="quiet">削除</button></div>
+          </div>
+          <div class="card new">＋ 既存の要領書を割り当てる</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="scr use-page" id="d">
+      <div class="top"><h2>組立作業</h2><span class="mode use"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>使う</span><div class="crumb"><b>DFD6362XYZ-3943173</b><i>›</i>組立工程<i>·</i>製番 3943173<i>·</i>要領書 第3版</div><span class="sp"></span><button class="b primary">記録を保存</button></div>
+      <div class="use-body">
+        <div class="page"><div class="sheet marks"><div class="hd"><span>型番</span><span>DFD6362XYZ-3943173</span><span>工程</span><span>組立</span></div><div class="grid"></div><span class="mk" style="left:120px;top:200px">①</span><span class="mk" style="left:360px;top:330px">②</span><span class="mk chk" style="left:240px;top:520px">✓</span></div></div>
+        <div class="side">
+          <h3>この手順の記録</h3>
+          <div class="it"><span class="n">①</span>M8 × 4<span class="v ok">24.0 N·m</span></div>
+          <div class="it"><span class="n">②</span>M10 × 2<span class="v">—</span></div>
+          <div class="it"><span class="n c">✓</span>ガタ無し<span class="v ok">済</span></div>
+        </div>
+      </div>
+    </section>
+
+  </div></div>
+</div>
+<script>
+const screen = document.getElementById('screen');
+const fit = () => { const w = screen.parentElement.clientWidth; screen.style.transform = `scale(${w / 1920})`; };
+new ResizeObserver(fit).observe(screen.parentElement); fit();
+for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => {
+  for (const t of document.querySelectorAll('.tab')) t.setAttribute('aria-selected', String(t === tab));
+  for (const s of document.querySelectorAll('.scr')) s.dataset.active = String(s.id === tab.dataset.for);
+});
+</script>
+</body>
+</html>

@@ -2,6 +2,7 @@ import { Button, buttonClassName } from '../../../components/ui/Button';
 
 export function AssemblyProcedureDocumentEditorCanvasToolbar({
   documentName,
+  modeBadge,
   pageIndex,
   pageCount,
   selectionMode,
@@ -21,6 +22,7 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({
   onDiscard
 }: {
   documentName: string;
+  modeBadge?: { mode: 'fix' | 'make'; revisionNumber: number; supersedesDocumentId?: string | null };
   pageIndex: number;
   pageCount: number;
   selectionMode: boolean;
@@ -43,6 +45,9 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({
     <header className="grid min-h-12 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-white/10 bg-slate-900/90 px-2 py-1 xl:min-h-14 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
       <div className="min-w-0">
         <p className="truncate text-sm font-bold">{documentName}</p>
+        {modeBadge ? <span className={`inline-flex h-8 items-center rounded-full border px-3 text-[17px] font-bold ${modeBadge.mode === 'make' ? 'border-[#3ba776] text-[#3ba776]' : 'border-[#f6b93b] text-[#f6b93b]'}`}>
+          {modeBadge.mode === 'make' ? '作る' : '直す'} · {modeBadge.supersedesDocumentId ? '改版の下書き' : '下書き'} 第{modeBadge.revisionNumber}版
+        </span> : null}
         <p className="truncate text-xs text-white/55">
           {pageIndex + 1}/{pageCount}ページ · {dirty ? '未保存あり' : '保存済み'}
         </p>

@@ -8,5 +8,8 @@
   },
   "devDependencies": {
     "@huggingface/transformers": "^3.7.6"
+  },
+  "overrides": {
+    "simple-git": "4.0.2"
   }
 }

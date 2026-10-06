@@ -15,7 +15,7 @@ import { AssemblyProcedureDocumentPublishDialog } from './AssemblyProcedureDocum
 import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTypeDialog';
 import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCandidateDialog';
 
-export function AssemblyProcedureDocumentEditorScreen() {
+export function AssemblyProcedureDocumentEditorScreen({ context }: { context?: import('../types').ProcedureManualEditorContext }) {
   const controller = useAssemblyProcedureDocumentEditor();
   const [videoLinkOpen, setVideoLinkOpen] = useState(false);
   const [materialShelfOpen, setMaterialShelfOpen] = useState(false);
@@ -40,7 +40,7 @@ export function AssemblyProcedureDocumentEditorScreen() {
   const selectedPage = controller.selectedPage;
 
   if (!controller.accessGranted || controller.loading) {
-    return <AssemblyProcedureDocumentEditorAuthGate />;
+    return <AssemblyProcedureDocumentEditorAuthGate context={context} />;
   }
 
   if (!selectedPage) {
@@ -69,7 +69,8 @@ export function AssemblyProcedureDocumentEditorScreen() {
       ) : null}
       {videoLinkOpen && controller.document ? <ProcedureVideoShelfDialog key={`${controller.document.id}:${selectedPage.pageIndex}`} link={{ documentId: controller.document.id, pageIndex: selectedPage.pageIndex, accessPassword: controller.passwordInput, holderToken: controller.editLeaseToken }} onClose={() => setVideoLinkOpen(false)} /> : null}
       <AssemblyProcedureDocumentEditorCanvasToolbar
-        documentName={controller.document?.name ?? '手順書'}
+        documentName={context ? [context.modelCode, context.processName, controller.document?.name ?? '要領書'].filter(Boolean).join(' › ') : controller.document?.name ?? '手順書'}
+        modeBadge={context ? { mode: context.mode, revisionNumber: controller.document?.revisionNumber ?? 1, supersedesDocumentId: controller.document?.supersedesDocumentId } : undefined}
         pageIndex={selectedPage.pageIndex}
         pageCount={controller.pages.length}
         selectionMode={controller.selectionMode}
