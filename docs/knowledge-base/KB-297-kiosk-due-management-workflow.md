@@ -241,9 +241,9 @@ category: knowledge-base
 - **Context**: ボードの各アイテムは外部調達した材料（鋳物・鋼材）が入らないと加工開始できない。購買CSV（Gmail 件名 `FKOBAINO`）に後から追加された列 **`FKOBAIST`** を使い、材料の入荷状況をバッジで出す。
 - **FKOBAIST の値**: `C` 全数入荷済 / `S` 一部入荷済（分納） / `R` 注文済・納入なし / `O` 生産管理課確定済・資材課未発注 / `P` 生産管理課未確定 / `X` 工程削除（その工程が削除、または別工程へ変更）。
 - **材料用の品番ルール（2026-10-01 に本番 22.5 万行と CSV 4,418 行で確認）**: 材料は「加工品の品番 + 付加」で発注される。`-001` はほぼ「材料」、`-002` はほぼ「鋳物」、`(A)` は【素材】【鋳物】。`-003`/`-006`/`-016` は型費、`-048`〜`-050`/`-004` などは再処理・追加工費で材料ではない。付加なしは部品そのものの購買。新列 `FSEZONO` は付加なしの行にだけ入り、材料行は空なので材料の突合には使えない。
-- **判定**: `(FSEIBAN, 照合キーFHINCD)` で `PurchaseOrderLookupRow` を引き、品番が `(A)` / `-001` / `-002` の行だけを材料として扱う（`isMaterialPurchasePartCode`）。`X`・未取込（`purchaseStatus` null）は無視し、複数行は最も遅れているものを表示する（未発注 > 未入荷 > 一部入荷 > 入荷済）。材料行が無い部品はバッジを出さない。正本は [`material-arrival-status.service.ts`](../../apps/api/src/services/purchase-order-lookup/material-arrival-status.service.ts)。
-- **表示**: 「材料入荷済 / 材料一部入荷済 / 材料未入荷 / 材料未発注」。順位ボードは工程チップの行の右端（全工程の行に出る）、製番ボードは納期・個数・時間の下（資源CD表示では製番・機種名と同じ行の右。行を増やさない）。
-- **配信**: 順位ボードは工程チップと同じ部品キー単位の `leaderboardMaterialArrivalByPartKey`（装飾 API）。製番ボードは `items[].materialArrivalStatus` を応答のたびに付け、スナップショットと `itemRevision` には含めない。
+- **判定**: `(FSEIBAN, 照合キーFHINCD)` で `PurchaseOrderLookupRow` を引き、品番が `(A)` / `-001` / `-002` の行だけを材料として扱う（`isMaterialPurchasePartCode`）。`X`・未取込（`purchaseStatus` null）は無視し、複数行は最も遅れているものを表示する（未発注 > 未入荷 > 一部入荷 > 入荷済）。材料行が無い部品はバッジを出さない。正本は [`material-arrival-status.service.ts`](../../apps/api/src/services/purchase-order-lookup/material-arrival-status.service.ts)。 材料行から状態が決まらず `X` が1件以上ある場合に限り、品番の前後空白を除いた値が照合キーと完全一致する付加なしの行で代用し、その行でも状態が決まらなければバッジなしとする（材料行なし・null のみ・`-003` などは代用対象外）。
+- **表示**: 「材料入荷済 / 材料一部入荷済 / 材料未入荷 / 材料未発注」。順位ボードは工程チップの行の右端（全工程の行に出る）、製番ボードは納期・個数・時間の下（資源CD表示では製番・機種名と同じ行の右。行を増やさない）。 部品で代用した場合は、同じ色・形・位置で「部品入荷済 / 部品一部入荷済 / 部品未入荷 / 部品未発注」と表示する。
+- **配信**: 順位ボードは工程チップと同じ部品キー単位の `leaderboardMaterialArrivalByPartKey`（装飾 API）。製番ボードは `items[].materialArrivalStatus` を応答のたびに付け、スナップショットと `itemRevision` には含めない。 既存 status の値は変えず、代用時だけ製番ボードの `items[].materialArrivalBasis` と順位ボードの `leaderboardMaterialArrivalBasisByPartKey` に `part` を追加する（装飾 API・list・composite board で配信）。
 - **制約**: `FKOBAIST` は列追加（migration `20261001120000_purchase_order_lookup_purchase_status`）以降に取り込んだ行だけに入る。それ以前の行は次に同じ注番が CSV に載るまでバッジが出ない。突合対象は MD 品番のみ（MH/SD/SH などは購買行が無い）。`(A)` 行の多くは生産日程に無い製番で発注されており当たらない。MD 部品の約 15% は同じ製番の購買行が無く、バッジは出ない。
 
 ### FKOBAINO 取込が大きい CSV で失敗する（2026-10-01） {#fkobaino-sync-large-csv-timeout-2026-10-01}

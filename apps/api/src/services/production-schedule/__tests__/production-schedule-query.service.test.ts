@@ -12,6 +12,7 @@ import { enrichProductionScheduleRowsWithResolvedMachineName } from '../producti
 import { enrichProductionScheduleRowsWithCustomerName } from '../production-schedule-customer-name-enrichment.service.js';
 import * as leaderboardSplitExpansion from '../leaderboard/leaderboard-split-expansion.service.js';
 import * as listCountService from '../production-schedule-list-count.service.js';
+import { buildLeaderboardMaterialArrivalByPartKeyForScheduleRows } from '../leaderboard/leaderboard-part-material-arrival.service.js';
 import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
@@ -72,7 +73,10 @@ vi.mock('../production-schedule-machine-name-enrichment.service.js', () => ({
 }));
 
 vi.mock('../leaderboard/leaderboard-part-material-arrival.service.js', () => ({
-  buildLeaderboardMaterialArrivalByPartKeyForScheduleRows: vi.fn(async () => ({})),
+  buildLeaderboardMaterialArrivalByPartKeyForScheduleRows: vi.fn(async () => ({
+    leaderboardMaterialArrivalByPartKey: {},
+    leaderboardMaterialArrivalBasisByPartKey: {}
+  })),
 }));
 
 vi.mock('../production-schedule-customer-name-enrichment.service.js', () => ({
@@ -797,6 +801,11 @@ describe('production-schedule-query.service', () => {
   });
 
   it('responseProfile=leaderboard では actual-hours のみ省略し機種名 enrich は行う', async () => {
+    const partKey = ['A', '0001', 'X'].join('\0');
+    vi.mocked(buildLeaderboardMaterialArrivalByPartKeyForScheduleRows).mockResolvedValueOnce({
+      leaderboardMaterialArrivalByPartKey: { [partKey]: 'ordered' },
+      leaderboardMaterialArrivalBasisByPartKey: { [partKey]: 'part' }
+    });
     vi.mocked(prisma.productionScheduleActualHoursFeature.findMany).mockResolvedValue([
       {
         location: 'kiosk-1',
@@ -853,8 +862,9 @@ describe('production-schedule-query.service', () => {
     expect(enrichProductionScheduleRowsWithResolvedMachineName).toHaveBeenCalledTimes(1);
     expect(enrichProductionScheduleRowsWithCustomerName).toHaveBeenCalledTimes(1);
 
-    const partKey = ['A', '0001', 'X'].join('\0');
     expect(result.leaderboardFooterChipsByPartKey?.[partKey]).toEqual([]);
+    expect(result.leaderboardMaterialArrivalByPartKey).toEqual({ [partKey]: 'ordered' });
+    expect(result.leaderboardMaterialArrivalBasisByPartKey).toEqual({ [partKey]: 'part' });
   });
 
   it('responseProfile=leaderboard では手動割当が pageSize を超えても切り捨てない', async () => {

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import type { MaterialArrivalStatus } from '@raspi-system/shared-types';
+import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID } from '../production-schedule/constants.js';
@@ -50,6 +50,22 @@ export function resolveMaterialArrivalStatus(
   return worst;
 }
 
+export type MaterialArrivalResult = { status: MaterialArrivalStatus; basis: MaterialArrivalBasis };
+
+type PurchaseArrivalRow = { raw: string; matchKey: string; purchaseStatus: string | null };
+
+export function resolveMaterialArrivalByPart(rows: ReadonlyArray<PurchaseArrivalRow>): MaterialArrivalResult | null {
+  const materialStatuses = rows.filter((row) => isMaterialPurchasePartCode(row.raw)).map((row) => row.purchaseStatus);
+  const materialStatus = resolveMaterialArrivalStatus(materialStatuses);
+  if (materialStatus != null) return { status: materialStatus, basis: 'material' };
+  if (!materialStatuses.some((status) => status?.trim().toUpperCase() === 'X')) return null;
+
+  const partStatus = resolveMaterialArrivalStatus(
+    rows.filter((row) => row.raw.trim() === row.matchKey.trim()).map((row) => row.purchaseStatus)
+  );
+  return partStatus != null ? { status: partStatus, basis: 'part' } : null;
+}
+
 export function materialArrivalLookupKey(fseiban: string, fhincd: string): string {
   return `${fseiban.trim()}\t${normalizePurchaseFhinCdForMatching(fhincd)}`;
 }
@@ -58,11 +74,11 @@ const PAIR_CHUNK = 500;
 
 /**
  * 生産日程の (FSEIBAN, FHINCD) ごとに材料の入荷状況を返す。
- * 戻り値のキーは {@link materialArrivalLookupKey}。材料行が無い部品はキー自体を含めない。
+ * 戻り値のキーは {@link materialArrivalLookupKey}。材料行から判定できず X がある場合だけ部品購買で代用する。
  */
 export async function findMaterialArrivalStatusByPart(
   parts: ReadonlyArray<{ fseiban: string; fhincd: string }>
-): Promise<Map<string, MaterialArrivalStatus>> {
+): Promise<Map<string, MaterialArrivalResult>> {
   const pairs = new Map<string, { seiban: string; matchKey: string }>();
   for (const part of parts) {
     const seiban = part.fseiban.trim();
@@ -71,7 +87,7 @@ export async function findMaterialArrivalStatusByPart(
     pairs.set(`${seiban}\t${matchKey}`, { seiban, matchKey });
   }
 
-  const statusesByKey = new Map<string, Array<string | null>>();
+  const rowsByKey = new Map<string, PurchaseArrivalRow[]>();
   const all = [...pairs.values()];
   for (let i = 0; i < all.length; i += PAIR_CHUNK) {
     const chunk = all.slice(i, i + PAIR_CHUNK);
@@ -89,17 +105,16 @@ export async function findMaterialArrivalStatusByPart(
         )})
     `;
     for (const row of rows) {
-      if (!isMaterialPurchasePartCode(row.raw)) continue;
       const key = `${row.seiban.trim()}\t${row.matchKey.trim()}`;
-      const list = statusesByKey.get(key);
-      if (list) list.push(row.purchaseStatus);
-      else statusesByKey.set(key, [row.purchaseStatus]);
+      const list = rowsByKey.get(key);
+      if (list) list.push(row);
+      else rowsByKey.set(key, [row]);
     }
   }
 
-  const result = new Map<string, MaterialArrivalStatus>();
-  for (const [key, statuses] of statusesByKey) {
-    const status = resolveMaterialArrivalStatus(statuses);
+  const result = new Map<string, MaterialArrivalResult>();
+  for (const [key, rows] of rowsByKey) {
+    const status = resolveMaterialArrivalByPart(rows);
     if (status != null) result.set(key, status);
   }
   return result;

@@ -79,6 +79,7 @@ export type GrindingPlanningBoardItemKind = 'row' | 'split';
  * received=全数入荷済 / partial=一部入荷済 / ordered=注文済・未入荷 / unordered=未発注。
  */
 export type MaterialArrivalStatus = 'received' | 'partial' | 'ordered' | 'unordered';
+export type MaterialArrivalBasis = 'material' | 'part';
 
 export interface GrindingPlanningBoardItem {
   itemId: string;
@@ -106,6 +107,7 @@ export interface GrindingPlanningBoardItem {
   progress: { completed: number; total: number; quantityKnown: boolean };
   /** 材料の購買行が無い部品は null / 省略 */
   materialArrivalStatus?: MaterialArrivalStatus | null;
+  materialArrivalBasis?: MaterialArrivalBasis;
 }
 
 export interface GrindingPlanningBoardLoad {

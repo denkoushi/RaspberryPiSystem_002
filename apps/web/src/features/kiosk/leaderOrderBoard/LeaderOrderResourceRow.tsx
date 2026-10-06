@@ -267,7 +267,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
           <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
             <KioskResourceProcessChips processes={footerResourceChips} className="flex-nowrap" />
           </div>
-          <MaterialArrivalBadge status={row.materialArrivalStatus} />
+          <MaterialArrivalBadge status={row.materialArrivalStatus} basis={row.materialArrivalBasis} />
         </div>
       ) : null}
     </div>

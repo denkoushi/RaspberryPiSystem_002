@@ -66,7 +66,9 @@ describe('decorateLeaderboardCompositeBoardShell', () => {
         { id: 'a', resolvedMachineName: 'M-a', customerName: 'C-a' },
         { id: 'b', resolvedMachineName: null, customerName: null }
       ],
-      leaderboardFooterChipsByPartKey: { 'k\0a': [] }
+      leaderboardFooterChipsByPartKey: { 'k\0a': [] },
+      leaderboardMaterialArrivalByPartKey: { 'k\0a': 'ordered' },
+      leaderboardMaterialArrivalBasisByPartKey: { 'k\0a': 'part' }
     });
 
     const result = await decorateLeaderboardCompositeBoardShell({
@@ -82,6 +84,8 @@ describe('decorateLeaderboardCompositeBoardShell', () => {
     expect(result.rowsWithDeco[0]?.resolvedMachineName).toBe('M-a');
     expect(result.rowsWithDeco[0]?.customerName).toBe('C-a');
     expect(result.leaderboardFooterChipsByPartKey).toEqual({ 'k\0a': [] });
+    expect(result.leaderboardMaterialArrivalByPartKey).toEqual({ 'k\0a': 'ordered' });
+    expect(result.leaderboardMaterialArrivalBasisByPartKey).toEqual({ 'k\0a': 'part' });
   });
 });
 
