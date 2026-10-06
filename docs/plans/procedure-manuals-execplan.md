@@ -12,6 +12,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-07) 本番反映の記録 3: #1771(配置済み素材の再利用)を Pi5 へ反映。merge 0a5dd86a(08:11、追跡セッション不在のためユーザー許可でこのセッションが merge)。main の release-api-image が sharp 0.35.4 の新勧告(GHSA-wq5f-xc86-pv6w)で赤になったため、#1774 で sharp 0.35.5 に更新(merge 7c6a67be、08:38)。Pi5 release run 20261006-234729-189aef(08:47→08:55 success、recap ok=268 changed=31 failed=0 unreachable=0)、稼働イメージ api/web 7c6a67be、/・/admin・/kiosk・/api/system/health 200、API エラーログ 0 件。実機確認はユーザー待ち(素材棚の「配置済み」タブから別の要領書に貼れること)。
 - [x] (2026-10-07) 実機要望: 配置済みの素材も選べるように。API は配置の前提を「捨てていない」だけにし、配置のたびに documentId/placedAt を最後の配置先で上書き(画像は毎回新しい asset をコピー、捨てた素材は 409)。エディタから開く素材棚にも「配置済み」タブを出して配置・差し替えに使え、配置済みタブでは「配置を取り消す」を出さない。未配置の件数(貼り忘れの目安)の意味は維持。Codex(gpt-6.1-sol/high)実装。
 - [x] (2026-10-06) 夜 本番反映の記録 2: #1768(画像の「素材から差し替え」とハンドルの重なり修正)を Pi5 へ反映。merge 19ce5861(22:27)、run 20261006-133541-8aa713(22:35→22:41 success、recap ok=268 changed=31 failed=0 unreachable=0)、稼働イメージ api/web 19ce5861、/・/admin・/kiosk・/api/system/health 200、API エラーログ 0 件。実機確認はユーザー待ち(画像の差し替え、ダイアログ上にハンドルが透けないこと)。
 - [x] (2026-10-06) 夜 実機指摘 2: 右ペイン「画像」の asset ID 入力とファイル選択(タッチ端末では使えない)を外し、「素材から差し替え」1 ボタンに(素材棚を差し替えモードで開き、選択中の画像要素の assetId だけを更新、位置・大きさ・重なり順・マスク維持、undo 対応、画像素材のみ・単一選択)。選択中要素のリサイズハンドル(z-index 1,000,000)が素材ダイアログの上に透けていたのを、OverlayLayer の根元に isolate を足して閉じ込め。Codex(gpt-6.1-sol/high)実装、読み取り専用レビュー 3 件(非画像素材の配置済み化、複数選択、無言の失敗)を反映。取説の「画像」手順を差し替えに更新し再生成。
