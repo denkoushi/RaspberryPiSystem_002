@@ -315,6 +315,9 @@ const adapter = Object.freeze({
   prepareSheet,
   async waitForPageReady(page, sheetId) {
     assertSupportedSheet(sheetId);
+    if (sheetId === 'assembly-revision') {
+      await page.getByRole('link', { name: 'テンプレート', exact: true }).click();
+    }
     const target = sheetId.startsWith('assembly-document-editor-')
       ? 'assembly-document-editor-authenticate'
       : sheetId.startsWith('assembly-template-')
