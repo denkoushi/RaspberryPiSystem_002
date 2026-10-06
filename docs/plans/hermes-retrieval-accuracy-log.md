@@ -393,3 +393,30 @@ Night of 2026-10-06 (22:05 to 22:33), the first with the second grader, the real
 Caveats: the learn phase ran at 22:08 to 22:11 while generation was still writing until 22:22, which points to two runner processes during the evening API swap; the files are consistent, but the runner should hold a lock. Live scoring took a median 2.6 s per question at night against 0.6 s on the Mac by day.
 
 Private files: `work/flywheel/questions-2026-10-06.jsonl`, `real-2026-10-06.jsonl`, `learned-queries.jsonl`, `labels.json`.
+
+### 2026-10-07: EmbeddingGemma 2 as the dense model (no change)
+
+Trigger: Google released EmbeddingGemma 2 (`google/embeddinggemma-2`, Apache 2.0, 768 dimensions with Matryoshka truncation, 8,192-token context, text, image, audio and video in one space; the card reports MTEB multilingual 61.36 and no Japanese score).
+
+Method: offline on the owner's Mac, no production change, the same arrangement as the first-stage comparison of 2026-10-02: 73 content questions, 7,864 records, whole corpus, the question as the query, character-bigram BM25, RRF with k=60, the stored Qwen3 ranks and the 2026-10-02 ruri-v3-310m lists. EmbeddingGemma 2 ran text-only with sentence-transformers 6.1.0, documents with the `Document` prompt and no truncation (records are a median of 97 tokens), questions with the `SearchQuery` prompt and, as a second arm, the `QuestionAnswering` prompt. The recomputed current arm matched the 2026-10-02 lists on all 73 questions.
+
+| Arm | Gold target in the top 15 / 30 / 50 (73) | Grade-3 record in the top 15 / 30 (73) | Held-out paraphrase (24), top 15 / 30 |
+| --- | --- | --- | --- |
+| Qwen3 only | 36 / 49 / 53 | 59 / 63 | 20 / 22 |
+| ruri-v3-310m only | 39 / 42 / 51 | 62 / 65 | 21 / 21 |
+| EmbeddingGemma 2 only, SearchQuery | 27 / 32 / 40 | 55 / 61 | 18 / 22 |
+| EmbeddingGemma 2 only, QuestionAnswering | 35 / 41 / 48 | 59 / 63 | 21 / 21 |
+| bigram + Qwen3 (current) | 48 / 53 / 57 | 65 / 68 | 22 / 23 |
+| bigram + EmbeddingGemma 2, SearchQuery | 44 / 54 / 57 | 67 / 68 | 22 / 23 |
+| bigram + EmbeddingGemma 2, QuestionAnswering | 48 / 58 / 58 | 68 / 69 | 22 / 23 |
+| bigram + EmbeddingGemma 2 at 512 / 256 dimensions, SearchQuery | 43 / 52 / 57 and 42 / 49 / 56 | 67 / 68 and 67 / 67 | 22 / 23 and 22 / 22 |
+
+On its own the model is behind Qwen3 on the gold targets with either prompt. Fused with bigrams the best arm (QuestionAnswering) gains 5 targets at rank 30 and 3 questions with a grade-3 record in the top 15; the SearchQuery arm loses 4 targets at rank 15. Paired on a grade-3 record in the top 15, the SearchQuery fusion gains 4 questions and loses 2 against the current pair. These are the size of the differences that the ruri-v3-310m swap showed and that were read as noise. The prompt was chosen after seeing both results, which favours the better arm.
+
+nDCG@10 is not comparable for the new arms: the graded labels were pooled from the earlier arms, and 48% (SearchQuery) or 39% (QuestionAnswering) of the model's own top 10 are unjudged and count as zero; in the fusions 9% are unjudged (0.455 and 0.461 against 0.472 for the current pair, a lower bound).
+
+Cost on the Mac (MPS): 296 s for the 7,864 records, 9 ms per question. On the DGX the model would need a new service, because the card lists only sentence-transformers and transformers and the present embedding service is a llama-server; every stored vector would be recomputed.
+
+Decision: no swap of the DGX embedding model. Three embedding models now land within a few questions of each other on these records, so the first-stage model is not where the remaining losses are. The multimodal side of the model (image and text in one space) is a separate question for the photo-loan similarity gallery, which still uses CLIP ViT-B/32, and is not measured here.
+
+Private files: `work/eg2/text-bench.py`, `work/eg2/lists-eg2.json`, `work/eg2/summary-eg2.json`, `work/eg2/eg2-docs.npy`, `models/embeddinggemma-2`.
