@@ -20,7 +20,7 @@
     "sheets/edit-visual-source.png": "eda06450d13c084babb37c2541274db651d833da46647d636e4fc8e3b0de01c4",
     "sheets/library-entry-search.png": "c10c2671be7ed89c37cc1b1cd559e570ccca82138fbebe2c95515f0a29fd499e",
     "sheets/library-template-management.png": "52a9f7bcfe872a75e4ce55917a7eea33a6cad40db14440cd1753872f657ba7b0",
-    "sheets/library-visual-management.png": "fb1fbcb14e389052d4527e080eac4c70475d607e9977f009f096c7aca2d28d06"
+    "sheets/library-visual-management.png": "2e6ce68e48ad6ec139db7386ca0ad29581441d44884d54b713e8fd75720b844c"
   },
   "browserVersion": "141.0.7390.37",
   "definitionSha256": "b07cc7dbe4f1b9d7f004d8c708baf828731fac3bd12419d402eddae24127ee5e",
@@ -665,5 +665,5 @@
   },
   "htmlSha256": "c33a24d1984437aa46e8e34222e63f6d4b9b96f32faaedfb5b705c11d415ac78",
   "schemaVersion": 1,
-  "sourceSha256": "ea10e278baf8906105fc265699f5abec943b97874857f51937267a4f56eae662"
+  "sourceSha256": "cef5817c341fdd257995eea5e7fa9fa91e88581457d06ef8846f37725bc32f66"
 }
