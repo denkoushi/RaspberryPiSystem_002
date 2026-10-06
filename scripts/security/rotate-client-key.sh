@@ -50,12 +50,17 @@ new_lower="$(printf '%s' "$NEW_CLIENT_KEY" | LC_ALL=C tr '[:upper:]' '[:lower:]'
 
 case "${ROTATE_CLIENT_KEY_DB_MODE:-compose}" in
   compose)
-    DB=(docker compose --project-directory "$ROOT" -f "${ROTATE_CLIENT_KEY_COMPOSE_FILE:-$ROOT/infrastructure/docker/docker-compose.server.yml}"
+    # Keep Compose's default project directory: the server file resolves its .env next to itself.
+    DB=(docker compose -f "${ROTATE_CLIENT_KEY_COMPOSE_FILE:-$ROOT/infrastructure/docker/docker-compose.server.yml}"
       exec -T db psql -U "${ROTATE_CLIENT_KEY_DB_USER:-postgres}" -d "${ROTATE_CLIENT_KEY_DB_NAME:-borrow_return}")
     ;;
   psql) DB=(psql) ;;
   *) fail 'DB mode must be compose or psql' ;;
 esac
+
+# Prove the connection before any credential is sent. Nothing secret is involved
+# yet, so the client's own error message is shown.
+"${DB[@]}" -X -qAt -c 'SELECT 1' </dev/null >/dev/null || fail 'cannot reach the database'
 
 rotation_sql() {
   cat <<'SQL'
