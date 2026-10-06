@@ -120,7 +120,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Decision Log
 
-- Decision (2026-10-06): サーバー発行トークンが無いため、暗証番号はタブのメモリにだけ持ち(最長 8 時間)、保存領域(sessionStorage)には期限と端末鍵だけを置く(CodeQL js/clear-text-storage-of-sensitive-data #113 への対応。再読み込みすると再入力)。将来は用途限定トークンへ。
+- Decision (2026-10-06): サーバー発行トークンが無いため、暗証番号はタブのメモリにだけ持ち(最長 8 時間)、保存領域(sessionStorage)には期限と端末鍵の短い指紋(FNV-1a、復元不可)だけを置く(CodeQL js/clear-text-storage-of-sensitive-data #113 への対応。再読み込みすると再入力)。将来は用途限定トークンへ。
   Rationale: 暗証番号の永続保存を避け、端末認証の変更と期限到達時に破棄する。
 
 - Decision: 動画 V3は元動画の行・ファイルを更新せず、新しいorigin=CONCAT行と独立したsha256出力を作る。既存origin=nullはAPIでGMAILへ正規化し、Gmail新規取込はGMAILを明示する。

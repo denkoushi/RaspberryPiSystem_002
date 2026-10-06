@@ -11,8 +11,16 @@ let memoryAccess: ProcedureEditorAccess | null = null;
 let expiryTimer: ReturnType<typeof setTimeout> | undefined;
 let scheduledExpiry: number | undefined;
 
+// A short non-reversible fingerprint of the kiosk client key (FNV-1a), so the key itself is never copied into storage.
 function clientIdentity(): string {
-  try { return resolveClientKey({ allowDefaultFallback: true }).key; } catch { return ''; }
+  let key = '';
+  try { key = resolveClientKey({ allowDefaultFallback: true }).key; } catch { return ''; }
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
 }
 
 function scheduleExpiry(access: ProcedureEditorAccess): void {
