@@ -69,6 +69,8 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-05) 動画 V3指定検証: API lint / procedure-video 5ファイル119件 / build用tsc、Web lint / procedure-manuals 4ファイル47件 / build成功。expand-only SQLの2文も成功。環境準備を含め約11分。共有型の禁止パスへ出力しないため、一時領域へ共有型をビルドし、Web buildは同一ソース/設定の隔離コピーで実行した。Prisma Clientとエンジンはworktreeのnode_modules内に準備した。
 - [x] (2026-10-05) 動画 V3: Codex レビューの 3 指摘(長い処理の回収競合 → claim トークンと各ステップ後の生存更新、非正方形ピクセル → SAR を考慮した正規化、検索をまたぐ選択の保持)を修正。使い捨て PostgreSQL で migration 適用を確認。
 - [x] (2026-10-05) PR #1718 を main へ squash merge(merge `481f0af86b69a75fdb339ee5c4bbf253eef5645c`、件名は PR 題名を指定)。main の 4 ワークフロー success。Pi5 へ標準ローリング更新(run `20261005-142032-01dac9`、`Result=success`、recap `ok=268 changed=31 unreachable=0 failed=0`、追跡セッションが実施。Hermes の #1716/#1717 も同じ配布に乗った)、health 200、migration `20261006120000_add_procedure_video_concat` 適用済み。
+- [x] (2026-10-06) UX 改善(実機確認 6 件): 右端 64px の記号列(一覧の開閉、2 ページ表示、全手順、全体、幅いっぱい、前手順、ページ番号、次手順)、左の一覧は既定で閉じ端末ごとに localStorage で記憶(開くと 760px、機種列 440px、型番は等幅 20px で折り返し)、一覧を閉じたときだけ手動の 2 ページ表示(2 手順送り)、機種検索は読み込み済み一覧の即時絞り込み + テンキー + 一致の強調(要領書ページと白紙から作る)、工程/細分チップは状態ごとに配色を明示、「外す(紐づけ解除)」、エディタに DRAFT 初版だけの「削除」(確認 1 回、割り当て中は「先に割り当てを外してください」、他の 409 は API の理由を表示)。「このページ」の手順 n/N と進捗は削除し、承認と動画を残す。API は変更なし。Codex(gpt-6.1-sol / high)が実装。
+- [x] (2026-10-06) 検証: Web lint、`vitest run procedure-manuals document-editor AssemblyProcedureSequenceViewer assembly` 74 ファイル 427 件、build。API lint、tsc。Codex read-only レビューの 4 件(一覧を閉じるとビューアが幅 0 の列に落ちる、改版 DRAFT に削除が出る、409 を全部割り当て扱い、ページ番号の読み上げ)を修正。
 - [ ] 実機確認(オーナー): 動画一覧で 2 本を選んで接続すると由来「接続」の動画が処理中として現れ、数十秒〜数分で完了して再生できる、向きの違う動画を混ぜても黒帯で揃う、コメントが引き継がれる、元の動画は残る。
 
 ## Surprises & Discoveries
@@ -259,6 +261,13 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Decision: コメントは開始・終了境界を含めて保持し、開始秒を引いて時刻とsortOrderを補正する。最終コメントの字幕は4秒未満の区間まで表示する。範囲バーの初期選択は先頭10秒(短い動画は全長)、0.1秒刻みとする。
   Rationale: APIの0〜durationSecondsの範囲と整合させ、現場で短い動画と字幕を作る初期操作を減らす。トリミング自体は10秒超も受け付けるが、赤で警告し、紐づけ時は10.5秒を超えると拒否する。
   Date/Author: 2026-10-05 / Codex
+
+- Observation: 実機確認 6 件(2026-10-06)の工程/細分チップが真っ黒だった原因は、未選択時に文字色を指定しておらず Dialog 既定の `text-slate-900` を継承していたこと(生成 CSS では Dialog の `text-[#eef3f6]` より後に定義される)。`aria-pressed:` バリアントの不動作は未再現。
+  Evidence: 旧 chip クラス文字列と `Dialog.tsx` の既定クラス、build 後 CSS の定義順。チップ自身に状態ごとの枠/背景/文字色を全指定して解消。
+- Decision: 実機確認 6 件の記号列はモックどおり 7 つの操作ボタンと 2 行のページ番号表示(`aria-live` で読み上げ)。機種一覧の件数は取得済みの選択機種×工程の割り当て件数だけ表示し、未取得は「—」(一覧 DTO に件数がなく、API は変更しない)。
+  Rationale: 無意味なボタンを増やさない。API 境界を守る。
+- Decision: 「削除」は DRAFT の初版(`supersedesDocumentId` なし)だけに出す。改版 DRAFT は既存の「改版を破棄」、PUBLISHED は紐づけ解除のみ。参照判定はサーバーの既存 DELETE(409)を正とする。
+  Rationale: 既存 API は改版 DRAFT の削除を拒むため、押せても失敗するボタンを出さない。
 
 ## Context and Orientation
 

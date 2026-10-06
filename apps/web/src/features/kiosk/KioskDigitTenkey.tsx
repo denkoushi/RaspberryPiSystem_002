@@ -10,6 +10,7 @@ type Props = {
   keyClassName?: string;
   resetClassName?: string;
   showReset?: boolean;
+  showBackspace?: boolean;
 };
 
 const defaultKeyClassName =
@@ -26,7 +27,8 @@ export function KioskDigitTenkey({
   className,
   keyClassName = defaultKeyClassName,
   resetClassName = defaultResetClassName,
-  showReset = true
+  showReset = true,
+  showBackspace = false
 }: Props) {
   return (
     <div
@@ -38,13 +40,16 @@ export function KioskDigitTenkey({
         <button
           key={digit}
           type="button"
-          className={keyClassName}
+          className={`${keyClassName}${showBackspace && digit === '0' ? ' col-span-2' : ''}`}
           disabled={disabled || value.length >= maxLength}
           onClick={() => onChange(`${value}${digit}`)}
         >
           {digit}
         </button>
       ))}
+      {showBackspace ? (
+        <button type="button" aria-label="1文字消す" className={resetClassName} disabled={disabled || value.length === 0} onClick={() => onChange(value.slice(0, -1))}>⌫</button>
+      ) : null}
       {showReset ? (
         <button
           type="button"

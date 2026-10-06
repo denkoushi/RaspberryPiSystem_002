@@ -7,6 +7,7 @@ import { Input } from '../../../components/ui/Input';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { procedureManualModelKey } from './ProcedureManualAssignmentDialog';
+import { ProcedureManualModelMatch, ProcedureManualModelTenkey } from './ProcedureManualModelSearch';
 
 import type { ProcedureManualModelDto, ProcedureManualProcessDto } from '../types';
 
@@ -34,7 +35,8 @@ export function ProcedureManualBlankDialog({ models, processes, modelCode, proce
   const canCreate = Boolean(name && name.length <= 200 && (direct || (selectedModel && parent && child)));
   const searchKey = procedureManualModelKey(modelSearch);
   const candidates = [...new Set([searchKey, ...models.map(model => procedureManualModelKey(model.modelCode))].filter(code => code && code.includes(searchKey)))];
-  const chip = 'min-h-12 rounded-full border border-[#344252] bg-[#1b222a] px-4 text-xl font-bold aria-pressed:border-[#3ba776] aria-pressed:bg-[#3ba776] aria-pressed:text-[#0b1a12]';
+  const chip = (pressed: boolean) => `min-h-12 rounded-full border px-4 text-xl font-bold ${pressed ? 'border-[#3ba776] bg-[#3ba776] text-[#0b1a12]' : 'border-[#6b7c8d] bg-[#27313b] text-[#eef3f6]'}`;
+  const changeSearch = (value: string) => { setModelSearch(value); setSelectedModel(''); };
   const action = 'min-h-[52px] rounded-[10px] border border-[#344252] px-[22px] text-[21px] font-bold disabled:opacity-40';
   const create = async () => {
     if (busy || !canCreate) return;
@@ -51,20 +53,21 @@ export function ProcedureManualBlankDialog({ models, processes, modelCode, proce
       {direct ? <label className="grid gap-2">要領書名<Input aria-label="要領書名" autoFocus maxLength={200} value={directName} onChange={event => setDirectName(event.target.value)} className="h-12 text-xl" /></label> : <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-3">
         <section aria-label="機種の選択" className="grid content-start gap-2">
           <h3 className="font-bold tracking-wider text-[#9fadb9]">機種</h3>
-          <Input type="search" aria-label="型番で検索" placeholder="型番で検索" autoFocus value={modelSearch} onChange={event => { setModelSearch(event.target.value); setSelectedModel(''); }} className="h-12 text-xl" />
-          <div className="grid max-h-[220px] gap-1.5 overflow-auto pr-1">{candidates.map(code => <button key={code} type="button" aria-pressed={selectedModel === code} className="min-h-[46px] rounded-lg px-3 text-left font-mono text-xl hover:bg-[#27313b] aria-pressed:bg-[#27313b]" onClick={() => setSelectedModel(code)}>{code}</button>)}</div>
+          <Input type="search" aria-label="型番で検索" placeholder="型番で検索" autoFocus value={modelSearch} onChange={event => changeSearch(event.target.value)} className="h-12 text-xl" />
+          <ProcedureManualModelTenkey value={modelSearch} onChange={changeSearch} />
+          <div className="grid max-h-[220px] gap-1.5 overflow-auto pr-1">{candidates.map(code => <button key={code} type="button" aria-label={code} aria-pressed={selectedModel === code} className={`min-h-[46px] rounded-lg px-3 text-left font-mono text-xl break-all hover:bg-[#27313b] ${selectedModel === code ? 'bg-[#27313b]' : ''}`} onClick={() => setSelectedModel(code)}><ProcedureManualModelMatch code={code} search={searchKey} /></button>)}</div>
         </section>
         <section aria-label="工程と細分の選択" className="grid content-start gap-2">
           <h3 className="font-bold tracking-wider text-[#9fadb9]">工程</h3>
-          <div className="flex flex-wrap gap-2">{processes.filter(process => !process.parentId).map(process => <button type="button" key={process.id} className={chip} aria-pressed={parentId === process.id} onClick={() => { setParentId(process.id); setChildId(processes.find(child => child.parentId === process.id)?.id ?? ''); }}>{shortName(process)}</button>)}</div>
+          <div className="flex flex-wrap gap-2">{processes.filter(process => !process.parentId).map(process => <button type="button" key={process.id} className={chip(parentId === process.id)} aria-pressed={parentId === process.id} onClick={() => { setParentId(process.id); setChildId(processes.find(child => child.parentId === process.id)?.id ?? ''); }}>{shortName(process)}</button>)}</div>
           <h3 className="mt-2 font-bold tracking-wider text-[#9fadb9]">細分</h3>
-          <div className="flex flex-wrap gap-2">{processes.filter(process => process.parentId === parentId).map(process => <button type="button" key={process.id} className={chip} aria-pressed={childId === process.id} onClick={() => setChildId(process.id)}>{shortName(process)}</button>)}</div>
+          <div className="flex flex-wrap gap-2">{processes.filter(process => process.parentId === parentId).map(process => <button type="button" key={process.id} className={chip(childId === process.id)} aria-pressed={childId === process.id} onClick={() => setChildId(process.id)}>{shortName(process)}</button>)}</div>
         </section>
         <section aria-label="補足の入力" className="grid content-start gap-2">
           <h3 className="font-bold tracking-wider text-[#9fadb9]">補足(任意)</h3>
           <Input aria-label="補足" placeholder="例: ベアリング圧入" maxLength={200} value={supplement} onChange={event => setSupplement(event.target.value)} className="h-12 text-xl" />
           <h3 className="mt-2 font-bold tracking-wider text-[#9fadb9]">よく使う</h3>
-          <div className="flex flex-wrap gap-2">{['圧入', '配線', '最終確認'].map(value => <button key={value} type="button" className={`${chip} border-dashed text-[#9fadb9]`} onClick={() => setSupplement(value)}>{value}</button>)}</div>
+          <div className="flex flex-wrap gap-2">{['圧入', '配線', '最終確認'].map(value => <button key={value} type="button" aria-pressed={supplement === value} className={`${chip(supplement === value)} border-dashed`} onClick={() => setSupplement(value)}>{value}</button>)}</div>
         </section>
       </div>}
       <div className="flex flex-wrap items-center justify-between gap-3.5 rounded-[10px] border border-[#27313b] bg-[#1b222a] px-4 py-3.5">

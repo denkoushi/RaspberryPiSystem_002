@@ -28,6 +28,7 @@ import type { AssemblyProcedureOverlayBBox, AssemblyProcedureOverlayElement } fr
 type ControllerInput = {
   documentId: string;
   onNavigateBack?: () => void;
+  onNavigateAfterDelete?: () => void;
   onNavigateAfterDiscard?: () => void;
   onNavigateAfterPublish?: (document: AssemblyProcedureDocumentDto) => void;
 };
@@ -114,6 +115,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setSelectedOverlayId,
     dispatch,
     recovery,
+    onNavigateAfterDelete: input.onNavigateAfterDelete,
     onNavigateAfterDiscard: input.onNavigateAfterDiscard,
     onNavigateAfterPublish: input.onNavigateAfterPublish
   }), [
@@ -124,6 +126,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     editLease.holderToken,
     elements,
     input.onNavigateAfterDiscard,
+    input.onNavigateAfterDelete,
     input.onNavigateAfterPublish,
     isDirty,
     passwordInput,
@@ -298,6 +301,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     save: revisionCommands.save,
     publish: revisionCommands.publish,
     discard: revisionCommands.discard,
+    deleteDocument: revisionCommands.deleteDocument,
     navigateBack,
     isDirty,
     readOnly,

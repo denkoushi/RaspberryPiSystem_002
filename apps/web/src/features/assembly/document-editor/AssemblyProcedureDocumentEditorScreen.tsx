@@ -19,6 +19,7 @@ export function AssemblyProcedureDocumentEditorScreen() {
   const controller = useAssemblyProcedureDocumentEditor();
   const [videoLinkOpen, setVideoLinkOpen] = useState(false);
   const [materialShelfOpen, setMaterialShelfOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -78,6 +79,8 @@ export function AssemblyProcedureDocumentEditorScreen() {
         canSave={controller.canSave}
         canPublish={controller.canPublish}
         canDiscard={controller.canDiscard}
+        showDelete={controller.document?.status === 'draft' && !controller.document.supersedesDocumentId}
+        onDelete={() => setDeleteOpen(true)}
         onBack={controller.navigateBack}
         onToggleSelection={() => controller.setSelectionMode(!controller.selectionMode)}
         onPlaceMaterial={() => setMaterialShelfOpen(true)}
@@ -187,6 +190,16 @@ export function AssemblyProcedureDocumentEditorScreen() {
           void controller.reloadConflict();
         }}
         onCancel={() => setConflictReloadOpen(false)}
+      />
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        title="要領書を削除"
+        description="この要領書を削除します。元に戻せません"
+        confirmLabel="削除する"
+        cancelLabel="キャンセル"
+        tone="danger"
+        onConfirm={() => { setDeleteOpen(false); void controller.deleteDocument(); }}
+        onCancel={() => setDeleteOpen(false)}
       />
       <ConfirmDialog
         isOpen={discardOpen}

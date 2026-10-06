@@ -19,6 +19,7 @@ function AssemblyProcedureDocumentEditorRoute({ documentId }: { documentId: stri
   const controller = useAssemblyProcedureDocumentEditorController({
     documentId,
     onNavigateBack: () => navigate(kioskAssemblyLibraryPath({ focus: 'procedures' }), { replace: true }),
+    onNavigateAfterDelete: () => navigate('/kiosk/assembly/manuals', { replace: true }),
     onNavigateAfterDiscard: () => navigate(kioskAssemblyLibraryPath({ focus: 'procedures' }), { replace: true }),
     onNavigateAfterPublish: () => navigate(kioskAssemblyLibraryPath({ focus: 'procedures' }), { replace: true })
   });

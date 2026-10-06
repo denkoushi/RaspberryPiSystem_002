@@ -86,6 +86,7 @@ function makeController(
     deleteSelectedOverlay: vi.fn(),
     save: vi.fn(async () => undefined),
     publish: vi.fn(async () => undefined),
+    deleteDocument: vi.fn(async () => undefined),
     discard: vi.fn(async () => undefined),
     navigateBack: vi.fn(),
     isDirty: false,
@@ -126,6 +127,27 @@ function renderScreen(controller: AssemblyProcedureDocumentEditorController) {
 
 describe('AssemblyProcedureDocumentEditorScreen', () => {
   beforeEach(() => { approvalMocks.read = null; approvalMocks.resolve.mockReset(); });
+  it('shows deletion only for DRAFT and requires irreversible deletion confirmation', () => {
+    const deleteDocument = vi.fn(async () => undefined);
+    const view = renderScreen(makeController({ deleteDocument }));
+    fireEvent.click(screen.getByRole('button', { name: '削除' }));
+    expect(screen.getByText('この要領書を削除します。元に戻せません')).toBeInTheDocument();
+    expect(deleteDocument).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+    expect(deleteDocument).toHaveBeenCalledOnce();
+    view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ document: { ...editorDocument, status: 'published' }, readOnly: true })}><AssemblyProcedureDocumentEditorScreen /></AssemblyProcedureDocumentEditorProvider>);
+    expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument();
+    view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ document: { ...editorDocument, supersedesDocumentId: 'root-1' } })}><AssemblyProcedureDocumentEditorScreen /></AssemblyProcedureDocumentEditorProvider>);
+    expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument();
+  });
+
+  it('disables deletion while busy or read only', () => {
+    const view = renderScreen(makeController({ busy: true }));
+    expect(screen.getByRole('button', { name: '削除' })).toBeDisabled();
+    view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ readOnly: true })}><AssemblyProcedureDocumentEditorScreen /></AssemblyProcedureDocumentEditorProvider>);
+    expect(screen.getByRole('button', { name: '削除' })).toBeDisabled();
+  });
+
   it('runs blank-page addition from the page list', () => {
     const addBlankPage = vi.fn(async () => undefined);
     renderScreen(makeController({ addBlankPage }));
